@@ -1,9 +1,11 @@
 using Bingo.Server.Play.Adapters.ZLink.Spots;
+using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
 
 namespace Bingo.Server.Play.Adapters.ZLink.Spots.Handlers;
 
+[ZLinkSpotTimerHandler("bingo-draw", 200)]
 internal sealed class BingoRoomDrawTimerHandler : IZLinkSpotTimerHandler<BingoRoom>
 {
     public async ValueTask HandleAsync(
@@ -12,11 +14,15 @@ internal sealed class BingoRoomDrawTimerHandler : IZLinkSpotTimerHandler<BingoRo
         CancellationToken cancellationToken)
     {
         _ = tick;
+        if (!spot.IsReadyToDraw)
+        {
+            return;
+        }
+
         var change = spot.DrawNextNumber();
         await spot.PublishAsync(change, cancellationToken);
         if (change.ShouldStopDrawTimer)
         {
-            spot.StopDrawTimerAfterTick();
             await spot.LeaveFinishedActorsAsync(cancellationToken);
         }
     }

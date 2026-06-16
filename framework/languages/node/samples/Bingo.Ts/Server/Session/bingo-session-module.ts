@@ -1,11 +1,9 @@
-const { Module } = require('@nestjs/common');
-const { ZLinkModule, zlinkFramework } = require('../../../../../packages/nestjs/dist');
-const { SessionAuthenticator } = require('./Sessions/Handlers/authenticate-session-handler');
-const { SampleNames } = require('../Configuration/sample-names');
-
+import { Module } from '@nestjs/common';
+import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { SessionAuthenticator } from './Sessions/Handlers/authenticate-session-handler';
+import { SampleNames, SampleTimings } from '../Configuration/sample-names';
 function createBingoSessionModule(endpoints: {
-  apiEndpoint: string;
-  playEndpoint: string;
+  registryRouterEndpoint: string;
 }) {
   class BingoSessionModule {}
 
@@ -13,10 +11,17 @@ function createBingoSessionModule(endpoints: {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
-          .clientServerChannel(SampleNames.apiChannel, (channel) => channel
-            .client(endpoints.apiEndpoint))
-          .clientServerChannel(SampleNames.playChannel, (channel) => channel
-            .client(endpoints.playEndpoint))
+          .options({ requestTimeoutMs: SampleTimings.requestTimeout })
+          .codecs()
+            .addProtobuf()
+          .useDiscovery()
+            .addRegistryEndpoint(endpoints.registryRouterEndpoint)
+          .addClientServerChannel(SampleNames.apiChannel)
+            .enableClient()
+          .addClientServerChannel(SampleNames.playChannel)
+            .enableClient()
+          .addClientServerChannel(SampleNames.notificationChannel)
+            .enableClient()
           .build()
       })
     ],

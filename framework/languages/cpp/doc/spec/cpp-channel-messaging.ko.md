@@ -140,15 +140,17 @@ handler 안에서 blocking wait를 쓰지 않는다.
   `route_channel_initializer_t`가 맡는다. `.NET`은 reflection scanner와 assembly marker로
   descriptor를 수집하지만, C++는 typed handler installer를 registration에 저장한 뒤
   initializer가 `route_handler_registry_t`로 변환한다. 프레임워크 사용자는
-  `options.add_route_mesh_channel(name)`으로 bind, routing id, manual connection, handler group을
-  설정한다. route mesh channel은 local route endpoint를 열기 위해 `bind(...)`가 필요하다.
+  `options.add_route_mesh_channel(name)`으로 server endpoint, routing id, client endpoint,
+  handler group을 설정한다. route mesh channel은 local route endpoint를 열기 위해
+  `enable_server(endpoint)`가 필요하다.
   SPOT route ingress에서 `accept_routes_from_channel(name)`으로 참조할 수 있는 channel은
   client/server channel 또는 route mesh channel뿐이다. 참조한 node는 router 역할과
   registry discovery 또는 accepted route manual endpoint를 가져야 한다.
   `zlink_builder_t::route_channel(name, configure)`와 `route_channel_builder_t`는 framework
   내부와 고급 확장용 낮은 수준 표면으로 남긴다.
-- dealer mesh channel은 `options.add_dealer_mesh_channel(name)`으로 선언하되 `bind(...)`
-  또는 `connect(...)` 중 하나 이상을 함께 둔다. peer 획득 경로가 없으면 framework
+- dealer mesh channel은 `options.add_dealer_mesh_channel(name)`으로 선언하되
+  `enable_server(endpoint)` 또는 `enable_client(endpoint)` 중 하나 이상을 함께 둔다.
+  peer 획득 경로가 없으면 framework
   options 적용 시점에 실패한다.
 - client/server channel은 server 또는 client 역할 중 하나 이상이 필요하고, fanout
   channel은 publisher 또는 subscriber 역할 중 하나 이상이 필요하다. 아무 역할도 없는

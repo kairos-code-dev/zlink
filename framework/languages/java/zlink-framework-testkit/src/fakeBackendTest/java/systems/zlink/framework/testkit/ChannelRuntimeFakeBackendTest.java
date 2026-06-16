@@ -19,10 +19,7 @@ final class ChannelRuntimeFakeBackendTest {
     @Test
     void manualClientServerSendAndRequestReachBackendDealer() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addClientServerChannel("profile", channel ->
-            channel.enableClient(client ->
-                client.useManualConnections(endpoints ->
-                    endpoints.connect("inproc://profile-server"))));
+        { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
@@ -59,14 +56,9 @@ final class ChannelRuntimeFakeBackendTest {
     @Test
     void channelCallsUseMessageTypePacketNameByDefault() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addClientServerChannel("profile", channel ->
-            channel.enableClient(client ->
-                client.useManualConnections(endpoints ->
-                    endpoints.connect("inproc://profile-server"))));
-        options.addRouteMeshChannel("route", route -> {
-            route.bind("inproc://route");
-            route.useManualConnections(endpoints -> endpoints.connect("inproc://route-peer"));
-        });
+        { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
+        { var route = options.addRouteMeshChannel("route"); route.enableServer("inproc://route");
+            route.enableClient("inproc://route-peer"); };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
@@ -116,16 +108,14 @@ final class ChannelRuntimeFakeBackendTest {
     @Test
     void discoveryClientServerAttachesDealerAndRouterToRegistryDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:5552"));
-        options.addClientServerChannel("profile", channel -> {
-            channel.enableServer(server -> server.bind("tcp://127.0.0.1:7100"));
+        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:5552"); };
+        { var channel = options.addClientServerChannel("profile").enableServer("tcp://127.0.0.1:7100");
             channel.enableClient();
             channel.addRequestHandler(
                 ChannelMessagingFakeHandler.class,
                 String.class,
                 String.class,
-                "Question");
-        });
+                "Question"); };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored = RuntimeTestSupport.startFramework(options, backendFactory)) {

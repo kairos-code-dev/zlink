@@ -28,6 +28,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -64,6 +65,29 @@ bool has_suffix (const std::filesystem::path &path, const std::string &suffix)
     const auto value = path.string ();
     return value.size () >= suffix.size ()
            && value.compare (value.size () - suffix.size (), suffix.size (), suffix) == 0;
+}
+
+bool is_allowed_raw_codec_helper_file (const std::string &relative)
+{
+    const std::vector<std::string> allowed{
+      "Bingo/Shared/Contracts/messages.hpp",
+      "Bingo/Server/Session/Sessions/Handlers/authenticate_session_handler.hpp",
+      "Bingo/Server/Play/Adapters/ZLink/Spots/bingo_entry_spot.hpp",
+      "Bingo/Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp",
+      "TicTacToe/Shared/Contracts/messages.hpp",
+      "TicTacToe/Server/Play/Adapters/ZLink/Sessions/Handlers/"
+      "authenticate_play_session_handler.hpp",
+      "TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_entry_spot.hpp",
+      "TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_spot.hpp",
+    };
+    return std::find (allowed.begin (), allowed.end (), relative) != allowed.end ();
+}
+
+bool contains_any (const std::string &content, const std::vector<std::string> &patterns)
+{
+    return std::any_of (patterns.begin (), patterns.end (), [&content] (const auto &pattern) {
+        return content.find (pattern) != std::string::npos;
+    });
 }
 
 std::vector<std::filesystem::path> sample_source_files ()
@@ -233,6 +257,8 @@ TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
                                                    "configure_play_host",
                                                    "configure_session_host",
                                                    "app.use_zlink",
+                                                   "app.advanced ().zlink",
+                                                   "app.advanced().zlink",
                                                    "app.services ()",
                                                    "app.handlers ()",
                                                    "app.advanced ()",
@@ -631,6 +657,43 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_EQ (client_main.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (client.find ("bingo-client.log"), std::string::npos);
     EXPECT_EQ (client.find ("std::ofstream"), std::string::npos);
+}
+
+TEST (CppFrameworkSampleParity, CodecHelpersStayConfinedToRawLifecycleBoundaries)
+{
+    const std::vector<std::string> helper_patterns{
+      "to_stream_payload",
+      "from_stream_payload",
+      "json_to_protobuf_payload",
+      "json_from_protobuf_payload",
+      "append_protobuf_varint",
+      "read_protobuf_varint",
+    };
+    std::vector<std::string> violations;
+
+    for (const auto &file : sample_source_files ()) {
+        const auto relative = relative_sample_path (file);
+        const auto content = read_file (file);
+        if (!contains_any (content, helper_patterns)) {
+            continue;
+        }
+        if (!is_allowed_raw_codec_helper_file (relative)) {
+            violations.push_back (relative);
+        }
+        if ((content.find ("append_protobuf_varint") != std::string::npos
+             || content.find ("read_protobuf_varint") != std::string::npos)
+            && relative != "Bingo/Shared/Contracts/messages.hpp") {
+            violations.push_back (relative + ":manual-protobuf-varint");
+        }
+        if ((content.find ("json_to_protobuf_payload") != std::string::npos
+             || content.find ("json_from_protobuf_payload") != std::string::npos)
+            && relative != "Bingo/Shared/Contracts/messages.hpp") {
+            violations.push_back (relative + ":json-protobuf-wrapper");
+        }
+    }
+
+    EXPECT_TRUE (violations.empty ()) << "codec helper leakage:\n"
+                                     << testing::PrintToString (violations);
 }
 
 int main (int argc, char **argv)

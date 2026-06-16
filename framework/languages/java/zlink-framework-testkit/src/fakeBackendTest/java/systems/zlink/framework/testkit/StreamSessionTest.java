@@ -31,17 +31,11 @@ final class StreamSessionTest {
     @Test
     void streamNodeBindsAndAttachesConfiguredActorGatewaySpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter(router ->
-                    router.setRoutingId(RoutingId.from("play-node")));
-                node.addSpotFactory(GameSpot.class);
-            }));
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway");
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
+                node.addSpotFactory(GameSpot.class); }; };
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.attachActorGateway("play");
-            stream.registerSession(GameSession.class);
-        });
+            stream.registerSession(GameSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -78,10 +72,8 @@ final class StreamSessionTest {
     void headerSession_connectedDispatchReply_succeeds() {
         GameSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway");
-            stream.registerSession(GameSession.class);
-        });
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(GameSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -101,10 +93,8 @@ final class StreamSessionTest {
     void sameSessionCallbacks_runSerially() {
         GameSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway");
-            stream.registerSession(GameSession.class);
-        });
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(GameSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -124,10 +114,8 @@ final class StreamSessionTest {
     void onError_reportsTransportError_forRemoteDisconnect() {
         GameSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway");
-            stream.registerSession(GameSession.class);
-        });
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(GameSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -150,10 +138,8 @@ final class StreamSessionTest {
     @Test
     void streamSessionMustExposeRuntimeProvidedContext() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway");
-            stream.registerSession(WrongContextSession.class);
-        });
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(WrongContextSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -169,18 +155,12 @@ final class StreamSessionTest {
     void constructorSessionContextExposesClientAndActorsFromFrameworkRuntime() {
         ContextSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter(router ->
-                    router.setRoutingId(RoutingId.from("play-node")));
-                node.addSpotFactory(GameSpot.class);
-            }));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
+                node.addSpotFactory(GameSpot.class); }; };
         options.addActorFactory("player", ActorRuntimeFakeBackendTest.PlayerActorFactory.class);
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway");
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.attachActorGateway("play");
-            stream.registerSession(ContextSession.class);
-        });
+            stream.registerSession(ContextSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -205,14 +185,10 @@ final class StreamSessionTest {
     void gatewayAttachedSessionContextExposesActorsWithoutLocalActorRuntime() {
         ContextSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("session", node -> node.enableRouter(router ->
-                router.setRoutingId(RoutingId.from("session-node")))));
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway");
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("session"); node.setRouterRoutingId(RoutingId.from("session-node")); }; };
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.attachActorGateway("session");
-            stream.registerSession(ContextSession.class);
-        });
+            stream.registerSession(ContextSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -236,11 +212,9 @@ final class StreamSessionTest {
     void sessionPacketDispatcher_handlesRegisteredPacketsAndLetsSessionRelayUnhandledPackets() {
         DispatcherSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway");
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.registerSession(DispatcherSession.class);
-            stream.addSessionPacketHandler(AuthenticatePacketHandler.class);
-        });
+            stream.addSessionPacketHandler(AuthenticatePacketHandler.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -262,10 +236,8 @@ final class StreamSessionTest {
     @Test
     void sessionSendAndReplyApplyMetadataAndCompression() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway");
-            stream.registerSession(CompressedSession.class);
-        });
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(CompressedSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -288,10 +260,8 @@ final class StreamSessionTest {
     void inboundCompressedSessionPayloadIsDecompressedBeforeDispatch() {
         GameSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway");
-            stream.registerSession(GameSession.class);
-        });
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(GameSession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -312,10 +282,8 @@ final class StreamSessionTest {
     void sessionReply_failsOutsideRequestPacket() {
         ReplyOnlySession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway");
-            stream.registerSession(ReplyOnlySession.class);
-        });
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.registerSession(ReplyOnlySession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 

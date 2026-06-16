@@ -58,7 +58,8 @@ class bingo_session_t final : public zlink::framework::packet_stream_session_t
         if (_authenticate.can_handle (header)) {
             auto authenticated = co_await _authenticate.handle (_actors, stream, header, payload);
             _bound_actor_id = std::string (authenticated.actor_id ());
-            _gateway.bind_session_stream (*_bound_actor_id, stream);
+            _gateway.bind_session_stream (*_bound_actor_id, stream,
+                                          zlink::framework::stream_codec_t::protobuf);
             co_return;
         }
 
@@ -107,7 +108,7 @@ class bingo_session_t final : public zlink::framework::packet_stream_session_t
     {
         auto request_seq = header.request_seq ();
         auto response = co_await _client
-                          .request<remote_actor_packet_res_t> (
+                          .request (
                             sample_names_t::play_channel,
                             remote_actor_packet_req_t{
                               std::string (actor.ref ().node_rid ().value ()),
@@ -122,7 +123,7 @@ class bingo_session_t final : public zlink::framework::packet_stream_session_t
                               std::string (header.packet_name ()),
                               header.metadata ().values (),
                               payload.to_bytes ()})
-                          .async ();
+                          .async<remote_actor_packet_res_t> ();
         co_return zlink::framework::result_t<remote_actor_packet_res_t>::success (
           std::move (response));
     }

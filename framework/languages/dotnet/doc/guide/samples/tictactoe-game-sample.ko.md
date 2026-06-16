@@ -108,7 +108,7 @@ public sealed record GameState(
 - SPOT game room
 
 `Api` channel client 와 `Play` channel client 는 현재 샘플 코드에서
-`UseManualConnections(...)` 로 endpoint 를 직접 지정해 연결한다. 이 점은
+`EnableClient(endpoint)` 로 endpoint 를 직접 지정해 연결한다. 이 점은
 Registry/Discovery 를 사용하는 Bingo 샘플과 다르다.
 
 ## 3. Play 서버 구조

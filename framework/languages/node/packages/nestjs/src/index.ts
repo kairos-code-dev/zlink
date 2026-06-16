@@ -14,8 +14,11 @@ import type {
   ZLinkClientCapabilityOptions,
   ZLinkDealerMeshChannelOptions,
   ZLinkChannelOptions,
+  ZLinkCodecRegistryOptions,
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
+  ZLinkMessageSerializer,
+  ZLinkNamedCodec,
   ZLinkProviderResolver,
   ZLinkPublisherCapabilityOptions,
   ZLinkPublishContext,
@@ -27,6 +30,7 @@ import type {
   ZLinkRouteRequestContext,
   ZLinkRouteSendContext,
   ZLinkEntrySpot,
+  ZLinkEntrySpotOptions,
   ZLinkEntrySpotActorSendHandlerRegistration,
   ZLinkEntrySpotActorRequestHandlerRegistration,
   ZLinkSpot,
@@ -44,6 +48,10 @@ import type {
 } from '@zlink-systems/framework';
 
 type RuntimeConstructor<T> = new (...args: unknown[]) => T;
+type MutableCodecRegistryOptions = {
+  codecs: ZLinkNamedCodec[];
+  serializers: NonNullable<ZLinkCodecRegistryOptions['serializers']>[number][];
+};
 
 interface FrameworkRuntimeHost {
   readonly channelTransport: unknown;
@@ -132,7 +140,7 @@ type Mutable<T> = {
   -readonly [K in keyof T]: T[K];
 };
 
-export interface ZLinkNestClientServerChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
+interface ZLinkNestClientServerChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
   readonly server?: { readonly bind?: string };
   readonly client?: ZLinkClientCapabilityOptions;
   readonly requestHandlers?: readonly ZLinkChannelRequestHandlerRegistration[];
@@ -141,16 +149,16 @@ export interface ZLinkNestClientServerChannelOptions extends ZLinkNestHandlerDis
   readonly sendHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
 }
 
-export interface ZLinkNestFanoutChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
+interface ZLinkNestFanoutChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
   readonly publisher?: ZLinkPublisherCapabilityOptions;
   readonly subscriber?: ZLinkClientCapabilityOptions;
   readonly publishHandlers?: readonly ZLinkChannelPublishHandlerRegistration[];
   readonly publishHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
 }
 
-export interface ZLinkNestDealerMeshChannelOptions extends ZLinkDealerMeshChannelOptions {}
+interface ZLinkNestDealerMeshChannelOptions extends ZLinkDealerMeshChannelOptions {}
 
-export interface ZLinkNestRouterMeshOptions extends ZLinkNestHandlerDiscoveryOptions {
+interface ZLinkNestRouterMeshOptions extends ZLinkNestHandlerDiscoveryOptions {
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
@@ -217,10 +225,17 @@ export interface ZLinkNestSpotTimerHandlerOptions<TSpot extends ZLinkSpot = ZLin
   readonly options?: ZLinkTimerOptions;
 }
 
-export interface ZLinkModuleOptions extends Omit<
+const ZLINK_MODULE_OPTIONS_BRAND = Symbol('@zlink-systems/nestjs:module-options');
+
+export interface ZLinkModuleOptions {
+  readonly [ZLINK_MODULE_OPTIONS_BRAND]: true;
+}
+
+interface ZLinkNestModuleRegistrationOptions extends Omit<
   ZLinkFrameworkRegistrationOptions,
   'channels' | 'routeChannels' | 'streamNodes' | 'spotNodes'
 > {
+  readonly [ZLINK_MODULE_OPTIONS_BRAND]: true;
   readonly clientServerChannels?: Readonly<Record<string, ZLinkNestClientServerChannelOptions>>;
   readonly fanoutChannels?: Readonly<Record<string, ZLinkNestFanoutChannelOptions>>;
   readonly dealerMeshChannels?: Readonly<Record<string, ZLinkNestDealerMeshChannelOptions>>;
@@ -232,54 +247,78 @@ export interface ZLinkModuleOptions extends Omit<
 
 export interface ZLinkNestFrameworkOptionsBuilder {
   options(options: ZLinkNestFrameworkAdditionalOptions): this;
+  codecs(): ZLinkNestCodecRegistryBuilder;
   actorFactory(actorType: string, factoryType: Type): this;
-  clientServerChannel(name: string, configure: (channel: ZLinkNestClientServerChannelBuilder) => void): this;
-  fanoutChannel(name: string, configure: (channel: ZLinkNestFanoutChannelBuilder) => void): this;
-  routerMesh(name: string, configure: (mesh: ZLinkNestRouterMeshBuilder) => void): this;
-  spotNode(name: string, configure: (spot: ZLinkNestSpotNodeBuilder) => void): this;
-  streamNode(name: string, configure: (stream: ZLinkNestStreamNodeBuilder) => void): this;
+  useDiscovery(): ZLinkNestDiscoveryBuilder;
+  addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder;
+  addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder;
+  addDealerMeshChannel(name: string): ZLinkNestDealerMeshChannelBuilder;
+  addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder;
+  addSpotNode(name: string): ZLinkNestSpotNodeBuilder;
+  addStreamNode(name: string): ZLinkNestStreamNodeBuilder;
   build(): ZLinkModuleOptions;
 }
 
 export type ZLinkNestFrameworkAdditionalOptions = Omit<
-  ZLinkModuleOptions,
-  'clientServerChannels' | 'fanoutChannels' | 'routerMeshes'
+  ZLinkFrameworkRegistrationOptions,
+  'channels' | 'routeChannels' | 'streamNodes' | 'spotNodes' | 'codecs'
 >;
 
-export interface ZLinkNestClientServerChannelBuilder {
-  server(bind: string | undefined): this;
-  client(endpoint?: string | readonly string[]): this;
-  requestHandler(packetName: string, handlerType: Type): this;
-  sendHandler(packetName: string, handlerType: Type): this;
-  handlerGroup(groupName: string): this;
+export interface ZLinkNestDiscoveryBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  addRegistryEndpoint(endpoint: string): this;
 }
 
-export interface ZLinkNestFanoutChannelBuilder {
-  publisher(bind: string | undefined): this;
-  subscriber(endpoint?: string | readonly string[]): this;
-  publishHandler(packetName: string, handlerType: Type): this;
-  handlerGroup(groupName: string): this;
+export interface ZLinkNestCodecRegistryBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this;
+  addJson(): this;
+  addMessagePack(): this;
+  addProtobuf(): this;
 }
 
-export interface ZLinkNestRouterMeshBuilder {
+export interface ZLinkNestClientServerChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  enableServer(bind: string | undefined): this;
+  enableClient(endpoint?: string | readonly string[]): this;
+  addRequestHandler(packetName: string, handlerType: Type): this;
+  addSendHandler(packetName: string, handlerType: Type): this;
+  addHandlerGroup(groupName: string): this;
+}
+
+export interface ZLinkNestFanoutChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  enablePublisher(bind: string | undefined): this;
+  enableSubscriber(endpoint?: string | readonly string[]): this;
+  addPublishHandler(packetName: string, handlerType: Type): this;
+  addHandlerGroup(groupName: string): this;
+}
+
+export interface ZLinkNestDealerMeshChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
   bind(endpoint: string | undefined): this;
+  enableClient(endpoint?: string | readonly string[]): this;
+}
+
+export interface ZLinkNestRouterMeshBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  enableRouter(endpoint: string | undefined): this;
   routingId(routingId: string | undefined): this;
   connect(endpoint: string | readonly string[] | undefined): this;
-  sendHandler(packetName: string, handlerType: Type): this;
-  requestHandler(packetName: string, handlerType: Type): this;
-  handlerGroup(groupName: string): this;
+  addSendHandler(packetName: string, handlerType: Type): this;
+  addRequestHandler(packetName: string, handlerType: Type): this;
+  addHandlerGroup(groupName: string): this;
 }
 
-export interface ZLinkNestStreamNodeBuilder {
+export interface ZLinkNestStreamNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
   bind(endpoint: string | undefined): this;
   attachActorGateway(spotNodeName: string | undefined): this;
   registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
 }
 
-export interface ZLinkNestSpotNodeBuilder {
-  router(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this;
-  entrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
-  spotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
+export interface ZLinkNestSpotNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  enableRouter(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this;
+  enablePubSub(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this;
+  configureEntrySpot(options: ZLinkEntrySpotOptions): this;
+  attachChannelClient(channelName: string, endpoint?: string | readonly string[]): this;
+  attachSpotPublisherClient(channelName: string, endpoint?: string | readonly string[]): this;
+  acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this;
+  addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
+  addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
 }
 
 export const ZLINK_NEST_HANDLER_GROUP = Symbol.for('@zlink-systems/nestjs:handler-group');
@@ -446,14 +485,36 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
   private additionalOptions: ZLinkNestFrameworkAdditionalOptions = {};
   private readonly clientServerChannels: Record<string, ZLinkNestClientServerChannelOptions> = {};
   private readonly fanoutChannels: Record<string, ZLinkNestFanoutChannelOptions> = {};
+  private readonly dealerMeshChannels: Record<string, ZLinkNestDealerMeshChannelOptions> = {};
   private readonly routerMeshes: Record<string, ZLinkNestRouterMeshOptions> = {};
   private readonly streams: Record<string, ZLinkStreamNodeOptions> = {};
   private readonly spotNodes: Record<string, ZLinkSpotNodeOptions> = {};
   private readonly actorFactories: Record<string, Type> = {};
+  private readonly codecOptions: MutableCodecRegistryOptions = { codecs: [], serializers: [] };
 
   options(options: ZLinkNestFrameworkAdditionalOptions): this {
     this.additionalOptions = { ...this.additionalOptions, ...options };
     return this;
+  }
+
+  codecs(): ZLinkNestCodecRegistryBuilder {
+    return new DefaultZLinkNestCodecRegistryBuilder(this);
+  }
+
+  addNamedCodec(codec: ZLinkNamedCodec): void {
+    if (!this.codecOptions.codecs.includes(codec)) {
+      this.codecOptions.codecs.push(codec);
+    }
+  }
+
+  addSerializer(contentType: string, serializer: ZLinkMessageSerializer): void {
+    const existing = this.codecOptions.serializers.findIndex((entry) => entry.contentType === contentType);
+    const registration = { contentType, serializer };
+    if (existing >= 0) {
+      this.codecOptions.serializers[existing] = registration;
+    } else {
+      this.codecOptions.serializers.push(registration);
+    }
   }
 
   actorFactory(actorType: string, factoryType: Type): this {
@@ -461,224 +522,347 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     return this;
   }
 
-  clientServerChannel(name: string, configure: (channel: ZLinkNestClientServerChannelBuilder) => void): this {
-    const channel = new DefaultZLinkNestClientServerChannelBuilder();
-    configure(channel);
-    this.clientServerChannels[name] = channel.build();
-    return this;
+  useDiscovery(): ZLinkNestDiscoveryBuilder {
+    this.additionalOptions = {
+      ...this.additionalOptions,
+      discovery: this.additionalOptions.discovery ?? { registries: [] }
+    };
+    return new DefaultZLinkNestDiscoveryBuilder(this, this.additionalOptions.discovery as { registries?: readonly string[] });
   }
 
-  fanoutChannel(name: string, configure: (channel: ZLinkNestFanoutChannelBuilder) => void): this {
-    const channel = new DefaultZLinkNestFanoutChannelBuilder();
-    configure(channel);
-    this.fanoutChannels[name] = channel.build();
-    return this;
+  addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder {
+    this.clientServerChannels[name] ??= {};
+    return new DefaultZLinkNestClientServerChannelBuilder(this, this.clientServerChannels[name]);
   }
 
-  routerMesh(name: string, configure: (mesh: ZLinkNestRouterMeshBuilder) => void): this {
-    const mesh = new DefaultZLinkNestRouterMeshBuilder();
-    configure(mesh);
-    this.routerMeshes[name] = mesh.build();
-    return this;
+  addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder {
+    this.fanoutChannels[name] ??= {};
+    return new DefaultZLinkNestFanoutChannelBuilder(this, this.fanoutChannels[name]);
   }
 
-  spotNode(name: string, configure: (spot: ZLinkNestSpotNodeBuilder) => void): this {
-    const spot = new DefaultZLinkNestSpotNodeBuilder();
-    configure(spot);
-    this.spotNodes[name] = spot.build();
-    return this;
+  addDealerMeshChannel(name: string): ZLinkNestDealerMeshChannelBuilder {
+    this.dealerMeshChannels[name] ??= {};
+    return new DefaultZLinkNestDealerMeshChannelBuilder(this, this.dealerMeshChannels[name]);
   }
 
-  streamNode(name: string, configure: (stream: ZLinkNestStreamNodeBuilder) => void): this {
-    const stream = new DefaultZLinkNestStreamNodeBuilder();
-    configure(stream);
-    this.streams[name] = stream.build();
-    return this;
+  addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
+    this.routerMeshes[name] ??= {};
+    return new DefaultZLinkNestRouterMeshBuilder(this, this.routerMeshes[name]);
+  }
+
+  addSpotNode(name: string): ZLinkNestSpotNodeBuilder {
+    this.spotNodes[name] ??= {};
+    return new DefaultZLinkNestSpotNodeBuilder(this, this.spotNodes[name]);
+  }
+
+  addStreamNode(name: string): ZLinkNestStreamNodeBuilder {
+    this.streams[name] ??= {};
+    return new DefaultZLinkNestStreamNodeBuilder(this, this.streams[name]);
   }
 
   build(): ZLinkModuleOptions {
-    return {
+    const options: ZLinkNestModuleRegistrationOptions = {
+      [ZLINK_MODULE_OPTIONS_BRAND]: true,
       ...this.additionalOptions,
       clientServerChannels: { ...this.clientServerChannels },
       fanoutChannels: { ...this.fanoutChannels },
+      dealerMeshChannels: { ...this.dealerMeshChannels },
       routerMeshes: { ...this.routerMeshes },
-      streams: { ...this.streams, ...(this.additionalOptions.streams ?? {}) },
-      spotNodes: { ...this.spotNodes, ...(this.additionalOptions.spotNodes as Record<string, ZLinkSpotNodeOptions> | undefined ?? {}) },
-      actorFactories: { ...this.actorFactories, ...(this.additionalOptions.actorFactories as Record<string, Type> | undefined ?? {}) }
+      streams: { ...this.streams },
+      spotNodes: { ...this.spotNodes },
+      actorFactories: { ...this.actorFactories, ...(this.additionalOptions.actorFactories as Record<string, Type> | undefined ?? {}) },
+      codecs: this.codecOptions.codecs.length === 0 && this.codecOptions.serializers.length === 0
+        ? undefined
+        : {
+            codecs: [...this.codecOptions.codecs],
+            serializers: [...this.codecOptions.serializers]
+          }
     };
+    return options;
   }
 }
 
-class DefaultZLinkNestClientServerChannelBuilder implements ZLinkNestClientServerChannelBuilder {
-  private options: ZLinkNestClientServerChannelOptions = {};
+abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder {
+  protected constructor(protected readonly root: DefaultZLinkNestFrameworkOptionsBuilder) {}
 
-  server(bind: string | undefined): this {
-    this.options = { ...this.options, server: { bind } };
+  options(options: ZLinkNestFrameworkAdditionalOptions): this {
+    this.root.options(options);
     return this;
   }
 
-  client(endpoint?: string | readonly string[]): this {
-    this.options = { ...this.options, client: endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) } };
+  codecs(): ZLinkNestCodecRegistryBuilder {
+    return this.root.codecs();
+  }
+
+  actorFactory(actorType: string, factoryType: Type): this {
+    this.root.actorFactory(actorType, factoryType);
     return this;
   }
 
-  handlerGroup(groupName: string): this {
-    this.options = { ...this.options, handlerGroups: [...(this.options.handlerGroups ?? []), groupName] };
-    return this;
+  useDiscovery(): ZLinkNestDiscoveryBuilder {
+    return this.root.useDiscovery();
   }
 
-  requestHandler(packetName: string, handlerType: Type): this {
-    this.options = {
-      ...this.options,
-      requestHandlerTypes: [...(this.options.requestHandlerTypes ?? []), { packetName, handlerType }]
-    };
-    return this;
+  addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder {
+    return this.root.addClientServerChannel(name);
   }
 
-  sendHandler(packetName: string, handlerType: Type): this {
-    this.options = {
-      ...this.options,
-      sendHandlerTypes: [...(this.options.sendHandlerTypes ?? []), { packetName, handlerType }]
-    };
-    return this;
+  addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder {
+    return this.root.addFanoutChannel(name);
   }
 
-  build(): ZLinkNestClientServerChannelOptions {
-    return this.options;
+  addDealerMeshChannel(name: string): ZLinkNestDealerMeshChannelBuilder {
+    return this.root.addDealerMeshChannel(name);
+  }
+
+  addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
+    return this.root.addRouteMeshChannel(name);
+  }
+
+  addSpotNode(name: string): ZLinkNestSpotNodeBuilder {
+    return this.root.addSpotNode(name);
+  }
+
+  addStreamNode(name: string): ZLinkNestStreamNodeBuilder {
+    return this.root.addStreamNode(name);
+  }
+
+  build(): ZLinkModuleOptions {
+    return this.root.build();
   }
 }
 
-class DefaultZLinkNestFanoutChannelBuilder implements ZLinkNestFanoutChannelBuilder {
-  private options: ZLinkNestFanoutChannelOptions = {};
-
-  publisher(bind: string | undefined): this {
-    this.options = { ...this.options, publisher: { bind } };
-    return this;
+class DefaultZLinkNestDiscoveryBuilder extends ZLinkNestChildBuilder implements ZLinkNestDiscoveryBuilder {
+  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly discovery: { registries?: readonly string[] }) {
+    super(root);
   }
 
-  subscriber(endpoint?: string | readonly string[]): this {
-    this.options = { ...this.options, subscriber: endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) } };
+  addRegistryEndpoint(endpoint: string): this {
+    this.discovery.registries = [...(this.discovery.registries ?? []), endpoint];
     return this;
-  }
-
-  handlerGroup(groupName: string): this {
-    this.options = { ...this.options, handlerGroups: [...(this.options.handlerGroups ?? []), groupName] };
-    return this;
-  }
-
-  publishHandler(packetName: string, handlerType: Type): this {
-    this.options = {
-      ...this.options,
-      publishHandlerTypes: [...(this.options.publishHandlerTypes ?? []), { packetName, handlerType }]
-    };
-    return this;
-  }
-
-  build(): ZLinkNestFanoutChannelOptions {
-    return this.options;
   }
 }
 
-class DefaultZLinkNestRouterMeshBuilder implements ZLinkNestRouterMeshBuilder {
-  private options: ZLinkNestRouterMeshOptions = {};
+class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestChildBuilder implements ZLinkNestCodecRegistryBuilder {
+  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder) {
+    super(root);
+  }
+
+  addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this {
+    this.root.addSerializer(contentType, serializer);
+    return this;
+  }
+
+  addJson(): this {
+    this.root.addNamedCodec('json');
+    return this;
+  }
+
+  addMessagePack(): this {
+    this.root.addNamedCodec('messagepack');
+    return this;
+  }
+
+  addProtobuf(): this {
+    this.root.addNamedCodec('protobuf');
+    return this;
+  }
+}
+
+class DefaultZLinkNestClientServerChannelBuilder extends ZLinkNestChildBuilder implements ZLinkNestClientServerChannelBuilder {
+  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly channelOptions: Mutable<ZLinkNestClientServerChannelOptions>) {
+    super(root);
+  }
+
+  enableServer(bind: string | undefined): this {
+    this.channelOptions.server = { bind };
+    return this;
+  }
+
+  enableClient(endpoint?: string | readonly string[]): this {
+    this.channelOptions.client = endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) };
+    return this;
+  }
+
+  addHandlerGroup(groupName: string): this {
+    this.channelOptions.handlerGroups = [...(this.channelOptions.handlerGroups ?? []), groupName];
+    return this;
+  }
+
+  addRequestHandler(packetName: string, handlerType: Type): this {
+    this.channelOptions.requestHandlerTypes = [...(this.channelOptions.requestHandlerTypes ?? []), { packetName, handlerType }];
+    return this;
+  }
+
+  addSendHandler(packetName: string, handlerType: Type): this {
+    this.channelOptions.sendHandlerTypes = [...(this.channelOptions.sendHandlerTypes ?? []), { packetName, handlerType }];
+    return this;
+  }
+}
+
+class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestChildBuilder implements ZLinkNestFanoutChannelBuilder {
+  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly channelOptions: Mutable<ZLinkNestFanoutChannelOptions>) {
+    super(root);
+  }
+
+  enablePublisher(bind: string | undefined): this {
+    this.channelOptions.publisher = { bind };
+    return this;
+  }
+
+  enableSubscriber(endpoint?: string | readonly string[]): this {
+    this.channelOptions.subscriber = endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) };
+    return this;
+  }
+
+  addHandlerGroup(groupName: string): this {
+    this.channelOptions.handlerGroups = [...(this.channelOptions.handlerGroups ?? []), groupName];
+    return this;
+  }
+
+  addPublishHandler(packetName: string, handlerType: Type): this {
+    this.channelOptions.publishHandlerTypes = [...(this.channelOptions.publishHandlerTypes ?? []), { packetName, handlerType }];
+    return this;
+  }
+}
+
+class DefaultZLinkNestDealerMeshChannelBuilder extends ZLinkNestChildBuilder implements ZLinkNestDealerMeshChannelBuilder {
+  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly channelOptions: Mutable<ZLinkNestDealerMeshChannelOptions>) {
+    super(root);
+  }
 
   bind(endpoint: string | undefined): this {
-    this.options = { ...this.options, bind: endpoint };
+    this.channelOptions.bind = endpoint;
+    return this;
+  }
+
+  enableClient(endpoint?: string | readonly string[]): this {
+    this.channelOptions.client = endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) };
+    return this;
+  }
+}
+
+class DefaultZLinkNestRouterMeshBuilder extends ZLinkNestChildBuilder implements ZLinkNestRouterMeshBuilder {
+  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly routeOptions: Mutable<ZLinkNestRouterMeshOptions>) {
+    super(root);
+  }
+
+  enableRouter(endpoint: string | undefined): this {
+    this.routeOptions.bind = endpoint;
     return this;
   }
 
   routingId(routingId: string | undefined): this {
-    this.options = { ...this.options, routingId };
+    this.routeOptions.routingId = routingId;
     return this;
   }
 
   connect(endpoint: string | readonly string[] | undefined): this {
-    this.options = { ...this.options, manualConnections: endpoint === undefined ? [] : endpointList(endpoint) };
+    this.routeOptions.manualConnections = endpoint === undefined ? [] : endpointList(endpoint);
     return this;
   }
 
-  handlerGroup(groupName: string): this {
-    this.options = { ...this.options, handlerGroups: [...(this.options.handlerGroups ?? []), groupName] };
+  addHandlerGroup(groupName: string): this {
+    this.routeOptions.handlerGroups = [...(this.routeOptions.handlerGroups ?? []), groupName];
     return this;
   }
 
-  sendHandler(packetName: string, handlerType: Type): this {
-    this.options = {
-      ...this.options,
-      sendHandlerTypes: [...(this.options.sendHandlerTypes ?? []), { packetName, handlerType }]
-    };
+  addSendHandler(packetName: string, handlerType: Type): this {
+    this.routeOptions.sendHandlerTypes = [...(this.routeOptions.sendHandlerTypes ?? []), { packetName, handlerType }];
     return this;
   }
 
-  requestHandler(packetName: string, handlerType: Type): this {
-    this.options = {
-      ...this.options,
-      requestHandlerTypes: [...(this.options.requestHandlerTypes ?? []), { packetName, handlerType }]
-    };
+  addRequestHandler(packetName: string, handlerType: Type): this {
+    this.routeOptions.requestHandlerTypes = [...(this.routeOptions.requestHandlerTypes ?? []), { packetName, handlerType }];
     return this;
-  }
-
-  build(): ZLinkNestRouterMeshOptions {
-    return this.options;
   }
 }
 
-class DefaultZLinkNestStreamNodeBuilder implements ZLinkNestStreamNodeBuilder {
-  private options: ZLinkStreamNodeOptions = {};
+class DefaultZLinkNestStreamNodeBuilder extends ZLinkNestChildBuilder implements ZLinkNestStreamNodeBuilder {
+  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly streamOptions: Mutable<ZLinkStreamNodeOptions>) {
+    super(root);
+  }
 
   bind(endpoint: string | undefined): this {
-    this.options = { ...this.options, bind: endpoint };
+    this.streamOptions.bind = endpoint;
     return this;
   }
 
   attachActorGateway(spotNodeName: string | undefined): this {
-    this.options = { ...this.options, attachActorGateway: spotNodeName };
+    this.streamOptions.attachActorGateway = spotNodeName;
     return this;
   }
 
   registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this {
-    if (this.options.session !== undefined) {
+    if (this.streamOptions.session !== undefined) {
       throw new framework.ZLinkConfigurationException('STREAM node cannot register more than one header stream session.');
     }
-    this.options = { ...this.options, session: sessionType as Type };
+    this.streamOptions.session = sessionType as Type;
     return this;
   }
 
-  build(): ZLinkStreamNodeOptions {
-    return this.options;
-  }
 }
 
-class DefaultZLinkNestSpotNodeBuilder implements ZLinkNestSpotNodeBuilder {
-  private options: ZLinkSpotNodeOptions = {};
+class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements ZLinkNestSpotNodeBuilder {
+  constructor(root: DefaultZLinkNestFrameworkOptionsBuilder, private readonly spotOptions: Mutable<ZLinkSpotNodeOptions>) {
+    super(root);
+  }
 
-  router(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this {
-    this.options = {
-      ...this.options,
-      router: {
-        bind,
-        routingId,
-        manualConnections: connect === undefined ? undefined : endpointList(connect)
-      }
+  enableRouter(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this {
+    this.spotOptions.router = {
+      bind,
+      routingId,
+      manualConnections: connect === undefined ? undefined : endpointList(connect)
     };
     return this;
   }
 
-  entrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this {
-    this.options = { ...this.options, entrySpotType };
-    return this;
-  }
-
-  spotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
-    this.options = {
-      ...this.options,
-      spotFactories: [...(this.options.spotFactories ?? []), spotType]
+  enablePubSub(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this {
+    this.spotOptions.pubSub = {
+      bind,
+      routingId,
+      manualConnections: connect === undefined ? undefined : endpointList(connect)
     };
     return this;
   }
 
-  build(): ZLinkSpotNodeOptions {
-    return this.options;
+  configureEntrySpot(options: ZLinkEntrySpotOptions): this {
+    this.spotOptions.entrySpot = { ...options };
+    return this;
+  }
+
+  attachChannelClient(channelName: string, endpoint?: string | readonly string[]): this {
+    this.spotOptions.attachedChannelClients = {
+      ...(this.spotOptions.attachedChannelClients ?? {}),
+      [channelName]: endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) }
+    };
+    return this;
+  }
+
+  attachSpotPublisherClient(channelName: string, endpoint?: string | readonly string[]): this {
+    this.spotOptions.attachedSpotPublisherClients = {
+      ...(this.spotOptions.attachedSpotPublisherClients ?? {}),
+      [channelName]: endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) }
+    };
+    return this;
+  }
+
+  acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this {
+    this.spotOptions.acceptedSpotRouteChannels = {
+      ...(this.spotOptions.acceptedSpotRouteChannels ?? {}),
+      [channelName]: endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) }
+    };
+    return this;
+  }
+
+  addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this {
+    this.spotOptions.entrySpotType = entrySpotType;
+    return this;
+  }
+
+  addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
+    this.spotOptions.spotFactories = [...(this.spotOptions.spotFactories ?? []), spotType];
+    return this;
   }
 }
 
@@ -840,12 +1024,12 @@ function addDecoratedProviderModuleExports(providers: Set<Type>, filePath: strin
 
 @Module({})
 export class ZLinkModule {
-  static forRoot(options: ZLinkModuleOptions = {}): DynamicModule {
-    assertNoLegacyModuleOptions(options);
-    if (hasNestHandlerDiscovery(options)) {
-      return createDiscoveringZLinkDynamicModule(options);
+  static forRoot(options: ZLinkModuleOptions = zlinkFramework().build()): DynamicModule {
+    const resolvedOptions = assertBuiltModuleOptions(options);
+    if (hasNestHandlerDiscovery(resolvedOptions)) {
+      return createDiscoveringZLinkDynamicModule(resolvedOptions);
     }
-    return createZLinkDynamicModule(framework.createFrameworkRegistration(createRegistrationOptions(options)));
+    return createZLinkDynamicModule(framework.createFrameworkRegistration(createRegistrationOptions(resolvedOptions)));
   }
 
   static forRootFactory(options: ZLinkModuleFactoryOptions): DynamicModule {
@@ -856,7 +1040,7 @@ export class ZLinkModule {
         const discovery = args[args.length - 2] as DiscoveryService;
         const moduleRef = args[args.length - 1] as ModuleRef;
         const factoryArgs = args.slice(0, -2);
-        const resolvedOptions = assertNoLegacyModuleOptions(await options.useFactory(...factoryArgs));
+        const resolvedOptions = assertBuiltModuleOptions(await options.useFactory(...factoryArgs));
         return framework.createFrameworkRegistration(createDiscoveredOptions(resolvedOptions, discovery, moduleRef));
       }
     };
@@ -991,7 +1175,7 @@ function createRegistryDynamicModuleFromFactory(options: {
   };
 }
 
-function createDiscoveringZLinkDynamicModule(options: ZLinkModuleOptions): DynamicModule {
+function createDiscoveringZLinkDynamicModule(options: ZLinkNestModuleRegistrationOptions): DynamicModule {
   const registrationProvider: Provider = {
     provide: ZLINK_FRAMEWORK_REGISTRATION,
     inject: [DiscoveryService, ModuleRef],
@@ -1022,7 +1206,7 @@ function createDiscoveringZLinkDynamicModule(options: ZLinkModuleOptions): Dynam
 }
 
 function createDiscoveredOptions(
-  options: ZLinkModuleOptions,
+  options: ZLinkNestModuleRegistrationOptions,
   discovery: DiscoveryService,
   moduleRef: ModuleRef
 ): ZLinkFrameworkRegistrationOptions {
@@ -1315,7 +1499,7 @@ function assertUniqueSpotActorHandler(
   }
 }
 
-function createRegistrationOptions(options: ZLinkModuleOptions): ZLinkFrameworkRegistrationOptions {
+function createRegistrationOptions(options: ZLinkNestModuleRegistrationOptions): ZLinkFrameworkRegistrationOptions {
   const channels: Record<string, ZLinkChannelOptions> = {};
   const routeChannels: ZLinkRouteChannelOptions[] = [];
 
@@ -1356,6 +1540,7 @@ function createRegistrationOptions(options: ZLinkModuleOptions): ZLinkFrameworkR
   return {
     actorFactories: options.actorFactories,
     channels,
+    codecs: options.codecs,
     discovery: options.discovery,
     registrySpotRemoteAddresses: options.registrySpotRemoteAddresses,
     routeChannels,
@@ -1377,24 +1562,17 @@ function assertChannelNameAvailable(
   }
 }
 
-function assertNoLegacyModuleOptions(options: ZLinkModuleOptions): ZLinkModuleOptions {
-  const legacy = options as ZLinkModuleOptions & {
-    readonly channels?: unknown;
-    readonly routeChannels?: unknown;
-    readonly streamNodes?: unknown;
-  };
-  if (legacy.channels !== undefined) {
-    throw new framework.ZLinkConfigurationException(
-      'NestJS ZLinkModule uses clientServerChannels, fanoutChannels, dealerMeshChannels, and routerMeshes instead of channels.'
-    );
-  }
-  if (legacy.routeChannels !== undefined) {
-    throw new framework.ZLinkConfigurationException('NestJS ZLinkModule uses routerMeshes instead of routeChannels.');
-  }
-  if (legacy.streamNodes !== undefined) {
-    throw new framework.ZLinkConfigurationException('NestJS ZLinkModule uses streams instead of streamNodes.');
+function assertBuiltModuleOptions(options: ZLinkModuleOptions): ZLinkNestModuleRegistrationOptions {
+  if (!isBuiltModuleOptions(options)) {
+    throw new framework.ZLinkConfigurationException('NestJS ZLinkModule options must be created with zlinkFramework().build().');
   }
   return options;
+}
+
+function isBuiltModuleOptions(options: ZLinkModuleOptions): options is ZLinkNestModuleRegistrationOptions {
+  return typeof options === 'object'
+    && options !== null
+    && (options as { readonly [ZLINK_MODULE_OPTIONS_BRAND]?: unknown })[ZLINK_MODULE_OPTIONS_BRAND] === true;
 }
 
 interface DiscoveredNestProvider {
@@ -1855,17 +2033,25 @@ function isPrototypeKey(key: string): boolean {
   return key === '__proto__' || key === 'constructor' || key === 'prototype';
 }
 
-function hasNestHandlerDiscovery(options: ZLinkModuleOptions): boolean {
-  return hasConfiguredSpotNodes(options.spotNodes) || [
-    ...Object.values(options.clientServerChannels ?? {}),
-    ...Object.values(options.fanoutChannels ?? {}),
-    ...Object.values(options.routerMeshes ?? {})
-  ].some(
-    (channel) => (channel.handlerGroups ?? []).length > 0
-  );
+function hasNestHandlerDiscovery(options: ZLinkNestModuleRegistrationOptions): boolean {
+  return hasConfiguredSpotNodes(options.spotNodes)
+    || Object.values(options.clientServerChannels ?? {}).some(
+      (channel) => (channel.handlerGroups ?? []).length > 0
+        || (channel.requestHandlerTypes ?? []).length > 0
+        || (channel.sendHandlerTypes ?? []).length > 0
+    )
+    || Object.values(options.fanoutChannels ?? {}).some(
+      (channel) => (channel.handlerGroups ?? []).length > 0
+        || (channel.publishHandlerTypes ?? []).length > 0
+    )
+    || Object.values(options.routerMeshes ?? {}).some(
+      (channel) => (channel.handlerGroups ?? []).length > 0
+        || (channel.requestHandlerTypes ?? []).length > 0
+        || (channel.sendHandlerTypes ?? []).length > 0
+    );
 }
 
-function hasConfiguredSpotNodes(value: ZLinkModuleOptions['spotNodes']): boolean {
+function hasConfiguredSpotNodes(value: ZLinkNestModuleRegistrationOptions['spotNodes']): boolean {
   if (value === undefined) {
     return false;
   }

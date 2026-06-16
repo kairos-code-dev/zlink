@@ -1,16 +1,12 @@
-const { createProtobufMessage, readProtobufMessage } = require('./protobuf-codec');
-
 const PacketNames = Object.freeze({
   authenticateReq: 'AuthenticateReq',
   authenticatePlayerReq: 'AuthenticatePlayerReq',
   ensurePlayerActorReq: 'EnsurePlayerActorReq',
   matchBingoReq: 'MatchBingoReq',
   matchBingoApiReq: 'MatchBingoApiReq',
-  allocateBingoRoom: 'AllocateBingoRoom',
+  allocateBingoRoom: 'AllocateBingoRoomReq',
   submitBingoCardReq: 'SubmitBingoCardReq',
   bingoNotificationsReq: 'BingoNotificationsReq',
-  registerServiceReq: 'RegisterServiceReq',
-  resolveServiceReq: 'ResolveServiceReq',
   ping: 'Ping',
   playerJoinedNotify: 'PlayerJoinedNotify',
   gameStartedNotify: 'BingoGameStartedNotify',
@@ -23,13 +19,28 @@ const BingoModes = Object.freeze({
   twoPlayer: 'two-player'
 });
 
+const BingoSamplePlayers = Object.freeze({
+  player1: 'player-1',
+  player2: 'player-2'
+});
+
 export type BingoMode = typeof BingoModes.twoPlayer;
 
-export interface AuthenticateReq {
-  accessToken: string;
+export enum BingoRoomStatus {
+  WaitingForPlayers = 'WaitingForPlayers',
+  Running = 'Running',
+  Finished = 'Finished'
 }
 
 export class AuthenticateReq {
+  accessToken: string;
+
+  constructor(accessToken: string) {
+    this.accessToken = accessToken;
+  }
+}
+
+export class AuthenticatePlayerReq {
   accessToken: string;
 
   constructor(accessToken: string) {
@@ -49,12 +60,10 @@ export interface AuthenticateSessionRes {
   displayName: string;
 }
 
-export interface MatchBingoReq {
-  mode?: BingoMode;
-}
-
 export class MatchBingoReq {
   mode?: BingoMode;
+  actorId?: string;
+  displayName?: string;
 
   constructor(mode?: BingoMode) {
     if (mode !== undefined) {
@@ -67,17 +76,33 @@ export interface MatchBingoApiRes {
   roomId: string;
 }
 
-export interface AllocateBingoRoomReq {
+export class AllocateBingoRoomReq {
   mode: BingoMode;
+
+  constructor(mode: BingoMode) {
+    this.mode = mode;
+  }
 }
 
 export interface AllocateBingoRoomRes {
   roomId: string;
 }
 
-export interface EnsurePlayerActorReq {
+export interface BingoRoomSettingsPayload {
+  roomName: string;
+  mode: BingoMode;
+  requiredPlayers: number;
+  maxDrawNumber: number;
+}
+
+export class EnsurePlayerActorReq {
   actorId: string;
   displayName: string;
+
+  constructor(actorId: string, displayName: string) {
+    this.actorId = actorId;
+    this.displayName = displayName;
+  }
 }
 
 export interface BingoActorRef {
@@ -103,14 +128,11 @@ export interface MatchBingoRes {
   state: unknown;
 }
 
-export interface SubmitBingoCardReq {
-  roomId: string;
-  card: number[];
-}
-
 export class SubmitBingoCardReq {
   roomId: string;
   card: number[];
+  actorId?: string;
+  displayName?: string;
 
   constructor(roomId: string, card: number[]) {
     this.roomId = roomId;
@@ -122,27 +144,26 @@ export interface SubmitBingoCardRes {
   state: unknown;
 }
 
-export interface RegisterServiceReq {
-  serviceName: string;
-  endpoint: string;
-}
-
-export interface RegisterServiceRes {
-  serviceName: string;
-  endpoint: string;
-}
-
-export interface ResolveServiceReq {
-  serviceName: string;
-}
-
-export interface ResolveServiceRes {
-  serviceName: string;
-  endpoint: string;
-}
-
-export interface BingoNotificationsReq {
+export class BingoNotificationsReq {
   afterSeq: number;
+  actorId?: string;
+  displayName?: string;
+
+  constructor(afterSeq: number) {
+    this.afterSeq = afterSeq;
+  }
+}
+
+export interface BingoNotificationFrame {
+  seq: number;
+  actorId: string;
+  packetName: string;
+  payloadBase64: string;
+}
+
+export interface BingoNotificationBatch {
+  nextSeq: number;
+  delivered: BingoNotificationFrame[];
 }
 
 export interface RejectedCommandRes {
@@ -185,13 +206,17 @@ function actorDisplayName(actorId: string): string {
 
 function deterministicCard(actorId: string): number[] {
   return {
-    'player-1': [1, 2, 3, 4, 0, 6, 7, 8, 9],
-    'player-2': [10, 11, 12, 13, 0, 14, 15, 1, 2]
+    [BingoSamplePlayers.player1]: [1, 2, 3, 4, 0, 6, 7, 8, 9],
+    [BingoSamplePlayers.player2]: [10, 11, 12, 13, 0, 14, 15, 1, 2]
   }[actorId] ?? [1, 3, 5, 7, 0, 9, 11, 13, 15];
 }
 
 function authenticateReq(accessToken: string): AuthenticateReq {
   return new AuthenticateReq(accessToken);
+}
+
+function authenticatePlayerReq(accessToken: string): AuthenticatePlayerReq {
+  return new AuthenticatePlayerReq(accessToken);
 }
 
 function authenticatePlayerAccepted(accessToken: string): AuthenticatePlayerRes {
@@ -225,15 +250,29 @@ function matchBingoApiRes(roomId: string): MatchBingoApiRes {
 }
 
 function allocateBingoRoomReq(mode: BingoMode | undefined = BingoModes.twoPlayer): AllocateBingoRoomReq {
-  return { mode };
+  return new AllocateBingoRoomReq(mode);
 }
 
 function allocateBingoRoomRes(roomId: string): AllocateBingoRoomRes {
   return { roomId };
 }
 
+function bingoRoomSettingsPayload(settings: {
+  roomName: string;
+  mode: BingoMode;
+  requiredPlayers: number;
+  maxDrawNumber: number;
+}): BingoRoomSettingsPayload {
+  return {
+    roomName: settings.roomName,
+    mode: settings.mode,
+    requiredPlayers: settings.requiredPlayers,
+    maxDrawNumber: settings.maxDrawNumber
+  };
+}
+
 function ensurePlayerActorReq(actorId: string, displayName: string): EnsurePlayerActorReq {
-  return { actorId, displayName };
+  return new EnsurePlayerActorReq(actorId, displayName);
 }
 
 function ensurePlayerActorRes(actor: { actorId: string }): EnsurePlayerActorRes {
@@ -264,24 +303,18 @@ function submitBingoCardRes(state: unknown): SubmitBingoCardRes {
   return { state };
 }
 
-function registerServiceReq(serviceName: string, endpoint: string): RegisterServiceReq {
-  return { serviceName, endpoint };
-}
-
-function registerServiceRes(serviceName: string, endpoint: string): RegisterServiceRes {
-  return { serviceName, endpoint };
-}
-
-function resolveServiceReq(serviceName: string): ResolveServiceReq {
-  return { serviceName };
-}
-
-function resolveServiceRes(serviceName: string, endpoint: string): ResolveServiceRes {
-  return { serviceName, endpoint };
-}
-
 function bingoNotificationsReq(afterSeq: number): BingoNotificationsReq {
-  return { afterSeq };
+  return new BingoNotificationsReq(afterSeq);
+}
+
+function bingoNotificationBatch(value: {
+  delivered: BingoNotificationFrame[];
+  nextSeq: number;
+}): BingoNotificationBatch {
+  return {
+    nextSeq: value.nextSeq,
+    delivered: value.delivered
+  };
 }
 
 function rejectedCommandRes(reason: string): RejectedCommandRes {
@@ -331,17 +364,20 @@ function numberDrawnNotify(roomId: string, drawSeq: number, number: number, stat
 
 export {
   BingoModes,
+  BingoSamplePlayers,
   PacketNames,
   actorDisplayName,
   allocateBingoRoomReq,
   allocateBingoRoomRes,
   authenticatePlayerAccepted,
   authenticatePlayerRejected,
+  authenticatePlayerReq,
   authenticateReq,
   authenticateSessionRes,
   bingoRoomJoinReq,
+  bingoRoomSettingsPayload,
   bingoNotificationsReq,
-  createProtobufMessage,
+  bingoNotificationBatch,
   deterministicCard,
   ensurePlayerActorReq,
   ensurePlayerActorRes,
@@ -350,12 +386,7 @@ export {
   matchBingoRes,
   numberDrawnNotify,
   playerJoinedNotify,
-  readProtobufMessage,
   rejectedCommandRes,
-  registerServiceReq,
-  registerServiceRes,
-  resolveServiceReq,
-  resolveServiceRes,
   roomJoinError,
   stateEnvelope,
   submitBingoCardReq,

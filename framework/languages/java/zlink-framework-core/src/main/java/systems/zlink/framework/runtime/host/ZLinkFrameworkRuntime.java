@@ -16,6 +16,7 @@ import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
+import systems.zlink.framework.runtime.messaging.ZLinkProtobufMessageSerializer;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.runtime.streams.ZLinkStreamRuntime;
@@ -125,9 +126,11 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
     }
 
     private static ZLinkMessageSerializer serializerFor(DefaultZLinkFrameworkOptions options) {
+        if (options.registration().codecs().registeredCodecs().contains("protobuf")) {
+            return new ZLinkProtobufMessageSerializer(new ZLinkJsonMessageSerializer());
+        }
         if (options.registration().codecs().registeredCodecs().contains("json")
-            || options.registration().codecs().registeredCodecs().contains("messagepack")
-            || options.registration().codecs().registeredCodecs().contains("protobuf")) {
+            || options.registration().codecs().registeredCodecs().contains("messagepack")) {
             return new ZLinkJsonMessageSerializer();
         }
         return new ZLinkStringMessageSerializer();

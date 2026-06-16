@@ -51,5 +51,4 @@ internal sealed record BingoGameEvent(
 internal sealed record BingoGameChange(
     BingoRoomState State,
     IReadOnlyList<BingoGameEvent> Events,
-    bool ShouldStartDrawTimer = false,
     bool ShouldStopDrawTimer = false);

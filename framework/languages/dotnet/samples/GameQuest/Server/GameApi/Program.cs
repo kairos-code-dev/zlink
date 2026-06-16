@@ -32,16 +32,18 @@ internal static class Program
         {
             options.DefaultTimeout = SampleNames.RequestTimeout;
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            options.AddFanoutChannel(SampleNames.FanoutChannel, channel =>
             {
-                channel.EnablePublisher(publisher => publisher.Bind(topology.FanoutPublisherEndpointForApi(apiName)));
-            });
-            options.AddStreamNode(SampleNames.StreamNode, stream =>
+                var channel = options.AddFanoutChannel(SampleNames.FanoutChannel);
+                channel.EnablePublisher(topology.FanoutPublisherEndpointForApi(apiName));
+
+            }
             {
+                var stream = options.AddStreamNode(SampleNames.StreamNode);
                 stream.Bind(Environment.GetEnvironmentVariable("GAMEQUEST_STREAM_BIND_ENDPOINT")
                             ?? throw new InvalidOperationException("GAMEQUEST_STREAM_BIND_ENDPOINT is required."));
                 stream.RegisterSession<GameQuestSession>();
-            });
+
+            }
         });
 
         var app = builder.Build();

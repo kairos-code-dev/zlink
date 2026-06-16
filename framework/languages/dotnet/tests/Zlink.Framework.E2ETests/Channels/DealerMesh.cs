@@ -22,13 +22,11 @@ public sealed class DealerMeshTests
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddDealerMeshChannel("mesh", channel =>
             {
-                channel.EnableClient(client =>
-                {
-                    client.UseManualConnections(connections => connections.Connect(meshEndpoint));
-                });
-            });
+                var channel = options.AddDealerMeshChannel("mesh");
+                channel.EnableClient(meshEndpoint);
+
+            }
         });
 
         using var clientHost = clientBuilder.Build();

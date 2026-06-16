@@ -62,28 +62,25 @@ framework 등록은 다음 모양이 자연스럽다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry-1:5551"));
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry-1:5551");
 
-    options.AddClientServerChannel("profile", channel =>
     {
-        channel.EnableServer(server =>
-        {
-            server.Bind("tcp://0.0.0.0:7101");
-        });
+        var channel =     options.AddClientServerChannel("profile");
+        channel.EnableServer("tcp://0.0.0.0:7101");
         channel.EnableClient();
-    });
 
-    options.AddSpotMesh("game.stage", mesh =>
+    }
+
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry-1:5551"));
-        mesh.AddNode("stage-node", spot =>
+        var mesh =     options.AddSpotMesh("game.stage");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry-1:5551");
         {
-            spot.EnablePubSub(pubsub =>
-            {
-                pubsub.BindPubSub("tcp://0.0.0.0:9000");
-            });
-        });
-    });
+            var spot =         mesh.AddNode("stage-node");
+            spot.EnablePubSub("tcp://0.0.0.0:9000");
+
+        }
+
+    }
 });
 
 builder.Services.AddZLinkMonitoring(monitor =>
@@ -111,8 +108,8 @@ spot source 는 같은 애플리케이션에 `AddZLinkFramework(...)` 또는
 mesh 는 각자 자신의 discovery source 를 가진다. 즉 registry endpoint 집합을
 공급하는 곳이 둘로 나뉜다.
 
-- 일반 channel: framework 등록 루트의 `UseDiscovery(...AddRegistryEndpoint...)` 가 공급한다.
-- SPOT mesh: `AddSpotMesh(...)` 안의 `mesh.UseDiscovery(...AddRegistryEndpoint...)` 가 공급한다.
+- 일반 channel: framework 등록 루트의 `UseDiscovery().AddRegistryEndpoint(...)` 가 공급한다.
+- SPOT mesh: `AddSpotMesh` 안의 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 가 공급한다.
 
 source 이름은 다음 규칙으로 잡는 편이 자연스럽다.
 
@@ -329,7 +326,7 @@ timer handler failure 는 snapshot diff 가 아니다. `TimerHandlerFailed` 와
 
 `ZLinkSpotEvent` payload 에 노출되는 `ZLinkSpotNodeStatus` 와
 `ZLinkSpotNodePeerEntry` 는 첫 필드가 `ChannelName` 이다. spot node 에서 채널
-이름은 `AddSpotMesh(...)` 에 넘긴 mesh 이름(예: `"game.stage"`) 이 그대로
+이름은 `AddSpotMesh` 에 넘긴 mesh 이름(예: `"game.stage"`) 이 그대로
 들어간다.
 
 timer failure event 의 세부 정보는 `ZLinkSpotTimerDiagnostic` 에 담는다. 이 payload

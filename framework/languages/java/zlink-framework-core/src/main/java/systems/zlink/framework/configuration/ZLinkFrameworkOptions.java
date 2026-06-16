@@ -2,7 +2,6 @@ package systems.zlink.framework.configuration;
 
 import java.time.Duration;
 import java.util.concurrent.Executor;
-import java.util.function.Consumer;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
@@ -17,33 +16,21 @@ public interface ZLinkFrameworkOptions {
 
     void addHandlersFromPackageOf(Class<?> markerType);
 
-    void configureMetadata(Consumer<ZLinkMetadataPolicyBuilder> configure);
+    ZLinkMetadataPolicyBuilder configureMetadata();
 
-    void useDiscovery(Consumer<ZLinkDiscoveryBuilder> configure);
+    ZLinkDiscoveryBuilder useDiscovery();
 
-    void addClientServerChannel(
-        String channelName,
-        Consumer<ClientServerChannelBuilder> configure);
+    ClientServerChannelBuilder addClientServerChannel(String channelName);
 
-    void addFanoutChannel(
-        String channelName,
-        Consumer<FanoutChannelBuilder> configure);
+    FanoutChannelBuilder addFanoutChannel(String channelName);
 
-    void addDealerMeshChannel(
-        String channelName,
-        Consumer<DealerMeshChannelBuilder> configure);
+    DealerMeshChannelBuilder addDealerMeshChannel(String channelName);
 
-    void addRouteMeshChannel(
-        String channelName,
-        Consumer<RouteMeshChannelBuilder> configure);
+    RouteMeshChannelBuilder addRouteMeshChannel(String channelName);
 
-    void addSpotMesh(
-        String channelName,
-        Consumer<ZLinkSpotMeshBuilder> configure);
+    ZLinkSpotMeshBuilder addSpotMesh(String channelName);
 
-    void addStreamNode(
-        String streamNodeName,
-        Consumer<ZLinkStreamNodeBuilder> configure);
+    ZLinkStreamNodeBuilder addStreamNode(String streamNodeName);
 
     void addActorFactory(
         String actorType,
@@ -52,17 +39,13 @@ public interface ZLinkFrameworkOptions {
     void addSpotRemoteAddressResolver(
         Class<? extends ZLinkSpotRemoteAddressResolver> resolverType);
 
-    void useRegistrySpotRemoteAddresses(String namespaceName);
-
-    void useRegistrySpotRemoteAddresses(
-        String namespaceName,
-        Consumer<ZLinkRegistrySpotRemoteAddressesOptions> configure);
+    ZLinkRegistrySpotRemoteAddressesOptions useRegistrySpotRemoteAddresses(String namespaceName);
 
     void useFilter(Class<? extends ZLinkHandlerFilter> filterType);
 
-    void configureDispatch(Consumer<ZLinkDispatchOptions> configure);
+    ZLinkDispatchOptions configureDispatch();
 
-    void configureWorkers(Consumer<ZLinkWorkerOptions> configure);
+    ZLinkWorkerOptions configureWorkers();
 
     void useVirtualThreadHandlers();
 

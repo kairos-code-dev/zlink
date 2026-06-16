@@ -13,11 +13,11 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = SampleTimings.FrameworkTimeout;
     options.Codecs.AddJson();
-    options.AddClientServerChannel(SampleNames.DispatchRouteChannel, channel =>
     {
-        channel.EnableClient(client => client.UseManualConnections(
-            connections => connections.Connect(topology.DispatchCenterRouteEndpoint)));
-    });
+        var channel = options.AddClientServerChannel(SampleNames.DispatchRouteChannel);
+                channel.EnableClient(topology.DispatchCenterRouteEndpoint);
+
+    }
 });
 
 var app = builder.Build();

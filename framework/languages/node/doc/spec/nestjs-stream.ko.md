@@ -352,35 +352,28 @@ context 타입에 맞는 handler 구현을 provider 로 자동 등록한다.
 
 이 절은 STREAM node 를 framework 에 어떻게 등록하는지를 정리한다.
 
-dotnet 의 builder 람다(`AddStreamNode(name, st => ...)`) 는 NestJS 의 선언적
-module options 객체로 옮긴다. dotnet builder 메서드 한 개 = node options 의 키
-한 개로 1:1 대응시킨다. dotnet `IZLinkStreamNodeBuilder` 코드
+dotnet 의 `AddStreamNode(name)` fluent builder 는 NestJS 의 `zlinkFramework()`
+builder 로 옮긴다. dotnet builder 메서드 한 개 = node builder 메서드 한 개로
+1:1 대응시킨다. dotnet `IZLinkStreamNodeBuilder` 코드
 (`Contracts/Configuration/Builders.cs`, `Runtime/.../ZLinkStreamNodeBuilder.cs`)
 는 `Bind(endpoint)`, `AttachActorGateway(spotNodeName)`,
-`RegisterSession<TSession>()` 세 메서드를 노출하므로, node options 는 이 셋을
-키로 매핑한다.
+`RegisterSession<TSession>()` 세 메서드를 노출하므로, node builder 도 이 셋을
+메서드로 매핑한다.
 
 ```ts
 // node (NestJS)
 @Module({
   imports: [
-    ZLinkModule.forRoot({
-      spotNodes: {
-        'game.spot': {
-          router: { bind: 'tcp://0.0.0.0:9110' },
-        },
-      },
-      streams: {
-        'client.stream': {
-          bind: 'tcp://0.0.0.0:9100',
-          // dotnet: AttachActorGateway("game.spot") — actor relay 를 보낼
-          // 대상 SpotNode 이름. session→actor bind 가 이 gateway 를 통해 동작한다.
-          attachActorGateway: 'game.spot',
-          // dotnet: RegisterSession<ClientHeaderSession>() — 한 node 당 단 하나.
-          session: ClientHeaderSession,
-        },
-      },
-    }),
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .addSpotNode('game.spot')
+          .enableRouter('tcp://0.0.0.0:9110')
+        .addStreamNode('client.stream')
+          .bind('tcp://0.0.0.0:9100')
+          .attachActorGateway('game.spot')
+          .registerSession(ClientHeaderSession)
+        .build()
+    ),
   ],
   providers: [ClientHeaderSession],
 })
@@ -398,9 +391,9 @@ NestJS `providers` 에는 application 이 직접 소유하는 handler, domain se
 factory 만 둔다. framework runtime 이 소유하는 socket accept, frame decode,
 reply frame 작성, session token alias 는 application provider 목록에 넣지 않는다.
 actor 를 쓰는 stream server 는 fluent builder 의 `actorFactory(...)` 와
-`spotNode(...)` 로 actor factory 와 SpotNode 를 선언할 수 있다. 이 선언은
-`actorFactories` / `spotNodes` options 와 같은 공개 계약을 만들지만, server entrypoint
-에서 raw options 객체를 직접 조립하지 않아도 되게 한다.
+`addSpotNode(...)` 로 actor factory 와 SpotNode 를 선언할 수 있다. 이 선언은
+같은 공개 계약을 만들지만, server entrypoint 에서 raw options 객체를 직접 조립하지
+않아도 되게 한다.
 
 이 등록 모델에서 짚어 둘 점은 다음과 같다.
 

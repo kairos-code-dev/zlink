@@ -34,35 +34,39 @@ public sealed class PublisherTests : SpotTestSupport
         subscriberBuilder.Services.AddScoped<ExternalStageEventHandler>();
         subscriberBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("subscriber-node", spot =>
-            {
-                spot.EnablePubSub(pubsub =>
+                var mesh = options.AddSpotMesh("game.stage");
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    pubsub.BindPubSub(subscriberNodeEndpoint);
-                });
+                    var spot = mesh.AddNode("subscriber-node");
+                {
+                    var pubsub = spot.EnablePubSub(subscriberNodeEndpoint);
+
+                }
                 spot.AddSpotFactory<ExternalSubscriberStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         var publisherBuilder = Host.CreateApplicationBuilder();
         publisherBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("publisher-node", spot =>
-            {
-                spot.EnablePubSub(pubsub =>
+                var mesh = options.AddSpotMesh("game.stage");
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    pubsub.BindPubSub(publisherNodeEndpoint);
-                });
+                    var spot = mesh.AddNode("publisher-node");
+                {
+                    var pubsub = spot.EnablePubSub(publisherNodeEndpoint);
+
+                }
                 spot.AttachSpotPublisherClient("game.stage");
-            });
-            });
+
+                }
+
+            }
         });
 
         using var registryHost = registryBuilder.Build();
@@ -174,34 +178,38 @@ public sealed class PublisherTests : SpotTestSupport
         var subscriberBuilder = Host.CreateApplicationBuilder();
         subscriberBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("subscriber-node", spot =>
-            {
-                spot.EnablePubSub(pubsub =>
+                var mesh = options.AddSpotMesh("game.stage");
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    pubsub.BindPubSub(subscriberNodeEndpoint);
-                });
-            });
-            });
+                    var spot = mesh.AddNode("subscriber-node");
+                {
+                    var pubsub = spot.EnablePubSub(subscriberNodeEndpoint);
+
+                }
+
+                }
+
+            }
         });
 
         var publisherBuilder = Host.CreateApplicationBuilder();
         publisherBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("publisher-node", spot =>
-            {
-                spot.EnablePubSub(pubsub =>
+                var mesh = options.AddSpotMesh("game.stage");
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    pubsub.BindPubSub(publisherNodeEndpoint);
-                });
+                    var spot = mesh.AddNode("publisher-node");
+                {
+                    var pubsub = spot.EnablePubSub(publisherNodeEndpoint);
+
+                }
                 spot.AttachSpotPublisherClient("game.stage");
-            });
-            });
+
+                }
+
+            }
         });
 
         using var registryHost = registryBuilder.Build();

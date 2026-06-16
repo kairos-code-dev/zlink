@@ -15,10 +15,11 @@ Actor remote location의 `CurrentSpotRid`가 될 수 있다.
 framework는 Entry Spot routing id 설정을 `SpotNode` builder에서 제공한다.
 
 ```csharp
-spotNode.ConfigureEntrySpot(entry =>
 {
+    var entry = spotNode.ConfigureEntrySpot();
     entry.RoutingId = RoutingId.From("entry");
-});
+
+}
 ```
 
 `ConfigureEntrySpot(...)`은 `AddEntrySpot<TEntrySpot>()`과 별개다.

@@ -1,5 +1,6 @@
-import type { Message, MessageLike } from '@zlink-systems/zlink';
+import { Message, type MessageLike } from '@zlink-systems/zlink';
 import { randomUUID } from 'node:crypto';
+import type { ZLinkMessageSerializer } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 
 export const JSON_CONTENT_TYPE = 'application/json';
@@ -32,61 +33,74 @@ export interface ZLinkChannelEnvelope {
   readonly header: ZLinkChannelEnvelopeHeader;
 }
 
+export interface ZLinkChannelEnvelopeCodecRegistry {
+  readonly serializers: ReadonlyMap<string, ZLinkMessageSerializer>;
+}
+
 export function encodeChannelEnvelopeParts(
   kind: ZLinkChannelMessageKind,
   channelName: string,
   packetName: string | undefined,
   payload: unknown,
   timeoutMs?: number,
-  topic?: string
+  topic?: string,
+  codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): readonly MessageLike[] {
+  const encoded = encodePayload(payload, codecs);
   const header: ZLinkChannelEnvelopeHeader = {
     kind,
     channelName,
     messageName: packetName ?? resolveChannelPacketName(payload),
-    contentType: contentTypeOf(payload),
+    contentType: encoded.contentType,
     correlationId: randomUUID().replaceAll('-', ''),
     deadline: timeoutMs === undefined ? null : new Date(Date.now() + timeoutMs).toISOString(),
     topic: topic ?? null,
     errorCode: null,
     errorMessage: null
   };
-  return [encodeJsonBytes(header), toMessageLike(payload)];
+  return [encodeJsonBytes(header), encoded.message];
 }
 
 export function encodeChannelPublishEnvelopeParts(
   channelName: string,
   topic: string,
   packetName: string | undefined,
-  payload: unknown
+  payload: unknown,
+  codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): readonly MessageLike[] {
+  const encoded = encodePayload(payload, codecs);
   const header: ZLinkChannelEnvelopeHeader = {
     kind: ZLinkChannelMessageKind.Publish,
     channelName,
     messageName: packetName ?? resolveChannelPacketName(payload),
-    contentType: contentTypeOf(payload),
+    contentType: encoded.contentType,
     correlationId: randomUUID().replaceAll('-', ''),
     deadline: null,
     topic,
     errorCode: null,
     errorMessage: null
   };
-  return [encodeJsonBytes(header), toMessageLike(payload)];
+  return [encodeJsonBytes(header), encoded.message];
 }
 
-export function encodeChannelReplyParts(request: ZLinkChannelEnvelopeHeader, payload: unknown): readonly MessageLike[] {
+export function encodeChannelReplyParts(
+  request: ZLinkChannelEnvelopeHeader,
+  payload: unknown,
+  codecs?: ZLinkChannelEnvelopeCodecRegistry
+): readonly MessageLike[] {
+  const encoded = encodePayload(payload ?? Buffer.alloc(0), codecs);
   const header: ZLinkChannelEnvelopeHeader = {
     kind: ZLinkChannelMessageKind.Response,
     channelName: request.channelName,
     messageName: request.messageName,
-    contentType: contentTypeOf(payload),
+    contentType: encoded.contentType,
     correlationId: request.correlationId,
     deadline: null,
     topic: null,
     errorCode: null,
     errorMessage: null
   };
-  return [encodeJsonBytes(header), toMessageLike(payload ?? Buffer.alloc(0))];
+  return [encodeJsonBytes(header), encoded.message];
 }
 
 export function encodeChannelErrorReplyParts(request: ZLinkChannelEnvelopeHeader, message: string): readonly MessageLike[] {
@@ -104,7 +118,10 @@ export function encodeChannelErrorReplyParts(request: ZLinkChannelEnvelopeHeader
   return [encodeJsonBytes(header), encodeJsonBytes(null)];
 }
 
-export function decodeChannelReply<TReply>(parts: readonly Message[]): TReply {
+export function decodeChannelReply<TReply>(
+  parts: readonly Message[],
+  codecs?: ZLinkChannelEnvelopeCodecRegistry
+): TReply {
   const header = decodeChannelHeader(parts);
   if (header.kind === ZLinkChannelMessageKind.Error) {
     throw new ZLinkConfigurationException(header.errorMessage ?? 'ZLink channel request failed.');
@@ -118,6 +135,10 @@ export function decodeChannelReply<TReply>(parts: readonly Message[]): TReply {
   if (header.contentType === BINARY_CONTENT_TYPE) {
     return Buffer.from(parts[1].data()) as TReply;
   }
+  const serializer = codecs?.serializers.get(header.contentType);
+  if (serializer !== undefined) {
+    return serializer.deserialize<TReply>(parts[1], Object as never);
+  }
   return parseWireJson(parts[1].data().toString()) as TReply;
 }
 
@@ -129,10 +150,56 @@ export function decodeChannelEnvelope(parts: readonly Message[]): ZLinkChannelEn
   return { header, packetName: header.messageName, payload: Buffer.from(parts[1].data()) };
 }
 
+export function decodeChannelPayload(
+  envelope: ZLinkChannelEnvelope,
+  codecs?: ZLinkChannelEnvelopeCodecRegistry
+): unknown {
+  const serializer = codecs?.serializers.get(envelope.header.contentType);
+  if (serializer !== undefined) {
+    return serializer.deserialize(Message.from(envelope.payload), Object as never);
+  }
+  if (envelope.header.contentType === BINARY_CONTENT_TYPE) {
+    return Buffer.from(envelope.payload);
+  }
+  if (envelope.header.contentType === JSON_CONTENT_TYPE) {
+    return parseWireJson(envelope.payload.toString());
+  }
+  return Buffer.from(envelope.payload);
+}
+
 export function closeMessages(parts: readonly Message[]): void {
   for (const part of parts) {
     part.close();
   }
+}
+
+function encodePayload(value: unknown, codecs: ZLinkChannelEnvelopeCodecRegistry | undefined): {
+  readonly contentType: string;
+  readonly message: MessageLike;
+} {
+  const serializerEntry = defaultSerializerEntry(codecs);
+  if (
+    serializerEntry !== undefined
+    && !(Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value))
+  ) {
+    const [contentType, serializer] = serializerEntry;
+    return { contentType, message: Buffer.from(serializer.serialize(value).data()) };
+  }
+  return { contentType: contentTypeOf(value), message: toMessageLike(value) };
+}
+
+function defaultSerializerEntry(
+  codecs: ZLinkChannelEnvelopeCodecRegistry | undefined
+): readonly [string, ZLinkMessageSerializer] | undefined {
+  if (codecs === undefined || codecs.serializers.size === 0) {
+    return undefined;
+  }
+  if (codecs.serializers.size === 1) {
+    return codecs.serializers.entries().next().value;
+  }
+  throw new ZLinkConfigurationException(
+    'Channel payload serializer is ambiguous because more than one serializer is registered.'
+  );
 }
 
 function toMessageLike(value: unknown): MessageLike {
@@ -189,8 +256,8 @@ function validateChannelHeader(value: unknown): ZLinkChannelEnvelopeHeader {
   const header = value as Record<string, unknown>;
   const kind = requireChannelMessageKind(header.kind);
   const contentType = requireString(header.contentType, 'contentType');
-  if (contentType !== JSON_CONTENT_TYPE && contentType !== BINARY_CONTENT_TYPE) {
-    throw new ZLinkConfigurationException(`Channel envelope contentType '${contentType}' is not supported.`);
+  if (contentType.trim().length === 0) {
+    throw new ZLinkConfigurationException('Channel envelope contentType must not be empty.');
   }
   return {
     kind,

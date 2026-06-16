@@ -1,20 +1,14 @@
 package systems.zlink.framework.runtime.channels;
 
-import java.util.function.Consumer;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkPublishHandler;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 import systems.zlink.framework.channels.ZLinkSendHandler;
-import systems.zlink.framework.configuration.ChannelServerCapabilityBuilder;
-import systems.zlink.framework.configuration.ChannelPublisherCapabilityBuilder;
-import systems.zlink.framework.configuration.ClientCapabilityBuilder;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.DealerMeshChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
-import systems.zlink.framework.configuration.ManualEndpointListBuilder;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
-import systems.zlink.framework.configuration.SubscriberCapabilityBuilder;
 import systems.zlink.framework.configuration.ZLinkRouteConfigBuilder;
 
 public final class ChannelBuilders {
@@ -39,31 +33,29 @@ public final class ChannelBuilders {
 
     private record ClientServer(ChannelRegistration registration) implements ClientServerChannelBuilder {
         @Override
-        public void enableServer() {
+        public ClientServerChannelBuilder enableServer(String endpoint) {
             registration.enableServer();
+            registration.addServerBind(endpoint);
+            return this;
         }
 
         @Override
-        public void enableServer(Consumer<ChannelServerCapabilityBuilder> configure) {
-            enableServer();
-            configure.accept(registration::addServerBind);
-        }
-
-        @Override
-        public void enableClient() {
+        public ClientServerChannelBuilder enableClient() {
             registration.enableClient();
+            return this;
         }
 
         @Override
-        public void enableClient(Consumer<ClientCapabilityBuilder> configure) {
-            enableClient();
-            configure.accept(clientConfigure ->
-                clientConfigure.accept((ManualEndpointListBuilder) registration::addClientManualEndpoint));
+        public ClientServerChannelBuilder enableClient(String endpoint) {
+            registration.enableClient();
+            registration.addClientManualEndpoint(endpoint);
+            return this;
         }
 
         @Override
-        public void addHandlerGroup(String groupName) {
+        public ClientServerChannelBuilder addHandlerGroup(String groupName) {
             registration.addHandlerGroup(groupName);
+            return this;
         }
 
         @Override
@@ -108,38 +100,37 @@ public final class ChannelBuilders {
         }
 
         @Override
-        public void enableSpotRouteEgress(String targetSpotNodeChannelName) {
+        public ClientServerChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName) {
             registration.enableSpotRouteEgress(targetSpotNodeChannelName);
+            return this;
         }
     }
 
     private record Fanout(ChannelRegistration registration) implements FanoutChannelBuilder {
         @Override
-        public void enablePublisher() {
+        public FanoutChannelBuilder enablePublisher(String endpoint) {
             registration.enablePublisher();
+            registration.addPublisherBind(endpoint);
+            return this;
         }
 
         @Override
-        public void enablePublisher(Consumer<ChannelPublisherCapabilityBuilder> configure) {
-            enablePublisher();
-            configure.accept(registration::addPublisherBind);
-        }
-
-        @Override
-        public void enableSubscriber() {
+        public FanoutChannelBuilder enableSubscriber() {
             registration.enableSubscriber();
+            return this;
         }
 
         @Override
-        public void enableSubscriber(Consumer<SubscriberCapabilityBuilder> configure) {
-            enableSubscriber();
-            configure.accept(subscriberConfigure ->
-                subscriberConfigure.accept((ManualEndpointListBuilder) registration::addSubscriberManualEndpoint));
+        public FanoutChannelBuilder enableSubscriber(String endpoint) {
+            registration.enableSubscriber();
+            registration.addSubscriberManualEndpoint(endpoint);
+            return this;
         }
 
         @Override
-        public void addHandlerGroup(String groupName) {
+        public FanoutChannelBuilder addHandlerGroup(String groupName) {
             registration.addHandlerGroup(groupName);
+            return this;
         }
 
         @Override
@@ -162,58 +153,70 @@ public final class ChannelBuilders {
 
         @Override
         @SuppressWarnings({"unchecked", "rawtypes"})
-        public void addPublishHandler(Class<?> handlerType) {
+        public FanoutChannelBuilder addPublishHandler(Class<?> handlerType) {
             addPublishHandler(handlerType, null);
+            return this;
         }
 
         @Override
         @SuppressWarnings({"unchecked", "rawtypes"})
-        public void addPublishHandler(Class<?> handlerType, String packetName) {
+        public FanoutChannelBuilder addPublishHandler(Class<?> handlerType, String packetName) {
             registration.addPublishHandler(new ChannelPublishHandlerRegistration(
                 handlerType,
                 String.class,
                 packetName));
+            return this;
         }
     }
 
     private record DealerMesh(ChannelRegistration registration) implements DealerMeshChannelBuilder {
         @Override
-        public void enableClient() {
+        public DealerMeshChannelBuilder enableClient() {
             registration.enableClient();
+            return this;
         }
 
         @Override
-        public void enableClient(Consumer<ClientCapabilityBuilder> configure) {
-            enableClient();
-            configure.accept(clientConfigure ->
-                clientConfigure.accept((ManualEndpointListBuilder) registration::addClientManualEndpoint));
+        public DealerMeshChannelBuilder enableClient(String endpoint) {
+            registration.enableClient();
+            registration.addClientManualEndpoint(endpoint);
+            return this;
         }
 
         @Override
-        public void addHandlerGroup(String groupName) {
+        public DealerMeshChannelBuilder addHandlerGroup(String groupName) {
             registration.addHandlerGroup(groupName);
+            return this;
         }
     }
 
     private record RouteMesh(ChannelRegistration registration) implements RouteMeshChannelBuilder {
         @Override
-        public void bind(String endpoint) {
+        public RouteMeshChannelBuilder enableServer(String endpoint) {
             registration.addRouteBind(endpoint);
+            return this;
         }
 
         @Override
-        public void configureRouting(Consumer<ZLinkRouteConfigBuilder> configure) {
-            configure.accept(registration::setRouteRoutingId);
+        public ZLinkRouteConfigBuilder configureRouting() {
+            return registration::setRouteRoutingId;
         }
 
         @Override
-        public void useManualConnections(Consumer<ManualEndpointListBuilder> configure) {
-            configure.accept(registration::addRouteManualEndpoint);
+        public RouteMeshChannelBuilder enableClient() {
+            return this;
         }
 
         @Override
-        public void addHandlerGroup(String groupName) {
+        public RouteMeshChannelBuilder enableClient(String endpoint) {
+            registration.addRouteManualEndpoint(endpoint);
+            return this;
+        }
+
+        @Override
+        public RouteMeshChannelBuilder addHandlerGroup(String groupName) {
             registration.addHandlerGroup(groupName);
+            return this;
         }
 
         @Override
@@ -258,8 +261,9 @@ public final class ChannelBuilders {
         }
 
         @Override
-        public void enableSpotRouteEgress(String targetSpotNodeChannelName) {
+        public RouteMeshChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName) {
             registration.enableSpotRouteEgress(targetSpotNodeChannelName);
+            return this;
         }
     }
 }

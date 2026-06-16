@@ -72,13 +72,16 @@ public final class GetPriceHandler
 public class PriceServerConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        options.addClientServerChannel("price", channel -> {
-            channel.enableServer(server -> server.bind("tcp://0.0.0.0:7301"));
-            channel.addRequestHandler(GetPriceHandler.class);
-        });
+        framework.addClientServerChannel("price")
+            .enableServer("tcp://0.0.0.0:7301")
+            .addRequestHandler(
+                GetPriceHandler.class,
+                PriceRequest.class,
+                PriceReply.class);
 
         // 위치 해결: 같은 Registry를 가리키게 한다.
-        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:5551"));
+        framework.useDiscovery()
+            .addRegistryEndpoint("tcp://127.0.0.1:5551");
     }
 }
 ```
@@ -95,8 +98,10 @@ client는 이 주소가 필요 없다.
 public class CallerConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        options.addClientServerChannel("price", channel -> channel.enableClient());
-        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://127.0.0.1:5551"));
+        framework.addClientServerChannel("price")
+            .enableClient();
+        framework.useDiscovery()
+            .addRegistryEndpoint("tcp://127.0.0.1:5551");
     }
 }
 
@@ -140,7 +145,7 @@ public class RegistryConfig {
 }
 ```
 
-배포 모델(embedded/standalone)과 topology 조회는 [09-registry](./09-registry.ko.md)에서
+배포 모델(embedded/standalone)과 topology 조회는 [09-registry](./08-registry.ko.md)에서
 다룬다. 수동 연결만으로 Registry 없이 붙이는 방법은
 [channel 샘플 §2](./samples/channel-messaging-samples.ko.md)에 있다.
 

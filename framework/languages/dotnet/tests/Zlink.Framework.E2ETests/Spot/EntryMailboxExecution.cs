@@ -22,17 +22,19 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
         {
 
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotMesh("game.entry-mailbox", mesh =>
             {
-                mesh.AddNode("entry-mailbox-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("game.entry-mailbox");
                 {
-                    router.BindRouter(spotNode);
-                });
+                    var spot = mesh.AddNode("entry-mailbox-node");
+                {
+                    var router = spot.EnableRouter(spotNode);
+
+                }
                 spot.AddEntrySpot<RegistryEntrySpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();
@@ -119,17 +121,19 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
         builder.Services.AddZLinkFramework(options =>
         {
 
-            options.AddSpotMesh("game.entry-general", mesh =>
             {
-                mesh.AddNode("entry-general-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("game.entry-general");
                 {
-                    router.BindRouter(spotNode);
-                });
+                    var spot = mesh.AddNode("entry-general-node");
+                {
+                    var router = spot.EnableRouter(spotNode);
+
+                }
                 spot.AddEntrySpot<GeneralEntrySpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();
@@ -190,17 +194,19 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
         {
 
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotMesh("game.entry-native-batch", mesh =>
             {
-                mesh.AddNode("entry-native-batch-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("game.entry-native-batch");
                 {
-                    router.BindRouter(spotNode);
-                });
+                    var spot = mesh.AddNode("entry-native-batch-node");
+                {
+                    var router = spot.EnableRouter(spotNode);
+
+                }
                 spot.AddEntrySpot<RegistryEntrySpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();

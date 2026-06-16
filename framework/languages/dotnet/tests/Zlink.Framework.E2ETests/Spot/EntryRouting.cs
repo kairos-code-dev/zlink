@@ -23,21 +23,24 @@ public sealed class EntryRoutingTests : SpotTestSupport
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh("entry-rid-node", mesh =>
             {
-                mesh.AddNode("entry-rid-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("entry-rid-node");
                 {
-                    router.BindRouter(spotNodeEndpoint);
-                });
-                spot.ConfigureEntrySpot(entry =>
+                    var spot = mesh.AddNode("entry-rid-node");
                 {
+                    var router = spot.EnableRouter(spotNodeEndpoint);
+
+                }
+                {
+                    var entry = spot.ConfigureEntrySpot();
                     entry.RoutingId = entryRid;
-                });
+
+                }
                 spot.AddEntrySpot<GeneralEntrySpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();
@@ -64,30 +67,26 @@ public sealed class EntryRoutingTests : SpotTestSupport
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
 
-            options.AddClientServerChannel("api", channel =>
             {
-                channel.EnableServer(server =>
+                var channel = options.AddClientServerChannel("api");
+                channel.EnableServer(channelEndpoint);
+
+            }
+            {
+                var mesh = options.AddSpotMesh("spot.route.discovery");
                 {
-                    server.Bind(channelEndpoint);
-                    server.ConfigureRouting(routing =>
-                    {
-                        routing.RoutingId = RoutingId.From("aabbcc03");
-                    });
-                });
-            });
-            options.AddSpotMesh("spot.route.discovery", mesh =>
-            {
-                mesh.AddNode("route-target-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                    var spot = mesh.AddNode("route-target-node");
                 {
-                    router.BindRouter(spotRouterEndpoint);
-                });
+                    var router = spot.EnableRouter(spotRouterEndpoint);
+
+                }
                 spot.AcceptSpotRoutesFromChannel("api");
-            });
-            });
+
+                }
+
+            }
         });
 
         using var provider = services.BuildServiceProvider();

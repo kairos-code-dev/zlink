@@ -1,10 +1,9 @@
-const connector = require('../../../../packages/stream-connector/dist');
-const { bingoProtobufCodec } = require('../Shared/Contracts/protobuf-codec');
+import * as connector from '@zlink-systems/stream-connector';
+import { bingoProtobufCodec } from '../Shared/Contracts/protobuf-codec';
 import { BingoClientScenario } from './bingo-client-scenario';
-import type { ZlinkStreamConnector } from '../../../packages/stream-connector/dist';
-const { SampleTimings } = require('./Configuration/sample-names');
-const { loadSampleConfig } = require('./Configuration/sample-config');
-
+import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
+import { SampleTimings } from './Configuration/sample-names';
+import { loadSampleConfig } from './Configuration/sample-config';
 async function main(): Promise<void> {
   const config = loadSampleConfig();
 

@@ -1,39 +1,37 @@
 package systems.zlink.framework.configuration;
 
-import java.util.function.Consumer;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkSpot;
 
 public interface ZLinkSpotNodeBuilder {
-    void enableRouter();
+    ZLinkSpotNodeBuilder enableRouter(String endpoint);
 
-    void enableRouter(Consumer<SpotRouterCapabilityBuilder> configure);
+    ZLinkSpotNodeBuilder connectRouter(String endpoint);
 
-    void enablePubSub();
+    ZLinkSpotNodeBuilder setRouterRoutingId(RoutingId routingId);
 
-    void enablePubSub(Consumer<SpotPubSubCapabilityBuilder> configure);
+    ZLinkSpotNodeBuilder enablePubSub(String endpoint);
 
-    void attachChannelClient(String channelName);
+    ZLinkSpotNodeBuilder connectPubSub(String endpoint);
 
-    void attachChannelClient(
-        String channelName,
-        Consumer<SpotChannelClientCapabilityBuilder> configure);
+    ZLinkSpotNodeBuilder setPubSubRoutingId(RoutingId routingId);
 
-    void attachSpotPublisherClient(String channelName);
+    ZLinkSpotNodeBuilder attachChannelClient(String channelName);
 
-    void attachSpotPublisherClient(
-        String channelName,
-        Consumer<SpotPublisherClientCapabilityBuilder> configure);
+    ZLinkSpotNodeBuilder attachChannelClient(String channelName, String endpoint);
 
-    void acceptSpotRoutesFromChannel(String channelName);
+    ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName);
 
-    void acceptSpotRoutesFromChannel(
-        String channelName,
-        Consumer<ZLinkSpotRouteChannelAcceptanceBuilder> configure);
+    ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName, String endpoint);
 
-    void configureEntrySpot(Consumer<ZLinkEntrySpotOptions> configure);
+    ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName);
 
-    void addSpotFactory(Class<? extends ZLinkSpot> spotType);
+    ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName, String endpoint);
 
-    void addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType);
+    ZLinkEntrySpotOptions configureEntrySpot();
+
+    ZLinkSpotNodeBuilder addSpotFactory(Class<? extends ZLinkSpot> spotType);
+
+    ZLinkSpotNodeBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType);
 }

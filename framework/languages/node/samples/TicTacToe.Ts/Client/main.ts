@@ -1,6 +1,5 @@
 import { TicTacToeClientScenario } from './tictactoe-client-scenario';
-const { loadSampleConfig } = require('./Configuration/sample-config');
-
+import { loadSampleConfig } from './Configuration/sample-config';
 async function main(): Promise<void> {
   const config = loadSampleConfig();
 

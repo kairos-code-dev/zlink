@@ -53,6 +53,27 @@ function Wait-Port([string]$Name, [string]$Endpoint) {
     throw "Timed out waiting for $Name at $Endpoint"
 }
 
+function Wait-ReadyField([string]$Name, [string]$LogFile, [string]$Field, [string]$Expected) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (Test-Path $LogFile) {
+            foreach ($line in Get-Content -Path $LogFile) {
+                try {
+                    $event = $line | ConvertFrom-Json
+                }
+                catch {
+                    continue
+                }
+                if ($event.event -eq "ready" -and $event.$Field -eq $Expected) {
+                    return
+                }
+            }
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Timed out waiting for $Name ready $Field=$Expected"
+}
+
 function Start-Server([string]$Name, [string]$Entry) {
     $process = Start-Process -FilePath "node" `
         -ArgumentList @((Join-Path $scriptDir $Entry)) `
@@ -64,11 +85,12 @@ function Start-Server([string]$Name, [string]$Entry) {
 }
 
 try {
-    $ports = Get-FreePorts 4
+    $ports = Get-FreePorts 5
     $env:TICTACTOE_API_ENDPOINT = if ($env:TICTACTOE_API_ENDPOINT) { $env:TICTACTOE_API_ENDPOINT } else { "tcp://127.0.0.1:$($ports[0])" }
     $env:TICTACTOE_PLAY_ENDPOINT = if ($env:TICTACTOE_PLAY_ENDPOINT) { $env:TICTACTOE_PLAY_ENDPOINT } else { "tcp://127.0.0.1:$($ports[1])" }
     $env:TICTACTOE_PLAY_STREAM_ENDPOINT = if ($env:TICTACTOE_PLAY_STREAM_ENDPOINT) { $env:TICTACTOE_PLAY_STREAM_ENDPOINT } else { "tcp://127.0.0.1:$($ports[2])" }
-    $env:TICTACTOE_API_HTTP_ENDPOINT = if ($env:TICTACTOE_API_HTTP_ENDPOINT) { $env:TICTACTOE_API_HTTP_ENDPOINT } else { "http://127.0.0.1:$($ports[3])" }
+    $env:TICTACTOE_PLAY_SPOT_ENDPOINT = if ($env:TICTACTOE_PLAY_SPOT_ENDPOINT) { $env:TICTACTOE_PLAY_SPOT_ENDPOINT } else { "tcp://127.0.0.1:$($ports[3])" }
+    $env:TICTACTOE_API_HTTP_ENDPOINT = if ($env:TICTACTOE_API_HTTP_ENDPOINT) { $env:TICTACTOE_API_HTTP_ENDPOINT } else { "http://127.0.0.1:$($ports[4])" }
     $env:ZLINK_SAMPLE_CONFIG = Join-Path $runDir "sample.config.json"
 
     @{
@@ -76,6 +98,7 @@ try {
             apiEndpoint = $env:TICTACTOE_API_ENDPOINT
             apiHttpEndpoint = $env:TICTACTOE_API_HTTP_ENDPOINT
             playEndpoint = $env:TICTACTOE_PLAY_ENDPOINT
+            playSpotEndpoint = $env:TICTACTOE_PLAY_SPOT_ENDPOINT
             playStreamEndpoint = $env:TICTACTOE_PLAY_STREAM_ENDPOINT
         }
     } | ConvertTo-Json -Depth 8 | Set-Content -Path $env:ZLINK_SAMPLE_CONFIG -Encoding UTF8
@@ -89,6 +112,7 @@ try {
     }
 
     Start-Server "play" "dist/Server/Play/main.js"
+    Wait-ReadyField "play" (Join-Path $logDir "play.log") "spotEndpoint" $env:TICTACTOE_PLAY_SPOT_ENDPOINT
     Wait-Port "play-channel" $env:TICTACTOE_PLAY_ENDPOINT
     Wait-Port "play-stream" $env:TICTACTOE_PLAY_STREAM_ENDPOINT
 

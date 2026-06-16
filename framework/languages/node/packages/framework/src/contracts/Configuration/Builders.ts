@@ -1,10 +1,12 @@
 import type { ZLinkSpot, ZLinkSpotMeshBuilder, ZLinkSpotNodeBuilder } from '../Spots';
 import type { ZLinkSession, ZLinkSessionFactory } from '../Streams';
+import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type { Type } from '../Common';
 import type { ZLinkWorkerOptions } from './Registration';
 
 export interface ZLinkFrameworkOptions {
   useDiscovery(): ZLinkDiscoveryBuilder;
+  codecs(): ZLinkCodecRegistryBuilder;
   /**
    * Configures the single worker offload pool used by `runWorker(...)`.
    * On Node these settings bound the asynchronous deferral (in-flight and
@@ -30,41 +32,27 @@ export interface ZLinkMetadataPolicyBuilder {
   forward(enabled?: boolean): this;
 }
 
-export interface ChannelServerCapabilityBuilder {
-  bind(endpoint: string): this;
-}
-
-export interface ChannelClientCapabilityBuilder {
-  connect(endpoint: string): this;
-}
-
-export interface DealerMeshChannelClientCapabilityBuilder extends ChannelClientCapabilityBuilder {}
-
-export interface ChannelPublisherCapabilityBuilder {
-  bind(endpoint: string): this;
-}
-
-export interface ChannelSubscriberCapabilityBuilder {
-  connect(endpoint: string): this;
-}
-
 export interface ZLinkClientServerChannelBuilder {
-  enableServer(): ChannelServerCapabilityBuilder;
-  enableClient(): ChannelClientCapabilityBuilder;
+  enableServer(endpoint: string): this;
+  enableClient(): this;
+  enableClient(endpoint: string): this;
 }
 
 export interface ZLinkFanoutChannelBuilder {
-  enablePublisher(): ChannelPublisherCapabilityBuilder;
-  enableSubscriber(): ChannelSubscriberCapabilityBuilder;
+  enablePublisher(endpoint: string): this;
+  enableSubscriber(): this;
+  enableSubscriber(endpoint: string): this;
 }
 
 export interface ZLinkDealerMeshChannelBuilder {
-  enableClient(): DealerMeshChannelClientCapabilityBuilder;
+  enableClient(): this;
+  enableClient(endpoint: string): this;
 }
 
 export interface ZLinkRouteChannelBuilder {
-  enableRouter(): ChannelServerCapabilityBuilder;
-  enableDealer(): ChannelClientCapabilityBuilder;
+  enableServer(endpoint: string): this;
+  enableClient(): this;
+  enableClient(endpoint: string): this;
 }
 
 export interface ZLinkRouteMeshChannelBuilder extends ZLinkRouteChannelBuilder {}

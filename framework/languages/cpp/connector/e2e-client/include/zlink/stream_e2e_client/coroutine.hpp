@@ -75,10 +75,10 @@ class coroutine_send_call_t
     send_call_t _inner;
 };
 
-template <typename TReply> class coroutine_request_call_t
+class coroutine_request_call_t
 {
   public:
-    explicit coroutine_request_call_t (request_call_t<TReply> inner) :
+    explicit coroutine_request_call_t (request_call_t inner) :
         _inner (std::move (inner))
     {
     }
@@ -119,23 +119,23 @@ template <typename TReply> class coroutine_request_call_t
         return *this;
     }
 
-    result_t<TReply> submit () { return _inner.submit (); }
+    template <typename TReply> result_t<TReply> submit () { return _inner.template submit<TReply> (); }
 
-    void submit (std::function<void (result_t<TReply>)> callback)
+    template <typename TReply> void submit (std::function<void (result_t<TReply>)> callback)
     {
-        _inner.submit (std::move (callback));
+        _inner.template submit<TReply> (std::move (callback));
     }
 
-    task_t<TReply> async ()
+    template <typename TReply> task_t<TReply> async ()
     {
         return task_t<TReply> (
           [inner = std::move (_inner)] (std::function<void (result_t<TReply>)> callback) mutable {
-              inner.submit (std::move (callback));
+              inner.template submit<TReply> (std::move (callback));
           });
     }
 
   private:
-    request_call_t<TReply> _inner;
+    request_call_t _inner;
 };
 
 template <typename TMessage> class coroutine_wait_call_t
@@ -158,6 +158,13 @@ template <typename TMessage> class coroutine_wait_call_t
     coroutine_wait_call_t &where (std::function<bool (const TMessage &)> predicate)
     {
         _inner.where (std::move (predicate));
+        return *this;
+    }
+
+    template <typename TValue, typename TExpected>
+    coroutine_wait_call_t &where (TValue TMessage::*member, TExpected &&expected)
+    {
+        _inner.where (member, std::forward<TExpected> (expected));
         return *this;
     }
 
@@ -239,15 +246,15 @@ class coroutine_connector_t
         return coroutine_send_call_t (_connector->send (std::move (packet)));
     }
 
-    template <typename TReply, typename TRequest>
-    coroutine_request_call_t<TReply> request (const TRequest &request)
+    template <typename TRequest>
+    coroutine_request_call_t request (const TRequest &request)
     {
-        return coroutine_request_call_t<TReply> (_connector->request<TReply> (request));
+        return coroutine_request_call_t (_connector->request (request));
     }
 
-    template <typename TReply> coroutine_request_call_t<TReply> request (packet_t packet)
+    coroutine_request_call_t request (packet_t packet)
     {
-        return coroutine_request_call_t<TReply> (_connector->request<TReply> (std::move (packet)));
+        return coroutine_request_call_t (_connector->request (std::move (packet)));
     }
 
     template <typename TMessage> coroutine_wait_call_t<TMessage> wait_for ()

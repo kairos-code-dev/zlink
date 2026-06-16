@@ -409,24 +409,15 @@ bind 한다. 그래서 session handler 는 route mesh channel 이름이나 route
 builder.Services.AddZLinkFramework(options =>
 {
     // STREAM session 이 사용할 local SpotNode (ActorGateway ingress)
-    options.AddSpotMesh("game.session", mesh =>
-    {
-        mesh.AddNode("session-node", node =>
-        {
-            node.EnableRouter(router =>
-            {
-                router.BindRouter("tcp://0.0.0.0:9101");
-                router.SetRoutingId(sessionNodeRid);
-            });
-        });
-    });
+    options.AddSpotMesh("game.session")
+        .AddNode("session-node")
+        .EnableRouter("tcp://0.0.0.0:9101")
+        .SetRouterRoutingId(sessionNodeRid);
 
-    options.AddStreamNode("client-stream", stream =>
-    {
-        stream.AttachActorGateway("session-node");   // 이 stream 의 relay 대상 SpotNode
-        stream.Bind("tcp://0.0.0.0:9000");
-        stream.RegisterSession<TicTacToeSession>();
-    });
+    options.AddStreamNode("client-stream")
+        .AttachActorGateway("session-node")   // 이 stream 의 relay 대상 SpotNode
+        .Bind("tcp://0.0.0.0:9000")
+        .RegisterSession<TicTacToeSession>();
 
     options.UseRegistrySpotRemoteAddresses("game");
 });
@@ -437,23 +428,22 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
     options.AddActorFactory<PlayerActorFactory>("player");
 
-    options.AddSpotMesh("game.match", mesh =>
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
-        mesh.AddNode("play-node", node =>
+        var mesh =     options.AddSpotMesh("game.match");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
         {
-            node.EnableRouter(router =>
-            {
-                router.BindRouter("tcp://0.0.0.0:9201");
-            });
+            var node =         mesh.AddNode("play-node");
+            node.EnableRouter("tcp://0.0.0.0:9201");
             node.AddEntrySpot<PlayerEntrySpot>();
             node.AddSpotFactory<MatchSpot>();
-        });
-    });
+
+        }
+
+    }
 
     options.UseRegistrySpotRemoteAddresses("game");
 });

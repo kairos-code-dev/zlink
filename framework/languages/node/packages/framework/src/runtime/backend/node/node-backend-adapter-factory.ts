@@ -393,6 +393,10 @@ function resolveSocketActorGatewayProperty(target: unknown, property: string | s
     return (handler: unknown) =>
       (target as { setPacketHandler(handler: unknown): void }).setPacketHandler(handler);
   }
+  if (property === 'attachActorGateway') {
+    return (node: unknown) =>
+      (target as { attachActorGateway(node: unknown): void }).attachActorGateway(unwrapBackendObject(node));
+  }
   if (property === 'bindActor') {
     return async (sessionRid: unknown, actor: unknown, timeoutMs: number) => {
       const operation = (target as {

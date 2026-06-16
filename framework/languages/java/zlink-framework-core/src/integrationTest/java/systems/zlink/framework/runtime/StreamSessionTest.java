@@ -40,16 +40,11 @@ final class StreamSessionTest {
     void streamNodeAttachActorGatewayUsesJavaBindingPublicApi() {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter();
-                node.addSpotFactory(GameSpot.class);
-            }));
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway-" + System.nanoTime());
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+                node.addSpotFactory(GameSpot.class); }; };
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway-" + System.nanoTime());
             stream.attachActorGateway("play");
-            stream.registerSession(GameSession.class);
-        });
+            stream.registerSession(GameSession.class); };
 
         try (ZLinkFrameworkRuntime ignored =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -62,10 +57,8 @@ final class StreamSessionTest {
         EchoSession.reset();
         int port = reservePort();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("tcp://127.0.0.1:" + port);
-            stream.registerSession(EchoSession.class);
-        });
+        { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
+            stream.registerSession(EchoSession.class); };
 
         try (ZLinkFrameworkRuntime ignored =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
@@ -96,18 +89,12 @@ final class StreamSessionTest {
         int port = reservePort();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(StreamSessionTest.class);
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter(router ->
-                    router.setRoutingId(RoutingId.from("play-node")));
-                node.addEntrySpot(GameEntrySpot.class);
-            }));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
+                node.addEntrySpot(GameEntrySpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("tcp://127.0.0.1:" + port);
+        { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
             stream.attachActorGateway("play");
-            stream.registerSession(ActorRelaySession.class);
-        });
+            stream.registerSession(ActorRelaySession.class); };
 
         try (ZLinkFrameworkRuntime ignored =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());

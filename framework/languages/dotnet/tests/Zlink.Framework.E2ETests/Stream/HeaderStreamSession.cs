@@ -25,11 +25,12 @@ public sealed class HeaderStreamSessionTests : StreamTestSupport
             services.AddSingleton(recorder);
             services.AddZLinkFramework(options =>
             {
-                options.AddStreamNode("header.node", stream =>
                 {
+                    var stream = options.AddStreamNode("header.node");
                     stream.Bind(endpoint);
                     stream.RegisterSession<HeaderStreamSession>();
-                });
+
+                }
             });
         });
         try
@@ -130,11 +131,12 @@ public sealed class HeaderStreamSessionTests : StreamTestSupport
             services.AddSingleton(recorder);
             services.AddZLinkFramework(options =>
             {
-                options.AddStreamNode("header.node", stream =>
                 {
+                    var stream = options.AddStreamNode("header.node");
                     stream.Bind(endpoint);
                     stream.RegisterSession<HeaderStreamSession>();
-                });
+
+                }
             });
         });
         try
@@ -177,11 +179,12 @@ public sealed class HeaderStreamSessionTests : StreamTestSupport
             services.AddSingleton(recorder);
             services.AddZLinkFramework(options =>
             {
-                options.AddStreamNode("header.node", stream =>
                 {
+                    var stream = options.AddStreamNode("header.node");
                     stream.Bind(endpoint);
                     stream.RegisterSession<HeaderStreamSession>();
-                });
+
+                }
             });
         });
         try

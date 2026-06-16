@@ -14,11 +14,11 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         var withoutEgress = new ServiceCollection();
         withoutEgress.AddZLinkFramework(options =>
         {
-            options.AddClientServerChannel("gateway.client", channel =>
             {
-                channel.EnableClient(client =>
-                    client.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7101")));
-            });
+                var channel = options.AddClientServerChannel("gateway.client");
+                                channel.EnableClient("tcp://127.0.0.1:7101");
+
+            }
         });
 
         using (var provider = withoutEgress.BuildServiceProvider())
@@ -30,12 +30,12 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         var clientServerEgress = new ServiceCollection();
         clientServerEgress.AddZLinkFramework(options =>
         {
-            options.AddClientServerChannel("gateway.client", channel =>
             {
-                channel.EnableClient(client =>
-                    client.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7201")));
+                var channel = options.AddClientServerChannel("gateway.client");
+                                channel.EnableClient("tcp://127.0.0.1:7201");
                 channel.EnableSpotRouteEgress("play.route");
-            });
+
+            }
         });
 
         using (var provider = clientServerEgress.BuildServiceProvider())
@@ -47,12 +47,13 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         var routeMeshEgress = new ServiceCollection();
         routeMeshEgress.AddZLinkFramework(options =>
         {
-            options.AddRouteMeshChannel("gateway.route", channel =>
             {
-                channel.Bind("tcp://127.0.0.1:7301");
-                channel.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7201"));
+                var channel = options.AddRouteMeshChannel("gateway.route");
+                channel.EnableServer("tcp://127.0.0.1:7301");
+                channel.EnableClient("tcp://127.0.0.1:7201");
                 channel.EnableSpotRouteEgress("play.route");
-            });
+
+            }
         });
 
         using (var provider = routeMeshEgress.BuildServiceProvider())
@@ -78,10 +79,10 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddFanoutChannel("profile", channel => channel.EnablePublisher());
+                options.AddFanoutChannel("profile").EnablePublisher("");
             }));
 
-        Assert.Contains("publisher must define a bind endpoint", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Channel publisher bind endpoint must not be empty", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -95,50 +96,57 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
             options.Codecs.AddProtobuf();
             options.UseFilter<TestFilter>();
             options.AddSpotRemoteAddressResolver<TestSpotRemoteAddressResolver>();
-            options.ConfigureDispatch(dispatch =>
             {
+                var dispatch = options.ConfigureDispatch();
                 dispatch.SpotDispatchMode = ZLinkDispatchMode.Dynamic;
-            });
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
+
+            }
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
 
 
-            options.AddClientServerChannel("profile", channel =>
             {
-                channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                var channel = options.AddClientServerChannel("profile");
+                channel.EnableServer("tcp://127.0.0.1:7101");
                 channel.EnableClient();
                 channel.AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
-            });
 
-            options.AddFanoutChannel("profile.events", events =>
+            }
+
             {
+                var events = options.AddFanoutChannel("profile.events");
                 events.EnableSubscriber();
                 events.AddPublishHandler<TestPublishHandler, TestPublishedEvent>();
-            });
 
-            options.AddStreamNode("stream.node", stream =>
+            }
+
             {
+                var stream = options.AddStreamNode("stream.node");
                 stream.Bind("tcp://127.0.0.1:9100");
                 stream.RegisterSession<TestHeaderSession>();
-            });
 
-            options.AddRouteMeshChannel("gateway", routed =>
-            {
-                routed.Bind("tcp://127.0.0.1:7301");
-            });
+            }
 
-            options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                mesh.AddNode("stage-node", spot =>
+                var routed = options.AddRouteMeshChannel("gateway");
+                routed.EnableServer("tcp://127.0.0.1:7301");
+
+            }
+
             {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("game.stage");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
-                    router.BindRouter("tcp://127.0.0.1:9000");
-                });
+                    var spot = mesh.AddNode("stage-node");
+                {
+                    var router = spot.EnableRouter("tcp://127.0.0.1:9000");
+
+                }
                 spot.AddSpotFactory<TestSpot>();
                 spot.AttachChannelClient("profile");
-            });
-            });
+
+                }
+
+            }
         });
 
         using var provider = services.BuildServiceProvider();
@@ -210,11 +218,12 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddClientServerChannel("profile", channel =>
             {
-                channel.EnableServer(server => server.Bind(endpoint));
+                var channel = options.AddClientServerChannel("profile");
+                channel.EnableServer(endpoint);
                 channel.AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
-            });
+
+            }
         });
 
         builder.Services.AddZLinkMonitoring(monitor =>

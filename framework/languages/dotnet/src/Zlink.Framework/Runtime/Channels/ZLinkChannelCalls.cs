@@ -5,6 +5,7 @@ namespace Zlink.Framework.Runtime.Channels;
 internal sealed class ZLinkSendCall : IZLinkSendCall
 {
     private readonly ZLinkFrameworkRuntime _runtime;
+    private readonly ZLinkFrameworkRegistration _registration;
     private readonly string _channelName;
     private readonly object? _message;
     private string? _messageName;
@@ -16,10 +17,10 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         object? message)
     {
         _runtime = runtime;
+        _registration = registration;
         _channelName = channelName;
         _message = message;
         _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
-        _ = registration;
     }
 
     public IZLinkSendCall PacketName(string messageName)
@@ -38,7 +39,7 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
             _channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."));
 
-        var message = ZLinkEnvelopeCodec.EncodeParts(header, _message, _message?.GetType());
+        var message = ZLinkEnvelopeCodec.EncodeParts(header, _message, _message?.GetType(), _registration.Codecs);
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink send submitter is not initialized."))
             .Async(
@@ -80,7 +81,7 @@ internal sealed class ZLinkRequestCall<TMessage>(
             channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             timeout);
-        var message = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request);
+        var message = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request, registration.Codecs);
         if (registration.Channels.TryGetValue(channelName, out var channel)
             && channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh)
         {
@@ -139,6 +140,7 @@ internal sealed class ZLinkRequestCall<TMessage>(
 
 internal sealed class ZLinkPublishCall(
     ZLinkFrameworkRuntime runtime,
+    ZLinkFrameworkRegistration registration,
     string channelName,
     string topic,
     object? message)
@@ -163,7 +165,7 @@ internal sealed class ZLinkPublishCall(
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             topic: topic,
             source: channelName);
-        var envelopedMsg = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType());
+        var envelopedMsg = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType(), registration.Codecs);
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink publish submitter is not initialized."))
             .Async(

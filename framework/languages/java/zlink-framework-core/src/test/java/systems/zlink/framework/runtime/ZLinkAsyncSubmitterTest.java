@@ -26,8 +26,7 @@ final class ZLinkAsyncSubmitterTest {
     void submit_drainsPendingItemFromReadyCallback() throws InterruptedException {
         BlockingPublishBackend backend = new BlockingPublishBackend();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addFanoutChannel("events", channel ->
-            channel.enablePublisher(publisher -> publisher.bind("inproc://events")));
+        { var channel = options.addFanoutChannel("events").enablePublisher("inproc://events"); };
 
         try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backend)) {
             var submitted = runtime.fanout()
@@ -46,9 +45,7 @@ final class ZLinkAsyncSubmitterTest {
     void submit_failsPendingItemWhenSendTimeoutExpires() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultTimeout(Duration.ofMillis(20));
-        options.addClientServerChannel("profile", channel ->
-            channel.enableClient(client ->
-                client.useManualConnections(endpoints -> endpoints.connect("inproc://profile"))));
+        { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile"); };
 
         try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, new NoReplyBackend())) {
             CompletionException error = org.junit.jupiter.api.Assertions.assertThrows(
@@ -68,9 +65,7 @@ final class ZLinkAsyncSubmitterTest {
     void close_failsPendingItems() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultTimeout(Duration.ofSeconds(5));
-        options.addClientServerChannel("profile", channel ->
-            channel.enableClient(client ->
-                client.useManualConnections(endpoints -> endpoints.connect("inproc://profile"))));
+        { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile"); };
 
         ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, new NoReplyBackend());
         var pending = runtime.client()

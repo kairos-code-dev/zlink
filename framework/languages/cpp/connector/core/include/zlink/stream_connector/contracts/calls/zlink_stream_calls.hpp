@@ -80,7 +80,7 @@ class send_call_t
     packet_t _packet;
 };
 
-template <typename TReply> class request_call_t
+class request_call_t
 {
   public:
     /// Creates an unbound request call that fails with configuration_error when submitted.
@@ -129,7 +129,7 @@ template <typename TReply> class request_call_t
     }
 
     /// Sends the request, waits for the correlated reply, and decodes it as TReply.
-    result_t<TReply> submit ()
+    template <typename TReply> result_t<TReply> submit ()
     {
         if (!_state) {
             return result_t<TReply>::failure (error_code_t::configuration_error,
@@ -139,7 +139,7 @@ template <typename TReply> class request_call_t
     }
 
     /// Sends the request and invokes the callback with the decoded reply result.
-    void submit (std::function<void (result_t<TReply>)> callback)
+    template <typename TReply> void submit (std::function<void (result_t<TReply>)> callback)
     {
         if (!_state) {
             if (callback) {
@@ -234,6 +234,17 @@ template <typename TMessage> class wait_call_t
     {
         _predicate = std::move (predicate);
         return *this;
+    }
+
+    template <typename TValue, typename TExpected>
+    wait_call_t &where (TValue TMessage::*member, TExpected &&expected)
+    {
+        auto expected_value =
+          std::decay_t<TExpected> (std::forward<TExpected> (expected));
+        return where ([member, expected_value = std::move (expected_value)] (
+                        const TMessage &message) {
+            return std::invoke (member, message) == expected_value;
+        });
     }
 
     /// Waits for a matching packet, consumes it, and decodes it as TMessage.

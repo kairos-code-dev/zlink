@@ -59,26 +59,6 @@ internal sealed class StartOrderUseCase(
         return new StartOrderRes(state.OrderId, state.Status);
     }
 
-    private async ValueTask<OrderState> WaitForProjectionAsync(
-        string orderId,
-        CancellationToken cancellationToken)
-    {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(SampleTimings.WorkflowTimeout);
-        while (!timeout.IsCancellationRequested)
-        {
-            var projection = await readModels.FindAsync(orderId, timeout.Token);
-            if (projection is not null)
-            {
-                return projection;
-            }
-
-            await Task.Delay(50, timeout.Token);
-        }
-
-        throw new TimeoutException($"Timed out waiting for order projection '{orderId}'.");
-    }
-
 }
 
 internal sealed class GetOrderStateUseCase(

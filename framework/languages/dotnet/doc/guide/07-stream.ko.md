@@ -34,11 +34,12 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.AddProtobuf();
 
-    options.AddStreamNode("client.stream", stream =>
     {
+        var stream =     options.AddStreamNode("client.stream");
         stream.Bind("tcp://0.0.0.0:9100");
         stream.RegisterSession<ClientHeaderSession>();
-    });
+
+    }
 });
 ```
 

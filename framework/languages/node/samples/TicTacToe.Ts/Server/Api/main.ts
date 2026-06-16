@@ -1,10 +1,9 @@
-require('reflect-metadata');
-
-const http = require('node:http');
-const { NestFactory } = require('@nestjs/core');
-const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
-const { loadSampleConfig } = require('../Configuration/sample-config');
-const { createTicTacToeApiModule, getCreateGameEndpoint } = require('./tictactoe-api-module');
+import 'reflect-metadata';
+import * as http from 'node:http';
+import { NestFactory } from '@nestjs/core';
+import { closeNestRuntime, waitForShutdown } from '../runtime-support';
+import { loadSampleConfig } from '../Configuration/sample-config';
+import { createTicTacToeApiModule, getCreateGameEndpoint } from './tictactoe-api-module';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 
 type HttpEndpoint = {

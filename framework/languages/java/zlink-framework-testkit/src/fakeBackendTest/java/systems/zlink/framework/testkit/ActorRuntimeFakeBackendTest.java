@@ -33,8 +33,7 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void actorManagerCreateGetOrCreateAndFindUseRegisteredFactory() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class)));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.addSpotFactory(GameSpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -78,11 +77,8 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void actorContextJoinEntrySpotUsesBackendSpotNodeJoinOperation() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter();
-                node.addEntrySpot(EntrySpot.class);
-            }));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+                node.addEntrySpot(EntrySpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -112,8 +108,7 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void actorContextJoinSpotUsesBackendSpotNodeJoinOperationAndUpdatesContext() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class)));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.addSpotFactory(GameSpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -167,17 +162,12 @@ final class ActorRuntimeFakeBackendTest {
         EntrySpot.leftCount = 0;
         EntrySpot.disconnectCount = 0;
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter();
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
                 node.addEntrySpot(EntrySpot.class);
-                node.addSpotFactory(GameSpot.class);
-            }));
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://fake-gateway");
+                node.addSpotFactory(GameSpot.class); }; };
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://fake-gateway");
             stream.attachActorGateway("play");
-            stream.registerSession(DestroySession.class);
-        });
+            stream.registerSession(DestroySession.class); };
         options.addActorFactory("player", PlayerActorFactory.class);
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -311,14 +301,9 @@ final class ActorRuntimeFakeBackendTest {
     void actorCreateDoesNotNotifyEntrySpotOwnedByDifferentNode() {
         SecondEntrySpot.createCount = 0;
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh -> {
-            mesh.addNode("first", node ->
-                node.enableRouter(router -> router.setRoutingId(RoutingId.from("first-node"))));
-            mesh.addNode("second", node -> {
-                node.enableRouter(router -> router.setRoutingId(RoutingId.from("second-node")));
-                node.addEntrySpot(SecondEntrySpot.class);
-            });
-        });
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("first"); node.setRouterRoutingId(RoutingId.from("first-node")); };
+            { var node = mesh.addNode("second"); node.setRouterRoutingId(RoutingId.from("second-node"));
+                node.addEntrySpot(SecondEntrySpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -337,8 +322,7 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void actorEntrySpotRouteJoinHandlerCreatesLocalActorAndReturnsActorRefReply() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> node.enableRouter()));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router"); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();

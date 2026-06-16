@@ -30,7 +30,7 @@ class app_advanced_t
   public:
     service_collection_t &services () noexcept;
     handler_registry_t &handlers () noexcept;
-    app_t &use_zlink (std::function<void (zlink_builder_t &)> configure);
+    zlink_builder_t &zlink () noexcept;
 
   private:
     friend class app_t;

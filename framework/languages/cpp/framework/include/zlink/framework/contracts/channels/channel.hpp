@@ -130,20 +130,17 @@ class channel_builder_t
     channel_builder_t (const channel_builder_t &) = default;
     channel_builder_t &operator= (const channel_builder_t &) = default;
 
-    channel_builder_t &enable_server (std::function<void (capability_builder_t &)> configure = {});
-    channel_builder_t &enable_client (std::function<void (capability_builder_t &)> configure = {});
-    channel_builder_t &
-    enable_publisher (std::function<void (capability_builder_t &)> configure = {});
-    channel_builder_t &
-    enable_subscriber (std::function<void (capability_builder_t &)> configure = {});
+    capability_builder_t enable_server ();
+    capability_builder_t enable_client ();
+    capability_builder_t enable_publisher ();
+    capability_builder_t enable_subscriber ();
 
     channel_snapshot_t snapshot () const;
 
   private:
     friend class zlink_builder_t;
     explicit channel_builder_t (std::shared_ptr<detail::channel_builder_state_t> state);
-    void enable_capability (channel_capability_snapshot_t &target,
-                            const std::function<void (capability_builder_t &)> &configure);
+    capability_builder_t enable_capability (channel_capability_snapshot_t &target);
 
     std::shared_ptr<detail::channel_builder_state_t> _state;
 };

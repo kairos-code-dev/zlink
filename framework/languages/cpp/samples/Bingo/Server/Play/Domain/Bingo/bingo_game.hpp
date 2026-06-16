@@ -35,7 +35,8 @@ class bingo_game_t
 
     std::optional<number_drawn_notify_t> draw_next (bingo_room_state_t &state)
     {
-        if (state.status != "running" || _next_draw > 15 || !state.winners.empty ()) {
+        if (state.status != bingo_room_status_t::running || _next_draw > 15
+            || !state.winners.empty ()) {
             return std::nullopt;
         }
 
@@ -59,7 +60,7 @@ class bingo_game_t
         }
 
         if (!state.winners.empty () || _next_draw > 15) {
-            state.status = "finished";
+            state.status = bingo_room_status_t::finished;
         }
         return number_drawn_notify_t{state.room_id, state.draw_seq, number, state};
     }

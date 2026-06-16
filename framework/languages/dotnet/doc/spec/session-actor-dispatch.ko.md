@@ -1044,11 +1044,12 @@ public interface IZLinkMessageMetadataPolicy
 `null` 을 반환하면 해당 key 가 없다고 보면 된다.
 
 ```csharp
-options.ConfigureMetadata(metadata =>
 {
+    var metadata = options.ConfigureMetadata();
     metadata.AddForwardedMetadataKey("trace-id");
     metadata.AddForwardedMetadataKey("tenant-id");
-});
+
+}
 ```
 
 ## 4. BoundSession 호출 표면
@@ -1208,10 +1209,11 @@ DI 등록 (Session 서버):
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddSpotMesh("game.rooms", mesh =>
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
-    });
+        var mesh =     options.AddSpotMesh("game.rooms");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+
+    }
     options.UseRegistrySpotRemoteAddresses("game");
     // STREAM session 등록 + routed channel 등록 (별도 문서 참고)
 });
@@ -1250,12 +1252,10 @@ session route resolver 나 저장소 계약은 두지 않는다.
 이 절은 host 가 framework 를 띄울 때 작성하는 등록 코드 모양을 보여 준다.
 
 ```csharp
-options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryEndpoint));
+options.UseDiscovery().AddRegistryEndpoint(registryEndpoint);
 
-options.AddRoutedChannel("backend", routed =>
-{
-    routed.Bind(playEndpoint);
-});
+options.AddRouteMeshChannel("backend")
+    .EnableServer(playEndpoint);
 
 options.AddActorFactory<TicTacToeActorFactory>("player");
 
@@ -1272,19 +1272,18 @@ public sealed class TicTacToeActor(
 spot handler는 spot 객체 안에서 등록한다.
 
 ```csharp
-options.AddSpotMesh("game.rooms", mesh =>
 {
-    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryEndpoint));
-    mesh.AddNode("play", spot =>
+    var mesh = options.AddSpotMesh("game.rooms");
+        mesh.UseDiscovery().AddRegistryEndpoint(registryEndpoint);
     {
-        spot.EnableRouter(router =>
-        {
-            router.BindRouter(spotEndpoint);
-        });
+        var spot =     mesh.AddNode("play");
+        spot.EnableRouter(spotEndpoint);
         spot.AddEntrySpot<TicTacToeEntrySpot>();
         spot.AddSpotFactory<TicTacToeGame>();
-    });
-});
+
+    }
+
+}
 
 public sealed class TicTacToeEntrySpot : IZLinkEntrySpot
 {

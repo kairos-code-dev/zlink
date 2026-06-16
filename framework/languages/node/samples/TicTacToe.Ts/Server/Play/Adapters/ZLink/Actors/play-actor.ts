@@ -1,7 +1,7 @@
 import type {
   ZLinkActor,
   ZLinkActorContext
-} from '../../../../../../../packages/framework/dist';
+} from '@zlink-systems/framework';
 import type { TicTacToeActor } from '../../../../../Shared/Contracts/messages';
 
 type PlayClient = {

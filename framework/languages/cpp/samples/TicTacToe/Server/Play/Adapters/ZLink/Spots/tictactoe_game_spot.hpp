@@ -52,7 +52,7 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
         game_state_notify_t state_notify{state.room_id, state.next_turn, state};
         publisher.publish_game_state (state_notify);
         send_to_other_actors (actor.actor_id, state_notify);
-        if (state.status == "Won" || state.status == "Draw") {
+        if (state.status == tictactoe_status_t::won || state.status == tictactoe_status_t::draw) {
             game_ended_notify_t ended_notify{state.room_id, state.winner, state.draw, state};
             publisher.publish_game_ended (ended_notify);
             send_to_other_actors (actor.actor_id, ended_notify);
@@ -66,7 +66,10 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
         actors[actor.actor_id] = const_cast<player_actor_t *> (&actor);
         const auto &state = snapshot ();
         player_joined_notify_t notify{
-          state.room_id, actor.actor_id, actor.actor_id == state.x_actor_id ? "X" : "O", state};
+          state.room_id,
+          actor.actor_id,
+          actor.actor_id == state.x_actor_id ? tictactoe_marks_t::x : tictactoe_marks_t::o,
+          state};
         publisher.publish_player_joined (notify);
         send_to_other_actors (actor.actor_id, notify);
     }
@@ -98,7 +101,9 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
 
     void leave_finished_actors (const tictactoe_state_t &state)
     {
-        if (cleanup_started || (state.status != "Won" && state.status != "Draw")) {
+        if (cleanup_started
+            || (state.status != tictactoe_status_t::won
+                && state.status != tictactoe_status_t::draw)) {
             return;
         }
         cleanup_started = true;

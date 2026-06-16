@@ -27,25 +27,27 @@ public sealed class RouteChannelTests
         var leftBuilder = Host.CreateApplicationBuilder();
         leftBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-            options.AddRouteMeshChannel("backend.discovery", routed =>
+            options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
             {
-                routed.Bind(leftEndpoint);
-                routed.ConfigureRouting(routing => routing.RoutingId = leftRid);
-            });
+                var routed = options.AddRouteMeshChannel("backend.discovery");
+                routed.EnableServer(leftEndpoint);
+                routed.ConfigureRouting().RoutingId = leftRid;
+
+            }
         });
 
         var rightBuilder = Host.CreateApplicationBuilder();
         rightBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-            options.AddRouteMeshChannel("backend.discovery", routed =>
+            options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
             {
-                routed.Bind(rightEndpoint);
-                routed.ConfigureRouting(routing => routing.RoutingId = rightRid);
+                var routed = options.AddRouteMeshChannel("backend.discovery");
+                routed.EnableServer(rightEndpoint);
+                routed.ConfigureRouting().RoutingId = rightRid;
                 routed.AddRequestHandler<SharedPacketRouteHandler, SharedPacketRequest, SharedPacketReply>(
                     "SharedPacket");
-            });
+
+            }
         });
 
         using var registryHost = registryBuilder.Build();
@@ -83,29 +85,29 @@ public sealed class RouteChannelTests
         var leftBuilder = Host.CreateApplicationBuilder();
         leftBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddRouteMeshChannel("backend", routed =>
             {
-                routed.Bind(leftEndpoint);
-                routed.ConfigureSocket(socket =>
-                    socket.SendTimeout = TimeSpan.FromSeconds(10));
-                routed.ConfigureRouting(routing => routing.RoutingId = leftRid);
-                routed.UseManualConnections(peers => peers.Connect(rightEndpoint));
-            });
+                var routed = options.AddRouteMeshChannel("backend");
+                routed.EnableServer(leftEndpoint);
+                routed.ConfigureSocket().SendTimeout = TimeSpan.FromSeconds(10);
+                routed.ConfigureRouting().RoutingId = leftRid;
+                routed.EnableClient(rightEndpoint);
+
+            }
         });
 
         var rightBuilder = Host.CreateApplicationBuilder();
         rightBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddRouteMeshChannel("backend", routed =>
             {
-                routed.Bind(rightEndpoint);
-                routed.ConfigureSocket(socket =>
-                    socket.SendTimeout = TimeSpan.FromSeconds(10));
-                routed.ConfigureRouting(routing => routing.RoutingId = rightRid);
-                routed.UseManualConnections(peers => peers.Connect(leftEndpoint));
+                var routed = options.AddRouteMeshChannel("backend");
+                routed.EnableServer(rightEndpoint);
+                routed.ConfigureSocket().SendTimeout = TimeSpan.FromSeconds(10);
+                routed.ConfigureRouting().RoutingId = rightRid;
+                routed.EnableClient(leftEndpoint);
                 routed.AddRequestHandler<SharedPacketRouteHandler, SharedPacketRequest, SharedPacketReply>(
                     "SharedPacket");
-            });
+
+            }
         });
 
         using var leftHost = leftBuilder.Build();
@@ -153,25 +155,27 @@ public sealed class RouteChannelTests
         var leftBuilder = Host.CreateApplicationBuilder();
         leftBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddRouteMeshChannel("backend.group", routed =>
             {
-                routed.Bind(leftEndpoint);
-                routed.ConfigureRouting(routing => routing.RoutingId = leftRid);
-                routed.UseManualConnections(peers => peers.Connect(rightEndpoint));
-            });
+                var routed = options.AddRouteMeshChannel("backend.group");
+                routed.EnableServer(leftEndpoint);
+                routed.ConfigureRouting().RoutingId = leftRid;
+                routed.EnableClient(rightEndpoint);
+
+            }
         });
 
         var rightBuilder = Host.CreateApplicationBuilder();
         rightBuilder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<RouteChannelTests>();
-            options.AddRouteMeshChannel("backend.group", routed =>
             {
-                routed.Bind(rightEndpoint);
-                routed.ConfigureRouting(routing => routing.RoutingId = rightRid);
-                routed.UseManualConnections(peers => peers.Connect(leftEndpoint));
+                var routed = options.AddRouteMeshChannel("backend.group");
+                routed.EnableServer(rightEndpoint);
+                routed.ConfigureRouting().RoutingId = rightRid;
+                routed.EnableClient(leftEndpoint);
                 routed.AddHandlerGroup("route-shared");
-            });
+
+            }
         });
 
         using var leftHost = leftBuilder.Build();

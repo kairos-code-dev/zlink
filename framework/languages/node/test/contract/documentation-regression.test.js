@@ -11,15 +11,15 @@ const guideFiles = [
   '01-overview.ko.md',
   '02-getting-started.ko.md',
   '03-concepts.ko.md',
-  '04-feature-map.ko.md',
-  '05-channel-messaging.ko.md',
-  '06-spot.ko.md',
-  '07-actor-session.ko.md',
-  '08-stream.ko.md',
-  '09-registry.ko.md',
-  '10-monitoring.ko.md',
+  '04-channel-messaging.ko.md',
+  '05-spot.ko.md',
+  '06-actor-session.ko.md',
+  '07-stream.ko.md',
+  '08-registry.ko.md',
+  '09-monitoring.ko.md',
+  '10-feature-map.ko.md',
   '11-interface-catalog.ko.md',
-  '12-cross-language.ko.md'
+  '12-grpc-alternative.ko.md'
 ];
 
 test('node guide exposes the 12 required guide chapters', () => {
@@ -126,6 +126,53 @@ test('node documentation keeps fanout and route client public surface aligned wi
     }
     if (/public client 로 노출하지 않는다|internal-only/.test(content)) {
       offenders.push(`${relative}: route client described as internal-only`);
+    }
+  }
+
+  assert.deepEqual(offenders.sort(), []);
+});
+
+test('node framework docs do not describe removed nested configuration callbacks', () => {
+  const checkedRoots = [
+    path.join(docRoot, 'guide'),
+    path.join(docRoot, 'spec'),
+    path.join(docRoot, 'internals')
+  ];
+  const offenders = [];
+  const forbidden = [
+    [/Add(ClientServerChannel|FanoutChannel|DealerMeshChannel|RouteMeshChannel|SpotNode|StreamNode)\([^`\n)]*,\s*[a-zA-Z_][^`\n)]*=>/, 'dotnet nested channel callback'],
+    [/Enable(Server|Client|Publisher|Subscriber)\([^`\n)]*=>/, 'dotnet nested capability callback'],
+    [/clientServerChannel\s*\([^`\n)]*,\s*\(/, 'old NestJS clientServerChannel callback'],
+    [/fanoutChannel\s*\([^`\n)]*,\s*\(/, 'old NestJS fanoutChannel callback'],
+    [/routerMesh\s*\([^`\n)]*,\s*\(/, 'old NestJS routerMesh callback'],
+    [/spotNode\s*\([^`\n)]*,\s*\(/, 'old NestJS spotNode callback'],
+    [/streamNode\s*\([^`\n)]*,\s*\(/, 'old NestJS streamNode callback'],
+    [/ZLinkModule\.forRoot\s*\(\s*\{/, 'old NestJS object module options'],
+    [/\bclientServerChannels\s*:\s*\{/, 'old NestJS clientServerChannels object option'],
+    [/\bclientServerChannels(?:\[[^\]]+\]|\.[A-Za-z0-9_-]+)/, 'old NestJS clientServerChannels object reference'],
+    [/\bfanoutChannels\s*:\s*\{/, 'old NestJS fanoutChannels object option'],
+    [/\bfanoutChannels(?:\[[^\]]+\]|\.[A-Za-z0-9_-]+)/, 'old NestJS fanoutChannels object reference'],
+    [/\bdealerMeshChannels\s*:\s*\{/, 'old NestJS dealerMeshChannels object option'],
+    [/\bdealerMeshChannels(?:\[[^\]]+\]|\.[A-Za-z0-9_-]+)/, 'old NestJS dealerMeshChannels object reference'],
+    [/\brouterMeshes\s*:\s*\{/, 'old NestJS routerMeshes object option'],
+    [/\brouterMeshes(?:\[[^\]]+\]|\.[A-Za-z0-9_-]+)/, 'old NestJS routerMeshes object reference'],
+    [/\bspotNodes(?:\s*:\s*\{|\s*:\s*\[|\[[^\]]+\]|\.[A-Za-z0-9_-]+)/, 'old NestJS spotNodes object option'],
+    [/\bspotMeshes(?:\s*:\s*\{|\[[^\]]+\])/, 'old NestJS spotMeshes object option'],
+    [/\bacceptedSpotRouteChannels(?:\s*:\s*\{|\[[^\]]+\])/, 'old NestJS acceptedSpotRouteChannels option'],
+    [/\bmanualConnections\s*:/, 'old NestJS manualConnections object option'],
+    [/\battachActorGateway\s*:/, 'old NestJS stream attachActorGateway object option'],
+    [/codecs\s*:\s*\[/, 'old codecs array option']
+  ];
+
+  for (const root of checkedRoots) {
+    for (const file of allMarkdownFiles(root)) {
+      const content = fs.readFileSync(file, 'utf8');
+      const relative = path.relative(workspaceRoot, file);
+      for (const [pattern, reason] of forbidden) {
+        if (pattern.test(content)) {
+          offenders.push(`${relative}: ${reason}`);
+        }
+      }
     }
   }
 

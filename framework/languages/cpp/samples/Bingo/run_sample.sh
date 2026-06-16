@@ -16,6 +16,11 @@ PLAY_BIN="$BIN_DIR/sample_cpp_framework_bingo_play"
 SESSION_BIN="$BIN_DIR/sample_cpp_framework_bingo_session"
 CLIENT_BIN="$BIN_DIR/sample_cpp_framework_bingo_client"
 CTEST_BIN="${CTEST_BIN:-ctest}"
+REGISTRY_PUB_ENDPOINT="tcp://127.0.0.1:47101"
+REGISTRY_ROUTER_ENDPOINT="tcp://127.0.0.1:47102"
+API_CHANNEL_ENDPOINT="tcp://127.0.0.1:47103"
+PLAY_CHANNEL_ENDPOINT="tcp://127.0.0.1:47104"
+SESSION_STREAM_ENDPOINT="tcp://127.0.0.1:47114"
 
 for binary in "$REGISTRY_BIN" "$API_BIN" "$PLAY_BIN" "$SESSION_BIN" "$CLIENT_BIN"; do
   if [[ ! -x "$binary" ]]; then
@@ -28,6 +33,37 @@ done
 "$CTEST_BIN" --test-dir "$BUILD_DIR" \
   -R 'test_cpp_framework_sample_parity|test_cpp_framework_spot_runtime|test_cpp_framework_ActorGateway_actor_session_relay|sample_smoke_sample_cpp_framework_bingo_(registry|api|play|session)' \
   --output-on-failure
+
+endpoint_host() {
+  local endpoint="$1"
+  endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#http://}"
+  echo "${endpoint%:*}"
+}
+
+endpoint_port() {
+  local endpoint="$1"
+  endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#http://}"
+  echo "${endpoint##*:}"
+}
+
+wait_port() {
+  local name="$1"
+  local endpoint="$2"
+  local host
+  local port
+  host="$(endpoint_host "$endpoint")"
+  port="$(endpoint_port "$endpoint")"
+  for _ in $(seq 1 100); do
+    if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  return 1
+}
 
 LOG_DIR="$(mktemp -d)"
 REGISTRY_PID=""
@@ -71,7 +107,11 @@ API_PID=$!
 PLAY_PID=$!
 "$SESSION_BIN" --sample.host.keepRunning true >"$LOG_DIR/session.log" 2>&1 &
 SESSION_PID=$!
-sleep 2
+wait_port registry-pub "$REGISTRY_PUB_ENDPOINT"
+wait_port registry-router "$REGISTRY_ROUTER_ENDPOINT"
+wait_port api-channel "$API_CHANNEL_ENDPOINT"
+wait_port play-channel "$PLAY_CHANNEL_ENDPOINT"
+wait_port session-stream "$SESSION_STREAM_ENDPOINT"
 
 "$CLIENT_BIN" >"$LOG_DIR/client.log" 2>&1 || {
   cat "$LOG_DIR/client.log" >&2

@@ -16,11 +16,43 @@ $PlayBin = Join-Path $BinDir "sample_cpp_framework_bingo_play.exe"
 $SessionBin = Join-Path $BinDir "sample_cpp_framework_bingo_session.exe"
 $ClientBin = Join-Path $BinDir "sample_cpp_framework_bingo_client.exe"
 $CTestBin = if ($env:CTEST_BIN) { $env:CTEST_BIN } else { "ctest" }
+$RegistryPubEndpoint = "tcp://127.0.0.1:47101"
+$RegistryRouterEndpoint = "tcp://127.0.0.1:47102"
+$ApiChannelEndpoint = "tcp://127.0.0.1:47103"
+$PlayChannelEndpoint = "tcp://127.0.0.1:47104"
+$SessionStreamEndpoint = "tcp://127.0.0.1:47114"
 
 foreach ($Binary in @($RegistryBin, $ApiBin, $PlayBin, $SessionBin, $ClientBin)) {
     if (-not (Test-Path $Binary)) {
         throw "Missing executable: $Binary. Build C++ samples first or set ZLINK_CPP_BUILD_DIR."
     }
+}
+
+function Get-EndpointParts([string]$Endpoint) {
+    $value = $Endpoint -replace '^tcp://', '' -replace '^http://', ''
+    $index = $value.LastIndexOf(':')
+    return @{ Host = $value.Substring(0, $index); Port = [int]$value.Substring($index + 1) }
+}
+
+function Wait-Port([string]$Name, [string]$Endpoint) {
+    $parts = Get-EndpointParts $Endpoint
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $client = [System.Net.Sockets.TcpClient]::new()
+        try {
+            $task = $client.ConnectAsync($parts.Host, $parts.Port)
+            if ($task.Wait(100)) {
+                return
+            }
+        }
+        catch {
+        }
+        finally {
+            $client.Dispose()
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Timed out waiting for $Name at $Endpoint"
 }
 
 & $CTestBin --test-dir $BuildDir `
@@ -35,7 +67,11 @@ try {
     $Processes += Start-Process -FilePath $ApiBin -ArgumentList "--sample.host.keepRunning", "true" -RedirectStandardOutput (Join-Path $LogDir "api.log") -RedirectStandardError (Join-Path $LogDir "api.err") -PassThru
     $Processes += Start-Process -FilePath $PlayBin -ArgumentList "--sample.host.keepRunning", "true" -RedirectStandardOutput (Join-Path $LogDir "play.log") -RedirectStandardError (Join-Path $LogDir "play.err") -PassThru
     $Processes += Start-Process -FilePath $SessionBin -ArgumentList "--sample.host.keepRunning", "true" -RedirectStandardOutput (Join-Path $LogDir "session.log") -RedirectStandardError (Join-Path $LogDir "session.err") -PassThru
-    Start-Sleep -Seconds 2
+    Wait-Port "registry-pub" $RegistryPubEndpoint
+    Wait-Port "registry-router" $RegistryRouterEndpoint
+    Wait-Port "api-channel" $ApiChannelEndpoint
+    Wait-Port "play-channel" $PlayChannelEndpoint
+    Wait-Port "session-stream" $SessionStreamEndpoint
 
     & $ClientBin *> (Join-Path $LogDir "client.log")
     if ($LASTEXITCODE -ne 0) {

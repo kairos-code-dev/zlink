@@ -184,18 +184,9 @@ copy_message_parts (const std::vector<zlink::message_t> &parts)
 int main ()
 {
     zlink::framework::zlink_builder_t zlink;
-    zlink.add_node ("outbound-node")
-      .channel ("profile",
-                [] (zlink::framework::channel_builder_t &channel) {
-                    channel.enable_client ([] (zlink::framework::capability_builder_t &client) {
-                        client.connect ("tcp://127.0.0.1:7101");
-                    });
-                })
-      .channel ("events", [] (zlink::framework::channel_builder_t &channel) {
-          channel.enable_publisher ([] (zlink::framework::capability_builder_t &publisher) {
-              publisher.bind ("tcp://127.0.0.1:7201");
-          });
-      });
+    zlink.add_node ("outbound-node");
+    zlink.channel ("profile").enable_client ().connect ("tcp://127.0.0.1:7101");
+    zlink.channel ("events").enable_publisher ().bind ("tcp://127.0.0.1:7201");
 
     const auto channels = zlink.channels ();
     if (channels.size () != 2) {
@@ -267,11 +258,8 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t full_queue;
-    full_queue.max_pending (0).channel (
-      "profile", [] (zlink::framework::channel_builder_t &channel) {
-          channel.enable_client (
-            [] (zlink::framework::capability_builder_t &client) { client.use_discovery (); });
-      });
+    full_queue.max_pending (0);
+    full_queue.channel ("profile").enable_client ().use_discovery ();
     auto queue_full_result =
       full_queue.message_bus ().request ("profile", request_t{5}).async<reply_t> ().result ();
     if (queue_full_result
@@ -283,11 +271,10 @@ int main ()
     bool mixed_connection_failed = false;
     try {
         zlink::framework::zlink_builder_t invalid;
-        invalid.channel ("bad", [] (zlink::framework::channel_builder_t &channel) {
-            channel.enable_client ([] (zlink::framework::capability_builder_t &client) {
-                client.connect ("tcp://127.0.0.1:7301").use_discovery ();
-            });
-        });
+        invalid.channel ("bad")
+          .enable_client ()
+          .connect ("tcp://127.0.0.1:7301")
+          .use_discovery ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
         mixed_connection_failed =
@@ -298,12 +285,9 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t outbound_only;
-    outbound_only.channel ("client-only", [] (zlink::framework::channel_builder_t &channel) {
-        channel.enable_client (
-          [] (zlink::framework::capability_builder_t &client) { client.use_discovery (); });
-        channel.enable_publisher (
-          [] (zlink::framework::capability_builder_t &publisher) { publisher.use_discovery (); });
-    });
+    auto outbound_only_channel = outbound_only.channel ("client-only");
+    outbound_only_channel.enable_client ().use_discovery ();
+    outbound_only_channel.enable_publisher ().use_discovery ();
     const auto outbound_channels = outbound_only.channels ();
     if (outbound_channels.size () != 1 || outbound_channels[0].server.enabled
         || !outbound_channels[0].client.enabled || !outbound_channels[0].publisher.enabled) {
@@ -311,14 +295,11 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t fanout;
-    fanout.channel ("broadcast", [] (zlink::framework::channel_builder_t &channel) {
-        channel.enable_publisher ([] (zlink::framework::capability_builder_t &publisher) {
-            publisher.bind ("tcp://127.0.0.1:7351");
-        });
-        channel.enable_subscriber ([] (zlink::framework::capability_builder_t &subscriber) {
-            subscriber.connect ("tcp://127.0.0.1:7351").connect ("tcp://127.0.0.1:7352");
-        });
-    });
+    auto fanout_channel = fanout.channel ("broadcast");
+    fanout_channel.enable_publisher ().bind ("tcp://127.0.0.1:7351");
+    fanout_channel.enable_subscriber ()
+      .connect ("tcp://127.0.0.1:7351")
+      .connect ("tcp://127.0.0.1:7352");
     auto fanout_manager = zlink::framework::detail::channel_runtime_manager_t::from (fanout);
     fanout_manager.initialize_publisher_channels ();
     fanout_manager.initialize_inbound_channels ();
@@ -330,11 +311,7 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t local_server;
-    local_server.channel ("local", [] (zlink::framework::channel_builder_t &channel) {
-        channel.enable_server ([] (zlink::framework::capability_builder_t &server) {
-            server.bind ("tcp://127.0.0.1:7401");
-        });
-    });
+    local_server.channel ("local").enable_server ().bind ("tcp://127.0.0.1:7401");
 
     zlink::framework::service_collection_t services;
     services.add_singleton<local_handler_t> ();
@@ -495,12 +472,7 @@ int main ()
 
     zlink::framework::zlink_builder_t native_bus_builder;
     const auto native_bus_endpoint = unique_tcp_endpoint ();
-    native_bus_builder.channel (
-      "native-bus", [native_bus_endpoint] (zlink::framework::channel_builder_t &channel) {
-          channel.enable_client ([native_bus_endpoint] (zlink::framework::capability_builder_t &client) {
-              client.connect (native_bus_endpoint);
-          });
-      });
+    native_bus_builder.channel ("native-bus").enable_client ().connect (native_bus_endpoint);
     zlink::framework::detail::channel_runtime_t::from (
       native_bus_builder.message_bus ())
       .bind_serializers (serializers);
@@ -543,14 +515,9 @@ int main ()
 
     zlink::framework::zlink_builder_t hosted_builder;
     const auto hosted_endpoint = unique_tcp_endpoint ();
-    hosted_builder.channel ("hosted", [hosted_endpoint] (zlink::framework::channel_builder_t &channel) {
-        channel.enable_server ([hosted_endpoint] (zlink::framework::capability_builder_t &server) {
-            server.bind (hosted_endpoint);
-        });
-        channel.enable_client ([hosted_endpoint] (zlink::framework::capability_builder_t &client) {
-            client.connect (hosted_endpoint);
-        });
-    });
+    auto hosted_channel = hosted_builder.channel ("hosted");
+    hosted_channel.enable_server ().bind (hosted_endpoint);
+    hosted_channel.enable_client ().connect (hosted_endpoint);
     zlink::framework::detail::channel_runtime_t::from (hosted_builder.message_bus ())
       .bind_serializers (serializers);
     zlink::framework::runtime::channel_host_service_t hosted_service (
@@ -999,17 +966,14 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t public_route_builder;
-    public_route_builder.route_channel (
-      "public.route", [] (zlink::framework::route_channel_builder_t &route) {
-          route.bind ("tcp://public-bind:7700")
-            .connect ("tcp://public-peer:7701")
-            .enable_spot_route_egress ("play.route")
-            .add_handler_group ("public")
-            .add_request_handler<local_handler_t, request_t, reply_t> (
-              "request", &local_handler_t::handle_route_request)
-            .add_send_handler<local_handler_t, event_t> ("event",
-                                                         &local_handler_t::handle_route_send);
-      });
+    public_route_builder.route_channel ("public.route")
+      .bind ("tcp://public-bind:7700")
+      .connect ("tcp://public-peer:7701")
+      .enable_spot_route_egress ("play.route")
+      .add_handler_group ("public")
+      .add_request_handler<local_handler_t, request_t, reply_t> (
+        "request", &local_handler_t::handle_route_request)
+      .add_send_handler<local_handler_t, event_t> ("event", &local_handler_t::handle_route_send);
     if (public_route_builder.route_channels ().size () != 1
         || public_route_builder.route_channels ()[0] != "public.route") {
         return 56;

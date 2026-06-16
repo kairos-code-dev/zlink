@@ -19,6 +19,7 @@ import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
+import systems.zlink.framework.handlers.ZLinkSpotTimer;
 import systems.zlink.framework.handlers.ZLinkStreamPacket;
 import systems.zlink.framework.handlers.ZLinkStreamRaw;
 import systems.zlink.contracts.messaging.Message;
@@ -47,6 +48,7 @@ final class HandlerContractTest {
         assertAnnotationMethods(ZLinkSpotActorRequest.class, "packetName");
         assertAnnotationMethods(ZLinkSpotActorSend.class, "packetName");
         assertAnnotationMethods(ZLinkSpotSubscription.class, "spotNodeName", "topic");
+        assertAnnotationMethods(ZLinkSpotTimer.class, "name", "periodMillis");
         assertAnnotationMethods(ZLinkStreamPacket.class);
         assertAnnotationMethods(ZLinkStreamRaw.class);
     }
@@ -74,6 +76,8 @@ final class HandlerContractTest {
         ZLinkSpotHandlerRegistry.class.getMethod("addPacket", Class.class);
         ZLinkSpotHandlerRegistry.class.getMethod("addSubscribe", String.class, Class.class);
         ZLinkSpotHandlerRegistry.class.getMethod("addActorPacket", Class.class);
+        ZLinkSpotHandlerRegistry.class.getMethod("addActorSend", Class.class);
+        ZLinkSpotHandlerRegistry.class.getMethod("addActorRequest", Class.class);
         assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addActor" + "Join"));
         assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addPostActor" + "Joined"));
         assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addActor" + "Left"));

@@ -28,32 +28,29 @@ internal static class Program
             options.DefaultTimeout = SampleNames.RequestTimeout;
             options.Codecs.AddJson();
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
-            options.AddFanoutChannel(SampleNames.FanoutChannel, channel =>
+            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
-                channel.EnableSubscriber(subscriber =>
-                {
-                    subscriber.UseManualConnections(connections =>
-                    {
-                        connections.Connect(topology.FanoutPublisherAEndpoint);
-                        connections.Connect(topology.FanoutPublisherBEndpoint);
-                    });
-                });
+                var channel = options.AddFanoutChannel(SampleNames.FanoutChannel);
+                channel.EnableSubscriber(topology.FanoutPublisherAEndpoint);
+                channel.EnableSubscriber(topology.FanoutPublisherBEndpoint);
                 channel.AddHandlerGroup("gamequest-gameplay");
-            });
-            options.AddSpotMesh(SampleNames.QuestSpotDiscovery, mesh =>
+
+            }
             {
-                mesh.AddNode(SampleNames.QuestSpotNode, spot =>
+                var mesh = options.AddSpotMesh(SampleNames.QuestSpotDiscovery);
                 {
-                    spot.EnableRouter(router =>
+                    var spot = mesh.AddNode(SampleNames.QuestSpotNode);
                     {
-                        router.BindRouter(instance.SpotRouterEndpoint);
-                        router.SetRoutingId(instance.SpotRid);
-                    });
-                    spot.EnablePubSub(pubsub => pubsub.BindPubSub(instance.SpotEndpoint));
+                        var router = spot.EnableRouter(instance.SpotRouterEndpoint);
+                        router.SetRouterRoutingId(instance.SpotRid);
+
+                    }
+                    spot.EnablePubSub(instance.SpotEndpoint);
                     spot.AddSpotFactory<PlayerQuestSpot>();
-                });
-            });
+
+                }
+
+            }
         });
 
         var app = builder.Build();

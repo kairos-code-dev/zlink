@@ -267,9 +267,7 @@ class discovery_options_builder_t
         _options->registry_discovery_endpoints.push_back (registry_router_endpoint);
         _options->add_zlink_action ([registry_router_endpoint = std::move (
                                        registry_router_endpoint)] (zlink_builder_t &zlink) mutable {
-            zlink.discovery ([&] (discovery_builder_t &discovery) {
-                discovery.connect_registry (std::move (registry_router_endpoint));
-            });
+            zlink.discovery ().connect_registry (std::move (registry_router_endpoint));
         });
         return *this;
     }
@@ -368,26 +366,20 @@ class client_server_channel_builder_t
           "client_server_channel:" + channel_name,
           [channel_name, server_endpoint, client_enabled, client_endpoints,
            client_uses_discovery] (zlink_builder_t &zlink) {
-              zlink.channel (channel_name, [server_endpoint, client_enabled, client_endpoints,
-                                            client_uses_discovery] (channel_builder_t &channel) {
-                  if (!server_endpoint.empty ()) {
-                      channel.enable_server ([server_endpoint] (capability_builder_t &server) {
-                          server.bind (server_endpoint);
-                      });
+              auto channel = zlink.channel (channel_name);
+              if (!server_endpoint.empty ()) {
+                  channel.enable_server ().bind (server_endpoint);
+              }
+              if (client_enabled) {
+                  auto client = channel.enable_client ();
+                  if (client_uses_discovery) {
+                      client.use_discovery ();
+                  } else {
+                      for (const auto &endpoint : client_endpoints) {
+                          client.connect (endpoint);
+                      }
                   }
-                  if (client_enabled) {
-                      channel.enable_client (
-                        [client_endpoints, client_uses_discovery] (capability_builder_t &client) {
-                            if (client_uses_discovery) {
-                                client.use_discovery ();
-                            } else {
-                                for (const auto &endpoint : client_endpoints) {
-                                    client.connect (endpoint);
-                                }
-                            }
-                        });
-                  }
-              });
+              }
           });
     }
 
@@ -478,28 +470,20 @@ class fanout_channel_builder_t
           "fanout_channel:" + channel_name,
           [channel_name, publisher_endpoint, subscriber_enabled, subscriber_endpoints,
            subscriber_uses_discovery] (zlink_builder_t &zlink) {
-              zlink.channel (channel_name, [publisher_endpoint, subscriber_enabled,
-                                            subscriber_endpoints, subscriber_uses_discovery] (
-                                             channel_builder_t &channel) {
-                  if (!publisher_endpoint.empty ()) {
-                      channel.enable_publisher (
-                        [publisher_endpoint] (capability_builder_t &publisher) {
-                            publisher.bind (publisher_endpoint);
-                        });
+              auto channel = zlink.channel (channel_name);
+              if (!publisher_endpoint.empty ()) {
+                  channel.enable_publisher ().bind (publisher_endpoint);
+              }
+              if (subscriber_enabled) {
+                  auto subscriber = channel.enable_subscriber ();
+                  if (subscriber_uses_discovery) {
+                      subscriber.use_discovery ();
+                  } else {
+                      for (const auto &endpoint : subscriber_endpoints) {
+                          subscriber.connect (endpoint);
+                      }
                   }
-                  if (subscriber_enabled) {
-                      channel.enable_subscriber ([subscriber_endpoints, subscriber_uses_discovery] (
-                                                   capability_builder_t &subscriber) {
-                          if (subscriber_uses_discovery) {
-                              subscriber.use_discovery ();
-                          } else {
-                              for (const auto &endpoint : subscriber_endpoints) {
-                                  subscriber.connect (endpoint);
-                              }
-                          }
-                      });
-                  }
-              });
+              }
           });
     }
 
@@ -528,15 +512,6 @@ class dealer_mesh_channel_builder_t
         apply ();
     }
 
-    dealer_mesh_channel_builder_t &bind (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "dealer mesh bind endpoint is required");
-        _bind_endpoint = std::move (endpoint);
-        _options->dealer_mesh_channels_with_peer_path.insert (_channel_name);
-        apply ();
-        return *this;
-    }
-
     dealer_mesh_channel_builder_t &enable_server (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "dealer mesh server endpoint is required");
@@ -558,16 +533,6 @@ class dealer_mesh_channel_builder_t
     dealer_mesh_channel_builder_t &enable_client (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "dealer mesh client endpoint is required");
-        _client_uses_discovery = false;
-        _manual_connections.push_back (std::move (endpoint));
-        _options->dealer_mesh_channels_with_peer_path.insert (_channel_name);
-        apply ();
-        return *this;
-    }
-
-    dealer_mesh_channel_builder_t &connect (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "dealer mesh connect endpoint is required");
         _client_uses_discovery = false;
         _manual_connections.push_back (std::move (endpoint));
         _options->dealer_mesh_channels_with_peer_path.insert (_channel_name);
@@ -602,23 +567,16 @@ class dealer_mesh_channel_builder_t
           "dealer_mesh_channel:" + channel_name,
           [channel_name, bind_endpoint, manual_connections,
            client_uses_discovery] (zlink_builder_t &zlink) {
-              zlink.channel (
-                channel_name, [bind_endpoint, manual_connections,
-                               client_uses_discovery] (channel_builder_t &channel) {
-                    channel.enable_client (
-                      [bind_endpoint, manual_connections,
-                       client_uses_discovery] (capability_builder_t &client) {
-                          if (!bind_endpoint.empty ()) {
-                              client.bind (bind_endpoint);
-                          }
-                          if (client_uses_discovery) {
-                              client.use_discovery ();
-                          }
-                          for (const auto &endpoint : manual_connections) {
-                              client.connect (endpoint);
-                          }
-                      });
-                });
+              auto client = zlink.channel (channel_name).enable_client ();
+              if (!bind_endpoint.empty ()) {
+                  client.bind (bind_endpoint);
+              }
+              if (client_uses_discovery) {
+                  client.use_discovery ();
+              }
+              for (const auto &endpoint : manual_connections) {
+                  client.connect (endpoint);
+              }
           });
     }
 
@@ -646,15 +604,6 @@ class route_mesh_channel_builder_t
         apply ();
     }
 
-    route_mesh_channel_builder_t &bind (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "route mesh bind endpoint is required");
-        _bind_endpoint = std::move (endpoint);
-        _options->route_mesh_channels_with_bind.insert (_channel_name);
-        apply ();
-        return *this;
-    }
-
     route_mesh_channel_builder_t &enable_server (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "route mesh server endpoint is required");
@@ -680,14 +629,6 @@ class route_mesh_channel_builder_t
     route_mesh_channel_builder_t &enable_client (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "route mesh client endpoint is required");
-        _manual_connections.push_back (std::move (endpoint));
-        apply ();
-        return *this;
-    }
-
-    route_mesh_channel_builder_t &connect (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "route mesh connect endpoint is required");
         _manual_connections.push_back (std::move (endpoint));
         apply ();
         return *this;
@@ -729,25 +670,22 @@ class route_mesh_channel_builder_t
           "route_mesh_channel:" + channel_name,
           [channel_name, bind_endpoint, routing_id, manual_connections, route_handler_groups,
            spot_route_egress_target] (zlink_builder_t &zlink) {
-              zlink.route_channel (
-                channel_name, [bind_endpoint, routing_id, manual_connections, route_handler_groups,
-                               spot_route_egress_target] (route_channel_builder_t &channel) {
-                    if (!bind_endpoint.empty ()) {
-                        channel.bind (bind_endpoint);
-                    }
-                    if (routing_id) {
-                        channel.set_routing_id (*routing_id);
-                    }
-                    for (const auto &endpoint : manual_connections) {
-                        channel.connect (endpoint);
-                    }
-                    for (const auto &group : route_handler_groups) {
-                        channel.add_handler_group (group);
-                    }
-                    if (!spot_route_egress_target.empty ()) {
-                        channel.enable_spot_route_egress (spot_route_egress_target);
-                    }
-                });
+              auto channel = zlink.route_channel (channel_name);
+              if (!bind_endpoint.empty ()) {
+                  channel.bind (bind_endpoint);
+              }
+              if (routing_id) {
+                  channel.set_routing_id (*routing_id);
+              }
+              for (const auto &endpoint : manual_connections) {
+                  channel.connect (endpoint);
+              }
+              for (const auto &group : route_handler_groups) {
+                  channel.add_handler_group (group);
+              }
+              if (!spot_route_egress_target.empty ()) {
+                  channel.enable_spot_route_egress (spot_route_egress_target);
+              }
           });
     }
 
@@ -916,20 +854,10 @@ class spot_node_options_builder_t
         return *this;
     }
 
-    spot_node_options_builder_t &
-    enable_router (std::string endpoint,
-                   std::function<void (spot_router_capability_builder_t &)> configure)
+    spot_node_options_builder_t &connect_router (std::string endpoint)
     {
-        detail::require_non_blank (endpoint, "SPOT router endpoint is required");
-        _router_endpoint = std::move (endpoint);
-        _router_routing_id.reset ();
-        _router_manual_connections.clear ();
-        spot_router_capability_builder_t builder (_router_routing_id, _router_manual_connections);
-        if (configure) {
-            configure (builder);
-        }
-        _options->spot_nodes_with_router.insert (_spot_node_name);
-        _options->spot_nodes_with_runtime_capability.insert (_spot_node_name);
+        detail::require_non_blank (endpoint, "SPOT router manual endpoint is required");
+        _router_manual_connections.push_back (std::move (endpoint));
         apply ();
         return *this;
     }
@@ -946,20 +874,10 @@ class spot_node_options_builder_t
         return *this;
     }
 
-    spot_node_options_builder_t &
-    enable_pub_sub (std::string endpoint,
-                    std::function<void (spot_pub_sub_capability_builder_t &)> configure)
+    spot_node_options_builder_t &connect_pub_sub (std::string endpoint)
     {
-        detail::require_non_blank (endpoint, "SPOT pub/sub endpoint is required");
-        _pub_endpoint = std::move (endpoint);
-        _pub_routing_id.reset ();
-        _pub_sub_manual_connections.clear ();
-        spot_pub_sub_capability_builder_t builder (_pub_routing_id, _pub_sub_manual_connections);
-        if (configure) {
-            configure (builder);
-        }
-        _options->spot_nodes_with_pub_sub.insert (_spot_node_name);
-        _options->spot_nodes_with_runtime_capability.insert (_spot_node_name);
+        detail::require_non_blank (endpoint, "SPOT pub/sub manual endpoint is required");
+        _pub_sub_manual_connections.push_back (std::move (endpoint));
         apply ();
         return *this;
     }
@@ -1005,20 +923,9 @@ class spot_node_options_builder_t
     spot_node_options_builder_t &accept_routes_from_channel (std::string route_channel_name,
                                                              std::string endpoint)
     {
-        return accept_routes_from_channel (
-          std::move (route_channel_name),
-          [endpoint = std::move (endpoint)] (
-            accepted_spot_route_channel_builder_t &routes) mutable {
-              routes.connect (std::move (endpoint));
-          });
-    }
-
-    spot_node_options_builder_t &accept_routes_from_channel (
-      std::string route_channel_name,
-      std::function<void (accepted_spot_route_channel_builder_t &)> configure)
-    {
         detail::require_non_blank (route_channel_name,
                                    "accepted SPOT route channel name is required");
+        detail::require_non_blank (endpoint, "accepted SPOT route manual endpoint is required");
         const auto channel_name = route_channel_name;
         auto &accepted = _options->accepted_spot_route_channels_by_node[_spot_node_name];
         if (!accepted.insert (channel_name).second) {
@@ -1028,10 +935,7 @@ class spot_node_options_builder_t
         }
         auto &manual_connections =
           _options->accepted_spot_route_manual_connections_by_node[_spot_node_name][channel_name];
-        accepted_spot_route_channel_builder_t builder (manual_connections);
-        if (configure) {
-            configure (builder);
-        }
+        manual_connections.push_back (std::move (endpoint));
         _options->accepted_spot_route_channels.insert (channel_name);
         _accepted_route_channels.push_back (std::move (route_channel_name));
         apply ();
@@ -1049,20 +953,17 @@ class spot_node_options_builder_t
     }
 
     spot_node_options_builder_t &
-    attach_channel_client (std::string channel_name,
-                           std::function<void (attached_channel_client_builder_t &)> configure)
+    attach_channel_client (std::string channel_name, std::string endpoint)
     {
         detail::require_non_blank (channel_name,
                                    "attached client/server channel client name is required");
+        detail::require_non_blank (endpoint, "attached channel client manual endpoint is required");
         const auto channel_key = channel_name;
         _options->attached_channel_clients_by_node[_spot_node_name].insert (channel_key);
         auto &manual_connections =
           _options
             ->attached_channel_client_manual_connections_by_node[_spot_node_name][channel_key];
-        attached_channel_client_builder_t builder (manual_connections);
-        if (configure) {
-            configure (builder);
-        }
+        manual_connections.push_back (std::move (endpoint));
         apply ();
         return *this;
     }
@@ -1077,19 +978,16 @@ class spot_node_options_builder_t
     }
 
     spot_node_options_builder_t &
-    attach_publisher (std::string channel_name,
-                      std::function<void (attached_publisher_builder_t &)> configure)
+    attach_publisher (std::string channel_name, std::string endpoint)
     {
         detail::require_non_blank (channel_name,
                                    "attached SPOT publisher channel name is required");
+        detail::require_non_blank (endpoint, "attached SPOT publisher manual endpoint is required");
         const auto channel_key = channel_name;
         _options->attached_publishers_by_node[_spot_node_name].insert (channel_key);
         auto &manual_connections =
           _options->attached_publisher_manual_connections_by_node[_spot_node_name][channel_key];
-        attached_publisher_builder_t builder (manual_connections);
-        if (configure) {
-            configure (builder);
-        }
+        manual_connections.push_back (std::move (endpoint));
         apply ();
         return *this;
     }
@@ -1247,7 +1145,8 @@ class spot_node_options_builder_t
             if (options->active_zlink == nullptr) {
                 return;
             }
-            options->active_zlink->add_spot_node (spot_node_name, configure);
+            auto spot_node = options->active_zlink->add_spot_node (spot_node_name);
+            configure (spot_node);
         };
     }
 
@@ -1365,17 +1264,16 @@ class stream_node_options_builder_t
         _options->set_zlink_action (
           "stream_node:" + stream_name,
           [stream_name, endpoint, session_name, actor_gateway_spot_node] (zlink_builder_t &zlink) {
-              zlink.stream (stream_name, [=] (stream_builder_t &stream) {
-                  if (!endpoint.empty ()) {
-                      stream.bind (endpoint);
-                  }
-                  if (!session_name.empty ()) {
-                      stream.register_session (session_name);
-                  }
-                  if (!actor_gateway_spot_node.empty ()) {
-                      stream.attach_actor_gateway (actor_gateway_spot_node);
-                  }
-              });
+              auto stream = zlink.stream (stream_name);
+              if (!endpoint.empty ()) {
+                  stream.bind (endpoint);
+              }
+              if (!session_name.empty ()) {
+                  stream.register_session (session_name);
+              }
+              if (!actor_gateway_spot_node.empty ()) {
+                  stream.attach_actor_gateway (actor_gateway_spot_node);
+              }
           });
     }
 
@@ -1427,14 +1325,9 @@ class zlink_framework_options_t
 
     metadata_policy_builder_t metadata () { return metadata_policy_builder_t (_options); }
 
-    zlink_framework_options_t &
-    configure_dispatch (std::function<void (dispatch_options_t &)> configure)
+    dispatch_options_t &configure_dispatch ()
     {
-        if (configure) {
-            configure (_options->dispatch);
-        }
-        detail::validate_dispatch_options (_options->dispatch);
-        return *this;
+        return _options->dispatch;
     }
 
     dispatch_options_t dispatch_options () const { return _options->dispatch; }
@@ -1451,9 +1344,8 @@ class zlink_framework_options_t
         _options->add_zlink_action (
           [pub_endpoint = std::move (pub_endpoint),
            router_endpoint = std::move (router_endpoint)] (zlink_builder_t &zlink) mutable {
-              zlink.enable_registry ([&] (registry_builder_t &registry) {
-                  registry.bind (std::move (pub_endpoint), std::move (router_endpoint));
-              });
+              zlink.enable_registry ().bind (std::move (pub_endpoint),
+                                             std::move (router_endpoint));
           });
         return *this;
     }

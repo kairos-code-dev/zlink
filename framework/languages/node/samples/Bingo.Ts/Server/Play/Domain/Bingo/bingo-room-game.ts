@@ -1,5 +1,5 @@
-const { BingoGame } = require('./bingo-game');
-const { BingoRoomStatus } = require('./bingo-room-models');
+import { BingoGame } from './bingo-game';
+import { BingoRoomStatus } from '../../../../Shared/Contracts/messages';
 import type { BingoGame as BingoGameType } from './bingo-game';
 import type { BingoCard } from './bingo-card';
 
@@ -22,7 +22,7 @@ type BingoPlayerSeat = {
 
 type BingoRoomSnapshot = {
   roomId: string;
-  status: string;
+  status: BingoRoomStatus;
   hostActorId: string | null;
   canStart: boolean;
   drawSeq: number;
@@ -45,7 +45,7 @@ class BingoRoomGame {
   readonly players: BingoPlayerSeat[];
   private readonly settings: BingoRoomSettings;
   private readonly game: BingoGameType;
-  private status: string;
+  private status: BingoRoomStatus;
 
   constructor(roomId: string, settings: BingoRoomSettings) {
     this.roomId = roomId;
@@ -53,7 +53,7 @@ class BingoRoomGame {
       requiredPlayers: settings.requiredPlayers,
       drawDeck: [...settings.drawDeck]
     };
-    this.status = BingoRoomStatus.waitingForPlayers;
+    this.status = BingoRoomStatus.WaitingForPlayers;
     this.players = [];
     this.game = new BingoGame(this.settings.drawDeck);
   }
@@ -63,7 +63,7 @@ class BingoRoomGame {
     if (existing !== undefined) {
       return { joined: false, player: existing, started: false };
     }
-    if (this.status !== BingoRoomStatus.waitingForPlayers || this.players.length >= this.settings.requiredPlayers) {
+    if (this.status !== BingoRoomStatus.WaitingForPlayers || this.players.length >= this.settings.requiredPlayers) {
       throw new Error(`Room ${this.roomId} cannot accept more players.`);
     }
     const player = {
@@ -75,14 +75,14 @@ class BingoRoomGame {
     this.players.push(player);
     let started = false;
     if (this.players.length === this.settings.requiredPlayers) {
-      this.status = BingoRoomStatus.running;
+      this.status = BingoRoomStatus.Running;
       started = true;
     }
     return { joined: true, player, started };
   }
 
   submitCard(actorId: string, cardNumbers: number[]): void {
-    if (this.status !== BingoRoomStatus.running) {
+    if (this.status !== BingoRoomStatus.Running) {
       throw new Error(`Room ${this.roomId} is not running.`);
     }
     const player = this.requirePlayer(actorId);
@@ -90,7 +90,7 @@ class BingoRoomGame {
   }
 
   canDraw(): boolean {
-    return this.status === BingoRoomStatus.running
+    return this.status === BingoRoomStatus.Running
       && this.game.canDraw(this.players.map((player) => ({ actorId: player.actor.actorId, card: player.card })), this.settings.requiredPlayers);
   }
 
@@ -100,7 +100,7 @@ class BingoRoomGame {
     }
     const drawn = this.game.drawNext(this.players.map((player) => ({ actorId: player.actor.actorId, card: player.card })));
     if (drawn !== null && drawn.finished) {
-      this.status = BingoRoomStatus.finished;
+      this.status = BingoRoomStatus.Finished;
     }
     return drawn;
   }

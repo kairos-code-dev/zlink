@@ -22,8 +22,8 @@ int main (int argc, char **argv)
       connector_options);
     auto core_client2 = zlink::stream_connector::connector_factory_t::create (
       connector_options);
-    register_bingo_client_codecs (core_client1);
-    register_bingo_client_codecs (core_client2);
+    core_client1.codecs ().add_protobuf ();
+    core_client2.codecs ().add_protobuf ();
 
     auto client1 = zlink::stream_e2e_client::use (core_client1);
     auto client2 = zlink::stream_e2e_client::use (core_client2);

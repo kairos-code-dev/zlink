@@ -22,10 +22,9 @@ int main ()
           ++dead_letter_count;
           last_dead_letter_key = event.idempotency_key;
       })
-      .channel ("profile", [] (zlink::framework::channel_builder_t &channel) {
-          channel.enable_client (
-            [] (zlink::framework::capability_builder_t &client) { client.use_discovery (); });
-      });
+      .channel ("profile")
+      .enable_client ()
+      .use_discovery ();
 
     auto bus = zlink.message_bus ();
     auto runtime = zlink::framework::detail::channel_runtime_t::from (bus);
@@ -76,10 +75,7 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t shutdown_builder;
-    shutdown_builder.channel ("profile", [] (zlink::framework::channel_builder_t &channel) {
-        channel.enable_client (
-          [] (zlink::framework::capability_builder_t &client) { client.use_discovery (); });
-    });
+    shutdown_builder.channel ("profile").enable_client ().use_discovery ();
     auto shutdown_runtime =
       zlink::framework::detail::channel_runtime_t::from (shutdown_builder.message_bus ());
     auto shutdown_pending = shutdown_runtime.queue_pending_send ("profile", "shutdown-key");
@@ -97,10 +93,7 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t close_builder;
-    close_builder.channel ("profile", [] (zlink::framework::channel_builder_t &channel) {
-        channel.enable_client (
-          [] (zlink::framework::capability_builder_t &client) { client.use_discovery (); });
-    });
+    close_builder.channel ("profile").enable_client ().use_discovery ();
     auto close_runtime =
       zlink::framework::detail::channel_runtime_t::from (close_builder.message_bus ());
     close_runtime.close ();

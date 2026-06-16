@@ -1,13 +1,9 @@
-const { Inject, Injectable } = require('@nestjs/common');
-const { ZLINK_CHANNEL_CLIENT } = require('../../../../../../../packages/nestjs/dist');
-const { SampleNames, SampleTimings } = require('../../../Configuration/sample-names');
-const {
-  PacketNames,
-  authenticateReq,
-  authenticateSessionRes,
-  ensurePlayerActorReq
-} = require('../../../../Shared/Contracts/messages');
-import type { ZLinkChannelClient } from '../../../../../../packages/framework/dist';
+import { Inject, Injectable } from '@nestjs/common';
+import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { SampleNames } from '../../../Configuration/sample-names';
+import { retry } from '../../../runtime-support';
+import { authenticatePlayerReq, authenticateSessionRes, ensurePlayerActorReq } from '../../../../Shared/Contracts/messages';
+import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import type {
   AuthenticatePlayerRes,
   AuthenticateReq,
@@ -28,21 +24,17 @@ class SessionAuthenticator {
   constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly zlinkClient: ZLinkChannelClient) {}
 
   async handle(request: AuthenticateReq, context: AuthenticateSessionContext): Promise<AuthenticateSessionRes> {
-    const authenticated = await this.zlinkClient
-      .requestToChannel(SampleNames.apiChannel, authenticateReq(request.accessToken))
-      .packetName(PacketNames.authenticatePlayerReq)
-      .timeout(SampleTimings.requestTimeout)
-      .submit<AuthenticatePlayerRes>();
+    const authenticated = await retry(() => this.zlinkClient
+        .requestToChannel(SampleNames.apiChannel, authenticatePlayerReq(request.accessToken))
+        .submit<AuthenticatePlayerRes>(), { delayMs: 25, maxAttempts: 200 });
 
     if (!authenticated.accepted || !authenticated.actorId || !authenticated.displayName) {
       throw new Error(authenticated.reason ?? 'Player authentication failed.');
     }
 
-    const ensured = await this.zlinkClient
-      .requestToChannel(SampleNames.playChannel, ensurePlayerActorReq(authenticated.actorId, authenticated.displayName))
-      .packetName(PacketNames.ensurePlayerActorReq)
-      .timeout(SampleTimings.requestTimeout)
-      .submit<EnsurePlayerActorRes>();
+    const ensured = await retry(() => this.zlinkClient
+        .requestToChannel(SampleNames.playChannel, ensurePlayerActorReq(authenticated.actorId, authenticated.displayName))
+        .submit<EnsurePlayerActorRes>(), { delayMs: 25, maxAttempts: 200 });
 
     await context.actors.bind(ensured.actor);
     context.actorId = ensured.actorId;

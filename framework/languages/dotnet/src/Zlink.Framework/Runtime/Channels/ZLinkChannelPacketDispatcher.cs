@@ -171,7 +171,8 @@ internal sealed class ZLinkChannelPacketDispatcher(
                     received,
                     replyHeader,
                     reply,
-                    replyType),
+                    replyType,
+                    registration.Codecs),
                 errorHeader => ZLinkChannelReplyWriter.ReplyRequest(
                     router,
                     received,
@@ -229,7 +230,8 @@ internal sealed class ZLinkChannelPacketDispatcher(
                     received,
                     replyHeader,
                     reply,
-                    replyType),
+                    replyType,
+                    registration.Codecs),
                 errorHeader => ZLinkChannelReplyWriter.ReplyDealerRequest(
                     received,
                     errorHeader,

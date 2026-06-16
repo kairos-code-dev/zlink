@@ -1104,7 +1104,7 @@ runtime 구현을 둘 수 있는 library target이어야 한다. public header�
 - `logging_builder_t::use_console`, `set_level` 구현을
   `framework/src/runtime/diagnostics/logging.cpp`로 옮겼다.
 - `app_t::create`, `advanced().services`, `advanced().handlers`, `config`, `logging`,
-  `advanced().use_zlink`, `run`, `stop` 구현을
+  `advanced().zlink`, `run`, `stop` 구현을
   `framework/src/runtime/host/app.cpp`로 옮겼다.
 - `test_cpp_framework_app_host` unit test를 추가해 `run()` exit code, JSON/env/CLI가 같은
   configuration model에 합쳐지는지, logging facade가 외부 backend 타입 없이 동작하는지
@@ -3129,16 +3129,15 @@ typed payload만 받고, envelope encode와 route runtime lookup은 `.cpp` 구�
 
 ### 적용한 리팩토링
 
-- public `route_client_t`, `route_send_call_t`, `route_request_call_t`,
-  `typed_route_request_call_t<TReply>`를 추가했다.
+- public `route_client_t`, `route_send_call_t`, `route_request_call_t`를 추가했다.
 - `zlink_builder_t::route_client(serializer_registry_t&)`가 route channel registration을
   초기화하고 public client를 반환하도록 연결했다.
 - route send call은 `.packet_name().submit()` 시점에 command envelope를 만들고
   `route_channel_runtime_t::submit_send_parts`로 내려간다.
 - route request call은 `.packet_name().timeout().submit()` 시점에 request envelope와
   deadline을 만들고 request sequence를 등록한다.
-- typed route request call은 backend seam에서 받은 reply envelope body를 serializer로
-  `TReply`로 복원한다.
+- route request call의 `async<TReply>()`는 backend seam에서 받은 reply envelope body를
+  serializer로 `TReply`로 복원한다.
 - `test_cpp_framework_channel_messaging`이 public route client로 send/request를 호출한 뒤
   outbound packet, target node routing id, envelope kind/name/deadline, typed reply
   deserialization을 검증한다.
@@ -3181,8 +3180,8 @@ typed route request는 reply envelope body를 `TReply`로 복원하는 역할만
 ### 적용한 리팩토링
 
 - `route_channel_runtime_t`에 request backend seam과 `request_reply_parts`를 추가했다.
-- `route_client_t::request<TRequest, TReply>`와 `typed_route_request_call_t<TReply>`를
-  추가해 `.packet_name().timeout().submit()`이 `task_t<TReply>`를 반환하게 했다.
+- `route_client_t::request(...)`에 typed terminator를 추가해
+  `.packet_name().timeout().async<TReply>()`가 `task_t<TReply>`를 반환하게 했다.
 - backend가 없을 때는 timeout 성격의 실패로 반환해 미완성 backend를 성공처럼 숨기지 않는다.
 - `test_cpp_framework_channel_messaging`이 backend seam에서 reply envelope를 만들고 public
   typed route request가 `reply_t`로 복원하는지 검증한다.
@@ -4428,7 +4427,8 @@ reflection이 없다는 차이는 `AddHandlersFromAssemblyOf(...)`를
 - Bingo와 TicTacToe의 Registry, API, Play, Session role factory는 모두
   `zlink_framework_options_t` 기반 options builder를 사용한다. 샘플 `main.cpp`는 topology 생성과
   `run(...)`만 수행한다.
-- 샘플에서 낮은 수준 `use_zlink`, `channel`, `enable_server`, `enable_client`, handler용 DI
+- 샘플에서 낮은 수준 `use_zlink`, `advanced().zlink`, `channel`, `enable_server`,
+  `enable_client`, handler용 DI
   factory, serializer registry 직접 설정이 다시 나타나지 않도록 sample parity 계약 테스트가
   source pattern을 확인한다.
 - `zlink_builder_t`의 낮은 수준 API는 framework 내부 runtime과 단위 테스트용 확장 표면으로 남아
@@ -4671,7 +4671,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 Protobuf는 `codec_traits<T>` 특수화로 명시한다.
 
 샘플 DTO는 C++ serializer가 찾을 수 있는 `to_json`/`from_json` hook만 제공한다. client
-application code는 `.NET`과 같은 수준에서 `codecs::request<TReply>`, `codecs::send`,
+application code는 `.NET`과 같은 수준에서 `codecs::request(...).async<TReply>()`, `codecs::send`,
 `codecs::on<T>`만 호출한다. sample-only payload 변환 함수나 직접 JSON parser는 두지 않는다.
 
 ### 적용한 리팩토링
@@ -7545,7 +7545,7 @@ exporter, label schema, backend adapter는 extension이 맡을 수 있게 남겨
 ### 적용한 리팩토링
 
 - `test_cpp_stream_connector`에 `co_await connector.send(...).submit()` helper와
-  `co_await connector.request<T>(...).submit()` helper를 추가했다.
+  `co_await connector.request(...).submit<T>()` helper를 추가했다.
 - loopback stream socket이 coroutine send와 request frame을 모두 수신하고 request reply를
   반환하는지 검증했다.
 
@@ -8487,7 +8487,7 @@ Stream Connector optional codec dependency는 connector package config가 복원
 ### 적용한 리팩토링
 
 - `envelope_header_t`에 metadata map을 추가하고 `envelope_codec_t` encode/decode가 보존하게 했다.
-- `route_send_call_t`, `route_request_call_t`, `typed_route_request_call_t<TReply>`에
+- `route_send_call_t`, `route_request_call_t`에
   `.metadata(key, value)` fluent API를 추가했다.
 - route send, request, typed request submit 경로가 metadata를 envelope header에 담도록 연결했다.
 - public contract test가 세 route call object의 metadata fluent surface를 컴파일 계약으로 고정한다.
@@ -8998,7 +8998,7 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 |------|------|------|
 | `add_client_server_channel(...).enable_client(endpoint)`를 dealer mesh 용도로 재사용한다 | public 타입이 늘지 않는다 | 이름과 의미가 맞지 않아 client/server와 dealer mesh 의도가 섞인다 |
 | 낮은 수준 `zlink_builder_t::channel(...)` 사용을 문서화한다 | 구현 변경이 없다 | high-level options가 `.NET` configuration parity를 제공하지 못한다 |
-| `dealer_mesh_channel_builder_t`를 추가한다 | dealer mesh 의도가 드러나고 bind/connect/handler group을 한 곳에 모은다 | public builder 타입이 하나 늘어난다 |
+| `dealer_mesh_channel_builder_t`를 추가한다 | dealer mesh 의도가 드러나고 server/client/handler group을 한 곳에 모은다 | public builder 타입이 하나 늘어난다 |
 
 선택은 세 번째 방식이다. dealer mesh는 `.NET`에서도 별도 channel kind이므로 C++ options layer도
 같은 사용자 개념을 제공하되, socket/pending request 구현은 runtime 내부에 숨긴다.
@@ -9006,7 +9006,7 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 ### 적용한 리팩토링
 
 - `dealer_mesh_channel_builder_t`를 추가했다.
-- `add_dealer_mesh_channel(...).bind(...)`, `.connect(...)`, `.use_handler_group(...)`을 제공한다.
+- `add_dealer_mesh_channel(...).enable_server(...)`, `.enable_client(...)`, `.use_handler_group(...)`을 제공한다.
 - builder는 낮은 수준 `channel.enable_client(...)`에 client bind/connect endpoint를 사상한다.
 - contract header regression이 dealer mesh builder 반환형과 fluent 메서드를 고정한다.
 - module/options regression이 dealer mesh client bind/connect snapshot과 handler group 연결 호출을
@@ -9535,8 +9535,8 @@ state가 닫고, 서로 다른 group이 같은 channel에 같은 packet을 노�
 
 ### 발견한 위험 신호
 
-- `.NET`은 `AcceptSpotRoutesFromChannel(name, routes => routes.UseManualConnections(...))`로
-  accepted SPOT route peer를 discovery 없이 직접 지정할 수 있다.
+- `.NET`은 `AcceptSpotRoutesFromChannel(name, endpoint)`로 accepted SPOT route peer를
+  discovery 없이 직접 지정할 수 있다.
 - C++ high-level `accept_routes_from_channel(name)`은 channel 이름만 받았고, validation도
   accepted route마다 registry discovery를 항상 요구했다.
 - accepted route ingress와 registry Spot remote address resolver가 같은 snapshot field를 공유하면
@@ -9662,8 +9662,8 @@ bind하면서 성공 여부를 결정하게 둔다.
 
 ### 발견한 위험 신호
 
-- `.NET` channel client와 fanout subscriber manual connection은 `UseManualConnections(...)`
-  안에서 `Connect(...)`를 여러 번 호출해 endpoint 목록을 만든다.
+- `.NET` channel client와 fanout subscriber manual endpoint는 `EnableClient(endpoint)`와
+  `EnableSubscriber(endpoint)` 같은 fluent 메서드 인자로 지정한다.
 - C++ high-level `add_client_server_channel(...).enable_client(endpoint)`와
   `add_fanout_channel(...).enable_subscriber(endpoint)`는 마지막 endpoint만 low-level snapshot에 남겨
   manual connection collection 의미를 잃었다.
@@ -9738,9 +9738,8 @@ bind하면서 성공 여부를 결정하게 둔다.
 
 ### 발견한 위험 신호
 
-- `.NET`의 `ISpotRouterCapabilityBuilder`와 `ISpotPubSubCapabilityBuilder`는
-  `UseManualConnections(...)`를 제공해 registry discovery 없이 역할 peer를 직접 지정할
-  수 있다.
+- `.NET`의 SpotNode fluent builder는 router/pub-sub endpoint와 peer endpoint를 메서드 인자로
+  받아 registry discovery 없이 역할 peer를 직접 지정할 수 있다.
 - C++ high-level `enable_router(...)`와 `enable_pub_sub(...)`는 bind endpoint와 routing id만
   보존했고, manual peer를 표현할 방법이 없었다.
 - attach channel client, attached publisher, accepted route의 manual endpoint를 역할 peer로
@@ -9756,8 +9755,8 @@ bind하면서 성공 여부를 결정하게 둔다.
 
 선택은 세 번째 방식이다. SPOT router/pub-sub manual peer는 역할 자체의 연결 정책이며,
 attached channel client나 accepted route ingress의 peer와 다른 정보다. C++에서는
-`enable_router(endpoint, [](auto &router) { router.connect(peer); })`처럼 fluent configure builder로
-표현한다.
+`enable_router(endpoint).connect_router(peer)`처럼 같은 Spot node builder에서 이어지는
+fluent 호출로 표현한다.
 
 ### 적용한 리팩토링
 
@@ -9998,7 +9997,7 @@ session 이름으로 사용한다.
 
 ### 적용한 리팩토링
 
-- `request_call_t<TReply>`와 `send_call_t`에 `packet_name(...)`과 `metadata(...)`를 추가했다.
+- `channel_request_call_t`와 `send_call_t`에 `packet_name(...)`과 `metadata(...)`를 추가했다.
 - 일반 channel `message_bus_t::request/send/publish`가 call 생성 시점에는 side effect를 만들지
   않고, `submit()`에서 runtime submit을 실행하게 했다.
 - internal channel runtime에 outbound submit 기록을 두어 회귀 테스트가 packet name, metadata,

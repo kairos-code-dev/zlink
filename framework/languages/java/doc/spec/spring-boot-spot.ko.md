@@ -4,7 +4,7 @@
 
 [Java spec 목차](./README.ko.md)
 
-[Java 묶음](../README.ko.md) | [포팅 계획](../draft/java-kotlin-framework-porting-plan.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [Actor/session](./spring-boot-actor-session.ko.md) | [SPOT 샘플](../guide/samples/spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md)
+[Java 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [Actor/session](./spring-boot-actor-session.ko.md) | [SPOT 샘플](../guide/samples/spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md)
 
 # ZLink Framework Spring Boot SPOT
 
@@ -45,23 +45,17 @@
 public class SpotConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        options.addSpotMesh("game.stage", mesh -> {
-            mesh.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));
+        ZLinkSpotMeshBuilder mesh = framework.addSpotMesh("game.stage");
+        mesh.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
 
-            mesh.addNode("play", node -> {
-                node.enableRouter(router -> {
-                    router.bindRouter("tcp://0.0.0.0:9000");
-                });
-                node.enablePubSub(pubsub -> {
-                    pubsub.bindPubSub("tcp://0.0.0.0:9001");
-                });
-                node.acceptSpotRoutesFromChannel("play-route");
-                node.configureEntrySpot(entry ->
-                    entry.setRoutingId(RoutingId.of("play.entry")));
-                node.addEntrySpot(GameEntrySpot.class);
-                node.addSpotFactory(GameRoomSpot.class);
-            });
-        });
+        ZLinkSpotNodeBuilder node = mesh.addNode("play");
+        node.enableRouter("tcp://0.0.0.0:9000");
+        node.enablePubSub("tcp://0.0.0.0:9001");
+        node.acceptSpotRoutesFromChannel("play-route");
+        node.configureEntrySpot()
+            .setRoutingId(RoutingId.of("play.entry"));
+        node.addEntrySpot(GameEntrySpot.class);
+        node.addSpotFactory(GameRoomSpot.class);
     }
 }
 ```

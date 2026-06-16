@@ -5,5 +5,6 @@ export interface Message {
   size(): number;
   isEmpty(): boolean;
   getString(encoding?: BufferEncoding): string;
+  value<T = unknown>(): T;
   close(): void;
 }

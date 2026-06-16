@@ -196,12 +196,12 @@ command/request envelope 작성, SPOT routed parts 전송, request sequence corr
 소유한다. native router socket adapter는 `src/runtime/backend/native_route_backend.*`가
 담당하고 public contract에 올리지 않는다.
 
-public `route_client_t`, `route_send_call_t`, `route_request_call_t`,
-`typed_route_request_call_t<TReply>`는 `.NET`의 `IZLinkRouteClient`와 `ZLinkRouteClient`에
+public `route_client_t`, `route_send_call_t`, `route_request_call_t`는 `.NET`의
+`IZLinkRouteClient`와 `ZLinkRouteClient`에
 대응한다. 사용자는 router channel id, target node routing id, typed payload만 넘기고,
 route channel runtime lookup, envelope 작성, serializer 호출은 runtime owner가 처리한다.
 C++는 낮은 수준 검증을 위해 request sequence submission call도 유지하지만, 일반 사용 표면은
-`request<TRequest, TReply>(...).packet_name(...).metadata(...).timeout(...).async()`으로
+`request(...).packet_name(...).metadata(...).timeout(...).async<TReply>()`으로
 typed reply를 받는다. `.metadata(key, value)`로 넣은 값은 framework envelope header에 보존되며,
 route runtime lookup과 serializer 호출은 사용자에게 드러나지 않는다. typed reply completion은
 route runtime backend seam을 통해 검증되고,
@@ -457,7 +457,7 @@ class app_advanced_t {
 public:
     service_collection_t &services();
     handler_registry_t &handlers();
-    app_t &use_zlink(std::function<void(zlink_builder_t &)> configure);
+    zlink_builder_t &zlink() noexcept;
 };
 
 } // namespace zlink::framework
@@ -563,15 +563,14 @@ namespace zlink::framework {
 
 class zlink_builder_t {
 public:
-    zlink_builder_t &node(std::string node_name);
-    zlink_builder_t &registry(std::function<void(registry_builder_t &)> configure);
-    zlink_builder_t &discovery(std::function<void(discovery_builder_t &)> configure);
-    zlink_builder_t &channel(std::string channel_name,
-      std::function<void(channel_builder_t &)> configure);
-    zlink_builder_t &spot_node(std::string spot_node_name,
-      std::function<void(spot_node_builder_t &)> configure);
-    zlink_builder_t &stream(std::string stream_name,
-      std::function<void(stream_builder_t &)> configure);
+    zlink_builder_t &add_node(std::string node_name);
+    zlink_builder_t &max_pending(std::size_t count);
+    registry_builder_t enable_registry();
+    discovery_builder_t discovery();
+    route_channel_builder_t route_channel(std::string route_channel_name);
+    channel_builder_t channel(std::string channel_name);
+    spot_node_builder_t add_spot_node(std::string spot_node_name);
+    stream_builder_t stream(std::string stream_name);
 };
 
 class discovery_builder_t {
@@ -627,21 +626,10 @@ namespace zlink::framework {
 
 class channel_builder_t {
 public:
-    channel_builder_t &enable_server();
-    channel_builder_t &enable_server(
-      std::function<void(capability_builder_t &)> configure);
-
-    channel_builder_t &enable_client();
-    channel_builder_t &enable_client(
-      std::function<void(capability_builder_t &)> configure);
-
-    channel_builder_t &enable_publisher();
-    channel_builder_t &enable_publisher(
-      std::function<void(capability_builder_t &)> configure);
-
-    channel_builder_t &enable_subscriber();
-    channel_builder_t &enable_subscriber(
-      std::function<void(capability_builder_t &)> configure);
+    capability_builder_t enable_server();
+    capability_builder_t enable_client();
+    capability_builder_t enable_publisher();
+    capability_builder_t enable_subscriber();
 };
 
 class capability_builder_t {
@@ -1084,8 +1072,8 @@ public:
     send_call_t send(std::string_view channel_name, const TCommand &command,
       send_options_t options = {});
 
-    template <typename TReply, typename TRequest>
-    request_call_t<TReply> request(std::string_view channel_name,
+    template <typename TRequest>
+    channel_request_call_t request(std::string_view channel_name,
       const TRequest &request,
       request_options_t options = {});
 };
@@ -1108,10 +1096,6 @@ public:
       zlink::routing_id_t target_node_rid,
       TRequest request);
 
-    template <typename TRequest, typename TReply>
-    typed_route_request_call_t<TReply> request(std::string router_channel_id,
-      zlink::routing_id_t target_node_rid,
-      TRequest request);
 };
 
 class route_send_call_t {
@@ -1127,14 +1111,6 @@ public:
     route_request_call_t &metadata(std::string key, std::string value);
     route_request_call_t &timeout(std::chrono::milliseconds timeout);
     task_t<std::uint64_t> async();
-};
-
-template <typename TReply>
-class typed_route_request_call_t {
-public:
-    typed_route_request_call_t &packet_name(std::string packet_name);
-    typed_route_request_call_t &metadata(std::string key, std::string value);
-    typed_route_request_call_t &timeout(std::chrono::milliseconds timeout);
     task_t<TReply> async();
 };
 
@@ -1505,9 +1481,9 @@ protobuf, json, messagepack 사용자는 `message_t`와 serializer registry에�
 
 ```cpp
 auto reply = co_await client
-  .request<profile_reply_t>("profile", query)
+  .request("profile", query)
   .timeout(std::chrono::seconds(2))
-  .async();
+  .async<profile_reply_t>();
 
 use_profile(reply);
 ```
@@ -1623,14 +1599,13 @@ app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &option
     options.add_client_server_channel(sample_names_t::play_channel)
       .enable_client();
 
-    options.configure_dispatch([](auto &dispatch) {
-      dispatch.spot_dispatch_mode =
-        zlink::framework::dispatch_mode_t::compiled;
-      dispatch.stream_dispatch_mode =
-        zlink::framework::dispatch_mode_t::dynamic;
-      dispatch.diagnostics.message_flow =
-        zlink::framework::message_flow_log_mode_t::errors_only;
-    });
+    auto &dispatch = options.configure_dispatch();
+    dispatch.spot_dispatch_mode =
+      zlink::framework::dispatch_mode_t::compiled;
+    dispatch.stream_dispatch_mode =
+      zlink::framework::dispatch_mode_t::dynamic;
+    dispatch.diagnostics.message_flow =
+      zlink::framework::message_flow_log_mode_t::errors_only;
 });
 ```
 
@@ -1669,16 +1644,16 @@ options.add_fanout_channel(sample_names_t::notification_channel)
   .use_handler_group("events");
 
 options.add_dealer_mesh_channel(sample_names_t::mesh_channel)
-  .bind(topology.mesh_bind_endpoint)
-  .connect(topology.mesh_peer_endpoint)
+  .enable_server(topology.mesh_bind_endpoint)
+  .enable_client(topology.mesh_peer_endpoint)
   .use_handler_group("api");
 
 options.use_registry_spot_remote_addresses(sample_names_t::router_channel);
 
 options.add_route_mesh_channel(sample_names_t::router_channel)
-  .bind(topology.session_spot_endpoint)
+  .enable_server(topology.session_spot_endpoint)
   .set_routing_id(topology.session_router_rid)
-  .connect(topology.play_router_endpoint);
+  .enable_client(topology.play_router_endpoint);
 
 options.add_spot_mesh(sample_names_t::game_spot_discovery)
   .add_node(sample_names_t::session_spot_node)
@@ -1700,11 +1675,11 @@ native packet session 이름으로 사용하고, 없으면 타입 이름 기반 
 하나의 stream node에는 packet session을 하나만 선언한다. `register_session<T>()`과
 `register_session(...)`을 중복 호출하면 마지막 값으로 덮어쓰지 않고 설정 오류로 처리한다.
 
-dealer mesh channel은 최소 하나의 peer 획득 경로를 가져야 한다. `bind(...)` 또는
-`connect(...)` 없이 `add_dealer_mesh_channel(...)`만 선언하면 options 적용 시점에 설정 오류로
+dealer mesh channel은 최소 하나의 peer 획득 경로를 가져야 한다. `enable_server(...)` 또는
+`enable_client(...)` 없이 `add_dealer_mesh_channel(...)`만 선언하면 options 적용 시점에 설정 오류로
 실패한다. 이 규칙은 메시지를 보내는 시점까지 설정 실수를 숨기지 않기 위한 것이다.
-route mesh channel은 local route endpoint를 열어야 하므로 `bind(...)`가 필수다.
-`add_route_mesh_channel(...)`만 선언하거나 routing id/manual connection만 설정하면 options 적용
+route mesh channel은 local route endpoint를 열어야 하므로 `enable_server(...)`가 필수다.
+`add_route_mesh_channel(...)`만 선언하거나 routing id/client endpoint만 설정하면 options 적용
 시점에 설정 오류로 실패한다.
 `.NET`의 `EnableSpotRouteEgress(...)`에 해당하는 C++ fluent 표면은
 `enable_spot_route_egress(target_channel_name)`이다. client/server channel에서 이 설정을 쓰려면
@@ -1717,15 +1692,15 @@ framework error로 닫는다.
 `attach_channel_client(...)`는 등록된 client/server channel을 SPOT node의 outbound client로
 연결한다. attached client peer는 registry discovery 또는 attach별 manual endpoint로 얻는다.
 manual endpoint를 쓰려면
-`attach_channel_client(name, [](auto &client) { client.connect(endpoint); })`처럼 명시한다.
+`attach_channel_client(name, endpoint)`처럼 명시한다.
 SPOT router와 pub/sub 역할도 registry discovery 없이 고정 peer를 붙일 수 있다. 이때는
-`enable_router(endpoint, [](auto &router) { router.connect(peer); })` 또는
-`enable_pub_sub(endpoint, [](auto &pub_sub) { pub_sub.connect(peer); })`처럼 역할별
-manual endpoint를 기록한다. routing id도 같은 configure callback 안에서
-`router.set_routing_id(...)`, `pub_sub.set_routing_id(...)`로 지정할 수 있다.
+`enable_router(endpoint).connect_router(peer)` 또는
+`enable_pub_sub(endpoint).connect_pub_sub(peer)`처럼 역할별 manual endpoint를 기록한다.
+routing id는 `enable_router(endpoint, routing_id)` 또는
+`enable_pub_sub(endpoint, routing_id)`로 지정할 수 있다.
 `attach_publisher(...)`는 등록된 fanout publisher channel을 SPOT node에 연결하며, 해당 node는
 `enable_pub_sub(...)` 역할을 가져야 한다. publisher attach도
-`attach_publisher(name, [](auto &publisher) { publisher.connect(endpoint); })`로 manual endpoint를
+`attach_publisher(name, endpoint)`로 manual endpoint를
 기록할 수 있다. 같은 publisher channel을 여러 SPOT node에 중복 attach하면 options 적용 시점에
 실패한다.
 `accept_routes_from_channel(...)`은 SPOT route ingress를 여는 설정이다. 이 설정을 둔
@@ -1734,7 +1709,7 @@ client/server channel 또는 route mesh channel이어야 한다. fanout channel,
 channel, 등록되지 않은 channel, client/server와 route mesh가 같은 이름을 쓰는 모호한
 channel은 options 적용 시점에 실패한다. route peer는 registry discovery 또는 accepted route
 별 manual endpoint로 얻는다. manual endpoint를 쓰려면
-`accept_routes_from_channel(name, [](auto &routes) { routes.connect(endpoint); })`처럼
+`accept_routes_from_channel(name, endpoint)`처럼
 명시한다. routed SPOT egress는 이 ingress target channel 이름을 향해 설정하므로,
 egress 설정과 accepted route 설정은 같은 이름을 기준으로 맞춘다.
 
@@ -1945,10 +1920,8 @@ application sample과 guide 예제는 짧은 alias를 기본으로 한다.
 task_t<match_bingo_api_res_t> handle(const match_bingo_api_req_t &request)
 {
     allocate_bingo_room_res_t allocated = co_await _client
-      .request<allocate_bingo_room_res_t>(
-        sample_names_t::play_channel,
-        allocate_bingo_room_req_t { request.mode })
-      .async();
+      .request(sample_names_t::play_channel, allocate_bingo_room_req_t { request.mode })
+      .async<allocate_bingo_room_res_t>();
 
     co_return match_bingo_api_res_t { allocated.room_id };
 }

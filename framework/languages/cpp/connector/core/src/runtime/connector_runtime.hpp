@@ -77,7 +77,7 @@ class connector_state_t
     std::vector<std::function<void (const connection_state_changed_t &)>> state_handlers;
     std::vector<std::function<void (const error_t &)>> error_handlers;
     std::vector<std::function<void ()>> disconnected_handlers;
-    std::map<std::type_index, codec_t> codecs;
+    codec_t default_codec = codec_t::raw;
     bool json_enabled = true;
     bool message_pack_enabled = false;
     bool protobuf_enabled = false;

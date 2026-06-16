@@ -13,85 +13,68 @@ Spot handler 작성법과 packet dispatch 규칙은 [nestjs-spot.ko.md](./nestjs
 
 ## SpotNode 등록
 
-dotnet 의 `AddSpotNode(name, sn => ...)` / `AddSpotMesh(channel, mesh => ...)` 는
-NestJS module options 의 선언적 키 `spotNodes[name]` / `spotMeshes[channel]` 로
-1:1 매핑한다. builder 람다 메서드 한 개 = options 키 한 개다.
+dotnet 의 `AddSpotNode(name)` / `AddSpotMesh(channel)` fluent builder 는
+NestJS 의 `zlinkFramework()` builder 로 1:1 매핑한다. builder 메서드 한 개가
+node builder 메서드 한 개에 대응한다.
 
 ```ts
-ZLinkModule.forRoot({
-  spotNodes: {
-    'game.node': {
-      router: {
-        bind: 'tcp://0.0.0.0:7401',
-        routingId: 'game-node',
-      },
-      pubSub: {
-        bind: 'tcp://0.0.0.0:7402',
-        routingId: 'game-pub',
-      },
-      attachedChannelClients: {
-        'price': {},
-      },
-      attachedSpotPublisherClients: {
-        'game.stage': {},
-      },
-      acceptedSpotRouteChannels: {
-        'game.route': {
-          manualConnections: ['tcp://10.0.0.21:7501'],
-        },
-      },
-      entrySpot: { routingId: 'entry' },
-      entrySpotType: GameEntrySpot,
-      spotFactories: [StageSpot, ZoneSpot],
-    },
-  },
-})
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .addSpotNode('game.node')
+      .enableRouter('tcp://0.0.0.0:7401', 'game-node')
+      .enablePubSub('tcp://0.0.0.0:7402', 'game-pub')
+      .attachChannelClient('price')
+      .attachSpotPublisherClient('game.stage')
+      .acceptSpotRoutesFromChannel('game.route', ['tcp://10.0.0.21:7501'])
+      .configureEntrySpot({ routingId: 'entry' })
+      .addEntrySpot(GameEntrySpot)
+      .addSpotFactory(StageSpot)
+      .addSpotFactory(ZoneSpot)
+    .build()
+)
 ```
 
-dotnet builder 메서드와 options 키의 대응은 다음과 같다.
+dotnet builder 메서드와 node builder 메서드의 대응은 다음과 같다.
 
-| dotnet `IZLinkSpotNodeBuilder` 메서드 | node `spotNodes[name]` 키 | 의미 |
+| dotnet `IZLinkSpotNodeBuilder` 메서드 | node builder 메서드 | 의미 |
 |------|------|------|
-| `EnableRouter(r => ...)` | `router: { bind, routingId, ... }` | spot router 역할 |
-| `EnablePubSub(p => ...)` | `pubSub: { bind, routingId, ... }` | spot pub/sub 역할 |
-| `AttachChannelClient(name, ...)` | `attachedChannelClients[name]` | client/server channel client 부착 |
-| `AttachSpotPublisherClient(name, ...)` | `attachedSpotPublisherClients[name]` | spot publisher client 부착 |
-| `AcceptSpotRoutesFromChannel(name, ...)` | `acceptedSpotRouteChannels[name]` | router channel route 수신 |
-| `ConfigureEntrySpot(e => e.RoutingId = ...)` | `entrySpot: { routingId }` | Entry Spot facade 설정 |
-| `AddEntrySpot<TEntrySpot>()` | `entrySpotType: TEntrySpot` | Entry Spot handler registry 타입 |
-| `AddSpotFactory<TSpot>()` | `spotFactories: [TSpot, ...]` | 이 node 가 만들 수 있는 spot 타입 |
+| `EnableRouter(...)` | `enableRouter(endpoint, routingId?)` | spot router 역할 |
+| `EnablePubSub(...)` | `enablePubSub(endpoint, routingId?)` | spot pub/sub 역할 |
+| `AttachChannelClient(name)` | `attachChannelClient(name, endpoint?)` | client/server channel client 부착 |
+| `AttachSpotPublisherClient(name)` | `attachSpotPublisherClient(name, endpoint?)` | spot publisher client 부착 |
+| `AcceptSpotRoutesFromChannel(name)` | `acceptSpotRoutesFromChannel(name, endpoint?)` | router channel route 수신 |
+| `ConfigureEntrySpot()` | `configureEntrySpot(...)` | Entry Spot facade 설정 |
+| `AddEntrySpot<TEntrySpot>()` | `addEntrySpot(TEntrySpot)` | Entry Spot handler registry 타입 |
+| `AddSpotFactory<TSpot>()` | `addSpotFactory(TSpot)` | 이 node 가 만들 수 있는 spot 타입 |
 
 `router` / `pubSub` 키는 역할이 켜지는 것을 의미한다(dotnet `EnableRouter` /
 `EnablePubSub` 호출에 해당). 역할 내부 옵션은 다음으로 매핑한다.
 
-| dotnet builder | node 키 | 비고 |
+| dotnet builder | node builder 메서드 | 비고 |
 |------|------|------|
-| `BindRouter(endpoint)` / `BindPubSub(endpoint)` | `bind: string` | bind endpoint |
-| `SetRoutingId(rid)` | `routingId: string` | `RoutingId` → 문자열 |
+| `EnableRouter(endpoint)` / `EnablePubSub(endpoint)` | `enableRouter(endpoint)` / `enablePubSub(endpoint)` | bind endpoint |
+| `SetRouterRoutingId(rid)` / `SetPubSubRoutingId(rid)` | `routerRoutingId(rid)` / `pubSubRoutingId(rid)` 또는 `enable*(endpoint, rid)` | `RoutingId` → 문자열 |
 | `ConfigureSocket(s => ...)` | `socket: {...}` | socket 옵션 |
 | `ConfigureRouting(r => ...)` | `routing: {...}` | router routing 옵션 |
 | `ConfigurePublisher(p => ...)` | `publisher: {...}` | pub/sub 전용 |
 | `ConfigureSubscriber(s => ...)` | `subscriber: {...}` | pub/sub 전용 |
-| `UseManualConnections(c => c.Connect(ep))` | `manualConnections: string[]` | 수동 연결 endpoint |
+| `ConnectRouter(ep)` / `ConnectPubSub(ep)` | `connectRouter(ep)` / `connectPubSub(ep)` 또는 `enable*(..., ep)` | 수동 연결 endpoint |
 
-`acceptedSpotRouteChannels[name]` 은 dotnet `AcceptSpotRoutesFromChannel` 에
-대응하며, `UseManualConnections(...)` 는 `manualConnections: string[]` 로 옮긴다. 같은
+`.acceptSpotRoutesFromChannel(name)` 은 dotnet `AcceptSpotRoutesFromChannel` 에
+대응하며, 수동 endpoint 는 메서드의 endpoint 인자로 옮긴다. 같은
 channel 이름을 중복 등록하면 dotnet 과 동일하게 startup 시점에 설정 예외를
 던진다(`Duplicate accepted SPOT route channel`).
 
-`spotMeshes[channel]` 은 dotnet `AddSpotMesh(channel, mesh => ...)` 에 대응한다.
-mesh 는 `discovery` 와 `nodes`(각각 `IZLinkSpotMeshNodeBuilder`)를 가지며, 각
-node 는 위 `spotNodes` 와 같은 키 집합을 쓴다.
+`.addSpotNode(name)` 은 dotnet `AddSpotMesh(channel).AddNode(name)` 에 대응한다.
+Discovery 는 `.useDiscovery().addRegistryEndpoint(...)` 로 등록하고, 각 node 는 같은
+SpotNode builder 메서드 집합을 쓴다.
 
 ```ts
-spotMeshes: {
-  'game.mesh': {
-    discovery: { /* nestjs-registry 참조 */ },
-    nodes: {
-      'game.node': { router: { bind: 'tcp://0.0.0.0:7401' }, /* ... */ },
-    },
-  },
-}
+zlinkFramework()
+  .useDiscovery()
+    .addRegistryEndpoint('tcp://registry1:5551')
+  .addSpotNode('game.node')
+    .enableRouter('tcp://0.0.0.0:7401')
 ```
 
 등록 단계의 타입 충돌은 조용히 덮어쓰지 않는다. 같은 `spotFactories` 타입을
@@ -184,15 +167,13 @@ Entry Spot 은 Actor 가 생성 직후 머무르는 기본 Spot 이다. Actor �
 leave 하면 같은 node 의 Entry Spot 으로 돌아온다. 따라서 Entry Spot 의 routing id
 는 Actor remote location 의 `currentSpotRid` 가 될 수 있다.
 
-framework 는 Entry Spot routing id 설정을 `spotNodes[name].entrySpot` 으로
+framework 는 Entry Spot routing id 설정을 `.configureEntrySpot(...)` 으로
 제공한다(dotnet `ConfigureEntrySpot(...)`).
 
 ```ts
-spotNodes: {
-  'game.node': {
-    entrySpot: { routingId: 'entry' },
-  },
-}
+zlinkFramework()
+  .addSpotNode('game.node')
+    .configureEntrySpot({ routingId: 'entry' })
 ```
 
 `entrySpot`(=`ConfigureEntrySpot`)은 `entrySpotType`(=`AddEntrySpot<TEntrySpot>()`)

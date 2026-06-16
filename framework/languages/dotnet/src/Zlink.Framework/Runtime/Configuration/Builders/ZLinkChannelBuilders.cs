@@ -3,152 +3,215 @@ namespace Zlink.Framework.Runtime.Configuration.Builders;
 internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration registration)
     : IZLinkClientServerChannelBuilder
 {
-    public void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null)
+    public IZLinkClientServerChannelBuilder EnableServer(string endpoint)
     {
         registration.Server ??= new ZLinkChannelServerCapabilityRegistration();
-        configure?.Invoke(new ZLinkChannelServerCapabilityBuilder(registration.Server));
+        new ZLinkChannelServerCapabilityBuilder(registration.Server).Bind(endpoint);
+        return this;
     }
 
-    public void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null)
+    public IZLinkClientServerChannelBuilder EnableClient()
     {
         registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
-        configure?.Invoke(new ZLinkChannelClientCapabilityBuilder(registration.Client));
+        return this;
     }
 
-    public void AddHandlerGroup(string groupName)
+    public IZLinkClientServerChannelBuilder EnableClient(string endpoint)
+    {
+        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
+        ZLinkChannelEndpointBuilderSupport.AddManualConnection(
+            registration.Client.ManualConnections,
+            endpoint,
+            "Channel client endpoint must not be empty.");
+        return this;
+    }
+
+    public IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName)
     {
         ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
+        return this;
     }
 
-    public void AddSendHandler<THandler, TMessage>(string? packetName = null)
+    public IZLinkClientServerChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>
     {
         ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler, TMessage>(
             registration,
             packetName);
+        return this;
     }
 
-    public void AddSendHandler<THandler>(string? packetName = null)
+    public IZLinkClientServerChannelBuilder AddSendHandler<THandler>(string? packetName = null)
         where THandler : class
     {
         ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler>(
             registration,
             packetName);
+        return this;
     }
 
-    public void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+    public IZLinkClientServerChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>
     {
         ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler, TRequest, TReply>(
             registration,
             packetName);
+        return this;
     }
 
-    public void AddRequestHandler<THandler>(string? packetName = null)
+    public IZLinkClientServerChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class
     {
         ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler>(
             registration,
             packetName);
+        return this;
     }
 
-    public void EnableSpotRouteEgress(string targetSpotNodeChannelName)
+    public IZLinkClientServerChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetSpotNodeChannelName);
         registration.SpotRouteEgress = new ZLinkSpotRouteEgressRegistration(targetSpotNodeChannelName);
+        return this;
     }
 }
 
 internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registration)
     : IZLinkFanoutChannelBuilder
 {
-    public void EnablePublisher(Action<IChannelPublisherCapabilityBuilder>? configure = null)
+    public IZLinkFanoutChannelBuilder EnablePublisher(string endpoint)
     {
         registration.Publisher ??= new ZLinkChannelPublisherCapabilityRegistration();
-        configure?.Invoke(new ZLinkChannelPublisherCapabilityBuilder(registration.Publisher));
+        new ZLinkChannelPublisherCapabilityBuilder(registration.Publisher).Bind(endpoint);
+        return this;
     }
 
-    public void EnableSubscriber(Action<IChannelSubscriberCapabilityBuilder>? configure = null)
+    public IZLinkFanoutChannelBuilder EnableSubscriber()
     {
         registration.Subscriber ??= new ZLinkChannelSubscriberCapabilityRegistration();
-        configure?.Invoke(new ZLinkChannelSubscriberCapabilityBuilder(registration.Subscriber));
+        return this;
     }
 
-    public void AddHandlerGroup(string groupName)
+    public IZLinkFanoutChannelBuilder EnableSubscriber(string endpoint)
+    {
+        registration.Subscriber ??= new ZLinkChannelSubscriberCapabilityRegistration();
+        ZLinkChannelEndpointBuilderSupport.AddManualConnection(
+            registration.Subscriber.ManualConnections,
+            endpoint,
+            "Channel subscriber endpoint must not be empty.");
+        return this;
+    }
+
+    public IZLinkFanoutChannelBuilder AddHandlerGroup(string groupName)
     {
         ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
+        return this;
     }
 
-    public void AddPublishHandler<THandler, TMessage>(string? packetName = null)
+    public IZLinkFanoutChannelBuilder AddPublishHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkPublishHandler<TMessage>
     {
         ZLinkChannelHandlerRegistrationBuilder.AddPublishHandler<THandler, TMessage>(
             registration,
             packetName);
+        return this;
     }
 
-    public void AddPublishHandler<THandler>(string? packetName = null)
+    public IZLinkFanoutChannelBuilder AddPublishHandler<THandler>(string? packetName = null)
         where THandler : class
     {
         ZLinkChannelHandlerRegistrationBuilder.AddPublishHandler<THandler>(
             registration,
             packetName);
+        return this;
     }
 }
 
 internal sealed class ZLinkDealerMeshChannelBuilder(ZLinkChannelRegistration registration)
     : IZLinkDealerMeshChannelBuilder
 {
-    public void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null)
+    public IZLinkDealerMeshChannelBuilder EnableServer(string endpoint)
     {
         // dealer mesh 의 server·client 는 같은 DEALER 소켓을 공유한다. server(제공) 설정도
         // client capability registration(= 그 DEALER)에 기록한다. ROUTER 를 만드는
         // registration.Server 는 쓰지 않는다.
         registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
-        configure?.Invoke(new ZLinkDealerMeshChannelServerCapabilityBuilder(registration.Client));
+        new ZLinkDealerMeshChannelServerCapabilityBuilder(registration.Client).Bind(endpoint);
+        return this;
     }
 
-    public void EnableClient(Action<IDealerMeshChannelClientCapabilityBuilder>? configure = null)
+    public IZLinkDealerMeshChannelBuilder EnableClient()
     {
         registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
-        configure?.Invoke(new ZLinkDealerMeshChannelClientCapabilityBuilder(registration.Client));
+        return this;
     }
 
-    public void AddHandlerGroup(string groupName)
+    public IZLinkDealerMeshChannelBuilder EnableClient(string endpoint)
+    {
+        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
+        ZLinkChannelEndpointBuilderSupport.AddManualConnection(
+            registration.Client.ManualConnections,
+            endpoint,
+            "Dealer mesh channel client endpoint must not be empty.");
+        return this;
+    }
+
+    public IZLinkDealerMeshChannelBuilder AddHandlerGroup(string groupName)
     {
         ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
+        return this;
     }
 
-    public void AddSendHandler<THandler, TMessage>(string? packetName = null)
+    public IZLinkDealerMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>
     {
         ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler, TMessage>(
             registration,
             packetName);
+        return this;
     }
 
-    public void AddSendHandler<THandler>(string? packetName = null)
+    public IZLinkDealerMeshChannelBuilder AddSendHandler<THandler>(string? packetName = null)
         where THandler : class
     {
         ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler>(
             registration,
             packetName);
+        return this;
     }
 
-    public void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+    public IZLinkDealerMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>
     {
         ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler, TRequest, TReply>(
             registration,
             packetName);
+        return this;
     }
 
-    public void AddRequestHandler<THandler>(string? packetName = null)
+    public IZLinkDealerMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class
     {
         ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler>(
             registration,
             packetName);
+        return this;
+    }
+}
+
+internal static class ZLinkChannelEndpointBuilderSupport
+{
+    public static void AddManualConnection(
+        ICollection<string> endpoints,
+        string endpoint,
+        string errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            throw new ZLinkConfigurationException(errorMessage);
+        }
+
+        endpoints.Add(endpoint);
     }
 }
 
@@ -282,7 +345,6 @@ internal static class ZLinkTypedHandlerBuilderSupport
 }
 
 internal sealed class ZLinkChannelServerCapabilityBuilder(ZLinkChannelServerCapabilityRegistration registration)
-    : IChannelServerCapabilityBuilder
 {
     public void Bind(string endpoint)
     {
@@ -294,38 +356,18 @@ internal sealed class ZLinkChannelServerCapabilityBuilder(ZLinkChannelServerCapa
         registration.BindEndpoint = endpoint;
     }
 
-    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
+    public IZLinkSocketConfig ConfigureSocket()
     {
-        configure(registration.SocketConfig);
+        return registration.SocketConfig;
     }
 
-    public void ConfigureRouting(Action<IZLinkRouteConfig> configure)
+    public IZLinkRouteConfig ConfigureRouting()
     {
-        configure(registration.RoutingConfig);
-    }
-}
-
-internal sealed class ZLinkChannelClientCapabilityBuilder(ZLinkChannelClientCapabilityRegistration registration)
-    : IChannelClientCapabilityBuilder
-{
-    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
-    {
-        configure(registration.SocketConfig);
-    }
-
-    public void ConfigureRouting(Action<IZLinkOutboundRouteConfig> configure)
-    {
-        configure(registration.RoutingConfig);
-    }
-
-    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
-    {
-        configure(new ZLinkMutableConnections(registration.ManualConnections));
+        return registration.RoutingConfig;
     }
 }
 
 internal sealed class ZLinkDealerMeshChannelServerCapabilityBuilder(ZLinkChannelClientCapabilityRegistration registration)
-    : IChannelServerCapabilityBuilder
 {
     public void Bind(string endpoint)
     {
@@ -337,12 +379,12 @@ internal sealed class ZLinkDealerMeshChannelServerCapabilityBuilder(ZLinkChannel
         registration.BindEndpoint = endpoint;
     }
 
-    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
+    public IZLinkSocketConfig ConfigureSocket()
     {
-        configure(registration.SocketConfig);
+        return registration.SocketConfig;
     }
 
-    public void ConfigureRouting(Action<IZLinkRouteConfig> configure)
+    public IZLinkRouteConfig ConfigureRouting()
     {
         // dealer mesh server 는 DEALER 소켓이라 inbound ROUTER routing 설정이 없다.
         throw new ZLinkConfigurationException(
@@ -351,37 +393,7 @@ internal sealed class ZLinkDealerMeshChannelServerCapabilityBuilder(ZLinkChannel
     }
 }
 
-internal sealed class ZLinkDealerMeshChannelClientCapabilityBuilder(ZLinkChannelClientCapabilityRegistration registration)
-    : IDealerMeshChannelClientCapabilityBuilder
-{
-    public void Bind(string endpoint)
-    {
-        if (string.IsNullOrWhiteSpace(endpoint))
-        {
-            throw new ZLinkConfigurationException("Dealer mesh channel client bind endpoint must not be empty.");
-        }
-
-        registration.BindEndpoint = endpoint;
-    }
-
-    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
-    {
-        configure(registration.SocketConfig);
-    }
-
-    public void ConfigureRouting(Action<IZLinkOutboundRouteConfig> configure)
-    {
-        configure(registration.RoutingConfig);
-    }
-
-    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
-    {
-        configure(new ZLinkMutableConnections(registration.ManualConnections));
-    }
-}
-
 internal sealed class ZLinkChannelPublisherCapabilityBuilder(ZLinkChannelPublisherCapabilityRegistration registration)
-    : IChannelPublisherCapabilityBuilder
 {
     public void Bind(string endpoint)
     {
@@ -393,22 +405,8 @@ internal sealed class ZLinkChannelPublisherCapabilityBuilder(ZLinkChannelPublish
         registration.BindEndpoint = endpoint;
     }
 
-    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
+    public IZLinkSocketConfig ConfigureSocket()
     {
-        configure(registration.SocketConfig);
-    }
-}
-
-internal sealed class ZLinkChannelSubscriberCapabilityBuilder(ZLinkChannelSubscriberCapabilityRegistration registration)
-    : IChannelSubscriberCapabilityBuilder
-{
-    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
-    {
-        configure(registration.SocketConfig);
-    }
-
-    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
-    {
-        configure(new ZLinkMutableConnections(registration.ManualConnections));
+        return registration.SocketConfig;
     }
 }

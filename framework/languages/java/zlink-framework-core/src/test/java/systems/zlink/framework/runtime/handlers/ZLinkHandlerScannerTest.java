@@ -21,6 +21,9 @@ import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
+import systems.zlink.framework.handlers.ZLinkSpotRequest;
+import systems.zlink.framework.handlers.ZLinkSpotSubscription;
+import systems.zlink.framework.handlers.ZLinkSpotTimer;
 import systems.zlink.testfixtures.handlerconflict.ConflictingSpotActorPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
@@ -28,6 +31,10 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
+import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
+import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
+import systems.zlink.framework.spots.ZLinkTimerTick;
 import systems.zlink.testfixtures.handlerasync.CompletionStageAttributedHandler;
 
 final class ZLinkHandlerScannerTest {
@@ -146,6 +153,7 @@ final class ZLinkHandlerScannerTest {
 
         assertEquals(ZLinkScannedHandlerSurface.SPOT, handler.surface());
         assertEquals(ZLinkScannedHandlerKind.ACTOR_REQUEST, handler.kind());
+        assertEquals(TestSpot.class, handler.spotType());
         assertEquals(SpotActorRequest.class, handler.messageType());
         assertEquals(SpotActorReply.class, handler.replyType());
         assertEquals("SpotActorRequest", handler.packetName());
@@ -163,6 +171,7 @@ final class ZLinkHandlerScannerTest {
 
         assertEquals(ZLinkScannedHandlerSurface.SPOT, request.surface());
         assertEquals(ZLinkScannedHandlerKind.ACTOR_REQUEST, request.kind());
+        assertEquals(TestEntrySpot.class, request.spotType());
         assertEquals(SpotActorRequest.class, request.messageType());
         assertEquals(SpotActorReply.class, request.replyType());
         assertEquals("InterfaceSpotActorRequest", request.packetName());
@@ -170,6 +179,51 @@ final class ZLinkHandlerScannerTest {
             .noneMatch(candidate -> candidate.kind() == ZLinkScannedHandlerKind.ACTOR_JOIN
                 || candidate.kind() == ZLinkScannedHandlerKind.ACTOR_JOINED
                 || candidate.kind() == ZLinkScannedHandlerKind.ACTOR_LEFT));
+    }
+
+    @Test
+    void scansSpotPacketSubscriptionAndTimerHandlersLikeDotnet() {
+        ZLinkScannedHandlerCatalog catalog =
+            ZLinkHandlerScanner.scan(Set.of(ZLinkHandlerScannerTest.class));
+
+        ZLinkScannedHandler packet = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == InterfaceSpotPacketHandler.class)
+            .findFirst()
+            .orElseThrow();
+        ZLinkScannedHandler request = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == AttributedSpotRequestHandler.class)
+            .findFirst()
+            .orElseThrow();
+        ZLinkScannedHandler subscription = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == InterfaceSpotSubscriptionHandler.class)
+            .findFirst()
+            .orElseThrow();
+        ZLinkScannedHandler timer = catalog.handlers().stream()
+            .filter(candidate -> candidate.handlerType() == InterfaceSpotTimerHandler.class)
+            .findFirst()
+            .orElseThrow();
+
+        assertEquals(ZLinkScannedHandlerSurface.SPOT, packet.surface());
+        assertEquals(ZLinkScannedHandlerKind.SEND, packet.kind());
+        assertEquals(TestSpot.class, packet.spotType());
+        assertEquals(SpotPacket.class, packet.messageType());
+        assertEquals("SpotPacket", packet.packetName());
+
+        assertEquals(ZLinkScannedHandlerKind.REQUEST, request.kind());
+        assertEquals(TestSpot.class, request.spotType());
+        assertEquals(SpotRequest.class, request.messageType());
+        assertEquals(SpotReply.class, request.replyType());
+        assertEquals("SpotRequestPacket", request.packetName());
+
+        assertEquals(ZLinkScannedHandlerKind.PUBLISH, subscription.kind());
+        assertEquals(TestSpot.class, subscription.spotType());
+        assertEquals(SpotEvent.class, subscription.messageType());
+        assertEquals("room.events", subscription.topic());
+
+        assertEquals(ZLinkScannedHandlerKind.TIMER, timer.kind());
+        assertEquals(TestSpot.class, timer.spotType());
+        assertEquals("heartbeat", timer.timerName());
+        assertEquals(java.time.Duration.ofMillis(250), timer.timerPeriod());
     }
 
     @Test
@@ -284,6 +338,36 @@ final class ZLinkHandlerScannerTest {
         }
     }
 
+    public static final class InterfaceSpotPacketHandler
+        implements ZLinkSpotPacketHandler<TestSpot, SpotPacket> {
+        @Override
+        public void handle(TestSpot spot, SpotPacket message) {
+        }
+    }
+
+    public static final class AttributedSpotRequestHandler {
+        @ZLinkSpotRequest(packetName = "SpotRequestPacket")
+        public SpotReply handle(TestSpot spot, SpotRequest request) {
+            return new SpotReply();
+        }
+    }
+
+    @ZLinkSpotSubscription(topic = "room.events")
+    public static final class InterfaceSpotSubscriptionHandler
+        implements ZLinkSpotSubscriptionHandler<TestSpot, SpotEvent> {
+        @Override
+        public void handle(TestSpot spot, SpotEvent message) {
+        }
+    }
+
+    @ZLinkSpotTimer(name = "heartbeat", periodMillis = 250)
+    public static final class InterfaceSpotTimerHandler
+        implements ZLinkSpotTimerHandler<TestSpot> {
+        @Override
+        public void handle(TestSpot spot, ZLinkTimerTick tick) {
+        }
+    }
+
     public static final class TestActor implements ZLinkActor {
         @Override
         public String actorId() {
@@ -301,5 +385,17 @@ final class ZLinkHandlerScannerTest {
     }
 
     public record SpotActorReply() {
+    }
+
+    public record SpotPacket() {
+    }
+
+    public record SpotRequest() {
+    }
+
+    public record SpotReply() {
+    }
+
+    public record SpotEvent() {
     }
 }

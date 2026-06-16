@@ -75,10 +75,9 @@ namespace zlink::stream_connector::codecs {
         send_call_t _inner;
     };
 
-    template<typename TReply>
     class auto_request_call_t {
     public:
-        explicit auto_request_call_t(request_call_t<zlink::message_t> inner) : _inner(std::move(inner)) {
+        explicit auto_request_call_t(request_call_t inner) : _inner(std::move(inner)) {
         }
 
         /// Overrides the packet name sent with this request.
@@ -112,8 +111,9 @@ namespace zlink::stream_connector::codecs {
         }
 
         /// Sends the encoded request, waits for the correlated reply, and decodes it as TReply.
+        template<typename TReply>
         result_t<TReply> submit() {
-            auto result = _inner.submit();
+            auto result = _inner.template submit<zlink::message_t>();
             if (!result) {
                 return result_t<TReply>::failure(
                     result.error_code(),
@@ -123,8 +123,9 @@ namespace zlink::stream_connector::codecs {
         }
 
         /// Sends the encoded request and invokes the callback with the decoded reply result.
+        template<typename TReply>
         void submit(std::function<void (result_t<TReply>)> callback) {
-            _inner.submit([callback = std::move(callback)](result_t<zlink::message_t> result) mutable {
+            _inner.template submit<zlink::message_t>([callback = std::move(callback)](result_t<zlink::message_t> result) mutable {
                 if (!callback) {
                     return;
                 }
@@ -139,7 +140,7 @@ namespace zlink::stream_connector::codecs {
         }
 
     private:
-        request_call_t<zlink::message_t> _inner;
+        request_call_t _inner;
     };
 
     /// Starts a typed send call using codec_traits<T>.
@@ -149,10 +150,10 @@ namespace zlink::stream_connector::codecs {
     }
 
     /// Starts a typed request call using codec_traits<TRequest> for the request payload.
-    template<typename TReply, typename TRequest>
-    auto_request_call_t<TReply> request(connector_t &connector, const TRequest &payload) {
-        return auto_request_call_t<TReply>(
-            connector.request<zlink::message_t>(encode_packet(payload)));
+    template<typename TRequest>
+    auto_request_call_t request(connector_t &connector, const TRequest &payload) {
+        return auto_request_call_t(
+            connector.request(encode_packet(payload)));
     }
 
     /// Registers a typed packet callback for the given packet name.

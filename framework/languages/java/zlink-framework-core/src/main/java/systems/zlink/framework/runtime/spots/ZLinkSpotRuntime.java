@@ -138,7 +138,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     private final ZLinkHandlerFactory handlerFactory;
     private final Executor handlerExecutor;
     private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
-    private final Map<String, SpotActorPacketHandlerRegistration> actorPacketHandlers;
+    private final ZLinkScannedHandlerCatalog handlerCatalog;
+    private final Map<String, List<SpotActorPacketHandlerRegistration>> actorPacketHandlers;
     private final Duration defaultTimeout;
     private final ZLinkChannelRuntime channels;
     private ZLinkActorRuntime actorRuntime;
@@ -208,8 +209,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             registration.workers().maxThreads(),
             registration.workers().idleTimeout(),
             registration.workers().maxQueueLength());
-        ZLinkScannedHandlerCatalog handlerCatalog =
-            ZLinkHandlerScanner.scan(registration.handlerPackageMarkers());
+        this.handlerCatalog = ZLinkHandlerScanner.scan(registration.handlerPackageMarkers());
         this.actorPacketHandlers = new HashMap<>(actorPacketHandlersByPacket(handlerCatalog));
         prepareHandlerSerializerTypes();
         ZLinkChannelBackendAdapter channelAdapter =
@@ -316,9 +316,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 + registration.nodeName());
     }
 
-    private static Map<String, SpotActorPacketHandlerRegistration> actorPacketHandlersByPacket(
+    private static Map<String, List<SpotActorPacketHandlerRegistration>> actorPacketHandlersByPacket(
         ZLinkScannedHandlerCatalog handlerCatalog) {
-        Map<String, SpotActorPacketHandlerRegistration> handlers = new HashMap<>();
+        Map<String, List<SpotActorPacketHandlerRegistration>> handlers = new HashMap<>();
         for (ZLinkScannedHandler handler : handlerCatalog.handlers()) {
             if (handler.surface() != ZLinkScannedHandlerSurface.SPOT
                 || (handler.kind() != ZLinkScannedHandlerKind.ACTOR_SEND
@@ -327,12 +327,29 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             }
             SpotActorPacketHandlerRegistration registration =
                 createActorPacketRegistration(handler);
-            if (handlers.putIfAbsent(handler.packetName(), registration) != null) {
+            addActorPacketRegistration(handlers, registration);
+        }
+        Map<String, List<SpotActorPacketHandlerRegistration>> snapshot = new HashMap<>();
+        for (Map.Entry<String, List<SpotActorPacketHandlerRegistration>> entry : handlers.entrySet()) {
+            snapshot.put(entry.getKey(), List.copyOf(entry.getValue()));
+        }
+        return Map.copyOf(snapshot);
+    }
+
+    private static void addActorPacketRegistration(
+        Map<String, List<SpotActorPacketHandlerRegistration>> handlers,
+        SpotActorPacketHandlerRegistration registration) {
+        List<SpotActorPacketHandlerRegistration> packetHandlers =
+            handlers.computeIfAbsent(registration.packetName(), ignored -> new ArrayList<>());
+        for (SpotActorPacketHandlerRegistration existing : packetHandlers) {
+            if (existing.spotType() == registration.spotType()
+                && existing.actorType() == registration.actorType()
+                && existing.kind() == registration.kind()) {
                 throw new ZLinkConfigurationException(
-                    "duplicate Spot actor packet handler packet: " + handler.packetName());
+                    "duplicate Spot actor packet handler packet: " + registration.packetName());
             }
         }
-        return Map.copyOf(handlers);
+        packetHandlers.add(registration);
     }
 
     private static SpotActorPacketHandlerRegistration createActorPacketRegistration(
@@ -347,6 +364,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             return new SpotActorPacketHandlerRegistration(
                 handler.handlerType(),
                 handler.handlerMethod(),
+                handler.spotType() != null ? handler.spotType() : shape.spotType(),
                 shape.actorType(),
                 handler.messageType(),
                 handler.replyType(),
@@ -365,6 +383,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         return new SpotActorPacketHandlerRegistration(
             handler.handlerType(),
             null,
+            requireClassArgument(handler.handlerType(), arguments[0]),
             requireClassArgument(handler.handlerType(), arguments[1]),
             handler.messageType(),
             handler.replyType(),
@@ -390,9 +409,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     private void prepareHandlerSerializerTypes() {
-        for (SpotActorPacketHandlerRegistration registration : actorPacketHandlers.values()) {
-            serializer.prepare(registration.messageType());
-            serializer.prepare(registration.replyType());
+        for (List<SpotActorPacketHandlerRegistration> registrations : actorPacketHandlers.values()) {
+            for (SpotActorPacketHandlerRegistration registration : registrations) {
+                serializer.prepare(registration.messageType());
+                serializer.prepare(registration.replyType());
+            }
         }
     }
 
@@ -638,29 +659,34 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "actor runtime is required for local session actor dispatch"));
         }
-        SpotActorPacketHandlerRegistration handler =
-            actorPacketHandlers.get(header.packetName());
-        if (handler == null) {
-            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "actor packet handler is not registered: " + header.packetName()));
-        }
-        boolean isRequest = header.requestSequence().isPresent()
-            || header.kind() == ZLinkStreamMessageKind.REQUEST;
-        if (isRequest != (handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST)) {
-            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "actor packet kind does not match handler kind: " + header.packetName()));
-        }
         Optional<ZLinkActor> localActor = actorRuntime.localActor(actorRef.actorId());
         if (localActor.isEmpty()) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "local actor is not available: " + actorRef.actorId()));
         }
         ZLinkActor actor = localActor.get();
+        Object spotSurface = localActorSpotSurface(actor);
+        boolean isRequest = header.requestSequence().isPresent()
+            || header.kind() == ZLinkStreamMessageKind.REQUEST;
+        SpotActorPacketHandlerRegistration handler =
+            resolveActorPacketHandler(
+                header.packetName(),
+                spotSurface,
+                isRequest
+                    ? ZLinkScannedHandlerKind.ACTOR_REQUEST
+                    : ZLinkScannedHandlerKind.ACTOR_SEND);
+        if (handler == null) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "actor packet handler is not registered: " + header.packetName()));
+        }
+        if (isRequest != (handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST)) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "actor packet kind does not match handler kind: " + header.packetName()));
+        }
         if (!handler.actorType().isInstance(actor)) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "actor packet handler target type does not match actor: " + actorRef.actorId()));
         }
-        Object spotSurface = localActorSpotSurface(actor);
         CompletableFuture<Optional<Message>> result = new CompletableFuture<>();
         return actorRuntime.submitActorDispatch(
             actor.actorId(),
@@ -979,6 +1005,30 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             }
         }
         return entrySpots.isEmpty() ? null : entrySpots.get(0).entrySpot;
+    }
+
+    private SpotActorPacketHandlerRegistration resolveActorPacketHandler(
+        String packetName,
+        Object spotSurface,
+        ZLinkScannedHandlerKind kind) {
+        List<SpotActorPacketHandlerRegistration> handlers = actorPacketHandlers.get(packetName);
+        if (handlers == null || handlers.isEmpty()) {
+            return null;
+        }
+        Class<?> spotType = spotSurface == null ? null : spotSurface.getClass();
+        SpotActorPacketHandlerRegistration fallback = null;
+        for (SpotActorPacketHandlerRegistration handler : handlers) {
+            if (handler.kind() != kind) {
+                continue;
+            }
+            if (spotType != null && handler.spotType() == spotType) {
+                return handler;
+            }
+            if (fallback == null) {
+                fallback = handler;
+            }
+        }
+        return fallback;
     }
 
     private CompletionStage<Optional<Message>> dispatchLocalSessionActorPacket(
@@ -1503,6 +1553,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
         void closeRegistration() {
             registrationOpen = false;
+            registerScannedSpotHandlers(
+                entrySpot.getClass(),
+                packetHandlers,
+                subscriptionHandlers,
+                this::addTimer);
             for (Class<?> handlerType : handlerTypes) {
                 registerConfiguredSpotHandler(handlerType, entrySpot.getClass(), packetHandlers);
             }
@@ -1789,16 +1844,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     pendingActorHeader = null;
                 }
                 ActorPacketHeader packetHeader = decodeActorPacketHeader(headerPart);
-                SpotActorPacketHandlerRegistration handler =
-                    actorPacketHandlers.get(packetHeader.packetName());
-                if (handler == null || actorRuntime == null) {
-                    if (pendingHeader) {
-                        headerPart.close();
-                    }
-                    continue;
-                }
-                if (packetHeader.requestSeq().isPresent()
-                    != (handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST)) {
+                if (actorRuntime == null) {
                     if (pendingHeader) {
                         headerPart.close();
                     }
@@ -1813,6 +1859,26 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     continue;
                 }
                 ZLinkActor actor = localActor.get();
+                SpotActorPacketHandlerRegistration handler =
+                    resolveActorPacketHandler(
+                        packetHeader.packetName(),
+                        entrySpot,
+                        packetHeader.requestSeq().isPresent()
+                            ? ZLinkScannedHandlerKind.ACTOR_REQUEST
+                            : ZLinkScannedHandlerKind.ACTOR_SEND);
+                if (handler == null) {
+                    if (pendingHeader) {
+                        headerPart.close();
+                    }
+                    continue;
+                }
+                if (packetHeader.requestSeq().isPresent()
+                    != (handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST)) {
+                    if (pendingHeader) {
+                        headerPart.close();
+                    }
+                    continue;
+                }
                 if (!handler.actorType().isInstance(actor)) {
                     if (pendingHeader) {
                         headerPart.close();
@@ -2269,6 +2335,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
         void closeRegistration() {
             registrationOpen = false;
+            registerScannedSpotHandlers(
+                spot.getClass(),
+                packetHandlers,
+                subscriptionHandlers,
+                this::addTimer);
             for (Class<?> handlerType : handlerTypes) {
                 registerConfiguredSpotHandler(handlerType, spot.getClass(), packetHandlers);
             }
@@ -3310,6 +3381,82 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         String packetName) {
     }
 
+    private interface ScannedTimerRegistrar {
+        CompletionStage<ZLinkTimer> addTimer(
+            String name,
+            Duration period,
+            Class<?> handlerType,
+            ZLinkTimerOptions options);
+    }
+
+    private void registerScannedSpotHandlers(
+        Class<?> spotType,
+        Map<String, SpotPacketHandlerRegistration> packetHandlers,
+        Map<String, List<SpotSubscriptionHandlerRegistration>> subscriptionHandlers,
+        ScannedTimerRegistrar timerRegistrar) {
+        for (ZLinkScannedHandler handler : handlerCatalog.handlers()) {
+            if (!isScannedHandlerForSpot(handler, spotType)) {
+                continue;
+            }
+            if (handler.kind() == ZLinkScannedHandlerKind.SEND
+                || handler.kind() == ZLinkScannedHandlerKind.REQUEST) {
+                addConfiguredPacketHandler(
+                    packetHandlers,
+                    createScannedSpotPacketRegistration(handler));
+                continue;
+            }
+            if (handler.kind() == ZLinkScannedHandlerKind.PUBLISH) {
+                SpotSubscriptionHandlerRegistration registration =
+                    createScannedSpotSubscriptionRegistration(handler);
+                subscriptionHandlers
+                    .computeIfAbsent(registration.topic(), ignored -> new ArrayList<>())
+                    .add(registration);
+                continue;
+            }
+            if (handler.kind() == ZLinkScannedHandlerKind.TIMER) {
+                timerRegistrar.addTimer(
+                    handler.timerName(),
+                    handler.timerPeriod(),
+                    handler.handlerType(),
+                    new ZLinkTimerOptions());
+            }
+        }
+    }
+
+    private static boolean isScannedHandlerForSpot(
+        ZLinkScannedHandler handler,
+        Class<?> spotType) {
+        return handler.surface() == ZLinkScannedHandlerSurface.SPOT
+            && handler.spotType() == spotType
+            && (handler.kind() == ZLinkScannedHandlerKind.SEND
+                || handler.kind() == ZLinkScannedHandlerKind.REQUEST
+                || handler.kind() == ZLinkScannedHandlerKind.PUBLISH
+                || handler.kind() == ZLinkScannedHandlerKind.TIMER);
+    }
+
+    private static SpotPacketHandlerRegistration createScannedSpotPacketRegistration(
+        ZLinkScannedHandler handler) {
+        return new SpotPacketHandlerRegistration(
+            handler.handlerType(),
+            handler.handlerMethod(),
+            handler.spotType(),
+            handler.messageType(),
+            handler.replyType(),
+            handler.packetName(),
+            handler.kind() == ZLinkScannedHandlerKind.REQUEST);
+    }
+
+    private static SpotSubscriptionHandlerRegistration createScannedSpotSubscriptionRegistration(
+        ZLinkScannedHandler handler) {
+        return new SpotSubscriptionHandlerRegistration(
+            handler.topic(),
+            handler.handlerType(),
+            handler.handlerMethod(),
+            handler.spotType(),
+            handler.messageType(),
+            handler.packetName());
+    }
+
     private void registerConfiguredSpotHandler(
         Class<?> handlerType,
         Class<?> expectedSpotType,
@@ -3329,11 +3476,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             rejectConflictingSpotActorAnnotations(handlerType, method);
 
             if (method.getAnnotation(ZLinkSpotActorSend.class) != null) {
-                addConfiguredActorPacketHandler(handlerType, method, ZLinkScannedHandlerKind.ACTOR_SEND);
+                addConfiguredActorPacketHandler(
+                    handlerType,
+                    expectedSpotType,
+                    method,
+                    ZLinkScannedHandlerKind.ACTOR_SEND);
                 matched = true;
             }
             if (method.getAnnotation(ZLinkSpotActorRequest.class) != null) {
-                addConfiguredActorPacketHandler(handlerType, method, ZLinkScannedHandlerKind.ACTOR_REQUEST);
+                addConfiguredActorPacketHandler(
+                    handlerType,
+                    expectedSpotType,
+                    method,
+                    ZLinkScannedHandlerKind.ACTOR_REQUEST);
                 matched = true;
             }
         }
@@ -3386,6 +3541,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
     private void addConfiguredActorPacketHandler(
         Class<?> handlerType,
+        Class<?> expectedSpotType,
         Method method,
         ZLinkScannedHandlerKind kind) {
         ActorMessageShape shape = actorPacketHandlerShape(
@@ -3405,17 +3561,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             new SpotActorPacketHandlerRegistration(
                 handlerType,
                 method,
+                expectedSpotType,
                 shape.actorType(),
                 shape.messageType(),
                 replyType,
                 packetName,
                 kind);
-        SpotActorPacketHandlerRegistration previous =
-            actorPacketHandlers.putIfAbsent(packetName, registration);
-        if (previous != null && previous.handlerType() != handlerType) {
-            throw new ZLinkConfigurationException(
-                "duplicate Spot actor packet handler packet: " + packetName);
-        }
+        addActorPacketRegistration(actorPacketHandlers, registration);
     }
 
     private void addConfiguredActorPacketHandler(Class<?> handlerType) {
@@ -3451,17 +3603,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             new SpotActorPacketHandlerRegistration(
                 handlerType,
                 null,
+                requireClassArgument(handlerType, arguments[0]),
                 actorType,
                 messageType,
                 replyType,
                 packetName,
                 kind);
-        SpotActorPacketHandlerRegistration previous =
-            actorPacketHandlers.putIfAbsent(packetName, registration);
-        if (previous != null && previous.handlerType() != handlerType) {
-            throw new ZLinkConfigurationException(
-                "duplicate Spot actor packet handler packet: " + packetName);
-        }
+        addActorPacketRegistration(actorPacketHandlers, registration);
     }
 
     private static SpotPacketHandlerRegistration createSpotPacketRegistration(
@@ -3567,19 +3715,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         Class<? extends ZLinkHandlerContext> contextType) {
         Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 2) {
-            return new ActorMessageShape(parameters[0], parameters[1]);
+            return new ActorMessageShape(null, parameters[0], parameters[1]);
         }
         if (parameters.length == 5
             && parameters[2].isAssignableFrom(contextType)
             && parameters[4] == CancellationToken.class) {
-            return new ActorMessageShape(parameters[1], parameters[3]);
+            return new ActorMessageShape(parameters[0], parameters[1], parameters[3]);
         }
         throw new ZLinkConfigurationException(
             "Spot actor packet handler method must have actor/message or spot, actor, context, message, CancellationToken parameters: "
                 + handlerType.getName() + "." + method.getName());
     }
 
-    private record ActorMessageShape(Class<?> actorType, Class<?> messageType) {
+    private record ActorMessageShape(Class<?> spotType, Class<?> actorType, Class<?> messageType) {
     }
 
     static Object[] actorPacketArguments(
@@ -3904,16 +4052,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     pendingActorHeader = null;
                 }
                 ActorPacketHeader packetHeader = decodeActorPacketHeader(headerPart);
-                SpotActorPacketHandlerRegistration handler =
-                    actorPacketHandlers.get(packetHeader.packetName());
-                if (handler == null || actorRuntime == null) {
-                    if (pendingHeader) {
-                        headerPart.close();
-                    }
-                    continue;
-                }
-                if (packetHeader.requestSeq().isPresent()
-                    != (handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST)) {
+                if (actorRuntime == null) {
                     if (pendingHeader) {
                         headerPart.close();
                     }
@@ -3928,6 +4067,26 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     continue;
                 }
                 ZLinkActor actor = localActor.get();
+                SpotActorPacketHandlerRegistration handler =
+                    resolveActorPacketHandler(
+                        packetHeader.packetName(),
+                        spot,
+                        packetHeader.requestSeq().isPresent()
+                            ? ZLinkScannedHandlerKind.ACTOR_REQUEST
+                            : ZLinkScannedHandlerKind.ACTOR_SEND);
+                if (handler == null) {
+                    if (pendingHeader) {
+                        headerPart.close();
+                    }
+                    continue;
+                }
+                if (packetHeader.requestSeq().isPresent()
+                    != (handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST)) {
+                    if (pendingHeader) {
+                        headerPart.close();
+                    }
+                    continue;
+                }
                 if (!handler.actorType().isInstance(actor)) {
                     if (pendingHeader) {
                         headerPart.close();

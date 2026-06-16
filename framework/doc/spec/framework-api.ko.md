@@ -260,26 +260,14 @@ payload, option 값처럼 작은 구조화 데이터는 concrete record, class, 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddClientServerChannel("profile", channel =>
-    {
-        channel.EnableServer();
-    });
+    options.AddClientServerChannel("profile")
+        .EnableServer("tcp://0.0.0.0:7101");
 
-    options.AddFanoutChannel("profile.events", channel =>
-    {
-        channel.EnableSubscriber();
-    });
+    options.AddFanoutChannel("profile.events")
+        .EnableSubscriber();
 
-    options.AddClientServerChannel("account", channel =>
-    {
-        channel.EnableClient(client =>
-        {
-            client.UseManualConnections(peers =>
-            {
-                peers.Connect("tcp://10.0.20.15:7101");
-            });
-        });
-    });
+    options.AddClientServerChannel("account")
+        .EnableClient("tcp://10.0.20.15:7101");
     options.AddHandlersFromAssemblyOf<Program>();
 });
 
@@ -340,7 +328,7 @@ request도 reply를 기다리는 async 호출로 설명한다. 다만 request pa
 `SPOT`은 일반 channel messaging보다 instance lifecycle과 실행 문맥이 더 먼저
 보이는 표면이다. 공통 정책 차원에서는 아래 정도만 고정한다.
 
-- active SPOT channel view는 `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))`가
+- active SPOT channel view는 `AddSpotMesh(channelName).UseDiscovery()`가
   정한다. `UseSpotDiscovery(...)`와 `AddSpotNode(...)`를 분리하는 방식은 호환 경로로만
   남기고, 새 샘플은 mesh 등록을 기준으로 작성한다.
 - `SpotNode`는 router, pub/sub, attach된 외부 호출 역할을 가진다.

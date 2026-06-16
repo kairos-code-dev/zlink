@@ -1,11 +1,11 @@
-const { zlinkSpotActorRequestHandler } = require('../../../../../../../../../packages/nestjs/dist');
-const { BingoRoomSpot } = require('../bingo-room-spot');
-const { PlayerActor } = require('../../Actors/player-actor');
-const { PacketNames } = require('../../../../../../Shared/Contracts/messages');
+import { zlinkSpotActorRequestHandler } from '@zlink-systems/nestjs';
+import { BingoRoomSpot } from '../bingo-room-spot';
+import { PlayerActor } from '../../Actors/player-actor';
+import { PacketNames } from '../../../../../../Shared/Contracts/messages';
 import type {
   ZLinkSpotActorRequestContext,
   ZLinkSpotActorRequestHandler
-} from '../../../../../../../../packages/framework/dist';
+} from '@zlink-systems/framework';
 import type { BingoRoomSpot as BingoRoomSpotType } from '../bingo-room-spot';
 import type { PlayerActor as PlayerActorType } from '../../Actors/player-actor';
 import type {

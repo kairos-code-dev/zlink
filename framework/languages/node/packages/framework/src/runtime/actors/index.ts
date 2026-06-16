@@ -877,9 +877,9 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<ZLinkActorJoinResult> {
+  async submit<TReply = Message>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
     try {
-      return await this.coordinator.joinSpot(
+      const result = await this.coordinator.joinSpot(
         this.actor,
         this.state,
         this.spotRid,
@@ -887,12 +887,31 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
         this.timeoutMs,
         signal
       );
+      return {
+        ...result,
+        reply: result.reply === undefined ? undefined : decodeJoinReply<TReply>(result.reply)
+      };
     } finally {
       if (this.ownsRequest) {
         this.request.close();
       }
     }
   }
+}
+
+function decodeJoinReply<TReply>(reply: Message): TReply {
+  const state = reply as unknown as {
+    _hasValue?: boolean;
+    _value?: unknown;
+  };
+  if (state._hasValue === true) {
+    return state._value as TReply;
+  }
+  const data = reply.data();
+  if (data.length === 0) {
+    return undefined as TReply;
+  }
+  return JSON.parse(data.toString('utf8')) as TReply;
 }
 
 class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall {
@@ -976,13 +995,13 @@ async function createProviderInstance<T>(
   type: Type<T>,
   resolver: ZLinkProviderResolver | undefined
 ): Promise<T> {
-  const created = await resolver?.create?.(type);
-  if (created !== undefined) {
-    return created;
-  }
   const existing = resolver?.get?.(type);
   if (existing !== undefined) {
     return existing;
+  }
+  const created = await resolver?.create?.(type);
+  if (created !== undefined) {
+    return created;
   }
   return new (type as new () => T)();
 }

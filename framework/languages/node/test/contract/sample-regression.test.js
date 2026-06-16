@@ -119,7 +119,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
   const missing = [];
   const violations = [];
   for (const [name, content, text] of [
-    ['Bingo module', files.bingoModule, '.spotFactory(BingoRoomSpot)'],
+    ['Bingo module', files.bingoModule, '.addSpotFactory(BingoRoomSpot)'],
     ['Bingo allocator', files.bingoAllocator, 'ZLINK_SPOT_MANAGER'],
     ['Bingo allocator', files.bingoAllocator, '.create(BingoRoomSpot'],
     ['Bingo allocator', files.bingoAllocator, '.executeOnSpot<BingoRoomSpotType'],
@@ -130,8 +130,8 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     ['Bingo entry', files.bingoEntry, 'destroyActor(actor'],
     ['Bingo room', files.bingoRoom, 'onActorJoin'],
     ['Bingo room', files.bingoRoom, 'onLeaveActor'],
-    ['Bingo room', files.bingoRoom, 'context?.leaveActor(actor'],
-    ['TicTacToe module', files.ticTacToeModule, '.spotFactory(TicTacToeGameSpot)'],
+    ['Bingo room', files.bingoRoom, 'context.leaveActor(actor'],
+    ['TicTacToe module', files.ticTacToeModule, '.addSpotFactory(TicTacToeGameSpot)'],
     ['TicTacToe create', files.ticTacToeCreate, 'ZLINK_SPOT_MANAGER'],
     ['TicTacToe create', files.ticTacToeCreate, '.getOrCreate(TicTacToeGameSpot'],
     ['TicTacToe entry', files.ticTacToeEntry, 'context.joinSpot(roomId)'],
@@ -140,7 +140,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     ['TicTacToe entry', files.ticTacToeEntry, 'destroyActor(actor'],
     ['TicTacToe game', files.ticTacToeGame, 'onActorJoin'],
     ['TicTacToe game', files.ticTacToeGame, 'onLeaveActor'],
-    ['TicTacToe game', files.ticTacToeGame, 'context?.leaveActor(player.actor'],
+    ['TicTacToe game', files.ticTacToeGame, 'context.leaveActor(player.actor'],
     ['TicTacToe session', files.ticTacToeSession, 'spotManager.executeOnSpot']
   ]) {
     if (!content.includes(text)) {
@@ -279,10 +279,13 @@ test('node framework samples exercise the real NestJS application context', () =
   if (!registryMain.includes('.start()') || !registryMain.includes('.close()')) {
     missing.push('Bingo.Ts/Server/Registry/main.ts:start-close');
   }
-  if (!registryHost.includes('ZLinkRegistryRuntime')) {
-    missing.push('Bingo.Ts/Server/Registry/registry-server-host.ts:ZLinkRegistryRuntime');
+  if (!registryHost.includes('ZLinkRegistryModule.forRoot')) {
+    missing.push('Bingo.Ts/Server/Registry/registry-server-host.ts:ZLinkRegistryModule.forRoot');
   }
-  for (const text of ['NestFactory.createApplicationContext', "require('@nestjs/common')", 'ZLinkRegistryModule.forRoot']) {
+  if (!registryHost.includes('NestFactory.createApplicationContext')) {
+    missing.push('Bingo.Ts/Server/Registry/registry-server-host.ts:NestFactory.createApplicationContext');
+  }
+  for (const text of ['ZLinkRegistryRuntime', "require('@nestjs/common')"]) {
     if (registryMain.includes(text) || registryHost.includes(text)) {
       hiddenServerRuntime.push(`Bingo.Ts/Server/Registry:${text}`);
     }
@@ -430,16 +433,19 @@ test('Bingo TypeScript sample uses registry discovery instead of direct server p
   const sessionModule = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'bingo-session-module.ts'), 'utf8');
   const registry = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Registry', 'registry-server-host.ts'), 'utf8');
   const required = [
-    [registry, 'ZLinkRegistryRuntime'],
-    [registry, 'registration: {'],
+    [registry, 'ZLinkRegistryModule.forRoot'],
+    [registry, 'NestFactory.createApplicationContext'],
     [registry, 'registryPubEndpoint'],
     [registry, 'registryRouterEndpoint'],
-    [apiModule, 'discovery: { registries: [config.registryRouterEndpoint] }'],
-    [apiModule, '.clientServerChannel(SampleNames.playChannel'],
-    [apiModule, '.client())'],
-    [playModule, 'discovery: { registries: [config.registryRouterEndpoint] }'],
-    [sessionModule, 'discovery: { registries: [endpoints.registryRouterEndpoint] }'],
-    [sessionModule, '.clientServerChannel(SampleNames.notificationChannel']
+    [apiModule, '.useDiscovery()'],
+    [apiModule, '.addRegistryEndpoint(config.registryRouterEndpoint)'],
+    [apiModule, '.addClientServerChannel(SampleNames.playChannel'],
+    [apiModule, '.enableClient()'],
+    [playModule, '.useDiscovery()'],
+    [playModule, '.addRegistryEndpoint(config.registryRouterEndpoint)'],
+    [sessionModule, '.useDiscovery()'],
+    [sessionModule, '.addRegistryEndpoint(endpoints.registryRouterEndpoint)'],
+    [sessionModule, '.addClientServerChannel(SampleNames.notificationChannel']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
@@ -574,6 +580,9 @@ test('node client samples wait for push packets through stream connector helpers
     if (/waitForJson|waitForNotify|async function waitFor\s*\(|\.waitFor(?:<[^>]+>)?\([^)]*,/.test(content)) {
       violations.push(name);
     }
+    if (/\.on<[^>]+>\(/.test(content)) {
+      violations.push(`${name}:.on`);
+    }
   }
 
   assert.deepEqual(missing, []);
@@ -591,13 +600,14 @@ test('node client scenarios follow the common sample document order', () => {
     '2. player-1 matches first',
     'client1.request(matchBingoReq())',
     'client1MatchRes.roomId.length > 0',
-    'client1PlayerJoinedNotifies.length === 0',
+    'await client1SelfJoinNotify',
     '3-5. player-2 joins the same room',
     '.waitFor<PlayerJoinedNotify>',
+    'client2SelfJoinNotify',
     '.waitFor<StateEnvelope>(PacketNames.gameStartedNotify)',
     '.waitFor<StateEnvelope>(PacketNames.gameStartedNotify)',
     'client2.request(matchBingoReq())',
-    'client2PlayerJoinedNotifies.length === 0',
+    'await client2SelfJoinNotify',
     '6. Both clients submit deterministic cards',
     '.request(submitBingoCardReq',
     '.request(submitBingoCardReq',
@@ -623,12 +633,13 @@ test('node client scenarios follow the common sample document order', () => {
     'client1.request(joinGameReq(game.roomId))',
     "stateOf(client1Join).roomId === game.roomId",
     'client1Join.mark === GameMarks.x',
-    'client1PlayerJoinedNotifies.length === 0',
+    'await client1SelfJoinNotify',
     '4-6. Guest joins by the same RoomId',
     'client1SawClient2Join',
+    'client2SelfJoinNotify',
     '.request(joinGameReq(game.roomId))',
     'client2Join.mark === GameMarks.o',
-    'client2PlayerJoinedNotifies.length === 0',
+    'await client2SelfJoinNotify',
     'client1Running.payload.state.nextTurn === client1Auth.actorId',
     '7. Each move response and opponent notify',
     'client1.request(placeMarkStreamReq(0))',
@@ -652,14 +663,9 @@ test('node samples use the codecs required by the common specs', () => {
   const bingoProto = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'bingo_messages.proto'), 'utf8');
   const required = [
     [ticTacToeClient, 'zlinkStreamJsonCodec'],
-    [ticTacToePlay, '.streamNode(SampleNames.playStream'],
+    [ticTacToePlay, '.addStreamNode(SampleNames.playStream'],
     [bingoClient, 'bingoProtobufCodec'],
     [bingoSession, 'ZlinkStreamCodec.Protobuf'],
-    [bingoSession, 'fromBingoProto'],
-    [bingoSession, 'toBingoProto'],
-    [bingoContracts, 'createProtobufMessage'],
-    [bingoContracts, 'readProtobufMessage'],
-    [bingoCodec, 'BingoPayloadEnvelope'],
     [bingoProto, 'message AuthenticateReq'],
     [bingoProto, 'message BingoRoomState'],
     [bingoProto, 'message BingoNumberDrawnNotify']
@@ -674,11 +680,29 @@ test('node samples use the codecs required by the common specs', () => {
         continue;
       }
       const content = fs.readFileSync(file, 'utf8');
+      const relative = path.relative(samplesRoot, file);
       if (sample === 'TicTacToe.Ts' && /MessagePack|msgpack|toMsgPack|fromMsgPack|zlinkStreamMessagePackCodec|createMessagePackMessage|readMessagePackMessage/.test(content)) {
-        violations.push(path.relative(samplesRoot, file));
+        violations.push(relative);
       }
       if (sample === 'Bingo.Ts' && /MessagePack|msgpack|toMsgPack|fromMsgPack|zlinkStreamMessagePackCodec|createMessagePackMessage|readMessagePackMessage/.test(content)) {
-        violations.push(path.relative(samplesRoot, file));
+        violations.push(relative);
+      }
+      if (/bingoChannelHandlerOptions|decodeBingoChannelReply|submit<Buffer>|\.then\(decode/.test(content)) {
+        violations.push(relative);
+      }
+      if (/writeVarint|readVarint|schemaTable|manualSchema|wireType/.test(content)) {
+        violations.push(relative);
+      }
+      if (/addSerializer\s*\(|bingoProtobufSerializer|bingoProtobufContentType/.test(content)) {
+        violations.push(relative);
+      }
+      if (sample === 'Bingo.Ts' && /createProtobufMessage|readProtobufMessage/.test(content)) {
+        violations.push(`${relative}:protobuf-message-helper`);
+      }
+      if (sample === 'Bingo.Ts'
+          && /fromBingoProto|toBingoProto/.test(content)
+          && !isAllowedBingoRawSessionCodecFile(relative)) {
+        violations.push(`${relative}:protobuf-session-helper`);
       }
     }
   }
@@ -750,7 +774,7 @@ test('TicTacToe server uses framework stream session instead of connector framin
     'tictactoe-game-spot.ts'
   ), 'utf8');
   for (const text of [
-    '.streamNode(SampleNames.playStream',
+    '.addStreamNode(SampleNames.playStream',
     '.registerSession(PlaySessionFactory)',
     'context.client.reply',
     'actorManager.getOrCreate',
@@ -861,22 +885,22 @@ test('TicTacToe uses manual handler registration and Bingo keeps automatic regis
   const required = [
     [nestPackage, 'export function zlinkRequestHandler'],
     [nestPackage, 'export function zlinkSpotTimerHandler'],
-    [apiModule, '.requestHandler(PacketNames.authenticatePlayerReq, AuthenticatePlayerHandler)'],
-    [playModule, '.requestHandler(PacketNames.createGame, CreateGameHandler)'],
+    [apiModule, '.addRequestHandler(PacketNames.authenticatePlayerReq, AuthenticatePlayerHandler)'],
+    [playModule, '.addRequestHandler(PacketNames.createGame, CreateGameHandler)'],
     [playModule, 'CreateGameHandler'],
     [playModule, 'PlayActorJoinGameHandler'],
     [playModule, 'PlayActorPlaceMarkHandler'],
     [fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'play-entry-spot.ts'), 'utf8'),
       'this.context.handlers.actorRequest(PacketNames.joinGameReq, PlayActorJoinGameHandler)'],
     [fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'tictactoe-game-spot.ts'), 'utf8'),
-      'this.context?.handlers.actorRequest(PacketNames.placeMarkReq, PlayActorPlaceMarkHandler)'],
+      'this.context.handlers.actorRequest(PacketNames.placeMarkReq, PlayActorPlaceMarkHandler)'],
     [ticTacToeTimerHandler, 'class TicTacToeGameTimerHandler'],
     [bingoTimerHandler, 'class BingoRoomTimerHandler'],
-    [bingoTimerHandler, '@zlinkSpotTimerHandler()'],
-    [fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'bingo-api-module.ts'), 'utf8'), '.handlerGroup(\'api\')'],
-    [bingoPlayModule, '.handlerGroup(\'play\')'],
+    [bingoTimerHandler, '@zlinkSpotTimerHandler({'],
+    [fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'bingo-api-module.ts'), 'utf8'), '.addHandlerGroup(\'api\')'],
+    [bingoPlayModule, '.addHandlerGroup(\'play\')'],
     [bingoPlayModule, 'zlinkDiscoverProviders'],
-    [playModule, '.streamNode(SampleNames.playStream']
+    [playModule, '.addStreamNode(SampleNames.playStream']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
@@ -926,9 +950,9 @@ test('TicTacToe uses manual handler registration and Bingo keeps automatic regis
   }
   for (const text of [
     'zlinkDiscoverProviders',
-    ".handlerGroup('play')",
+    ".addHandlerGroup('play')",
     "@zlinkRequestHandler('play', PacketNames.createGame)",
-    '@zlinkSpotTimerHandler()'
+    '@zlinkSpotTimerHandler({'
   ]) {
     if (playModule.includes(text) || playHandler.includes(text) || ticTacToeTimerHandler.includes(text)) {
       violations.push(`TicTacToe.manual:${text}`);
@@ -1042,9 +1066,9 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
     [frameworkSpotContract, 'interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor>'],
     [frameworkSpotContract, 'interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>'],
     [playModule, '.actorFactory(SampleNames.playerActorType, PlayerActorFactory)'],
-    [playModule, '.spotNode(SampleNames.roomSpotType'],
-    [playModule, '.entrySpot(BingoEntrySpot)'],
-    [playModule, '.spotFactory(BingoRoomSpot)'],
+    [playModule, '.addSpotNode(SampleNames.roomSpotType'],
+    [playModule, '.addEntrySpot(BingoEntrySpot)'],
+    [playModule, '.addSpotFactory(BingoRoomSpot)'],
     [roomSpot, 'implements ZLinkSpot<PlayerActorType>'],
     [roomSpot, 'onActorJoin(actor: PlayerActorType'],
     [roomSpot, 'onJoinActor(actor: PlayerActorType'],
@@ -1405,6 +1429,14 @@ function assertOrdered(name, content, snippets) {
 
 function readSample(sample, relative) {
   return fs.readFileSync(path.join(samplesRoot, sample, relative), 'utf8');
+}
+
+function isAllowedBingoRawSessionCodecFile(relative) {
+  return [
+    'Bingo.Ts/Shared/Contracts/messages.ts',
+    'Bingo.Ts/Shared/Contracts/protobuf-codec.ts',
+    'Bingo.Ts/Server/Session/main.ts'
+  ].includes(relative);
 }
 
 function escapeRegExp(value) {

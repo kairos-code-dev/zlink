@@ -309,19 +309,11 @@ class game_module_t final : public zlink::framework::module_t
 
     void configure_zlink (zlink::framework::zlink_builder_t &zlink) override
     {
-        zlink.add_node ("module-node")
-          .channel ("stage.events", [] (zlink::framework::channel_builder_t &channel) {
-              channel.enable_publisher ([] (zlink::framework::capability_builder_t &publisher) {
-                  publisher.bind ("tcp://127.0.0.1:9101");
-              });
-          });
+        zlink.add_node ("module-node");
+        zlink.channel ("stage.events").enable_publisher ().bind ("tcp://127.0.0.1:9101");
 
-        zlink::framework::spot_node_builder_t spot_builder;
-        zlink.add_spot_node ("stage-node",
-                             [&spot_builder] (zlink::framework::spot_node_builder_t &spot_node) {
-                                 spot_node.add_spot<stage_spot_t> ("stage");
-                                 spot_builder = spot_node;
-                             });
+        auto spot_builder = zlink.add_spot_node ("stage-node");
+        spot_builder.add_spot<stage_spot_t> ("stage");
         auto context = spot_builder.create_spot ("stage").context;
         context.register_packet<stage_packet_t> ("stage.packet");
 
@@ -532,18 +524,16 @@ int main ()
     options.handlers ().add_publish<options_publish_handler_t> ("events");
     options.use_filter<options_filter_t> ();
     options.metadata ().add_forwarded_metadata_key ("trace-id");
-    options.configure_dispatch ([] (zlink::framework::dispatch_options_t &dispatch) {
-        dispatch.spot_dispatch_mode = zlink::framework::dispatch_mode_t::compiled;
-        dispatch.stream_dispatch_mode = zlink::framework::dispatch_mode_t::dynamic;
-        dispatch.unhandled.request = zlink::framework::unhandled_dispatch_action_t::reply_error;
-        dispatch.unhandled.send = zlink::framework::unhandled_dispatch_action_t::log_and_drop;
-        dispatch.unhandled.publish = zlink::framework::unhandled_dispatch_action_t::drop;
-        dispatch.diagnostics.message_flow =
-          zlink::framework::message_flow_log_mode_t::key_transitions;
-        dispatch.diagnostics.sample_rate = 0.5;
-        dispatch.diagnostics.include_message_sizes = true;
-        dispatch.diagnostics.include_native_diagnostics = true;
-    });
+    auto &dispatch = options.configure_dispatch ();
+    dispatch.spot_dispatch_mode = zlink::framework::dispatch_mode_t::compiled;
+    dispatch.stream_dispatch_mode = zlink::framework::dispatch_mode_t::dynamic;
+    dispatch.unhandled.request = zlink::framework::unhandled_dispatch_action_t::reply_error;
+    dispatch.unhandled.send = zlink::framework::unhandled_dispatch_action_t::log_and_drop;
+    dispatch.unhandled.publish = zlink::framework::unhandled_dispatch_action_t::drop;
+    dispatch.diagnostics.message_flow = zlink::framework::message_flow_log_mode_t::key_transitions;
+    dispatch.diagnostics.sample_rate = 0.5;
+    dispatch.diagnostics.include_message_sizes = true;
+    dispatch.diagnostics.include_native_diagnostics = true;
     options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9102");
     options.add_client_server_channel ("api-channel")
       .enable_server ("tcp://127.0.0.1:9103")
@@ -646,14 +636,15 @@ int main ()
         || projected_metadata.contains ("tenant-id") || metadata_policy.can_forward ("tenant-id")) {
         return 20;
     }
-    const auto dispatch = options.dispatch_options ();
-    if (dispatch.spot_dispatch_mode != zlink::framework::dispatch_mode_t::compiled
-        || dispatch.stream_dispatch_mode != zlink::framework::dispatch_mode_t::dynamic
-        || dispatch.unhandled.publish != zlink::framework::unhandled_dispatch_action_t::drop
-        || dispatch.diagnostics.message_flow
+    const auto options_dispatch = options.dispatch_options ();
+    if (options_dispatch.spot_dispatch_mode != zlink::framework::dispatch_mode_t::compiled
+        || options_dispatch.stream_dispatch_mode != zlink::framework::dispatch_mode_t::dynamic
+        || options_dispatch.unhandled.publish != zlink::framework::unhandled_dispatch_action_t::drop
+        || options_dispatch.diagnostics.message_flow
              != zlink::framework::message_flow_log_mode_t::key_transitions
-        || dispatch.diagnostics.sample_rate != 0.5 || !dispatch.diagnostics.include_message_sizes
-        || !dispatch.diagnostics.include_native_diagnostics) {
+        || options_dispatch.diagnostics.sample_rate != 0.5
+        || !options_dispatch.diagnostics.include_message_sizes
+        || !options_dispatch.diagnostics.include_native_diagnostics) {
         return 21;
     }
     bool invalid_dispatch_failed = false;
@@ -666,9 +657,8 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
-        invalid_options.configure_dispatch ([] (zlink::framework::dispatch_options_t &dispatch) {
-            dispatch.diagnostics.sample_rate = 1.5;
-        });
+        invalid_options.configure_dispatch ().diagnostics.sample_rate = 1.5;
+        invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
         invalid_dispatch_failed =
@@ -688,9 +678,9 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
-        invalid_options.configure_dispatch ([] (zlink::framework::dispatch_options_t &dispatch) {
-            dispatch.unhandled.send = zlink::framework::unhandled_dispatch_action_t::reply_error;
-        });
+        invalid_options.configure_dispatch ().unhandled.send =
+          zlink::framework::unhandled_dispatch_action_t::reply_error;
+        invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
         invalid_send_reply_error_failed =
@@ -711,9 +701,9 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
-        invalid_options.configure_dispatch ([] (zlink::framework::dispatch_options_t &dispatch) {
-            dispatch.unhandled.publish = zlink::framework::unhandled_dispatch_action_t::reply_error;
-        });
+        invalid_options.configure_dispatch ().unhandled.publish =
+          zlink::framework::unhandled_dispatch_action_t::reply_error;
+        invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
         invalid_publish_reply_error_failed =
@@ -734,9 +724,9 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
-        invalid_options.configure_dispatch ([] (zlink::framework::dispatch_options_t &dispatch) {
-            dispatch.diagnostics.sample_rate = std::numeric_limits<double>::quiet_NaN ();
-        });
+        invalid_options.configure_dispatch ().diagnostics.sample_rate =
+          std::numeric_limits<double>::quiet_NaN ();
+        invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
         invalid_nan_sample_rate_failed =
@@ -979,11 +969,7 @@ int main ()
         valid_options.add_spot_mesh ("manual-spots")
           .add_node ("route-node")
           .enable_router ("tcp://127.0.0.1:9344")
-          .accept_routes_from_channel (
-            "manual-spot-route",
-            [] (zlink::framework::accepted_spot_route_channel_builder_t &routes) {
-                routes.connect ("tcp://127.0.0.1:9343");
-            });
+          .accept_routes_from_channel ("manual-spot-route", "tcp://127.0.0.1:9343");
         valid_options.apply ();
         const auto spots = valid_zlink.spot_nodes ();
         accepted_spot_route_manual_without_discovery_succeeded =
@@ -1281,10 +1267,7 @@ int main ()
         valid_options.add_spot_mesh ("spots")
           .add_node ("spot-node")
           .enable_router ("tcp://127.0.0.1:9346")
-          .attach_channel_client ("manual-api",
-                                  [] (zlink::framework::attached_channel_client_builder_t &client) {
-                                      client.connect ("tcp://127.0.0.1:9345");
-                                  });
+          .attach_channel_client ("manual-api", "tcp://127.0.0.1:9345");
         valid_options.apply ();
         const auto snapshots = valid_zlink.spot_nodes ();
         attach_channel_client_manual_succeeded =
@@ -1317,10 +1300,7 @@ int main ()
         valid_options.add_spot_mesh ("spots")
           .add_node ("spot-node")
           .enable_pub_sub ("tcp://127.0.0.1:9348")
-          .attach_publisher ("manual-events",
-                             [] (zlink::framework::attached_publisher_builder_t &publisher) {
-                                 publisher.connect ("tcp://127.0.0.1:9347");
-                             });
+          .attach_publisher ("manual-events", "tcp://127.0.0.1:9347");
         valid_options.apply ();
         const auto snapshots = valid_zlink.spot_nodes ();
         attach_publisher_manual_succeeded =
@@ -1497,7 +1477,8 @@ int main ()
               invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9313");
               invalid_options.add_client_server_channel ("route").enable_server (
                 "tcp://127.0.0.1:9314");
-              invalid_options.add_route_mesh_channel ("route").bind ("tcp://127.0.0.1:9315");
+              invalid_options.add_route_mesh_channel ("route").enable_server (
+                "tcp://127.0.0.1:9315");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9316")

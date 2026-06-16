@@ -42,24 +42,20 @@ discovery 기반 mesh 로 묶는 형태가 표준이다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+        var mesh =     options.AddSpotMesh("game.stage");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-        mesh.AddNode("stage-node", node =>
         {
-            node.EnableRouter(router =>
-            {
-                router.BindRouter("tcp://0.0.0.0:9001");
-            });                                                // routed packet 수신
-            node.EnablePubSub(pubsub =>
-            {
-                pubsub.BindPubSub("tcp://0.0.0.0:9000");
-            });                                                // 현재 channel publish/subscribe
+            var node =         mesh.AddNode("stage-node");
+            node.EnableRouter("tcp://0.0.0.0:9001");                                                // routed packet 수신
+            node.EnablePubSub("tcp://0.0.0.0:9000");                                                // 현재 channel publish/subscribe
             node.AttachChannelClient("orders");   // 다른 channel 로 send/request
             node.AddSpotFactory<StageSpot>();          // 이 노드가 만들 타입
-        });
-    });
+
+        }
+
+    }
 });
 ```
 
@@ -67,15 +63,15 @@ node 역할은 서로 독립이다.
 
 | node 함수 | 의미 |
 |-----------|------|
-| `EnableRouter(router => router.BindRouter(endpoint))` | 다른 SpotNode/채널에서 오는 routed packet 수신 |
-| `EnablePubSub()` | 현재 SPOT channel 의 publish/subscribe (없으면 `Publish` 불가) |
+| `EnableRouter(endpoint)` | 다른 SpotNode/채널에서 오는 routed packet 수신 |
+| `EnablePubSub(endpoint)` | 현재 SPOT channel 의 publish/subscribe (없으면 `Publish` 불가) |
 | `AttachChannelClient(name)` | 일반 channel 로 send/request 하는 client 부착 |
 | `AddSpotFactory<TSpot>()` | 이 노드가 만들 spot 타입 등록. 타입 중복은 시작 예외 |
 | `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../spec/aspnet-core-actor.ko.md)) |
 
-> top-level `UseDiscovery(...AddRegistryEndpoint...)` 를 등록하면 `AddSpotMesh(...)` 는 그 discovery endpoint 를
-> 기본으로 상속한다. mesh 단위로 다른 endpoint 를 쓰려는 경우에만 `mesh.UseDiscovery(...AddRegistryEndpoint...)` 를
-> 따로 둔다. 단일 노드만 띄우는 local 테스트도 `AddSpotMesh(...)` 안에서 빈
+> top-level `UseDiscovery().AddRegistryEndpoint(...)` 를 등록하면 `AddSpotMesh` 는 그 discovery endpoint 를
+> 기본으로 상속한다. mesh 단위로 다른 endpoint 를 쓰려는 경우에만 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 를
+> 따로 둔다. 단일 노드만 띄우는 local 테스트도 `AddSpotMesh` 안에서 빈
 > `AddNode(...)` 와 `AddNode(...)` 로 표현한다.
 
 ## 3. Spot 작성 — handler 등록과 lifecycle
@@ -459,7 +455,7 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
 
 ## 7. 자주 막히는 곳
 
-- **`Publish` 가 안 된다** → 노드에 `EnablePubSub()` 가 없다.
+- **`Publish` 가 안 된다** → 노드에 `EnablePubSub(endpoint)` 가 없다.
 - **routed 호출이 안 나간다** → egress(`EnableSpotRouteEgress`)와 ingress
   (`AcceptSpotRoutesFromChannel`) 이름이 짝이 맞는지, target ROUTER 에 실제로
   연결돼 있는지 확인한다.

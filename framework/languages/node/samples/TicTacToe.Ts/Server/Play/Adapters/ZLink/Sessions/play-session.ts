@@ -1,17 +1,15 @@
-require('reflect-metadata');
-
-const {
-  PacketNames,
-  authenticateReq,
-  authenticateRes,
-  placeMarkReq
-} = require('../../../../../Shared/Contracts/messages');
-const { SampleNames, SampleTimings } = require('../../../../Configuration/sample-settings');
+import 'reflect-metadata';
+import { PacketNames, PlaceMarkReq, authenticatePlayerReq, authenticateRes } from '../../../../../Shared/Contracts/messages';
+import { SampleNames, SampleTimings } from '../../../../Configuration/sample-settings';
+import { TicTacToeGameSpot } from '../Spots/tictactoe-game-spot';
 import type {
+  ZLinkActor,
   ZLinkChannelClient,
   ZLinkSession,
-  ZLinkSessionContext
-} from '../../../../../../../packages/framework/dist';
+  ZLinkSessionContext,
+  ZLinkSpotActorRequestContext,
+  ZLinkSpotManager
+} from '@zlink-systems/framework';
 import type {
   AuthenticatePlayerRes,
   AuthenticateReq,
@@ -21,16 +19,34 @@ import type {
   TicTacToeActorClient
 } from '../../../../../Shared/Contracts/messages';
 
+type PlaySessionActor = TicTacToeActor & ZLinkActor;
+
+type PlayEntrySpotLike = {
+  join(actor: PlaySessionActor, roomId: string): Promise<unknown>;
+};
+
 type PlaySessionDependencies = {
   apiClient: ZLinkChannelClient;
   actorManager: {
-    getOrCreate(actorId: string, actorType: string, signal?: AbortSignal): Promise<TicTacToeActor>;
+    getOrCreate(actorId: string, actorType: string, signal?: AbortSignal): Promise<PlaySessionActor>;
   };
-  entrySpot: {
-    join(actor: TicTacToeActor, roomId: string): Promise<unknown>;
+  entrySpot: PlayEntrySpotLike;
+  joinGameHandler: {
+    handle(
+      entrySpot: PlayEntrySpotLike,
+      actor: PlaySessionActor,
+      context: ZLinkSpotActorRequestContext,
+      request: JoinGameReq
+    ): Promise<unknown>;
   };
+  spotManager: ZLinkSpotManager;
   placeMarkHandler: {
-    handle(request: ReturnType<typeof placeMarkReq>): Promise<unknown>;
+    handle(
+      spot: TicTacToeGameSpot,
+      actor: PlaySessionActor,
+      context: ZLinkSpotActorRequestContext,
+      request: PlaceMarkReq
+    ): Promise<unknown>;
   };
 };
 
@@ -39,7 +55,7 @@ type PlaySessionHeader = {
 };
 
 class PlaySession implements ZLinkSession {
-  private actor: TicTacToeActor | null;
+  private actor: PlaySessionActor | null;
 
   constructor(
     private readonly dependencies: PlaySessionDependencies,
@@ -80,9 +96,7 @@ class PlaySession implements ZLinkSession {
   async authenticate(header: PlaySessionHeader, request: AuthenticateReq): Promise<void> {
     void header;
     const authenticated = await this.dependencies.apiClient
-      .requestToChannel(SampleNames.apiChannel, authenticateReq(request.accessToken))
-      .packetName(PacketNames.authenticatePlayerReq)
-      .timeout(SampleTimings.requestTimeout)
+      .requestToChannel(SampleNames.apiChannel, authenticatePlayerReq(request.accessToken))
       .submit<AuthenticatePlayerRes>();
     this.actor = await this.dependencies.actorManager.getOrCreate(
       authenticated.actorId,
@@ -98,7 +112,12 @@ class PlaySession implements ZLinkSession {
     if (this.actor === null) {
       throw new Error('AuthenticateReq is required before JoinGameReq.');
     }
-    const result = await this.dependencies.entrySpot.join(this.actor, request.roomId);
+    const result = await this.dependencies.joinGameHandler.handle(
+      this.dependencies.entrySpot,
+      this.actor,
+      createActorRequestContext(PacketNames.joinGameReq),
+      request
+    );
     await this.context.client.reply(result).submit();
   }
 
@@ -107,9 +126,41 @@ class PlaySession implements ZLinkSession {
     if (this.actor === null) {
       throw new Error('AuthenticateReq is required before PlaceMarkReq.');
     }
-    const result = await this.dependencies.placeMarkHandler.handle(placeMarkReq(this.actor, request.cell));
+    const roomId = this.actor.roomId;
+    if (roomId === undefined) {
+      throw new Error('JoinGameReq is required before PlaceMarkReq.');
+    }
+    const result = await this.dependencies.spotManager.executeOnSpot(
+      TicTacToeGameSpot,
+      roomId,
+      (spot) => this.dependencies.placeMarkHandler.handle(
+        spot,
+        this.actor as PlaySessionActor,
+        createActorRequestContext(PacketNames.placeMarkReq),
+        new PlaceMarkReq(request.cell)
+      )
+    );
     await this.context.client.reply(result).submit();
   }
+}
+
+function createActorRequestContext(packetName: string): ZLinkSpotActorRequestContext {
+  return {
+    packetName,
+    metadata: { packetName },
+    reply: createNoopReplyOptions()
+  };
+}
+
+function createNoopReplyOptions(): ZLinkSpotActorRequestContext['reply'] {
+  return {
+    metadata(_key: string, _value: string) {
+      return this;
+    },
+    compress(_enabled?: boolean) {
+      return this;
+    }
+  };
 }
 
 function requirePlaySessionHeader(header: unknown): PlaySessionHeader {

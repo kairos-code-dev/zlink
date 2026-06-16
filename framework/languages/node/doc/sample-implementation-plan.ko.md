@@ -34,13 +34,13 @@ regression test가 닫힌 뒤 작성하며, 정식 spec 에 없는 API를 guide�
 | `01-overview.ko.md` | `doc/guide/01-*` | Node framework 가 무엇을 해 주는가 |
 | `02-getting-started.ko.md` | getting started 장 | NestJS app 에 어떻게 붙이는가 |
 | `03-concepts.ko.md` | concepts 장 | channel, Spot, actor, stream 의 차이 |
-| `04-feature-map.ko.md` | feature map 장 | dotnet 기능이 Node 에서 어떤 이름인지 |
-| `05-channel-messaging.ko.md` | channel messaging 장 | request/send/publish 를 언제 쓰는가 |
-| `06-spot.ko.md` | Spot 장 | SpotNode, Entry Spot, user Spot 을 어떻게 등록하는가 |
-| `07-actor-session.ko.md` | actor/session guide | actor bind, session relay, bound session push |
-| `08-stream.ko.md` | stream guide | stream node, header session, connector 사용 |
-| `09-registry.ko.md` | registry guide | embedded registry 와 query 사용 |
-| `10-monitoring.ko.md` | monitoring guide | runtime event 를 어떻게 받는가 |
+| `10-feature-map.ko.md` | feature map 장 | dotnet 기능이 Node 에서 어떤 이름인지 |
+| `04-channel-messaging.ko.md` | channel messaging 장 | request/send/publish 를 언제 쓰는가 |
+| `05-spot.ko.md` | Spot 장 | SpotNode, Entry Spot, user Spot 을 어떻게 등록하는가 |
+| `06-actor-session.ko.md` | actor/session guide | actor bind, session relay, bound session push |
+| `07-stream.ko.md` | stream guide | stream node, header session, connector 사용 |
+| `08-registry.ko.md` | registry guide | embedded registry 와 query 사용 |
+| `09-monitoring.ko.md` | monitoring guide | runtime event 를 어떻게 받는가 |
 | `11-interface-catalog.ko.md` | API catalog | 주요 public interface와 decorator 찾기 |
 | `12-cross-language.ko.md` | language interop guide | dotnet/C++/Java 와 같은 wire 계약으로 붙는 법 |
 

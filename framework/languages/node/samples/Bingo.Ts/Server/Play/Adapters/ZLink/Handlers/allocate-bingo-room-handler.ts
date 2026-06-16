@@ -1,8 +1,8 @@
-const { Inject } = require('@nestjs/common');
-const { zlinkRequestHandler } = require('../../../../../../../../packages/nestjs/dist');
-const { BingoRoomAllocator } = require('../../../Application/RoomAllocation/bingo-room-allocator');
-const { PacketNames, allocateBingoRoomRes, BingoModes } = require('../../../../../Shared/Contracts/messages');
-import type { ZLinkRequestHandler } from '../../../../../../../packages/framework/dist';
+import { Inject } from '@nestjs/common';
+import { zlinkRequestHandler } from '@zlink-systems/nestjs';
+import { BingoRoomAllocator } from '../../../Application/RoomAllocation/bingo-room-allocator';
+import { PacketNames, allocateBingoRoomRes, BingoModes } from '../../../../../Shared/Contracts/messages';
+import type { ZLinkRequestHandler } from '@zlink-systems/framework';
 import type { BingoRoomAllocator as BingoRoomAllocatorType } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import type {
   AllocateBingoRoomReq,
@@ -14,8 +14,8 @@ class AllocateBingoRoomHandler implements ZLinkRequestHandler<AllocateBingoRoomR
   constructor(@Inject(BingoRoomAllocator) private readonly rooms: BingoRoomAllocatorType) {}
 
   async handle(request: AllocateBingoRoomReq): Promise<AllocateBingoRoomRes> {
-    const allocated = await this.rooms.allocate(request.mode ?? BingoModes.twoPlayer);
-    return allocateBingoRoomRes(allocated.roomId);
+    const roomId = await this.rooms.allocate(request.mode ?? BingoModes.twoPlayer);
+    return allocateBingoRoomRes(roomId);
   }
 }
 

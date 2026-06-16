@@ -62,22 +62,18 @@ internal static class TestHostScenarioConfigurator
         {
             if (!string.IsNullOrWhiteSpace(options.DiscoveryEndpoint))
             {
-                framework.UseDiscovery(discovery => discovery.AddRegistryEndpoint(options.DiscoveryEndpoint));
+                framework.UseDiscovery().AddRegistryEndpoint(options.DiscoveryEndpoint);
             }
 
-            framework.AddClientServerChannel(
-                options.ChannelName
-                    ?? throw new InvalidOperationException("Channel server mode requires --channel-name."),
-                channel =>
-                {
-                    channel.EnableServer(server =>
-                    {
-                        server.Bind(options.ServerEndpoint
-                            ?? throw new InvalidOperationException("Channel server mode requires --server-endpoint."));
-                    });
+            {
+                var channel = framework.AddClientServerChannel(options.ChannelName
+                    ?? throw new InvalidOperationException("Channel server mode requires --channel-name."))
+                    .EnableServer(options.ServerEndpoint
+                        ?? throw new InvalidOperationException("Channel server mode requires --server-endpoint."));
                     channel.AddRequestHandler<TestHostProfileRequestHandler, TestHostProfileRequest, TestHostProfileReply>();
                     channel.AddSendHandler<TestHostProfileSendHandler, TestHostProfileSend>();
-                });
+
+            }
         });
     }
 
@@ -86,20 +82,13 @@ internal static class TestHostScenarioConfigurator
         services.AddSingleton(new TestHostEventSink(options.EventFilePath));
         services.AddZLinkFramework(framework =>
         {
-            framework.AddClientServerChannel(
-                options.ChannelName
-                    ?? throw new InvalidOperationException("Channel client mode requires --channel-name."),
-                channel =>
-                {
-                    channel.EnableClient(client =>
-                    {
-                        client.UseManualConnections(connections =>
-                        {
-                            connections.Connect(options.ServerEndpoint
-                                ?? throw new InvalidOperationException("Channel client mode requires --server-endpoint."));
-                        });
-                    });
-                });
+            {
+                framework.AddClientServerChannel(options.ChannelName
+                    ?? throw new InvalidOperationException("Channel client mode requires --channel-name."))
+                    .EnableClient(options.ServerEndpoint
+                        ?? throw new InvalidOperationException("Channel client mode requires --server-endpoint."));
+
+            }
         });
         services.AddHostedService(provider =>
             new ChannelClientStartupRequestHostedService(
@@ -117,28 +106,25 @@ internal static class TestHostScenarioConfigurator
             framework.AddHandlersFromAssemblyOf<Program>();
             if (string.IsNullOrWhiteSpace(options.PublisherEndpoint))
             {
-                framework.UseDiscovery(discovery => discovery.AddRegistryEndpoint(
+                framework.UseDiscovery().AddRegistryEndpoint(
                     options.DiscoveryEndpoint
-                        ?? throw new InvalidOperationException("Channel subscriber mode requires --discovery-endpoint.")));
+                        ?? throw new InvalidOperationException("Channel subscriber mode requires --discovery-endpoint."));
             }
 
-            framework.AddFanoutChannel(
-                options.ChannelName
-                    ?? throw new InvalidOperationException("Channel subscriber mode requires --channel-name."),
-                channel =>
-                {
-                    channel.EnableSubscriber(subscriber =>
+            {
+                var channel = framework.AddFanoutChannel(options.ChannelName
+                    ?? throw new InvalidOperationException("Channel subscriber mode requires --channel-name."));
+                    if (!string.IsNullOrWhiteSpace(options.PublisherEndpoint))
                     {
-                        if (!string.IsNullOrWhiteSpace(options.PublisherEndpoint))
-                        {
-                            subscriber.UseManualConnections(connections =>
-                            {
-                                connections.Connect(options.PublisherEndpoint);
-                            });
-                        }
-                    });
+                        channel.EnableSubscriber(options.PublisherEndpoint);
+                    }
+                    else
+                    {
+                        channel.EnableSubscriber();
+                    }
                     channel.AddHandlerGroup("testhost-channel-events");
-                });
+
+            }
         });
     }
 
@@ -148,20 +134,16 @@ internal static class TestHostScenarioConfigurator
         {
             if (!string.IsNullOrWhiteSpace(options.DiscoveryEndpoint))
             {
-                framework.UseDiscovery(discovery => discovery.AddRegistryEndpoint(options.DiscoveryEndpoint));
+                framework.UseDiscovery().AddRegistryEndpoint(options.DiscoveryEndpoint);
             }
 
-            framework.AddFanoutChannel(
-                options.ChannelName
-                    ?? throw new InvalidOperationException("Channel publisher mode requires --channel-name."),
-                channel =>
-                {
-                    channel.EnablePublisher(publisher =>
-                    {
-                        publisher.Bind(options.PublisherEndpoint
-                            ?? throw new InvalidOperationException("Channel publisher mode requires --publisher-endpoint."));
-                    });
-                });
+            {
+                framework.AddFanoutChannel(options.ChannelName
+                    ?? throw new InvalidOperationException("Channel publisher mode requires --channel-name."))
+                    .EnablePublisher(options.PublisherEndpoint
+                        ?? throw new InvalidOperationException("Channel publisher mode requires --publisher-endpoint."));
+
+            }
         });
 
         if (!string.IsNullOrWhiteSpace(options.PublishTopic))
@@ -181,36 +163,32 @@ internal static class TestHostScenarioConfigurator
         services.AddScoped<StartupStageSubscriptionHandler>();
         services.AddZLinkFramework(framework =>
         {
-            framework.AddSpotMesh(
-                options.DiscoveryChannelName
-                    ?? throw new InvalidOperationException("SPOT node mode requires --discovery-channel."),
-                spotMesh =>
-                {
-                    spotMesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(
+            {
+                var spotMesh = framework.AddSpotMesh(options.DiscoveryChannelName
+                    ?? throw new InvalidOperationException("SPOT node mode requires --discovery-channel."));
+                    spotMesh.UseDiscovery().AddRegistryEndpoint(
                         options.DiscoveryEndpoint
-                            ?? throw new InvalidOperationException("SPOT node mode requires --discovery-endpoint.")));
+                            ?? throw new InvalidOperationException("SPOT node mode requires --discovery-endpoint."));
 
-                    spotMesh.AddNode(
-                        options.SpotNodeName
-                            ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name."),
-                        spot =>
-                        {
+                    {
+                        var spot = spotMesh.AddNode(options.SpotNodeName
+                            ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name."));
                             var spotBindEndpoint = options.SpotBindEndpoint
                                 ?? throw new InvalidOperationException("SPOT node mode requires --spot-bind-endpoint.");
 
                             if (options.EnablePubSub)
                             {
-                                spot.EnablePubSub(pubsub =>
                                 {
-                                    pubsub.BindPubSub(spotBindEndpoint);
-                                });
+                                    var pubsub = spot.EnablePubSub(spotBindEndpoint);
+
+                                }
                             }
                             else
                             {
-                                spot.EnableRouter(router =>
                                 {
-                                    router.BindRouter(spotBindEndpoint);
-                                });
+                                    var router = spot.EnableRouter(spotBindEndpoint);
+
+                                }
                             }
 
                             if (!string.IsNullOrWhiteSpace(options.AttachSpotPublisherChannel))
@@ -222,8 +200,10 @@ internal static class TestHostScenarioConfigurator
                             {
                                 spot.AddSpotFactory<StartupStageSpot>();
                             }
-                        });
-                });
+
+                    }
+
+            }
         });
 
         if (options.CreateSpot)
@@ -251,12 +231,13 @@ internal static class TestHostScenarioConfigurator
         services.AddSingleton<TestHostRawStreamRecorder>();
         services.AddZLinkFramework(framework =>
         {
-            framework.AddStreamNode("stream.raw", stream =>
             {
+                var stream = framework.AddStreamNode("stream.raw");
                 stream.Bind(options.StreamEndpoint
                     ?? throw new InvalidOperationException("STREAM raw mode requires --stream-endpoint."));
                 stream.RegisterSession<TestHostRawStreamSession>();
-            });
+
+            }
         });
     }
 

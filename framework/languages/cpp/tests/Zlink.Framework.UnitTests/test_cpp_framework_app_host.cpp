@@ -782,8 +782,8 @@ int main ()
       process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_ENDPOINT, 2);
     const auto https_client_base_url = endpoint_with_port (
       ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_CLIENT_BASE_URL, port_from_endpoint (https_endpoint));
-    app.advanced ().use_zlink (
-      [&] (zlink::framework::zlink_builder_t &) { zlink_configured = true; });
+    (void) app.advanced ().zlink ();
+    zlink_configured = true;
     app.health ()
       .add_zlink_runtime_check ()
       .add_channel_check ("games.channel")

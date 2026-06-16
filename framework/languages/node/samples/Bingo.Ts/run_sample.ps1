@@ -53,6 +53,44 @@ function Wait-Port([string]$Name, [string]$Endpoint) {
     throw "Timed out waiting for $Name at $Endpoint"
 }
 
+function Wait-DiscoveryReady([string]$RegistryEndpoint) {
+    $script = @'
+const registryEndpoint = process.argv[2];
+const zlink = require('@zlink-systems/zlink');
+const required = new Set(['bingo.api', 'bingo.play', 'bingo.notifications']);
+const pause = new Int32Array(new SharedArrayBuffer(4));
+const context = zlink.createContext();
+const client = zlink.createRegistryQueryClient(context);
+
+try {
+  client.connect(registryEndpoint);
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const ready = new Set(client
+      .topology()
+      .filter((entry) =>
+        required.has(entry.channelName) &&
+        entry.state === 3 &&
+        typeof entry.endpoint === 'string' &&
+        entry.endpoint.length > 0)
+      .map((entry) => entry.channelName));
+    if ([...required].every((channelName) => ready.has(channelName))) {
+      process.exit(0);
+    }
+    Atomics.wait(pause, 0, 0, 100);
+  }
+  console.error('Timed out waiting for registry discovery readiness.');
+  process.exit(1);
+} finally {
+  client.close();
+  context.close();
+}
+'@
+    $script | node - $RegistryEndpoint
+    if ($LASTEXITCODE -ne 0) {
+        throw "Timed out waiting for registry discovery readiness."
+    }
+}
+
 function Start-Server([string]$Name, [string]$Entry) {
     $process = Start-Process -FilePath "node" `
         -ArgumentList @((Join-Path $scriptDir $Entry)) `
@@ -64,17 +102,19 @@ function Start-Server([string]$Name, [string]$Entry) {
 }
 
 try {
-    $ports = Get-FreePorts 5
-    $env:BINGO_REGISTRY_ENDPOINT = if ($env:BINGO_REGISTRY_ENDPOINT) { $env:BINGO_REGISTRY_ENDPOINT } else { "tcp://127.0.0.1:$($ports[0])" }
-    $env:BINGO_SESSION_ENDPOINT = if ($env:BINGO_SESSION_ENDPOINT) { $env:BINGO_SESSION_ENDPOINT } else { "tcp://127.0.0.1:$($ports[1])" }
-    $env:BINGO_PLAY_ENDPOINT = if ($env:BINGO_PLAY_ENDPOINT) { $env:BINGO_PLAY_ENDPOINT } else { "tcp://127.0.0.1:$($ports[2])" }
-    $env:BINGO_NOTIFICATION_ENDPOINT = if ($env:BINGO_NOTIFICATION_ENDPOINT) { $env:BINGO_NOTIFICATION_ENDPOINT } else { "tcp://127.0.0.1:$($ports[3])" }
-    $env:BINGO_API_ENDPOINT = if ($env:BINGO_API_ENDPOINT) { $env:BINGO_API_ENDPOINT } else { "tcp://127.0.0.1:$($ports[4])" }
+    $ports = Get-FreePorts 6
+    $env:BINGO_REGISTRY_PUB_ENDPOINT = if ($env:BINGO_REGISTRY_PUB_ENDPOINT) { $env:BINGO_REGISTRY_PUB_ENDPOINT } else { "tcp://127.0.0.1:$($ports[0])" }
+    $env:BINGO_REGISTRY_ROUTER_ENDPOINT = if ($env:BINGO_REGISTRY_ROUTER_ENDPOINT) { $env:BINGO_REGISTRY_ROUTER_ENDPOINT } else { "tcp://127.0.0.1:$($ports[1])" }
+    $env:BINGO_SESSION_ENDPOINT = if ($env:BINGO_SESSION_ENDPOINT) { $env:BINGO_SESSION_ENDPOINT } else { "tcp://127.0.0.1:$($ports[2])" }
+    $env:BINGO_PLAY_ENDPOINT = if ($env:BINGO_PLAY_ENDPOINT) { $env:BINGO_PLAY_ENDPOINT } else { "tcp://127.0.0.1:$($ports[3])" }
+    $env:BINGO_NOTIFICATION_ENDPOINT = if ($env:BINGO_NOTIFICATION_ENDPOINT) { $env:BINGO_NOTIFICATION_ENDPOINT } else { "tcp://127.0.0.1:$($ports[4])" }
+    $env:BINGO_API_ENDPOINT = if ($env:BINGO_API_ENDPOINT) { $env:BINGO_API_ENDPOINT } else { "tcp://127.0.0.1:$($ports[5])" }
     $env:ZLINK_SAMPLE_CONFIG = Join-Path $runDir "sample.config.json"
 
     @{
         sample = @{
-            registryEndpoint = $env:BINGO_REGISTRY_ENDPOINT
+            registryPubEndpoint = $env:BINGO_REGISTRY_PUB_ENDPOINT
+            registryRouterEndpoint = $env:BINGO_REGISTRY_ROUTER_ENDPOINT
             sessionEndpoint = $env:BINGO_SESSION_ENDPOINT
             playEndpoint = $env:BINGO_PLAY_ENDPOINT
             notificationEndpoint = $env:BINGO_NOTIFICATION_ENDPOINT
@@ -91,7 +131,8 @@ try {
     }
 
     Start-Server "registry" "dist/Server/Registry/main.js"
-    Wait-Port "registry" $env:BINGO_REGISTRY_ENDPOINT
+    Wait-Port "registry-pub" $env:BINGO_REGISTRY_PUB_ENDPOINT
+    Wait-Port "registry-router" $env:BINGO_REGISTRY_ROUTER_ENDPOINT
 
     Start-Server "play" "dist/Server/Play/main.js"
     Wait-Port "play" $env:BINGO_PLAY_ENDPOINT
@@ -102,6 +143,7 @@ try {
 
     Start-Server "session" "dist/Server/Session/main.js"
     Wait-Port "session" $env:BINGO_SESSION_ENDPOINT
+    Wait-DiscoveryReady $env:BINGO_REGISTRY_ROUTER_ENDPOINT
 
     node (Join-Path $scriptDir "dist/Client/main.js")
 }

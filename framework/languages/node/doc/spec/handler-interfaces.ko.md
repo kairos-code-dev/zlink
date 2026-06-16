@@ -170,20 +170,10 @@ export interface ActorRef {
 | builder | `ZLinkDealerMeshChannelBuilder` | dealer mesh channel 등록 builder | 6.1 |
 | builder | `ZLinkRouteChannelBuilder` | route channel 등록 builder | 6.1 |
 | builder | `ZLinkRouteMeshChannelBuilder` | route mesh channel 등록 builder | 6.1 |
-| builder | `ChannelServerCapabilityBuilder` | channel server 역할 builder | 6.1 |
-| builder | `ChannelClientCapabilityBuilder` | channel client 역할 builder | 6.1 |
-| builder | `DealerMeshChannelClientCapabilityBuilder` | dealer mesh client 역할 builder | 6.1 |
-| builder | `ChannelPublisherCapabilityBuilder` | channel publisher 역할 builder | 6.1 |
-| builder | `ChannelSubscriberCapabilityBuilder` | channel subscriber 역할 builder | 6.1 |
 | builder | `ZLinkStreamNodeBuilder` | STREAM node 등록 builder | 6.1 |
 | builder | `ZLinkSpotNodeBuilder` | SPOT node 등록 builder | 6.3 |
 | builder | `ZLinkSpotMeshBuilder` | SPOT mesh 등록 builder | 6.3 |
 | builder | `ZLinkSpotMeshNodeBuilder` | SPOT mesh node 등록 builder | 6.3 |
-| builder | `SpotRouterCapabilityBuilder` | spot router 역할 builder | 6.3 |
-| builder | `SpotPubSubCapabilityBuilder` | spot pub/sub 역할 builder | 6.3 |
-| builder | `SpotPublisherClientCapabilityBuilder` | spot publisher client 역할 builder | 6.3 |
-| builder | `SpotChannelClientCapabilityBuilder` | spot channel client 역할 builder | 6.3 |
-| builder | `ZLinkSpotRouteChannelAcceptanceBuilder` | spot route 수락 builder | 6.3 |
 | builder | `useDiscovery().addRegistryEndpoint(endpoint)` | discovery endpoint 직접 추가 | 6.1 |
 | builder | `ZLinkMetadataPolicyBuilder` | metadata forward 정책 builder | 6.1 |
 | options | `ZLinkSocketConfig` | 공통 socket 옵션 | 6.4 |
@@ -310,14 +300,13 @@ export class GetProfileHandler {
 
 @Module({
   imports: [
-    ZLinkModule.forRoot({
-      clientServerChannels: {
-        api: {
-          server: { bind: 'tcp://0.0.0.0:7301' },
-          handlerGroups: ['api'],
-        },
-      },
-    }),
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .addClientServerChannel('api')
+          .enableServer('tcp://0.0.0.0:7301')
+          .addHandlerGroup('api')
+        .build()
+    ),
   ],
   providers: [GetProfileHandler],
 })
@@ -1125,13 +1114,13 @@ export interface ZLinkMessageSerializer {
 export function parseMessage<T>(message: Message, type: Type<T>): T;
 ```
 
-codec registry 등록 표면(`ZLinkFrameworkOptions.codecs`, §6.1):
+codec registry 등록 표면(`zlinkFramework().codecs()`, §6.1):
 
 ```ts
 export interface ZLinkCodecRegistryBuilder {
-  addProtobuf(): void;
-  addJson(): void;
-  addMessagePack(): void;
+  addProtobuf(): this;
+  addJson(): this;
+  addMessagePack(): this;
 }
 ```
 
@@ -1431,99 +1420,81 @@ export interface ZLinkMetadataPolicyBuilder {
 
 #### (A) NestJS module-options 대응
 
-builder 람다는 NestJS 선언적 options 객체로 옮긴다. 정확한 키와 형태는 각 채널별 spec
+하위 설정 람다는 NestJS fluent builder 로 옮긴다. 정확한 메서드와 형태는 각 채널별 spec
 (`nestjs-channel-messaging`, `nestjs-spot`, `nestjs-stream`, `nestjs-registry`)이 확정한다.
 
 ```ts
 @Module({
   imports: [
-    ZLinkModule.forRoot({
-      defaultTimeoutMs: 30_000,
-      codecs: ['protobuf', 'json'],
-      clientServerChannels: {
-        api: {
-          server: { bind: 'tcp://0.0.0.0:7101' },
-          handlerGroups: ['api'],
-        },
-        profile: {
-          client: {},
-        },
-      },
-      fanoutChannels: {
-        'api.events': {
-          subscriber: {},
-          handlerGroups: ['api.events'],
-        },
-      },
-      discovery: { registries: ['tcp://registry:7000'] },
-      filters: [LoggingZLinkFilter, ValidationZLinkFilter],
-      dispatch: { spotDispatchMode: 'compiled', streamDispatchMode: 'compiled' },
-    }),
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .options({
+          defaultTimeoutMs: 30_000,
+          filters: [LoggingZLinkFilter, ValidationZLinkFilter],
+          dispatch: { spotDispatchMode: 'compiled', streamDispatchMode: 'compiled' },
+        })
+        .codecs()
+          .addProtobuf()
+          .addJson()
+        .useDiscovery()
+          .addRegistryEndpoint('tcp://registry:7000')
+        .addClientServerChannel('api')
+          .enableServer('tcp://0.0.0.0:7101')
+          .addHandlerGroup('api')
+        .addClientServerChannel('profile')
+          .enableClient()
+        .addFanoutChannel('api.events')
+          .enableSubscriber()
+          .addHandlerGroup('api.events')
+        .build()
+    ),
   ],
   providers: [GetProfileHandler],
 })
 export class AppModule {}
 ```
 
-| dotnet builder 메서드 | node module options 키 | spec |
+| dotnet builder 메서드 | node builder 표면 | spec |
 |------|------|------|
-| `addClientServerChannel(name)` | `clientServerChannels[name] = { server, client }` | nestjs-channel-messaging |
-| `addFanoutChannel(name)` | `fanoutChannels[name] = { publisher, subscriber }` | nestjs-channel-messaging |
-| `addDealerMeshChannel(name)` | `dealerMeshChannels[name] = { ... }` | nestjs-channel-messaging |
-| `addRouteMeshChannel(name)` | `routerMeshes[name] = { ... }` | nestjs-channel-messaging |
-| `addSpotMesh(name).addNode(...)` | `spotNodes[name] = {...}` | nestjs-spot |
-| `addStreamNode(name)` | `streamNodes[name] = {...}` | nestjs-stream |
-| `useDiscovery().addRegistryEndpoint(...)` | `discovery: { registries: [...] }` | nestjs-registry |
+| `addClientServerChannel(name)` | `addClientServerChannel(name)` | nestjs-channel-messaging |
+| `addFanoutChannel(name)` | `addFanoutChannel(name)` | nestjs-channel-messaging |
+| `addDealerMeshChannel(name)` | `addDealerMeshChannel(name)` | nestjs-channel-messaging |
+| `addRouteMeshChannel(name)` | `addRouteMeshChannel(name)` | nestjs-channel-messaging |
+| `addSpotMesh(name).addNode(...)` | `addSpotNode(name)` | nestjs-spot |
+| `addStreamNode(name)` | `addStreamNode(name)` | nestjs-stream |
+| `useDiscovery().addRegistryEndpoint(...)` | `useDiscovery().addRegistryEndpoint(...)` | nestjs-registry |
 | `useFilter(...)` | `filters: [FilterClass]` | handler-interfaces §8 |
 | `configureDispatch(...)` | `dispatch: { spotDispatchMode, streamDispatchMode, unhandled, diagnostics }` | §4.4.3 |
 | `addHandlersFromModule(s)(...)` | `discover: { modules / include }` | 매핑 정책 §4.2 |
 | `addActorFactory(...)` | `actorFactories: [{ actorType, factory }]` | nestjs-actor |
-| `codecs` | `codecs: ['protobuf'|'json'|'messagepack']` | §4.5 |
+| `codecs` | `codecs().addProtobuf()` / `addJson()` / `addMessagePack()` | §4.5 |
 | `configureMetadata(...)` | `metadata: { forward: [...] }` | nestjs-actor |
 | `useRegistrySpotRemoteAddresses(...)` | `spotRemoteAddresses: { namespace, routerChannelId? }` | nestjs-spot |
-
-#### channel 역할 builder
-
-```ts
-export interface ChannelServerCapabilityBuilder {
-  bind(endpoint: string): this;
-}
-
-export interface ChannelClientCapabilityBuilder {
-  connect(endpoint: string): this;
-}
-
-export interface DealerMeshChannelClientCapabilityBuilder extends ChannelClientCapabilityBuilder {}
-
-export interface ChannelPublisherCapabilityBuilder {
-  bind(endpoint: string): this;
-}
-
-export interface ChannelSubscriberCapabilityBuilder {
-  connect(endpoint: string): this;
-}
-```
 
 #### channel builder
 
 ```ts
 export interface ZLinkClientServerChannelBuilder {
-  enableServer(): ChannelServerCapabilityBuilder;
-  enableClient(): ChannelClientCapabilityBuilder;
+  enableServer(endpoint: string): this;
+  enableClient(): this;
+  enableClient(endpoint: string): this;
 }
 
 export interface ZLinkFanoutChannelBuilder {
-  enablePublisher(): ChannelPublisherCapabilityBuilder;
-  enableSubscriber(): ChannelSubscriberCapabilityBuilder;
+  enablePublisher(endpoint: string): this;
+  enableSubscriber(): this;
+  enableSubscriber(endpoint: string): this;
 }
 
 export interface ZLinkDealerMeshChannelBuilder {
-  enableClient(): DealerMeshChannelClientCapabilityBuilder;
+  enableClient(): this;
+  enableClient(endpoint: string): this;
 }
 
 export interface ZLinkRouteChannelBuilder {
-  enableRouter(): ChannelServerCapabilityBuilder;
-  enableDealer(): ChannelClientCapabilityBuilder;
+  enableServer(endpoint: string): this;
+  enableClient(): this;
+  enableClient(endpoint: string): this;
 }
 
 /** route mesh 는 route channel builder 를 그대로 확장한다. */
@@ -1543,14 +1514,14 @@ export interface ZLinkStreamNodeBuilder {
 
 - handler 는 자동으로 모든 channel 에 열리지 않는다. module options 의 handler 매핑 또는 명시
   등록이 노출을 정한다.
-- `enableServer()` / `enablePublisher()` 로 여는 server·publisher 역할은 다른 프로세스가
-  접속해 올 local bind endpoint 가 필요하므로 builder 안에서 `bind(...)` 를 같이 지정한다.
+- `enableServer(endpoint)` / `enablePublisher(endpoint)` 로 여는 server·publisher 역할은
+  다른 프로세스가 접속해 올 local bind endpoint 를 함께 받는다.
 - 수동 연결은 `channel + capability` 단위다. 같은 역할 안에서 discovery 와 manual 을
   섞지 않는다. `client` 와 `subscriber` 는 서로 다른 연결 집합으로 본다.
 
 ### 6.2 channel 수동 연결
 
-수동 연결은 역할 builder 의 `connect(...)` 에서 등록한다. public 계약은
+수동 연결은 `enableClient(endpoint)` 또는 `enableSubscriber(endpoint)` 에서 등록한다. public 계약은
 host 시작 뒤 endpoint 를 바꾸는 별도 runtime 연결 관리 표면을 제공하지 않는다.
 
 ```ts
@@ -1624,57 +1595,41 @@ decode 해서 사용한다. 같은 spotRid 에 대해 다른 `TSpot` 으로 `get
 
 ```ts
 export interface ZLinkSpotNodeBuilder {
-  enableRouter(): SpotRouterCapabilityBuilder;
-  enablePubSub(): SpotPubSubCapabilityBuilder;
+  enableRouter(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this;
+  connectRouter(endpoint: string): this;
+  routerRoutingId(routingId: RoutingId): this;
+  enablePubSub(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this;
+  connectPubSub(endpoint: string): this;
+  pubSubRoutingId(routingId: RoutingId): this;
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
-  attachChannelClient(channelName: string): SpotChannelClientCapabilityBuilder;
-  attachSpotPublisherClient(channelName: string): SpotPublisherClientCapabilityBuilder;
-  acceptSpotRoutesFromChannel(channelName: string): ZLinkSpotRouteChannelAcceptanceBuilder;
+  attachChannelClient(channelName: string, endpoint?: string | readonly string[]): this;
+  attachSpotPublisherClient(channelName: string, endpoint?: string | readonly string[]): this;
+  acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this;
 }
 
 /** mesh node 는 spot node builder 를 그대로 확장한다. */
 export interface ZLinkSpotMeshNodeBuilder extends ZLinkSpotNodeBuilder {}
 
 export interface ZLinkSpotMeshBuilder {
-  addRegistryEndpoint(endpoint: string): this;
-  node(spotNodeName: string): ZLinkSpotMeshNodeBuilder;
-}
-
-export interface SpotRouterCapabilityBuilder {
-  bind(endpoint: string): this;
-  routingId(routingId: RoutingId): this;
-  connect(endpoint: string): this;
-}
-
-export interface SpotPubSubCapabilityBuilder {
-  bind(endpoint: string): this;
-  routingId(routingId: RoutingId): this;
-  connect(endpoint: string): this;
-}
-
-export interface SpotPublisherClientCapabilityBuilder {
-  connect(endpoint: string): this;
-}
-
-export interface SpotChannelClientCapabilityBuilder {
-  connect(endpoint: string): this;
-}
-
-export interface ZLinkSpotRouteChannelAcceptanceBuilder {
-  connect(endpoint: string): this;
+  useDiscovery(): ZLinkDiscoveryBuilder;
+  addNode(name: string): ZLinkSpotMeshNodeBuilder;
 }
 ```
 
-> Node builder 에서도 node 자체 `bind(...)` 는 없다. bind 는 router/pubSub 역할
-> builder 에서 지정한다. spot factory 타입은 root `addSpotFactory(...)` 또는 node-local
-> `addSpotFactory(...)` 로 등록한다.
+> Node builder 에서도 node 자체 `bind(...)` 는 없다. router/pubSub endpoint 는
+> `enableRouter(endpoint)` 와 `enablePubSub(endpoint)` 에서 지정한다. spot factory 타입은
+> node-local `addSpotFactory(...)` 로 등록한다.
 
 builder 함수 의미:
 
-- `enableRouter()`: spot-to-spot routed packet 을 처리할 local router 역할 활성화.
-- `enablePubSub()`: 현재 SPOT channel 의 publish/subscribe 역할 활성화.
+- `enableRouter(endpoint, routingId?, connect?)`: spot-to-spot routed packet 을 처리할 local router 역할 활성화.
+- `connectRouter(endpoint)`: remote router endpoint 를 수동 연결 목록에 추가.
+- `routerRoutingId(routingId)`: local router routing id 지정.
+- `enablePubSub(endpoint, routingId?, connect?)`: 현재 SPOT channel 의 publish/subscribe 역할 활성화.
+- `connectPubSub(endpoint)`: remote pub/sub endpoint 를 수동 연결 목록에 추가.
+- `pubSubRoutingId(routingId)`: local pub/sub routing id 지정.
 - `configureEntrySpot(...)`: native Entry Spot facade 의 routing id 같은 Entry Spot
   옵션을 지정한다.
 - `addEntrySpot(...)`: 이 SpotNode 의 Entry Spot 타입을 등록한다. 같은 node 에 두 번
@@ -1687,8 +1642,8 @@ builder 함수 의미:
   기준 등록한다. node-local `addSpotFactory(...)` 도 `ZLinkSpotManager` 등록 집합에
   합산된다. 같은 node 안에서 같은 `TSpot` 재등록은 예외다.
 
-ActorGateway 는 별도 node builder 를 두지 않는다. `node(...)` 로 등록한 SpotNode 에
-`enableRouter()` 와 router bind 를 설정한 뒤, stream 이 `attachActorGateway(spotNodeName)`
+ActorGateway 는 별도 node builder 를 두지 않는다. `addNode(...)` 로 등록한 SpotNode 에
+`enableRouter(endpoint)` 를 설정한 뒤, stream 이 `attachActorGateway(spotNodeName)`
 으로 그 local ingress node 를 참조한다(§6.1 `ZLinkStreamNodeBuilder`).
 
 `addSpotMesh(channelName)` 는 SPOT channel 이름과 node 묶음을 함께 소유한다. 그래서
@@ -1839,10 +1794,11 @@ export interface ZLinkHandlerFilter {
 등록:
 
 ```ts
-ZLinkModule.forRoot({
-  filters: [LoggingZLinkFilter, ValidationZLinkFilter],
-});
-// 또는 fluent: options.useFilter(LoggingZLinkFilter)
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .options({ filters: [LoggingZLinkFilter, ValidationZLinkFilter] })
+    .build()
+);
 ```
 
 filter 는 framework 가 직접 `new` 하지 않고 NestJS DI 에서 resolve 한다. 주된 용도: logging,

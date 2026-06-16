@@ -1,9 +1,9 @@
-const fs = require('node:fs');
-
+import * as fs from 'node:fs';
 type TicTacToeSampleConfig = {
   apiEndpoint: string;
   apiHttpEndpoint: string;
   playEndpoint: string;
+  playSpotEndpoint: string;
   playStreamEndpoint: string;
 };
 
@@ -16,6 +16,7 @@ function loadSampleConfig(): TicTacToeSampleConfig {
     apiEndpoint: requireEnv('TICTACTOE_API_ENDPOINT'),
     apiHttpEndpoint: requireEnv('TICTACTOE_API_HTTP_ENDPOINT'),
     playEndpoint: requireEnv('TICTACTOE_PLAY_ENDPOINT'),
+    playSpotEndpoint: requireEnv('TICTACTOE_PLAY_SPOT_ENDPOINT'),
     playStreamEndpoint: requireEnv('TICTACTOE_PLAY_STREAM_ENDPOINT')
   };
 }

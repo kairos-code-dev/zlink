@@ -1,18 +1,15 @@
 package systems.zlink.framework.configuration;
 
-import java.util.function.Consumer;
 import systems.zlink.framework.channels.ZLinkPublishHandler;
 
 public interface FanoutChannelBuilder {
-    void enablePublisher();
+    FanoutChannelBuilder enablePublisher(String endpoint);
 
-    void enablePublisher(Consumer<ChannelPublisherCapabilityBuilder> configure);
+    FanoutChannelBuilder enableSubscriber();
 
-    void enableSubscriber();
+    FanoutChannelBuilder enableSubscriber(String endpoint);
 
-    void enableSubscriber(Consumer<SubscriberCapabilityBuilder> configure);
-
-    void addHandlerGroup(String groupName);
+    FanoutChannelBuilder addHandlerGroup(String groupName);
 
     <THandler extends ZLinkPublishHandler<TMessage>, TMessage> void addPublishHandler(
         Class<THandler> handlerType,
@@ -23,7 +20,7 @@ public interface FanoutChannelBuilder {
         Class<TMessage> messageType,
         String packetName);
 
-    void addPublishHandler(Class<?> handlerType);
+    FanoutChannelBuilder addPublishHandler(Class<?> handlerType);
 
-    void addPublishHandler(Class<?> handlerType, String packetName);
+    FanoutChannelBuilder addPublishHandler(Class<?> handlerType, String packetName);
 }

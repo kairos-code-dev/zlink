@@ -4,7 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.MessageLite;
+import com.google.protobuf.Parser;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import systems.zlink.contracts.messaging.Message;
@@ -88,6 +93,9 @@ public final class ZLinkStreamProtobuf {
         if (type == Message.class) {
             return type.cast(Message.from(payload.payload()));
         }
+        if (MessageLite.class.isAssignableFrom(type)) {
+            return parseProtobuf(payload, type);
+        }
         try {
             return MAPPER.readValue(payload.payload().toByteArray(), type);
         } catch (IOException ex) {
@@ -104,6 +112,9 @@ public final class ZLinkStreamProtobuf {
         if (value instanceof Message message) {
             return message.toByteArray();
         }
+        if (value instanceof MessageLite protobuf) {
+            return protobuf.toByteArray();
+        }
         if (value instanceof String text) {
             return text.getBytes(StandardCharsets.UTF_8);
         }
@@ -118,6 +129,41 @@ public final class ZLinkStreamProtobuf {
 
     private static String valueTypeName(Object value) {
         return value == null ? "null" : value.getClass().getName();
+    }
+
+    private static <T> T parseProtobuf(ZLinkStreamEncodedPayload payload, Class<T> type) {
+        try {
+            Parser<?> parser = parserFor(type);
+            return type.cast(parser.parseFrom(payload.payload().toByteArray()));
+        } catch (InvalidProtocolBufferException ex) {
+            throw new IllegalArgumentException(
+                "failed to decode Protobuf payload as " + type.getName(),
+                ex);
+        }
+    }
+
+    private static Parser<?> parserFor(Class<?> type) {
+        try {
+            Method parserMethod = type.getMethod("parser");
+            Object parser = parserMethod.invoke(null);
+            if (parser instanceof Parser<?> typedParser) {
+                return typedParser;
+            }
+            throw new IllegalArgumentException(
+                "Protobuf type parser() did not return Parser: " + type.getName());
+        } catch (NoSuchMethodException ex) {
+            throw new IllegalArgumentException(
+                "Protobuf type does not expose parser(): " + type.getName(),
+                ex);
+        } catch (IllegalAccessException ex) {
+            throw new IllegalArgumentException(
+                "Protobuf parser() is not accessible: " + type.getName(),
+                ex);
+        } catch (InvocationTargetException ex) {
+            throw new IllegalArgumentException(
+                "Protobuf parser() failed for " + type.getName(),
+                ex.getCause());
+        }
     }
 
     private static String packetName(ZLinkStreamConnector connector, Object payload) {

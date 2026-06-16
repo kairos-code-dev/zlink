@@ -26,26 +26,28 @@ public sealed class DiscoveryTests
         var frameworkBuilder = Host.CreateApplicationBuilder();
         frameworkBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
+            options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
 
             options.UseRegistrySpotRemoteAddresses("registry-spot-sync");
-            options.AddRouteMeshChannel("play", route => route.Bind(routeEndpoint));
-            options.AddSpotMesh(spotChannel, mesh =>
+                        options.AddRouteMeshChannel("play").EnableServer(routeEndpoint);
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("spot-sync-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh(spotChannel);
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    router.BindRouter(spotNodeEndpoint);
-                });
-                spot.EnablePubSub(pubsub =>
+                    var spot = mesh.AddNode("spot-sync-node");
                 {
-                    pubsub.BindPubSub(spotPubEndpoint);
-                });
+                    var router = spot.EnableRouter(spotNodeEndpoint);
+
+                }
+                {
+                    var pubsub = spot.EnablePubSub(spotPubEndpoint);
+
+                }
                 spot.AddSpotFactory<SpotTestSupport.LocalSubscriberStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var registryHost = registryBuilder.Build();

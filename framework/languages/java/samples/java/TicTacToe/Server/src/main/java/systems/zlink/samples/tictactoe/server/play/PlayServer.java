@@ -1,6 +1,8 @@
 package systems.zlink.samples.tictactoe.server.play;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
+import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.tictactoe.server.configuration.SampleLogging;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
@@ -21,36 +23,26 @@ public final class PlayServer {
             options.codecs().addMessagePack();
             options.addHandlersFromPackageOf(PlayServer.class);
             options.addActorFactory(SampleNames.PlayActor, PlayActorFactory.class);
-            options.addClientServerChannel(SampleNames.ApiChannel, channel ->
-                channel.enableClient(client -> client.useManualConnections(
-                    endpoints -> endpoints.connect(settings.apiChannelEndpoint()))));
-            options.addClientServerChannel(SampleNames.PlayChannel, channel -> {
-                channel.enableServer(server -> server.bind(settings.playChannelEndpoint()));
-                channel.addHandlerGroup(SampleNames.PlayChannel);
-            });
-            options.addRouteMeshChannel(SampleNames.PlayRouteChannel, route -> {
-                route.bind(settings.playRouterEndpoint());
-                route.configureRouting(routing ->
-                    routing.setRoutingId(RoutingId.from(SampleNames.PlayRouterId)));
-                route.useManualConnections(endpoints ->
-                    endpoints.connect(settings.playRouterEndpoint()));
-            });
-            options.addSpotMesh(SampleNames.SpotMesh, mesh ->
-                mesh.addNode(SampleNames.PlayNode, node -> {
-                    node.enableRouter(router -> {
-                        router.setRoutingId(RoutingId.from(SampleNames.PlayNodeRoutingId));
-                        router.bindRouter(settings.spotEndpoint());
-                    });
-                    node.configureEntrySpot(entry ->
-                        entry.setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId)));
-                    node.addEntrySpot(PlayEntrySpot.class);
-                    node.addSpotFactory(TicTacToeGame.class);
-                }));
-            options.addStreamNode(SampleNames.PlayStream, stream -> {
-                stream.bind(settings.playEndpoint());
-                stream.registerSession(PlaySession.class);
-                stream.addSessionPacketHandler(AuthenticatePlaySessionHandler.class);
-            });
+            options.addClientServerChannel(SampleNames.ApiChannel)
+                .enableClient(settings.apiChannelEndpoint());
+            options.addClientServerChannel(SampleNames.PlayChannel)
+                .enableServer(settings.playChannelEndpoint())
+                .addHandlerGroup(SampleNames.PlayChannel);
+            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayRouteChannel);
+            route.enableServer(settings.playRouterEndpoint());
+            route.enableClient(settings.playRouterEndpoint());
+            route.configureRouting().setRoutingId(RoutingId.from(SampleNames.PlayRouterId));
+            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SpotMesh)
+                .addNode(SampleNames.PlayNode);
+            node.enableRouter(settings.spotEndpoint())
+                .setRouterRoutingId(RoutingId.from(SampleNames.PlayNodeRoutingId));
+            node.configureEntrySpot().setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId));
+            node.addEntrySpot(PlayEntrySpot.class);
+            node.addSpotFactory(TicTacToeGame.class);
+            options.addStreamNode(SampleNames.PlayStream)
+                .bind(settings.playEndpoint())
+                .registerSession(PlaySession.class)
+                .addSessionPacketHandler(AuthenticatePlaySessionHandler.class);
         };
     }
 }

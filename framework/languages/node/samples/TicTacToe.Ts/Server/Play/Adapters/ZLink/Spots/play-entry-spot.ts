@@ -20,9 +20,8 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
   }
 
   async join(actor: PlayEntrySpotActor, roomId: string): Promise<JoinGameRes> {
-    const joined = await actor.context.joinSpot(roomId).submit();
-    const reply = joined.reply === undefined ? {} : JSON.parse(joined.reply.getString('utf8')) as Partial<JoinGameRes & { error: string }>;
-    joined.reply?.close();
+    const joined = await actor.context.joinSpot(roomId).submit<Partial<JoinGameRes & { error: string }>>();
+    const reply = joined.reply ?? {};
     if (joined.resultCode !== 0) {
       throw new Error(reply.error ?? `Room '${roomId}' rejected actor '${actor.actorId}'.`);
     }

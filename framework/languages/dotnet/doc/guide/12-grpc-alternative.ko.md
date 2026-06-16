@@ -273,7 +273,7 @@ sequenceDiagram
 | "stub/channel 을 재사용하라" | `IZLinkChannelClient` 가 DI singleton, socket 수명은 framework | 호출마다 만들 일 없음 |
 | RPC deadline | `RequestToChannel(...).Timeout(...)` | reply 대기 시간 |
 | L7 로드밸런싱(Envoy/Istio) | channel name + `Discovery` 가 peer 분배 | sidecar 불필요 |
-| service discovery(Eureka/xDS) | `UseDiscovery(...AddRegistryEndpoint...)`  + Registry | [08-registry](./08-registry.ko.md) |
+| service discovery(Eureka/xDS) | `UseDiscovery().AddRegistryEndpoint(...)`  + Registry | [08-registry](./08-registry.ko.md) |
 | interceptor | `IZLinkHandlerFilter` | [4](./04-channel-messaging.ko.md) §5 |
 | 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 실시간 fan-out 한정. 영속/replay 는 broker 유지 |
 | 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [09-monitoring](./09-monitoring.ko.md) |

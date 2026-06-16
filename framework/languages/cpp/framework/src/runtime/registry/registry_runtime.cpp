@@ -505,59 +505,30 @@ void registry_query_client_t::close () noexcept
     _impl->context.reset ();
 }
 
-zlink_builder_t &
-zlink_builder_t::enable_registry (std::function<void (registry_builder_t &)> configure)
+registry_builder_t zlink_builder_t::enable_registry ()
 {
-    registry_builder_t builder (_state->registry_runtime);
-    if (configure) {
-        configure (builder);
-    }
-    return *this;
+    return registry_builder_t (_state->registry_runtime);
 }
 
-zlink_builder_t &zlink_builder_t::discovery (std::function<void (discovery_builder_t &)> configure)
+discovery_builder_t zlink_builder_t::discovery ()
 {
-    discovery_builder_t builder (_state->registry_runtime);
-    if (configure) {
-        configure (builder);
-    }
-    return *this;
+    return discovery_builder_t (_state->registry_runtime);
 }
 
-zlink_builder_t &zlink_builder_t::route_channel (std::string route_channel_name)
-{
-    if (route_channel_name.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "route channel name is required");
-    }
-    auto &route_channels = _state->registry_runtime->route_channels;
-    if (std::find (route_channels.begin (), route_channels.end (), route_channel_name)
-        == route_channels.end ()) {
-        route_channels.push_back (std::move (route_channel_name));
-    }
-    return *this;
-}
-
-zlink_builder_t &
-zlink_builder_t::route_channel (std::string route_channel_name,
-                                std::function<void (route_channel_builder_t &)> configure)
+route_channel_builder_t zlink_builder_t::route_channel (std::string route_channel_name)
 {
     if (route_channel_name.empty ()) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "route channel name is required");
     }
     auto state = std::make_shared<detail::route_channel_builder_state_t> (route_channel_name);
-    route_channel_builder_t builder (state);
-    if (configure) {
-        configure (builder);
-    }
     _state->route_channels[route_channel_name] = state;
     auto &route_channels = _state->registry_runtime->route_channels;
     if (std::find (route_channels.begin (), route_channels.end (), route_channel_name)
         == route_channels.end ()) {
         route_channels.push_back (std::move (route_channel_name));
     }
-    return *this;
+    return route_channel_builder_t (state);
 }
 
 registry_options_snapshot_t zlink_builder_t::registry_options () const

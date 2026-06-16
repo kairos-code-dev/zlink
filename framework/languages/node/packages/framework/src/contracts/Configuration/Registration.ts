@@ -1,13 +1,4 @@
 import type {
-  ChannelClientCapabilityBuilder,
-  ChannelPublisherCapabilityBuilder,
-  ChannelServerCapabilityBuilder,
-  ChannelSubscriberCapabilityBuilder,
-  DealerMeshChannelClientCapabilityBuilder,
-  SpotChannelClientCapabilityBuilder,
-  SpotPubSubCapabilityBuilder,
-  SpotPublisherClientCapabilityBuilder,
-  SpotRouterCapabilityBuilder,
   RoutingId,
   Type,
   ZLinkClientServerChannelBuilder,
@@ -29,14 +20,20 @@ import type {
   ZLinkSpotMeshBuilder,
   ZLinkSpotMeshNodeBuilder,
   ZLinkSpotNodeBuilder,
-  ZLinkSpotRouteChannelAcceptanceBuilder,
   ZLinkStreamNodeBuilder,
   ZLinkSession,
   ZLinkSessionFactory,
   ZLinkTimerOptions
 } from '../../contracts';
+import type { ZLinkCodecRegistryBuilder, ZLinkMessageSerializer } from '../Codecs';
+import {
+  createDefaultProtobufMessageSerializer,
+  ZLINK_PROTOBUF_CONTENT_TYPE
+} from '../Codecs/DefaultMessageSerializers';
 
 export interface ZLinkFrameworkRegistration {
+  readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer>;
+  readonly requestTimeoutMs?: number;
   readonly actorFactories: ReadonlyMap<string, Type>;
   readonly spotFactories: ReadonlySet<Type<ZLinkSpot>>;
   readonly channels: ReadonlyMap<string, ZLinkChannelOptions>;
@@ -77,7 +74,21 @@ export interface ZLinkRegistrySpotRemoteAddressesRegistration {
   readonly registryEndpoint: string;
 }
 
+export type ZLinkNamedCodec = 'json' | 'messagepack' | 'protobuf';
+
+export interface ZLinkCodecSerializerRegistration {
+  readonly contentType: string;
+  readonly serializer: ZLinkMessageSerializer;
+}
+
+export interface ZLinkCodecRegistryOptions {
+  readonly codecs?: readonly ZLinkNamedCodec[];
+  readonly serializers?: readonly ZLinkCodecSerializerRegistration[];
+}
+
 export interface ZLinkFrameworkRegistrationOptions {
+  readonly codecs?: ZLinkCodecRegistryOptions;
+  readonly requestTimeoutMs?: number;
   readonly actorFactories?: Readonly<Record<string, Type> | Map<string, Type>>;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly channels?: Readonly<Record<string, ZLinkChannelOptions>>;
@@ -262,27 +273,27 @@ export interface ZLinkChannelPublishHandlerRegistration {
 export interface ZLinkChannelRequestHandlerRegistration {
   readonly packetName: string;
   readonly handler: {
-    handle(payload: Buffer, context: ZLinkRequestContext): Promise<unknown> | unknown;
+    handle(payload: unknown, context: ZLinkRequestContext): Promise<unknown> | unknown;
   };
 }
 
 export interface ZLinkChannelSendHandlerRegistration {
   readonly packetName: string;
   readonly handler: {
-    handle(payload: Buffer, context: ZLinkSendContext): Promise<void> | void;
+    handle(payload: unknown, context: ZLinkSendContext): Promise<void> | void;
   };
 }
 
 export interface ZLinkChannelPublishHandler {
-  handle(payload: Buffer, context: ZLinkPublishContext): Promise<void> | void;
+  handle(payload: unknown, context: ZLinkPublishContext): Promise<void> | void;
 }
 
 export interface ZLinkRouteChannelSendHandler {
-  handle(payload: Buffer, context: ZLinkRouteSendContext): Promise<void> | void;
+  handle(payload: unknown, context: ZLinkRouteSendContext): Promise<void> | void;
 }
 
 export interface ZLinkRouteChannelRequestHandler {
-  handle(payload: Buffer, context: ZLinkRouteRequestContext): Promise<unknown> | unknown;
+  handle(payload: unknown, context: ZLinkRouteRequestContext): Promise<unknown> | unknown;
 }
 
 export class ZLinkConfigurationException extends Error {
@@ -295,9 +306,12 @@ export class ZLinkConfigurationException extends Error {
 export function createFrameworkRegistration(
   options: ZLinkFrameworkRegistrationOptions = {}
 ): ZLinkFrameworkRegistration {
+  const codecRegistry = createCodecRegistry(options.codecs);
   const routeChannelOptions = toRouteChannelOptions(options);
   const spotNodes = toSpotNodeMap(options.spotNodes);
   const registration: ZLinkFrameworkRegistration = {
+    messageSerializers: codecRegistry.registeredSerializers,
+    requestTimeoutMs: normalizeOptionalPositiveInteger(options.requestTimeoutMs, 'requestTimeoutMs'),
     actorFactories: toTypeMap(options.actorFactories),
     spotFactories: toSpotFactorySet(options.spotFactories, spotNodes),
     channels: toChannelMap(options.channels),
@@ -346,6 +360,11 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
 
   useDiscovery(): ZLinkDiscoveryBuilder {
     return new DefaultDiscoveryBuilder(this.options.discovery);
+  }
+
+  codecs(): ZLinkCodecRegistryBuilder {
+    this.options.codecs ??= { codecs: [], serializers: [] };
+    return new RegistrationCodecRegistryBuilder(this.options.codecs);
   }
 
   configureWorker(options: ZLinkWorkerOptions): this {
@@ -408,8 +427,10 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
       ? undefined
       : { registries: [...this.options.discovery.registries] };
     return {
+      codecs: this.options.codecs,
       channels: this.options.channels,
       discovery,
+      requestTimeoutMs: this.options.requestTimeoutMs,
       routeChannels: this.options.routeChannels,
       streamNodes: this.options.streamNodes,
       spotNodes: this.options.spotNodes,
@@ -437,62 +458,86 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
 class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuilder {
   constructor(private readonly channel: MutableChannelOptions) {}
 
-  enableServer(): ChannelServerCapabilityBuilder {
+  enableServer(endpoint: string): this {
     this.channel.server ??= {};
-    return new DefaultBindCapabilityBuilder(this.channel.server);
+    this.channel.server.bind = endpoint;
+    return this;
   }
 
-  enableClient(): ChannelClientCapabilityBuilder {
+  enableClient(endpoint?: string): this {
     this.channel.client ??= { manualConnections: [] };
-    return new DefaultConnectionCapabilityBuilder(this.channel.client);
+    if (endpoint !== undefined) {
+      this.channel.client.manualConnections ??= [];
+      this.channel.client.manualConnections.push(endpoint);
+    }
+    return this;
   }
 }
 
 class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
   constructor(private readonly channel: MutableChannelOptions) {}
 
-  enablePublisher(): ChannelPublisherCapabilityBuilder {
+  enablePublisher(endpoint: string): this {
     this.channel.publisher ??= {};
-    return new DefaultBindCapabilityBuilder(this.channel.publisher);
+    this.channel.publisher.bind = endpoint;
+    return this;
   }
 
-  enableSubscriber(): ChannelSubscriberCapabilityBuilder {
+  enableSubscriber(endpoint?: string): this {
     this.channel.subscriber ??= { manualConnections: [] };
-    return new DefaultConnectionCapabilityBuilder(this.channel.subscriber);
+    if (endpoint !== undefined) {
+      this.channel.subscriber.manualConnections ??= [];
+      this.channel.subscriber.manualConnections.push(endpoint);
+    }
+    return this;
   }
 }
 
 class DefaultDealerMeshChannelBuilder implements ZLinkDealerMeshChannelBuilder {
   constructor(private readonly channel: MutableChannelOptions) {}
 
-  enableClient(): DealerMeshChannelClientCapabilityBuilder {
+  enableClient(endpoint?: string): this {
     this.channel.dealerMesh ??= {};
     this.channel.dealerMesh.client ??= { manualConnections: [] };
-    return new DefaultConnectionCapabilityBuilder(this.channel.dealerMesh.client);
+    if (endpoint !== undefined) {
+      this.channel.dealerMesh.client.manualConnections ??= [];
+      this.channel.dealerMesh.client.manualConnections.push(endpoint);
+    }
+    return this;
   }
 }
 
 class DefaultRouteChannelBuilder implements ZLinkRouteChannelBuilder {
   constructor(private readonly routeChannel: MutableRouteChannelOptions) {}
 
-  enableRouter(): ChannelServerCapabilityBuilder {
-    return new DefaultBindCapabilityBuilder(this.routeChannel);
+  enableServer(endpoint: string): this {
+    this.routeChannel.bind = endpoint;
+    return this;
   }
 
-  enableDealer(): ChannelClientCapabilityBuilder {
-    return new DefaultConnectionCapabilityBuilder(this.routeChannel);
+  enableClient(endpoint?: string): this {
+    this.routeChannel.manualConnections ??= [];
+    if (endpoint !== undefined) {
+      this.routeChannel.manualConnections.push(endpoint);
+    }
+    return this;
   }
 }
 
 class DefaultRouteMeshChannelBuilder implements ZLinkRouteMeshChannelBuilder {
   constructor(private readonly routeMesh: MutableRouteMeshChannelOptions) {}
 
-  enableRouter(): ChannelServerCapabilityBuilder {
-    return new DefaultBindCapabilityBuilder(this.routeMesh);
+  enableServer(endpoint: string): this {
+    this.routeMesh.bind = endpoint;
+    return this;
   }
 
-  enableDealer(): ChannelClientCapabilityBuilder {
-    return new DefaultConnectionCapabilityBuilder(this.routeMesh);
+  enableClient(endpoint?: string): this {
+    this.routeMesh.manualConnections ??= [];
+    if (endpoint !== undefined) {
+      this.routeMesh.manualConnections.push(endpoint);
+    }
+    return this;
   }
 }
 
@@ -542,14 +587,50 @@ class DefaultDiscoveryBuilder implements ZLinkDiscoveryBuilder {
 class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
   constructor(private readonly spotNode: MutableSpotNodeOptions) {}
 
-  enableRouter(): SpotRouterCapabilityBuilder {
-    this.spotNode.router ??= { manualConnections: [] };
-    return new DefaultSpotRouterCapabilityBuilder(this.spotNode.router);
+  enableRouter(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this {
+    this.spotNode.router = {
+      ...(this.spotNode.router ?? {}),
+      bind: endpoint,
+      routingId,
+      manualConnections: connect === undefined ? this.spotNode.router?.manualConnections : endpointList(connect)
+    };
+    return this;
   }
 
-  enablePubSub(): SpotPubSubCapabilityBuilder {
+  connectRouter(endpoint: string): this {
+    this.spotNode.router ??= { manualConnections: [] };
+    this.spotNode.router.manualConnections ??= [];
+    this.spotNode.router.manualConnections.push(endpoint);
+    return this;
+  }
+
+  routerRoutingId(routingId: RoutingId): this {
+    this.spotNode.router ??= { manualConnections: [] };
+    this.spotNode.router.routingId = routingId;
+    return this;
+  }
+
+  enablePubSub(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this {
+    this.spotNode.pubSub = {
+      ...(this.spotNode.pubSub ?? {}),
+      bind: endpoint,
+      routingId,
+      manualConnections: connect === undefined ? this.spotNode.pubSub?.manualConnections : endpointList(connect)
+    };
+    return this;
+  }
+
+  connectPubSub(endpoint: string): this {
     this.spotNode.pubSub ??= { manualConnections: [] };
-    return new DefaultSpotPubSubCapabilityBuilder(this.spotNode.pubSub);
+    this.spotNode.pubSub.manualConnections ??= [];
+    this.spotNode.pubSub.manualConnections.push(endpoint);
+    return this;
+  }
+
+  pubSubRoutingId(routingId: RoutingId): this {
+    this.spotNode.pubSub ??= { manualConnections: [] };
+    this.spotNode.pubSub.routingId = routingId;
+    return this;
   }
 
   configureEntrySpot(options: ZLinkEntrySpotOptions): this {
@@ -574,91 +655,45 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     return this;
   }
 
-  attachChannelClient(channelName: string): SpotChannelClientCapabilityBuilder {
+  attachChannelClient(channelName: string, endpoint?: string | readonly string[]): this {
     this.spotNode.attachedChannelClients ??= {};
     this.spotNode.attachedChannelClients[channelName] ??= { manualConnections: [] };
-    return new DefaultConnectionCapabilityBuilder(this.spotNode.attachedChannelClients[channelName]);
+    appendEndpoints(this.spotNode.attachedChannelClients[channelName], endpoint);
+    return this;
   }
 
-  attachSpotPublisherClient(channelName: string): SpotPublisherClientCapabilityBuilder {
+  attachSpotPublisherClient(channelName: string, endpoint?: string | readonly string[]): this {
     this.spotNode.attachedSpotPublisherClients ??= {};
     this.spotNode.attachedSpotPublisherClients[channelName] ??= { manualConnections: [] };
-    return new DefaultConnectionCapabilityBuilder(this.spotNode.attachedSpotPublisherClients[channelName]);
+    appendEndpoints(this.spotNode.attachedSpotPublisherClients[channelName], endpoint);
+    return this;
   }
 
-  acceptSpotRoutesFromChannel(channelName: string): ZLinkSpotRouteChannelAcceptanceBuilder {
+  acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this {
     this.spotNode.acceptedSpotRouteChannels ??= {};
     this.spotNode.acceptedSpotRouteChannels[channelName] ??= { manualConnections: [] };
-    return new DefaultConnectionCapabilityBuilder(this.spotNode.acceptedSpotRouteChannels[channelName]);
-  }
-}
-
-class DefaultSpotRouterCapabilityBuilder implements SpotRouterCapabilityBuilder {
-  constructor(private readonly router: MutableSpotRouterCapabilityOptions) {}
-
-  bind(endpoint: string): this {
-    this.router.bind = endpoint;
-    return this;
-  }
-
-  routingId(routingId: RoutingId): this {
-    this.router.routingId = routingId;
-    return this;
-  }
-
-  connect(endpoint: string): this {
-    this.router.manualConnections ??= [];
-    this.router.manualConnections.push(endpoint);
+    appendEndpoints(this.spotNode.acceptedSpotRouteChannels[channelName], endpoint);
     return this;
   }
 }
 
-class DefaultSpotPubSubCapabilityBuilder implements SpotPubSubCapabilityBuilder {
-  constructor(private readonly pubSub: MutableSpotPubSubCapabilityOptions) {}
-
-  bind(endpoint: string): this {
-    this.pubSub.bind = endpoint;
-    return this;
-  }
-
-  routingId(routingId: RoutingId): this {
-    this.pubSub.routingId = routingId;
-    return this;
-  }
-
-  connect(endpoint: string): this {
-    this.pubSub.manualConnections ??= [];
-    this.pubSub.manualConnections.push(endpoint);
-    return this;
-  }
+function endpointList(endpoint: string | readonly string[]): string[] {
+  return typeof endpoint === 'string' ? [endpoint] : [...endpoint];
 }
 
-class DefaultBindCapabilityBuilder implements ChannelServerCapabilityBuilder, ChannelPublisherCapabilityBuilder {
-  constructor(private readonly capability: { bind?: string }) {}
-
-  bind(endpoint: string): this {
-    this.capability.bind = endpoint;
-    return this;
+function appendEndpoints(
+  capability: { manualConnections?: string[] },
+  endpoint: string | readonly string[] | undefined
+): void {
+  if (endpoint === undefined) {
+    return;
   }
-}
-
-class DefaultConnectionCapabilityBuilder implements
-  ChannelClientCapabilityBuilder,
-  ChannelSubscriberCapabilityBuilder,
-  DealerMeshChannelClientCapabilityBuilder,
-  SpotChannelClientCapabilityBuilder,
-  SpotPublisherClientCapabilityBuilder,
-  ZLinkSpotRouteChannelAcceptanceBuilder {
-  constructor(private readonly capability: { manualConnections?: string[] }) {}
-
-  connect(endpoint: string): this {
-    this.capability.manualConnections ??= [];
-    this.capability.manualConnections.push(endpoint);
-    return this;
-  }
+  capability.manualConnections ??= [];
+  capability.manualConnections.push(...endpointList(endpoint));
 }
 
 interface MutableFrameworkRegistrationOptions {
+  codecs?: MutableCodecRegistryOptions;
   channels: Record<string, MutableChannelOptions>;
   discovery: MutableDiscoveryOptions;
   routeChannels: MutableRouteChannelOptions[];
@@ -666,6 +701,79 @@ interface MutableFrameworkRegistrationOptions {
   spotNodes: Record<string, MutableSpotNodeOptions>;
   spotFactories: Type<ZLinkSpot>[];
   worker?: ZLinkWorkerOptions;
+  requestTimeoutMs?: number;
+}
+
+interface MutableCodecRegistryOptions {
+  codecs: ZLinkNamedCodec[];
+  serializers: ZLinkCodecSerializerRegistration[];
+}
+
+function createCodecRegistry(options: ZLinkCodecRegistryOptions | undefined): RegistrationCodecRegistryBuilder {
+  return new RegistrationCodecRegistryBuilder({
+    codecs: [...(options?.codecs ?? [])],
+    serializers: [...(options?.serializers ?? [])]
+  });
+}
+
+class RegistrationCodecRegistryBuilder implements ZLinkCodecRegistryBuilder {
+  constructor(private readonly options: MutableCodecRegistryOptions = { codecs: [], serializers: [] }) {}
+
+  get registeredSerializers(): ReadonlyMap<string, ZLinkMessageSerializer> {
+    const serializers = new Map(this.options.serializers.map((entry) => [entry.contentType, entry.serializer]));
+    if (this.options.codecs.includes('protobuf') && !serializers.has(ZLINK_PROTOBUF_CONTENT_TYPE)) {
+      serializers.set(ZLINK_PROTOBUF_CONTENT_TYPE, createDefaultProtobufMessageSerializer());
+    }
+    return serializers;
+  }
+
+  get registeredCodecs(): readonly string[] {
+    return [
+      ...this.options.codecs,
+      ...this.options.serializers.map((entry) => entry.contentType)
+    ];
+  }
+
+  addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this {
+    const normalized = normalizeCodecContentType(contentType);
+    const existing = this.options.serializers.findIndex((entry) => entry.contentType === normalized);
+    const registration = { contentType: normalized, serializer };
+    if (existing >= 0) {
+      this.options.serializers[existing] = registration;
+    } else {
+      this.options.serializers.push(registration);
+    }
+    return this;
+  }
+
+  addJson(): this {
+    addNamedCodec(this.options, 'json');
+    return this;
+  }
+
+  addMessagePack(): this {
+    addNamedCodec(this.options, 'messagepack');
+    return this;
+  }
+
+  addProtobuf(): this {
+    addNamedCodec(this.options, 'protobuf');
+    return this;
+  }
+}
+
+function addNamedCodec(options: MutableCodecRegistryOptions, codec: ZLinkNamedCodec): void {
+  if (!options.codecs.includes(codec)) {
+    options.codecs.push(codec);
+  }
+}
+
+function normalizeCodecContentType(contentType: string): string {
+  const normalized = contentType.trim();
+  if (normalized.length === 0) {
+    throw new ZLinkConfigurationException('Codec content type must not be empty.');
+  }
+  return normalized;
 }
 
 interface MutableDiscoveryOptions {
@@ -848,6 +956,11 @@ function requirePositiveInteger(label: string, value: number | undefined): void 
   if (!Number.isInteger(value) || value <= 0) {
     throw new ZLinkConfigurationException(`${label} must be a positive integer.`);
   }
+}
+
+function normalizeOptionalPositiveInteger(value: number | undefined, label: string): number | undefined {
+  requirePositiveInteger(label, value);
+  return value;
 }
 
 export function hasSpotNode(registration: ZLinkFrameworkRegistration): boolean {

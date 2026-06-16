@@ -75,7 +75,7 @@ binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 
 - `Spot`은 특정 service에 종속되지 않는다.
 - `Spot`은 `SpotNode`에 종속된다.
 - `SpotNode`는 channel 이름을 직접 소유하지 않는다.
-- `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))` 등록이 active
+- `AddSpotMesh(channelName).UseDiscovery().AddRegistryEndpoint(...)` 등록이 active
   channel view[^channel-view]를 공급한다.
 - 같은 `SpotNode`에는 active SPOT channel view를 하나만 둔다.
 - `SpotNode.router`와 pub/sub mesh[^mesh]는 같은 channel에 속한 다른
@@ -118,26 +118,22 @@ binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+        var mesh =     options.AddSpotMesh("game.stage");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-        mesh.AddNode("stage-node", node =>
         {
-            node.EnableRouter(router =>
-            {
-                router.BindRouter("tcp://0.0.0.0:9001");
-            });
-            node.EnablePubSub(pubsub =>
-            {
-                pubsub.BindPubSub("tcp://0.0.0.0:9000");
-            });
+            var node =         mesh.AddNode("stage-node");
+            node.EnableRouter("tcp://0.0.0.0:9001");
+            node.EnablePubSub("tcp://0.0.0.0:9000");
             node.AttachChannelClient("orders");
             node.AttachSpotPublisherClient("game.stage");
             node.AddEntrySpot<StageEntrySpot>();
             node.AddSpotFactory<StageSpot>();
-        });
-    });
+
+        }
+
+    }
 
     options.UseRegistrySpotRemoteAddresses("game");
 });
@@ -147,7 +143,7 @@ builder.Services.AddZLinkFramework(options =>
 
 - 논리 `SpotNode` 이름은 `stage-node`
 - 그에 대응하는 backing `SpotNode` 생성
-- `AddSpotMesh("game.stage", mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))`가 active channel
+- `AddSpotMesh("game.stage").UseDiscovery().AddRegistryEndpoint(...)`가 active channel
   view 공급
 - 같은 channel에 속한 다른 `SpotNode`와만 mesh 구성
 - local routed router 역할[^capability] 활성화
@@ -159,27 +155,27 @@ builder.Services.AddZLinkFramework(options =>
   spot remote address resolver 등록
 - host shutdown 시 lifecycle 정리
 
-`AddSpotMesh(...)` 는 같은 channel 에 속하는 여러 `SpotNode` 를 하나의 묶음으로
+`AddSpotMesh` 는 같은 channel 에 속하는 여러 `SpotNode` 를 하나의 묶음으로
 등록한다. 그 묶음 안에서 각 항목이 맡는 역할은 다음과 같다.
 
-- mesh 안에서는 `mesh.AddNode(name, configure)` 로 노드를 추가한다.
-- mesh 단위의 discovery 설정은 `mesh.UseDiscovery(...AddRegistryEndpoint...)` 가 담당한다.
+- mesh 안에서는 `mesh.AddNode(name)` 로 노드를 추가한다.
+- mesh 단위의 discovery 설정은 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 가 담당한다.
 
 즉 같은 채널을 가리키는 `SpotNode` 묶음을 한 mesh 에 모아 두는 모양이다. 덕분에
 한 앱 안에서 서로 다른 channel mesh 를 따로 등록할 수도 있고, 한 mesh 안에 같은
 channel 을 공유하는 여러 노드를 함께 둘 수도 있다.
 
-discovery endpoint 가 없는 로컬 단일 노드도 `AddSpotMesh(...)` 안에서 표현한다.
-이 경우 `mesh.UseDiscovery(...AddRegistryEndpoint...)` 로 mesh 소유권만 닫고, 필요한 노드를
-`mesh.AddNode(...)` 로 등록한다. public 등록 표면은 항상 `AddSpotMesh(...)` 가
+discovery endpoint 가 없는 로컬 단일 노드도 `AddSpotMesh` 안에서 표현한다.
+이 경우 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 로 mesh 소유권만 닫고, 필요한 노드를
+`mesh.AddNode` 로 등록한다. public 등록 표면은 항상 `AddSpotMesh` 가
 SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
 
 이 등록 함수들은 각각 다음과 같이 역할이 나뉜다.
 
-- `EnableRouter(router => router.BindRouter(endpoint))`
+- `EnableRouter(endpoint)`
   - local `SpotNode.router` 경로를 켜고 routed ingress endpoint를 명시한다.
     같은 channel에 속한 다른 `SpotNode`와 routed packet을 주고받는 축이다.
-- `EnablePubSub()`
+- `EnablePubSub(endpoint)`
   - 현재 SPOT channel 안의 publish/subscribe 축을 켠다. local spot 안에서
     `spot.Context.Outbound.Publish(...)`를 사용하려면 이 역할이 필요하다.
 - `AttachChannelClient("orders")`
@@ -203,7 +199,7 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
 즉 `SpotNode` 는 더 이상 여러 service surface 를 동시에 소유하는 hub 처럼
 설명되지 않는다. 현재 방향에서 그 역할 분담은 다음과 같다.
 
-- `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))` 등록이 노드의
+- `AddSpotMesh(channelName).UseDiscovery().AddRegistryEndpoint(...)` 등록이 노드의
   channel 정체성을 닫는다.
 - 다른 channel 호출은 별도로 attach 된 client 경로를 통해 푼다.
 
@@ -211,9 +207,9 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
 
 - mesh 묶음 없이 standalone `SpotNode` 생성 호출만으로는 channel 범위가 닫히지
   않는다.
-- `AddSpotMesh("game.stage", mesh => { ... })`가 이 노드의 mesh 범위를 정한다.
+- `AddSpotMesh("game.stage")로 얻은 mesh builder`가 이 노드의 mesh 범위를 정한다.
 - 같은 `SpotNode`에 active SPOT channel view는 하나만 둔다.
-- `EnableRouter(router => router.BindRouter(endpoint))`와 `EnablePubSub()`는 별개의
+- `EnableRouter(endpoint)`와 `EnablePubSub(endpoint)`는 별개의
   역할다.
 - 다른 channel에 대한 send/request는 attach된 client가 담당한다.
 - 외부 노드에서 SPOT channel로 publish하려면 별도의 spot publisher client를 쓴다.
@@ -234,23 +230,23 @@ application 은 raw Entry Spot handle 을 직접 만들거나 보관하지 않�
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.AddNode("stage-node", node =>
+        var mesh =     options.AddSpotMesh("game.stage");
         {
-            node.EnablePubSub(pubsub =>
-            {
-                pubsub.BindPubSub("tcp://0.0.0.0:9000");
-            });
+            var node =         mesh.AddNode("stage-node");
+            node.EnablePubSub("tcp://0.0.0.0:9000");
 
-            node.ConfigureEntrySpot(entry =>
             {
+                var entry =             node.ConfigureEntrySpot();
                 entry.RoutingId = RoutingId.From("entry");
-            });
+
+            }
             node.AddEntrySpot<StageEntrySpot>();
             node.AddSpotFactory<StageSpot>();
-        });
-    });
+
+        }
+
+    }
 });
 ```
 
@@ -373,54 +369,21 @@ SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 역할 단위로
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddSpotMesh("game.stage", mesh =>
-    {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+    var mesh = options.AddSpotMesh("game.stage");
+    mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-        mesh.AddNode("stage-node", node =>
-        {
+    var node = mesh.AddNode("stage-node");
+    node.EnableRouter("tcp://0.0.0.0:9001");
+    node.ConnectRouter("tcp://10.0.0.10:9000");
 
-            node.EnableRouter(router =>
-            {
-                router.UseManualConnections(peers =>
-                {
-                    peers.Connect("tcp://10.0.0.10:9000");
-                });
-            });
+    node.EnablePubSub("tcp://0.0.0.0:9000");
+    node.ConnectPubSub("tcp://10.0.0.20:9100");
 
-            node.EnablePubSub(pubsub =>
-            {
-                pubsub.BindPubSub("tcp://0.0.0.0:9000");
-                pubsub.UseManualConnections(peers =>
-                {
-                    // Remote SpotNode mesh PUB endpoint.
-                    // The local mesh SUB side connects to this address.
-                    peers.Connect("tcp://10.0.0.20:9100");
-                });
-            });
+    node.AttachChannelClient("orders", "tcp://10.0.0.30:9200");
+    node.AttachSpotPublisherClient("game.stage", "tcp://10.0.0.40:9300");
 
-            node.AttachChannelClient("orders", client =>
-            {
-                client.UseManualConnections(peers =>
-                {
-                    // Remote orders channel server endpoint
-                    peers.Connect("tcp://10.0.0.30:9200");
-                });
-            });
-
-            node.AttachSpotPublisherClient("game.stage", publisher =>
-            {
-                publisher.UseManualConnections(peers =>
-                {
-                    // Remote game.stage SPOT publish endpoint
-                    peers.Connect("tcp://10.0.0.40:9300");
-                });
-            });
-
-            node.AddEntrySpot<StageEntrySpot>();
-            node.AddSpotFactory<StageSpot>();
-        });
-    });
+    node.AddEntrySpot<StageEntrySpot>();
+    node.AddSpotFactory<StageSpot>();
 });
 ```
 
@@ -482,18 +445,18 @@ placement 코드가 먼저 spot rid 를 결정해 두어야 한다.
 소켓 옵션은 호출 단위 builder 옵션과 섞지 않는다. 대신 등록 시점의 runtime
 기본값으로 정의한다.
 
-- `router.ConfigureSocket(...)`
+- `node.ConfigureRouterSocket()`
   - 실제 `.NET` 바인딩의 `CommonSocketOptions`와 같은 공통 socket 기본값을 정한다.
-- `router.ConfigureRouting(...)`
+- `node.ConfigureRouterRouting()`
   - routed peer 연결에만 적용되는 전용 옵션을 정한다.
-- `pubsub.ConfigurePublisherOptions(...)`
+- `node.ConfigurePubSubPublisher()`
   - 실제 `SpotNode.PublisherOptions`에 들어가는 mesh publish 기본값을 정한다.
-- `pubsub.ConfigureSubscriberOptions(...)`
+- `node.ConfigurePubSubSubscriber()`
   - 실제 `SpotNode.SubscriberOptions`에 들어가는 mesh subscribe 기본값을 정한다.
-- `client.ConfigureSocket(...)`, `client.ConfigureRouting(...)`
+- `node.ConfigureChannelClientSocket(channelName)`, `node.ConfigureChannelClientRouting(channelName)`
   - attach된 channel client의 공통 socket 설정과 routed outbound 설정을 나눠
     구성한다.
-- `publisher.ConfigureSocket(...)`
+- `node.ConfigureSpotPublisherClientSocket(channelName)`
   - attach된 spot publisher client의 publish ingress 기본값을 정한다.
 
 예시를 풀어 보면 다음처럼 읽힌다.
@@ -503,80 +466,53 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
 
-    options.AddSpotMesh("game.stage", mesh =>
-    {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+    var mesh = options.AddSpotMesh("game.stage");
+    mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-        mesh.AddNode("stage-node", node =>
-        {
+    var node = mesh.AddNode("stage-node");
+    node.EnableRouter("tcp://0.0.0.0:9001");
 
-            node.EnableRouter(router =>
-            {
-                router.ConfigureSocket(socket =>
-                {
-                    socket.MaxMessageSize = 1024 * 1024;
-                    socket.SendTimeout = TimeSpan.FromMilliseconds(200);
-                    socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
-                    socket.SendHighWaterMark = 10_000;
-                    socket.ReceiveHighWaterMark = 10_000;
-                    socket.Immediate = true;
-                });
+    var routerSocket = node.ConfigureRouterSocket();
+    routerSocket.MaxMessageSize = 1024 * 1024;
+    routerSocket.SendTimeout = TimeSpan.FromMilliseconds(200);
+    routerSocket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
+    routerSocket.SendHighWaterMark = 10_000;
+    routerSocket.ReceiveHighWaterMark = 10_000;
+    routerSocket.Immediate = true;
 
-                router.ConfigureRouting(routing =>
-                {
-                    routing.RequireKnownPeer = true;
-                    routing.AllowPeerHandover = true;
-                });
-            });
+    var routing = node.ConfigureRouterRouting();
+    routing.RequireKnownPeer = true;
+    routing.AllowPeerHandover = true;
 
-            node.EnablePubSub(pubsub =>
-            {
-                pubsub.BindPubSub("tcp://0.0.0.0:9000");
-                pubsub.ConfigurePublisherOptions(pubOpt =>
-                {
-                    pubOpt.SendHighWaterMark = 50_000;
-                    pubOpt.SendTimeout = TimeSpan.FromMilliseconds(100);
-                    pubOpt.NoDrop = true;
-                });
+    node.EnablePubSub("tcp://0.0.0.0:9000");
+    var publisher = node.ConfigurePubSubPublisher();
+    publisher.SendHighWaterMark = 50_000;
+    publisher.SendTimeout = TimeSpan.FromMilliseconds(100);
+    publisher.NoDrop = true;
 
-                pubsub.ConfigureSubscriberOptions(subOpt =>
-                {
-                    subOpt.ReceiveHighWaterMark = 50_000;
-                    subOpt.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
-                    subOpt.Linger = TimeSpan.Zero;
-                });
-            });
+    var subscriber = node.ConfigurePubSubSubscriber();
+    subscriber.ReceiveHighWaterMark = 50_000;
+    subscriber.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
+    subscriber.Linger = TimeSpan.Zero;
 
-            node.AttachChannelClient("orders", client =>
-            {
-                client.ConfigureSocket(socket =>
-                {
-                    socket.ConnectTimeout = TimeSpan.FromSeconds(3);
-                    socket.HandshakeInterval = TimeSpan.FromSeconds(3);
-                    socket.SendHighWaterMark = 5_000;
-                    socket.ReceiveHighWaterMark = 5_000;
-                    socket.Immediate = true;
-                });
+    node.AttachChannelClient("orders");
+    var channelSocket = node.ConfigureChannelClientSocket("orders");
+    channelSocket.ConnectTimeout = TimeSpan.FromSeconds(3);
+    channelSocket.HandshakeInterval = TimeSpan.FromSeconds(3);
+    channelSocket.SendHighWaterMark = 5_000;
+    channelSocket.ReceiveHighWaterMark = 5_000;
+    channelSocket.Immediate = true;
 
-                client.ConfigureRouting(routing =>
-                {
-                    routing.ProbeRouterOnConnect = true;
-                });
-            });
+    var channelRouting = node.ConfigureChannelClientRouting("orders");
+    channelRouting.ProbeRouterOnConnect = true;
 
-            node.AttachSpotPublisherClient("game.stage", publisher =>
-            {
-                publisher.ConfigureSocket(socket =>
-                {
-                    socket.SendHighWaterMark = 20_000;
-                    socket.SendTimeout = TimeSpan.FromMilliseconds(100);
-                    socket.Immediate = true;
-                });
-            });
+    node.AttachSpotPublisherClient("game.stage");
+    var publishSocket = node.ConfigureSpotPublisherClientSocket("game.stage");
+    publishSocket.SendHighWaterMark = 20_000;
+    publishSocket.SendTimeout = TimeSpan.FromMilliseconds(100);
+    publishSocket.Immediate = true;
 
-            node.AddSpotFactory<StageSpot>();
-        });
-    });
+    node.AddSpotFactory<StageSpot>();
 });
 ```
 
@@ -1059,17 +995,17 @@ client 경로를 함께 가진다. framework 문서에서는 다음 두 종류�
 discovery 와 어떻게 묶이는지를 짧게 정리한다.
 
 최신 topology 초안에서는 `SpotNode` 가 channel 이름을 직접 소유하지 않는다.
-대신 `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))` 등록이 active
+대신 `AddSpotMesh(channelName).UseDiscovery().AddRegistryEndpoint(...)` 등록이 active
 channel view 를 공급한다. 그 view 가 같은 channel 에 속한 peer mesh 의 범위를
 닫는다.
 
-예를 들어 `AddSpotMesh("game.stage", mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))` 로
+예를 들어 `AddSpotMesh("game.stage").UseDiscovery().AddRegistryEndpoint(...)` 로
 등록했다고 하자. 이 경우 그 mesh 에 포함된 `SpotNode` 는 `game.stage` channel
 mesh 안에서 동작한다고 이해하면 된다.
 
 SPOT discovery 와 top-level node 등록을 분리해서 호출하는 public 경로는
 제공하지 않는다. SPOT network 를 구성하는 모든 node 는
-`AddSpotMesh(...)` 안에서 `mesh.AddNode(...)` 로 등록한다. STREAM
+`AddSpotMesh` 안에서 `mesh.AddNode` 로 등록한다. STREAM
 ActorGateway 는 별도 node builder 가 아니라, stream 이 router 역할을
 켠 SpotNode 를 `AttachActorGateway(spotNodeName)` 로 참조하는 방식으로 연결한다.
 
@@ -1106,35 +1042,26 @@ metadata로만 남으면 안 되고, 실제 transport로 사용할 router-capabl
 다음 구성을 둔다.
 
 ```csharp
-node.EnableRouter(router =>
-{
-    router.BindRouter("tcp://0.0.0.0:9001");
-});
+node.EnableRouter("tcp://0.0.0.0:9001");
 node.AcceptSpotRoutesFromChannel("api");
 ```
 
-`AcceptSpotRoutesFromChannel(...)`은 두 channel 종류를 router-capable 대상으로 본다.
+`AcceptSpotRoutesFromChannel`은 두 channel 종류를 router-capable 대상으로 본다.
 
-- `AddClientServerChannel(...)`의 server `ROUTER`
-- `AddRouteMeshChannel(...)`의 route mesh `ROUTER`
+- `AddClientServerChannel`의 server `ROUTER`
+- `AddRouteMeshChannel`의 route mesh `ROUTER`
 
 수동 endpoint를 써야 하면 같은 표면 아래에서 명시한다.
 
 ```csharp
-node.AcceptSpotRoutesFromChannel("api", routes =>
-{
-    routes.UseManualConnections(peers =>
-    {
-        peers.Connect("tcp://10.0.0.20:7000");
-    });
-});
+node.AcceptSpotRoutesFromChannel("api", "tcp://10.0.0.20:7000");
 ```
 
 수동 endpoint가 없으면 framework discovery view를 통해 자동 연결한다. 같은 route
 수신 관계에서 수동 연결과 discovery 연결을 섞으면 startup validation 오류다.
 fanout channel과 dealer mesh channel은 router 역할이 없으므로 지정할 수 없다.
 
-`AcceptSpotRoutesFromChannel(...)`은 application handler mapping 이 아니다. 이 설정은
+`AcceptSpotRoutesFromChannel`은 application handler mapping 이 아니다. 이 설정은
 target SpotNode 쪽 ingress channel 의 router-capable socket 과 SpotNode router 사이에
 transport peer 를 만든다. handler group 이 없어도 transport 전용 channel 로 사용할 수
 있고, 반대로 handler group 을 매핑해도 Spot route ingress 가 자동으로 켜지지는 않는다.
@@ -1154,17 +1081,12 @@ channel 등록으로 확인할 수 있어야 한다. 주소만 알고 연결하�
 메시지를 보낼 수 없다.
 
 ```csharp
-options.AddClientServerChannel("gateway.client", channel =>
 {
-    channel.EnableClient(client =>
-    {
-        client.UseManualConnections(peers =>
-        {
-            peers.Connect("tcp://play-node-1:7201");
-        });
-    });
+    var channel = options.AddClientServerChannel("gateway.client");
+    channel.EnableClient("tcp://play-node-1:7201");
     channel.EnableSpotRouteEgress("play.route");
-});
+
+}
 ```
 
 `EnableSpotRouteEgress("play.route")`의 값은 local channel 이름이 아니다. target

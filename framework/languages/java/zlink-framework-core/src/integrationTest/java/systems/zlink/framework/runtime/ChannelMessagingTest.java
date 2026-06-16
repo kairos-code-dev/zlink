@@ -67,12 +67,9 @@ final class ChannelMessagingTest {
     void manualClientServer_requestReplySucceeds() {
         String endpoint = "inproc://zlink-java-profile-" + UUID.randomUUID();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addClientServerChannel("profile", channel -> {
-            channel.enableServer(server -> server.bind(endpoint));
-            channel.enableClient(client ->
-                client.useManualConnections(endpoints -> endpoints.connect(endpoint)));
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
-        });
+        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
+            channel.enableClient(endpoint);
+            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo"); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -96,12 +93,9 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.useFilter(ReplyDecoratingFilter.class);
-        options.addClientServerChannel("profile", channel -> {
-            channel.enableServer(server -> server.bind(endpoint));
-            channel.enableClient(client ->
-                client.useManualConnections(endpoints -> endpoints.connect(endpoint)));
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
-        });
+        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
+            channel.enableClient(endpoint);
+            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo"); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -133,12 +127,9 @@ final class ChannelMessagingTest {
         SEND_CHANNEL.set(null);
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addClientServerChannel("profile", channel -> {
-            channel.enableServer(server -> server.bind(endpoint));
-            channel.enableClient(client ->
-                client.useManualConnections(endpoints -> endpoints.connect(endpoint)));
-            channel.addSendHandler(ProfileChangedHandler.class, String.class, "ProfileChanged");
-        });
+        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
+            channel.enableClient(endpoint);
+            channel.addSendHandler(ProfileChangedHandler.class, String.class, "ProfileChanged"); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -161,12 +152,9 @@ final class ChannelMessagingTest {
         String endpoint = "inproc://zlink-java-scanned-profile-" + UUID.randomUUID();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(ChannelMessagingTest.class);
-        options.addClientServerChannel("profile", channel -> {
-            channel.enableServer(server -> server.bind(endpoint));
-            channel.enableClient(client ->
-                client.useManualConnections(endpoints -> endpoints.connect(endpoint)));
-            channel.addHandlerGroup("scanned-profile");
-        });
+        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
+            channel.enableClient(endpoint);
+            channel.addHandlerGroup("scanned-profile"); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -191,12 +179,9 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(ChannelMessagingTest.class);
-        options.addClientServerChannel("profile", channel -> {
-            channel.enableServer(server -> server.bind(endpoint));
-            channel.enableClient(client ->
-                client.useManualConnections(endpoints -> endpoints.connect(endpoint)));
-            channel.addHandlerGroup("annotated-profile");
-        });
+        { var channel = options.addClientServerChannel("profile").enableServer(endpoint);
+            channel.enableClient(endpoint);
+            channel.addHandlerGroup("annotated-profile"); };
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -234,16 +219,12 @@ final class ChannelMessagingTest {
         FANOUT_CHANNEL.set(null);
 
         DefaultZLinkFrameworkOptions publisherOptions = new DefaultZLinkFrameworkOptions();
-        publisherOptions.addFanoutChannel("events", channel ->
-            channel.enablePublisher(publisher -> publisher.bind(endpoint)));
+        { var channel = publisherOptions.addFanoutChannel("events").enablePublisher(endpoint); };
 
         DefaultZLinkFrameworkOptions subscriberOptions = new DefaultZLinkFrameworkOptions();
         subscriberOptions.addHandlersFromPackageOf(ChannelMessagingTest.class);
-        subscriberOptions.addFanoutChannel("events", channel -> {
-            channel.enableSubscriber(subscriber ->
-                subscriber.useManualConnections(endpoints -> endpoints.connect(endpoint)));
-            channel.addHandlerGroup("annotated-events");
-        });
+        { var channel = subscriberOptions.addFanoutChannel("events"); channel.enableSubscriber(endpoint);
+            channel.addHandlerGroup("annotated-events"); };
 
         try (ZLinkFrameworkRuntime ignoredPublisher =
                  RuntimeTestSupport.startFramework(publisherOptions, new ZLinkJavaBackendAdapterFactory());
@@ -271,16 +252,14 @@ final class ChannelMessagingTest {
         registryOptions.setRouterEndpoint(registryRouter);
 
         DefaultZLinkFrameworkOptions serverOptions = new DefaultZLinkFrameworkOptions();
-        serverOptions.useDiscovery(discovery -> discovery.addRegistryEndpoint(registryRouter));
-        serverOptions.addClientServerChannel("profile", channel -> {
-            channel.enableServer(server -> server.bind(serverEndpoint));
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
-        });
+        { var discovery = serverOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
+        { var channel = serverOptions.addClientServerChannel("profile").enableServer(serverEndpoint);
+            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo"); };
 
         DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
         clientOptions.setDefaultTimeout(Duration.ofMillis(100));
-        clientOptions.useDiscovery(discovery -> discovery.addRegistryEndpoint(registryRouter));
-        clientOptions.addClientServerChannel("profile", channel -> channel.enableClient());
+        { var discovery = clientOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
+        { var channel = clientOptions.addClientServerChannel("profile"); channel.enableClient(); };
 
         try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
                  registryOptions,
@@ -305,15 +284,13 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
         clientOptions.setDefaultTimeout(Duration.ofMillis(100));
-        clientOptions.useDiscovery(discovery -> discovery.addRegistryEndpoint(registryRouter));
-        clientOptions.addClientServerChannel("profile", channel -> channel.enableClient());
+        { var discovery = clientOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
+        { var channel = clientOptions.addClientServerChannel("profile"); channel.enableClient(); };
 
         DefaultZLinkFrameworkOptions serverOptions = new DefaultZLinkFrameworkOptions();
-        serverOptions.useDiscovery(discovery -> discovery.addRegistryEndpoint(registryRouter));
-        serverOptions.addClientServerChannel("profile", channel -> {
-            channel.enableServer(server -> server.bind(serverEndpoint));
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
-        });
+        { var discovery = serverOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
+        { var channel = serverOptions.addClientServerChannel("profile").enableServer(serverEndpoint);
+            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo"); };
 
         try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
                  registryOptions,
@@ -336,15 +313,11 @@ final class ChannelMessagingTest {
         FANOUT_TOPIC.set(null);
 
         DefaultZLinkFrameworkOptions publisherOptions = new DefaultZLinkFrameworkOptions();
-        publisherOptions.addFanoutChannel("events", channel ->
-            channel.enablePublisher(publisher -> publisher.bind(endpoint)));
+        { var channel = publisherOptions.addFanoutChannel("events").enablePublisher(endpoint); };
 
         DefaultZLinkFrameworkOptions subscriberOptions = new DefaultZLinkFrameworkOptions();
-        subscriberOptions.addFanoutChannel("events", channel -> {
-            channel.enableSubscriber(subscriber ->
-                subscriber.useManualConnections(endpoints -> endpoints.connect(endpoint)));
-            channel.addPublishHandler(ScoreChangedHandler.class, String.class, "ScoreChanged");
-        });
+        { var channel = subscriberOptions.addFanoutChannel("events"); channel.enableSubscriber(endpoint);
+            channel.addPublishHandler(ScoreChangedHandler.class, String.class, "ScoreChanged"); };
 
         try (ZLinkFrameworkRuntime ignoredPublisher =
                  RuntimeTestSupport.startFramework(publisherOptions, new ZLinkJavaBackendAdapterFactory());
@@ -373,19 +346,15 @@ final class ChannelMessagingTest {
         ROUTE_REQUEST_CHANNEL.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        sourceOptions.addRouteMeshChannel("route", channel -> {
-            channel.bind(sourceEndpoint);
-            channel.configureRouting(route -> route.setRoutingId(sourceRid));
-            channel.useManualConnections(endpoints -> endpoints.connect(targetEndpoint));
-        });
+        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+            { var route = channel.configureRouting(); route.setRoutingId(sourceRid); };
+            channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        targetOptions.addRouteMeshChannel("route", channel -> {
-            channel.bind(targetEndpoint);
-            channel.configureRouting(route -> route.setRoutingId(targetRid));
-            channel.useManualConnections(endpoints -> endpoints.connect(sourceEndpoint));
-            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo");
-        });
+        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+            { var route = channel.configureRouting(); route.setRoutingId(targetRid); };
+            channel.enableClient(sourceEndpoint);
+            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
 
         try (ZLinkFrameworkRuntime ignoredSource =
                  RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
@@ -406,20 +375,16 @@ final class ChannelMessagingTest {
         RoutingId targetRid = RoutingId.from("route-scanned-target");
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        sourceOptions.addRouteMeshChannel("route", channel -> {
-            channel.bind(sourceEndpoint);
-            channel.configureRouting(route -> route.setRoutingId(sourceRid));
-            channel.useManualConnections(endpoints -> endpoints.connect(targetEndpoint));
-        });
+        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+            { var route = channel.configureRouting(); route.setRoutingId(sourceRid); };
+            channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.addHandlersFromPackageOf(ChannelMessagingTest.class);
-        targetOptions.addRouteMeshChannel("route", channel -> {
-            channel.bind(targetEndpoint);
-            channel.configureRouting(route -> route.setRoutingId(targetRid));
-            channel.useManualConnections(endpoints -> endpoints.connect(sourceEndpoint));
-            channel.addHandlerGroup("route-shared");
-        });
+        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+            { var route = channel.configureRouting(); route.setRoutingId(targetRid); };
+            channel.enableClient(sourceEndpoint);
+            channel.addHandlerGroup("route-shared"); };
 
         try (ZLinkFrameworkRuntime source =
                  RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
@@ -439,20 +404,16 @@ final class ChannelMessagingTest {
         FILTER_PACKET.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        sourceOptions.addRouteMeshChannel("route", channel -> {
-            channel.bind(sourceEndpoint);
-            channel.configureRouting(route -> route.setRoutingId(sourceRid));
-            channel.useManualConnections(endpoints -> endpoints.connect(targetEndpoint));
-        });
+        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+            { var route = channel.configureRouting(); route.setRoutingId(sourceRid); };
+            channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.useFilter(ReplyDecoratingFilter.class);
-        targetOptions.addRouteMeshChannel("route", channel -> {
-            channel.bind(targetEndpoint);
-            channel.configureRouting(route -> route.setRoutingId(targetRid));
-            channel.useManualConnections(endpoints -> endpoints.connect(sourceEndpoint));
-            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo");
-        });
+        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+            { var route = channel.configureRouting(); route.setRoutingId(targetRid); };
+            channel.enableClient(sourceEndpoint);
+            channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
 
         try (ZLinkFrameworkRuntime source =
                  RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
@@ -475,19 +436,15 @@ final class ChannelMessagingTest {
         RoutingId targetRid = RoutingId.from("route-seq-target");
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        sourceOptions.addRouteMeshChannel("route", channel -> {
-            channel.bind(sourceEndpoint);
-            channel.configureRouting(route -> route.setRoutingId(sourceRid));
-            channel.useManualConnections(endpoints -> endpoints.connect(targetEndpoint));
-        });
+        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+            { var route = channel.configureRouting(); route.setRoutingId(sourceRid); };
+            channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        targetOptions.addRouteMeshChannel("route", channel -> {
-            channel.bind(targetEndpoint);
-            channel.configureRouting(route -> route.setRoutingId(targetRid));
-            channel.useManualConnections(endpoints -> endpoints.connect(sourceEndpoint));
-            channel.addRequestHandler(DelayedRouteEchoHandler.class, String.class, String.class, "SharedPacket");
-        });
+        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+            { var route = channel.configureRouting(); route.setRoutingId(targetRid); };
+            channel.enableClient(sourceEndpoint);
+            channel.addRequestHandler(DelayedRouteEchoHandler.class, String.class, String.class, "SharedPacket"); };
 
         try (ZLinkFrameworkRuntime source =
                  RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
@@ -525,19 +482,15 @@ final class ChannelMessagingTest {
         ROUTE_SEND_SOURCE.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        sourceOptions.addRouteMeshChannel("route", channel -> {
-            channel.bind(sourceEndpoint);
-            channel.configureRouting(route -> route.setRoutingId(sourceRid));
-            channel.useManualConnections(endpoints -> endpoints.connect(targetEndpoint));
-        });
+        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+            { var route = channel.configureRouting(); route.setRoutingId(sourceRid); };
+            channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        targetOptions.addRouteMeshChannel("route", channel -> {
-            channel.bind(targetEndpoint);
-            channel.configureRouting(route -> route.setRoutingId(targetRid));
-            channel.useManualConnections(endpoints -> endpoints.connect(sourceEndpoint));
-            channel.addSendHandler(RouteNoticeHandler.class, String.class, "Notice");
-        });
+        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+            { var route = channel.configureRouting(); route.setRoutingId(targetRid); };
+            channel.enableClient(sourceEndpoint);
+            channel.addSendHandler(RouteNoticeHandler.class, String.class, "Notice"); };
 
         try (ZLinkFrameworkRuntime source =
                  RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());

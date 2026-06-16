@@ -37,7 +37,7 @@ internal sealed class ZLinkFrameworkRegistration
     public ZLinkSpotDiscoveryRegistration? SpotDiscovery { get; set; }
 }
 
-internal sealed class ZLinkRegistrySpotRemoteAddressesRegistration
+internal sealed class ZLinkRegistrySpotRemoteAddressesRegistration : IZLinkRegistrySpotRemoteAddressesOptions
 {
     public required string Namespace { get; init; }
 

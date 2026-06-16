@@ -144,10 +144,10 @@ void stream_connector_t::request_json (std::string packet_name,
     packet.name = std::move (packet_name);
     packet.codec = zlink::stream_connector::codec_t::json;
     packet.payload = zlink::message_t::from (std::move (json_payload));
-    auto request = _runtime->connector.request<zlink::message_t> (std::move (packet));
+    auto request = _runtime->connector.request (std::move (packet));
     request.timeout (
       std::chrono::milliseconds (static_cast<int> (timeout_seconds * 1000.0)));
-    request.submit ([runtime = std::weak_ptr<runtime_t> (_runtime), reply_name = std::move (reply_name)] (
+    request.submit<zlink::message_t> ([runtime = std::weak_ptr<runtime_t> (_runtime), reply_name = std::move (reply_name)] (
                       zlink::stream_connector::result_t<zlink::message_t> result) mutable {
         if (!result) {
             return;

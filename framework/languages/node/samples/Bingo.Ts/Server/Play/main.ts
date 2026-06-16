@@ -1,12 +1,9 @@
-require('reflect-metadata');
-
-const { NestFactory } = require('@nestjs/core');
-const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
-const { createRegistryClient } = require('../discovery-support');
-const { createBingoPlayModule } = require('./bingo-play-module');
-const { SampleNames } = require('../Configuration/sample-names');
-const { loadSampleConfig } = require('../Configuration/sample-config');
-
+import 'reflect-metadata';
+import { NestFactory } from '@nestjs/core';
+import { closeNestRuntime, waitForShutdown } from '../runtime-support';
+import { createBingoPlayModule } from './bingo-play-module';
+import { SampleNames } from '../Configuration/sample-names';
+import { loadSampleConfig } from '../Configuration/sample-config';
 async function bootstrap(): Promise<void> {
   const config = loadSampleConfig();
   const BingoPlayModule = createBingoPlayModule(config);
@@ -14,9 +11,6 @@ async function bootstrap(): Promise<void> {
     logger: false,
     abortOnError: false
   });
-  const registry = await createRegistryClient(config.registryEndpoint);
-  await registry.register(SampleNames.playService, config.playEndpoint);
-  await registry.register(SampleNames.notificationService, config.notificationEndpoint);
 
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
@@ -27,7 +21,6 @@ async function bootstrap(): Promise<void> {
   try {
     await waitForShutdown({ keepAlive: true });
   } finally {
-    await registry.stop();
     await closeNestRuntime(app);
   }
 }

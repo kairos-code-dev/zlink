@@ -155,10 +155,12 @@ Java는 Spring Boot의 bean + auto-configuration starter + lifecycle이다.
 public class ZLinkConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        options.addClientServerChannel("price", channel -> {
-            channel.enableServer(server -> server.bind("tcp://0.0.0.0:7301"));
-            channel.addRequestHandler(GetPriceHandler.class);
-        });
+        framework.addClientServerChannel("price")
+            .enableServer("tcp://0.0.0.0:7301")
+            .addRequestHandler(
+                GetPriceHandler.class,
+                PriceRequest.class,
+                PriceReply.class);
     }
 }
 ```

@@ -182,11 +182,12 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.AddProtobuf();
 
-    options.AddStreamNode("client.stream", stream =>
     {
+        var stream =     options.AddStreamNode("client.stream");
         stream.Bind("tcp://0.0.0.0:9100");
         stream.RegisterSession<ClientHeaderSession>();
-    });
+
+    }
 });
 
 public sealed class ClientHeaderSession(
@@ -345,11 +346,12 @@ parse 함수를 별도로 두는 편이 더 안전한 방향이다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddStreamNode("client.stream", stream =>
     {
+        var stream =     options.AddStreamNode("client.stream");
         stream.Bind("tcp://0.0.0.0:9200");
         stream.RegisterSession<ClientHeaderSession>();
-    });
+
+    }
 });
 
 public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSession

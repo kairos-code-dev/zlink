@@ -4,7 +4,7 @@
 
 [Java spec 목차](./README.ko.md)
 
-[Java 묶음](../README.ko.md) | [포팅 계획](../draft/java-kotlin-framework-porting-plan.ko.md) | [channel](./spring-boot-channel-messaging.ko.md) | [channel 샘플](../guide/samples/channel-messaging-samples.ko.md) | [SPOT](./spring-boot-spot.ko.md) | [Actor/session](./spring-boot-actor-session.ko.md) | [STREAM](./spring-boot-stream.ko.md) | [Monitoring](./spring-boot-monitoring.ko.md) | [Registry](./spring-boot-registry.ko.md)
+[Java 묶음](../README.ko.md) | [channel](./spring-boot-channel-messaging.ko.md) | [channel 샘플](../guide/samples/channel-messaging-samples.ko.md) | [SPOT](./spring-boot-spot.ko.md) | [Actor/session](./spring-boot-actor-session.ko.md) | [STREAM](./spring-boot-stream.ko.md) | [Monitoring](./spring-boot-monitoring.ko.md) | [Registry](./spring-boot-registry.ko.md)
 
 # ZLink Framework Java Interface Catalog
 
@@ -123,7 +123,8 @@ actor, session actor binding은 Spring bean으로 주입받는다. runtime을 �
 public class ZLinkApplicationConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions options) {
-        options.addClientServerChannel("api", channel -> channel.enableClient());
+        options.addClientServerChannel("api")
+            .enableClient();
     }
 }
 ```
@@ -485,62 +486,25 @@ request/reply correlation이 packet 이름만으로 섞이지 않는다.
 ## 4. Client 와 Options
 
 ```java
-public interface ManualEndpointListBuilder {
-    void connect(String endpoint);
-}
-
-public interface ClientCapabilityBuilder {
-    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
-}
-
-public interface SubscriberCapabilityBuilder {
-    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
-}
-
-public interface SpotRouterCapabilityBuilder {
-    void bindRouter(String endpoint);
-    void setRoutingId(RoutingId routingId);
-    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
-}
-
-public interface SpotPubSubCapabilityBuilder {
-    void bindPubSub(String endpoint);
-    void setRoutingId(RoutingId routingId);
-    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
-}
-
-public interface SpotChannelClientCapabilityBuilder {
-    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
-}
-
-public interface SpotPublisherClientCapabilityBuilder {
-    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
-}
-
 public interface ZLinkSpotNodeBuilder {
-    void enableRouter();
-    void enableRouter(Consumer<SpotRouterCapabilityBuilder> configure);
-    void enablePubSub();
-    void enablePubSub(Consumer<SpotPubSubCapabilityBuilder> configure);
-    void attachChannelClient(String channelName);
-    void attachChannelClient(
-        String channelName,
-        Consumer<SpotChannelClientCapabilityBuilder> configure);
-    void attachSpotPublisherClient(String channelName);
-    void attachSpotPublisherClient(
-        String channelName,
-        Consumer<SpotPublisherClientCapabilityBuilder> configure);
-    void acceptSpotRoutesFromChannel(String channelName);
-    void acceptSpotRoutesFromChannel(
-        String channelName,
-        Consumer<ZLinkSpotRouteChannelAcceptanceBuilder> configure);
-    void configureEntrySpot(Consumer<ZLinkEntrySpotOptions> configure);
-    void addSpotFactory(Class<? extends ZLinkSpot> spotType);
-    void addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType);
-}
+    ZLinkSpotNodeBuilder enableRouter(String endpoint);
+    ZLinkSpotNodeBuilder connectRouter(String endpoint);
+    ZLinkSpotNodeBuilder setRouterRoutingId(RoutingId routingId);
 
-public interface ZLinkSpotRouteChannelAcceptanceBuilder {
-    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
+    ZLinkSpotNodeBuilder enablePubSub(String endpoint);
+    ZLinkSpotNodeBuilder connectPubSub(String endpoint);
+    ZLinkSpotNodeBuilder setPubSubRoutingId(RoutingId routingId);
+
+    ZLinkSpotNodeBuilder attachChannelClient(String channelName);
+    ZLinkSpotNodeBuilder attachChannelClient(String channelName, String endpoint);
+    ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName);
+    ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName, String endpoint);
+    ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName);
+    ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName, String endpoint);
+
+    ZLinkEntrySpotOptions configureEntrySpot();
+    ZLinkSpotNodeBuilder addSpotFactory(Class<? extends ZLinkSpot> spotType);
+    ZLinkSpotNodeBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType);
 }
 
 public interface ZLinkEntrySpotOptions {
@@ -549,27 +513,18 @@ public interface ZLinkEntrySpotOptions {
 }
 
 public interface ZLinkStreamNodeBuilder {
-    void bind(String endpoint);
-    void attachActorGateway(String spotNodeName);
-    void registerSession(Class<? extends ZLinkSession> sessionType);
-    void addSessionPacketHandler(
+    ZLinkStreamNodeBuilder bind(String endpoint);
+    ZLinkStreamNodeBuilder attachActorGateway(String spotNodeName);
+    ZLinkStreamNodeBuilder registerSession(Class<? extends ZLinkSession> sessionType);
+    ZLinkStreamNodeBuilder addSessionPacketHandler(
         Class<? extends ZLinkSessionPacketHandler<?>> handlerType);
 }
 
-public interface ChannelServerCapabilityBuilder {
-    void bind(String endpoint);
-}
-
-public interface ChannelPublisherCapabilityBuilder {
-    void bind(String endpoint);
-}
-
 public interface ClientServerChannelBuilder {
-    void enableServer();
-    void enableServer(Consumer<ChannelServerCapabilityBuilder> configure);
-    void enableClient();
-    void enableClient(Consumer<ClientCapabilityBuilder> configure);
-    void addHandlerGroup(String groupName);
+    ClientServerChannelBuilder enableServer(String endpoint);
+    ClientServerChannelBuilder enableClient();
+    ClientServerChannelBuilder enableClient(String endpoint);
+    ClientServerChannelBuilder addHandlerGroup(String groupName);
     <THandler extends ZLinkSendHandler<TMessage>, TMessage> void addSendHandler(
         Class<THandler> handlerType,
         Class<TMessage> messageType,
@@ -580,33 +535,33 @@ public interface ClientServerChannelBuilder {
         Class<TRequest> requestType,
         Class<TReply> replyType,
         @Nullable String packetName);
-    void enableSpotRouteEgress(String targetSpotNodeChannelName);
+    ClientServerChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName);
 }
 
 public interface FanoutChannelBuilder {
-    void enablePublisher();
-    void enablePublisher(Consumer<ChannelPublisherCapabilityBuilder> configure);
-    void enableSubscriber();
-    void enableSubscriber(Consumer<SubscriberCapabilityBuilder> configure);
-    void addHandlerGroup(String groupName);
+    FanoutChannelBuilder enablePublisher(String endpoint);
+    FanoutChannelBuilder enableSubscriber();
+    FanoutChannelBuilder enableSubscriber(String endpoint);
+    FanoutChannelBuilder addHandlerGroup(String groupName);
     <THandler extends ZLinkPublishHandler<TMessage>, TMessage> void addPublishHandler(
         Class<THandler> handlerType,
         Class<TMessage> messageType,
         @Nullable String packetName);
-    void addPublishHandler(Class<?> handlerType, @Nullable String packetName);
+    FanoutChannelBuilder addPublishHandler(Class<?> handlerType, @Nullable String packetName);
 }
 
 public interface DealerMeshChannelBuilder {
-    void enableClient();
-    void enableClient(Consumer<ClientCapabilityBuilder> configure);
-    void addHandlerGroup(String groupName);
+    DealerMeshChannelBuilder enableClient();
+    DealerMeshChannelBuilder enableClient(String endpoint);
+    DealerMeshChannelBuilder addHandlerGroup(String groupName);
 }
 
 public interface RouteMeshChannelBuilder {
-    void bind(String endpoint);
-    void configureRouting(Consumer<ZLinkRouteConfigBuilder> configure);
-    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
-    void addHandlerGroup(String groupName);
+    RouteMeshChannelBuilder enableServer(String endpoint);
+    ZLinkRouteConfigBuilder configureRouting();
+    RouteMeshChannelBuilder enableClient();
+    RouteMeshChannelBuilder enableClient(String endpoint);
+    RouteMeshChannelBuilder addHandlerGroup(String groupName);
     <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage> void addSendHandler(
         Class<THandler> handlerType,
         Class<TMessage> messageType,
@@ -617,7 +572,7 @@ public interface RouteMeshChannelBuilder {
         Class<TRequest> requestType,
         Class<TReply> replyType,
         @Nullable String packetName);
-    void enableSpotRouteEgress(String targetSpotNodeChannelName);
+    RouteMeshChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName);
 }
 
 public interface ZLinkRouteConfigBuilder {
@@ -629,42 +584,28 @@ public interface ZLinkFrameworkOptions {
     void setDefaultTimeout(Duration timeout);
     ZLinkCodecRegistryBuilder codecs();
     void addHandlersFromPackageOf(Class<?> markerType);
-    void configureMetadata(Consumer<ZLinkMetadataPolicyBuilder> configure);
-    void useDiscovery(Consumer<ZLinkDiscoveryBuilder> configure);
-    void addClientServerChannel(
-        String channelName,
-        Consumer<ClientServerChannelBuilder> configure);
-    void addFanoutChannel(
-        String channelName,
-        Consumer<FanoutChannelBuilder> configure);
-    void addDealerMeshChannel(
-        String channelName,
-        Consumer<DealerMeshChannelBuilder> configure);
-    void addRouteMeshChannel(
-        String channelName,
-        Consumer<RouteMeshChannelBuilder> configure);
-    void addSpotMesh(
-        String channelName,
-        Consumer<ZLinkSpotMeshBuilder> configure);
-    void addStreamNode(
-        String streamNodeName,
-        Consumer<ZLinkStreamNodeBuilder> configure);
+    ZLinkMetadataPolicyBuilder configureMetadata();
+    ZLinkDiscoveryBuilder useDiscovery();
+    ClientServerChannelBuilder addClientServerChannel(String channelName);
+    FanoutChannelBuilder addFanoutChannel(String channelName);
+    DealerMeshChannelBuilder addDealerMeshChannel(String channelName);
+    RouteMeshChannelBuilder addRouteMeshChannel(String channelName);
+    ZLinkSpotMeshBuilder addSpotMesh(String channelName);
+    ZLinkStreamNodeBuilder addStreamNode(String streamNodeName);
     void addActorFactory(
         String actorType,
         Class<? extends ZLinkActorFactory> factoryType);
     void addSpotRemoteAddressResolver(
         Class<? extends ZLinkSpotRemoteAddressResolver> resolverType);
-    void useRegistrySpotRemoteAddresses(String namespaceName);
-    void useRegistrySpotRemoteAddresses(
-        String namespaceName,
-        Consumer<ZLinkRegistrySpotRemoteAddressesOptions> configure);
+    ZLinkRegistrySpotRemoteAddressesOptions useRegistrySpotRemoteAddresses(String namespaceName);
     void useFilter(Class<? extends ZLinkHandlerFilter> filterType);
-    void configureDispatch(Consumer<ZLinkDispatchOptions> configure);
+    ZLinkDispatchOptions configureDispatch();
+    ZLinkWorkerOptions configureWorkers();
 }
 
 public interface ZLinkSpotMeshBuilder {
-    void useDiscovery(Consumer<ZLinkDiscoveryBuilder> configure);
-    void addNode(String spotNodeName, Consumer<ZLinkSpotNodeBuilder> configure);
+    ZLinkDiscoveryBuilder useDiscovery();
+    ZLinkSpotNodeBuilder addNode(String spotNodeName);
 }
 
 public interface ZLinkDiscoveryBuilder {

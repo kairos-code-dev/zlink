@@ -122,9 +122,9 @@ struct login_reply_t {
 };
 
 auto reply = connector
-    .request<login_reply_t>(login_request_t{"player-1", "tok-abc123"})
+    .request(login_request_t{"player-1", "tok-abc123"})
     .packet_name("auth.login")
-    .submit();
+    .submit<login_reply_t>();
 
 if (!reply) {
     // reply.error_code() == zsc::error_code_t::request_timeout 등

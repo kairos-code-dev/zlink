@@ -1,5 +1,4 @@
-const fs = require('node:fs');
-
+import * as fs from 'node:fs';
 type BingoSampleConfig = {
   sessionEndpoint: string;
 };

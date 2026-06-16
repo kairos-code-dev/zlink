@@ -118,11 +118,11 @@ public:
     {
     }
 
-    zlink::framework::request_call_t<order_status_reply_t> get_status(
+    zlink::framework::channel_request_call_t get_status(
       order_status_query_t query)
     {
         return client_
-          .request<order_status_reply_t>("orders", query)
+          .request("orders", query)
           .timeout(std::chrono::seconds(2));
     }
 
@@ -198,8 +198,8 @@ current Spot 밖에서 target Spot을 직접 호출하는 별도 public client�
 않는다.
 
 attached channel client는 registry discovery 또는 attach별 manual endpoint로 peer를 얻는다.
-manual endpoint가 필요한 경우 `attach_channel_client(name, [](auto &client) {
-client.connect(endpoint); })`처럼 attach 설정 안에서 지정한다.
+manual endpoint가 필요한 경우 `attach_channel_client(name, endpoint)`처럼 attach
+설정 안에서 지정한다.
 
 SPOT timer는 CAPI timer 등록을 감싼 framework timer handle과 `timer_tick_t` metadata로
 설명한다. user Spot timer는 CAPI SPOT dispatch event 후 recv 경계에서 순서 정책을 따르고,

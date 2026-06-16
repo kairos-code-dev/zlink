@@ -438,11 +438,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
                     ZLinkJavaBackendAdapterFactory::new);
                 sourceContext.registerBean(
                     ZLinkFrameworkConfigurer.class,
-                    () -> options -> options.addRouteMeshChannel("route", channel -> {
-                        channel.bind(sourceEndpoint);
-                        channel.configureRouting(route -> route.setRoutingId(sourceRid));
-                        channel.useManualConnections(endpoints -> endpoints.connect(targetEndpoint));
-                    }));
+                    () -> options -> { var channel = options.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+                        { var route = channel.configureRouting(); route.setRoutingId(sourceRid); };
+                        channel.enableClient(targetEndpoint); });
                 sourceContext.register(
                     SourceRouteMeshConfig.class,
                     ZLinkFrameworkAutoConfiguration.class);
@@ -625,10 +623,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class TestConfig {
         @Bean
         ZLinkFrameworkConfigurer profileChannelConfigurer() {
-            return options -> options.addClientServerChannel("profile", channel ->
-                channel.enableClient(client ->
-                    client.useManualConnections(endpoints ->
-                        endpoints.connect("inproc://profile-server"))));
+            return options -> { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
         }
     }
 
@@ -637,10 +632,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class EnabledTestConfig {
         @Bean
         ZLinkFrameworkConfigurer profileChannelConfigurer() {
-            return options -> options.addClientServerChannel("profile", channel ->
-                channel.enableClient(client ->
-                    client.useManualConnections(endpoints ->
-                        endpoints.connect("inproc://profile-server"))));
+            return options -> { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
         }
     }
 
@@ -659,11 +651,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @Bean
         ZLinkFrameworkConfigurer monitoredServerChannelConfigurer() {
-            return options -> options.addRouteMeshChannel("profile", channel -> {
-                channel.bind("inproc://profile-monitor");
-                channel.useManualConnections(endpoints ->
-                    endpoints.connect("inproc://profile-monitor"));
-            });
+            return options -> { var channel = options.addRouteMeshChannel("profile"); channel.enableServer("inproc://profile-monitor");
+                channel.enableClient("inproc://profile-monitor"); };
         }
 
         @Bean
@@ -718,10 +707,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @Bean
         ZLinkFrameworkConfigurer autoDiscoveredSessionPacketConfigurer() {
-            return options -> options.addStreamNode("client.stream", stream -> {
-                stream.bind("inproc://auto-discovered-session");
-                stream.registerSession(AutoDiscoveredPacketSession.class);
-            });
+            return options -> { var stream = options.addStreamNode("client.stream"); stream.bind("inproc://auto-discovered-session");
+                stream.registerSession(AutoDiscoveredPacketSession.class); };
         }
     }
 
@@ -730,11 +717,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class SpotNodeConfig {
         @Bean
         ZLinkFrameworkConfigurer spotNodeConfigurer() {
-            return options -> options.addSpotMesh("game", mesh ->
-                mesh.addNode("play", node -> {
-                    node.enableRouter();
-                    node.addSpotFactory(GameSpot.class);
-                }));
+            return options -> { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+                    node.addSpotFactory(GameSpot.class); }; };
         }
     }
 
@@ -744,11 +728,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer spotNodeWithActorConfigurer() {
             return options -> {
-                options.addSpotMesh("game", mesh ->
-                    mesh.addNode("play", node -> {
-                        node.enableRouter();
-                        node.addSpotFactory(GameSpot.class);
-                    }));
+                { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+                        node.addSpotFactory(GameSpot.class); }; };
                 options.addActorFactory("player", PlayerActorFactory.class);
             };
         }
@@ -759,11 +740,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class PrivateConstructorSpotConfig {
         @Bean
         ZLinkFrameworkConfigurer privateConstructorSpotConfigurer() {
-            return options -> options.addSpotMesh("game", mesh ->
-                mesh.addNode("play", node -> {
-                    node.enableRouter();
-                    node.addSpotFactory(PrivateConstructorSpot.class);
-                }));
+            return options -> { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+                    node.addSpotFactory(PrivateConstructorSpot.class); }; };
         }
     }
 
@@ -778,11 +756,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer injectedSpotAndActorConfigurer() {
             return options -> {
-                options.addSpotMesh("game", mesh ->
-                    mesh.addNode("play", node -> {
-                        node.enableRouter();
-                        node.addSpotFactory(InjectedGameSpot.class);
-                    }));
+                { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+                        node.addSpotFactory(InjectedGameSpot.class); }; };
                 options.addActorFactory("player", InjectedPlayerActorFactory.class);
             };
         }
@@ -793,11 +768,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class SpotPublisherConfig {
         @Bean
         ZLinkFrameworkConfigurer spotPublisherConfigurer() {
-            return options -> options.addSpotMesh("game", mesh ->
-                mesh.addNode("publisher", node -> {
-                    node.enablePubSub();
-                    node.attachSpotPublisherClient("game.stage");
-                }));
+            return options -> { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("publisher"); node.enablePubSub("inproc://spot-pub");
+                    node.attachSpotPublisherClient("game.stage"); }; };
         }
     }
 
@@ -829,12 +801,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
             return options -> {
                 options.codecs().addJson();
                 options.addHandlersFromPackageOf(ScannedHandlerConfig.class);
-                options.addClientServerChannel("profile", channel -> {
-                    channel.enableServer(server -> server.bind(springAnnotatedEndpoint));
-                    channel.enableClient(client -> client.useManualConnections(
-                        endpoints -> endpoints.connect(springAnnotatedEndpoint)));
-                    channel.addHandlerGroup("spring-scanned");
-                });
+                { var channel = options.addClientServerChannel("profile").enableServer(springAnnotatedEndpoint);
+            channel.enableClient(springAnnotatedEndpoint);
+                    channel.addHandlerGroup("spring-scanned"); };
             };
         }
     }
@@ -853,12 +822,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
             return options -> {
                 options.codecs().addJson();
                 options.addHandlersFromPackageOf(AutoRegisteredHandlerConfig.class);
-                options.addClientServerChannel("profile", channel -> {
-                    channel.enableServer(server -> server.bind(autoRegisteredEndpoint));
-                    channel.enableClient(client -> client.useManualConnections(
-                        endpoints -> endpoints.connect(autoRegisteredEndpoint)));
-                    channel.addHandlerGroup("spring-auto-registered");
-                });
+                { var channel = options.addClientServerChannel("profile").enableServer(autoRegisteredEndpoint);
+            channel.enableClient(autoRegisteredEndpoint);
+                    channel.addHandlerGroup("spring-auto-registered"); };
             };
         }
     }
@@ -877,12 +843,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
             return options -> {
                 options.codecs().addJson();
                 options.addHandlersFromPackageOf(AutoRegisteredSetHandlerConfig.class);
-                options.addClientServerChannel("profile", channel -> {
-                    channel.enableServer(server -> server.bind(autoRegisteredSetEndpoint));
-                    channel.enableClient(client -> client.useManualConnections(
-                        endpoints -> endpoints.connect(autoRegisteredSetEndpoint)));
-                    channel.addHandlerGroup("spring-auto-registered-set");
-                });
+                { var channel = options.addClientServerChannel("profile").enableServer(autoRegisteredSetEndpoint);
+            channel.enableClient(autoRegisteredSetEndpoint);
+                    channel.addHandlerGroup("spring-auto-registered-set"); };
             };
         }
     }
@@ -910,16 +873,13 @@ final class ZLinkFrameworkAutoConfigurationTest {
             return options -> {
                 options.codecs().addJson();
                 options.useFilter(SpringInjectedReplyFilter.class);
-                options.addClientServerChannel("profile", channel -> {
-                    channel.enableServer(server -> server.bind(filteredEndpoint));
-                    channel.enableClient(client -> client.useManualConnections(
-                        endpoints -> endpoints.connect(filteredEndpoint)));
+                { var channel = options.addClientServerChannel("profile").enableServer(filteredEndpoint);
+            channel.enableClient(filteredEndpoint);
                     channel.addRequestHandler(
                         InjectedProfileRequestHandler.class,
                         ProfileRequest.class,
                         ProfileReply.class,
-                        "FilteredProfile");
-                });
+                        "FilteredProfile"); };
             };
         }
     }
@@ -935,17 +895,14 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer routeMeshHandlerConfigurer(
             RouteMeshEndpoints endpoints) {
-            return options -> options.addRouteMeshChannel("route", channel -> {
-                channel.bind(endpoints.targetEndpoint());
-                channel.configureRouting(route -> route.setRoutingId(endpoints.targetRid()));
-                channel.useManualConnections(manual ->
-                    manual.connect(endpoints.sourceEndpoint()));
+            return options -> { var channel = options.addRouteMeshChannel("route"); channel.enableServer(endpoints.targetEndpoint());
+                { var route = channel.configureRouting(); route.setRoutingId(endpoints.targetRid()); };
+                channel.enableClient(endpoints.sourceEndpoint());
                 channel.addRequestHandler(
                     InjectedRouteRequestHandler.class,
                     String.class,
                     String.class,
-                    "SpringRoute");
-            });
+                    "SpringRoute"); };
         }
     }
 

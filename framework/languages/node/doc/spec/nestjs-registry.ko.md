@@ -105,18 +105,17 @@ handler 를 함께 등록하느냐 마느냐에 따라 모델이 갈릴 뿐이�
       pubEndpoint: 'tcp://0.0.0.0:5550',
       routerEndpoint: 'tcp://0.0.0.0:5551',
     }),
-    ZLinkModule.forRoot({
-      clientServerChannels: {
-        api: {
-          server: { bind: 'tcp://0.0.0.0:7101' },
-        },
-      },
-      discovery: {
-        registries: ['tcp://127.0.0.1:5551'],
-      },
-      codecs: ['protobuf'],
-      discover: { modules: [AppModule] },
-    }),
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .codecs()
+          .addProtobuf()
+        .useDiscovery()
+          .addRegistryEndpoint('tcp://127.0.0.1:5551')
+        .addClientServerChannel('api')
+          .enableServer('tcp://0.0.0.0:7101')
+        .options({ discover: { modules: [AppModule] } })
+        .build()
+    ),
   ],
   providers: [PriceHandler],
 })
@@ -503,18 +502,17 @@ wire 호환을 위해 dotnet 과 같은 정수 값을 그대로 사용한다. �
       broadcastIntervalMs: 30000,
     }),
     // --- 서비스 런타임 ---
-    ZLinkModule.forRoot({
-      clientServerChannels: {
-        api: {
-          server: { bind: 'tcp://0.0.0.0:7101' },
-        },
-      },
-      discovery: {
-        registries: ['tcp://127.0.0.1:5551'],
-      },
-      codecs: ['protobuf'],
-      discover: { modules: [AppModule] },
-    }),
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .codecs()
+          .addProtobuf()
+        .useDiscovery()
+          .addRegistryEndpoint('tcp://127.0.0.1:5551')
+        .addClientServerChannel('api')
+          .enableServer('tcp://0.0.0.0:7101')
+        .options({ discover: { modules: [AppModule] } })
+        .build()
+    ),
   ],
   controllers: [AdminController],
   providers: [PriceHandler],
@@ -626,17 +624,17 @@ Registry 를 사용하는 actor/Spot route 샘플은 별도 파일 metadata stor
 검색하지 않고 session bind 시 actor runtime state 에 저장한다.
 
 ```ts
-ZLinkModule.forRoot({
-  discovery: {
-    registries: ['tcp://127.0.0.1:5551'],
-  },
-  routerMeshes: {
-    play: {
-      bind: 'tcp://0.0.0.0:7201',
-    },
-  },
-  registrySpotRemoteAddresses: { namespace: 'game' },
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .useDiscovery()
+      .addRegistryEndpoint('tcp://127.0.0.1:5551')
+    .addRouteMeshChannel('play')
+      .enableServer('tcp://0.0.0.0:7201')
+    .options({
+      registrySpotRemoteAddresses: { namespace: 'game' },
+    })
+    .build()
+);
 ```
 
 `registrySpotRemoteAddresses`(dotnet `UseRegistrySpotRemoteAddresses(...)`)는

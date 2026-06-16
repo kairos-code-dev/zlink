@@ -24,13 +24,13 @@
 - channel 의 `server / client / publisher / subscriber` 역할[^capability]
   (options 의 `server`, `client`, `publisher`, `subscriber` 설정 키)
 - 채널 등록의 형태별 분기 — client/server channel, fanout channel,
-  dealer mesh channel, route mesh channel (`channels[name]` options 의
-  종류별 형태)
-- 전역 discovery 설정(`discovery: { registries: [...] }`)
-- channel 의 startup manual connection 설정(manual connections 옵션)
+  dealer mesh channel, route mesh channel (`.addClientServerChannel(...)`,
+  `.addFanoutChannel(...)`, `.addDealerMeshChannel(...)`,
+  `.addRouteMeshChannel(...)`)
+- 전역 discovery 설정(`.useDiscovery().addRegistryEndpoint(...)`)
+- channel 의 startup manual connection 설정(`.enableClient(endpoint)` 같은 역할 메서드 인자)
 - 클라이언트/퍼블리셔 표면인 `ZLinkChannelClient`, `ZLinkFanoutClient`
-- spot mesh / node 등록 표면(`spotMeshes[...]`, `spotNodes[name]`,
-  `mesh.addNode(...)` 대응 options)
+- spot node 등록 표면(`.addSpotNode(...)`, `.enableRouter(...)`, `.enablePubSub(...)`)
   `SPOT`[^spot] 등록 표면
 - `ZLinkSpotManager`, `ZLinkSpotPublisherClient`
 - handler group mapping 모델. 즉 handler class decorator group
@@ -40,7 +40,7 @@
   수단으로만 남긴다. 정식 sample, scope, regression 기준은 group mapping
   모델에 맞춘다.
 - spot 의 packet / subscribe / timer descriptor
-- stream node 등록(`streamNodes[name]`) 과 framework Header 기반 packet session
+- stream node 등록(`.addStreamNode(...)`) 과 framework Header 기반 packet session
   등록
 - registry 등록(`AddZLinkRegistry` 대응 options), `ZLinkRegistryQuery`
   (`memberPeers(member, signal?)`), `ZLinkRegistryQueryClient`
@@ -49,12 +49,11 @@
 - `NestJS DI`[^di] 와 lifecycle hook[^lifecycle-hook]
   (`onApplicationBootstrap` / `onApplicationShutdown`) 통합
 - backend adapter layer[^backend-adapter] 와 backend dependency policy 적용
-- 기본 codec[^codec] 은 framework core 가 JSON 하나로 고정(lock-in) 한다.
-  protobuf, msgpack 같은 추가 codec 은 framework core 패키지에 두지 않는다.
-  대신 별도의 codec extension package
-  (예: `@zlink-systems/stream-connector-protobuf`) 에서 제공한다. sample 이
-  protobuf payload 를 다루더라도, framework core 자체가 protobuf 에 의존하게
-  만들지는 않는다.
+- 기본 codec[^codec] 등록은 builder 의 `.codecs().addJson()`,
+  `.codecs().addProtobuf()`, `.codecs().addMessagePack()` 표면으로 표현한다.
+  샘플이 기본으로 제공되는 codec 을 쓸 때는 custom serializer 를 직접 등록하지
+  않는다. 별도 wire format 이 필요할 때만 `.codecs().addSerializer(...)` 로
+  custom serializer 를 등록한다.
 - 저장소가 지금 함께 패키징하는 Node 바인딩 plat­form[^platform] 조합
   (`win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `darwin-x64`,
   `darwin-arm64`) 을 모두 CI[^ci] gate 범위 안에 둔다.

@@ -29,39 +29,23 @@ internal static class FixtureSamples
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<FixtureSendHandler>();
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:7100"));
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7100");
 
-            options.AddClientServerChannel("orders", channel =>
             {
-                channel.EnableServer(server =>
-                {
-                    server.Bind("tcp://127.0.0.1:7201");
-                });
+                var channel = options.AddClientServerChannel("orders");
+                channel.EnableServer("tcp://127.0.0.1:7201");
 
-                channel.EnableClient(client =>
-                {
-                    client.UseManualConnections(connections =>
-                    {
-                        connections.Connect("tcp://127.0.0.1:7201");
-                    });
-                });
+                channel.EnableClient("tcp://127.0.0.1:7201");
 
-            });
 
-            options.AddFanoutChannel("orders.events", channel =>
+            }
+
             {
-                channel.EnablePublisher(publisher =>
-                {
-                    publisher.Bind("tcp://127.0.0.1:7202");
-                });
-                channel.EnableSubscriber(subscriber =>
-                {
-                    subscriber.UseManualConnections(connections =>
-                    {
-                        connections.Connect("tcp://127.0.0.1:7202");
-                    });
-                });
-            });
+                var channel = options.AddFanoutChannel("orders.events");
+                channel.EnablePublisher("tcp://127.0.0.1:7202");
+                channel.EnableSubscriber("tcp://127.0.0.1:7202");
+
+            }
         });
         return builder;
     }
@@ -73,30 +57,29 @@ internal static class FixtureSamples
         builder.Services.AddScoped<FixtureSpotSubscriptionHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh("game.stage", spotMesh =>
             {
-                spotMesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:7300"));
-                spotMesh.AddNode("stage-node", spot =>
+                var spotMesh = options.AddSpotMesh("game.stage");
+                spotMesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7300");
                 {
-                    spot.EnableRouter(router =>
+                    var spot = spotMesh.AddNode("stage-node");
                     {
-                        router.BindRouter("tcp://127.0.0.1:7302");
-                    });
-                    spot.EnablePubSub(pubsub =>
+                        var router = spot.EnableRouter("tcp://127.0.0.1:7302");
+
+                    }
                     {
-                        pubsub.BindPubSub("tcp://127.0.0.1:7301");
-                    });
-                    spot.AttachChannelClient("orders", client =>
+                        var pubsub = spot.EnablePubSub("tcp://127.0.0.1:7301");
+
+                    }
                     {
-                        client.UseManualConnections(connections =>
-                        {
-                            connections.Connect("tcp://127.0.0.1:7201");
-                        });
-                    });
+                        spot.AttachChannelClient("orders", "tcp://127.0.0.1:7201");
+
+                    }
                     spot.AttachSpotPublisherClient("game.stage");
                     spot.AddSpotFactory<FixtureStageSpot>();
-                });
-            });
+
+                }
+
+            }
         });
         return builder;
     }
@@ -107,11 +90,12 @@ internal static class FixtureSamples
         builder.Services.AddScoped<FixtureRawStreamSession>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddStreamNode("stream.raw", stream =>
             {
+                var stream = options.AddStreamNode("stream.raw");
                 stream.Bind("tcp://127.0.0.1:7401");
                 stream.RegisterSession<FixtureRawStreamSession>();
-            });
+
+            }
         });
         return builder;
     }
@@ -137,32 +121,32 @@ internal static class FixtureSamples
         });
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:7602"));
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7602");
 
-            options.AddClientServerChannel("orders", channel =>
             {
-                channel.EnableServer(server =>
-                {
-                    server.Bind("tcp://127.0.0.1:7603");
-                });
-            });
+                var channel = options.AddClientServerChannel("orders");
+                channel.EnableServer("tcp://127.0.0.1:7603");
 
-            options.AddSpotMesh("game.stage", spotMesh =>
+            }
+
             {
-                spotMesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:7602"));
-                spotMesh.AddNode("stage-node", spot =>
+                var spotMesh = options.AddSpotMesh("game.stage");
+                spotMesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7602");
                 {
-                    spot.EnableRouter(router =>
+                    var spot = spotMesh.AddNode("stage-node");
                     {
-                        router.BindRouter("tcp://127.0.0.1:7605");
-                    });
-                    spot.EnablePubSub(pubsub =>
+                        var router = spot.EnableRouter("tcp://127.0.0.1:7605");
+
+                    }
                     {
-                        pubsub.BindPubSub("tcp://127.0.0.1:7604");
-                    });
+                        var pubsub = spot.EnablePubSub("tcp://127.0.0.1:7604");
+
+                    }
                     spot.AddSpotFactory<FixtureStageSpot>();
-                });
-            });
+
+                }
+
+            }
         });
         builder.Services.AddZLinkMonitoring(options =>
         {
@@ -181,24 +165,27 @@ internal static class FixtureSamples
         {
             options.AddActorFactory<FixtureActorFactory>("hero");
 
-            options.AddStreamNode("stream.actor", stream =>
             {
+                var stream = options.AddStreamNode("stream.actor");
                 stream.Bind("tcp://127.0.0.1:7701");
                 stream.RegisterSession<FixtureActorPacketSession>();
-            });
 
-            options.AddSpotMesh("game.stage", spotMesh =>
+            }
+
             {
-                spotMesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:7700"));
-                spotMesh.AddNode("actor-node", spot =>
+                var spotMesh = options.AddSpotMesh("game.stage");
+                spotMesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:7700");
                 {
-                    spot.EnableRouter(router =>
+                    var spot = spotMesh.AddNode("actor-node");
                     {
-                        router.BindRouter("tcp://127.0.0.1:7702");
-                    });
+                        var router = spot.EnableRouter("tcp://127.0.0.1:7702");
+
+                    }
                     spot.AddSpotFactory<FixtureActorSpot>();
-                });
-            });
+
+                }
+
+            }
         });
         return builder;
     }

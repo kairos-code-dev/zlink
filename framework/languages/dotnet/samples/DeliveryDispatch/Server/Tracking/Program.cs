@@ -16,34 +16,38 @@ builder.Services.AddZLinkFramework(options =>
     options.DefaultTimeout = SampleTimings.FrameworkTimeout;
     options.AddHandlersFromAssemblyOf(typeof(EnsureCustomerActorHandler));
     options.Codecs.AddJson();
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
+    options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
     options.AddActorFactory<CustomerActorFactory>(SampleNames.CustomerActorType);
-    options.AddClientServerChannel(SampleNames.TrackingRouteChannel, channel =>
     {
-        channel.EnableServer(server => server.Bind(topology.TrackingRouteEndpoint));
+        var channel = options.AddClientServerChannel(SampleNames.TrackingRouteChannel);
+        channel.EnableServer(topology.TrackingRouteEndpoint);
         channel.AddRequestHandler<EnsureCustomerActorHandler, EnsureCustomerActor, CustomerActorEnsured>();
         channel.AddRequestHandler<SubscribeCustomerToDeliveryHandler, SubscribeCustomerToDelivery, CustomerDeliverySubscribed>();
         channel.AddRequestHandler<DeliveryStatusChangedHandler, DeliveryStatusChanged, DeliveryStatusAck>();
-    });
-    options.AddFanoutChannel(SampleNames.StatusFanoutChannel, channel =>
+
+    }
     {
-        channel.EnablePublisher(publisher => publisher.Bind(topology.StatusFanoutEndpoint));
-    });
-    options.AddSpotMesh(SampleNames.DeliverySpotDiscovery, mesh =>
+        var channel = options.AddFanoutChannel(SampleNames.StatusFanoutChannel);
+        channel.EnablePublisher(topology.StatusFanoutEndpoint);
+
+    }
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
-        mesh.AddNode(SampleNames.TrackingSpotNode, spot =>
+        var mesh = options.AddSpotMesh(SampleNames.DeliverySpotDiscovery);
+        mesh.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
         {
-            spot.EnableRouter(router =>
+            var spot = mesh.AddNode(SampleNames.TrackingSpotNode);
             {
-                router.BindRouter(topology.TrackingSpotRouterEndpoint);
-                router.SetRoutingId(topology.TrackingSpotNodeRid);
-            });
-            spot.EnablePubSub(pubsub => pubsub.BindPubSub(topology.TrackingSpotEndpoint));
+                var router = spot.EnableRouter(topology.TrackingSpotRouterEndpoint);
+                router.SetRouterRoutingId(topology.TrackingSpotNodeRid);
+
+            }
+            spot.EnablePubSub(topology.TrackingSpotEndpoint);
             spot.AddEntrySpot<CustomerEntrySpot>();
             spot.AddSpotFactory<DeliveryTrackingSpot>();
-        });
-    });
+
+        }
+
+    }
 });
 
 await builder.Build().RunAsync();

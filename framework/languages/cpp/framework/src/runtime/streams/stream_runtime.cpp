@@ -81,9 +81,11 @@ class stream_write_call_state_t
 class stream_session_dispatcher_t
 {
   public:
-    explicit stream_session_dispatcher_t (stream_state_t &stream) : _stream (stream) {}
+    using dispatch_callback_t = std::function<task_t<void> ()>;
 
-    result_t<void> dispatch (std::string operation, std::function<task_t<void> ()> callback) const
+    explicit stream_session_dispatcher_t (stream_state_t &state) : _stream (state) {}
+
+    result_t<void> dispatch (std::string operation, dispatch_callback_t callback) const
     {
         record_operation (std::move (operation));
         return runtime::handler_coroutine_executor ()
@@ -386,20 +388,11 @@ stream_snapshot_t stream_builder_t::snapshot () const
     return _state->snapshot;
 }
 
-zlink_builder_t &zlink_builder_t::stream (std::string stream_name,
-                                          std::function<void (stream_builder_t &)> configure)
+stream_builder_t zlink_builder_t::stream (std::string stream_name)
 {
     auto state = std::make_shared<detail::stream_builder_state_t> (std::move (stream_name));
-    stream_builder_t builder (state);
-    if (configure) {
-        configure (builder);
-    }
-    if (state->snapshot.bind_endpoint.empty () || state->snapshot.packet_session_name.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "STREAM requires bind endpoint and packet session");
-    }
     _state->stream_runtime->streams[state->snapshot.name] = state;
-    return *this;
+    return stream_builder_t (state);
 }
 
 std::vector<stream_snapshot_t> zlink_builder_t::streams () const

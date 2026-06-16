@@ -189,6 +189,19 @@ timer handler 파일이 아니라 `ConversationSpot` 의 idle check 와 domain `
 - customer actor 의 `SetAgentAvailableReq` 는 오류 response 를 반환한다.
 - Domain / Application / Adapters 책임 분리가 유지된다.
 
+## 6. 회귀 테스트
+
+SupportChat 샘플을 구현할 때는 아래 기존 회귀 테스트가 깨지지 않아야 한다. 이
+테스트들은 SupportChat 이 사용하는 framework 표면(session gateway, conversation Spot,
+idle timer, client connector)을 이미 고정하고 있다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | Session gateway 경로에서 customer/agent request 가 bound actor dispatch 와 sequence 로 맞물려 처리된다. |
+| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | 두 actor 가 같은 conversation Spot 에 join·move·submit 으로 참여한다. |
+| `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` | conversation idle timer 진행과 close 시 lifecycle 정리가 framework timer 계약과 맞는다. |
+| `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | client connector 의 request/reply correlation 과 bound push 수신이 유지된다. |
+
 [^stream]: `STREAM` 은 클라이언트와 서버 사이에 지속 연결을 유지하면서 framework Header 기반 packet 을 주고받는 세션형 통신 추상이다.
 [^actor]: actor 는 자신만의 메일박스와 상태를 가지고 메시지를 순서대로 처리하는 동시성 단위다. framework 에서는 클라이언트 세션과 묶여 사용자별 상태를 다루는 데 쓰인다.
 [^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 노드(예: conversation, room 등) 단위로 메시지를 라우팅하는 추상이다.

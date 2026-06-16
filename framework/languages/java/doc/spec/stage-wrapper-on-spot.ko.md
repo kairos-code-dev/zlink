@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md) | [다음: Java STREAM Open Items](../draft/stream-open-items.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java spec 목차](./README.ko.md)
@@ -30,5 +30,5 @@
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md) | [다음: Java STREAM Open Items](../draft/stream-open-items.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

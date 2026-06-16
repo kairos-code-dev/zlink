@@ -72,7 +72,7 @@ route mesh 핸들러는 `route_channel_builder_t::add_send_handler`/`add_request
 | `add_module(module)` / `add_hosted_service(service)` | 패키징 / 백그라운드 |
 | `run(argc, argv)` | 실행 (블로킹, 종료 코드 반환) |
 | `stop()` / `request_stop()` | 종료 (동기 / 비동기 요청) |
-| `advanced()` | `services()` / `handlers()` / `use_zlink()` 직접 접근 |
+| `advanced()` | `services()` / `handlers()` / `zlink()` 직접 접근 |
 
 **`zlink_framework_options_t`** (`configuration/framework_options.hpp`):
 
@@ -83,8 +83,8 @@ route mesh 핸들러는 `route_channel_builder_t::add_send_handler`/`add_request
 | `codecs()` | `add_json` / `add_message_pack`(+typed) / `add_protobuf` | [7 §2](./07-channel-messaging.ko.md) |
 | `add_client_server_channel(name)` | `enable_server(ep)` · `enable_client([ep])` · `use_handler_group(g)` · `enable_spot_route_egress(t)` | [7](./07-channel-messaging.ko.md) |
 | `add_fanout_channel(name)` | `enable_publisher(ep)` · `enable_subscriber([ep])` · `use_handler_group(g)` | [7 §6](./07-channel-messaging.ko.md) |
-| `add_dealer_mesh_channel(name)` | `bind(ep)`/`enable_server(ep)` · `enable_client([ep])` · `connect(ep)` · `use_handler_group(g)` (DEALER 공유) | [7 §5](./07-channel-messaging.ko.md) |
-| `add_route_mesh_channel(name)` | `bind(ep)`/`enable_server(ep)` · `set_routing_id(rid)` · `enable_client([ep])` · `connect(ep)` · `enable_spot_route_egress(t)` (ROUTER 공유) | [7 §7](./07-channel-messaging.ko.md) |
+| `add_dealer_mesh_channel(name)` | `enable_server(ep)` · `enable_client([ep])` · `use_handler_group(g)` (DEALER 공유) | [7 §5](./07-channel-messaging.ko.md) |
+| `add_route_mesh_channel(name)` | `enable_server(ep)` · `set_routing_id(rid)` · `enable_client([ep])` · `enable_spot_route_egress(t)` (ROUTER 공유) | [7 §7](./07-channel-messaging.ko.md) |
 | `add_spot_mesh(...).add_node(name)` / `add_spot_node(name)` | `bind` · `enable_router` · `enable_pub_sub` · `use_discovery` · `accept_routes_from_channel` · `attach_channel_client` · `attach_publisher` · `add_entry_spot<T>` · `add_spot<T>` · `add_actor_factory<F>` · `enable_actor_gateway` | [8](./08-spot.ko.md)·[9](./09-actor-session.ko.md) |
 | `add_stream_node(name)` | `bind` · `register_session(name)`/`register_session<TSession>()` · `attach_actor_gateway` | [10](./10-stream.ko.md) |
 | `http()` | `listen` · `configure_tls` · `map_get/post/...<T>` · `use<TMiddleware>` · `map_health/readiness/liveness` | [6](./06-http-hosting.ko.md) |
@@ -95,9 +95,9 @@ route mesh 핸들러는 `route_channel_builder_t::add_send_handler`/`add_request
 **`module_t`** (`configuration/module.hpp`): 가상 `configure_services` · `configure_zlink` ·
 `configure_handlers` · `configure_monitoring`. `app.add_zlink_framework<TModule>(...)`로 붙인다.
 
-**저수준 빌더** `zlink_builder_t` (`configuration/zlink_builder.hpp`, `app.advanced().use_zlink`):
-`add_node(name)` · `channel(name,cfg)` · `route_channel(name[,cfg])` · `add_spot_node(name,cfg)` ·
-`stream(name,cfg)` · `discovery(cfg)` · `enable_registry(cfg)`; 접근자 `message_bus()` ·
+**저수준 빌더** `zlink_builder_t` (`configuration/zlink_builder.hpp`, `app.advanced().zlink()`):
+`add_node(name)` · `channel(name)` · `route_channel(name)` · `add_spot_node(name)` ·
+`stream(name)` · `discovery()` · `enable_registry()`; 접근자 `message_bus()` ·
 `publisher()` · `request_client(name)` ·
 `route_client(serializers)` · `registry_query()`. 채널 capability 는 `capability_builder_t`
 (`bind`/`connect`/`use_discovery`)로 구성한다.

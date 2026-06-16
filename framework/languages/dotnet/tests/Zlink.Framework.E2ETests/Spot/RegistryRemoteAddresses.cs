@@ -34,29 +34,32 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
         var frameworkBuilder = Host.CreateApplicationBuilder();
         frameworkBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
+            options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
 
-            options.AddRouteMeshChannel("play", routed =>
             {
-                routed.Bind(routeChannelEndpoint);
-            });
+                var routed = options.AddRouteMeshChannel("play");
+                routed.EnableServer(routeChannelEndpoint);
+
+            }
             options.UseRegistrySpotRemoteAddresses("registry-route");
-            options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("registry-route-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh(spotChannel);
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    router.BindRouter(spotNodeEndpoint);
-                });
-                spot.EnablePubSub(pubsub =>
+                    var spot = mesh.AddNode("registry-route-node");
                 {
-                    pubsub.BindPubSub(spotPubEndpoint);
-                });
+                    var router = spot.EnableRouter(spotNodeEndpoint);
+
+                }
+                {
+                    var pubsub = spot.EnablePubSub(spotPubEndpoint);
+
+                }
                 spot.AddSpotFactory<LocalSubscriberStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var registryHost = registryBuilder.Build();
@@ -110,29 +113,32 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
         var frameworkBuilder = Host.CreateApplicationBuilder();
         frameworkBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
+            options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
 
-            options.AddRouteMeshChannel("play", routed =>
             {
-                routed.Bind(routeChannelEndpoint);
-            });
+                var routed = options.AddRouteMeshChannel("play");
+                routed.EnableServer(routeChannelEndpoint);
+
+            }
             options.UseRegistrySpotRemoteAddresses("registry-route-rid");
-            options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("registry-route-rid-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh(spotChannel);
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    router.BindRouter(spotNodeEndpoint);
-                });
-                spot.EnablePubSub(pubsub =>
+                    var spot = mesh.AddNode("registry-route-rid-node");
                 {
-                    pubsub.BindPubSub(spotPubEndpoint);
-                });
+                    var router = spot.EnableRouter(spotNodeEndpoint);
+
+                }
+                {
+                    var pubsub = spot.EnablePubSub(spotPubEndpoint);
+
+                }
                 spot.AddSpotFactory<LocalSubscriberStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var registryHost = registryBuilder.Build();

@@ -36,24 +36,27 @@ public sealed class ActorDisconnectNotifyTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.AddNode("actor-node", spot =>
-                {
-                    spot.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        router.BindRouter(spotEndpoint);
-                        router.SetRoutingId(RoutingId.From("local-notify-actor-node"));
-                    });
+                        var spot = mesh.AddNode("actor-node");
+                    {
+                        var router = spot.EnableRouter(spotEndpoint);
+                        router.SetRouterRoutingId(RoutingId.From("local-notify-actor-node"));
+
+                    }
                     spot.AddEntrySpot<GatewayEntrySpot>();
-                });
-                });
-                options.AddStreamNode("client.stream", stream =>
+
+                    }
+
+                }
                 {
+                    var stream = options.AddStreamNode("client.stream");
                     stream.Bind(streamEndpoint);
                     stream.AttachActorGateway("actor-node");
                     stream.RegisterSession<LocalNotifyDisconnectSession>();
-                });
+
+                }
             });
         });
 

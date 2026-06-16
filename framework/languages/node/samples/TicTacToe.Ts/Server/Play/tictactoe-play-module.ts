@@ -1,17 +1,21 @@
-const { Module } = require('@nestjs/common');
-const path = require('node:path');
-const { ZLinkModule, ZLINK_CHANNEL_CLIENT, zlinkDiscoverProviders, zlinkFramework } = require('../../../../../packages/nestjs/dist');
-const { SampleNames } = require('../Configuration/sample-settings');
-const { PlayActorFactory } = require('./Adapters/ZLink/Actors/play-actor-factory');
-const { PlayEntrySpot } = require('./Adapters/ZLink/Spots/play-entry-spot');
-const { TicTacToeGameSpot } = require('./Adapters/ZLink/Spots/tictactoe-game-spot');
-const { TicTacToeGameCreator } = require('./Application/GameCreation/tictactoe-game-creator');
-const { PlaySessionFactory } = require('./Adapters/ZLink/Sessions/play-session-factory');
-const { PLAY_STREAM_ENDPOINT } = require('./play-tokens');
-
+import { Module } from '@nestjs/common';
+import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { PacketNames } from '../../Shared/Contracts/messages';
+import { SampleNames, SampleTimings } from '../Configuration/sample-settings';
+import { CreateGameHandler } from './Adapters/ZLink/Handlers/create-game-handler';
+import { PlayActorFactory } from './Adapters/ZLink/Actors/play-actor-factory';
+import { PlayActorJoinGameHandler } from './Adapters/ZLink/Spots/Handlers/play-actor-join-game-handler';
+import { PlayActorPlaceMarkHandler } from './Adapters/ZLink/Spots/Handlers/play-actor-place-mark-handler';
+import { TicTacToeGameTimerHandler } from './Adapters/ZLink/Spots/Handlers/tictactoe-game-timer-handler';
+import { PlayEntrySpot } from './Adapters/ZLink/Spots/play-entry-spot';
+import { TicTacToeGameSpot } from './Adapters/ZLink/Spots/tictactoe-game-spot';
+import { TicTacToeGameCreator } from './Application/GameCreation/tictactoe-game-creator';
+import { PlaySessionFactory } from './Adapters/ZLink/Sessions/play-session-factory';
+import { PLAY_STREAM_ENDPOINT } from './play-tokens';
 function createTicTacToePlayModule(config: {
   apiEndpoint: string;
   playEndpoint: string;
+  playSpotEndpoint: string;
   playStreamEndpoint: string;
 }) {
   class TicTacToePlayModule {}
@@ -20,30 +24,36 @@ function createTicTacToePlayModule(config: {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
-          .clientServerChannel(SampleNames.playChannel, (channel) => channel
-            .server(config.playEndpoint)
-            .handlerGroup('play'))
-          .clientServerChannel(SampleNames.apiChannel, (channel) => channel
-            .client(config.apiEndpoint))
+          .options({ requestTimeoutMs: SampleTimings.requestTimeout })
+          .codecs()
+            .addJson()
+          .addClientServerChannel(SampleNames.playChannel)
+            .enableServer(config.playEndpoint)
+            .addRequestHandler(PacketNames.createGame, CreateGameHandler)
+          .addClientServerChannel(SampleNames.apiChannel)
+            .enableClient(config.apiEndpoint)
           .actorFactory(SampleNames.playerActorType, PlayActorFactory)
-          .streamNode(SampleNames.playStream, (stream) => stream
+          .addStreamNode(SampleNames.playStream)
             .bind(config.playStreamEndpoint)
-            .registerSession(PlaySessionFactory))
-          .spotNode(SampleNames.playSpotNode, (spot) => spot
-            .entrySpot(PlayEntrySpot)
-            .spotFactory(TicTacToeGameSpot))
+            .attachActorGateway(SampleNames.playSpotNode)
+            .registerSession(PlaySessionFactory)
+          .addSpotNode(SampleNames.playSpotNode)
+            .enableRouter(config.playSpotEndpoint)
+            .addEntrySpot(PlayEntrySpot)
+            .addSpotFactory(TicTacToeGameSpot)
           .build()
       })
     ],
     providers: [
       { provide: PLAY_STREAM_ENDPOINT, useValue: config.playStreamEndpoint },
       TicTacToeGameCreator,
+      CreateGameHandler,
       PlayActorFactory,
       PlayEntrySpot,
+      PlayActorJoinGameHandler,
+      PlayActorPlaceMarkHandler,
       PlaySessionFactory,
-      { provide: 'TICTACTOE_API_CHANNEL_CLIENT', useExisting: ZLINK_CHANNEL_CLIENT },
-      ...zlinkDiscoverProviders(path.join(__dirname, 'Adapters', 'ZLink', 'Handlers')),
-      ...zlinkDiscoverProviders(path.join(__dirname, 'Adapters', 'ZLink', 'Spots', 'Handlers'))
+      TicTacToeGameTimerHandler,
     ]
   })(TicTacToePlayModule);
 

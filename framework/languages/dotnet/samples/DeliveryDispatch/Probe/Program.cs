@@ -95,11 +95,11 @@ static async ValueTask AssertTrackingChannelAsync(
     builder.Services.AddZLinkFramework(options =>
     {
         options.Codecs.AddJson();
-        options.AddClientServerChannel(SampleNames.TrackingRouteChannel, channel =>
         {
-            channel.EnableClient(client => client.UseManualConnections(
-                connections => connections.Connect(topology.TrackingRouteEndpoint)));
-        });
+            var channel = options.AddClientServerChannel(SampleNames.TrackingRouteChannel);
+                        channel.EnableClient(topology.TrackingRouteEndpoint);
+
+        }
     });
 
     using var host = builder.Build();

@@ -14,9 +14,9 @@ if (!connected) {
 }
 
 auto reply = co_await client
-  .request<pong_t>(ping_t{client_id, sequence})
+  .request(ping_t{client_id, sequence})
   .timeout(1s)
-  .async();
+  .async<pong_t>();
 ```
 
 `async()`는 blocking `submit()`을 호출하지 않는다. core callback completion을 등록하고, 완료되면

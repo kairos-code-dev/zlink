@@ -1,9 +1,9 @@
-const { PlayerActor } = require('./player-actor');
+import { PlayerActor } from './player-actor';
 import type { PlayerActor as PlayerActorType } from './player-actor';
 import type {
   ZLinkActorContext,
   ZLinkActorFactory
-} from '../../../../../../../packages/framework/dist';
+} from '@zlink-systems/framework';
 import type { BingoActorRef } from '../../../../../Shared/Contracts/messages';
 
 class PlayerActorFactory implements ZLinkActorFactory {

@@ -9,6 +9,7 @@ mkdir -p "${LOG_DIR}"
 PIDS=()
 
 cleanup() {
+  local status="$?"
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     if kill -0 "${pid}" 2>/dev/null; then
@@ -42,6 +43,7 @@ cleanup() {
   else
     echo "runDir=${RUN_DIR}"
   fi
+  return "$status"
 }
 trap cleanup EXIT
 
@@ -52,7 +54,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 4:
+    while len(sockets) < 5:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -74,7 +76,8 @@ PY
 export TICTACTOE_API_ENDPOINT="${TICTACTOE_API_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
 export TICTACTOE_PLAY_ENDPOINT="${TICTACTOE_PLAY_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
 export TICTACTOE_PLAY_STREAM_ENDPOINT="${TICTACTOE_PLAY_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
-export TICTACTOE_API_HTTP_ENDPOINT="${TICTACTOE_API_HTTP_ENDPOINT:-http://127.0.0.1:${PORTS[3]}}"
+export TICTACTOE_PLAY_SPOT_ENDPOINT="${TICTACTOE_PLAY_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
+export TICTACTOE_API_HTTP_ENDPOINT="${TICTACTOE_API_HTTP_ENDPOINT:-http://127.0.0.1:${PORTS[4]}}"
 export ZLINK_SAMPLE_CONFIG="${RUN_DIR}/sample.config.json"
 
 python3 - "${ZLINK_SAMPLE_CONFIG}" <<PY
@@ -87,6 +90,7 @@ with open(sys.argv[1], "w", encoding="utf-8") as output:
             "apiEndpoint": "${TICTACTOE_API_ENDPOINT}",
             "apiHttpEndpoint": "${TICTACTOE_API_HTTP_ENDPOINT}",
             "playEndpoint": "${TICTACTOE_PLAY_ENDPOINT}",
+            "playSpotEndpoint": "${TICTACTOE_PLAY_SPOT_ENDPOINT}",
             "playStreamEndpoint": "${TICTACTOE_PLAY_STREAM_ENDPOINT}"
         }
     }, output, indent=2)
@@ -123,6 +127,37 @@ wait_port() {
   return 1
 }
 
+wait_ready_field() {
+  local name="$1"
+  local log_file="$2"
+  local field="$3"
+  local expected="$4"
+  python3 - "${name}" "${log_file}" "${field}" "${expected}" <<'PY'
+import json
+import select
+import sys
+import time
+
+name, log_file, field, expected = sys.argv[1:]
+deadline = time.monotonic() + 10
+while time.monotonic() < deadline:
+    try:
+        with open(log_file, "r", encoding="utf-8") as source:
+            for line in source:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("event") == "ready" and event.get(field) == expected:
+                    raise SystemExit(0)
+    except FileNotFoundError:
+        pass
+    select.select([], [], [], 0.1)
+print(f"Timed out waiting for {name} ready {field}={expected}", file=sys.stderr)
+raise SystemExit(1)
+PY
+}
+
 start_server() {
   local name="$1"
   local entry="$2"
@@ -133,6 +168,7 @@ start_server() {
 (cd "${SCRIPT_DIR}" && npm run build >/dev/null)
 
 start_server play dist/Server/Play/main.js
+wait_ready_field play "${LOG_DIR}/play.log" spotEndpoint "${TICTACTOE_PLAY_SPOT_ENDPOINT}"
 wait_port play-channel "${TICTACTOE_PLAY_ENDPOINT}"
 wait_port play-stream "${TICTACTOE_PLAY_STREAM_ENDPOINT}"
 

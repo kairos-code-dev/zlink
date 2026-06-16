@@ -37,9 +37,9 @@ zsc::task_t<void> run_scenario(zsc::connector_t& connector)
     }
 
     auto auth = co_await client
-        .request<auth_reply_t>(auth_request_t{"player-1", "tok-abc123"})
+        .request(auth_request_t{"player-1", "tok-abc123"})
         .packet_name("auth.login")
-        .async();
+        .async<auth_reply_t>();
 
     if (!auth) {
         co_await client.close().async();
@@ -65,9 +65,9 @@ zsc::task_t<void> run_scenario(zsc::connector_t& connector)
 
 ```cpp
 auto reply = co_await client
-    .request<pong_t>(ping_t{"player-1", seq})
+    .request(ping_t{"player-1", seq})
     .timeout(std::chrono::seconds{3})
-    .async();
+    .async<pong_t>();
 
 if (!reply) {
     // reply.error_code() == zsc::error_code_t::request_timeout
@@ -99,8 +99,8 @@ auto wait_task = client
 wait_task.start(); // wait 먼저 등록
 
 auto reply = co_await client
-    .request<match_reply_t>(match_request_t{"match-7f3a"})
-    .async();
+    .request(match_request_t{"match-7f3a"})
+    .async<match_reply_t>();
 
 auto push = co_await std::move(wait_task);
 ```
@@ -142,9 +142,9 @@ zsc::task_t<void> perf_client_loop(zsc::connector_t& connector, int client_id)
     int seq = 0;
     while (running) {
         auto reply = co_await client
-            .request<pong_t>(ping_t{client_id, ++seq})
+            .request(ping_t{client_id, ++seq})
             .timeout(std::chrono::seconds{1})
-            .async();
+            .async<pong_t>();
 
         record(reply);
     }

@@ -15,24 +15,28 @@ public final class StreamBuilders {
     private record StreamNode(StreamNodeRegistration registration)
         implements ZLinkStreamNodeBuilder {
         @Override
-        public void bind(String endpoint) {
+        public ZLinkStreamNodeBuilder bind(String endpoint) {
             registration.bind(endpoint);
+            return this;
         }
 
         @Override
-        public void attachActorGateway(String spotNodeName) {
+        public ZLinkStreamNodeBuilder attachActorGateway(String spotNodeName) {
             registration.attachActorGateway(spotNodeName);
+            return this;
         }
 
         @Override
-        public void registerSession(Class<? extends ZLinkSession> sessionType) {
+        public ZLinkStreamNodeBuilder registerSession(Class<? extends ZLinkSession> sessionType) {
             registration.registerSession(sessionType);
+            return this;
         }
 
         @Override
-        public void addSessionPacketHandler(
+        public ZLinkStreamNodeBuilder addSessionPacketHandler(
             Class<? extends ZLinkSessionPacketHandler<?>> handlerType) {
             registration.addSessionPacketHandler(handlerType);
+            return this;
         }
     }
 }

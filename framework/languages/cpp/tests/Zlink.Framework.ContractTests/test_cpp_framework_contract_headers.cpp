@@ -392,9 +392,8 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::config_bu
 
 static_assert (
   std::is_same_v<
-    decltype (std::declval<zlink::framework::zlink_framework_options_t &> ().configure_dispatch (
-      std::declval<std::function<void (zlink::framework::dispatch_options_t &)>> ())),
-    zlink::framework::zlink_framework_options_t &>);
+    decltype (std::declval<zlink::framework::zlink_framework_options_t &> ().configure_dispatch ()),
+    zlink::framework::dispatch_options_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::http_context_t &> ()
                                           .response_header ("X-Test", "value")),
@@ -462,11 +461,6 @@ static_assert (
                  zlink::framework::fanout_channel_builder_t>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ().bind (
-                   "tcp://127.0.0.1:5200")),
-                 zlink::framework::dealer_mesh_channel_builder_t &>);
-
-static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
                              .enable_server ("tcp://127.0.0.1:5200")),
                  zlink::framework::dealer_mesh_channel_builder_t &>);
@@ -479,11 +473,6 @@ static_assert (
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
                              .enable_client ("tcp://127.0.0.1:5201")),
-                 zlink::framework::dealer_mesh_channel_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
-                             .connect ("tcp://127.0.0.1:5201")),
                  zlink::framework::dealer_mesh_channel_builder_t &>);
 
 static_assert (
@@ -609,41 +598,29 @@ static_assert (
                  zlink::framework::spot_pub_sub_capability_builder_t &>);
 
 static_assert (
-  std::is_same_v<
-    decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().enable_router (
-      "tcp://127.0.0.1:5501",
-      std::declval<std::function<void (zlink::framework::spot_router_capability_builder_t &)>> ())),
-    zlink::framework::spot_node_options_builder_t &>);
-
-static_assert (
-  std::is_same_v<
-    decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().enable_pub_sub (
-      "tcp://127.0.0.1:5502",
-      std::declval<
-        std::function<void (zlink::framework::spot_pub_sub_capability_builder_t &)>> ())),
-    zlink::framework::spot_node_options_builder_t &>);
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
+                             .connect_router ("tcp://127.0.0.1:5503")),
+                 zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
-                             .attach_channel_client (
-                               "api",
-                               std::declval<std::function<void (
-                                 zlink::framework::attached_channel_client_builder_t &)>> ())),
+                             .connect_pub_sub ("tcp://127.0.0.1:5504")),
+                 zlink::framework::spot_node_options_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
+                             .attach_channel_client ("api", "tcp://127.0.0.1:5505")),
                  zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().attach_publisher (
-      "events",
-      std::declval<std::function<void (zlink::framework::attached_publisher_builder_t &)>> ())),
+      "events", "tcp://127.0.0.1:5506")),
     zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
-                             .accept_routes_from_channel (
-                               "api",
-                               std::declval<std::function<void (
-                                 zlink::framework::accepted_spot_route_channel_builder_t &)>> ())),
+                             .accept_routes_from_channel ("api", "tcp://127.0.0.1:5507")),
                  zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (

@@ -648,7 +648,7 @@ app.add_zlink_framework([](auto &options) {
 });
 ```
 
-`app.advanced().use_zlink(...)`는 framework extension이나 contract test에서만 사용한다.
+`app.advanced().zlink()`는 framework extension이나 contract test에서만 사용한다.
 일반 application code와 공식 샘플은 이 낮은 수준 표면을 사용하지 않는다.
 
 이 계층은 아래 책임을 가진다.
@@ -687,9 +687,9 @@ messaging core는 프레임워크의 중심 API다.
 ```cpp
 publisher.publish("orders", "orders.created", event);
 
-auto reply = client.request<order_status_reply_t>(
+auto reply = client.request(
   "orders",
-  get_order_status_t{.order_id = order_id});
+  get_order_status_t{.order_id = order_id}).async<order_status_reply_t>();
 
 spot.send_to(target_node, target_spot, command);
 ```

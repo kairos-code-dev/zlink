@@ -48,27 +48,27 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddClientServerChannel("api", channel =>
     {
-        channel.EnableServer(server =>
-        {
-            server.Bind("tcp://0.0.0.0:7101");
-        });
+        var channel =     options.AddClientServerChannel("api");
+        channel.EnableServer("tcp://0.0.0.0:7101");
         channel.AddHandlerGroup("api");
-    });
 
-    options.AddClientServerChannel("profile", channel =>
+    }
+
     {
+        var channel =     options.AddClientServerChannel("profile");
         channel.EnableClient();
-    });
 
-    options.AddClientServerChannel("account", channel =>
+    }
+
     {
+        var channel =     options.AddClientServerChannel("account");
         channel.EnableClient();
-    });
 
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry2:5551"));
+    }
+
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry2:5551");
 });
 ```
 
@@ -89,27 +89,19 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddClientServerChannel("api", channel =>
     {
-        channel.EnableServer(server =>
-        {
-            server.Bind("tcp://0.0.0.0:7101");
-        });
+        var channel =     options.AddClientServerChannel("api");
+        channel.EnableServer("tcp://0.0.0.0:7101");
         channel.AddHandlerGroup("api");
-    });
 
-    options.AddClientServerChannel("profile", channel =>
+    }
+
     {
-        channel.EnableClient(client =>
-        {
-            client.UseManualConnections(peers =>
-            {
-                peers.Connect("tcp://10.0.10.15:7101");
+        options.AddClientServerChannel("profile")
+            .EnableClient("tcp://10.0.10.15:7101")
+            .EnableClient("tcp://10.0.10.16:7101");
 
-                peers.Connect("tcp://10.0.10.16:7101");
-            });
-        });
-    });
+    }
 });
 ```
 
@@ -125,32 +117,26 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddClientServerChannel("api", channel =>
     {
-        channel.EnableServer(server =>
-        {
-            server.Bind("tcp://0.0.0.0:7101");
-        });
+        var channel =     options.AddClientServerChannel("api");
+        channel.EnableServer("tcp://0.0.0.0:7101");
         channel.AddHandlerGroup("api");
-    });
 
-    options.AddClientServerChannel("profile", channel =>
+    }
+
     {
+        var channel =     options.AddClientServerChannel("profile");
         channel.EnableClient();
-    });
 
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+    }
 
-    options.AddClientServerChannel("account", channel =>
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+
     {
-        channel.EnableClient(client =>
-        {
-            client.UseManualConnections(peers =>
-            {
-                peers.Connect("tcp://10.0.20.15:7101");
-            });
-        });
-    });
+        var channel =     options.AddClientServerChannel("account");
+        channel.EnableClient("tcp://10.0.20.15:7101");
+
+    }
 });
 ```
 
@@ -178,16 +164,8 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddClientServerChannel("profile", channel =>
-    {
-        channel.EnableClient(client =>
-        {
-            client.UseManualConnections(connections =>
-            {
-                connections.Connect("tcp://10.0.10.17:7101");
-            });
-        });
-    });
+    options.AddClientServerChannel("profile")
+        .EnableClient("tcp://10.0.10.17:7101");
 });
 ```
 
@@ -196,8 +174,7 @@ builder.Services.AddZLinkFramework(options =>
 연결 관리 API 를 제공하지 않는다.
 
 subscriber 역할을 수동으로 운영한다면 어떻게 되는가. 그쪽은 그쪽대로,
-`EnableSubscriber(...).UseManualConnections(...)` 에서 별도 endpoint 목록을
-설정한다.
+`EnableSubscriber(endpoint)` 에서 별도 endpoint 를 설정한다.
 
 ### 2.3.2 소켓 옵션 설정 샘플
 
@@ -207,8 +184,9 @@ subscriber 역할을 수동으로 운영한다면 어떻게 되는가. 그쪽은
 - 요청 하나마다 주는 `Timeout(...)` 같은 호출 단위 옵션
 - channel 등록 시점에 넣는 socket 기본 옵션
 
-아래 코드는 아직 확정된 계약은 아니다. `.NET` 표면이 이런 모양으로 보이는 편이 읽기
-쉽다는, 방향 예시 정도로 본다.
+아래 예시는 현재 공개 설정 표면만 사용한다. 역할을 켤 때 endpoint 가 필요한 경우에는
+`EnableServer(endpoint)`, `EnablePublisher(endpoint)`, `EnableClient(endpoint)` 처럼
+역할 메서드에 endpoint 를 함께 넘긴다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -216,82 +194,25 @@ builder.Services.AddZLinkFramework(options =>
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
 
-    options.AddClientServerChannel("api", channel =>
-    {
-        channel.EnableServer(server =>
-        {
-            server.ConfigureSocket(socket =>
-            {
-                socket.SendHighWaterMark = 20_000;
-                socket.ReceiveHighWaterMark = 20_000;
-                socket.SendTimeout = TimeSpan.FromMilliseconds(200);
-                socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
-                socket.Immediate = true;
-            });
+    options.AddClientServerChannel("api")
+        .EnableServer("tcp://0.0.0.0:7101")
+        .AddHandlerGroup("api");
 
-            server.ConfigureRouting(routing =>
-            {
-                routing.RequireKnownPeer = true;
-                routing.AllowPeerHandover = true;
-            });
-        });
-    });
+    options.AddFanoutChannel("api.events")
+        .EnableSubscriber("tcp://10.0.10.20:7201")
+        .AddHandlerGroup("api-events");
 
-    options.AddFanoutChannel("api.events", channel =>
-    {
-        channel.EnableSubscriber(subscriber =>
-        {
-            subscriber.ConfigureSocket(socket =>
-            {
-                socket.ReceiveHighWaterMark = 50_000;
-                socket.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
-                socket.TcpNoDelay = true;
-            });
-        });
-    });
+    options.AddClientServerChannel("profile")
+        .EnableClient("tcp://10.0.10.15:7101")
+        .EnableClient("tcp://10.0.10.16:7101");
 
-    options.AddClientServerChannel("profile", channel =>
-    {
-        channel.EnableClient(client =>
-        {
-            client.ConfigureSocket(socket =>
-            {
-                socket.ConnectTimeout = TimeSpan.FromSeconds(3);
-                socket.HandshakeInterval = TimeSpan.FromSeconds(3);
-                socket.SendHighWaterMark = 5_000;
-                socket.ReceiveHighWaterMark = 5_000;
-                socket.Immediate = true;
-            });
-
-            client.ConfigureRouting(routing =>
-            {
-                routing.ProbeRouterOnConnect = true;
-            });
-        });
-    });
-
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+    options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 });
 ```
 
-이 예시에서 의도하는 구분은 다음과 같다.
-
-- `server.ConfigureSocket(...)` 과 `client.ConfigureSocket(...)` 은, 역할이
-  들고 있는 socket 기본 동작을 정한다.
-- `server.ConfigureRouting(...)` 과 `client.ConfigureRouting(...)` 은, 역할 별로
-  routed 연결 정책을 따로 둔다는 뜻이다. public 설정 이름은 `RequireKnownPeer`,
-  `AllowPeerHandover`, `ProbeRouterOnConnect` 처럼 framework 의미가 드러나는 이름을
-  쓴다. 하부 backend option 이름은 노출하지 않는다.
-- `client.RequestToChannel(...).Timeout(...)` 은 특정 호출 하나에만 적용되는 값이다. 실제
-  low-level 바인딩에서도, `DealerSocket.RequestAsync(..., TimeSpan timeout, ...)` 처럼
-  호출 인자로 전달된다. 반면 위 `ConfigureSocket(...)` 설정은, 역할 전체의
-  기본값이다.
-
-이렇게 둬야 두 가지 이점이 생긴다.
-
-- framework 사용자가, low-level `setsockopt` 이름을 직접 외울 필요가 없다.
-- 어떤 옵션이 어느 runtime 에 적용되는지를, `channel + capability` 기준으로 바로 읽을
-  수 있다.
+Discovery 를 쓰는 client/subscriber 는 endpoint 없이 `EnableClient()` 또는
+`EnableSubscriber()` 만 호출한다. 수동 연결을 쓰는 역할은 endpoint 인자형 메서드를
+여러 번 호출해 여러 peer 를 등록한다.
 
 ### 2.4 outbound-only client 앱도 가능해야 한다
 
@@ -306,12 +227,13 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddClientServerChannel("profile", channel =>
     {
+        var channel =     options.AddClientServerChannel("profile");
         channel.EnableClient();
-    });
 
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+    }
+
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 });
 ```
 
@@ -328,12 +250,13 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddClientServerChannel("profile", channel =>
     {
+        var channel =     options.AddClientServerChannel("profile");
         channel.EnableClient();
-    });
 
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+    }
+
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 });
 
 var app = builder.Build();
@@ -383,37 +306,35 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddClientServerChannel("api", channel =>
     {
-        channel.EnableServer(server =>
-        {
-            server.Bind("tcp://0.0.0.0:7101");
-        });
+        var channel =     options.AddClientServerChannel("api");
+        channel.EnableServer("tcp://0.0.0.0:7101");
         channel.AddHandlerGroup("api");
-    });
 
-    options.AddFanoutChannel("api.events", channel =>
+    }
+
     {
-        channel.EnablePublisher(publisher =>
-        {
-            publisher.Bind("tcp://0.0.0.0:7201");
-        });
+        var channel =     options.AddFanoutChannel("api.events");
+        channel.EnablePublisher("tcp://0.0.0.0:7201");
         channel.EnableSubscriber();
         channel.AddHandlerGroup("api.events");
-    });
 
-    options.AddClientServerChannel("profile", channel =>
+    }
+
     {
+        var channel =     options.AddClientServerChannel("profile");
         channel.EnableClient();
-    });
 
-    options.AddClientServerChannel("account", channel =>
+    }
+
     {
+        var channel =     options.AddClientServerChannel("account");
         channel.EnableClient();
-    });
 
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry2:5551"));
+    }
+
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry2:5551");
     // Handler type을 DI에 등록하고 attribute scan 후보를 발견한다.
     // 실제 노출 channel은 위의 AddHandlerGroup(...) 호출이 정한다.
     options.AddHandlersFromAssemblyOf<Program>();
@@ -604,7 +525,7 @@ public sealed class UserCacheRefreshedEvent
 - `account`, `profile` 처럼 client 역할을 둔 channel 은, 그 channel 전용의
   `Discovery` 와 outbound `DEALER(client)` socket 을 가진다.
 - dealer mesh channel 도 request/send 호출 표면은 `IZLinkChannelClient`를 그대로 쓴다. 차이는
-  channel 등록이 `AddDealerMeshChannel(...)`이고, runtime 이 그 channel 의 mesh DEALER 를
+  channel 등록이 `AddDealerMeshChannel`이고, runtime 이 그 channel 의 mesh DEALER 를
   선택한다는 점이다.
 - 기본 packet key 는 payload 타입 이름이다. timeout 과 packet override 는 builder 에
   이어 붙인다.

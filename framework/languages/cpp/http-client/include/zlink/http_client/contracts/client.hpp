@@ -114,6 +114,8 @@ class client_builder_t
 class request_builder_t
 {
   public:
+    using body_stream_provider_t = std::function<std::optional<std::string> ()>;
+
     request_builder_t (client_t client, http_method_t method, std::string path);
 
     request_builder_t &header (std::string name, std::string value);
@@ -133,8 +135,7 @@ class request_builder_t
     // the provider returns std::nullopt when the body is complete. Requests
     // with a streamed body are sent on a fresh connection and are excluded
     // from automatic retry (the provider cannot be rewound).
-    request_builder_t &body_stream (std::function<std::optional<std::string> ()> provider,
-                                    std::string content_type);
+    request_builder_t &body_stream (body_stream_provider_t provider, std::string content_type);
 
     request_builder_t &form (std::string name, std::string value);
     request_builder_t &multipart (std::string name, std::string value);

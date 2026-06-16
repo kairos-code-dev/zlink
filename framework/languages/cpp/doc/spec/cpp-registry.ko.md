@@ -91,9 +91,9 @@ app.add_zlink_framework([](auto &options) {
     options.use_discovery().add_registry_endpoint ("tcp://registry:5551");
     options.use_registry_spot_remote_addresses("game.route");
     options.add_route_mesh_channel("game.route")
-      .bind("tcp://0.0.0.0:7200")
+      .enable_server("tcp://0.0.0.0:7200")
       .set_routing_id(zlink::routing_id_t::from("7200"))
-      .connect("tcp://peer:7201");
+      .enable_client("tcp://peer:7201");
     options.add_spot_mesh("game.spots")
       .add_node("play-actors")
       .enable_router("tcp://0.0.0.0:7300")
@@ -109,17 +109,14 @@ app.add_zlink_framework([](auto &options) {
     options.add_client_server_channel("api")
       .enable_server("tcp://0.0.0.0:7001");
     options.spot_node("play-actors")
-      .enable_router("tcp://0.0.0.0:7300", [](auto &router) {
-          router.connect("tcp://127.0.0.1:7301");
-      })
-      .accept_routes_from_channel("api", [](auto &routes) {
-          routes.connect("tcp://0.0.0.0:7001");
-      });
+      .enable_router("tcp://0.0.0.0:7300")
+      .connect_router("tcp://127.0.0.1:7301")
+      .accept_routes_from_channel("api", "tcp://0.0.0.0:7001");
 });
 ```
 
-`enable_router(..., configure)`의 manual endpoint는 SPOT router 역할 peer다.
-`accept_routes_from_channel(..., configure)`의 manual endpoint는 accepted route channel peer다.
+`connect_router(...)`의 manual endpoint는 SPOT router 역할 peer다.
+`accept_routes_from_channel(..., endpoint)`의 manual endpoint는 accepted route channel peer다.
 둘은 같은 endpoint 문자열을 쓸 수 있어도 서로 다른 설정 의도를 표현하므로 하나의 필드로 합치지
 않는다.
 

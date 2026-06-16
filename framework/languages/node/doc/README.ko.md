@@ -35,8 +35,6 @@ codec 변환, packet name 계산, 값 객체 생성처럼 network I/O 를 하지
   Phase 9 의 사용자 guide, sample, cross-language smoke 완료 기준
 - [.NET → Node.js 표면 매핑 정책](./internals/dotnet-to-node-surface-mapping.ko.md)
   — 모든 문서가 따르는 번역 규칙(호스트/언어/백엔드 매핑)
-- [기존 드래프트](./draft/README.ko.md) — 초기 표면 설계 기록. 구현 기준은 `spec/`,
-  `internals/`, `guide/`, `sample-implementation-plan` 이다.
 
 ## 1. 정식 계약 (`spec/`)
 
@@ -66,15 +64,19 @@ public API를 어떤 상황에서 어떻게 쓰는지 설명한다.
 | [01-overview](./guide/01-overview.ko.md) | Node framework 개요 |
 | [02-getting-started](./guide/02-getting-started.ko.md) | NestJS 등록과 provider 사용 |
 | [03-concepts](./guide/03-concepts.ko.md) | channel, Spot, actor, stream 개념 |
-| [04-feature-map](./guide/04-feature-map.ko.md) | .NET 기능 이름의 Node 대응 |
-| [05-channel-messaging](./guide/05-channel-messaging.ko.md) | request, send, publish 사용 |
-| [06-spot](./guide/06-spot.ko.md) | Spot manager, outbound, timer |
-| [07-actor-session](./guide/07-actor-session.ko.md) | actor bind, relay, bound session |
-| [08-stream](./guide/08-stream.ko.md) | stream session 과 connector |
-| [09-registry](./guide/09-registry.ko.md) | embedded registry 와 topology query |
-| [10-monitoring](./guide/10-monitoring.ko.md) | typed runtime event 관찰 |
+| [04-channel-messaging](./guide/04-channel-messaging.ko.md) | request, send, publish 사용 |
+| [05-spot](./guide/05-spot.ko.md) | Spot manager, outbound, timer |
+| [06-actor-session](./guide/06-actor-session.ko.md) | actor bind, relay, bound session |
+| [07-stream](./guide/07-stream.ko.md) | stream session 과 connector |
+| [08-registry](./guide/08-registry.ko.md) | embedded registry 와 topology query |
+| [09-monitoring](./guide/09-monitoring.ko.md) | typed runtime event 관찰 |
+| [10-feature-map](./guide/10-feature-map.ko.md) | .NET 기능 이름의 Node 대응 |
 | [11-interface-catalog](./guide/11-interface-catalog.ko.md) | 주요 public interface 목록 |
-| [12-cross-language](./guide/12-cross-language.ko.md) | cross-language smoke 기준 |
+| [12-grpc-alternative](./guide/12-grpc-alternative.ko.md) | gRPC/HTTP 대비 도입 판단 + 케이스 스터디 |
+
+도입 판단과 아키텍처 매핑을 위한 도메인별 케이스 스터디는
+[12-grpc-alternative](./guide/12-grpc-alternative.ko.md)에서 진입하며, `guide/case-studies/`
+13–18에 둔다.
 
 ## 2. 내부 정책 (`internals/`)
 
@@ -93,6 +95,7 @@ framework 경계, backend 의존, lifecycle, 회귀 기준을 정의한다. spec
 | [behavior-matrix](./internals/behavior-matrix.ko.md) | 기능별 동작 매트릭스 |
 | [implementation-scope-and-nongoals](./internals/implementation-scope-and-nongoals.ko.md) | 범위·비목표 |
 | [regression-test-matrix](./internals/regression-test-matrix.ko.md) | 회귀 테스트 기준 |
+| [cross-language-smoke](./internals/cross-language-smoke.ko.md) | cross-language wire 계약 smoke 기준 |
 
 ## 3. 구현 순서 권장
 

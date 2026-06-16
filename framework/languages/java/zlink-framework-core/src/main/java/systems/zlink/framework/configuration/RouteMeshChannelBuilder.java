@@ -1,17 +1,18 @@
 package systems.zlink.framework.configuration;
 
-import java.util.function.Consumer;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 
 public interface RouteMeshChannelBuilder {
-    void bind(String endpoint);
+    RouteMeshChannelBuilder enableServer(String endpoint);
 
-    void configureRouting(Consumer<ZLinkRouteConfigBuilder> configure);
+    ZLinkRouteConfigBuilder configureRouting();
 
-    void useManualConnections(Consumer<ManualEndpointListBuilder> configure);
+    RouteMeshChannelBuilder enableClient();
 
-    void addHandlerGroup(String groupName);
+    RouteMeshChannelBuilder enableClient(String endpoint);
+
+    RouteMeshChannelBuilder addHandlerGroup(String groupName);
 
     <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage> void addSendHandler(
         Class<THandler> handlerType,
@@ -35,5 +36,5 @@ public interface RouteMeshChannelBuilder {
         Class<TReply> replyType,
         String packetName);
 
-    void enableSpotRouteEgress(String targetSpotNodeChannelName);
+    RouteMeshChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName);
 }

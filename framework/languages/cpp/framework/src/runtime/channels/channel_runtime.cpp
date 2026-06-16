@@ -19,17 +19,18 @@ namespace zlink::framework::detail
 channel_capability_snapshot_t &select_capability (channel_builder_state_t &state,
                                                   channel_capability_t kind)
 {
+    auto &snapshot = state.target == nullptr ? state.snapshot : *state.target;
     switch (kind) {
         case channel_capability_t::server:
-            return state.snapshot.server;
+            return snapshot.server;
         case channel_capability_t::client:
-            return state.snapshot.client;
+            return snapshot.client;
         case channel_capability_t::publisher:
-            return state.snapshot.publisher;
+            return snapshot.publisher;
         case channel_capability_t::subscriber:
-            return state.snapshot.subscriber;
+            return snapshot.subscriber;
     }
-    return state.snapshot.client;
+    return snapshot.client;
 }
 
 const channel_capability_snapshot_t *server_capability (const channel_runtime_state_t &state,
@@ -341,6 +342,22 @@ channel_runtime_t channel_runtime_t::from (const message_bus_t &bus)
 namespace zlink::framework
 {
 
+namespace
+{
+
+channel_capability_snapshot_t &capability_snapshot (detail::capability_builder_state_t &state)
+{
+    return state.target == nullptr ? state.snapshot : *state.target;
+}
+
+const channel_capability_snapshot_t &
+capability_snapshot (const detail::capability_builder_state_t &state)
+{
+    return state.target == nullptr ? state.snapshot : *state.target;
+}
+
+} // namespace
+
 capability_builder_t::capability_builder_t () :
     _state (std::make_shared<detail::capability_builder_state_t> ())
 {
@@ -360,31 +377,34 @@ capability_builder_t &capability_builder_t::operator= (capability_builder_t &&) 
 
 capability_builder_t &capability_builder_t::bind (std::string endpoint)
 {
-    detail::ensure_manual_allowed (_state->snapshot);
-    _state->snapshot.enabled = true;
-    _state->snapshot.bind_endpoints.push_back (std::move (endpoint));
+    auto &snapshot = capability_snapshot (*_state);
+    detail::ensure_manual_allowed (snapshot);
+    snapshot.enabled = true;
+    snapshot.bind_endpoints.push_back (std::move (endpoint));
     return *this;
 }
 
 capability_builder_t &capability_builder_t::connect (std::string endpoint)
 {
-    detail::ensure_manual_allowed (_state->snapshot);
-    _state->snapshot.enabled = true;
-    _state->snapshot.connect_endpoints.push_back (std::move (endpoint));
+    auto &snapshot = capability_snapshot (*_state);
+    detail::ensure_manual_allowed (snapshot);
+    snapshot.enabled = true;
+    snapshot.connect_endpoints.push_back (std::move (endpoint));
     return *this;
 }
 
 capability_builder_t &capability_builder_t::use_discovery ()
 {
-    detail::ensure_discovery_allowed (_state->snapshot);
-    _state->snapshot.enabled = true;
-    _state->snapshot.discovery = true;
+    auto &snapshot = capability_snapshot (*_state);
+    detail::ensure_discovery_allowed (snapshot);
+    snapshot.enabled = true;
+    snapshot.discovery = true;
     return *this;
 }
 
 channel_capability_snapshot_t capability_builder_t::snapshot () const
 {
-    return _state->snapshot;
+    return capability_snapshot (*_state);
 }
 
 channel_builder_t::channel_builder_t () :
@@ -403,51 +423,38 @@ channel_builder_t::channel_builder_t (channel_builder_t &&) noexcept = default;
 
 channel_builder_t &channel_builder_t::operator= (channel_builder_t &&) noexcept = default;
 
-void channel_builder_t::enable_capability (
-  channel_capability_snapshot_t &target,
-  const std::function<void (capability_builder_t &)> &configure)
+capability_builder_t channel_builder_t::enable_capability (channel_capability_snapshot_t &target)
 {
     auto state = std::make_shared<detail::capability_builder_state_t> ();
-    state->snapshot = target;
-    state->snapshot.enabled = true;
-    capability_builder_t builder (state);
-    if (configure) {
-        configure (builder);
-    }
-    target = state->snapshot;
+    state->target = &target;
+    target.enabled = true;
+    return capability_builder_t (state);
 }
 
-channel_builder_t &
-channel_builder_t::enable_server (std::function<void (capability_builder_t &)> configure)
+capability_builder_t channel_builder_t::enable_server ()
 {
-    enable_capability (_state->snapshot.server, configure);
-    return *this;
+    return enable_capability (detail::select_capability (*_state, channel_capability_t::server));
 }
 
-channel_builder_t &
-channel_builder_t::enable_client (std::function<void (capability_builder_t &)> configure)
+capability_builder_t channel_builder_t::enable_client ()
 {
-    enable_capability (_state->snapshot.client, configure);
-    return *this;
+    return enable_capability (detail::select_capability (*_state, channel_capability_t::client));
 }
 
-channel_builder_t &
-channel_builder_t::enable_publisher (std::function<void (capability_builder_t &)> configure)
+capability_builder_t channel_builder_t::enable_publisher ()
 {
-    enable_capability (_state->snapshot.publisher, configure);
-    return *this;
+    return enable_capability (detail::select_capability (*_state, channel_capability_t::publisher));
 }
 
-channel_builder_t &
-channel_builder_t::enable_subscriber (std::function<void (capability_builder_t &)> configure)
+capability_builder_t channel_builder_t::enable_subscriber ()
 {
-    enable_capability (_state->snapshot.subscriber, configure);
-    return *this;
+    return enable_capability (
+      detail::select_capability (*_state, channel_capability_t::subscriber));
 }
 
 channel_snapshot_t channel_builder_t::snapshot () const
 {
-    return _state->snapshot;
+    return _state->target == nullptr ? _state->snapshot : *_state->target;
 }
 
 route_channel_builder_t::route_channel_builder_t ()
@@ -950,16 +957,13 @@ zlink_builder_t &zlink_builder_t::on_dead_letter (dead_letter_hook_t hook)
     return *this;
 }
 
-zlink_builder_t &zlink_builder_t::channel (std::string channel_name,
-                                           std::function<void (channel_builder_t &)> configure)
+channel_builder_t zlink_builder_t::channel (std::string channel_name)
 {
     auto state = std::make_shared<detail::channel_builder_state_t> (std::move (channel_name));
-    channel_builder_t builder (state);
-    if (configure) {
-        configure (builder);
-    }
-    _state->runtime->channels[state->snapshot.name] = state->snapshot;
-    return *this;
+    auto [entry, _] = _state->runtime->channels.insert_or_assign (state->snapshot.name,
+                                                                  state->snapshot);
+    state->target = &entry->second;
+    return channel_builder_t (state);
 }
 
 std::vector<channel_snapshot_t> zlink_builder_t::channels () const

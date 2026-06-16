@@ -67,10 +67,7 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
         }
 
         RequireGame().SubmitCard(actorId, card);
-        return new BingoGameChange(
-            Snapshot(),
-            [],
-            ShouldStartDrawTimer: IsReadyToDraw);
+        return new BingoGameChange(Snapshot(), []);
     }
 
     public BingoGameChange DrawNextNumber()

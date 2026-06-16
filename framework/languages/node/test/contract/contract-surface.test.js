@@ -49,6 +49,63 @@ test('framework public root does not expose direct runtime start hosts', () => {
   assert.deepEqual(exposed, []);
 });
 
+test('framework configuration surface does not expose codec callback options', () => {
+  const text = [
+    readTree(declarationsRoot),
+    fs.readFileSync(path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Configuration', 'Builders.ts'), 'utf8'),
+    fs.readFileSync(path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Configuration', 'Registration.ts'), 'utf8'),
+    fs.readFileSync(path.join(workspaceRoot, 'packages', 'nestjs', 'src', 'index.ts'), 'utf8')
+  ].join('\n');
+  const forbidden = [
+    [/codecs\s*\(\s*configure/, 'codecs(configure) builder callback'],
+    [/readonly\s+codecs\?:\s*\([^=]/, 'registration codecs callback property'],
+    [/codecs\s*:\s*\([^=]/, 'module codecs callback property']
+  ];
+  const offenders = [];
+
+  for (const [pattern, reason] of forbidden) {
+    if (pattern.test(text)) {
+      offenders.push(reason);
+    }
+  }
+
+  assert.deepEqual(offenders.sort(), []);
+});
+
+test('NestJS module options expose only builder-created opaque configuration', () => {
+  const declarations = readTree(path.join(workspaceRoot, 'packages', 'nestjs', 'dist'));
+  const moduleOptions = declarationBody(declarations, 'ZLinkModuleOptions');
+  const forbidden = [
+    'clientServerChannels',
+    'fanoutChannels',
+    'dealerMeshChannels',
+    'routerMeshes',
+    'spotNodes',
+    'streams',
+    'channels',
+    'routeChannels',
+    'streamNodes'
+  ];
+  const exposed = forbidden.filter((name) => moduleOptions.includes(name));
+
+  assert.deepEqual(exposed, []);
+});
+
+test('NestJS public declarations do not export object-shaped module option types', () => {
+  const declarations = readTree(path.join(workspaceRoot, 'packages', 'nestjs', 'dist'));
+  const forbiddenExports = [
+    'ZLinkNestClientServerChannelOptions',
+    'ZLinkNestFanoutChannelOptions',
+    'ZLinkNestDealerMeshChannelOptions',
+    'ZLinkNestRouterMeshOptions'
+  ];
+  const exposed = forbiddenExports.filter((name) =>
+    new RegExp(`\\bexport\\s+interface\\s+${name}\\b`).test(declarations)
+  );
+
+  assert.deepEqual(exposed, []);
+});
+
 test('framework package exports only the public root contract', () => {
   const packageJson = JSON.parse(
     fs.readFileSync(path.join(workspaceRoot, 'packages', 'framework', 'package.json'), 'utf8'));

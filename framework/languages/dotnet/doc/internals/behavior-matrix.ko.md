@@ -37,15 +37,15 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `EnableServer(server => server.Bind(...))`만 등록 | 허용 | server 역할만 열리고, handler 매핑이 없으면 처리할 packet도 없다 |
+| `EnableServer(endpoint)`만 등록 | 허용 | server 역할만 열리고, handler 매핑이 없으면 처리할 packet도 없다 |
 | `EnableServer()`만 등록 + bind endpoint 없음 | 비허용 | startup validation 오류 |
-| `EnableClient()`만 등록 + 전역 `UseDiscovery(...AddRegistryEndpoint...)` 있음 | 허용 | outbound request/send runtime을 만든다 |
-| `EnableClient()`만 등록 + `UseManualConnections(...)` 있음 | 허용 | manual 기반 outbound request/send runtime을 만든다 |
+| `EnableClient()`만 등록 + 전역 `UseDiscovery().AddRegistryEndpoint(...)` 있음 | 허용 | outbound request/send runtime을 만든다 |
+| `EnableClient(endpoint)` 등록 | 허용 | manual 기반 outbound request/send runtime을 만든다 |
 | `EnableClient()`만 등록 + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
-| `EnablePublisher(publisher => publisher.Bind(...))`만 등록 | 허용 | event publish만 가능하다 |
+| `EnablePublisher(endpoint)`만 등록 | 허용 | event publish만 가능하다 |
 | `EnablePublisher()`만 등록 + bind endpoint 없음 | 비허용 | startup validation 오류 |
-| `EnableSubscriber()`만 등록 + 전역 `UseDiscovery(...AddRegistryEndpoint...)` 있음 | 허용 | discovery 기반 event subscribe runtime을 만든다 |
-| `EnableSubscriber()`만 등록 + `UseManualConnections(...)` 있음 | 허용 | manual 기반 subscribe runtime을 만든다 |
+| `EnableSubscriber()`만 등록 + 전역 `UseDiscovery().AddRegistryEndpoint(...)` 있음 | 허용 | discovery 기반 event subscribe runtime을 만든다 |
+| `EnableSubscriber(endpoint)` 등록 | 허용 | manual 기반 subscribe runtime을 만든다 |
 | `EnableSubscriber()`만 등록 + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | 같은 channel에서 `server + client` 함께 등록 | 허용 | inbound와 outbound runtime을 모두 가진다 |
 | 같은 channel에서 `publisher + subscriber` 함께 등록 | 허용 | event fan-out과 수신을 모두 가진다 |
@@ -69,11 +69,11 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `AddSpotMesh(channel, configureMesh)` | 허용 | mesh가 활성 SPOT[^spot] channel view와 node 집합을 함께 소유한다 |
-| `AddSpotMesh(...)`에 `UseDiscovery(...AddRegistryEndpoint...)` 없음 | 허용 | top-level discovery endpoint 를 상속하거나 local-only mesh 로 시작한다 |
-| `AddSpotMesh(...)` + 빈 `UseDiscovery` + local-only spot factory | 허용 | discovery endpoint 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
-| top-level standalone node 등록 | 비허용 | public 등록 표면에서 제거되었다. SPOT node 는 항상 `AddSpotMesh(...)` 안에서 등록한다 |
-| 분리된 SPOT discovery 등록과 node 등록 | 비허용 | public 등록 표면에서 제거되었다. discovery 와 node 집합은 `AddSpotMesh(...)`가 함께 소유한다 |
+| `AddSpotMesh` 호출 | 허용 | mesh가 활성 SPOT[^spot] channel view와 node 집합을 함께 소유한다 |
+| `AddSpotMesh`에 `UseDiscovery().AddRegistryEndpoint(...)` 없음 | 허용 | top-level discovery endpoint 를 상속하거나 local-only mesh 로 시작한다 |
+| `AddSpotMesh` + 빈 `UseDiscovery` + local-only spot factory | 허용 | discovery endpoint 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
+| top-level standalone node 등록 | 비허용 | public 등록 표면에서 제거되었다. SPOT node 는 항상 `AddSpotMesh` 안에서 등록한다 |
+| 분리된 SPOT discovery 등록과 node 등록 | 비허용 | public 등록 표면에서 제거되었다. discovery 와 node 집합은 `AddSpotMesh`가 함께 소유한다 |
 | 같은 mesh에 `AddNode(...)` 여러 개 | 허용 | 같은 channel view를 공유하는 여러 SpotNode를 등록한다 |
 | 같은 mesh의 router-capable `AddNode(...)`를 stream ActorGateway 로 참조 | 허용 | session relay ingress 를 일반 SpotNode router 역할로 시작한다 |
 | 같은 `SpotNode`에 같은 `spotRid` factory 중복 등록 | 비허용 | startup validation 오류 |
@@ -99,9 +99,9 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `AddRouteMeshChannel(...)` + 전역 `UseDiscovery(...AddRegistryEndpoint...)` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
-| `AddRouteMeshChannel(...)` + `UseManualConnections(...)` 있음 | 허용 | manual 기반 routed channel node를 만든다 |
-| `AddRouteMeshChannel(...)` + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
+| `AddRouteMeshChannel` + 전역 `UseDiscovery().AddRegistryEndpoint(...)` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
+| `AddRouteMeshChannel` + `EnableClient(endpoint)` 있음 | 허용 | manual 기반 routed channel node를 만든다 |
+| `AddRouteMeshChannel` + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | routed channel bind endpoint 없음 | 비허용 | startup validation 오류 |
 | 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 같은 actor type factory 중복 등록 | 비허용 | builder 등록 시점에 오류 |
@@ -113,7 +113,7 @@
 | converter 없는 abstract/interface payload를 reply DTO에 포함 | 비허용 | startup validation 또는 첫 submit 직전에 configuration 오류 |
 | spot remote address resolver 중복 등록 | 비허용 | builder 등록 시점에 오류 |
 | Registry Spot route 기본 구현 + custom Spot remote address resolver 함께 등록 | 비허용 | startup validation 오류 |
-| Registry route 기본 구현 + `UseDiscovery(...AddRegistryEndpoint...)` 없음 | 비허용 | startup validation 오류 |
+| Registry route 기본 구현 + `UseDiscovery().AddRegistryEndpoint(...)` 없음 | 비허용 | startup validation 오류 |
 | Registry route 기본 구현 + route mesh channel이 둘 이상이고 channel id 생략 | 비허용 | startup validation 오류 |
 | spot rid 기반 routed Spot client 사용 + spot remote address resolver 없음 | 비허용 | service 생성 또는 첫 호출에서 명확한 오류 |
 | `IZLinkBoundSession` 사용 + actor-session binding 없음 | 비허용 | 대상 actor에 묶인 session이 없으면 명확한 오류 |
@@ -139,7 +139,7 @@
 |------|-----------|-----------|
 | `AddZLinkRegistry(...)`만 등록 | 허용 | standalone registry host가 된다 |
 | `AddZLinkFramework(...)` + `AddZLinkRegistry(...)` 함께 등록 | 허용 | embedded registry와 framework runtime을 한 호스트에서 함께 띄운다 |
-| embedded 구성에서 `UseDiscovery(...AddRegistryEndpoint...)` endpoint를 자동 추론 | 비허용 | endpoint는 반드시 명시적으로 적어야 한다 |
+| embedded 구성에서 `UseDiscovery().AddRegistryEndpoint(...)` endpoint를 자동 추론 | 비허용 | endpoint는 반드시 명시적으로 적어야 한다 |
 | `AddZLinkRegistryQueryClient(...)`만 등록 | 허용 | 원격 topology[^topology] 조회만 수행한다 |
 
 ## 8. Startup Validation Error 목록

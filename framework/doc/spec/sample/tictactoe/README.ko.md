@@ -23,17 +23,16 @@ TicTacToe는 직접 play 연결 구조를 보여 주는 기본 샘플이다. API
 - room Spot은 board, turn, 승패 판정을 소유한다.
 - 연결은 Registry/Discovery 없이 수동 endpoint 설정으로 구성한다.
 - handler 등록은 attribute, annotation, decorator 같은 선언형 방식을 우선 사용한다.
-- TicTacToe의 stream, channel, actor, room Spot payload는 MessagePack을 사용한다.
+- TicTacToe의 stream, channel, actor, room Spot payload는 JSON을 사용한다.
 
 Client self-check도 샘플의 일부다. client는 `.NET` 샘플처럼 request에 넣은 값과 response,
 server push payload가 맞는지 확인한다. `PlayerJoinedNotify`와 `GameStateNotify` 대기는
 stream connector의 public wait interface를 직접 사용한다. sample-local queue polling은
 결과 출력이나 추가 검증에는 사용할 수 있지만 push 대기의 기준 경로가 되면 안 된다.
 
-TicTacToe가 MessagePack을 맡는 이유는 이 샘플의 payload가 작고 빈번한 실시간 게임
-packet이기 때문이다. MessagePack은 C# record나 class에 필드 순서를 명시해 compact binary
-payload를 만들기 쉽고, room 생성, 인증, join, move, notify 흐름을 짧게 유지한다. schema
-중심의 cross-language binary 계약은 Bingo의 Protobuf 샘플이 맡는다.
+TicTacToe는 가장 작은 실시간 게임 흐름을 보여 주는 샘플이므로 payload codec도 읽기 쉬운
+JSON으로 둔다. room 생성, 인증, join, move, notify 흐름을 여러 언어에서 바로 비교할 수
+있어야 한다. schema 중심의 binary 계약은 Bingo의 Protobuf 샘플이 맡는다.
 
 ## 2. 서버 구성
 
@@ -179,8 +178,8 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   packet name 문자열이나 동적 payload 구조를 handler와 client 코드에 흩어 놓지 않는다.
   client와 server는 message 객체의 public interface만 사용해야 하며, 샘플 전용 helper로
   payload 계약을 감추면 안 된다.
-- TicTacToe의 payload codec은 MessagePack이다. 각 언어는 MessagePack에 맞는 typed
-  message 정의를 사용하고, JSON이나 Protobuf로 바꾸지 않는다.
+- TicTacToe의 payload codec은 JSON이다. 각 언어는 같은 field 이름을 가진 typed message
+  정의를 사용하고, MessagePack이나 Protobuf로 바꾸지 않는다.
 - client self-check는 별도 테스트 프로젝트가 아니라 샘플 client 실행 흐름 안에 둔다.
   샘플 실행은 실제 server를 띄우고 client가 접속해 `tictactoe=completed`에 해당하는
   성공 결과를 만들 수 있어야 한다.

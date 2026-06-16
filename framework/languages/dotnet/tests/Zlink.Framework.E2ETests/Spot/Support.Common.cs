@@ -33,27 +33,27 @@ public abstract partial class SpotTestSupport
             options.AddHandlersFromAssemblyOf<SpotTestSupport>();
 
 
-            options.AddClientServerChannel("orders", channel =>
             {
-                channel.EnableServer(server => server.Bind(ordersServer));
+                var channel = options.AddClientServerChannel("orders");
+                channel.EnableServer(ordersServer);
                 channel.AddHandlerGroup("stage-orders");
-            });
 
-            options.AddSpotMesh("game.stage", mesh =>
+            }
+
             {
-                mesh.AddNode("stage-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("game.stage");
                 {
-                    router.BindRouter(spotNode);
-                });
-                spot.AttachChannelClient("orders", client =>
+                    var spot = mesh.AddNode("stage-node");
                 {
-                    client.UseManualConnections(connections => connections.Connect(ordersServer));
-                });
+                    var router = spot.EnableRouter(spotNode);
+
+                }
+                spot.AttachChannelClient("orders", ordersServer);
                 spot.AddSpotFactory<StageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         var host = builder.Build();
@@ -67,18 +67,20 @@ public abstract partial class SpotTestSupport
         builder.Services.AddSingleton<SpotCreatePayloadRecorder>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh("payload-node", mesh =>
             {
-                mesh.AddNode("payload-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("payload-node");
                 {
-                    router.BindRouter(spotNode);
-                });
+                    var spot = mesh.AddNode("payload-node");
+                {
+                    var router = spot.EnableRouter(spotNode);
+
+                }
                 spot.AddSpotFactory<CreatePayloadStageSpot>();
                 spot.AddSpotFactory<RejectingCreateStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         var host = builder.Build();
@@ -105,27 +107,27 @@ public abstract partial class SpotTestSupport
         {
             AddRouterChannel(options, transportKind, routerChannelId, channelEndpoint);
 
-            options.AddSpotMesh("spot.route.transport", mesh =>
             {
-                mesh.AddNode("route-target-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("spot.route.transport");
                 {
-                    router.BindRouter(GetFreeTcpEndpoint());
-                    router.ConfigureRouting(routing =>
+                    var spot = mesh.AddNode("route-target-node");
+                {
+                    var router = spot.EnableRouter(GetFreeTcpEndpoint());
                     {
+                        var routing = router.ConfigureRouterRouting();
                         routing.RoutingId = RoutingId.From(
                             Encoding.UTF8.GetBytes("target-node"));
-                    });
-                });
-                spot.AcceptSpotRoutesFromChannel(
-                    routerChannelId,
-                    routes => routes.UseManualConnections(
-                        peers => peers.Connect(channelEndpoint)));
+
+                    }
+
+                }
+                                spot.AcceptSpotRoutesFromChannel(routerChannelId, channelEndpoint);
                 spot.AddEntrySpot<SpotRouteCallerEntrySpot>();
                 spot.AddSpotFactory<SpotRouteTargetSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         var host = builder.Build();
@@ -142,28 +144,24 @@ public abstract partial class SpotTestSupport
         switch (transportKind)
         {
             case SpotRouteTransportKind.ClientServer:
-                options.AddClientServerChannel(routerChannelId, channel =>
                 {
-                    channel.EnableServer(server =>
-                    {
-                        server.Bind(channelEndpoint);
-                        server.ConfigureRouting(routing =>
-                        {
-                            routing.RoutingId = RoutingId.From("aabbcc10");
-                        });
-                    });
-                });
+                    var channel = options.AddClientServerChannel(routerChannelId);
+                    channel.EnableServer(channelEndpoint);
+
+                }
                 break;
 
             case SpotRouteTransportKind.RouteMesh:
-                options.AddRouteMeshChannel(routerChannelId, route =>
                 {
-                    route.Bind(channelEndpoint);
-                    route.ConfigureRouting(routing =>
+                    var route = options.AddRouteMeshChannel(routerChannelId);
+                    route.EnableServer(channelEndpoint);
                     {
+                        var routing = route.ConfigureRouting();
                         routing.RoutingId = RoutingId.From("aabbcc11");
-                    });
-                });
+
+                    }
+
+                }
                 break;
 
             default:

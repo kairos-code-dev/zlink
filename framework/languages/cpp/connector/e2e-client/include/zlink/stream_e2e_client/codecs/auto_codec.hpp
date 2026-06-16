@@ -56,10 +56,10 @@ class coroutine_auto_send_call_t
     coroutine_send_call_t _inner;
 };
 
-template <typename TReply> class coroutine_auto_request_call_t
+class coroutine_auto_request_call_t
 {
   public:
-    explicit coroutine_auto_request_call_t (coroutine_request_call_t<zlink::message_t> inner) :
+    explicit coroutine_auto_request_call_t (coroutine_request_call_t inner) :
         _inner (std::move (inner))
     {
     }
@@ -94,9 +94,9 @@ template <typename TReply> class coroutine_auto_request_call_t
         return *this;
     }
 
-    result_t<TReply> submit ()
+    template <typename TReply> result_t<TReply> submit ()
     {
-        auto result = _inner.submit ();
+        auto result = _inner.template submit<zlink::message_t> ();
         if (!result) {
             return result_t<TReply>::failure (
               result.error_code (),
@@ -105,11 +105,12 @@ template <typename TReply> class coroutine_auto_request_call_t
         return result_t<TReply>::success (codec_traits<TReply>::decode (result.value ()));
     }
 
-    task_t<TReply> async ()
+    template <typename TReply> task_t<TReply> async ()
     {
         return task_t<TReply> (
           [inner = std::move (_inner)] (std::function<void (result_t<TReply>)> callback) mutable {
-              inner.submit ([callback = std::move (callback)] (result_t<zlink::message_t> result) mutable {
+              inner.template submit<zlink::message_t> (
+                [callback = std::move (callback)] (result_t<zlink::message_t> result) mutable {
                   if (!result) {
                       callback (result_t<TReply>::failure (
                         result.error_code (),
@@ -123,7 +124,7 @@ template <typename TReply> class coroutine_auto_request_call_t
     }
 
   private:
-    coroutine_request_call_t<zlink::message_t> _inner;
+    coroutine_request_call_t _inner;
 };
 
 template <typename T>
@@ -132,12 +133,10 @@ coroutine_auto_send_call_t send (coroutine_connector_t &connector, const T &payl
     return coroutine_auto_send_call_t (connector.send (encode_packet (payload)));
 }
 
-template <typename TReply, typename TRequest>
-coroutine_auto_request_call_t<TReply> request (coroutine_connector_t &connector,
-                                               const TRequest &payload)
+template <typename TRequest>
+coroutine_auto_request_call_t request (coroutine_connector_t &connector, const TRequest &payload)
 {
-    return coroutine_auto_request_call_t<TReply> (
-      connector.request<zlink::message_t> (encode_packet (payload)));
+    return coroutine_auto_request_call_t (connector.request (encode_packet (payload)));
 }
 
 } // namespace zlink::stream_e2e_client::codecs

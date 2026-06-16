@@ -21,9 +21,6 @@
 namespace zlink::samples::bingo
 {
 
-#define ZLINK_BINGO_JOIN_TOKENS(left, right) left##right
-#define ZLINK_BINGO_SERIALIZERS_T zlink::framework::ZLINK_BINGO_JOIN_TOKENS(serializer_registry, _t)
-
 class play_spot_gateway_wiring_service_t final : public zlink::framework::hosted_service_t
 {
   public:
@@ -68,19 +65,15 @@ class remote_actor_packet_handler_t
 
     using dependency_types =
       zlink::framework::dependency_list_t<zlink::framework::detail::spot_node_runtime_t,
-                                          zlink::framework::detail::actor_gateway_runtime_t>;
+                                          zlink::framework::detail::actor_gateway_runtime_t,
+                                          zlink::framework::serializer_registry_t>;
 
     explicit remote_actor_packet_handler_t (
       zlink::framework::detail::spot_node_runtime_t &spots,
-      zlink::framework::detail::actor_gateway_runtime_t &gateway) :
-        _spots (spots), _gateway (gateway)
+      zlink::framework::detail::actor_gateway_runtime_t &gateway,
+      zlink::framework::serializer_registry_t &serializers) :
+        _spots (spots), _gateway (gateway), _serializers (serializers)
     {
-        _serializers.add_protobuf<match_bingo_req_t> ()
-          .add_protobuf<match_bingo_res_t> ()
-          .add_protobuf<bingo_room_join_req_t> ()
-          .add_protobuf<bingo_room_join_res_t> ()
-          .add_protobuf<submit_bingo_card_req_t> ()
-          .add_protobuf<submit_bingo_card_res_t> ();
     }
 
     zlink::framework::task_t<remote_actor_packet_res_t>
@@ -124,12 +117,9 @@ class remote_actor_packet_handler_t
   private:
     zlink::framework::detail::spot_node_runtime_t &_spots;
     zlink::framework::detail::actor_gateway_runtime_t &_gateway;
+    zlink::framework::serializer_registry_t &_serializers;
     zlink::framework::service_provider_t _provider;
-    ZLINK_BINGO_SERIALIZERS_T _serializers;
 };
-
-#undef ZLINK_BINGO_SERIALIZERS_T
-#undef ZLINK_BINGO_JOIN_TOKENS
 
 class play_server_host_factory_t
 {

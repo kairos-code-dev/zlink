@@ -2,171 +2,91 @@ namespace Zlink.Framework.Contracts.Configuration;
 
 public interface IZLinkDiscoveryBuilder
 {
-    void AddRegistryEndpoint(string endpoint);
+    IZLinkDiscoveryBuilder AddRegistryEndpoint(string endpoint);
 }
 
-public interface IChannelServerCapabilityBuilder
-{
-    void Bind(string endpoint);
-
-    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
-
-    void ConfigureRouting(Action<IZLinkRouteConfig> configure);
-}
-
-public interface IChannelClientCapabilityBuilder
-{
-    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
-
-    void ConfigureRouting(Action<IZLinkOutboundRouteConfig> configure);
-
-    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
-}
-
-public interface IDealerMeshChannelClientCapabilityBuilder : IChannelClientCapabilityBuilder
-{
-    void Bind(string endpoint);
-}
-
-public interface IChannelPublisherCapabilityBuilder
-{
-    void Bind(string endpoint);
-
-    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
-}
-
-public interface IChannelSubscriberCapabilityBuilder
-{
-    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
-
-    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
-}
-
-public interface ISpotRouterCapabilityBuilder
-{
-    void BindRouter(string endpoint);
-
-    void SetRoutingId(RoutingId routingId);
-
-    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
-
-    void ConfigureRouting(Action<IZLinkRouteConfig> configure);
-
-    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
-}
-
-public interface ISpotPubSubCapabilityBuilder
-{
-    void BindPubSub(string endpoint);
-
-    void SetRoutingId(RoutingId routingId);
-
-    void ConfigurePublisher(Action<IZLinkSpotPublisherConfig> configure);
-
-    void ConfigureSubscriber(Action<IZLinkSpotSubscriberConfig> configure);
-
-    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
-}
-
-public interface ISpotPublisherClientCapabilityBuilder
-{
-    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
-
-    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
-}
-
-public interface ISpotChannelClientCapabilityBuilder
-{
-    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
-
-    void ConfigureRouting(Action<IZLinkOutboundRouteConfig> configure);
-
-    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
-}
-
-public interface IZLinkRouteChannelBuilder
-{
-    void Bind(string endpoint);
-
-    void ConfigureSocket(Action<IZLinkSocketConfig> configure);
-
-    void ConfigureRouting(Action<IZLinkRouteConfig> configure);
-
-    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
-
-    void AddHandlerGroup(string groupName);
-
-    void AddSendHandler<THandler, TMessage>(string? packetName = null)
-        where THandler : class, IZLinkRouteSendHandler<TMessage>;
-
-    void AddSendHandler<THandler>(string? packetName = null)
-        where THandler : class;
-
-    void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
-        where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>;
-
-    void AddRequestHandler<THandler>(string? packetName = null)
-        where THandler : class;
-
-    void EnableSpotRouteEgress(string targetSpotNodeChannelName);
-}
-
-public interface IZLinkRouteMeshChannelBuilder : IZLinkRouteChannelBuilder
+public interface IZLinkRouteMeshChannelBuilder
 {
     // route mesh 는 ROUTER ↔ ROUTER 대칭이라 server·client 가 같은 ROUTER 소켓을 공유한다.
     // EnableServer 는 이 노드가 bind 해서 route ingress 를 받는(제공) 쪽을,
     // EnableClient 는 다른 ROUTER 에 connect 해 outbound route 를 보내는(소비) 쪽을 설정한다.
     // 한 노드가 둘 다 켤 수 있다.
-    void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null);
+    IZLinkRouteMeshChannelBuilder EnableServer(string endpoint);
 
-    void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null);
+    IZLinkRouteMeshChannelBuilder EnableClient();
+
+    IZLinkRouteMeshChannelBuilder EnableClient(string endpoint);
+
+    IZLinkSocketConfig ConfigureSocket();
+
+    IZLinkRouteConfig ConfigureRouting();
+
+    IZLinkRouteMeshChannelBuilder AddHandlerGroup(string groupName);
+
+    IZLinkRouteMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkRouteSendHandler<TMessage>;
+
+    IZLinkRouteMeshChannelBuilder AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class;
+
+    IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+        where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>;
+
+    IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class;
+
+    IZLinkRouteMeshChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
 
 public interface IZLinkStreamNodeBuilder
 {
-    void Bind(string endpoint);
+    IZLinkStreamNodeBuilder Bind(string endpoint);
 
-    void AttachActorGateway(string spotNodeName);
+    IZLinkStreamNodeBuilder AttachActorGateway(string spotNodeName);
 
-    void RegisterSession<TSession>()
+    IZLinkStreamNodeBuilder RegisterSession<TSession>()
         where TSession : class, IZLinkSession;
 }
 
 public interface IZLinkClientServerChannelBuilder
 {
-    void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null);
+    IZLinkClientServerChannelBuilder EnableServer(string endpoint);
 
-    void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null);
+    IZLinkClientServerChannelBuilder EnableClient();
 
-    void AddHandlerGroup(string groupName);
+    IZLinkClientServerChannelBuilder EnableClient(string endpoint);
 
-    void AddSendHandler<THandler, TMessage>(string? packetName = null)
+    IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName);
+
+    IZLinkClientServerChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>;
 
-    void AddSendHandler<THandler>(string? packetName = null)
+    IZLinkClientServerChannelBuilder AddSendHandler<THandler>(string? packetName = null)
         where THandler : class;
 
-    void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+    IZLinkClientServerChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
 
-    void AddRequestHandler<THandler>(string? packetName = null)
+    IZLinkClientServerChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class;
 
-    void EnableSpotRouteEgress(string targetSpotNodeChannelName);
+    IZLinkClientServerChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
 
 public interface IZLinkFanoutChannelBuilder
 {
-    void EnablePublisher(Action<IChannelPublisherCapabilityBuilder>? configure = null);
+    IZLinkFanoutChannelBuilder EnablePublisher(string endpoint);
 
-    void EnableSubscriber(Action<IChannelSubscriberCapabilityBuilder>? configure = null);
+    IZLinkFanoutChannelBuilder EnableSubscriber();
 
-    void AddHandlerGroup(string groupName);
+    IZLinkFanoutChannelBuilder EnableSubscriber(string endpoint);
 
-    void AddPublishHandler<THandler, TMessage>(string? packetName = null)
+    IZLinkFanoutChannelBuilder AddHandlerGroup(string groupName);
+
+    IZLinkFanoutChannelBuilder AddPublishHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkPublishHandler<TMessage>;
 
-    void AddPublishHandler<THandler>(string? packetName = null)
+    IZLinkFanoutChannelBuilder AddPublishHandler<THandler>(string? packetName = null)
         where THandler : class;
 }
 
@@ -176,49 +96,73 @@ public interface IZLinkDealerMeshChannelBuilder
     // EnableServer 는 이 노드가 bind 해서 inbound 를 handler 로 받는(제공) 쪽을,
     // EnableClient 는 다른 peer 에 connect 해 outbound 호출하는(소비) 쪽을 설정한다.
     // 한 노드가 둘 다 켤 수 있다.
-    void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null);
+    IZLinkDealerMeshChannelBuilder EnableServer(string endpoint);
 
-    void EnableClient(Action<IDealerMeshChannelClientCapabilityBuilder>? configure = null);
+    IZLinkDealerMeshChannelBuilder EnableClient();
 
-    void AddHandlerGroup(string groupName);
+    IZLinkDealerMeshChannelBuilder EnableClient(string endpoint);
 
-    void AddSendHandler<THandler, TMessage>(string? packetName = null)
+    IZLinkDealerMeshChannelBuilder AddHandlerGroup(string groupName);
+
+    IZLinkDealerMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>;
 
-    void AddSendHandler<THandler>(string? packetName = null)
+    IZLinkDealerMeshChannelBuilder AddSendHandler<THandler>(string? packetName = null)
         where THandler : class;
 
-    void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+    IZLinkDealerMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
 
-    void AddRequestHandler<THandler>(string? packetName = null)
+    IZLinkDealerMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class;
 }
 
 public interface IZLinkSpotNodeBuilder
 {
-    void EnableRouter(Action<ISpotRouterCapabilityBuilder>? configure = null);
+    IZLinkSpotNodeBuilder EnableRouter(string endpoint);
 
-    void EnablePubSub(Action<ISpotPubSubCapabilityBuilder>? configure = null);
+    IZLinkSpotNodeBuilder ConnectRouter(string endpoint);
 
-    void AttachChannelClient(
-        string channelName,
-        Action<ISpotChannelClientCapabilityBuilder>? configure = null);
+    IZLinkSpotNodeBuilder SetRouterRoutingId(RoutingId routingId);
 
-    void AttachSpotPublisherClient(
-        string channelName,
-        Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
+    IZLinkSocketConfig ConfigureRouterSocket();
 
-    void AcceptSpotRoutesFromChannel(
-        string channelName,
-        Action<IZLinkSpotRouteChannelAcceptanceBuilder>? configure = null);
+    IZLinkRouteConfig ConfigureRouterRouting();
 
-    void ConfigureEntrySpot(Action<IZLinkEntrySpotOptions> configure);
+    IZLinkSpotNodeBuilder EnablePubSub(string endpoint);
 
-    void AddSpotFactory<TSpot>()
+    IZLinkSpotNodeBuilder ConnectPubSub(string endpoint);
+
+    IZLinkSpotNodeBuilder SetPubSubRoutingId(RoutingId routingId);
+
+    IZLinkSpotPublisherConfig ConfigurePubSubPublisher();
+
+    IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber();
+
+    IZLinkSpotNodeBuilder AttachChannelClient(string channelName);
+
+    IZLinkSpotNodeBuilder AttachChannelClient(string channelName, string endpoint);
+
+    IZLinkSocketConfig ConfigureChannelClientSocket(string channelName);
+
+    IZLinkOutboundRouteConfig ConfigureChannelClientRouting(string channelName);
+
+    IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName);
+
+    IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName, string endpoint);
+
+    IZLinkSocketConfig ConfigureSpotPublisherClientSocket(string channelName);
+
+    IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName);
+
+    IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName, string endpoint);
+
+    IZLinkEntrySpotOptions ConfigureEntrySpot();
+
+    IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
         where TSpot : IZLinkSpot;
 
-    void AddEntrySpot<TEntrySpot>()
+    IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot;
 }
 
@@ -226,18 +170,11 @@ public interface IZLinkSpotMeshNodeBuilder : IZLinkSpotNodeBuilder
 {
 }
 
-public interface IZLinkSpotRouteChannelAcceptanceBuilder
-{
-    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
-}
-
 public interface IZLinkSpotMeshBuilder
 {
-    void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure);
+    IZLinkDiscoveryBuilder UseDiscovery();
 
-    void AddNode(
-        string spotNodeName,
-        Action<IZLinkSpotMeshNodeBuilder> configure);
+    IZLinkSpotMeshNodeBuilder AddNode(string spotNodeName);
 }
 
 public interface IZLinkRegistrySpotRemoteAddressesOptions
@@ -259,7 +196,7 @@ public interface IZLinkFrameworkOptions
 
     void AddHandlersFromAssembly(System.Reflection.Assembly assembly);
 
-    void ConfigureMetadata(Action<IZLinkMetadataPolicyBuilder> configure);
+    IZLinkMetadataPolicyBuilder ConfigureMetadata();
 
     void AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
@@ -267,42 +204,27 @@ public interface IZLinkFrameworkOptions
     void AddSpotRemoteAddressResolver<TResolver>()
         where TResolver : class, IZLinkSpotRemoteAddressResolver;
 
-    void UseRegistrySpotRemoteAddresses(string namespaceName);
+    IZLinkRegistrySpotRemoteAddressesOptions UseRegistrySpotRemoteAddresses(
+        string namespaceName);
 
-    void UseRegistrySpotRemoteAddresses(
-        string namespaceName,
-        Action<IZLinkRegistrySpotRemoteAddressesOptions> configure);
+    IZLinkClientServerChannelBuilder AddClientServerChannel(string channelName);
 
-    void AddClientServerChannel(
-        string channelName,
-        Action<IZLinkClientServerChannelBuilder> configure);
+    IZLinkFanoutChannelBuilder AddFanoutChannel(string channelName);
 
-    void AddFanoutChannel(
-        string channelName,
-        Action<IZLinkFanoutChannelBuilder> configure);
+    IZLinkDealerMeshChannelBuilder AddDealerMeshChannel(string channelName);
 
-    void AddDealerMeshChannel(
-        string channelName,
-        Action<IZLinkDealerMeshChannelBuilder> configure);
+    IZLinkRouteMeshChannelBuilder AddRouteMeshChannel(string channelName);
 
-    void AddRouteMeshChannel(
-        string channelName,
-        Action<IZLinkRouteMeshChannelBuilder> configure);
-
-    void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure);
+    IZLinkDiscoveryBuilder UseDiscovery();
 
     void UseFilter<TFilter>()
         where TFilter : class, IZLinkHandlerFilter;
 
-    void ConfigureDispatch(Action<IZLinkDispatchOptions> configure);
+    IZLinkDispatchOptions ConfigureDispatch();
 
-    void AddStreamNode(
-        string streamNodeName,
-        Action<IZLinkStreamNodeBuilder> configure);
+    IZLinkStreamNodeBuilder AddStreamNode(string streamNodeName);
 
-    void AddSpotMesh(
-        string channelName,
-        Action<IZLinkSpotMeshBuilder> configure);
+    IZLinkSpotMeshBuilder AddSpotMesh(string channelName);
 }
 
 public interface IZLinkMetadataPolicyBuilder

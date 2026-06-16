@@ -23,7 +23,8 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
             activation.ChannelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             topic,
-            message);
+            message,
+            activation.Codecs);
         return activation.PublishCurrentAsync(topic, parts, cancellationToken);
     }
 }
@@ -59,7 +60,8 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
             channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             topic,
-            message);
+            message,
+            runtime.Registration.Codecs);
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("External SPOT publish submitter is not initialized."))
             .Async(
@@ -75,7 +77,8 @@ internal static class ZLinkSpotPublishEnvelope
         string channelName,
         string messageName,
         string topic,
-        TEvent message)
+        TEvent message,
+        ZLinkCodecRegistryBuilder? codecs = null)
     {
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Publish,
@@ -91,6 +94,7 @@ internal static class ZLinkSpotPublishEnvelope
         return ZLinkEnvelopeCodec.EncodeParts(
             header,
             message,
-            message?.GetType() ?? typeof(TEvent));
+            message?.GetType() ?? typeof(TEvent),
+            codecs);
     }
 }

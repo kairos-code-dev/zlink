@@ -18,9 +18,9 @@ import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
   imports: [
     ZLinkModule.forRoot(
       zlinkFramework()
-        .clientServerChannel('api', (channel) => channel
-          .server('tcp://0.0.0.0:7101')
-          .client('tcp://127.0.0.1:7101'))
+        .addClientServerChannel('api')
+          .enableServer('tcp://0.0.0.0:7101')
+          .enableClient('tcp://127.0.0.1:7101')
         .build()
     ),
   ],
@@ -81,9 +81,9 @@ export class GetProfileHandler {
   imports: [
     ZLinkModule.forRoot(
       zlinkFramework()
-        .clientServerChannel('api', (channel) => channel
-          .server('tcp://0.0.0.0:7101')
-          .handlerGroup('api'))
+        .addClientServerChannel('api')
+          .enableServer('tcp://0.0.0.0:7101')
+          .addHandlerGroup('api')
         .build()
     ),
   ],

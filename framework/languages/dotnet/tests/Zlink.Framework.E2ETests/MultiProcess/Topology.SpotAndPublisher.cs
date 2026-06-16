@@ -35,18 +35,20 @@ public sealed partial class TopologyTests
         builder.Services.AddScoped<LocalMonitoringStageSubscriptionHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("local-stage-node", spot =>
-            {
-                spot.EnablePubSub(pubsub =>
+                var mesh = options.AddSpotMesh(spotChannel);
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    pubsub.BindPubSub(localNodeEndpoint);
-                });
+                    var spot = mesh.AddNode("local-stage-node");
+                {
+                    var pubsub = spot.EnablePubSub(localNodeEndpoint);
+
+                }
                 spot.AddSpotFactory<LocalMonitoringStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
         builder.Services.AddZLinkMonitoring(monitor =>
         {

@@ -1,15 +1,11 @@
-const { Inject } = require('@nestjs/common');
-const { ZLINK_CHANNEL_CLIENT, zlinkRequestHandler } = require('../../../../../../packages/nestjs/dist');
-const {
-  PacketNames,
-  allocateBingoRoomReq,
-  matchBingoApiRes
-} = require('../../../Shared/Contracts/messages');
-const { SampleNames, SampleTimings } = require('../../Configuration/sample-names');
+import { Inject } from '@nestjs/common';
+import { ZLINK_CHANNEL_CLIENT, zlinkRequestHandler } from '@zlink-systems/nestjs';
+import { PacketNames, allocateBingoRoomReq, matchBingoApiRes } from '../../../Shared/Contracts/messages';
+import { SampleNames } from '../../Configuration/sample-names';
 import type {
   ZLinkChannelClient,
   ZLinkRequestHandler
-} from '../../../../../packages/framework/dist';
+} from '@zlink-systems/framework';
 import type {
   AllocateBingoRoomRes,
   MatchBingoApiRes,
@@ -23,8 +19,6 @@ class MatchBingoHandler implements ZLinkRequestHandler<MatchBingoReq, MatchBingo
   async handle(request: MatchBingoReq): Promise<MatchBingoApiRes> {
     const allocated = await this.zlinkClient
       .requestToChannel(SampleNames.playChannel, allocateBingoRoomReq(request.mode))
-      .packetName(PacketNames.allocateBingoRoom)
-      .timeout(SampleTimings.requestTimeout)
       .submit<AllocateBingoRoomRes>();
     return matchBingoApiRes(allocated.roomId);
   }

@@ -9,6 +9,7 @@ mkdir -p "${LOG_DIR}"
 PIDS=()
 
 cleanup() {
+  local status="$?"
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     if kill -0 "${pid}" 2>/dev/null; then
@@ -42,6 +43,7 @@ cleanup() {
   else
     echo "runDir=${RUN_DIR}"
   fi
+  return "$status"
 }
 trap cleanup EXIT
 
@@ -52,7 +54,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 5:
+    while len(sockets) < 6:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -71,11 +73,12 @@ finally:
 PY
 )"
 
-export BINGO_REGISTRY_ENDPOINT="${BINGO_REGISTRY_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
-export BINGO_SESSION_ENDPOINT="${BINGO_SESSION_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
-export BINGO_PLAY_ENDPOINT="${BINGO_PLAY_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
-export BINGO_NOTIFICATION_ENDPOINT="${BINGO_NOTIFICATION_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
-export BINGO_API_ENDPOINT="${BINGO_API_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
+export BINGO_REGISTRY_PUB_ENDPOINT="${BINGO_REGISTRY_PUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
+export BINGO_REGISTRY_ROUTER_ENDPOINT="${BINGO_REGISTRY_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
+export BINGO_SESSION_ENDPOINT="${BINGO_SESSION_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
+export BINGO_PLAY_ENDPOINT="${BINGO_PLAY_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
+export BINGO_NOTIFICATION_ENDPOINT="${BINGO_NOTIFICATION_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
+export BINGO_API_ENDPOINT="${BINGO_API_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
 export ZLINK_SAMPLE_CONFIG="${RUN_DIR}/sample.config.json"
 
 python3 - "${ZLINK_SAMPLE_CONFIG}" <<PY
@@ -85,7 +88,8 @@ import sys
 with open(sys.argv[1], "w", encoding="utf-8") as output:
     json.dump({
         "sample": {
-            "registryEndpoint": "${BINGO_REGISTRY_ENDPOINT}",
+            "registryPubEndpoint": "${BINGO_REGISTRY_PUB_ENDPOINT}",
+            "registryRouterEndpoint": "${BINGO_REGISTRY_ROUTER_ENDPOINT}",
             "sessionEndpoint": "${BINGO_SESSION_ENDPOINT}",
             "playEndpoint": "${BINGO_PLAY_ENDPOINT}",
             "notificationEndpoint": "${BINGO_NOTIFICATION_ENDPOINT}",
@@ -123,6 +127,40 @@ wait_port() {
   return 1
 }
 
+wait_discovery_ready() {
+  node - "${BINGO_REGISTRY_ROUTER_ENDPOINT}" <<'NODE'
+const registryEndpoint = process.argv[2];
+const zlink = require('@zlink-systems/zlink');
+const required = new Set(['bingo.api', 'bingo.play', 'bingo.notifications']);
+const pause = new Int32Array(new SharedArrayBuffer(4));
+const context = zlink.createContext();
+const client = zlink.createRegistryQueryClient(context);
+
+try {
+  client.connect(registryEndpoint);
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const ready = new Set(client
+      .topology()
+      .filter((entry) =>
+        required.has(entry.channelName) &&
+        entry.state === 3 &&
+        typeof entry.endpoint === 'string' &&
+        entry.endpoint.length > 0)
+      .map((entry) => entry.channelName));
+    if ([...required].every((channelName) => ready.has(channelName))) {
+      process.exit(0);
+    }
+    Atomics.wait(pause, 0, 0, 100);
+  }
+  console.error('Timed out waiting for registry discovery readiness.');
+  process.exit(1);
+} finally {
+  client.close();
+  context.close();
+}
+NODE
+}
+
 start_server() {
   local name="$1"
   local entry="$2"
@@ -133,7 +171,8 @@ start_server() {
 (cd "${SCRIPT_DIR}" && npm run build >/dev/null)
 
 start_server registry dist/Server/Registry/main.js
-wait_port registry "${BINGO_REGISTRY_ENDPOINT}"
+wait_port registry-pub "${BINGO_REGISTRY_PUB_ENDPOINT}"
+wait_port registry-router "${BINGO_REGISTRY_ROUTER_ENDPOINT}"
 
 start_server play dist/Server/Play/main.js
 wait_port play "${BINGO_PLAY_ENDPOINT}"
@@ -144,5 +183,6 @@ wait_port api "${BINGO_API_ENDPOINT}"
 
 start_server session dist/Server/Session/main.js
 wait_port session "${BINGO_SESSION_ENDPOINT}"
+wait_discovery_ready
 
 node "${SCRIPT_DIR}/dist/Client/main.js"

@@ -29,10 +29,19 @@ internal static class ZLinkClientCallCodec
         ZLinkEnvelopeHeader header,
         TMessage message)
     {
+        return EncodeEnvelopeParts(header, message, null);
+    }
+
+    public static IReadOnlyList<Message> EncodeEnvelopeParts<TMessage>(
+        ZLinkEnvelopeHeader header,
+        TMessage message,
+        ZLinkCodecRegistryBuilder? codecs)
+    {
         return ZLinkEnvelopeCodec.EncodeParts(
             header,
             message,
-            message?.GetType() ?? typeof(TMessage));
+            message?.GetType() ?? typeof(TMessage),
+            codecs);
     }
 
     public static TReply DecodeEnvelopeReply<TReply>(

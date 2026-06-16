@@ -38,3 +38,16 @@
 2026-06-14T01:02:32.2758135Z actors=200 packetsPerActor=50 totalMs=29.0 throughputPerSec=345342 p50Ms=0.235 p95Ms=3.373 p99Ms=9.424
 2026-06-14T01:03:48.7094855Z actors=200 packetsPerActor=50 totalMs=33.4 throughputPerSec=299758 p50Ms=0.268 p95Ms=3.288 p99Ms=10.556
 2026-06-14T01:06:30.6280612Z actors=200 packetsPerActor=50 totalMs=39.0 throughputPerSec=256513 p50Ms=0.377 p95Ms=3.405 p99Ms=8.244
+2026-06-15T09:57:20.4985004Z actors=200 packetsPerActor=50 totalMs=31.7 throughputPerSec=315521 p50Ms=0.259 p95Ms=3.243 p99Ms=9.057
+2026-06-16T03:38:28.1247737Z actors=200 packetsPerActor=50 totalMs=27.3 throughputPerSec=366736 p50Ms=0.255 p95Ms=2.871 p99Ms=5.329
+2026-06-16T04:42:12.3720425Z actors=200 packetsPerActor=50 totalMs=28.7 throughputPerSec=348245 p50Ms=0.252 p95Ms=3.477 p99Ms=5.113
+2026-06-16T05:46:44.0553907Z actors=200 packetsPerActor=50 totalMs=33.0 throughputPerSec=303216 p50Ms=0.318 p95Ms=3.573 p99Ms=4.831
+2026-06-16T06:04:01.8008560Z actors=200 packetsPerActor=50 totalMs=39.8 throughputPerSec=251272 p50Ms=0.410 p95Ms=3.870 p99Ms=7.275
+2026-06-16T06:11:55.0007681Z actors=200 packetsPerActor=50 totalMs=49.3 throughputPerSec=202679 p50Ms=0.682 p95Ms=3.755 p99Ms=8.901
+2026-06-16T06:33:26.5219344Z actors=200 packetsPerActor=50 totalMs=29.1 throughputPerSec=343846 p50Ms=0.289 p95Ms=3.450 p99Ms=3.628
+2026-06-16T07:46:39.3288386Z actors=200 packetsPerActor=50 totalMs=55.0 throughputPerSec=181855 p50Ms=0.354 p95Ms=5.989 p99Ms=12.451
+2026-06-16T08:01:38.8863292Z actors=200 packetsPerActor=50 totalMs=40.0 throughputPerSec=250034 p50Ms=0.250 p95Ms=2.614 p99Ms=13.099
+2026-06-16T08:03:43.7459064Z actors=200 packetsPerActor=50 totalMs=23.8 throughputPerSec=420884 p50Ms=0.247 p95Ms=2.944 p99Ms=3.403
+2026-06-16T08:04:38.1985514Z actors=200 packetsPerActor=50 totalMs=35.0 throughputPerSec=285748 p50Ms=0.415 p95Ms=2.543 p99Ms=7.734
+2026-06-16T08:17:29.0782072Z actors=200 packetsPerActor=50 totalMs=63.3 throughputPerSec=158056 p50Ms=0.853 p95Ms=3.888 p99Ms=9.128
+2026-06-16T08:34:27.1306206Z actors=200 packetsPerActor=50 totalMs=29.9 throughputPerSec=334856 p50Ms=0.215 p95Ms=2.703 p99Ms=4.969

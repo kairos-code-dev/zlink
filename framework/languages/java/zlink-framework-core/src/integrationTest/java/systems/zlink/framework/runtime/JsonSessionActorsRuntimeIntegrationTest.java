@@ -67,20 +67,14 @@ final class JsonSessionActorsRuntimeIntegrationTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.codecs().addJson();
         options.addHandlersFromPackageOf(JsonSessionActorsRuntimeIntegrationTest.class);
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter(router ->
-                    router.setRoutingId(RoutingId.from("play-node")));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(SessionActorsRuntimeIntegrationTest.GameSpot.class);
-                node.addEntrySpot(SessionActorsRuntimeIntegrationTest.GameEntrySpot.class);
-            }));
+                node.addEntrySpot(SessionActorsRuntimeIntegrationTest.GameEntrySpot.class); }; };
         options.addActorFactory(
             "player",
             SessionActorsRuntimeIntegrationTest.PlayerActorFactory.class);
-        options.addStreamNode("local-json", stream -> {
-            stream.bind("inproc://local-json-bind-" + System.nanoTime());
-            stream.registerSession(SessionActorsRuntimeIntegrationTest.GameSession.class);
-        });
+        { var stream = options.addStreamNode("local-json"); stream.bind("inproc://local-json-bind-" + System.nanoTime());
+            stream.registerSession(SessionActorsRuntimeIntegrationTest.GameSession.class); };
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
     }

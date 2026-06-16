@@ -1,70 +1,31 @@
-const { TicTacToeMatch } = require('../../Domain/TicTacToe/tictactoe-match');
-import type { TicTacToeMatch as TicTacToeMatchType } from '../../Domain/TicTacToe/tictactoe-match';
-
-type TicTacToeRoom = {
-  roomId: string;
-  gameName: string;
-  playEndpoint: string;
-  match: TicTacToeMatchType;
-  timerRegistered: boolean;
-  cleanupStarted: boolean;
-};
-
-type FinishedRoomCleaner = (room: TicTacToeRoom) => Promise<void>;
+import { Inject } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
+import { createGameRes } from '../../../../Shared/Contracts/messages';
+import { TicTacToeGameSpot } from '../../Adapters/ZLink/Spots/tictactoe-game-spot';
+import { PLAY_STREAM_ENDPOINT } from '../../play-tokens';
+import type {
+  ZLinkSpotManager
+} from '@zlink-systems/framework';
+import { ZLinkSpotCreateState } from '@zlink-systems/framework';
+import type {
+  CreateGameRes
+} from '../../../../Shared/Contracts/messages';
 
 class TicTacToeGameCreator {
-  private nextId: number;
-  private readonly games: Map<string, TicTacToeRoom>;
-  private finishedRoomCleaner: FinishedRoomCleaner | null;
+  constructor(
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spotManager: ZLinkSpotManager,
+    @Inject(PLAY_STREAM_ENDPOINT) private readonly playEndpoint: string
+  ) {}
 
-  constructor() {
-    this.nextId = 0;
-    this.games = new Map();
-    this.finishedRoomCleaner = null;
-  }
-
-  create(gameName: string, playEndpoint: string): TicTacToeRoom {
-    this.nextId += 1;
-    const roomId = `${gameName}-${this.nextId}`;
-    const room = {
-      roomId,
-      gameName,
-      playEndpoint,
-      match: new TicTacToeMatch(roomId),
-      timerRegistered: false,
-      cleanupStarted: false
-    };
-    this.games.set(roomId, room);
-    return room;
-  }
-
-  require(roomId: string): TicTacToeRoom {
-    const room = this.games.get(roomId);
-    if (room === undefined) {
-      throw new Error(`Room '${roomId}' does not exist.`);
+  async create(gameName: string): Promise<CreateGameRes> {
+    const roomId = `room-${randomUUID().replaceAll('-', '')}`;
+    const created = await this.spotManager.getOrCreate(TicTacToeGameSpot, roomId);
+    if (created.state !== ZLinkSpotCreateState.Created) {
+      throw new Error('TicTacToe game spot creation was rejected.');
     }
-    return room;
-  }
-
-  setFinishedRoomCleaner(cleaner: FinishedRoomCleaner): void {
-    this.finishedRoomCleaner = cleaner;
-  }
-
-  async cleanupFinishedRoom(room: TicTacToeRoom): Promise<void> {
-    if (room.cleanupStarted || !isTerminal(room.match.snapshot().status)) {
-      return;
-    }
-    room.cleanupStarted = true;
-    if (this.finishedRoomCleaner === null) {
-      throw new Error('TicTacToe finished room cleaner has not been registered.');
-    }
-    await this.finishedRoomCleaner(room);
+    return createGameRes(roomId, gameName, this.playEndpoint);
   }
 }
 
 export { TicTacToeGameCreator };
-export type { TicTacToeRoom };
-
-function isTerminal(status: string): boolean {
-  return status === 'Won' || status === 'Draw' || status === 'TurnTimedOut';
-}

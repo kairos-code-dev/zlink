@@ -25,11 +25,8 @@ final class ActorManagerTest {
     void actorManager_createGetOrCreateFind_work() {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter();
-                node.addSpotFactory(GameSpot.class);
-            }));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+                node.addSpotFactory(GameSpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
 
         try (ZLinkFrameworkRuntime runtime =

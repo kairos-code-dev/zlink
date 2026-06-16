@@ -1,29 +1,22 @@
-require('reflect-metadata');
-
-const { NestFactory } = require('@nestjs/core');
-const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
-const { SampleNames } = require('../Configuration/sample-names');
-const { loadSampleConfig } = require('../Configuration/sample-config');
-const { createBingoRegistryModule } = require('./bingo-registry-module');
-
+import 'reflect-metadata';
+import { waitForShutdown } from '../runtime-support';
+import { loadSampleConfig } from '../Configuration/sample-config';
+import { createBingoRegistryServer } from './registry-server-host';
 async function bootstrap(): Promise<void> {
   const config = loadSampleConfig();
-  const BingoRegistryModule = createBingoRegistryModule(config);
-  const app = await NestFactory.createApplicationContext(BingoRegistryModule, {
-    logger: false,
-    abortOnError: false
-  });
+  const registryServer = createBingoRegistryServer(config);
+  await registryServer.start();
 
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
-    endpoint: config.registryEndpoint,
-    channelName: SampleNames.registryChannel
+    pubEndpoint: config.registryPubEndpoint,
+    routerEndpoint: config.registryRouterEndpoint
   })}\n`);
 
   try {
     await waitForShutdown({ keepAlive: true });
   } finally {
-    await closeNestRuntime(app);
+    await registryServer.close();
   }
 }
 

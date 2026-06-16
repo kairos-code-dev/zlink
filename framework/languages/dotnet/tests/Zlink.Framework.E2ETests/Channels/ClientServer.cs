@@ -25,21 +25,23 @@ public sealed class ClientServerTests
         serverBuilder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<ClientServerTests>();
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-            options.AddClientServerChannel("api", channel =>
+            options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
             {
-                channel.EnableServer(server => server.Bind(apiEndpoint));
+                var channel = options.AddClientServerChannel("api");
+                channel.EnableServer(apiEndpoint);
                 channel.AddHandlerGroup("profile");
-            });
+
+            }
         });
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-            options.AddClientServerChannel("api", channel =>
+            options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
             {
+                var channel = options.AddClientServerChannel("api");
                 channel.EnableClient();
-            });
+
+            }
         });
 
         using var registryHost = registryBuilder.Build();
@@ -82,22 +84,21 @@ public sealed class ClientServerTests
         serverBuilder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<ClientServerTests>();
-            options.AddClientServerChannel("api", channel =>
             {
-                channel.EnableServer(server => server.Bind(apiEndpoint));
+                var channel = options.AddClientServerChannel("api");
+                channel.EnableServer(apiEndpoint);
                 channel.AddHandlerGroup("profile");
-            });
+
+            }
         });
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddClientServerChannel("api", channel =>
             {
-                channel.EnableClient(client =>
-                {
-                    client.UseManualConnections(connections => connections.Connect(apiEndpoint));
-                });
-            });
+                var channel = options.AddClientServerChannel("api");
+                channel.EnableClient(apiEndpoint);
+
+            }
         });
 
         using var serverHost = serverBuilder.Build();

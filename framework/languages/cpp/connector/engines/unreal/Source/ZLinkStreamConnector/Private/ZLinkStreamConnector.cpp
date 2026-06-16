@@ -176,16 +176,15 @@ class FZLinkStreamConnectorRuntime
                       float TimeoutSeconds,
                       const FZLinkStreamSendOptions &Options)
     {
-        auto request = Connector.request<zlink::stream_connector::packet_t> (
-          MakePacket (PacketName, JsonPayload, Options));
+        auto request = Connector.request (MakePacket (PacketName, JsonPayload, Options));
         request.timeout (
           std::chrono::milliseconds (std::max (1, static_cast<int> (TimeoutSeconds * 1000.0f))));
         if (Options.bCompress) {
             request.compress ();
         }
         auto pending = Pending;
-        request.submit ([pending] (zlink::stream_connector::result_t<zlink::stream_connector::packet_t>
-                                     result) {
+        request.submit<zlink::stream_connector::packet_t> (
+          [pending] (zlink::stream_connector::result_t<zlink::stream_connector::packet_t> result) {
             if (!result) {
                 return;
             }

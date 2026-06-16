@@ -60,8 +60,6 @@ try {
 
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Probe/DeliveryDispatch.Probe.csproj") -Arguments @("--registry-endpoint", $env:DELIVERYDISPATCH_REGISTRY, "--timeout-seconds", "10")
 
-    Start-Sleep -Seconds 3
-
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/DeliveryDispatch.Client.csproj") -Arguments @("--api-url", $env:DELIVERYDISPATCH_API_HTTP, "--stream-endpoint", $env:DELIVERYDISPATCH_SESSION_STREAM)
 
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch tracking: status"

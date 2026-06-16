@@ -34,28 +34,31 @@ internal static class Program
         {
             options.DefaultTimeout = SampleTimings.WorkflowTimeout;
             options.Codecs.AddJson();
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
-            options.AddRouteMeshChannel(SampleNames.OrderWorkflowRouteChannel, route =>
+            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
-                route.Bind(instance.RouteEndpoint);
-                route.ConfigureRouting(routing => routing.RoutingId = instance.RouteRid);
+                var route = options.AddRouteMeshChannel(SampleNames.OrderWorkflowRouteChannel);
+                route.EnableServer(instance.RouteEndpoint);
+                route.ConfigureRouting().RoutingId = instance.RouteRid;
                 route.AddRequestHandler<StartOrderWorkflowRouteHandler, StartOrderWorkflowReq, StartOrderWorkflowRes>();
                 route.AddRequestHandler<ContinueOrderWorkflowRouteHandler, ContinueOrderWorkflowReq, ContinueOrderWorkflowRes>();
                 route.AddRequestHandler<RebuildOrderProjectionRouteHandler, RebuildOrderProjectionReq, RebuildOrderProjectionRes>();
-            });
-            options.AddSpotMesh(SampleNames.OrderSpotDiscovery, mesh =>
+
+            }
             {
-                mesh.AddNode(SampleNames.OrderSpotNode, spot =>
+                var mesh = options.AddSpotMesh(SampleNames.OrderSpotDiscovery);
                 {
-                    spot.EnableRouter(router =>
+                    var spot = mesh.AddNode(SampleNames.OrderSpotNode);
                     {
-                        router.BindRouter(instance.SpotRouterEndpoint);
-                        router.SetRoutingId(instance.SpotRid);
-                    });
-                    spot.EnablePubSub(pubsub => pubsub.BindPubSub(instance.SpotEndpoint));
+                        var router = spot.EnableRouter(instance.SpotRouterEndpoint);
+                        router.SetRouterRoutingId(instance.SpotRid);
+
+                    }
+                    spot.EnablePubSub(instance.SpotEndpoint);
                     spot.AddSpotFactory<OrderWorkflowSpot>();
-                });
-            });
+
+                }
+
+            }
         });
 
         var app = builder.Build();

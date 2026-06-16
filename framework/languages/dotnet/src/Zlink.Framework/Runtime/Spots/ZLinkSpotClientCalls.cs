@@ -66,7 +66,7 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
             ZLinkMessageKind.Command,
             remoteAddress.RouterChannelId,
             _messageName ?? throw new InvalidOperationException("Message name is required."));
-        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message);
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
         await activation.SendToSpotAsync(
             remoteAddress.RouterChannelId,
             remoteAddress.TargetNodeRid,
@@ -111,7 +111,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
             remoteAddress.RouterChannelId,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             timeout);
-        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request);
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request, activation.Codecs);
         var reply = await activation.RequestToSpotAsync(
             remoteAddress.RouterChannelId,
             remoteAddress.TargetNodeRid,
@@ -167,7 +167,7 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
             ZLinkMessageKind.Command,
             channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."));
-        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message);
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
         return activation.SendToChannelAsync(channelName, parts, cancellationToken);
     }
 }
@@ -200,7 +200,7 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
             channelName,
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             timeout);
-        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request);
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request, activation.Codecs);
         var reply = await activation.RequestToChannelAsync(channelName, parts, timeout, cancellationToken);
         return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
             reply,

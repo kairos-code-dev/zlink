@@ -92,11 +92,6 @@
 | builder | `IZLinkFanoutChannelBuilder` | fanout (pub/sub) channel 등록 builder | 6.1 |
 | builder | `IZLinkDealerMeshChannelBuilder` | dealer mesh channel 등록 builder | 6.1 |
 | builder | `IZLinkRouteMeshChannelBuilder` | route mesh channel 등록 builder | 6.1 |
-| builder | `IChannelServerCapabilityBuilder` | channel server 역할 builder | 6.1 |
-| builder | `IChannelClientCapabilityBuilder` | channel client 역할 builder | 6.1 |
-| builder | `IDealerMeshChannelClientCapabilityBuilder` | dealer mesh client 역할 builder | 6.1 |
-| builder | `IChannelPublisherCapabilityBuilder` | channel publisher 역할 builder | 6.1 |
-| builder | `IChannelSubscriberCapabilityBuilder` | channel subscriber 역할 builder | 6.1 |
 | builder | `IZLinkStreamNodeBuilder` | STREAM node 등록 builder | 6.1 |
 | builder | `IZLinkSpotNodeBuilder` | SPOT node 등록 builder | 6.3 |
 | builder | `IZLinkSpotMeshBuilder` | SPOT mesh 등록 builder | 6.3 |
@@ -213,7 +208,7 @@ interface 기반 등록을 모두 지원한다.
 
 ### 4.2.1 routed channel handler
 
-routed channel(`AddRouteMeshChannel(...)`) 이 수신하는
+routed channel(`AddRouteMeshChannel`) 이 수신하는
 메시지를 처리하는 handler 다.
 
 일반 channel handler 와 한 가지 차이가 있다. source `RoutingId` 를 포함한
@@ -253,7 +248,7 @@ routed channel handler 등록은 transport builder 가 책임진다. 구체적�
 `AddSendHandler<THandler>()`, `AddRequestHandler<THandler>()` 처럼 handler 타입만
 지정하는 메서드나, message/reply 타입을 함께 지정하는 명시적 overload 를 통해
 이루어진다.
-자세한 내용은 §6.1 의 `IZLinkRouteChannelBuilder` 를 참고한다.
+자세한 내용은 §6.1 의 `IZLinkRouteMeshChannelBuilder` 를 참고한다.
 
 ### 4.3 publish handler
 
@@ -2239,7 +2234,7 @@ remote actor handle 을 만들고, core ActorGateway 가 그 actor ref 를 기�
 route transport helper 는 application 의 public surface 가 아니다.
 internal transport helper 다.
 
-사용처는 다음과 같다. routed channel (`AddRouteMeshChannel(...)`) 을 통해 특정 노드의 `RoutingId` 로 direct
+사용처는 다음과 같다. routed channel (`AddRouteMeshChannel`) 을 통해 특정 노드의 `RoutingId` 로 direct
 send/request 를 보내야 하는 framework backend, 또는 별도의 adapter
 package 가 사용한다.
 
@@ -2363,9 +2358,9 @@ public readonly record struct ZLinkSpotRemoteAddress(
 ```
 
 `RouterChannelId`는 실제 router-capable channel 이름이다. 이 값이 가리키는 channel은
-`AddClientServerChannel(...)`의 server `ROUTER`이거나 `AddRouteMeshChannel(...)`의
+`AddClientServerChannel`의 server `ROUTER`이거나 `AddRouteMeshChannel`의
 route mesh `ROUTER`여야 한다. target `SpotNode`는 같은 이름을
-`AcceptSpotRoutesFromChannel(...)`로 수락해야 하며, resolver는 연결을 만들지 않는다.
+`AcceptSpotRoutesFromChannel`로 수락해야 하며, resolver는 연결을 만들지 않는다.
 
 actor-session route 는 public contract 가 아니다. session bind 시 framework runtime 이
 현재 actor state 에 session rid 와 binding token 을 저장하고, `IZLinkBoundSession`
@@ -2406,11 +2401,11 @@ actor id 를 가리키게 된다. 이 경우 configuration 오류로 실패한�
 
 이 카탈로그에서는 `AddZLinkFramework(...)` 의 builder 표면까지 함께
 고정한다. 이렇게 두는 이유는, 샘플 문서에 등장하는 표면들의 소유자를
-분명히 하기 위해서다. 해당 표면들은 `AddClientServerChannel(...)`,
-`AddFanoutChannel(...)`, `AddSpotMesh(...)`, `UseDiscovery(...AddRegistryEndpoint...)`,
+분명히 하기 위해서다. 해당 표면들은 `AddClientServerChannel`,
+`AddFanoutChannel`, `AddSpotMesh`, `UseDiscovery().AddRegistryEndpoint(...)`,
 `UseFilter(...)` 다.
 
-SPOT discovery 와 node 집합은 `AddSpotMesh(...)` 안에서 함께 등록한다.
+SPOT discovery 와 node 집합은 `AddSpotMesh` 안에서 함께 등록한다.
 이렇게 하면 channel view 의 소유자가 하나로 고정되어 node 등록 순서나
 분리 호출 여부가 의미에 영향을 주지 않는다.
 
@@ -2421,114 +2416,22 @@ channel discovery 의 등록 위치는 다음과 같이 정해 둔다.
 - 이 discovery registration 의 의미는 다음과 같다. framework 안의
   discovery 기반 channel 역할 들이 공유하는, registry endpoint 집합
   을 가리킨다.
-- 반대로 manual 연결은 역할 별 runtime 설정에 해당한다. 그래서 각
-  역할 builder 아래에 둔다.
+- 반대로 manual 연결은 역할 별 runtime 설정에 해당한다. 그래서 역할을 켜는
+  builder 메서드의 endpoint 인자로 둔다.
 
 ```csharp
-public interface IZLinkEndpointConnections
-{
-    void Connect(string endpoint);
-
-    void Disconnect(string endpoint);
-
-    IReadOnlyList<string> ListConnections();
-}
-
-public interface IZLinkEndpointConnections
-{
-    void Connect(string endpoint);
-
-    void Disconnect(string endpoint);
-
-    IReadOnlyList<string> ListConnections();
-}
-
 public interface IZLinkMetadataPolicyBuilder
 {
     void AddForwardedMetadataKey(string key);
 }
 
-public interface IChannelServerCapabilityBuilder
-{
-    void Bind(string endpoint);
-
-    void ConfigureSocket(
-        Action<IZLinkCommonSocketOptions> configure);
-
-    void ConfigureRouting(
-        Action<IZLinkRoutePolicyOptions> configure);
-}
-
-public interface IChannelClientCapabilityBuilder
-{
-    void ConfigureSocket(
-        Action<IZLinkCommonSocketOptions> configure);
-
-    void ConfigureRouting(
-        Action<IZLinkOutboundRoutePolicyOptions> configure);
-
-    void UseManualConnections(
-        Action<IZLinkEndpointConnections> configure);
-}
-
-public interface IChannelPublisherCapabilityBuilder
-{
-    void Bind(string endpoint);
-
-    void ConfigureSocket(
-        Action<IZLinkCommonSocketOptions> configure);
-}
-
-public interface IChannelSubscriberCapabilityBuilder
-{
-    void ConfigureSocket(
-        Action<IZLinkCommonSocketOptions> configure);
-
-    void UseManualConnections(
-        Action<IZLinkEndpointConnections> configure);
-}
-
-public interface IZLinkEndpointConnections
-{
-    void Connect(string endpoint);
-
-    void Disconnect(string endpoint);
-
-    IReadOnlyList<string> ListConnections();
-}
-
-public interface IZLinkRouteChannelBuilder
-{
-    void Bind(string endpoint);
-
-    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
-
-    void ConfigureRouting(Action<IZLinkRoutePolicyOptions> configure);
-
-    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
-
-    void AddHandlerGroup(string groupName);
-
-    void AddSendHandler<THandler, TMessage>(string? packetName = null)
-        where THandler : class, IZLinkRouteSendHandler<TMessage>;
-
-    void AddSendHandler<THandler>(string? packetName = null)
-        where THandler : class;
-
-    void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
-        where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>;
-
-    void AddRequestHandler<THandler>(string? packetName = null)
-        where THandler : class;
-
-    void EnableSpotRouteEgress(string targetSpotNodeChannelName);
-}
-
 public interface IZLinkStreamNodeBuilder
 {
-    void Bind(string endpoint);
+    IZLinkStreamNodeBuilder Bind(string endpoint);
 
-    void RegisterSession<TSession>()
+    IZLinkStreamNodeBuilder AttachActorGateway(string spotNodeName);
+
+    IZLinkStreamNodeBuilder RegisterSession<TSession>()
         where TSession : class, IZLinkSession;
 }
 
@@ -2559,67 +2462,84 @@ lifetime 이므로 handler 는 직접 해제하거나 `Move()` 로 소비하지 
 
 public interface IZLinkClientServerChannelBuilder
 {
-    void EnableServer(
-        Action<IChannelServerCapabilityBuilder>? configure = null);
+    IZLinkClientServerChannelBuilder EnableServer(string endpoint);
 
-    void EnableClient(
-        Action<IChannelClientCapabilityBuilder>? configure = null);
+    IZLinkClientServerChannelBuilder EnableClient();
 
-    void AddHandlerGroup(string groupName);
+    IZLinkClientServerChannelBuilder EnableClient(string endpoint);
 
-    void AddSendHandler<THandler, TMessage>(string? packetName = null)
+    IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName);
+
+    IZLinkClientServerChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>;
 
-    void AddSendHandler<THandler>(string? packetName = null)
+    IZLinkClientServerChannelBuilder AddSendHandler<THandler>(string? packetName = null)
         where THandler : class;
 
-    void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+    IZLinkClientServerChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
 
-    void AddRequestHandler<THandler>(string? packetName = null)
+    IZLinkClientServerChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class;
 
-    void EnableSpotRouteEgress(string targetSpotNodeChannelName);
+    IZLinkClientServerChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName);
 }
 
 public interface IZLinkFanoutChannelBuilder
 {
-    void EnablePublisher(
-        Action<IChannelPublisherCapabilityBuilder>? configure = null);
+    IZLinkFanoutChannelBuilder EnablePublisher(string endpoint);
 
-    void EnableSubscriber(
-        Action<IChannelSubscriberCapabilityBuilder>? configure = null);
+    IZLinkFanoutChannelBuilder EnableSubscriber();
 
-    void AddHandlerGroup(string groupName);
+    IZLinkFanoutChannelBuilder EnableSubscriber(string endpoint);
 
-    void AddPublishHandler<THandler, TMessage>(string? packetName = null)
+    IZLinkFanoutChannelBuilder AddHandlerGroup(string groupName);
+
+    IZLinkFanoutChannelBuilder AddPublishHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkPublishHandler<TMessage>;
 
-    void AddPublishHandler<THandler>(string? packetName = null)
+    IZLinkFanoutChannelBuilder AddPublishHandler<THandler>(string? packetName = null)
         where THandler : class;
 }
 
 public interface IZLinkDealerMeshChannelBuilder
 {
-    void EnableClient(
-        Action<IDealerMeshChannelClientCapabilityBuilder>? configure = null);
-}
+    IZLinkDealerMeshChannelBuilder EnableServer(string endpoint);
 
-public interface IDealerMeshChannelClientCapabilityBuilder
-    : IChannelClientCapabilityBuilder
-{
-    void Bind(string endpoint);
+    IZLinkDealerMeshChannelBuilder EnableClient();
+
+    IZLinkDealerMeshChannelBuilder EnableClient(string endpoint);
+
 }
 
 public interface IZLinkRouteMeshChannelBuilder
 {
-    void Bind(string endpoint);
+    IZLinkRouteMeshChannelBuilder EnableServer(string endpoint);
 
-    void ConfigureSocket(Action<IZLinkCommonSocketOptions> configure);
+    IZLinkRouteMeshChannelBuilder EnableClient();
 
-    void ConfigureRouting(Action<IZLinkRoutePolicyOptions> configure);
+    IZLinkRouteMeshChannelBuilder EnableClient(string endpoint);
 
-    void UseManualConnections(Action<IZLinkEndpointConnections> configure);
+    IZLinkSocketConfig ConfigureSocket();
+
+    IZLinkRouteConfig ConfigureRouting();
+
+    IZLinkRouteMeshChannelBuilder AddHandlerGroup(string groupName);
+
+    IZLinkRouteMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkRouteSendHandler<TMessage>;
+
+    IZLinkRouteMeshChannelBuilder AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class;
+
+    IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+        where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>;
+
+    IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class;
+
+    IZLinkRouteMeshChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName);
+
 }
 
 public interface IZLinkFrameworkOptions
@@ -2628,7 +2548,7 @@ public interface IZLinkFrameworkOptions
 
     IZLinkCodecRegistryBuilder Codecs { get; }
 
-    void ConfigureMetadata(Action<IZLinkMetadataPolicyBuilder> configure);
+    IZLinkMetadataPolicyBuilder ConfigureMetadata();
 
     void AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory;
@@ -2659,27 +2579,26 @@ public interface IZLinkFrameworkOptions
   - 별도 public registration 함수로 등록하지 않는다. stream session이 actor handle을
     만들거나 actor에 attach되면 framework/core가 binding 상태를 갱신하고,
     `IZLinkBoundSession`는 그 상태를 사용해 client stream으로 보낸다.
-- `AddClientServerChannel(...)`
+- `AddClientServerChannel`
   - request/send 용 client-server 채널을 등록한다. builder는 `EnableServer(...)`와
     `EnableClient(...)`만 노출한다.
-- `AddFanoutChannel(...)`
+- `AddFanoutChannel`
   - pub/sub fanout 채널을 등록한다. builder는 `EnablePublisher(...)`와
     `EnableSubscriber(...)`만 노출한다.
-- `AddDealerMeshChannel(...)`
-  - DEALER mesh 채널을 등록한다. mesh client는 자신을 식별할 local bind endpoint를
-    가져야 하므로 `IDealerMeshChannelClientCapabilityBuilder`에 `Bind(...)`가
-    추가로 노출된다.
-- `AddRouteMeshChannel(...)`
+- `AddDealerMeshChannel`
+  - DEALER mesh 채널을 등록한다. builder는 `EnableServer(...)`와
+    `EnableClient(...)`만 노출한다.
+- `AddRouteMeshChannel`
   - route mesh 채널을 등록한다. bind endpoint, socket option, routing option,
     manual connection을 한 builder 안에서 함께 설정한다.
-- `UseDiscovery(...AddRegistryEndpoint...)`
+- `UseDiscovery().AddRegistryEndpoint(...)`
   - 일반 channel 역할들이 공유할 registry endpoint 집합을 등록한다.
-  - `client.UseDiscovery(...AddRegistryEndpoint...)`처럼 역할 아래에 다시 두지 않는다.
+  - `client.UseDiscovery().AddRegistryEndpoint(...)`처럼 역할 아래에 다시 두지 않는다.
 - `UseFilter<TFilter>()`
   - handler filter 타입을 framework pipeline에 등록한다.
-- `AddSpotMesh(...)`
+- `AddSpotMesh`
   - 여러 `SpotNode`가 같은 SPOT mesh discovery view를 공유하도록 묶어 등록한다.
-    mesh builder는 자체 `UseDiscovery(...AddRegistryEndpoint...)`와 `AddNode(spotNodeName, ...)`를
+    mesh builder는 자체 `UseDiscovery().AddRegistryEndpoint(...)`와 `AddNode(spotNodeName)`를
     노출한다.
     mesh node builder는 `EnableRouter`, `EnablePubSub`,
     `AttachChannelClient`, `AttachSpotPublisherClient`,
@@ -2705,9 +2624,8 @@ public interface IZLinkFrameworkOptions
 
 중요한 규칙은 다음과 같다.
 
-- 수동 연결은 `channel` 전체가 아니라 `channel + capability` 단위다.
-- manual `Connect(...)` 는 startup 과 런타임 제어 모두 endpoint 만 인자로
-  받는다.
+- 수동 연결은 `channel` 전체가 아니라 `channel + role` 단위다.
+- startup 수동 연결은 역할을 켜는 메서드의 endpoint 인자로 지정한다.
 - 같은 역할 안에서 `Discovery` 와 manual 연결을 섞지 않는다.
 - `client` 와 `subscriber` 는 서로 다른 연결 집합으로 본다.
 - publisher 는 outbound fan-out submit 역할로 간주한다. 이 초안
@@ -2715,14 +2633,13 @@ public interface IZLinkFrameworkOptions
 
 ### 6.2 channel 수동 연결 설정
 
-수동 연결은 startup builder 의 `UseManualConnections(...)` 에서 역할 단위로
-등록한다. public 계약은 host 시작 뒤 endpoint 를 바꾸는 별도 runtime 연결 관리
-표면을 제공하지 않는다.
+수동 연결은 startup builder 에서 역할 단위로 등록한다. public 계약은 host 시작 뒤
+endpoint 를 바꾸는 별도 runtime 연결 관리 표면을 제공하지 않는다.
 
-`UseManualConnections(...)` 에 전달되는 연결 집합은 동기 `Connect(...)`,
-`Disconnect(...)`, `ListConnections()` 표면을 가진다. 이 표면은 설정 객체를
-편집하는 용도이며, 실행 중인 socket 에 직접 연결 명령을 보내는 runtime handle 이
-아니다.
+client 역할은 `EnableClient(endpoint)`, subscriber 역할은
+`EnableSubscriber(endpoint)` 처럼 역할을 켜는 메서드에서 endpoint 를 직접 받는다.
+이 endpoint 인자는 실행 중인 socket 에 직접 연결 명령을 보내는 runtime handle 이
+아니라 startup 설정이다.
 
 discovery 모드인 역할은 peer 집합의 소유권이 discovery 에 있다. 따라서
 수동 연결이 필요하면 해당 역할을 manual 모드로 등록해야 한다.
@@ -2860,48 +2777,6 @@ send/request 다.
 현재 스펙에서 잡는 최소 표면은 다음과 같다.
 
 ```csharp
-public interface IZLinkEndpointConnections
-{
-    void Connect(string endpoint);
-
-    void Disconnect(string endpoint);
-
-    IReadOnlyList<string> ListConnections();
-}
-
-public interface IZLinkEndpointConnections
-{
-    void Connect(string endpoint);
-
-    void Disconnect(string endpoint);
-
-    IReadOnlyList<string> ListConnections();
-}
-
-public interface IZLinkEndpointConnections
-{
-    void Connect(string endpoint);
-
-    void Disconnect(string endpoint);
-
-    IReadOnlyList<string> ListConnections();
-}
-
-public interface IZLinkEndpointConnections
-{
-    void Connect(string endpoint);
-
-    void Disconnect(string endpoint);
-
-    IReadOnlyList<string> ListConnections();
-}
-
-public interface IZLinkSpotRouteChannelAcceptanceBuilder
-{
-    void UseManualConnections(
-        Action<IZLinkEndpointConnections> configure);
-}
-
 public interface IZLinkCommonSocketOptions
 {
     long MaxMessageSize { get; set; }
@@ -2965,124 +2840,64 @@ public interface ISpotNodeSubscriberOptions
     TimeSpan? Linger { get; set; }
 }
 
-public interface ISpotRouterCapabilityBuilder
-{
-    void Bind(string endpoint);
-
-    void ConfigureSocket(
-        Action<IZLinkCommonSocketOptions> configure);
-
-    void ConfigureRouting(
-        Action<IZLinkRoutePolicyOptions> configure);
-
-    void UseManualConnections(
-        Action<IZLinkEndpointConnections> configure);
-}
-
-public interface ISpotPubSubCapabilityBuilder
-{
-    void ConfigurePublisherOptions(
-        Action<ISpotNodePublisherOptions> configure);
-
-    void ConfigureSubscriberOptions(
-        Action<ISpotNodeSubscriberOptions> configure);
-
-    void UseManualConnections(
-        Action<IZLinkEndpointConnections> configure);
-}
-
-public interface ISpotPublisherClientCapabilityBuilder
-{
-    void ConfigureSocket(
-        Action<IZLinkCommonSocketOptions> configure);
-
-    void UseManualConnections(
-        Action<IZLinkEndpointConnections> configure);
-}
-
-public interface ISpotChannelClientCapabilityBuilder
-{
-    void ConfigureSocket(
-        Action<IZLinkCommonSocketOptions> configure);
-
-    void ConfigureRouting(
-        Action<IZLinkOutboundRoutePolicyOptions> configure);
-
-    void UseManualConnections(
-        Action<IZLinkEndpointConnections> configure);
-}
-
 public interface IZLinkSpotNodeBuilder
 {
-    void Bind(string endpoint);
+    IZLinkSpotNodeBuilder EnableRouter(string endpoint);
 
-    void EnableRouter(
-        Action<ISpotRouterCapabilityBuilder>? configure = null);
+    IZLinkSpotNodeBuilder ConnectRouter(string endpoint);
 
-    void EnablePubSub(
-        Action<ISpotPubSubCapabilityBuilder>? configure = null);
+    IZLinkSpotNodeBuilder SetRouterRoutingId(RoutingId routingId);
 
-    void AttachChannelClient(
-        string channelName,
-        Action<ISpotChannelClientCapabilityBuilder>? configure = null);
+    IZLinkSocketConfig ConfigureRouterSocket();
 
-    void AttachSpotPublisherClient(
-        string channelName,
-        Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
+    IZLinkRouteConfig ConfigureRouterRouting();
 
-    void AcceptSpotRoutesFromChannel(
-        string channelName,
-        Action<IZLinkSpotRouteChannelAcceptanceBuilder>? configure = null);
+    IZLinkSpotNodeBuilder EnablePubSub(string endpoint);
 
-    void ConfigureEntrySpot(
-        Action<IZLinkEntrySpotOptions> configure);
+    IZLinkSpotNodeBuilder ConnectPubSub(string endpoint);
 
-    void AddSpotFactory<TSpot>()
-        where TSpot : class;
+    IZLinkSpotNodeBuilder SetPubSubRoutingId(RoutingId routingId);
 
-    void AddEntrySpot<TEntrySpot>()
+    IZLinkSpotPublisherConfig ConfigurePubSubPublisher();
+
+    IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber();
+
+    IZLinkSpotNodeBuilder AttachChannelClient(string channelName);
+
+    IZLinkSpotNodeBuilder AttachChannelClient(string channelName, string endpoint);
+
+    IZLinkSocketConfig ConfigureChannelClientSocket(string channelName);
+
+    IZLinkOutboundRouteConfig ConfigureChannelClientRouting(string channelName);
+
+    IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName);
+
+    IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName, string endpoint);
+
+    IZLinkSocketConfig ConfigureSpotPublisherClientSocket(string channelName);
+
+    IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName);
+
+    IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName, string endpoint);
+
+    IZLinkEntrySpotOptions ConfigureEntrySpot();
+
+    IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
+        where TSpot : IZLinkSpot;
+
+    IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot;
 }
 
 public interface IZLinkSpotMeshBuilder
 {
-    void AddRegistryEndpoint(string endpoint);
+    IZLinkDiscoveryBuilder UseDiscovery();
 
-    void AddNode(
-        string spotNodeName,
-        Action<IZLinkSpotMeshNodeBuilder> configure);
+    IZLinkSpotMeshNodeBuilder AddNode(string spotNodeName);
 }
 
-public interface IZLinkSpotMeshNodeBuilder
+public interface IZLinkSpotMeshNodeBuilder : IZLinkSpotNodeBuilder
 {
-    void Bind(string endpoint);
-
-    void EnableRouter(
-        Action<ISpotRouterCapabilityBuilder>? configure = null);
-
-    void EnablePubSub(
-        Action<ISpotPubSubCapabilityBuilder>? configure = null);
-
-    void AttachChannelClient(
-        string channelName,
-        Action<ISpotChannelClientCapabilityBuilder>? configure = null);
-
-    void AttachSpotPublisherClient(
-        string channelName,
-        Action<ISpotPublisherClientCapabilityBuilder>? configure = null);
-
-    void AcceptSpotRoutesFromChannel(
-        string channelName,
-        Action<IZLinkSpotRouteChannelAcceptanceBuilder>? configure = null);
-
-    void AddSpotFactory<TSpot>()
-        where TSpot : class;
-
-    void ConfigureEntrySpot(
-        Action<IZLinkEntrySpotOptions> configure);
-
-    void AddEntrySpot<TEntrySpot>()
-        where TEntrySpot : IZLinkEntrySpot;
 }
 
 public interface IZLinkEntrySpotOptions
@@ -3124,16 +2939,16 @@ public interface IZLinkEntrySpotOptions
 예를 들어 `router`, channel client, publish 쪽은 모두 각 역할이
 사용할 endpoint 집합을 따로 관리한다.
 
-이 문서에서는 manual `Connect(...)` 시점에 remote router id 를 별도
-파라미터로 받지 않는다. 따라서 `UseManualConnections(...)` 도 한군데에
-모아 두지 않고, 역할 builder 별로 분리해 두는 편이 자연스럽다.
+이 문서에서는 수동 endpoint 를 지정할 때 remote router id 를 별도 파라미터로
+받지 않는다. 따라서 endpoint 인자도 한군데에 모아 두지 않고, 역할별 메서드에
+분리해 두는 편이 자연스럽다.
 
 소켓 옵션 역시 같은 방식으로 소유자를 나눠서 설명한다.
 
 - `ConfigureSocket(...)`
   - 실제 `.NET` 바인딩의 `CommonSocketOptions`와 같은 공통 socket facade를
     역할 아래에 노출하는 모델이다.
-- `ConfigurePublisherOptions(...)`, `ConfigureSubscriberOptions(...)`
+- `ConfigurePublisher()`, `ConfigureSubscriber()`
   - 실제 `SpotNode.PublisherOptions`, `SpotNode.SubscriberOptions`와 같은
     `SPOT` pub/sub 전용 facade를 framework 등록 쪽으로 끌어올린다.
 - `ConfigureRouting(...)`
@@ -3148,7 +2963,7 @@ public interface IZLinkEntrySpotOptions
     `Spot.RequestToChannelAsync(..., TimeSpan timeout, ...)`처럼 호출 인자로 받는다.
   - 위 등록 설정과 달리 역할 runtime 기본값을 바꾸지 않는다.
 
-`AddSpotMesh(channelName, ...)` 는 SPOT channel 이름과 node 묶음을 함께
+`AddSpotMesh(channelName)` 는 SPOT channel 이름과 node 묶음을 함께
 소유한다. 그래서 `AddNode(...)` 안에서 같은 channel 이름을 다시 받는
 함수는 두지 않는다.
 
@@ -3648,11 +3463,12 @@ public sealed class ProfileHandlers
     }
 }
 
-options.AddClientServerChannel("api", channel =>
 {
-    channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
+    var channel = options.AddClientServerChannel("api");
+        channel.EnableServer("tcp://0.0.0.0:7101");
     channel.AddHandlerGroup("api");
-});
+
+}
 ```
 
 동일한 handler 그룹을 여러 channel 에 매핑하는 것은 허용한다.
@@ -3735,11 +3551,12 @@ public sealed class CacheInvalidatedHandler
     // ...
 }
 
-options.AddFanoutChannel("api.events", channel =>
 {
+    var channel = options.AddFanoutChannel("api.events");
     channel.EnableSubscriber();
     channel.AddHandlerGroup("api.events");
-});
+
+}
 ```
 
 ### 11.4 SPOT
@@ -3881,7 +3698,7 @@ local handler 가 붙는 channel 의 의미는 다음과 같다. route prefix �
 channel 이름의 위치도 정해 둔다. handler class 나 method attribute 가
 아니라, channel registration 에 둔다.
 
-예: `options.AddClientServerChannel("api", channel => channel.EnableServer(...))`
+예: `options.AddClientServerChannel("api").EnableServer(endpoint)`
 
 다만 outbound-only 앱이라면, server 역할을 가진 channel 이 아예
 없을 수도 있어야 한다.

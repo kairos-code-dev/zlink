@@ -14,11 +14,42 @@ $PlayBin = Join-Path $BinDir "sample_cpp_framework_tictactoe_play.exe"
 $ApiBin = Join-Path $BinDir "sample_cpp_framework_tictactoe_api.exe"
 $ClientBin = Join-Path $BinDir "sample_cpp_framework_tictactoe_client.exe"
 $CTestBin = if ($env:CTEST_BIN) { $env:CTEST_BIN } else { "ctest" }
+$PlayChannelEndpoint = "tcp://127.0.0.1:48104"
+$PlayStreamEndpoint = "tcp://127.0.0.1:48112"
+$ApiChannelEndpoint = "tcp://127.0.0.1:48103"
+$ApiHttpEndpoint = "http://127.0.0.1:48113"
 
 foreach ($Binary in @($PlayBin, $ApiBin, $ClientBin)) {
     if (-not (Test-Path $Binary)) {
         throw "Missing executable: $Binary. Build C++ samples first or set ZLINK_CPP_BUILD_DIR."
     }
+}
+
+function Get-EndpointParts([string]$Endpoint) {
+    $value = $Endpoint -replace '^tcp://', '' -replace '^http://', ''
+    $index = $value.LastIndexOf(':')
+    return @{ Host = $value.Substring(0, $index); Port = [int]$value.Substring($index + 1) }
+}
+
+function Wait-Port([string]$Name, [string]$Endpoint) {
+    $parts = Get-EndpointParts $Endpoint
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $client = [System.Net.Sockets.TcpClient]::new()
+        try {
+            $task = $client.ConnectAsync($parts.Host, $parts.Port)
+            if ($task.Wait(100)) {
+                return
+            }
+        }
+        catch {
+        }
+        finally {
+            $client.Dispose()
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Timed out waiting for $Name at $Endpoint"
 }
 
 & $CTestBin --test-dir $BuildDir `
@@ -41,7 +72,10 @@ try {
         -RedirectStandardOutput (Join-Path $LogDir "api.log") `
         -RedirectStandardError (Join-Path $LogDir "api.err") `
         -PassThru
-    Start-Sleep -Seconds 2
+    Wait-Port "play-channel" $PlayChannelEndpoint
+    Wait-Port "play-stream" $PlayStreamEndpoint
+    Wait-Port "api-channel" $ApiChannelEndpoint
+    Wait-Port "api-http" $ApiHttpEndpoint
     & $ClientBin *> (Join-Path $LogDir "client.log")
     if ($LASTEXITCODE -ne 0) {
         Get-Content (Join-Path $LogDir "client.log") -ErrorAction SilentlyContinue

@@ -54,7 +54,8 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
         if (_authenticate.can_handle (header)) {
             auto authenticated = co_await _authenticate.handle (_actors, stream, header, payload);
             _bound_actor_id = std::string (authenticated.actor_id ());
-            _gateway.bind_session_stream (*_bound_actor_id, stream);
+            _gateway.bind_session_stream (*_bound_actor_id, stream,
+                                          zlink::framework::stream_codec_t::json);
             co_return;
         }
 

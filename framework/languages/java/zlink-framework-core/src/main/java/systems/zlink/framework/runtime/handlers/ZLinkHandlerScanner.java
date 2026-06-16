@@ -9,6 +9,7 @@ import java.lang.reflect.Type;
 import java.net.JarURLConnection;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.LinkedHashSet;
@@ -33,12 +34,19 @@ import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
+import systems.zlink.framework.handlers.ZLinkSpotRequest;
+import systems.zlink.framework.handlers.ZLinkSpotSubscription;
+import systems.zlink.framework.handlers.ZLinkSpotTimer;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorSendHandler;
+import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
+import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
+import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
+import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 
 public final class ZLinkHandlerScanner {
     private ZLinkHandlerScanner() {
@@ -71,6 +79,7 @@ public final class ZLinkHandlerScanner {
                 ZLinkScannedHandlerSurface.ROUTE, ZLinkScannedHandlerKind.SEND);
             addInterfaceHandler(handlers, candidate, groups, ZLinkRouteRequestHandler.class,
                 ZLinkScannedHandlerSurface.ROUTE, ZLinkScannedHandlerKind.REQUEST);
+            addSpotInterfaceHandlers(handlers, candidate, groups);
             addSpotActorInterfaceHandlers(handlers, candidate, groups);
         }
         return new ZLinkScannedHandlerCatalog(handlers);
@@ -138,6 +147,52 @@ public final class ZLinkHandlerScanner {
                     groups));
             }
 
+            ZLinkSpotRequest spotRequest = method.getAnnotation(ZLinkSpotRequest.class);
+            if (spotRequest != null) {
+                rejectJavaCompletionStageReturn(candidate, method);
+                SpotMethodShape shape = requireSpotMethodShape(
+                    candidate,
+                    method,
+                    "SPOT request handler method must have spot and request parameters: ");
+                Class<?> replyType = resolveReplyType(candidate, method);
+                handlers.add(new ZLinkScannedHandler(
+                    ZLinkScannedHandlerSurface.SPOT,
+                    ZLinkScannedHandlerKind.REQUEST,
+                    candidate,
+                    method,
+                    shape.spotType(),
+                    shape.messageType(),
+                    replyType,
+                    resolvePacketName(shape.messageType(), spotRequest.packetName()),
+                    "",
+                    "",
+                    null,
+                    groups));
+            }
+
+            ZLinkSpotSubscription spotSubscription =
+                method.getAnnotation(ZLinkSpotSubscription.class);
+            if (spotSubscription != null) {
+                rejectJavaCompletionStageReturn(candidate, method);
+                SpotMethodShape shape = requireSpotMethodShape(
+                    candidate,
+                    method,
+                    "SPOT subscription handler method must have spot and event parameters: ");
+                handlers.add(new ZLinkScannedHandler(
+                    ZLinkScannedHandlerSurface.SPOT,
+                    ZLinkScannedHandlerKind.PUBLISH,
+                    candidate,
+                    method,
+                    shape.spotType(),
+                    shape.messageType(),
+                    Void.class,
+                    resolvePacketName(shape.messageType()),
+                    requireTopic(candidate, spotSubscription.topic()),
+                    "",
+                    null,
+                    groups));
+            }
+
             ZLinkSpotActorSend actorSend = method.getAnnotation(ZLinkSpotActorSend.class);
             if (actorSend != null) {
                 rejectJavaCompletionStageReturn(candidate, method);
@@ -150,9 +205,13 @@ public final class ZLinkHandlerScanner {
                     ZLinkScannedHandlerKind.ACTOR_SEND,
                     candidate,
                     method,
+                    shape.spotType(),
                     shape.messageType(),
                     Void.class,
                     resolvePacketName(shape.messageType(), actorSend.packetName()),
+                    "",
+                    "",
+                    null,
                     groups));
             }
 
@@ -169,13 +228,32 @@ public final class ZLinkHandlerScanner {
                     ZLinkScannedHandlerKind.ACTOR_REQUEST,
                     candidate,
                     method,
+                    shape.spotType(),
                     shape.messageType(),
                     replyType,
                     resolvePacketName(shape.messageType(), actorRequest.packetName()),
+                    "",
+                    "",
+                    null,
                     groups));
             }
 
         }
+    }
+
+    private static SpotMethodShape requireSpotMethodShape(
+        Class<?> handlerType,
+        Method method,
+        String failurePrefix) {
+        Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
+        if (parameters.length == 2) {
+            return new SpotMethodShape(parameters[0], parameters[1]);
+        }
+        throw new ZLinkConfigurationException(
+            failurePrefix + handlerType.getName() + "." + method.getName());
+    }
+
+    private record SpotMethodShape(Class<?> spotType, Class<?> messageType) {
     }
 
     private static void rejectJavaCompletionStageReturn(Class<?> handlerType, Method method) {
@@ -206,19 +284,19 @@ public final class ZLinkHandlerScanner {
         Class<? extends ZLinkHandlerContext> contextType) {
         Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 2) {
-            return new ActorMessageShape(parameters[0], parameters[1]);
+            return new ActorMessageShape(null, parameters[0], parameters[1]);
         }
         if (parameters.length == 5
             && parameters[2].isAssignableFrom(contextType)
             && parameters[4] == CancellationToken.class) {
-            return new ActorMessageShape(parameters[1], parameters[3]);
+            return new ActorMessageShape(parameters[0], parameters[1], parameters[3]);
         }
         throw new ZLinkConfigurationException(
             "Spot actor packet handler method must have actor/message or spot, actor, context, message, CancellationToken parameters: "
                 + handlerType.getName() + "." + method.getName());
     }
 
-    private record ActorMessageShape(Class<?> actorType, Class<?> messageType) {
+    private record ActorMessageShape(Class<?> spotType, Class<?> actorType, Class<?> messageType) {
     }
 
     private static Set<Class<?>> scanPackage(Class<?> markerType) {
@@ -335,6 +413,124 @@ public final class ZLinkHandlerScanner {
             groups));
     }
 
+    private static void addSpotInterfaceHandlers(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups) {
+        addSpotPacketInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            ZLinkSpotPacketHandler.class,
+            ZLinkScannedHandlerKind.SEND);
+        addSpotPacketInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            ZLinkSpotRequestHandler.class,
+            ZLinkScannedHandlerKind.REQUEST);
+        addSpotSubscriptionInterfaceHandler(handlers, candidate, groups);
+        addSpotTimerInterfaceHandler(handlers, candidate, groups);
+    }
+
+    private static void addSpotPacketInterfaceHandler(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups,
+        Class<?> handlerInterface,
+        ZLinkScannedHandlerKind kind) {
+        ParameterizedType matched = findInterface(candidate, handlerInterface);
+        if (matched == null) {
+            return;
+        }
+        Type[] arguments = matched.getActualTypeArguments();
+        Class<?> spotType = requireClassArgument(candidate, arguments[0]);
+        Class<?> messageType = requireClassArgument(candidate, arguments[1]);
+        Class<?> replyType = kind == ZLinkScannedHandlerKind.REQUEST
+            ? requireClassArgument(candidate, arguments[2])
+            : Void.class;
+        handlers.add(new ZLinkScannedHandler(
+            ZLinkScannedHandlerSurface.SPOT,
+            kind,
+            candidate,
+            null,
+            spotType,
+            messageType,
+            replyType,
+            resolvePacketName(messageType),
+            "",
+            "",
+            null,
+            groups));
+    }
+
+    private static void addSpotSubscriptionInterfaceHandler(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups) {
+        ParameterizedType matched = findInterface(candidate, ZLinkSpotSubscriptionHandler.class);
+        if (matched == null) {
+            return;
+        }
+        ZLinkSpotSubscription annotation = candidate.getAnnotation(ZLinkSpotSubscription.class);
+        if (annotation == null) {
+            return;
+        }
+        Type[] arguments = matched.getActualTypeArguments();
+        Class<?> spotType = requireClassArgument(candidate, arguments[0]);
+        Class<?> messageType = requireClassArgument(candidate, arguments[1]);
+        handlers.add(new ZLinkScannedHandler(
+            ZLinkScannedHandlerSurface.SPOT,
+            ZLinkScannedHandlerKind.PUBLISH,
+            candidate,
+            null,
+            spotType,
+            messageType,
+            Void.class,
+            resolvePacketName(messageType),
+            requireTopic(candidate, annotation.topic()),
+            "",
+            null,
+            groups));
+    }
+
+    private static void addSpotTimerInterfaceHandler(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups) {
+        ParameterizedType matched = findInterface(candidate, ZLinkSpotTimerHandler.class);
+        if (matched == null) {
+            return;
+        }
+        ZLinkSpotTimer annotation = candidate.getAnnotation(ZLinkSpotTimer.class);
+        if (annotation == null) {
+            return;
+        }
+        if (annotation.name().isBlank()) {
+            throw new ZLinkConfigurationException(
+                "SPOT timer handler name is required: " + candidate.getName());
+        }
+        if (annotation.periodMillis() <= 0) {
+            throw new ZLinkConfigurationException(
+                "SPOT timer period must be positive: " + candidate.getName());
+        }
+        Type[] arguments = matched.getActualTypeArguments();
+        Class<?> spotType = requireClassArgument(candidate, arguments[0]);
+        handlers.add(new ZLinkScannedHandler(
+            ZLinkScannedHandlerSurface.SPOT,
+            ZLinkScannedHandlerKind.TIMER,
+            candidate,
+            null,
+            spotType,
+            Void.class,
+            Void.class,
+            "",
+            "",
+            annotation.name(),
+            Duration.ofMillis(annotation.periodMillis()),
+            groups));
+    }
+
     private static void addSpotActorInterfaceHandlers(
         List<ZLinkScannedHandler> handlers,
         Class<?> candidate,
@@ -376,6 +572,7 @@ public final class ZLinkHandlerScanner {
             return;
         }
         Type[] arguments = matched.getActualTypeArguments();
+        Class<?> spotType = requireClassArgument(candidate, arguments[0]);
         Class<?> messageType = requireClassArgument(candidate, arguments[2]);
         Class<?> replyType = kind == ZLinkScannedHandlerKind.ACTOR_REQUEST
             ? requireClassArgument(candidate, arguments[3])
@@ -384,9 +581,14 @@ public final class ZLinkHandlerScanner {
             ZLinkScannedHandlerSurface.SPOT,
             kind,
             candidate,
+            null,
+            spotType,
             messageType,
             replyType,
             resolvePacketName(messageType),
+            "",
+            "",
+            null,
             groups));
     }
 
@@ -460,5 +662,13 @@ public final class ZLinkHandlerScanner {
         return explicitPacketName == null || explicitPacketName.isBlank()
             ? resolvePacketName(messageType)
             : explicitPacketName;
+    }
+
+    private static String requireTopic(Class<?> handlerType, String topic) {
+        if (topic == null || topic.isBlank()) {
+            throw new ZLinkConfigurationException(
+                "SPOT subscription handler topic is required: " + handlerType.getName());
+        }
+        return topic;
     }
 }

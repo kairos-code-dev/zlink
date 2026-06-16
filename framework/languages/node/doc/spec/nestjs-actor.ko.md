@@ -250,9 +250,11 @@ export class PlayerActorFactory implements ZLinkActorFactory {
 ```ts
 @Module({
   imports: [
-    ZLinkModule.forRoot({
-      actorFactories: [PlayerActorFactory],
-    }),
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .actorFactory('player', PlayerActorFactory)
+        .build()
+    ),
   ],
 providers: [PlayerActorFactory],
 })
@@ -627,14 +629,13 @@ handler 클래스는 NestJS provider 로 등록한다. framework 는 NestJS
 ```ts
 @Module({
   imports: [
-    ZLinkModule.forRoot({
-      spotNodes: {
-        play: {
-          entrySpotType: PlayerEntrySpot,
-          spotFactories: [BingoRoomSpot],
-        },
-      },
-    }),
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .addSpotNode('play')
+          .addEntrySpot(PlayerEntrySpot)
+          .addSpotFactory(BingoRoomSpot)
+        .build()
+    ),
   ],
   providers: [
     JoinMatchHandler,
@@ -1070,40 +1071,35 @@ actor-session binding 은 public route resolver 결과가 아니다. 이전 stre
 Session 서버는 다음과 같이 등록한다.
 
 ```ts
-ZLinkModule.forRoot({
-  discovery: { registries: ['tcp://registry1:5551'] },
-  spotNodes: {
-    'session-node': {
-      router: { bind: 'tcp://0.0.0.0:7201' },
-    },
-  },
-  streams: {
-    'client-stream': {
-      bind: 'tcp://0.0.0.0:7101',
-      attachActorGateway: 'session-node',
-      session: ClientHeaderSession,
-    },
-  },
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .useDiscovery()
+      .addRegistryEndpoint('tcp://registry1:5551')
+    .addSpotNode('session-node')
+      .enableRouter('tcp://0.0.0.0:7201')
+    .addStreamNode('client-stream')
+      .bind('tcp://0.0.0.0:7101')
+      .attachActorGateway('session-node')
+      .registerSession(ClientHeaderSession)
+    .build()
+);
 ```
 
 Play 서버는 다음과 같이 등록한다.
 
 ```ts
-ZLinkModule.forRoot({
-  actorFactories: [PlayerActorFactory],
-  discovery: { registries: ['tcp://registry1:5551'] },
-  registrySpotRemoteAddresses: { namespace: 'game' },
-  spotNodes: {
-    'play-node': {
-      router: { bind: 'tcp://0.0.0.0:9000' },
-      entrySpotType: PlayerEntrySpot,
-      spotFactories: [MatchSpot],
-    },
-  },
-
-  // routed channel 등록은 별도 문서 참고
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .actorFactory('player', PlayerActorFactory)
+    .useDiscovery()
+      .addRegistryEndpoint('tcp://registry1:5551')
+    .addSpotNode('play-node')
+      .enableRouter('tcp://0.0.0.0:9000')
+      .addEntrySpot(PlayerEntrySpot)
+      .addSpotFactory(MatchSpot)
+    .options({ registrySpotRemoteAddresses: { namespace: 'game' } })
+    .build()
+);
 ```
 
 actor remote address resolver 는 session relay 의 등록 요소가 아니다.
@@ -1152,9 +1148,11 @@ export interface ZLinkMessageMetadataPolicy {
 는 node 의 `metadata: { forward: [...] }` 로 매핑한다.
 
 ```ts
-ZLinkModule.forRoot({
-  metadata: { forward: ['trace-id', 'tenant-id'] },
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .options({ metadata: { forward: ['trace-id', 'tenant-id'] } })
+    .build()
+);
 ```
 
 `forward` 목록에 없는 키는 `canForward` 가 false 가 되어 actor 경계를 넘지
@@ -1166,33 +1164,19 @@ ZLinkModule.forRoot({
 
 이 절은 앞서 본 표면들을 module options 한 자리에 모아 다시 본다.
 
-actor 관련 module options 키는 다음과 같다 (dotnet `IZLinkFrameworkOptions`
-대응).
-
-```ts
-export interface ZLinkModuleOptions {
-  // ... (clientServerChannels / routerMeshes / spotNodes / streams 등 다른 키 생략)
-
-  actorFactories?: Type<ZLinkActorFactory>[];
-
-  spotRemoteAddressResolver?: Type<ZLinkSpotRemoteAddressResolver>;
-
-  registrySpotRemoteAddresses?: { namespace: string };
-
-  metadata?: { forward: string[] };
-}
-```
+actor 관련 등록 표면은 `zlinkFramework()` builder 와 `.options(...)` 의 보조 설정으로
+나뉜다(dotnet `IZLinkFrameworkOptions` 대응).
 
 각 키의 용도를 정리하면 다음과 같다.
 
 | 키 / 표면 | 누가 필요한가 | 무엇을 하는가 |
 | --- | --- | --- |
-| `actorFactories: [...]` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | factory 의 `actorType` 키로 factory를 매핑 |
-| `spotRemoteAddressResolver` / `registrySpotRemoteAddresses` | actor가 spot rid로 user Spot에 join하거나 spot outbound를 쓰는 서버 | spot rid → spot routing |
-| `spotNodes[...].entrySpotType` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
-| `spotNodes[...].spotFactories` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
-| `streams[...].attachActorGateway` | client stream을 받는 Session 서버 | STREAM node를 session owner gateway에 attach |
-| `metadata: { forward }` | metadata forward가 필요한 서버 | actor 경계 너머로 forward할 키 |
+| `.actorFactory(actorType, factoryType)` | actor를 만들어 attach하는 서버 (Play 서버 / SPOT 호스트) | factory 의 `actorType` 키로 factory를 매핑 |
+| `.options({ spotRemoteAddressResolver })` / `.options({ registrySpotRemoteAddresses })` | actor가 spot rid로 user Spot에 join하거나 spot outbound를 쓰는 서버 | spot rid → spot routing |
+| `.addSpotNode(...).addEntrySpot(...)` | actor runtime을 가진 SPOT host | 자동 Entry Spot에 붙일 actor packet/lifecycle registry 등록 |
+| `.addSpotNode(...).addSpotFactory(...)` | user Spot을 만드는 SPOT host | Spot 타입 기준 factory 매핑 |
+| `.addStreamNode(...).attachActorGateway(...)` | client stream을 받는 Session 서버 | STREAM node를 session owner gateway에 attach |
+| `.options({ metadata })` | metadata forward가 필요한 서버 | actor 경계 너머로 forward할 키 |
 
 ## 12. 다른 문서와의 관계
 
@@ -1299,7 +1283,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
     주고받는 방식이다. request / send는 요청-응답과 단방향 전달을, event
     messaging은 publish / subscribe 형태의 이벤트 전달을 가리킨다.
 
-[^routed]: **routed channel**은 `routerMeshes[name] = {...}`로 선언하는 양방향 채널이다. 일반 client-server
+[^routed]: **routed channel**은 `.addRouteMeshChannel(name)` 으로 선언하는 양방향 채널이다. 일반 client-server
     채널과 달리 호출 시점에 목적지 노드의 routing id를 직접 지정한다. 자세한
     내용은
     [nestjs-channel-messaging.ko.md](./nestjs-channel-messaging.ko.md)

@@ -4,12 +4,12 @@ import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 
 public interface ZLinkStreamNodeBuilder {
-    void bind(String endpoint);
+    ZLinkStreamNodeBuilder bind(String endpoint);
 
-    void attachActorGateway(String spotNodeName);
+    ZLinkStreamNodeBuilder attachActorGateway(String spotNodeName);
 
-    void registerSession(Class<? extends ZLinkSession> sessionType);
+    ZLinkStreamNodeBuilder registerSession(Class<? extends ZLinkSession> sessionType);
 
-    void addSessionPacketHandler(
+    ZLinkStreamNodeBuilder addSessionPacketHandler(
         Class<? extends ZLinkSessionPacketHandler<?>> handlerType);
 }

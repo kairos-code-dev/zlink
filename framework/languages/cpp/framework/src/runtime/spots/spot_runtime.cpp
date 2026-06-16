@@ -986,17 +986,11 @@ std::optional<spot_route_t> spot_node_builder_t::resolve_spot (spot_rid_t spot_r
     return detail::spot_node_runtime_t (_state).resolve_spot (std::move (spot_rid));
 }
 
-zlink_builder_t &
-zlink_builder_t::add_spot_node (std::string spot_node_name,
-                                std::function<void (spot_node_builder_t &)> configure)
+spot_node_builder_t zlink_builder_t::add_spot_node (std::string spot_node_name)
 {
     auto state = std::make_shared<detail::spot_node_builder_state_t> (std::move (spot_node_name));
-    spot_node_builder_t builder (state);
-    if (configure) {
-        configure (builder);
-    }
     _state->spot_nodes[state->snapshot.name] = state;
-    return *this;
+    return spot_node_builder_t (state);
 }
 
 std::vector<spot_node_snapshot_t> zlink_builder_t::spot_nodes () const

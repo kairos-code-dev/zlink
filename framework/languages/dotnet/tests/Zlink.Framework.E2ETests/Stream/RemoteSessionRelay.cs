@@ -52,24 +52,27 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
             services.AddScoped<GatewaySessionDisconnectRequestHandler>();
             services.AddZLinkFramework(options =>
             {
-                options.ConfigureMetadata(metadata =>
                 {
+                    var metadata = options.ConfigureMetadata();
                     metadata.AddForwardedMetadataKey("trace-id");
-                });
-                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
+
+                }
+                options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.AddNode("actor-node", spot =>
-                {
-                    spot.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        router.BindRouter(playSpotRouterEndpoint);
-                        router.SetRoutingId(playRid);
-                    });
+                        var spot = mesh.AddNode("actor-node");
+                    {
+                        var router = spot.EnableRouter(playSpotRouterEndpoint);
+                        router.SetRouterRoutingId(playRid);
+
+                    }
                     spot.AddEntrySpot<GatewayEntrySpot>();
-                });
-                });
+
+                    }
+
+                }
             });
         });
         var actorManager = playHost.Services.GetRequiredService<IZLinkActorManager>();
@@ -86,24 +89,27 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                options.AddSpotMesh("actor-node", mesh =>
+                options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    mesh.AddNode("actor-node", spot =>
-                {
-                    spot.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        router.BindRouter(sessionSpotRouterEndpoint);
-                        router.SetRoutingId(sessionRid);
-                    });
-                });
-                });
-                options.AddStreamNode("client.stream", stream =>
+                        var spot = mesh.AddNode("actor-node");
+                    {
+                        var router = spot.EnableRouter(sessionSpotRouterEndpoint);
+                        router.SetRouterRoutingId(sessionRid);
+
+                    }
+
+                    }
+
+                }
                 {
+                    var stream = options.AddStreamNode("client.stream");
                     stream.Bind(streamEndpoint);
                     stream.AttachActorGateway("actor-node");
                     stream.RegisterSession<GatewayRelaySession>();
-                });
+
+                }
             });
         });
 

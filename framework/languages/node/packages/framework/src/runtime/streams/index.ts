@@ -1306,6 +1306,9 @@ function simpleMessage(bytes: Uint8Array): unknown {
     getString() {
       return utf8Decode(copy);
     },
+    value() {
+      return JSON.parse(utf8Decode(copy));
+    },
     close() {}
   };
 }
@@ -1345,13 +1348,13 @@ async function createProviderInstance<T>(
   resolver: ZLinkProviderResolver | undefined,
   fallbackArg?: unknown
 ): Promise<T> {
-  const created = await resolver?.create?.(type);
-  if (created !== undefined) {
-    return created;
-  }
   const existing = resolver?.get?.(type);
   if (existing !== undefined) {
     return existing;
+  }
+  const created = await resolver?.create?.(type);
+  if (created !== undefined) {
+    return created;
   }
   return fallbackArg === undefined
     ? new (type as new () => T)()

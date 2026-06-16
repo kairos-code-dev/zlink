@@ -24,31 +24,24 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddClientServerChannel("api", channel =>
             {
-                channel.EnableServer(server =>
+                var channel = options.AddClientServerChannel("api");
+                channel.EnableServer(channelEndpoint);
+
+            }
+            {
+                var mesh = options.AddSpotMesh("spot.route.client-server");
                 {
-                    server.Bind(channelEndpoint);
-                    server.ConfigureRouting(routing =>
-                    {
-                        routing.RoutingId = RoutingId.From("aabbcc01");
-                    });
-                });
-            });
-            options.AddSpotMesh("spot.route.client-server", mesh =>
-            {
-                mesh.AddNode("route-target-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                    var spot = mesh.AddNode("route-target-node");
                 {
-                    router.BindRouter(spotRouterEndpoint);
-                });
-                spot.AcceptSpotRoutesFromChannel(
-                    "api",
-                    routes => routes.UseManualConnections(
-                        peers => peers.Connect(channelEndpoint)));
-            });
-            });
+                    var router = spot.EnableRouter(spotRouterEndpoint);
+
+                }
+                                spot.AcceptSpotRoutesFromChannel("api", channelEndpoint);
+
+                }
+
+            }
         });
 
         using var host = builder.Build();
@@ -74,28 +67,29 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddRouteMeshChannel("play", routed =>
             {
-                routed.Bind(routeEndpoint);
-                routed.ConfigureRouting(routing =>
+                var routed = options.AddRouteMeshChannel("play");
+                routed.EnableServer(routeEndpoint);
                 {
+                    var routing = routed.ConfigureRouting();
                     routing.RoutingId = RoutingId.From("aabbcc02");
-                });
-            });
-            options.AddSpotMesh("spot.route.mesh", mesh =>
+
+                }
+
+            }
             {
-                mesh.AddNode("route-target-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("spot.route.mesh");
                 {
-                    router.BindRouter(spotRouterEndpoint);
-                });
-                spot.AcceptSpotRoutesFromChannel(
-                    "play",
-                    routes => routes.UseManualConnections(
-                        peers => peers.Connect(routeEndpoint)));
-            });
-            });
+                    var spot = mesh.AddNode("route-target-node");
+                {
+                    var router = spot.EnableRouter(spotRouterEndpoint);
+
+                }
+                                spot.AcceptSpotRoutesFromChannel("play", routeEndpoint);
+
+                }
+
+            }
         });
 
         using var host = builder.Build();

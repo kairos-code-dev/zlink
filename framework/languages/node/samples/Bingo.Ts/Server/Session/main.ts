@@ -1,22 +1,24 @@
-require('reflect-metadata');
-
-const net = require('node:net');
-const { NestFactory } = require('@nestjs/core');
-const connector = require('../../../../../packages/stream-connector/dist');
-const { ZLINK_CHANNEL_CLIENT } = require('../../../../../packages/nestjs/dist');
-const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
-const { createChannelClient, createRegistryClient } = require('../discovery-support');
-const { BingoSession } = require('./Sessions/bingo-session');
-const { createBingoSessionModule, getSessionAuthenticator } = require('./bingo-session-module');
-const { SampleNames, SampleTimings } = require('../Configuration/sample-names');
-const { loadSampleConfig } = require('../Configuration/sample-config');
-const { PacketNames, bingoNotificationsReq, withPlayerIdentity } = require('../../Shared/Contracts/messages');
-const { fromBingoProto, toBingoProto } = require('../../Shared/Contracts/protobuf-codec');
+import 'reflect-metadata';
+import * as net from 'node:net';
+import { NestFactory } from '@nestjs/core';
+import * as connector from '@zlink-systems/stream-connector';
+import { Message } from '@zlink-systems/zlink';
+import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { closeNestRuntime, retry, waitForShutdown } from '../runtime-support';
+import { BingoSession } from './Sessions/bingo-session';
+import { createBingoSessionModule, getSessionAuthenticator } from './bingo-session-module';
+import { SampleNames } from '../Configuration/sample-names';
+import { loadSampleConfig } from '../Configuration/sample-config';
+import { PacketNames, bingoNotificationsReq, withPlayerIdentity } from '../../Shared/Contracts/messages';
+import { fromBingoProto, toBingoProto } from '../../Shared/Contracts/protobuf-codec';
 import type { Server, Socket } from 'node:net';
-import type { ZLinkChannelClient } from '../../../../packages/framework/dist';
-import type { BingoChannelClient } from '../discovery-support';
+import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import type { BingoSession as BingoSessionType } from './Sessions/bingo-session';
-import type { BingoActorRef } from '../../Shared/Contracts/messages';
+import type {
+  AuthenticateReq,
+  BingoNotificationBatch,
+  BingoActorRef
+} from '../../Shared/Contracts/messages';
 
 type TcpEndpoint = {
   host: string;
@@ -29,7 +31,7 @@ type ReadFrameResult = {
 };
 
 type StreamHeader = {
-  requestSeq?: number;
+  requestSeq?: bigint;
   name: string;
 };
 
@@ -48,22 +50,9 @@ type BingoSessionActorRef = BingoActorRef & {
   relay(header: StreamHeader, payload: unknown): Promise<unknown>;
 };
 
-type NotificationBatch = {
-  nextSeq: number;
-  delivered: Array<{ seq: number; packetName: string; payload: unknown }>;
-};
-
 async function bootstrap(): Promise<void> {
   const config = loadSampleConfig();
-  const registry = await createRegistryClient(config.registryEndpoint);
-  const api = await registry.resolve(SampleNames.apiService);
-  const play = await registry.resolve(SampleNames.playService);
-  const notifications = await registry.resolve(SampleNames.notificationService);
-  const notificationClient = await createChannelClient(SampleNames.notificationChannel, notifications.endpoint);
-  const BingoSessionModule = createBingoSessionModule({
-    apiEndpoint: api.endpoint,
-    playEndpoint: play.endpoint
-  });
+  const BingoSessionModule = createBingoSessionModule(config);
   const app = await NestFactory.createApplicationContext(BingoSessionModule, {
     logger: false,
     abortOnError: false
@@ -79,9 +68,9 @@ async function bootstrap(): Promise<void> {
         if (header.name !== PacketNames.authenticateReq) {
           return false;
         }
-        const response = await authenticate.handle(payload, context);
+        const response = await authenticate.handle(payload as AuthenticateReq, context);
         transport.reply(header, response);
-        void pumpNotifications(notificationClient, context, transport);
+        void pumpNotifications(channelClient, context, transport);
         return true;
       }
     });
@@ -115,8 +104,6 @@ async function bootstrap(): Promise<void> {
     await waitForShutdown({ keepAlive: true });
   } finally {
     await new Promise<void>((resolve, reject) => streamServer.close((error) => error ? reject(error) : resolve()));
-    await notificationClient.stop();
-    await registry.stop();
     await closeNestRuntime(app);
   }
 }
@@ -136,10 +123,12 @@ async function dispatchPacket(
       await session.dispatch(header, payload);
       return;
     }
-    const response = await relayToPlay(channelClient, context, header.name, payload);
+    const response = await relayToPlay(channelClient, context, header.name, payload as object);
     transport.reply(header, response);
   } catch (error) {
-    transport.send('StreamError', { message: error instanceof Error ? error.message : String(error) });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(error);
+    transport.send('StreamError', { error: message });
   }
 }
 
@@ -153,7 +142,7 @@ async function relayToPlay(
 }
 
 async function relayToChannel(
-  channelClient: ZLinkChannelClient | BingoChannelClient,
+  channelClient: ZLinkChannelClient,
   channelName: string,
   context: SessionContext,
   packetName: string,
@@ -163,15 +152,14 @@ async function relayToChannel(
     throw new Error(`Client must authenticate before relaying packet '${packetName}'.`);
   }
   const payload = withPlayerIdentity(request, context.actorId, context.displayName);
-  return await channelClient
-    .requestToChannel(channelName, payload)
-    .packetName(packetName)
-    .timeout(SampleTimings.requestTimeout)
-    .submit<unknown>();
+  return await retry(() => channelClient
+      .requestToChannel(channelName, payload)
+      .packetName(packetName)
+      .submit<unknown>(), { delayMs: 25, maxAttempts: 200 });
 }
 
 async function pumpNotifications(
-  channelClient: BingoChannelClient,
+  channelClient: ZLinkChannelClient,
   context: SessionContext,
   transport: StreamTransport
 ): Promise<void> {
@@ -184,10 +172,10 @@ async function pumpNotifications(
           context,
           PacketNames.bingoNotificationsReq,
           bingoNotificationsReq(context.notificationCursor)
-        ) as NotificationBatch;
+        ) as BingoNotificationBatch;
         context.notificationCursor = response.nextSeq;
         for (const delivered of response.delivered) {
-          transport.send(delivered.packetName, delivered.payload, { seq: String(delivered.seq) });
+          transport.sendEncoded(delivered.packetName, Buffer.from(delivered.payloadBase64, 'base64'), { seq: String(delivered.seq) });
         }
       } catch (error) {
         if (context.closed) {
@@ -240,7 +228,23 @@ class StreamTransport {
     }, payload);
   }
 
-  write(header: unknown, payload: unknown): void {
+  sendEncoded(packetName: string, payload: Uint8Array, metadata: Record<string, string> = {}): void {
+    const header = {
+      kind: connector.ZlinkStreamMessageKind.Send,
+      codec: connector.ZlinkStreamCodec.Protobuf,
+      flags: Object.keys(metadata).length === 0
+        ? connector.ZlinkStreamHeaderFlags.None
+        : connector.ZlinkStreamHeaderFlags.HasMetadata,
+      name: packetName,
+      metadata: connector.ZlinkStreamMetadataMap.from(Object.entries(metadata))
+    };
+    this.socket.write(connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode(header),
+      payload
+    ));
+  }
+
+  write(header: connector.ZlinkStreamHeader, payload: unknown): void {
     const encoded = toBingoProto(payload, undefined, (header as { name?: string }).name);
     this.socket.write(connector.ZlinkStreamFrameCodec.encode(
       connector.ZlinkStreamHeaderCodec.encode(header),

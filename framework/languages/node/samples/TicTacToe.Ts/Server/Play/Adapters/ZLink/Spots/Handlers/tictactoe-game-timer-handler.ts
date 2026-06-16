@@ -1,14 +1,13 @@
-const { zlinkSpotTimerHandler } = require('../../../../../../../../../packages/nestjs/dist');
+import type {
+  ZLinkSpotTimerHandler,
+  ZLinkTimerTick
+} from '@zlink-systems/framework';
+import type { TicTacToeGameSpot } from '../tictactoe-game-spot';
 
-type TimerRoom = {
-  timerRegistered: boolean;
-};
-
-@zlinkSpotTimerHandler()
-class TicTacToeGameTimerHandler {
-  register(room: TimerRoom): { timerRegistered: boolean } {
-    room.timerRegistered = true;
-    return { timerRegistered: true };
+class TicTacToeGameTimerHandler implements ZLinkSpotTimerHandler<TicTacToeGameSpot> {
+  async handle(spot: TicTacToeGameSpot, tick: ZLinkTimerTick): Promise<void> {
+    void tick;
+    await spot.tick();
   }
 }
 

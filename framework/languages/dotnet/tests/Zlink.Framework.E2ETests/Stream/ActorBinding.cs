@@ -24,16 +24,18 @@ public sealed class ActorBindingTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.AddNode("actor-node", spot =>
-                {
-                    spot.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        router.BindRouter(spotEndpoint);
-                    });
-                });
-                });
+                        var spot = mesh.AddNode("actor-node");
+                    {
+                        var router = spot.EnableRouter(spotEndpoint);
+
+                    }
+
+                    }
+
+                }
             });
         });
 
@@ -69,16 +71,18 @@ public sealed class ActorBindingTests : StreamTestSupport
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
                 options.AddActorFactory<GatewayActorFactory>("spectator");
-                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.AddNode("actor-node", spot =>
-                {
-                    spot.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        router.BindRouter(spotEndpoint);
-                    });
-                });
-                });
+                        var spot = mesh.AddNode("actor-node");
+                    {
+                        var router = spot.EnableRouter(spotEndpoint);
+
+                    }
+
+                    }
+
+                }
             });
         });
 
@@ -114,16 +118,18 @@ public sealed class ActorBindingTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<ConfigureFailureActorFactory>("player");
-                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.AddNode("actor-node", spot =>
-                {
-                    spot.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        router.BindRouter(spotEndpoint);
-                    });
-                });
-                });
+                        var spot = mesh.AddNode("actor-node");
+                    {
+                        var router = spot.EnableRouter(spotEndpoint);
+
+                    }
+
+                    }
+
+                }
             });
         });
 
@@ -162,22 +168,25 @@ public sealed class ActorBindingTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.AddNode("actor-node", spot =>
-                {
-                    spot.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        router.BindRouter(spotEndpoint);
-                    });
-                });
-                });
-                options.AddRouteMeshChannel("gateway", routed =>
+                        var spot = mesh.AddNode("actor-node");
+                    {
+                        var router = spot.EnableRouter(spotEndpoint);
+
+                    }
+
+                    }
+
+                }
                 {
-                    routed.Bind(endpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = RoutingId.From("1001"));
-                    routed.UseManualConnections(connections => connections.Connect(endpoint));
-                });
+                    var routed = options.AddRouteMeshChannel("gateway");
+                    routed.EnableServer(endpoint);
+                    routed.ConfigureRouting().RoutingId = RoutingId.From("1001");
+                    routed.EnableClient(endpoint);
+
+                }
             });
         });
 
@@ -215,22 +224,25 @@ public sealed class ActorBindingTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.AddNode("actor-node", spot =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        spot.EnableRouter(router =>
+                        var spot = mesh.AddNode("actor-node");
                         {
-                            router.BindRouter(spotEndpoint);
-                        });
-                    });
-                });
-                options.AddRouteMeshChannel("gateway", routed =>
+                            var router = spot.EnableRouter(spotEndpoint);
+
+                        }
+
+                    }
+
+                }
                 {
-                    routed.Bind(endpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = RoutingId.From("1101"));
-                    routed.UseManualConnections(connections => connections.Connect(endpoint));
-                });
+                    var routed = options.AddRouteMeshChannel("gateway");
+                    routed.EnableServer(endpoint);
+                    routed.ConfigureRouting().RoutingId = RoutingId.From("1101");
+                    routed.EnableClient(endpoint);
+
+                }
             });
         });
 
@@ -278,22 +290,25 @@ public sealed class ActorBindingTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.AddNode("actor-node", spot =>
-                {
-                    spot.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        router.BindRouter(spotEndpoint);
-                    });
-                });
-                });
-                options.AddRouteMeshChannel("gateway", routed =>
+                        var spot = mesh.AddNode("actor-node");
+                    {
+                        var router = spot.EnableRouter(spotEndpoint);
+
+                    }
+
+                    }
+
+                }
                 {
-                    routed.Bind(endpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
-                    routed.UseManualConnections(connections => connections.Connect(endpoint));
-                });
+                    var routed = options.AddRouteMeshChannel("gateway");
+                    routed.EnableServer(endpoint);
+                    routed.ConfigureRouting().RoutingId = localRid;
+                    routed.EnableClient(endpoint);
+
+                }
             });
         });
 

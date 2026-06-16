@@ -150,15 +150,15 @@ outbox·idempotency 는 그대로 짠다** — 분산 데이터 문제는 transp
 builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.AddProtobuf();
-    options.AddClientServerChannel("orders", channel =>
     {
-        channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7401"));
+        var channel =     options.AddClientServerChannel("orders");
+                channel.EnableServer("tcp://0.0.0.0:7401");
         channel.AddRequestHandler<PlaceOrderHandler>();
-    });
-    options.AddClientServerChannel("payments", channel => channel.EnableClient());
-    options.AddFanoutChannel("order.events", channel =>
-        channel.EnablePublisher(publisher => publisher.Bind("tcp://0.0.0.0:7402")));
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+
+    }
+        options.AddClientServerChannel("payments").EnableClient();
+                options.AddFanoutChannel("order.events").EnablePublisher("tcp://0.0.0.0:7402");
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
     options.AddHandlersFromAssemblyOf<Program>();
 });
 ```
@@ -203,7 +203,7 @@ public sealed class PlaceOrderHandler(
 |----|-------------------|-------|
 | 계약 | `.proto` + 코드 생성(CI 단계) | record DTO(공유 어셈블리), proto 파이프라인 없음 |
 | 호출 | `payments.ChargeAsync(req, deadline:)` (생성된 stub) | `services.RequestToChannel("payments", req).Timeout(...)` |
-| 위치/분배 | Consul/xDS + Envoy `DestinationRule`(L7) | `UseDiscovery(...AddRegistryEndpoint...)`  + Registry(framework 가 peer 분배) |
+| 위치/분배 | Consul/xDS + Envoy `DestinationRule`(L7) | `UseDiscovery().AddRegistryEndpoint(...)`  + Registry(framework 가 peer 분배) |
 | 전송 보안 | Envoy mTLS | 배포 계층/TLS 지원 범위/네트워크 정책에서 별도 결정 |
 | 멱등/outbox/saga | **앱 책임** | **앱 책임(동일)** |
 

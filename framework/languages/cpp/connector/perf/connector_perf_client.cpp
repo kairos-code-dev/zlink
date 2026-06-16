@@ -225,9 +225,9 @@ run_request (zlink::stream_e2e_client::coroutine_connector_t &client,
     packet.name = "connector.perf.request";
     packet.codec = zlink::stream_connector::codec_t::raw;
     packet.payload = zlink::message_t::from (std::string (payload_bytes, 'r'));
-    auto reply = co_await client.request<zlink::message_t> (std::move (packet))
+    auto reply = co_await client.request (std::move (packet))
                    .timeout (timeout)
-                   .async ();
+                   .async<zlink::message_t> ();
     co_return reply;
 }
 

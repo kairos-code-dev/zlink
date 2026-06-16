@@ -37,17 +37,12 @@ class zlink_builder_t
     zlink_builder_t &max_pending (std::size_t count);
     zlink_builder_t &on_retry (retry_hook_t hook);
     zlink_builder_t &on_dead_letter (dead_letter_hook_t hook);
-    zlink_builder_t &enable_registry (std::function<void (registry_builder_t &)> configure);
-    zlink_builder_t &discovery (std::function<void (discovery_builder_t &)> configure);
-    zlink_builder_t &route_channel (std::string route_channel_name);
-    zlink_builder_t &route_channel (std::string route_channel_name,
-                                    std::function<void (route_channel_builder_t &)> configure);
-    zlink_builder_t &channel (std::string channel_name,
-                              std::function<void (channel_builder_t &)> configure);
-    zlink_builder_t &add_spot_node (std::string spot_node_name,
-                                    std::function<void (spot_node_builder_t &)> configure);
-    zlink_builder_t &stream (std::string stream_name,
-                             std::function<void (stream_builder_t &)> configure);
+    registry_builder_t enable_registry ();
+    discovery_builder_t discovery ();
+    route_channel_builder_t route_channel (std::string route_channel_name);
+    channel_builder_t channel (std::string channel_name);
+    spot_node_builder_t add_spot_node (std::string spot_node_name);
+    stream_builder_t stream (std::string stream_name);
 
     std::vector<channel_snapshot_t> channels () const;
     registry_options_snapshot_t registry_options () const;

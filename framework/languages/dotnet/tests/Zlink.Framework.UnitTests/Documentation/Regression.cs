@@ -5,9 +5,6 @@ public sealed class RegressionTests
     private static readonly string[] DotNetDraftDocuments =
     [
         "README.ko.md",
-        "actor-gateway-session-relay.ko.md",
-        "registry-backed-routing-defaults.ko.md",
-        "spot-timer-policy.ko.md",
         "handler-interfaces.ko.md",
         "aspnet-core-channel-messaging.ko.md",
         "aspnet-core-spot.ko.md",
@@ -15,11 +12,8 @@ public sealed class RegressionTests
         "aspnet-core-stream.ko.md",
         "aspnet-core-actor.ko.md",
         "session-actor-dispatch.ko.md",
-        "session-attached-actor-route.ko.md",
-        "channel-handler-exposure-and-spot-route-transport.ko.md",
         "spot-node.ko.md",
         "streaming-client.ko.md",
-        "stream-open-items.ko.md",
         "aspnet-core-monitoring.ko.md",
         "aspnet-core-registry.ko.md",
         "behavior-matrix.ko.md",
@@ -33,6 +27,10 @@ public sealed class RegressionTests
         "stream-samples.ko.md",
         "tictactoe-game-sample.ko.md",
         "bingo-game-sample.ko.md",
+        "supportchat-sample.ko.md",
+        "deliverydispatch-sample.ko.md",
+        "shoppingmall-checkout-sample.ko.md",
+        "gamequest-sample.ko.md",
     ];
 
     [Fact]
@@ -197,6 +195,42 @@ public sealed class RegressionTests
             Assert.DoesNotContain("BoundSession.Request", text, StringComparison.Ordinal);
             Assert.DoesNotContain("Request<TRequest>(TRequest request)", text, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void DotNetDocs_DoNotDocumentNestedFrameworkConfigurationCallbacks()
+    {
+        var docRoot = GetDotNetDocRoot();
+        var docs = Directory
+            .EnumerateFiles(docRoot, "*.ko.md", SearchOption.AllDirectories)
+            .Where(static path => !path.Contains(
+                $"{Path.DirectorySeparatorChar}draft{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal))
+            .ToArray();
+        var forbidden = new (System.Text.RegularExpressions.Regex Pattern, string Reason)[]
+        {
+            (new(@"\bEnable(?:Server|Client|Publisher|Subscriber)\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "nested capability callback"),
+            (new(@"\bUseManualConnections\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "manual connection callback"),
+            (new(@"\bAcceptSpotRoutesFromChannel\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "spot route acceptance callback"),
+            (new(@"\bAddNode\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "spot mesh node callback"),
+            (new(@"\bConfigureEntrySpot\s*\([\s\S]{0,160}?Action<", System.Text.RegularExpressions.RegexOptions.Compiled), "entry spot options callback"),
+        };
+        var offenders = new List<string>();
+
+        foreach (var path in docs)
+        {
+            var text = File.ReadAllText(path);
+            var relative = Path.GetRelativePath(docRoot, path);
+            foreach (var (pattern, reason) in forbidden)
+            {
+                if (pattern.IsMatch(text))
+                {
+                    offenders.Add($"{relative}: {reason}");
+                }
+            }
+        }
+
+        Assert.Empty(offenders.Order(StringComparer.Ordinal));
     }
 
     [Fact]

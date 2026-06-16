@@ -41,7 +41,7 @@ class bingo_room_game_t
         _state.players.push_back ({actor_id, display_name, seat, is_host, {}, {}, 0});
         _state.can_start = _state.players.size () == 2;
         if (_state.can_start) {
-            _state.status = "running";
+            _state.status = bingo_room_status_t::running;
         }
         return {_state.room_id, std::move (actor_id), std::move (display_name), seat, is_host,
                 _state};
@@ -50,7 +50,7 @@ class bingo_room_game_t
     submit_bingo_card_res_t submit_card (const std::string &actor_id,
                                          const std::vector<int> &numbers)
     {
-        if (_state.status != "running") {
+        if (_state.status != bingo_room_status_t::running) {
             throw std::runtime_error ("bingo room is not running");
         }
         _game.submit_card (actor_id, numbers);

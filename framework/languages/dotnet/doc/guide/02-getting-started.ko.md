@@ -54,7 +54,7 @@ sequenceDiagram
 
 이 흐름에서 API 서버는 Play 서버 주소를 Discovery로 찾지 않는다. 실제 `.NET`
 `TicTacToe` 샘플은 설정값 `PlayChannelEndpoint`를 읽어
-`UseManualConnections(...)`로 직접 연결한다. 처음 읽을 때는 이 방식이 가장 단순하다.
+`EnableClient(endpoint)`로 직접 연결한다. 처음 읽을 때는 이 방식이 가장 단순하다.
 
 ## 3. 메시지 계약
 
@@ -89,23 +89,16 @@ builder.WebHost.UseUrls(settings.ApiBindUrl);
 builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.AddMessagePack();
-    options.AddClientServerChannel(SampleChannels.Play, channel =>
-    {
-        channel.EnableClient(client =>
-        {
-            client.UseManualConnections(connections =>
-            {
-                connections.Connect(settings.PlayChannelEndpoint);
-            });
-        });
-    });
+
+    options.AddClientServerChannel(SampleChannels.Play)
+        .EnableClient(settings.PlayChannelEndpoint);
 });
 
 var app = builder.Build();
 app.MapPost("/games", CreateGameHttpHandler.HandleAsync);
 ```
 
-`SampleChannels.Play` 값은 `"Play"`다. `UseManualConnections(...)`는 수동 연결이다.
+`SampleChannels.Play` 값은 `"Play"`다. `EnableClient(endpoint)`는 수동 연결이다.
 API 서버가 Play 서버의 channel endpoint를 설정으로 알고 시작한다.
 
 HTTP handler는 `IZLinkChannelClient`를 DI로 받고, `CreateGameReq`를 Play channel로
@@ -146,14 +139,12 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.AddMessagePack();
     options.AddHandlersFromAssemblyOf<PlayServer>();
-    options.AddClientServerChannel(SampleChannels.Play, channel =>
     {
-        channel.EnableServer(server =>
-        {
-            server.Bind(settings.PlayChannelEndpoint);
-        });
+        var channel =     options.AddClientServerChannel(SampleChannels.Play);
+        channel.EnableServer(settings.PlayChannelEndpoint);
         channel.AddHandlerGroup("play");
-    });
+
+    }
 });
 ```
 
@@ -286,23 +277,25 @@ API 서버는 Play endpoint를 직접 쓰지 않고 `EnableClient()`만 선언�
 
 ```csharp
 // Bingo.Server.Api.ApiServerHostFactory
-options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
-options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
+options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
 {
+    var channel = options.AddClientServerChannel(SampleNames.PlayChannel);
     channel.EnableClient();
-});
+
+}
 ```
 
 Play 서버는 자기 endpoint를 server 역할로 열고 같은 Registry를 바라본다.
 
 ```csharp
 // Bingo.Server.Play.PlayServerHostFactory
-options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
-options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
+options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
 {
-    channel.EnableServer(server => server.Bind(topology.PlayChannelEndpoint));
+    var channel = options.AddClientServerChannel(SampleNames.PlayChannel);
+        channel.EnableServer(topology.PlayChannelEndpoint);
     channel.AddHandlerGroup("play");
-});
+
+}
 ```
 
 즉 `TicTacToe`는 “endpoint를 직접 알고 연결하는 최소 흐름”, `Bingo`는

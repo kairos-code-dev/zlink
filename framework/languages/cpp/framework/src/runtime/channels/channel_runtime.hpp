@@ -31,6 +31,7 @@ class stream_runtime_state_t;
 class capability_builder_state_t
 {
   public:
+    channel_capability_snapshot_t *target = nullptr;
     channel_capability_snapshot_t snapshot;
 };
 
@@ -39,6 +40,7 @@ class channel_builder_state_t
   public:
     explicit channel_builder_state_t (std::string name) : snapshot{std::move (name)} {}
 
+    channel_snapshot_t *target = nullptr;
     channel_snapshot_t snapshot;
 };
 

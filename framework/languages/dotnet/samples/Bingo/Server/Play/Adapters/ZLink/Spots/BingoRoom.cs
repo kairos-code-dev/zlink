@@ -1,11 +1,9 @@
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Timers;
 using Bingo.Server.Play.Adapters.ZLink.Actors;
 using Bingo.Server.Play.Domain.Bingo;
 using Bingo.Server.Play.Adapters.ZLink.Notifications;
-using Bingo.Server.Play.Adapters.ZLink.Spots.Handlers;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 
@@ -18,11 +16,9 @@ internal sealed class BingoRoom(
     ILogger<BingoRoom> logger) : IZLinkSpot<PlayerActor>
 {
     private static readonly BingoRoomSettings DefaultSettings = BingoRoomSettings.Create(BingoSampleModes.TwoPlayer, 0);
-    internal static readonly TimeSpan DrawPeriod = TimeSpan.FromMilliseconds(200);
 
     private readonly Dictionary<string, PlayerActor> _actors = new(StringComparer.Ordinal);
     private readonly BingoRoomGame _game = new(context.SpotRid.ToHex(), DefaultSettings);
-    private IZLinkTimer? _drawTimer;
     private bool _cleanupStarted;
 
     public IZLinkSpotContext Context { get; } = context;
@@ -31,14 +27,10 @@ internal sealed class BingoRoom(
     {
     }
 
-    public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    public ValueTask OnClosingAsync(CancellationToken cancellationToken)
     {
         _ = cancellationToken;
-        if (_drawTimer is not null)
-        {
-            await _drawTimer.CancelAsync();
-            _drawTimer = null;
-        }
+        return ValueTask.CompletedTask;
     }
 
     public ValueTask onJoinActor(
@@ -134,37 +126,7 @@ internal sealed class BingoRoom(
         return new BingoRoomJoinRes { State = change.State };
     }
 
-    internal async ValueTask StartDrawTimerAsync(CancellationToken cancellationToken)
-    {
-        if (!_game.IsReadyToDraw
-            || _drawTimer is not null
-            || _game.Status != BingoRoomStatus.Running)
-        {
-            return;
-        }
-
-        _drawTimer = await Context.AddTimer<BingoRoomDrawTimerHandler>(
-            "bingo-draw",
-            DrawPeriod,
-            new ZLinkTimerOptions
-            {
-                OverrunPolicy = ZLinkTimerOverrunPolicy.DelayNextTick,
-                StopOnUnhandledException = true,
-            },
-            cancellationToken);
-    }
-
-    internal void StopDrawTimerAfterTick()
-    {
-        var timer = _drawTimer;
-        if (timer is null)
-        {
-            return;
-        }
-
-        _drawTimer = null;
-        _ = timer.CancelAsync().AsTask();
-    }
+    internal bool IsReadyToDraw => _game.IsReadyToDraw;
 
     internal BingoGameChange SubmitCard(string actorId, BingoCard card)
     {

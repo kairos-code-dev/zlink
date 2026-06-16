@@ -2,6 +2,8 @@ const assert = require('node:assert/strict');
 const net = require('node:net');
 const test = require('node:test');
 const { once } = require('node:events');
+const { Module } = require('@nestjs/common');
+const { NestFactory } = require('@nestjs/core');
 
 const zlink = require('../../../../../bindings/node/dist');
 const framework = require('../../packages/framework/dist/internal');
@@ -42,6 +44,34 @@ test('ZLinkChannelClient fluent request call passes packet and timeout to transp
   assert.deepEqual(reply, { ok: true });
   assert.deepEqual(calls, [
     { channelName: 'api', packetName: 'GetProfile', request: { id: 7 }, timeoutMs: 250 }
+  ]);
+});
+
+test('ZLinkChannelClient applies registration request timeout when call timeout is omitted', async () => {
+  const calls = [];
+  const registration = framework.createFrameworkRegistration({
+    requestTimeoutMs: 7000,
+    channels: {
+      api: { client: { manualConnections: ['inproc://api'] } }
+    }
+  });
+  const client = new framework.DefaultZLinkChannelClient(registration, {
+    async send() {},
+    async publish() {},
+    async request(channelName, packetName, request, timeoutMs) {
+      calls.push({ channelName, packetName, request, timeoutMs });
+      return { ok: true };
+    }
+  });
+
+  const reply = await client
+    .requestToChannel('api', { id: 7 })
+    .packetName('GetProfile')
+    .submit();
+
+  assert.deepEqual(reply, { ok: true });
+  assert.deepEqual(calls, [
+    { channelName: 'api', packetName: 'GetProfile', request: { id: 7 }, timeoutMs: 7000 }
   ]);
 });
 
@@ -106,14 +136,12 @@ test('ZLinkDealerChannelClientTransport rejects pre-aborted signal before creati
 });
 
 test('ZLinkModule.forRoot provides concrete channel and fanout clients', () => {
-  const module = nestjs.ZLinkModule.forRoot({
-    clientServerChannels: {
-      api: { client: { manualConnections: ['inproc://api'] } }
-    },
-    fanoutChannels: {
-      events: { publisher: { bind: 'inproc://pub' } }
-    }
-  });
+  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addClientServerChannel('api')
+      .enableClient('inproc://api')
+    .addFanoutChannel('events')
+      .enablePublisher('inproc://pub')
+    .build());
   const channelProvider = module.providers.find((provider) => provider.provide === nestjs.ZLINK_CHANNEL_CLIENT);
   const fanoutProvider = module.providers.find((provider) => provider.provide === nestjs.ZLINK_FANOUT_CLIENT);
 
@@ -280,9 +308,10 @@ test('ZLinkModule channel client uses runtime host channel transport after boots
   const ctx = zlink.createContext();
   const router = zlink.createRouterSocket(ctx);
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const module = nestjs.ZLinkModule.forRoot({
-    clientServerChannels: { api: { client: { manualConnections: [endpoint] } } }
-  });
+  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addClientServerChannel('api')
+      .enableClient(endpoint)
+    .build());
   const container = await resolveModuleProviders(module, [
     nestjs.ZLINK_FRAMEWORK_RUNTIME,
     nestjs.ZLINK_CHANNEL_CLIENT
@@ -337,7 +366,7 @@ test('ZLinkFrameworkRuntimeHost dispatches client-server channel request handler
             handle(payload, context) {
               assert.equal(context.channelName, 'play');
               assert.equal(context.packetName, 'CreateGame');
-              const reply = { created: JSON.parse(payload.toString()).gameName };
+              const reply = { created: payload.gameName };
               calls.push(reply);
               return reply;
             }
@@ -370,6 +399,124 @@ test('ZLinkFrameworkRuntimeHost dispatches client-server channel request handler
   }
 });
 
+test('ZLinkFrameworkRuntimeHost uses channel serializer registry for typed request replies', async () => {
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const contentType = 'application/x-test-codec';
+  const calls = [];
+  const serializer = {
+    serialize(value) {
+      return zlink.Message.from(Buffer.from(JSON.stringify({ wrapped: value })));
+    },
+    deserialize(message) {
+      return JSON.parse(Buffer.from(message.data()).toString()).wrapped;
+    }
+  };
+  const registrationOptions = {
+    codecs: {
+      serializers: [{ contentType, serializer }]
+    }
+  };
+  const serverRegistration = framework.createFrameworkRegistration({
+    ...registrationOptions,
+    channels: {
+      play: {
+        server: { bind: endpoint },
+        requestHandlers: [{
+          packetName: 'CreateGame',
+          handler: {
+            handle(payload, context) {
+              assert.equal(context.contentType, contentType);
+              assert.equal(Buffer.isBuffer(payload), false);
+              assert.deepEqual(payload, { gameName: 'sample' });
+              const reply = { created: payload.gameName };
+              calls.push(reply);
+              return reply;
+            }
+          }
+        }]
+      }
+    }
+  });
+  const clientRegistration = framework.createFrameworkRegistration({
+    ...registrationOptions,
+    channels: {
+      play: { client: { manualConnections: [endpoint] } }
+    }
+  });
+  const serverRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: serverRegistration });
+  const clientRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: clientRegistration });
+
+  try {
+    await serverRuntime.start();
+    await clientRuntime.start();
+    const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
+    const reply = await submitWhenReachable(() =>
+      client.requestToChannel('play', { gameName: 'sample' }).packetName('CreateGame').timeout(1000).submit()
+    );
+
+    assert.deepEqual(calls, [{ created: 'sample' }]);
+    assert.deepEqual(reply, { created: 'sample' });
+  } finally {
+    await clientRuntime.stop();
+    await serverRuntime.stop();
+  }
+});
+
+test('ZLinkFrameworkRuntimeHost uses default protobuf serializer for addProtobuf channels', async () => {
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const contentType = 'application/x-zlink-protobuf';
+  const calls = [];
+  const registrationOptions = {
+    codecs: {
+      codecs: ['protobuf']
+    }
+  };
+  const serverRegistration = framework.createFrameworkRegistration({
+    ...registrationOptions,
+    channels: {
+      play: {
+        server: { bind: endpoint },
+        requestHandlers: [{
+          packetName: 'CreateGame',
+          handler: {
+            handle(payload, context) {
+              assert.equal(context.contentType, contentType);
+              calls.push(payload);
+              return { created: payload.gameName, players: payload.players };
+            }
+          }
+        }]
+      }
+    }
+  });
+  const clientRegistration = framework.createFrameworkRegistration({
+    ...registrationOptions,
+    channels: {
+      play: { client: { manualConnections: [endpoint] } }
+    }
+  });
+  const serverRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: serverRegistration });
+  const clientRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: clientRegistration });
+
+  try {
+    await serverRuntime.start();
+    await clientRuntime.start();
+    const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
+    const reply = await submitWhenReachable(() =>
+      client.requestToChannel('play', { gameName: 'sample', players: ['p1', 'p2'] })
+        .packetName('CreateGame')
+        .timeout(1000)
+        .submit()
+    );
+
+    assert.deepEqual(reply, { created: 'sample', players: ['p1', 'p2'] });
+    assert.deepEqual(calls, [{ gameName: 'sample', players: ['p1', 'p2'] }]);
+  } finally {
+    await clientRuntime.stop();
+    await serverRuntime.stop();
+  }
+});
+
 test('ZLinkFrameworkRuntimeHost dispatches fanout subscriber publish handlers', async () => {
   const ctx = zlink.createContext();
   const publisher = zlink.createPubSocket(ctx);
@@ -387,7 +534,7 @@ test('ZLinkFrameworkRuntimeHost dispatches fanout subscriber publish handlers', 
           handler: {
             handle(payload, context) {
               calls.push({
-                payload: JSON.parse(payload.toString()),
+                payload,
                 channelName: context.channelName,
                 packetName: context.packetName,
                 topic: context.topic,
@@ -438,14 +585,11 @@ test('ZLinkModule route client uses runtime host route transport after bootstrap
   const ctx = zlink.createContext();
   const remoteRouter = zlink.createRouterSocket(ctx);
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const module = nestjs.ZLinkModule.forRoot({
-    routerMeshes: {
-      mesh: {
-        bind: endpoint,
-        routingId: 'node-a'
-      }
-    }
-  });
+  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addRouteMeshChannel('mesh')
+      .enableRouter(endpoint)
+      .routingId('node-a')
+    .build());
   const container = await resolveModuleProviders(module, [
     nestjs.ZLINK_FRAMEWORK_RUNTIME,
     nestjs.ZLINK_ROUTE_CLIENT
@@ -523,7 +667,7 @@ test('ZLinkRoutePacketDispatcher invokes routed send and request handlers', asyn
           packetName: 'RouteNotice',
           handler: {
             async handle(payload, context) {
-              events.push(`send:${context.channelName}:${context.packetName}:${JSON.parse(payload.toString()).value}`);
+              events.push(`send:${context.channelName}:${context.packetName}:${payload.value}`);
             }
           }
         },
@@ -532,7 +676,7 @@ test('ZLinkRoutePacketDispatcher invokes routed send and request handlers', asyn
           packetName: 'RoutePing',
           handler: {
             async handle(payload, context) {
-              events.push(`request:${context.channelName}:${context.packetName}:${context.requestSeq}:${JSON.parse(payload.toString()).value}`);
+              events.push(`request:${context.channelName}:${context.packetName}:${context.requestSeq}:${payload.value}`);
               return { value: 'pong' };
             }
           }
@@ -595,37 +739,30 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
   const remoteDealer = zlink.createDealerSocket(ctx);
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const events = [];
-  const module = nestjs.ZLinkModule.forRoot({
-    routerMeshes: {
-      mesh: {
-        bind: endpoint,
-        routingId: 'node-a',
-        sendHandlers: [
-        {
-          packetName: 'RouteNotice',
-          handler: {
-            async handle(payload, context) {
-              events.push(`send:${context.channelName}:${context.packetName}:${JSON.parse(payload.toString()).value}`);
-            }
-          }
-        }
-        ],
-        requestHandlers: [
-        {
-          packetName: 'RoutePing',
-          handler: {
-            async handle(payload, context) {
-              events.push(`request:${context.channelName}:${context.packetName}:${context.requestSeq}:${JSON.parse(payload.toString()).value}`);
-              return { value: 'pong' };
-            }
-          }
-        }
-        ]
-      }
+  class RouteNoticeHandler {
+    async handle(payload, context) {
+      events.push(`send:${context.channelName}:${context.packetName}:${payload.value}`);
     }
-  });
-  const container = await resolveModuleProviders(module, [nestjs.ZLINK_FRAMEWORK_RUNTIME]);
-  const runtime = container.get(nestjs.ZLINK_FRAMEWORK_RUNTIME);
+  }
+  class RoutePingHandler {
+    async handle(payload, context) {
+      events.push(`request:${context.channelName}:${context.packetName}:${context.requestSeq}:${payload.value}`);
+      return { value: 'pong' };
+    }
+  }
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addRouteMeshChannel('mesh')
+        .enableRouter(endpoint)
+        .routingId('node-a')
+        .addSendHandler('RouteNotice', RouteNoticeHandler)
+        .addRequestHandler('RoutePing', RoutePingHandler)
+      .build())],
+    providers: [RouteNoticeHandler, RoutePingHandler]
+  })(HandlerModule);
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+  const runtime = app.get(nestjs.ZLINK_FRAMEWORK_RUNTIME, { strict: false });
 
   try {
     await runtime.start();
@@ -694,6 +831,7 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
   } finally {
     remoteDealer.close();
     await runtime.stop();
+    await app.close();
     ctx.close();
   }
 });
@@ -703,27 +841,24 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
   const remoteDealer = zlink.createDealerSocket(ctx);
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const events = [];
-  const module = nestjs.ZLinkModule.forRoot({
-    routerMeshes: {
-      mesh: {
-        bind: endpoint,
-        routingId: 'node-a',
-        requestHandlers: [
-          {
-            packetName: 'RoutePing',
-            handler: {
-              async handle(payload, context) {
-                events.push(`request:${context.channelName}:${context.packetName}:${context.requestSeq}:${JSON.parse(payload.toString()).value}`);
-                return { value: 'pong' };
-              }
-            }
-          }
-        ]
-      }
+  class RoutePingHandler {
+    async handle(payload, context) {
+      events.push(`request:${context.channelName}:${context.packetName}:${context.requestSeq}:${payload.value}`);
+      return { value: 'pong' };
     }
-  });
-  const container = await resolveModuleProviders(module, [nestjs.ZLINK_FRAMEWORK_RUNTIME]);
-  const runtime = container.get(nestjs.ZLINK_FRAMEWORK_RUNTIME);
+  }
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addRouteMeshChannel('mesh')
+        .enableRouter(endpoint)
+        .routingId('node-a')
+        .addRequestHandler('RoutePing', RoutePingHandler)
+      .build())],
+    providers: [RoutePingHandler]
+  })(HandlerModule);
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+  const runtime = app.get(nestjs.ZLINK_FRAMEWORK_RUNTIME, { strict: false });
 
   try {
     await runtime.start();
@@ -757,6 +892,7 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
   } finally {
     remoteDealer.close();
     await runtime.stop();
+    await app.close();
     ctx.close();
   }
 });
@@ -912,7 +1048,7 @@ test('ZLinkChannelRequestDispatcher invokes request handler and replies through 
       handlers: new Map([
         ['Ping', {
           async handle(payload) {
-            assert.equal(JSON.parse(payload.toString()), 'ping');
+            assert.equal(payload, 'ping');
             return 'pong';
           }
         }]

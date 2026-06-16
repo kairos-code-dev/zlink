@@ -65,7 +65,6 @@ internal sealed class StartOrderWorkflowRouteHandler(
         OrderWorkflowService workflow,
         string orderId)
     {
-        await Task.Delay(150).ConfigureAwait(false);
         await workflow.ContinueAsync(new ContinueOrderWorkflowReq(orderId), CancellationToken.None).ConfigureAwait(false);
     }
 }

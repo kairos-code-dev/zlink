@@ -145,17 +145,16 @@ services.AddZLinkFramework(options =>
 {
     options.AddActorFactory<PlayerActorFactory>("player");
 
-    options.AddSpotMesh("game.rooms", mesh =>
     {
-        mesh.AddNode("play-node", node =>
+        var mesh =     options.AddSpotMesh("game.rooms");
         {
-            node.EnablePubSub(pubsub =>
-            {
-                pubsub.BindPubSub("tcp://127.0.0.1:9000");
-            });
+            var node =         mesh.AddNode("play-node");
+            node.EnablePubSub("tcp://127.0.0.1:9000");
             node.AddEntrySpot<GameEntrySpot>();
-        });
-    });
+
+        }
+
+    }
 });
 ```
 

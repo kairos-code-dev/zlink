@@ -125,18 +125,20 @@ public sealed class UserActor(IZLinkActorContext context) : IZLinkActor
 
 ```csharp
 // 등록 골격(정식은 05·07): STREAM(연결) + room SpotMesh(pub/sub 포함)
-options.AddStreamNode("chat", s =>
 {
+    var s = options.AddStreamNode("chat");
     s.AttachActorGateway("rooms");
     s.RegisterSession<ChatSession>();
-});
+
+}
 options.AddActorFactory<UserActorFactory>("user");
-options.AddSpotMesh("rooms", mesh => mesh.AddNode("room-node", n =>
 {
-    n.EnableRouter(r => r.BindRouter("tcp://0.0.0.0:7700"));
-    n.EnablePubSub(p => p.BindPubSub("tcp://0.0.0.0:7701"));   // presence/fan-out
+    var n = options.AddSpotMesh("rooms").AddNode("room-node");
+        n.EnableRouter("tcp://0.0.0.0:7700");
+        n.EnablePubSub("tcp://0.0.0.0:7701");   // presence/fan-out
     n.AddSpotFactory<ChatRoomSpot>();
-}));
+
+}
 ```
 
 > 연결 레지스트리("누가 어디 붙었나")를 응용이 직접 조회하지 않는다. session↔actor

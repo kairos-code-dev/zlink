@@ -16,22 +16,18 @@
 public class ZLinkConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        options.addClientServerChannel("api", channel -> {
-            channel.enableServer(server -> {
-                server.bind("tcp://0.0.0.0:7100");
-            });
-        });
+        framework.addClientServerChannel("api")
+            .enableServer("tcp://0.0.0.0:7100");
 
-        options.addClientServerChannel("profile", channel -> {
-            channel.enableClient();
-        });
+        framework.addClientServerChannel("profile")
+            .enableClient();
 
-        options.addClientServerChannel("account", channel -> {
-            channel.enableClient();
-        });
+        framework.addClientServerChannel("account")
+            .enableClient();
 
-        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));
-        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry2:5551"));
+        ZLinkDiscoveryBuilder discovery = framework.useDiscovery();
+        discovery.addRegistryEndpoint("tcp://registry1:5551");
+        discovery.addRegistryEndpoint("tcp://registry2:5551");
     }
 }
 ```
@@ -39,14 +35,9 @@ public class ZLinkConfig implements ZLinkFrameworkConfigurer {
 ## 2. 수동 연결 샘플
 
 ```java
-options.addClientServerChannel("profile", channel -> {
-    channel.enableClient(client -> {
-        client.useManualConnections(peers -> {
-            peers.connect("tcp://10.0.10.15:7101");
-            peers.connect("tcp://10.0.10.16:7101");
-        });
-    });
-});
+framework.addClientServerChannel("profile")
+    .enableClient("tcp://10.0.10.15:7101")
+    .enableClient("tcp://10.0.10.16:7101");
 ```
 
 이 설정은 `profile` channel 전체가 아니라 `profile.client` 연결 집합에만 적용된다.

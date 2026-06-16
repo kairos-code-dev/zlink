@@ -82,27 +82,27 @@
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddClientServerChannel("api", channel =>
     {
-        channel.EnableServer(server =>
-        {
-            server.Bind("tcp://0.0.0.0:7101");
-        });
+        var channel =     options.AddClientServerChannel("api")
+            .EnableServer("tcp://0.0.0.0:7101");
         channel.AddHandlerGroup("api");
-    });
 
-    options.AddClientServerChannel("profile", channel =>
+    }
+
     {
+        var channel =     options.AddClientServerChannel("profile");
         channel.EnableClient();
-    });
 
-    options.AddClientServerChannel("account", channel =>
+    }
+
     {
+        var channel =     options.AddClientServerChannel("account");
         channel.EnableClient();
-    });
 
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry2:5551"));
+    }
+
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry2:5551");
 });
 ```
 
@@ -112,7 +112,7 @@ builder.Services.AddZLinkFramework(options =>
 - channel 별 runtime
 - codec[^codec] 레지스트리
 
-`AddClientServerChannel("profile", channel => channel.EnableClient())` 한 줄을 풀어
+`AddClientServerChannel("profile").EnableClient()` 한 줄을 풀어
 읽으면 다음과 같다.
 
 > "이 앱은 `profile` channel 의 client 로 동작한다. 그쪽으로 보내는 outbound 경로와
@@ -125,7 +125,7 @@ builder.Services.AddZLinkFramework(options =>
 
 ##### 자동 연결을 켜는 방법
 
-자동 연결은 `options.UseDiscovery(...AddRegistryEndpoint...)` 를 **한 번** 부르면 켜진다. 그 뒤에 등록되는
+자동 연결은 `options.UseDiscovery().AddRegistryEndpoint(...)` 를 **한 번** 부르면 켜진다. 그 뒤에 등록되는
 모든 client / subscriber 역할은, 별도 신호 없이도 이 전역 Discovery 를 기본
 연결 방식으로 쓴다. 즉 `channel.EnableClient()` 만 호출해도, 그 channel 은 자동으로
 Discovery 기반 연결로 동작한다.
@@ -138,24 +138,17 @@ Discovery 기반 연결로 동작한다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddClientServerChannel("api", channel =>
     {
-        channel.EnableServer(server =>
-        {
-            server.Bind("tcp://0.0.0.0:7101");
-        });
-    });
+        options.AddClientServerChannel("api")
+            .EnableServer("tcp://0.0.0.0:7101");
 
-    options.AddClientServerChannel("profile", channel =>
+    }
+
     {
-        channel.EnableClient(client =>
-        {
-            client.UseManualConnections(peers =>
-            {
-                peers.Connect("tcp://10.0.10.15:7101");
-            });
-        });
-    });
+        options.AddClientServerChannel("profile")
+            .EnableClient("tcp://10.0.10.15:7101");
+
+    }
 });
 ```
 
@@ -176,10 +169,9 @@ binding 하부 모델이 "이미 connect 된 DEALER 를 attach 한다" 는 방�
 예를 들면 `profile` channel 은 Discovery 자동 연결로 두고, `account` channel 은 수동
 연결로 둘 수 있다.
 
-channel 별 연결 방식은, 역할 빌더가 `UseManualConnections(...)` 를 불렀는지
-여부로 정해진다.
+channel 별 연결 방식은, 역할 등록에서 endpoint 를 직접 넘겼는지로 정해진다.
 
-| 전역 `UseDiscovery(...AddRegistryEndpoint...)` | 역할 `UseManualConnections(...)` | 그 역할의 연결 방식 |
+| 전역 `UseDiscovery().AddRegistryEndpoint(...)` | 역할 endpoint 인자 | 그 역할의 연결 방식 |
 | --- | --- | --- |
 | 있음 | 없음 | Discovery 자동 연결 |
 | 있음 | 있음 | 수동 연결 (수동 우선) |
@@ -188,17 +180,17 @@ channel 별 연결 방식은, 역할 빌더가 `UseManualConnections(...)` 를 �
 
 정리하면 다음과 같다.
 
-- `options.UseDiscovery(...AddRegistryEndpoint...)` 는 모든 client / subscriber 역할의 **기본값**이다.
+- `options.UseDiscovery().AddRegistryEndpoint(...)` 는 모든 client / subscriber 역할의 **기본값**이다.
 - 특정 channel 만 수동으로 바꾸고 싶을 때는, 그 channel 안에서
-  `EnableClient(client => client.UseManualConnections(...))` 또는
-  `EnableSubscriber(subscriber => subscriber.UseManualConnections(...))` 를 명시한다.
+  `EnableClient(endpoint)` 또는
+  `EnableSubscriber(endpoint)` 를 명시한다.
 - 이때 명시한 역할만 수동으로 분류되고, 나머지는 그대로 전역 Discovery 를 쓴다.
 
 이렇게 나눠 두는 이유는 zlink core 의 동작 때문이다. Discovery 가 붙은 DEALER 는,
 수동 `connect`, `disconnect`, `unbind`, `close` 를 받지 않는다. 따라서 framework 역시
 같은 channel runtime 안에서 두 방식을 섞는 모델로 설명할 수 없다.
 
-> route channel (`AddRouteMeshChannel(...)`) 은 일반 channel 과 정책이 다르다. 같은 routed
+> route channel (`AddRouteMeshChannel`) 은 일반 channel 과 정책이 다르다. 같은 routed
 > channel 안에서 전역 Discovery 와 수동 연결이 동시에 있으면, startup validation
 > 단계에서 차단된다. 일반 client / subscriber 는 "수동이 있으면 수동 우선" 정책으로
 > 둘이 공존해도 받아들인다.
@@ -211,10 +203,10 @@ SPOT으로 들어오는 routed 메시지는 `ROUTER` 역할이 필요하다. 따
 
 대상 channel은 두 종류다.
 
-- `AddClientServerChannel(...)`의 server `ROUTER`
-- `AddRouteMeshChannel(...)`의 route mesh `ROUTER`
+- `AddClientServerChannel`의 server `ROUTER`
+- `AddRouteMeshChannel`의 route mesh `ROUTER`
 
-`AddFanoutChannel(...)`과 `AddDealerMeshChannel(...)`은 router 역할이 없으므로
+`AddFanoutChannel`과 `AddDealerMeshChannel`은 router 역할이 없으므로
 SPOT route 수신 대상이 아니다. `ClientServerChannel`의 server `ROUTER`에서도
 SPOT으로 보낼 수 있으므로, 이 기능은 `RouteMeshChannel` 전용으로 제한하지 않는다.
 
@@ -227,19 +219,12 @@ SPOT으로 보낼 수 있으므로, 이 기능은 `RouteMeshChannel` 전용으�
 - `profile.client`
 - `profile.subscriber`
 
-그래서 수동 연결 API 도 channel 전체에 두지 않는다. `channel.UseManualConnections(...)`
-같은 형태는 사용하지 않고, 대신 역할별 빌더 안에 둔다. 즉
-`EnableClient(client => ...)`, `EnableSubscriber(subscriber => ...)` 안쪽이다.
+그래서 수동 연결 API 도 channel 전체에 두지 않는다. channel 전체에 수동 연결을
+거는 형태는 사용하지 않고, 역할을 켜는 메서드가 endpoint 를 직접 받는다. 즉
+`EnableClient(endpoint)`, `EnableSubscriber(endpoint)` 를 사용한다.
 
-수동 연결을 쓰는 역할에 대해서는, startup builder 에서 다음 동작을 호출할 수
-있는 연결 집합 표면을 둔다.
-
-- `Connect`
-- `Disconnect`
-- `ListConnections`
-
-이 표면은 설정 객체를 편집하는 용도이며, host 시작 뒤 실행 중인 socket 을 직접
-제어하는 runtime manager 는 public 계약에 두지 않는다. 자세한 표면은
+이 endpoint 인자는 startup 설정이다. host 시작 뒤 실행 중인 socket 을 직접 제어하는
+runtime manager 는 public 계약에 두지 않는다. 자세한 표면은
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) §6.2 를 참고한다.
 
 ### 3.1.1 outbound-only 앱 예시
@@ -256,13 +241,14 @@ builder.Services.AddZLinkFramework(options =>
     // 예제용 짧은 값. options.DefaultTimeout의 실제 기본은 30초다.
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
-    options.AddClientServerChannel("profile", channel =>
     {
+        var channel =     options.AddClientServerChannel("profile");
         channel.EnableClient();
-    });
 
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry2:5551"));
+    }
+
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry2:5551");
 });
 ```
 
@@ -351,17 +337,19 @@ public sealed class AdminCommandHandler
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddClientServerChannel("tictactoe.api", channel =>
     {
-        channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
+        var channel =     options.AddClientServerChannel("tictactoe.api");
+                channel.EnableServer("tcp://0.0.0.0:7101");
         channel.AddHandlerGroup("api");
-    });
 
-    options.AddClientServerChannel("tictactoe.admin", channel =>
+    }
+
     {
-        channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7102"));
+        var channel =     options.AddClientServerChannel("tictactoe.admin");
+                channel.EnableServer("tcp://0.0.0.0:7102");
         channel.AddHandlerGroup("admin");
-    });
+
+    }
 });
 ```
 
@@ -386,11 +374,12 @@ event handler 도 같은 규칙을 따른다. fanout channel 이라면, subscrib
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddFanoutChannel("api.events", channel =>
     {
+        var channel =     options.AddFanoutChannel("api.events");
         channel.EnableSubscriber();
         channel.AddHandlerGroup("api.events");
-    });
+
+    }
 });
 ```
 
@@ -720,7 +709,7 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 
 ### 5.2 IZLinkChannelClient
 
-`AddClientServerChannel(...)` 로 선언한 client-server channel 에 1:1 호출을 보낼 때
+`AddClientServerChannel` 로 선언한 client-server channel 에 1:1 호출을 보낼 때
 쓴다. dealer mesh channel 도 같은 request/send 표면을 쓴다. 호출자는 **channel 이름**
 만 넘기고, runtime 은 그 이름에 해당하는 등록과 runtime bundle 을 찾아 client-server
 DEALER 또는 dealer mesh DEALER 를 선택한다.
@@ -734,12 +723,13 @@ DEALER 또는 dealer mesh DEALER 를 선택한다.
   충분히 동작한다.
 - 다만 그 경우에도 한 가지는 필요하다. **어떤** remote channel 에 접근할지를, startup
   단계에서 미리 한 번 선언해 두어야 한다.
-- channel 이 없거나 client 역할이 없으면 runtime 은 socket 을 새로 만들지 않고
-  `ZLinkConfigurationException` 으로 실패한다.
+- socket 은 startup 에 선언된 역할만큼만 만든다. 따라서 channel 이 없거나 client
+  역할이 없으면 그 channel 용 socket 이 애초에 없어, 호출은 (런타임에 socket 을 새로
+  만들지 않고) `ZLinkConfigurationException` 으로 실패한다.
 
 ### 5.3 IZLinkFanoutClient
 
-`AddFanoutChannel(...)` 로 선언한 fanout channel 에 event 를 publish 할 때 쓴다. 호출
+`AddFanoutChannel` 로 선언한 fanout channel 에 event 를 publish 할 때 쓴다. 호출
 키는 **`channelName + topic`** 두 축으로 구성된다.
 
 규칙은 다음과 같다.
@@ -771,7 +761,7 @@ app.MapPost("/profiles/refresh", async (
 
 ### 5.4 routed channel transport helper
 
-`AddRouteMeshChannel(...)` 로 선언한 routed channel 의 위치는 actor, spot,
+`AddRouteMeshChannel` 로 선언한 routed channel 의 위치는 actor, spot,
 session actor dispatch[^session-actor-dispatch] 같은
 framework 기능이 내부 transport 로 쓴다.
 

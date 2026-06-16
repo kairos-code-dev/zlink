@@ -14,16 +14,18 @@ public static class ApiServerHostFactory
             options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.AddProtobuf();
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
-            options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
+            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
-                channel.EnableServer(server => server.Bind(topology.ApiChannelEndpoint));
+                var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
+                channel.EnableServer(topology.ApiChannelEndpoint);
                 channel.AddHandlerGroup("api");
-            });
-            options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
+
+            }
             {
+                var channel = options.AddClientServerChannel(SampleNames.PlayChannel);
                 channel.EnableClient();
-            });
+
+            }
         });
 
         return builder.Build();

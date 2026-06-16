@@ -73,17 +73,19 @@ public sealed class ManagerTests : SpotTestSupport
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<SpotTestSupport>();
-            options.AddSpotMesh("self-closing", mesh =>
             {
-                mesh.AddNode("self-closing-node", spot =>
+                var mesh = options.AddSpotMesh("self-closing");
                 {
-                    spot.EnableRouter(router =>
+                    var spot = mesh.AddNode("self-closing-node");
                     {
-                        router.BindRouter(spotNode);
-                    });
+                        var router = spot.EnableRouter(spotNode);
+
+                    }
                     spot.AddSpotFactory<SelfClosingTimerSpot>();
-                });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();
@@ -225,18 +227,20 @@ public sealed class ManagerTests : SpotTestSupport
         publisherBuilder.Services.AddScoped<SpotHeartbeatTimerHandler>();
         publisherBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("publisher-node", spot =>
-            {
-                spot.EnablePubSub(pubsub =>
+                var mesh = options.AddSpotMesh(spotChannel);
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    pubsub.BindPubSub(publisherNodeEndpoint);
-                });
+                    var spot = mesh.AddNode("publisher-node");
+                {
+                    var pubsub = spot.EnablePubSub(publisherNodeEndpoint);
+
+                }
                 spot.AddSpotFactory<PublishingStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         var subscriberBuilder = Host.CreateApplicationBuilder();
@@ -244,20 +248,21 @@ public sealed class ManagerTests : SpotTestSupport
         subscriberBuilder.Services.AddScoped<LocalStageEventHandler>();
         subscriberBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("subscriber-node", spot =>
-            {
-                spot.EnablePubSub(pubsub =>
+                var mesh = options.AddSpotMesh(spotChannel);
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    pubsub.BindPubSub(subscriberNodeEndpoint);
-                    pubsub.UseManualConnections(connections =>
-                        connections.Connect(publisherNodeEndpoint));
-                });
+                    var spot = mesh.AddNode("subscriber-node");
+                {
+                    var pubsub = spot.EnablePubSub(subscriberNodeEndpoint);
+                    pubsub.ConnectPubSub(publisherNodeEndpoint);
+
+                }
                 spot.AddSpotFactory<LocalSubscriberStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var registryHost = registryBuilder.Build();

@@ -16,7 +16,8 @@ class bingo_room_allocator_t
     std::string allocate (const std::string &mode)
     {
         for (const auto &[room_id, room] : _rooms) {
-            if (room.snapshot ().status == "waiting" && room.snapshot ().players.size () < 2) {
+            if (room.snapshot ().status == bingo_room_status_t::waiting
+                && room.snapshot ().players.size () < 2) {
                 return room_id;
             }
         }

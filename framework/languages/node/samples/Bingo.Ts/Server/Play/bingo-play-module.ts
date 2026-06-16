@@ -1,15 +1,15 @@
-const { Module } = require('@nestjs/common');
-const path = require('node:path');
-const { ZLinkModule, zlinkDiscoverProviders, zlinkFramework } = require('../../../../../packages/nestjs/dist');
-const { BingoNotificationDeliveryLog } = require('./notification-delivery-log');
-const { PlayerActorFactory } = require('./Adapters/ZLink/Actors/player-actor-factory');
-const { BingoNotificationPublisher } = require('./Adapters/ZLink/Notifications/bingo-notification-publisher');
-const { BingoEntrySpot } = require('./Adapters/ZLink/Spots/bingo-entry-spot');
-const { BingoRoomSpot } = require('./Adapters/ZLink/Spots/bingo-room-spot');
-const { BingoRoomAllocator } = require('./Application/RoomAllocation/bingo-room-allocator');
-const { SampleNames } = require('../Configuration/sample-names');
-
+import { Module } from '@nestjs/common';
+import * as path from 'node:path';
+import { ZLinkModule, zlinkDiscoverProviders, zlinkFramework } from '@zlink-systems/nestjs';
+import { BingoNotificationDeliveryLog } from './notification-delivery-log';
+import { PlayerActorFactory } from './Adapters/ZLink/Actors/player-actor-factory';
+import { BingoNotificationPublisher } from './Adapters/ZLink/Notifications/bingo-notification-publisher';
+import { BingoEntrySpot } from './Adapters/ZLink/Spots/bingo-entry-spot';
+import { BingoRoomSpot } from './Adapters/ZLink/Spots/bingo-room-spot';
+import { BingoRoomAllocator } from './Application/RoomAllocation/bingo-room-allocator';
+import { SampleNames, SampleTimings } from '../Configuration/sample-names';
 function createBingoPlayModule(config: {
+  registryRouterEndpoint: string;
   notificationEndpoint: string;
   playEndpoint: string;
 }) {
@@ -19,16 +19,21 @@ function createBingoPlayModule(config: {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
-          .clientServerChannel(SampleNames.playChannel, (channel) => channel
-            .server(config.playEndpoint)
-            .handlerGroup('play'))
-          .clientServerChannel(SampleNames.notificationChannel, (channel) => channel
-            .server(config.notificationEndpoint)
-            .handlerGroup('notifications'))
+          .options({ requestTimeoutMs: SampleTimings.requestTimeout })
+          .codecs()
+            .addProtobuf()
+          .useDiscovery()
+            .addRegistryEndpoint(config.registryRouterEndpoint)
+          .addClientServerChannel(SampleNames.playChannel)
+            .enableServer(config.playEndpoint)
+            .addHandlerGroup('play')
+          .addClientServerChannel(SampleNames.notificationChannel)
+            .enableServer(config.notificationEndpoint)
+            .addHandlerGroup('notifications')
           .actorFactory(SampleNames.playerActorType, PlayerActorFactory)
-          .spotNode(SampleNames.roomSpotType, (spot) => spot
-            .entrySpot(BingoEntrySpot)
-            .spotFactory(BingoRoomSpot))
+          .addSpotNode(SampleNames.roomSpotType)
+            .addEntrySpot(BingoEntrySpot)
+            .addSpotFactory(BingoRoomSpot)
           .build()
       })
     ],

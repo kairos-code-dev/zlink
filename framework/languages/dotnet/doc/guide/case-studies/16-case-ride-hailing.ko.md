@@ -124,14 +124,14 @@ public sealed class EtaProjector : IZLinkPublishHandler<DriverLocation>
 
 ```csharp
 // 등록 골격(정식은 05·07): STREAM(위치 수신) + fanout(loc.events) + zone SpotMesh
-options.AddStreamNode("ingest", s => s.RegisterSession<DriverSession>());
-options.AddFanoutChannel("loc.events", c =>
-    c.EnablePublisher(p => p.Bind("tcp://0.0.0.0:7600")));
-options.AddSpotMesh("zones", mesh => mesh.AddNode("zone-node", n =>
+options.AddStreamNode("ingest").RegisterSession<DriverSession>();
+options.AddFanoutChannel("loc.events").EnablePublisher("tcp://0.0.0.0:7600");
 {
-    n.EnableRouter(r => r.BindRouter("tcp://0.0.0.0:7610"));
+    var n = options.AddSpotMesh("zones").AddNode("zone-node");
+        n.EnableRouter("tcp://0.0.0.0:7610");
     n.AddSpotFactory<ZoneSpot>();
-}));
+
+}
 ```
 
 > **분산 락이 빠지는 이유.** 한 zone 의 배정 결정이 그 **zone SPOT 의 단일 실행

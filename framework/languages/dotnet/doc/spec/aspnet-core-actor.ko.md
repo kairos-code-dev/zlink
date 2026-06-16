@@ -879,7 +879,7 @@ stream 연결을 향한 proxy 이므로 `Zlink.Framework.Contracts.Streams` 에 
 3. bound session owner 가 local 이면 해당 STREAM session 으로 바로 보내고, remote 이면
    owner gateway 로 내부 relay 를 보낸다.
 
-ActorGateway 내부 relay packet 은 application `AddRouteMeshChannel(...)` handler group 으로
+ActorGateway 내부 relay packet 은 application `AddRouteMeshChannel` handler group 으로
 노출되지 않는다. application route mesh channel 은 일반 routed messaging 용도로 남고,
 session actor relay 의 public 설정 조건이 아니다.
 
@@ -960,23 +960,23 @@ Session 서버는 다음과 같이 등록한다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddSpotMesh("game.session", mesh =>
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
-        mesh.AddNode("session-node", node =>
+        var mesh =     options.AddSpotMesh("game.session");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
         {
-            node.EnableRouter(router =>
-            {
-                router.BindRouter("tcp://0.0.0.0:7201");
-            });
-        });
-    });
+            var node =         mesh.AddNode("session-node");
+            node.EnableRouter("tcp://0.0.0.0:7201");
 
-    options.AddStreamNode("client-stream", stream =>
+        }
+
+    }
+
     {
+        var stream =     options.AddStreamNode("client-stream");
         stream.Bind("tcp://0.0.0.0:7101");
         stream.AttachActorGateway("session-node");
-    });
+
+    }
 });
 ```
 
@@ -988,20 +988,19 @@ builder.Services.AddZLinkFramework(options =>
     options.AddActorFactory<PlayerActorFactory>("player");
     options.UseRegistrySpotRemoteAddresses("game");
 
-    options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+        var mesh =     options.AddSpotMesh("game.stage");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-        mesh.AddNode("play-node", node =>
         {
-            node.EnableRouter(router =>
-            {
-                router.BindRouter("tcp://0.0.0.0:9000");
-            });
+            var node =         mesh.AddNode("play-node");
+            node.EnableRouter("tcp://0.0.0.0:9000");
             node.AddEntrySpot<PlayerEntrySpot>();
             node.AddSpotFactory<MatchSpot>();
-        });
-    });
+
+        }
+
+    }
 
     // routed channel 등록은 별도 문서 참고
 });
@@ -1157,7 +1156,7 @@ context 만 다룬다는 원칙을 함께 검증한다.
     주고받는 방식이다. request / send는 요청-응답과 단방향 전달을, event
     messaging은 publish / subscribe 형태의 이벤트 전달을 가리킨다.
 
-[^routed]: **routed channel**은 `AddRouteMeshChannel(...)`로 선언하는 양방향 채널이다. 일반 client-server
+[^routed]: **routed channel**은 `AddRouteMeshChannel`로 선언하는 양방향 채널이다. 일반 client-server
     채널과 달리 호출 시점에 목적지 노드의 `RoutingId`를 직접 지정한다. 자세한
     내용은
     [aspnet-core-channel-messaging.ko.md](./aspnet-core-channel-messaging.ko.md)

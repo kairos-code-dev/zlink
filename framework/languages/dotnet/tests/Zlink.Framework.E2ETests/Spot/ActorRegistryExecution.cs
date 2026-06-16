@@ -23,18 +23,20 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         {
 
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotMesh("game.registry", mesh =>
             {
-                mesh.AddNode("registry-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("game.registry");
                 {
-                    router.BindRouter(spotNode);
-                });
+                    var spot = mesh.AddNode("registry-node");
+                {
+                    var router = spot.EnableRouter(spotNode);
+
+                }
                 spot.AddEntrySpot<RegistryEntrySpot>();
                 spot.AddSpotFactory<RegistryStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();
@@ -124,18 +126,20 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         {
 
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotMesh("game.registry-location", mesh =>
             {
-                mesh.AddNode("registry-location-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("game.registry-location");
                 {
-                    router.BindRouter(spotNode);
-                });
+                    var spot = mesh.AddNode("registry-location-node");
+                {
+                    var router = spot.EnableRouter(spotNode);
+
+                }
                 spot.AddEntrySpot<RegistryEntrySpot>();
                 spot.AddSpotFactory<RegistryStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();

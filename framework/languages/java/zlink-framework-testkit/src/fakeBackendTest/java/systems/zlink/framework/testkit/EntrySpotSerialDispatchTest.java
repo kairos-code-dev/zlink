@@ -114,12 +114,8 @@ final class EntrySpotSerialDispatchTest {
     private static DefaultZLinkFrameworkOptions options() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(EntrySpotSerialDispatchTest.class);
-        options.addSpotMesh("serial", mesh ->
-            mesh.addNode("serial-node", node -> {
-                node.configureEntrySpot(entry ->
-                    entry.setRoutingId(RoutingId.from("serial-entry-spot")));
-                node.addEntrySpot(SerialEntrySpot.class);
-            }));
+        { var mesh = options.addSpotMesh("serial"); { var node = mesh.addNode("serial-node"); { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("serial-entry-spot")); };
+                node.addEntrySpot(SerialEntrySpot.class); }; };
         options.addActorFactory("player", SpotRuntimeFakeBackendTest.PlayerActorFactory.class);
         return options;
     }

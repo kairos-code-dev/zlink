@@ -30,21 +30,16 @@ final class NodesAndServicesTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         assertThrows(ZLinkConfigurationException.class, () ->
-            options.addSpotMesh("game", mesh -> {
-                mesh.addNode("left", node -> node.addSpotFactory(GameSpot.class));
-                mesh.addNode("right", node -> node.addSpotFactory(GameSpot.class));
-            }));
+            { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("left"); node.addSpotFactory(GameSpot.class); };
+                { var node = mesh.addNode("right"); node.addSpotFactory(GameSpot.class); }; });
     }
 
     @Test
     void addZLinkFramework_throws_whenSpotNodeRegistersMultipleEntrySpots() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.addEntrySpot(EntrySpotA.class);
-                node.addEntrySpot(EntrySpotB.class);
-            }));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.addEntrySpot(EntrySpotA.class);
+                node.addEntrySpot(EntrySpotB.class); }; };
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
     }
@@ -77,8 +72,7 @@ final class NodesAndServicesTest {
     void addZLinkFramework_allowsStandaloneLocalSpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> node.addSpotFactory(GameSpot.class)));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.addSpotFactory(GameSpot.class); }; };
 
         assertDoesNotThrow(options::validate);
     }
@@ -88,20 +82,15 @@ final class NodesAndServicesTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         assertThrows(ZLinkConfigurationException.class, () ->
-            options.addStreamNode("gateway", stream -> {
-                stream.bind("inproc://gateway");
+            { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
                 stream.registerSession(GameSession.class);
-                stream.registerSession(GameSession.class);
-            }));
+                stream.registerSession(GameSession.class); });
     }
 
     private static DefaultZLinkFrameworkOptions optionsWithSpotNodeAndActorFactory() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter();
-                node.addSpotFactory(GameSpot.class);
-            }));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");
+                node.addSpotFactory(GameSpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
         return options;
     }

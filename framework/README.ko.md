@@ -24,6 +24,7 @@
 
 - [ZLink Framework 문서](./doc/README.ko.md) — 전체 진입점
 - [공통 스펙](./doc/spec/README.ko.md) — 언어 중립 정식 계약
-- [언어별 문서](./languages) — `.NET`은 정식, 그 외는 초안
+- [언어별 문서](./languages) — `.NET`·`C++`·`Java/Kotlin`은 정식, `Node.js`는 구현 기준, 그 외는 초안
 
-`.NET`은 정식 문서로 승격되었고, 그 외 언어 문서는 아직 초안 단계다.
+`.NET`, `C++`, `Java/Kotlin`은 정식 문서로, `Node.js`는 구현 기준 문서로 승격되었고,
+그 외 언어 문서(`Python`, `Go`, `Rust`)는 아직 초안 단계다.

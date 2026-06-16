@@ -14,22 +14,21 @@ public sealed class FanoutTests
         subscriberBuilder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<FanoutTests>();
-            options.AddFanoutChannel("profile", channel =>
             {
-                channel.EnableSubscriber(subscriber =>
-                {
-                    subscriber.UseManualConnections(connections => connections.Connect(pubEndpoint));
-                });
+                var channel = options.AddFanoutChannel("profile");
+                channel.EnableSubscriber(pubEndpoint);
                 channel.AddHandlerGroup("profile-events");
-            });
+
+            }
         });
         var publisherBuilder = Host.CreateApplicationBuilder();
         publisherBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddFanoutChannel("profile", channel =>
             {
-                channel.EnablePublisher(publisher => publisher.Bind(pubEndpoint));
-            });
+                var channel = options.AddFanoutChannel("profile");
+                channel.EnablePublisher(pubEndpoint);
+
+            }
         });
 
         using var subscriberHost = subscriberBuilder.Build();

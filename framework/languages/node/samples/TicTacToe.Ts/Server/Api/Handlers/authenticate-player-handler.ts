@@ -1,12 +1,12 @@
 import { authenticatePlayerRes } from '../../../Shared/Contracts/messages';
 import type { ZLinkRequestHandler } from '@zlink-systems/framework';
 import type {
+  AuthenticatePlayerReq,
   AuthenticatePlayerRes,
-  AuthenticateReq
 } from '../../../Shared/Contracts/messages';
 
-class AuthenticatePlayerHandler implements ZLinkRequestHandler<AuthenticateReq, AuthenticatePlayerRes> {
-  async handle(request: AuthenticateReq): Promise<AuthenticatePlayerRes> {
+class AuthenticatePlayerHandler implements ZLinkRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes> {
+  async handle(request: AuthenticatePlayerReq): Promise<AuthenticatePlayerRes> {
     if (typeof request.accessToken !== 'string' || request.accessToken.length === 0) {
       throw new Error('accessToken is required.');
     }

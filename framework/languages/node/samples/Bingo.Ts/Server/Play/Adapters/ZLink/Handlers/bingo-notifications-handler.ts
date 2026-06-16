@@ -1,8 +1,9 @@
-const { Inject } = require('@nestjs/common');
-const { zlinkRequestHandler } = require('../../../../../../../../packages/nestjs/dist');
-const { BingoNotificationDeliveryLog } = require('../../../notification-delivery-log');
-const { PacketNames } = require('../../../../../Shared/Contracts/messages');
-import type { ZLinkRequestHandler } from '../../../../../../../packages/framework/dist';
+import { Inject } from '@nestjs/common';
+import { zlinkRequestHandler } from '@zlink-systems/nestjs';
+import { BingoNotificationDeliveryLog } from '../../../notification-delivery-log';
+import { bingoPayloadBase64 } from '../../../../../Shared/Contracts/protobuf-codec';
+import { PacketNames, bingoNotificationBatch } from '../../../../../Shared/Contracts/messages';
+import type { ZLinkRequestHandler } from '@zlink-systems/framework';
 import type { BingoNotificationDeliveryLog as BingoNotificationDeliveryLogType } from '../../../notification-delivery-log';
 import type {
   BingoNotificationsReq,
@@ -14,7 +15,16 @@ class BingoNotificationsHandler implements ZLinkRequestHandler<BingoNotification
   constructor(@Inject(BingoNotificationDeliveryLog) private readonly boundSessions: BingoNotificationDeliveryLogType) {}
 
   async handle(request: BingoNotificationsReq & PlayerIdentity): Promise<unknown> {
-    return await this.boundSessions.waitFor(request.actorId, request.afterSeq);
+    const batch = await this.boundSessions.waitFor(request.actorId, request.afterSeq);
+    return bingoNotificationBatch({
+      nextSeq: batch.nextSeq,
+      delivered: batch.delivered.map((entry) => ({
+        seq: entry.seq,
+        actorId: entry.actorId,
+        packetName: entry.packetName,
+        payloadBase64: bingoPayloadBase64(entry.payload, entry.packetName)
+      }))
+    });
   }
 }
 

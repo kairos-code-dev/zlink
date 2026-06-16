@@ -154,6 +154,19 @@ Courier A 는 `timeout-reassign` mode(`delivery-success` 는 수락하고 `deliv
 smoke 성공 로그는 `topology=ready`, `deliverydispatch-reassignment=completed`,
 `deliverydispatch-server-evidence=completed`, `deliverydispatch=completed` 를 포함한다.
 
+## 6. 회귀 테스트
+
+DeliveryDispatch 샘플을 구현할 때는 아래 기존 회귀 테스트가 깨지지 않아야 한다. 이
+테스트들은 DeliveryDispatch 가 사용하는 framework 표면(channel request/send, 상태
+fanout, 재배정 timer, 고객 stream push)을 이미 고정하고 있다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | DispatchApi/DispatchCenter/Courier 사이 channel request·send 가 Discovery 경로로 동작한다. |
+| `FanoutTests.Publisher_And_Subscriber_Work_Across_Hosts` | 배송 상태 fanout 이 publisher/subscriber 로 전달된다. |
+| `ManagerTests.Spot_Publish_Timer_And_Close_Stop_Callbacks_Work` | timeout 재배정 timer 와 Spot lifecycle 정리가 framework timer 계약과 맞는다. |
+| `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | 고객 stream push 와 request/reply correlation 이 유지된다. |
+
 [^stream]: `STREAM` 은 클라이언트와 서버 사이에 지속 연결을 유지하면서 framework Header 기반 packet 을 주고받는 세션형 통신 추상이다.
 [^actor]: actor 는 자신만의 메일박스와 상태를 가지고 메시지를 순서대로 처리하는 동시성 단위다.
 [^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 노드(예: delivery, room 등) 단위로 메시지를 라우팅하는 추상이다.

@@ -1,6 +1,6 @@
-const { SampleNames } = require('../../../../Configuration/sample-names');
-const { Inject } = require('@nestjs/common');
-const { BingoNotificationDeliveryLog } = require('../../../notification-delivery-log');
+import { SampleNames } from '../../../../Configuration/sample-names';
+import { Inject } from '@nestjs/common';
+import { BingoNotificationDeliveryLog } from '../../../notification-delivery-log';
 import type { BingoNotificationDeliveryLog as BingoNotificationDeliveryLogType } from '../../../notification-delivery-log';
 import type {
   NumberDrawnNotify,

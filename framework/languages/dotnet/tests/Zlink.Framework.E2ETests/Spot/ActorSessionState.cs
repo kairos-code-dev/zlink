@@ -18,17 +18,19 @@ public sealed class ActorSessionStateTests : SpotTestSupport
         {
 
             options.AddActorFactory<TestActorFactory>("test");
-            options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.AddNode("actor-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("game.stage");
                 {
-                    router.BindRouter(spotNode);
-                });
+                    var spot = mesh.AddNode("actor-node");
+                {
+                    var router = spot.EnableRouter(spotNode);
+
+                }
                 spot.AddSpotFactory<ActorStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();

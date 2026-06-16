@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../README.ko.md) | [이전: Getting Started](./02-getting-started.ko.md) | [다음: Feature Map](./04-feature-map.ko.md)
+[문서 목록](../README.ko.md) | [이전: Getting Started](./02-getting-started.ko.md) | [다음: Channel Messaging](./04-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Java Concepts
@@ -54,5 +54,5 @@ Spring bean 주입은 역할 가능성을 암시해야 한다. SpotNode가 없�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../README.ko.md) | [이전: Getting Started](./02-getting-started.ko.md) | [다음: Feature Map](./04-feature-map.ko.md)
+[문서 목록](../README.ko.md) | [이전: Getting Started](./02-getting-started.ko.md) | [다음: Channel Messaging](./04-channel-messaging.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

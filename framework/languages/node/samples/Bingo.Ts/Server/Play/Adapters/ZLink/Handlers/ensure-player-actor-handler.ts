@@ -1,8 +1,8 @@
-const { Inject } = require('@nestjs/common');
-const { zlinkRequestHandler } = require('../../../../../../../../packages/nestjs/dist');
-const { PlayerActorFactory } = require('../Actors/player-actor-factory');
-const { PacketNames, ensurePlayerActorRes } = require('../../../../../Shared/Contracts/messages');
-import type { ZLinkRequestHandler } from '../../../../../../../packages/framework/dist';
+import { Inject } from '@nestjs/common';
+import { zlinkRequestHandler } from '@zlink-systems/nestjs';
+import { PlayerActorFactory } from '../Actors/player-actor-factory';
+import { PacketNames, ensurePlayerActorRes } from '../../../../../Shared/Contracts/messages';
+import type { ZLinkRequestHandler } from '@zlink-systems/framework';
 import type { PlayerActorFactory as PlayerActorFactoryType } from '../Actors/player-actor-factory';
 import type {
   EnsurePlayerActorReq,

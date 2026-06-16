@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.Configuration.Builders;
 
 internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registration) : IZLinkStreamNodeBuilder
 {
-    public void Bind(string endpoint)
+    public IZLinkStreamNodeBuilder Bind(string endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
         {
@@ -10,9 +10,10 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
         }
 
         registration.BindEndpoint = endpoint;
+        return this;
     }
 
-    public void AttachActorGateway(string spotNodeName)
+    public IZLinkStreamNodeBuilder AttachActorGateway(string spotNodeName)
     {
         if (string.IsNullOrWhiteSpace(spotNodeName))
         {
@@ -20,9 +21,10 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
         }
 
         registration.ActorGatewaySpotNodeName = spotNodeName;
+        return this;
     }
 
-    public void RegisterSession<TSession>()
+    public IZLinkStreamNodeBuilder RegisterSession<TSession>()
         where TSession : class, IZLinkSession
     {
         if (registration.HeaderSessionType is not null)
@@ -32,5 +34,6 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
         }
 
         registration.HeaderSessionType = typeof(TSession);
+        return this;
     }
 }

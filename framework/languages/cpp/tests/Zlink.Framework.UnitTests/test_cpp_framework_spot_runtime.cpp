@@ -346,31 +346,23 @@ int main ()
     using zlink::framework::framework_error_kind_t;
 
     zlink::framework::zlink_builder_t zlink;
-    zlink.add_node ("stage-node")
-      .channel (
-        "game.stage",
-        [] (zlink::framework::channel_builder_t &channel) {
-            channel.enable_publisher ([] (zlink::framework::capability_builder_t &publisher) {
-                publisher.bind ("tcp://127.0.0.1:8101");
-            });
-            channel.enable_subscriber ([] (zlink::framework::capability_builder_t &subscriber) {
-                subscriber.use_discovery ();
-            });
-        })
-      .add_spot_node ("stage-spot-node", [] (zlink::framework::spot_node_builder_t &spot_node) {
-          spot_node.bind ("tcp://0.0.0.0:9000")
-            .enable_router ("tcp://0.0.0.0:9002")
-            .connect_router ("tcp://127.0.0.1:9003")
-            .enable_pub_sub ("tcp://0.0.0.0:9004")
-            .connect_pub_sub ("tcp://127.0.0.1:9005")
-            .enable_actor_gateway ()
-            .use_discovery ("game.stage")
-            .attach_channel_client ("profile")
-            .attach_publisher ("game.stage")
-            .add_entry_spot<entry_spot_t> ()
-            .add_actor_factory<player_actor_factory_t> ("player")
-            .add_spot<stage_spot_t> ("stage");
-      });
+    zlink.add_node ("stage-node");
+    auto channel = zlink.channel ("game.stage");
+    channel.enable_publisher ().bind ("tcp://127.0.0.1:8101");
+    channel.enable_subscriber ().use_discovery ();
+    zlink.add_spot_node ("stage-spot-node")
+      .bind ("tcp://0.0.0.0:9000")
+      .enable_router ("tcp://0.0.0.0:9002")
+      .connect_router ("tcp://127.0.0.1:9003")
+      .enable_pub_sub ("tcp://0.0.0.0:9004")
+      .connect_pub_sub ("tcp://127.0.0.1:9005")
+      .enable_actor_gateway ()
+      .use_discovery ("game.stage")
+      .attach_channel_client ("profile")
+      .attach_publisher ("game.stage")
+      .add_entry_spot<entry_spot_t> ()
+      .add_actor_factory<player_actor_factory_t> ("player")
+      .add_spot<stage_spot_t> ("stage");
 
     const auto snapshots = zlink.spot_nodes ();
     if (snapshots.size () != 1 || snapshots[0].name != "stage-spot-node"
@@ -399,19 +391,17 @@ int main ()
 
     zlink::framework::spot_node_builder_t builder;
     zlink::framework::zlink_builder_t manual_host;
-    manual_host.add_spot_node ("manual-stage",
-                               [&builder] (zlink::framework::spot_node_builder_t &spot_node) {
-                                   spot_node.bind ("tcp://0.0.0.0:9001")
-                                     .use_discovery ("game.stage")
-                                     .attach_publisher ("game.stage")
-                                     .add_entry_spot<entry_spot_t> ()
-                                     .add_actor_factory<player_actor_factory_t> ("player")
-                                     .add_spot<stage_spot_t> ("stage")
-                                     .add_spot<factory_spot_t> ("factory", [] {
-                                         return std::make_shared<factory_spot_t> ("factory-reply");
-                                     });
-                                   builder = spot_node;
-                               });
+    builder = manual_host.add_spot_node ("manual-stage");
+    auto create_factory_spot = [] {
+        return std::make_shared<factory_spot_t> ("factory-reply");
+    };
+    builder.bind ("tcp://0.0.0.0:9001")
+      .use_discovery ("game.stage")
+      .attach_publisher ("game.stage")
+      .add_entry_spot<entry_spot_t> ()
+      .add_actor_factory<player_actor_factory_t> ("player")
+      .add_spot<stage_spot_t> ("stage")
+      .add_spot<factory_spot_t> ("factory", create_factory_spot);
 
     const auto create_count_before = stage_spot_t::create_count;
     auto create_result = builder.create_spot ("stage");
@@ -535,14 +525,12 @@ int main ()
     auto lifecycle_stage_spot = std::make_shared<stage_spot_t> ();
     zlink::framework::spot_node_builder_t lifecycle_builder;
     zlink::framework::zlink_builder_t lifecycle_host;
-    lifecycle_host.add_spot_node (
-      "lifecycle-stage", [&] (zlink::framework::spot_node_builder_t &spot_node) {
-          spot_node
-            .add_entry_spot<entry_spot_t> ([lifecycle_entry_spot] { return lifecycle_entry_spot; })
-            .add_actor_factory<player_actor_factory_t> ("player")
-            .add_spot<stage_spot_t> ("stage",
-                                     [lifecycle_stage_spot] { return lifecycle_stage_spot; });
-          lifecycle_builder = spot_node;
+    lifecycle_builder = lifecycle_host.add_spot_node ("lifecycle-stage");
+    lifecycle_builder
+      .add_entry_spot<entry_spot_t> ([lifecycle_entry_spot] { return lifecycle_entry_spot; })
+      .add_actor_factory<player_actor_factory_t> ("player")
+      .add_spot<stage_spot_t> ("stage", [lifecycle_stage_spot] {
+          return lifecycle_stage_spot;
       });
     auto lifecycle_entry = lifecycle_builder.create_spot ("entry");
     auto lifecycle_stage = lifecycle_builder.create_spot ("stage");
@@ -723,15 +711,14 @@ int main ()
     auto thread_probe_stage = std::make_shared<stage_spot_t> ();
     zlink::framework::spot_node_builder_t thread_probe_builder;
     zlink::framework::zlink_builder_t thread_probe_host;
-    thread_probe_host.add_spot_node (
-      "thread-probe-stage", [&] (zlink::framework::spot_node_builder_t &spot_node) {
-          spot_node
-            .add_entry_spot<lifecycle_thread_probe_entry_spot_t> (
-              [thread_probe_entry] { return thread_probe_entry; })
-            .add_actor_factory<player_actor_factory_t> ("player")
-            .add_spot<stage_spot_t> ("stage",
-                                     [thread_probe_stage] { return thread_probe_stage; });
-          thread_probe_builder = spot_node;
+    thread_probe_builder = thread_probe_host.add_spot_node ("thread-probe-stage");
+    thread_probe_builder
+      .add_entry_spot<lifecycle_thread_probe_entry_spot_t> ([thread_probe_entry] {
+          return thread_probe_entry;
+      })
+      .add_actor_factory<player_actor_factory_t> ("player")
+      .add_spot<stage_spot_t> ("stage", [thread_probe_stage] {
+          return thread_probe_stage;
       });
     auto thread_probe_entry_create = thread_probe_builder.create_spot ("entry");
     auto thread_probe_stage_create = thread_probe_builder.create_spot ("stage");
@@ -781,13 +768,10 @@ int main ()
 
     zlink::framework::spot_node_builder_t relay_builder;
     zlink::framework::zlink_builder_t relay_host;
-    relay_host.add_spot_node ("relay-stage",
-                              [&relay_builder] (zlink::framework::spot_node_builder_t &spot_node) {
-                                  spot_node.add_entry_spot<entry_spot_t> ()
-                                    .add_actor_factory<relay_actor_factory_t> ("relay-player")
-                                    .add_spot<relay_spot_t> ("relay-room");
-                                  relay_builder = spot_node;
-                              });
+    relay_builder = relay_host.add_spot_node ("relay-stage");
+    relay_builder.add_entry_spot<entry_spot_t> ()
+      .add_actor_factory<relay_actor_factory_t> ("relay-player")
+      .add_spot<relay_spot_t> ("relay-room");
     auto relay_spot = relay_builder.create_spot ("relay-room");
     auto relay_runtime = zlink::framework::detail::spot_node_runtime_t::from (relay_builder);
     relay_actor_t relay_actor{"relay-actor"};
@@ -957,7 +941,8 @@ int main ()
     bool empty_attach_endpoint_failed = false;
     try {
         zlink::framework::spot_node_builder_t invalid;
-        invalid.attach_channel_client ("profile", {" "});
+        const std::vector<std::string> invalid_endpoints{" "};
+        invalid.attach_channel_client ("profile", invalid_endpoints);
     }
     catch (const zlink::framework::framework_exception_t &error) {
         empty_attach_endpoint_failed =
@@ -983,7 +968,8 @@ int main ()
     bool empty_publisher_attach_endpoint_failed = false;
     try {
         zlink::framework::spot_node_builder_t invalid;
-        invalid.attach_publisher ("events", {" "});
+        const std::vector<std::string> invalid_endpoints{" "};
+        invalid.attach_publisher ("events", invalid_endpoints);
     }
     catch (const zlink::framework::framework_exception_t &error) {
         empty_publisher_attach_endpoint_failed =

@@ -11,6 +11,8 @@ type DeliveryWaiter = {
   resolve: (value: { delivered: DeliveredFrame[]; nextSeq: number }) => void;
 };
 
+const defaultWaitTimeoutMs = 100;
+
 class BingoNotificationDeliveryLog {
   private readonly delivered: DeliveredFrame[] = [];
   private readonly waiters: DeliveryWaiter[] = [];
@@ -26,13 +28,29 @@ class BingoNotificationDeliveryLog {
     this.notifyWaiters();
   }
 
-  async waitFor(actorId: string, afterSeq: number = 0): Promise<{ delivered: DeliveredFrame[]; nextSeq: number }> {
+  async waitFor(actorId: string, afterSeq: number = 0, timeoutMs: number = defaultWaitTimeoutMs): Promise<{ delivered: DeliveredFrame[]; nextSeq: number }> {
     const ready = this.deliveredFor(actorId, afterSeq);
     if (ready.delivered.length > 0) {
       return ready;
     }
     return await new Promise((resolve) => {
-      this.waiters.push({ actorId, afterSeq, resolve });
+      let timeout: ReturnType<typeof setTimeout>;
+      const waiter: DeliveryWaiter = {
+        actorId,
+        afterSeq,
+        resolve: (value) => {
+          clearTimeout(timeout);
+          resolve(value);
+        }
+      };
+      timeout = setTimeout(() => {
+        const index = this.waiters.indexOf(waiter);
+        if (index >= 0) {
+          this.waiters.splice(index, 1);
+        }
+        resolve({ delivered: [], nextSeq: afterSeq });
+      }, timeoutMs);
+      this.waiters.push(waiter);
     });
   }
 

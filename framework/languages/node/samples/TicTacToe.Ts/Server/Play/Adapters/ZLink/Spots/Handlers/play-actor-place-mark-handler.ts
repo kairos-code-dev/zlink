@@ -1,19 +1,28 @@
-const { Injectable } = require('@nestjs/common');
-const { TicTacToeGameSpot } = require('../tictactoe-game-spot');
-import type { ZLinkActor } from '../../../../../../../../packages/framework/dist';
+import { Injectable } from '@nestjs/common';
 import type {
-  PlaceMarkInternalReq,
-  PlaceMarkRes
+  ZLinkActor,
+  ZLinkSpotActorRequestContext,
+  ZLinkSpotActorRequestHandler
+} from '@zlink-systems/framework';
+import type { TicTacToeGameSpot } from '../tictactoe-game-spot';
+import type {
+  PlaceMarkReq,
+  PlaceMarkRes,
+  TicTacToeActor
 } from '../../../../../../Shared/Contracts/messages';
 
+type PlayPlaceMarkActor = TicTacToeActor & ZLinkActor;
+
 @Injectable()
-class PlayActorPlaceMarkHandler {
-  async handle(request: PlaceMarkInternalReq): Promise<PlaceMarkRes> {
-    if (request.actor.roomId === undefined) {
-      throw new Error(`Actor '${request.actor.actorId}' has not joined a room.`);
-    }
-    const actor = request.actor as unknown as ZLinkActor & typeof request.actor;
-    const spot = actor.context.getSpot(TicTacToeGameSpot) as InstanceType<typeof TicTacToeGameSpot>;
+class PlayActorPlaceMarkHandler
+  implements ZLinkSpotActorRequestHandler<TicTacToeGameSpot, PlayPlaceMarkActor, PlaceMarkReq, PlaceMarkRes> {
+  async handle(
+    spot: TicTacToeGameSpot,
+    actor: PlayPlaceMarkActor,
+    context: ZLinkSpotActorRequestContext,
+    request: PlaceMarkReq
+  ): Promise<PlaceMarkRes> {
+    void context;
     return await spot.placeMark(actor, request.cell);
   }
 }

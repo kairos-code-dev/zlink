@@ -175,7 +175,7 @@ Discovery** 가 해결한다.
 
 - **Registry** — 어느 노드가 어떤 channel 을 어디(endpoint)서 제공하는지 모아 두는
   디렉터리 서버. server/publisher 역할이 startup 에 자기 endpoint 를 등록·heartbeat.
-- **Discovery** — `options.UseDiscovery(...AddRegistryEndpoint...)` 를 켠 client/subscriber
+- **Discovery** — `options.UseDiscovery().AddRegistryEndpoint(...)` 를 켠 client/subscriber
   가 Registry 의 해당 channel view 를 구독해 provider endpoint 를 받아 **자동 연결**하고,
   provider 집합이 바뀌면 **자동 재연결**한다(앱 재시작 불필요).
 
@@ -370,7 +370,7 @@ stateDiagram-v2
   | 표면 | 역할 | 다루는 장 |
   |------|------|-----------|
   | `builder.Services.AddZLinkFramework(...)` | channel/SPOT/STREAM/Discovery 선언 | 4~8장 |
-  | `options.AddClientServerChannel(...)` / `AddFanoutChannel(...)` | channel 종류·역할 선언 | [4장](./04-channel-messaging.ko.md) |
+  | `options.AddClientServerChannel(...)` / `AddFanoutChannel` | channel 종류·역할 선언 | [4장](./04-channel-messaging.ko.md) |
   | `options.UseDiscovery(...)` | Registry 기반 endpoint 발견 | [8장](./08-registry.ko.md) |
   | `builder.Services.AddZLinkRegistry(...)` | Registry 서버 실행 | [8장](./08-registry.ko.md) |
   | runtime event handler | monitoring event 관찰 | [9장](./09-monitoring.ko.md) |

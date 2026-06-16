@@ -41,12 +41,12 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
       this.context = context;
     }
   }
-  const module = nestjs.ZLinkModule.forRoot({
-    spotNodes: ['game'],
-    spotFactories: [StageSpot],
-    actorFactories: { player: ActorFactory },
-    spotPublisherClients: ['events']
-  });
+  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .options({ spotPublisherClients: ['events'] })
+    .actorFactory('player', ActorFactory)
+    .addSpotNode('game')
+      .addSpotFactory(StageSpot)
+    .build());
   const tokens = providerTokens(module);
 
   assert.equal(tokens.has(nestjs.ZLINK_SPOT_MANAGER), true);
@@ -76,10 +76,10 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
 });
 
 test('ZLinkModule.forRoot public DI clients expose callable framework contracts', async () => {
-  const module = nestjs.ZLinkModule.forRoot({
-    routerMeshes: { mesh: {} },
-    spotPublisherClients: ['spot-events']
-  });
+  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .options({ spotPublisherClients: ['spot-events'] })
+    .addRouteMeshChannel('mesh')
+    .build());
   const container = await resolveModuleProviders(module, [
     nestjs.ZLINK_FRAMEWORK_RUNTIME,
     nestjs.ZLINK_ROUTE_CLIENT,
@@ -123,16 +123,19 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
 
 test('zlinkFramework builder maps channel and route mesh options', () => {
   const options = nestjs.zlinkFramework()
-    .clientServerChannel('api', (channel) => channel
-      .server('tcp://127.0.0.1:7101')
-      .handlerGroup('api'))
-    .clientServerChannel('play', (channel) => channel
-      .client('tcp://127.0.0.1:7102'))
-    .routerMesh('route', (mesh) => mesh
-      .bind('tcp://127.0.0.1:7201')
+    .addClientServerChannel('api')
+      .enableServer('tcp://127.0.0.1:7101')
+      .addHandlerGroup('api')
+    .addClientServerChannel('play')
+      .enableClient('tcp://127.0.0.1:7102')
+    .addDealerMeshChannel('mesh')
+      .bind('tcp://127.0.0.1:7151')
+      .enableClient(['tcp://127.0.0.1:7152'])
+    .addRouteMeshChannel('route')
+      .enableRouter('tcp://127.0.0.1:7201')
       .routingId('node-a')
       .connect(['tcp://127.0.0.1:7202'])
-      .handlerGroup('route-api'))
+      .addHandlerGroup('route-api')
     .build();
 
   assert.deepEqual(options.clientServerChannels.api, {
@@ -141,6 +144,10 @@ test('zlinkFramework builder maps channel and route mesh options', () => {
   });
   assert.deepEqual(options.clientServerChannels.play, {
     client: { manualConnections: ['tcp://127.0.0.1:7102'] }
+  });
+  assert.deepEqual(options.dealerMeshChannels.mesh, {
+    bind: 'tcp://127.0.0.1:7151',
+    client: { manualConnections: ['tcp://127.0.0.1:7152'] }
   });
   assert.deepEqual(options.routerMeshes.route, {
     bind: 'tcp://127.0.0.1:7201',
@@ -188,14 +195,11 @@ test('ZLinkModule.forRoot maps zlinkRequestHandler providers from NestJS DI', as
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      clientServerChannels: {
-        api: {
-          server: { bind: apiEndpoint },
-          handlerGroups: ['api']
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addClientServerChannel('api')
+        .enableServer(apiEndpoint)
+        .addHandlerGroup('api')
+      .build())],
     providers: [ProfileHandler]
   })(HandlerModule);
 
@@ -225,14 +229,11 @@ test('ZLinkModule.forRoot maps decorated custom NestJS provider objects', async 
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      clientServerChannels: {
-        api: {
-          server: { bind: apiEndpoint },
-          handlerGroups: ['api']
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addClientServerChannel('api')
+        .enableServer(apiEndpoint)
+        .addHandlerGroup('api')
+      .build())],
     providers: [{ provide: PROFILE_HANDLER, useClass: ProfileHandler }]
   })(HandlerModule);
 
@@ -254,14 +255,11 @@ test('ZLinkModule.forRoot ignores undecorated value providers', async () => {
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      clientServerChannels: {
-        api: {
-          server: { bind: apiEndpoint },
-          handlerGroups: ['api']
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addClientServerChannel('api')
+        .enableServer(apiEndpoint)
+        .addHandlerGroup('api')
+      .build())],
     providers: [{
       provide: PROFILE_HANDLER,
       useValue: {
@@ -292,14 +290,11 @@ test('ZLinkModule.forRootFactory maps zlinkRequestHandler providers from NestJS 
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRootFactory({
-      useFactory: () => ({
-        clientServerChannels: {
-          api: {
-            server: { bind: apiEndpoint },
-            handlerGroups: ['api']
-          }
-        }
-      })
+      useFactory: () => nestjs.zlinkFramework()
+        .addClientServerChannel('api')
+          .enableServer(apiEndpoint)
+          .addHandlerGroup('api')
+        .build()
     })],
     providers: [ProfileHandler]
   })(HandlerModule);
@@ -328,14 +323,11 @@ test('ZLinkModule.forRoot deduplicates grouped useExisting handler aliases', asy
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      clientServerChannels: {
-        api: {
-          server: { bind: apiEndpoint },
-          handlerGroups: ['api']
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addClientServerChannel('api')
+        .enableServer(apiEndpoint)
+        .addHandlerGroup('api')
+      .build())],
     providers: [
       ProfileHandler,
       { provide: PROFILE_HANDLER, useExisting: ProfileHandler }
@@ -367,14 +359,11 @@ test('ZLinkModule.forRoot rejects duplicate grouped packet handlers for one chan
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      clientServerChannels: {
-        api: {
-          server: { bind: apiEndpoint },
-          handlerGroups: ['api']
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addClientServerChannel('api')
+        .enableServer(apiEndpoint)
+        .addHandlerGroup('api')
+      .build())],
     providers: [FirstProfileHandler, SecondProfileHandler]
   })(HandlerModule);
 
@@ -399,15 +388,12 @@ test('ZLinkModule.forRoot maps grouped routeMesh send handlers from NestJS DI', 
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      routerMeshes: {
-        route: {
-          bind: routeEndpoint,
-          routingId: 'node-a',
-          handlerGroups: ['route-api']
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addRouteMeshChannel('route')
+        .enableRouter(routeEndpoint)
+        .routingId('node-a')
+        .addHandlerGroup('route-api')
+      .build())],
     providers: [NoticeHandler]
   })(HandlerModule);
 
@@ -442,9 +428,9 @@ test('ZLinkModule.forRoot maps manual client-server send handlers from NestJS DI
   Module({
     imports: [nestjs.ZLinkModule.forRootFactory({
       useFactory: () => nestjs.zlinkFramework()
-        .clientServerChannel('api', (channel) => channel
-          .server(endpoint)
-          .sendHandler('Notice', NoticeHandler))
+        .addClientServerChannel('api')
+          .enableServer(endpoint)
+          .addSendHandler('Notice', NoticeHandler)
         .build()
     })],
     providers: [NoticeHandler]
@@ -481,14 +467,11 @@ test('ZLinkModule.forRoot maps grouped fanout publish handlers from NestJS DI', 
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      fanoutChannels: {
-        events: {
-          subscriber: { manualConnections: [subscriberEndpoint] },
-          handlerGroups: ['events']
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addFanoutChannel('events')
+        .enableSubscriber(subscriberEndpoint)
+        .addHandlerGroup('events')
+      .build())],
     providers: [{ provide: PROFILE_EVENTS, useClass: ProfileEventHandler }]
   })(HandlerModule);
 
@@ -525,14 +508,11 @@ test('ZLinkModule.forRoot rejects duplicate grouped publish handlers for one cha
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      fanoutChannels: {
-        events: {
-          subscriber: { manualConnections: [subscriberEndpoint] },
-          handlerGroups: ['events']
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addFanoutChannel('events')
+        .enableSubscriber(subscriberEndpoint)
+        .addHandlerGroup('events')
+      .build())],
     providers: [FirstEventHandler, SecondEventHandler]
   })(HandlerModule);
 
@@ -563,18 +543,15 @@ test('ZLinkModule.forRoot with grouped handlers exposes capability providers thr
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      spotNodes: ['game'],
-      spotFactories: [StageSpot],
-      actorFactories: { player: ActorFactory },
-      spotPublisherClients: ['events'],
-      clientServerChannels: {
-        api: {
-          server: { bind: apiEndpoint },
-          handlerGroups: ['api']
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .options({ spotPublisherClients: ['events'] })
+      .actorFactory('player', ActorFactory)
+      .addSpotNode('game')
+        .addSpotFactory(StageSpot)
+      .addClientServerChannel('api')
+        .enableServer(apiEndpoint)
+        .addHandlerGroup('api')
+      .build())],
     providers: [ProfileHandler]
   })(HandlerModule);
 
@@ -602,14 +579,11 @@ test('ZLinkModule.forRoot with grouped handlers returns null for absent optional
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      clientServerChannels: {
-        api: {
-          server: { bind: apiEndpoint },
-          handlerGroups: ['api']
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addClientServerChannel('api')
+        .enableServer(apiEndpoint)
+        .addHandlerGroup('api')
+      .build())],
     providers: [ProfileHandler]
   })(HandlerModule);
 
@@ -633,14 +607,11 @@ test('ZLinkModule.forRoot passes registered spot factories to the spot manager',
       this.context = context;
     }
   }
-  const module = nestjs.ZLinkModule.forRoot({
-    spotNodes: {
-      game: {
-        spotFactories: [LocalStageSpot]
-      }
-    },
-    spotFactories: [StageSpot]
-  });
+  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .options({ spotFactories: [StageSpot] })
+    .addSpotNode('game')
+      .addSpotFactory(LocalStageSpot)
+    .build());
   const container = await resolveModuleProviders(module, [nestjs.ZLINK_SPOT_MANAGER]);
   const spotManager = container.get(nestjs.ZLINK_SPOT_MANAGER);
 
@@ -666,10 +637,10 @@ test('ZLinkModule.forRoot creates Spot factories through NestJS DI', async () =>
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      spotNodes: ['game'],
-      spotFactories: [StageSpot]
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotNode('game')
+        .addSpotFactory(StageSpot)
+      .build())],
     providers: [SpotDependency, StageSpot]
   })(HandlerModule);
 
@@ -702,13 +673,10 @@ test('ZLinkModule.forRoot creates Entry Spot through NestJS DI', async () => {
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      spotNodes: {
-        game: {
-          entrySpotType: StageEntrySpot
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotNode('game')
+        .addEntrySpot(StageEntrySpot)
+      .build())],
     providers: [EntryDependency, StageEntrySpot]
   })(HandlerModule);
 
@@ -738,10 +706,10 @@ test('ZLinkModule.forRoot creates Actor factories through NestJS DI', async () =
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      spotNodes: ['game'],
-      actorFactories: { player: PlayerActorFactory }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .actorFactory('player', PlayerActorFactory)
+      .addSpotNode('game')
+      .build())],
     providers: [ActorDependency, PlayerActorFactory]
   })(HandlerModule);
 
@@ -790,14 +758,11 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
 
   class TestModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      spotNodes: {
-        game: {
-          entrySpotType: EntrySpot,
-          spotFactories: [RoomSpot]
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotNode('game')
+        .addEntrySpot(EntrySpot)
+        .addSpotFactory(RoomSpot)
+      .build())],
     providers: [EntryNoticeHandler, MatchHandler, RoomNoticeHandler, SubmitHandler, RoomTimerHandler]
   })(TestModule);
 
@@ -858,13 +823,10 @@ test('ZLinkModule.forRoot rejects duplicate SPOT actor request handler decorator
 
   class TestModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot({
-      spotNodes: {
-        game: {
-          spotFactories: [RoomSpot]
-        }
-      }
-    })],
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotNode('game')
+        .addSpotFactory(RoomSpot)
+      .build())],
     providers: [FirstHandler, SecondHandler]
   })(TestModule);
 
@@ -878,67 +840,75 @@ test('ZLinkModule.forRoot validates actor factory without spot node at registrat
   class ActorFactory {}
 
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({ actorFactories: { player: ActorFactory } }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .actorFactory('player', ActorFactory)
+      .build()),
     framework.ZLinkConfigurationException
   );
 });
 
 test('ZLinkModule.forRoot validates channel capability endpoints and peer acquisition', () => {
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({ clientServerChannels: { api: { server: {} } } }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addClientServerChannel('api')
+        .enableServer(undefined)
+      .build()),
     /server must define a bind endpoint/
   );
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({ fanoutChannels: { events: { publisher: {} } } }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addFanoutChannel('events')
+        .enablePublisher(undefined)
+      .build()),
     /publisher must define a bind endpoint/
   );
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({ clientServerChannels: { api: { client: {} } } }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addClientServerChannel('api')
+        .enableClient()
+      .build()),
     /client requires discovery or manual connections/
   );
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({ fanoutChannels: { events: { subscriber: {} } } }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addFanoutChannel('events')
+        .enableSubscriber()
+      .build()),
     /subscriber requires discovery or manual connections/
   );
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({ clientServerChannels: { api: { client: { manualConnections: [''] } } } }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addClientServerChannel('api')
+        .enableClient('')
+      .build()),
     /manual connection endpoint must not be empty/
   );
 
-  assert.doesNotThrow(() => nestjs.ZLinkModule.forRoot({
-    clientServerChannels: {
-      api: { client: {} }
-    },
-    fanoutChannels: {
-      events: { subscriber: {} }
-    },
-    discovery: { registries: ['tcp://127.0.0.1:5551'] }
-  }));
-  assert.doesNotThrow(() => nestjs.ZLinkModule.forRoot({
-    clientServerChannels: {
-      api: { client: { manualConnections: ['tcp://127.0.0.1:7001'] } }
-    },
-    fanoutChannels: {
-      events: { subscriber: { manualConnections: ['tcp://127.0.0.1:7002'] } }
-    }
-  }));
+  assert.doesNotThrow(() => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .useDiscovery()
+      .addRegistryEndpoint('tcp://127.0.0.1:5551')
+    .addClientServerChannel('api')
+      .enableClient()
+    .addFanoutChannel('events')
+      .enableSubscriber()
+    .build()));
+  assert.doesNotThrow(() => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addClientServerChannel('api')
+      .enableClient('tcp://127.0.0.1:7001')
+    .addFanoutChannel('events')
+      .enableSubscriber('tcp://127.0.0.1:7002')
+    .build()));
 });
 
 test('ZLinkModule.forRoot maps dealer and route mesh channel options into runtime registration', async () => {
-  const module = nestjs.ZLinkModule.forRoot({
-    dealerMeshChannels: {
-      mesh: {
-        client: { manualConnections: ['tcp://127.0.0.1:7011'] }
-      }
-    },
-    routerMeshes: {
-      route: {
-        bind: 'tcp://0.0.0.0:7012',
-        routingId: 'node-a',
-        manualConnections: ['tcp://127.0.0.1:7013']
-      }
-    }
-  });
+  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addDealerMeshChannel('mesh')
+      .enableClient('tcp://127.0.0.1:7011')
+    .addRouteMeshChannel('route')
+      .enableRouter('tcp://0.0.0.0:7012')
+      .routingId('node-a')
+      .connect('tcp://127.0.0.1:7013')
+    .build());
   const registration = await resolveFrameworkRegistration(module);
 
   assert.equal(registration.channelClients.has('mesh'), true);
@@ -947,18 +917,12 @@ test('ZLinkModule.forRoot maps dealer and route mesh channel options into runtim
   assert.deepEqual(registration.routeChannelOptions.get('route').manualConnections, ['tcp://127.0.0.1:7013']);
 
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({
-      clientServerChannels: {
-        mesh: {
-          client: { manualConnections: ['tcp://127.0.0.1:7011'] }
-        }
-      },
-      dealerMeshChannels: {
-        mesh: {
-          client: { manualConnections: ['tcp://127.0.0.1:7012'] }
-        }
-      }
-    }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addClientServerChannel('mesh')
+        .enableClient('tcp://127.0.0.1:7011')
+      .addDealerMeshChannel('mesh')
+        .enableClient('tcp://127.0.0.1:7012')
+      .build()),
     /already registered/
   );
 });
@@ -975,12 +939,12 @@ test('framework options builder maps dotnet-shaped registration flow into option
 
   const options = framework.createFrameworkOptions((builder) => {
     builder.useDiscovery().addRegistryEndpoint('tcp://127.0.0.1:9400');
-    builder.addClientServerChannel('api').enableServer().bind('tcp://0.0.0.0:9401');
-    builder.addClientServerChannel('api').enableClient().connect('tcp://127.0.0.1:9401');
-    builder.addFanoutChannel('events').enablePublisher().bind('tcp://0.0.0.0:9402');
-    builder.addFanoutChannel('events').enableSubscriber().connect('tcp://127.0.0.1:9402');
-    builder.addRouteMeshChannel('route').enableRouter().bind('tcp://0.0.0.0:9403');
-    builder.addRouteMeshChannel('route').enableDealer().connect('tcp://127.0.0.1:9403');
+    builder.addClientServerChannel('api').enableServer('tcp://0.0.0.0:9401');
+    builder.addClientServerChannel('api').enableClient('tcp://127.0.0.1:9401');
+    builder.addFanoutChannel('events').enablePublisher('tcp://0.0.0.0:9402');
+    builder.addFanoutChannel('events').enableSubscriber('tcp://127.0.0.1:9402');
+    builder.addRouteMeshChannel('route').enableServer('tcp://0.0.0.0:9403');
+    builder.addRouteMeshChannel('route').enableClient('tcp://127.0.0.1:9403');
     builder.addStreamNode('gateway')
       .bind('tcp://0.0.0.0:9404')
       .attachActorGateway('stage-node')
@@ -990,17 +954,11 @@ test('framework options builder maps dotnet-shaped registration flow into option
       .addSpotFactory(LocalStageSpot)
       .addEntrySpot(StageEntrySpot)
       .configureEntrySpot({ routingId: 'entry-stage' });
-    spot.enableRouter()
-      .bind('tcp://0.0.0.0:9405')
-      .routingId('stage-node')
-      .connect('tcp://127.0.0.1:9406');
-    spot.enablePubSub()
-      .bind('tcp://0.0.0.0:9407')
-      .routingId('stage-node')
-      .connect('tcp://127.0.0.1:9408');
-    spot.attachChannelClient('api').connect('tcp://127.0.0.1:9401');
-    spot.attachSpotPublisherClient('game.stage').connect('tcp://127.0.0.1:9407');
-    spot.acceptSpotRoutesFromChannel('route').connect('tcp://127.0.0.1:9403');
+    spot.enableRouter('tcp://0.0.0.0:9405', 'stage-node', 'tcp://127.0.0.1:9406');
+    spot.enablePubSub('tcp://0.0.0.0:9407', 'stage-node', 'tcp://127.0.0.1:9408');
+    spot.attachChannelClient('api', 'tcp://127.0.0.1:9401');
+    spot.attachSpotPublisherClient('game.stage', 'tcp://127.0.0.1:9407');
+    spot.acceptSpotRoutesFromChannel('route', 'tcp://127.0.0.1:9403');
   });
 
   const registration = framework.createFrameworkRegistration(options);
@@ -1066,20 +1024,14 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', a
       this.context = context;
     }
   }
-  const module = nestjs.ZLinkModule.forRoot({
-    spotNodes: {
-      'game.spot': {
-        router: { bind: 'tcp://0.0.0.0:9110' }
-      }
-    },
-    streams: {
-      'client.stream': {
-        bind: 'tcp://0.0.0.0:9100',
-        attachActorGateway: 'game.spot',
-        session: ClientHeaderSession
-      }
-    }
-  });
+  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addSpotNode('game.spot')
+      .enableRouter('tcp://0.0.0.0:9110')
+    .addStreamNode('client.stream')
+      .bind('tcp://0.0.0.0:9100')
+      .attachActorGateway('game.spot')
+      .registerSession(ClientHeaderSession)
+    .build());
   const registration = await resolveFrameworkRegistration(module);
   const streamNode = registration.streamNodes.get('client.stream');
 
@@ -1098,40 +1050,36 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', a
     /STREAM node cannot register more than one header stream session/
   );
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({
-      streams: { 'missing-bind': { session: ClientHeaderSession } }
-    }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addStreamNode('missing-bind')
+        .registerSession(ClientHeaderSession)
+      .build()),
     /STREAM node 'missing-bind' must define a bind endpoint/
   );
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({
-      streams: { 'missing-session': { bind: 'tcp://0.0.0.0:9101' } }
-    }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addStreamNode('missing-session')
+        .bind('tcp://0.0.0.0:9101')
+      .build()),
     /STREAM node 'missing-session' must register a header stream session/
   );
   await assert.rejects(
-    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot({
-      spotNodes: ['game.spot'],
-      streams: {
-        'client.stream': {
-          bind: 'tcp://0.0.0.0:9100',
-          attachActorGateway: 'game.spot',
-          session: ClientHeaderSession
-        }
-      }
-    })),
+    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotNode('game.spot')
+      .addStreamNode('client.stream')
+        .bind('tcp://0.0.0.0:9100')
+        .attachActorGateway('game.spot')
+        .registerSession(ClientHeaderSession)
+      .build())),
     /does not enable router capability/
   );
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({
-      streams: {
-        'client.stream': {
-          bind: 'tcp://0.0.0.0:9100',
-          attachActorGateway: 'unknown.spot',
-          session: ClientHeaderSession
-        }
-      }
-    }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addStreamNode('client.stream')
+        .bind('tcp://0.0.0.0:9100')
+        .attachActorGateway('unknown.spot')
+        .registerSession(ClientHeaderSession)
+      .build()),
     /references unknown ActorGateway target SpotNode 'unknown.spot'/
   );
 });
@@ -1148,13 +1096,24 @@ test('zlinkFramework builder maps stream node registration without raw server co
   const module = nestjs.ZLinkModule.forRoot(
     nestjs.zlinkFramework()
       .actorFactory('player', PlayerActorFactory)
-      .streamNode('client.stream', (stream) => stream
+      .addClientServerChannel('api')
+        .enableServer('tcp://0.0.0.0:9113')
+      .addFanoutChannel('game.events')
+        .enablePublisher('tcp://0.0.0.0:9114')
+      .addRouteMeshChannel('route')
+        .enableRouter('tcp://0.0.0.0:9115')
+      .addStreamNode('client.stream')
         .bind('tcp://0.0.0.0:9100')
         .attachActorGateway('game.spot')
-        .registerSession(ClientHeaderSession))
-      .spotNode('game.spot', (spot) => spot
-        .router('tcp://0.0.0.0:9110', 'game-node')
-        .entrySpot(StageEntrySpot))
+        .registerSession(ClientHeaderSession)
+      .addSpotNode('game.spot')
+        .enableRouter('tcp://0.0.0.0:9110', 'game-node')
+        .enablePubSub('tcp://0.0.0.0:9111', 'game-node', ['tcp://127.0.0.1:9112'])
+        .attachChannelClient('api', 'tcp://127.0.0.1:9113')
+        .attachSpotPublisherClient('game.events', 'tcp://127.0.0.1:9114')
+        .acceptSpotRoutesFromChannel('route', 'tcp://127.0.0.1:9115')
+        .configureEntrySpot({ routingId: 'entry-node' })
+        .addEntrySpot(StageEntrySpot)
       .build()
   );
   const registration = await resolveFrameworkRegistration(module);
@@ -1167,43 +1126,28 @@ test('zlinkFramework builder maps stream node registration without raw server co
   assert.equal(registration.actorFactories.get('player'), PlayerActorFactory);
   assert.equal(spotNode.router.bind, 'tcp://0.0.0.0:9110');
   assert.equal(spotNode.router.routingId, 'game-node');
+  assert.equal(spotNode.pubSub.bind, 'tcp://0.0.0.0:9111');
+  assert.deepEqual(spotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9112']);
+  assert.deepEqual(spotNode.attachedChannelClients.api.manualConnections, ['tcp://127.0.0.1:9113']);
+  assert.deepEqual(spotNode.attachedSpotPublisherClients['game.events'].manualConnections, ['tcp://127.0.0.1:9114']);
+  assert.deepEqual(spotNode.acceptedSpotRouteChannels.route.manualConnections, ['tcp://127.0.0.1:9115']);
+  assert.deepEqual(spotNode.entrySpot, { routingId: 'entry-node' });
   assert.equal(spotNode.entrySpotType, StageEntrySpot);
 });
 
 test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capability options', async () => {
-  const module = nestjs.ZLinkModule.forRoot({
-    spotNodes: {
-      game: {
-        router: {
-          bind: 'tcp://0.0.0.0:9201',
-          routingId: 'node-a',
-          manualConnections: ['tcp://127.0.0.1:9202']
-        },
-        pubSub: {
-          bind: 'tcp://0.0.0.0:9203',
-          routingId: 'node-a',
-          manualConnections: ['tcp://127.0.0.1:9204']
-        },
-        attachedChannelClients: {
-          api: { manualConnections: ['tcp://127.0.0.1:9205'] }
-        },
-        attachedSpotPublisherClients: {
-          'game.events': { manualConnections: ['tcp://127.0.0.1:9206'] }
-        },
-        acceptedSpotRouteChannels: {
-          route: { manualConnections: ['tcp://127.0.0.1:9207'] }
-        }
-      }
-    },
-    clientServerChannels: {
-      api: { server: { bind: 'tcp://0.0.0.0:9208' } }
-    },
-    routerMeshes: {
-      route: {
-        bind: 'tcp://0.0.0.0:9209'
-      }
-    }
-  });
+  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addSpotNode('game')
+      .enableRouter('tcp://0.0.0.0:9201', 'node-a', 'tcp://127.0.0.1:9202')
+      .enablePubSub('tcp://0.0.0.0:9203', 'node-a', 'tcp://127.0.0.1:9204')
+      .attachChannelClient('api', 'tcp://127.0.0.1:9205')
+      .attachSpotPublisherClient('game.events', 'tcp://127.0.0.1:9206')
+      .acceptSpotRoutesFromChannel('route', 'tcp://127.0.0.1:9207')
+    .addClientServerChannel('api')
+      .enableServer('tcp://0.0.0.0:9208')
+    .addRouteMeshChannel('route')
+      .enableRouter('tcp://0.0.0.0:9209')
+    .build());
   const registration = await resolveFrameworkRegistration(module);
   const spotNode = registration.spotNodes.get('game');
 
@@ -1218,81 +1162,72 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
   assert.equal(registration.spotPublisherClients.has('game.events'), true);
 
   await assert.rejects(
-    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot({ spotNodes: [{ name: '', router: {} }] })),
+    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotNode('')
+      .build())),
     /SpotNode name must not be empty/
   );
   await assert.rejects(
-    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot({ spotNodes: { game: { router: { bind: '' } } } })),
+    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotNode('game')
+        .enableRouter('')
+      .build())),
     /SpotNode 'game' router must define a bind endpoint/
   );
   await assert.rejects(
-    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot({ spotNodes: { game: { pubSub: { manualConnections: [''] } } } })),
+    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotNode('game')
+        .enablePubSub(undefined, undefined, '')
+      .build())),
     /SpotNode 'game' pubSub manual connection endpoint must not be empty/
   );
   await assert.rejects(
-    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot({
-      spotNodes: {
-        game: {
-          router: { routingId: 'node-a' },
-          pubSub: { routingId: 'node-b' }
-        }
-      }
-    })),
+    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotNode('game')
+        .enableRouter(undefined, 'node-a')
+        .enablePubSub(undefined, 'node-b')
+      .build())),
     /router and pubSub routingId must match/
   );
 });
 
 test('ZLinkModule.forRoot validates SpotNode attachment targets', async () => {
   await assert.rejects(
-    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot({
-      spotNodes: {
-        game: {
-          attachedChannelClients: { missing: {} }
-        }
-      }
-    })),
+    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotNode('game')
+        .attachChannelClient('missing')
+      .build())),
     /attached channel client 'missing' must reference a client-server channel/
   );
   await assert.rejects(
-    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot({
-      spotNodes: {
-        game: {
-          acceptedSpotRouteChannels: { missing: {} }
-        }
-      }
-    })),
+    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotNode('game')
+        .acceptSpotRoutesFromChannel('missing')
+      .build())),
     /Accepted SPOT route channel 'missing' is not router-capable/
   );
   await assert.rejects(
-    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot({
-      spotNodes: {
-        game: {
-          attachedSpotPublisherClients: {
-            'game.events': { manualConnections: [''] }
-          }
-        }
-      }
-    })),
+    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addSpotNode('game')
+        .attachSpotPublisherClient('game.events', '')
+      .build())),
     /attached SPOT publisher 'game.events' manual connection endpoint must not be empty/
   );
-  await assert.doesNotReject(async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot({
-    spotNodes: {
-      game: {
-        acceptedSpotRouteChannels: { api: {} }
-      }
-    },
-    clientServerChannels: {
-      api: { server: { bind: 'tcp://0.0.0.0:9210' } }
-    }
-  })));
+  await assert.doesNotReject(async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addSpotNode('game')
+      .acceptSpotRoutesFromChannel('api')
+    .addClientServerChannel('api')
+      .enableServer('tcp://0.0.0.0:9210')
+    .build())));
 });
 
 test('ZLinkModule.forRoot registers registry spot remote address resolver by default', async () => {
-  const module = nestjs.ZLinkModule.forRoot({
-    discovery: { registries: ['tcp://127.0.0.1:5551'] },
-    routerMeshes: { play: {} },
-    registrySpotRemoteAddresses: { namespace: 'bingo' }
-  });
+  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .useDiscovery()
+      .addRegistryEndpoint('tcp://127.0.0.1:5551')
+    .addRouteMeshChannel('play')
+    .options({ registrySpotRemoteAddresses: { namespace: 'bingo' } })
+    .build());
   const resolverProvider = module.providers.find((provider) => provider.provide === nestjs.ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER);
 
   assert.notEqual(resolverProvider, undefined);
@@ -1312,27 +1247,32 @@ test('ZLinkModule.forRoot validates registry spot remote address resolver requir
   }
 
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({
-      routerMeshes: { play: {} },
-      registrySpotRemoteAddresses: { namespace: 'bingo' }
-    }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addRouteMeshChannel('play')
+      .options({ registrySpotRemoteAddresses: { namespace: 'bingo' } })
+      .build()),
     /requires discovery endpoints/
   );
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({
-      discovery: { registries: ['tcp://127.0.0.1:5551'] },
-      routerMeshes: { 'play-a': {}, 'play-b': {} },
-      registrySpotRemoteAddresses: { namespace: 'bingo' }
-    }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .useDiscovery()
+        .addRegistryEndpoint('tcp://127.0.0.1:5551')
+      .addRouteMeshChannel('play-a')
+      .addRouteMeshChannel('play-b')
+      .options({ registrySpotRemoteAddresses: { namespace: 'bingo' } })
+      .build()),
     /requires RouterChannelId/
   );
   assert.throws(
-    () => nestjs.ZLinkModule.forRoot({
-      discovery: { registries: ['tcp://127.0.0.1:5551'] },
-      routerMeshes: { play: {} },
-      spotRemoteAddressResolver: CustomSpotRemoteAddressResolver,
-      registrySpotRemoteAddresses: { namespace: 'bingo' }
-    }),
+    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .useDiscovery()
+        .addRegistryEndpoint('tcp://127.0.0.1:5551')
+      .addRouteMeshChannel('play')
+      .options({
+        spotRemoteAddressResolver: CustomSpotRemoteAddressResolver,
+        registrySpotRemoteAddresses: { namespace: 'bingo' }
+      })
+      .build()),
     /SPOT remote address resolver/
   );
 });
@@ -1348,9 +1288,9 @@ test('ZLinkModule.forRoot registers custom spot remote address resolver as concr
       };
     }
   }
-  const module = nestjs.ZLinkModule.forRoot({
-    spotRemoteAddressResolver: CustomSpotRemoteAddressResolver
-  });
+  const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .options({ spotRemoteAddressResolver: CustomSpotRemoteAddressResolver })
+    .build());
   const tokens = providerTokens(module);
   const container = await resolveModuleProviders(module, [
     CustomSpotRemoteAddressResolver,
@@ -1377,12 +1317,12 @@ test('ZLinkModule.forRootFactory exposes capability providers through the real N
   }
   const module = nestjs.ZLinkModule.forRootFactory({
     async useFactory() {
-      return {
-        spotNodes: ['game'],
-        spotFactories: [AsyncSpot],
-        actorFactories: { player: ActorFactory },
-        spotPublisherClients: ['game-events']
-      };
+      return nestjs.zlinkFramework()
+        .options({ spotPublisherClients: ['game-events'] })
+        .actorFactory('player', ActorFactory)
+        .addSpotNode('game')
+          .addSpotFactory(AsyncSpot)
+        .build();
     }
   });
   class AsyncModule {}
@@ -1412,13 +1352,10 @@ test('ZLinkModule.forRootFactory resolves factory dependencies from imported Nes
     imports: [ConfigModule],
     inject: [CONFIG],
     async useFactory(config) {
-      return {
-        clientServerChannels: {
-          [config.channelName]: {
-            server: { bind: config.bind }
-          }
-        }
-      };
+      return nestjs.zlinkFramework()
+        .addClientServerChannel(config.channelName)
+          .enableServer(config.bind)
+        .build();
     }
   });
   class AsyncModule {}
@@ -1434,7 +1371,7 @@ test('ZLinkModule.forRootFactory resolves factory dependencies from imported Nes
 test('ZLinkModule.forRootFactory boots through NestJS when async capability providers are absent', async () => {
   const module = nestjs.ZLinkModule.forRootFactory({
     async useFactory() {
-      return {};
+      return nestjs.zlinkFramework().build();
     }
   });
   class AsyncModule {}

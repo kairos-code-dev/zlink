@@ -1,6 +1,3 @@
-using Systems.Zlink.Codecs.Json;
-using TicTacToe.Server.Configuration;
-using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Streams;
 using Systems.Zlink;
@@ -10,13 +7,10 @@ namespace TicTacToe.Server.Play.Adapters.ZLink.Sessions;
 
 sealed class PlaySession(
     IZLinkSessionContext context,
-    IZLinkActorManager actors,
+    IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers,
     ILogger<PlaySession> logger)
     : IZLinkSession
 {
-    private string? _actorId;
-    private IZLinkSessionActor? _actor;
-
     public IZLinkSessionContext Context { get; } = context;
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
@@ -30,16 +24,13 @@ sealed class PlaySession(
 
     public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
-        var actorId = _actorId;
-        var actor = _actor;
-        _actorId = null;
-        _actor = null;
+        var boundActors = Context.Actors.Bound.ToArray();
         logger.LogInformation(
-            "client -> play stream: disconnected. sessionId={SessionId}, actor={ActorId}",
+            "client -> play stream: disconnected. sessionId={SessionId}, actors={ActorCount}",
             Context.SessionId,
-            actorId ?? "(unauthenticated)");
+            boundActors.Length);
 
-        if (actor is not null)
+        foreach (var actor in boundActors)
         {
             await actor.NotifyDisconnectedAsync(cancellationToken);
         }
@@ -50,10 +41,10 @@ sealed class PlaySession(
         CancellationToken cancellationToken)
     {
         logger.LogWarning(
-            "play stream: error. code={Code}, message={Message}, actor={ActorId}",
+            "play stream: error. code={Code}, message={Message}, sessionId={SessionId}",
             error.Error,
             error.Diagnostic?.Message,
-            _actorId ?? "(unauthenticated)");
+            Context.SessionId);
         _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
@@ -63,126 +54,33 @@ sealed class PlaySession(
         Message payload,
         CancellationToken cancellationToken)
     {
-        var actorId = _actorId;
-
         logger.LogInformation(
-            "client -> play stream: message received. name={MessageName}, kind={Kind}, actor={ActorId}",
+            "client -> play stream: message received. name={MessageName}, kind={Kind}, sessionId={SessionId}",
             header.Name,
             header.Kind,
-            actorId ?? "(unauthenticated)");
+            Context.SessionId);
 
-        if (string.Equals(header.Name, nameof(AuthenticateReq), StringComparison.Ordinal))
+        if (await handlers.TryHandleAsync(
+                Context,
+                header,
+                payload,
+                cancellationToken))
         {
-            var authenticated = await AuthenticateAsync(payload, cancellationToken);
-            _actorId = authenticated.ActorId;
             return;
         }
 
-        if (actorId is null)
-        {
-            throw new InvalidOperationException("AuthenticateReq is required before play packets.");
-        }
-
-        var actor = await EnsureActorBoundAsync(actorId, cancellationToken);
-
-        logger.LogInformation(
-            "play stream -> actor: dispatching packet. name={MessageName}, actor={ActorId}",
-            header.Name,
-            actorId);
+        var actor = RequireSingleBoundActor($"relaying packet '{header.Name}'");
         await actor.RelayAsync(header, payload, cancellationToken);
     }
 
-    private async ValueTask<AuthenticatedPlaySession> AuthenticateAsync(
-        Message payload,
-        CancellationToken cancellationToken)
+    private IZLinkSessionActor RequireSingleBoundActor(string action)
     {
-        try
+        var actors = Context.Actors.Bound;
+        return actors.Count switch
         {
-            var authenticate = payload.FromJson<AuthenticateReq>();
-
-            logger.LogInformation(
-                "play stream: authenticate requested. sessionId={SessionId}",
-                Context.SessionId);
-
-            var actorId = authenticate.AccessToken.Trim();
-            if (string.IsNullOrWhiteSpace(actorId))
-            {
-                throw new InvalidOperationException("Authentication token is empty.");
-            }
-
-            await Context.Client.Reply(new AuthenticateRes(actorId))
-                .Async();
-
-            logger.LogInformation(
-                "play stream: authenticate accepted. sessionId={SessionId}, player={ActorId}",
-                Context.SessionId,
-                actorId);
-
-            return new AuthenticatedPlaySession(actorId);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(
-                ex,
-                "play stream: authenticate failed. sessionId={SessionId}",
-                Context.SessionId);
-            throw;
-        }
+            1 => actors.Single(),
+            0 => throw new InvalidOperationException($"Client must authenticate before {action}."),
+            _ => throw new InvalidOperationException($"Exactly one actor must be bound before {action}.")
+        };
     }
-
-    private async ValueTask<IZLinkSessionActor> EnsureActorBoundAsync(
-        string actorId,
-        CancellationToken cancellationToken)
-    {
-        if (_actor is { } existing)
-        {
-            return existing;
-        }
-
-        try
-        {
-            logger.LogInformation(
-                "play stream: creating actor before dispatch. sessionId={SessionId}, actor={ActorId}",
-                Context.SessionId,
-                actorId);
-            var playerActor = await actors.GetOrCreateAsync(
-                actorId,
-                SampleTypes.PlayerActor,
-                cancellationToken);
-
-            logger.LogInformation(
-                "play stream: joining actor to entry spot. sessionId={SessionId}, actor={ActorId}",
-                Context.SessionId,
-                actorId);
-            await playerActor.Context.JoinEntrySpot(RoutingId.From(SampleTypes.PlaySpotNodeId))
-                .Async(cancellationToken);
-
-            logger.LogInformation(
-                "play stream: binding actor to session. sessionId={SessionId}, actor={ActorId}",
-                Context.SessionId,
-                actorId);
-            var actor = await Context.Actors.BindAsync(
-                playerActor,
-                cancellationToken);
-            _actor = actor;
-
-            logger.LogInformation(
-                "play stream: actor bound to session. sessionId={SessionId}, actor={ActorId}",
-                Context.SessionId,
-                actor.ActorId);
-
-            return actor;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(
-                ex,
-                "play stream: actor bind failed. sessionId={SessionId}, actor={ActorId}",
-                Context.SessionId,
-                actorId);
-            throw;
-        }
-    }
-
-    private readonly record struct AuthenticatedPlaySession(string ActorId);
 }

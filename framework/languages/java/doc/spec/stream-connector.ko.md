@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md) | [다음: Java STREAM Decisions And Open Items](../draft/stream-open-items.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java spec 목차](./README.ko.md)
 
-[Java 묶음](../README.ko.md) | [포팅 계획](../draft/java-kotlin-framework-porting-plan.ko.md) | [STREAM](./spring-boot-stream.ko.md) | [STREAM 샘플](../guide/samples/stream-samples.ko.md) | [Samples](../../samples/README.md)
+[Java 묶음](../README.ko.md) | [STREAM](./spring-boot-stream.ko.md) | [STREAM 샘플](../guide/samples/stream-samples.ko.md) | [Samples](../../samples/README.md)
 
 # Java/Kotlin Stream Connector
 
@@ -438,5 +438,5 @@ Java connector는 아래 테스트를 별도 suite로 가진다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md) | [다음: Java STREAM Decisions And Open Items](../draft/stream-open-items.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

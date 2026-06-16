@@ -215,14 +215,14 @@ await events
 options.DefaultTimeout = TimeSpan.FromSeconds(5);
 options.Codecs.AddJson();
 options.AddHandlersFromAssemblyOf<Program>();
-options.ConfigureMetadata(metadata => metadata.AddForwardedMetadataKey("trace-id"));
+options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");
 options.AddActorFactory<PlayerActorFactory>("player");
 options.AddSpotRemoteAddressResolver<MySpotResolver>();
-options.UseRegistrySpotRemoteAddresses("game", registry => registry.RouterChannelId = "play-router");
-options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:6000"));
-options.AddSpotMesh("play-spots", mesh => mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:6001")));
+options.UseRegistrySpotRemoteAddresses("game").RouterChannelId = "play-router";
+options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6000");
+options.AddSpotMesh("play-spots").UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6001");
 options.UseFilter<AuditingFilter>();
-options.ConfigureDispatch(dispatch => dispatch.SpotDispatchMode = ZLinkDispatchMode.Compiled);
+options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 ```
 
 | 인터페이스 | 역할 |
@@ -237,32 +237,29 @@ options.ConfigureDispatch(dispatch => dispatch.SpotDispatchMode = ZLinkDispatchM
 ### 2.2 channel builder 와 역할
 
 ```csharp
-options.AddClientServerChannel("api", channel =>
 {
-    channel.EnableServer(server =>          // IChannelServerCapabilityBuilder
-    {
-        server.Bind("tcp://127.0.0.1:5000");
-        server.ConfigureSocket(socket => socket.TcpNoDelay = true);
-        server.ConfigureRouting(route => route.RoutingId = RoutingId.From("api-server"));
-    });
-    channel.EnableClient(client =>          // IChannelClientCapabilityBuilder
-        client.UseManualConnections(c => c.Connect("tcp://127.0.0.1:5000")));
+    var channel = options.AddClientServerChannel("api")
+        .EnableServer("tcp://127.0.0.1:5000")
+        .EnableClient("tcp://127.0.0.1:5000");
     channel.AddRequestHandler<ApiRequestHandler, ApiRequest, ApiReply>();
     channel.EnableSpotRouteEgress("play-spots");
-});
+}
 
-options.AddFanoutChannel("events", channel => { channel.EnablePublisher(); channel.EnableSubscriber(); });
-options.AddDealerMeshChannel("mesh", channel =>
 {
-    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:5200"));
-    channel.EnableClient(client => client.Bind("tcp://127.0.0.1:5201"));
-});
-options.AddRouteMeshChannel("play-router", channel =>
+    var channel = options.AddFanoutChannel("events")
+        .EnablePublisher("tcp://127.0.0.1:5100")
+        .EnableSubscriber("tcp://127.0.0.1:5100");
+}
 {
-    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:5300"));
-    channel.EnableClient(client =>
-        client.UseManualConnections(c => c.Connect("tcp://127.0.0.1:5301")));
-});
+    var channel = options.AddDealerMeshChannel("mesh")
+        .EnableServer("tcp://127.0.0.1:5200")
+        .EnableClient("tcp://127.0.0.1:5201");
+}
+{
+    var channel = options.AddRouteMeshChannel("play-router")
+        .EnableServer("tcp://127.0.0.1:5300")
+        .EnableClient("tcp://127.0.0.1:5301");
+}
 ```
 
 | 인터페이스 | 역할 |
@@ -271,59 +268,49 @@ options.AddRouteMeshChannel("play-router", channel =>
 | `IZLinkFanoutChannelBuilder` | fanout channel(`EnablePublisher`/`EnableSubscriber`, publish handler) |
 | `IZLinkDealerMeshChannelBuilder` | dealer mesh channel(`EnableServer`/`EnableClient`, send/request handler) |
 | `IZLinkRouteMeshChannelBuilder` | route mesh channel(`EnableServer`/`EnableClient`, routing/socket, route send/request handler, `EnableSpotRouteEgress`) |
-| `IZLinkRouteChannelBuilder` | route channel 공통 빌더 표면 |
-| `IChannelServerCapabilityBuilder` | server 역할(`Bind`, `ConfigureSocket`, `ConfigureRouting`) |
-| `IChannelClientCapabilityBuilder` | client 역할(`ConfigureSocket`, `ConfigureRouting`, `UseManualConnections`) |
-| `IDealerMeshChannelClientCapabilityBuilder` | dealer mesh client 역할(`Bind` 포함) |
-| `IChannelPublisherCapabilityBuilder` | publisher 역할(`Bind`, `ConfigureSocket`) |
-| `IChannelSubscriberCapabilityBuilder` | subscriber 역할(`ConfigureSocket`, `UseManualConnections`) |
-| `IZLinkEndpointConnections` | route mesh channel 의 수동 연결 집합(`Connect`/`Disconnect`/`ListConnections`) |
 
 검증: `BuilderContracts.Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel`.
 
 ### 2.3 spot node · stream node · spot mesh builder
 
 ```csharp
-options.AddStreamNode("gateway", stream =>
 {
+    var stream = options.AddStreamNode("gateway");
     stream.Bind("tcp://127.0.0.1:5400");
     stream.RegisterSession<GatewaySession>();
-});
 
-options.AddSpotMesh("play-mesh", mesh =>
+}
+
 {
-    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:6003"));
-    mesh.AddNode("play-spots", spot =>
+    var mesh = options.AddSpotMesh("play-mesh");
+    mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6003");
+
     {
-        spot.EnableRouter(router =>
-        {
-            router.BindRouter("tcp://127.0.0.1:5501");
-            router.SetRoutingId(RoutingId.From("spot-router"));
-        });
-        spot.EnablePubSub(pubSub =>
-        {
-            pubSub.BindPubSub("tcp://127.0.0.1:5500");
-            pubSub.ConfigurePublisher(p => p.NoDrop = true);
-        });
-        spot.AttachChannelClient("api", c => c.ConfigureSocket(s => s.Immediate = true));
-        spot.AttachChannelClient("api");
+        var spot = mesh.AddNode("play-spots");
+
+        spot.EnableRouter("tcp://127.0.0.1:5501");
+        spot.SetRouterRoutingId(RoutingId.From("spot-router"));
+
+        spot.EnablePubSub("tcp://0.0.0.0:9000");
+        spot.ConnectPubSub("tcp://127.0.0.1:5500");
+        spot.ConfigurePubSubPublisher().NoDrop = true;
+
+        spot.AttachChannelClient("api", "tcp://127.0.0.1:5300");
+        spot.ConfigureChannelClientSocket("api").Immediate = true;
         spot.AttachSpotPublisherClient("events");
         spot.AttachSpotPublisherClient("mesh-events");
-        spot.AcceptSpotRoutesFromChannel("play-router", a =>
-            a.UseManualConnections(c => c.Connect("tcp://127.0.0.1:5300")));
-        spot.ConfigureEntrySpot(entry => entry.RoutingId = RoutingId.From("entry"));
+        spot.AcceptSpotRoutesFromChannel("play-router", "tcp://127.0.0.1:5300");
+        spot.ConfigureEntrySpot().RoutingId = RoutingId.From("entry");
         spot.AddSpotFactory<RoomSpot>();
         spot.AddEntrySpot<EntrySpot>();
-    });
-    mesh.AddNode("session-node", spot =>
+    }
+
     {
-        spot.EnableRouter(router =>
-        {
-            router.BindRouter("tcp://127.0.0.1:5601");
-            router.ConfigureRouting(r => r.RoutingId = RoutingId.From("session-gateway"));
-        });
-    });
-});
+        var spot = mesh.AddNode("session-node");
+        spot.EnableRouter("tcp://127.0.0.1:5601");
+        spot.ConfigureRouterRouting().RoutingId = RoutingId.From("session-gateway");
+    }
+}
 ```
 
 | 인터페이스 | 역할 |
@@ -332,12 +319,6 @@ options.AddSpotMesh("play-mesh", mesh =>
 | `IZLinkSpotNodeBuilder` | spot node 등록 표면(`EnableRouter`, `EnablePubSub`, channel attach, route 수용, entry/spot factory) |
 | `IZLinkSpotMeshNodeBuilder` | spot mesh 안의 노드 빌더(`IZLinkSpotNodeBuilder` 와 같은 표면, mesh 컨텍스트) |
 | `IZLinkSpotMeshBuilder` | discovery 기반 spot mesh(`UseDiscovery`, `AddNode`) |
-| `IZLinkSpotRouteChannelAcceptanceBuilder` | `AcceptSpotRoutesFromChannel` 의 ingress 연결 설정(`UseManualConnections`) |
-| `ISpotRouterCapabilityBuilder` | spot router 역할(`BindRouter`/`SetRoutingId`/`ConfigureSocket`/`ConfigureRouting`/`UseManualConnections`) |
-| `ISpotPubSubCapabilityBuilder` | spot pub/sub 역할(`BindPubSub`/`SetRoutingId`/`ConfigurePublisher`/`ConfigureSubscriber`/`UseManualConnections`) |
-| `ISpotPublisherClientCapabilityBuilder` | spot publisher client attach 설정 |
-| `ISpotChannelClientCapabilityBuilder` | spot 의 일반 channel client attach 설정 |
-| `IZLinkEndpointConnections` | spot route ingress 수동 연결 집합 |
 
 검증: `BuilderContracts.Spot_and_stream_builders_declare_node_local_roles_and_channel_attachments`.
 
@@ -347,24 +328,16 @@ options.AddSpotMesh("play-mesh", mesh =>
 client·subscriber·spot router 가 서로 다른 연결 집합이다.
 
 ```csharp
-channelClient.Connect("tcp://127.0.0.1:5001");   // IZLinkEndpointConnections
-subscriber.Connect("tcp://127.0.0.1:5002");       // IZLinkEndpointConnections
-spotRouter.Connect("tcp://127.0.0.1:5003");       // IZLinkEndpointConnections
-spotPubSub.Connect("tcp://127.0.0.1:5004");        // IZLinkEndpointConnections
-spotPublisher.Connect("tcp://127.0.0.1:5005");     // IZLinkEndpointConnections
-spotRouteIngress.Connect("tcp://127.0.0.1:5006");  // IZLinkEndpointConnections
+channel.EnableClient("tcp://127.0.0.1:5001");
+subscriber.EnableSubscriber("tcp://127.0.0.1:5002");
+spot.ConnectRouter("tcp://127.0.0.1:5003");
+spot.ConnectPubSub("tcp://127.0.0.1:5004");
+spot.AttachSpotPublisherClient("events", "tcp://127.0.0.1:5005");
+spot.AcceptSpotRoutesFromChannel("play-router", "tcp://127.0.0.1:5006");
 ```
 
-| 인터페이스 | 역할 |
-|------------|------|
-| `IZLinkEndpointConnections` | client 역할 수동 연결(`Connect`/`Disconnect`/`ListConnections`) |
-| `IZLinkEndpointConnections` | subscriber 역할 수동 연결 |
-| `IZLinkEndpointConnections` | spot router 수동 연결 |
-| `IZLinkEndpointConnections` | spot pub/sub 수동 연결 |
-| `IZLinkEndpointConnections` | spot publisher client 수동 연결 |
-| `IZLinkEndpointConnections` | spot route ingress 수동 연결 |
-
-검증: `ConnectionAndConfigContracts.Connection_contracts_record_the_startup_endpoints_owned_by_each_runtime_role`.
+검증: `BuilderContracts.Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel`,
+`BuilderContracts.Spot_and_stream_builders_declare_node_local_roles_and_channel_attachments`.
 
 ### 2.5 socket · routing · spot · dispatch 설정
 

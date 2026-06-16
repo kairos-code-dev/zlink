@@ -51,3 +51,21 @@ test('backend adapter creates context and core socket wrappers through public bi
     await context.dispose();
   }
 });
+
+test('backend adapter unwraps SpotNode when attaching stream ActorGateway', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const channel = factory.createChannelAdapter();
+  const spotAdapter = factory.createSpotAdapter();
+  const streamAdapter = factory.createStreamAdapter();
+  const context = channel.createContext();
+  const spotNode = spotAdapter.createSpotNode(context, 3);
+  const stream = streamAdapter.createStreamSocket(context);
+
+  try {
+    assert.doesNotThrow(() => stream.attachActorGateway(spotNode));
+  } finally {
+    await stream.dispose();
+    await spotNode.dispose();
+    await context.dispose();
+  }
+});

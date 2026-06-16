@@ -39,24 +39,27 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.AddNode("actor-node", spot =>
-                {
-                    spot.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        router.BindRouter(spotRouterEndpoint);
-                        router.SetRoutingId(actorNodeRid);
-                    });
+                        var spot = mesh.AddNode("actor-node");
+                    {
+                        var router = spot.EnableRouter(spotRouterEndpoint);
+                        router.SetRouterRoutingId(actorNodeRid);
+
+                    }
                     spot.AddEntrySpot<GatewayEntrySpot>();
-                });
-                });
-                options.AddStreamNode("client.stream", stream =>
+
+                    }
+
+                }
                 {
+                    var stream = options.AddStreamNode("client.stream");
                     stream.Bind(streamEndpoint);
                     stream.AttachActorGateway("actor-node");
                     stream.RegisterSession<GatewayRelaySession>();
-                });
+
+                }
             });
         });
 
@@ -129,19 +132,21 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.AddNode("actor-node", spot =>
-                {
-                    spot.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        router.BindRouter(playSpotRouterEndpoint);
-                        router.SetRoutingId(playRid);
-                        router.UseManualConnections(connections => connections.Connect(sessionSpotRouterEndpoint));
-                    });
+                        var spot = mesh.AddNode("actor-node");
+                    {
+                        var router = spot.EnableRouter(playSpotRouterEndpoint);
+                        router.SetRouterRoutingId(playRid);
+                        router.ConnectRouter(sessionSpotRouterEndpoint);
+
+                    }
                     spot.AddEntrySpot<GatewayEntrySpot>();
-                });
-                });
+
+                    }
+
+                }
             });
         });
         var missingActor = await playHost.Services.GetRequiredService<IZLinkActorManager>()
@@ -157,24 +162,27 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
             services.AddScoped<MissingRemoteActorRelaySession>();
             services.AddZLinkFramework(options =>
             {
-                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.AddNode("actor-node", spot =>
-                {
-                    spot.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        router.BindRouter(sessionSpotRouterEndpoint);
-                        router.SetRoutingId(sessionRid);
-                        router.UseManualConnections(connections => connections.Connect(playSpotRouterEndpoint));
-                    });
-                });
-                });
-                options.AddStreamNode("client.stream", stream =>
+                        var spot = mesh.AddNode("actor-node");
+                    {
+                        var router = spot.EnableRouter(sessionSpotRouterEndpoint);
+                        router.SetRouterRoutingId(sessionRid);
+                        router.ConnectRouter(playSpotRouterEndpoint);
+
+                    }
+
+                    }
+
+                }
                 {
+                    var stream = options.AddStreamNode("client.stream");
                     stream.Bind(streamEndpoint);
                     stream.AttachActorGateway("actor-node");
                     stream.RegisterSession<MissingRemoteActorRelaySession>();
-                });
+
+                }
             });
         });
 

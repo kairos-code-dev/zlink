@@ -27,46 +27,51 @@ public static class SupportServerHostFactory
             options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
             options.Codecs.AddJson();
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
-            options.AddClientServerChannel(SampleNames.SupportChannel, channel =>
+            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
-                channel.EnableServer(server => server.Bind(topology.SupportChannelEndpoint));
+                var channel = options.AddClientServerChannel(SampleNames.SupportChannel);
+                channel.EnableServer(topology.SupportChannelEndpoint);
                 channel.AddHandlerGroup("support");
-            });
-            options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
+
+            }
             {
+                var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
                 channel.EnableClient();
-            });
+
+            }
             options.AddActorFactory<SupportUserActorFactory>(SampleNames.SupportActorType);
-            options.AddSpotMesh(SampleNames.SupportSpotDiscovery, mesh =>
             {
-                mesh.AddNode(SampleNames.SupportSpotNode, spot =>
+                var mesh = options.AddSpotMesh(SampleNames.SupportSpotDiscovery);
                 {
-                    spot.EnableRouter(router =>
+                    var spot = mesh.AddNode(SampleNames.SupportSpotNode);
                     {
-                        router.BindRouter(topology.SupportEntrySpotRouterEndpoint);
-                        router.SetRoutingId(topology.SupportEntryRid);
-                    });
-                    spot.EnablePubSub(pubsub =>
+                        var router = spot.EnableRouter(topology.SupportEntrySpotRouterEndpoint);
+                        router.SetRouterRoutingId(topology.SupportEntryRid);
+
+                    }
                     {
-                        pubsub.BindPubSub(topology.SupportEntrySpotEndpoint);
-                    });
+                        var pubsub = spot.EnablePubSub(topology.SupportEntrySpotEndpoint);
+
+                    }
                     spot.AttachChannelClient(SampleNames.ApiChannel);
                     spot.AddEntrySpot<SupportEntrySpot>();
-                });
-                mesh.AddNode(SampleNames.SupportConversationSpotNode, spot =>
+
+                }
                 {
-                    spot.EnableRouter(router =>
+                    var spot = mesh.AddNode(SampleNames.SupportConversationSpotNode);
                     {
-                        router.BindRouter(topology.SupportConversationSpotRouterEndpoint);
-                    });
-                    spot.EnablePubSub(pubsub =>
+                        var router = spot.EnableRouter(topology.SupportConversationSpotRouterEndpoint);
+
+                    }
                     {
-                        pubsub.BindPubSub(topology.SupportConversationSpotEndpoint);
-                    });
+                        var pubsub = spot.EnablePubSub(topology.SupportConversationSpotEndpoint);
+
+                    }
                     spot.AddSpotFactory<ConversationSpot>();
-                });
-            });
+
+                }
+
+            }
         });
 
         return builder.Build();

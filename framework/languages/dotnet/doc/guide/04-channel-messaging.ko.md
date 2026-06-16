@@ -232,11 +232,12 @@ framework 는 발견한 handler 를 모든 channel 에 자동으로 열지 않�
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddClientServerChannel("api", channel =>
     {
-        channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
+        var channel =     options.AddClientServerChannel("api");
+                channel.EnableServer("tcp://0.0.0.0:7101");
         channel.AddHandlerGroup("api");          // [ZLinkHandlerGroup("api")] 묶음 노출
-    });
+
+    }
 
     options.AddHandlersFromAssemblyOf<Program>(); // handler 후보 발견(노출 아님)
 });
@@ -249,12 +250,13 @@ builder.Services.AddZLinkFramework(options =>
 ### 방법 B — typed registration (개별 등록)
 
 ```csharp
-options.AddClientServerChannel("price", channel =>
 {
-    channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7301"));
+    var channel = options.AddClientServerChannel("price");
+        channel.EnableServer("tcp://0.0.0.0:7301");
     channel.AddRequestHandler<GetPriceHandler>();
     channel.AddSendHandler<RefreshCacheHandler>();
-});
+
+}
 ```
 
 fanout channel 의 publish handler 는 builder 의 `AddPublishHandler<...>()` 또는
@@ -372,27 +374,18 @@ filter 도 `new` 가 아니라 .NET DI 에서 resolve 된다.
 
 ## 6. 연결 제어
 
-기본은 `UseDiscovery(...AddRegistryEndpoint...)` 자동 연결이다([03-concepts](./03-concepts.ko.md) §5).
+기본은 `UseDiscovery().AddRegistryEndpoint(...)` 자동 연결이다([03-concepts](./03-concepts.ko.md) §5).
 수동 연결은 startup builder 에서 역할 단위로 설정한다.
 
 ```csharp
-// 등록 시점 수동 연결 (capability 단위)
-options.AddClientServerChannel("profile", channel =>
-{
-    channel.EnableClient(client =>
-    {
-        client.UseManualConnections(peers =>
-        {
-            peers.Connect("tcp://10.0.10.15:7101");
-            peers.Connect("tcp://10.0.10.16:7101");
-        });
-    });
-});
+// 등록 시점 수동 연결
+options.AddClientServerChannel("profile")
+    .EnableClient("tcp://10.0.10.15:7101")
+    .EnableClient("tcp://10.0.10.16:7101");
 ```
 
-`UseManualConnections(...)` 에서 받은 연결 집합은 설정 객체다. `Connect`,
-`Disconnect`, `ListConnections` 는 등록 중 endpoint 목록을 편집하기 위한 함수이며,
-host 시작 뒤 실행 중인 socket 을 직접 제어하는 handle 이 아니다.
+endpoint 인자는 startup 설정이다. host 시작 뒤 실행 중인 socket 을 직접 제어하는
+handle 이 아니다.
 
 Discovery 모드는 peer 소유권이 Discovery 에 있다. 실행 중 endpoint 변경이 필요한
 운영 환경에서는 discovery 쪽 등록 정보를 갱신하거나, 애플리케이션을 재시작해
@@ -420,27 +413,25 @@ abstract/interface 면 명시 codec 없이는 설정 오류가 난다.
 
 ```csharp
 // 처리 노드 — server 역할(bind + handler group)
-options.AddDealerMeshChannel("image.resize", channel =>
 {
-    channel.EnableServer(server => server.Bind("tcp://0.0.0.0:5600"));
+    var channel = options.AddDealerMeshChannel("image.resize");
+        channel.EnableServer("tcp://0.0.0.0:5600");
     channel.AddHandlerGroup("resize");                 // dealer mesh 는 request/send handler
-});
+
+}
 ```
 
 ```csharp
 // 호출 노드 — client 역할. 여러 peer 에 연결하면 요청이 라운드로빈으로 분산
-options.AddDealerMeshChannel("image.resize", channel =>
 {
-    channel.EnableClient(client => client.UseManualConnections(peers =>
-    {
-        peers.Connect("tcp://10.30.1.10:5600");
-        peers.Connect("tcp://10.30.1.10:5601");
-    }));
-});
+    var channel = options.AddDealerMeshChannel("image.resize")
+        .EnableClient("tcp://10.30.1.10:5600")
+        .EnableClient("tcp://10.30.1.10:5601");
+}
 
 // 또는 Discovery 로 자동 발견 — 노드 추가 시 호출자 재시작 불필요
-options.UseDiscovery(d => d.AddRegistryEndpoint("tcp://10.30.1.5:7000"));
-options.AddDealerMeshChannel("image.resize", channel => channel.EnableClient());
+options.UseDiscovery().AddRegistryEndpoint("tcp://10.30.1.5:7000");
+options.AddDealerMeshChannel("image.resize").EnableClient();
 ```
 
 호출 표면은 client-server 와 **같다** — `IZLinkChannelClient.RequestToChannel("image.resize", …)`.
@@ -466,18 +457,14 @@ route mesh 는 `RoutingId` 로 **특정 주소를 지정해서 라우팅**한다
 SPOT 라우팅 백본이 필요할 때 이 channel 종류를 쓴다([05-spot](./05-spot.ko.md)).
 
 ```csharp
-options.AddRouteMeshChannel("tictactoe.router", routed =>
 {
-    routed.EnableServer(server =>
-    {
-        server.Bind(playRouterEndpoint);                              // 이 노드가 받을 endpoint
-        server.ConfigureRouting(r => r.RoutingId = RoutingId.From(playRouterId));  // 이 노드의 주소
-    });
-    routed.EnableClient(client =>
-        client.UseManualConnections(c => c.Connect(peerRouterEndpoint)));  // 다른 노드로 나가는 연결
+    var routed = options.AddRouteMeshChannel("tictactoe.router")
+        .EnableServer(playRouterEndpoint)  // 이 노드가 받을 endpoint
+        .EnableClient(peerRouterEndpoint); // 다른 노드로 나가는 연결
+    routed.ConfigureRouting().RoutingId = RoutingId.From(playRouterId);  // 이 노드의 주소
     routed.AddRequestHandler<AllocateRoomRouteHandler, AllocateRoom, RoomAllocated>(
         "room.allocate");
-});
+}
 ```
 
 route mesh 로 직접 호출할 때는 일반 `IZLinkChannelClient` 가 아니라
@@ -522,25 +509,27 @@ builder.Services.AddZLinkFramework(options =>
     options.Codecs.AddProtobuf();
 
     // 들어오는 요청을 받는 서버 channel
-    options.AddClientServerChannel("api", channel =>
     {
-        channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7101"));
+        var channel =     options.AddClientServerChannel("api");
+                channel.EnableServer("tcp://0.0.0.0:7101");
         channel.AddHandlerGroup("api");
-    });
+
+    }
 
     // 이벤트 발행/구독 channel
-    options.AddFanoutChannel("api.events", channel =>
     {
-        channel.EnablePublisher(publisher => publisher.Bind("tcp://0.0.0.0:7201"));
+        var channel =     options.AddFanoutChannel("api.events");
+                channel.EnablePublisher("tcp://0.0.0.0:7201");
         channel.EnableSubscriber();
         channel.AddHandlerGroup("api.events");
-    });
+
+    }
 
     // 다른 서비스로 나가는 outbound channel
-    options.AddClientServerChannel("account", channel => channel.EnableClient());
+        options.AddClientServerChannel("account").EnableClient();
 
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry2:5551"));
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry2:5551");
     options.AddHandlersFromAssemblyOf<Program>();
 });
 

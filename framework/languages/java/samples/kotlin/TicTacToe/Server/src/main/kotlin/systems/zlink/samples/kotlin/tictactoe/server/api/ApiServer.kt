@@ -11,14 +11,10 @@ object ApiServer {
             SampleLogging.configure(settings, "api")
             options.codecs().addMessagePack()
             options.addHandlersFromPackageOf(ApiServer::class.java)
-            options.addClientServerChannel(SampleNames.ApiChannel) { channel ->
-                channel.enableServer { server -> server.bind(settings.apiChannelEndpoint) }
-                channel.addHandlerGroup("api")
-            }
-            options.addClientServerChannel(SampleNames.PlayChannel) { channel ->
-                channel.enableClient { client ->
-                    client.useManualConnections { endpoints -> endpoints.connect(settings.playChannelEndpoint) }
-                }
-            }
+            options.addClientServerChannel(SampleNames.ApiChannel)
+                .enableServer(settings.apiChannelEndpoint)
+                .addHandlerGroup("api")
+            options.addClientServerChannel(SampleNames.PlayChannel)
+                .enableClient(settings.playChannelEndpoint)
         }
 }

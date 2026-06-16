@@ -612,7 +612,7 @@ framework와 같은 사용성으로 제공하는 것이다.
 구현 항목:
 
 - `add_client_server_channel(...)`
-- server/client/publisher/subscriber 역할
+- server/client/publisher/subscriber capability
 - `bind(...)`
 - `connect(...)`
 - `use_discovery(...)`
@@ -628,7 +628,7 @@ framework와 같은 사용성으로 제공하는 것이다.
 완료 기준:
 
 - channel messaging 기본 호출은 channel name 기준이다.
-- 같은 역할 안에서 discovery와 manual connection을 섞지 않는다.
+- 같은 capability 안에서 discovery와 manual connection을 섞지 않는다.
 - pending queue 한도 초과는 `request_rejected`로 실패한다.
 - route handler가 없으면 request는 handler not found 계열 error로 닫힌다.
 

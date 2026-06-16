@@ -22,10 +22,7 @@ internal sealed class SubmitBingoCardHandler
         spot.EnsureRoomId(message.RoomId);
         var card = BingoCard.FromSubmittedNumbers(message.Card);
         var change = spot.SubmitCard(actor.ActorId, card);
-        if (change.ShouldStartDrawTimer)
-        {
-            await spot.StartDrawTimerAsync(cancellationToken);
-        }
+        await spot.PublishAsync(change, cancellationToken);
 
         return new SubmitBingoCardRes { State = change.State };
     }

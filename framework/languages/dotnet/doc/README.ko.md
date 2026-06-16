@@ -113,7 +113,7 @@
   공용 계약과 샘플 문서에 함께 반영한다.
 - session actor dispatch[^session-actor-dispatch] 는 단일 gateway feature switch
   하나를 켜고 끄는 형태가 아니다. 대신
-  `AddStreamNode(...).RegisterSession<TSession>()`, actor factory, actor
+  `AddStreamNode` 뒤의 `RegisterSession<TSession>()`, actor factory, actor
   logical actor binding, actor-session binding, `IZLinkBoundSession` 의
   조합으로 설명한다. session 위치 조회를 위한 별도의 public API 는 두지 않는다.
 
@@ -176,7 +176,7 @@
 | 문서 | 다루는 범위 |
 |------|------------|
 | [aspnet-core-channel-messaging.ko.md](./spec/aspnet-core-channel-messaging.ko.md) | channel 등록, handler 프로그래밍 모델, dispatch 흐름, outbound client 사용, router-capable channel의 SPOT route 수신, lifecycle, middleware / filter |
-| [aspnet-core-spot.ko.md](./spec/aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish / subscribe, discovery, `AcceptSpotRoutesFromChannel(...)` |
+| [aspnet-core-spot.ko.md](./spec/aspnet-core-spot.ko.md) | SPOT 개념, SpotNode 등록, spot lifecycle, publish / subscribe, discovery, `AcceptSpotRoutesFromChannel` |
 | [spot-node.ko.md](./spec/spot-node.ko.md) | Entry Spot routing id 설정, `ConfigureEntrySpot(...)` 적용 순서, Spot route kind 보존 규칙 |
 | [aspnet-core-actor.ko.md](./spec/aspnet-core-actor.ko.md) | Actor 라이프사이클 (Entry Spot / session bind / user Spot join), handler, IZLinkBoundSession, session actor dispatch (gateway) 패턴 |
 | [session-actor-dispatch.ko.md](./spec/session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkBoundSession`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../../doc/spec/session-actor-dispatch.ko.md) 에서 다룬다. |

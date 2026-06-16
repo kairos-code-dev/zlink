@@ -18,26 +18,27 @@ builder.Services.AddZLinkFramework(options =>
     options.DefaultTimeout = SampleTimings.FrameworkTimeout;
     options.AddHandlersFromAssemblyOf(typeof(AssignDeliveryHandler));
     options.Codecs.AddJson();
-    options.AddClientServerChannel(SampleNames.DispatchRouteChannel, channel =>
     {
-        channel.EnableServer(server => server.Bind(topology.DispatchCenterRouteEndpoint));
+        var channel = options.AddClientServerChannel(SampleNames.DispatchRouteChannel);
+        channel.EnableServer(topology.DispatchCenterRouteEndpoint);
         channel.AddRequestHandler<AssignDeliveryHandler, AssignDelivery, AssignDeliveryResult>();
-    });
-    options.AddClientServerChannel(SampleNames.CourierAChannel, channel =>
+
+    }
     {
-        channel.EnableClient(client => client.UseManualConnections(
-            connections => connections.Connect(topology.CourierAEndpoint)));
-    });
-    options.AddClientServerChannel(SampleNames.CourierBChannel, channel =>
+        var channel = options.AddClientServerChannel(SampleNames.CourierAChannel);
+                channel.EnableClient(topology.CourierAEndpoint);
+
+    }
     {
-        channel.EnableClient(client => client.UseManualConnections(
-            connections => connections.Connect(topology.CourierBEndpoint)));
-    });
-    options.AddClientServerChannel(SampleNames.TrackingRouteChannel, channel =>
+        var channel = options.AddClientServerChannel(SampleNames.CourierBChannel);
+                channel.EnableClient(topology.CourierBEndpoint);
+
+    }
     {
-        channel.EnableClient(client => client.UseManualConnections(
-            connections => connections.Connect(topology.TrackingRouteEndpoint)));
-    });
+        var channel = options.AddClientServerChannel(SampleNames.TrackingRouteChannel);
+                channel.EnableClient(topology.TrackingRouteEndpoint);
+
+    }
 });
 
 await builder.Build().RunAsync();

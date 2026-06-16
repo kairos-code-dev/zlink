@@ -20,30 +20,27 @@ import type { TicTacToeMatch as TicTacToeMatchType } from '../../../Domain/TicTa
 
 type PlaySpotActor = TicTacToeActor & ZLinkActor;
 const GameTickPeriodMs = 1000;
+const InitialRoomId = 'tictactoe-room';
 
 class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
-  readonly context?: ZLinkSpotContext<PlaySpotActor>;
-  private roomId: string | null = null;
-  private match: TicTacToeMatchType<PlaySpotActor> | null = null;
+  readonly context!: ZLinkSpotContext<PlaySpotActor>;
+  private roomId = InitialRoomId;
+  private match: TicTacToeMatchType<PlaySpotActor> = new TicTacToeMatch<PlaySpotActor>(InitialRoomId);
   private gameTick: ZLinkTimer | null = null;
   private cleanupStarted = false;
 
   async configure(): Promise<void> {
-    this.context?.handlers.actorRequest(PacketNames.placeMarkReq, PlayActorPlaceMarkHandler);
-    this.gameTick = await this.context?.addTimer(
+    this.context.handlers.actorRequest(PacketNames.placeMarkReq, PlayActorPlaceMarkHandler);
+    this.gameTick = await this.context.addTimer(
       'game-tick',
       GameTickPeriodMs,
       TicTacToeGameTimerHandler
-    ) ?? null;
+    );
   }
 
   async onInitialize(): Promise<void> {
-    const roomId = this.context?.spotRid;
-    if (roomId === undefined) {
-      throw new Error('TicTacToeGameSpot requires a Spot context before initialization.');
-    }
-    this.roomId = roomId;
-    this.match = new TicTacToeMatch<PlaySpotActor>(roomId);
+    this.roomId = this.context.spotRid;
+    this.match = new TicTacToeMatch<PlaySpotActor>(this.roomId);
   }
 
   async onClosing(): Promise<void> {
@@ -134,27 +131,21 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
     this.cleanupStarted = true;
     for (const player of [...match.players.values()]) {
       player.actor.markForDestroyAfterRoomLeave();
-      await this.context?.leaveActor(player.actor);
+      await this.context.leaveActor(player.actor);
     }
   }
 
   private requireRoomId(): string {
-    if (this.roomId === null) {
-      throw new Error('TicTacToeGameSpot has not been initialized.');
-    }
     return this.roomId;
   }
 
   private requireMatch(): TicTacToeMatchType<PlaySpotActor> {
-    if (this.match === null) {
-      throw new Error('TicTacToeGameSpot has not been initialized.');
-    }
     return this.match;
   }
 }
 
 function createJsonMessage(value: unknown): Message {
-  return BindingMessage.from(Buffer.from(JSON.stringify(value), 'utf8')) as Message;
+  return BindingMessage.from(value as object) as Message;
 }
 
 function isTerminal(status: GameStatus): boolean {

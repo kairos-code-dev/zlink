@@ -41,7 +41,7 @@ class actor_gateway_state_t
       const actor_ref_t &, actor_context_t, const stream_header_t &, const zlink::message_t &)>;
 
     std::map<std::string, actor_record_t> actors_by_id;
-    std::map<std::string, std::function<result_t<void> (std::string, const zlink::message_t &)>>
+    std::map<std::string, std::function<task_t<void> (std::string, const zlink::message_t &)>>
       bound_session_sinks;
     std::vector<relayed_frame_t> relayed_frames;
     std::vector<relayed_frame_t> bound_session_pushes;

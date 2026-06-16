@@ -19,37 +19,42 @@ public static class SessionServerHostFactory
             options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.AddJson();
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
-            options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
+            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
+                var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
                 channel.EnableClient();
-            });
-            options.AddClientServerChannel(SampleNames.SupportChannel, channel =>
+
+            }
             {
+                var channel = options.AddClientServerChannel(SampleNames.SupportChannel);
                 channel.EnableClient();
-            });
-            options.AddSpotMesh(SampleNames.SupportSpotDiscovery, mesh =>
+
+            }
             {
-                mesh.AddNode(SampleNames.SessionSpotNode, node =>
+                var mesh = options.AddSpotMesh(SampleNames.SupportSpotDiscovery);
                 {
-                    node.EnableRouter(router =>
+                    var node = mesh.AddNode(SampleNames.SessionSpotNode);
                     {
-                        router.BindRouter(session.RouterEndpoint);
-                        router.SetRoutingId(session.RouterRoutingId);
-                    });
-                    node.EnablePubSub(pubsub =>
+                        var router = node.EnableRouter(session.RouterEndpoint);
+                        router.SetRouterRoutingId(session.RouterRoutingId);
+
+                    }
                     {
-                        pubsub.BindPubSub(session.PubEndpoint);
-                        pubsub.SetRoutingId(session.PubRoutingId);
-                    });
-                });
-            });
-            options.AddStreamNode(SampleNames.StreamNode, stream =>
+                        var pubsub = node.EnablePubSub(session.PubEndpoint);
+                        pubsub.SetPubSubRoutingId(session.PubRoutingId);
+
+                    }
+
+                }
+
+            }
             {
+                var stream = options.AddStreamNode(SampleNames.StreamNode);
                 stream.AttachActorGateway(SampleNames.SessionSpotNode);
                 stream.Bind(session.StreamEndpoint);
                 stream.RegisterSession<SupportChatSession>();
-            });
+
+            }
         });
 
         return builder.Build();

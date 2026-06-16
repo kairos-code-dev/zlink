@@ -80,18 +80,18 @@ class play_server_host_factory_t
               .add<create_game_handler_t> ("play")
               .add<ensure_player_actor_handler_t> ("play");
             options.codecs ()
-              .add_message_pack ()
-              .add_message_pack<authenticate_player_req_t> ()
-              .add_message_pack<authenticate_player_res_t> ()
-              .add_message_pack<create_game_req_t> ()
-              .add_message_pack<create_game_res_t> ()
-              .add_message_pack<join_game_req_t> ()
-              .add_message_pack<join_game_res_t> ()
-              .add_message_pack<place_mark_req_t> ()
-              .add_message_pack<place_mark_res_t> ()
-              .add_message_pack<player_joined_notify_t> ()
-              .add_message_pack<game_state_notify_t> ()
-              .add_message_pack<game_ended_notify_t> ();
+              .add_json ()
+              .add_json<authenticate_player_req_t> ()
+              .add_json<authenticate_player_res_t> ()
+              .add_json<create_game_req_t> ()
+              .add_json<create_game_res_t> ()
+              .add_json<join_game_req_t> ()
+              .add_json<join_game_res_t> ()
+              .add_json<place_mark_req_t> ()
+              .add_json<place_mark_res_t> ()
+              .add_json<player_joined_notify_t> ()
+              .add_json<game_state_notify_t> ()
+              .add_json<game_ended_notify_t> ();
             options.services ().add_singleton<sample_topology_t> (
               std::make_unique<sample_topology_t> (topology));
             options.add_client_server_channel (sample_names_t::play_channel)
@@ -100,7 +100,7 @@ class play_server_host_factory_t
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_client (topology.api_endpoint);
             options.add_route_mesh_channel (sample_names_t::router_channel)
-              .bind (topology.play_router_endpoint)
+              .enable_server (topology.play_router_endpoint)
               .set_routing_id (topology.play_rid)
               .enable_spot_route_egress (sample_names_t::game_spot_discovery);
             options.add_spot_mesh (sample_names_t::game_spot_discovery)

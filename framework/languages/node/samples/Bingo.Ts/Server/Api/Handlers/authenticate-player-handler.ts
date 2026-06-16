@@ -1,18 +1,14 @@
-const {
-  PacketNames,
-  authenticatePlayerAccepted,
-  authenticatePlayerRejected
-} = require('../../../Shared/Contracts/messages');
-const { zlinkRequestHandler } = require('../../../../../../packages/nestjs/dist');
-import type { ZLinkRequestHandler } from '../../../../../packages/framework/dist';
+import { PacketNames, authenticatePlayerAccepted, authenticatePlayerRejected } from '../../../Shared/Contracts/messages';
+import { zlinkRequestHandler } from '@zlink-systems/nestjs';
+import type { ZLinkRequestHandler } from '@zlink-systems/framework';
 import type {
   AuthenticatePlayerRes,
-  AuthenticateReq
+  AuthenticatePlayerReq
 } from '../../../Shared/Contracts/messages';
 
 @zlinkRequestHandler('api', PacketNames.authenticatePlayerReq)
-class AuthenticatePlayerHandler implements ZLinkRequestHandler<AuthenticateReq, AuthenticatePlayerRes> {
-  async handle(request: AuthenticateReq): Promise<AuthenticatePlayerRes> {
+class AuthenticatePlayerHandler implements ZLinkRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes> {
+  async handle(request: AuthenticatePlayerReq): Promise<AuthenticatePlayerRes> {
     if (!request.accessToken?.startsWith('player-')) {
       return authenticatePlayerRejected('Access token must be a sample player id.');
     }

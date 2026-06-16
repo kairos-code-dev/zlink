@@ -6,13 +6,17 @@
 #include "runtime/channels/channel_host_service.hpp"
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
+#include "runtime/host/framework_runtime.hpp"
 #include "runtime/http/http_host_service.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 #include "runtime/streams/stream_host_service.hpp"
 
+#include <zlink/Contracts/Service/registry.hpp>
+
 #include <atomic>
 #include <csignal>
 #include <chrono>
+#include <memory>
 #include <thread>
 #include <typeindex>
 #include <utility>
@@ -30,6 +34,32 @@ bool has_server_channel (const std::vector<channel_snapshot_t> &channels)
     }
     return false;
 }
+
+class registry_host_service_t final : public hosted_service_t
+{
+  public:
+    explicit registry_host_service_t (registry_options_snapshot_t options) :
+        _options (std::move (options))
+    {
+    }
+
+    void start (service_provider_t &) override
+    {
+        auto &registry = _runtime.registry ();
+        registry.set_heartbeat (_options.heartbeat_interval, _options.heartbeat_timeout);
+        registry.set_broadcast_interval (_options.broadcast_interval);
+        for (const auto &peer : _options.peer_pub_endpoints) {
+            registry.add_peer (peer);
+        }
+        registry.bind (_options.pub_endpoint, _options.router_endpoint);
+    }
+
+    void stop () noexcept override { _runtime.drain (); }
+
+  private:
+    registry_options_snapshot_t _options;
+    runtime::framework_runtime_t _runtime;
+};
 
 spot_actor_message_metadata_t project_stream_metadata (const stream_header_t &header)
 {
@@ -123,10 +153,9 @@ handler_registry_t &app_advanced_t::handlers () noexcept
     return _app->_handlers ();
 }
 
-app_t &app_advanced_t::use_zlink (std::function<void (zlink_builder_t &)> configure)
+zlink_builder_t &app_advanced_t::zlink () noexcept
 {
-    configure (_app->_zlink_builder ());
-    return *_app;
+    return _app->_zlink_builder ();
 }
 
 config_builder_t &app_t::config () noexcept
@@ -200,6 +229,14 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     _state->services.add_singleton<channel_client_t> (
       std::make_unique<channel_client_t> (_state->zlink.message_bus ()));
+    if (!_state->services.contains (std::type_index (typeid (serializer_registry_t)))) {
+        _state->services.add_factory<serializer_registry_t> (
+          [serializers = &_state->serializers] (service_provider_t &) {
+              return std::shared_ptr<serializer_registry_t> (
+                serializers, [] (serializer_registry_t *) noexcept {});
+          },
+          service_lifetime_t::singleton);
+    }
     zlink_framework_options_t options (_state->services, _state->handlers, _state->serializers,
                                        _state->zlink, _state->monitoring);
     if (configure) {
@@ -207,6 +244,10 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     const auto http_snapshot = options.http ().snapshot ();
     options.apply ();
+    const auto registry_snapshot = _state->zlink.registry_options ();
+    if (!registry_snapshot.pub_endpoint.empty () && !registry_snapshot.router_endpoint.empty ()) {
+        add_hosted_service (std::make_unique<detail::registry_host_service_t> (registry_snapshot));
+    }
     const auto channel_snapshot = _state->zlink.channels ();
     if (detail::has_server_channel (channel_snapshot)) {
         add_hosted_service (std::make_unique<runtime::channel_host_service_t> (

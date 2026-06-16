@@ -296,11 +296,12 @@ context 타입에 맞는 handler 구현을 service 로 자동 등록한다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddStreamNode("client.stream", stream =>
     {
+        var stream =     options.AddStreamNode("client.stream");
         stream.Bind("tcp://0.0.0.0:9100");
         stream.RegisterSession<ClientHeaderSession>();
-    });
+
+    }
 });
 ```
 

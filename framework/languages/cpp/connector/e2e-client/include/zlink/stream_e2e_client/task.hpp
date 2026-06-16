@@ -9,6 +9,8 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -146,7 +148,16 @@ template <typename T> class task_t
         start ();
     }
 
-    result_t<T> await_resume () { return consume_result (); }
+    T await_resume ()
+    {
+        auto result = consume_result ();
+        if (!result) {
+            const auto message =
+              result.error () ? result.error ()->message : "stream e2e task failed";
+            throw std::runtime_error (message);
+        }
+        return std::move (result.value ());
+    }
 
     void start () const { start_operation (); }
 
@@ -163,7 +174,10 @@ template <typename T> class task_t
         start ();
         std::unique_lock<std::mutex> lock (_state->mutex);
         _state->ready.wait (lock, [this] { return _state->result.has_value (); });
-        return std::move (*_state->result);
+        auto result = std::move (*_state->result);
+        _state->result = result_t<T>::failure (error_code_t::canceled,
+                                               "stream e2e task result was consumed");
+        return result;
     }
 
     void on_completed (std::function<void (result_t<T>)> callback)
@@ -351,7 +365,15 @@ template <> class task_t<void>
         start ();
     }
 
-    result_t<void> await_resume () { return consume_result (); }
+    void await_resume ()
+    {
+        auto result = consume_result ();
+        if (!result) {
+            const auto message =
+              result.error () ? result.error ()->message : "stream e2e task failed";
+            throw std::runtime_error (message);
+        }
+    }
 
     void start () const { start_operation (); }
 
@@ -368,7 +390,10 @@ template <> class task_t<void>
         start ();
         std::unique_lock<std::mutex> lock (_state->mutex);
         _state->ready.wait (lock, [this] { return _state->result.has_value (); });
-        return std::move (*_state->result);
+        auto result = std::move (*_state->result);
+        _state->result = result_t<void>::failure (error_code_t::canceled,
+                                                  "stream e2e task result was consumed");
+        return result;
     }
 
     void on_completed (std::function<void (result_t<void>)> callback)

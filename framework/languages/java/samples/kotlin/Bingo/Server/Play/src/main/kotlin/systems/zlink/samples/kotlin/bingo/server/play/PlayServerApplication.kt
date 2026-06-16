@@ -38,37 +38,29 @@ class PlayServerApplication {
     fun playFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(PlayServerApplication::class.java)
-            options.useDiscovery { discovery ->
-                discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
-            }
+            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.codecs().addProtobuf()
-            options.addClientServerChannel(SampleNames.PlayChannel) { channel ->
-                channel.enableServer { server -> server.bind(SampleTopology.PlayChannelEndpoint) }
-                channel.addHandlerGroup("play")
-            }
-            options.addClientServerChannel(SampleNames.ApiChannel) { channel -> channel.enableClient() }
-            options.addRouteMeshChannel(SampleNames.RoomRouteChannel) { route ->
-                route.bind(SampleTopology.PlayRouteEndpoint)
-                route.configureRouting { routing -> routing.setRoutingId(RoutingId.from(SampleTopology.PlayRid)) }
-                route.useManualConnections { endpoints -> endpoints.connect(SampleTopology.SessionRouteEndpoint) }
-            }
-            options.useRegistrySpotRemoteAddresses(SampleNames.RoomSpotDiscovery) { registry ->
-                registry.setRouterChannelId(SampleNames.RoomRouteChannel)
-            }
+            options.addClientServerChannel(SampleNames.PlayChannel)
+                .enableServer(SampleTopology.PlayChannelEndpoint)
+                .addHandlerGroup("play")
+            options.addClientServerChannel(SampleNames.ApiChannel)
+                .enableClient()
+            val route = options.addRouteMeshChannel(SampleNames.RoomRouteChannel)
+            route.enableServer(SampleTopology.PlayRouteEndpoint)
+            route.enableClient(SampleTopology.SessionRouteEndpoint)
+            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.PlayRid))
+            options.useRegistrySpotRemoteAddresses(SampleNames.RoomSpotDiscovery)
+                .setRouterChannelId(SampleNames.RoomRouteChannel)
             options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory::class.java)
-            options.addSpotMesh(SampleNames.RoomSpotDiscovery) { mesh ->
-                mesh.addNode(SampleNames.RoomSpotNode) { node ->
-                    node.enableRouter { router ->
-                        router.bindRouter(SampleTopology.PlaySpotRouterEndpoint)
-                        router.setRoutingId(RoutingId.from(SampleTopology.PlayRid))
-                    }
-                    node.enablePubSub { pubSub -> pubSub.bindPubSub(SampleTopology.PlaySpotEndpoint) }
-                    node.attachChannelClient(SampleNames.ApiChannel)
-                    node.acceptSpotRoutesFromChannel(SampleNames.RoomRouteChannel)
-                    node.addEntrySpot(BingoEntrySpot::class.java)
-                    node.addSpotFactory(BingoRoomSpot::class.java)
-                }
-            }
+            val node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
+                .addNode(SampleNames.RoomSpotNode)
+            node.enableRouter(SampleTopology.PlaySpotRouterEndpoint)
+                .setRouterRoutingId(RoutingId.from(SampleTopology.PlayRid))
+            node.enablePubSub(SampleTopology.PlaySpotEndpoint)
+            node.attachChannelClient(SampleNames.ApiChannel)
+            node.acceptSpotRoutesFromChannel(SampleNames.RoomRouteChannel)
+            node.addEntrySpot(BingoEntrySpot::class.java)
+            node.addSpotFactory(BingoRoomSpot::class.java)
         }
 
     @Bean

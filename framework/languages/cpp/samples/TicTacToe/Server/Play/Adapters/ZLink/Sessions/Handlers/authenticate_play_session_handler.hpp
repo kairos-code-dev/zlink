@@ -35,10 +35,10 @@ class authenticate_play_session_handler_t
         authenticate_req_t request;
         from_stream_payload (payload, request);
         auto authenticated = co_await _client
-                               .request<authenticate_player_res_t> (
+                               .request (
                                  sample_names_t::api_channel,
                                  authenticate_player_req_t{request.access_token})
-                               .async ();
+                               .async<authenticate_player_res_t> ();
         if (!authenticated.accepted || authenticated.actor_id.empty ()) {
             co_return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
               zlink::framework::framework_error_kind_t::request_failed,

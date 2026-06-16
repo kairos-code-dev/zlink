@@ -26,15 +26,13 @@ class ApiServerApplication {
     fun apiFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(ApiServerApplication::class.java)
-            options.useDiscovery { discovery ->
-                discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
-            }
+            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.codecs().addProtobuf()
-            options.addClientServerChannel(SampleNames.ApiChannel) { channel ->
-                channel.enableServer { server -> server.bind(SampleTopology.ApiChannelEndpoint) }
-                channel.addHandlerGroup("api")
-            }
-            options.addClientServerChannel(SampleNames.PlayChannel) { channel -> channel.enableClient() }
+            options.addClientServerChannel(SampleNames.ApiChannel)
+                .enableServer(SampleTopology.ApiChannelEndpoint)
+                .addHandlerGroup("api")
+            options.addClientServerChannel(SampleNames.PlayChannel)
+                .enableClient()
         }
 
     companion object {

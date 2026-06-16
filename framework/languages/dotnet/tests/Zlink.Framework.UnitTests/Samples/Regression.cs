@@ -127,10 +127,15 @@ public sealed class RegressionTests
     }
 
     [Fact]
-    public void Bingo_Uses_Protobuf_And_TicTacToe_Uses_MessagePack_Sample_Payloads()
+    public void Bingo_Uses_Protobuf_And_TicTacToe_Uses_Json_Sample_Payloads()
     {
-        AssertSampleUsesProtobufPayloads(ResolveSampleRoot("Bingo"));
-        AssertSampleUsesMessagePackPayloads(ResolveSampleRoot("TicTacToe"));
+        var bingoRoot = ResolveSampleRoot("Bingo");
+        var ticTacToeRoot = ResolveSampleRoot("TicTacToe");
+
+        AssertSampleUsesProtobufPayloads(bingoRoot);
+        AssertSampleUsesJsonPayloads(ticTacToeRoot);
+        AssertCodecHelpersStayConfinedToRawLifecycleBoundaries(bingoRoot);
+        AssertCodecHelpersStayConfinedToRawLifecycleBoundaries(ticTacToeRoot);
     }
 
     private static void AssertSampleUsesProtobufPayloads(string sampleRoot)
@@ -149,8 +154,23 @@ public sealed class RegressionTests
         var allText = string.Join(
             Environment.NewLine,
             sourceFiles.Concat(projectFiles).Concat(protoFiles).Select(File.ReadAllText));
+        var sharedProject = Path.Combine(sampleRoot, "Shared", "Bingo.Shared.csproj");
+        var sharedProjectText = File.ReadAllText(sharedProject);
+        var sharedContractSourceText = string.Join(
+            Environment.NewLine,
+            Directory
+                .EnumerateFiles(Path.Combine(sampleRoot, "Shared", "Contracts"), "*.cs", SearchOption.AllDirectories)
+                .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                    && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                .Select(File.ReadAllText));
 
         Assert.NotEmpty(protoFiles);
+        Assert.Contains("Google.Protobuf", sharedProjectText, StringComparison.Ordinal);
+        Assert.Contains("Grpc.Tools", sharedProjectText, StringComparison.Ordinal);
+        Assert.Contains("<Protobuf Include=\"Contracts\\bingo_messages.proto\" GrpcServices=\"None\" />", sharedProjectText, StringComparison.Ordinal);
+        Assert.DoesNotContain("record ", sharedContractSourceText, StringComparison.Ordinal);
+        Assert.DoesNotContain("class AuthenticateReq", sharedContractSourceText, StringComparison.Ordinal);
+        Assert.DoesNotContain("class BingoRoomJoinReq", sharedContractSourceText, StringComparison.Ordinal);
         Assert.Contains("AddProtobuf", allText, StringComparison.Ordinal);
         Assert.Contains("Stream.Connector.Protobuf", allText, StringComparison.Ordinal);
         Assert.Contains("Zlink.Codecs.Protobuf", allText, StringComparison.Ordinal);
@@ -158,7 +178,7 @@ public sealed class RegressionTests
         Assert.DoesNotContain("MsgPack", allText, StringComparison.Ordinal);
     }
 
-    private static void AssertSampleUsesMessagePackPayloads(string sampleRoot)
+    private static void AssertSampleUsesJsonPayloads(string sampleRoot)
     {
         var sourceFiles = EnumerateSourceFiles(sampleRoot).ToArray();
         var projectFiles = Directory
@@ -176,15 +196,60 @@ public sealed class RegressionTests
             sourceFiles.Concat(projectFiles).Select(File.ReadAllText));
 
         Assert.Empty(protoFiles);
-        Assert.Contains("MessagePackObject", allText, StringComparison.Ordinal);
-        Assert.Contains("AddMessagePack", allText, StringComparison.Ordinal);
-        Assert.Contains("Stream.Connector.MessagePack", allText, StringComparison.Ordinal);
-        Assert.Contains("Zlink.Codecs.MessagePack", allText, StringComparison.Ordinal);
+        Assert.Contains("AddJson", allText, StringComparison.Ordinal);
+        Assert.Contains("Stream.Connector.Json", allText, StringComparison.Ordinal);
+        Assert.Contains("Zlink.Codecs.Json", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("Google.Protobuf", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("Grpc.Tools", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("AddProtobuf", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("FromProto", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("ToProto", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("MessagePackObject", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddMessagePack", allText, StringComparison.Ordinal);
+    }
+
+    private static void AssertCodecHelpersStayConfinedToRawLifecycleBoundaries(string sampleRoot)
+    {
+        var sampleName = Path.GetFileName(sampleRoot);
+        var violations = new List<string>();
+        foreach (var file in EnumerateSourceFiles(sampleRoot))
+        {
+            var text = File.ReadAllText(file);
+            if (!ContainsRawCodecHelper(text))
+            {
+                continue;
+            }
+
+            var relative = Path.GetRelativePath(sampleRoot, file).Replace('\\', '/');
+            if (!IsAllowedRawCodecLifecycleFile(sampleName, relative))
+            {
+                violations.Add($"{sampleName}/{relative}");
+            }
+        }
+
+        Assert.Empty(violations.Order(StringComparer.Ordinal));
+    }
+
+    private static bool ContainsRawCodecHelper(string text)
+    {
+        return text.Contains(".ToJson()", StringComparison.Ordinal)
+            || text.Contains(".FromJson<", StringComparison.Ordinal)
+            || text.Contains(".ToProto()", StringComparison.Ordinal)
+            || text.Contains(".FromProto<", StringComparison.Ordinal);
+    }
+
+    private static bool IsAllowedRawCodecLifecycleFile(string sampleName, string relative)
+    {
+        return (sampleName, relative) switch
+        {
+            ("Bingo", "Server/Session/Sessions/Handlers/AuthenticateSessionHandler.cs") => true,
+            ("Bingo", "Server/Play/Application/RoomAllocation/BingoRoomAllocator.cs") => true,
+            ("Bingo", "Server/Play/Adapters/ZLink/Spots/BingoRoom.cs") => true,
+            ("Bingo", "Server/Play/Adapters/ZLink/Spots/Handlers/MatchBingoActorHandler.cs") => true,
+            ("TicTacToe", "Server/Play/Adapters/ZLink/Spots/TicTacToeGame.cs") => true,
+            ("TicTacToe", "Server/Play/Adapters/ZLink/Spots/Handlers/PlayActorJoinGameHandler.cs") => true,
+            _ => false
+        };
     }
 
     private static void AssertNoSampleRouteStore(string sampleRoot)
@@ -290,7 +355,7 @@ public sealed class RegressionTests
             EnumerateSourceFiles(sampleRoot).Select(File.ReadAllText));
 
         Assert.Contains(
-            "UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint))",
+            "UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint)",
             allText,
             StringComparison.Ordinal);
         Assert.DoesNotContain("UseRegistryActorRemoteAddresses", allText, StringComparison.Ordinal);
@@ -308,7 +373,9 @@ public sealed class RegressionTests
         var text = File.ReadAllText(sessionHostFactory);
 
         Assert.Contains("AddSpotMesh", text, StringComparison.Ordinal);
-        Assert.Contains("EnableRouter", text, StringComparison.Ordinal);
+        Assert.True(
+            text.Contains("EnableRouter", StringComparison.Ordinal)
+                || text.Contains("ConfigureRouter", StringComparison.Ordinal));
         Assert.Contains("AttachActorGateway", text, StringComparison.Ordinal);
         if (!allowRouteMeshChannel)
         {

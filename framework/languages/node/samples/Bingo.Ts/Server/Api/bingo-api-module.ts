@@ -1,22 +1,27 @@
-const { Module } = require('@nestjs/common');
-const path = require('node:path');
-const { ZLinkModule, zlinkDiscoverProviders, zlinkFramework } = require('../../../../../packages/nestjs/dist');
-const { SampleNames } = require('../Configuration/sample-names');
-
+import { Module } from '@nestjs/common';
+import * as path from 'node:path';
+import { ZLinkModule, zlinkDiscoverProviders, zlinkFramework } from '@zlink-systems/nestjs';
+import { SampleNames, SampleTimings } from '../Configuration/sample-names';
 function createBingoApiModule(config: {
   apiEndpoint: string;
-}, playEndpoint: string) {
+  registryRouterEndpoint: string;
+}) {
   class BingoApiModule {}
 
   Module({
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
-          .clientServerChannel(SampleNames.apiChannel, (channel) => channel
-            .server(config.apiEndpoint)
-            .handlerGroup('api'))
-          .clientServerChannel(SampleNames.playChannel, (channel) => channel
-            .client(playEndpoint))
+          .options({ requestTimeoutMs: SampleTimings.requestTimeout })
+          .codecs()
+            .addProtobuf()
+          .useDiscovery()
+            .addRegistryEndpoint(config.registryRouterEndpoint)
+          .addClientServerChannel(SampleNames.apiChannel)
+            .enableServer(config.apiEndpoint)
+            .addHandlerGroup('api')
+          .addClientServerChannel(SampleNames.playChannel)
+            .enableClient()
           .build()
       })
     ],

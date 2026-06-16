@@ -6,6 +6,8 @@ internal interface IZLinkCurrentSpotActivation
 
     TimeSpan DefaultTimeout { get; }
 
+    ZLinkCodecRegistryBuilder Codecs { get; }
+
     IZLinkPublishCall Publish<TEvent>(
         string topic,
         TEvent message);

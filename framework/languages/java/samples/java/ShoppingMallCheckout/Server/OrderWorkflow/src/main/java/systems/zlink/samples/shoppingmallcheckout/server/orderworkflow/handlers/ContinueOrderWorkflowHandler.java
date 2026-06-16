@@ -1,0 +1,26 @@
+package systems.zlink.samples.shoppingmallcheckout.server.orderworkflow.handlers;
+
+import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.channels.ZLinkRequestHandler;
+import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+import systems.zlink.samples.shoppingmallcheckout.server.orderworkflow.OrderWorkflowService;
+import systems.zlink.samples.shoppingmallcheckout.shared.contracts.Messages;
+import systems.zlink.samples.shoppingmallcheckout.shared.contracts.Messages.OrderState;
+
+@ZLinkHandlerGroup("workflow")
+public final class ContinueOrderWorkflowHandler
+    implements ZLinkRequestHandler<Messages.ContinueOrderWorkflowReq, Messages.ContinueOrderWorkflowRes> {
+    private final OrderWorkflowService workflow;
+
+    public ContinueOrderWorkflowHandler(OrderWorkflowService workflow) {
+        this.workflow = workflow;
+    }
+
+    @Override
+    public Messages.ContinueOrderWorkflowRes handle(
+        Messages.ContinueOrderWorkflowReq request,
+        ZLinkRequestContext context) {
+        OrderState state = workflow.continueWorkflow(request.orderId());
+        return new Messages.ContinueOrderWorkflowRes(state);
+    }
+}

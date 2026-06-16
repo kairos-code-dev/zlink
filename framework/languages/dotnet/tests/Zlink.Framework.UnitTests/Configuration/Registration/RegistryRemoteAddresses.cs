@@ -15,15 +15,17 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-            options.AddSpotMesh("spot", mesh =>
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-            });
-            options.AddRouteMeshChannel("play", routed =>
+                var mesh = options.AddSpotMesh("spot");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+
+            }
             {
-                routed.Bind("tcp://127.0.0.1:6202");
-            });
+                var routed = options.AddRouteMeshChannel("play");
+                routed.EnableServer("tcp://127.0.0.1:6202");
+
+            }
             options.UseRegistrySpotRemoteAddresses("bingo");
         });
 
@@ -40,10 +42,11 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddRouteMeshChannel("play", routed =>
                 {
-                    routed.Bind("tcp://127.0.0.1:6202");
-                });
+                    var routed = options.AddRouteMeshChannel("play");
+                    routed.EnableServer("tcp://127.0.0.1:6202");
+
+                }
                 options.UseRegistrySpotRemoteAddresses("bingo");
             }));
 
@@ -73,19 +76,22 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                options.AddSpotMesh("spot", mesh =>
+                options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
-                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                });
-                options.AddRouteMeshChannel("play-a", routed =>
+                    var mesh = options.AddSpotMesh("spot");
+                    mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+
+                }
                 {
-                    routed.Bind("tcp://127.0.0.1:6202");
-                });
-                options.AddRouteMeshChannel("play-b", routed =>
+                    var routed = options.AddRouteMeshChannel("play-a");
+                    routed.EnableServer("tcp://127.0.0.1:6202");
+
+                }
                 {
-                    routed.Bind("tcp://127.0.0.1:6203");
-                });
+                    var routed = options.AddRouteMeshChannel("play-b");
+                    routed.EnableServer("tcp://127.0.0.1:6203");
+
+                }
                 options.UseRegistrySpotRemoteAddresses("bingo");
             }));
 

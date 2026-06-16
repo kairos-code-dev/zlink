@@ -238,16 +238,15 @@ final class KotlinSuspendAnnotationHandlerTest {
     fun duplicateValidationRejectsJavaAndKotlinSuspendAnnotationPacketCollision() {
         val options = DefaultZLinkFrameworkOptions()
         options.addHandlersFromPackageOf(KotlinSuspendHandlerMarker::class.java)
-        options.addClientServerChannel("profile") { channel ->
-            channel.enableServer { server -> server.bind("inproc://profile") }
-            channel.addHandlerGroup("kotlin-channel")
-            channel.addRequestHandler(
-                JavaProfileRequestHandler::class.java,
-                ProfileRequest::class.java,
-                ProfileReply::class.java,
-                "ProfileRequest",
-            )
-        }
+        val channel = options.addClientServerChannel("profile")
+        channel.enableServer("inproc://profile")
+        channel.addHandlerGroup("kotlin-channel")
+        channel.addRequestHandler(
+            JavaProfileRequestHandler::class.java,
+            ProfileRequest::class.java,
+            ProfileReply::class.java,
+            "ProfileRequest",
+        )
 
         val lifecycle = ZLinkFrameworkLifecycle(
             options,
@@ -386,10 +385,9 @@ open class SpringSuspendFrameworkConfig {
     open fun frameworkConfigurer() = ZLinkFrameworkConfigurer { options ->
         options.setDefaultTimeout(Duration.ofSeconds(1))
         options.addHandlersFromPackageOf(KotlinSuspendHandlerMarker::class.java)
-        options.addClientServerChannel("profile") { channel ->
-            channel.enableServer { server -> server.bind("inproc://kotlin-suspend") }
-            channel.addHandlerGroup("kotlin-channel")
-        }
+        val channel = options.addClientServerChannel("profile")
+        channel.enableServer("inproc://kotlin-suspend")
+        channel.addHandlerGroup("kotlin-channel")
     }
 }
 

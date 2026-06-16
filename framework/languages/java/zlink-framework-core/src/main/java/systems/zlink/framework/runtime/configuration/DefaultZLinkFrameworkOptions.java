@@ -5,7 +5,6 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
-import java.util.function.Consumer;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
@@ -62,83 +61,66 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
-    public void configureMetadata(Consumer<ZLinkMetadataPolicyBuilder> configure) {
-        configure.accept(registration.metadataPolicy());
+    public ZLinkMetadataPolicyBuilder configureMetadata() {
+        return registration.metadataPolicy();
     }
 
     @Override
-    public void useDiscovery(Consumer<ZLinkDiscoveryBuilder> configure) {
-        configure.accept(endpoint -> registration.registryEndpoints().add(requireName(endpoint, "registry endpoint")));
+    public ZLinkDiscoveryBuilder useDiscovery() {
+        return endpoint -> registration.registryEndpoints().add(requireName(endpoint, "registry endpoint"));
     }
 
-    public void addClientServerChannel(
-        String channelName,
-        Consumer<ClientServerChannelBuilder> configure) {
+    public ClientServerChannelBuilder addClientServerChannel(String channelName)
+    {
         addChannel(channelName);
         ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.CLIENT_SERVER);
         registration.channels().add(channel);
-        configure.accept(ChannelBuilders.clientServer(channel));
+        return ChannelBuilders.clientServer(channel);
     }
 
     @Override
-    public void addFanoutChannel(
-        String channelName,
-        Consumer<FanoutChannelBuilder> configure) {
+    public FanoutChannelBuilder addFanoutChannel(String channelName)
+    {
         addChannel(channelName);
         ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.FANOUT);
         registration.channels().add(channel);
-        configure.accept(ChannelBuilders.fanout(channel));
+        return ChannelBuilders.fanout(channel);
     }
 
     @Override
-    public void addDealerMeshChannel(
-        String channelName,
-        Consumer<DealerMeshChannelBuilder> configure) {
+    public DealerMeshChannelBuilder addDealerMeshChannel(String channelName)
+    {
         addChannel(channelName);
         ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.DEALER_MESH);
         registration.channels().add(channel);
-        configure.accept(ChannelBuilders.dealerMesh(channel));
+        return ChannelBuilders.dealerMesh(channel);
     }
 
     @Override
-    public void addRouteMeshChannel(
-        String channelName,
-        Consumer<RouteMeshChannelBuilder> configure) {
+    public RouteMeshChannelBuilder addRouteMeshChannel(String channelName)
+    {
         addChannel(channelName);
         ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.ROUTE_MESH);
         registration.channels().add(channel);
-        configure.accept(ChannelBuilders.routeMesh(channel));
+        return ChannelBuilders.routeMesh(channel);
     }
 
     @Override
-    public void addSpotMesh(
-        String channelName,
-        Consumer<ZLinkSpotMeshBuilder> configure) {
+    public ZLinkSpotMeshBuilder addSpotMesh(String channelName)
+    {
         String meshName = requireName(channelName, "spot mesh");
         addUnique(spotMeshNames, meshName, "spot mesh");
-        int before = registration.spotNodes().size();
-        configure.accept(SpotBuilders.mesh(meshName, registration));
-        for (SpotNodeRegistration node : registration.spotNodes().subList(
-            before,
-            registration.spotNodes().size())) {
-            for (Class<?> spotFactory : node.spotFactories()) {
-                if (!spotFactoryTypes.add(spotFactory)) {
-                    throw new ZLinkConfigurationException(
-                        "duplicate spot factory type: " + spotFactory.getName());
-                }
-            }
-        }
+        return SpotBuilders.mesh(meshName, registration, this::addSpotFactoryType);
     }
 
     @Override
-    public void addStreamNode(
-        String streamNodeName,
-        Consumer<ZLinkStreamNodeBuilder> configure) {
+    public ZLinkStreamNodeBuilder addStreamNode(String streamNodeName)
+    {
         String name = requireName(streamNodeName, "stream node");
         addUnique(streamNodeNames, name, "stream node");
         StreamNodeRegistration streamNode = new StreamNodeRegistration(name);
         registration.streamNodes().add(streamNode);
-        configure.accept(StreamBuilders.streamNode(streamNode));
+        return StreamBuilders.streamNode(streamNode);
     }
 
     @Override
@@ -160,18 +142,11 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
-    public void useRegistrySpotRemoteAddresses(String namespaceName) {
+    public ZLinkRegistrySpotRemoteAddressesOptions useRegistrySpotRemoteAddresses(String namespaceName) {
         registration.setRegistrySpotRemoteAddresses(
             new ZLinkRegistrySpotRemoteAddressesRegistration(
                 requireName(namespaceName, "namespaceName")));
-    }
-
-    @Override
-    public void useRegistrySpotRemoteAddresses(
-        String namespaceName,
-        Consumer<ZLinkRegistrySpotRemoteAddressesOptions> configure) {
-        useRegistrySpotRemoteAddresses(namespaceName);
-        configure.accept(registration.registrySpotRemoteAddresses());
+        return registration.registrySpotRemoteAddresses();
     }
 
     @Override
@@ -184,13 +159,13 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
-    public void configureDispatch(Consumer<ZLinkDispatchOptions> configure) {
-        configure.accept(registration.dispatchOptions());
+    public ZLinkDispatchOptions configureDispatch() {
+        return registration.dispatchOptions();
     }
 
     @Override
-    public void configureWorkers(Consumer<ZLinkWorkerOptions> configure) {
-        configure.accept(registration.workers());
+    public ZLinkWorkerOptions configureWorkers() {
+        return registration.workers();
     }
 
     @Override
@@ -210,6 +185,13 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
 
     private void addChannel(String channelName) {
         addUnique(channelNames, channelName, "channel");
+    }
+
+    private void addSpotFactoryType(Class<?> spotFactory) {
+        if (!spotFactoryTypes.add(spotFactory)) {
+            throw new ZLinkConfigurationException(
+                "duplicate spot factory type: " + spotFactory.getName());
+        }
     }
 
     public void validate() {

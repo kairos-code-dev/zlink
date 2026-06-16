@@ -1,7 +1,7 @@
-const fs = require('node:fs');
-
+import * as fs from 'node:fs';
 type BingoSampleConfig = {
-  registryEndpoint: string;
+  registryPubEndpoint: string;
+  registryRouterEndpoint: string;
   sessionEndpoint: string;
   playEndpoint: string;
   notificationEndpoint: string;
@@ -14,7 +14,8 @@ function loadSampleConfig(): BingoSampleConfig {
     return JSON.parse(fs.readFileSync(configPath, 'utf8')).sample;
   }
   return {
-    registryEndpoint: requireEnv('BINGO_REGISTRY_ENDPOINT'),
+    registryPubEndpoint: requireEnv('BINGO_REGISTRY_PUB_ENDPOINT'),
+    registryRouterEndpoint: requireEnv('BINGO_REGISTRY_ROUTER_ENDPOINT'),
     sessionEndpoint: requireEnv('BINGO_SESSION_ENDPOINT'),
     playEndpoint: requireEnv('BINGO_PLAY_ENDPOINT'),
     notificationEndpoint: requireEnv('BINGO_NOTIFICATION_ENDPOINT'),

@@ -56,21 +56,23 @@ public sealed class EventsTests
         builder.Services.AddScoped<StageSubscriptionHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.AddNode("stage-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh(spotChannel);
                 {
-                    router.BindRouter(spotNodeEndpoint);
-                });
-                spot.EnablePubSub(pubsub =>
+                    var spot = mesh.AddNode("stage-node");
                 {
-                    pubsub.BindPubSub(spotPubEndpoint);
-                });
+                    var router = spot.EnableRouter(spotNodeEndpoint);
+
+                }
+                {
+                    var pubsub = spot.EnablePubSub(spotPubEndpoint);
+
+                }
                 spot.AddSpotFactory<MonitoringStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
         builder.Services.AddZLinkMonitoring(monitor =>
         {
@@ -118,13 +120,14 @@ public sealed class EventsTests
         var frameworkBuilder = Host.CreateApplicationBuilder();
         frameworkBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
+            options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
 
-            options.AddClientServerChannel("profile", channel =>
             {
-                channel.EnableServer(server => server.Bind(apiEndpoint));
+                var channel = options.AddClientServerChannel("profile");
+                channel.EnableServer(apiEndpoint);
                 channel.AddRequestHandler<MonitoringProfileHandler, MonitoringProfileRequest, MonitoringProfileReply>();
-            });
+
+            }
         });
 
         using var registryHost = registryBuilder.Build();
@@ -163,17 +166,19 @@ public sealed class EventsTests
             provider.GetRequiredService<SpotPeerProbe>());
         firstBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("stage-node", spot =>
-            {
-                spot.EnablePubSub(pubsub =>
+                var mesh = options.AddSpotMesh(spotChannel);
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    pubsub.BindPubSub(firstNodeEndpoint);
-                });
-            });
-            });
+                    var spot = mesh.AddNode("stage-node");
+                {
+                    var pubsub = spot.EnablePubSub(firstNodeEndpoint);
+
+                }
+
+                }
+
+            }
         });
         firstBuilder.Services.AddZLinkMonitoring(monitor =>
         {
@@ -183,17 +188,19 @@ public sealed class EventsTests
         var secondBuilder = Host.CreateApplicationBuilder();
         secondBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh(spotChannel, mesh =>
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("remote-stage-node", spot =>
-            {
-                spot.EnablePubSub(pubsub =>
+                var mesh = options.AddSpotMesh(spotChannel);
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    pubsub.BindPubSub(secondNodeEndpoint);
-                });
-            });
-            });
+                    var spot = mesh.AddNode("remote-stage-node");
+                {
+                    var pubsub = spot.EnablePubSub(secondNodeEndpoint);
+
+                }
+
+                }
+
+            }
         });
 
         using var registryHost = registryBuilder.Build();

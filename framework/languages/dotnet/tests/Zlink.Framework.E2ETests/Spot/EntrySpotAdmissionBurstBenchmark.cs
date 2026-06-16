@@ -24,17 +24,19 @@ public sealed class EntrySpotAdmissionBurstBenchmark : SpotTestSupport
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotMesh("game.entry-burst", mesh =>
             {
-                mesh.AddNode("entry-burst-node", spot =>
+                var mesh = options.AddSpotMesh("game.entry-burst");
                 {
-                    spot.EnableRouter(router =>
+                    var spot = mesh.AddNode("entry-burst-node");
                     {
-                        router.BindRouter(spotNode);
-                    });
+                        var router = spot.EnableRouter(spotNode);
+
+                    }
                     spot.AddEntrySpot<RegistryEntrySpot>();
-                });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();

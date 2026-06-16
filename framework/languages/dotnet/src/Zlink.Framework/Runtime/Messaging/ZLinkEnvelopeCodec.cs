@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Google.Protobuf;
+using MessagePack;
 
 namespace Zlink.Framework.Runtime.Messaging;
 
@@ -26,15 +28,26 @@ internal sealed record ZLinkEnvelopeHeader(
 internal static class ZLinkEnvelopeCodec
 {
     private const string JsonContentType = "application/json";
+    private const string MessagePackContentType = "application/x-msgpack";
+    private const string ProtobufContentType = "application/x-protobuf";
 
     public static IReadOnlyList<Message> EncodeParts(
         ZLinkEnvelopeHeader header,
         object? body,
         Type? bodyType)
     {
+        return EncodeParts(header, body, bodyType, null);
+    }
+
+    public static IReadOnlyList<Message> EncodeParts(
+        ZLinkEnvelopeHeader header,
+        object? body,
+        Type? bodyType,
+        ZLinkCodecRegistryBuilder? codecs)
+    {
         return ZLinkMessageParts.Create(
-            EncodeHeader(header),
-            EncodeBody(body, bodyType));
+            EncodeHeader(header with { ContentType = ResolveContentType(body, bodyType, codecs) }),
+            EncodeBody(body, bodyType, codecs));
     }
 
     public static IReadOnlyList<Message> EncodeRawBodyParts(
@@ -51,6 +64,11 @@ internal static class ZLinkEnvelopeCodec
 
     public static Message EncodeBody(object? body, Type? bodyType)
     {
+        return EncodeBody(body, bodyType, null);
+    }
+
+    public static Message EncodeBody(object? body, Type? bodyType, ZLinkCodecRegistryBuilder? codecs)
+    {
         if (bodyType is null || body is null)
         {
             return Message.From(ReadOnlySpan<byte>.Empty);
@@ -65,6 +83,16 @@ internal static class ZLinkEnvelopeCodec
             }
 
             return Message.From(message);
+        }
+
+        if (ShouldUseProtobuf(body, bodyType, codecs))
+        {
+            return Message.From(((IMessage)body).ToByteArray());
+        }
+
+        if (ShouldUseMessagePack(bodyType, codecs))
+        {
+            return Message.From(MessagePackSerializer.Serialize(bodyType, body, MessagePackSerializerOptions.Standard));
         }
 
         return EncodeJsonPart(body, bodyType);
@@ -98,10 +126,15 @@ internal static class ZLinkEnvelopeCodec
     public static object? DecodeBody(IReadOnlyList<Message> parts, Type bodyType)
     {
         EnsurePart(parts, 1, "body");
-        return DecodeBody(parts[1], bodyType);
+        return DecodeBody(parts[1], bodyType, DecodeHeader(parts).ContentType);
     }
 
     public static object? DecodeBody(Message bodyMessage, Type bodyType)
+    {
+        return DecodeBody(bodyMessage, bodyType, JsonContentType);
+    }
+
+    public static object? DecodeBody(Message bodyMessage, Type bodyType, string contentType)
     {
         if (bodyType == typeof(Message))
         {
@@ -118,6 +151,25 @@ internal static class ZLinkEnvelopeCodec
             return bodyType.IsValueType
                 ? Activator.CreateInstance(bodyType)
                 : null;
+        }
+
+        if (string.Equals(contentType, ProtobufContentType, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!typeof(IMessage).IsAssignableFrom(bodyType))
+            {
+                throw new InvalidOperationException(
+                    $"Protobuf envelope body cannot be decoded as '{bodyType}'.");
+            }
+
+            var message = (IMessage?)Activator.CreateInstance(bodyType)
+                ?? throw new InvalidOperationException($"{bodyType.FullName} must have a public parameterless constructor.");
+            message.MergeFrom(bodyMessage.AsReadOnlySpan());
+            return message;
+        }
+
+        if (string.Equals(contentType, MessagePackContentType, StringComparison.OrdinalIgnoreCase))
+        {
+            return MessagePackSerializer.Deserialize(bodyType, bodyMessage.AsReadOnlyMemory(), MessagePackSerializerOptions.Standard);
         }
 
         return JsonSerializer.Deserialize(
@@ -149,6 +201,57 @@ internal static class ZLinkEnvelopeCodec
 
     public static byte[] EncodeJsonBytes(object? value, Type valueType)
         => JsonSerializer.SerializeToUtf8Bytes(value, valueType, ZLinkJsonSerializerOptions.Default);
+
+    private static string ResolveContentType(object? body, Type? bodyType, ZLinkCodecRegistryBuilder? codecs)
+    {
+        if (body is null || bodyType is null)
+        {
+            return JsonContentType;
+        }
+
+        if (bodyType == typeof(Message) || body is Message)
+        {
+            return JsonContentType;
+        }
+
+        if (ShouldUseProtobuf(body, bodyType, codecs))
+        {
+            return ProtobufContentType;
+        }
+
+        if (ShouldUseMessagePack(bodyType, codecs))
+        {
+            return MessagePackContentType;
+        }
+
+        if (codecs is not null
+            && codecs.RegisteredCodecs.Count == 1
+            && !codecs.RegisteredCodecs.Contains("json"))
+        {
+            throw new InvalidOperationException(
+                $"Registered codec '{codecs.RegisteredCodecs.Single()}' cannot encode envelope body type '{bodyType}'.");
+        }
+
+        return JsonContentType;
+    }
+
+    private static bool ShouldUseProtobuf(object? body, Type bodyType, ZLinkCodecRegistryBuilder? codecs)
+    {
+        return IsRegistered(codecs, "protobuf")
+            && body is IMessage
+            && typeof(IMessage).IsAssignableFrom(bodyType);
+    }
+
+    private static bool ShouldUseMessagePack(Type bodyType, ZLinkCodecRegistryBuilder? codecs)
+    {
+        return IsRegistered(codecs, "messagepack")
+            && bodyType.GetCustomAttributes(typeof(MessagePackObjectAttribute), inherit: true).Length > 0;
+    }
+
+    private static bool IsRegistered(ZLinkCodecRegistryBuilder? codecs, string codec)
+    {
+        return codecs is not null && codecs.RegisteredCodecs.Contains(codec);
+    }
 
     private static void EnsurePart(IReadOnlyList<Message> parts, int index, string name)
     {

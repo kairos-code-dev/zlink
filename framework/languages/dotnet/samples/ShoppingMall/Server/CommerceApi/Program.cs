@@ -38,12 +38,13 @@ internal static class Program
         {
             options.DefaultTimeout = SampleTimings.WorkflowTimeout;
             options.Codecs.AddJson();
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
-            options.AddRouteMeshChannel(SampleNames.OrderWorkflowRouteChannel, route =>
+            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
-                route.Bind(instance.RouteEndpoint);
-                route.ConfigureRouting(routing => routing.RoutingId = instance.RouteRid);
-            });
+                var route = options.AddRouteMeshChannel(SampleNames.OrderWorkflowRouteChannel);
+                route.EnableServer(instance.RouteEndpoint);
+                route.ConfigureRouting().RoutingId = instance.RouteRid;
+
+            }
         });
 
         var app = builder.Build();

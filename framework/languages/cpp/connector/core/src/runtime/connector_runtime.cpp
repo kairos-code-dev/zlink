@@ -255,13 +255,28 @@ codec_registry_t::~codec_registry_t () = default;
 codec_registry_t::codec_registry_t (codec_registry_t &&) noexcept = default;
 codec_registry_t &codec_registry_t::operator= (codec_registry_t &&) noexcept = default;
 
-codec_registry_t &codec_registry_t::add_erased (std::type_index type, codec_t codec)
+codec_registry_t &codec_registry_t::add_json ()
+{
+    return use_default_codec (codec_t::json);
+}
+
+codec_registry_t &codec_registry_t::add_message_pack ()
+{
+    return use_default_codec (codec_t::message_pack);
+}
+
+codec_registry_t &codec_registry_t::add_protobuf ()
+{
+    return use_default_codec (codec_t::protobuf);
+}
+
+codec_registry_t &codec_registry_t::use_default_codec (codec_t codec)
 {
     if (!supports (codec)) {
         throw std::invalid_argument ("stream connector codec is not enabled");
     }
     auto state = detail::state_from (_state);
-    state->codecs[type] = codec;
+    state->default_codec = codec;
     return *this;
 }
 
@@ -857,8 +872,7 @@ packet_t connector_t::make_packet (std::type_index type, std::string packet_name
     packet_t packet;
     packet.name = detail::packet_name_resolver_t{}.resolve (type, std::move (packet_name));
     const auto state = detail::state_from (_state);
-    const auto codec = state->codecs.find (type);
-    packet.codec = codec == state->codecs.end () ? codec_t::raw : codec->second;
+    packet.codec = state->default_codec;
     packet.payload = zlink::message_t::from (std::string ("{}"));
     return packet;
 }

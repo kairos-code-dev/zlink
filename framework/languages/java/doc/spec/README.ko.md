@@ -1,8 +1,7 @@
 # ZLink Framework for Java/Kotlin -- Spec
 
 이 디렉토리는 Java/Kotlin framework의 공개 계약을 설명한다. 정식 spec에는 현재
-구현과 regression test에 존재하는 API만 둔다. 후속 편의 기능이나 구현 전 설계는
-`../draft/`에 남긴다.
+구현과 regression test에 존재하는 API만 둔다.
 
 | 문서 | 범위 |
 |------|------|

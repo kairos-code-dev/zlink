@@ -73,19 +73,14 @@ registry discovery를 쓰지 않는 topology에서는 attach별 manual endpoint�
 
 ```cpp
 options.spot_node("stage-spot-node")
-  .enable_router("tcp://0.0.0.0:9000", [](auto &router) {
-      router.set_routing_id(zlink::routing_id_t::from("stage-router"))
-        .connect("tcp://127.0.0.1:9001");
-  })
-  .enable_pub_sub("tcp://0.0.0.0:9002", [](auto &pub_sub) {
-      pub_sub.connect("tcp://127.0.0.1:9003");
-  })
-  .attach_channel_client("profile", [](auto &client) {
-      client.connect("tcp://127.0.0.1:7001");
-  });
+  .enable_router("tcp://0.0.0.0:9000", zlink::routing_id_t::from("stage-router"))
+  .connect_router("tcp://127.0.0.1:9001")
+  .enable_pub_sub("tcp://0.0.0.0:9002")
+  .connect_pub_sub("tcp://127.0.0.1:9003")
+  .attach_channel_client("profile", "tcp://127.0.0.1:7001");
 ```
 
-`enable_router(..., configure)`와 `enable_pub_sub(..., configure)`의 manual endpoint는
+`connect_router(...)`와 `connect_pub_sub(...)`의 manual endpoint는
 SPOT 역할 자체의 peer다. `attach_channel_client(...)`,
 `attach_publisher(...)`, `accept_routes_from_channel(...)`에 주는 manual endpoint는 각각
 attached channel client, publisher client, accepted route ingress의 peer이므로 같은 값으로

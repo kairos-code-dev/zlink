@@ -18,43 +18,25 @@ object PlayServer {
             options.codecs().addMessagePack()
             options.addHandlersFromPackageOf(PlayServer::class.java)
             options.addActorFactory(SampleNames.PlayActor, PlayActorFactory::class.java)
-            options.addClientServerChannel(SampleNames.ApiChannel) { channel ->
-                channel.enableClient { client ->
-                    client.useManualConnections { endpoints ->
-                        endpoints.connect(settings.apiChannelEndpoint)
-                    }
-                }
-            }
-            options.addClientServerChannel(SampleNames.PlayChannel) { channel ->
-                channel.enableServer { server -> server.bind(settings.playChannelEndpoint) }
-                channel.addHandlerGroup(SampleNames.PlayChannel)
-            }
-            options.addRouteMeshChannel(SampleNames.PlayRouteChannel) { route ->
-                route.bind(settings.playRouterEndpoint)
-                route.configureRouting { routing ->
-                    routing.setRoutingId(RoutingId.from(SampleNames.PlayRouterId))
-                }
-                route.useManualConnections { endpoints ->
-                    endpoints.connect(settings.playRouterEndpoint)
-                }
-            }
-            options.addSpotMesh(SampleNames.SpotMesh) { mesh ->
-                mesh.addNode(SampleNames.PlayNode) { node ->
-                    node.enableRouter { router ->
-                        router.setRoutingId(RoutingId.from(SampleNames.PlayNodeRoutingId))
-                        router.bindRouter(settings.spotEndpoint)
-                    }
-                    node.configureEntrySpot { entry ->
-                        entry.setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId))
-                    }
-                    node.addEntrySpot(PlayEntrySpot::class.java)
-                    node.addSpotFactory(TicTacToeGame::class.java)
-                }
-            }
-            options.addStreamNode(SampleNames.PlayStream) { stream ->
-                stream.bind(settings.playEndpoint)
-                stream.registerSession(PlaySession::class.java)
-                stream.addSessionPacketHandler(AuthenticatePlaySessionHandler::class.java)
-            }
+            options.addClientServerChannel(SampleNames.ApiChannel)
+                .enableClient(settings.apiChannelEndpoint)
+            options.addClientServerChannel(SampleNames.PlayChannel)
+                .enableServer(settings.playChannelEndpoint)
+                .addHandlerGroup(SampleNames.PlayChannel)
+            val route = options.addRouteMeshChannel(SampleNames.PlayRouteChannel)
+            route.enableServer(settings.playRouterEndpoint)
+            route.enableClient(settings.playRouterEndpoint)
+            route.configureRouting().setRoutingId(RoutingId.from(SampleNames.PlayRouterId))
+            val node = options.addSpotMesh(SampleNames.SpotMesh)
+                .addNode(SampleNames.PlayNode)
+            node.enableRouter(settings.spotEndpoint)
+                .setRouterRoutingId(RoutingId.from(SampleNames.PlayNodeRoutingId))
+            node.configureEntrySpot().setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId))
+            node.addEntrySpot(PlayEntrySpot::class.java)
+            node.addSpotFactory(TicTacToeGame::class.java)
+            options.addStreamNode(SampleNames.PlayStream)
+                .bind(settings.playEndpoint)
+                .registerSession(PlaySession::class.java)
+                .addSessionPacketHandler(AuthenticatePlaySessionHandler::class.java)
         }
 }

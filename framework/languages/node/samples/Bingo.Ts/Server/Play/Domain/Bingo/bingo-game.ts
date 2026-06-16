@@ -1,4 +1,4 @@
-const { BingoCard } = require('./bingo-card');
+import { BingoCard } from './bingo-card';
 import type { BingoCard as BingoCardType } from './bingo-card';
 
 type BingoPlayerGameState = {

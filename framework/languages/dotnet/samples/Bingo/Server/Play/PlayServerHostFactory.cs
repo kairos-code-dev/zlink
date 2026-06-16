@@ -24,35 +24,39 @@ public static class PlayServerHostFactory
             options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.AddProtobuf();
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
-            options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
+            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
-                channel.EnableServer(server => server.Bind(topology.PlayChannelEndpoint));
+                var channel = options.AddClientServerChannel(SampleNames.PlayChannel);
+                channel.EnableServer(topology.PlayChannelEndpoint);
                 channel.AddHandlerGroup("play");
-            });
-            options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
+
+            }
             {
+                var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
                 channel.EnableClient();
-            });
+
+            }
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
-            options.AddSpotMesh(SampleNames.RoomSpotDiscovery, spotMesh =>
             {
-                spotMesh.AddNode(SampleNames.RoomSpotNode, spot =>
+                var spotMesh = options.AddSpotMesh(SampleNames.RoomSpotDiscovery);
                 {
-                    spot.EnableRouter(router =>
+                    var spot = spotMesh.AddNode(SampleNames.RoomSpotNode);
                     {
-                        router.BindRouter(topology.PlaySpotRouterEndpoint);
-                        router.SetRoutingId(topology.PlayRid);
-                    });
-                    spot.EnablePubSub(pubsub =>
+                        var router = spot.EnableRouter(topology.PlaySpotRouterEndpoint);
+                        router.SetRouterRoutingId(topology.PlayRid);
+
+                    }
                     {
-                        pubsub.BindPubSub(topology.PlaySpotEndpoint);
-                    });
+                        var pubsub = spot.EnablePubSub(topology.PlaySpotEndpoint);
+
+                    }
                     spot.AttachChannelClient(SampleNames.ApiChannel);
                     spot.AddEntrySpot<BingoEntrySpot>();
                     spot.AddSpotFactory<BingoRoom>();
-                });
-            });
+
+                }
+
+            }
         });
 
         return builder.Build();

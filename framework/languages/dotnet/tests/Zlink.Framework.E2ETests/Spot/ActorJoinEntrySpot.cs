@@ -22,15 +22,17 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotMesh("join-entry-local", mesh =>
             {
-                mesh.AddNode("join-entry-local-node", spot =>
+                var mesh = options.AddSpotMesh("join-entry-local");
                 {
-                    spot.EnableRouter(router => router.BindRouter(spotNode));
+                    var spot = mesh.AddNode("join-entry-local-node");
+                    spot.EnableRouter(spotNode);
                     spot.AddEntrySpot<RegistryEntrySpot>();
                     spot.AddSpotFactory<RegistryStageSpot>();
-                });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();
@@ -97,15 +99,17 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotMesh("join-entry-idempotent", mesh =>
             {
-                mesh.AddNode("join-entry-idempotent-node", spot =>
+                var mesh = options.AddSpotMesh("join-entry-idempotent");
                 {
-                    spot.EnableRouter(router => router.BindRouter(spotNode));
+                    var spot = mesh.AddNode("join-entry-idempotent-node");
+                    spot.EnableRouter(spotNode);
                     spot.AddEntrySpot<RegistryEntrySpot>();
                     spot.AddSpotFactory<RegistryStageSpot>();
-                });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();
@@ -155,27 +159,30 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotMesh("join-entry-remote", mesh =>
             {
-                mesh.AddNode("join-entry-source-node", spot =>
+                var mesh = options.AddSpotMesh("join-entry-remote");
                 {
-                    spot.EnableRouter(router =>
+                    var spot = mesh.AddNode("join-entry-source-node");
                     {
-                        router.BindRouter(sourceNode);
-                        router.UseManualConnections(peers => peers.Connect(targetNode));
-                    });
+                        var router = spot.EnableRouter(sourceNode);
+                        router.ConnectRouter(targetNode);
+
+                    }
                     spot.AddSpotFactory<RegistryStageSpot>();
-                });
-                mesh.AddNode("join-entry-target-node", spot =>
+
+                }
                 {
-                    spot.EnableRouter(router =>
+                    var spot = mesh.AddNode("join-entry-target-node");
                     {
-                        router.BindRouter(targetNode);
-                        router.UseManualConnections(peers => peers.Connect(sourceNode));
-                    });
+                        var router = spot.EnableRouter(targetNode);
+                        router.ConnectRouter(sourceNode);
+
+                    }
                     spot.AddEntrySpot<RegistryEntrySpot>();
-                });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();

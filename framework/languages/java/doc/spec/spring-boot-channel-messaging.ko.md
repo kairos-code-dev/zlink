@@ -28,29 +28,22 @@
 public class ZLinkConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        options.addClientServerChannel("api", channel -> {
-            channel.enableServer(server -> {
-                server.bind("tcp://0.0.0.0:7100");
-            });
-        });
+        framework.addClientServerChannel("api")
+            .enableServer("tcp://0.0.0.0:7100");
 
-        options.addClientServerChannel("profile", channel -> {
-            channel.enableClient();
-        });
+        framework.addClientServerChannel("profile")
+            .enableClient();
 
-        options.addClientServerChannel("account", channel -> {
-            channel.enableClient();
-        });
+        framework.addClientServerChannel("account")
+            .enableClient();
 
-        options.addFanoutChannel("profile-events", channel -> {
-            channel.enablePublisher(publisher -> {
-                publisher.bind("tcp://0.0.0.0:7200");
-            });
-            channel.enableSubscriber();
-        });
+        framework.addFanoutChannel("profile-events")
+            .enablePublisher("tcp://0.0.0.0:7200")
+            .enableSubscriber();
 
-        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));
-        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry2:5551"));
+        ZLinkDiscoveryBuilder discovery = framework.useDiscovery();
+        discovery.addRegistryEndpoint("tcp://registry1:5551");
+        discovery.addRegistryEndpoint("tcp://registry2:5551");
     }
 }
 ```
@@ -58,13 +51,8 @@ public class ZLinkConfig implements ZLinkFrameworkConfigurer {
 수동 연결은 아래처럼 둔다.
 
 ```java
-options.addClientServerChannel("profile", channel -> {
-    channel.enableClient(client -> {
-        client.useManualConnections(peers -> {
-            peers.connect("tcp://10.0.10.15:7101");
-        });
-    });
-});
+framework.addClientServerChannel("profile")
+    .enableClient("tcp://10.0.10.15:7101");
 ```
 
 앱 전체에서는 역할별로 방식을 나눠 쓸 수 있다.
@@ -129,10 +117,10 @@ local handler 없이 client만 쓰는 앱도 가능해야 한다.
 public class OutboundOnlyConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        options.addClientServerChannel("profile", channel -> {
-            channel.enableClient();
-        });
-        options.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));
+        framework.addClientServerChannel("profile")
+            .enableClient();
+        framework.useDiscovery()
+            .addRegistryEndpoint("tcp://registry1:5551");
     }
 }
 ```
@@ -156,11 +144,10 @@ binding은 framework 내부 dispatch를 사용하고, remote actor binding은 st
 `attachActorGateway(...)`와 core ActorGateway 경로를 사용한다.
 
 ```java
-options.addRouteMeshChannel("play-route", route -> {
-    route.bind("tcp://0.0.0.0:7300");
-    route.configureRouting(routing -> routing.setRoutingId(RoutingId.from("play-node")));
-    route.enableSpotRouteEgress("game.stage");
-});
+RouteMeshChannelBuilder route = framework.addRouteMeshChannel("play-route")
+    .enableServer("tcp://0.0.0.0:7300");
+route.configureRouting().setRoutingId(RoutingId.from("play-node"));
+route.enableSpotRouteEgress("game.stage");
 ```
 
 Registry-backed Spot remote address 기본 구현을 쓰려면 route mesh channel이 필요하다.

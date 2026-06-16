@@ -2,6 +2,7 @@ package systems.zlink.framework.testkit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.google.protobuf.StringValue;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -46,6 +47,21 @@ final class ConnectorCodecContractTest {
             ZLinkStreamProtobuf.encode("ProtobufPacket", "protobuf-body"),
             "protobuf-body",
             payload -> ZLinkStreamProtobuf.decode(payload, String.class));
+    }
+
+    @Test
+    void protobufTypedHelperUsesMessageLiteBytes() throws Exception {
+        StringValue original = StringValue.of("profile:42");
+        ZLinkStreamEncodedPayload encoded =
+            ZLinkStreamProtobuf.encode("StringValue", original);
+        try {
+            assertEquals("StringValue", encoded.packetName());
+            assertEquals(ZLinkStreamCodec.PROTOBUF, encoded.codec());
+            assertEquals(original, StringValue.parseFrom(encoded.payload().toByteArray()));
+            assertEquals(original, ZLinkStreamProtobuf.decode(encoded, StringValue.class));
+        } finally {
+            encoded.payload().close();
+        }
     }
 
     @Test

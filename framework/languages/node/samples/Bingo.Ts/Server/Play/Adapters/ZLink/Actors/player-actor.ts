@@ -2,7 +2,7 @@ import type { BingoActorRef } from '../../../../../Shared/Contracts/messages';
 import type {
   ZLinkActor,
   ZLinkActorContext
-} from '../../../../../../../packages/framework/dist';
+} from '@zlink-systems/framework';
 
 class PlayerActor implements ZLinkActor {
   readonly context!: ZLinkActorContext;

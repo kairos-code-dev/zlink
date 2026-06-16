@@ -1,19 +1,16 @@
 package systems.zlink.framework.configuration;
 
-import java.util.function.Consumer;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 
 public interface ClientServerChannelBuilder {
-    void enableServer();
+    ClientServerChannelBuilder enableServer(String endpoint);
 
-    void enableServer(Consumer<ChannelServerCapabilityBuilder> configure);
+    ClientServerChannelBuilder enableClient();
 
-    void enableClient();
+    ClientServerChannelBuilder enableClient(String endpoint);
 
-    void enableClient(Consumer<ClientCapabilityBuilder> configure);
-
-    void addHandlerGroup(String groupName);
+    ClientServerChannelBuilder addHandlerGroup(String groupName);
 
     <THandler extends ZLinkSendHandler<TMessage>, TMessage> void addSendHandler(
         Class<THandler> handlerType,
@@ -37,5 +34,5 @@ public interface ClientServerChannelBuilder {
         Class<TReply> replyType,
         String packetName);
 
-    void enableSpotRouteEgress(String targetSpotNodeChannelName);
+    ClientServerChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName);
 }

@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../README.ko.md) | [이전: Monitoring](./10-monitoring.ko.md) | [다음: gRPC 대안](./12-grpc-alternative.ko.md)
+[문서 목록](../README.ko.md) | [이전: Feature Map](./10-feature-map.ko.md) | [다음: gRPC 대안](./12-grpc-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Java Interface Catalog Guide
@@ -28,5 +28,5 @@ error 의미를 만들지 않는다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../README.ko.md) | [이전: Monitoring](./10-monitoring.ko.md) | [다음: gRPC 대안](./12-grpc-alternative.ko.md)
+[문서 목록](../README.ko.md) | [이전: Feature Map](./10-feature-map.ko.md) | [다음: gRPC 대안](./12-grpc-alternative.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

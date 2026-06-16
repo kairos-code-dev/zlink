@@ -29,41 +29,30 @@ class SessionServerApplication {
     fun sessionFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(SessionServerApplication::class.java)
-            options.useDiscovery { discovery ->
-                discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
-            }
+            options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.codecs().addProtobuf()
-            options.addClientServerChannel(SampleNames.ApiChannel) { channel -> channel.enableClient() }
-            options.addClientServerChannel(SampleNames.PlayChannel) { channel -> channel.enableClient() }
-            options.addRouteMeshChannel(SampleNames.RoomRouteChannel) { route ->
-                route.bind(SampleTopology.SessionRouteEndpoint)
-                route.configureRouting { routing ->
-                    routing.setRoutingId(RoutingId.from(SampleTopology.SessionRouterRid))
-                }
-                route.useManualConnections { endpoints -> endpoints.connect(SampleTopology.PlayRouteEndpoint) }
-            }
-            options.useRegistrySpotRemoteAddresses(SampleNames.RoomSpotDiscovery) { registry ->
-                registry.setRouterChannelId(SampleNames.RoomRouteChannel)
-            }
-            options.addSpotMesh(SampleNames.RoomSpotDiscovery) { mesh ->
-                mesh.addNode(SampleNames.SessionSpotNode) { node ->
-                    node.enableRouter { router ->
-                        router.bindRouter(SampleTopology.SessionRouterEndpoint)
-                        router.setRoutingId(RoutingId.from(SampleTopology.SessionRouterRid))
-                    }
-                    node.enablePubSub { pubSub ->
-                        pubSub.bindPubSub(SampleTopology.SessionSpotEndpoint)
-                        pubSub.setRoutingId(RoutingId.from(SampleTopology.SessionPubRid))
-                    }
-                    node.acceptSpotRoutesFromChannel(SampleNames.RoomRouteChannel)
-                }
-            }
-            options.addStreamNode(SampleNames.StreamNode) { stream ->
-                stream.attachActorGateway(SampleNames.SessionSpotNode)
-                stream.bind(SampleTopology.StreamEndpoint)
-                stream.registerSession(BingoSession::class.java)
-                stream.addSessionPacketHandler(AuthenticateSessionHandler::class.java)
-            }
+            options.addClientServerChannel(SampleNames.ApiChannel)
+                .enableClient()
+            options.addClientServerChannel(SampleNames.PlayChannel)
+                .enableClient()
+            val route = options.addRouteMeshChannel(SampleNames.RoomRouteChannel)
+            route.enableServer(SampleTopology.SessionRouteEndpoint)
+            route.enableClient(SampleTopology.PlayRouteEndpoint)
+            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.SessionRouterRid))
+            options.useRegistrySpotRemoteAddresses(SampleNames.RoomSpotDiscovery)
+                .setRouterChannelId(SampleNames.RoomRouteChannel)
+            val node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
+                .addNode(SampleNames.SessionSpotNode)
+            node.enableRouter(SampleTopology.SessionRouterEndpoint)
+                .setRouterRoutingId(RoutingId.from(SampleTopology.SessionRouterRid))
+            node.enablePubSub(SampleTopology.SessionSpotEndpoint)
+                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionPubRid))
+            node.acceptSpotRoutesFromChannel(SampleNames.RoomRouteChannel)
+            options.addStreamNode(SampleNames.StreamNode)
+                .attachActorGateway(SampleNames.SessionSpotNode)
+                .bind(SampleTopology.StreamEndpoint)
+                .registerSession(BingoSession::class.java)
+                .addSessionPacketHandler(AuthenticateSessionHandler::class.java)
         }
 
     companion object {

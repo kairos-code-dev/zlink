@@ -32,7 +32,7 @@ DI handler
     create_game_http_req_t request)
       |
       v
-channel_client_t.request<create_game_res_t>(play_channel, ...)
+channel_client_t.request(play_channel, ...).async<create_game_res_t>()
       |
       v
 HTTP JSON response
@@ -133,9 +133,8 @@ task_t<create_game_http_res_t>
 create_game_http_handler_t::handle(const create_game_http_req_t &request)
 {
     auto room = co_await _client
-      .request<create_game_res_t> (sample_names_t::play_channel,
-                                   create_game_req_t{request.game_name})
-      .async ();
+      .request (sample_names_t::play_channel, create_game_req_t{request.game_name})
+      .async<create_game_res_t> ();
     co_return create_game_http_res_t {room.room_id, room.play_endpoint, room.game_name};
 }
 ```

@@ -19,41 +19,39 @@ public sealed class HandlerClientsTests
         backendBuilder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<HandlerClientsTests>();
-            options.AddClientServerChannel("backend", channel =>
             {
-                channel.EnableServer(server => server.Bind(backendEndpoint));
+                var channel = options.AddClientServerChannel("backend");
+                channel.EnableServer(backendEndpoint);
                 channel.AddHandlerGroup("profile");
-            });
+
+            }
         });
 
         var apiBuilder = Host.CreateApplicationBuilder();
         apiBuilder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<HandlerClientsTests>();
-            options.AddClientServerChannel("api", channel =>
             {
-                channel.EnableServer(server => server.Bind(apiEndpoint));
+                var channel = options.AddClientServerChannel("api");
+                channel.EnableServer(apiEndpoint);
                 channel.AddHandlerGroup("profile-forward");
-            });
-            options.AddClientServerChannel("backend", channel =>
+
+            }
             {
-                channel.EnableClient(client =>
-                {
-                    client.UseManualConnections(connections => connections.Connect(backendEndpoint));
-                });
-            });
+                var channel = options.AddClientServerChannel("backend");
+                channel.EnableClient(backendEndpoint);
+
+            }
         });
 
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddClientServerChannel("api", channel =>
             {
-                channel.EnableClient(client =>
-                {
-                    client.UseManualConnections(connections => connections.Connect(apiEndpoint));
-                });
-            });
+                var channel = options.AddClientServerChannel("api");
+                channel.EnableClient(apiEndpoint);
+
+            }
         });
 
         using var backendHost = backendBuilder.Build();
@@ -87,41 +85,39 @@ public sealed class HandlerClientsTests
         subscriberBuilder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<HandlerClientsTests>();
-            options.AddFanoutChannel("profile", channel =>
             {
-                channel.EnableSubscriber(subscriber =>
-                {
-                    subscriber.UseManualConnections(connections => connections.Connect(pubEndpoint));
-                });
+                var channel = options.AddFanoutChannel("profile");
+                channel.EnableSubscriber(pubEndpoint);
                 channel.AddHandlerGroup("profile-events");
-            });
+
+            }
         });
 
         var apiBuilder = Host.CreateApplicationBuilder();
         apiBuilder.Services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<HandlerClientsTests>();
-            options.AddFanoutChannel("profile", channel =>
             {
-                channel.EnablePublisher(publisher => publisher.Bind(pubEndpoint));
-            });
-            options.AddClientServerChannel("api", channel =>
+                var channel = options.AddFanoutChannel("profile");
+                channel.EnablePublisher(pubEndpoint);
+
+            }
             {
-                channel.EnableServer(server => server.Bind(apiEndpoint));
+                var channel = options.AddClientServerChannel("api");
+                channel.EnableServer(apiEndpoint);
                 channel.AddHandlerGroup("profile-publisher");
-            });
+
+            }
         });
 
         var clientBuilder = Host.CreateApplicationBuilder();
         clientBuilder.Services.AddZLinkFramework(options =>
         {
-            options.AddClientServerChannel("api", channel =>
             {
-                channel.EnableClient(client =>
-                {
-                    client.UseManualConnections(connections => connections.Connect(apiEndpoint));
-                });
-            });
+                var channel = options.AddClientServerChannel("api");
+                channel.EnableClient(apiEndpoint);
+
+            }
         });
 
         using var subscriberHost = subscriberBuilder.Build();

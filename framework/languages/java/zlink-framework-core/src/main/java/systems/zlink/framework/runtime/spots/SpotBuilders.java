@@ -2,16 +2,10 @@ package systems.zlink.framework.runtime.spots;
 
 import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.configuration.ManualEndpointListBuilder;
-import systems.zlink.framework.configuration.SpotChannelClientCapabilityBuilder;
-import systems.zlink.framework.configuration.SpotPubSubCapabilityBuilder;
-import systems.zlink.framework.configuration.SpotPublisherClientCapabilityBuilder;
-import systems.zlink.framework.configuration.SpotRouterCapabilityBuilder;
 import systems.zlink.framework.configuration.ZLinkEntrySpotOptions;
 import systems.zlink.framework.configuration.ZLinkDiscoveryBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
-import systems.zlink.framework.configuration.ZLinkSpotRouteChannelAcceptanceBuilder;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -22,159 +16,122 @@ public final class SpotBuilders {
 
     public static ZLinkSpotMeshBuilder mesh(
         String meshName,
-        ZLinkFrameworkRegistration registration) {
-        return new Mesh(meshName, registration);
+        ZLinkFrameworkRegistration registration,
+        Consumer<Class<?>> spotFactoryAdded) {
+        return new Mesh(meshName, registration, spotFactoryAdded);
     }
 
     private record Mesh(
         String meshName,
-        ZLinkFrameworkRegistration registration) implements ZLinkSpotMeshBuilder {
+        ZLinkFrameworkRegistration registration,
+        Consumer<Class<?>> spotFactoryAdded) implements ZLinkSpotMeshBuilder {
         @Override
-        public void useDiscovery(Consumer<ZLinkDiscoveryBuilder> configure) {
-            configure.accept(registration.registryEndpoints()::add);
+        public ZLinkDiscoveryBuilder useDiscovery() {
+            return registration.registryEndpoints()::add;
         }
 
-        public void addNode(String spotNodeName, Consumer<ZLinkSpotNodeBuilder> configure) {
+        public ZLinkSpotNodeBuilder addNode(String spotNodeName) {
             SpotNodeRegistration node = new SpotNodeRegistration(meshName, spotNodeName);
             registration.spotNodes().add(node);
-            configure.accept(new Node(node));
+            return new Node(node, spotFactoryAdded);
         }
     }
 
-    private record Node(SpotNodeRegistration registration) implements ZLinkSpotNodeBuilder {
-        @Override
-        public void enableRouter() {
+    private record Node(
+        SpotNodeRegistration registration,
+        Consumer<Class<?>> spotFactoryAdded) implements ZLinkSpotNodeBuilder {
+        public ZLinkSpotNodeBuilder enableRouter(String endpoint) {
             registration.enableRouter();
-        }
-
-        @Override
-        public void enableRouter(Consumer<SpotRouterCapabilityBuilder> configure) {
-            registration.enableRouter();
-            configure.accept(new Router(registration));
-        }
-
-        @Override
-        public void enablePubSub() {
-            registration.enablePubSub();
-        }
-
-        @Override
-        public void enablePubSub(Consumer<SpotPubSubCapabilityBuilder> configure) {
-            registration.enablePubSub();
-            configure.accept(new PubSub(registration));
-        }
-
-        @Override
-        public void attachChannelClient(String channelName) {
-            registration.attachChannelClient(channelName);
-        }
-
-        @Override
-        public void attachChannelClient(
-            String channelName,
-            Consumer<SpotChannelClientCapabilityBuilder> configure) {
-            configure.accept(new ChannelClient(registration.attachChannelClient(channelName)));
-        }
-
-        @Override
-        public void attachSpotPublisherClient(String channelName) {
-            registration.attachSpotPublisherClient(channelName);
-        }
-
-        @Override
-        public void attachSpotPublisherClient(
-            String channelName,
-            Consumer<SpotPublisherClientCapabilityBuilder> configure) {
-            configure.accept(new Publisher(registration.attachSpotPublisherClient(channelName)));
-        }
-
-        @Override
-        public void acceptSpotRoutesFromChannel(String channelName) {
-            registration.acceptSpotRoutesFromChannel(channelName);
-        }
-
-        @Override
-        public void acceptSpotRoutesFromChannel(
-            String channelName,
-            Consumer<ZLinkSpotRouteChannelAcceptanceBuilder> configure) {
-            configure.accept(new Acceptance(
-                registration.acceptSpotRoutesFromChannel(channelName)));
-        }
-
-        @Override
-        public void configureEntrySpot(Consumer<ZLinkEntrySpotOptions> configure) {
-            configure.accept(registration.entrySpotOptions());
-        }
-
-        @Override
-        public void addSpotFactory(Class<? extends ZLinkSpot> spotType) {
-            registration.addSpotFactory(spotType);
-        }
-
-        @Override
-        public void addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType) {
-            registration.addEntrySpot(entrySpotType);
-        }
-    }
-
-    private record Router(SpotNodeRegistration registration) implements SpotRouterCapabilityBuilder {
-        @Override
-        public void bindRouter(String endpoint) {
             registration.setRouterBind(endpoint);
+            return this;
         }
 
         @Override
-        public void setRoutingId(RoutingId routingId) {
+        public ZLinkSpotNodeBuilder connectRouter(String endpoint) {
+            registration.addRouterManualConnection(endpoint);
+            return this;
+        }
+
+        @Override
+        public ZLinkSpotNodeBuilder setRouterRoutingId(RoutingId routingId) {
             registration.enableRouter();
             registration.setRouterRoutingId(routingId);
+            return this;
         }
 
         @Override
-        public void useManualConnections(Consumer<ManualEndpointListBuilder> configure) {
-            configure.accept(registration::addRouterManualConnection);
-        }
-    }
-
-    private record PubSub(SpotNodeRegistration registration) implements SpotPubSubCapabilityBuilder {
-        @Override
-        public void bindPubSub(String endpoint) {
+        public ZLinkSpotNodeBuilder enablePubSub(String endpoint) {
+            registration.enablePubSub();
             registration.setPubBind(endpoint);
+            return this;
         }
 
         @Override
-        public void setRoutingId(RoutingId routingId) {
+        public ZLinkSpotNodeBuilder connectPubSub(String endpoint) {
+            registration.addPubSubManualConnection(endpoint);
+            return this;
+        }
+
+        @Override
+        public ZLinkSpotNodeBuilder setPubSubRoutingId(RoutingId routingId) {
             registration.enablePubSub();
             registration.setPubSubRoutingId(routingId);
+            return this;
         }
 
         @Override
-        public void useManualConnections(Consumer<ManualEndpointListBuilder> configure) {
-            configure.accept(registration::addPubSubManualConnection);
+        public ZLinkSpotNodeBuilder attachChannelClient(String channelName) {
+            registration.attachChannelClient(channelName);
+            return this;
+        }
+
+        @Override
+        public ZLinkSpotNodeBuilder attachChannelClient(String channelName, String endpoint) {
+            registration.attachChannelClient(channelName).addManualConnection(endpoint);
+            return this;
+        }
+
+        @Override
+        public ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName) {
+            registration.attachSpotPublisherClient(channelName);
+            return this;
+        }
+
+        @Override
+        public ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName, String endpoint) {
+            registration.attachSpotPublisherClient(channelName).addManualConnection(endpoint);
+            return this;
+        }
+
+        @Override
+        public ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName) {
+            registration.acceptSpotRoutesFromChannel(channelName);
+            return this;
+        }
+
+        @Override
+        public ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName, String endpoint) {
+            registration.acceptSpotRoutesFromChannel(channelName).addManualConnection(endpoint);
+            return this;
+        }
+
+        @Override
+        public ZLinkEntrySpotOptions configureEntrySpot() {
+            return registration.entrySpotOptions();
+        }
+
+        @Override
+        public ZLinkSpotNodeBuilder addSpotFactory(Class<? extends ZLinkSpot> spotType) {
+            registration.addSpotFactory(spotType);
+            spotFactoryAdded.accept(spotType);
+            return this;
+        }
+
+        @Override
+        public ZLinkSpotNodeBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType) {
+            registration.addEntrySpot(entrySpotType);
+            return this;
         }
     }
 
-    private record Publisher(
-        SpotPublisherClientRegistration registration) implements SpotPublisherClientCapabilityBuilder {
-        @Override
-        public void useManualConnections(Consumer<ManualEndpointListBuilder> configure) {
-            configure.accept(registration::addManualConnection);
-        }
-    }
-
-    private record ChannelClient(
-        SpotChannelClientRegistration registration) implements SpotChannelClientCapabilityBuilder {
-        @Override
-        public void useManualConnections(Consumer<ManualEndpointListBuilder> configure) {
-            configure.accept(registration::addManualConnection);
-        }
-    }
-
-    private record Acceptance(
-        SpotRouteChannelAcceptanceRegistration registration)
-        implements ZLinkSpotRouteChannelAcceptanceBuilder {
-        @Override
-        public void useManualConnections(Consumer<ManualEndpointListBuilder> configure) {
-            configure.accept(registration::addManualConnection);
-        }
-    }
 }

@@ -33,6 +33,7 @@ inline void validate_dispatch_options (const dispatch_options_t &options)
 inline void validate_framework_options (const framework_options_state_t &options,
                                         const handler_group_options_state_t &handler_groups)
 {
+    validate_dispatch_options (options.dispatch);
     if (!options.discovery_backed_capabilities.empty ()
         && options.registry_discovery_endpoints.empty ()) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,

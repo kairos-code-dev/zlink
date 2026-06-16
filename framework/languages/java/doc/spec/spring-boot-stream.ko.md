@@ -4,7 +4,7 @@
 
 [Java spec 목차](./README.ko.md)
 
-[Java 묶음](../README.ko.md) | [포팅 계획](../draft/java-kotlin-framework-porting-plan.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [Actor/session](./spring-boot-actor-session.ko.md) | [STREAM 샘플](../guide/samples/stream-samples.ko.md) | [STREAM open items](../draft/stream-open-items.ko.md)
+[Java 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [Actor/session](./spring-boot-actor-session.ko.md) | [STREAM 샘플](../guide/samples/stream-samples.ko.md)
 
 # ZLink Framework Spring Boot STREAM
 
@@ -30,20 +30,18 @@ public class StreamConfig {
     @Bean
     ZLinkFrameworkConfigurer streamOptions() {
         return options -> {
-            options.addSpotMesh("game.stage", mesh -> {
-                mesh.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));
-                mesh.addNode("play", node -> {
-                    node.enableRouter();
-                    node.addEntrySpot(GameEntrySpot.class);
-                    node.addSpotFactory(GameRoomSpot.class);
-                });
-            });
+            ZLinkSpotMeshBuilder mesh = options.addSpotMesh("game.stage");
+            mesh.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
 
-            options.addStreamNode("gateway", stream -> {
-                stream.bind("tcp://0.0.0.0:7201");
-                stream.attachActorGateway("play");
-                stream.registerSession(GameStreamSession.class);
-            });
+            ZLinkSpotNodeBuilder node = mesh.addNode("play");
+            node.enableRouter("tcp://0.0.0.0:9001");
+            node.addEntrySpot(GameEntrySpot.class);
+            node.addSpotFactory(GameRoomSpot.class);
+
+            ZLinkStreamNodeBuilder stream = options.addStreamNode("gateway");
+            stream.bind("tcp://0.0.0.0:7201");
+            stream.attachActorGateway("play");
+            stream.registerSession(GameStreamSession.class);
         };
     }
 }
@@ -107,11 +105,10 @@ stream node는 ActorGateway attach 없이 동작한다. session gateway처럼 re
 stream node가 SpotNode의 ActorGateway에 attach되어 있어야 한다.
 
 ```java
-options.addStreamNode("gateway", stream -> {
-    stream.bind("tcp://0.0.0.0:7201");
-    stream.attachActorGateway("play");
-    stream.registerSession(GameStreamSession.class);
-});
+ZLinkStreamNodeBuilder stream = options.addStreamNode("gateway");
+stream.bind("tcp://0.0.0.0:7201");
+stream.attachActorGateway("play");
+stream.registerSession(GameStreamSession.class);
 ```
 
 이 설정은 session relay용 route mesh channel을 만든다는 뜻이 아니다. application

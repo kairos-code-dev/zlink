@@ -14,12 +14,9 @@
 #include <string>
 
 #define ensure(condition) require_condition ((condition), #condition)
-#define ensure_result(result) require_result ((result), #result)
 
 namespace zlink::samples::tictactoe
 {
-
-inline void register_tictactoe_client_codecs (stream_connector::connector_t &connector);
 
 class tictactoe_client_scenario_t
 {
@@ -54,8 +51,8 @@ class tictactoe_client_scenario_t
               connector_options);
             auto core_client2 = zlink::stream_connector::connector_factory_t::create (
               connector_options);
-            register_tictactoe_client_codecs (core_client1);
-            register_tictactoe_client_codecs (core_client2);
+            core_client1.codecs ().add_json ();
+            core_client2.codecs ().add_json ();
 
             auto client1 = zlink::stream_e2e_client::use (core_client1);
             auto client2 = zlink::stream_e2e_client::use (core_client2);
@@ -65,7 +62,7 @@ class tictactoe_client_scenario_t
 
             auto recreate_client = zlink::stream_connector::connector_factory_t::create (
               connector_options);
-            register_tictactoe_client_codecs (recreate_client);
+            recreate_client.codecs ().add_json ();
             auto client3 = zlink::stream_e2e_client::use (recreate_client);
             return run_recreate_check (client3, options);
         }
@@ -105,59 +102,64 @@ class tictactoe_client_scenario_t
             ensure (room.game_name == options.game_name);
 
             trace ("connect client1");
-            ensure (co_await client1.connect ().async ());
+            co_await client1.connect ().async ();
             trace ("connect client2");
-            ensure (co_await client2.connect ().async ());
+            co_await client2.connect ().async ();
 
             trace ("authenticate client1");
-            auto client1_auth = ensure_result (
-              co_await client1.request<authenticate_res_t> (
-                authenticate_req_t{options.x_actor_id}).async ());
+            auto client1_auth =
+              co_await client1.request (authenticate_req_t{options.x_actor_id})
+                .async<authenticate_res_t> ();
             ensure (client1_auth.actor_id == options.x_actor_id);
 
             trace ("authenticate client2");
-            auto client2_auth = ensure_result (
-              co_await client2.request<authenticate_res_t> (
-                authenticate_req_t{options.o_actor_id}).async ());
+            auto client2_auth =
+              co_await client2.request (authenticate_req_t{options.o_actor_id})
+                .async<authenticate_res_t> ();
             ensure (client2_auth.actor_id == options.o_actor_id);
             ensure (client2_auth.actor_id != client1_auth.actor_id);
 
             trace ("join client1");
-            auto client1_join = ensure_result (
-              co_await client1.request<join_game_res_t> (join_game_req_t{room.room_id}).async ());
+            auto client1_join =
+              co_await client1.request (join_game_req_t{room.room_id})
+                .async<join_game_res_t> ();
             ensure (client1_join.state.room_id == room.room_id);
             ensure (client1_join.state.x_actor_id == options.x_actor_id);
             ensure (client1_join.state.o_actor_id.empty ());
-            ensure (client1_join.state.status == "WaitingForPlayers");
+            ensure (client1_join.state.status == tictactoe_status_t::waiting_for_players);
             ensure (client1_join.state.next_turn == options.x_actor_id);
-            ensure (co_await ensure_no_self_join_notify (client1, options.x_actor_id));
+            auto client1_self_join =
+              client1.wait_for<player_joined_notify_t> ()
+                .where (&player_joined_notify_t::actor_id, options.x_actor_id)
+                .timeout (std::chrono::milliseconds (25))
+                .async ()
+                .result ();
+            require_condition (!client1_self_join, "self join notify must not be delivered");
 
             auto client1_wait_client2_join =
-              client1.wait_for<zlink::stream_connector::packet_t> (
-                       player_joined_notify_t::packet_name)
-                .where ([&client2_auth] (const zlink::stream_connector::packet_t &packet) {
-                    player_joined_notify_t message;
-                    from_stream_payload (packet.payload, message);
-                    return message.actor_id == client2_auth.actor_id;
-                })
+              client1.wait_for<player_joined_notify_t> ()
+                .where (&player_joined_notify_t::actor_id, client2_auth.actor_id)
                 .async ();
             client1_wait_client2_join.start ();
             trace ("join client2");
-            auto client2_join = ensure_result (
-              co_await client2.request<join_game_res_t> (join_game_req_t{room.room_id}).async ());
+            auto client2_join =
+              co_await client2.request (join_game_req_t{room.room_id})
+                .async<join_game_res_t> ();
             ensure (client2_join.state.room_id == room.room_id);
             ensure (client2_join.state.x_actor_id == options.x_actor_id);
             ensure (client2_join.state.o_actor_id == options.o_actor_id);
-            ensure (client2_join.state.status == "InProgress");
-            ensure (co_await ensure_no_self_join_notify (client2, options.o_actor_id));
+            ensure (client2_join.state.status == tictactoe_status_t::in_progress);
+            auto client2_self_join =
+              client2.wait_for<player_joined_notify_t> ()
+                .where (&player_joined_notify_t::actor_id, options.o_actor_id)
+                .timeout (std::chrono::milliseconds (25))
+                .async ()
+                .result ();
+            require_condition (!client2_self_join, "self join notify must not be delivered");
             trace ("wait client1 saw client2 join");
-            auto client1_saw_client2_join_packet =
-              ensure_result (co_await client1_wait_client2_join);
-            player_joined_notify_t client1_saw_client2_join;
-            from_stream_payload (client1_saw_client2_join_packet.payload,
-                                 client1_saw_client2_join);
+            auto client1_saw_client2_join = co_await client1_wait_client2_join;
             ensure (client1_saw_client2_join.room_id == room.room_id);
-            ensure (client1_saw_client2_join.mark == "O");
+            ensure (client1_saw_client2_join.mark == tictactoe_marks_t::o);
 
             auto client2_wait_first_move =
               client2.wait_for<game_state_notify_t> ()
@@ -168,13 +170,13 @@ class tictactoe_client_scenario_t
                 .async ();
             client2_wait_first_move.start ();
             trace ("client1 first move");
-            auto client1_first_move = ensure_result (
-              co_await client1.request<place_mark_res_t> (place_mark_req_t{0}).async ());
+            auto client1_first_move =
+              co_await client1.request (place_mark_req_t{0}).async<place_mark_res_t> ();
             ensure (client1_first_move.state.room_id == room.room_id);
             ensure (client1_first_move.state.last_move_actor_id == options.x_actor_id);
             ensure (client1_first_move.state.last_move_cell == 0);
             trace ("client2 saw first move");
-            auto client2_saw_first_move = ensure_result (co_await client2_wait_first_move);
+            auto client2_saw_first_move = co_await client2_wait_first_move;
             ensure (client2_saw_first_move.room_id == room.room_id);
             ensure (client2_saw_first_move.state.last_move_cell == 0);
 
@@ -187,13 +189,13 @@ class tictactoe_client_scenario_t
                 .async ();
             client1_wait_first_o_move.start ();
             trace ("client2 first move");
-            auto client2_first_move = ensure_result (
-              co_await client2.request<place_mark_res_t> (place_mark_req_t{3}).async ());
+            auto client2_first_move =
+              co_await client2.request (place_mark_req_t{3}).async<place_mark_res_t> ();
             ensure (client2_first_move.state.room_id == room.room_id);
             ensure (client2_first_move.state.last_move_actor_id == options.o_actor_id);
             ensure (client2_first_move.state.last_move_cell == 3);
             trace ("client1 saw first o move");
-            auto client1_saw_first_o_move = ensure_result (co_await client1_wait_first_o_move);
+            auto client1_saw_first_o_move = co_await client1_wait_first_o_move;
             ensure (client1_saw_first_o_move.room_id == room.room_id);
             ensure (client1_saw_first_o_move.state.last_move_cell == 3);
 
@@ -206,13 +208,13 @@ class tictactoe_client_scenario_t
                 .async ();
             client2_wait_second_x_move.start ();
             trace ("client1 second move");
-            auto client1_second_move = ensure_result (
-              co_await client1.request<place_mark_res_t> (place_mark_req_t{1}).async ());
+            auto client1_second_move =
+              co_await client1.request (place_mark_req_t{1}).async<place_mark_res_t> ();
             ensure (client1_second_move.state.room_id == room.room_id);
             ensure (client1_second_move.state.last_move_actor_id == options.x_actor_id);
             ensure (client1_second_move.state.last_move_cell == 1);
             trace ("client2 saw second x move");
-            auto client2_saw_second_x_move = ensure_result (co_await client2_wait_second_x_move);
+            auto client2_saw_second_x_move = co_await client2_wait_second_x_move;
             ensure (client2_saw_second_x_move.room_id == room.room_id);
             ensure (client2_saw_second_x_move.state.last_move_cell == 1);
 
@@ -225,13 +227,13 @@ class tictactoe_client_scenario_t
                 .async ();
             client1_wait_second_o_move.start ();
             trace ("client2 second move");
-            auto client2_second_move = ensure_result (
-              co_await client2.request<place_mark_res_t> (place_mark_req_t{4}).async ());
+            auto client2_second_move =
+              co_await client2.request (place_mark_req_t{4}).async<place_mark_res_t> ();
             ensure (client2_second_move.state.room_id == room.room_id);
             ensure (client2_second_move.state.last_move_actor_id == options.o_actor_id);
             ensure (client2_second_move.state.last_move_cell == 4);
             trace ("client1 saw second o move");
-            auto client1_saw_second_o_move = ensure_result (co_await client1_wait_second_o_move);
+            auto client1_saw_second_o_move = co_await client1_wait_second_o_move;
             ensure (client1_saw_second_o_move.room_id == room.room_id);
             ensure (client1_saw_second_o_move.state.last_move_cell == 4);
 
@@ -243,22 +245,22 @@ class tictactoe_client_scenario_t
                 .async ();
             client2_wait_winning_move.start ();
             trace ("client1 winning move");
-            auto client1_winning_move = ensure_result (
-              co_await client1.request<place_mark_res_t> (place_mark_req_t{2}).async ());
+            auto client1_winning_move =
+              co_await client1.request (place_mark_req_t{2}).async<place_mark_res_t> ();
             ensure (client1_winning_move.state.room_id == room.room_id);
             ensure (client1_winning_move.state.last_move_actor_id == options.x_actor_id);
             ensure (client1_winning_move.state.last_move_cell == 2);
             ensure (client1_winning_move.state.board == "XXXOO....");
-            ensure (client1_winning_move.state.status == "Won");
+            ensure (client1_winning_move.state.status == tictactoe_status_t::won);
             ensure (client1_winning_move.state.winner == options.x_actor_id);
             trace ("client2 saw winning move");
-            auto client2_saw_winning_move = ensure_result (co_await client2_wait_winning_move);
+            auto client2_saw_winning_move = co_await client2_wait_winning_move;
             ensure (client2_saw_winning_move.room_id == room.room_id);
             ensure (client2_saw_winning_move.state.board == "XXXOO....");
-            ensure (client2_saw_winning_move.state.status == "Won");
+            ensure (client2_saw_winning_move.state.status == tictactoe_status_t::won);
 
-            (void) co_await client1.close ().async ();
-            (void) co_await client2.close ().async ();
+            co_await client1.close ().async ();
+            co_await client2.close ().async ();
             co_return true;
         }
         catch (const std::exception &ex) {
@@ -275,13 +277,13 @@ class tictactoe_client_scenario_t
     {
         try {
             trace ("recreate connect");
-            ensure (co_await client.connect ().async ());
+            co_await client.connect ().async ();
             trace ("recreate authenticate");
-            auto recreated = ensure_result (
-              co_await client.request<authenticate_res_t> (
-                authenticate_req_t{options.x_actor_id}).async ());
+            auto recreated =
+              co_await client.request (authenticate_req_t{options.x_actor_id})
+                .async<authenticate_res_t> ();
             ensure (recreated.actor_id == options.x_actor_id);
-            (void) co_await client.close ().async ();
+            co_await client.close ().async ();
             co_return true;
         }
         catch (const std::exception &ex) {
@@ -301,60 +303,8 @@ class tictactoe_client_scenario_t
         std::cerr << "tictactoe step: " << step << '\n';
     }
 
-    static void require_condition (stream_e2e_client::result_t<void> result,
-                                   const char *expression)
-    {
-        if (!result) {
-            const auto message =
-              result.error () ? result.error ()->message : "operation failed";
-            throw std::runtime_error (std::string ("Ensure failed: ") + expression
-                                      + ": " + message);
-        }
-    }
-
-    template <typename T>
-    static T require_result (stream_e2e_client::result_t<T> result, const char *expression)
-    {
-        if (!result) {
-            const auto message =
-              result.error () ? result.error ()->message : "operation failed";
-            throw std::runtime_error (std::string ("Ensure failed: ") + expression
-                                      + ": " + message);
-        }
-        return result.value ();
-    }
-
-    static stream_e2e_client::task_t<void>
-    ensure_no_self_join_notify (stream_e2e_client::coroutine_connector_t &client,
-                                const std::string &actor_id)
-    {
-        auto notify =
-          co_await client.wait_for<player_joined_notify_t> ()
-            .where ([actor_id] (const player_joined_notify_t &message) {
-                return message.actor_id == actor_id;
-            })
-            .timeout (std::chrono::milliseconds (25))
-            .async ();
-        require_condition (!notify, "self join notify must not be delivered");
-        co_return;
-    }
 };
 
 #undef ensure
-#undef ensure_result
-
-inline void register_tictactoe_client_codecs (stream_connector::connector_t &connector)
-{
-    connector.codecs ()
-      .add_message_pack<authenticate_req_t> ()
-      .add_message_pack<authenticate_res_t> ()
-      .add_message_pack<join_game_req_t> ()
-      .add_message_pack<join_game_res_t> ()
-      .add_message_pack<place_mark_req_t> ()
-      .add_message_pack<place_mark_res_t> ()
-      .add_message_pack<game_state_notify_t> ()
-      .add_message_pack<game_ended_notify_t> ()
-      .add_message_pack<player_joined_notify_t> ();
-}
 
 } // namespace zlink::samples::tictactoe

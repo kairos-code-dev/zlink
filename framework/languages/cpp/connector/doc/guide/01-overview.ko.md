@@ -50,7 +50,7 @@ e2e client는 core 위에 올라가는 선택 표면이다. C++20 coroutine을 �
 #include <zlink/stream_e2e_client.hpp>
 
 auto client = zlink::stream_e2e_client::use(connector);
-auto reply = co_await client.request<pong_t>(ping_t{"player-1", 1}).async();
+auto reply = co_await client.request(ping_t{"player-1", 1}).async<pong_t>();
 ```
 
 `async()`는 blocking `submit()`을 호출하지 않는다. coroutine이 대기하는 동안 worker thread는 다른 작업을 처리한다.

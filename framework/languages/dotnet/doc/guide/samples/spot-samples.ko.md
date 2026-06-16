@@ -295,90 +295,94 @@ builder.Services.AddZLinkFramework(options =>
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
 
-    options.AddClientServerChannel("play", channel =>
     {
-        channel.EnableServer(server =>
-        {
-            server.Bind("tcp://0.0.0.0:7101");
-        });
-    });
+        var channel = options.AddClientServerChannel("play");
+        channel.EnableServer("tcp://0.0.0.0:7101");
 
-    options.AddSpotMesh("game.stage", mesh =>
+    }
+
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+        var mesh = options.AddSpotMesh("game.stage");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-        mesh.AddNode("stage-node", node =>
         {
+            var node = mesh.AddNode("stage-node");
 
-            node.EnableRouter(router =>
             {
-                router.ConfigureSocket(socket =>
+                node.EnableRouter("tcp://0.0.0.0:9001");
                 {
+                    var socket = node.ConfigureRouterSocket();
                     socket.MaxMessageSize = 1024 * 1024;
                     socket.SendHighWaterMark = 10_000;
                     socket.ReceiveHighWaterMark = 10_000;
                     socket.SendTimeout = TimeSpan.FromMilliseconds(200);
                     socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
                     socket.Immediate = true;
-                });
 
-                router.ConfigureRouting(routing =>
+                }
+
                 {
+                    var routing = node.ConfigureRouterRouting();
                     routing.RequireKnownPeer = true;
                     routing.AllowPeerHandover = true;
-                });
-            });
+
+                }
+
+            }
 
             node.AcceptSpotRoutesFromChannel("play");
 
-            node.EnablePubSub(pubsub =>
             {
-                pubsub.BindPubSub("tcp://0.0.0.0:9000");
-                pubsub.ConfigurePublisher(pubOpt =>
+                node.EnablePubSub("tcp://0.0.0.0:9000");
                 {
+                    var pubOpt = node.ConfigurePubSubPublisher();
                     pubOpt.SendHighWaterMark = 50_000;
                     pubOpt.SendTimeout = TimeSpan.FromMilliseconds(100);
                     pubOpt.NoDrop = true;
-                });
 
-                pubsub.ConfigureSubscriber(subOpt =>
+                }
+
                 {
+                    var subOpt = node.ConfigurePubSubSubscriber();
                     subOpt.ReceiveHighWaterMark = 50_000;
                     subOpt.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
                     subOpt.Linger = TimeSpan.Zero;
-                });
-            });
 
-            node.AttachChannelClient("orders", client =>
+                }
+
+            }
+
+            node.AttachChannelClient("orders");
             {
-                client.ConfigureSocket(socket =>
-                {
-                    socket.ConnectTimeout = TimeSpan.FromSeconds(3);
-                    socket.HandshakeInterval = TimeSpan.FromSeconds(3);
-                    socket.SendHighWaterMark = 5_000;
-                    socket.ReceiveHighWaterMark = 5_000;
-                    socket.Immediate = true;
-                });
+                var socket = node.ConfigureChannelClientSocket("orders");
+                socket.ConnectTimeout = TimeSpan.FromSeconds(3);
+                socket.HandshakeInterval = TimeSpan.FromSeconds(3);
+                socket.SendHighWaterMark = 5_000;
+                socket.ReceiveHighWaterMark = 5_000;
+                socket.Immediate = true;
 
-                client.ConfigureRouting(routing =>
-                {
-                    routing.ProbeRouterOnConnect = true;
-                });
-            });
+            }
 
-            node.AttachSpotPublisherClient("game.stage", publisher =>
             {
-                publisher.ConfigureSocket(socket =>
-                {
-                    socket.SendHighWaterMark = 20_000;
-                    socket.SendTimeout = TimeSpan.FromMilliseconds(100);
-                    socket.Immediate = true;
-                });
-            });
+                var routing = node.ConfigureChannelClientRouting("orders");
+                routing.ProbeRouterOnConnect = true;
+
+            }
+
+            node.AttachSpotPublisherClient("game.stage");
+            {
+                var socket = node.ConfigureSpotPublisherClientSocket("game.stage");
+                socket.SendHighWaterMark = 20_000;
+                socket.SendTimeout = TimeSpan.FromMilliseconds(100);
+                socket.Immediate = true;
+
+            }
 
             node.AddSpotFactory<SampleSpot>();
-        });
-    });
+
+        }
+
+    }
 });
 
 var app = builder.Build();
@@ -391,16 +395,16 @@ app.Run();
 - `AttachChannelClient("orders")`
   - stage spot이 `orders` channel로 send / request를 보낼 때 사용할 outbound
     client를 붙인다.
-- `EnableRouter(router => router.BindRouter(endpoint))`
+- `EnableRouter(endpoint)`
   - 같은 SPOT channel에 속한 다른 `SpotNode`와 routed packet을 주고받기 위한
     local router를 켜고 routed ingress endpoint를 명시한다.
 - `AcceptSpotRoutesFromChannel("play")`
   - `play` client/server channel의 server `ROUTER`에서 이 node의 user Spot으로
     routed send/request를 보낼 수 있게 한다.
-  - 같은 표면은 `AddRouteMeshChannel(...)`의 route mesh `ROUTER`에도 사용할 수 있다.
+  - 같은 표면은 `AddRouteMeshChannel`의 route mesh `ROUTER`에도 사용할 수 있다.
   - 이 설정은 target SpotNode 쪽 ingress 연결이다. application public surface 에
     별도 routed Spot egress client 를 노출하지 않는다.
-- `EnablePubSub()`
+- `EnablePubSub(endpoint)`
   - local spot 문맥에서 `spot.Context.Outbound.Publish(...)`를 호출할 수 있게 한다.
 - `AttachSpotPublisherClient("game.stage")`
   - local spot 인스턴스가 없는 외부 노드가 `game.stage` SPOT channel로 publish할
@@ -432,54 +436,20 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.AddProtobuf();
 
-    options.AddSpotMesh("game.stage", mesh =>
-    {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+    var mesh = options.AddSpotMesh("game.stage");
+    mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-        mesh.AddNode("stage-node", node =>
-        {
+    var node = mesh.AddNode("stage-node");
+    node.EnableRouter("tcp://0.0.0.0:9001");
+    node.ConnectRouter("tcp://10.0.0.10:9000");
 
-            node.EnableRouter(router =>
-            {
-                router.UseManualConnections(peers =>
-                {
-                    // Remote SpotNode router endpoint
-                    peers.Connect("tcp://10.0.0.10:9000");
-                });
-            });
+    node.EnablePubSub("tcp://0.0.0.0:9000");
+    node.ConnectPubSub("tcp://10.0.0.20:9100");
 
-            node.EnablePubSub(pubsub =>
-            {
-                pubsub.BindPubSub("tcp://0.0.0.0:9000");
-                pubsub.UseManualConnections(peers =>
-                {
-                    // Remote SpotNode mesh PUB endpoint.
-                    // The local mesh SUB side connects to this address.
-                    peers.Connect("tcp://10.0.0.20:9100");
-                });
-            });
+    node.AttachChannelClient("orders", "tcp://10.0.0.30:9200");
+    node.AttachSpotPublisherClient("game.stage", "tcp://10.0.0.40:9300");
 
-            node.AttachChannelClient("orders", client =>
-            {
-                client.UseManualConnections(peers =>
-                {
-                    // Remote orders channel server endpoint
-                    peers.Connect("tcp://10.0.0.30:9200");
-                });
-            });
-
-            node.AttachSpotPublisherClient("game.stage", publisher =>
-            {
-                publisher.UseManualConnections(peers =>
-                {
-                    // Remote game.stage SPOT publish endpoint
-                    peers.Connect("tcp://10.0.0.40:9300");
-                });
-            });
-
-            node.AddSpotFactory<SampleSpot>();
-        });
-    });
+    node.AddSpotFactory<SampleSpot>();
 });
 ```
 
@@ -500,7 +470,7 @@ builder.Services.AddZLinkFramework(options =>
 - `pub/sub` 는 local publish 소켓과 local subscribe 소켓을 함께 쓰는
   역할이다. 다만 수동 연결에서 등록하는 주소는 "다른 `SpotNode` 의 mesh
   publish bind 주소"라는 점에 유의한다.
-- 즉 `EnablePubSub(...).UseManualConnections(...).Connect(endpoint)` 는 local
+- 즉 `ConnectPubSub(endpoint)` 는 local
   `SUB/XSUB` 쪽이 remote `PUB/XPUB` 주소에 붙는다는 의미다.
 - `pub/sub` 와 spot publisher client 는 둘 다 endpoint 집합만 등록한다. 다만
   그 endpoint 집합 자체는 서로 다르다.
@@ -528,80 +498,86 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.AddProtobuf();
 
-    options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+        var mesh = options.AddSpotMesh("game.stage");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-        mesh.AddNode("stage-node", node =>
         {
+            var node = mesh.AddNode("stage-node");
 
-            node.EnableRouter(router =>
             {
-                router.ConfigureSocket(socket =>
+                node.EnableRouter("tcp://0.0.0.0:9001");
                 {
+                    var socket = node.ConfigureRouterSocket();
                     socket.MaxMessageSize = 1024 * 1024;
                     socket.SendHighWaterMark = 10_000;
                     socket.ReceiveHighWaterMark = 10_000;
                     socket.SendTimeout = TimeSpan.FromMilliseconds(200);
                     socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
                     socket.Immediate = true;
-                });
 
-                router.ConfigureRouting(routing =>
+                }
+
                 {
+                    var routing = node.ConfigureRouterRouting();
                     routing.RequireKnownPeer = true;
                     routing.AllowPeerHandover = true;
-                });
-            });
 
-            node.EnablePubSub(pubsub =>
+                }
+
+            }
+
             {
-                pubsub.BindPubSub("tcp://0.0.0.0:9000");
-                pubsub.ConfigurePublisher(pubOpt =>
+                node.EnablePubSub("tcp://0.0.0.0:9000");
                 {
+                    var pubOpt = node.ConfigurePubSubPublisher();
                     pubOpt.SendHighWaterMark = 50_000;
                     pubOpt.SendTimeout = TimeSpan.FromMilliseconds(100);
                     pubOpt.NoDrop = true;
-                });
 
-                pubsub.ConfigureSubscriber(subOpt =>
+                }
+
                 {
+                    var subOpt = node.ConfigurePubSubSubscriber();
                     subOpt.ReceiveHighWaterMark = 50_000;
                     subOpt.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
                     subOpt.Linger = TimeSpan.Zero;
-                });
-            });
 
-            node.AttachChannelClient("orders", client =>
+                }
+
+            }
+
+            node.AttachChannelClient("orders");
             {
-                client.ConfigureSocket(socket =>
-                {
-                    socket.ConnectTimeout = TimeSpan.FromSeconds(3);
-                    socket.HandshakeInterval = TimeSpan.FromSeconds(3);
-                    socket.SendHighWaterMark = 5_000;
-                    socket.ReceiveHighWaterMark = 5_000;
-                    socket.Immediate = true;
-                });
+                var socket = node.ConfigureChannelClientSocket("orders");
+                socket.ConnectTimeout = TimeSpan.FromSeconds(3);
+                socket.HandshakeInterval = TimeSpan.FromSeconds(3);
+                socket.SendHighWaterMark = 5_000;
+                socket.ReceiveHighWaterMark = 5_000;
+                socket.Immediate = true;
 
-                client.ConfigureRouting(routing =>
-                {
-                    routing.ProbeRouterOnConnect = true;
-                });
-            });
+            }
 
-            node.AttachSpotPublisherClient("game.stage", publisher =>
             {
-                publisher.ConfigureSocket(socket =>
-                {
-                    socket.SendHighWaterMark = 20_000;
-                    socket.SendTimeout = TimeSpan.FromMilliseconds(100);
-                    socket.Immediate = true;
-                });
-            });
+                var routing = node.ConfigureChannelClientRouting("orders");
+                routing.ProbeRouterOnConnect = true;
+
+            }
+
+            node.AttachSpotPublisherClient("game.stage");
+            {
+                var socket = node.ConfigureSpotPublisherClientSocket("game.stage");
+                socket.SendHighWaterMark = 20_000;
+                socket.SendTimeout = TimeSpan.FromMilliseconds(100);
+                socket.Immediate = true;
+
+            }
 
             node.AddSpotFactory<SampleSpot>();
-        });
-    });
+
+        }
+
+    }
 });
 ```
 
@@ -682,19 +658,14 @@ builder.Services.AddZLinkFramework(options =>
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
     options.Codecs.AddProtobuf();
 
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+        options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-    options.AddClientServerChannel("gateway.client", channel =>
     {
-        channel.EnableClient(client =>
-        {
-            client.UseManualConnections(peers =>
-            {
-                peers.Connect("tcp://play-node-1:7201");
-            });
-        });
+        var channel = options.AddClientServerChannel("gateway.client");
+        channel.EnableClient("tcp://play-node-1:7201");
         channel.EnableSpotRouteEgress("play");
-    });
+
+    }
 });
 
 var app = builder.Build();
@@ -750,15 +721,17 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.AddProtobuf();
 
-    options.AddSpotMesh("game.stage", mesh =>
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+        var mesh = options.AddSpotMesh("game.stage");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-        mesh.AddNode("publisher-node", node =>
         {
+            var node = mesh.AddNode("publisher-node");
             node.AttachSpotPublisherClient("game.stage");
-        });
-    });
+
+        }
+
+    }
 });
 
 var app = builder.Build();
@@ -967,29 +940,33 @@ builder.Services.AddZLinkFramework(options =>
     options.AddActorFactory<SampleWarriorActorFactory>("warrior");
     options.AddActorFactory<SampleTraderActorFactory>("trader");
 
-    options.ConfigureDispatch(dispatch =>
     {
+        var dispatch = options.ConfigureDispatch();
         dispatch.SpotDispatchMode = ZLinkDispatchMode.Compiled;
         dispatch.StreamDispatchMode = ZLinkDispatchMode.Compiled;
-    });
+
+    }
 
     options.Codecs.AddProtobuf();
 
-    options.AddStreamNode("client.stream", stream =>
     {
+        var stream = options.AddStreamNode("client.stream");
         stream.Bind("tcp://0.0.0.0:9100");
         stream.RegisterSession<SampleSession>();
-    });
 
-    options.AddSpotMesh("game.room", mesh =>
+    }
+
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://registry1:5551"));
+        var mesh = options.AddSpotMesh("game.room");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-        mesh.AddNode("room.node", node =>
         {
+            var node = mesh.AddNode("room.node");
             node.AddSpotFactory<SampleSpot>();
-        });
-    });
+
+        }
+
+    }
 });
 ```
 
@@ -1708,7 +1685,7 @@ server tick 수를 계산할 수 있다.
 이 샘플에서 중요한 포인트는 다음과 같다.
 
 - `room.node` 는 논리적 `SpotNode` 이름이다. 그리고
-  `AddSpotMesh("game.room", mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))` 가 `game.room`
+  `AddSpotMesh("game.room").UseDiscovery().AddRegistryEndpoint(...)` 가 `game.room`
   channel mesh 의 범위를 정한다.
 - `SampleSpot` 은 단순한 handler 클래스가 아니라 실제 spot 객체다.
 - `SampleSpot` 은 `IZLinkSpot` 을 상속받는다. 그리고 자신의

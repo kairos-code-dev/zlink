@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: Java STREAM Open Items](../../draft/stream-open-items.ko.md)
+[문서 목록](../../README.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java 문서](../../README.ko.md)
@@ -71,5 +71,5 @@ session public type은 현재 포팅 기준이 아니다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: Java STREAM Open Items](../../draft/stream-open-items.ko.md)
+[문서 목록](../../README.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

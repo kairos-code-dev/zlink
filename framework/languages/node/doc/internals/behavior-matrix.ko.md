@@ -44,16 +44,16 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `server: { bind: '...' }`만 등록 | 허용 | server 역할만 열리고, handler 매핑이 없으면 처리할 packet도 없다 |
-| `server: {}`만 등록 + bind endpoint 없음 | 비허용 | startup validation 오류 |
-| `client: {}`만 등록 + 전역 `discovery: {...}` 있음 | 허용 | outbound request/send runtime을 만든다 |
-| `client: { manualConnections: [...] }`만 등록 | 허용 | manual 기반 outbound request/send runtime을 만든다 |
-| `client: {}`만 등록 + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
-| `publisher: { bind: '...' }`만 등록 | 허용 | event publish만 가능하다 |
-| `publisher: {}`만 등록 + bind endpoint 없음 | 비허용 | startup validation 오류 |
-| `subscriber: {}`만 등록 + 전역 `discovery: {...}` 있음 | 허용 | discovery 기반 event subscribe runtime을 만든다 |
-| `subscriber: { manualConnections: [...] }`만 등록 | 허용 | manual 기반 subscribe runtime을 만든다 |
-| `subscriber: {}`만 등록 + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
+| `.enableServer(endpoint)`만 등록 | 허용 | server 역할만 열리고, handler 매핑이 없으면 처리할 packet도 없다 |
+| `.enableServer(undefined)`처럼 bind endpoint 없음 | 비허용 | startup validation 오류 |
+| `.enableClient()` + 전역 `.useDiscovery()` 있음 | 허용 | outbound request/send runtime을 만든다 |
+| `.enableClient(endpoint)`만 등록 | 허용 | manual 기반 outbound request/send runtime을 만든다 |
+| `.enableClient()` + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
+| `.enablePublisher(endpoint)`만 등록 | 허용 | event publish만 가능하다 |
+| `.enablePublisher(undefined)`처럼 bind endpoint 없음 | 비허용 | startup validation 오류 |
+| `.enableSubscriber()` + 전역 `.useDiscovery()` 있음 | 허용 | discovery 기반 event subscribe runtime을 만든다 |
+| `.enableSubscriber(endpoint)`만 등록 | 허용 | manual 기반 subscribe runtime을 만든다 |
+| `.enableSubscriber()` + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | 같은 channel에서 `server + client` 함께 등록 | 허용 | inbound와 outbound runtime을 모두 가진다 |
 | 같은 channel에서 `publisher + subscriber` 함께 등록 | 허용 | event fan-out과 수신을 모두 가진다 |
 | 같은 channel 역할 안에서 discovery + manual 함께 등록 | 비허용 | startup validation 오류. 단, routed Spot route mesh egress 는 수동 연결을 실제 transport 로 쓰고 discovery/query 를 target ROUTER `RoutingId` metadata 조회에만 쓰는 좁은 예외를 둔다 |
@@ -71,7 +71,7 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `spotMeshes[channel] = { ...mesh }` | 허용 | mesh가 활성 SPOT[^spot] channel view와 node 집합을 함께 소유한다 |
+| `.addSpotNode(name)` | 허용 | 활성 SPOT[^spot] channel view와 node 런타임을 함께 소유한다 |
 | spot mesh에 `discovery` 없음 | 허용 | top-level discovery endpoint 를 상속하거나 local-only mesh 로 시작한다 |
 | spot mesh + 빈 `discovery` + local-only spot factory | 허용 | discovery endpoint 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
 | top-level standalone node 등록 | 비허용 | public 등록 표면에서 제거되었다. SPOT node 는 항상 spot mesh 안에서 등록한다 |
@@ -101,8 +101,8 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `routeMesh` channel + 전역 `discovery: {...}` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
-| `routeMesh` channel + `manualConnections: [...]` 있음 | 허용 | manual 기반 routed channel node를 만든다 |
+| `.addRouteMeshChannel(name)` + 전역 `.useDiscovery()` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
+| `.addRouteMeshChannel(name).enableClient(endpoint)` 있음 | 허용 | manual 기반 routed channel node를 만든다 |
 | `routeMesh` channel + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | routed channel bind endpoint 없음 | 비허용 | startup validation 오류 |
 | 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |

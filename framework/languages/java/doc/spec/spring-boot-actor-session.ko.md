@@ -4,7 +4,7 @@
 
 [Java spec 목차](./README.ko.md)
 
-[Java 묶음](../README.ko.md) | [포팅 계획](../draft/java-kotlin-framework-porting-plan.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [SPOT](./spring-boot-spot.ko.md) | [STREAM](./spring-boot-stream.ko.md)
+[Java 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [SPOT](./spring-boot-spot.ko.md) | [STREAM](./spring-boot-stream.ko.md)
 
 # ZLink Framework Spring Boot Actor/Session
 
@@ -32,22 +32,20 @@ Entry Spot/user Spot 위치 축이 결정한다. session close가 actor를 자�
 public class ActorConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        options.addActorFactory("player", PlayerActorFactory.class);
+        framework.addActorFactory("player", PlayerActorFactory.class);
 
-        options.addSpotMesh("game.stage", mesh -> {
-            mesh.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));
-            mesh.addNode("play", node -> {
-                node.enableRouter();
-                node.addEntrySpot(GameEntrySpot.class);
-                node.addSpotFactory(GameRoomSpot.class);
-            });
-        });
+        ZLinkSpotMeshBuilder mesh = framework.addSpotMesh("game.stage");
+        mesh.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
 
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("tcp://0.0.0.0:7201");
-            stream.attachActorGateway("play");
-            stream.registerSession(ClientSession.class);
-        });
+        ZLinkSpotNodeBuilder node = mesh.addNode("play");
+        node.enableRouter("tcp://0.0.0.0:9001");
+        node.addEntrySpot(GameEntrySpot.class);
+        node.addSpotFactory(GameRoomSpot.class);
+
+        ZLinkStreamNodeBuilder stream = framework.addStreamNode("gateway");
+        stream.bind("tcp://0.0.0.0:7201");
+        stream.attachActorGateway("play");
+        stream.registerSession(ClientSession.class);
     }
 }
 ```

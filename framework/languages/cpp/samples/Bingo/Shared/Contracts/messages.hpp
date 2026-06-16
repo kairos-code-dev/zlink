@@ -14,6 +14,24 @@
 namespace zlink::samples::bingo
 {
 
+struct bingo_sample_modes_t
+{
+    static constexpr const char *two_player = "two-player";
+};
+
+struct bingo_sample_players_t
+{
+    static constexpr const char *player1 = "player-1";
+    static constexpr const char *player2 = "player-2";
+};
+
+struct bingo_room_status_t
+{
+    static constexpr const char *waiting = "waiting";
+    static constexpr const char *running = "running";
+    static constexpr const char *finished = "finished";
+};
+
 struct authenticate_req_t
 {
     static constexpr const char *packet_name = "AuthenticateReq";
@@ -140,7 +158,7 @@ struct bingo_player_state_t
 struct bingo_room_state_t
 {
     std::string room_id;
-    std::string status = "waiting";
+    std::string status = bingo_room_status_t::waiting;
     std::string host_actor_id;
     bool can_start = false;
     int draw_seq = 0;

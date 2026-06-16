@@ -151,6 +151,19 @@ event 를 다시 append 한다.
   서로 다른 instance 에서 처리되고 두 instance 어디서 조회해도 같은 projection 을 반환함을
   검증한다.
 
+## 6. 회귀 테스트
+
+ShoppingMallCheckout 샘플을 구현할 때는 아래 기존 회귀 테스트가 깨지지 않아야 한다. 이
+테스트들은 이 샘플이 사용하는 framework 표면(workflow Spot instance 초기화, Spot
+lifecycle, channel request, projection event publish)을 이미 고정하고 있다.
+
+| 테스트 케이스 | 확인 기준 |
+|---------------|-----------|
+| `ManagerTests.SpotManager_GetOrCreateAsync_Initializes_Once_With_First_CreatePayload` | 같은 OrderId workflow Spot instance 가 최초 payload 로 한 번만 초기화된다. |
+| `ManagerTests.SpotManager_Create_List_Close_And_Publish_Work_Through_FrameworkRuntime` | OrderWorkflow Spot 생성·조회·close·publish 가 framework runtime 으로 동작한다. |
+| `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | CommerceApi channel request·send 가 Registry/Discovery 경로로 동작한다. |
+| `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | projection 갱신 event publish 가 target channel 로 전달된다. |
+
 [^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 노드(예: order workflow instance 등) 단위로 메시지를 라우팅하는 추상이다.
 [^dto]: DTO(Data Transfer Object) 는 컴포넌트 사이에서 데이터를 옮기기 위해 정의한 단순 데이터 클래스를 가리킨다.
 

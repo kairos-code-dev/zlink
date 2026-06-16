@@ -33,7 +33,7 @@ message EnsurePlayerActorReq {
 }
 
 message ActorRefSnapshot {
-  bytes node_rid = 1;
+  string node_rid = 1;
   string actor_id = 2;
   uint64 generation = 3;
 }
@@ -46,6 +46,8 @@ message EnsurePlayerActorRes {
 
 message MatchBingoReq {
   string mode = 1;
+  string actor_id = 2;
+  string display_name = 3;
 }
 
 message MatchBingoRes {
@@ -72,6 +74,13 @@ message AllocateBingoRoomRes {
   string room_id = 1;
 }
 
+message BingoRoomSettingsPayload {
+  string room_name = 1;
+  string mode = 2;
+  int32 required_players = 3;
+  int32 max_draw_number = 4;
+}
+
 message BingoRoomJoinReq {
   string room_id = 1;
   string actor_id = 2;
@@ -85,10 +94,34 @@ message BingoRoomJoinRes {
 message SubmitBingoCardReq {
   string room_id = 1;
   repeated int32 card = 2;
+  string actor_id = 3;
+  string display_name = 4;
 }
 
 message SubmitBingoCardRes {
   BingoRoomState state = 1;
+}
+
+message BingoNotificationsReq {
+  uint64 after_seq = 1;
+  string actor_id = 2;
+  string display_name = 3;
+}
+
+message BingoNotificationFrame {
+  uint64 seq = 1;
+  string actor_id = 2;
+  string packet_name = 3;
+  string payload_base64 = 4;
+}
+
+message BingoNotificationBatch {
+  uint64 next_seq = 1;
+  repeated BingoNotificationFrame delivered = 2;
+}
+
+message RoomJoinError {
+  string error = 1;
 }
 
 message PlayerJoinedNotify {

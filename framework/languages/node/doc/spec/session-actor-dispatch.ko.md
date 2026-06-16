@@ -1005,11 +1005,11 @@ interface ZLinkMessageMetadataPolicy {
 `undefined` 를 반환하면 해당 key 가 없다고 보면 된다.
 
 ```ts
-ZLinkModule.forRoot({
-  metadata: {
-    forward: ['trace-id', 'tenant-id'],
-  },
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .options({ metadata: { forward: ['trace-id', 'tenant-id'] } })
+    .build()
+);
 ```
 
 ## 4. BoundSession 호출 표면
@@ -1153,25 +1153,25 @@ interface ZLinkSpotRemoteAddress {
 Module 등록 (Session 서버):
 
 ```ts
-ZLinkModule.forRoot({
-  spotMeshes: {
-    'game.rooms': {
-      discovery: { registries: ['tcp://registry1:5551'] },
-    },
-  },
-  spotRemoteAddresses: { useRegistry: 'game' },
-  // STREAM session 등록 + routed channel 등록 (별도 문서 참고)
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .useDiscovery()
+      .addRegistryEndpoint('tcp://registry1:5551')
+    .addRouteMeshChannel('game.rooms')
+    .options({ registrySpotRemoteAddresses: { namespace: 'game' } })
+    .build()
+);
 ```
 
 Module 등록 (Play 서버):
 
 ```ts
-ZLinkModule.forRoot({
-  actorFactories: [{ name: 'player', factory: PlayerActorFactory }],
-  spotRemoteAddresses: { useRegistry: 'game' },
-  // routed channel 등록 + spot mesh 등록 (별도 문서 참고)
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .actorFactory('player', PlayerActorFactory)
+    .options({ registrySpotRemoteAddresses: { namespace: 'game' } })
+    .build()
+);
 ```
 
 ### 6.1 Actor-session binding 상태
@@ -1196,15 +1196,15 @@ session route resolver 나 저장소 계약은 두지 않는다.
 이 절은 host 가 framework 를 띄울 때 작성하는 등록 코드 모양을 보여 준다.
 
 ```ts
-ZLinkModule.forRoot({
-  discovery: { registries: [registryEndpoint] },
-  channels: {
-    backend: {
-      routeMesh: { bind: playEndpoint },
-    },
-  },
-  actorFactories: [{ name: 'player', factory: TicTacToeActorFactory }],
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .useDiscovery()
+      .addRegistryEndpoint(registryEndpoint)
+    .addRouteMeshChannel('backend')
+      .enableRouter(playEndpoint)
+    .actorFactory('player', TicTacToeActorFactory)
+    .build()
+);
 
 @Injectable()
 export class TicTacToeActor implements ZLinkActor {
@@ -1218,20 +1218,16 @@ export class TicTacToeActor implements ZLinkActor {
 spot handler는 spot 객체 안에서 등록한다.
 
 ```ts
-ZLinkModule.forRoot({
-  spotMeshes: {
-    'game.rooms': {
-      discovery: { registries: [registryEndpoint] },
-      nodes: {
-        play: {
-          router: { bind: spotEndpoint },
-          entrySpot: TicTacToeEntrySpot,
-          spotFactories: [TicTacToeGame],
-        },
-      },
-    },
-  },
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .useDiscovery()
+      .addRegistryEndpoint(registryEndpoint)
+    .addSpotNode('play')
+      .enableRouter(spotEndpoint)
+      .addEntrySpot(TicTacToeEntrySpot)
+      .addSpotFactory(TicTacToeGame)
+    .build()
+);
 
 @Injectable()
 export class TicTacToeEntrySpot implements ZLinkEntrySpot {

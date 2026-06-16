@@ -262,19 +262,13 @@ final class SessionActorsRuntimeIntegrationTest {
     private static ZLinkFrameworkRuntime startGatewayRuntime() {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter(router ->
-                    router.setRoutingId(RoutingId.from("play-node")));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(GameSpot.class);
-                node.addEntrySpot(GameEntrySpot.class);
-            }));
+                node.addEntrySpot(GameEntrySpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
-        options.addStreamNode("gateway", stream -> {
-            stream.bind("inproc://gateway-bind-" + System.nanoTime());
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway-bind-" + System.nanoTime());
             stream.attachActorGateway("play");
-            stream.registerSession(GameSession.class);
-        });
+            stream.registerSession(GameSession.class); };
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
     }
@@ -283,18 +277,12 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(SessionActorsRuntimeIntegrationTest.class);
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter(router ->
-                    router.setRoutingId(RoutingId.from("play-node")));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
                 node.addEntrySpot(GameEntrySpot.class);
-                node.addSpotFactory(GameSpot.class);
-            }));
+                node.addSpotFactory(GameSpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
-        options.addStreamNode("local", stream -> {
-            stream.bind("inproc://local-managed-bind-" + System.nanoTime());
-            stream.registerSession(GameSession.class);
-        });
+        { var stream = options.addStreamNode("local"); stream.bind("inproc://local-managed-bind-" + System.nanoTime());
+            stream.registerSession(GameSession.class); };
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
     }
@@ -303,17 +291,11 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         String suffix = Long.toString(System.nanoTime());
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter(router -> {
-                    router.bindRouter("inproc://play-router-" + suffix);
-                    router.setRoutingId(RoutingId.from("play-node"));
-                });
-                node.enablePubSub(pubSub ->
-                    pubSub.bindPubSub("inproc://play-pub-" + suffix));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router-" + suffix)
+                    .setRouterRoutingId(RoutingId.from("play-node"));
+                node.enablePubSub("inproc://play-pub-" + suffix);
                 node.addSpotFactory(GameSpot.class);
-                node.addEntrySpot(GameEntrySpot.class);
-            }));
+                node.addEntrySpot(GameEntrySpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
@@ -324,18 +306,11 @@ final class SessionActorsRuntimeIntegrationTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         String endpoint = "inproc://play-channel-" + System.nanoTime();
         options.addHandlersFromPackageOf(SessionActorsRuntimeIntegrationTest.class);
-        options.addClientServerChannel("play", channel -> {
-            channel.enableServer(server -> server.bind(endpoint));
-            channel.enableClient(client ->
-                client.useManualConnections(endpoints -> endpoints.connect(endpoint)));
-            channel.addHandlerGroup("play-channel");
-        });
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter(router ->
-                    router.setRoutingId(RoutingId.from("play-node")));
-                node.addEntrySpot(GameEntrySpot.class);
-            }));
+        { var channel = options.addClientServerChannel("play").enableServer(endpoint);
+            channel.enableClient(endpoint);
+            channel.addHandlerGroup("play-channel"); };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.setRouterRoutingId(RoutingId.from("play-node"));
+                node.addEntrySpot(GameEntrySpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
@@ -372,16 +347,11 @@ final class SessionActorsRuntimeIntegrationTest {
         if (json) {
             options.codecs().addJson();
         }
-        options.useDiscovery(discovery -> discovery.addRegistryEndpoint(registryRouter));
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter(router -> {
-                    router.bindRouter(playRouter);
-                    router.setRoutingId(playNodeRid);
-                });
-                node.enablePubSub(pubSub -> pubSub.bindPubSub(playPub));
-                node.addEntrySpot(GameEntrySpot.class);
-            }));
+        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter(playRouter)
+                    .setRouterRoutingId(playNodeRid);
+                node.enablePubSub(playPub);
+                node.addEntrySpot(GameEntrySpot.class); }; };
         options.addActorFactory("player", PlayerActorFactory.class);
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
@@ -407,20 +377,13 @@ final class SessionActorsRuntimeIntegrationTest {
         String streamEndpoint,
         RoutingId sessionNodeRid) {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.useDiscovery(discovery -> discovery.addRegistryEndpoint(registryRouter));
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("session", node -> {
-                node.enableRouter(router -> {
-                    router.bindRouter(sessionRouter);
-                    router.setRoutingId(sessionNodeRid);
-                });
-                node.enablePubSub(pubSub -> pubSub.bindPubSub(sessionPub));
-            }));
-        options.addStreamNode("gateway", stream -> {
-            stream.bind(streamEndpoint);
+        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("session"); node.enableRouter(sessionRouter)
+                    .setRouterRoutingId(sessionNodeRid);
+                node.enablePubSub(sessionPub); }; };
+        { var stream = options.addStreamNode("gateway"); stream.bind(streamEndpoint);
             stream.attachActorGateway("session");
-            stream.registerSession(GameSession.class);
-        });
+            stream.registerSession(GameSession.class); };
 
         return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
     }

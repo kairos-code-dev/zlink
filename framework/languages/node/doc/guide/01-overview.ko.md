@@ -49,7 +49,7 @@ registry query 같은 의미는 .NET 과 맞춘다.
 
 - 처음 붙이는 방법: [02-getting-started](./02-getting-started.ko.md)
 - 개념 차이: [03-concepts](./03-concepts.ko.md)
-- 기능 이름 매핑: [04-feature-map](./04-feature-map.ko.md)
+- 기능 이름 매핑: [10-feature-map](./10-feature-map.ko.md)
 
 ## 회귀 테스트
 

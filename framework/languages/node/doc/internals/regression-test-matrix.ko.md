@@ -95,7 +95,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 
 > dotnet `ContractTests/Channels`, `ContractTests/Handlers`,
 > `ContractTests/Configuration`, `E2ETests/Channels` 미러. node `register*`
-> module options(`channels[name] = {...}`)와 `ZLinkChannelClient` /
+> builder channel 등록(`.addClientServerChannel(...)`)과 `ZLinkChannelClient` /
 > `ZLinkFanoutClient` 표면을 검증한다.
 
 | 항목 | 계층 | 통과 기준 |
@@ -103,9 +103,9 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | duplicate channel 이름 등록 (`channels` 키 / `registerClientServerChannel`, `registerFanoutChannel`) | `unit` | startup validation 예외 |
 | 같은 channel 이름을 client-server와 fanout 역할로 동시에 등록 | `unit` | startup validation 예외 |
 | server 역할에 bind endpoint 없음 | `unit` | startup validation 예외 |
-| `registerClientServerChannel(...)` + `enableClient({ manualConnections: [...] })` | `integration-single-process` | manual request/send 성공 |
+| `.addClientServerChannel(...)` + `.enableClient(endpoint)` | `integration-single-process` | manual request/send 성공 |
 | `registerClientServerChannel(...)` + `enableClient(...)` + 전역 `useDiscovery().addRegistryEndpoint(...)` | `integration-single-process` | discovery 기반 request/send 성공 |
-| `registerFanoutChannel(...)` + `enableSubscriber({ manualConnections: [...] })` | `integration-single-process` | manual 기반 subscribe 성공 |
+| `.addFanoutChannel(...)` + `.enableSubscriber(endpoint)` | `integration-single-process` | manual 기반 subscribe 성공 |
 | client 역할에 peer acquisition 경로 없음 | `unit` | startup validation 예외 |
 | 같은 역할에서 discovery/manual 혼용 | `unit` | startup validation 예외 |
 | publisher 역할에 bind endpoint 없음 | `unit` | startup validation 예외 |

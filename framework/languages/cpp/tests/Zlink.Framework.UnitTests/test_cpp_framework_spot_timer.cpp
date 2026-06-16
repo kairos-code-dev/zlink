@@ -36,11 +36,8 @@ int main ()
 
     zlink::framework::spot_node_builder_t builder;
     zlink::framework::zlink_builder_t host;
-    host.add_spot_node (
-      "timer-node", [&builder] (zlink::framework::spot_node_builder_t &spot_node) {
-          spot_node.add_entry_spot<entry_spot_t> ().add_spot<stage_spot_t> ("stage");
-          builder = spot_node;
-      });
+    builder = host.add_spot_node ("timer-node");
+    builder.add_entry_spot<entry_spot_t> ().add_spot<stage_spot_t> ("stage");
 
     auto entry_context = builder.create_spot ("entry").context;
     auto context = builder.create_spot ("stage").context;

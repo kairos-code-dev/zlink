@@ -6,38 +6,6 @@ namespace Zlink.Framework.ContractTests.Configuration;
 public sealed class ConnectionAndConfigContracts
 {
     [Fact]
-    [ContractExample(typeof(IZLinkEndpointConnections))]
-    public void Connection_contracts_record_the_startup_endpoints_owned_by_each_runtime_role()
-    {
-        var manual = new ManualConnections();
-        IZLinkEndpointConnections channelClient = manual;
-        IZLinkEndpointConnections subscriber = manual;
-        IZLinkEndpointConnections spotRouter = manual;
-        IZLinkEndpointConnections spotPubSub = manual;
-        IZLinkEndpointConnections spotPublisher = manual;
-        IZLinkEndpointConnections spotRouteIngress = manual;
-
-        channelClient.Connect("tcp://127.0.0.1:5001");
-        subscriber.Connect("tcp://127.0.0.1:5002");
-        spotRouter.Connect("tcp://127.0.0.1:5003");
-        spotPubSub.Connect("tcp://127.0.0.1:5004");
-        spotPublisher.Connect("tcp://127.0.0.1:5005");
-        spotRouteIngress.Connect("tcp://127.0.0.1:5006");
-
-        channelClient.Disconnect("tcp://127.0.0.1:5001");
-        spotRouteIngress.Disconnect("tcp://127.0.0.1:5006");
-
-        Assert.Equal(
-            [
-                "tcp://127.0.0.1:5002",
-                "tcp://127.0.0.1:5003",
-                "tcp://127.0.0.1:5004",
-                "tcp://127.0.0.1:5005"
-            ],
-            spotRouteIngress.ListConnections());
-    }
-
-    [Fact]
     [ContractExample(
         typeof(IZLinkSocketConfig),
         typeof(IZLinkRouteConfig),
@@ -115,18 +83,6 @@ public sealed class ConnectionAndConfigContracts
         Assert.Equal(64, subscriber.ReceiveHighWaterMark);
         Assert.Equal(RoutingId.From("entry"), entrySpot.RoutingId);
         Assert.Equal(ZLinkDispatchMode.Compiled, dispatch.SpotDispatchMode);
-    }
-
-    internal sealed class ManualConnections : IZLinkEndpointConnections
-    {
-        private readonly List<string> _endpoints = [];
-
-        public void Connect(string endpoint) => _endpoints.Add(endpoint);
-
-        public void Disconnect(string endpoint) => _endpoints.Remove(endpoint);
-
-        public IReadOnlyList<string> ListConnections() => _endpoints.ToArray();
-
     }
 
     internal sealed class SocketConfig : IZLinkSocketConfig

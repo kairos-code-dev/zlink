@@ -86,30 +86,21 @@ int main ()
     const auto embedded_registry_router = unique_tcp ("embedded-registry-router");
     const auto embedded_spot_endpoint = unique_tcp ("embedded-spot");
     zlink::framework::zlink_builder_t zlink;
-    zlink.add_node ("registry-node")
-      .enable_registry ([&] (zlink::framework::registry_builder_t &registry) {
-          registry.registry_id ("local-registry")
-            .bind (embedded_registry_pub, embedded_registry_router)
-            .heartbeat_interval (100ms)
-            .heartbeat_timeout (500ms)
-            .broadcast_interval (250ms)
-            .add_peer ("tcp://registry-peer:5550");
-      })
-      .discovery ([] (zlink::framework::discovery_builder_t &discovery) {
-          discovery.connect_registry ("tcp://registry:5551");
-      })
-      .route_channel ("game.route")
-      .channel ("game.route",
-                [] (zlink::framework::channel_builder_t &channel) {
-                    channel.enable_client ([] (zlink::framework::capability_builder_t &client) {
-                        client.connect ("tcp://route-peer:7001");
-                    });
-                })
-      .add_spot_node ("play-actors", [&] (zlink::framework::spot_node_builder_t &spot_node) {
-          spot_node.bind (embedded_spot_endpoint)
-            .use_registry_spot_remote_addresses ()
-            .add_spot<stage_spot_t> ("stage");
-      });
+    zlink.add_node ("registry-node");
+    zlink.enable_registry ()
+      .registry_id ("local-registry")
+      .bind (embedded_registry_pub, embedded_registry_router)
+      .heartbeat_interval (100ms)
+      .heartbeat_timeout (500ms)
+      .broadcast_interval (250ms)
+      .add_peer ("tcp://registry-peer:5550");
+    zlink.discovery ().connect_registry ("tcp://registry:5551");
+    zlink.route_channel ("game.route");
+    zlink.channel ("game.route").enable_client ().connect ("tcp://route-peer:7001");
+    zlink.add_spot_node ("play-actors")
+      .bind (embedded_spot_endpoint)
+      .use_registry_spot_remote_addresses ()
+      .add_spot<stage_spot_t> ("stage");
 
     const auto validation = zlink.validate_registry ();
     if (!validation) {
@@ -207,50 +198,35 @@ int main ()
     }
 
     zlink::framework::zlink_builder_t no_discovery;
-    no_discovery.add_node ("no-discovery")
-      .route_channel ("game.route")
-      .add_spot_node ("actors", [] (zlink::framework::spot_node_builder_t &spot) {
-          spot.use_registry_spot_remote_addresses ();
-      });
+    no_discovery.add_node ("no-discovery").route_channel ("game.route");
+    no_discovery.add_spot_node ("actors").use_registry_spot_remote_addresses ();
     if (!is_protocol_error (no_discovery.validate_registry ())) {
         return 10;
     }
 
     zlink::framework::zlink_builder_t no_route;
-    no_route.add_node ("no-route")
-      .discovery ([] (zlink::framework::discovery_builder_t &discovery) {
-          discovery.connect_registry ("tcp://registry:5551");
-      })
-      .add_spot_node ("actors", [] (zlink::framework::spot_node_builder_t &spot) {
-          spot.use_registry_spot_remote_addresses ();
-      });
+    no_route.add_node ("no-route");
+    no_route.discovery ().connect_registry ("tcp://registry:5551");
+    no_route.add_spot_node ("actors").use_registry_spot_remote_addresses ();
     if (!is_protocol_error (no_route.validate_registry ())) {
         return 11;
     }
 
     zlink::framework::zlink_builder_t ambiguous_route;
-    ambiguous_route.add_node ("ambiguous")
-      .discovery ([] (zlink::framework::discovery_builder_t &discovery) {
-          discovery.connect_registry ("tcp://registry:5551");
-      })
-      .route_channel ("route-a")
-      .route_channel ("route-b")
-      .add_spot_node ("actors", [] (zlink::framework::spot_node_builder_t &spot) {
-          spot.use_registry_spot_remote_addresses ();
-      });
+    ambiguous_route.add_node ("ambiguous");
+    ambiguous_route.discovery ().connect_registry ("tcp://registry:5551");
+    ambiguous_route.route_channel ("route-a");
+    ambiguous_route.route_channel ("route-b");
+    ambiguous_route.add_spot_node ("actors").use_registry_spot_remote_addresses ();
     if (!is_protocol_error (ambiguous_route.validate_registry ())) {
         return 12;
     }
 
     zlink::framework::zlink_builder_t unknown_route;
-    unknown_route.add_node ("unknown")
-      .discovery ([] (zlink::framework::discovery_builder_t &discovery) {
-          discovery.connect_registry ("tcp://registry:5551");
-      })
-      .route_channel ("route-a")
-      .add_spot_node ("actors", [] (zlink::framework::spot_node_builder_t &spot) {
-          spot.use_registry_spot_remote_addresses ("route-missing");
-      });
+    unknown_route.add_node ("unknown");
+    unknown_route.discovery ().connect_registry ("tcp://registry:5551");
+    unknown_route.route_channel ("route-a");
+    unknown_route.add_spot_node ("actors").use_registry_spot_remote_addresses ("route-missing");
     if (!is_protocol_error (unknown_route.validate_registry ())) {
         return 13;
     }
@@ -308,16 +284,10 @@ int main ()
       .enable_spot_route_egress ("game.route");
     options.add_spot_mesh ("game.spots")
       .add_node ("game-node")
-      .enable_router (framework_router_endpoint,
-                      [] (zlink::framework::spot_router_capability_builder_t &router) {
-                          router.set_routing_id (zlink::routing_id_t::from ("7300"))
-                            .connect ("tcp://router-peer:7302");
-                      })
-      .enable_pub_sub (framework_pub_endpoint,
-                       [] (zlink::framework::spot_pub_sub_capability_builder_t &pub_sub) {
-                           pub_sub.set_routing_id (zlink::routing_id_t::from ("7301"))
-                             .connect ("tcp://pub-peer:7303");
-                       })
+      .enable_router (framework_router_endpoint, zlink::routing_id_t::from ("7300"))
+      .connect_router ("tcp://router-peer:7302")
+      .enable_pub_sub (framework_pub_endpoint, zlink::routing_id_t::from ("7301"))
+      .connect_pub_sub ("tcp://pub-peer:7303")
       .accept_routes_from_channel ("game.route")
       .add_spot<stage_spot_t> ("stage");
     options.apply ();

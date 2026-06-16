@@ -33,10 +33,10 @@ class authenticate_session_handler_t
         authenticate_req_t request;
         from_stream_payload (payload, request);
         auto authenticated = co_await _client
-                               .request<authenticate_player_res_t> (
+                               .request (
                                  sample_names_t::api_channel,
                                  authenticate_player_req_t{request.access_token})
-                               .async ();
+                               .async<authenticate_player_res_t> ();
         if (!authenticated.accepted || authenticated.actor_id.empty ()
             || authenticated.display_name.empty ()) {
             co_return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
@@ -46,11 +46,11 @@ class authenticate_session_handler_t
         }
 
         auto ensured = co_await _client
-                         .request<ensure_player_actor_res_t> (
+                         .request (
                            sample_names_t::play_channel,
                            ensure_player_actor_req_t{authenticated.actor_id,
                                                      authenticated.display_name})
-                         .async ();
+                         .async<ensure_player_actor_res_t> ();
         auto bound = co_await actors.bind (to_actor_ref (ensured)).async ();
 
         co_await stream

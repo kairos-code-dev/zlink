@@ -24,7 +24,7 @@ endpoint에 직접 연결한다.
 - room user Spot의 `leaveActor` 호출과 Entry Spot 복귀
 - Entry Spot의 `destroyActor` 호출
 - destroy는 `onLeaveActor`를 호출하지 않는다
-- MessagePack stream/channel/actor/Spot payload
+- JSON stream/channel/actor/Spot payload
 - disconnect cleanup
 
 샘플 이름에는 별도 접미사를 붙이지 않는다. 이 샘플은 수동 endpoint를 쓰는 직접 Play

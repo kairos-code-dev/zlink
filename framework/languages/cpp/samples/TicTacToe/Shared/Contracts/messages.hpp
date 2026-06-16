@@ -11,6 +11,20 @@
 namespace zlink::samples::tictactoe
 {
 
+struct tictactoe_marks_t
+{
+    static constexpr const char *x = "X";
+    static constexpr const char *o = "O";
+};
+
+struct tictactoe_status_t
+{
+    static constexpr const char *waiting_for_players = "WaitingForPlayers";
+    static constexpr const char *in_progress = "InProgress";
+    static constexpr const char *won = "Won";
+    static constexpr const char *draw = "Draw";
+};
+
 struct authenticate_req_t
 {
     static constexpr const char *packet_name = "AuthenticateReq";
@@ -96,7 +110,7 @@ struct tictactoe_state_t
 {
     std::string room_id;
     std::string board = ".........";
-    std::string status = "waiting";
+    std::string status = tictactoe_status_t::waiting_for_players;
     std::string next_turn;
     std::string winner;
     bool draw = false;
@@ -389,13 +403,12 @@ inline void from_json (const nlohmann::json &json, game_ended_notify_t &value)
 
 template <typename T> inline zlink::message_t to_stream_payload (const T &value)
 {
-    auto bytes = nlohmann::json::to_msgpack (nlohmann::json (value));
-    return zlink::message_t::from (bytes);
+    return zlink::message_t::from (nlohmann::json (value).dump ());
 }
 
 template <typename T> inline void from_stream_payload (const zlink::message_t &payload, T &value)
 {
-    value = nlohmann::json::from_msgpack (payload.to_bytes ()).template get<T> ();
+    value = nlohmann::json::parse (payload.to_string ()).template get<T> ();
 }
 
 } // namespace zlink::samples::tictactoe

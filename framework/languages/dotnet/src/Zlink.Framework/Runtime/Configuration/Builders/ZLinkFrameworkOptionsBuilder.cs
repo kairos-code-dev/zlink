@@ -40,10 +40,9 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         _registration.HandlerAssemblies.Add(assembly);
     }
 
-    public void ConfigureMetadata(Action<IZLinkMetadataPolicyBuilder> configure)
+    public IZLinkMetadataPolicyBuilder ConfigureMetadata()
     {
-        ArgumentNullException.ThrowIfNull(configure);
-        configure(new ZLinkMetadataPolicyBuilder(_registration.MetadataPolicy));
+        return new ZLinkMetadataPolicyBuilder(_registration.MetadataPolicy);
     }
 
     public void AddActorFactory<TFactory>(string actorType)
@@ -64,54 +63,38 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         _registration.SpotRemoteAddressResolverType = typeof(TResolver);
     }
 
-    public void UseRegistrySpotRemoteAddresses(string namespaceName)
+    public IZLinkRegistrySpotRemoteAddressesOptions UseRegistrySpotRemoteAddresses(
+        string namespaceName)
     {
-        UseRegistrySpotRemoteAddresses(namespaceName, static _ => { });
-    }
-
-    public void UseRegistrySpotRemoteAddresses(
-        string namespaceName,
-        Action<IZLinkRegistrySpotRemoteAddressesOptions> configure)
-    {
-        ArgumentNullException.ThrowIfNull(configure);
         EnsureSpotRemoteAddressResolverAvailable();
 
-        var options = new ZLinkRegistrySpotRemoteAddressesOptions();
-        configure(options);
-        _registration.RegistrySpotRemoteAddresses = new ZLinkRegistrySpotRemoteAddressesRegistration
+        var options = new ZLinkRegistrySpotRemoteAddressesRegistration
         {
             Namespace = ValidateRegistryNamespace(namespaceName),
-            RouterChannelId = NormalizeOptionalName(options.RouterChannelId, nameof(options.RouterChannelId)),
         };
+        _registration.RegistrySpotRemoteAddresses = options;
+        return options;
     }
 
-    public void AddClientServerChannel(
-        string channelName,
-        Action<IZLinkClientServerChannelBuilder> configure)
+    public IZLinkClientServerChannelBuilder AddClientServerChannel(string channelName)
     {
         var channel = AddChannelRegistration(channelName, ZLinkAutoConnectType.ClientServer);
-        configure(new ZLinkClientServerChannelBuilder(channel));
+        return new ZLinkClientServerChannelBuilder(channel);
     }
 
-    public void AddFanoutChannel(
-        string channelName,
-        Action<IZLinkFanoutChannelBuilder> configure)
+    public IZLinkFanoutChannelBuilder AddFanoutChannel(string channelName)
     {
         var channel = AddChannelRegistration(channelName, ZLinkAutoConnectType.Fanout);
-        configure(new ZLinkFanoutChannelBuilder(channel));
+        return new ZLinkFanoutChannelBuilder(channel);
     }
 
-    public void AddDealerMeshChannel(
-        string channelName,
-        Action<IZLinkDealerMeshChannelBuilder> configure)
+    public IZLinkDealerMeshChannelBuilder AddDealerMeshChannel(string channelName)
     {
         var channel = AddChannelRegistration(channelName, ZLinkAutoConnectType.DealerMesh);
-        configure(new ZLinkDealerMeshChannelBuilder(channel));
+        return new ZLinkDealerMeshChannelBuilder(channel);
     }
 
-    public void AddRouteMeshChannel(
-        string channelName,
-        Action<IZLinkRouteMeshChannelBuilder> configure)
+    public IZLinkRouteMeshChannelBuilder AddRouteMeshChannel(string channelName)
     {
         var routeChannel = ZLinkRegistrationBuilderGuard.AddUnique(
             _registration.RouteChannels,
@@ -120,14 +103,13 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             "Route mesh channel name must not be empty.",
             $"Duplicate route mesh channel name '{channelName}'.");
 
-        configure(new ZLinkRouteChannelBuilder(routeChannel));
+        return new ZLinkRouteChannelBuilder(routeChannel);
     }
 
-    public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure)
+    public IZLinkDiscoveryBuilder UseDiscovery()
     {
-        ArgumentNullException.ThrowIfNull(configure);
         _registration.Discovery ??= new ZLinkDiscoveryRegistration();
-        configure(new ZLinkDiscoveryBuilder(_registration.Discovery.Endpoints));
+        return new ZLinkDiscoveryBuilder(_registration.Discovery.Endpoints);
     }
 
     public void UseFilter<TFilter>()
@@ -136,14 +118,12 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         _registration.Filters.Add(typeof(TFilter));
     }
 
-    public void ConfigureDispatch(Action<IZLinkDispatchOptions> configure)
+    public IZLinkDispatchOptions ConfigureDispatch()
     {
-        configure(_registration.DispatchOptions);
+        return _registration.DispatchOptions;
     }
 
-    public void AddStreamNode(
-        string streamNodeName,
-        Action<IZLinkStreamNodeBuilder> configure)
+    public IZLinkStreamNodeBuilder AddStreamNode(string streamNodeName)
     {
         var streamNode = ZLinkRegistrationBuilderGuard.AddUnique(
             _registration.StreamNodes,
@@ -152,12 +132,10 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             "STREAM node name must not be empty.",
             $"Duplicate stream node name '{streamNodeName}'.");
 
-        configure(new ZLinkStreamNodeBuilder(streamNode));
+        return new ZLinkStreamNodeBuilder(streamNode);
     }
 
-    public void AddSpotMesh(
-        string channelName,
-        Action<IZLinkSpotMeshBuilder> configure)
+    public IZLinkSpotMeshBuilder AddSpotMesh(string channelName)
     {
         if (string.IsNullOrWhiteSpace(channelName))
         {
@@ -175,7 +153,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         };
 
         _registration.SpotDiscovery = discovery;
-        configure(new ZLinkSpotMeshBuilder(_registration, discovery));
+        return new ZLinkSpotMeshBuilder(_registration, discovery);
     }
 
     private ZLinkChannelRegistration AddChannelRegistration(
@@ -214,27 +192,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return namespaceName;
     }
 
-    private static string? NormalizeOptionalName(string? value, string name)
-    {
-        if (value is null)
-        {
-            return null;
-        }
-
-        if (string.IsNullOrWhiteSpace(value)
-            || !string.Equals(value, value.Trim(), StringComparison.Ordinal))
-        {
-            throw new ZLinkConfigurationException($"{name} must not be empty or padded.");
-        }
-
-        return value;
-    }
-
-}
-
-internal sealed class ZLinkRegistrySpotRemoteAddressesOptions : IZLinkRegistrySpotRemoteAddressesOptions
-{
-    public string? RouterChannelId { get; set; }
 }
 
 internal sealed class ZLinkSpotMeshBuilder(
@@ -242,21 +199,18 @@ internal sealed class ZLinkSpotMeshBuilder(
     ZLinkSpotDiscoveryRegistration discovery)
     : IZLinkSpotMeshBuilder
 {
-    public void UseDiscovery(Action<IZLinkDiscoveryBuilder> configure)
+    public IZLinkDiscoveryBuilder UseDiscovery()
     {
-        ArgumentNullException.ThrowIfNull(configure);
-        configure(new ZLinkDiscoveryBuilder(discovery.Endpoints));
+        return new ZLinkDiscoveryBuilder(discovery.Endpoints);
     }
 
-    public void AddNode(
-        string spotNodeName,
-        Action<IZLinkSpotMeshNodeBuilder> configure)
+    public IZLinkSpotMeshNodeBuilder AddNode(string spotNodeName)
     {
         var spotNode = ZLinkRegistrationBuilderGuard.AddSpotNode(
             registration.SpotNodes,
             spotNodeName);
 
-        configure(new ZLinkSpotNodeBuilder(spotNode));
+        return new ZLinkSpotNodeBuilder(spotNode);
     }
 
 }

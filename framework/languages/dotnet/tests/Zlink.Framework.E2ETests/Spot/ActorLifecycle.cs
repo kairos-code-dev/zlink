@@ -25,18 +25,20 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddActorFactory<TestActorFactory>("test");
-            options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.AddNode("actor-destroy-node", spot =>
+                var mesh = options.AddSpotMesh("game.stage");
                 {
-                    spot.EnableRouter(router =>
+                    var spot = mesh.AddNode("actor-destroy-node");
                     {
-                        router.BindRouter(spotNode);
-                    });
+                        var router = spot.EnableRouter(spotNode);
+
+                    }
                     spot.AddEntrySpot<ActorLifecycleEntrySpot>();
                     spot.AddSpotFactory<ActorStageSpot>();
-                });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();
@@ -166,17 +168,19 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         {
 
             options.AddActorFactory<TestActorFactory>("test");
-            options.AddSpotMesh("game.stage", mesh =>
             {
-                mesh.AddNode("actor-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("game.stage");
                 {
-                    router.BindRouter(spotNode);
-                });
+                    var spot = mesh.AddNode("actor-node");
+                {
+                    var router = spot.EnableRouter(spotNode);
+
+                }
                 spot.AddSpotFactory<ActorStageSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();
@@ -288,16 +292,18 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         {
 
             options.AddActorFactory<ConcurrentActorFactory>("test");
-            options.AddSpotMesh("actor.factory", mesh =>
             {
-                mesh.AddNode("actor-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("actor.factory");
                 {
-                    router.BindRouter(spotNode);
-                });
-            });
-            });
+                    var spot = mesh.AddNode("actor-node");
+                {
+                    var router = spot.EnableRouter(spotNode);
+
+                }
+
+                }
+
+            }
         });
 
         using var host = builder.Build();

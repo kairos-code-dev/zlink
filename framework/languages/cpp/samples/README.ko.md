@@ -12,7 +12,7 @@ process 로 시작하는 방식을 사용한다.
 둔다. 서버 topology, endpoint 이름, packet 이름, host 설정은 `Server/Configuration`에
 두고, client 전용 설정은 `Client/Configuration`에 둔다.
 
-Bingo 샘플 payload는 Protobuf codec으로 등록하고, TicTacToe 샘플 payload는 MessagePack
+Bingo 샘플 payload는 Protobuf codec으로 등록하고, TicTacToe 샘플 payload는 JSON
 codec으로 등록한다. HTTP JSON request와 response는 HTTP route의 외부 표면에만 사용한다.
 
 ## 실행

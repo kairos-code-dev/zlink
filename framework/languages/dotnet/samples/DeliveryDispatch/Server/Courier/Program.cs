@@ -21,11 +21,12 @@ builder.Services.AddZLinkFramework(options =>
     options.DefaultTimeout = SampleTimings.FrameworkTimeout;
     options.AddHandlersFromAssemblyOf(typeof(OfferDeliveryHandler));
     options.Codecs.AddJson();
-    options.AddClientServerChannel(SampleNames.CourierChannel(courierId), channel =>
     {
-        channel.EnableServer(server => server.Bind(topology.CourierEndpoint(courierId)));
+        var channel = options.AddClientServerChannel(SampleNames.CourierChannel(courierId));
+        channel.EnableServer(topology.CourierEndpoint(courierId));
         channel.AddRequestHandler<OfferDeliveryHandler, OfferDelivery, OfferDeliveryResult>();
-    });
+
+    }
 });
 
 await builder.Build().RunAsync();

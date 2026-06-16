@@ -61,16 +61,13 @@ int main ()
     using zlink::framework::framework_error_kind_t;
 
     zlink::framework::zlink_builder_t zlink;
-    zlink
-      .add_spot_node ("session-actors",
-                      [] (zlink::framework::spot_node_builder_t &spot_node) {
-                          spot_node.bind ("tcp://0.0.0.0:7101").enable_actor_gateway ();
-                      })
-      .stream ("client-stream", [] (zlink::framework::stream_builder_t &stream) {
-          stream.bind ("tcp://0.0.0.0:9200")
-            .register_session ("client")
-            .attach_actor_gateway ("session-actors");
-      });
+    zlink.add_spot_node ("session-actors")
+      .bind ("tcp://0.0.0.0:7101")
+      .enable_actor_gateway ();
+    zlink.stream ("client-stream")
+      .bind ("tcp://0.0.0.0:9200")
+      .register_session ("client")
+      .attach_actor_gateway ("session-actors");
 
     if (zlink.streams ().size () != 1 || !zlink.streams ()[0].actor_gateway_spot_node_name
         || *zlink.streams ()[0].actor_gateway_spot_node_name != "session-actors") {

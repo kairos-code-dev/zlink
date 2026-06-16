@@ -64,7 +64,7 @@ Node 샘플은 NestJS module 구성을 기준으로 설정을 주입한다. 서�
 아래에 둔다. `Shared` 아래에는 여러 role 이 함께 쓰는 message DTO, protobuf, codec 같은
 통신 계약만 둔다.
 
-`TicTacToe.Ts` 는 stream payload 와 샘플 내부 message 계약에 MessagePack payload 를
+`TicTacToe.Ts` 는 stream payload 와 샘플 내부 message 계약에 JSON payload 를
 사용한다. `Bingo.Ts` 는 Protobuf payload 를 사용한다.
 
 ## 포함된 sample

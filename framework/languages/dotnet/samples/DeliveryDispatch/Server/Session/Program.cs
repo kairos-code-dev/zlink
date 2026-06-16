@@ -15,40 +15,44 @@ builder.Services.AddZLinkFramework(options =>
     options.DefaultTimeout = SampleTimings.FrameworkTimeout;
     options.AddHandlersFromAssemblyOf(typeof(CustomerSession));
     options.Codecs.AddJson();
-    options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
-    options.AddClientServerChannel(SampleNames.TrackingRouteChannel, channel =>
+    options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
     {
+        var channel = options.AddClientServerChannel(SampleNames.TrackingRouteChannel);
         channel.EnableClient();
-    });
-    options.AddFanoutChannel(SampleNames.StatusFanoutChannel, channel =>
+
+    }
     {
-        channel.EnableSubscriber(subscriber => subscriber.UseManualConnections(
-            connections => connections.Connect(topology.StatusFanoutEndpoint)));
+        var channel = options.AddFanoutChannel(SampleNames.StatusFanoutChannel);
+                channel.EnableSubscriber(topology.StatusFanoutEndpoint);
         channel.AddPublishHandler<DeliveryStatusFanoutHandler, DeliveryStatusNotify>();
-    });
-    options.AddSpotMesh(SampleNames.DeliverySpotDiscovery, mesh =>
+
+    }
     {
-        mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
-        mesh.AddNode(SampleNames.SessionSpotNode, spot =>
+        var mesh = options.AddSpotMesh(SampleNames.DeliverySpotDiscovery);
+        mesh.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
         {
-            spot.EnableRouter(router =>
+            var spot = mesh.AddNode(SampleNames.SessionSpotNode);
             {
-                router.BindRouter(topology.SessionSpotRouterEndpoint);
-                router.SetRoutingId(topology.SessionSpotNodeRid);
-            });
-            spot.EnablePubSub(pubsub =>
+                var router = spot.EnableRouter(topology.SessionSpotRouterEndpoint);
+                router.SetRouterRoutingId(topology.SessionSpotNodeRid);
+
+            }
             {
-                pubsub.BindPubSub(topology.SessionSpotEndpoint);
-                pubsub.SetRoutingId(topology.SessionSpotPubRid);
-            });
-        });
-    });
-    options.AddStreamNode(SampleNames.CustomerStreamNode, stream =>
+                var pubsub = spot.EnablePubSub(topology.SessionSpotEndpoint);
+                pubsub.SetPubSubRoutingId(topology.SessionSpotPubRid);
+
+            }
+
+        }
+
+    }
     {
+        var stream = options.AddStreamNode(SampleNames.CustomerStreamNode);
         stream.AttachActorGateway(SampleNames.SessionSpotNode);
         stream.Bind(topology.SessionStreamEndpoint);
         stream.RegisterSession<CustomerSession>();
-    });
+
+    }
 });
 
 await builder.Build().RunAsync();

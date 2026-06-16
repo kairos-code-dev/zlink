@@ -23,56 +23,34 @@ internal sealed class PlayServer(SampleSettings settings)
         builder.Services.AddZLinkFramework(options =>
         {
             options.DefaultTimeout = SampleTimeouts.Request;
+            options.AddHandlersFromAssemblyOf(typeof(PlayServer));
             options.Codecs.AddJson();
             options.AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor);
 
-            options.AddClientServerChannel(SampleChannels.Api, channel =>
-            {
-                channel.EnableClient(client =>
-                {
-                    client.UseManualConnections(connections =>
-                    {
-                        connections.Connect(settings.ApiChannelEndpoint);
-                    });
-                });
-            });
+            options.AddClientServerChannel(SampleChannels.Api)
+                .EnableClient(settings.ApiChannelEndpoint);
 
-            options.AddClientServerChannel(SampleChannels.Play, channel =>
-            {
-                channel.EnableServer(server =>
-                {
-                    server.Bind(settings.PlayChannelEndpoint);
-                });
-                channel.AddRequestHandler<CreateGameHandler>();
-            });
+            options.AddClientServerChannel(SampleChannels.Play)
+                .EnableServer(settings.PlayChannelEndpoint)
+                .AddRequestHandler<CreateGameHandler>();
 
-            options.AddRouteMeshChannel(SampleChannels.Router, routed =>
-            {
-                routed.Bind(settings.PlayRouterEndpoint);
-                routed.ConfigureRouting(routing => routing.RoutingId = RoutingId.From(SampleTypes.PlayRouterId));
-                routed.UseManualConnections(connections => connections.Connect(settings.PlayRouterEndpoint));
-            });
+            options.AddRouteMeshChannel(SampleChannels.Router)
+                .EnableServer(settings.PlayRouterEndpoint)
+                .EnableClient(settings.PlayRouterEndpoint)
+                .ConfigureRouting()
+                .RoutingId = RoutingId.From(SampleTypes.PlayRouterId);
 
-            options.AddStreamNode(SampleNodes.ClientStream, stream =>
-            {
-                stream.AttachActorGateway(SampleNodes.PlaySpot);
-                stream.Bind(settings.PlayEndpoint);
-                stream.RegisterSession<PlaySession>();
-            });
+            options.AddStreamNode(SampleNodes.ClientStream)
+                .AttachActorGateway(SampleNodes.PlaySpot)
+                .Bind(settings.PlayEndpoint)
+                .RegisterSession<PlaySession>();
 
-            options.AddSpotMesh(SampleNodes.PlaySpot, mesh =>
-            {
-                mesh.AddNode(SampleNodes.PlaySpot, spot =>
-                {
-                    spot.EnableRouter(router =>
-                    {
-                        router.BindRouter(settings.SpotEndpoint);
-                        router.SetRoutingId(RoutingId.From(SampleTypes.PlaySpotNodeId));
-                    });
-                    spot.AddEntrySpot<PlayEntrySpot>();
-                    spot.AddSpotFactory<TicTacToeGame>();
-                });
-            });
+            options.AddSpotMesh(SampleNodes.PlaySpot)
+                .AddNode(SampleNodes.PlaySpot)
+                .EnableRouter(settings.SpotEndpoint)
+                .SetRouterRoutingId(RoutingId.From(SampleTypes.PlaySpotNodeId))
+                .AddEntrySpot<PlayEntrySpot>()
+                .AddSpotFactory<TicTacToeGame>();
         });
 
         return builder.Build();

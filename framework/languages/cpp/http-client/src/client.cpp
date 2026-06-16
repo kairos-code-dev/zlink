@@ -426,8 +426,7 @@ request_builder_t &request_builder_t::body (std::string content, std::string con
 }
 
 request_builder_t &
-request_builder_t::body_stream (std::function<std::optional<std::string> ()> provider,
-                                std::string content_type)
+request_builder_t::body_stream (body_stream_provider_t provider, std::string content_type)
 {
     if (!provider) {
         throw zlink::framework::framework_exception_t (

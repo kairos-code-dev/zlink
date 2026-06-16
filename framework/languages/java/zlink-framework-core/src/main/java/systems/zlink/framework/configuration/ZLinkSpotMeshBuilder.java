@@ -1,9 +1,7 @@
 package systems.zlink.framework.configuration;
 
-import java.util.function.Consumer;
-
 public interface ZLinkSpotMeshBuilder {
-    void useDiscovery(Consumer<ZLinkDiscoveryBuilder> configure);
+    ZLinkDiscoveryBuilder useDiscovery();
 
-    void addNode(String spotNodeName, Consumer<ZLinkSpotNodeBuilder> configure);
+    ZLinkSpotNodeBuilder addNode(String spotNodeName);
 }

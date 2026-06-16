@@ -37,39 +37,41 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
         frameworkBuilder.Services.AddScoped<SpotRouteRequestCallerHandler>();
         frameworkBuilder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
+            options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
 
             options.UseRegistrySpotRemoteAddresses("spot-registry-request-send");
-            options.AddRouteMeshChannel("play", route =>
             {
-                route.Bind(routeChannelEndpoint);
-                route.ConfigureRouting(routing =>
+                var route = options.AddRouteMeshChannel("play");
+                route.EnableServer(routeChannelEndpoint);
                 {
+                    var routing = route.ConfigureRouting();
                     routing.RoutingId = RoutingId.From(
                         Encoding.UTF8.GetBytes("registry-play-route"));
-                });
-            });
-            options.AddSpotMesh(spotChannel, mesh =>
+
+                }
+
+            }
             {
-                mesh.AddNode("route-target-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh(spotChannel);
                 {
-                    router.BindRouter(GetFreeTcpEndpoint());
-                    router.ConfigureRouting(routing =>
+                    var spot = mesh.AddNode("route-target-node");
+                {
+                    var router = spot.EnableRouter(GetFreeTcpEndpoint());
                     {
+                        var routing = router.ConfigureRouterRouting();
                         routing.RoutingId = RoutingId.From(
                             Encoding.UTF8.GetBytes("registry-target-node"));
-                    });
-                });
-                spot.AcceptSpotRoutesFromChannel(
-                    "play",
-                    routes => routes.UseManualConnections(
-                        peers => peers.Connect(routeChannelEndpoint)));
+
+                    }
+
+                }
+                                spot.AcceptSpotRoutesFromChannel("play", routeChannelEndpoint);
                 spot.AddEntrySpot<SpotRouteCallerEntrySpot>();
                 spot.AddSpotFactory<SpotRouteTargetSpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var registryHost = registryBuilder.Build();

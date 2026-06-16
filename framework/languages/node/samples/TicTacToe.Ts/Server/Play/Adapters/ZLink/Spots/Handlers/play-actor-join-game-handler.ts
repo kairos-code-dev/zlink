@@ -1,39 +1,29 @@
-const { Inject, Injectable } = require('@nestjs/common');
-const {
-  PacketNames,
-  gameStateNotify,
-  joinGameRes,
-  playerJoinedNotify
-} = require('../../../../../../Shared/Contracts/messages');
-const { TicTacToeGameCreator } = require('../../../../Application/GameCreation/tictactoe-game-creator');
-import type { TicTacToeGameCreator as TicTacToeGameCreatorType } from '../../../../Application/GameCreation/tictactoe-game-creator';
+import { Injectable } from '@nestjs/common';
 import type {
-  JoinGameInternalReq,
-  JoinGameRes
+  ZLinkActor,
+  ZLinkEntrySpotActorRequestHandler,
+  ZLinkSpotActorRequestContext
+} from '@zlink-systems/framework';
+import type { PlayEntrySpot } from '../play-entry-spot';
+import type {
+  JoinGameReq,
+  JoinGameRes,
+  TicTacToeActor
 } from '../../../../../../Shared/Contracts/messages';
 
-@Injectable()
-class PlayActorJoinGameHandler {
-  constructor(@Inject(TicTacToeGameCreator) private readonly games: TicTacToeGameCreatorType) {}
+type PlayJoinActor = TicTacToeActor & ZLinkActor;
 
-  async handle(request: JoinGameInternalReq): Promise<JoinGameRes> {
-    const room = this.games.require(request.roomId);
-    const result = room.match.joinPlayer(request.actor);
-    request.actor.roomId = room.roomId;
-    const state = result.state;
-    if (result.newlyJoined && room.match.players.size === 2) {
-      for (const player of room.match.players.values()) {
-        if (player.actorId === result.joined.actorId) {
-          continue;
-        }
-        await player.actor.push(
-          PacketNames.playerJoinedNotify,
-          playerJoinedNotify(room.roomId, result.joined.actorId, result.joined.mark, state)
-        );
-        await player.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
-      }
-    }
-    return joinGameRes(room.roomId, result.joined.actorId, result.joined.mark, state);
+@Injectable()
+class PlayActorJoinGameHandler
+  implements ZLinkEntrySpotActorRequestHandler<PlayEntrySpot, PlayJoinActor, JoinGameReq, JoinGameRes> {
+  async handle(
+    entrySpot: PlayEntrySpot,
+    actor: PlayJoinActor,
+    context: ZLinkSpotActorRequestContext,
+    request: JoinGameReq
+  ): Promise<JoinGameRes> {
+    void context;
+    return await entrySpot.join(actor, request.roomId);
   }
 }
 

@@ -37,9 +37,9 @@ class api_server_host_factory_t
             options.handlers ().add<authenticate_player_handler_t> ("api");
 
             options.codecs ()
-              .add_message_pack ()
-              .add_message_pack<create_game_req_t> ()
-              .add_message_pack<create_game_res_t> ();
+              .add_json ()
+              .add_json<create_game_req_t> ()
+              .add_json<create_game_res_t> ();
 
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_server (topology.api_endpoint)

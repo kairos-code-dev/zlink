@@ -19,7 +19,10 @@ final class SampleReleaseGateContractTest {
 
     private static final Set<String> REQUIRED_SAMPLES = Set.of(
         "TicTacToe",
-        "Bingo");
+        "Bingo",
+        "SupportChat",
+        "DeliveryDispatch",
+        "ShoppingMallCheckout");
 
     private static final Set<String> REQUIRED_RUNTIME_PACKAGES = Set.of(
         "actors",
@@ -232,7 +235,7 @@ final class SampleReleaseGateContractTest {
         String handlerSpec = Files.readString(frameworkJavaRoot()
             .resolve("doc/spec/handler-interfaces.ko.md"));
         String actorGuide = Files.readString(frameworkJavaRoot()
-            .resolve("doc/guide/07-actor-session.ko.md"));
+            .resolve("doc/guide/06-actor-session.ko.md"));
         assertTrue(handlerSpec.contains("`destroyActor(actor)`는 Entry Spot context 전용 API이다"),
             "handler spec must keep destroyActor on Entry Spot context");
         assertTrue(handlerSpec.contains("user Spot context에는"),

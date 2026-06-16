@@ -1,13 +1,7 @@
-const {
-  PacketNames,
-  authenticateReq,
-  createGameReq,
-  joinGameReq,
-  placeMarkStreamReq
-} = require('../Shared/Contracts/messages');
-const connector = require('../../../../packages/stream-connector/dist');
-const json = require('../../../../packages/stream-connector-json/dist');
-const { SampleTimings } = require('./Configuration/sample-settings');
+import { GameMarks, GameStatus, PacketNames, authenticateReq, createGameReq, joinGameReq, placeMarkStreamReq } from '../Shared/Contracts/messages';
+import * as connector from '@zlink-systems/stream-connector';
+import * as json from '@zlink-systems/stream-connector-json';
+import { SampleTimings } from './Configuration/sample-settings';
 import type {
   AuthenticateRes,
   CreateGameHttpRes,
@@ -17,7 +11,7 @@ import type {
   PlaceMarkRes,
   PlayerJoinedNotify
 } from '../Shared/Contracts/messages';
-import type { ZlinkStreamConnector } from '../../../packages/stream-connector/dist';
+import type { ZlinkStreamConnector, ZlinkStreamMessage } from '@zlink-systems/stream-connector';
 
 class TicTacToeClientScenario {
   async run(
@@ -57,36 +51,37 @@ class TicTacToeClientScenario {
       ensure(() => client2Auth.displayName === 'Player O');
 
       // 3. Host joins by explicit RoomId, gets X/WaitingForPlayers, and receives no self-join notify.
-      const client1PlayerJoinedNotifies: PlayerJoinedNotify[] = [];
-      client1.on<PlayerJoinedNotify>(PacketNames.playerJoinedNotify, (message) => {
-        client1PlayerJoinedNotifies.push(message.payload);
-      });
-
+      const client1SelfJoinNotify = expectNoMessage(
+        client1,
+        PacketNames.playerJoinedNotify,
+        (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client1Auth.actorId,
+        signal
+      );
       const client1Join = await client1.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal);
 
       ensure(() => client1Join.roomId === game.roomId);
       ensure(() => stateOf(client1Join).roomId === game.roomId);
       ensure(() => client1Join.actorId === client1Auth.actorId);
-      ensure(() => client1Join.mark === 'X');
+      ensure(() => client1Join.mark === GameMarks.x);
       ensure(() => stateOf(client1Join).xActorId === client1Auth.actorId);
       ensure(() => stateOf(client1Join).oActorId === null);
-      ensure(() => stateOf(client1Join).status === 'WaitingForPlayers');
-      await new Promise((resolve) => setImmediate(resolve));
-      ensure(() => client1PlayerJoinedNotifies.length === 0);
+      ensure(() => stateOf(client1Join).status === GameStatus.WaitingForPlayers);
+      await client1SelfJoinNotify;
 
       // 4-6. Guest joins by the same RoomId; host receives join and running-state pushes, guest receives no self-join notify.
-      const client2PlayerJoinedNotifies: PlayerJoinedNotify[] = [];
-      client2.on<PlayerJoinedNotify>(PacketNames.playerJoinedNotify, (message) => {
-        client2PlayerJoinedNotifies.push(message.payload);
-      });
-
       const client1SawClient2Join = client1
         .waitFor<PlayerJoinedNotify>(PacketNames.playerJoinedNotify)
         .where((message) => message.payload.actorId === client2Auth.actorId)
         .submit(signal);
+      const client2SelfJoinNotify = expectNoMessage(
+        client2,
+        PacketNames.playerJoinedNotify,
+        (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client2Auth.actorId,
+        signal
+      );
       const client1RunningState = client1
         .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
-        .where((message) => message.payload.state.status === 'InProgress')
+        .where((message) => message.payload.state.status === GameStatus.InProgress)
         .submit(signal);
 
       const client2Join = await client2.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal);
@@ -94,12 +89,11 @@ class TicTacToeClientScenario {
       ensure(() => client2Join.roomId === game.roomId);
       ensure(() => stateOf(client2Join).roomId === game.roomId);
       ensure(() => client2Join.actorId === client2Auth.actorId);
-      ensure(() => client2Join.mark === 'O');
+      ensure(() => client2Join.mark === GameMarks.o);
       ensure(() => stateOf(client2Join).xActorId === client1Auth.actorId);
       ensure(() => stateOf(client2Join).oActorId === client2Auth.actorId);
-      ensure(() => stateOf(client2Join).status === 'InProgress');
-      await new Promise((resolve) => setImmediate(resolve));
-      ensure(() => client2PlayerJoinedNotifies.length === 0);
+      ensure(() => stateOf(client2Join).status === GameStatus.InProgress);
+      await client2SelfJoinNotify;
 
       const [client1Joined, client1Running] = await Promise.all([
         client1SawClient2Join,
@@ -108,10 +102,10 @@ class TicTacToeClientScenario {
 
       ensure(() => client1Joined.payload.roomId === game.roomId);
       ensure(() => client1Joined.payload.actorId === client2Auth.actorId);
-      ensure(() => client1Joined.payload.mark === 'O');
+      ensure(() => client1Joined.payload.mark === GameMarks.o);
       ensure(() => stateOf(client1Joined.payload).roomId === game.roomId);
-      ensure(() => stateOf(client1Joined.payload).status === 'InProgress');
-      ensure(() => client1Running.payload.state.status === 'InProgress');
+      ensure(() => stateOf(client1Joined.payload).status === GameStatus.InProgress);
+      ensure(() => client1Running.payload.state.status === GameStatus.InProgress);
       ensure(() => client1Running.payload.state.nextTurn === client1Auth.actorId);
 
       // 7. Each move response and opponent notify carry the same board, turn, and last-move state.
@@ -177,7 +171,7 @@ class TicTacToeClientScenario {
 
       requireSameState(stateOf(client1FinalMove), client2FinalMove.payload.state);
       ensure(() => stateOf(client1FinalMove).board === 'XXXOO....');
-      ensure(() => stateOf(client1FinalMove).status === 'Won');
+      ensure(() => stateOf(client1FinalMove).status === GameStatus.Won);
       ensure(() => stateOf(client1FinalMove).winner === client1Auth.actorId);
       ensure(() => stateOf(client1FinalMove).lastMoveActorId === client1Auth.actorId);
       ensure(() => stateOf(client1FinalMove).lastMoveCell === 2);
@@ -210,6 +204,34 @@ function requireSameState(actual: GameState, expected: GameState): void {
   ensure(() => actual.nextTurn === expected.nextTurn);
   ensure(() => actual.lastMoveActorId === expected.lastMoveActorId);
   ensure(() => actual.lastMoveCell === expected.lastMoveCell);
+}
+
+async function expectNoMessage<TPayload>(
+  client: ZlinkStreamConnector,
+  packetName: string,
+  predicate: (message: ZlinkStreamMessage<TPayload>) => boolean,
+  signal?: AbortSignal
+): Promise<void> {
+  try {
+    await client
+      .waitFor<TPayload>(packetName)
+      .where(predicate)
+      .timeout(25)
+      .submit(signal);
+  } catch (error) {
+    if (isRequestTimeout(error)) {
+      return;
+    }
+    throw error;
+  }
+  throw new Error(`Unexpected stream message '${packetName}'.`);
+}
+
+function isRequestTimeout(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'error' in error
+    && (error as { error?: { code?: unknown } }).error?.code === 'requestTimeout';
 }
 
 function ensure(condition: () => boolean): void {

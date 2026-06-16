@@ -78,11 +78,9 @@ dotnet 의 `IServiceCollection.AddZLinkFramework(options => ...)` 는 node 에�
 // dotnet
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddClientServerChannel("price", channel =>
-    {
-        channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7301"));
-        channel.AddRequestHandler<GetPriceHandler>();
-    });
+    options.AddClientServerChannel("price")
+        .EnableServer("tcp://0.0.0.0:7301")
+        .AddRequestHandler<GetPriceHandler>();
 });
 ```
 
@@ -90,22 +88,21 @@ builder.Services.AddZLinkFramework(options =>
 // node (NestJS)
 @Module({
   imports: [
-    ZLinkModule.forRoot({
-      channels: {
-        price: {
-          server: { bind: 'tcp://0.0.0.0:7301' },
-          handlerGroups: ['price'],
-        },
-      },
-    }),
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .addClientServerChannel('price')
+          .enableServer('tcp://0.0.0.0:7301')
+          .addHandlerGroup('price')
+        .build()
+    ),
   ],
   providers: [GetPriceHandler],
 })
 export class AppModule {}
 ```
 
-builder 람다(`channel => { ... }`) 패턴은 NestJS 의 선언적 options 객체로 옮긴다.
-dotnet builder 메서드 한 개 = node options 의 키 한 개로 1:1 대응시키는 것을
+하위 builder callback 패턴은 NestJS 의 `zlinkFramework()` fluent builder 로 옮긴다.
+dotnet builder 메서드 한 개 = node builder 메서드 한 개로 1:1 대응시키는 것을
 기본으로 한다(§5 표 참조).
 `AddRequestHandler<T>()` 처럼 handler type 을 등록하는 흐름은 NestJS 에서
 `zlinkRequestHandler('group', 'Packet')` decorator 등록으로 옮긴다.
@@ -189,14 +186,13 @@ export class GetPriceHandler implements ZLinkRequestHandler<PriceRequest, PriceR
 ```ts
 @Module({
   imports: [
-    ZLinkModule.forRoot({
-      clientServerChannels: {
-        price: {
-          server: { bind: 'tcp://0.0.0.0:7301' },
-          handlerGroups: ['price'],
-        },
-      },
-    }),
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .addClientServerChannel('price')
+          .enableServer('tcp://0.0.0.0:7301')
+          .addHandlerGroup('price')
+        .build()
+    ),
   ],
   providers: [GetPriceHandler],
 })
@@ -238,25 +234,25 @@ TypeScript 는 런타임 타입 소거가 있으므로, payload 식별은 **클�
 제약). 이 차이는 C# 의 nominal 타입 대비 TS 의 한계이며, 의미가 아니라 표면
 제약이다.
 
-## 5. 등록 표면 대응표 (dotnet builder → node options)
+## 5. 등록 표면 대응표 (dotnet builder → node builder)
 
-dotnet `IZLinkFrameworkOptions` 의 등록 메서드를 node module options 키로
+dotnet `IZLinkFrameworkOptions` 의 등록 메서드를 node fluent builder 표면으로
 1:1 매핑한다. 각 채널 종류의 의미는 채널별 spec 이 소유한다.
 
-| dotnet 메서드 | node options 형태 | spec |
+| dotnet 메서드 | node builder 표면 | spec |
 |------|------|------|
-| `AddClientServerChannel(name, ch => ...)` | `channels[name] = { server, client, requestHandlers, sendHandlers }` | [nestjs-channel-messaging](../spec/nestjs-channel-messaging.ko.md) |
-| `AddFanoutChannel(name, ch => ...)` | `channels[name] = { publisher, subscriber, publishHandlers }` | nestjs-channel-messaging |
-| `AddDealerMeshChannel(name, ch => ...)` | `channels[name] = { dealerMesh: {...} }` | nestjs-channel-messaging |
-| `AddRouteMeshChannel(name, ch => ...)` | `channels[name] = { routeMesh: {...} }` | nestjs-channel-messaging |
-| `AddSpotNode(name, sn => ...)` / `AddSpotMesh(...)` | `spotNodes[name] = {...}` / `spotMeshes[...]` | [nestjs-spot](../spec/nestjs-spot.ko.md) |
-| `AddStreamNode(name, st => ...)` | `streamNodes[name] = {...}` | [nestjs-stream](../spec/nestjs-stream.ko.md) |
-| `useDiscovery().addRegistryEndpoint(...)` | `discovery: { registries: [...] }` | [nestjs-registry](../spec/nestjs-registry.ko.md) |
+| `AddClientServerChannel(name)` | `addClientServerChannel(name)` | [nestjs-channel-messaging](../spec/nestjs-channel-messaging.ko.md) |
+| `AddFanoutChannel(name)` | `addFanoutChannel(name)` | nestjs-channel-messaging |
+| `AddDealerMeshChannel(name)` | `addDealerMeshChannel(name)` | nestjs-channel-messaging |
+| `AddRouteMeshChannel(name)` | `addRouteMeshChannel(name)` | nestjs-channel-messaging |
+| `AddSpotNode(name)` / `AddSpotMesh(...)` | `addSpotNode(name)` | [nestjs-spot](../spec/nestjs-spot.ko.md) |
+| `AddStreamNode(name)` | `addStreamNode(name)` | [nestjs-stream](../spec/nestjs-stream.ko.md) |
+| `useDiscovery().addRegistryEndpoint(...)` | `useDiscovery().addRegistryEndpoint(...)` | [nestjs-registry](../spec/nestjs-registry.ko.md) |
 | `UseFilter<TFilter>()` | `filters: [FilterClass]` | [handler-interfaces §filter](../spec/handler-interfaces.ko.md) |
 | `ConfigureDispatch(...)` | `dispatch: { mode }` | handler-interfaces |
 | `AddHandlersFromAssemblyOf<TMarker>()` | `discover: { modules / include }`(NestJS DiscoveryService) | §4.2 |
 | `AddActorFactory(...)` | `actorFactories: [...]` | [nestjs-actor](../spec/nestjs-actor.ko.md) |
-| `Codecs(reg => ...)` | `codecs: [...]` | handler-interfaces §codec |
+| `Codecs.AddProtobuf()` / `AddJson()` / `AddMessagePack()` | `codecs().addProtobuf()` / `addJson()` / `addMessagePack()` | handler-interfaces §codec |
 | `ConfigureMetadata(...)` | `metadata: {...}` | nestjs-actor |
 
 > 정확한 키 이름과 형태는 각 spec 문서가 확정한다. 위 표는 대응 관계의
@@ -318,7 +314,7 @@ backend port 의 정확한 시그니처는 dotnet
 - spec: handler-interfaces, nestjs-overview, nestjs-channel-messaging,
   nestjs-spot, nestjs-actor, nestjs-stream, nestjs-registry, nestjs-monitoring,
   session-actor-dispatch, spot-node, stage-wrapper-on-spot
-- internals: backend-dependency-policy, di-역할-exposure-policy,
+- internals: backend-dependency-policy, di-capability-exposure-policy,
   lifecycle-and-failure-semantics, behavior-matrix,
   implementation-scope-and-nongoals, regression-test-matrix
 

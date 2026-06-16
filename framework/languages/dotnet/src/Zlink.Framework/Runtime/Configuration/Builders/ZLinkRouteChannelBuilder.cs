@@ -1,19 +1,29 @@
 namespace Zlink.Framework.Runtime.Configuration.Builders;
 
 internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration registration)
-    : IZLinkRouteChannelBuilder, IZLinkRouteMeshChannelBuilder
+    : IZLinkRouteMeshChannelBuilder
 {
-    public void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null)
+    public IZLinkRouteMeshChannelBuilder EnableServer(string endpoint)
     {
-        configure?.Invoke(new ZLinkRouteMeshChannelServerCapabilityBuilder(registration));
+        new ZLinkRouteMeshChannelServerCapabilityBuilder(registration).Bind(endpoint);
+        return this;
     }
 
-    public void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null)
+    public IZLinkRouteMeshChannelBuilder EnableClient()
     {
-        configure?.Invoke(new ZLinkRouteMeshChannelClientCapabilityBuilder(registration));
+        return this;
     }
 
-    public void Bind(string endpoint)
+    public IZLinkRouteMeshChannelBuilder EnableClient(string endpoint)
+    {
+        ZLinkChannelEndpointBuilderSupport.AddManualConnection(
+            registration.ManualConnections,
+            endpoint,
+            "Route mesh channel client endpoint must not be empty.");
+        return this;
+    }
+
+    private void Bind(string endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
         {
@@ -23,22 +33,17 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
         registration.BindEndpoint = endpoint;
     }
 
-    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
+    public IZLinkSocketConfig ConfigureSocket()
     {
-        configure(registration.SocketConfig);
+        return registration.SocketConfig;
     }
 
-    public void ConfigureRouting(Action<IZLinkRouteConfig> configure)
+    public IZLinkRouteConfig ConfigureRouting()
     {
-        configure(registration.RoutingConfig);
+        return registration.RoutingConfig;
     }
 
-    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
-    {
-        configure(new ZLinkMutableConnections(registration.ManualConnections));
-    }
-
-    public void AddHandlerGroup(string groupName)
+    public IZLinkRouteMeshChannelBuilder AddHandlerGroup(string groupName)
     {
         if (string.IsNullOrWhiteSpace(groupName))
         {
@@ -46,9 +51,10 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
         }
 
         registration.HandlerGroups.Add(groupName);
+        return this;
     }
 
-    public void AddSendHandler<THandler, TMessage>(string? packetName = null)
+    public IZLinkRouteMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkRouteSendHandler<TMessage>
     {
         registration.SendHandlers.Add(new ZLinkRouteHandlerRegistration(
@@ -56,9 +62,10 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
             typeof(TMessage),
             null,
             packetName));
+        return this;
     }
 
-    public void AddSendHandler<THandler>(string? packetName = null)
+    public IZLinkRouteMeshChannelBuilder AddSendHandler<THandler>(string? packetName = null)
         where THandler : class
     {
         var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
@@ -71,9 +78,10 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
             args[0],
             null,
             packetName));
+        return this;
     }
 
-    public void AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+    public IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
         where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>
     {
         registration.RequestHandlers.Add(new ZLinkRouteHandlerRegistration(
@@ -81,9 +89,10 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
             typeof(TRequest),
             typeof(TReply),
             packetName));
+        return this;
     }
 
-    public void AddRequestHandler<THandler>(string? packetName = null)
+    public IZLinkRouteMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class
     {
         var handlerInterface = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
@@ -96,18 +105,19 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
             args[0],
             args[1],
             packetName));
+        return this;
     }
 
-    public void EnableSpotRouteEgress(string targetSpotNodeChannelName)
+    public IZLinkRouteMeshChannelBuilder EnableSpotRouteEgress(string targetSpotNodeChannelName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetSpotNodeChannelName);
         registration.SpotRouteEgress = new ZLinkSpotRouteEgressRegistration(targetSpotNodeChannelName);
+        return this;
     }
 }
 
 internal sealed class ZLinkRouteMeshChannelServerCapabilityBuilder(
     ZLinkRouteChannelRegistration registration)
-    : IChannelServerCapabilityBuilder
 {
     public void Bind(string endpoint)
     {
@@ -119,34 +129,14 @@ internal sealed class ZLinkRouteMeshChannelServerCapabilityBuilder(
         registration.BindEndpoint = endpoint;
     }
 
-    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
+    public IZLinkSocketConfig ConfigureSocket()
     {
-        configure(registration.SocketConfig);
+        return registration.SocketConfig;
     }
 
-    public void ConfigureRouting(Action<IZLinkRouteConfig> configure)
+    public IZLinkRouteConfig ConfigureRouting()
     {
-        configure(registration.RoutingConfig);
-    }
-}
-
-internal sealed class ZLinkRouteMeshChannelClientCapabilityBuilder(
-    ZLinkRouteChannelRegistration registration)
-    : IChannelClientCapabilityBuilder
-{
-    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
-    {
-        configure(registration.SocketConfig);
-    }
-
-    public void ConfigureRouting(Action<IZLinkOutboundRouteConfig> configure)
-    {
-        configure(new ZLinkRouteMeshOutboundRouteConfigAdapter(registration.RoutingConfig));
-    }
-
-    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
-    {
-        configure(new ZLinkMutableConnections(registration.ManualConnections));
+        return registration.RoutingConfig;
     }
 }
 

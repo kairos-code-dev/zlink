@@ -11,4 +11,5 @@ dependencies {
     testImplementation(project(":zlink-stream-connector-json"))
     testImplementation(project(":zlink-stream-connector-msgpack"))
     testImplementation(project(":zlink-stream-connector-protobuf"))
+    testImplementation("com.google.protobuf:protobuf-java:4.30.2")
 }

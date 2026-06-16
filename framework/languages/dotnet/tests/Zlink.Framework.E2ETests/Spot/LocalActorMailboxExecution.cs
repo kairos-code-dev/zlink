@@ -28,17 +28,19 @@ public sealed class LocalActorMailboxExecutionTests : SpotTestSupport
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddActorFactory<RegistryTestActorFactory>("registry");
-            options.AddSpotMesh("actor-node", mesh =>
             {
-                mesh.AddNode("actor-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("actor-node");
                 {
-                    router.BindRouter(spotNode);
-                });
+                    var spot = mesh.AddNode("actor-node");
+                {
+                    var router = spot.EnableRouter(spotNode);
+
+                }
                 spot.AddEntrySpot<RegistryEntrySpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         using var host = builder.Build();

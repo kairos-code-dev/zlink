@@ -39,7 +39,7 @@ class tictactoe_match_t
         if (_state.x_actor_id.empty ()) {
             _state.x_actor_id = actor_id;
             _state.next_turn = actor_id;
-            _state.status = "WaitingForPlayers";
+            _state.status = tictactoe_status_t::waiting_for_players;
             return {_state};
         }
         if (actor_id == _state.x_actor_id) {
@@ -47,7 +47,7 @@ class tictactoe_match_t
         }
         if (_state.o_actor_id.empty ()) {
             _state.o_actor_id = actor_id;
-            _state.status = "InProgress";
+            _state.status = tictactoe_status_t::in_progress;
             return {_state};
         }
         if (actor_id == _state.o_actor_id) {
@@ -58,7 +58,7 @@ class tictactoe_match_t
 
     tictactoe_state_t place (const std::string &actor_id, const place_mark_req_t &request)
     {
-        if (_state.status != "InProgress") {
+        if (_state.status != tictactoe_status_t::in_progress) {
             throw std::runtime_error ("match is not playing");
         }
         if (actor_id != _state.next_turn) {
@@ -69,15 +69,16 @@ class tictactoe_match_t
             throw std::runtime_error ("invalid move");
         }
 
-        const char mark = actor_id == _state.x_actor_id ? 'X' : 'O';
+        const char mark =
+          actor_id == _state.x_actor_id ? tictactoe_marks_t::x[0] : tictactoe_marks_t::o[0];
         _state.board[static_cast<std::size_t> (request.cell)] = mark;
         _state.last_move_cell = request.cell;
         _state.last_move_actor_id = actor_id;
         if (has_winner (mark)) {
-            _state.status = "Won";
+            _state.status = tictactoe_status_t::won;
             _state.winner = actor_id;
         } else if (_state.board.find ('.') == std::string::npos) {
-            _state.status = "Draw";
+            _state.status = tictactoe_status_t::draw;
             _state.draw = true;
         } else {
             _state.next_turn =

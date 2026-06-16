@@ -19,12 +19,6 @@
       "@zlink-systems/stream-connector-json": [
         "../../packages/stream-connector-json/dist"
       ],
-      "@zlink-systems/stream-connector-msgpack": [
-        "../../packages/stream-connector-msgpack/dist"
-      ],
-      "@zlink-systems/stream-connector-protobuf": [
-        "../../packages/stream-connector-protobuf/dist"
-      ],
       "@zlink-systems/zlink": [
         "../../../../../bindings/node/dist/index.d.ts"
       ]

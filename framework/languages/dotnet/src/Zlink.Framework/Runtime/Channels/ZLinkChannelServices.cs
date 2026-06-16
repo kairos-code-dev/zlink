@@ -18,11 +18,11 @@ internal sealed class ZLinkChannelClient(ZLinkFrameworkRuntime runtime, ZLinkFra
         => new ZLinkRequestCall<TMessage>(runtime, registration, channelName, request);
 }
 
-internal sealed class ZLinkFanoutClient(ZLinkFrameworkRuntime runtime)
+internal sealed class ZLinkFanoutClient(ZLinkFrameworkRuntime runtime, ZLinkFrameworkRegistration registration)
     : IZLinkFanoutClient
 {
     public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
     {
-        return new ZLinkPublishCall(runtime, channelName, topic, message);
+        return new ZLinkPublishCall(runtime, registration, channelName, topic, message);
     }
 }

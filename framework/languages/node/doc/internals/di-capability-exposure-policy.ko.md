@@ -159,26 +159,19 @@ proxy 를 등록하는 방식은 줄인다.
 
 ### 4.1 Actor factory 와 SpotNode
 
-`actorFactories` 에 actor factory 를 하나라도 등록했다면(.NET
+`.actorFactory(...)` 로 actor factory 를 하나라도 등록했다면(.NET
 `AddActorFactory<TFactory>(actorType)` 대응) 최소 1개 이상의 `SpotNode` 가
 필요하다.
 
 ```ts
-ZLinkModule.forRoot({
-  actorFactories: [
-    { actorType: 'player', factory: PlayerActorFactory },
-  ],
-  spotMeshes: {
-    'game.rooms': {
-      nodes: {
-        'play-node': {
-          pubSub: { bind: 'tcp://127.0.0.1:9000' },
-          entrySpot: GameEntrySpot,
-        },
-      },
-    },
-  },
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .actorFactory('player', PlayerActorFactory)
+    .addSpotNode('play-node')
+      .enablePubSub('tcp://127.0.0.1:9000')
+      .addEntrySpot(GameEntrySpot)
+    .build()
+);
 ```
 
 `SpotNode` 없이 actor factory 만 등록하면 다음 오류로 실패한다.
@@ -207,8 +200,7 @@ resolver 구현을 DI 로 제공할 수 있지만, local spot 문맥이 없으�
 
 > 참고: registry 기반 remote address resolver 를 쓰는 경우(.NET
 > `RegistrySpotRemoteAddresses`), validation 은 추가로 route mesh channel
-> (`routeMeshes`)과 discovery endpoint(`discovery` 또는
-> `spotMeshes[...].discovery`)를 요구한다. 둘 중 하나라도 없으면
+> (`.addRouteMeshChannel(...)`)과 discovery endpoint(`.useDiscovery()`)를 요구한다. 둘 중 하나라도 없으면
 > `ZLinkConfigurationException` 으로 실패한다.
 
 ### 4.3 Spot publisher client

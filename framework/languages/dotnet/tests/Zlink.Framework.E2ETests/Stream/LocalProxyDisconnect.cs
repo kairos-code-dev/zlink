@@ -38,30 +38,34 @@ public sealed class LocalProxyDisconnectTests : StreamTestSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddActorFactory<GatewayActorFactory>("player");
-                options.AddSpotMesh("actor-node", mesh =>
                 {
-                    mesh.AddNode("actor-node", spot =>
-                {
-                    spot.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("actor-node");
                     {
-                        router.BindRouter(spotEndpoint);
-                        router.SetRoutingId(RoutingId.From("local-notify-actor-node"));
-                    });
+                        var spot = mesh.AddNode("actor-node");
+                    {
+                        var router = spot.EnableRouter(spotEndpoint);
+                        router.SetRouterRoutingId(RoutingId.From("local-notify-actor-node"));
+
+                    }
                     spot.AddEntrySpot<GatewayEntrySpot>();
-                });
-                });
-                options.AddRouteMeshChannel("gateway", routed =>
+
+                    }
+
+                }
                 {
-                    routed.Bind(routerEndpoint);
-                    routed.ConfigureRouting(routing => routing.RoutingId = localRid);
-                    routed.UseManualConnections(connections => connections.Connect(routerEndpoint));
-                });
-                options.AddStreamNode("client.stream", stream =>
+                    var routed = options.AddRouteMeshChannel("gateway");
+                    routed.EnableServer(routerEndpoint);
+                    routed.ConfigureRouting().RoutingId = localRid;
+                    routed.EnableClient(routerEndpoint);
+
+                }
                 {
+                    var stream = options.AddStreamNode("client.stream");
                     stream.Bind(streamEndpoint);
                     stream.AttachActorGateway("actor-node");
                     stream.RegisterSession<LocalNotifyDisconnectSession>();
-                });
+
+                }
             });
         });
 

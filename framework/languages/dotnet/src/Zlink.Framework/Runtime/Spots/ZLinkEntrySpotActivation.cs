@@ -110,6 +110,8 @@ internal sealed partial class ZLinkEntrySpotActivation :
 
     public TimeSpan DefaultTimeout => _defaultTimeout;
 
+    public ZLinkCodecRegistryBuilder Codecs => _runtime.Registration.Codecs;
+
     public RoutingId SpotRid => _nativeSpot.RoutingId;
 
     public RoutingId NodeRid { get; }

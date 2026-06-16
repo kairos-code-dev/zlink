@@ -72,11 +72,11 @@ class GetQuoteHandler {}
     ZLinkModule.forRoot(
       zlinkFramework()
         .options({ defaultTimeoutMs: 30_000 })
-        .clientServerChannel('pricing.quote', (channel) => channel
-          .server('tcp://0.0.0.0:7301')
-          .handlerGroup('pricing'))
-        .fanoutChannel('pricing.events', (channel) => channel
-          .publisher('tcp://0.0.0.0:7302'))
+        .addClientServerChannel('pricing.quote')
+          .enableServer('tcp://0.0.0.0:7301')
+          .addHandlerGroup('pricing')
+        .addFanoutChannel('pricing.events')
+          .enablePublisher('tcp://0.0.0.0:7302')
         .build()
     ),
   ],
@@ -90,15 +90,11 @@ export class PricingModule {}
 builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(30);
-    options.AddClientServerChannel("pricing.quote", channel =>
-    {
-        channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7301"));
-        channel.AddRequestHandler<GetQuoteHandler>();
-    });
-    options.AddFanoutChannel("pricing.events", channel =>
-    {
-        channel.EnablePublisher(pub => pub.Bind("tcp://0.0.0.0:7302"));
-    });
+    options.AddClientServerChannel("pricing.quote")
+        .EnableServer("tcp://0.0.0.0:7301")
+        .AddRequestHandler<GetQuoteHandler>();
+    options.AddFanoutChannel("pricing.events")
+        .EnablePublisher("tcp://0.0.0.0:7302");
 });
 ```
 
@@ -115,9 +111,9 @@ builder.Services.AddZLinkFramework(options =>
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => zlinkFramework()
-        .clientServerChannel('pricing.quote', (channel) => channel
-          .server(config.getOrThrow<string>('PRICING_BIND'))
-          .handlerGroup('pricing'))
+        .addClientServerChannel('pricing.quote')
+          .enableServer(config.getOrThrow<string>('PRICING_BIND'))
+          .addHandlerGroup('pricing')
         .build(),
     }),
   ],
@@ -202,7 +198,7 @@ NestJS 통합에서 application 이 구현하는 다음 객체는 NestJS DI 컨�
 | 객체 종류 | 등록 위치 | framework 가 resolve 하는 시점 |
 |------|------|------|
 | channel / fanout / route handler | `providers` + `zlinkRequestHandler(...)` / `zlinkSendHandler(...)` / `zlinkPublishHandler(...)` | channel 이 해당 handler group 을 dispatch 할 때 |
-| Entry Spot, user Spot | `providers` + `spotNodes` 의 spot type 설정 | SpotNode 또는 SpotManager 가 spot 을 활성화할 때 |
+| Entry Spot, user Spot | `providers` + `.addSpotNode(...).addEntrySpot(...)` / `.addSpotFactory(...)` | SpotNode 또는 SpotManager 가 spot 을 활성화할 때 |
 | Spot packet / subscribe / actor / timer handler | handler decorator + `zlinkDiscoverProviders(...)` | 해당 Spot 실행 문맥에서 packet, actor event, timer 를 처리할 때 |
 | actor factory | `providers` + `actorFactories` 설정 | ActorManager 가 actor 를 생성할 때 |
 | stream session 또는 session factory | `providers` + `streams` 설정 | stream 연결을 session 으로 활성화할 때 |

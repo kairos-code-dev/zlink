@@ -84,11 +84,12 @@ public sealed class GetPriceHandler
 // 등록
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddClientServerChannel("price", channel =>
     {
-        channel.EnableServer(server => server.Bind("tcp://0.0.0.0:7301"));
+        var channel =     options.AddClientServerChannel("price");
+                channel.EnableServer("tcp://0.0.0.0:7301");
         channel.AddRequestHandler<GetPriceHandler>();
-    });
+
+    }
 });
 
 // 클라이언트: IZLinkChannelClient 를 주입받아 builder + 종결자로 호출

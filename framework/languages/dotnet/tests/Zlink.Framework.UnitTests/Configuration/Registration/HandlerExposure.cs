@@ -54,10 +54,10 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddClientServerChannel("profile", channel => channel.EnableServer());
+                options.AddClientServerChannel("profile").EnableServer("");
             }));
 
-        Assert.Contains("server must define a bind endpoint", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Channel server bind endpoint must not be empty", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -68,10 +68,11 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddClientServerChannel("profile", channel =>
                 {
-                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
-                });
+                    var channel = options.AddClientServerChannel("profile");
+                    channel.EnableServer("tcp://127.0.0.1:7101");
+
+                }
             }));
 
         Assert.Contains("must map a handler group", exception.Message, StringComparison.Ordinal);
@@ -85,11 +86,12 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                options.AddFanoutChannel("profile.events", channel =>
+                options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
+                    var channel = options.AddFanoutChannel("profile.events");
                     channel.EnableSubscriber();
-                });
+
+                }
             }));
 
         Assert.Contains("must map a publish handler group", exception.Message, StringComparison.Ordinal);
@@ -104,11 +106,12 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
-                options.AddClientServerChannel("profile", channel =>
                 {
-                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                    var channel = options.AddClientServerChannel("profile");
+                    channel.EnableServer("tcp://127.0.0.1:7101");
                     channel.AddHandlerGroup("missing-group");
-                });
+
+                }
             }));
 
         Assert.Contains("maps unknown handler group 'missing-group'", exception.Message, StringComparison.Ordinal);
@@ -123,11 +126,12 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
-                options.AddClientServerChannel("profile", channel =>
                 {
-                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                    var channel = options.AddClientServerChannel("profile");
+                    channel.EnableServer("tcp://127.0.0.1:7101");
                     channel.AddHandlerGroup("validation-publish");
-                });
+
+                }
             }));
 
         Assert.Contains("incompatible handler kind", exception.Message, StringComparison.Ordinal);
@@ -141,12 +145,13 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
-            options.AddRouteMeshChannel("backend", channel =>
             {
-                channel.Bind("tcp://127.0.0.1:7101");
-                channel.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7102"));
+                var channel = options.AddRouteMeshChannel("backend");
+                channel.EnableServer("tcp://127.0.0.1:7101");
+                channel.EnableClient("tcp://127.0.0.1:7102");
                 channel.AddHandlerGroup("validation-route");
-            });
+
+            }
         });
 
         using var provider = services.BuildServiceProvider();
@@ -165,12 +170,13 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
-                options.AddRouteMeshChannel("backend", channel =>
                 {
-                    channel.Bind("tcp://127.0.0.1:7101");
-                    channel.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7102"));
+                    var channel = options.AddRouteMeshChannel("backend");
+                    channel.EnableServer("tcp://127.0.0.1:7101");
+                    channel.EnableClient("tcp://127.0.0.1:7102");
                     channel.AddHandlerGroup("missing-route-group");
-                });
+
+                }
             }));
 
         Assert.Contains("maps unknown handler group 'missing-route-group'", exception.Message, StringComparison.Ordinal);
@@ -185,12 +191,13 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
-                options.AddRouteMeshChannel("backend", channel =>
                 {
-                    channel.Bind("tcp://127.0.0.1:7101");
-                    channel.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7102"));
+                    var channel = options.AddRouteMeshChannel("backend");
+                    channel.EnableServer("tcp://127.0.0.1:7101");
+                    channel.EnableClient("tcp://127.0.0.1:7102");
                     channel.AddHandlerGroup("validation-publish");
-                });
+
+                }
             }));
 
         Assert.Contains("incompatible handler kind", exception.Message, StringComparison.Ordinal);
@@ -205,12 +212,13 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
-                options.AddClientServerChannel("profile", channel =>
                 {
-                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                    var channel = options.AddClientServerChannel("profile");
+                    channel.EnableServer("tcp://127.0.0.1:7101");
                     channel.AddHandlerGroup("validation-request");
                     channel.AddRequestHandler<AlternateTestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
-                });
+
+                }
             }));
 
         Assert.Contains("duplicate Request handler packet", exception.Message, StringComparison.Ordinal);
@@ -225,13 +233,14 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
-                options.AddRouteMeshChannel("backend", channel =>
                 {
-                    channel.Bind("tcp://127.0.0.1:7101");
-                    channel.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7102"));
+                    var channel = options.AddRouteMeshChannel("backend");
+                    channel.EnableServer("tcp://127.0.0.1:7101");
+                    channel.EnableClient("tcp://127.0.0.1:7102");
                     channel.AddHandlerGroup("validation-route");
                     channel.AddRequestHandler<AlternateTestRouteRequestHandler, TestRouteRequest, TestRouteReply>();
-                });
+
+                }
             }));
 
         Assert.Contains("duplicate Request handler packet", exception.Message, StringComparison.Ordinal);
@@ -244,11 +253,12 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddClientServerChannel("profile", channel =>
             {
-                channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                var channel = options.AddClientServerChannel("profile");
+                channel.EnableServer("tcp://127.0.0.1:7101");
                 channel.AddRequestHandler<TestChannelRequestHandler>();
-            });
+
+            }
         });
 
         using var provider = services.BuildServiceProvider();
@@ -269,13 +279,14 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-            options.AddDealerMeshChannel("mesh", channel =>
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
+                var channel = options.AddDealerMeshChannel("mesh");
                 channel.EnableClient();
                 channel.AddSendHandler<AlternateTestSendHandler, TestSendMessage>();
                 channel.AddRequestHandler<TestChannelRequestHandler>();
-            });
+
+            }
         });
 
         using var provider = services.BuildServiceProvider();
@@ -296,13 +307,14 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
+                options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 options.AddHandlersFromAssemblyOf<RegistrationValidationSupport>();
-                options.AddDealerMeshChannel("mesh", channel =>
                 {
+                    var channel = options.AddDealerMeshChannel("mesh");
                     channel.EnableClient();
                     channel.AddHandlerGroup("validation-publish");
-                });
+
+                }
             }));
 
         Assert.Contains("cannot expose publish handlers", exception.Message, StringComparison.Ordinal);
@@ -315,12 +327,13 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-            options.AddDealerMeshChannel("mesh", channel =>
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
+                var channel = options.AddDealerMeshChannel("mesh");
                 channel.EnableClient();
                 channel.AddRequestHandler<TestChannelRequestHandler>();
-            });
+
+            }
         });
 
         using var provider = services.BuildServiceProvider();
@@ -336,11 +349,12 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         // dealer mesh 를 server 로만(bind + handler) — discovery/connect 없이도 유효해야 한다.
         services.AddZLinkFramework(options =>
         {
-            options.AddDealerMeshChannel("mesh", channel =>
             {
-                channel.EnableServer(server => server.Bind("tcp://0.0.0.0:5600"));
+                var channel = options.AddDealerMeshChannel("mesh");
+                channel.EnableServer("tcp://0.0.0.0:5600");
                 channel.AddRequestHandler<TestChannelRequestHandler>();
-            });
+
+            }
         });
 
         using var provider = services.BuildServiceProvider();
@@ -363,13 +377,13 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddDealerMeshChannel("mesh", channel =>
             {
-                channel.EnableServer(server => server.Bind("tcp://0.0.0.0:5600"));   // 받는다(제공)
-                channel.EnableClient(client => client.UseManualConnections(
-                    peers => peers.Connect("tcp://10.0.0.2:5600")));                  // 호출한다(소비)
+                var channel = options.AddDealerMeshChannel("mesh");
+                channel.EnableServer("tcp://0.0.0.0:5600");   // 받는다(제공)
+                                channel.EnableClient("tcp://10.0.0.2:5600");                  // 호출한다(소비)
                 channel.AddRequestHandler<TestChannelRequestHandler>();
-            });
+
+            }
         });
 
         using var provider = services.BuildServiceProvider();
@@ -391,16 +405,13 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-            options.AddRouteMeshChannel("route", channel =>
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
-                channel.EnableServer(server =>
-                {
-                    server.Bind("tcp://0.0.0.0:5700");
-                    server.ConfigureRouting(route => route.RoutingId = RoutingId.From("route-node"));
-                });
+                var channel = options.AddRouteMeshChannel("route").EnableServer("tcp://0.0.0.0:5700");
+                channel.ConfigureRouting().RoutingId = RoutingId.From("route-node");
                 channel.AddRequestHandler<TestRouteRequestHandler>();
-            });
+
+            }
         });
 
         using var provider = services.BuildServiceProvider();
@@ -420,20 +431,13 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddRouteMeshChannel("route", channel =>
             {
-                channel.EnableServer(server =>
-                {
-                    server.Bind("tcp://0.0.0.0:5700");
-                    server.ConfigureRouting(route => route.RoutingId = RoutingId.From("route-node"));
-                });
-                channel.EnableClient(client =>
-                {
-                    client.ConfigureRouting(route => route.ProbeRouterOnConnect = true);
-                    client.UseManualConnections(peers => peers.Connect("tcp://10.0.0.2:5700"));
-                });
+                var channel = options.AddRouteMeshChannel("route").EnableServer("tcp://0.0.0.0:5700");
+                channel.ConfigureRouting().RoutingId = RoutingId.From("route-node");
+                channel.EnableClient("tcp://10.0.0.2:5700");
                 channel.AddRequestHandler<TestRouteRequestHandler>();
-            });
+
+            }
         });
 
         using var provider = services.BuildServiceProvider();
@@ -442,7 +446,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         Assert.Equal("tcp://0.0.0.0:5700", route.BindEndpoint);
         Assert.Equal(RoutingId.From("route-node"), route.RoutingConfig.RoutingId);
-        Assert.True(route.RoutingConfig.EnablePeerProbe);
+        Assert.False(route.RoutingConfig.EnablePeerProbe);
         Assert.Equal("tcp://10.0.0.2:5700", Assert.Single(route.ManualConnections));
     }
     [Fact]
@@ -452,17 +456,19 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-            options.AddRouteMeshChannel("backend", channel =>
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
-                channel.Bind("tcp://127.0.0.1:7101");
+                var channel = options.AddRouteMeshChannel("backend");
+                channel.EnableServer("tcp://127.0.0.1:7101");
                 channel.AddRequestHandler<TestRouteRequestHandler>();
-            });
-            options.AddFanoutChannel("events", channel =>
+
+            }
             {
+                var channel = options.AddFanoutChannel("events");
                 channel.EnableSubscriber();
                 channel.AddPublishHandler<TestPublishHandler>();
-            });
+
+            }
         });
 
         using var provider = services.BuildServiceProvider();
@@ -487,11 +493,12 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddClientServerChannel("gateway", channel =>
                 {
-                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
+                    var channel = options.AddClientServerChannel("gateway");
+                    channel.EnableServer("tcp://127.0.0.1:7101");
                     channel.EnableSpotRouteEgress("play.route");
-                });
+
+                }
             }));
 
         Assert.Contains("routed SPOT egress requires client capability", exception.Message, StringComparison.Ordinal);

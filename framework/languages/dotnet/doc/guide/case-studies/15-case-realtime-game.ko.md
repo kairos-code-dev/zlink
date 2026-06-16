@@ -129,19 +129,21 @@ public sealed class PlaceMarkHandler
 
 ```csharp
 // 등록 골격(정식은 06/07): 한 프로세스 예시. 서버 분리는 06장의 전체 골격 참고.
-options.AddStreamNode("session", s =>
 {
+    var s = options.AddStreamNode("session");
     s.Bind("tcp://0.0.0.0:9100");
     s.AttachActorGateway("play-node");   // 이 stream 의 relay 대상 SpotNode
     s.RegisterSession<GameSession>();
-});
+
+}
 options.AddActorFactory<PlayerActorFactory>("player");
-options.AddSpotMesh("play", mesh => mesh.AddNode("play-node", n =>
 {
-    n.EnableRouter(r => r.BindRouter("tcp://0.0.0.0:9200"));
+    var n = options.AddSpotMesh("play").AddNode("play-node");
+        n.EnableRouter("tcp://0.0.0.0:9200");
     n.AddEntrySpot<PlayerEntrySpot>();
     n.AddSpotFactory<MatchSpot>();
-}));
+
+}
 ```
 
 > **재접속 이전성은 framework 기본기.** 다른 Session 서버로 다시 붙어도

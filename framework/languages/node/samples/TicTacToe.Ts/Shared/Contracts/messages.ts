@@ -26,6 +26,18 @@ export class AuthenticateReq {
   }
 }
 
+export interface AuthenticatePlayerReq {
+  accessToken: string;
+}
+
+export class AuthenticatePlayerReq {
+  accessToken: string;
+
+  constructor(accessToken: string) {
+    this.accessToken = accessToken;
+  }
+}
+
 export interface AuthenticatePlayerRes {
   actorId: string;
   displayName: string;
@@ -33,6 +45,16 @@ export interface AuthenticatePlayerRes {
 
 export interface CreateGameReq {
   gameName?: string;
+}
+
+export class CreateGame implements CreateGameReq {
+  gameName?: string;
+
+  constructor(gameName: string | undefined) {
+    if (gameName !== undefined) {
+      this.gameName = gameName;
+    }
+  }
 }
 
 export interface CreateGameRes {
@@ -64,11 +86,6 @@ export class JoinGameReq {
   }
 }
 
-export interface JoinGameInternalReq {
-  actor: TicTacToeActor;
-  roomId: string;
-}
-
 export interface JoinGameRes {
   roomId: string;
   actorId: string;
@@ -82,11 +99,6 @@ export interface PlaceMarkStreamReq {
 
 export class PlaceMarkReq {
   constructor(readonly cell: number) {}
-}
-
-export interface PlaceMarkInternalReq {
-  actor: TicTacToeActor;
-  cell: number;
 }
 
 export interface PlaceMarkRes {
@@ -103,10 +115,23 @@ export interface PlayerJoinedNotify {
   state: unknown;
 }
 
+export enum GameStatus {
+  WaitingForPlayers = 'WaitingForPlayers',
+  InProgress = 'InProgress',
+  Won = 'Won',
+  Draw = 'Draw',
+  TurnTimedOut = 'TurnTimedOut'
+}
+
+export const GameMarks = Object.freeze({
+  x: 'X',
+  o: 'O'
+});
+
 export interface GameState {
   roomId: string;
   board: string;
-  status: string;
+  status: GameStatus;
   winner: string | null;
   nextTurn: string | null;
   xActorId: string | null;
@@ -149,6 +174,10 @@ function authenticateReq(accessToken: string): AuthenticateReq {
   return new AuthenticateReq(accessToken);
 }
 
+function authenticatePlayerReq(accessToken: string): AuthenticatePlayerReq {
+  return new AuthenticatePlayerReq(accessToken);
+}
+
 function authenticatePlayerRes(accessToken: string): AuthenticatePlayerRes {
   return {
     actorId: accessToken,
@@ -157,7 +186,7 @@ function authenticatePlayerRes(accessToken: string): AuthenticatePlayerRes {
 }
 
 function createGameReq(gameName: string | undefined): CreateGameReq {
-  return { gameName };
+  return new CreateGame(gameName);
 }
 
 function createGameRes(roomId: string, gameName: string, playEndpoint: string): CreateGameRes {
@@ -180,20 +209,12 @@ function joinGameReq(roomId: string): JoinGameReq {
   return new JoinGameReq(roomId);
 }
 
-function joinGameInternalReq(actor: TicTacToeActor, roomId: string): JoinGameInternalReq {
-  return { actor, roomId };
-}
-
 function joinGameRes(roomId: string, actorId: string, mark: string, state: unknown): JoinGameRes {
   return { roomId, actorId, mark, state };
 }
 
 function placeMarkStreamReq(cell: number): PlaceMarkStreamReq {
   return new PlaceMarkReq(cell);
-}
-
-function placeMarkReq(actor: TicTacToeActor, cell: number): PlaceMarkInternalReq {
-  return { actor, cell };
 }
 
 function placeMarkRes(roomId: string, actorId: string, cell: number, state: unknown): PlaceMarkRes {
@@ -211,6 +232,7 @@ function gameStateNotify(state: GameState): GameStateNotify {
 export {
   PacketNames,
   actorDisplayName,
+  authenticatePlayerReq,
   authenticatePlayerRes,
   authenticateReq,
   authenticateRes,
@@ -218,11 +240,9 @@ export {
   createGameHttpRes,
   createGameReq,
   gameStateNotify,
-  joinGameInternalReq,
   joinGameReq,
   joinGameRes,
   placeMarkRes,
-  placeMarkReq,
   placeMarkStreamReq,
   playerJoinedNotify
 };

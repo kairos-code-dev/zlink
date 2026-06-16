@@ -9,7 +9,7 @@
 모든 동기 API는 `result_t<T>`를 반환한다. exception을 던지지 않는다.
 
 ```cpp
-auto reply = connector.request<match_join_reply_t>(request).submit();
+auto reply = connector.request(request).submit<match_join_reply_t>();
 
 if (!reply) {
     // 실패
@@ -55,9 +55,9 @@ auto value = reply.value(); // T&&
 
 ```cpp
 auto reply = connector
-    .request<match_data_t>(query)
+    .request(query)
     .timeout(std::chrono::seconds{5})
-    .submit();
+    .submit<match_data_t>();
 
 if (!reply && reply.error_code() == zsc::error_code_t::request_timeout) {
     // 재시도 또는 fallback
@@ -122,8 +122,8 @@ auto connected = connector.connect();
 if (!connected) { return; }
 
 auto auth = connector
-    .request<auth_reply_t>(auth_request_t{"player-1", "tok-abc123"})
-    .submit();
+    .request(auth_request_t{"player-1", "tok-abc123"})
+    .submit<auth_reply_t>();
 if (!auth) { return; }
 
 connector

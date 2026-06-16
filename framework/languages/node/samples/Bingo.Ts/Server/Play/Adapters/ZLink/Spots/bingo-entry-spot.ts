@@ -1,15 +1,11 @@
-const { Inject } = require('@nestjs/common');
-const {
-  bingoRoomJoinReq,
-  createProtobufMessage,
-  matchBingoRes,
-  readProtobufMessage
-} = require('../../../../../Shared/Contracts/messages');
-const { BingoRoomAllocator } = require('../../../Application/RoomAllocation/bingo-room-allocator');
+import { Inject } from '@nestjs/common';
+import { Message } from '@zlink-systems/zlink';
+import { bingoRoomJoinReq, matchBingoRes } from '../../../../../Shared/Contracts/messages';
+import { BingoRoomAllocator } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext
-} from '../../../../../../../packages/framework/dist';
+} from '@zlink-systems/framework';
 import type { BingoRoomAllocator as BingoRoomAllocatorType } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import type {
   MatchBingoReq,
@@ -22,21 +18,20 @@ import type { PlayerActor as PlayerActorType } from '../Actors/player-actor';
 type BingoJoinReply = Partial<StateEnvelope & RoomJoinError>;
 
 class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
-  readonly context?: ZLinkEntrySpotContext;
+  readonly context!: ZLinkEntrySpotContext;
 
   constructor(private readonly roomDirectory: BingoRoomAllocatorType) {}
 
   async matchActor(actor: PlayerActorType, request: MatchBingoReq): Promise<MatchBingoRes> {
-    const matched = await this.roomDirectory.allocate(request.mode);
-    const joinRequest = createProtobufMessage(bingoRoomJoinReq(matched.roomId, actor.actorId, actor.displayName));
+    const roomId = await this.roomDirectory.allocate(request.mode);
+    const joinRequest = Message.from(bingoRoomJoinReq(roomId, actor.actorId, actor.displayName));
     try {
-      const joined = await actor.context.joinSpot(matched.roomId, joinRequest).submit();
-      const reply: BingoJoinReply = joined.reply === undefined ? {} : readProtobufMessage(joined.reply) as BingoJoinReply;
-      joined.reply?.close();
+      const joined = await actor.context.joinSpot(roomId, joinRequest).submit<BingoJoinReply>();
+      const reply: BingoJoinReply = joined.reply ?? {};
       if (joined.resultCode !== 0) {
-        throw new Error(reply.error ?? `Room ${matched.roomId} rejected actor '${actor.actorId}'.`);
+        throw new Error(reply.error ?? `Room ${roomId} rejected actor '${actor.actorId}'.`);
       }
-      return matchBingoRes(matched.roomId, reply.state);
+      return matchBingoRes(roomId, reply.state);
     } finally {
       joinRequest.close();
     }
@@ -46,7 +41,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     if (!actor.destroyAfterEntrySpotJoin) {
       return;
     }
-    await this.context?.destroyActor(actor);
+    await this.context.destroyActor(actor);
   }
 
   async onCreateActor(actor: PlayerActorType): Promise<void> {

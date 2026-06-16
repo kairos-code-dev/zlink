@@ -16,25 +16,18 @@ internal sealed class ApiServer(SampleSettings settings)
         {
             options.DefaultTimeout = SampleTimeouts.Request;
             options.Codecs.AddJson();
-            options.AddClientServerChannel(SampleChannels.Api, channel =>
             {
-                channel.EnableServer(server =>
-                {
-                    server.Bind(settings.ApiChannelEndpoint);
-                });
+                var channel = options.AddClientServerChannel(SampleChannels.Api)
+                    .EnableServer(settings.ApiChannelEndpoint);
                 channel.AddRequestHandler<AuthenticatePlayerHandler>();
-            });
 
-            options.AddClientServerChannel(SampleChannels.Play, channel =>
+            }
+
             {
-                channel.EnableClient(client =>
-                {
-                    client.UseManualConnections(connections =>
-                    {
-                        connections.Connect(settings.PlayChannelEndpoint);
-                    });
-                });
-            });
+                options.AddClientServerChannel(SampleChannels.Play)
+                    .EnableClient(settings.PlayChannelEndpoint);
+
+            }
         });
 
         var app = builder.Build();

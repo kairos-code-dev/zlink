@@ -25,10 +25,10 @@ public:
       const get_user_request_t &request)
     {
         auto account = co_await client_
-          .request<account_reply_t>("account", account_query_t{
+          .request("account", account_query_t{
               .account_id = request.account_id,
           })
-          .async();
+          .async<account_reply_t>();
 
         co_return build_user_reply(account);
     }

@@ -16,14 +16,16 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddClientServerChannel("profile", channel =>
                 {
-                    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7101"));
-                });
-                options.AddClientServerChannel("profile", channel =>
+                    var channel = options.AddClientServerChannel("profile");
+                    channel.EnableServer("tcp://127.0.0.1:7101");
+
+                }
                 {
+                    var channel = options.AddClientServerChannel("profile");
                     channel.EnableClient();
-                });
+
+                }
             }));
 
         Assert.Contains("Duplicate channel name", exception.Message, StringComparison.Ordinal);
@@ -43,8 +45,8 @@ public sealed class ChannelsTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.ConfigureDispatch(dispatch =>
             {
+                var dispatch = options.ConfigureDispatch();
                 Assert.Equal(ZLinkUnhandledDispatchAction.ReplyError, dispatch.Unhandled.Request);
                 Assert.Equal(ZLinkUnhandledDispatchAction.LogAndDrop, dispatch.Unhandled.Send);
                 Assert.Equal(ZLinkUnhandledDispatchAction.LogAndDrop, dispatch.Unhandled.Publish);
@@ -52,7 +54,8 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 Assert.Equal(1.0d, dispatch.Diagnostics.SampleRate);
                 Assert.True(dispatch.Diagnostics.IncludeMessageSizes);
                 Assert.False(dispatch.Diagnostics.IncludeNativeDiagnostics);
-            });
+
+            }
         });
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
 
@@ -67,10 +70,11 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.ConfigureDispatch(dispatch =>
                 {
+                    var dispatch = options.ConfigureDispatch();
                     dispatch.Unhandled.Send = ZLinkUnhandledDispatchAction.ReplyError;
-                });
+
+                }
             }));
 
         Assert.Contains("send dispatch cannot use ReplyError", exception.Message, StringComparison.Ordinal);
@@ -84,10 +88,11 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.ConfigureDispatch(dispatch =>
                 {
+                    var dispatch = options.ConfigureDispatch();
                     dispatch.Unhandled.Publish = ZLinkUnhandledDispatchAction.ReplyError;
-                });
+
+                }
             }));
 
         Assert.Contains("publish dispatch cannot use ReplyError", exception.Message, StringComparison.Ordinal);
@@ -101,10 +106,11 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.ConfigureDispatch(dispatch =>
                 {
+                    var dispatch = options.ConfigureDispatch();
                     dispatch.Diagnostics.SampleRate = 1.1d;
-                });
+
+                }
             }));
 
         Assert.Contains("SampleRate must be between", exception.Message, StringComparison.Ordinal);
@@ -117,26 +123,26 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                options.AddFanoutChannel("events", channel =>
+                options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
-                    channel.EnablePublisher(publisher => publisher.Bind("tcp://127.0.0.1:7102"));
-                });
-                options.AddSpotMesh("spot.mesh", mesh =>
+                    var channel = options.AddFanoutChannel("events");
+                    channel.EnablePublisher("tcp://127.0.0.1:7102");
+
+                }
                 {
-                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                    mesh.AddNode("stage-node", node =>
+                    var mesh = options.AddSpotMesh("spot.mesh");
+                    mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                     {
-                        node.EnableRouter(router =>
+                        var node = mesh.AddNode("stage-node");
                         {
-                            router.BindRouter("tcp://127.0.0.1:9100");
-                        });
-                        node.AcceptSpotRoutesFromChannel(
-                            "events",
-                            routes => routes.UseManualConnections(
-                                peers => peers.Connect("tcp://127.0.0.1:7102")));
-                    });
-                });
+                            var router = node.EnableRouter("tcp://127.0.0.1:9100");
+
+                        }
+                                                node.AcceptSpotRoutesFromChannel("events", "tcp://127.0.0.1:7102");
+
+                    }
+
+                }
             }));
 
         Assert.Contains("must be a client/server channel or a route mesh channel", exception.Message, StringComparison.Ordinal);
@@ -149,23 +155,22 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                options.AddDealerMeshChannel("mesh", channel => channel.EnableClient());
-                options.AddSpotMesh("spot.mesh", mesh =>
+                options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+                                options.AddDealerMeshChannel("mesh").EnableClient();
                 {
-                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                    mesh.AddNode("stage-node", node =>
+                    var mesh = options.AddSpotMesh("spot.mesh");
+                    mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                     {
-                        node.EnableRouter(router =>
+                        var node = mesh.AddNode("stage-node");
                         {
-                            router.BindRouter("tcp://127.0.0.1:9101");
-                        });
-                        node.AcceptSpotRoutesFromChannel(
-                            "mesh",
-                            routes => routes.UseManualConnections(
-                                peers => peers.Connect("tcp://127.0.0.1:7103")));
-                    });
-                });
+                            var router = node.EnableRouter("tcp://127.0.0.1:9101");
+
+                        }
+                                                node.AcceptSpotRoutesFromChannel("mesh", "tcp://127.0.0.1:7103");
+
+                    }
+
+                }
             }));
 
         Assert.Contains("must be a client/server channel or a route mesh channel", exception.Message, StringComparison.Ordinal);
@@ -178,24 +183,23 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                options.AddClientServerChannel("route", channel => channel.EnableClient());
-                options.AddRouteMeshChannel("route", routed => routed.Bind("tcp://127.0.0.1:7104"));
-                options.AddSpotMesh("spot.mesh", mesh =>
+                options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+                                options.AddClientServerChannel("route").EnableClient();
+                                options.AddRouteMeshChannel("route").EnableServer("tcp://127.0.0.1:7104");
                 {
-                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                    mesh.AddNode("stage-node", node =>
+                    var mesh = options.AddSpotMesh("spot.mesh");
+                    mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                     {
-                        node.EnableRouter(router =>
+                        var node = mesh.AddNode("stage-node");
                         {
-                            router.BindRouter("tcp://127.0.0.1:9102");
-                        });
-                        node.AcceptSpotRoutesFromChannel(
-                            "route",
-                            routes => routes.UseManualConnections(
-                                peers => peers.Connect("tcp://127.0.0.1:7104")));
-                    });
-                });
+                            var router = node.EnableRouter("tcp://127.0.0.1:9102");
+
+                        }
+                                                node.AcceptSpotRoutesFromChannel("route", "tcp://127.0.0.1:7104");
+
+                    }
+
+                }
             }));
 
         Assert.Contains("ambiguous", exception.Message, StringComparison.Ordinal);
@@ -208,20 +212,19 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddSpotMesh("spot.mesh", mesh =>
                 {
-                    mesh.AddNode("stage-node", node =>
-                {
-                    node.EnableRouter(router =>
+                    var mesh = options.AddSpotMesh("spot.mesh");
                     {
-                        router.BindRouter("tcp://127.0.0.1:9103");
-                    });
-                    node.AcceptSpotRoutesFromChannel(
-                        "missing",
-                        routes => routes.UseManualConnections(
-                            peers => peers.Connect("tcp://127.0.0.1:7104")));
-                });
-                });
+                        var node = mesh.AddNode("stage-node");
+                    {
+                        var router = node.EnableRouter("tcp://127.0.0.1:9103");
+
+                    }
+                                        node.AcceptSpotRoutesFromChannel("missing", "tcp://127.0.0.1:7104");
+
+                    }
+
+                }
             }));
 
         Assert.Contains("is not registered", exception.Message, StringComparison.Ordinal);
@@ -234,20 +237,17 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddClientServerChannel(
-                    "api",
-                    channel => channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7105")));
-                options.AddSpotMesh("spot.mesh", mesh =>
+                                options.AddClientServerChannel("api").EnableServer("tcp://127.0.0.1:7105");
                 {
-                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                    mesh.AddNode("stage-node", node =>
+                    var mesh = options.AddSpotMesh("spot.mesh");
+                    mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                     {
-                        node.AcceptSpotRoutesFromChannel(
-                            "api",
-                            routes => routes.UseManualConnections(
-                                peers => peers.Connect("tcp://127.0.0.1:7105")));
-                    });
-                });
+                        var node = mesh.AddNode("stage-node");
+                                                node.AcceptSpotRoutesFromChannel("api", "tcp://127.0.0.1:7105");
+
+                    }
+
+                }
             }));
 
         Assert.Contains("must enable router", exception.Message, StringComparison.Ordinal);
@@ -260,21 +260,21 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddClientServerChannel(
-                    "api",
-                    channel => channel.EnableServer(server => server.Bind("tcp://127.0.0.1:7106")));
-                options.AddSpotMesh("spot.mesh", mesh =>
+                                options.AddClientServerChannel("api").EnableServer("tcp://127.0.0.1:7106");
                 {
-                    mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                    mesh.AddNode("stage-node", node =>
+                    var mesh = options.AddSpotMesh("spot.mesh");
+                    mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                     {
-                        node.EnableRouter(router =>
+                        var node = mesh.AddNode("stage-node");
                         {
-                            router.BindRouter("tcp://127.0.0.1:9104");
-                        });
+                            var router = node.EnableRouter("tcp://127.0.0.1:9104");
+
+                        }
                         node.AcceptSpotRoutesFromChannel("api");
-                    });
-                });
+
+                    }
+
+                }
             }));
 
         Assert.Contains("requires discovery or manual connections", exception.Message, StringComparison.Ordinal);
@@ -287,15 +287,12 @@ public sealed class ChannelsTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.AddClientServerChannel("profile", channel =>
             {
-                channel.EnableClient(client =>
-                {
-                    client.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7101"));
-                });
-            });
+                var channel = options.AddClientServerChannel("profile").EnableClient("tcp://127.0.0.1:7101");
 
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
+            }
+
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
         });
     }
 
@@ -307,12 +304,13 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                options.AddRouteMeshChannel("backend", routed =>
+                options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
-                    routed.Bind("tcp://127.0.0.1:7201");
-                    routed.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7202"));
-                });
+                    var routed = options.AddRouteMeshChannel("backend");
+                    routed.EnableServer("tcp://127.0.0.1:7201");
+                    routed.EnableClient("tcp://127.0.0.1:7202");
+
+                }
             }));
 
         Assert.Contains("cannot mix discovery and manual connections", exception.Message, StringComparison.Ordinal);
@@ -325,24 +323,27 @@ public sealed class ChannelsTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-            options.AddRouteMeshChannel("backend", routed =>
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
-                routed.Bind("tcp://127.0.0.1:7203");
-                routed.UseManualConnections(peers => peers.Connect("tcp://127.0.0.1:7204"));
-            });
-            options.AddSpotMesh("spot.mesh", mesh =>
+                var routed = options.AddRouteMeshChannel("backend");
+                routed.EnableServer("tcp://127.0.0.1:7203");
+                routed.EnableClient("tcp://127.0.0.1:7204");
+
+            }
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
-                mesh.AddNode("stage-node", node =>
+                var mesh = options.AddSpotMesh("spot.mesh");
+                mesh.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
                 {
-                    node.EnableRouter(router =>
+                    var node = mesh.AddNode("stage-node");
                     {
-                        router.BindRouter("tcp://127.0.0.1:9105");
-                    });
+                        var router = node.EnableRouter("tcp://127.0.0.1:9105");
+
+                    }
                     node.AcceptSpotRoutesFromChannel("backend");
-                });
-            });
+
+                }
+
+            }
         });
     }
 
@@ -354,7 +355,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.AddClientServerChannel("profile", channel => channel.EnableClient());
+                                options.AddClientServerChannel("profile").EnableClient();
             }));
 
         Assert.Contains("requires discovery or manual connections", exception.Message, StringComparison.Ordinal);

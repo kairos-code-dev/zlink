@@ -39,7 +39,7 @@ connector
 
 ## request — 요청/응답
 
-`request<TReply>()`는 서버 응답을 기다린다. reply는 sequence로 매칭되므로 동시에 여러 request를 보내도 순서와 무관하게 각각 완료된다.
+`request(...)`는 서버 응답을 기다린다. 응답 타입은 `submit<TReply>()`에서 선언한다. reply는 sequence로 매칭되므로 동시에 여러 request를 보내도 순서와 무관하게 각각 완료된다.
 
 ```cpp
 struct match_join_request_t {
@@ -54,10 +54,10 @@ struct match_join_reply_t {
 };
 
 auto reply = connector
-    .request<match_join_reply_t>(match_join_request_t{"match-7f3a", "player-1"})
+    .request(match_join_request_t{"match-7f3a", "player-1"})
     .packet_name("match.join")
     .timeout(std::chrono::seconds{5})
-    .submit();
+    .submit<match_join_reply_t>();
 
 if (!reply) {
     if (reply.error_code() == zlink::stream_connector::error_code_t::request_timeout) {
@@ -73,9 +73,9 @@ callback 방식:
 
 ```cpp
 connector
-    .request<match_join_reply_t>(match_join_request_t{"match-7f3a", "player-1"})
+    .request(match_join_request_t{"match-7f3a", "player-1"})
     .packet_name("match.join")
-    .submit([](zlink::stream_connector::result_t<match_join_reply_t> result) {
+    .submit<match_join_reply_t>([](zlink::stream_connector::result_t<match_join_reply_t> result) {
         if (!result) { return; }
         // result.value().slot
     });

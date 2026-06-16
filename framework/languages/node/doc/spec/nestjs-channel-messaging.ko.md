@@ -65,28 +65,28 @@
 
 dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 `ZLinkModule.forRoot(options)`(동기) / `ZLinkModule.forRootFactory(...)`(비동기, 설정 주입)
-가 반환하는 `DynamicModule` 로 매핑한다. dotnet builder 메서드 한 개 = node options 의
-키 한 개로 1:1 대응시키는 것을 기본으로 한다.
+가 반환하는 `DynamicModule` 로 매핑한다. dotnet builder 메서드 한 개는 node 의
+`zlinkFramework()` builder 메서드 한 개에 대응시키는 것을 기본으로 한다.
 
-| dotnet builder 호출 | node options 키 |
+| dotnet builder 호출 | node builder 표면 |
 | --- | --- |
-| `AddClientServerChannel(name, ch => ...)` | `zlinkFramework().clientServerChannel(name, channel => ...)` |
-| `AddFanoutChannel(name, ch => ...)` | `zlinkFramework().fanoutChannel(name, channel => ...)` |
-| `AddDealerMeshChannel(name, ch => ...)` | `dealerMeshChannels[name] = { bind?, client }` |
-| `AddRouteMeshChannel(name, ch => ...)` | `zlinkFramework().routerMesh(name, mesh => ...)` |
-| `channel.EnableServer(s => s.Bind(...))` | `.server('...')` |
-| `channel.EnableClient()` | `.client()` |
-| `channel.EnableClient(c => c.UseManualConnections(...))` | `.client('...')` 또는 `.client([...])` |
-| `channel.EnablePublisher(p => p.Bind(...))` | `.publisher('...')` |
-| `channel.EnableSubscriber()` | `.subscriber()` |
-| `channel.EnableSubscriber(s => s.UseManualConnections(...))` | `.subscriber('...')` 또는 `.subscriber([...])` |
-| `channel.AddHandlerGroup("api")` | `.handlerGroup('api')` |
-| `channel.AddRequestHandler<H, TReq, TRep>()` | `zlinkRequestHandler(group, packet)` + `.handlerGroup(group)` |
-| `channel.AddSendHandler<H, TMsg>()` | `zlinkSendHandler(group, packet)` + `.handlerGroup(group)` |
-| `channel.AddPublishHandler<H, TMsg>()` | `zlinkPublishHandler(group, packet)` + `.handlerGroup(group)` |
-| `options.UseDiscovery(...AddRegistryEndpoint...)` | `discovery: { registries: [...] }` |
+| `AddClientServerChannel(name)` | `zlinkFramework().addClientServerChannel(name)` |
+| `AddFanoutChannel(name)` | `zlinkFramework().addFanoutChannel(name)` |
+| `AddDealerMeshChannel(name)` | `zlinkFramework().addDealerMeshChannel(name)` |
+| `AddRouteMeshChannel(name)` | `zlinkFramework().addRouteMeshChannel(name)` |
+| `channel.EnableServer(...)` | `.enableServer('...')` |
+| `channel.EnableClient()` | `.enableClient()` |
+| `channel.EnableClient(...)` | `.enableClient('...')` 또는 `.enableClient([...])` |
+| `channel.EnablePublisher(...)` | `.enablePublisher('...')` |
+| `channel.EnableSubscriber()` | `.enableSubscriber()` |
+| `channel.EnableSubscriber(...)` | `.enableSubscriber('...')` 또는 `.enableSubscriber([...])` |
+| `channel.AddHandlerGroup("api")` | `.addHandlerGroup('api')` |
+| `channel.AddRequestHandler<H, TReq, TRep>()` | `zlinkRequestHandler(group, packet)` + `.addHandlerGroup(group)` |
+| `channel.AddSendHandler<H, TMsg>()` | `zlinkSendHandler(group, packet)` + `.addHandlerGroup(group)` |
+| `channel.AddPublishHandler<H, TMsg>()` | `zlinkPublishHandler(group, packet)` + `.addHandlerGroup(group)` |
+| `options.UseDiscovery().AddRegistryEndpoint(...)` | `.useDiscovery().addRegistryEndpoint(...)` |
 | `options.DefaultTimeout = ...` | `defaultTimeoutMs: number` |
-| `options.Codecs.AddProtobuf()` | `codecs: [...]` |
+| `options.Codecs.AddProtobuf()` | `zlinkFramework().codecs().addProtobuf()` |
 | `options.AddHandlersFromAssemblyOf<T>()` | NestJS `providers` + handler decorator discovery |
 
 ### 3.1 channel 등록
@@ -100,22 +100,20 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 여기서 "channel 을 등록한다" 는 말이 곧 "소켓 한 쌍을 만든다" 는 뜻은 아니다. 사용자
 입장에서는 역할[^capability], 즉 역할 단위로 읽는 편이 자연스럽다.
 
-- `server: { bind }` -- 이 channel 로 들어오는 request / send 를 local handler 가 받게
+- `.enableServer(bind)` -- 이 channel 로 들어오는 request / send 를 local handler 가 받게
   한다. 서버 역할이므로 `bind` 로 자기 endpoint 를 함께 정한다.
-  (dotnet `EnableServer(s => s.Bind(...))` 대응.)
-- `client: {}` -- 이 channel 쪽으로 request / send 호출을 내보낸다.
+  (dotnet `EnableServer(...)` 대응.)
+- `.enableClient()` -- 이 channel 쪽으로 request / send 호출을 내보낸다.
   (dotnet `EnableClient()` 대응.)
-- `publisher: { bind }` -- 이 channel 로 event 를 publish 한다. 마찬가지로 `bind` 로 자기
-  endpoint 를 정한다. (dotnet `EnablePublisher(p => p.Bind(...))` 대응.)
-- `subscriber: {}` -- 이 channel 의 event 를 받는다. (dotnet `EnableSubscriber()` 대응.)
+- `.enablePublisher(bind)` -- 이 channel 로 event 를 publish 한다. 마찬가지로 `bind` 로 자기
+  endpoint 를 정한다. (dotnet `EnablePublisher(...)` 대응.)
+- `.enableSubscriber()` -- 이 channel 의 event 를 받는다. (dotnet `EnableSubscriber()` 대응.)
 
-> 현재 초안에서는 역할 값을 `boolean` 과 object 로 섞지 않고 항상 object 로
-> 둔다. 즉 `client: {}` 는 client 역할만 켠다는 뜻이고,
-> `client: { manualConnections: [...] }` 는 같은 역할의 manual 연결까지 같이
-> 준다는 뜻이다.
+> endpoint 인자를 생략한 `.enableClient()` / `.enableSubscriber()` 는 Discovery 자동
+> 연결을 쓴다. endpoint 문자열이나 배열을 넘기면 같은 역할의 수동 연결을 함께 준다.
 
 따라서 inbound handler 없이 outbound 호출만 하는 앱이라면 어떨까. server 역할은 두지
-않고, `client: {}` 만 선언한 channel 만 두고 시작해도 된다.
+않고, `.enableClient()` 만 호출한 channel 만 두고 시작해도 된다.
 
 #### 자동 연결 예시
 
@@ -124,16 +122,16 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
   imports: [
     ZLinkModule.forRoot(
       zlinkFramework()
-        .options({
-          discovery: {
-            registries: ['tcp://registry1:5551', 'tcp://registry2:5551'],
-          },
-        })
-        .clientServerChannel('api', (channel) => channel
-          .server('tcp://0.0.0.0:7101')
-          .handlerGroup('api'))
-        .clientServerChannel('profile', (channel) => channel.client())
-        .clientServerChannel('account', (channel) => channel.client())
+        .useDiscovery()
+          .addRegistryEndpoint('tcp://registry1:5551')
+          .addRegistryEndpoint('tcp://registry2:5551')
+        .addClientServerChannel('api')
+          .enableServer('tcp://0.0.0.0:7101')
+          .addHandlerGroup('api')
+        .addClientServerChannel('profile')
+          .enableClient()
+        .addClientServerChannel('account')
+          .enableClient()
         .build()
     ),
   ],
@@ -172,10 +170,10 @@ export class AppModule {}
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .clientServerChannel('api', (channel) => channel
-      .server('tcp://0.0.0.0:7101'))
-    .clientServerChannel('profile', (channel) => channel
-      .client('tcp://10.0.10.15:7101'))
+    .addClientServerChannel('api')
+      .enableServer('tcp://0.0.0.0:7101')
+    .addClientServerChannel('profile')
+      .enableClient('tcp://10.0.10.15:7101')
     .build()
 );
 ```
@@ -197,10 +195,10 @@ client 역할은 사용자가 직접 적어 준 peer 목록만 보고 연결을 
 예를 들면 `profile` channel 은 Discovery 자동 연결로 두고, `account` channel 은 수동
 연결로 둘 수 있다.
 
-channel 별 연결 방식은, 해당 역할의 options 가 `manualConnections` 를 줬는지
-여부로 정해진다.
+channel 별 연결 방식은, 해당 역할 builder 에 수동 endpoint 를 넘겼는지 여부로
+정해진다.
 
-| 전역 `discovery` | 역할 `manualConnections` | 그 역할의 연결 방식 |
+| 전역 discovery | 역할 builder 수동 endpoint | 그 역할의 연결 방식 |
 | --- | --- | --- |
 | 있음 | 없음 | Discovery 자동 연결 |
 | 있음 | 있음 | 수동 연결 (수동 우선) |
@@ -209,17 +207,16 @@ channel 별 연결 방식은, 해당 역할의 options 가 `manualConnections` �
 
 정리하면 다음과 같다.
 
-- `discovery: { registries: [...] }` 는 모든 client / subscriber 역할의 **기본값**이다.
-- 특정 channel 만 수동으로 바꾸고 싶을 때는, 그 channel 안에서
-  `client: { manualConnections: [...] }` 또는
-  `subscriber: { manualConnections: [...] }` 를 명시한다.
+- `.useDiscovery().addRegistryEndpoint(...)` 는 모든 client / subscriber 역할의 **기본값**이다.
+- 특정 channel 만 수동으로 바꾸고 싶을 때는, 그 channel builder 에서
+  `.enableClient(endpoint)` 또는 `.enableSubscriber(endpoint)` 를 호출한다.
 - 이때 명시한 역할만 수동으로 분류되고, 나머지는 그대로 전역 Discovery 를 쓴다.
 
 이렇게 나눠 두는 이유는 zlink core 의 동작 때문이다. Discovery 가 붙은 DEALER 는,
 수동 `connect`, `disconnect`, `unbind`, `close` 를 받지 않는다. 따라서 framework 역시
 같은 channel runtime 안에서 두 방식을 섞는 모델로 설명할 수 없다.
 
-> route channel (`routerMeshes`) 은 일반 channel 과 정책이 다르다. 같은 routed channel 안에서
+> route mesh channel 은 일반 channel 과 정책이 다르다. 같은 routed channel 안에서
 > 전역 Discovery 와 수동 연결이 동시에 있으면, startup validation 단계에서 차단된다.
 > 일반 client / subscriber 는 "수동이 있으면 수동 우선" 정책으로 둘이 공존해도
 > 받아들인다.
@@ -227,15 +224,15 @@ channel 별 연결 방식은, 해당 역할의 options 가 `manualConnections` �
 #### SPOT route 수신과 router-capable channel
 
 SPOT으로 들어오는 routed 메시지는 `ROUTER` 역할이 필요하다. 따라서
-`SpotNode`가 특정 channel에서 오는 SPOT route를 받으려면 SPOT 쪽 설정에서
-`acceptSpotRoutesFrom: [channelName]` 을 사용한다(dotnet `AcceptSpotRoutesFromChannel`
-대응). 또한 이 channel 쪽에서는 `server.spotRouteEgress` / `routerMeshes[name].spotRouteEgress`
-로 대상 SPOT node channel 을 지정한다(dotnet `EnableSpotRouteEgress(...)` 대응).
+`SpotNode`가 특정 channel에서 오는 SPOT route를 받으려면 SPOT builder 에서
+`.acceptSpotRoutesFromChannel(channelName)` 을 사용한다(dotnet `AcceptSpotRoutesFromChannel`
+대응). 또한 channel builder 쪽에서는 `.enableSpotRouteEgress(targetSpotNodeChannelName)` 으로
+대상 SPOT node channel 을 지정한다(dotnet `EnableSpotRouteEgress(...)` 대응).
 
 대상 channel은 두 종류다.
 
-- `clientServerChannels[name].server` 의 client-server `ROUTER`
-- `routerMeshes[name]` 의 route mesh `ROUTER`
+- `.addClientServerChannel(name).enableServer(...)` 의 client-server `ROUTER`
+- `.addRouteMeshChannel(name).enableServer(...)` 의 route mesh `ROUTER`
 
 `publisher`/`subscriber`(fanout)와 `dealerMesh` 는 router 역할이 없으므로
 SPOT route 수신 대상이 아니다. client-server channel 의 server `ROUTER`에서도
@@ -250,9 +247,9 @@ SPOT으로 보낼 수 있으므로, 이 기능은 route mesh 전용으로 제한
 - `profile.client`
 - `profile.subscriber`
 
-그래서 수동 연결 옵션도 channel 전체에 두지 않는다. `clientServerChannels.profile.manualConnections`
-같은 형태는 사용하지 않고, 대신 역할별 options 안에 둔다. 즉
-`client: { manualConnections }`, `subscriber: { manualConnections }` 안쪽이다.
+그래서 수동 연결 옵션도 channel 전체에 두지 않는다. `profile` channel 전체에
+manual connection 을 두는 형태는 사용하지 않고, `.enableClient(endpoint)` /
+`.enableSubscriber(endpoint)` 처럼 역할을 켜는 메서드에서 endpoint 를 받는다.
 
 수동 연결을 쓰는 역할에 대해서는, 런타임에서 다음 동작을 호출할 수 있는 연결
 집합 표면을 둔다.
@@ -278,12 +275,14 @@ ZLinkModule.forRoot(
     .options({
       // 예제용 짧은 값. defaultTimeoutMs의 실제 기본은 30000(30초)다.
       defaultTimeoutMs: 1000,
-      codecs: [ProtobufCodec],
-      discovery: {
-        registries: ['tcp://registry1:5551', 'tcp://registry2:5551'],
-      },
     })
-    .clientServerChannel('profile', (channel) => channel.client())
+    .codecs()
+      .addProtobuf()
+    .useDiscovery()
+      .addRegistryEndpoint('tcp://registry1:5551')
+      .addRegistryEndpoint('tcp://registry2:5551')
+    .addClientServerChannel('profile')
+      .enableClient()
     .build()
 );
 ```
@@ -296,8 +295,9 @@ ZLinkModule.forRoot(
     .options({
       // 예제용 짧은 값. defaultTimeoutMs의 실제 기본은 30000(30초)다.
       defaultTimeoutMs: 1000,
-      codecs: [ProtobufCodec],
     })
+    .codecs()
+      .addProtobuf()
     .build()
 );
 ```
@@ -327,9 +327,9 @@ handler 를 **찾고**, 실제 노출은 명시적 등록이 정한다. node 는
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .clientServerChannel('api', (channel) => channel
-      .server('tcp://0.0.0.0:7101')
-      .handlerGroup('api'))
+    .addClientServerChannel('api')
+      .enableServer('tcp://0.0.0.0:7101')
+      .addHandlerGroup('api')
     .build()
 );
 ```
@@ -341,10 +341,10 @@ decorator 로 지정한다. decorator 는 NestJS injectable metadata 도 함께 
 handler 가 DI 대상이라는 사실과 zlink packet handler 라는 사실을 한 곳에서 읽을 수
 있다.
 
-현재 handler 노출은 `clientServerChannels[name].handlerGroups`,
-`fanoutChannels[name].handlerGroups`, `routerMeshes[name].handlerGroups` 가 지정한
+현재 handler 노출은 `.addClientServerChannel(name).addHandlerGroup(...)`,
+`.addFanoutChannel(name).addHandlerGroup(...)`, `.addRouteMeshChannel(name).addHandlerGroup(...)` 가 지정한
 group 을 기준으로 한다. client-server `server` channel 에서는 group 의 `request`
-handler 가 `requestHandlers` 로 등록된다. `routerMeshes` channel 에서는 group 의
+handler 가 `requestHandlers` 로 등록된다. route mesh channel 에서는 group 의
 `request` handler 와 `send` handler 가 route handler 로 등록된다. fanout
 `subscriber` channel 에서는 group 의 `publish` handler 가 `publishHandlers` 로
 등록된다.
@@ -393,13 +393,12 @@ export class HandlerModule {}
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .clientServerChannel('tictactoe.api', (channel) => channel
-      .server('tcp://0.0.0.0:7101')
-      .handlerGroup('api'))
-    .routerMesh('tictactoe.admin', (mesh) => mesh
-      .bind('tcp://0.0.0.0:7102')
-      .routingId('admin-node')
-      .handlerGroup('admin.route'))
+    .addClientServerChannel('tictactoe.api')
+      .enableServer('tcp://0.0.0.0:7101')
+      .addHandlerGroup('api')
+    .addRouteMeshChannel('tictactoe.admin')
+      .enableServer('tcp://0.0.0.0:7102')
+      .addHandlerGroup('admin.route')
     .build()
 );
 ```
@@ -423,9 +422,9 @@ ZLinkModule.forRoot(
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .fanoutChannel('profile.events', (channel) => channel
-      .subscriber('tcp://127.0.0.1:7201')
-      .handlerGroup('profile.events'))
+    .addFanoutChannel('profile.events')
+      .enableSubscriber('tcp://127.0.0.1:7201')
+      .addHandlerGroup('profile.events')
     .build()
 );
 ```
@@ -726,8 +725,8 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 
 | 인터페이스 | 대응 channel 타입 | 호출 키 | 용도 |
 | --- | --- | --- | --- |
-| `ZLinkChannelClient` | `clientServerChannels[name].server/client`, `dealerMeshChannels[name]` | `channelName` | 1:1 request / send (DEALER 측) |
-| `ZLinkFanoutClient` | `fanoutChannels[name].publisher/subscriber` | `channelName + topic` | event publish (PUB 측) |
+| `ZLinkChannelClient` | `.addClientServerChannel(name)` / `.addDealerMeshChannel(name)` | `channelName` | 1:1 request / send (DEALER 측) |
+| `ZLinkFanoutClient` | `.addFanoutChannel(name)` | `channelName + topic` | event publish (PUB 측) |
 
 > **호출 표면(중요).** dotnet 의 fluent builder + terminator 흐름
 > (`.RequestToChannel(...).Async<T>(ct)`) 을 node 에서도 유지한다.
@@ -776,8 +775,9 @@ export interface ZLinkChannelClient {
   충분히 동작한다.
 - 다만 그 경우에도 한 가지는 필요하다. **어떤** remote channel 에 접근할지를, startup
   단계에서 미리 한 번 선언해 두어야 한다.
-- channel 이 없거나 client 역할이 없으면 runtime 은 socket 을 새로 만들지 않고
-  `ZLinkConfigurationException` 으로 실패한다.
+- socket 은 startup 에 선언된 역할만큼만 만든다. 따라서 channel 이 없거나 client
+  역할이 없으면 그 channel 용 socket 이 애초에 없어, 호출은 (런타임에 socket 을 새로
+  만들지 않고) `ZLinkConfigurationException` 으로 실패한다.
 
 ### 5.3 ZLinkFanoutClient
 
@@ -819,28 +819,28 @@ export class ProfileRefreshController {
 
 ### 5.4 routed channel transport helper
 
-route mesh channel(`routerMeshes[name]`)의 위치는 actor, spot,
+route mesh channel(`addRouteMeshChannel(name)`)의 위치는 actor, spot,
 session actor dispatch[^session-actor-dispatch] 같은 framework 기능이 transport 로
 쓴다(dotnet `IZLinkRouteClient` 대응). `ZLinkRouteClient` 는 provider token 으로
 항상 등록되며, 호출자는 `routerChannelId + targetNodeRid` 를 넘긴다. route channel 이
 등록되지 않았거나 runtime 이 아직 시작되지 않았으면 `ZLinkConfigurationException` 으로
 실패한다.
 
-현재 Node options 표면에서는 host-owned route runtime 을 다음과 같이 선언한다.
-`routerChannelId` 는 route channel 이름이고, `bind` 는 local ROUTER endpoint,
-`routingId` 는 이 node 의 ROUTER routing id 다. `manualConnections` 가 있으면 startup
-시 같은 ROUTER socket 에 수동 peer 연결을 추가한다. framework public 표면은
+현재 Node builder 표면에서는 host-owned route runtime 을 다음과 같이 선언한다.
+`addRouteMeshChannel(name)` 의 `name` 은 route channel 이름이고, `.enableServer(endpoint)` 는
+local ROUTER endpoint 다.
+`.enableClient(endpoint)` 가 있으면 startup 시 같은 ROUTER socket 에 수동 peer 연결을 추가한다.
+framework public 표면은
 `RoutingId` 를 문자열로 받지만, backend adapter 가 binding public `RoutingId.from(...)`
 변환을 내부에서 처리하므로 사용자는 binding 객체를 만들 필요가 없다.
 
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .routerMesh('play.route', (mesh) => mesh
-      .bind('tcp://0.0.0.0:7105')
-      .routingId('play-node-a')
-      .connect('tcp://127.0.0.1:7106')
-      .handlerGroup('play.route'))
+    .addRouteMeshChannel('play.route')
+      .enableServer('tcp://0.0.0.0:7105')
+      .enableClient('tcp://127.0.0.1:7106')
+      .addHandlerGroup('play.route')
     .build()
 );
 
@@ -1042,16 +1042,18 @@ typed request payload 와 context 를 받는다. multipart 구조는 adapter 내
 계약일 뿐이다. 이 계약의 목적은 route 와 dispatch 가 header 만 먼저 읽고, payload decode
 는 handler 선택 이후로 늦출 수 있게 하는 것이다.
 
-node 표면에서는 codec 등록과 serializer 선택을 다음과 같이 노출할 수 있다.
-
-여기서 한 가지 짚어 둘 점이 있다. `codecs: [...]` 는 binding core 에 codec 구현을
-직접 끼워 넣는다는 뜻이 아니다. 별도의 codec extension / provider 를 framework
-registry 에 등록하는 흐름이라는 점에 유의한다.
+node 표면에서는 기본 codec 등록을 builder 메서드로 노출한다. `addProtobuf`,
+`addJson`, `addMessagePack` 은 framework 가 제공하는 기본 serializer 를 registry 에
+등록한다. 직접 만든 serializer 가 필요할 때만 `addSerializer` 로 content type 과
+serializer 를 함께 넘긴다.
 
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .options({ codecs: [ProtobufCodec, JsonCodec, MessagePackCodec] })
+    .codecs()
+      .addProtobuf()
+      .addJson()
+      .addMessagePack()
     .build()
 );
 ```

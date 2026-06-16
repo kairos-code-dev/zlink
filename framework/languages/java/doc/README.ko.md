@@ -1,8 +1,8 @@
 # ZLink Framework for Java/Kotlin -- 문서
 
 > 이 묶음은 `Java`, `Kotlin`, `Spring Boot`용 ZLink Framework 문서다. 문서는
-> `guide/`(사용법), `spec/`(공개 계약), `internals/`(구현·검증 기준),
-> `draft/`(후속 초안과 실행 계획)로 나뉜다. 공통 의미는
+> `guide/`(사용법·케이스 스터디), `spec/`(공개 계약), `internals/`(구현·검증 기준)로
+> 나뉜다. 공통 의미는
 > [공통 스펙](../../../doc/spec/README.ko.md)을 따르며, 여기서는 그 의미를
 > Java/Kotlin 표면으로 구체화한다.
 
@@ -20,20 +20,19 @@ backend adapter나 binding wrapper 구조는 guide에서 설명하지 않고, �
 | [01-overview](./guide/01-overview.ko.md) | 한 줄 정의, 아키텍처, 통합 축 |
 | [02-getting-started](./guide/02-getting-started.ko.md) | 첫 channel request까지 |
 | [03-concepts](./guide/03-concepts.ko.md) | channel, 역할, Spring DI 멘탈 모델 |
-| [04-feature-map](./guide/04-feature-map.ko.md) | 기능별 사용 시점과 구현 문서 연결 |
-| [05-channel-messaging](./guide/05-channel-messaging.ko.md) | request/send/pub-sub |
-| [06-spot](./guide/06-spot.ko.md) | Spot 생성, 조회, timer |
-| [07-actor-session](./guide/07-actor-session.ko.md) | actor lifecycle, session actor dispatch |
-| [08-stream](./guide/08-stream.ko.md) | STREAM server session과 connector |
-| [09-registry](./guide/09-registry.ko.md) | Registry 구동과 query |
-| [10-monitoring](./guide/10-monitoring.ko.md) | runtime event 관찰 |
+| [04-channel-messaging](./guide/04-channel-messaging.ko.md) | request/send/pub-sub |
+| [05-spot](./guide/05-spot.ko.md) | Spot 생성, 조회, timer |
+| [06-actor-session](./guide/06-actor-session.ko.md) | actor lifecycle, session actor dispatch |
+| [07-stream](./guide/07-stream.ko.md) | STREAM server session과 connector |
+| [08-registry](./guide/08-registry.ko.md) | Registry 구동과 query |
+| [09-monitoring](./guide/09-monitoring.ko.md) | runtime event 관찰 |
+| [10-feature-map](./guide/10-feature-map.ko.md) | 기능별 사용 시점과 구현 문서 연결 |
 | [11-interface-catalog](./guide/11-interface-catalog.ko.md) | 주요 public interface |
 | [12-grpc-alternative](./guide/12-grpc-alternative.ko.md) | gRPC/HTTP 대비 도입 판단 |
 
 ## 2. 공개 계약 spec
 
 정식 spec은 현재 Java 코드와 regression test에 존재하는 public API만 설명한다.
-구현 전 설계나 후속 편의 기능은 `draft/`에 남긴다.
 
 | 문서 | 범위 |
 |------|------|
@@ -72,15 +71,8 @@ backend adapter나 binding wrapper 구조는 guide에서 설명하지 않고, �
 | [spot-samples](./guide/samples/spot-samples.ko.md) | room/stage/zone 기준 Spot 등록과 publish/request 샘플 |
 | [stream-samples](./guide/samples/stream-samples.ko.md) | stream 등록, header session, actor relay 샘플 |
 
-## 5. Draft
+## 5. 케이스 스터디
 
-`draft/`에는 실행 계획, 후속 초안, 아직 정식 계약으로 승격하지 않은 설계를 둔다.
-정식 guide/spec/internals와 draft가 어긋나면 현재 코드와 regression test에 맞춘 정식
-문서를 우선한다.
-
-| 문서 | 범위 |
-|------|------|
-| [draft 목차](./draft/README.ko.md) | draft 문서 목록 |
-| [implementation-execution-plan](./draft/implementation-execution-plan.ko.md) | phase, gate, evidence |
-| [java-kotlin-framework-porting-plan](./draft/java-kotlin-framework-porting-plan.ko.md) | 포팅 범위와 장기 계획 |
-| [stream-open-items](./draft/stream-open-items.ko.md) | stream 후속 편의 기능 후보 |
+도입 판단과 아키텍처 매핑을 위한 도메인별 케이스 스터디는
+[12-grpc-alternative](./guide/12-grpc-alternative.ko.md)에서 진입하며,
+[guide/case-studies/](./guide/case-studies/13-case-ecommerce-checkout.ko.md) 13–18에 둔다.

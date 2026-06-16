@@ -127,22 +127,22 @@ class connector_t
         return send_call_t (_state, std::move (packet));
     }
 
-    /// Starts a typed request call by copying the request payload into a packet.
-    template <typename TReply, typename TRequest>
-    request_call_t<TReply> request (const TRequest &request)
+    /// Starts a request call by copying the request payload into a packet.
+    template <typename TRequest>
+    request_call_t request (const TRequest &request)
     {
         auto packet = make_packet<TRequest> ();
         packet.payload = detail::to_packet_payload (request, 0);
-        return request_call_t<TReply> (_state, std::move (packet), options ().request_timeout);
+        return request_call_t (_state, std::move (packet), options ().request_timeout);
     }
 
     /// Starts a request call and transfers the packet into the call object.
-    template <typename TReply> request_call_t<TReply> request (packet_t packet)
+    request_call_t request (packet_t packet)
     {
         if (packet.name.empty ()) {
             packet.name = "packet";
         }
-        return request_call_t<TReply> (_state, std::move (packet), options ().request_timeout);
+        return request_call_t (_state, std::move (packet), options ().request_timeout);
     }
 
     /// Registers a packet callback for the given packet name.

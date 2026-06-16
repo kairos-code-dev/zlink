@@ -35,8 +35,8 @@ stream connector의 public wait interface를 직접 사용한다. inbox를 두�
 
 Bingo가 Protobuf를 맡는 이유는 이 샘플이 여러 서버 역할과 많은 request/response/notify
 계약을 가진 gateway형 게임이기 때문이다. Protobuf schema는 언어별 샘플이 같은 필드와
-같은 wire 이름을 유지하도록 돕는다. JSON payload 가독성은 다른 샘플이 맡고, 작은 binary
-game packet 예시는 TicTacToe의 MessagePack 샘플이 맡는다.
+같은 wire 이름을 유지하도록 돕는다. JSON payload 가독성은 TicTacToe와 다른 JSON 기반
+샘플이 맡는다.
 
 ## 2. 서버 구성
 

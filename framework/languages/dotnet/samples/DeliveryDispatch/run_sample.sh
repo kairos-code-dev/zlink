@@ -179,8 +179,6 @@ dotnet run --no-build --project "${SCRIPT_DIR}/Probe/DeliveryDispatch.Probe.cspr
   --registry-endpoint "${DELIVERYDISPATCH_REGISTRY}" \
   --timeout-seconds 10
 
-sleep 3
-
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/DeliveryDispatch.Client.csproj" -- \
   --api-url "${DELIVERYDISPATCH_API_HTTP}" \
   --stream-endpoint "${DELIVERYDISPATCH_SESSION_STREAM}"

@@ -39,15 +39,11 @@ single-process 또는 고정 endpoint 테스트에서는 attach별 manual endpoi
 
 ```cpp
 options.spot_node("stage-spot-node")
-  .enable_router("tcp://0.0.0.0:9000", [](auto &router) {
-      router.connect("tcp://127.0.0.1:9001");
-  })
-  .enable_pub_sub("tcp://0.0.0.0:9002", [](auto &pub_sub) {
-      pub_sub.connect("tcp://127.0.0.1:9003");
-  })
-  .attach_channel_client("profile", [](auto &client) {
-      client.connect("tcp://127.0.0.1:7001");
-  });
+  .enable_router("tcp://0.0.0.0:9000")
+  .connect_router("tcp://127.0.0.1:9001")
+  .enable_pub_sub("tcp://0.0.0.0:9002")
+  .connect_pub_sub("tcp://127.0.0.1:9003")
+  .attach_channel_client("profile", "tcp://127.0.0.1:7001");
 ```
 
 router/pub-sub manual endpoint는 SPOT node 역할의 peer이고, attached channel manual

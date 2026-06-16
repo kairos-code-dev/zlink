@@ -112,7 +112,7 @@ class create_game_http_handler_t
 |--------|------|------|
 | `channel_client_t` | `request(channel, req).async<TReply>()` | request-reply. `co_await`로 typed 응답 |
 | `publisher_t` | `publish(channel, topic, event)` | fanout 채널로 topic publish (§6) |
-| `message_bus_t` | `send(channel, msg)` | 응답 없는 단방향 전송 (advanced — `app.advanced().use_zlink`의 builder에서 `message_bus()`로 획득) |
+| `message_bus_t` | `send(channel, msg)` | 응답 없는 단방향 전송 (advanced — `app.advanced().zlink()`의 builder에서 `message_bus()`로 획득) |
 
 `channel_client_t`는 DI로 주입받고, `publisher_t`/`message_bus_t`는
 `zlink_builder_t`(`publisher()`/`message_bus()`)에서 얻는다.
@@ -278,7 +278,7 @@ options.add_fanout_channel ("bingo.notifications")
   .use_handler_group ("notifications");
 ```
 
-`publisher_t`는 `app.advanced().use_zlink([&](auto &z){ auto pub = z.publisher(); ... })`의
+`publisher_t`는 `auto pub = app.advanced().zlink().publisher();`의
 `zlink_builder_t::publisher()`에서 얻는다. SPOT 코드에서 fanout으로 발행하려면
 노드에 `attach_publisher(channel)`를 걸고 `spot_context_t::publish(topic, event)`를
 사용한다([8장 §6](./08-spot.ko.md)).

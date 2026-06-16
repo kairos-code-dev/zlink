@@ -16,23 +16,17 @@
 public class SpotConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        options.addSpotMesh("game.stage", mesh -> {
-            mesh.useDiscovery(discovery -> discovery.addRegistryEndpoint("tcp://registry1:5551"));
+        ZLinkSpotMeshBuilder mesh = framework.addSpotMesh("game.stage");
+        mesh.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
 
-            mesh.addNode("stage-node", spot -> {
-                spot.enableRouter(router -> {
-                    router.bindRouter("tcp://0.0.0.0:9000");
-                });
-                spot.enablePubSub(pubsub -> {
-                    pubsub.bindPubSub("tcp://0.0.0.0:9001");
-                });
-                spot.attachChannelClient("profile");
-                spot.attachSpotPublisherClient("game.stage");
-                spot.addEntrySpot(GameEntrySpot.class);
-                spot.addSpotFactory(StageSpot.class);
-                spot.addSpotFactory(RoomSpot.class);
-            });
-        });
+        ZLinkSpotNodeBuilder spot = mesh.addNode("stage-node");
+        spot.enableRouter("tcp://0.0.0.0:9000");
+        spot.enablePubSub("tcp://0.0.0.0:9001");
+        spot.attachChannelClient("profile");
+        spot.attachSpotPublisherClient("game.stage");
+        spot.addEntrySpot(GameEntrySpot.class);
+        spot.addSpotFactory(StageSpot.class);
+        spot.addSpotFactory(RoomSpot.class);
     }
 }
 ```

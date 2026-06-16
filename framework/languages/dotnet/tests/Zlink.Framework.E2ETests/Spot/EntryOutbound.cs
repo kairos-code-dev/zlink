@@ -27,26 +27,29 @@ public sealed class EntryOutboundTests : SpotTestSupport
         builder.Services.AddScoped<EntrySpotOrdersRequestHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
+            options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
 
-            options.AddClientServerChannel("orders", channel =>
             {
-                channel.EnableServer(server => server.Bind(ordersServer));
+                var channel = options.AddClientServerChannel("orders");
+                channel.EnableServer(ordersServer);
                 channel.AddRequestHandler<EntrySpotOrdersRequestHandler, EntrySpotOrderRequest, EntrySpotOrderReply>();
-            });
-            options.AddSpotMesh("entry.test", mesh =>
+
+            }
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("entry-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("entry.test");
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    router.BindRouter(spotNode);
-                });
+                    var spot = mesh.AddNode("entry-node");
+                {
+                    var router = spot.EnableRouter(spotNode);
+
+                }
                 spot.AttachChannelClient("orders");
                 spot.AddEntrySpot<GeneralEntrySpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         var registryHost = registryBuilder.Build();
@@ -101,26 +104,29 @@ public sealed class EntryOutboundTests : SpotTestSupport
         builder.Services.AddScoped<EntrySpotGatedOrdersRequestHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
+            options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
 
-            options.AddClientServerChannel("orders", channel =>
             {
-                channel.EnableServer(server => server.Bind(ordersServer));
+                var channel = options.AddClientServerChannel("orders");
+                channel.EnableServer(ordersServer);
                 channel.AddRequestHandler<EntrySpotGatedOrdersRequestHandler, EntrySpotOrderRequest, EntrySpotOrderReply>();
-            });
-            options.AddSpotMesh("entry.test", mesh =>
+
+            }
             {
-                mesh.UseDiscovery(discovery => discovery.AddRegistryEndpoint(registryRouterEndpoint));
-                mesh.AddNode("entry-node", spot =>
-            {
-                spot.EnableRouter(router =>
+                var mesh = options.AddSpotMesh("entry.test");
+                mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
                 {
-                    router.BindRouter(spotNode);
-                });
+                    var spot = mesh.AddNode("entry-node");
+                {
+                    var router = spot.EnableRouter(spotNode);
+
+                }
                 spot.AttachChannelClient("orders");
                 spot.AddEntrySpot<GeneralEntrySpot>();
-            });
-            });
+
+                }
+
+            }
         });
 
         var registryHost = registryBuilder.Build();

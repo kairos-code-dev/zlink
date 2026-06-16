@@ -1,5 +1,4 @@
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;

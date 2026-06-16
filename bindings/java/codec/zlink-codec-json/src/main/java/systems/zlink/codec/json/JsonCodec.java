@@ -16,8 +16,7 @@ public final class JsonCodec {
         Objects.requireNonNull(value, "value");
         try {
             byte[] payload = DEFAULT_OBJECT_MAPPER.writeValueAsBytes(value);
-            return systems.zlink.contracts.messaging.Message.from(payload)
-                .withPacketName(value.getClass().getSimpleName());
+            return systems.zlink.contracts.messaging.Message.from(payload);
         } catch (JsonProcessingException ex) {
             throw new IllegalArgumentException(
                 "failed to encode JSON payload", ex);

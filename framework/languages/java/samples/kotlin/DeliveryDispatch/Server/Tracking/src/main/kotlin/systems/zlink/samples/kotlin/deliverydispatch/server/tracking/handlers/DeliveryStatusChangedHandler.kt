@@ -54,7 +54,6 @@ class DeliveryStatusChangedHandler(
                 request.occurredAtUnixMs,
             ),
         )
-            .packetName("DeliveryStatusNotify")
             .submit()
             .await()
         System.err.println(

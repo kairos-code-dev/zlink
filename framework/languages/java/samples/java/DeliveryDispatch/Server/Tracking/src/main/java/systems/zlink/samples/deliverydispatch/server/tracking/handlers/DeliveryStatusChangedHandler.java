@@ -61,7 +61,6 @@ public final class DeliveryStatusChangedHandler
                     request.status(),
                     request.courierId(),
                     request.occurredAtUnixMs()))
-            .packetName("DeliveryStatusNotify")
             .await();
         System.err.printf(
             "deliverydispatch tracking: status delivery=%s status=%s courier=%s%n",

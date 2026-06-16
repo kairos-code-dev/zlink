@@ -54,7 +54,7 @@ class DispatchWorker(
                 } ?: return
             try {
                 coroutines.blocking { dispatch(request) }
-            } catch (error: RuntimeException) {
+            } catch (error: Exception) {
                 System.err.println(
                     "deliverydispatch dispatch: failed delivery=${request.deliveryId} error=${error.message}",
                 )
@@ -98,7 +98,7 @@ class DispatchWorker(
                 SampleTimings.DispatchTimeout,
                 1,
             )
-        } catch (error: RuntimeException) {
+        } catch (error: Exception) {
             System.err.println(
                 "deliverydispatch dispatch: courier timeout delivery=${request.deliveryId} courier=$courierId",
             )
@@ -128,13 +128,13 @@ class DispatchWorker(
         timeout: Duration?,
         maxAttempts: Int,
     ): TReply {
-        var lastError: RuntimeException? = null
+        var lastError: Exception? = null
         for (attempt in 1..maxAttempts) {
             try {
                 val call = channels.requestToChannel(channelName, request)
                     .timeout(timeout ?: SampleTimings.RequestTimeout)
                 return call.submit(replyType).await()
-            } catch (error: RuntimeException) {
+            } catch (error: Exception) {
                 lastError = error
                 if (maxAttempts == 1) {
                     throw error

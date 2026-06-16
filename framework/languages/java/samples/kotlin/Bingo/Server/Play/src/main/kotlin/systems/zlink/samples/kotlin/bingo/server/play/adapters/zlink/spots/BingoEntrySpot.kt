@@ -6,7 +6,6 @@ import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.actors.PlayerActor
-import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.handlers.MatchBingoActorHandler
 import kotlinx.coroutines.future.await
 
 class BingoEntrySpot(
@@ -15,9 +14,7 @@ class BingoEntrySpot(
 ) : ZLinkEntrySpot {
     override fun context(): ZLinkEntrySpotContext = context
 
-    override fun configure() {
-        context.handlers().addHandler(MatchBingoActorHandler::class.java)
-    }
+    override fun configure() {}
 
     override fun onCreateActor(
         actor: ZLinkActor,

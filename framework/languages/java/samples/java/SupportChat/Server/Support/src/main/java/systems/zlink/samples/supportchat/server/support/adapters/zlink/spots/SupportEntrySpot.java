@@ -5,8 +5,6 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.samples.supportchat.server.support.adapters.zlink.actors.SupportUserActor;
-import systems.zlink.samples.supportchat.server.support.adapters.zlink.spots.handlers.OpenConversationActorHandler;
-import systems.zlink.samples.supportchat.server.support.adapters.zlink.spots.handlers.SetAgentAvailableHandler;
 
 public final class SupportEntrySpot implements ZLinkEntrySpot {
     private final ZLinkEntrySpotContext context;
@@ -22,8 +20,6 @@ public final class SupportEntrySpot implements ZLinkEntrySpot {
 
     @Override
     public void configure() {
-        context.handlers().addHandler(OpenConversationActorHandler.class);
-        context.handlers().addHandler(SetAgentAvailableHandler.class);
     }
 
     @Override

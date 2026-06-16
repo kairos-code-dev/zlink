@@ -99,6 +99,20 @@ wait_port() {
   return 1
 }
 
+wait_log_contains() {
+  local log_file="$1"
+  local pattern="$2"
+  local deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
+    if [[ -f "${log_file}" ]] && rg -q "${pattern}" "${log_file}"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for log pattern '${pattern}' in ${log_file}" >&2
+  return 1
+}
+
 reserve_ports() {
   python3 - <<'PY'
 import random
@@ -143,13 +157,10 @@ EOF
 
 ../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="play --config ${config_file}" >"${log_dir}/play.log" 2>&1 &
 pids+=("$!")
-wait_port "${play_stream_port}"
-wait_port "${play_channel_port}"
-wait_port "${play_router_port}"
+wait_log_contains "${log_dir}/play.log" "Started Program"
 
 ../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="api --config ${config_file}" >"${log_dir}/api.log" 2>&1 &
 pids+=("$!")
-wait_port "${api_port}"
-wait_port "${api_channel_port}"
+wait_log_contains "${log_dir}/api.log" "Started Program"
 
 ../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Client:run --quiet --args="--api-url http://127.0.0.1:${api_port}" >"${log_dir}/client.log" 2>&1

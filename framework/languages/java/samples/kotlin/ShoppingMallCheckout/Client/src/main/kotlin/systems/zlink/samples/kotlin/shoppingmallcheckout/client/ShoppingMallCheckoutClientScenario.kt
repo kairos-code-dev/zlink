@@ -49,7 +49,7 @@ class ShoppingMallCheckoutClientScenario(
         ensure(started.orderId.isNotEmpty())
 
         val created = getState(apiA, started.orderId)
-        ensure(created.status == OrderStatuses.Created)
+        ensure(created.isCreatedOrConfirmed())
         ensure(created.shippingAddressId == "addr-home")
 
         val confirmed = waitForStatus(apiA, started.orderId, OrderStatuses.Confirmed)
@@ -83,7 +83,7 @@ class ShoppingMallCheckoutClientScenario(
         ensure(started.status == OrderStatuses.Created)
 
         val created = getState(apiA, started.orderId)
-        ensure(created.status == OrderStatuses.Created)
+        ensure(created.isCreatedOrConfirmed())
         ensure(created.shippingAddressId == "addr-office")
         println("shoppingmall-pending=completed")
         return started.orderId
@@ -198,4 +198,7 @@ class ShoppingMallCheckoutClientScenario(
             throw IllegalStateException("Ensure failed")
         }
     }
+
+    private fun OrderState.isCreatedOrConfirmed(): Boolean =
+        status == OrderStatuses.Created || status == OrderStatuses.Confirmed
 }

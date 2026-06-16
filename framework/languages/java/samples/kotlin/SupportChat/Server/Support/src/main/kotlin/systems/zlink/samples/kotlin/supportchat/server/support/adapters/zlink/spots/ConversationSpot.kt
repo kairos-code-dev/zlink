@@ -15,11 +15,8 @@ import systems.zlink.framework.spots.ZLinkTimerOptions
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.actors.SupportUserActor
 import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.notifications.ConversationNotificationPublisher
-import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.spots.handlers.CloseConversationHandler
 import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.spots.handlers.ConversationIdleTimerHandler
 import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.spots.handlers.ConversationSpotCreatedHandler
-import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.spots.handlers.SendChatMessageHandler
-import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.spots.handlers.SetTypingHandler
 import systems.zlink.samples.kotlin.supportchat.server.support.domain.conversation.Conversation
 import systems.zlink.samples.kotlin.supportchat.server.support.domain.conversation.ConversationPolicy
 import systems.zlink.samples.kotlin.supportchat.server.support.domain.conversation.ConversationCreateRequest
@@ -47,11 +44,7 @@ class ConversationSpot(
 
     override fun context(): ZLinkSpotContext = context
 
-    override fun configure() {
-        context.handlers().addHandler(SendChatMessageHandler::class.java)
-        context.handlers().addHandler(SetTypingHandler::class.java)
-        context.handlers().addHandler(CloseConversationHandler::class.java)
-    }
+    override fun configure() = Unit
 
     override suspend fun onCreateSuspending(request: Message): ZLinkSpotCreateResponse {
         createdHandler.handle(this, request)

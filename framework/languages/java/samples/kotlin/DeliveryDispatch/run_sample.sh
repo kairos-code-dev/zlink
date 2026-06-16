@@ -6,8 +6,11 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 pids=()
 role_pattern='systems\.zlink\.samples\.kotlin\.deliverydispatch\.(server\.(registry|dispatchapi|dispatchcenter|courier|tracking|session)\.Program|client\.Program|probe\.Program)'
 log_dir="build/sample-logs"
+work_dir="build/sample-state"
 mkdir -p "${log_dir}"
 rm -f "${log_dir}"/*.log
+rm -rf "${work_dir}"
+mkdir -p "${work_dir}"
 
 print_logs() {
   local status="$1"
@@ -100,6 +103,20 @@ wait_port() {
   return 1
 }
 
+wait_log_contains() {
+  local log_file="$1"
+  local pattern="$2"
+  local deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
+    if [[ -f "${log_file}" ]] && grep -q "${pattern}" "${log_file}"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${log_file} to contain ${pattern}" >&2
+  return 1
+}
+
 reserve_ports() {
   python3 - <<'PY'
 import random
@@ -107,7 +124,7 @@ import socket
 reserved = []
 try:
     chosen = set()
-    while len(reserved) < 12:
+    while len(reserved) < 15:
         host = "127.0.0.1"
         port = random.randint(20000, 32767)
         key = (host, port)
@@ -148,7 +165,7 @@ build_framework_jars() {
   )
 }
 
-read -r registry_pub registry_router api_channel dispatch_channel courier_a courier_b tracking_channel status_fanout tracking_spot_router session_stream session_spot_router spot_route < <(reserve_ports)
+read -r registry_pub registry_router api_channel dispatch_channel courier_a courier_b tracking_channel status_fanout tracking_spot_router tracking_spot_pub session_stream session_spot_router session_spot_pub tracking_spot_route session_spot_route < <(reserve_ports)
 registry_pub_host="${registry_pub%:*}"; registry_pub_port="${registry_pub##*:}"
 registry_router_host="${registry_router%:*}"; registry_router_port="${registry_router##*:}"
 api_host="${api_channel%:*}"; api_port="${api_channel##*:}"
@@ -158,9 +175,12 @@ courier_b_host="${courier_b%:*}"; courier_b_port="${courier_b##*:}"
 tracking_host="${tracking_channel%:*}"; tracking_port="${tracking_channel##*:}"
 status_host="${status_fanout%:*}"; status_port="${status_fanout##*:}"
 tracking_spot_router_host="${tracking_spot_router%:*}"; tracking_spot_router_port="${tracking_spot_router##*:}"
+tracking_spot_pub_host="${tracking_spot_pub%:*}"; tracking_spot_pub_port="${tracking_spot_pub##*:}"
 session_stream_host="${session_stream%:*}"; session_stream_port="${session_stream##*:}"
 session_spot_router_host="${session_spot_router%:*}"; session_spot_router_port="${session_spot_router##*:}"
-spot_route_host="${spot_route%:*}"; spot_route_port="${spot_route##*:}"
+session_spot_pub_host="${session_spot_pub%:*}"; session_spot_pub_port="${session_spot_pub##*:}"
+tracking_spot_route_host="${tracking_spot_route%:*}"; tracking_spot_route_port="${tracking_spot_route##*:}"
+session_spot_route_host="${session_spot_route%:*}"; session_spot_route_port="${session_spot_route##*:}"
 
 prefix="zlink.samples.deliverydispatch"
 export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} \
@@ -173,43 +193,44 @@ export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} \
 -D${prefix}.trackingChannelEndpoint=tcp://${tracking_host}:${tracking_port} \
 -D${prefix}.statusFanoutEndpoint=tcp://${status_host}:${status_port} \
 -D${prefix}.trackingSpotRouterEndpoint=tcp://${tracking_spot_router_host}:${tracking_spot_router_port} \
+-D${prefix}.trackingSpotEndpoint=tcp://${tracking_spot_pub_host}:${tracking_spot_pub_port} \
 -D${prefix}.sessionStreamEndpoint=tcp://${session_stream_host}:${session_stream_port} \
 -D${prefix}.sessionSpotRouterEndpoint=tcp://${session_spot_router_host}:${session_spot_router_port} \
--D${prefix}.trackingSpotRouteEndpoint=tcp://${spot_route_host}:${spot_route_port}"
+-D${prefix}.sessionSpotEndpoint=tcp://${session_spot_pub_host}:${session_spot_pub_port} \
+-D${prefix}.trackingSpotRouteEndpoint=tcp://${tracking_spot_route_host}:${tracking_spot_route_port} \
+-D${prefix}.sessionSpotRouteEndpoint=tcp://${session_spot_route_host}:${session_spot_route_port} \
+-D${prefix}.workDir=$(pwd)/${work_dir}"
 
 build_framework_jars
 gradle_run classes
 
 gradle_run :Server:Registry:run >"${log_dir}/registry.log" 2>&1 &
 pids+=("$!")
-wait_port "${registry_pub_host}" "${registry_pub_port}"
-wait_port "${registry_router_host}" "${registry_router_port}"
+wait_log_contains "${log_dir}/registry.log" "Started Program"
 
 gradle_run :Server:Tracking:run >"${log_dir}/tracking.log" 2>&1 &
 pids+=("$!")
-wait_port "${tracking_host}" "${tracking_port}"
-wait_port "${status_host}" "${status_port}"
-wait_port "${tracking_spot_router_host}" "${tracking_spot_router_port}"
+wait_log_contains "${log_dir}/tracking.log" "Started Program"
 
 gradle_run :Server:Session:run >"${log_dir}/session.log" 2>&1 &
 pids+=("$!")
-wait_port "${session_stream_host}" "${session_stream_port}"
+wait_log_contains "${log_dir}/session.log" "Started Program"
 
 gradle_run :Server:Courier:run --args="--courier courier-a --mode timeout-reassign" >"${log_dir}/courier-a.log" 2>&1 &
 pids+=("$!")
-wait_port "${courier_a_host}" "${courier_a_port}"
+wait_log_contains "${log_dir}/courier-a.log" "Started Program"
 
 gradle_run :Server:Courier:run --args="--courier courier-b --mode accept" >"${log_dir}/courier-b.log" 2>&1 &
 pids+=("$!")
-wait_port "${courier_b_host}" "${courier_b_port}"
+wait_log_contains "${log_dir}/courier-b.log" "Started Program"
 
 gradle_run :Server:DispatchCenter:run >"${log_dir}/dispatch-center.log" 2>&1 &
 pids+=("$!")
-wait_port "${dispatch_host}" "${dispatch_port}"
+wait_log_contains "${log_dir}/dispatch-center.log" "Started Program"
 
 gradle_run :Server:DispatchApi:run >"${log_dir}/dispatch-api.log" 2>&1 &
 pids+=("$!")
-wait_port "${api_host}" "${api_port}"
+wait_log_contains "${log_dir}/dispatch-api.log" "Started Program"
 
 gradle_run :Probe:run >"${log_dir}/probe.log" 2>&1
 gradle_run :Client:run >"${log_dir}/client.log" 2>&1

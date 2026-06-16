@@ -26,20 +26,20 @@ print_logs() {
 descendants() {
   local pid="$1"
   local child
-  pgrep -P "${pid}" 2>/dev/null | while read -r child; do
+  (pgrep -P "${pid}" 2>/dev/null || true) | while read -r child; do
     descendants "${child}"
     echo "${child}"
   done
 }
 
 kill_role_processes() {
-  pgrep -f "${role_pattern}" 2>/dev/null | while read -r pid; do
+  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
     kill "${pid}" >/dev/null 2>&1 || true
   done
 }
 
 kill_role_processes_forcibly() {
-  pgrep -f "${role_pattern}" 2>/dev/null | while read -r pid; do
+  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
     kill -9 "${pid}" >/dev/null 2>&1 || true
   done
 }

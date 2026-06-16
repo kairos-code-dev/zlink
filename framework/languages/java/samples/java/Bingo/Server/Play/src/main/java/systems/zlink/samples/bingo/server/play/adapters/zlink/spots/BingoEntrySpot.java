@@ -7,7 +7,6 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.actors.PlayerActor;
-import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers.MatchBingoActorHandler;
 
 public final class BingoEntrySpot implements ZLinkEntrySpot {
     private final ZLinkEntrySpotContext context;
@@ -23,7 +22,6 @@ public final class BingoEntrySpot implements ZLinkEntrySpot {
 
     @Override
     public void configure() {
-        context.handlers().addHandler(MatchBingoActorHandler.class);
     }
 
     @Override

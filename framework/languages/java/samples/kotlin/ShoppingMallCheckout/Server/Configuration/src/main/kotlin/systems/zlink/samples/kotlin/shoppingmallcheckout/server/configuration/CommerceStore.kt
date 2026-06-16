@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.ObjectNode
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import java.nio.channels.FileChannel
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -24,7 +25,7 @@ import systems.zlink.samples.kotlin.shoppingmallcheckout.shared.contracts.Paymen
  * CommerceApi instances and both OrderWorkflow instances share one document.
  */
 class CommerceStore {
-    val json: ObjectMapper = ObjectMapper()
+    val json: ObjectMapper = ObjectMapper().registerKotlinModule()
     private val stateFile: Path
     private val lockFile: Path
 

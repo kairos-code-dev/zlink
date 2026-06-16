@@ -18,7 +18,6 @@ import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.actors.Play
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.notifications.BingoNotificationPublisher
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomSpotCreatedHandler
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomTimerHandler
-import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.handlers.SubmitBingoCardHandler
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoCard
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomEvent
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomEventKind
@@ -59,7 +58,6 @@ class BingoRoomSpot(
     }
 
     override fun configure() {
-        context.handlers().addHandler(SubmitBingoCardHandler::class.java)
     }
 
     override suspend fun onActorJoinSuspending(

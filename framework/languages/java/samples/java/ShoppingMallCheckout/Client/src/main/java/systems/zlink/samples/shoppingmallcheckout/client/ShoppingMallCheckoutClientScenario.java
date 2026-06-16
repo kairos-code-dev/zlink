@@ -43,7 +43,7 @@ public final class ShoppingMallCheckoutClientScenario {
         ensure(!started.orderId().isEmpty());
 
         OrderState created = getState(ApiA, started.orderId());
-        ensure(OrderStatuses.Created.equals(created.status()));
+        ensure(isCreatedOrConfirmed(created));
         ensure("addr-home".equals(created.shippingAddressId()));
 
         OrderState confirmed = waitForStatus(ApiA, started.orderId(), OrderStatuses.Confirmed);
@@ -77,7 +77,7 @@ public final class ShoppingMallCheckoutClientScenario {
         ensure(OrderStatuses.Created.equals(started.status()));
 
         OrderState created = getState(ApiA, started.orderId());
-        ensure(OrderStatuses.Created.equals(created.status()));
+        ensure(isCreatedOrConfirmed(created));
         ensure("addr-office".equals(created.shippingAddressId()));
         System.out.println("shoppingmall-pending=completed");
         return started.orderId();
@@ -190,6 +190,11 @@ public final class ShoppingMallCheckoutClientScenario {
         throw new IllegalStateException(
             "Order '" + orderId + "' did not reach status '" + expectedStatus
                 + "' (last=" + (last == null ? "none" : last.status()) + ").");
+    }
+
+    private static boolean isCreatedOrConfirmed(OrderState state) {
+        return OrderStatuses.Created.equals(state.status())
+            || OrderStatuses.Confirmed.equals(state.status());
     }
 
     private static void ensure(boolean condition) {

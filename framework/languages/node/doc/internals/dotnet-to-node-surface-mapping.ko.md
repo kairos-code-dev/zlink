@@ -225,14 +225,15 @@ node 는 다음으로 매핑한다.
 dotnet 과 동일하다.
 
 1. 호출/등록 시 지정한 `packetName`(options)
-2. payload 타입의 `@ZLinkPacket('name')`
-3. payload constructor(클래스) 이름 또는 schema 이름
+2. payload 객체의 `packetName(): string`
+3. payload 타입의 `@ZLinkPacket('name')`
+4. payload constructor(클래스) 이름 또는 schema 이름
 
 TypeScript 는 런타임 타입 소거가 있으므로, payload 식별은 **클래스 생성자
-이름** 또는 명시적 `@ZLinkPacket` / `packetName` 에 의존한다. 순수 구조적 타입
-(plain interface)만 쓰는 경우 packet key 를 명시해야 한다(코드로 검증되는
-제약). 이 차이는 C# 의 nominal 타입 대비 TS 의 한계이며, 의미가 아니라 표면
-제약이다.
+이름**, payload의 `packetName()` 메서드, 또는 명시적 `@ZLinkPacket` / `packetName`
+override 에 의존한다. 순수 구조적 타입(plain interface)만 쓰는 경우 packet key 를
+명시해야 한다(코드로 검증되는 제약). 이 차이는 C# 의 nominal 타입 대비 TS 의
+한계이며, 의미가 아니라 표면 제약이다.
 
 ## 5. 등록 표면 대응표 (dotnet builder → node builder)
 

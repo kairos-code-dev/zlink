@@ -444,6 +444,9 @@ independent review는 최소 두 갈래다.
 10. Node, Java/Kotlin, .NET, C++ sample이 같은 high-level 호출 모양을 유지한다.
 11. Go, Python, Rust bindings spec도 같은 책임 경계를 설명한다.
 12. independent review에서 material issue가 남지 않는다.
+13. Node/TypeScript guide와 sample의 기본 경로 예시는 이름이 있는 payload 타입을
+    기준으로 유지하고, packet 이름 추론이 안 되는 익명 object literal 예시는 예외
+    경로로만 남는다.
 
 ## 권장 검증 명령
 

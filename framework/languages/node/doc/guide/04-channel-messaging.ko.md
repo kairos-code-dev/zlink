@@ -6,12 +6,11 @@ send 는 one-way 명령에, publish 는 여러 subscriber 로 이벤트를 보�
 ## 1. request
 
 ```ts
+import { ZLinkPacket } from '@zlink-systems/framework';
+
+@ZLinkPacket('GetProfile')
 class GetProfileReq {
   constructor(readonly userId: string) {}
-
-  packetName(): string {
-    return 'GetProfile';
-  }
 }
 
 await client
@@ -26,12 +25,11 @@ await client
 ## 2. send
 
 ```ts
+import { ZLinkPacket } from '@zlink-systems/framework';
+
+@ZLinkPacket('WarmProfile')
 class WarmProfileCmd {
   constructor(readonly userId: string) {}
-
-  packetName(): string {
-    return 'WarmProfile';
-  }
 }
 
 await client
@@ -42,12 +40,11 @@ await client
 ## 3. publish
 
 ```ts
+import { ZLinkPacket } from '@zlink-systems/framework';
+
+@ZLinkPacket('ProfileChanged')
 class ProfileChangedEvent {
   constructor(readonly userId: string) {}
-
-  packetName(): string {
-    return 'ProfileChanged';
-  }
 }
 
 await fanout
@@ -55,9 +52,20 @@ await fanout
   .submit();
 ```
 
-plain object를 바로 넘겨도 되지만, 그 경우 framework가 packet 이름을 추론할 수 없으면
-`.packetName(...)` override가 필요하다. guide의 기본 예시는 object payload가 타입에서
-자기 packet 이름을 제공하는 경로를 기준으로 둔다.
+guide의 기본 예시는 이름이 있는 class payload를 기준으로 둔다. plain object literal이나
+구조적 타입 payload를 바로 넘기는 것은 예외 경로다. 이 경우 framework가 packet 이름을
+자동으로 얻을 수 없으면 `.packetName(...)` override가 필요하다.
+
+```ts
+interface WarmProfilePayload {
+  readonly userId: string;
+}
+
+await client
+  .sendToChannel('profile', { userId: 'u1' } satisfies WarmProfilePayload)
+  .packetName('WarmProfile')
+  .submit();
+```
 
 ## 4. handler 노출
 

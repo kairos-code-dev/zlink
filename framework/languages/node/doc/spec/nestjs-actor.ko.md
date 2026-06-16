@@ -778,17 +778,17 @@ decode/encode 한다.
 
 ```ts
 const matchSpotRid = routingIdFrom(matchId);
-const request = Message.from(encodeJoinMatchReq(/* ... */));
 const result = await actor.context
-  .joinSpot(matchSpotRid, request)
+  .joinSpot(matchSpotRid, new JoinMatchReq(/* ... */))
   .timeout(2000)
-  .submit();
+  .submit<JoinMatchRes>();
 ```
 
-이 호출은 spot 쪽 join callback 의 결과를 `reply` `Message` 로 돌려주고, application join
-결정은 `resultCode` 로 표현한다. `resultCode === 0` 은 join 허용, 0 이 아닌 값은
-room full, match closed 같은 application 정의 거절 코드다. transport, timeout,
-protocol failure 는 결과값이 아니라 예외로 처리한다. 성공 시 actor 쪽 상태가
+이 호출은 spot 쪽 join callback 의 결과를 framework가 decode해서 업무 reply 객체로
+돌려준다. application join 결정은 spot 쪽 callback 이 돌려주는 `resultCode` 로 표현한다.
+`resultCode === 0` 은 join 허용, 0 이 아닌 값은 room full, match closed 같은
+application 정의 거절 코드다. transport, timeout, protocol failure 는 결과값이 아니라
+예외로 처리한다. 성공 시 actor 쪽 상태가
 다음과 같이 갱신된다.
 
 - `context.isJoined` 가 `true` 가 된다.

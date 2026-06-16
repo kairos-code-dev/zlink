@@ -279,6 +279,8 @@ business object
   경우에만 `.packetName(...)` override를 허용한다.
 - packet name을 자동 추론해야 하는 표준 sample payload는 class instance 또는
   `packetName()`/decorator metadata를 제공하는 타입을 기준으로 정리한다.
+- 표준 guide와 sample 예시는 익명 object literal 중심의 JavaScript 스타일 대신,
+  이름이 있는 class payload와 decorator 기반 TypeScript 표면을 우선 사용한다.
 
 ### .NET
 

@@ -203,7 +203,6 @@ Spot actor handler는 stream을 직접 들지 않는다. 자기 client로 보내
 ```java
 context.boundSession()
     .send(new MatchFound(roomId))
-    .packetName("MatchFound")
     .submit();
 ```
 

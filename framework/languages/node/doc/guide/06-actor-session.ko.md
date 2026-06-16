@@ -9,9 +9,11 @@ relay 할 수 있다.
 actor 는 `context.boundSession` 으로 현재 session 에 메시지를 보낼 수 있다.
 
 ```ts
+class GameStarted {
+}
+
 await actor.context.boundSession
-  .send({ type: 'GameStarted' })
-  .packetName('GameStarted')
+  .send(new GameStarted())
   .submit();
 ```
 

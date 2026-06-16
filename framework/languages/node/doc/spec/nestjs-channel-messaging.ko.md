@@ -731,17 +731,20 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 > **호출 표면(중요).** dotnet 의 fluent builder + terminator 흐름
 > (`.RequestToChannel(...).Async<T>(ct)`) 을 node 에서도 유지한다.
 > 즉 `client.requestToChannel(...).timeout(...).submit<T>()`,
-> `client.sendToChannel(...).packetName(...).submit()`,
-> `publisher.publish(...).packetName(...).submit()` 형태다. `packetName` /
+> `client.sendToChannel(...).submit()`,
+> `publisher.publish(...).submit()` 형태다. `packetName` /
 > `timeoutMs` 같은 변형은 마지막 options 인자가 아니라 builder chain 에 둔다.
 > 그래야 send/request/publish 표면과 dotnet 표면이 같은 사용 흐름을 갖는다.
 > `submit()` 은 `Promise` 를 반환하는 비동기 terminator 다. Node 표면에서는
 > 반환 타입과 `await` 가 비동기 의미를 맡으므로 별도 suffix 를 붙이지 않는다.
+> 구조적 payload 처럼 타입에서 packet 이름을 얻을 수 없는 경우에만
+> `.packetName(...)` override를 추가한다.
 
 | dotnet (fluent) | node (fluent) |
 | --- | --- |
 | `client.RequestToChannel(ch, req).Async<T>(ct)` | `await client.requestToChannel(ch, req).submit<T>()` |
 | `client.RequestToChannel(ch, req).Timeout(t).Async<T>(ct)` | `await client.requestToChannel(ch, req).timeout(timeoutMs).submit<T>()` |
+| `client.SendToChannel(ch, msg).Submit(ct)` | `await client.sendToChannel(ch, msg).submit()` |
 | `client.SendToChannel(ch, msg).PacketName(n).Submit(ct)` | `await client.sendToChannel(ch, msg).packetName(n).submit()` |
 | `publisher.Publish(ch, topic, evt).Submit(ct)` | `await publisher.publishToChannel(ch, topic, evt).submit()` |
 

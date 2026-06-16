@@ -1169,8 +1169,9 @@ client-server 전용 별칭을 두지 않고 `ZLinkChannelClient` 하나만 publ
 packet key 해석 순서:
 
 1. builder 의 `packetName(...)` 이 지정되어 있으면 그 값
-2. payload 타입의 `@ZLinkPacket` metadata
-3. payload 생성자 이름(`Type.name`)
+2. payload 객체의 `packetName(): string`
+3. payload 타입의 `@ZLinkPacket` metadata
+4. payload 생성자 이름(`Type.name`)
 
 timeout 규칙:
 
@@ -1184,10 +1185,19 @@ timeout 규칙:
   notification 으로 처리한다.
 
 ```ts
+@ZLinkPacket('GetProfile')
+class GetProfileRequest {
+  constructor(readonly accountId: string) {}
+}
+
 const reply = await client
-  .requestToChannel('profile', { accountId } satisfies GetProfileRequest)
+  .requestToChannel('profile', new GetProfileRequest(accountId))
   .timeout(200)
   .submit<GetProfileReply>();
+
+interface RefreshProfileCacheCommand {
+  readonly accountId: string;
+}
 
 await client
   .sendToChannel('profile', { accountId } satisfies RefreshProfileCacheCommand)
@@ -1814,17 +1824,21 @@ request 메시지 타입에는 framework 전용 marker interface 를 붙이지 �
 - reply 타입은 호출부에서 `submit<TReply>()` 로 명시한다.
 
 ```ts
+class GetProfileRequest {
+  constructor(readonly accountId: string) {}
+}
+
 const reply = await client
-  .requestToChannel('profile', { accountId } satisfies GetProfileRequest)
+  .requestToChannel('profile', new GetProfileRequest(accountId))
   .submit<GetProfileReply>();
 ```
 
 - handler 는 메서드 시그니처만으로 request/reply 타입을 결정한다.
 - client 호출부는 packet 이름과 payload 만 넘기고, 기다릴 reply 타입은 `submit<TReply>()` 에서 지정한다.
 
-기본 packet key 는 payload 생성자 이름(`Type.name`)을 쓴다. 부적절하면 `@ZLinkPacket('name')`
-class decorator 로 명시 metadata 를 부여한다. 이 metadata 는 outbound 기본 해석과 inbound
-handler 기본 매핑 양쪽에서 공통으로 쓴다.
+기본 packet key 는 payload가 직접 제공하는 이름 정보나 payload 생성자 이름(`Type.name`)을
+쓴다. 부적절하면 `packetName(): string` 또는 `@ZLinkPacket('name')`로 명시 metadata 를
+부여한다. 이 정보는 outbound 기본 해석과 inbound handler 기본 매핑 양쪽에서 공통으로 쓴다.
 
 > TS 한계: 런타임 타입 소거 때문에 payload 식별은 클래스 생성자 이름 또는 명시적
 > `@ZLinkPacket` / `packetName` 에 의존한다. 순수 구조적 타입(plain interface)만 쓰면 packet

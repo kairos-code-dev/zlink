@@ -14,12 +14,15 @@ framework 가 connection accept, frame decode, session dispatch, reply frame 작
 session 은 하나의 `onDispatch(header, payload)` 로 packet 을 받는다.
 
 ```ts
+class Pong {
+}
+
 export class GameSession {
   constructor(readonly context: ZLinkSessionContext) {}
 
   async onDispatch(header: ZlinkStreamHeader, payload: Message) {
     await this.context.client
-      .reply({ ok: true })
+      .reply(new Pong())
       .submit();
   }
 }
@@ -67,15 +70,26 @@ manager 에 맡긴다. session 안에서 `Map<string, Actor>` 같은 저장소�
 ## 2. connector
 
 ```ts
+import { zlinkStreamJsonCodec } from '@zlink-systems/stream-connector-json';
+
+class Join {
+  constructor(readonly playerId: string) {}
+}
+
 const connector = zlinkStreamConnectorFactory.create({
   endpoint: 'tcp://127.0.0.1:9000',
+  codec: zlinkStreamJsonCodec,
 });
 
 await connector.connect();
-await sendJson(connector, { playerId: 'p1' }).packetName('Join').submit();
+await connector.send(new Join('p1')).submit();
 ```
 
-json, messagepack, protobuf helper 는 connector 전용 패키지에서 제공한다.
+json, messagepack, protobuf helper 는 connector 전용 패키지에서 제공한다. 기본 예시는
+이름이 있는 payload 타입을 바로 넘기는 경로를 기준으로 둔다. plain object literal 같은
+구조적 payload를 보내면 connector가 packet 이름을 자동으로 얻을 수 없을 수 있으므로,
+그 경우에만 `.packetName(...)` 또는 `messageType` 인자를 명시한다.
+
 server push 를 한 번 기다릴 때는 connector의 `waitFor(...)` builder를 사용한다.
 connector에 JSON codec을 설정해 두면 기다린 message의 payload도 같은 codec으로
 decode된다.

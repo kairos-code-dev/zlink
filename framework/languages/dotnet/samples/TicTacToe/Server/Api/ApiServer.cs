@@ -1,6 +1,6 @@
 using TicTacToe.Server.Api.Handlers;
 using TicTacToe.Server.Configuration;
-using Systems.Zlink.Codecs.MessagePack;
+using Systems.Zlink.Codecs.Json;
 using Zlink.Framework.AspNetCore;
 
 namespace TicTacToe.Server.Api;
@@ -15,15 +15,14 @@ internal sealed class ApiServer(SampleSettings settings)
         builder.Services.AddZLinkFramework(options =>
         {
             options.DefaultTimeout = SampleTimeouts.Request;
-            options.Codecs.AddMessagePack();
-            options.AddHandlersFromAssemblyOf<ApiServer>();
+            options.Codecs.AddJson();
             options.AddClientServerChannel(SampleChannels.Api, channel =>
             {
                 channel.EnableServer(server =>
                 {
                     server.Bind(settings.ApiChannelEndpoint);
                 });
-                channel.AddHandlerGroup("api");
+                channel.AddRequestHandler<AuthenticatePlayerHandler>();
             });
 
             options.AddClientServerChannel(SampleChannels.Play, channel =>

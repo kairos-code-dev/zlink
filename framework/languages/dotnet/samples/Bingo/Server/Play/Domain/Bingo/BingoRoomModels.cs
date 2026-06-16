@@ -4,9 +4,9 @@ namespace Bingo.Server.Play.Domain.Bingo;
 
 internal static class BingoRoomStatus
 {
-    public const string WaitingForPlayers = "WaitingForPlayers";
-    public const string Running = "Running";
-    public const string Finished = "Finished";
+    public const string WaitingForPlayers = BingoRoomStatuses.WaitingForPlayers;
+    public const string Running = BingoRoomStatuses.Running;
+    public const string Finished = BingoRoomStatuses.Finished;
 }
 
 internal sealed record BingoRoomSettings(
@@ -17,7 +17,7 @@ internal sealed record BingoRoomSettings(
 {
     public static BingoRoomSettings Create(string mode, int roomSeq)
     {
-        if (!string.Equals(mode, "two-player", StringComparison.Ordinal))
+        if (!string.Equals(mode, BingoSampleModes.TwoPlayer, StringComparison.Ordinal))
         {
             throw new InvalidOperationException($"Unsupported bingo mode. mode={mode}");
         }

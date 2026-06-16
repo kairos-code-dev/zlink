@@ -6,8 +6,4 @@
     <LangVersion>12.0</LangVersion>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="MessagePack" />
-  </ItemGroup>
 </Project>

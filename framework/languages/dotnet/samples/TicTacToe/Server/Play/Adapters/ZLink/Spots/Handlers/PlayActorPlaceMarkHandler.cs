@@ -6,8 +6,8 @@ using TicTacToe.Server.Play.Adapters.ZLink.Actors;
 namespace TicTacToe.Server.Play.Adapters.ZLink.Spots.Handlers;
 
 internal sealed class PlayActorPlaceMarkHandler(ILogger<PlayActorPlaceMarkHandler> logger)
+    : IZLinkSpotActorRequestHandler<TicTacToeGame, PlayActor, PlaceMarkReq, PlaceMarkRes>
 {
-    [ZLinkSpotActorRequest]
     public async ValueTask<PlaceMarkRes> HandleAsync(
         TicTacToeGame spot,
         PlayActor actor,

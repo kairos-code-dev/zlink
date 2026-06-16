@@ -1,5 +1,5 @@
 using Systems.Zlink;
-using Systems.Zlink.Codecs.MessagePack;
+using Systems.Zlink.Codecs.Json;
 using System.Text;
 using TicTacToe.Server.Play.Adapters.ZLink.Actors;
 using TicTacToe.Server.Play.Domain.TicTacToe;
@@ -27,7 +27,7 @@ sealed class TicTacToeGame(
 
     public void Configure()
     {
-        Context.Handlers.AddHandler<PlayActorPlaceMarkHandler>();
+        Context.Handlers.AddActorRequest<PlayActorPlaceMarkHandler, PlayActor>(nameof(PlaceMarkReq));
     }
 
     public ValueTask onJoinActor(
@@ -73,15 +73,15 @@ sealed class TicTacToeGame(
         Message request,
         CancellationToken cancellationToken)
     {
-        var joinRequest = request.FromMsgPack<TicTacToeGameJoinReq>();
+        var joinRequest = request.FromJson<TicTacToeGameJoinReq>();
         var reply = await JoinPlayerAsync(player, joinRequest.RoomId, cancellationToken);
         logger.LogInformation(
             "TicTacToeGame: actor join accepted. actor={ActorId}, roomId={RoomId}, mark={Mark}",
             player.ActorId,
             joinRequest.RoomId,
-            reply.State.XActorId == player.ActorId ? "X" : "O");
+            reply.State.XActorId == player.ActorId ? TicTacToeMarks.X : TicTacToeMarks.O);
 
-        return ZLinkSpotActorJoinResult.Accept(reply.ToMsgPack());
+        return ZLinkSpotActorJoinResult.Accept(reply.ToJson());
     }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
@@ -219,9 +219,9 @@ sealed class TicTacToeGame(
     }
 
     private static bool IsTerminal(GameState state) =>
-        string.Equals(state.Status, "Won", StringComparison.Ordinal)
-        || string.Equals(state.Status, "Draw", StringComparison.Ordinal)
-        || string.Equals(state.Status, "TurnTimedOut", StringComparison.Ordinal);
+        string.Equals(state.Status, TicTacToeGameStatuses.Won, StringComparison.Ordinal)
+        || string.Equals(state.Status, TicTacToeGameStatuses.Draw, StringComparison.Ordinal)
+        || string.Equals(state.Status, TicTacToeGameStatuses.TurnTimedOut, StringComparison.Ordinal);
 
     private static string DecodeRoomId(RoutingId spotRid)
     {

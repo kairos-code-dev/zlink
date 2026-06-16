@@ -13,7 +13,6 @@ internal sealed class BingoEntrySpot(
 
     public void Configure()
     {
-        Context.Handlers.AddHandler<MatchBingoActorHandler>();
     }
 
     public ValueTask onCreateActor(

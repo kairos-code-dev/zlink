@@ -1,10 +1,11 @@
 using TicTacToe.Server.Configuration;
 using TicTacToe.Server.Play.Adapters.ZLink.Actors;
+using TicTacToe.Server.Play.Adapters.ZLink.Handlers;
 using TicTacToe.Server.Play.Adapters.ZLink.Sessions;
 using TicTacToe.Server.Play.Adapters.ZLink.Spots;
 using TicTacToe.Server.Play.Application.GameCreation;
 using Systems.Zlink;
-using Systems.Zlink.Codecs.MessagePack;
+using Systems.Zlink.Codecs.Json;
 using Zlink.Framework.AspNetCore;
 
 namespace TicTacToe.Server.Play;
@@ -22,8 +23,7 @@ internal sealed class PlayServer(SampleSettings settings)
         builder.Services.AddZLinkFramework(options =>
         {
             options.DefaultTimeout = SampleTimeouts.Request;
-            options.Codecs.AddMessagePack();
-            options.AddHandlersFromAssemblyOf<PlayServer>();
+            options.Codecs.AddJson();
             options.AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor);
 
             options.AddClientServerChannel(SampleChannels.Api, channel =>
@@ -43,7 +43,7 @@ internal sealed class PlayServer(SampleSettings settings)
                 {
                     server.Bind(settings.PlayChannelEndpoint);
                 });
-                channel.AddHandlerGroup("play");
+                channel.AddRequestHandler<CreateGameHandler>();
             });
 
             options.AddRouteMeshChannel(SampleChannels.Router, routed =>

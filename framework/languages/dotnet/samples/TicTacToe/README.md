@@ -18,7 +18,7 @@ This sample maps a two-player tic-tac-toe flow onto `Zlink.Framework`:
 Packet type names use `Req` for request packets, `Res` for response packets,
 and `Notify` for server push packets.
 
-TicTacToe uses MessagePack payloads for STREAM, channel, actor, and room Spot
+TicTacToe uses JSON payloads for STREAM, channel, actor, and room Spot
 messages.
 
 The sample is grouped by its own solution:

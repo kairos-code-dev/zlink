@@ -17,7 +17,7 @@ internal sealed class BingoRoom(
     BingoNotificationPublisher notifications,
     ILogger<BingoRoom> logger) : IZLinkSpot<PlayerActor>
 {
-    private static readonly BingoRoomSettings DefaultSettings = BingoRoomSettings.Create("two-player", 0);
+    private static readonly BingoRoomSettings DefaultSettings = BingoRoomSettings.Create(BingoSampleModes.TwoPlayer, 0);
     internal static readonly TimeSpan DrawPeriod = TimeSpan.FromMilliseconds(200);
 
     private readonly Dictionary<string, PlayerActor> _actors = new(StringComparer.Ordinal);
@@ -29,7 +29,6 @@ internal sealed class BingoRoom(
 
     public void Configure()
     {
-        Context.Handlers.AddHandler<SubmitBingoCardHandler>();
     }
 
     public async ValueTask OnClosingAsync(CancellationToken cancellationToken)

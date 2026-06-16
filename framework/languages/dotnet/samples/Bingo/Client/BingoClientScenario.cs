@@ -14,28 +14,28 @@ internal sealed class BingoClientScenario
     {
         // Client 1 connects, authenticates, and creates the waiting room.
         await client1.Connect.Async(cancellationToken);
-        var client1Auth = await client1.Request(new AuthenticateReq { AccessToken = "player-1" }).Async<AuthenticateRes>(cancellationToken);
+        var client1Auth = await client1.Request(new AuthenticateReq { AccessToken = BingoSamplePlayers.Player1 }).Async<AuthenticateRes>(cancellationToken);
 
-        Ensure(client1Auth.ActorId == "player-1");
+        Ensure(client1Auth.ActorId == BingoSamplePlayers.Player1);
 
-        var client1MatchRes = await client1.Request(new MatchBingoReq { Mode = "two-player" }).Async<MatchBingoRes>(cancellationToken);
+        var client1MatchRes = await client1.Request(new MatchBingoReq { Mode = BingoSampleModes.TwoPlayer }).Async<MatchBingoRes>(cancellationToken);
 
-        Ensure(client1MatchRes.State.Status == "WaitingForPlayers");
+        Ensure(client1MatchRes.State.Status == BingoRoomStatuses.WaitingForPlayers);
         Ensure(client1MatchRes.State.HostActorId == client1Auth.ActorId);
         Ensure(client1.ReceivedCount(nameof(PlayerJoinedNotify)) == 0);
 
         // Client 2 connects, authenticates, and joins the same room.
         await client2.Connect.Async(cancellationToken);
 
-        var client2Auth = await client2.Request(new AuthenticateReq { AccessToken = "player-2" }).Async<AuthenticateRes>(cancellationToken);
+        var client2Auth = await client2.Request(new AuthenticateReq { AccessToken = BingoSamplePlayers.Player2 }).Async<AuthenticateRes>(cancellationToken);
 
-        Ensure(client2Auth.ActorId == "player-2");
+        Ensure(client2Auth.ActorId == BingoSamplePlayers.Player2);
         Ensure(client2Auth.ActorId != client1Auth.ActorId);
 
-        var client2MatchRes = await client2.Request(new MatchBingoReq { Mode = "two-player" }).Async<MatchBingoRes>(cancellationToken);
+        var client2MatchRes = await client2.Request(new MatchBingoReq { Mode = BingoSampleModes.TwoPlayer }).Async<MatchBingoRes>(cancellationToken);
 
         Ensure(client2MatchRes.RoomId == client1MatchRes.RoomId);
-        Ensure(client2MatchRes.State.Status == "Running");
+        Ensure(client2MatchRes.State.Status == BingoRoomStatuses.Running);
 
         // Joining another player is delivered as a push to existing room members.
         var client1SawClient2Join = await client1.WaitFor<PlayerJoinedNotify>()
@@ -51,10 +51,10 @@ internal sealed class BingoClientScenario
         await Task.WhenAll(client1StartedTask, client2StartedTask);
 
         var client1Started = await client1StartedTask;
-        Ensure(client1Started.Payload.State.Status == "Running");
+        Ensure(client1Started.Payload.State.Status == BingoRoomStatuses.Running);
 
         var client2Started = await client2StartedTask;
-        Ensure(client2Started.Payload.State.Status == "Running");
+        Ensure(client2Started.Payload.State.Status == BingoRoomStatuses.Running);
 
         // Each client submits its bingo card; the server starts drawing after both cards arrive.
         var client2Card = await client2
@@ -64,7 +64,7 @@ internal sealed class BingoClientScenario
                 Card = { BingoClientCards.Player2 },
             })
             .Async<SubmitBingoCardRes>(cancellationToken);
-        Ensure(client2Card.State.Status == "Running");
+        Ensure(client2Card.State.Status == BingoRoomStatuses.Running);
 
         var client1Card = await client1
             .Request(new SubmitBingoCardReq
@@ -73,7 +73,7 @@ internal sealed class BingoClientScenario
                 Card = { BingoClientCards.Player1 },
             })
             .Async<SubmitBingoCardRes>(cancellationToken);
-        Ensure(client1Card.State.Status == "Running");
+        Ensure(client1Card.State.Status == BingoRoomStatuses.Running);
 
         var drawnNumbers = new List<BingoNumberDrawnNotify>();
         // Number drawing is server-driven; clients only wait for draw notifications.
@@ -97,27 +97,27 @@ internal sealed class BingoClientScenario
             Ensure(client2Drawn.Payload.DrawSeq == client1Drawn.Payload.DrawSeq);
             Ensure(client2Drawn.Payload.Number == client1Drawn.Payload.Number);
 
-            if (client1Drawn.Payload.State.Status == "Finished")
+            if (client1Drawn.Payload.State.Status == BingoRoomStatuses.Finished)
             {
                 break;
             }
         }
         Ensure(drawnNumbers.Count > 0);
-        Ensure(drawnNumbers[^1].State.Status == "Finished");
+        Ensure(drawnNumbers[^1].State.Status == BingoRoomStatuses.Finished);
 
         // The final result is pushed to both clients when the server detects bingo.
         var client1ResultTask = client1.WaitFor<BingoGameEndedNotify>()
-            .Where(message => message.Payload.State.Status == "Finished")
+            .Where(message => message.Payload.State.Status == BingoRoomStatuses.Finished)
             .Async(cancellationToken).AsTask();
         var client2ResultTask = client2.WaitFor<BingoGameEndedNotify>()
-            .Where(message => message.Payload.State.Status == "Finished")
+            .Where(message => message.Payload.State.Status == BingoRoomStatuses.Finished)
             .Async(cancellationToken).AsTask();
         await Task.WhenAll(client1ResultTask, client2ResultTask);
 
         var client1Result = await client1ResultTask;
-        Ensure(client1Result.Payload.State.Status == "Finished");
+        Ensure(client1Result.Payload.State.Status == BingoRoomStatuses.Finished);
         var client2Result = await client2ResultTask;
-        Ensure(client2Result.Payload.State.Status == "Finished");
+        Ensure(client2Result.Payload.State.Status == BingoRoomStatuses.Finished);
         Ensure(
             client2Result.Payload.State.DrawnNumbers.SequenceEqual(client1Result.Payload.State.DrawnNumbers));
         Ensure(

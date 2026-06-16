@@ -1,5 +1,6 @@
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Protobuf;
+using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Bingo.Server.Play.Adapters.ZLink.Actors;
 using Bingo.Server.Play.Adapters.ZLink.Spots;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Bingo.Server.Play.Adapters.ZLink.Spots.Handlers;
 
+[ZLinkSpotActorRequestHandler(nameof(MatchBingoReq))]
 internal sealed class MatchBingoActorHandler(ILogger<MatchBingoActorHandler> logger)
     : IZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActor, MatchBingoReq, MatchBingoRes>
 {

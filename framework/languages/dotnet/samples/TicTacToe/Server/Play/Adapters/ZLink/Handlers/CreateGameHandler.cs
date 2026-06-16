@@ -4,13 +4,12 @@ using Zlink.Framework.Contracts.Handlers;
 
 namespace TicTacToe.Server.Play.Adapters.ZLink.Handlers;
 
-[ZLinkHandlerGroup("play")]
 sealed class CreateGameHandler(
     TicTacToeGameCreator games,
     ILogger<CreateGameHandler> logger)
+    : IZLinkRequestHandler<CreateGameReq, CreateGameRes>
 {
-    [ZLinkRequest]
-    public async ValueTask<CreateGameRes> CreateAsync(
+    public async ValueTask<CreateGameRes> HandleAsync(
         CreateGameReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)

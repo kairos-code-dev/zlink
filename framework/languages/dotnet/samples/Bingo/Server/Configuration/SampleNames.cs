@@ -16,8 +16,8 @@ public static class SampleNames
 
     public static readonly string[] ActorIds =
     [
-        "player-1",
-        "player-2"
+        BingoSamplePlayers.Player1,
+        BingoSamplePlayers.Player2
     ];
 
     public const string PlayerJoinedPacket = nameof(PlayerJoinedNotify);

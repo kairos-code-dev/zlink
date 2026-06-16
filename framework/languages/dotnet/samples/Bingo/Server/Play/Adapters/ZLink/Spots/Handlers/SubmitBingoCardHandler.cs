@@ -2,10 +2,12 @@ using Bingo.Server.Play.Adapters.ZLink.Actors;
 using Bingo.Server.Play.Domain.Bingo;
 using Bingo.Server.Play.Adapters.ZLink.Spots;
 using Bingo.Shared.Contracts;
+using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
 namespace Bingo.Server.Play.Adapters.ZLink.Spots.Handlers;
 
+[ZLinkSpotActorRequestHandler(nameof(SubmitBingoCardReq))]
 internal sealed class SubmitBingoCardHandler
     : IZLinkSpotActorRequestHandler<BingoRoom, PlayerActor, SubmitBingoCardReq, SubmitBingoCardRes>
 {

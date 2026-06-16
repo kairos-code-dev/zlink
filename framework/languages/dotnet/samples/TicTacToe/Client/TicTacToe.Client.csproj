@@ -11,6 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Shared\TicTacToe.Shared.csproj" />
     <ProjectReference Include="../../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" />
-    <ProjectReference Include="../../../src/Systems.Zlink.Stream.Connector.MessagePack/Systems.Zlink.Stream.Connector.MessagePack.csproj" />
+    <ProjectReference Include="../../../src/Systems.Zlink.Stream.Connector.Json/Systems.Zlink.Stream.Connector.Json.csproj" />
   </ItemGroup>
 </Project>

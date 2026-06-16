@@ -1,9 +1,9 @@
-const { Module } = require('@nestjs/common');
-const path = require('node:path');
-const { ZLinkModule, zlinkDiscoverProviders, zlinkFramework } = require('../../../../../packages/nestjs/dist');
-const { CreateGameEndpoint } = require('./Handlers/create-game-http-handler');
-const { SampleNames } = require('../Configuration/sample-settings');
-
+import { Module } from '@nestjs/common';
+import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { AuthenticatePlayerHandler } from './Handlers/authenticate-player-handler';
+import { CreateGameEndpoint } from './Handlers/create-game-http-handler';
+import { PacketNames } from '../../Shared/Contracts/messages';
+import { SampleNames } from '../Configuration/sample-settings';
 function createTicTacToeApiModule(config: {
   apiEndpoint: string;
   playEndpoint: string;
@@ -16,7 +16,7 @@ function createTicTacToeApiModule(config: {
         useFactory: () => zlinkFramework()
           .clientServerChannel(SampleNames.apiChannel, (channel) => channel
             .server(config.apiEndpoint)
-            .handlerGroup('api'))
+            .requestHandler(PacketNames.authenticatePlayerReq, AuthenticatePlayerHandler))
           .clientServerChannel(SampleNames.playChannel, (channel) => channel
             .client(config.playEndpoint))
           .build()
@@ -24,7 +24,7 @@ function createTicTacToeApiModule(config: {
     ],
     providers: [
       CreateGameEndpoint,
-      ...zlinkDiscoverProviders(path.join(__dirname, 'Handlers'))
+      AuthenticatePlayerHandler
     ]
   })(TicTacToeApiModule);
 

@@ -1,8 +1,7 @@
-using Systems.Zlink.Codecs.MessagePack;
+using Systems.Zlink.Codecs.Json;
 using TicTacToe.Server.Configuration;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;
 using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
@@ -12,7 +11,6 @@ namespace TicTacToe.Server.Play.Adapters.ZLink.Sessions;
 sealed class PlaySession(
     IZLinkSessionContext context,
     IZLinkActorManager actors,
-    IZLinkChannelClient channels,
     ILogger<PlaySession> logger)
     : IZLinkSession
 {
@@ -98,26 +96,38 @@ sealed class PlaySession(
         Message payload,
         CancellationToken cancellationToken)
     {
-        var authenticate = payload.FromMsgPack<AuthenticateReq>();
+        try
+        {
+            var authenticate = payload.FromJson<AuthenticateReq>();
 
-        logger.LogInformation(
-            "play stream -> api: authenticate requested. sessionId={SessionId}",
-            Context.SessionId);
+            logger.LogInformation(
+                "play stream: authenticate requested. sessionId={SessionId}",
+                Context.SessionId);
 
-        var reply = await channels.RequestToChannel(
-                SampleChannels.Api,
-                new AuthenticatePlayerReq(authenticate.AccessToken))
-            .Async<AuthenticatePlayerRes>(cancellationToken);
+            var actorId = authenticate.AccessToken.Trim();
+            if (string.IsNullOrWhiteSpace(actorId))
+            {
+                throw new InvalidOperationException("Authentication token is empty.");
+            }
 
-        await Context.Client.Reply(new AuthenticateRes(reply.ActorId))
-            .Async();
+            await Context.Client.Reply(new AuthenticateRes(actorId))
+                .Async();
 
-        logger.LogInformation(
-            "api -> play stream: authenticate accepted. sessionId={SessionId}, player={ActorId}",
-            Context.SessionId,
-            reply.ActorId);
+            logger.LogInformation(
+                "play stream: authenticate accepted. sessionId={SessionId}, player={ActorId}",
+                Context.SessionId,
+                actorId);
 
-        return new AuthenticatedPlaySession(reply.ActorId);
+            return new AuthenticatedPlaySession(actorId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "play stream: authenticate failed. sessionId={SessionId}",
+                Context.SessionId);
+            throw;
+        }
     }
 
     private async ValueTask<IZLinkSessionActor> EnsureActorBoundAsync(

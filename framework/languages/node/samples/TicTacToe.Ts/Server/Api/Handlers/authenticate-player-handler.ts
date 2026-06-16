@@ -1,13 +1,10 @@
-const { zlinkRequestHandler } = require('../../../../../../packages/nestjs/dist');
-const { authenticatePlayerRes } = require('../../../Shared/Contracts/messages');
-const { PacketNames } = require('../../../Shared/Contracts/messages');
-import type { ZLinkRequestHandler } from '../../../../../packages/framework/dist';
+import { authenticatePlayerRes } from '../../../Shared/Contracts/messages';
+import type { ZLinkRequestHandler } from '@zlink-systems/framework';
 import type {
   AuthenticatePlayerRes,
   AuthenticateReq
 } from '../../../Shared/Contracts/messages';
 
-@zlinkRequestHandler('api', PacketNames.authenticatePlayerReq)
 class AuthenticatePlayerHandler implements ZLinkRequestHandler<AuthenticateReq, AuthenticatePlayerRes> {
   async handle(request: AuthenticateReq): Promise<AuthenticatePlayerRes> {
     if (typeof request.accessToken !== 'string' || request.accessToken.length === 0) {

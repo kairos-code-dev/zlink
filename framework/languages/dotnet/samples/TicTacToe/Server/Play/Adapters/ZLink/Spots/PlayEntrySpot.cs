@@ -1,6 +1,7 @@
 using Zlink.Framework.Contracts.Spots;
 using TicTacToe.Server.Play.Adapters.ZLink.Actors;
 using TicTacToe.Server.Play.Adapters.ZLink.Spots.Handlers;
+using TicTacToe.Shared.Contracts;
 
 namespace TicTacToe.Server.Play.Adapters.ZLink.Spots;
 
@@ -12,7 +13,7 @@ internal sealed class PlayEntrySpot(
 
     public void Configure()
     {
-        Context.Handlers.AddHandler<PlayActorJoinGameHandler>();
+        Context.Handlers.AddActorRequest<PlayActorJoinGameHandler, PlayActor>(nameof(JoinGameReq));
     }
 
     public ValueTask onCreateActor(

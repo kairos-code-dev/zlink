@@ -1,7 +1,7 @@
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.MessagePack;
+using Systems.Zlink.Stream.Connector.Json;
 using TicTacToe.Shared.Contracts;
 
 namespace TicTacToe.Client;
@@ -43,7 +43,7 @@ public sealed class TicTacToeClientScenario
 
         var client1Join = await client1.Request(new JoinGameReq(room.RoomId)).Async<JoinGameRes>(cancellationToken);
         Ensure(client1Join.State.RoomId == room.RoomId);
-        Ensure(client1Join.State.Status == "WaitingForPlayers");
+        Ensure(client1Join.State.Status == TicTacToeGameStatuses.WaitingForPlayers);
         Ensure(client1Join.State.XActorId == options.XActorId);
         Ensure(client1.ReceivedCount(nameof(PlayerJoinedNotify)) == 0);
 
@@ -56,7 +56,7 @@ public sealed class TicTacToeClientScenario
 
         var client2Join = await client2.Request(new JoinGameReq(room.RoomId)).Async<JoinGameRes>(cancellationToken);
         Ensure(client2Join.State.RoomId == room.RoomId);
-        Ensure(client2Join.State.Status == "InProgress");
+        Ensure(client2Join.State.Status == TicTacToeGameStatuses.InProgress);
         Ensure(client2Join.State.OActorId == options.OActorId);
 
         // Existing room members receive push packets when another player joins.
@@ -64,23 +64,23 @@ public sealed class TicTacToeClientScenario
             .Where(message => message.Payload.ActorId == options.OActorId)
             .Async(cancellationToken);
         Ensure(client1SawClient2Join.Payload.ActorId == options.OActorId);
-        Ensure(client1SawClient2Join.Payload.Mark == "O");
-        Ensure(client1SawClient2Join.Payload.State.Status == "InProgress");
+        Ensure(client1SawClient2Join.Payload.Mark == TicTacToeMarks.O);
+        Ensure(client1SawClient2Join.Payload.State.Status == TicTacToeGameStatuses.InProgress);
         Ensure(client2.ReceivedCount(nameof(PlayerJoinedNotify)) == 0);
 
         var client1SawGameStart = await client1.WaitFor<GameStateNotify>()
-            .Where(message => message.Payload.State.Status == "InProgress"
+            .Where(message => message.Payload.State.Status == TicTacToeGameStatuses.InProgress
                               && message.Payload.State.OActorId == options.OActorId)
             .Async(cancellationToken);
 
-        Ensure(client1SawGameStart.Payload.State.Status == "InProgress");
+        Ensure(client1SawGameStart.Payload.State.Status == TicTacToeGameStatuses.InProgress);
         Ensure(client1SawGameStart.Payload.State.OActorId == options.OActorId);
-        Ensure(client1SawGameStart.Payload.State.NextTurn == "X");
+        Ensure(client1SawGameStart.Payload.State.NextTurn == TicTacToeMarks.X);
 
         // The move sequence is deterministic: client 1 completes the top row.
         var client1Move1 = await client1.Request(new PlaceMarkReq(0)).Async<PlaceMarkRes>(cancellationToken);
         Ensure(client1Move1.State.Board == "X........");
-        Ensure(client1Move1.State.NextTurn == "O");
+        Ensure(client1Move1.State.NextTurn == TicTacToeMarks.O);
 
         var client2SawClient1Move1 = await client2.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.LastMoveActorId == options.XActorId
@@ -92,7 +92,7 @@ public sealed class TicTacToeClientScenario
 
         var client2Move1 = await client2.Request(new PlaceMarkReq(3)).Async<PlaceMarkRes>(cancellationToken);
         Ensure(client2Move1.State.Board == "X..O.....");
-        Ensure(client2Move1.State.NextTurn == "X");
+        Ensure(client2Move1.State.NextTurn == TicTacToeMarks.X);
 
         var client1SawClient2Move1 = await client1.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.LastMoveActorId == options.OActorId
@@ -104,7 +104,7 @@ public sealed class TicTacToeClientScenario
 
         var client1Move2 = await client1.Request(new PlaceMarkReq(1)).Async<PlaceMarkRes>(cancellationToken);
         Ensure(client1Move2.State.Board == "XX.O.....");
-        Ensure(client1Move2.State.NextTurn == "O");
+        Ensure(client1Move2.State.NextTurn == TicTacToeMarks.O);
 
         var client2SawClient1Move2 = await client2.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.LastMoveActorId == options.XActorId
@@ -116,7 +116,7 @@ public sealed class TicTacToeClientScenario
 
         var client2Move2 = await client2.Request(new PlaceMarkReq(4)).Async<PlaceMarkRes>(cancellationToken);
         Ensure(client2Move2.State.Board == "XX.OO....");
-        Ensure(client2Move2.State.NextTurn == "X");
+        Ensure(client2Move2.State.NextTurn == TicTacToeMarks.X);
 
         var client1SawClient2Move2 = await client1.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.LastMoveActorId == options.OActorId
@@ -128,14 +128,14 @@ public sealed class TicTacToeClientScenario
 
         var client1FinalMove = await client1.Request(new PlaceMarkReq(2)).Async<PlaceMarkRes>(cancellationToken);
         Ensure(client1FinalMove.State.Board == "XXXOO....");
-        Ensure(client1FinalMove.State.Status == "Won");
+        Ensure(client1FinalMove.State.Status == TicTacToeGameStatuses.Won);
         Ensure(client1FinalMove.State.Winner == options.XActorId);
 
         var client2SawFinal = await client2.WaitFor<GameStateNotify>()
-            .Where(message => message.Payload.State.Status == "Won"
+            .Where(message => message.Payload.State.Status == TicTacToeGameStatuses.Won
                               && message.Payload.State.Winner == options.XActorId)
             .Async(cancellationToken);
-        Ensure(client2SawFinal.Payload.State.Status == "Won");
+        Ensure(client2SawFinal.Payload.State.Status == TicTacToeGameStatuses.Won);
         Ensure(client2SawFinal.Payload.State.Winner == options.XActorId);
         Ensure(client2SawFinal.Payload.State.Board == client1FinalMove.State.Board);
     }

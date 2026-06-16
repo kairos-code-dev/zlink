@@ -3,11 +3,10 @@ using Zlink.Framework.Contracts.Handlers;
 
 namespace TicTacToe.Server.Api.Handlers;
 
-[ZLinkHandlerGroup("api")]
 sealed class AuthenticatePlayerHandler(ILogger<AuthenticatePlayerHandler> logger)
+    : IZLinkRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes>
 {
-    [ZLinkRequest]
-    public AuthenticatePlayerRes AuthenticateReq(
+    public ValueTask<AuthenticatePlayerRes> HandleAsync(
         AuthenticatePlayerReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
@@ -24,6 +23,6 @@ sealed class AuthenticatePlayerHandler(ILogger<AuthenticatePlayerHandler> logger
         logger.LogInformation(
             "play -> api: authenticate accepted. player={ActorId}",
             actorId);
-        return new AuthenticatePlayerRes(actorId);
+        return ValueTask.FromResult(new AuthenticatePlayerRes(actorId));
     }
 }

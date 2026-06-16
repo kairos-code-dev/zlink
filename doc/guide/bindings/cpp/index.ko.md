@@ -12,7 +12,7 @@ C++ 바인딩은 CMake로 제공합니다.
 
 ```cmake
 add_subdirectory(bindings/cpp)
-target_link_libraries(my_app PRIVATE zlink::zlink-cpp)
+target_link_libraries(my_app PRIVATE zlink::cpp)
 ```
 
 - **C++20** 이상 (coroutine, concepts 사용).
@@ -134,8 +134,9 @@ socket.set_routing_id (rid);
 
 | 상황 | 규칙 |
 |------|------|
-| `submit()` 성공 | `message_t`가 move됨 — 이후 사용 무효 |
-| `submit()` 실패 | 예외(`submit_error_t`) 발생, 메시지 소유권 유지 |
+| `submit()` 성공(`true` 반환) | `message_t`가 move됨 — 이후 사용 무효 |
+| `submit()` — `dontwait` 배압 | `false` 반환(예외 없음), 메시지 소유권 유지 |
+| `submit()` 기타 실패 | 예외(`submit_error_t`) 발생, 메시지 소유권 유지 |
 | `recv()` | `received_t&`로 in-place 수신, `close()` 또는 소멸자로 해제 |
 | 비동기 요청 | 회신 `std::vector<message_t>` 소유, 벡터 소멸 시 자동 해제 |
 
@@ -155,15 +156,18 @@ try {
 C++ 바인딩은 `zlink::binding_error_t`를 상속하는 작업별 예외를 던집니다.
 
 ```cpp
+// dontwait 배압은 false 반환으로 처리(예외 아님)
+zlink::message_t msg = zlink::message_t::from ("data");
+bool sent = socket.send ().message (msg).flags (ZLINK_DONTWAIT).submit ();
+if (!sent) {
+    // 배압 — 재시도하거나 나중에 보냄 (msg 소유권 유지)
+}
+
+// 그 외 전송 실패는 submit_error_t 예외로 전달된다
 try {
-    zlink::message_t msg = zlink::message_t::from ("data");
     socket.send ().message (msg).submit ();
 } catch (const zlink::submit_error_t &e) {
-    if (e.result () == zlink::submit_result_t::backpressured) {
-        // 재시도
-    } else {
-        throw;
-    }
+    // e.result()로 실패 원인 확인
 }
 ```
 
@@ -196,15 +200,15 @@ try {
 | `zlink_bind(s, ep)` | `socket.bind(ep)` |
 | `zlink_connect(s, ep)` | `socket.connect(ep)` |
 | `zlink_send_part(...)` | `socket.send().message(m).submit()` |
-| `zlink_recv(...)` | `socket.recv(received)` |
+| `zlink_recv_part(...)` | `socket.recv(received)` |
 | `zlink_msg_data(msg)` | `part.data()` / `part.bytes()` |
 | `zlink_msg_size(msg)` | `part.size()` |
 | `zlink_routing_id_t` | `zlink::routing_id_t` |
 | `zlink_socket_monitor_open(...)` | `socket.monitor_open(...)` |
 | `zlink_poller_new()` | `zlink::poller_t{}` |
 | `zlink_timer_new()` | `zlink::timer_t{}` |
-| `zlink_spot_node_new(ctx)` | `zlink::service::spot_node_t{ctx}` |
-| `zlink_spot_node_create_spot(...)` | `node.create_spot()` |
+| `zlink_spot_node_new(ctx, opts)` | `zlink::service::spot_node_t{ctx}` |
+| `zlink_spot_new(node)` | `node.create_spot()` |
 | `zlink_spot_node_actor_new(...)` | `node.create_actor("id")` |
 | `zlink_registry_new(ctx)` | `zlink::service::registry_t{ctx}` |
 | `zlink_discovery_new(ctx,...)` | `zlink::service::discovery_t{ctx, type, ch}` |
@@ -250,8 +254,7 @@ std::thread worker ([&ctx] {
 | 파일 | 설명 |
 |------|------|
 | `pair_recv_sample.cpp` | PAIR 송수신 |
-| `dealer_router_recv_sample.cpp` | DEALER/ROUTER 송수신 |
-| `request_reply_async_sample.cpp` | std::future 비동기 요청/응답 |
+| `dealer_router_recv_sample.cpp` | DEALER/ROUTER 송수신(요청/응답) |
 | `pubsub_recv_sample.cpp` | XPUB/SUB 발행·구독 |
 | `stream_recv_sample.cpp` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.cpp` | STREAM 패킷 콜백 |
@@ -259,15 +262,17 @@ std::thread worker ([&ctx] {
 | `discovery_registry_sample.cpp` | Registry + Discovery |
 | `registry_query_sample.cpp` | Registry 토폴로지 쿼리 |
 | `spot_recv_sample.cpp` | SpotNode/Spot PUB/SUB |
-| `spot_request_async_sample.cpp` | SpotNode 비동기 요청 |
+| `spot_rpc_example.cpp` | SpotNode 채널 요청/응답(RPC) |
 | `actor_single_player_queue_sample.cpp` | 액터 조인·이동·메시지 큐 |
 | `actor_room_server_sample.cpp` | 방 서버 패턴 |
 | `actor_gateway_relay_sample.cpp` | 게이트웨이 릴레이 |
 
 ```bash
 cd bindings/cpp
-cmake -B build && cmake --build build
-./build/samples/pair_recv_sample
+# 샘플은 ZLINK_CPP_BUILD_SAMPLES=ON일 때만 빌드된다
+cmake -B build -DZLINK_CPP_BUILD_SAMPLES=ON && cmake --build build
+./build/sample_cpp_pair_recv_sample
+# 또는 일괄 실행: ./samples/run_samples.sh
 ```
 
 ---

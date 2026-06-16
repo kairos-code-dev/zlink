@@ -130,11 +130,12 @@ the same `(service_name, spot_rid)` and then picks exactly one authoritative
 owner during owner lookup. The concrete ordering token used by that
 implementation is:
 
-- Primary: registration time of the still-live `SpotNode` provider in the same
-  `service_name`
-- Secondary: topology row `last_reported_ms` when provider registration time is
+- Primary: topology row `last_reported_ms` — the most recently reported owner
+  wins
+- Secondary: the live owner's `registration_id` — the higher registration id
+  wins when `last_reported_ms` is equal
+- Tertiary: owner routing-id string comparison when both previous values are
   equal
-- Tertiary: endpoint string comparison when both previous values are equal
 
 This rule prevents an older owner from taking ownership back just because a
 late topology report arrives after a newer owner is already live.
@@ -424,14 +425,16 @@ zlink_config_result_t zlink_registry_service_summary(
 ```
 
 Returns service-level aggregate information. Each entry summarizes instance
-counts by state for a given (auto_connect_type, channel_name) pair.
+counts by state for a given (`auto_connect_type`, `service_role`,
+`channel_name`) triple.
 
 **Buffer convention:** Pass `entries = NULL` to query the required count.
 Provide a caller-allocated buffer on the next call. If the buffer is too
-small, the call returns `-1` with `errno = ENOBUFS` and `*count` set to the
-needed capacity.
+small, the call returns `ZLINK_CONFIG_INVALID_ARGUMENT` with `errno = ENOBUFS`
+and `*count` set to the needed capacity.
 
-Results are ordered by (`auto_connect_type`, `channel_name`) ascending.
+Results are ordered by (`auto_connect_type`, `service_role`, `channel_name`)
+ascending.
 
 #### zlink_registry_service_summary_entry_t
 
@@ -580,45 +583,26 @@ fields are treated as wildcards (match all).
 
 ### zlink_registry_topology
 
-Get a snapshot of the full topology from a local Registry instance.
+Get a snapshot of the topology from a local Registry instance, optionally
+filtered.
 
 ```c
 zlink_config_result_t zlink_registry_topology(void *registry,
-                                                       zlink_registry_topology_entry_t *entries,
-                                                       size_t *count);
+                                              const zlink_registry_topology_filter_t *filter,
+                                              zlink_registry_topology_entry_t *entries,
+                                              size_t *count);
 ```
 
-Fills `entries` with all registered services in the topology. On input
-`*count` is the array capacity; on output it is the actual count. Pass
-`entries = NULL` to query the required count first.
+Fills `entries` with the registered services in the topology. Pass a non-NULL
+`filter` to return only entries matching its criteria, or `filter = NULL` for a
+full unfiltered snapshot. On input `*count` is the array capacity; on output it
+is the actual count. Pass `entries = NULL` to query the required count first.
 
 **Returns:** A `zlink_config_result_t` value.
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_registry_topology`
-
----
-
-### zlink_registry_topology
-
-Query the local topology with a filter.
-
-```c
-zlink_config_result_t zlink_registry_topology(void *registry,
-                                                    const zlink_registry_topology_filter_t *filter,
-                                                    zlink_registry_topology_entry_t *entries,
-                                                    size_t *count);
-```
-
-Like `zlink_registry_topology` but only returns entries matching
-the `filter` criteria.
-
-**Returns:** A `zlink_config_result_t` value.
-
-**Thread safety:** Safe to call from any thread.
-
-**See also:** `zlink_registry_topology`
+**See also:** `zlink_registry_query_client_topology`
 
 ---
 
@@ -780,3 +764,33 @@ actual count. Pass `entries = NULL` to query the required count first.
 SPOT owner and Actor active route lookup are exposed on Discovery, not
 Registry. See `zlink_discovery_resolve_spot()` and
 `zlink_discovery_resolve_actor()` in the Discovery spec.
+
+## Owner-Bound Route Row
+
+Registry materializes owner-bound route rows in addition to service/provider
+rows. These rows are not a general key-value store; a route observation is
+identified by:
+
+- route kind
+- route key
+- owner registration id
+- owner routing id
+- advertising registry
+
+When Discovery calls `zlink_discovery_bind_route()`, Registry stores the route
+observation with the current Discovery service registration as its owner. If the
+same `kind + key` has several owner observations, Registry keeps only the live
+owner generations as candidates and materializes the current winner.
+
+When an owner registration disappears — through heartbeat timeout, explicit
+unregister, or a new-generation registration — the route rows it claimed are
+cleaned up with it. A framework adapter may therefore store a Spot name route or
+an actor-session binding in Registry, but it must not be described as managing a
+separate metadata table directly: the lifetime of a route row is bound to the
+owner service registration.
+
+The public surface for route lookup and bind/unbind follows the Discovery spec:
+`zlink_discovery_bind_route()`, `zlink_discovery_unbind_route()`, and
+`zlink_discovery_resolve_route()`. This Registry document explains the storage
+and cleanup semantics of those rows and does not create a contract for
+applications to depend on the internal row format directly.

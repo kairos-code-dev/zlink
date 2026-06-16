@@ -91,7 +91,7 @@ channel send/request, peer routed communication, and publish/subscribe.
 - Data plane:
   `zlink_spot_send_channel()` / `zlink_spot_request_channel()` /
   `zlink_spot_publish()` / `zlink_spot_subscribe()` /
-  `zlink_spot_subscription_event()`.
+  `zlink_spot_recv_subscription_event()`.
 - Readable notifications share one callback surface:
   `zlink_spot_dispatch_event_handler()`.
 - Monitoring uses snapshot/query APIs.
@@ -101,8 +101,9 @@ channel send/request, peer routed communication, and publish/subscribe.
 - **Actor**: Session-based routing target inside SPOT. Funnels STREAM session
   messages into a `Spot` dispatch context. `SpotNode` owns the Actor table;
   newly created Actors start in the `Entry Spot`. Actors move to user Spots
-  via `zlink_spot_join_spot()` and return to `Entry Spot` automatically on
-  session disconnect. Actors own no socket or inproc endpoint; they are
+  via `zlink_spot_node_actor_join_spot()` and return to `Entry Spot` only on an
+  explicit `zlink_spot_node_actor_leave_spot()`; STREAM session bind/unbind is
+  independent and does not change the joined Spot. Actors own no socket or inproc endpoint; they are
   identified by `zlink_actor_ref_t`.
 
 See the [SPOT Guide](./07-3-spot.md) and [SPOT Actor Guide](./07-4-actor.md) for details.

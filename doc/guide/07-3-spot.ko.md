@@ -339,10 +339,13 @@ void my_dispatch_handler(
         break;
     case ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE:
         /* subject가 timer handle */
-        zlink_timer_recv(info_->subject, NULL, 0);
+        zlink_timer_recv(info_->subject, NULL);
         break;
     case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE:
         /* zlink_spot_actor_join_recv() 로 drain */
+        break;
+    case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE:
+        /* zlink_spot_recv_actor_lifecycle() 로 drain */
         break;
     case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE:
         /* subject가 const zlink_actor_ref_t* */
@@ -352,8 +355,8 @@ void my_dispatch_handler(
 ```
 
 디스패치 우선순위는 `SUBSCRIBE_READABLE` → `ROUTED_READABLE` →
-`CHANNEL_REPLY_READABLE` → `TIMER_READABLE` → `ACTOR_JOIN_READABLE` →
-`ACTOR_READABLE` 순이다. 모든 이벤트가 같은 콜백에서 처리되므로
+`ACTOR_JOIN_READABLE` → `ACTOR_LIFECYCLE_READABLE` → `ACTOR_READABLE` →
+`CHANNEL_REPLY_READABLE` → `TIMER_READABLE` 순이다. 모든 이벤트가 같은 콜백에서 처리되므로
 하나의 Spot에서 라우팅 핸들러, 구독 핸들러, 타이머 핸들러, 채널 응답 콜백은
 동일한 실행 문맥에서 순차적으로 실행된다.
 
@@ -559,7 +562,7 @@ zlink_spot_node_status_t status;
 zlink_spot_node_status(node, &status);
 
 size_t peer_count = 0;
-zlink_spot_node_peers(node, NULL, &peer_count);
+zlink_spot_node_peers(node, NULL, NULL, &peer_count);
 ```
 
 더 자세한 상태 변화가 필요하면 연속된 snapshot/query 결과를 비교한다.
@@ -572,7 +575,7 @@ delivery target을 끊던 모델의 잔재다. 현재 SPOT delivery 모델은 �
 `routed_send_queue` 큐 한도로 적용된다. `ingress-sub`와 `internal-router`는
 제거되었으며 스냅샷에 나타나지 않는다.
 `zlink_spot_node_internal_sockets()`으로 반환되는 `mesh-pub`,
-`mesh-xsub`, `external-router`의 `snapshot` 필드는 transport 소켓 HWM을 보여준다.
+`mesh-xsub`, `external-router`의 `monitor_status` 필드는 transport 소켓 HWM을 보여준다.
 relay 및 delivery 소켓은 HWM `0`을 보고하며 이는 정상이다.
 큐 입장 허용 한도는 HWM 프로필 옵션으로 제어하며 프로필별 메시지 수 기준은
 BALANCED 256 (기본), COMPACT 64, LOW_LATENCY 128, THROUGHPUT 512다.

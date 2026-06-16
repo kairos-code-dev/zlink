@@ -282,49 +282,47 @@ zlink_connect(sub, "tcp://pub2:5557");
 
 ## 7. PUB/SUB 주의사항
 
-### Slow Subscriber (HWM 초과 시 drop)
+### Slow Subscriber (HWM 처리)
 
-PUB/XPUB는 기본적으로 **손실 허용 모드(lossy mode)**로 동작한다. 느린 구독자의
-송신 큐가 HWM(High-Water Mark, 큐 최대 허용 메시지 수)에 도달하면 그 구독자에게 보내는 메시지를
-오류 반환 없이 **조용히 버린다(silent drop)**.
-
-```c
-/* Option 1: Increase buffer by adjusting HWM */
-int hwm = 100000;
-zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
-```
-
-#### XPUB_NODROP — 버리지 않고 배압(backpressure) 반환
-
-`ZLINK_PUB_OPT_NODROP`을 켜면 손실 허용 모드가 꺼진다. HWM 도달 시
-메시지를 버리지 않고 `ZLINK_SUBMIT_BACKPRESSURED`를 반환해 호출자가 직접
-배압(backpressure)을 제어할 수 있다.
+PUB/XPUB는 기본적으로 **NODROP 모드**로 동작한다 — `ZLINK_PUB_OPT_NODROP`의
+기본값이 `1`이다. 느린 구독자의 송신 큐가 HWM(High-Water Mark, 큐 최대 허용 메시지 수)에
+도달하면 메시지를 버리지 않고 `zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를
+반환해 호출자가 대응할 수 있다.
 
 ```c
-/* Enable NODROP on XPUB */
-void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
-int nodrop = 1;
-zlink_set_pub_option(xpub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
-
-/* HWM 도달 시 드롭 대신 BACKPRESSURED 반환 */
+/* 기본 배압 처리 — HWM 도달 시 publish가 BACKPRESSURED 반환 */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 5);
 memcpy(zlink_msg_data(&msg), "hello", 5);
 zlink_submit_result_t rc = zlink_publish(
-    xpub, NULL, &msg, 1, ZLINK_DONTWAIT);
+    pub, NULL, &msg, 1, ZLINK_DONTWAIT);
 if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
     /* HWM 도달 — 재시도 또는 backpressure 처리 */
     zlink_msg_close(&msg);
 }
+
+/* 또는 HWM을 올려 버스트를 흡수 */
+int hwm = 100000;
+zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
+```
+
+#### 손실 허용 모드 — 배압 대신 버리기
+
+`ZLINK_PUB_OPT_NODROP`을 `0`으로 설정하면 손실 허용 모드가 켜진다. HWM 도달 시
+배압을 알리는 대신 그 구독자에게 보내는 메시지를 오류 반환 없이 **조용히 버린다**.
+
+```c
+/* 손실 허용 모드 활성화 (HWM 도달 시 drop) */
+int nodrop = 0;
+zlink_set_pub_option(pub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
 ```
 
 | 모드 | HWM 도달 시 동작 | 사용 시점 |
 |------|------------------|-----------|
-| 기본 (손실 허용) | 조용히 버림 — 오류 반환 없이 메시지 유실 | 최신 데이터만 중요한 경우 (센서, 시세 데이터) |
-| `XPUB_NODROP=1` | `ZLINK_SUBMIT_BACKPRESSURED` 반환 — 호출자가 배압 제어 | 메시지 유실이 허용되지 않는 경우 |
+| 기본 (`NODROP=1`) | `ZLINK_SUBMIT_BACKPRESSURED` 반환 — 호출자가 배압 제어 | 메시지 유실이 허용되지 않는 경우 (기본) |
+| `NODROP=0` (손실 허용) | 조용히 버림 — 오류 반환 없이 메시지 유실 | 최신 데이터만 중요한 경우 (센서, 시세 데이터) |
 
-> `ZLINK_PUB_OPT_NODROP`은 XPUB socket 전용 option이다.
-> 일반 PUB에서는 쓸 수 없다.
+> `ZLINK_PUB_OPT_NODROP`은 PUB·XPUB 양쪽에 적용된다(PUB은 XPUB 위에 구현됨).
 
 ### Late Joiner (구독 전 메시지 유실)
 

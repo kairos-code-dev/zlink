@@ -25,8 +25,9 @@ handle에서 이 세 모델 중 정확히 하나만 활성화할 수 있습니�
 
 STREAM은 context auto HWM(고수위 표시, High-Water Mark) 정책에서 `stream` policy class로 분류됩니다. 기본
 context에서는 auto-HWM이 켜져 있으며, 활성 profile은 `balanced`입니다.
-애플리케이션이 `SNDBUF` / `RCVBUF`를 직접 주지 않으면 STREAM은 호환 기본값
-`262144`를 사용합니다.
+애플리케이션이 context auto-HWM을 끄면 STREAM은 일반 HWM 기본값 `1000`을
+유지합니다. 애플리케이션이 `SNDBUF` / `RCVBUF`를 직접 주지 않으면 STREAM은 호환
+기본값 `262144`를 사용합니다.
 
 ## Stream 옵션 (`zlink_stream_option_t`)
 
@@ -169,9 +170,9 @@ callback이 부착된 경우 `EBUSY`. Context가 종료된 경우 `ETERM`.
 ### STREAM session Actor list
 
 STREAM session Actor list는 STREAM client session routing id와 Actor ref를 연결하는
-per-session 매핑이다. 이 매핑은 STREAM socket의 public lookup 대상이 아니다. 한
-session은 여러 Actor를 bind할 수 있고, 한 Actor는 동시에 하나의 STREAM session에만
-bind될 수 있다.
+per-session 매핑이다. session의 현재 Actor binding은 `zlink_stream_bound_actors()`로
+조회할 수 있다. 한 session은 여러 Actor를 bind할 수 있고, 한 Actor는 동시에 하나의
+STREAM session에만 bind될 수 있다.
 
 ```c
 zlink_config_result_t zlink_stream_attach_actor_gateway(
@@ -201,6 +202,12 @@ zlink_submit_result_t zlink_stream_send_bound_actor_part(
   zlink_msg_t *part,
   zlink_send_flags_t flags,
   zlink_part_flag_t part_flag);
+
+zlink_config_result_t zlink_stream_bound_actors(
+  void *stream,
+  const zlink_routing_id_t *session_rid,
+  zlink_actor_ref_t *entries,
+  size_t *count);
 ```
 
 - `stream`은 session routing id가 속한 raw STREAM socket이다.
@@ -248,6 +255,12 @@ state로 STREAM session 메시지 part를 relay한다.
 - target Actor owner node와 연결이 없으면 `ZLINK_SUBMIT_NOT_CONNECTED` 계열 실패다.
 - relay 경로의 내부 자원 부족이나 HWM 초과는 `ZLINK_SUBMIT_BACKPRESSURED` 계열
   실패다.
+- `flags` 인자는 현재 예약되어 무시되며, relay 경로는 내부적으로 논블로킹으로
+  제출한다.
+
+`zlink_stream_bound_actors()`는 session의 현재 Actor binding을 조회한다.
+`session_rid`로 session을 선택하고, `entries = NULL`로 필요한 `*count`를 먼저
+조회한 뒤 호출자가 할당한 배열을 제공한다.
 
 ---
 

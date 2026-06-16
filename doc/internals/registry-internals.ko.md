@@ -226,13 +226,15 @@ sequenceDiagram
 
 | 필터 | 타입 | 설명 |
 |------|------|------|
-| service_kind | uint16_t | SPOT (2) 또는 Socket (3) |
+| auto_connect_type | uint16_t | `ZLINK_AUTO_CONNECT_*` 채널 타입 |
+| service_kind | uint16_t | `DISCOVERY` (1), `SPOT_SUB` (3), `SPOT_PUB` (4), `SOCKET` (5) |
 | service_role | uint16_t | router/dealer/pub/sub/spot |
-| state | uint8_t | 서비스 상태 필터 |
-| service_name | string | 정확한 이름 매칭 |
+| state | uint8_t | topology 상태 필터 |
+| source | uint8_t | `ZLINK_TOPOLOGY_SOURCE_*` 필터 |
+| channel_name | string | 정확한 channel 이름 매칭 |
 | routing_id | bytes | 특정 provider 매칭 |
 
-결과 정렬 순서: `service_kind → service_name → service_role → endpoint → routing_id`
+결과 정렬 순서: `auto_connect_type → service_kind → channel_name → service_role → endpoint → routing_id`
 
 ### 7.1 Spot 소유 노드 조회 (resolve_spot 전용 쿼리)
 

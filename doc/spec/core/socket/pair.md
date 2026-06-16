@@ -74,10 +74,11 @@ Receives a complete multipart message from socket `s_`. On success,
 message parts, and `*source_rid_out_` is set to the routing id of the
 sender (where applicable). Ownership of the parts array and each part is
 transferred to the caller, who must close every part (or call
-`zlink_multipart_close()`) and free the array. PAIR is a recv-only type:
-the intended pattern is to observe `ZLINK_POLLIN` from a poller and then
-pull data with this function. Pass `ZLINK_DONTWAIT` to return immediately
-when no message is available.
+`zlink_multipart_close()`) and free the array. PAIR has no receive callback
+surface; receive is poll + `zlink_recv` only — the socket itself remains
+bidirectional and supports `zlink_send`. The intended pattern is to observe
+`ZLINK_POLLIN` from a poller and then pull data with this function. Pass
+`ZLINK_DONTWAIT` to return immediately when no message is available.
 
 **Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 

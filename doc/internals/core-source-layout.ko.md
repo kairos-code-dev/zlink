@@ -36,23 +36,25 @@
 | core/include/                                              |
 | |-- zlink.h                                                |
 | `-- zlink/                                                 |
-|     |-- actor.h                                            |
 |     |-- common.h                                           |
-|     |-- core.h                                             |
-|     |-- discovery.h                                        |
-|     |-- message.h                                          |
-|     |-- monitoring.h                                       |
-|     |-- registry.h                                         |
-|     |-- service.h                                          |
 |     |-- service_common.h                                   |
-|     |-- socket.h                                           |
-|     `-- spot.h                                             |
+|     |-- core/api.h                                         |
+|     |-- eventing/api.h                                     |
+|     |-- message/api.h                                      |
+|     |-- socket/api.h                                       |
+|     `-- service/                                           |
+|         |-- actor.h                                        |
+|         |-- discovery.h                                    |
+|         |-- registry.h                                     |
+|         `-- spot.h                                         |
 +------------------------------------------------------------+
 ```
 
-`zlink.h`는 집계 헤더다. 기능별 공개 계약은 `core/include/zlink/*.h`에
-나누어 둔다. `service.h`도 집계 헤더로 유지하며, registry, discovery,
-spot처럼 독립된 서비스 영역은 개별 헤더에 둔다.
+`zlink.h`는 집계 헤더다. 기능별 공개 계약은 도메인별
+`core/include/zlink/<domain>/api.h`(core, eventing, message, socket)와
+`core/include/zlink/service/*.h`(actor, discovery, registry, spot)에 나누어
+둔다. registry, discovery, spot처럼 독립된 서비스 영역은 `service/` 아래 개별
+헤더에 둔다.
 
 ## API Facade
 
@@ -94,6 +96,8 @@ SPOT API 구현은 함수 의미에 따라 `spot/core`, `spot/dispatch`,
 | |-- services/                                              |
 | |   |-- actor/                                             |
 | |   |   |-- async/                                         |
+| |   |   |-- gateway/                                       |
+| |   |   |-- lifecycle/                                     |
 | |   |   |-- multipart/                                     |
 | |   |   |-- packet/                                        |
 | |   |   |-- result/                                        |
@@ -108,6 +112,7 @@ SPOT API 구현은 함수 의미에 따라 `spot/core`, `spot/dispatch`,
 | |       |-- dispatch/                                       |
 | |       |-- node/                                           |
 | |       |-- pubsub/                                         |
+| |       |-- request_reply/                                  |
 | |       `-- runtime/                                       |
 | |-- sockets/                                               |
 | |   |-- common/                                            |

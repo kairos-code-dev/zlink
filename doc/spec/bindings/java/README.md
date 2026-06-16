@@ -159,6 +159,25 @@ Physical source folders such as `SocketEnums/` are allowed only as file
 classification groups when the Java `package` declaration remains the owning
 contract package.
 
+## Native Wait Boundary
+
+The Java binding separates the low-level socket recv API from the poller-based
+receive boundary.
+
+- `socket.recv(received, RecvFlags.NONE)` is a native blocking recv. It may be
+  used directly from a small number of dedicated threads or in simple tests.
+- A framework or a runtime that handles many client sessions does not put a
+  blocking recv directly on the handler execution thread. The runtime waits for
+  readiness with `Poller` and then performs a `RecvFlags.DONT_WAIT` recv on the
+  ready socket.
+- Application handlers run behind the framework-configured handler executor, not
+  on the native wait thread. If virtual threads are used, they are used at this
+  handler-executor boundary.
+- No separate public dispatcher API is provided. The existing `Poller`, socket
+  `recv(..., DONT_WAIT)`, and the framework's internal receive loop are
+  sufficient; framework execution policy is not mixed into the public bindings
+  contract.
+
 ## Proposed Repository Layout
 
 This is the review target for the Java binding repository layout. It keeps the

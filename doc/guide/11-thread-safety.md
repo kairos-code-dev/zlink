@@ -169,7 +169,7 @@ zlink returns a clear error code instead:
 |---|---|---|
 | You call `close`/`destroy` while another thread is mid-call on the same handle | Close is **rejected** — the handle stays alive | `ZLINK_CLOSE_BUSY` |
 | You call any API after `close` has been accepted | The call is **rejected** — the handle is shutting down | `ZLINK_CLOSE_SHUTDOWN` (or matching `*_TERMINATED` on the per-function result) |
-| You call `close`/`destroy` twice | Second call returns immediately | `ZLINK_CLOSE_SHUTDOWN` |
+| You call `close`/`destroy` twice | Second call returns immediately | Socket: `EALREADY`; service handle (SPOT/Discovery/Registry): `ESHUTDOWN` |
 
 After `ZLINK_CLOSE_BUSY`, the handle goes back to normal — nothing is
 damaged, you can keep using it or try closing again later.
@@ -210,7 +210,9 @@ void shutdown_socket(void *socket)
 
 **Self-close from callbacks:** If a send-ready or monitor callback calls
 `close` on its own handle, the actual close is deferred until the callback
-returns. This avoids use-after-free inside the callback.
+returns (the call returns OK). This avoids use-after-free inside the callback.
+A self-close from inside a socket message handler or STREAM raw/packet
+dispatch callback is **not** deferred — it returns `EBUSY`/`ZLINK_CLOSE_BUSY`.
 
 ## 5. The One Exception: zlink_msg_t Is NOT Thread-Safe
 
@@ -243,10 +245,17 @@ before returning and must not access them from another thread.
 
 ## 6. Callback Rules
 
-Socket callbacks (message, XPUB, monitor, send-ready) run on the I/O thread.
-`zlink_spot_dispatch_event_handler` callbacks
-run on a SpotNode dispatch worker thread — not on the I/O thread. The no-blocking
-and offload rules apply equally to both.
+There is no single "callback thread" — each callback runs on a different
+thread:
+
+| Callback | Thread |
+|----------|--------|
+| Socket message handler (`zlink_recv_handler`) | An I/O thread |
+| Monitor handler | The service-control runtime thread (not the socket I/O thread) |
+| Send-ready handler | May run synchronously on the caller's send thread |
+| SPOT dispatch event handler | The SPOT dispatch worker pool |
+
+The no-blocking and offload rules apply to all of them.
 Here's what you need to know:
 
 **What you CAN do in a callback:**
@@ -255,8 +264,10 @@ Here's what you need to know:
 - Read message data and push it to your own queue.
 
 **What you should NOT do in a callback:**
-- **Block** (sleep, lock, heavy computation) — this stalls all I/O on that
-  thread. Push work to a queue and process it on a worker thread.
+- **Block** (sleep, lock, heavy computation) — for the socket message handler
+  this stalls I/O on its thread; for monitor/send-ready/SPOT-dispatch callbacks
+  it delays that subsystem. Push work to a queue and process it on a worker
+  thread.
 - **Replace the send-ready handler from inside its own callback** — returns
   `EDEADLK`.
 

@@ -22,7 +22,8 @@ This document describes the ownership boundaries used by
 The public C API validates the handle and delegates the operation to
 `socket_base_t::term_peer_rid()`. That function first checks whether the
 socket is attached to Discovery. Attached sockets are owned by Discovery for
-lifecycle changes, so manual disconnect is rejected with `EBUSY`.
+lifecycle changes, so manual disconnect is rejected with `EFSM` while attached
+(or `ESHUTDOWN` during shutdown).
 
 ROUTER and STREAM have routing maps and use map lookup to find the target
 pipe. STREAM uses a local connection id as its 4-byte routing id, so the input

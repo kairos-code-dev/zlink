@@ -11,8 +11,9 @@ managing background threads.
 
 ## Atomic Counter
 
-Atomic counters provide lock-free increment, decrement, and read operations on
-a shared integer. The counter is created with `zlink_atomic_counter_new` and
+Atomic counters provide atomic increment, decrement, and read operations on a
+shared integer (lock-free on platforms with native atomics, otherwise backed by
+an internal mutex). The counter is created with `zlink_atomic_counter_new` and
 must be destroyed with `zlink_atomic_counter_destroy`.
 
 > **Note:** Only `zlink_atomic_counter_new` is exported from the shared
@@ -47,9 +48,10 @@ Set the counter to an explicit value.
 void zlink_atomic_counter_set (void *counter_, int value_);
 ```
 
-Atomically replaces the current counter value with `value_`.
+Replaces the current counter value with `value_`.
 
-**Thread safety:** Safe to call from any thread.
+**Thread safety:** Not thread-safe. Do not call concurrently with other
+operations on the same counter; typically used only during setup.
 
 **See also:** `zlink_atomic_counter_value`
 
@@ -82,10 +84,12 @@ Decrement the counter by one.
 int zlink_atomic_counter_dec (void *counter_);
 ```
 
-Atomically decrements the counter and returns the previous value (the value
-immediately before the decrement).
+Atomically decrements the counter and reports whether it is still nonzero:
+returns `1` when the counter remains greater than zero after the decrement, and
+`0` when it reaches zero.
 
-**Returns:** The value of the counter before the decrement.
+**Returns:** `1` if the counter is still nonzero after the decrement, `0` if it
+reached zero.
 
 **Thread safety:** Safe to call from any thread.
 
@@ -317,15 +321,17 @@ zlink_handler_result_t zlink_timer_handler (void *timer_,
 ```
 
 Registers `handler_` to be called each time the timer fires. The callback
-receives the timer handle, cumulative fire count, and `userdata_`. Set
-`handler_` to `NULL` to detach a previously registered callback.
+receives the timer handle, cumulative fire count, and `userdata_`. A NULL
+`handler_` is invalid and fails with `ZLINK_HANDLER_INVALID_ARGUMENT` (`EINVAL`).
+After a handler is attached, `zlink_timer_recv()` on the same timer returns
+`ZLINK_RECV_BUSY`.
 
 **Parameters:**
 
 | Name | Description |
 |------|-------------|
 | `timer_` | Timer handle |
-| `handler_` | Callback function, or `NULL` to detach |
+| `handler_` | Callback function (must not be NULL) |
 | `userdata_` | Opaque pointer passed to the callback |
 
 **Returns:** `ZLINK_HANDLER_OK` on success; otherwise a `zlink_handler_result_t`

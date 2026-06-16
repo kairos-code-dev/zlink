@@ -1,3 +1,5 @@
+[English](./README.md) | [한국어](./README.ko.md)
+
 [Spec Index](../../README.md) · [Bindings Policy](../README.md)
 
 # C++ Binding Final Structure
@@ -933,7 +935,7 @@ artifact. The completed binding therefore maintains these build rules:
   `request_to_channel(...)`. SPOT topic publish stays `publish(topic)`.
 - Handler registration methods use `set_..._handler` names. For example, send
   readiness uses `set_send_ready_handler(...)`, raw STREAM packet handling uses
-  `set_packet_handler(...)`, monitor events use `on_event(...)`, and
+  `set_packet_handler(...)`, monitor events use `set_monitor_handler(...)`, and
   SPOT dispatch uses `set_dispatch_handler(...)`.
 - `on_...` names are not public registration methods in the completed C++ API.
   They are reserved for internal or protected hooks if such hooks are needed.

@@ -13,8 +13,8 @@ English | [한국어](./04-transports.ko.md)
 | tcp | `tcp://host:port` | `tcp://127.0.0.1:5555` | - | - |
 | ipc | `ipc://path` | `ipc:///tmp/test.ipc` | - | - |
 | inproc | `inproc://name` | `inproc://workers` | - | - |
-| ws | `ws://host:port` | `ws://127.0.0.1:8080` | - | O |
-| wss | `wss://host:port` | `wss://server:8443` | O | O |
+| ws | `ws://host:port/path` | `ws://127.0.0.1:8080` | - | O |
+| wss | `wss://host:port/path` | `wss://server:8443` | O | O |
 | tls | `tls://host:port` | `tls://server:5555` | O | O |
 
 ## 2. TCP
@@ -200,7 +200,8 @@ zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 - Based on the Beast library
 - Binary frame mode (Opcode=0x02)
 - 64KB write buffer
-- **Only usable with STREAM sockets**
+- Path component optional (defaults to `/`)
+- Usable by normal ZMP socket types (e.g. PAIR/DEALER) as well as STREAM
 
 ## 6. WebSocket + TLS (wss)
 
@@ -249,7 +250,7 @@ For detailed TLS configuration, see the [TLS Security Guide](./05-tls-security.m
 
 | Constraint | Description |
 |------------|-------------|
-| ws/wss → STREAM only | ws and wss transports support only STREAM sockets. tls supports all socket types |
+| STREAM is bind-only | A `STREAM` socket supports `zlink_bind()` only; `zlink_connect()` returns `EOPNOTSUPP`. ws/wss/tcp/tls all work with normal ZMP socket types too |
 | inproc bind first | inproc requires bind to be called before connect |
 | ipc platform | ipc is only supported on Unix/Linux/macOS (not supported on Windows) |
 | Same context | inproc is usable only within the same context |

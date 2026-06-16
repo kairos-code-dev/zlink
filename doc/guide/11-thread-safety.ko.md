@@ -167,7 +167,7 @@ zlink가 명확한 에러 코드를 반환합니다:
 |---|---|---|
 | 다른 스레드가 핸들 사용 중 `close` 호출 | 닫기 **거부** | `ZLINK_CLOSE_BUSY` |
 | `close` 수락 후 API 호출 | 호출 **거부** | `ZLINK_CLOSE_SHUTDOWN` (또는 해당 함수군 `*_TERMINATED`) |
-| `close`/`destroy` 두 번 호출 | 즉시 반환 | `ZLINK_CLOSE_SHUTDOWN` |
+| `close`/`destroy` 두 번 호출 | 즉시 반환 | 소켓: `EALREADY`; 서비스 핸들(SPOT/Discovery/Registry): `ESHUTDOWN` |
 
 `ZLINK_CLOSE_BUSY` 이후에는 핸들이 정상 상태로 돌아갑니다 — 아무것도
 손상되지 않았으니 계속 쓰거나 나중에 다시 닫으면 됩니다.
@@ -207,8 +207,10 @@ void shutdown_socket(void *socket)
 ```
 
 **콜백에서의 self-close:** send-ready나 monitor 콜백에서 자기 핸들의
-`close`를 호출하면, 실제 닫기는 콜백이 반환될 때까지 미뤄집니다.
-콜백 안에서 use-after-free가 나는 것을 막아 줍니다.
+`close`를 호출하면, 실제 닫기는 콜백이 반환될 때까지 미뤄집니다(호출은 OK 반환).
+콜백 안에서 use-after-free가 나는 것을 막아 줍니다. 단, 소켓 메시지 핸들러나
+STREAM raw/packet dispatch 콜백 안에서의 self-close는 미뤄지지 않고
+`EBUSY`/`ZLINK_CLOSE_BUSY`를 반환합니다.
 
 ## 5. 유일한 예외: zlink_msg_t는 스레드 안전하지 않습니다
 
@@ -241,10 +243,16 @@ zlink_send(socket, &msg_a, 1, 0);    zlink_send(socket, &msg_b, 1, 0);  /* safe 
 
 ## 6. 콜백 규칙
 
-소켓 콜백(메시지, XPUB, 모니터, send-ready)은 I/O 스레드에서 실행됩니다.
-`zlink_spot_dispatch_event_handler` callback은
-SpotNode 디스패치 워커(dispatch worker) 스레드에서 실행됩니다 — I/O 스레드가 아닙니다.
-블로킹 금지, 느린 연산 오프로드 규칙은 두 경우 모두 똑같이 적용됩니다.
+단일 "콜백 스레드"는 없습니다 — 콜백마다 실행 스레드가 다릅니다:
+
+| 콜백 | 스레드 |
+|------|--------|
+| 소켓 메시지 핸들러(`zlink_recv_handler`) | I/O 스레드 |
+| 모니터 핸들러 | service-control 런타임 스레드 (소켓 I/O 스레드 아님) |
+| send-ready 핸들러 | 호출자의 send 스레드에서 동기 실행될 수 있음 |
+| SPOT dispatch 이벤트 핸들러 | SPOT dispatch worker pool |
+
+블로킹 금지·오프로드 규칙은 모두에 적용됩니다.
 알아 둘 것:
 
 **콜백에서 할 수 있는 것:**
@@ -252,8 +260,9 @@ SpotNode 디스패치 워커(dispatch worker) 스레드에서 실행됩니다 �
 - 메시지 데이터를 읽어 자체 큐에 넣기.
 
 **콜백에서 하면 안 되는 것:**
-- **블로킹** (sleep, lock, 무거운 연산) — 해당 스레드의 모든 I/O가
-  멈춥니다. 작업을 큐에 넣고 워커(worker) 스레드에서 처리하세요.
+- **블로킹** (sleep, lock, 무거운 연산) — 소켓 메시지 핸들러는 그 스레드의
+  I/O를 멈추고, monitor/send-ready/SPOT-dispatch 콜백은 해당 서브시스템을
+  지연시킵니다. 작업을 큐에 넣고 워커(worker) 스레드에서 처리하세요.
 - **send-ready 콜백 안에서 자기 핸들러 교체** — `ZLINK_HANDLER_DEADLOCK`
   을 반환합니다.
 

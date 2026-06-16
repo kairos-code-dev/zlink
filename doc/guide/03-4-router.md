@@ -62,7 +62,6 @@ if (rc == ZLINK_RECV_OK) {
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
     zlink_multipart_close(parts, part_count);
-    free(parts);
 }
 ```
 
@@ -86,9 +85,10 @@ zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 ```
 
 > When the per-peer send queue is full (HWM), with the default
-> `ROUTER_MANDATORY=1` ROUTER returns `ZLINK_SUBMIT_NOT_CONNECTED`. If the
-> caller explicitly sets `ROUTER_MANDATORY=0`, the message is silently
-> dropped. For advanced backpressure patterns, see
+> `ROUTER_MANDATORY=1` ROUTER returns `ZLINK_SUBMIT_BACKPRESSURED`; sending
+> to an unknown/unreachable routing_id returns `ZLINK_SUBMIT_NOT_CONNECTED`.
+> If the caller explicitly sets `ROUTER_MANDATORY=0`, undeliverable messages
+> are silently dropped. For advanced backpressure patterns, see
 > [Performance Guide](./10-performance.md).
 
 ## 3. Usage Examples
@@ -119,7 +119,6 @@ if (zlink_router_recv(router,
     zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 
     zlink_multipart_close(parts, part_count);
-    free(parts);
 }
 ```
 
@@ -131,8 +130,8 @@ if (zlink_router_recv(router,
 | `ZLINK_OPT_RID_DUPLICATE_POLICY` | int | `ZLINK_RID_DUPLICATE_REJECT` | Controls whether duplicate routing_id arrivals keep the existing pipe or let the new pipe take over. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | Default timeout for `zlink_router_request()`. `0` uses the implementation default of `5000ms` |
 | `zlink_set_routing_id()` | binary | Auto (UUID) | The ROUTER's own routing_id (dedicated function) |
-| `ZLINK_OPT_SNDHWM` | int | automatic (routed floor 8 by default) | Default for the routed role. Manual settings take precedence |
-| `ZLINK_OPT_RCVHWM` | int | automatic (routed floor 8 by default) | Default for the routed role. Manual settings take precedence |
+| `ZLINK_OPT_SNDHWM` | int | automatic | Auto-HWM sized for ROUTER's routed role. Manual settings take precedence |
+| `ZLINK_OPT_RCVHWM` | int | automatic | Auto-HWM sized for ROUTER's routed role. Manual settings take precedence |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
 
 ### ROUTER_MANDATORY
@@ -179,8 +178,8 @@ ROUTER can play both roles in request-reply:
 The key identifier is the `source_node_rid + request_seq` combination.
 A reply must match both values -- the same `request_seq` from a different
 source is not the same request. For plain ROUTER request-reply,
-`source_spot_rid` is `NULL` (spot routing id is only populated for
-SPOT-originated traffic).
+`source_spot_rid` points to an empty routing id (`size == 0`); the spot
+routing id is only populated for SPOT-originated traffic.
 
 > For the ZMP request-reply envelope wire format, see
 > [ZMP Protocol](../internals/protocol-zmp.md).
@@ -205,7 +204,6 @@ if (zlink_router_recv(router,
        For SPOT-originated requests the spot rid is also populated;
        reply via zlink_router_reply_spot() in that case. */
     zlink_multipart_close(parts, part_count);
-    free(parts);
 
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 4);
@@ -269,7 +267,7 @@ zlink_get_option(router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
            zlink_msg_init_size(&reply, 5);
            memcpy(zlink_msg_data(&reply), "reply", 5);
            zlink_send_rid(router, src_node, &reply, 1, 0);
-           zlink_multipart_close(parts, n); free(parts);
+           zlink_multipart_close(parts, n);
        }
    } */
 

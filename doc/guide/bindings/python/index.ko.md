@@ -110,7 +110,7 @@ socket.set_routing_id(b"client-01")   # 바이트 직접 전달도 가능
 |------|------|
 | `submit()` 성공 | 전달된 bytes는 내부적으로 복사되므로 원본 재사용 가능 |
 | `recv_into()` 성공 | `with received:` 블록으로 수명 관리. `close()` 시 파트 해제 |
-| 요청 회신 파트 | `submit_async()` 완료 후 각 파트를 `part.close()` 필요 |
+| 요청 회신 파트 | `submit(callback)` 콜백으로 받은 각 파트를 `part.close()` 필요 |
 
 ---
 
@@ -142,10 +142,10 @@ except zlink.SubmitError as e:
 | `zlink_bind(s, ep)` | `socket.bind(ep)` |
 | `zlink_connect(s, ep)` | `socket.connect(ep)` |
 | `zlink_send_part(...)` | `socket.send().message(b).submit()` |
-| `zlink_recv(...)` | `socket.recv_into(received)` |
+| `zlink_recv_part(...)` | `socket.recv_into(received)` |
 | `zlink_msg_data(msg)` | `part.to_bytes()` |
 | `zlink_routing_id_t` | `zlink.RoutingId(b"id")` |
-| `zlink_spot_node_new(ctx)` | `zlink.create_spot_node(ctx)` |
+| `zlink_spot_node_new(ctx, opts)` | `zlink.create_spot_node(ctx)` |
 | `zlink_registry_new(ctx)` | `zlink.create_registry(ctx)` |
 | `zlink_discovery_new(ctx,...)` | `zlink.create_discovery(ctx, type, ch)` |
 
@@ -174,7 +174,7 @@ print(f"zlink {major}.{minor}.{patch}")
 |------|------|
 | `pair_recv_sample.py` | PAIR 송수신 |
 | `dealer_router_recv_sample.py` | DEALER/ROUTER 송수신 |
-| `request_reply_async_sample.py` | asyncio 비동기 요청/응답 |
+| `request_reply_callback_sample.py` | 콜백 요청/응답 |
 | `pubsub_recv_sample.py` | XPUB/SUB 발행·구독 |
 | `stream_recv_sample.py` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.py` | STREAM 패킷 콜백 |
@@ -182,7 +182,7 @@ print(f"zlink {major}.{minor}.{patch}")
 | `discovery_registry_sample.py` | Registry + Discovery |
 | `registry_query_sample.py` | Registry 토폴로지 쿼리 |
 | `spot_recv_sample.py` | SpotNode/Spot PUB/SUB |
-| `spot_request_async_sample.py` | SpotNode 비동기 요청 |
+| `spot_request_callback_sample.py` | SpotNode 콜백 요청 |
 | `actor_single_player_queue_sample.py` | 액터 조인·이동·메시지 큐 |
 | `actor_room_server_sample.py` | 방 서버 패턴 |
 | `actor_gateway_relay_sample.py` | 게이트웨이 릴레이 |

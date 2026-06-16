@@ -20,7 +20,7 @@ STREAM 소켓은 **외부 RAW 클라이언트**와 통신하기 위한 **서버 
 유효 조합:
 
 ```
-external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
+external raw client  <---- RAW 바이트 스트림 (framing 없음) ---->  STREAM(server)
 ```
 
 > STREAM은 zlink 내부 소켓(PAIR/PUB/SUB/DEALER/ROUTER)과 직접 호환되지 않는다.
@@ -72,20 +72,17 @@ STREAM만의 고유 동작은 다음과 같다.
   고정 4바이트(`uint32`, big-endian)이다.
 - 특정 클라이언트를 끊어야 하면 콜백이나 recv에서 받은 `source_rid`를
   `zlink_disconnect_rid()`에 넘긴다. STREAM의 대상 rid는 반드시 4바이트다.
-- 연결/해제 이벤트가 메시지로 전달된다:
-
-| payload 값 | 의미 |
-|------------|------|
-| `0x01` (1 byte) | connect 이벤트 |
-| `0x00` (1 byte) | disconnect 이벤트 |
-| 그 외 | 일반 데이터 |
+- connect/disconnect는 in-band 데이터 마커가 **아니다**. 소켓 monitor의
+  `ZLINK_EVENT_CONNECTION_READY` / `ZLINK_EVENT_DISCONNECTED` 이벤트로
+  보고되며 각각 4바이트 `routing_id`를 담는다. 우연히 1바이트 `0x00`/`0x01`인
+  raw payload는 일반 데이터로 전달된다.
 
 ---
 
 ## 4. 콜백 예시
 
-STREAM 콜백 디스패치(수신 메시지를 콜백으로 전달) 과정에서는
-connect/disconnect 이벤트와 데이터를 구분해야 한다.
+STREAM raw 콜백에서 전달되는 모든 part는 애플리케이션 데이터다.
+connect/disconnect는 소켓 monitor로 관찰한다([Monitoring](./06-monitoring.ko.md) 참고).
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -96,17 +93,12 @@ void on_message(const zlink_routing_id_t *source_rid,
         void *data = zlink_msg_data(&parts[i]);
         size_t size = zlink_msg_size(&parts[i]);
 
-        if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
-            /* new client connected */
-        } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
-            /* client disconnected */
-        } else {
-            /* echo reply */
-            zlink_msg_t reply;
-            zlink_msg_init_size(&reply, size);
-            memcpy(zlink_msg_data(&reply), data, size);
-            zlink_send_rid(stream, source_rid, &reply, 1, 0);
-        }
+        /* echo reply */
+        zlink_msg_t reply;
+        zlink_msg_init_size(&reply, size);
+        memcpy(zlink_msg_data(&reply), data, size);
+        zlink_send_rid(stream, source_rid, &reply, 1, 0);
+
         zlink_msg_close(&parts[i]);
     }
 }
@@ -121,7 +113,7 @@ zlink_recv_handler(stream, on_message, NULL);
 |---|---|
 | Attach API | `zlink_recv_handler()` |
 | 콜백 | `zlink_socket_msg_handler_fn` |
-| 수명 | replace-only attach, detach 없음 |
+| 수명 | 한 번 부착하면 영구(detach·재부착 불가) |
 | 프레이밍 | transport에서 수신된 raw 바이트 |
 | 전송 | `zlink_send_rid()` |
 
@@ -130,7 +122,7 @@ zlink_recv_handler(stream, on_message, NULL);
 > 배압(backpressure) 패턴은 [성능 가이드](./10-performance.ko.md)를 참고.
 
 - 수신 콜백은 한 번에 하나만 등록할 수 있으며, 이미 등록된 상태에서 attach를
-  호출하면 `errno=EBUSY`와 함께 `-1`을 반환한다.
+  호출하면 `errno=EBUSY`와 함께 `ZLINK_HANDLER_BUSY`를 반환한다.
 - 수신 콜백이 활성인 동안 direct recv 계열과 data-plane `POLLIN`은
   `EBUSY`다.
 - 콜백 내부에서 close를 호출하는 것은 지원되지 않는다 (`EBUSY` 실패).
@@ -189,18 +181,28 @@ zlink_stream_packet_handler(stream, on_packet, NULL);
 클라이언트는 raw socket/websocket로 구현한다.
 STREAM은 raw 바이트를 그대로 전달하므로 **패킷 경계(프레이밍)는 애플리케이션이 정의**해야 한다.
 
-아래는 `[4B length][body]` 형식을 사용자가 정의한 POSIX TCP 예시(개념):
+개념적 POSIX TCP 예시 (RAW 모드 — zlink framing 없음, 바이트 그대로):
 
 ```c
-// send: [4B length][body]
-uint32_t len_be = htonl(body_len);
-send(fd, &len_be, 4, 0);
+// RAW 모드: raw 바이트 송수신. 메시지 경계는 애플리케이션이 정의
 send(fd, body, body_len, 0);
 
-// recv: [4B length][body]
-recv(fd, &len_be, 4, MSG_WAITALL);
-uint32_t body_len = ntohl(len_be);
-recv(fd, body, body_len, MSG_WAITALL);
+char buf[4096];
+ssize_t n = recv(fd, buf, sizeof(buf), 0);
+```
+
+서버가 **패킷 핸들러**(`zlink_stream_packet_handler`)를 쓰면 클라이언트는 각
+패킷을 2바이트 BE header size + 4바이트 BE body size + header + body로
+프레이밍해야 한다:
+
+```c
+// 패킷 모드: [2B header_size BE][4B body_size BE][header][body]
+uint16_t hsz_be = htons(header_len);
+uint32_t bsz_be = htonl(body_len);
+send(fd, &hsz_be, 2, 0);
+send(fd, &bsz_be, 4, 0);
+send(fd, header, header_len, 0);
+send(fd, body, body_len, 0);
 ```
 
 ---
@@ -215,6 +217,7 @@ recv(fd, body, body_len, MSG_WAITALL);
   - `ZLINK_OPT_SNDBUF` / `ZLINK_OPT_RCVBUF`
   - `ZLINK_OPT_BACKLOG`
   - `ZLINK_OPT_LINGER`
+  - `ZLINK_STREAM_OPT_NOTIFY` (`zlink_set_stream_option()` / `zlink_get_stream_option()`): STREAM connect/disconnect 알림 토글
 - TLS/WSS 서버: `zlink_set_tls_server()`
 - TLS 클라이언트: `zlink_set_tls_client()`
 
@@ -254,7 +257,7 @@ STREAM listener는 raw TCP 피어가 보낸 바이트를 직접 받을 수 있�
 참고 파일:
 - `core/tests/integration/test_stream_socket.cpp`
 - `core/tests/integration/test_stream_fastpath.cpp`
-- `core/tests/routing-id/test_connect_rid_string_alias.cpp`
+- `core/tests/integration/routing-id/test_connect_rid_string_alias.cpp`
 - `core/tests/scenario/stream/zlink/test_scenario_stream_zlink.cpp`
 
 위 테스트들은 STREAM 서버 + raw client 경로를 기준으로 동작한다.

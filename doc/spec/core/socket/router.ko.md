@@ -16,8 +16,8 @@ request-reply 패턴에서 응답 측입니다.
 |---|---|
 | `ZLINK_ROUTER_OPT_MANDATORY` | 라우팅 불가 시 `EHOSTUNREACH` 반환 (`int`; 0 또는 1, 기본값 `1`) |
 | `ZLINK_ROUTER_OPT_PROBE` | 연결 시 빈 메시지로 아이덴티티 설정 (`int`; 0 또는 1) |
-| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 발신 연결의 routing id 설정 (`binary`) |
-| `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | `zlink_router_request()` 기본 요청 타임아웃 (ms, `uint32_t`) |
+| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 발신 연결의 routing id 설정 (`binary`, set 전용) |
+| `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | `zlink_router_request()` 기본 요청 타임아웃 (ms, `int`; 기본값 `5000`) |
 | `ZLINK_ROUTER_OPT_WEIGHT` | 연결된 peer에게 광고하는 로컬 peer 가중치 (`int`; `0..100`, 기본값 `100`) |
 
 `ZLINK_ROUTER_OPT_MANDATORY`의 기본값은 `1`입니다.
@@ -380,6 +380,24 @@ ROUTER 주소 지정을 위한 소켓 아이덴티티를 설정합니다. 최대
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_get_routing_id`
+
+---
+
+### zlink_get_routing_id
+
+소켓에 설정된 라우팅 아이덴티티를 조회합니다.
+
+```c
+zlink_config_result_t zlink_get_routing_id (void *handle_,
+                           zlink_routing_id_t *out_);
+```
+
+소켓의 현재 라우팅 아이덴티티를 `*out_`에 기록합니다. `out_->size`에는
+`out_->data`의 유효 바이트 수가 설정됩니다.
+
+**반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
+
+**참고:** `zlink_set_routing_id`
 
 ---
 

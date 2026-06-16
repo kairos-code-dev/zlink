@@ -56,16 +56,16 @@ zlink_set_tls_server(socket, "/path/to/cert.pem", "/path/to/key.pem", 0);
 zlink_bind(socket, "wss://*:8443");
 ```
 
-### WSS 클라이언트 (외부 Raw 클라이언트)
+### WSS 클라이언트
 
-`ZLINK_SOCKET_STREAM`은 서버 전용이다. 따라서 WSS 클라이언트는 외부 WebSocket/TLS 클라이언트 스택을 써야 한다.
+`STREAM` 소켓은 bind 전용이라 `STREAM` 기반 WSS 서버에는 **외부** raw
+WebSocket/TLS 클라이언트가 접속한다. 일반 zlink ZMP 소켓 타입(PAIR/DEALER 등)은
+zlink의 WSS connecter와 `zlink_set_tls_client()`로 직접 `wss://`에 **connect**할 수 있다:
 
-개념 예시:
-
-```text
-target: wss://server:8443
-- trust CA: /path/to/ca.pem
-- verify hostname: localhost
+```c
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
+zlink_set_tls_client(socket, "ca.crt", "server.example.com", 0);
+zlink_connect(socket, "wss://server:8443");
 ```
 
 ### ws vs wss 설정 비교
@@ -74,7 +74,7 @@ target: wss://server:8443
 |------|:--:|:---:|
 | 기본 소켓 생성 | O | O |
 | `zlink_set_tls_server()` (서버 cert+key) | - | 필수 |
-| `zlink_set_tls_client()` (클라이언트 CA+hostname+trust) | - | 권장 (외부 raw client) |
+| `zlink_set_tls_client()` (클라이언트 CA+hostname+trust) | - | zlink `wss://` connect 시 필수 |
 
 ## 5. TLS API 상세
 
@@ -113,23 +113,24 @@ zlink_set_tls_client(socket, ca_cert_path, hostname, trust_system);
 
 | 파라미터 | 타입 | 설명 |
 |----------|------|------|
-| `ca_cert_path` | string | CA 인증서 경로 (서버 인증서 검증), 또는 NULL |
-| `hostname` | string | 서버 호스트명 (CN/SAN 검증), 또는 NULL |
+| `ca_cert_path` | string | CA 인증서 경로 (서버 인증서 검증). 시스템 스토어만 쓰려면 `""` 전달 |
+| `hostname` | string | 서버 호스트명 (CN/SAN 검증, 필수) |
 | `trust_system` | int | 시스템 CA 스토어 신뢰 여부 (0 = 아니오, 1 = 예) |
 
 ```c
 /* Private CA with hostname verification */
 zlink_set_tls_client(socket, "ca.crt", "server.example.com", 0);
 
-/* System CA only (no private CA, no hostname check) */
-zlink_set_tls_client(socket, NULL, NULL, 1);
+/* 시스템 CA만 사용(빈 CA 경로), 호스트명은 여전히 검증 */
+zlink_set_tls_client(socket, "", "server.example.com", 1);
 ```
 
-- `ca_cert_path`가 NULL이면 시스템 CA 스토어만 사용 (`trust_system=1`인 경우)
-- 사설 CA 사용 시 반드시 `ca_cert_path` 설정
-- `hostname`이 NULL이면 호스트명 검증 생략 (보안 경고)
-- 프로덕션에서는 호스트명 검증 반드시 권장
-- 인증서의 CN 또는 SAN과 일치해야 함
+- raw 소켓에서 `ca_cert_path`와 `hostname`은 non-`NULL` 문자열이어야 한다.
+  `NULL`을 넘기면 `ZLINK_CONFIG_INVALID_HANDLE`(`EFAULT`)로 거부된다.
+- 시스템 CA 스토어만 쓰려면 `ca_cert_path`에 빈 문자열 `""`을 넘긴다
+  (`trust_system=1`). 사설 CA를 추가하려면 경로를 지정한다.
+- `hostname`은 CN/SAN 검증에 쓰이며 인증서와 일치해야 한다.
+  프로덕션에서는 호스트명 검증을 반드시 권장한다.
 
 > 참고: `core/tests/e2e/spot/spot_pubsub_scenario_shared.cpp` — `trust_system = 0` 설정 후 사설 CA 사용
 
@@ -174,30 +175,33 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
 
 ### 인증서/키 불일치
 
-```bash
-openssl req -newkey rsa:2048 -keyout server.key -out server.csr \
-  -nodes -subj "/CN=localhost"
+```
+증상: bind 또는 핸드셰이크 실패
+원인: 서버 인증서와 개인키가 일치하지 않음
+해결: 인증서-키 쌍을 검증
 ```
 
 ```bash
-# Compare the modulus of the certificate and key
+# 인증서와 키의 modulus 비교
 openssl x509 -noout -modulus -in server.crt | openssl md5
 openssl rsa -noout -modulus -in server.key | openssl md5
-# Both values should match
+# 두 값이 같아야 함
 ```
 
 ### CA 인증서 미설정
 
-```c
-zlink_set_tls_client(socket, ca_cert_path, hostname, trust_system);
+```
+증상: 클라이언트 연결 실패, 핸드셰이크 타임아웃
+원인: 클라이언트가 서버 인증서를 검증할 CA가 없음
+해결: zlink_set_tls_client()에 ca_cert_path를 설정하거나 trust_system 파라미터 확인
 ```
 
 ### 호스트명 불일치
 
 ```
-Symptom: Handshake failure
-Cause: Server or CA certificate validity period has expired
-Solution: Renew the certificate
+증상: 핸드셰이크 실패
+원인: zlink_set_tls_client()의 hostname 파라미터가 인증서 CN/SAN과 불일치
+해결: 인증서에 올바른 CN/SAN을 포함하거나 hostname 파라미터를 수정
 ```
 
 ### 인증서 만료
@@ -236,7 +240,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
 
 ### 인증서 관리
 
-- [ ] TLS 1.2 이상 사용 (OpenSSL 기본 설정)
+- [ ] TLS 1.2 이상 사용 (zlink는 TLS 1.2 server/client context를 생성)
 - [ ] 프로덕션에서 공인 CA 인증서 사용
 - [ ] 인증서 만료 전 자동 갱신 프로세스 구축
 - [ ] 개인키 파일 권한 제한 (`chmod 600`)

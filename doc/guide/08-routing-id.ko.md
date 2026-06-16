@@ -29,7 +29,8 @@ typedef struct {
 | STREAM 피어 라우팅 ID | uint32 | 4B | 연결별 자동 할당 |
 
 - 사용자가 `zlink_set_routing_id()`를 호출하지 않으면 자동 생성된다.
-- 프로세스 내 전역 카운터 기반으로 유일성이 보장된다.
+- 소켓 자체 라우팅 ID는 기본적으로 16바이트 랜덤 UUID 값이고, STREAM 피어
+  라우팅 ID는 STREAM 소켓이 연결별로 할당하는 4바이트 정수값이다(전역 카운터 아님).
 
 ### own vs peer — 차이점
 
@@ -37,12 +38,14 @@ typedef struct {
 |------|---|---|
 | **생성 시점** | 소켓 생성 시 | 피어 연결 시 |
 | **크기** | 16B (UUID) | 가변 (ROUTER), 4B (STREAM) |
-| **사용** | 핸드셰이크에서 전송 | 수신 메시지에 자동 첨부 |
+| **사용** | 핸드셰이크에서 전송 | 수신 시 별도 `source_rid` 출력으로 반환 |
 | **설정** | `zlink_set_routing_id()` | 피어가 설정한 값 사용 |
 
 자체 라우팅 ID는 소켓 생성 시 자동으로 UUID가 할당되며 핸드셰이크 시 피어에게 전송된다.
 
-피어 라우팅 ID는 피어가 보낸 자체 라우팅 ID이며, ROUTER/STREAM 소켓에서 수신 메시지에 자동으로 첨부된다.
+피어 라우팅 ID는 피어가 보낸 자체 라우팅 ID이며, 공개 수신 surface는 이를 in-band
+메시지 프레임이 아니라 별도 `source_rid` 출력(콜백 인자 또는 `zlink_router_recv()` /
+`zlink_recv()` 출력)으로 노출한다.
 
 ## 4. 사용자 지정 routing_id
 
@@ -108,7 +111,8 @@ zlink_connect(socket, "tcp://server2:5556");
 - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (`zlink_set_router_option()`으로 설정)는 개별 연결에 적용된다.
 - 하나의 소켓에서 여러 연결에 각각 다른 별칭을 지정할 수 있다.
 - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`는 ROUTER 연결 경로 전용이다.
-- `ZLINK_SOCKET_STREAM`에 설정하면 `EOPNOTSUPP`를 반환한다.
+- `zlink_set_router_option()`은 ROUTER/DEALER 핸들만 받는다. `ZLINK_SOCKET_STREAM`
+  (또는 다른 타입)에 호출하면 `ZLINK_CONFIG_INVALID_ARGUMENT`(`EINVAL`)를 반환한다.
 
 ## 6. ROUTER 소켓에서 routing_id 사용법
 
@@ -228,31 +232,27 @@ zlink_recv_handler(stream, on_message, NULL);
 
 ### 연결/해제 이벤트의 routing_id
 
-```c
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    for (size_t i = 0; i < part_count; ++i) {
-        uint8_t *data = (uint8_t *)zlink_msg_data(&parts[i]);
-        size_t size = zlink_msg_size(&parts[i]);
+STREAM connect/disconnect는 in-band 데이터 바이트로 전달되지 **않는다**. 소켓
+monitor의 `ZLINK_EVENT_CONNECTION_READY` / `ZLINK_EVENT_DISCONNECTED` 이벤트로
+보고되며 각각 해당 클라이언트의 4바이트 `routing_id`를 담는다. (내부적으로 STREAM
+notify 경로는 zero-byte 제어 이벤트를 내보내고 dispatch가 이를 건너뛰므로 데이터
+콜백에는 도달하지 않는다.)
 
-        if (size == 1 && data[0] == 0x01) {
-            /* New client connected: identify by source_rid */
-            printf("Connected: ");
-            for (size_t j = 0; j < source_rid->size; j++)
-                printf("%02x", source_rid->data[j]);
-            printf("\n");
-        } else if (size == 1 && data[0] == 0x00) {
-            /* Client disconnected: identify by source_rid and clean up */
-            printf("Disconnected\n");
-        }
-        zlink_msg_close(&parts[i]);
+```c
+void on_monitor_event(const zlink_monitor_event_t *ev, void *userdata)
+{
+    if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
+        printf("Connected: ");
+        for (size_t j = 0; j < ev->routing_id.size; j++)
+            printf("%02x", ev->routing_id.data[j]);
+        printf("\n");
+    } else if (ev->event == ZLINK_EVENT_DISCONNECTED) {
+        printf("Disconnected\n");
     }
 }
 ```
 
-> 참고: `core/tests/integration/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
+> 참고: `core/tests/integration/test_stream_socket.cpp` — STREAM monitor 이벤트
 
 ### ROUTER vs STREAM routing_id 비교
 
@@ -261,7 +261,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 | **크기** | 가변 (사용자 설정 또는 16B UUID) | 고정 4B (uint32) |
 | **생성** | 피어의 own routing_id | 서버가 자동 할당 |
 | **설정 가능** | `zlink_set_routing_id()`로 피어가 설정 | 자동 할당만 (설정 불가) |
-| **프레임 위치** | 수신 시 자동 추가 | 수신 시 자동 추가 |
+| **수신 노출** | 별도 `source_rid` 출력 | 별도 `source_rid` 출력 |
 
 ## 8. routing_id 디버깅 팁
 

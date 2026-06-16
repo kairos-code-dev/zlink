@@ -3675,10 +3675,14 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
     extension 에 의존하면 안 된다.
   - codec extension 이 추가되어도 canonical recv/request/reply contract 는 계속
     `Message`, `List<Message>`, `Received`, `TopicMessage` 기준으로 유지한다.
+  - codec extension 은 object <-> `Message` encode/decode helper 계약만 정의한다.
+    payload 타입에 필요한 parser, schema, generated type 입력을 받는 것은 허용된다.
   - codec extension 은 transport 결과 타입을 domain object 로 바꾸는 helper 를
     추가할 수 있지만, raw transport contract 자체를 대체하면 안 된다.
-  - serializer 선택 규칙은 public contract 로 명시해야 한다.
-    예: type marker 기반 선택, explicit parser object, schema object.
+  - codec extension 문서는 packet name 추론 규칙, high-level outbound serializer
+    lookup, typed request/reply decode 정책을 정의하지 않는다.
+  - framework 가 존재하는 언어에서는 위 정책을 framework 문서가 담당한다.
+    codec extension 문서는 low-level encode/decode helper 입력 조건만 설명한다.
 - 이유:
   - raw transport 사용자에게 특정 codec dependency 를 강제하지 않기 위함이다.
   - 언어별 codec 생태계 선택이 다르므로 core binding 이 한 구현체에 잠기지
@@ -3927,7 +3931,7 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 | 1 | `BACKPRESSURED` | `EAGAIN` | 제어 흐름 | send 큐 포화 (HWM) |
 | 2 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | 제어 흐름 | 대상 peer/경로 미연결 |
 | 3 | `NOT_FOUND` | `ENOENT` | 제어 흐름 | 대상 peer/spot/route 없음 |
-| 13 | `NOT_ADMITTED` | — | 제어 흐름 | target peer 가중치가 `0`이라 신규 submit 거부 |
+| 13 | `NOT_ADMITTED` | `ECONNREFUSED` 계열 | 제어 흐름 | target peer 가중치가 `0`이라 신규 submit 거부 |
 | 4 | `TERMINATED` | `ETERM` | 런타임/생명주기 | context 종료됨 |
 | 5 | `INVALID_HANDLE` | `EFAULT` | caller 계약 위반 | NULL handle / invalid pointer |
 | 6 | `INVALID_ARGUMENT` | `EINVAL` | caller 계약 위반 | 잘못된 인자 |
@@ -3963,7 +3967,7 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 | 0 | `OK` | — | 수신 성공 |
 | 201 | `NO_DATA` | `EAGAIN` | non-blocking recv 데이터 없음 / source 고갈 |
 | 202 | `BUSY` | `EBUSY` | handler 이미 attach 됨 |
-| 203 | `TERMINATED` | `ETERM` 외 | context 종료 또는 분류되지 않은 recv 내부 실패 |
+| 203 | `TERMINATED` | `ETERM` | context 종료됨 |
 | 204 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
 | 205 | `NOT_SUPPORTED` | `ENOTSUP` | recv 미지원 소켓 타입 |
 | 206 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 recv 실패 (상세는 `zlink_errno()`) |
@@ -4379,7 +4383,7 @@ guide, spec signature에 노출하지 않는다.
 | Blocking API named directly | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Non-blocking receive uses flags + empty result | C raw `DONTWAIT` | Required | Required | Required | Required | Required | Required | Required |
 | Non-blocking send explicit outcome | Core enum/result | Required | Required | Required | Required | Required | Required | Required |
-| Public flags surface | Raw C flags | `int flags` | `SendFlags` / `RecvFlags` | `SendFlags` overload | `flags SendFlags` | `_with_flags` variant | `flags?: SendFlags` | keyword `flags` |
+| Public flags surface | Raw C flags | `int flags` | `SendFlags` / `RecvFlags` | `SendFlags` overload | `flags SendFlags` | `SendFlags` via `.flags(...)` builder step | `flags?: SendFlags` | keyword `flags` |
 | Typed option surface | N/A raw C options | Required | Required | Required | Required | Required | Required | Required |
 | Socket TLS helpers | `zlink_set_tls_*` | Required | Required | Required | Required | Required | Required | Required |
 | Service TLS helpers | `zlink_set_tls_*` on service handles | Required | Required | Required | Required | Required | Required | Required |

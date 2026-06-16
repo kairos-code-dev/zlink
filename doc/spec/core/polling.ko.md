@@ -504,8 +504,10 @@ zlink_config_result_t zlink_proxy_steerable (void *frontend_,
 
 `zlink_proxy`처럼 동작하지만 `control_`에서 명령을 수신합니다. 메시지 전달을
 일시 중지하려면 `PAUSE` 문자열을, 계속하려면 `RESUME`을, 프록시를 종료하고
-반환하려면 `TERMINATE`를 전송합니다. `control_`이 `NULL`이면 이 함수는
-`zlink_proxy`와 동일하게 동작합니다.
+반환하려면 `TERMINATE`를, 통계를 받으려면 `STATISTICS`를 전송합니다.
+`STATISTICS`는 front/back × recv/send × count/bytes 8개 `uint64_t` part를
+`(frn, frb, fsn, fsb, brn, brb, bsn, bsb)` 순서로 반환합니다. `control_`이
+`NULL`이면 이 함수는 `zlink_proxy`와 동일하게 동작합니다.
 
 **매개변수:**
 

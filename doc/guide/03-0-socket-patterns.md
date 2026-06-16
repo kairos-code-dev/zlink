@@ -10,7 +10,7 @@ English | [한국어](./03-0-socket-patterns.ko.md)
 
 zlink provides 8 socket types. Each socket implements a unique messaging pattern, and communication is only possible between valid socket combinations.
 
-> Terms such as **hot path**, **control path**, and **admission guard** used in this document are defined in [Section 8 (Terminology)](#8-terminology).
+> Terms such as **hot path**, **control path**, and **admission guard** used in this document are defined in [Section 9 (Terminology)](#9-terminology).
 
 ## 2. Socket Summary
 
@@ -102,6 +102,7 @@ See the individual documents for detailed usage of each socket type.
 | [03-3-dealer.md](./03-3-dealer.md) | DEALER | Async request, round-robin |
 | [03-4-router.md](./03-4-router.md) | ROUTER | ID-based routing |
 | [03-5-stream.md](./03-5-stream.md) | STREAM | External client RAW communication |
+| [03-6-proxy.md](./03-6-proxy.md) | (proxy) | XPUB/XSUB and DEALER/ROUTER message broker |
 
 ## 7. Disconnecting a Peer by Routing ID
 
@@ -175,7 +176,7 @@ In short, data-plane receive defaults to `recv + poller`. Callback-based receive
 completion callbacks live on a separate axis (async operation completion), not
 on the data-plane receive axis.
 
-## 8. Terminology
+## 9. Terminology
 
 Terms used throughout the documentation:
 
@@ -190,7 +191,7 @@ Terms used throughout the documentation:
 
 > For the full thread-safety contract, see the [Thread-Safety Guide](./11-thread-safety.md).
 
-## 9. Basic Usage Flow
+## 10. Basic Usage Flow
 
 The basic pattern common to raw socket types is a `recv + poller` loop.
 For example, a DEALER client receiving replies uses the following shape:
@@ -222,7 +223,6 @@ while (running) {
         if (zlink_recv(socket, &rid, &parts, &n, 0) == ZLINK_RECV_OK) {
             /* process parts, then close each */
             zlink_multipart_close(parts, n);
-            free(parts);
         }
     }
 }
@@ -239,7 +239,9 @@ zlink_ctx_term(ctx);
 > Other options (`ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_LINGER`, `ZLINK_OPT_SNDTIMEO`, etc.) can be changed after bind/connect.
 
 > **Why callbacks are not the default:** raw `PAIR`, `DEALER`, `SUB`,
-> `XSUB`, and `ROUTER` are recv-only. Multiple sockets, monitors, and
+> `XSUB`, and `ROUTER` receive through the synchronous pull-mode loop (no
+> recv callback); they remain send-capable where the type allows. Multiple
+> sockets, monitors, and
 > timers compose naturally in the same poller loop, and the caller keeps
 > explicit control over which thread runs what in which order. Callback
 > surfaces are retained only where the usage pattern justifies them:

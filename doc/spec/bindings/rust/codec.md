@@ -15,6 +15,11 @@ to codec dependencies explicitly.
 These are separate public crates layered on top of the core `zlink` crate.
 They must not become required dependencies of the core crate.
 
+These codec crates define only object <-> `Message` encode/decode helpers.
+Packet-name resolution, high-level serializer lookup, and typed
+request/reply policy belong to framework-layer documents, not this codec
+extension specification.
+
 JSON codec baseline: `serde_json`.
 MessagePack codec baseline: `rmp-serde`.
 

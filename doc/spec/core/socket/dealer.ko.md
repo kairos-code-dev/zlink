@@ -14,8 +14,8 @@ DEALER는 request-reply 패턴에서 요청 측입니다.
 
 | 상수 | 설명 |
 |---|---|
-| `ZLINK_DEALER_OPT_PROBE` | 연결 시 빈 메시지로 아이덴티티 설정 (`int`; 0 또는 1) |
-| `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | `zlink_dealer_request()` 기본 요청 타임아웃 (ms, `uint32_t`) |
+| `ZLINK_DEALER_OPT_PROBE` | 연결 시 빈 메시지를 보내 ROUTER peer에서 아이덴티티를 설정 (`int`; 0 또는 1) |
+| `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | `zlink_dealer_request()` 기본 요청 타임아웃 (ms, `int`) |
 | `ZLINK_DEALER_OPT_WEIGHT` | 연결된 peer에게 광고하는 로컬 peer 가중치 (`int`; `0..100`, 기본값 `100`) |
 
 ## 가중치 기반 outbound 선택
@@ -36,7 +36,7 @@ DEALER는 연결된 peer 중 광고된 가중치가 `0`인 대상을 후보 집�
   같은 거절이 `ZLINK_SUBMIT_NOT_CONNECTED`로 먼저 관찰될 수도 있습니다.
 - peer 가중치 변화는 socket monitor의
   `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 관찰할 수 있으며, peer는
-  `routing_id`로 식별합니다.
+  `routing_id`로 식별하고 `value`에 새 가중치가 담깁니다.
 
 ## 자동 HWM 기본값
 
@@ -128,9 +128,9 @@ zlink_submit_result_t zlink_send (void *s_,
 논블로킹 전송은 `zlink_send(..., ZLINK_DONTWAIT)` 로 처리합니다.
 `ZLINK_SUBMIT_BACKPRESSURED`는 작업이 블로킹되는 경우,
 `ZLINK_SUBMIT_NOT_CONNECTED`는 peer에 도달할 수 없는 경우,
-`ZLINK_SUBMIT_NOT_ADMITTED`는 알고 있는 ROUTER의 가중치가 모두 `0`인 경우에
+`ZLINK_SUBMIT_NOT_ADMITTED`는 알고 있는 peer의 가중치가 모두 `0`인 경우에
 반환됩니다. [errno-map.ko.md](../errno-map.ko.md)에서 전체 결과 매트릭스를
-참조한다.
+참조합니다.
 
 **참고:** `zlink_send`
 

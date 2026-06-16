@@ -331,10 +331,13 @@ void my_dispatch_handler(
         break;
     case ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE:
         /* info_->subject is the timer handle */
-        zlink_timer_recv(info_->subject, NULL, 0);
+        zlink_timer_recv(info_->subject, NULL);
         break;
     case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE:
         /* drain with zlink_spot_actor_join_recv() */
+        break;
+    case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE:
+        /* drain with zlink_spot_recv_actor_lifecycle() */
         break;
     case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE:
         /* info_->subject is const zlink_actor_ref_t* */
@@ -344,8 +347,8 @@ void my_dispatch_handler(
 ```
 
 Dispatch priority is fixed: `SUBSCRIBE_READABLE` → `ROUTED_READABLE` →
-`CHANNEL_REPLY_READABLE` → `TIMER_READABLE` → `ACTOR_JOIN_READABLE` →
-`ACTOR_READABLE`.
+`ACTOR_JOIN_READABLE` → `ACTOR_LIFECYCLE_READABLE` → `ACTOR_READABLE` →
+`CHANNEL_REPLY_READABLE` → `TIMER_READABLE`.
 
 ### 6.1 Dispatch events are readiness, not message counts
 
@@ -522,7 +525,7 @@ zlink_spot_node_status_t status;
 zlink_spot_node_status(node, &status);
 
 size_t peer_count = 0;
-zlink_spot_node_peers(node, NULL, &peer_count);
+zlink_spot_node_peers(node, NULL, NULL, &peer_count);
 ```
 
 `status.disconnected_sub_target_count` and
@@ -535,7 +538,7 @@ diagnostics.
 **What to use instead for HWM diagnostics**: admission is enforced at the
 `publish_ingress_queue` and `routed_send_queue` queue limits — `ingress-sub`
 and `internal-router` have been removed and do not appear in snapshot output.
-Call `zlink_spot_node_internal_sockets()` and inspect the `snapshot`
+Call `zlink_spot_node_internal_sockets()` and inspect the `monitor_status`
 field of the returned `mesh-pub`, `mesh-xsub`, and `external-router` entries to
 see transport socket HWM values. Relay and delivery sockets always show HWM
 `0`, which is expected. Queue admission limits are controlled by the HWM

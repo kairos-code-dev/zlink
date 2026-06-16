@@ -96,12 +96,12 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기다.
 |----------|------|----------------|
 | `zlink_msg_init` | 빈 message 생성 | caller가 소유 |
 | `zlink_msg_init_size` | size만큼 buffer 할당 | caller 소유, `memcpy`로 채움 |
-| `zlink_msg_init_data` | 외부 buffer 연결 (zero-copy) | ownership이 message로 이전 |
+| `zlink_msg_init_data` | 외부 buffer 연결 (zero-copy) | `ffn` 있으면 callback으로 해제, `ffn=NULL`이면 borrowed |
 | `zlink_msg_close` | message 해제 (refcount=0이면 free) | 소유 포기 |
 | `zlink_msg_move` | src -> dest 이동, src는 빈 상태 | dest로 이전 |
 | `zlink_msg_adopt` | src -> dest 이동 (dest 사전 초기화 불필요) | dest로 이전 |
 | `zlink_msg_copy` | src -> dest 복사, LMSG는 refcount 증가 | dest도 공동 소유 |
-| `zlink_msg_data` | data buffer pointer 반환 | 변화 없음 (읽기 전용) |
+| `zlink_msg_data` | data buffer pointer 반환 (쓰기 가능) | 변화 없음 |
 | `zlink_msg_size` | data size(byte) 반환 | 변화 없음 |
 | `zlink_msg_refcnt` | storage reference count 반환 | 변화 없음 |
 | `zlink_msg_gets` | message metadata property를 string으로 반환 | 변화 없음 |
@@ -184,8 +184,10 @@ zlink_send(socket, &msg, 1, 0);
 
 #### zlink_msg_init_data — 외부 Buffer 참조 (zero-copy)
 
-외부 buffer의 ownership을 message로 넘긴다. Copy 없이 전송한다.
-Free callback(ffn)으로 buffer를 정리한다.
+외부 buffer를 copy 없이 message로 연결한다. Free callback(`ffn`)이 non-NULL이면
+message가 buffer를 소유하고 마지막 소유 message 해제 시 그 callback으로 정리한다.
+`ffn`이 NULL이면 buffer는 **borrowed**이며 message가 직접 free하지 않는다
+(이런 message는 shared로 보고된다).
 
 ```c
 void my_free(void *data, void *hint) {
@@ -263,7 +265,8 @@ zlink_msg_copy(&copy, &original);
 
 /* Both original and copy reference the same data */
 /* storage refcount is now 2 */
-int refcnt = zlink_msg_refcnt(&copy);
+zlink_config_result_t err = ZLINK_CONFIG_OK;
+int refcnt = zlink_msg_refcnt(&copy, &err);
 /* refcnt == 2 */
 
 zlink_msg_close(&original);
@@ -503,19 +506,20 @@ void on_spot(const zlink_routing_id_t *source_rid,
 
 ```c
 /* Reference-counted message */
+zlink_config_result_t err = ZLINK_CONFIG_OK;
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 1024);
-int refcnt = zlink_msg_refcnt(&msg);  /* 1: single owner */
+int refcnt = zlink_msg_refcnt(&msg, &err);  /* 1: single owner */
 
 zlink_msg_t copy;
 zlink_msg_init(&copy);
 zlink_msg_copy(&copy, &msg);
-refcnt = zlink_msg_refcnt(&copy);  /* 2: shared by msg and copy */
+refcnt = zlink_msg_refcnt(&copy, &err);  /* 2: shared by msg and copy */
 
 /* Constant data message */
 zlink_msg_t const_msg;
 zlink_msg_init_data(&const_msg, (void *)"TEST", 5, NULL, NULL);
-refcnt = zlink_msg_refcnt(&const_msg);  /* 1: not internally refcounted */
+refcnt = zlink_msg_refcnt(&const_msg, &err);  /* 1: not internally refcounted */
 ```
 
 ## 8. Storage Refcount — zlink_msg_refcnt
@@ -537,19 +541,20 @@ Refcounted storage가 아니면 1을 반환한다.
 
 ```c
 /* Reference counted message */
+zlink_config_result_t err = ZLINK_CONFIG_OK;
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 1024);
-int refcnt = zlink_msg_refcnt(&msg);  /* 1: single owner */
+int refcnt = zlink_msg_refcnt(&msg, &err);  /* 1: single owner */
 
 zlink_msg_t copy;
 zlink_msg_init(&copy);
 zlink_msg_copy(&copy, &msg);
-refcnt = zlink_msg_refcnt(&copy);  /* 2: msg와 copy가 공유 */
+refcnt = zlink_msg_refcnt(&copy, &err);  /* 2: msg와 copy가 공유 */
 
 /* Constant data message (CMSG) */
 zlink_msg_t const_msg;
 zlink_msg_init_data(&const_msg, (void *)"TEST", 5, NULL, NULL);
-refcnt = zlink_msg_refcnt(&const_msg);  /* 1: internal refcount 대상 아님 */
+refcnt = zlink_msg_refcnt(&const_msg, &err);  /* 1: internal refcount 대상 아님 */
 ```
 
 > 참고: `core/tests/integration/test_msg_flags.cpp` — `test_shared_const()`: constant message의 shared property

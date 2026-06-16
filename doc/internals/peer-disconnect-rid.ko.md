@@ -23,7 +23,8 @@
 공개 C API는 핸들 검증만 하고, 실제 작업은
 `socket_base_t::term_peer_rid()`로 넘긴다. 이 함수는 먼저 Discovery가 attach한
 소켓인지 확인한다. attached 소켓은 Discovery가 수명주기를
-소유하므로 수동 disconnect를 `EBUSY`로 거부한다.
+소유하므로 수동 disconnect를 attach 중에는 `EFSM`(종료 중에는 `ESHUTDOWN`)으로
+거부한다.
 
 ROUTER와 STREAM은 라우팅 맵을 가진 소켓이라 맵을 조회해 대상 pipe를
 찾는다. STREAM은 로컬 연결 id를 4바이트 routing id로 쓰므로 입력

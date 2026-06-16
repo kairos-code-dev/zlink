@@ -13,21 +13,24 @@ Context는 I/O 스레드를 관리하고 소켓 생성의 기반이 되는 최�
 옵션은 `zlink_ctx_set`과 `zlink_ctx_get`으로 설정하고 조회합니다.
 
 ```c
-#define ZLINK_IO_THREADS              1
-#define ZLINK_MAX_SOCKETS             2
-#define ZLINK_SOCKET_LIMIT            3
-#define ZLINK_THREAD_PRIORITY         3
-#define ZLINK_THREAD_SCHED_POLICY     4
-#define ZLINK_MAX_MSGSZ               5
-#define ZLINK_MSG_T_SIZE              6
-#define ZLINK_THREAD_AFFINITY_CPU_ADD      7
-#define ZLINK_THREAD_AFFINITY_CPU_REMOVE   8
-#define ZLINK_THREAD_NAME_PREFIX      9
-#define ZLINK_CTX_OPT_BLOCKY          10
-#define ZLINK_CTX_OPT_AUTO_HWM_ENABLE 12
-#define ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS 14
-#define ZLINK_CTX_OPT_AUTO_HWM_PROFILE 17
-#define ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES 18
+typedef enum zlink_ctx_option_t
+{
+    ZLINK_IO_THREADS              = 1,
+    ZLINK_MAX_SOCKETS             = 2,
+    ZLINK_SOCKET_LIMIT            = 3,
+    ZLINK_THREAD_PRIORITY         = 3,
+    ZLINK_THREAD_SCHED_POLICY     = 4,
+    ZLINK_MAX_MSGSZ               = 5,
+    ZLINK_MSG_T_SIZE              = 6,
+    ZLINK_THREAD_AFFINITY_CPU_ADD      = 7,
+    ZLINK_THREAD_AFFINITY_CPU_REMOVE   = 8,
+    ZLINK_THREAD_NAME_PREFIX      = 9,
+    ZLINK_CTX_OPT_BLOCKY          = 10,
+    ZLINK_CTX_OPT_AUTO_HWM_ENABLE = 12,
+    ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS = 14,
+    ZLINK_CTX_OPT_AUTO_HWM_PROFILE = 17,
+    ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES = 18
+} zlink_ctx_option_t;
 ```
 
 ```c
@@ -47,16 +50,21 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_SOCKET_LIMIT` | 3 | 소켓 수의 하드 상한 (읽기 전용) |
 | `ZLINK_THREAD_PRIORITY` | 3 | I/O 스레드 스케줄링 우선순위 |
 | `ZLINK_THREAD_SCHED_POLICY` | 4 | I/O 스레드 스케줄링 정책 |
-| `ZLINK_MAX_MSGSZ` | 5 | 최대 메시지 크기 (바이트 단위, -1 = 무제한) |
+| `ZLINK_MAX_MSGSZ` | 5 | 최대 메시지 크기 (바이트 단위, `>= 0`, 기본값 `INT_MAX`) |
 | `ZLINK_MSG_T_SIZE` | 6 | `zlink_msg_t`의 크기 (바이트 단위, 읽기 전용) |
 | `ZLINK_THREAD_AFFINITY_CPU_ADD` | 7 | I/O 스레드 어피니티 집합에 CPU 추가 |
 | `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | 8 | I/O 스레드 어피니티 집합에서 CPU 제거 |
 | `ZLINK_THREAD_NAME_PREFIX` | 9 | I/O 스레드 이름 접두사 |
-| `ZLINK_CTX_OPT_BLOCKY` | 10 | context 종료 시 블로킹 동작 제어 |
+| `ZLINK_CTX_OPT_BLOCKY` | 10 | context 종료 시 블로킹 동작을 제어하는 레거시 옵션 (`int`, 기본값 1) |
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | 자동 HWM(고수위 표시, High-Water Mark) 정책 사용 여부 (`0` = 비활성, `1` = 활성) |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | 연결 변화가 이어질 때 자동 HWM 재계산을 다시 실행하기 전에 기다리는 최소 디바운스 시간 (ms, `>= 0`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | 자동 HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). 알 수 없는 값은 `EINVAL`로 실패 |
 | `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 18 | 자동 HWM 계산에서 쓰는 context 수준 메시지 단위 (바이트 단위). `0`은 소켓 타입 기본값 사용, 음수는 `EINVAL`로 실패 |
+
+> **참고:** `ZLINK_SOCKET_LIMIT`과 `ZLINK_THREAD_PRIORITY`는 enum 값 `3`을
+> 공유합니다. 현재 공개 C ABI의 옵션 조회는 값 `3`을 읽기 전용
+> `ZLINK_SOCKET_LIMIT`으로 먼저 해석하므로, `ZLINK_THREAD_PRIORITY`는
+> `zlink_ctx_set` / `zlink_ctx_get`으로 설정하거나 조회할 수 없습니다.
 
 ## 기본값
 
@@ -186,6 +194,7 @@ planner가 쓰는 연결당 단위 예산, size cap, 자동 `SNDBUF` / `RCVBUF`
 
 **에러:**
 - `EINVAL` -- 알 수 없는 옵션 또는 유효하지 않은 값.
+- `EFAULT` -- 유효하지 않은 context 핸들 (`ZLINK_CONFIG_INVALID_HANDLE`).
 
 **스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다.
 
@@ -206,12 +215,14 @@ zlink_config_result_t zlink_ctx_set_data(void *context_,
 
 공개 바인딩 타입이 `int`가 아닌 context 옵션에 사용합니다. 주된 사용 사례는
 `ZLINK_THREAD_NAME_PREFIX`이며, null 종료 문자열을 `optval_`로 전달하고
-`strlen(prefix) + 1`을 `optvallen_`으로 전달합니다.
+`strlen(prefix) + 1`을 `optvallen_`으로 전달합니다. 접두사는 플랫폼 스레드
+이름 제한에 맞춰 최대 16바이트(`optvallen_ <= 16`)로 제한됩니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:**
 - `EINVAL` -- 알 수 없는 옵션 또는 유효하지 않은 값.
+- `EFAULT` -- 유효하지 않은 context 핸들 (`ZLINK_CONFIG_INVALID_HANDLE`).
 
 **스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다.
 
@@ -238,6 +249,7 @@ Context 옵션의 현재 값을 가져옵니다. `ZLINK_SOCKET_LIMIT` 및 `ZLINK
 
 **에러:**
 - `EINVAL` -- 알 수 없는 옵션.
+- `EFAULT` -- 유효하지 않은 context 핸들; `*error_out_`에 `ZLINK_CONFIG_INVALID_HANDLE`이 기록됩니다.
 
 **스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다.
 

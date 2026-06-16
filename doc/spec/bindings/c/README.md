@@ -1,3 +1,5 @@
+[English](./README.md) | [한국어](./README.ko.md)
+
 [Spec Index](../../README.md) · [Bindings Policy](../README.md)
 
 # C Binding Implementation Blueprint

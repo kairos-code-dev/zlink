@@ -195,11 +195,12 @@ Frame 2: list_seq (uint64_t)
 Frame 3: service_count (uint32_t)
 Frame 4~N: Service entries (repeated service_count times)
   - auto_connect_type (uint16_t)
-  - service_name (string)
+  - channel_name (string)
   - provider_count (uint32_t)
   - provider entries (repeated provider_count times):
       service_role (uint16_t), endpoint (string),
-      routing_id, weight (uint32_t)
+      routing_id, weight (uint32_t, 0..100), value (int64_t),
+      metadata (bytes)
 ```
 
 ## 5. SPOT Internal Implementation

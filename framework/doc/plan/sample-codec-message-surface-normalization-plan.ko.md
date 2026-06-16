@@ -12,9 +12,14 @@ runtime 메시지 변환 계층으로 내리고, 샘플 업무 코드는 각 언
 builder 는 타입이나 metadata 로 packet name 을 확정할 수 없을 때만 쓰는 override 로
 둔다.
 
-이 작업에서는 표준 호출 인터페이스 밖의 public API 를 새로 만들거나 바꾸지 않는다.
-필요한 수정은 기존 public surface 의 내부 구현, bindings codec extension, framework
-runtime 연결, 샘플 사용 방식에 한정한다.
+이 작업은 2026-06-16 재검토에서 breaking change 로 전환됐다. 기존 framework messaging
+API가 domain object나 generated object를 직접 받는 표면은 유지하지 않는다. application이
+직접 호출하는 `send/request/reply/join` 계열 API는 `Message`를 받는 표면으로 정렬하고,
+object 직렬화와 packet name 확정은 `Message.from(...)`, `Message.From(...)`,
+`message_t::from(...)` 또는 언어별 codec extension의 같은 의미 factory에서 끝낸다.
+
+필요한 수정은 bindings codec extension, framework public API, runtime 연결, 샘플 사용
+방식에 걸친다. 호환성 유지를 위한 object-typed overload, adapter, helper는 남기지 않는다.
 
 ## 1. 목표
 
@@ -60,9 +65,9 @@ Messages.AuthenticatePlayerRes response = client
     .await(Messages.AuthenticatePlayerRes.class);
 ```
 
-Java/Kotlin도 이미 `requestToChannel(channel, request).await(Type)` 표준 표면이
-공개되어 있으면 그 표면을 유지한다. 이 작업 때문에 새 overload 를 만들거나 기존
-public signature 를 바꾸지 않는다. 중요한 점은 sample session, Spot, actor join 코드에서
+Java/Kotlin도 `requestToChannel(channel, Message.from(request)).await(Type)` 형태가
+표준이다. 기존에 `requestToChannel(channel, request).await(Type)`처럼 object를 직접 받는
+표면이 있으면 제거한다. 중요한 점은 sample session, Spot, actor join 코드에서
 `ZLinkStreamJson.decode`, `ZLinkStreamProtobuf.decode`, `ObjectMapper.readValue`,
 `json.writeValueAsBytes`가 직접 보이지 않게 하는 것이다.
 
@@ -75,9 +80,8 @@ auto response = co_await client
   .async<authenticate_player_res_t> ();
 ```
 
-C++도 현재 `.request(channel, dto).async<T>()` 표준 표면을 유지한다. `message_t::from(dto)`가
-이미 공개되어 있지 않으면 위 예시 대신 기존 typed 호출을 사용한다. 이 작업 때문에 새
-public 호출 인터페이스를 추가하거나 기존 signature 를 바꾸지 않는다. 단,
+C++도 `.request(channel, message_t::from(dto)).async<T>()` 형태가 표준이다. 기존
+`.request(channel, dto).async<T>()`처럼 object를 직접 받는 표면이 있으면 제거한다. 단,
 `to_stream_payload`, `from_stream_payload`, `json_to_protobuf_payload` 같은 helper 가
 Spot, stream session, actor join 업무 코드에 직접 남으면 안 된다.
 
@@ -86,8 +90,8 @@ Spot, stream session, actor join 업무 코드에 직접 남으면 안 된다.
 - JSON, MessagePack, Protobuf 별로 별도 channel/client API 를 늘리지 않는다.
 - 샘플마다 `createProtobufMessage`, `decodeJsonReply`, `decodeMessagePackReply` 같은
   helper 를 새로 만들지 않는다.
-- 표준 호출 인터페이스 밖의 public API 를 추가하지 않는다.
-- 기존 public 호출 인터페이스의 signature 를 바꾸지 않는다.
+- messaging API 에 object payload 를 직접 받는 public overload 를 남기지 않는다.
+- 호환성 유지를 위한 legacy overload 를 추가하지 않는다.
 - Protobuf 샘플에서 POJO/record/data class 와 generated proto type 을 전송 계약으로
   동시에 쓰지 않는다.
 - codec 구현을 core binding socket API 에 직접 섞지 않는다.
@@ -107,16 +111,17 @@ handler 와 client scenario 는 request/reply 타입과 packet name 만 다룬�
 이번 작업에서 샘플이 사용할 수 있는 표준 호출 인터페이스는 아래 범위로 제한한다.
 
 - payload 생성: 이미 공개된 `Message.from(...)`, `Message.From(...)`, `message_t::from(...)`
-  또는 이미 공개되어 있는 동일 의미의 표준 typed 호출
+  또는 언어별 codec extension의 같은 의미 factory
 - packet name 지정: `packetName(...)`, `PacketName(...)`, `packet_name(...)` 또는
   이미 공개되어 있는 handler/request metadata
 - 실행: `submit<T>()`, `Async<T>()`, `await(Type)`, `async<T>()`
 - codec 등록: 기존 `AddJson/AddProtobuf/AddMessagePack`, `addJson/addProtobuf/addMessagePack`,
   `add_json/add_protobuf/add_messagepack` 계열
 
-이 목록 밖의 public interface 를 추가하거나 변경하지 않는다. 구현 중 표준 인터페이스가
-부족해 보이면 새 API 를 만들지 말고, 기존 인터페이스 내부 구현으로 해결할 수 있는지 먼저
-확인한다. 기존 인터페이스로 불가능하면 별도 설계 이슈로 분리한다.
+이 목록 밖의 public interface 를 추가하지 않는다. object-typed messaging overload 는
+기존 표면이어도 제거한다. 구현 중 `Message` factory 가 부족하면 messaging API에 object
+overload를 되살리지 말고, bindings codec extension 또는 `Message` factory 쪽으로 책임을
+옮긴다.
 
 ### 3.3 기존 메시지 생성 표면은 codec 독립 진입점이다
 
@@ -251,9 +256,13 @@ Node.js Bingo는 가장 크게 어긋나 있다.
 - Node framework 의 `DefaultZLinkCodecRegistryBuilder`와 registration serializer map 은
   channel envelope encode/decode 경로에 연결되어 있다. `requestToChannel(..., dto).submit<T>()`
   는 serializer 가 등록되어 있으면 request 와 reply 를 같은 registry 경로로 변환한다.
-- 2026-06-16 현재 `RegistrationCodecRegistryBuilder.addProtobuf()`는 serializer 를 등록하지
-  않는다. 따라서 샘플 모듈에서 `.codecs().addProtobuf()`를 호출해도 그 자체만으로는
-  channel payload 가 Protobuf 로 직렬화된다는 증거가 되지 않는다.
+- 2026-06-16 현재 `RegistrationCodecRegistryBuilder.addProtobuf()`와
+  `DefaultZLinkCodecRegistryBuilder.addProtobuf()`는 기본 serializer 를 등록한다. 그러나 이
+  serializer 는 packet 별 `.proto` generated type 을 고르는 serializer 가 아니라, 임의
+  JavaScript 값을 자체 Protobuf wire 모양으로 감싸는 generic serializer 이다. 따라서
+  `.codecs().addProtobuf()` 호출만 남았다는 사실은 sample-specific `addSerializer(...)`
+  반복 등록을 제거했다는 증거는 되지만, Bingo가 generated `.proto` 전송 계약을 완성했다는
+  증거는 아니다.
 - 2026-06-16 현재 Node bindings 의 `@zlink-systems/zlink-codec-protobuf.encode(value, type)`와
   stream connector 의 `createZlinkStreamProtobufCodec(type)`는 모두 protobufjs generated/static
   type 또는 reflection `Type`을 인자로 받아야 한다. 반면 framework/NestJS 의 기존 public
@@ -267,10 +276,10 @@ Node.js Bingo는 가장 크게 어긋나 있다.
   request/reply type 등록을 codec 선택의 단일 기준으로 삼으려면 registration metadata 를
   보강하는 설계가 먼저 필요하다. 이 작업에서 새 public overload 나 signature 를 임의로
   추가하지 않는다.
-- 2026-06-16 현재 Node Bingo에서 `addSerializer(...)`를 샘플 모듈에 반복 등록하면 channel
-  typed request/reply 를 Protobuf 로 왕복시킬 수 있음은 확인했다. 그러나 이 형태는 contract
-  gate 와 최종 표준에 맞지 않아 유지하지 않는다. `addProtobuf()` 또는 packet registration 이
-  sample-specific serializer 를 어떻게 찾을지 별도 정리가 필요하다.
+- 2026-06-16 현재 Node Bingo에서 `addSerializer(...)`를 샘플 모듈에 반복 등록하는 방식은
+  제거된 상태다. 이 형태는 contract gate 와 최종 표준에 맞지 않으므로 다시 도입하지 않는다.
+  남은 문제는 `addProtobuf()` 또는 packet registration 이 generated Protobuf type metadata 를
+  어떻게 찾을지이다.
 - NestJS handler decorator 에는 `decodePayload` / `encodeResult` 옵션이 있지만, Bingo에서
   이를 handler 별 helper 로 반복하는 방식은 샘플 업무 코드에 codec helper 를 남기는
   문제를 해결하지 못한다.
@@ -327,9 +336,10 @@ Node.js Bingo는 가장 크게 어긋나 있다.
 - `.codecs().addJson()`, `.codecs().addMessagePack()`, `.codecs().addProtobuf()`는 codec 이름만
   기록하는 no-op 이면 안 된다. 기존 public method 이름은 유지하되, 내부에서 해당 codec 이
   실제 channel/stream/Spot 변환 경로에 연결되도록 만든다. codec 이 message type 을 알아야
-  하는 경우에는 packet name 과 request/reply type 등록부를 사용한다. 현재 Node Bingo의
-  `addSerializer(...)` 등록은 동작 확인용 중간 단계이며, 최종 표준에서는 샘플 업무 코드나
-  샘플 모듈마다 codec helper 를 반복시키지 않는다.
+  하는 경우에는 packet name 과 request/reply type 등록부를 사용한다. 현재 Node의
+  `addProtobuf()` 기본 serializer 는 generic serializer 이므로 Bingo generated Protobuf
+  계약을 완료한 것으로 보지 않는다. 최종 표준에서는 샘플 업무 코드나 샘플 모듈마다
+  codec helper 를 반복시키지 않는다.
 - class/generated type metadata 에서 packet name 을 알 수 있는 샘플 호출부는 fluent
   `packetName(...)`을 반복하지 않는다.
 - Node의 `packetName(...)`은 plain object 처럼 packet name 을 알 수 없거나 실제 packet name
@@ -485,19 +495,16 @@ Spot create/join 경계다.
   직접 호출한다.
 - Spot join/create 에서 `ObjectMapper.readValue(request.toByteArray(), ...)`와
   `Message.from(json.writeValueAsBytes(reply))`가 직접 나온다.
-- Java Bingo Shared 계약은 `Shared/src/main/proto/bingo_messages.proto`와
-  `com.google.protobuf` Gradle plugin 으로 generated `Messages` class 를 만들도록 전환됐다.
-  손으로 작성한 `Shared/src/main/java/.../Messages.java` record 파일은 삭제됐다.
-  Java sample 은 generated `MessageLite` type 을 전송 계약으로 사용한다.
+- Java Bingo Shared 계약은 아직 generated Protobuf type 으로 전환되지 않았다.
+  `Shared/src/main/proto/bingo_messages.proto`가 없고,
+  `Shared/src/main/java/.../Messages.java` hand-written record 파일이 전송 계약으로 남아 있다.
+  `Shared/build.gradle.kts`도 `com.google.protobuf` Gradle plugin 을 등록하지 않는다.
 - 2026-06-16 현재 `ZLinkStreamProtobuf`는 generated `MessageLite` 값이면 real Protobuf bytes 를
-  쓰도록 정리했다. 값이 `MessageLite`이면 `toByteArray()`로 encode 하고, target type 이
-  `MessageLite`이면 generated `parser()`로 decode 한다. Java Bingo와 Kotlin Bingo는 이 경로를
-  탄다. Kotlin Bingo Shared 는 Java Bingo Shared 의 generated `Messages` class 를 typealias 로
-  재사용한다.
-- 2026-06-16 현재 Java Bingo `Shared/build.gradle.kts`는
-  `id("com.google.protobuf") version "0.9.4"`, `protobuf-java:4.30.2`,
-  `protoc:4.30.2`를 사용한다. Kotlin Bingo Shared 는 `api(project(":java:Bingo:Shared"))`로
-  Java generated class 를 재사용한다. 별도 Kotlin `data class` 전송 계약은 유지하지 않는다.
+  쓰도록 정리되어 있다. 값이 `MessageLite`이면 `toByteArray()`로 encode 하고, target type 이
+  `MessageLite`이면 generated `parser()`로 decode 한다. 그러나 Java/Kotlin Bingo sample type 은
+  아직 `MessageLite`가 아니므로 이 경로를 타지 않는다. 현재는 JSON fallback 으로 직렬화된다.
+- Kotlin Bingo Shared 도 아직 generated Protobuf type 으로 전환되지 않았다.
+  `Shared/src/main/kotlin/.../Messages.kt`의 `data class`들이 전송 계약으로 남아 있다.
 - `ZLinkSpot.onCreate(Message request)`, `ZLinkSpot.onActorJoin(actor, Message request, ...)`,
   `ZLinkSessionPacketHandler.handle(..., Message payload)`는 현재 공개 signature 가 raw
   `Message`이다. Kotlin wrapper 도 같은 Java core surface 를 따른다. 새 typed lifecycle
@@ -512,31 +519,27 @@ Spot create/join 경계다.
   또는 Kotlin의 동등한 `submit(TicTacToeGameJoinRes::class.java)` 형태이며, 호출부에
   `Message.from(json.writeValueAsBytes(...))`가 없다.
 - 2026-06-16 현재 Java/Kotlin Bingo의 `MatchBingoActorHandler`도 같은 표준 표면을 사용한다.
-  Java는 generated `Messages.BingoRoomJoinReq.newBuilder()...build()` 값을
-  `joinSpot(...).await(Messages.BingoRoomJoinRes.class)`로 보내고, Kotlin도 generated builder 로
-  만든 `BingoRoomJoinReq` 값을
-  `joinSpot(...).submit(BingoRoomJoinRes::class.java).await()`로 보낸다. 이 경로는 이미 codec
-  helper 를 샘플 호출부에 노출하지 않는다.
+  다만 전송 값은 generated builder 가 아니라 hand-written record/data class 이다. 따라서
+  호출 표면 일부는 정리되어 있어도 generated Protobuf 전송 계약 완료로 보지 않는다.
 - 2026-06-16 현재 `ZLinkSpotManager.create/getOrCreate`는 `Message request`만 받는다. 따라서
-  Spot create settings 를 object request 로 직접 넘기는 표준 surface 는 없다. Java Bingo는
-  generated `BingoRoomSettingsPayload` bytes 로 정리했고, Kotlin Bingo도 같은 generated payload
-  bytes 로 정리했다. 이 항목은 아직 raw `Message` 표면이므로 typed Spot create metadata 설계
+  Spot create settings 를 object request 로 직접 넘기는 표준 surface 는 없다. Java/Kotlin
+  Bingo는 현재 `ObjectMapper` / `Message.from(json.writeValueAsBytes(...))` 경로로 settings
+  payload 를 만든다. 이 항목은 아직 raw `Message` 표면이므로 typed Spot create metadata 설계
   이슈로 남긴다.
 - 2026-06-16 현재 `ZLinkSpot.onCreate`, `ZLinkSpot.onActorJoin`, `ZLinkSessionPacketHandler.handle`
-  모두 raw `Message` payload 를 받는다. Java Bingo는 generated `parseFrom`/`toByteArray`로
-  JSON helper 와 `ZLinkStreamProtobuf.decode`를 제거했다. Kotlin Bingo도 generated
-  `parseFrom`/`toByteArray`로 `ObjectMapper`, `ZLinkStreamProtobuf.decode`,
-  `json.writeValueAsBytes`를 제거했다. TicTacToe 쪽 raw JSON lifecycle 경계는 typed metadata
-  설계 후 제거한다.
+  모두 raw `Message` payload 를 받는다. Java/Kotlin Bingo raw lifecycle 경계에는 아직
+  `ZLinkStreamProtobuf.decode`, `ObjectMapper.readValue`,
+  `Message.from(json.writeValueAsBytes(...))`가 남아 있다. TicTacToe 쪽 raw JSON lifecycle
+  경계도 typed metadata 설계 후 제거한다.
 - Java session dispatcher 도 `packetName()`으로 handler 를 찾은 뒤 raw `Message payload`를
   `handle(context, header, payload)`에 넘긴다. handler interface 에 request/reply generic 이
   없으므로 session auth decode 는 typed stream packet metadata 설계 전에는 제거할 수 없다.
 
 수정 방향:
 
-- Java framework 의 기존 session packet handler public signature 는 유지한다.
-  Java Bingo는 generated type 직접 parse 로 금지 helper 를 제거했지만, 일반 해법은 packet name 과
-  request/reply type 을 기존 registration metadata 와 codec registry 내부에서 연결하는 것이다.
+- Java framework 의 기존 session packet handler public signature 는 유지한다. 일반 해법은 packet
+  name 과 request/reply type 을 기존 registration metadata 와 codec registry 내부에서 연결하는
+  것이다.
 - Java framework 의 기존 Spot create/join public signature 는 유지한다.
   raw `Message` decode/encode 는 샘플이 아니라 runtime 내부 표준 경로에서 처리한다.
 - request/reply type 을 generic handler 에서 이미 알 수 있는 channel, actor packet, Spot
@@ -549,14 +552,14 @@ Spot create/join 경계다.
   `json.writeValueAsBytes` 직접 호출을 샘플에서 제거한다. 단, 현재 public signature 가 raw
   `Message`인 TicTacToe session/Spot lifecycle 경계는 typed metadata 설계 전까지 별도 미완료
   항목으로 둔다.
-- Bingo Java Shared 는 `.proto` generated class 를 전송 계약으로 쓰도록 바뀌었다.
-  Java Bingo sample 업무 코드에서는 `ZLinkStreamProtobuf.decode`, `ObjectMapper.readValue`,
-  `json.writeValueAsBytes` 패턴을 제거했다. 남은 Java 쪽 작업은 이 raw Spot/session lifecycle
-  처리를 runtime metadata 기반 표준 경로로 일반화할지 분리하는 것이다.
+- Bingo Java Shared 는 아직 `.proto` generated class 를 전송 계약으로 쓰지 않는다.
+  `Messages.java` record 계약과 raw lifecycle `ObjectMapper`/`ZLinkStreamProtobuf.decode`
+  경로가 남아 있다. 남은 Java 쪽 작업은 generated Protobuf 계약 도입과 raw
+  Spot/session lifecycle 처리를 runtime metadata 기반 표준 경로로 일반화하는 것이다.
 - 2026-06-16 현재 Java framework channel/actor/Spot 공용 serializer 는
   `ZLinkProtobufMessageSerializer`를 추가해 generated `MessageLite` 값이면 real Protobuf bytes 를
-  쓴다. Java/Kotlin Bingo generated type 은 이 경로를 탄다. fallback 은 아직 generated type 으로
-  전환되지 않은 과거 DTO 호환을 위한 임시 경로다.
+  쓴다. 그러나 Java/Kotlin Bingo sample type 은 아직 generated `MessageLite`가 아니므로 이
+  경로를 타지 않는다. fallback 은 아직 generated type 으로 전환되지 않은 DTO 호환 경로다.
 - TicTacToe Java Shared 는 JSON DTO를 유지하되 framework codec registry 가 encode/decode 한다.
 - 2026-06-16 현재 Java Bingo draw timer 는 `@ZLinkSpotTimer(name = "bingo-draw",
   periodMillis = SampleTimings.DrawPeriodMillis)`로 자동 등록한다. `BingoRoomSpot`의
@@ -592,28 +595,26 @@ Kotlin은 Java framework 위의 언어 표면이므로 Java와 같은 문제를 
 
 현재 문제:
 
-- Kotlin Bingo의 Protobuf 전송 계약은 generated type 으로 전환됐고, raw lifecycle 경계의
-  `ZLinkStreamProtobuf.decode`, `ObjectMapper.readValue`, `json.writeValueAsBytes` 호출도
-  제거됐다.
+- Kotlin Bingo의 Protobuf 전송 계약은 아직 generated type 으로 전환되지 않았다.
+  `Messages.kt`의 `data class` 계약과 raw lifecycle 경계의 `ZLinkStreamProtobuf.decode`,
+  `ObjectMapper.readValue`, `json.writeValueAsBytes` 호출이 남아 있다.
 - Kotlin TicTacToe session handler 에 `ZLinkStreamJson.decode(...)`가 직접 나온다.
 - Kotlin TicTacToe Spot actor join 경계에 `json.readValue(request.toByteArray(), ...)`와
   `Message.from(json.writeValueAsBytes(...))`가 직접 나온다.
-- 2026-06-16 현재 Kotlin Bingo Shared 는 Java Bingo Shared project 를 dependency 로 두고,
-  Java generated `Messages` class 를 `typealias`로 재사용한다. Kotlin sample 의
-  request/reply/notify 전송 타입은 generated `MessageLite` type 이다.
+- 2026-06-16 현재 Kotlin Bingo Shared 는 Java generated `Messages` class 를 재사용하지 않는다.
+  Kotlin sample 의 request/reply/notify 전송 타입은 `Messages.kt`의 hand-written `data class`
+  이다.
 - Java core runtime 의 channel/actor/Spot serializer 와 `ZLinkStreamProtobuf`는 generated
-  `MessageLite` 값이면 real Protobuf bytes 를 쓴다. Kotlin Bingo도 generated type 을 쓰므로
-  이 경로를 탄다.
+  `MessageLite` 값이면 real Protobuf bytes 를 쓴다. Kotlin Bingo는 아직 generated type 이
+  아니므로 이 경로를 타지 않는다.
 
 수정 방향:
 
 - Java core 의 기존 session/spot 표준 경로 정리를 Kotlin coroutine wrapper 가 그대로
   사용하게 한다. Kotlin 전용 새 public API 를 추가하지 않는다.
-- Kotlin Bingo 샘플은 `ZLinkCoroutineSessionPacketHandler`와 `ZLinkCoroutineSpot`에서
+- Kotlin Bingo 샘플은 아직 `ZLinkCoroutineSessionPacketHandler`와 `ZLinkCoroutineSpot`에서
   `ZLinkStreamProtobuf.decode`, `ObjectMapper.readValue`, `json.writeValueAsBytes`를 직접
-  호출하지 않는다. 현재 raw lifecycle 경계는 generated `parseFrom`/`toByteArray`를 사용한다.
-  이는 최종 typed metadata 설계 전의 raw `Message` 경계 처리이며, helper 이름만 바꾼 완료
-  판정으로 보지 않는다.
+  호출한다. 이를 generated Protobuf type 과 runtime metadata 기반 표준 경로로 옮겨야 한다.
 - Kotlin TicTacToe 샘플은 JSON DTO를 전송 계약으로 유지한다. actor join 호출부는 이미
   `joinSpot(..., TicTacToeGameJoinReq).submit(TicTacToeGameJoinRes::class.java)` 표준 표면을
   사용하므로, 이 호출부에 codec helper 를 되살리지 않는다. 남은 session/Spot 수신 경계는
@@ -853,8 +854,7 @@ Spot actor join, stream session packet handler 는 아직 raw `Message`/frame �
    - Bingo draw timer 는 attribute 옵션 계약이 정해지기 전에는 수동 등록의 timer policy 를
      잃지 않는다.
 3. **Java/Kotlin generated Protobuf 전환 정리**
-   - Java Bingo Shared 는 Protobuf generator 와 generated `Messages` class 로 전환됐다.
-   - Kotlin Bingo Shared 는 Java generated class 를 직접 재사용하도록 전환됐다.
+   - Java/Kotlin Bingo Shared 는 아직 hand-written record/data class 계약이다.
    - 전송 경계의 request/reply/notify type 은 generated class 로 바꾼다. domain 편의 모델이
      필요하면 전송 계약이 아닌 내부 모델로 제한한다.
    - Kotlin `data class`가 전송 계약으로 다시 생기면 Java/Kotlin 전체 완료로 보지 않는다.
@@ -886,14 +886,15 @@ Spot actor join, stream session packet handler 는 아직 raw `Message`/frame �
   `.ToJson()` / `.FromJson<T>()`가 남아 있다. `IZLinkSpotManager.CreateAsync`,
   `IZLinkActorContext.JoinSpot`, `IZLinkSessionPacketHandler.HandleAsync`의 현재 public
   signature 만으로는 request/reply type metadata 를 알 수 없다.
-- Java/Kotlin Bingo는 `.proto` generated `Messages` class 를 전송 계약으로 사용한다. Kotlin은
-  Java Bingo Shared 의 generated class 를 `typealias`로 재사용한다.
+- Java/Kotlin Bingo는 아직 `.proto` generated `Messages` class 를 전송 계약으로 사용하지
+  않는다. Java는 `Messages.java` record, Kotlin은 `Messages.kt` data class 를 전송 계약으로
+  사용한다.
 - Java/Kotlin framework channel/actor/Spot serializer 와 `ZLinkStreamProtobuf`는 generated
-  `MessageLite` 값이면 real Protobuf bytes 를 쓸 수 있게 됐다. Java/Kotlin generated 타입은
-  이 경로를 탄다.
-- Java/Kotlin Bingo raw session/Spot lifecycle 경계에서는 금지 helper 문자열을 제거했다.
-  TicTacToe raw session/Spot lifecycle 경계에는 아직 `ZLinkStreamJson.decode`,
-  `ObjectMapper.readValue`, `Message.from(json.writeValueAsBytes(...))`가 남아 있다.
+  `MessageLite` 값이면 real Protobuf bytes 를 쓸 수 있게 됐다. 그러나 Java/Kotlin Bingo sample
+  타입은 아직 generated 타입이 아니므로 이 경로를 타지 않는다.
+- Java/Kotlin Bingo와 TicTacToe raw session/Spot lifecycle 경계에는 아직
+  `ZLinkStreamProtobuf.decode`, `ZLinkStreamJson.decode`, `ObjectMapper.readValue`,
+  `Message.from(json.writeValueAsBytes(...))`가 남아 있다.
   이미 공개된 actor join typed 호출부는 유지하되, 남은 raw lifecycle 수신 경계는 별도
   metadata 설계가 필요하다.
 - C++ Bingo는 generated Protobuf type 을 사용하지 않고, `json_to_protobuf_payload`와
@@ -922,6 +923,7 @@ createProtobufReplyMessage
 decodeBingoChannelReply
 bingoChannelHandlerOptions
 submit<Buffer>
+bingoPayloadBase64
 toBingoProto
 fromBingoProto
 ZLinkStreamProtobuf.decode
@@ -960,8 +962,14 @@ contract test 에서 sample 업무 코드 경로를 대상으로 실행하고, w
   - `createProtobufMessage`, `readProtobufMessage`, `decodeBingoChannelReply`,
     `bingoChannelHandlerOptions`, `submit<Buffer>().then(decode...)`는 현재
     `framework/languages/node/samples/Bingo.Ts` 아래에 남아 있지 않다.
-  - `toBingoProto`는 `Shared/Contracts/messages.ts`의 `bingoPayload(...).toBytes()`와
-    `Server/Session/main.ts` raw stream bridge 에 남아 있다.
+  - `bingoMessage`와 `readBingoMessage` helper export 는 제거했다. 이 둘은 현재 참조가 없고,
+    다시 샘플 업무 코드가 Protobuf helper 를 직접 호출하게 만들 여지만 남긴다.
+  - `bingoPayloadBase64`는 `BingoNotificationsHandler`에 남아 있다. notification batch 가
+    `payloadBase64`를 전송 계약으로 들고 있기 때문에, 이 호출은 단순 import 정리로 제거할
+    수 없다. generated type metadata 로 notification payload encode 를 runtime 에 맡기는
+    설계 전까지 완료로 보지 않는다.
+  - `toBingoProto`는 `Server/Session/main.ts` raw stream bridge 와
+    `Shared/Contracts/protobuf-codec.ts` 내부에 남아 있다.
   - `fromBingoProto`는 `Server/Session/main.ts` raw stream bridge 에 남아 있다.
   - `protobuf-codec.ts`는 아직 `protobufjs.loadSync(...)`, `lookupType(...)`,
     `fromObject(...)`, `toObject(...)` reflection 경로를 쓴다. 이 상태는 generated Protobuf
@@ -972,13 +980,12 @@ contract test 에서 sample 업무 코드 경로를 대상으로 실행하고, w
   - 기존 public surface 에 typed Spot create/join/session packet metadata 가 없으므로 설계
     이슈와 연결한다.
 - Java/Kotlin Bingo/TicTacToe:
-  - Java Bingo와 Kotlin Bingo는 generated Protobuf type 을 전송 계약으로 사용한다.
-    Kotlin Bingo Shared 는 Java Bingo Shared 의 generated `Messages` class 를 `typealias`로
-    재사용하며, 별도 Kotlin `data class` 전송 계약은 유지하지 않는다.
-  - Java/Kotlin Bingo에서는 `ZLinkStreamProtobuf.decode`, `ObjectMapper.readValue`,
-    `json.readValue(request.toByteArray...)`, `json.writeValueAsBytes` 금지 패턴을 제거했다.
-    raw session/Spot lifecycle 경계는 generated `parseFrom`/`toByteArray`로만 남아 있고,
-    codec helper 이름을 샘플 업무 코드에 노출하지 않는다.
+  - Java Bingo와 Kotlin Bingo는 아직 generated Protobuf type 을 전송 계약으로 사용하지 않는다.
+    Java는 hand-written `Messages.java` record 계약, Kotlin은 hand-written `Messages.kt`
+    data class 계약을 사용한다.
+  - Java/Kotlin Bingo raw session/Spot lifecycle 경계에는 아직 `ZLinkStreamProtobuf.decode`,
+    `ObjectMapper.readValue`, `Message.from(json.writeValueAsBytes(...))` 계열이 남아 있다.
+    generated type 도입과 raw lifecycle 수신 경계의 codec helper 제거는 완료되지 않았다.
   - Java/Kotlin TicTacToe raw session/Spot lifecycle 경계에는 아직 `ZLinkStreamJson.decode`,
     `ObjectMapper.readValue`, `Message.from(json.writeValueAsBytes(...))`가 남아 있다.
   - actor join 호출부 중 이미 typed `joinSpot(..., dto).await(Type)`가 있는 경로는 유지하고,
@@ -1144,9 +1151,9 @@ contract test 에서 sample 업무 코드 경로를 대상으로 실행하고, w
   통과. framework core, Kotlin wrapper, Spring starter, stream connector, connector codec
   테스트가 통과했다.
 - Java Bingo generated Protobuf build 확인:
-  `cd framework/languages/java/samples && ./gradlew -Pzlink.useLocalBindings=true --no-daemon :java:Bingo:Shared:build :java:Bingo:Server:Api:build :java:Bingo:Server:Play:build :java:Bingo:Server:Session:build :java:Bingo:Client:build`:
-  통과. 이 결과는 Java Bingo Shared가 generated Protobuf class 로 빌드되고, Java Bingo client/server
-  호출부가 generated builder/getter API로 컴파일된다는 증거다.
+  현재 확인 결과 `framework/languages/java/samples/java/Bingo/Shared/src/main/proto`가 없고,
+  `Shared/build.gradle.kts`에 Protobuf generator 설정이 없다. 따라서 Java Bingo generated
+  Protobuf build 는 아직 수행할 수 없으며, 완료 증거가 없다.
 - Kotlin/Java adjacent sample build 확인:
   `cd framework/languages/java/samples && ./gradlew -Pzlink.useLocalBindings=true --no-daemon :kotlin:Bingo:Server:Play:build :kotlin:Bingo:Server:Session:build :kotlin:TicTacToe:Server:build :java:TicTacToe:Server:build`:
   Kotlin Bingo Server Play/Session 과 Java/Kotlin TicTacToe compile 단계는 통과했지만,
@@ -1154,13 +1161,13 @@ contract test 에서 sample 업무 코드 경로를 대상으로 실행하고, w
   실패했다. 이 결과는 builder 표면 수정의 compile 확인으로만 사용하고, sample packaging 완료
   증거로는 사용하지 않는다.
 - Kotlin Bingo generated Protobuf build 확인:
-  `cd framework/languages/java/samples && ./gradlew -Pzlink.useLocalBindings=true --no-daemon :kotlin:Bingo:Shared:build :kotlin:Bingo:Server:Api:build :kotlin:Bingo:Server:Play:build :kotlin:Bingo:Server:Session:build :kotlin:Bingo:Client:build`:
-  통과. 이 결과는 Kotlin Bingo Shared 가 Java generated `Messages` type 을 재사용하고,
-  client/server 호출부가 generated builder/getter API와 raw lifecycle Protobuf bytes 처리로
-  빌드된다는 증거다.
+  현재 확인 결과 `framework/languages/java/samples/kotlin/Bingo/Shared/src/main/kotlin/.../Messages.kt`
+  data class 계약이 남아 있고 Java generated `Messages` type 을 재사용하지 않는다. 따라서 Kotlin
+  Bingo generated Protobuf build 는 아직 완료 증거가 없다.
 - Java/Kotlin Bingo 금지 helper grep 확인:
   `rg -n 'ZLinkStreamProtobuf\.decode|ZLinkStreamJson\.decode|ObjectMapper|readValue|writeValueAsBytes|createProtobufMessage|decodeBingoChannelReply|submit<Buffer>' framework/languages/java/samples/kotlin/Bingo framework/languages/java/samples/java/Bingo -S`:
-  결과 없음.
+  현재 `ZLinkStreamProtobuf.decode`, `ObjectMapper`, `readValue`, `writeValueAsBytes` 결과가
+  남는다. 이 grep 은 아직 실패 상태다.
 - Java sample runner 재확인:
   `cd framework/languages/java/samples && ./run_samples.sh`:
   실패. 실패한 gate 는 `SampleReleaseGateContractTest.requiredSamplesExposeExecutableEntryPoints()`이고

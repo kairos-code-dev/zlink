@@ -148,7 +148,7 @@ connection 수로 나누지 않는다. benchmark나 운영 튜닝에서 고정�
 |------|-----------------|
 | PUB | 메시지 **드롭** (Slow Subscriber 보호) |
 | DEALER | **블록** (기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` (`ZLINK_DONTWAIT`) |
-| ROUTER | `ROUTER_MANDATORY` 시 `ZLINK_SUBMIT_NOT_CONNECTED`, 아니면 드롭 |
+| ROUTER | **블록**(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED`(`ZLINK_DONTWAIT`). `ROUTER_MANDATORY=0`이면 드롭 (미지/도달 불가 rid는 별도로 `ZLINK_SUBMIT_NOT_CONNECTED`) |
 | PAIR | **블록** (기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` |
 
 ### 메모리 계산

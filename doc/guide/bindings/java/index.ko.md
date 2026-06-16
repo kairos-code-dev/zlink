@@ -268,7 +268,7 @@ try (Message msg = Message.from("data")) {
 | `zlink_bind(socket, ep)` | `socket.bind(ep)` |
 | `zlink_connect(socket, ep)` | `socket.connect(ep)` |
 | `zlink_send_part(...)` | `socket.send().message(m).submit()` |
-| `zlink_recv(...)` | `socket.recv(received, flags)` |
+| `zlink_recv_part(...)` | `socket.recv(received, flags)` |
 | `zlink_msg_data(msg)` | `msg.data()` |
 | `zlink_msg_size(msg)` | `msg.size()` |
 | `zlink_msg_close(msg)` | `msg.close()` |
@@ -276,8 +276,8 @@ try (Message msg = Message.from("data")) {
 | `zlink_socket_monitor_open(...)` | `socket.monitorOpen(...)` |
 | `zlink_poller_new()` | `Zlink.createPoller()` |
 | `zlink_timer_new()` | `Zlink.createTimer()` |
-| `zlink_spot_node_new(ctx)` | `ctx.createSpotNode()` |
-| `zlink_spot_node_create_spot(...)` | `node.createSpot()` |
+| `zlink_spot_node_new(ctx, opts)` | `ctx.createSpotNode()` |
+| `zlink_spot_new(node)` | `node.createSpot()` |
 | `zlink_spot_node_actor_new(...)` | `node.createActor("id")` |
 | `zlink_registry_new(ctx)` | `ctx.createRegistry()` |
 | `zlink_discovery_new(ctx, ...)` | `ctx.createDiscovery(type, channel)` |

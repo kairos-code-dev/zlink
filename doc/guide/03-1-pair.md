@@ -8,7 +8,7 @@
 
 ## 1. Overview
 
-The PAIR socket forms an exclusive 1:1 bidirectional connection with exactly one peer. If a second peer connects, the first connection is dropped.
+The PAIR socket forms an exclusive 1:1 bidirectional connection with exactly one peer. If a second peer connects, that later connection is rejected — the first peer keeps the pipe.
 
 **Key characteristics:**
 - Only a single pipe is allowed (1:1 exclusive)
@@ -59,7 +59,6 @@ if (zlink_recv(server, &source_rid, &parts, &part_count, 0) == ZLINK_RECV_OK) {
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
     zlink_multipart_close(parts, part_count);
-    free(parts);
 }
 
 /* Server → Client (bidirectional; client uses the same recv+poller pattern) */
@@ -122,7 +121,7 @@ Multipart frame:  [frame1][frame2]...[frameN]
 ```
 
 > For `source_rid` and the common receive interface, see
-> [Socket Patterns Overview](./03-0-socket-patterns.md#7-common-receive-interface).
+> [Socket Patterns Overview](./03-0-socket-patterns.md#8-common-receive-interface).
 
 Multipart send:
 
@@ -139,8 +138,8 @@ zlink_send(server, parts, 2, 0);
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_OPT_SNDHWM` | int | automatic (floor 4 by default) | Automatic HWM default for the control role. Manual settings take precedence |
-| `ZLINK_OPT_RCVHWM` | int | automatic (floor 4 by default) | Automatic HWM default for the control role. Manual settings take precedence |
+| `ZLINK_OPT_SNDHWM` | int | automatic | Auto-HWM sized for PAIR's peer-queue role. Manual settings take precedence |
+| `ZLINK_OPT_RCVHWM` | int | automatic | Auto-HWM sized for PAIR's peer-queue role. Manual settings take precedence |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time for unsent messages on close (ms), -1=infinite |
 | `ZLINK_OPT_SNDTIMEO` | int | 1000 | Send timeout (ms); set `-1` explicitly for infinite wait |
 | `ZLINK_OPT_RCVTIMEO` | int | 1000 | Receive timeout (ms); set `-1` explicitly for infinite wait |
@@ -174,7 +173,7 @@ zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "DONE", 4);
 zlink_send(worker_signal, &msg, 1, 0);
 
-/* Main: on_signal callback receives "DONE" asynchronously */
+/* Main: receives "DONE" via its poller loop (zlink_recv) */
 ```
 
 > Reference: `core/tests/integration/test_pair_inproc.cpp` -- bind → connect → bounce pattern
@@ -229,11 +228,11 @@ zlink_connect(client, "ipc:///tmp/myapp.ipc");
 
 ### Only a Single Peer Allowed
 
-A PAIR socket maintains only one connection. If a second peer connects, the first connection is dropped.
+A PAIR socket maintains only one connection. If a second peer connects, that later connection is rejected; the first peer keeps the pipe.
 
 ```
  Allowed:  PAIR A ↔ PAIR B      (1:1)
- Invalid:  PAIR A ← PAIR B      (N:1 attempt drops existing connection)
+ Invalid:  PAIR A ← PAIR B      (N:1 attempt: later peers rejected)
                ← PAIR C
 ```
 

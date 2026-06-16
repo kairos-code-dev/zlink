@@ -22,6 +22,7 @@ zlink C library.
 | Document | Description |
 |----------|-------------|
 | [errors.md](./core/errors.md) | Error codes, error strings, and version query |
+| [errno-map.md](./core/errno-map.md) | Errno matrix for send, request, and reply functions |
 | [context.md](./core/context.md) | Context creation, termination, and option tuning |
 | [message.md](./core/message.md) | Message lifecycle, data access, ownership, and properties |
 | [socket/](./core/socket/README.md) | Socket specifications (common + per-type) |
@@ -39,6 +40,11 @@ zlink C library.
 The bindings specification defines how the core C contract is projected
 into each target language. An implementation that satisfies the cross-language
 policy and the per-language spec produces a conforming zlink binding.
+When designing a binding library, follow the
+[POSD design principles](../principal/software-design-principles.md). This
+keeps each language API from exposing internal implementation details, reduces
+the concepts a caller must learn, and preserves deep modules with low change
+propagation.
 
 | Document | Description |
 |----------|-------------|

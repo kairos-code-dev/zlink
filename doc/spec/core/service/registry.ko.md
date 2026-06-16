@@ -12,7 +12,7 @@
 - 원격 조회는 `zlink_registry_query_client_*()`와
   `zlink_registry_query_client_topology()`을 사용합니다.
 - Registry topology는 전체 요약을 볼 때 사용합니다. 개별 서비스의 자세한 상태
-  변화는 각 서비스의 monitor API를 사용합니다.
+  변화는 연속된 snapshot/query 결과를 비교해서 파악합니다.
 
 ## 설정 옵션
 
@@ -131,10 +131,10 @@ service 또는 node에 이미 적용된 routed duplicate policy 설정을 따라
 엔드포인트별로 따로 보관한 뒤, owner 조회를 할 때 최종 owner 한 개만 다시
 고릅니다. 이때 ordering token의 실제 기준은 아래와 같습니다.
 
-- 1차 기준: 같은 `service_name` 안에서 아직 살아 있는 `SpotNode` provider의
-  등록 시각
-- 2차 기준: 같은 provider 등록 시각일 때 topology row의 `last_reported_ms`
-- 3차 기준: 위 두 값도 같을 때 endpoint 문자열 비교
+- 1차 기준: topology row의 `last_reported_ms` — 가장 최근에 보고된 owner가 우선
+- 2차 기준: `last_reported_ms`가 같을 때 살아 있는 owner의 `registration_id`가
+  더 큰 쪽이 우선
+- 3차 기준: 위 두 값도 같을 때 owner routing-id 문자열 비교
 
 이 규칙이 필요한 이유는 old owner와 new owner가 잠시 함께 살아 있는 동안,
 더 늦게 도착한 오래된 report가 새 owner를 다시 덮어쓰지 않게 하기 위해서입니다.
@@ -423,14 +423,16 @@ zlink_config_result_t zlink_registry_service_summary(
   size_t *count);
 ```
 
-서비스 수준 집계 정보를 반환합니다. 각 항목은 주어진 (auto_connect_type,
-channel_name) 쌍에 대해 상태별 인스턴스 수를 요약합니다.
+서비스 수준 집계 정보를 반환합니다. 각 항목은 주어진 (`auto_connect_type`,
+`service_role`, `channel_name`) 조합에 대해 상태별 인스턴스 수를 요약합니다.
 
 **버퍼 규약:** `entries = NULL`을 전달하면 필요한 개수만 반환합니다. 다음
-호출에서 호출자가 할당한 버퍼를 제공합니다. 버퍼가 부족하면 `-1`을 반환하고
-`errno = ENOBUFS`, `*count`에 필요한 용량을 설정합니다.
+호출에서 호출자가 할당한 버퍼를 제공합니다. 버퍼가 부족하면
+`ZLINK_CONFIG_INVALID_ARGUMENT`를 반환하고 `errno = ENOBUFS`, `*count`에 필요한
+용량을 설정합니다.
 
-결과는 (`auto_connect_type`, `channel_name`) 오름차순으로 정렬됩니다.
+결과는 (`auto_connect_type`, `service_role`, `channel_name`) 오름차순으로
+정렬됩니다.
 
 #### zlink_registry_service_summary_entry_t
 
@@ -579,45 +581,25 @@ typedef struct zlink_registry_topology_filter_t
 
 ### zlink_registry_topology
 
-로컬 Registry 인스턴스에서 전체 토폴로지 스냅샷을 가져옵니다.
+로컬 Registry 인스턴스에서 토폴로지 스냅샷을 가져옵니다(필터 선택 가능).
 
 ```c
 zlink_config_result_t zlink_registry_topology(void *registry,
-                                                       zlink_registry_topology_entry_t *entries,
-                                                       size_t *count);
+                                              const zlink_registry_topology_filter_t *filter,
+                                              zlink_registry_topology_entry_t *entries,
+                                              size_t *count);
 ```
 
-`entries`에 토폴로지의 모든 등록된 서비스를 채웁니다. 입력 시 `*count`는
-배열 용량이고, 출력 시 실제 개수입니다. 필요한 개수를 먼저 조회하려면
-`entries = NULL`을 전달합니다.
+`entries`에 토폴로지의 등록된 서비스를 채웁니다. `filter`를 non-NULL로 주면
+조건에 맞는 항목만, `filter = NULL`이면 전체 스냅샷을 반환합니다. 입력 시
+`*count`는 배열 용량이고, 출력 시 실제 개수입니다. 필요한 개수를 먼저
+조회하려면 `entries = NULL`을 전달합니다.
 
 **반환값:** `zlink_config_result_t` 값을 반환합니다.
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
-**참고:** `zlink_registry_topology`
-
----
-
-### zlink_registry_topology
-
-필터를 사용하여 로컬 토폴로지를 조회합니다.
-
-```c
-zlink_config_result_t zlink_registry_topology(void *registry,
-                                                    const zlink_registry_topology_filter_t *filter,
-                                                    zlink_registry_topology_entry_t *entries,
-                                                    size_t *count);
-```
-
-`zlink_registry_topology`와 동일하지만 `filter` 조건과 일치하는
-항목만 반환합니다.
-
-**반환값:** `zlink_config_result_t` 값을 반환합니다.
-
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
-
-**참고:** `zlink_registry_topology`
+**참고:** `zlink_registry_query_client_topology`
 
 ---
 
@@ -787,7 +769,7 @@ Registry 는 service/provider row 뿐 아니라 owner-bound route row 도 materi
 - route kind
 - route key
 - owner registration id
-- owner registration generation
+- owner routing id
 - advertising registry
 
 Discovery 가 `zlink_discovery_bind_route()`를 호출하면 Registry 는 현재 Discovery service

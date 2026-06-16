@@ -97,6 +97,31 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_get_or_new(
   separate join API step.
 - Remote Spot creation or acquisition is outside this function's scope.
 
+### Spot options
+
+`Spot` handles accept typed options through `zlink_set_spot_option()` /
+`zlink_get_spot_option()`.
+
+```c
+typedef enum zlink_spot_option_t
+{
+    ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS = 0x3701
+} zlink_spot_option_t;
+
+zlink_config_result_t zlink_set_spot_option (void *handle,
+                                             zlink_spot_option_t option,
+                                             const void *optval,
+                                             size_t optvallen);
+zlink_config_result_t zlink_get_spot_option (void *handle,
+                                             zlink_spot_option_t option,
+                                             void *optval,
+                                             size_t *optvallen);
+```
+
+| Option | Value meaning |
+|--------|---------------|
+| `ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS` | Default request timeout in milliseconds for Spot request operations. |
+
 ## Entry Spot
 
 When a `SpotNode` is created, it internally creates an `Entry Spot` logical state.
@@ -250,7 +275,7 @@ typedef struct zlink_spot_node_socket_entry_t {
   char socket_name[64];
   zlink_socket_type_t socket_type;
   uint32_t auto_hwm_visible;
-  zlink_monitor_status_t snapshot;
+  zlink_monitor_status_t monitor_status;
 } zlink_spot_node_socket_entry_t;
 
 zlink_config_result_t zlink_spot_node_internal_sockets(
@@ -457,7 +482,6 @@ zlink_submit_result_t zlink_spot_request_channel(
 ```c
 zlink_submit_result_t zlink_spot_publish(
   void *spot,
-  const char *service_name,
   const char *topic_id,
   zlink_msg_t *parts,
   size_t part_count,
@@ -468,8 +492,6 @@ zlink_recv_result_t zlink_spot_subscribe(
   zlink_routing_id_t *source_rid_out,
   zlink_msg_t **parts_out,
   size_t *part_count_out,
-  char *service_name_out,
-  size_t *service_name_len_out,
   char *topic_id_out,
   size_t *topic_id_len_out,
   zlink_recv_flags_t flags);
@@ -478,15 +500,13 @@ zlink_recv_result_t zlink_spot_subscription_event(
   void *spot,
   zlink_routing_id_t *source_rid_out,
   int *subscribed_out,
-  char *service_name_out,
-  size_t *service_name_len_out,
   char *topic_id_out,
   size_t *topic_id_len_out,
   zlink_recv_flags_t flags);
 ```
 
-The topic plane still uses the public parameter name `service_name`.
-That is the current contract name for the topic namespace.
+The topic plane is keyed solely by `topic_id`; there is no separate
+`service_name` parameter on the topic functions.
 
 - `zlink_spot_node_attach_pub_ingress()` joins this same topic ingress path.
 
@@ -540,7 +560,8 @@ typedef enum zlink_spot_dispatch_event_t {
   ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE         = 3,
   ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4,
   ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE         = 5,
-  ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE    = 6
+  ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE    = 6,
+  ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE = 7
 } zlink_spot_dispatch_event_t;
 
 typedef enum zlink_spot_dispatch_subject_kind_t {
@@ -756,11 +777,6 @@ zlink_config_result_t zlink_spot_node_status(
 
 zlink_config_result_t zlink_spot_node_peers(
   void *node,
-  zlink_spot_node_peer_entry_t *entries,
-  size_t *count);
-
-zlink_config_result_t zlink_spot_node_peers(
-  void *node,
   const zlink_spot_node_peer_filter_t *filter,
   zlink_spot_node_peer_entry_t *entries,
   size_t *count);
@@ -865,6 +881,7 @@ typedef struct zlink_actor_route_t {
 
 typedef struct zlink_actor_join_result_t {
   zlink_request_result_t result;
+  int32_t join_result_code;
   zlink_actor_ref_t actor;
   zlink_routing_id_t joined_spot_rid;
   uint64_t join_epoch;
@@ -1083,7 +1100,7 @@ zlink_recv_result_t zlink_spot_actor_join_recv(
 zlink_submit_result_t zlink_spot_actor_join_reply(
   void *spot,
   const zlink_actor_join_info_t *info,
-  uint32_t accepted,
+  int32_t join_result_code,
   zlink_msg_t *parts,
   size_t part_count);
 ```
@@ -1188,8 +1205,8 @@ the Actor's current Spot changes to the target.
 
 `zlink_spot_actor_join_reply()` contracts:
 
-- `accepted` must be `0` (reject) or `1` (accept). Any other value fails with
-  `ZLINK_SUBMIT_INVALID_ARGUMENT`; `errno` is `EINVAL`.
+- `join_result_code` of `0` accepts the join; any non-zero value rejects it and
+  is delivered to the requester as the join result code.
 - `info == NULL` fails with `ZLINK_SUBMIT_INVALID_ARGUMENT`; `errno` is `EINVAL`.
 - `message == NULL` sends a completion with no payload.
 - On successful submit, reply message ownership transfers to the library. On

@@ -122,7 +122,8 @@ API facade 의 규칙:
 | `spot_subject_access_t` | `services/spot/` | publish, subscribe, option, handler, monitor, type casting |
 
 `service_public_api_guard_t` 는 모든 서비스에 공통되는 입장 허용/close 가드다.
-콜백 모드를 추적하고, destroy 시 `EBUSY`/`ESHUTDOWN` lifecycle 게이트를 제공한다.
+public API 진입과 close/busy 상태를 추적하고, destroy 시 `EBUSY`/`ESHUTDOWN`
+lifecycle 게이트를 제공한다. 콜백 모드 추적은 별도의 `service_mode_state_t`에 있다.
 
 ### 3.3 Service Runtime
 

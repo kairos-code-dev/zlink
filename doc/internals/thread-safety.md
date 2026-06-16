@@ -201,7 +201,7 @@ one word:
 
 | Tier | Guard role |
 |---|---|
-| Lifecycle strict | `begin_close_or_fail_busy()` checks in-flight count and closing bit atomically. Returns `EBUSY` if in-flight > 0, `EALREADY` if closing bit already set. On success, sets the closing bit. |
+| Lifecycle strict | `begin_close_or_fail_busy()` checks in-flight count and closing bit atomically. Returns `EBUSY` if in-flight > 0, `ESHUTDOWN` if closing bit already set. On success, sets the closing bit. |
 | Control path serialized | `enter_public_api()` increments the in-flight count after checking the closing bit. If closing bit is set, returns `ESHUTDOWN`. All control-path calls go through this gate, providing serialization. |
 | Hot path | Send paths bypass the guard's broad lock. They use separate minimal-cost admission (the socket-level admission gate) to avoid contention with control-path serialization. |
 
@@ -211,16 +211,27 @@ higher level can restore the handle to operational state.
 
 ## 5. Callback Dispatch Internals
 
-Most callbacks execute on the I/O thread. The exception is
-`zlink_spot_dispatch_event_handler()`, which runs on the Spot-specific worker
-runtime. The dispatch mechanism uses
-atomic loads to read handler pointers, ensuring visibility of handler
-replacements without broad locks on the hot path.
+Different callbacks run on different threads:
+
+- **Socket message handler** (`zlink_recv_handler`) runs on an I/O thread
+  via async mailbox processing.
+- **Monitor handler** runs on the service-control runtime thread — a
+  dedicated task (`monitor_handler_task`) that drains monitor events in a
+  recv loop, not the parent's I/O thread.
+- **Send-ready handler** can run synchronously on the *caller's* send
+  thread: an armed notification fires inline from
+  `notify_send_ready_if_armed()` during the send path.
+- **SPOT dispatch event handler** (`zlink_spot_dispatch_event_handler`)
+  runs on the SPOT dispatch worker pool.
+
+The dispatch mechanism uses atomic loads to read handler pointers, ensuring
+visibility of handler replacements without broad locks on the hot path.
 
 **Handler loading:**
 
 ```cpp
-handler = _socket_msg_handler.load(std::memory_order_acquire);
+// fields live in socket_dispatch_bridge_t
+handler = socket_msg_handler.load(std::memory_order_acquire);
 ```
 
 All handler function pointers and associated subject/userdata pointers

@@ -16,6 +16,11 @@ These are separate public packages layered on top of the core
 `zlink.systems/zlink` package. They must not be folded into the root package as
 required dependencies.
 
+These codec packages define only object <-> `Message` encode/decode helpers.
+Packet-name resolution, high-level serializer lookup, and typed
+request/reply policy belong to framework-layer documents, not this codec
+extension specification.
+
 JSON codec baseline: `encoding/json`.
 MessagePack codec baseline: `vmihailenco/msgpack/v5`.
 

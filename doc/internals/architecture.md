@@ -874,7 +874,7 @@ The top-level object that manages global state.
 
 2. **Socket Management**
    - Tracks socket creation/deletion
-   - Maximum socket limit (default: 1023)
+   - Maximum socket limit (default: 4095)
    - Empty slot reuse
 
 3. **inproc Endpoint Management**
@@ -891,7 +891,7 @@ ctx_t internal structure:
 |  _endpoints: map<string, endpoint_t>  inproc registry    |
 |  _pending_connections: multimap       Pending connections|
 |                                                          |
-|  _max_sockets: int     (default: 1023)                   |
+|  _max_sockets: int     (default: 4095)                   |
 |  _io_thread_count: int (default: 4)                      |
 |  _max_msgsz: int       (max message size)                |
 +----------------------------------------------------------+
@@ -1294,7 +1294,7 @@ core/
 |       +-- ...
 |
 +-- tests/                           # Functional tests
-+-- unittests/                       # Internal unit tests
++-- tests/                           # Internal tests
 ```
 
 ---

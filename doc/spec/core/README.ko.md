@@ -19,16 +19,15 @@
 |------|---------------|
 | `core/include/zlink.h` | 모든 도메인 헤더를 포함하는 aggregate public header |
 | `core/include/zlink/common.h` | 버전 매크로, 공통 include, export 매크로, enum/error include |
-| `core/include/zlink/core.h` | errno/string/version helper, context lifecycle, proxy, 역할, atomic, stopwatch, sleep, thread utility |
-| `core/include/zlink/message.h` | 메시지 저장소, routing id, zero-copy free callback, message lifecycle, multipart close |
-| `core/include/zlink/actor.h` | Actor 값 타입과 Actor result 구조체 |
-| `core/include/zlink/socket.h` | socket 생성, option, TLS, bind/connect, send/recv part substrate, request/reply, pub/sub, stream, socket callback type |
-| `core/include/zlink/monitoring.h` | socket monitor, monitor snapshot, poll/poller, timer |
-| `core/include/zlink/spot.h` | SPOT handle, SPOT node, Actor operation, dispatch, SPOT node attachment API |
+| `core/include/zlink/core/api.h` | errno/string/version helper, context lifecycle, proxy, 기능(capability) 조회, atomic, stopwatch, sleep, thread utility |
+| `core/include/zlink/message/api.h` | 메시지 저장소, routing id, zero-copy free callback, message lifecycle, multipart close |
+| `core/include/zlink/service/actor.h` | Actor 값 타입과 Actor result 구조체 |
+| `core/include/zlink/socket/api.h` | socket 생성, option, TLS, bind/connect, send/recv part substrate, request/reply, pub/sub, stream, socket callback type |
+| `core/include/zlink/eventing/api.h` | socket monitor, monitor snapshot, poll/poller, timer |
+| `core/include/zlink/service/spot.h` | SPOT handle, SPOT node, Actor operation, dispatch, SPOT node attachment API |
 | `core/include/zlink/service_common.h` | service 계층 공통 조회 타입 |
-| `core/include/zlink/registry.h` | registry 생성, 구성, topology, query client, registry snapshot |
-| `core/include/zlink/discovery.h` | discovery 생성, registry 연결, SPOT/Actor resolve, discovery peer snapshot |
-| `core/include/zlink/service.h` | service 계층 호환 aggregate header |
+| `core/include/zlink/service/registry.h` | registry 생성, 구성, topology, query client, registry snapshot |
+| `core/include/zlink/service/discovery.h` | discovery 생성, registry 연결, SPOT/Actor resolve, discovery peer snapshot |
 | `core/include/zlink_enum.h` | 공개 enum domain |
 | `core/include/zlink_errno.h` | 공개 errno domain |
 

@@ -114,7 +114,7 @@ Service-local seam provided by each service. Prevents the API layer from knowing
 | `spot_node_access_t` | `services/spot/spot_node_access.hpp` | SpotNode lifecycle, bind, peer connect, discovery attach |
 | `spot_subject_access_t` | `services/spot/spot_subject_access.hpp` | Publish, subscribe, option, handler, monitor, type casting |
 
-`service_public_api_guard_t` is the common admission/close guard for all services. It provides callback mode tracking and destroy lifecycle gates (`EBUSY`/`ESHUTDOWN`).
+`service_public_api_guard_t` is the common admission/close guard for all services. It tracks public-API entry and the close/busy state, and provides destroy lifecycle gates (`EBUSY`/`ESHUTDOWN`). Callback-mode tracking lives separately in `service_mode_state_t`.
 
 ### 3.3 Service Runtime
 

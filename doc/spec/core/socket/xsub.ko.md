@@ -67,16 +67,17 @@ SUB/XSUB 소켓 옵션의 현재 값을 가져옵니다.
 zlink_config_result_t zlink_set_subscription (void *handle_, const char *filter_);
 ```
 
-`filter_`에 매칭되는 메시지를 구독합니다. 필터 해석: `filter_`가 `*`로
-끝나면 prefix-match 패턴이고, 그 외는 exact topic입니다.
+`filter_`에 매칭되는 메시지를 구독합니다. 구독은 byte-prefix 필터입니다:
+메시지의 토픽이 `filter_` 바이트로 시작하면 매칭됩니다. 빈 `filter_`는 모든
+메시지를 구독합니다. 필터 바이트는 binary-safe이며 wildcard 구문은 없습니다
+(후행 `*`는 리터럴 바이트로 매칭됩니다).
 
 적용 대상: raw SUB, raw XSUB.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**에러:** `handle_`이 NULL이면 `EFAULT`. `filter_`가 NULL이거나 비어있거나
-유효하지 않은 패턴 구문(복수 `*`, 중간 `*`)이면 `EINVAL`. handle 타입이
-구독을 지원하지 않으면 `ENOTSUP`.
+**에러:** `handle_`이 NULL이면 `EFAULT`. `filter_`가 NULL이거나 handle 타입이
+구독을 지원하지 않으면 `EINVAL`.
 
 **참고:** `zlink_unset_subscription`, `zlink_subscribe`
 
@@ -90,15 +91,16 @@ zlink_config_result_t zlink_set_subscription (void *handle_, const char *filter_
 zlink_config_result_t zlink_unset_subscription (void *handle_, const char *filter_);
 ```
 
-이전에 등록된 구독을 제거합니다. `zlink_set_subscription()`과 동일한 문자열
-해석 규칙이 적용됩니다: trailing `*`는 패턴 해제, 그 외는 exact topic 해제.
+이전에 등록된 구독을 제거합니다. `zlink_set_subscription()`과 동일한
+byte-prefix 해석이 적용되며, `filter_` 바이트가 이전에 등록한 prefix와
+일치해야 합니다.
 
 적용 대상: raw SUB, raw XSUB.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**에러:** `handle_`이 NULL이면 `EFAULT`. `filter_`가 NULL이거나 비어있으면
-`EINVAL`. handle 타입이 구독 해제를 지원하지 않으면 `ENOTSUP`.
+**에러:** `handle_`이 NULL이면 `EFAULT`. `filter_`가 NULL이거나 handle 타입이
+구독 해제를 지원하지 않으면 `EINVAL`.
 
 **참고:** `zlink_set_subscription`
 
@@ -152,15 +154,16 @@ zlink_config_result_t zlink_subscription_at (void *handle_,
                            int *is_pattern_out_);
 ```
 
-`index_` (0-기반)에 해당하는 구독 필터 문자열을 반환한다. 진입 시
-`*filter_len_inout_`는 버퍼 크기이며, 반환 시 실제 길이로 설정된다.
-`*is_pattern_out_`는 필터가 prefix 패턴(후행 `*`)이면 1, exact이면 0이다.
+`index_` (0-기반)에 해당하는 구독 필터 문자열을 반환합니다. 진입 시
+`*filter_len_inout_`는 버퍼 크기이며, 반환 시 실제 길이로 설정됩니다.
+`*is_pattern_out_`는 필터가 패턴 구독인지 보고하며, 모든 구독이 byte-prefix
+필터이므로 현재 구현은 항상 `0`을 반환합니다.
 
 적용 타입: raw SUB, raw XSUB.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**에러:** 인덱스가 범위를 벗어나면 `EINVAL`. 버퍼가 작으면 `EMSGSIZE`.
+**에러:** 인덱스가 범위를 벗어나면 `ENOENT`. 버퍼가 작으면 `EINVAL`.
 handle 타입이 구독 조회를 지원하지 않으면 `ENOTSUP`.
 
 **참고:** `zlink_set_subscription`, `zlink_get_sub_option`

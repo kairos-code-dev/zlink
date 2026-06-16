@@ -13,8 +13,8 @@
 | tcp | `tcp://host:port` | `tcp://127.0.0.1:5555` | - | - |
 | ipc | `ipc://path` | `ipc:///tmp/test.ipc` | - | - |
 | inproc | `inproc://name` | `inproc://workers` | - | - |
-| ws | `ws://host:port` | `ws://127.0.0.1:8080` | - | O |
-| wss | `wss://host:port` | `wss://server:8443` | O | O |
+| ws | `ws://host:port/path` | `ws://127.0.0.1:8080` | - | O |
+| wss | `wss://host:port/path` | `wss://server:8443` | O | O |
 | tls | `tls://host:port` | `tls://server:5555` | O | O |
 
 ### 소켓별 Transport 지원

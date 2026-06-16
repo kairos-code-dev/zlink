@@ -26,8 +26,9 @@ typedef void (zlink_thread_fn)(void *);
 
 ## 원자적 카운터
 
-원자적 카운터는 공유 정수에 대한 잠금 없는 증가, 감소 및 읽기 작업을
-제공합니다. 카운터는 `zlink_atomic_counter_new`로 생성하고
+원자적 카운터는 공유 정수에 대한 원자적 증가, 감소, 읽기 작업을 제공합니다
+(네이티브 atomic이 있는 플랫폼에서는 lock-free, 그 외에는 내부 mutex 기반).
+카운터는 `zlink_atomic_counter_new`로 생성하고
 `zlink_atomic_counter_destroy`로 파괴해야 합니다.
 
 > **참고:** `zlink_atomic_counter_new`만 공유 라이브러리에서 내보내집니다
@@ -60,9 +61,10 @@ void *zlink_atomic_counter_new(void);
 void zlink_atomic_counter_set(void *counter_, int value_);
 ```
 
-현재 카운터 값을 `value_`로 원자적으로 교체합니다.
+현재 카운터 값을 `value_`로 교체합니다.
 
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+**스레드 안전성:** 스레드 안전하지 않습니다. 같은 카운터에 대한 다른 작업과
+동시에 호출하지 마세요. 보통 초기 설정 시에만 사용합니다.
 
 **참고:** `zlink_atomic_counter_value`
 
@@ -94,9 +96,10 @@ int zlink_atomic_counter_inc(void *counter_);
 int zlink_atomic_counter_dec(void *counter_);
 ```
 
-카운터를 원자적으로 감소시키고 이전 값(감소 직전의 값)을 반환합니다.
+카운터를 원자적으로 감소시키고, 감소 후에도 0보다 크면 `1`을, 0에 도달하면
+`0`을 반환합니다.
 
-**반환값:** 감소 전 카운터 값.
+**반환값:** 감소 후 카운터가 아직 0이 아니면 `1`, 0에 도달했으면 `0`.
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
@@ -142,9 +145,10 @@ void zlink_atomic_counter_destroy(void **counter_p_);
 
 ## 타이머
 
-독립 실행형 타이머 핸들로 나노초 정밀도의 주기적/일회성 타이머를 제공한다.
-`zlink_timer_new`로 컨텍스트 타이머를, `zlink_spot_timer_new`로 Spot 소유
-타이머를 생성한다. 생성 후에는 동일한 `zlink_timer_*` API로 제어한다.
+나노초 정밀도의 주기적/일회성 타이머를 제공합니다. `zlink_timer_new`로 독립
+실행형 타이머를, `zlink_spot_timer_new`로 Spot 소유 타이머를 생성합니다.
+타이머는 `zlink_timer_recv`로 동기 수신하거나 `zlink_timer_handler` 콜백으로
+구동할 수 있고, `zlink_poller_add_timer`로 poller에 통합할 수도 있습니다.
 
 ### zlink_timer_new
 
@@ -254,9 +258,10 @@ zlink_handler_result_t zlink_timer_handler (void *timer_,
                                             void *userdata_);
 ```
 
-콜백 핸들러를 등록하면 `zlink_timer_recv`는 `ZLINK_RECV_BUSY`로 실패한다.
-`handler_`에 `NULL`을 전달하면 이전에 등록된 콜백이 분리(detach)된다 —
-분리 후에는 `zlink_timer_recv`를 다시 사용할 수 있다.
+`handler_`를 등록하면 타이머가 fire할 때마다 호출됩니다. NULL `handler_`는
+유효하지 않으며 `ZLINK_HANDLER_INVALID_ARGUMENT`(`EINVAL`)로 실패합니다.
+핸들러를 등록한 뒤에는 같은 타이머의 `zlink_timer_recv`가 `ZLINK_RECV_BUSY`를
+반환합니다.
 
 **반환값:** 성공 시 `ZLINK_HANDLER_OK`. 실패 시에는 `zlink_handler_result_t`
 값을 반환한다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지된다.

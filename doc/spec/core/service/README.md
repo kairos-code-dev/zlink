@@ -54,16 +54,14 @@ SPOT messaging offers two ways to specify a destination.
   the request to one of that channel's `ROUTER(server)` set.
   Uses `zlink_spot_send_channel()` / `zlink_spot_request_channel()` on the
   `Spot` facade.
-- ROUTER-side direct SPOT addressing:
-  the caller knows both `dest_node_rid` and `dest_spot_rid` and passes them
-  to the ROUTER socket functions `zlink_router_send_spot()` /
-  `zlink_router_request_spot()`.
-  This mode is available only on the low-level ROUTER API, not on the `Spot`
-  facade.
+- direct SPOT addressing:
+  the caller knows both `dest_node_rid` and `dest_spot_rid` and passes them to
+  the direct-addressing functions. These exist on both the `Spot` facade
+  (`zlink_spot_send_spot()` / `zlink_spot_request_spot()`) and the low-level
+  ROUTER socket (`zlink_router_send_spot()` / `zlink_router_request_spot()`).
 
-The public `Spot` surface does not expose direct `rid`-based ordinary
-send/request. Ordinary service calls should use channel mode. Use ROUTER direct
-addressing only when a concrete destination is truly required.
+Ordinary service calls should use channel mode. Use direct `rid` addressing
+only when a concrete destination is truly required.
 
 ### Logical spot_rid resolution
 

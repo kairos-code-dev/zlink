@@ -17,6 +17,11 @@ applications opt in to codec dependencies explicitly.
 These extensions are separate public modules layered on top of the core
 binding. They must not be merged into the `Systems.Zlink` core assembly.
 
+These codec extensions define only object <-> `Message` encode/decode helpers.
+Packet-name resolution, high-level serializer lookup, and typed
+request/reply policy belong to framework-layer documents, not this codec
+extension specification.
+
 ## Protobuf
 
 ```csharp

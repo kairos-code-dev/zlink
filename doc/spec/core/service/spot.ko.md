@@ -95,6 +95,31 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_get_or_new(
   별도 join API로 처리한다.
 - remote Spot 생성 또는 확보는 이 함수의 범위가 아니다.
 
+### Spot 옵션
+
+`Spot` 핸들은 `zlink_set_spot_option()` / `zlink_get_spot_option()`으로 타입
+옵션을 받는다.
+
+```c
+typedef enum zlink_spot_option_t
+{
+    ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS = 0x3701
+} zlink_spot_option_t;
+
+zlink_config_result_t zlink_set_spot_option (void *handle,
+                                             zlink_spot_option_t option,
+                                             const void *optval,
+                                             size_t optvallen);
+zlink_config_result_t zlink_get_spot_option (void *handle,
+                                             zlink_spot_option_t option,
+                                             void *optval,
+                                             size_t *optvallen);
+```
+
+| 옵션 | 값 의미 |
+|------|---------|
+| `ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS` | Spot request 작업의 기본 요청 타임아웃(ms). |
+
 ## Entry Spot
 
 `SpotNode`가 생성되면 내부적으로 `Entry Spot`(진입 수신점, 새 Actor가 처음 배정되는 논리적 수신 지점) logical state도 함께 생성된다.
@@ -245,7 +270,7 @@ typedef struct zlink_spot_node_socket_entry_t {
   char socket_name[64];
   zlink_socket_type_t socket_type;
   uint32_t auto_hwm_visible;
-  zlink_monitor_status_t snapshot;
+  zlink_monitor_status_t monitor_status;
 } zlink_spot_node_socket_entry_t;
 
 zlink_config_result_t zlink_spot_node_internal_sockets(
@@ -492,7 +517,6 @@ channel request의 transport owner와 delivery owner는 다르다.
 ```c
 zlink_submit_result_t zlink_spot_publish(
   void *spot,
-  const char *service_name,
   const char *topic_id,
   zlink_msg_t *parts,
   size_t part_count,
@@ -503,8 +527,6 @@ zlink_recv_result_t zlink_spot_subscribe(
   zlink_routing_id_t *source_rid_out,
   zlink_msg_t **parts_out,
   size_t *part_count_out,
-  char *service_name_out,
-  size_t *service_name_len_out,
   char *topic_id_out,
   size_t *topic_id_len_out,
   zlink_recv_flags_t flags);
@@ -513,15 +535,13 @@ zlink_recv_result_t zlink_spot_subscription_event(
   void *spot,
   zlink_routing_id_t *source_rid_out,
   int *subscribed_out,
-  char *service_name_out,
-  size_t *service_name_len_out,
   char *topic_id_out,
   size_t *topic_id_len_out,
   zlink_recv_flags_t flags);
 ```
 
-- 토픽 평면의 공개 인자 이름은 아직 `service_name`을 쓴다.
-- 이 이름은 topic plane namespace를 구분하는 현재 계약 이름이다.
+- 토픽 평면은 `topic_id` 하나로만 식별하며, 토픽 함수에 별도의
+  `service_name` 인자는 없다.
 - `zlink_spot_node_attach_pub_ingress()`로 연결한 외부 `PUB`는 이 토픽 입력
   경로로 합류한다.
 
@@ -576,7 +596,8 @@ typedef enum zlink_spot_dispatch_event_t {
   ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE        = 3,
   ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4,
   ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE        = 5,
-  ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE   = 6
+  ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE   = 6,
+  ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE = 7
 } zlink_spot_dispatch_event_t;
 
 typedef enum zlink_spot_dispatch_subject_kind_t {
@@ -612,6 +633,7 @@ typedef void (*zlink_spot_dispatch_event_handler_fn)(
 | `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | attached dealer handle | 없음 — 요청 시 등록한 `zlink_reply_handler_fn`이 자동으로 호출됨 |
 | `ACTOR_READABLE` | `ACTOR` | callback lifetime의 `const zlink_actor_ref_t *` | `zlink_spot_node_actor_recv_part()` |
 | `ACTOR_JOIN_READABLE` | `SPOT` | `spot_` | `zlink_spot_actor_join_recv()` |
+| `ACTOR_LIFECYCLE_READABLE` | `SPOT` | `NULL` | `zlink_spot_recv_actor_lifecycle()` |
 
 dispatch 우선순위는 아래 순서로 고정한다.
 
@@ -732,6 +754,7 @@ typedef struct zlink_actor_route_t {
 
 typedef struct zlink_actor_join_result_t {
   zlink_request_result_t result;
+  int32_t join_result_code;
   zlink_actor_ref_t actor;
   zlink_routing_id_t joined_spot_rid;
   uint64_t join_epoch;
@@ -929,7 +952,7 @@ zlink_recv_result_t zlink_spot_actor_join_recv(
 zlink_submit_result_t zlink_spot_actor_join_reply(
   void *spot,
   const zlink_actor_join_info_t *info,
-  uint32_t accepted,
+  int32_t join_result_code,
   zlink_msg_t *parts,
   size_t part_count);
 ```
@@ -1017,8 +1040,8 @@ zlink_submit_result_t zlink_spot_actor_join_reply(
 
 `zlink_spot_actor_join_reply()` 계약:
 
-- `accepted`는 반드시 `0`(reject) 또는 `1`(accept)이어야 한다. 다른 값은
-  `ZLINK_SUBMIT_INVALID_ARGUMENT`로 실패하고 `errno`는 `EINVAL`이다.
+- `join_result_code`가 `0`이면 join을 accept하고, 0이 아닌 값은 reject하며 그
+  값이 join result code로 requester에게 전달된다.
 - `info == NULL`이면 `ZLINK_SUBMIT_INVALID_ARGUMENT`로 실패하고 `errno`는 `EINVAL`이다.
 - `message == NULL`이면 payload 없는 completion이다.
 - submit 성공 시 reply message 소유권은 라이브러리로 이전된다. validation 실패 또는
@@ -1529,11 +1552,6 @@ zlink_submit_result_t zlink_router_reply_spot(
 zlink_config_result_t zlink_spot_node_status(
   void *node,
   zlink_spot_node_status_t *out);
-
-zlink_config_result_t zlink_spot_node_peers(
-  void *node,
-  zlink_spot_node_peer_entry_t *entries,
-  size_t *count);
 
 zlink_config_result_t zlink_spot_node_peers(
   void *node,

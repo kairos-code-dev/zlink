@@ -12,7 +12,7 @@ Used with `zlink_set_dealer_option()` and `zlink_get_dealer_option()`.
 | Constant | Description |
 |---|---|
 | `ZLINK_DEALER_OPT_PROBE` | Send an empty message on connect to establish identity at the ROUTER peer (`int`; 0 or 1) |
-| `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | Default request timeout in milliseconds for `zlink_dealer_request()` (`uint32_t`) |
+| `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | Default request timeout in milliseconds for `zlink_dealer_request()` (`int`) |
 | `ZLINK_DEALER_OPT_WEIGHT` | Local peer weight advertised to connected peers (`int`; `0..100`, default `100`) |
 
 ## Weight-aware outbound selection

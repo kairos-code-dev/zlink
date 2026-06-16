@@ -16,6 +16,11 @@ These are separate public modules layered on top of the core `zlink` package.
 They must not be merged into `zlink.__init__` as unconditional dependencies,
 and they do not extend a shared `zlink.codec.*` namespace.
 
+These codec packages define only object <-> `Message` encode/decode helpers.
+Packet-name resolution, high-level serializer lookup, and typed
+request/reply policy belong to framework-layer documents, not this codec
+extension specification.
+
 JSON codec baseline: stdlib `json`.
 MessagePack codec baseline: `msgpack`.
 

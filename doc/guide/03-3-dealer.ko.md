@@ -129,12 +129,12 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER에서 식별할 ID (전용 함수) |
 | `ZLINK_DEALER_OPT_PROBE` | int | 0 | 연결 시 빈 메시지 전송 (연결 알림) |
 | `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_dealer_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
-| `ZLINK_OPT_SNDHWM` | int | 자동 (routed 기본 floor 8) | routed 역할 기본값. 수동 설정 시 자동값보다 우선 |
-| `ZLINK_OPT_RCVHWM` | int | 자동 (routed 기본 floor 8) | routed 역할 기본값. 수동 설정 시 자동값보다 우선 |
+| `ZLINK_DEALER_OPT_WEIGHT` | int | 100 | 송신 round-robin의 피어별 로드밸런싱 가중치 |
+| `ZLINK_OPT_SNDHWM` | int | 자동 | DEALER의 peer-queue 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
+| `ZLINK_OPT_RCVHWM` | int | 자동 | DEALER의 peer-queue 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 | `ZLINK_OPT_SNDTIMEO` | int | 1000 | 송신 타임아웃(ms). 무한 대기는 `-1`을 명시적으로 설정 |
 | `ZLINK_OPT_RCVTIMEO` | int | 1000 | 수신 타임아웃(ms). 무한 대기는 `-1`을 명시적으로 설정 |
-| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | binary | — | 다음 connect에 적용할 alias |
 
 ### routing_id 설정
 
@@ -265,14 +265,24 @@ zlink_send(dealer2, &m2, 1, 0);
 
 ## 6. 주의사항
 
-### 피어 없으면 큐잉
+### 피어 없음 vs HWM 배압
 
-연결된 피어가 없으면 메시지는 송신 큐에 쌓인다. HWM 초과 시 대기(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED` 반환(`ZLINK_DONTWAIT`).
+둘은 별개의 결과다. **연결된 피어가 없으면**(양수 가중치 pipe 없음) 송신은
+`ZLINK_SUBMIT_NOT_ADMITTED`를 반환하며 메시지는 큐에 쌓이지 않는다. 피어가
+**연결되어 있지만** 그 송신 큐가 HWM에 도달하면 대기(기본) 또는
+`ZLINK_DONTWAIT` 시 `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다.
 
 ```c
-/* Correct order */
-zlink_set_routing_id(dealer, "D1", 2);
-zlink_connect(dealer, endpoint);  /* identified as D1 */
+/* 연결된 피어 없이 송신 */
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "data", 4);
+zlink_submit_result_t rc = zlink_send(dealer, &msg, 1, ZLINK_DONTWAIT);
+if (rc == ZLINK_SUBMIT_NOT_ADMITTED) {
+    /* 메시지를 받아줄 연결된 피어가 없음 */
+} else if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
+    /* 피어는 연결됐지만 큐가 HWM에 도달 */
+}
 ```
 
 ### 라운드 로빈 분배
@@ -305,16 +315,9 @@ zlink_connect(dealer, endpoint);  /* identified as D1 */
 `zlink_set_routing_id()`는 `zlink_connect()` 호출 전에 호출해야 한다. 연결 후 변경은 적용되지 않는다.
 
 ```c
-/* Frontend: clients connect here */
-void *frontend = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
-zlink_bind(frontend, "tcp://*:5558");
-
-/* Backend: worker threads connect here */
-void *backend = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
-zlink_bind(backend, "inproc://backend");
-
-/* Start worker threads then run proxy */
-zlink_proxy(frontend, backend, NULL);
+/* Correct order */
+zlink_set_routing_id(dealer, "D1", 2);
+zlink_connect(dealer, endpoint);  /* identified as D1 */
 ```
 
 ---
@@ -376,64 +379,6 @@ DEALER가 ROUTER로 보내고 응답을 받는 자립형 예제다(모든 바인
 
     ```rust
     --8<-- "bindings/rust/samples/dealer_router_recv_sample.rs:doc"
-    ```
-
-### 비동기 요청/응답
-
-DEALER→ROUTER 요청을 비동기 콜백으로 받는 변형이다.
-
-=== "C++"
-
-    ```cpp
-    --8<-- "bindings/cpp/samples/request_reply_async_sample.cpp:doc"
-    ```
-
-=== "C#/.NET"
-
-    ```csharp
-    --8<-- "bindings/dotnet/samples/RequestReplyAsync/Program.cs:doc"
-    ```
-
-=== "Java"
-
-    ```java
-    --8<-- "bindings/java/samples/Zlink.Samples/src/main/java/systems/zlink/samples/RequestReplyAsyncSample.java:doc"
-    ```
-
-=== "Kotlin"
-
-    ```kotlin
-    --8<-- "bindings/kotlin/samples/src/main/kotlin/systems/zlink/samples/RequestReplyAsyncSample.kt:doc"
-    ```
-
-=== "Python"
-
-    ```python
-    --8<-- "bindings/python/samples/request_reply_async_sample.py:doc"
-    ```
-
-=== "Node/TypeScript"
-
-    ```typescript
-    --8<-- "bindings/node/samples/request_reply_async_sample.ts:doc"
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    --8<-- "bindings/javascript/samples/request_reply_async_sample.js:doc"
-    ```
-
-=== "Go"
-
-    ```go
-    --8<-- "bindings/go/samples/request_reply_async_sample/main.go:doc"
-    ```
-
-=== "Rust"
-
-    ```rust
-    --8<-- "bindings/rust/samples/request_reply_async_sample.rs:doc"
     ```
 
 ---

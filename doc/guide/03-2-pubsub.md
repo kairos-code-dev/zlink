@@ -286,49 +286,49 @@ zlink_connect(sub, "tcp://pub2:5557");
 
 ## 7. PUB/SUB Caveats
 
-### Slow Subscriber (Drop on HWM Exceeded)
+### Slow Subscriber (HWM Handling)
 
-PUB/XPUB operate in **lossy mode** by default. When a slow subscriber's
-send queue reaches the HWM, messages to that subscriber are **silently
-dropped** (no error returned).
-
-```c
-/* Option 1: Increase buffer by adjusting HWM */
-int hwm = 100000;
-zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
-```
-
-#### XPUB_NODROP — Backpressure Instead of Drop
-
-Setting `ZLINK_PUB_OPT_NODROP` disables lossy mode. When the HWM is
-reached, instead of dropping messages, `ZLINK_SUBMIT_BACKPRESSURED` is returned so the
-caller can handle backpressure directly.
+By default PUB/XPUB run in **NODROP mode** — `ZLINK_PUB_OPT_NODROP`
+defaults to `1`. When a slow subscriber's send queue reaches the HWM,
+`zlink_publish()` returns `ZLINK_SUBMIT_BACKPRESSURED` instead of dropping,
+so the caller can react.
 
 ```c
-/* Enable NODROP on XPUB */
-void *xpub = zlink_socket(ctx, ZLINK_SOCKET_XPUB);
-int nodrop = 1;
-zlink_set_pub_option(xpub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
-
-/* On HWM, publish returns BACKPRESSURED instead of dropping */
+/* Default backpressure handling — publish returns BACKPRESSURED on HWM */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 5);
 memcpy(zlink_msg_data(&msg), "hello", 5);
 zlink_submit_result_t rc = zlink_publish(
-    xpub, NULL, &msg, 1, ZLINK_DONTWAIT);
+    pub, NULL, &msg, 1, ZLINK_DONTWAIT);
 if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
     /* HWM reached — retry or apply backpressure logic */
     zlink_msg_close(&msg);
 }
+
+/* Or raise the HWM to absorb bursts */
+int hwm = 100000;
+zlink_set_option(pub, ZLINK_OPT_SNDHWM, &hwm, sizeof(hwm));
+```
+
+#### Lossy Mode — Drop Instead of Backpressure
+
+Setting `ZLINK_PUB_OPT_NODROP` to `0` enables lossy mode. When the HWM is
+reached, messages to that subscriber are **silently dropped** (no error
+returned) instead of signaling backpressure.
+
+```c
+/* Enable lossy mode (drop on HWM) */
+int nodrop = 0;
+zlink_set_pub_option(pub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
 ```
 
 | Mode | Behavior on HWM | When to Use |
 |------|-----------------|-------------|
-| Default (lossy) | Silent drop — no error, message lost | Only latest data matters (sensor, tick) |
-| `XPUB_NODROP=1` | Returns `ZLINK_SUBMIT_BACKPRESSURED` — caller controls | Message loss is not acceptable |
+| Default (`NODROP=1`) | Returns `ZLINK_SUBMIT_BACKPRESSURED` — caller controls | Message loss is not acceptable (default) |
+| `NODROP=0` (lossy) | Silent drop — no error, message lost | Only latest data matters (sensor, tick) |
 
-> `ZLINK_PUB_OPT_NODROP` is an XPUB-only socket option.
-> It is not available on regular PUB sockets.
+> `ZLINK_PUB_OPT_NODROP` applies to both PUB and XPUB sockets (PUB is
+> implemented on top of XPUB).
 
 ### Late Joiner (Messages Lost Before Subscription)
 
@@ -441,7 +441,7 @@ flowchart LR
 | Question | With SUB/PUB | With XSUB/XPUB |
 |----------|-------------|-----------------|
 | Data pass-through | SUB local filter on — must register subscriptions | XSUB local filter off — **passes all** |
-| Subscription events | PUB does not expose them | XPUB provides `subscription_event()` |
+| Subscription events | PUB does not expose them | XPUB exposes them via `zlink_xpub_recv()` |
 | Proxy suitability | Proxy must manage topics itself | **Relay-only — ideal for proxy** |
 
 ### PUB/SUB Socket Public API Summary

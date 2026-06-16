@@ -227,13 +227,15 @@ sequenceDiagram
 
 | Filter | Type | Description |
 |--------|------|-------------|
-| service_kind | uint16_t | SPOT (2) or Socket (3) |
+| auto_connect_type | uint16_t | `ZLINK_AUTO_CONNECT_*` channel type |
+| service_kind | uint16_t | `DISCOVERY` (1), `SPOT_SUB` (3), `SPOT_PUB` (4), `SOCKET` (5) |
 | service_role | uint16_t | router/dealer/pub/sub/spot |
-| state | uint8_t | Service state filter |
-| service_name | string | Exact name match |
+| state | uint8_t | Topology state filter |
+| source | uint8_t | `ZLINK_TOPOLOGY_SOURCE_*` filter |
+| channel_name | string | Exact channel-name match |
 | routing_id | bytes | Specific provider match |
 
-Results are sorted by: `service_kind → service_name → service_role → endpoint → routing_id`
+Results are sorted by: `auto_connect_type → service_kind → channel_name → service_role → endpoint → routing_id`
 
 ### 7.1 Spot-ownership Resolution Query
 

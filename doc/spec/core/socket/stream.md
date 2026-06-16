@@ -173,9 +173,9 @@ callback is attached. `ETERM` if the context was terminated.
 ### STREAM session Actor list
 
 The session Actor list is a per-session mapping that associates STREAM client
-session routing ids with Actor refs. The mapping is not a public lookup target
-on the STREAM socket. One session may be bound to multiple Actors; one Actor
-may be bound to at most one STREAM session at a time.
+session routing ids with Actor refs. The current Actor bindings for a session
+can be read with `zlink_stream_bound_actors()`. One session may be bound to
+multiple Actors; one Actor may be bound to at most one STREAM session at a time.
 
 ```c
 zlink_config_result_t zlink_stream_attach_actor_gateway(
@@ -205,6 +205,12 @@ zlink_submit_result_t zlink_stream_send_bound_actor_part(
   zlink_msg_t *part,
   zlink_send_flags_t flags,
   zlink_part_flag_t part_flag);
+
+zlink_config_result_t zlink_stream_bound_actors(
+  void *stream,
+  const zlink_routing_id_t *session_rid,
+  zlink_actor_ref_t *entries,
+  size_t *count);
 ```
 
 - `stream` is the raw STREAM socket that owns the session routing id.
@@ -263,6 +269,12 @@ into the Actor unread state identified by the `actor_id` selector.
   `ZLINK_SUBMIT_NOT_CONNECTED` is returned.
 - Internal resource exhaustion or HWM overflow on the relay path returns
   `ZLINK_SUBMIT_BACKPRESSURED`.
+- The `flags` parameter is currently reserved and ignored; the relay path
+  submits non-blocking internally.
+
+`zlink_stream_bound_actors()` reads the current Actor bindings for a session.
+`session_rid` selects the session; pass `entries = NULL` to query the required
+`*count` first, then provide a caller-allocated array.
 
 ---
 

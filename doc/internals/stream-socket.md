@@ -13,8 +13,8 @@ The STREAM socket supports RAW communication with external clients (web browsers
 | Component | File | Role |
 |----------|------|------|
 | stream_t | src/runtime/sockets/stream/stream.cpp | STREAM socket logic |
-| raw_encoder_t | src/runtime/protocol/raw_encoder.cpp | Length-Prefix encoding |
-| raw_decoder_t | src/runtime/protocol/raw_decoder.cpp | Length-Prefix decoding |
+| raw_encoder_t | src/runtime/protocol/raw_encoder.cpp | passthrough encoding (no framing) |
+| raw_decoder_t | src/runtime/protocol/raw_decoder.cpp | passthrough decoding (byte span -> msg_t) |
 | asio_raw_engine_t | src/runtime/engine/asio/asio_raw_engine.cpp | RAW I/O engine |
 | ws_transport_t | src/runtime/transports/ws/ | WebSocket transport |
 | wss_transport_t | src/runtime/transports/ws/ | WebSocket + TLS |
@@ -30,15 +30,15 @@ sequenceDiagram
 
     App->>SS: zlink_send(rid + data)
     SS->>Eng: pipe_t::write()
-    Eng->>Tr: raw_encode (4B len + payload)
+    Eng->>Tr: raw_encode (passthrough bytes, no framing)
     Tr->>Tr: ws::write
 ```
 
 ## 3. WS/WSS Performance Characteristics
 
 ### 3.1 Read Path
-- Data moves directly from the Beast `flat_buffer` into the outgoing
-  `msg_t` (single copy, no intermediate staging buffer).
+- Data is copied from the Beast read buffer (`message_buffer`) into the
+  outgoing `msg_t` (single copy at delivery).
 
 ### 3.2 Write Path
 - `msg_t` payload is passed directly to the Beast write buffer (no
@@ -136,11 +136,12 @@ by `source_rid` (the STREAM routing identity of the remote end).
 ```
 
 Length fields are parsed first. Once both `header_size` and `body_size`
-are known, the implementation pre-allocates the final `zlink_msg_t`
-objects for header and body, and subsequent socket reads stream bytes
-directly into the backing buffers of those messages. There is no second
-copy at delivery time -- by the time the callback runs, the payload is
-already in the message it will receive.
+are known, incoming bytes are accumulated into the per-connection packet
+state's header and body buffers as reads arrive. When a packet completes,
+those accumulation buffers are moved (zero-copy) into freshly initialized
+`zlink_msg_t` header and body objects, which are then handed to the
+callback. There is no extra copy at delivery time -- the move transfers
+the assembled buffers into the messages the callback receives.
 
 ### 6.3 Callback contract
 
@@ -189,8 +190,8 @@ Decoding inside STREAM (rather than in each application) has two
 reasons worth calling out:
 
 - **One fewer copy.** The application never sees a contiguous
-  "assembled" buffer that it later has to split -- the header and body
-  messages are the destination buffers for the socket reads.
+  "assembled" buffer that it later has to split -- the accumulation
+  buffers are moved (zero-copy) into the header and body messages.
 - **Ordering guarantees.** Per-`source_rid` serialization is enforced
   by the decoder, so callers do not have to build their own reordering
   logic on top of raw byte delivery.
@@ -270,9 +271,13 @@ There are two ways a STREAM handle acquires a session owner SpotNode:
 
 The STREAM socket holds none of the relay state itself. The owner mapping, the
 session-to-Actor bindings, and the relay paths all live in the SpotNode Actor
-runtime. The wiring, the local vs remote relay paths, and the cleanup rules are
-documented in [spot-internals.md](./spot-internals.md) section 12 ("STREAM
-session and Actor binding"). What matters at the STREAM layer is only that the
+runtime. The companion session APIs are `zlink_stream_bind_actor()` /
+`zlink_stream_unbind_actor()` (manage a session's bindings),
+`zlink_stream_send_bound_actor_part()` (relay a multipart message to a bound
+Actor), and `zlink_stream_bound_actors()` (enumerate a session's bindings). The
+wiring, the local vs remote relay paths, and the cleanup rules are documented in
+[spot-internals.md](./spot-internals.md) section 12 ("STREAM session and Actor
+binding"). What matters at the STREAM layer is only that the
 byte pipe per `source_rid` is the transport the relay rides on, and that a
 session disconnect removes that session's bindings without changing any bound
 Actor's joined Spot.

@@ -285,6 +285,25 @@ SPOT has a fixed role. Socket family services derive their role from the
 attached socket type. Auto-connect then follows the channel's fixed
 `zlink_auto_connect_type_t` contract.
 
+### Route Kinds
+
+```c
+typedef uint32_t zlink_route_kind_t;
+
+#define ZLINK_ROUTE_KIND_INVALID       0u
+#define ZLINK_ROUTE_KIND_ACTOR         1u
+#define ZLINK_ROUTE_KIND_SPOT_NAME     2u
+#define ZLINK_ROUTE_KIND_ACTOR_SESSION 3u
+```
+
+| Constant | Description |
+|----------|-------------|
+| `ZLINK_ROUTE_KIND_ACTOR` | Actor location route used by actor active-route sync. The value is a byte copy of `zlink_actor_route_t`, carrying the actor node rid, current Spot rid, and current Spot kind. |
+| `ZLINK_ROUTE_KIND_SPOT_NAME` | Route a framework adapter uses to look up a Spot RID by Spot name. |
+| `ZLINK_ROUTE_KIND_ACTOR_SESSION` | Route a framework adapter uses to look up an actor-session binding. |
+
+`ZLINK_ROUTE_KIND_INVALID` cannot be used with bind, unbind, or resolve.
+
 ## Functions
 
 ### zlink_discovery_new
@@ -467,25 +486,31 @@ Attach a raw ROUTER/DEALER/PUB/SUB socket to a discovery channel view.
 zlink_config_result_t zlink_socket_attach_discovery (void *socket, void *discovery);
 ```
 
-Attaches the socket to the given Discovery instance. The Discovery service
-type must be `ZLINK_AUTO_CONNECT_CLIENT_SERVER` and the socket type must be one of
-ROUTER, DEALER, PUB, or SUB. The service role is derived automatically from
-the socket type.
+Attaches the socket to the given Discovery instance. Raw socket attach is
+supported for Discovery handles created with `ZLINK_AUTO_CONNECT_ROUTE_MESH`,
+`ZLINK_AUTO_CONNECT_CLIENT_SERVER`, `ZLINK_AUTO_CONNECT_DEALER_MESH`, or
+`ZLINK_AUTO_CONNECT_FANOUT` (not `SPOT_MESH`). The service role is derived from
+the socket type and must be allowed by the Discovery channel's auto-connect
+type: `ROUTE_MESH` accepts ROUTER; `CLIENT_SERVER` accepts ROUTER or DEALER;
+`DEALER_MESH` accepts DEALER; `FANOUT` accepts PUB or SUB.
 
 Once attached, the socket delegates provider registration, peer refresh, and
 shutdown to the Discovery instance. Manual `connect`, `disconnect`, `unbind`,
-and `close` operations fail on attached sockets. Destroy the Discovery
-instance to terminate the attached socket lifecycle.
+and `close` operations fail on attached sockets (with `EFSM` while attached, or
+`ESHUTDOWN` during shutdown). Destroy the Discovery instance to terminate the
+attached socket lifecycle.
 
 **Parameters:**
-- `socket` -- Socket handle (must be ROUTER, DEALER, PUB, or SUB).
-- `discovery` -- Discovery handle created with `ZLINK_AUTO_CONNECT_CLIENT_SERVER`.
+- `socket` -- Socket handle (ROUTER, DEALER, PUB, or SUB, per the rules above).
+- `discovery` -- Discovery handle whose auto-connect type allows the socket's
+  derived role.
 
 **Returns:** A `zlink_config_result_t` value.
 
 **Errors:**
 - `EINVAL` -- Invalid socket or discovery handle.
-- `ENOTSUP` -- Socket type not supported (must be ROUTER, DEALER, PUB, or SUB).
+- `ENOTSUP` -- Socket role not allowed by the Discovery channel's auto-connect
+  type.
 - `EBUSY` -- Socket already attached to a discovery instance, or has existing
   connect endpoints or attached pipes.
 
@@ -562,6 +587,79 @@ with `ZLINK_CONFIG_NOT_FOUND` and `ENOENT`.
 **Returns:** A `zlink_config_result_t` value.
 
 **Thread safety:** Same-handle calls remain thread-safe.
+
+---
+
+### zlink_discovery_bind_route
+
+Register a route row owned by the current Discovery service registration in
+Registry.
+
+```c
+zlink_config_result_t zlink_discovery_bind_route (
+  void *discovery,
+  zlink_route_kind_t kind,
+  const void *key,
+  size_t key_size,
+  const void *value,
+  size_t value_size);
+```
+
+A route is identified by `kind + key`, and `value` is a byte payload interpreted
+by the calling layer — Registry does not interpret it. The owner is the service
+participant attached to this Discovery handle and registered with Registry. When
+the owner registration disappears or is replaced by a new generation, the route
+rows it registered are cleaned up with it.
+
+**Returns:** `ZLINK_CONFIG_OK` on success. The call may fail on an invalid kind,
+an oversized key, a Registry connection error, or the absence of a live owner
+registration.
+
+---
+
+### zlink_discovery_unbind_route
+
+Remove a route row owned by the current Discovery service registration.
+
+```c
+zlink_config_result_t zlink_discovery_unbind_route (
+  void *discovery,
+  zlink_route_kind_t kind,
+  const void *key,
+  size_t key_size);
+```
+
+Unbind applies only to rows claimed by the same owner generation. It does not
+remove a route created by an older owner generation or a different owner for the
+same `kind + key`.
+
+**Returns:** A `zlink_config_result_t` value.
+
+---
+
+### zlink_discovery_resolve_route
+
+Resolve the current route winner materialized by Registry.
+
+```c
+zlink_config_result_t zlink_discovery_resolve_route (
+  void *discovery,
+  zlink_route_kind_t kind,
+  const void *key,
+  size_t key_size,
+  zlink_routing_id_t *owner_rid_out,
+  zlink_msg_t *value_out);
+```
+
+On success, `owner_rid_out` receives the route owner's routing id and `value_out`
+receives the route value. The caller must close `value_out` with
+`zlink_msg_close()` when done.
+
+If the route is not found the call fails, and `zlink_errno()` carries the reason.
+The payload format is not a core contract, so a higher-level framework adapter
+may decode its own versioned payload and treat a mismatched row as not found.
+
+**Returns:** A `zlink_config_result_t` value.
 
 ---
 

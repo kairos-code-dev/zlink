@@ -117,8 +117,8 @@ typedef enum zlink_submit_result_t
 | Send | `zlink_send`, `zlink_send_rid`, `zlink_publish` |
 | Socket request | `zlink_dealer_request`, `zlink_router_request` |
 | Socket reply | `zlink_router_reply` |
-| SPOT request | `zlink_spot_request_channel`, `zlink_router_request_spot` |
-| SPOT send | `zlink_spot_send_channel`, `zlink_router_send_spot` |
+| SPOT request | `zlink_spot_request_channel`, `zlink_spot_request_spot`, `zlink_router_request_spot` |
+| SPOT send | `zlink_spot_send_channel`, `zlink_spot_send_spot`, `zlink_spot_publish`, `zlink_router_send_spot` |
 | SPOT reply | `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
 | Actor join/reply submit | `zlink_spot_node_actor_join_spot`, `zlink_spot_actor_join_reply` |
 | STREAM to Actor relay | `zlink_stream_send_bound_actor_part` |
@@ -383,8 +383,8 @@ typedef enum zlink_connect_result_t
 
 | 분류 | 함수 |
 |---|---|
-| Connect | `zlink_connect`, `zlink_spot_node_connect_peer` |
-| Disconnect | `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid` |
+| Connect | `zlink_connect`, `zlink_spot_node_connect_peer`, `zlink_spot_node_connect_router_channel_peer`, `zlink_spot_node_connect_router_channel_peer_rid` |
+| Disconnect | `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid`, `zlink_spot_node_disconnect_router_channel_peer`, `zlink_spot_node_disconnect_router_channel_peer_rid` |
 | Unbind | `zlink_unbind` |
 
 ---
@@ -426,37 +426,37 @@ ActorGateway owner에 attach되어 있으면 `EBUSY`와 함께
 ### Actor/Spot route 조회 오류
 
 `zlink_discovery_resolve_actor()`는 `actor_id`가 없거나 너무 길거나 출력 포인터가
-없으면 `ZLINK_CONFIG_INVALID_ARGUMENT`와 `EINVAL`을 반환합니다. Actor route row가
+없으면 `ZLINK_CONFIG_INVALID_ARGUMENT`와 `EINVAL`을 반환한다. Actor route row가
 없거나, row value 크기가 `sizeof(zlink_actor_route_t)`가 아니거나, key와 value의
 Actor id가 다르거나, current Spot rid/kind가 유효하지 않으면
-`ZLINK_CONFIG_NOT_FOUND`와 `ENOENT`를 반환합니다.
+`ZLINK_CONFIG_NOT_FOUND`와 `ENOENT`를 반환한다.
 
 `zlink_discovery_resolve_spot()`는 `discovery`, `spot_rid`, 출력 포인터가 없거나
-`spot_rid`가 비어 있으면 `ZLINK_CONFIG_INVALID_ARGUMENT`와 `EINVAL`을 반환합니다.
+`spot_rid`가 비어 있으면 `ZLINK_CONFIG_INVALID_ARGUMENT`와 `EINVAL`을 반환한다.
 Spot owner topology row가 없거나 owner node rid가 비어 있거나 `spot_kind`가
-Entry/User가 아니면 `ZLINK_CONFIG_NOT_FOUND`와 `ENOENT`를 반환합니다.
+Entry/User가 아니면 `ZLINK_CONFIG_NOT_FOUND`와 `ENOENT`를 반환한다.
 
 조회가 성공한 뒤 `zlink_router_send_spot()` 또는 `zlink_spot_request_spot()` 전송이
-실패하는 경우는 route 조회 오류가 아닙니다. 이 경우에는 기존 routed send/request
-경로의 not-connected, not-found, timeout, backpressure 의미를 따릅니다.
+실패하는 경우는 route 조회 오류가 아니다. 이 경우에는 기존 routed send/request
+경로의 not-connected, not-found, timeout, backpressure 의미를 따른다.
 
-socket `ZLINK_OPT_SNDTIMEO`와 `ZLINK_OPT_RCVTIMEO`의 기본값은 `1000`ms입니다. 따라서
+socket `ZLINK_OPT_SNDTIMEO`와 `ZLINK_OPT_RCVTIMEO`의 기본값은 `1000`ms다. 따라서
 명시적으로 `-1`을 설정하지 않은 send/recv 경로는 무한 대기하지 않고 timeout에 따른
-기존 오류 의미를 낼 수 있습니다.
+기존 오류 의미를 낼 수 있다.
 
 ### 적용 대상 함수
 
 | 분류 | 함수 |
 |---|---|
-| Context | `zlink_ctx_set`, `zlink_ctx_auto_hwm_recalculate` |
+| Context | `zlink_ctx_set`, `zlink_ctx_set_data`, `zlink_ctx_auto_hwm_recalculate` |
 | Message lifecycle | `zlink_msg_init`, `zlink_msg_init_size`, `zlink_msg_init_data`, `zlink_msg_close`, `zlink_msg_move`, `zlink_msg_copy`, `zlink_msg_adopt` |
 | Socket option | `zlink_set_option`, `zlink_get_option`, `zlink_set_routing_id`, `zlink_get_routing_id`, `zlink_set_tls_server`, `zlink_set_tls_client`, `zlink_set_router_option`, `zlink_get_router_option`, `zlink_set_dealer_option`, `zlink_set_stream_option`, `zlink_get_stream_option`, `zlink_set_spot_option`, `zlink_get_spot_option`, `zlink_set_pub_option`, `zlink_get_pub_option`, `zlink_set_sub_option`, `zlink_get_sub_option`, `zlink_set_spot_node_option`, `zlink_get_spot_node_option`, `zlink_socket_set_channel_name`, `zlink_socket_get_channel_name` |
 | Subscription | `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at` |
 | Service attach | `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery`, `zlink_spot_node_attach_channel_dealer`, `zlink_spot_node_attach_channel_dealer_manual`, `zlink_spot_node_attach_pub_ingress` |
-| SpotNode lifecycle/조회 | `zlink_spot_node_entry_spot`, `zlink_spot_node_spot_lookup`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup`, `zlink_remote_actor_get_ref` |
-| Registry 설정 | `zlink_registry_set_id`, `zlink_registry_add_peer`, `zlink_registry_set_heartbeat`, `zlink_registry_set_broadcast_interval` |
-| Discovery 설정/조회 | `zlink_discovery_connect_registry`, `zlink_discovery_resolve_spot`, `zlink_discovery_resolve_actor`, `zlink_discovery_set_value`, `zlink_discovery_get_value`, `zlink_discovery_member_peers` |
-| Snapshot/query | `zlink_spot_node_status`, `zlink_spot_node_peers`, `zlink_spot_node_peers`, `zlink_spot_node_subjects`, `zlink_spot_node_internal_sockets`, `zlink_spot_node_spots`, `zlink_spot_node_actors`, `zlink_spot_actors`, `zlink_registry_status`, `zlink_registry_service_summary`, `zlink_registry_member_peers`, `zlink_registry_topology`, `zlink_registry_topology`, `zlink_registry_query_client_topology`, `zlink_monitor_status` |
+| SpotNode lifecycle/조회 | `zlink_spot_node_entry_spot`, `zlink_spot_node_spot_lookup`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup` |
+| Registry 설정 | `zlink_registry_set_id`, `zlink_registry_set`, `zlink_registry_add_peer`, `zlink_registry_set_heartbeat`, `zlink_registry_set_broadcast_interval` |
+| Discovery 설정/조회 | `zlink_discovery_resolve_spot`, `zlink_discovery_resolve_actor`, `zlink_discovery_set_value`, `zlink_discovery_get_value`, `zlink_discovery_member_peers`, `zlink_discovery_bind_route`, `zlink_discovery_unbind_route`, `zlink_discovery_resolve_route` |
+| Snapshot/query | `zlink_spot_node_status`, `zlink_spot_node_peers`, `zlink_spot_node_subjects`, `zlink_spot_node_internal_sockets`, `zlink_spot_node_spots`, `zlink_spot_node_actors`, `zlink_spot_actors`, `zlink_registry_status`, `zlink_registry_service_summary`, `zlink_registry_member_peers`, `zlink_registry_topology`, `zlink_registry_query_client_topology`, `zlink_monitor_status` |
 | Poller config | `zlink_poller_add`, `zlink_poller_modify`, `zlink_poller_remove`, `zlink_poller_add_fd`, `zlink_poller_add_timer`, `zlink_poller_modify_fd`, `zlink_poller_remove_fd`, `zlink_poller_remove_timer` |
 | Proxy | `zlink_proxy`, `zlink_proxy_steerable` |
 | Timer config | `zlink_timer_start`, `zlink_timer_stop` |
@@ -542,7 +542,7 @@ reply는 이미 들어온 request에 대한 응답이라 admission 판정을 새
 
 ### SPOT request 함수
 
-| Result | `zlink_spot_request_channel` | `zlink_router_request_spot` |
+| Result | `zlink_spot_request_channel` | `zlink_spot_request_spot` | `zlink_router_request_spot` |
 |---|---|---|---|
 | `OK` | Y | Y | Y |
 | `BACKPRESSURED` | Y | Y | Y |
@@ -566,7 +566,7 @@ reply는 이미 들어온 request에 대한 응답이라 admission 판정을 새
 
 ### SPOT send 함수
 
-| Result | `zlink_spot_send_channel` | `zlink_spot_publish` | `zlink_router_send_spot` |
+| Result | `zlink_spot_send_channel` | `zlink_spot_send_spot` | `zlink_spot_publish` | `zlink_router_send_spot` |
 |---|---|---|---|---|
 | `OK` | Y | Y | Y | Y |
 | `BACKPRESSURED` | Y | Y | Y | Y |
@@ -615,11 +615,11 @@ reply는 이미 진행 중인 request에 대한 응답이라 admission 판정을
 
 | Result enum | 함수 |
 |---|---|
-| `zlink_submit_result_t` | `zlink_send_part`, `zlink_send_part_rid`, `zlink_publish_part`, `zlink_dealer_request_part`, `zlink_dealer_reply_part`, `zlink_router_request_part`, `zlink_router_reply_part`, `zlink_spot_request_channel_part`, `zlink_spot_request_spot_part`, `zlink_spot_request_router_part`, `zlink_router_request_spot_part`, `zlink_spot_send_channel_part`, `zlink_spot_send_spot_part`, `zlink_router_send_spot_part`, `zlink_spot_reply_spot_part`, `zlink_spot_reply_router_part`, `zlink_router_reply_spot_part`, `zlink_spot_node_actor_join_spot`, `zlink_spot_node_actor_join_entry_spot`, `zlink_spot_node_actor_leave_spot`, `zlink_spot_node_actor_destroy`, `zlink_spot_actor_join_reply`, `zlink_stream_bind_actor`, `zlink_stream_unbind_actor`, `zlink_stream_send_bound_actor_part`, `zlink_remote_actor_get_ref`, `zlink_spot_node_actor_send_bound_session_msg` |
+| `zlink_submit_result_t` | `zlink_send_part`, `zlink_send_part_rid`, `zlink_publish_part`, `zlink_dealer_request_part`, `zlink_dealer_reply_part`, `zlink_router_request_part`, `zlink_router_reply_part`, `zlink_spot_request_channel_part`, `zlink_spot_request_spot_part`, `zlink_spot_request_router_part`, `zlink_router_request_spot_part`, `zlink_spot_send_channel_part`, `zlink_spot_send_spot_part`, `zlink_spot_publish_part`, `zlink_router_send_spot_part`, `zlink_spot_reply_spot_part`, `zlink_spot_reply_router_part`, `zlink_router_reply_spot_part`, `zlink_spot_node_actor_join_spot`, `zlink_spot_node_actor_join_entry_spot`, `zlink_spot_node_actor_leave_spot`, `zlink_spot_node_actor_destroy`, `zlink_spot_actor_join_reply`, `zlink_stream_bind_actor`, `zlink_stream_unbind_actor`, `zlink_stream_send_bound_actor_part`, `zlink_remote_actor_get_ref`, `zlink_spot_node_actor_send_bound_session_msg` |
 | `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback), `zlink_actor_join_spot_handler_fn` (completion callback), `zlink_actor_join_entry_spot_handler_fn` (completion callback), `zlink_actor_lookup_handler_fn` (completion callback), `zlink_spot_node_actor_close_bound_session` |
 | `zlink_recv_result_t` | `zlink_router_recv_part`, `zlink_dealer_recv_part`, `zlink_spot_recv_part`, `zlink_recv_part`, `zlink_subscribe_part`, `zlink_xpub_recv_part`, `zlink_spot_subscribe_part`, `zlink_spot_recv_subscription_event`, `zlink_spot_recv_actor_lifecycle`, `zlink_socket_monitor_recv`, `zlink_timer_recv`, `zlink_spot_node_actor_recv_part`, `zlink_spot_actor_join_recv` |
 | `zlink_handler_result_t` | `zlink_recv_handler` (raw STREAM only), `zlink_stream_packet_handler`, `zlink_send_ready_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_timer_handler` |
 | `zlink_close_result_t` | `zlink_ctx_term`, `zlink_ctx_shutdown`, `zlink_close`, `zlink_monitor_close`, `zlink_registry_destroy`, `zlink_discovery_destroy`, `zlink_spot_destroy`, `zlink_spot_node_destroy`, `zlink_registry_query_client_destroy`, `zlink_poller_destroy`, `zlink_timer_destroy` |
 | `zlink_bind_result_t` | `zlink_bind`, `zlink_registry_bind` |
-| `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_unbind`, `zlink_spot_node_connect_peer`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid`, `zlink_discovery_connect_registry`, `zlink_registry_query_client_connect` |
+| `zlink_connect_result_t` | `zlink_connect`, `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_unbind`, `zlink_spot_node_connect_peer`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid`, `zlink_spot_node_connect_router_channel_peer`, `zlink_spot_node_connect_router_channel_peer_rid`, `zlink_spot_node_disconnect_router_channel_peer`, `zlink_spot_node_disconnect_router_channel_peer_rid`, `zlink_discovery_connect_registry`, `zlink_registry_query_client_connect` |
 | `zlink_config_result_t` | `zlink_ctx_set`, `zlink_ctx_auto_hwm_recalculate`, 메시지 lifecycle 함수(`zlink_msg_init` 계열 + `zlink_msg_adopt`), socket 옵션/routing/subscription 설정 함수 전체, attach 함수 전체, SpotNode lifecycle/lookup/bind 함수 전체, registry/discovery 설정 함수 전체, snapshot/query 함수 전체, poller 변경 함수 전체, `zlink_proxy`, `zlink_proxy_steerable`, `zlink_timer_start`, `zlink_timer_stop`, `zlink_monitor_status` |

@@ -844,7 +844,7 @@ Application 스레드와 I/O 스레드 사이에서 `msg_t` 를 락-프리로 �
 
 2. **소켓 관리**
    - 소켓 생성/삭제 추적
-   - 최대 소켓 수 제한 (기본: 1023)
+   - 최대 소켓 수 제한 (기본: 4095)
    - 빈 슬롯 재사용
 
 3. **inproc 엔드포인트(endpoint) 관리**
@@ -861,7 +861,7 @@ ctx_t internal structure:
 |  _endpoints: map<string, endpoint_t>  inproc registry    |
 |  _pending_connections: multimap       Pending connections|
 |                                                          |
-|  _max_sockets: int     (default: 1023)                   |
+|  _max_sockets: int     (default: 4095)                   |
 |  _io_thread_count: int (default: 4)                      |
 |  _max_msgsz: int       (max message size)                |
 +----------------------------------------------------------+
@@ -1264,7 +1264,7 @@ core/
 |       +-- ...
 |
 +-- tests/                           # Functional tests
-+-- unittests/                       # Internal unit tests
++-- tests/                           # Internal tests
 ```
 
 ---

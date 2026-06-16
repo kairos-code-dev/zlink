@@ -14,7 +14,6 @@ Use:
 
 - `CONNECTION_READY`: low-cost ready edge for raw sockets only
   - raw socket: send/recv ready edge
-- queue events: local backpressure observation only
 
 Recommended perf gates:
 - raw socket perf: count `ZLINK_EVENT_CONNECTION_READY` until the

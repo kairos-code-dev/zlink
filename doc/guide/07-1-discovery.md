@@ -155,17 +155,21 @@ sequenceDiagram
 
 ### Automatic Role Matching
 
-For socket family services, Discovery matches peers by **service role**:
+For socket-family services the auto-connect **topology** (chosen at attach
+time) decides which role initiates the connection to which role:
 
-| Local Socket | Discovers | Example |
-|--------------|-----------|---------|
-| PUB | SUB peers | Publisher finds all subscribers |
-| SUB | PUB peers | Subscriber finds all publishers |
-| ROUTER | auto-connect peers | Server finds all clients |
-| DEALER | ROUTER peers | Client finds all servers |
+| Topology | Initiator → Target |
+|----------|--------------------|
+| `ZLINK_AUTO_CONNECT_FANOUT` | SUB → PUB |
+| `ZLINK_AUTO_CONNECT_CLIENT_SERVER` | DEALER → ROUTER |
+| `ZLINK_AUTO_CONNECT_ROUTE_MESH` | ROUTER ↔ ROUTER (pairwise) |
+| `ZLINK_AUTO_CONNECT_DEALER_MESH` | DEALER ↔ DEALER (pairwise) |
+| `ZLINK_AUTO_CONNECT_SPOT_MESH` | SPOT ↔ SPOT (pairwise; delivered as a monitor event) |
 
-The role is derived automatically from the socket type at attach time --
-no configuration needed.
+Publishers and `CLIENT_SERVER` ROUTERs do not dial out — a PUB is connected to
+by SUBs, and that ROUTER is connected to by DEALERs. In the mesh topologies
+only the peer with the lower connect key initiates, so a pair never forms two
+links.
 
 For ROUTER ↔ ROUTER auto-connect, where both sides could start an
 outbound, **the library decides which side dials per pair.** Two ROUTERs
@@ -271,7 +275,7 @@ zlink_discovery_destroy(&discovery);
 
 For the new multi-service SpotNode topology, use
 `ZLINK_AUTO_CONNECT_CLIENT_SERVER` for channel DEALER calls — see the SPOT guide
-[§3.1 Discovery-Based Automatic Mesh](./07-3-spot.md#31-discovery-based-automatic-mesh).
+[§3.2 Discovery-backed wiring](./07-3-spot.md#32-discovery-backed-wiring).
 
 ## 4.1 Socket Family Discovery
 
@@ -337,10 +341,13 @@ Rules to keep in mind:
 - **One DEALER per channel name.** Automatic and manual attach share the
   same namespace. Attaching a second `DEALER` for the same channel fails
   with `EBUSY`.
-- **Attached dealers are dedicated.** The caller keeps socket ownership,
-  but must not reuse the socket elsewhere after attach.
-- **Discovery destroy removes its peer set.** Destroying a Discovery
-  removes only the automatic connections it was supplying.
+- **Attached dealers are dedicated.** After `zlink_socket_attach_discovery()`
+  Discovery owns the socket's lifecycle: the caller may still hold the handle
+  but must not close or reuse it independently, and an attached socket rejects
+  a direct `zlink_close()`.
+- **Discovery destroy releases its attached participants.** Destroying a
+  Discovery tears down the sockets that delegated their lifecycle to it, along
+  with the automatic connections it was supplying.
 
 ## 4.3 Peer Value
 

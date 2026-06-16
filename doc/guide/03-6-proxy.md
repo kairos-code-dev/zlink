@@ -15,7 +15,7 @@ combination. Users can also build custom proxies using public APIs.
 ## 2. zlink_proxy() — Built-in Proxy
 
 ```c
-int zlink_proxy (void *frontend, void *backend, void *capture);
+zlink_config_result_t zlink_proxy (void *frontend, void *backend, void *capture);
 ```
 
 - Forwards messages from `frontend` to `backend` and vice versa
@@ -23,6 +23,27 @@ int zlink_proxy (void *frontend, void *backend, void *capture);
 - **Blocking function** — run in a dedicated thread
 - **No socket type restriction** — internally calls `socket_base_t` internal
   recv/send methods, independent of public API `ZLINK_SUBMIT_NOT_SUPPORTED` / `ZLINK_RECV_NOT_SUPPORTED` restrictions
+
+### Steerable Proxy
+
+```c
+zlink_config_result_t zlink_proxy_steerable (void *frontend, void *backend,
+                                             void *capture, void *control);
+```
+
+`zlink_proxy_steerable()` adds a `control` socket through which the proxy can
+be steered at runtime by sending one of these command frames:
+
+| Command | Intended effect |
+|---------|-----------------|
+| `PAUSE` | Suspend forwarding |
+| `RESUME` | Resume forwarding |
+| `TERMINATE` | Stop the proxy and return |
+| `STATISTICS` | Reply on the control socket with traffic counters |
+
+> Note: in the current runtime the `PAUSE`/`RESUME` handlers are swapped
+> (`PAUSE` resumes forwarding and `RESUME` suspends it). The table above
+> describes the intended semantics; this is a known implementation bug.
 
 ### Supported Socket Combinations
 
@@ -132,14 +153,15 @@ while (running) {
 | Question | With SUB/PUB | With XSUB/XPUB |
 |----------|-------------|-----------------|
 | Data pass-through | SUB local filter on — must subscribe | XSUB local filter off — **passes all** |
-| Subscription events | PUB doesn't expose | XPUB provides `subscription_event()` |
+| Subscription events | PUB doesn't expose | XPUB exposes them via `zlink_xpub_recv()` |
 | Proxy suitability | Proxy must manage topics itself | **Relay only — ideal for proxy** |
 
 > **Key point:** `zlink_proxy()` internally calls `socket_base_t` internal
-> methods, not public APIs. Calling `zlink_send()` on XSUB or
-> `zlink_recv()` on XPUB returns `ZLINK_RECV_NOT_SUPPORTED`. Proxy operation is only
-> possible via `zlink_proxy()` or the manual approach above
-> (using dedicated APIs like `subscribe()`, `publish()`, etc.).
+> methods, not public APIs. Through the public API, `zlink_send()` on XSUB
+> returns `ZLINK_SUBMIT_NOT_SUPPORTED` and `zlink_recv()` on XPUB returns
+> `ZLINK_RECV_NOT_SUPPORTED`. Proxy operation is only possible via
+> `zlink_proxy()` or the manual approach above (using dedicated APIs like
+> `subscribe()`, `publish()`, etc.).
 
 ## 4. Request/Reply Proxy — ROUTER/DEALER
 
@@ -158,7 +180,7 @@ zlink_proxy(frontend, backend, NULL);  /* blocking */
 ```
 
 ROUTER/DEALER proxy has no subscription propagation, so `zlink_proxy()`
-alone is sufficient. For manual construction, use `zlink_recv()` →
+alone is sufficient. For manual construction, use `zlink_router_recv()` →
 `zlink_send_rid()` combination.
 
 ## 5. Why Use a Proxy?

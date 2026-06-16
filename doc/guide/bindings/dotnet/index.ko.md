@@ -151,8 +151,8 @@ string    h = a.ToHex();                             // 원시 바이트 보존�
 해제하세요** — 항상 `using`(또는 `await using`).
 
 - 소켓은 그것을 만든 컨텍스트보다 **먼저** dispose 하세요.
-- `Request().SubmitAsync()`·`Join(...).SubmitAsync()`로 받은 `Message`는
-  **호출자 소유**입니다 — 사용 후 dispose 하세요.
+- `Request().Async()`·`Join(...).Async()`가 반환하는 응답 파트
+  (`IReadOnlyList<Message>`)는 **호출자 소유**입니다 — 사용 후 dispose 하세요.
 - span을 보관하려면 `ToArray()`/`CopyTo(...)`로 복사하세요.
 
 스레드 안전성 규칙은 [스레드 안전성](../../11-thread-safety.ko.md)을 참고하세요.
@@ -216,14 +216,14 @@ C 코어(`zlink.h`)에서 넘어오거나 다른 언어 바인딩과 비교할 �
 | 바인드 / 연결 | `zlink_bind` / `zlink_connect` | `socket.Bind(...)` / `socket.Connect(...)` |
 | 연결 해제 | `zlink_disconnect` / `zlink_disconnect_rid` | `socket.Disconnect(string)` / `socket.DisconnectRid(RoutingId)` |
 | 소켓 옵션 | `zlink_set_option` / `zlink_get_option` | 소켓별 강타입 속성(`socket.Options`) |
-| routing id | `zlink_set_routing_id` / `zlink_get_routing_id` | `socket.SetRoutingId(RoutingId)` / `RoutingId` |
+| routing id | `zlink_set_routing_id` / `zlink_get_routing_id` | `socket.SetRoutingId(RoutingId)` / `socket.GetRoutingId()` |
 | 메시지 생성 | `zlink_msg_init` / `_init_size` / `_init_data` | `new Message(size)` / `Message.From(...)` |
 | 메시지 접근 | `zlink_msg_data` / `zlink_msg_size` | `Message.AsReadOnlySpan()` / `Message.Size` |
 | 메시지 해제 | `zlink_msg_close` / `zlink_multipart_close` | `Message.Dispose()` / `Zlink.MultipartClose(parts)` |
 | 송신 | `zlink_send_part` (+`_rid`) | `socket.Send().Message(...).Submit()` |
 | 수신 | `zlink_recv_part` | `socket.Recv(Received)` |
-| 요청 / 응답 | `zlink_dealer_request_part` / `zlink_router_reply_part` | `dealer.Request()....SubmitAsync()` / `router.Reply(...)` |
-| 구독 | `zlink_spot_subscribe_part` / `zlink_sub_*` | `socket.SetSubscription(...)` / `socket.Subscribe(TopicMessage)` |
+| 요청 / 응답 | `zlink_dealer_request_part` / `zlink_router_reply_part` | `dealer.Request()....Async()` / `router.Reply(...)` |
+| 구독 | `zlink_set_subscription` / `zlink_subscribe_part` | `socket.SetSubscription(...)` / `socket.Subscribe(TopicMessage)` |
 | 모니터 | `zlink_socket_monitor_open` / `_recv` | `socket.MonitorOpen(...)` / `monitor.Recv()` |
 | 폴러 / 타이머 | `zlink_poller_*` / `zlink_timer_*` | `Zlink.CreatePoller()` / `Zlink.CreateTimer()` |
 | discovery | `zlink_discovery_new` / `_connect_registry` | `ctx.CreateDiscovery(...)` / `IDiscovery.ConnectRegistry(...)` |

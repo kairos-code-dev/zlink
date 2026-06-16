@@ -24,6 +24,11 @@ MessagePack codec baseline: `msgpack-c`.
 These headers are layered on top of the core C++ binding. They must not force
 codec dependencies on users who only include the core binding headers.
 
+These codec headers define only object <-> `message_t` encode/decode helpers.
+Packet-name resolution, high-level serializer lookup, and typed
+request/reply policy belong to framework-layer documents, not this codec
+extension specification.
+
 ## Protobuf
 
 ```cpp

@@ -16,8 +16,9 @@
 
 ### 2.1 콜백 모드
 
-I/O 스레드에서 이벤트 발생 즉시 핸들러가 호출된다.
-이벤트 유실 없이 실시간으로 처리하려면 콜백 모드가 적합하다.
+이벤트 발생 시 service-control 런타임 스레드(부모 소켓의 I/O 스레드가 아님)에서
+핸들러가 호출된다. 콜백 모드는 실시간 처리에 편리하지만, 모니터 전달은 lossy라
+부하 시 이벤트가 드롭될 수 있으므로 모든 이벤트 수신을 가정하면 안 된다.
 
 ```c
 /* Define event handler */
@@ -107,8 +108,7 @@ flowchart LR
 `CONNECTION_READY` 이벤트의 `value` 필드는 예약(reserved)이며, 집계 준비 카운트 계약이 아니다.
 준비 상태 판정은 이벤트 에지(edge)와 주체별 이벤트 카운팅으로 한다.
 
-- ROUTER/STREAM에서는 `ev->routing_id`에 피어 신원(peer identity)이 포함된다.
-- PAIR/DEALER에서는 `routing_id`가 비어 있다.
+- `ev->routing_id`에는 연결이 전달하는 피어 신원(peer identity)이 담긴다(소켓 타입별 특수 처리 없음).
 
 ### DISCONNECTED reason 코드
 
@@ -399,7 +399,7 @@ zlink_monitor_close(&mon_b);
 저빈도 제어 경로(설정/관리 경로) 계약에 속한다.
 즉 애플리케이션 스레드에서 호출할 수 있고,
 같은 핸들과 섞여도 정확성(동시 사용 시 데이터 무결성)이 유지된다.
-다만 모니터 콜백은 I/O 경로에서 실행되므로 콜백 내부의 느린 작업은 사용자 큐로 넘기는 편이 좋다.
+다만 모니터 콜백은 service-control 런타임 스레드(소켓의 I/O 스레드가 아님)에서 실행되므로 콜백 내부의 느린 작업은 사용자 큐로 넘기는 편이 좋다.
 
 ```c
 /* Open a monitor from an application thread */
@@ -419,35 +419,17 @@ zlink_monitor_status(mon, &snapshot);
 
 ### 콜백 처리 속도
 
-콜백 핸들러에서 블로킹 작업을 수행하면 I/O 진행에 영향을 줄 수 있다.
-느린 처리가 필요하면 콜백 안에서 사용자 큐로 넘기고 별도 스레드에서 처리한다.
+콜백 핸들러의 블로킹 작업은 소켓 I/O 경로를 막지는 않지만(콜백은 service-control
+스레드에서 실행), 이후 모니터 이벤트를 지연시킨다. 느린 처리가 필요하면 콜백
+안에서 사용자 큐로 넘기고 별도 스레드에서 처리한다.
 
 ### 원격 모니터링
 
-모니터 API는 **프로세스 내(inproc) 전용**이다. tcp/wss 등 원격 transport는 지원하지 않는다.
-원격 모니터링이 필요하면 소켓 모니터 콜백에서 이벤트를 수신하고 PUB 소켓으로 중계한다.
-
-```c
-zlink_set_subscription(sub, "topic");
-
-/* SUB/PUB perf gate: wait for connection-ready */
-zlink_socket_monitor_open_options_t sub_opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY
-};
-void *sub_mon = zlink_socket_monitor_open(sub, &sub_opts);
-
-zlink_socket_monitor_open_options_t pub_opts = {
-    .events = ZLINK_EVENT_CONNECTION_READY
-};
-void *pub_mon = zlink_socket_monitor_open(pub, &pub_opts);
-
-/* Start after expected clients are connection-ready */
-zlink_publish(pub, NULL, &part, 1, 0);  /* raw PUB: topic_id is NULL */
-zlink_subscribe(sub, &source_rid, &parts, &count, topic_buf, &topic_len, 0);
-
-zlink_monitor_close(&pub_mon);
-zlink_monitor_close(&sub_mon);
-```
+모니터 API는 **프로세스 내(inproc) 전용**이다. `zlink_socket_monitor_open()`은
+내부적으로 `inproc://monitor-*` 엔드포인트를 만들며 tcp/wss 등 원격 transport는
+받지 않는다. 다른 프로세스로 이벤트를 노출하려면, 모니터 콜백(또는 recv)으로
+이벤트를 받은 뒤 애플리케이션이 직접 별도 PUB 소켓에 직렬화해 발행하는 중계
+계층을 둔다(zlink가 제공하는 기능이 아니라 애플리케이션 책임).
 
 ### 모니터 종료 절차
 
@@ -455,6 +437,10 @@ zlink_monitor_close(&sub_mon);
 /* Close the monitor handle */
 zlink_monitor_close(&mon);
 ```
+
+모니터 콜백 안에서 `zlink_monitor_close()`를 호출해도 된다. close는 콜백이
+반환될 때까지 지연되며(실패가 아니라 OK 반환), 콜백 depth가 0이 되면 최종
+정리가 수행된다.
 
 ## 11. 메시징 시작 전 준비 확인 (Ready Gate)
 

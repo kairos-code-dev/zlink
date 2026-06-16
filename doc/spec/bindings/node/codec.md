@@ -19,6 +19,11 @@ MessagePack codec baseline: `@msgpack/msgpack`.
 These are separate public packages layered on top of the core package. They
 must not be merged into the root package entrypoint.
 
+These codec packages define only object <-> `Message` encode/decode helpers.
+Packet-name resolution, high-level serializer lookup, and typed
+request/reply policy belong to framework-layer documents, not this codec
+extension specification.
+
 ## Protobuf
 
 ```typescript

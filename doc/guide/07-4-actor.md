@@ -102,10 +102,10 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
 To make an Actor address discoverable from another node, enable
 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` on the Actor owner Discovery, move the
 Actor to a user Spot, then query with `zlink_discovery_resolve_actor()`.
-Creating an Actor alone does not publish an active route.
-**The active route is published when a user Spot join succeeds, and is
-updated to the Entry Spot location when an explicit leave succeeds.** STREAM
-session bind and unbind do not publish or remove the active route.
+**With route sync enabled, the active route is published at Actor creation
+pointing to the Entry Spot, then updated to the joined user Spot when a join
+succeeds, and back to the Entry Spot when an explicit leave succeeds.** STREAM
+session bind and unbind do not change the active route.
 
 To look up an existing Actor by id on the local node:
 
@@ -193,8 +193,8 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE: {
     while (zlink_spot_actor_join_recv(spot_, &info, &parts, &part_count,
                                       ZLINK_DONTWAIT) == ZLINK_RECV_OK) {
         /* info.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE means remote join */
-        int accept = /* inspect payload */;
-        zlink_spot_actor_join_reply(spot_, &info, accept, NULL, 0);
+        int join_result = 0; /* 0 = accept; non-zero = reject code */
+        zlink_spot_actor_join_reply(spot_, &info, join_result, NULL, 0);
         zlink_multipart_close(parts, part_count);
     }
     break;
@@ -280,7 +280,10 @@ route currently points at the same Actor ref, the route is also removed.
 Session attach state is independent of Actor location, so explicit
 `zlink_stream_unbind_actor()` is required if the session attach must be torn
 down separately. Use `zlink_spot_node_actor_close_bound_session()` to also
-close the client connection.
+close the client connection. When a STREAM session closes or disconnects, its
+Actor bindings are cleared automatically, but this does **not** move the Actor
+to the Entry Spot or change its joined Spot. To enumerate a session's bound
+Actors, call `zlink_stream_bound_actors()`.
 
 To push a message to the STREAM client from the Actor side (without a recv
 triggering it), use `zlink_spot_node_actor_send_bound_session_msg()`. This

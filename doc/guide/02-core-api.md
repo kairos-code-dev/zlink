@@ -25,6 +25,9 @@ zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* default 4 */
 zlink_config_result_t err;
 int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS, &err);
 
+/* Optionally interrupt blocking calls without releasing resources */
+zlink_ctx_shutdown(ctx);  /* wakes blocked zlink_send/recv; term still required */
+
 /* Terminate */
 zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 ```
@@ -38,15 +41,16 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 | `ZLINK_SOCKET_LIMIT` | — | Read-only: actual socket limit |
 | `ZLINK_THREAD_PRIORITY` | `-1` | OS thread priority for I/O threads |
 | `ZLINK_THREAD_SCHED_POLICY` | `-1` | OS scheduling policy for I/O threads |
-| `ZLINK_MAX_MSGSZ` | `-1` | Maximum message size (-1: unlimited) |
+| `ZLINK_MAX_MSGSZ` | `INT_MAX` | Maximum message size in bytes (default `INT_MAX`, effectively unlimited; set accepts non-negative values) |
 | `ZLINK_MSG_T_SIZE` | — | Read-only: `sizeof(zlink_msg_t)` |
 | `ZLINK_THREAD_AFFINITY_CPU_ADD` | — | Add CPU index to I/O thread affinity set |
 | `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | — | Remove CPU index from I/O thread affinity set |
 | `ZLINK_THREAD_NAME_PREFIX` | — | Name prefix for I/O threads (set via `zlink_ctx_set_data`) |
-| `ZLINK_CTX_OPT_BLOCKY` | — | Legacy: block on context termination |
+| `ZLINK_CTX_OPT_BLOCKY` | `1` | Legacy: block on context termination |
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | `1` | Enable automatic HWM sizing |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | `3000` | Debounce interval for auto HWM recalculation (ms) |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | Auto HWM sizing profile |
+| `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` | `0` | Per-message byte unit used for auto-HWM planning (`0`: runtime default) |
 
 Use `zlink_ctx_set_data()` (instead of `zlink_ctx_set()`) for
 `ZLINK_THREAD_NAME_PREFIX`, which takes a string rather than an `int`.
@@ -218,10 +222,12 @@ if (rc == ZLINK_RECV_NO_DATA) {
 
 #### Callback Mode
 
-Attach a handler callback after socket creation. Messages are dispatched
-asynchronously on the I/O thread. Once attached, the handler cannot be
-removed for the lifetime of the socket. If a handler has been attached,
-`zlink_recv()` returns `ZLINK_RECV_BUSY`.
+Callback receive (`zlink_recv_handler`) is supported only on raw `STREAM`
+sockets; attaching it to any other socket type returns
+`ZLINK_HANDLER_NOT_SUPPORTED`. Attach the handler after socket creation;
+messages are dispatched asynchronously on the I/O thread. Once attached, the
+handler cannot be removed for the lifetime of the socket. If a handler has
+been attached, `zlink_recv()` returns `ZLINK_RECV_BUSY`.
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,

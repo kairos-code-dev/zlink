@@ -17,7 +17,7 @@ stable public results at the API boundary.
   - `zlink_connect_result_t` — connect / disconnect / unbind
   - `zlink_config_result_t` — option set/get, snapshot, poller mutation,
     message lifecycle, timer config
-- Result enum values are globally unique across the 0-703 range so a single
+- Result enum values are globally unique across the 0-706 range so a single
   `int` always identifies the origin unambiguously.
 - See [doc/spec/core/errno-map.md](/home/hep7/project/kairos/zlink/doc/spec/core/errno-map.md)
   for the canonical enum catalog.

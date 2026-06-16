@@ -11,7 +11,7 @@
 zlink는 8종의 소켓 타입을 제공한다.
 각 소켓은 고유한 메시징 패턴을 구현하며, 유효한 소켓 조합 안에서만 통신한다.
 
-> 이 문서 전체에서 사용되는 **hot path**, **control path**, **admission guard** 등의 용어는 [8절 (용어 정리)](#8-용어-정리)에 정의되어 있다.
+> 이 문서 전체에서 사용되는 **hot path**, **control path**, **admission guard** 등의 용어는 [9절 (용어 정리)](#9-용어-정리)에 정의되어 있다.
 
 ## 2. 소켓 요약
 
@@ -103,6 +103,7 @@ Is the communication peer an external client (browser, game)?
 | [03-3-dealer.ko.md](./03-3-dealer.ko.md) | DEALER | 비동기 요청, Round-robin |
 | [03-4-router.ko.md](./03-4-router.ko.md) | ROUTER | ID 기반 라우팅 |
 | [03-5-stream.ko.md](./03-5-stream.ko.md) | STREAM | 외부 클라이언트 RAW 통신 |
+| [03-6-proxy.ko.md](./03-6-proxy.ko.md) | (proxy) | XPUB/XSUB·DEALER/ROUTER 메시지 브로커 |
 
 ## 7. 피어를 routing id로 끊기
 
@@ -169,7 +170,7 @@ zlink_recv_result_t zlink_recv (
 data-plane 수신은 `recv + poller`가 기본이며, 콜백은 `STREAM`, monitor/timer처럼 사용 패턴이 분명한 예외 타입에만 쓴다. SPOT은 `zlink_spot_dispatch_event_handler()`를 readiness 신호로만 사용하고 payload는 receive API로 읽는다. request completion
 콜백은 data-plane 수신이 아니라 비동기 작업 완료 통지임에 유의한다.
 
-## 8. 용어 정리
+## 9. 용어 정리
 
 문서 전반에서 사용되는 전문 용어:
 
@@ -184,7 +185,7 @@ data-plane 수신은 `recv + poller`가 기본이며, 콜백은 `STREAM`, monito
 
 > 스레드 안전성 계약의 전체 설명은 [스레드 안전성 가이드](./11-thread-safety.ko.md)를 참고.
 
-## 9. 기본 사용 흐름
+## 10. 기본 사용 흐름
 
 모든 소켓 타입에 공통되는 기본 패턴은 `recv + poller` 루프다. 예를 들어
 DEALER에서 응답을 받는 서버는 아래와 같은 형태를 쓴다.
@@ -216,7 +217,6 @@ while (running) {
         if (zlink_recv(socket, &rid, &parts, &n, 0) == ZLINK_RECV_OK) {
             /* process parts, then close each */
             zlink_multipart_close(parts, n);
-            free(parts);
         }
     }
 }
@@ -239,7 +239,8 @@ zlink_ctx_term(ctx);
 > bind/connect 이후에도 변경 가능하다.
 
 > **콜백이 기본이 아닌 이유:** raw `PAIR`, `DEALER`, `SUB`, `XSUB`,
-> `ROUTER`는 recv-only다. 여러 소켓, monitor, 타이머를 같은 poller에서
+> `ROUTER`는 동기 pull-mode 루프로 수신한다(recv 콜백 없음). 타입이
+> 허용하는 한 송신은 그대로 가능하다. 여러 소켓, monitor, 타이머를 같은 poller에서
 > 다루기 쉽고, 호출자가 실행 스레드와 순서를 직접 통제할 수 있기 때문이다.
 > 콜백은 `STREAM`, monitor/타이머, SPOT dispatch event, request
 > completion처럼 사용 패턴이 분명한 경우에만 쓴다.

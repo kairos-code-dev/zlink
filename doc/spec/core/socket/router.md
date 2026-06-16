@@ -13,8 +13,8 @@ Used with `zlink_set_router_option()` / `zlink_get_router_option()`.
 |---|---|
 | `ZLINK_ROUTER_OPT_MANDATORY` | Return `EHOSTUNREACH` when routing to an unconnected peer (`int`; 0 or 1, default `1`) |
 | `ZLINK_ROUTER_OPT_PROBE` | Send an empty message on connect to establish identity at the ROUTER peer (`int`; 0 or 1) |
-| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | Set routing identity for the next outgoing connection (`binary`) |
-| `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | Default request timeout in milliseconds for `zlink_router_request()` (`uint32_t`) |
+| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | Set routing identity for the next outgoing connection (`binary`, set-only) |
+| `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | Default request timeout in milliseconds for `zlink_router_request()` (`int`; default `5000`) |
 | `ZLINK_ROUTER_OPT_WEIGHT` | Local peer weight advertised to connected peers (`int`; `0..100`, default `100`) |
 
 `ZLINK_ROUTER_OPT_MANDATORY` defaults to `1`.
@@ -59,7 +59,7 @@ zlink_config_result_t zlink_get_router_option (
 Weight contract:
 
 | Value | Meaning |
-|---|---|---|
+|---|---|
 | `100` | Default weight. Peers with equal positive weights keep round-robin behavior. |
 | `1..99` | Positive but lower preference. Peers remain eligible and are selected proportionally less often. |
 | `0` | Excluded from new outbound selection. The local ROUTER continues to serve work that has already arrived. |
@@ -388,6 +388,24 @@ bind or connect.
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_get_routing_id`
+
+---
+
+### zlink_get_routing_id
+
+Read the routing identity assigned to a socket.
+
+```c
+zlink_config_result_t zlink_get_routing_id (void *handle_,
+                           zlink_routing_id_t *out_);
+```
+
+Writes the socket's current routing identity into `*out_`. `out_->size` is
+set to the number of valid bytes in `out_->data`.
+
+**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
+
+**See also:** `zlink_set_routing_id`
 
 ---
 

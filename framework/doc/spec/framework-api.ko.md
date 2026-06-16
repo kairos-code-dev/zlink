@@ -21,6 +21,11 @@
 - request handler, event handler, outbound client를 DI와 함께 설명한다.
 - runtime monitoring도 DI와 함께 설명할 수 있어야 한다.
 - 서버 간 `send/request`는 HTTP handler mapping과 닮은 경험으로 보이게 한다.
+- application이 직접 호출하는 `send/request/reply/join` 같은 messaging API는
+  domain object나 generated object를 직접 받지 않고 `Message`를 받는다.
+- object를 byte payload로 바꾸고 packet name을 정하는 일은 `Message.from(...)`,
+  `Message.From(...)`, `message_t::from(...)` 또는 언어별 codec extension의 같은 의미
+  factory에서 끝낸다.
 - raw transport header는 handler 인자로 직접 노출하지 않는다.
 - 서버 간 framework transport는 공통
   [message-model.ko.md](./message-model.ko.md)의 multipart `header + payload` 계약을
@@ -52,6 +57,9 @@
 - 공용 outbound client를 DI로 주입한다.
 - 요청 메서드는 async 중심으로 제공한다.
 - codec, timeout, target channel을 설정할 수 있다.
+- outbound 호출의 payload 인자는 `Message`다. 호출자가 generated protobuf object,
+  JSON DTO, MessagePack DTO 같은 typed object를 보내려면 먼저 해당 언어의 표준
+  `Message` factory를 호출한다.
 - gateway 주소나 load balancer 주소 대신 `channel name` 기준 호출을 기본으로
   삼는다.
 - send는 기본적으로 async submit으로 둔다. backpressure 처리는 호출자가

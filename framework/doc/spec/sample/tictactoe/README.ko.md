@@ -186,6 +186,11 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
 - push 대기는 connector 객체의 public wait interface를 직접 사용한다. 필요한 push를 고를
   때는 connector wait API의 filter 기능을 사용하고, 받은 message 객체의 public interface로
   payload를 읽어 `Ensure(condition)`처럼 조건식이 직접 보이는 방식으로 검증한다.
+- client는 API 응답으로 받은 Play stream endpoint로 connector를 만든 직후, `connect` 전에
+  inbound observer를 등록해 `stream-inbound` marker가 포함된 수신 로그를 남긴다.
+  이 로그는 request 응답과 server push 수신을 관찰하기 위한 것이며, payload 검증이나
+  push 대기를 대신하지 않는다. observer callback에서는 connector send/request/wait를
+  다시 호출하지 않는다.
 - Java와 Kotlin client scenario의 `submit`과 `await` 의미는
   [framework 공통 비동기 정책](../../async-execution-policy.ko.md)을 따른다.
   `submit`은 작업을 시작하고 future를 반환하는 이름으로, `await`는 완료를 기다려
@@ -315,6 +320,10 @@ TicTacToe client는 아래 순서로 scenario를 실행하고 각 단계의 값�
    기다려 확인한다.
 8. 마지막 host move는 `Won`, winner가 host actor id, board가 deterministic final board인지
    확인한다. guest는 같은 winner를 담은 final `GameStateNotify`를 받아야 한다.
+9. host와 guest는 inbound observer 로그에 `stream-inbound` marker가 남았는지 확인한다.
+   로그에는 sample 이름, client 역할, message kind, packet name, request sequence,
+   payload byte length가 포함되어야 한다. heartbeat control frame은 observer 기능
+   검증에는 포함할 수 있지만 기본 sample output에서는 낮은 log level로 두거나 걸러낸다.
 
 이 검증은 성공 로그가 아니라 sample release gate다. 언어별 client가 위 값을 확인하지
 않으면 공통 sample 기준을 만족하지 못한다.
@@ -621,6 +630,8 @@ regression은 Play 서버 로그, fake backend call, runtime event, 또는 frame
 - join한 actor 자신에게 self-join notify를 보내지 않는다.
 - 정상 move마다 요청한 client에는 `PlaceMarkRes`가, 상대 client에는 `GameStateNotify`가 전달된다.
 - 게임 종료 시 `GameState.Status`와 `GameState.Winner`가 양쪽 client에 전달된다.
+- host와 guest inbound observer 로그에 request 응답과 server push 수신을 나타내는
+  `stream-inbound` marker가 남는다.
 - stream disconnect는 current client binding을 정리하지만 actor를 즉시 destroy하지 않는다.
 - 게임 종료 후 room Spot은 actor를 Entry Spot으로 leave시키고, Entry Spot은 actor를
   destroy한다.

@@ -124,8 +124,8 @@ socket with multiple connections may span several I/O threads.
 
 | Scenario | Recommended `ZLINK_IO_THREADS` |
 |----------|-------------------------------|
-| Single socket, few connections | 1 (default) |
-| Many sockets or connections | 2–4 |
+| Single socket, few connections | 1 |
+| Many sockets or connections | 2–4 (default 4) |
 | High-throughput server (100+ connections) | Match to available CPU cores |
 
 Setting more I/O threads than CPU cores provides no benefit and adds

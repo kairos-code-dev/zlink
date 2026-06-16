@@ -4,7 +4,7 @@
 
 # 모니터링 API 레퍼런스
 
-canonical 이벤트 카탈로그는 [events.ko.md](./events.ko.md)에 정리합니다.
+표준(canonical) 이벤트 카탈로그는 [events.ko.md](./events.ko.md)에 정리합니다.
 이 문서는 monitor API, callback, monitor snapshot 중심으로 봅니다.
 
 ## API 구조
@@ -297,8 +297,8 @@ zlink_config_result_t zlink_monitor_status(void *monitor_, zlink_monitor_status_
 socket monitor handle의 현재 aggregate snapshot을 읽습니다.
 queue 값은 조회 시점에 source에서 직접 읽어오며, `rcv_pending_msgs`는
 approximate 값입니다. recv 모델과 callback 모델 모두에서 동작합니다.
-자동 HWM이 켜진 source라면 같은 snapshot에서 HWM floor, 계산에 사용한
-예산, 요청한 transport buffer 값을 함께 읽을 수 있습니다.
+자동 HWM이 켜진 source라면 같은 snapshot에서 현재 역할 bucket, 적용된 HWM
+값, 계산에 사용한 queue/transport 예산을 함께 읽을 수 있습니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -330,8 +330,9 @@ zlink_close_result_t zlink_monitor_close (void **monitor_p_);
 ```
 
 모니터를 닫고 `*monitor_p_`를 `NULL`로 설정합니다. 다른 스레드가 모니터
-콜백을 실행 중이면 `errno = EBUSY`로 실패합니다. 콜백 내에서의 self-close는
-성공하며, 콜백 반환 후까지 지연됩니다.
+콜백을 실행 중이면 close는 비동기로 진행됩니다 — 모니터를 종료 표시하고
+진행 중인 콜백이 빠진 뒤 정리하며, 호출은 `ZLINK_CLOSE_OK`를 반환합니다.
+콜백 내에서의 self-close도 성공하며 콜백 반환 후까지 지연됩니다.
 
 **반환값:** 성공 시 `ZLINK_CLOSE_OK`, 실패 시 `zlink_close_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -348,10 +349,8 @@ snapshot/query API로 관찰합니다.
   `zlink_discovery_resolve_spot()`, `zlink_discovery_resolve_actor()`
 - Registry: `zlink_registry_status()`,
   `zlink_registry_service_summary()`,
-  `zlink_registry_topology()`,
   `zlink_registry_topology()`
 - SpotNode: `zlink_spot_node_status()`,
-  `zlink_spot_node_peers()`,
   `zlink_spot_node_peers()`,
   `zlink_spot_node_subjects()`,
   `zlink_spot_node_internal_sockets()`,

@@ -8,7 +8,7 @@
 
 이 문서는 `zlink_set_option()` / `zlink_get_option()`으로 설정하는 소켓 옵션
 각각의 **동작**, **영향 범위**, **기본값**, **소켓 타입별 차이**를 상세히 설명한다.
-API 시그니처만 다루는 [socket API 레퍼런스](../api/socket.ko.md)와 달리,
+API 시그니처만 다루는 [socket API 레퍼런스](../spec/core/socket/README.ko.md)와 달리,
 이 가이드는 **옵션이 런타임에 무엇을 바꾸는지**에 초점을 둔다.
 
 ## 옵션 소유권 카테고리
@@ -580,10 +580,10 @@ Registry에 보고합니다. 다른 노드에서 실시간 Discovery 연결 없�
 
 | 소켓 | API | 대표 옵션 |
 |------|-----|-----------|
-| ROUTER | `zlink_set_router_option()` | `MANDATORY` (기본 `1`), `PROBE`, `CONNECT_ROUTING_ID` |
-| DEALER | `zlink_set_dealer_option()` | `PROBE` |
-| XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (기본 `1`), `MANUAL`, `WELCOME_MSG` |
-| SUB/XSUB | `zlink_set_sub_option()` | 구독 관련 |
+| ROUTER | `zlink_set_router_option()` | `MANDATORY` (기본 `1`), `PROBE`, `CONNECT_ROUTING_ID`, `REQUEST_TIMEOUT_MS`, `WEIGHT` (기본 `100`) |
+| DEALER | `zlink_set_dealer_option()` | `PROBE`, `REQUEST_TIMEOUT_MS`, `WEIGHT` (기본 `100`) |
+| PUB/XPUB | `zlink_set_pub_option()` | `VERBOSE`, `VERBOSER`, `NODROP` (기본 `1`), `MANUAL`, `WELCOME_MSG`, `APPROVE_SUBSCRIBE`, `REJECT_SUBSCRIBE` |
+| SUB/XSUB | `zlink_set_sub_option()` (`TOPICS_COUNT`); 구독 필터는 `zlink_set_subscription()` / `zlink_unset_subscription()` | `TOPICS_COUNT` |
 | STREAM | `zlink_set_stream_option()` | `NOTIFY` |
 
 ---

@@ -527,8 +527,8 @@ but use TypeScript spelling.
   `recv`, `recvRouted`, `receiveSubscriptionEvent`, `setSendReadyHandler`,
   `setPacketHandler`, `setDispatchHandler`, `getOrCreateSpot`,
   `sendToChannel`, `requestToChannel`, `sendToSpot`, `requestToSpot`,
-  `connectRouterChannelPeer`, `disconnectRouterChannelPeer`, and
-  `disconnectRouterChannelPeerRid`.
+  `connectRouterChannelPeer`, `connectRouterChannelPeerRid`,
+  `disconnectRouterChannelPeer`, and `disconnectRouterChannelPeerRid`.
 - Do not keep old aliases only for compatibility. If a pre-refactor name
   conflicts with the canonical meaning, remove it and expose the canonical
   TypeScript name.

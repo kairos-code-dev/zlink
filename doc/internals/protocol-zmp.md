@@ -77,7 +77,7 @@ sequenceDiagram
 
 **HELLO frame**: control_type (1B) + socket_type (1B) + routing_id_len (1B) + routing_id (0-255B)
 
-**READY frame**: Socket-Type property (always) + Identity property (DEALER/ROUTER only)
+**READY frame**: the READY control byte is always sent; the `Socket-Type` and `Routing-Id` metadata properties are attached only when `ZLINK_OPT_ZMP_METADATA` is enabled (default off)
 
 ## 4. Request-Reply Envelope
 

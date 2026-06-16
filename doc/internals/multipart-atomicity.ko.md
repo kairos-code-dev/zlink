@@ -352,8 +352,8 @@ multipart 원자성의 최하층은 `ypipe_t`(락-프리 SPSC 큐)이다.
 
 핵심 파일:
 
-- `libzmq/src/runtime/core/ypipe.hpp`
-- `libzmq/src/runtime/core/ypipe_base.hpp`
+- `libzmq/src/ypipe.hpp`
+- `libzmq/src/ypipe_base.hpp`
 
 `ypipe_t`는 세 개의 포인터로 동작한다.
 
@@ -413,8 +413,8 @@ bool unwrite (T *value_)
 
 핵심 파일:
 
-- `libzmq/src/runtime/core/pipe.hpp`
-- `libzmq/src/runtime/core/pipe.cpp`
+- `libzmq/src/pipe.hpp`
+- `libzmq/src/pipe.cpp`
 
 `pipe_t`는 `ypipe_t` 위에 HWM(high water mark) 제어, message 카운팅,
 그리고 multipart 경계 관리를 추가한다.
@@ -541,8 +541,8 @@ rollback 후 보내므로 미완성 multipart 뒤에 delimiter가 섞이는 일�
 
 핵심 파일:
 
-- `libzmq/src/runtime/sockets/internal/fq.hpp`
-- `libzmq/src/runtime/sockets/internal/fq.cpp`
+- `libzmq/src/fq.hpp`
+- `libzmq/src/fq.cpp`
 
 `fq_t`는 복수의 inbound pipe에서 round-robin으로 message를 읽는다.
 multipart 원자성은 `_more` 상태 변수로 관리된다.
@@ -667,8 +667,8 @@ if (_more) {
 
 핵심 파일:
 
-- `libzmq/src/runtime/sockets/internal/lb.hpp`
-- `libzmq/src/runtime/sockets/internal/lb.cpp`
+- `libzmq/src/lb.hpp`
+- `libzmq/src/lb.cpp`
 
 `lb_t`는 outbound pipe에 round-robin으로 message를 보낸다.
 `DEALER`, `PUSH`, `REQ` 등이 사용한다.
@@ -806,8 +806,8 @@ multipart 전송 중 현재 pipe가 terminate되면 즉시 `_dropping = true`로
 
 핵심 파일:
 
-- `libzmq/src/runtime/sockets/internal/dist.hpp`
-- `libzmq/src/runtime/sockets/internal/dist.cpp`
+- `libzmq/src/dist.hpp`
+- `libzmq/src/dist.cpp`
 
 `dist_t`는 `PUB`, `XPUB` 등이 사용하는 fan-out distributor다.
 하나의 message를 matching하는 모든 pipe에 동시에 보낸다.
@@ -1147,7 +1147,7 @@ PUB는 XPUB의 wrapper이므로 원자성도 동일하다.
 
 핵심 파일:
 
-- `libzmq/src/runtime/sockets/common/socket_base.cpp`
+- `libzmq/src/socket_base.cpp`
 
 #### 7.1. send()
 
@@ -1252,17 +1252,17 @@ caller는 매번 recv 후 `RCVMORE`를 확인하고, true이면 다음 frame을 
 `libzmq` 기준 코드:
 
 - `send`/`recv` 공통:
-  `libzmq/src/runtime/sockets/common/socket_base.cpp`
+  `libzmq/src/socket_base.cpp`
 - fair queue:
-  `libzmq/src/runtime/sockets/internal/fq.cpp`
+  `libzmq/src/fq.cpp`
 - load balancer:
-  `libzmq/src/runtime/sockets/internal/lb.cpp`
+  `libzmq/src/lb.cpp`
 - distributor:
-  `libzmq/src/runtime/sockets/internal/dist.cpp`
+  `libzmq/src/dist.cpp`
 - pipe:
-  `libzmq/src/runtime/core/pipe.cpp`
+  `libzmq/src/pipe.cpp`
 - ypipe:
-  `libzmq/src/runtime/core/ypipe.hpp`
+  `libzmq/src/ypipe.hpp`
 
 #### 1.1. ypipe incomplete flag가 동일한 역할을 한다
 
@@ -1478,17 +1478,17 @@ multipart atomicity가 유지된다고 보려면 아래가 계속 참이어야 �
 - public contract
   - [core/include/zlink.h](../../core/include/zlink.h)
 - libzmq 참조
-  - `libzmq/src/runtime/core/ypipe.hpp` — lock-free SPSC queue, incomplete flag
-  - `libzmq/src/runtime/core/ypipe_base.hpp` — ypipe 인터페이스
-  - `libzmq/src/runtime/core/pipe.hpp` / `pipe.cpp` — write, flush, rollback
-  - `libzmq/src/runtime/sockets/internal/fq.hpp` / `fq.cpp` — fair queue, _more assert
-  - `libzmq/src/runtime/sockets/internal/lb.hpp` / `lb.cpp` — load balancer, _dropping 상태
-  - `libzmq/src/runtime/sockets/internal/dist.hpp` / `dist.cpp` — distributor, _eligible 보호
-  - `libzmq/src/runtime/sockets/common/socket_base.cpp` — send/recv entry, -2 처리
-  - `libzmq/src/runtime/sockets/router/router.cpp` — ROUTER send/recv, prefetch, rollback
-  - `libzmq/src/runtime/sockets/pair/pair.cpp` — PAIR 단순 패턴
-  - `libzmq/src/runtime/sockets/dealer/dealer.cpp` — DEALER lb+fq 조합
-  - `libzmq/src/runtime/core/msg.hpp` — msg_t::more, msg_t::routing_id flag 정의
+  - `libzmq/src/ypipe.hpp` — lock-free SPSC queue, incomplete flag
+  - `libzmq/src/ypipe_base.hpp` — ypipe 인터페이스
+  - `libzmq/src/pipe.hpp` / `pipe.cpp` — write, flush, rollback
+  - `libzmq/src/fq.hpp` / `fq.cpp` — fair queue, _more assert
+  - `libzmq/src/lb.hpp` / `lb.cpp` — load balancer, _dropping 상태
+  - `libzmq/src/dist.hpp` / `dist.cpp` — distributor, _eligible 보호
+  - `libzmq/src/socket_base.cpp` — send/recv entry, -2 처리
+  - `libzmq/src/router.cpp` — ROUTER send/recv, prefetch, rollback
+  - `libzmq/src/pair.cpp` — PAIR 단순 패턴
+  - `libzmq/src/dealer.cpp` — DEALER lb+fq 조합
+  - `libzmq/src/msg.hpp` — msg_t::more, msg_t::routing_id flag 정의
 
 ---
 

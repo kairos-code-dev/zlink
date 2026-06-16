@@ -903,8 +903,8 @@ pending 중일 수 있으며, FIFO 순서로 `zlink_spot_actor_join_recv()`로 d
 | `replied` | `bool` | reply 완료 여부 |
 | `pending_target` | `actor_handle_t*` | remote join prepare에서 생성한 target Actor |
 | `remote` | `bool` | remote join handoff 여부 |
-| `message` | `zlink_msg_t` | join payload (source가 소유권 이전) |
-| `reply` | `zlink_msg_t` | reply payload (target이 소유권 이전) |
+| `message_parts` | `vector<zlink_msg_t>` | join payload, 소유 multipart (source가 소유권 이전) |
+| `reply_parts` | `vector<zlink_msg_t>` | reply payload, 소유 multipart (target이 소유권 이전) |
 
 `joins.live_requests`는 현재 pending 중인 모든 join request set이며 timeout 스윕을
 구동한다. request가 완료되면 그 record는 별도 retired set에 두지 않고 commit/abort

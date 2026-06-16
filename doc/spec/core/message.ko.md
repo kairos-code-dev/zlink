@@ -193,9 +193,10 @@ zlink_config_result_t zlink_msg_move (zlink_msg_t *dest_, zlink_msg_t *src_);
 zlink_config_result_t zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
 ```
 
-`src_`의 내용을 `dest_`로 복사합니다. 두 메시지는 참조 카운팅을 통해 기본
-데이터 버퍼를 공유합니다. `dest_`의 이전 내용은 해제됩니다. 복사는 경량이며
-데이터 payload를 복제하지 않습니다.
+`src_`의 내용을 `dest_`로 복사합니다. large/zero-copy storage는 두 메시지가
+참조 카운팅으로 기본 데이터 버퍼를 공유하고, 작은 inline 메시지는 값으로
+복사됩니다. `dest_`의 이전 내용은 해제됩니다. 복사는 경량이며 큰 데이터
+payload를 복제하지 않습니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -219,8 +220,9 @@ zlink_config_result_t zlink_msg_adopt (zlink_msg_t *dest_, zlink_msg_t *src_);
 `dest_`에 `zlink_msg_adopt`를 호출하면 정의되지 않은 동작이 발생합니다.
 
 성공 시 `dest_`는 `src_`의 원래 내용을 소유하고, `src_`는 빈 초기화 상태의
-메시지가 됩니다. 함수가 반환된 후 `src_`를 별도로 close해서는 안 됩니다 —
-`zlink_msg_adopt`가 내부적으로 `src_`를 빈 초기화 상태로 재설정합니다.
+메시지가 됩니다. `zlink_msg_adopt`가 내부적으로 `src_`를 빈 초기화 상태로
+재설정하므로, 인수한 내용을 위해 `src_`를 별도로 close할 필요는 없습니다.
+(이미 비워진 `src_`를 close해도 무해하지만 불필요합니다.)
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -288,7 +290,7 @@ count를 atomic으로 증가시키고, `zlink_msg_close()`는 atomic으로 감�
 따라서 같은 underlying storage를 공유하는 서로 다른 `zlink_msg_t` handle을
 서로 다른 스레드에서 복사하거나 닫는 것은 안전합니다.
 
-`zlink_msg_refcnt()`는 atomic counter의 relaxed read를 수행합니다.
+`zlink_msg_refcnt()`는 counter의 atomic read를 수행합니다.
 반환값은 시점 스냅샷이며, 호출자가 값을 확인하는 시점에 다른 스레드가
 copy/close로 이미 값을 변경했을 수 있습니다. 따라서 이 함수는 진단이나
 assertion 용도에 적합하며, 제어 판단에는 적합하지 않습니다.

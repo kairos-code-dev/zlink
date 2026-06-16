@@ -15,10 +15,16 @@
 요청/응답과 이벤트를 같은 큰 틀 안에서 다루기 좋다. 특히 payload를 header와 함께
 하나의 직렬화된 객체로 다시 감싸지 않는다는 점이 이 문서의 핵심 계약이다.
 
-다만 중요한 원칙이 하나 있다. 서버 간 `send/request`를 프레임워크에 통합할 때
-handler 시그니처에 raw header를 직접 노출하지 않는다. framework 사용자는
-typed request payload를 받고, header metadata가 필요하면 context에서 조회하는
-방식을 기본으로 본다.
+다만 중요한 원칙이 하나 있다. application이 직접 호출하는 framework messaging API는
+payload object를 직접 받지 않고, 이미 직렬화와 metadata 확정이 끝난 `Message`를
+받는다. request/reply handler 시그니처는 dispatch가 끝난 뒤 typed request payload를
+받을 수 있지만, outbound `send/request/reply/join` 호출부가 domain object나 generated
+object를 framework messaging API에 바로 넘기지는 않는다.
+
+따라서 payload object를 byte payload로 바꾸고 packet name을 확정하는 책임은
+`Message.from(...)`, `Message.From(...)`, `message_t::from(...)` 또는 언어별 codec
+extension의 같은 의미 factory에 둔다. framework messaging API는 만들어진 `Message`를
+운반하고, 등록된 handler metadata로 수신 payload를 typed handler 인자로 decode한다.
 
 ## 2. 기본 구조 초안
 
@@ -72,6 +78,10 @@ payload part가 필요해질 수 있으므로, wire 수준에서는 `parts[2...]
 - response도 보통 typed object 하나를 반환한다.
 - metadata는 context에서 접근한다.
 - stream은 예외적으로 session packet과 connection, peer 정보가 먼저 보일 수 있다.
+
+반대로 outbound messaging API가 object를 직접 받아 내부 serializer를 호출하는 표면은
+공통 원칙에 맞지 않는다. 이런 표면은 codec 선택과 packet name 결정 규칙을
+`send/request/reply/join`마다 반복하게 만들고, 언어별 API가 서로 달라지게 만든다.
 
 ## 2.1 STREAM packet과의 경계
 

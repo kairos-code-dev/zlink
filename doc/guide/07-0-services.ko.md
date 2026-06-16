@@ -138,7 +138,7 @@ publish/subscribe를 함께 수행한다.
 - data plane:
   `zlink_spot_send_channel()` / `zlink_spot_request_channel()` /
   `zlink_spot_publish()` / `zlink_spot_subscribe()` /
-  `zlink_spot_subscription_event()`
+  `zlink_spot_recv_subscription_event()`
 - readable 알림은 한 콜백 surface로 통합:
   `zlink_spot_dispatch_event_handler()`
 - 모니터링은 snapshot/query API로 관찰
@@ -147,9 +147,10 @@ publish/subscribe를 함께 수행한다.
 
 - **Actor**: STREAM 세션 메시지를 Spot 디스패치 컨텍스트로 모으는 SPOT 내부 라우팅 대상이다.
   `SpotNode`가 Actor 테이블을 소유하고, 새로 생성된 Actor는 `Entry Spot`에서 디스패치된다.
-  Actor는 `zlink_spot_join_spot()`으로 다른 `Spot`으로 이동하며, STREAM 세션 연결이 끊기면
-  자동으로 `Entry Spot`으로 복귀한다. Actor는 소켓이나 inproc(프로세스 내부) 엔드포인트를 소유하지 않고
-  `zlink_actor_ref_t`로 식별한다.
+  Actor는 `zlink_spot_node_actor_join_spot()`으로 다른 `Spot`으로 이동하며, 명시적
+  `zlink_spot_node_actor_leave_spot()` 호출로만 `Entry Spot`으로 복귀한다. STREAM 세션
+  bind/unbind는 독립적이며 Actor가 join한 Spot을 바꾸지 않는다. Actor는 소켓이나
+  inproc(프로세스 내부) 엔드포인트를 소유하지 않고 `zlink_actor_ref_t`로 식별한다.
 
 자세한 내용은 [SPOT 가이드](./07-3-spot.ko.md)와 [SPOT Actor 가이드](./07-4-actor.ko.md)를 참고.
 
@@ -204,8 +205,10 @@ flowchart LR
 ## 4.1 점검을 위한 graceful maintenance (가중치)
 
 운영 환경에서 SPOT Node나 raw ROUTER를 잠시 내려야 할 때는, 연결을 즉시
-끊는 대신 가중치를 `0`으로 바꿔 "이미 들어온 작업은 마무리하고 새 요청은
-받지 않는" 단계를 거치도록 권장한다. 가중치가 `0`인 노드는 피어가 새 outbound 후보에서 자동으로 제외한다.
+끊는 대신 graceful drain을 권장한다. raw ROUTER나 worker auto-connect 피어는
+소켓 가중치를 `0`으로 바꾸면 "이미 들어온 작업은 마무리하고 새 요청은 받지
+않는" 단계를 거친다. 가중치가 `0`인 raw 피어는 피어가 새 outbound 후보에서
+자동으로 제외한다. SpotNode와 Spot은 별도의 가중치 설정을 제공하지 않는다.
 
 권장 절차:
 
@@ -221,7 +224,7 @@ flowchart LR
 
 ```c
 int drain_weight = 0;
-zlink_set_spot_node_option(
+zlink_set_router_option(
     orders_exec_router, ZLINK_ROUTER_OPT_WEIGHT,
     &drain_weight, sizeof(drain_weight));
 
@@ -233,7 +236,7 @@ sleep_seconds(60);
 
 /* 4) Rejoin the service */
 int serve_weight = 100;
-zlink_set_spot_node_option(
+zlink_set_router_option(
     orders_exec_router, ZLINK_ROUTER_OPT_WEIGHT,
     &serve_weight, sizeof(serve_weight));
 ```

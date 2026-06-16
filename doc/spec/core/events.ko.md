@@ -4,19 +4,16 @@
 
 # 이벤트 카탈로그
 
-이 문서는 raw socket monitor 이벤트의 canonical catalog입니다.
+이 문서는 raw socket monitor 이벤트의 표준(canonical) 카탈로그입니다.
 
 사용 기준:
 - [monitoring.ko.md](./monitoring.ko.md): monitor API와 peer inspection API
 - 이 문서: 이벤트 의미, payload 필드, 권장 gate
-- [socket-family-monitor-contract-spec.ko.md](../../plan/direct-callback-recv/socket-family-monitor-contract-spec.ko.md):
-  패밀리별 제어 가능 범위와 회귀 테스트 기준
 
-## semantic level
+## 의미 수준
 
 - `CONNECTION_READY`: raw socket 전용 저비용 ready edge
   - raw socket: send/recv ready edge
-- queue 이벤트: 로컬 backpressure(배압, 송신 큐가 가득 찼을 때 상위 계층에 전달되는 흐름 제어 신호) 관찰
 
 권장 perf gate:
 - raw socket perf: `ZLINK_EVENT_CONNECTION_READY`를 예상 client 수만큼 수집한다

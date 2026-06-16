@@ -249,14 +249,14 @@ sequenceDiagram
     Socket->>Socket: zlink_bind("tcp://*:5555")
     Socket->>Attach: attach(socket, discovery)
     Attach->>Attach: socket_type에서 service_role 파생<br/>(ROUTER→3, DEALER→4, PUB→5, SUB→6)
-    Attach->>Disc: register_endpoint(auto_connect_type_socket,<br/>endpoint, role)
+    Attach->>Disc: register_endpoint(auto_connect_type,<br/>endpoint, role)
     Disc->>REG: REGISTER
 
     Attach->>Disc: add_observer(self)
     Note over Attach: 이제 SERVICE_LIST 업데이트 수신
 
     Disc->>Attach: on_service_update(providers)
-    Attach->>Attach: service_roles_match()로 필터링
+    Attach->>Attach: socket_auto_connect_target_matches()로 필터링
     Attach->>Socket: zlink_connect(new_peer_endpoint)
     Attach->>Socket: zlink_disconnect(removed_peer_endpoint)
 ```
@@ -281,7 +281,7 @@ sequenceDiagram
 ## 8. SpotNode Attachment
 
 SpotNode는 동일한 observer 패턴을 쓰지만 다음 특성이 있다:
-- `auto_connect_type = auto_connect_type_spot_node (2)`
+- `auto_connect_type = ZLINK_AUTO_CONNECT_SPOT_MESH (5)`
 - `service_role = service_role_spot (2)` (고정)
 - 피어 연결 대상은 mesh 내 다른 SpotNode
 
@@ -397,10 +397,10 @@ sequenceDiagram
     Disc->>Disc: I/O 전에 _sync 해제
     Disc->>Uplink: latest_registry_uplink(this)
     Uplink-->>Disc: endpoint (없으면 EAGAIN)
-    Disc->>Dealer: prepare_transient_dealer_local(ctx, uplink)
+    Disc->>Dealer: discovery_registry_rpc::prepare_transient_dealer(ctx, uplink)
     Dealer->>Reg: TOPOLOGY_QUERY (0x000B)<br/>filter = {kind=SPOT_PUB, role=SPOT,<br/>routing_id=spot_rid, service_name}
     Reg-->>Dealer: TOPOLOGY_REPLY (0x000C)<br/>entries[]
-    Disc->>Disc: close_transient_dealer_local
+    Disc->>Disc: discovery_registry_rpc::close_dealer
 
     Disc->>Disc: scoped_lock(_sync)
     Disc->>Store: refresh_spot_owner_cache_locked(key, entries)

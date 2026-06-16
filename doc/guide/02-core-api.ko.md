@@ -26,6 +26,9 @@ zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);     /* default 4 */
 zlink_config_result_t err;
 int io_threads = zlink_ctx_get(ctx, ZLINK_IO_THREADS, &err);
 
+/* 자원 해제 없이 블로킹 호출만 중단 (선택) */
+zlink_ctx_shutdown(ctx);  /* block된 zlink_send/recv를 깨움. term은 여전히 필요 */
+
 /* Terminate */
 zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 ```
@@ -39,15 +42,16 @@ zlink_ctx_term(ctx);  /* Returns after all sockets are closed */
 | `ZLINK_SOCKET_LIMIT` | — | 읽기 전용: 실제 socket 한도 |
 | `ZLINK_THREAD_PRIORITY` | `-1` | I/O thread OS 우선순위 |
 | `ZLINK_THREAD_SCHED_POLICY` | `-1` | I/O thread OS 스케줄링 정책 |
-| `ZLINK_MAX_MSGSZ` | `-1` | 최대 message 크기 (-1: 무제한) |
+| `ZLINK_MAX_MSGSZ` | `INT_MAX` | 최대 message 크기(바이트). 기본 `INT_MAX`로 사실상 무제한이며 set은 음수 아닌 값만 허용 |
 | `ZLINK_MSG_T_SIZE` | — | 읽기 전용: `sizeof(zlink_msg_t)` |
 | `ZLINK_THREAD_AFFINITY_CPU_ADD` | — | I/O thread CPU 선호도 집합에 CPU 추가 |
 | `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | — | I/O thread CPU 선호도 집합에서 CPU 제거 |
 | `ZLINK_THREAD_NAME_PREFIX` | — | I/O thread 이름 prefix (`zlink_ctx_set_data`로 설정) |
-| `ZLINK_CTX_OPT_BLOCKY` | — | 레거시: context 종료 시 block |
+| `ZLINK_CTX_OPT_BLOCKY` | `1` | 레거시: context 종료 시 block |
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | `1` | 자동 HWM 크기 조정 활성화 |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | `3000` | 자동 HWM 재계산 debounce 간격 (ms) |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 자동 HWM 크기 조정 profile |
+| `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` | `0` | 자동 HWM 계획에 쓰는 메시지당 바이트 단위 (`0`: 런타임 기본값) |
 
 `ZLINK_THREAD_NAME_PREFIX`는 문자열을 인자로 받으므로 `zlink_ctx_set()` 대신
 `zlink_ctx_set_data()`를 사용합니다.
@@ -216,10 +220,11 @@ if (rc == ZLINK_RECV_NO_DATA) {
 
 #### Callback Mode
 
-소켓 생성 후 핸들러 콜백을 부착하면 메시지 도착 시 I/O 스레드에서
-비동기로 호출된다. 한 번 부착하면 소켓 수명 동안 해제할 수 없다.
-핸들러가 부착된 상태에서 `zlink_recv()`를 호출하면 `ZLINK_RECV_BUSY` 를
-반환한다.
+콜백 수신(`zlink_recv_handler`)은 raw `STREAM` 소켓에서만 지원된다. 다른
+소켓 타입에 부착하면 `ZLINK_HANDLER_NOT_SUPPORTED` 를 반환한다. 소켓 생성
+후 핸들러를 부착하면 메시지 도착 시 I/O 스레드에서 비동기로 호출된다. 한 번
+부착하면 소켓 수명 동안 해제할 수 없다. 핸들러가 부착된 상태에서
+`zlink_recv()`를 호출하면 `ZLINK_RECV_BUSY` 를 반환한다.
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,

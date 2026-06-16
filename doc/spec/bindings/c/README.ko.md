@@ -9,7 +9,7 @@
 
 C에서는 네이티브 ABI 자체가 바인딩 계약이다. `bindings/c`는 코어 C API 위에
 두 번째 계약/런타임 계층을 추가하지 않는다. 공개 헤더, 네이티브 라이브러리
-동작, 테스트, 샘플, 패키징, 퍼프 러너가 이 문서와 `core/include/zlink.h`의
+동작, 테스트, 샘플, 패키징, perf 러너가 이 문서와 `core/include/zlink.h`의
 규칙에 일치할 때 C 구현이 정렬된 것으로 간주한다.
 
 공유 바인딩 아키텍처 맵은 리뷰 어휘로 여전히 유효하다. core, messaging,
@@ -46,8 +46,8 @@ C 바인딩을 변경할 때 다음 경로를 일관되게 사용한다.
   할 때).
 - 테스트: `bindings/c/tests/`.
 - 샘플: `bindings/c/samples/`.
-- 퍼프: `bindings/c/perf/`.
-- C API 매핑, 샘플/테스트 지원, 퍼프 정책은 `bindings/c/` 아래에 둔다.
+- perf: `bindings/c/perf/`.
+- C API 매핑, 샘플/테스트 지원, perf 정책은 `bindings/c/` 아래에 둔다.
 
 임시 빌드 디렉터리와 생성 출력물은 계약 위치가 아니다.
 
@@ -75,8 +75,8 @@ C 기능을 추가하거나 변경할 때:
 3. 결과 도메인이 바뀌면 errno/result 문서를 갱신한다.
 4. 공개 헤더만 include하는 테스트를 추가한다.
 5. 사용자 노출 형태가 바뀐 경우에만 샘플을 갱신한다.
-6. 측정 동작이 바뀐 경우에만 퍼프 러너를 갱신한다.
-7. C 퍼프 결과를 해석하기 전에 `core/build`를 재빌드한다.
+6. 측정 동작이 바뀐 경우에만 perf 러너를 갱신한다.
+7. C perf 결과를 해석하기 전에 `core/build`를 재빌드한다.
 
 ## 라이브러리 형태
 
@@ -110,13 +110,13 @@ C는 ABI 기준선이며 래퍼 바인딩 인터페이스 규칙을 채택하지
 - 공개 static 파사드, 빌더 편의 헬퍼, contract/runtime 폴더에 대한 래퍼
   바인딩 규칙은 C에 적용되지 않는다. C 헬퍼가 공개라면 반드시
   `core/include/zlink.h`에 선언한다. 그렇지 않으면 내부 헬퍼다.
-- C 샘플과 퍼프는 공개 헤더를 include하고 공개 C ABI를 직접 호출한다.
+- C 샘플과 perf는 공개 헤더를 include하고 공개 C ABI를 직접 호출한다.
 
 ## 필수 기능 커버리지
 
 C 리뷰는 `core/include/zlink.h`에서 다음 그룹을 점검한다.
 
-- 런타임, 버전, 역할, 컨텍스트 생명주기, 컨텍스트 옵션.
+- 런타임, 버전, 기능(capability) 조회, 컨텍스트 생명주기, 컨텍스트 옵션.
 - 메시지 생명주기, 메시지 데이터 접근, copy/move/adopt 규칙, 속성 조회.
 - 소켓 생명주기, bind/connect, disconnect, 옵션, TLS 헬퍼, routing id,
   send, receive, request, reply, publish, subscribe, stream API.
@@ -173,8 +173,8 @@ C 바인딩은 다른 바인딩의 성능 기준선이다.
 - send/recv, request, dispatch, poller, timer, stream, SPOT, actor 경로에
   숨겨진 sleep, busy wait, thread join, 리플렉션 같은 동적 디스패치, 거친
   글로벌 락, 피할 수 있는 복사를 추가하지 않는다.
-- 퍼프 러너와 샘플은 공개 헤더만 include한다.
-- `bindings/c/perf`는 퍼프 정책이 명시적으로 달리 정하지 않는 한
+- perf 러너와 샘플은 공개 헤더만 include한다.
+- `bindings/c/perf`는 perf 정책이 명시적으로 달리 정하지 않는 한
   `core/build`의 런타임을 측정한다.
 
 ## 구현 체크리스트
@@ -186,7 +186,7 @@ C 바인딩이 정렬되었다고 선언하기 전에:
 - 공개 테스트와 샘플이 비공개 헤더 없이 컴파일된다.
 - 상위 수준 바인딩이 비공개 C 헬퍼를 호출하지 않고 자신의 공개 형태를
   구현할 수 있다.
-- 퍼프 출력이 런타임 라이브러리 경로를 인쇄하며 오래된 `core/build`
+- perf 출력이 런타임 라이브러리 경로를 인쇄하며 오래된 `core/build`
   런타임으로 실행하지 않는다.
 
 ## Actor와 Spot Route 결과
@@ -213,4 +213,4 @@ C 바인딩은 코어 router channel peer 함수를 이름 변경 없이 노출�
 `zlink_spot_node_disconnect_router_channel_peer()`,
 `zlink_spot_node_disconnect_router_channel_peer_rid()`,
 `zlink_spot_node_attach_router_channel_discovery()`. result와 errno 매핑은
-코어 계약을 따른다. 이 함수들은 토폴로지 API이며 퍼프 전용 헬퍼가 아니다.
+코어 계약을 따른다. 이 함수들은 토폴로지 API이며 perf 전용 헬퍼가 아니다.

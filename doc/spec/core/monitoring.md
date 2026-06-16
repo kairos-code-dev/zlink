@@ -329,9 +329,10 @@ zlink_close_result_t zlink_monitor_close (void **monitor_p_);
 ```
 
 Closes the monitor and sets `*monitor_p_` to `NULL`. If another thread is
-executing the monitor callback, the close fails with `errno = EBUSY`.
-Self-close from within a callback succeeds and is deferred until the
-callback returns.
+executing the monitor callback, the close is performed asynchronously: the
+monitor is flagged for shutdown, cleaned up after the in-flight callback
+drains, and the call returns `ZLINK_CLOSE_OK`. Self-close from within a
+callback also succeeds and is deferred until the callback returns.
 
 **Returns:** `ZLINK_CLOSE_OK` on success; otherwise a `zlink_close_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -348,10 +349,8 @@ query APIs rather than a separate public event stream.
   `zlink_discovery_resolve_spot()`, `zlink_discovery_resolve_actor()`
 - Registry: `zlink_registry_status()`,
   `zlink_registry_service_summary()`,
-  `zlink_registry_topology()`,
   `zlink_registry_topology()`
 - SpotNode: `zlink_spot_node_status()`,
-  `zlink_spot_node_peers()`,
   `zlink_spot_node_peers()`,
   `zlink_spot_node_subjects()`,
   `zlink_spot_node_internal_sockets()`,

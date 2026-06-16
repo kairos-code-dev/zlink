@@ -306,7 +306,7 @@ Trait는 호출자에게 대체 가능한 동작이나 generic bound가 필요�
   리소스를 생성한다.
 - `AtomicCounter::new()`, `Stopwatch::start()`, `Thread::start(...)`는 호출자가
   소유하는 유틸리티 리소스를 생성한다.
-- Version, 역할, strerror, proxy, sleep, multipart cleanup 헬퍼는 공개
+- Version, capability 조회, strerror, proxy, sleep, multipart cleanup 헬퍼는 공개
   crate 함수이다. 이들 함수 뒤의 FFI 호출은 private으로 유지된다.
 
 ## 계약 카테고리 맵
@@ -314,7 +314,7 @@ Trait는 호출자에게 대체 가능한 동작이나 generic bound가 필요�
 이 카테고리들은 `bindings/rust/src/contracts/` 아래 소문자 모듈에 매핑되며,
 공개 crate 아이템과 re-export의 리뷰 소유권 맵이다.
 
-- `core/`: context, context option, routing id, version/역할 헬퍼, 유틸리티
+- `core/`: context, context option, routing id, version/capability 조회 헬퍼, 유틸리티
   계약.
 - `messaging/`: message, received metadata, topic message, subscription event,
   stream packet 데이터, builder payload 헬퍼.
@@ -367,7 +367,7 @@ Trait는 호출자에게 대체 가능한 동작이나 generic bound가 필요�
 
 Crate는 명확한 공개 모듈 또는 re-export를 노출해야 한다.
 
-- Core: context, option, version/역할 헬퍼, 유틸리티.
+- Core: context, option, version/capability 조회 헬퍼, 유틸리티.
 - Messaging: message, routing id, received metadata, topic message,
   subscription event, stream packet 데이터.
 - Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, typed option,
@@ -385,7 +385,7 @@ FFI 모듈은 private으로 유지한다.
 공개 crate는 바인딩이 공통 .NET 기준 정책에 정렬되었을 때 다음 안정된 사용자
 대상 능력을 커버해야 한다.
 
-- Context lifecycle, option, shutdown, auto-HWM 재계산, version, 역할,
+- Context lifecycle, option, shutdown, auto-HWM 재계산, version, capability 조회,
   strerror.
 - Message ownership, multipart payload, routing id, received metadata, topic
   message, subscription event, stream packet 콜백.

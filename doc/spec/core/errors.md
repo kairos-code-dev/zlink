@@ -10,7 +10,9 @@ set with its own codes based on `ZLINK_HAUSNUMERO`.
 
 The public extended errno definitions live in `core/include/zlink_errno.h`.
 `core/include/zlink.h` includes that header and re-exports the same public
-error surface.
+error surface. The per-function public result enums (`zlink_submit_result_t`,
+`zlink_close_result_t`, and the rest) are declared in the same header; their
+semantics are specified in [errno-map.md](./errno-map.md).
 
 ## Error Code Constants
 
@@ -68,7 +70,7 @@ defined in `<zlink.h>`:
 ```c
 #define ZLINK_VERSION_MAJOR 6
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 3
+#define ZLINK_VERSION_PATCH 4
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) \
     ((major) * 10000 + (minor) * 100 + (patch))

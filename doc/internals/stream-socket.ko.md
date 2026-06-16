@@ -15,8 +15,8 @@ STREAM 소켓은 ZMP(zlink Message Protocol) 핸드셰이크 없이 연결하는
 | 컴포넌트 | 파일 | 역할 |
 |----------|------|------|
 | stream_t | src/runtime/sockets/stream/stream.cpp | STREAM 소켓 로직 |
-| raw_encoder_t | src/runtime/protocol/raw_encoder.cpp | Length-Prefix 인코딩 |
-| raw_decoder_t | src/runtime/protocol/raw_decoder.cpp | Length-Prefix 디코딩 |
+| raw_encoder_t | src/runtime/protocol/raw_encoder.cpp | passthrough 인코딩 (framing 없음) |
+| raw_decoder_t | src/runtime/protocol/raw_decoder.cpp | passthrough 디코딩 (바이트 span -> msg_t) |
 | asio_raw_engine_t | src/runtime/engine/asio/asio_raw_engine.cpp | RAW I/O 엔진 |
 | ws_transport_t | src/runtime/transports/ws/ | WebSocket 전송 |
 | wss_transport_t | src/runtime/transports/ws/ | WebSocket + TLS |
@@ -32,15 +32,15 @@ sequenceDiagram
 
     App->>SS: zlink_send(rid + data)
     SS->>Eng: pipe_t::write()
-    Eng->>Tr: raw_encode (4B len + payload)
+    Eng->>Tr: raw_encode (passthrough 바이트, framing 없음)
     Tr->>Tr: ws::write
 ```
 
 ## 3. WS/WSS 성능 특성
 
 ### 3.1 Read Path
-- 데이터는 Beast `flat_buffer` 에서 출력 `msg_t` 로 직접 이동한다
-  (중간 staging buffer 없이 단일 copy).
+- 데이터는 Beast read buffer(`message_buffer`)에서 출력 `msg_t` 로
+  복사된다 (delivery 시 단일 copy).
 
 ### 3.2 Write Path
 - `msg_t` payload 를 Beast write 버퍼로 직접 전달한다 (중간 copy 없음).
@@ -135,10 +135,10 @@ per-connection decoder 를 거친다.
 ```
 
 먼저 length field 가 파싱된다. `header_size` 와 `body_size` 가 모두 확정되면
-구현이 header / body 용 `zlink_msg_t` 를 미리 allocation 하고, 이후
-socket read 는 바이트를 그 message 들의 backing buffer 에 곧장 흘려넣는다.
-Delivery 시점에는 두 번째 copy 가 없다 — 콜백이 실행될 때 payload는
-이미 넘겨받을 message 안에 들어 있다.
+이후 도착하는 바이트가 해당 연결의 packet state 의 header / body buffer 에
+누적된다. 패킷이 완성되면 그 누적 buffer 들이 새로 초기화된 `zlink_msg_t`
+header / body 로 move(zero-copy)되어 콜백에 전달된다. Delivery 시점에는
+추가 copy 가 없다 — move 가 조립된 buffer 를 콜백이 받을 message 로 옮긴다.
 
 ### 6.3 Callback 규약
 
@@ -181,8 +181,8 @@ zlink_stream_packet_handler_fn(stream,
 애플리케이션마다 따로 하는 대신 STREAM 안에서 decode 하도록 둔 이유는 두 가지다.
 
 - **복사 한 번 감소.** 애플리케이션이 "조립된" contiguous buffer 를 한 번
-  만졌다가 다시 쪼갤 필요가 없다. header / body message 가 곧 소켓 read 의
-  목적 버퍼다.
+  만졌다가 다시 쪼갤 필요가 없다. 누적 buffer 가 header / body message 로
+  move(zero-copy)된다.
 - **순서 보장.** Per-`source_rid` 직렬화를 decoder 쪽에서 강제하므로,
   호출자가 raw byte delivery 위에 별도 reorder 로직을 올릴 필요가 없다.
 
@@ -255,8 +255,11 @@ STREAM handle이 session owner SpotNode를 얻는 경로는 두 가지다.
   owner를 socket registry에서 복원하므로 명시적 attach가 필요 없다.
 
 STREAM socket은 relay 상태를 직접 보관하지 않는다. owner 매핑, session-to-Actor binding,
-relay 경로는 모두 SpotNode Actor runtime에 있다. 배선과 local/remote relay 경로, cleanup
-규칙은 [spot-internals.ko.md](./spot-internals.ko.md) 12절("STREAM session과 Actor
+relay 경로는 모두 SpotNode Actor runtime에 있다. companion session API는
+`zlink_stream_bind_actor()` / `zlink_stream_unbind_actor()`(session binding 관리),
+`zlink_stream_send_bound_actor_part()`(bound Actor로 multipart relay),
+`zlink_stream_bound_actors()`(session binding 열거)다. 배선과 local/remote relay 경로,
+cleanup 규칙은 [spot-internals.ko.md](./spot-internals.ko.md) 12절("STREAM session과 Actor
 binding")에 정리되어 있다. STREAM 계층에서 중요한 것은 `source_rid`별 byte pipe가 relay가
 타는 transport라는 점, 그리고 session disconnect가 bound Actor의 joined Spot은 바꾸지 않고 그
 session의 binding만 제거한다는 점뿐이다.

@@ -663,13 +663,14 @@
 | actor-gateway-relay | stream relay | — | actor id: `"play-session-actor"`, join: `"join-play"`, relay payload: `"client-input"` |
 | actor-single-player-queue | queue order | — | actor id: `"single-player"`, join 시퀀스: `"join-first"` → leave → 큐잉 `"before"`/`"between"` → rejoin `"join-second"`, accept: `"accepted"` |
 
+| monitor | event plane | — | recv: `"connection-ready"` |
+| discovery-registry | service plane | — | service id: `"sample"`, state: `discovered`, remove: `removed` |
+| registry-query | service plane | — | service id: `"sample"`, snapshot: `found` |
+
 > Actor 샘플은 단순 send/recv가 아니라 **시나리오 시퀀스**(join → 처리 → leave/relay/queue)를
 > 보인다. 위 값은 그 시퀀스의 고정 식별자·payload이며, 언어가 달라도 같은 값과
 > 같은 순서를 따른다. 자세한 시나리오 의미는 [Actor Sample Scenario
 > Rules](#actor-sample-scenario-rules)를 본다.
-| monitor | event plane | — | recv: `"connection-ready"` |
-| discovery-registry | service plane | — | service id: `"sample"`, state: `discovered`, remove: `removed` |
-| registry-query | service plane | — | service id: `"sample"`, snapshot: `found` |
 
 ## Sample Coverage Expectations
 - 각 표면은 canonical sample 세트를 공식 샘플 표면으로 유지한다.

@@ -168,15 +168,15 @@ match socket.send().message(msg).submit() {
 | `zlink_bind(s, ep)` | `socket.bind(ep)` |
 | `zlink_connect(s, ep)` | `socket.connect(ep)` |
 | `zlink_send_part(...)` | `socket.send().message(m).submit()` |
-| `zlink_recv(...)` | `socket.recv(&mut received, flags)` |
+| `zlink_recv_part(...)` | `socket.recv(&mut received, flags)` |
 | `zlink_msg_data(msg)` | `part.as_bytes()` |
 | `zlink_routing_id_t` | `RoutingId` |
 | `zlink_socket_monitor_open(...)` | `SocketMonitor::open(&socket)` |
 | `zlink_poller_new()` | `Poller::new()` |
 | `zlink_timer_new()` | `Timer::new()` |
-| `zlink_spot_node_new(ctx)` | `SpotNode::new(&ctx)` |
+| `zlink_spot_node_new(ctx, opts)` | `SpotNode::new(&ctx)` |
 | `zlink_registry_new(ctx)` | `Registry::new(&ctx)` |
-| `zlink_discovery_new(ctx,...)` | `Discovery::new(&ctx, type, ch)` |
+| `zlink_discovery_new(ctx,...)` | `Discovery::new(&ctx, auto_connect_type, channel_name)` |
 
 ---
 
@@ -218,7 +218,7 @@ std::thread::spawn(move || {
 |------|------|
 | `pair_recv_sample.rs` | PAIR 송수신 |
 | `dealer_router_recv_sample.rs` | DEALER/ROUTER 송수신 |
-| `request_reply_async_sample.rs` | async 요청/응답 |
+| `request_reply_callback_sample.rs` | 콜백 요청/응답 |
 | `pubsub_recv_sample.rs` | PUB/SUB 발행·구독 |
 | `stream_recv_sample.rs` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.rs` | STREAM 패킷 콜백 |
@@ -226,7 +226,7 @@ std::thread::spawn(move || {
 | `discovery_registry_sample.rs` | Registry + Discovery |
 | `registry_query_sample.rs` | Registry 토폴로지 쿼리 |
 | `spot_recv_sample.rs` | SpotNode/Spot PUB/SUB |
-| `spot_request_async_sample.rs` | SpotNode 비동기 요청 |
+| `spot_request_callback_sample.rs` | SpotNode 콜백 요청 |
 | `actor_single_player_queue_sample.rs` | 액터 조인·이동·메시지 큐 |
 | `actor_room_server_sample.rs` | 방 서버 패턴 |
 | `actor_gateway_relay_sample.rs` | 게이트웨이 릴레이 |

@@ -25,8 +25,9 @@ void *ctx = zlink_ctx_new();
 zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);  /* 기본값은 ZLINK_IO_THREADS_DFLT = 4 */
 ```
 
-I/O thread는 context 생성 시 시작되고 `zlink_ctx_term()` 호출 시 종료된다.
-context가 실행 중일 때는 추가하거나 제거할 수 없다.
+`zlink_ctx_new()`은 context만 할당한다. I/O thread 풀은 런타임을 처음 쓸 때
+(첫 소켓 생성 또는 service-runtime 시작) 지연 시작되고 `zlink_ctx_term()`
+호출 시 종료된다. 풀이 시작된 뒤에는 스레드 수를 바꿀 수 없다.
 
 ### 1.2 스레드 다이어그램
 
@@ -95,7 +96,10 @@ I/O thread가 다음 소켓을 받는다.
 new_socket → argmin(socket_count[t] for t in io_threads)
 ```
 
-동률이면 인덱스가 낮은 thread를 고른다. 카운트는 소켓 생성 및 소멸 시 원자적으로
+스캔은 최소값을 고르기 전에 회전 시작 인덱스(`_next_io_thread`)를 쓰므로,
+부하가 같은 스레드는 항상 thread 0을 선호하지 않고 라운드로빈으로 채워진다.
+STREAM session은 `ZLINK_ASIO_STREAM_SESSION_SCHED=minload`가 설정되지 않는 한
+기본적으로 단순 라운드로빈으로 할당된다. 카운트는 소켓 생성 및 소멸 시 원자적으로
 갱신한다. 할당한 뒤에는 재분배가 없다.
 
 ### 3.3 어피니티 마스크
@@ -138,13 +142,18 @@ thread-safe 명령 큐다:
 
 ```cpp
 class mailbox_t {
-    ypipe_t<command_t> _commands;  /* 명령 SPSC 큐 */
-    signaler_t _signaler;          /* 명령 enqueue 시 io_context를 깨움 */
+    cpipe_t _cpipe;              /* 명령 파이프 (ypipe_t<command_t>) */
+    signaler_t _signaler;        /* 명령 enqueue 시 io_context를 깨움 */
+    mutex_t _sync;               /* 동시 송신자 보호 */
+    boost::asio::io_context *_io_context;
 };
 ```
 
-명령 타입에는 `stop`, `plug`, `attach`, `bind`, `activate_read`, `activate_write`,
-`hiccup`, `term` 등이 있다. I/O 스레드는 이벤트 루프를 한 번 돌 때마다 그 시작에서 Mailbox를 drain한다.
+`send()`는 `_sync` 아래에서 명령을 쓰고, signal한 뒤 `boost::asio::post()`로
+drain 핸들러를 post한다. I/O 스레드는 그 post된 핸들러에서 명령 파이프를
+drain한다(루프 시작에서 폴링하는 방식이 아니다). 명령 타입에는 `stop`, `plug`,
+`attach`, `bind`, `activate_read`, `activate_write`, `hiccup`, `reap`, `reaped`
+등이 있다.
 
 ### 4.3 데이터 흐름 요약
 
@@ -167,16 +176,16 @@ sequenceDiagram
 ## 5. Reaper Thread
 
 소켓이 닫힐 때 I/O thread가 자원을 곧바로 해제하지 못하는 경우가 있다. session 객체를
-참조하는 진행 중인 async 연산이 있기 때문이다. I/O thread는 해당 소켓의 I/O가 모두
-끝나면 Reaper에 `term` 명령을 보낸다. Reaper는 이벤트 루프 잠금 없이 자원을 해제한다.
+참조하는 진행 중인 async 연산이 있기 때문이다. close handoff는 Reaper에 `reap`
+명령을 보내고, Reaper는 소켓을 자신의 poller에 등록한다. 소켓이 shutdown을 마치면
+`reaped` 명령을 되돌려 보낸다. Reaper는 이벤트 루프 잠금 없는 전용 스레드에서 자원을
+해제한다.
 
-Reaper는 자체 Mailbox와 단순 drain 루프로 동작한다:
+Reaper는 자체 Mailbox를 쓰며, 명령이 `process_reap()` / `process_reaped()`를 구동한다:
 
 ```
-while (command = mailbox.recv()) {
-    if (command.type == TERM) free(command.object);
-    if (command.type == STOP) break;
-}
+process_reap(socket)   → start_reaping(socket); ++sockets
+process_reaped()       → --sockets; terminating && sockets == 0 이면 종료
 ```
 
 ---
@@ -216,7 +225,9 @@ data-plane 스레드 루프는 세 큐의 signaler FD를 포함한 poller와 함
 | 5 | flush `fanout` pending | 로컬 구독자로 팬아웃 전달 |
 | 6 | flush staged messages | 잔여 staged 프레임 전송 |
 
-배치 한도는 반복당 2048 메시지 또는 16 MiB다.
+배치 한도는 단일 전역 상한이 아니라 단계별이다. publish ingress는 반복당 2048
+메시지 또는 16 MiB까지 drain하고, mesh 전달은 16384 메시지 또는 16 MiB를 쓴다.
+한 반복 안에서 POLLOUT(send-ready)을 POLLIN보다 먼저 처리한다.
 
 ### 6.2 Dispatch Worker Pool
 
@@ -255,13 +266,17 @@ data-plane 스레드가 콜백을 직접 호출하지 않는 이유는 다음과
 
 ## 7. NUMA 및 CPU 핀닝
 
-zlink는 내부적으로 I/O thread를 특정 CPU 코어에 고정하지 않는다.
-NUMA 지역성이 중요하다면 애플리케이션에서 다음을 수행한다:
+zlink는 기본적으로 자신의 백그라운드 스레드를 특정 CPU 코어에 고정하지 않는다.
+다만 context는 `ZLINK_THREAD_AFFINITY_CPU_ADD` / `ZLINK_THREAD_AFFINITY_CPU_REMOVE`
+context 옵션으로 자신이 시작하는 스레드의 CPU 어피니티를 요청할 수 있으며, 이는 각
+백그라운드 스레드 시작 전에 적용된다(`pthread_setaffinity_np`). NUMA 지역성이
+중요하다면 애플리케이션에서 다음을 수행한다:
 
 1. `ZLINK_IO_THREADS`를 NUMA 토폴로지에 맞게 설정한다.
 2. 어피니티 마스크로 소켓 그룹별로 특정 I/O 스레드에 할당한다.
-3. 해당 소켓에서 `zlink_send()`를 호출하는 애플리케이션 스레드에
-   OS 수준 CPU 어피니티(`pthread_setaffinity_np` 등)를 적용한다.
+3. `ZLINK_THREAD_AFFINITY_CPU_ADD`로 zlink 백그라운드 스레드를 고정하고, 해당
+   소켓에서 `zlink_send()`를 호출하는 애플리케이션 스레드에 OS 수준 CPU 어피니티를
+   적용한다.
 
 소켓은 생성 시 I/O 스레드에 영구히 고정되므로, 애플리케이션 스레드와 그
 I/O 스레드를 같은 NUMA 노드에 두면 cross-node YPipe 접근이 없어진다.
@@ -297,10 +312,14 @@ hot-path API 안에 있으면 곧바로 `ZLINK_CLOSE_BUSY`를 반환한다. clos
 
 ### 8.3 콜백 전달과 동시 send
 
-`*_handler()`로 등록한 콜백은 I/O 스레드에서 실행된다. 애플리케이션 스레드에서는
-동시에 `zlink_send()`를 호출할 수 있다 — 입장 허용 게이트가 콜백 경로와 send 경로를
-분리한다. 콜백 안에서 해당 소켓에 `zlink_close()`를 호출하면 데드락이 생기므로
-그렇게 하면 안 된다.
+콜백마다 실행 스레드가 다르므로 단일 "콜백 스레드"는 없다. socket message 핸들러는
+I/O 스레드, monitor 핸들러는 service-control 런타임 스레드, send-ready 핸들러는
+호출자의 send 스레드에서 동기적으로, SPOT dispatch 이벤트 핸들러는 SPOT dispatch
+worker pool에서 실행된다. 애플리케이션 스레드에서는 동시에 `zlink_send()`를 호출할 수
+있다 — 입장 허용 게이트가 콜백 경로와 send 경로를 분리한다. 콜백 안에서 해당 핸들에
+`zlink_close()`를 호출해도 데드락은 없다. send-ready·monitor self-close는 콜백
+epilogue로 지연되고, socket message·STREAM dispatch self-close는 `ZLINK_CLOSE_BUSY`를
+반환한다.
 
 ---
 
@@ -331,9 +350,9 @@ thread와 같은 thread에서 호출하거나, 호출 전에 모든 소켓을 �
 | 지연 소멸 | Reaper 스레드 (전역 1개) |
 | 동시 send | 입장 허용 게이트로 안전 |
 | 동시 close + send | 안전. close는 hot-path 호출자가 빠져나올 때까지 `BUSY` 반환 |
-| 콜백 실행 스레드 | 항상 소켓에 할당된 I/O 스레드 |
+| 콜백 실행 스레드 | 콜백별: socket message → I/O 스레드; monitor → service-control 스레드; send-ready → 호출자의 send 스레드; SPOT dispatch → dispatch worker |
 | SpotNode data-plane thread | SpotNode당 1개; mesh-pub/fanout/external-router 독점 소유 |
-| SpotNode data-plane→App | publish_ingress_queue / routed_send_queue (signaler 기반 wakeup) |
+| Application→data-plane 경로 | publish_ingress_queue / routed_send_queue (signaler 기반 wakeup) |
 | Dispatch worker thread | SpotNode당 N개; Spot별 직렬화·코얼레싱; 기본 min(2,cpu)~max(1,cpu) |
 | Dispatch worker idle timeout | 1000 ms (내부 상수) |
 | Spot dispatch 콜백 실행 스레드 | Dispatch worker 스레드 (data-plane 스레드 아님) |

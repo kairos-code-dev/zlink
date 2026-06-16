@@ -571,8 +571,8 @@ routed send/request APIs.
 
 ## SpotNode Router Channel Peers
 
-`.NET` exposes router channel peer wiring on the public `SpotNode` and
-`ISpotNode` surface: `ConnectRouterChannelPeer(string channelName, string endpoint)`,
+`.NET` exposes router channel peer wiring on the public `ISpotNode` contract
+surface: `ConnectRouterChannelPeer(string channelName, string endpoint)`,
 `ConnectRouterChannelPeerRid(string channelName, RoutingId peerRid, string endpoint)`,
 `DisconnectRouterChannelPeer(string channelName, string endpoint)`,
 `DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid)`, and

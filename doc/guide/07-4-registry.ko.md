@@ -359,14 +359,14 @@ zlink_registry_service_summary(registry, &filter, entries, &count);
 #### 전체 스냅샷
 
 ```c
-/* Query required count first */
+/* Query required count first (NULL filter, NULL entries) */
 size_t count = 0;
-zlink_registry_topology(registry, NULL, &count);
+zlink_registry_topology(registry, NULL, NULL, &count);
 
 /* Allocate and fetch */
 zlink_registry_topology_entry_t *entries = malloc(
     count * sizeof(zlink_registry_topology_entry_t));
-zlink_registry_topology(registry, entries, &count);
+zlink_registry_topology(registry, NULL, entries, &count);
 
 for (size_t i = 0; i < count; i++) {
     printf("channel=%s endpoint=%s state=%d\n",
@@ -690,7 +690,7 @@ registry 스냅샷을 질의해 서비스 엔드포인트를 조회하는 자립
 
 - [Service Discovery](./07-1-discovery.ko.md) -- 기반 인프라
 - [SPOT PUB/SUB](./07-3-spot.ko.md) -- 위치투명 발행/구독
-- [Registry API 레퍼런스](../api/registry.ko.md) -- 전체 API 문서
+- [Registry API 레퍼런스](../spec/core/service/registry.ko.md) -- 전체 API 문서
 
 ---
 <!-- zlink-nav:bottom:start -->

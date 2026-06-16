@@ -85,7 +85,6 @@ if (rc == ZLINK_RECV_OK) {
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
     zlink_multipart_close(parts, part_count);
-    free(parts);
 }
 ```
 
@@ -109,8 +108,9 @@ zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 ```
 
 > 피어별 송신 큐가 가득 차면(HWM, 고수위 표시: 큐에 넣을 수 있는 최대 메시지 수)
-> `ROUTER_MANDATORY=1`(기본값)이면 `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다.
-> 호출자가 명시적으로 `ROUTER_MANDATORY` 를 `0` 으로 끄면 메시지를 조용히 드롭한다.
+> `ROUTER_MANDATORY=1`(기본값)이면 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다.
+> 미지/도달 불가 routing_id 로 보내면 `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다.
+> 호출자가 명시적으로 `ROUTER_MANDATORY` 를 `0` 으로 끄면 미도달 메시지를 조용히 드롭한다.
 > 고급 배압(backpressure, 수신 측이 처리를 못 따라갈 때 송신 측을 늦추는 흐름 제어) 패턴은
 > [성능 가이드](./10-performance.ko.md)를 참고.
 
@@ -139,7 +139,6 @@ if (zlink_router_recv(router,
     zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 
     zlink_multipart_close(parts, part_count);
-    free(parts);
 }
 ```
 
@@ -151,8 +150,8 @@ if (zlink_router_recv(router,
 | `ZLINK_OPT_RID_DUPLICATE_POLICY` | int | `ZLINK_RID_DUPLICATE_REJECT` | routing_id 충돌 시 기존 파이프(pipe, 두 소켓을 연결하는 내부 메시지 채널)를 유지할지 새 파이프가 인수할지 정한다. |
 | `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_router_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
-| `ZLINK_OPT_SNDHWM` | int | 자동 (routed 기본 floor 8) | routed 역할 기본값. 수동 설정 시 자동값보다 우선 |
-| `ZLINK_OPT_RCVHWM` | int | 자동 (routed 기본 floor 8) | routed 역할 기본값. 수동 설정 시 자동값보다 우선 |
+| `ZLINK_OPT_SNDHWM` | int | 자동 | ROUTER의 routed 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
+| `ZLINK_OPT_RCVHWM` | int | 자동 | ROUTER의 routed 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 
 ### ROUTER_MANDATORY
@@ -197,8 +196,8 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
 
 가장 중요한 값은 `source_node_rid + request_seq` 조합이다. `request_seq`
 만 맞고 source 가 다르면 같은 요청의 reply 로 보면 안 된다. 일반 ROUTER
-request-reply 에서는 `source_spot_rid` 가 `NULL` 이고, SPOT 에서 시작된
-요청일 때만 spot rid 가 채워진다.
+request-reply 에서는 `source_spot_rid` 가 빈 routing id(`size == 0`)를 가리키며,
+SPOT 에서 시작된 요청일 때만 spot rid 가 채워진다.
 
 > ZMP request-reply envelope wire 형식은
 > [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
@@ -221,7 +220,6 @@ if (zlink_router_recv(router,
        SPOT 에서 시작된 request 라면 spot rid 가 채워지며, 이때는
        zlink_router_reply_spot() 로 응답한다. */
     zlink_multipart_close(parts, part_count);
-    free(parts);
 
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 4);
@@ -294,7 +292,7 @@ zlink_bind(router, "tcp://127.0.0.1:*");
            zlink_msg_init_size(&reply, 5);
            memcpy(zlink_msg_data(&reply), "reply", 5);
            zlink_send_rid(router, src_node, &reply, 1, 0);
-           zlink_multipart_close(parts, n); free(parts);
+           zlink_multipart_close(parts, n);
        }
    } */
 
@@ -384,17 +382,18 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
 
 ### 패턴 3: ROUTER ↔ ROUTER 가중치 라우팅
 
-DEALER → ROUTER는 라운드 로빈이 고정되어 분배 비율을 제어할 수 없다.
-가중치, 우선순위, 조건부 라우팅이 필요하면 ROUTER ↔ ROUTER로 구성하고
-애플리케이션이 routing_id를 직접 선택한다.
+DEALER → ROUTER는 기본적으로 균등 라운드 로빈이다(`ZLINK_DEALER_OPT_WEIGHT`로
+피어별 분배 비율은 조정 가능하지만 메시지 단위로 경로를 고를 수는 없다).
+메시지별 경로 선택, 우선순위, 조건부 라우팅이 필요하면 ROUTER ↔ ROUTER로
+구성하고 애플리케이션이 routing_id를 직접 선택한다.
 
 ```
-  DEALER → ROUTER (라운드 로빈 고정, 균등 분배):
+  DEALER → ROUTER (균등 라운드 로빈, 가중치로 비율 조정 가능):
 
   +----------+     1/3      +----------+
   |          |-------------->| ROUTER A |
   |  DEALER  |     1/3      +----------+
-  |          |-------------->| ROUTER B |    변경 불가
+  |          |-------------->| ROUTER B |    메시지별 선택 불가
   |          |     1/3      +----------+
   |          |-------------->| ROUTER C |
   +----------+              +----------+
@@ -545,18 +544,18 @@ void worker_thread(void *arg) {
 ### 패턴 6: ROUTER_MANDATORY로 전송 실패 감지
 
 ```
-  MANDATORY = 0 (기본):
-
-  +----------+   send_rid      + - - - - - +
-  |  ROUTER  +---------------->  "UNKNOWN"       조용히 드롭
-  +----------+   target=       + - - - - - +    (에러 없음)
-                 "UNKNOWN"
-
-  MANDATORY = 1:
+  MANDATORY = 1 (기본):
 
   +----------+   send_rid      + - - - - - +
   |  ROUTER  +-------X---------  "UNKNOWN"       rc = -1
   +----------+   target=       + - - - - - +    ZLINK_SUBMIT_NOT_CONNECTED
+                 "UNKNOWN"
+
+  MANDATORY = 0:
+
+  +----------+   send_rid      + - - - - - +
+  |  ROUTER  +---------------->  "UNKNOWN"       조용히 드롭
+  +----------+   target=       + - - - - - +    (에러 없음)
                  "UNKNOWN"
 ```
 
@@ -564,26 +563,20 @@ void worker_thread(void *arg) {
 void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
 zlink_bind(router, "tcp://*:5558");
 
-/* 기본 동작: 미도달 메시지 조용히 드롭 */
+/* 기본 동작(MANDATORY=1): 미도달 송신이 실패로 드러남 */
 zlink_routing_id_t bad_rid = { .data = "UNKNOWN", .size = 7 };
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "DATA", 4);
-zlink_send_rid(router, &bad_rid, &msg, 1, 0);
-/* 에러 없음, 메시지 소실 */
-
-/* MANDATORY 모드 활성화 */
-int mandatory = 1;
-zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof(mandatory));
-
-/* 이제 미도달 시 에러 반환 */
-zlink_msg_t msg2;
-zlink_msg_init_size(&msg2, 4);
-memcpy(zlink_msg_data(&msg2), "DATA", 4);
-zlink_submit_result_t rc = zlink_send_rid(router, &bad_rid, &msg2, 1, 0);
+zlink_submit_result_t rc = zlink_send_rid(router, &bad_rid, &msg, 1, 0);
 if (rc == ZLINK_SUBMIT_NOT_CONNECTED) {
-    /* 대상 "UNKNOWN"을 찾을 수 없음 */
+    /* 대상 "UNKNOWN"을 찾을 수 없음 — 재시도/로그/폴백 선택 */
 }
+
+/* 조용한 드롭이 필요하면 MANDATORY를 명시적으로 끈다 */
+int disable_mandatory = 0;
+zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
+                        &disable_mandatory, sizeof(disable_mandatory));
 ```
 
 > 참고: `core/tests/integration/test_router_mandatory.cpp` — 기본 드롭 vs MANDATORY 에러
@@ -601,21 +594,6 @@ DEALER가 먼저 메시지를 전송해 ROUTER에 연결을 알린 뒤, ROUTER�
 ```
 
 ```c
-/* ROUTER 핸들러: DEALER의 초기 메시지로 연결 확인 */
-void on_connect(const zlink_routing_id_t *source_node_rid,
-                const zlink_routing_id_t *source_spot_rid,
-                uint64_t request_seq,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* source_node_rid->data = "X" — 이제 "X" 로 안전하게 전송 가능 */
-    zlink_msg_t reply;
-    zlink_msg_init_size(&reply, 7);
-    memcpy(zlink_msg_data(&reply), "Welcome", 7);
-    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
-    zlink_multipart_close(parts, part_count);
-}
-
 /* DEALER 연결 및 초기 메시지 전송 */
 void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_set_routing_id(dealer, "X", 1);
@@ -625,8 +603,9 @@ zlink_msg_init_size(&hello, 5);
 memcpy(zlink_msg_data(&hello), "Hello", 5);
 zlink_send(dealer, &hello, 1, 0);
 
-/* on_connect 수신: source_node_rid = "X", parts[0] = "Hello"
-   "Welcome" 으로 응답 */
+/* ROUTER: poller 루프 안에서 zlink_router_recv()가
+   source_node_rid = "X", parts[0] = "Hello"를 반환하면,
+   서버는 zlink_send_rid로 "Welcome"을 응답한다. */
 ```
 
 > 참고: `core/tests/integration/test_router_mandatory.cpp` — DEALER 연결 → 메시지 → ROUTER 응답
@@ -668,9 +647,9 @@ zlink_bind(router, "inproc://router");
 
 ## 6. 주의사항
 
-### 기본 드롭 동작
+### MANDATORY를 끄면 드롭
 
-`ROUTER_MANDATORY`를 설정하지 않으면 존재하지 않는 routing_id로 전송할 때 메시지가 **조용히 드롭**된다. 프로덕션에서는 `ROUTER_MANDATORY` 활성화를 권장한다.
+`ROUTER_MANDATORY`는 기본적으로 `1`이라 존재하지 않는 routing_id로 전송하면 실패를 반환한다. `0`으로 끄면 그런 메시지가 **조용히 드롭**된다. 프로덕션에서는 기본값(MANDATORY 활성화) 유지를 권장한다.
 
 ### 재연결 시 routing_id 변경
 

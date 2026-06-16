@@ -364,14 +364,14 @@ zlink_registry_service_summary(registry, &filter, entries, &count);
 #### Full Snapshot
 
 ```c
-/* Query required count first */
+/* Query required count first (NULL filter, NULL entries) */
 size_t count = 0;
-zlink_registry_topology(registry, NULL, &count);
+zlink_registry_topology(registry, NULL, NULL, &count);
 
 /* Allocate and fetch */
 zlink_registry_topology_entry_t *entries = malloc(
     count * sizeof(zlink_registry_topology_entry_t));
-zlink_registry_topology(registry, entries, &count);
+zlink_registry_topology(registry, NULL, entries, &count);
 
 for (size_t i = 0; i < count; i++) {
     printf("channel=%s endpoint=%s state=%d\n",
@@ -640,7 +640,7 @@ Recommended workflow:
 
 - [Service Discovery](./07-1-discovery.md) -- Foundation infrastructure
 - [SPOT PUB/SUB](./07-3-spot.md) -- Location-transparent publish/subscribe
-- [Registry API Reference](../api/registry.md) -- Complete API documentation
+- [Registry API Reference](../spec/core/service/registry.md) -- Complete API documentation
 
 ---
 <!-- zlink-nav:bottom:start -->

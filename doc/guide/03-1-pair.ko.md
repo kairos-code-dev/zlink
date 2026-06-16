@@ -8,7 +8,7 @@
 
 ## 1. 개요
 
-PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 맺는다. 두 번째 피어가 연결하면 첫 번째 연결은 끊어진다.
+PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 맺는다. 두 번째 피어가 연결하면 그 나중 연결이 거부되고, 첫 번째 피어가 pipe를 유지한다.
 
 **핵심 특성:**
 - 단일 파이프만 허용 (1:1 독점)
@@ -59,7 +59,6 @@ if (zlink_recv(server, &source_rid, &parts, &part_count, 0) == ZLINK_RECV_OK) {
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
     zlink_multipart_close(parts, part_count);
-    free(parts);
 }
 
 /* Server → Client (bidirectional; client uses the same recv+poller pattern) */
@@ -121,7 +120,7 @@ Multipart frame:  [frame1][frame2]...[frameN]
 ```
 
 > `source_rid` 등 공통 수신 인터페이스는
-> [소켓 패턴 개요](./03-0-socket-patterns.ko.md#7-공통-수신-인터페이스)를 참고.
+> [소켓 패턴 개요](./03-0-socket-patterns.ko.md#8-공통-수신-인터페이스)를 참고.
 
 멀티파트 전송:
 
@@ -138,8 +137,8 @@ zlink_send(server, parts, 2, 0);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_OPT_SNDHWM` | int | 자동 (기본 floor 4) | control 역할의 자동 HWM 기본값. 수동 설정 시 자동값보다 우선 |
-| `ZLINK_OPT_RCVHWM` | int | 자동 (기본 floor 4) | control 역할의 자동 HWM 기본값. 수동 설정 시 자동값보다 우선 |
+| `ZLINK_OPT_SNDHWM` | int | 자동 | PAIR의 peer-queue 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
+| `ZLINK_OPT_RCVHWM` | int | 자동 | PAIR의 peer-queue 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 미전송 메시지 대기 시간 (ms), -1=무한 |
 | `ZLINK_OPT_SNDTIMEO` | int | 1000 | 송신 타임아웃(ms). 무한 대기는 `-1`을 명시적으로 설정 |
 | `ZLINK_OPT_RCVTIMEO` | int | 1000 | 수신 타임아웃(ms). 무한 대기는 `-1`을 명시적으로 설정 |
@@ -173,7 +172,7 @@ zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "DONE", 4);
 zlink_send(worker_signal, &msg, 1, 0);
 
-/* Main: on_signal callback receives "DONE" asynchronously */
+/* Main: poller 루프(zlink_recv)로 "DONE" 수신 */
 ```
 
 > 참고: `core/tests/integration/test_pair_inproc.cpp` — bind → connect → bounce 패턴
@@ -228,11 +227,11 @@ zlink_connect(client, "ipc:///tmp/myapp.ipc");
 
 ### 단일 피어만 허용
 
-PAIR 소켓은 하나의 연결만 유지한다. 두 번째 피어가 연결하면 첫 번째 연결이 끊어진다.
+PAIR 소켓은 하나의 연결만 유지한다. 두 번째 피어가 연결하면 그 나중 연결이 거부되고, 첫 번째 피어가 pipe를 유지한다.
 
 ```
  Allowed:  PAIR A ↔ PAIR B      (1:1)
- Invalid:  PAIR A ← PAIR B      (N:1 attempt drops existing connection)
+ Invalid:  PAIR A ← PAIR B      (N:1 attempt: later peers rejected)
                ← PAIR C
 ```
 

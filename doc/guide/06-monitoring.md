@@ -16,8 +16,10 @@ The zlink monitoring API allows real-time observation of socket events such as c
 
 ### 2.1 Callback Mode
 
-The handler is invoked on the I/O thread immediately when an event occurs.
-Callback mode is suitable for real-time processing without event loss.
+The handler is invoked on the service-control runtime thread (not the parent
+socket's I/O thread) when an event occurs. Callback mode is convenient for
+real-time processing; note that monitor delivery is lossy — events may be
+dropped under load, so do not rely on receiving every event.
 
 ```c
 /* Define event handler */
@@ -401,8 +403,9 @@ zlink_monitor_close(&mon_b);
 `zlink_socket_monitor_open()` and monitor-handle close belong to the
 low-frequency control-path contract of raw and service handles. That means
 they may be called from application threads and remain correct when mixed with
-other concurrent operations on the same handle. The monitor callback itself still runs on the
-I/O path, so slow callback work should be offloaded to a user queue.
+other concurrent operations on the same handle. The monitor callback runs on
+the service-control runtime thread (not the socket's I/O thread), so slow
+callback work should be offloaded to a user queue.
 
 ```c
 /* Open a monitor from an application thread */
@@ -422,8 +425,10 @@ Multiple monitors cannot be set on the same socket simultaneously.
 
 ### Callback Processing Speed
 
-Blocking work in the callback handler can delay other I/O. For slow
-processing, enqueue from the callback and handle it on your own thread.
+Blocking work in the callback handler does not stall the socket's I/O path
+(the callback runs on the service-control thread), but it delays subsequent
+monitor events. For slow processing, enqueue from the callback and handle it
+on your own thread.
 
 ### Monitor Shutdown Procedure
 
@@ -431,6 +436,10 @@ processing, enqueue from the callback and handle it on your own thread.
 /* Close the monitor handle */
 zlink_monitor_close(&mon);
 ```
+
+Calling `zlink_monitor_close()` from inside the monitor callback is allowed:
+the close is deferred until the callback returns (it returns OK rather than
+failing), and final cleanup runs once the callback depth reaches zero.
 
 ## 11. Knowing When Messaging Is Ready
 

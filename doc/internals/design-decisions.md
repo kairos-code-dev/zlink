@@ -50,12 +50,15 @@ This document records the rationale and alternative analyses for key design deci
 
 ### 2.1 Polling Approach Selection
 
-**Decision**: Monitoring provides only the polling (PAIR socket) approach.
+**Decision**: Monitoring exposes a direct receive surface by default, with an
+optional one-way handler callback.
 
 **Rationale**:
-- Callback approach risks deadlock when called from the I/O thread
-- Polling is safely processed in the user thread
-- Can combine multi-socket monitoring via zlink_poll
+- The default recv model is safely processed in the user thread and avoids the
+  I/O-thread callback deadlock risk
+- An application that prefers callback-driven delivery can attach a handler
+  (a one-way transition to callback-only mode)
+- Can combine multi-socket monitoring via the poller
 
 ### 2.2 CONNECTION_READY Event
 
@@ -68,10 +71,11 @@ This document records the rationale and alternative analyses for key design deci
 
 ### 2.3 DISCONNECTED Reason Code
 
-**Decision**: Add reason codes (0~5) to the DISCONNECTED event.
+**Decision**: Add reason codes to the DISCONNECTED event (`UNKNOWN=0`,
+`HANDSHAKE_FAILED=3`, `TRANSPORT_ERROR=4`, `CTX_TERM=5`).
 
 **Rationale**:
-- Need to distinguish intentional shutdown (LOCAL) from unintentional shutdown (TRANSPORT_ERROR)
+- Need to distinguish context termination (`CTX_TERM`) from transport errors (`TRANSPORT_ERROR`) and handshake failures (`HANDSHAKE_FAILED`)
 - Identifying disconnect causes is essential for operational debugging
 
 ### 2.4 Single Event Format

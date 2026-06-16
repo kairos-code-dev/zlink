@@ -155,16 +155,20 @@ sequenceDiagram
 
 ### 자동 역할 매칭
 
-소켓 패밀리 서비스에서 Discovery는 **서비스 역할**로 피어를 매칭한다:
+소켓 패밀리 서비스에서는 연결 시 선택한 auto-connect **토폴로지**가 어떤
+역할이 어떤 역할로 연결을 개시할지 결정한다:
 
-| 로컬 소켓 | 발견 대상 | 예시 |
-|-----------|----------|------|
-| PUB | SUB 피어 | 퍼블리셔가 모든 구독자를 발견 |
-| SUB | PUB 피어 | 구독자가 모든 퍼블리셔를 발견 |
-| ROUTER | DEALER 피어 | 서버가 모든 클라이언트를 발견 |
-| DEALER | ROUTER 피어 | 클라이언트가 모든 서버를 발견 |
+| 토폴로지 | 개시자 → 대상 |
+|----------|---------------|
+| `ZLINK_AUTO_CONNECT_FANOUT` | SUB → PUB |
+| `ZLINK_AUTO_CONNECT_CLIENT_SERVER` | DEALER → ROUTER |
+| `ZLINK_AUTO_CONNECT_ROUTE_MESH` | ROUTER ↔ ROUTER (pairwise) |
+| `ZLINK_AUTO_CONNECT_DEALER_MESH` | DEALER ↔ DEALER (pairwise) |
+| `ZLINK_AUTO_CONNECT_SPOT_MESH` | SPOT ↔ SPOT (pairwise; monitor 이벤트로 전달) |
 
-역할은 Discovery 연결 시 소켓 타입에서 자동으로 결정된다 — 별도 설정이 필요 없다.
+PUB과 `CLIENT_SERVER`의 ROUTER는 먼저 dial하지 않는다 — PUB에는 SUB가,
+그 ROUTER에는 DEALER가 연결해 온다. mesh 토폴로지에서는 connect key가 더 낮은
+쪽만 개시하므로 한 쌍이 두 개의 링크를 만들지 않는다.
 
 ROUTER ↔ ROUTER 자동 연결처럼 양쪽 모두 outbound를 시작할 수 있는 경우,
 **자동 연결 방향은 라이브러리가 쌍마다 한쪽만 결정한다.** 즉 두 ROUTER가
@@ -266,7 +270,7 @@ zlink_discovery_destroy(&discovery);
 
 다중 서비스 SpotNode 토폴로지에서는 연결할 소켓마다
 `ZLINK_AUTO_CONNECT_CLIENT_SERVER`를 채널 DEALER 호출에 사용한다. SPOT 가이드의
-[§3.1 Discovery 기반 자동 Mesh](./07-3-spot.ko.md#31-discovery-기반-자동-mesh)를
+[§3.2 Discovery 기반 연결](./07-3-spot.ko.md#32-discovery-기반-연결)를
 참고한다.
 
 ## 4.1 소켓 패밀리 Discovery
@@ -332,10 +336,12 @@ zlink_spot_node_attach_channel_dealer(node, orders_disc, orders_dealer);
   `ZLINK_AUTO_CONNECT_SPOT_MESH`만 받는다. 두 번째 연결은 `EBUSY`로 실패한다.
 - **같은 채널에 DEALER 하나.** 자동 연결과 수동 연결이 같은 네임스페이스를
   공유하므로, 같은 채널에 `DEALER`를 두 번 연결하면 `EBUSY`로 실패한다.
-- **연결된 DEALER는 전용 자원.** 소유권은 호출자가 유지하지만, 연결 후에는
-  다른 용도로 같은 소켓을 사용하지 않는다.
-- **Discovery 파괴는 해당 피어 집합만 해제한다.** 특정 Discovery를 파괴하면 그
-  Discovery가 공급하던 자동 연결만 제거된다.
+- **연결된 DEALER는 전용 자원.** `zlink_socket_attach_discovery()` 이후에는
+  Discovery가 소켓 수명을 소유한다. 호출자는 핸들을 계속 들고 있을 수 있지만
+  독립적으로 close하거나 재사용해서는 안 되며, attach된 소켓은 직접
+  `zlink_close()`를 거부한다.
+- **Discovery 파괴는 attach된 참여자를 해제한다.** 특정 Discovery를 파괴하면 그
+  Discovery에 수명을 위임한 소켓들이 함께 정리되고, 공급하던 자동 연결도 제거된다.
 
 ## 4.3 Peer Value
 

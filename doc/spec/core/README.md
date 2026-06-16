@@ -21,16 +21,15 @@ headers.
 |--------|-----------------|
 | `core/include/zlink.h` | Aggregate public header; includes every domain header |
 | `core/include/zlink/common.h` | Version macros, shared includes, export macro, enum/error includes |
-| `core/include/zlink/core.h` | Errno/string/version helpers, context lifecycle, proxy, capability, atomics, stopwatch, sleep, and thread utilities |
-| `core/include/zlink/message.h` | Message storage, routing id, zero-copy free callback, message lifecycle, and multipart close |
-| `core/include/zlink/actor.h` | Actor value types and actor result structures |
-| `core/include/zlink/socket.h` | Socket creation, options, TLS, bind/connect, send/recv part substrate, request/reply, pub/sub, stream, and socket callback types |
-| `core/include/zlink/monitoring.h` | Socket monitors, monitor snapshots, poll/poller, and timers |
-| `core/include/zlink/spot.h` | SPOT handle, SPOT node, actor operations, dispatch, and SPOT node attachment APIs |
+| `core/include/zlink/core/api.h` | Errno/string/version helpers, context lifecycle, proxy, capability, atomics, stopwatch, sleep, and thread utilities |
+| `core/include/zlink/message/api.h` | Message storage, routing id, zero-copy free callback, message lifecycle, and multipart close |
+| `core/include/zlink/service/actor.h` | Actor value types and actor result structures |
+| `core/include/zlink/socket/api.h` | Socket creation, options, TLS, bind/connect, send/recv part substrate, request/reply, pub/sub, stream, and socket callback types |
+| `core/include/zlink/eventing/api.h` | Socket monitors, monitor snapshots, poll/poller, and timers |
+| `core/include/zlink/service/spot.h` | SPOT handle, SPOT node, actor operations, dispatch, and SPOT node attachment APIs |
 | `core/include/zlink/service_common.h` | Shared service-layer query types |
-| `core/include/zlink/registry.h` | Registry creation, configuration, topology, query client, and registry snapshots |
-| `core/include/zlink/discovery.h` | Discovery creation, registry connection, SPOT/Actor resolve, and discovery peer snapshots |
-| `core/include/zlink/service.h` | Compatibility aggregate header for the service layer |
+| `core/include/zlink/service/registry.h` | Registry creation, configuration, topology, query client, and registry snapshots |
+| `core/include/zlink/service/discovery.h` | Discovery creation, registry connection, SPOT/Actor resolve, and discovery peer snapshots |
 | `core/include/zlink_enum.h` | Public enum domains |
 | `core/include/zlink_errno.h` | Public errno domain |
 

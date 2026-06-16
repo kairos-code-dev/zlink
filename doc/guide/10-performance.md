@@ -145,7 +145,7 @@ socket.
 |------|-----------------|
 | PUB | Messages **dropped** (slow subscriber protection) |
 | DEALER | **Blocks** (default) or `ZLINK_SUBMIT_BACKPRESSURED` (`ZLINK_DONTWAIT`) |
-| ROUTER | `ZLINK_SUBMIT_NOT_CONNECTED` with `ROUTER_MANDATORY`, otherwise drops |
+| ROUTER | **Blocks** (default) or `ZLINK_SUBMIT_BACKPRESSURED` (`ZLINK_DONTWAIT`); drops if `ROUTER_MANDATORY=0` (an unknown/unreachable rid is a separate `ZLINK_SUBMIT_NOT_CONNECTED`) |
 | PAIR | **Blocks** (default) or `ZLINK_SUBMIT_BACKPRESSURED` |
 
 ### Memory Calculation

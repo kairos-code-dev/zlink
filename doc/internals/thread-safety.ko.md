@@ -191,7 +191,7 @@ Registry 가 lifecycle 과 control-path 계층을 구현할 때 쓰는
 
 | 계층 | 가드 역할 |
 |---|---|
-| Lifecycle strict | `begin_close_or_fail_busy()` 가 in-flight count 와 closing bit 를 원자적으로 확인합니다. in-flight > 0 이면 `EBUSY`, closing bit 가 이미 설정되어 있으면 `EALREADY` 를 반환합니다. 성공하면 closing bit 를 설정합니다. |
+| Lifecycle strict | `begin_close_or_fail_busy()` 가 in-flight count 와 closing bit 를 원자적으로 확인합니다. in-flight > 0 이면 `EBUSY`, closing bit 가 이미 설정되어 있으면 `ESHUTDOWN` 을 반환합니다. 성공하면 closing bit 를 설정합니다. |
 | Control path serialized | `enter_public_api()` 가 closing bit 를 확인한 후 in-flight count 를 증가시킵니다. Closing bit 가 설정되어 있으면 `ESHUTDOWN` 을 반환합니다. 모든 control-path 호출이 이 게이트를 거쳐 직렬화를 제공합니다. |
 | Hot path | Send 경로는 가드의 broad lock 경로를 우회합니다. Control-path 직렬화와의 경합을 피하기 위해 별도의 최소 비용 입장 허용(소켓 수준 입장 허용 게이트)을 사용합니다. |
 
@@ -201,15 +201,27 @@ Registry 가 lifecycle 과 control-path 계층을 구현할 때 쓰는
 
 ## 5. Callback Dispatch 구현
 
-대부분의 콜백은 I/O 스레드에서 실행된다. 다만
-`zlink_spot_dispatch_event_handler()` 는 Spot 전용 worker runtime 에서
-실행된다. 디스패치 메커니즘은 원자적 load 로 핸들러 포인터를 읽으며,
+콜백마다 실행 스레드가 다르다:
+
+- **Socket message 핸들러**(`zlink_recv_handler`)는 async mailbox 처리를
+  통해 I/O 스레드에서 실행된다.
+- **Monitor 핸들러**는 service-control 런타임 스레드에서 실행된다 —
+  monitor 이벤트를 recv 루프로 비우는 전용 task(`monitor_handler_task`)이며,
+  부모의 I/O 스레드가 아니다.
+- **Send-ready 핸들러**는 *호출자의* send 스레드에서 동기적으로 실행될 수
+  있다. arm 된 알림이 send 경로의 `notify_send_ready_if_armed()` 에서 inline
+  으로 발화한다.
+- **SPOT dispatch 이벤트 핸들러**(`zlink_spot_dispatch_event_handler`)는
+  SPOT dispatch worker pool 에서 실행된다.
+
+디스패치 메커니즘은 원자적 load 로 핸들러 포인터를 읽으며,
 hot path 에 광범위 잠금 없이 핸들러 교체의 가시성을 보장한다.
 
 **핸들러 로딩:**
 
 ```cpp
-handler = _socket_msg_handler.load(std::memory_order_acquire);
+// 필드는 socket_dispatch_bridge_t 에 있음
+handler = socket_msg_handler.load(std::memory_order_acquire);
 ```
 
 모든 핸들러 함수 포인터와 관련 subject/userdata 포인터는

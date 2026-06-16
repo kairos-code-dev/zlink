@@ -274,7 +274,14 @@ typedef enum zlink_request_result_t
     ZLINK_REQUEST_NOT_FOUND = 102,
     ZLINK_REQUEST_TERMINATED = 103,
     ZLINK_REQUEST_PROTOCOL_ERROR = 104,
-    ZLINK_REQUEST_INTERNAL_ERROR = 105
+    ZLINK_REQUEST_INTERNAL_ERROR = 105,
+    ZLINK_REQUEST_REJECTED = 106,
+    ZLINK_REQUEST_CONFLICT = 107,
+    ZLINK_REQUEST_BUSY = 108,
+    ZLINK_REQUEST_NOT_CONNECTED = 109,
+    ZLINK_REQUEST_INVALID_ARGUMENT = 110,
+    ZLINK_REQUEST_INVALID_STATE = 111,
+    ZLINK_REQUEST_NOT_SUPPORTED = 112
 } zlink_request_result_t;
 ```
 
@@ -290,6 +297,13 @@ enum입니다. callback은 `result_`를 `zlink_request_result_t` 값으로
 | `ZLINK_REQUEST_TERMINATED` | 103 | request 경로가 명시적인 종료 completion을 방출하기 전까지는 예약값 |
 | `ZLINK_REQUEST_PROTOCOL_ERROR` | 104 | reply envelope 또는 error reply payload가 잘못됨 |
 | `ZLINK_REQUEST_INTERNAL_ERROR` | 105 | 더 세분화된 public bucket 없이 request completion이 실패함 |
+| `ZLINK_REQUEST_REJECTED` | 106 | target이 request를 명시적으로 거부함 (예: actor join 거부) |
+| `ZLINK_REQUEST_CONFLICT` | 107 | request가 기존 상태와 충돌함 (예: actor가 이미 존재) |
+| `ZLINK_REQUEST_BUSY` | 108 | target이 바빠 지금은 request를 받을 수 없음 |
+| `ZLINK_REQUEST_NOT_CONNECTED` | 109 | target에 대한 활성 연결 없음 |
+| `ZLINK_REQUEST_INVALID_ARGUMENT` | 110 | request에 잘못된 인자가 담김 |
+| `ZLINK_REQUEST_INVALID_STATE` | 111 | target이 이 request를 거부하는 상태임 |
+| `ZLINK_REQUEST_NOT_SUPPORTED` | 112 | target이 지원하지 않는 작업 |
 
 ### 보안 메커니즘
 
@@ -413,6 +427,7 @@ managed SPOT/service outbound 내부 경로는 기본 profile로
 | `ZLINK_OPT_INVERT_MATCHING` | 토픽 매칭 반전 (`int`) |
 | `ZLINK_OPT_ZMP_METADATA` | ZMP 메타데이터 첨부 (`binary`) |
 | `ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC` | Discovery가 SPOT owner row를 Registry에 publish할지 여부 (`int`; 0=기본값, 1=활성화, 그 외 값은 `EINVAL`) |
+| `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC` | Discovery가 actor route row를 Registry에 publish할지 여부 (`int`; 0=기본값, 1=활성화, 그 외 값은 `EINVAL`) |
 
 ##### Read-only
 

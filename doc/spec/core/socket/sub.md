@@ -70,17 +70,17 @@ Subscribe to a topic filter on a raw socket.
 zlink_config_result_t zlink_set_subscription (void *handle_, const char *filter_);
 ```
 
-Subscribes the handle to messages matching `filter_`. Filter
-interpretation: if `filter_` ends with `*`, it is a prefix-match pattern;
-otherwise it is an exact topic.
+Subscribes the handle to messages matching `filter_`. A subscription is a
+byte-prefix filter: a message matches when its topic starts with the `filter_`
+bytes. An empty `filter_` subscribes to all messages. The filter bytes are
+binary-safe; there is no wildcard syntax (a trailing `*` is matched literally).
 
 Applicable types: raw SUB, raw XSUB.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
-**Errors:** `EFAULT` if `handle_` is NULL. `EINVAL` if `filter_` is NULL,
-empty, or contains invalid pattern syntax (multiple `*` or mid-string `*`).
-`ENOTSUP` if the handle type does not support subscribe.
+**Errors:** `EFAULT` if `handle_` is NULL. `EINVAL` if `filter_` is NULL, or the
+handle type does not support subscribe.
 
 **See also:** `zlink_unset_subscription`, `zlink_subscribe`
 
@@ -94,16 +94,16 @@ Unsubscribe from a topic filter on a raw socket.
 zlink_config_result_t zlink_unset_subscription (void *handle_, const char *filter_);
 ```
 
-Removes a previously registered subscription. The same string
-interpretation rules as `zlink_set_subscription()` apply: trailing `*`
-means pattern unsubscribe, otherwise exact topic unsubscribe.
+Removes a previously registered subscription. The same byte-prefix
+interpretation as `zlink_set_subscription()` applies; the `filter_` bytes must
+match a previously registered prefix.
 
 Applicable types: raw SUB, raw XSUB.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
-**Errors:** `EFAULT` if `handle_` is NULL. `EINVAL` if `filter_` is NULL
-or empty. `ENOTSUP` if the handle type does not support unsubscribe.
+**Errors:** `EFAULT` if `handle_` is NULL. `EINVAL` if `filter_` is NULL, or the
+handle type does not support unsubscribe.
 
 **See also:** `zlink_set_subscription`
 
@@ -160,14 +160,15 @@ zlink_config_result_t zlink_subscription_at (void *handle_,
 
 Returns the subscription filter string at `index_` (0-based). On entry,
 `*filter_len_inout_` is the buffer size; on return it is set to the actual
-length. `*is_pattern_out_` is 1 if the filter is a prefix pattern (trailing
-`*`), 0 if exact.
+length. `*is_pattern_out_` reports whether the filter is a pattern
+subscription; the current implementation always reports `0` because all
+subscriptions are byte-prefix filters.
 
 Applicable types: raw SUB, raw XSUB.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
-**Errors:** `EINVAL` if index is out of range. `EMSGSIZE` if the buffer is
+**Errors:** `ENOENT` if index is out of range. `EINVAL` if the buffer is
 too small. `ENOTSUP` if the handle type does not support subscription query.
 
 **See also:** `zlink_set_subscription`, `zlink_get_sub_option`

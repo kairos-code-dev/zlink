@@ -14,13 +14,18 @@ Core rules:
 - `ZLINK_SOCKET_STREAM` supports `zlink_bind()` only.
 - Calling `zlink_connect()` on `ZLINK_SOCKET_STREAM` returns `EOPNOTSUPP`.
 - Clients must use OS/Asio/WebSocket raw client stacks, not zlink STREAM sockets.
-- Wire format is `4-byte length (big-endian) + body`.
-- At the zlink API level, messages are exposed as 2 frames: `[routing_id(4B)][payload]`.
+- RAW mode has no zlink-level wire framing — it is a transparent byte
+  stream (the encoder/decoder pass bytes through unchanged). For
+  length-delimited packets, use the packet handler, which frames as
+  2-byte BE header size + 4-byte BE body size + header + body.
+- At the zlink API level: raw `zlink_recv()` exposes the 4-byte
+  `routing_id` then the payload frame, while the raw/packet callbacks
+  pass `source_rid` as a separate callback argument.
 
 Valid combination:
 
 ```
-external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
+external raw client  <---- RAW byte stream (no framing) ---->  STREAM(server)
 ```
 
 > STREAM is not directly compatible with zlink internal sockets (PAIR/PUB/SUB/DEALER/ROUTER).
@@ -73,19 +78,18 @@ STREAM-specific behavior:
   always fixed 4 bytes (`uint32`, big-endian).
 - To close one client, pass the `source_rid` received from callback or recv
   to `zlink_disconnect_rid()`. STREAM target routing ids must be 4 bytes.
-- Connect/disconnect events are delivered as messages:
-
-| payload | meaning |
-|---|---|
-| `0x01` (1 byte) | connect event |
-| `0x00` (1 byte) | disconnect event |
-| otherwise | regular data |
+- Connect/disconnect are **not** in-band data markers. They are reported
+  through the socket monitor as `ZLINK_EVENT_CONNECTION_READY` /
+  `ZLINK_EVENT_DISCONNECTED`, each carrying the 4-byte `routing_id`. A raw
+  payload that happens to be a single `0x00`/`0x01` byte is delivered as
+  ordinary data.
 
 ---
 
 ## 4. Callback Example
 
-In STREAM callbacks, connect/disconnect events must be distinguished from data.
+In STREAM raw callbacks every delivered part is application data; observe
+connect/disconnect on the socket monitor (see [Monitoring](./06-monitoring.md)).
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -96,17 +100,12 @@ void on_message(const zlink_routing_id_t *source_rid,
         void *data = zlink_msg_data(&parts[i]);
         size_t size = zlink_msg_size(&parts[i]);
 
-        if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
-            /* new client connected */
-        } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
-            /* client disconnected */
-        } else {
-            /* echo reply */
-            zlink_msg_t reply;
-            zlink_msg_init_size(&reply, size);
-            memcpy(zlink_msg_data(&reply), data, size);
-            zlink_send_rid(stream, source_rid, &reply, 1, 0);
-        }
+        /* echo reply */
+        zlink_msg_t reply;
+        zlink_msg_init_size(&reply, size);
+        memcpy(zlink_msg_data(&reply), data, size);
+        zlink_send_rid(stream, source_rid, &reply, 1, 0);
+
         zlink_msg_close(&parts[i]);
     }
 }
@@ -191,18 +190,28 @@ boundaries differ from packet boundaries.
 
 Clients must be implemented as raw socket/websocket clients.
 
-Conceptual POSIX TCP example:
+Conceptual POSIX TCP example (RAW mode — no zlink framing, just bytes):
 
 ```c
-// send: [4B length][body]
-uint32_t len_be = htonl(body_len);
-send(fd, &len_be, 4, 0);
+// RAW mode: send/recv raw bytes; message boundaries are application-defined
 send(fd, body, body_len, 0);
 
-// recv: [4B length][body]
-recv(fd, &len_be, 4, MSG_WAITALL);
-uint32_t body_len = ntohl(len_be);
-recv(fd, body, body_len, MSG_WAITALL);
+char buf[4096];
+ssize_t n = recv(fd, buf, sizeof(buf), 0);
+```
+
+If the server side uses the **packet handler** (`zlink_stream_packet_handler`),
+the client must frame each packet as 2-byte BE header size + 4-byte BE body
+size + header + body:
+
+```c
+// packet mode: [2B header_size BE][4B body_size BE][header][body]
+uint16_t hsz_be = htons(header_len);
+uint32_t bsz_be = htonl(body_len);
+send(fd, &hsz_be, 2, 0);
+send(fd, &bsz_be, 4, 0);
+send(fd, header, header_len, 0);
+send(fd, body, body_len, 0);
 ```
 
 ---
@@ -211,6 +220,7 @@ recv(fd, body, body_len, MSG_WAITALL);
 
 Main supported options:
 - `ZLINK_OPT_MAXMSGSIZE`, `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_SNDBUF`, `ZLINK_OPT_RCVBUF`, `ZLINK_OPT_BACKLOG`, `ZLINK_OPT_LINGER`
+- `ZLINK_STREAM_OPT_NOTIFY` (via `zlink_set_stream_option()` / `zlink_get_stream_option()`): enable connect/disconnect notifications
 - TLS/WSS server: `zlink_set_tls_server()` / TLS client: `zlink_set_tls_client()`
 
 STREAM listeners often receive bytes from raw TCP peers. If the peer is not
@@ -249,7 +259,7 @@ Defaults currently used by STREAM internals:
 
 - `core/tests/integration/test_stream_socket.cpp`
 - `core/tests/integration/test_stream_fastpath.cpp`
-- `core/tests/routing-id/test_connect_rid_string_alias.cpp`
+- `core/tests/integration/routing-id/test_connect_rid_string_alias.cpp`
 - `core/tests/scenario/stream/zlink/test_scenario_stream_zlink.cpp`
 
 These tests use STREAM server + raw client paths.

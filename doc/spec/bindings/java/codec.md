@@ -20,6 +20,11 @@ explicitly.
 JSON codec baseline: `Jackson`.
 MessagePack codec baseline: `jackson-dataformat-msgpack`.
 
+These codec artifacts define only object <-> `Message` encode/decode helpers.
+Packet-name resolution, high-level serializer lookup, and typed
+request/reply policy belong to framework-layer documents, not this codec
+extension specification.
+
 ## Protobuf
 
 ```java

@@ -54,7 +54,11 @@ zlink_send(socket, &msg, 1, 0);
 
 #### zlink_msg_init_data — External Buffer Reference (Zero-Copy)
 
-Transfers ownership of an external buffer to the message. Sends without copying. The free callback (ffn) handles buffer cleanup.
+Initializes a message from an external buffer without copying. When the free
+callback (`ffn`) is non-NULL, the message owns the buffer and releases it
+through that callback once the last owning message is freed; when `ffn` is
+NULL, the buffer is **borrowed** and never freed by the message (such messages
+report as shared).
 
 ```c
 void my_free(void *data, void *hint) {
@@ -77,8 +81,8 @@ zlink_send(socket, &msg, 1, 0);
 
 #### zlink_msg_adopt — Adopt Without Init+Move
 
-Transfers ownership from `src_` to an already-initialized `dest_` in a single
-call, equivalent to `zlink_msg_move` but without requiring a prior `zlink_msg_init`.
+Transfers ownership from `src_` into `dest_` in a single call. Unlike
+`zlink_msg_move`, `dest_` must **not** currently own an initialized message.
 After the call `src_` is an empty message and `dest_` holds the content.
 
 ```c
@@ -142,7 +146,6 @@ if (zlink_recv(socket, &source_rid, &parts, &part_count, 0) == ZLINK_RECV_OK) {
            (char *)zlink_msg_data(&parts[0]));
 
     zlink_multipart_close(parts, part_count);
-    free(parts);
 }
 ```
 
@@ -347,7 +350,8 @@ zlink_msg_copy(&copy, &original);
 
 /* Both original and copy reference the same data */
 /* storage refcount is now 2 */
-int refcnt = zlink_msg_refcnt(&copy);
+zlink_config_result_t err = ZLINK_CONFIG_OK;
+int refcnt = zlink_msg_refcnt(&copy, &err);
 /* refcnt == 2 */
 
 zlink_msg_close(&original);
@@ -367,19 +371,20 @@ threads.
 
 ```c
 /* Reference-counted message */
+zlink_config_result_t err = ZLINK_CONFIG_OK;
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 1024);
-int refcnt = zlink_msg_refcnt(&msg);  /* 1: single owner */
+int refcnt = zlink_msg_refcnt(&msg, &err);  /* 1: single owner */
 
 zlink_msg_t copy;
 zlink_msg_init(&copy);
 zlink_msg_copy(&copy, &msg);
-refcnt = zlink_msg_refcnt(&copy);  /* 2: shared by msg and copy */
+refcnt = zlink_msg_refcnt(&copy, &err);  /* 2: shared by msg and copy */
 
 /* Constant data message */
 zlink_msg_t const_msg;
 zlink_msg_init_data(&const_msg, (void *)"TEST", 5, NULL, NULL);
-refcnt = zlink_msg_refcnt(&const_msg);  /* 1: not internally refcounted */
+refcnt = zlink_msg_refcnt(&const_msg, &err);  /* 1: not internally refcounted */
 ```
 
 > Reference: `core/tests/integration/test_msg_flags.cpp` — `test_shared_const()`: shared property of constant messages

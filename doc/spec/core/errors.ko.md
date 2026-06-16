@@ -10,7 +10,9 @@
 
 공개 확장 errno 정의는 `core/include/zlink_errno.h`에 있습니다.
 `core/include/zlink.h`는 이 헤더를 포함해서 같은 공개 오류 표면을 다시
-노출합니다.
+노출합니다. 함수별 공개 결과 enum(`zlink_submit_result_t`,
+`zlink_close_result_t` 등)도 같은 헤더에 선언되며, 그 의미는
+[errno-map.ko.md](./errno-map.ko.md)에서 다룹니다.
 
 ## 에러 코드 상수
 
@@ -57,7 +59,7 @@ zlink가 `ZLINK_HAUSNUMERO`를 기준으로 해당 코드를 정의합니다. PO
 |------|-----|------|
 | `EFSM` | ZLINK_HAUSNUMERO + 51 | 현재 상태에서 작업 불가 (FSM 에러) |
 | `ENOCOMPATPROTO` | ZLINK_HAUSNUMERO + 52 | 호환되는 프로토콜 없음 |
-| `ETERM` | ZLINK_HAUSNUMERO + 53 | Context가 종료되었습니다 |
+| `ETERM` | ZLINK_HAUSNUMERO + 53 | Context 종료됨 |
 | `EMTHREAD` | ZLINK_HAUSNUMERO + 54 | 사용 가능한 스레드 없음 |
 
 ## 버전 매크로
@@ -67,7 +69,7 @@ zlink가 `ZLINK_HAUSNUMERO`를 기준으로 해당 코드를 정의합니다. PO
 ```c
 #define ZLINK_VERSION_MAJOR 6
 #define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 3
+#define ZLINK_VERSION_PATCH 4
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) \
     ((major) * 10000 + (minor) * 100 + (patch))
@@ -120,7 +122,7 @@ const char *zlink_strerror(int errnum_);
 변환합니다. 반환된 포인터는 정적 저장소를 가리키며 수정하거나 해제해서는
 안 됩니다.
 
-**반환값:** 정적, null 종료 문자열에 대한 포인터.
+**반환값:** 정적 저장소에 있는 null 종료 문자열의 포인터.
 
 **스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다. 반환된 문자열은
 정적으로 할당됩니다.

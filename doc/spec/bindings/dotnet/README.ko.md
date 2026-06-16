@@ -342,7 +342,7 @@ P/Invoke나 런타임 브리지 코드를 읽지 않고도 이 폴더에서 발�
 `Runtime/`은 같은 표준 맵을 따라가지만 구현만을 담는다.
 
 - `Core/`: context 생명주기, counter, stopwatch, thread 헬퍼,
-  runtime version/역할 호출.
+  runtime version/capability 조회.
 - `Handles/`: 네이티브 리소스 ownership, close 상태, lifetime 검사,
   reference tracking.
 - `Messaging/`: multipart 메시지 materialize, request/reply 진행, request
@@ -427,12 +427,12 @@ part 루프, 콜백 userdata, interop 마샬링, request 진행을 보조하기 
   `SubscriptionEvent` 객체를 채우고 `bool`을 반환한다.
 - `false`는 `RecvFlags.DontWait`를 사용한 nonblocking receive에서만 데이터
   없음을 의미한다.
-- 강한 receive 실패는 `ZlinkRecvException`을 던진다.
+- 실제 receive 실패(데이터 없음이 아닌 실패)는 `ZlinkRecvException`을 던진다.
 - monitor recv나 timer recv 같은 제어 플레인 API는 데이터 없음이 자연스러운
   값 형태인 경우 nullable 반환 형태를 유지할 수 있다.
 - `RecvActorJoin(...)` 같은 서비스 제어/admission API도 nullable 반환 형태를
   유지할 수 있다. 이들은 데이터 플레인 drain API는 아니지만, 데이터 없음과
-  강한 receive 실패는 구분해 유지한다.
+  실제 receive 실패(데이터 없음이 아닌 실패)는 구분해 유지한다.
 
 SPOT의 `SubscribeReadable`과 `RoutedReadable` dispatch 이벤트는 readiness
 알림이다. 호출자는 일치하는 receive API를 데이터 없음이 보고될 때까지 drain한다.
@@ -547,7 +547,7 @@ route `Value`를 `Message`로 담은 `DiscoveryRoute`를 반환한다.
 
 ## SpotNode Router Channel Peers
 
-`.NET`은 router channel peer 연결을 공개 `SpotNode`와 `ISpotNode` 표면에
+`.NET`은 router channel peer 연결을 공개 `ISpotNode` 계약 표면에
 노출한다: `ConnectRouterChannelPeer(string channelName, string endpoint)`,
 `ConnectRouterChannelPeerRid(string channelName, RoutingId peerRid, string endpoint)`,
 `DisconnectRouterChannelPeer(string channelName, string endpoint)`,

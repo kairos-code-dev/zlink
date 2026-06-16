@@ -914,8 +914,8 @@ Key fields of `queued_join_request_t`:
 | `replied` | `bool` | whether a reply has been submitted |
 | `pending_target` | `actor_handle_t*` | target Actor created during remote join prepare |
 | `remote` | `bool` | whether this is a remote join handoff |
-| `message` | `zlink_msg_t` | join payload (ownership transferred from caller) |
-| `reply` | `zlink_msg_t` | reply payload (ownership transferred from target Spot) |
+| `message_parts` | `vector<zlink_msg_t>` | join payload, owned multipart (ownership transferred from caller) |
+| `reply_parts` | `vector<zlink_msg_t>` | reply payload, owned multipart (ownership transferred from target Spot) |
 
 `joins.live_requests` tracks all currently pending join requests and drives the
 timeout sweep. Once a request completes, its record is freed inline at the end of

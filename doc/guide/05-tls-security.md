@@ -55,16 +55,17 @@ zlink_set_tls_server(socket, "/path/to/cert.pem", "/path/to/key.pem", 0);
 zlink_bind(socket, "wss://*:8443");
 ```
 
-### WSS Client (External Raw Client)
+### WSS Clients
 
-`ZLINK_SOCKET_STREAM` is server-only. For WSS clients, use an external WebSocket/TLS client stack.
+A `STREAM` socket is bind-only, so a `STREAM`-based WSS server is reached by
+**external** raw WebSocket/TLS clients. Normal zlink ZMP socket types
+(PAIR/DEALER/etc.) can instead **connect** via `wss://` using zlink's own WSS
+connecter together with `zlink_set_tls_client()`:
 
-Conceptual client requirements:
-
-```text
-target: wss://server:8443
-- trust CA: /path/to/ca.pem
-- verify hostname: localhost
+```c
+void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
+zlink_set_tls_client(socket, "ca.crt", "server.example.com", 0);
+zlink_connect(socket, "wss://server:8443");
 ```
 
 ### ws vs wss Configuration Comparison
@@ -73,7 +74,7 @@ target: wss://server:8443
 |---------|:--:|:---:|
 | Basic socket creation | O | O |
 | `zlink_set_tls_server()` (server cert+key) | - | Required |
-| `zlink_set_tls_client()` (client CA+hostname+trust) | - | Recommended (external raw client) |
+| `zlink_set_tls_client()` (client CA+hostname+trust) | - | Required for zlink `wss://` connect |
 
 ## 5. TLS API Reference
 
@@ -112,23 +113,24 @@ zlink_set_tls_client(socket, ca_cert_path, hostname, trust_system);
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `ca_cert_path` | string | CA certificate path (for server certificate verification), or NULL |
-| `hostname` | string | Server hostname for CN/SAN verification, or NULL |
+| `ca_cert_path` | string | CA certificate path (for server certificate verification); pass `""` to use only the system store |
+| `hostname` | string | Server hostname for CN/SAN verification (required) |
 | `trust_system` | int | Whether to trust the system CA store (0 = no, 1 = yes) |
 
 ```c
 /* Private CA with hostname verification */
 zlink_set_tls_client(socket, "ca.crt", "server.example.com", 0);
 
-/* System CA only (no private CA, no hostname check) */
-zlink_set_tls_client(socket, NULL, NULL, 1);
+/* System CA only (empty CA path), still verifying the hostname */
+zlink_set_tls_client(socket, "", "server.example.com", 1);
 ```
 
-- When `ca_cert_path` is NULL, only the system CA store is used (if `trust_system=1`)
-- Must set `ca_cert_path` when using a private CA
-- If `hostname` is NULL, hostname verification is skipped (security warning)
-- Hostname verification is strongly recommended for production
-- Must match the certificate's CN or SAN
+- On raw sockets `ca_cert_path` and `hostname` must be non-`NULL` strings; a
+  `NULL` argument is rejected with `ZLINK_CONFIG_INVALID_HANDLE` (`EFAULT`).
+- Pass an empty `ca_cert_path` (`""`) to rely only on the system CA store
+  (with `trust_system=1`); supply a path to add a private CA.
+- `hostname` is used for CN/SAN verification and must match the certificate.
+  Hostname verification is strongly recommended for production.
 
 > Reference: `core/tests/e2e/spot/spot_pubsub_scenario_shared.cpp` — `trust_system = 0` followed by private CA usage
 
@@ -238,7 +240,7 @@ zlink_socket_monitor_handler(mon, on_tls_error, NULL);
 
 ### Certificate Management
 
-- [ ] Use TLS 1.2 or higher (OpenSSL default)
+- [ ] Use TLS 1.2 or higher (zlink builds TLS 1.2 server/client contexts)
 - [ ] Use publicly trusted CA certificates in production
 - [ ] Establish automated certificate renewal before expiration
 - [ ] Restrict private key file permissions (`chmod 600`)

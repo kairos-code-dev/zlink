@@ -49,11 +49,15 @@ data buffer is no longer needed.
 
 ## Constants
 
-### String Metadata Properties
+### String Metadata Properties (reserved)
 
-The following string metadata keys can be retrieved with `zlink_msg_gets()`:
+The following string metadata keys are reserved for possible future
+`zlink_msg_gets()` exposure. **The current `zlink_msg_gets()` implementation is
+a stub** that returns `NULL` with `errno = EINVAL` for every call, so do not
+rely on it in application code; peer details are exposed through socket monitor
+event payloads and service snapshot/query APIs.
 
-| Key | Description |
+| Key (reserved) | Description |
 |---|---|
 | `"Socket-Type"` | Socket type of the peer |
 | `"Identity"` | Peer identity |
@@ -180,9 +184,10 @@ Copy a message.
 zlink_config_result_t zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_);
 ```
 
-Copies the content of `src_` into `dest_`. Both messages share the underlying
-data buffer via reference counting. Any previous content of `dest_` is
-released. The copy is lightweight and does not duplicate the data payload.
+Copies the content of `src_` into `dest_`. For large or zero-copy storage,
+both messages share the underlying data buffer via reference counting; small
+inline messages are copied by value. Any previous content of `dest_` is
+released. The copy is lightweight and does not duplicate large data payloads.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -207,9 +212,10 @@ message — calling `zlink_msg_adopt` on an already-initialized `dest_`
 produces undefined behaviour.
 
 On success, `dest_` owns the original content of `src_` and `src_`
-becomes an empty initialized message. The caller must not close `src_`
-separately after the call returns because `zlink_msg_adopt` resets it
-to an empty initialized state internally.
+becomes an empty initialized message. The caller does not need to close `src_`
+separately for the adopted content — `zlink_msg_adopt` resets `src_` to an
+empty initialized state internally, so the original content now belongs to
+`dest_`. (Closing the now-empty `src_` is harmless but unnecessary.)
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -277,7 +283,7 @@ The internal reference count is managed with atomic operations:
 atomically decrements it — these are safe to call from different threads on
 different `zlink_msg_t` handles that share the same underlying storage.
 
-`zlink_msg_refcnt()` itself performs a relaxed read of the atomic counter.
+`zlink_msg_refcnt()` itself performs an atomic read of the counter.
 The returned value is a point-in-time snapshot; by the time the caller
 inspects it, another thread may have already changed the count via copy or
 close. This makes the function suitable for diagnostics and assertions but

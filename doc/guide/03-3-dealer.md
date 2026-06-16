@@ -116,12 +116,12 @@ zlink_send(dealer, parts, 2, 0);
 | `zlink_set_routing_id()` | binary | Auto (UUID) | ID for identification by ROUTER (dedicated function) |
 | `ZLINK_DEALER_OPT_PROBE` | int | 0 | Send empty message on connect (connection notification) |
 | `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | Default timeout for `zlink_dealer_request()`. `0` uses the implementation default of `5000ms` |
-| `ZLINK_OPT_SNDHWM` | int | automatic (routed floor 8 by default) | Default for the routed role. Manual settings take precedence |
-| `ZLINK_OPT_RCVHWM` | int | automatic (routed floor 8 by default) | Default for the routed role. Manual settings take precedence |
+| `ZLINK_DEALER_OPT_WEIGHT` | int | 100 | Per-peer load-balancing weight for outgoing round-robin |
+| `ZLINK_OPT_SNDHWM` | int | automatic | Auto-HWM sized for DEALER's peer-queue role. Manual settings take precedence |
+| `ZLINK_OPT_RCVHWM` | int | automatic | Auto-HWM sized for DEALER's peer-queue role. Manual settings take precedence |
 | `ZLINK_OPT_LINGER` | int | -1 | Wait time on close (ms) |
 | `ZLINK_OPT_SNDTIMEO` | int | 1000 | Send timeout (ms); set `-1` explicitly for infinite wait |
 | `ZLINK_OPT_RCVTIMEO` | int | 1000 | Receive timeout (ms); set `-1` explicitly for infinite wait |
-| `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | binary | -- | Alias applied to the next connect |
 
 ### Setting routing_id
 
@@ -202,18 +202,18 @@ void on_request(const zlink_routing_id_t *source_rid,
            (int)zlink_msg_size(&parts[0]),
            (char *)zlink_msg_data(&parts[0]));
 
-    /* Reply: send to the source peer using zlink_send_rid */
+    /* Correlated reply: send back to the source peer with its request_seq */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "World", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
+    zlink_router_reply(router, source_rid, request_seq, &reply, 1, 0);
 
     for (size_t i = 0; i < part_count; i++)
         zlink_msg_close(&parts[i]);
 }
 
 void *router = zlink_socket(ctx, ZLINK_SOCKET_ROUTER);
-/* Receive with zlink_recv() */
+/* Receive with zlink_router_recv() (source_rid + request_seq) */
 zlink_bind(router, "tcp://*:5558");
 
 /* Client: DEALER */
@@ -338,9 +338,13 @@ zlink_send(b, &pong, 1, 0);
 
 ## 6. Caveats
 
-### Queuing When No Peer Is Connected
+### No Peer Connected vs. HWM Backpressure
 
-If no peer is connected, messages accumulate in the send queue. When the HWM is exceeded, the call blocks (default) or returns `ZLINK_SUBMIT_BACKPRESSURED` with `ZLINK_DONTWAIT`.
+These are two distinct results. When **no peer** is connected (no
+positive-weight pipe), a send returns `ZLINK_SUBMIT_NOT_ADMITTED` — the
+message is not queued. When a peer **is** connected but its send queue has
+reached the HWM, the call blocks (default) or returns
+`ZLINK_SUBMIT_BACKPRESSURED` with `ZLINK_DONTWAIT`.
 
 ```c
 /* Send with no peer connected */
@@ -348,8 +352,10 @@ zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "data", 4);
 zlink_submit_result_t rc = zlink_send(dealer, &msg, 1, ZLINK_DONTWAIT);
-if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
-    /* HWM exceeded or no peer connected */
+if (rc == ZLINK_SUBMIT_NOT_ADMITTED) {
+    /* No connected peer to admit the message */
+} else if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
+    /* A peer is connected but its queue is at the HWM */
 }
 ```
 

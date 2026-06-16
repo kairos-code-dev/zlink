@@ -76,8 +76,8 @@
 | `ZLINK_SOCKET_SUB` | `ZLINK_OPT_LINGER` override | 강제로 `0` (XSUB 생성 경로 상속) |
 | `ZLINK_SOCKET_SUB` | 구독 집합 | 생성 시 빈 상태 |
 | `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_BACKLOG` override | `65536` |
-| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_SNDBUF` override | 옵션이 미설정(` <0`)이면 `262144` |
-| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_RCVBUF` override | 옵션이 미설정(` <0`)이면 `262144` |
+| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_SNDBUF` override | 옵션이 미설정(`<0`)이면 `262144` |
+| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_RCVBUF` override | 옵션이 미설정(`<0`)이면 `262144` |
 | `ZLINK_SOCKET_STREAM` | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | 미지원 (`EOPNOTSUPP`) |
 
 ## 3. 읽기 전용 옵션의 초기 상태값

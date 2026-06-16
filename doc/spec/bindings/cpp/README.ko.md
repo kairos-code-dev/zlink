@@ -368,7 +368,7 @@ C++ 바인딩은 코어 C 계약 위에 얹힌 작은 네이티브 C++ 라이브
 C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나 더 가진다. 따라서 완성된
 바인딩은 다음 빌드 규칙을 유지한다.
 
-- C++ 바인딩은 `zlink_cpp` 같은 라이브러리 타깃을 빌드한다.
+- C++ 바인딩은 `zlink_cpp` 라이브러리 타깃을 빌드한다.
 - `zlink_cpp`는 코어 네이티브 `zlink` 라이브러리에 링크되며 코어 라이브러리와 버전 호환성
   규칙을 가진다.
 - Linux, macOS, Windows 패키지는 지원되는 아키텍처와 런타임 툴체인마다 C++ 라이브러리를
@@ -419,7 +419,7 @@ C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나
   SPOT topic publish는 `publish(topic)`을 그대로 쓴다.
 - handler 등록 메서드는 `set_..._handler` 이름을 쓴다. 예를 들어 send readiness는
   `set_send_ready_handler(...)`, raw STREAM packet 처리는 `set_packet_handler(...)`,
-  monitor 이벤트는 `on_event(...)`, SPOT dispatch는
+  monitor 이벤트는 `set_monitor_handler(...)`, SPOT dispatch는
   `set_dispatch_handler(...)`를 쓴다.
 - `on_...` 이름은 완성된 C++ API에서 공개 등록 메서드가 아니다. 이는 필요할 때 내부 또는
   protected 훅을 위해 예약한다.

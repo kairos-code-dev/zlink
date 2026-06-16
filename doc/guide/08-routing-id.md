@@ -27,7 +27,9 @@ typedef struct {
 | STREAM peer routing_id | uint32 | 4B | Auto-assigned per connection |
 
 - If the user does not call `zlink_set_routing_id()`, it is auto-generated
-- Uniqueness is guaranteed based on a process-wide global counter
+- A socket's own routing_id defaults to 16 random UUID-like bytes; STREAM peer
+  routing IDs are 4-byte integral values allocated per connection by the
+  STREAM socket (not a process-wide counter)
 
 ### own vs peer — Differences Users Should Know
 
@@ -35,10 +37,10 @@ typedef struct {
 |---|---|---|
 | **Creation time** | At socket creation | At peer connection |
 | **Size** | 16B (UUID) | Variable (ROUTER), 4B (STREAM) |
-| **Usage** | Sent during handshake | Automatically prepended to received messages |
+| **Usage** | Sent during handshake | Returned as a separate `source_rid` output on receive |
 | **Configuration** | `zlink_set_routing_id()` | Uses value set by the peer |
 
-The own routing_id is automatically assigned a UUID when the socket is created and is sent to the peer during the handshake. The peer routing_id is the own routing_id sent by the peer and is automatically prepended as the first frame of received messages in ROUTER/STREAM sockets.
+The own routing_id is automatically assigned a UUID when the socket is created and is sent to the peer during the handshake. The peer routing_id is the own routing_id sent by the peer; the public receive surface exposes it as a separate `source_rid` output (callback parameter or `zlink_router_recv()` / `zlink_recv()` output), not as an in-band message frame.
 
 ## 4. User-Defined routing_id
 
@@ -101,7 +103,9 @@ zlink_connect(socket, "tcp://server2:5556");
 - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (set via `zlink_set_router_option()`) applies to individual connections
 - A single socket can have different aliases for each connection
 - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` is for ROUTER-side connection paths.
-- Setting it on `ZLINK_SOCKET_STREAM` returns `EOPNOTSUPP`.
+- `zlink_set_router_option()` accepts only ROUTER/DEALER handles; calling it on
+  `ZLINK_SOCKET_STREAM` (or any other type) returns
+  `ZLINK_CONFIG_INVALID_ARGUMENT` (`EINVAL`).
 
 ## 6. Using routing_id with ROUTER Sockets
 
@@ -221,31 +225,27 @@ zlink_recv_handler(stream, on_message, NULL);
 
 ### routing_id in Connect/Disconnect Events
 
-```c
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    for (size_t i = 0; i < part_count; ++i) {
-        uint8_t *data = (uint8_t *)zlink_msg_data(&parts[i]);
-        size_t size = zlink_msg_size(&parts[i]);
+STREAM connect/disconnect are **not** delivered as in-band data bytes. They are
+reported through the socket monitor as `ZLINK_EVENT_CONNECTION_READY` /
+`ZLINK_EVENT_DISCONNECTED`, each carrying the 4-byte `routing_id` of the
+affected client. (Internally the STREAM notify path emits zero-byte control
+events, which dispatch skips — they never reach the data callback.)
 
-        if (size == 1 && data[0] == 0x01) {
-            /* New client connected: identify by source_rid */
-            printf("Connected: ");
-            for (size_t j = 0; j < source_rid->size; j++)
-                printf("%02x", source_rid->data[j]);
-            printf("\n");
-        } else if (size == 1 && data[0] == 0x00) {
-            /* Client disconnected: identify by source_rid and clean up */
-            printf("Disconnected\n");
-        }
-        zlink_msg_close(&parts[i]);
+```c
+void on_monitor_event(const zlink_monitor_event_t *ev, void *userdata)
+{
+    if (ev->event == ZLINK_EVENT_CONNECTION_READY) {
+        printf("Connected: ");
+        for (size_t j = 0; j < ev->routing_id.size; j++)
+            printf("%02x", ev->routing_id.data[j]);
+        printf("\n");
+    } else if (ev->event == ZLINK_EVENT_DISCONNECTED) {
+        printf("Disconnected\n");
     }
 }
 ```
 
-> Reference: `core/tests/integration/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
+> Reference: `core/tests/integration/test_stream_socket.cpp` — STREAM monitor events
 
 ### ROUTER vs STREAM routing_id Comparison
 
@@ -254,7 +254,7 @@ void on_message(const zlink_routing_id_t *source_rid,
 | **Size** | Variable (user-defined or 16B UUID) | Fixed 4B (uint32) |
 | **Generation** | Peer's own routing_id | Auto-assigned by the server |
 | **Configurable** | Peer sets via `zlink_set_routing_id()` | Auto-assigned only (not configurable) |
-| **Frame position** | Automatically prepended on receive | Automatically prepended on receive |
+| **Receive exposure** | Separate `source_rid` output | Separate `source_rid` output |
 
 ## 8. Debugging Tips for routing_id
 

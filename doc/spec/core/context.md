@@ -51,7 +51,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_SOCKET_LIMIT` | 3 | Hard upper limit on socket count (read-only) |
 | `ZLINK_THREAD_PRIORITY` | 3 | I/O thread scheduling priority |
 | `ZLINK_THREAD_SCHED_POLICY` | 4 | I/O thread scheduling policy |
-| `ZLINK_MAX_MSGSZ` | 5 | Maximum message size in bytes (-1 = unlimited) |
+| `ZLINK_MAX_MSGSZ` | 5 | Maximum message size in bytes (`>= 0`; default `INT_MAX`) |
 | `ZLINK_MSG_T_SIZE` | 6 | Size of `zlink_msg_t` in bytes (read-only) |
 | `ZLINK_THREAD_AFFINITY_CPU_ADD` | 7 | Add a CPU to the I/O thread affinity set |
 | `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | 8 | Remove a CPU from the I/O thread affinity set |
@@ -61,6 +61,11 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | Minimum debounce window in milliseconds before connection churn triggers another automatic HWM recalculation (`>= 0`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | Automatic HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). Invalid values fail with `EINVAL`. |
 | `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 18 | Context-level message-unit size in bytes used by automatic HWM planning (`0` = socket-type default, negative values fail with `EINVAL`). |
+
+> **Note:** `ZLINK_SOCKET_LIMIT` and `ZLINK_THREAD_PRIORITY` share the enum
+> value `3`. In the current public C ABI the option lookup resolves value `3`
+> to the read-only `ZLINK_SOCKET_LIMIT`, so `ZLINK_THREAD_PRIORITY` cannot be
+> set or queried through `zlink_ctx_set` / `zlink_ctx_get`.
 
 ## Default Values
 
@@ -191,6 +196,7 @@ override. A value of `0` returns those sockets to their socket-type default.
 
 **Errors:**
 - `EINVAL` -- unknown option or invalid value.
+- `EFAULT` -- invalid context handle (`ZLINK_CONFIG_INVALID_HANDLE`).
 
 **Thread safety:** Safe to call from any thread.
 
@@ -212,12 +218,14 @@ zlink_config_result_t zlink_ctx_set_data(void *context_,
 Used for context options whose public binding type is not an `int`. The
 primary use case is `ZLINK_THREAD_NAME_PREFIX`, which takes a
 null-terminated string. Pass the string pointer as `optval_` and
-`strlen(prefix) + 1` as `optvallen_`.
+`strlen(prefix) + 1` as `optvallen_`. The prefix is bounded to at most 16
+bytes (`optvallen_ <= 16`) to fit the platform thread-name limit.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **Errors:**
 - `EINVAL` -- unknown option or invalid value.
+- `EFAULT` -- invalid context handle (`ZLINK_CONFIG_INVALID_HANDLE`).
 
 **Thread safety:** Safe to call from any thread.
 
@@ -245,6 +253,7 @@ the detailed internal errno for diagnostics.
 
 **Errors:**
 - `EINVAL` -- unknown option.
+- `EFAULT` -- invalid context handle; `*error_out_` is set to `ZLINK_CONFIG_INVALID_HANDLE`.
 
 **Thread safety:** Safe to call from any thread.
 

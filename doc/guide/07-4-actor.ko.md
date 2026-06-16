@@ -129,10 +129,10 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
 
 Actor 주소를 다른 노드에서 알아야 하면, Actor 소유 Discovery에서
 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜고 Actor를 user Spot으로 join한 뒤
-`zlink_discovery_resolve_actor()`로 조회한다. Actor 생성만으로는 활성 경로(active
-route)가 공개되지 않는다. **활성 경로는 user Spot join 성공 시점에 게시되고, user
-Spot에서 Entry Spot으로 leave 성공 시점에 Entry Spot 위치로 갱신된다.** STREAM 세션
-바인딩이나 해제는 활성 경로를 만들거나 제거하지 않는다.
+`zlink_discovery_resolve_actor()`로 조회한다. **route sync가 켜져 있으면 활성 경로
+(active route)는 Actor 생성 시점에 Entry Spot을 가리키며 게시되고, user Spot join
+성공 시 join한 user Spot으로, 명시적 leave 성공 시 다시 Entry Spot으로 갱신된다.**
+STREAM 세션 바인딩이나 해제는 활성 경로를 바꾸지 않는다.
 
 로컬 노드에서 ID로 기존 Actor를 조회하려면:
 
@@ -218,8 +218,8 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE: {
     while (zlink_spot_actor_join_recv(spot_, &info, &parts, &part_count,
                                       ZLINK_DONTWAIT) == ZLINK_RECV_OK) {
         /* info.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE 이면 remote join */
-        int accept = /* payload 검사 결과 */;
-        zlink_spot_actor_join_reply(spot_, &info, accept, NULL, 0);
+        int join_result = 0; /* 0 = 수락; 0이 아니면 거부 코드 */
+        zlink_spot_actor_join_reply(spot_, &info, join_result, NULL, 0);
         zlink_multipart_close(parts, part_count);
     }
     break;
@@ -298,6 +298,9 @@ destroy 성공 시 Entry Spot의 Actor slot이 제거되고, active route가 같
 route도 함께 제거된다. session attach 상태는 Actor 위치와 독립이므로 destroy 전에
 별도로 session attach를 해제해야 한다면 `zlink_stream_unbind_actor()`를 호출한다.
 연결까지 닫아야 하면 `zlink_spot_node_actor_close_bound_session()`을 사용한다.
+STREAM 세션이 닫히거나 끊기면 그 Actor 바인딩은 자동으로 정리되지만, 이때 Actor가
+Entry Spot으로 이동하거나 join한 Spot이 바뀌지는 **않는다**. 세션의 bound Actor를
+열거하려면 `zlink_stream_bound_actors()`를 호출한다.
 
 수신 트리거 없이 STREAM 클라이언트에 메시지를 밀어 넣으려면
 `zlink_spot_node_actor_send_bound_session_msg()`를 사용한다. Actor에 활성 바인딩 세션이

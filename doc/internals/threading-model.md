@@ -26,9 +26,10 @@ void *ctx = zlink_ctx_new();
 zlink_ctx_set(ctx, ZLINK_IO_THREADS, 4);  /* default is ZLINK_IO_THREADS_DFLT = 4 */
 ```
 
-I/O threads are started when the context is created and stopped when
-`zlink_ctx_term()` is called. They cannot be added or removed after the context
-is running.
+`zlink_ctx_new()` only allocates the context; the I/O thread pool starts
+lazily on first runtime use (first socket creation or service-runtime
+startup) and stops when `zlink_ctx_term()` is called. The thread count cannot
+be changed after the pool has started.
 
 ### 1.2 Thread Diagram
 
@@ -99,7 +100,10 @@ evenly across threads.
 new_socket → argmin(socket_count[t] for t in io_threads)
 ```
 
-If two threads are tied, the lower-index thread wins. The count is updated
+The scan uses a rotating start index (`_next_io_thread`) before picking the
+minimum, so equal-load threads are filled round-robin rather than always
+favoring thread 0. STREAM sessions default to plain round-robin assignment
+unless `ZLINK_ASIO_STREAM_SESSION_SCHED=minload` is set. The count is updated
 atomically at socket creation and again at socket close; there is no
 rebalancing after assignment.
 
@@ -146,14 +150,18 @@ serialized through a **Mailbox** — a thread-safe command queue backed by a
 
 ```cpp
 class mailbox_t {
-    ypipe_t<command_t> _commands;  /* SPSC queue of commands */
-    signaler_t _signaler;          /* wakes the io_context when commands are enqueued */
+    cpipe_t _cpipe;              /* command pipe (ypipe_t<command_t>) */
+    signaler_t _signaler;        /* wakes the io_context when commands are enqueued */
+    mutex_t _sync;               /* guards concurrent senders */
+    boost::asio::io_context *_io_context;
 };
 ```
 
-Command types include: `stop`, `plug`, `attach`, `bind`, `activate_read`,
-`activate_write`, `hiccup`, and `term`. The I/O thread drains the Mailbox at
-the start of each event-loop iteration.
+`send()` writes the command under `_sync`, signals, and posts a drain handler
+via `boost::asio::post()`; the I/O thread drains the command pipe from that
+posted handler (not by polling at the top of a loop). Command types include:
+`stop`, `plug`, `attach`, `bind`, `activate_read`, `activate_write`, `hiccup`,
+`reap`, and `reaped`.
 
 ### 4.3 Data flow summary
 
@@ -177,17 +185,17 @@ sequenceDiagram
 
 When a socket is closed the I/O thread cannot always free its resources
 immediately — in-flight async operations hold references to session objects.
-The I/O thread sends a `term` command to the Reaper once all I/O for that
-socket has completed. The Reaper then deallocates the resources from a
-dedicated thread that holds no event-loop locks.
+The close handoff sends a `reap` command to the Reaper, which registers the
+socket on the Reaper's own poller; once the socket finishes shutting down it
+sends a `reaped` command back. The Reaper then deallocates the resources from
+a dedicated thread that holds no event-loop locks.
 
-The Reaper uses its own Mailbox and runs a simple drain loop:
+The Reaper uses its own Mailbox; commands drive `process_reap()` /
+`process_reaped()`:
 
 ```
-while (command = mailbox.recv()) {
-    if (command.type == TERM) free(command.object);
-    if (command.type == STOP) break;
-}
+process_reap(socket)   → start_reaping(socket); ++sockets
+process_reaped()       → --sockets; finish when terminating && sockets == 0
 ```
 
 ---
@@ -231,7 +239,10 @@ Queue drain priority order:
 | 5 | flush `fanout` pending | Deliver to local subscribers |
 | 6 | flush staged messages | Transmit remaining staged frames |
 
-Batch limit: 2048 messages or 16 MiB per drain iteration.
+Batch limits are per-stage, not a single global cap: publish ingress drains up
+to 2048 messages or 16 MiB per iteration, while mesh forwarding uses 16384
+messages or 16 MiB. POLLOUT (send-ready) is serviced before POLLIN within an
+iteration.
 
 ### 6.2 Dispatch Worker Pool
 
@@ -271,13 +282,17 @@ Why the data-plane thread does not call callbacks directly:
 
 ## 7. NUMA and CPU Pinning
 
-zlink does not pin I/O threads to specific CPU cores internally. If NUMA
-locality matters, the application should:
+By default zlink does not pin its background threads to specific CPU cores.
+A context can, however, request CPU affinity for the threads it starts via the
+`ZLINK_THREAD_AFFINITY_CPU_ADD` / `ZLINK_THREAD_AFFINITY_CPU_REMOVE` context
+options, which are applied (`pthread_setaffinity_np`) before each background
+thread starts. If NUMA locality matters, the application should:
 
 1. Set `ZLINK_IO_THREADS` to match the NUMA topology.
 2. Use the affinity mask to assign groups of sockets to specific I/O threads.
-3. Use OS-level CPU affinity (`pthread_setaffinity_np` or equivalent) on the
-   application threads that call `zlink_send()` on those sockets.
+3. Pin zlink's background threads with `ZLINK_THREAD_AFFINITY_CPU_ADD`, and use
+   OS-level CPU affinity on the application threads that call `zlink_send()` on
+   those sockets.
 
 Because a socket is pinned to one I/O thread for life, keeping the application
 thread and its I/O thread on the same NUMA node eliminates cross-node YPipe
@@ -313,10 +328,16 @@ handle return `ZLINK_CLOSE_SHUTDOWN`.
 
 ### 8.3 Callback delivery vs. concurrent send
 
-Callbacks registered with `*_handler()` run on the I/O thread. Application
-threads can still call `zlink_send()` concurrently — the admission gate
-separates the callback path from the send path. Never call `zlink_close()` on
-the socket from inside its own callback; that creates a deadlock.
+Different callbacks run on different threads, so there is no single "callback
+thread": the socket message handler runs on an I/O thread, the monitor handler
+on the service-control runtime thread, the send-ready handler synchronously on
+the caller's send thread, and SPOT dispatch event handlers on the SPOT
+dispatch worker pool. Application threads can still call `zlink_send()`
+concurrently — the admission gate separates the callback path from the send
+path. Calling `zlink_close()` on a handle from inside its own callback does
+not deadlock: send-ready and monitor self-close are deferred to the callback
+epilogue, while socket message / STREAM dispatch self-close returns
+`ZLINK_CLOSE_BUSY`.
 
 ---
 
@@ -348,7 +369,7 @@ calling it.
 | Deferred cleanup | Reaper thread (one global) |
 | Concurrent sends | Safe via admission gate |
 | Concurrent close + send | Safe; close returns `BUSY` until hot-path callers exit |
-| Callback thread | Always the socket's assigned I/O thread |
+| Callback thread | Per callback: socket message → I/O thread; monitor → service-control thread; send-ready → caller's send thread; SPOT dispatch → dispatch worker |
 | SpotNode data-plane thread | 1 per SpotNode; exclusively owns mesh-pub/fanout/external-router |
 | Application→data-plane path | publish_ingress_queue / routed_send_queue (signaler-based wakeup) |
 | Dispatch worker thread | N per SpotNode; per-Spot serialization and coalescing; default min(2,cpu)–max(1,cpu) |

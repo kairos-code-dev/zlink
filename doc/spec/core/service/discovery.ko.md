@@ -542,24 +542,28 @@ raw ROUTER/DEALER/PUB/SUB 소켓을 discovery 서비스 뷰에 연결합니다.
 zlink_config_result_t zlink_socket_attach_discovery (void *socket, void *discovery);
 ```
 
-소켓을 지정된 Discovery 인스턴스에 연결합니다. Discovery 자동 연결 타입은
-`ZLINK_AUTO_CONNECT_CLIENT_SERVER`이어야 하며, 소켓 타입은 ROUTER, DEALER, PUB,
-SUB 중 하나여야 합니다. 서비스 역할은 소켓 타입에서 자동으로 파생됩니다.
+소켓을 지정된 Discovery 인스턴스에 연결합니다. raw 소켓 attach는
+`ZLINK_AUTO_CONNECT_ROUTE_MESH`, `ZLINK_AUTO_CONNECT_CLIENT_SERVER`,
+`ZLINK_AUTO_CONNECT_DEALER_MESH`, `ZLINK_AUTO_CONNECT_FANOUT`로 생성된 Discovery
+핸들에서 지원됩니다(`SPOT_MESH` 제외). 서비스 역할은 소켓 타입에서 파생되며,
+Discovery 채널의 자동 연결 타입이 허용하는 역할이어야 합니다: `ROUTE_MESH`는
+ROUTER, `CLIENT_SERVER`는 ROUTER 또는 DEALER, `DEALER_MESH`는 DEALER, `FANOUT`은
+PUB 또는 SUB를 허용합니다.
 
 연결되면 소켓은 프로바이더 등록, 피어 갱신, 종료를 Discovery 인스턴스에
 위임합니다. 연결된 소켓에서 `connect`, `disconnect`, `unbind`, `close`
-수동 호출은 실패합니다. 연결된 소켓의 lifecycle을 종료하려면 Discovery
-인스턴스를 파괴하십시오.
+수동 호출은 실패합니다(attach 중에는 `EFSM`, 종료 중에는 `ESHUTDOWN`). 연결된
+소켓의 lifecycle을 종료하려면 Discovery 인스턴스를 파괴하십시오.
 
 **매개변수:**
-- `socket` -- 소켓 핸들 (ROUTER, DEALER, PUB, SUB 중 하나).
-- `discovery` -- `ZLINK_AUTO_CONNECT_CLIENT_SERVER`으로 생성된 Discovery 핸들.
+- `socket` -- 소켓 핸들 (위 규칙에 따른 ROUTER, DEALER, PUB, SUB).
+- `discovery` -- 소켓의 파생 역할을 허용하는 자동 연결 타입의 Discovery 핸들.
 
 **반환값:** `zlink_config_result_t` 값을 반환합니다.
 
 **오류:**
 - `EINVAL` -- 잘못된 소켓 또는 discovery 핸들.
-- `ENOTSUP` -- 지원하지 않는 소켓 타입 (ROUTER, DEALER, PUB, SUB만 가능).
+- `ENOTSUP` -- Discovery 채널의 자동 연결 타입이 허용하지 않는 소켓 역할.
 - `EBUSY` -- 소켓이 이미 discovery 인스턴스에 연결되어 있거나, 기존
   connect 엔드포인트 또는 attached pipe가 있음.
 

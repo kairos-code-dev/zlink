@@ -13,7 +13,7 @@ Node.js에서 zlink를 쓰는 방법을 실제 샘플 코드 중심으로 설명
 npm install @zlink-systems/zlink
 ```
 
-- **Node.js 18** 이상.
+- **Node.js 22** 이상.
 - 네이티브 코어가 플랫폼별 prebuild로 번들됩니다.
 
 ```javascript
@@ -120,7 +120,7 @@ socket.setRoutingId(rid);
 |------|------|
 | `submit()` 성공 | 전달된 Buffer는 내부 복사되므로 원본 재사용 가능 |
 | `recv()` 성공 | `received.close()` 필수 (finally 블록 권장) |
-| `submitAsync()` 완료 | 회신 파트 배열을 각각 `part.close()` |
+| `submit()`(Promise) 완료 | 회신 파트 배열을 각각 `part.close()` |
 | `ctx.close()` | 하위 소켓의 블로킹 작업 중단 |
 
 ```javascript
@@ -169,13 +169,13 @@ try {
 | `zlink_bind(s, ep)` | `socket.bind(ep)` |
 | `zlink_connect(s, ep)` | `socket.connect(ep)` |
 | `zlink_send_part(...)` | `socket.send().message(buf).submit()` |
-| `zlink_recv(...)` | `socket.recv(received)` |
+| `zlink_recv_part(...)` | `socket.recv(received)` |
 | `zlink_msg_data(msg)` | `part.data()` (Buffer) |
 | `zlink_routing_id_t` | `zlink.RoutingId` |
 | `zlink_socket_monitor_open(...)` | `socket.monitorOpen([...])` |
 | `zlink_poller_new()` | `zlink.createPoller()` |
 | `zlink_timer_new()` | `zlink.createTimer()` |
-| `zlink_spot_node_new(ctx)` | `zlink.createSpotNode(ctx)` |
+| `zlink_spot_node_new(ctx, opts)` | `zlink.createSpotNode(ctx)` |
 | `zlink_registry_new(ctx)` | `zlink.createRegistry(ctx)` |
 | `zlink_discovery_new(ctx,...)` | `zlink.createDiscovery(ctx, type, ch)` |
 
@@ -197,7 +197,7 @@ console.log(`zlink ${major}.${minor}.${patch}`);
 |------|------|
 | `Context`·소켓 | 메인 이벤트 루프에서 사용 |
 | 블로킹 `recv()` | 이벤트 루프를 막으므로 짧게 사용하거나 논블로킹 + 폴러 권장 |
-| `submitAsync()` | Promise 기반 — 이벤트 루프를 막지 않음 |
+| 비동기 `submit()` | Promise 기반 — 이벤트 루프를 막지 않음 |
 | Worker 스레드 | SpotNode 핸들은 Worker 간 공유 불가 |
 
 ---
@@ -210,7 +210,7 @@ console.log(`zlink ${major}.${minor}.${patch}`);
 |------|------|
 | `pair_recv_sample.ts` | PAIR 송수신 |
 | `dealer_router_recv_sample.ts` | DEALER/ROUTER 송수신 |
-| `request_reply_async_sample.ts` | 비동기 요청/응답 |
+| `request_reply_sample.ts` | 요청/응답 |
 | `pubsub_recv_sample.ts` | PUB/SUB 발행·구독 |
 | `stream_recv_sample.ts` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.ts` | STREAM 패킷 콜백 |
@@ -218,7 +218,7 @@ console.log(`zlink ${major}.${minor}.${patch}`);
 | `discovery_registry_sample.ts` | Registry + Discovery |
 | `registry_query_sample.ts` | Registry 토폴로지 쿼리 |
 | `spot_recv_sample.ts` | SpotNode/Spot PUB/SUB |
-| `spot_request_async_sample.ts` | SpotNode 비동기 요청 |
+| `spot_request_sample.ts` | SpotNode 요청 |
 | `actor_single_player_queue_sample.ts` | 액터 조인·이동·메시지 큐 |
 | `actor_room_server_sample.ts` | 방 서버 패턴 |
 | `actor_gateway_relay_sample.ts` | 게이트웨이 릴레이 |
@@ -254,7 +254,8 @@ const socket = zlink.createPairSocket(ctx);
 
 ```bash
 cd bindings/node && npm run build      # 공유 런타임 빌드
-node bindings/javascript/samples/spot_pubsub_example.js
+cd ../javascript/samples
+node spot_pubsub_example.js             # 또는 ./run_samples.sh
 ```
 
 코어 가이드의 언어 탭에는 **JavaScript** 칸이 따로 있어 메시징·서비스 사용법을

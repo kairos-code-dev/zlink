@@ -329,7 +329,7 @@ perf나 샘플이 네이티브 객체에 더 빨리 접근하도록 문서화되
 `src/zlink/contracts`는 패키지 entrypoint와 발행된 TypeScript 선언의 소스 소유
 맵이다.
 
-- `core/`: 컨텍스트, 컨텍스트 옵션, routing id, 버전/역할 헬퍼, 유틸리티
+- `core/`: 컨텍스트, 컨텍스트 옵션, routing id, 버전/capability 조회 헬퍼, 유틸리티
   계약.
 - `messaging/`: `Message`, 수신 메타데이터, 토픽 메시지, 구독 이벤트, 스트림
   packet 데이터, 빌더 payload 헬퍼.
@@ -378,7 +378,7 @@ TypeScript 관용 표기를 유지한다.
 이미 계약/런타임 분리에서 네이티브 기반 구현 쪽이다. 파일 이름은 구현체라는
 사실이 아니라 구현하는 리소스나 operation을 설명해야 한다.
 
-- `core/`: `context.ts`, `context_options.ts`, 버전/역할 wrapper와 같은
+- `core/`: `context.ts`, `context_options.ts`, 버전/capability 조회 wrapper와 같은
   런타임 헬퍼 함수.
 - `handles/`: 네이티브 핸들 owner, 생명주기 검사, close/dispose 상태, reference
   tracking.
@@ -474,7 +474,7 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`,
   공개되지 않는다.
 - `createPoller()`, `createTimer()`, `createTimer(spot)`은 eventing 리소스를
   생성한다.
-- 버전, 역할, strerror, proxy, sleep, multipart cleanup 헬퍼 같은 패키지
+- 버전, capability 조회, strerror, proxy, sleep, multipart cleanup 헬퍼 같은 패키지
   루트 팩토리/헬퍼 함수는 공개 계약 함수다. 이 함수들 뒤의 네이티브 호출은 런타임
   모듈에 머문다.
 
@@ -492,8 +492,8 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`,
   `recv`, `recvRouted`, `receiveSubscriptionEvent`, `setSendReadyHandler`,
   `setPacketHandler`, `setDispatchHandler`, `getOrCreateSpot`,
   `sendToChannel`, `requestToChannel`, `sendToSpot`, `requestToSpot`,
-  `connectRouterChannelPeer`, `disconnectRouterChannelPeer`,
-  `disconnectRouterChannelPeerRid`.
+  `connectRouterChannelPeer`, `connectRouterChannelPeerRid`,
+  `disconnectRouterChannelPeer`, `disconnectRouterChannelPeerRid`.
 - 호환성만을 위해 옛 alias를 유지하지 않는다. 리팩터링 이전 이름이 정식 의미와
   충돌하면 제거하고 정식 TypeScript 이름을 노출한다.
 - 핸들러 등록에 `on...` 이름을 사용하지 않는다. API가 현재 핸들러를 저장하거나
@@ -537,7 +537,7 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`,
 
 패키지 entrypoint는 API를 도메인 개념을 중심으로 그룹화한다.
 
-- Core: 컨텍스트, 버전/역할 헬퍼, 옵션, 유틸리티 함수.
+- Core: 컨텍스트, 버전/capability 조회 헬퍼, 옵션, 유틸리티 함수.
 - Messaging: `Message`, routing id 값, 수신 메타데이터, 토픽 메시지, 구독
   이벤트, 스트림 packet 데이터.
 - Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, 타입 있는 옵션,
@@ -553,7 +553,7 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`,
 공유 .NET-기준 정책에 정렬되었을 때 공개 entrypoint는 다음의 안정적인 사용자
 대면 기능을 모두 포함한다.
 
-- 컨텍스트 생명주기, 옵션, shutdown, auto-HWM 재계산, 버전, 역할,
+- 컨텍스트 생명주기, 옵션, shutdown, auto-HWM 재계산, 버전, capability 조회,
   strerror.
 - 메시지 ownership, multipart payload, routing id, 수신 메타데이터, 토픽 메시지,
   구독 이벤트, 스트림 packet 콜백.

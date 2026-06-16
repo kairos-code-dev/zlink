@@ -40,9 +40,9 @@ zlink_config_result_t zlink_set_pub_option (void *handle_,
                            size_t optvallen_);
 ```
 
-Configures a PUB/XPUB socket option. Also applies to spot-pub and
-spotnode-pub handles. Use `zlink_set_option()` for common options shared
-across all socket types.
+Configures a PUB/XPUB socket option. For spot-pub and spotnode-pub service
+handles, only `ZLINK_PUB_OPT_NODROP` is accepted. Use `zlink_set_option()` for
+common options shared across all socket types.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -61,7 +61,9 @@ zlink_config_result_t zlink_get_pub_option (void *handle_,
                            size_t *optvallen_);
 ```
 
-Retrieves the current value of a PUB/XPUB socket option.
+Retrieves the current value of a PUB/XPUB socket option. For spot-pub and
+spotnode-pub service handles, only `ZLINK_PUB_OPT_NODROP` and
+`ZLINK_PUB_OPT_TOPICS_COUNT` are readable.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -84,16 +86,17 @@ zlink_submit_result_t zlink_publish (void *subject_,
 Publishes a multipart message on the given subject. On success, ownership
 of all parts is transferred to the library.
 
-- For raw `PUB` / `XPUB`: `topic_id_` must be NULL (raw pub publish).
-  Topic matching uses the wire first-frame prefix convention.
+- For raw `PUB` / `XPUB`: `topic_id_` may be NULL (the first message frame
+  carries the topic per the wire prefix convention) or non-NULL (a topic frame
+  is prepended before the message).
 
 **Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
 `zlink_submit_result_t` value. Detailed internal errno remains available
 through `zlink_errno()` for diagnostics.
 
-**Errors:** `EFAULT` if `subject_` is NULL. `EINVAL` if `topic_id_` is
-NULL for spot/spot_node, or non-NULL for unsupported types. `ENOTSUP` if
-the subject type does not support publish.
+**Errors:** `EFAULT` if `subject_` is NULL. `EINVAL` if `topic_id_` is NULL or
+empty for a `spot` subject. `ENOTSUP` if the subject type does not support
+publish (non-PUB/XPUB raw sockets, and `spot_node`).
 
 **See also:** `zlink_publish`, `zlink_set_subscription`, `zlink_subscribe`
 
@@ -145,16 +148,20 @@ subscribing peer (valid until the next call on this socket),
 `*subscribed_out_` is 1 for subscribe or 0 for unsubscribe, and
 `topic_id_buf_` / `*topic_id_len_out_` receive the topic bytes
 (binary-safe). The caller supplies the buffer capacity via
-`topic_id_capacity_`; if the topic is longer than the capacity the call
-returns `EMSGSIZE`.
+`topic_id_capacity_`; if the topic is longer than the capacity the call fails
+with `errno = EMSGSIZE`.
 
 Applicable types: raw XPUB only.
 
-**Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
+**Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t`
+value. Detail errnos other than `EAGAIN`/`ETERM` (for example `EMSGSIZE` for an
+over-capacity topic, or `EINVAL` for a non-XPUB subject) surface as
+`ZLINK_RECV_INTERNAL_ERROR`; `zlink_errno()` retains the detailed internal errno
+for diagnostics.
 
 **Errors:** `EFAULT` if `xpub_` is NULL. `EAGAIN` if `ZLINK_DONTWAIT`
 was set and no event is available. `EMSGSIZE` if the topic is longer than
-`topic_id_capacity_`. `ENOTSUP` if the subject is not XPUB.
+`topic_id_capacity_`. `EINVAL` if the subject is not XPUB.
 
 **See also:** `zlink_publish`
 

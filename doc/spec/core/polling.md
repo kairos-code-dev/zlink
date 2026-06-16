@@ -521,9 +521,11 @@ zlink_config_result_t zlink_proxy_steerable (void *frontend_,
 ```
 
 Behaves like `zlink_proxy` but accepts commands on `control_`. Send the string
-`PAUSE` to suspend message forwarding, `RESUME` to continue, or `TERMINATE`
-to shut down the proxy and return. If `control_` is `NULL`, this function
-behaves identically to `zlink_proxy`.
+`PAUSE` to suspend message forwarding, `RESUME` to continue, `TERMINATE`
+to shut down the proxy and return, or `STATISTICS` to receive eight `uint64_t`
+counter parts — front/back × recv/send × count/bytes, in the order
+`(frn, frb, fsn, fsb, brn, brb, bsn, bsb)`. If `control_` is `NULL`, this
+function behaves identically to `zlink_proxy`.
 
 **Parameters:**
 

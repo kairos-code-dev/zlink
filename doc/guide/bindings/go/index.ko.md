@@ -252,7 +252,7 @@ if !ok { /* 메시지 없음 */ }
 | `zlink_bind(socket, ep)` | `socket.Bind(ep)` |
 | `zlink_connect(socket, ep)` | `socket.Connect(ep)` |
 | `zlink_send_part(...)` | `socket.Send().Message(m).Submit(nil)` |
-| `zlink_recv(...)` | `socket.Recv(&received, flags)` |
+| `zlink_recv_part(...)` | `socket.Recv(&received, flags)` |
 | `zlink_msg_data(msg)` | `msg.Data()` |
 | `zlink_msg_size(msg)` | `msg.Size()` |
 | `zlink_msg_close(msg)` | `msg.Close()` |
@@ -260,8 +260,8 @@ if !ok { /* 메시지 없음 */ }
 | `zlink_socket_monitor_open(...)` | `zlink.OpenSocketMonitor(socket, ...)` |
 | `zlink_poller_new()` | `zlink.NewPoller()` |
 | `zlink_timer_new()` | `zlink.NewTimer()` |
-| `zlink_spot_node_new(ctx)` | `ctx.SpotNode()` |
-| `zlink_spot_node_get_or_create_spot(...)` | `node.Spot()` |
+| `zlink_spot_node_new(ctx, opts)` | `ctx.SpotNode()` |
+| `zlink_spot_node_spot_get_or_new(...)` | `node.Spot()` |
 | `zlink_spot_node_actor_new(...)` | `node.Actor("id")` |
 | `zlink_registry_new(ctx)` | `ctx.Registry()` |
 | `zlink_discovery_new(ctx, ...)` | `ctx.Discovery(type, channel)` |

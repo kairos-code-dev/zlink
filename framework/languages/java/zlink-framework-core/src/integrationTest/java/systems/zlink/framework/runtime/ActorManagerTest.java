@@ -79,7 +79,7 @@ final class ActorManagerTest {
         }
     }
 
-    public static final class GameSpot implements ZLinkSpot {
+    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             return null;

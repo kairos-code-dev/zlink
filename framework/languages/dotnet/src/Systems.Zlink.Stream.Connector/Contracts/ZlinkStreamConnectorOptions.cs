@@ -33,6 +33,13 @@ public sealed class ZlinkStreamConnectorOptions
     public ZlinkStreamCompression Compression { get; init; } = ZlinkStreamCompression.None;
 
     public IZlinkStreamPacketNameResolver NameResolver { get; init; } = ZlinkStreamDefaultCodecFactory.PacketNameResolver();
+
+    /// <summary>
+    /// Optional custom payload codec for the typed connector API. When set, the
+    /// connector encodes and decodes typed payloads with this codec instead of the
+    /// built-in protobuf/MessagePack/JSON auto-selection.
+    /// </summary>
+    public IZlinkStreamPayloadCodec? PayloadCodec { get; init; }
 }
 
 public sealed class ZlinkStreamHeartbeatOptions

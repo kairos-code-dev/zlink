@@ -133,15 +133,25 @@ internal sealed class ActorJoinEntrySpotOperationImpl :
     private readonly SpotNode _node;
     private readonly ActorRef _actor;
     private readonly RoutingId _destNodeRid;
+    private OperationMessageBuffer _parts;
     private TimeSpan _timeout;
+    private SendFlags _flags;
     private OperationSubmissionGuard _submission;
 
     internal ActorJoinEntrySpotOperationImpl(SpotNode node, ActorRef actor,
-        RoutingId destNodeRid)
+        RoutingId destNodeRid, Message request)
     {
         _node = node;
         _actor = actor;
         _destNodeRid = destNodeRid;
+        _parts.Add(request);
+    }
+
+    public ActorJoinEntrySpotOperation Message(Message message)
+    {
+        EnsureNotSubmitted();
+        _parts.Add(message);
+        return this;
     }
 
     public ActorJoinEntrySpotOperation Timeout(TimeSpan timeout)
@@ -151,13 +161,21 @@ internal sealed class ActorJoinEntrySpotOperationImpl :
         return this;
     }
 
-    public Task<ActorJoinEntrySpotResult> Async(
-        CancellationToken ct = default)
+    public ActorJoinEntrySpotOperation Flags(SendFlags flags)
     {
         EnsureNotSubmitted();
+        _flags = flags;
+        return this;
+    }
+
+    public Task<(ActorJoinEntrySpotResult Result, IReadOnlyList<Message> Parts)>
+        Async(CancellationToken ct = default)
+    {
+        EnsureNotSubmitted();
+        _parts.EnsureNotEmpty();
         _submission.MarkSubmitted();
         return ActorInterop.JoinActorEntrySpotAsync(_node, _actor,
-            _destNodeRid, _timeout, ct);
+            _destNodeRid, _parts.Parts, _timeout, _flags, ct);
     }
 
     public bool Submit(ActorJoinEntrySpotHandler callback)
@@ -165,9 +183,10 @@ internal sealed class ActorJoinEntrySpotOperationImpl :
         if (callback == null)
             throw new ArgumentNullException(nameof(callback));
         EnsureNotSubmitted();
+        _parts.EnsureNotEmpty();
         _submission.MarkSubmitted();
         return ActorInterop.JoinActorEntrySpotCallback(_node, _actor,
-            _destNodeRid, _timeout, callback);
+            _destNodeRid, _parts.Parts, _timeout, _flags, callback);
     }
 
     private void EnsureNotSubmitted()

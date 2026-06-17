@@ -97,8 +97,50 @@ zlinkFramework()
     .addRequestHandler('ActorLookup', ActorLookupRouteHandler);
 ```
 
+## 5. 커스텀 codec (Avro 예시)
+
+기본 제공 codec(JSON/Protobuf/MessagePack) 외의 직렬화 포맷이 필요하면 codec registry에
+custom serializer를 등록한다. serializer는 업무 객체 ↔ `Message`(byte payload) 변환만
+담당하고, packet name 결정과 codec 선택은 그대로 framework가 처리한다. 아래는 Avro
+(`avsc`)를 끼우는 예시다.
+
+```ts
+import avro from 'avsc';
+
+const orderType = avro.Type.forSchema({
+  type: 'record',
+  name: 'PlaceOrder',
+  fields: [{ name: 'sku', type: 'string' }, { name: 'qty', type: 'int' }]
+});
+
+const avroSerializer = {
+  serialize(value) {
+    return zlink.Message.from(orderType.toBuffer(value));
+  },
+  deserialize(message) {
+    return orderType.fromBuffer(Buffer.from(message.data()));
+  }
+};
+
+const registration = framework.createFrameworkRegistration({
+  codecs: { serializers: [{ contentType: 'application/avro', serializer: avroSerializer }] },
+  channels: { orders: { server: { bind: endpoint } } }
+});
+```
+
+등록 후에는 high-level 호출이 그대로 업무 객체를 주고받고, 직렬화는 Avro로 처리된다.
+
+```ts
+await client.requestToChannel('orders', { sku: 'A-1', qty: 3 }).packetName('PlaceOrder').submit();
+```
+
+framework당 custom serializer는 하나만 둔다(둘 이상이면 모호성 구성 오류). 다른 언어의
+등록 표면은 [framework-api §2.2](../../../../doc/spec/framework-api.ko.md)의 표를 본다.
+
 ## 회귀 테스트
 
 channel request/reply, send, publish, handler 노출 규칙은
 `test/contract/channel-client.test.js` 와 `test/contract/handler-runtime.test.js` 에서
-확인한다.
+확인한다. custom serializer 라운드트립은 같은 파일의
+`ZLinkFrameworkRuntimeHost uses channel serializer registry for typed request replies`
+테스트가 확인한다.

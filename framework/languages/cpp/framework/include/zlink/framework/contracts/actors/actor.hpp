@@ -82,13 +82,13 @@ class actor_join_spot_call_t
 };
 
 class actor_join_entry_spot_call_t
-    : private detail::call_facade_t<actor_join_entry_spot_call_t, actor_ref_t>
+    : private detail::call_facade_t<actor_join_entry_spot_call_t, actor_join_result_t>
 {
   private:
-    using base_t = detail::call_facade_t<actor_join_entry_spot_call_t, actor_ref_t>;
+    using base_t = detail::call_facade_t<actor_join_entry_spot_call_t, actor_join_result_t>;
 
   public:
-    explicit actor_join_entry_spot_call_t (result_t<actor_ref_t> result) :
+    explicit actor_join_entry_spot_call_t (result_t<actor_join_result_t> result) :
         base_t (std::move (result))
     {
     }
@@ -188,7 +188,8 @@ class actor_context_t
         }
     }
 
-    actor_join_entry_spot_call_t join_entry_spot (node_rid_t spot_node_rid);
+    actor_join_entry_spot_call_t join_entry_spot (node_rid_t spot_node_rid,
+                                                  const zlink::message_t &request);
 
   private:
     friend class spot_node_builder_t;

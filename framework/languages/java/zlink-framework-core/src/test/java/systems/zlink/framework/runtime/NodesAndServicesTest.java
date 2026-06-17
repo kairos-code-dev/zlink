@@ -95,21 +95,21 @@ final class NodesAndServicesTest {
         return options;
     }
 
-    public static final class GameSpot implements ZLinkSpot {
+    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             return null;
         }
     }
 
-    public static final class EntrySpotA implements ZLinkEntrySpot {
+    public static final class EntrySpotA implements ZLinkEntrySpot<ZLinkActor> {
         @Override
         public ZLinkEntrySpotContext context() {
             return null;
         }
     }
 
-    public static final class EntrySpotB implements ZLinkEntrySpot {
+    public static final class EntrySpotB implements ZLinkEntrySpot<ZLinkActor> {
         @Override
         public ZLinkEntrySpotContext context() {
             return null;

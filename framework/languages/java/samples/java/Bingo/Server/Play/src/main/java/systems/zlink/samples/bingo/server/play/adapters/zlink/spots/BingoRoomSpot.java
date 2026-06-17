@@ -9,7 +9,6 @@ import java.util.HashMap;
 import java.util.Map;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
-import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -25,7 +24,7 @@ import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomGame;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
-public final class BingoRoomSpot implements ZLinkSpot {
+public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     private final ZLinkSpotContext context;
     private final BingoNotificationPublisher notifications;
     private final BingoRoomSpotCreatedHandler createdHandler;
@@ -61,36 +60,31 @@ public final class BingoRoomSpot implements ZLinkSpot {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        ZLinkActor actor,
+        PlayerActor actor,
         Message request,
         CancellationToken cancellationToken) {
-        if (!(actor instanceof PlayerActor player)) {
-            throw new IllegalArgumentException("Bingo room only accepts PlayerActor.");
-        }
         Messages.BingoRoomJoinReq joinRequest = decode(request, Messages.BingoRoomJoinReq.class);
-        return ZLinkSpotActorJoinResponse.accept(encode(join(player, joinRequest)));
+        return ZLinkSpotActorJoinResponse.accept(encode(join(actor, joinRequest)));
     }
 
     @Override
-    public void onJoinActor(
-        ZLinkActor actor,
+    public void onJoinedActor(
+        PlayerActor actor,
         CancellationToken cancellationToken) {
     }
 
     @Override
     public void onLeaveActor(
-        ZLinkActor actor,
+        PlayerActor actor,
         CancellationToken cancellationToken) {
         actors.remove(actor.actorId());
     }
 
     @Override
     public void onDisconnectActor(
-        ZLinkActor actor,
+        PlayerActor actor,
         CancellationToken cancellationToken) {
-        if (actor instanceof PlayerActor player) {
-            player.markDisconnected();
-        }
+        actor.markDisconnected();
     }
 
     @Override

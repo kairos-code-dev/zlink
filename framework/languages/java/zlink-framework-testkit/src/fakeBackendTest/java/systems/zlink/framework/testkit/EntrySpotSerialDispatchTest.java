@@ -132,7 +132,7 @@ final class EntrySpotSerialDispatchTest {
     }
 
     public static final class SerialEntrySpot
-        implements systems.zlink.framework.spots.ZLinkEntrySpot {
+        implements systems.zlink.framework.spots.ZLinkEntrySpot<systems.zlink.framework.actors.ZLinkActor> {
         static final AtomicReference<ZLinkEntrySpotContext> capturedContext =
             new AtomicReference<>();
         private final ZLinkEntrySpotContext context;

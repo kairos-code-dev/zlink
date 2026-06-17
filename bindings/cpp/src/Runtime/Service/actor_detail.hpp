@@ -68,6 +68,8 @@ struct actor_join_entry_spot_result_state_t
 {
     std::unique_ptr<std::promise<actor_join_entry_spot_result_t>> promise;
     actor_join_entry_spot_callback_t on_complete;
+    actor_join_entry_spot_result_t result;
+    std::vector<message_t> parts;
 };
 
 inline actor_join_result_state_t *make_future_actor_join_state ()
@@ -134,6 +136,8 @@ inline void actor_join_result_trampoline (const zlink_actor_join_result_t *resul
 
 inline void
 actor_join_entry_spot_result_trampoline (const zlink_actor_join_entry_spot_result_t *result_,
+                                         zlink_msg_t *parts_,
+                                         size_t part_count_,
                                          void *userdata_)
 {
     actor_join_entry_spot_result_state_t *state =
@@ -146,16 +150,19 @@ actor_join_entry_spot_result_trampoline (const zlink_actor_join_entry_spot_resul
         result = zlink::detail::actor_model_access_t::from_native (*result_);
     else
         result.result = request_result_t::internal_error;
+    std::vector<message_t> parts = detail::take_parts_from_native (parts_, part_count_);
     if (holder->on_complete) {
-        holder->on_complete (result);
+        holder->on_complete (result, std::move (parts));
         return;
     }
     if (holder->promise) {
         if (result.result != request_result_t::ok)
             holder->promise->set_exception (
               std::make_exception_ptr (request_error_t (result.result)));
-        else
-            holder->promise->set_value (result);
+        else {
+            result.reply_parts = std::move (parts);
+            holder->promise->set_value (std::move (result));
+        }
     }
 }
 

@@ -179,6 +179,127 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertFalse(hasattr(thread, "start"))
         thread.join()
 
+    def test_entry_spot_join_accepts_and_rejects_with_reply(self):
+        with zlink.create_context() as ctx:
+            with zlink.create_spot_node(ctx) as node:
+                node.set_routing_id(zlink.RoutingId.from_(b"py-entry-node"))
+                user_spot = node.create_spot()
+                entry_spot = node.entry_spot()
+                actor = node.actor("py-entry-actor")
+                reject_entry = {"value": False}
+                user_requests = queue.Queue()
+                entry_requests = queue.Queue()
+
+                try:
+                    def on_user_dispatch(spot, info):
+                        if info.event != zlink.SpotDispatchEvent.ACTOR_JOIN_READABLE:
+                            return
+                        request = spot.recv_actor_join(flags=zlink.RecvFlags.DONT_WAIT)
+                        if request is None:
+                            return
+                        user_requests.put(request.message.to_bytes())
+                        spot.reply_actor_join(request, 0).message(b"user-reply").submit()
+
+                    def on_entry_dispatch(spot, info):
+                        if info.event != zlink.SpotDispatchEvent.ACTOR_JOIN_READABLE:
+                            return
+                        request = spot.recv_actor_join(flags=zlink.RecvFlags.DONT_WAIT)
+                        if request is None:
+                            return
+                        entry_requests.put(request.message.to_bytes())
+                        if reject_entry["value"]:
+                            spot.reply_actor_join(request, 7).message(b"entry-rejected").submit()
+                        else:
+                            spot.reply_actor_join(request, 0).message(b"entry-reply").submit()
+
+                    user_spot.on_dispatch_event(on_user_dispatch)
+                    entry_spot.on_dispatch_event(on_entry_dispatch)
+
+                    user_queue = queue.Queue()
+                    actor.join(user_spot).message(b"user-join-request").timeout(1.0).submit(
+                        lambda result, parts: user_queue.put((result, parts))
+                    )
+                    user_result, user_parts = user_queue.get(timeout=2.0)
+                    self.assertEqual(user_result.result, zlink.RequestResult.OK)
+                    self.assertEqual(user_requests.get(timeout=2.0), b"user-join-request")
+                    for part in user_parts:
+                        part.close()
+
+                    entry_queue = queue.Queue()
+                    node.join_actor_entry_spot(
+                        actor.ref(),
+                        node.routing_id,
+                        b"entry-join-request",
+                    ).timeout(1.0).submit(
+                        lambda result, parts: entry_queue.put((result, parts))
+                    )
+                    entry_result, entry_parts = entry_queue.get(timeout=2.0)
+                    self.assertEqual(entry_result.result, zlink.RequestResult.OK)
+                    self.assertEqual(entry_result.join_result_code, 0)
+                    self.assertEqual(entry_requests.get(timeout=2.0), b"entry-join-request")
+                    try:
+                        self.assertEqual([part.to_bytes() for part in entry_parts], [b"entry-reply"])
+                    finally:
+                        for part in entry_parts:
+                            part.close()
+                    current_actor = entry_result.actor
+
+                    return_queue = queue.Queue()
+                    node.join_actor(
+                        current_actor,
+                        node.routing_id,
+                        user_spot.routing_id,
+                    ).message(b"return-to-user").timeout(1.0).submit(
+                        lambda result, parts: return_queue.put((result, parts))
+                    )
+                    return_result, return_parts = return_queue.get(timeout=2.0)
+                    self.assertEqual(return_result.result, zlink.RequestResult.OK)
+                    for part in return_parts:
+                        part.close()
+                    current_actor = return_result.actor
+
+                    reject_entry["value"] = True
+                    reject_queue = queue.Queue()
+                    node.join_actor_entry_spot(
+                        current_actor,
+                        node.routing_id,
+                        b"entry-reject-request",
+                    ).timeout(1.0).submit(
+                        lambda result, parts: reject_queue.put((result, parts))
+                    )
+                    rejected_result, rejected_parts = reject_queue.get(timeout=2.0)
+                    self.assertEqual(rejected_result.result, zlink.RequestResult.OK)
+                    self.assertEqual(rejected_result.join_result_code, 7)
+                    self.assertEqual(entry_requests.get(timeout=2.0), b"entry-reject-request")
+                    try:
+                        self.assertEqual(
+                            [part.to_bytes() for part in rejected_parts],
+                            [b"entry-rejected"],
+                        )
+                    finally:
+                        for part in rejected_parts:
+                            part.close()
+                    actors = user_spot.actors()
+                    self.assertEqual(len(actors), 1)
+                    self.assertEqual(actors[0].actor_id, current_actor.actor_id)
+
+                    reject_entry["value"] = False
+                    cleanup_queue = queue.Queue()
+                    node.join_actor_entry_spot(
+                        current_actor,
+                        node.routing_id,
+                        b"entry-cleanup-request",
+                    ).timeout(1.0).submit(
+                        lambda result, parts: cleanup_queue.put((result, parts))
+                    )
+                    cleanup_result, cleanup_parts = cleanup_queue.get(timeout=2.0)
+                    self.assertEqual(cleanup_result.result, zlink.RequestResult.OK)
+                    for part in cleanup_parts:
+                        part.close()
+                finally:
+                    entry_spot.close()
+                    user_spot.close()
+
     def test_router_reply_contract_matches_runtime_signature(self):
         ctx = zlink.create_context()
 

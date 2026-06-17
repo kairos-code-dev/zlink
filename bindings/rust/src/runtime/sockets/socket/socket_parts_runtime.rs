@@ -86,6 +86,9 @@ pub(crate) fn take_parts(parts_ptr: *mut ffi::zlink_msg_t, part_count: usize) ->
             out.push(Message::from_raw(dest.assume_init()));
         }
     }
+    unsafe {
+        ffi::zlink_multipart_close(parts_ptr, part_count);
+    }
     out
 }
 

@@ -48,11 +48,13 @@ final class SpotActorJoinPlane {
     }
 
     ActorJoinEntrySpotOperation joinActorEntrySpot(ActorRef actor,
-                                                   RoutingId destNodeRid) {
+                                                   RoutingId destNodeRid,
+                                                   Message request) {
         Objects.requireNonNull(actor, "actor");
         Objects.requireNonNull(destNodeRid, "destNodeRid");
+        Objects.requireNonNull(request, "request");
         node.ensureOpen();
-        return new ActorJoinEntrySpotBuilder(actor, destNodeRid);
+        return new ActorJoinEntrySpotBuilder(actor, destNodeRid, request);
     }
 
     ActorLeaveOperation leaveActor(ActorRef actor, RoutingId currentSpotRid) {
@@ -253,12 +255,23 @@ final class SpotActorJoinPlane {
         implements ActorJoinEntrySpotOperation {
         private final ActorRef actor;
         private final RoutingId destNodeRid;
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
         private Duration timeout = Duration.ofMillis(5_000L);
+        private SendFlags flags = SendFlags.NONE;
         private boolean submitted;
 
-        ActorJoinEntrySpotBuilder(ActorRef actor, RoutingId destNodeRid) {
+        ActorJoinEntrySpotBuilder(ActorRef actor, RoutingId destNodeRid,
+                                  Message request) {
             this.actor = actor;
             this.destNodeRid = destNodeRid;
+            parts.add(request);
+        }
+
+        @Override
+        public ActorJoinEntrySpotOperation message(Message part) {
+            ensureNotSubmitted();
+            parts.add(Objects.requireNonNull(part, "part"));
+            return this;
         }
 
         @Override
@@ -269,12 +282,20 @@ final class SpotActorJoinPlane {
         }
 
         @Override
+        public ActorJoinEntrySpotOperation flags(SendFlags value) {
+            ensureNotSubmitted();
+            flags = Objects.requireNonNull(value, "flags");
+            return this;
+        }
+
+        @Override
         public CompletableFuture<ActorJoinEntrySpotCompletion> submit() {
             CompletableFuture<ActorJoinEntrySpotCompletion> future =
                 new CompletableFuture<>();
-            submit(result -> {
+            submit((result, replyParts) -> {
                 if (result.result() == RequestResult.OK) {
-                    future.complete(new ActorJoinEntrySpotCompletion(result));
+                    future.complete(new ActorJoinEntrySpotCompletion(result,
+                        replyParts));
                 } else {
                     future.completeExceptionally(
                         new ZlinkRequestException(result.result()));
@@ -290,14 +311,17 @@ final class SpotActorJoinPlane {
             ActorRequestCallbacks.JoinEntrySpotPendingToken token =
                 ActorRequestCallbacks.registerJoinEntrySpot(callback);
             try (Arena arena = Arena.ofConfined()) {
+                MemorySegment partsArr = parts.copyToNativeArray(arena);
                 int rc = Native.spotNodeActorJoinEntrySpot(node.handle(),
                     ActorInterop.actorRefToNative(arena, actor),
                     ActorInterop.nativeRoutingId(arena, destNodeRid),
+                    partsArr, parts.size(),
                     ActorRequestCallbacks.ACTOR_JOIN_ENTRY_SPOT_CALLBACK,
-                    MemorySegment.ofAddress(token.id()),
+                    MemorySegment.ofAddress(token.id()), flags.value(),
                     NativeSpotNode.timeoutMillis(timeout));
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
+                    MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
                     throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
             }

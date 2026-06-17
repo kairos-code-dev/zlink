@@ -125,10 +125,11 @@ internal sealed partial class SpotNode
     }
 
     public ActorJoinEntrySpotOperation JoinActorEntrySpot(ActorRef actor,
-        RoutingId destNodeRid)
+        RoutingId destNodeRid, Message request)
     {
         EnsureNotDisposed();
-        return new ActorJoinEntrySpotOperationImpl(this, actor, destNodeRid);
+        return new ActorJoinEntrySpotOperationImpl(this, actor, destNodeRid,
+            request);
     }
 
     internal Task<IReadOnlyList<Message>> JoinActor(ActorRef actor,

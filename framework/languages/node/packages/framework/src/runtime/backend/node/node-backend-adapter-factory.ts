@@ -185,6 +185,78 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
           (target as unknown as { attachSpotRouteChannelDiscovery(channelName: string, discovery: unknown): void })
             .attachSpotRouteChannelDiscovery(channelName, unwrapBackendObject(discovery));
       }
+      if (property === 'setRoutingId') {
+        return (routingId: unknown) =>
+          (target as unknown as { setRoutingId(routingId: unknown): void }).setRoutingId(toNativeRoutingId(routingId));
+      }
+      if (property === 'connectRouterChannelPeerRid') {
+        return (channelName: string, peerRid: unknown, endpoint: string) =>
+          (target as unknown as { connectRouterChannelPeerRid(channelName: string, peerRid: unknown, endpoint: string): void })
+            .connectRouterChannelPeerRid(channelName, toNativeRoutingId(peerRid), endpoint);
+      }
+      if (property === 'disconnectRouterChannelPeerRid') {
+        return (channelName: string, peerRid: unknown) =>
+          (target as unknown as { disconnectRouterChannelPeerRid(channelName: string, peerRid: unknown): void })
+            .disconnectRouterChannelPeerRid(channelName, toNativeRoutingId(peerRid));
+      }
+      if (property === 'createSpot' || property === 'entrySpot') {
+        return () => wrapBackendObject((target as unknown as { [key: string]: () => { close(): void } })[property]());
+      }
+      if (property === 'getOrCreateSpot') {
+        return (spotRid: unknown) => {
+          const result = (target as unknown as {
+            getOrCreateSpot(spotRid: unknown): { readonly spot: { close(): void }; readonly created: boolean };
+          }).getOrCreateSpot(toNativeRoutingId(spotRid));
+          return {
+            ...result,
+            spot: wrapBackendObject(result.spot)
+          };
+        };
+      }
+      if (property === 'sendToSpot') {
+        return (targetRid: unknown, spotRid: unknown, payload: unknown, flags: number) =>
+          (target as unknown as {
+            sendToSpot(targetRid: unknown, spotRid: unknown, payload: unknown, flags: number): boolean;
+          }).sendToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid), payload, flags);
+      }
+      if (property === 'requestToSpot') {
+        return (targetRid: unknown, spotRid: unknown, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) =>
+          (target as unknown as {
+            requestToSpot(
+              targetRid: unknown,
+              spotRid: unknown,
+              payload: unknown,
+              callback: unknown,
+              flags: number,
+              timeoutMs?: number
+            ): boolean;
+          }).requestToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid), payload, callback, flags, timeoutMs);
+      }
+      if (property === 'joinActor') {
+        return (actor: unknown, destNodeRid: unknown, destSpotRid: unknown, payload: unknown, callback: unknown, timeoutMs?: number) =>
+          (target as unknown as {
+            joinActor(
+              actor: unknown,
+              destNodeRid: unknown,
+              destSpotRid: unknown,
+              payload: unknown,
+              callback: unknown,
+              timeoutMs?: number
+            ): boolean;
+          }).joinActor(actor, toNativeRoutingId(destNodeRid), toNativeRoutingId(destSpotRid), payload, callback, timeoutMs);
+      }
+      if (property === 'joinActorEntrySpot') {
+        return (actor: unknown, destNodeRid: unknown, request: unknown, callback: unknown, timeoutMs?: number) =>
+          (target as unknown as {
+            joinActorEntrySpot(
+              actor: unknown,
+              destNodeRid: unknown,
+              request: unknown,
+              callback: unknown,
+              timeoutMs?: number
+            ): boolean;
+          }).joinActorEntrySpot(actor, toNativeRoutingId(destNodeRid), request, callback, timeoutMs);
+      }
       const value = Reflect.get(target, property, target);
       return typeof value === 'function' ? value.bind(target) : value;
     }

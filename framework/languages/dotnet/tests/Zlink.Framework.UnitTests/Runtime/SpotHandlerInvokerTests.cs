@@ -108,7 +108,7 @@ public sealed class SpotHandlerInvokerTests
 
         public string? JoinedActorId { get; private set; }
 
-        public ValueTask onJoinActor(
+        public ValueTask OnJoinedActorAsync(
             MemberLifecycleActor actor,
             CancellationToken cancellationToken)
         {
@@ -117,7 +117,7 @@ public sealed class SpotHandlerInvokerTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask onLeaveActor(
+        public ValueTask OnLeaveActorAsync(
             MemberLifecycleActor actor,
             CancellationToken cancellationToken)
         {
@@ -136,7 +136,7 @@ public sealed class SpotHandlerInvokerTests
     {
         public IZLinkSpotContext Context => throw new NotSupportedException();
 
-        public ValueTask onJoinActor(
+        public ValueTask OnJoinedActorAsync(
             MemberLifecycleActor actor,
             CancellationToken cancellationToken)
         {

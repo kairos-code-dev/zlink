@@ -12,16 +12,16 @@ public interface ZLinkActorContext {
 
     ZLinkBoundSession boundSession();
 
-    ZLinkSpot getSpot();
+    ZLinkSpot<?> getSpot();
 
-    <TSpot extends ZLinkSpot> TSpot getSpot(Class<TSpot> spotType);
+    <TSpot extends ZLinkSpot<?>> TSpot getSpot(Class<TSpot> spotType);
 
     default ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid, Object request) {
         throw new ZLinkConfigurationException(
             "joinSpot is only available on framework-managed actor contexts");
     }
 
-    default ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid) {
+    default ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid, Object request) {
         throw new ZLinkConfigurationException(
             "joinEntrySpot is only available on framework-managed actor contexts");
     }

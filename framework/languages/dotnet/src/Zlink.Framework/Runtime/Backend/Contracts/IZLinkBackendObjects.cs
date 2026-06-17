@@ -26,8 +26,10 @@ internal readonly record struct ZLinkBackendActorJoinResult(
 
 internal readonly record struct ZLinkBackendActorJoinEntrySpotResult(
     RequestResult Result,
+    int JoinResultCode,
     ZLinkBackendActorRef Actor,
     RoutingId TargetNodeRid,
+    RoutingId JoinedSpotRid,
     ulong JoinEpoch,
     uint Flags);
 
@@ -36,7 +38,8 @@ internal delegate void ActorJoinCallback(
     IReadOnlyList<Message> parts);
 
 internal delegate void ActorJoinEntrySpotCallback(
-    ZLinkBackendActorJoinEntrySpotResult result);
+    ZLinkBackendActorJoinEntrySpotResult result,
+    IReadOnlyList<Message> parts);
 
 internal sealed record ZLinkBackendDiscoveryRoute(
     RoutingId OwnerRoutingId,

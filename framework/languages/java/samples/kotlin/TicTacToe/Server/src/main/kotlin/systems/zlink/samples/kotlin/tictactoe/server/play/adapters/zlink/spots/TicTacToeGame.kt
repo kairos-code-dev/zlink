@@ -6,7 +6,6 @@ import java.time.Instant
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.kotlin.ZLinkCoroutineSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -29,7 +28,7 @@ class TicTacToeGame(
     private val createdHandler: TicTacToeGameCreatedHandler,
     private val json: ObjectMapper,
     coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineSpot(coroutines) {
+) : ZLinkCoroutineSpot<PlayActor>(coroutines) {
     private val gameTickPeriod: Duration = Duration.ofSeconds(1)
     private val turnTimeout: Duration = Duration.ofSeconds(15)
     val roomId: String = context.spotRid().toString()
@@ -53,11 +52,10 @@ class TicTacToeGame(
     }
 
     override suspend fun onActorJoinSuspending(
-        actor: ZLinkActor,
+        actor: PlayActor,
         request: Message,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
-        require(actor is PlayActor) { "tic-tac-toe game only accepts PlayActor." }
         val joinRequest = json.readValue(request.toByteArray(), TicTacToeGameJoinReq::class.java)
         require(joinRequest.actorId == actor.actorId) {
             "join request actor id does not match bound actor"
@@ -66,28 +64,24 @@ class TicTacToeGame(
         return ZLinkSpotActorJoinResponse.accept(Message.from(json.writeValueAsBytes(reply)))
     }
 
-    override fun onJoinActor(
-        actor: ZLinkActor,
+    override fun onJoinedActor(
+        actor: PlayActor,
         cancellationToken: CancellationToken,
     ) {
     }
 
     override fun onLeaveActor(
-        actor: ZLinkActor,
+        actor: PlayActor,
         cancellationToken: CancellationToken,
     ) {
-        if (actor is PlayActor) {
-            players.removeIf { it.actor.actorId == actor.actorId }
-        }
+        players.removeIf { it.actor.actorId == actor.actorId }
     }
 
     override fun onDisconnectActor(
-        actor: ZLinkActor,
+        actor: PlayActor,
         cancellationToken: CancellationToken,
     ) {
-        if (actor is PlayActor) {
-            actor.markDisconnected()
-        }
+        actor.markDisconnected()
     }
 
     override suspend fun onInitializeSuspending() {

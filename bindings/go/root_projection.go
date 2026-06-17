@@ -42,12 +42,15 @@ type (
 	Actor                        = impl.Actor
 	ActorJoinResult              = impl.ActorJoinResult
 	ActorJoinCompletion          = impl.ActorJoinCompletion
+	ActorJoinEntrySpotResult     = impl.ActorJoinEntrySpotResult
+	ActorJoinEntrySpotCompletion = impl.ActorJoinEntrySpotCompletion
 	ActorLookupResult            = impl.ActorLookupResult
 	ActorLookupCompletion        = impl.ActorLookupCompletion
 	SpotActorLifecycleInfo       = impl.SpotActorLifecycleInfo
 	ActorJoinOp                  = impl.ActorJoinOp
 	ActorJoinSubmitOp            = impl.ActorJoinSubmitOp
 	ActorJoinCallbackSubmitOp    = impl.ActorJoinCallbackSubmitOp
+	ActorJoinEntrySpotOp         = impl.ActorJoinEntrySpotOp
 	ActorJoinReplyOp             = impl.ActorJoinReplyOp
 	ActorLeaveOp                 = impl.ActorLeaveOp
 	ActorDestroyOp               = impl.ActorDestroyOp

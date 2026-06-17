@@ -2,6 +2,7 @@ package systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.h
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkRequestContext
@@ -35,9 +36,9 @@ class EnsureSupportUserActorHandler(
         supportActor.setIdentity(request.displayName, request.role)
         directory.addOrUpdate(supportActor)
         val joined = actor.context()
-            .joinEntrySpot(RoutingId.from(SampleTopology.SupportRid))
+            .joinEntrySpot(RoutingId.from(SampleTopology.SupportRid), Message.from(ByteArray(0)))
             .timeout(SampleTimings.RequestTimeout)
-            .submit()
+            .submit(Message::class.java)
             .await()
         if (supportActor.conversationId.isNotBlank()) {
             actor.context()
@@ -49,7 +50,7 @@ class EnsureSupportUserActorHandler(
                 .submit(JoinConversationRes::class.java)
                 .await()
         }
-        EnsureSupportUserActorRes(toSnapshot(joined))
+        EnsureSupportUserActorRes(toSnapshot(joined.actor()))
     }
 
     private fun toSnapshot(actor: ZLinkActorRef): ActorRefSnapshot =

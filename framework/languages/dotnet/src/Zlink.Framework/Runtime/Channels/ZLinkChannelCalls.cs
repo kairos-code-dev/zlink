@@ -105,14 +105,15 @@ internal sealed class ZLinkRequestCall<TMessage>(
                         reply,
                         complete,
                         fail,
-                        "ZLink request"),
+                        "ZLink request",
+                        registration.Codecs),
                     SendFlags.DontWait,
                     timeout),
                 cancellationToken)
             .ConfigureAwait(false);
     }
 
-    private static async ValueTask<TReply> SubmitDealerMeshRequestAsync<TReply>(
+    private async ValueTask<TReply> SubmitDealerMeshRequestAsync<TReply>(
         ZLinkChannelRuntimeBundle bundle,
         IZLinkBackendDealerSocket dealer,
         IReadOnlyList<Message> message,
@@ -130,7 +131,8 @@ internal sealed class ZLinkRequestCall<TMessage>(
                         reply,
                         complete,
                         fail,
-                        "ZLink dealer mesh request"),
+                        "ZLink dealer mesh request",
+                        registration.Codecs),
                     SendFlags.DontWait,
                     timeout),
                 cancellationToken)

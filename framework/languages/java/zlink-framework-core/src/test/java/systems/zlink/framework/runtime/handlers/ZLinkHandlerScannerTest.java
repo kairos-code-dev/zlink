@@ -307,14 +307,14 @@ final class ZLinkHandlerScannerTest {
         }
     }
 
-    public static final class TestSpot implements ZLinkSpot {
+    public static final class TestSpot implements ZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             throw new UnsupportedOperationException();
         }
     }
 
-    public static final class TestEntrySpot implements ZLinkEntrySpot {
+    public static final class TestEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
         @Override
         public ZLinkEntrySpotContext context() {
             throw new UnsupportedOperationException();

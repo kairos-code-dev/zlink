@@ -2,6 +2,7 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.tracking.handlers
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkRequestHandler
@@ -25,13 +26,13 @@ class EnsureCustomerActorHandler(
     ) = coroutines.blocking {
         val actor = actors.getOrCreate(request.customerId, SampleNames.CustomerActorType).await()
         val joined = actor.context()
-            .joinEntrySpot(RoutingId.from(SampleTopology.TrackingSpotNodeRid))
+            .joinEntrySpot(RoutingId.from(SampleTopology.TrackingSpotNodeRid), Message.from(ByteArray(0)))
             .timeout(SampleTimings.RequestTimeout)
-            .submit()
+            .submit(Message::class.java)
             .await()
         CustomerActorEnsured(
             request.customerId,
-            ActorRefSnapshot(joined.nodeRid().toBytes(), joined.actorId(), joined.epoch()),
+            ActorRefSnapshot(joined.actor().nodeRid().toBytes(), joined.actor().actorId(), joined.actor().epoch()),
         )
     }
 }

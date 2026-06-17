@@ -203,7 +203,8 @@ class spot_node_t
                                        const routing_id_t &dest_spot_rid_);
 
     actor_join_entry_spot_operation_t join_actor_entry_spot (const actor_ref_t &actor_,
-                                                             const routing_id_t &dest_node_rid_);
+                                                             const routing_id_t &dest_node_rid_,
+                                                             message_t &request_);
 
     actor_leave_operation_t leave_actor (const actor_ref_t &actor_,
                                          const routing_id_t &current_spot_rid_);

@@ -160,64 +160,96 @@ internal static partial class ActorInterop
         }
     }
 
-    internal static Task<ActorJoinEntrySpotResult> JoinActorEntrySpotAsync(
-        SpotNode node, ActorRef actor, RoutingId destNodeRid,
-        TimeSpan timeout, CancellationToken ct)
-        => SubmitJoinEntrySpotNative(node, actor, destNodeRid, timeout, ct).Task;
+    internal static Task<(ActorJoinEntrySpotResult Result,
+        IReadOnlyList<Message> Parts)> JoinActorEntrySpotAsync(
+            SpotNode node, ActorRef actor, RoutingId destNodeRid,
+            IReadOnlyList<Message> parts, TimeSpan timeout, SendFlags flags,
+            CancellationToken ct)
+    {
+        TaskCompletionSource<ActorJoinEntrySpotResultEnvelope> tcs =
+            SubmitJoinEntrySpotNative(node, actor, destNodeRid, parts,
+                timeout, flags, ct);
+        return tcs.Task.ContinueWith(t =>
+        {
+            ActorJoinEntrySpotResultEnvelope env = t.Result;
+            return (env.Result, env.Parts);
+        }, TaskScheduler.Default);
+    }
 
     internal static bool JoinActorEntrySpotCallback(SpotNode node,
-        ActorRef actor, RoutingId destNodeRid, TimeSpan timeout,
-        ActorJoinEntrySpotHandler callback)
+        ActorRef actor, RoutingId destNodeRid, IReadOnlyList<Message> parts,
+        TimeSpan timeout, SendFlags flags, ActorJoinEntrySpotHandler callback)
     {
         SynchronizationContext? syncCtx = SynchronizationContext.Current;
         try
         {
-            Task<ActorJoinEntrySpotResult> task =
-                JoinActorEntrySpotAsync(node, actor, destNodeRid, timeout,
-                    CancellationToken.None);
-            _ = task.ContinueWith(t =>
+            TaskCompletionSource<ActorJoinEntrySpotResultEnvelope> tcs =
+                SubmitJoinEntrySpotNative(node, actor, destNodeRid, parts,
+                    timeout, flags, CancellationToken.None);
+            _ = tcs.Task.ContinueWith(t =>
             {
-                ActorJoinEntrySpotResult result;
+                ActorJoinEntrySpotResultEnvelope env;
                 if (t.IsFaulted)
                 {
                     Exception err = t.Exception!.GetBaseException();
                     RequestResult rr = err is ZlinkRequestException re
                         ? (RequestResult)re.Code
                         : RequestResult.InternalError;
-                    result = new ActorJoinEntrySpotResult(rr, default,
-                        destNodeRid, 0, 0);
+                    ActorJoinEntrySpotResult fail =
+                        new(rr, 0, default, destNodeRid, default, 0, 0);
+                    env = new ActorJoinEntrySpotResultEnvelope(fail,
+                        Array.Empty<Message>());
                 }
                 else if (t.IsCanceled)
                 {
-                    result = new ActorJoinEntrySpotResult(
-                        RequestResult.Terminated, default, destNodeRid, 0, 0);
+                    ActorJoinEntrySpotResult fail = new(
+                        RequestResult.Terminated, 0, default, destNodeRid,
+                        default, 0, 0);
+                    env = new ActorJoinEntrySpotResultEnvelope(fail,
+                        Array.Empty<Message>());
                 }
                 else
                 {
-                    result = t.Result;
+                    env = t.Result;
                 }
-                CallbackDelivery.Post(syncCtx, () => callback(result));
+                CallbackDelivery.Post(syncCtx,
+                    () => callback(env.Result, env.Parts));
             }, TaskScheduler.Default);
             return true;
         }
-        catch (ZlinkException)
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(error)
+                == SendResult.Backpressured)
         {
-            throw;
+            return false;
         }
     }
 
-    private static TaskCompletionSource<ActorJoinEntrySpotResult>
+    private static TaskCompletionSource<ActorJoinEntrySpotResultEnvelope>
         SubmitJoinEntrySpotNative(SpotNode node, ActorRef actor,
-            RoutingId destNodeRid, TimeSpan timeout, CancellationToken ct)
+            RoutingId destNodeRid, IReadOnlyList<Message> parts,
+            TimeSpan timeout, SendFlags flags, CancellationToken ct)
     {
+        if (parts == null || parts.Count == 0)
+            throw new ZlinkConfigException(
+                ZlinkConfigException.ErrorCode.InvalidArgument);
         uint timeoutMs = NormalizeTimeout(timeout);
         ZlinkActorRef nativeActor = ToNative(actor);
         ZlinkRoutingId nativeNodeRid = destNodeRid.ToNative();
-        var completion = new TaskCompletionSource<ActorJoinEntrySpotResult>(
+        Message[] cloned = RequestReplySupport.CloneParts(parts);
+        ZlinkMsg[] nativeParts = new ZlinkMsg[cloned.Length];
+        int built = 0;
+        var completion = new TaskCompletionSource<ActorJoinEntrySpotResultEnvelope>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         GCHandle handle = default;
         try
         {
+            for (int i = 0; i < cloned.Length; i++)
+            {
+                cloned[i].Copy().MoveTo(ref nativeParts[i]);
+                built++;
+            }
+
             ActorJoinEntrySpotCallState state = new(completion);
             handle = GCHandle.Alloc(state, GCHandleType.Normal);
             if (ct.CanBeCanceled)
@@ -240,8 +272,11 @@ internal static partial class ActorInterop
                     if (gh.Target is ActorJoinEntrySpotCallState s)
                     {
                         ActorJoinEntrySpotResult fail = new(
-                            RequestResult.TimedOut, default, default, 0, 0);
-                        if (s.Completion.TrySetResult(fail))
+                            RequestResult.TimedOut, 0, default, default,
+                            default, 0, 0);
+                        if (s.Completion.TrySetResult(
+                            new ActorJoinEntrySpotResultEnvelope(fail,
+                                Array.Empty<Message>())))
                             s.Cleanup();
                     }
                 }, handle, (int)timeoutMs, System.Threading.Timeout.Infinite);
@@ -249,8 +284,11 @@ internal static partial class ActorInterop
 
             int rc = NativeMethods.zlink_spot_node_actor_join_entry_spot(
                 node.Handle, ref nativeActor, ref nativeNodeRid,
+                ref nativeParts[0], (nuint)nativeParts.Length,
                 JoinEntrySpotHandlerPtr, GCHandle.ToIntPtr(handle),
-                timeoutMs);
+                (int)flags, timeoutMs);
+            for (int i = 0; i < nativeParts.Length; i++)
+                nativeParts[i] = default;
             if (rc != 0)
             {
                 if (handle.IsAllocated)
@@ -258,10 +296,14 @@ internal static partial class ActorInterop
                 throw ZlinkException.CreateSubmitException(
                     NativeMethods.zlink_errno());
             }
+            RequestReplySupport.DisposeParts(cloned);
             return completion;
         }
         catch
         {
+            for (int i = 0; i < built; i++)
+                NativeMethods.zlink_msg_close(ref nativeParts[i]);
+            RequestReplySupport.DisposeParts(cloned);
             if (handle.IsAllocated)
                 handle.Free();
             throw;

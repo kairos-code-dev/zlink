@@ -78,7 +78,10 @@ internal sealed class AuthenticatePlaySessionHandler(
             "play stream: joining actor to entry spot. sessionId={SessionId}, actor={ActorId}",
             context.SessionId,
             actorId);
-        await playerActor.Context.JoinEntrySpot(RoutingId.From(SampleTypes.PlaySpotNodeId))
+        using var entryJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        await playerActor.Context.JoinEntrySpot(
+                RoutingId.From(SampleTypes.PlaySpotNodeId),
+                entryJoinRequest)
             .Async(cancellationToken);
 
         logger.LogInformation(

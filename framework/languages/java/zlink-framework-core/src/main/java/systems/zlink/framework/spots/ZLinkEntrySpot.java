@@ -2,8 +2,9 @@ package systems.zlink.framework.spots;
 
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.contracts.messaging.Message;
 
-public interface ZLinkEntrySpot {
+public interface ZLinkEntrySpot<TActor extends ZLinkActor> {
     ZLinkEntrySpotContext context();
 
     default void configure() {
@@ -16,22 +17,29 @@ public interface ZLinkEntrySpot {
     }
 
     default void onCreateActor(
-        ZLinkActor actor,
+        TActor actor,
         CancellationToken cancellationToken) {
     }
 
-    default void onJoinActor(
-        ZLinkActor actor,
+    default ZLinkSpotActorJoinResponse onActorJoin(
+        TActor actor,
+        Message request,
+        CancellationToken cancellationToken) {
+        return ZLinkSpotActorJoinResponse.reject();
+    }
+
+    default void onJoinedActor(
+        TActor actor,
         CancellationToken cancellationToken) {
     }
 
     default void onLeaveActor(
-        ZLinkActor actor,
+        TActor actor,
         CancellationToken cancellationToken) {
     }
 
     default void onDisconnectActor(
-        ZLinkActor actor,
+        TActor actor,
         CancellationToken cancellationToken) {
     }
 }

@@ -92,34 +92,50 @@ bool submit_actor_join_callback (detail::actor_join_state_t &state_,
 }
 
 async_result_t<actor_join_entry_spot_result_t>
-submit_actor_join_entry_spot_awaitable (detail::actor_payloadless_state_t &state_)
+submit_actor_join_entry_spot_awaitable (detail::actor_join_state_t &state_)
 {
     std::unique_ptr<detail::actor_join_entry_spot_result_state_t> request_state (
       detail::make_future_actor_join_entry_spot_state ());
     std::future<actor_join_entry_spot_result_t> future = request_state->promise->get_future ();
-    const submit_result_t rc = static_cast<submit_result_t> (zlink_spot_node_actor_join_entry_spot (
-      state_.node, zlink::detail::actor_ref_native (state_.actor),
-      zlink::detail::routing_id_native (state_.aux_rid),
-      &detail::actor_join_entry_spot_result_trampoline, request_state.get (),
-      zlink::detail::native_timeout_ms (state_.timeout)));
-    if (rc != submit_result_t::ok)
-        throw submit_error_t (rc, zlink_errno ());
+    if (!state_.node || state_.parts.empty ())
+        throw submit_error_t (submit_result_t::invalid_handle, zlink_errno ());
+    const zlink_routing_id_t dest_node_rid =
+      zlink::detail::routing_id_native_value (state_.dest_node_rid);
+    const int rc = detail::submit_message_array (
+      state_.parts, [&] (zlink_msg_t *native_, size_t part_count_) {
+          return zlink_spot_node_actor_join_entry_spot (
+            state_.node, zlink::detail::actor_ref_native (state_.actor), &dest_node_rid,
+            native_, part_count_, &detail::actor_join_entry_spot_result_trampoline,
+            request_state.get (),
+            static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
+            zlink::detail::native_timeout_ms (state_.timeout));
+      });
+    if (rc != ZLINK_SUBMIT_OK)
+        throw submit_error_t (static_cast<submit_result_t> (rc), zlink_errno ());
     request_state.release ();
     return async_result_t<actor_join_entry_spot_result_t> (std::move (future));
 }
 
-bool submit_actor_join_entry_spot_callback (detail::actor_payloadless_state_t &state_,
+bool submit_actor_join_entry_spot_callback (detail::actor_join_state_t &state_,
                                             actor_join_entry_spot_callback_t callback_)
 {
     std::unique_ptr<detail::actor_join_entry_spot_result_state_t> request_state (
       detail::make_callback_actor_join_entry_spot_state (std::move (callback_)));
-    const submit_result_t rc = static_cast<submit_result_t> (zlink_spot_node_actor_join_entry_spot (
-      state_.node, zlink::detail::actor_ref_native (state_.actor),
-      zlink::detail::routing_id_native (state_.aux_rid),
-      &detail::actor_join_entry_spot_result_trampoline, request_state.get (),
-      zlink::detail::native_timeout_ms (state_.timeout)));
-    if (rc != submit_result_t::ok)
-        throw submit_error_t (rc, zlink_errno ());
+    if (!state_.node || state_.parts.empty ())
+        throw submit_error_t (submit_result_t::invalid_handle, zlink_errno ());
+    const zlink_routing_id_t dest_node_rid =
+      zlink::detail::routing_id_native_value (state_.dest_node_rid);
+    const int rc = detail::submit_message_array (
+      state_.parts, [&] (zlink_msg_t *native_, size_t part_count_) {
+          return zlink_spot_node_actor_join_entry_spot (
+            state_.node, zlink::detail::actor_ref_native (state_.actor), &dest_node_rid,
+            native_, part_count_, &detail::actor_join_entry_spot_result_trampoline,
+            request_state.get (),
+            static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
+            zlink::detail::native_timeout_ms (state_.timeout));
+      });
+    if (rc != ZLINK_SUBMIT_OK)
+        throw submit_error_t (static_cast<submit_result_t> (rc), zlink_errno ());
     request_state.release ();
     return true;
 }
@@ -258,25 +274,38 @@ actor_join_entry_spot_operation_t &actor_join_entry_spot_operation_t::operator= 
   actor_join_entry_spot_operation_t &&) noexcept = default;
 
 actor_join_entry_spot_operation_t::actor_join_entry_spot_operation_t (
-  detail::actor_payloadless_state_t &&state_) :
-    _state (std::make_unique<detail::actor_payloadless_state_t> (std::move (state_)))
+  detail::actor_join_state_t &&state_) :
+    _state (std::make_unique<detail::actor_join_state_t> (std::move (state_)))
 {
 }
 
-detail::actor_payloadless_state_t &actor_join_entry_spot_operation_t::state () noexcept
+detail::actor_join_state_t &actor_join_entry_spot_operation_t::state () noexcept
 {
     return (*_state);
 }
 
-const detail::actor_payloadless_state_t &actor_join_entry_spot_operation_t::state () const noexcept
+const detail::actor_join_state_t &actor_join_entry_spot_operation_t::state () const noexcept
 {
     return (*_state);
+}
+
+actor_join_entry_spot_operation_t &&
+actor_join_entry_spot_operation_t::message (message_t &part_) &&
+{
+    state ().parts.push_back (std::move (part_));
+    return std::move (*this);
 }
 
 actor_join_entry_spot_operation_t &&
 actor_join_entry_spot_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 {
     state ().timeout = timeout_;
+    return std::move (*this);
+}
+
+actor_join_entry_spot_operation_t &&actor_join_entry_spot_operation_t::flags (int flags_) &&
+{
+    state ().flags = send_flags_t (flags_);
     return std::move (*this);
 }
 
@@ -614,13 +643,15 @@ actor_join_operation_t spot_node_t::join_actor (const actor_ref_t &actor_,
 }
 
 actor_join_entry_spot_operation_t
-spot_node_t::join_actor_entry_spot (const actor_ref_t &actor_, const routing_id_t &dest_node_rid_)
+spot_node_t::join_actor_entry_spot (const actor_ref_t &actor_,
+                                    const routing_id_t &dest_node_rid_,
+                                    message_t &request_)
 {
-    detail::actor_payloadless_state_t state;
+    detail::actor_join_state_t state;
     state.node = zlink::detail::native_handle (*this);
     state.actor = actor_;
-    state.aux_rid = dest_node_rid_;
-    state.has_aux_rid = true;
+    state.dest_node_rid = dest_node_rid_;
+    state.parts.push_back (std::move (request_));
     return actor_join_entry_spot_operation_t (std::move (state));
 }
 

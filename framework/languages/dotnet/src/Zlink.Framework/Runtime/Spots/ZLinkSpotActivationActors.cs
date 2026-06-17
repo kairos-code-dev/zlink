@@ -120,7 +120,8 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        await _runtime.JoinActorEntrySpotAsync(NodeRid, actor, cancellationToken)
+        using var request = Message.From(ReadOnlySpan<byte>.Empty);
+        await _runtime.JoinActorEntrySpotAsync(NodeRid, actor, request, cancellationToken)
             .ConfigureAwait(false);
     }
 

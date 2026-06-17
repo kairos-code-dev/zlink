@@ -1,13 +1,24 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots
 
+import systems.zlink.contracts.messaging.Message
+import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.samples.kotlin.deliverydispatch.server.tracking.actors.CustomerActor
 
 class CustomerEntrySpot(
     private val context: ZLinkEntrySpotContext,
-) : ZLinkEntrySpot {
+) : ZLinkEntrySpot<CustomerActor> {
     override fun context(): ZLinkEntrySpotContext = context
 
     override fun configure() {
     }
+
+    override fun onActorJoin(
+        actor: CustomerActor,
+        request: Message,
+        cancellationToken: CancellationToken,
+    ): ZLinkSpotActorJoinResponse =
+        ZLinkSpotActorJoinResponse.accept(Message.from(ByteArray(0)))
 }

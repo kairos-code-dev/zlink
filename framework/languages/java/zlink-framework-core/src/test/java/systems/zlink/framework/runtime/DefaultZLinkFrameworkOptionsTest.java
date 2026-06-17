@@ -33,6 +33,7 @@ import systems.zlink.framework.ZLinkNext;
 import systems.zlink.framework.configuration.ZLinkDispatchMode;
 import systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotKind;
@@ -833,7 +834,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         }
     }
 
-    public static final class TestSpot implements ZLinkSpot {
+    public static final class TestSpot implements ZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             return null;

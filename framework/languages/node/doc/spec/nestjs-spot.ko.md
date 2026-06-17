@@ -284,7 +284,7 @@ export class StageEntrySpot implements ZLinkEntrySpot {
     this.context.handlers.addHandler(JoinStageHandler);
   }
 
-  async onJoinActor(actor: StageActor): Promise<void> {
+  async onJoinedActor(actor: StageActor): Promise<void> {
     await this.recordEntryJoin(actor);
   }
 
@@ -319,7 +319,7 @@ export class StageSpot implements ZLinkSpot {
       : { accepted: false, reply: admission.reply };
   }
 
-  async onJoinActor(actor: StageActor): Promise<void> {
+  async onJoinedActor(actor: StageActor): Promise<void> {
     await this.attachStageActor(actor);
   }
 
@@ -345,8 +345,8 @@ handler 로 매핑할 수 있다.
 
 join / leave lifecycle 은 Spot 멤버 callback 으로 정의한다. user Spot 은
 `onActorJoin(actor, request)` 로 admission 을 결정하고, accept 된 뒤에만
-`onJoinActor(actor)` 를 실행한다. Entry Spot 은 admission 대상이 아니므로
-`onActorJoin` 이 없고, 기본 진입 commit 뒤 `onJoinActor(actor)` 와
+`onJoinedActor(actor)` 를 실행한다. Entry Spot 은 admission 대상이 아니므로
+`onActorJoin` 이 없고, 기본 진입 commit 뒤 `onJoinedActor(actor)` 와
 `onLeaveActor(actor)` 만 실행한다.
 
 handler registry 표면(`context.handlers`) 의 메서드는 다음과 같다. dotnet

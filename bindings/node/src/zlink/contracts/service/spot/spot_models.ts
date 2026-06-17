@@ -115,8 +115,10 @@ export interface ActorJoinResult {
 /** The outcome of an actor join routed through an entry spot. */
 export interface ActorJoinEntrySpotResult {
   readonly result: RequestResult;
+  readonly joinResultCode: number;
   readonly actor: ActorRef;
   readonly targetNodeRid: RoutingId;
+  readonly joinedSpotRid: RoutingId;
   readonly joinEpoch: bigint;
   readonly flags: number;
 }

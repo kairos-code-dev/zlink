@@ -105,8 +105,16 @@ class ActorJoinCallbackOp(_FluentMessageOp, Protocol):
 class ActorJoinEntrySpotOp(Protocol):
     """A builder for joining an actor through an entry spot."""
 
+    def message(self, payload):
+        """Add a message part; consumed on successful submit."""
+        ...
+
     def timeout(self, timeout):
         """Set how long the operation waits for completion before timing out."""
+        ...
+
+    def flags(self, flags):
+        """Set the send flags applied at submit time."""
         ...
 
     def submit(self, callback):

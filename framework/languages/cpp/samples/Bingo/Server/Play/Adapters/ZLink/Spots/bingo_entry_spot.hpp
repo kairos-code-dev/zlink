@@ -55,7 +55,7 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
         created_actor_ids.push_back (actor.actor.actor_id);
     }
 
-    void onJoinActor (const player_actor_t &actor)
+    void on_actor_joined (const player_actor_t &actor)
     {
         joined_actor_ids.push_back (actor.actor.actor_id);
         if (!actor.destroy_after_entry_spot_join) {

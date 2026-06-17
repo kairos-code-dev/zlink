@@ -2,6 +2,7 @@
 
 #include <zlink/framework.hpp>
 
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -103,6 +104,29 @@ int main ()
     }
     if (!decode_failed) {
         return 7;
+    }
+
+    // Public codec configuration surface: codecs().add_serializer<T>() registers a
+    // custom serializer (Avro/Thrift style) into the serializer registry.
+    zlink::framework::serializer_registry_t config_serializers;
+    auto group_state =
+      std::make_shared<zlink::framework::detail::handler_group_options_state_t> ();
+    zlink::framework::codec_options_builder_t codecs (config_serializers, group_state);
+    codecs.add_serializer<payload_t> (
+      [] (const payload_t &payload) {
+          return zlink::message_t::from ("avro:" + std::to_string (payload.value));
+      },
+      [] (const zlink::message_t &message) {
+          const std::string text = message.to_string ();
+          return payload_t{std::stoi (text.substr (std::string ("avro:").size ()))};
+      });
+
+    const auto custom_encoded = config_serializers.get<payload_t> ().serialize ({9});
+    if (custom_encoded.to_string () != "avro:9") {
+        return 8;
+    }
+    if (config_serializers.get<payload_t> ().deserialize (custom_encoded).value != 9) {
+        return 9;
     }
 
     return 0;

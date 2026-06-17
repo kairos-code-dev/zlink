@@ -8,22 +8,22 @@ import systems.zlink.contracts.messaging.Message;
 
 public interface ZLinkSpotManager {
     CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot> spotType);
+        Class<? extends ZLinkSpot<?>> spotType);
 
     CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         Message request);
 
     CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid);
 
     CompletionStage<ZLinkSpotCreateResult> getOrCreate(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid);
 
     CompletionStage<ZLinkSpotCreateResult> getOrCreate(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid,
         Message request);
 

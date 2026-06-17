@@ -3,6 +3,7 @@
 package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.contracts.sockets.DealerSocket;
@@ -107,13 +108,11 @@ public interface SpotNode extends AutoCloseable {
                                           RoutingId destNodeRid,
                                           RoutingId destSpotRid);
 
-    /**
-     * Message-less Entry Spot join builder. Completion delivers the final
-     * ActorRef after the Actor is in {@code destNodeRid}'s Entry Spot.
-     */
+    /** Builds a request-bearing join to {@code destNodeRid}'s Entry Spot. */
     ActorJoinEntrySpotOperation joinActorEntrySpot(
       ActorRef actor,
-      RoutingId destNodeRid);
+      RoutingId destNodeRid,
+      Message request);
 
     /** Async leave to the same node's Entry Spot. */
     ActorLeaveOperation leaveActor(ActorRef actor,

@@ -43,15 +43,16 @@ class play_spot_gateway_wiring_service_t final : public zlink::framework::hosted
                                                                 actor->get (), payload);
         });
         gateway.on_join_entry_spot ([&spots] (const zlink::framework::actor_ref_t &actor_ref,
-                                              zlink::framework::node_rid_t node_rid) {
+                                              zlink::framework::node_rid_t node_rid,
+                                              const zlink::message_t &payload) {
             auto actor = spots.actor_instance<player_actor_t> (actor_ref);
             if (!actor) {
-                return zlink::framework::result_t<zlink::framework::actor_ref_t>::failure (
-                  zlink::framework::framework_error_kind_t::actor_route_not_found,
-                  "player actor instance is not registered");
+                return zlink::framework::result_t<zlink::framework::detail::actor_join_reply_t>::
+                  failure (zlink::framework::framework_error_kind_t::actor_route_not_found,
+                           "player actor instance is not registered");
             }
             return spots.join_actor_to_entry_spot<bingo_entry_spot_t> (
-              actor_ref, std::move (node_rid), actor->get ());
+              actor_ref, std::move (node_rid), actor->get (), payload);
         });
     }
 

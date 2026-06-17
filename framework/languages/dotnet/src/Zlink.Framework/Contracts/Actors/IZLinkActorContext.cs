@@ -18,7 +18,8 @@ public interface IZLinkActorContext
         Message request);
 
     IZLinkActorJoinEntrySpotCall JoinEntrySpot(
-        RoutingId spotNodeRid);
+        RoutingId spotNodeRid,
+        Message request);
 }
 
 public sealed record ZLinkActorJoinResult(
@@ -38,6 +39,6 @@ public interface IZLinkActorJoinEntrySpotCall
 {
     IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout);
 
-    ValueTask<ActorRef> Async(
+    ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default);
 }

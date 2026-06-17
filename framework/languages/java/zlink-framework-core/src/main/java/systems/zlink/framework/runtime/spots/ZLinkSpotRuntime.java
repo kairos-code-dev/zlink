@@ -131,7 +131,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     private final Set<RoutingId> connectedRouterPeerRids = ConcurrentHashMap.newKeySet();
     private final Map<String, ZLinkBackendSpotNode> publisherNodesByChannel = new HashMap<>();
     private final Map<String, ZLinkBackendSpot> publisherSpotsByChannel = new HashMap<>();
-    private final Set<Class<? extends ZLinkSpot>> registeredSpotTypes = new HashSet<>();
+    private final Set<Class<? extends ZLinkSpot<?>>> registeredSpotTypes = new HashSet<>();
     private final Map<RoutingId, SpotActivation> spots = new HashMap<>();
     private final List<EntrySpotActivation> entrySpots = new ArrayList<>();
     private final ZLinkBackendSpotNode primaryNode;
@@ -231,7 +231,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 if (nodeRegistration.entrySpotRoutingId() != null) {
                     entryBackendSpot.setRoutingId(nodeRegistration.entrySpotRoutingId());
                 }
-                for (Class<? extends ZLinkEntrySpot> entrySpotType : nodeRegistration.entrySpots()) {
+                for (Class<? extends ZLinkEntrySpot<?>> entrySpotType : nodeRegistration.entrySpots()) {
                     entrySpots.add(activateEntrySpot(
                         node.routingId(),
                         entryBackendSpot,
@@ -420,13 +420,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
     @Override
     public CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot> spotType) {
+        Class<? extends ZLinkSpot<?>> spotType) {
         return create(spotType, new Message());
     }
 
     @Override
     public CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         Message request) {
         requireRegistered(spotType);
         ZLinkBackendSpot spot = primaryNode.createSpot();
@@ -454,7 +454,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
     @Override
     public CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid) {
         requireRegistered(spotType);
         requireRoutingId(spotRid);
@@ -485,14 +485,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
     @Override
     public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid) {
         return getOrCreate(spotType, spotRid, new Message());
     }
 
     @Override
     public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid,
         Message request) {
         requireRegistered(spotType);
@@ -766,7 +766,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         return result;
     }
 
-    private void requireRegistered(Class<? extends ZLinkSpot> spotType) {
+    private void requireRegistered(Class<? extends ZLinkSpot<?>> spotType) {
         if (spotType == null) {
             throw new ZLinkConfigurationException("spot type is required");
         }
@@ -783,13 +783,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     private CompletionStage<SpotActivationCreateResult> activateAsync(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         ZLinkBackendSpot backendSpot,
         Message request) {
         Message effectiveRequest = request == null ? new Message() : request;
         DefaultSpotContext spotContext =
             new DefaultSpotContext(primaryNode.routingId(), backendSpot);
-        ZLinkSpot spot = tryCreateSpot(spotType, spotContext);
+        ZLinkSpot<?> spot = tryCreateSpot(spotType, spotContext);
         if (spot == null) {
             return CompletableFuture.completedFuture(new SpotActivationCreateResult(
                 new SpotActivation(null, backendSpot, spotContext),
@@ -831,11 +831,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     private EntrySpotActivation activateEntrySpot(
         RoutingId nodeRid,
         ZLinkBackendSpot backendSpot,
-        Class<? extends ZLinkEntrySpot> entrySpotType) {
+        Class<? extends ZLinkEntrySpot<?>> entrySpotType) {
         DefaultEntrySpotContext entryContext = new DefaultEntrySpotContext(
             nodeRid,
             backendSpot);
-        ZLinkEntrySpot entrySpot = createEntrySpot(entrySpotType, entryContext);
+        ZLinkEntrySpot<?> entrySpot = createEntrySpot(entrySpotType, entryContext);
         if (entrySpot == null) {
             backendSpot.close();
             throw new ZLinkConfigurationException(
@@ -910,6 +910,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         return outbound;
     }
 
+    @SuppressWarnings({"rawtypes", "unchecked"})
     private CompletionStage<Void> notifySpotActorLifecycle(
         Object spotSurface,
         ZLinkActor actor,
@@ -919,20 +920,21 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 ((DefaultSpotContext) spot.context()).outbound,
                 () -> joined
                     ? ZLinkHandlerStages.fromRunnable(() ->
-                        spot.onJoinActor(actor, NONE_CANCELLATION))
+                        spot.onJoinedActor(actor, NONE_CANCELLATION))
                     : ZLinkHandlerStages.fromRunnable(() ->
                         spot.onLeaveActor(actor, NONE_CANCELLATION)));
         }
         if (spotSurface instanceof ZLinkEntrySpot entrySpot) {
             return joined
                 ? ZLinkHandlerStages.fromRunnable(() ->
-                    entrySpot.onJoinActor(actor, NONE_CANCELLATION))
+                    entrySpot.onJoinedActor(actor, NONE_CANCELLATION))
                 : ZLinkHandlerStages.fromRunnable(() ->
                     entrySpot.onLeaveActor(actor, NONE_CANCELLATION));
         }
         return CompletableFuture.completedFuture(null);
     }
 
+    @SuppressWarnings({"rawtypes", "unchecked"})
     private CompletionStage<Void> notifySpotActorDisconnected(ZLinkActor actor) {
         Object spotSurface = localActorSpotSurface(actor);
         if (spotSurface instanceof ZLinkSpot spot) {
@@ -952,20 +954,22 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         return CompletableFuture.completedFuture(null);
     }
 
+    @SuppressWarnings({"rawtypes", "unchecked"})
     private CompletionStage<Void> notifyEntrySpotActorCreated(
         RoutingId nodeRid,
         ZLinkActor actor) {
         for (EntrySpotActivation activation : entrySpots) {
             if (activation.context.nodeRid().equals(nodeRid)) {
+                ZLinkEntrySpot rawEntrySpot = activation.entrySpot;
                 return activation.context.enqueueDispatch(() ->
                     ZLinkHandlerStages.fromRunnable(() ->
-                        activation.entrySpot.onCreateActor(actor, NONE_CANCELLATION)));
+                        rawEntrySpot.onCreateActor(actor, NONE_CANCELLATION)));
             }
         }
         return CompletableFuture.completedFuture(null);
     }
 
-    private ZLinkSpot spotFor(RoutingId spotRid) {
+    private ZLinkSpot<?> spotFor(RoutingId spotRid) {
         SpotActivation activation = spots.get(spotRid);
         return activation == null ? null : activation.spot;
     }
@@ -1414,11 +1418,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 "accepted SPOT route channel is not registered: " + channelName));
     }
 
-    private ZLinkSpot tryCreateSpot(
-        Class<? extends ZLinkSpot> spotType,
+    private ZLinkSpot<?> tryCreateSpot(
+        Class<? extends ZLinkSpot<?>> spotType,
         ZLinkSpotContext context) {
         try {
-            return (ZLinkSpot) ZLinkHandlerFactory.services(handlerFactory)
+            return (ZLinkSpot<?>) ZLinkHandlerFactory.services(handlerFactory)
                 .add(ZLinkSpotContext.class, context)
                 .create(spotType);
         } catch (RuntimeException ex) {
@@ -1428,11 +1432,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
     }
 
-    private ZLinkEntrySpot createEntrySpot(
-        Class<? extends ZLinkEntrySpot> entrySpotType,
+    private ZLinkEntrySpot<?> createEntrySpot(
+        Class<? extends ZLinkEntrySpot<?>> entrySpotType,
         ZLinkEntrySpotContext context) {
         try {
-            return (ZLinkEntrySpot) ZLinkHandlerFactory.services(handlerFactory)
+            return (ZLinkEntrySpot<?>) ZLinkHandlerFactory.services(handlerFactory)
                 .add(ZLinkEntrySpotContext.class, context)
                 .create(entrySpotType);
         } catch (RuntimeException ex) {
@@ -1455,7 +1459,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         private final Map<String, List<SpotSubscriptionHandlerRegistration>> subscriptionHandlers =
             new HashMap<>();
         private boolean registrationOpen = true;
-        private ZLinkEntrySpot entrySpot;
+        private ZLinkEntrySpot<?> entrySpot;
 
         DefaultEntrySpotContext(RoutingId nodeRid, ZLinkBackendSpot backendSpot) {
             this.nodeRid = nodeRid;
@@ -1473,7 +1477,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             return nodeRid;
         }
 
-        void setEntrySpot(ZLinkEntrySpot entrySpot) {
+        void setEntrySpot(ZLinkEntrySpot<?> entrySpot) {
             this.entrySpot = entrySpot;
         }
 
@@ -1604,7 +1608,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
     }
 
-    private final class EntrySpotTimerSurface implements ZLinkSpot {
+    private final class EntrySpotTimerSurface implements ZLinkSpot<ZLinkActor> {
         private final DefaultEntrySpotContext context;
 
         EntrySpotTimerSurface(DefaultEntrySpotContext context) {
@@ -1656,13 +1660,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     private final class EntrySpotActivation implements AutoCloseable {
-        private final ZLinkEntrySpot entrySpot;
+        private final ZLinkEntrySpot<?> entrySpot;
         private final ZLinkBackendSpot backendSpot;
         private final DefaultEntrySpotContext context;
         private ZLinkBackendActorReceived pendingActorHeader;
 
         EntrySpotActivation(
-            ZLinkEntrySpot entrySpot,
+            ZLinkEntrySpot<?> entrySpot,
             ZLinkBackendSpot backendSpot,
             DefaultEntrySpotContext context) {
             this.entrySpot = entrySpot;
@@ -1819,7 +1823,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 actor,
                 actorRef,
                 spotRid,
-                spotSurfaceFor(spotRid) instanceof ZLinkSpot spot ? spot : null);
+                spotSurfaceFor(spotRid) instanceof ZLinkSpot<?> spot ? spot : null);
             context.enqueueDispatch(
                 () -> notifySpotActorLifecycle(entrySpot, actor, true));
         }
@@ -2078,17 +2082,29 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 if (request == null) {
                     return;
                 }
+                Message payloadCopy = request.parts().isEmpty()
+                    ? Message.from(new byte[0])
+                    : Message.from(request.parts().get(0).toByteArray());
                 try {
-                    acceptEntryActorJoin(request)
-                        .whenComplete((reply, error) -> {
-                            if (error != null) {
-                                try (Message emptyReply = Message.from(new byte[0])) {
-                                    backendSpot.replyActorJoin(request, 1, List.of(emptyReply));
+                    acceptEntryActorJoin(request, payloadCopy)
+                        .whenComplete((response, error) -> {
+                            try {
+                                if (error != null) {
+                                    try (Message emptyReply = Message.from(new byte[0])) {
+                                        backendSpot.replyActorJoin(request, 1, List.of(emptyReply));
+                                    }
+                                    return;
                                 }
-                                return;
+                                ZLinkSpotActorJoinResponse effective =
+                                    response == null ? ZLinkSpotActorJoinResponse.reject() : response;
+                                Message reply = effective.reply() == null
+                                    ? Message.from(new byte[0])
+                                    : Message.from(effective.reply().toByteArray());
+                                backendSpot.replyActorJoin(request, effective.accepted() ? 0 : 1, List.of(reply));
+                                reply.close();
+                            } finally {
+                                payloadCopy.close();
                             }
-                            backendSpot.replyActorJoin(request, 0, List.of(reply));
-                            reply.close();
                         });
                 } finally {
                     request.parts().forEach(Message::close);
@@ -2096,8 +2112,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             }
         }
 
-        private CompletionStage<Message> acceptEntryActorJoin(
-            ZLinkBackendActorJoinRequest request) {
+        private CompletionStage<ZLinkSpotActorJoinResponse> acceptEntryActorJoin(
+            ZLinkBackendActorJoinRequest request,
+            Message payload) {
             if (actorRuntime == null) {
                 return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                     "actor runtime is required for Entry Spot actor join"));
@@ -2112,18 +2129,40 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                             "Entry Spot actor join target actor is not available: "
                                 + request.targetActor().actorId()));
                     }
-                    actorRuntime.markJoined(
-                        actor.get(),
-                        request.targetActor(),
-                        backendSpot.routingId(),
-                        null);
-                    return context.enqueueDispatch(() ->
-                            notifySpotActorLifecycle(entrySpot, actor.get(), true))
-                        .thenApply(ignored -> Message.from(new byte[0]))
-                        .whenComplete((reply, error) -> {
+                    CompletableFuture<ZLinkSpotActorJoinResponse> admission =
+                        new CompletableFuture<>();
+                    context.enqueueDispatch(() ->
+                            ZLinkHandlerStages.fromSupplier(() ->
+                                    ((ZLinkEntrySpot) entrySpot).onActorJoin(
+                                        actor.get(),
+                                        payload,
+                                        NONE_CANCELLATION))
+                                .thenAccept(admission::complete))
+                        .whenComplete((ignored, error) -> {
                             if (error != null) {
-                                actorRuntime.markLeft(actor.get());
+                                admission.completeExceptionally(error);
                             }
+                        });
+                    return admission
+                        .thenCompose(response -> {
+                            ZLinkSpotActorJoinResponse effective =
+                                response == null ? ZLinkSpotActorJoinResponse.reject() : response;
+                            if (!effective.accepted()) {
+                                return CompletableFuture.completedFuture(effective);
+                            }
+                            actorRuntime.markJoined(
+                                actor.get(),
+                                request.targetActor(),
+                                backendSpot.routingId(),
+                                null);
+                            return context.enqueueDispatch(() ->
+                                    notifySpotActorLifecycle(entrySpot, actor.get(), true))
+                                .thenApply(ignored -> effective)
+                                .whenComplete((reply, error) -> {
+                                    if (error != null) {
+                                        actorRuntime.markLeft(actor.get());
+                                    }
+                                });
                         });
                 });
         }
@@ -2218,7 +2257,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         private final Map<String, List<SpotSubscriptionHandlerRegistration>> subscriptionHandlers =
             new HashMap<>();
         private boolean registrationOpen = true;
-        private ZLinkSpot spot;
+        private ZLinkSpot<?> spot;
 
         DefaultSpotContext(RoutingId nodeRid, ZLinkBackendSpot backendSpot) {
             this(nodeRid, backendSpot, new ZLinkAsyncSerialQueue());
@@ -2234,7 +2273,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             this.outbound = new DefaultSpotOutbound(nodeRid, backendSpot);
         }
 
-        void setSpot(ZLinkSpot spot) {
+        void setSpot(ZLinkSpot<?> spot) {
             this.spot = spot;
         }
 
@@ -2454,7 +2493,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private CompletionStage<Void> invokeTimerHandler(Class<?> handlerType, ZLinkSpot spot, ZLinkTimerTick tick) {
+    private CompletionStage<Void> invokeTimerHandler(Class<?> handlerType, ZLinkSpot<?> spot, ZLinkTimerTick tick) {
         try {
             Object handler = handlerFactory.create(handlerType);
             if (handler instanceof ZLinkSpotTimerHandler timerHandler) {
@@ -3856,13 +3895,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     private final class SpotActivation implements AutoCloseable {
-        private final ZLinkSpot spot;
+        private final ZLinkSpot<?> spot;
         private final ZLinkBackendSpot backendSpot;
         private final DefaultSpotContext context;
         private ZLinkBackendActorReceived pendingActorHeader;
 
         SpotActivation(
-            ZLinkSpot spot,
+            ZLinkSpot<?> spot,
             ZLinkBackendSpot backendSpot,
             DefaultSpotContext context) {
             this.spot = spot;
@@ -4030,7 +4069,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 actor,
                 actorRef,
                 spotRid,
-                spotSurfaceFor(spotRid) instanceof ZLinkSpot spot ? spot : null);
+                spotSurfaceFor(spotRid) instanceof ZLinkSpot<?> spot ? spot : null);
             return actorRuntime.submitActorDispatch(
                 actor.actorId(),
                 () -> notifySpotActorLifecycle(spot, actor, true));
@@ -4331,6 +4370,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 .whenComplete((ignored, error) -> payloadCopy.close());
         }
 
+        @SuppressWarnings({"rawtypes", "unchecked"})
         private CompletionStage<ZLinkSpotActorJoinResponse> invokeActorJoinCallback(
             ZLinkBackendActorJoinRequest request,
             Message payload) {
@@ -4349,7 +4389,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                                 + request.targetActor().actorId()));
                     }
                     return ZLinkHandlerStages
-                        .fromSupplier(() -> spot.onActorJoin(actor.get(), payload, NONE_CANCELLATION))
+                        .fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(actor.get(), payload, NONE_CANCELLATION))
                         .thenCompose(response -> {
                             ZLinkSpotActorJoinResponse effective =
                                 response == null ? ZLinkSpotActorJoinResponse.reject() : response;

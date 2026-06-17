@@ -9,6 +9,7 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
     ZLinkHandlerDispatcher dispatcher,
     Func<string, IReadOnlySet<string>> resolveMappedGroups,
     LogLevel unhandledLogLevel,
+    ZLinkCodecRegistryBuilder codecs,
     ILogger logger)
 {
     public async Task DispatchAsync(
@@ -36,7 +37,7 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
             return;
         }
 
-        var message = ZLinkEnvelopeCodec.DecodeBody(parts, endpoint.MessageType);
+        var message = ZLinkEnvelopeCodec.DecodeBody(parts, endpoint.MessageType, codecs);
         var context = new ZLinkSendContext(
             channelName,
             header.MessageName,

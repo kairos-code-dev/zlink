@@ -64,7 +64,9 @@ export function invokeActorJoinEntrySpot(
   nodeHandle: unknown,
   actor: ActorRef,
   destNodeRid: RoutingId,
+  parts: MessageLike | readonly MessageLike[],
   callback: ActorJoinEntrySpotHandler,
+  flags: SendFlags,
   timeoutMs: number,
 ): boolean {
   try {
@@ -72,14 +74,16 @@ export function invokeActorJoinEntrySpot(
       nodeHandle,
       actorRefToRaw(actor),
       normalizeRoutingId(destNodeRid, 'destNodeRid'),
-      (rawResult: ActorJoinEntrySpotResultRaw | null) => {
-        callback(actorJoinEntrySpotResultFromRaw(rawResult));
+      normalizeOperationPayload(parts),
+      (rawResult: ActorJoinEntrySpotResultRaw | null, rawReplyParts: Buffer[] | null) => {
+        callback(actorJoinEntrySpotResultFromRaw(rawResult), messagesFromNativeBuffers(rawReplyParts));
       },
+      flags | 0,
       timeoutMs | 0,
     );
     return true;
   } catch (error) {
-    throw submitNativeError(error, SendFlags.None, 'actor entry spot join failed');
+    throw submitNativeError(error, flags, 'actor entry spot join failed');
   }
 }
 

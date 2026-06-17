@@ -146,18 +146,23 @@ struct actor_join_entry_spot_result_t
 {
     actor_join_entry_spot_result_t () :
         result (request_result_t::ok),
+        join_result_code (0),
         actor (),
         target_node_rid (detail::unchecked_empty_routing_id ()),
+        joined_spot_rid (detail::unchecked_empty_routing_id ()),
         join_epoch (0),
         flags (0)
     {
     }
 
     request_result_t result;
+    int32_t join_result_code;
     actor_ref_t actor;
     routing_id_t target_node_rid;
+    routing_id_t joined_spot_rid;
     uint64_t join_epoch;
     uint32_t flags;
+    std::vector<message_t> reply_parts;
 
   private:
     friend struct detail::actor_model_access_t;
@@ -223,7 +228,7 @@ using actor_join_callback_t =
   std::function<void (const actor_join_result_t &, std::vector<message_t>)>;
 
 using actor_join_entry_spot_callback_t =
-  std::function<void (const actor_join_entry_spot_result_t &)>;
+  std::function<void (const actor_join_entry_spot_result_t &, std::vector<message_t>)>;
 
 using actor_lookup_callback_t = std::function<void (const actor_lookup_result_t &)>;
 

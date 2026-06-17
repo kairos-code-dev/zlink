@@ -91,7 +91,7 @@ final class RemoteActorGatewayTest {
         }
     }
 
-    public static final class GameSpot implements ZLinkSpot {
+    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
         static int disconnectCount;
 
         @Override

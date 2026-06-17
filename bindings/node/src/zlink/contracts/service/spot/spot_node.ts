@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import type { RoutingId } from '../../core';
+import type { MessageLike } from '../../messaging';
 import type { DealerSocket, PubSocket } from '../../sockets';
 import type { Discovery } from '../discovery/discovery';
 import type {
@@ -93,8 +94,8 @@ export interface SpotNode {
   destroyActor(actor: ActorRef): ActorDestroyOperation;
   /** Begin joining `actor` to a spot on another node; submit the returned operation. */
   joinActor(actor: ActorRef, targetNodeRid: RoutingId, targetSpotRid: RoutingId): ActorJoinOperation;
-  /** Begin joining `actor` to a node's entry spot; submit the returned operation. */
-  joinActorEntrySpot(actor: ActorRef, targetNodeRid: RoutingId): ActorJoinEntrySpotOperation;
+  /** Begin joining `actor` to a node's entry spot with a request message. */
+  joinActorEntrySpot(actor: ActorRef, targetNodeRid: RoutingId, request: MessageLike): ActorJoinEntrySpotOperation;
   /** Begin removing `actor` from `targetSpotRid`; submit the returned operation. */
   leaveActor(actor: ActorRef, targetSpotRid: RoutingId): ActorLeaveOperation;
   /** Begin a send to `actor`'s bound session; parts are consumed on a successful submit. */

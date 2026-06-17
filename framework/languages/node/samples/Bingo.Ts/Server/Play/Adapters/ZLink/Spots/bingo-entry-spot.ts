@@ -27,7 +27,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     return matchBingoRes(roomId, state);
   }
 
-  async onJoinActor(actor: PlayerActorType): Promise<void> {
+  async onJoinedActor(actor: PlayerActorType): Promise<void> {
     if (!actor.destroyAfterEntrySpotJoin) {
       return;
     }

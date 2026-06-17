@@ -81,7 +81,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     this.game = new BingoRoomGame(this.roomId, settings);
   }
 
-  async onJoinActor(actor: PlayerActorType): Promise<void> {
+  async onJoinedActor(actor: PlayerActorType): Promise<void> {
     void actor;
   }
 

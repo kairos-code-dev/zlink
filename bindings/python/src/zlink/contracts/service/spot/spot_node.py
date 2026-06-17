@@ -133,8 +133,8 @@ class SpotNode(Protocol):
     def join_actor(self, actor_ref, dest_node_rid, dest_spot_rid):
         """Begin joining ``actor_ref`` to a spot on another node; submit the returned operation."""
         ...
-    def join_actor_entry_spot(self, actor_ref, dest_node_rid):
-        """Begin joining ``actor_ref`` to a node's entry spot; submit the returned operation."""
+    def join_actor_entry_spot(self, actor_ref, dest_node_rid, request):
+        """Begin joining ``actor_ref`` to a node's entry spot with a request message."""
         ...
     def leave_actor(self, actor_ref, current_spot_rid):
         """Begin removing ``actor_ref`` from ``current_spot_rid``; submit the returned operation."""

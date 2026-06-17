@@ -139,6 +139,12 @@ while (running) {
 connector는 server framework와 별도 모듈이며 TCP/TLS/WS/WSS, manual dispatch,
 reconnect, codec helper를 제공한다.
 
+connector도 framework처럼 **custom codec**을 끼울 수 있다. `ZLinkStreamConnectorOptions`의
+`typedCodec`에 `ZLinkStreamCodec`(`encode(packetName, value)`/`decode(payload, type)`) 구현을
+주면 Avro·Thrift 같은 포맷을 쓴다. server framework 쪽 등록(`codecs().addSerializer(...)`)과
+대칭이며, 두 표면의 전체 목록은
+[framework-api §2.2](../../../../doc/spec/framework-api.ko.md) 표를 본다.
+
 ## 3. 자주 막히는 곳
 
 - **콜백이 안 불린다(client)** -> manual dispatch인데 `dispatch()`를 주기적으로

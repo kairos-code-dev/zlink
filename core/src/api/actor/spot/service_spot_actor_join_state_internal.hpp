@@ -15,7 +15,9 @@ struct queued_join_request_t
         target_node (NULL),
         remote (false),
         handler (NULL),
+        entry_handler (NULL),
         userdata (NULL),
+        entry_spot_join (false),
         replied (false),
         join_result_code (0),
         join_epoch (0),
@@ -42,7 +44,9 @@ struct queued_join_request_t
     zlink_routing_id_t source_spot_rid;
     zlink_actor_ref_t target_actor_ref;
     zlink_actor_join_spot_handler_fn handler;
+    zlink_actor_join_entry_spot_handler_fn entry_handler;
     void *userdata;
+    bool entry_spot_join;
     bool replied;
     int32_t join_result_code;
     uint64_t join_epoch;

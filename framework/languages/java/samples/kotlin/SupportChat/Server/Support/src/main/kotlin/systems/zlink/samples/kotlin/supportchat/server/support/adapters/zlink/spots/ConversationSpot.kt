@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.kotlin.ZLinkCoroutineSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -37,7 +36,7 @@ class ConversationSpot(
     private val createdHandler: ConversationSpotCreatedHandler,
     private val json: ObjectMapper,
     coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineSpot(coroutines) {
+) : ZLinkCoroutineSpot<SupportUserActor>(coroutines) {
     private val actors = LinkedHashMap<String, SupportUserActor>()
     private var conversation: Conversation? = null
     private var idleTimer: ZLinkTimer? = null
@@ -52,11 +51,10 @@ class ConversationSpot(
     }
 
     override suspend fun onActorJoinSuspending(
-        actor: ZLinkActor,
+        actor: SupportUserActor,
         request: Message,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
-        require(actor is SupportUserActor) { "Support conversation only accepts SupportUserActor." }
         val join = json.readValue(request.toByteArray(), JoinConversationReq::class.java)
         val current = requireConversation()
         if (join.conversationId != current.conversationId()) {
@@ -78,19 +76,15 @@ class ConversationSpot(
         )
     }
 
-    override fun onJoinActor(actor: ZLinkActor, cancellationToken: CancellationToken) {
+    override fun onJoinedActor(actor: SupportUserActor, cancellationToken: CancellationToken) {
     }
 
-    override fun onLeaveActor(actor: ZLinkActor, cancellationToken: CancellationToken) {
-        if (actor is SupportUserActor) {
-            actors.remove(actor.actorId())
-        }
+    override fun onLeaveActor(actor: SupportUserActor, cancellationToken: CancellationToken) {
+        actors.remove(actor.actorId())
     }
 
-    override fun onDisconnectActor(actor: ZLinkActor, cancellationToken: CancellationToken) {
-        if (actor is SupportUserActor) {
-            actor.markDisconnected()
-        }
+    override fun onDisconnectActor(actor: SupportUserActor, cancellationToken: CancellationToken) {
+        actor.markDisconnected()
     }
 
     override suspend fun onInitializeSuspending() {

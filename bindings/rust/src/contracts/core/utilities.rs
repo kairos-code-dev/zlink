@@ -1,7 +1,7 @@
 use crate::error::{ConfigError, ConfigResult};
 use crate::ffi;
 use std::ffi::c_void;
-use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::ptr;
 
 /// A high-resolution elapsed-time stopwatch.

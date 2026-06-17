@@ -41,6 +41,10 @@ type (
 	ActorJoinResult = impl.ActorJoinResult
 	// ActorJoinCompletion carries the result and reply parts of a completed actor join.
 	ActorJoinCompletion = impl.ActorJoinCompletion
+	// ActorJoinEntrySpotResult is the outcome of an actor Entry Spot join.
+	ActorJoinEntrySpotResult = impl.ActorJoinEntrySpotResult
+	// ActorJoinEntrySpotCompletion carries the result and reply parts of a completed actor Entry Spot join.
+	ActorJoinEntrySpotCompletion = impl.ActorJoinEntrySpotCompletion
 	// ActorLookupResult is the outcome of an actor lookup.
 	ActorLookupResult = impl.ActorLookupResult
 	// ActorLookupCompletion carries the result of a completed actor lookup.
@@ -53,6 +57,8 @@ type (
 	ActorJoinSubmitOp = impl.ActorJoinSubmitOp
 	// ActorJoinCallbackSubmitOp is the callback-submission stage of an actor join.
 	ActorJoinCallbackSubmitOp = impl.ActorJoinCallbackSubmitOp
+	// ActorJoinEntrySpotOp builds an actor Entry Spot join request and submit.
+	ActorJoinEntrySpotOp = impl.ActorJoinEntrySpotOp
 	// ActorJoinReplyOp builds a reply to an actor-join request; a zero-part reply is allowed.
 	ActorJoinReplyOp = impl.ActorJoinReplyOp
 	// ActorLeaveOp builds an actor leave.

@@ -395,17 +395,17 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
             ZLinkSpotActorJoinResult.Accept(new JoinedRoom(join.RoomId).Encode()));
     }
 
-    public ValueTask onJoinActor(
+    public ValueTask OnJoinedActorAsync(
         PlayerActor actor,
         CancellationToken ct)
         => ValueTask.CompletedTask;
 
-    public ValueTask onLeaveActor(
+    public ValueTask OnLeaveActorAsync(
         PlayerActor actor,
         CancellationToken ct)
         => ValueTask.CompletedTask;
 
-    public ValueTask onDisconnectActor(
+    public ValueTask OnDisconnectActorAsync(
         PlayerActor actor,
         CancellationToken ct)
         => ValueTask.CompletedTask;
@@ -425,9 +425,9 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkSpot` | user spot 인스턴스. `Context` + lifecycle(`Configure`/`OnCreateAsync`/`OnInitializeAsync`/`OnClosingAsync`) |
-| `IZLinkSpot<TActor>` | actor 를 받는 user spot. `OnActorJoinAsync`/`onJoinActor`/`onLeaveActor`/`onDisconnectActor` lifecycle 을 추가한다 |
+| `IZLinkSpot<TActor>` | actor 를 받는 user spot. `OnActorJoinAsync`/`OnJoinedActorAsync`/`OnLeaveActorAsync`/`OnDisconnectActorAsync` lifecycle 을 추가한다 |
 | `IZLinkEntrySpot` | Entry Spot 인스턴스. `IZLinkEntrySpotContext` + lifecycle |
-| `IZLinkEntrySpot<TActor>` | actor 를 받는 Entry Spot. `onCreateActor`/`onJoinActor`/`onLeaveActor`/`onDisconnectActor` lifecycle 을 추가한다 |
+| `IZLinkEntrySpot<TActor>` | actor 를 받는 Entry Spot. `OnCreateActorAsync`/`OnActorJoinAsync`/`OnJoinedActorAsync`/`OnLeaveActorAsync`/`OnDisconnectActorAsync` lifecycle 을 추가한다 |
 | `IZLinkSpotContext` | user spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `leaveActor` + `CloseAsync` + `AddTimer` + `RunWorker` |
 | `IZLinkEntrySpotContext` | Entry Spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `DestroyActorAsync` + `AddTimer` + `RunWorker` |
 | `IZLinkActorHandlerRegistry` | actor handler 등록(`AddHandler`, `AddActorPacket`) |
@@ -482,17 +482,18 @@ public sealed class RoomRequestHandler
 | `IZLinkSpotSubscriptionHandler<TSpot, TMessage>` | spot 구독 topic 수신 handler |
 | `IZLinkSpotTimerHandler<TSpot>` | spot timer tick handler(`ZLinkTimerTick`) |
 | `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user spot join 요청 callback. 기본 계약은 `(TActor, Message)` |
+| `IZLinkEntrySpot<TActor>.OnActorJoinAsync(...)` | Entry Spot join 요청 callback. user Spot에서 Entry Spot으로 돌아오는 명시적 join을 accept/reject한다 |
 | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | user spot actor 단방향 handler. context 뒤에 payload |
 | `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user spot actor 요청 handler. context 뒤에 request |
-| `IZLinkSpot<TActor>.onJoinActor(...)` | user spot actor join commit 이후 lifecycle |
-| `IZLinkSpot<TActor>.onLeaveActor(...)` | user spot actor leave lifecycle |
-| `IZLinkSpot<TActor>.onDisconnectActor` | user spot actor disconnect notification. membership 은 변경하지 않음 |
-| `IZLinkEntrySpot<TActor>.onCreateActor(...)` | Entry Spot actor create lifecycle |
+| `IZLinkSpot<TActor>.OnJoinedActorAsync(...)` | user spot actor join commit 이후 lifecycle |
+| `IZLinkSpot<TActor>.OnLeaveActorAsync(...)` | user spot actor leave lifecycle |
+| `IZLinkSpot<TActor>.OnDisconnectActorAsync` | user spot actor disconnect notification. membership 은 변경하지 않음 |
+| `IZLinkEntrySpot<TActor>.OnCreateActorAsync(...)` | Entry Spot actor create lifecycle |
 | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` | Entry Spot actor 단방향 handler. context 뒤에 payload |
 | `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor 요청 handler. context 뒤에 request |
-| `IZLinkEntrySpot<TActor>.onJoinActor(...)` | Entry Spot actor join lifecycle |
-| `IZLinkEntrySpot<TActor>.onLeaveActor(...)` | Entry Spot actor leave lifecycle |
-| `IZLinkEntrySpot<TActor>.onDisconnectActor` | Entry Spot actor disconnect notification. membership 은 변경하지 않음 |
+| `IZLinkEntrySpot<TActor>.OnJoinedActorAsync(...)` | Entry Spot actor join lifecycle |
+| `IZLinkEntrySpot<TActor>.OnLeaveActorAsync(...)` | Entry Spot actor leave lifecycle |
+| `IZLinkEntrySpot<TActor>.OnDisconnectActorAsync` | Entry Spot actor disconnect notification. membership 은 변경하지 않음 |
 
 검증: `SpotContracts.Spot_handlers_receive_the_spot_instance_and_actor_when_the_contract_requires_it`.
 
@@ -520,7 +521,7 @@ actor.Configure();
 | `IZLinkActor` | ID 로 식별되는 상태 보유 actor. `ActorId`, `Context` |
 | `IZLinkActorContext` | actor 의 상태/동작 표면. `SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinEntrySpot`, `GetSpot<T>` |
 | `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`). 결과는 `Accepted`, `ActorRef`, reply `Message` |
-| `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(...)` 종결자(`Timeout` → `Async`). 결과는 `ActorRef` |
+| `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(..., request)` 종결자(`Timeout` → `Async`). 결과는 `Accepted`, `ActorRef`, reply `Message` |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
 | `IZLinkActorManager` | actor 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |
 

@@ -142,7 +142,9 @@ export interface ServiceNativeBinding {
     node: NativeHandle,
     actor: ActorRefRaw,
     destNodeRid: Buffer,
+    parts: unknown,
     callback: NativeActorEntryJoinCallback,
+    flags: number,
     timeoutMs: number
   ) => void;
   spotNodeActorJoinSpot: (

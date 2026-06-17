@@ -126,6 +126,11 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
     }
 
     private static ZLinkMessageSerializer serializerFor(DefaultZLinkFrameworkOptions options) {
+        java.util.Optional<ZLinkMessageSerializer> custom =
+            options.registration().codecs().customSerializer();
+        if (custom.isPresent()) {
+            return custom.get();
+        }
         if (options.registration().codecs().registeredCodecs().contains("protobuf")) {
             return new ZLinkProtobufMessageSerializer(new ZLinkJsonMessageSerializer());
         }

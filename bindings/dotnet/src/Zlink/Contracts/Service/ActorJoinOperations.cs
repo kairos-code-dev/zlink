@@ -23,12 +23,15 @@ public sealed record ActorJoinResult(RequestResult Result, int JoinResultCode,
 /// The outcome of an actor join routed through an entry spot.
 /// </summary>
 /// <param name="Result">The outcome of the join request.</param>
+/// <param name="JoinResultCode">The application-supplied join result code.</param>
 /// <param name="Actor">The joined actor.</param>
 /// <param name="TargetNodeRid">The routing id of the node the actor was routed to.</param>
+/// <param name="JoinedSpotRid">The routing id of the entry spot that was joined.</param>
 /// <param name="JoinEpoch">The join epoch (generation) assigned.</param>
 /// <param name="Flags">Implementation-defined join flags.</param>
 public sealed record ActorJoinEntrySpotResult(RequestResult Result,
-    ActorRef Actor, RoutingId TargetNodeRid, ulong JoinEpoch, uint Flags);
+    int JoinResultCode, ActorRef Actor, RoutingId TargetNodeRid,
+    RoutingId JoinedSpotRid, ulong JoinEpoch, uint Flags);
 
 /// <summary>
 /// Invoked with the result of an actor join and its reply parts; the callback
@@ -38,10 +41,11 @@ public delegate void ActorJoinHandler(ActorJoinResult result,
     IReadOnlyList<Message> replyParts);
 
 /// <summary>
-/// Invoked with the result of an actor join routed through an entry spot.
+/// Invoked with the result of an actor join routed through an entry spot and
+/// its reply parts; the callback owns the parts and must dispose them.
 /// </summary>
 public delegate void ActorJoinEntrySpotHandler(
-    ActorJoinEntrySpotResult result);
+    ActorJoinEntrySpotResult result, IReadOnlyList<Message> replyParts);
 
 /// <summary>
 /// Builds an actor join: add message parts, then submit and await a reply.
@@ -106,18 +110,27 @@ public interface ActorJoinCallbackSubmitOperation
 }
 
 /// <summary>
-/// Builds an actor join routed through an entry spot: optionally set a timeout, then submit.
+/// Builds an actor join routed through an entry spot: add parts, then submit.
 /// </summary>
 public interface ActorJoinEntrySpotOperation
 {
+    /// <summary>
+    /// Adds a message part; consumed on a successful submit (see <see cref="SendOperation"/>).
+    /// </summary>
+    ActorJoinEntrySpotOperation Message(Message message);
     /// <summary>
     /// Sets how long the operation waits before timing out.
     /// </summary>
     ActorJoinEntrySpotOperation Timeout(TimeSpan timeout);
     /// <summary>
+    /// Sets the send flags applied at submit time.
+    /// </summary>
+    ActorJoinEntrySpotOperation Flags(SendFlags flags);
+    /// <summary>
     /// Submits the operation and returns the result asynchronously.
     /// </summary>
-    Task<ActorJoinEntrySpotResult> Async(CancellationToken ct = default);
+    Task<(ActorJoinEntrySpotResult Result, IReadOnlyList<Message> Parts)> Async(
+        CancellationToken ct = default);
     /// <summary>
     /// Submits the operation; the result is delivered to the callback.
     /// </summary>

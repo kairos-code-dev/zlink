@@ -111,15 +111,15 @@ final class SessionActorsRuntimeIntegrationTest {
                 .toCompletableFuture()
                 .join();
 
-            ZLinkActorRef joined = actor.context()
-                .joinEntrySpot(RoutingId.from("play-node"))
+            var joined = actor.context()
+                .joinEntrySpot(RoutingId.from("play-node"), Message.from(new byte[0]))
                 .timeout(Duration.ofSeconds(2))
-                .submit()
+                .submit(Message.class)
                 .toCompletableFuture()
                 .join();
 
-            assertEquals("player-1", joined.actorId());
-            assertEquals(RoutingId.from("play-node"), joined.nodeRid());
+            assertEquals("player-1", joined.actor().actorId());
+            assertEquals(RoutingId.from("play-node"), joined.actor().nodeRid());
         }
     }
 
@@ -132,15 +132,15 @@ final class SessionActorsRuntimeIntegrationTest {
                 .toCompletableFuture()
                 .join();
 
-            ZLinkActorRef joined = actor.context()
-                .joinEntrySpot(RoutingId.from("play-node"))
+            var joined = actor.context()
+                .joinEntrySpot(RoutingId.from("play-node"), Message.from(new byte[0]))
                 .timeout(Duration.ofSeconds(2))
-                .submit()
+                .submit(Message.class)
                 .toCompletableFuture()
                 .join();
 
-            assertEquals("player-1", joined.actorId());
-            assertEquals(RoutingId.from("play-node"), joined.nodeRid());
+            assertEquals("player-1", joined.actor().actorId());
+            assertEquals(RoutingId.from("play-node"), joined.actor().nodeRid());
         }
     }
 
@@ -191,17 +191,17 @@ final class SessionActorsRuntimeIntegrationTest {
                 .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
-            ZLinkActorRef joined = actor.context()
-                .joinEntrySpot(RoutingId.from("play-node"))
+            var joined = actor.context()
+                .joinEntrySpot(RoutingId.from("play-node"), Message.from(new byte[0]))
                 .timeout(Duration.ofSeconds(2))
-                .submit()
+                .submit(Message.class)
                 .toCompletableFuture()
                 .join();
 
             ZLinkSessionActor bound = session.sessionActors(
                     "gateway",
                     RoutingId.from("session-1"))
-                .bind(joined)
+                .bind(joined.actor())
                 .toCompletableFuture()
                 .join();
 
@@ -218,11 +218,12 @@ final class SessionActorsRuntimeIntegrationTest {
                 .toCompletableFuture()
                 .join();
             ZLinkActorRef actorRef = actor.context()
-                .joinEntrySpot(RoutingId.from("play-node"))
+                .joinEntrySpot(RoutingId.from("play-node"), Message.from(new byte[0]))
                 .timeout(Duration.ofSeconds(2))
-                .submit()
+                .submit(Message.class)
                 .toCompletableFuture()
-                .join();
+                .join()
+                .actor();
             ZLinkSessionActorsRuntime sessionActors = runtime.sessionActors(
                 "gateway",
                 RoutingId.from("session-1"));
@@ -423,14 +424,14 @@ final class SessionActorsRuntimeIntegrationTest {
         }
     }
 
-    public static final class GameSpot implements ZLinkSpot {
+    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             return null;
         }
     }
 
-    public static final class GameEntrySpot implements ZLinkEntrySpot {
+    public static final class GameEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
         private final ZLinkEntrySpotContext context;
 
         public GameEntrySpot(ZLinkEntrySpotContext context) {
@@ -530,10 +531,10 @@ final class SessionActorsRuntimeIntegrationTest {
         public String handle(String actorId) {
             return actors.getOrCreate(actorId, "player")
                 .thenCompose(actor -> actor.context()
-                    .joinEntrySpot(RoutingId.from("play-node"))
+                    .joinEntrySpot(RoutingId.from("play-node"), Message.from(new byte[0]))
                     .timeout(Duration.ofSeconds(2))
-                    .submit())
-                .thenApply(joined -> joined.actorId())
+                    .submit(Message.class))
+                .thenApply(joined -> joined.actor().actorId())
                 .toCompletableFuture()
                 .join();
         }

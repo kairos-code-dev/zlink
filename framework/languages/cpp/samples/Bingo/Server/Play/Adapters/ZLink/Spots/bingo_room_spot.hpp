@@ -76,7 +76,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
         return submit_bingo_card_res_t{snapshot ()};
     }
 
-    void onJoinActor (const player_actor_t &actor)
+    void on_actor_joined (const player_actor_t &actor)
     {
         actors[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
         const auto &state = snapshot ();

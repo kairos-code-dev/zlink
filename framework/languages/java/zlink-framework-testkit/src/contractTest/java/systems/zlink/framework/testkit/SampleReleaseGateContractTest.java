@@ -669,11 +669,13 @@ final class SampleReleaseGateContractTest {
                 && gameTimerHandlerSource.contains("implements ZLinkSpotTimerHandler<TicTacToeGame>")
                 && gameTimerHandlerSource.contains("spot.tick()"),
             "TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
-        assertTrue(gameSpotSource.contains("onJoinActor(")
+        assertTrue(gameSpotSource.contains("onJoinedActor(")
                 && gameSpotSource.contains("onLeaveActor(")
-                && !gameSpotSource.contains("ZLinkSpotActorChange" + "Result")
-                && !entrySpotSource.contains("onActorJoin"),
-            "TicTacToe EntrySpot and GameSpot lifecycle must use member callbacks without change-result arguments");
+                && entrySpotSource.contains("onActorJoin(")
+                && entrySpotSource.contains("Message request")
+                && entrySpotSource.contains("ZLinkSpotActorJoinResponse.accept")
+                && !gameSpotSource.contains("ZLinkSpotActorChange" + "Result"),
+            "TicTacToe EntrySpot and GameSpot lifecycle must use member callbacks and Entry Spot admission without change-result arguments");
         assertTrue(playActorJoinHandlerSource.contains("request.roomId()"),
             "TicTacToe join handler must store the requested room id");
         assertTrue(playPlaceMarkHandlerSource.contains("actor.requireJoinedGame()"),
@@ -1020,11 +1022,13 @@ final class SampleReleaseGateContractTest {
                 && gameTimerHandlerSource.contains("ZLinkCoroutineSpotTimerHandler<TicTacToeGame>")
                 && gameTimerHandlerSource.contains("spot.tick()"),
             "Kotlin TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
-        assertTrue(gameSpotSource.contains("override fun onJoinActor(")
+        assertTrue(gameSpotSource.contains("override fun onJoinedActor(")
                 && gameSpotSource.contains("override fun onLeaveActor(")
-                && !gameSpotSource.contains("ZLinkSpotActorChange" + "Result")
-                && !entrySpotSource.contains("onActorJoin"),
-            "Kotlin TicTacToe EntrySpot and GameSpot lifecycle must use member callbacks without change-result arguments");
+                && entrySpotSource.contains("override fun onActorJoin(")
+                && entrySpotSource.contains("request: Message")
+                && entrySpotSource.contains("ZLinkSpotActorJoinResponse.accept")
+                && !gameSpotSource.contains("ZLinkSpotActorChange" + "Result"),
+            "Kotlin TicTacToe EntrySpot and GameSpot lifecycle must use member callbacks and Entry Spot admission without change-result arguments");
         assertTrue(playActorJoinHandlerSource.contains("request.roomId"),
             "Kotlin TicTacToe join handler must store the requested room id");
         assertTrue(playPlaceMarkHandlerSource.contains("actor.requireJoinedGame()"),
@@ -1542,7 +1546,7 @@ final class SampleReleaseGateContractTest {
         List<String> disconnectCleanupNeedles) {
         for (String needle : List.of(
             "onCreateActor",
-            "onJoinActor",
+            "onJoinedActor",
             "onDisconnectActor",
             "destroyActor(",
             "destroyAfterEntrySpotJoin",

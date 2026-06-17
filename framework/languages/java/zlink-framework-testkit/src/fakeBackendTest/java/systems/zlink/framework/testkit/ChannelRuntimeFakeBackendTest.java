@@ -63,22 +63,22 @@ final class ChannelRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.client()
-                .sendToChannel("profile", message("hello", "ProfileGreeting"))
+                .sendToChannel("profile", new ProfileGreeting("hello"))
                 .submit()
                 .toCompletableFuture()
                 .join();
             runtime.client()
-                .requestToChannel("profile", message("question", "ProfileQuestion"))
+                .requestToChannel("profile", new ProfileQuestion("question"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
             runtime.route()
-                .sendTo("route", RoutingId.from("peer"), message("hello", "ProfileGreeting"))
+                .sendTo("route", RoutingId.from("peer"), new ProfileGreeting("hello"))
                 .submit()
                 .toCompletableFuture()
                 .join();
             runtime.route()
-                .requestTo("route", RoutingId.from("peer"), message("question", "ProfileQuestion"))
+                .requestTo("route", RoutingId.from("peer"), new ProfileQuestion("question"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -154,9 +154,5 @@ final class ChannelRuntimeFakeBackendTest {
 
     @ZLinkPacket("ProfileQuestion")
     public record ProfileQuestion(String value) {
-    }
-
-    private static String message(String value, String packetName) {
-        return value;
     }
 }

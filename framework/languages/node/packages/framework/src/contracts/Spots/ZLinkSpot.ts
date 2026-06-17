@@ -19,7 +19,7 @@ export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor> {
   onInitialize?(signal?: AbortSignal): Promise<void>;
   onClosing?(signal?: AbortSignal): Promise<void>;
   onActorJoin?(actor: TActor, request: Message, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
-  onJoinActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
+  onJoinedActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
   onLeaveActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
   onDisconnectActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
 }
@@ -30,7 +30,8 @@ export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor> {
   onInitialize?(signal?: AbortSignal): Promise<void>;
   onClosing?(signal?: AbortSignal): Promise<void>;
   onCreateActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
-  onJoinActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
+  onActorJoin?(actor: TActor, request: Message, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
+  onJoinedActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
   onLeaveActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
   onDisconnectActor?(actor: TActor, signal?: AbortSignal): Promise<void>;
 }

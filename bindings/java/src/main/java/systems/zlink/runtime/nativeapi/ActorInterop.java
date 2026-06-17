@@ -178,11 +178,16 @@ public final class ActorInterop {
         return new ActorJoinEntrySpotResult(
           RequestResult.fromValue(view.get(ValueLayout.JAVA_INT,
             NativeLayouts.ACTOR_JOIN_ENTRY_SPOT_RESULT_RESULT_OFFSET)),
+          view.get(ValueLayout.JAVA_INT,
+            NativeLayouts.ACTOR_JOIN_ENTRY_SPOT_RESULT_JOIN_RESULT_CODE_OFFSET),
           actorRefFromNative(view.asSlice(
             NativeLayouts.ACTOR_JOIN_ENTRY_SPOT_RESULT_ACTOR_OFFSET,
             NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
           readRoutingId(view.asSlice(
             NativeLayouts.ACTOR_JOIN_ENTRY_SPOT_RESULT_TARGET_NODE_RID_OFFSET,
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+          readRoutingId(view.asSlice(
+            NativeLayouts.ACTOR_JOIN_ENTRY_SPOT_RESULT_JOINED_SPOT_RID_OFFSET,
             NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
           view.get(ValueLayout.JAVA_LONG_UNALIGNED,
             NativeLayouts.ACTOR_JOIN_ENTRY_SPOT_RESULT_JOIN_EPOCH_OFFSET),

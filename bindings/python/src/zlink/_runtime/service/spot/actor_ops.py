@@ -157,19 +157,33 @@ class ActorJoinCallbackOp:
 
 
 class ActorJoinEntrySpotOp:
-    __slots__ = ("_node", "_actor_ref", "_dest_node_rid", "_timeout", "_submitted")
+    __slots__ = ("_node", "_actor_ref", "_dest_node_rid", "_parts", "_timeout", "_flags", "_submitted")
 
-    def __init__(self, node, actor_ref, dest_node_rid):
+    def __init__(self, node, actor_ref, dest_node_rid, request):
         self._node = node
         self._actor_ref = actor_ref
         self._dest_node_rid = dest_node_rid
+        self._parts = [request]
         self._timeout = 0
+        self._flags = 0
         self._submitted = False
+
+    def message(self, payload):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._parts.append(payload)
+        return self
 
     def timeout(self, timeout):
         if self._submitted:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
         self._timeout = timeout
+        return self
+
+    def flags(self, flags):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._flags = int(flags)
         return self
 
     def submit(self, callback):
@@ -182,7 +196,9 @@ class ActorJoinEntrySpotOp:
         self._node._submit_actor_join_entry_spot(
             self._actor_ref,
             self._dest_node_rid,
+            self._parts,
             pending,
+            flags=self._flags,
             timeout=self._timeout,
         )
         return True

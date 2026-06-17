@@ -9,7 +9,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
-import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -28,7 +27,7 @@ import systems.zlink.samples.supportchat.server.support.domain.conversation.Conv
 import systems.zlink.samples.supportchat.server.support.domain.conversation.ConversationModels.Roles;
 import systems.zlink.samples.supportchat.shared.contracts.Messages;
 
-public final class ConversationSpot implements ZLinkSpot {
+public final class ConversationSpot implements ZLinkSpot<SupportUserActor> {
     private final ZLinkSpotContext context;
     private final ConversationNotificationPublisher notifications;
     private final ConversationSpotCreatedHandler createdHandler;
@@ -60,12 +59,9 @@ public final class ConversationSpot implements ZLinkSpot {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        ZLinkActor actor,
+        SupportUserActor user,
         Message request,
         CancellationToken cancellationToken) {
-        if (!(actor instanceof SupportUserActor user)) {
-            throw new IllegalArgumentException("Support conversation only accepts SupportUserActor.");
-        }
         Messages.JoinConversationReq join = decode(request, Messages.JoinConversationReq.class);
         Conversation current = requireConversation();
         if (!join.conversationId().equals(current.conversationId())) {
@@ -86,19 +82,17 @@ public final class ConversationSpot implements ZLinkSpot {
     }
 
     @Override
-    public void onJoinActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public void onJoinedActor(SupportUserActor user, CancellationToken cancellationToken) {
     }
 
     @Override
-    public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
-        actors.remove(actor.actorId());
+    public void onLeaveActor(SupportUserActor user, CancellationToken cancellationToken) {
+        actors.remove(user.actorId());
     }
 
     @Override
-    public void onDisconnectActor(ZLinkActor actor, CancellationToken cancellationToken) {
-        if (actor instanceof SupportUserActor user) {
-            user.markDisconnected();
-        }
+    public void onDisconnectActor(SupportUserActor user, CancellationToken cancellationToken) {
+        user.markDisconnected();
     }
 
     @Override

@@ -111,14 +111,14 @@ final class StreamSessionTest {
         }
     }
 
-    public static final class GameSpot implements ZLinkSpot {
+    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             return null;
         }
     }
 
-    public static final class GameEntrySpot implements ZLinkEntrySpot {
+    public static final class GameEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
         private final ZLinkEntrySpotContext context;
 
         public GameEntrySpot(ZLinkEntrySpotContext context) {
@@ -263,8 +263,8 @@ final class StreamSessionTest {
                 String actorId = new String(payload.toByteArray(), StandardCharsets.UTF_8);
                 actors.getOrCreate(actorId, "player")
                     .thenCompose(actor -> actor.context()
-                        .joinEntrySpot(RoutingId.from("play-node"))
-                        .submit()
+                        .joinEntrySpot(RoutingId.from("play-node"), Message.from(new byte[0]))
+                        .submit(Message.class)
                         .thenCompose(ignored -> context.actors().bind(actor)))
                     .thenCompose(ignored -> context.client().reply("bound").submit())
                     .toCompletableFuture()

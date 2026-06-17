@@ -8,7 +8,8 @@ import type {
   ZLinkActor,
   ZLinkActorJoinResult,
   ZLinkProviderResolver,
-  ZLinkSpot
+  ZLinkSpot,
+  ZLinkSpotActorJoinResponse
 } from '../../contracts';
 import {
   ZLinkChannelRuntimeManager,
@@ -99,6 +100,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
         backendAdapterFactory: this.backendAdapterFactory,
         context,
         providerResolver: this.options.providerResolver,
+        actorResolver: (actorId) => this.actorManager?.getState(actorId)?.actor,
         actorDestroyer: (node, entryNodeRid, actor, signal) => {
           if (this.actorManager === undefined) {
             throw new Error('Entry Spot actor destroy requires ZLINK_ACTOR_MANAGER.');
@@ -178,12 +180,6 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
       joinCoordinator: new ZLinkLocalFirstActorJoinCoordinator({
         localSpotManager: () => this.spotManager,
         nativeNode: () => this.requirePrimarySpotNode(),
-        entryCallbacks: {
-          onJoinActor: (actor, signal) =>
-            this.spotNodeRuntime?.notifyPrimaryEntrySpotActorJoined(actor, signal) ?? Promise.resolve(),
-          onLeaveActor: (actor, signal) =>
-            this.spotNodeRuntime?.notifyPrimaryEntrySpotActorLeft(actor, signal) ?? Promise.resolve()
-        },
         native: new ZLinkLazyNativeJoinCoordinator(() => this.requirePrimarySpotNode())
       }),
       messageSerializers: this.options.registration.messageSerializers,
@@ -201,11 +197,13 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
       entryNodeRid: undefined,
       entryNodeRidProvider: () => this.spotNodeRuntime?.primaryNode?.routingId,
       entrySpotCallbacks: {
-        onJoinActor: (actor: ZLinkActor, signal?: AbortSignal) =>
+        onJoinedActor: (actor: ZLinkActor, signal?: AbortSignal) =>
           this.spotNodeRuntime?.notifyPrimaryEntrySpotActorJoined(actor, signal) ?? Promise.resolve(),
         onLeaveActor: (actor: ZLinkActor, signal?: AbortSignal) =>
           this.spotNodeRuntime?.notifyPrimaryEntrySpotActorLeft(actor, signal) ?? Promise.resolve()
-      }
+      },
+      createNativeSpot: (spotRid: RoutingId) => this.spotNodeRuntime?.primaryNode?.getOrCreateSpot(spotRid).spot,
+      actorResolver: (actorId: string) => this.actorManager?.getState(actorId)?.actor
     };
   }
 
@@ -221,10 +219,6 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
 interface ZLinkLocalFirstActorJoinCoordinatorOptions {
   readonly localSpotManager: () => DefaultZLinkSpotManager | undefined;
   readonly nativeNode: () => ZLinkBackendSpotNode;
-  readonly entryCallbacks: {
-    onJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
-    onLeaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
-  };
   readonly native: ZLinkActorJoinCoordinator;
 }
 
@@ -243,7 +237,6 @@ class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordinator {
     if (localSpotManager === undefined || !localSpotManager.hasActiveSpot(spotRid)) {
       return this.options.native.joinSpot(actor, state, spotRid, request, timeoutMs, signal);
     }
-
     const result = await localSpotManager.admitActorJoin(
       spotRid,
       actor,
@@ -269,29 +262,16 @@ class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordinator {
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
     nodeRid: RoutingId,
+    request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ActorRef> {
-    void timeoutMs;
-    const localSpotManager = this.options.localSpotManager();
-    if (
-      localSpotManager === undefined ||
-      state.spotRid === undefined ||
-      !localSpotManager.hasActiveSpot(state.spotRid)
-    ) {
-      return this.options.native.joinEntrySpot(actor, state, nodeRid, timeoutMs, signal);
-    }
-
-    state.clearJoinedSpot();
-    await this.options.entryCallbacks.onJoinActor(actor, signal);
-    const actorRef = state.nativeActorRef;
-    return actorRef === undefined
-      ? localActorRef(nodeRid, actor.actorId)
-      : {
-          nodeRid: actorRef.nodeRid as unknown as RoutingId,
-          actorId: actorRef.actorId,
-          generation: actorRef.generation
-        } as ActorRef;
+  ): Promise<ZLinkActorJoinResult<Message>> {
+    // Entry Spot join always goes through the native round-trip. The target
+    // node's runtime drains the admission request from `recvActorJoin`, runs
+    // `onActorJoin`, and replies; core commits membership and routes the reply
+    // back here. This is identical for a local or remote target node, so the
+    // admission behaviour does not diverge by caller locality.
+    return this.options.native.joinEntrySpot(actor, state, nodeRid, request, timeoutMs, signal);
   }
 }
 
@@ -322,11 +302,12 @@ class ZLinkLazyNativeJoinCoordinator implements ZLinkActorJoinCoordinator {
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
     nodeRid: RoutingId,
+    request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ActorRef> {
+  ): Promise<ZLinkActorJoinResult<Message>> {
     return new ZLinkActorNativeJoinCoordinator({ node: this.nodeProvider() })
-      .joinEntrySpot(actor, state, nodeRid, timeoutMs, signal);
+      .joinEntrySpot(actor, state, nodeRid, request, timeoutMs, signal);
   }
 }
 

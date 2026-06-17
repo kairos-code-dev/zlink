@@ -2,13 +2,14 @@ package systems.zlink.samples.tictactoe.server.play.adapters.zlink.spots;
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
-import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.samples.tictactoe.server.play.adapters.zlink.actors.PlayActor;
 
-public final class PlayEntrySpot implements ZLinkEntrySpot {
+public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
     private final ZLinkEntrySpotContext context;
 
     public PlayEntrySpot(ZLinkEntrySpotContext context) {
@@ -22,25 +23,31 @@ public final class PlayEntrySpot implements ZLinkEntrySpot {
 
     @Override
     public void onCreateActor(
-        ZLinkActor actor,
+        PlayActor actor,
         CancellationToken cancellationToken) {
     }
 
     @Override
-    public void onJoinActor(
-        ZLinkActor actor,
+    public ZLinkSpotActorJoinResponse onActorJoin(
+        PlayActor actor,
+        Message request,
         CancellationToken cancellationToken) {
-        if (actor instanceof PlayActor player && player.destroyAfterEntrySpotJoin()) {
-            await(context.destroyActor(player));
+        return ZLinkSpotActorJoinResponse.accept(Message.from(new byte[0]));
+    }
+
+    @Override
+    public void onJoinedActor(
+        PlayActor actor,
+        CancellationToken cancellationToken) {
+        if (actor.destroyAfterEntrySpotJoin()) {
+            await(context.destroyActor(actor));
         }
     }
 
     @Override
     public void onDisconnectActor(
-        ZLinkActor actor,
+        PlayActor actor,
         CancellationToken cancellationToken) {
-        if (actor instanceof PlayActor player) {
-            player.markDisconnected();
-        }
+        actor.markDisconnected();
     }
 }

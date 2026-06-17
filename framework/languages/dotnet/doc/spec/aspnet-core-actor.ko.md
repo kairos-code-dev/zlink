@@ -162,7 +162,7 @@ user Spot 문맥 안에서 동작하므로, session 끊김을 actor 에 알려�
 application 이 session callback 에서 대상 actor 를 고른 뒤
 `IZLinkSessionActor.NotifyDisconnectedAsync(...)` 를 호출한다.
 framework 는 그 actor 의 현재 Spot 실행 문맥에서 별도 handler 를
-등록하지 않고 Spot 의 `onDisconnectActor(...)` callback 을 호출하며,
+등록하지 않고 Spot 의 `OnDisconnectActorAsync(...)` callback 을 호출하며,
 actor 를 room 에서 자동으로 leave 시키지 않는다.
 
 ### 3.2 `IZLinkActorFactory`
@@ -298,7 +298,7 @@ core 모델에서 비롯된 핵심 제약은 다음과 같다.
   STREAM session binding 은 서로 독립된 상태 전이로 본다.
 - **destroy 는 actor 가 Entry Spot 에 있을 때만 가능하다.** session disconnect 는
   destroy 나 user Spot leave 를 자동으로 만들지 않는다.
-- Entry Spot destroy 는 `onLeaveActor(...)` 또는 다른 lifecycle callback 을 호출하지
+- Entry Spot destroy 는 `OnLeaveActorAsync(...)` 또는 다른 lifecycle callback 을 호출하지
   않고 actor 상태만 정리한다. 같은 actor instance 에 대한 중복 destroy 는 성공으로 끝난다.
 - **discovery[^discovery] actor remote address publish 는 user Spot join 성공 뒤에
   갱신된다.** actor 를 생성하기만 해서는 active route 가 공개되지 않는다.
@@ -528,8 +528,8 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
 ```
 
 Entry Spot 과 user Spot 어느 쪽이든 lifecycle callback 을 Spot 멤버 method 로
-선언할 수 있다. `onJoinActor(actor, cancellationToken)` 와
-`onLeaveActor(actor, cancellationToken)` 는 join / leave 가 commit 된 직후 같은 실행
+선언할 수 있다. `OnJoinedActorAsync(actor, cancellationToken)` 와
+`OnLeaveActorAsync(actor, cancellationToken)` 는 join / leave 가 commit 된 직후 같은 실행
 문맥에서 호출된다. callback 이름이 membership 변화의 의미를 이미 나타내므로 별도
 kind/result 인자는 전달하지 않는다.
 
@@ -578,7 +578,8 @@ public interface IZLinkActorContext
         Message request);
 
     IZLinkActorJoinEntrySpotCall JoinEntrySpot(
-        RoutingId spotNodeRid);
+        RoutingId spotNodeRid,
+        Message request);
 }
 ```
 
@@ -590,7 +591,7 @@ public interface IZLinkActorContext
 | `BoundSession` | actor 에 bind 된 STREAM session 으로 push 하거나 disconnect |
 | `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
 | `JoinSpot(spotRid, requestMessage).Async(...)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). request와 reply는 `Message`이며 JSON, Protobuf, MessagePack 같은 codec 확장 함수는 application 이 선택한다. `Accepted == true` 이 성공이다. STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
-| `JoinEntrySpot(spotNodeRid).Async(...)` | target SpotNode 의 Entry Spot 으로 이동. message payload와 join reply payload는 없다 |
+| `JoinEntrySpot(spotNodeRid, requestMessage).Async(...)` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청도 빈 `Message`로 명시해서 넘기며, 결과는 `Accepted`, `ActorRef`, reply `Message`를 담는다 |
 
 actor request 에 대한 reply 는 actor context 의 별도 `Reply(...)` 호출이 아니라
 request handler 의 반환값으로 처리한다. actor, Entry Spot actor, user Spot actor
@@ -663,7 +664,7 @@ public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot<Pl
 ```
 
 join admission method 는 Spot 멤버로 직접 선언한다. 반환값의 `Accepted` 가 `true` 일
-때만 framework 가 join 을 commit 하고 `onJoinActor(...)` 를 호출한다.
+때만 framework 가 join 을 commit 하고 `OnJoinedActorAsync(...)` 를 호출한다.
 `Accepted=false` 이면 actor 위치는 바뀌지 않고 post-joined callback 도 실행되지 않는다.
 method 시그니처 검증은 startup validation 단계에서 이루어진다. 자세한 시그니처는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) §5.7 에서 다룬다.
@@ -755,7 +756,7 @@ public interface IZLinkSessionActor
 
 - `BindAsync(actor, ...)` -- local `IZLinkActor` instance 를 session 에 bind 한다. actor 를 새로 만들지 않고, runtime 에 이미 생성된 actor instance 여야 한다.
 - `BindAsync(actorRef, ...)` -- `JoinSpot(...)` /
-  `JoinEntrySpot(...)` 결과가 돌려준 최종 ActorRef 로 session binding 을 만든다.
+  `JoinEntrySpot(..., request)` 결과의 `ActorRef` 로 session binding 을 만든다.
 - `Bound` -- 현재 session 에 bind 된 actor handle snapshot 이다.
 - `actor.NotifyDisconnectedAsync(...)` -- session application 이 선택한
   actor 하나에 disconnect notification 을 전달한다. 이 호출은 actor membership
@@ -802,7 +803,7 @@ sequenceDiagram
     S->>G: Conditional unbind by session token
     opt application decides to notify this actor
         S->>G: actor.NotifyDisconnectedAsync()
-        G->>Act: Spot onDisconnectActor callback
+        G->>Act: Spot OnDisconnectActorAsync callback
     end
 ```
 
@@ -1013,7 +1014,7 @@ framework 가 만든 actor handle 과 ActorGateway 경로를 사용한다.
 actor-session binding 은 framework / core runtime 내부에서 관리한다. 각 서버의
 역할을 나누어 보면 다음과 같다.
 
-- Session 서버는 인증 후 Play 서버의 ensure actor 응답이나 `JoinEntrySpot(...)` 결과에서
+- Session 서버는 인증 후 Play 서버의 ensure actor 응답이나 `JoinEntrySpot(..., request)` 결과에서
   ActorRef 를 받고, `BindAsync(actorRef, ...)` 로
   actor handle 과 session binding 을 얻는다.
 - Play 서버는 `IZLinkActorManager.GetOrCreateAsync(...)` 로 actor 를 준비한 뒤

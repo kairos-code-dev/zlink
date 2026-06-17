@@ -15,7 +15,7 @@ export interface ZLinkActorJoinSpotCall {
 
 export interface ZLinkActorJoinEntrySpotCall {
   timeout(timeoutMs: number): this;
-  submit(signal?: AbortSignal): Promise<ActorRef>;
+  submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkActorFactory {

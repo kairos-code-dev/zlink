@@ -2,6 +2,7 @@ package systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.handlers
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkRequestContext
@@ -30,14 +31,14 @@ class EnsurePlayerActorHandler(
             actor.setDisplayName(request.displayName)
         }
         val joined = actor.context()
-            .joinEntrySpot(RoutingId.from(SampleTopology.PlayRid))
+            .joinEntrySpot(RoutingId.from(SampleTopology.PlayRid), Message.from(ByteArray(0)))
             .timeout(SampleTimings.RequestTimeout)
-            .submit()
+            .submit(Message::class.java)
             .await()
         EnsurePlayerActorRes(
             request.actorId,
             SampleNames.PlayerActorType,
-            toSnapshot(joined),
+            toSnapshot(joined.actor()),
         )
     }
 

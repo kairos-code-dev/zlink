@@ -52,13 +52,15 @@ internal sealed class ZLinkActorContext(
             request);
     }
 
-    public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid)
+    public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid, Message request)
     {
         state.EnsureContextValid();
+        ArgumentNullException.ThrowIfNull(request);
         return new ZLinkActorJoinEntrySpotCall(
             runtime,
             CurrentActor,
-            spotNodeRid);
+            spotNodeRid,
+            request);
     }
 
     private IZLinkActor CurrentActor
@@ -105,7 +107,8 @@ internal sealed class ZLinkActorJoinSpotCall(
 internal sealed class ZLinkActorJoinEntrySpotCall(
     ZLinkFrameworkRuntime runtime,
     IZLinkActor actor,
-    RoutingId spotNodeRid) : IZLinkActorJoinEntrySpotCall
+    RoutingId spotNodeRid,
+    Message request) : IZLinkActorJoinEntrySpotCall
 {
     private TimeSpan? _timeout;
 
@@ -115,7 +118,7 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
         return this;
     }
 
-    public async ValueTask<ActorRef> Async(CancellationToken cancellationToken = default)
+    public async ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default)
     {
         var timeout = _timeout ?? runtime.Registration.DefaultTimeout;
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -126,6 +129,7 @@ internal sealed class ZLinkActorJoinEntrySpotCall(
             return await runtime.JoinActorEntrySpotAsync(
                 spotNodeRid,
                 actor,
+                request,
                 timeoutSource.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutSource.IsCancellationRequested)

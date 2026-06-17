@@ -78,13 +78,14 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
         var actorManager = playHost.Services.GetRequiredService<IZLinkActorManager>();
         var actor = await actorManager
             .GetOrCreateAsync(actorId, "player");
-        var joined = await actor.Context.JoinEntrySpot(playRid)
+        using var joinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        var joined = await actor.Context.JoinEntrySpot(playRid, joinRequest)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async();
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
-            sessionRecorder = new GatewaySessionRecorder(actorId, joined);
+            sessionRecorder = new GatewaySessionRecorder(actorId, joined.Actor);
             services.AddSingleton(sessionRecorder);
             services.AddScoped<GatewayRelaySession>();
             services.AddZLinkFramework(options =>

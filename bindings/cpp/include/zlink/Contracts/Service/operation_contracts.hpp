@@ -108,17 +108,19 @@ class actor_join_entry_spot_operation_t
     actor_join_entry_spot_operation_t (actor_join_entry_spot_operation_t &&) noexcept;
     actor_join_entry_spot_operation_t &operator= (actor_join_entry_spot_operation_t &&) noexcept;
 
+    actor_join_entry_spot_operation_t &&message (message_t &part_) &&;
     actor_join_entry_spot_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
+    actor_join_entry_spot_operation_t &&flags (int flags_) &&;
     async_result_t<actor_join_entry_spot_result_t> async () &&;
     bool submit (actor_join_entry_spot_callback_t callback_) &&;
 
   private:
-    explicit actor_join_entry_spot_operation_t (detail::actor_payloadless_state_t &&state_);
+    explicit actor_join_entry_spot_operation_t (detail::actor_join_state_t &&state_);
 
-    detail::actor_payloadless_state_t &state () noexcept;
-    const detail::actor_payloadless_state_t &state () const noexcept;
+    detail::actor_join_state_t &state () noexcept;
+    const detail::actor_join_state_t &state () const noexcept;
 
-    std::unique_ptr<detail::actor_payloadless_state_t> _state;
+    std::unique_ptr<detail::actor_join_state_t> _state;
     friend class spot_node_t;
 };
 

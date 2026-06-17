@@ -44,7 +44,8 @@ public final class ActorRequestCallbacks {
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
         ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
     private static final FunctionDescriptor FD_ACTOR_JOIN_ENTRY_SPOT_CALLBACK =
-      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+      FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+        ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
     private static final FunctionDescriptor FD_ACTOR_LOOKUP_CALLBACK =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS);
     private static final FunctionDescriptor FD_ACTOR_LIFECYCLE_CALLBACK =
@@ -85,8 +86,8 @@ public final class ActorRequestCallbacks {
               MethodHandles.lookup().findStatic(
                 ActorRequestCallbacks.class, "handleActorJoinEntrySpotCallback",
                 MethodType.methodType(void.class, MemorySegment.class,
-                  MemorySegment.class)), FD_ACTOR_JOIN_ENTRY_SPOT_CALLBACK,
-              CALLBACK_ARENA);
+                  MemorySegment.class, long.class, MemorySegment.class)),
+              FD_ACTOR_JOIN_ENTRY_SPOT_CALLBACK, CALLBACK_ARENA);
             ACTOR_LOOKUP_CALLBACK = LINKER.upcallStub(
               MethodHandles.lookup().findStatic(
                 ActorRequestCallbacks.class, "handleActorLookupCallback",
@@ -248,21 +249,31 @@ public final class ActorRequestCallbacks {
 
     @SuppressWarnings("unused")
     private static void handleActorJoinEntrySpotCallback(MemorySegment result,
+                                                        MemorySegment parts,
+                                                        long partCount,
                                                         MemorySegment userdata) {
         long id = userdata.address();
         JoinEntrySpotPending join = JOIN_ENTRY_SPOT_PENDING.remove(id);
-        if (join == null)
+        if (join == null) {
+            NativeMessage.multipartClose(parts, partCount);
             return;
+        }
         try {
             ActorJoinEntrySpotResult joinResult = result == MemorySegment.NULL
               ? new ActorJoinEntrySpotResult(RequestResult.INTERNAL_ERROR,
-                  null, null, 0L, 0)
+                  0, null, null, null, 0L, 0)
               : ActorInterop.actorJoinEntrySpotResultFromNative(result);
-            join.handler().onJoinEntrySpotResult(joinResult);
+            Message[] messages = joinResult.result() == RequestResult.OK
+              ? InternalAccess.messageFromOwnedMessageVectorShared(parts, partCount)
+              : new Message[0];
+            join.handler().onJoinEntrySpotResult(joinResult,
+              Collections.unmodifiableList(Arrays.asList(messages)));
             join.future().complete(null);
         } catch (RuntimeException ex) {
             join.future().completeExceptionally(ex);
             throw ex;
+        } finally {
+            NativeMessage.multipartClose(parts, partCount);
         }
     }
 

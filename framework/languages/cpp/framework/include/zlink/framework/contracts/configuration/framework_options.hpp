@@ -247,6 +247,18 @@ class codec_options_builder_t
         return *this;
     }
 
+    // Registers a custom payload serializer for TPayload (for example Avro or
+    // Thrift). The provided serialize/deserialize functions become the payload
+    // codec for that type in high-level object messaging.
+    template <typename TPayload>
+    codec_options_builder_t &add_serializer (
+      typename serializer_t<TPayload>::serialize_fn_t serialize,
+      typename serializer_t<TPayload>::deserialize_fn_t deserialize)
+    {
+        _serializers->template add<TPayload> (std::move (serialize), std::move (deserialize));
+        return *this;
+    }
+
   private:
     serializer_registry_t *_serializers;
     std::shared_ptr<detail::handler_group_options_state_t> _state;

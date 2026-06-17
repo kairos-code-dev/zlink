@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
@@ -182,7 +183,7 @@ final class SpotManagerTest {
         }
     }
 
-    public static final class GameSpot implements ZLinkSpot {
+    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             return null;
@@ -193,7 +194,7 @@ final class SpotManagerTest {
                     }
     }
 
-    public static final class PublishingSpot implements ZLinkSpot {
+    public static final class PublishingSpot implements ZLinkSpot<ZLinkActor> {
         static final AtomicInteger ticks = new AtomicInteger();
         static final AtomicBoolean removed = new AtomicBoolean();
         static final AtomicBoolean initializedOnVirtualThread = new AtomicBoolean();
@@ -244,7 +245,7 @@ final class SpotManagerTest {
                     }
     }
 
-    public static final class RejectingSpot implements ZLinkSpot {
+    public static final class RejectingSpot implements ZLinkSpot<ZLinkActor> {
         private final ZLinkSpotContext context;
 
         public RejectingSpot(ZLinkSpotContext context) {
@@ -262,7 +263,7 @@ final class SpotManagerTest {
         }
     }
 
-    public static final class SlowCreateSpot implements ZLinkSpot {
+    public static final class SlowCreateSpot implements ZLinkSpot<ZLinkActor> {
         private static final AtomicInteger createCalls = new AtomicInteger();
         private static final AtomicReference<String> createRequest = new AtomicReference<>();
         private static CountDownLatch createStarted;

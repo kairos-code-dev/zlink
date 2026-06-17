@@ -100,8 +100,10 @@ struct actor_model_access_t
     {
         actor_join_entry_spot_result_t out;
         out.result = static_cast<request_result_t> (native_.result);
+        out.join_result_code = native_.join_result_code;
         out.actor = from_native (native_.actor);
         out.target_node_rid = native_routing_id (native_.target_node_rid);
+        out.joined_spot_rid = native_routing_id (native_.joined_spot_rid);
         out.join_epoch = native_.join_epoch;
         out.flags = native_.flags;
         return out;

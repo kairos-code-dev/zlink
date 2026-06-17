@@ -310,7 +310,7 @@ handler 로 매핑할 수 있다.
 역시 같은 Spot 안에서 같은 actor 타입에 대해 하나씩만 허용한다.
 
 join / leave lifecycle 은 Entry Spot 과 user Spot 의 Spot 멤버 method 로
-정의한다. `onJoinActor(...)` 와 `onLeaveActor(...)` 는 join /
+정의한다. `OnJoinedActorAsync(...)` 와 `OnLeaveActorAsync(...)` 는 join /
 leave commit 이 끝난 뒤 같은 실행 문맥에서 호출된다. 그래서
 admission[^admission] 을 결정하는 hook 이 아니라는 점에 주의한다.
 

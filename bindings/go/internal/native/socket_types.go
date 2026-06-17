@@ -462,8 +462,8 @@ func (s *StreamSocket) SendTo(target RoutingID) SendOp {
 	})
 }
 
-// Recv is the canonical caller-provided storage recv. See
-// doc/spec/bindings/README.md "Canonical Recv: Caller-Provided Storage".
+// Recv stores the received packet in out so callers can reuse the same
+// Received value across recv calls.
 func (s *StreamSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	ok, err := (&directSocket{connectionSocket: s.core.connectionSocket}).Recv(out, flags)
 	if err != nil || !ok {

@@ -65,10 +65,11 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
 
         var actor = await host.Services.GetRequiredService<IZLinkActorManager>()
             .GetOrCreateAsync(actorId, "player");
-        var actorRef = await actor.Context.JoinEntrySpot(actorNodeRid)
+        using var actorJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        var actorJoin = await actor.Context.JoinEntrySpot(actorNodeRid, actorJoinRequest)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async();
-        sessionRecorder.SetActor(actorRef);
+        sessionRecorder.SetActor(actorJoin.Actor);
 
         try
         {
@@ -151,7 +152,8 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
         });
         var missingActor = await playHost.Services.GetRequiredService<IZLinkActorManager>()
             .GetOrCreateAsync(actorId, "player");
-        await missingActor.Context.JoinEntrySpot(playRid)
+        using var missingActorJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        await missingActor.Context.JoinEntrySpot(playRid, missingActorJoinRequest)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async();
         var createdBeforeDispatch = actorRecorder.CreatedCount;

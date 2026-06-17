@@ -30,11 +30,13 @@ export type ZLinkBackendSpotNodeMode = SpotNodeModeValue;
 export const ZLINK_BACKEND_SPOT_NODE_MODE_ALL = 3 as ZLinkBackendSpotNodeMode;
 
 export enum ZLinkBackendSpotDispatchEvent {
-  Internal = 0,
-  RouteReadable = 1,
-  ChannelReplyReadable = 2,
-  ActorJoinReadable = 3,
-  ActorReadable = 4
+  SubscribeReadable = 1,
+  RoutedReadable = 2,
+  TimerReadable = 3,
+  ChannelReplyReadable = 4,
+  ActorReadable = 5,
+  ActorJoinReadable = 6,
+  ActorLifecycleReadable = 7
 }
 
 export interface ZLinkBackendActorRef {
@@ -54,8 +56,10 @@ export interface ZLinkBackendActorJoinResult {
 
 export interface ZLinkBackendActorJoinEntrySpotResult {
   readonly result: RequestResult;
+  readonly joinResultCode: number;
   readonly actor: ZLinkBackendActorRef;
   readonly targetNodeRid: RoutingId;
+  readonly joinedSpotRid: RoutingId;
   readonly joinEpoch: bigint;
   readonly flags: number;
 }
@@ -66,7 +70,8 @@ export type ZLinkBackendActorJoinCallback = (
 ) => void;
 
 export type ZLinkBackendActorJoinEntrySpotCallback = (
-  result: ZLinkBackendActorJoinEntrySpotResult
+  result: ZLinkBackendActorJoinEntrySpotResult,
+  parts: readonly Message[]
 ) => void;
 
 export interface ZLinkBackendDiscoveryRoute {
@@ -83,22 +88,29 @@ export interface ZLinkBackendActorPart {
   readonly more: boolean;
 }
 
-export interface ZLinkBackendActorJoinRequest {
+export interface ZLinkBackendActorJoinInfo {
   readonly sourceActor: ZLinkBackendActorRef;
   readonly targetActor: ZLinkBackendActorRef;
   readonly sourceNodeRid: RoutingId;
+  readonly sourceSpotRid: RoutingId;
+  readonly targetNodeRid: RoutingId;
   readonly targetSpotRid: RoutingId;
   readonly joinEpoch: bigint;
+  readonly flags: number;
+}
+
+export interface ZLinkBackendActorJoinRequest {
+  readonly info: ZLinkBackendActorJoinInfo;
   readonly message: Message;
-  readonly parts: readonly Message[];
-  readonly nativeRequest?: unknown;
+}
+
+export interface ZLinkBackendActorJoinReplyOperation {
+  message(message: Message): ZLinkBackendActorJoinReplyOperation;
+  submit(): void;
 }
 
 export interface ZLinkBackendSpotDispatchInfo {
   readonly event: ZLinkBackendSpotDispatchEvent;
-  readonly drainChannelReply?: () => void;
-  readonly actorParts?: readonly ZLinkBackendActorPart[];
-  readonly routedMessages?: readonly Received[];
 }
 
 export interface ZLinkBackendSocketMonitorEvent {
@@ -278,6 +290,7 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   joinActorEntrySpot(
     actor: ZLinkBackendActorRef,
     destNodeRid: RoutingId,
+    request: Message,
     callback: ZLinkBackendActorJoinEntrySpotCallback,
     timeoutMs?: number
   ): boolean;
@@ -297,7 +310,7 @@ export interface ZLinkBackendSpot extends ZLinkBackendObject {
   setSubscription(topic: string): void;
   subscribe(result: TopicMessage, flags: ZLinkBackendRecvFlags): boolean;
   recvRoute(result: Received, flags: ZLinkBackendRecvFlags): boolean;
-  onDispatchEvent(handler: (info: ZLinkBackendSpotDispatchInfo) => void): void;
+  setDispatchHandler(handler: (info: ZLinkBackendSpotDispatchInfo) => void): void;
   onSendReady(handler: () => void): void;
   requestToChannel(
     channelName: string,
@@ -322,12 +335,11 @@ export interface ZLinkBackendSpot extends ZLinkBackendObject {
     flags: ZLinkBackendSendFlags,
     timeoutMs?: number
   ): boolean;
-  recvActorJoin(flags: ZLinkBackendRecvFlags): ZLinkBackendActorJoinRequest | undefined;
+  recvActorJoin(flags: ZLinkBackendRecvFlags): ZLinkBackendActorJoinRequest | null;
   replyActorJoin(
     request: ZLinkBackendActorJoinRequest,
-    joinResultCode: number,
-    reply: Message | readonly Message[]
-  ): void;
+    joinResultCode: number
+  ): ZLinkBackendActorJoinReplyOperation;
   dispose(): Promise<void>;
 }
 

@@ -3,12 +3,12 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots
 import com.fasterxml.jackson.databind.ObjectMapper
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.kotlin.ZLinkCoroutineSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
+import systems.zlink.samples.kotlin.deliverydispatch.server.tracking.actors.CustomerActor
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotCreate
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotCreated
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySpotJoin
@@ -20,8 +20,8 @@ class DeliveryTrackingSpot(
     private val directory: DeliverySpotDirectory,
     private val json: ObjectMapper,
     coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineSpot(coroutines) {
-    private val customers = LinkedHashMap<String, ZLinkActor>()
+) : ZLinkCoroutineSpot<CustomerActor>(coroutines) {
+    private val customers = LinkedHashMap<String, CustomerActor>()
     private val history = mutableListOf<DeliveryStatusChanged>()
     private var deliveryId: String = ""
 
@@ -37,7 +37,7 @@ class DeliveryTrackingSpot(
     }
 
     override suspend fun onActorJoinSuspending(
-        actor: ZLinkActor,
+        actor: CustomerActor,
         request: Message,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
@@ -54,7 +54,7 @@ class DeliveryTrackingSpot(
         )
     }
 
-    override fun onLeaveActor(actor: ZLinkActor, cancellationToken: CancellationToken) {
+    override fun onLeaveActor(actor: CustomerActor, cancellationToken: CancellationToken) {
         customers.remove(actor.actorId())
     }
 

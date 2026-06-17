@@ -228,28 +228,37 @@ int main ()
 
     bool entry_join_seen = false;
     gateway.on_join_entry_spot (
-      [&] (const zlink::framework::actor_ref_t &actor, zlink::framework::node_rid_t node_rid) {
-          entry_join_seen = actor.actor_id () == "bob" && node_rid.value () == "entry-node";
-          return zlink::framework::result_t<zlink::framework::actor_ref_t>::success (
-            zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("entry-node"),
-                                           "player", "bob", 9));
+      [&] (const zlink::framework::actor_ref_t &actor,
+           zlink::framework::node_rid_t node_rid,
+           const zlink::message_t &request) {
+          entry_join_seen = actor.actor_id () == "bob" && node_rid.value () == "entry-node"
+                            && request.to_string () == "entry";
+          return zlink::framework::result_t<zlink::framework::detail::actor_join_reply_t>::success (
+            zlink::framework::detail::actor_join_reply_t{
+              0,
+              zlink::framework::actor_ref_t (
+                zlink::framework::node_rid_t::from_string ("entry-node"), "player", "bob", 9),
+              zlink::message_t::from (std::string ("joined"))});
       });
     const auto entry_join =
-      actor_context.join_entry_spot (zlink::framework::node_rid_t::from_string ("entry-node"))
+      actor_context
+        .join_entry_spot (zlink::framework::node_rid_t::from_string ("entry-node"),
+                          zlink::message_t::from (std::string ("entry")))
         .async ()
         .result ();
-    if (!entry_join || !entry_join_seen || entry_join.value ().generation () != 9) {
+    if (!entry_join || !entry_join_seen || entry_join.value ().actor.generation () != 9
+        || entry_join.value ().reply.to_string () != "joined") {
         return 15;
     }
     manager.unbind_session ("bob");
     if (gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
         return 12;
     }
-    auto rebound_after_entry = manager.bind (entry_join.value ()).async ().result ();
+    auto rebound_after_entry = manager.bind (entry_join.value ().actor).async ().result ();
     if (!rebound_after_entry || !gateway.actor_bound ("bob") || gateway.actor_disconnected ("bob")) {
         return 24;
     }
-    const auto destroy_bound = gateway.destroy_actor (entry_join.value ());
+    const auto destroy_bound = gateway.destroy_actor (entry_join.value ().actor);
     if (!destroy_bound || gateway.actor_bound ("bob") || gateway.actor_disconnected ("bob")) {
         return 25;
     }

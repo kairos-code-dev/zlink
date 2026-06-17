@@ -213,6 +213,8 @@ _ACTOR_JOIN_HANDLER = ctypes.CFUNCTYPE(
 _ACTOR_JOIN_ENTRY_SPOT_HANDLER = ctypes.CFUNCTYPE(
     None,
     ctypes.POINTER(ZlinkActorJoinEntrySpotResult),
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.c_size_t,
     ctypes.c_void_p,
 )
 _ACTOR_LOOKUP_HANDLER = ctypes.CFUNCTYPE(

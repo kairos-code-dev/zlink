@@ -124,7 +124,7 @@ class ZLinkCoroutineRuntime : AutoCloseable {
             }
         }
 
-    fun <TSpot : ZLinkSpot> spotTimerHandler(
+    fun <TSpot : ZLinkSpot<*>> spotTimerHandler(
         block: suspend (TSpot, ZLinkTimerTick) -> Unit,
     ): ZLinkSpotTimerHandler<TSpot> =
         ZLinkSpotTimerHandler { spot, tick ->
@@ -252,7 +252,7 @@ abstract class ZLinkCoroutineActorFactory(
     ): ZLinkActor
 }
 
-abstract class ZLinkCoroutineSpotTimerHandler<TSpot : ZLinkSpot>(
+abstract class ZLinkCoroutineSpotTimerHandler<TSpot : ZLinkSpot<*>>(
     private val coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkSpotTimerHandler<TSpot> {
     final override fun handle(
@@ -268,7 +268,7 @@ abstract class ZLinkCoroutineSpotTimerHandler<TSpot : ZLinkSpot>(
 }
 
 abstract class ZLinkCoroutineEntrySpotActorSendHandler<
-    TEntrySpot : ZLinkEntrySpot,
+    TEntrySpot : ZLinkEntrySpot<*>,
     TActor : ZLinkActor,
     TMessage>(
     private val coroutines: ZLinkCoroutineRuntime,
@@ -295,7 +295,7 @@ abstract class ZLinkCoroutineEntrySpotActorSendHandler<
 }
 
 abstract class ZLinkCoroutineEntrySpotActorRequestHandler<
-    TEntrySpot : ZLinkEntrySpot,
+    TEntrySpot : ZLinkEntrySpot<*>,
     TActor : ZLinkActor,
     TRequest,
     TReply>(
@@ -322,7 +322,7 @@ abstract class ZLinkCoroutineEntrySpotActorRequestHandler<
 }
 
 abstract class ZLinkCoroutineSpotActorRequestHandler<
-    TSpot : ZLinkSpot,
+    TSpot : ZLinkSpot<*>,
     TActor : ZLinkActor,
     TRequest,
     TReply>(
@@ -349,7 +349,7 @@ abstract class ZLinkCoroutineSpotActorRequestHandler<
 }
 
 abstract class ZLinkCoroutineSpotActorSendHandler<
-    TSpot : ZLinkSpot,
+    TSpot : ZLinkSpot<*>,
     TActor : ZLinkActor,
     TMessage>(
     private val coroutines: ZLinkCoroutineRuntime,
@@ -398,9 +398,9 @@ abstract class ZLinkCoroutineSessionPacketHandler<TSessionContext : ZLinkSession
     )
 }
 
-abstract class ZLinkCoroutineSpot(
+abstract class ZLinkCoroutineSpot<TActor : ZLinkActor>(
     private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkSpot {
+) : ZLinkSpot<TActor> {
     abstract override fun context(): ZLinkSpotContext
 
     final override fun onCreate(request: Message): ZLinkSpotCreateResponse =
@@ -421,7 +421,7 @@ abstract class ZLinkCoroutineSpot(
     }
 
     final override fun onActorJoin(
-        actor: ZLinkActor,
+        actor: TActor,
         request: Message,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse =
@@ -429,20 +429,20 @@ abstract class ZLinkCoroutineSpot(
             onActorJoinSuspending(actor, request, cancellationToken)
         }
 
-    open override fun onJoinActor(
-        actor: ZLinkActor,
+    open override fun onJoinedActor(
+        actor: TActor,
         cancellationToken: CancellationToken,
     ) {
     }
 
     open override fun onLeaveActor(
-        actor: ZLinkActor,
+        actor: TActor,
         cancellationToken: CancellationToken,
     ) {
     }
 
     open override fun onDisconnectActor(
-        actor: ZLinkActor,
+        actor: TActor,
         cancellationToken: CancellationToken,
     ) {
     }
@@ -458,7 +458,7 @@ abstract class ZLinkCoroutineSpot(
     }
 
     protected open suspend fun onActorJoinSuspending(
-        actor: ZLinkActor,
+        actor: TActor,
         request: Message,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {

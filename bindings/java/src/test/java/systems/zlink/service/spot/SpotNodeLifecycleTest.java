@@ -2,10 +2,15 @@ package systems.zlink.contracts.service.spot;
 
 import systems.zlink.TestSupport;
 import systems.zlink.contracts.sockets.AutoHwmProfile;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.core.RoutingId;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -64,6 +69,100 @@ class SpotNodeLifecycleTest {
 
             spot.requestTimeout(Duration.ofMillis(123));
             assertEquals(Duration.ofMillis(123), spot.requestTimeout());
+        }
+    }
+
+    @Test
+    void entrySpotJoinUsesAdmissionRequestAndReply() throws Exception {
+        TestSupport.assumeNative();
+
+        try (Context ctx = Zlink.createContext();
+             SpotNode node = ctx.createSpotNode(SpotNodeMode.ALL)) {
+            Spot userSpot = node.createSpot();
+            Spot entrySpot = node.entrySpot();
+            Actor actor = node.createActor("java-entry-join");
+            CompletableFuture<String> userRequest = new CompletableFuture<>();
+            java.util.concurrent.atomic.AtomicReference<CompletableFuture<String>>
+                entryRequest = new java.util.concurrent.atomic.AtomicReference<>(
+                    new CompletableFuture<>());
+            java.util.concurrent.atomic.AtomicBoolean rejectEntryJoin =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+
+            userSpot.setDispatchHandler(info -> {
+                if (info.event() != SpotDispatchEvent.ACTOR_JOIN_READABLE)
+                    return;
+                try (ActorJoinRequest request =
+                         userSpot.recvActorJoin(RecvFlags.DONT_WAIT)) {
+                    userRequest.complete(request.message().toUtf8String());
+                    userSpot.replyActorJoin(request, 0)
+                        .message(Message.from("user-reply"))
+                        .submit();
+                }
+            });
+
+            entrySpot.setDispatchHandler(info -> {
+                if (info.event() != SpotDispatchEvent.ACTOR_JOIN_READABLE)
+                    return;
+                try (ActorJoinRequest request =
+                         entrySpot.recvActorJoin(RecvFlags.DONT_WAIT)) {
+                    entryRequest.get().complete(request.message().toUtf8String());
+                    entrySpot.replyActorJoin(
+                            request,
+                            rejectEntryJoin.get() ? 7 : 0)
+                        .message(Message.from(
+                            rejectEntryJoin.get()
+                                ? "entry-rejected"
+                                : "entry-reply"))
+                        .submit();
+                }
+            });
+
+            ActorJoinCompletion userJoin = actor.join(userSpot)
+                .message(Message.from("user-join-request"))
+                .timeout(Duration.ofSeconds(1))
+                .submit()
+                .toCompletableFuture()
+                .get(2, TimeUnit.SECONDS);
+            assertEquals(RequestResult.OK, userJoin.result().result());
+            assertEquals("user-join-request",
+                userRequest.get(2, TimeUnit.SECONDS));
+
+            rejectEntryJoin.set(true);
+            ActorJoinEntrySpotCompletion rejectedEntryJoin = node.joinActorEntrySpot(
+                    actor.ref(), node.getRoutingId(),
+                    Message.from("entry-reject-request"))
+                .timeout(Duration.ofSeconds(1))
+                .submit()
+                .toCompletableFuture()
+                .get(2, TimeUnit.SECONDS);
+
+            assertEquals(RequestResult.OK, rejectedEntryJoin.result().result());
+            assertEquals(7, rejectedEntryJoin.result().joinResultCode());
+            assertEquals("entry-reject-request",
+                entryRequest.get().get(2, TimeUnit.SECONDS));
+            assertEquals(1, rejectedEntryJoin.replyParts().size());
+            assertEquals("entry-rejected",
+                rejectedEntryJoin.replyParts().get(0).toUtf8String());
+            assertEquals(1, userSpot.actors().size());
+            assertEquals(actor.ref().actorId(), userSpot.actors().get(0).actorId());
+
+            rejectEntryJoin.set(false);
+            entryRequest.set(new CompletableFuture<>());
+            ActorJoinEntrySpotCompletion entryJoin = node.joinActorEntrySpot(
+                    actor.ref(), node.getRoutingId(),
+                    Message.from("entry-join-request"))
+                .timeout(Duration.ofSeconds(1))
+                .submit()
+                .toCompletableFuture()
+                .get(2, TimeUnit.SECONDS);
+
+            assertEquals(RequestResult.OK, entryJoin.result().result());
+            assertEquals(0, entryJoin.result().joinResultCode());
+            assertEquals("entry-join-request",
+                entryRequest.get().get(2, TimeUnit.SECONDS));
+            assertEquals(1, entryJoin.replyParts().size());
+            assertEquals("entry-reply",
+                entryJoin.replyParts().get(0).toUtf8String());
         }
     }
 

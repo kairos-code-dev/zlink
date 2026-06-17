@@ -106,7 +106,7 @@ class spot_context_state_t
     std::shared_ptr<runtime::serial_execution_queue_t> serial_queue;
     std::shared_ptr<worker_scheduler_t> worker_scheduler;
     spot_lifecycle_callbacks_t lifecycle;
-    std::map<std::type_index, std::function<void (void *, void *)>> onJoinActor_callbacks;
+    std::map<std::type_index, std::function<void (void *, void *)>> on_actor_joined_callbacks;
     std::map<std::type_index, std::function<void (void *, void *)>> onCreateActor_callbacks;
     std::map<std::type_index, std::function<void (void *, void *)>> onLeaveActor_callbacks;
     std::map<std::type_index, std::function<void (void *, void *)>> onDisconnectActor_callbacks;
@@ -194,35 +194,52 @@ class spot_node_runtime_t
     }
 
     template <typename TEntrySpot, typename TActor>
-    result_t<actor_ref_t>
-    join_actor_to_entry_spot (const actor_ref_t &actor_ref, node_rid_t spot_node_rid, TActor &actor)
+    result_t<actor_join_reply_t>
+    join_actor_to_entry_spot (const actor_ref_t &actor_ref,
+                              node_rid_t spot_node_rid,
+                              TActor &actor,
+                              const zlink::message_t &request)
     {
         if (actor_ref.empty ()) {
-            return result_t<actor_ref_t>::failure (framework_error_kind_t::actor_route_not_found,
-                                                   "actor ref is empty");
+            return result_t<actor_join_reply_t>::failure (
+              framework_error_kind_t::actor_route_not_found, "actor ref is empty");
         }
         if (spot_node_rid.empty () || spot_node_rid.value () != _state->snapshot.name) {
-            return result_t<actor_ref_t>::failure (framework_error_kind_t::spot_route_not_found,
-                                                   "spot node rid does not match this node");
+            return result_t<actor_join_reply_t>::failure (
+              framework_error_kind_t::spot_route_not_found, "spot node rid does not match this node");
         }
         if (!_state->snapshot.entry_spot_name) {
-            return result_t<actor_ref_t>::failure (framework_error_kind_t::spot_route_not_found,
-                                                   "entry spot is not registered");
+            return result_t<actor_join_reply_t>::failure (
+              framework_error_kind_t::spot_route_not_found, "entry spot is not registered");
         }
         const auto entry_rid = _state->spot_rids_by_name.find (*_state->snapshot.entry_spot_name);
         if (entry_rid == _state->spot_rids_by_name.end ()) {
-            return result_t<actor_ref_t>::failure (framework_error_kind_t::spot_route_not_found,
-                                                   "entry spot is not created");
+            return result_t<actor_join_reply_t>::failure (
+              framework_error_kind_t::spot_route_not_found, "entry spot is not created");
         }
         auto context = find_context (entry_rid->second);
         if (!context || !context->_state->spot_instance) {
-            return result_t<actor_ref_t>::failure (framework_error_kind_t::spot_route_not_found,
-                                                   "entry spot context is not registered");
+            return result_t<actor_join_reply_t>::failure (
+              framework_error_kind_t::spot_route_not_found, "entry spot context is not registered");
+        }
+
+        auto &spot = *static_cast<TEntrySpot *> (context->_state->spot_instance.get ());
+        if constexpr (has_actor_join_callback<TEntrySpot, TActor>) {
+            const auto response = spot.on_actor_join (actor, request);
+            if (!response.accepted) {
+                return result_t<actor_join_reply_t>::success (
+                  actor_join_reply_t{1, actor_ref, response.reply.value_or (zlink::message_t{})});
+            }
+
+            const auto committed =
+              commit_actor_to_context<TEntrySpot, TActor> (actor_ref, actor, *context);
+            return result_t<actor_join_reply_t>::success (
+              actor_join_reply_t{0, committed, response.reply.value_or (zlink::message_t{})});
         }
 
         const auto committed =
           commit_actor_to_context<TEntrySpot, TActor> (actor_ref, actor, *context);
-        return result_t<actor_ref_t>::success (committed);
+        return result_t<actor_join_reply_t>::success (actor_join_reply_t{0, committed, {}});
     }
 
     template <typename TActor>
@@ -285,9 +302,9 @@ class spot_node_runtime_t
     };
 
     template <typename TSpot, typename TActor>
-    static constexpr bool has_onJoinActor_callback = requires (TSpot & spot, TActor &actor)
+    static constexpr bool has_on_actor_joined_callback = requires (TSpot & spot, TActor &actor)
     {
-        spot.onJoinActor (actor);
+        spot.on_actor_joined (actor);
     };
 
     template <typename TSpot, typename TActor>
@@ -332,10 +349,10 @@ class spot_node_runtime_t
         _state->actor_spot_rids[key] = context_state.spot_rid;
         _state->actor_generations[key] = actor_ref.generation () + 1;
         context_state.actor_count++;
-        context_state.onJoinActor_callbacks[std::type_index (typeid (TActor))] = [] (void *spot,
+        context_state.on_actor_joined_callbacks[std::type_index (typeid (TActor))] = [] (void *spot,
                                                                                      void *actor) {
-            if constexpr (has_onJoinActor_callback<TSpot, TActor>) {
-                static_cast<TSpot *> (spot)->onJoinActor (*static_cast<TActor *> (actor));
+            if constexpr (has_on_actor_joined_callback<TSpot, TActor>) {
+                static_cast<TSpot *> (spot)->on_actor_joined (*static_cast<TActor *> (actor));
             }
         };
         context_state.onCreateActor_callbacks[std::type_index (typeid (TActor))] =
@@ -365,7 +382,7 @@ class spot_node_runtime_t
                 notify_onCreateActor<TActor> (context_state, actor);
             }
         }
-        notify_onJoinActor<TActor> (context_state, actor);
+        notify_on_actor_joined<TActor> (context_state, actor);
         return committed;
     }
 
@@ -403,10 +420,10 @@ class spot_node_runtime_t
         }
     }
 
-    template <typename TActor> void notify_onJoinActor (spot_context_state_t &state, TActor &actor)
+    template <typename TActor> void notify_on_actor_joined (spot_context_state_t &state, TActor &actor)
     {
-        const auto found = state.onJoinActor_callbacks.find (std::type_index (typeid (TActor)));
-        if (found != state.onJoinActor_callbacks.end () && state.spot_instance) {
+        const auto found = state.on_actor_joined_callbacks.find (std::type_index (typeid (TActor)));
+        if (found != state.on_actor_joined_callbacks.end () && state.spot_instance) {
             if (!state.run_serial_sync ("spot-lifecycle-join", [&] {
                     found->second (state.spot_instance.get (), &actor);
                 })) {

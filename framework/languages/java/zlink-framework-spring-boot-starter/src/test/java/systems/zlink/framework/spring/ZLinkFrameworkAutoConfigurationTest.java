@@ -911,7 +911,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class SourceRouteMeshConfig {
     }
 
-    public static final class GameSpot implements ZLinkSpot {
+    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
         private final ZLinkSpotContext context;
 
         public GameSpot(ZLinkSpotContext context) {
@@ -924,7 +924,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
     }
 
-    public static final class InjectedGameSpot implements ZLinkSpot {
+    public static final class InjectedGameSpot implements ZLinkSpot<ZLinkActor> {
         private static final AtomicReference<String> DEPENDENCY_VALUE =
             new AtomicReference<>();
         private final ZLinkSpotContext context;
@@ -944,7 +944,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
     }
 
-    public static final class PrivateConstructorSpot implements ZLinkSpot {
+    public static final class PrivateConstructorSpot implements ZLinkSpot<ZLinkActor> {
         private final ZLinkSpotContext context;
 
         private PrivateConstructorSpot(ZLinkSpotContext context) {

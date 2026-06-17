@@ -121,14 +121,14 @@ public final class SpotBuilders {
         }
 
         @Override
-        public ZLinkSpotNodeBuilder addSpotFactory(Class<? extends ZLinkSpot> spotType) {
+        public ZLinkSpotNodeBuilder addSpotFactory(Class<? extends ZLinkSpot<?>> spotType) {
             registration.addSpotFactory(spotType);
             spotFactoryAdded.accept(spotType);
             return this;
         }
 
         @Override
-        public ZLinkSpotNodeBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType) {
+        public ZLinkSpotNodeBuilder addEntrySpot(Class<? extends ZLinkEntrySpot<?>> entrySpotType) {
             registration.addEntrySpot(entrySpotType);
             return this;
         }

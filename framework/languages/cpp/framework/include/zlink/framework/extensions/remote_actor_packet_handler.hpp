@@ -8,9 +8,6 @@
 #include <zlink/framework/contracts/configuration/services.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 
-#include "runtime/actors/actor_gateway_runtime.hpp"
-#include "runtime/spots/spot_runtime.hpp"
-
 namespace zlink::framework::extensions
 {
 
@@ -34,14 +31,18 @@ class remote_actor_packet_handler_t
     {
     }
 
+    template <typename TSpotRuntime = detail::spot_node_runtime_t,
+              typename TActorGateway = detail::actor_gateway_runtime_t>
     task_t<TReply> handle (const TRequest &request)
     {
         auto actor_ref = actor_ref_t (
           node_rid_t::from_string (request.actor_node_rid),
           request.actor_type, request.actor_id, request.actor_generation);
-        auto reply = _spots.relay_actor_packet (
+        auto &spots = static_cast<TSpotRuntime &> (_spots);
+        auto &gateway = static_cast<TActorGateway &> (_gateway);
+        auto reply = spots.relay_actor_packet (
           actor_ref,
-          _gateway.actor_context (actor_ref),
+          gateway.actor_context (actor_ref),
           request.relayed_packet_name,
           zlink::message_t::from (request.payload),
           _provider,
@@ -54,7 +55,7 @@ class remote_actor_packet_handler_t
         }
 
         TReply response;
-        if (auto actor = _spots.actor_instance<TActor> (actor_ref);
+        if (auto actor = spots.template actor_instance<TActor> (actor_ref);
             actor && !actor->get ().context.actor_ref ().empty ()) {
             const auto &updated = actor->get ().context.actor_ref ();
             response.actor_ref_present = true;

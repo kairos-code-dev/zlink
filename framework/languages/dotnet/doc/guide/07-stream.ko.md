@@ -148,6 +148,12 @@ public sealed class ClientHeaderSession(
 | `Systems.Zlink.Stream.Connector.Json` / `.MessagePack` / `.Protobuf` | codec helper |
 | `Systems.Zlink.Stream.Connector.Codecs` | 타입 특성으로 codec 자동 선택 |
 
+connector도 framework처럼 **custom codec**을 끼울 수 있다. `ZlinkStreamConnectorOptions`의
+`PayloadCodec`에 `IZlinkStreamPayloadCodec`(`Encode`/`Decode`) 구현을 주면, typed
+`Send`/`Request`/`On`/`WaitFor`가 자동 선택 대신 그 codec으로 Avro·Thrift 같은 포맷을
+쓴다. server framework 쪽 등록(`Codecs.AddSerializer(...)`)과 대칭이며, 두 표면의 전체
+목록은 [framework-api §2.2](../../../../doc/spec/framework-api.ko.md) 표를 본다.
+
 ### 연결과 dispatch
 
 connector 는 만들고(연결 안 함) → 핸들러/이벤트 등록 → `Connect.Async()` →

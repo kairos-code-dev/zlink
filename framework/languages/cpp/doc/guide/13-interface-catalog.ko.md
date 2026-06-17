@@ -127,7 +127,7 @@ spot_context_t}`; `spot_create_state_t{existing, created, rejected}`.
 | 타입 | 핵심 표면 |
 |------|----------|
 | `actor_ref_t` | `node_rid()`/`actor_type()`/`actor_id()`/`generation()`/`empty()` |
-| `actor_context_t` | `actor_ref()`, `is_joined()`, `bound_session()`, `join_spot(spot_rid,msg)`, `join_entry_spot(node_rid)` |
+| `actor_context_t` | `actor_ref()`, `is_joined()`, `bound_session()`, `join_spot(spot_rid,msg)`, `join_entry_spot(node_rid,msg)` |
 | `bound_session_t` | `send<TMsg>(msg)` · `send_raw(message_t)` · `disconnect()` — actor 가 자기 client 로 push |
 | `session_actor_t` | `ref()`/`actor_id()`/`context()`/`bound_session()`, `relay`/`relay_request`, `notify_disconnected()` |
 | `session_actor_manager_t` | `create(type,id)` · `find(id)` · `get_or_create(type,id)` · `bind(actor_ref)` · `unbind_session(id)` (DI 주입) |

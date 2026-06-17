@@ -120,6 +120,21 @@ connector의 계약과 사용법은
 [stream connector 가이드](../../connector/doc/guide/INDEX.ko.md)를
 본다. 동작 예제는 [samples/TicTacToe/Client](../../samples/TicTacToe/Client)가 기준이다.
 
+connector도 framework처럼 **custom codec**을 끼울 수 있다. connector typed 경로는
+`codec_traits<T>`를 쓰므로, DTO 타입에 대해 `codec_traits<place_order_t>`를 특수화해
+`encode`/`decode`/`codec`을 주면 Avro·Thrift 같은 포맷을 쓴다. server framework 쪽
+등록(`codecs().add_serializer<T>(...)`)과 대칭이며, 두 표면의 전체 목록은
+[framework-api §2.2](../../../../doc/spec/framework-api.ko.md) 표를 본다.
+
+```cpp
+template <>
+struct zlink::stream_connector::codecs::codec_traits<place_order_t> {
+    static constexpr codec_t codec = codec_t::raw;
+    static zlink::message_t encode (const place_order_t &v) { return zlink::message_t::from (avro_encode (v)); }
+    static place_order_t decode (const zlink::message_t &m) { return avro_decode<place_order_t> (m.to_string ()); }
+};
+```
+
 ## 5. 패킷 계약
 
 stream 패킷도 채널 메시지와 같은 typed DTO(`packet_name`)다. 서버 session은

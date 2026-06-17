@@ -279,6 +279,8 @@ public sealed class BuilderContracts
         public void AddJson() { }
 
         public void AddMessagePack() { }
+
+        public void AddSerializer(string contentType, IZLinkMessageSerializer serializer) { }
     }
 
     private sealed class WorkerOptions : IZLinkWorkerOptions

@@ -362,6 +362,7 @@ final class MonitoringEventsTest {
         public java.util.concurrent.CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(
             ZLinkBackendActorRef actor,
             RoutingId targetNodeRid,
+            Message request,
             java.time.Duration timeout) {
             return java.util.concurrent.CompletableFuture.failedFuture(
                 new UnsupportedOperationException("join entry spot is not used by this test"));

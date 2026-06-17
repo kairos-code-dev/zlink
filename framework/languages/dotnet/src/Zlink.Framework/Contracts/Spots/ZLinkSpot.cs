@@ -111,21 +111,21 @@ public interface IZLinkSpot<TActor> : IZLinkSpot
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject());
     }
 
-    ValueTask onJoinActor(
+    ValueTask OnJoinedActorAsync(
         TActor actor,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
-    ValueTask onLeaveActor(
+    ValueTask OnLeaveActorAsync(
         TActor actor,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
-    ValueTask onDisconnectActor(
+    ValueTask OnDisconnectActorAsync(
         TActor actor,
         CancellationToken cancellationToken)
     {
@@ -248,28 +248,36 @@ public interface IZLinkEntrySpot
 public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot
     where TActor : IZLinkActor
 {
-    ValueTask onCreateActor(
+    ValueTask OnCreateActorAsync(
         TActor actor,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
-    ValueTask onJoinActor(
+    ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        TActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject());
+    }
+
+    ValueTask OnJoinedActorAsync(
         TActor actor,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
-    ValueTask onLeaveActor(
+    ValueTask OnLeaveActorAsync(
         TActor actor,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
-    ValueTask onDisconnectActor(
+    ValueTask OnDisconnectActorAsync(
         TActor actor,
         CancellationToken cancellationToken)
     {

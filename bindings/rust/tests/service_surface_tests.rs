@@ -248,7 +248,12 @@ fn actor_surfaces_exist() {
         .flags(SendFlags::DONT_WAIT)
         .timeout(std::time::Duration::from_millis(1));
     let _ = node
-        .join_actor_entry_spot(&remote, &RoutingId::from(b"actor-node"))
+        .join_actor_entry_spot(
+            &remote,
+            &RoutingId::from(b"actor-node"),
+            Message::new().unwrap(),
+        )
+        .flags(SendFlags::DONT_WAIT)
         .timeout(std::time::Duration::from_millis(1));
     let _ = node
         .leave_actor(&remote, &RoutingId::from(b"actor-spot"))
@@ -265,19 +270,125 @@ fn actor_entry_spot_join_returns_actor_ref() {
     let node = SpotNode::new(&ctx).unwrap();
     let node_rid = RoutingId::from(b"entry-join-node");
     node.set_routing_id(&node_rid).unwrap();
+    let spot = node.create_spot().unwrap();
+    let entry = node.entry_spot().unwrap();
     let actor = node.create_actor("entry-join-actor").unwrap();
     let actor_ref = actor.actor_ref().unwrap();
-    let (tx, rx) = std::sync::mpsc::channel();
 
-    node.join_actor_entry_spot(&actor_ref, &node_rid)
+    let (user_tx, user_rx) = std::sync::mpsc::channel();
+    actor
+        .join(&spot)
+        .message(Message::try_from(b"user-join").unwrap())
         .timeout(std::time::Duration::from_secs(1))
-        .submit(move |result| tx.send(result).unwrap())
+        .submit(move |result, parts| user_tx.send((result, parts)).unwrap())
         .unwrap();
 
-    let result = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let mut user_request = None;
+    while std::time::Instant::now() < deadline {
+        if let Some(request) = spot
+            .recv_actor_join_with_flags(RecvFlags::DONT_WAIT)
+            .unwrap()
+        {
+            user_request = Some(request);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let user_request = user_request.expect("actor join request should arrive");
+    assert_eq!(user_request.message.as_str().unwrap(), "user-join");
+    spot.reply_actor_join(&user_request, 0)
+        .message(Message::try_from(b"user-ok").unwrap())
+        .submit()
+        .unwrap();
+
+    let (user_result, user_parts) = user_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(user_result.result, zlink::RequestResult::Ok);
+    assert_eq!(user_parts.len(), 1);
+    assert_eq!(user_parts[0].as_str().unwrap(), "user-ok");
+
+    let (reject_tx, reject_rx) = std::sync::mpsc::channel();
+    node.join_actor_entry_spot(
+        &actor_ref,
+        &node_rid,
+        Message::try_from(b"entry-reject").unwrap(),
+    )
+    .timeout(std::time::Duration::from_secs(1))
+    .submit(move |result, parts| reject_tx.send((result, parts)).unwrap())
+    .unwrap();
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let mut rejected_request = None;
+    while std::time::Instant::now() < deadline {
+        if let Some(request) = entry
+            .recv_actor_join_with_flags(RecvFlags::DONT_WAIT)
+            .unwrap()
+        {
+            rejected_request = Some(request);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let rejected_request = rejected_request.expect("entry reject request should arrive");
+    assert_eq!(rejected_request.message.as_str().unwrap(), "entry-reject");
+    entry
+        .reply_actor_join(&rejected_request, 7)
+        .message(Message::try_from(b"entry-rejected").unwrap())
+        .submit()
+        .unwrap();
+
+    let (rejected_result, rejected_parts) = reject_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(rejected_result.result, zlink::RequestResult::Ok);
+    assert_eq!(rejected_result.join_result_code, 7);
+    assert_eq!(rejected_parts.len(), 1);
+    assert_eq!(rejected_parts[0].as_str().unwrap(), "entry-rejected");
+    let user_actors = spot.actors().unwrap();
+    assert_eq!(user_actors.len(), 1);
+    assert_eq!(user_actors[0].actor_id, actor_ref.actor_id);
+
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    node.join_actor_entry_spot(
+        &actor_ref,
+        &node_rid,
+        Message::try_from(b"entry-join").unwrap(),
+    )
+    .timeout(std::time::Duration::from_secs(1))
+    .submit(move |result, parts| tx.send((result, parts)).unwrap())
+    .unwrap();
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let mut entry_request = None;
+    while std::time::Instant::now() < deadline {
+        if let Some(request) = entry
+            .recv_actor_join_with_flags(RecvFlags::DONT_WAIT)
+            .unwrap()
+        {
+            entry_request = Some(request);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let entry_request = entry_request.expect("entry spot join request should arrive");
+    assert_eq!(entry_request.message.as_str().unwrap(), "entry-join");
+    entry
+        .reply_actor_join(&entry_request, 0)
+        .message(Message::try_from(b"entry-ok").unwrap())
+        .submit()
+        .unwrap();
+
+    let (result, parts) = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
     assert_eq!(result.result, zlink::RequestResult::Ok);
+    assert_eq!(result.join_result_code, 0);
     assert_eq!(result.actor.actor_id, "entry-join-actor");
     assert_eq!(result.target_node_rid, node_rid);
+    assert_eq!(result.joined_spot_rid, entry.routing_id().unwrap());
+    assert_eq!(parts.len(), 1);
+    assert_eq!(parts[0].as_str().unwrap(), "entry-ok");
 }
 
 #[test]

@@ -388,8 +388,8 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
             }
         }
 
-        const auto entry_joined = entry_state.onJoinActor_callbacks.find (actor_type);
-        if (entry_joined != entry_state.onJoinActor_callbacks.end () && entry_state.spot_instance) {
+        const auto entry_joined = entry_state.on_actor_joined_callbacks.find (actor_type);
+        if (entry_joined != entry_state.on_actor_joined_callbacks.end () && entry_state.spot_instance) {
             if (!entry_state.run_serial_sync ("spot-lifecycle-join", [&] {
                     entry_joined->second (entry_state.spot_instance.get (), actor);
                 })) {

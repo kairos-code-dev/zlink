@@ -60,7 +60,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
     }
   }
 
-  async onJoinActor(actor: PlaySpotActor): Promise<void> {
+  async onJoinedActor(actor: PlaySpotActor): Promise<void> {
     void actor;
   }
 

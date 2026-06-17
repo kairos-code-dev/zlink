@@ -19,14 +19,16 @@ internal sealed partial class ZLinkFrameworkRuntime
             cancellationToken);
     }
 
-    internal async ValueTask<ActorRef> JoinActorEntrySpotAsync(
+    internal async ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(
         RoutingId spotNodeRid,
         IZLinkActor actor,
+        Message request,
         CancellationToken cancellationToken = default)
     {
         return await _actors.JoinActorEntrySpotAsync(
             spotNodeRid,
             actor,
+            request,
             cancellationToken);
     }
 

@@ -82,7 +82,9 @@ export class RuntimeActorJoinOperation implements ActorJoinOperation, ActorJoinS
 }
 
 type ActorJoinEntrySpotInvoker = (
+  parts: OperationPayloadValue<MessageLike>,
   callback: ActorJoinEntrySpotHandler,
+  flags: SendFlags,
   timeoutMs: number,
 ) => boolean;
 
@@ -205,11 +207,60 @@ class ResultHandlerOperation<TResult extends { result: RequestResult }> {
   }
 }
 
-export class RuntimeActorJoinEntrySpotOperation
-  extends ResultHandlerOperation<ActorJoinEntrySpotResult>
-  implements ActorJoinEntrySpotOperation {
-  constructor(invoke: ActorJoinEntrySpotInvoker) {
-    super(invoke, 'actor entry spot join failed');
+export class RuntimeActorJoinEntrySpotOperation implements ActorJoinEntrySpotOperation {
+  private readonly _invoke: ActorJoinEntrySpotInvoker;
+  private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
+  private _flags: SendFlags = SendFlags.None;
+  private _timeoutMs = 0;
+  private _submitted = false;
+
+  constructor(invoke: ActorJoinEntrySpotInvoker, request: MessageLike) {
+    this._invoke = invoke;
+    this._payload.append(request);
+  }
+
+  message(message: MessageLike): this {
+    this.ensureOpen();
+    this._payload.append(message);
+    return this;
+  }
+
+  timeout(timeoutMs: number): this {
+    this.ensureOpen();
+    this._timeoutMs = timeoutMs | 0;
+    return this;
+  }
+
+  flags(flags: SendFlags): this {
+    this.ensureOpen();
+    this._flags = flags;
+    return this;
+  }
+
+  submit(): Promise<{ result: ActorJoinEntrySpotResult; parts: Message[] }>;
+  submit(callback: ActorJoinEntrySpotHandler): boolean;
+  submit(callback?: ActorJoinEntrySpotHandler): Promise<{ result: ActorJoinEntrySpotResult; parts: Message[] }> | boolean {
+    this.ensureOpen();
+    this._submitted = true;
+    const parts = this._payload.consume();
+    if (callback !== undefined) {
+      return this._invoke(parts, callback, this._flags, this._timeoutMs);
+    }
+    return new Promise((resolve, reject) => {
+      this._invoke(parts, (result, replyParts) => {
+        if (result.result !== RequestResult.Ok) {
+          reject(requestErrorFromResult(result.result, 'actor entry spot join failed'));
+          return;
+        }
+        resolve({ result, parts: replyParts });
+      }, SendFlags.None, this._timeoutMs);
+    });
+  }
+
+  private ensureOpen(): void {
+    if (this._submitted) {
+      throw new TypeError('operation has already been submitted');
+    }
   }
 }
 

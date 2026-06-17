@@ -9,7 +9,8 @@ internal static class ZLinkEnvelopeReplyCompletion
         IReadOnlyList<Message> reply,
         Action<TReply> complete,
         Action<Exception> fail,
-        string operationName)
+        string operationName,
+        ZLinkCodecRegistryBuilder? codecs = null)
     {
         try
         {
@@ -32,7 +33,7 @@ internal static class ZLinkEnvelopeReplyCompletion
                 return;
             }
 
-            complete((TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply))
+            complete((TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), codecs)
                 ?? throw new InvalidOperationException($"{operationName} reply body is null."));
         }
         catch (Exception exception)

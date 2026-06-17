@@ -76,7 +76,9 @@ class bingo_notification_subscriber_service_t final : public zlink::framework::h
             if (!actor) {
                 continue;
             }
-            (void) actor->bound_session ().send (notify).async ().result ();
+            auto send_task = actor->bound_session ().send (notify).async ();
+            zlink::framework::detail::observe_task_completion (
+              send_task, [] (const zlink::framework::result_t<void> &) {});
         }
     }
 

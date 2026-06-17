@@ -31,7 +31,7 @@ public interface ZLinkSpotNodeBuilder {
 
     ZLinkEntrySpotOptions configureEntrySpot();
 
-    ZLinkSpotNodeBuilder addSpotFactory(Class<? extends ZLinkSpot> spotType);
+    ZLinkSpotNodeBuilder addSpotFactory(Class<? extends ZLinkSpot<?>> spotType);
 
-    ZLinkSpotNodeBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType);
+    ZLinkSpotNodeBuilder addEntrySpot(Class<? extends ZLinkEntrySpot<?>> entrySpotType);
 }

@@ -9,18 +9,18 @@ import java.util.List;
 import java.util.Map;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
-import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
+import systems.zlink.samples.deliverydispatch.server.tracking.actors.CustomerActor;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
-public final class DeliveryTrackingSpot implements ZLinkSpot {
+public final class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
     private final ZLinkSpotContext context;
     private final DeliverySpotDirectory directory;
     private final ObjectMapper json;
-    private final Map<String, ZLinkActor> customers = new LinkedHashMap<>();
+    private final Map<String, CustomerActor> customers = new LinkedHashMap<>();
     private final List<Messages.DeliveryStatusChanged> history = new ArrayList<>();
     private String deliveryId = "";
 
@@ -48,7 +48,7 @@ public final class DeliveryTrackingSpot implements ZLinkSpot {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        ZLinkActor actor,
+        CustomerActor actor,
         Message request,
         CancellationToken cancellationToken) {
         Messages.DeliverySpotJoin join = decode(request, Messages.DeliverySpotJoin.class);
@@ -65,7 +65,7 @@ public final class DeliveryTrackingSpot implements ZLinkSpot {
     }
 
     @Override
-    public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public void onLeaveActor(CustomerActor actor, CancellationToken cancellationToken) {
         customers.remove(actor.actorId());
     }
 

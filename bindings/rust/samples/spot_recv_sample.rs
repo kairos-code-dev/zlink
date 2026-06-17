@@ -115,9 +115,7 @@ fn main() {
             Ok(false) => {
                 std::thread::sleep(Duration::from_millis(10));
             }
-            Err(err)
-                if err.code() == RecvResult::NoData || err.native_errno() == libc::ENOENT =>
-            {
+            Err(err) if err.code() == RecvResult::NoData || err.native_errno() == libc::ENOENT => {
                 std::thread::sleep(Duration::from_millis(10));
             }
             Err(err) => panic!("subscribe failed: {err}"),

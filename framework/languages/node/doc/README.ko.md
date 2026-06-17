@@ -78,6 +78,16 @@ public API를 어떤 상황에서 어떻게 쓰는지 설명한다.
 [12-grpc-alternative](./guide/12-grpc-alternative.ko.md)에서 진입하며, `guide/case-studies/`
 13–18에 둔다.
 
+정본 샘플의 per-app 문서는 `guide/samples/`에 둔다(코드: `samples/*.Ts`).
+
+| 문서 | 범위 |
+|------|------|
+| [bingo-game-sample](./guide/samples/bingo-game-sample.ko.md) | Session/Api/Play/Registry, Entry Spot, room Spot, timer, bound push |
+| [tictactoe-game-sample](./guide/samples/tictactoe-game-sample.ko.md) | Api/Play 두 서버, 수동 연결, typed session dispatch |
+
+> SupportChat·DeliveryDispatch·ShoppingMallCheckout·GameQuest per-app 문서는 해당 node
+> 샘플 코드 이식 후 추가한다.
+
 ## 2. 내부 정책 (`internals/`)
 
 framework 경계, backend 의존, lifecycle, 회귀 기준을 정의한다. spec 만으로

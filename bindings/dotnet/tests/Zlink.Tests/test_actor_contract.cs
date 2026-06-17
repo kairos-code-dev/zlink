@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -197,17 +198,43 @@ public sealed class test_actor_contract
                  (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)
             message.Dispose();
 
-        ActorJoinEntrySpotResult result =
-            await node.JoinActorEntrySpot(actor.Ref, node.RoutingId)
+        using Message entryJoinMessage = Message.From("join:entry");
+        Task<(ActorJoinEntrySpotResult Result, IReadOnlyList<Message> Parts)>
+            entryJoinTask = node.JoinActorEntrySpot(actor.Ref, node.RoutingId,
+                    entryJoinMessage)
                 .Timeout(TimeSpan.FromSeconds(2))
-                .Async()
-                .WaitAsync(TimeSpan.FromSeconds(5));
+                .Async();
+
+        ActorJoinRequest? entryRequest = null;
+        Assert.True(CoreTestSupport.WaitUntil(() =>
+        {
+            entryRequest = entry.RecvActorJoin(RecvFlags.DontWait);
+            return entryRequest != null;
+        }, 2000));
+
+        Assert.Equal("join:entry",
+            Encoding.UTF8.GetString(entryRequest!.Message.ToArray()));
+        entryRequest.Message.Dispose();
+        using Message entryReply = Message.From("entry-ok");
+        entry.ReplyActorJoin(entryRequest, joinResultCode: 0)
+            .Message(entryReply)
+            .Submit();
+
+        (ActorJoinEntrySpotResult result, IReadOnlyList<Message> entryParts) =
+            await entryJoinTask.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(RequestResult.Ok, result.Result);
+        Assert.Equal(0, result.JoinResultCode);
         Assert.Equal(actor.Ref.ActorId, result.Actor.ActorId);
         Assert.Equal(node.RoutingId, result.Actor.NodeRid);
         Assert.Equal(node.RoutingId, result.TargetNodeRid);
+        Assert.Equal(entry.RoutingId, result.JoinedSpotRid);
         Assert.True(result.JoinEpoch > 0);
+        Assert.Single(entryParts);
+        Assert.Equal("entry-ok",
+            Encoding.UTF8.GetString(entryParts[0].ToArray()));
+        foreach (Message message in entryParts)
+            message.Dispose();
         Assert.Contains(entry.Actors(),
             row => row.ActorId == actor.Ref.ActorId);
         Assert.Null(entry.RecvActorJoin(RecvFlags.DontWait));

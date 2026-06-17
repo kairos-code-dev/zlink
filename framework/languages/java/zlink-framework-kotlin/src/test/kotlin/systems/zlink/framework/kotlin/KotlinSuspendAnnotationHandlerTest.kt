@@ -418,8 +418,8 @@ class PlayerActor(private val id: String) : ZLinkActor {
         override fun spotRid() = java.util.Optional.empty<RoutingId>()
         override fun isJoined() = false
         override fun boundSession() = null
-        override fun getSpot(): ZLinkSpot? = null
-        override fun <TSpot : ZLinkSpot?> getSpot(spotType: Class<TSpot>): TSpot? = null
+        override fun getSpot(): ZLinkSpot<*>? = null
+        override fun <TSpot : ZLinkSpot<*>?> getSpot(spotType: Class<TSpot>): TSpot? = null
     }
 }
 

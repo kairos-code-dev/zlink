@@ -22,8 +22,8 @@ import type {
 
 /** Invoked with the result of an actor join and its reply parts, which the callback owns. */
 export type ActorJoinHandler = (result: ActorJoinResult, parts: Message[]) => void;
-/** Invoked with the result of an actor join routed through an entry spot. */
-export type ActorJoinEntrySpotHandler = (result: ActorJoinEntrySpotResult) => void;
+/** Invoked with the result of an actor entry-spot join and its reply parts, which the callback owns. */
+export type ActorJoinEntrySpotHandler = (result: ActorJoinEntrySpotResult, parts: Message[]) => void;
 /** Invoked with the result of an actor lookup. */
 export type ActorLookupHandler = (result: ActorLookupResult) => void;
 
@@ -61,11 +61,15 @@ export interface ActorJoinCallbackSubmitOperation {
 
 /** A builder for joining an actor through an entry spot. */
 export interface ActorJoinEntrySpotOperation {
+  /** Add another message part; it is consumed on a successful submit. */
+  message(message: MessageLike): ActorJoinEntrySpotOperation;
   /** Set how long the operation waits for completion before timing out. */
   timeout(timeoutMs: number): ActorJoinEntrySpotOperation;
-  /** Submit and return the result. */
-  submit(): Promise<ActorJoinEntrySpotResult>;
-  /** Submit; the result is delivered to `callback`. */
+  /** Set the send flags applied at submit time. */
+  flags(flags: SendFlags): ActorJoinEntrySpotOperation;
+  /** Submit and return the result and reply parts, which the caller owns. */
+  submit(): Promise<{ result: ActorJoinEntrySpotResult; parts: Message[] }>;
+  /** Submit; the result and reply parts are delivered to `callback`. */
   submit(callback: ActorJoinEntrySpotHandler): boolean;
 }
 

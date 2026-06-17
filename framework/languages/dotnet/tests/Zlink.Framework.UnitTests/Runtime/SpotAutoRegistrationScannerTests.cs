@@ -55,6 +55,17 @@ public sealed class SpotAutoRegistrationScannerTests
     private sealed class AutoEntrySpot : IZLinkEntrySpot<AutoActor>
     {
         public IZLinkEntrySpotContext Context => throw new NotSupportedException();
+
+        public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+            AutoActor actor,
+            Message request,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            _ = request;
+            _ = cancellationToken;
+            return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept());
+        }
     }
 
     private sealed class AutoActor(string actorId) : IZLinkActor

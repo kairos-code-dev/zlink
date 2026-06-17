@@ -489,20 +489,24 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                 .submit()
                 .thenApply(JavaSpotNode::fromActorJoinCompletion);
         }
-        @Override public CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(ZLinkBackendActorRef actor, RoutingId targetNodeRid, Duration timeout) {
+        @Override public CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(ZLinkBackendActorRef actor, RoutingId targetNodeRid, Message request, Duration timeout) {
             return spotNode.joinActorEntrySpot(
                     new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()),
-                    targetNodeRid)
+                    targetNodeRid,
+                    request)
                 .timeout(timeout)
                 .submit()
                 .thenApply(completion -> {
                     var result = completion.result();
                     return new ZLinkBackendActorJoinEntrySpotResult(
                         ZLinkBackendRequestResult.valueOf(result.result().name()),
+                        result.joinResultCode(),
                         fromActorRef(result.actor()),
                         result.targetNodeRid(),
+                        result.joinedSpotRid(),
                         result.joinEpoch(),
-                        result.flags());
+                        result.flags(),
+                        completion.replyParts());
                 });
         }
         @Override public CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) {

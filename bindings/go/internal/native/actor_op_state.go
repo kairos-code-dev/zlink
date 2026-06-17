@@ -5,7 +5,7 @@ package native
 // --- common state ---
 
 type actorJoinCallback func(result ActorJoinResult, parts []*Message)
-type actorJoinEntrySpotCallback func(result ActorJoinEntrySpotResult)
+type actorJoinEntrySpotCallback func(result ActorJoinEntrySpotResult, parts []*Message)
 type actorLookupCallback func(result ActorLookupResult)
 type requestPartsCallback func(result RequestResult, parts []*Message)
 
@@ -21,9 +21,14 @@ type actorJoinTrampolineResult struct {
 }
 
 type actorJoinEntrySpotCallbackState struct {
-	result chan ActorJoinEntrySpotResult
+	result chan actorJoinEntrySpotTrampolineResult
 	done   chan struct{}
 	once   completionGuard
+}
+
+type actorJoinEntrySpotTrampolineResult struct {
+	result ActorJoinEntrySpotResult
+	parts  []*Message
 }
 
 type actorLookupCallbackState struct {

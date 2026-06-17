@@ -1,3 +1,4 @@
+using Systems.Zlink;
 using Zlink.Framework.Contracts.Spots;
 using TicTacToe.Server.Play.Adapters.ZLink.Actors;
 using TicTacToe.Server.Play.Adapters.ZLink.Spots.Handlers;
@@ -16,7 +17,7 @@ internal sealed class PlayEntrySpot(
         Context.Handlers.AddActorRequest<PlayActorJoinGameHandler, PlayActor>(nameof(JoinGameReq));
     }
 
-    public ValueTask onCreateActor(
+    public ValueTask OnCreateActorAsync(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
@@ -27,7 +28,17 @@ internal sealed class PlayEntrySpot(
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask onJoinActor(
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        PlayActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = actor;
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(Message.From(request)));
+    }
+
+    public async ValueTask OnJoinedActorAsync(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
@@ -49,7 +60,7 @@ internal sealed class PlayEntrySpot(
             actor.ActorId);
     }
 
-    public ValueTask onLeaveActor(
+    public ValueTask OnLeaveActorAsync(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
@@ -60,7 +71,7 @@ internal sealed class PlayEntrySpot(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask onDisconnectActor(
+    public ValueTask OnDisconnectActorAsync(
         PlayActor actor,
         CancellationToken cancellationToken)
     {

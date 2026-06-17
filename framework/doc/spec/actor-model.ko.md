@@ -100,7 +100,7 @@ commit epoch를 얻을 수 있는 binding은 그 값을 함께 전달하고, fra
 변경만으로 만든 알림은 epoch를 `0`으로 둔다.
 
 actor 객체 생성이 끝나면 framework는 `onCreateActor` callback을 한 번 호출한다.
-Spot membership에 들어오면 `onJoinActor`, 다른 Spot으로 나가면 `onLeaveActor`를
+Spot membership에 들어오면 `onJoinedActor`, 다른 Spot으로 나가면 `onLeaveActor`를
 호출한다. `destroyActor`는 위치 이동이 아니라 actor 수명 종료이므로 `onLeaveActor`나
 다른 lifecycle callback을 호출하지 않고 상태를 정리한다. stream disconnect는
 `onDisconnectActor`만 의미하며, leave나 destroy와 같은 뜻이 아니다.
@@ -151,7 +151,7 @@ None
 | 생성 | application factory 호출, actor의 context 주입, `Configure()` 호출 |
 | session bind | session ↔ actor 묶음을 framework/core 내부 binding으로 등록한다. discovery active route는 session bind가 아니라 user Spot join / leave 결과를 따른다 |
 | JoinSpot | target spot에 join 요청 전송, accept/reject 결과를 application에 반환 |
-| leaveActor | user Spot → Entry Spot 이동, source Spot `onLeaveActor`와 target Entry Spot `onJoinActor` 호출 |
+| leaveActor | user Spot → Entry Spot 이동, source Spot `onLeaveActor`와 target Entry Spot `onJoinedActor` 호출 |
 | destroyActor | Entry Spot actor 정리, 내부 actor-session binding 해제, native actor ref 제거. `onLeaveActor`를 호출하지 않는다 |
 | disconnect | current stream binding 해제와 `onDisconnectActor` 호출. leave나 destroy를 자동 실행하지 않는다 |
 | session-bound actor 등록 | session-bound 경로에서는 local `SpotNode` actor runtime의 actor 생성 또는 handle 준비와 session bind를 `CreateAndBindActorAsync(...)` / `BindActorHandleAsync(...)`로 묶는다. session 표면은 remote node를 직접 지정하는 actor 생성 API를 제공하지 않는다. |
@@ -235,7 +235,7 @@ room, stage, match 상태를 직접 바꿔야 한다면 그 상태를 소유하�
 ### 5.3 lifecycle callback 공개 방식
 
 actor join/leave lifecycle은 Spot method override가 아니라 registry 등록으로
-표현한다. 즉 `OnJoinActor`, `OnLeaveActor` 같은 이름의 method를 framework public
+표현한다. 즉 `OnJoinedActor`, `OnLeaveActor` 같은 이름의 method를 framework public
 계약으로 요구하지 않는다. 각 언어가 관례상 callback 이름을 다르게 정할 수는 있지만,
 다음 의미는 유지해야 한다.
 

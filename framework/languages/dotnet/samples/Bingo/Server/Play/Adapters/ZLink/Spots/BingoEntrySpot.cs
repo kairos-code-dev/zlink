@@ -1,3 +1,4 @@
+using Systems.Zlink;
 using Zlink.Framework.Contracts.Spots;
 using Bingo.Server.Play.Adapters.ZLink.Actors;
 using Bingo.Server.Play.Adapters.ZLink.Spots.Handlers;
@@ -15,7 +16,7 @@ internal sealed class BingoEntrySpot(
     {
     }
 
-    public ValueTask onCreateActor(
+    public ValueTask OnCreateActorAsync(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
@@ -26,7 +27,17 @@ internal sealed class BingoEntrySpot(
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask onJoinActor(
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        PlayerActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        _ = actor;
+        _ = cancellationToken;
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(Message.From(request)));
+    }
+
+    public async ValueTask OnJoinedActorAsync(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
@@ -47,7 +58,7 @@ internal sealed class BingoEntrySpot(
             actor.ActorId);
     }
 
-    public ValueTask onLeaveActor(
+    public ValueTask OnLeaveActorAsync(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
@@ -58,7 +69,7 @@ internal sealed class BingoEntrySpot(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask onDisconnectActor(
+    public ValueTask OnDisconnectActorAsync(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {

@@ -45,6 +45,23 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
   `add_protobuf()` 중 선택한다. 핸들러를 등록한 뒤 codec을 켜면 해당 핸들러의
   request/reply/event 타입 serializer가 함께 설치된다. 직접 등록이 필요하면
   `add_json<T>()` / `add_message_pack<T>()` / `add_protobuf<T>()`를 쓴다.
+- **커스텀 codec(Avro·Thrift 등)** — 기본 codec 외 포맷은
+  `add_serializer<T>(serialize, deserialize)`로 등록한다. serialize는 업무 객체를
+  `message_t`(byte payload)로, deserialize는 그 반대로 변환하는 함수다. packet name
+  결정·codec 선택은 framework가 그대로 처리한다.
+
+  ```cpp
+  options.codecs ().add_serializer<place_order_t> (
+    [schema] (const place_order_t &order) {
+        return zlink::message_t::from (avro_encode (schema, order));
+    },
+    [schema] (const zlink::message_t &message) {
+        return avro_decode<place_order_t> (schema, message.to_string ());
+    });
+  ```
+
+  다른 언어의 등록 표면은 [framework-api §2.2](../../../../doc/spec/framework-api.ko.md) 표를
+  본다. client connector 쪽은 `codec_traits<T>` 특수화로 같은 커스텀 codec을 끼운다.
 - 같은 그룹을 여러 채널이 공유할 수 있고, 한 채널에 그룹 하나를 연결한다.
 
 위 선언이 만들어 내는 것:

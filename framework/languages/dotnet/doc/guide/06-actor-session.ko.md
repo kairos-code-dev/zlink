@@ -86,7 +86,7 @@ user Spot handler 에서 받은 spot context 로 호출한다.
 | `SpotRid?`, `IsJoined` | 현재 Spot join 상태 조회 |
 | `BoundSession` | 자기 client 로 push (§4) |
 | `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join. `.Async(ct)` 로 종결하며 `Accepted`와 reply `Message`를 받는다 |
-| `JoinEntrySpot(spotNodeRid)` | target SpotNode 의 Entry Spot 으로 이동. `.Async(ct)` 로 종결 |
+| `JoinEntrySpot(spotNodeRid, requestMessage)` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청도 빈 `Message`로 명시하며 `.Async(ct)` 로 종결한다 |
 
 `spotRid`는 user Spot 의 `RoutingId`이고, `spotNodeRid`는 Entry Spot 을 가진
 SpotNode 의 `RoutingId`다. `matchId`나 `roomId` 같은 domain 값에서
@@ -96,7 +96,7 @@ SpotNode 의 `RoutingId`다. `matchId`나 `roomId` 같은 domain 값에서
 
 actor packet handler 는 actor 클래스가 아니라 **Entry Spot / user Spot 의
 `Configure()`** 에서 등록한다. lifecycle callback 은 Spot 이 구현하는
-`onCreateActor`/`onJoinActor`/`onLeaveActor`/`onDisconnectActor` 메서드다.
+`OnCreateActorAsync`/`OnJoinedActorAsync`/`OnLeaveActorAsync`/`OnDisconnectActorAsync` 메서드다.
 Entry Spot 과 user Spot 은 handler 등록 표면이 같지만 실행 정책이 다르다.
 
 ```csharp

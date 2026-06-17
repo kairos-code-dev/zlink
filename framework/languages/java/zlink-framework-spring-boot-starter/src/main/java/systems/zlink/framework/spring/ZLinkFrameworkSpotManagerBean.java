@@ -21,34 +21,34 @@ final class ZLinkFrameworkSpotManagerBean implements ZLinkSpotManager {
 
     @Override
     public CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot> spotType) {
+        Class<? extends ZLinkSpot<?>> spotType) {
         return lifecycle.spotManager().create(spotType);
     }
 
     @Override
     public CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         Message request) {
         return lifecycle.spotManager().create(spotType, request);
     }
 
     @Override
     public CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid) {
         return lifecycle.spotManager().create(spotType, spotRid);
     }
 
     @Override
     public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid) {
         return lifecycle.spotManager().getOrCreate(spotType, spotRid);
     }
 
     @Override
     public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
-        Class<? extends ZLinkSpot> spotType,
+        Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid,
         Message request) {
         return lifecycle.spotManager().getOrCreate(spotType, spotRid, request);

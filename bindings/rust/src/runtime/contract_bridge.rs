@@ -276,6 +276,7 @@ pub(crate) trait ActorJoinOpInnerRuntime: Any + Send {
 }
 
 pub(crate) trait ActorJoinEntrySpotOpInnerRuntime: Any + Send {
+    fn as_any_mut(&mut self) -> &mut dyn Any;
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
@@ -334,10 +335,12 @@ pub(crate) trait ReplyOpReadyRuntime {
 }
 
 pub(crate) trait ActorJoinEntrySpotOpRuntime {
+    fn message(self, message: Message) -> Self;
     fn timeout(self, timeout: Duration) -> Self;
+    fn flags(self, flags: SendFlags) -> Self;
     fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
-        F: FnOnce(ActorJoinEntrySpotResult) + Send + 'static;
+        F: FnOnce(ActorJoinEntrySpotResult, Vec<Message>) + Send + 'static;
 }
 
 pub(crate) trait ActorJoinOpEmptyRuntime {
@@ -576,7 +579,8 @@ pub(crate) trait SpotNodePublicRuntime {
         &self,
         actor: &ActorRef,
         dest_node_rid: &RoutingId,
-    ) -> ActorJoinEntrySpotOp<Empty>;
+        request: Message,
+    ) -> ActorJoinEntrySpotOp<Ready>;
     fn leave_actor(&self, actor: &ActorRef, current_spot_rid: &RoutingId) -> ActorLeaveOp<Empty>;
     fn send_bound_session_msg(&self, actor: &ActorRef) -> SendOp<Empty>;
     fn status(&self) -> Result<SpotNodeStatus, ConfigError>;

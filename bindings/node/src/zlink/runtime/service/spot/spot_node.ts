@@ -13,7 +13,7 @@ import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
 import { RuntimeSendOperation } from '../../sockets/socket_operation_builders';
 import { normalizeRoutingId } from '../../core/routing_id';
 import { requireNative } from '../../native/native';
-import { RoutingId } from '../../../contracts';
+import { RoutingId, type MessageLike } from '../../../contracts';
 import type { AutoHwmProfileValue } from '../../../contracts/core';
 import { SpotNodeMode, type ActorDestroyOperation, type ActorJoinEntrySpotOperation, type ActorJoinOperation, type ActorLeaveOperation, type ActorLookupOperation, type ActorRef, type SendOperation, type SpotNodeActorEntry, type SpotNodeModeValue, type SpotNodePeerEntry, type SpotNodePeerFilter, type SpotNodeSocketEntry, type SpotNodeSocketFilter, type SpotNodeSpotEntry, type SpotNodeStatus, type SpotNodeSubjectEntry, type SpotNodeSubjectFilter } from '../../../contracts/service';
 import { SpotNodeOption } from './spot_options';
@@ -285,10 +285,11 @@ export class SpotNode extends NativeHandle {
       invokeActorJoin(node, actor, destNodeRid, destSpotRid, null, parts, callback, flags, timeoutMs),
     );
   }
-  joinActorEntrySpot(actor: ActorRef, destNodeRid: RoutingId): ActorJoinEntrySpotOperation {
+  joinActorEntrySpot(actor: ActorRef, destNodeRid: RoutingId, request: MessageLike): ActorJoinEntrySpotOperation {
     const node = this._native;
-    return new RuntimeActorJoinEntrySpotOperation((callback, timeoutMs) =>
-      invokeActorJoinEntrySpot(node, actor, destNodeRid, callback, timeoutMs),
+    return new RuntimeActorJoinEntrySpotOperation((parts, callback, flags, timeoutMs) =>
+      invokeActorJoinEntrySpot(node, actor, destNodeRid, parts, callback, flags, timeoutMs),
+      request,
     );
   }
   leaveActor(actor: ActorRef, currentSpotRid: RoutingId): ActorLeaveOperation {

@@ -52,6 +52,39 @@ fanout은 reply를 기대하지 않는 event 전파다.
 route mesh는 target node `RoutingId`를 application이 직접 알고 있을 때만 쓴다.
 session actor relay는 route mesh를 흉내 내지 않고 ActorGateway를 사용한다.
 
+## 5. 커스텀 codec (Avro 예시)
+
+기본 codec(`addJson`/`addProtobuf`/`addMessagePack`) 외의 포맷이 필요하면
+`ZLinkMessageSerializer`를 구현해 content type으로 등록한다. serializer는 업무 객체 ↔
+`Message`(byte payload) 변환만 맡고, packet name 결정·codec 선택은 framework가 그대로
+처리한다. framework당 custom serializer는 하나만 둔다(둘 이상이면 구성 오류).
+
+```java
+public final class AvroOrderSerializer implements ZLinkMessageSerializer {
+    private final Schema schema = new Schema.Parser().parse(SCHEMA_JSON);
+
+    @Override
+    public <T> Message serialize(T value) {
+        var out = new ByteArrayOutputStream();
+        var writer = new GenericDatumWriter<>(schema);
+        writer.write(value, EncoderFactory.get().binaryEncoder(out, null));
+        return Message.from(out.toByteArray());
+    }
+
+    @Override
+    public <T> T deserialize(Message message, Class<T> type) {
+        var reader = new GenericDatumReader<>(schema);
+        return type.cast(reader.read(null,
+            DecoderFactory.get().binaryDecoder(message.toByteArray(), null)));
+    }
+}
+
+options.codecs().addSerializer("application/avro", new AvroOrderSerializer());
+```
+
+등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro로 처리된다. 다른
+언어의 등록 표면은 [framework-api §2.2](../../../../doc/spec/framework-api.ko.md) 표를 본다.
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../README.ko.md) | [이전: Concepts](./03-concepts.ko.md) | [다음: Spot](./05-spot.ko.md)

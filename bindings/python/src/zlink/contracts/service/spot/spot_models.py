@@ -108,8 +108,10 @@ class ActorJoinResult:
 class ActorJoinEntrySpotResult:
     """The outcome of an actor join routed through an entry spot."""
     result: object
+    join_result_code: int
     actor: ActorRef
     target_node_rid: RoutingId
+    joined_spot_rid: RoutingId
     join_epoch: int
     flags: int
 

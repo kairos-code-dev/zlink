@@ -418,7 +418,7 @@ export interface ZLinkEntrySpot {
 
   onClosing?(): Promise<void>;
 
-  onJoinActor?(actor: ZLinkActor): Promise<void>;
+  onJoinedActor?(actor: ZLinkActor): Promise<void>;
 
   onLeaveActor?(actor: ZLinkActor): Promise<void>;
 }
@@ -556,7 +556,7 @@ export interface ZLinkEntrySpotActorRequestHandler<
 ```
 
 > 코드 기준: Entry Spot lifecycle(join/left)은 handler interface 가 아니라
-> `ZLinkEntrySpot.onJoinActor(...)` / `onLeaveActor(...)` 멤버 callback 으로 선언한다.
+> `ZLinkEntrySpot.onJoinedActor(...)` / `onLeaveActor(...)` 멤버 callback 으로 선언한다.
 > actor disconnected 도 `ZLinkEntrySpot.onDisconnectActor(...)` 멤버 callback 으로 선언한다.
 
 #### lifecycle callback 의미
@@ -649,9 +649,12 @@ user Spot handler 는 spot 객체와 actor 객체를 함께 받는다. room/game
 ##### actor join/leave lifecycle callback
 
 actor 가 Entry Spot 또는 user Spot 에 들어오거나 빠져나간 직후 후속 처리는
-Spot 멤버 `onJoinActor(actor)` 와 `onLeaveActor(actor)` 로 선언한다.
+Spot 멤버 `onJoinedActor(actor)` 와 `onLeaveActor(actor)` 로 선언한다.
 user Spot 에 actor 가 들어올지 결정하는 admission 은 `onActorJoin(actor, request)` 가
-맡는다. Entry Spot 은 기본 진입 지점이므로 `onActorJoin` 이 없다.
+맡는다. Entry Spot 도 명시적 `joinEntrySpot(nodeRid, request)` 재진입에 대해 같은
+`onActorJoin(actor, request)` admission 을 선택적으로 선언할 수 있다. Entry Spot 이
+`onActorJoin` 을 선언하지 않으면 재진입은 그대로 accept 된다. actor 최초 생성 직후 첫 Entry
+Spot 배치는 admission 이 아니라 `onCreateActor(actor)` 로만 처리한다.
 
 ```ts
 export class MatchSpot implements ZLinkSpot {
@@ -659,13 +662,13 @@ export class MatchSpot implements ZLinkSpot {
     return { accepted: true };
   }
 
-  async onJoinActor(actor: PlayerActor): Promise<void> {}
+  async onJoinedActor(actor: PlayerActor): Promise<void> {}
 
   async onLeaveActor(actor: PlayerActor): Promise<void> {}
 }
 ```
 
-`onJoinActor(...)` / `onLeaveActor(...)` 는 join/leave commit 이 끝난 뒤 동일 실행
+`onJoinedActor(...)` / `onLeaveActor(...)` 는 join/leave commit 이 끝난 뒤 동일 실행
 문맥에서 호출된다. disconnected handler 는 join/leave 와 별개이며 actor membership 을 바꾸지
 않는다. `notifyDisconnected(...)` 로 대상 actor 를 명시하면 호출된다.
 
@@ -906,7 +909,7 @@ export interface ZLinkActorContext {
 
   joinSpot<TRequest>(spotRid: RoutingId, request: TRequest): ZLinkActorJoinSpotCall;
 
-  joinEntrySpot(spotNodeRid: RoutingId): ZLinkActorJoinEntrySpotCall;
+  joinEntrySpot<TRequest>(spotNodeRid: RoutingId, request: TRequest): ZLinkActorJoinEntrySpotCall;
 }
 
 /** C# ZLinkActorJoinResult<TReply> 대응. join 결과 코드 + ref + reply. */
@@ -923,7 +926,7 @@ export interface ZLinkActorJoinSpotCall {
 
 export interface ZLinkActorJoinEntrySpotCall {
   timeout(timeoutMs: number): ZLinkActorJoinEntrySpotCall;
-  submit(): Promise<ActorRef>;
+  submit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkActorFactory {
@@ -939,7 +942,7 @@ export interface ZLinkActorManager {
 
 > 코드 기준(중요): dotnet `IZLinkActorJoinSpotCall.Async<TReply>` 는 bare `TReply`
 > 가 아니라 `ZLinkActorJoinResult<TReply>`(resultCode + ActorRef + reply)를 반환한다.
-> `IZLinkActorContext` 는 generic `GetSpot<TSpot>()` 오버로드와 `JoinEntrySpot(...)` 을
+> `IZLinkActorContext` 는 generic `GetSpot<TSpot>()` 오버로드와 `JoinEntrySpot(..., request)` 을
 > 가진다. C# overload 가 TS 에서 generic method overload 로 표현되지 않는 부분은
 > `getSpot()` / `getSpotAs<TSpot>(spotType)` 로 분리했다. 의미는 dotnet 과 동일하다.
 
@@ -949,20 +952,21 @@ export interface ZLinkActorManager {
 export interface ZLinkSpot {
   onActorJoin?(actor: ZLinkActor, request: Message, signal?: AbortSignal):
     Promise<ZLinkSpotActorJoinResponse>;
-  onJoinActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   onLeaveActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 ```
 
-Entry Spot 은 admission 대상이 아니므로 `onActorJoin` 을 노출하지 않는다. user Spot 의
-`onActorJoin` 이 `accepted: true` 를 반환할 때만 actor 위치를 commit 하고
-`onJoinActor` 를 호출한다. `accepted: false` 이면 위치를 바꾸지 않고 reply
-`Message` 만 caller 에게 돌려준다.
+Entry Spot 도 `onActorJoin?(actor, request)` 을 선택적으로 선언해 명시적 재진입
+(`joinEntrySpot(nodeRid, request)`) admission 을 처리할 수 있다. 선언하지 않은 Entry Spot
+재진입은 그대로 accept 된다. user Spot 과 Entry Spot 모두 `onActorJoin` 이
+`accepted: true` 를 반환할 때만 actor 위치를 commit 하고 `onJoinedActor` 를 호출한다.
+`accepted: false` 이면 위치를 바꾸지 않고 reply `Message` 만 caller 에게 돌려준다.
 
 actor join callback 이 accept 응답을 반환하면 framework 가 join commit 을 수행한다.
 application callback 은 별도 `joinActor(...)` 를 호출하지 않는다. `leaveActor(...)` 는 현재
 user Spot 에서 actor 를 Entry Spot 으로 되돌리는 편의 API 다. 성공하면 source Spot 의
-`onLeaveActor` 와 Entry Spot 의 `onJoinActor` callback 이 호출된다. 실패하면 actor 위치와
+`onLeaveActor` 와 Entry Spot 의 `onJoinedActor` callback 이 호출된다. 실패하면 actor 위치와
 framework state 는 기존을 유지하고 lifecycle callback 은 호출되지 않는다.
 
 - actor context 는 현재 client session 의 식별만 `boundSession` 으로 노출한다. session rid /
@@ -972,8 +976,8 @@ framework state 는 기존을 유지하고 lifecycle callback 은 호출되지 �
   `context.boundSession` 을 쓴다.
 - `getSpot(...)` 는 actor 가 Spot 에 join 한 뒤에만 유효하다. join 전 호출은 명확한 실패다.
 - `joinSpot(spotRid, request)` 는 user Spot routing id(`RoutingId`)를 받는다. domain key 는
-  application registry 가 먼저 `RoutingId` 로 변환한다. `joinEntrySpot(spotNodeRid)` 는 target
-  SpotNode routing id 를 받는다(Entry Spot 은 SpotNode 마다 하나).
+  application registry 가 먼저 `RoutingId` 로 변환한다. `joinEntrySpot(spotNodeRid, request)` 는
+  target SpotNode routing id 와 request 를 받는다. Entry Spot 은 SpotNode 마다 하나다.
 - `boundSession.send(...)` 는 현재 actor 에 연결된 stream client 로 packet 을 보낸다.
   request 응답은 actor request handler 의 반환값으로 보낸다.
 - stream 이 연결되지 않은 actor 에서 `boundSession.send(...)` 를 호출하면 명확한 실패다.

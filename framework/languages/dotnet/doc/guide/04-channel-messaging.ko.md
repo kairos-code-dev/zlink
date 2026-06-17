@@ -404,6 +404,37 @@ options.Codecs.AddMessagePack();
 payload 는 codec 이 직렬화할 수 있는 DTO 여야 한다. root/요소 타입이
 abstract/interface 면 명시 codec 없이는 설정 오류가 난다.
 
+기본 codec 외의 포맷(Avro·Thrift 등)이 필요하면 `IZLinkMessageSerializer` 를 구현해
+content type 으로 등록한다. serializer 는 업무 객체 ↔ `Message`(byte payload) 변환만
+맡고, packet name 결정·codec 선택은 framework 가 그대로 처리한다. framework 당 custom
+serializer 는 하나만 둔다(둘 이상이면 구성 오류).
+
+```csharp
+public sealed class AvroOrderSerializer : IZLinkMessageSerializer
+{
+    private readonly Avro.Schema _schema = Avro.Schema.Parse(SchemaJson);
+
+    public Message Serialize(object value, Type type)
+    {
+        using var buffer = new MemoryStream();
+        var writer = new Avro.Generic.GenericWriter<object>(_schema);
+        writer.Write(value, new Avro.IO.BinaryEncoder(buffer));
+        return Message.From(buffer.ToArray());
+    }
+
+    public object? Deserialize(Message message, Type type)
+    {
+        var reader = new Avro.Generic.GenericReader<object>(_schema, _schema);
+        return reader.Read(null!, new Avro.IO.BinaryDecoder(new MemoryStream(message.ToArray())));
+    }
+}
+
+options.Codecs.AddSerializer("application/avro", new AvroOrderSerializer());
+```
+
+등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro 로 처리된다.
+다른 언어의 등록 표면은 [framework-api §2.2](../../../../doc/spec/framework-api.ko.md) 표를 본다.
+
 ## 8. dealer mesh — 외부 로드밸런서 없이 수평 확장
 
 처리량을 늘리려면 같은 channel 에 노드를 더 붙인다. nginx·HAProxy 같은 별도 LB 없이

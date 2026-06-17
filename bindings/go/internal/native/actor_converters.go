@@ -70,26 +70,45 @@ func goZlinkActorJoinTrampoline(result *C.zlink_actor_join_result_t, parts *C.zl
 }
 
 //export goZlinkActorJoinEntrySpotTrampoline
-func goZlinkActorJoinEntrySpotTrampoline(result *C.zlink_actor_join_entry_spot_result_t, userdata C.uintptr_t) {
+func goZlinkActorJoinEntrySpotTrampoline(result *C.zlink_actor_join_entry_spot_result_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
 	handle := cgo.Handle(userdata)
 	state, ok := safeHandleAs[*actorJoinEntrySpotCallbackState](userdata)
 	if !ok || state == nil {
+		if parts != nil {
+			C.zlink_multipart_close(parts, partCount)
+		}
 		return
 	}
 	defer handle.Delete()
 	var out ActorJoinEntrySpotResult
 	if result != nil {
 		out = ActorJoinEntrySpotResult{
-			Result:        RequestResult(result.result),
-			Actor:         actorRefFromC(result.actor),
-			TargetNodeRID: routingIDFromC(result.target_node_rid),
-			JoinEpoch:     uint64(result.join_epoch),
-			Flags:         uint32(result.flags),
+			Result:         RequestResult(result.result),
+			JoinResultCode: int32(result.join_result_code),
+			Actor:          actorRefFromC(result.actor),
+			TargetNodeRID:  routingIDFromC(result.target_node_rid),
+			JoinedSpotRID:  routingIDFromC(result.joined_spot_rid),
+			JoinEpoch:      uint64(result.join_epoch),
+			Flags:          uint32(result.flags),
 		}
 	} else {
 		out = ActorJoinEntrySpotResult{Result: RequestInternalError}
 	}
-	state.result <- out
+	if out.Result == RequestOK {
+		clonedParts, err := takeParts(parts, partCount)
+		if err != nil {
+			state.result <- actorJoinEntrySpotTrampolineResult{
+				result: ActorJoinEntrySpotResult{Result: RequestProtocolError},
+			}
+		} else {
+			state.result <- actorJoinEntrySpotTrampolineResult{result: out, parts: clonedParts}
+		}
+	} else {
+		if parts != nil {
+			C.zlink_multipart_close(parts, partCount)
+		}
+		state.result <- actorJoinEntrySpotTrampolineResult{result: out}
+	}
 	if !state.once.closed {
 		state.once.close(state.done)
 	}

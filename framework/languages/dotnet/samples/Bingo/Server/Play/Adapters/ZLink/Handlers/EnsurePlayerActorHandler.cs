@@ -34,7 +34,10 @@ internal sealed class EnsurePlayerActorHandler(
             player.SetDisplayName(request.DisplayName);
         }
 
-        var joined = await actor.Context.JoinEntrySpot(topology.PlayRid)
+        using var entryJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        var joined = await actor.Context.JoinEntrySpot(
+                topology.PlayRid,
+                entryJoinRequest)
             .Async(cancellationToken)
             ;
         return new EnsurePlayerActorRes
@@ -43,9 +46,9 @@ internal sealed class EnsurePlayerActorHandler(
             ActorType = SampleNames.PlayerActorType,
             Actor = new ActorRefSnapshot
             {
-                NodeRid = joined.NodeRid.ToHex(),
-                ActorId = joined.ActorId,
-                Generation = joined.Generation,
+                NodeRid = joined.Actor.NodeRid.ToHex(),
+                ActorId = joined.Actor.ActorId,
+                Generation = joined.Actor.Generation,
             },
         };
     }

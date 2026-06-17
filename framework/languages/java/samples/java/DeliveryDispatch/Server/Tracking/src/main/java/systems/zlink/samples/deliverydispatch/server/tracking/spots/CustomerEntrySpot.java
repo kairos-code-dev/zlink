@@ -1,11 +1,13 @@
 package systems.zlink.samples.deliverydispatch.server.tracking.spots;
 
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
-import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.samples.deliverydispatch.server.tracking.actors.CustomerActor;
 
-public final class CustomerEntrySpot implements ZLinkEntrySpot {
+public final class CustomerEntrySpot implements ZLinkEntrySpot<CustomerActor> {
     private final ZLinkEntrySpotContext context;
 
     public CustomerEntrySpot(ZLinkEntrySpotContext context) {
@@ -22,18 +24,26 @@ public final class CustomerEntrySpot implements ZLinkEntrySpot {
     }
 
     @Override
-    public void onCreateActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public void onCreateActor(CustomerActor actor, CancellationToken cancellationToken) {
     }
 
     @Override
-    public void onJoinActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public ZLinkSpotActorJoinResponse onActorJoin(
+        CustomerActor actor,
+        Message request,
+        CancellationToken cancellationToken) {
+        return ZLinkSpotActorJoinResponse.accept(Message.from(new byte[0]));
     }
 
     @Override
-    public void onLeaveActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public void onJoinedActor(CustomerActor actor, CancellationToken cancellationToken) {
     }
 
     @Override
-    public void onDisconnectActor(ZLinkActor actor, CancellationToken cancellationToken) {
+    public void onLeaveActor(CustomerActor actor, CancellationToken cancellationToken) {
+    }
+
+    @Override
+    public void onDisconnectActor(CustomerActor actor, CancellationToken cancellationToken) {
     }
 }

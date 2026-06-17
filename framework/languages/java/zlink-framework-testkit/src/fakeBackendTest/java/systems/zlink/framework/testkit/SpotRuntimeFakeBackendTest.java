@@ -4,6 +4,7 @@ import systems.zlink.framework.runtime.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -368,14 +369,14 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(RoutingId.from("target-spot"), message("hello", "SpotGreeting"))
+                .sendToSpot(RoutingId.from("target-spot"), new SpotGreeting("hello"))
                 .submit()
                 .toCompletableFuture()
                 .join();
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
-                    .requestToSpot(RoutingId.from("target-spot"), message("ping", "SpotQuestion"))
+                    .requestToSpot(RoutingId.from("target-spot"), new SpotQuestion("ping"))
                     .submit(String.class)
                     .toCompletableFuture()
                     .join());
@@ -934,6 +935,7 @@ final class SpotRuntimeFakeBackendTest {
 
     @Test
     void entrySpotDispatchReadableDrainsUnhandledActorJoinWithRejectReply() {
+        LifecycleEntrySpot.rejectJoin.set(false);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); }; };
@@ -943,15 +945,19 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime ignored =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchEntrySpotActorJoinReadable("player-1");
+            awaitCall(backendFactory, "entrySpot.replyActorJoin.player-1.1");
         }
 
         assertTrue(backendFactory.calls().contains("entrySpot.recvActorJoin.DONT_WAIT"));
         assertTrue(backendFactory.calls().contains("entrySpot.replyActorJoin.player-1.1"));
+        assertTrue(backendFactory.calls().contains("entrySpot.replyActorJoinPayload.player-1.1."));
     }
 
     @Test
     void entrySpotActorJoinReadableCommitsAndInvokesMemberCallback() {
+        LifecycleEntrySpot.lastActorJoin.set(null);
         LifecycleEntrySpot.lastJoin.set(null);
+        LifecycleEntrySpot.rejectJoin.set(false);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
@@ -966,11 +972,46 @@ final class SpotRuntimeFakeBackendTest {
                 "player-1",
                 "String",
                 "join-request");
+            awaitCall(backendFactory, "entrySpot.replyActorJoin.player-1.0");
         }
 
         assertTrue(backendFactory.calls().contains("entrySpot.recvActorJoin.DONT_WAIT"));
         assertTrue(backendFactory.calls().contains("entrySpot.replyActorJoin.player-1.0"));
+        assertTrue(backendFactory.calls().contains(
+            "entrySpot.replyActorJoinPayload.player-1.0.entry:String"));
+        assertEquals("player-1:String", LifecycleEntrySpot.lastActorJoin.get());
         assertEquals("player-1:true", LifecycleEntrySpot.lastJoin.get());
+    }
+
+    @Test
+    void entrySpotActorJoinRejectDoesNotInvokeMemberCallback() {
+        LifecycleEntrySpot.lastActorJoin.set(null);
+        LifecycleEntrySpot.lastJoin.set(null);
+        LifecycleEntrySpot.rejectJoin.set(true);
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
+                node.addEntrySpot(LifecycleEntrySpot.class); }; };
+        options.addActorFactory("player", PlayerActorFactory.class);
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            backendFactory.dispatchEntrySpotActorJoinReadable(
+                "player-1",
+                "String",
+                "join-request");
+            awaitCall(backendFactory, "entrySpot.replyActorJoin.player-1.1");
+        } finally {
+            LifecycleEntrySpot.rejectJoin.set(false);
+        }
+
+        assertTrue(backendFactory.calls().contains("entrySpot.replyActorJoin.player-1.1"));
+        assertTrue(backendFactory.calls().contains(
+            "entrySpot.replyActorJoinPayload.player-1.1.entry-rejected:String"));
+        assertEquals("player-1:String", LifecycleEntrySpot.lastActorJoin.get());
+        assertNull(LifecycleEntrySpot.lastJoin.get());
     }
 
     @Test
@@ -1202,7 +1243,7 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
-    public static final class GameSpot implements ZLinkSpot {
+    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             return null;
@@ -1213,7 +1254,7 @@ final class SpotRuntimeFakeBackendTest {
                     }
     }
 
-    public static final class PayloadSpot implements ZLinkSpot {
+    public static final class PayloadSpot implements ZLinkSpot<ZLinkActor> {
         static final AtomicReference<String> lastCreatePayload = new AtomicReference<>();
 
         @Override
@@ -1258,7 +1299,7 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
-    public static final class OutboundSpot implements ZLinkSpot {
+    public static final class OutboundSpot implements ZLinkSpot<ZLinkActor> {
         static OutboundSpot instance;
         static ZLinkSpotContext context;
         static final AtomicReference<String> lastLeave = new AtomicReference<>();
@@ -1281,7 +1322,7 @@ final class SpotRuntimeFakeBackendTest {
                     }
     }
 
-    public static final class HandlerSpot implements ZLinkSpot {
+    public static final class HandlerSpot implements ZLinkSpot<ZLinkActor> {
         static final List<String> dispatches = new CopyOnWriteArrayList<>();
         private final ZLinkSpotContext context;
 
@@ -1326,7 +1367,7 @@ final class SpotRuntimeFakeBackendTest {
                     }
     }
 
-    public static final class SerialSpot implements ZLinkSpot {
+    public static final class SerialSpot implements ZLinkSpot<ZLinkActor> {
         private final ZLinkSpotContext context;
 
         public SerialSpot(ZLinkSpotContext context) {
@@ -1457,7 +1498,7 @@ final class SpotRuntimeFakeBackendTest {
                     }
     }
 
-    public static final class AmbientOutboundSpot implements ZLinkSpot {
+    public static final class AmbientOutboundSpot implements ZLinkSpot<ZLinkActor> {
         static ZLinkSpotOutbound outbound;
 
         @Override
@@ -1477,12 +1518,14 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
-    public static final class LifecycleEntrySpot implements ZLinkEntrySpot {
+    public static final class LifecycleEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
         static final AtomicInteger configureCount = new AtomicInteger();
         static final AtomicInteger initializeCount = new AtomicInteger();
         static final AtomicInteger closingCount = new AtomicInteger();
+        static final AtomicReference<String> lastActorJoin = new AtomicReference<>();
         static final AtomicReference<String> lastJoin = new AtomicReference<>();
         static final AtomicReference<String> lastLeave = new AtomicReference<>();
+        static final AtomicReference<Boolean> rejectJoin = new AtomicReference<>(false);
         private final ZLinkEntrySpotContext context;
 
         public LifecycleEntrySpot(ZLinkEntrySpotContext context) {
@@ -1510,7 +1553,21 @@ final class SpotRuntimeFakeBackendTest {
                     }
 
         @Override
-        public void onJoinActor(
+        public ZLinkSpotActorJoinResponse onActorJoin(
+            ZLinkActor actor,
+            Message request,
+            CancellationToken cancellationToken) {
+            lastActorJoin.set(actor.actorId() + ":" + request.toUtf8String());
+            if (Boolean.TRUE.equals(rejectJoin.get())) {
+                return ZLinkSpotActorJoinResponse.reject(
+                    Message.from("entry-rejected:" + request.toUtf8String()));
+            }
+            return ZLinkSpotActorJoinResponse.accept(
+                Message.from("entry:" + request.toUtf8String()));
+        }
+
+        @Override
+        public void onJoinedActor(
             ZLinkActor actor,
             CancellationToken cancellationToken) {
             lastJoin.set(actor.actorId() + ":" + actor.context().isJoined());
@@ -1524,7 +1581,7 @@ final class SpotRuntimeFakeBackendTest {
                     }
     }
 
-    public static final class InterfaceEntrySpot implements ZLinkEntrySpot {
+    public static final class InterfaceEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
         private final ZLinkEntrySpotContext context;
 
         public InterfaceEntrySpot(ZLinkEntrySpotContext context) {
@@ -1562,7 +1619,7 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
-    public static final class InterfaceUserSpot implements ZLinkSpot {
+    public static final class InterfaceUserSpot implements ZLinkSpot<ZLinkActor> {
         static final AtomicReference<String> lastJoin = new AtomicReference<>();
         static final AtomicReference<String> lastPostJoin = new AtomicReference<>();
         private final ZLinkSpotContext context;
@@ -1591,7 +1648,7 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public void onJoinActor(
+        public void onJoinedActor(
             ZLinkActor actor,
             CancellationToken cancellationToken) {
             lastPostJoin.set(actor.actorId() + ":" + actor.context().isJoined());

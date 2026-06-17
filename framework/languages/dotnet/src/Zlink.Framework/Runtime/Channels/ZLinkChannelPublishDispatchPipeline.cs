@@ -9,6 +9,7 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
     ZLinkHandlerDispatcher dispatcher,
     Func<string, IReadOnlySet<string>> resolveMappedGroups,
     LogLevel unhandledLogLevel,
+    ZLinkCodecRegistryBuilder codecs,
     ILogger logger)
 {
     public async Task DispatchAsync(
@@ -40,7 +41,7 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
             decodedMessages ??= new Dictionary<Type, object?>();
             if (!decodedMessages.TryGetValue(endpoint.MessageType, out var message))
             {
-                message = ZLinkEnvelopeCodec.DecodeBody(topicMessage.Parts, endpoint.MessageType);
+                message = ZLinkEnvelopeCodec.DecodeBody(topicMessage.Parts, endpoint.MessageType, codecs);
                 decodedMessages.Add(endpoint.MessageType, message);
             }
 

@@ -241,7 +241,7 @@ post-join, left lifecycle은 handler registry에 등록하지 않고 Spot member
 
 ```java
 public interface ZLinkEntrySpotActorRequestHandler<
-    TEntrySpot extends ZLinkEntrySpot,
+    TEntrySpot extends ZLinkEntrySpot<?>,
     TActor extends ZLinkActor,
     TRequest,
     TReply> {
@@ -254,7 +254,7 @@ public interface ZLinkEntrySpotActorRequestHandler<
 }
 
 public interface ZLinkSpotActorRequestHandler<
-    TSpot extends ZLinkSpot,
+    TSpot extends ZLinkSpot<?>,
     TActor extends ZLinkActor,
     TRequest,
     TReply> {
@@ -266,36 +266,41 @@ public interface ZLinkSpotActorRequestHandler<
         CancellationToken cancellationToken);
 }
 
-public interface ZLinkSpot {
+public interface ZLinkSpot<TActor extends ZLinkActor> {
     ZLinkSpotActorJoinResponse onActorJoin(
-        ZLinkActor actor,
+        TActor actor,
         Message request,
         CancellationToken cancellationToken);
 
-    void onJoinActor(
-        ZLinkActor actor,
+    void onJoinedActor(
+        TActor actor,
         CancellationToken cancellationToken);
 
     void onLeaveActor(
-        ZLinkActor actor,
+        TActor actor,
         CancellationToken cancellationToken);
 
     void onDisconnectActor(
-        ZLinkActor actor,
+        TActor actor,
         CancellationToken cancellationToken);
 }
 
-public interface ZLinkEntrySpot {
-    void onJoinActor(
-        ZLinkActor actor,
+public interface ZLinkEntrySpot<TActor extends ZLinkActor> {
+    ZLinkSpotActorJoinResponse onActorJoin(
+        TActor actor,
+        Message request,
+        CancellationToken cancellationToken);
+
+    void onJoinedActor(
+        TActor actor,
         CancellationToken cancellationToken);
 
     void onLeaveActor(
-        ZLinkActor actor,
+        TActor actor,
         CancellationToken cancellationToken);
 
     void onDisconnectActor(
-        ZLinkActor actor,
+        TActor actor,
         CancellationToken cancellationToken);
 }
 ```
@@ -436,15 +441,16 @@ public interface ZLinkActorContext {
     boolean isJoined();
     ZLinkBoundSession boundSession();
     ZLinkSpot getSpot();
-    <TSpot extends ZLinkSpot> TSpot getSpot(Class<TSpot> spotType);
+    <TSpot extends ZLinkSpot<?>> TSpot getSpot(Class<TSpot> spotType);
     ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid, Object request);
-    ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid);
+    ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid, Object request);
 }
 
 public interface ZLinkActorJoinEntrySpotCall {
     ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
-    CompletionStage<ZLinkActorRef> submit();
-    ZLinkActorRef await();
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
+        Class<TReply> replyType);
+    <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
 }
 
 public interface ZLinkActorJoinSpotCall {
@@ -840,7 +846,7 @@ public interface ZLinkSpotManager {
     CompletionStage<Boolean> close(RoutingId spotRid);
 }
 
-public interface ZLinkSpot {
+public interface ZLinkSpot<TActor extends ZLinkActor> {
     ZLinkSpotContext context();
 
     default void configure() {
@@ -857,24 +863,31 @@ public interface ZLinkSpot {
     }
 
     default ZLinkSpotActorJoinResponse onActorJoin(
-        ZLinkActor actor,
+        TActor actor,
         Message request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.reject();
     }
 
-    default void onJoinActor(
-        ZLinkActor actor,
+    default ZLinkSpotActorJoinResponse onActorJoin(
+        TActor actor,
+        Message request,
+        CancellationToken cancellationToken) {
+        return ZLinkSpotActorJoinResponse.reject();
+    }
+
+    default void onJoinedActor(
+        TActor actor,
         CancellationToken cancellationToken) {
     }
 
     default void onLeaveActor(
-        ZLinkActor actor,
+        TActor actor,
         CancellationToken cancellationToken) {
     }
 }
 
-public interface ZLinkEntrySpot {
+public interface ZLinkEntrySpot<TActor extends ZLinkActor> {
     ZLinkEntrySpotContext context();
 
     default void configure() {
@@ -886,13 +899,13 @@ public interface ZLinkEntrySpot {
     default void onClosing() {
     }
 
-    default void onJoinActor(
-        ZLinkActor actor,
+    default void onJoinedActor(
+        TActor actor,
         CancellationToken cancellationToken) {
     }
 
     default void onLeaveActor(
-        ZLinkActor actor,
+        TActor actor,
         CancellationToken cancellationToken) {
     }
 }
@@ -1182,17 +1195,18 @@ public @interface ZLinkStreamPacket {
 
 SPOT actor lifecycle callback은 actor만 받는다. join admission callback은
 framework 공통 `Message` request를 받고 `ZLinkSpotActorJoinResponse`를 반환한다.
-accepted가 `true`일 때만 actor 위치가 user Spot으로 commit되고
-`onJoinActor`가 호출된다. accepted가 `false`이면 actor 위치는 바뀌지 않고
-post-join callback도 실행되지 않는다. Entry Spot은 admission callback을 갖지 않는다.
+accepted가 `true`일 때만 actor 위치가 target Spot으로 commit되고
+`onJoinedActor`가 호출된다. accepted가 `false`이면 actor 위치는 바뀌지 않고
+post-join callback도 실행되지 않는다. Entry Spot도 같은 admission callback을 갖고,
+user Spot에서 Entry Spot으로 돌아오는 명시적 join 요청을 여기서 accept/reject한다.
 disconnected callback은 actor만 받는다. session actor의 현재 binding이 끊어졌거나
 application이 actor disconnected 알림을 명시적으로 보낼 때 실행되며, actor가 들어오거나
 나간 Spot 변경 결과를 만들지 않기 때문이다.
 
-public final class MatchSpot implements ZLinkSpot {
+public final class MatchSpot implements ZLinkSpot<MatchActor> {
     @Override
     public void onDisconnectActor(
-        ZLinkActor actor,
+        MatchActor actor,
         CancellationToken cancellationToken) {
         // session binding cleanup or domain notification
     }

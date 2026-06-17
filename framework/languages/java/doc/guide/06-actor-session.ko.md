@@ -54,7 +54,7 @@ handler에서 받은 spot context로 호출한다.
 | `spotRid()`, `isJoined()` | 현재 Spot join 상태 조회 |
 | `boundSession()` | 자기 client로 push (§4) |
 | `joinSpot(spotRid, request)` | user Spot으로 join. `.submit(...)`로 종결 |
-| `joinEntrySpot(spotNodeRid)` | target SpotNode의 Entry Spot으로 이동 |
+| `joinEntrySpot(spotNodeRid, request)` | target SpotNode의 Entry Spot으로 이동. 빈 요청도 `Message.from(new byte[0])`처럼 명시해서 넘긴다 |
 | `ZLinkEntrySpotContext.destroyActor(actor)` | Entry Spot에 있는 actor를 종료 |
 
 `joinSpot(...).submit(replyType)`는 actor join 요청을 제출하고, join reply를
@@ -66,7 +66,7 @@ actor 객체를 끝내려면 actor가 Entry Spot에 있는 상태에서
 `ZLinkEntrySpotContext.destroyActor(actor)`를 호출한다. 이 호출은 lifecycle callback을
 호출하지 않고 native actor ref와 framework registry를 정리한다. user Spot에 있는 actor는
 바로 destroy할 수 없으므로 먼저 leave 또는
-`joinEntrySpot(...)` 흐름을 완료해야 한다. Kotlin에서는
+`joinEntrySpot(..., request)` 흐름을 완료해야 한다. Kotlin에서는
 `systems.zlink.framework.kotlin.destroyActor(actor)` suspending extension으로 같은 동작을
 호출할 수 있다.
 
@@ -77,7 +77,7 @@ Spot의 `configure()`에서 등록한다. Entry Spot과 user Spot은 등록 표�
 실행 정책이 다르다.
 
 ```java
-public final class PlayerEntrySpot implements ZLinkEntrySpot {
+public final class PlayerEntrySpot implements ZLinkEntrySpot<PlayerActor> {
     private final ZLinkEntrySpotContext context;
 
     public PlayerEntrySpot(ZLinkEntrySpotContext context) {

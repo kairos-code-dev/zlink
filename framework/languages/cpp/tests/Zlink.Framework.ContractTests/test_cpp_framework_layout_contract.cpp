@@ -696,7 +696,7 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
       "`add_actor_packet<&TSpot::method>()`",
       "`onDisconnectActor(actor)`",
       "`on_actor_join(actor, message_t)`",
-      "`onJoinActor(actor)`",
+      "`on_actor_joined(actor)`",
       "`onLeaveActor(actor)`",
       "`spot_context_t::close()`",
       "`spot_create_result_t`",

@@ -90,6 +90,19 @@ json, messagepack, protobuf helper 는 connector 전용 패키지에서 제공�
 구조적 payload를 보내면 connector가 packet 이름을 자동으로 얻을 수 없을 수 있으므로,
 그 경우에만 `.packetName(...)` 또는 `messageType` 인자를 명시한다.
 
+connector도 framework처럼 **custom codec**을 끼울 수 있다. `codec` 옵션에 번들 codec 대신
+사용자 `ZlinkStreamPayloadCodec`(`encode`/`decode` 구현)을 주면 Avro·Thrift 같은 포맷을
+쓴다. server framework 쪽 등록(`codecs.addSerializer(...)`)과 대칭이며, 두 표면의 전체
+목록은 [framework-api §2.2](../../../../doc/spec/framework-api.ko.md) 표를 본다.
+
+```ts
+const avroStreamCodec = {
+  encode(payload) { return { name: 'PlaceOrder', codec: 'raw', payload: orderType.toBuffer(payload) }; },
+  decode(encoded) { return orderType.fromBuffer(Buffer.from(encoded.payload)); }
+};
+const connector = zlinkStreamConnectorFactory.create({ endpoint, codec: avroStreamCodec });
+```
+
 server push 를 한 번 기다릴 때는 connector의 `waitFor(...)` builder를 사용한다.
 connector에 JSON codec을 설정해 두면 기다린 message의 payload도 같은 codec으로
 decode된다.

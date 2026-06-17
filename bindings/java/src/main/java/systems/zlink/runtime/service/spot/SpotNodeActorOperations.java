@@ -95,8 +95,9 @@ final class SpotNodeActorOperations {
     }
 
     ActorJoinEntrySpotOperation joinActorEntrySpot(ActorRef actor,
-                                                   RoutingId destNodeRid) {
-        return joinPlane.joinActorEntrySpot(actor, destNodeRid);
+                                                   RoutingId destNodeRid,
+                                                   Message request) {
+        return joinPlane.joinActorEntrySpot(actor, destNodeRid, request);
     }
 
     ActorLeaveOperation leaveActor(ActorRef actor, RoutingId currentSpotRid) {

@@ -29,7 +29,23 @@ public abstract partial class SpotTestSupport
             Context.Handlers.AddActorPacket<LocalActorRecordingHandler, RegistryTestActor>("local-record");
         }
 
-        public ValueTask onJoinActor(
+        public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+            RegistryTestActor actor,
+            Message request,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            _ = cancellationToken;
+            if (request.GetString() == "reject-entry")
+            {
+                return ValueTask.FromResult(
+                    ZLinkSpotActorJoinResult.Reject(Message.From("entry-reject:reject-entry")));
+            }
+
+            return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(Message.From(request)));
+        }
+
+        public ValueTask OnJoinedActorAsync(
             RegistryTestActor actor,
             CancellationToken cancellationToken)
         {
@@ -39,7 +55,7 @@ public abstract partial class SpotTestSupport
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask onLeaveActor(
+        public ValueTask OnLeaveActorAsync(
             RegistryTestActor actor,
             CancellationToken cancellationToken)
         {

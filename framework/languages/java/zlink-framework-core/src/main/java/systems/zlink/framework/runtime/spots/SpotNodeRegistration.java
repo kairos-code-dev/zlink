@@ -15,8 +15,8 @@ import systems.zlink.framework.spots.ZLinkSpot;
 public final class SpotNodeRegistration {
     private final String meshName;
     private final String nodeName;
-    private final List<Class<? extends ZLinkSpot>> spotFactories = new ArrayList<>();
-    private final List<Class<? extends ZLinkEntrySpot>> entrySpots = new ArrayList<>();
+    private final List<Class<? extends ZLinkSpot<?>>> spotFactories = new ArrayList<>();
+    private final List<Class<? extends ZLinkEntrySpot<?>>> entrySpots = new ArrayList<>();
     private final Map<String, SpotPublisherClientRegistration> attachedSpotPublisherClients =
         new LinkedHashMap<>();
     private final Map<String, SpotChannelClientRegistration> attachedChannelClients =
@@ -46,11 +46,11 @@ public final class SpotNodeRegistration {
         return nodeName;
     }
 
-    public List<Class<? extends ZLinkSpot>> spotFactories() {
+    public List<Class<? extends ZLinkSpot<?>>> spotFactories() {
         return List.copyOf(spotFactories);
     }
 
-    public List<Class<? extends ZLinkEntrySpot>> entrySpots() {
+    public List<Class<? extends ZLinkEntrySpot<?>>> entrySpots() {
         return List.copyOf(entrySpots);
     }
 
@@ -200,7 +200,7 @@ public final class SpotNodeRegistration {
         pubSubManualConnections.add(requireEndpoint(endpoint, "pub/sub manual endpoint"));
     }
 
-    void addSpotFactory(Class<? extends ZLinkSpot> spotType) {
+    void addSpotFactory(Class<? extends ZLinkSpot<?>> spotType) {
         if (spotType == null) {
             throw new ZLinkConfigurationException("spot factory type is required");
         }
@@ -208,7 +208,7 @@ public final class SpotNodeRegistration {
         spotFactories.add(spotType);
     }
 
-    void addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotType) {
+    void addEntrySpot(Class<? extends ZLinkEntrySpot<?>> entrySpotType) {
         if (entrySpotType == null) {
             throw new ZLinkConfigurationException("entry spot type is required");
         }
@@ -233,8 +233,8 @@ public final class SpotNodeRegistration {
     }
 
     public void validate() {
-        Set<Class<? extends ZLinkSpot>> spotTypes = new HashSet<>();
-        for (Class<? extends ZLinkSpot> spotFactory : spotFactories) {
+        Set<Class<? extends ZLinkSpot<?>>> spotTypes = new HashSet<>();
+        for (Class<? extends ZLinkSpot<?>> spotFactory : spotFactories) {
             if (!spotTypes.add(spotFactory)) {
                 throw new ZLinkConfigurationException(
                     "duplicate spot factory type on node: " + nodeName);

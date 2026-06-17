@@ -91,13 +91,13 @@ final class ActorRuntimeFakeBackendTest {
                 .join();
 
             var joined = actor.context()
-                .joinEntrySpot(RoutingId.from("entry-node"))
-                .submit()
+                .joinEntrySpot(RoutingId.from("entry-node"), Message.from(new byte[0]))
+                .submit(Message.class)
                 .toCompletableFuture()
                 .join();
 
-            assertEquals("player-1", joined.actorId());
-            assertEquals(RoutingId.from("entry-node"), joined.nodeRid());
+            assertEquals("player-1", joined.actor().actorId());
+            assertEquals(RoutingId.from("entry-node"), joined.actor().nodeRid());
         }
 
         assertEquals(
@@ -139,8 +139,8 @@ final class ActorRuntimeFakeBackendTest {
             assertSame(GameSpot.instance, actor.context().getSpot(GameSpot.class));
 
             actor.context()
-                .joinEntrySpot(RoutingId.from("entry-node"))
-                .submit()
+                .joinEntrySpot(RoutingId.from("entry-node"), Message.from(new byte[0]))
+                .submit(Message.class)
                 .toCompletableFuture()
                 .join();
             assertThrows(
@@ -272,8 +272,8 @@ final class ActorRuntimeFakeBackendTest {
                     .join());
 
             roomActor.context()
-                .joinEntrySpot(RoutingId.from("spot-node"))
-                .submit()
+                .joinEntrySpot(RoutingId.from("spot-node"), Message.from(new byte[0]))
+                .submit(Message.class)
                 .toCompletableFuture()
                 .join();
             EntrySpot.instance.context()
@@ -384,7 +384,7 @@ final class ActorRuntimeFakeBackendTest {
         }
     }
 
-    public static final class GameSpot implements ZLinkSpot {
+    public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
         static GameSpot instance;
 
         public GameSpot() {
@@ -397,7 +397,7 @@ final class ActorRuntimeFakeBackendTest {
         }
     }
 
-    public static final class EntrySpot implements ZLinkEntrySpot {
+    public static final class EntrySpot implements ZLinkEntrySpot<ZLinkActor> {
         static EntrySpot instance;
         static int createCount;
         static int leftCount;
@@ -436,7 +436,7 @@ final class ActorRuntimeFakeBackendTest {
         }
     }
 
-    public static final class SecondEntrySpot implements ZLinkEntrySpot {
+    public static final class SecondEntrySpot implements ZLinkEntrySpot<ZLinkActor> {
         static int createCount;
         private final ZLinkEntrySpotContext context;
 

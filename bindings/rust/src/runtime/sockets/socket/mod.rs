@@ -19,7 +19,7 @@ pub(crate) use sub::{sub_inner, sub_inner_mut};
 pub(crate) use xpub::{xpub_inner, xpub_inner_mut};
 pub(crate) use xsub::{xsub_inner, xsub_inner_mut};
 
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::time::Duration;

@@ -34,17 +34,24 @@ func newActorJoinOp(submit func(parts []*Message, flags SendFlags, timeout time.
 }
 
 type actorJoinEntrySpotBuilderState struct {
+	parts   []*Message
+	flags   SendFlags
 	timeout time.Duration
 	submitOnce
-	submit func(timeout time.Duration, cb actorJoinEntrySpotCallback) error
+	submit func(parts []*Message, flags SendFlags, timeout time.Duration, cb actorJoinEntrySpotCallback) error
 }
 
 type actorJoinEntrySpotBuilder struct {
 	state *actorJoinEntrySpotBuilderState
 }
 
-func newActorJoinEntrySpotOp(submit func(timeout time.Duration, cb actorJoinEntrySpotCallback) error) ActorJoinEntrySpotOp {
-	return &actorJoinEntrySpotBuilder{state: &actorJoinEntrySpotBuilderState{submit: submit}}
+func newActorJoinEntrySpotOp(request *Message, submit func(parts []*Message, flags SendFlags, timeout time.Duration, cb actorJoinEntrySpotCallback) error) ActorJoinEntrySpotOp {
+	return &actorJoinEntrySpotBuilder{state: &actorJoinEntrySpotBuilderState{parts: []*Message{request}, submit: submit}}
+}
+
+func (b *actorJoinEntrySpotBuilder) Message(msg *Message) ActorJoinEntrySpotOp {
+	b.state.parts = append(b.state.parts, msg)
+	return b
 }
 
 func (b *actorJoinEntrySpotBuilder) Timeout(timeout time.Duration) ActorJoinEntrySpotOp {
@@ -52,10 +59,15 @@ func (b *actorJoinEntrySpotBuilder) Timeout(timeout time.Duration) ActorJoinEntr
 	return b
 }
 
+func (b *actorJoinEntrySpotBuilder) Flags(flags SendFlags) ActorJoinEntrySpotOp {
+	b.state.flags = flags
+	return b
+}
+
 func (b *actorJoinEntrySpotBuilder) SubmitAsync(_ context.Context) (<-chan ActorJoinEntrySpotCompletion, error) {
 	resultCh := make(chan ActorJoinEntrySpotCompletion, 1)
-	ok, err := b.Submit(context.Background(), func(result ActorJoinEntrySpotResult) {
-		completion := ActorJoinEntrySpotCompletion{Result: result}
+	ok, err := b.Submit(context.Background(), func(result ActorJoinEntrySpotResult, parts []*Message) {
+		completion := ActorJoinEntrySpotCompletion{Result: result, Parts: parts}
 		if result.Result != RequestOK {
 			completion.Err = &RequestError{Result: result.Result}
 		}
@@ -71,15 +83,15 @@ func (b *actorJoinEntrySpotBuilder) SubmitAsync(_ context.Context) (<-chan Actor
 	return resultCh, nil
 }
 
-func (b *actorJoinEntrySpotBuilder) Submit(_ context.Context, callback func(ActorJoinEntrySpotResult)) (bool, error) {
+func (b *actorJoinEntrySpotBuilder) Submit(_ context.Context, callback func(ActorJoinEntrySpotResult, []*Message)) (bool, error) {
 	if callback == nil {
 		return false, configInvalidArgumentError()
 	}
 	if err := b.state.markSubmitted(); err != nil {
 		return false, err
 	}
-	if err := b.state.submit(b.state.timeout, callback); err != nil {
-		return false, err
+	if err := b.state.submit(b.state.parts, b.state.flags, b.state.timeout, callback); err != nil {
+		return submitBackpressureAsNotSubmitted(err)
 	}
 	return true, nil
 }

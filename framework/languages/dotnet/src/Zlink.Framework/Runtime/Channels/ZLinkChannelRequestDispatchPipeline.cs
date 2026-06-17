@@ -9,6 +9,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
     ZLinkHandlerRegistry handlerRegistry,
     ZLinkHandlerDispatcher dispatcher,
     Func<string, IReadOnlySet<string>> resolveMappedGroups,
+    ZLinkCodecRegistryBuilder codecs,
     ILogger logger)
 {
     public async Task DispatchAsync(
@@ -46,7 +47,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
         object? message;
         try
         {
-            message = ZLinkEnvelopeCodec.DecodeBody(received.Parts, endpoint.MessageType);
+            message = ZLinkEnvelopeCodec.DecodeBody(received.Parts, endpoint.MessageType, codecs);
         }
         catch (Exception ex)
         {

@@ -795,7 +795,7 @@ class ZLinkEntrySpotRuntime {
 
   actorJoined(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     return this.lifecycleQueue.run(
-      (s) => this.entrySpot.onJoinActor?.(actor, s),
+      (s) => this.entrySpot.onJoinedActor?.(actor, s),
       signal,
     );
   }
@@ -1100,7 +1100,7 @@ interface ZLinkSessionActors {
 이 표면만 남기면 session 코드의 의도가 분명해진다. session 은 "받은 client
 packet 을 어떤 actor 에 relay 할지"만 결정한다. 같은 process 의 actor 는 actor id
 overload 로 bind 할 수 있고, 다른 process 의 actor 는 `joinSpot(...)` /
-`joinEntrySpot(...)` 이 반환한 최종 `ActorRef` 를 넘기는 overload 로 bind 한다.
+`joinEntrySpot(..., request)` 결과의 `actor` 를 넘기는 overload 로 bind 한다.
 한 session 이 여러 actor 를 bind 할 수 있으므로 이미 bind 한 actor handle 이 필요하면
 `bound` 로 현재 binding snapshot 을 보거나 `find(actorId)` 로
 actor id 기준 조회를 한다. session 은 actor handle 목록을 별도 application 상태로

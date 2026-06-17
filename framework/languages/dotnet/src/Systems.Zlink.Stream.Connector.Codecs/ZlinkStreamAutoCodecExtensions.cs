@@ -10,7 +10,8 @@ public static class ZlinkStreamAutoCodecExtensions
         TPayload payload)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return new ZlinkStreamAutoCodecSendBuilder(connector.Send(ZlinkStreamAutoCodecSelector.Encode(payload)));
+        return new ZlinkStreamAutoCodecSendBuilder(
+            connector.Send(EncodePayload(connector.Options.PayloadCodec, payload)));
     }
 
     public static ZlinkStreamAutoCodecRequestBuilder Request<TPayload>(
@@ -18,8 +19,20 @@ public static class ZlinkStreamAutoCodecExtensions
         TPayload payload)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return new ZlinkStreamAutoCodecRequestBuilder(connector.Request(ZlinkStreamAutoCodecSelector.Encode(payload)));
+        return new ZlinkStreamAutoCodecRequestBuilder(
+            connector.Request(EncodePayload(connector.Options.PayloadCodec, payload)),
+            connector.Options.PayloadCodec);
     }
+
+    internal static ZlinkStreamEncodedPayload EncodePayload<TPayload>(
+        IZlinkStreamPayloadCodec? codec,
+        TPayload payload)
+        => codec is null ? ZlinkStreamAutoCodecSelector.Encode(payload) : codec.Encode(payload);
+
+    internal static TPayload DecodePayload<TPayload>(
+        IZlinkStreamPayloadCodec? codec,
+        ZlinkStreamEncodedPayload payload)
+        => codec is null ? ZlinkStreamAutoCodecSelector.Decode<TPayload>(payload) : codec.Decode<TPayload>(payload);
 
     public static IDisposable On<TPayload>(
         this IZlinkStreamConnector connector,
@@ -38,7 +51,7 @@ public static class ZlinkStreamAutoCodecExtensions
         ArgumentNullException.ThrowIfNull(handler);
         return connector.On(name, (message, cancellationToken) =>
         {
-            var payload = ZlinkStreamAutoCodecSelector.Decode<TPayload>(message.Payload);
+            var payload = DecodePayload<TPayload>(connector.Options.PayloadCodec, message.Payload);
             return handler(new ZlinkStreamMessage<TPayload>(message.Name, message.Metadata, payload), cancellationToken);
         });
     }
@@ -48,7 +61,7 @@ public static class ZlinkStreamAutoCodecExtensions
         string name)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return new ZlinkStreamAutoCodecWaitBuilder<TPayload>(connector.WaitFor(name));
+        return new ZlinkStreamAutoCodecWaitBuilder<TPayload>(connector.WaitFor(name), connector.Options.PayloadCodec);
     }
 
     public static ZlinkStreamAutoCodecWaitBuilder<TPayload> WaitFor<TPayload>(
@@ -60,21 +73,17 @@ public static class ZlinkStreamAutoCodecExtensions
             connector.Options.NameResolver.Resolve(typeof(TPayload)));
     }
 
-    private static ZlinkStreamMessage<TPayload> Decode<TPayload>(
-        ZlinkStreamMessage<ZlinkStreamEncodedPayload> message)
-    {
-        var payload = ZlinkStreamAutoCodecSelector.Decode<TPayload>(message.Payload);
-        return new ZlinkStreamMessage<TPayload>(message.Name, message.Metadata, payload);
-    }
 }
 
 public sealed class ZlinkStreamAutoCodecWaitBuilder<TPayload>
 {
     private readonly IZlinkStreamWaitCall _inner;
+    private readonly IZlinkStreamPayloadCodec? _codec;
 
-    internal ZlinkStreamAutoCodecWaitBuilder(IZlinkStreamWaitCall inner)
+    internal ZlinkStreamAutoCodecWaitBuilder(IZlinkStreamWaitCall inner, IZlinkStreamPayloadCodec? codec)
     {
         _inner = inner;
+        _codec = codec;
     }
 
     public ZlinkStreamAutoCodecWaitBuilder<TPayload> Timeout(TimeSpan timeout)
@@ -89,7 +98,7 @@ public sealed class ZlinkStreamAutoCodecWaitBuilder<TPayload>
         _inner.Where(message => predicate(new ZlinkStreamMessage<TPayload>(
             message.Name,
             message.Metadata,
-            ZlinkStreamAutoCodecSelector.Decode<TPayload>(message.Payload))));
+            ZlinkStreamAutoCodecExtensions.DecodePayload<TPayload>(_codec, message.Payload))));
         return this;
     }
 
@@ -100,7 +109,7 @@ public sealed class ZlinkStreamAutoCodecWaitBuilder<TPayload>
         return new ZlinkStreamMessage<TPayload>(
             message.Name,
             message.Metadata,
-            ZlinkStreamAutoCodecSelector.Decode<TPayload>(message.Payload));
+            ZlinkStreamAutoCodecExtensions.DecodePayload<TPayload>(_codec, message.Payload));
     }
 }
 
@@ -144,10 +153,12 @@ public sealed class ZlinkStreamAutoCodecSendBuilder
 public sealed class ZlinkStreamAutoCodecRequestBuilder
 {
     private readonly IZlinkStreamRequestCall _inner;
+    private readonly IZlinkStreamPayloadCodec? _codec;
 
-    internal ZlinkStreamAutoCodecRequestBuilder(IZlinkStreamRequestCall inner)
+    internal ZlinkStreamAutoCodecRequestBuilder(IZlinkStreamRequestCall inner, IZlinkStreamPayloadCodec? codec)
     {
         _inner = inner;
+        _codec = codec;
     }
 
     public ZlinkStreamAutoCodecRequestBuilder PacketName(string name)
@@ -183,7 +194,7 @@ public sealed class ZlinkStreamAutoCodecRequestBuilder
     public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         var reply = await _inner.Async(cancellationToken).ConfigureAwait(false);
-        return ZlinkStreamAutoCodecSelector.Decode<TReply>(reply);
+        return ZlinkStreamAutoCodecExtensions.DecodePayload<TReply>(_codec, reply);
     }
 
     public void Submit(Action<ZlinkStreamResult> callback)
@@ -203,7 +214,7 @@ public sealed class ZlinkStreamAutoCodecRequestBuilder
             try
             {
                 callback(ZlinkStreamResult<TReply>.Success(
-                    ZlinkStreamAutoCodecSelector.Decode<TReply>(result.Value!)));
+                    ZlinkStreamAutoCodecExtensions.DecodePayload<TReply>(_codec, result.Value!)));
             }
             catch (Exception ex)
             {

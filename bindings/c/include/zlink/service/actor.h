@@ -68,8 +68,10 @@ typedef struct zlink_actor_join_result_t
 typedef struct zlink_actor_join_entry_spot_result_t
 {
     zlink_request_result_t result;
+    int32_t join_result_code;
     zlink_actor_ref_t actor;
     zlink_routing_id_t target_node_rid;
+    zlink_routing_id_t joined_spot_rid;
     uint64_t join_epoch;
     uint32_t flags;
 } zlink_actor_join_entry_spot_result_t;

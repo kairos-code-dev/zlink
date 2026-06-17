@@ -70,8 +70,10 @@ export interface ActorJoinResultRaw {
 
 export interface ActorJoinEntrySpotResultRaw {
   result: number;
+  joinResultCode?: number;
   actor: ActorRefRaw;
   targetNodeRid?: Buffer | null;
+  joinedSpotRid?: Buffer | null;
   joinEpoch?: bigint | number;
   flags: number;
 }
@@ -227,8 +229,10 @@ function failedActorJoinResult(): ActorJoinResult {
 function failedActorJoinEntrySpotResult(): ActorJoinEntrySpotResult {
   return {
     result: RequestResult.InternalError,
+    joinResultCode: 0,
     actor: failedActorRef(),
     targetNodeRid: emptyRoutingId(),
+    joinedSpotRid: emptyRoutingId(),
     joinEpoch: 0n,
     flags: 0,
   };
@@ -254,8 +258,10 @@ export function actorJoinEntrySpotResultFromRaw(raw: ActorJoinEntrySpotResultRaw
   }
   return {
     result: raw.result as RequestResult,
+    joinResultCode: raw.joinResultCode ?? 0,
     actor: actorRefFromRaw(raw.actor),
     targetNodeRid: (wrapRoutingId(raw.targetNodeRid ?? null) as RoutingId) ?? emptyRoutingId(),
+    joinedSpotRid: (wrapRoutingId(raw.joinedSpotRid ?? null) as RoutingId) ?? emptyRoutingId(),
     joinEpoch: BigInt(raw.joinEpoch ?? 0),
     flags: raw.flags | 0,
   };

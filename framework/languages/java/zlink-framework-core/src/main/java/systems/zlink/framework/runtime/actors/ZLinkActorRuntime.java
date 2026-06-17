@@ -47,7 +47,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         (ignoredNode, ignoredActor) -> CompletableFuture.completedFuture(null);
     private Function<ZLinkActor, CompletionStage<Void>> disconnectedNotifier =
         ignored -> CompletableFuture.completedFuture(null);
-    private Function<RoutingId, ZLinkSpot> spotResolver = ignored -> null;
+    private Function<RoutingId, ZLinkSpot<?>> spotResolver = ignored -> null;
 
     public ZLinkActorRuntime(
         ZLinkBackendSpotNode spotNode,
@@ -281,7 +281,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             : createdNotifier;
     }
 
-    public void setSpotResolver(Function<RoutingId, ZLinkSpot> spotResolver) {
+    public void setSpotResolver(Function<RoutingId, ZLinkSpot<?>> spotResolver) {
         this.spotResolver = spotResolver == null ? ignored -> null : spotResolver;
     }
 
@@ -306,7 +306,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         ZLinkActor actor,
         ZLinkBackendActorRef actorRef,
         RoutingId spotRid,
-        ZLinkSpot spot) {
+        ZLinkSpot<?> spot) {
         DefaultActorContext context = contextsByActor.get(actor);
         if (context == null) {
             throw new ZLinkConfigurationException(
@@ -439,7 +439,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         private ZLinkBoundSession boundSession;
         private long sessionBindingToken;
         private RoutingId spotRid;
-        private ZLinkSpot spot;
+        private ZLinkSpot<?> spot;
         private boolean joined;
         private boolean destroying;
 
@@ -466,7 +466,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         @Override
-        public ZLinkSpot getSpot() {
+        public ZLinkSpot<?> getSpot() {
             if (spot == null) {
                 throw new ZLinkConfigurationException("actor has not joined a user Spot");
             }
@@ -474,11 +474,11 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         @Override
-        public <TSpot extends ZLinkSpot> TSpot getSpot(Class<TSpot> spotType) {
+        public <TSpot extends ZLinkSpot<?>> TSpot getSpot(Class<TSpot> spotType) {
             if (spotType == null) {
                 throw new ZLinkConfigurationException("spotType is required");
             }
-            ZLinkSpot current = getSpot();
+            ZLinkSpot<?> current = getSpot();
             if (!spotType.isInstance(current)) {
                 throw new ZLinkConfigurationException(
                     "actor joined Spot type "
@@ -490,11 +490,16 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         @Override
-        public ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid) {
+        public ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid, Object request) {
             if (spotNodeRid == null) {
                 throw new ZLinkConfigurationException("spotNodeRid is required");
             }
-            return new JoinEntrySpotCall(this, spotNodeRid, defaultTimeout);
+            if (request == null) {
+                throw new ZLinkConfigurationException("request is required");
+            }
+            ZLinkPayloadEncoding.EncodedPayload encoded =
+                ZLinkPayloadEncoding.encode(serializer, request);
+            return new JoinEntrySpotCall(this, spotNodeRid, encoded.payload(), defaultTimeout);
         }
 
         @Override
@@ -571,14 +576,17 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     private final class JoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall {
         private final DefaultActorContext context;
         private final RoutingId spotNodeRid;
+        private final Message request;
         private final Duration timeout;
 
         JoinEntrySpotCall(
             DefaultActorContext context,
             RoutingId spotNodeRid,
+            Message request,
             Duration timeout) {
             this.context = context;
             this.spotNodeRid = spotNodeRid;
+            this.request = request;
             this.timeout = timeout;
         }
 
@@ -587,29 +595,56 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             if (timeout == null || timeout.isNegative() || timeout.isZero()) {
                 throw new ZLinkConfigurationException("timeout must be positive");
             }
-            return new JoinEntrySpotCall(context, spotNodeRid, timeout);
+            return new JoinEntrySpotCall(context, spotNodeRid, request, timeout);
         }
 
         @Override
-        public CompletionStage<ZLinkActorRef> submit() {
-            return spotNode.joinActorEntrySpot(
-                    context.actorRef,
-                    spotNodeRid,
-                    timeout)
-                .thenApply(result -> {
-                    if (result.result() != ZLinkBackendRequestResult.OK) {
-                        throw new ZLinkConfigurationException(
-                            "actor entry spot join failed: " + result.result());
-                    }
-                    context.actorRef = result.actor();
-                    context.spotRid = result.targetNodeRid();
-                    context.spot = null;
-                    context.joined = true;
-                    return new ZLinkActorRef(
-                        result.actor().nodeRid(),
-                        result.actor().actorId(),
-                        result.actor().epoch());
-                });
+        public <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
+            Class<TReply> replyType) {
+            if (replyType == null) {
+                throw new ZLinkConfigurationException("replyType is required");
+            }
+            Message requestPart = Message.from(request);
+            try {
+                return spotNode.joinActorEntrySpot(
+                        context.actorRef,
+                        spotNodeRid,
+                        requestPart,
+                        timeout)
+                    .thenApply(result -> {
+                        if (result.result() != ZLinkBackendRequestResult.OK) {
+                            throw new ZLinkConfigurationException(
+                                "actor entry spot join failed: " + result.result());
+                        }
+                        Message emptyReply = null;
+                        try {
+                            if (result.joinResultCode() == 0) {
+                                context.actorRef = result.actor();
+                                context.spotRid = result.targetNodeRid();
+                                context.spot = null;
+                                context.joined = true;
+                            }
+                            Message firstReply = result.replyParts().isEmpty()
+                                ? (emptyReply = Message.from(new byte[0]))
+                                : result.replyParts().get(0);
+                            TReply reply = serializer.deserialize(firstReply, replyType);
+                            return new ZLinkActorJoinResult<>(
+                                result.joinResultCode(),
+                                new ZLinkActorRef(
+                                    result.actor().nodeRid(),
+                                    result.actor().actorId(),
+                                    result.actor().epoch()),
+                                reply);
+                        } finally {
+                            if (emptyReply != null) {
+                                emptyReply.close();
+                            }
+                            result.replyParts().forEach(Message::close);
+                        }
+                    });
+            } finally {
+                requestPart.close();
+            }
         }
     }
 

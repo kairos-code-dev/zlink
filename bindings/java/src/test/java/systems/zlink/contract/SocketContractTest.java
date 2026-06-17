@@ -647,11 +647,20 @@ public class SocketContractTest {
                 .getReturnType());
 
         assertEquals(ActorJoinEntrySpotOperation.class,
+            ActorJoinEntrySpotOperation.class.getMethod("message", Message.class)
+                .getReturnType());
+        assertEquals(ActorJoinEntrySpotOperation.class,
             ActorJoinEntrySpotOperation.class.getMethod("timeout", Duration.class)
                 .getReturnType());
         assertEquals(ActorJoinEntrySpotOperation.class,
+            ActorJoinEntrySpotOperation.class.getMethod("flags", SendFlags.class)
+                .getReturnType());
+        assertEquals(ActorJoinEntrySpotOperation.class,
             SpotNode.class.getMethod("joinActorEntrySpot", ActorRef.class,
-                RoutingId.class).getReturnType());
+                RoutingId.class, Message.class).getReturnType());
+        assertThrows(NoSuchMethodException.class,
+            () -> SpotNode.class.getMethod("joinActorEntrySpot",
+                ActorRef.class, RoutingId.class));
     }
 
     @Test

@@ -4,9 +4,9 @@ use crate::spot_operations::{
 };
 use crate::{
     Actor, ActorRef, AutoHwmProfile, CloseError, ConfigError, ConnectError, Discovery, Empty,
-    RoutingId, SendOp, Spot, SpotNodeActorEntry, SpotNodeOptions, SpotNodePeerEntry,
-    SpotNodePeerFilter, SpotNodeSocketEntry, SpotNodeSocketFilter, SpotNodeSpotEntry,
-    SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
+    Message, Ready, RoutingId, SendOp, Spot, SpotNodeActorEntry, SpotNodeOptions,
+    SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketEntry, SpotNodeSocketFilter,
+    SpotNodeSpotEntry, SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
 };
 
 /// A spot node: hosts spots and actors, tunes their sockets, and exposes the
@@ -265,13 +265,15 @@ impl SpotNode {
         <Self as SpotNodeContract>::join_actor(self, actor, dest_node_rid, dest_spot_rid)
     }
 
-    /// Begins joining `actor` to a node's entry spot; submit the returned operation.
+    /// Begins joining `actor` to a node's entry spot with an explicit request
+    /// message; submit the returned operation.
     pub fn join_actor_entry_spot(
         &self,
         actor: &ActorRef,
         dest_node_rid: &RoutingId,
-    ) -> ActorJoinEntrySpotOp<Empty> {
-        <Self as SpotNodeContract>::join_actor_entry_spot(self, actor, dest_node_rid)
+        request: Message,
+    ) -> ActorJoinEntrySpotOp<Ready> {
+        <Self as SpotNodeContract>::join_actor_entry_spot(self, actor, dest_node_rid, request)
     }
 
     /// Begins removing `actor` from `current_spot_rid`; submit the returned operation.

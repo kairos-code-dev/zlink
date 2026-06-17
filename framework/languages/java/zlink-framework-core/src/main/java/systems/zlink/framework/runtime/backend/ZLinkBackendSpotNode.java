@@ -53,6 +53,7 @@ public interface ZLinkBackendSpotNode extends ZLinkBackendObject {
     CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(
         ZLinkBackendActorRef actor,
         RoutingId targetNodeRid,
+        Message request,
         Duration timeout);
 
     CompletionStage<Void> destroyActor(

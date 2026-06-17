@@ -126,7 +126,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     ['Bingo match', files.bingoMatch, 'ZLINK_ACTOR_MANAGER'],
     ['Bingo entry', files.bingoEntry, 'actor.context.joinSpot(roomId'],
     ['Bingo entry', files.bingoEntry, 'onCreateActor'],
-    ['Bingo entry', files.bingoEntry, 'onJoinActor'],
+    ['Bingo entry', files.bingoEntry, 'onJoinedActor'],
     ['Bingo entry', files.bingoEntry, 'destroyActor(actor'],
     ['Bingo room', files.bingoRoom, 'onActorJoin'],
     ['Bingo room', files.bingoRoom, 'onLeaveActor'],
@@ -136,7 +136,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     ['TicTacToe create', files.ticTacToeCreate, '.getOrCreate(TicTacToeGameSpot'],
     ['TicTacToe entry', files.ticTacToeEntry, 'context.joinSpot(roomId)'],
     ['TicTacToe entry', files.ticTacToeEntry, 'onCreateActor'],
-    ['TicTacToe entry', files.ticTacToeEntry, 'onJoinActor'],
+    ['TicTacToe entry', files.ticTacToeEntry, 'onJoinedActor'],
     ['TicTacToe entry', files.ticTacToeEntry, 'destroyActor(actor'],
     ['TicTacToe game', files.ticTacToeGame, 'onActorJoin'],
     ['TicTacToe game', files.ticTacToeGame, 'onLeaveActor'],
@@ -149,7 +149,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
   }
   for (const [name, content, pattern] of [
     ['Bingo entry', files.bingoEntry, /\.onActorJoin\s*\(/],
-    ['TicTacToe entry', files.ticTacToeEntry, /cleanupFinishedRoom|\.onJoinActor\s*\(/],
+    ['TicTacToe entry', files.ticTacToeEntry, /cleanupFinishedRoom|\.onJoinedActor\s*\(/],
     ['TicTacToe session', files.ticTacToeSession, /TicTacToeGameCreator|cleanupFinishedRoom/]
   ]) {
     if (pattern.test(content)) {
@@ -1080,11 +1080,11 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
     [playModule, '.addSpotFactory(BingoRoomSpot)'],
     [roomSpot, 'implements ZLinkSpot<PlayerActorType>'],
     [roomSpot, 'onActorJoin(actor: PlayerActorType'],
-    [roomSpot, 'onJoinActor(actor: PlayerActorType'],
+    [roomSpot, 'onJoinedActor(actor: PlayerActorType'],
     [roomSpot, 'onLeaveActor(actor: PlayerActorType'],
     [roomSpot, 'onDisconnectActor(actor: PlayerActorType'],
     [entrySpot, 'implements ZLinkEntrySpot<PlayerActorType>'],
-    [entrySpot, 'onJoinActor(actor: PlayerActorType'],
+    [entrySpot, 'onJoinedActor(actor: PlayerActorType'],
     [entrySpot, 'onLeaveActor(actor: PlayerActorType'],
     [entrySpot, 'onDisconnectActor(actor: PlayerActorType'],
     [matchHandler, 'zlinkEntrySpotActorRequestHandler'],
@@ -1146,7 +1146,7 @@ test('node TypeScript samples keep actor destroy in Entry Spot after room leave'
       ['actor', actor, 'destroyAfterEntrySpotJoin'],
       ['actor', actor, 'markForDestroyAfterRoomLeave'],
       ['actor', actor, 'markDisconnected'],
-      ['entrySpot', entrySpot, 'onJoinActor'],
+      ['entrySpot', entrySpot, 'onJoinedActor'],
       ['entrySpot', entrySpot, 'destroyActor'],
       ['entrySpot', entrySpot, 'onDisconnectActor'],
       ['userSpot', userSpot, 'leaveActor'],

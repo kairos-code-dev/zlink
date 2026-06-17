@@ -30,7 +30,10 @@ impl zlink_routing_id_t {
     /// the native layer fills in. Centralizes the empty-routing-id literal that
     /// the runtime would otherwise repeat at every call site.
     pub(crate) const fn empty() -> Self {
-        Self { size: 0, data: [0; 255] }
+        Self {
+            size: 0,
+            data: [0; 255],
+        }
     }
 }
 
@@ -88,8 +91,10 @@ pub struct zlink_actor_join_result_t {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct zlink_actor_join_entry_spot_result_t {
     pub result: zlink_request_result_t,
+    pub join_result_code: i32,
     pub actor: zlink_actor_ref_t,
     pub target_node_rid: zlink_routing_id_t,
+    pub joined_spot_rid: zlink_routing_id_t,
     pub join_epoch: u64,
     pub flags: u32,
 }
@@ -599,6 +604,8 @@ pub type zlink_actor_join_spot_handler_fn = unsafe extern "C" fn(
 
 pub type zlink_actor_join_entry_spot_handler_fn = unsafe extern "C" fn(
     result: *const zlink_actor_join_entry_spot_result_t,
+    parts: *mut zlink_msg_t,
+    part_count: usize,
     userdata: *mut c_void,
 );
 
@@ -1166,7 +1173,7 @@ unsafe extern "C" {
     pub fn zlink_disconnect_rid(socket: *mut c_void, peer_rid: *const zlink_routing_id_t) -> c_int;
     pub fn zlink_socket_attach_discovery(socket: *mut c_void, discovery: *mut c_void) -> c_int;
     pub fn zlink_socket_set_channel_name(socket: *mut c_void, channel_name: *const c_char)
-        -> c_int;
+    -> c_int;
     pub fn zlink_socket_get_channel_name(
         socket: *mut c_void,
         channel_name_buf: *mut c_char,
@@ -1437,8 +1444,11 @@ unsafe extern "C" {
         node: *mut c_void,
         actor: *const zlink_actor_ref_t,
         dest_node_rid: *const zlink_routing_id_t,
+        parts: *mut zlink_msg_t,
+        part_count: usize,
         handler: Option<zlink_actor_join_entry_spot_handler_fn>,
         userdata: *mut c_void,
+        flags: zlink_send_flags_t,
         timeout_ms: u32,
     ) -> c_int;
     pub fn zlink_spot_actor_join_recv(
@@ -1679,7 +1689,7 @@ unsafe extern "C" {
         count: *mut usize,
     ) -> c_int;
     pub fn zlink_registry_status(registry: *mut c_void, out: *mut zlink_registry_status_t)
-        -> c_int;
+    -> c_int;
     pub fn zlink_registry_service_summary(
         registry: *mut c_void,
         filter: *const zlink_registry_service_summary_filter_t,

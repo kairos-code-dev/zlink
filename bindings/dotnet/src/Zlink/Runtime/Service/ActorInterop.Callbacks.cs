@@ -46,8 +46,8 @@ internal static partial class ActorInterop
             NativeMethods.zlink_multipart_close(parts, partCount);
     }
 
-    internal static void OnActorJoinEntrySpot(IntPtr resultPtr,
-        IntPtr userData)
+    internal static void OnActorJoinEntrySpot(IntPtr resultPtr, IntPtr parts,
+        nuint partCount, IntPtr userData)
     {
         GCHandle handle = GCHandle.FromIntPtr(userData);
         ActorJoinEntrySpotCallState state =
@@ -56,26 +56,49 @@ internal static partial class ActorInterop
         {
             if (resultPtr == IntPtr.Zero)
             {
-                state.Completion.TrySetResult(new ActorJoinEntrySpotResult(
-                    RequestResult.InternalError, default, default, 0, 0));
+                ActorJoinEntrySpotResult fail = new(
+                    RequestResult.InternalError, 0, default, default, default,
+                    0, 0);
+                state.Completion.TrySetResult(
+                    new ActorJoinEntrySpotResultEnvelope(fail,
+                        Array.Empty<Message>()));
                 return;
             }
 
             ZlinkActorJoinEntrySpotResult native = Marshal.PtrToStructure
                 <ZlinkActorJoinEntrySpotResult>(resultPtr);
-            ActorRef returnedActor =
-                (RequestResult)native.Result == RequestResult.Ok
-                    ? FromNative(ref native.Actor)
-                    : default;
+            if ((RequestResult)native.Result != RequestResult.Ok)
+            {
+                ActorJoinEntrySpotResult fail = new((RequestResult)native.Result,
+                    native.JoinResultCode, default, default, default,
+                    native.JoinEpoch, native.Flags);
+                state.Completion.TrySetResult(
+                    new ActorJoinEntrySpotResultEnvelope(fail,
+                        Array.Empty<Message>()));
+                return;
+            }
+
+            ActorRef returnedActor = FromNative(ref native.Actor);
             RoutingId targetNodeRid = RoutingId.From(
                 NativeHelpers.ReadRoutingId(ref native.TargetNodeRid));
+            RoutingId joinedSpotRid = RoutingId.From(
+                NativeHelpers.ReadRoutingId(ref native.JoinedSpotRid));
             ActorJoinEntrySpotResult result = new(
-                (RequestResult)native.Result, returnedActor, targetNodeRid,
-                native.JoinEpoch, native.Flags);
-            state.Completion.TrySetResult(result);
+                (RequestResult)native.Result, native.JoinResultCode,
+                returnedActor, targetNodeRid, joinedSpotRid, native.JoinEpoch,
+                native.Flags);
+            Message[] replyParts = parts != IntPtr.Zero
+                ? Message.FromNativeVector(parts, partCount)
+                : Array.Empty<Message>();
+            parts = IntPtr.Zero;
+            partCount = 0;
+            state.Completion.TrySetResult(
+                new ActorJoinEntrySpotResultEnvelope(result, replyParts));
         }
         finally
         {
+            if (parts != IntPtr.Zero)
+                NativeMethods.zlink_multipart_close(parts, partCount);
             state.Cleanup();
             handle.Free();
         }
@@ -215,12 +238,12 @@ internal static partial class ActorInterop
 
     internal sealed class ActorJoinEntrySpotCallState
     {
-        public TaskCompletionSource<ActorJoinEntrySpotResult> Completion { get; }
+        public TaskCompletionSource<ActorJoinEntrySpotResultEnvelope> Completion { get; }
         public CancellationTokenRegistration? CancelReg { get; set; }
         public System.Threading.Timer? TimeoutTimer { get; set; }
 
         public ActorJoinEntrySpotCallState(
-            TaskCompletionSource<ActorJoinEntrySpotResult> completion)
+            TaskCompletionSource<ActorJoinEntrySpotResultEnvelope> completion)
         {
             Completion = completion;
         }
@@ -239,6 +262,19 @@ internal static partial class ActorInterop
 
         public ActorJoinResultEnvelope(ActorJoinResult result,
             IReadOnlyList<Message> parts)
+        {
+            Result = result;
+            Parts = parts;
+        }
+    }
+
+    internal readonly struct ActorJoinEntrySpotResultEnvelope
+    {
+        public ActorJoinEntrySpotResult Result { get; }
+        public IReadOnlyList<Message> Parts { get; }
+
+        public ActorJoinEntrySpotResultEnvelope(
+            ActorJoinEntrySpotResult result, IReadOnlyList<Message> parts)
         {
             Result = result;
             Parts = parts;

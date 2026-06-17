@@ -495,7 +495,7 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
 
         EXPECT_NE (entry.find ("onCreateActor"), std::string::npos)
           << sample.entry_spot_path << " must show actor creation callback";
-        EXPECT_NE (entry.find ("onJoinActor"), std::string::npos)
+        EXPECT_NE (entry.find ("on_actor_joined"), std::string::npos)
           << sample.entry_spot_path << " must show Entry Spot re-entry callback";
         EXPECT_NE (entry.find ("onLeaveActor"), std::string::npos)
           << sample.entry_spot_path << " must show Entry Spot leave callback";

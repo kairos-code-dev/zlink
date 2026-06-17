@@ -221,11 +221,17 @@ public sealed partial class StreamConnectorTests
 
         public ZlinkStreamConnectionState State => ZlinkStreamConnectionState.Connected;
 
-        public ZlinkStreamConnectorOptions Options { get; } = new()
+        public RecordingConnector(IZlinkStreamPayloadCodec? payloadCodec = null)
         {
-            Endpoint = new Uri("tcp://127.0.0.1:1"),
-            NameResolver = new TypeNameResolver()
-        };
+            Options = new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                NameResolver = new TypeNameResolver(),
+                PayloadCodec = payloadCodec
+            };
+        }
+
+        public ZlinkStreamConnectorOptions Options { get; }
 
         public int PendingDispatchCount => 0;
 

@@ -42,7 +42,8 @@ internal sealed class ZLinkSpotActorLifecycleCoordinator(
         _ = actors;
         _ = actorHandlers;
         _ = handlerInvoker;
-        await runtime.JoinActorEntrySpotAsync(activation.NodeRid, actor, cancellationToken)
+        using var request = Message.From(ReadOnlySpan<byte>.Empty);
+        await runtime.JoinActorEntrySpotAsync(activation.NodeRid, actor, request, cancellationToken)
             .ConfigureAwait(false);
     }
 }

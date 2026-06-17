@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.kotlin.ZLinkCoroutineSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -35,7 +34,7 @@ class BingoRoomSpot(
     private val createdHandler: BingoRoomSpotCreatedHandler,
     private val json: ObjectMapper,
     coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineSpot(coroutines) {
+) : ZLinkCoroutineSpot<PlayerActor>(coroutines) {
     private val players = mutableListOf<BingoRoomPlayer>()
     private val actors = mutableMapOf<String, PlayerActor>()
     private val drawDeck = ArrayDeque<Int>()
@@ -61,38 +60,33 @@ class BingoRoomSpot(
     }
 
     override suspend fun onActorJoinSuspending(
-        actor: ZLinkActor,
+        actor: PlayerActor,
         request: Message,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
-        require(actor is PlayerActor) { "Bingo room only accepts PlayerActor." }
         val joinRequest = json.readValue(request.toByteArray(), BingoRoomJoinReq::class.java)
         val reply = join(actor, joinRequest)
         return ZLinkSpotActorJoinResponse.accept(Message.from(json.writeValueAsBytes(reply)))
     }
 
-    override fun onJoinActor(
-        actor: ZLinkActor,
+    override fun onJoinedActor(
+        actor: PlayerActor,
         cancellationToken: CancellationToken,
     ) {
     }
 
     override fun onLeaveActor(
-        actor: ZLinkActor,
+        actor: PlayerActor,
         cancellationToken: CancellationToken,
     ) {
-        if (actor is PlayerActor) {
-            actors.remove(actor.actorId())
-        }
+        actors.remove(actor.actorId())
     }
 
     override fun onDisconnectActor(
-        actor: ZLinkActor,
+        actor: PlayerActor,
         cancellationToken: CancellationToken,
     ) {
-        if (actor is PlayerActor) {
-            actor.markDisconnected()
-        }
+        actor.markDisconnected()
     }
 
     override suspend fun onInitializeSuspending() {

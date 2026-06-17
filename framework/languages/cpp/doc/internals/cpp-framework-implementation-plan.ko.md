@@ -692,7 +692,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliab
 - `add_subscribe<&TSpot::method>(topic)`
 - `add_actor_packet<&TSpot::method>()`
 - `on_actor_join(actor, message_t)`
-- `onJoinActor(actor)`
+- `on_actor_joined(actor)`
 - `onLeaveActor(actor)`
 - `onDisconnectActor(actor)`
 - `spot_context_t::close()`

@@ -33,7 +33,10 @@ internal sealed class EnsureSupportUserActorHandler(
         supportActor.SetIdentity(request.DisplayName, request.Role);
         directory.AddOrUpdate(supportActor);
 
-        var joined = await actor.Context.JoinEntrySpot(topology.SupportEntryRid)
+        using var entryJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        var joined = await actor.Context.JoinEntrySpot(
+                topology.SupportEntryRid,
+                entryJoinRequest)
             .Async(cancellationToken);
         if (!string.IsNullOrWhiteSpace(supportActor.ConversationId))
         {
@@ -46,8 +49,8 @@ internal sealed class EnsureSupportUserActorHandler(
 
         return new EnsureSupportUserActorRes(
             new ActorRefSnapshot(
-                joined.NodeRid.ToBytes().ToArray(),
-                joined.ActorId,
-                joined.Generation));
+                joined.Actor.NodeRid.ToBytes().ToArray(),
+                joined.Actor.ActorId,
+                joined.Actor.Generation));
     }
 }

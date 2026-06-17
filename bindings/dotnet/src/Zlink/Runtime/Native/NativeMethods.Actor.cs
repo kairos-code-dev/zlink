@@ -48,8 +48,11 @@ internal static partial class NativeMethods
         IntPtr node,
         ref ZlinkActorRef actor,
         ref ZlinkRoutingId destNodeRid,
+        ref ZlinkMsg parts,
+        nuint partCount,
         IntPtr handler,
         IntPtr userData,
+        int flags,
         uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

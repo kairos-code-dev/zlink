@@ -47,9 +47,14 @@ import type {
   ZLinkBackendDiscovery,
   ZLinkBackendContext,
   ZLinkBackendSpot,
-  ZLinkBackendSpotNode
+  ZLinkBackendSpotNode,
+  ZLinkBackendActorJoinRequest,
+  ZLinkBackendRecvFlags
 } from '../backend/contracts';
-import { ZLINK_BACKEND_SPOT_NODE_MODE_ALL } from '../backend/contracts';
+import { ZLINK_BACKEND_SPOT_NODE_MODE_ALL, ZLinkBackendSpotDispatchEvent } from '../backend/contracts';
+
+// DontWait recv flag (core RecvFlags.DontWait = 1): non-blocking drain.
+const ZLINK_RECV_DONT_WAIT = 1 as ZLinkBackendRecvFlags;
 import type { ZLinkSpotPublisherClientTransport } from '../channels';
 import { encodeChannelPublishEnvelopeParts } from '../channels/channel-envelope';
 import { ZLinkAsyncSubmitter } from '../messaging';
@@ -71,7 +76,7 @@ export interface ZLinkSpotManagerOptions {
   readonly entryNodeRid?: RoutingId;
   readonly entryNodeRidProvider?: () => RoutingId | undefined;
   readonly entrySpotCallbacks?: {
-    onJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+    onJoinedActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
     onLeaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   };
   readonly actorCountProvider?: (spotRid: RoutingId) => number;
@@ -81,6 +86,11 @@ export interface ZLinkSpotManagerOptions {
   readonly routedTransport?: ZLinkSpotRoutedTransport;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly workerRuntime?: ZLinkSpotWorkerRuntime;
+  // Backs each user Spot with a core-native Spot object (registered for join
+  // routing by rid) so actor-join admission uses the same recv/reply round-trip
+  // as the Entry Spot and .NET, for local and remote callers alike.
+  readonly createNativeSpot?: (spotRid: RoutingId) => ZLinkBackendSpot | undefined;
+  readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
 }
 
 export interface ZLinkSpotNodeRuntimeManagerOptions {
@@ -88,6 +98,7 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
   readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   readonly context: ZLinkBackendContext;
   readonly providerResolver?: ZLinkProviderResolver;
+  readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
   readonly actorDestroyer?: (
     node: ZLinkBackendSpotNode,
     entryNodeRid: RoutingId,
@@ -204,6 +215,7 @@ export class ZLinkSpotNodeRuntimeManager {
       actorSendHandlers: spotNode.entrySpotActorSendHandlers,
       actorRequestHandlers: spotNode.entrySpotActorRequestHandlers,
       workerRuntime: this.workerRuntime,
+      actorResolver: (actorId) => this.options.actorResolver?.(actorId),
       destroyActor: (nodeRid, actor, signal) => {
         if (this.options.actorDestroyer === undefined) {
           throw new ZLinkConfigurationException('Entry Spot actor destroy runtime is not started.');
@@ -378,11 +390,95 @@ interface ZLinkEntrySpotActivationOptions {
   readonly spotNodeName: string;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly workerRuntime?: ZLinkSpotWorkerRuntime;
+  readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
   readonly destroyActor?: (
     nodeRid: RoutingId,
     actor: ZLinkActor,
     signal?: AbortSignal
   ) => Promise<void>;
+}
+
+/**
+ * Drives the core actor-join admission round-trip for a single Spot (user Spot
+ * or Entry Spot). The CAPI already implements join admission and local/remote
+ * routing; the framework only registers the native dispatch handler, runs the
+ * Spot's `onActorJoin` on the Spot serial executor, and replies. User and Entry
+ * Spots use this same path — they differ only in actor create/destroy ownership.
+ */
+interface ZLinkActorJoinAdmissionTarget {
+  onActorJoin?(actor: ZLinkActor, request: Message, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
+  onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+}
+
+class ZLinkSpotActorJoinDispatch {
+  private draining = false;
+
+  constructor(
+    private readonly nativeSpot: ZLinkBackendSpot,
+    private readonly serial: ZLinkSpotSerialExecutor,
+    private readonly resolveActor: (actorId: string) => ZLinkActor | undefined,
+    private readonly getTarget: () => ZLinkActorJoinAdmissionTarget,
+    private readonly defaultAccept: boolean
+  ) {}
+
+  attach(): void {
+    if (typeof this.nativeSpot.setDispatchHandler !== 'function') {
+      return;
+    }
+    this.nativeSpot.setDispatchHandler((info) => {
+      if (info.event === ZLinkBackendSpotDispatchEvent.ActorJoinReadable) {
+        void this.drain();
+      }
+    });
+  }
+
+  private async drain(): Promise<void> {
+    if (this.draining) {
+      return;
+    }
+    this.draining = true;
+    try {
+      for (;;) {
+        const request = this.nativeSpot.recvActorJoin(ZLINK_RECV_DONT_WAIT);
+        if (request === null) {
+          return;
+        }
+        await this.admit(request);
+      }
+    } finally {
+      this.draining = false;
+    }
+  }
+
+  private async admit(request: ZLinkBackendActorJoinRequest): Promise<void> {
+    const actorId = request.info.targetActor.actorId;
+    let accepted = false;
+    let reply: Message | undefined;
+    try {
+      const actor = this.resolveActor(actorId);
+      if (actor !== undefined) {
+        const target = this.getTarget();
+        const response: ZLinkSpotActorJoinResponse = await this.serial.execute(async () =>
+          target.onActorJoin === undefined
+            ? { accepted: this.defaultAccept }
+            : target.onActorJoin(actor, request.message)
+        );
+        accepted = response.accepted;
+        reply = response.reply;
+        if (accepted) {
+          await this.serial.execute(() => target.onJoinedActor?.(actor));
+        }
+      }
+    } catch {
+      accepted = false;
+      reply = undefined;
+    }
+    const operation = this.nativeSpot.replyActorJoin(request, accepted ? 0 : 1);
+    if (reply !== undefined) {
+      operation.message(reply);
+    }
+    operation.submit();
+  }
 }
 
 export class ZLinkEntrySpotActivation {
@@ -468,6 +564,7 @@ export class ZLinkEntrySpotActivation {
 
   async initialize(): Promise<void> {
     await this.serial.execute(() => this.entrySpot.onInitialize?.());
+    this.attachActorJoinDispatch();
     this.initialized = true;
   }
 
@@ -488,7 +585,22 @@ export class ZLinkEntrySpotActivation {
 
   notifyJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onJoinActor?.(actor, signal));
+    return this.serial.execute(() => this.entrySpot.onJoinedActor?.(actor, signal));
+  }
+
+  /**
+   * Entry Spot join admission uses the shared core round-trip. Re-entry defaults
+   * to accept when the Entry Spot does not declare `onActorJoin` (actor returning
+   * home), so `defaultAccept` is true.
+   */
+  private attachActorJoinDispatch(): void {
+    new ZLinkSpotActorJoinDispatch(
+      this.options.nativeSpot,
+      this.serial,
+      (actorId) => this.options.actorResolver?.(actorId),
+      () => this.entrySpot,
+      true
+    ).attach();
   }
 
   notifyLeaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
@@ -567,6 +679,7 @@ interface SpotActivation {
   readonly actors: Map<string, ZLinkActor>;
   readonly actorHandlers: ZLinkSpotActorHandlerRegistryRuntime;
   readonly actorCount: () => number;
+  readonly nativeSpot?: ZLinkBackendSpot;
 }
 
 interface PendingSpotActivation {
@@ -782,6 +895,9 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     });
 
     const actors = new Map<string, ZLinkActor>();
+    // getOrCreateSpot registers the native Spot under this rid so core routes
+    // actor-join admission requests to it (createSpot alone does not register).
+    const nativeSpot = this.options.createNativeSpot?.(spotRid);
     const activation: SpotActivation = {
       spotRid,
       spotType,
@@ -790,8 +906,20 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       timers,
       actors,
       actorHandlers,
-      actorCount: () => actors.size + (this.options.actorCountProvider?.(spotRid) ?? 0)
+      actorCount: () => actors.size + (this.options.actorCountProvider?.(spotRid) ?? 0),
+      nativeSpot
     };
+    if (nativeSpot !== undefined) {
+      // user Spot join admission uses the same core round-trip as the Entry Spot
+      // (and .NET). A user Spot must decide admission, so re-entry default rejects.
+      new ZLinkSpotActorJoinDispatch(
+        nativeSpot,
+        serial,
+        (actorId) => this.options.actorResolver?.(actorId),
+        () => activation.spot,
+        false
+      ).attach();
+    }
 
     try {
       await spot.configure?.();
@@ -875,6 +1003,9 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       await activation.spot.onClosing?.(signal);
     } finally {
       await activation.timers.dispose();
+      if (activation.nativeSpot !== undefined && typeof activation.nativeSpot.dispose === 'function') {
+        await activation.nativeSpot.dispose();
+      }
     }
   }
 

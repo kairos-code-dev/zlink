@@ -10,6 +10,7 @@ import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.Actor;
 import systems.zlink.contracts.service.spot.ActorDestroyOperation;
 import systems.zlink.contracts.service.spot.ActorJoinEntrySpotOperation;
@@ -487,13 +488,11 @@ public final class NativeSpotNode implements SpotNode {
         return actorOperations.joinActor(actor, destNodeRid, destSpotRid);
     }
 
-    /**
-     * Message-less Entry Spot join builder. Completion delivers the final
-     * ActorRef after the Actor is in {@code destNodeRid}'s Entry Spot.
-     */
+    /** Builds a request-bearing join to {@code destNodeRid}'s Entry Spot. */
     public ActorJoinEntrySpotOperation joinActorEntrySpot(ActorRef actor,
-                                                   RoutingId destNodeRid) {
-        return actorOperations.joinActorEntrySpot(actor, destNodeRid);
+                                                   RoutingId destNodeRid,
+                                                   Message request) {
+        return actorOperations.joinActorEntrySpot(actor, destNodeRid, request);
     }
 
     /** Async leave to the same node's Entry Spot. */

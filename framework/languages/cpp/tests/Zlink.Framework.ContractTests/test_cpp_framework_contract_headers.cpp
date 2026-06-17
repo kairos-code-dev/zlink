@@ -37,6 +37,8 @@
 #include <zlink/framework/contracts/workers/worker.hpp>
 #include <zlink/framework/extensions.hpp>
 #include <zlink/framework/extensions/extension_boundaries.hpp>
+#include <zlink/framework/extensions/protobuf_serializer_cache.hpp>
+#include <zlink/framework/extensions/remote_actor_packet_handler.hpp>
 #include <zlink/http_client.hpp>
 #include <zlink/http_client/contracts/client.hpp>
 #include <zlink/http_client/contracts/coroutines.hpp>
@@ -216,7 +218,7 @@ struct contract_spot_t : public zlink::framework::spot_t
     }
 
     void onCreateActor (contract_actor_t &) {}
-    void onJoinActor (contract_actor_t &) {}
+    void on_actor_joined (contract_actor_t &) {}
     void onLeaveActor (contract_actor_t &) {}
 };
 

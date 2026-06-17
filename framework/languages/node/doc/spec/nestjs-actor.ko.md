@@ -583,7 +583,7 @@ lifecycle callback 은 Spot 멤버로 선언한다. disconnected handler 는 추
 ```ts
 export interface ZLinkSpot {
   onActorJoin?(actor: ZLinkActor, request: Message): Promise<ZLinkSpotActorJoinResponse>;
-  onJoinActor?(actor: ZLinkActor): Promise<void>;
+  onJoinedActor?(actor: ZLinkActor): Promise<void>;
   onLeaveActor?(actor: ZLinkActor): Promise<void>;
   onDisconnectActor?(actor: ZLinkActor): Promise<void>;
 }
@@ -618,7 +618,7 @@ export class SubmitBingoCardHandler
 
 actor disconnected lifecycle 은 handler 등록 API를 사용하지 않고 Spot 멤버
 `onDisconnectActor(...)` callback 으로 선언한다. join / leave lifecycle 도 Spot
-멤버 `onJoinActor(...)` / `onLeaveActor(...)` callback 으로 선언한다.
+멤버 `onJoinedActor(...)` / `onLeaveActor(...)` callback 으로 선언한다.
 
 ### 4.3 등록 순서
 
@@ -677,7 +677,7 @@ export interface ZLinkActorContext {
     request: TRequest,
   ): ZLinkActorJoinSpotCall;
 
-  joinEntrySpot(spotNodeRid: string): ZLinkActorJoinEntrySpotCall;
+  joinEntrySpot<TRequest>(spotNodeRid: string, request: TRequest): ZLinkActorJoinEntrySpotCall;
 }
 
 export interface ZLinkActorJoinResult<TReply> {
@@ -693,7 +693,7 @@ export interface ZLinkActorJoinSpotCall {
 
 export interface ZLinkActorJoinEntrySpotCall {
   timeout(timeoutMs: number): ZLinkActorJoinEntrySpotCall;
-  submit(): Promise<ActorRef>;
+  submit<TReply>(): Promise<ZLinkActorJoinResult<TReply>>;
 }
 ```
 
@@ -705,7 +705,7 @@ export interface ZLinkActorJoinEntrySpotCall {
 | `boundSession` | actor 에 bind 된 STREAM session 으로 push 하거나 disconnect |
 | `getSpot()` / `getSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
 | `joinSpot(spotRid, request).submit<TReply>()` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(string) |
-| `joinEntrySpot(spotNodeRid).submit()` | target SpotNode 의 Entry Spot 으로 이동. message payload와 join reply payload는 없다 |
+| `joinEntrySpot(spotNodeRid, request).submit<TReply>()` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청도 명시해서 넘기며, 결과는 result code, actor ref, reply를 담는다 |
 | `Entry Spot context.destroyActor(actor)` | Entry Spot 에 있는 actor 를 종료. lifecycle callback 없이 native actor ref와 framework registry를 정리 |
 
 actor request 에 대한 reply 는 actor context 의 별도 `reply(...)` 호출이 아니라
@@ -854,8 +854,8 @@ export interface ZLinkSessionActor {
 
 - `bind(actor)` -- local `ZLinkActor` instance 를 session 에 bind 한다. actor 를
   새로 만들지 않고, runtime 에 이미 생성된 actor instance 여야 한다.
-- `bind(actorRef)` -- `joinSpot(...)` / `joinEntrySpot(...)` 결과가 돌려준
-  최종 `ActorRef` 로 session binding 을 만든다.
+- `bind(actorRef)` -- `joinSpot(...)` / `joinEntrySpot(..., request)` 결과의
+  `actor` 로 session binding 을 만든다.
 - `bound` -- 현재 session 에 bind 된 actor handle snapshot 이다.
 - `actor.notifyDisconnected()` -- session application 이 선택한 actor 하나에
   disconnect notification 을 전달한다. 이 호출은 actor membership 을 변경하지
@@ -1109,7 +1109,7 @@ framework 가 만든 actor handle 과 ActorGateway 경로를 사용한다.
 actor-session binding 은 framework / core runtime 내부에서 관리한다. 각 서버의
 역할을 나누어 보면 다음과 같다.
 
-- Session 서버는 인증 후 Play 서버의 ensure actor 응답이나 `joinEntrySpot(...)` 결과에서
+- Session 서버는 인증 후 Play 서버의 ensure actor 응답이나 `joinEntrySpot(..., request)` 결과에서
   ActorRef 를 받고, `actors.bind(actorRef)` 로
   actor handle 과 session binding 을 얻는다.
 - Play 서버는 `ZLinkActorManager.getOrCreate(...)` 로 actor 를 준비한 뒤

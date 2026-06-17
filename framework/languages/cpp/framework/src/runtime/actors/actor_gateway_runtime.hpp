@@ -35,8 +35,8 @@ class actor_gateway_state_t
     mutable std::recursive_mutex mutex;
     using join_spot_dispatcher_t = std::function<result_t<actor_join_reply_t> (
       const actor_ref_t &, spot_rid_t, const zlink::message_t &)>;
-    using join_entry_spot_dispatcher_t =
-      std::function<result_t<actor_ref_t> (const actor_ref_t &, node_rid_t)>;
+    using join_entry_spot_dispatcher_t = std::function<result_t<actor_join_reply_t> (
+      const actor_ref_t &, node_rid_t, const zlink::message_t &)>;
     using relay_dispatcher_t = std::function<result_t<std::optional<zlink::message_t>> (
       const actor_ref_t &, actor_context_t, const stream_header_t &, const zlink::message_t &)>;
 

@@ -109,19 +109,31 @@ func submitActorLookupNative(progressSpot unsafe.Pointer, native func(cb cgo.Han
 	return nil
 }
 
-func submitActorJoinEntrySpotNative(native func(cb cgo.Handle) error, callback actorJoinEntrySpotCallback) error {
+func submitActorJoinEntrySpotNative(parts []*Message, native func(nativeParts *C.zlink_msg_t, partCount C.size_t, cb cgo.Handle) error, callback actorJoinEntrySpotCallback) error {
+	cloned, err := cloneParts(parts)
+	if err != nil {
+		return err
+	}
+	prepared, err := prepareMultipart(cloned)
+	if err != nil {
+		closeMessageSlice(cloned)
+		return err
+	}
 	state := &actorJoinEntrySpotCallbackState{
-		result: make(chan ActorJoinEntrySpotResult, 1),
+		result: make(chan actorJoinEntrySpotTrampolineResult, 1),
 		done:   make(chan struct{}),
 	}
 	handle := cgo.NewHandle(state)
-	if err := native(handle); err != nil {
+	if err := native(prepared.ptr(), prepared.count(), handle); err != nil {
 		handle.Delete()
+		_ = prepared.restore()
 		return err
 	}
+	prepared.commit()
+	markPartsMoved(parts)
 	go func() {
 		result := <-state.result
-		callback(result)
+		callback(result.result, result.parts)
 	}()
 	return nil
 }

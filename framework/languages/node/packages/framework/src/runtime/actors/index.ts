@@ -589,7 +589,7 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
     );
   }
 
-  joinEntrySpot(nodeRid: RoutingId, request?: unknown): ZLinkActorJoinEntrySpotCall {
+  joinEntrySpot(nodeRid: RoutingId, request: unknown): ZLinkActorJoinEntrySpotCall {
     return new DefaultZLinkActorJoinEntrySpotCall(
       this.state,
       this.requireActor(),
@@ -819,13 +819,13 @@ export class ZLinkSpotActorDispatcher {
         return result;
       }
       await commit();
-      await this.options.spot.onJoinActor?.(actor);
+      await this.options.spot.onJoinedActor?.(actor);
       return result;
     });
   }
 
   notifyJoinActor(actor: ZLinkActor): Promise<void> {
-    return this.execute(() => this.options.spot.onJoinActor?.(actor));
+    return this.execute(() => this.options.spot.onJoinedActor?.(actor));
   }
 
   notifyLeaveActor(actor: ZLinkActor): Promise<void> {
@@ -957,10 +957,8 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
   }
 
   async submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
-    const requestMessage = this.request === undefined
-      ? BindingMessage.from(Buffer.alloc(0))
-      : encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
-    const ownsRequest = this.request === undefined || !isMessage(this.request);
+    const requestMessage = encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
+    const ownsRequest = !isMessage(this.request);
     try {
       const result = await this.coordinator.joinEntrySpot(
         this.actor,

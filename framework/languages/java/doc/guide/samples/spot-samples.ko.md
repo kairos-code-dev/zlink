@@ -59,7 +59,7 @@ public final class StageBootstrap {
 ## 3. spot 객체와 timer
 
 ```java
-public final class StageSpot implements ZLinkSpot {
+public final class StageSpot implements ZLinkSpot<ZLinkActor> {
     private final ZLinkSpotContext context;
     private ZLinkTimer heartbeat;
 

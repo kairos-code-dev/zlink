@@ -516,12 +516,13 @@ impl SpotNodePublicRuntime for SpotNode {
     }
 
     /// Async Entry Spot join (operation builder). The target is the Entry Spot
-    /// of `dest_node_rid`; no application join payload is sent.
+    /// of `dest_node_rid`; callers pass an explicit request message.
     fn join_actor_entry_spot(
         &self,
         actor: &ActorRef,
         dest_node_rid: &RoutingId,
-    ) -> ActorJoinEntrySpotOp<Empty> {
+        request: Message,
+    ) -> ActorJoinEntrySpotOp<Ready> {
         let raw = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
             node_rid: ffi::zlink_routing_id_t::empty(),
             actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
@@ -531,6 +532,8 @@ impl SpotNodePublicRuntime for SpotNode {
             node_handle: spot_node_handle(self),
             actor: raw,
             dest_node_rid: *dest_node_rid,
+            parts: vec![request],
+            flags: SendFlags::NONE,
             timeout: Duration::ZERO,
         })
     }

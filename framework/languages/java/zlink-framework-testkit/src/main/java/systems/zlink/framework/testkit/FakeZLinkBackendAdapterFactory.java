@@ -716,14 +716,17 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 0,
                 List.of(Message.from("joined".getBytes(StandardCharsets.UTF_8)))));
         }
-        @Override public CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(ZLinkBackendActorRef actor, RoutingId targetNodeRid, Duration timeout) {
+        @Override public CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(ZLinkBackendActorRef actor, RoutingId targetNodeRid, Message request, Duration timeout) {
             record("joinActorEntrySpot." + actor.actorId() + "." + targetNodeRid);
             return CompletableFuture.completedFuture(new ZLinkBackendActorJoinEntrySpotResult(
                 ZLinkBackendRequestResult.OK,
+                0,
                 new ZLinkBackendActorRef(targetNodeRid, actor.actorId(), actor.epoch() + 1),
                 targetNodeRid,
+                targetNodeRid,
                 1,
-                0));
+                0,
+                List.of(Message.from("entry-joined".getBytes(StandardCharsets.UTF_8)))));
         }
         @Override public CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) {
             record("destroyActor." + actor.actorId());
@@ -941,6 +944,8 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             int joinResultCode,
             List<Message> parts) {
             record("replyActorJoin." + request.targetActor().actorId() + "." + joinResultCode);
+            record("replyActorJoinPayload." + request.targetActor().actorId() + "." + joinResultCode
+                + "." + firstPart(parts));
         }
         @Override public ZLinkBackendActorLifecycleEvent recvActorLifecycle(
             ZLinkBackendRecvMode mode) {

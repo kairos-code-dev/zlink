@@ -567,8 +567,8 @@ actor를 정리한다. 정리 순서는 모든 언어 샘플에서 아래와 같
 3. room Spot은 각 actor에 “Entry Spot으로 돌아오면 destroy한다”는 표시를 남긴다.
 4. room Spot은 `leaveActor`로 actor를 room에서 내보낸다.
 5. framework는 room `onLeaveActor`를 호출한 뒤 actor를 Entry Spot으로 이동시키고 Entry
-   Spot `onJoinActor`를 호출한다.
-6. Entry Spot `onJoinActor` 또는 Entry Spot handler는 actor의 destroy 표시를 확인하고
+   Spot `onJoinedActor`를 호출한다.
+6. Entry Spot `onJoinedActor` 또는 Entry Spot handler는 actor의 destroy 표시를 확인하고
    Entry Spot context의 `destroyActor`를 호출한다.
 7. `destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 호출하지 않고 actor 객체,
    native actor ref, framework registry, bound session binding을 정리한다.
@@ -587,7 +587,7 @@ sequenceDiagram
     R->>A: Mark destroy after Entry Spot join
     R->>R: leaveActor(A)
     R->>R: onLeaveActor(A)
-    A->>E: onJoinActor(A)
+    A->>E: onJoinedActor(A)
     E->>E: destroyActor(A)
     E->>E: Remove actor registry and session binding
 ```

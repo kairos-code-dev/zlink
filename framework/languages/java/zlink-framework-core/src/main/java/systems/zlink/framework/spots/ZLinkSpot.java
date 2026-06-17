@@ -4,7 +4,7 @@ import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.contracts.messaging.Message;
 
-public interface ZLinkSpot {
+public interface ZLinkSpot<TActor extends ZLinkActor> {
     ZLinkSpotContext context();
 
     default void configure() {
@@ -21,24 +21,24 @@ public interface ZLinkSpot {
     }
 
     default ZLinkSpotActorJoinResponse onActorJoin(
-        ZLinkActor actor,
+        TActor actor,
         Message request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.reject();
     }
 
-    default void onJoinActor(
-        ZLinkActor actor,
+    default void onJoinedActor(
+        TActor actor,
         CancellationToken cancellationToken) {
     }
 
     default void onLeaveActor(
-        ZLinkActor actor,
+        TActor actor,
         CancellationToken cancellationToken) {
     }
 
     default void onDisconnectActor(
-        ZLinkActor actor,
+        TActor actor,
         CancellationToken cancellationToken) {
     }
 }

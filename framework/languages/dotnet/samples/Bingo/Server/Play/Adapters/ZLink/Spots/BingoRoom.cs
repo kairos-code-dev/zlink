@@ -33,7 +33,7 @@ internal sealed class BingoRoom(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask onJoinActor(
+    public ValueTask OnJoinedActorAsync(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
@@ -45,7 +45,7 @@ internal sealed class BingoRoom(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask onLeaveActor(
+    public ValueTask OnLeaveActorAsync(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
@@ -58,7 +58,7 @@ internal sealed class BingoRoom(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask onDisconnectActor(
+    public ValueTask OnDisconnectActorAsync(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {

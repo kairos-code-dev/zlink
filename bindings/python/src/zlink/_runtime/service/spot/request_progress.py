@@ -43,11 +43,12 @@ class PendingActorJoinEntrySpot:
     def __init__(self, *, callback=None):
         self.callback = callback
 
-    def resolve(self, join_result, errnum=0):
+    def resolve(self, join_result, messages, errnum=0):
+        result = join_result.result
         if self.callback is None:
             return
         try:
-            self.callback(join_result)
+            self.callback(join_result, messages if result == RequestResult.OK else [])
         except Exception:
             _report_unhandled_callback_exception(self.callback)
 

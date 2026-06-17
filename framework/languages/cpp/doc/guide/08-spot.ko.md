@@ -158,7 +158,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
           to_stream_payload (bingo_room_join_res_t{snapshot ()}));
     }
 
-    void onJoinActor (const player_actor_t &actor) { /* 입장 완료 후 알림 */ }
+    void on_actor_joined (const player_actor_t &actor) { /* 입장 완료 후 알림 */ }
     void onLeaveActor (const player_actor_t &actor) { leave (actor.actor.actor_id); }
 };
 ```
@@ -169,7 +169,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
 |----|------|
 | `configure(context)` | spot 생성 시 — 핸들러/타이머 등록 |
 | `on_actor_join(actor, msg)` | 입장 요청 — `accept(reply)`/`reject(reply)` 반환 |
-| `onJoinActor(actor)` | 입장 확정 후 |
+| `on_actor_joined(actor)` | 입장 확정 후 |
 | `onLeaveActor(actor)` | 퇴장 |
 
 핸들러 메서드는 동기 반환 또는 `task_t<...>` 코루틴 둘 다 가능하다.
@@ -218,7 +218,7 @@ room spot(`spot_t`)과의 차이:
 | 역할 | 배정·매칭 (라우팅 전) | 도메인 상태 소유·처리 |
 | 직렬화 범위 | actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) | actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) |
 | 공유 상태 접근 | Entry Spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 | spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 |
-| actor join | `onJoinActor` / `onLeaveActor` 훅만 | `on_actor_join`으로 수락/거부 + 훅 |
+| actor join | `on_actor_joined` / `onLeaveActor` 훅만 | `on_actor_join`으로 수락/거부 + 훅 |
 
 ## 5. Timer
 

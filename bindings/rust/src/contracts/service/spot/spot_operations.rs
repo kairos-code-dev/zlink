@@ -218,16 +218,28 @@ impl ReplyOp<Ready> {
     }
 }
 
-impl ActorJoinEntrySpotOp<Empty> {
+impl ActorJoinEntrySpotOp<Ready> {
+    /// Adds another request message part. The part is consumed on a successful
+    /// submit.
+    pub fn message(self, message: Message) -> Self {
+        <Self as ActorJoinEntrySpotOpContract>::message(self, message)
+    }
+
     /// Sets how long the operation waits for completion before timing out.
     pub fn timeout(self, timeout: Duration) -> Self {
         <Self as ActorJoinEntrySpotOpContract>::timeout(self, timeout)
     }
 
-    /// Submits the operation; the result is delivered later to `callback`.
+    /// Sets the send flags applied at submit time.
+    pub fn flags(self, flags: SendFlags) -> Self {
+        <Self as ActorJoinEntrySpotOpContract>::flags(self, flags)
+    }
+
+    /// Submits the operation; the result and reply parts are delivered later
+    /// to `callback`.
     pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
-        F: FnOnce(ActorJoinEntrySpotResult) + Send + 'static,
+        F: FnOnce(ActorJoinEntrySpotResult, Vec<Message>) + Send + 'static,
     {
         <Self as ActorJoinEntrySpotOpContract>::submit(self, callback)
     }

@@ -10,5 +10,5 @@ export interface ZLinkActorContext {
   getSpot(): ZLinkSpot;
   getSpot<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): TSpot;
   joinSpot(spotRid: RoutingId, request?: unknown): ZLinkActorJoinSpotCall;
-  joinEntrySpot(nodeRid: RoutingId): ZLinkActorJoinEntrySpotCall;
+  joinEntrySpot(nodeRid: RoutingId, request: unknown): ZLinkActorJoinEntrySpotCall;
 }

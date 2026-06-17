@@ -81,7 +81,7 @@ final class ZLinkSpotRuntimeActorArgumentsTest {
         }
     }
 
-    public static final class TestSpot implements ZLinkSpot {
+    public static final class TestSpot implements ZLinkSpot<ZLinkActor> {
         @Override
         public ZLinkSpotContext context() {
             throw new UnsupportedOperationException();

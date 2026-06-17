@@ -22,11 +22,13 @@ type ActorJoinResult struct {
 // ActorJoinEntrySpotResult is the completion value of an Entry Spot join
 // operation.
 type ActorJoinEntrySpotResult struct {
-	Result        RequestResult
-	Actor         ActorRef
-	TargetNodeRID RoutingID
-	JoinEpoch     uint64
-	Flags         uint32
+	Result         RequestResult
+	JoinResultCode int32
+	Actor          ActorRef
+	TargetNodeRID  RoutingID
+	JoinedSpotRID  RoutingID
+	JoinEpoch      uint64
+	Flags          uint32
 }
 
 type ActorJoinCompletion struct {
@@ -37,6 +39,7 @@ type ActorJoinCompletion struct {
 
 type ActorJoinEntrySpotCompletion struct {
 	Result ActorJoinEntrySpotResult
+	Parts  []*Message
 	Err    error
 }
 
@@ -105,10 +108,12 @@ type ActorJoinCallbackSubmitOp interface {
 
 // ActorJoinEntrySpotOp is returned by SpotNode.JoinActorEntrySpot.
 type ActorJoinEntrySpotOp interface {
+	Message(message *Message) ActorJoinEntrySpotOp
 	Timeout(timeout time.Duration) ActorJoinEntrySpotOp
+	Flags(flags SendFlags) ActorJoinEntrySpotOp
 	SubmitAsync(ctx context.Context) (<-chan ActorJoinEntrySpotCompletion, error)
 	Submit(ctx context.Context,
-		callback func(result ActorJoinEntrySpotResult)) (bool, error)
+		callback func(result ActorJoinEntrySpotResult, parts []*Message)) (bool, error)
 }
 
 // ActorJoinReplyOp is returned by Spot.ReplyActorJoin. The reply payload is

@@ -223,7 +223,7 @@ internal static partial class NativeMethods
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate void ZlinkActorJoinEntrySpotHandlerDelegate(
-        IntPtr result, IntPtr userData);
+        IntPtr result, IntPtr parts, nuint partCount, IntPtr userData);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate void ZlinkActorLookupHandlerDelegate(IntPtr result,

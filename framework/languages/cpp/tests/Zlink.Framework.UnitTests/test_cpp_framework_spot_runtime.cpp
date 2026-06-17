@@ -52,7 +52,7 @@ struct entry_spot_t : public zlink::framework::entry_spot_t
         actor.joined_value += 1;
     }
 
-    void onJoinActor (player_actor_factory_t &actor)
+    void on_actor_joined (player_actor_factory_t &actor)
     {
         ++joined_count;
         actor.joined_value += 10;
@@ -185,7 +185,7 @@ struct stage_spot_t : public zlink::framework::spot_t
         actor.moved_value = request.value;
     }
 
-    void onJoinActor (player_actor_factory_t &actor)
+    void on_actor_joined (player_actor_factory_t &actor)
     {
         ++joined_count;
         actor.joined_value += 100;
@@ -329,7 +329,7 @@ struct factory_spot_t : public zlink::framework::spot_t
 
 struct lifecycle_thread_probe_entry_spot_t : public zlink::framework::entry_spot_t
 {
-    void onJoinActor (player_actor_factory_t &)
+    void on_actor_joined (player_actor_factory_t &)
     {
         ++joined_count;
         last_join_thread = std::this_thread::get_id ();
@@ -608,15 +608,19 @@ int main ()
     }
 
     lifecycle_gateway.on_join_entry_spot (
-      [&] (const zlink::framework::actor_ref_t &actor_ref, zlink::framework::node_rid_t node_rid) {
+      [&] (const zlink::framework::actor_ref_t &actor_ref,
+           zlink::framework::node_rid_t node_rid,
+           const zlink::message_t &request) {
+          (void) request;
           auto &actor_state =
             actor_ref.actor_id () == "destroy-player" ? destroyActor_state : lifecycle_actor_state;
           return lifecycle_runtime.join_actor_to_entry_spot<entry_spot_t> (
-            actor_ref, std::move (node_rid), actor_state);
+            actor_ref, std::move (node_rid), actor_state, request);
       });
     auto lifecycle_entry_join =
       lifecycle_actor_context
-        .join_entry_spot (zlink::framework::node_rid_t::from_string ("lifecycle-stage"))
+        .join_entry_spot (zlink::framework::node_rid_t::from_string ("lifecycle-stage"),
+                          zlink::message_t{})
         .async ()
         .result ();
     if (!lifecycle_entry_join || lifecycle_stage_spot->left_count != 1
@@ -651,7 +655,8 @@ int main ()
     }
     auto destroy_entry_join =
       destroy_context
-        .join_entry_spot (zlink::framework::node_rid_t::from_string ("lifecycle-stage"))
+        .join_entry_spot (zlink::framework::node_rid_t::from_string ("lifecycle-stage"),
+                          zlink::message_t{})
         .async ()
         .result ();
     if (!destroy_entry_join || lifecycle_stage_spot->left_count != 2
@@ -738,7 +743,7 @@ int main ()
       thread_probe_runtime
         .join_actor_to_entry_spot<lifecycle_thread_probe_entry_spot_t> (
           direct_entry_ref, zlink::framework::node_rid_t::from_string ("thread-probe-stage"),
-          direct_entry_actor);
+          direct_entry_actor, zlink::message_t{});
     if (!direct_entry_join || thread_probe_entry->joined_count != 1
         || thread_probe_entry->last_join_thread == direct_entry_caller) {
         return 87;
@@ -1049,7 +1054,7 @@ int main ()
         || actor.joined_value != 41 || stage_spot.join_seen != 41) {
         return 23;
     }
-    stage_spot.onJoinActor (actor);
+    stage_spot.on_actor_joined (actor);
     if (stage_spot.joined_count != 1 || actor.joined_value != 141) {
         return 25;
     }

@@ -4,10 +4,10 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkSpotActorAttributedDescriptorFactory
 {
-    private const string ActorCreatedMethodName = "onCreateActor";
-    private const string PostActorJoinedMethodName = "onJoinActor";
-    private const string ActorLeftMethodName = "onLeaveActor";
-    private const string ActorDisconnectedMethodName = "onDisconnectActor";
+    private const string ActorCreatedMethodName = "OnCreateActorAsync";
+    private const string PostActorJoinedMethodName = "OnJoinedActorAsync";
+    private const string ActorLeftMethodName = "OnLeaveActorAsync";
+    private const string ActorDisconnectedMethodName = "OnDisconnectActorAsync";
 
     public static IEnumerable<ZLinkSpotActorPacketDescriptor> CreatePacketDescriptors(
         ZLinkSpotActorHandlerSurface surface,

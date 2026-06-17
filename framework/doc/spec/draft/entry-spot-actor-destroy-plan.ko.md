@@ -94,7 +94,7 @@ ActorGateway와 bound session registry cleanup hook으로만 사용한다.
 | destroy | Entry Spot에 있는 actor의 수명을 끝내고 framework/native 상태를 제거하는 동작이다. |
 | disconnect | actor에 묶인 stream session 연결이 끊어진 상태다. leave나 destroy와 같은 뜻이 아니다. |
 | onCreateActor | actor 객체가 runtime에 생성되었을 때 한 번 호출되는 callback이다. Spot 이동과 무관하다. |
-| onJoinActor | actor가 특정 Spot membership에 들어왔을 때 호출되는 callback이다. |
+| onJoinedActor | actor가 특정 Spot membership에 들어왔을 때 호출되는 callback이다. |
 | onLeaveActor | actor가 특정 Spot membership에서 다른 Spot으로 이동하기 위해 나갈 때 호출되는 callback이다. destroy 때는 호출하지 않는다. |
 
 ## 4.1 언어별 public 이름 정책
@@ -110,7 +110,7 @@ Java, C++, Kotlin 문서는 `destroyActor(...)`를 사용한다.
 | 의미 | .NET | Node.js / Java / Kotlin / C++ |
 |------|------|------------------------------|
 | actor 생성 callback | `onCreateActor` | `onCreateActor` |
-| actor Spot 진입 callback | `onJoinActor` | `onJoinActor` |
+| actor Spot 진입 callback | `onJoinedActor` | `onJoinedActor` |
 | actor Spot 이탈 callback | `onLeaveActor` | `onLeaveActor` |
 | actor disconnect callback | `onDisconnectActor` | `onDisconnectActor` |
 | user Spot에서 Entry Spot으로 이동 | `leaveActor` | `leaveActor` |
@@ -140,7 +140,7 @@ None
 2. actor가 user Spot에 있으면 destroy를 바로 수행할 수 없다.
 3. user Spot에서 actor를 내보낼 때는 `leaveActor`를 호출한다.
 4. leave가 완료되면 source user Spot의 `onLeaveActor`와 target Entry Spot의
-   `onJoinActor`가 각각 실행된다.
+   `onJoinedActor`가 각각 실행된다.
 5. Entry Spot actor handler 또는 application이 명시적으로 만든 정리 command에서
    언어별 Entry Spot destroy API를 호출하면 actor 수명이 끝난다.
 6. destroy는 lifecycle callback을 호출하지 않는다. destroy는 위치 이동이 아니라 수명 종료이므로
@@ -258,8 +258,8 @@ destroy는 `onLeaveActor`를 호출하지 않는다.
 | 상황 | callback |
 |------|----------|
 | actor 생성 | `onCreateActor` |
-| Entry Spot에서 user Spot으로 join | Entry Spot `onLeaveActor`, user Spot `onJoinActor` |
-| user Spot에서 Entry Spot으로 leave | user Spot `onLeaveActor`, Entry Spot `onJoinActor` |
+| Entry Spot에서 user Spot으로 join | Entry Spot `onLeaveActor`, user Spot `onJoinedActor` |
+| user Spot에서 Entry Spot으로 leave | user Spot `onLeaveActor`, Entry Spot `onJoinedActor` |
 | Entry Spot에서 destroy | callback 없음. actor 상태만 정리 |
 | session disconnect | `onDisconnectActor`만 실행. leave와 destroy는 자동으로 실행하지 않음 |
 
@@ -284,7 +284,7 @@ destroy 전용 callback은 이번 계획에 넣지 않는다. application이 des
 ### 8.1 공통 선행 확인
 
 ```bash
-rg -n "destroyActor|leaveActor|onCreateActor|onJoinActor|onLeaveActor|onDisconnectActor|EntrySpotContext|Entry Spot" framework/languages
+rg -n "destroyActor|leaveActor|onCreateActor|onJoinedActor|onLeaveActor|onDisconnectActor|EntrySpotContext|Entry Spot" framework/languages
 rg -n "disconnect.*destroy|destroy.*disconnect|automatic.*destroy|자동.*destroy|자동.*삭제" framework/doc framework/languages/*/doc
 ```
 
@@ -464,11 +464,11 @@ Bingo와 TicTacToe sample 문서에는 아래 흐름을 공통으로 적는다.
 1. client가 actor를 만들거나 인증한다.
 2. framework는 actor 객체 생성이 끝난 뒤 `onCreateActor`를 한 번 호출한다.
 3. actor는 Entry Spot에서 match, create, join 같은 입장 요청을 처리한다.
-4. actor가 room user Spot에 들어갈 때 Entry Spot `onLeaveActor`와 room `onJoinActor`가
+4. actor가 room user Spot에 들어갈 때 Entry Spot `onLeaveActor`와 room `onJoinedActor`가
    호출된다.
 5. room에서 나가야 하면 room user Spot handler가 `leaveActor`를 호출해 actor를 Entry
    Spot으로 돌려보낸다.
-6. leave가 끝나면 room `onLeaveActor`와 Entry Spot `onJoinActor`가 호출된다.
+6. leave가 끝나면 room `onLeaveActor`와 Entry Spot `onJoinedActor`가 호출된다.
 7. Entry Spot handler가 client의 종료 요청, 게임 종료 후 퇴장 요청, 또는 sample의 정리
    단계에서 언어별 Entry Spot destroy API를 호출한다.
 8. destroy는 `onLeaveActor`를 호출하지 않는다.
@@ -491,7 +491,7 @@ disconnect 시나리오는 별도로 적는다.
 언어별 sample README가 있으면 공통 sample spec과 같은 흐름으로 맞춘다. 언어별 README에는
 이 문서의 public 이름 정책에 맞는 이름을 사용한다. `.NET` README는 `DestroyActorAsync`,
 다른 언어 README는 `destroyActor`를 사용하고, callback 이름은 `onCreateActor`,
-`onJoinActor`, `onLeaveActor`, `onDisconnectActor`로 맞춘다.
+`onJoinedActor`, `onLeaveActor`, `onDisconnectActor`로 맞춘다.
 
 ### 10.3 sample code 수정 대상
 
@@ -524,7 +524,7 @@ behavior는 sample 구조에 맞는 확인 방법 하나를 고르되, destroy �
 | 확인 항목 | 의미 |
 |-----------|------|
 | `onCreateActor` count | actor 생성당 한 번만 호출된다. |
-| join/leave callback order | Entry Spot -> room join, room -> Entry Spot leave 순서에서 `onJoinActor`와 `onLeaveActor`가 기대한 Spot에서 호출된다. |
+| join/leave callback order | Entry Spot -> room join, room -> Entry Spot leave 순서에서 `onJoinedActor`와 `onLeaveActor`가 기대한 Spot에서 호출된다. |
 | destroy callback isolation | Entry Spot destroy API 호출 뒤 `onLeaveActor`가 추가로 호출되지 않는다. |
 | user Spot destroy absence | room handler 또는 user Spot context에서 `destroyActor`를 호출하지 않는다. |
 | disconnect isolation | disconnect는 `onDisconnectActor`만 검증하고 destroy 성공으로 간주하지 않는다. |

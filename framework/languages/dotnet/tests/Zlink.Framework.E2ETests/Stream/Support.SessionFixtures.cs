@@ -184,14 +184,17 @@ public abstract partial class StreamTestSupport
                         "player",
                         cancellationToken)
                     .ConfigureAwait(false);
-                var actorRef = await actor.Context.JoinEntrySpot(RoutingId.From("local-notify-actor-node"))
+                using var joinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+                var join = await actor.Context.JoinEntrySpot(
+                        RoutingId.From("local-notify-actor-node"),
+                        joinRequest)
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Async(cancellationToken)
                     .ConfigureAwait(false);
-                recorder.SetActor(actorRef);
+                recorder.SetActor(join.Actor);
 
                 _actor = await Context.Actors.BindAsync(
-                        actorRef,
+                        join.Actor,
                         cancellationToken)
                     .ConfigureAwait(false);
             }

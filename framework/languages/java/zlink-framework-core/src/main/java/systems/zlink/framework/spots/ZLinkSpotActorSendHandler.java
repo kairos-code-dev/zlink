@@ -4,7 +4,7 @@ import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 
 public interface ZLinkSpotActorSendHandler<
-    TSpot extends ZLinkSpot,
+    TSpot extends ZLinkSpot<?>,
     TActor extends ZLinkActor,
     TMessage> {
     void handle(

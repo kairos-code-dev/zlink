@@ -41,6 +41,7 @@
     <Compile Include="Transport/LifecycleTests.cs" />
     <Compile Include="Transport/TransportTests.cs" />
     <Compile Include="Typed/CodecAndCallbackTests.cs" />
+    <Compile Include="Typed/CustomPayloadCodecTests.cs" />
     <Compile Include="Typed/TypedConnectorExtensionTests.cs" />
     <Compile Include="Typed/TypedHandlerRegistryTests.cs" />
     <Compile Include="Typed/TypedRequestTests.cs" />

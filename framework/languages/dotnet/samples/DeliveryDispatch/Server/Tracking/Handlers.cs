@@ -24,14 +24,17 @@ internal sealed class EnsureCustomerActorHandler(
             request.CustomerId,
             SampleNames.CustomerActorType,
             cancellationToken);
-        var joined = await actor.Context.JoinEntrySpot(topology.TrackingSpotNodeRid)
+        using var entryJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        var joined = await actor.Context.JoinEntrySpot(
+                topology.TrackingSpotNodeRid,
+                entryJoinRequest)
             .Async(cancellationToken);
         return new CustomerActorEnsured(
             request.CustomerId,
             new ActorRefSnapshot(
-                joined.NodeRid.ToHex(),
-                joined.ActorId,
-                joined.Generation));
+                joined.Actor.NodeRid.ToHex(),
+                joined.Actor.ActorId,
+                joined.Actor.Generation));
     }
 }
 

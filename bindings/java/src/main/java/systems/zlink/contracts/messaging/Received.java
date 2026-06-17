@@ -55,11 +55,9 @@ public final class Received implements AutoCloseable {
         }
     }
 
-    // Mutable to support the canonical caller-provided storage recv pattern
-    // documented in doc/spec/bindings/README.md. Callers may pass the same
-    // Received instance to multiple recv calls; the binding refills internal
-    // state via adoptFrom() in place, avoiding the per-recv Received
-    // allocation.
+    // Callers may pass the same Received instance to multiple recv calls. The
+    // binding refills internal state via adoptFrom() in place, avoiding the
+    // per-recv Received allocation.
     private long requestSequence;
     private boolean hasRequestSequence;
     private BiConsumer<List<Message>, SendFlags> replySender;

@@ -2,6 +2,7 @@ package zlink_test
 
 import (
 	"bytes"
+	"context"
 	"runtime"
 	"testing"
 	"time"
@@ -86,6 +87,137 @@ func TestSpotCallbackDispatchersStopOnClose(t *testing.T) {
 			t.Fatalf("goroutines did not return near baseline: baseline=%d got=%d", baseline, runtime.NumGoroutine())
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestActorEntrySpotJoinAcceptsAndRejectsWithReply(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	node, err := ctx.SpotNode()
+	if err != nil {
+		t.Fatalf("SpotNode() error = %v", err)
+	}
+	defer node.Close()
+	nodeRID := zlink.NewRoutingID([]byte("go-entry-node"))
+	if err := node.SetRoutingID(nodeRID); err != nil {
+		t.Fatalf("SetRoutingID() error = %v", err)
+	}
+	userSpot, err := node.Spot()
+	if err != nil {
+		t.Fatalf("Spot() error = %v", err)
+	}
+	defer userSpot.Close()
+	entrySpot, err := node.EntrySpot()
+	if err != nil {
+		t.Fatalf("EntrySpot() error = %v", err)
+	}
+	defer entrySpot.Close()
+	actor, err := node.Actor("go-entry-actor")
+	if err != nil {
+		t.Fatalf("Actor() error = %v", err)
+	}
+	defer actor.Close()
+
+	userRequestCh := make(chan string, 2)
+	if err := userSpot.OnDispatchEvent(func(spot *zlink.Spot, info zlink.SpotDispatchInfo) {
+		if info.Event != zlink.SpotDispatchEventActorJoinReadable {
+			return
+		}
+		request, err := spot.RecvActorJoin(zlink.RecvFlagsDontWait)
+		if err != nil {
+			return
+		}
+		userRequestCh <- string(request.Message.Data())
+		_ = spot.ReplyActorJoin(request, 0).Message(newMessage(t, "user-reply")).Submit(context.Background())
+	}); err != nil {
+		t.Fatalf("OnDispatchEvent(user) error = %v", err)
+	}
+
+	rejectEntry := false
+	entryRequestCh := make(chan string, 2)
+	if err := entrySpot.OnDispatchEvent(func(spot *zlink.Spot, info zlink.SpotDispatchInfo) {
+		if info.Event != zlink.SpotDispatchEventActorJoinReadable {
+			return
+		}
+		request, err := spot.RecvActorJoin(zlink.RecvFlagsDontWait)
+		if err != nil {
+			return
+		}
+		entryRequestCh <- string(request.Message.Data())
+		reply := "entry-reply"
+		code := int32(0)
+		if rejectEntry {
+			reply = "entry-rejected"
+			code = 7
+		}
+		_ = spot.ReplyActorJoin(request, code).Message(newMessage(t, reply)).Submit(context.Background())
+	}); err != nil {
+		t.Fatalf("OnDispatchEvent(entry) error = %v", err)
+	}
+
+	userResultCh, err := actor.Join(userSpot).
+		Message(newMessage(t, "user-join-request")).
+		Timeout(time.Second).
+		SubmitAsync(context.Background())
+	if err != nil {
+		t.Fatalf("user Join SubmitAsync() error = %v", err)
+	}
+	userResult := <-userResultCh
+	if userResult.Err != nil || userResult.Result.Result != zlink.RequestOK {
+		t.Fatalf("user join result = (%+v, %v), want ok", userResult.Result, userResult.Err)
+	}
+	if got := <-userRequestCh; got != "user-join-request" {
+		t.Fatalf("user join request = %q", got)
+	}
+
+	rejectEntry = true
+	rejectedResultCh, err := node.JoinActorEntrySpot(actor.Ref(), nodeRID, newMessage(t, "entry-reject-request")).
+		Timeout(time.Second).
+		SubmitAsync(context.Background())
+	if err != nil {
+		t.Fatalf("reject JoinActorEntrySpot SubmitAsync() error = %v", err)
+	}
+	rejectedResult := <-rejectedResultCh
+	if rejectedResult.Err != nil || rejectedResult.Result.Result != zlink.RequestOK {
+		t.Fatalf("rejected join result = (%+v, %v), want ok", rejectedResult.Result, rejectedResult.Err)
+	}
+	if rejectedResult.Result.JoinResultCode != 7 {
+		t.Fatalf("rejected join code = %d, want 7", rejectedResult.Result.JoinResultCode)
+	}
+	if got := <-entryRequestCh; got != "entry-reject-request" {
+		t.Fatalf("entry reject request = %q", got)
+	}
+	if len(rejectedResult.Parts) != 1 || string(rejectedResult.Parts[0].Data()) != "entry-rejected" {
+		t.Fatalf("entry reject reply = %+v", rejectedResult.Parts)
+	}
+	userActors, err := userSpot.Actors()
+	if err != nil {
+		t.Fatalf("user Spot Actors() error = %v", err)
+	}
+	if len(userActors) != 1 || userActors[0].ActorID != actor.Ref().ActorID {
+		t.Fatalf("user spot actors = %+v, want actor %s", userActors, actor.Ref().ActorID)
+	}
+
+	rejectEntry = false
+	entryResultCh, err := node.JoinActorEntrySpot(actor.Ref(), nodeRID, newMessage(t, "entry-join-request")).
+		Timeout(time.Second).
+		SubmitAsync(context.Background())
+	if err != nil {
+		t.Fatalf("entry JoinActorEntrySpot SubmitAsync() error = %v", err)
+	}
+	entryResult := <-entryResultCh
+	if entryResult.Err != nil || entryResult.Result.Result != zlink.RequestOK {
+		t.Fatalf("entry join result = (%+v, %v), want ok", entryResult.Result, entryResult.Err)
+	}
+	if entryResult.Result.JoinResultCode != 0 {
+		t.Fatalf("entry join code = %d, want 0", entryResult.Result.JoinResultCode)
+	}
+	if got := <-entryRequestCh; got != "entry-join-request" {
+		t.Fatalf("entry join request = %q", got)
+	}
+	if len(entryResult.Parts) != 1 || string(entryResult.Parts[0].Data()) != "entry-reply" {
+		t.Fatalf("entry join reply = %+v", entryResult.Parts)
 	}
 }
 

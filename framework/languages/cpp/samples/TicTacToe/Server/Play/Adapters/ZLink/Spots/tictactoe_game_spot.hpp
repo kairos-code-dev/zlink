@@ -61,7 +61,7 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
         return {state};
     }
 
-    void onJoinActor (const player_actor_t &actor)
+    void on_actor_joined (const player_actor_t &actor)
     {
         actors[actor.actor_id] = const_cast<player_actor_t *> (&actor);
         const auto &state = snapshot ();
@@ -95,7 +95,9 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
             if (actor_id == source_actor_id || actor == nullptr) {
                 continue;
             }
-            (void) actor->context.bound_session ().send (notify).async ().result ();
+            auto send_task = actor->context.bound_session ().send (notify).async ();
+            zlink::framework::detail::observe_task_completion (
+              send_task, [] (const zlink::framework::result_t<void> &) {});
         }
     }
 

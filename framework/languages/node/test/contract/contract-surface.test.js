@@ -141,16 +141,16 @@ test('spot actor lifecycle handler registration API is not public', () => {
   assert.deepEqual(remaining, []);
 });
 
-test('entry spot public surface exposes create lifecycle but no spot create or admission callbacks', () => {
+test('entry spot public surface exposes create lifecycle and actor join admission but no spot create callback', () => {
   const declarations = readTree(declarationsRoot);
   const entrySpot = declarationBody(declarations, 'ZLinkEntrySpot');
   const entryContext = declarationBody(declarations, 'ZLinkEntrySpotContext');
 
   assert.equal(entrySpot.includes('extends ZLinkSpot'), false);
   assert.equal(entrySpot.includes('onCreate?'), false);
-  assert.equal(entrySpot.includes('onActorJoin'), false);
+  assert.equal(entrySpot.includes('onActorJoin'), true);
   assert.equal(entrySpot.includes('onCreateActor'), true);
-  assert.equal(entrySpot.includes('onJoinActor'), true);
+  assert.equal(entrySpot.includes('onJoinedActor'), true);
   assert.equal(entrySpot.includes('onLeaveActor'), true);
   assert.equal(entryContext.includes('leaveActor'), false);
   assert.equal(entryContext.includes('destroyActor'), true);

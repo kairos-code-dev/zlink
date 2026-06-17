@@ -30,7 +30,7 @@ sealed class TicTacToeGame(
         Context.Handlers.AddActorRequest<PlayActorPlaceMarkHandler, PlayActor>(nameof(PlaceMarkReq));
     }
 
-    public ValueTask onJoinActor(
+    public ValueTask OnJoinedActorAsync(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
@@ -42,7 +42,7 @@ sealed class TicTacToeGame(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask onLeaveActor(
+    public ValueTask OnLeaveActorAsync(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
@@ -55,7 +55,7 @@ sealed class TicTacToeGame(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask onDisconnectActor(
+    public ValueTask OnDisconnectActorAsync(
         PlayActor actor,
         CancellationToken cancellationToken)
     {

@@ -64,8 +64,8 @@ class SpotNodeActorMixin:
     def join_actor(self, actor_ref, dest_node_rid, dest_spot_rid):
         return ActorJoinOp(self, actor_ref, dest_node_rid, dest_spot_rid)
 
-    def join_actor_entry_spot(self, actor_ref, dest_node_rid):
-        return ActorJoinEntrySpotOp(self, actor_ref, dest_node_rid)
+    def join_actor_entry_spot(self, actor_ref, dest_node_rid, request):
+        return ActorJoinEntrySpotOp(self, actor_ref, dest_node_rid, request)
 
     def leave_actor(self, actor_ref, current_spot_rid):
         return ActorLeaveOp(self, actor_ref, current_spot_rid)
@@ -153,9 +153,11 @@ class SpotNodeActorMixin:
         messages = []
         if result == RequestResult.OK:
             messages = _make_message_list(parts, part_count)
+        if parts:
+            lib().zlink_multipart_close(parts, part_count)
         pending.resolve(join_result, messages, _request_result_native_errno(result))
 
-    def _on_actor_join_entry_spot_reply(self, result_ptr, userdata):
+    def _on_actor_join_entry_spot_reply(self, result_ptr, parts, part_count, userdata):
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
         pending = self._actor_join_entry_spot_pending.pop(handle, None)
         if pending is None:
@@ -163,23 +165,32 @@ class SpotNodeActorMixin:
         if not result_ptr:
             join_result = ActorJoinEntrySpotResult(
                 result=RequestResult.INTERNAL_ERROR,
+                join_result_code=0,
                 actor=ActorRef(node_rid=RoutingId(b""), actor_id="", generation=0),
                 target_node_rid=RoutingId(b""),
+                joined_spot_rid=RoutingId(b""),
                 join_epoch=0,
                 flags=0,
             )
-            pending.resolve(join_result, _request_result_native_errno(RequestResult.INTERNAL_ERROR))
+            pending.resolve(join_result, [], _request_result_native_errno(RequestResult.INTERNAL_ERROR))
             return
         native = result_ptr.contents
         result = _request_result_from_code(int(native.result))
         join_result = ActorJoinEntrySpotResult(
             result=result,
+            join_result_code=int(native.join_result_code),
             actor=_actor_ref_from_native(native.actor),
             target_node_rid=_routing_id_bytes(native.target_node_rid),
+            joined_spot_rid=_routing_id_bytes(native.joined_spot_rid),
             join_epoch=int(native.join_epoch),
             flags=int(native.flags),
         )
-        pending.resolve(join_result, _request_result_native_errno(result))
+        messages = []
+        if result == RequestResult.OK:
+            messages = _make_message_list(parts, part_count)
+        if parts:
+            lib().zlink_multipart_close(parts, part_count)
+        pending.resolve(join_result, messages, _request_result_native_errno(result))
 
     def _on_actor_lookup_reply(self, result_ptr, userdata):
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
@@ -240,21 +251,27 @@ class SpotNodeActorMixin:
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
         return True
 
-    def _submit_actor_join_entry_spot(self, actor_ref, dest_node_rid, pending, timeout=0):
+    def _submit_actor_join_entry_spot(self, actor_ref, dest_node_rid, parts, pending, flags=0, timeout=0):
         native_actor = _actor_ref_to_native(actor_ref)
         native_node = _copy_routing_id(dest_node_rid)
+        native_parts = _clone_payload(parts)
+        native_array = _prepare_native_parts(native_parts)
         handle = id(pending)
         self._actor_join_entry_spot_pending[handle] = pending
         rc = lib().zlink_spot_node_actor_join_entry_spot(
             self._handle,
             ctypes.byref(native_actor),
             ctypes.byref(native_node),
+            native_array if native_parts else None,
+            len(native_parts),
             self._ensure_actor_join_entry_spot_handler(),
             ctypes.c_void_p(handle),
+            int(flags),
             _timeout_to_ms(timeout),
         )
         if rc != 0:
             self._actor_join_entry_spot_pending.pop(handle, None)
+            _close_native_parts(native_parts)
             _raise_result_error(SubmitError, SubmitResult, rc, lib().zlink_errno())
         return True
 

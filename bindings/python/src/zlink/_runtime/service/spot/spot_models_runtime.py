@@ -140,8 +140,10 @@ class ActorJoinResult:
 @dataclass(frozen=True)
 class ActorJoinEntrySpotResult:
     result: RequestResult
+    join_result_code: int
     actor: ActorRef
     target_node_rid: RoutingId
+    joined_spot_rid: RoutingId
     join_epoch: int
     flags: int
 

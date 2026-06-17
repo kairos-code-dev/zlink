@@ -62,14 +62,22 @@ backend adapter나 binding wrapper 구조는 guide에서 설명하지 않고, �
 
 ## 4. 샘플
 
-샘플은 Java/Kotlin 양쪽에서 같은 scenario set을 제공한다.
+샘플은 Java/Kotlin 양쪽에서 같은 scenario set을 제공한다. 정본 6종은 per-app 문서로,
+기능 축 샘플은 별도 문서로 둔다.
 
 | 문서 | 범위 |
 |------|------|
 | [samples README](../samples/README.md) | Java/Kotlin sample 구조와 실행 방법 |
+| [bingo-game-sample](./guide/samples/bingo-game-sample.ko.md) | Session/Api/Play/Registry, Entry Spot, room Spot, timer, bound push (Protobuf) |
+| [tictactoe-game-sample](./guide/samples/tictactoe-game-sample.ko.md) | Api/Play 두 서버, 수동 연결, typed session dispatch |
+| [supportchat-sample](./guide/samples/supportchat-sample.ko.md) | conversation Spot, idle timer, reconnect, 양방향 push (JSON) |
+| [deliverydispatch-sample](./guide/samples/deliverydispatch-sample.ko.md) | 배차, timeout 재배정, 상태 fanout, 고객 stream push |
+| [shoppingmall-checkout-sample](./guide/samples/shoppingmall-checkout-sample.ko.md) | event-sourced workflow Spot, projection, scale-out |
 | [channel-messaging-samples](./guide/samples/channel-messaging-samples.ko.md) | channel 등록, handler, outbound client 샘플 |
 | [spot-samples](./guide/samples/spot-samples.ko.md) | room/stage/zone 기준 Spot 등록과 publish/request 샘플 |
 | [stream-samples](./guide/samples/stream-samples.ko.md) | stream 등록, header session, actor relay 샘플 |
+
+> GameQuest per-app 문서는 GameQuest 샘플 코드 이식 후 추가한다.
 
 ## 5. 케이스 스터디
 

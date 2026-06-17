@@ -119,10 +119,14 @@ pub struct ActorJoinResult {
 pub struct ActorJoinEntrySpotResult {
     /// The outcome of the join request.
     pub result: RequestResult,
+    /// The application-supplied join result code.
+    pub join_result_code: i32,
     /// The joined actor.
     pub actor: ActorRef,
     /// The routing id of the node the actor was routed to.
     pub target_node_rid: RoutingId,
+    /// The routing id of the entry spot that was joined.
+    pub joined_spot_rid: RoutingId,
     /// The join epoch (generation) assigned.
     pub join_epoch: u64,
     /// Implementation-defined join flags.

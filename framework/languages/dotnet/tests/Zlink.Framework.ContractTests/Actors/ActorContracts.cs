@@ -25,7 +25,7 @@ public sealed class ActorContracts
             .JoinSpot(RoutingId.From("room-1"), Encode(new JoinRoom("room-1")))
             .Async();
         var entryJoin = await actor.Context
-            .JoinEntrySpot(RoutingId.From("play-node"))
+            .JoinEntrySpot(RoutingId.From("play-node"), Message.From(ReadOnlySpan<byte>.Empty))
             .Timeout(TimeSpan.FromSeconds(1))
             .Async();
 
@@ -34,8 +34,9 @@ public sealed class ActorContracts
         Assert.Equal("player-1", actor.ActorId);
         Assert.True(joinReply.Accepted);
         Assert.Equal("room-1", Decode<JoinedRoom>(joinReply.Reply).RoomId);
-        Assert.Equal("player-1", entryJoin.ActorId);
-        Assert.Equal(RoutingId.From("play-node"), entryJoin.NodeRid);
+        Assert.True(entryJoin.Accepted);
+        Assert.Equal("player-1", entryJoin.Actor.ActorId);
+        Assert.Equal(RoutingId.From("play-node"), entryJoin.Actor.NodeRid);
     }
 
     private sealed record JoinRoom(string RoomId);
@@ -101,8 +102,8 @@ public sealed class ActorContracts
             Message request) =>
             new JoinSpotCall(Encode(new JoinedRoom("room-1")));
 
-        public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid) =>
-            new JoinEntrySpotCall(new ActorRef(spotNodeRid, actorId, 1));
+        public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid, Message request) =>
+            new JoinEntrySpotCall(new ActorRef(spotNodeRid, actorId, 1), Message.From(request));
     }
 
     private sealed class JoinSpotCall(Message reply) : IZLinkActorJoinSpotCall
@@ -117,13 +118,13 @@ public sealed class ActorContracts
                 reply));
     }
 
-    private sealed class JoinEntrySpotCall(ActorRef result) : IZLinkActorJoinEntrySpotCall
+    private sealed class JoinEntrySpotCall(ActorRef result, Message reply) : IZLinkActorJoinEntrySpotCall
     {
         public IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout) => this;
 
-        public ValueTask<ActorRef> Async(
+        public ValueTask<ZLinkActorJoinResult> Async(
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(result);
+            ValueTask.FromResult(new ZLinkActorJoinResult(true, result, reply));
     }
 
     private sealed class PlayerActor(string actorId, IZLinkActorContext context) : IZLinkActor

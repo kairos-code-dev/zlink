@@ -4,7 +4,7 @@ import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 
 public interface ZLinkEntrySpotActorRequestHandler<
-    TEntrySpot extends ZLinkEntrySpot,
+    TEntrySpot extends ZLinkEntrySpot<?>,
     TActor extends ZLinkActor,
     TRequest,
     TReply> {

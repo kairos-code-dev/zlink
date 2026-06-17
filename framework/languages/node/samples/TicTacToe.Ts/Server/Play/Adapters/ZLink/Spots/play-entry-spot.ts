@@ -38,7 +38,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
     void signal;
   }
 
-  async onJoinActor(actor: PlayEntrySpotActor, signal?: AbortSignal): Promise<void> {
+  async onJoinedActor(actor: PlayEntrySpotActor, signal?: AbortSignal): Promise<void> {
     if (actor.destroyAfterEntrySpotJoin) {
       await this.context.destroyActor(actor, signal);
     }

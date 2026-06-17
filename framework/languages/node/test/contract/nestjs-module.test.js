@@ -1650,7 +1650,10 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
       return {
         setRoutingId(routingId) {
           calls.push(`entrySpot:setRoutingId:${routingId}`);
-        }
+        },
+        setDispatchHandler() {},
+        recvActorJoin() { return null; },
+        replyActorJoin() { return { message() { return this; }, submit() {} }; }
       };
     },
     createActor() {},
@@ -1812,7 +1815,10 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
       return {
         setRoutingId(routingId) {
           calls.push(`entrySpot:setRoutingId:${routingId}`);
-        }
+        },
+        setDispatchHandler() {},
+        recvActorJoin() { return null; },
+        replyActorJoin() { return { message() { return this; }, submit() {} }; }
       };
     },
     createActor() {},

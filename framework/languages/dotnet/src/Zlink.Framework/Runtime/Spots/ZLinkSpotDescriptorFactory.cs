@@ -109,7 +109,7 @@ internal static class ZLinkSpotDescriptorFactory
             if (contract is null)
             {
                 throw new InvalidOperationException(
-                    $"SPOT actor join hook '{spotType}' must implement IZLinkSpot<TActor>.");
+                    $"SPOT actor join hook '{spotType}' must implement IZLinkSpot<TActor> or IZLinkEntrySpot<TActor>.");
             }
 
             yield return CreateSpotActorJoinDescriptor(spotType, method, contract.ActorType);
@@ -213,6 +213,11 @@ internal static class ZLinkSpotDescriptorFactory
         foreach (var contract in spotType.GetInterfaces())
         {
             if (contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(IZLinkSpot<>))
+            {
+                return new SpotActorContract(contract, contract.GetGenericArguments()[0]);
+            }
+
+            if (contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(IZLinkEntrySpot<>))
             {
                 return new SpotActorContract(contract, contract.GetGenericArguments()[0]);
             }

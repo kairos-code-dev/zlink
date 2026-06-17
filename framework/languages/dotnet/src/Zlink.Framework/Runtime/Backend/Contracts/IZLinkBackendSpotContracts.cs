@@ -68,6 +68,7 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
     bool JoinActorEntrySpot(
         ZLinkBackendActorRef actor,
         RoutingId destNodeRid,
+        Message request,
         ActorJoinEntrySpotCallback callback,
         TimeSpan? timeout);
 

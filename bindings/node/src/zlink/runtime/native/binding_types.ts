@@ -57,7 +57,8 @@ export type NativeActorJoinCallback = (
   replyParts: Buffer[] | null
 ) => void;
 export type NativeActorEntryJoinCallback = (
-  result: ActorJoinEntrySpotResultRaw | null
+  result: ActorJoinEntrySpotResultRaw | null,
+  replyParts: Buffer[] | null
 ) => void;
 export type NativeActorLookupCallback = (result: ActorLookupResultRaw) => void;
 

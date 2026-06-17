@@ -1,10 +1,10 @@
 package systems.zlink.samples.deliverydispatch.server.tracking.handlers;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -28,15 +28,17 @@ public final class EnsureCustomerActorHandler
         ZLinkRequestContext context) {
         ZLinkActor actor = ZLinkAwait.await(
             actors.getOrCreate(request.customerId(), SampleNames.CustomerActorType));
-        ZLinkActorRef joined = actor.context()
-            .joinEntrySpot(RoutingId.from(SampleTopology.TrackingSpotNodeRid))
+        var joined = actor.context()
+            .joinEntrySpot(
+                RoutingId.from(SampleTopology.TrackingSpotNodeRid),
+                Message.from(new byte[0]))
             .timeout(SampleTimings.RequestTimeout)
-            .await();
+            .await(Message.class);
         return new Messages.CustomerActorEnsured(
             request.customerId(),
             new Messages.ActorRefSnapshot(
-                joined.nodeRid().toBytes(),
-                joined.actorId(),
-                joined.epoch()));
+                joined.actor().nodeRid().toBytes(),
+                joined.actor().actorId(),
+                joined.actor().epoch()));
     }
 }

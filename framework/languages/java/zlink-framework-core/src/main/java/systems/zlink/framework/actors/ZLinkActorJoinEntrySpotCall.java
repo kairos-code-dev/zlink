@@ -7,9 +7,9 @@ import systems.zlink.framework.ZLinkAwait;
 public interface ZLinkActorJoinEntrySpotCall {
     ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
 
-    CompletionStage<ZLinkActorRef> submit();
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(Class<TReply> replyType);
 
-    default ZLinkActorRef await() {
-        return ZLinkAwait.await(submit());
+    default <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType) {
+        return ZLinkAwait.await(submit(replyType));
     }
 }

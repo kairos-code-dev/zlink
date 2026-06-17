@@ -48,12 +48,11 @@ impl ActorPublicRuntime for Actor {
                     actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
                     generation: 0,
                 });
-        let dest_node_rid = routing_id_from_handle(spot_node_raw(spot)).unwrap_or_else(|_| {
-            RoutingId::from_raw(ffi::zlink_routing_id_t::empty())
-        });
-        let dest_spot_rid = spot.routing_id().unwrap_or_else(|_| {
-            RoutingId::from_raw(ffi::zlink_routing_id_t::empty())
-        });
+        let dest_node_rid = routing_id_from_handle(spot_node_raw(spot))
+            .unwrap_or_else(|_| RoutingId::from_raw(ffi::zlink_routing_id_t::empty()));
+        let dest_spot_rid = spot
+            .routing_id()
+            .unwrap_or_else(|_| RoutingId::from_raw(ffi::zlink_routing_id_t::empty()));
         wrap_actor_join_op(NativeActorJoinOp {
             node_handle: actor_native(self).node_handle,
             spot_handle: spot_handle(spot),
@@ -76,9 +75,9 @@ impl ActorPublicRuntime for Actor {
                     actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
                     generation: 0,
                 });
-        let dest_spot_rid = spot.routing_id().unwrap_or_else(|_| {
-            RoutingId::from_raw(ffi::zlink_routing_id_t::empty())
-        });
+        let dest_spot_rid = spot
+            .routing_id()
+            .unwrap_or_else(|_| RoutingId::from_raw(ffi::zlink_routing_id_t::empty()));
         wrap_actor_reply_op(NativeActorReplyOp {
             handle: actor_native(self).node_handle,
             kind: NativeActorReplyOpKind::Leave {

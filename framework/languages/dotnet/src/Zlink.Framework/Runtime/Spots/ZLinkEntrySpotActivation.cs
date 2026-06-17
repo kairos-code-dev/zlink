@@ -185,6 +185,35 @@ internal sealed partial class ZLinkEntrySpotActivation :
         return _packets.TryResolve(header, out descriptor);
     }
 
+    public bool TryResolveActorJoin(
+        out ZLinkSpotActorJoinDescriptor? descriptor)
+    {
+        return _actorJoins.TryResolve(out descriptor);
+    }
+
+    public async ValueTask<ZLinkSpotActorJoinResult> InvokeActorJoinAsync(
+        ZLinkSpotActorJoinDescriptor descriptor,
+        IZLinkActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        var call = new ActorJoinCallState(descriptor, actor, request);
+        await ExecuteAsync(
+            static async (activation, state, ct) =>
+            {
+                state.Result = await activation._invoker.InvokeActorJoinAsync(
+                        state.Descriptor,
+                        state.Actor,
+                        state.Request,
+                        ct)
+                    .ConfigureAwait(false);
+            },
+            call,
+            cancellationToken).ConfigureAwait(false);
+
+        return call.Result;
+    }
+
     public async ValueTask InvokePacketAsync(
         ZLinkSpotDescriptor descriptor,
         object? message,
@@ -331,5 +360,19 @@ internal sealed partial class ZLinkEntrySpotActivation :
         public Message Body { get; } = body;
 
         public ZLinkActorReply? Reply { get; set; }
+    }
+
+    private sealed class ActorJoinCallState(
+        ZLinkSpotActorJoinDescriptor descriptor,
+        IZLinkActor actor,
+        Message request)
+    {
+        public ZLinkSpotActorJoinDescriptor Descriptor { get; } = descriptor;
+
+        public IZLinkActor Actor { get; } = actor;
+
+        public Message Request { get; } = request;
+
+        public ZLinkSpotActorJoinResult Result { get; set; }
     }
 }

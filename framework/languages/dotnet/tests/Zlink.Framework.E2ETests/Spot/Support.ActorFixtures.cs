@@ -43,7 +43,7 @@ public abstract partial class SpotTestSupport
             return ZLinkSpotActorJoinResult.Accept(reply.ToJson());
         }
 
-        public ValueTask onJoinActor(
+        public ValueTask OnJoinedActorAsync(
             TestActor actor,
             CancellationToken cancellationToken)
         {
@@ -53,7 +53,7 @@ public abstract partial class SpotTestSupport
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask onLeaveActor(
+        public ValueTask OnLeaveActorAsync(
             TestActor actor,
             CancellationToken cancellationToken)
         {
@@ -63,7 +63,7 @@ public abstract partial class SpotTestSupport
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask onDisconnectActor(
+        public ValueTask OnDisconnectActorAsync(
             TestActor actor,
             CancellationToken cancellationToken)
         {
@@ -126,7 +126,7 @@ public abstract partial class SpotTestSupport
         {
         }
 
-        public ValueTask onCreateActor(
+        public ValueTask OnCreateActorAsync(
             TestActor actor,
             CancellationToken cancellationToken)
         {
@@ -135,7 +135,17 @@ public abstract partial class SpotTestSupport
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask onJoinActor(
+        public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+            TestActor actor,
+            Message request,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            _ = cancellationToken;
+            return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(Message.From(request)));
+        }
+
+        public ValueTask OnJoinedActorAsync(
             TestActor actor,
             CancellationToken cancellationToken)
         {
@@ -144,7 +154,7 @@ public abstract partial class SpotTestSupport
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask onLeaveActor(
+        public ValueTask OnLeaveActorAsync(
             TestActor actor,
             CancellationToken cancellationToken)
         {

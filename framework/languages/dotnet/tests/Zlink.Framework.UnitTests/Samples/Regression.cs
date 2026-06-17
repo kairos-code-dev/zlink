@@ -73,7 +73,7 @@ public sealed class RegressionTests
             ("OnActorLeft", "legacy PascalCase left callback"),
             ("onActorLeft", "legacy lower camel left callback"),
             ("on_actor_left", "legacy snake case left callback"),
-            ("OnCreateActor", "legacy PascalCase create callback"),
+            ("OnCreateActor(", "legacy PascalCase create callback"),
             ("on_actor_created", "legacy snake case create callback"),
             ("onPostActorJoined", "legacy post actor joined callback"),
             ("disconnect -> destroy", "disconnect-to-destroy arrow wording"),
@@ -436,16 +436,16 @@ public sealed class RegressionTests
         var actor = File.ReadAllText(Path.Combine(sampleRoot, actorRelativePath));
         var session = File.ReadAllText(Path.Combine(sampleRoot, sessionRelativePath));
 
-        Assert.Contains("onCreateActor", entrySpot, StringComparison.Ordinal);
-        Assert.Contains("onJoinActor", entrySpot, StringComparison.Ordinal);
-        Assert.Contains("onLeaveActor", entrySpot, StringComparison.Ordinal);
-        Assert.Contains("onDisconnectActor", entrySpot, StringComparison.Ordinal);
+        Assert.Contains("OnCreateActorAsync", entrySpot, StringComparison.Ordinal);
+        Assert.Contains("OnJoinedActorAsync", entrySpot, StringComparison.Ordinal);
+        Assert.Contains("OnLeaveActorAsync", entrySpot, StringComparison.Ordinal);
+        Assert.Contains("OnDisconnectActorAsync", entrySpot, StringComparison.Ordinal);
         Assert.Contains("DestroyActorAsync", entrySpot, StringComparison.Ordinal);
         Assert.Contains("DestroyAfterEntrySpotJoin", entrySpot, StringComparison.Ordinal);
         Assert.Contains("MarkDisconnected", entrySpot, StringComparison.Ordinal);
 
-        Assert.Contains("onLeaveActor", userSpot, StringComparison.Ordinal);
-        Assert.Contains("onDisconnectActor", userSpot, StringComparison.Ordinal);
+        Assert.Contains("OnLeaveActorAsync", userSpot, StringComparison.Ordinal);
+        Assert.Contains("OnDisconnectActorAsync", userSpot, StringComparison.Ordinal);
         Assert.Contains("leaveActor", userSpot, StringComparison.Ordinal);
         Assert.Contains("MarkForDestroyAfterRoomLeave", userSpot, StringComparison.Ordinal);
         Assert.Contains("MarkDisconnected", userSpot, StringComparison.Ordinal);

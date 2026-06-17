@@ -1,3 +1,4 @@
+using Systems.Zlink;
 using SupportChat.Server.Support.Adapters.ZLink.Actors;
 using SupportChat.Server.Support.Adapters.ZLink.Spots.Handlers;
 using Microsoft.Extensions.Logging;
@@ -17,7 +18,7 @@ internal sealed class SupportEntrySpot(
         Context.Handlers.AddHandler<SetAgentAvailableHandler>();
     }
 
-    public ValueTask onCreateActor(
+    public ValueTask OnCreateActorAsync(
         SupportUserActor actor,
         CancellationToken cancellationToken)
     {
@@ -29,7 +30,17 @@ internal sealed class SupportEntrySpot(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask onJoinActor(
+    public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        SupportUserActor actor,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        _ = actor;
+        _ = cancellationToken;
+        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(Message.From(request)));
+    }
+
+    public ValueTask OnJoinedActorAsync(
         SupportUserActor actor,
         CancellationToken cancellationToken)
     {
@@ -41,7 +52,7 @@ internal sealed class SupportEntrySpot(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask onLeaveActor(
+    public ValueTask OnLeaveActorAsync(
         SupportUserActor actor,
         CancellationToken cancellationToken)
     {

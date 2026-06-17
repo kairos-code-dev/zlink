@@ -26,18 +26,21 @@ internal sealed class ZLinkChannelPacketDispatcher(
         handlerRegistry,
         dispatcher,
         channelName => ResolveMappedGroups(registration, channelName),
+        registration.Codecs,
         logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
     private readonly ZLinkChannelCommandDispatchPipeline _commandPipeline = new(
         handlerRegistry,
         dispatcher,
         channelName => ResolveMappedGroups(registration, channelName),
         registration.DispatchOptions.Unhandled.SendLogLevel,
+        registration.Codecs,
         logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
     private readonly ZLinkChannelPublishDispatchPipeline _publishPipeline = new(
         handlerRegistry,
         dispatcher,
         channelName => ResolveMappedGroups(registration, channelName),
         registration.DispatchOptions.Unhandled.PublishLogLevel,
+        registration.Codecs,
         logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
 
     public async Task DispatchServerMessageAsync(

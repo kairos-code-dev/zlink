@@ -95,6 +95,11 @@ internal static class ZLinkEnvelopeCodec
             return Message.From(MessagePackSerializer.Serialize(bodyType, body, MessagePackSerializerOptions.Standard));
         }
 
+        if (codecs?.SingleCustomSerializer() is { } custom)
+        {
+            return custom.Serializer.Serialize(body, bodyType);
+        }
+
         return EncodeJsonPart(body, bodyType);
     }
 
@@ -125,16 +130,33 @@ internal static class ZLinkEnvelopeCodec
 
     public static object? DecodeBody(IReadOnlyList<Message> parts, Type bodyType)
     {
+        return DecodeBody(parts, bodyType, null);
+    }
+
+    public static object? DecodeBody(
+        IReadOnlyList<Message> parts,
+        Type bodyType,
+        ZLinkCodecRegistryBuilder? codecs)
+    {
         EnsurePart(parts, 1, "body");
-        return DecodeBody(parts[1], bodyType, DecodeHeader(parts).ContentType);
+        return DecodeBody(parts[1], bodyType, DecodeHeader(parts).ContentType, codecs);
     }
 
     public static object? DecodeBody(Message bodyMessage, Type bodyType)
     {
-        return DecodeBody(bodyMessage, bodyType, JsonContentType);
+        return DecodeBody(bodyMessage, bodyType, JsonContentType, null);
     }
 
     public static object? DecodeBody(Message bodyMessage, Type bodyType, string contentType)
+    {
+        return DecodeBody(bodyMessage, bodyType, contentType, null);
+    }
+
+    public static object? DecodeBody(
+        Message bodyMessage,
+        Type bodyType,
+        string contentType,
+        ZLinkCodecRegistryBuilder? codecs)
     {
         if (bodyType == typeof(Message))
         {
@@ -151,6 +173,12 @@ internal static class ZLinkEnvelopeCodec
             return bodyType.IsValueType
                 ? Activator.CreateInstance(bodyType)
                 : null;
+        }
+
+        if (codecs is not null
+            && codecs.TryGetSerializer(contentType, out var customSerializer))
+        {
+            return customSerializer.Deserialize(bodyMessage, bodyType);
         }
 
         if (string.Equals(contentType, ProtobufContentType, StringComparison.OrdinalIgnoreCase))
@@ -222,6 +250,11 @@ internal static class ZLinkEnvelopeCodec
         if (ShouldUseMessagePack(bodyType, codecs))
         {
             return MessagePackContentType;
+        }
+
+        if (codecs?.SingleCustomSerializer() is { } custom)
+        {
+            return custom.ContentType;
         }
 
         if (codecs is not null

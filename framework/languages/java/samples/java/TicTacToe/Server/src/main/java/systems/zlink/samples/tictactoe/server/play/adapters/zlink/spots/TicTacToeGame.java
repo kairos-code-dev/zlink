@@ -9,7 +9,6 @@ import java.time.Instant;
 import java.util.List;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
-import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -27,7 +26,7 @@ import systems.zlink.samples.tictactoe.shared.contracts.PlayerJoinedNotify;
 import systems.zlink.samples.tictactoe.shared.contracts.TicTacToeGameJoinReq;
 import systems.zlink.samples.tictactoe.shared.contracts.TicTacToeGameJoinRes;
 
-public final class TicTacToeGame implements ZLinkSpot {
+public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
     private static final Duration GAME_TICK_PERIOD = Duration.ofSeconds(1);
     private static final Duration TURN_TIMEOUT = Duration.ofSeconds(15);
 
@@ -67,42 +66,35 @@ public final class TicTacToeGame implements ZLinkSpot {
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
-        ZLinkActor actor,
+        PlayActor actor,
         Message request,
         CancellationToken cancellationToken) {
-        if (!(actor instanceof PlayActor player)) {
-            throw new IllegalArgumentException("tic-tac-toe game only accepts PlayActor.");
-        }
         TicTacToeGameJoinReq joinRequest = decode(request, TicTacToeGameJoinReq.class);
-        if (!player.actorId().equals(joinRequest.actorId())) {
+        if (!actor.actorId().equals(joinRequest.actorId())) {
             throw new IllegalStateException("join request actor id does not match bound actor");
         }
-        TicTacToeGameJoinRes reply = join(player, joinRequest.roomId());
+        TicTacToeGameJoinRes reply = join(actor, joinRequest.roomId());
         return ZLinkSpotActorJoinResponse.accept(encode(reply));
     }
 
     @Override
-    public void onJoinActor(
-        ZLinkActor actor,
+    public void onJoinedActor(
+        PlayActor actor,
         CancellationToken cancellationToken) {
     }
 
     @Override
     public void onLeaveActor(
-        ZLinkActor actor,
+        PlayActor actor,
         CancellationToken cancellationToken) {
-        if (actor instanceof PlayActor player) {
-            actors.removeIf(existing -> existing.actorId().equals(player.actorId()));
-        }
+        actors.removeIf(existing -> existing.actorId().equals(actor.actorId()));
     }
 
     @Override
     public void onDisconnectActor(
-        ZLinkActor actor,
+        PlayActor actor,
         CancellationToken cancellationToken) {
-        if (actor instanceof PlayActor player) {
-            player.markDisconnected();
-        }
+        actor.markDisconnected();
     }
 
     @Override

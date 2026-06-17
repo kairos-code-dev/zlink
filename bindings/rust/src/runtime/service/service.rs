@@ -1,4 +1,4 @@
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::mpsc;
@@ -12,15 +12,15 @@ mod spot_receive;
 pub(crate) use service_helpers::fixed_cstring_or_panic;
 pub(super) use service_helpers::*;
 
+use service_ops::{
+    NativeReplyOp, NativeRequestOp, NativeSendOp, ReplyOpKind, RequestOpKind, SendOpKind,
+    wrap_reply_op, wrap_request_op, wrap_send_op,
+};
 pub(crate) use service_ops::{
     actor_bind_op_new, actor_unbind_op_new, dealer_request_op, router_reply_op,
     router_reply_to_spot_op, router_request_op, router_request_to_spot_op, router_send_to_spot_op,
     socket_publish_op, socket_send_op, socket_send_to_op, spot_reply_to_router_op,
     spot_reply_to_spot_op, spot_send_to_spot_op, stream_bound_actor_send_op,
-};
-use service_ops::{
-    wrap_reply_op, wrap_request_op, wrap_send_op, NativeReplyOp, NativeRequestOp, NativeSendOp,
-    ReplyOpKind, RequestOpKind, SendOpKind,
 };
 
 use crate::actor_models::{
@@ -59,7 +59,7 @@ use crate::runtime_bridge::{
     RequestOpRuntime, SendOpRuntime, SpotNodeRuntime, SpotRuntime,
 };
 use crate::socket::{
-    prepare_send_parts, send_ready_trampoline, submit_part_sequence, take_parts, CallbackBox,
+    CallbackBox, prepare_send_parts, send_ready_trampoline, submit_part_sequence, take_parts,
 };
 use crate::spot_models::{
     AutoConnectType, RegistryState, ServiceKind, ServiceRole, SocketType, SpotDispatchEvent,
@@ -95,9 +95,9 @@ mod spot_node_runtime;
 pub(crate) use spot_node_runtime::*;
 mod actor_ops_runtime;
 use actor_ops_runtime::{
-    wrap_actor_join_entry_spot_op, wrap_actor_join_op, wrap_actor_join_reply_op,
-    wrap_actor_lookup_op, wrap_actor_reply_op, NativeActorJoinEntrySpotOp, NativeActorJoinOp,
-    NativeActorJoinReplyOp, NativeActorLookupOp, NativeActorReplyOp, NativeActorReplyOpKind,
+    NativeActorJoinEntrySpotOp, NativeActorJoinOp, NativeActorJoinReplyOp, NativeActorLookupOp,
+    NativeActorReplyOp, NativeActorReplyOpKind, wrap_actor_join_entry_spot_op, wrap_actor_join_op,
+    wrap_actor_join_reply_op, wrap_actor_lookup_op, wrap_actor_reply_op,
 };
 mod actor_runtime;
 mod spot_runtime;

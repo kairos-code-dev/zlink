@@ -55,6 +55,18 @@ static_assert (std::is_same<decltype (std::declval<zlink::service::actor_t &> ()
                               std::declval<zlink::service::spot_t &> ())),
                             zlink::service::actor_join_operation_t>::value,
                "actor_t must expose join builder");
+static_assert (std::is_same<decltype (std::declval<zlink::service::spot_node_t &> ()
+                                      .join_actor_entry_spot (
+                                        std::declval<const zlink::actor_ref_t &> (),
+                                        std::declval<const zlink::routing_id_t &> (),
+                                        std::declval<zlink::message_t &> ())),
+                            zlink::service::actor_join_entry_spot_operation_t>::value,
+               "spot_node_t must expose request-bearing Entry Spot join builder");
+static_assert (
+  !std::is_invocable<decltype (&zlink::service::spot_node_t::join_actor_entry_spot),
+                     zlink::service::spot_node_t &, const zlink::actor_ref_t &,
+                     const zlink::routing_id_t &>::value,
+  "spot_node_t must not expose payload-less Entry Spot join");
 
 } // namespace
 

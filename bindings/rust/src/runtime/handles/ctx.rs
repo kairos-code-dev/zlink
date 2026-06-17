@@ -1,4 +1,4 @@
-use std::ffi::{c_void, CString};
+use std::ffi::{CString, c_void};
 use std::sync::Mutex;
 use std::time::Duration;
 

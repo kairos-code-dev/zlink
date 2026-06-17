@@ -50,6 +50,7 @@ func TestSurfaceCanonicalBuilderSignatures(t *testing.T) {
 	requestOp := reflect.TypeOf((*zlink.RequestOp)(nil)).Elem()
 	replyOp := reflect.TypeOf((*zlink.ReplyOp)(nil)).Elem()
 	actorJoinOp := reflect.TypeOf((*zlink.ActorJoinOp)(nil)).Elem()
+	actorJoinEntrySpotOp := reflect.TypeOf((*zlink.ActorJoinEntrySpotOp)(nil)).Elem()
 	actorBindOp := reflect.TypeOf((*zlink.ActorBindOp)(nil)).Elem()
 
 	assertReturn((*zlink.PairSocket)(nil), "Send", sendOp)
@@ -61,7 +62,27 @@ func TestSurfaceCanonicalBuilderSignatures(t *testing.T) {
 	assertReturn((*zlink.RouterSocket)(nil), "Reply", replyOp)
 	assertReturn((*zlink.StreamSocket)(nil), "SendTo", sendOp)
 	assertReturn((*zlink.Actor)(nil), "Join", actorJoinOp)
+	assertReturn((*zlink.SpotNode)(nil), "JoinActorEntrySpot", actorJoinEntrySpotOp)
 	assertReturn((*zlink.StreamSocket)(nil), "BindActor", actorBindOp)
+}
+
+func TestSurfaceEntrySpotJoinRequiresRequest(t *testing.T) {
+	method := methodType((*zlink.SpotNode)(nil), "JoinActorEntrySpot")
+	if method == nil {
+		t.Fatalf("SpotNode should expose JoinActorEntrySpot")
+	}
+	if method.NumIn() != 4 {
+		t.Fatalf("SpotNode.JoinActorEntrySpot input count = %d, want receiver plus actor, node, request", method.NumIn())
+	}
+	if method.In(1) != reflect.TypeOf(zlink.ActorRef{}) {
+		t.Fatalf("SpotNode.JoinActorEntrySpot first argument = %v, want ActorRef", method.In(1))
+	}
+	if method.In(2) != reflect.TypeOf(zlink.RoutingID{}) {
+		t.Fatalf("SpotNode.JoinActorEntrySpot second argument = %v, want RoutingID", method.In(2))
+	}
+	if method.In(3) != reflect.TypeOf((*zlink.Message)(nil)) {
+		t.Fatalf("SpotNode.JoinActorEntrySpot third argument = %v, want *Message", method.In(3))
+	}
 }
 
 func TestSurfaceCapabilities(t *testing.T) {

@@ -21,11 +21,16 @@
 - request handler, event handler, outbound client를 DI와 함께 설명한다.
 - runtime monitoring도 DI와 함께 설명할 수 있어야 한다.
 - 서버 간 `send/request`는 HTTP handler mapping과 닮은 경험으로 보이게 한다.
-- application이 직접 호출하는 `send/request/reply/join` 같은 messaging API는
-  domain object나 generated object를 직접 받지 않고 `Message`를 받는다.
-- object를 byte payload로 바꾸고 packet name을 정하는 일은 `Message.from(...)`,
-  `Message.From(...)`, `message_t::from(...)` 또는 언어별 codec extension의 같은 의미
-  factory에서 끝낸다.
+- application이 직접 호출하는 high-level messaging API(`send/request/reply/publish/
+  join`, `sendToChannel/requestToChannel`, Spot outbound 등)는 `Message`가 아니라
+  **업무 객체**를 받고, request/join에는 업무 reply 객체를 돌려준다.
+- 업무 객체를 byte payload로 직렬화하는 codec 선택과 packet name 결정은 **framework
+  내부**(runtime serializer registry + packet name 추론)에서 처리한다. 호출자는
+  `Message.from(...)`, `.ToJson()`, `.ToProto()` 같은 직렬화 helper를 high-level 호출에서
+  직접 사용하지 않는다.
+- `Message`는 bindings low-level transport 표현으로 남고, high-level application API의
+  기본 입력 타입이 되지 않는다(설계 기준: framework object messaging surface 및
+  bindings message boundary 정렬).
 - raw transport header는 handler 인자로 직접 노출하지 않는다.
 - 서버 간 framework transport는 공통
   [message-model.ko.md](./message-model.ko.md)의 multipart `header + payload` 계약을
@@ -57,9 +62,28 @@
 - 공용 outbound client를 DI로 주입한다.
 - 요청 메서드는 async 중심으로 제공한다.
 - codec, timeout, target channel을 설정할 수 있다.
-- outbound 호출의 payload 인자는 `Message`다. 호출자가 generated protobuf object,
-  JSON DTO, MessagePack DTO 같은 typed object를 보내려면 먼저 해당 언어의 표준
-  `Message` factory를 호출한다.
+- outbound 호출의 payload 인자는 **업무 객체**다. codec(JSON/Protobuf/MessagePack)
+  선택은 호출부가 아니라 runtime 구성 단계(`codecs.addJson()`/`addProtobuf()`/
+  `addMessagePack()` 등)에서 끝난다. framework가 요청·응답 객체 타입을 보고 serializer를
+  찾아 byte payload로 직렬화하고, reply도 업무 객체로 복원한다.
+- 기본 제공 codec(JSON/Protobuf/MessagePack) 외에 **custom serializer**를 등록할 수
+  있다. runtime 구성 단계에서 codec registry에 사용자 serializer를 추가하면(아래 표),
+  framework가 high-level object messaging의 payload encode/decode에 그 serializer를
+  쓴다. serializer는 업무 객체 ↔ `Message`(byte payload) 변환만 담당하고, packet name
+  결정과 codec 선택 정책은 그대로 framework 내부에 남는다. Avro·Thrift 같은 외부 포맷을
+  이렇게 끼운다. framework당 custom serializer는 하나로 두며, 둘 이상 등록하면 payload
+  serializer가 모호해져 구성 오류로 막는다. client connector도 같은 능력을 별도 표면으로
+  연다(connector는 framework와 별개로 배포되는 패키지다).
+
+  | 언어 | framework 등록 | connector 등록 |
+  |------|----------------|----------------|
+  | .NET | `codecs.AddSerializer(contentType, IZLinkMessageSerializer)` | `ZlinkStreamConnectorOptions.PayloadCodec`(`IZlinkStreamPayloadCodec`) |
+  | Java/Kotlin | `codecs.addSerializer(contentType, ZLinkMessageSerializer)` | `ZLinkStreamConnectorOptions.typedCodec`(`ZLinkStreamCodec`) |
+  | Node | `codecs.addSerializer(contentType, serializer)` | `ZlinkStreamConnectorOptions.codec`(`ZlinkStreamPayloadCodec`) |
+  | C++ | `options.codecs().add_serializer<T>(serialize, deserialize)` | `codec_traits<T>` 특수화 |
+- packet name은 기본적으로 객체 타입에서 자동 추론하고(builder override → payload 자체
+  이름 정보 → 선언적 metadata(annotation/attribute/decorator/registry) → nominal type
+  정보 순), 추론할 수 없을 때만 `.packetName(...)` override를 쓴다.
 - gateway 주소나 load balancer 주소 대신 `channel name` 기준 호출을 기본으로
   삼는다.
 - send는 기본적으로 async submit으로 둔다. backpressure 처리는 호출자가

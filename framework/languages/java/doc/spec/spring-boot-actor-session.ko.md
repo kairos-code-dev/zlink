@@ -132,12 +132,13 @@ public interface ZLinkActorContext {
     <TSpot extends ZLinkSpot> TSpot getSpot(Class<TSpot> spotType);
 
     ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid, Object request);
-    ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid);
+    ZLinkActorJoinEntrySpotCall joinEntrySpot(RoutingId spotNodeRid, Object request);
 }
 
 public interface ZLinkActorJoinEntrySpotCall {
     ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
-    CompletionStage<ZLinkActorRef> submit();
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
+        Class<TReply> replyType);
 }
 
 public interface ZLinkActorJoinSpotCall {

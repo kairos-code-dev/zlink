@@ -18,6 +18,7 @@
 |------|------|
 | [streaming-client.ko.md](./streaming-client.ko.md) | STREAM 서버에 접속하는 범용 client connector 초안 |
 | [spot-actor-disconnected-callback-rollout.ko.md](./spot-actor-disconnected-callback-rollout.ko.md) | Spot actor disconnected를 handler 등록에서 lifecycle callback으로 옮기는 공통 전환 계획 |
+| [entry-spot-join-admission-lifecycle.ko.md](./entry-spot-join-admission-lifecycle.ko.md) | Entry Spot join을 user Spot join과 같은 admission/request/reply 모델로 맞추고 commit 이후 callback 이름을 `OnJoinedActor` 계열로 정리하는 초안 |
 | [entry-spot-actor-destroy-plan.ko.md](./entry-spot-actor-destroy-plan.ko.md) | actor destroy API를 Entry Spot context에 추가하고 네 언어 framework와 문서, 회귀 테스트에 반영하는 계획 |
 | [entry-spot-serial-dispatch-plan.ko.md](./entry-spot-serial-dispatch-plan.ko.md) | Entry Spot callback과 request continuation을 일반 Spot처럼 직렬 실행하는 공통 전환 계획 |
 | [framework-unhandled-dispatch-policy.ko.md](./framework-unhandled-dispatch-policy.ko.md) | handler가 없는 메시지(unhandled dispatch)의 공통 처리 정책 초안 |

@@ -356,6 +356,9 @@ public sealed class test_socket_surface
             typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
             nameof(ISpotNode.JoinActorEntrySpot), typeof(ActorRef),
+            typeof(RoutingId), typeof(Message)));
+        Assert.False(HasPublicInstanceMethod(typeof(ISpotNode),
+            nameof(ISpotNode.JoinActorEntrySpot), typeof(ActorRef),
             typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpot),
             nameof(ISpot.RecvActorJoin), typeof(RecvFlags)));

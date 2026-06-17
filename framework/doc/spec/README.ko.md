@@ -242,7 +242,7 @@ zlink framework host가 lifecycle과 dispatch loop를 직접 소유하는 방식
 - Entry Spot과 user Spot의 actor packet handler 인자 차이를 설명하는가
 - actor join/leave lifecycle handler를 `AddActorJoined` / `AddActorLeft`에 해당하는
   registry 등록 표면으로 설명하는가
-- actor join/leave lifecycle을 `OnJoinActor` / `OnLeaveActor` 같은 Spot method
+- actor join/leave lifecycle을 `OnJoinedActor` / `OnLeaveActor` 같은 Spot method
   override로만 설명하지 않는가
 - Entry Spot registry와 user Spot registry가 서로 다른 namespace라서 같은 actor
   type과 packet 이름을 다르게 매핑할 수 있음을 설명하는가

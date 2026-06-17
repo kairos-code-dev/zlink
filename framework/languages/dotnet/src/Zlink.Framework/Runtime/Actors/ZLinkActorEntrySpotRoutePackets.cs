@@ -10,10 +10,13 @@ internal sealed record ZLinkActorEntrySpotRouteJoinRequest(
     string ActorType,
     string SourceNodeRid,
     string SourceSpotRid,
-    ulong SourceGeneration);
+    ulong SourceGeneration,
+    byte[] RequestPayload);
 
 internal sealed record ZLinkActorEntrySpotRouteJoinReply(
+    bool Accepted,
     string ActorId,
     string ActorType,
     string TargetNodeRid,
-    ulong ActorGeneration);
+    ulong ActorGeneration,
+    byte[] ReplyPayload);

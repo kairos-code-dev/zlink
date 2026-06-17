@@ -164,7 +164,7 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// Starts a join operation.
     /// </summary>
     ActorJoinEntrySpotOperation JoinActorEntrySpot(ActorRef actor,
-        RoutingId destNodeRid);
+        RoutingId destNodeRid, Message request);
     /// <summary>
     /// Starts a leave operation.
     /// </summary>

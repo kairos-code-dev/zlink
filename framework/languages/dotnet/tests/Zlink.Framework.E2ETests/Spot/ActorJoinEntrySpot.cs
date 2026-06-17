@@ -57,12 +57,13 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
         var joinedBefore = CountEvents(recorder, "entry-joined:join-entry-local-actor");
         var leftBefore = CountEvents(recorder, "left:join-entry-local-actor:");
 
-        var join = await actor.Context.JoinEntrySpot(nodeRid)
+        using var entryJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        var join = await actor.Context.JoinEntrySpot(nodeRid, entryJoinRequest)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async();
 
-        Assert.Equal("join-entry-local-actor", join.ActorId);
-        Assert.Equal(nodeRid, join.NodeRid);
+        Assert.Equal("join-entry-local-actor", join.Actor.ActorId);
+        Assert.Equal(nodeRid, join.Actor.NodeRid);
         Assert.Equal(joinedBefore + 1, CountEvents(recorder, "entry-joined:join-entry-local-actor"));
         Assert.Equal(leftBefore + 1, CountEvents(recorder, "left:join-entry-local-actor:"));
         Assert.Contains("entry-joined:join-entry-local-actor", recorder.Events);
@@ -128,18 +129,20 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
             stage.SpotRid,
             actor,
             EncodeJoin(new RegistryJoinRequest("idempotent-room")));
-        _ = await actor.Context.JoinEntrySpot(nodeRid)
+        using var firstEntryJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        _ = await actor.Context.JoinEntrySpot(nodeRid, firstEntryJoinRequest)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async();
 
         var joinedBefore = CountEvents(recorder, "entry-joined:join-entry-idempotent-actor");
         var leftBefore = CountEvents(recorder, "left:join-entry-idempotent-actor:");
 
-        var second = await actor.Context.JoinEntrySpot(nodeRid)
+        using var secondEntryJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        var second = await actor.Context.JoinEntrySpot(nodeRid, secondEntryJoinRequest)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async();
 
-        Assert.Equal(nodeRid, second.NodeRid);
+        Assert.Equal(nodeRid, second.Actor.NodeRid);
         Assert.Equal(joinedBefore, CountEvents(recorder, "entry-joined:join-entry-idempotent-actor"));
         Assert.Equal(leftBefore, CountEvents(recorder, "left:join-entry-idempotent-actor:"));
 
@@ -202,11 +205,14 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
             actor,
             EncodeJoin(new RegistryJoinRequest("remote-room")));
 
-        var join = await actor.Context.JoinEntrySpot(targetNodeRid)
+        using var entryJoinRequest = Message.From("remote-entry");
+        var join = await actor.Context.JoinEntrySpot(targetNodeRid, entryJoinRequest)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async();
-        var replyCanStillUseJoinResult = $"{join.ActorId}:{join.NodeRid.ToHex()}";
+        var replyCanStillUseJoinResult = $"{join.Actor.ActorId}:{join.Actor.NodeRid.ToHex()}";
 
+        Assert.True(join.Accepted);
+        Assert.Equal("remote-entry", join.Reply.GetString());
         Assert.Equal(
             $"join-entry-remote-actor:{targetNodeRid.ToHex()}",
             replyCanStillUseJoinResult);
@@ -215,9 +221,78 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
 
         Assert.Throws<InvalidOperationException>(() => actor.Context.GetSpot());
         Assert.Throws<InvalidOperationException>(() => actor.Context.BoundSession);
-        Assert.Throws<InvalidOperationException>(() => actor.Context.JoinEntrySpot(targetNodeRid));
+        Assert.Throws<InvalidOperationException>(() =>
+            actor.Context.JoinEntrySpot(targetNodeRid, Message.From(ReadOnlySpan<byte>.Empty)));
         Assert.Throws<InvalidOperationException>(
             () => actor.Context.JoinSpot(stage.SpotRid, EncodeJoin(new RegistryJoinRequest("stale"))));
+
+        await host.StopAsync();
+    }
+
+    [Fact]
+    public async Task ActorContext_JoinEntrySpot_Reject_Keeps_UserSpotActor_InPlace()
+    {
+        var sourceNode = GetFreeTcpEndpoint();
+        var targetNode = GetFreeTcpEndpoint();
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<EntrySpotActorRegistryRecorder>();
+        builder.Services.AddScoped<RegistryEntrySpot>();
+        builder.Services.AddScoped<RegistryStageSpot>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.AddActorFactory<RegistryTestActorFactory>("registry");
+            {
+                var mesh = options.AddSpotMesh("join-entry-reject");
+                {
+                    var spot = mesh.AddNode("join-entry-reject-source-node");
+                    {
+                        var router = spot.EnableRouter(sourceNode);
+                        router.ConnectRouter(targetNode);
+                    }
+                    spot.AddSpotFactory<RegistryStageSpot>();
+                }
+                {
+                    var spot = mesh.AddNode("join-entry-reject-target-node");
+                    {
+                        var router = spot.EnableRouter(targetNode);
+                        router.ConnectRouter(sourceNode);
+                    }
+                    spot.AddEntrySpot<RegistryEntrySpot>();
+                }
+            }
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+        var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var recorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
+        var targetNodeRid = actorRuntime.GetSpotNodeRuntime("join-entry-reject-target-node").Node.RoutingId;
+        var stage = await manager.CreateAsync<RegistryStageSpot>();
+        var actor = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync(
+            "join-entry-reject-actor",
+            "registry")).Actor;
+
+        _ = await actorRuntime.JoinActorAsync(
+            stage.SpotRid,
+            actor,
+            EncodeJoin(new RegistryJoinRequest("reject-room")));
+
+        var joinedBefore = CountEvents(recorder, "entry-joined:join-entry-reject-actor");
+        var leftBefore = CountEvents(recorder, "left:join-entry-reject-actor:");
+
+        using var entryJoinRequest = Message.From("reject-entry");
+        var rejected = await actor.Context.JoinEntrySpot(targetNodeRid, entryJoinRequest)
+            .Timeout(TimeSpan.FromSeconds(5))
+            .Async();
+
+        Assert.False(rejected.Accepted);
+        Assert.Equal("entry-reject:reject-entry", rejected.Reply.GetString());
+        Assert.Equal(stage.SpotRid, actor.Context.GetSpot<RegistryStageSpot>().Context.SpotRid);
+        Assert.Equal(joinedBefore, CountEvents(recorder, "entry-joined:join-entry-reject-actor"));
+        Assert.Equal(leftBefore, CountEvents(recorder, "left:join-entry-reject-actor:"));
 
         await host.StopAsync();
     }

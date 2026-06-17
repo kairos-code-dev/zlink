@@ -144,6 +144,9 @@ actorRef.generation;
 spotNode.actorLookup('typed-actor');
 spotNode.remoteActorGetRef(routingId, 'typed-actor').submit((_result) => {});
 spotNode.joinActor(actorRef, routingId, routingId).message('join').submit((_result, _parts) => {});
+spotNode.joinActorEntrySpot(actorRef, routingId, 'entry-join').message('part').timeout(1000).submit((_result, _parts) => {});
+// @ts-expect-error Entry Spot joins require an explicit request message.
+spotNode.joinActorEntrySpot(actorRef, routingId);
 spotNode.leaveActor(actorRef, routingId).submit((_result, _parts) => {});
 spotNode.spots();
 spotNode.actors();

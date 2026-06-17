@@ -343,11 +343,10 @@ handler 로 매핑할 수 있다.
 등록한 actor disconnected callback handler 역시 같은 registry 안에서 같은 actor
 타입에 대해 하나씩만 허용한다.
 
-join / leave lifecycle 은 Spot 멤버 callback 으로 정의한다. user Spot 은
-`onActorJoin(actor, request)` 로 admission 을 결정하고, accept 된 뒤에만
-`onJoinedActor(actor)` 를 실행한다. Entry Spot 은 admission 대상이 아니므로
-`onActorJoin` 이 없고, 기본 진입 commit 뒤 `onJoinedActor(actor)` 와
-`onLeaveActor(actor)` 만 실행한다.
+join / leave lifecycle 은 Spot 멤버 callback 으로 정의한다. user Spot 과
+Entry Spot 은 `onActorJoin(actor, request)` 로 admission 을 결정하고, accept 된
+뒤에만 `onJoinedActor(actor)` 를 실행한다. actor 생성 직후의 기본 Entry Spot
+membership 은 join 요청이 아니므로 `onActorJoin` 을 실행하지 않는다.
 
 handler registry 표면(`context.handlers`) 의 메서드는 다음과 같다. dotnet
 `IZLinkSpotHandlerRegistry` 와 1:1 대응한다.

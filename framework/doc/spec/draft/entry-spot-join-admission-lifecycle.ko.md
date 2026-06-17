@@ -4,14 +4,15 @@
 
 # Entry Spot Join Admission과 Joined Callback 전환 초안
 
-상태: 부분 구현(진행 중). 2026-06-17 전수조사 기준:
+상태: 구현 완료 뒤 정식 문서 반영과 검증이 끝난 draft. 2026-06-17 전수조사 기준:
 - core C API와 저수준 바인딩(C/C++/Java/Node/.NET/Python/Go/Rust) data plane은 request/reply
-  모델로 반영됨.
-- framework admission(`OnActorJoin`/`onActorJoin`)은 C++·Node·.NET·Java/Kotlin에 반영됨.
-- 샘플과 언어별 정식 문서는 구현된 Entry Spot admission 표면을 따라가는 중이다.
-- 남은 작업은 언어별 정식 spec/guide 반영 범위와 전체 회귀 테스트 범위를 더 넓히는 것이다.
+  모델로 반영됐다.
+- framework admission(`OnActorJoin`/`onActorJoin`)은 C++·Node·.NET·Java/Kotlin에 반영됐다.
+- 샘플과 언어별 정식 문서는 구현된 Entry Spot admission 표면과 같은 의미로 정리됐다.
+- 이 문서는 구현 이력과 결정 근거를 남기는 draft이며, 현재 공개 계약은 구현된 public API와
+  정식 spec/guide 문서를 기준으로 한다.
 
-이 문서는 구현 전 결정을 모은 draft이며, 구현 완료 뒤에도 **정식 공개 계약 문서가 아니다**.
+이 문서는 구현 전 결정을 모았던 draft이며, 구현 완료 뒤에도 **정식 공개 계약 문서가 아니다**.
 정식 공개 계약은 core C API, 바인딩, framework, sample, 테스트가 같은 의미로 정리된 내용을
 공통 framework spec, 언어별 spec, guide, sample 문서에 나누어 반영한 결과를 기준으로 한다.
 
@@ -397,8 +398,8 @@ export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor> {
 }
 ```
 
-Node.js는 TypeScript sample에서 `onJoinedActor`를 모두 `onJoinedActor`로 바꾸고, Entry Spot
-join에도 request를 넘기는 예제를 둔다.
+Node.js는 TypeScript sample에서 old `onJoinActor` 이름을 제거하고 확정 이름인
+`onJoinedActor`를 유지한다. Entry Spot join에도 request를 넘기는 예제를 둔다.
 
 ## 11. C++ 목표 표면 초안
 
@@ -573,7 +574,9 @@ actor 생성 직후 Entry Spot membership을 확정할 때는 join admission을 
 
 sample은 아래 기준으로 정리한다.
 
-1. `onJoinedActor` 이름을 모두 `OnJoinedActor` 계열로 바꾼다.
+1. old `onJoinActor`/`OnJoinActor` 계열 이름을 제거하고, 언어별 확정 joined callback 이름을
+   사용한다. .NET은 `OnJoinedActorAsync`, Java/Node/Kotlin은 `onJoinedActor`, C++는
+   `on_actor_joined`를 사용한다.
 2. user Spot join request 처리는 `OnActorJoin`에 둔다.
 3. Entry Spot join request 처리는 Entry Spot의 `OnActorJoin`에 둔다.
 4. actor 생성 초기화는 `OnCreateActor`에 둔다.
@@ -640,7 +643,7 @@ framework 테스트는 framework adapter와 lifecycle policy를 검증한다. �
 | 언어 | 테스트 위치 | 추가할 회귀 테스트 |
 |------|-------------|--------------------|
 | C | `bindings/c/tests` | `test_c_contract_surface.c`에서 새 C API 시그니처와 기존 payload-less API 제거를 확인한다. behavior test는 Entry Spot join request parts, accept/reject reply, malformed request, timeout/cancel ownership을 검증한다. |
-| C++ | `bindings/cpp/tests` | actor header 공개 API 테스트에서 `join_entry_spot(..., request)` 계열 public API를 확인한다. behavior test는 RAII message ownership, accept/reject reply, moved object safety를 검증한다. |
+| C++ | `bindings/cpp/tests` | actor header 공개 API 테스트에서 `join_actor_entry_spot(..., request)` 계열 public API를 확인한다. behavior test는 RAII message ownership, accept/reject reply, moved object safety를 검증한다. |
 | Java | `bindings/java/src/test`, `bindings/java/tests` | JNI/JNA declaration과 Java public builder가 core C API와 맞는지 확인한다. integration test는 request object 또는 `Message`가 encode되어 Entry Spot admission에 도달하고 reply가 Java result로 decode되는지 검증한다. |
 | Kotlin | `bindings/kotlin/samples`와 Java binding test 연동 지점 | Kotlin 전용 바인딩 표면이 있으면 Kotlin compile/contract test를 추가한다. 별도 runtime binding이 없고 Java binding을 그대로 쓰는 구조라면 Kotlin sample compile gate가 새 Java binding API를 사용하는지 확인한다. |
 | Node.js | `bindings/node/tests` | `spot_request_to_spot.test.ts`와 같은 위치에 Entry Spot join request/reply test를 추가한다. `api.test.ts` 또는 공개 API 테스트는 기존 payload-less API 제거와 request 인자 필수 여부를 확인한다. |
@@ -664,14 +667,16 @@ framework 테스트는 framework adapter와 lifecycle policy를 검증한다. �
 - accept 후 commit이 끝난 뒤 `OnJoinedActor`를 호출한다.
 - `OnCreateActor`는 actor 생성 때만 호출한다.
 - `OnJoinedActor`는 request를 받지 않는다.
-- old `onJoinedActor` 이름이 sample과 public interface에 남지 않는다.
+- old join callback 이름이 sample과 public interface에 남지 않는다. .NET은 `OnJoinedActorAsync`,
+  Java/Node/Kotlin은 `onJoinedActor`, C++는 `on_actor_joined` 계열 이름을 확정 이름으로 사용한다.
 - actor 생성 직후 최초 Entry Spot membership에서는 `OnActorJoin`을 호출하지 않는 정책을 테스트로 고정한다.
 - user Spot에서 Entry Spot으로 돌아가는 join이 accept되면 이전 user Spot membership 정리와 Entry Spot `OnJoinedActor` 호출 순서가 결정된 정책과 일치한다.
 - Entry Spot admission reject는 actor를 이전 user Spot 또는 이전 Entry Spot 위치에 그대로 둔다.
 - Entry Spot admission reply가 actor context join result로 그대로 반환된다.
 - Entry Spot `OnActorJoin` 실패는 caller에게 정해진 failure result로 전달되고 `OnJoinedActor`를 호출하지 않는다.
 - `OnJoinedActor` 실패 처리 정책을 확정하고, caller result와 monitoring/logging 동작을 테스트한다.
-- `.NET`, Java, Kotlin, Node.js, C++ framework contract test는 public interface에 `OnJoinedActor` 계열 이름이 있고 old `onJoinedActor` 이름이 없음을 확인한다.
+- `.NET`, Java, Kotlin, Node.js, C++ framework contract test는 public interface에 각 언어의 확정
+  joined callback 이름이 있고 old join callback 이름이 없음을 확인한다.
 - framework backend fake adapter는 Entry Spot join request parts와 reply parts를 기록해 regression test가 runtime 전달을 검증할 수 있어야 한다.
 - framework 테스트는 바인딩 public API를 통과하는 integration path를 최소 한 번 포함해, 바인딩 회귀 테스트와 framework fake test 사이의 간격을 줄인다.
 
@@ -691,16 +696,16 @@ runner만으로는 callback이 정확한 시점에 호출됐는지 구분하기 
 - reject reply가 caller join result로 돌아오고 actor 위치는 바뀌지 않음
 - `OnCreateActor`는 actor 생성 때만 호출되고, Entry Spot 재진입 join에서는 호출되지 않음
 - `OnJoinedActor`는 request를 받지 않음
-- old `onJoinedActor` 이름을 구현한 test fixture가 더 이상 lifecycle callback으로 호출되지 않음
+- old join callback 이름을 구현한 test fixture가 더 이상 lifecycle callback으로 호출되지 않음
 
 언어별 최소 테스트 위치와 방향:
 
 | 언어 | 테스트 위치 | 추가할 회귀 테스트 |
 |------|-------------|--------------------|
-| .NET | `framework/languages/dotnet/tests/Zlink.Framework.ContractTests`와 `Zlink.Framework.E2ETests` | `IZLinkSpot<TActor>`와 `IZLinkEntrySpot<TActor>` fixture에 호출 로그를 남기고, accept/reject별 `OnActorJoinAsync`/`OnJoinedActorAsync` 순서와 reply를 검증한다. 공개 API 테스트는 `onJoinedActor` 제거와 `OnJoinedActorAsync` 추가를 확인한다. |
-| Java | `framework/languages/java/zlink-framework-testkit/src/fakeBackendTest`와 `src/contractTest` | fake backend actor join test에서 Entry Spot join request parts를 기록하고, `onActorJoin`/`onJoinedActor` 호출 순서를 검증한다. contract test는 Java sample과 interface source에서 old `onJoinedActor`가 남지 않았는지 확인한다. |
+| .NET | `framework/languages/dotnet/tests/Zlink.Framework.ContractTests`와 `Zlink.Framework.E2ETests` | `IZLinkSpot<TActor>`와 `IZLinkEntrySpot<TActor>` fixture에 호출 로그를 남기고, accept/reject별 `OnActorJoinAsync`/`OnJoinedActorAsync` 순서와 reply를 검증한다. 공개 API 테스트는 old join callback 이름 제거와 `OnJoinedActorAsync` 추가를 확인한다. |
+| Java | `framework/languages/java/zlink-framework-testkit/src/fakeBackendTest`와 `src/contractTest` | fake backend actor join test에서 Entry Spot join request parts를 기록하고, `onActorJoin`/`onJoinedActor` 호출 순서를 검증한다. contract test는 Java sample과 interface source에서 old join callback 이름이 남지 않았는지 확인한다. |
 | Kotlin | Java testkit의 Kotlin sample release gate와 Kotlin wrapper test | Kotlin Spot fixture가 Java runtime callback을 구현하거나 coroutine wrapper를 통과할 때 같은 순서로 호출되는지 확인한다. Kotlin sample source는 `override fun onJoinedActor(...)`를 사용해야 한다. |
-| Node.js | `framework/languages/node/test/contract/actor-manager.test.js`, `spot-manager.test.js`, `sample-regression.test.js` | fake native coordinator에서 `joinSpot`과 `joinEntrySpot` request를 기록하고, `onActorJoin`/`onJoinedActor` 호출 순서와 reject 시 미호출을 검증한다. 공개 계약 테스트는 `onJoinedActor` 제거와 `onJoinedActor` 추가를 확인한다. |
+| Node.js | `framework/languages/node/test/contract/actor-manager.test.js`, `spot-manager.test.js`, `sample-regression.test.js` | fake native coordinator에서 `joinSpot`과 `joinEntrySpot` request를 기록하고, `onActorJoin`/`onJoinedActor` 호출 순서와 reject 시 미호출을 검증한다. 공개 계약 테스트는 old join callback 이름 제거와 `onJoinedActor` 유지를 확인한다. |
 | C++ | `framework/languages/cpp/tests/Zlink.Framework.UnitTests`와 contract header/layout tests | test spot fixture에 호출 로그를 두고 `on_actor_join`/`on_actor_joined` 순서를 검증한다. header contract test는 commit 이후 callback 이름을 확정 이름으로만 허용한다. |
 | Python / Go / Rust framework | framework 공개 API가 있는 경우 해당 언어 test tree | framework가 아직 draft 또는 미구현이면 이 draft를 기준으로 pending test 또는 계획 항목을 둔다. low-level binding만 있는 언어는 binding entry join request/reply test로 범위를 제한한다. |
 
@@ -719,7 +724,8 @@ runner만으로는 callback이 정확한 시점에 호출됐는지 구분하기 
 - sample에서 Entry Spot join request를 임시 field나 map으로 우회 전달하지 않는다.
 - sample에서 `OnActorJoin`은 request decode와 accept/reject/reply만 담당하고, `OnJoinedActor`는 commit 이후 알림만 담당한다.
 - Entry Spot sample은 actor create 초기화가 `OnCreateActor`에 남아 있고, Entry Spot join admission으로 섞이지 않았음을 보여준다.
-- Java/Kotlin, Node.js, .NET, C++ sample release gate는 old `onJoinedActor` 문자열을 금지하거나 migration-only 문서 범위로 제한한다.
+- Java/Kotlin, Node.js, .NET, C++ sample release gate는 old join callback 이름을 금지하거나
+  migration-only 문서 범위로 제한한다.
 - sample README와 guide는 `OnActorJoin`과 `OnJoinedActor` 차이를 같은 용어로 설명한다.
 
 ### 17.7 문서 회귀
@@ -861,9 +867,11 @@ framework 공개 API를 제공하지 않는다면, 해당 언어는 왜 제외�
 
 ### 20.3 framework 완료 기준
 
-- `.NET`, Java, Kotlin, Node.js, C++ framework가 `JoinEntrySpot(..., request)`를 제공한다.
-- `.NET`, Java, Kotlin, Node.js, C++ framework가 `OnActorJoin`과 `OnJoinedActor`를 분리한다.
-- `OnJoinedActor`는 request를 받지 않는다.
+- `.NET`, Java, Kotlin, Node.js, C++ framework가 각 언어의 actor context 표면으로 Entry Spot
+  join request를 받는 API를 제공한다.
+- `.NET`, Java, Kotlin, Node.js, C++ framework가 admission callback과 commit 이후 joined
+  callback을 분리한다.
+- commit 이후 joined callback은 request를 받지 않는다.
 - `OnCreateActor`는 actor 생성 때만 호출된다.
 - actor 생성 직후 최초 Entry Spot membership은 `OnCreateActor`만 호출하고 `OnActorJoin`과
   `OnJoinedActor`를 호출하지 않는다.
@@ -975,7 +983,8 @@ Codex 리뷰 prompt에는 최소한 아래 항목을 포함한다.
 17. bindings 라이브러리 전체를 다시 Codex read-only 리뷰로 확인한다. unresolved issue가
     남아 있으면 14번으로 돌아간다.
 18. framework backend adapter에서 Entry Spot join request/reply를 전달한다.
-19. framework public interface에서 `JoinEntrySpot(..., request)`와 `OnJoinedActor` 계열 이름을 반영한다.
+19. framework public interface에서 각 언어의 Entry Spot join request API와 확정 joined
+    callback 이름을 반영한다.
 20. `onJoinActor`/`OnJoinActor` public 이름을 제거한다.
 21. framework 언어별 callback 회귀 테스트를 추가한다.
 22. framework contract test와 필요한 integration test를 실행한다.

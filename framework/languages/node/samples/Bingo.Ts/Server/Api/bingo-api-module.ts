@@ -1,6 +1,4 @@
-import { Module } from '@nestjs/common';
-import * as path from 'node:path';
-import { ZLinkModule, zlinkDiscoverProviders, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { SampleNames, SampleTimings } from '../Configuration/sample-names';
 function createBingoApiModule(config: {
   apiEndpoint: string;
@@ -8,7 +6,7 @@ function createBingoApiModule(config: {
 }) {
   class BingoApiModule {}
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
@@ -24,8 +22,7 @@ function createBingoApiModule(config: {
             .enableClient()
           .build()
       })
-    ],
-    providers: zlinkDiscoverProviders(path.join(__dirname, 'Handlers'))
+    ]
   })(BingoApiModule);
 
   return BingoApiModule;

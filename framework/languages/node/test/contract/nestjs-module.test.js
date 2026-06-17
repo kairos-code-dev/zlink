@@ -1,4 +1,7 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 const { Inject, Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
@@ -306,6 +309,107 @@ test('ZLinkModule.forRootFactory maps zlinkRequestHandler providers from NestJS 
   assert.deepEqual(
     await handlers[0].handler.handle(Buffer.from(JSON.stringify({ profileId: 'p1' })), {}),
     { profileId: 'p1', source: 'async-provider-group' }
+  );
+
+  await app.close();
+});
+
+test('zlinkModule registers discovered handler providers in the application module context', async () => {
+  const apiEndpoint = await reserveTcpEndpoint();
+  const roleRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-nest-provider-discovery-'));
+  const discoveryRoot = path.join(roleRoot, 'Handlers');
+  fs.mkdirSync(discoveryRoot);
+  const commonPackage = require.resolve('@nestjs/common');
+  const nestPackage = path.resolve(__dirname, '../../packages/nestjs/dist');
+  fs.writeFileSync(path.join(discoveryRoot, 'profile-handler.js'), `
+const { Inject } = require(${JSON.stringify(commonPackage)});
+const nestjs = require(${JSON.stringify(nestPackage)});
+
+class ProfileHandler {
+  constructor(store) {
+    this.store = store;
+  }
+
+  async handle(request) {
+    return { profileId: request.profileId, source: this.store.source };
+  }
+}
+
+Inject('PROFILE_STORE')(ProfileHandler, undefined, 0);
+nestjs.zlinkRequestHandler('api', 'GetProfile')(ProfileHandler);
+
+module.exports = { ProfileHandler };
+`);
+
+  class HandlerModule {}
+  nestjs.zlinkModule({
+    imports: [
+      nestjs.ZLinkModule.forRootFactory({
+        useFactory: () => nestjs.zlinkFramework()
+          .addClientServerChannel('api')
+            .enableServer(apiEndpoint)
+            .addHandlerGroup('api')
+          .build()
+      })
+    ],
+    providerDiscovery: [discoveryRoot],
+    providers: [
+      { provide: 'PROFILE_STORE', useValue: { source: 'application-module-provider-discovery' } }
+    ]
+  })(HandlerModule);
+
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+  const handlers = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION).channels.get('api').requestHandlers;
+
+  assert.equal(handlers.length, 1);
+  assert.deepEqual(
+    await handlers[0].handler.handle(Buffer.from(JSON.stringify({ profileId: 'p1' })), {}),
+    { profileId: 'p1', source: 'application-module-provider-discovery' }
+  );
+
+  await app.close();
+});
+
+test('zlinkModule role root discovers conventional handler directories', async () => {
+  const apiEndpoint = await reserveTcpEndpoint();
+  const roleRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-nest-role-root-'));
+  const discoveryRoot = path.join(roleRoot, 'Handlers');
+  fs.mkdirSync(discoveryRoot);
+  const nestPackage = path.resolve(__dirname, '../../packages/nestjs/dist');
+  fs.writeFileSync(path.join(discoveryRoot, 'profile-handler.js'), `
+const nestjs = require(${JSON.stringify(nestPackage)});
+
+class ProfileHandler {
+  async handle(request) {
+    return { profileId: request.profileId, source: 'role-root-discovery' };
+  }
+}
+
+nestjs.zlinkRequestHandler('api', 'GetProfile')(ProfileHandler);
+
+module.exports = { ProfileHandler };
+`);
+
+  class HandlerModule {}
+  nestjs.zlinkModule(roleRoot, {
+    imports: [
+      nestjs.ZLinkModule.forRootFactory({
+        useFactory: () => nestjs.zlinkFramework()
+          .addClientServerChannel('api')
+            .enableServer(apiEndpoint)
+            .addHandlerGroup('api')
+          .build()
+      })
+    ]
+  })(HandlerModule);
+
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+  const handlers = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION).channels.get('api').requestHandlers;
+
+  assert.equal(handlers.length, 1);
+  assert.deepEqual(
+    await handlers[0].handler.handle(Buffer.from(JSON.stringify({ profileId: 'p1' })), {}),
+    { profileId: 'p1', source: 'role-root-discovery' }
   );
 
   await app.close();

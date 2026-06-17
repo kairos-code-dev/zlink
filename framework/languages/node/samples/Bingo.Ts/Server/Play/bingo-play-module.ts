@@ -1,6 +1,4 @@
-import { Module } from '@nestjs/common';
-import * as path from 'node:path';
-import { ZLinkModule, zlinkDiscoverProviders, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { BingoNotificationDeliveryLog } from './notification-delivery-log';
 import { PlayerActorFactory } from './Adapters/ZLink/Actors/player-actor-factory';
 import { BingoNotificationPublisher } from './Adapters/ZLink/Notifications/bingo-notification-publisher';
@@ -15,7 +13,7 @@ function createBingoPlayModule(config: {
 }) {
   class BingoPlayModule {}
 
-  Module({
+  zlinkModule(__dirname, {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
@@ -42,9 +40,7 @@ function createBingoPlayModule(config: {
       PlayerActorFactory,
       BingoNotificationPublisher,
       BingoRoomAllocator,
-      BingoEntrySpot,
-      ...zlinkDiscoverProviders(path.join(__dirname, 'Adapters', 'ZLink', 'Handlers')),
-      ...zlinkDiscoverProviders(path.join(__dirname, 'Adapters', 'ZLink', 'Spots', 'Handlers'))
+      BingoEntrySpot
     ]
   })(BingoPlayModule);
 

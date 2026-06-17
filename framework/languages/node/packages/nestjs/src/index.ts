@@ -187,6 +187,19 @@ export interface ZLinkNestProviderDiscoveryOptions {
   readonly recursive?: boolean;
 }
 
+export type ZLinkNestProviderDiscoveryRoot =
+  | string
+  | {
+      readonly rootDir: string;
+      readonly options?: ZLinkNestProviderDiscoveryOptions;
+    };
+
+export interface ZLinkNestModuleMetadata extends ModuleMetadata {
+  readonly providerDiscovery?: readonly ZLinkNestProviderDiscoveryRoot[];
+}
+
+export type ZLinkNestModuleRoleRoot = string;
+
 export type ZLinkNestTypeResolver<T> = Type<T> | (() => Type<T>);
 
 export interface ZLinkNestSpotActorSendHandlerOptions<TSpot extends ZLinkSpot, TActor extends ZLinkActor> {
@@ -376,6 +389,29 @@ export function zlinkDiscoverProviders(
   options: ZLinkNestProviderDiscoveryOptions = {}
 ): Provider[] {
   return [...loadDecoratedProviderModules(rootDir, options)];
+}
+
+export function zlinkModule(metadata: ZLinkNestModuleMetadata): ClassDecorator;
+export function zlinkModule(roleRoot: ZLinkNestModuleRoleRoot, metadata: ModuleMetadata): ClassDecorator;
+export function zlinkModule(
+  metadataOrRoleRoot: ZLinkNestModuleMetadata | ZLinkNestModuleRoleRoot,
+  metadata?: ModuleMetadata
+): ClassDecorator {
+  const moduleMetadata = typeof metadataOrRoleRoot === 'string' ? metadata : metadataOrRoleRoot;
+  if (moduleMetadata === undefined) {
+    throw new framework.ZLinkConfigurationException('zlinkModule metadata is required.');
+  }
+  const { providerDiscovery, providers, ...rest } = moduleMetadata as ZLinkNestModuleMetadata;
+  const discoveredProviders = typeof metadataOrRoleRoot === 'string'
+    ? createDefaultProviderDiscoveryProviders(metadataOrRoleRoot)
+    : createProviderDiscoveryProviders(providerDiscovery);
+  return Module({
+    ...rest,
+    providers: [
+      ...(providers ?? []),
+      ...discoveredProviders
+    ]
+  });
 }
 
 export function zlinkSpotActorRequestHandler<TSpot extends ZLinkSpot, TActor extends ZLinkActor>(
@@ -1203,6 +1239,29 @@ function createDiscoveringZLinkDynamicModule(options: ZLinkNestModuleRegistratio
       ...conditionalClientTokens()
     ]
   };
+}
+
+function createProviderDiscoveryProviders(
+  roots: readonly ZLinkNestProviderDiscoveryRoot[] | undefined
+): Provider[] {
+  return (roots ?? []).flatMap((root) => {
+    if (typeof root === 'string') {
+      return zlinkDiscoverProviders(root);
+    }
+    return zlinkDiscoverProviders(root.rootDir, root.options);
+  });
+}
+
+function createDefaultProviderDiscoveryProviders(roleRoot: string): Provider[] {
+  return createProviderDiscoveryProviders(defaultProviderDiscoveryRoots(roleRoot));
+}
+
+function defaultProviderDiscoveryRoots(roleRoot: string): ZLinkNestProviderDiscoveryRoot[] {
+  return [
+    path.join(roleRoot, 'Handlers'),
+    path.join(roleRoot, 'Adapters', 'ZLink', 'Handlers'),
+    path.join(roleRoot, 'Adapters', 'ZLink', 'Spots', 'Handlers')
+  ].filter((rootDir) => fs.existsSync(rootDir));
 }
 
 function createDiscoveredOptions(

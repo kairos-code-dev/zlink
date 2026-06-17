@@ -260,13 +260,22 @@ test('node framework samples exercise the real NestJS application context', () =
         hiddenServerRuntime.push(`${mainRelative}:${text}`);
       }
     }
-    if (!module.includes("require('@nestjs/common')") && !module.includes("from '@nestjs/common'")) {
+    if (
+      !module.includes("require('@nestjs/common')")
+      && !module.includes("from '@nestjs/common'")
+      && !module.includes('zlinkModule')
+    ) {
       missing.push(`${moduleRelative}:@nestjs/common`);
     }
     if (!module.includes('ZLinkModule.forRoot')) {
       missing.push(`${moduleRelative}:ZLinkModule.forRoot`);
     }
-    if (!moduleRelative.includes('/Registry/') && !/providers:\s*(?:\[|zlinkDiscoverProviders)/.test(module)) {
+    if (
+      !moduleRelative.includes('/Registry/')
+      && !/providers:\s*(?:\[|zlinkDiscoverProviders)/.test(module)
+      && !module.includes('providerDiscovery')
+      && !module.includes('zlinkModule(__dirname')
+    ) {
       missing.push(`${moduleRelative}:providers`);
     }
   }
@@ -899,7 +908,7 @@ test('TicTacToe uses manual handler registration and Bingo keeps automatic regis
     [bingoTimerHandler, '@zlinkSpotTimerHandler({'],
     [fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'bingo-api-module.ts'), 'utf8'), '.addHandlerGroup(\'api\')'],
     [bingoPlayModule, '.addHandlerGroup(\'play\')'],
-    [bingoPlayModule, 'zlinkDiscoverProviders'],
+    [bingoPlayModule, 'zlinkModule(__dirname'],
     [playModule, '.addStreamNode(SampleNames.playStream']
   ];
   const missing = required
@@ -1373,19 +1382,42 @@ function findUnreachableSampleTypeScriptFiles() {
 }
 
 function addDiscoveredProviderFiles(file, content, add, files) {
-  const discoveryPattern = /zlinkDiscoverProviders\(path\.join\(__dirname,\s*([^)]*)\)\)/g;
-  for (const match of content.matchAll(discoveryPattern)) {
-    const parts = [...match[1].matchAll(/'([^']+)'/g)].map((part) => part[1]);
-    if (parts.length === 0) {
-      continue;
-    }
-    const discoveredRoot = path.resolve(path.dirname(file), ...parts);
-    for (const candidate of files) {
-      if (candidate.startsWith(`${discoveredRoot}${path.sep}`)) {
-        add(candidate);
+  const discoveryPatterns = [/zlinkDiscoverProviders\(path\.join\(__dirname,\s*([^)]*)\)\)/g];
+  if (content.includes('providerDiscovery')) {
+    discoveryPatterns.push(/path\.join\(__dirname,\s*([^)]*)\)/g);
+  }
+  if (content.includes('zlinkModule(__dirname')) {
+    for (const discoveredRoot of defaultZLinkProviderDiscoveryRoots(path.dirname(file))) {
+      for (const candidate of files) {
+        if (candidate.startsWith(`${discoveredRoot}${path.sep}`)) {
+          add(candidate);
+        }
       }
     }
   }
+
+  for (const discoveryPattern of discoveryPatterns) {
+    for (const match of content.matchAll(discoveryPattern)) {
+      const parts = [...match[1].matchAll(/'([^']+)'/g)].map((part) => part[1]);
+      if (parts.length === 0) {
+        continue;
+      }
+      const discoveredRoot = path.resolve(path.dirname(file), ...parts);
+      for (const candidate of files) {
+        if (candidate.startsWith(`${discoveredRoot}${path.sep}`)) {
+          add(candidate);
+        }
+      }
+    }
+  }
+}
+
+function defaultZLinkProviderDiscoveryRoots(roleRoot) {
+  return [
+    path.join(roleRoot, 'Handlers'),
+    path.join(roleRoot, 'Adapters', 'ZLink', 'Handlers'),
+    path.join(roleRoot, 'Adapters', 'ZLink', 'Spots', 'Handlers')
+  ].filter((rootDir) => fs.existsSync(rootDir));
 }
 
 function importSpecifiers(content) {

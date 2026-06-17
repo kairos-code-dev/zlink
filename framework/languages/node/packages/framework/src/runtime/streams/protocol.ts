@@ -393,7 +393,7 @@ function readLz4Length(source: Uint8Array, nibble: number, nextOffset: () => num
   if (length !== 15) {
     return length;
   }
-  while (true) {
+  for (;;) {
     const offset = nextOffset();
     if (offset >= source.length) {
       throw new Error('LZ4 extended length is incomplete.');

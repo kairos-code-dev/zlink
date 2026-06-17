@@ -28,7 +28,7 @@ export function subscription(dispose: () => void): Disposable {
 }
 
 export function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) {
+  if (signal?.aborted === true) {
     throw connectorError(ZlinkStreamErrorCode.Disconnected, 'Operation canceled.');
   }
 }

@@ -25,6 +25,7 @@ run(process.execPath, [
   'tsconfig.json',
   '--noEmit'
 ]);
+run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'lint']);
 for (const testFile of listTestFiles(path.join(nodeRoot, 'test'))) {
   console.log(`-- ${path.relative(nodeRoot, testFile)}`);
   run(process.execPath, ['--test', testFile]);

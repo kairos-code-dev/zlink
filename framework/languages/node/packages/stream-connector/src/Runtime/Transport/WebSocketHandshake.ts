@@ -13,7 +13,7 @@ export async function completeWebSocketHandshake(
   signal?: AbortSignal
 ): Promise<Buffer | undefined> {
   const key = crypto.randomBytes(16).toString('base64');
-  const pathAndQuery = `${endpoint.pathname || '/'}${endpoint.search}`;
+  const pathAndQuery = `${endpoint.pathname.length > 0 ? endpoint.pathname : '/'}${endpoint.search}`;
   const headers = [
     `GET ${pathAndQuery} HTTP/1.1`,
     `Host: ${endpoint.host}`,

@@ -9,7 +9,7 @@ import type {
 @zlinkRequestHandler('api', PacketNames.authenticatePlayerReq)
 class AuthenticatePlayerHandler implements ZLinkRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes> {
   async handle(request: AuthenticatePlayerReq): Promise<AuthenticatePlayerRes> {
-    if (!request.accessToken?.startsWith('player-')) {
+    if (!request.accessToken.startsWith('player-')) {
       return authenticatePlayerRejected('Access token must be a sample player id.');
     }
 

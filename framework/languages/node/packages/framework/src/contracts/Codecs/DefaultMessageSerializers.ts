@@ -191,7 +191,7 @@ function encodeVarint(value: number | bigint): Buffer {
 
 type WireField = {
   readonly fieldNumber: number;
-  readonly wireType: WireType;
+  readonly wireType: number;
   readonly payload: Buffer;
 };
 
@@ -202,7 +202,7 @@ function readFields(bytes: Buffer): WireField[] {
     const key = readVarint(bytes, offset);
     offset = key.offset;
     const fieldNumber = Number(key.value >> 3n);
-    const wireType = Number(key.value & 0x07n) as WireType;
+    const wireType = Number(key.value & 0x07n);
     if (wireType === WireType.Varint) {
       const value = readVarint(bytes, offset);
       fields.push({ fieldNumber, wireType, payload: bytes.subarray(offset, value.offset) });

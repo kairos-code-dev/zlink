@@ -726,7 +726,12 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     if (entryNodeRid === undefined) {
       throw new ZLinkConfigurationException('Spot actor leave requires an Entry Spot node routing id.');
     }
-    await actor.context.joinEntrySpot(entryNodeRid).submit(signal);
+    const request = BindingMessage.from(Buffer.alloc(0));
+    try {
+      await actor.context.joinEntrySpot(entryNodeRid, request).submit(signal);
+    } finally {
+      request.close();
+    }
   }
 
   private async createActivation<TSpot extends ZLinkSpot>(
@@ -1367,9 +1372,7 @@ async function createProviderInstance<T>(
   if (fallbackArg !== undefined) {
     return new (type as new (arg: unknown) => T)(fallbackArg);
   }
-  return fallbackArg === undefined
-    ? new (type as new () => T)()
-    : new (type as new (arg: unknown) => T)(fallbackArg);
+  return new (type as new () => T)();
 }
 
 function wrapRoutedSpotSendCall(
@@ -1458,7 +1461,7 @@ function normalizeTimerOptions(options: ZLinkTimerOptions | undefined): Required
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) {
+  if (signal?.aborted === true) {
     throw new Error('The operation was aborted.');
   }
 }

@@ -35,7 +35,7 @@ const protoPackage = 'zlink.samples.bingo';
 const protobuf = loadProtobufJs() as ProtobufJs;
 const root = protobuf.loadSync(resolveProtoPath());
 
-const messageTypesByPacketName: Record<string, string> = {
+const messageTypesByPacketName: Partial<Record<string, string>> = {
   AuthenticateReq: 'AuthenticateReq',
   AuthenticatePlayerReq: 'AuthenticatePlayerReq',
   MatchBingoReq: 'MatchBingoReq',
@@ -54,7 +54,7 @@ const messageTypesByPacketName: Record<string, string> = {
   BingoGameEndedNotify: 'BingoGameEndedNotify'
 };
 
-const responseTypesByRequestPacketName: Record<string, string> = {
+const responseTypesByRequestPacketName: Partial<Record<string, string>> = {
   AuthenticatePlayerReq: 'AuthenticatePlayerRes',
   AuthenticateReq: 'AuthenticateSessionRes',
   MatchBingoApiReq: 'MatchBingoApiRes',
@@ -139,11 +139,13 @@ function inferMessageName(
   packetName?: string,
   preferResponseType = false
 ): string {
-  if (preferResponseType && packetName !== undefined && responseTypesByRequestPacketName[packetName] !== undefined) {
-    return responseTypesByRequestPacketName[packetName];
+  const responseType = packetName === undefined ? undefined : responseTypesByRequestPacketName[packetName];
+  if (preferResponseType && responseType !== undefined) {
+    return responseType;
   }
-  if (packetName !== undefined && messageTypesByPacketName[packetName] !== undefined) {
-    return messageTypesByPacketName[packetName];
+  const packetType = packetName === undefined ? undefined : messageTypesByPacketName[packetName];
+  if (packetType !== undefined) {
+    return packetType;
   }
   if (messageType?.name !== undefined && hasType(messageType.name)) {
     return messageType.name;
@@ -152,10 +154,10 @@ function inferMessageName(
   if (constructor?.name !== undefined && inferredTypesByConstructorName.has(constructor.name)) {
     return constructor.name;
   }
-  const payload = value as Record<string, unknown>;
-  if (payload === null || payload === undefined) {
+  if (value === null || value === undefined) {
     throw new Error('Cannot infer Bingo Protobuf message type for empty payload.');
   }
+  const payload = value as Record<string, unknown>;
   if (typeof payload.error === 'string') {
     return 'RoomJoinError';
   }
@@ -216,8 +218,9 @@ function inferMessageName(
 }
 
 function inferStateEnvelopeType(packetName: string | undefined): string {
-  if (packetName !== undefined && messageTypesByPacketName[packetName] !== undefined) {
-    return messageTypesByPacketName[packetName];
+  const packetType = packetName === undefined ? undefined : messageTypesByPacketName[packetName];
+  if (packetType !== undefined) {
+    return packetType;
   }
   return 'BingoGameStartedNotify';
 }

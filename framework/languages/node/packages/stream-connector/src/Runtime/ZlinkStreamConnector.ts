@@ -429,9 +429,9 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
 
   private async runReceiveLoop(connection: ZlinkStreamConnection | undefined, signal: AbortSignal): Promise<void> {
     try {
-      while (!signal.aborted && this.currentState === ZlinkStreamConnectionState.Connected && this.connection === connection) {
+      while (this.shouldContinueReceiveLoop(connection, signal)) {
         const dispatched = await this.dispatchAvailable(signal);
-        if (!dispatched && !signal.aborted && this.currentState === ZlinkStreamConnectionState.Connected && this.connection === connection) {
+        if (!dispatched && this.shouldContinueReceiveLoop(connection, signal)) {
           await delay(1, signal);
         }
       }
@@ -446,6 +446,12 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       this.connection = undefined;
       await this.setState(ZlinkStreamConnectionState.Disconnected, error);
     }
+  }
+
+  private shouldContinueReceiveLoop(connection: ZlinkStreamConnection | undefined, signal: AbortSignal): boolean {
+    return !signal.aborted
+      && this.currentState === ZlinkStreamConnectionState.Connected
+      && this.connection === connection;
   }
 
   private async runHeartbeatTick(): Promise<void> {

@@ -7,6 +7,7 @@ import type {
   ZLinkSpotManager
 } from '@zlink-systems/framework';
 import { ZLinkSpotCreateState } from '@zlink-systems/framework';
+import { BingoModes } from '../../../../Shared/Contracts/messages';
 import type { BingoNotificationPublisher as BingoNotificationPublisherType } from '../../Adapters/ZLink/Notifications/bingo-notification-publisher';
 import type { BingoRoomSpot as BingoRoomSpotType } from '../../Adapters/ZLink/Spots/bingo-room-spot';
 import type { BingoRoomSettings } from '../../Domain/Bingo/bingo-room-models';
@@ -32,16 +33,15 @@ class BingoRoomAllocator {
     this.roomSeq = 0;
   }
 
-  async allocate(mode: BingoMode | undefined): Promise<string> {
-    let settings = createRoomSettings(mode, this.roomSeq + 1);
+  async allocate(mode: BingoMode = BingoModes.twoPlayer): Promise<string> {
+    let settings = createRoomSettings(this.roomSeq + 1, mode);
     if (
       this.currentRoomId === null ||
       this.currentRoomSettings === null ||
-      this.currentRoomSettings.mode !== settings.mode ||
       this.reservedSeats >= this.currentRoomSettings.requiredPlayers
     ) {
       this.roomSeq += 1;
-      settings = createRoomSettings(mode, this.roomSeq);
+      settings = createRoomSettings(this.roomSeq, mode);
       const created = await this.spotManager.create(BingoRoomSpot);
       if (created.state !== ZLinkSpotCreateState.Created) {
         throw new Error('Bingo room creation was rejected.');

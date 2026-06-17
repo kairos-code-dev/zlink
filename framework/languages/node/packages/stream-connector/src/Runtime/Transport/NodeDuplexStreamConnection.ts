@@ -41,7 +41,7 @@ export class NodeDuplexStreamConnection implements ZlinkStreamConnection {
 
   async read(signal?: AbortSignal): Promise<Uint8Array | undefined> {
     throwIfAborted(signal);
-    while (true) {
+    for (;;) {
       const frame = this.tryReadFrame();
       if (frame !== undefined) {
         return frame;

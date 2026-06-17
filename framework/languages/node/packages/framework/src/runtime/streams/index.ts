@@ -1248,7 +1248,6 @@ class DefaultZLinkSessionReplyCall implements ZLinkSessionReplyCall {
 function isActorRef(value: ZLinkActor | ActorRef): value is ActorRef {
   return (
     typeof value === 'object'
-    && value !== null
     && 'nodeRid' in value
     && 'generation' in value
     && 'actorId' in value
@@ -1383,7 +1382,7 @@ function isSessionFactory(value: unknown): value is ZLinkSessionFactory {
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) {
+  if (signal?.aborted === true) {
     throw new Error('The operation was aborted.');
   }
 }

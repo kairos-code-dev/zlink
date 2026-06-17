@@ -781,7 +781,7 @@ export class ZLinkChannelReceiveLoop {
   ) {}
 
   async run(signal?: AbortSignal): Promise<void> {
-    while (!this.stopped && !signal?.aborted) {
+    while (!this.stopped && signal?.aborted !== true) {
       const received = this.router.recv(1);
       if (received === undefined) {
         await new Promise<void>((resolve) => setImmediate(resolve));
@@ -864,7 +864,7 @@ export class ZLinkSubscriberReceiveLoop {
   private readonly poller: ReturnType<ZLinkChannelBackendAdapter['createReadablePoller']>;
 
   async run(signal?: AbortSignal): Promise<void> {
-    while (!this.stopped && !signal?.aborted) {
+    while (!this.stopped && signal?.aborted !== true) {
       if (!this.poller.wait(10)) {
         await new Promise<void>((resolve) => setImmediate(resolve));
         continue;
@@ -1017,7 +1017,7 @@ export class ZLinkRouteReceiveLoop {
   ) {}
 
   async run(signal?: AbortSignal): Promise<void> {
-    while (!this.stopped && !signal?.aborted) {
+    while (!this.stopped && signal?.aborted !== true) {
       const received = this.router.recv(1);
       if (received === undefined) {
         await new Promise<void>((resolve) => setImmediate(resolve));
@@ -1297,7 +1297,7 @@ class DefaultZLinkPublishCall implements ZLinkPublishCall {
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) {
+  if (signal?.aborted === true) {
     throw new Error('The operation was aborted.');
   }
 }

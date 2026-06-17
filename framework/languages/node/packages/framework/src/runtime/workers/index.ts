@@ -55,7 +55,7 @@ export class ZLinkSpotWorkerRuntime {
   }
 
   schedule<T>(work: ZLinkWorkerWork<T>, timeoutMs?: number, signal?: AbortSignal): Promise<T> {
-    if (signal?.aborted) {
+    if (signal?.aborted === true) {
       return Promise.reject(abortError());
     }
     if (this.queue.length >= this.options.maxQueueLength) {

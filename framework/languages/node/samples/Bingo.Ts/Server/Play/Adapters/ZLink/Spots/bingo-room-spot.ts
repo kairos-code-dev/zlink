@@ -39,7 +39,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
 
   constructor() {
     this.roomId = 'bingo-room';
-    this.game = new BingoRoomGame(this.roomId, createRoomSettings(undefined, 0));
+    this.game = new BingoRoomGame(this.roomId, createRoomSettings(0));
   }
 
   static useNotifications(notifications: BingoNotificationPublisherLike): void {

@@ -56,7 +56,7 @@ export class NodeWebSocketConnection implements ZlinkStreamConnection {
 
   async read(signal?: AbortSignal): Promise<Uint8Array | undefined> {
     throwIfAborted(signal);
-    while (true) {
+    for (;;) {
       const message = this.messageQueue.shift();
       if (message !== undefined) {
         this.queuedMessageBytes -= message.length;
@@ -86,7 +86,7 @@ export class NodeWebSocketConnection implements ZlinkStreamConnection {
 
   private drainFrames(): void {
     try {
-      while (true) {
+      for (;;) {
         const frame = tryDecodeWebSocketFrame(this.buffer, this.maxReceivePayloadSize);
         if (frame === undefined) {
           return;

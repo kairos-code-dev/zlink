@@ -81,7 +81,7 @@ async function bootstrap(): Promise<void> {
     });
     socket.on('data', (chunk: Buffer) => {
       buffer = Buffer.concat([buffer, chunk]);
-      while (true) {
+      for (;;) {
         const packet = tryReadFrame(buffer);
         if (packet === undefined) {
           return;
@@ -102,7 +102,7 @@ async function bootstrap(): Promise<void> {
   try {
     await waitForShutdown({ keepAlive: true });
   } finally {
-    await new Promise<void>((resolve, reject) => streamServer.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => streamServer.close((error) => error === undefined ? resolve() : reject(error)));
     await closeNestRuntime(app);
   }
 }
@@ -162,7 +162,7 @@ async function pumpNotifications(
   context: SessionContext,
   transport: StreamTransport
 ): Promise<void> {
-  while (!context.closed) {
+  while (!isSessionClosed(context)) {
     if (context.actorId !== null && context.displayName !== null) {
       try {
         const response = await relayToChannel(
@@ -177,13 +177,17 @@ async function pumpNotifications(
           transport.sendEncoded(delivered.packetName, Buffer.from(delivered.payloadBase64, 'base64'), { seq: String(delivered.seq) });
         }
       } catch (error) {
-        if (context.closed) {
+        if (isSessionClosed(context)) {
           return;
         }
       }
     }
     await new Promise((resolve) => setImmediate(resolve));
   }
+}
+
+function isSessionClosed(context: SessionContext): boolean {
+  return context.closed;
 }
 
 function createSessionContext(): SessionContext {

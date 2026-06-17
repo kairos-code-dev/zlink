@@ -10,9 +10,6 @@ export function compressPayload(payload: Uint8Array, compression: ZlinkStreamCom
   if (compression === ZlinkStreamCompression.None) {
     throw connectorError(ZlinkStreamErrorCode.CompressionFailed, 'Compression codec is not configured.');
   }
-  if (compression !== ZlinkStreamCompression.Lz4) {
-    throw connectorError(ZlinkStreamErrorCode.ConfigurationError, 'Compression option is not supported.');
-  }
 
   return pickleUncompressed(payload);
 }
@@ -28,9 +25,6 @@ export function decompressIfNeeded(
   }
   if (compression === ZlinkStreamCompression.None) {
     throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Compressed payload received without a compression codec.');
-  }
-  if (compression !== ZlinkStreamCompression.Lz4) {
-    throw connectorError(ZlinkStreamErrorCode.ConfigurationError, 'Compression option is not supported.');
   }
 
   try {
@@ -144,7 +138,7 @@ function readLength(source: Uint8Array, nibble: number, nextOffset: () => number
   if (length !== 15) {
     return length;
   }
-  while (true) {
+  for (;;) {
     const offset = nextOffset();
     if (offset >= source.length) {
       throw new Error('LZ4 extended length is incomplete.');

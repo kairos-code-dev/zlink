@@ -241,7 +241,7 @@ function authenticateSessionRes(actorId: string, displayName: string): Authentic
   return { actorId, displayName };
 }
 
-function matchBingoReq(mode: BingoMode | undefined = BingoModes.twoPlayer): MatchBingoReq {
+function matchBingoReq(mode: BingoMode = BingoModes.twoPlayer): MatchBingoReq {
   return new MatchBingoReq(mode);
 }
 
@@ -249,7 +249,7 @@ function matchBingoApiRes(roomId: string): MatchBingoApiRes {
   return { roomId };
 }
 
-function allocateBingoRoomReq(mode: BingoMode | undefined = BingoModes.twoPlayer): AllocateBingoRoomReq {
+function allocateBingoRoomReq(mode: BingoMode = BingoModes.twoPlayer): AllocateBingoRoomReq {
   return new AllocateBingoRoomReq(mode);
 }
 

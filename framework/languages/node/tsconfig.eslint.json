@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": false,
+    "noEmit": true
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "samples/Bingo.Ts/**/*.ts",
+    "samples/TicTacToe.Ts/**/*.ts"
+  ]
+}

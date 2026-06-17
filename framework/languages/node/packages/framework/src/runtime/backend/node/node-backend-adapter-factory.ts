@@ -576,9 +576,7 @@ function submitBindingRequestCallback(
   } else {
     current = operation.message(payload);
   }
-  if (current === undefined) {
-    current = operation.message(Buffer.alloc(0));
-  }
+  current ??= operation.message(Buffer.alloc(0));
   if (timeoutMs !== undefined) {
     current = current.timeout(timeoutMs);
   }

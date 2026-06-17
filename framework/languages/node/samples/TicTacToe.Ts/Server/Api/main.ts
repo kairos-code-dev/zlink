@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     httpEndpoint: config.apiHttpEndpoint
   })}\n`);
   await waitForShutdown();
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
   await closeNestRuntime(apiApp);
 }
 

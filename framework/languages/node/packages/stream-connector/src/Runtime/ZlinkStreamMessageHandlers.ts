@@ -21,7 +21,7 @@ export class ZlinkStreamMessageHandlers {
       this.handlers.set(name, set);
     }
     set.add(handler);
-    return subscription(() => set?.delete(handler));
+    return subscription(() => set.delete(handler));
   }
 
   async dispatch(

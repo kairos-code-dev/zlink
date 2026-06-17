@@ -69,9 +69,10 @@ export interface ZLinkActorJoinCoordinator {
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
     nodeRid: RoutingId,
+    request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ActorRef>;
+  ): Promise<ZLinkActorJoinResult<Message>>;
 }
 
 export interface ZLinkActorNativeJoinCoordinatorOptions {
@@ -317,14 +318,12 @@ export class ZLinkActorRuntimeState {
     boundSessionFactory: ZLinkActorBoundSessionFactory | undefined,
     messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
   ): ZLinkActorContext {
-    if (this.context === undefined) {
-      this.context = new DefaultZLinkActorContext(
-        this,
-        joinCoordinator,
-        boundSessionFactory,
-        messageSerializers
-      );
-    }
+    this.context ??= new DefaultZLinkActorContext(
+      this,
+      joinCoordinator,
+      boundSessionFactory,
+      messageSerializers
+    );
     return this.context;
   }
 
@@ -396,9 +395,7 @@ export class ZLinkActorRuntimeState {
   }
 
   ensureNativeActorRef(node: ZLinkBackendSpotNode): ZLinkBackendActorRef {
-    if (this.nativeActorRefValue === undefined) {
-      this.nativeActorRefValue = node.actorLookup(this.actorId) ?? node.createActor(this.actorId);
-    }
+    this.nativeActorRefValue ??= node.actorLookup(this.actorId) ?? node.createActor(this.actorId);
     return this.nativeActorRefValue;
   }
 
@@ -446,7 +443,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       result: ZLinkBackendActorJoinResult;
       parts: readonly Message[];
     }>((resolve, reject) => {
-      if (signal?.aborted) {
+      if (signal?.aborted === true) {
         reject(new Error('The operation was aborted.'));
         return;
       }
@@ -493,17 +490,22 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
     nodeRid: RoutingId,
+    request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ActorRef> {
+  ): Promise<ZLinkActorJoinResult<Message>> {
     throwIfAborted(signal);
     const actorRef = state.ensureNativeActorRef(this.options.node);
-    const result = await new Promise<ZLinkBackendActorJoinEntrySpotResult>(
+    const { result, parts } = await new Promise<{
+      result: ZLinkBackendActorJoinEntrySpotResult;
+      parts: readonly Message[];
+    }>(
       (resolve, reject) => {
         const submitted = this.options.node.joinActorEntrySpot(
           actorRef,
           toBackendRoutingId(nodeRid),
-          (entryResult) => resolve(entryResult),
+          request,
+          (entryResult, replyParts) => resolve({ result: entryResult, parts: replyParts }),
           timeoutMs
         );
         if (!submitted) {
@@ -516,15 +518,26 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     );
 
     if (result.result !== 0) {
+      this.disposeParts(parts);
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorRouteNotFound,
         `Actor entry SPOT join failed for '${actor.actorId}' with '${result.result}'.`
       );
     }
 
-    state.setNativeActorRef(result.actor);
-    state.clearJoinedSpot();
-    return toFrameworkActorRef(result.actor);
+    if (result.joinResultCode === 0) {
+      state.setNativeActorRef(result.actor);
+      state.clearJoinedSpot();
+    }
+    try {
+      return {
+        resultCode: result.joinResultCode,
+        actor: toFrameworkActorRef(result.actor),
+        reply: parts[0]
+      };
+    } finally {
+      this.disposeParts(parts.slice(1));
+    }
   }
 
   private disposeParts(parts: readonly Message[]): void {
@@ -576,8 +589,15 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
     );
   }
 
-  joinEntrySpot(nodeRid: RoutingId): ZLinkActorJoinEntrySpotCall {
-    return new DefaultZLinkActorJoinEntrySpotCall(this.state, this.requireActor(), this.requireJoinCoordinator(), nodeRid);
+  joinEntrySpot(nodeRid: RoutingId, request?: unknown): ZLinkActorJoinEntrySpotCall {
+    return new DefaultZLinkActorJoinEntrySpotCall(
+      this.state,
+      this.requireActor(),
+      this.requireJoinCoordinator(),
+      nodeRid,
+      request,
+      this.messageSerializers
+    );
   }
 
   private requireActor(): ZLinkActor {
@@ -926,7 +946,9 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
     private readonly state: ZLinkActorRuntimeState,
     private readonly actor: ZLinkActor,
     private readonly coordinator: ZLinkActorJoinCoordinator,
-    private readonly nodeRid: RoutingId
+    private readonly nodeRid: RoutingId,
+    private readonly request: unknown,
+    private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
   ) {}
 
   timeout(timeoutMs: number): this {
@@ -934,14 +956,31 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
     return this;
   }
 
-  submit(signal?: AbortSignal): Promise<ActorRef> {
-    return this.coordinator.joinEntrySpot(
-      this.actor,
-      this.state,
-      this.nodeRid,
-      this.timeoutMs,
-      signal
-    );
+  async submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+    const requestMessage = this.request === undefined
+      ? BindingMessage.from(Buffer.alloc(0))
+      : encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
+    const ownsRequest = this.request === undefined || !isMessage(this.request);
+    try {
+      const result = await this.coordinator.joinEntrySpot(
+        this.actor,
+        this.state,
+        this.nodeRid,
+        requestMessage,
+        this.timeoutMs,
+        signal
+      );
+      return {
+        ...result,
+        reply: result.reply === undefined
+          ? undefined
+          : decodeFrameworkPayloadMessage<TReply>(result.reply, this.messageSerializers)
+      };
+    } finally {
+      if (ownsRequest) {
+        requestMessage.close();
+      }
+    }
   }
 }
 
@@ -964,7 +1003,7 @@ class UnboundZLinkSession implements ZLinkBoundSession {
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) {
+  if (signal?.aborted === true) {
     throw new Error('The operation was aborted.');
   }
 }

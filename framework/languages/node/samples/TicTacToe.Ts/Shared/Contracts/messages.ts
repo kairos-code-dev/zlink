@@ -50,7 +50,7 @@ export interface CreateGameReq {
 export class CreateGame implements CreateGameReq {
   gameName?: string;
 
-  constructor(gameName: string | undefined) {
+  constructor(gameName?: string) {
     if (gameName !== undefined) {
       this.gameName = gameName;
     }
@@ -185,7 +185,7 @@ function authenticatePlayerRes(accessToken: string): AuthenticatePlayerRes {
   };
 }
 
-function createGameReq(gameName: string | undefined): CreateGameReq {
+function createGameReq(gameName?: string): CreateGameReq {
   return new CreateGame(gameName);
 }
 

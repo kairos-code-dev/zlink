@@ -328,12 +328,12 @@ function resolveRouterChannelId(
   if (configuredRouterChannelId !== undefined) {
     return configuredRouterChannelId;
   }
-  const [routerChannelId] = registration.routeChannels;
-  if (routerChannelId === undefined || registration.routeChannels.size !== 1) {
+  if (registration.routeChannels.size !== 1) {
     throw new ZLinkConfigurationException(
       'Registry SPOT remote address resolver requires RouterChannelId when more than one route mesh channel is registered.'
     );
   }
+  const [routerChannelId] = registration.routeChannels;
   return routerChannelId;
 }
 
@@ -357,7 +357,7 @@ function validatePositive(name: string, value: number): void {
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) {
+  if (signal?.aborted === true) {
     throw signal.reason ?? new Error('Operation aborted.');
   }
 }

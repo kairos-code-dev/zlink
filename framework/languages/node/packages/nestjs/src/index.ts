@@ -1281,6 +1281,7 @@ function createDiscoveredOptions(
     spotTimerProviderRefs);
 
   for (const [channelName, channel] of Object.entries(options.clientServerChannels ?? {})) {
+    const existingChannel = channels[channelName] as ZLinkChannelOptions | undefined;
     const requestHandlers = createDiscoveredRequestHandlers(
       providerRefs,
       channel.handlerGroups,
@@ -1294,18 +1295,18 @@ function createDiscoveredOptions(
     const manualRequestHandlers = createManualRequestHandlers(channel.requestHandlerTypes, moduleRef);
     const manualSendHandlers = createManualSendHandlers(channel.sendHandlerTypes, moduleRef);
     channels[channelName] = {
-      ...channels[channelName],
+      ...existingChannel,
       requestHandlers: channel.server === undefined
-        ? channels[channelName]?.requestHandlers
+        ? existingChannel?.requestHandlers
         : [
-            ...(channels[channelName]?.requestHandlers ?? []),
+            ...(existingChannel?.requestHandlers ?? []),
             ...manualRequestHandlers,
             ...requestHandlers
           ],
       sendHandlers: channel.server === undefined
-        ? channels[channelName]?.sendHandlers
+        ? existingChannel?.sendHandlers
         : [
-            ...(channels[channelName]?.sendHandlers ?? []),
+            ...(existingChannel?.sendHandlers ?? []),
             ...manualSendHandlers,
             ...sendHandlers
           ]
@@ -1313,12 +1314,13 @@ function createDiscoveredOptions(
   }
 
   for (const [channelName, channel] of Object.entries(options.fanoutChannels ?? {})) {
+    const existingChannel = channels[channelName] as ZLinkChannelOptions | undefined;
     const publishHandlers = createDiscoveredPublishHandlers(providerRefs, channel.handlerGroups, moduleRef);
     const manualPublishHandlers = createManualPublishHandlers(channel.publishHandlerTypes, moduleRef);
     channels[channelName] = {
-      ...channels[channelName],
+      ...existingChannel,
       publishHandlers: [
-        ...(channels[channelName]?.publishHandlers ?? []),
+        ...(existingChannel?.publishHandlers ?? []),
         ...manualPublishHandlers,
         ...publishHandlers
       ]
@@ -1616,7 +1618,7 @@ function assertChannelNameAvailable(
   name: string,
   kind: string
 ): void {
-  if (channels[name] !== undefined) {
+  if (Object.hasOwn(channels, name)) {
     throw new framework.ZLinkConfigurationException(`Channel '${name}' is already registered before ${kind}.`);
   }
 }
@@ -1628,7 +1630,7 @@ function assertBuiltModuleOptions(options: ZLinkModuleOptions): ZLinkNestModuleR
   return options;
 }
 
-function isBuiltModuleOptions(options: ZLinkModuleOptions): options is ZLinkNestModuleRegistrationOptions {
+function isBuiltModuleOptions(options: unknown): options is ZLinkNestModuleRegistrationOptions {
   return typeof options === 'object'
     && options !== null
     && (options as { readonly [ZLINK_MODULE_OPTIONS_BRAND]?: unknown })[ZLINK_MODULE_OPTIONS_BRAND] === true;
@@ -2013,7 +2015,7 @@ async function invokeDiscoveredHandler(
   context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
 ): Promise<unknown> {
   const instance = moduleRef.get(ref.token, { strict: false }) as Record<string, unknown>;
-  const methodName = metadata.methodName ?? 'handle';
+  const methodName = metadata.methodName;
   const method = instance[methodName];
   if (typeof method !== 'function') {
     throw new framework.ZLinkConfigurationException(

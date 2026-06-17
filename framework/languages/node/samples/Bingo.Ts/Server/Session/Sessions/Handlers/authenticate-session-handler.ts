@@ -28,7 +28,13 @@ class SessionAuthenticator {
         .requestToChannel(SampleNames.apiChannel, authenticatePlayerReq(request.accessToken))
         .submit<AuthenticatePlayerRes>(), { delayMs: 25, maxAttempts: 200 });
 
-    if (!authenticated.accepted || !authenticated.actorId || !authenticated.displayName) {
+    if (
+      !authenticated.accepted ||
+      authenticated.actorId === null ||
+      authenticated.actorId.length === 0 ||
+      authenticated.displayName === null ||
+      authenticated.displayName.length === 0
+    ) {
       throw new Error(authenticated.reason ?? 'Player authentication failed.');
     }
 

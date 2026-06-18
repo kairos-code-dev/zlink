@@ -78,8 +78,8 @@ stage state sync, real-time notification fanout, scatter-gather query, workflow 
 
 ## 2. HTTP Client (`http-client/`)
 
-fluent HTTP/JSON client. `.NET`·`Java`·`Node.js`·`C++`가 동일한 13장 골격을
-공유하고, Kotlin은 Java 런타임에 coroutine 확장을 얹는다.
+fluent HTTP/JSON client. 다섯 언어가 동일한 13장 골격을 공유한다. Kotlin은
+coroutine `suspend` 표면으로 같은 기능을 제공한다.
 
 | 언어 | 진입점 |
 |------|--------|

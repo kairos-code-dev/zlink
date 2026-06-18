@@ -2,12 +2,13 @@
 
 # 14. 샘플 지도
 
-`samples/`의 두 샘플이 이 가이드 전체 기능의 동작을 보여 주는 기준이다. 기능을 처음 붙일
-때는 해당 샘플의 같은 자리를 먼저 본다.
+`samples/`는 [공통 샘플 시나리오](../../../../doc/spec/sample/README.ko.md) 정본을 cpp framework
+구조로 구현한 묶음이다. 기능을 처음 붙일 때는 해당 샘플의 같은 자리를 먼저 본다.
 
-> **샘플 패리티:** cpp는 현재 **TicTacToe·Bingo 2종**을 제공한다. dotnet의 나머지 샘플
-> (DeliveryDispatch·GameQuest·ShoppingMall·SupportChat)은 **이식 예정**이며, 추가될 때마다
-> 이 장과 [15장 기능 맵 §4](./15-feature-map.ko.md#4-기능을-실제로-보여-주는-샘플)를 갱신한다.
+> **샘플 패리티:** cpp는 정본 샘플 전체 — **TicTacToe · Bingo · SupportChat · DeliveryDispatch ·
+> ShoppingMall · ShoppingMallCheckout · GameQuest** — 를 제공한다. TicTacToe·Bingo 가 토폴로지
+> 기준(§2·§3)이고, 나머지는 §4에 요약하며, per-sample 동작은 각 샘플의 `README.ko.md` 와 공통
+> 시나리오 정본이 소유한다.
 
 ## 1. 실행
 
@@ -86,7 +87,21 @@ flowchart LR
 | `Server/Session/` | 세션 전담 서버 분리 — 인증과 actor 바인딩 | [9](./09-actor-session.ko.md) |
 | `Server/Api/Handlers/match_bingo_handler.hpp` | 매칭 요청 → Play 채널의 room 배정 요청 | [7 §3](./07-channel-messaging.ko.md#3-클라이언트-쪽-channel_client_t) |
 
-## 4. 무엇을 어디서 베낄까
+## 4. 그 외 정본 샘플
+
+TicTacToe·Bingo 외 샘플은 공통 시나리오 정본을 cpp 구조로 옮긴 것이다. 서버 역할·메시지
+이름·smoke 순서는 [공통 샘플 시나리오](../../../../doc/spec/sample/README.ko.md)를 따르고,
+per-sample 동작은 각 샘플 `README.ko.md` 가 소유한다.
+
+| 샘플 | 보여주는 것 | 코드 |
+|------|-------------|------|
+| SupportChat | 고객·상담원이 conversation spot에 참여, 메시지·typing·idle·close 상태 전이, 재접속 (Session/Api/Support/Registry) | [SupportChat/](../../samples/SupportChat/README.ko.md) |
+| DeliveryDispatch | 배달 생성 → courier 배정 → 픽업 → 완료 상태 전이, 재배정 timer | [DeliveryDispatch/](../../samples/DeliveryDispatch/README.ko.md) |
+| ShoppingMall | 주문 생성과 order workflow 상태 전이 | [ShoppingMall/](../../samples/ShoppingMall/README.ko.md) |
+| ShoppingMallCheckout | checkout 단계(결제 승인 → 재고 예약 → 주문 확정) 진행 | [ShoppingMallCheckout/](../../samples/ShoppingMallCheckout/README.ko.md) |
+| GameQuest | 플레이어 행동이 quest mission 진행도로 이어지는 흐름 | [GameQuest/](../../samples/GameQuest/README.ko.md) |
+
+## 5. 무엇을 어디서 베낄까
 
 | 하고 싶은 것 | 베낄 자리 |
 |--------------|-----------|

@@ -62,13 +62,17 @@ flowchart TD
 
 ## 4. 기능을 실제로 보여 주는 샘플
 
-cpp framework 가 현재 제공하는 샘플은 다음과 같다(나머지 dotnet 샘플은 이식 예정,
-[14장 §1](./14-samples-map.ko.md#1-실행)).
+cpp framework 가 정본 샘플 전체를 제공한다([14장 §1](./14-samples-map.ko.md#1-실행)).
 
 | 샘플 | 핵심 기능 묶음 | codec |
 |------|----------------|:-----:|
 | TicTacToe | route mesh, actor game join | MessagePack |
 | Bingo | Registry/Discovery, Entry Spot, room Spot, bound push | Protobuf |
+| SupportChat | Entry Spot, conversation Spot, idle/close timer, 재접속, bound push | JSON |
+| DeliveryDispatch | channel + fanout, 재배정 timer, 고객 stream push | JSON |
+| ShoppingMall | channel request, order workflow 상태 전이 | JSON |
+| ShoppingMallCheckout | event-sourcing, idempotency, 보상, 단계 진행 | JSON |
+| GameQuest | stateless API scale-out, owner routing, fanout + event sourcing | JSON |
 
 ## 5. 더 보기
 

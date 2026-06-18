@@ -93,9 +93,10 @@ handler 자동 등록을 사용한다. 이 기준은
 | [shoppingmall-checkout-sample](./guide/samples/shoppingmall-checkout-sample.ko.md) | event-sourcing, idempotency, 보상, projection rebuild, scale-out |
 | [gamequest-sample](./guide/samples/gamequest-sample.ko.md) | stateless API scale-out, PlayerId owner routing, fanout + event sourcing |
 
-> `bingo-game-sample`·`tictactoe-game-sample`은 `samples/Bingo.Ts`·`samples/TicTacToe.Ts`
-> TypeScript 실행 코드로 self-check 한다. 나머지 네 시나리오 문서는 공통 시나리오 정본을
-> Node/NestJS 표면으로 정리한 것이며, 코드 정본은 각 공통 샘플 spec이 소유한다.
+> 위 정본 샘플은 모두 `samples/*.Ts` TypeScript 실행 코드로 self-check 한다(`Bingo.Ts`,
+> `TicTacToe.Ts`, `SupportChat.Ts`, `DeliveryDispatch.Ts`, `ShoppingMallCheckout.Ts`,
+> `GameQuest.Ts`). 각 시나리오의 서버 역할·메시지 이름·smoke 순서 정본은 공통 샘플 spec이
+> 소유하고, 위 문서는 그 정본을 Node/NestJS 표면으로 구체화한다.
 
 ## 5. 회귀 테스트
 

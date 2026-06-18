@@ -1,7 +1,7 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;

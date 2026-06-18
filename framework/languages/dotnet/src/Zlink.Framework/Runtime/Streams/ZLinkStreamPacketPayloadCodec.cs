@@ -1,7 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using Google.Protobuf;
-using MessagePack;
 using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace Zlink.Framework.Runtime.Streams;
@@ -11,7 +9,8 @@ internal static class ZLinkStreamPacketPayloadCodec
     public static object? Decode(
         ZlinkStreamHeader header,
         Message payloadMessage,
-        Type messageType)
+        Type messageType,
+        ZLinkCodecRegistryBuilder codecs)
     {
         if (messageType == typeof(Message))
         {
@@ -55,45 +54,40 @@ internal static class ZLinkStreamPacketPayloadCodec
             return JsonSerializer.Deserialize(payload.Span, messageType, ZLinkJsonSerializerOptions.Default);
         }
 
-        if (header.Codec == ZlinkStreamCodec.MessagePack)
+        if (codecs.TryResolveStreamContentType(header.Codec, out var contentType))
         {
-            return MessagePackSerializer.Deserialize(messageType, payload, MessagePackSerializerOptions.Standard);
-        }
-
-        if (header.Codec == ZlinkStreamCodec.Protobuf)
-        {
-            if (!typeof(IMessage).IsAssignableFrom(messageType))
+            if (codecs.TryGetSerializer(contentType, out var serializer))
             {
-                throw new InvalidOperationException(
-                    $"Protobuf actor packet '{header.Name}' cannot be decoded as '{messageType}'.");
+                using var encodedPayload = Message.From(payload.Span);
+                return serializer.Deserialize(encodedPayload, messageType);
             }
 
-            var message = (IMessage?)Activator.CreateInstance(messageType)
-                ?? throw new InvalidOperationException($"{messageType.FullName} must have a public parameterless constructor.");
-            message.MergeFrom(payload.Span);
-            return message;
+            throw new InvalidOperationException(
+                $"Actor packet '{header.Name}' uses codec '{header.Codec}', but no matching codec extension is registered.");
         }
 
         throw new InvalidOperationException(
             $"Actor packet '{header.Name}' uses codec '{header.Codec}'. Register a ZlinkStreamEncodedPayload handler and decode it explicitly.");
     }
 
-    public static ZlinkStreamEncodedPayload Encode(object? message, Type messageType)
+    public static ZlinkStreamEncodedPayload Encode(
+        object? message,
+        Type messageType,
+        ZLinkCodecRegistryBuilder codecs)
     {
-        if (message is IMessage protobuf)
-        {
-            return new ZlinkStreamEncodedPayload(
-                ZlinkStreamCodec.Protobuf,
-                protobuf.ToByteArray(),
-                messageType);
-        }
-
         if (message is not null
-            && messageType.GetCustomAttributes(typeof(MessagePackObjectAttribute), inherit: true).Length > 0)
+            && codecs.TryResolveSerializer(messageType, out var contentType, out var serializer))
         {
+            if (!codecs.TryResolveStreamCodec(contentType, out var codec))
+            {
+                throw new InvalidOperationException(
+                    $"Stream payload type '{messageType}' resolved to content type '{contentType}', but no stream codec maps to it.");
+            }
+
+            using var encodedPayload = serializer.Serialize(message, messageType);
             return new ZlinkStreamEncodedPayload(
-                ZlinkStreamCodec.MessagePack,
-                MessagePackSerializer.Serialize(messageType, message, MessagePackSerializerOptions.Standard),
+                codec,
+                encodedPayload.ToArray(),
                 messageType);
         }
 

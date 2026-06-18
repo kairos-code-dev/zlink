@@ -20,6 +20,8 @@ internal sealed class HttpClientOptions
 
     public required IReadOnlyDictionary<string, string> Headers { get; init; }
 
+    public required HttpClientCodecRegistry Codecs { get; init; }
+
     public string? TrustCertificateFile { get; init; }
 
     public (string CertificatePath, string KeyPath)? ClientCertificate { get; init; }

@@ -1,7 +1,6 @@
 using System.Runtime.CompilerServices;
 using Bingo.Shared.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Protobuf;
 
 namespace Bingo.Client;
 

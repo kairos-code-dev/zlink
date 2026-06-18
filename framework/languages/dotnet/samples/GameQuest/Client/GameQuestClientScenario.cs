@@ -1,31 +1,29 @@
 using System.Runtime.CompilerServices;
-using System.Net.Http.Json;
 using GameQuest.Shared;
 using GameQuest.Client.Configuration;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Json;
+using Zlink.HttpClient;
 
 namespace GameQuest.Client;
 
 internal sealed class GameQuestClientScenario(GameQuestTopology topology)
 {
-    private readonly HttpClient _http = new();
-
     public async ValueTask RunAsync(
         IZlinkStreamConnector apiAStream,
         IZlinkStreamConnector apiBStream,
         CancellationToken cancellationToken = default)
     {
+        using var apiA = ZLinkHttpClient.Create(topology.GameApiAHttpBaseUrl).Json().Build();
+        using var apiB = ZLinkHttpClient.Create(topology.GameApiBHttpBaseUrl).Json().Build();
+
         await apiAStream.Connect.Async(cancellationToken);
         var subscribed = await apiAStream.Request(new SubscribeQuestReq("player-alice")).Async<SubscribeQuestRes>(cancellationToken);
         Ensure(subscribed.ActiveQuests.Length == 0);
 
         var firstProgress = apiAStream.WaitFor<QuestProgressNotify>().Async(cancellationToken);
-        var firstKill = await PostAsync<KillMonsterReq, KillMonsterRes>(
-            topology.GameApiAHttpBaseUrl,
-            "/combat/kill",
-            new KillMonsterReq("player-alice", "wolf", "forest", "kill-1"),
-            cancellationToken);
+        var firstKill = apiA.Post("/combat/kill")
+            .Body(new KillMonsterReq("player-alice", "wolf", "forest", "kill-1"))
+            .Fetch<KillMonsterRes>();
         Ensure(firstKill.EventId == "player-alice-kill-1");
         var firstProgressPush = await firstProgress;
         Ensure(firstProgressPush.Payload.PlayerId == "player-alice");
@@ -33,66 +31,50 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         Ensure(firstProgressPush.Payload.Progress.CurrentCount == 1);
 
         var completeFirstHunt = apiAStream.WaitFor<QuestCompletedNotify>().Async(cancellationToken);
-        _ = await PostAsync<KillMonsterReq, KillMonsterRes>(
-            topology.GameApiAHttpBaseUrl,
-            "/combat/kill",
-            new KillMonsterReq("player-alice", "wolf", "forest", "kill-2"),
-            cancellationToken);
-        var thirdKill = await PostAsync<KillMonsterReq, KillMonsterRes>(
-            topology.GameApiAHttpBaseUrl,
-            "/combat/kill",
-            new KillMonsterReq("player-alice", "wolf", "forest", "kill-3"),
-            cancellationToken);
+        _ = apiA.Post("/combat/kill")
+            .Body(new KillMonsterReq("player-alice", "wolf", "forest", "kill-2"))
+            .Fetch<KillMonsterRes>();
+        var thirdKill = apiA.Post("/combat/kill")
+            .Body(new KillMonsterReq("player-alice", "wolf", "forest", "kill-3"))
+            .Fetch<KillMonsterRes>();
         Ensure(thirdKill.EventId == "player-alice-kill-3");
         var completeFirstHuntPush = await completeFirstHunt;
         Ensure(completeFirstHuntPush.Payload.PlayerId == "player-alice");
         Ensure(completeFirstHuntPush.Payload.Progress.QuestId == QuestIds.FirstHunt);
         Ensure(completeFirstHuntPush.Payload.RewardGranted);
 
-        var duplicate = await PostAsync<KillMonsterReq, KillMonsterRes>(
-            topology.GameApiAHttpBaseUrl,
-            "/combat/kill",
-            new KillMonsterReq("player-alice", "wolf", "forest", "kill-3"),
-            cancellationToken);
+        var duplicate = apiA.Post("/combat/kill")
+            .Body(new KillMonsterReq("player-alice", "wolf", "forest", "kill-3"))
+            .Fetch<KillMonsterRes>();
         Ensure(duplicate.EventId == thirdKill.EventId);
 
         var auctionComplete = apiAStream.WaitFor<QuestCompletedNotify>().Async(cancellationToken);
-        var auction = await PostAsync<UnlockFeatureReq, UnlockFeatureRes>(
-            topology.GameApiAHttpBaseUrl,
-            "/feature/unlock",
-            new UnlockFeatureReq("player-alice", "auction", "unlock-auction"),
-            cancellationToken);
+        var auction = apiA.Post("/feature/unlock")
+            .Body(new UnlockFeatureReq("player-alice", "auction", "unlock-auction"))
+            .Fetch<UnlockFeatureRes>();
         Ensure(auction.EventId == "player-alice-unlock-auction");
         var auctionCompletePush = await auctionComplete;
         Ensure(auctionCompletePush.Payload.PlayerId == "player-alice");
         Ensure(auctionCompletePush.Payload.Progress.QuestId == QuestIds.OpenAuction);
         Ensure(auctionCompletePush.Payload.RewardGranted);
-        var snapshot = await PostAsync<GetGameplaySnapshotReq, GetGameplaySnapshotRes>(
-            topology.GameApiAHttpBaseUrl,
-            "/internal/snapshot",
-            new GetGameplaySnapshotReq("player-alice"),
-            cancellationToken);
+        var snapshot = apiA.Post("/internal/snapshot")
+            .Body(new GetGameplaySnapshotReq("player-alice"))
+            .Fetch<GetGameplaySnapshotRes>();
         Ensure(snapshot.UnlockedFeatureIds.Contains("auction", StringComparer.Ordinal));
 
-        var tutorial = await PostAsync<CompleteMissionReq, CompleteMissionRes>(
-            topology.GameApiAHttpBaseUrl,
-            "/mission/complete",
-            new CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"),
-            cancellationToken);
+        var tutorial = apiA.Post("/mission/complete")
+            .Body(new CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
+            .Fetch<CompleteMissionRes>();
         Ensure(tutorial.EventId == "player-alice-mission-tutorial");
 
-        var ruins = await PostAsync<EnterAreaReq, EnterAreaRes>(
-            topology.GameApiAHttpBaseUrl,
-            "/world/enter",
-            new EnterAreaReq("player-alice", "ruins", "enter-ruins"),
-            cancellationToken);
+        var ruins = apiA.Post("/world/enter")
+            .Body(new EnterAreaReq("player-alice", "ruins", "enter-ruins"))
+            .Fetch<EnterAreaRes>();
         Ensure(ruins.EventId == "player-alice-enter-ruins");
 
-        var offlineItem = await PostAsync<CollectItemReq, CollectItemRes>(
-            topology.GameApiAHttpBaseUrl,
-            "/inventory/collect",
-            new CollectItemReq("player-bob", "healing-herb", 1, "herb-1"),
-            cancellationToken);
+        var offlineItem = apiA.Post("/inventory/collect")
+            .Body(new CollectItemReq("player-bob", "healing-herb", 1, "herb-1"))
+            .Fetch<CollectItemRes>();
         Ensure(offlineItem.EventId == "player-bob-herb-1");
 
         await apiBStream.Connect.Async(cancellationToken);
@@ -107,11 +89,9 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
                 cancellationToken);
         Ensure(bobProgress.Any(p => p is { QuestId: QuestIds.HerbGathering, CurrentCount: 1 }));
         var herbCompletedOnReconnectedStream = apiBStream.WaitFor<QuestCompletedNotify>().Async(cancellationToken);
-        var onlineItem = await PostAsync<CollectItemReq, CollectItemRes>(
-            topology.GameApiBHttpBaseUrl,
-            "/inventory/collect",
-            new CollectItemReq("player-bob", "healing-herb", 4, "herb-2"),
-            cancellationToken);
+        var onlineItem = apiB.Post("/inventory/collect")
+            .Body(new CollectItemReq("player-bob", "healing-herb", 4, "herb-2"))
+            .Fetch<CollectItemRes>();
         Ensure(onlineItem.EventId == "player-bob-herb-2");
         var herbCompletedOnReconnectedStreamPush = await herbCompletedOnReconnectedStream;
         Ensure(herbCompletedOnReconnectedStreamPush.Payload.PlayerId == "player-bob");
@@ -119,29 +99,25 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         Ensure(herbCompletedOnReconnectedStreamPush.Payload.RewardGranted);
         Ensure(herbCompletedOnReconnectedStreamPush.Payload.Progress.Status == QuestStatuses.RewardGranted);
 
-        await PostNoContentAsync(
-            topology.GameApiAHttpBaseUrl,
-            $"/self-check/projection/player-bob/{QuestIds.HerbGathering}/delete",
-            cancellationToken);
+        var deleteBobProjection = await apiA.Post($"/self-check/projection/player-bob/{QuestIds.HerbGathering}/delete")
+            .SubmitRawAsync(cancellationToken);
+        Ensure(deleteBobProjection.Status is >= 200 and < 300);
         var missingProjection = await GetStreamProjectionAsync(apiBStream, "player-bob", cancellationToken);
         Ensure(missingProjection.All(progress => progress.QuestId != QuestIds.HerbGathering));
-        var rebuilt = await PostEmptyAsync<QuestProgress>(
-            topology.GameApiAHttpBaseUrl,
-            $"/self-check/projection/player-bob/{QuestIds.HerbGathering}/rebuild",
-            cancellationToken);
+        var rebuilt = apiA.Post($"/self-check/projection/player-bob/{QuestIds.HerbGathering}/rebuild")
+            .Fetch<QuestProgress>();
         Ensure(rebuilt is { QuestId: QuestIds.HerbGathering, Status: QuestStatuses.RewardGranted });
         var rebuiltProjection = await GetStreamProjectionAsync(apiBStream, "player-bob", cancellationToken);
         Ensure(rebuiltProjection.Any(progress =>
                 progress is { QuestId: QuestIds.HerbGathering, Status: QuestStatuses.RewardGranted }));
 
-        await PostNoContentAsync(
-            topology.GameApiBHttpBaseUrl,
-            "/self-check/gameplay/kill-without-publish/player-alice",
-            cancellationToken);
+        var killWithoutPublish = await apiB.Post("/self-check/gameplay/kill-without-publish/player-alice")
+            .SubmitRawAsync(cancellationToken);
+        Ensure(killWithoutPublish.Status is >= 200 and < 300);
         var sync = await apiAStream.Request(new SyncQuestProgressReq("player-alice")).Async<SyncQuestProgressRes>(cancellationToken);
         Ensure(sync.UpdatedQuests.Any(progress => progress.QuestId == QuestIds.FirstHunt && progress.CurrentCount >= 4));
         var reconciled = await WaitForProjectionAsync(
-            topology.GameApiBHttpBaseUrl,
+            apiB,
             "player-alice",
             progress => progress.QuestId == QuestIds.FirstHunt && progress.CurrentCount >= 4,
             cancellationToken);
@@ -149,49 +125,19 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
 
         await apiAStream.DisposeAsync();
 
-        var assertion = await WaitForServerAssertionAsync(cancellationToken);
+        var assertion = await WaitForServerAssertionAsync(apiA, cancellationToken);
         Ensure(assertion.Passed);
     }
 
-    private async ValueTask<TResponse> PostAsync<TRequest, TResponse>(
-        string baseUrl,
-        string path,
-        TRequest request,
+    private async ValueTask<GameQuestServerAssertRes> WaitForServerAssertionAsync(
+        ZLinkHttpClient api,
         CancellationToken cancellationToken)
-    {
-        var response = await _http.PostAsJsonAsync($"{baseUrl}{path}", request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken)
-               ?? throw new InvalidOperationException($"Empty response from {path}.");
-    }
-
-    private async ValueTask PostNoContentAsync(string baseUrl, string path, CancellationToken cancellationToken)
-    {
-        var response = await _http.PostAsync($"{baseUrl}{path}", content: null, cancellationToken);
-        response.EnsureSuccessStatusCode();
-    }
-
-    private async ValueTask<TResponse> PostEmptyAsync<TResponse>(
-        string baseUrl,
-        string path,
-        CancellationToken cancellationToken)
-    {
-        var response = await _http.PostAsync($"{baseUrl}{path}", content: null, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken)
-               ?? throw new InvalidOperationException($"Empty response from {path}.");
-    }
-
-    private async ValueTask<GameQuestServerAssertRes> WaitForServerAssertionAsync(CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + SampleNames.RequestTimeout;
         GameQuestServerAssertRes? last = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            last = await PostEmptyAsync<GameQuestServerAssertRes>(
-                topology.GameApiAHttpBaseUrl,
-                "/self-check/assert",
-                cancellationToken);
+            last = api.Post("/self-check/assert").Fetch<GameQuestServerAssertRes>();
             if (last.Passed)
             {
                 return last;
@@ -203,19 +149,8 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         return last ?? throw new InvalidOperationException("Server assertion did not return evidence.");
     }
 
-    private async ValueTask<TResponse> GetAsync<TResponse>(
-        string baseUrl,
-        string path,
-        CancellationToken cancellationToken)
-    {
-        var response = await _http.GetAsync($"{baseUrl}{path}", cancellationToken);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken)
-               ?? throw new InvalidOperationException($"Empty response from {path}.");
-    }
-
     private async ValueTask<QuestProgress[]> WaitForProjectionAsync(
-        string baseUrl,
+        ZLinkHttpClient api,
         string playerId,
         Func<QuestProgress, bool> predicate,
         CancellationToken cancellationToken)
@@ -223,10 +158,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         var deadline = DateTimeOffset.UtcNow + SampleNames.RequestTimeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var response = await GetAsync<GetQuestProgressRes>(
-                baseUrl,
-                $"/quest/progress/{playerId}",
-                cancellationToken);
+            var response = api.Get($"/quest/progress/{playerId}").Fetch<GetQuestProgressRes>();
             if (response.ActiveQuests.Any(predicate))
             {
                 return response.ActiveQuests;
@@ -235,10 +167,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
             await Task.Delay(50, cancellationToken);
         }
 
-        return (await GetAsync<GetQuestProgressRes>(
-            baseUrl,
-            $"/quest/progress/{playerId}",
-            cancellationToken)).ActiveQuests;
+        return api.Get($"/quest/progress/{playerId}").Fetch<GetQuestProgressRes>().ActiveQuests;
     }
 
     private static async ValueTask<QuestProgress[]> WaitForStreamProjectionAsync(

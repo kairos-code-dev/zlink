@@ -12,7 +12,6 @@
     <ProjectReference Include="../../Shared/GameQuest.Shared.csproj" />
     <ProjectReference Include="../../../../src/Zlink.Framework/Zlink.Framework.csproj" />
     <ProjectReference Include="../../../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj" />
-    <ProjectReference Include="../../../../../../../bindings/dotnet/src/Zlink/Zlink.csproj" />
-    <ProjectReference Include="../../../../../../../bindings/dotnet/codecs/Zlink.Codecs.Json/Zlink.Codecs.Json.csproj" />
-  </ItemGroup>
+    <ProjectReference Include="../../../../src/Zlink.HttpClient/Zlink.HttpClient.csproj" />
+    <ProjectReference Include="../../../../../../../bindings/dotnet/src/Zlink/Zlink.csproj" />  </ItemGroup>
 </Project>

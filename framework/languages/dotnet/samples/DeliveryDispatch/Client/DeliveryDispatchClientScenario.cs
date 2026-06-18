@@ -1,15 +1,14 @@
-using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using DeliveryDispatch.Shared.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Json;
+using Zlink.HttpClient;
 
 namespace DeliveryDispatch.Client;
 
 internal sealed class DeliveryDispatchClientScenario
 {
     public async ValueTask RunAsync(
-        HttpClient http,
+        ZLinkHttpClient http,
         IZlinkStreamConnector customer,
         CancellationToken cancellationToken = default)
     {
@@ -21,7 +20,7 @@ internal sealed class DeliveryDispatchClientScenario
     }
 
     private static async ValueTask RunSuccessfulDeliveryAsync(
-        HttpClient http,
+        ZLinkHttpClient http,
         IZlinkStreamConnector customer,
         CancellationToken cancellationToken)
     {
@@ -43,7 +42,13 @@ internal sealed class DeliveryDispatchClientScenario
             .Async<SubscribeDeliveryAccepted>(cancellationToken);
         Ensure(subscribed.DeliveryId == deliveryId);
 
-        var created = await CreateDeliveryAsync(http, deliveryId, cancellationToken);
+        var created = http.Post("/deliveries")
+            .Body(new CreateDeliveryRequest(
+                deliveryId,
+                "customer-1",
+                "Kitchen 12",
+                "Customer Lobby"))
+            .Fetch<DeliveryCreated>();
         Ensure(created.DeliveryId == deliveryId);
 
         Ensure((await assigned).Payload.CourierId == "courier-a");
@@ -53,7 +58,7 @@ internal sealed class DeliveryDispatchClientScenario
     }
 
     private static async ValueTask RunReassignedDeliveryAsync(
-        HttpClient http,
+        ZLinkHttpClient http,
         IZlinkStreamConnector customer,
         CancellationToken cancellationToken)
     {
@@ -75,7 +80,13 @@ internal sealed class DeliveryDispatchClientScenario
             .Async<SubscribeDeliveryAccepted>(cancellationToken);
         Ensure(subscribed.DeliveryId == deliveryId);
 
-        var created = await CreateDeliveryAsync(http, deliveryId, cancellationToken);
+        var created = http.Post("/deliveries")
+            .Body(new CreateDeliveryRequest(
+                deliveryId,
+                "customer-1",
+                "Kitchen 12",
+                "Customer Lobby"))
+            .Fetch<DeliveryCreated>();
         Ensure(created.DeliveryId == deliveryId);
 
         Ensure((await assigned).Payload.CourierId == "courier-a");
@@ -85,37 +96,16 @@ internal sealed class DeliveryDispatchClientScenario
         Console.WriteLine("deliverydispatch-reassignment=completed");
     }
 
-    private static async ValueTask<DeliveryCreated> CreateDeliveryAsync(
-        HttpClient http,
-        string deliveryId,
+    private static ValueTask AssertServerEvidenceAsync(
+        ZLinkHttpClient http,
         CancellationToken cancellationToken)
     {
-        var response = await http.PostAsJsonAsync(
-            "/deliveries",
-            new CreateDeliveryRequest(
-                deliveryId,
-                "customer-1",
-                "Kitchen 12",
-                "Customer Lobby"),
-            cancellationToken);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<DeliveryCreated>(cancellationToken)
-            ?? throw new InvalidOperationException("Delivery API returned an empty response.");
-    }
-
-    private static async ValueTask AssertServerEvidenceAsync(
-        HttpClient http,
-        CancellationToken cancellationToken)
-    {
-        var response = await http.PostAsJsonAsync(
-            "/self-check/assert",
-            new ServerAssertionReq("delivery-success", "delivery-reassign"),
-            cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var assertion = await response.Content.ReadFromJsonAsync<ServerAssertionRes>(cancellationToken)
-            ?? throw new InvalidOperationException("Server assertion returned an empty response.");
+        var assertion = http.Post("/self-check/assert")
+            .Body(new ServerAssertionReq("delivery-success", "delivery-reassign"))
+            .Fetch<ServerAssertionRes>();
         Ensure(assertion.Passed);
         Console.WriteLine("deliverydispatch-server-evidence=completed");
+        return ValueTask.CompletedTask;
     }
 
     private static void Ensure(

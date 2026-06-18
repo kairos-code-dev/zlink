@@ -1,6 +1,8 @@
 namespace Zlink.Framework.Runtime.Streams;
 
-internal sealed class ZLinkStreamSendBuilder<TMessage>(TMessage message)
+internal sealed class ZLinkStreamSendBuilder<TMessage>(
+    TMessage message,
+    ZLinkCodecRegistryBuilder codecs)
 {
     private static readonly IZlinkStreamPacketNameResolver MessageNameResolver =
         ZLinkStreamProtocolDefaults.PacketNameResolver;
@@ -40,7 +42,7 @@ internal sealed class ZLinkStreamSendBuilder<TMessage>(TMessage message)
             throw new InvalidOperationException("Stream send builders can be executed only once.");
         }
 
-        var encoded = ZLinkStreamPacketPayloadCodec.Encode(message, typeof(TMessage));
+        var encoded = ZLinkStreamPacketPayloadCodec.Encode(message, typeof(TMessage), codecs);
         ReadOnlyMemory<byte> payload = encoded.Payload;
         var flags = ZlinkStreamHeaderFlags.None;
 

@@ -1,23 +1,19 @@
 using Google.Protobuf.WellKnownTypes;
-using Systems.Zlink.Stream.Connector.Codecs;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts.Calls;
-using Systems.Zlink.Stream.Connector.MessagePack;
-using Systems.Zlink.Stream.Connector.Protobuf;
 using Xunit;
-using StreamJson = Systems.Zlink.Stream.Connector.Json.ZlinkStreamJsonExtensions;
-using JsonConnector = Systems.Zlink.Stream.Connector.Json.ZlinkStreamJsonConnectorExtensions;
-using MessagePackConnector = Systems.Zlink.Stream.Connector.MessagePack.ZlinkStreamMessagePackConnectorExtensions;
-using ProtobufConnector = Systems.Zlink.Stream.Connector.Protobuf.ZlinkStreamProtobufConnectorExtensions;
+using Zlink.Framework.Codecs.MessagePack;
+using Zlink.Framework.Codecs.Protobuf;
+using StreamJson = Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamJsonExtensions;
 
 public sealed partial class StreamConnectorTests
 {
     [Fact]
-    public async Task JsonConnectorExtensionsDelegateBuilderAndDecodeReply()
+    public async Task TypedConnectorUsesJsonByDefaultAndDecodeReply()
     {
         var connector = new RecordingConnector();
 
-        await JsonConnector.Send(connector, new JsonPayload("send"))
+        await connector.Send(new JsonPayload("send"))
             .PacketName("json.send")
             .Metadata("k", "v")
             .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
@@ -31,7 +27,7 @@ public sealed partial class StreamConnectorTests
         Assert.Equal("n", connector.SendCall.RecordedMetadata.Get("m"));
 
         connector.NextReply = StreamJson.ToJson(new JsonPayload("reply"));
-        var reply = await JsonConnector.Request(connector, new JsonPayload("request"))
+        var reply = await connector.Request(new JsonPayload("request"))
             .PacketName("json.request")
             .Metadata("rk", "rv")
             .Timeout(TimeSpan.FromSeconds(3))
@@ -46,7 +42,7 @@ public sealed partial class StreamConnectorTests
         ZlinkStreamResult<JsonPayload>? callbackResult = null;
         connector.NextCallbackPayloadResult = ZlinkStreamResult<ZlinkStreamEncodedPayload>.Success(
             StreamJson.ToJson(new JsonPayload("callback")));
-        JsonConnector.Request(connector, new JsonPayload("request"))
+        connector.Request(new JsonPayload("request"))
             .Submit<JsonPayload>(result => callbackResult = result);
         Assert.True(callbackResult?.IsSuccess);
         Assert.Equal("callback", callbackResult.GetValueOrDefault().Value!.Text);
@@ -55,24 +51,24 @@ public sealed partial class StreamConnectorTests
         connector.NextCallbackPayloadResult = ZlinkStreamResult<ZlinkStreamEncodedPayload>.Success(new ZlinkStreamEncodedPayload(
             ZlinkStreamCodec.Json,
             new byte[] { 0xFF }));
-        JsonConnector.Request(connector, new JsonPayload("request"))
+        connector.Request(new JsonPayload("request"))
             .Submit<JsonPayload>(result => failedDecode = result);
         Assert.False(failedDecode?.IsSuccess);
         Assert.Equal(ZlinkStreamErrorCode.UserCallbackFailed, failedDecode.GetValueOrDefault().Error!.Code);
 
         connector.RecordReceived("json.notify", StreamJson.ToJson(new JsonPayload("notify")));
-        var notify = await JsonConnector.WaitFor<JsonPayload>(connector, "json.notify")
+        var notify = await connector.WaitFor<JsonPayload>("json.notify")
             .Timeout(TimeSpan.FromSeconds(1))
             .Async();
         Assert.Equal("notify", notify.Payload.Text);
 
         connector.RecordReceived("json.filtered", StreamJson.ToJson(new JsonPayload("first")));
         connector.RecordReceived("json.filtered", StreamJson.ToJson(new JsonPayload("second")));
-        var filtered = await JsonConnector.WaitFor<JsonPayload>(connector, "json.filtered")
+        var filtered = await connector.WaitFor<JsonPayload>("json.filtered")
             .Where(message => message.Payload.Text == "second")
             .Timeout(TimeSpan.FromSeconds(1))
             .Async();
-        var remaining = await JsonConnector.WaitFor<JsonPayload>(connector, "json.filtered")
+        var remaining = await connector.WaitFor<JsonPayload>("json.filtered")
             .Timeout(TimeSpan.FromSeconds(1))
             .Async();
         Assert.Equal("second", filtered.Payload.Text);
@@ -82,9 +78,9 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task MessagePackConnectorExtensionsDelegateBuilderAndDecodeReply()
     {
-        var connector = new RecordingConnector();
+        var connector = new RecordingConnector(ZLinkMessagePackCodec.Default);
 
-        await MessagePackConnector.Send(connector, new PackedConnectorPayload { Text = "send" })
+        await connector.Send(new PackedConnectorPayload { Text = "send" })
             .PacketName("packed.send")
             .Metadata("k", "v")
             .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
@@ -95,8 +91,8 @@ public sealed partial class StreamConnectorTests
         Assert.Equal("packed.send", connector.SendCall.Name);
         Assert.True(connector.SendCall.Compressed);
 
-        connector.NextReply = new PackedConnectorPayload { Text = "reply" }.ToMsgPack();
-        var reply = await MessagePackConnector.Request(connector, new PackedConnectorPayload { Text = "request" })
+        connector.NextReply = ZLinkMessagePackCodec.Default.Encode(new PackedConnectorPayload { Text = "reply" });
+        var reply = await connector.Request(new PackedConnectorPayload { Text = "request" })
             .PacketName("packed.request")
             .Metadata("rk", "rv")
             .Timeout(TimeSpan.FromSeconds(2))
@@ -109,8 +105,8 @@ public sealed partial class StreamConnectorTests
 
         ZlinkStreamResult<PackedConnectorPayload>? callbackResult = null;
         connector.NextCallbackPayloadResult = ZlinkStreamResult<ZlinkStreamEncodedPayload>.Success(
-            new PackedConnectorPayload { Text = "callback" }.ToMsgPack());
-        MessagePackConnector.Request(connector, new PackedConnectorPayload { Text = "request" })
+            ZLinkMessagePackCodec.Default.Encode(new PackedConnectorPayload { Text = "callback" }));
+        connector.Request(new PackedConnectorPayload { Text = "request" })
             .Submit<PackedConnectorPayload>(result => callbackResult = result);
         Assert.True(callbackResult?.IsSuccess);
         Assert.Equal("callback", callbackResult.GetValueOrDefault().Value!.Text);
@@ -119,10 +115,10 @@ public sealed partial class StreamConnectorTests
     [Fact]
     public async Task ProtobufConnectorExtensionsDelegateBuilderAndDecodeReply()
     {
-        var connector = new RecordingConnector();
+        var connector = new RecordingConnector(ZLinkProtobufCodec.Default);
         var payload = new StringValue { Value = "send" };
 
-        await ProtobufConnector.Send(connector, payload)
+        await connector.Send(payload)
             .PacketName("proto.send")
             .Metadata("k", "v")
             .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
@@ -132,8 +128,8 @@ public sealed partial class StreamConnectorTests
         Assert.Equal(ZlinkStreamCodec.Protobuf, connector.SendCall.Payload.Codec);
         Assert.Equal("proto.send", connector.SendCall.Name);
 
-        connector.NextReply = new StringValue { Value = "reply" }.ToProto();
-        var reply = await ProtobufConnector.Request(connector, new StringValue { Value = "request" })
+        connector.NextReply = ZLinkProtobufCodec.Default.Encode(new StringValue { Value = "reply" });
+        var reply = await connector.Request(new StringValue { Value = "request" })
             .PacketName("proto.request")
             .Metadata("rk", "rv")
             .Timeout(TimeSpan.FromSeconds(4))
@@ -145,36 +141,37 @@ public sealed partial class StreamConnectorTests
 
         ZlinkStreamResult<StringValue>? callbackResult = null;
         connector.NextCallbackPayloadResult = ZlinkStreamResult<ZlinkStreamEncodedPayload>.Success(
-            new StringValue { Value = "callback" }.ToProto());
-        ProtobufConnector.Request(connector, new StringValue { Value = "request" })
+            ZLinkProtobufCodec.Default.Encode(new StringValue { Value = "callback" }));
+        connector.Request(new StringValue { Value = "request" })
             .Submit<StringValue>(result => callbackResult = result);
         Assert.True(callbackResult?.IsSuccess);
         Assert.Equal("callback", callbackResult.GetValueOrDefault().Value!.Value);
     }
 
     [Fact]
-    public async Task AutoCodecConnectorExtensionsChooseCodecAndDecodeHandlers()
+    public async Task TypedConnectorUsesConfiguredCodecAndDecodeHandlers()
     {
         var connector = new RecordingConnector();
 
-        await ZlinkStreamAutoCodecExtensions.Send(connector, new JsonPayload("json"))
+        await connector.Send(new JsonPayload("json"))
             .PacketName("auto.json")
             .Async();
         Assert.Equal(ZlinkStreamCodec.Json, connector.SendCall.Payload.Codec);
 
-        await ZlinkStreamAutoCodecExtensions.Send(connector, new PackedConnectorPayload { Text = "packed" })
+        var packedConnector = new RecordingConnector(ZLinkMessagePackCodec.Default);
+        await packedConnector.Send(new PackedConnectorPayload { Text = "packed" })
             .PacketName("auto.packed")
             .Async();
-        Assert.Equal(ZlinkStreamCodec.MessagePack, connector.SendCall.Payload.Codec);
+        Assert.Equal(ZlinkStreamCodec.MessagePack, packedConnector.SendCall.Payload.Codec);
 
-        await ZlinkStreamAutoCodecExtensions.Send(connector, new StringValue { Value = "proto" })
+        var protobufConnector = new RecordingConnector(ZLinkProtobufCodec.Default);
+        await protobufConnector.Send(new StringValue { Value = "proto" })
             .PacketName("auto.proto")
             .Async();
-        Assert.Equal(ZlinkStreamCodec.Protobuf, connector.SendCall.Payload.Codec);
+        Assert.Equal(ZlinkStreamCodec.Protobuf, protobufConnector.SendCall.Payload.Codec);
 
         JsonPayload? namedPayload = null;
-        using var named = ZlinkStreamAutoCodecExtensions.On<JsonPayload>(
-            connector,
+        using var named = connector.On<JsonPayload>(
             "json.name",
             (message, _) =>
             {
@@ -185,14 +182,15 @@ public sealed partial class StreamConnectorTests
         Assert.Equal("handler", namedPayload?.Text);
 
         PackedConnectorPayload? resolvedPayload = null;
-        using var resolved = ZlinkStreamAutoCodecExtensions.On<PackedConnectorPayload>(
-            connector,
+        using var resolved = packedConnector.On<PackedConnectorPayload>(
             (message, _) =>
             {
                 resolvedPayload = message.Payload;
                 return ValueTask.CompletedTask;
             });
-        await connector.InvokeHandler(nameof(PackedConnectorPayload), new PackedConnectorPayload { Text = "resolved" }.ToMsgPack());
+        await packedConnector.InvokeHandler(
+            nameof(PackedConnectorPayload),
+            ZLinkMessagePackCodec.Default.Encode(new PackedConnectorPayload { Text = "resolved" }));
         Assert.Equal("resolved", resolvedPayload?.Text);
     }
 

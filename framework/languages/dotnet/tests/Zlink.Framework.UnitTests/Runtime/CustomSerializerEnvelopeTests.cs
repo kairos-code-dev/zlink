@@ -1,6 +1,10 @@
+using MessagePack;
+using Zlink.Framework.Codecs.MessagePack;
+using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Codecs;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Messaging;
+using StringValue = Google.Protobuf.WellKnownTypes.StringValue;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
@@ -38,6 +42,62 @@ public sealed class CustomSerializerEnvelopeTests
     }
 
     [Fact]
+    public void CodecExtension_Can_Register_Custom_Serializer()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.Use(new MarkerCodecExtension());
+
+        var custom = codecs.SingleCustomSerializer();
+
+        Assert.NotNull(custom);
+        Assert.Equal("application/avro", custom.Value.ContentType);
+        Assert.IsType<MarkerSerializer>(custom.Value.Serializer);
+    }
+
+    [Fact]
+    public void Protobuf_Extension_RoundTrips_Protobuf_Payload()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.Use(ZLinkProtobufCodec.Default);
+        var value = new StringValue { Value = "hello" };
+
+        var parts = ZLinkEnvelopeCodec.EncodeParts(CreateHeader(nameof(StringValue)), value, typeof(StringValue), codecs);
+
+        Assert.Equal("application/x-protobuf", ZLinkEnvelopeCodec.DecodeHeader(parts).ContentType);
+        var decoded = Assert.IsType<StringValue>(ZLinkEnvelopeCodec.DecodeBody(parts, typeof(StringValue), codecs));
+        Assert.Equal("hello", decoded.Value);
+    }
+
+    [Fact]
+    public void MessagePack_Extension_RoundTrips_MessagePack_Payload()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.Use(ZLinkMessagePackCodec.Default);
+        var value = new PackedProbe("hello");
+
+        var parts = ZLinkEnvelopeCodec.EncodeParts(CreateHeader(nameof(PackedProbe)), value, typeof(PackedProbe), codecs);
+
+        Assert.Equal("application/x-msgpack", ZLinkEnvelopeCodec.DecodeHeader(parts).ContentType);
+        var decoded = Assert.IsType<PackedProbe>(ZLinkEnvelopeCodec.DecodeBody(parts, typeof(PackedProbe), codecs));
+        Assert.Equal(value, decoded);
+    }
+
+    [Fact]
+    public void Binary_Extensions_Fall_Back_To_Json_For_Unsupported_Payload()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.Use(ZLinkProtobufCodec.Default);
+        codecs.Use(ZLinkMessagePackCodec.Default);
+        var value = new Probe("hello");
+
+        var parts = ZLinkEnvelopeCodec.EncodeParts(CreateHeader(nameof(Probe)), value, typeof(Probe), codecs);
+
+        Assert.Equal("application/json", ZLinkEnvelopeCodec.DecodeHeader(parts).ContentType);
+        var decoded = Assert.IsType<Probe>(ZLinkEnvelopeCodec.DecodeBody(parts, typeof(Probe), codecs));
+        Assert.Equal(value, decoded);
+    }
+
+    [Fact]
     public void Without_Custom_Serializer_Body_Stays_Json()
     {
         var codecs = new ZLinkCodecRegistryBuilder();
@@ -72,6 +132,23 @@ public sealed class CustomSerializerEnvelopeTests
 
     private sealed record Probe(string Text);
 
+    [MessagePackObject]
+    public sealed record PackedProbe([property: Key(0)] string Text);
+
+    private static ZLinkEnvelopeHeader CreateHeader(string messageName)
+    {
+        return new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Request,
+            "orders",
+            messageName,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            null,
+            null,
+            null,
+            null,
+            null);
+    }
+
     private sealed class MarkerSerializer : IZLinkMessageSerializer
     {
         public Message Serialize(object value, Type type)
@@ -85,6 +162,14 @@ public sealed class CustomSerializerEnvelopeTests
             var text = message.GetString();
             var value = text.StartsWith("AVRO:", StringComparison.Ordinal) ? text["AVRO:".Length..] : text;
             return new Probe(value);
+        }
+    }
+
+    private sealed class MarkerCodecExtension : IZLinkCodecExtension
+    {
+        public void Register(IZLinkCodecRegistryBuilder codecs)
+        {
+            codecs.AddSerializer("application/avro", new MarkerSerializer());
         }
     }
 }

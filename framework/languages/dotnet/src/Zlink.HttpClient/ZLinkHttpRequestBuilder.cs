@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 using System.Text;
-using System.Text.Json;
 using Zlink.HttpClient.Runtime;
 
 namespace Zlink.HttpClient;
@@ -14,13 +13,11 @@ namespace Zlink.HttpClient;
 /// </summary>
 public sealed class ZLinkHttpRequestBuilder
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     private ZLinkHttpClient? _client;
     private readonly ZLinkHttpClientBuilder? _clientFactory;
     private readonly ZLinkHttpMethod _method;
     private readonly string _path;
-    private string? _body;
+    private byte[]? _body;
     private Func<byte[]?>? _bodyProvider;
     private readonly Dictionary<string, string> _headers = new(StringComparer.OrdinalIgnoreCase);
     private TimeSpan? _timeout;
@@ -82,11 +79,12 @@ public sealed class ZLinkHttpRequestBuilder
         return this;
     }
 
-    /// <summary>Sets a typed JSON body. Serialized with Web defaults; sets <c>content-type</c>.</summary>
+    /// <summary>Sets a typed body. JSON is the default; registered codec extensions may override it.</summary>
     public ZLinkHttpRequestBuilder Body<T>(T value)
     {
-        _body = JsonSerializer.Serialize(value, JsonOptions);
-        _headers.TryAdd("content-type", "application/json");
+        var encoded = ResolveCodecs().Encode(value, typeof(T));
+        _body = encoded.Body;
+        _headers["content-type"] = encoded.ContentType;
         return this;
     }
 
@@ -100,7 +98,7 @@ public sealed class ZLinkHttpRequestBuilder
         }
 
         HttpClientText.RequireNonBlank(contentType, "HTTP request body content type is required");
-        _body = content;
+        _body = Encoding.UTF8.GetBytes(content);
         _headers["content-type"] = contentType;
         return this;
     }
@@ -200,6 +198,7 @@ public sealed class ZLinkHttpRequestBuilder
     /// <summary>Submits the request and decodes the JSON body to <typeparamref name="T"/>.</summary>
     public async ValueTask<HttpResponse<T>> SubmitAsync<T>(CancellationToken cancellationToken = default)
     {
+        var codecs = ResolveCodecs();
         var raw = await SubmitRawAsync(cancellationToken).ConfigureAwait(false);
         if (raw.Status >= 400)
         {
@@ -211,10 +210,14 @@ public sealed class ZLinkHttpRequestBuilder
         T body;
         try
         {
-            body = JsonSerializer.Deserialize<T>(raw.Body, JsonOptions)
-                ?? throw new JsonException("HTTP response body decoded to null");
+            var contentType = FindHeader(raw.Headers, "content-type");
+            body = (T?)codecs.Decode(
+                    raw.BodyBytes,
+                    typeof(T),
+                    contentType)
+                ?? throw new InvalidOperationException("HTTP response body decoded to null");
         }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or System.Text.Json.JsonException)
         {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.PayloadDecodeFailed, ex.Message, innerException: ex);
@@ -271,7 +274,12 @@ public sealed class ZLinkHttpRequestBuilder
         return target.ToString();
     }
 
-    private (string? Body, IReadOnlyDictionary<string, string> Headers) ResolveBodyAndHeaders()
+    private HttpClientCodecRegistry ResolveCodecs()
+        => _client?.Runtime.Options.Codecs
+            ?? _clientFactory?.CodecRegistry
+            ?? throw new InvalidOperationException("HTTP client is not configured.");
+
+    private (byte[]? Body, IReadOnlyDictionary<string, string> Headers) ResolveBodyAndHeaders()
     {
         if (CountBodySources() > 1)
         {
@@ -289,14 +297,14 @@ public sealed class ZLinkHttpRequestBuilder
         if (_form.Count > 0)
         {
             headers["content-type"] = "application/x-www-form-urlencoded";
-            return (EncodeFormBody(), headers);
+            return (Encoding.UTF8.GetBytes(EncodeFormBody()), headers);
         }
 
         if (_multipart.Count > 0)
         {
             var boundary = HttpClientText.MakeMultipartBoundary();
             headers["content-type"] = "multipart/form-data; boundary=" + boundary;
-            return (EncodeMultipartBody(boundary), headers);
+            return (Encoding.UTF8.GetBytes(EncodeMultipartBody(boundary)), headers);
         }
 
         return (null, headers);
@@ -322,6 +330,19 @@ public sealed class ZLinkHttpRequestBuilder
         }
 
         return encoded.ToString();
+    }
+
+    private static string? FindHeader(IReadOnlyDictionary<string, string> headers, string name)
+    {
+        foreach (var (key, value) in headers)
+        {
+            if (key.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 
     private string EncodeMultipartBody(string boundary)

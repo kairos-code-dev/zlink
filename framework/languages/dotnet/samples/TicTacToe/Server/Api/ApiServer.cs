@@ -1,6 +1,6 @@
 using TicTacToe.Server.Api.Handlers;
 using TicTacToe.Server.Configuration;
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.AspNetCore;
 
 namespace TicTacToe.Server.Api;

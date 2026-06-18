@@ -3,7 +3,7 @@ using DeliveryDispatch.Shared.Contracts;
 using System.Text;
 using System.Text.Json;
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;

@@ -3,7 +3,7 @@ using GameQuest.QuestMission.Adapters.Store;
 using GameQuest.QuestMission.Application;
 using GameQuest.Shared;
 using GameQuest.Server.Configuration;
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.AspNetCore;
 
 namespace GameQuest.QuestMission;
@@ -19,7 +19,6 @@ internal static class Program
 
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(instance);
-        builder.Services.AddHttpClient();
         builder.Services.AddSingleton<QuestStore>();
         builder.Services.AddSingleton<QuestOwnerRouter>();
         builder.Services.AddScoped<QuestEventProcessor>();

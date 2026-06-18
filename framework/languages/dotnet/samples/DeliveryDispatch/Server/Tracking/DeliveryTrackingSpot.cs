@@ -1,6 +1,6 @@
 using DeliveryDispatch.Shared.Contracts;
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Spots;
 
 namespace DeliveryDispatch.Server.Tracking;

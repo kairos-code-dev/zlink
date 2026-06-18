@@ -274,13 +274,20 @@ public sealed class BuilderContracts
 
     private sealed class CodecRegistryBuilder : IZLinkCodecRegistryBuilder
     {
-        public void AddProtobuf() { }
+        public void Use(IZLinkCodecExtension extension) { }
 
         public void AddJson() { }
 
-        public void AddMessagePack() { }
-
         public void AddSerializer(string contentType, IZLinkMessageSerializer serializer) { }
+
+        public void AddSerializer(
+            string contentType,
+            IZLinkMessageSerializer serializer,
+            Func<Type, bool> canSerialize) { }
+
+        public void AddStreamCodec(
+            string contentType,
+            Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamCodec codec) { }
     }
 
     private sealed class WorkerOptions : IZLinkWorkerOptions

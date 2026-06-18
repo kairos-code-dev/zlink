@@ -3,7 +3,10 @@ using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object spot)
+internal sealed class ZLinkSpotHandlerInvoker(
+    IServiceProvider services,
+    object spot,
+    ZLinkCodecRegistryBuilder codecs)
 {
     public async ValueTask InvokePacketAsync(
         ZLinkSpotDescriptor descriptor,
@@ -78,7 +81,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             actor,
             "SPOT actor packet handler");
 
-        var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
+        var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType, codecs);
         var context = CreateSendContext(header, cancellationToken);
         await InvokeAsync(
                 descriptor.HandlerType,
@@ -110,7 +113,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             actor,
             "SPOT actor packet handler");
 
-        var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType);
+        var message = ZLinkStreamPacketPayloadCodec.Decode(header, body, descriptor.MessageType, codecs);
         var context = CreateRequestContext(header, cancellationToken);
         var reply = await InvokeAsync(
                 descriptor.HandlerType,
@@ -121,7 +124,7 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
                 message,
                 cancellationToken)
             .ConfigureAwait(false);
-        var encoded = ZLinkStreamPacketPayloadCodec.Encode(reply, descriptor.ReplyType);
+        var encoded = ZLinkStreamPacketPayloadCodec.Encode(reply, descriptor.ReplyType, codecs);
         return ZLinkActorReply.FromPayload(
             encoded.Codec,
             encoded.Payload.ToArray(),

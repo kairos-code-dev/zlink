@@ -2,7 +2,6 @@ using System.Runtime.CompilerServices;
 using SupportChat.Client.Configuration;
 using SupportChat.Shared.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Json;
 
 namespace SupportChat.Client;
 

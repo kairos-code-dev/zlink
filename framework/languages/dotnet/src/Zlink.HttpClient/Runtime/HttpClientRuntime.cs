@@ -16,9 +16,11 @@ internal sealed class HttpClientRuntime : IDisposable
     private readonly CookieJar _cookieJar = new();
     private readonly RequestPerformer _performer;
     private readonly RetryPolicy _retryPolicy;
+    private readonly HttpClientOptions _options;
 
     public HttpClientRuntime(HttpClientOptions options)
     {
+        _options = options;
         _handler = HttpTransportFactory.CreateHandler(options);
         // disposeHandler: false keeps explicit handler ownership here, so Dispose() releases the
         // handler exactly once (the HttpClient does not also dispose it).
@@ -37,6 +39,8 @@ internal sealed class HttpClientRuntime : IDisposable
     /// </summary>
     public ValueTask<RawHttpResponse> ExecuteAsync(HttpRequestSpec request, CancellationToken cancellationToken) =>
         _retryPolicy.ExecuteAsync(request, _performer.PerformAsync, cancellationToken);
+
+    internal HttpClientOptions Options => _options;
 
     public void Dispose()
     {

@@ -2,7 +2,7 @@ using GameQuest.GameApi.Adapters.Store;
 using GameQuest.GameApi.Application;
 using GameQuest.Shared;
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Streams;
 

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Spots;
+using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.UnitTests.Runtime;
@@ -19,7 +20,8 @@ public sealed class SpotHandlerInvokerTests
 
         var invoker = new ZLinkSpotHandlerInvoker(
             new ServiceCollection().BuildServiceProvider(),
-            spot);
+            spot,
+            new ZLinkCodecRegistryBuilder());
 
         await invoker.InvokeActorLifecycleAsync(
             descriptor,
@@ -54,7 +56,8 @@ public sealed class SpotHandlerInvokerTests
 
         var invoker = new ZLinkSpotHandlerInvoker(
             new ServiceCollection().BuildServiceProvider(),
-            spot);
+            spot,
+            new ZLinkCodecRegistryBuilder());
 
         var reply = await invoker.InvokeActorJoinAsync(
             descriptor,

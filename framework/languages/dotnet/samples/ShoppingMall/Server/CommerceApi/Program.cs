@@ -1,5 +1,4 @@
-using System.Net.Http.Json;
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using ShoppingMall.Server.CommerceApi.Adapters.Http;
 using ShoppingMall.Server.CommerceApi.Adapters.ZLink;
 using ShoppingMall.Server.CommerceApi.Application.OrderWorkflow;
@@ -25,7 +24,6 @@ internal static class Program
         builder.WebHost.UseUrls(instance.HttpUrl);
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(new CommerceApiInstanceOptions(instance.InstanceId));
-        builder.Services.AddHttpClient();
         builder.Services.AddSingleton(new FileCommerceStores(topology.StoreDirectory));
         builder.Services.AddSingleton<IOrderReadModelStore>(static provider => provider.GetRequiredService<FileCommerceStores>());
         builder.Services.AddSingleton<ICommerceStateStore>(static provider => provider.GetRequiredService<FileCommerceStores>());

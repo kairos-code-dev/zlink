@@ -20,7 +20,7 @@ internal sealed partial class ZLinkSpotActivation
         _actorHandlers = new ZLinkSpotActorHandlerRegistry(
             ZLinkSpotActorHandlerSurface.UserSpot,
             spot.GetType());
-        _handlerInvoker = new ZLinkSpotHandlerInvoker(_scope.ServiceProvider, spot);
+        _handlerInvoker = new ZLinkSpotHandlerInvoker(_scope.ServiceProvider, spot, _runtime.Registration.Codecs);
     }
 
     public void BindDescriptors()

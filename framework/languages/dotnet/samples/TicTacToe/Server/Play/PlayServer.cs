@@ -5,7 +5,7 @@ using TicTacToe.Server.Play.Adapters.ZLink.Sessions;
 using TicTacToe.Server.Play.Adapters.ZLink.Spots;
 using TicTacToe.Server.Play.Application.GameCreation;
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.AspNetCore;
 
 namespace TicTacToe.Server.Play;

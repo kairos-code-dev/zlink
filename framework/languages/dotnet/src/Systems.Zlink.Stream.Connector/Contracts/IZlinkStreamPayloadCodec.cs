@@ -4,8 +4,7 @@ namespace Systems.Zlink.Stream.Connector.Contracts;
 /// Converts a business object to and from a <see cref="ZlinkStreamEncodedPayload"/>.
 /// Set <see cref="ZlinkStreamConnectorOptions.PayloadCodec"/> to plug a custom codec
 /// (for example Avro or Thrift) into the typed connector send/request/observe API.
-/// When left unset, the connector uses its built-in protobuf/MessagePack/JSON
-/// auto-codec selection.
+/// When left unset, the connector uses JSON.
 /// </summary>
 public interface IZlinkStreamPayloadCodec
 {

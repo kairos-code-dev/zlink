@@ -1,15 +1,15 @@
 using System.Runtime.CompilerServices;
-using System.Net.Http.Json;
 using ShoppingMall.Client.Configuration;
 using ShoppingMall.Shared.Contracts;
+using Zlink.HttpClient;
 
 namespace ShoppingMall.Client;
 
 internal sealed class ShoppingMallClientScenario
 {
     public async ValueTask RunAsync(
-        HttpClient apiA,
-        HttpClient apiB,
+        ZLinkHttpClient apiA,
+        ZLinkHttpClient apiB,
         CancellationToken cancellationToken = default)
     {
         var successReq = new StartOrderReq(
@@ -17,10 +17,7 @@ internal sealed class ShoppingMallClientScenario
             "addr-home",
             "pm-ok",
             "order-success-001");
-        using var successResponse = await apiA.PostAsJsonAsync("/orders/start", successReq, cancellationToken);
-        successResponse.EnsureSuccessStatusCode();
-        var success = await successResponse.Content.ReadFromJsonAsync<StartOrderRes>(cancellationToken)
-                      ?? throw new InvalidOperationException("StartOrderRes was empty.");
+        var success = apiA.Post("/orders/start").Body(successReq).Fetch<StartOrderRes>();
         Ensure(success.Status == OrderStatuses.Created);
         Ensure(!string.IsNullOrWhiteSpace(success.OrderId));
 
@@ -34,10 +31,7 @@ internal sealed class ShoppingMallClientScenario
         Ensure(confirmed.Amount == 120.00m);
         Ensure(confirmed.Currency == "USD");
 
-        using var duplicateResponse = await apiB.PostAsJsonAsync("/orders/start", successReq, cancellationToken);
-        duplicateResponse.EnsureSuccessStatusCode();
-        var duplicate = await duplicateResponse.Content.ReadFromJsonAsync<StartOrderRes>(cancellationToken)
-                        ?? throw new InvalidOperationException("Duplicate StartOrderRes was empty.");
+        var duplicate = apiB.Post("/orders/start").Body(successReq).Fetch<StartOrderRes>();
         Ensure(duplicate.OrderId == success.OrderId);
 
         var pendingReq = new StartOrderReq(
@@ -45,20 +39,16 @@ internal sealed class ShoppingMallClientScenario
             "addr-office",
             "pm-ok",
             "order-pending-001");
-        using var pendingHook = await apiA.PostAsJsonAsync(
-            "/self-check/idempotency/pending",
-            new
+        var pendingHook = await apiA.Post("/self-check/idempotency/pending")
+            .Body(new
             {
                 IdempotencyKey = pendingReq.IdempotencyKey,
                 OrderId = "order-pending-0001",
                 OwnerInstanceId = "api-a",
-            },
-            cancellationToken);
-        pendingHook.EnsureSuccessStatusCode();
-        using var pendingResponse = await apiB.PostAsJsonAsync("/orders/start", pendingReq, cancellationToken);
-        pendingResponse.EnsureSuccessStatusCode();
-        var pending = await pendingResponse.Content.ReadFromJsonAsync<StartOrderRes>(cancellationToken)
-                      ?? throw new InvalidOperationException("Pending recovery StartOrderRes was empty.");
+            })
+            .SubmitRawAsync(cancellationToken);
+        Ensure(pendingHook.Status is >= 200 and < 300);
+        var pending = apiB.Post("/orders/start").Body(pendingReq).Fetch<StartOrderRes>();
         Ensure(pending.OrderId == "order-pending-0001");
         Ensure(pending.Status == OrderStatuses.Created);
         var pendingCreated = await GetOrderAsync(apiA, pending.OrderId, cancellationToken);
@@ -70,10 +60,7 @@ internal sealed class ShoppingMallClientScenario
             "addr-home",
             "pm-ok",
             "order-inventory-001");
-        using var inventoryResponse = await apiA.PostAsJsonAsync("/orders/start", inventoryReq, cancellationToken);
-        inventoryResponse.EnsureSuccessStatusCode();
-        var inventoryStarted = await inventoryResponse.Content.ReadFromJsonAsync<StartOrderRes>(cancellationToken)
-                               ?? throw new InvalidOperationException("Inventory failure StartOrderRes was empty.");
+        var inventoryStarted = apiA.Post("/orders/start").Body(inventoryReq).Fetch<StartOrderRes>();
         var inventoryFailed = await WaitForStatusAsync(apiA, inventoryStarted.OrderId, OrderStatuses.Failed, cancellationToken);
         Ensure(inventoryFailed.Reason?.Contains("inventory", StringComparison.OrdinalIgnoreCase) == true);
 
@@ -82,20 +69,16 @@ internal sealed class ShoppingMallClientScenario
             "addr-home",
             "pm-decline",
             "order-payment-001");
-        using var paymentResponse = await apiB.PostAsJsonAsync("/orders/start", paymentReq, cancellationToken);
-        paymentResponse.EnsureSuccessStatusCode();
-        var paymentStarted = await paymentResponse.Content.ReadFromJsonAsync<StartOrderRes>(cancellationToken)
-                             ?? throw new InvalidOperationException("Payment failure StartOrderRes was empty.");
+        var paymentStarted = apiB.Post("/orders/start").Body(paymentReq).Fetch<StartOrderRes>();
         var paymentFailed = await WaitForStatusAsync(apiB, paymentStarted.OrderId, OrderStatuses.Failed, cancellationToken);
         Ensure(paymentFailed.ReservationId is not null);
         Ensure(paymentFailed.Reason?.Contains("payment", StringComparison.OrdinalIgnoreCase) == true);
 
-        using var deleteProjection = await apiA.PostAsync($"/self-check/projection/{success.OrderId}/delete", content: null, cancellationToken);
-        deleteProjection.EnsureSuccessStatusCode();
-        using var rebuildProjection = await apiA.PostAsync($"/self-check/projection/{success.OrderId}/rebuild", content: null, cancellationToken);
-        rebuildProjection.EnsureSuccessStatusCode();
-        var rebuilt = await rebuildProjection.Content.ReadFromJsonAsync<RebuildOrderProjectionRes>(cancellationToken)
-                      ?? throw new InvalidOperationException("Rebuild response was empty.");
+        var deleteProjection = await apiA.Post($"/self-check/projection/{success.OrderId}/delete")
+            .SubmitRawAsync(cancellationToken);
+        Ensure(deleteProjection.Status is >= 200 and < 300);
+        var rebuilt = apiA.Post($"/self-check/projection/{success.OrderId}/rebuild")
+            .Fetch<RebuildOrderProjectionRes>();
         Ensure(rebuilt.State.Status == OrderStatuses.Confirmed);
         var rebuiltRead = await GetOrderAsync(apiB, success.OrderId, cancellationToken);
         Ensure(rebuiltRead.Status == OrderStatuses.Confirmed);
@@ -110,41 +93,32 @@ internal sealed class ShoppingMallClientScenario
             "addr-office",
             "pm-ok",
             "order-scale-001");
-        using var scaleResponse = await apiB.PostAsJsonAsync("/orders/start", scaleReq, cancellationToken);
-        scaleResponse.EnsureSuccessStatusCode();
-        var scale = await scaleResponse.Content.ReadFromJsonAsync<StartOrderRes>(cancellationToken)
-                    ?? throw new InvalidOperationException("Scale-out StartOrderRes was empty.");
+        var scale = apiB.Post("/orders/start").Body(scaleReq).Fetch<StartOrderRes>();
         var scaleConfirmed = await WaitForStatusAsync(apiA, scale.OrderId, OrderStatuses.Confirmed, cancellationToken);
         Ensure(scaleConfirmed.Status == OrderStatuses.Confirmed);
 
-        using var assertionResponse = await apiA.PostAsJsonAsync(
-            "/self-check/assert",
-            new ServerAssertionReq(
+        var assertion = apiA.Post("/self-check/assert")
+            .Body(new ServerAssertionReq(
                 success.OrderId,
                 pending.OrderId,
                 inventoryStarted.OrderId,
                 paymentStarted.OrderId,
-                scale.OrderId),
-            cancellationToken);
-        assertionResponse.EnsureSuccessStatusCode();
-        var assertion = await assertionResponse.Content.ReadFromJsonAsync<ServerAssertionRes>(cancellationToken)
-                        ?? throw new InvalidOperationException("Server assertion response was empty.");
+                scale.OrderId))
+            .Fetch<ServerAssertionRes>();
         Ensure(assertion.Passed);
     }
 
-    private static async ValueTask<OrderState> GetOrderAsync(
-        HttpClient api,
+    private static ValueTask<OrderState> GetOrderAsync(
+        ZLinkHttpClient api,
         string orderId,
         CancellationToken cancellationToken)
     {
-        using var response = await api.GetAsync($"/orders/{orderId}", cancellationToken);
-        response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<GetOrderStateRes>(cancellationToken)
-               ?? throw new InvalidOperationException("GetOrderStateRes was empty.")).State;
+        var response = api.Get($"/orders/{orderId}").Fetch<GetOrderStateRes>();
+        return ValueTask.FromResult(response.State);
     }
 
     private static async ValueTask<OrderState> WaitForStatusAsync(
-        HttpClient api,
+        ZLinkHttpClient api,
         string orderId,
         string expectedStatus,
         CancellationToken cancellationToken)

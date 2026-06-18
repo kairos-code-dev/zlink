@@ -171,9 +171,11 @@ public sealed class RegressionTests
         Assert.DoesNotContain("record ", sharedContractSourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("class AuthenticateReq", sharedContractSourceText, StringComparison.Ordinal);
         Assert.DoesNotContain("class BingoRoomJoinReq", sharedContractSourceText, StringComparison.Ordinal);
-        Assert.Contains("AddProtobuf", allText, StringComparison.Ordinal);
-        Assert.Contains("Stream.Connector.Protobuf", allText, StringComparison.Ordinal);
-        Assert.Contains("Zlink.Codecs.Protobuf", allText, StringComparison.Ordinal);
+        Assert.Contains("ZLinkProtobufCodec.Default", allText, StringComparison.Ordinal);
+        Assert.Contains("Zlink.Framework.Codecs.Protobuf", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddProtobuf", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Stream.Connector.Protobuf", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Zlink.Codecs.Protobuf", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("MessagePack", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("MsgPack", allText, StringComparison.Ordinal);
     }
@@ -196,9 +198,8 @@ public sealed class RegressionTests
             sourceFiles.Concat(projectFiles).Select(File.ReadAllText));
 
         Assert.Empty(protoFiles);
-        Assert.Contains("AddJson", allText, StringComparison.Ordinal);
-        Assert.Contains("Stream.Connector.Json", allText, StringComparison.Ordinal);
-        Assert.Contains("Zlink.Codecs.Json", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Stream.Connector.Json", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Zlink.Codecs.Json", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("Google.Protobuf", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("Grpc.Tools", allText, StringComparison.Ordinal);
         Assert.DoesNotContain("AddProtobuf", allText, StringComparison.Ordinal);

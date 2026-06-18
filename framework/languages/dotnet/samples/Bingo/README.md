@@ -1,7 +1,7 @@
 # Bingo Sample
 
 This sample implements the matching room Bingo flow from
-`framework/languages/dotnet/doc/guide/samples/bingo-game-sample.ko.md`.
+`framework/doc/framework/dotnet/guide/samples/bingo-game-sample.ko.md`.
 
 Bingo is the Protobuf game sample. Its stream, channel, actor, and room Spot
 payloads use the framework Protobuf codec so the multi-server game flow also

@@ -11,6 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Shared\Bingo.Shared.csproj" />
     <ProjectReference Include="../../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" />
-    <ProjectReference Include="../../../src/Systems.Zlink.Stream.Connector.Protobuf/Systems.Zlink.Stream.Connector.Protobuf.csproj" />
+    <ProjectReference Include="../../../src/Zlink.Framework.Codecs.Protobuf/Zlink.Framework.Codecs.Protobuf.csproj" />
   </ItemGroup>
 </Project>

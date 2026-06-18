@@ -1,11 +1,14 @@
+using System.Text.Json;
 using GameQuest.QuestMission.Adapters.Store;
 using GameQuest.QuestMission.Adapters.ZLink.Spots;
 using GameQuest.QuestMission.Domain;
 using GameQuest.Shared;
 using GameQuest.Server.Configuration;
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Spots;
+using Zlink.Framework.Contracts.Errors;
+using Zlink.HttpClient;
 
 namespace GameQuest.QuestMission.Application;
 
@@ -13,10 +16,10 @@ internal sealed class QuestEventProcessor(
     QuestStore store,
     IZLinkSpotManager spots,
     QuestOwnerRouter ownerRouter,
-    IHttpClientFactory httpClientFactory,
     GameQuestTopology topology,
     ILogger<QuestEventProcessor> logger)
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly QuestProjectionBuilder _projectionBuilder = new();
     private readonly string _missionName = Environment.GetEnvironmentVariable("GAMEQUEST_MISSION_NAME") ?? "mission";
 
@@ -82,11 +85,10 @@ internal sealed class QuestEventProcessor(
         }
 
         var snapshotRequest = new GetGameplaySnapshotReq(request.PlayerId);
-        var response = await httpClientFactory.CreateClient()
-            .PostAsJsonAsync($"{topology.GameApiAHttpBaseUrl}/internal/snapshot", snapshotRequest, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var snapshot = await response.Content.ReadFromJsonAsync<GetGameplaySnapshotRes>(cancellationToken)
-                       ?? throw new InvalidOperationException("GameApi returned an empty gameplay snapshot.");
+        using var gameApi = ZLinkHttpClient.Create(topology.GameApiAHttpBaseUrl).Json().Build();
+        var snapshot = (await gameApi.Post("/internal/snapshot")
+            .Body(snapshotRequest)
+            .SubmitAsync<GetGameplaySnapshotRes>(cancellationToken)).Body;
         var killCount = snapshot.KillCounts.Sum(kill => kill.Count);
         if (killCount > 0)
         {
@@ -131,21 +133,23 @@ internal sealed class QuestEventProcessor(
             : topology.GameApiAHttpBaseUrl;
         try
         {
-            var response = await httpClientFactory.CreateClient()
-                .PostAsJsonAsync($"{baseUrl}/internal/notify", request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
+            using var gameApi = ZLinkHttpClient.Create(baseUrl).Json().Build();
+            var response = await gameApi.Post("/internal/notify")
+                .Body(request)
+                .SubmitRawAsync(cancellationToken);
+            if (response.Status is < 200 or >= 300)
             {
                 logger.LogInformation(
                     "gamequest mission projection kept while stream notify failed. player={PlayerId} status={StatusCode}",
                     request.PlayerId,
-                    (int)response.StatusCode);
+                    response.Status);
                 return false;
             }
 
-            var delivered = await response.Content.ReadFromJsonAsync<NotifyQuestProgressRes>(cancellationToken);
+            var delivered = JsonSerializer.Deserialize<NotifyQuestProgressRes>(response.Body, JsonOptions);
             return delivered?.Delivered ?? false;
         }
-        catch (HttpRequestException error)
+        catch (ZLinkFrameworkException error)
         {
             logger.LogInformation(error,
                 "gamequest mission projection kept while stream notify endpoint was unavailable. player={PlayerId}",

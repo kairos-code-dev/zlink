@@ -1,4 +1,4 @@
-using Systems.Zlink.Codecs.Protobuf;
+using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Spots;
 using Bingo.Server.Play.Domain.Bingo;
 using Bingo.Server.Play.Adapters.ZLink.Spots;

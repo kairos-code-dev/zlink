@@ -28,9 +28,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Zlink.Framework/Zlink.Framework.csproj" />
     <ProjectReference Include="../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" />
-    <ProjectReference Include="../../../../../bindings/dotnet/src/Zlink/Zlink.csproj" />
-    <ProjectReference Include="../../../../../bindings/dotnet/codecs/Zlink.Codecs.Json/Zlink.Codecs.Json.csproj" />
-  </ItemGroup>
+    <ProjectReference Include="../../../../../bindings/dotnet/src/Zlink/Zlink.csproj" />  </ItemGroup>
 
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />

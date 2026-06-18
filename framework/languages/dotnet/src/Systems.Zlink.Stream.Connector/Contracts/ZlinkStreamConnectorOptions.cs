@@ -38,8 +38,7 @@ public sealed class ZlinkStreamConnectorOptions
 
     /// <summary>
     /// Optional custom payload codec for the typed connector API. When set, the
-    /// connector encodes and decodes typed payloads with this codec instead of the
-    /// built-in protobuf/MessagePack/JSON auto-selection.
+    /// connector encodes and decodes typed payloads with this codec instead of JSON.
     /// </summary>
     public IZlinkStreamPayloadCodec? PayloadCodec { get; init; }
 }

@@ -1,7 +1,7 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Server.Session;
 using DeliveryDispatch.Shared.Contracts;
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;

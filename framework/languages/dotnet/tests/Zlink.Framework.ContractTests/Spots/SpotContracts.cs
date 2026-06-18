@@ -1,4 +1,4 @@
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.ContractTests.Support;
 using Zlink.Framework.Contracts.Workers;
 

@@ -10,13 +10,13 @@ using System.Text.Json;
 using MessagePack;
 using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Codecs;
 using Systems.Zlink.Stream.Connector.Contracts.Calls;
 using Systems.Zlink.Stream.Connector.Runtime;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol.Compression;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 using Xunit;
-using StreamJson = Systems.Zlink.Stream.Connector.Json.ZlinkStreamJsonExtensions;
+using Zlink.Framework.Codecs.MessagePack;
+using StreamJson = Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamJsonExtensions;
 
 
 public sealed partial class StreamConnectorTests
@@ -32,7 +32,7 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public async Task AutoCodecUsesMessagePackObjectAttribute()
+    public async Task TypedConnectorUsesMessagePackExtensionWhenConfigured()
     {
         var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -50,7 +50,8 @@ public sealed partial class StreamConnectorTests
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
-            Heartbeat = DisabledHeartbeat()
+            Heartbeat = DisabledHeartbeat(),
+            PayloadCodec = ZLinkMessagePackCodec.Default
         });
         await connector.Connect.Async();
 

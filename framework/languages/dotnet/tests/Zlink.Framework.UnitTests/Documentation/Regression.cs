@@ -342,7 +342,7 @@ public sealed class RegressionTests
         {
             1 => matches[0],
             0 => throw new FileNotFoundException(
-                $"Could not find '{fileName}' under framework/languages/dotnet/doc."),
+                $"Could not find '{fileName}' under framework/doc/framework/dotnet."),
             _ => throw new InvalidOperationException(
                 $"Ambiguous document '{fileName}': {string.Join(", ", matches)}"),
         };

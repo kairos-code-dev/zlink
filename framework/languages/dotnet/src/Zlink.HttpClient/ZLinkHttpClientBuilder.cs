@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 using Zlink.HttpClient.Runtime;
+using Zlink.Framework.Contracts.Codecs;
 
 namespace Zlink.HttpClient;
 
@@ -24,6 +25,9 @@ public sealed class ZLinkHttpClientBuilder
     private string? _proxy;
     private string? _proxyAuthorization;
     private bool _compression;
+    private readonly HttpClientCodecRegistry _codecs = new();
+
+    internal HttpClientCodecRegistry CodecRegistry => _codecs;
 
     public ZLinkHttpClientBuilder BaseUrl(string value)
     {
@@ -36,6 +40,13 @@ public sealed class ZLinkHttpClientBuilder
     {
         _json = true;
         _headers.TryAdd("content-type", "application/json");
+        return this;
+    }
+
+    public ZLinkHttpClientBuilder Codecs(Action<IZLinkCodecRegistryBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        configure(_codecs);
         return this;
     }
 
@@ -174,6 +185,7 @@ public sealed class ZLinkHttpClientBuilder
             Timeout = _timeout,
             MaxResponseBodySize = _maxResponseBodySize,
             Headers = new Dictionary<string, string>(_headers, StringComparer.OrdinalIgnoreCase),
+            Codecs = _codecs.Snapshot(),
             TrustCertificateFile = _trustCertificateFile,
             ClientCertificate = _clientCertificate,
             FollowRedirects = _followRedirects,

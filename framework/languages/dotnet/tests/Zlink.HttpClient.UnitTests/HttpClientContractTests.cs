@@ -4,6 +4,11 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
 using System.Text;
+using Google.Protobuf;
+using Google.Protobuf.WellKnownTypes;
+using MessagePack;
+using Zlink.Framework.Codecs.MessagePack;
+using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Errors;
 using Xunit;
 
@@ -16,6 +21,16 @@ public sealed class HttpClientContractTests
     private sealed record CreateGameReq(string Name);
 
     private sealed record CreateGameRes(string Id, bool Ranked);
+
+    [MessagePackObject]
+    public sealed class PackedPlayer
+    {
+        [Key(0)]
+        public int Id { get; set; }
+
+        [Key(1)]
+        public string Name { get; set; } = string.Empty;
+    }
 
     [Theory]
     [InlineData("GET")]
@@ -121,6 +136,62 @@ public sealed class HttpClientContractTests
         Assert.Equal("ranked-0611", received!.Name);
         Assert.Equal("game-7", response.Body.Id);
         Assert.True(response.Body.Ranked);
+    }
+
+    [Fact]
+    public async Task Protobuf_extension_round_trips_typed_body_and_response()
+    {
+        string? contentType = null;
+        StringValue? received = null;
+        using var server = new TestHttpServer(async ctx =>
+        {
+            contentType = ctx.Request.ContentType;
+            received = StringValue.Parser.ParseFrom(ctx.Request.ReadBodyBytes());
+            await ctx.Response.WriteBytesAsync(
+                200,
+                new StringValue { Value = "pong" }.ToByteArray(),
+                "application/x-protobuf");
+        });
+        using var client = ZLinkHttpClient.Create(server.BaseUrl)
+            .Codecs(codecs => codecs.Use(ZLinkProtobufCodec.Default))
+            .Build();
+
+        var response = await client.Post("/proto")
+            .Body(new StringValue { Value = "ping" })
+            .SubmitAsync<StringValue>();
+
+        Assert.Equal("application/x-protobuf", contentType);
+        Assert.Equal("ping", received!.Value);
+        Assert.Equal("pong", response.Body.Value);
+    }
+
+    [Fact]
+    public async Task MessagePack_extension_round_trips_typed_body_and_response()
+    {
+        string? contentType = null;
+        PackedPlayer? received = null;
+        using var server = new TestHttpServer(async ctx =>
+        {
+            contentType = ctx.Request.ContentType;
+            received = MessagePackSerializer.Deserialize<PackedPlayer>(ctx.Request.ReadBodyBytes());
+            await ctx.Response.WriteBytesAsync(
+                200,
+                MessagePackSerializer.Serialize(new PackedPlayer { Id = 9, Name = "reply" }),
+                "application/x-msgpack");
+        });
+        using var client = ZLinkHttpClient.Create(server.BaseUrl)
+            .Codecs(codecs => codecs.Use(ZLinkMessagePackCodec.Default))
+            .Build();
+
+        var response = await client.Post("/packed")
+            .Body(new PackedPlayer { Id = 7, Name = "request" })
+            .SubmitAsync<PackedPlayer>();
+
+        Assert.Equal("application/x-msgpack", contentType);
+        Assert.Equal(7, received!.Id);
+        Assert.Equal("request", received.Name);
+        Assert.Equal(9, response.Body.Id);
+        Assert.Equal("reply", response.Body.Name);
     }
 
     [Fact]

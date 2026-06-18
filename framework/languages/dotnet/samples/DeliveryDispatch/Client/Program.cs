@@ -1,13 +1,14 @@
 using DeliveryDispatch.Client;
 using DeliveryDispatch.Shared.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.HttpClient;
 
 var apiUrl = ReadOption(args, "--api-url")
     ?? throw new ArgumentException("Missing --api-url.");
 var streamEndpoint = ReadOption(args, "--stream-endpoint")
     ?? throw new ArgumentException("Missing --stream-endpoint.");
 
-using var http = new HttpClient { BaseAddress = new Uri(apiUrl) };
+using var http = ZLinkHttpClient.Create(apiUrl).Json().Build();
 await using var customer = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
 {
     Endpoint = new Uri(streamEndpoint),

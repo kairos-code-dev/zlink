@@ -5,7 +5,8 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkEntrySpotHandlerExecutor(
     IServiceProvider services,
-    IZLinkEntrySpot entrySpot)
+    IZLinkEntrySpot entrySpot,
+    ZLinkCodecRegistryBuilder codecs)
 {
     public async ValueTask InvokeActorPacketAsync(
         ZLinkSpotActorPacketDescriptor descriptor,
@@ -15,7 +16,7 @@ internal sealed class ZLinkEntrySpotHandlerExecutor(
         CancellationToken cancellationToken)
     {
         await using var scope = services.CreateAsyncScope();
-        var invoker = new ZLinkSpotHandlerInvoker(scope.ServiceProvider, entrySpot);
+        var invoker = new ZLinkSpotHandlerInvoker(scope.ServiceProvider, entrySpot, codecs);
         await invoker.InvokeActorPacketAsync(
                 descriptor,
                 actor,
@@ -33,7 +34,7 @@ internal sealed class ZLinkEntrySpotHandlerExecutor(
         CancellationToken cancellationToken)
     {
         await using var scope = services.CreateAsyncScope();
-        var invoker = new ZLinkSpotHandlerInvoker(scope.ServiceProvider, entrySpot);
+        var invoker = new ZLinkSpotHandlerInvoker(scope.ServiceProvider, entrySpot, codecs);
         return await invoker.InvokeActorPacketForReplyAsync(
                 descriptor,
                 actor,

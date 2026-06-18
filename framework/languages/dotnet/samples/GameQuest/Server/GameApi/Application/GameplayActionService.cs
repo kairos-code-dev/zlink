@@ -3,6 +3,7 @@ using GameQuest.GameApi.Domain;
 using GameQuest.Shared;
 using GameQuest.Server.Configuration;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.HttpClient;
 
 namespace GameQuest.GameApi.Application;
 
@@ -10,7 +11,6 @@ internal sealed class GameplayActionService(
     GameQuestStore store,
     IZLinkFanoutClient fanout,
     GameQuestTopology topology,
-    IHttpClientFactory httpClientFactory,
     ILogger<GameplayActionService> logger)
 {
     private readonly string _apiName = Environment.GetEnvironmentVariable("GAMEQUEST_API_NAME") ?? "api";
@@ -72,11 +72,10 @@ internal sealed class GameplayActionService(
         var missionBaseUrl = GameQuestRouting.OwnerIndex(playerId) == 1
             ? topology.MissionBHttpBaseUrl
             : topology.MissionAHttpBaseUrl;
-        var response = await httpClientFactory.CreateClient()
-            .PostAsJsonAsync($"{missionBaseUrl}/internal/sync", new SyncQuestProgressReq(playerId), cancellationToken);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<SyncQuestProgressRes>(cancellationToken)
-               ?? throw new InvalidOperationException("QuestMission returned an empty sync response.");
+        using var mission = ZLinkHttpClient.Create(missionBaseUrl).Json().Build();
+        return (await mission.Post("/internal/sync")
+            .Body(new SyncQuestProgressReq(playerId))
+            .SubmitAsync<SyncQuestProgressRes>(cancellationToken)).Body;
     }
 
     private async ValueTask<GameplayEventEnvelope> StoreAndPublishAsync(

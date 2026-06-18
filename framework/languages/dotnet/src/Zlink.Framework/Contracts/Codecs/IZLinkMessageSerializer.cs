@@ -3,7 +3,7 @@ namespace Zlink.Framework.Contracts.Codecs;
 /// <summary>
 /// Custom payload serializer for high-level object messaging. Convert a business
 /// object to and from a wire <see cref="Message"/>. Register an implementation
-/// with <see cref="IZLinkCodecRegistryBuilder.AddSerializer"/> under a content
+/// with <see cref="IZLinkCodecRegistryBuilder.AddSerializer(string, IZLinkMessageSerializer)"/> under a content
 /// type (for example <c>"application/avro"</c>) and the framework uses it to
 /// encode and decode channel payloads.
 /// </summary>

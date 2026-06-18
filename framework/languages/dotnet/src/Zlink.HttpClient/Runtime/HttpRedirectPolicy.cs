@@ -40,7 +40,7 @@ internal static class HttpRedirectPolicy
     /// Applies the method/body rewrite for a followed redirect: 303, and 301/302 on POST, become a
     /// bodyless GET; all other redirects preserve the method and body.
     /// </summary>
-    public static (ZLinkHttpMethod Method, string? Body) RewriteForRedirect(int status, ZLinkHttpMethod method, string? body)
+    public static (ZLinkHttpMethod Method, byte[]? Body) RewriteForRedirect(int status, ZLinkHttpMethod method, byte[]? body)
     {
         if (status == 303 || ((status is 301 or 302) && method == ZLinkHttpMethod.Post))
         {

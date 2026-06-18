@@ -26,8 +26,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" />
-    <ProjectReference Include="../../src/Systems.Zlink.Stream.Connector.Codecs/Systems.Zlink.Stream.Connector.Codecs.csproj" />
-    <ProjectReference Include="../../src/Systems.Zlink.Stream.Connector.Json/Systems.Zlink.Stream.Connector.Json.csproj" />
+    <ProjectReference Include="../../src/Zlink.Framework.Codecs.MessagePack/Zlink.Framework.Codecs.MessagePack.csproj" />
+    <ProjectReference Include="../../src/Zlink.Framework.Codecs.Protobuf/Zlink.Framework.Codecs.Protobuf.csproj" />
   </ItemGroup>
 
   <ItemGroup>

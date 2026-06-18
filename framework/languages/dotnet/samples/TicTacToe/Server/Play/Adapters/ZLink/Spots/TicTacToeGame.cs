@@ -1,5 +1,5 @@
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using System.Text;
 using TicTacToe.Server.Play.Adapters.ZLink.Actors;
 using TicTacToe.Server.Play.Domain.TicTacToe;

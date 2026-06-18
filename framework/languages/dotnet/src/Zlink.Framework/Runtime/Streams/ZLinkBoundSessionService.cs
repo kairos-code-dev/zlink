@@ -66,7 +66,8 @@ internal sealed class ZLinkBoundSessionService(
         var frame = CreateBoundSessionFrame(
             packetName,
             metadata,
-            message);
+            message,
+            runtime.Registration.Codecs);
         await SendFrameWithRetryAsync(actorId, frame, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -110,9 +111,10 @@ internal sealed class ZLinkBoundSessionService(
     private static byte[] CreateBoundSessionFrame<TPayload>(
         string? packetName,
         IReadOnlyDictionary<string, string> metadata,
-        TPayload payload)
+        TPayload payload,
+        ZLinkCodecRegistryBuilder codecs)
     {
-        var encoded = ZLinkStreamPacketPayloadCodec.Encode(payload, payload?.GetType() ?? typeof(TPayload));
+        var encoded = ZLinkStreamPacketPayloadCodec.Encode(payload, payload?.GetType() ?? typeof(TPayload), codecs);
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Send,
             encoded.Codec,

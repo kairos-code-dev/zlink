@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Codecs.Protobuf;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -90,11 +91,11 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
     {
         var services = new ServiceCollection();
 
-        services.AddZLinkFramework(options =>
-        {
-            options.DefaultTimeout = TimeSpan.FromSeconds(5);
-            options.Codecs.AddProtobuf();
-            options.UseFilter<TestFilter>();
+            services.AddZLinkFramework(options =>
+            {
+                options.DefaultTimeout = TimeSpan.FromSeconds(5);
+                options.Codecs.Use(ZLinkProtobufCodec.Default);
+                options.UseFilter<TestFilter>();
             options.AddSpotRemoteAddressResolver<TestSpotRemoteAddressResolver>();
             {
                 var dispatch = options.ConfigureDispatch();
@@ -157,7 +158,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         Assert.IsType<TestSpotRemoteAddressResolver>(
             provider.GetRequiredService<IZLinkSpotRemoteAddressResolver>());
         Assert.Equal(TimeSpan.FromSeconds(5), registration.DefaultTimeout);
-        Assert.Contains("protobuf", registration.Codecs.RegisteredCodecs);
+        Assert.Contains("application/x-protobuf", registration.Codecs.Serializers.Keys);
         Assert.Equal(ZLinkDispatchMode.Dynamic, registration.DispatchOptions.SpotDispatchMode);
         Assert.NotNull(registration.Discovery);
         Assert.NotNull(registration.SpotDiscovery);

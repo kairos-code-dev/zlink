@@ -13,6 +13,8 @@ public sealed class RawHttpResponse
     public required IReadOnlyDictionary<string, string> Headers { get; init; }
 
     public required string Body { get; init; }
+
+    internal byte[] BodyBytes { get; init; } = [];
 }
 
 /// <summary>

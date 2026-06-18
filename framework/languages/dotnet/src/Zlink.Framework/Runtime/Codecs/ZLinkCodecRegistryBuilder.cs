@@ -3,16 +3,22 @@ namespace Zlink.Framework.Runtime.Codecs;
 internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder
 {
     private readonly HashSet<string> _codecs = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, IZLinkMessageSerializer> _serializers =
+    private readonly Dictionary<string, RegisteredSerializer> _serializers =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamCodec> _streamCodecsByContentType =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamCodec, string> _contentTypesByStreamCodec =
+        [];
 
     public IReadOnlyCollection<string> RegisteredCodecs => _codecs;
 
-    public IReadOnlyDictionary<string, IZLinkMessageSerializer> Serializers => _serializers;
+    public IReadOnlyDictionary<string, IZLinkMessageSerializer> Serializers =>
+        _serializers.ToDictionary(entry => entry.Key, entry => entry.Value.Serializer, StringComparer.OrdinalIgnoreCase);
 
-    public void AddProtobuf()
+    public void Use(IZLinkCodecExtension extension)
     {
-        _codecs.Add("protobuf");
+        ArgumentNullException.ThrowIfNull(extension);
+        extension.Register(this);
     }
 
     public void AddJson()
@@ -20,20 +26,43 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder
         _codecs.Add("json");
     }
 
-    public void AddMessagePack()
+    public void AddSerializer(string contentType, IZLinkMessageSerializer serializer)
+        => AddSerializer(contentType, serializer, _ => true, isFallbackSerializer: true);
+
+    public void AddSerializer(
+        string contentType,
+        IZLinkMessageSerializer serializer,
+        Func<Type, bool> canSerialize)
+        => AddSerializer(contentType, serializer, canSerialize, isFallbackSerializer: false);
+
+    public void AddStreamCodec(
+        string contentType,
+        Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamCodec codec)
     {
-        _codecs.Add("messagepack");
+        if (string.IsNullOrWhiteSpace(contentType))
+        {
+            throw new ArgumentException("Stream codec content type must not be blank.", nameof(contentType));
+        }
+
+        var normalized = contentType.Trim();
+        _streamCodecsByContentType[normalized] = codec;
+        _contentTypesByStreamCodec[codec] = normalized;
     }
 
-    public void AddSerializer(string contentType, IZLinkMessageSerializer serializer)
+    private void AddSerializer(
+        string contentType,
+        IZLinkMessageSerializer serializer,
+        Func<Type, bool> canSerialize,
+        bool isFallbackSerializer)
     {
         ArgumentNullException.ThrowIfNull(serializer);
+        ArgumentNullException.ThrowIfNull(canSerialize);
         if (string.IsNullOrWhiteSpace(contentType))
         {
             throw new ArgumentException("Custom serializer content type must not be blank.", nameof(contentType));
         }
 
-        _serializers[contentType.Trim()] = serializer;
+        _serializers[contentType.Trim()] = new RegisteredSerializer(serializer, canSerialize, isFallbackSerializer);
     }
 
     /// <summary>
@@ -43,31 +72,73 @@ internal sealed class ZLinkCodecRegistryBuilder : IZLinkCodecRegistryBuilder
     /// </summary>
     public (string ContentType, IZLinkMessageSerializer Serializer)? SingleCustomSerializer()
     {
-        if (_serializers.Count == 0)
+        var fallbackSerializers = _serializers
+            .Where(entry => entry.Value.IsFallbackSerializer)
+            .ToArray();
+
+        if (fallbackSerializers.Length == 0)
         {
             return null;
         }
 
-        if (_serializers.Count > 1)
+        if (fallbackSerializers.Length > 1)
         {
             throw new InvalidOperationException(
                 "Payload serializer is ambiguous because more than one custom serializer is registered: "
-                    + string.Join(", ", _serializers.Keys));
+                    + string.Join(", ", fallbackSerializers.Select(entry => entry.Key)));
         }
 
-        var entry = _serializers.First();
-        return (entry.Key, entry.Value);
+        var entry = fallbackSerializers[0];
+        return (entry.Key, entry.Value.Serializer);
     }
 
     public bool TryGetSerializer(string contentType, out IZLinkMessageSerializer serializer)
     {
         if (!string.IsNullOrEmpty(contentType) && _serializers.TryGetValue(contentType, out var found))
         {
-            serializer = found;
+            serializer = found.Serializer;
             return true;
         }
 
         serializer = null!;
         return false;
     }
+
+    public bool TryResolveSerializer(Type payloadType, out string contentType, out IZLinkMessageSerializer serializer)
+    {
+        var matches = _serializers
+            .Where(entry => entry.Value.CanSerialize(payloadType))
+            .ToArray();
+
+        if (matches.Length == 0)
+        {
+            contentType = string.Empty;
+            serializer = null!;
+            return false;
+        }
+
+        if (matches.Length > 1)
+        {
+            throw new InvalidOperationException(
+                "Payload serializer is ambiguous for type '" + payloadType + "': "
+                    + string.Join(", ", matches.Select(entry => entry.Key)));
+        }
+
+        contentType = matches[0].Key;
+        serializer = matches[0].Value.Serializer;
+        return true;
+    }
+
+    public bool TryResolveStreamCodec(string contentType, out Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamCodec codec)
+        => _streamCodecsByContentType.TryGetValue(contentType, out codec);
+
+    public bool TryResolveStreamContentType(
+        Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamCodec codec,
+        out string contentType)
+        => _contentTypesByStreamCodec.TryGetValue(codec, out contentType!);
+
+    private sealed record RegisteredSerializer(
+        IZLinkMessageSerializer Serializer,
+        Func<Type, bool> CanSerialize,
+        bool IsFallbackSerializer);
 }

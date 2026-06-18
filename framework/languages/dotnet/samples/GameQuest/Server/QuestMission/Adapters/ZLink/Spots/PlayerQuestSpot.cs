@@ -1,5 +1,5 @@
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using GameQuest.Shared;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Spots;

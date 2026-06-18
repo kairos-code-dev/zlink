@@ -13,7 +13,7 @@ internal sealed class HttpRequestSpec
 
     public required string Target { get; init; }
 
-    public string? Body { get; init; }
+    public byte[]? Body { get; init; }
 
     public Func<byte[]?>? BodyProvider { get; init; }
 

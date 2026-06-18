@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 using Systems.Zlink.Stream.Connector;
-using Systems.Zlink.Stream.Connector.Codecs;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Runtime;
 using Xunit;

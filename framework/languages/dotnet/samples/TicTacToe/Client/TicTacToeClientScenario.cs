@@ -1,8 +1,7 @@
-using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using Systems.Zlink.Stream.Connector.Contracts;
-using Systems.Zlink.Stream.Connector.Json;
 using TicTacToe.Shared.Contracts;
+using Zlink.HttpClient;
 
 namespace TicTacToe.Client;
 
@@ -12,21 +11,13 @@ public sealed class TicTacToeClientScenario
         TicTacToeClientOptions options,
         CancellationToken cancellationToken = default)
     {
-        using var api = new HttpClient
-        {
-            BaseAddress = options.ApiUrl,
-            Timeout = options.HttpTimeout,
-        };
-
-        using var createGameResponse = await api.PostAsJsonAsync(
-            "/games",
-            new CreateGameHttpReq(options.GameName),
-            cancellationToken);
-        createGameResponse.EnsureSuccessStatusCode();
-
-        var room = await createGameResponse.Content.ReadFromJsonAsync<CreateGameHttpRes>(
-            cancellationToken)
-                   ?? throw new InvalidOperationException("API returned an empty room response.");
+        using var api = ZLinkHttpClient.Create(options.ApiUrl.ToString())
+            .Json()
+            .Timeout(options.HttpTimeout)
+            .Build();
+        var room = api.Post("/games")
+            .Body(new CreateGameHttpReq(options.GameName))
+            .Fetch<CreateGameHttpRes>();
 
         Ensure(!string.IsNullOrWhiteSpace(room.RoomId));
         Ensure(!string.IsNullOrWhiteSpace(room.PlayEndpoint));

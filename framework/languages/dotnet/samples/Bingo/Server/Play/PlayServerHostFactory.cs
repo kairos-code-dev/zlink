@@ -6,6 +6,7 @@ using Bingo.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Codecs.Protobuf;
 
 namespace Bingo.Server.Play;
 
@@ -23,7 +24,7 @@ public static class PlayServerHostFactory
         {
             options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
-            options.Codecs.AddProtobuf();
+            options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var channel = options.AddClientServerChannel(SampleNames.PlayChannel);

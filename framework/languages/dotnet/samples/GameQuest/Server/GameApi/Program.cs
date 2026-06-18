@@ -22,7 +22,6 @@ internal static class Program
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<GameQuestStore>();
         builder.Services.AddSingleton<GameQuestSessionRegistry>();
-        builder.Services.AddHttpClient();
         builder.Services.AddScoped<GameplayActionService>();
         builder.Services.AddScoped<GameQuestSession>();
         builder.Services.AddScoped<SubscribeQuestHandler>();

@@ -109,4 +109,23 @@ internal static class TestHttpServerExtensions
         using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
         return reader.ReadToEnd();
     }
+
+    public static byte[] ReadBodyBytes(this HttpListenerRequest request)
+    {
+        using var output = new MemoryStream();
+        request.InputStream.CopyTo(output);
+        return output.ToArray();
+    }
+
+    public static async Task WriteBytesAsync(
+        this HttpListenerResponse response,
+        int status,
+        byte[] body,
+        string contentType)
+    {
+        response.StatusCode = status;
+        response.ContentType = contentType;
+        response.ContentLength64 = body.Length;
+        await response.OutputStream.WriteAsync(body).ConfigureAwait(false);
+    }
 }

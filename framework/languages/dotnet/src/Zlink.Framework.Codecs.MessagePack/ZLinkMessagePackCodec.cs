@@ -1,0 +1,60 @@
+using MessagePack;
+using Systems.Zlink;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.Contracts.Codecs;
+
+namespace Zlink.Framework.Codecs.MessagePack;
+
+public sealed class ZLinkMessagePackCodec : IZLinkCodecExtension, IZlinkStreamPayloadCodec
+{
+    public static ZLinkMessagePackCodec Default { get; } = new();
+
+    private ZLinkMessagePackCodec()
+    {
+    }
+
+    public void Register(IZLinkCodecRegistryBuilder codecs)
+    {
+        ArgumentNullException.ThrowIfNull(codecs);
+        codecs.AddSerializer(
+            "application/x-msgpack",
+            MessagePackSerializerAdapter.Instance,
+            type => type.GetCustomAttributes(typeof(MessagePackObjectAttribute), inherit: true).Length > 0);
+        codecs.AddStreamCodec("application/x-msgpack", ZlinkStreamCodec.MessagePack);
+    }
+
+    public ZlinkStreamEncodedPayload Encode<TPayload>(TPayload payload)
+    {
+        return new ZlinkStreamEncodedPayload(
+            ZlinkStreamCodec.MessagePack,
+            MessagePackSerializer.Serialize(payload, MessagePackSerializerOptions.Standard),
+            typeof(TPayload));
+    }
+
+    public TPayload Decode<TPayload>(ZlinkStreamEncodedPayload payload)
+    {
+        if (payload.Codec != ZlinkStreamCodec.MessagePack)
+        {
+            throw new InvalidOperationException($"Stream payload codec is {payload.Codec}, not MessagePack.");
+        }
+
+        return MessagePackSerializer.Deserialize<TPayload>(
+            payload.Payload,
+            MessagePackSerializerOptions.Standard);
+    }
+
+    private sealed class MessagePackSerializerAdapter : IZLinkMessageSerializer
+    {
+        public static MessagePackSerializerAdapter Instance { get; } = new();
+
+        public Message Serialize(object value, Type type)
+        {
+            return Message.From(MessagePackSerializer.Serialize(type, value, MessagePackSerializerOptions.Standard));
+        }
+
+        public object? Deserialize(Message message, Type type)
+        {
+            return MessagePackSerializer.Deserialize(type, message.AsReadOnlyMemory(), MessagePackSerializerOptions.Standard);
+        }
+    }
+}

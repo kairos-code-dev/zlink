@@ -1,12 +1,12 @@
+using Systems.Zlink.Stream.Connector.Contracts;
+
 namespace Zlink.Framework.Contracts.Codecs;
 
 public interface IZLinkCodecRegistryBuilder
 {
-    void AddProtobuf();
+    void Use(IZLinkCodecExtension extension);
 
     void AddJson();
-
-    void AddMessagePack();
 
     /// <summary>
     /// Registers a custom payload serializer under a content type (for example
@@ -15,4 +15,21 @@ public interface IZLinkCodecRegistryBuilder
     /// registered; registering a second one is a configuration error.
     /// </summary>
     void AddSerializer(string contentType, IZLinkMessageSerializer serializer);
+
+    /// <summary>
+    /// Registers a payload serializer that is used only when
+    /// <paramref name="canSerialize"/> returns <c>true</c> for the declared
+    /// payload type.
+    /// </summary>
+    void AddSerializer(
+        string contentType,
+        IZLinkMessageSerializer serializer,
+        Func<Type, bool> canSerialize);
+
+    /// <summary>
+    /// Maps a registered serializer content type to the stream packet codec value
+    /// used on the wire. Framework codec extensions call this when the same codec
+    /// must be shared by framework actors, stream connectors, and HTTP clients.
+    /// </summary>
+    void AddStreamCodec(string contentType, ZlinkStreamCodec codec);
 }

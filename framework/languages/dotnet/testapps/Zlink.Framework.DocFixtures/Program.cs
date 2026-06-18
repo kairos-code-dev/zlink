@@ -1,9 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Systems.Zlink.Codecs.Json;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Codecs.Json;
 
 internal static class Program
 {
@@ -311,7 +311,8 @@ internal sealed class FixtureActorSpot(IZLinkSpotContext context) : IZLinkSpot<F
         var decoded = request.FromJson<FixtureActorJoinRequest>();
         actor.AttachSpot(this);
         await actor.OnAttachedAsync(cancellationToken);
-        return ZLinkSpotActorJoinResult.Accept(new FixtureActorJoinReply(decoded.RoomId).ToJson());
+        return ZLinkSpotActorJoinResult.Accept(
+            JsonMessageExtensions.ToJson(new FixtureActorJoinReply(decoded.RoomId)));
     }
 }
 

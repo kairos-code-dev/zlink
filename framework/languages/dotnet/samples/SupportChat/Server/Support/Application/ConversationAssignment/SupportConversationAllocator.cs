@@ -1,4 +1,4 @@
-using Systems.Zlink.Codecs.Json;
+using Zlink.Framework.Contracts.Codecs.Json;
 using SupportChat.Server.Support.Adapters.ZLink.Spots;
 using Zlink.Framework.Contracts.Spots;
 

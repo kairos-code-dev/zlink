@@ -10,5 +10,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../Shared/ShoppingMall.Shared.csproj" />
+    <ProjectReference Include="../../../src/Zlink.HttpClient/Zlink.HttpClient.csproj" />
   </ItemGroup>
 </Project>

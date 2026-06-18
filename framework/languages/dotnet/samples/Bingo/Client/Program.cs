@@ -1,5 +1,6 @@
 using Bingo.Client.Configuration;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.Codecs.Protobuf;
 
 namespace Bingo.Client;
 
@@ -31,6 +32,7 @@ internal static class Program
             ConnectTimeout = SampleTimings.ConnectTimeout,
             RequestTimeout = SampleTimings.RequestTimeout,
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            PayloadCodec = ZLinkProtobufCodec.Default,
         });
         connector.ObserveInbound((observation, _) =>
         {

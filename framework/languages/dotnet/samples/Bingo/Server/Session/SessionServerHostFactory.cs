@@ -1,5 +1,4 @@
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
@@ -12,6 +11,7 @@ using Bingo.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Codecs.Protobuf;
 
 namespace Bingo.Server.Session;
 
@@ -27,7 +27,7 @@ public static class SessionServerHostFactory
         {
             options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
-            options.Codecs.AddProtobuf();
+            options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var channel = options.AddClientServerChannel(SampleNames.ApiChannel);

@@ -77,7 +77,13 @@ internal sealed class RequestPerformer(
             if (request.Sink is not null)
             {
                 await _bodyReader.StreamToSinkAsync(response, request.Sink, cancellationToken).ConfigureAwait(false);
-                return new RawHttpResponse { Status = status, Headers = headers, Body = string.Empty };
+                return new RawHttpResponse
+                {
+                    Status = status,
+                    Headers = headers,
+                    Body = string.Empty,
+                    BodyBytes = [],
+                };
             }
 
             var bytes = await _bodyReader.ReadBufferedAsync(response, cancellationToken).ConfigureAwait(false);
@@ -91,13 +97,14 @@ internal sealed class RequestPerformer(
                 Status = status,
                 Headers = headers,
                 Body = Encoding.UTF8.GetString(bytes),
+                BodyBytes = bytes,
             };
         }
     }
 
     private HttpRequestMessage BuildMessage(
         ZLinkHttpMethod method,
-        string? body,
+        byte[]? body,
         Func<byte[]?>? bodyProvider,
         IReadOnlyDictionary<string, string> requestHeaders,
         Uri target,
@@ -118,7 +125,7 @@ internal sealed class RequestPerformer(
         }
         else if (body is not null)
         {
-            content = new ByteArrayContent(Encoding.UTF8.GetBytes(body));
+            content = new ByteArrayContent(body);
             if (contentType is not null)
             {
                 content.Headers.TryAddWithoutValidation("Content-Type", contentType);

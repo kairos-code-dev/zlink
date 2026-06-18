@@ -1,6 +1,4 @@
 using System.Text.Json;
-using Google.Protobuf;
-using MessagePack;
 
 namespace Zlink.Framework.Runtime.Messaging;
 
@@ -28,8 +26,6 @@ internal sealed record ZLinkEnvelopeHeader(
 internal static class ZLinkEnvelopeCodec
 {
     private const string JsonContentType = "application/json";
-    private const string MessagePackContentType = "application/x-msgpack";
-    private const string ProtobufContentType = "application/x-protobuf";
 
     public static IReadOnlyList<Message> EncodeParts(
         ZLinkEnvelopeHeader header,
@@ -85,14 +81,10 @@ internal static class ZLinkEnvelopeCodec
             return Message.From(message);
         }
 
-        if (ShouldUseProtobuf(body, bodyType, codecs))
+        if (codecs is not null
+            && codecs.TryResolveSerializer(bodyType, out _, out var serializer))
         {
-            return Message.From(((IMessage)body).ToByteArray());
-        }
-
-        if (ShouldUseMessagePack(bodyType, codecs))
-        {
-            return Message.From(MessagePackSerializer.Serialize(bodyType, body, MessagePackSerializerOptions.Standard));
+            return serializer.Serialize(body, bodyType);
         }
 
         if (codecs?.SingleCustomSerializer() is { } custom)
@@ -181,25 +173,6 @@ internal static class ZLinkEnvelopeCodec
             return customSerializer.Deserialize(bodyMessage, bodyType);
         }
 
-        if (string.Equals(contentType, ProtobufContentType, StringComparison.OrdinalIgnoreCase))
-        {
-            if (!typeof(IMessage).IsAssignableFrom(bodyType))
-            {
-                throw new InvalidOperationException(
-                    $"Protobuf envelope body cannot be decoded as '{bodyType}'.");
-            }
-
-            var message = (IMessage?)Activator.CreateInstance(bodyType)
-                ?? throw new InvalidOperationException($"{bodyType.FullName} must have a public parameterless constructor.");
-            message.MergeFrom(bodyMessage.AsReadOnlySpan());
-            return message;
-        }
-
-        if (string.Equals(contentType, MessagePackContentType, StringComparison.OrdinalIgnoreCase))
-        {
-            return MessagePackSerializer.Deserialize(bodyType, bodyMessage.AsReadOnlyMemory(), MessagePackSerializerOptions.Standard);
-        }
-
         return JsonSerializer.Deserialize(
             bodyMessage.AsReadOnlySpan(),
             bodyType,
@@ -242,14 +215,10 @@ internal static class ZLinkEnvelopeCodec
             return JsonContentType;
         }
 
-        if (ShouldUseProtobuf(body, bodyType, codecs))
+        if (codecs is not null
+            && codecs.TryResolveSerializer(bodyType, out var contentType, out _))
         {
-            return ProtobufContentType;
-        }
-
-        if (ShouldUseMessagePack(bodyType, codecs))
-        {
-            return MessagePackContentType;
+            return contentType;
         }
 
         if (codecs?.SingleCustomSerializer() is { } custom)
@@ -257,35 +226,8 @@ internal static class ZLinkEnvelopeCodec
             return custom.ContentType;
         }
 
-        if (codecs is not null
-            && codecs.RegisteredCodecs.Count == 1
-            && !codecs.RegisteredCodecs.Contains("json"))
-        {
-            throw new InvalidOperationException(
-                $"Registered codec '{codecs.RegisteredCodecs.Single()}' cannot encode envelope body type '{bodyType}'.");
-        }
-
         return JsonContentType;
     }
-
-    private static bool ShouldUseProtobuf(object? body, Type bodyType, ZLinkCodecRegistryBuilder? codecs)
-    {
-        return IsRegistered(codecs, "protobuf")
-            && body is IMessage
-            && typeof(IMessage).IsAssignableFrom(bodyType);
-    }
-
-    private static bool ShouldUseMessagePack(Type bodyType, ZLinkCodecRegistryBuilder? codecs)
-    {
-        return IsRegistered(codecs, "messagepack")
-            && bodyType.GetCustomAttributes(typeof(MessagePackObjectAttribute), inherit: true).Length > 0;
-    }
-
-    private static bool IsRegistered(ZLinkCodecRegistryBuilder? codecs, string codec)
-    {
-        return codecs is not null && codecs.RegisteredCodecs.Contains(codec);
-    }
-
     private static void EnsurePart(IReadOnlyList<Message> parts, int index, string name)
     {
         if (parts.Count <= index)

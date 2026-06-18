@@ -51,27 +51,6 @@ run_test_file monitor_tests
 run_test_file service_surface_tests
 run_test_file optimization_guard_tests
 
-run_codec_crate() {
-    local package="$1"
-    local log_file
-    log_file="$(mktemp)"
-    TOTAL=$((TOTAL + 1))
-    echo -n "  $package ... "
-    if cargo test -p "$package" -- --test-threads=1 >"$log_file" 2>&1; then
-        echo "PASS"
-        PASS=$((PASS + 1))
-    else
-        echo "FAIL"
-        cat "$log_file"
-        FAIL=$((FAIL + 1))
-    fi
-    rm -f "$log_file"
-}
-
-run_codec_crate zlink-codec-json
-run_codec_crate zlink-codec-messagepack
-run_codec_crate zlink-codec-protobuf
-
 TOTAL=$((TOTAL + 1))
 echo -n "  samples ... "
 if "$PROJECT_DIR/samples/run_samples.sh" >/tmp/zlink-rust-samples.log 2>&1; then

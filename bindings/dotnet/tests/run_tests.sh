@@ -4,7 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PROJECT="${ROOT_DIR}/tests/Zlink.Tests/Zlink.Tests.csproj"
-CODEC_PROJECT="${ROOT_DIR}/codecs/Zlink.Codecs.Tests/Zlink.Codecs.Tests.csproj"
 VERSION_FILE="${ROOT_DIR}/../../VERSION"
 CORE_LIB_DIR="${ROOT_DIR}/../../core/build/lib"
 CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${VERSION_FILE}")"
@@ -30,8 +29,6 @@ fi
 
 echo "[dotnet-tests] building ${PROJECT}"
 dotnet build "${PROJECT}"
-echo "[dotnet-tests] building ${CODEC_PROJECT}"
-dotnet build "${CODEC_PROJECT}"
 
 if [[ -f "${CORE_LIB}" ]]; then
     sync_native_dirs "${ROOT_DIR}/tests/Zlink.Tests/bin"
@@ -39,7 +36,6 @@ fi
 
 echo "[dotnet-tests] running ${PROJECT}"
 if dotnet test "${PROJECT}" --no-build "$@" && \
-    dotnet test "${CODEC_PROJECT}" --no-build "$@" && \
     "${ROOT_DIR}/samples/run_samples.sh"; then
     echo "[dotnet-tests] PASS"
 else

@@ -32,8 +32,7 @@
   "gypfile": true,
   "scripts": {
     "clean": "rm -rf dist dist-tools",
-    "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.tools.json && ln -sfn ../dist dist-tools/dist && npm run build:codecs",
-    "build:codecs": "npm --prefix packages/zlink-codec-json run build && npm --prefix packages/zlink-codec-messagepack run build && npm --prefix packages/zlink-codec-protobuf run build",
+    "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.tools.json && ln -sfn ../dist dist-tools/dist",
     "verify:prebuilds": "node scripts/verify_prebuilds.js",
     "rebuild-native": "node-gyp configure build",
     "perf:single": "./perf/single/run_benchmarks.sh",
@@ -43,15 +42,12 @@
     "typecheck:src-review": "tsc -p tsconfig.src-review.json",
     "prepare": "npm run build",
     "pretest": "npm run build && npm run typecheck && npm run rebuild-native",
-    "test": "./tests/run_tests.sh && npm run test:codecs",
-    "test:codecs": "node packages/zlink-codec-json/test.mjs && node packages/zlink-codec-messagepack/test.mjs && node packages/zlink-codec-protobuf/test.mjs",
+    "test": "./tests/run_tests.sh",
     "presamples": "npm run build && npm run rebuild-native",
     "samples": "./samples/run_samples.sh"
   },
   "devDependencies": {
-    "@msgpack/msgpack": "^3.1.3",
     "@types/node": "^22.15.30",
-    "protobufjs": "^8.0.1",
     "typescript": "^5.8.3"
   }
 }

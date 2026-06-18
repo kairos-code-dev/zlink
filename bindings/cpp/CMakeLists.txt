@@ -14,9 +14,6 @@ option(
   "Prefer core/build runtime over the bundled C++ native runtime"
   OFF
 )
-option(ZLINK_CPP_CODEC_JSON "Build and install the C++ JSON codec target" ON)
-option(ZLINK_CPP_CODEC_MESSAGEPACK "Build and install the C++ MessagePack codec target" ON)
-option(ZLINK_CPP_CODEC_PROTOBUF "Build and install the C++ Protobuf codec target" ON)
 set(ZLINK_CPP_STANDALONE FALSE)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(ZLINK_CPP_STANDALONE TRUE)
@@ -215,66 +212,6 @@ install(EXPORT zlink_cppTargets
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_cpp
 )
 
-function(add_zlink_cpp_codec_target codec_name include_dir)
-  set(target_name "zlink_cpp_codec_${codec_name}")
-  if(TARGET ${target_name})
-    return()
-  endif()
-
-  add_library(${target_name} INTERFACE)
-  add_library("zlink::cpp_codec_${codec_name}" ALIAS ${target_name})
-  target_compile_features(${target_name} INTERFACE cxx_std_20)
-  target_include_directories(${target_name} INTERFACE
-    $<BUILD_INTERFACE:${include_dir}>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-  target_link_libraries(${target_name} INTERFACE zlink_cpp ${ARGN})
-  install(TARGETS ${target_name}
-    EXPORT zlink_cppTargets)
-  install(DIRECTORY "${include_dir}/"
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    FILES_MATCHING PATTERN "*.hpp")
-endfunction()
-
-if(ZLINK_CPP_CODEC_JSON)
-  find_package(nlohmann_json QUIET)
-endif()
-if(ZLINK_CPP_CODEC_JSON AND nlohmann_json_FOUND)
-  add_zlink_cpp_codec_target(
-    json
-    ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-json/include
-    nlohmann_json::nlohmann_json)
-endif()
-
-if(ZLINK_CPP_CODEC_MESSAGEPACK)
-  find_package(msgpack-cxx QUIET CONFIG)
-endif()
-if(ZLINK_CPP_CODEC_MESSAGEPACK AND TARGET msgpack-cxx)
-  add_zlink_cpp_codec_target(
-    messagepack
-    ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-messagepack/include
-    msgpack-cxx)
-elseif(ZLINK_CPP_CODEC_MESSAGEPACK AND TARGET msgpack-cxx::msgpack-cxx)
-  add_zlink_cpp_codec_target(
-    messagepack
-    ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-messagepack/include
-    msgpack-cxx::msgpack-cxx)
-endif()
-
-if(ZLINK_CPP_CODEC_PROTOBUF)
-  find_package(Protobuf QUIET)
-endif()
-if(ZLINK_CPP_CODEC_PROTOBUF AND TARGET protobuf::libprotobuf)
-  add_zlink_cpp_codec_target(
-    protobuf
-    ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-protobuf/include
-    protobuf::libprotobuf)
-elseif(ZLINK_CPP_CODEC_PROTOBUF AND TARGET protobuf::protobuf)
-  add_zlink_cpp_codec_target(
-    protobuf
-    ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-protobuf/include
-    protobuf::protobuf)
-endif()
-
 find_package(Doxygen QUIET)
 if(DOXYGEN_FOUND)
   add_custom_target(zlink_cpp_api_docs
@@ -472,66 +409,6 @@ if(ZLINK_CPP_BUILD_TESTS)
     )
   endif()
 
-  if(TARGET zlink::cpp_codec_json)
-    add_cpp_contract_test(
-      test_cpp_contract_codec_json
-      tests/contract/test_cpp_contract_codec_json.cpp
-    )
-    target_link_libraries(test_cpp_contract_codec_json PRIVATE
-      zlink::cpp_codec_json
-    )
-  endif()
-
-  if(TARGET zlink::cpp_codec_messagepack)
-    add_cpp_contract_test(
-      test_cpp_contract_codec_messagepack
-      tests/contract/test_cpp_contract_codec_messagepack.cpp
-    )
-    target_link_libraries(test_cpp_contract_codec_messagepack PRIVATE
-      zlink::cpp_codec_messagepack)
-  endif()
-
-  if(TARGET zlink::cpp_codec_protobuf)
-    add_cpp_contract_test(
-      test_cpp_contract_codec_protobuf
-      tests/contract/test_cpp_contract_codec_protobuf.cpp
-    )
-    target_link_libraries(test_cpp_contract_codec_protobuf PRIVATE
-      zlink::cpp_codec_protobuf)
-  endif()
-
-  set(ZLINK_CPP_CODEC_TARGET_CONTRACT_REPORT
-    "${CMAKE_CURRENT_BINARY_DIR}/codec-target-contract.txt")
-  get_target_property(ZLINK_CPP_BASE_LINKS zlink_cpp INTERFACE_LINK_LIBRARIES)
-  if(NOT ZLINK_CPP_BASE_LINKS)
-    set(ZLINK_CPP_BASE_LINKS "")
-  endif()
-  file(WRITE "${ZLINK_CPP_CODEC_TARGET_CONTRACT_REPORT}"
-    "base_links=${ZLINK_CPP_BASE_LINKS}\n")
-  foreach(codec json messagepack protobuf)
-    if(TARGET zlink_cpp_codec_${codec})
-      get_target_property(ZLINK_CPP_CODEC_LINKS
-        zlink_cpp_codec_${codec}
-        INTERFACE_LINK_LIBRARIES)
-      if(NOT ZLINK_CPP_CODEC_LINKS)
-        set(ZLINK_CPP_CODEC_LINKS "")
-      endif()
-      file(APPEND "${ZLINK_CPP_CODEC_TARGET_CONTRACT_REPORT}"
-        "codec_${codec}_links=${ZLINK_CPP_CODEC_LINKS}\n")
-      if(NOT "${ZLINK_CPP_CODEC_LINKS}" MATCHES "zlink_cpp")
-        file(APPEND "${ZLINK_CPP_CODEC_TARGET_CONTRACT_REPORT}"
-          "codec_target_without_base=${codec}\n")
-      endif()
-    endif()
-  endforeach()
-
-  add_test(
-    NAME test_cpp_contract_codec_target_boundary
-    COMMAND ${CMAKE_COMMAND}
-      -D ZLINK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
-      -P ${CMAKE_CURRENT_LIST_DIR}/tests/contract/verify_codec_target_contract.cmake)
-  set_tests_properties(test_cpp_contract_codec_target_boundary PROPERTIES
-    LABELS contract)
 endif()
 
 option(ZLINK_CPP_BUILD_BENCHMARKS "Build C++ binding benchmarks" OFF)

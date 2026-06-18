@@ -24,9 +24,6 @@ fi
 TASKS=(
   ":test"
   ":integrationTest"
-  ":zlink-codec-json:test"
-  ":zlink-codec-messagepack:test"
-  ":zlink-codec-protobuf:test"
   ":zlink-ext-netty:test"
   ":kotlin-samples:runAllKotlinSamples"
 )
@@ -59,18 +56,6 @@ print_report_hints() {
     ":integrationTest")
       report_dir="${ROOT_DIR}/build/reports/tests/integrationTest"
       results_dir="${ROOT_DIR}/build/test-results/integrationTest"
-      ;;
-    ":zlink-codec-json:test")
-      report_dir="${ROOT_DIR}/codec/zlink-codec-json/build/reports/tests/test"
-      results_dir="${ROOT_DIR}/codec/zlink-codec-json/build/test-results/test"
-      ;;
-    ":zlink-codec-messagepack:test")
-      report_dir="${ROOT_DIR}/codec/zlink-codec-messagepack/build/reports/tests/test"
-      results_dir="${ROOT_DIR}/codec/zlink-codec-messagepack/build/test-results/test"
-      ;;
-    ":zlink-codec-protobuf:test")
-      report_dir="${ROOT_DIR}/codec/zlink-codec-protobuf/build/reports/tests/test"
-      results_dir="${ROOT_DIR}/codec/zlink-codec-protobuf/build/test-results/test"
       ;;
     ":zlink-ext-netty:test")
       report_dir="${ROOT_DIR}/codec/zlink-ext-netty/build/reports/tests/test"

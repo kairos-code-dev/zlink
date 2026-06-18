@@ -2888,11 +2888,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 
 > 언어별 인터페이스 시그니처와 사용 예는
 > `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
-> 구현 기준 상세는
-> [`doc/plan/spot-refactor/SOCKET_REQUEST_REPLY_API_SPEC.md`](../../../doc/plan/spot-refactor/SOCKET_REQUEST_REPLY_API_SPEC.md),
-> [`doc/plan/spot-refactor/ZMP_REQUEST_REPLY_PROTOCOL.md`](../../../doc/plan/spot-refactor/ZMP_REQUEST_REPLY_PROTOCOL.md),
-> [`doc/plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md`](../../../doc/plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md)
-> 를 따른다.
 
 #### 설계 원칙
 

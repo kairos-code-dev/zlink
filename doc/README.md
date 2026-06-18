@@ -12,7 +12,6 @@ English | [한국어](README.ko.md)
 | `guide/` | Application developers (library users) | **Intent, purpose, usage** — why the API exists, when to use which pattern, practical examples. No internal implementation details |
 | `internals/` | Core library maintainers | **Internal architecture** — socket wiring, data flow, thread model, protocol encoding. Diagram-heavy for understanding before reading code |
 | `building/` | Build/release engineers | Build, test, packaging instructions |
-| `plan/` | Project contributors | Feature roadmap, working specs, migration plans |
 
 **Key rule**: guide does not explain internals. If a guide topic needs
 internal context, link to the internals document instead.
@@ -24,7 +23,7 @@ internal context, link to the internals document instead.
 | Audience | Starting Document | Description |
 |----------|-------------------|-------------|
 | **Library Users** | [guide/01-overview.md](../core/doc/guide/01-overview.md) | Developing messaging applications with the zlink API |
-| **Binding Users** | [guide/bindings/README.md](../bindings/doc/guide/README.md) | C++/Java/.NET/Node.js/Python bindings |
+| **Binding Users** | [guide/bindings/README.ko.md](../bindings/doc/guide/README.ko.md) (Korean) | C++/Java/.NET/Node.js/Python bindings |
 | **Library Developers** | [internals/architecture.md](../core/doc/internals/architecture.md) | Internal architecture and implementation details |
 | **Build/Release Engineers** | [building/build-guide.md](building/build-guide.md) | Building, testing, and packaging |
 
@@ -73,14 +72,14 @@ internal context, link to the internals document instead.
 ## Binding Guides (guide/bindings/)
 
 Per-language usage guides live under
-[`guide/bindings/`](../bindings/doc/guide/README.md). Messaging concepts are owned by the
+[`guide/bindings/`](../bindings/doc/guide/README.ko.md). Messaging concepts are owned by the
 core guide; each language guide covers that language's usage, type mapping, and
 language-specific rules.
 
 | Language | Guide | Notes |
 |----------|-------|-------|
-| .NET | [dotnet/](../bindings/doc/guide/dotnet/index.md) | LibraryImport, .NET 8+ |
-| C++ / Java / Node / Python / Go / Rust | [Binding guide index](../bindings/doc/guide/README.md) | planned |
+| .NET | [dotnet/](../bindings/doc/guide/dotnet/index.ko.md) (Korean) | LibraryImport, .NET 8+ |
+| C++ / Java / Node / Python / Go / Rust | [Binding guide index](../bindings/doc/guide/README.ko.md) | planned |
 
 ## Internals (internals/)
 
@@ -109,16 +108,3 @@ language-specific rules.
 | [release-accounts.md](building/release-accounts.md) | Official distribution accounts/secrets |
 | [../core/tests/README.md](../core/tests/README.md) | Test strategy, layout, and lane execution |
 | [platforms.md](building/platforms.md) | Supported platforms and compilers |
-
-## Reference (plan/)
-
-| Document | Description |
-|----------|-------------|
-| [feature-roadmap.md](plan/feature-roadmap.md) | Feature roadmap |
-| [type-segmentation.md](plan/type-segmentation.md) | Discovery type separation plan |
-
-## Working Specs (plan/)
-
-| Document | Description |
-|----------|-------------|
-| [plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md](plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md) | Working spec for SpotNode-based routed message during development |

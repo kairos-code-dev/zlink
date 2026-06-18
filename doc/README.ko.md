@@ -40,6 +40,8 @@
 | [07-0-services.ko.md](../core/doc/guide/07-0-services.ko.md) | 서비스 계층 개요 |
 | [07-1-discovery.ko.md](../core/doc/guide/07-1-discovery.ko.md) | Service Discovery 기반 인프라 |
 | [07-3-spot.ko.md](../core/doc/guide/07-3-spot.ko.md) | SPOT 토픽 PUB/SUB (위치투명 발행/구독) |
+| [07-4-actor.ko.md](../core/doc/guide/07-4-actor.ko.md) | Actor 모델 (위치투명 actor) |
+| [07-4-registry.ko.md](../core/doc/guide/07-4-registry.ko.md) | Registry 서비스 |
 
 ### Reference
 | 문서 | 설명 |
@@ -90,18 +92,4 @@
 | [cmake-options.ko.md](building/cmake-options.ko.md) | CMake 옵션 상세 |
 | [packaging.ko.md](building/packaging.ko.md) | 릴리즈 및 패키징 |
 | [release-accounts.ko.md](building/release-accounts.ko.md) | 공식 배포 계정/시크릿 |
-| [testing.ko.md](building/testing.ko.md) | 테스트 전략 및 실행 |
 | [platforms.ko.md](building/platforms.ko.md) | 지원 플랫폼 및 컴파일러 |
-
-## 참고 (plan/)
-
-| 문서 | 설명 |
-|------|------|
-| [feature-roadmap.ko.md](plan/feature-roadmap.ko.md) | 기능 로드맵 |
-| [type-segmentation.ko.md](plan/type-segmentation.ko.md) | Discovery 타입 분리 계획 |
-
-## 작업 스펙 (plan/)
-
-| 문서 | 설명 |
-|------|------|
-| [plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md](plan/spot-refactor/SPOT_ROUTED_MESSAGE_SPEC.md) | 개발 중 기준으로 쓰는 SpotNode 기반 routed message 작업 스펙 |

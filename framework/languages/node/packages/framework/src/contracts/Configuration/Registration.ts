@@ -25,14 +25,11 @@ import type {
   ZLinkSessionFactory,
   ZLinkTimerOptions
 } from '../../contracts';
-import type { ZLinkCodecRegistryBuilder, ZLinkMessageSerializer } from '../Codecs';
-import {
-  createDefaultProtobufMessageSerializer,
-  ZLINK_PROTOBUF_CONTENT_TYPE
-} from '../Codecs/DefaultMessageSerializers';
+import type { ZLinkCodecExtension, ZLinkCodecRegistryBuilder, ZLinkMessageSerializer } from '../Codecs';
 
 export interface ZLinkFrameworkRegistration {
   readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer>;
+  readonly codecs: ZLinkCodecRegistration;
   readonly requestTimeoutMs?: number;
   readonly actorFactories: ReadonlyMap<string, Type>;
   readonly spotFactories: ReadonlySet<Type<ZLinkSpot>>;
@@ -74,16 +71,27 @@ export interface ZLinkRegistrySpotRemoteAddressesRegistration {
   readonly registryEndpoint: string;
 }
 
-export type ZLinkNamedCodec = 'json' | 'messagepack' | 'protobuf';
+export type ZLinkNamedCodec = 'json';
 
 export interface ZLinkCodecSerializerRegistration {
   readonly contentType: string;
   readonly serializer: ZLinkMessageSerializer;
 }
 
+export interface ZLinkStreamCodecRegistration {
+  readonly contentType: string;
+  readonly codec: unknown;
+}
+
+export interface ZLinkCodecRegistration {
+  readonly serializers: ReadonlyMap<string, ZLinkMessageSerializer>;
+  readonly streamCodecs: ReadonlyMap<string, unknown>;
+}
+
 export interface ZLinkCodecRegistryOptions {
   readonly codecs?: readonly ZLinkNamedCodec[];
   readonly serializers?: readonly ZLinkCodecSerializerRegistration[];
+  readonly streamCodecs?: readonly ZLinkStreamCodecRegistration[];
 }
 
 export interface ZLinkFrameworkRegistrationOptions {
@@ -311,6 +319,7 @@ export function createFrameworkRegistration(
   const spotNodes = toSpotNodeMap(options.spotNodes);
   const registration: ZLinkFrameworkRegistration = {
     messageSerializers: codecRegistry.registeredSerializers,
+    codecs: codecRegistry.registration,
     requestTimeoutMs: normalizeOptionalPositiveInteger(options.requestTimeoutMs, 'requestTimeoutMs'),
     actorFactories: toTypeMap(options.actorFactories),
     spotFactories: toSpotFactorySet(options.spotFactories, spotNodes),
@@ -363,7 +372,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   }
 
   codecs(): ZLinkCodecRegistryBuilder {
-    this.options.codecs ??= { codecs: [], serializers: [] };
+    this.options.codecs ??= { codecs: [], serializers: [], streamCodecs: [] };
     return new RegistrationCodecRegistryBuilder(this.options.codecs);
   }
 
@@ -707,24 +716,33 @@ interface MutableFrameworkRegistrationOptions {
 interface MutableCodecRegistryOptions {
   codecs: ZLinkNamedCodec[];
   serializers: ZLinkCodecSerializerRegistration[];
+  streamCodecs: ZLinkStreamCodecRegistration[];
 }
 
 function createCodecRegistry(options: ZLinkCodecRegistryOptions | undefined): RegistrationCodecRegistryBuilder {
   return new RegistrationCodecRegistryBuilder({
     codecs: [...(options?.codecs ?? [])],
-    serializers: [...(options?.serializers ?? [])]
+    serializers: [...(options?.serializers ?? [])],
+    streamCodecs: [...(options?.streamCodecs ?? [])]
   });
 }
 
 class RegistrationCodecRegistryBuilder implements ZLinkCodecRegistryBuilder {
-  constructor(private readonly options: MutableCodecRegistryOptions = { codecs: [], serializers: [] }) {}
+  constructor(private readonly options: MutableCodecRegistryOptions = { codecs: [], serializers: [], streamCodecs: [] }) {}
 
   get registeredSerializers(): ReadonlyMap<string, ZLinkMessageSerializer> {
-    const serializers = new Map(this.options.serializers.map((entry) => [entry.contentType, entry.serializer]));
-    if (this.options.codecs.includes('protobuf') && !serializers.has(ZLINK_PROTOBUF_CONTENT_TYPE)) {
-      serializers.set(ZLINK_PROTOBUF_CONTENT_TYPE, createDefaultProtobufMessageSerializer());
-    }
-    return serializers;
+    return new Map(this.options.serializers.map((entry) => [entry.contentType, entry.serializer]));
+  }
+
+  get registeredStreamCodecs(): ReadonlyMap<string, unknown> {
+    return new Map(this.options.streamCodecs.map((entry) => [entry.contentType, entry.codec]));
+  }
+
+  get registration(): ZLinkCodecRegistration {
+    return {
+      serializers: this.registeredSerializers,
+      streamCodecs: this.registeredStreamCodecs
+    };
   }
 
   get registeredCodecs(): readonly string[] {
@@ -732,6 +750,11 @@ class RegistrationCodecRegistryBuilder implements ZLinkCodecRegistryBuilder {
       ...this.options.codecs,
       ...this.options.serializers.map((entry) => entry.contentType)
     ];
+  }
+
+  use(extension: ZLinkCodecExtension): this {
+    extension.register(this);
+    return this;
   }
 
   addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this {
@@ -746,18 +769,20 @@ class RegistrationCodecRegistryBuilder implements ZLinkCodecRegistryBuilder {
     return this;
   }
 
+  addStreamCodec(contentType: string, codec: unknown): this {
+    const normalized = normalizeCodecContentType(contentType);
+    const existing = this.options.streamCodecs.findIndex((entry) => entry.contentType === normalized);
+    const registration = { contentType: normalized, codec };
+    if (existing >= 0) {
+      this.options.streamCodecs[existing] = registration;
+    } else {
+      this.options.streamCodecs.push(registration);
+    }
+    return this;
+  }
+
   addJson(): this {
     addNamedCodec(this.options, 'json');
-    return this;
-  }
-
-  addMessagePack(): this {
-    addNamedCodec(this.options, 'messagepack');
-    return this;
-  }
-
-  addProtobuf(): this {
-    addNamedCodec(this.options, 'protobuf');
     return this;
   }
 }

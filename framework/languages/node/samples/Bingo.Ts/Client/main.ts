@@ -1,5 +1,5 @@
 import * as connector from '@zlink-systems/stream-connector';
-import { bingoProtobufCodec } from '../Shared/Contracts/protobuf-codec';
+import { bingoProtobuf } from '../Shared/Contracts/protobuf-codec';
 import { BingoClientScenario } from './bingo-client-scenario';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 import { SampleTimings } from './Configuration/sample-names';
@@ -24,7 +24,7 @@ async function main(): Promise<void> {
 function createClient(sessionEndpoint: string, clientName: string): ZlinkStreamConnector {
   const client = connector.zlinkStreamConnectorFactory.create({
     endpoint: sessionEndpoint,
-    codec: bingoProtobufCodec,
+    codec: bingoProtobuf,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
     requestTimeoutMs: SampleTimings.requestTimeout,
     heartbeat: { enabled: false }

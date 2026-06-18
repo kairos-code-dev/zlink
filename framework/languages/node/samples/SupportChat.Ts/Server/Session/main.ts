@@ -170,10 +170,7 @@ async function pumpNotifications(
         for (const delivered of response.delivered) {
           transport.send(delivered.packetName, delivered.payload, { seq: String(delivered.seq) });
         }
-      } catch (error) {
-        if (context.closed) {
-          return;
-        }
+      } catch {
       }
     }
     await new Promise((resolve) => setImmediate(resolve));

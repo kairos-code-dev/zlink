@@ -1,17 +1,12 @@
-import { createRequire } from 'node:module';
-import path from 'node:path';
+import {
+  ZlinkStreamCodec
+} from './ZlinkStreamEnums';
 import type {
-  ZlinkStreamEncodedPayload,
   ZlinkStreamPayloadCodec
-} from '@zlink-systems/stream-connector';
-
-interface StreamConnectorRuntime {
-  readonly ZlinkStreamCodec: {
-    readonly Json: number;
-  };
-}
-
-const streamConnector = loadStreamConnector();
+} from './ZlinkStreamConnectorOptions';
+import type {
+  ZlinkStreamEncodedPayload
+} from './ZlinkStreamModels';
 
 export const zlinkStreamJsonCodecName = 'json';
 
@@ -40,7 +35,7 @@ export const zlinkStreamJsonCodec: ZlinkStreamPayloadCodec & {
 
 export function toJson<T>(value: T, messageType?: Function): ZlinkStreamEncodedPayload {
   return {
-    codec: streamConnector.ZlinkStreamCodec.Json,
+    codec: ZlinkStreamCodec.Json,
     payload: new TextEncoder().encode(JSON.stringify(value, codecOptions.replacer)),
     messageType: messageType ?? inferMessageType(value)
   };
@@ -52,20 +47,8 @@ export function fromJson<T>(payload: ZlinkStreamEncodedPayload): T {
 }
 
 function ensureJson(payload: ZlinkStreamEncodedPayload): void {
-  if (payload.codec !== streamConnector.ZlinkStreamCodec.Json) {
+  if (payload.codec !== ZlinkStreamCodec.Json) {
     throw new Error(`Stream payload codec is ${payload.codec}, not Json.`);
-  }
-}
-
-function loadStreamConnector(): StreamConnectorRuntime {
-  const requireConnector = createRequire(__filename);
-  try {
-    return requireConnector('@zlink-systems/stream-connector') as StreamConnectorRuntime;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'MODULE_NOT_FOUND') {
-      throw error;
-    }
-    return requireConnector(path.resolve(__dirname, '../../stream-connector/dist')) as StreamConnectorRuntime;
   }
 }
 

@@ -1,4 +1,5 @@
 import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
+import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf';
 import { BingoNotificationDeliveryLog } from './notification-delivery-log';
 import { PlayerActorFactory } from './Adapters/ZLink/Actors/player-actor-factory';
 import { BingoNotificationPublisher } from './Adapters/ZLink/Notifications/bingo-notification-publisher';
@@ -19,7 +20,7 @@ function createBingoPlayModule(config: {
         useFactory: () => zlinkFramework()
           .options({ requestTimeoutMs: SampleTimings.requestTimeout })
           .codecs()
-            .addProtobuf()
+            .use(zlinkProtobufCodec())
           .useDiscovery()
             .addRegistryEndpoint(config.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.playChannel)

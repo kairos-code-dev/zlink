@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const connector = require('../../packages/stream-connector/dist');
-const json = require('../../packages/stream-connector-json/dist');
+const json = connector;
 
 test('stream connector json codec encodes and decodes json payloads', () => {
   const payload = json.toJson({ ready: true });
@@ -30,7 +30,6 @@ test('stream connector json codec writes json payload frame through connector', 
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'tcp://127.0.0.1:19000',
     transportFactory,
-    codec: json.zlinkStreamJsonCodec
   });
 
   await instance.connect();
@@ -49,7 +48,6 @@ test('stream connector json codec decodes reply payload through connector', asyn
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'tcp://127.0.0.1:19000',
     transportFactory,
-    codec: json.zlinkStreamJsonCodec
   });
 
   await instance.connect();
@@ -78,12 +76,11 @@ test('stream connector json codec dispatches typed payloads through connector', 
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'tcp://127.0.0.1:19000',
     transportFactory,
-    codec: json.zlinkStreamJsonCodec
   });
   const received = [];
 
   instance.on('Notice', (message) => {
-    received.push(message.payload);
+    received.push(json.fromJson(message.payload));
   });
 
   await instance.connect();
@@ -107,7 +104,6 @@ test('stream connector json codec wait resolves matching typed payload', async (
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'tcp://127.0.0.1:19000',
     transportFactory,
-    codec: json.zlinkStreamJsonCodec
   });
 
   await instance.connect();
@@ -149,7 +145,6 @@ test('stream connector json codec wait uses connector request timeout by default
     endpoint: 'tcp://127.0.0.1:19000',
     requestTimeoutMs: 1000,
     transportFactory,
-    codec: json.zlinkStreamJsonCodec
   });
 
   await instance.connect();

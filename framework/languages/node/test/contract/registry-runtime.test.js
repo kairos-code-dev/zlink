@@ -196,15 +196,37 @@ test('codec registry builder tracks dotnet named codecs and custom serializers',
   };
   const builder = new framework.DefaultZLinkCodecRegistryBuilder();
 
-  builder.addJson().addMessagePack().addProtobuf().addSerializer('application/x-test', serializer);
+  builder
+    .addJson()
+    .use({
+      register(codecs) {
+        codecs.addSerializer('application/x-test', serializer);
+      }
+    });
 
   assert.deepEqual(builder.registeredCodecs, [
     'json',
-    'messagepack',
-    'protobuf',
     'application/x-test'
   ]);
   assert.equal(builder.registeredSerializers.get('application/x-test'), serializer);
+});
+
+test('codec registry builder accepts custom codec extensions', () => {
+  const serializer = {
+    serialize() {},
+    deserialize() {}
+  };
+  const extension = {
+    register(codecs) {
+      codecs.addSerializer('application/x-avro', serializer);
+    }
+  };
+  const builder = new framework.DefaultZLinkCodecRegistryBuilder();
+
+  builder.use(extension);
+
+  assert.deepEqual(builder.registeredCodecs, ['application/x-avro']);
+  assert.equal(builder.registeredSerializers.get('application/x-avro'), serializer);
 });
 
 function fakeRegistryBackend(calls) {

@@ -865,7 +865,7 @@ test('node client scenarios follow the common sample document order', () => {
 
   assertOrdered('TicTacToe.Ts/Client/tictactoe-client-scenario.ts', ticTacToeClient, [
     '1. Create the room through API',
-    "JSON.stringify(createGameReq('match-ready'))",
+    ".body(createGameReq('match-ready'))",
     'game.roomId.length > 0',
     'game.playEndpoint.length > 0',
     'createPlayerClient(game.playEndpoint)',
@@ -906,9 +906,9 @@ test('node samples use the codecs required by the common specs', () => {
   const bingoCodec = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'protobuf-codec.ts'), 'utf8');
   const bingoProto = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'bingo_messages.proto'), 'utf8');
   const required = [
-    [ticTacToeClient, 'zlinkStreamJsonCodec'],
+    [ticTacToeClient, 'zlinkStreamConnectorFactory.create'],
     [ticTacToePlay, '.addStreamNode(SampleNames.playStream'],
-    [bingoClient, 'bingoProtobufCodec'],
+    [bingoClient, 'bingoProtobuf'],
     [bingoSession, 'ZlinkStreamCodec.Protobuf'],
     [bingoProto, 'message AuthenticateReq'],
     [bingoProto, 'message BingoRoomState'],

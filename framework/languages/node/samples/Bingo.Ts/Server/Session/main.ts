@@ -9,7 +9,7 @@ import { createBingoSessionModule, getSessionAuthenticator } from './bingo-sessi
 import { SampleNames } from '../Configuration/sample-names';
 import { loadSampleConfig } from '../Configuration/sample-config';
 import { PacketNames, bingoNotificationsReq, withPlayerIdentity } from '../../Shared/Contracts/messages';
-import { fromBingoProto, toBingoProto } from '../../Shared/Contracts/protobuf-codec';
+import { decodeBingoPayload, encodeBingoPayload } from '../../Shared/Contracts/protobuf-codec';
 import type { Server, Socket } from 'node:net';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
 import type { BingoSession as BingoSessionType } from './Sessions/bingo-session';
@@ -117,7 +117,7 @@ async function dispatchPacket(
   try {
     const frame = connector.ZlinkStreamFrameCodec.decode(bytes);
     const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
-    const payload = fromBingoProto({ codec: header.codec, payload: frame.payload });
+    const payload = decodeBingoPayload({ codec: header.codec, payload: frame.payload });
     if (header.name === PacketNames.authenticateReq) {
       await session.dispatch(header, payload);
       return;
@@ -248,7 +248,7 @@ class StreamTransport {
   }
 
   write(header: connector.ZlinkStreamHeader, payload: unknown): void {
-    const encoded = toBingoProto(payload, undefined, (header as { name?: string }).name);
+    const encoded = encodeBingoPayload(payload);
     this.socket.write(connector.ZlinkStreamFrameCodec.encode(
       connector.ZlinkStreamHeaderCodec.encode(header),
       encoded.payload

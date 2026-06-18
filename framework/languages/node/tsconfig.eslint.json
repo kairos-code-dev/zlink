@@ -6,7 +6,6 @@
   },
   "include": [
     "packages/*/src/**/*.ts",
-    "samples/Bingo.Ts/**/*.ts",
-    "samples/TicTacToe.Ts/**/*.ts"
+    "samples/**/*.ts"
   ]
 }

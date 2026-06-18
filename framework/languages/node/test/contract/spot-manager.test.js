@@ -4,9 +4,9 @@ const test = require('node:test');
 const zlink = require('../../../../../bindings/node/dist');
 const framework = require('../../packages/framework/dist/internal');
 const connector = require('../../packages/stream-connector/dist');
-const json = require('../../packages/stream-connector-json/dist');
-const msgpack = require('../../packages/stream-connector-msgpack/dist');
-const protobuf = require('../../packages/stream-connector-protobuf/dist');
+const json = connector;
+const msgpack = require('../../packages/framework-codec-msgpack/dist');
+const protobuf = require('../../packages/framework-codec-protobuf/dist');
 
 test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order', async () => {
   const events = [];

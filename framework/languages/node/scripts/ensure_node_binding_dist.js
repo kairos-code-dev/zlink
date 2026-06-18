@@ -33,10 +33,7 @@ function ensureNodeBindingDist() {
 function hasRequiredDist() {
   return [
     path.join(bindingRoot, 'dist', 'index.js'),
-    path.join(bindingRoot, 'dist', 'index.d.ts'),
-    path.join(bindingRoot, 'packages', 'zlink-codec-json', 'dist', 'index.js'),
-    path.join(bindingRoot, 'packages', 'zlink-codec-messagepack', 'dist', 'index.js'),
-    path.join(bindingRoot, 'packages', 'zlink-codec-protobuf', 'dist', 'index.js')
+    path.join(bindingRoot, 'dist', 'index.d.ts')
   ].every((file) => fs.existsSync(file));
 }
 

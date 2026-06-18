@@ -2,6 +2,7 @@ import {
   RequiredZlinkStreamConnectorOptions,
   ZlinkStreamEncodedPayload,
   ZlinkStreamErrorCode,
+  zlinkStreamJsonCodec,
   ZlinkStreamMessage,
   ZlinkStreamMessageKind,
   ZlinkStreamMetadata,
@@ -169,7 +170,12 @@ export class ZlinkStreamRequestBuilder implements ZlinkStreamRequestCall {
       );
       return;
     }
-    return operation.then((value) => this.connector.options.codec?.decode<TReply>(value) ?? (value as TReply));
+    return operation.then((value) => {
+      if (this.payload.messageType === undefined) {
+        return value as TReply;
+      }
+      return (this.connector.options.codec ?? zlinkStreamJsonCodec).decode<TReply>(value);
+    });
   }
 }
 

@@ -15,6 +15,7 @@ import {
   ZlinkStreamHeader,
   ZlinkStreamHeaderFlags,
   ZlinkStreamInboundObservation,
+  zlinkStreamJsonCodec,
   ZlinkStreamMessage,
   ZlinkStreamMessageKind,
   ZlinkStreamMetadata,
@@ -236,7 +237,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
           const decoded = {
             name: message.name,
             metadata: message.metadata,
-            payload: this.decodePayload<TPayload>(message.payload)
+            payload: this.decodeWaitPayload<TPayload>(message.payload)
           };
           if (predicate(decoded)) {
             finish(undefined, decoded);
@@ -252,15 +253,22 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     if (isEncodedPayload(payload)) {
       return payload;
     }
-    const codec = this.options.codec;
-    if (codec === undefined) {
-      throw connectorError(ZlinkStreamErrorCode.ValidationFailed, 'Connector payload codec is required for unencoded stream payloads.');
-    }
+    const codec = this.options.codec ?? zlinkStreamJsonCodec;
     return codec.encode(payload, messageType);
   }
 
   private decodePayload<TPayload>(payload: ZlinkStreamEncodedPayload, messageType?: Function): TPayload {
-    return this.options.codec?.decode<TPayload>(payload, messageType) ?? (payload as TPayload);
+    if (messageType === undefined && this.options.codec === undefined) {
+      return payload as TPayload;
+    }
+    return (this.options.codec ?? zlinkStreamJsonCodec).decode<TPayload>(payload, messageType);
+  }
+
+  private decodeWaitPayload<TPayload>(payload: ZlinkStreamEncodedPayload): TPayload {
+    if (this.options.codec !== undefined || payload.codec === ZlinkStreamCodec.Json) {
+      return (this.options.codec ?? zlinkStreamJsonCodec).decode<TPayload>(payload);
+    }
+    return payload as TPayload;
   }
 
   async sendEncoded(

@@ -1,4 +1,5 @@
 import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
+import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf';
 import { SampleNames, SampleTimings } from '../Configuration/sample-names';
 function createBingoApiModule(config: {
   apiEndpoint: string;
@@ -12,7 +13,7 @@ function createBingoApiModule(config: {
         useFactory: () => zlinkFramework()
           .options({ requestTimeoutMs: SampleTimings.requestTimeout })
           .codecs()
-            .addProtobuf()
+            .use(zlinkProtobufCodec())
           .useDiscovery()
             .addRegistryEndpoint(config.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.apiChannel)

@@ -7,6 +7,7 @@ const { NestFactory } = require('@nestjs/core');
 
 const zlink = require('../../../../../bindings/node/dist');
 const framework = require('../../packages/framework/dist/internal');
+const frameworkProtobuf = require('../../packages/framework-codec-protobuf/dist');
 const nestjs = require('../../packages/nestjs/dist');
 const { resolveModuleProviders } = require('./helpers/nestjs-test-utils');
 
@@ -462,13 +463,19 @@ test('ZLinkFrameworkRuntimeHost uses channel serializer registry for typed reque
   }
 });
 
-test('ZLinkFrameworkRuntimeHost uses default protobuf serializer for addProtobuf channels', async () => {
+test('ZLinkFrameworkRuntimeHost uses protobuf codec extension for channels', async () => {
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const contentType = 'application/x-zlink-protobuf';
   const calls = [];
+  const codecs = new framework.DefaultZLinkCodecRegistryBuilder()
+    .use(frameworkProtobuf.zlinkProtobufCodec());
   const registrationOptions = {
     codecs: {
-      codecs: ['protobuf']
+      codecs: codecs.registeredCodecs,
+      serializers: [...codecs.registeredSerializers].map(([registeredContentType, serializer]) => ({
+        contentType: registeredContentType,
+        serializer
+      }))
     }
   };
   const serverRegistration = framework.createFrameworkRegistration({

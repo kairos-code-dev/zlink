@@ -1,14 +1,12 @@
 import type {
+  ZLinkCodecExtension,
   ZLinkCodecRegistryBuilder,
   ZLinkMessageSerializer
 } from '../../contracts';
-import {
-  createDefaultProtobufMessageSerializer,
-  ZLINK_PROTOBUF_CONTENT_TYPE
-} from '../../contracts/Codecs/DefaultMessageSerializers';
 
 export class DefaultZLinkCodecRegistryBuilder implements ZLinkCodecRegistryBuilder {
   private readonly serializers = new Map<string, ZLinkMessageSerializer>();
+  private readonly streamCodecs = new Map<string, unknown>();
   private readonly codecs = new Set<string>();
 
   get registeredCodecs(): readonly string[] {
@@ -16,13 +14,16 @@ export class DefaultZLinkCodecRegistryBuilder implements ZLinkCodecRegistryBuild
   }
 
   get registeredSerializers(): ReadonlyMap<string, ZLinkMessageSerializer> {
-    if (!this.codecs.has('protobuf') || this.serializers.has(ZLINK_PROTOBUF_CONTENT_TYPE)) {
-      return this.serializers;
-    }
-    return new Map([
-      ...this.serializers,
-      [ZLINK_PROTOBUF_CONTENT_TYPE, createDefaultProtobufMessageSerializer()]
-    ]);
+    return this.serializers;
+  }
+
+  get registeredStreamCodecs(): ReadonlyMap<string, unknown> {
+    return this.streamCodecs;
+  }
+
+  use(extension: ZLinkCodecExtension): this {
+    extension.register(this);
+    return this;
   }
 
   addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this {
@@ -32,18 +33,15 @@ export class DefaultZLinkCodecRegistryBuilder implements ZLinkCodecRegistryBuild
     return this;
   }
 
+  addStreamCodec(contentType: string, codec: unknown): this {
+    const normalized = normalizeContentType(contentType);
+    this.streamCodecs.set(normalized, codec);
+    this.codecs.add(normalized);
+    return this;
+  }
+
   addJson(): this {
     this.codecs.add('json');
-    return this;
-  }
-
-  addMessagePack(): this {
-    this.codecs.add('messagepack');
-    return this;
-  }
-
-  addProtobuf(): this {
-    this.codecs.add('protobuf');
     return this;
   }
 }

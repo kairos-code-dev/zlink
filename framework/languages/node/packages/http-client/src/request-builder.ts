@@ -209,6 +209,11 @@ export class ZLinkHttpRequestBuilder {
     return { status: raw.status, headers: raw.headers, body, rawBody: raw.body };
   }
 
+  /** Submits the request and returns only the decoded JSON body. */
+  async fetch<T>(): Promise<T> {
+    return (await this.submit<T>()).body;
+  }
+
   private makeRequest(sink: DownloadSink | undefined): HttpRequestSpec {
     const { body, headers } = this.resolveBodyAndHeaders();
     return {

@@ -14,6 +14,7 @@ import type {
   ZLinkClientCapabilityOptions,
   ZLinkDealerMeshChannelOptions,
   ZLinkChannelOptions,
+  ZLinkCodecExtension,
   ZLinkCodecRegistryOptions,
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
@@ -51,6 +52,7 @@ type RuntimeConstructor<T> = new (...args: unknown[]) => T;
 type MutableCodecRegistryOptions = {
   codecs: ZLinkNamedCodec[];
   serializers: NonNullable<ZLinkCodecRegistryOptions['serializers']>[number][];
+  streamCodecs: NonNullable<ZLinkCodecRegistryOptions['streamCodecs']>[number][];
 };
 
 interface FrameworkRuntimeHost {
@@ -282,10 +284,10 @@ export interface ZLinkNestDiscoveryBuilder extends ZLinkNestFrameworkOptionsBuil
 }
 
 export interface ZLinkNestCodecRegistryBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  use(extension: ZLinkCodecExtension): this;
   addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this;
+  addStreamCodec(contentType: string, codec: unknown): this;
   addJson(): this;
-  addMessagePack(): this;
-  addProtobuf(): this;
 }
 
 export interface ZLinkNestClientServerChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
@@ -526,7 +528,7 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
   private readonly streams: Record<string, ZLinkStreamNodeOptions> = {};
   private readonly spotNodes: Record<string, ZLinkSpotNodeOptions> = {};
   private readonly actorFactories: Record<string, Type> = {};
-  private readonly codecOptions: MutableCodecRegistryOptions = { codecs: [], serializers: [] };
+  private readonly codecOptions: MutableCodecRegistryOptions = { codecs: [], serializers: [], streamCodecs: [] };
 
   options(options: ZLinkNestFrameworkAdditionalOptions): this {
     this.additionalOptions = { ...this.additionalOptions, ...options };
@@ -550,6 +552,16 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
       this.codecOptions.serializers[existing] = registration;
     } else {
       this.codecOptions.serializers.push(registration);
+    }
+  }
+
+  addStreamCodec(contentType: string, codec: unknown): void {
+    const existing = this.codecOptions.streamCodecs.findIndex((entry) => entry.contentType === contentType);
+    const registration = { contentType, codec };
+    if (existing >= 0) {
+      this.codecOptions.streamCodecs[existing] = registration;
+    } else {
+      this.codecOptions.streamCodecs.push(registration);
     }
   }
 
@@ -607,11 +619,14 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
       streams: { ...this.streams },
       spotNodes: { ...this.spotNodes },
       actorFactories: { ...this.actorFactories, ...(this.additionalOptions.actorFactories as Record<string, Type> | undefined ?? {}) },
-      codecs: this.codecOptions.codecs.length === 0 && this.codecOptions.serializers.length === 0
+      codecs: this.codecOptions.codecs.length === 0 &&
+          this.codecOptions.serializers.length === 0 &&
+          this.codecOptions.streamCodecs.length === 0
         ? undefined
         : {
             codecs: [...this.codecOptions.codecs],
-            serializers: [...this.codecOptions.serializers]
+            serializers: [...this.codecOptions.serializers],
+            streamCodecs: [...this.codecOptions.streamCodecs]
           }
     };
     return options;
@@ -689,18 +704,21 @@ class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestChildBuilder impleme
     return this;
   }
 
+  addStreamCodec(contentType: string, codec: unknown): this {
+    if (contentType.trim().length === 0) {
+      throw new Error('Codec content type must not be empty.');
+    }
+    this.root.addStreamCodec(contentType, codec);
+    return this;
+  }
+
+  use(extension: ZLinkCodecExtension): this {
+    extension.register(this);
+    return this;
+  }
+
   addJson(): this {
     this.root.addNamedCodec('json');
-    return this;
-  }
-
-  addMessagePack(): this {
-    this.root.addNamedCodec('messagepack');
-    return this;
-  }
-
-  addProtobuf(): this {
-    this.root.addNamedCodec('protobuf');
     return this;
   }
 }

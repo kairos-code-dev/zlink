@@ -4,7 +4,8 @@ const path = require('node:path');
 const test = require('node:test');
 
 const workspaceRoot = path.resolve(__dirname, '..', '..');
-const specPath = path.join(workspaceRoot, 'doc', 'spec', 'handler-interfaces.ko.md');
+const nodeDocRoot = path.resolve(workspaceRoot, '..', '..', 'doc', 'framework', 'node');
+const specPath = path.join(nodeDocRoot, 'spec', 'handler-interfaces.ko.md');
 const declarationsRoot = path.join(workspaceRoot, 'packages', 'framework', 'dist', 'contracts');
 
 test('framework contract declarations cover handler interface catalog exports', () => {
@@ -120,7 +121,7 @@ test('spot actor lifecycle handler registration API is not public', () => {
   const workspaceText = [
     declarations,
     readTree(path.join(workspaceRoot, 'samples')),
-    readTree(path.join(workspaceRoot, 'doc'))
+    readTree(nodeDocRoot)
   ].join('\n');
   const removedNames = [
     'addActorJoin',

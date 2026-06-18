@@ -1,5 +1,4 @@
 import * as connector from '@zlink-systems/stream-connector';
-import { zlinkStreamJsonCodec } from '@zlink-systems/stream-connector-json';
 import { SupportChatClientScenario } from './supportchat-client-scenario';
 import { SampleTimings } from './Configuration/sample-names';
 import { loadSampleConfig } from './Configuration/sample-config';
@@ -27,7 +26,6 @@ async function main(): Promise<void> {
 function createClient(sessionEndpoint: string, clientName: string): ZlinkStreamConnector {
   const client = connector.zlinkStreamConnectorFactory.create({
     endpoint: sessionEndpoint,
-    codec: zlinkStreamJsonCodec,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
     requestTimeoutMs: SampleTimings.requestTimeout,
     heartbeat: { enabled: false }

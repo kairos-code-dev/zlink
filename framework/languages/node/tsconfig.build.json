@@ -5,6 +5,12 @@
       "path": "./packages/framework"
     },
     {
+      "path": "./packages/framework-codec-msgpack"
+    },
+    {
+      "path": "./packages/framework-codec-protobuf"
+    },
+    {
       "path": "./packages/http-client"
     },
     {
@@ -12,15 +18,6 @@
     },
     {
       "path": "./packages/stream-connector"
-    },
-    {
-      "path": "./packages/stream-connector-json"
-    },
-    {
-      "path": "./packages/stream-connector-msgpack"
-    },
-    {
-      "path": "./packages/stream-connector-protobuf"
     }
   ]
 }

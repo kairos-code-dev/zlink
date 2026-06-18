@@ -2,13 +2,14 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const connector = require('../../packages/stream-connector/dist');
-const msgpack = require('../../packages/stream-connector-msgpack/dist');
-const protobuf = require('../../packages/stream-connector-protobuf/dist');
+const msgpack = require('../../packages/framework-codec-msgpack/dist');
+const protobuf = require('../../packages/framework-codec-protobuf/dist');
 
 test('stream connector messagepack codec encodes and decodes payloads', () => {
   const payload = msgpack.toMsgPack({ ready: true });
 
   assert.equal(payload.codec, connector.ZlinkStreamCodec.MessagePack);
+  assert.notEqual(Buffer.from(payload.payload).toString('utf8'), '{"ready":true}');
   assert.deepEqual(msgpack.fromMsgPack(payload), { ready: true });
   assert.throws(
     () => msgpack.fromMsgPack({ codec: connector.ZlinkStreamCodec.Json, payload: new Uint8Array() }),

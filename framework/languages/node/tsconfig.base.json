@@ -22,6 +22,12 @@
       "@zlink-systems/framework": [
         "packages/framework/src"
       ],
+      "@zlink-systems/framework-codec-msgpack": [
+        "packages/framework-codec-msgpack/src"
+      ],
+      "@zlink-systems/framework-codec-protobuf": [
+        "packages/framework-codec-protobuf/src"
+      ],
       "@zlink-systems/http-client": [
         "packages/http-client/src"
       ],
@@ -30,15 +36,6 @@
       ],
       "@zlink-systems/stream-connector": [
         "packages/stream-connector/src"
-      ],
-      "@zlink-systems/stream-connector-json": [
-        "packages/stream-connector-json/src"
-      ],
-      "@zlink-systems/stream-connector-msgpack": [
-        "packages/stream-connector-msgpack/src"
-      ],
-      "@zlink-systems/stream-connector-protobuf": [
-        "packages/stream-connector-protobuf/src"
       ],
       "@zlink-systems/zlink": [
         "../../../bindings/node/dist/index.d.ts"

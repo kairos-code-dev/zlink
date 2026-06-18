@@ -4,6 +4,7 @@ const path = require('node:path');
 
 const nodeRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(nodeRoot, '..', '..', '..');
+const nodeDocRoot = path.join(repoRoot, 'framework', 'doc', 'framework', 'node');
 
 const requiredPlatforms = [
   'win-x64',
@@ -17,8 +18,8 @@ const requiredNodeVersions = ['20', '22'];
 
 const workflowPath = path.join(repoRoot, '.github', 'workflows', 'framework-node.yml');
 const packagePath = path.join(nodeRoot, 'package.json');
-const regressionMatrixPath = path.join(nodeRoot, 'doc', 'internals', 'regression-test-matrix.ko.md');
-const implementationScopePath = path.join(nodeRoot, 'doc', 'internals', 'implementation-scope-and-nongoals.ko.md');
+const regressionMatrixPath = path.join(nodeDocRoot, 'internals', 'regression-test-matrix.ko.md');
+const implementationScopePath = path.join(nodeDocRoot, 'internals', 'implementation-scope-and-nongoals.ko.md');
 
 const errors = [];
 

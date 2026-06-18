@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf';
 import { SessionAuthenticator } from './Sessions/Handlers/authenticate-session-handler';
 import { SampleNames, SampleTimings } from '../Configuration/sample-names';
 function createBingoSessionModule(endpoints: {
@@ -13,7 +14,7 @@ function createBingoSessionModule(endpoints: {
         useFactory: () => zlinkFramework()
           .options({ requestTimeoutMs: SampleTimings.requestTimeout })
           .codecs()
-            .addProtobuf()
+            .use(zlinkProtobufCodec())
           .useDiscovery()
             .addRegistryEndpoint(endpoints.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.apiChannel)

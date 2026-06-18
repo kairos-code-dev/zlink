@@ -1,6 +1,6 @@
 import { GameMarks, GameStatus, PacketNames, authenticateReq, createGameReq, joinGameReq, placeMarkStreamReq } from '../Shared/Contracts/messages';
+import { ZLinkHttpClient } from '@zlink-systems/http-client';
 import * as connector from '@zlink-systems/stream-connector';
-import * as json from '@zlink-systems/stream-connector-json';
 import { SampleTimings } from './Configuration/sample-settings';
 import type {
   AuthenticateRes,
@@ -19,15 +19,16 @@ class TicTacToeClientScenario {
     signal?: AbortSignal
   ): Promise<void> {
     // 1. Create the room through API and verify the returned game name, room id, and Play endpoint.
-    const createGameResponse = await fetch(`${apiHttpEndpoint}/games`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(createGameReq('match-ready')),
-      signal
-    });
-
-    ensure(() => createGameResponse.ok);
-    const game = await createGameResponse.json() as CreateGameHttpRes;
+    const api = ZLinkHttpClient.create(apiHttpEndpoint).json().build();
+    let game: CreateGameHttpRes;
+    try {
+      game = await api
+        .post('/games')
+        .body(createGameReq('match-ready'))
+        .fetch<CreateGameHttpRes>();
+    } finally {
+      await api.close();
+    }
 
     ensure(() => game.gameName === 'match-ready');
     ensure(() => game.roomId.length > 0);
@@ -185,7 +186,6 @@ class TicTacToeClientScenario {
 function createPlayerClient(endpoint: string): ZlinkStreamConnector {
   const client = connector.zlinkStreamConnectorFactory.create({
     endpoint,
-    codec: json.zlinkStreamJsonCodec,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
     requestTimeoutMs: SampleTimings.requestTimeout,
     heartbeat: { enabled: false }

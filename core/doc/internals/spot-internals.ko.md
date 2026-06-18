@@ -557,18 +557,17 @@ data plane 스레드가 콜백을 직접 실행하지 않는 이유:
 
 ## 9. Actor dispatch 내부 모델
 
-Actor는 SpotNode가 관리하는 routing target이다. public pointer 핸들은 없고,
-`zlink_actor_ref_t`가 Actor를 식별한다. Actor는 소켓, inproc 엔드포인트, transport
-엔드포인트를 소유하지 않는다. STREAM session에서 Actor로 relay되는 part는 target
-SpotNode의 Actor table을 거쳐 Actor의 **unread state** — 즉
-`zlink_spot_node_actor_recv_part()`로 아직 꺼내지 않은 part 큐 — 에 들어간다.
+Actor는 SpotNode가 관리하는 routing target이다. 밖으로 노출되는 포인터 핸들은 없고,
+`zlink_actor_ref_t`가 Actor를 식별한다. Actor는 socket이나 inproc·transport endpoint를
+소유하지 않는다. STREAM session에서 Actor로 relay되는 part는 대상 SpotNode의 Actor
+table을 거쳐 Actor의 **unread state**, 즉 `zlink_spot_node_actor_recv_part()`로 아직
+꺼내지 않은 part 큐로 들어간다.
 
-각 Actor는 **joined Spot**(= current Spot)을 가진다. 이 Spot의 dispatch context가
-해당 Actor에 대한 `ACTOR_READABLE` 이벤트를 받는다. 새로 생성된 Actor의
-joined Spot은 항상 Entry Spot이다. join 프로토콜(§14)이 완료될 때까지 Entry Spot이
-current Spot으로 남는다.
-
-새로 만들어진 Actor의 current Spot은 항상 Entry Spot이다. Actor가 user Spot으로 join하기 전까지는 Entry Spot dispatch context에서 Actor 메시지를 처리한다.
+각 Actor는 **joined Spot**(= current Spot)을 하나 가진다. 이 Spot의 dispatch context가
+그 Actor의 `ACTOR_READABLE` 이벤트를 받는다. 새로 만들어진 Actor의 joined Spot은 항상
+Entry Spot이며, join 프로토콜(§14)이 끝날 때까지 Entry Spot이 current Spot으로 남는다.
+그래서 Actor가 user Spot으로 join하기 전까지는 Entry Spot의 dispatch context에서 그
+Actor의 메시지를 처리한다.
 
 ```mermaid
 flowchart LR
@@ -589,19 +588,20 @@ flowchart LR
     unread --> dispatch
 ```
 
-session actor list는 session routing id마다 별도로 존재한다. 각 entry는 Actor id와
-concrete Actor ref를 저장한다. unchecked ref로 bind를 시도하더라도 attach가 성공하면
-session entry에는 실제 generation이 들어간다. session owner는 joined Spot 상태를
-저장하지 않는다. joined 상태는 Actor owner table과 snapshot에서만 관리한다.
+session actor list는 session routing id마다 따로 있다. 각 entry는 Actor id와 구체적인
+Actor ref를 저장한다. 검증 안 된 ref로 bind를 시도해도, attach가 성공하면 session
+entry에는 실제 generation이 채워진다. session owner는 joined Spot 상태를 저장하지
+않는다. joined 상태는 Actor owner table과 snapshot에서만 관리한다.
 
-local Actor relay와 remote Actor relay는 같은 Actor table 의미를 사용한다. 차이는
-target SpotNode가 같은 프로세스 안에 있는지, peer SpotNode로 routed control을 거쳐야
-하는지뿐이다. target Actor가 사라진 뒤 remote relay가 도착하면 target node에서 part를
-버릴 수 있다. 이미 sender 쪽에서 성공한 submit 결과는 그 뒤에 바뀌지 않는다.
+로컬 Actor relay와 원격 Actor relay는 같은 Actor table 의미를 따른다. 차이는 대상
+SpotNode가 같은 프로세스 안에 있는지, 아니면 peer SpotNode로 routed control을 거쳐야
+하는지뿐이다. 대상 Actor가 사라진 뒤에 원격 relay가 도착하면 대상 node가 그 part를
+버릴 수 있다. 단, sender 쪽에서 이미 성공으로 처리된 submit 결과는 그 뒤에 바뀌지
+않는다.
 
 ### 9.1 Actor table 상태
 
-Actor table row는 아래 상태를 함께 가진다.
+Actor table row는 다음 상태를 함께 가진다.
 
 | 상태 | 의미 |
 |------|------|
@@ -612,36 +612,39 @@ Actor table row는 아래 상태를 함께 가진다.
 | pending join | Spot이 아직 reply하지 않은 join request |
 | route synced | active route가 현재 Actor ref를 가리키는지 여부 |
 
-Actor destroy는 joined 상태, bound session detach, 진행 중인 multipart relay를 먼저
-확인한다. detach를 완료할 수 없거나 timeout이 발생하면 Actor slot과 unread state를
-호출 전 상태로 유지한다.
+Actor를 destroy할 때는 joined 상태, bound session detach, 진행 중인 multipart relay를
+먼저 확인한다. detach를 끝낼 수 없거나 timeout이 나면 Actor slot과 unread state를 호출
+전 상태 그대로 둔다.
 
-### 9.2 Dispatch event
+### 9.2 dispatch event
 
-Actor unread state에 읽을 part가 생기고 Actor가 Spot에 join되어 있으면 Spot dispatch
-stream에 `ACTOR_READABLE` readiness가 올라간다. event subject는 콜백 수명 동안만 유효한
-`const zlink_actor_ref_t *`다. pending join request가 생기면 Spot dispatch stream에
+Actor unread state에 읽을 part가 생기고 그 Actor가 Spot에 join돼 있으면, Spot dispatch
+stream에 `ACTOR_READABLE` readiness가 올라간다. 이 event의 subject는 콜백 실행 동안만
+유효한 `const zlink_actor_ref_t *`다. pending join request가 생기면 Spot dispatch stream에
 `ACTOR_JOIN_READABLE` readiness가 올라간다.
 
-readiness(수신 준비 상태)는 메시지 개수와 1:1로 대응하지 않는다. dispatch 콜백은
-각 drain API가 `NO_DATA`를 반환할 때까지 비우는 방식으로 동작해야 하며, 내부는 같은
-Actor에 대해 part 순서를 유지한다.
+readiness(수신 준비 신호)는 메시지 개수와 1:1로 대응하지 않는다. 그래서 dispatch 콜백은
+각 drain API가 `NO_DATA`를 돌려줄 때까지 비우는 식으로 동작해야 한다. 내부적으로는 같은
+Actor에 대한 part 순서를 그대로 지킨다.
 
 ### 9.3 Active route publish
 
-Actor active route는 Actor 생성 시점에 Entry Spot 위치로 publish할 수 있고, user
-Spot join 성공 commit 시점에 user Spot 위치로 갱신한다. user Spot에서 Entry Spot으로
-leave가 성공해 위치가 실제로 바뀌면 Entry Spot 위치로 다시 갱신한다.
-session bind/unbind는 active route의 필수 조건이 아니며, 위치를 직접 바꾸지 않는다.
-active route가 가리키는 Actor가 destroy되면 route를 제거하고, active route가 다른
-generation의 Actor를 가리키면 destroy는 그 route를 건드리지 않는다. 위 동작은 Actor
-owner `SpotNode`의 Discovery에서
-`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`가 켜져 있고 Registry와 통신할 수 있을 때 Registry
-visible 상태가 된다.
+Actor active route는 Actor를 생성할 때 Entry Spot 위치로 publish할 수 있고, user
+Spot join이 성공해 commit되는 시점에 user Spot 위치로 갱신한다. 반대로 user Spot에서
+Entry Spot으로 leave가 성공해 위치가 실제로 바뀌면 다시 Entry Spot 위치로 갱신한다.
+session bind/unbind는 active route의 필수 조건이 아니고, 위치를 직접 바꾸지도 않는다.
+active route가 가리키던 Actor가 destroy되면 그 route를 제거한다. 단, active route가
+다른 generation의 Actor를 가리키고 있으면 destroy는 그 route를 건드리지 않는다. 이
+동작은 Actor owner `SpotNode`의 Discovery에서 `ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`가
+켜져 있고 Registry와 통신할 수 있을 때 Registry에 보이는(visible) 상태가 된다.
 
 ### 9.4 Actor lifecycle event
 
-Actor lifecycle event는 Actor의 실제 위치 변경이 commit되고 active route 갱신이 끝난 뒤 Spot dispatch queue에서 readable 상태가 된다. Entry Spot과 user Spot 모두 `zlink_spot_recv_actor_lifecycle()`로 event를 받을 수 있다. dispatch handler가 이미 등록된 Spot에만 event를 쌓으므로 이전 Actor 전이는 replay하지 않는다.
+Actor lifecycle event는 Actor의 실제 위치 변경이 commit되고 active route 갱신까지 끝난
+뒤에야 Spot dispatch queue에서 읽을 수 있게(readable) 된다. Entry Spot과 user Spot
+모두 `zlink_spot_recv_actor_lifecycle()`로 이 event를 받을 수 있다. dispatch handler가
+이미 등록된 Spot에만 event를 쌓으므로, 그 이전의 Actor 전이는 다시 재생(replay)하지
+않는다.
 
 | trigger | event | `previous_actor` | `current_actor` |
 |---------|----------|------------------|-----------------|
@@ -656,17 +659,19 @@ Actor lifecycle event는 Actor의 실제 위치 변경이 commit되고 active ro
 epoch다. remote join에서는 source `on_leave`, target `on_join`, join completion이 서로
 다른 SpotNode의 epoch 값을 가질 수 있다.
 
-`info` pointer는 callback 실행 동안만 유효하므로 필요한 값은 callback 안에서 복사한다.
-join completion handler는 commit이 끝난 뒤 호출되지만 lifecycle event이 이미 실행
-되었는지는 보장하지 않는다. application state machine은 join 완료를 결정할 때
-lifecycle event이 아니라 join completion handler가 돌려준 최종 Actor ref를 기준으로
+`info` 포인터는 callback 실행 동안만 유효하므로, 필요한 값은 callback 안에서 복사해
+둔다. join completion handler는 commit이 끝난 뒤 호출되지만, 그 시점에 lifecycle event가
+이미 실행됐는지는 보장하지 않는다. 따라서 애플리케이션 상태 기계는 join 완료를 판단할
+때 lifecycle event가 아니라 join completion handler가 돌려준 최종 Actor ref를 기준으로
 삼는다.
 
 ## 10. Entry Spot과 Spot queue 소유권
 
-`Spot` facade는 물리 socket을 직접 만들지 않는다. `SpotNode`가 소유한 transport
-socket에서 demux한 메시지가 대상 `Spot`의 logical queue로 들어온다. `Spot`이
-소유하는 것은 아래와 같다.
+`Spot`은 자기만의 socket을 따로 열지 않는다. 네트워크에 실제로 연결된 transport
+socket은 전부 `SpotNode`가 들고 있고, 여러 `Spot`이 그것을 함께 쓴다. 바깥에서 온
+메시지는 먼저 `SpotNode`의 socket으로 들어오고, `SpotNode`가 "이 메시지가 어느 `Spot`
+것인지" 가려내(demux) 해당 `Spot`의 메모리 큐에 넣어 준다. 그래서 `Spot`이 실제로
+소유하는 것은 network socket이 아니라, 받은 입력을 담아 두는 다음의 메모리 큐들뿐이다.
 
 - routed ingress dispatch queue
 - subscribe ingress dispatch queue
@@ -674,28 +679,28 @@ socket에서 demux한 메시지가 대상 `Spot`의 logical queue로 들어온�
 - timer event queue
 - Actor unread staging queue
 
-backpressure 기준은 `SpotNode` transport socket의 admission HWM이다. Spot 내부
-queue에는 별도 HWM이나 크기 한계를 두지 않는다.
+이 큐들에 대한 backpressure 기준은 `SpotNode` transport socket의 admission HWM이다.
+Spot 안쪽의 큐에는 따로 HWM이나 크기 한계를 두지 않는다.
 
-`Entry Spot`은 `SpotNode`당 하나다. `SpotNode` 생성 시 자동으로 만들어지고,
-`SpotNode` destroy 전까지 살아 있다. application은 `zlink_spot_node_entry_spot()`으로
-facade를 얻어 dispatch handler를 등록한다. Actor 생성 직후 session relay message가
-도착하면 Entry Spot의 dispatch queue에서 `ACTOR_READABLE` readiness가 올라간다.
+`Entry Spot`은 `SpotNode`당 하나다. `SpotNode`를 만들 때 자동으로 생기고, `SpotNode`를
+destroy하기 전까지 살아 있다. 애플리케이션은 `zlink_spot_node_entry_spot()`으로 facade를
+얻어 dispatch handler를 등록한다. Actor가 생성된 직후에 session relay 메시지가 도착하면
+Entry Spot의 dispatch queue에서 `ACTOR_READABLE` readiness가 올라간다.
 
-user Spot의 logical state는 마지막 facade가 닫힐 때 제거된다. 단 joined Actor나
-pending join request가 남아 있으면 마지막 facade close는 `ZLINK_CLOSE_BUSY`로 실패한다.
-Entry Spot logical state는 facade reference count와 무관하게 `SpotNode`가 소유한다.
+user Spot의 logical state는 마지막 facade가 닫힐 때 제거된다. 단, joined Actor나 pending
+join request가 남아 있으면 마지막 facade close는 `ZLINK_CLOSE_BUSY`로 실패한다. Entry
+Spot의 logical state는 facade의 reference count와 상관없이 `SpotNode`가 소유한다.
 
 ## 11. Spot socket 제거 모델
 
-기존 구조에서 `Spot` facade 또는 side handle이 per-Spot socket을 직접 만들고 inproc
-socket을 queue처럼 쓰는 부분이 있었다. `SpotNode`가 메시지를 한 번 받아서 logical
-`Spot`으로 중계하는 구조에서는 per-Spot socket HWM으로 dispatch 상태를 표현하는
-방식이 맞지 않는다. HWM은 `SpotNode`가 소유한 transport socket admission에 두고,
-per-Spot queue는 이미 받은 입력을 어느 dispatch context에서 처리할지 정하는 staging
-상태로만 다룬다.
+예전 구조에서는 `Spot` facade나 side handle이 Spot마다 socket을 직접 만들고 inproc
+socket을 queue처럼 쓰는 부분이 있었다. 그런데 `SpotNode`가 메시지를 한 번 받아서
+logical `Spot`으로 중계하는 구조에서는, Spot마다 둔 socket HWM으로 dispatch 상태를
+나타내는 방식이 맞지 않는다. 그래서 HWM은 `SpotNode`가 소유한 transport socket의
+admission에 두고, Spot별 큐는 이미 받은 입력을 어느 dispatch context에서 처리할지
+정하는 staging(준비) 상태로만 쓴다.
 
-목표 구조는 아래와 같다.
+목표 구조는 다음과 같다.
 
 ```mermaid
 flowchart TB
@@ -715,28 +720,28 @@ flowchart TB
 ```
 
 `Spot` facade는 `spot_pub_t`, `spot_sub_t`, routed receive socket 같은 물리 socket을
-직접 갖지 않는다. `Spot`이 필요한 것은 logical state에 대한 reference다.
+직접 갖지 않는다. `Spot`에 필요한 것은 logical state를 가리키는 reference뿐이다.
 
 ## 12. STREAM session과 Actor binding
 
-session owner node와 Actor owner node는 같거나 다를 수 있다. 내부 처리 경로가 다르지만
-공개 API는 동일하다.
+session owner node와 Actor owner node는 같을 수도, 다를 수도 있다. 내부 처리 경로는
+다르지만 공개 API는 동일하다.
 
-bind를 실행하기 전에 STREAM handle의 session owner `SpotNode`가 먼저 정해져 있어야 한다.
-이것이 ActorGateway attach다. owner는
+bind를 실행하기 전에 STREAM handle의 session owner `SpotNode`가 먼저 정해져 있어야
+한다. 이것이 ActorGateway attach다. owner는
 `actor_runtime().sessions.stream_owner(stream, nodes)`로 결정된다.
 
-- application이 `zlink_stream_attach_actor_gateway(stream, node)`를 호출했다면 그 쌍이
-  `sessions.stream_owners`에 기록되고 handle은 `sessions.explicit_stream_owners`에
-  추가된다. explicit owner는 sticky해서 stream이 닫히거나 owner node가 파괴되거나
-  application이 detach할 때까지 유지된다. library가 SpotNode와 연결할 단서가 없는 raw,
-  connector STREAM handle은 반드시 이 경로를 거쳐야 한다.
+- 애플리케이션이 `zlink_stream_attach_actor_gateway(stream, node)`를 호출했다면 그 쌍이
+  `sessions.stream_owners`에 기록되고, handle은 `sessions.explicit_stream_owners`에
+  추가된다. 이렇게 명시한 owner는 sticky해서 stream이 닫히거나 owner node가 파괴되거나
+  애플리케이션이 detach할 때까지 유지된다. SpotNode와 연결할 단서가 라이브러리에 없는
+  raw·connector STREAM handle은 반드시 이 경로를 거쳐야 한다.
 - stream이 `SpotNode` 내부 socket이면 `find_socket_owner()`가 owner를 구조적으로 복원해
-  `stream_owners`에 캐시한다. 이 경우 명시적 attach가 필요 없다.
-- 두 경로 모두 owner를 주지 못하면 bind는 실패한다. owner는 bind 대상 Actor의 `node_rid`로
-  추론하지 않는다. session owner는 보내는 stream이 실제로 attach된 node다.
+  `stream_owners`에 캐시한다. 이 경우에는 명시적 attach가 필요 없다.
+- 두 경로 모두 owner를 찾지 못하면 bind는 실패한다. owner는 bind 대상 Actor의 `node_rid`로
+  추론하지 않는다. session owner는 어디까지나 보내는 stream이 실제로 attach된 node다.
 
-`zlink_stream_attach_actor_gateway()`는 `node`가 routed-capable `SpotNode`인지
+`zlink_stream_attach_actor_gateway()`는 `node`가 routed를 지원하는 `SpotNode`인지
 확인하고(아니면 `ENOTSUP` / `ZLINK_CONFIG_NOT_SUPPORTED`), 이미 다른 owner에 붙은
 stream을 다른 node로 다시 붙이려 하면 거부한다(`EBUSY` / `ZLINK_CONFIG_INVALID_STATE`).
 같은 stream/node 쌍으로 다시 호출하면 멱등으로 성공한다. STREAM 쪽 관점은
@@ -772,8 +777,8 @@ sequenceDiagram
   Stream-->>Client: client frame
 ```
 
-local Actor는 bind, relay, Actor-to-session send가 같은 node 안에서 끝난다.
-Actor socket이나 Actor별 inproc endpoint가 생기지 않는다.
+local Actor는 bind, relay, Actor→session 전송이 모두 같은 node 안에서 끝난다. Actor용
+socket이나 Actor별 inproc endpoint는 생기지 않는다.
 
 ### 12.2 Remote Actor binding (split deployment)
 
@@ -811,27 +816,27 @@ sequenceDiagram
   Stream-->>Client: client frame
 ```
 
-remote Actor는 bind control request, session-to-Actor relay frame, Actor-to-session
-frame이 node 사이를 지난다. session owner는 Actor의 joined Spot을 저장하지 않는다.
-Actor owner는 STREAM session application state를 저장하지 않는다.
+remote Actor는 bind control request, session→Actor relay frame, Actor→session frame이
+node 사이를 오간다. session owner는 Actor의 joined Spot을 저장하지 않고, Actor owner는
+STREAM session의 애플리케이션 상태를 저장하지 않는다.
 
-bound session disconnect와 remote join handoff가 겹치면 session Actor list
-compare-and-swap 성공 여부가 기준이다. 성공 전 disconnect는 source Actor를 Entry Spot으로
-돌리는 abort이고, 성공 뒤 disconnect는 target Actor의 Entry Spot cleanup이다.
+bound session disconnect와 remote join handoff가 겹칠 때는 session Actor list의
+compare-and-swap이 성공했는지가 기준이 된다. 성공 전에 끊기면 source Actor를 Entry
+Spot으로 되돌리는 abort이고, 성공 뒤에 끊기면 target Actor의 Entry Spot cleanup이다.
 
 ### 12.3 원격 bind 에러 경로
 
 | 조건 | 결과 |
 |------|------|
-| Actor owner node 도달 불가 | `bind control request` 미전달. session owner는 timeout 후 bind failure를 반환한다. `sessions.bindings`에 항목이 기록되지 않는다 |
-| bind control request 중간 timeout | session owner는 bind failure로 처리한다. timeout 통지를 받은 target node는 부분적으로 생성된 Actor table 상태를 롤백한다 |
-| `actor_ref` stale (generation 불일치) | target node가 bind control request를 거부한다. session owner는 `INVALID_HANDLE`을 받는다. Actor table 항목이 생성되지 않는다 |
-| bind 완료 전 session disconnect | session owner의 session 항목이 이미 제거되었으므로 `sessions.bindings` CAS가 실패한다. bind가 중단되고 target node의 Actor state가 정리된다 |
+| Actor owner node에 도달 불가 | `bind control request`가 전달되지 않는다. session owner는 timeout 뒤 bind 실패를 반환한다. `sessions.bindings`에는 항목이 기록되지 않는다 |
+| bind control request 도중 timeout | session owner는 bind 실패로 처리한다. timeout 통지를 받은 target node는 일부만 만들어진 Actor table 상태를 되돌린다 |
+| `actor_ref`가 stale (generation 불일치) | target node가 bind control request를 거부한다. session owner는 `INVALID_HANDLE`을 받고, Actor table 항목은 생성되지 않는다 |
+| bind 완료 전에 session disconnect | session owner의 session 항목이 이미 제거됐으므로 `sessions.bindings` CAS가 실패한다. bind는 중단되고 target node의 Actor 상태도 정리된다 |
 
 ## 13. Transport logical queue 내부 데이터 구조
 
-이 섹션은 transport logical queue 구현의 핵심 내부 구조를 정리한다. 공개 계약이
-아니며, 구현 세부 사항은 이후 변경될 수 있다.
+이 절은 transport logical queue 구현의 핵심 내부 구조를 정리한다. 공개 계약이 아니라
+구현 세부 사항이므로, 이후 바뀔 수 있다.
 
 ### 13.1 Spot logical queue (`spot_logical_state_t`)
 
@@ -891,8 +896,8 @@ join request는 `service_spot_actor_api.cpp`의 `actor_runtime().mutex`로 보�
 joins.queues: map<spot_logical_state_t*, deque<queued_join_request_t*>>
 ```
 
-key는 target Spot의 `spot_logical_state_t` 포인터다. 같은 Spot에 여러 join request가
-pending 중일 수 있으며, FIFO 순서로 `zlink_spot_actor_join_recv()`로 drain한다.
+key는 target Spot의 `spot_logical_state_t` 포인터다. 한 Spot에 여러 join request가
+pending 상태일 수 있고, FIFO 순서로 `zlink_spot_actor_join_recv()`를 통해 꺼낸다.
 
 `queued_join_request_t` 주요 필드:
 
@@ -907,9 +912,9 @@ pending 중일 수 있으며, FIFO 순서로 `zlink_spot_actor_join_recv()`로 d
 | `message_parts` | `vector<zlink_msg_t>` | join payload, 소유 multipart (source가 소유권 이전) |
 | `reply_parts` | `vector<zlink_msg_t>` | reply payload, 소유 multipart (target이 소유권 이전) |
 
-`joins.live_requests`는 현재 pending 중인 모든 join request set이며 timeout 스윕을
-구동한다. request가 완료되면 그 record는 별도 retired set에 두지 않고 commit/abort
-경로 끝에서 인라인으로 해제한다.
+`joins.live_requests`는 현재 pending 상태인 join request를 모두 모은 set으로, timeout
+스윕(sweep)을 돌리는 데 쓴다. request가 끝나면 그 record를 따로 retired set에 옮기지
+않고, commit/abort 경로 끝에서 곧바로 해제한다.
 
 ### 13.4 Signaler와 dispatch 연결
 
@@ -932,10 +937,10 @@ handler에 `ACTOR_JOIN_READABLE` readiness를 올린다. subject는 target Spot 
 
 ### 13.5 Actor runtime 상태 목록
 
-Actor, session, route, join, lifecycle 상태는 모두 프로세스 단위의 단일
-`actor_runtime_t` 집합체에 모여 있고 `service_spot_actor_api.cpp`의 `actor_runtime()`
-접근자로 닿는다. 자유 전역 `g_*`는 없으며, 집합체가 책임별로 상태를 묶는다.
-**아래 모든 멤버는 별도로 명시하지 않는 한 단일 `actor_runtime().mutex`로 직렬화된다.**
+Actor, session, route, join, lifecycle 상태는 모두 프로세스마다 하나인
+`actor_runtime_t` 집합체에 모여 있고, `service_spot_actor_api.cpp`의 `actor_runtime()`
+접근자로 접근한다. 흩어진 전역 변수 `g_*`는 없고, 이 집합체가 책임별로 상태를 묶는다.
+**아래 모든 멤버는 따로 언급하지 않는 한 단일 `actor_runtime().mutex`로 직렬화된다.**
 
 | 멤버 | 타입 | 역할 |
 |------|------|------|
@@ -970,20 +975,20 @@ Spot owner topology row는 owner node의 endpoint와 logical Spot rid, 그리고
 `ZLINK_SPOT_KIND_USER`를 사용하고, Spot owner가 아닌 topology row는
 `ZLINK_SPOT_KIND_INVALID`를 사용한다.
 
-외부 ROUTER나 backend Spot이 Actor id에서 시작하는 메시지를 보낼 때 core 내부에서
-Actor queue로 직접 delivery하지 않는다. Discovery가 `actor_id`를 current Spot route로
-해석하고, caller가 기존 Spot routed transport에 `node_rid + current_spot_rid`를 넘긴다.
-target Spot에 도착한 payload를 어떤 Actor로 처리할지는 상위 프로토콜의 책임이다.
+외부 ROUTER나 backend Spot이 Actor id를 출발점으로 메시지를 보낼 때, core 내부에서
+Actor queue로 곧장 전달하지는 않는다. 대신 Discovery가 `actor_id`를 current Spot route로
+풀어 주고, caller는 기존 Spot routed transport에 `node_rid + current_spot_rid`를 넘긴다.
+그렇게 target Spot에 도착한 payload를 어떤 Actor로 처리할지는 상위 프로토콜의 몫이다.
 
 `queued_join_request_t`는 request와 reply payload를 owned multipart parts로
 저장한다. `zlink_spot_actor_join_recv()`는 호출자에게 thread-local parts view를
 보여 주고, `zlink_spot_actor_join_reply()`는 completion callback이 실행되기 전에
 reply parts를 request record 안으로 이동한다.
 
-**초기화**: `actor_runtime_t` 인스턴스는 함수 지역 static으로 정적 저장 기간을 가지며
-첫 접근 시 기본 초기화된다. 별도의 init 호출은 없다. 첫 `SpotNode` 생성 시
-`nodes.nodes_by_rid`에 첫 항목이 추가되는데, 모든 쓰기와 경합 가능한 읽기에서 `mutex`를
-잡기 때문에 race window가 없다.
+**초기화**: `actor_runtime_t` 인스턴스는 함수 지역 static이라 정적 저장 기간을 가지며,
+처음 접근할 때 기본 초기화된다. 따로 init을 호출하지 않는다. 첫 `SpotNode`를 만들 때
+`nodes.nodes_by_rid`에 첫 항목이 들어가는데, 모든 쓰기와 경합 가능한 읽기가 `mutex`를
+잡으므로 race window가 없다.
 
 **Lock 범위**: I/O 스레드 경계를 넘는 blocking 호출(예: Mailbox reply 대기) 중에는
 `actor_runtime().mutex`를 보유해서는 안 된다. 두 SpotNode 인스턴스에 걸친 Actor table

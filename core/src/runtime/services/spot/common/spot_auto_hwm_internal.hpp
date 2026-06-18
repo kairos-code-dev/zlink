@@ -65,7 +65,11 @@ struct spot_internal_auto_hwm_policy_t
 };
 
 inline auto_hwm_socket_plan_t
-spot_internal_auto_hwm_plan (ctx_t *ctx_, const spot_internal_auto_hwm_policy_t &policy_)
+spot_internal_auto_hwm_plan (
+  ctx_t *ctx_,
+  const spot_internal_auto_hwm_policy_t &policy_,
+  bool connection_bucket_hysteresis_enabled_ = false,
+  uint32_t previous_connection_bucket_index_ = auto_hwm_connection_bucket_none)
 {
     const zlink_auto_hwm_profile_t profile =
       ctx_ ? ctx_->auto_hwm_profile () : ZLINK_CTX_AUTO_HWM_PROFILE_DFLT;
@@ -84,7 +88,8 @@ spot_internal_auto_hwm_plan (ctx_t *ctx_, const spot_internal_auto_hwm_policy_t 
       context_plan, policy_.role, policy_.socket_type, policy_.managed_connections,
       policy_.active_connections, &socket_plan,
       policy_.message_unit_bytes > 0 ? policy_.message_unit_bytes : context_plan.message_unit_bytes,
-      -1, -1, false, false, scope, scope_count, true, policy_.connection_bucket_enabled);
+      -1, -1, false, false, scope, scope_count, true, policy_.connection_bucket_enabled,
+      connection_bucket_hysteresis_enabled_, previous_connection_bucket_index_);
     spot_auto_hwm_internal::apply_spot_routed_latency_floor (&socket_plan, profile);
     return socket_plan;
 }
@@ -121,7 +126,25 @@ inline void apply_spot_internal_auto_hwm (ctx_t *ctx_,
     if (!ctx_ || !socket_)
         return;
 
-    const auto_hwm_socket_plan_t socket_plan = spot_internal_auto_hwm_plan (ctx_, policy_);
+    const zlink_auto_hwm_profile_t profile = ctx_->auto_hwm_profile ();
+    const int configured_message_unit =
+      policy_.message_unit_bytes > 0 ? policy_.message_unit_bytes : ctx_->auto_hwm_msg_unit_bytes ();
+    const uint64_t effective_message_bytes =
+      configured_message_unit > 0 ? static_cast<uint64_t> (configured_message_unit) : 4096ull;
+
+    bool hysteresis_enabled = false;
+    uint32_t previous_bucket_index = auto_hwm_connection_bucket_none;
+    if (policy_.connection_bucket_enabled) {
+        zlink_auto_hwm_profile_t previous_profile = ZLINK_AUTO_HWM_PROFILE_BALANCED;
+        uint64_t previous_message_bytes = 0;
+        hysteresis_enabled = socket_->auto_hwm_connection_bucket_state (
+                               &previous_bucket_index, &previous_profile, &previous_message_bytes)
+                             && previous_profile == profile
+                             && previous_message_bytes == effective_message_bytes;
+    }
+
+    const auto_hwm_socket_plan_t socket_plan =
+      spot_internal_auto_hwm_plan (ctx_, policy_, hysteresis_enabled, previous_bucket_index);
     const auto_hwm_scope_t scope =
       policy_.scope == auto_hwm_scope_none ? auto_hwm_scope_shared : policy_.scope;
     size_t scope_count = policy_.scope_count;
@@ -138,6 +161,13 @@ inline void apply_spot_internal_auto_hwm (ctx_t *ctx_,
     }
     if (policy_.apply_rcvhwm) {
         (void) socket_->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
+    }
+    if (socket_plan.connection_bucket_enabled
+        && socket_plan.connection_bucket_index != auto_hwm_connection_bucket_none) {
+        socket_->set_auto_hwm_connection_bucket_state (
+          socket_plan.connection_bucket_index, profile, socket_plan.effective_message_bytes);
+    } else {
+        socket_->clear_auto_hwm_connection_bucket_state ();
     }
     socket_->clear_auto_hwm_manual_overrides (policy_.apply_sndhwm, policy_.apply_rcvhwm,
                                               false, false);

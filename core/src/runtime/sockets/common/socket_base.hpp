@@ -261,6 +261,13 @@ class socket_base_t : public own_t,
     void set_auto_hwm_role (auto_hwm_role_t role_);
     void set_auto_hwm_scope (auto_hwm_scope_t scope_, size_t scope_count_);
     void clear_auto_hwm_manual_overrides (bool sndhwm_, bool rcvhwm_, bool sndbuf_, bool rcvbuf_);
+    bool auto_hwm_connection_bucket_state (uint32_t *bucket_index_out_,
+                                           zlink_auto_hwm_profile_t *profile_out_,
+                                           uint64_t *effective_message_bytes_out_) const;
+    void set_auto_hwm_connection_bucket_state (uint32_t bucket_index_,
+                                               zlink_auto_hwm_profile_t profile_,
+                                               uint64_t effective_message_bytes_);
+    void clear_auto_hwm_connection_bucket_state ();
     void set_auto_hwm_policy_enabled (bool enabled_);
     bool monitor_has_attached_pipes () const;
     void socket_peer_remote_endpoints (std::vector<std::string> *out_);
@@ -556,6 +563,10 @@ class socket_base_t : public own_t,
     bool _manual_rcvbuf;
     auto_hwm_context_plan_t _auto_hwm_context_plan;
     auto_hwm_socket_plan_t _auto_hwm_socket_plan;
+    bool _auto_hwm_connection_bucket_state_valid;
+    uint32_t _auto_hwm_connection_bucket_index;
+    zlink_auto_hwm_profile_t _auto_hwm_connection_bucket_profile;
+    uint64_t _auto_hwm_connection_bucket_message_bytes;
     uint64_t _auto_hwm_last_recalc_ms;
     uint32_t _auto_hwm_last_recalc_reason;
     int32_t _auto_hwm_deferred_sndhwm;

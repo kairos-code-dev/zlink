@@ -70,6 +70,25 @@ int planned_connection_bucket_hwm (zlink::auto_hwm_role_t role_,
     return socket_plan.sndhwm;
 }
 
+zlink::auto_hwm_socket_plan_t planned_connection_bucket_plan (
+  zlink::auto_hwm_role_t role_,
+  int socket_type_,
+  zlink_auto_hwm_profile_t profile_,
+  int message_unit_bytes_,
+  size_t managed_connections_,
+  bool hysteresis_enabled_ = false,
+  uint32_t previous_bucket_index_ = zlink::auto_hwm_connection_bucket_none)
+{
+    zlink::auto_hwm_context_plan_t context_plan;
+    zlink::auto_hwm_context_plan_make (true, profile_, &context_plan);
+    zlink::auto_hwm_socket_plan_t socket_plan;
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, role_, socket_type_, managed_connections_, managed_connections_, &socket_plan,
+      message_unit_bytes_, -1, -1, false, false, zlink::auto_hwm_scope_none, 1, true, true,
+      hysteresis_enabled_, previous_bucket_index_);
+    return socket_plan;
+}
+
 void set_zero_linger (zlink::socket_base_t *socket_)
 {
     const int zero = 0;
@@ -462,6 +481,44 @@ void test_auto_hwm_connection_bucket_preserves_4k_byte_budget ()
                                 ZLINK_AUTO_HWM_PROFILE_BALANCED, 128 * 1024, 999));
 }
 
+void test_auto_hwm_connection_bucket_hysteresis_boundaries ()
+{
+    zlink::auto_hwm_socket_plan_t socket_plan = planned_connection_bucket_plan (
+      zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, ZLINK_AUTO_HWM_PROFILE_BALANCED,
+      4096, 65, true, 0);
+    TEST_ASSERT_EQUAL_UINT32 (0u, socket_plan.connection_bucket_index);
+    TEST_ASSERT_TRUE (socket_plan.connection_bucket_hysteresis_retained);
+    TEST_ASSERT_EQUAL_INT (256, socket_plan.sndhwm);
+
+    socket_plan = planned_connection_bucket_plan (
+      zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, ZLINK_AUTO_HWM_PROFILE_BALANCED,
+      4096, 79, true, 0);
+    TEST_ASSERT_EQUAL_UINT32 (0u, socket_plan.connection_bucket_index);
+    TEST_ASSERT_TRUE (socket_plan.connection_bucket_hysteresis_retained);
+    TEST_ASSERT_EQUAL_INT (256, socket_plan.sndhwm);
+
+    socket_plan = planned_connection_bucket_plan (
+      zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, ZLINK_AUTO_HWM_PROFILE_BALANCED,
+      4096, 80, true, 0);
+    TEST_ASSERT_EQUAL_UINT32 (1u, socket_plan.connection_bucket_index);
+    TEST_ASSERT_FALSE (socket_plan.connection_bucket_hysteresis_retained);
+    TEST_ASSERT_EQUAL_INT (128, socket_plan.sndhwm);
+
+    socket_plan = planned_connection_bucket_plan (
+      zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, ZLINK_AUTO_HWM_PROFILE_BALANCED,
+      4096, 49, true, 1);
+    TEST_ASSERT_EQUAL_UINT32 (1u, socket_plan.connection_bucket_index);
+    TEST_ASSERT_TRUE (socket_plan.connection_bucket_hysteresis_retained);
+    TEST_ASSERT_EQUAL_INT (128, socket_plan.sndhwm);
+
+    socket_plan = planned_connection_bucket_plan (
+      zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, ZLINK_AUTO_HWM_PROFILE_BALANCED,
+      4096, 48, true, 1);
+    TEST_ASSERT_EQUAL_UINT32 (0u, socket_plan.connection_bucket_index);
+    TEST_ASSERT_FALSE (socket_plan.connection_bucket_hysteresis_retained);
+    TEST_ASSERT_EQUAL_INT (256, socket_plan.sndhwm);
+}
+
 void test_auto_hwm_connection_bucket_is_opt_in_and_preserves_manual_buffers ()
 {
     zlink::auto_hwm_context_plan_t context_plan;
@@ -722,6 +779,7 @@ int main (int argc, char **argv)
     RUN_TEST (test_auto_hwm_v2_hwm_is_independent_from_observed_count);
     RUN_TEST (test_auto_hwm_connection_bucket_scales_spot_mesh_roles);
     RUN_TEST (test_auto_hwm_connection_bucket_preserves_4k_byte_budget);
+    RUN_TEST (test_auto_hwm_connection_bucket_hysteresis_boundaries);
     RUN_TEST (test_auto_hwm_connection_bucket_is_opt_in_and_preserves_manual_buffers);
     RUN_TEST (test_auto_hwm_connection_bucket_caps_spot_routed_latency_floor);
     RUN_TEST (test_auto_hwm_leaves_transport_buffers_unset);

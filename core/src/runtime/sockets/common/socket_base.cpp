@@ -114,6 +114,10 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_, uint32_t tid_, int sid_) :
     _manual_rcvbuf (false),
     _auto_hwm_context_plan (),
     _auto_hwm_socket_plan (),
+    _auto_hwm_connection_bucket_state_valid (false),
+    _auto_hwm_connection_bucket_index (auto_hwm_connection_bucket_none),
+    _auto_hwm_connection_bucket_profile (ZLINK_AUTO_HWM_PROFILE_BALANCED),
+    _auto_hwm_connection_bucket_message_bytes (0),
     _auto_hwm_last_recalc_ms (0),
     _auto_hwm_last_recalc_reason (ZLINK_AUTO_HWM_RECALC_REASON_NONE),
     _auto_hwm_deferred_sndhwm (-1),
@@ -296,6 +300,45 @@ void zlink::socket_base_t::apply_auto_hwm_socket_plan (const auto_hwm_context_pl
 
     _auto_hwm_last_recalc_ms = _clock.now_ms ();
     _auto_hwm_last_recalc_reason = recalc_reason;
+}
+
+bool zlink::socket_base_t::auto_hwm_connection_bucket_state (
+  uint32_t *bucket_index_out_,
+  zlink_auto_hwm_profile_t *profile_out_,
+  uint64_t *effective_message_bytes_out_) const
+{
+    if (!_auto_hwm_connection_bucket_state_valid)
+        return false;
+    if (bucket_index_out_)
+        *bucket_index_out_ = _auto_hwm_connection_bucket_index;
+    if (profile_out_)
+        *profile_out_ = _auto_hwm_connection_bucket_profile;
+    if (effective_message_bytes_out_)
+        *effective_message_bytes_out_ = _auto_hwm_connection_bucket_message_bytes;
+    return true;
+}
+
+void zlink::socket_base_t::set_auto_hwm_connection_bucket_state (
+  uint32_t bucket_index_,
+  zlink_auto_hwm_profile_t profile_,
+  uint64_t effective_message_bytes_)
+{
+    if (bucket_index_ == auto_hwm_connection_bucket_none) {
+        clear_auto_hwm_connection_bucket_state ();
+        return;
+    }
+    _auto_hwm_connection_bucket_state_valid = true;
+    _auto_hwm_connection_bucket_index = bucket_index_;
+    _auto_hwm_connection_bucket_profile = profile_;
+    _auto_hwm_connection_bucket_message_bytes = effective_message_bytes_;
+}
+
+void zlink::socket_base_t::clear_auto_hwm_connection_bucket_state ()
+{
+    _auto_hwm_connection_bucket_state_valid = false;
+    _auto_hwm_connection_bucket_index = auto_hwm_connection_bucket_none;
+    _auto_hwm_connection_bucket_profile = ZLINK_AUTO_HWM_PROFILE_BALANCED;
+    _auto_hwm_connection_bucket_message_bytes = 0;
 }
 
 void zlink::socket_base_t::refresh_auto_hwm_policy (bool force_apply_)

@@ -41,6 +41,11 @@ enum auto_hwm_scope_t
     auto_hwm_scope_per_spot = 2
 };
 
+enum
+{
+    auto_hwm_connection_bucket_none = UINT32_MAX
+};
+
 struct auto_hwm_context_plan_t
 {
     auto_hwm_context_plan_t ();
@@ -66,6 +71,10 @@ struct auto_hwm_socket_plan_t
     bool connection_bucket_enabled;
     uint32_t connection_bucket_count;
     uint32_t connection_bucket_hwm_4k;
+    uint32_t connection_bucket_index;
+    bool connection_bucket_hysteresis_enabled;
+    uint32_t previous_connection_bucket_index;
+    bool connection_bucket_hysteresis_retained;
     int sndhwm;
     int rcvhwm;
     bool manual_sndbuf;
@@ -95,7 +104,10 @@ void auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
                                    auto_hwm_scope_t scope_ = auto_hwm_scope_none,
                                    size_t scope_count_ = 1,
                                    bool buffer_cost_enabled_ = true,
-                                   bool connection_bucket_enabled_ = false);
+                                   bool connection_bucket_enabled_ = false,
+                                   bool connection_bucket_hysteresis_enabled_ = false,
+                                   uint32_t previous_connection_bucket_index_ =
+                                     auto_hwm_connection_bucket_none);
 void auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
                                 auto_hwm_socket_plan_t *plans_,
                                 size_t plan_count_);
@@ -113,7 +125,10 @@ void auto_hwm_socket_plan_for_role (const auto_hwm_context_plan_t &context_,
                                     auto_hwm_scope_t scope_ = auto_hwm_scope_none,
                                     size_t scope_count_ = 1,
                                     bool buffer_cost_enabled_ = true,
-                                    bool connection_bucket_enabled_ = false);
+                                    bool connection_bucket_enabled_ = false,
+                                    bool connection_bucket_hysteresis_enabled_ = false,
+                                    uint32_t previous_connection_bucket_index_ =
+                                      auto_hwm_connection_bucket_none);
 }
 
 #endif

@@ -41,6 +41,9 @@ const connection_bucket_hwm_t spot_connection_buckets[] = {
   {2048, 16, 16, 32, 64},
   {unlimited_peer_bucket, 8, 8, 16, 32}};
 
+const uint32_t spot_connection_bucket_count =
+  sizeof spot_connection_buckets / sizeof spot_connection_buckets[0];
+
 uint32_t clamp_size_to_u32 (size_t value_)
 {
     return value_ > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t> (value_);
@@ -139,15 +142,81 @@ uint32_t bucket_hwm_for_profile (const connection_bucket_hwm_t &bucket_,
 uint32_t connection_bucket_hwm_4k (zlink_auto_hwm_profile_t profile_, uint32_t connections_)
 {
     const uint32_t peers = std::max<uint32_t> (connections_, 1u);
-    for (size_t i = 0; i != sizeof spot_connection_buckets / sizeof spot_connection_buckets[0];
-         ++i) {
+    for (uint32_t i = 0; i != spot_connection_bucket_count; ++i) {
         if (peers <= spot_connection_buckets[i].max_peers)
             return bucket_hwm_for_profile (spot_connection_buckets[i], profile_);
     }
     return bucket_hwm_for_profile (
-      spot_connection_buckets[sizeof spot_connection_buckets / sizeof spot_connection_buckets[0]
-                              - 1],
+      spot_connection_buckets[spot_connection_bucket_count - 1],
       profile_);
+}
+
+uint32_t connection_bucket_index_for_connections (uint32_t connections_)
+{
+    const uint32_t peers = std::max<uint32_t> (connections_, 1u);
+    for (uint32_t i = 0; i != spot_connection_bucket_count; ++i) {
+        if (peers <= spot_connection_buckets[i].max_peers)
+            return i;
+    }
+    return spot_connection_bucket_count - 1;
+}
+
+uint32_t connection_bucket_hwm_4k_by_index (zlink_auto_hwm_profile_t profile_,
+                                            uint32_t bucket_index_)
+{
+    if (bucket_index_ >= spot_connection_bucket_count)
+        bucket_index_ = spot_connection_bucket_count - 1;
+    return bucket_hwm_for_profile (spot_connection_buckets[bucket_index_], profile_);
+}
+
+uint32_t connection_bucket_upper_hysteresis_threshold (uint32_t bucket_index_)
+{
+    if (bucket_index_ >= spot_connection_bucket_count
+        || spot_connection_buckets[bucket_index_].max_peers == unlimited_peer_bucket) {
+        return unlimited_peer_bucket;
+    }
+    const uint32_t max_peers = spot_connection_buckets[bucket_index_].max_peers;
+    return max_peers + ((max_peers + 3u) / 4u);
+}
+
+uint32_t connection_bucket_lower_hysteresis_threshold (uint32_t bucket_index_)
+{
+    if (bucket_index_ == 0 || bucket_index_ >= spot_connection_bucket_count)
+        return 0;
+    const uint32_t previous_max_peers = spot_connection_buckets[bucket_index_ - 1].max_peers;
+    return (previous_max_peers * 3u) / 4u;
+}
+
+uint32_t connection_bucket_index_with_hysteresis (uint32_t connections_,
+                                                 uint32_t previous_bucket_index_,
+                                                 bool *retained_out_)
+{
+    if (retained_out_)
+        *retained_out_ = false;
+
+    const uint32_t peers = std::max<uint32_t> (connections_, 1u);
+    const uint32_t normal_index = connection_bucket_index_for_connections (peers);
+    if (previous_bucket_index_ >= spot_connection_bucket_count)
+        return normal_index;
+    if (previous_bucket_index_ == normal_index)
+        return normal_index;
+
+    bool retain_previous = false;
+    if (normal_index > previous_bucket_index_) {
+        const uint32_t threshold =
+          connection_bucket_upper_hysteresis_threshold (previous_bucket_index_);
+        retain_previous = peers < threshold;
+    } else {
+        const uint32_t threshold =
+          connection_bucket_lower_hysteresis_threshold (previous_bucket_index_);
+        retain_previous = peers > threshold;
+    }
+
+    if (!retain_previous)
+        return normal_index;
+    if (retained_out_)
+        *retained_out_ = true;
+    return previous_bucket_index_;
 }
 
 uint64_t effective_message_bytes (int socket_type_, int override_)
@@ -195,6 +264,10 @@ zlink::auto_hwm_socket_plan_t::auto_hwm_socket_plan_t () :
     connection_bucket_enabled (false),
     connection_bucket_count (1),
     connection_bucket_hwm_4k (0),
+    connection_bucket_index (auto_hwm_connection_bucket_none),
+    connection_bucket_hysteresis_enabled (false),
+    previous_connection_bucket_index (auto_hwm_connection_bucket_none),
+    connection_bucket_hysteresis_retained (false),
     sndhwm (0),
     rcvhwm (0),
     manual_sndbuf (false),
@@ -297,7 +370,9 @@ void zlink::auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
                                           auto_hwm_scope_t scope_,
                                           size_t scope_count_,
                                           bool buffer_cost_enabled_,
-                                          bool connection_bucket_enabled_)
+                                          bool connection_bucket_enabled_,
+                                          bool connection_bucket_hysteresis_enabled_,
+                                          uint32_t previous_connection_bucket_index_)
 {
     if (!out_)
         return;
@@ -307,6 +382,8 @@ void zlink::auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
     out_->policy_class = auto_hwm_policy_class_for_role (role_, socket_type_);
     out_->scope = scope_;
     out_->connection_bucket_enabled = connection_bucket_enabled_;
+    out_->connection_bucket_hysteresis_enabled = connection_bucket_hysteresis_enabled_;
+    out_->previous_connection_bucket_index = previous_connection_bucket_index_;
     out_->manual_sndbuf = manual_sndbuf_;
     out_->manual_rcvbuf = manual_rcvbuf_;
     out_->effective_message_bytes = effective_message_bytes (socket_type_, message_unit_bytes_);
@@ -324,8 +401,11 @@ void zlink::auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
                                 ZLINK_AUTO_HWM_PROFILE_BALANCED, out_->policy_class))
                               * effective_message_bytes (socket_type_, 0);
     out_->size_cap = size_cap_for_class (ZLINK_AUTO_HWM_PROFILE_BALANCED, out_->policy_class);
-    if (!buffer_cost_enabled_ || !connection_bucket_policy_class (out_->policy_class))
+    if (!buffer_cost_enabled_ || !connection_bucket_policy_class (out_->policy_class)) {
         out_->connection_bucket_enabled = false;
+        out_->connection_bucket_hysteresis_enabled = false;
+        out_->previous_connection_bucket_index = auto_hwm_connection_bucket_none;
+    }
 }
 
 void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
@@ -343,9 +423,18 @@ void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
                                                : auto_hwm_message_bytes;
         uint32_t budget_hwm = basis_hwm;
         plan.connection_bucket_hwm_4k = 0;
+        plan.connection_bucket_index = auto_hwm_connection_bucket_none;
+        plan.connection_bucket_hysteresis_retained = false;
         if (plan.connection_bucket_enabled && !stream_policy_class (plan.policy_class)) {
+            const uint32_t bucket_index =
+              plan.connection_bucket_hysteresis_enabled
+                  ? connection_bucket_index_with_hysteresis (
+                      plan.connection_bucket_count, plan.previous_connection_bucket_index,
+                      &plan.connection_bucket_hysteresis_retained)
+                  : connection_bucket_index_for_connections (plan.connection_bucket_count);
+            plan.connection_bucket_index = bucket_index;
             plan.connection_bucket_hwm_4k =
-              connection_bucket_hwm_4k (context_->profile, plan.connection_bucket_count);
+              connection_bucket_hwm_4k_by_index (context_->profile, bucket_index);
             budget_hwm = std::min<uint32_t> (basis_hwm, plan.connection_bucket_hwm_4k);
         }
         plan.unit_budget_bytes = static_cast<uint64_t> (budget_hwm) * basis_message_bytes;
@@ -380,7 +469,9 @@ void zlink::auto_hwm_socket_plan_for_role (const auto_hwm_context_plan_t &contex
                                            auto_hwm_scope_t scope_,
                                            size_t scope_count_,
                                            bool buffer_cost_enabled_,
-                                           bool connection_bucket_enabled_)
+                                           bool connection_bucket_enabled_,
+                                           bool connection_bucket_hysteresis_enabled_,
+                                           uint32_t previous_connection_bucket_index_)
 {
     if (!out_)
         return;
@@ -388,7 +479,8 @@ void zlink::auto_hwm_socket_plan_for_role (const auto_hwm_context_plan_t &contex
     auto_hwm_socket_plan_prepare (
       role_, socket_type_, managed_connections_, active_hwm_connections_, out_, message_unit_bytes_,
       sndbuf_, rcvbuf_, manual_sndbuf_, manual_rcvbuf_, scope_, scope_count_, buffer_cost_enabled_,
-      connection_bucket_enabled_);
+      connection_bucket_enabled_, connection_bucket_hysteresis_enabled_,
+      previous_connection_bucket_index_);
 
     auto_hwm_context_plan_t adjusted_context = context_;
     auto_hwm_context_finalize (&adjusted_context, out_, 1);

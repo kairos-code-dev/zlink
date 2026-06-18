@@ -5,6 +5,8 @@ import * as path from 'node:path';
 
 import type { NativeBinding } from './binding';
 
+const LINUX_SONAME = 'libzlink.so.7';
+
 export interface NativeLoadFailure {
   target: string;
   error: unknown;
@@ -46,9 +48,9 @@ export function prepareDevelopmentRuntimeLink(packageRoot: string): void {
   const addonDir = path.join(packageRoot, 'build', 'Release');
   const coreDir = path.join(packageRoot, '..', '..', 'core', 'build', 'lib');
   const coreAltDir = path.join(packageRoot, '..', 'build_cpp', 'lib');
-  refreshAddonRuntimeLink(path.join(addonDir, 'libzlink.so.7'), [
-    path.join(coreDir, 'libzlink.so.7'),
-    path.join(coreAltDir, 'libzlink.so.7')
+  refreshAddonRuntimeLink(path.join(addonDir, LINUX_SONAME), [
+    path.join(coreDir, LINUX_SONAME),
+    path.join(coreAltDir, LINUX_SONAME)
   ]);
   prependLibraryPath([coreDir, coreAltDir, addonDir]);
 }

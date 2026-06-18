@@ -5,12 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOTNET_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 REPO_DIR="$(cd "${DOTNET_DIR}/../.." && pwd)"
 source "${DOTNET_DIR}/perf/common/report_helpers.sh"
+source "${REPO_DIR}/bindings/tools/local_core_runtime.sh"
 PROJECT="${DOTNET_DIR}/perf/single/Zlink.BindingBench/Zlink.BindingBench.csproj"
 PROJECT_DIR="${DOTNET_DIR}/perf/single/Zlink.BindingBench"
-VERSION_FILE="${REPO_DIR}/VERSION"
-CORE_LIB_DIR="${REPO_DIR}/core/build/lib"
-CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${VERSION_FILE}")"
-CORE_LIB="${CORE_LIB_DIR}/libzlink.so.${CORE_VERSION}"
+CORE_LIB="${ZLINK_CORE_VERSIONED_LIB}"
 RESULTS_ROOT="${DOTNET_DIR}/perf/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-}"
@@ -143,20 +141,6 @@ ensure_build_output() {
   dotnet build "${PROJECT}" -c "${CONFIGURATION}" >/dev/null
 }
 
-sync_native_dirs() {
-  local search_root="$1"
-  [[ -d "${search_root}" ]] || return 0
-
-  while IFS= read -r native_dir; do
-    rm -f "${native_dir}/libzlink.so" \
-      "${native_dir}/libzlink.so.7" \
-      "${native_dir}/libzlink.so."*
-    cp -f "${CORE_LIB}" "${native_dir}/libzlink.so.${CORE_VERSION}"
-    ln -sfn "libzlink.so.${CORE_VERSION}" "${native_dir}/libzlink.so.7"
-    ln -sfn libzlink.so.7 "${native_dir}/libzlink.so"
-  done < <(find "${search_root}" -type d -path '*linux-x64/native')
-}
-
 prepare_core_runtime() {
   if [[ ! -f "${CORE_LIB}" ]]; then
     echo "core runtime not found: ${CORE_LIB}" >&2
@@ -172,7 +156,7 @@ prepare_core_runtime() {
   fi
   echo "Perf runtime libzlink: ${CORE_LIB}"
   export ZLINK_LIBRARY_PATH="${CORE_LIB}"
-  sync_native_dirs "${PROJECT_DIR}/bin"
+  zlink_sync_linux_native_dirs_by_find "${PROJECT_DIR}/bin" '*linux-x64/native'
 }
 
 normalize_platform() {

@@ -3,24 +3,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CORE_LIB="${ROOT_DIR}/../core/build/lib/libzlink.so"
-if [[ -f "${CORE_LIB}" ]]; then
-  export ZLINK_LIBRARY_PATH="${CORE_LIB}"
-  CORE_SONAME_TARGET="$(readlink "${ROOT_DIR}/../core/build/lib/libzlink.so.7" || true)"
-  if [[ -z "${CORE_SONAME_TARGET}" ]]; then
-    CORE_SONAME_TARGET="libzlink.so.7"
-  fi
-  CORE_SONAME_LIB="${ROOT_DIR}/../core/build/lib/${CORE_SONAME_TARGET}"
-  for native_dir in \
-    "${ROOT_DIR}/src/main/resources/native/linux-x86_64" \
-    "${ROOT_DIR}/build/resources/main/native/linux-x86_64"; do
-    if [[ -d "${native_dir}" ]]; then
-      cp -f "${CORE_LIB}" "${native_dir}/libzlink.so"
-      cp -f "${CORE_SONAME_LIB}" "${native_dir}/${CORE_SONAME_TARGET}"
-      ln -sfn "${CORE_SONAME_TARGET}" "${native_dir}/libzlink.so.7"
-    fi
-  done
-fi
+source "${ROOT_DIR}/../tools/local_core_runtime.sh"
+zlink_export_local_core_runtime
+zlink_sync_linux_native_dir "${ROOT_DIR}/src/main/resources/native/linux-x86_64"
+zlink_sync_linux_native_dir "${ROOT_DIR}/build/resources/main/native/linux-x86_64"
 TASKS=(
   ":test"
   ":integrationTest"

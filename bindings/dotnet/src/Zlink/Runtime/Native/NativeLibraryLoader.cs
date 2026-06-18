@@ -9,6 +9,9 @@ namespace Systems.Zlink.Runtime.Native;
 
 internal static class NativeLibraryLoader
 {
+    private const string LinuxUnversionedName = "libzlink.so";
+    private const string LinuxSoname = "libzlink.so.7";
+
     private static readonly object Sync = new();
     private static IntPtr _handle = IntPtr.Zero;
     private static bool _resolverInstalled;
@@ -192,7 +195,7 @@ internal static class NativeLibraryLoader
             return new[] { "zlink", "zlink.dll" };
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             return new[] { "zlink", "libzlink.dylib" };
-        return new[] { "zlink", "libzlink.so", "libzlink.so.7" };
+        return new[] { "zlink", LinuxUnversionedName, LinuxSoname };
     }
 
     private static string GetRid()
@@ -217,6 +220,6 @@ internal static class NativeLibraryLoader
             return new[] { "zlink.dll" };
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             return new[] { "libzlink.dylib" };
-        return new[] { "libzlink.so", "libzlink.so.7" };
+        return new[] { LinuxUnversionedName, LinuxSoname };
     }
 }

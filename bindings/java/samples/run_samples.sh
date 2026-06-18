@@ -4,25 +4,10 @@ set -euo pipefail
 
 SAMPLES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SAMPLES_DIR/.." && pwd)"
-REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
-CORE_LIB="${REPO_ROOT}/core/build/lib/libzlink.so"
-CORE_VERSION_FILE="${REPO_ROOT}/VERSION"
-CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${CORE_VERSION_FILE}")"
-if [[ -f "${CORE_LIB}" ]]; then
-  export ZLINK_LIBRARY_PATH="${CORE_LIB}"
-  for native_dir in \
-    "${ROOT_DIR}/src/main/resources/native/linux-x86_64" \
-    "${ROOT_DIR}/build/resources/main/native/linux-x86_64"; do
-    if [[ -d "${native_dir}" ]]; then
-      rm -f "${native_dir}/libzlink.so" \
-        "${native_dir}/libzlink.so.7" \
-        "${native_dir}/libzlink.so."*
-      cp -f "${CORE_LIB}" "${native_dir}/libzlink.so.${CORE_VERSION}"
-      ln -sfn "libzlink.so.${CORE_VERSION}" "${native_dir}/libzlink.so.7"
-      ln -sfn libzlink.so.7 "${native_dir}/libzlink.so"
-    fi
-  done
-fi
+source "${ROOT_DIR}/../tools/local_core_runtime.sh"
+zlink_export_local_core_runtime
+zlink_sync_linux_native_dir "${ROOT_DIR}/src/main/resources/native/linux-x86_64"
+zlink_sync_linux_native_dir "${ROOT_DIR}/build/resources/main/native/linux-x86_64"
 TASKS=(
   ":samples:runRequestReplyAsync"
   ":samples:runPairRecv"

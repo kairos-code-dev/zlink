@@ -13,8 +13,6 @@ option(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT "Build Stream Connector e2e clien
 option(ZLINK_STREAM_CONNECTOR_BUILD_UNREAL "Build Unreal Stream Connector source adapter" ON)
 option(ZLINK_STREAM_CONNECTOR_BUILD_GODOT "Build Godot Stream Connector source adapter" ON)
 option(ZLINK_STREAM_CONNECTOR_BUILD_AXMOL "Build Axmol Stream Connector source adapter" ON)
-option(ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK "Enable Stream Connector MessagePack helpers" ON)
-option(ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF "Enable Stream Connector Protobuf helpers" ON)
 option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 "Enable Stream Connector LZ4 compression" ON)
 option(ZLINK_STREAM_CONNECTOR_WITH_TLS "Enable Stream Connector TLS transport" ON)
 option(ZLINK_STREAM_CONNECTOR_WITH_WEBSOCKET "Enable Stream Connector WebSocket transport" ON)
@@ -52,14 +50,6 @@ elseif(WIN32)
 endif()
 
 if(NOT TARGET zlink::cpp)
-  if(NOT DEFINED ZLINK_CPP_CODEC_MESSAGEPACK)
-    set(ZLINK_CPP_CODEC_MESSAGEPACK ${ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK}
-      CACHE BOOL "Build and install the C++ MessagePack codec target")
-  endif()
-  if(NOT DEFINED ZLINK_CPP_CODEC_PROTOBUF)
-    set(ZLINK_CPP_CODEC_PROTOBUF ${ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF}
-      CACHE BOOL "Build and install the C++ Protobuf codec target")
-  endif()
   set(ZLINK_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   set(ZLINK_CPP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
   add_subdirectory(
@@ -147,8 +137,6 @@ if(NOT nlohmann_json_FOUND)
   FetchContent_MakeAvailable(nlohmann_json)
 endif()
 find_package(OpenSSL QUIET)
-target_include_directories(zlink_framework PUBLIC
-  $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/codecs/zlink-codec-json/include>)
 target_link_libraries(zlink_framework PUBLIC nlohmann_json::nlohmann_json)
 if(OpenSSL_FOUND)
   target_compile_definitions(zlink_framework PRIVATE
@@ -286,29 +274,7 @@ if(ZLINK_STREAM_CONNECTOR_WITH_LZ4)
       ${zlink_lz4_SOURCE_DIR}/lib)
   endif()
 endif()
-set(ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED OFF)
-if(ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK AND TARGET zlink::cpp_codec_messagepack)
-  set(ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED ON)
-endif()
-if(ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED)
-  set(ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY
-    "find_dependency(msgpack-cxx CONFIG)")
-else()
-  set(ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY "")
-endif()
-set(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED OFF)
-if(ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF AND TARGET zlink::cpp_codec_protobuf)
-  set(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED ON)
-endif()
-if(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED)
-  set(ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY
-    "find_dependency(Protobuf)")
-else()
-  set(ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY "")
-endif()
 target_compile_definitions(zlink_stream_connector PRIVATE
-  $<$<BOOL:${ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK>
-  $<$<BOOL:${ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF>
   $<$<BOOL:${ZLINK_STREAM_CONNECTOR_WITH_LZ4}>:ZLINK_STREAM_CONNECTOR_WITH_LZ4>)
 
 add_library(zlink_stream_connector_codecs INTERFACE)
@@ -317,19 +283,11 @@ set_target_properties(zlink_stream_connector_codecs PROPERTIES
   EXPORT_NAME stream_connector_codecs)
 target_compile_features(zlink_stream_connector_codecs INTERFACE cxx_std_20)
 target_include_directories(zlink_stream_connector_codecs INTERFACE
-  $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/codecs/zlink-codec-json/include>
+  $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/framework/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(zlink_stream_connector_codecs INTERFACE
   zlink::stream_connector
   nlohmann_json::nlohmann_json)
-if(ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED)
-  target_link_libraries(zlink_stream_connector_codecs INTERFACE
-    zlink::cpp_codec_messagepack)
-endif()
-if(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED)
-  target_link_libraries(zlink_stream_connector_codecs INTERFACE
-    zlink::cpp_codec_protobuf)
-endif()
 
 if(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT)
   add_library(zlink_stream_e2e_client INTERFACE)
@@ -479,6 +437,29 @@ add_zlink_framework_extension(
   zlink_framework_extension_custom_transport
   zlink::framework_extension_custom_transport)
 
+function(add_zlink_framework_codec_extension target_name alias_name include_dir)
+  add_library(${target_name} INTERFACE)
+  add_library(${alias_name} ALIAS ${target_name})
+  string(REPLACE "zlink_framework_codec_" "framework_codec_"
+    export_name "${target_name}")
+  set_target_properties(${target_name} PROPERTIES EXPORT_NAME ${export_name})
+  target_compile_features(${target_name} INTERFACE cxx_std_20)
+  target_include_directories(${target_name} INTERFACE
+    $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/${include_dir}/include>
+    $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/connector/core/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+  target_link_libraries(${target_name} INTERFACE zlink::framework)
+endfunction()
+
+add_zlink_framework_codec_extension(
+  zlink_framework_codec_protobuf
+  zlink::framework_codec_protobuf
+  extensions/framework-codec-protobuf)
+add_zlink_framework_codec_extension(
+  zlink_framework_codec_messagepack
+  zlink::framework_codec_messagepack
+  extensions/framework-codec-messagepack)
+
 if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
   install(TARGETS
     zlink_framework
@@ -494,6 +475,8 @@ if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
     zlink_framework_extension_yaml_config
     zlink_framework_extension_custom_codec
     zlink_framework_extension_custom_transport
+    zlink_framework_codec_protobuf
+    zlink_framework_codec_messagepack
     EXPORT zlink_framework_cppTargets)
 endif()
 install(TARGETS
@@ -519,12 +502,14 @@ if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.hpp")
 endif()
-install(DIRECTORY
-  ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/codecs/zlink-codec-json/include/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-  FILES_MATCHING PATTERN "*.hpp")
 if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
   install(DIRECTORY extensions/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hpp")
+  install(DIRECTORY extensions/framework-codec-protobuf/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hpp")
+  install(DIRECTORY extensions/framework-codec-messagepack/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     FILES_MATCHING PATTERN "*.hpp")
 endif()
@@ -658,6 +643,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   target_link_libraries(test_cpp_framework_contract_headers PRIVATE
     zlink::framework
     zlink::framework_extension_metrics
+    zlink::framework_codec_protobuf
     zlink::http_client
     zlink::stream_connector
     zlink::stream_connector_codecs
@@ -680,6 +666,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Zlink.Framework.ContractTests/test_cpp_framework_sample_parity.cpp)
   target_link_libraries(test_cpp_framework_sample_parity PRIVATE
     zlink::framework
+    zlink::framework_codec_protobuf
     zlink::stream_connector
     GTest::gtest
     GTest::gmock)
@@ -996,22 +983,26 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     sample_cpp_framework_bingo_api
     samples/Bingo/Server/Api/main.cpp
     "framework-sample-bingo;framework-sample-api"
-    zlink::framework)
+    zlink::framework
+    zlink::framework_codec_protobuf)
   add_zlink_framework_sample(
     sample_cpp_framework_bingo_play
     samples/Bingo/Server/Play/main.cpp
     "framework-sample-bingo;framework-sample-play"
-    zlink::framework)
+    zlink::framework
+    zlink::framework_codec_protobuf)
   add_zlink_framework_sample(
     sample_cpp_framework_bingo_session
     samples/Bingo/Server/Session/main.cpp
     "framework-sample-bingo;framework-sample-session"
     zlink::framework
+    zlink::framework_codec_protobuf
     zlink::stream_connector)
   add_executable(sample_cpp_framework_bingo_client
     samples/Bingo/Client/main.cpp)
   target_link_libraries(sample_cpp_framework_bingo_client PRIVATE
-    zlink::stream_e2e_client)
+    zlink::stream_e2e_client
+    zlink::framework_codec_protobuf)
   add_zlink_framework_sample(
     sample_cpp_framework_tictactoe_api
     samples/TicTacToe/Server/Api/main.cpp

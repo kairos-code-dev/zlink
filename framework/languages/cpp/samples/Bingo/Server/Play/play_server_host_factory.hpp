@@ -16,6 +16,7 @@
 #include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 #include <zlink/framework/extensions/remote_actor_packet_handler.hpp>
+#include <zlink/codecs/protobuf.hpp>
 
 #include <memory>
 
@@ -93,24 +94,23 @@ class play_server_host_factory_t
               .add<allocate_bingo_room_handler_t> ("play")
               .add<ensure_player_actor_handler_t> ("play")
               .add<remote_actor_packet_handler_t> ("play");
-            options.codecs ()
-              .add_protobuf ()
-              .add_protobuf<ensure_player_actor_req_t> ()
-              .add_protobuf<ensure_player_actor_res_t> ()
-              .add_protobuf<remote_actor_packet_req_t> ()
-              .add_protobuf<remote_actor_packet_res_t> ()
-              .add_protobuf<allocate_bingo_room_req_t> ()
-              .add_protobuf<allocate_bingo_room_res_t> ()
-              .add_protobuf<match_bingo_req_t> ()
-              .add_protobuf<match_bingo_res_t> ()
-              .add_protobuf<bingo_room_join_req_t> ()
-              .add_protobuf<bingo_room_join_res_t> ()
-              .add_protobuf<submit_bingo_card_req_t> ()
-              .add_protobuf<submit_bingo_card_res_t> ()
-              .add_protobuf<player_joined_notify_t> ()
-              .add_protobuf<game_started_notify_t> ()
-              .add_protobuf<number_drawn_notify_t> ()
-              .add_protobuf<game_ended_notify_t> ();
+            options.codecs ().use (
+              zlink::framework_codecs::protobuf<ensure_player_actor_req_t,
+                                                ensure_player_actor_res_t,
+                                                remote_actor_packet_req_t,
+                                                remote_actor_packet_res_t,
+                                                allocate_bingo_room_req_t,
+                                                allocate_bingo_room_res_t,
+                                                match_bingo_req_t,
+                                                match_bingo_res_t,
+                                                bingo_room_join_req_t,
+                                                bingo_room_join_res_t,
+                                                submit_bingo_card_req_t,
+                                                submit_bingo_card_res_t,
+                                                player_joined_notify_t,
+                                                game_started_notify_t,
+                                                number_drawn_notify_t,
+                                                game_ended_notify_t> ());
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::play_channel)
               .enable_server (topology.play_channel_endpoint)

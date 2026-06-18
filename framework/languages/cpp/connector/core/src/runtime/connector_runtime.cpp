@@ -257,17 +257,15 @@ codec_registry_t &codec_registry_t::operator= (codec_registry_t &&) noexcept = d
 
 codec_registry_t &codec_registry_t::add_json ()
 {
+    enable_codec (codec_t::json);
     return use_default_codec (codec_t::json);
 }
 
-codec_registry_t &codec_registry_t::add_message_pack ()
+codec_registry_t &codec_registry_t::enable_codec (codec_t codec)
 {
-    return use_default_codec (codec_t::message_pack);
-}
-
-codec_registry_t &codec_registry_t::add_protobuf ()
-{
-    return use_default_codec (codec_t::protobuf);
+    auto state = detail::state_from (_state);
+    state->enabled_codecs.insert (codec);
+    return *this;
 }
 
 codec_registry_t &codec_registry_t::use_default_codec (codec_t codec)
@@ -286,12 +284,10 @@ bool codec_registry_t::supports (codec_t codec) const
     switch (codec) {
         case codec_t::raw:
             return true;
-        case codec_t::json:
-            return state->json_enabled;
         case codec_t::message_pack:
-            return state->message_pack_enabled;
         case codec_t::protobuf:
-            return state->protobuf_enabled;
+        case codec_t::json:
+            return state->enabled_codecs.find (codec) != state->enabled_codecs.end ();
     }
     return false;
 }
@@ -366,8 +362,6 @@ connector_t::connector_t (connector_options_t options) :
     _state (std::make_shared<detail::connector_state_t> (std::move (options))), _codecs (_state)
 {
     auto state = detail::state_from (_state);
-    state->message_pack_enabled = true;
-    state->protobuf_enabled = true;
 #ifndef ZLINK_STREAM_CONNECTOR_WITH_LZ4
     state->lz4_enabled = false;
 #else

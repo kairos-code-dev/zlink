@@ -29,6 +29,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <memory>
 #include <nlohmann/json.hpp>
 #include <mutex>
 #include <optional>
@@ -68,6 +69,41 @@ class callback_latch_t
     std::mutex _mutex;
     std::condition_variable _changed;
     bool _ready = false;
+};
+
+class joining_thread_t
+{
+  public:
+    joining_thread_t () = default;
+
+    template <typename F, typename... Args>
+    explicit joining_thread_t (F &&function, Args &&...args) :
+        _thread (std::forward<F> (function), std::forward<Args> (args)...)
+    {
+    }
+
+    joining_thread_t (joining_thread_t &&) noexcept = default;
+    joining_thread_t &operator= (joining_thread_t &&) noexcept = default;
+
+    joining_thread_t (const joining_thread_t &) = delete;
+    joining_thread_t &operator= (const joining_thread_t &) = delete;
+
+    ~joining_thread_t ()
+    {
+        if (_thread.joinable ()) {
+            _thread.join ();
+        }
+    }
+
+    void join ()
+    {
+        if (_thread.joinable ()) {
+            _thread.join ();
+        }
+    }
+
+  private:
+    std::thread _thread;
 };
 
 bool dispatch_until (zlink::stream_connector::connector_t &connector,
@@ -432,7 +468,7 @@ int main ()
     }
     std::atomic_bool compressed_send_seen{false};
     std::atomic_bool uncompressed_send_seen{false};
-    std::thread server_thread ([&server, &compressed_send_seen, &uncompressed_send_seen] {
+    joining_thread_t server_thread ([&server, &compressed_send_seen, &uncompressed_send_seen] {
         int handled = 0;
         std::string buffer;
         while (handled < 3) {
@@ -477,14 +513,15 @@ int main ()
         return 1;
     }
 
-    std::vector<zlink::stream_connector::connection_state_t> states;
+    auto states =
+      std::make_shared<std::vector<zlink::stream_connector::connection_state_t>> ();
     connector.on_connection_state_changed (
-      [&] (const zlink::stream_connector::connection_state_changed_t &state) {
-          states.push_back (state.current);
+      [states] (const zlink::stream_connector::connection_state_changed_t &state) {
+          states->push_back (state.current);
       });
 
-    if (!connector.connect () || !connector.is_connected () || states.size () != 2
-        || states.back () != zlink::stream_connector::connection_state_t::connected) {
+    if (!connector.connect () || !connector.is_connected () || states->size () != 2
+        || states->back () != zlink::stream_connector::connection_state_t::connected) {
         return 2;
     }
 
@@ -531,7 +568,7 @@ int main ()
           std::string ("tcp://127.0.0.1:")
           + std::to_string (async_connect_acceptor.local_endpoint ().port ());
         callback_latch_t async_connect_server_latch;
-        std::thread async_connect_server_thread ([&] {
+        joining_thread_t async_connect_server_thread ([&] {
             boost::asio::ip::tcp::socket accepted (async_connect_io);
             boost::system::error_code error;
             async_connect_acceptor.accept (accepted, error);
@@ -575,7 +612,7 @@ int main ()
           std::string ("ws://127.0.0.1:")
           + std::to_string (websocket_connect_acceptor.local_endpoint ().port ()) + "/stream";
         callback_latch_t websocket_connect_server_latch;
-        std::thread websocket_connect_server_thread ([&] {
+        joining_thread_t websocket_connect_server_thread ([&] {
             auto accepted = std::make_shared<boost::asio::ip::tcp::socket> (websocket_connect_io);
             boost::system::error_code accept_error;
             websocket_connect_acceptor.async_accept (*accepted,
@@ -695,7 +732,7 @@ int main ()
     receive_server.options ().notify (false);
     receive_server.bind ("tcp://127.0.0.1:0");
     const auto receive_endpoint = receive_server.options ().last_endpoint ();
-    std::thread receive_server_thread ([&receive_server] {
+    joining_thread_t receive_server_thread ([&receive_server] {
         zlink::received_t inbound;
         if (receive_server.recv (inbound) != 0) {
             return;
@@ -738,7 +775,7 @@ int main ()
     observer_server.options ().notify (false);
     observer_server.bind ("tcp://127.0.0.1:0");
     const auto observer_endpoint = observer_server.options ().last_endpoint ();
-    std::thread observer_server_thread ([&observer_server] {
+    joining_thread_t observer_server_thread ([&observer_server] {
         zlink::received_t inbound;
         if (observer_server.recv (inbound) != 0) {
             return;
@@ -861,7 +898,7 @@ int main ()
     failing_observer_server.options ().notify (false);
     failing_observer_server.bind ("tcp://127.0.0.1:0");
     const auto failing_observer_endpoint = failing_observer_server.options ().last_endpoint ();
-    std::thread failing_observer_server_thread ([&failing_observer_server] {
+    joining_thread_t failing_observer_server_thread ([&failing_observer_server] {
         zlink::received_t inbound;
         if (failing_observer_server.recv (inbound) != 0) {
             return;
@@ -914,7 +951,7 @@ int main ()
     dropped_observer_server.options ().notify (false);
     dropped_observer_server.bind ("tcp://127.0.0.1:0");
     const auto dropped_observer_endpoint = dropped_observer_server.options ().last_endpoint ();
-    std::thread dropped_observer_server_thread ([&dropped_observer_server] {
+    joining_thread_t dropped_observer_server_thread ([&dropped_observer_server] {
         zlink::received_t inbound;
         if (dropped_observer_server.recv (inbound) != 0) {
             return;
@@ -1072,16 +1109,7 @@ int main ()
         return 10;
     }
 
-    const auto message_pack_supported =
-      connector.codecs ().supports (zlink::stream_connector::codec_t::message_pack);
-    bool error_seen = false;
-    try {
-        connector.codecs ().add_message_pack ();
-    }
-    catch (const std::invalid_argument &) {
-        error_seen = true;
-    }
-    if (message_pack_supported == error_seen) {
+    if (connector.codecs ().supports (zlink::stream_connector::codec_t::message_pack)) {
         return 11;
     }
     auto disconnected = connector.close ();
@@ -1122,7 +1150,7 @@ int main ()
     auto_server.bind ("tcp://127.0.0.1:0");
     const auto auto_endpoint = auto_server.options ().last_endpoint ();
     std::atomic_bool auto_json_seen{false};
-    std::thread auto_server_thread ([&auto_server, &auto_json_seen] {
+    joining_thread_t auto_server_thread ([&auto_server, &auto_json_seen] {
         zlink::received_t inbound;
         if (auto_server.recv (inbound) != 0) {
             return;
@@ -1236,7 +1264,7 @@ int main ()
     timeout_server.bind ("tcp://127.0.0.1:0");
     const auto timeout_endpoint = timeout_server.options ().last_endpoint ();
     std::atomic_bool timed_request_seen{false};
-    std::thread timeout_server_thread ([&timeout_server, &timed_request_seen] {
+    joining_thread_t timeout_server_thread ([&timeout_server, &timed_request_seen] {
         zlink::received_t inbound;
         if (timeout_server.recv (inbound) != 0) {
             return;
@@ -1267,7 +1295,7 @@ int main ()
     callback_response_server.options ().notify (false);
     callback_response_server.bind ("tcp://127.0.0.1:0");
     const auto callback_response_endpoint = callback_response_server.options ().last_endpoint ();
-    std::thread callback_response_thread ([&callback_response_server] {
+    joining_thread_t callback_response_thread ([&callback_response_server] {
         zlink::received_t inbound;
         if (callback_response_server.recv (inbound) != 0) {
             return;
@@ -1310,7 +1338,7 @@ int main ()
     callback_timeout_server.bind ("tcp://127.0.0.1:0");
     const auto callback_timeout_endpoint = callback_timeout_server.options ().last_endpoint ();
     std::atomic_bool callback_timeout_request_seen{false};
-    std::thread callback_timeout_thread (
+    joining_thread_t callback_timeout_thread (
       [&callback_timeout_server, &callback_timeout_request_seen] {
           zlink::received_t inbound;
           if (callback_timeout_server.recv (inbound) != 0) {
@@ -1352,7 +1380,7 @@ int main ()
     const auto close_cleanup_endpoint = close_cleanup_server.options ().last_endpoint ();
     callback_latch_t close_cleanup_request_latch;
     callback_latch_t close_cleanup_release_latch;
-    std::thread close_cleanup_thread (
+    joining_thread_t close_cleanup_thread (
       [&close_cleanup_server, &close_cleanup_request_latch, &close_cleanup_release_latch] {
           zlink::received_t inbound;
           if (close_cleanup_server.recv (inbound) != 0) {
@@ -1410,7 +1438,7 @@ int main ()
     const auto coroutine_endpoint = coroutine_server.options ().last_endpoint ();
     std::atomic_bool coroutine_send_seen{false};
     std::atomic_bool coroutine_request_seen{false};
-    std::thread coroutine_thread ([&coroutine_server, &coroutine_send_seen,
+    joining_thread_t coroutine_thread ([&coroutine_server, &coroutine_send_seen,
                                    &coroutine_request_seen] {
         std::string buffer;
         while (!coroutine_send_seen || !coroutine_request_seen) {
@@ -1462,7 +1490,7 @@ int main ()
     const auto partial_endpoint = std::string ("tcp://127.0.0.1:")
                                   + std::to_string (partial_acceptor.local_endpoint ().port ());
     std::atomic_bool partial_write_seen{false};
-    std::thread partial_server_thread ([&partial_acceptor, &partial_write_seen] {
+    joining_thread_t partial_server_thread ([&partial_acceptor, &partial_write_seen] {
         boost::asio::ip::tcp::socket socket (partial_acceptor.get_executor ());
         partial_acceptor.accept (socket);
         std::array<char, 256> request_buffer{};
@@ -1507,7 +1535,7 @@ int main ()
     large_receive_server.bind ("tcp://127.0.0.1:0");
     const auto large_receive_endpoint = large_receive_server.options ().last_endpoint ();
     const std::string large_receive_payload (70 * 1024, 'l');
-    std::thread large_receive_server_thread ([&large_receive_server, &large_receive_payload] {
+    joining_thread_t large_receive_server_thread ([&large_receive_server, &large_receive_payload] {
         zlink::received_t inbound;
         if (large_receive_server.recv (inbound) != 0) {
             return;
@@ -1545,7 +1573,7 @@ int main ()
     oversized_receive_server.options ().notify (false);
     oversized_receive_server.bind ("tcp://127.0.0.1:0");
     const auto oversized_receive_endpoint = oversized_receive_server.options ().last_endpoint ();
-    std::thread oversized_receive_server_thread ([&oversized_receive_server] {
+    joining_thread_t oversized_receive_server_thread ([&oversized_receive_server] {
         zlink::received_t inbound;
         if (oversized_receive_server.recv (inbound) != 0) {
             return;
@@ -1578,7 +1606,7 @@ int main ()
     async_oversized_receive_server.bind ("tcp://127.0.0.1:0");
     const auto async_oversized_receive_endpoint =
       async_oversized_receive_server.options ().last_endpoint ();
-    std::thread async_oversized_receive_server_thread ([&async_oversized_receive_server] {
+    joining_thread_t async_oversized_receive_server_thread ([&async_oversized_receive_server] {
         zlink::received_t inbound;
         if (async_oversized_receive_server.recv (inbound) != 0) {
             return;
@@ -1618,7 +1646,7 @@ int main ()
     oversized_wait_server.options ().notify (false);
     oversized_wait_server.bind ("tcp://127.0.0.1:0");
     const auto oversized_wait_endpoint = oversized_wait_server.options ().last_endpoint ();
-    std::thread oversized_wait_server_thread ([&oversized_wait_server] {
+    joining_thread_t oversized_wait_server_thread ([&oversized_wait_server] {
         zlink::received_t inbound;
         if (oversized_wait_server.recv (inbound) != 0) {
             return;
@@ -1654,7 +1682,7 @@ int main ()
     heartbeat_server.bind ("tcp://127.0.0.1:0");
     const auto heartbeat_endpoint = heartbeat_server.options ().last_endpoint ();
     std::atomic_bool heartbeat_seen{false};
-    std::thread heartbeat_server_thread ([&heartbeat_server, &heartbeat_seen] {
+    joining_thread_t heartbeat_server_thread ([&heartbeat_server, &heartbeat_seen] {
         zlink::received_t inbound;
         if (heartbeat_server.recv (inbound) != 0) {
             return;
@@ -1719,7 +1747,7 @@ int main ()
                                     + std::to_string (websocket_acceptor.local_endpoint ().port ())
                                     + "/stream";
     std::atomic_bool websocket_send_seen{false};
-    std::thread websocket_server_thread ([&websocket_acceptor, &websocket_send_seen] {
+    joining_thread_t websocket_server_thread ([&websocket_acceptor, &websocket_send_seen] {
         boost::asio::ip::tcp::socket socket (websocket_acceptor.get_executor ());
         websocket_acceptor.accept (socket);
         boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket (
@@ -1761,7 +1789,7 @@ int main ()
     const auto tls_endpoint =
       std::string ("tls://localhost:") + std::to_string (tls_acceptor.local_endpoint ().port ());
     std::atomic_bool tls_send_seen{false};
-    std::thread tls_server_thread ([&tls_acceptor, &tls_send_seen] {
+    joining_thread_t tls_server_thread ([&tls_acceptor, &tls_send_seen] {
         boost::asio::ssl::context tls_context (boost::asio::ssl::context::tls_server);
         tls_context.use_certificate_chain_file (ZLINK_STREAM_CONNECTOR_TEST_CERT);
         tls_context.use_private_key_file (ZLINK_STREAM_CONNECTOR_TEST_KEY,
@@ -1814,7 +1842,7 @@ int main ()
     const auto wss_endpoint = std::string ("wss://localhost:")
                               + std::to_string (wss_acceptor.local_endpoint ().port ()) + "/stream";
     std::atomic_bool wss_send_seen{false};
-    std::thread wss_server_thread ([&wss_acceptor, &wss_send_seen] {
+    joining_thread_t wss_server_thread ([&wss_acceptor, &wss_send_seen] {
         boost::asio::ssl::context tls_context (boost::asio::ssl::context::tls_server);
         tls_context.use_certificate_chain_file (ZLINK_STREAM_CONNECTOR_TEST_CERT);
         tls_context.use_private_key_file (ZLINK_STREAM_CONNECTOR_TEST_KEY,
@@ -1872,7 +1900,7 @@ int main ()
     std::atomic_bool reconnect_success_connecting{false};
     std::atomic_bool reconnect_success_send_seen{false};
     callback_latch_t reconnect_success_connecting_latch;
-    std::thread reconnect_success_server_thread (
+    joining_thread_t reconnect_success_server_thread (
       [&reconnect_success_io, reconnect_success_port, &reconnect_success_connecting,
        &reconnect_success_send_seen, &reconnect_success_connecting_latch] {
           reconnect_success_connecting_latch.wait_for (std::chrono::milliseconds (100));
@@ -1905,20 +1933,22 @@ int main ()
     reconnect_success_options.reconnect.max_attempts = 4;
     auto reconnect_success_connector =
       zlink::stream_connector::connector_factory_t::create (reconnect_success_options);
-    std::vector<zlink::stream_connector::connection_state_t> reconnect_success_states;
+    auto reconnect_success_states =
+      std::make_shared<std::vector<zlink::stream_connector::connection_state_t>> ();
     reconnect_success_connector.on_connection_state_changed (
-      [&] (const zlink::stream_connector::connection_state_changed_t &state) {
-          reconnect_success_states.push_back (state.current);
+      [&, reconnect_success_states] (
+        const zlink::stream_connector::connection_state_changed_t &state) {
+          reconnect_success_states->push_back (state.current);
           if (state.current == zlink::stream_connector::connection_state_t::connecting) {
               reconnect_success_connecting = true;
               reconnect_success_connecting_latch.signal ();
           }
-      });
+    });
     if (!reconnect_success_connector.connect ()
-        || std::find (reconnect_success_states.begin (), reconnect_success_states.end (),
+        || std::find (reconnect_success_states->begin (), reconnect_success_states->end (),
                       zlink::stream_connector::connection_state_t::reconnecting)
-             == reconnect_success_states.end ()
-        || reconnect_success_states.back ()
+             == reconnect_success_states->end ()
+        || reconnect_success_states->back ()
              != zlink::stream_connector::connection_state_t::connected) {
         reconnect_success_server_thread.join ();
         return 67;
@@ -1941,17 +1971,18 @@ int main ()
     reconnect_options.reconnect.max_attempts = 2;
     auto reconnect_connector =
       zlink::stream_connector::connector_factory_t::create (reconnect_options);
-    std::vector<zlink::stream_connector::connection_state_t> reconnect_states;
+    auto reconnect_states =
+      std::make_shared<std::vector<zlink::stream_connector::connection_state_t>> ();
     reconnect_connector.on_connection_state_changed (
-      [&] (const zlink::stream_connector::connection_state_changed_t &state) {
-          reconnect_states.push_back (state.current);
+      [reconnect_states] (const zlink::stream_connector::connection_state_changed_t &state) {
+          reconnect_states->push_back (state.current);
       });
     auto reconnect_result = reconnect_connector.connect ();
     if (reconnect_result
         || reconnect_result.error_code () != zlink::stream_connector::error_code_t::connect_timeout
-        || std::find (reconnect_states.begin (), reconnect_states.end (),
+        || std::find (reconnect_states->begin (), reconnect_states->end (),
                       zlink::stream_connector::connection_state_t::reconnecting)
-             == reconnect_states.end ()) {
+             == reconnect_states->end ()) {
         return 39;
     }
 

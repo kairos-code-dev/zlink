@@ -115,8 +115,6 @@ class handler_options_builder_t
     template <typename TPayload> void add_serializers ()
     {
         add_json_serializer<TPayload> ();
-        add_message_pack_serializer<TPayload> ();
-        add_protobuf_serializer<TPayload> ();
     }
 
     template <typename TPayload> void add_json_serializer ()
@@ -127,32 +125,6 @@ class handler_options_builder_t
             if (state->json_serializer_types.emplace (std::type_index (typeid (TPayload))).second
                 && !serializers->contains (std::type_index (typeid (TPayload)))) {
                 serializers->template add_json<TPayload> ();
-            }
-        });
-    }
-
-    template <typename TPayload> void add_message_pack_serializer ()
-    {
-        auto *serializers = _serializers;
-        auto state = _state;
-        _state->add_message_pack_serializer_installer ([serializers, state] {
-            if (state->message_pack_serializer_types.emplace (
-                  std::type_index (typeid (TPayload))).second
-                && !serializers->contains (std::type_index (typeid (TPayload)))) {
-                serializers->template add_message_pack<TPayload> ();
-            }
-        });
-    }
-
-    template <typename TPayload> void add_protobuf_serializer ()
-    {
-        auto *serializers = _serializers;
-        auto state = _state;
-        _state->add_protobuf_serializer_installer ([serializers, state] {
-            if (state->protobuf_serializer_types.emplace (std::type_index (typeid (TPayload)))
-                  .second
-                && !serializers->contains (std::type_index (typeid (TPayload)))) {
-                serializers->template add_protobuf<TPayload> ();
             }
         });
     }
@@ -213,37 +185,9 @@ class codec_options_builder_t
         return *this;
     }
 
-    template <typename TPayload> codec_options_builder_t &add_message_pack ()
+    template <typename TExtension> codec_options_builder_t &use (const TExtension &extension)
     {
-        if (!_serializers->contains (std::type_index (typeid (TPayload)))) {
-            _serializers->template add_message_pack<TPayload> ();
-        }
-        return *this;
-    }
-
-    codec_options_builder_t &add_message_pack ()
-    {
-        _state->message_pack_enabled = true;
-        for (const auto &installer : _state->message_pack_serializer_installers) {
-            installer ();
-        }
-        return *this;
-    }
-
-    template <typename TPayload> codec_options_builder_t &add_protobuf ()
-    {
-        if (!_serializers->contains (std::type_index (typeid (TPayload)))) {
-            _serializers->template add_protobuf<TPayload> ();
-        }
-        return *this;
-    }
-
-    codec_options_builder_t &add_protobuf ()
-    {
-        _state->protobuf_enabled = true;
-        for (const auto &installer : _state->protobuf_serializer_installers) {
-            installer ();
-        }
+        extension.register_framework_codecs (*this);
         return *this;
     }
 

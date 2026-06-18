@@ -20,15 +20,19 @@ class codec_registry_t
     codec_registry_t &operator= (const codec_registry_t &) = default;
 
     codec_registry_t &add_json ();
-    codec_registry_t &add_message_pack ();
-    codec_registry_t &add_protobuf ();
+    codec_registry_t &enable_codec (codec_t codec);
+    codec_registry_t &use_default_codec (codec_t codec);
+    template <typename TExtension> codec_registry_t &use (const TExtension &extension)
+    {
+        extension.register_connector_codecs (*this);
+        return *this;
+    }
 
     bool supports (codec_t codec) const;
 
   private:
     friend class connector_t;
     explicit codec_registry_t (std::shared_ptr<void> state);
-    codec_registry_t &use_default_codec (codec_t codec);
 
     std::shared_ptr<void> _state;
 };

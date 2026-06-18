@@ -36,13 +36,10 @@ result_t<void> validate_packet_limits (const connector_state_t &state, const pac
         return result_t<void>::failure (error_code_t::validation_failed,
                                         "stream connector metadata is too large");
     }
-    if (packet.codec == codec_t::message_pack && !state.message_pack_enabled) {
+    if (packet.codec != codec_t::raw
+        && state.enabled_codecs.find (packet.codec) == state.enabled_codecs.end ()) {
         return result_t<void>::failure (error_code_t::unsupported_codec,
-                                        "MessagePack codec is not enabled");
-    }
-    if (packet.codec == codec_t::protobuf && !state.protobuf_enabled) {
-        return result_t<void>::failure (error_code_t::unsupported_codec,
-                                        "Protobuf codec is not enabled");
+                                        "stream connector codec is not enabled");
     }
     if (packet.compressed) {
         if (state.options.compression != compression_t::lz4) {
@@ -596,7 +593,7 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
 
 void schedule_request_pump (std::shared_ptr<connector_state_t> state)
 {
-    stream_connection_t *connection = nullptr;
+    std::shared_ptr<stream_connection_t> connection;
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
         if (state->read_in_progress || state->close_requested.load ()
@@ -604,7 +601,7 @@ void schedule_request_pump (std::shared_ptr<connector_state_t> state)
             return;
         }
         state->read_in_progress = true;
-        connection = state->connection.get ();
+        connection = state->connection;
     }
     connection->async_read_some (8192, [state] (boost::system::error_code error,
                                                 std::vector<std::uint8_t> bytes) mutable {
@@ -656,7 +653,7 @@ void finish_async_write (std::shared_ptr<connector_state_t> state,
 void start_next_async_write (std::shared_ptr<connector_state_t> state)
 {
     pending_write_t write;
-    stream_connection_t *connection = nullptr;
+    std::shared_ptr<stream_connection_t> connection;
     std::optional<result_t<void>> immediate_failure;
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
@@ -673,7 +670,7 @@ void start_next_async_write (std::shared_ptr<connector_state_t> state)
             immediate_failure = result_t<void>::failure (error_code_t::disconnected,
                                                          "stream connector is not connected");
         } else {
-            connection = state->connection.get ();
+            connection = state->connection;
         }
     }
 

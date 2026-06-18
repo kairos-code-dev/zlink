@@ -2,7 +2,7 @@
 #pragma once
 
 #include <zlink/Contracts/Messaging/message.hpp>
-#include <zlink/codec/json.hpp>
+#include <zlink/framework/codecs/json.hpp>
 #include <nlohmann/json.hpp>
 #include <cstdint>
 #include <map>

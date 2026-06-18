@@ -164,14 +164,8 @@ struct handler_group_options_state_t
     std::map<std::string, std::set<std::pair<handler_group_kind_t, std::string>>>
       handler_packets_by_group;
     std::vector<serializer_installer_t> json_serializer_installers;
-    std::vector<serializer_installer_t> message_pack_serializer_installers;
-    std::vector<serializer_installer_t> protobuf_serializer_installers;
     std::set<std::type_index> json_serializer_types;
-    std::set<std::type_index> message_pack_serializer_types;
-    std::set<std::type_index> protobuf_serializer_types;
     bool json_enabled = false;
-    bool message_pack_enabled = false;
-    bool protobuf_enabled = false;
 
     void add_channel (const std::string &group_name,
                       const std::string &channel_name,
@@ -237,24 +231,6 @@ struct handler_group_options_state_t
             return;
         }
         json_serializer_installers.back () ();
-    }
-
-    void add_message_pack_serializer_installer (serializer_installer_t installer)
-    {
-        message_pack_serializer_installers.push_back (std::move (installer));
-        if (!message_pack_enabled) {
-            return;
-        }
-        message_pack_serializer_installers.back () ();
-    }
-
-    void add_protobuf_serializer_installer (serializer_installer_t installer)
-    {
-        protobuf_serializer_installers.push_back (std::move (installer));
-        if (!protobuf_enabled) {
-            return;
-        }
-        protobuf_serializer_installers.back () ();
     }
 
     bool channel_exposes_any (const std::string &channel_name,

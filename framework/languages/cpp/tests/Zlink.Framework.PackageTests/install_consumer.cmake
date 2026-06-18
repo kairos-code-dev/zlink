@@ -105,8 +105,7 @@ foreach(required_target IN ITEMS
     "zlink::stream_connector"
     "zlink::stream_connector_codecs"
     "zlink::stream_e2e_client"
-    "zlink::stream_connector_throwing"
-    "zlink::unreal_stream_connector")
+    "zlink::stream_connector_throwing")
   if(NOT connector_targets_text MATCHES "${required_target}")
     message(FATAL_ERROR "stream connector package export lacks ${required_target}")
   endif()
@@ -137,8 +136,7 @@ target_link_libraries(consumer PRIVATE
   zlink::stream_connector
   zlink::stream_connector_codecs
   zlink::stream_e2e_client
-  zlink::stream_connector_throwing
-  zlink::unreal_stream_connector)
+  zlink::stream_connector_throwing)
 ]=])
 
 file(WRITE "${consumer_source_dir}/main.cpp" [=[
@@ -150,7 +148,6 @@ file(WRITE "${consumer_source_dir}/main.cpp" [=[
 #include <zlink/stream_connector_throwing.hpp>
 #include <zlink/stream_e2e_client.hpp>
 #include <zlink/stream_e2e_client/codecs/auto_codec.hpp>
-#include <ZLinkStreamConnector/ZLinkStreamConnector.h>
 
 #include <nlohmann/json.hpp>
 
@@ -190,8 +187,6 @@ main ()
     zlink::stream_connector_throwing::create (
       zlink::stream_connector::connector_options_t{});
   (void) throwing_connector;
-  UZLinkStreamConnector unreal_connector;
-  unreal_connector.Tick (0.0F);
   return packet.name == login_request_t::packet_name ? 0 : 1;
 }
 ]=])

@@ -7,6 +7,8 @@
 #include "Handlers/authenticate_player_handler.hpp"
 #include "Handlers/match_bingo_handler.hpp"
 
+#include <zlink/codecs/protobuf.hpp>
+
 namespace zlink::samples::bingo
 {
 
@@ -18,14 +20,13 @@ inline zlink::framework::app_t &add_bingo_api_server (zlink::framework::app_t &a
           .add<authenticate_player_handler_t> ("api")
           .add<match_bingo_api_handler_t> ("api");
 
-        options.codecs ()
-          .add_protobuf ()
-          .add_protobuf<authenticate_player_req_t> ()
-          .add_protobuf<authenticate_player_res_t> ()
-          .add_protobuf<match_bingo_api_req_t> ()
-          .add_protobuf<match_bingo_api_res_t> ()
-          .add_protobuf<allocate_bingo_room_req_t> ()
-          .add_protobuf<allocate_bingo_room_res_t> ();
+        options.codecs ().use (
+          zlink::framework_codecs::protobuf<authenticate_player_req_t,
+                                            authenticate_player_res_t,
+                                            match_bingo_api_req_t,
+                                            match_bingo_api_res_t,
+                                            allocate_bingo_room_req_t,
+                                            allocate_bingo_room_res_t> ());
 
         options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
 

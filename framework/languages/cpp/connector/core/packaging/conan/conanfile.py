@@ -13,16 +13,12 @@ class ZlinkStreamConnectorConan(ConanFile):
     package_type = "library"
     settings = "os", "arch", "compiler", "build_type"
     options = {
-        "with_messagepack": [True, False],
-        "with_protobuf": [True, False],
         "with_lz4": [True, False],
         "with_tls": [True, False],
         "with_websocket": [True, False],
         "shared": [True, False],
     }
     default_options = {
-        "with_messagepack": False,
-        "with_protobuf": False,
         "with_lz4": True,
         "with_tls": True,
         "with_websocket": True,
@@ -43,7 +39,6 @@ class ZlinkStreamConnectorConan(ConanFile):
             "framework/languages/cpp/framework",
             "framework/languages/cpp/http-client",
             "bindings/cpp/cmake",
-            "bindings/cpp/codecs",
             "bindings/cpp/include",
             "bindings/cpp/native",
             "bindings/cpp/src",
@@ -80,8 +75,6 @@ class ZlinkStreamConnectorConan(ConanFile):
         tc.variables["ZLINK_STREAM_CONNECTOR_BUILD_UNREAL"] = False
         tc.variables["ZLINK_STREAM_CONNECTOR_BUILD_GODOT"] = False
         tc.variables["ZLINK_STREAM_CONNECTOR_BUILD_AXMOL"] = False
-        tc.variables["ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK"] = bool(self.options.with_messagepack)
-        tc.variables["ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF"] = bool(self.options.with_protobuf)
         tc.variables["ZLINK_STREAM_CONNECTOR_WITH_LZ4"] = bool(self.options.with_lz4)
         tc.variables["ZLINK_STREAM_CONNECTOR_WITH_TLS"] = bool(self.options.with_tls)
         tc.variables["ZLINK_STREAM_CONNECTOR_WITH_WEBSOCKET"] = bool(self.options.with_websocket)

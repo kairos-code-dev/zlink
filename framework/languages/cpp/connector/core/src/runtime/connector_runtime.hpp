@@ -16,6 +16,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <typeindex>
 #include <vector>
@@ -89,10 +90,8 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     std::atomic_size_t pending_inbound_observer_notifications{0};
     std::atomic_bool inbound_observer_drop_report_pending{false};
     bool connect_started = false;
-    codec_t default_codec = codec_t::raw;
-    bool json_enabled = true;
-    bool message_pack_enabled = false;
-    bool protobuf_enabled = false;
+    codec_t default_codec = codec_t::json;
+    std::set<codec_t> enabled_codecs{codec_t::json};
     bool lz4_enabled = false;
     std::atomic_bool close_requested{false};
     bool send_in_progress = false;
@@ -103,7 +102,7 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     std::chrono::steady_clock::time_point last_heartbeat_sent{};
     std::chrono::steady_clock::time_point last_inbound_received{};
     boost::asio::io_context &io_context;
-    std::unique_ptr<stream_connection_t> connection;
+    std::shared_ptr<stream_connection_t> connection;
     std::mutex transport_mutex;
     std::condition_variable state_changed;
 };

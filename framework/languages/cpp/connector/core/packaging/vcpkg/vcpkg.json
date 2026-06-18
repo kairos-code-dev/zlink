@@ -18,18 +18,6 @@
     }
   ],
   "features": {
-    "messagepack": {
-      "description": "Enable MessagePack typed codec helpers",
-      "dependencies": [
-        "msgpack-cxx"
-      ]
-    },
-    "protobuf": {
-      "description": "Enable Protobuf typed codec helpers",
-      "dependencies": [
-        "protobuf"
-      ]
-    },
     "lz4": {
       "description": "Enable LZ4 packet compression",
       "dependencies": [

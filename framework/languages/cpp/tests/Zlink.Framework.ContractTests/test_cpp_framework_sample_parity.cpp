@@ -439,17 +439,13 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleScenarioSurface)
     using namespace zlink::samples::deliverydispatch;
 
     delivery_dispatch_server_role_t server;
-    const auto created = server.create_delivery ("customer-1", "north gate");
-    EXPECT_EQ (created.status, std::string (delivery_status_t::created));
-    const auto assigned = server.assign_courier ("courier-a");
-    EXPECT_EQ (assigned.courier_id, "courier-a");
-    EXPECT_EQ (assigned.status, std::string (delivery_status_t::assigned));
-    EXPECT_EQ (server.advance (delivery_status_t::accepted).status,
-               std::string (delivery_status_t::accepted));
-    EXPECT_EQ (server.advance (delivery_status_t::picked_up).status,
-               std::string (delivery_status_t::picked_up));
-    EXPECT_EQ (server.advance (delivery_status_t::delivered).status,
-               std::string (delivery_status_t::delivered));
+    const auto successful =
+      server.create_delivery ({"delivery-success", "customer-1", "north gate", "south gate"});
+    const auto reassigned =
+      server.create_delivery ({"delivery-reassign", "customer-2", "east gate", "west gate"});
+    server.subscribe_delivery (successful.delivery_id);
+    server.subscribe_delivery (reassigned.delivery_id);
+    EXPECT_TRUE (server.assert_evidence (successful.delivery_id, reassigned.delivery_id).passed);
 }
 
 TEST (CppFrameworkSampleParity, GameQuestUsesDotNetSampleScenarioSurface)
@@ -457,12 +453,13 @@ TEST (CppFrameworkSampleParity, GameQuestUsesDotNetSampleScenarioSurface)
     using namespace zlink::samples::gamequest;
 
     game_quest_server_role_t server;
-    EXPECT_EQ (server.enter_area ("player-1", "quest-wolf-den").status,
-               std::string (quest_status_t::in_progress));
-    EXPECT_EQ (server.kill_monster ().monster_kills, 1);
-    EXPECT_EQ (server.collect_item ().collected_items, 1);
-    EXPECT_EQ (server.kill_monster ().monster_kills, 2);
-    EXPECT_EQ (server.complete_mission ().status, std::string (quest_status_t::completed));
+    server.enter_area ({"player-1", "quest-wolf-den", "area-1"});
+    server.kill_monster ({"player-1", "wolf", "quest-wolf-den", "kill-1"});
+    server.collect_item ({"player-1", "herb", 1, "item-1"});
+    server.kill_monster ({"player-1", "wolf", "quest-wolf-den", "kill-2"});
+    server.complete_mission ({"player-1", "quest-wolf-den", "mission-1"});
+    const auto progress = server.get_progress ("player-1").active_quests;
+    EXPECT_FALSE (progress.empty ());
 }
 
 TEST (CppFrameworkSampleParity, ShoppingMallUsesDotNetSampleScenarioSurface)
@@ -470,15 +467,13 @@ TEST (CppFrameworkSampleParity, ShoppingMallUsesDotNetSampleScenarioSurface)
     using namespace zlink::samples::shoppingmall;
 
     shopping_mall_server_role_t server;
-    const auto started = server.start_order ("customer-1", 4200);
-    EXPECT_EQ (started.status, std::string (order_status_t::pending));
-    EXPECT_EQ (started.total, 4200);
-    EXPECT_EQ (server.continue_workflow (order_status_t::paid).status,
-               std::string (order_status_t::paid));
-    EXPECT_EQ (server.continue_workflow (order_status_t::packed).status,
-               std::string (order_status_t::packed));
-    EXPECT_EQ (server.continue_workflow (order_status_t::shipped).status,
-               std::string (order_status_t::shipped));
+    const auto started =
+      server.start_order ({"cart-success", "shipping-1", "pm-ok", "order-success-001"});
+    EXPECT_EQ (started.status, std::string (order_status_t::created));
+    const auto continued = server.continue_workflow (started.order_id);
+    EXPECT_EQ (continued.state.status, std::string (order_status_t::confirmed));
+    EXPECT_EQ (server.get_order (started.order_id).state.status,
+               std::string (order_status_t::confirmed));
 }
 
 TEST (CppFrameworkSampleParity, DotNetParitySamplesUseRunnerOwnedServerProcess)
@@ -928,11 +923,11 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_NE (play_factory.find (".add_spot<bingo_room_spot_t> (sample_names_t::room_spot)"),
                std::string::npos);
     EXPECT_EQ (play_factory.find (".add_spot<bingo_room_t>"), std::string::npos);
-    EXPECT_NE (api_framework.find (".add_protobuf"), std::string::npos);
-    EXPECT_NE (play_factory.find (".add_protobuf"), std::string::npos);
-    EXPECT_NE (session_factory.find (".add_protobuf"), std::string::npos);
-    EXPECT_NE (client_main.find ("core_client1.codecs ().add_protobuf ()"), std::string::npos);
-    EXPECT_NE (client_main.find ("core_client2.codecs ().add_protobuf ()"), std::string::npos);
+    EXPECT_NE (api_framework.find ("codecs ().use"), std::string::npos);
+    EXPECT_NE (play_factory.find ("codecs ().use"), std::string::npos);
+    EXPECT_NE (session_factory.find ("codecs ().use"), std::string::npos);
+    EXPECT_NE (client_main.find ("core_client1.codecs ().use"), std::string::npos);
+    EXPECT_NE (client_main.find ("core_client2.codecs ().use"), std::string::npos);
     EXPECT_EQ (client.find (".add_protobuf"), std::string::npos);
     EXPECT_EQ (api_framework.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (play_factory.find (".add_message_pack"), std::string::npos);

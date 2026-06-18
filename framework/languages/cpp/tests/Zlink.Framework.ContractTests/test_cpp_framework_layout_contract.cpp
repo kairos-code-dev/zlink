@@ -132,6 +132,13 @@ bool public_headers_do_not_expose_runtime_dependencies (const std::filesystem::p
         while (std::getline (input, line)) {
             ++line_no;
             for (const auto &needle : forbidden) {
+                const auto relative = std::filesystem::relative (entry.path (), root);
+                const auto relative_text = relative.generic_string ();
+                if ((relative_text == "framework/include/zlink/framework/codecs/json.hpp"
+                     || relative_text == "zlink/framework/codecs/json.hpp")
+                    && (needle == "#include <nlohmann" || needle == "nlohmann::")) {
+                    continue;
+                }
                 if (line.find (needle) != std::string::npos) {
                     std::cerr << "public header exposes runtime/test dependency: " << entry.path ()
                               << ':' << line_no << " contains " << needle << '\n';
@@ -1797,7 +1804,13 @@ bool sample_client_targets_do_not_link_framework (const std::filesystem::path &r
             ok = false;
             continue;
         }
-        if (block.find ("zlink::framework") != std::string::npos) {
+        auto link_block = block;
+        const std::string codec_target = "zlink::framework_codec_";
+        for (auto pos = link_block.find (codec_target); pos != std::string::npos;
+             pos = link_block.find (codec_target, pos)) {
+            link_block.erase (pos, codec_target.size ());
+        }
+        if (link_block.find ("zlink::framework") != std::string::npos) {
             std::cerr << "client target must not link zlink::framework: " << target << '\n';
             ok = false;
         }
@@ -2364,22 +2377,18 @@ int main ()
     ok &= file_does_not_contain (
       root / "CMakePresets.json", "ZLINK_STREAM_CONNECTOR_WITH_JSON",
       "CMake presets must not set the removed Stream Connector JSON helper option");
-    ok &= file_contains (root / "CMakeLists.txt",
-                         "set(ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED OFF)");
-    ok &= file_contains (
+    ok &= file_does_not_contain (
       root / "CMakeLists.txt",
-      "if(ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK AND TARGET zlink::cpp_codec_messagepack)");
-    ok &=
-      file_contains (root / "CMakeLists.txt", "$<$<BOOL:${ZLINK_STREAM_CONNECTOR_MESSAGEPACK_"
-                                              "ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK>");
-    ok &=
-      file_contains (root / "CMakeLists.txt", "set(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED OFF)");
-    ok &= file_contains (
+      "ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK",
+      "MessagePack is provided by framework codec extension packages, not connector options");
+    ok &= file_does_not_contain (
       root / "CMakeLists.txt",
-      "if(ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF AND TARGET zlink::cpp_codec_protobuf)");
-    ok &= file_contains (
+      "ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF",
+      "Protobuf is provided by framework codec extension packages, not connector options");
+    ok &= file_does_not_contain (
       root / "CMakeLists.txt",
-      "$<$<BOOL:${ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF>");
+      "zlink::cpp_codec_",
+      "bindings codec targets must not be restored by C++ framework build");
     ok &= file_does_not_contain (
       root / "cmake/zlink_framework_cppConfig.cmake.in",
       "@ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY@",
@@ -2390,12 +2399,18 @@ int main ()
       "Framework package config must not restore connector Protobuf dependency");
     ok &= file_contains (root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
                          "@ZLINK_STREAM_CONNECTOR_EXPORT_OPENSSL_DEPENDENCY@");
-    ok &= file_contains (root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
-                         "@ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY@");
-    ok &= file_contains (root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
-                         "@ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY@");
+    ok &= file_does_not_contain (
+      root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
+      "MESSAGEPACK",
+      "Stream connector package config must not export MessagePack codec dependencies");
+    ok &= file_does_not_contain (
+      root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
+      "PROTOBUF",
+      "Stream connector package config must not export Protobuf codec dependencies");
     ok &= file_contains (root / "../../../bindings/cpp/CMakeLists.txt",
-                         "install(TARGETS ${target_name}\n    EXPORT zlink_cppTargets)");
+                         "install(TARGETS zlink_cpp");
+    ok &= file_contains (root / "../../../bindings/cpp/CMakeLists.txt",
+                         "EXPORT zlink_cppTargets");
     ok &= file_contains (
       root / "CMakeLists.txt",
       "option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 \"Enable Stream Connector LZ4 compression\" ON)");
@@ -2502,10 +2517,14 @@ int main ()
                          "\"boost-beast\"");
     ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
                          "\"vcpkg-cmake\"");
-    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
-                         "\"msgpack-cxx\"");
-    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
-                         "\"protobuf\"");
+    ok &= file_does_not_contain (
+      root / "connector/core/packaging/vcpkg/vcpkg.json",
+      "\"msgpack-cxx\"",
+      "MessagePack dependency belongs to the framework codec extension package");
+    ok &= file_does_not_contain (
+      root / "connector/core/packaging/vcpkg/vcpkg.json",
+      "\"protobuf\"",
+      "Protobuf dependency belongs to the framework codec extension package");
     ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
                          "\"openssl\"");
     ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",

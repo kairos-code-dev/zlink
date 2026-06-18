@@ -9,6 +9,8 @@
 #include "../host_support.hpp"
 #include "Sessions/bingo_session.hpp"
 
+#include <zlink/codecs/protobuf.hpp>
+
 namespace zlink::samples::bingo
 {
 
@@ -32,20 +34,19 @@ class session_server_host_factory_t
         app.add_hosted_service (std::make_unique<bingo_notification_subscriber_service_t> (
           topology.notification_channel_endpoint));
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
-            options.codecs ()
-              .add_protobuf ()
-              .add_protobuf<authenticate_req_t> ()
-              .add_protobuf<authenticate_res_t> ()
-              .add_protobuf<authenticate_player_req_t> ()
-              .add_protobuf<authenticate_player_res_t> ()
-              .add_protobuf<ensure_player_actor_req_t> ()
-              .add_protobuf<ensure_player_actor_res_t> ()
-              .add_protobuf<remote_actor_packet_req_t> ()
-              .add_protobuf<remote_actor_packet_res_t> ()
-              .add_protobuf<match_bingo_req_t> ()
-              .add_protobuf<match_bingo_res_t> ()
-              .add_protobuf<submit_bingo_card_req_t> ()
-              .add_protobuf<submit_bingo_card_res_t> ();
+            options.codecs ().use (
+              zlink::framework_codecs::protobuf<authenticate_req_t,
+                                                authenticate_res_t,
+                                                authenticate_player_req_t,
+                                                authenticate_player_res_t,
+                                                ensure_player_actor_req_t,
+                                                ensure_player_actor_res_t,
+                                                remote_actor_packet_req_t,
+                                                remote_actor_packet_res_t,
+                                                match_bingo_req_t,
+                                                match_bingo_res_t,
+                                                submit_bingo_card_req_t,
+                                                submit_bingo_card_res_t> ());
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_client (topology.api_channel_endpoint);

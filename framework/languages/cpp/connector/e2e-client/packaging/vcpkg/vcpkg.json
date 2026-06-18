@@ -8,28 +8,6 @@
     "zlink-stream-connector"
   ],
   "features": {
-    "messagepack": {
-      "description": "Enable MessagePack typed codec helpers in the core connector dependency",
-      "dependencies": [
-        {
-          "name": "zlink-stream-connector",
-          "features": [
-            "messagepack"
-          ]
-        }
-      ]
-    },
-    "protobuf": {
-      "description": "Enable Protobuf typed codec helpers in the core connector dependency",
-      "dependencies": [
-        {
-          "name": "zlink-stream-connector",
-          "features": [
-            "protobuf"
-          ]
-        }
-      ]
-    },
     "lz4": {
       "description": "Enable LZ4 packet compression in the core connector dependency",
       "dependencies": [

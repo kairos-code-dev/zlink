@@ -5,7 +5,7 @@
 
 #include <zlink.hpp>
 #include <zlink/framework.hpp>
-#include <zlink/framework/extensions/protobuf_serializer_cache.hpp>
+#include <zlink/codecs/protobuf.hpp>
 
 #include <atomic>
 #include <condition_variable>
@@ -20,7 +20,7 @@
 namespace zlink::samples::bingo
 {
 
-using bingo_notification_serializers_t = zlink::framework::extensions::protobuf_serializer_cache_t<
+using bingo_notification_serializers_t = zlink::framework_codecs::protobuf_serializers_t<
   player_joined_notify_t, game_started_notify_t, number_drawn_notify_t, game_ended_notify_t>;
 
 class bingo_notification_publisher_t

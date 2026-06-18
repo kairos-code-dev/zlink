@@ -3,7 +3,7 @@
 
 #include <zlink/http_client/contracts/coroutines.hpp>
 #include <zlink/http_client/contracts/types.hpp>
-#include <zlink/codec/json.hpp>
+#include <zlink/framework/codecs/json.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 
 #include <chrono>

@@ -51,50 +51,48 @@
 
 - `framework/languages/node/packages`
 - `framework/languages/node/samples`
-- `framework/languages/node/doc`
+- `framework/doc/framework/node`
+- `framework/doc/http-client/node`
 - `framework/languages/node/test`
 - `framework/languages/node/cross-language`
 - `framework/languages/java/zlink-framework-core`
 - `framework/languages/java/zlink-framework-kotlin`
 - `framework/languages/java/zlink-framework-testkit`
 - `framework/languages/java/zlink-stream-connector`
-- `framework/languages/java/zlink-stream-connector-codecs`
-- `framework/languages/java/zlink-stream-connector-json`
-- `framework/languages/java/zlink-stream-connector-msgpack`
-- `framework/languages/java/zlink-stream-connector-protobuf`
+- `framework/languages/java/zlink-framework-codec-protobuf`
+- `framework/languages/java/zlink-framework-codec-msgpack`
 - `framework/languages/java/samples/java`
 - `framework/languages/java/samples/kotlin`
-- `framework/languages/java/doc`
+- `framework/doc/framework/java`
+- `framework/doc/http-client/java`
 - `framework/languages/dotnet/src`
 - `framework/languages/dotnet/samples`
-- `framework/languages/dotnet/doc`
+- `framework/doc/framework/dotnet`
+- `framework/doc/http-client/dotnet`
 - `framework/languages/dotnet/tests`
 - `framework/languages/cpp/framework`
 - `framework/languages/cpp/extensions`
 - `framework/languages/cpp/samples`
-- `framework/languages/cpp/doc`
+- `framework/doc/framework/cpp`
+- `framework/doc/http-client/cpp`
+- `framework/doc/stream-connector/cpp`
 - `framework/languages/cpp/tests`
 - `bindings/node/src`
-- `bindings/node/packages`
+- `framework/languages/node/packages/framework-codec-protobuf`
+- `framework/languages/node/packages/framework-codec-msgpack`
 - `bindings/node/tests`
 - `bindings/java/src`
-- `bindings/java/codec`
 - `bindings/java/tests`
 - `bindings/dotnet/src`
-- `bindings/dotnet/codecs`
 - `bindings/dotnet/tests`
 - `bindings/cpp/include`
 - `bindings/cpp/src`
-- `bindings/cpp/codecs`
 - `bindings/cpp/tests`
 - `bindings/go/contracts`
-- `bindings/go/codec`
 - `bindings/go/tests`
 - `bindings/python/src`
-- `bindings/python/codecs`
 - `bindings/python/tests`
 - `bindings/rust/src`
-- `bindings/rust/crates`
 - `bindings/rust/tests`
 
 ### 문서
@@ -224,7 +222,8 @@ sample에 raw bytes decode, `then(decode...)`, helper chain, 언어별 예외 su
 대상:
 
 - `bindings/node/src`
-- `bindings/node/packages`
+- `framework/languages/node/packages/framework-codec-protobuf`
+- `framework/languages/node/packages/framework-codec-msgpack`
 - `framework/languages/node/packages`
 - `framework/languages/node/samples`
 - 관련 test / doc
@@ -249,16 +248,13 @@ sample에 raw bytes decode, `then(decode...)`, helper chain, 언어별 예외 su
 대상:
 
 - `bindings/java/src`
-- `bindings/java/codec`
 - `bindings/java/tests`
 - `framework/languages/java/zlink-framework-core`
 - `framework/languages/java/zlink-framework-kotlin`
 - `framework/languages/java/zlink-framework-testkit`
 - `framework/languages/java/zlink-stream-connector`
-- `framework/languages/java/zlink-stream-connector-codecs`
-- `framework/languages/java/zlink-stream-connector-json`
-- `framework/languages/java/zlink-stream-connector-msgpack`
-- `framework/languages/java/zlink-stream-connector-protobuf`
+- `framework/languages/java/zlink-framework-codec-protobuf`
+- `framework/languages/java/zlink-framework-codec-msgpack`
 - `framework/languages/java/samples/java`
 - `framework/languages/java/samples/kotlin`
 - 관련 doc / tests
@@ -284,7 +280,6 @@ sample에 raw bytes decode, `then(decode...)`, helper chain, 언어별 예외 su
 대상:
 
 - `bindings/dotnet/src`
-- `bindings/dotnet/codecs`
 - `framework/languages/dotnet/src`
 - `framework/languages/dotnet/samples`
 - 관련 doc / tests
@@ -306,7 +301,6 @@ sample에 raw bytes decode, `then(decode...)`, helper chain, 언어별 예외 su
 
 - `bindings/cpp/include`
 - `bindings/cpp/src`
-- `bindings/cpp/codecs`
 - `framework/languages/cpp/framework`
 - `framework/languages/cpp/extensions`
 - `framework/languages/cpp/samples`
@@ -330,15 +324,15 @@ sample에 raw bytes decode, `then(decode...)`, helper chain, 언어별 예외 su
 
 대상:
 
-- `bindings/go/contracts`, `bindings/go/codec`
-- `bindings/python/src`, `bindings/python/codecs`
-- `bindings/rust/src`, `bindings/rust/crates`
+- `bindings/go/contracts`, `bindings/go/tests`
+- `bindings/python/src`, `bindings/python/tests`
+- `bindings/rust/src`, `bindings/rust/tests`
 - 관련 spec / tests
 
 해야 할 일:
 
 - base `Message` public contract가 bytes 중심인지 재확인
-- codec extension이 object-aware policy를 갖지 않도록 정리
+- codec extension은 대체 없이 제거하고 raw `Message`/bytes 계약만 남기는지 확인
 - 정식 spec과 tests가 같은 책임 경계를 설명하도록 맞춤
 
 완료 기준:
@@ -465,10 +459,10 @@ high-level sample source에서는 위 helper 경로가 기본 호출 모양으�
 
 ```bash
 rg -n "\\.packetName\\(" \
-  framework/languages/node/doc/guide \
-  framework/languages/java/doc/guide \
-  framework/languages/dotnet/doc/guide \
-  framework/languages/cpp/doc/guide
+  framework/doc/framework/node/guide \
+  framework/doc/framework/java/guide \
+  framework/doc/framework/dotnet/guide \
+  framework/doc/framework/cpp/guide
 ```
 
 guide 문서에서 `.packetName(...)`은 예외 경로 설명에만 남아야 한다. 기본 사용 예시에서는

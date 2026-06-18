@@ -41,13 +41,14 @@
 | 패키지 | 대상 | 역할 |
 |--------|------|------|
 | `Systems.Zlink.Stream.Connector` | 일반 C# / .NET | TCP[^tcp], TLS[^tls], WS[^ws], WSS[^wss] transport[^transport]와 packet connector core |
-| `Systems.Zlink.Stream.Connector.Json` | 선택 | JSON packet helper |
-| `Systems.Zlink.Stream.Connector.MessagePack` | 선택 | MessagePack packet helper |
-| `Systems.Zlink.Stream.Connector.Protobuf` | 선택 | Protobuf packet helper |
-| `Systems.Zlink.Stream.Connector.Codecs` | 선택 | 타입 특성을 보고 codec[^codec]을 자동으로 골라 주는 convenience helper |
+| `Zlink.Framework.Codecs.MessagePack` | 선택 | MessagePack framework codec extension |
+| `Zlink.Framework.Codecs.Protobuf` | 선택 | Protobuf framework codec extension |
 
 `.NET` Stream Connector 는 NuGet[^nuget] 으로 별도 배포할 수 있어야 한다. NuGet 의
 package id 와 `.NET` namespace 는 `Systems.Zlink.Stream.Connector` 계열을 그대로 사용한다.
+JSON은 connector core의 기본 codec이다. MessagePack과 Protobuf는 connector 전용 패키지가
+아니라 framework codec extension을 등록해서 framework, connector, HTTP client가 같은 codec
+정책을 공유한다.
 
 의존성 규칙은 다음과 같다.
 
@@ -737,80 +738,30 @@ public readonly struct ZlinkStreamResult<T>
 
 다만 두 경로에서 사용하는 error code 가 가지는 의미는 서로 같아야 한다.
 
-## 12. Codec API 초안
+## 12. Codec Extension
 
-이 절에서는 codec 을 어떻게 갈아 끼우는지, 그리고 자동 선택 helper 가 어떤 우선순위를
-따르는지 정리한다.
+이 절에서는 codec 을 어떻게 갈아 끼우는지 정리한다.
 
-core 패키지는 codec 을 강제로 정해 두지 않는다. codec package 는 두 가지 표면을
-함께 제공한다.
-
-- 명시형 extension method 로 `ZlinkStreamEncodedPayload` 를 만들고 읽는 표면.
-- typed convenience builder 로 일반 CLR 객체를 그대로 `Send`, `Request`, `On` 에
-  넘기는 표면.
+JSON은 framework와 connector의 기본 codec이다. Protobuf와 MessagePack은 connector 전용
+패키지가 아니라 framework codec extension package가 제공한다. 같은 extension을 framework
+codec registry, HTTP client, stream connector에 등록하면 세 표면이 같은 content type과
+stream codec 매핑을 공유한다.
 
 ```csharp
-namespace Systems.Zlink.Stream.Connector.Json;
+using Zlink.Framework.Codecs.MessagePack;
 
-public static class ZlinkStreamJsonExtensions
+builder.Codecs(codecs => codecs.Use(ZLinkMessagePackCodec.Default));
+
+var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
 {
-    ZlinkStreamEncodedPayload ToJson<T>(this T value);
-
-    T FromJson<T>(this ZlinkStreamEncodedPayload payload);
-}
-
-public static class ZlinkStreamJsonConnectorExtensions
-{
-    ZlinkStreamJsonSendBuilder Send<TPayload>(
-        this IZlinkStreamConnector connector,
-        TPayload payload);
-
-    ZlinkStreamJsonRequestBuilder Request<TPayload>(
-        this IZlinkStreamConnector connector,
-        TPayload payload);
-
-    IDisposable On<TPayload>(
-        this IZlinkStreamConnector connector,
-        Func<ZlinkStreamMessage<TPayload>, CancellationToken, ValueTask> handler);
-}
-
-namespace Systems.Zlink.Stream.Connector.MessagePack;
-
-public static class ZlinkStreamMessagePackExtensions
-{
-    ZlinkStreamEncodedPayload ToMsgPack<T>(this T value);
-
-    T FromMsgPack<T>(this ZlinkStreamEncodedPayload payload);
-}
-
-namespace Systems.Zlink.Stream.Connector.Protobuf;
-
-public static class ZlinkStreamProtobufExtensions
-{
-    ZlinkStreamEncodedPayload ToProto<T>(this T value)
-        where T : IMessage<T>;
-
-    T FromProto<T>(this ZlinkStreamEncodedPayload payload)
-        where T : IMessage<T>, new();
-}
+    Endpoint = new Uri("tcp://127.0.0.1:9000"),
+    PayloadCodec = ZLinkMessagePackCodec.Default,
+});
 ```
 
-connector core 는 타입만 보고서 JSON, MessagePack, Protobuf 가운데 하나를 임의로
-고르지 않는다. 어떤 codec 을 사용할지는, 호출자가 import 한 codec package 의 namespace
-로 명시한다.
-
-명시 방법은 두 가지다.
-
-- `ToJson`, `ToMsgPack`, `ToProto` 를 직접 호출한다.
-- 또는 해당 package 의 `Request<T>()`, `Send<T>()`, `On<T>()` convenience API 를
-  활용한다.
-
-`Systems.Zlink.Stream.Connector.Codecs` package 는, 다음 순서로 codec 을 자동 선택하는
-편의 API 를 제공한다.
-
-1. `Google.Protobuf.IMessage` 를 구현한 타입이면 Protobuf 를 사용한다.
-2. `[MessagePackObject]` 가 붙은 타입이면 MessagePack 을 사용한다.
-3. 그 외 일반 CLR 객체는 JSON 을 사용한다.
+custom codec도 같은 규칙을 따른다. 사용자가 만든 package는 `IZLinkCodecExtension`으로
+framework serializer와 stream codec 매핑을 등록하고, connector가 사용할 payload codec 구현도
+같이 제공한다.
 
 ## 13. Compression 초안
 
@@ -891,24 +842,22 @@ request / response 규칙은 다음과 같다.
 
 이 절에서는 codec 확장 패키지가 할 수 있는 일과, 절대 바꿔서는 안 되는 규칙을 정리한다.
 
-core 패키지는 codec 을 강제하지 않는다. 다음 확장 패키지가 따로 있다. 이들은 packet
-이름, optional metadata, payload 를 만들고 parse 하는 일만 돕는다.
-
-- JSON
-- MessagePack
-- Protobuf
-- Auto Codecs
+JSON은 기본 codec이다. MessagePack과 Protobuf는 framework codec extension package로 제공한다.
+이 extension은 packet payload를 encode/decode하고 framework registry에 content type과 stream
+codec 매핑을 등록한다.
 
 예시는 다음과 같다.
 
 ```csharp
-using Systems.Zlink.Stream.Connector.Codecs;
+using Zlink.Framework.Codecs.Protobuf;
 
-client
+builder.Codecs(codecs => codecs.Use(ZLinkProtobufCodec.Default));
+
+connector
     .Send(new ChatMessage("hello"))
     .Async(cancellationToken);
 
-var reply = await client
+var reply = await connector
     .Request(new ChatRequest("hello"))
     .Async<ChatReply>(cancellationToken);
 ```
@@ -918,8 +867,7 @@ var reply = await client
 - codec extension 은 payload bytes 와 함께 `ZlinkStreamCodec` 값을 만들어 준다.
 - connector 는 그 codec 값을 helper header 에 그대로 적는다.
 - core API 는 reply 나 handler 에 `ZlinkStreamEncodedPayload` 를 그대로 흘려보낸다.
-- codec package 의 typed convenience API 가 이를 다시, 지정된 reply / payload 타입으로
-  풀어 준다.
+- 등록된 extension 이 이를 다시, 지정된 reply / payload 타입으로 풀어 준다.
 
 다만 codec extension 이 transport, timeout, request map, callback dispatch 의 규칙을
 바꿔서는 안 된다.

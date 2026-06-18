@@ -48,7 +48,8 @@ Rust 바인딩을 변경할 때 이 경로를 일관되게 사용한다.
 - 런타임 구현: `bindings/rust/src/runtime/` 아래 private 모듈.
 - 네이티브 브릿지/아티팩트: `bindings/rust/src/runtime/native/`,
   `bindings/rust/native/`, `bindings/rust/include/` 아래 private 모듈.
-- 코덱 확장: `bindings/rust/crates/`.
+- 코덱 crate: 제공하지 않는다. Rust 바인딩은 raw `Message`와 byte payload API만
+  유지한다.
 - 테스트: `bindings/rust/tests/`.
 - 샘플: `bindings/rust/samples/`.
 - Perf: `bindings/rust/perf/`.
@@ -142,7 +143,6 @@ bindings/rust/
 |   |   |   +-- native_errors.rs
 |   |   +-- native/
 |   |   |   +-- native.rs
-+-- crates/
 +-- tests/
 +-- samples/
 +-- perf/

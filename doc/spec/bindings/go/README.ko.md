@@ -55,7 +55,8 @@ Go 바인딩을 수정할 때 다음 경로를 일관되게 사용한다.
   이름의 export를 중단해야 한다.
 - 네이티브 브리지/아티팩트: `bindings/go/internal/native/`,
   `bindings/go/native/`, `bindings/go/include/`.
-- 코덱 확장: `bindings/go/codec/`.
+- 코덱 모듈: 제공하지 않는다. Go 바인딩은 raw `Message`와 byte payload API만
+  유지한다.
 - 테스트: `bindings/go/tests/`와 `bindings/go/*_test.go`.
 - 샘플: `bindings/go/samples/`.
 - Perf: `bindings/go/perf/`.
@@ -105,7 +106,6 @@ bindings/go/
 |   +-- native/
 +-- include/
 +-- native/
-+-- codec/
 +-- tests/
 +-- samples/
 +-- perf/

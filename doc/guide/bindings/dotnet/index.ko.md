@@ -103,14 +103,11 @@ byte[] copy             = fromText.ToArray();         // 복사해서 꺼내기
 `AsReadOnlySpan()`이 주는 span은 메시지가 살아있는 동안만 유효합니다. 메시지 모델
 개념은 [메시지 API](../../09-message-api.ko.md)를 참고하세요.
 
-JSON, Protobuf, MessagePack 같은 객체 codec 은 별도 확장 패키지에서 `Message` 위에
-얹어 쓴다. 예를 들어 JSON을 쓰면 `Systems.Zlink.Codecs.Json` 네임스페이스의
-`ToJson()` / `FromJson<T>()` 또는 `Encode()` / `Decode<T>()` 확장 함수를 사용한다.
-Protobuf는 `Systems.Zlink.Codecs.Protobuf` 의 `ToProto()` / `FromProto<T>()`,
-MessagePack은 `Systems.Zlink.Codecs.MessagePack` 의 `ToMsgPack()` /
-`FromMsgPack<T>()` 를 사용한다. framework 의 actor join callback 처럼 raw
-`Message`를 주고받는 표면에서는 application 이 이 확장 함수 중 하나를 선택해
-request와 reply를 변환한다.
+바인딩은 JSON, Protobuf, MessagePack 같은 객체 codec package를 제공하지 않는다.
+이 계층은 raw `Message`와 byte payload를 주고받는 저수준 API만 유지한다.
+객체 직렬화가 필요하면 framework codec extension을 framework 구성 단계에 등록한다.
+framework의 actor join callback처럼 raw `Message`를 직접 주고받는 표면에서는
+application 계층에서 명시적으로 byte payload를 만들고 해석한다.
 
 ### 3. 수신 (Received)
 

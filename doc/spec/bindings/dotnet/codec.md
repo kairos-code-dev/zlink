@@ -1,72 +1,15 @@
 [.NET Binding Specification](README.md) · [Bindings Policy](../README.md)
 
-# .NET Codec Extension Specification
+# .NET Codec Package Policy
 
-This document defines the public contract for .NET codec extension libraries.
-The core `Systems.Zlink` assembly does not expose these entrypoints, so
-applications opt in to codec dependencies explicitly.
+.NET bindings do not provide JSON, Protobuf, or MessagePack codec packages. The
+core `Systems.Zlink` assembly exposes raw `Message` and byte payload APIs only.
 
-## Packages And Namespaces
+Applications that need framework-level serialization should use framework codec
+extension packages under `framework/languages/dotnet/src/`, such as
+`Zlink.Framework.Codecs.Protobuf` or `Zlink.Framework.Codecs.MessagePack`.
+Do not add replacement codec packages under the .NET binding tree.
 
-| Package | Namespace | Baseline |
-|---------|-----------|----------|
-| `Systems.Zlink.Codecs.Protobuf` | `Systems.Zlink.Codecs.Protobuf` | Google.Protobuf |
-| `Systems.Zlink.Codecs.Json` | `Systems.Zlink.Codecs.Json` | System.Text.Json |
-| `Systems.Zlink.Codecs.MessagePack` | `Systems.Zlink.Codecs.MessagePack` | MessagePack for C# |
-
-These extensions are separate public modules layered on top of the core
-binding. They must not be merged into the `Systems.Zlink` core assembly.
-
-These codec extensions define only object <-> `Message` encode/decode helpers.
-Packet-name resolution, high-level serializer lookup, and typed
-request/reply policy belong to framework-layer documents, not this codec
-extension specification.
-
-## Protobuf
-
-```csharp
-namespace Systems.Zlink.Codecs.Protobuf;
-
-public static class ProtobufMessageExtensions
-{
-    T FromProto<T>(this Message message)
-        where T : Google.Protobuf.IMessage<T>, new();
-
-    Message ToProto<T>(this T value)
-        where T : Google.Protobuf.IMessage<T>;
-}
-```
-
-## JSON
-
-```csharp
-namespace Systems.Zlink.Codecs.Json;
-
-public static class JsonMessageExtensions
-{
-    T FromJson<T>(
-        this Message message,
-        System.Text.Json.JsonSerializerOptions? options = null);
-
-    Message ToJson<T>(
-        this T value,
-        System.Text.Json.JsonSerializerOptions? options = null);
-}
-```
-
-## MessagePack
-
-```csharp
-namespace Systems.Zlink.Codecs.MessagePack;
-
-public static class MessagePackMessageExtensions
-{
-    T FromMsgPack<T>(
-        this Message message,
-        MessagePack.MessagePackSerializerOptions? options = null);
-
-    Message ToMsgPack<T>(
-        this T value,
-        MessagePack.MessagePackSerializerOptions? options = null);
-}
-```
+This keeps the .NET binding contract focused on the low-level protocol API.
+Codec selection, packet-name resolution, serializer lookup, and typed
+request/reply policy belong to the framework layer.

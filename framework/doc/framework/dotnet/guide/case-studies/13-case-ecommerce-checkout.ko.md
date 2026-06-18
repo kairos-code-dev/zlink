@@ -149,7 +149,7 @@ outbox·idempotency 는 그대로 짠다** — 분산 데이터 문제는 transp
 // 등록: channel 이름만. proto/stub/mesh/discovery 컴포넌트 없음
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
     {
         var channel =     options.AddClientServerChannel("orders");
                 channel.EnableServer("tcp://0.0.0.0:7401");

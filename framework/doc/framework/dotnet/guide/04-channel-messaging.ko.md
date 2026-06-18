@@ -395,9 +395,9 @@ Discovery 모드는 peer 소유권이 Discovery 에 있다. 실행 중 endpoint 
 payload 직렬화 codec 은 framework 등록에서 켠다.
 
 ```csharp
-options.Codecs.AddProtobuf();
+options.Codecs.Use(ZLinkProtobufCodec.Default);
 options.Codecs.AddJson();
-options.Codecs.AddMessagePack();
+options.Codecs.Use(ZLinkMessagePackCodec.Default);
 ```
 
 payload 는 codec 이 직렬화할 수 있는 DTO 여야 한다. root/요소 타입이
@@ -534,7 +534,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     // 들어오는 요청을 받는 서버 channel
     {

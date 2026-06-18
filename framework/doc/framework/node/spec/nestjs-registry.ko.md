@@ -108,7 +108,7 @@ handler 를 함께 등록하느냐 마느냐에 따라 모델이 갈릴 뿐이�
     ZLinkModule.forRoot(
       zlinkFramework()
         .codecs()
-          .addProtobuf()
+          .use(zlinkProtobufCodec())
         .useDiscovery()
           .addRegistryEndpoint('tcp://127.0.0.1:5551')
         .addClientServerChannel('api')
@@ -505,7 +505,7 @@ wire 호환을 위해 dotnet 과 같은 정수 값을 그대로 사용한다. �
     ZLinkModule.forRoot(
       zlinkFramework()
         .codecs()
-          .addProtobuf()
+          .use(zlinkProtobufCodec())
         .useDiscovery()
           .addRegistryEndpoint('tcp://127.0.0.1:5551')
         .addClientServerChannel('api')

@@ -1173,19 +1173,16 @@ auto message = zlink::message_t::from_json(order);
 auto order = message.parse_json<order_created_t>();
 ```
 
-기존 codec namespace의 함수형 helper는 이행 기간의 호환 shim으로만 둔다. 신규
-framework, connector, binding 샘플과 테스트는 message 중심 표면을 기준으로 고정한다.
-base binding target은 JSON, MessagePack, Protobuf dependency를 갖지 않는다. 각 codec은
-별도 선택 target이 제공하되, 사용자가 해당 target을 링크하고 header를 include한 경우에만
-관련 `message_t` helper가 열린다.
+bindings package는 JSON, MessagePack, Protobuf dependency를 갖지 않는다. JSON은 framework
+기본 codec으로 제공하고, Protobuf와 MessagePack은 framework codec extension package가
+제공한다. framework, connector, HTTP client가 codec을 바꿔도 handler/client 업무 API는
+바뀌지 않는다.
 
 ```cmake
 target_link_libraries(app PRIVATE zlink::cpp)
 
-# 필요할 때만 추가한다.
-target_link_libraries(app PRIVATE zlink::cpp_codec_json)
-target_link_libraries(app PRIVATE zlink::cpp_codec_messagepack)
-target_link_libraries(app PRIVATE zlink::cpp_codec_protobuf)
+# Protobuf가 필요할 때만 추가한다.
+target_link_libraries(app PRIVATE zlink::framework_codec_protobuf)
 ```
 
 ```cpp

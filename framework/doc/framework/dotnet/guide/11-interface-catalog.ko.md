@@ -146,13 +146,13 @@ application 이 직접 만든 `Message` 를 넘길 때만 caller 가 그 `Messag
 
 ```csharp
 codecs.AddJson();
-codecs.AddMessagePack();
-codecs.AddProtobuf();
+codecs.Use(ZLinkMessagePackCodec.Default);
+codecs.Use(ZLinkProtobufCodec.Default);
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkCodecRegistryBuilder` | payload 직렬화 codec 활성화(`AddJson` / `AddMessagePack` / `AddProtobuf`). `options.Codecs` 로 접근 |
+| `IZLinkCodecRegistryBuilder` | JSON 기본 codec 활성화(`AddJson`)와 framework codec extension 등록(`Use`)을 담당한다. custom serializer는 extension 내부에서 `AddSerializer`로 등록한다. `options.Codecs` 로 접근 |
 
 검증: `CodecContracts.Codec_registry_builder_declares_the_codecs_an_application_enables`.
 

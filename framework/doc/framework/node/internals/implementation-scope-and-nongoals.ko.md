@@ -49,11 +49,11 @@
 - `NestJS DI`[^di] 와 lifecycle hook[^lifecycle-hook]
   (`onApplicationBootstrap` / `onApplicationShutdown`) 통합
 - backend adapter layer[^backend-adapter] 와 backend dependency policy 적용
-- 기본 codec[^codec] 등록은 builder 의 `.codecs().addJson()`,
-  `.codecs().addProtobuf()`, `.codecs().addMessagePack()` 표면으로 표현한다.
-  샘플이 기본으로 제공되는 codec 을 쓸 때는 custom serializer 를 직접 등록하지
-  않는다. 별도 wire format 이 필요할 때만 `.codecs().addSerializer(...)` 로
-  custom serializer 를 등록한다.
+- JSON 기본 codec[^codec] 등록은 builder 의 `.codecs().addJson()` 표면으로 표현한다.
+  Protobuf와 MessagePack은 framework codec extension package가 제공하는 객체를
+  `.codecs().use(...)`로 등록한다. 별도 wire format 이 필요할 때도 같은 extension
+  계약을 사용하고, extension 내부에서 `.codecs().addSerializer(...)` 로 custom
+  serializer 를 등록한다.
 - 저장소가 지금 함께 패키징하는 Node 바인딩 plat­form[^platform] 조합
   (`win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `darwin-x64`,
   `darwin-arm64`) 을 모두 CI[^ci] gate 범위 안에 둔다.

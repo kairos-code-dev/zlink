@@ -342,7 +342,7 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 > 현재 node 묶음은 구현 기준 문서(`spec/`, `internals/`, root plan, sample plan)만
 > strict 집합으로 둔다.
 
-대상 문서는 현재 `framework/languages/node/doc` 아래에 실제 존재하는 구현용 문서다.
+대상 문서는 현재 `framework/doc/framework/node` 아래에 실제 존재하는 구현용 문서다.
 dotnet `aspnet-core-*` 문서는 node 의 `nestjs-*` 대응 문서로 매핑한다.
 
 - `README.ko.md`

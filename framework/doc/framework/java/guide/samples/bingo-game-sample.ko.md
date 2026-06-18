@@ -54,7 +54,7 @@ type으로 둔다: `AuthenticatePlayerReq/Res`, `MatchBingoReq/Res`, `SubmitBing
 ## 7. 등록 (builder API)
 
 ```java
-options.codecs().addProtobuf();
+options.codecs().use(ZLinkProtobufCodec.defaultCodec());
 var channel = options.addClientServerChannel(SampleNames.ApiChannel);
 channel.enableServer(topology.apiChannelEndpoint());
 channel.addHandlerGroup(SampleNames.ApiChannel);
@@ -79,7 +79,7 @@ public wait API로 한다.
 
 - client는 `Session` STREAM 연결 하나만 연다.
 - 네 서버가 Registry/Discovery로 자동 발견된다.
-- Protobuf codec을 쓴다(`addProtobuf`).
+- Protobuf codec은 `ZLinkProtobufCodec.defaultCodec()` framework extension으로 등록한다.
 - draw는 server timer가 주도하고 client는 draw 요청을 보내지 않는다.
 - Java/Kotlin 두 샘플이 같은 역할·메시지·검증 순서를 따른다.
 

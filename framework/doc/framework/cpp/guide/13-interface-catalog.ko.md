@@ -54,8 +54,10 @@
 | `handler_invocation_context_t` | `{descriptor, context, shared_ptr<const message_t> message}` |
 | 등록 | `options.handlers().add<T>("group")` / `use_filter<TFilter>()` |
 
-**codec 등록** (`codecs/serializer.hpp`): `serializer_registry_t` — `add_json<T>()` ·
-`add_message_pack<T>()` · `add_protobuf<T>()` · `add<T>(serialize_fn, deserialize_fn)`.
+**codec 등록** (`codecs/serializer.hpp`): `serializer_registry_t` — JSON 기본 serializer는
+`add_json<T>()`로 등록한다. Protobuf와 MessagePack은 framework codec extension package를
+참조한 뒤 `codecs().use(extension)`으로 등록한다. custom codec도 같은 extension 객체 안에서
+`add_serializer<T>(serialize_fn, deserialize_fn)`를 호출해 등록한다.
 
 route mesh 핸들러는 `route_channel_builder_t::add_send_handler`/`add_request_handler`
 (첫 인자가 페이로드, 둘째가 `route_handler_context_t`)로 등록한다.
@@ -80,7 +82,7 @@ route mesh 핸들러는 `route_channel_builder_t::add_send_handler`/`add_request
 |--------|------|-----|
 | `services()` | DI 등록 (`add_singleton/scoped/transient<T>`) | [4장](04-di-container.ko.md) |
 | `handlers()` | 핸들러 그룹 등록 (`add<T>("group")`) | [3 §6.1](03-concepts.ko.md) |
-| `codecs()` | `add_json` / `add_message_pack`(+typed) / `add_protobuf` | [7 §2](07-channel-messaging.ko.md) |
+| `codecs()` | `add_json` / `use(extension)` / `add_serializer<T>` | [7 §2](07-channel-messaging.ko.md) |
 | `add_client_server_channel(name)` | `enable_server(ep)` · `enable_client([ep])` · `use_handler_group(g)` · `enable_spot_route_egress(t)` | [7](07-channel-messaging.ko.md) |
 | `add_fanout_channel(name)` | `enable_publisher(ep)` · `enable_subscriber([ep])` · `use_handler_group(g)` | [7 §6](07-channel-messaging.ko.md) |
 | `add_dealer_mesh_channel(name)` | `enable_server(ep)` · `enable_client([ep])` · `use_handler_group(g)` (DEALER 공유) | [7 §5](07-channel-messaging.ko.md) |

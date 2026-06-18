@@ -1,69 +1,15 @@
 [Java Binding Specification](README.md) · [Bindings Policy](../README.md)
 
-# Java Codec Extension Specification
+# Java Codec Artifact Policy
 
-This document defines the public contract for Java codec extension artifacts.
-The core Java binding does not expose these entrypoints from
-`systems.zlink`, so applications opt in to codec dependencies
-explicitly.
+Java bindings do not provide JSON, Protobuf, or MessagePack codec artifacts.
+The core Java binding exposes raw `Message` and byte payload APIs only.
 
-## Artifacts And Packages
+Applications that need framework-level serialization should use framework codec
+extension artifacts under `framework/languages/java/`, such as
+`zlink-framework-codec-protobuf` or `zlink-framework-codec-msgpack`. Do not add
+replacement codec artifacts under the Java binding tree.
 
-- Maven `zlink-codec-protobuf`
-- Maven `zlink-codec-json`
-- Maven `zlink-codec-messagepack`
-
-- `systems.zlink.codec.protobuf`
-- `systems.zlink.codec.json`
-- `systems.zlink.codec.messagepack`
-
-JSON codec baseline: `Jackson`.
-MessagePack codec baseline: `jackson-dataformat-msgpack`.
-
-These codec artifacts define only object <-> `Message` encode/decode helpers.
-Packet-name resolution, high-level serializer lookup, and typed
-request/reply policy belong to framework-layer documents, not this codec
-extension specification.
-
-## Protobuf
-
-```java
-package systems.zlink.codec.protobuf;
-
-public final class ProtobufCodec {
-    public static <T extends com.google.protobuf.MessageLite> T parseProto(
-        systems.zlink.Message message,
-        com.google.protobuf.Parser<T> parser);
-
-    public static systems.zlink.Message toMessage(
-        com.google.protobuf.MessageLite value);
-}
-```
-
-## JSON
-
-```java
-package systems.zlink.codec.json;
-
-public final class JsonCodec {
-    public static <T> T parseJson(
-        systems.zlink.Message message,
-        Class<T> type);
-
-    public static systems.zlink.Message toMessage(Object value);
-}
-```
-
-## MessagePack
-
-```java
-package systems.zlink.codec.messagepack;
-
-public final class MessagePackCodec {
-    public static <T> T parseMessagePack(
-        systems.zlink.Message message,
-        Class<T> type);
-
-    public static systems.zlink.Message toMessage(Object value);
-}
-```
+This keeps the Java binding contract focused on the low-level protocol API.
+Codec selection, packet-name resolution, serializer lookup, and typed
+request/reply policy belong to the framework layer.

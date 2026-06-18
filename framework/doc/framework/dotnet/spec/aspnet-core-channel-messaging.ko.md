@@ -240,7 +240,7 @@ builder.Services.AddZLinkFramework(options =>
 {
     // 예제용 짧은 값. options.DefaultTimeout의 실제 기본은 30초다.
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
     {
         var channel =     options.AddClientServerChannel("profile");
         channel.EnableClient();
@@ -259,7 +259,7 @@ builder.Services.AddZLinkFramework(options =>
 {
     // 예제용 짧은 값. options.DefaultTimeout의 실제 기본은 30초다.
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
 });
 ```
 
@@ -950,9 +950,9 @@ registry 에 등록하는 흐름이라는 점에 유의한다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
     options.Codecs.AddJson();
-    options.Codecs.AddMessagePack();
+    options.Codecs.Use(ZLinkMessagePackCodec.Default);
 });
 ```
 

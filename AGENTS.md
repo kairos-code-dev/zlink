@@ -22,6 +22,20 @@
 - **internals에 사용법을 넣지 않는다.** internals는 유지보수자를 위한 구조 설명이다.
 - guide에서 내부 동작을 참고해야 하면 internals 문서를 링크한다.
 
+### Framework 언어별 문서 위치
+
+`framework` 아래 언어별 문서는 모두 `framework/doc/` 아래에서 작성하고 수정한다.
+나중에 `.NET`, Java/Kotlin, Node.js, C++ framework, HTTP client, stream connector 문서를 고칠 때도
+각 언어 디렉토리의 `framework/languages/<lang>/doc/`가 아니라 `framework/doc/` 아래의
+컴포넌트별 위치에서 진행한다.
+
+- framework 문서: `framework/doc/framework/<lang>/`
+- HTTP client 문서: `framework/doc/http-client/<lang>/`
+- stream connector 문서: `framework/doc/stream-connector/<lang>/`
+
+새 언어별 문서를 `framework/languages/<lang>/doc/` 아래에 추가하지 않는다. 기존 문서를 수정해야
+하면 `framework/doc/` 아래의 대응 위치로 옮기거나 그 위치에서 갱신한다.
+
 ---
 
 ## Documentation Writing Rules

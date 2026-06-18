@@ -76,7 +76,8 @@ Use these paths consistently when changing the Node/TypeScript binding.
   `bindings/node/native/`, `bindings/node/prebuilds/`, and generated runtime
   loading code.
 - Generated output: `bindings/node/dist/`, not source contract.
-- Codec extensions: `bindings/node/packages/`.
+- Codec packages: not provided. Node bindings keep only raw `Message` and byte
+  payload APIs.
 - Tests: `bindings/node/tests/`.
 - Samples: `bindings/node/samples/`.
 - Perf: `bindings/node/perf/`.
@@ -199,7 +200,6 @@ bindings/node/
 |   |   |   |   +-- request_pump.ts
 |   |   |   |   +-- service_mapping.ts
 +-- native/
-+-- packages/
 +-- tests/
 +-- samples/
 +-- perf/

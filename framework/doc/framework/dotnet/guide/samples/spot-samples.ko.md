@@ -293,7 +293,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     {
         var channel = options.AddClientServerChannel("play");
@@ -434,7 +434,7 @@ SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 역할 단위로
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     var mesh = options.AddSpotMesh("game.stage");
     mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
@@ -496,7 +496,7 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     {
         var mesh = options.AddSpotMesh("game.stage");
@@ -656,7 +656,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
 
         options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
@@ -719,7 +719,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     {
         var mesh = options.AddSpotMesh("game.stage");
@@ -947,7 +947,7 @@ builder.Services.AddZLinkFramework(options =>
 
     }
 
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     {
         var stream = options.AddStreamNode("client.stream");
@@ -1773,8 +1773,8 @@ handler 가 다른 서버나 다른 spot 으로 outbound 호출을 보내야 한
 이 문서에서는 `Context.AddPacket<THandler>(...)` 가 별도의 문자열을 받지
 않는다. packet 매핑의 기준은 header 의 `msgId` 다.
 
-이 문서의 전체 샘플 코드는 `options.Codecs.AddProtobuf()` 를 쓰고 있다.
-그러므로 기본 예시는 `protobuf` 기준이다. 즉 위 코드에서 packet 타입은 모두
+이 문서의 전체 샘플 코드는 `options.Codecs.Use(ZLinkProtobufCodec.Default)` 를 쓴다.
+그러므로 기본 예시는 Protobuf framework codec extension 기준이다. 즉 위 코드에서 packet 타입은 모두
 `protoc` 가 생성한 `IMessage<T>` 계열 타입이라고 보면 된다. 이 문서는 생성된
 protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
 붙이는 방식을 전제로 하지 않는다.

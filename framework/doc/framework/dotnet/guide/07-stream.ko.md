@@ -32,7 +32,7 @@ stream node 하나에 session 하나를 붙인다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     {
         var stream =     options.AddStreamNode("client.stream");
@@ -145,14 +145,13 @@ public sealed class ClientHeaderSession(
 | 패키지 | 역할 |
 |--------|------|
 | `Systems.Zlink.Stream.Connector` | TCP/TLS/WS/WSS transport + packet connector core |
-| `Systems.Zlink.Stream.Connector.Json` / `.MessagePack` / `.Protobuf` | codec helper |
-| `Systems.Zlink.Stream.Connector.Codecs` | 타입 특성으로 codec 자동 선택 |
+| `Zlink.Framework.Codecs.MessagePack` / `Zlink.Framework.Codecs.Protobuf` | framework, connector, HTTP client가 공유하는 codec extension |
 
-connector도 framework처럼 **custom codec**을 끼울 수 있다. `ZlinkStreamConnectorOptions`의
-`PayloadCodec`에 `IZlinkStreamPayloadCodec`(`Encode`/`Decode`) 구현을 주면, typed
-`Send`/`Request`/`On`/`WaitFor`가 자동 선택 대신 그 codec으로 Avro·Thrift 같은 포맷을
-쓴다. server framework 쪽 등록(`Codecs.AddSerializer(...)`)과 대칭이며, 두 표면의 전체
-목록은 [framework-api §2.2](../../common/spec/framework-api.ko.md) 표를 본다.
+connector의 JSON codec은 기본값이다. MessagePack이나 Protobuf가 필요하면 framework codec
+extension을 등록하고, 같은 extension 인스턴스를 connector typed payload codec으로도 사용한다.
+custom codec도 같은 방식으로 `IZLinkCodecExtension`과 stream payload codec 구현을 함께 제공한다.
+server framework 쪽 등록(`Codecs.Use(...)`)과 대칭이며, 두 표면의 전체 목록은
+[framework-api §2.2](../../common/spec/framework-api.ko.md) 표를 본다.
 
 ### 연결과 dispatch
 
@@ -161,7 +160,6 @@ connector 는 만들고(연결 안 함) → 핸들러/이벤트 등록 → `Conn
 
 ```csharp
 using Systems.Zlink.Stream.Connector;
-using Systems.Zlink.Stream.Connector.Codecs;
 
 var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
 {

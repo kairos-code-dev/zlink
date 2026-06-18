@@ -9,8 +9,8 @@
 # Draft -- ZLink Framework C++ Implementation Plan
 
 > 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `framework/languages/cpp/doc` 아래 C++ framework
-> 초안 전체를 빠짐없이 구현하기 위한 실행 계획이다.
+> 현재 공개 계약이 아니며, `framework/doc/framework/cpp` 아래 C++ framework
+> 문서 전체를 빠짐없이 구현하기 위한 실행 계획이다.
 
 ## 1. 목적
 
@@ -1669,7 +1669,7 @@ concrete label을 선택한다.
 goal을 만들 때는 아래 문구를 objective로 사용할 수 있다.
 
 ```text
-framework/languages/cpp/doc/draft/cpp-framework-implementation-plan.ko.md의 Goal N을
+framework/doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md의 Goal N을
 완료 기준까지 구현하고, POSD 기반 리팩토링을 이슈가 없을 때까지 수행한 뒤 해당
 검증 명령을 실행한다. 관련 draft는 참고만 하고, 완료 여부는 이 문서 하나의 구현 항목,
 완료 기준, regression matrix, 검증 명령으로 판단한다. 관련 draft에서 이 문서에 없는

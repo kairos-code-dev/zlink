@@ -8,7 +8,7 @@
 
 # Stage Wrapper On SPOT
 
-> 이 문서는 `framework/languages/dotnet/doc/spec/stage-wrapper-on-spot.ko.md` 의
+> 이 문서는 `framework/doc/framework/dotnet/spec/stage-wrapper-on-spot.ko.md` 의
 > Node.js / NestJS 표면 이식이다. 조건과 의미론은 dotnet 과 동일하며, 표면만
 > NestJS 모양으로 옮긴다. 의미론의 최종 기준은 dotnet **코드**
 > (`framework/languages/dotnet/src/Zlink.Framework/Runtime/Spots`)다. 표면 매핑

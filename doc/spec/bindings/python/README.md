@@ -69,7 +69,8 @@ Use these paths consistently when changing the Python binding.
 - Native bridge/artifacts: `bindings/python/src/zlink/_native/` for private
   bridge code and `bindings/python/src/zlink/native/` for packaged native
   binaries.
-- Codec extensions: `bindings/python/codecs/`.
+- Codec packages: not provided. Python bindings keep only raw `Message` and
+  byte payload APIs.
 - Tests: `bindings/python/tests/`.
 - Samples: `bindings/python/samples/` and `bindings/python/examples/`.
 - Perf: `bindings/python/perf/`.
@@ -168,7 +169,6 @@ bindings/python/
 |   |   +-- _native/
 |   |   |   +-- _zlink_native.*
 |   |   +-- native/
-+-- codecs/
 +-- tests/
 +-- samples/
 +-- examples/
@@ -177,9 +177,10 @@ bindings/python/
 
 The public import surface is the `zlink` package projection. The source of that
 projection is `zlink/contracts/`. Tests, samples, examples, and perf must import
-from `zlink` unless a separate extension package is being tested. If a private
-underscore module becomes necessary for user code, add a public contract and
-export it intentionally instead of documenting the private module.
+from `zlink`. Binding-owned JSON, Protobuf, and MessagePack codec packages are
+not part of the Python public surface. If a private underscore module becomes
+necessary for user code, add a public contract and export it intentionally
+instead of documenting the private module.
 
 ## API Change Workflow
 

@@ -32,7 +32,7 @@ channel request를 보내는 부분만 본다.
 
 현재 저장소의 `TicTacToe.Server.csproj`는 NuGet 패키지가 아니라 프로젝트 참조로
 `src/Zlink.Framework`, `src/Zlink.Framework.AspNetCore`,
-`bindings/dotnet/src/Zlink`, `bindings/dotnet/codecs/Zlink.Codecs.MessagePack`을
+`bindings/dotnet/src/Zlink`, `src/Zlink.Framework.Codecs.MessagePack`을
 가져온다. 소스에서 사용하는 framework namespace는 `Zlink.Framework.*`다.
 
 ## 2. 첫 요청 흐름
@@ -88,7 +88,7 @@ builder.WebHost.UseUrls(settings.ApiBindUrl);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.AddMessagePack();
+    options.Codecs.Use(ZLinkMessagePackCodec.Default);
 
     options.AddClientServerChannel(SampleChannels.Play)
         .EnableClient(settings.PlayChannelEndpoint);
@@ -137,7 +137,7 @@ Play 서버는 `Play` channel의 server 역할을 열고 handler group `"play"`�
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.AddMessagePack();
+    options.Codecs.Use(ZLinkMessagePackCodec.Default);
     options.AddHandlersFromAssemblyOf<PlayServer>();
     {
         var channel =     options.AddClientServerChannel(SampleChannels.Play);

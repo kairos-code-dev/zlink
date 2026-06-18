@@ -191,9 +191,6 @@ bindings/java/
 +-- settings.gradle.kts
 +-- gradle/
 +-- codec/
-|   +-- zlink-codec-json/
-|   +-- zlink-codec-messagepack/
-|   +-- zlink-codec-protobuf/
 |   +-- zlink-ext-netty/
 +-- native/
 |   +-- linux-x64/

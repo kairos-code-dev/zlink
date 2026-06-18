@@ -816,14 +816,12 @@ runtime/native bridge 역할에만 존재하며 public contract 역할로 만들
 | Go | module path는 `zlink.systems/zlink`, public package는 `zlink` |
 | Rust | crate name과 public crate root는 `zlink` |
 
-- .NET extension package와 namespace는 `Systems.Zlink.*` 아래에 둔다.
-  예: `Systems.Zlink.Codecs.Protobuf`.
-- Java extension package는 `systems.zlink.*` 아래에 둔다.
-  예: `systems.zlink.codec.protobuf`.
-- Go extension module이나 subpackage를 추가할 때는 `zlink.systems/zlink/...`
-  아래에서 출발한다.
-- Node, Python, Rust의 extension package 이름은 생태계 관례를 따르되,
-  public identity가 `zlink`와 `zlink.systems` 도메인에서 벗어나지 않게 한다.
+- Framework extension package와 namespace는 각 framework 언어의 canonical identity
+  아래에 둔다. 예: `.NET`은 `Zlink.Framework.*`, Java는 `systems.zlink.framework.*`.
+- Go, Python, Rust는 현재 framework target이 아니므로 binding-owned codec module을
+  추가하지 않는다.
+- Node extension package 이름은 생태계 관례를 따르되, public identity가 `zlink`와
+  `zlink.systems` 도메인에서 벗어나지 않게 한다.
 - 새 문서, 샘플, 테스트는 canonical identity만 사용한다.
 - 기존 `Zlink` root namespace 또는 package id가 구현 호환성 때문에 남아 있더라도
   canonical public identity가 아니며, 새 public API를 그 아래에 추가하지 않는다.
@@ -3785,32 +3783,25 @@ MessagePack codec baseline by language:
 | Go | `vmihailenco/msgpack/v5` |
 | Rust | `rmp-serde` |
 
-- 이 표는 "messagepack codec extension 을 public 으로 노출할 때 기본으로 삼는
-  구현체"를 뜻한다.
-- 다른 messagepack 라이브러리를 추가 지원할 수는 있다. 다만 public contract 와
-  sample, test, 기본 동작 기준은 위 표를 따른다.
+Bindings no longer define codec extension distribution units:
 
-Repository placement and distribution units for codec extension modules:
-
-| Language | Core binding root | Codec extension distribution units | Repo root |
-|---|---|---|---|
-| C | `bindings/c/include/zlink/`, `bindings/c/src/` | none required | n/a |
-| C++ | `bindings/cpp/include/zlink/` | `zlink-codec-protobuf`, `zlink-codec-json`, `zlink-codec-messagepack` | `bindings/cpp/codecs/zlink-codec-protobuf/`, `bindings/cpp/codecs/zlink-codec-json/`, `bindings/cpp/codecs/zlink-codec-messagepack/` |
-| .NET | `bindings/dotnet/src/Zlink/` | NuGet `Systems.Zlink.Codecs.Protobuf`, NuGet `Systems.Zlink.Codecs.Json`, NuGet `Systems.Zlink.Codecs.MessagePack` | `bindings/dotnet/codecs/Zlink.Codecs.Protobuf/`, `bindings/dotnet/codecs/Zlink.Codecs.Json/`, `bindings/dotnet/codecs/Zlink.Codecs.MessagePack/` |
-| Java | `bindings/java/src/main/java/systems/zlink/` | Maven `systems.zlink:zlink-codec-protobuf`, Maven `systems.zlink:zlink-codec-json`, Maven `systems.zlink:zlink-codec-messagepack` | `bindings/java/codec/zlink-codec-protobuf/`, `bindings/java/codec/zlink-codec-json/`, `bindings/java/codec/zlink-codec-messagepack/` |
-| Node | `bindings/node/src/` | npm `@zlink-systems/zlink-codec-protobuf`, npm `@zlink-systems/zlink-codec-json`, npm `@zlink-systems/zlink-codec-messagepack` | `bindings/node/packages/zlink-codec-protobuf/`, `bindings/node/packages/zlink-codec-json/`, `bindings/node/packages/zlink-codec-messagepack/` |
-| Python | `bindings/python/src/zlink/` | PyPI `zlink-codec-protobuf`, PyPI `zlink-codec-json`, PyPI `zlink-codec-messagepack` | `bindings/python/codecs/zlink_codec_protobuf/`, `bindings/python/codecs/zlink_codec_json/`, `bindings/python/codecs/zlink_codec_messagepack/` |
-| Go | `bindings/go/` | Go module `zlink.systems/zlink/codec/proto`, Go module `zlink.systems/zlink/codec/json`, Go module `zlink.systems/zlink/codec/messagepack` | `bindings/go/codec/proto/`, `bindings/go/codec/json/`, `bindings/go/codec/messagepack/` |
-| Rust | `bindings/rust/src/` | crate `zlink-codec-protobuf`, crate `zlink-codec-json`, crate `zlink-codec-messagepack` | `bindings/rust/crates/zlink-codec-protobuf/`, `bindings/rust/crates/zlink-codec-json/`, `bindings/rust/crates/zlink-codec-messagepack/` |
+| Language | Core binding root | Binding-owned codec package policy |
+|---|---|---|
+| C | `bindings/c/include/zlink/`, `bindings/c/src/` | none |
+| C++ | `bindings/cpp/include/zlink/` | none; framework serialization belongs under `framework/languages/cpp/extensions/` |
+| .NET | `bindings/dotnet/src/Zlink/` | none; framework serialization belongs under `framework/languages/dotnet/src/` |
+| Java | `bindings/java/src/main/java/systems/zlink/` | none; framework serialization belongs under `framework/languages/java/` |
+| Node | `bindings/node/src/` | none; framework serialization belongs under `framework/languages/node/packages/` |
+| Python | `bindings/python/src/zlink/` | none; raw `Message`/bytes only |
+| Go | `bindings/go/` | none; raw `Message`/bytes only |
+| Rust | `bindings/rust/src/` | none; raw `Message`/bytes only |
 
 - placement rules:
-  - codec helper source 를 core socket/message namespace 와 같은 디렉터리에 직접
-    섞지 않는다.
-  - 언어별 codec spec 문서(`doc/spec/bindings/<lang>/codec.md`)는 해당 binding 이
-    이 codec extension 을 public 으로 노출할 때, **배포 패키지 이름**과 그 안의
-    public package / namespace / crate / module 이름을 함께 명시해야 한다.
-  - sample 과 tests 도 core binding sample/test 와 codec extension sample/test 를
-    분리한다.
+  - Codec helper source is not mixed into the core socket/message namespace.
+  - Binding codec spec documents describe the raw-only policy and point
+    framework users to framework codec extensions when that language has a
+    framework target.
+  - Samples and tests for bindings exercise raw `Message`/bytes behavior.
 
 ### External Buffer Attach / Release Hook Policy
 - C API 의 `zlink_msg_init_data(..., zlink_free_fn*, hint)` 는 **external buffer

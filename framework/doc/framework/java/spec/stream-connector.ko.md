@@ -22,11 +22,13 @@ codec, compression, reconnect, dispatch queue처럼 client 실행에 필요한 �
 | 모듈 | 역할 |
 |------|------|
 | `zlink-stream-connector` | TCP/TLS/WS/WSS transport, frame codec, send/request, dispatch |
-| `zlink-stream-connector-json` | Jackson JSON payload helper |
-| `zlink-stream-connector-messagepack` | MessagePack payload helper |
-| `zlink-stream-connector-protobuf` | Protobuf payload helper |
-| `zlink-stream-connector-codecs` | payload type 기준 codec 선택 helper |
 | `zlink-stream-connector-kotlin` | coroutine, `Flow`, DSL extension |
+| `zlink-framework-codec-protobuf` | framework/connector/http-client에서 공유하는 Protobuf codec extension |
+| `zlink-framework-codec-msgpack` | framework/connector/http-client에서 공유하는 MessagePack codec extension |
+
+JSON은 framework 기본 codec이다. Protobuf와 MessagePack payload는 connector 전용 package가
+아니라 `zlink-framework-codec-protobuf`, `zlink-framework-codec-msgpack` framework codec
+extension을 connector에도 적용해서 사용한다.
 
 ## 3. Public API
 

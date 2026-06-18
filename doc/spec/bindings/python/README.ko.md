@@ -62,7 +62,8 @@ Python 바인딩을 변경할 때 다음 경로를 일관되게 사용한다.
 - 네이티브 브리지/아티팩트: 비공개 브리지 코드는
   `bindings/python/src/zlink/_native/`, 패키징된 네이티브 바이너리는
   `bindings/python/src/zlink/native/`.
-- 코덱 확장: `bindings/python/codecs/`.
+- 코덱 패키지: 제공하지 않는다. Python 바인딩은 raw `Message`와 byte payload API만
+  유지한다.
 - 테스트: `bindings/python/tests/`.
 - 샘플: `bindings/python/samples/`와 `bindings/python/examples/`.
 - Perf: `bindings/python/perf/`.
@@ -159,7 +160,6 @@ bindings/python/
 |   |   +-- _native/
 |   |   |   +-- _zlink_native.*
 |   |   +-- native/
-+-- codecs/
 +-- tests/
 +-- samples/
 +-- examples/
@@ -167,10 +167,10 @@ bindings/python/
 ```
 
 공개 import 표면은 `zlink` 패키지 프로젝션이다. 그 프로젝션의 소스는
-`zlink/contracts/`이다. 테스트, 샘플, examples, perf는 별도 확장 패키지를
-테스트하는 경우가 아니라면 `zlink`에서 import한다. 비공개 언더스코어 모듈이
-사용자 코드에 필요해진다면, 공개 계약을 추가하고 의도적으로 export한다. 비공개
-모듈 자체를 문서화하지 않는다.
+`zlink/contracts/`이다. 테스트, 샘플, examples, perf는 `zlink`에서 import한다.
+바인딩이 소유하는 JSON, Protobuf, MessagePack codec package는 Python 공개 표면에
+포함하지 않는다. 비공개 언더스코어 모듈이 사용자 코드에 필요해진다면, 공개 계약을
+추가하고 의도적으로 export한다. 비공개 모듈 자체를 문서화하지 않는다.
 
 ## API 변경 워크플로
 

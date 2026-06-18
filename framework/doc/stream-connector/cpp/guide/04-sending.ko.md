@@ -133,12 +133,12 @@ connector
 
 ## codec
 
-기본 codec은 JSON이다. MessagePack이나 Protobuf를 사용하려면 build feature와 `codec_traits` 특수화가 필요하다.
+기본 codec은 JSON이다. raw bytes를 직접 보내야 하는 경우에만 raw packet을 직접 조립한다.
+MessagePack이나 Protobuf는 stream connector 전용 feature가 아니라 framework codec extension으로 등록한다.
 
 ```cpp
 connector
     .send(inventory_update_t{})
-    .codec(zlink::stream_connector::codec_t::message_pack)
     .submit();
 ```
 
@@ -148,8 +148,8 @@ codec_t 값:
 |----|------|
 | `raw` | raw bytes. payload 필드에 직접 넣어야 함 |
 | `json` | JSON (기본값) |
-| `message_pack` | MessagePack (build feature `WITH_MESSAGEPACK` 필요) |
-| `protobuf` | Protobuf (build feature `WITH_PROTOBUF` 필요) |
+| `message_pack` | framework MessagePack codec extension이 등록한 패킷 |
+| `protobuf` | framework Protobuf codec extension이 등록한 패킷 |
 
 ## raw packet 직접 조립
 

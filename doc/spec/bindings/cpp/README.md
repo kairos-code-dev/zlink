@@ -137,7 +137,7 @@ CTest success alone is not enough.
 Do not mark an implementation goal complete until the audit commands below, the
 build, CTest, sample smoke, and relevant perf smoke all pass after the final
 code change. A previous passing result is stale once any public header, runtime
-source, CMake file, sample, test, perf runner, or codec package changes.
+source, CMake file, sample, test, or perf runner changes.
 
 Recommended audit commands:
 
@@ -151,12 +151,12 @@ rg -n '#include\\s*[<"]zlink\\.h|\\bzlink_[A-Za-z0-9_]+\\b|\\bZLINK_[A-Z0-9_]+\\
 rg -n '\\bcompat\\b|compat::|compatibility|legacy|shim|alias' \
   bindings/cpp/include/zlink/Contracts bindings/cpp/include/zlink.hpp
 rg -n '#include\\s*[<"].*(src/Runtime|Runtime/|zlink/Runtime)|#include\\s*[<"]zlink\\.h[">]|#include\\s*[<"]zlink/[^">]*\\.h[">]|#include\\s*[<"]zlink_enum\\.h[">]|#include\\s*[<"]zlink_errno\\.h[">]|\\bzlink_[a-z][A-Za-z0-9_]*\\s*\\(' \
-  bindings/cpp/samples bindings/cpp/tests bindings/cpp/perf bindings/cpp/codecs
+  bindings/cpp/samples bindings/cpp/tests bindings/cpp/perf
 git diff --check -- bindings/cpp doc/spec/bindings/cpp/README.md
 ```
 
 The private dependency scan above is the completion gate for samples, tests,
-perf, and codecs. It checks private runtime includes, copied native C headers,
+and perf. It checks private runtime includes, copied native C headers,
 and direct lowercase C API function calls. Broader text searches for
 `zlink_*`, `ZLINK_*`, or build variable names can be useful during
 investigation, but they are not a completion count by themselves because tests
@@ -368,7 +368,6 @@ bindings/cpp/
 |           +-- native_parts.hpp
 |           +-- native_options.hpp
 |           +-- native_send_result.hpp
-+-- codecs/
 +-- native/
 +-- samples/
 +-- tests/
@@ -376,8 +375,8 @@ bindings/cpp/
 ```
 
 `CMakeLists.txt` defines the compiled C++ binding target `zlink_cpp` and links
-it to the core native `zlink` library. Samples, tests, perf binaries, codec
-packages, and applications link that target instead of compiling private
+it to the core native `zlink` library. Samples, tests, perf binaries, and
+applications link that target instead of compiling private
 runtime source files directly.
 
 `Contracts/` is the installed public contract surface under
@@ -909,8 +908,8 @@ artifact. The completed binding therefore maintains these build rules:
   free functions such as version or capability helpers.
 - `Messaging/`: message, received metadata, topic messages, subscription
   events, stream packet callbacks, and builder payload helpers. Codec helpers
-  are separate extension packages under `bindings/cpp/codecs/`, not undeclared
-  placeholders in the core binding.
+  are not part of the C++ binding package; framework-level serialization lives
+  in framework codec extensions.
 - `Sockets/`: socket behavior, socket families, typed options, request/reply,
   and publish/subscribe surfaces.
 - `Eventing/`: monitor, monitor snapshot/event, poller, poll event, timer, and

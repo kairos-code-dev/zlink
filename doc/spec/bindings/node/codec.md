@@ -1,71 +1,17 @@
 [Node Binding Specification](README.md) · [Bindings Policy](../README.md)
 
-# Node Codec Extension Specification
+# Node Codec Package Policy
 
-This document defines the public contract for Node/TypeScript codec extension
-packages. The root `@zlink-systems/zlink` package does not expose these
-entrypoints, so applications opt in to codec dependencies explicitly.
+Node bindings do not provide JSON, Protobuf, or MessagePack codec packages. The
+root `@zlink-systems/zlink` package exposes raw `Message` and byte payload APIs
+only.
 
-## Packages
+Applications that need framework-level serialization should use framework codec
+extension packages under `framework/languages/node/packages/`, such as
+`@zlink-systems/framework-codec-protobuf` or
+`@zlink-systems/framework-codec-msgpack`. Do not add replacement codec packages
+under the Node binding tree.
 
-- `@zlink-systems/zlink-codec-protobuf`
-- `@zlink-systems/zlink-codec-json`
-- `@zlink-systems/zlink-codec-messagepack`
-
-JSON codec baseline: built-in `JSON.parse` / `JSON.stringify`. Typed
-validation may be layered on top through a schema/parser object.
-MessagePack codec baseline: `@msgpack/msgpack`.
-
-These are separate public packages layered on top of the core package. They
-must not be merged into the root package entrypoint.
-
-These codec packages define only object <-> `Message` encode/decode helpers.
-Packet-name resolution, high-level serializer lookup, and typed
-request/reply policy belong to framework-layer documents, not this codec
-extension specification.
-
-## Protobuf
-
-```typescript
-declare module "@zlink-systems/zlink-codec-protobuf" {
-    export interface ProtobufType<T> {
-        encode(
-            message: T,
-            writer?: import("protobufjs").Writer,
-        ): import("protobufjs").Writer;
-        decode(reader: import("protobufjs").Reader | Uint8Array): T;
-    }
-
-    export function encode<T>(
-        value: T,
-        type: ProtobufType<T>,
-    ): import("@zlink-systems/zlink").Message;
-
-    export function decode<T>(
-        message: import("@zlink-systems/zlink").Message,
-        type: ProtobufType<T>,
-    ): T;
-}
-```
-
-## JSON
-
-```typescript
-declare module "@zlink-systems/zlink-codec-json" {
-    export function encode<T>(value: T): import("@zlink-systems/zlink").Message;
-    export function decode<T>(
-        message: import("@zlink-systems/zlink").Message,
-    ): T;
-}
-```
-
-## MessagePack
-
-```typescript
-declare module "@zlink-systems/zlink-codec-messagepack" {
-    export function encode<T>(value: T): import("@zlink-systems/zlink").Message;
-    export function decode<T>(
-        message: import("@zlink-systems/zlink").Message,
-    ): T;
-}
-```
+This keeps the Node binding contract focused on the low-level protocol API.
+Codec selection, packet-name resolution, serializer lookup, and typed
+request/reply policy belong to the framework layer.

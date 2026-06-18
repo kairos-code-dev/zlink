@@ -102,7 +102,7 @@ builder.Services.AddZLinkFramework(options =>
 
     }
         options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
     options.AddHandlersFromAssemblyOf<Program>();
 });
 
@@ -388,7 +388,7 @@ builder.Services.AddZLinkFramework(options =>
 
     }
         options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
     options.AddHandlersFromAssemblyOf<Program>();
 });
 

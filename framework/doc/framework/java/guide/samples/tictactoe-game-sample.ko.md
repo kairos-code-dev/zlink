@@ -45,7 +45,7 @@ API로 `RoomId` 문자열에서 만든다(임의 hex가 아님).
 ## 6. 등록 (builder API) · codec
 
 ```java
-options.codecs().addMessagePack();
+options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
 var play = options.addClientServerChannel(SampleNames.PlayChannel);
 play.enableServer(settings.playChannelEndpoint());
 var stream = options.addStreamNode(SampleNames.ClientStream);
@@ -54,14 +54,13 @@ stream.attachActorGateway(SampleNames.PlaySpot).bind(settings.playEndpoint())
       .addSessionPacketHandler(AuthenticatePlaySessionHandler.class);
 ```
 
-Java/Kotlin TicTacToe 샘플은 MessagePack payload(`ZLinkStreamMessagePack`)를 쓴다. (공통
-샘플 문서는 TicTacToe를 JSON으로 기술하며, 이 codec 표면 차이는 최종 정합 검토 대상이다.)
+Java/Kotlin TicTacToe 샘플은 MessagePack payload를 framework MessagePack codec extension으로
+등록해서 쓴다. connector 전용 codec package를 따로 참조하지 않는다.
 
 ## 7. Client self-check
 
 `TicTacToeClientScenario`는 game start·move·ended notify의 board·turn·winner를 의미 값으로
-확인한다. push 대기는 stream connector의 public wait API(`ZLinkStreamMessagePack.codec()`
-기반)를 직접 쓴다.
+확인한다. push 대기는 stream connector의 public wait API를 직접 쓴다.
 
 ## 8. 완료 기준
 

@@ -38,7 +38,7 @@ module artifact 와 package 는 아래를 정확히 쓴다. binding group 은 `s
 | core framework | `zlink-framework-core` | `systems.zlink.framework` | `Systems.Zlink.Framework` |
 | Spring Boot starter | `zlink-framework-spring-boot-starter` | `systems.zlink.framework.spring` | `Zlink.Framework.AspNetCore` |
 | Stream Connector(client) | `zlink-stream-connector` | `systems.zlink.stream.connector` | `Systems.Zlink.Stream.Connector` |
-| connector codec helper | `zlink-stream-connector-codecs`/`-json`/`-msgpack`/`-protobuf` | `systems.zlink.stream.connector.*` | `Systems.Zlink.Stream.Connector.{Codecs,Json,MessagePack,Protobuf}` |
+| framework codec extension | `zlink-framework-codec-protobuf`, `zlink-framework-codec-msgpack` | `systems.zlink.framework.codecs.*` | `Zlink.Framework.Codecs.*` |
 | Kotlin wrapper | `zlink-framework-kotlin` | `systems.zlink.framework.kotlin` | 없음 |
 
 Java 메서드는 `camelCase`, class/interface/annotation/enum은 `PascalCase`를 쓴다.

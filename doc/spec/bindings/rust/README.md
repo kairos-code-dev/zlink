@@ -62,7 +62,8 @@ Use these paths consistently when changing the Rust binding.
 - Native bridge/artifacts: private modules under
   `bindings/rust/src/runtime/native/`, `bindings/rust/native/`, and
   `bindings/rust/include/`.
-- Codec extensions: `bindings/rust/crates/`.
+- Codec crates: not provided. Rust bindings keep only raw `Message` and byte
+  payload APIs.
 - Tests: `bindings/rust/tests/`.
 - Samples: `bindings/rust/samples/`.
 - Perf: `bindings/rust/perf/`.
@@ -161,7 +162,6 @@ bindings/rust/
 |   |   |   +-- options.rs
 |   |   +-- native/
 |   |   |   +-- native.rs
-+-- crates/
 +-- tests/
 +-- samples/
 +-- perf/

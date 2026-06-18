@@ -68,7 +68,8 @@ Use these paths consistently when changing the Go binding.
   exporting implementation-only names before the binding is declared aligned.
 - Native bridge/artifacts: `bindings/go/internal/native/`,
   `bindings/go/native/`, and `bindings/go/include/`.
-- Codec extensions: `bindings/go/codec/`.
+- Codec modules: not provided. Go bindings keep only raw `Message` and byte
+  payload APIs.
 - Tests: `bindings/go/tests/` and `bindings/go/*_test.go`.
 - Samples: `bindings/go/samples/`.
 - Perf: `bindings/go/perf/`.
@@ -121,7 +122,6 @@ bindings/go/
 |   +-- native/
 +-- include/
 +-- native/
-+-- codec/
 +-- tests/
 +-- samples/
 +-- perf/

@@ -86,7 +86,7 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 | `channel.AddPublishHandler<H, TMsg>()` | `zlinkPublishHandler(group, packet)` + `.addHandlerGroup(group)` |
 | `options.UseDiscovery().AddRegistryEndpoint(...)` | `.useDiscovery().addRegistryEndpoint(...)` |
 | `options.DefaultTimeout = ...` | `defaultTimeoutMs: number` |
-| `options.Codecs.AddProtobuf()` | `zlinkFramework().codecs().addProtobuf()` |
+| `options.Codecs.Use(ZLinkProtobufCodec.Default)` | `zlinkFramework().codecs().use(zlinkProtobufCodec())` |
 | `options.AddHandlersFromAssemblyOf<T>()` | NestJS `providers` + handler decorator discovery |
 
 ### 3.1 channel 등록
@@ -280,7 +280,7 @@ ZLinkModule.forRoot(
       defaultTimeoutMs: 1000,
     })
     .codecs()
-      .addProtobuf()
+      .use(zlinkProtobufCodec())
     .useDiscovery()
       .addRegistryEndpoint('tcp://registry1:5551')
       .addRegistryEndpoint('tcp://registry2:5551')
@@ -300,7 +300,7 @@ ZLinkModule.forRoot(
       defaultTimeoutMs: 1000,
     })
     .codecs()
-      .addProtobuf()
+      .use(zlinkProtobufCodec())
     .build()
 );
 ```
@@ -1050,18 +1050,18 @@ typed request payload 와 context 를 받는다. multipart 구조는 adapter 내
 계약일 뿐이다. 이 계약의 목적은 route 와 dispatch 가 header 만 먼저 읽고, payload decode
 는 handler 선택 이후로 늦출 수 있게 하는 것이다.
 
-node 표면에서는 기본 codec 등록을 builder 메서드로 노출한다. `addProtobuf`,
-`addJson`, `addMessagePack` 은 framework 가 제공하는 기본 serializer 를 registry 에
-등록한다. 직접 만든 serializer 가 필요할 때만 `addSerializer` 로 content type 과
-serializer 를 함께 넘긴다.
+node 표면에서는 JSON을 기본 codec으로 제공하고, Protobuf/MessagePack은 framework codec
+extension package가 제공하는 객체를 `use(...)`로 등록한다. 직접 만든 serializer가 필요할
+때도 같은 extension 계약을 사용하고, extension 내부에서 `addSerializer`로 content type과
+serializer를 함께 넘긴다.
 
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
     .codecs()
-      .addProtobuf()
+      .use(zlinkProtobufCodec())
       .addJson()
-      .addMessagePack()
+      .use(zlinkMessagePackCodec())
     .build()
 );
 ```

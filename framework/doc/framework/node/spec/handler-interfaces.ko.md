@@ -1122,14 +1122,14 @@ codec registry 등록 표면(`zlinkFramework().codecs()`, §6.1):
 
 ```ts
 export interface ZLinkCodecRegistryBuilder {
-  addProtobuf(): this;
+  use(extension: ZLinkCodecExtension): this;
   addJson(): this;
-  addMessagePack(): this;
+  addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this;
 }
 ```
 
-> 코드 기준: dotnet `IZLinkCodecRegistryBuilder` 는 `AddProtobuf` / `AddJson` /
-> `AddMessagePack` 세 메서드를 가진다.
+> 코드 기준: dotnet `IZLinkCodecRegistryBuilder` 는 `Use(...)`, `AddJson()`,
+> `AddSerializer(...)` 표면을 가진다.
 
 ## 5. Client 인터페이스
 
@@ -1448,7 +1448,7 @@ export interface ZLinkMetadataPolicyBuilder {
           dispatch: { spotDispatchMode: 'compiled', streamDispatchMode: 'compiled' },
         })
         .codecs()
-          .addProtobuf()
+          .use(zlinkProtobufCodec())
           .addJson()
         .useDiscovery()
           .addRegistryEndpoint('tcp://registry:7000')
@@ -1481,7 +1481,7 @@ export class AppModule {}
 | `configureDispatch(...)` | `dispatch: { spotDispatchMode, streamDispatchMode, unhandled, diagnostics }` | §4.4.3 |
 | `addHandlersFromModule(s)(...)` | `discover: { modules / include }` | 매핑 정책 §4.2 |
 | `addActorFactory(...)` | `actorFactories: [{ actorType, factory }]` | nestjs-actor |
-| `codecs` | `codecs().addProtobuf()` / `addJson()` / `addMessagePack()` | §4.5 |
+| `codecs` | `codecs().use(zlinkProtobufCodec())` / `addJson()` / `addSerializer(...)` | §4.5 |
 | `configureMetadata(...)` | `metadata: { forward: [...] }` | nestjs-actor |
 | `useRegistrySpotRemoteAddresses(...)` | `spotRemoteAddresses: { namespace, routerChannelId? }` | nestjs-spot |
 

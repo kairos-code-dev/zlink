@@ -56,10 +56,11 @@ stage state sync, real-time notification fanout, scatter-gather query, workflow 
 | ShoppingMall | order workflow 상태 전이, event sourcing/보상 |
 | GameQuest | stateless API scale-out, owner routing, fanout + event sourcing |
 
-### 1.2 언어별 (`framework/<lang>/`)
+### 1.2 언어별 (`framework/<lang>/`, `framework/doc` 기준)
 
-각 언어 문서는 `guide`(사용자 가이드·샘플) · `spec`(그 언어의 공개 계약) ·
-`internals`(구현·검증 기준)로 나뉜다. 각 언어 README가 그 언어 전체를 색인한다.
+각 언어 문서는 이 디렉토리, 즉 `framework/doc/` 아래에서 관리한다.
+`guide`(사용자 가이드·샘플) · `spec`(그 언어의 공개 계약) ·
+`internals`(구현·검증 기준)로 나뉘며, 각 언어 README가 그 언어 전체를 색인한다.
 
 | 언어 | 진입점 | guide | spec | internals |
 |------|--------|-------|------|-----------|
@@ -127,6 +128,11 @@ client 측에서 STREAM 서버에 접속하는 별도 라이브러리(C++). Unre
 
 - 공통 의미는 `framework/common/spec/`을 먼저 고치고, 언어 문서는 링크로 연결한다.
 - 언어별 문서는 공통 의미를 해당 언어의 시그니처와 샘플로만 구체화한다.
+- 언어별 문서는 모두 `framework/doc/` 아래에서 작성하고 수정한다. 새 언어별 문서를
+  `framework/languages/<lang>/doc/` 아래에 추가하지 않는다.
+- 기존 언어별 문서를 수정해야 하면 `framework/doc/framework/<lang>/`,
+  `framework/doc/http-client/<lang>/`, `framework/doc/stream-connector/<lang>/` 중
+  대상 컴포넌트에 맞는 위치에서 진행한다.
 - 새 문서를 추가하면 이 맵과 해당 디렉토리 `README.ko.md`를 함께 갱신한다.
 - 컴포넌트 경계를 지킨다: framework 본체는 `framework/`, HTTP client는 `http-client/`,
   STREAM connector는 `stream-connector/`.

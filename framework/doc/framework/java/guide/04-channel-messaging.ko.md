@@ -53,10 +53,11 @@ session actor relay는 route mesh를 흉내 내지 않고 ActorGateway를 사용
 
 ## 5. 커스텀 codec (Avro 예시)
 
-기본 codec(`addJson`/`addProtobuf`/`addMessagePack`) 외의 포맷이 필요하면
-`ZLinkMessageSerializer`를 구현해 content type으로 등록한다. serializer는 업무 객체 ↔
-`Message`(byte payload) 변환만 맡고, packet name 결정·codec 선택은 framework가 그대로
-처리한다. framework당 custom serializer는 하나만 둔다(둘 이상이면 구성 오류).
+JSON은 framework 기본 codec이다. Protobuf나 MessagePack처럼 별도 포맷이 필요하면
+framework codec extension package를 추가하고 `options.codecs().use(...)`로 등록한다.
+직접 만든 포맷도 같은 extension 계약을 사용한다. extension은 `ZLinkMessageSerializer`를
+content type으로 등록하고, serializer는 업무 객체 ↔ `Message`(byte payload) 변환만 맡는다.
+packet name 결정과 dispatch 흐름은 framework가 그대로 처리한다.
 
 ```java
 public final class AvroOrderSerializer implements ZLinkMessageSerializer {

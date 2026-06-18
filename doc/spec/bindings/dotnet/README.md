@@ -55,8 +55,8 @@ Use these paths consistently when changing the .NET binding.
 - Runtime implementation: `bindings/dotnet/src/Zlink/Runtime/`.
 - Native bridge/artifacts: `bindings/dotnet/src/Zlink/Runtime/Native/`,
   `bindings/dotnet/runtimes/`, and `bindings/dotnet/native/`.
-- Codec extensions: `bindings/dotnet/src/Zlink.Codecs.*` and
-  `bindings/dotnet/codecs/`.
+- Codec packages: not provided. .NET bindings keep only raw `Message` and byte
+  payload APIs.
 - Tests: `bindings/dotnet/tests/Zlink.Tests/`.
 - Samples: `bindings/dotnet/samples/`.
 - Perf: `bindings/dotnet/perf/`.
@@ -129,10 +129,6 @@ bindings/dotnet/
 |   |   |   +-- Buffers/
 |   |   |   +-- Options/
 |   |   |   +-- Native/
-|   +-- Zlink.Codecs.Json/
-|   +-- Zlink.Codecs.MessagePack/
-|   +-- Zlink.Codecs.Protobuf/
-+-- codecs/
 +-- tests/
 +-- samples/
 +-- perf/

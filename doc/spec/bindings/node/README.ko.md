@@ -71,7 +71,8 @@ Node/TypeScript 바인딩을 변경할 때 다음 경로를 일관되게 사용�
   `bindings/node/native/`, `bindings/node/prebuilds/`, 그리고 생성되는 런타임
   로딩 코드.
 - 생성 산출물: `bindings/node/dist/`. 계약 소스가 아니다.
-- Codec 확장: `bindings/node/packages/`.
+- Codec package: 제공하지 않는다. Node 바인딩은 raw `Message`와 byte payload API만
+  유지한다.
 - 테스트: `bindings/node/tests/`.
 - 샘플: `bindings/node/samples/`.
 - Perf: `bindings/node/perf/`.
@@ -192,7 +193,6 @@ bindings/node/
 |   |   |   |   +-- request_pump.ts
 |   |   |   |   +-- service_mapping.ts
 +-- native/
-+-- packages/
 +-- tests/
 +-- samples/
 +-- perf/

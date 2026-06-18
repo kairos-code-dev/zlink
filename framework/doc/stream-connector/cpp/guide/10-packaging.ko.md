@@ -45,8 +45,6 @@ vcpkg install zlink-stream-connector zlink-stream-e2e-client
 | `tls` | TLS over TCP / WSS transport | OpenSSL |
 | `websocket` | WebSocket / WSS transport | (Boost.Beast 포함) |
 | `lz4` | LZ4 패킷 압축 | LZ4 |
-| `messagepack` | MessagePack typed codec | msgpack-cxx |
-| `protobuf` | Protobuf typed codec | protobuf |
 
 ### CMakeLists.txt
 
@@ -90,8 +88,6 @@ class MyGameConan(ConanFile):
 | `with_tls` | `False` | TLS/WSS transport |
 | `with_websocket` | `False` | WebSocket/WSS transport |
 | `with_lz4` | `True` | LZ4 압축 |
-| `with_messagepack` | `False` | MessagePack codec |
-| `with_protobuf` | `False` | Protobuf codec |
 
 ---
 
@@ -124,8 +120,6 @@ target_link_libraries(my_game PRIVATE zlink::stream_connector)
 | `ZLINK_STREAM_CONNECTOR_WITH_TLS` | `ON` | TLS/WSS transport |
 | `ZLINK_STREAM_CONNECTOR_WITH_WEBSOCKET` | `ON` | WebSocket/WSS transport |
 | `ZLINK_STREAM_CONNECTOR_WITH_LZ4` | `ON` | LZ4 압축 |
-| `ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK` | `OFF` | MessagePack codec |
-| `ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF` | `OFF` | Protobuf codec |
 | `ZLINK_STREAM_CONNECTOR_BUILD_UNREAL` | `OFF` | Unreal adapter 빌드 |
 | `ZLINK_STREAM_CONNECTOR_BUILD_GODOT` | `OFF` | Godot adapter 빌드 |
 | `ZLINK_STREAM_CONNECTOR_BUILD_AXMOL` | `OFF` | Axmol adapter 빌드 |

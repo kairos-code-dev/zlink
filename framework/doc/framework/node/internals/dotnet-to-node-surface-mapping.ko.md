@@ -253,7 +253,7 @@ dotnet `IZLinkFrameworkOptions` 의 등록 메서드를 node fluent builder 표�
 | `ConfigureDispatch(...)` | `dispatch: { mode }` | handler-interfaces |
 | `AddHandlersFromAssemblyOf<TMarker>()` | `discover: { modules / include }`(NestJS DiscoveryService) | §4.2 |
 | `AddActorFactory(...)` | `actorFactories: [...]` | [nestjs-actor](../spec/nestjs-actor.ko.md) |
-| `Codecs.AddProtobuf()` / `AddJson()` / `AddMessagePack()` | `codecs().addProtobuf()` / `addJson()` / `addMessagePack()` | handler-interfaces §codec |
+| `Codecs.Use(ZLinkProtobufCodec.Default)` / `AddJson()` / `Use(ZLinkMessagePackCodec.Default)` | `codecs().use(zlinkProtobufCodec())` / `addJson()` / `use(zlinkMessagePackCodec())` | handler-interfaces §codec |
 | `ConfigureMetadata(...)` | `metadata: {...}` | nestjs-actor |
 
 > 정확한 키 이름과 형태는 각 spec 문서가 확정한다. 위 표는 대응 관계의

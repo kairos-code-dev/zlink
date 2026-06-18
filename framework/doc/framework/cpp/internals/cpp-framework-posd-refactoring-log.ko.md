@@ -991,8 +991,8 @@ CMake target 생성은 `add_zlink_cpp_codec_target(...)` helper로 모았다. �
 - 각 codec header가 해당 `message_t` helper 정의를 제공하게 바꿨다.
 - 기존 codec namespace의 `encode`, `decode`, `parse`, `to_message`는 새 `message_t`
   helper를 호출하는 shim으로 정리했다.
-- `zlink::cpp`, `zlink::cpp_codec_json`, `zlink::cpp_codec_messagepack`,
-  `zlink::cpp_codec_protobuf` target을 추가했다.
+- C++ binding codec target을 framework build graph에 두지 않는다. JSON은 framework 기본
+  header로 제공하고, Protobuf/MessagePack은 framework codec extension target으로 분리한다.
 - codec contract tests를 message 중심 API 기준으로 바꾸고 shim도 함께 검증했다.
 - 반복되던 선택 codec target 생성 CMake를 `add_zlink_cpp_codec_target(...)` helper로
   모았다.
@@ -3851,7 +3851,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 cmake --build framework/languages/cpp/build
 ctest --test-dir framework/languages/cpp/build --output-on-failure
 git diff --check -- framework/languages/cpp
-rg -n '<금지 표현 패턴>' framework/languages/cpp/doc/draft framework/languages/cpp/samples framework/languages/cpp/connector framework/languages/cpp/framework || true
+rg -n '<금지 표현 패턴>' framework/doc/framework/cpp framework/languages/cpp/samples framework/languages/cpp/connector framework/languages/cpp/framework || true
 ```
 
 ## 추가 리뷰. 샘플 파일 분리 보정
@@ -4682,9 +4682,9 @@ application code는 `.NET`과 같은 수준에서 `codecs::request(...).async<TR
   codec id 지정, typed callback decode를 한 곳에 모았다.
 - connector public call object에 `codec(codec_t)` setter를 추가하고, `packet_t` 기반
   `send`/`request` overload를 추가해 encoded payload가 public API로 이동할 수 있게 했다.
-- CMake에 `zlink::stream_connector_codecs` interface target을 추가했다. 이 target은
-  `zlink::stream_connector`와 `zlink::cpp_codec_json`을 링크하고, MessagePack/Protobuf는
-  build option과 binding codec target이 있을 때만 연결한다.
+- CMake의 stream connector codec helper는 connector 전용 Protobuf/MessagePack package를
+  만들지 않는다. JSON은 framework 기본 codec을 쓰고, Protobuf/MessagePack은 framework
+  codec extension target이 connector adapter를 함께 제공한다.
 - `test_cpp_stream_connector`가 auto codec send frame의 `codec=json`, packet name, JSON
   payload를 실제 loopback에서 확인하고, `codecs::on<T>`가 dispatch 전에 JSON payload를 DTO로
   복원하는지 검증한다.

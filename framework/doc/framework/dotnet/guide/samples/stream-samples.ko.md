@@ -180,7 +180,7 @@ using PlayHouse.Runtime.Proto; // RouteHeader protobuf generated
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.AddProtobuf();
+    options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     {
         var stream =     options.AddStreamNode("client.stream");

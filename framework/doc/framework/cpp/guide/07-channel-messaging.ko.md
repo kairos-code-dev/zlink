@@ -30,10 +30,9 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
       .add<create_game_handler_t> ("play")
       .add<ensure_player_actor_handler_t> ("play");
 
-    options.codecs ()
-      .add_message_pack ()
-      .add_message_pack<create_game_req_t> ()
-      .add_message_pack<create_game_res_t> ();
+    options.codecs ().use (
+      zlink::framework_codecs::messagepack<create_game_req_t,
+                                           create_game_res_t> ());
 
     options.add_client_server_channel ("tictactoe.play")
       .enable_server ("tcp://0.0.0.0:5561")
@@ -41,14 +40,13 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
 });
 ```
 
-- **codec** — 채널 메시지의 직렬화 형식. `add_json()` / `add_message_pack()` /
-  `add_protobuf()` 중 선택한다. 핸들러를 등록한 뒤 codec을 켜면 해당 핸들러의
-  request/reply/event 타입 serializer가 함께 설치된다. 직접 등록이 필요하면
-  `add_json<T>()` / `add_message_pack<T>()` / `add_protobuf<T>()`를 쓴다.
+- **codec** — 채널 메시지의 직렬화 형식. JSON은 기본 codec으로 제공하며
+  `add_json()` 또는 `add_json<T>()`로 명시 등록할 수 있다. MessagePack과 Protobuf는
+  framework codec extension package를 참조한 뒤 `codecs().use(extension)`으로 등록한다.
 - **커스텀 codec(Avro·Thrift 등)** — 기본 codec 외 포맷은
-  `add_serializer<T>(serialize, deserialize)`로 등록한다. serialize는 업무 객체를
-  `message_t`(byte payload)로, deserialize는 그 반대로 변환하는 함수다. packet name
-  결정·codec 선택은 framework가 그대로 처리한다.
+  extension 객체에서 `add_serializer<T>(serialize, deserialize)`를 호출해 등록한다.
+  serialize는 업무 객체를 `message_t`(byte payload)로, deserialize는 그 반대로 변환하는
+  함수다. packet name 결정과 handler/client API는 codec 변경과 분리된다.
 
   ```cpp
   options.codecs ().add_serializer<place_order_t> (

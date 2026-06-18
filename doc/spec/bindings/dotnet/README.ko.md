@@ -52,7 +52,8 @@ contract/runtime 소유, 공개 계약 카테고리, 파일 분할 기준, 검�
 - 런타임 구현: `bindings/dotnet/src/Zlink/Runtime/`.
 - 네이티브 브리지/아티팩트: `bindings/dotnet/src/Zlink/Runtime/Native/`,
   `bindings/dotnet/runtimes/`, `bindings/dotnet/native/`.
-- 코덱 확장: `bindings/dotnet/src/Zlink.Codecs.*`, `bindings/dotnet/codecs/`.
+- 코덱 package: 제공하지 않는다. .NET 바인딩은 raw `Message`와 byte payload API만
+  유지한다.
 - 테스트: `bindings/dotnet/tests/Zlink.Tests/`.
 - 샘플: `bindings/dotnet/samples/`.
 - Perf: `bindings/dotnet/perf/`.
@@ -123,10 +124,6 @@ bindings/dotnet/
 |   |   |   +-- Buffers/
 |   |   |   +-- Options/
 |   |   |   +-- Native/
-|   +-- Zlink.Codecs.Json/
-|   +-- Zlink.Codecs.MessagePack/
-|   +-- Zlink.Codecs.Protobuf/
-+-- codecs/
 +-- tests/
 +-- samples/
 +-- perf/

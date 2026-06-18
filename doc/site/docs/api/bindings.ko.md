@@ -2201,13 +2201,13 @@ Repository placement and distribution units for codec extension modules:
 | Language | Core binding root | Codec extension distribution units | Repo root |
 |---|---|---|---|
 | C | `bindings/c/include/zlink/`, `bindings/c/src/` | none required | n/a |
-| C++ | `bindings/cpp/include/zlink/` | `zlink-codec-protobuf`, `zlink-codec-json`, `zlink-codec-messagepack` | `bindings/cpp/codecs/zlink-codec-protobuf/`, `bindings/cpp/codecs/zlink-codec-json/`, `bindings/cpp/codecs/zlink-codec-messagepack/` |
-| .NET | `bindings/dotnet/src/Zlink/` | NuGet `Zlink.Codecs.Protobuf`, NuGet `Zlink.Codecs.Json`, NuGet `Zlink.Codecs.MessagePack` | `bindings/dotnet/codecs/Zlink.Codecs.Protobuf/`, `bindings/dotnet/codecs/Zlink.Codecs.Json/`, `bindings/dotnet/codecs/Zlink.Codecs.MessagePack/` |
-| Java | `bindings/java/src/main/java/dev/kairoscode/zlink/` | Maven `zlink-codec-protobuf`, Maven `zlink-codec-json`, Maven `zlink-codec-messagepack` | `bindings/java/codecs/zlink-codec-protobuf/`, `bindings/java/codecs/zlink-codec-json/`, `bindings/java/codecs/zlink-codec-messagepack/` |
-| Node | `bindings/node/src/` | npm `@zlink-systems/zlink-codec-protobuf`, npm `@zlink-systems/zlink-codec-json`, npm `@zlink-systems/zlink-codec-messagepack` | `bindings/node/packages/zlink-codec-protobuf/`, `bindings/node/packages/zlink-codec-json/`, `bindings/node/packages/zlink-codec-messagepack/` |
-| Python | `bindings/python/src/zlink/` | PyPI `zlink-codec-protobuf`, PyPI `zlink-codec-json`, PyPI `zlink-codec-messagepack` | `bindings/python/codecs/zlink_codec_protobuf/`, `bindings/python/codecs/zlink_codec_json/`, `bindings/python/codecs/zlink_codec_messagepack/` |
-| Go | `bindings/go/` | Go module `zlink.systems/zlink/codec/proto`, Go module `zlink.systems/zlink/codec/json`, Go module `zlink.systems/zlink/codec/messagepack` | `bindings/go/codec/proto/`, `bindings/go/codec/json/`, `bindings/go/codec/messagepack/` |
-| Rust | `bindings/rust/src/` | crate `zlink-codec-protobuf`, crate `zlink-codec-json`, crate `zlink-codec-messagepack` | `bindings/rust/crates/zlink-codec-protobuf/`, `bindings/rust/crates/zlink-codec-json/`, `bindings/rust/crates/zlink-codec-messagepack/` |
+| C++ | `bindings/cpp/include/zlink/` | No replacement. Raw Message/bytes only | n/a |
+| .NET | `bindings/dotnet/src/Zlink/` | No replacement. Raw Message/bytes only | n/a |
+| Java | `bindings/java/src/main/java/dev/kairoscode/zlink/` | No replacement. Raw Message/bytes only | n/a |
+| Node | `bindings/node/src/` | No replacement. Raw Message/bytes only | n/a |
+| Python | `bindings/python/src/zlink/` | No replacement. Raw Message/bytes only | n/a |
+| Go | `bindings/go/` | No replacement. Raw Message/bytes only | n/a |
+| Rust | `bindings/rust/src/` | No replacement. Raw Message/bytes only | n/a |
 
 - placement rules:
   - codec helper source 를 core socket/message namespace 와 같은 디렉터리에 직접

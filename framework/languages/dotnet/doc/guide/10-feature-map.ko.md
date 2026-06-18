@@ -71,7 +71,7 @@ flowchart TD
 | Bingo | Registry/Discovery 분리 gateway, Entry Spot, room Spot timer, bound push | Protobuf | [15 실시간 게임](./case-studies/15-case-realtime-game.ko.md) | [Bingo](./samples/bingo-game-sample.ko.md) |
 | SupportChat | conversation Spot, reconnect 이전성, idle timer→close, bound push | JSON | [17 채팅·메시징](./case-studies/17-case-chat-messaging.ko.md) | [SupportChat](./samples/supportchat-sample.ko.md) |
 | DeliveryDispatch | HTTP intake, timeout 재배정, status fanout, delivery Spot, 고객 push | JSON | [16 라이드헤일링](./case-studies/16-case-ride-hailing.ko.md) | [DeliveryDispatch](./samples/deliverydispatch-sample.ko.md) |
-| ShoppingMall(Checkout) | event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out | JSON | [13 전자상거래 체크아웃](./case-studies/13-case-ecommerce-checkout.ko.md) | [ShoppingMallCheckout](./samples/shoppingmall-checkout-sample.ko.md) |
+| ShoppingMall | event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out | JSON | [13 전자상거래 체크아웃](./case-studies/13-case-ecommerce-checkout.ko.md) | [ShoppingMall](./samples/shoppingmall-sample.ko.md) |
 | GameQuest | fanout 구독, player owner, quest event sourcing, reward idempotency | JSON | [15 실시간 게임](./case-studies/15-case-realtime-game.ko.md) | [GameQuest](./samples/gamequest-sample.ko.md) |
 
 > 기능별 사용법은 04~09 가, 샘플의 언어 중립 공통 시나리오는

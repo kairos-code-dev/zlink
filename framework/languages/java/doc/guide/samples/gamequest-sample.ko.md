@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: ShoppingMallCheckout Sample](./shoppingmall-checkout-sample.ko.md) | [다음: SPOT 샘플](./spot-samples.ko.md)
+[문서 목록](../../README.ko.md) | [이전: ShoppingMall Sample](./shoppingmall-sample.ko.md) | [다음: SPOT 샘플](./spot-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java 묶음](../../README.ko.md) | [SPOT](../../spec/spring-boot-spot.ko.md) | [Actor/Session](../../spec/spring-boot-actor-session.ko.md) | [STREAM](../../spec/spring-boot-stream.ko.md)
@@ -70,5 +70,5 @@ sync로 보정)를 client가 검증하고, 최종적으로 server-side assertion
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: ShoppingMallCheckout Sample](./shoppingmall-checkout-sample.ko.md) | [다음: SPOT 샘플](./spot-samples.ko.md)
+[문서 목록](../../README.ko.md) | [이전: ShoppingMall Sample](./shoppingmall-sample.ko.md) | [다음: SPOT 샘플](./spot-samples.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

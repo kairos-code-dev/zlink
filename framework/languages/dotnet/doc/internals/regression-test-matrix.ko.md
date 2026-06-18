@@ -275,7 +275,7 @@ backend gate 와 별도로 유지한다.
 - `bingo-game-sample.ko.md`
 - `supportchat-sample.ko.md`
 - `deliverydispatch-sample.ko.md`
-- `shoppingmall-checkout-sample.ko.md`
+- `shoppingmall-sample.ko.md`
 - `gamequest-sample.ko.md`
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

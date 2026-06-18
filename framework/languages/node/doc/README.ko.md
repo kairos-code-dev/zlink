@@ -79,7 +79,7 @@ API만 설명한다.
 ## 4. 정본 샘플 (`guide/samples/`)
 
 정본 샘플의 per-app 문서는 `guide/samples/`에 둔다(코드: `samples/*.Ts`). Bingo와
-TicTacToe를 제외한 정본 샘플(SupportChat, DeliveryDispatch, ShoppingMallCheckout,
+TicTacToe를 제외한 정본 샘플(SupportChat, DeliveryDispatch, ShoppingMall,
 GameQuest)은 JSON codec, Registry/Discovery 자동 연결, NestJS provider scan 기반
 handler 자동 등록을 사용한다. 이 기준은
 [공통 샘플 포팅 기준](../../../doc/spec/sample/README.ko.md#샘플-포팅-기준)을 따른다.
@@ -90,11 +90,11 @@ handler 자동 등록을 사용한다. 이 기준은
 | [tictactoe-game-sample](./guide/samples/tictactoe-game-sample.ko.md) | Api/Play 두 서버, 수동 연결, typed session dispatch |
 | [supportchat-sample](./guide/samples/supportchat-sample.ko.md) | Session/Api/Support/Registry, conversation Spot, idle/close timer, reconnect |
 | [deliverydispatch-sample](./guide/samples/deliverydispatch-sample.ko.md) | channel + fanout, 재배정 timer, 고객 stream push |
-| [shoppingmall-checkout-sample](./guide/samples/shoppingmall-checkout-sample.ko.md) | event-sourcing, idempotency, 보상, projection rebuild, scale-out |
+| [shoppingmall-sample](./guide/samples/shoppingmall-sample.ko.md) | event-sourcing, idempotency, 보상, projection rebuild, scale-out |
 | [gamequest-sample](./guide/samples/gamequest-sample.ko.md) | stateless API scale-out, PlayerId owner routing, fanout + event sourcing |
 
 > 위 정본 샘플은 모두 `samples/*.Ts` TypeScript 실행 코드로 self-check 한다(`Bingo.Ts`,
-> `TicTacToe.Ts`, `SupportChat.Ts`, `DeliveryDispatch.Ts`, `ShoppingMallCheckout.Ts`,
+> `TicTacToe.Ts`, `SupportChat.Ts`, `DeliveryDispatch.Ts`, `ShoppingMall.Ts`,
 > `GameQuest.Ts`). 각 시나리오의 서버 역할·메시지 이름·smoke 순서 정본은 공통 샘플 spec이
 > 소유하고, 위 문서는 그 정본을 Node/NestJS 표면으로 구체화한다.
 

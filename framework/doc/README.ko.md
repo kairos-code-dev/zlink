@@ -37,7 +37,7 @@
 | [비동기 실행 정책](./spec/async-execution-policy.ko.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미 |
 | [Actor 모델](./spec/actor-model.ko.md) | actor 위치, session binding, Entry Spot, user Spot, dispatch 기준 |
 | [Session Actor Dispatch](./spec/session-actor-dispatch.ko.md) | session과 actor를 연결하는 helper와 routing 정책 |
-| [공통 샘플 시나리오](./spec/sample/README.ko.md) | 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMallCheckout, GameQuest)의 언어 중립 샘플 기준 |
+| [공통 샘플 시나리오](./spec/sample/README.ko.md) | 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall, GameQuest)의 언어 중립 샘플 기준 |
 | [Use case 목록](./spec/use-cases/README.ko.md) | use case 문서 전체 목록과 관리 규칙 |
 | [Use case 검증](./spec/usecase-validation.ko.md) | 현재 스펙이 use case를 얼마나 설명하는지 점검 |
 | [Session Gateway 보관본](./spec/archive/session-gateway.ko.md) | 이전 초안의 제거 이력과 배경 (참고용) |
@@ -53,9 +53,9 @@ Play 서버만으로 구성한 직접 play 연결 구조를 맡는다.
 
 | 문서 | 다루는 범위 |
 |------|-------------|
-| [Framework sample scenario 구현 계획](./plan/sample-scenarios-implementation-plan.ko.md) | SupportChat, ShoppingMallCheckout, GameQuest를 Bingo식 client scenario와 self-check 기준으로 구현하는 순서 |
-| [Framework 설정 builder fluent 정렬 계획](./plan/fluent-framework-configuration-builder-plan.ko.md) | framework 설정 API를 중첩 하위 람다 대신 fluent builder API로 정렬하는 코드, 테스트, 문서 갱신 계획 |
-| [Framework Adapter 구현 계획](./plan/framework-adapter/README.ko.md) | framework adapter 구현 계획 문서 묶음 |
+| [Framework codec extension 통합 계획](./plan/framework-codec-extension-unification-plan.ko.md) | JSON 기본값, Protobuf/MessagePack 선택 extension, custom codec, connector/HTTP client 적용 구조를 정리하는 순서 |
+| [HTTP Client 다언어 이식 계획](./plan/http-client-multilang-port-plan.ko.md) | dotnet HTTP client를 java/kotlin/node로 이식하는 순서와 완료 기준 |
+| [HTTP Client parity 매트릭스](./plan/http-client-parity-matrix.ko.md) | 언어별 HTTP client 기능 parity 점검표 |
 
 ## 4. 언어별 문서
 

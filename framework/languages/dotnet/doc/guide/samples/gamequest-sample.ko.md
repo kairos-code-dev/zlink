@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../doc/README.ko.md) | [이전: ShoppingMallCheckout Sample](./shoppingmall-checkout-sample.ko.md) | [다음: ZLink Framework .NET Behavior Matrix](../../internals/behavior-matrix.ko.md)
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ShoppingMall Sample](./shoppingmall-sample.ko.md) | [다음: ZLink Framework .NET Behavior Matrix](../../internals/behavior-matrix.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # GameQuest Sample
@@ -182,5 +182,5 @@ instance, Spot actor 흐름, client stream notify)을 이미 고정하고 있다
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../doc/README.ko.md) | [이전: ShoppingMallCheckout Sample](./shoppingmall-checkout-sample.ko.md) | [다음: ZLink Framework .NET Behavior Matrix](../../internals/behavior-matrix.ko.md)
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ShoppingMall Sample](./shoppingmall-sample.ko.md) | [다음: ZLink Framework .NET Behavior Matrix](../../internals/behavior-matrix.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -4,7 +4,7 @@ This directory contains executable Java and Kotlin sample checks for the sample
 gate. Java samples live under `java/`, and Kotlin samples live under `kotlin/`.
 Each language directory carries the executable scenario samples that have been
 ported to Java and Kotlin: `Bingo`, `TicTacToe`, `SupportChat`,
-`DeliveryDispatch`, `ShoppingMall`, `ShoppingMallCheckout`, and `GameQuest`.
+`DeliveryDispatch`, `ShoppingMall`, `ShoppingMall`, and `GameQuest`.
 Each sample exits with a non-zero status when its scenario invariant fails.
 
 Open `framework/languages/java` in IntelliJ IDEA to work on the framework and
@@ -28,7 +28,7 @@ samples/
     SupportChat/
     DeliveryDispatch/
     ShoppingMall/
-    ShoppingMallCheckout/
+    ShoppingMall/
     GameQuest/
   kotlin/
     TicTacToe/
@@ -36,7 +36,7 @@ samples/
     SupportChat/
     DeliveryDispatch/
     ShoppingMall/
-    ShoppingMallCheckout/
+    ShoppingMall/
     GameQuest/
 ```
 

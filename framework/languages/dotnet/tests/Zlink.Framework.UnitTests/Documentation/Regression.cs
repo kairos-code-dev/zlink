@@ -29,7 +29,7 @@ public sealed class RegressionTests
         "bingo-game-sample.ko.md",
         "supportchat-sample.ko.md",
         "deliverydispatch-sample.ko.md",
-        "shoppingmall-checkout-sample.ko.md",
+        "shoppingmall-sample.ko.md",
         "gamequest-sample.ko.md",
     ];
 

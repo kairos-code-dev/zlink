@@ -70,8 +70,7 @@ cpp framework 가 정본 샘플 전체를 제공한다([14장 §1](./14-samples-
 | Bingo | Registry/Discovery, Entry Spot, room Spot, bound push | Protobuf |
 | SupportChat | Entry Spot, conversation Spot, idle/close timer, 재접속, bound push | JSON |
 | DeliveryDispatch | channel + fanout, 재배정 timer, 고객 stream push | JSON |
-| ShoppingMall | channel request, order workflow 상태 전이 | JSON |
-| ShoppingMallCheckout | event-sourcing, idempotency, 보상, 단계 진행 | JSON |
+| ShoppingMall | channel request, order workflow 상태 전이, event-sourcing/보상 | JSON |
 | GameQuest | stateless API scale-out, owner routing, fanout + event sourcing | JSON |
 
 ## 5. 더 보기

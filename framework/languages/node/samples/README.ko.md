@@ -46,7 +46,7 @@ Windows PowerShell 에서는 PowerShell runner 를 실행한다.
 ./framework/languages/node/samples/DeliveryDispatch.Ts/run_sample.sh
 ./framework/languages/node/samples/GameQuest.Ts/run_sample.sh
 ./framework/languages/node/samples/ShoppingMall.Ts/run_sample.sh
-./framework/languages/node/samples/ShoppingMallCheckout.Ts/run_sample.sh
+./framework/languages/node/samples/ShoppingMall.Ts/run_sample.sh
 ./framework/languages/node/samples/SupportChat.Ts/run_sample.sh
 ```
 
@@ -56,7 +56,7 @@ Windows PowerShell 에서는 PowerShell runner 를 실행한다.
 .\framework\languages\node\samples\DeliveryDispatch.Ts\run_sample.ps1
 .\framework\languages\node\samples\GameQuest.Ts\run_sample.ps1
 .\framework\languages\node\samples\ShoppingMall.Ts\run_sample.ps1
-.\framework\languages\node\samples\ShoppingMallCheckout.Ts\run_sample.ps1
+.\framework\languages\node\samples\ShoppingMall.Ts\run_sample.ps1
 .\framework\languages\node\samples\SupportChat.Ts\run_sample.ps1
 ```
 
@@ -86,7 +86,7 @@ Node 샘플은 NestJS module 구성을 기준으로 설정을 주입한다. 서�
 | `DeliveryDispatch.Ts` | dispatch API, courier, tracking, session fanout 흐름 |
 | `GameQuest.Ts` | game API action과 quest mission 진행도 갱신 흐름 |
 | `ShoppingMall.Ts` | commerce API와 order workflow 상태 전이 흐름 |
-| `ShoppingMallCheckout.Ts` | checkout 단계별 상태 전이 흐름 |
+| `ShoppingMall.Ts` | checkout 단계별 상태 전이 흐름 |
 | `SupportChat.Ts` | support conversation, reconnect, idle, close 흐름 |
 
 ## 성공 조건

@@ -16,10 +16,10 @@ event sourcing이 도메인 모델을 더 선명하게 만드는 경우에는 ev
 
 | 샘플 | 목적 | event 기준 경로 | ZLink 역할 |
 |------|------|----------------|------------|
-| [ShoppingMallCheckout](./shoppingmall-checkout.ko.md) | 단일 Commerce API 서버 타입에서 견고한 event-sourced 주문 workflow를 구성한다. | ZLink owner routing + OrderEventStore | event sourcing, workflow Spot, projection 조회 |
+| [ShoppingMall](./shoppingmall.ko.md) | 단일 Commerce API 서버 타입에서 견고한 event-sourced 주문 workflow를 구성한다. | ZLink owner routing + OrderEventStore | event sourcing, workflow Spot, projection 조회 |
 | [GameQuest](./gamequest.ko.md) | stateless Game API action event를 받아 event sourced quest aggregate를 갱신한다. | ZLink fanout + QuestEventStore | realtime fanout, event sourcing, QuestMission Spot, WebSocket notify |
 
-ShoppingMallCheckout은 Kafka를 그대로 복제하지 않는다. 작은 규모에서 시작하는 커머스 서비스도
+ShoppingMall은 Kafka를 그대로 복제하지 않는다. 작은 규모에서 시작하는 커머스 서비스도
 주문, 재고, 결제 workflow는 실패와 중복 요청을 견고하게 처리해야 한다. 이 샘플은
 `CommerceApi` 안의 module과 `OrderWorkflowSpot`, `OrderEventStore`, projection으로 주문 상태
 전이를 event sourced workflow로 구성한다. Redis Stream 또는 Kafka는 다수 consumer, 큰 backlog,

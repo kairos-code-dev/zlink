@@ -12,7 +12,6 @@ const requiredSamples = [
   'DeliveryDispatch.Ts',
   'GameQuest.Ts',
   'ShoppingMall.Ts',
-  'ShoppingMallCheckout.Ts',
   'SupportChat.Ts'
 ];
 const topologySamples = [
@@ -21,7 +20,6 @@ const topologySamples = [
   'DeliveryDispatch.Ts',
   'GameQuest.Ts',
   'ShoppingMall.Ts',
-  'ShoppingMallCheckout.Ts',
   'SupportChat.Ts'
 ];
 
@@ -175,13 +173,6 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/main.ts',
       'Shared/Configuration/sample-names.ts',
       'Shared/Contracts/messages.ts'
-    ],
-    'ShoppingMallCheckout.Ts': [
-      'Client/shoppingmall-checkout-client-scenario.ts',
-      'Client/main.ts',
-      'Server/main.ts',
-      'Shared/Configuration/sample-names.ts',
-      'Shared/Contracts/messages.ts'
     ]
   };
   const missing = [];
@@ -298,8 +289,7 @@ test('node dotnet-parity samples expose buildable scenario entrypoints', () => {
   const cases = [
     ['DeliveryDispatch.Ts', '@zlink-systems/sample-deliverydispatch-ts', 'deliverydispatch-client-scenario.ts', 'DeliveryDispatchClientScenario', 'PASS DeliveryDispatch.Ts'],
     ['GameQuest.Ts', '@zlink-systems/sample-gamequest-ts', 'gamequest-client-scenario.ts', 'GameQuestClientScenario', 'PASS GameQuest.Ts'],
-    ['ShoppingMall.Ts', '@zlink-systems/sample-shoppingmall-ts', 'shoppingmall-client-scenario.ts', 'ShoppingMallClientScenario', 'PASS ShoppingMall.Ts'],
-    ['ShoppingMallCheckout.Ts', '@zlink-systems/sample-shoppingmall-checkout-ts', 'shoppingmall-checkout-client-scenario.ts', 'ShoppingMallCheckoutClientScenario', 'PASS ShoppingMallCheckout.Ts']
+    ['ShoppingMall.Ts', '@zlink-systems/sample-shoppingmall-ts', 'shoppingmall-client-scenario.ts', 'ShoppingMallClientScenario', 'PASS ShoppingMall.Ts']
   ];
   const missing = [];
 
@@ -328,9 +318,7 @@ test('node dotnet-parity samples expose buildable scenario entrypoints', () => {
         ? 'createDeliveryDispatchModule'
         : sample === 'GameQuest.Ts'
           ? 'createGameQuestModule'
-          : sample === 'ShoppingMall.Ts'
-            ? 'createShoppingMallModule'
-            : 'createShoppingMallCheckoutModule'],
+          : 'createShoppingMallModule'],
       [contracts, 'PacketNames']
     ]) {
       if (!content.includes(text)) {
@@ -431,33 +419,9 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   assert.doesNotMatch(serverMain, /http\.createServer|SAMPLE_ENDPOINT/);
 });
 
-test('ShoppingMallCheckout TypeScript sample uses framework channel topology', () => {
-  const clientScenario = readSample('ShoppingMallCheckout.Ts', 'Client/shoppingmall-checkout-client-scenario.ts');
-  const clientModule = readSample('ShoppingMallCheckout.Ts', 'Client/shoppingmall-checkout-client-module.ts');
-  const serverModule = readSample('ShoppingMallCheckout.Ts', 'Server/CheckoutWorkflow/shoppingmall-checkout-module.ts');
-  const serverMain = readSample('ShoppingMallCheckout.Ts', 'Server/main.ts');
-  const runSample = fs.readFileSync(path.join(samplesRoot, 'ShoppingMallCheckout.Ts', 'run_sample.sh'), 'utf8');
-
-  assert.match(clientScenario, /requestToChannel/);
-  assert.match(clientScenario, /SampleNames\.checkoutChannel/);
-  assert.match(clientModule, /zlinkFramework\(\)/);
-  assert.match(clientModule, /\.enableClient\(config\.checkoutEndpoint\)/);
-  assert.match(serverModule, /zlinkFramework\(\)/);
-  assert.match(serverModule, /\.enableServer\(config\.checkoutEndpoint\)/);
-  assert.match(serverModule, /addRequestHandler\(PacketNames\.startCheckoutReq/);
-  assert.match(serverModule, /addRequestHandler\(PacketNames\.authorizePaymentReq/);
-  assert.match(serverModule, /addRequestHandler\(PacketNames\.reserveInventoryReq/);
-  assert.match(serverModule, /addRequestHandler\(PacketNames\.confirmOrderReq/);
-  assert.match(serverMain, /NestFactory\.createApplicationContext/);
-  assert.match(runSample, /SHOPPINGMALLCHECKOUT_CHECKOUT_ENDPOINT/);
-  assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
-  assert.doesNotMatch(clientScenario, /fetch\(|http\.createServer|SAMPLE_ENDPOINT|support::request_line/);
-  assert.doesNotMatch(serverMain, /http\.createServer|SAMPLE_ENDPOINT/);
-});
-
 test('dotnet-parity TypeScript clients do not import server modules', () => {
   const violations = [];
-  for (const sample of ['DeliveryDispatch.Ts', 'GameQuest.Ts', 'ShoppingMall.Ts', 'ShoppingMallCheckout.Ts']) {
+  for (const sample of ['DeliveryDispatch.Ts', 'GameQuest.Ts', 'ShoppingMall.Ts']) {
     for (const file of sampleSourceFiles(path.join(samplesRoot, sample, 'Client'))) {
       const content = fs.readFileSync(file, 'utf8');
       if (/from ['"]\.\.\/Server\//.test(content)) {

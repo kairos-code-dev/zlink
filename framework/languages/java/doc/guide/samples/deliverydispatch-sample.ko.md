@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: SupportChat Sample](./supportchat-sample.ko.md) | [다음: ShoppingMallCheckout Sample](./shoppingmall-checkout-sample.ko.md)
+[문서 목록](../../README.ko.md) | [이전: SupportChat Sample](./supportchat-sample.ko.md) | [다음: ShoppingMall Sample](./shoppingmall-sample.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java 묶음](../../README.ko.md) | [SPOT](../../spec/spring-boot-spot.ko.md) | [Actor/Session](../../spec/spring-boot-actor-session.ko.md) | [STREAM](../../spec/spring-boot-stream.ko.md)
@@ -58,5 +58,5 @@ cross-process Session↔Tracking spot routing은 route-mesh channel + `useRegist
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: SupportChat Sample](./supportchat-sample.ko.md) | [다음: ShoppingMallCheckout Sample](./shoppingmall-checkout-sample.ko.md)
+[문서 목록](../../README.ko.md) | [이전: SupportChat Sample](./supportchat-sample.ko.md) | [다음: ShoppingMall Sample](./shoppingmall-sample.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

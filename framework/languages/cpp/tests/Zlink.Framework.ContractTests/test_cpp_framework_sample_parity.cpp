@@ -45,8 +45,6 @@
 #include "../../samples/GameQuest/Server/game_quest_server_role.hpp"
 #include "../../samples/ShoppingMall/Client/shopping_mall_client_scenario.hpp"
 #include "../../samples/ShoppingMall/Server/shopping_mall_server_role.hpp"
-#include "../../samples/ShoppingMallCheckout/Client/shopping_mall_checkout_client_scenario.hpp"
-#include "../../samples/ShoppingMallCheckout/Server/shopping_mall_checkout_server_role.hpp"
 
 #include <gtest/gtest.h>
 
@@ -104,7 +102,6 @@ bool is_allowed_raw_codec_helper_file (const std::string &relative)
       "DeliveryDispatch/Shared/Contracts/messages.hpp",
       "GameQuest/Shared/Contracts/messages.hpp",
       "ShoppingMall/Shared/Contracts/messages.hpp",
-      "ShoppingMallCheckout/Shared/Contracts/messages.hpp",
       "SupportChat/Shared/Contracts/messages.hpp",
       "SupportChat/Server/Session/Sessions/Handlers/authenticate_session_handler.hpp",
       "SupportChat/Server/Support/support_server_host_factory.hpp",
@@ -484,21 +481,6 @@ TEST (CppFrameworkSampleParity, ShoppingMallUsesDotNetSampleScenarioSurface)
                std::string (order_status_t::shipped));
 }
 
-TEST (CppFrameworkSampleParity, ShoppingMallCheckoutUsesDotNetSampleScenarioSurface)
-{
-    using namespace zlink::samples::shoppingmallcheckout;
-
-    shopping_mall_checkout_server_role_t server;
-    EXPECT_EQ (server.start_checkout ("customer-1").status,
-               std::string (checkout_status_t::cart_created));
-    EXPECT_EQ (server.advance (checkout_status_t::payment_authorized).status,
-               std::string (checkout_status_t::payment_authorized));
-    EXPECT_EQ (server.advance (checkout_status_t::inventory_reserved).status,
-               std::string (checkout_status_t::inventory_reserved));
-    EXPECT_EQ (server.advance (checkout_status_t::order_confirmed).status,
-               std::string (checkout_status_t::order_confirmed));
-}
-
 TEST (CppFrameworkSampleParity, DotNetParitySamplesUseRunnerOwnedServerProcess)
 {
     struct sample_case_t
@@ -515,10 +497,7 @@ TEST (CppFrameworkSampleParity, DotNetParitySamplesUseRunnerOwnedServerProcess)
       {"GameQuest", "Client/game_quest_client_scenario.hpp",
        "sample_cpp_framework_gamequest_server", "GAMEQUEST_QUEST_ENDPOINT"},
       {"ShoppingMall", "Client/shopping_mall_client_scenario.hpp",
-       "sample_cpp_framework_shoppingmall_server", "SHOPPINGMALL_WORKFLOW_ENDPOINT"},
-      {"ShoppingMallCheckout", "Client/shopping_mall_checkout_client_scenario.hpp",
-       "sample_cpp_framework_shoppingmallcheckout_server",
-       "SHOPPINGMALLCHECKOUT_CHECKOUT_ENDPOINT"}};
+       "sample_cpp_framework_shoppingmall_server", "SHOPPINGMALL_WORKFLOW_ENDPOINT"}};
 
     const auto samples_root = cpp_language_root () / "samples";
     for (const auto &sample : samples) {
@@ -526,8 +505,7 @@ TEST (CppFrameworkSampleParity, DotNetParitySamplesUseRunnerOwnedServerProcess)
         const auto server = read_file (samples_root / sample.sample / "Server/main.cpp");
         const auto runner = read_file (samples_root / sample.sample / "run_sample.sh");
         if (sample.sample == "DeliveryDispatch" || sample.sample == "GameQuest"
-            || sample.sample == "ShoppingMall"
-            || sample.sample == "ShoppingMallCheckout") {
+            || sample.sample == "ShoppingMall") {
             EXPECT_NE (client.find ("channel_client_t"), std::string::npos)
               << sample.sample << " client must use the framework channel client";
             EXPECT_NE (client.find ("request_to_channel"), std::string::npos)
@@ -588,8 +566,7 @@ TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
     const auto samples_root = cpp_language_root () / "samples";
     const std::vector<std::string> expected_samples{"Bingo", "DeliveryDispatch",
                                                     "GameQuest", "ShoppingMall",
-                                                    "ShoppingMallCheckout", "SupportChat",
-                                                    "TicTacToe"};
+                                                    "SupportChat", "TicTacToe"};
 
     for (const auto &sample : expected_samples) {
         EXPECT_TRUE (std::filesystem::is_directory (samples_root / sample))
@@ -614,7 +591,7 @@ TEST (CppFrameworkSampleParity, SharedSampleDirectoryContainsOnlyContracts)
 {
     const auto samples_root = cpp_language_root () / "samples";
     for (const auto &sample : {"Bingo", "DeliveryDispatch", "GameQuest", "ShoppingMall",
-                               "ShoppingMallCheckout", "SupportChat", "TicTacToe"}) {
+                               "SupportChat", "TicTacToe"}) {
         const auto shared_root = samples_root / sample / "Shared";
         ASSERT_TRUE (std::filesystem::is_directory (shared_root)) << shared_root;
         for (const auto &entry : std::filesystem::recursive_directory_iterator (shared_root)) {

@@ -6,7 +6,7 @@
 구조로 구현한 묶음이다. 기능을 처음 붙일 때는 해당 샘플의 같은 자리를 먼저 본다.
 
 > **샘플 패리티:** cpp는 정본 샘플 전체 — **TicTacToe · Bingo · SupportChat · DeliveryDispatch ·
-> ShoppingMall · ShoppingMallCheckout · GameQuest** — 를 제공한다. TicTacToe·Bingo 가 토폴로지
+> ShoppingMall · GameQuest** — 를 제공한다. TicTacToe·Bingo 가 토폴로지
 > 기준(§2·§3)이고, 나머지는 §4에 요약하며, per-sample 동작은 각 샘플의 `README.ko.md` 와 공통
 > 시나리오 정본이 소유한다.
 
@@ -97,8 +97,7 @@ per-sample 동작은 각 샘플 `README.ko.md` 가 소유한다.
 |------|-------------|------|
 | SupportChat | 고객·상담원이 conversation spot에 참여, 메시지·typing·idle·close 상태 전이, 재접속 (Session/Api/Support/Registry) | [SupportChat/](../../samples/SupportChat/README.ko.md) |
 | DeliveryDispatch | 배달 생성 → courier 배정 → 픽업 → 완료 상태 전이, 재배정 timer | [DeliveryDispatch/](../../samples/DeliveryDispatch/README.ko.md) |
-| ShoppingMall | 주문 생성과 order workflow 상태 전이 | [ShoppingMall/](../../samples/ShoppingMall/README.ko.md) |
-| ShoppingMallCheckout | checkout 단계(결제 승인 → 재고 예약 → 주문 확정) 진행 | [ShoppingMallCheckout/](../../samples/ShoppingMallCheckout/README.ko.md) |
+| ShoppingMall | 주문 생성과 order workflow 상태 전이(결제 승인 → 재고 예약 → 주문 확정) | [ShoppingMall/](../../samples/ShoppingMall/README.ko.md) |
 | GameQuest | 플레이어 행동이 quest mission 진행도로 이어지는 흐름 | [GameQuest/](../../samples/GameQuest/README.ko.md) |
 
 ## 5. 무엇을 어디서 베낄까

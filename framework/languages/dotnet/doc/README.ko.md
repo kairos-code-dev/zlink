@@ -218,7 +218,7 @@
 | [bingo-game-sample.ko.md](./guide/samples/bingo-game-sample.ko.md) | matching room 기반 빙고 샘플 설계 노트. Session 서버, API 서버, Play 서버, Entry Spot lobby, room host 시작, timer 진행을 함께 보여 준다. |
 | [supportchat-sample.ko.md](./guide/samples/supportchat-sample.ko.md) | 1:1 고객 상담 샘플. session gateway, conversation Spot, reconnect 이전성, idle timer→close, bound push 를 함께 보여 준다(JSON). |
 | [deliverydispatch-sample.ko.md](./guide/samples/deliverydispatch-sample.ko.md) | 배송 배차 샘플. HTTP intake, timeout 재배정, status fanout, delivery Spot, 고객 stream push 를 함께 보여 준다(JSON). |
-| [shoppingmall-checkout-sample.ko.md](./guide/samples/shoppingmall-checkout-sample.ko.md) | 주문 체크아웃 샘플. event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out(2×2) 을 함께 보여 준다(JSON). |
+| [shoppingmall-sample.ko.md](./guide/samples/shoppingmall-sample.ko.md) | 주문 체크아웃 샘플. event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out(2×2) 을 함께 보여 준다(JSON). |
 | [gamequest-sample.ko.md](./guide/samples/gamequest-sample.ko.md) | quest 진행 샘플. gameplay event fanout 구독, player owner routing, quest event sourcing, reward idempotency 를 함께 보여 준다(JSON). |
 
 ### 2.5 범위 원칙

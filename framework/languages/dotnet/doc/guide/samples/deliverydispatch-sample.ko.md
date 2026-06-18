@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../doc/README.ko.md) | [이전: SupportChat Sample](./supportchat-sample.ko.md) | [다음: ShoppingMallCheckout Sample](./shoppingmall-checkout-sample.ko.md)
+[문서 목록](../../../../../doc/README.ko.md) | [이전: SupportChat Sample](./supportchat-sample.ko.md) | [다음: ShoppingMall Sample](./shoppingmall-sample.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # DeliveryDispatch Sample
@@ -174,5 +174,5 @@ fanout, 재배정 timer, 고객 stream push)을 이미 고정하고 있다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../doc/README.ko.md) | [이전: SupportChat Sample](./supportchat-sample.ko.md) | [다음: ShoppingMallCheckout Sample](./shoppingmall-checkout-sample.ko.md)
+[문서 목록](../../../../../doc/README.ko.md) | [이전: SupportChat Sample](./supportchat-sample.ko.md) | [다음: ShoppingMall Sample](./shoppingmall-sample.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

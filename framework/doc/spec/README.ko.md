@@ -49,7 +49,7 @@
 | 7 | [비동기 실행과 coroutine 정책](./async-execution-policy.ko.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미를 정의한다. |
 | 8 | [actor-model.ko.md](./actor-model.ko.md) | actor 개념을 cross-binding 기준으로 정의한다. actor 라이프사이클 (Entry Spot / session bind / user Spot join), application 로직 vs framework 자동 처리, outbound actor 호출, session actor dispatch 패턴, 등록 표면을 다룬다. |
 | 9 | [Session Actor Dispatch](./session-actor-dispatch.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 cross-binding 사용성 결정 사항. typed handler 의미, route resolver 계약, helper 의미, `SessionProxy` 의미, error 매트릭스를 다룬다. 구체 .NET 시그니처와 등록 코드, sample은 [bindings/dotnet/session-actor-dispatch.ko.md](../../languages/dotnet/doc/spec/session-actor-dispatch.ko.md)에 분리되어 있다. |
-| 10 | [공통 샘플 시나리오](./sample/README.ko.md) | 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMallCheckout, GameQuest)의 언어 중립 샘플 기준. 서버 역할, 메시지 흐름, handler 등록 방식 차이를 정의한다. |
+| 10 | [공통 샘플 시나리오](./sample/README.ko.md) | 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall, GameQuest)의 언어 중립 샘플 기준. 서버 역할, 메시지 흐름, handler 등록 방식 차이를 정의한다. |
 | 11 | [Session Gateway 보관본](./archive/session-gateway.ko.md) | 이전 session gateway/actor relay 초안의 보관본. 현재 public API 기준이 아니며, 배경과 문제 맥락을 확인할 때만 사용한다. 현재 기준은 위 §9이다. |
 | 12 | [.NET 문서](../../languages/dotnet/doc/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 문서. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
 | 13 | [Java 문서](../../languages/java/doc/README.ko.md) | `Java`와 `Spring Boot` 전용 문서 진입점. |

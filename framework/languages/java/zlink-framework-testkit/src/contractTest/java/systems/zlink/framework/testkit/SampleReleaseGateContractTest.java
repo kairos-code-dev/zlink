@@ -23,7 +23,6 @@ final class SampleReleaseGateContractTest {
         "SupportChat",
         "DeliveryDispatch",
         "ShoppingMall",
-        "ShoppingMallCheckout",
         "GameQuest");
 
     private static final Set<String> REQUIRED_RUNTIME_PACKAGES = Set.of(

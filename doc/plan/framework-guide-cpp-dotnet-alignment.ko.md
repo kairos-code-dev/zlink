@@ -170,7 +170,7 @@
 | Bingo | ✅ | ✅ |
 | DeliveryDispatch | ✅ | ❌ (예정) |
 | GameQuest | ✅ | ❌ (예정) |
-| ShoppingMall / ShoppingMallCheckout | ✅ | ❌ (예정) |
+| ShoppingMall | ✅ | ❌ (예정) |
 | SupportChat | ✅ | ❌ (예정) |
 
 방침: **cpp 도 dotnet 과 동일한 샘플을 동일 구현으로 전부 제공**한다(현재 2/7 →

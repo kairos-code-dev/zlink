@@ -9,7 +9,7 @@
 > "ZLink 가 무엇을 줄이고 **무엇은 그대로 남는지**" 를 가장 분명히 보여 준다.
 > 사용법 정식은 [04-channel-messaging](../04-channel-messaging.ko.md)이 다루고,
 > 같은 체크아웃 도메인을 event sourcing 으로 빌드·실행해 보는 샘플은
-> [ShoppingMallCheckout](#7-실행-가능한-샘플--shoppingmallcheckout)이다(§7).
+> [ShoppingMall](#7-실행-가능한-샘플--shoppingmall)이다(§7).
 
 > **이 케이스에서 ZLink 이 좋은 지점**
 > - 서비스 간 request/send/pub-sub 배선을 하나의 channel 모델로 줄인다.
@@ -317,16 +317,16 @@ mesh sidecar hop 이 빠지고, 위치 해결은 Registry view 가 미리 끝낸
 - **영속/replay 이벤트**: at-least-once 영속 큐가 필요하면 Kafka 유지.
 - **mTLS/HTTP edge**: 인증 edge·브라우저 호환·외부 공개 API 는 별도 계층.
 
-## 7. 실행 가능한 샘플 — ShoppingMallCheckout
+## 7. 실행 가능한 샘플 — ShoppingMall
 
 §6 에서 "그대로 남는다" 고 한 보상·idempotency·event 영속을, ZLink owner routing 과
 event sourcing 으로 **애플리케이션 안에서** 견고하게 구성하는 모습을 실행해 보는 샘플이
-ShoppingMallCheckout 이다. Kafka 를 다시 만드는 것이 아니라, 외부 HTTP API 와 stateful
+ShoppingMall 이다. Kafka 를 다시 만드는 것이 아니라, 외부 HTTP API 와 stateful
 workflow owner 를 분리해도 상태 전이·복구·audit·조회 projection 이 분명함을 보여 준다.
 
-- 구현 학습(deep-dive): [ShoppingMallCheckout Sample 문서](../samples/shoppingmall-checkout-sample.ko.md)
+- 구현 학습(deep-dive): [ShoppingMall Sample 문서](../samples/shoppingmall-sample.ko.md)
 - 실행 코드: [Java ShoppingMall 샘플](../../../samples/java/ShoppingMall)
-- 공통 시나리오(언어 중립): [spec/sample/event/shoppingmall-checkout](../../../../../doc/spec/sample/event/shoppingmall-checkout.ko.md)
+- 공통 시나리오(언어 중립): [spec/sample/event/shoppingmall](../../../../../doc/spec/sample/event/shoppingmall.ko.md)
 
 ### 서버 구성 — stateless API + stateful order owner
 

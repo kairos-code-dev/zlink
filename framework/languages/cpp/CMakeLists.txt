@@ -1060,16 +1060,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     "framework-sample-shoppingmall;framework-sample-client"
     zlink::framework)
   add_zlink_framework_sample(
-    sample_cpp_framework_shoppingmallcheckout_server
-    samples/ShoppingMallCheckout/Server/main.cpp
-    "framework-sample-shoppingmallcheckout;framework-sample-server"
-    zlink::framework)
-  add_zlink_framework_sample(
-    sample_cpp_framework_shoppingmallcheckout_client
-    samples/ShoppingMallCheckout/Client/main.cpp
-    "framework-sample-shoppingmallcheckout;framework-sample-client"
-    zlink::framework)
-  add_zlink_framework_sample(
     sample_cpp_framework_supportchat_registry
     samples/SupportChat/Server/Registry/main.cpp
     "framework-sample-supportchat;framework-sample-registry"

@@ -1,0 +1,128 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+package systems.zlink.httpclient.kotlin
+
+import com.sun.net.httpserver.HttpExchange
+import com.sun.net.httpserver.HttpHandler
+import com.sun.net.httpserver.HttpServer
+import java.net.InetSocketAddress
+import java.nio.charset.StandardCharsets
+import java.util.ArrayDeque
+import java.util.concurrent.Executors
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+
+private data class Player(val id: Int, val name: String)
+
+private data class CreateGameReq(val name: String)
+
+private data class CreateGameRes(val id: String, val ranked: Boolean)
+
+private class TestServer(handler: HttpHandler) : AutoCloseable {
+    private val server: HttpServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+        executor = Executors.newCachedThreadPool()
+        createContext("/", handler)
+        start()
+    }
+    val baseUrl: String = "http://127.0.0.1:${server.address.port}"
+    override fun close() = server.stop(0)
+}
+
+private fun respond(exchange: HttpExchange, status: Int, body: String) {
+    val bytes = body.toByteArray(StandardCharsets.UTF_8)
+    exchange.sendResponseHeaders(status, if (bytes.isEmpty()) -1 else bytes.size.toLong())
+    exchange.responseBody.use { it.write(bytes) }
+}
+
+private fun readBody(exchange: HttpExchange): String =
+    String(exchange.requestBody.readAllBytes(), StandardCharsets.UTF_8)
+
+class HttpClientCoroutineTest {
+
+    @Test
+    fun `suspend awaitRaw returns the response`() = runBlocking {
+        TestServer { exchange -> respond(exchange, 200, "{}") }.use { server ->
+            zlinkHttpClient(server.baseUrl).use { client ->
+                val response = client.get("/r").awaitRaw()
+                assertEquals(200, response.status())
+            }
+        }
+    }
+
+    @Test
+    fun `suspend typed await round trips via DSL`() = runBlocking {
+        var received: String? = null
+        TestServer { exchange ->
+            received = readBody(exchange)
+            respond(exchange, 200, """{"id":"game-7","ranked":true}""")
+        }.use { server ->
+            zlinkHttpClient(server.baseUrl) { json() }.use { client ->
+                val response = client.post("/games").body(CreateGameReq("ranked-0611")).await<CreateGameRes>()
+                assertTrue(received!!.contains("ranked-0611"))
+                assertEquals("game-7", response.body().id)
+                assertTrue(response.body().ranked)
+            }
+        }
+    }
+
+    @Test
+    fun `suspend await with explicit type`() = runBlocking {
+        TestServer { exchange -> respond(exchange, 200, """{"id":7,"name":"Aria"}""") }.use { server ->
+            zlinkHttpClient(server.baseUrl) { json() }.use { client ->
+                val response = client.get("/players/7").await(Player::class.java)
+                assertEquals(7, response.body().id)
+                assertEquals("Aria", response.body().name)
+            }
+        }
+    }
+
+    @Test
+    fun `suspend awaitDownload streams chunks to sink`() = runBlocking {
+        TestServer { exchange -> respond(exchange, 200, "streamed-response-payload") }.use { server ->
+            zlinkHttpClient(server.baseUrl).use { client ->
+                val sink = StringBuilder()
+                val response = client.get("/download").awaitDownload { chunk ->
+                    sink.append(String(chunk, StandardCharsets.UTF_8))
+                }
+                assertEquals(200, response.status())
+                assertEquals("streamed-response-payload", sink.toString())
+            }
+        }
+    }
+
+    @Test
+    fun `suspend streaming upload sends chunks`() = runBlocking {
+        var received: String? = null
+        TestServer { exchange ->
+            received = readBody(exchange)
+            respond(exchange, 200, "{}")
+        }.use { server ->
+            zlinkHttpClient(server.baseUrl).use { client ->
+                val chunks = ArrayDeque(listOf("part-1;".toByteArray(), "part-2;".toByteArray(), "part-3".toByteArray()))
+                client.post("/s")
+                    .bodyStream({ if (chunks.isEmpty()) null else chunks.poll() }, "application/octet-stream")
+                    .awaitRaw()
+                assertEquals("part-1;part-2;part-3", received)
+            }
+        }
+    }
+
+    @Test
+    fun `non-blocking coroutines do not serialize requests`() = runBlocking {
+        TestServer { exchange ->
+            Thread.sleep(200)
+            respond(exchange, 200, "{}")
+        }.use { server ->
+            zlinkHttpClient(server.baseUrl).use { client ->
+                val start = System.nanoTime()
+                val responses = (1..20).map { async { client.get("/r").awaitRaw() } }.awaitAll()
+                val elapsedMs = (System.nanoTime() - start) / 1_000_000
+                responses.forEach { assertEquals(200, it.status()) }
+                assertTrue(elapsedMs < 2000, "elapsed=$elapsedMs")
+            }
+        }
+    }
+}

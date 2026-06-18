@@ -1,0 +1,36 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+package systems.zlink.httpclient.kotlin
+
+import kotlinx.coroutines.future.await
+import systems.zlink.httpclient.HttpResponse
+import systems.zlink.httpclient.RawHttpResponse
+import systems.zlink.httpclient.ZLinkHttpClient
+import systems.zlink.httpclient.ZLinkHttpClientBuilder
+import systems.zlink.httpclient.ZLinkHttpRequestBuilder
+
+/**
+ * Kotlin coroutine and DSL extensions over the Java [ZLinkHttpClient]. These reuse the Java runtime
+ * (the Kotlin module is a thin idiom layer) and expose genuine `suspend` functions that bridge the
+ * `CompletionStage` returned by the Java client via `kotlinx-coroutines-jdk8`'s `await()` — no
+ * thread is blocked. This is the canonical "coroutine HTTP client" target.
+ */
+
+/** DSL helper: builds a client by applying [configure] to the fluent builder. */
+fun zlinkHttpClient(baseUrl: String, configure: ZLinkHttpClientBuilder.() -> Unit = {}): ZLinkHttpClient =
+    ZLinkHttpClient.create(baseUrl).apply(configure).build()
+
+/** Suspends until the raw response is available; does not block the calling thread. */
+suspend fun ZLinkHttpRequestBuilder.awaitRaw(): RawHttpResponse =
+    submitRaw().await()
+
+/** Suspends until the typed JSON response is available. */
+suspend fun <T> ZLinkHttpRequestBuilder.await(type: Class<T>): HttpResponse<T> =
+    submit(type).await()
+
+/** Reified convenience for [await]. */
+suspend inline fun <reified T> ZLinkHttpRequestBuilder.await(): HttpResponse<T> =
+    await(T::class.java)
+
+/** Suspends until the streaming download completes, delivering chunks to [sink]. */
+suspend fun ZLinkHttpRequestBuilder.awaitDownload(sink: (ByteArray) -> Unit): RawHttpResponse =
+    download(sink).await()

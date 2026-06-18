@@ -64,6 +64,7 @@ def test_projects(root: Path) -> list[Path]:
         tests_root / "Zlink.Framework.UnitTests" / "Zlink.Framework.UnitTests.csproj",
         tests_root / "Zlink.Framework.ContractTests" / "Zlink.Framework.ContractTests.csproj",
         tests_root / "Systems.Zlink.Stream.Connector.Tests" / "Systems.Zlink.Stream.Connector.Tests.csproj",
+        tests_root / "Zlink.HttpClient.UnitTests" / "Zlink.HttpClient.UnitTests.csproj",
     ]
 
 

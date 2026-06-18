@@ -59,6 +59,7 @@ if (useLocalBindings) {
 
 include(
     "zlink-framework-core",
+    "zlink-http-client",
     "zlink-framework-spring-boot-starter",
     "zlink-stream-connector",
     "zlink-stream-connector-codecs",
@@ -66,5 +67,6 @@ include(
     "zlink-stream-connector-msgpack",
     "zlink-stream-connector-protobuf",
     "zlink-framework-kotlin",
+    "zlink-http-client-kotlin",
     "zlink-framework-testkit",
 )

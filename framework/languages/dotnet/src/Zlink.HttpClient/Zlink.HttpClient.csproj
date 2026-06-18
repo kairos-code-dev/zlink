@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
+    <AssemblyName>Zlink.HttpClient</AssemblyName>
+    <RootNamespace>Zlink.HttpClient</RootNamespace>
+    <Description>ZLink-style fluent HTTP client wrapping System.Net.Http for the ZLink framework.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Zlink.Framework/Zlink.Framework.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Zlink.HttpClient.UnitTests" />
+  </ItemGroup>
+</Project>

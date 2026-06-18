@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Lifecycle And Failure Semantics](./lifecycle-and-failure-semantics.ko.md) | [다음: ZLink Framework .NET Implementation Scope And Non-Goals](./implementation-scope-and-nongoals.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [.NET 묶음](../README.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md) | [use case validation](../../../../doc/spec/usecase-validation.ko.md)
 

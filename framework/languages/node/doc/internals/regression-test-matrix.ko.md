@@ -302,7 +302,7 @@ backend gate 와 별도로 유지한다.
 ## 8.1 Sample / Guide / Cross-Language Release 항목
 
 > Phase 9 의 사용성·샘플 축은
-> [sample-implementation-plan](../sample-implementation-plan.ko.md)이 소유한다.
+> [정본 샘플](../README.ko.md)이 소유한다.
 > 아래 항목은 release gate 에서 반드시 실행한다.
 
 | 항목 | 계층 | 통과 기준 |
@@ -367,8 +367,6 @@ dotnet `aspnet-core-*` 문서는 node 의 `nestjs-*` 대응 문서로 매핑한�
 - `channel-messaging-samples.ko.md`
 - `spot-samples.ko.md`
 - `stream-samples.ko.md`
-- `sample-implementation-plan.ko.md`
-- `IMPLEMENTATION-PLAN.ko.md`
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^regression]: regression(회귀) 은 이전 버전에서 잘 동작하던 기능이 새 변경 때문에 다시 깨지는 현상을 가리킨다. regression test 는 그런 일을 막기 위해 항상 돌리는 테스트 묶음이다.

@@ -4,7 +4,7 @@
 
 [스펙 목차](./README.ko.md)
 
-[문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/README.ko.md) | [Node.js](../../languages/node/doc/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
+[문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/README.ko.md) | [Node.js](../../languages/node/doc/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
 
 # ZLink Framework API
 
@@ -62,25 +62,43 @@
 - 공용 outbound client를 DI로 주입한다.
 - 요청 메서드는 async 중심으로 제공한다.
 - codec, timeout, target channel을 설정할 수 있다.
-- outbound 호출의 payload 인자는 **업무 객체**다. codec(JSON/Protobuf/MessagePack)
-  선택은 호출부가 아니라 runtime 구성 단계(`codecs.addJson()`/`addProtobuf()`/
-  `addMessagePack()` 등)에서 끝난다. framework가 요청·응답 객체 타입을 보고 serializer를
-  찾아 byte payload로 직렬화하고, reply도 업무 객체로 복원한다.
-- 기본 제공 codec(JSON/Protobuf/MessagePack) 외에 **custom serializer**를 등록할 수
-  있다. runtime 구성 단계에서 codec registry에 사용자 serializer를 추가하면(아래 표),
-  framework가 high-level object messaging의 payload encode/decode에 그 serializer를
-  쓴다. serializer는 업무 객체 ↔ `Message`(byte payload) 변환만 담당하고, packet name
-  결정과 codec 선택 정책은 그대로 framework 내부에 남는다. Avro·Thrift 같은 외부 포맷을
-  이렇게 끼운다. framework당 custom serializer는 하나로 두며, 둘 이상 등록하면 payload
-  serializer가 모호해져 구성 오류로 막는다. client connector도 같은 능력을 별도 표면으로
-  연다(connector는 framework와 별개로 배포되는 패키지다).
+- outbound 호출의 payload 인자는 **업무 객체**다. codec 선택은 호출부가 아니라 runtime
+  구성 단계에서 끝난다. framework가 요청·응답 객체 타입을 보고 serializer를 찾아 byte
+  payload로 직렬화하고, reply도 업무 객체로 복원한다.
+- JSON은 framework 기본 codec이다. 사용자가 codec을 따로 등록하지 않으면 JSON serializer를
+  사용한다.
+- Protobuf와 MessagePack은 framework core의 기본 의존성이 아니다. 두 codec은 선택
+  framework codec extension package로 제공한다. application은 필요한 package만 설치하고
+  구성 단계에서 extension을 등록한다.
+- 사용자 정의 codec도 Protobuf/MessagePack과 같은 extension 계약을 사용한다. Avro, Thrift,
+  사내 binary format 같은 codec은 framework core를 바꾸지 않고 extension package로 추가한다.
+  serializer는 업무 객체와 byte payload 사이의 변환만 담당하고, packet name 결정과 codec
+  선택 정책은 framework 내부에 남는다.
+- framework, stream connector, HTTP client는 같은 codec extension을 공유한다. 대상별 builder는
+  다를 수 있지만 등록 모양은 `use(extension)`으로 맞춘다. codec을 바꿔도 handler method,
+  request method, reply type, payload DTO는 바꾸지 않는다.
 
-  | 언어 | framework 등록 | connector 등록 |
-  |------|----------------|----------------|
-  | .NET | `codecs.AddSerializer(contentType, IZLinkMessageSerializer)` | `ZlinkStreamConnectorOptions.PayloadCodec`(`IZlinkStreamPayloadCodec`) |
-  | Java/Kotlin | `codecs.addSerializer(contentType, ZLinkMessageSerializer)` | `ZLinkStreamConnectorOptions.typedCodec`(`ZLinkStreamCodec`) |
-  | Node | `codecs.addSerializer(contentType, serializer)` | `ZlinkStreamConnectorOptions.codec`(`ZlinkStreamPayloadCodec`) |
-  | C++ | `options.codecs().add_serializer<T>(serialize, deserialize)` | `codec_traits<T>` 특수화 |
+  | 대상 | codec 설정 방향 |
+  |------|----------------|
+  | framework | runtime 구성 단계에서 codec extension을 등록한다. JSON은 기본값이고, Protobuf/MessagePack/custom codec은 extension으로 추가한다. |
+  | stream connector | connector 전용 codec package를 두지 않는다. framework codec extension이 제공하는 connector adapter를 등록한다. |
+  | HTTP client | typed request/response body를 같은 codec extension으로 encode/decode한다. raw body API는 extension을 거치지 않는다. |
+
+- Protobuf와 MessagePack extension package는 framework가 작성된 언어에만 만든다. 각 package는
+  개별 배포가 가능해야 하며, 같은 codec extension이 framework, stream connector, HTTP client에
+  필요한 adapter를 함께 제공한다.
+
+  | 언어 | Protobuf extension 작성 위치 | MessagePack extension 작성 위치 |
+  |------|------------------------------|---------------------------------|
+  | .NET | `framework/languages/dotnet/src/Zlink.Framework.Codecs.Protobuf/` | `framework/languages/dotnet/src/Zlink.Framework.Codecs.MessagePack/` |
+  | Java/Kotlin | `framework/languages/java/zlink-framework-codec-protobuf/` | `framework/languages/java/zlink-framework-codec-msgpack/` |
+  | Node | `framework/languages/node/packages/framework-codec-protobuf/` | `framework/languages/node/packages/framework-codec-msgpack/` |
+  | C++ | `framework/languages/cpp/extensions/framework-codec-protobuf/` | `framework/languages/cpp/extensions/framework-codec-messagepack/` |
+  | Python, Go, Rust | 작성하지 않는다. | 작성하지 않는다. |
+
+- bindings는 codec extension을 소유하지 않는다. bindings는 raw `Message`, byte payload,
+  core protocol API만 제공한다. Python, Go, Rust는 bindings codec package 제거 뒤 대체
+  codec package를 제공하지 않고 raw `Message`/bytes API만 유지한다.
 - packet name은 기본적으로 객체 타입에서 자동 추론하고(builder override → payload 자체
   이름 정보 → 선언적 metadata(annotation/attribute/decorator/registry) → nominal type
   정보 순), 추론할 수 없을 때만 `.packetName(...)` override를 쓴다.

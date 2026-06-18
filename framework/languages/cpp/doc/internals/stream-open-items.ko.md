@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- C++ Stage Wrapper On SPOT](../spec/stage-wrapper-on-spot.ko.md) | [다음: C++ Stream Connector 가이드](../../connector/doc/guide/INDEX.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [C++ 묶음](../README.ko.md) | [STREAM](../spec/cpp-stream.ko.md)
 

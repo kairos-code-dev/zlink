@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [다음: Draft -- ZLink Framework C++ Channel Messaging Samples](./channel-messaging-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [Framework Adapter 정책](../../../../doc/spec/README.ko.md) | [구현 계획](./cpp-framework-implementation-plan.ko.md) | [POSD 기록](./cpp-framework-posd-refactoring-log.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/cpp-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](../spec/cpp-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [ActorGateway relay](../spec/actor-gateway-session-relay.ko.md) | [Stage wrapper](../spec/stage-wrapper-on-spot.ko.md) | [STREAM](../spec/cpp-stream.ko.md) | [STREAM decisions](./stream-open-items.ko.md) | [STREAM Connector 가이드](../../connector/doc/guide/INDEX.ko.md) | [HTTP Client](../../http-client/doc/spec/cpp-http-client.ko.md) | [HTTP Hosting](../spec/cpp-http-hosting.ko.md) | [Embedded HTTP Server](../spec/cpp-embedded-http-server.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Monitoring](../spec/cpp-monitoring.ko.md) | [Registry](../spec/cpp-registry.ko.md)
 

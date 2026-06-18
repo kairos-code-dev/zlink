@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework NestJS Monitoring](./nestjs-monitoring.ko.md) | [다음: ZLink Framework Node.js Sample Implementation Plan](../sample-implementation-plan.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework NestJS Monitoring](./nestjs-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -708,5 +708,5 @@ Registry 가 framework 보다 먼저 시작되어야 한다는 순서 또한 회
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework NestJS Monitoring](./nestjs-monitoring.ko.md) | [다음: ZLink Framework Node.js Sample Implementation Plan](../sample-implementation-plan.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework NestJS Monitoring](./nestjs-monitoring.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -90,8 +90,6 @@ test('node spec and internals documentation do not depend on legacy draft links'
 test('node implementation reference docs declare regression coverage sections', () => {
   const required = [
     path.join(docRoot, 'README.ko.md'),
-    path.join(docRoot, 'IMPLEMENTATION-PLAN.ko.md'),
-    path.join(docRoot, 'sample-implementation-plan.ko.md'),
     ...allMarkdownFiles(path.join(docRoot, 'spec')),
     ...allMarkdownFiles(path.join(docRoot, 'internals'))
   ];

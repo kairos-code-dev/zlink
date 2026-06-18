@@ -4,7 +4,7 @@
 
 [스펙 목차](./README.ko.md)
 
-[문서 묶음](./README.ko.md) | [Actor 모델](./actor-model.ko.md) | [Session Gateway 보관본](./archive/session-gateway.ko.md) | [framework API](./framework-api.ko.md) | [.NET Session Actor Dispatch](../../languages/dotnet/doc/spec/session-actor-dispatch.ko.md)
+[문서 묶음](./README.ko.md) | [Actor 모델](./actor-model.ko.md) | [framework API](./framework-api.ko.md) | [.NET Session Actor Dispatch](../../languages/dotnet/doc/spec/session-actor-dispatch.ko.md)
 
 # Session Actor Dispatch Usability (Policy)
 

@@ -2,7 +2,7 @@
 [문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Channel Messaging Samples](./channel-messaging-samples.ko.md) | [다음: ZLink Framework .NET STREAM Samples](./stream-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../../doc/spec/README.ko.md)
 
 [.NET 묶음](../../README.ko.md) | [인터페이스](../../spec/handler-interfaces.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Stage wrapper](../../spec/stage-wrapper-on-spot.ko.md) | [channel](../../spec/aspnet-core-channel-messaging.ko.md)
 

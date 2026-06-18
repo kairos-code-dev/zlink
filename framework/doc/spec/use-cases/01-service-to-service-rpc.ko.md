@@ -27,7 +27,8 @@
 - 서버 쪽에서는 프레임워크의 handler 등록 방식으로 요청을 받는다.
 - 클라이언트 쪽에서는 DI로 주입된 client 또는 proxy를 통해 요청을 보낸다.
 - 요청 하나마다 header, payload, timeout, metadata를 다룰 수 있다.
-- payload는 `protobuf` 또는 `json`처럼 codec에 따라 직렬화된다.
+- payload는 codec에 따라 byte payload로 직렬화된다. JSON은 기본값이고, Protobuf나
+  MessagePack 같은 binary codec은 framework codec extension으로 추가한다.
 - 대상 서버 주소를 직접 적지 않고, channel 이름 기준으로 보낼 수 있다.
 
 즉 사용자는 "몇 번 포트의 어느 peer에게 connect할까"보다
@@ -48,7 +49,8 @@ location-transparent 호출이 가능해야 한다.
 - channel별 `rid` 집합 관리
 - timeout, correlation, deadline 전달
 - 공통 에러 모델
-- codec 교체
+- codec 교체. codec을 바꿔도 handler와 client 호출 모양은 유지하고, 구성 단계에서
+  framework codec extension을 등록한다.
 - 프레임워크 DI 통합
 
 ## 4. 기대하는 처리 흐름

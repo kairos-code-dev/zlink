@@ -35,4 +35,4 @@ client, Node stream connector, dotnet stream connector 경로를 검증한다.
 
 ## 회귀 테스트
 
-필수 경로는 `sample-implementation-plan.ko.md` 와 release gate 에서 관리한다.
+필수 경로는 release gate 와 정본 샘플(`guide/samples/`)에서 관리한다.

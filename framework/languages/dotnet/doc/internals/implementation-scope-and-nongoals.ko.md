@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Regression Test Matrix](./regression-test-matrix.ko.md) | [다음: ZLink Framework .NET Backend Dependency Policy](./backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [.NET 묶음](../README.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md) | [Backend Policy](./backend-dependency-policy.ko.md)
 

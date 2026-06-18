@@ -4,7 +4,7 @@
 
 [스펙 목차](../README.ko.md)
 
-[Node.js 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [샘플 계획](../sample-implementation-plan.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [channel](./nestjs-channel-messaging.ko.md) | [STREAM](./nestjs-stream.ko.md)
+[Node.js 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [channel](./nestjs-channel-messaging.ko.md) | [STREAM](./nestjs-stream.ko.md)
 
 # ZLink Framework NestJS SPOT Integration
 
@@ -58,7 +58,7 @@ Framework` 가 이 개념을 새로 만들거나 없애려는 것이 아니다. 
 노드와도 그대로 통신한다.
 
 등록 코드부터 handler, channel send / request, topic publish 까지 한 흐름으로
-보는 샘플은 [sample-implementation-plan.ko.md](../sample-implementation-plan.ko.md) 에 모아 두었다. 또한
+보는 샘플은 [정본 샘플](../README.ko.md) 에 모아 두었다. 또한
 `playhouse` 의 `Stage` 같은 상위 모델을 `SPOT` 위에 다시 감쌀 때 필요한 추가
 조건은 [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) 에서 다룬다.
 

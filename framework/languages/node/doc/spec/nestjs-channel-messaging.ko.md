@@ -4,7 +4,7 @@
 
 [스펙 목차](../README.ko.md)
 
-[Node.js 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [샘플 계획](../sample-implementation-plan.ko.md) | [SPOT](./nestjs-spot.ko.md) | [STREAM](./nestjs-stream.ko.md) | [Registry](./nestjs-registry.ko.md)
+[Node.js 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [SPOT](./nestjs-spot.ko.md) | [STREAM](./nestjs-stream.ko.md) | [Registry](./nestjs-registry.ko.md)
 
 # ZLink Framework NestJS Channel Messaging
 
@@ -37,7 +37,7 @@
 `ZLinkModule.forRoot(...)`, `ZLinkChannelClient`, handler 등록 정도가 그 표면이다.
 
 등록부터 handler, HTTP endpoint, outbound 호출까지 흐름을 한 번에 보고 싶다면,
-[sample-implementation-plan.ko.md](../sample-implementation-plan.ko.md) 를 참고한다.
+[정본 샘플](../README.ko.md) 를 참고한다.
 
 ## 2. 기반이 되는 Node 바인딩
 

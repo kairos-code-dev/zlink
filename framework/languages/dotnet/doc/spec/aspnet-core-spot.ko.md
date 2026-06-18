@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework ASP.NET Core Channel Messaging](./aspnet-core-channel-messaging.ko.md) | [다음: Stage Wrapper On SPOT](./stage-wrapper-on-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [.NET 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [SPOT 샘플](../guide/samples/spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [STREAM](./aspnet-core-stream.ko.md)
 

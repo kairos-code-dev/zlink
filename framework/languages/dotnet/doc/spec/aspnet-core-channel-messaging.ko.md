@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Interface Catalog](./handler-interfaces.ko.md) | [다음: ZLink Framework ASP.NET Core SPOT Integration](./aspnet-core-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [.NET 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel 샘플](../guide/samples/channel-messaging-samples.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [Registry](./aspnet-core-registry.ko.md)
 

@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: 기능 맵 — 무엇을, 얼마나 쉽게, 언제](../guide/10-feature-map.ko.md) | [다음: ZLink Framework ASP.NET Core Channel Messaging](./aspnet-core-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [.NET 묶음](../README.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [channel 샘플](../guide/samples/channel-messaging-samples.ko.md) | [SPOT](./aspnet-core-spot.ko.md) | [SPOT 샘플](../guide/samples/spot-samples.ko.md) | [STREAM](./aspnet-core-stream.ko.md) | [STREAM 샘플](../guide/samples/stream-samples.ko.md) | [Monitoring](./aspnet-core-monitoring.ko.md) | [Registry](./aspnet-core-registry.ko.md)
 

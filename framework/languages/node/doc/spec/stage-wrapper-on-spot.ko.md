@@ -4,7 +4,7 @@
 
 [스펙 목차](../README.ko.md)
 
-[Node.js 묶음](../README.ko.md) | [SPOT](./nestjs-spot.ko.md) | [샘플 계획](../sample-implementation-plan.ko.md) | [인터페이스](./handler-interfaces.ko.md)
+[Node.js 묶음](../README.ko.md) | [SPOT](./nestjs-spot.ko.md) | [인터페이스](./handler-interfaces.ko.md)
 
 # Stage Wrapper On SPOT
 

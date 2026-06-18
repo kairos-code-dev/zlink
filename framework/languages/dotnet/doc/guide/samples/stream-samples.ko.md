@@ -2,7 +2,7 @@
 [문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink Framework .NET SPOT Samples](./spot-samples.ko.md) | [다음: ZLink Stream Connector For .NET](./streaming-client.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../../doc/spec/README.ko.md)
 
 [.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [인터페이스](../../spec/handler-interfaces.ko.md)
 

@@ -13,8 +13,7 @@
 - **언어별 문서** (`../languages/<lang>/doc/`) — 공통 스펙을 각 언어와 대표
   프레임워크 API로 구체화한다. 공통 의미를 재정의하지 않는다.
 
-`.NET`, `C++`, `Java/Kotlin`, `Node.js`는 정식 문서로 승격되었고,
-그 외 언어는 아직 초안(`draft/`) 단계다.
+`.NET`, `C++`, `Java/Kotlin`, `Node.js` 네 언어가 정식 문서로 제공된다.
 
 ## 1. 읽는 순서
 
@@ -40,9 +39,6 @@
 | [공통 샘플 시나리오](./spec/sample/README.ko.md) | 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall, GameQuest)의 언어 중립 샘플 기준 |
 | [Use case 목록](./spec/use-cases/README.ko.md) | use case 문서 전체 목록과 관리 규칙 |
 | [Use case 검증](./spec/usecase-validation.ko.md) | 현재 스펙이 use case를 얼마나 설명하는지 점검 |
-| [Session Gateway 보관본](./spec/archive/session-gateway.ko.md) | 이전 초안의 제거 이력과 배경 (참고용) |
-
-공통 스펙 영역의 미확정 초안은 [spec/draft/](./spec/draft/README.ko.md)에 둔다.
 
 언어 중립 샘플 설계는 [spec/sample/](./spec/sample/README.ko.md)에 둔다. 정본 6종은
 모든 framework 언어(dotnet/java/kotlin/node/cpp)가 같은 역할 분리·메시지 이름·smoke
@@ -54,8 +50,6 @@ Play 서버만으로 구성한 직접 play 연결 구조를 맡는다.
 | 문서 | 다루는 범위 |
 |------|-------------|
 | [Framework codec extension 통합 계획](./plan/framework-codec-extension-unification-plan.ko.md) | JSON 기본값, Protobuf/MessagePack 선택 extension, custom codec, connector/HTTP client 적용 구조를 정리하는 순서 |
-| [HTTP Client 다언어 이식 계획](./plan/http-client-multilang-port-plan.ko.md) | dotnet HTTP client를 java/kotlin/node로 이식하는 순서와 완료 기준 |
-| [HTTP Client parity 매트릭스](./plan/http-client-parity-matrix.ko.md) | 언어별 HTTP client 기능 parity 점검표 |
 
 ## 4. 언어별 문서
 
@@ -64,21 +58,16 @@ Play 서버만으로 구성한 직접 play 연결 구조를 맡는다.
 | `.NET` | 정식 | [languages/dotnet/doc/README.ko.md](../languages/dotnet/doc/README.ko.md) |
 | `Java/Kotlin` | 정식 | [languages/java/doc/README.ko.md](../languages/java/doc/README.ko.md) |
 | `Node.js` | 정식 | [languages/node/doc/README.ko.md](../languages/node/doc/README.ko.md) |
-| `Python` | 초안 | [languages/python/doc/draft/README.ko.md](../languages/python/doc/draft/README.ko.md) |
 | `C++` | 정식 | [languages/cpp/doc/README.ko.md](../languages/cpp/doc/README.ko.md) |
-| `Go` | 초안 | [languages/go/doc/draft/README.ko.md](../languages/go/doc/draft/README.ko.md) |
-| `Rust` | 초안 | [languages/rust/doc/draft/README.ko.md](../languages/rust/doc/draft/README.ko.md) |
 
-각 언어 문서는 `doc/{guide,spec,internals,draft}`로 나뉜다. `guide`는 샘플과
-튜토리얼, `spec`은 그 언어의 공개 계약, `internals`는 구현·검증 기준,
-`draft`는 아직 닫히지 않은 항목이다.
+각 언어 문서는 `doc/{guide,spec,internals}`로 나뉜다. `guide`는 샘플과
+튜토리얼, `spec`은 그 언어의 공개 계약, `internals`는 구현·검증 기준이다.
 
 ## 5. 유지 규칙
 
 - 공통 의미를 바꿀 때는 `spec/`을 먼저 고치고, 언어 문서는 링크로 연결한다.
 - 언어별 문서는 공통 의미를 해당 언어의 시그니처와 샘플로만 구체화한다.
 - 새 문서를 추가하면 이 목록과 해당 디렉토리 `README.ko.md`를 함께 갱신한다.
-- 아직 닫히지 않은 항목은 정식 문서에 섞지 않고 해당 `draft/`로 분리한다.
 - 구현 계획과 worklog는 [plan/](./plan)에 둔다.
 
 ---

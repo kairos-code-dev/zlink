@@ -38,6 +38,9 @@ game 흐름을 수동 endpoint 연결로 보여 준다.
 
 - payload codec은 JSON을 기본으로 사용한다. 샘플끼리 payload를 비교하기 쉽고, event
   sourcing과 projection state를 사람이 읽기 쉬워야 하기 때문이다.
+- Protobuf나 MessagePack이 필요한 샘플은 framework codec extension package를 설치하고
+  구성 단계에서 extension을 등록한다. 샘플의 DTO, handler, client 호출 모양은 codec 때문에
+  바꾸지 않는다.
 - 서버 간 연결은 Registry/Discovery 기반 자동 연결로 구성한다. 샘플 코드가 endpoint
   연결 순서나 route warmup을 직접 관리하지 않게 하기 위해서다.
 - framework가 handler를 스캔하고 등록할 수 있는 언어에서는 모든 handler를 자동 등록한다.
@@ -87,15 +90,17 @@ game 흐름을 수동 endpoint 연결로 보여 준다.
   사용해야 한다.
 - codec별 편의 wrapper나 샘플 전용 helper로 message 객체의 계약을 감추면 안 된다.
   JSON, MessagePack, Protobuf 중 어떤 codec을 쓰더라도 샘플 코드는 connector와
-  message 객체가 제공하는 public interface를 직접 사용해야 한다.
+  message 객체가 제공하는 public interface를 직접 사용해야 한다. connector 전용 codec
+  package나 bindings codec package를 샘플의 표준 사용법으로 안내하지 않는다.
 - inline object literal은 한 함수 안에서만 쓰는 local state, 테스트 보조 값, 파싱 결과처럼
   wire 계약이 아닌 값에만 사용한다. 샘플은 짧은 데모보다 여러 언어에서 같은 메시지
   흐름을 비교할 수 있는 가시성을 우선한다.
 - Bingo와 TicTacToe는 같은 기능을 반복해서 보여 주지 않는다. Bingo는 Registry/Discovery를
   이용한 분리 gateway 구조를, TicTacToe는 수동 endpoint를 쓰는 직접 play 연결 구조를 맡는다.
-- codec 선택은 샘플의 역할을 방해하지 않도록 단순하게 둔다. Bingo는 cross-language
+- codec 선택은 샘플의 역할을 방해하지 않도록 단순하게 둔다. Bingo는 여러 언어가 공유하는
   schema가 분명한 Protobuf payload를 맡고, TicTacToe와 나머지 샘플은 읽고 비교하기 쉬운
-  JSON payload를 기본으로 둔다.
+  JSON payload를 기본으로 둔다. Bingo의 Protobuf 사용도 업무 API 차이가 아니라 dependency와
+  framework codec extension 등록 차이로만 드러나야 한다.
 - 식별자는 도메인 의미가 드러나게 이름 붙인다. 예를 들어 TicTacToe에서 client가 받는
   값은 임의의 core routing id hex 문자열이 아니라 명시적인 `RoomId`이며, room Spot
   routing id는 각 언어의 routing id 생성 API로 `RoomId` 문자열에서 만든다.

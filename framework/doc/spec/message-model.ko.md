@@ -4,7 +4,7 @@
 
 [스펙 목차](./README.ko.md)
 
-[문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/README.ko.md) | [Node.js](../../languages/node/doc/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
+[문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/README.ko.md) | [Node.js](../../languages/node/doc/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
 
 # ZLink Framework Message Model
 
@@ -135,21 +135,24 @@ timeout이 난 경우, worker 함수가 예외를 낸 경우는 같은 `request_
 
 ## 4. payload codec 방향
 
-`payload`는 특정 포맷으로 고정하지 않는다.
-우선 고려하는 codec은 아래와 같다.
+`payload`는 특정 포맷으로 고정하지 않는다. framework의 기본 codec은 JSON이다.
+Protobuf와 MessagePack은 framework core에 직접 넣지 않고 선택 extension package로 제공한다.
+사용자가 만든 codec도 같은 extension 계약을 사용한다.
 
 | codec | 설명 |
 |-------|------|
-| `protobuf` | typed contract에 적합 |
-| `json` | 빠른 개발과 디버깅에 적합 |
-| `messagepack` | compact binary payload가 필요할 때 적합 |
+| `json` | framework 기본값이다. 빠른 개발과 디버깅에 적합하다. |
+| `protobuf` | schema가 분명한 typed contract에 적합하다. 선택 extension package로 추가한다. |
+| `messagepack` | compact binary payload가 필요할 때 적합하다. 선택 extension package로 추가한다. |
+| custom codec | Avro, Thrift, 사내 binary format처럼 사용자가 별도 package로 추가한다. |
 
 이 문서의 기본 예시는 주로 `protobuf`와 `json`을 기준으로 설명한다.
-다만 framework adapter는 transport 본체에 codec 구현을 직접 섞지 않고,
-binding 또는 framework 위에 얹는 별도 codec extension/provider 계층으로
-연결하는 방향을 기본으로 본다.
+다만 framework adapter는 transport 본체에 codec 구현을 직접 섞지 않고, framework codec
+extension 계층으로 연결하는 방향을 기본으로 본다.
 
-나중에 필요하면 다른 codec을 같은 방식으로 추가할 수 있어야 한다.
+같은 extension은 framework, stream connector, HTTP client에서 공유한다. connector 전용 codec
+package나 bindings codec package를 따로 두지 않는다. bindings는 raw `Message`, byte payload,
+core protocol API만 제공한다.
 
 `ZLink Framework`는 "payload가 어떤 codec인가"를 handler와 client가 알 수 있게
 해 주되, core transport가 그 codec 내용을 직접 이해하려고 하지는 않는 방향이

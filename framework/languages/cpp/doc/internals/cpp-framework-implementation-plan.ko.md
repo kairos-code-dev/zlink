@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework For C++](../README.ko.md) | [다음: Draft -- ZLink Framework C++ Policy](./cpp-framework-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [C++ 묶음](../README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [HTTP Client](../../http-client/doc/spec/cpp-http-client.ko.md)
 

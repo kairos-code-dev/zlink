@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ Interface Design](../spec/cpp-framework-interfaces.ko.md) | [다음: Spec -- ZLink Framework C++ Monitoring](../spec/cpp-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [C++ 묶음](../README.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/cpp-channel-messaging.ko.md) | [SPOT](../spec/cpp-spot.ko.md) | [STREAM](../spec/cpp-stream.ko.md) | [HTTP Client](../../http-client/doc/README.ko.md) | [HTTP Hosting](../spec/cpp-http-hosting.ko.md)
 

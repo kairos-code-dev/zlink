@@ -4,7 +4,7 @@
 
 [스펙 목차](../README.ko.md)
 
-[Node.js 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [샘플 계획](../sample-implementation-plan.ko.md) | [channel](./nestjs-channel-messaging.ko.md) | [SPOT](./nestjs-spot.ko.md)
+[Node.js 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./nestjs-channel-messaging.ko.md) | [SPOT](./nestjs-spot.ko.md)
 
 > 이 문서는 **이식 기준 스펙**이다. `framework/languages/dotnet` 의 STREAM 정식
 > 계약([aspnet-core-stream.ko.md](../../../dotnet/doc/spec/aspnet-core-stream.ko.md))

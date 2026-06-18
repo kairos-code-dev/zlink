@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: GameQuest Sample](../guide/samples/gamequest-sample.ko.md) | [다음: ZLink Framework .NET DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [.NET 묶음](../README.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/aspnet-core-channel-messaging.ko.md) | [SPOT](../spec/aspnet-core-spot.ko.md) | [STREAM](../spec/aspnet-core-stream.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md)
 

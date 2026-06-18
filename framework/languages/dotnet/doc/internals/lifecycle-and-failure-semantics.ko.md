@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md) | [다음: ZLink Framework .NET Regression Test Matrix](./regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [.NET 묶음](../README.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md) | [Monitoring](../spec/aspnet-core-monitoring.ko.md) | [Registry](../spec/aspnet-core-registry.ko.md)
 

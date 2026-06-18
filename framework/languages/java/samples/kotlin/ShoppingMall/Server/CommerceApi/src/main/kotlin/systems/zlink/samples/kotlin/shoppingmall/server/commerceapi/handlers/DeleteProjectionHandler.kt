@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.handlers
 
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.DeleteProjectionReq
@@ -10,8 +10,8 @@ import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.DeleteProjecti
 @ZLinkHandlerGroup("commerce")
 class DeleteProjectionHandler(
     private val store: CommerceStore,
-) : ZLinkRequestHandler<DeleteProjectionReq, DeleteProjectionRes> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<DeleteProjectionReq, DeleteProjectionRes> {
+    override suspend fun handle(
         request: DeleteProjectionReq,
         context: ZLinkRequestContext,
     ): DeleteProjectionRes = DeleteProjectionRes(store.deleteReadModel(request.orderId))

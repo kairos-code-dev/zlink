@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.dispatchapi.handlers
 
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.EvidenceStore
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatuses
@@ -11,8 +11,8 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ServerAsse
 @ZLinkHandlerGroup("api")
 class ServerAssertionHandler(
     private val evidence: EvidenceStore,
-) : ZLinkRequestHandler<ServerAssertionReq, ServerAssertionRes> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<ServerAssertionReq, ServerAssertionRes> {
+    override suspend fun handle(
         request: ServerAssertionReq,
         context: ZLinkRequestContext,
     ): ServerAssertionRes {

@@ -2,12 +2,9 @@ package systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.a
 
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
-import systems.zlink.framework.kotlin.ZLinkCoroutineActorFactory
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
+import systems.zlink.framework.kotlin.ZLinkSuspendingActorFactory
 
-class SupportUserActorFactory(
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineActorFactory(coroutines) {
+class SupportUserActorFactory() : ZLinkSuspendingActorFactory() {
     override suspend fun createActor(actorId: String, context: ZLinkActorContext): ZLinkActor =
         SupportUserActor(actorId, context)
 }

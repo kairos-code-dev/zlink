@@ -5,7 +5,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
@@ -22,9 +21,6 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySt
     scanBasePackageClasses = [SessionApplication::class],
 )
 class SessionApplication {
-    @Bean
-    fun zlinkCoroutineRuntime(): ZLinkCoroutineRuntime = ZLinkCoroutineRuntime()
-
     @Bean
     fun customerSessionDirectory(): CustomerSessionDirectory = CustomerSessionDirectory()
 

@@ -3,8 +3,7 @@ package systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.s
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.kotlin.ZLinkCoroutineEntrySpotActorRequestHandler
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
@@ -18,15 +17,13 @@ import systems.zlink.samples.kotlin.supportchat.shared.contracts.OpenConversatio
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.OpenConversationReq
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.OpenConversationRes
 
-class OpenConversationActorHandler(
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineEntrySpotActorRequestHandler<
+class OpenConversationActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
     SupportEntrySpot,
     SupportUserActor,
     OpenConversationReq,
     OpenConversationRes,
-    >(coroutines) {
-    override suspend fun handleSuspending(
+    > {
+    override suspend fun handle(
         entrySpot: SupportEntrySpot,
         actor: SupportUserActor,
         context: ZLinkSpotActorRequestContext,

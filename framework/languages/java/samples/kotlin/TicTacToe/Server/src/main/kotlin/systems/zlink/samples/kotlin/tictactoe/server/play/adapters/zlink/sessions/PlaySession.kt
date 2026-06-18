@@ -2,8 +2,7 @@ package systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.sessio
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
-import systems.zlink.framework.kotlin.ZLinkCoroutineSession
+import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
@@ -11,9 +10,7 @@ import systems.zlink.framework.streams.ZLinkStreamHeader
 
 class PlaySession(
     private val context: ZLinkSessionContext,
-    private val handlers: ZLinkSessionPacketDispatcher<ZLinkSessionContext>,
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineSession(coroutines) {
+    private val handlers: ZLinkSessionPacketDispatcher<ZLinkSessionContext>,) : ZLinkSuspendingSession() {
     override fun context(): ZLinkSessionContext = context
 
     override suspend fun onDisconnectedSuspending() {

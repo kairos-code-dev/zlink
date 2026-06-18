@@ -2,12 +2,9 @@ package systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.actors
 
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
-import systems.zlink.framework.kotlin.ZLinkCoroutineActorFactory
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
+import systems.zlink.framework.kotlin.ZLinkSuspendingActorFactory
 
-class PlayActorFactory(
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineActorFactory(coroutines) {
+class PlayActorFactory() : ZLinkSuspendingActorFactory() {
     override suspend fun createActor(
         actorId: String,
         context: ZLinkActorContext,

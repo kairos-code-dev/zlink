@@ -6,9 +6,8 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.channels.ZLinkFanoutClient
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.EvidenceStore
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
@@ -26,12 +25,11 @@ class DeliveryStatusChangedHandler(
     private val evidence: EvidenceStore,
     private val fanout: ZLinkFanoutClient,
     private val json: ObjectMapper,
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkRequestHandler<DeliveryStatusChanged, DeliveryStatusAck> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<DeliveryStatusChanged, DeliveryStatusAck> {
+    override suspend fun handle(
         request: DeliveryStatusChanged,
         context: ZLinkRequestContext,
-    ) = coroutines.blocking {
+    ) = run {
         val createPart = Message.from(json.writeValueAsBytes(DeliverySpotCreate(request.deliveryId)))
         try {
             spots.getOrCreate(

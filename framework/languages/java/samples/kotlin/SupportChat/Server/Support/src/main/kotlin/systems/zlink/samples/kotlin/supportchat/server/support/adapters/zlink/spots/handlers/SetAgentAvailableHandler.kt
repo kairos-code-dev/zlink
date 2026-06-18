@@ -1,8 +1,7 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.spots.handlers
 
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.kotlin.ZLinkCoroutineEntrySpotActorRequestHandler
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.actors.SupportActorDirectory
 import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.actors.SupportUserActor
@@ -14,15 +13,13 @@ import systems.zlink.samples.kotlin.supportchat.shared.contracts.SetAgentAvailab
 
 class SetAgentAvailableHandler(
     private val availability: AgentAvailabilityDirectory,
-    private val actors: SupportActorDirectory,
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineEntrySpotActorRequestHandler<
+    private val actors: SupportActorDirectory,) : ZLinkSuspendingEntrySpotActorRequestHandler<
     SupportEntrySpot,
     SupportUserActor,
     SetAgentAvailableReq,
     SetAgentAvailableRes,
-    >(coroutines) {
-    override suspend fun handleSuspending(
+    > {
+    override suspend fun handle(
         entrySpot: SupportEntrySpot,
         actor: SupportUserActor,
         context: ZLinkSpotActorRequestContext,

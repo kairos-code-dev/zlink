@@ -5,9 +5,8 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
@@ -18,12 +17,11 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCust
 @ZLinkHandlerGroup("tracking")
 class EnsureCustomerActorHandler(
     private val actors: ZLinkActorManager,
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkRequestHandler<EnsureCustomerActor, CustomerActorEnsured> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<EnsureCustomerActor, CustomerActorEnsured> {
+    override suspend fun handle(
         request: EnsureCustomerActor,
         context: ZLinkRequestContext,
-    ) = coroutines.blocking {
+    ) = run {
         val actor = actors.getOrCreate(request.customerId, SampleNames.CustomerActorType).await()
         val joined = actor.context()
             .joinEntrySpot(RoutingId.from(SampleTopology.TrackingSpotNodeRid), Message.from(ByteArray(0)))

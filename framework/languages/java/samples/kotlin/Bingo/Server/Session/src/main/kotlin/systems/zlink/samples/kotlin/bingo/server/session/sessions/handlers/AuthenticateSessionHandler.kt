@@ -4,8 +4,7 @@ import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
-import systems.zlink.framework.kotlin.ZLinkCoroutineTypedSessionPacketHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkStreamHeader
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
@@ -19,13 +18,12 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
 
 class AuthenticateSessionHandler(
     private val channels: ZLinkClient,
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq>(
-    coroutines,
-    "AuthenticateReq",
-    AuthenticateReq::class.java,
-) {
-    override suspend fun handleSuspending(
+) : ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq> {
+    override fun packetName(): String = "AuthenticateReq"
+
+    override fun messageType(): Class<AuthenticateReq> = AuthenticateReq::class.java
+
+    override suspend fun handle(
         context: ZLinkSessionContext,
         header: ZLinkStreamHeader,
         request: AuthenticateReq,

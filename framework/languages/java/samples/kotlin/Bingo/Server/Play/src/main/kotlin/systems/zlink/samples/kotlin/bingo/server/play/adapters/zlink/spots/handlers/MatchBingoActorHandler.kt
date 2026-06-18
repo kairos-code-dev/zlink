@@ -3,8 +3,7 @@ package systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.hand
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.kotlin.ZLinkCoroutineEntrySpotActorRequestHandler
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
+import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.BingoEntrySpot
@@ -17,15 +16,13 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoApiRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoRes
 
-class MatchBingoActorHandler(
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineEntrySpotActorRequestHandler<
+class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
     BingoEntrySpot,
     PlayerActor,
     MatchBingoReq,
     MatchBingoRes,
-    >(coroutines) {
-    override suspend fun handleSuspending(
+    > {
+    override suspend fun handle(
         entrySpot: BingoEntrySpot,
         actor: PlayerActor,
         context: ZLinkSpotActorRequestContext,

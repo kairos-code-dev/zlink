@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.handlers
 
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.CreatePendingMappingReq
@@ -14,8 +14,8 @@ import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.CreatePendingM
 @ZLinkHandlerGroup("commerce")
 class CreatePendingMappingHandler(
     private val store: CommerceStore,
-) : ZLinkRequestHandler<CreatePendingMappingReq, CreatePendingMappingRes> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<CreatePendingMappingReq, CreatePendingMappingRes> {
+    override suspend fun handle(
         request: CreatePendingMappingReq,
         context: ZLinkRequestContext,
     ): CreatePendingMappingRes {

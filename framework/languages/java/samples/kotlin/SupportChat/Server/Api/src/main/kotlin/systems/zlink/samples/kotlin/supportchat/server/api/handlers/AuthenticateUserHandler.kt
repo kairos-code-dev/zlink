@@ -1,21 +1,19 @@
 package systems.zlink.samples.kotlin.supportchat.server.api.handlers
 
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SupportChatRoles
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.AuthenticateUserReq
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.AuthenticateUserRes
 
 @ZLinkHandlerGroup("api")
 class AuthenticateUserHandler(
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkRequestHandler<AuthenticateUserReq, AuthenticateUserRes> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<AuthenticateUserReq, AuthenticateUserRes> {
+    override suspend fun handle(
         request: AuthenticateUserReq,
         context: ZLinkRequestContext,
-    ) = coroutines.blocking {
+    ) = run {
         when (request.accessToken) {
             "customer-1" -> accepted("customer-1", "Customer 1", SupportChatRoles.Customer)
             "customer-2" -> accepted("customer-2", "Customer 2", SupportChatRoles.Customer)

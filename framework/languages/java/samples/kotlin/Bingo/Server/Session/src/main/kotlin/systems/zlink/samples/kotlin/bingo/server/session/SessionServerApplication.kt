@@ -5,7 +5,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
@@ -22,10 +21,6 @@ import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
     scanBasePackageClasses = [SessionServerApplication::class],
 )
 class SessionServerApplication {
-    @Bean
-    fun zlinkCoroutineRuntime(): ZLinkCoroutineRuntime =
-        ZLinkCoroutineRuntime()
-
     @Bean
     fun sessionFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->

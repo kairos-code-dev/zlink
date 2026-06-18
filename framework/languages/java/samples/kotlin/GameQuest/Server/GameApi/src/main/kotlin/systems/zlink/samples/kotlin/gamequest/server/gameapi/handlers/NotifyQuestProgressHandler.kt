@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.gamequest.server.gameapi.handlers
 
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.gamequest.server.gameapi.session.GameQuestSessionRegistry
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.NotifyQuestProgressReq
@@ -11,7 +11,7 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.NotifyQuestProgre
 @ZLinkHandlerGroup("gameapi")
 class NotifyQuestProgressHandler(
     private val registry: GameQuestSessionRegistry,
-) : ZLinkRequestHandler<NotifyQuestProgressReq, NotifyQuestProgressRes> {
-    override fun handle(request: NotifyQuestProgressReq, context: ZLinkRequestContext): NotifyQuestProgressRes =
+) : ZLinkSuspendingRequestHandler<NotifyQuestProgressReq, NotifyQuestProgressRes> {
+    override suspend fun handle(request: NotifyQuestProgressReq, context: ZLinkRequestContext): NotifyQuestProgressRes =
         NotifyQuestProgressRes(registry.notify(request))
 }

@@ -3,9 +3,8 @@ package systems.zlink.samples.kotlin.supportchat.server.api.handlers
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.AllocateConversationReq
@@ -18,12 +17,11 @@ import systems.zlink.samples.kotlin.supportchat.shared.contracts.OpenConversatio
 @ZLinkHandlerGroup("api")
 class OpenConversationHandler(
     private val client: ZLinkClient,
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkRequestHandler<OpenConversationApiReq, OpenConversationApiRes> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<OpenConversationApiReq, OpenConversationApiRes> {
+    override suspend fun handle(
         request: OpenConversationApiReq,
         context: ZLinkRequestContext,
-    ) = coroutines.blocking {
+    ) = run {
         val allocated = client
             .requestToChannel(
                 SampleNames.SupportChannel,

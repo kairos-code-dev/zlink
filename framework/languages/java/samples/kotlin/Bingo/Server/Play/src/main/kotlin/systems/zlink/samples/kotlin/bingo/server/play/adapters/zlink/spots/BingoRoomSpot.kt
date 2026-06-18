@@ -6,8 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
-import systems.zlink.framework.kotlin.ZLinkCoroutineSpot
+import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -32,9 +31,7 @@ class BingoRoomSpot(
     private val context: ZLinkSpotContext,
     private val notifications: BingoNotificationPublisher,
     private val createdHandler: BingoRoomSpotCreatedHandler,
-    private val json: ObjectMapper,
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineSpot<PlayerActor>(coroutines) {
+    private val json: ObjectMapper,) : ZLinkSuspendingSpot<PlayerActor>() {
     private val players = mutableListOf<BingoRoomPlayer>()
     private val actors = mutableMapOf<String, PlayerActor>()
     private val drawDeck = ArrayDeque<Int>()

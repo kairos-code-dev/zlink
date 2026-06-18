@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.handlers
 
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore.StoreEvidence
@@ -15,8 +15,8 @@ import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.ServerAssertio
 @ZLinkHandlerGroup("commerce")
 class ServerAssertionHandler(
     private val store: CommerceStore,
-) : ZLinkRequestHandler<ServerAssertionReq, ServerAssertionRes> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<ServerAssertionReq, ServerAssertionRes> {
+    override suspend fun handle(
         request: ServerAssertionReq,
         context: ZLinkRequestContext,
     ): ServerAssertionRes {

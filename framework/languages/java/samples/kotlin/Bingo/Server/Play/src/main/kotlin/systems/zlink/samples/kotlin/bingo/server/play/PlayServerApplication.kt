@@ -9,7 +9,6 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -31,10 +30,6 @@ import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
     scanBasePackageClasses = [PlayServerApplication::class],
 )
 class PlayServerApplication {
-    @Bean
-    fun zlinkCoroutineRuntime(): ZLinkCoroutineRuntime =
-        ZLinkCoroutineRuntime()
-
     @Bean
     fun playFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->

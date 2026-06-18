@@ -6,9 +6,8 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
@@ -24,12 +23,11 @@ class SubscribeCustomerToDeliveryHandler(
     private val actors: ZLinkActorManager,
     private val spots: ZLinkSpotManager,
     private val json: ObjectMapper,
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkRequestHandler<SubscribeCustomerToDelivery, CustomerDeliverySubscribed> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<SubscribeCustomerToDelivery, CustomerDeliverySubscribed> {
+    override suspend fun handle(
         request: SubscribeCustomerToDelivery,
         context: ZLinkRequestContext,
-    ) = coroutines.blocking {
+    ) = run {
         val createPart = Message.from(json.writeValueAsBytes(DeliverySpotCreate(request.deliveryId)))
         try {
             spots.getOrCreate(

@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.gamequest.server.gameapi.handlers
 
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.gamequest.server.gameapi.contracts.DeleteProjectionReq
 import systems.zlink.samples.kotlin.gamequest.server.gameapi.contracts.DeleteProjectionRes
@@ -11,8 +11,8 @@ import systems.zlink.samples.kotlin.gamequest.server.gameapi.store.GameQuestStor
 @ZLinkHandlerGroup("gameapi")
 class DeleteProjectionHandler(
     private val store: GameQuestStore,
-) : ZLinkRequestHandler<DeleteProjectionReq, DeleteProjectionRes> {
-    override fun handle(request: DeleteProjectionReq, context: ZLinkRequestContext): DeleteProjectionRes {
+) : ZLinkSuspendingRequestHandler<DeleteProjectionReq, DeleteProjectionRes> {
+    override suspend fun handle(request: DeleteProjectionReq, context: ZLinkRequestContext): DeleteProjectionRes {
         store.deleteProjection(request.playerId, request.questId)
         return DeleteProjectionRes(true)
     }

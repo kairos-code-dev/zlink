@@ -5,7 +5,6 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore
@@ -18,9 +17,6 @@ import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleTopo
     scanBasePackageClasses = [CommerceApiApplication::class],
 )
 class CommerceApiApplication {
-    @Bean
-    fun zlinkCoroutineRuntime(): ZLinkCoroutineRuntime = ZLinkCoroutineRuntime()
-
     @Bean
     fun instanceOptions(arguments: ApplicationArguments): CommerceApiInstanceOptions =
         CommerceApiInstanceOptions.fromArgs(arguments.sourceArgs)

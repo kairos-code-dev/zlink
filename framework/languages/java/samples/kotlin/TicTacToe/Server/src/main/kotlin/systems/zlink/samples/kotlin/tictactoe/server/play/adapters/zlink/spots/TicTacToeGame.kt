@@ -6,8 +6,7 @@ import java.time.Instant
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
-import systems.zlink.framework.kotlin.ZLinkCoroutineSpot
+import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -26,9 +25,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoin
 class TicTacToeGame(
     private val context: ZLinkSpotContext,
     private val createdHandler: TicTacToeGameCreatedHandler,
-    private val json: ObjectMapper,
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineSpot<PlayActor>(coroutines) {
+    private val json: ObjectMapper,) : ZLinkSuspendingSpot<PlayActor>() {
     private val gameTickPeriod: Duration = Duration.ofSeconds(1)
     private val turnTimeout: Duration = Duration.ofSeconds(15)
     val roomId: String = context.spotRid().toString()

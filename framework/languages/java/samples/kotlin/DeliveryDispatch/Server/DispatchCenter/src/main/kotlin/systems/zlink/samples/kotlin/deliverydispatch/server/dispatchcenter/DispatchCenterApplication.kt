@@ -4,7 +4,6 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
@@ -16,9 +15,6 @@ import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.Sample
     scanBasePackageClasses = [DispatchCenterApplication::class],
 )
 class DispatchCenterApplication {
-    @Bean
-    fun zlinkCoroutineRuntime(): ZLinkCoroutineRuntime = ZLinkCoroutineRuntime()
-
     @Bean
     fun dispatchWorkQueue(): DispatchWorkQueue = DispatchWorkQueue()
 

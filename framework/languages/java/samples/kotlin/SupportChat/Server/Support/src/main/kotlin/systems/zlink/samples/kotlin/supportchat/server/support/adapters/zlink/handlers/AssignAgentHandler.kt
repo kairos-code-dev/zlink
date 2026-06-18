@@ -3,9 +3,8 @@ package systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.h
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.samples.kotlin.supportchat.server.configuration.ConversationStatuses
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.actors.SupportActorDirectory
@@ -19,14 +18,13 @@ import systems.zlink.samples.kotlin.supportchat.shared.contracts.JoinConversatio
 class AssignAgentHandler(
     private val assignment: AgentAssignmentService,
     private val actors: SupportActorDirectory,
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkRequestHandler<AssignAgentReq, AssignAgentRes> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<AssignAgentReq, AssignAgentRes> {
+    override suspend fun handle(
         request: AssignAgentReq,
         context: ZLinkRequestContext,
-    ) = coroutines.blocking {
+    ) = run {
         val assigned = assignment.assignNextAgent()
-            ?: return@blocking AssignAgentRes(
+            ?: return@run AssignAgentRes(
                 request.conversationId,
                 ConversationStatuses.WaitingForAgent,
                 null,

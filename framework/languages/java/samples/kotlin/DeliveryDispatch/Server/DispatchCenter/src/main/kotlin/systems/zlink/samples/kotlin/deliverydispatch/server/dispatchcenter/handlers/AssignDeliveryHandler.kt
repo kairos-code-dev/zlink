@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.dispatchcenter.handlers
 
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.deliverydispatch.server.dispatchcenter.DispatchWorkQueue
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDelivery
@@ -10,8 +10,8 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDeli
 @ZLinkHandlerGroup("dispatch")
 class AssignDeliveryHandler(
     private val queue: DispatchWorkQueue,
-) : ZLinkRequestHandler<AssignDelivery, AssignDeliveryResult> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<AssignDelivery, AssignDeliveryResult> {
+    override suspend fun handle(
         request: AssignDelivery,
         context: ZLinkRequestContext,
     ): AssignDeliveryResult {

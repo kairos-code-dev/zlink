@@ -2,8 +2,7 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.session.sessions
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
-import systems.zlink.framework.kotlin.ZLinkCoroutineSession
+import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
@@ -12,9 +11,7 @@ import systems.zlink.framework.streams.ZLinkStreamHeader
 class CustomerSession(
     private val context: ZLinkSessionContext,
     private val handlers: ZLinkSessionPacketDispatcher<ZLinkSessionContext>,
-    private val sessions: CustomerSessionDirectory,
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineSession(coroutines) {
+    private val sessions: CustomerSessionDirectory,) : ZLinkSuspendingSession() {
     override fun context(): ZLinkSessionContext = context
 
     override suspend fun onConnectedSuspending() {

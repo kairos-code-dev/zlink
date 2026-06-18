@@ -2,7 +2,7 @@ package systems.zlink.samples.kotlin.gamequest.server.gameapi.handlers
 
 import java.util.TreeSet
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.gamequest.server.configuration.QuestIds
 import systems.zlink.samples.kotlin.gamequest.server.configuration.QuestStatuses
@@ -20,8 +20,8 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.StoredQuestEvent
 @ZLinkHandlerGroup("gameapi")
 class GameQuestServerAssertHandler(
     private val store: GameQuestStore,
-) : ZLinkRequestHandler<GameQuestServerAssertReq, GameQuestServerAssertRes> {
-    override fun handle(request: GameQuestServerAssertReq, context: ZLinkRequestContext): GameQuestServerAssertRes {
+) : ZLinkSuspendingRequestHandler<GameQuestServerAssertReq, GameQuestServerAssertRes> {
+    override suspend fun handle(request: GameQuestServerAssertReq, context: ZLinkRequestContext): GameQuestServerAssertRes {
         val alice = store.readProjection("player-alice")
         val bob = store.readProjection("player-bob")
         val bindings = store.readBindingHistory()

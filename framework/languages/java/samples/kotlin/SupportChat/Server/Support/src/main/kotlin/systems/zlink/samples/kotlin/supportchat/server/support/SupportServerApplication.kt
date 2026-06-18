@@ -9,7 +9,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -34,10 +33,6 @@ import systems.zlink.samples.kotlin.supportchat.server.support.application.assig
     scanBasePackageClasses = [SupportServerApplication::class],
 )
 class SupportServerApplication {
-    @Bean
-    fun zlinkCoroutineRuntime(): ZLinkCoroutineRuntime =
-        ZLinkCoroutineRuntime()
-
     @Bean
     fun supportFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->

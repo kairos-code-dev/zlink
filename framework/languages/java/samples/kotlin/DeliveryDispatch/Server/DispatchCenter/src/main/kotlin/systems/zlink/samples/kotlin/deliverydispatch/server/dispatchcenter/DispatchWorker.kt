@@ -6,9 +6,9 @@ import java.time.Duration
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.LockSupport
 import kotlinx.coroutines.future.await
+import kotlinx.coroutines.runBlocking
 import org.springframework.stereotype.Component
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDelivery
@@ -22,7 +22,6 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliv
 class DispatchWorker(
     private val queue: DispatchWorkQueue,
     private val channels: ZLinkClient,
-    private val coroutines: ZLinkCoroutineRuntime,
 ) {
     private val running = AtomicBoolean(false)
     private var worker: Thread? = null
@@ -51,9 +50,9 @@ class DispatchWorker(
                 } catch (ignored: InterruptedException) {
                     Thread.currentThread().interrupt()
                     return
-                } ?: return
+            } ?: return
             try {
-                coroutines.blocking { dispatch(request) }
+                runBlocking { dispatch(request) }
             } catch (error: Exception) {
                 System.err.println(
                     "deliverydispatch dispatch: failed delivery=${request.deliveryId} error=${error.message}",

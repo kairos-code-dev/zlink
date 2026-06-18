@@ -4,8 +4,7 @@ import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
-import systems.zlink.framework.kotlin.ZLinkCoroutineTypedSessionPacketHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkStreamHeader
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
@@ -21,13 +20,12 @@ import systems.zlink.samples.kotlin.deliverydispatch.server.session.sessions.Cus
 class SubscribeDeliveryHandler(
     private val channels: ZLinkClient,
     private val sessions: CustomerSessionDirectory,
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineTypedSessionPacketHandler<ZLinkSessionContext, SubscribeDelivery>(
-    coroutines,
-    "SubscribeDelivery",
-    SubscribeDelivery::class.java,
-) {
-    override suspend fun handleSuspending(
+) : ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, SubscribeDelivery> {
+    override fun packetName(): String = "SubscribeDelivery"
+
+    override fun messageType(): Class<SubscribeDelivery> = SubscribeDelivery::class.java
+
+    override suspend fun handle(
         context: ZLinkSessionContext,
         header: ZLinkStreamHeader,
         request: SubscribeDelivery,

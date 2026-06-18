@@ -6,9 +6,8 @@ import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTopology
@@ -24,12 +23,11 @@ import systems.zlink.samples.kotlin.supportchat.shared.contracts.JoinConversatio
 class EnsureSupportUserActorHandler(
     private val actors: ZLinkActorManager,
     private val directory: SupportActorDirectory,
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkRequestHandler<EnsureSupportUserActorReq, EnsureSupportUserActorRes> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<EnsureSupportUserActorReq, EnsureSupportUserActorRes> {
+    override suspend fun handle(
         request: EnsureSupportUserActorReq,
         context: ZLinkRequestContext,
-    ) = coroutines.blocking {
+    ) = run {
         val actor = actors.getOrCreate(request.actorId, SampleNames.SupportActorType).await()
         val supportActor = actor as? SupportUserActor
             ?: throw IllegalStateException("Support actor factory returned an unexpected actor type.")

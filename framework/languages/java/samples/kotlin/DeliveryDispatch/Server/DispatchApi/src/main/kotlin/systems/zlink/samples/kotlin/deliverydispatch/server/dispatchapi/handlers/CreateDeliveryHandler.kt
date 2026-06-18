@@ -4,9 +4,8 @@ import java.util.concurrent.locks.LockSupport
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDelivery
@@ -17,12 +16,11 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryCr
 @ZLinkHandlerGroup("api")
 class CreateDeliveryHandler(
     private val channels: ZLinkClient,
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkRequestHandler<CreateDeliveryRequest, DeliveryCreated> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<CreateDeliveryRequest, DeliveryCreated> {
+    override suspend fun handle(
         request: CreateDeliveryRequest,
         context: ZLinkRequestContext,
-    ) = coroutines.blocking {
+    ) = run {
         val assign = AssignDelivery(
             request.deliveryId,
             request.customerId,

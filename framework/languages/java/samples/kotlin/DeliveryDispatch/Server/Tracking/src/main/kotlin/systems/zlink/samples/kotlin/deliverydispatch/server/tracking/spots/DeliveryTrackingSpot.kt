@@ -3,8 +3,7 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots
 import com.fasterxml.jackson.databind.ObjectMapper
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
-import systems.zlink.framework.kotlin.ZLinkCoroutineSpot
+import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -18,9 +17,7 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliverySt
 class DeliveryTrackingSpot(
     private val context: ZLinkSpotContext,
     private val directory: DeliverySpotDirectory,
-    private val json: ObjectMapper,
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineSpot<CustomerActor>(coroutines) {
+    private val json: ObjectMapper,) : ZLinkSuspendingSpot<CustomerActor>() {
     private val customers = LinkedHashMap<String, CustomerActor>()
     private val history = mutableListOf<DeliveryStatusChanged>()
     private var deliveryId: String = ""

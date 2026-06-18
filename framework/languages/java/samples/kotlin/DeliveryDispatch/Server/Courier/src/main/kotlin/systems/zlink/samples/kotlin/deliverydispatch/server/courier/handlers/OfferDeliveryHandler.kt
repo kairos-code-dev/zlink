@@ -4,15 +4,15 @@ import java.time.Duration
 import java.util.Locale
 import java.util.concurrent.locks.LockSupport
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.samples.kotlin.deliverydispatch.server.courier.CourierOptions
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDelivery
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.OfferDeliveryResult
 
 class OfferDeliveryHandler(
     private val options: CourierOptions,
-) : ZLinkRequestHandler<OfferDelivery, OfferDeliveryResult> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<OfferDelivery, OfferDeliveryResult> {
+    override suspend fun handle(
         request: OfferDelivery,
         context: ZLinkRequestContext,
     ): OfferDeliveryResult {

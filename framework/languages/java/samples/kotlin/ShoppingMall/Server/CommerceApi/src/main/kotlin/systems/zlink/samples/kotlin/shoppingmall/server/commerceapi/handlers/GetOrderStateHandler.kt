@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi.handlers
 
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.GetOrderStateReq
@@ -11,8 +11,8 @@ import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.GetOrderStateR
 @ZLinkHandlerGroup("commerce")
 class GetOrderStateHandler(
     private val store: CommerceStore,
-) : ZLinkRequestHandler<GetOrderStateReq, GetOrderStateRes> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<GetOrderStateReq, GetOrderStateRes> {
+    override suspend fun handle(
         request: GetOrderStateReq,
         context: ZLinkRequestContext,
     ): GetOrderStateRes {

@@ -6,9 +6,8 @@ import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRequestHandler
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
@@ -20,12 +19,11 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
 @ZLinkHandlerGroup("play")
 class EnsurePlayerActorHandler(
     private val actors: ZLinkActorManager,
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes> {
-    override fun handle(
+) : ZLinkSuspendingRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes> {
+    override suspend fun handle(
         request: EnsurePlayerActorReq,
         context: ZLinkRequestContext,
-    ) = coroutines.blocking {
+    ) = run {
         val actor = actors.getOrCreate(request.actorId, SampleNames.PlayerActorType).await()
         if (actor is PlayerActor) {
             actor.setDisplayName(request.displayName)

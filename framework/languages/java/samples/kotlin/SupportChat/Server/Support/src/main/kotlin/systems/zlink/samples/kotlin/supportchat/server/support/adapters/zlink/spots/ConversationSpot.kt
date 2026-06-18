@@ -4,8 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
-import systems.zlink.framework.kotlin.ZLinkCoroutineSpot
+import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -34,9 +33,7 @@ class ConversationSpot(
     private val context: ZLinkSpotContext,
     private val notifications: ConversationNotificationPublisher,
     private val createdHandler: ConversationSpotCreatedHandler,
-    private val json: ObjectMapper,
-    coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineSpot<SupportUserActor>(coroutines) {
+    private val json: ObjectMapper,) : ZLinkSuspendingSpot<SupportUserActor>() {
     private val actors = LinkedHashMap<String, SupportUserActor>()
     private var conversation: Conversation? = null
     private var idleTimer: ZLinkTimer? = null

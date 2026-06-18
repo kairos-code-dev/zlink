@@ -398,7 +398,7 @@ total: 29 bytes (고정)
   “phase 종료 후 남은 메시지 정리”를 우회적으로 표현한 것뿐이라면, 새 단계로
   유지하지 말고 삭제하거나 기존 `ready -> active` 흐름에 흡수한다.
 - raw socket client 의 ready gate event 는
-  [`doc/guide/06-monitoring.ko.md`](../guide/06-monitoring.ko.md)의
+  [`doc/guide/06-monitoring.ko.md`](../../core/doc/guide/06-monitoring.ko.md)의
   raw socket monitoring 절을 단일 기준으로 따른다.
 - SPOT 계열은 별도 서비스 이벤트 스트림을 사용하지 않으며, perf-ready 는
   suite별 benchmark barrier protocol 로만 정의한다.

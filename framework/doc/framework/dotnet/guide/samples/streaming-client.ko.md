@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../common/README.ko.md)
 
-[.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [STREAM 샘플](stream-samples.ko.md) | [Unity 가이드](../../../../../../doc/guide/unity-stream-connector.ko.md)
+[.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [STREAM 샘플](stream-samples.ko.md) | [Unity 가이드](../../../../../../core/doc/guide/unity-stream-connector.ko.md)
 
 # ZLink Stream Connector For .NET
 
@@ -909,7 +909,7 @@ core를 그대로 사용하고, `MonoBehaviour.Update()`에서 `Dispatch.Async()
 awaitable 호출을 감싸는 방식으로 맞춘다.
 
 Unity 사용 예제와 lifecycle 처리 방식은
-[Unity Stream Connector 가이드](../../../../../../doc/guide/unity-stream-connector.ko.md)
+[Unity Stream Connector 가이드](../../../../../../core/doc/guide/unity-stream-connector.ko.md)
 에서 다룬다. 이 가이드는 사용법 문서이며, 별도의 wire protocol이나 별도 public API 계약을
 정의하지 않는다.
 

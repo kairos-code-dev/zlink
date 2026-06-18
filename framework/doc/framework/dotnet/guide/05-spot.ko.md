@@ -42,20 +42,14 @@ discovery 기반 mesh 로 묶는 형태가 표준이다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    {
-        var mesh =     options.AddSpotMesh("game.stage");
-                mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+    var mesh = options.AddSpotMesh("game.stage");
+    mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-        {
-            var node =         mesh.AddNode("stage-node");
-            node.EnableRouter("tcp://0.0.0.0:9001");                                                // routed packet 수신
-            node.EnablePubSub("tcp://0.0.0.0:9000");                                                // 현재 channel publish/subscribe
-            node.AttachChannelClient("orders");   // 다른 channel 로 send/request
-            node.AddSpotFactory<StageSpot>();          // 이 노드가 만들 타입
-
-        }
-
-    }
+    var node = mesh.AddNode("stage-node");
+    node.EnableRouter("tcp://0.0.0.0:9001");   // routed packet 수신
+    node.EnablePubSub("tcp://0.0.0.0:9000");   // 현재 channel publish/subscribe
+    node.AttachChannelClient("orders");        // 다른 channel 로 send/request
+    node.AddSpotFactory<StageSpot>();          // 이 노드가 만들 타입
 });
 ```
 

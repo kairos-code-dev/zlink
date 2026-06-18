@@ -65,7 +65,8 @@ stage state sync, real-time notification fanout, scatter-gather query, workflow 
 | 언어 | 진입점 | guide | spec | internals |
 |------|--------|-------|------|-----------|
 | `.NET` | [framework/dotnet](framework/dotnet/README.ko.md) | 12장 + case-studies + samples | ASP.NET Core 계약 | DI·lifecycle·회귀 |
-| `Java/Kotlin` | [framework/java](framework/java/README.ko.md) | Spring Boot 가이드 | Spring 계약 | 구현·검증 |
+| `Java` | [framework/java](framework/java/README.ko.md) | Spring Boot 가이드 (blocking/`CompletionStage`) | Spring 계약 | 구현·검증 |
+| `Kotlin` | [framework/kotlin](framework/kotlin/README.ko.md) | Kotlin 전용 가이드 (`suspend`/`Flow`) | Java 공유 | Java 공유 |
 | `Node.js` | [framework/node](framework/node/README.ko.md) | NestJS 가이드 | NestJS 계약 | 구현·검증 |
 | `C++` | [framework/cpp](framework/cpp/README.ko.md) | 가이드 + 샘플 맵·기능 맵 | C++ 계약 | 구현 계획·POSD |
 

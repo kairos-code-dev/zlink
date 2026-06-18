@@ -48,11 +48,11 @@ framework는 새 transport를 만들지 않는다. 기존 binding 기능을 Spri
 
 각 소켓의 메시징 패턴·라우팅 전략·호환성 매트릭스·코드 예제는 zlink core 가이드가
 자세히 다룬다:
-[소켓 패턴 개요](../../../../../doc/guide/03-0-socket-patterns.ko.md) ·
-[DEALER](../../../../../doc/guide/03-3-dealer.ko.md) ·
-[ROUTER](../../../../../doc/guide/03-4-router.ko.md) ·
-[PUB/SUB](../../../../../doc/guide/03-2-pubsub.ko.md) ·
-[STREAM](../../../../../doc/guide/03-5-stream.ko.md)
+[소켓 패턴 개요](../../../../../core/doc/guide/03-0-socket-patterns.ko.md) ·
+[DEALER](../../../../../core/doc/guide/03-3-dealer.ko.md) ·
+[ROUTER](../../../../../core/doc/guide/03-4-router.ko.md) ·
+[PUB/SUB](../../../../../core/doc/guide/03-2-pubsub.ko.md) ·
+[STREAM](../../../../../core/doc/guide/03-5-stream.ko.md)
 
 ## 3. 통합 축
 

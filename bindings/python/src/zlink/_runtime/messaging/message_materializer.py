@@ -205,7 +205,7 @@ class ReceivedMultipart(_BaseReceived):
     ):
         # Caller-provided storage path: ReceivedMultipart() / Received()
         # constructs an empty placeholder for reuse across recv_into calls.
-        # See doc/spec/bindings/README.md "Canonical Recv: Caller-Provided
+        # See bindings/doc/spec/README.md "Canonical Recv: Caller-Provided
         # Storage". Populated state is installed via _adopt_from().
         if owner is None:
             self._owner = None

@@ -9,6 +9,11 @@
 비동기 실행, `CompletionStage`, Kotlin coroutine wrapper의 공통 의미는
 [비동기 실행과 coroutine 정책](../common/spec/async-execution-policy.ko.md)을 따른다.
 
+> **Kotlin 사용자**는 [Kotlin 전용 guide](../kotlin/README.ko.md)를 본다.
+> `zlink-framework-kotlin`은 이 런타임을 공유하는 얇은 coroutine idiom 레이어라,
+> `spec/`·`internals/`는 이 문서를 정본으로 공유하고 guide만 `suspend`/`Flow`
+> 표면으로 따로 작성한다. 아래 guide는 Java(blocking/`CompletionStage`) 표면이다.
+
 ## 1. 사용자 guide
 
 Spring Boot 개발자가 읽고 바로 따라 쓸 수 있도록 기능과 사용법을 설명한다. 내부

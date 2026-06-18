@@ -10,7 +10,7 @@
 
 ## 1. 목적
 
-zlink core가 [SPOT Actor Guide](../../../../../doc/guide/07-4-actor.md)에서 정의한 actor
+zlink core가 [SPOT Actor Guide](../../../../../core/doc/guide/07-4-actor.md)에서 정의한 actor
 개념을 모든 framework binding이 같은 의미로 노출하도록 고정한다. 언어별 표면은
 이 문서의 의미를 어겨서는 안 되고, 다음만 자유롭게 정한다.
 

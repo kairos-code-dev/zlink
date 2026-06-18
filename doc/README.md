@@ -23,9 +23,9 @@ internal context, link to the internals document instead.
 
 | Audience | Starting Document | Description |
 |----------|-------------------|-------------|
-| **Library Users** | [guide/01-overview.md](guide/01-overview.md) | Developing messaging applications with the zlink API |
-| **Binding Users** | [guide/bindings/README.md](guide/bindings/README.md) | C++/Java/.NET/Node.js/Python bindings |
-| **Library Developers** | [internals/architecture.md](internals/architecture.md) | Internal architecture and implementation details |
+| **Library Users** | [guide/01-overview.md](../core/doc/guide/01-overview.md) | Developing messaging applications with the zlink API |
+| **Binding Users** | [guide/bindings/README.md](../bindings/doc/guide/README.md) | C++/Java/.NET/Node.js/Python bindings |
+| **Library Developers** | [internals/architecture.md](../core/doc/internals/architecture.md) | Internal architecture and implementation details |
 | **Build/Release Engineers** | [building/build-guide.md](building/build-guide.md) | Building, testing, and packaging |
 
 ---
@@ -35,69 +35,69 @@ internal context, link to the internals document instead.
 ### Core
 | Document | Description |
 |----------|-------------|
-| [01-overview.md](guide/01-overview.md) | zlink overview and getting started |
-| [02-core-api.md](guide/02-core-api.md) | Core C API detailed guide |
-| [03-0-socket-patterns.md](guide/03-0-socket-patterns.md) | Socket patterns overview and selection guide |
-| [03-1-pair.md](guide/03-1-pair.md) | PAIR socket (1:1 bidirectional) |
-| [03-2-pubsub.md](guide/03-2-pubsub.md) | PUB/SUB/XPUB/XSUB publish-subscribe |
-| [03-3-dealer.md](guide/03-3-dealer.md) | DEALER socket (asynchronous requests) |
-| [03-4-router.md](guide/03-4-router.md) | ROUTER socket (ID-based routing) |
-| [03-5-stream.md](guide/03-5-stream.md) | STREAM socket (RAW communication) |
-| [04-transports.md](guide/04-transports.md) | Transport guide (tcp/ipc/inproc/ws/wss/tls) |
-| [05-tls-security.md](guide/05-tls-security.md) | TLS/SSL configuration and security guide |
-| [06-monitoring.md](guide/06-monitoring.md) | Monitoring API usage |
+| [01-overview.md](../core/doc/guide/01-overview.md) | zlink overview and getting started |
+| [02-core-api.md](../core/doc/guide/02-core-api.md) | Core C API detailed guide |
+| [03-0-socket-patterns.md](../core/doc/guide/03-0-socket-patterns.md) | Socket patterns overview and selection guide |
+| [03-1-pair.md](../core/doc/guide/03-1-pair.md) | PAIR socket (1:1 bidirectional) |
+| [03-2-pubsub.md](../core/doc/guide/03-2-pubsub.md) | PUB/SUB/XPUB/XSUB publish-subscribe |
+| [03-3-dealer.md](../core/doc/guide/03-3-dealer.md) | DEALER socket (asynchronous requests) |
+| [03-4-router.md](../core/doc/guide/03-4-router.md) | ROUTER socket (ID-based routing) |
+| [03-5-stream.md](../core/doc/guide/03-5-stream.md) | STREAM socket (RAW communication) |
+| [04-transports.md](../core/doc/guide/04-transports.md) | Transport guide (tcp/ipc/inproc/ws/wss/tls) |
+| [05-tls-security.md](../core/doc/guide/05-tls-security.md) | TLS/SSL configuration and security guide |
+| [06-monitoring.md](../core/doc/guide/06-monitoring.md) | Monitoring API usage |
 
 ### Services
 | Document | Description |
 |----------|-------------|
-| [07-0-services.md](guide/07-0-services.md) | Service layer overview |
-| [07-1-discovery.md](guide/07-1-discovery.md) | Service Discovery infrastructure |
-| [07-3-spot.md](guide/07-3-spot.md) | SPOT (location-transparent messaging: topic pub/sub + routed direct delivery) |
+| [07-0-services.md](../core/doc/guide/07-0-services.md) | Service layer overview |
+| [07-1-discovery.md](../core/doc/guide/07-1-discovery.md) | Service Discovery infrastructure |
+| [07-3-spot.md](../core/doc/guide/07-3-spot.md) | SPOT (location-transparent messaging: topic pub/sub + routed direct delivery) |
 
 ### Reference
 | Document | Description |
 |----------|-------------|
-| [08-routing-id.md](guide/08-routing-id.md) | Routing ID concepts and usage |
-| [09-message-api.md](guide/09-message-api.md) | Message API details |
-| [10-performance.md](guide/10-performance.md) | Performance characteristics and tuning guide |
+| [08-routing-id.md](../core/doc/guide/08-routing-id.md) | Routing ID concepts and usage |
+| [09-message-api.md](../core/doc/guide/09-message-api.md) | Message API details |
+| [10-performance.md](../core/doc/guide/10-performance.md) | Performance characteristics and tuning guide |
 
 ## Library Specification (spec/)
 
 | Document | Description |
 |----------|-------------|
-| [spec/README.md](spec/README.md) | Specification master index |
-| [spec/core/README.md](spec/core/README.md) | Core C library specification |
-| [spec/core/socket/](spec/core/socket/README.md) | Socket specifications (common + per-type) |
-| [spec/bindings/README.md](spec/bindings/README.md) | Cross-language binding policy and per-language specs |
+| [spec/README.md](../core/doc/spec/README.md) | Specification master index |
+| [spec/core/README.md](../core/doc/spec/core/README.md) | Core C library specification |
+| [spec/core/socket/](../core/doc/spec/core/socket/README.md) | Socket specifications (common + per-type) |
+| [spec/bindings/README.md](../bindings/doc/spec/README.md) | Cross-language binding policy and per-language specs |
 
 ## Binding Guides (guide/bindings/)
 
 Per-language usage guides live under
-[`guide/bindings/`](guide/bindings/README.md). Messaging concepts are owned by the
+[`guide/bindings/`](../bindings/doc/guide/README.md). Messaging concepts are owned by the
 core guide; each language guide covers that language's usage, type mapping, and
 language-specific rules.
 
 | Language | Guide | Notes |
 |----------|-------|-------|
-| .NET | [dotnet/](guide/bindings/dotnet/index.md) | LibraryImport, .NET 8+ |
-| C++ / Java / Node / Python / Go / Rust | [Binding guide index](guide/bindings/README.md) | planned |
+| .NET | [dotnet/](../bindings/doc/guide/dotnet/index.md) | LibraryImport, .NET 8+ |
+| C++ / Java / Node / Python / Go / Rust | [Binding guide index](../bindings/doc/guide/README.md) | planned |
 
 ## Internals (internals/)
 
 | Document | Description |
 |----------|-------------|
-| [architecture.md](internals/architecture.md) | System architecture overview (5-layer details) |
-| [protocol-zmp.md](internals/protocol-zmp.md) | ZMP v1.0 protocol details |
-| [protocol-raw.md](internals/protocol-raw.md) | RAW (STREAM) protocol details |
-| [stream-socket.md](internals/stream-socket.md) | STREAM socket internals, WS/WSS optimization, runtime defaults |
-| [peer-disconnect-rid.md](internals/peer-disconnect-rid.md) | Peer disconnect by routing id internals |
-| [socket-option-defaults.md](internals/socket-option-defaults.md) | Effective socket option defaults from code |
-| [threading-model.md](internals/threading-model.md) | Threading and concurrency model |
-| [services-internals.md](internals/services-internals.md) | Service layer internal design (overview) |
-| [spot-internals.md](internals/spot-internals.md) | SPOT/SpotNode internal socket wiring and data flow |
-| [discovery-internals.md](internals/discovery-internals.md) | Discovery service internal architecture |
-| [registry-internals.md](internals/registry-internals.md) | Registry service internal architecture |
-| [design-decisions.md](internals/design-decisions.md) | Design decision records |
+| [architecture.md](../core/doc/internals/architecture.md) | System architecture overview (5-layer details) |
+| [protocol-zmp.md](../core/doc/internals/protocol-zmp.md) | ZMP v1.0 protocol details |
+| [protocol-raw.md](../core/doc/internals/protocol-raw.md) | RAW (STREAM) protocol details |
+| [stream-socket.md](../core/doc/internals/stream-socket.md) | STREAM socket internals, WS/WSS optimization, runtime defaults |
+| [peer-disconnect-rid.md](../core/doc/internals/peer-disconnect-rid.md) | Peer disconnect by routing id internals |
+| [socket-option-defaults.md](../core/doc/internals/socket-option-defaults.md) | Effective socket option defaults from code |
+| [threading-model.md](../core/doc/internals/threading-model.md) | Threading and concurrency model |
+| [services-internals.md](../core/doc/internals/services-internals.md) | Service layer internal design (overview) |
+| [spot-internals.md](../core/doc/internals/spot-internals.md) | SPOT/SpotNode internal socket wiring and data flow |
+| [discovery-internals.md](../core/doc/internals/discovery-internals.md) | Discovery service internal architecture |
+| [registry-internals.md](../core/doc/internals/registry-internals.md) | Registry service internal architecture |
+| [design-decisions.md](../core/doc/internals/design-decisions.md) | Design decision records |
 
 ## Build and Development (building/)
 

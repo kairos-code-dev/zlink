@@ -782,7 +782,7 @@ class _MessageSocket(_Socket):
 
         Pass a long-lived :py:class:`Received` as the first positional
         argument and the binding refills its internal state in place each
-        successful call. See ``doc/spec/bindings/README.md`` "Canonical
+        successful call. See ``bindings/doc/spec/README.md`` "Canonical
         Recv: Caller-Provided Storage".
 
         :param received: Caller-provided :py:class:`Received` storage.

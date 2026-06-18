@@ -25,7 +25,7 @@
 애플리케이션 위에서 `TypeScript` 다운 모양으로 노출하는 것이다.
 
 zlink core 모델에서 actor 는 다음 성질을 가진다. 더 자세한 정의는 zlink core 의
-[SPOT Actor Guide](../../../../../doc/guide/07-4-actor.md) 에서 다룬다.
+[SPOT Actor Guide](../../../../../core/doc/guide/07-4-actor.md) 에서 다룬다.
 
 - **`SpotNode`에 소속된다.** actor는 생성 직후 그 node의
   `Entry Spot`[^entryspot]에 위치한다.

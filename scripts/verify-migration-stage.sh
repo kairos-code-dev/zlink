@@ -160,7 +160,7 @@ case "$STAGE" in
 
   11)
     # 11단계: 공개 문서 정리
-    for doc_dir in doc/spec/core doc/guide doc/internals; do
+    for doc_dir in core/doc/spec/core core/doc/guide core/doc/internals; do
       if ! grep -rl "request.reply\|request_reply" "$doc_dir"/ 2>/dev/null | head -1 >/dev/null; then
         echo "FAIL: $doc_dir missing request-reply documentation"
         exit 1

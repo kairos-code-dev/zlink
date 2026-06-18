@@ -17,7 +17,7 @@ HttpResponse<Report> response = ZLinkHttpClient.create("https://api.internal")
 ## 래퍼 통제 해제
 
 `java.net.http`는 응답을 자동 해제하지 않는다. 그래서 **래퍼가 `java.util.zip`으로 해제를
-통제**한다. 이유는 의미론을 C++ 계약과 맞추기 위해서다:
+통제**한다. 이유는 의미론을 zlink 계약에 맞추기 위해서다:
 
 - **gzip + deflate 모두** 처리한다(deflate는 zlib-wrap/raw 둘 다 감지).
 - 해제 후 `content-encoding` 헤더를 **제거**한다.

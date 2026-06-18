@@ -7,8 +7,8 @@
 ## non-blocking 보장
 
 `java.net.http.HttpClient.sendAsync`는 NIO selector 기반 비동기 I/O를 쓴다. 따라서 응답을
-기다리는 동안 **호출 스레드는 park되지 않는다.** C++ 산출물이 execute scheduler(Asio
-worker)에 HTTP 작업을 올리던 자리를 Java에서는 런타임의 비동기 I/O가 무료로 제공한다.
+기다리는 동안 **호출 스레드는 park되지 않는다.** 런타임의 비동기 I/O가 이를 제공하므로
+별도의 worker scheduler가 필요 없다.
 래퍼의 redirect 루프·retry 루프도 `CompletionStage` 체인으로 합성되어 hop 사이에 스레드를
 점유하지 않는다(블로킹 본문 read만 executor로 offload).
 
@@ -40,10 +40,9 @@ public CompletionStage<Void> notifyMatchResult(ZLinkHttpClient client, MatchResu
 | 테스트 코드 | `fetch(Type)` 또는 `.toCompletableFuture().join()` |
 | client 시나리오·CLI·배치 | `fetch(Type)` |
 
-## resume scheduler — Java 매핑
+## continuation 재개 위치
 
-C++의 resume scheduler 주입은 Java에서 `CompletableFuture`의 `*Async(fn, executor)` 조합으로
-대응한다. continuation을 특정 executor에서 재개하려면 `thenApplyAsync`/`thenComposeAsync`에
+Java에서는 `CompletableFuture`의 `*Async(fn, executor)` 조합으로 continuation 재개 위치를 제어한다. continuation을 특정 executor에서 재개하려면 `thenApplyAsync`/`thenComposeAsync`에
 executor를 넘긴다.
 
 ## blocking: fetch(Type)

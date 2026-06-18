@@ -26,7 +26,7 @@ JSON 전용 client가 아니다. 일반 HTTP client이며, typed JSON 경로
   의존은 runtime 구현(internal) 안에 갇힌다.
 - **네이티브 래핑.** 전송은 `System.Net.Http`에 위임하되, zlink 계약과 의미론이
   다른 부분(cookie jar, redirect 루프, retry, 압축 통제)은 얇은 래퍼에서 직접
-  구현한다. C++ 산출물이 Boost.Beast를 감싼 방식과 같다.
+  구현한다.
 
 ## 산출물 경계
 

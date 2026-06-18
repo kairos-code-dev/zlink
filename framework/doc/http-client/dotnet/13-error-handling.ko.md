@@ -17,12 +17,12 @@
 | 압축 decoded 크기 초과 / 본문 크기 초과 | `RequestFailed` |
 | transport 실패(연결 오류 등) | `RequestFailed` (`IsRetriable = true`) |
 
-## timeout — 언어 차이
+## timeout
 
-C++ 산출물은 timeout을 framework error kind로 보고했지만, .NET framework의
+.NET framework의
 `ZLinkFrameworkErrorKind`에는 timeout 전용 kind가 없다. 따라서 timeout은 .NET 관용에
 맞춰 **`TimeoutException`**으로 보고된다. retriable 성격이며, `Retry`가 설정돼 있으면
-재시도된다. 이는 정당한 언어 차이다(framework 코덱 자체도 timeout을 `TimeoutException`
+재시도된다(framework 코덱 자체도 timeout을 `TimeoutException`
 으로 변환한다).
 
 ## retriable

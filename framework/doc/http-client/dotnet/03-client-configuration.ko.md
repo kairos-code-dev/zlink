@@ -26,10 +26,10 @@ builder는 client 전역 설정을 모은다. 옵션은 네이티브 `SocketsHtt
 ## 네이티브 위임 vs 래퍼 구현
 
 `SocketsHttpHandler`에서 **auto-redirect, auto-decompression, cookie container는 끈다.**
-이는 C++ 계약과 의미론이 다르기 때문이다(예: .NET auto-redirect는 same-origin에서도
+이는 네이티브 기본 동작이 zlink 계약과 의미론이 다르기 때문이다(예: .NET auto-redirect는 same-origin에서도
 `Authorization`을 보존하지 않고, 네이티브 cookie container는 RFC 6265 전체를 구현해
 default path/domain/만료가 다르다). 대신 래퍼가 redirect 루프·cookie jar·압축 해제를
-직접 수행해 의미론을 4언어에서 동일하게 맞춘다. connection pool·proxy·TLS는 네이티브에
+직접 수행해 의미론을 zlink 계약대로 맞춘다. connection pool·proxy·TLS는 네이티브에
 위임한다.
 
 ## client 재사용과 connection pool

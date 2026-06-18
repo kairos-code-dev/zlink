@@ -17,12 +17,11 @@
 | 압축 decoded 크기 초과 / 본문 크기 초과 | `requestFailed` |
 | transport 실패(연결 오류 등) | `requestFailed` (`isRetriable = true`) |
 
-## timeout — 언어 차이
+## timeout
 
-C++ 산출물은 timeout을 framework error kind로 보고했지만, Node framework의
-`ZLinkFrameworkErrorKind`에는 timeout 전용 kind가 없다(dotnet도 동일). Node에서는
+Node framework의 `ZLinkFrameworkErrorKind`에는 timeout 전용 kind가 없다. 따라서 Node에서는
 timeout을 **`ZLinkFrameworkException(requestFailed, isRetriable: true)`**로 보고한다.
-`retry`가 설정돼 있으면 재시도된다. 이는 정당한 언어 차이다.
+`retry`가 설정돼 있으면 재시도된다.
 
 ## retriable
 

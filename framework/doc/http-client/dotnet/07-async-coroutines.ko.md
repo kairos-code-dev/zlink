@@ -8,8 +8,8 @@
 ## non-blocking 보장
 
 `SocketsHttpHandler`는 epoll/IOCP 기반 비동기 소켓을 쓴다. 따라서 응답을 기다리는
-동안 **어떤 스레드도 park되지 않는다.** C++ 산출물이 execute scheduler(Asio worker)에
-HTTP 작업을 올리던 자리를 .NET에서는 런타임의 비동기 I/O가 무료로 제공한다.
+동안 **어떤 스레드도 park되지 않는다.** 런타임의 비동기 I/O가 이를 제공하므로 별도의
+worker scheduler가 필요 없다.
 
 ```csharp
 public async ValueTask NotifyMatchResultAsync(ZLinkHttpClient client, MatchResult result)
@@ -29,14 +29,13 @@ public async ValueTask NotifyMatchResultAsync(ZLinkHttpClient client, MatchResul
 > DNS 해석(`getaddrinfo`)만 OS 레벨에서 blocking이지만, .NET은 이를 threadpool로
 > offload하므로 호출/handler 스레드는 막히지 않는다.
 
-## resume scheduler — .NET에서의 차이
+## continuation 재개 위치
 
-C++ client는 `.coroutines(resume_scheduler)`로 continuation을 재개할 위치를 주입할 수
-있었다. **.NET은 이 주입을 제공하지 않는다.** 평범한 `Task<T>`를 돌려주는
+`Zlink.HttpClient`는 continuation 재개 위치 주입을 제공하지 않는다. 평범한 `Task<T>`를 돌려주는
 라이브러리는 호출자의 `await` continuation 재개 위치를 강제할 수 없다(재개는 호출자의
 `SynchronizationContext`/awaiter가 결정). 따라서 `Zlink.HttpClient`는 표준 `Task`/
 `await` 동작만 제공하며, 재개 위치가 필요하면 호출자가 `ConfigureAwait`나 자신의
-스케줄러로 제어한다. 이는 정당한 언어 차이다(자세한 매핑은 plan 문서 §4).
+스케줄러로 제어한다.
 
 ## blocking: Fetch&lt;T&gt;()
 

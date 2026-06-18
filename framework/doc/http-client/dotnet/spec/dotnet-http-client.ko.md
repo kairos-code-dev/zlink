@@ -46,12 +46,12 @@ framework core의 기본 의존성은 아니다(단방향 의존).
 
 - 모든 제출은 `ValueTask<T>`를 돌려준다. `SocketsHttpHandler`의 비동기 I/O로
   네트워크 대기 중 호출 스레드는 점유되지 않는다.
-- C++의 execute/resume scheduler 주입은 .NET에서 제공하지 않는다. 평범한 `Task`를
+- .NET은 continuation 재개 위치 주입을 제공하지 않는다. 평범한 `Task`를
   돌려주는 라이브러리는 `await` continuation 재개 위치를 강제할 수 없기 때문이다.
   표준 `Task`/`await` 동작만 제공한다.
 - `Fetch<T>()`는 blocking 접근으로 테스트·CLI 전용이다.
 
-## 5. 전송 의미론(C++ 계약과 동일)
+## 5. 전송 의미론
 
 - **redirect**: `301/302/303/307/308` + `Location`. `303`/(`301`·`302`+`POST`)→`GET`,
   본문 제거. **same-origin `Authorization` 보존, cross-origin 제거.** `max` 초과 시
@@ -70,10 +70,9 @@ framework core의 기본 의존성은 아니다(단방향 의존).
 | 구성/요청 검증 | `RequestProtocolError` |
 | status ≥ 400 (typed) / redirect 한도 / 크기 초과 / transport | `RequestFailed` |
 | JSON·압축 디코드 | `PayloadDecodeFailed` |
-| timeout | `TimeoutException`(언어 차이) |
+| timeout | `TimeoutException` |
 
 ## 7. 회귀 테스트 축
 
-`Zlink.HttpClient.UnitTests`의 `HttpClientContractTests`가 C++ `test_cpp_http_client`
-시나리오를 미러링한다. chunked 업로드는 managed Linux `HttpListener`가 chunked 요청
+`Zlink.HttpClient.UnitTests`의 `HttpClientContractTests`가 전송 계약 시나리오를 검증한다. chunked 업로드는 managed Linux `HttpListener`가 chunked 요청
 본문을 못 받으므로 raw-socket 서버(`RawCaptureServer`)로 검증한다.

@@ -4,12 +4,11 @@
 
 실패는 `ZLinkFrameworkException`(`systems.zlink.framework.errors`)으로 보고된다.
 
-## 예외 모델 — 언어 차이
+## 예외 모델
 
-dotnet/node는 `ZLinkFrameworkException`에 `kind` enum과 `isRetriable` 필드를 둔다. 하지만
 **Java framework의 `ZLinkFrameworkException`은 kind enum이나 `isRetriable`을 노출하지
-않는다**(`RuntimeException` 기반, 메시지·예외 타입으로 구분하는 Java 관용). 이 차이는
-의도된 언어 idiom이며, http-client도 Java 관용을 따른다.
+않는다**(`RuntimeException` 기반, 메시지·예외 타입으로 구분하는 Java 관용). http-client도
+Java 관용을 따른다.
 
 | 상황 | 보고 |
 |------|------|

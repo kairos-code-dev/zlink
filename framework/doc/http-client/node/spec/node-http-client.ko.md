@@ -44,10 +44,10 @@ core의 기본 의존성은 아니다(단방향 의존).
 
 - 모든 제출은 `Promise`를 돌려준다. undici의 libuv 비동기 I/O로 네트워크 대기 중 event
   loop는 점유되지 않는다.
-- C++의 resume scheduler 주입은 단일 event loop인 Node에서 사라진다(`.coroutines()` 없음).
+- 단일 event loop인 Node에는 continuation 재개 위치 주입이 없다(`.coroutines()` 없음).
 - Node에는 동기 blocking HTTP 접근이 없다.
 
-## 5. 전송 의미론(C++ 계약과 동일)
+## 5. 전송 의미론
 
 - **백엔드**: undici 저수준 `request`(`fetch` 아님). auto-redirect/decompress/cookie 없음.
 - **redirect**: `301/302/303/307/308` + `Location`. `303`/(`301`·`302`+`POST`)→`GET`,
@@ -70,7 +70,7 @@ core의 기본 의존성은 아니다(단방향 의존).
 | JSON·압축 디코드 | `payloadDecodeFailed` |
 
 timeout은 `requestFailed`(`isRetriable=true`)로 보고한다(framework enum에 timeout kind
-없음 — 언어 차이).
+없음).
 
 ## 7. 회귀 테스트 / 등록
 

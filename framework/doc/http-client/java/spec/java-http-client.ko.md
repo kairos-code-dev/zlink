@@ -50,9 +50,9 @@ JSON 전용 client가 아니라 일반 HTTP client이며, zlink fluent builder �
   `CompletionStage` 체인으로 합성된다.
 - handler 경로는 `CompletionStage` 합성만 쓰고 `.get()`/`.join()`은 금지(blocking).
 - `fetch(Type)`는 blocking 접근으로 테스트·CLI 전용.
-- resume scheduler 주입은 `CompletableFuture.*Async(fn, executor)` 조합으로 대응.
+- continuation 재개 위치는 `CompletableFuture.*Async(fn, executor)` 조합으로 지정.
 
-## 5. 전송 의미론(C++ 계약과 동일)
+## 5. 전송 의미론
 
 - **redirect**: `301/302/303/307/308` + `Location`. `303`/(`301`·`302`+`POST`)→`GET`,
   본문 제거. same-origin `Authorization` 보존, cross-origin 제거. `Redirect` enum에 횟수가
@@ -69,7 +69,7 @@ JSON 전용 client가 아니라 일반 HTTP client이며, zlink fluent builder �
 ## 6. 에러 매핑
 
 모든 실패는 `ZLinkFrameworkException`으로 보고된다(Java framework는 kind enum/`isRetriable`
-없음 — 언어 idiom). retry 판단은 내부적으로 `IOException` 여부로 한다. timeout은
+을 노출하지 않음). retry 판단은 내부적으로 `IOException` 여부로 한다. timeout은
 `HttpTimeoutException`(IOException)이므로 retriable.
 
 ## 7. 회귀 테스트 / 등록

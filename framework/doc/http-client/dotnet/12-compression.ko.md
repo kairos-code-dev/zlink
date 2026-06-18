@@ -16,7 +16,7 @@ var response = await ZLinkHttpClient.Create("https://api.internal")
 ## 래퍼 통제 해제
 
 .NET 네이티브 `AutomaticDecompression`은 끄고 **래퍼가 해제를 통제**한다. 이유는
-의미론을 C++ 계약과 맞추기 위해서다:
+의미론을 zlink 계약에 맞추기 위해서다:
 
 - **gzip + deflate 모두** 처리한다(deflate는 zlib-wrap/raw 둘 다 감지).
 - 해제 후 `Content-Encoding` 헤더를 **제거**한다.

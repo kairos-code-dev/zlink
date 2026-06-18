@@ -177,13 +177,12 @@ request path, request header name, query/form/multipart field name은 call을 �
 JSON 변환은 `message_t` 또는 DTO serializer hook을 통해 처리한다. 샘플 application code가
 `nlohmann::json::parse`로 field를 직접 꺼내지 않는다.
 
-`HttpClient.PostAsJsonAsync(...)`와 `ReadFromJsonAsync<T>()`에 대응하는 C++ 흐름은 아래와
-같다.
+typed JSON 요청/응답은 아래 흐름으로 작성한다.
 
-| .NET 흐름 | C++ 흐름 |
-|-----------|----------|
-| `PostAsJsonAsync(...)` | `client.post(path).body(dto).submit<TReply>()` |
-| `ReadFromJsonAsync<T>()` | `message_t::parse_json<T>()` 기반 response decode |
+| 동작 | C++ 흐름 |
+|------|----------|
+| JSON 요청 + typed 응답 | `client.post(path).body(dto).submit<TReply>()` |
+| 응답 JSON decode | `message_t::parse_json<T>()` 기반 response decode |
 
 ## 5. HTTPS와 TLS
 

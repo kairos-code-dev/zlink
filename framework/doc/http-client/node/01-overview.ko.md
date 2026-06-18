@@ -22,8 +22,7 @@ JSON 전용 client가 아니다. 일반 HTTP client이며, typed JSON 경로
 - **공개 표면에 undici 없음.** `Dispatcher`, `Agent`, `request` 타입은 공개 API에
   드러나지 않는다. undici 의존은 runtime 구현 안에 갇힌다.
 - **네이티브 래핑.** 전송은 undici에 위임하되, 계약과 의미론이 다른 부분(cookie jar,
-  redirect 루프, retry, 압축 통제)은 얇은 래퍼에서 직접 구현한다. C++ 산출물이
-  Boost.Beast를 감싼 방식과 같다.
+  redirect 루프, retry, 압축 통제)은 얇은 래퍼에서 직접 구현한다.
 
 ## 백엔드 선택 — `fetch`가 아닌 undici
 
@@ -37,8 +36,7 @@ auto-decompress·cookie를 하지 않아 래퍼가 의미론을 통제할 수 �
 - `submitRaw()` / `submit<T>()` / `download(sink)`는 `Promise`를 돌려준다. `await`하는
   동안 HTTP I/O는 libuv event loop의 비동기 소켓에서 처리되고 **event loop 스레드는
   점유되지 않는다.**
-- Node에는 동기 blocking HTTP 접근이 없다(C++의 `fetch<T>`/`.result` 같은 blocking
-  경로 없음).
+- Node에는 동기 blocking HTTP 접근이 없다(blocking 경로 없음).
 
 ## 기능 한눈에 보기
 

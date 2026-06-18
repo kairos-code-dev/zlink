@@ -605,6 +605,44 @@ void test_socket_option_auto_hwm_buffer_options_do_not_change_snapshot_contract 
     test_context_socket_close (router);
 }
 
+void test_socket_option_manual_hwm_overrides_auto_hwm_recalculation ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_PROFILE, ZLINK_AUTO_HWM_PROFILE_BALANCED));
+
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (router);
+
+    const int manual_sndhwm = 77;
+    const int manual_rcvhwm = 88;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_SNDHWM, &manual_sndhwm, sizeof (manual_sndhwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_RCVHWM, &manual_rcvhwm, sizeof (manual_rcvhwm)));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_PROFILE, ZLINK_AUTO_HWM_PROFILE_THROUGHPUT));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
+
+    int value = 0;
+    size_t value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDHWM, &value, &value_size));
+    TEST_ASSERT_EQUAL_INT (manual_sndhwm, value);
+    value = 0;
+    value_size = sizeof (value);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_RCVHWM, &value, &value_size));
+    TEST_ASSERT_EQUAL_INT (manual_rcvhwm, value);
+
+    zlink_monitor_status_t status;
+    read_socket_auto_hwm_snapshot (router, &status);
+    TEST_ASSERT_EQUAL_INT32 (manual_sndhwm, status.auto_hwm_applied_sndhwm);
+    TEST_ASSERT_EQUAL_INT32 (manual_rcvhwm, status.auto_hwm_applied_rcvhwm);
+
+    test_context_socket_close (router);
+}
+
 void test_ctx_option_invalid ()
 {
     TEST_ASSERT_EQUAL_INT (
@@ -639,6 +677,7 @@ int main (void)
     RUN_TEST (test_socket_option_auto_hwm_stream_default_msg_unit);
     RUN_TEST (test_auto_hwm_msg_unit_rejects_spot_service_handles);
     RUN_TEST (test_socket_option_auto_hwm_buffer_options_do_not_change_snapshot_contract);
+    RUN_TEST (test_socket_option_manual_hwm_overrides_auto_hwm_recalculation);
     RUN_TEST (test_ctx_option_invalid);
     return UNITY_END ();
 }

@@ -14,31 +14,31 @@
 이 문서는 새 설계를 제안하지 않는다.
 설계 authority는 아래 메인 플랜 문서 하나로 고정한다.
 
-- [`dotnet-bindings-core-alignment-plan.ko.md`](./dotnet-bindings-core-alignment-plan.ko.md)
+- [`dotnet-bindings-core-alignment-plan.ko.md`](dotnet-bindings-core-alignment-plan.ko.md)
   - 목적 / 기준 / 현재 상태:
-    [`1. 목적`](./dotnet-bindings-core-alignment-plan.ko.md#1-목적),
-    [`2. 입력 자료와 기준`](./dotnet-bindings-core-alignment-plan.ko.md#2-입력-자료와-기준),
-    [`3. 현재 상태 요약`](./dotnet-bindings-core-alignment-plan.ko.md#3-현재-상태-요약)
+    [`1. 목적`](dotnet-bindings-core-alignment-plan.ko.md#1-목적),
+    [`2. 입력 자료와 기준`](dotnet-bindings-core-alignment-plan.ko.md#2-입력-자료와-기준),
+    [`3. 현재 상태 요약`](dotnet-bindings-core-alignment-plan.ko.md#3-현재-상태-요약)
   - 설계 원칙 / API 스타일 / 성능 원칙:
-    [`4. 설계 원칙`](./dotnet-bindings-core-alignment-plan.ko.md#4-설계-원칙),
-    [`4.1 .NET API 스타일 규칙`](./dotnet-bindings-core-alignment-plan.ko.md#41-net-api-스타일-규칙),
-    [`4.4 성능 원칙`](./dotnet-bindings-core-alignment-plan.ko.md#44-성능-원칙),
-    [`4.5 성능 민감 API 설계 규칙`](./dotnet-bindings-core-alignment-plan.ko.md#45-성능-민감-api-설계-규칙)
+    [`4. 설계 원칙`](dotnet-bindings-core-alignment-plan.ko.md#4-설계-원칙),
+    [`4.1 .NET API 스타일 규칙`](dotnet-bindings-core-alignment-plan.ko.md#41-net-api-스타일-규칙),
+    [`4.4 성능 원칙`](dotnet-bindings-core-alignment-plan.ko.md#44-성능-원칙),
+    [`4.5 성능 민감 API 설계 규칙`](dotnet-bindings-core-alignment-plan.ko.md#45-성능-민감-api-설계-규칙)
   - 고정 결정 / public surface:
-    [`5.3 이번 작업에서 고정하는 결정`](./dotnet-bindings-core-alignment-plan.ko.md#53-이번-작업에서-고정하는-결정),
-    [`5.7 raw socket public API 이름 정책`](./dotnet-bindings-core-alignment-plan.ko.md#57-raw-socket-public-api-이름-정책),
-    [`5.7.1 Message public API 목표 shape`](./dotnet-bindings-core-alignment-plan.ko.md#571-message-public-api-목표-shape),
-    [`5.8 Message/Socket ownership 계약`](./dotnet-bindings-core-alignment-plan.ko.md#58-messagesocket-ownership-계약),
-    [`5.10 Service public API 목표 shape`](./dotnet-bindings-core-alignment-plan.ko.md#510-service-public-api-목표-shape),
-    [`5.11 목표 public 타입 inventory`](./dotnet-bindings-core-alignment-plan.ko.md#511-목표-public-타입-inventory)
+    [`5.3 이번 작업에서 고정하는 결정`](dotnet-bindings-core-alignment-plan.ko.md#53-이번-작업에서-고정하는-결정),
+    [`5.7 raw socket public API 이름 정책`](dotnet-bindings-core-alignment-plan.ko.md#57-raw-socket-public-api-이름-정책),
+    [`5.7.1 Message public API 목표 shape`](dotnet-bindings-core-alignment-plan.ko.md#571-message-public-api-목표-shape),
+    [`5.8 Message/Socket ownership 계약`](dotnet-bindings-core-alignment-plan.ko.md#58-messagesocket-ownership-계약),
+    [`5.10 Service public API 목표 shape`](dotnet-bindings-core-alignment-plan.ko.md#510-service-public-api-목표-shape),
+    [`5.11 목표 public 타입 inventory`](dotnet-bindings-core-alignment-plan.ko.md#511-목표-public-타입-inventory)
   - 단계별 구현 / 검증:
-    [`6. 상세 실행 계획`](./dotnet-bindings-core-alignment-plan.ko.md#6-상세-실행-계획),
-    [`테스트 전략 재정의`](./dotnet-bindings-core-alignment-plan.ko.md#테스트-전략-재정의),
-    [`7. 권장 구현 순서`](./dotnet-bindings-core-alignment-plan.ko.md#7-권장-구현-순서),
-    [`10. 최종 완료 정의`](./dotnet-bindings-core-alignment-plan.ko.md#10-최종-완료-정의),
-    [`13. 착수 후 실행 명령`](./dotnet-bindings-core-alignment-plan.ko.md#13-착수-후-실행-명령),
-    [`14. 파일별 실행 체크리스트`](./dotnet-bindings-core-alignment-plan.ko.md#14-파일별-실행-체크리스트),
-    [`15. API review gate`](./dotnet-bindings-core-alignment-plan.ko.md#15-api-review-gate)
+    [`6. 상세 실행 계획`](dotnet-bindings-core-alignment-plan.ko.md#6-상세-실행-계획),
+    [`테스트 전략 재정의`](dotnet-bindings-core-alignment-plan.ko.md#테스트-전략-재정의),
+    [`7. 권장 구현 순서`](dotnet-bindings-core-alignment-plan.ko.md#7-권장-구현-순서),
+    [`10. 최종 완료 정의`](dotnet-bindings-core-alignment-plan.ko.md#10-최종-완료-정의),
+    [`13. 착수 후 실행 명령`](dotnet-bindings-core-alignment-plan.ko.md#13-착수-후-실행-명령),
+    [`14. 파일별 실행 체크리스트`](dotnet-bindings-core-alignment-plan.ko.md#14-파일별-실행-체크리스트),
+    [`15. API review gate`](dotnet-bindings-core-alignment-plan.ko.md#15-api-review-gate)
 
 실행 중 설계 판단이 필요해 보이면 먼저 메인 플랜을 갱신하고, 그 다음 이 guide를
 맞춘 뒤 코드를 수정한다. 코드와 실행 가이드만 바꿔서 설계 불일치를 남기지 않는다.
@@ -47,7 +47,7 @@
 
 단일 설계 authority:
 
-- [`dotnet-bindings-core-alignment-plan.ko.md`](./dotnet-bindings-core-alignment-plan.ko.md)
+- [`dotnet-bindings-core-alignment-plan.ko.md`](dotnet-bindings-core-alignment-plan.ko.md)
 
 이 가이드는 아래 내용을 메인 플랜에서 그대로 따른다.
 
@@ -64,14 +64,14 @@
 자동 실행 관계:
 
 - 수동 실행 기준 문서는 이 guide와 메인 플랜이다.
-- 자동 실행이 필요하면 [`run_dotnet_bindings_alignment_execution.sh`](./run_dotnet_bindings_alignment_execution.sh)
+- 자동 실행이 필요하면 [`run_dotnet_bindings_alignment_execution.sh`](run_dotnet_bindings_alignment_execution.sh)
   를 사용한다.
 - 이 스크립트는 내부적으로 공통 supervisor인
   [`core/tools/run_codex_execution_guide_loop.sh`](../../../../core/tools/run_codex_execution_guide_loop.sh)
   를 호출한다.
 - 공통 supervisor는 guide / master plan / logs / gate label만 주입받는 제너릭
   루프이고, bindings 전용 정책은 이 guide와 메인 플랜이 결정한다.
-- 기본 로그 디렉터리는 [`logs/`](./logs) 이다.
+- 기본 로그 디렉터리는 [`logs/`](logs) 이다.
 - 실행 wrapper 자체는 별도 `lock`을 두지 않는다.
   같은 작업을 병렬 실행해야 하면 `--logs-dir` 또는 `--gate-label`을 분리해서
   상태 파일 충돌을 피한다.

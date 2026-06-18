@@ -1,7 +1,7 @@
 # CppServer
 
 [![Awesome C++](https://awesome.re/badge.svg)](https://github.com/fffaraz/awesome-cpp)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Release](https://img.shields.io/github/release/chronoxor/CppServer.svg?sort=semver)](https://github.com/chronoxor/CppServer/releases)
 <br/>
 [![Linux (clang)](https://github.com/chronoxor/CppServer/actions/workflows/build-linux-clang.yml/badge.svg)](https://github.com/chronoxor/CppServer/actions/workflows/build-linux-clang.yml)

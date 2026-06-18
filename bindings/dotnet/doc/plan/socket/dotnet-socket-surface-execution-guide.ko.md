@@ -14,7 +14,7 @@
 
 참고 입력:
 
-- [`2026-03-27-dotnet-socket-surface-detailed-design.ko.md`](./2026-03-27-dotnet-socket-surface-detailed-design.ko.md)
+- [`2026-03-27-dotnet-socket-surface-detailed-design.ko.md`](2026-03-27-dotnet-socket-surface-detailed-design.ko.md)
 
 운영 규칙:
 
@@ -430,7 +430,7 @@ dotnet test /home/hep7/project/kairos/zlink/bindings/dotnet/tests/Zlink.Tests/Zl
 
 ## 10. 로그와 운영 규칙
 
-- 기본 로그 디렉터리는 [`logs/`](./logs) 다.
+- 기본 로그 디렉터리는 [`logs/`](logs) 다.
 - 실행 wrapper는 별도 실행 lock을 두지 않는다.
 - 병렬 실행이 필요하면 `--logs-dir` 와 `--gate-label` 을 분리한다.
 - commit / push는 사용자 지시가 있을 때만 수행한다.
@@ -474,7 +474,7 @@ dotnet test /home/hep7/project/kairos/zlink/bindings/dotnet/tests/Zlink.Tests/Zl
 
 자동 반복 실행은 아래 wrapper를 사용한다.
 
-- [`run_dotnet_socket_surface_execution.sh`](./run_dotnet_socket_surface_execution.sh)
+- [`run_dotnet_socket_surface_execution.sh`](run_dotnet_socket_surface_execution.sh)
 
 smoke 확인:
 

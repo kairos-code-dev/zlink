@@ -28,6 +28,7 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.ZLinkHandlerFilter;
+import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.ZLinkInvocationContext;
 import systems.zlink.framework.ZLinkNext;
 import systems.zlink.framework.configuration.ZLinkDispatchMode;
@@ -68,7 +69,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void globalConfigurationMutatesRegistrationModel() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.codecs().addProtobuf();
+        options.codecs().addSerializer("application/x-test", new ZLinkJsonMessageSerializer());
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
         { var metadata = options.configureMetadata(); metadata.addForwardedMetadataKey("trace-id"); };
         options.useFilter(TestFilter.class);
@@ -77,7 +78,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         options.addSpotRemoteAddressResolver(TestSpotRemoteAddressResolver.class);
         { var registry = options.useRegistrySpotRemoteAddresses("game"); registry.setRouterChannelId("spot-router"); };
 
-        assertTrue(options.registration().codecs().registeredCodecs().contains("protobuf"));
+        assertTrue(options.registration().codecs().serializers().containsKey("application/x-test"));
         assertTrue(options.registration().handlerPackageMarkers()
             .contains(DefaultZLinkFrameworkOptionsTest.class));
         assertTrue(options.registration().metadataPolicy().forwardedApplicationKeys()

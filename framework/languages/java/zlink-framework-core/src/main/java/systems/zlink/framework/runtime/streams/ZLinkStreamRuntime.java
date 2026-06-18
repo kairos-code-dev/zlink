@@ -230,6 +230,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             new ZLinkSessionPacketDispatcherRuntime<>(
                 streamNode.sessionPacketHandlers(),
                 handlerFactory,
+                serializer,
                 handlerExecutor);
         ZLinkHandlerFactory.MutableServices sessionFactory =
             ZLinkHandlerFactory.services(handlerFactory)
@@ -553,14 +554,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     }
 
     private static ZLinkStreamCodec defaultCodec(ZLinkFrameworkRegistration registration) {
-        java.util.Set<String> codecs = registration.codecs().registeredCodecs();
-        if (codecs.contains("protobuf")) {
-            return ZLinkStreamCodec.PROTOBUF;
-        }
-        if (codecs.contains("messagepack")) {
-            return ZLinkStreamCodec.MESSAGE_PACK;
-        }
-        return ZLinkStreamCodec.JSON;
+        return registration.codecs().streamCodecForCustomSerializer()
+            .orElse(ZLinkStreamCodec.JSON);
     }
 
     private static EncodedStreamPayload encodePayload(Message payload, boolean compress) {

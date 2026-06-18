@@ -17,6 +17,7 @@ dependencies {
     implementation(sampleProject("Shared"))
     implementation(sampleProject("Server:Configuration"))
     implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
+    implementation("systems.zlink:zlink-framework-codec-protobuf:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-framework-spring-boot-starter:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-stream-connector:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink:6.0.4")

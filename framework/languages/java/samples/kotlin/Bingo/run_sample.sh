@@ -143,8 +143,8 @@ build_framework_jars() {
       :zlink-framework-core:jar \
       :zlink-framework-spring-boot-starter:jar \
       :zlink-framework-kotlin:jar \
+      :zlink-framework-codec-protobuf:jar \
       :zlink-stream-connector:jar \
-      :zlink-stream-connector-protobuf:jar \
       --quiet
   )
 }

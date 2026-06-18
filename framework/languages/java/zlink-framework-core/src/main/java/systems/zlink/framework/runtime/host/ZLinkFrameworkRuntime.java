@@ -16,7 +16,6 @@ import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
-import systems.zlink.framework.runtime.messaging.ZLinkProtobufMessageSerializer;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.runtime.streams.ZLinkStreamRuntime;
@@ -131,25 +130,16 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
         if (custom.isPresent()) {
             return custom.get();
         }
-        if (options.registration().codecs().registeredCodecs().contains("protobuf")) {
-            return new ZLinkProtobufMessageSerializer(new ZLinkJsonMessageSerializer());
-        }
-        if (options.registration().codecs().registeredCodecs().contains("json")
-            || options.registration().codecs().registeredCodecs().contains("messagepack")) {
-            return new ZLinkJsonMessageSerializer();
-        }
-        return new ZLinkStringMessageSerializer();
+        ZLinkMessageSerializer fallback =
+            options.registration().codecs().registeredCodecs().isEmpty()
+                ? new ZLinkStringMessageSerializer()
+                : new ZLinkJsonMessageSerializer();
+        return options.registration().codecs().serializerWithFallback(fallback);
     }
 
     private static ZLinkStreamCodec defaultStreamCodec(DefaultZLinkFrameworkOptions options) {
-        java.util.Set<String> codecs = options.registration().codecs().registeredCodecs();
-        if (codecs.contains("protobuf")) {
-            return ZLinkStreamCodec.PROTOBUF;
-        }
-        if (codecs.contains("messagepack")) {
-            return ZLinkStreamCodec.MESSAGE_PACK;
-        }
-        return ZLinkStreamCodec.JSON;
+        return options.registration().codecs().streamCodecForCustomSerializer()
+            .orElse(ZLinkStreamCodec.JSON);
     }
 
     public ZLinkClient client() {

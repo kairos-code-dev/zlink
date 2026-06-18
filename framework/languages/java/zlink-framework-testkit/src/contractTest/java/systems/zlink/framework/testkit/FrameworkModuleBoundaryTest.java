@@ -16,11 +16,9 @@ final class FrameworkModuleBoundaryTest {
     private static final Set<String> EXPECTED_MODULES = Set.of(
         "zlink-framework-core",
         "zlink-framework-spring-boot-starter",
+        "zlink-framework-codec-msgpack",
+        "zlink-framework-codec-protobuf",
         "zlink-stream-connector",
-        "zlink-stream-connector-codecs",
-        "zlink-stream-connector-json",
-        "zlink-stream-connector-msgpack",
-        "zlink-stream-connector-protobuf",
         "zlink-framework-kotlin",
         "zlink-framework-testkit");
 
@@ -33,11 +31,9 @@ final class FrameworkModuleBoundaryTest {
     private static final Map<String, String> EXPECTED_PACKAGE_MARKERS = Map.ofEntries(
         Map.entry("zlink-framework-core", "systems/zlink/framework/package-info.java"),
         Map.entry("zlink-framework-spring-boot-starter", "systems/zlink/framework/spring/package-info.java"),
+        Map.entry("zlink-framework-codec-msgpack", "systems/zlink/framework/codecs/msgpack/package-info.java"),
+        Map.entry("zlink-framework-codec-protobuf", "systems/zlink/framework/codecs/protobuf/package-info.java"),
         Map.entry("zlink-stream-connector", "systems/zlink/stream/connector/package-info.java"),
-        Map.entry("zlink-stream-connector-codecs", "systems/zlink/stream/connector/codecs/package-info.java"),
-        Map.entry("zlink-stream-connector-json", "systems/zlink/stream/connector/json/package-info.java"),
-        Map.entry("zlink-stream-connector-msgpack", "systems/zlink/stream/connector/msgpack/package-info.java"),
-        Map.entry("zlink-stream-connector-protobuf", "systems/zlink/stream/connector/protobuf/package-info.java"),
         Map.entry("zlink-framework-kotlin", "systems/zlink/framework/kotlin/package-info.java"),
         Map.entry("zlink-framework-testkit", "systems/zlink/framework/testkit/package-info.java"));
 

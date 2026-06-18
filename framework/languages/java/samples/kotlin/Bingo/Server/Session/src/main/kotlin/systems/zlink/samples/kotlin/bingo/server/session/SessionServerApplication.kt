@@ -8,6 +8,7 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.samples.kotlin.bingo.server.session.sessions.BingoSession
 import systems.zlink.samples.kotlin.bingo.server.session.sessions.handlers.AuthenticateSessionHandler
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
@@ -30,7 +31,7 @@ class SessionServerApplication {
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(SessionServerApplication::class.java)
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
-            options.codecs().addProtobuf()
+            options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
             options.addClientServerChannel(SampleNames.PlayChannel)

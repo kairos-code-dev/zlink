@@ -2,13 +2,11 @@ package systems.zlink.samples.kotlin.bingo.server.session.sessions.handlers
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.kotlin.ZLinkCoroutineSessionPacketHandler
 import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
+import systems.zlink.framework.kotlin.ZLinkCoroutineTypedSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkStreamCodec as FrameworkStreamCodec
 import systems.zlink.framework.streams.ZLinkStreamHeader
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
@@ -18,28 +16,20 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
-import systems.zlink.stream.connector.ZLinkStreamCodec as ConnectorStreamCodec
-import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
-import systems.zlink.stream.connector.protobuf.ZLinkStreamProtobuf
 
 class AuthenticateSessionHandler(
     private val channels: ZLinkClient,
     coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineSessionPacketHandler<ZLinkSessionContext>(coroutines, "AuthenticateReq") {
+) : ZLinkCoroutineTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq>(
+    coroutines,
+    "AuthenticateReq",
+    AuthenticateReq::class.java,
+) {
     override suspend fun handleSuspending(
         context: ZLinkSessionContext,
         header: ZLinkStreamHeader,
-        payload: Message,
+        request: AuthenticateReq,
     ) {
-        val request = ZLinkStreamProtobuf.decode(
-            ZLinkStreamEncodedPayload(
-                header.packetName(),
-                payload,
-                header.metadata(),
-                connectorCodec(header),
-            ),
-            AuthenticateReq::class.java,
-        )
         if (request.accessToken.isBlank()) {
             throw IllegalArgumentException("access token is required")
         }
@@ -87,12 +77,4 @@ class AuthenticateSessionHandler(
             .submit()
             .await()
     }
-
-    private fun connectorCodec(header: ZLinkStreamHeader): ConnectorStreamCodec =
-        when (header.codec()) {
-            FrameworkStreamCodec.RAW -> ConnectorStreamCodec.RAW
-            FrameworkStreamCodec.JSON -> ConnectorStreamCodec.JSON
-            FrameworkStreamCodec.MESSAGE_PACK -> ConnectorStreamCodec.MESSAGE_PACK
-            FrameworkStreamCodec.PROTOBUF -> ConnectorStreamCodec.PROTOBUF
-        }
 }

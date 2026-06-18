@@ -18,7 +18,6 @@ import systems.zlink.samples.kotlin.deliverydispatch.client.configuration.Sample
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
-import systems.zlink.stream.connector.json.ZLinkStreamJson
 
 @EnableZLinkFramework
 @SpringBootApplication(
@@ -67,7 +66,6 @@ class ClientApplication {
                     Duration.ofMillis(250),
                     Duration.ofSeconds(5),
                     2.0,
-                    ZLinkStreamJson.codec(),
                 ),
             ).kotlin()
     }

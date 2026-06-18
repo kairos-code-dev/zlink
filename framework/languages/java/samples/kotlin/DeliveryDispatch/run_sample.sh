@@ -160,7 +160,6 @@ build_framework_jars() {
       :zlink-framework-core:jar \
       :zlink-framework-spring-boot-starter:jar \
       :zlink-stream-connector:jar \
-      :zlink-stream-connector-json:jar \
       --quiet
   )
 }

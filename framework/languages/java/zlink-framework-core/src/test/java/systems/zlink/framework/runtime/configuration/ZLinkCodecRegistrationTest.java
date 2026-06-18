@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkMessageSerializer;
+import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 
@@ -37,6 +38,19 @@ final class ZLinkCodecRegistrationTest {
     }
 
     @Test
+    void codecExtensionCanRegisterCustomSerializer() {
+        ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
+
+        registration.use(MarkerCodecExtension::register);
+
+        ZLinkMessageSerializer serializer = registration.customSerializer().orElseThrow();
+        ZLinkPayloadEncoding.EncodedPayload encoded =
+            ZLinkPayloadEncoding.encode(serializer, new Probe("hello"));
+
+        assertEquals("AVRO:hello", new String(encoded.payload().toByteArray(), StandardCharsets.UTF_8));
+    }
+
+    @Test
     void ambiguousWhenMultipleCustomSerializersRegistered() {
         ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
         registration.addSerializer("application/avro", new MarkerSerializer());
@@ -60,6 +74,12 @@ final class ZLinkCodecRegistrationTest {
             String text = new String(message.toByteArray(), StandardCharsets.UTF_8);
             String value = text.startsWith("AVRO:") ? text.substring("AVRO:".length()) : text;
             return type.cast(new Probe(value));
+        }
+    }
+
+    static final class MarkerCodecExtension {
+        static void register(ZLinkCodecRegistryBuilder codecs) {
+            codecs.addSerializer("application/avro", new MarkerSerializer());
         }
     }
 }

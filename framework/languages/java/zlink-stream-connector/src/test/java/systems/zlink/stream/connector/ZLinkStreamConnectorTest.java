@@ -314,6 +314,7 @@ final class ZLinkStreamConnectorTest {
                 TcpStreamConnectorTestServer.bytes("body")).join();
 
             TcpStreamConnectorTestServer.awaitCondition(() -> error.get() != null);
+            TcpStreamConnectorTestServer.awaitCondition(() -> handled.get() == 1);
             assertEquals(ZLinkStreamErrorCode.OBSERVER_FAILED, error.get().code());
             assertEquals(1, handled.get());
         }

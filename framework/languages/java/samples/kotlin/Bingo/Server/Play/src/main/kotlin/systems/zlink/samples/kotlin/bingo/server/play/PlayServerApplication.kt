@@ -13,6 +13,7 @@ import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.actors.PlayerActorFactory
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.notifications.BingoNotificationPublisher
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.BingoRoomSpot
@@ -39,7 +40,7 @@ class PlayServerApplication {
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(PlayServerApplication::class.java)
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
-            options.codecs().addProtobuf()
+            options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.addClientServerChannel(SampleNames.PlayChannel)
                 .enableServer(SampleTopology.PlayChannelEndpoint)
                 .addHandlerGroup("play")

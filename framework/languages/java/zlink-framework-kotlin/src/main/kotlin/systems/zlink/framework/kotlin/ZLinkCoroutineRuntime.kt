@@ -45,6 +45,7 @@ import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkStreamError as FrameworkStreamError
 import systems.zlink.framework.streams.ZLinkStreamHeader
+import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler
 import systems.zlink.stream.connector.ZLinkStreamConnectionState
 import systems.zlink.stream.connector.ZLinkStreamConnectionStateHandler
 import systems.zlink.stream.connector.ZLinkStreamDisconnectedHandler
@@ -395,6 +396,32 @@ abstract class ZLinkCoroutineSessionPacketHandler<TSessionContext : ZLinkSession
         context: TSessionContext,
         header: ZLinkStreamHeader,
         payload: Message,
+    )
+}
+
+abstract class ZLinkCoroutineTypedSessionPacketHandler<TSessionContext : ZLinkSessionContext, TMessage : Any>(
+    private val coroutines: ZLinkCoroutineRuntime,
+    private val packetName: String,
+    private val messageType: Class<TMessage>,
+) : ZLinkTypedSessionPacketHandler<TSessionContext, TMessage> {
+    final override fun packetName(): String = packetName
+
+    final override fun messageType(): Class<TMessage> = messageType
+
+    final override fun handle(
+        context: TSessionContext,
+        header: ZLinkStreamHeader,
+        message: TMessage,
+    ) {
+        coroutines.blocking {
+            handleSuspending(context, header, message)
+        }
+    }
+
+    protected abstract suspend fun handleSuspending(
+        context: TSessionContext,
+        header: ZLinkStreamHeader,
+        message: TMessage,
     )
 }
 

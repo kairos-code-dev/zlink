@@ -1,6 +1,7 @@
 package systems.zlink.samples.tictactoe.server.api;
 
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.configuration.SampleLogging;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
@@ -12,7 +13,7 @@ public final class ApiServer {
     public static ZLinkFrameworkConfigurer configure(SampleSettings settings) {
         return options -> {
             SampleLogging.configure(settings, "api");
-            options.codecs().addMessagePack();
+            options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
             options.addHandlersFromPackageOf(ApiServer.class);
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableServer(settings.apiChannelEndpoint())

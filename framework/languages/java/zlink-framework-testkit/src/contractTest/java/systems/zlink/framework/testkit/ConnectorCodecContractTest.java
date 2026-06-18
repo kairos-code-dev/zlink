@@ -15,6 +15,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
@@ -22,9 +24,7 @@ import systems.zlink.stream.connector.ZLinkStreamCodec;
 import systems.zlink.stream.connector.ZLinkStreamCompression;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
-import systems.zlink.stream.connector.json.ZLinkStreamJson;
-import systems.zlink.stream.connector.msgpack.ZLinkStreamMessagePack;
-import systems.zlink.stream.connector.protobuf.ZLinkStreamProtobuf;
+import systems.zlink.stream.connector.ZLinkStreamJson;
 
 final class ConnectorCodecContractTest {
     @Test
@@ -38,27 +38,27 @@ final class ConnectorCodecContractTest {
         assertCodecRoundtrip(
             "MsgpackPacket",
             ZLinkStreamCodec.MESSAGE_PACK,
-            ZLinkStreamMessagePack.encode("MsgpackPacket", "msgpack-body"),
+            ZLinkMessagePackCodec.defaultCodec().encode("MsgpackPacket", "msgpack-body"),
             "msgpack-body",
-            payload -> ZLinkStreamMessagePack.decode(payload, String.class));
+            payload -> ZLinkMessagePackCodec.defaultCodec().decode(payload, String.class));
         assertCodecRoundtrip(
             "ProtobufPacket",
             ZLinkStreamCodec.PROTOBUF,
-            ZLinkStreamProtobuf.encode("ProtobufPacket", "protobuf-body"),
+            ZLinkProtobufCodec.defaultCodec().encode("ProtobufPacket", "protobuf-body"),
             "protobuf-body",
-            payload -> ZLinkStreamProtobuf.decode(payload, String.class));
+            payload -> ZLinkProtobufCodec.defaultCodec().decode(payload, String.class));
     }
 
     @Test
     void protobufTypedHelperUsesMessageLiteBytes() throws Exception {
         StringValue original = StringValue.of("profile:42");
         ZLinkStreamEncodedPayload encoded =
-            ZLinkStreamProtobuf.encode("StringValue", original);
+            ZLinkProtobufCodec.defaultCodec().encode("StringValue", original);
         try {
             assertEquals("StringValue", encoded.packetName());
             assertEquals(ZLinkStreamCodec.PROTOBUF, encoded.codec());
             assertEquals(original, StringValue.parseFrom(encoded.payload().toByteArray()));
-            assertEquals(original, ZLinkStreamProtobuf.decode(encoded, StringValue.class));
+            assertEquals(original, ZLinkProtobufCodec.defaultCodec().decode(encoded, StringValue.class));
         } finally {
             encoded.payload().close();
         }

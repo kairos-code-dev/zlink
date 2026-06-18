@@ -478,10 +478,10 @@ final class SampleReleaseGateContractTest {
                 && !settingsSource.contains("current()")
                 && !settingsSource.contains("setCurrent"),
             "TicTacToe direct sample must expose .NET-style sample settings through Spring DI instead of fixed topology constants or global state");
-        assertTrue(clientSource.contains("HttpClient")
+        assertTrue(clientSource.contains("ZLinkHttpClient")
                 && clientSource.contains("CreateGameHttpReq")
                 && clientSource.contains("CreateGameHttpRes")
-                && clientSource.contains(".resolve(\"/games\")")
+                && clientSource.contains(".post(\"/games\")")
                 && !clientSource.contains(".requestToChannel("),
             "TicTacToe direct client must create games through the HTTP API path");
         String playAuthHandlerSource = sampleJavaSource(
@@ -524,8 +524,8 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains("options.xActorId().equals(hostWin.state().winner())")
                 && clientSource.contains("host.close().await()")
                 && clientSource.contains("guest.close().await()")
-                && clientSource.contains("ZLinkStreamMessagePack.codec()")
-                && !clientSource.contains("ZLinkStreamMessagePack.request")
+                && clientSource.contains("ZLinkMessagePackCodec.defaultCodec()")
+                && !clientSource.contains("ZLinkMessagePackCodec.request")
                 && !clientSource.contains(FORBIDDEN_TICTACTOE_RESULT)
                 && !clientSource.contains("requestStep(")
                 && !clientSource.contains("validateFinalState(")
@@ -544,7 +544,7 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains("guestSawHostWin")
                 && clientProgramSource.contains("new TicTacToeClientScenario().run(clientOptions)")
                 && !clientProgramSource.contains("awaitSample(")
-                && !clientSource.contains("ZLinkStreamMessagePack.on")
+                && !clientSource.contains("ZLinkMessagePackCodec.on")
                 && !clientSource.contains("ConcurrentLinkedQueue")
                 && !clientSource.contains("stateNotifications")
                 && !clientSource.contains("playerJoinedNotifications")
@@ -620,7 +620,7 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/java",
             "systems/zlink/samples/tictactoe/server/play/domain/tictactoe/TicTacToeMatch.java");
-        assertTrue(playAuthHandlerSource.contains("ZLinkStreamMessagePack.decode")
+        assertTrue(playAuthHandlerSource.contains("ZLinkTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq>")
                 && playAuthHandlerSource.contains("new AuthenticatePlayerReq(request.accessToken())")
                 && playAuthHandlerSource.contains("context.actors().bind(playActor)")
                 && playSessionSource.contains("handlers.tryHandleAsync(context, header, payload)")
@@ -857,10 +857,10 @@ final class SampleReleaseGateContractTest {
                 && !settingsSource.contains("fun current")
                 && !settingsSource.contains("setCurrent"),
             "Kotlin TicTacToe direct sample must expose .NET-style sample settings through Spring DI instead of fixed topology constants or global state");
-        assertTrue(clientSource.contains("HttpClient")
+        assertTrue(clientSource.contains("zlinkHttpClient")
                 && clientSource.contains("CreateGameHttpReq")
                 && clientSource.contains("CreateGameHttpRes")
-                && clientSource.contains(".resolve(\"/games\")")
+                && clientSource.contains(".post(\"/games\")")
                 && !clientSource.contains(".requestToChannel("),
             "Kotlin TicTacToe direct client must create games through the HTTP API path");
         assertTrue(playAuthHandlerSource.contains("AuthenticatePlayerReq(request.accessToken)")
@@ -897,8 +897,8 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains("URI.create(endpoint)")
                 && clientSource.contains("ensure(hostWin.state.status == \"Won\")")
                 && clientSource.contains("ensure(hostWin.state.winner == options.xActorId)")
-                && clientSource.contains("ZLinkStreamMessagePack.codec()")
-                && !clientSource.contains("ZLinkStreamMessagePack.request")
+                && clientSource.contains("ZLinkMessagePackCodec.defaultCodec()")
+                && !clientSource.contains("ZLinkMessagePackCodec.request")
                 && !clientSource.contains(FORBIDDEN_TICTACTOE_RESULT)
                 && !clientSource.contains("game.gameId"),
             "Kotlin TicTacToe stream client path must use connector member request contracts and assert the .NET winning scenario");
@@ -912,7 +912,7 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains("guestSawHostWin")
                 && clientSource.contains(".where { message -> message.payload().state.lastMoveCell == 0 }")
                 && clientSource.contains(".where { message -> message.payload().state.status == \"Won\" }")
-                && !clientSource.contains("ZLinkStreamMessagePack.on")
+                && !clientSource.contains("ZLinkMessagePackCodec.on")
                 && !clientSource.contains("ConcurrentLinkedQueue")
                 && !clientSource.contains("stateNotifications")
                 && !clientSource.contains("playerJoinedNotifications")
@@ -979,7 +979,7 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/handlers/TicTacToeGameTimerHandler.kt");
-        assertTrue(playAuthHandlerSource.contains("ZLinkStreamMessagePack.decode")
+        assertTrue(playAuthHandlerSource.contains("ZLinkCoroutineTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq>")
                 && playAuthHandlerSource.contains("AuthenticatePlayerReq(request.accessToken)")
                 && playAuthHandlerSource.contains("context.actors().bind(playActor).await()")
                 && playSessionSource.contains("handlers.tryHandleAsync(context, header, payload)")
@@ -1198,13 +1198,13 @@ final class SampleReleaseGateContractTest {
                 && clientAppSource.contains(".await(Messages.AuthenticateRes.class)")
                 && clientAppSource.contains(".submit(Messages.PlayerJoinedNotify.class)")
                 && clientAppSource.contains("client1.await(client1SawClient2Join)")
-                && !clientAppSource.contains("ZLinkStreamProtobuf.")
+                && !clientAppSource.contains("ZLinkProtobufCodec.")
                 && clientAppSource.contains("List.of(1, 2, 3, 4, 0, 6, 7, 8, 9)")
                 && clientAppSource.contains("client1Result.winners().equals(List.of(client1Auth.actorId()))")
                 && roomSource.contains("submitCard")
                 && roomSource.contains("game.drawNext()"),
             "Bingo sample must use connector member APIs, submit .NET baseline cards, and let the server timer draw numbers");
-        assertTrue(clientProgramSource.contains("ZLinkStreamProtobuf.codec()"),
+        assertTrue(clientProgramSource.contains("ZLinkProtobufCodec.defaultCodec()"),
             "Bingo client Program must configure the codec outside the scenario app");
         assertTrue(!clientAppSource.contains("server.play")
                 && !publisherSource.contains("BingoWinnerSink"),
@@ -1399,13 +1399,13 @@ final class SampleReleaseGateContractTest {
                 && clientAppSource.contains(".request(AuthenticateReq")
                 && clientAppSource.contains(".await<AuthenticateRes>()")
                 && !clientAppSource.contains(".submit()")
-                && !clientAppSource.contains("ZLinkStreamProtobuf.")
+                && !clientAppSource.contains("ZLinkProtobufCodec.")
                 && clientAppSource.contains("listOf(1, 2, 3, 4, 0, 6, 7, 8, 9)")
                 && clientAppSource.contains("client1Result.winners == listOf(client1Auth.actorId)")
                 && roomSource.contains("submitCard")
                 && roomSource.contains("allCardsSubmitted()"),
             "Kotlin Bingo sample must use connector member APIs, submit .NET baseline cards, and let the server timer draw numbers");
-        assertTrue(clientProgramSource.contains("ZLinkStreamProtobuf.codec()"),
+        assertTrue(clientProgramSource.contains("ZLinkProtobufCodec.defaultCodec()"),
             "Kotlin Bingo client Program must configure the codec outside the scenario app");
         assertTrue(!clientAppSource.contains("server.play")
                 && !publisherSource.contains("BingoWinnerSink"),

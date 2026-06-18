@@ -1,18 +1,14 @@
 package systems.zlink.samples.kotlin.tictactoe.client
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import java.time.Duration
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 import systems.zlink.framework.kotlin.kotlin
+import systems.zlink.httpclient.kotlin.fetch
+import systems.zlink.httpclient.kotlin.zlinkHttpClient
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticateRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameHttpReq
@@ -26,14 +22,15 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerJoinedNotif
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
-import systems.zlink.stream.connector.msgpack.ZLinkStreamMessagePack
+import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
 
 class TicTacToeClientScenario {
-    private val http = HttpClient.newHttpClient()
-    private val json = ObjectMapper().registerKotlinModule()
-
     suspend fun run(options: TicTacToeClientOptions) = coroutineScope {
-        val game = createGame(options.apiUrl, options.gameName)
+        val game = zlinkHttpClient(options.apiUrl).use { api ->
+            api.post("/games")
+                .body(CreateGameHttpReq(options.gameName))
+                .fetch<CreateGameHttpRes>()
+        }
         val hostStream = playerConnector(game.playEndpoint)
         val guestStream = playerConnector(game.playEndpoint)
 
@@ -158,16 +155,6 @@ class TicTacToeClientScenario {
         }
     }
 
-    private suspend fun createGame(apiUrl: String, gameName: String): CreateGameHttpRes {
-        val request = HttpRequest.newBuilder(URI.create(apiUrl).resolve("/games"))
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(CreateGameHttpReq(gameName))))
-            .build()
-        val response = http.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
-        ensure(response.statusCode() / 100 == 2)
-        return json.readValue(response.body(), CreateGameHttpRes::class.java)
-    }
-
     private fun playerConnector(endpoint: String): ZLinkKotlinStreamConnector =
         ZLinkStreamConnectorFactory.create(
             ZLinkStreamConnectorOptions(
@@ -184,7 +171,7 @@ class TicTacToeClientScenario {
                 Duration.ofMillis(250),
                 Duration.ofSeconds(5),
                 2.0,
-                ZLinkStreamMessagePack.codec(),
+                ZLinkMessagePackCodec.defaultCodec(),
             ),
         ).kotlin()
 }

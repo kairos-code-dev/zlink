@@ -17,7 +17,7 @@ dependencies {
     implementation(sampleProject("Shared"))
     implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-stream-connector:0.1.0-SNAPSHOT")
-    implementation("systems.zlink:zlink-stream-connector-protobuf:0.1.0-SNAPSHOT")
+    implementation("systems.zlink:zlink-framework-codec-protobuf:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink:6.0.4")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     implementation("io.netty:netty-buffer:4.1.100.Final")

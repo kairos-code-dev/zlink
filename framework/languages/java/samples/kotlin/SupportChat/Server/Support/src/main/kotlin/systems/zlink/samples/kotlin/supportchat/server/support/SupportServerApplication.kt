@@ -13,6 +13,7 @@ import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.actors.SupportActorDirectory
@@ -41,7 +42,7 @@ class SupportServerApplication {
     fun supportFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
-            options.codecs().addProtobuf()
+            options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.addHandlersFromPackageOf(SupportServerApplication::class.java)
             options.addClientServerChannel(SampleNames.SupportChannel)
                 .enableServer(SampleTopology.SupportChannelEndpoint)

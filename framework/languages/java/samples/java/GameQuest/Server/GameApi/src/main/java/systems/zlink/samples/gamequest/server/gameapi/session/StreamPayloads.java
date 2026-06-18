@@ -4,7 +4,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.stream.connector.ZLinkStreamCodec;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
-import systems.zlink.stream.connector.json.ZLinkStreamJson;
+import systems.zlink.stream.connector.ZLinkStreamJson;
 
 /** Decodes inbound JSON stream packets into typed session requests. */
 public final class StreamPayloads {

@@ -7,13 +7,17 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder {
     private final Set<String> registeredCodecs = new LinkedHashSet<>();
-    private final Map<String, ZLinkMessageSerializer> serializers = new LinkedHashMap<>();
+    private final Map<String, RegisteredSerializer> serializers = new LinkedHashMap<>();
+    private final Map<String, ZLinkStreamCodec> streamCodecsByContentType = new LinkedHashMap<>();
+    private final Map<ZLinkStreamCodec, String> contentTypesByStreamCodec = new LinkedHashMap<>();
 
     @Override
     public void addJson() {
@@ -21,24 +25,43 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder {
     }
 
     @Override
-    public void addMessagePack() {
-        registeredCodecs.add("messagepack");
-    }
-
-    @Override
-    public void addProtobuf() {
-        registeredCodecs.add("protobuf");
-    }
-
-    @Override
     public void addSerializer(String contentType, ZLinkMessageSerializer serializer) {
+        addSerializer(contentType, serializer, ignored -> true, true);
+    }
+
+    @Override
+    public void addSerializer(
+        String contentType,
+        ZLinkMessageSerializer serializer,
+        Predicate<Class<?>> canSerialize) {
+        addSerializer(contentType, serializer, canSerialize, false);
+    }
+
+    private void addSerializer(
+        String contentType,
+        ZLinkMessageSerializer serializer,
+        Predicate<Class<?>> canSerialize,
+        boolean fallbackSerializer) {
         Objects.requireNonNull(contentType, "contentType");
         Objects.requireNonNull(serializer, "serializer");
+        Objects.requireNonNull(canSerialize, "canSerialize");
         String normalized = contentType.trim();
         if (normalized.isEmpty()) {
             throw new ZLinkConfigurationException("custom serializer content type must not be blank");
         }
-        serializers.put(normalized, serializer);
+        serializers.put(normalized, new RegisteredSerializer(serializer, canSerialize, fallbackSerializer));
+    }
+
+    @Override
+    public void addStreamCodec(String contentType, ZLinkStreamCodec codec) {
+        Objects.requireNonNull(contentType, "contentType");
+        Objects.requireNonNull(codec, "codec");
+        String normalized = contentType.trim();
+        if (normalized.isEmpty()) {
+            throw new ZLinkConfigurationException("stream codec content type must not be blank");
+        }
+        streamCodecsByContentType.put(normalized, codec);
+        contentTypesByStreamCodec.put(codec, normalized);
     }
 
     public Set<String> registeredCodecs() {
@@ -46,7 +69,36 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder {
     }
 
     public Map<String, ZLinkMessageSerializer> serializers() {
-        return Collections.unmodifiableMap(serializers);
+        Map<String, ZLinkMessageSerializer> snapshot = new LinkedHashMap<>();
+        serializers.forEach((contentType, serializer) -> snapshot.put(contentType, serializer.serializer()));
+        return Collections.unmodifiableMap(snapshot);
+    }
+
+    public Optional<ZLinkStreamCodec> streamCodec(String contentType) {
+        return Optional.ofNullable(streamCodecsByContentType.get(contentType));
+    }
+
+    public Optional<String> streamContentType(ZLinkStreamCodec codec) {
+        return Optional.ofNullable(contentTypesByStreamCodec.get(codec));
+    }
+
+    public Optional<ZLinkStreamCodec> streamCodecForCustomSerializer() {
+        Map<String, RegisteredSerializer> fallbackSerializers = new LinkedHashMap<>();
+        serializers.forEach((contentType, serializer) -> {
+            if (serializer.fallbackSerializer()) {
+                fallbackSerializers.put(contentType, serializer);
+            }
+        });
+
+        if (fallbackSerializers.isEmpty()) {
+            return Optional.empty();
+        }
+        if (fallbackSerializers.size() > 1) {
+            throw new ZLinkConfigurationException(
+                "payload serializer is ambiguous because more than one custom serializer is registered: "
+                    + fallbackSerializers.keySet());
+        }
+        return streamCodec(fallbackSerializers.keySet().iterator().next());
     }
 
     /**
@@ -55,14 +107,80 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder {
      * then ambiguous.
      */
     public Optional<ZLinkMessageSerializer> customSerializer() {
-        if (serializers.isEmpty()) {
+        Map<String, RegisteredSerializer> fallbackSerializers = new LinkedHashMap<>();
+        serializers.forEach((contentType, serializer) -> {
+            if (serializer.fallbackSerializer()) {
+                fallbackSerializers.put(contentType, serializer);
+            }
+        });
+
+        if (fallbackSerializers.isEmpty()) {
             return Optional.empty();
         }
-        if (serializers.size() > 1) {
+        if (fallbackSerializers.size() > 1) {
             throw new ZLinkConfigurationException(
                 "payload serializer is ambiguous because more than one custom serializer is registered: "
-                    + serializers.keySet());
+                    + fallbackSerializers.keySet());
         }
-        return Optional.of(serializers.values().iterator().next());
+        return Optional.of(fallbackSerializers.values().iterator().next().serializer());
+    }
+
+    public ZLinkMessageSerializer serializerWithFallback(ZLinkMessageSerializer fallback) {
+        Objects.requireNonNull(fallback, "fallback");
+        if (serializers.isEmpty()) {
+            return fallback;
+        }
+        return new CompositeSerializer(serializers, fallback);
+    }
+
+    private record RegisteredSerializer(
+        ZLinkMessageSerializer serializer,
+        Predicate<Class<?>> canSerialize,
+        boolean fallbackSerializer) {
+    }
+
+    private static final class CompositeSerializer implements ZLinkMessageSerializer {
+        private final Map<String, RegisteredSerializer> serializers;
+        private final ZLinkMessageSerializer fallback;
+
+        CompositeSerializer(
+            Map<String, RegisteredSerializer> serializers,
+            ZLinkMessageSerializer fallback) {
+            this.serializers = Map.copyOf(serializers);
+            this.fallback = fallback;
+        }
+
+        @Override
+        public <T> systems.zlink.contracts.messaging.Message serialize(T value) {
+            if (value != null) {
+                return serializerFor(value.getClass()).serialize(value);
+            }
+            return fallback.serialize(value);
+        }
+
+        @Override
+        public <T> T deserialize(systems.zlink.contracts.messaging.Message message, Class<T> type) {
+            return serializerFor(type).deserialize(message, type);
+        }
+
+        @Override
+        public void prepare(Class<?> type) {
+            serializerFor(type).prepare(type);
+        }
+
+        private ZLinkMessageSerializer serializerFor(Class<?> type) {
+            var matches = serializers.entrySet().stream()
+                .filter(entry -> entry.getValue().canSerialize().test(type))
+                .toList();
+            if (matches.isEmpty()) {
+                return fallback;
+            }
+            if (matches.size() > 1) {
+                throw new ZLinkConfigurationException(
+                    "payload serializer is ambiguous for type " + type.getName() + ": "
+                        + matches.stream().map(Map.Entry::getKey).toList());
+            }
+            return matches.get(0).getValue().serializer();
+        }
     }
 }

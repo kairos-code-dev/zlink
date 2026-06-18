@@ -5,7 +5,7 @@ import systems.zlink.framework.streams.ZLinkStreamCodec as FrameworkStreamCodec
 import systems.zlink.framework.streams.ZLinkStreamHeader
 import systems.zlink.stream.connector.ZLinkStreamCodec
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
-import systems.zlink.stream.connector.json.ZLinkStreamJson
+import systems.zlink.stream.connector.ZLinkStreamJson
 
 /** Decodes inbound JSON stream packets into typed session requests. */
 object StreamPayloads {

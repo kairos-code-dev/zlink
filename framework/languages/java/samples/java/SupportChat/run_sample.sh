@@ -142,8 +142,8 @@ build_framework_jars() {
     ./gradlew --no-daemon \
       :zlink-framework-core:jar \
       :zlink-framework-spring-boot-starter:jar \
+      :zlink-framework-codec-protobuf:jar \
       :zlink-stream-connector:jar \
-      :zlink-stream-connector-protobuf:jar \
       --quiet
   )
 }

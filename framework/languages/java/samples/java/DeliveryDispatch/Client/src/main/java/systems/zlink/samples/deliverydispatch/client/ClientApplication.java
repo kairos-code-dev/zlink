@@ -16,7 +16,6 @@ import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
-import systems.zlink.stream.connector.json.ZLinkStreamJson;
 
 @EnableZLinkFramework
 @SpringBootApplication(
@@ -65,7 +64,6 @@ public final class ClientApplication {
             true,
             Duration.ofMillis(250),
             Duration.ofSeconds(5),
-            2.0,
-            ZLinkStreamJson.codec()));
+            2.0));
     }
 }

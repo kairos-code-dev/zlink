@@ -8,7 +8,7 @@ import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
-import systems.zlink.stream.connector.protobuf.ZLinkStreamProtobuf;
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 
 public final class Program {
     private Program() {
@@ -55,6 +55,6 @@ public final class Program {
             Duration.ofMillis(250),
             Duration.ofSeconds(5),
             2.0,
-            ZLinkStreamProtobuf.codec()));
+            ZLinkProtobufCodec.defaultCodec()));
     }
 }

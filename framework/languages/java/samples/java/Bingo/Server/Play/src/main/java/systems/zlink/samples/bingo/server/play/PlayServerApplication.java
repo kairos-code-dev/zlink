@@ -14,6 +14,7 @@ import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.actors.PlayerActorFactory;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.notifications.BingoNotificationPublisher;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoRoomSpot;
@@ -44,7 +45,7 @@ public final class PlayServerApplication {
     ZLinkFrameworkConfigurer playFramework() {
         return options -> {
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
-            options.codecs().addProtobuf();
+            options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addHandlersFromPackageOf(PlayServerApplication.class);
             options.addClientServerChannel(SampleNames.PlayChannel)
                 .enableServer(SampleTopology.PlayChannelEndpoint)

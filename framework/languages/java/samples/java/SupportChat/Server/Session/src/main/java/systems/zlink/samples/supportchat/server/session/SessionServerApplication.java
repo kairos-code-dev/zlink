@@ -9,6 +9,7 @@ import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTopology;
 import systems.zlink.samples.supportchat.server.session.sessions.SupportChatSession;
@@ -36,7 +37,7 @@ public final class SessionServerApplication {
         return options -> {
             options.addHandlersFromPackageOf(SessionServerApplication.class);
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
-            options.codecs().addProtobuf();
+            options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
             options.addClientServerChannel(SampleNames.SupportChannel)

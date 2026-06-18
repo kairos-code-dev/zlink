@@ -1,11 +1,8 @@
 package systems.zlink.samples.tictactoe.client;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
+import systems.zlink.httpclient.ZLinkHttpClient;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateRes;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameHttpReq;
@@ -20,23 +17,16 @@ import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
-import systems.zlink.stream.connector.msgpack.ZLinkStreamMessagePack;
+import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
 
 public final class TicTacToeClientScenario {
-    private final HttpClient http;
-    private final ObjectMapper json;
-
-    public TicTacToeClientScenario() {
-        this(HttpClient.newHttpClient(), new ObjectMapper());
-    }
-
-    TicTacToeClientScenario(HttpClient http, ObjectMapper json) {
-        this.http = http;
-        this.json = json;
-    }
-
     public void run(TicTacToeClientOptions options) throws Exception {
-        CreateGameHttpRes game = createGame(options.apiUrl(), options.gameName());
+        CreateGameHttpRes game;
+        try (ZLinkHttpClient api = ZLinkHttpClient.create(options.apiUrl()).build()) {
+            game = api.post("/games")
+                .body(new CreateGameHttpReq(options.gameName()))
+                .fetch(CreateGameHttpRes.class);
+        }
         ZLinkStreamConnector host = playerConnector(game.playEndpoint());
         ZLinkStreamConnector guest = playerConnector(game.playEndpoint());
 
@@ -197,20 +187,6 @@ public final class TicTacToeClientScenario {
         }
     }
 
-    private CreateGameHttpRes createGame(String apiUrl, String gameName) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(apiUrl).resolve("/games"))
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(
-                json.writeValueAsString(new CreateGameHttpReq(gameName))))
-            .build();
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() / 100 != 2) {
-            throw new IllegalStateException(
-                "API returned HTTP " + response.statusCode() + ": " + response.body());
-        }
-        return json.readValue(response.body(), CreateGameHttpRes.class);
-    }
-
     private static ZLinkStreamConnector playerConnector(String endpoint) {
         return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             URI.create(endpoint),
@@ -226,7 +202,7 @@ public final class TicTacToeClientScenario {
             Duration.ofMillis(250),
             Duration.ofSeconds(5),
             2.0,
-            ZLinkStreamMessagePack.codec()));
+            ZLinkMessagePackCodec.defaultCodec()));
     }
 
     private static void ensure(boolean condition) {

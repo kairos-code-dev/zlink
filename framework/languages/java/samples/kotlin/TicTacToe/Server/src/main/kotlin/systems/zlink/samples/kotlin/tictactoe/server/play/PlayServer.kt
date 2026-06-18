@@ -2,6 +2,7 @@ package systems.zlink.samples.kotlin.tictactoe.server.play
 
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLogging
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
@@ -15,7 +16,7 @@ object PlayServer {
     fun configure(settings: SampleSettings): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             SampleLogging.configure(settings, "play")
-            options.codecs().addMessagePack()
+            options.codecs().use(ZLinkMessagePackCodec.defaultCodec())
             options.addHandlersFromPackageOf(PlayServer::class.java)
             options.addActorFactory(SampleNames.PlayActor, PlayActorFactory::class.java)
             options.addClientServerChannel(SampleNames.ApiChannel)

@@ -6,6 +6,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTopology;
 
@@ -30,7 +31,7 @@ public final class ApiServerApplication {
     ZLinkFrameworkConfigurer apiFramework() {
         return options -> {
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
-            options.codecs().addProtobuf();
+            options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addHandlersFromPackageOf(ApiServerApplication.class);
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableServer(SampleTopology.ApiChannelEndpoint)

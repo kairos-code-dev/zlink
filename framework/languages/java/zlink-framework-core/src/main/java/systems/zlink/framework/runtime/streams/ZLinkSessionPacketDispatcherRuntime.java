@@ -7,6 +7,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
@@ -14,17 +15,21 @@ import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSessionContext>
     implements ZLinkSessionPacketDispatcher<TSessionContext> {
     private final Map<String, ZLinkSessionPacketHandler<TSessionContext>> handlers;
+    private final ZLinkMessageSerializer serializer;
     private final Executor handlerExecutor;
 
     ZLinkSessionPacketDispatcherRuntime(
         List<Class<? extends ZLinkSessionPacketHandler<?>>> handlerTypes,
         ZLinkHandlerFactory handlerFactory,
+        ZLinkMessageSerializer serializer,
         Executor handlerExecutor) {
         this.handlers = buildHandlerMap(handlerTypes, handlerFactory);
+        this.serializer = java.util.Objects.requireNonNull(serializer, "serializer");
         this.handlerExecutor = java.util.Objects.requireNonNull(handlerExecutor, "handlerExecutor");
     }
 
@@ -38,9 +43,25 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
         if (handler == null) {
             return CompletableFuture.completedFuture(false);
         }
+        if (handler instanceof ZLinkTypedSessionPacketHandler<?, ?> typedHandler) {
+            return executeHandler(() -> invokeTypedHandler(typedHandler, context, header, payload))
+                .thenApply(ignored -> true);
+        }
         return executeHandler(() ->
             ZLinkHandlerStages.fromRunnable(() -> handler.handle(context, header, payload)))
             .thenApply(ignored -> true);
+    }
+
+    @SuppressWarnings("unchecked")
+    private CompletionStage<Void> invokeTypedHandler(
+        ZLinkTypedSessionPacketHandler<?, ?> handler,
+        TSessionContext context,
+        ZLinkStreamHeader header,
+        Message payload) {
+        ZLinkTypedSessionPacketHandler<TSessionContext, Object> typed =
+            (ZLinkTypedSessionPacketHandler<TSessionContext, Object>) handler;
+        Object decoded = serializer.deserialize(payload, typed.messageType());
+        return ZLinkHandlerStages.fromRunnable(() -> typed.handle(context, header, decoded));
     }
 
     private <T> CompletionStage<T> executeHandler(

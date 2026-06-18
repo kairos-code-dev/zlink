@@ -2,13 +2,11 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.session.sessions.ha
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
-import systems.zlink.framework.kotlin.ZLinkCoroutineSessionPacketHandler
+import systems.zlink.framework.kotlin.ZLinkCoroutineTypedSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkStreamCodec as FrameworkStreamCodec
 import systems.zlink.framework.streams.ZLinkStreamHeader
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
@@ -19,29 +17,21 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeC
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDelivery
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.SubscribeDeliveryAccepted
 import systems.zlink.samples.kotlin.deliverydispatch.server.session.sessions.CustomerSessionDirectory
-import systems.zlink.stream.connector.ZLinkStreamCodec as ConnectorStreamCodec
-import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
-import systems.zlink.stream.connector.json.ZLinkStreamJson
 
 class SubscribeDeliveryHandler(
     private val channels: ZLinkClient,
     private val sessions: CustomerSessionDirectory,
     coroutines: ZLinkCoroutineRuntime,
-) : ZLinkCoroutineSessionPacketHandler<ZLinkSessionContext>(coroutines, "SubscribeDelivery") {
+) : ZLinkCoroutineTypedSessionPacketHandler<ZLinkSessionContext, SubscribeDelivery>(
+    coroutines,
+    "SubscribeDelivery",
+    SubscribeDelivery::class.java,
+) {
     override suspend fun handleSuspending(
         context: ZLinkSessionContext,
         header: ZLinkStreamHeader,
-        payload: Message,
+        request: SubscribeDelivery,
     ) {
-        val request = ZLinkStreamJson.decode(
-            ZLinkStreamEncodedPayload(
-                header.packetName(),
-                payload,
-                header.metadata(),
-                connectorCodec(header),
-            ),
-            SubscribeDelivery::class.java,
-        )
         require(request.deliveryId.isNotBlank()) { "SubscribeDelivery requires deliveryId." }
 
         val ensured = channels
@@ -74,14 +64,6 @@ class SubscribeDeliveryHandler(
             .submit()
             .await()
     }
-
-    private fun connectorCodec(header: ZLinkStreamHeader): ConnectorStreamCodec =
-        when (header.codec()) {
-            FrameworkStreamCodec.RAW -> ConnectorStreamCodec.RAW
-            FrameworkStreamCodec.JSON -> ConnectorStreamCodec.JSON
-            FrameworkStreamCodec.MESSAGE_PACK -> ConnectorStreamCodec.MESSAGE_PACK
-            FrameworkStreamCodec.PROTOBUF -> ConnectorStreamCodec.PROTOBUF
-        }
 
     companion object {
         private const val CustomerId = "customer-1"

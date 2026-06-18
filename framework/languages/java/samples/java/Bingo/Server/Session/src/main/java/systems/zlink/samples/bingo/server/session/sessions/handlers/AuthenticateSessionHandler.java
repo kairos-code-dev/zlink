@@ -2,22 +2,18 @@ package systems.zlink.samples.bingo.server.session.sessions.handlers;
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
-import systems.zlink.stream.connector.ZLinkStreamCodec;
-import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
-import systems.zlink.stream.connector.protobuf.ZLinkStreamProtobuf;
 
 public final class AuthenticateSessionHandler
-    implements ZLinkSessionPacketHandler<ZLinkSessionContext> {
+    implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Messages.AuthenticateReq> {
     private final ZLinkClient channels;
 
     public AuthenticateSessionHandler(ZLinkClient channels) {
@@ -30,17 +26,15 @@ public final class AuthenticateSessionHandler
     }
 
     @Override
+    public Class<Messages.AuthenticateReq> messageType() {
+        return Messages.AuthenticateReq.class;
+    }
+
+    @Override
     public void handle(
         ZLinkSessionContext context,
         ZLinkStreamHeader header,
-        Message payload) {
-        Messages.AuthenticateReq request = ZLinkStreamProtobuf.decode(
-            new ZLinkStreamEncodedPayload(
-                header.packetName(),
-                payload,
-                header.metadata(),
-                connectorCodec(header)),
-            Messages.AuthenticateReq.class);
+        Messages.AuthenticateReq request) {
         if (request.accessToken() == null || request.accessToken().isBlank()) {
             throw new IllegalArgumentException("access token is required");
         }
@@ -76,14 +70,5 @@ public final class AuthenticateSessionHandler
                 ensured.actorId(),
                 authenticated.displayName()))
             .await();
-    }
-
-    private static ZLinkStreamCodec connectorCodec(ZLinkStreamHeader header) {
-        return switch (header.codec()) {
-            case RAW -> ZLinkStreamCodec.RAW;
-            case JSON -> ZLinkStreamCodec.JSON;
-            case MESSAGE_PACK -> ZLinkStreamCodec.MESSAGE_PACK;
-            case PROTOBUF -> ZLinkStreamCodec.PROTOBUF;
-        };
     }
 }

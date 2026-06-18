@@ -2,23 +2,19 @@ package systems.zlink.samples.tictactoe.server.play.adapters.zlink.sessions.hand
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateRes;
-import systems.zlink.stream.connector.ZLinkStreamCodec;
-import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
-import systems.zlink.stream.connector.msgpack.ZLinkStreamMessagePack;
 
 public final class AuthenticatePlaySessionHandler
-    implements ZLinkSessionPacketHandler<ZLinkSessionContext> {
+    implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq> {
     private final ZLinkActorManager actors;
     private final ZLinkClient channels;
 
@@ -35,17 +31,15 @@ public final class AuthenticatePlaySessionHandler
     }
 
     @Override
+    public Class<AuthenticateReq> messageType() {
+        return AuthenticateReq.class;
+    }
+
+    @Override
     public void handle(
         ZLinkSessionContext context,
         ZLinkStreamHeader header,
-        Message payload) {
-        AuthenticateReq request = ZLinkStreamMessagePack.decode(
-            new ZLinkStreamEncodedPayload(
-                header.packetName(),
-                payload,
-                header.metadata(),
-                connectorCodec(header)),
-            AuthenticateReq.class);
+        AuthenticateReq request) {
         if (request.accessToken() == null || request.accessToken().isBlank()) {
             throw new IllegalArgumentException("access token is required");
         }
@@ -60,14 +54,5 @@ public final class AuthenticatePlaySessionHandler
         context.client()
             .reply(new AuthenticateRes(bound.actorId()))
             .await();
-    }
-
-    private static ZLinkStreamCodec connectorCodec(ZLinkStreamHeader header) {
-        return switch (header.codec()) {
-            case RAW -> ZLinkStreamCodec.RAW;
-            case JSON -> ZLinkStreamCodec.JSON;
-            case MESSAGE_PACK -> ZLinkStreamCodec.MESSAGE_PACK;
-            case PROTOBUF -> ZLinkStreamCodec.PROTOBUF;
-        };
     }
 }

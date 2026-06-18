@@ -14,6 +14,7 @@ import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTopology;
 import systems.zlink.samples.supportchat.server.support.adapters.zlink.actors.SupportActorDirectory;
@@ -47,7 +48,7 @@ public final class SupportServerApplication {
     ZLinkFrameworkConfigurer supportFramework() {
         return options -> {
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
-            options.codecs().addProtobuf();
+            options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addHandlersFromPackageOf(SupportServerApplication.class);
             options.addClientServerChannel(SampleNames.SupportChannel)
                 .enableServer(SampleTopology.SupportChannelEndpoint)

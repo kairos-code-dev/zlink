@@ -54,6 +54,9 @@ public record ZLinkStreamConnectorOptions(
         if (nameResolver == null) {
             nameResolver = ZLinkStreamPacketNameResolver.defaultResolver();
         }
+        if (typedCodec == null) {
+            typedCodec = ZLinkStreamJson.codec();
+        }
     }
 
     public ZLinkStreamConnectorOptions(

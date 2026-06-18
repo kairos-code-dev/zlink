@@ -50,22 +50,17 @@ if (useLocalBindings) {
         name = "zlink-bindings-java"
         dependencySubstitution {
             substitute(module("systems.zlink:zlink")).using(project(":"))
-            substitute(module("systems.zlink:zlink-codec-protobuf")).using(project(":zlink-codec-protobuf"))
-            substitute(module("systems.zlink:zlink-codec-json")).using(project(":zlink-codec-json"))
-            substitute(module("systems.zlink:zlink-codec-messagepack")).using(project(":zlink-codec-messagepack"))
         }
     }
 }
 
 include(
     "zlink-framework-core",
+    "zlink-framework-codec-protobuf",
+    "zlink-framework-codec-msgpack",
     "zlink-http-client",
     "zlink-framework-spring-boot-starter",
     "zlink-stream-connector",
-    "zlink-stream-connector-codecs",
-    "zlink-stream-connector-json",
-    "zlink-stream-connector-msgpack",
-    "zlink-stream-connector-protobuf",
     "zlink-framework-kotlin",
     "zlink-http-client-kotlin",
     "zlink-framework-testkit",

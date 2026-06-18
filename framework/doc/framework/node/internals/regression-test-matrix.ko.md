@@ -4,7 +4,7 @@
 
 [표면 매핑 정책](dotnet-to-node-surface-mapping.ko.md)
 
-[Node.js 묶음](../README.ko.md) | [Behavior Matrix](behavior-matrix.ko.md) | [Lifecycle](lifecycle-and-failure-semantics.ko.md) | [use case validation](../../common/usecase-validation.ko.md)
+[Node.js 묶음](../README.ko.md) | [Behavior Matrix](behavior-matrix.ko.md) | [Lifecycle](lifecycle-and-failure-semantics.ko.md) | [use case validation](../../common/spec/usecase-validation.ko.md)
 
 # ZLink Framework Node.js Regression Test Matrix
 

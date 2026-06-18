@@ -1,16 +1,16 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework API](framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework API](framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](README.ko.md)
+[스펙 목차](../README.ko.md)
 
-[문서 묶음](README.ko.md) | [개요](overview.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [Session Actor Dispatch 사용성](session-actor-dispatch.ko.md)
+[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [Session Actor Dispatch 사용성](session-actor-dispatch.ko.md)
 
 # ZLink Framework Actor Model
 
 ## 1. 목적
 
-zlink core가 [SPOT Actor Guide](../../../../doc/guide/07-4-actor.md)에서 정의한 actor
+zlink core가 [SPOT Actor Guide](../../../../../doc/guide/07-4-actor.md)에서 정의한 actor
 개념을 모든 framework binding이 같은 의미로 노출하도록 고정한다. 언어별 표면은
 이 문서의 의미를 어겨서는 안 되고, 다음만 자유롭게 정한다.
 
@@ -320,12 +320,12 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
 
 각 binding에서 본 모델을 어떻게 노출하는지는 해당 디렉토리에서 다룬다.
 
-- `.NET`: [aspnet-core-actor.ko.md](../dotnet/spec/aspnet-core-actor.ko.md)
+- `.NET`: [aspnet-core-actor.ko.md](../../dotnet/spec/aspnet-core-actor.ko.md)
   -- `IZLinkActor`, `IZLinkActorContext`, `IZLinkActorFactory`, typed handler
   인터페이스, `IZLinkActorClient`, `IZLinkSessionProxy`, 등록 API
 - `Java`, `Node`, `Python`, `Go`, `Rust`, `C++` 등 다른 binding은 각자 디렉토리
   안에 같은 의미의 표면을 같은 cross-language 네이밍 규칙으로 적는다 (자세한
-  규칙은 [README.ko.md §5.2.1](README.ko.md) 참고).
+  규칙은 [README.ko.md §5.2.1](../README.ko.md) 참고).
 
 ## 10. 결정된 기준
 
@@ -350,5 +350,5 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework API](framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework API](framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

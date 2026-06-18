@@ -7,7 +7,7 @@
 > Java/Kotlin 표면으로 구체화한다.
 
 비동기 실행, `CompletionStage`, Kotlin coroutine wrapper의 공통 의미는
-[비동기 실행과 coroutine 정책](../common/async-execution-policy.ko.md)을 따른다.
+[비동기 실행과 coroutine 정책](../common/spec/async-execution-policy.ko.md)을 따른다.
 
 ## 1. 사용자 guide
 

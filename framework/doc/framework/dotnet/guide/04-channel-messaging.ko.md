@@ -432,7 +432,7 @@ options.Codecs.AddSerializer("application/avro", new AvroOrderSerializer());
 ```
 
 등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro 로 처리된다.
-다른 언어의 등록 표면은 [framework-api §2.2](../../common/framework-api.ko.md) 표를 본다.
+다른 언어의 등록 표면은 [framework-api §2.2](../../common/spec/framework-api.ko.md) 표를 본다.
 
 ## 8. dealer mesh — 외부 로드밸런서 없이 수평 확장
 

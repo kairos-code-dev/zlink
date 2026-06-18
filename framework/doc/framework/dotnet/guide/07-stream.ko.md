@@ -152,7 +152,7 @@ connector도 framework처럼 **custom codec**을 끼울 수 있다. `ZlinkStream
 `PayloadCodec`에 `IZlinkStreamPayloadCodec`(`Encode`/`Decode`) 구현을 주면, typed
 `Send`/`Request`/`On`/`WaitFor`가 자동 선택 대신 그 codec으로 Avro·Thrift 같은 포맷을
 쓴다. server framework 쪽 등록(`Codecs.AddSerializer(...)`)과 대칭이며, 두 표면의 전체
-목록은 [framework-api §2.2](../../common/framework-api.ko.md) 표를 본다.
+목록은 [framework-api §2.2](../../common/spec/framework-api.ko.md) 표를 본다.
 
 ### 연결과 dispatch
 
@@ -243,7 +243,7 @@ Endpoint = new Uri("wss://game.example.com:443"),
 수신 handler 와 lifecycle 이벤트가 Unity 메인 스레드에서 돈다.
 
 비동기 실행과 coroutine adapter의 의미는
-[framework 공통 정책](../../common/async-execution-policy.ko.md)을 따른다.
+[framework 공통 정책](../../common/spec/async-execution-policy.ko.md)을 따른다.
 Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 기반 비동기 API다.
 코루틴 중심 프로젝트는 application helper에서 awaitable 호출을 감싼다. 자세한 예제는
 [Unity Stream Connector 가이드](../../../../../doc/guide/unity-stream-connector.ko.md).

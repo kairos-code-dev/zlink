@@ -133,7 +133,7 @@ await client.requestToChannel('orders', { sku: 'A-1', qty: 3 }).packetName('Plac
 ```
 
 framework당 custom serializer는 하나만 둔다(둘 이상이면 모호성 구성 오류). 다른 언어의
-등록 표면은 [framework-api §2.2](../../common/framework-api.ko.md)의 표를 본다.
+등록 표면은 [framework-api §2.2](../../common/spec/framework-api.ko.md)의 표를 본다.
 
 ## 회귀 테스트
 

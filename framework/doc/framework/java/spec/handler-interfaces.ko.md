@@ -1115,7 +1115,7 @@ public record ZLinkSpotEvent(
 Spot type을 다시 등록하면 조용히 덮어쓰지 않고 예외를 던지는 편을 기본으로 본다.
 
 send/publish는 기본 async submit이다. async submit과 backpressure의 공통 의미는
-[framework 공통 정책](../../common/async-execution-policy.ko.md)을 따른다.
+[framework 공통 정책](../../common/spec/async-execution-policy.ko.md)을 따른다.
 request도 request packet을 보내는 단계에서는 같은 async submit 경로를 사용하고,
 reply 대기는 request timeout이 따로 정한다.
 

@@ -171,7 +171,7 @@ host/runtime 표면으로만 구체화한다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다. 같은 역할 안에서는 `Discovery`와 manual 연결을 섞지 않는다.
 - send/publish의 async submit과 backpressure 의미는
-  [framework 공통 비동기 정책](../../common/async-execution-policy.ko.md)을
+  [framework 공통 비동기 정책](../../common/spec/async-execution-policy.ko.md)을
   따른다.
 - `SPOT`을 지원하는 문서는 named spot factory 등록, `spot_name` 기준 생성,
   `spot_rid -> spot_name` 조회, lifecycle timer, 외부 spot publish 표면을

@@ -4,7 +4,7 @@
 
 [스펙 목차](../README.ko.md)
 
-[Node 묶음](../README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [Actor](nestjs-actor.ko.md) | [STREAM](nestjs-stream.ko.md) | [policy/Session Actor Dispatch 사용성](../../common/session-actor-dispatch.ko.md)
+[Node 묶음](../README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [Actor](nestjs-actor.ko.md) | [STREAM](nestjs-stream.ko.md) | [policy/Session Actor Dispatch 사용성](../../common/spec/session-actor-dispatch.ko.md)
 
 # ZLink Framework Node.js Session Actor Dispatch
 
@@ -24,7 +24,7 @@
 - session 서버와 play 서버를 분리하는 구조를 `Node.js` 사용자가 실제 시그니처와
   module 등록 코드 모양으로 살펴 볼 수 있도록 정리한다.
 - cross-binding 의미 자체는
-  [policy/session-gateway-usability.ko.md](../../common/session-actor-dispatch.ko.md)
+  [policy/session-gateway-usability.ko.md](../../common/spec/session-actor-dispatch.ko.md)
   에서 다룬다.
 - 따라서 여기서는 `Node.js` 표면만 다룬다.
 
@@ -51,7 +51,7 @@
 
 session actor dispatch 의 public API 는 typed object 중심이다. 다만 서버
 사이를 잇는 내부 route transport 단계에서는 공통
-[message-model.ko.md](../../common/message-model.ko.md) 가 정한 multipart 계약을
+[message-model.ko.md](../../common/spec/message-model.ko.md) 가 정한 multipart 계약을
 그대로 따른다.
 
 Session 서버에서 Play 서버 actor 로 보내는 actor dispatch request / send 는
@@ -1386,7 +1386,7 @@ enum ZLinkFrameworkErrorKind {
 ```
 
 각 kind 의 발생 조건과 cross-binding 의미는
-[policy/session-gateway-usability.ko.md](../../common/session-actor-dispatch.ko.md)
+[policy/session-gateway-usability.ko.md](../../common/spec/session-actor-dispatch.ko.md)
 §17 error-kind 매트릭스에서 다룬다.
 
 `ActorCreateFailed`, `ActorAlreadyExists`, `ActorTypeMismatch` 는
@@ -1436,7 +1436,7 @@ retry helper 와는 성격이 다르다. diagnostic helper 가 보여 주는 것
 이 절은 같은 주제를 다른 각도에서 다루는 문서들을 한 자리에 모아 둔다.
 
 - cross-binding 정책, 의미, 회귀 테스트, POSD 결론 →
-  [policy/session-gateway-usability.ko.md](../../common/session-actor-dispatch.ko.md)
+  [policy/session-gateway-usability.ko.md](../../common/spec/session-actor-dispatch.ko.md)
 - 인터페이스 전체 정의 → [handler-interfaces.ko.md](handler-interfaces.ko.md)
   §4.4 (session), §5.5 (session relay), §5.6 (`ZLinkBoundSession`), §5.7
   (actor remote address resolver)

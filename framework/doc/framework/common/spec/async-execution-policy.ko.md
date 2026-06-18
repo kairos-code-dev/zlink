@@ -1,8 +1,8 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: framework API](framework-api.ko.md) | [다음: Actor 모델](actor-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: framework API](framework-api.ko.md) | [다음: Actor 모델](actor-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](README.ko.md)
+[스펙 목차](../README.ko.md)
 
 # 비동기 실행과 coroutine 정책
 
@@ -10,7 +10,7 @@
 투영 규칙을 정리한다. 공통 의미는 이 문서가 소유한다. 언어별 문서는 여기서 정한
 의미를 자기 언어의 관용구, 대표 framework, client connector 표면으로 구체화한다.
 bindings 라이브러리의 비동기 완료 표면은
-[`doc/spec/bindings/async-coroutine-policy.ko.md`](../../../../doc/spec/bindings/async-coroutine-policy.ko.md)
+[`doc/spec/bindings/async-coroutine-policy.ko.md`](../../../../../doc/spec/bindings/async-coroutine-policy.ko.md)
 를 따른다. framework는 bindings가 제공하는 완료 경계를 감싸서 coroutine, virtual
 thread, event loop, handler dispatcher에 연결한다.
 
@@ -256,5 +256,5 @@ delegate 모델을 우선하고 coroutine API를 public 표면에 강제하지 �
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: framework API](framework-api.ko.md) | [다음: Actor 모델](actor-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: framework API](framework-api.ko.md) | [다음: Actor 모델](actor-model.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

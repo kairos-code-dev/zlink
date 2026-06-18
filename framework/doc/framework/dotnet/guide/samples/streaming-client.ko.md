@@ -955,7 +955,7 @@ core를 그대로 사용하고, `MonoBehaviour.Update()`에서 `Dispatch.Async()
 수신 handler와 lifecycle event가 Unity main thread에서 실행된다.
 
 비동기 실행과 coroutine adapter의 의미는
-[framework 공통 정책](../../../common/async-execution-policy.ko.md)을
+[framework 공통 정책](../../../common/spec/async-execution-policy.ko.md)을
 따른다. Unity에서도 connector의 public API는 일반 `.NET`과 같은 `Task` / `ValueTask`
 기반 비동기 표면이다. `StartCoroutine(...)` 중심의 프로젝트에서는 application helper가
 awaitable 호출을 감싸는 방식으로 맞춘다.

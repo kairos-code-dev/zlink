@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Use Case Validation](../usecase-validation.ko.md) | [다음: Use Case -- Service To Service RPC](01-service-to-service-rpc.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Use Case Validation](../spec/usecase-validation.ko.md) | [다음: Use Case -- Service To Service RPC](01-service-to-service-rpc.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
 
-[Framework 문서 묶음](../../../README.ko.md) | [개요](../overview.ko.md) | [검증](../usecase-validation.ko.md)
+[Framework 문서 묶음](../../../README.ko.md) | [개요](../spec/overview.ko.md) | [검증](../spec/usecase-validation.ko.md)
 
 # ZLink Framework Use Cases
 
@@ -47,5 +47,5 @@
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Use Case Validation](../usecase-validation.ko.md) | [다음: Use Case -- Service To Service RPC](01-service-to-service-rpc.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Use Case Validation](../spec/usecase-validation.ko.md) | [다음: Use Case -- Service To Service RPC](01-service-to-service-rpc.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

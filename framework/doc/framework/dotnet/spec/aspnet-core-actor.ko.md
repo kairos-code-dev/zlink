@@ -775,7 +775,7 @@ public interface IZLinkSessionActor
 session callback 에서 unbound standalone actor 를 만드는 표면은 두지 않는다.
 standalone actor 가 필요하다면 actor node 측에서 별도의 등록 표면을 쓴다 (예:
 actor factory 와 actor node 가 직접 호출하는 create helper). 정책 기준은
-[공통 actor 모델](../../common/actor-model.ko.md) §4 lifecycle 표를
+[공통 actor 모델](../../common/spec/actor-model.ko.md) §4 lifecycle 표를
 참고한다.
 
 ### 8.2 session 안에서의 흐름
@@ -1067,7 +1067,7 @@ public interface IZLinkFrameworkOptions
 - STREAM session lifecycle과 `IZLinkSession` 표면:
   [aspnet-core-stream.ko.md](aspnet-core-stream.ko.md)
 - session actor dispatch 정책 문서 (구현 전 초안):
-  [session-gateway-usability.ko.md](../../common/session-actor-dispatch.ko.md)
+  [session-gateway-usability.ko.md](../../common/spec/session-actor-dispatch.ko.md)
 - TicTacToe sample에서 모든 표면이 함께 쓰이는 예시:
   [tictactoe-game-sample.ko.md](../guide/samples/tictactoe-game-sample.ko.md)
 

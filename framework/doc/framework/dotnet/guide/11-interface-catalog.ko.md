@@ -28,7 +28,7 @@
   인자는 `IZLinkSpotPacketHandler<TSpot, TMessage>` 처럼 풀어 적되, 본문 코드는
   실제 구현 형태를 보인다.
 - **비동기 이름 규칙.** 공통 의미는
-  [비동기 실행과 coroutine 정책](../../common/async-execution-policy.ko.md)을
+  [비동기 실행과 coroutine 정책](../../common/spec/async-execution-policy.ko.md)을
   따른다. `.NET`에서는 `Task`, `ValueTask`, `Task<T>`, `ValueTask<T>`를 반환하는
   공개 호출 종결자가 `Async(...)`로 끝난다. awaitable을 반환하지 않는
   callback request 표면만 `Submit(callback)` 이름을 유지한다.

@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework 문서](../../README.ko.md) | [다음: ZLink Framework Overview](overview.ko.md)
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework 문서](../../README.ko.md) | [다음: ZLink Framework Overview](spec/overview.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Framework 문서](../../README.ko.md)
 
-[개요](overview.ko.md) | [use cases](use-cases/README.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [비동기 실행](async-execution-policy.ko.md) | [Actor 모델](actor-model.ko.md) | [Session Actor Dispatch 사용성](session-actor-dispatch.ko.md) | [공통 샘플](sample/README.ko.md) | [검증](usecase-validation.ko.md) | [.NET](../dotnet/README.ko.md) | [.NET Session Actor Dispatch](../dotnet/spec/session-actor-dispatch.ko.md) | [Java](../java/README.ko.md) | [Node.js](../node/README.ko.md) | [C++](../cpp/README.ko.md)
+[개요](spec/overview.ko.md) | [use cases](use-cases/README.ko.md) | [상호작용 모델](spec/interaction-model.ko.md) | [메시지 모델](spec/message-model.ko.md) | [channel topology](spec/channel-topology.ko.md) | [framework API](spec/framework-api.ko.md) | [비동기 실행](spec/async-execution-policy.ko.md) | [Actor 모델](spec/actor-model.ko.md) | [Session Actor Dispatch 사용성](spec/session-actor-dispatch.ko.md) | [공통 샘플](sample/README.ko.md) | [검증](spec/usecase-validation.ko.md) | [.NET](../dotnet/README.ko.md) | [.NET Session Actor Dispatch](../dotnet/spec/session-actor-dispatch.ko.md) | [Java](../java/README.ko.md) | [Node.js](../node/README.ko.md) | [C++](../cpp/README.ko.md)
 
 # ZLink Framework 공통 스펙
 
@@ -16,7 +16,7 @@
 이 묶음은 zlink의 `.NET`, `Java`, `Node.js`, `Python`, `Go`, `Rust`, `C++` 바인딩
 위에 `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `net/http` / `Gin`,
 `Axum`, C++ zlink framework host 사용자를 위한 `ZLink Framework` 방향을 정리한다.
-제품 개요와 핵심 가치는 [overview.ko.md](overview.ko.md)를 참고한다.
+제품 개요와 핵심 가치는 [overview.ko.md](spec/overview.ko.md)를 참고한다.
 
 ## 1.1 버전 기준
 
@@ -39,21 +39,21 @@
 
 | 순서 | 문서 | 다루는 범위 |
 |:----:|------|------------|
-| 1 | [overview.ko.md](overview.ko.md) | 제품 개요, 핵심 차별점, 현재 우선 범위. "ZLink Framework가 무엇이고, 왜 필요한가"에 답한다. |
+| 1 | [overview.ko.md](spec/overview.ko.md) | 제품 개요, 핵심 차별점, 현재 우선 범위. "ZLink Framework가 무엇이고, 왜 필요한가"에 답한다. |
 | 2 | [Use case 목록](use-cases/README.ko.md) | use case별 문서 목록과 관리 규칙. 모든 설계는 use case에서 출발한다. |
-| 3 | [interaction-model.ko.md](interaction-model.ko.md) | 사용자에게 보이는 상호작용 모델 분류. request-response, command, publish-subscribe 등 각 모델의 의미를 정의한다. |
-| 4 | [message-model.ko.md](message-model.ko.md) | 서버 간 multipart `header + payload` 메시지 구조, STREAM 단일 packet 경계, header 필드, payload codec 방향과 codec extension 정책. wire 수준 메시지 형식을 다룬다. |
-| 5 | [channel-topology.ko.md](channel-topology.ko.md) | channel grouping, Discovery, 수동 연결, 상호작용 모델과 내부 transport 매핑. 내부 배선이 어떻게 구성되는지 다룬다. |
-| 6 | [framework-api.ko.md](framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `C++` standalone host 기준의 API 표면 방향. 각 환경에서 handler와 client가 어떤 모양으로 보이는지 다룬다. |
-| 7 | [비동기 실행과 coroutine 정책](async-execution-policy.ko.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미를 정의한다. |
-| 8 | [actor-model.ko.md](actor-model.ko.md) | actor 개념을 cross-binding 기준으로 정의한다. actor 라이프사이클 (Entry Spot / session bind / user Spot join), application 로직 vs framework 자동 처리, outbound actor 호출, session actor dispatch 패턴, 등록 표면을 다룬다. |
-| 9 | [Session Actor Dispatch](session-actor-dispatch.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 cross-binding 사용성 결정 사항. typed handler 의미, route resolver 계약, helper 의미, `SessionProxy` 의미, error 매트릭스를 다룬다. 구체 .NET 시그니처와 등록 코드, sample은 [bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)에 분리되어 있다. |
+| 3 | [interaction-model.ko.md](spec/interaction-model.ko.md) | 사용자에게 보이는 상호작용 모델 분류. request-response, command, publish-subscribe 등 각 모델의 의미를 정의한다. |
+| 4 | [message-model.ko.md](spec/message-model.ko.md) | 서버 간 multipart `header + payload` 메시지 구조, STREAM 단일 packet 경계, header 필드, payload codec 방향과 codec extension 정책. wire 수준 메시지 형식을 다룬다. |
+| 5 | [channel-topology.ko.md](spec/channel-topology.ko.md) | channel grouping, Discovery, 수동 연결, 상호작용 모델과 내부 transport 매핑. 내부 배선이 어떻게 구성되는지 다룬다. |
+| 6 | [framework-api.ko.md](spec/framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `C++` standalone host 기준의 API 표면 방향. 각 환경에서 handler와 client가 어떤 모양으로 보이는지 다룬다. |
+| 7 | [비동기 실행과 coroutine 정책](spec/async-execution-policy.ko.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미를 정의한다. |
+| 8 | [actor-model.ko.md](spec/actor-model.ko.md) | actor 개념을 cross-binding 기준으로 정의한다. actor 라이프사이클 (Entry Spot / session bind / user Spot join), application 로직 vs framework 자동 처리, outbound actor 호출, session actor dispatch 패턴, 등록 표면을 다룬다. |
+| 9 | [Session Actor Dispatch](spec/session-actor-dispatch.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 cross-binding 사용성 결정 사항. typed handler 의미, route resolver 계약, helper 의미, `SessionProxy` 의미, error 매트릭스를 다룬다. 구체 .NET 시그니처와 등록 코드, sample은 [bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)에 분리되어 있다. |
 | 10 | [공통 샘플 시나리오](sample/README.ko.md) | 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall, GameQuest)의 언어 중립 샘플 기준. 서버 역할, 메시지 흐름, handler 등록 방식 차이를 정의한다. |
 | 11 | [.NET 문서](../dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 문서. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
 | 12 | [Java 문서](../java/README.ko.md) | `Java`와 `Spring Boot` 전용 문서 진입점. |
 | 13 | [Node.js 문서](../node/README.ko.md) | `Node.js`와 `NestJS` 전용 문서 진입점. |
 | 14 | [C++ 문서](../cpp/README.ko.md) | `C++` zlink framework host 전용 문서 진입점. |
-| 15 | [Use case 검증](usecase-validation.ko.md) | 각 use case를 현재 스펙이 얼마나 설명하는지 점검하는 체크리스트. |
+| 15 | [Use case 검증](spec/usecase-validation.ko.md) | 각 use case를 현재 스펙이 얼마나 설명하는지 점검하는 체크리스트. |
 
 개요(1)로 전체 그림을 잡고, use case(2)로 무엇을 해결하려는지 본 뒤,
 모델(3-4)로 설계 방향을 확인하고, topology(5)로 내부 매핑을 이해하고,
@@ -135,7 +135,7 @@ framework 문서의 public 이름 규칙은
 - 단어 교체, 단어 생략, 의미가 같은 별도 이름 추가는 허용하지 않는다.
 - 파라미터 조합이 다르다는 이유만으로 이름을 늘리지 않는다.
 - async submit, blocking 대안 금지, coroutine adapter의 공통 의미는
-  [비동기 실행과 coroutine 정책](async-execution-policy.ko.md)을 따른다.
+  [비동기 실행과 coroutine 정책](spec/async-execution-policy.ko.md)을 따른다.
 - builder terminator 이름은 공통 의미를 유지하되, 각 언어의 fluent API 관례에 맞춰
   투영한다. 예를 들어 `.NET` awaitable terminator는 `Async(...)`, Java는
   `submit(...)` / `await(...)`, C++ coroutine terminator는 `async()`, Node.js
@@ -174,7 +174,7 @@ action 이름을 유지해야 한다. 예를 들면 아래처럼 맞춘다.
 | 문서 종류 | 역할 |
 |----------|------|
 | `README.ko.md` | 그 언어 묶음의 진입점. 문서 구조, 역할 분담, 핵심 방향을 정리한다. |
-| 인터페이스 기준 문서 | 공용 interface / context / configuration surface / attribute 또는 decorator를 한 곳에 모은다. 공용 계약과 내부 runtime 구현의 분리 기준은 [framework-api.ko.md §2.5](framework-api.ko.md#25-public-contract와-runtime-구현의-분리-기준)를 따른다. |
+| 인터페이스 기준 문서 | 공용 interface / context / configuration surface / attribute 또는 decorator를 한 곳에 모은다. 공용 계약과 내부 runtime 구현의 분리 기준은 [framework-api.ko.md §2.5](spec/framework-api.ko.md#25-public-contract와-runtime-구현의-분리-기준)를 따른다. |
 | channel messaging 주제 문서 | channel 등록, handler 모델, outbound client, dispatch 흐름을 설명한다. |
 | channel messaging 샘플 문서 | 등록부터 handler, client 호출까지 한 번에 보이는 샘플을 둔다. |
 | `SPOT` 주제 문서 | 해당 언어에서 `SPOT`을 지원하면 lifecycle, publish/subscribe, channel attach를 설명한다. |
@@ -266,5 +266,5 @@ zlink framework host가 lifecycle과 dispatch loop를 직접 소유하는 방식
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework 문서](../../README.ko.md) | [다음: ZLink Framework Overview](overview.ko.md)
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework 문서](../../README.ko.md) | [다음: ZLink Framework Overview](spec/overview.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

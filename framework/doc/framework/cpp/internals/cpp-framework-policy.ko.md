@@ -415,7 +415,7 @@ thread dispatch 구현을 담는다.
 ## 3.0 Language Baseline
 
 `C++` framework는 `C++20` 이상만 지원한다. 이 기준은
-[framework 공통 비동기 정책](../../common/async-execution-policy.ko.md)을
+[framework 공통 비동기 정책](../../common/spec/async-execution-policy.ko.md)을
 `C++`의 coroutine 기반 handler와 `task_t<T>` async 표면으로 투영하기 위한 결정이다.
 
 필수 기준은 아래와 같다.

@@ -4,7 +4,7 @@
 
 [스펙 목차](../../common/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [Behavior Matrix](behavior-matrix.ko.md) | [Lifecycle](lifecycle-and-failure-semantics.ko.md) | [use case validation](../../common/usecase-validation.ko.md)
+[.NET 묶음](../README.ko.md) | [Behavior Matrix](behavior-matrix.ko.md) | [Lifecycle](lifecycle-and-failure-semantics.ko.md) | [use case validation](../../common/spec/usecase-validation.ko.md)
 
 # ZLink Framework .NET Regression Test Matrix
 

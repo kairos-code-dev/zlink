@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework Channel Topology](channel-topology.ko.md) | [다음: ZLink Framework Actor Model](actor-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Channel Topology](channel-topology.ko.md) | [다음: ZLink Framework Actor Model](actor-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](README.ko.md)
+[스펙 목차](../README.ko.md)
 
-[문서 묶음](README.ko.md) | [개요](overview.ko.md) | [use cases](use-cases/README.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [검증](usecase-validation.ko.md) | [.NET](../dotnet/README.ko.md) | [Java](../java/README.ko.md) | [Node.js](../node/README.ko.md) | [C++](../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](interaction-model.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [검증](usecase-validation.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework API
 
@@ -136,7 +136,7 @@ framework가 직접 통합할 transport 축은 [overview.ko.md](overview.ko.md)�
 section 2에 정의되어 있다. 이 문서는 channel messaging, `PUB/SUB`, `STREAM`
 세 축을 중심으로 보되, 공통 API 원칙과 lifecycle 경계에 직접 영향을 주는
 `SPOT` 표면도 함께 다룬다. `SPOT`의 자세한 계약과 샘플은
-[../bindings/dotnet/aspnet-core-spot.ko.md](../dotnet/spec/aspnet-core-spot.ko.md) 등 별도
+[../bindings/dotnet/aspnet-core-spot.ko.md](../../dotnet/spec/aspnet-core-spot.ko.md) 등 별도
 문서에서 따로 다룬다.
 
 핵심은 transport 축은 명확히 두되, 프레임워크 사용자가 보는 이름은 socket
@@ -371,7 +371,7 @@ request도 reply를 기다리는 async 호출로 설명한다. 다만 request pa
 정해진 batch budget 안에서 queue를 drain한다. 이렇게 해야 thread blocking 없이도
 높은 처리량을 유지할 수 있다.
 
-보다 자세한 `.NET` 초안은 [.NET 문서](../dotnet/README.ko.md)를 참고한다.
+보다 자세한 `.NET` 초안은 [.NET 문서](../../dotnet/README.ko.md)를 참고한다.
 
 ### 3.3 ASP.NET Core의 SPOT 방향
 
@@ -417,7 +417,7 @@ request도 reply를 기다리는 async 호출로 설명한다. 다만 request pa
   Entry Spot destroy 경로에서만 application이 명시적으로 선택한다.
 
 자세한 contract와 샘플은
-[../bindings/dotnet/aspnet-core-spot.ko.md](../dotnet/spec/aspnet-core-spot.ko.md)
+[../bindings/dotnet/aspnet-core-spot.ko.md](../../dotnet/spec/aspnet-core-spot.ko.md)
 같은 binding 문서를 기준으로 본다.
 
 #### 3.3.1 Actor lifecycle — zlink 라이브러리 위임
@@ -618,5 +618,5 @@ dispatch loop를 framework host가 직접 관리하는 것이다. application이
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework Channel Topology](channel-topology.ko.md) | [다음: ZLink Framework Actor Model](actor-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Channel Topology](channel-topology.ko.md) | [다음: ZLink Framework Actor Model](actor-model.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

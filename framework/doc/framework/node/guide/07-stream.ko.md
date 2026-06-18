@@ -93,7 +93,7 @@ json, messagepack, protobuf helper 는 connector 전용 패키지에서 제공�
 connector도 framework처럼 **custom codec**을 끼울 수 있다. `codec` 옵션에 번들 codec 대신
 사용자 `ZlinkStreamPayloadCodec`(`encode`/`decode` 구현)을 주면 Avro·Thrift 같은 포맷을
 쓴다. server framework 쪽 등록(`codecs.addSerializer(...)`)과 대칭이며, 두 표면의 전체
-목록은 [framework-api §2.2](../../common/framework-api.ko.md) 표를 본다.
+목록은 [framework-api §2.2](../../common/spec/framework-api.ko.md) 표를 본다.
 
 ```ts
 const avroStreamCodec = {

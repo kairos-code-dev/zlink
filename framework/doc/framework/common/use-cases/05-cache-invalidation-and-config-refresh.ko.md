@@ -4,7 +4,7 @@
 
 [스펙 목차](../README.ko.md)
 
-[use case 목록](README.ko.md) | [Framework 문서 묶음](../../../README.ko.md) | [검증](../usecase-validation.ko.md)
+[use case 목록](README.ko.md) | [Framework 문서 묶음](../../../README.ko.md) | [검증](../spec/usecase-validation.ko.md)
 
 # Use Case -- Cache Invalidation And Config Refresh
 

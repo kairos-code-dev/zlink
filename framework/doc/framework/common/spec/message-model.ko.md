@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework Interaction Model](interaction-model.ko.md) | [다음: ZLink Framework Channel Topology](channel-topology.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Interaction Model](interaction-model.ko.md) | [다음: ZLink Framework Channel Topology](channel-topology.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](README.ko.md)
+[스펙 목차](../README.ko.md)
 
-[문서 묶음](README.ko.md) | [개요](overview.ko.md) | [use cases](use-cases/README.ko.md) | [상호작용 모델](interaction-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [검증](usecase-validation.ko.md) | [.NET](../dotnet/README.ko.md) | [Java](../java/README.ko.md) | [Node.js](../node/README.ko.md) | [C++](../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [use cases](../use-cases/README.ko.md) | [상호작용 모델](interaction-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [검증](usecase-validation.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework Message Model
 
@@ -219,5 +219,5 @@ core protocol API만 제공한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework Interaction Model](interaction-model.ko.md) | [다음: ZLink Framework Channel Topology](channel-topology.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Interaction Model](interaction-model.ko.md) | [다음: ZLink Framework Channel Topology](channel-topology.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

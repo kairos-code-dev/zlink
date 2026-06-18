@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework Actor Model](actor-model.ko.md) | [다음: ZLink Framework Use Case Validation](usecase-validation.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Actor Model](actor-model.ko.md) | [다음: ZLink Framework Use Case Validation](usecase-validation.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](README.ko.md)
+[스펙 목차](../README.ko.md)
 
-[문서 묶음](README.ko.md) | [Actor 모델](actor-model.ko.md) | [framework API](framework-api.ko.md) | [.NET Session Actor Dispatch](../dotnet/spec/session-actor-dispatch.ko.md)
+[문서 묶음](../README.ko.md) | [Actor 모델](actor-model.ko.md) | [framework API](framework-api.ko.md) | [.NET Session Actor Dispatch](../../dotnet/spec/session-actor-dispatch.ko.md)
 
 # Session Actor Dispatch Usability (Policy)
 
@@ -241,7 +241,7 @@ typed actor context는 source session의 `RoutingId`를 노출하지 않는다. 
 붙어 있는 session node"를 혼동하지 않는다.
 
 구체 .NET 시그니처는
-[bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)
+[bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §3을 참고한다.
 
 ### 8.2.1 SessionProxy naming
@@ -310,7 +310,7 @@ message kind이고, route resolver 입력은 `actorId` 또는 `spotRid`로 제�
 
 구체 .NET 시그니처(`ZLinkMessageMetadata`, `IZLinkMessageMetadataPolicy`,
 `options.ConfigureMetadata(...)`)는
-[bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)
+[bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §3.2를 참고한다.
 
 ### 8.4 실행 순서
@@ -356,7 +356,7 @@ mesh를 고르는 일과 application 위치 정책을 등록하는 일을 같은
 구체 .NET 시그니처 (`options.AddActorFactory<...>(...)`,
 `options.AddRouteMeshChannel(...)`, `options.AddSpotNode(...)`, resolver 등록 코드,
 actor / spot 객체 등록 sample)는
-[bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)
+[bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §7을 참고한다.
 
 startup validation은 아래 조건을 확인한다.
@@ -429,7 +429,7 @@ actor client(`IZLinkActorClient` 류)에서 사용한다. session callback이 �
 
 구체 .NET 시그니처(`IZLinkActorPlayRouteResolver`, `ZLinkActorRoute`,
 `IZLinkActorClient` builder)는
-[bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)
+[bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §5, §6을 참고한다.
 
 ### 9.3 resolver가 숨기는 정보
@@ -547,8 +547,8 @@ dispatch handle만 노출한다. application actor 객체(`IZLinkActor`) 자체�
 actor ref는 application actor 객체가 아니므로 `Configure()`나 handler registry를 갖지 않는다.
 
 구체 .NET 시그니처(`IZLinkSessionContext`, `IZLinkActorRef`)는
-[handler-interfaces.ko.md §4.4](../dotnet/spec/handler-interfaces.ko.md)와
-[bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)
+[handler-interfaces.ko.md §4.4](../../dotnet/spec/handler-interfaces.ko.md)와
+[bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §7-8을 참고한다.
 
 `CreateAndBindActorAsync(...)`는 현재 session host가 가진 actor runtime에 create 요청을 보낸다.
@@ -641,7 +641,7 @@ session callback 안에서 정책 code는 아래 흐름을 따른다 (framework�
 구체 .NET 코드 예시(`TicTacToeSession.OnDispatchAsync(...)`,
 `Context.BindActorHandleAsync(...)`, `Context.Reply(...).Submit(...)`,
 `ZLinkFrameworkException` 던지기)는
-[bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)
+[bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §8을 참고한다.
 
 framework가 맡는 규칙은 아래로 제한한다.
@@ -702,7 +702,7 @@ caller가 `RoutingId`를 모르더라도 같은 routed mesh 위에서 request/re
 
 구체 .NET 시그니처(`IZLinkSessionProxy`, `IZLinkSessionProxySendCall`,
 `IZLinkSessionProxyRequestCall`)와 사용 예시는
-[bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)
+[bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §4를 참고한다.
 
 이 모델에서 actor 객체는 session 위치 정보를 직접 소유하지 않는다. actor 객체가
@@ -772,7 +772,7 @@ server가 늘고 줄 수 있는 구조이므로, 수동 peer endpoint를 sample 
 diagnostic helper는 retry helper와 다르다. diagnostic helper는 현재 registry view,
 discovery member, local routed channel state를 보여 주는 역할만 한다. 구체 .NET
 시그니처(`IZLinkTopologyDiagnostics`)는
-[bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)
+[bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §10을 참고한다.
 
 이 표면은 session actor dispatch의 필수 API가 아니라 운영 점검 표면에 가깝다. 다만 sample
@@ -914,7 +914,7 @@ metadata 갱신을 한 흐름으로 묶고, dispatch helper가 원본 request se
 구체 .NET 코드 (`JoinMatchHandler`, `PlaceMarkHandler`, `TicTacToeActor`,
 `TicTacToeSession`, `options.AddRouteMeshChannel(...)`, `options.AddActorFactory(...)`,
 `options.AddStreamNode(...)`)는
-[bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)
+[bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §7-8에 옮겼다.
 
 ## 17. Error 의미
@@ -944,7 +944,7 @@ framework가 자동 retry한다는 뜻이 아니라 caller가 retry policy를 �
 있는 분류다. sample은 이 값을 사용해 retry loop를 만들지 않는다.
 
 구체 .NET 시그니처(`ZLinkFrameworkException`, `ZLinkFrameworkErrorKind`)는
-[bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)
+[bindings/dotnet/session-actor-dispatch.ko.md](../../dotnet/spec/session-actor-dispatch.ko.md)
 §9를 참고한다.
 
 ## 18. Breaking Change
@@ -1127,5 +1127,5 @@ sample 검증도 필요하다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework Actor Model](actor-model.ko.md) | [다음: ZLink Framework Use Case Validation](usecase-validation.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Actor Model](actor-model.ko.md) | [다음: ZLink Framework Use Case Validation](usecase-validation.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

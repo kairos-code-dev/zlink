@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework Overview](overview.ko.md) | [다음: ZLink Framework Message Model](message-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Overview](overview.ko.md) | [다음: ZLink Framework Message Model](message-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](README.ko.md)
+[스펙 목차](../README.ko.md)
 
-[문서 묶음](README.ko.md) | [개요](overview.ko.md) | [use cases](use-cases/README.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [검증](usecase-validation.ko.md) | [.NET](../dotnet/README.ko.md) | [Java](../java/README.ko.md) | [Node.js](../node/README.ko.md) | [C++](../cpp/README.ko.md)
+[문서 묶음](../README.ko.md) | [개요](overview.ko.md) | [use cases](../use-cases/README.ko.md) | [메시지 모델](message-model.ko.md) | [channel topology](channel-topology.ko.md) | [framework API](framework-api.ko.md) | [검증](usecase-validation.ko.md) | [.NET](../../dotnet/README.ko.md) | [Java](../../java/README.ko.md) | [Node.js](../../node/README.ko.md) | [C++](../../cpp/README.ko.md)
 
 # ZLink Framework Interaction Model
 
@@ -208,5 +208,5 @@ request continuation 과 동시에 실행되지 않는다. room, stage, match �
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: ZLink Framework Overview](overview.ko.md) | [다음: ZLink Framework Message Model](message-model.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Overview](overview.ko.md) | [다음: ZLink Framework Message Model](message-model.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -91,7 +91,7 @@ Java API에서 `submit(...)`은 비동기 작업을 시작하고 `CompletionStag
 `connect().submit()`, `connect().await()`, `dispatch().submit()`, `dispatch().await()`
 처럼 같은 call builder 규칙을 따른다. Kotlin wrapper는 `submit()`으로 얻은
 `CompletionStage`를 coroutine suspension으로 기다린다. 이 실행 의미는
-[framework 공통 정책](../../common/async-execution-policy.ko.md)을 따른다.
+[framework 공통 정책](../../common/spec/async-execution-policy.ko.md)을 따른다.
 
 ## 4. Options
 

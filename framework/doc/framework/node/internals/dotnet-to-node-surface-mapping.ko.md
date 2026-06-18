@@ -30,7 +30,7 @@
 [doc/spec/bindings/README.md](/home/hep7/project/kairos/zlink/doc/spec/bindings/README.md)
 의 `Naming Policy` 를 그대로 따른다.
 비동기 실행의 공통 의미는
-[framework 공통 정책](../../common/async-execution-policy.ko.md)을 따른다.
+[framework 공통 정책](../../common/spec/async-execution-policy.ko.md)을 따른다.
 
 - 메서드·필드·함수: `camelCase` (`HandleAsync` → `handle`, `SendToChannel` → `sendToChannel`)
 - dotnet / C++ 의 coroutine 계열 이름에 붙는 `Async` suffix 는 Node public API 로

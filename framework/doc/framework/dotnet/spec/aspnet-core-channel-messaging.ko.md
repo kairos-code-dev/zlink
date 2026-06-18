@@ -926,7 +926,7 @@ ZLink handler filter[^filter] 로 둔다.
 - payload codec = `protobuf` 또는 `json`
 
 서버 간 channel message 는 공통
-[message-model.ko.md](../../common/message-model.ko.md) 의 multipart 계약을 따른다. 즉
+[message-model.ko.md](../../common/spec/message-model.ko.md) 의 multipart 계약을 따른다. 즉
 framework runtime 이 `DEALER/ROUTER` 또는 `PUB/SUB` 로 보내는 wire message 의 형태는
 다음과 같다.
 

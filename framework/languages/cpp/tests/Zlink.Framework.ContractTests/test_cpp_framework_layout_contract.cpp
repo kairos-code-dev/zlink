@@ -735,7 +735,7 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
 
 bool actor_model_documents_actor_destroy_lifecycle (const std::filesystem::path &root)
 {
-    const auto path = root.parent_path ().parent_path () / "doc/framework/common/actor-model.ko.md";
+    const auto path = root.parent_path ().parent_path () / "doc/framework/common/spec/actor-model.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -769,7 +769,7 @@ bool actor_model_documents_actor_destroy_lifecycle (const std::filesystem::path 
 
 bool framework_api_documents_actor_destroy_lifecycle (const std::filesystem::path &root)
 {
-    const auto path = root.parent_path ().parent_path () / "doc/framework/common/framework-api.ko.md";
+    const auto path = root.parent_path ().parent_path () / "doc/framework/common/spec/framework-api.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -800,7 +800,7 @@ bool session_actor_dispatch_documents_disconnect_destroy_boundary (
   const std::filesystem::path &root)
 {
     const auto path =
-      root.parent_path ().parent_path () / "doc/framework/common/session-actor-dispatch.ko.md";
+      root.parent_path ().parent_path () / "doc/framework/common/spec/session-actor-dispatch.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();

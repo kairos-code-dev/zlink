@@ -664,12 +664,16 @@ To-be 문서는 codec을 API 사용법과 섞어 설명하지 않는다. codec�
 
 문서 위치 기준:
 
+- 언어별 문서의 기준 위치는 모두 `framework/doc/`이다. 이후 언어별 guide, spec, internals,
+  HTTP client, stream connector 문서를 수정할 때는 이 디렉토리 아래의 컴포넌트별 위치에서
+  진행한다.
 - 언어별 framework guide, spec, internals 문서는 `framework/doc/framework/<lang>/` 아래에서
   관리한다.
 - HTTP client 문서는 `framework/doc/http-client/<lang>/` 아래에서 관리한다.
 - 샘플 구현 코드는 기존처럼 `framework/languages/<lang>/samples/**`에 두지만, 샘플 설명 문서는
   `framework/doc/framework/<lang>/guide/samples/`에서 수정한다.
-- `framework/languages/<lang>/doc/` 아래에 새 framework 문서를 추가하지 않는다.
+- `framework/languages/<lang>/doc/` 아래에 새 언어별 문서를 추가하지 않고, 기존 언어별 문서도
+  수정 대상이면 `framework/doc/` 아래의 대응 위치로 옮기거나 그 위치에서 갱신한다.
 
 완료 기준:
 

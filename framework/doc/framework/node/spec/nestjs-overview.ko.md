@@ -352,7 +352,7 @@ framework 의 **유일한** backend 의존은 .NET
   함수 타입으로 옮긴다.
 - `.NET` / C++ 의 coroutine 계열 이름에 붙는 `Async` suffix 는 Node public API 로
   옮기지 않는다. 비동기 실행의 공통 의미는
-  [framework 공통 정책](../../common/async-execution-policy.ko.md)을 따르고,
+  [framework 공통 정책](../../common/spec/async-execution-policy.ko.md)을 따르고,
   Node에서는 `Promise<T>` 반환 타입과 `await` 사용이 비동기 계약이다.
   예: `Async<T>` → `submit<T>()`, `HandleAsync` → `handle()`.
 - 서버와 client 의 socket, stream, channel, registry, actor, Spot lifecycle

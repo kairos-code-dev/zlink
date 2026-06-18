@@ -90,10 +90,9 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | 자동 HWM 기본 profile |
 | `ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT` | 0 | 각 소켓 타입의 기본 메시지 단위를 사용. STREAM은 `1024` bytes, 그 외 소켓은 `4096` bytes |
 
-자동 buffer 하한은 profile에 따라 달라집니다. `COMPACT`는 `SNDBUF` /
-`RCVBUF` 하한으로 128 KiB를 사용합니다. `LOW_LATENCY`, `BALANCED`,
-`THROUGHPUT`은 256 KiB를 사용합니다. 실효 메시지 단위가 더 큰 buffer를
-필요로 하면 planner는 이 하한보다 큰 값을 요청합니다.
+`SNDBUF` / `RCVBUF` 기본값은 `-1`입니다. 이 값은 zlink가 OS socket buffer
+크기를 직접 정하지 않고 OS 기본값과 TCP 자동 조정에 맡긴다는 뜻입니다.
+auto-HWM profile은 이 값을 자동으로 바꾸지 않습니다.
 
 ## 함수
 
@@ -186,6 +185,10 @@ zlink_config_result_t zlink_ctx_set(void *context_, zlink_ctx_option_t option_, 
 바꾸며, runtime 중에도 안전하게 조정할 수 있습니다. profile은 자동 HWM
 planner가 쓰는 연결당 단위 예산과 size cap을 고릅니다. `SNDBUF` / `RCVBUF`
 기본값은 `-1`이며, auto-HWM profile은 이 값을 자동으로 바꾸지 않습니다.
+SPOT mesh의 `mesh-pub`, `mesh-xsub`, `external-router` 내부 socket은 연결 수가
+많아질 때 profile HWM을 connection bucket으로 더 줄일 수 있습니다. 이 조정은
+SPOT data-plane 내부 queue의 보조 상한이며, 일반 socket의 자동 HWM 계산에는
+적용되지 않습니다.
 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 명시적인 소켓별 override가 없는
 소켓의 자동 HWM 계산 메시지 단위를 바꿉니다. 값 `0`은 해당 소켓을 소켓 타입별
 기본 메시지 단위로 되돌립니다.

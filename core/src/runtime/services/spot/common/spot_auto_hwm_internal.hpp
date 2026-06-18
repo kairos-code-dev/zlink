@@ -35,6 +35,8 @@ inline void apply_spot_routed_latency_floor (auto_hwm_socket_plan_t *socket_plan
     if (!socket_plan_ || socket_plan_->policy_class != auto_hwm_policy_routed
         || socket_plan_->effective_message_bytes > 16ull * 1024ull)
         return;
+    if (socket_plan_->connection_bucket_enabled)
+        return;
 
     const uint32_t target_cap = spot_routed_small_message_cap (profile_);
     if (socket_plan_->size_cap < target_cap)
@@ -59,6 +61,7 @@ struct spot_internal_auto_hwm_policy_t
     auto_hwm_scope_t scope;
     size_t scope_count;
     int message_unit_bytes;
+    bool connection_bucket_enabled;
 };
 
 inline auto_hwm_socket_plan_t
@@ -81,7 +84,7 @@ spot_internal_auto_hwm_plan (ctx_t *ctx_, const spot_internal_auto_hwm_policy_t 
       context_plan, policy_.role, policy_.socket_type, policy_.managed_connections,
       policy_.active_connections, &socket_plan,
       policy_.message_unit_bytes > 0 ? policy_.message_unit_bytes : context_plan.message_unit_bytes,
-      -1, -1, false, false, scope, scope_count, true);
+      -1, -1, false, false, scope, scope_count, true, policy_.connection_bucket_enabled);
     spot_auto_hwm_internal::apply_spot_routed_latency_floor (&socket_plan, profile);
     return socket_plan;
 }
@@ -104,7 +107,8 @@ inline int spot_internal_auto_hwm_default_hwm (ctx_t *ctx_,
                                                     false,
                                                     auto_hwm_scope_none,
                                                     1,
-                                                    0};
+                                                    0,
+                                                    false};
     const auto_hwm_socket_plan_t socket_plan = spot_internal_auto_hwm_plan (ctx_, policy);
     const int value = recv_side_ ? socket_plan.rcvhwm : socket_plan.sndhwm;
     return std::max (floor_, value);

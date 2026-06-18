@@ -69,7 +69,8 @@ static void apply_internal_auto_hwm (ctx_t *ctx_,
                                      size_t managed_connections_,
                                      size_t active_connections_,
                                      bool apply_sndhwm_,
-                                     bool apply_rcvhwm_)
+                                     bool apply_rcvhwm_,
+                                     bool connection_bucket_enabled_ = false)
 {
     if (!ctx_ || !socket_)
         return;
@@ -77,7 +78,8 @@ static void apply_internal_auto_hwm (ctx_t *ctx_,
     apply_spot_internal_auto_hwm (ctx_, socket_,
                                   spot_internal_auto_hwm_policy_t{
                                     role_, socket_type_, managed_connections_, active_connections_,
-                                    0, 0, apply_sndhwm_, apply_rcvhwm_, auto_hwm_scope_none, 1, 0});
+                                    0, 0, apply_sndhwm_, apply_rcvhwm_, auto_hwm_scope_none, 1, 0,
+                                    connection_bucket_enabled_});
 }
 
 static void close_mesh_peer_observer (spot_node_t *node_, spot_data_plane_runtime_state_t *state_)
@@ -232,10 +234,10 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     apply_internal_auto_hwm (ctx, state_->ctrl, auto_hwm_role_control, ZLINK_CORE_SOCKET_PAIR,
                              connected_peer_count, active_peer_count, false, false);
     apply_internal_auto_hwm (ctx, state_->mesh_pub, auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
-                             connected_peer_count, active_peer_count, true, false);
+                             connected_peer_count, active_peer_count, true, false, true);
     apply_internal_auto_hwm (ctx, state_->mesh_xsub, auto_hwm_role_recv_ingress,
                              ZLINK_CORE_SOCKET_XSUB, connected_peer_count, active_peer_count, false,
-                             true);
+                             true, true);
     apply_internal_auto_hwm (ctx, state_->pub_ingress_sub, auto_hwm_role_recv_ingress,
                              ZLINK_CORE_SOCKET_SUB, local_pub_count, local_pub_count, false, true);
     apply_internal_auto_hwm (ctx, state_->peer_ctrl_pub, auto_hwm_role_control,
@@ -246,7 +248,7 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
                              false);
     apply_internal_auto_hwm (ctx, state_->external_router, auto_hwm_role_routed,
                              ZLINK_CORE_SOCKET_ROUTER, connected_peer_count, active_peer_count,
-                             true, true);
+                             true, true, true);
     apply_internal_auto_hwm (ctx, state_->fanout, auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
                              local_sub_count, local_sub_count, false, false);
 

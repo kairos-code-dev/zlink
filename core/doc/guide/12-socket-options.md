@@ -81,9 +81,9 @@ must keep the legacy fixed HWM default `1000`.
 | STREAM | 8 | 16 | 64 | 256 |
 | control | 8 | 16 | 16 | 32 |
 
-The planner treats HWM as a per-connection queue depth. It does not divide a
-context memory budget by connection count. Instead, it keeps the profile's byte
-envelope stable:
+For ordinary sockets, the planner treats HWM as a per-connection queue depth.
+It does not divide a context memory budget by connection count. Instead, it
+keeps the profile's byte envelope stable:
 
 ```text
 scaled_hwm = ceil(basis_hwm * basis_message_unit / effective_message_unit)
@@ -91,6 +91,22 @@ scaled_hwm = ceil(basis_hwm * basis_message_unit / effective_message_unit)
 
 The minimum automatic HWM is `1`, and the result is capped by the profile's
 message-count cap.
+
+SPOT mesh internal sockets `mesh-pub`, `mesh-xsub`, and `external-router` first
+apply a connection-count bucket when many peers are connected. Bucket values
+are HWM counts normalized to 4 KiB messages, and the final HWM is calculated as:
+
+```text
+base_hwm_4k = min(profile_hwm_4k, bucket_hwm_4k)
+unit_budget_bytes = base_hwm_4k * 4096
+scaled_hwm = ceil(unit_budget_bytes / effective_message_unit)
+```
+
+This adjustment is an auxiliary bound on SPOT data-plane socket queues. Public
+publish and routed-send backpressure semantics are still owned by
+`publish_ingress_queue` and `routed_send_queue` admission. Local fanout, pub
+ingress, control sockets, and ordinary DEALER/PAIR/STREAM sockets do not use
+this connection bucket.
 
 Manual `SNDHWM` / `RCVHWM` settings always override the automatic values.
 

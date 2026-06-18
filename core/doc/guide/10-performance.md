@@ -134,10 +134,12 @@ non_stream_connections * 256 * 4096
 + control_connections * 16 * 4096
 ```
 
-This estimate is an application capacity-planning input. zlink does not divide
-a context memory budget across connections. If benchmarking or production
-tuning needs fixed queue depths, set `SNDHWM` / `RCVHWM` manually on the
-socket.
+This estimate is the capacity-planning input for ordinary sockets. Ordinary
+socket auto-HWM does not divide a context memory budget across connections.
+SPOT mesh internal sockets `mesh-pub`, `mesh-xsub`, and `external-router` are
+the exception: they apply connection buckets to reduce the profile HWM when
+many peers are connected. If benchmarking or production tuning needs fixed
+queue depths, set `SNDHWM` / `RCVHWM` manually on the socket.
 
 ### HWM Behavior by Socket Type
 
@@ -151,8 +153,10 @@ socket.
 ### Memory Calculation
 
 Since HWM is per-connection, estimate total queue memory as HWM × message size
-× connection count. Automatic HWM selects the HWM from profile, socket role,
-and message unit; it does not work backward from a context memory budget.
+× connection count. Ordinary socket auto-HWM selects the HWM from profile,
+socket role, and message unit; it does not work backward from a context memory
+budget. SPOT mesh internal sockets first apply a peer-count bucket and then
+convert that 4 KiB-normalized byte budget to the active message unit.
 
 ```
 Estimated memory = SNDHWM × average_message_size × connection_count
@@ -162,6 +166,12 @@ Example 1: Regular service — HWM=100, message=1KB, connections=1000
 
 Example 2: STREAM at scale — HWM=10, message=1KB, connections=10000
            = 10 × 1KB × 10000 = ~100MB
+
+Example 3: SPOT mesh, balanced, 100 nodes, 4KB message
+           = 99 peers × 2 directions × 128 × 4KB = ~99MB
+
+Example 4: SPOT mesh, balanced, 1000 nodes, 4KB message
+           = 999 peers × 2 directions × 32 × 4KB = ~250MB
 ```
 
 For one-way `PUB/SUB` and SPOT fanout, large messages can make queue residency

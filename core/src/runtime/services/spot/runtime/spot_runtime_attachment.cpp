@@ -85,12 +85,12 @@ int spot_runtime_t::create_attachment (int kind_, const char *endpoint_, uint64_
                                           std::max<size_t> (
                                             next_local_sub_count + active_peer_count, 1u),
                                           0, 0, true, true, auto_hwm_scope_per_spot,
-                                          next_spot_scope_count, 0}
+                                          next_spot_scope_count, 0, false}
         : spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress, ZLINK_CORE_SOCKET_SUB,
                                           std::max<size_t> (next_local_sub_count, 1u),
                                           std::max<size_t> (next_local_sub_count, 1u), 0, 0, true,
                                           true, auto_hwm_scope_per_spot,
-                                          next_spot_scope_count, 0});
+                                          next_spot_scope_count, 0, false});
     if (kind_ == spot_attachment_pub) {
         socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &pubsub_admission_hwm,
                             sizeof (pubsub_admission_hwm));
@@ -116,7 +116,7 @@ int spot_runtime_t::create_attachment (int kind_, const char *endpoint_, uint64_
                                           std::max<size_t> (next_local_sub_count, 1u),
                                           std::max<size_t> (next_local_sub_count, 1u), 0, 0, true,
                                           true, auto_hwm_scope_per_spot,
-                                          next_spot_scope_count, 0});
+                                          next_spot_scope_count, 0, false});
         relay_socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &zero, sizeof (zero));
         relay_socket->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero, sizeof (zero));
         const int neg_one = -1;

@@ -91,10 +91,9 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_CTX_AUTO_HWM_PROFILE_DFLT` | `ZLINK_AUTO_HWM_PROFILE_BALANCED` | Default automatic HWM profile |
 | `ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT` | 0 | Use each socket type's default message unit: `1024` bytes for STREAM and `4096` bytes for other sockets. |
 
-The automatic buffer floor is profile-dependent. `COMPACT` uses a 128 KiB
-`SNDBUF` / `RCVBUF` floor. `LOW_LATENCY`, `BALANCED`, and `THROUGHPUT` use a
-256 KiB floor. The planner still raises the requested buffer above that floor
-when the effective message unit requires it.
+`SNDBUF` / `RCVBUF` default to `-1`. This leaves the OS socket buffer size to
+the OS default and TCP autotuning. Auto-HWM profiles do not change those values
+automatically.
 
 ## Functions
 
@@ -189,6 +188,10 @@ automatic HWM calculation and is safe to change while the context is live.
 The profile selects the per-connection unit budget and size cap used by the
 automatic HWM planner. `SNDBUF` / `RCVBUF` default to `-1`, and auto-HWM
 profiles do not change these values automatically.
+For SPOT mesh internal sockets, `mesh-pub`, `mesh-xsub`, and `external-router`
+may further reduce the profile HWM through connection-count buckets when many
+peers are connected. That adjustment is a data-plane socket queue bound; it
+does not change the automatic HWM calculation for ordinary sockets.
 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` updates the message unit used by
 automatic HWM planning for sockets that do not have an explicit per-socket
 override. A value of `0` returns those sockets to their socket-type default.

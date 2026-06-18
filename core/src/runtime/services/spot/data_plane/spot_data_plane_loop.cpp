@@ -87,9 +87,10 @@ void apply_data_plane_socket_policy_once (spot_data_plane_runtime_state_t *state
 void refresh_data_plane_limits_and_hwm (spot_runtime_t *runtime_,
                                         spot_data_plane_runtime_state_t *state_)
 {
-    spot_mesh_pub_hwm_t::refresh_live_socket (
-      runtime_, state_->mesh_pub, &state_->mesh_pub_hwm.current_sndhwm,
-      &state_->mesh_pub_hwm.last_hwm_version, &state_->mesh_pub_hwm.last_bound_endpoint);
+    spot_mesh_pub_hwm_t::refresh_live_sockets (
+      runtime_, state_->mesh_pub, state_->mesh_xsub, state_->external_router,
+      &state_->mesh_pub_hwm.current_sndhwm, &state_->mesh_pub_hwm.last_hwm_version,
+      &state_->mesh_pub_hwm.last_bound_endpoint);
     spot_data_plane_forwarder_t::update_pending_queue_limits (runtime_, state_);
 }
 

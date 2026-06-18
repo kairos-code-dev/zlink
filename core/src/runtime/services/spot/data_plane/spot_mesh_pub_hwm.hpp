@@ -22,11 +22,13 @@ void reset_runtime_state (spot_runtime_t *runtime_);
 bool publish_ready_hint (spot_runtime_t *runtime_, uint32_t ready_count_);
 int resolve_runtime_default (const spot_runtime_t *runtime_);
 int resolve_initial_bind_sndhwm (const spot_runtime_t *runtime_, const std::string &endpoint_);
-void refresh_live_socket (spot_runtime_t *runtime_,
-                          socket_base_t *mesh_pub_,
-                          int *current_hwm_,
-                          uint64_t *last_hwm_version_,
-                          std::string *last_bound_endpoint_);
+void refresh_live_sockets (spot_runtime_t *runtime_,
+                           socket_base_t *mesh_pub_,
+                           socket_base_t *mesh_xsub_,
+                           socket_base_t *external_router_,
+                           int *current_mesh_pub_hwm_,
+                           uint64_t *last_hwm_version_,
+                           std::string *last_bound_endpoint_);
 }
 }
 

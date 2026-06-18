@@ -23,6 +23,24 @@ struct profile_hwm_t
     uint32_t stream_cap;
 };
 
+struct connection_bucket_hwm_t
+{
+    uint32_t max_peers;
+    uint32_t compact_hwm;
+    uint32_t low_latency_hwm;
+    uint32_t balanced_hwm;
+    uint32_t throughput_hwm;
+};
+
+const uint32_t unlimited_peer_bucket = UINT32_MAX;
+
+const connection_bucket_hwm_t spot_connection_buckets[] = {
+  {64, 64, 128, 256, 512},
+  {128, 64, 64, 128, 256},
+  {512, 32, 32, 64, 128},
+  {2048, 16, 16, 32, 64},
+  {unlimited_peer_bucket, 8, 8, 16, 32}};
+
 uint32_t clamp_size_to_u32 (size_t value_)
 {
     return value_ > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t> (value_);
@@ -95,6 +113,43 @@ uint32_t size_cap_for_class (zlink_auto_hwm_profile_t profile_,
     return stream_policy_class (policy_class_) ? hwm.stream_cap : hwm.message_cap;
 }
 
+bool connection_bucket_policy_class (zlink::auto_hwm_policy_class_t policy_class_)
+{
+    return policy_class_ == zlink::auto_hwm_policy_spot_data
+           || policy_class_ == zlink::auto_hwm_policy_recv_ingress
+           || policy_class_ == zlink::auto_hwm_policy_routed;
+}
+
+uint32_t bucket_hwm_for_profile (const connection_bucket_hwm_t &bucket_,
+                                 zlink_auto_hwm_profile_t profile_)
+{
+    switch (normalize_profile (profile_)) {
+        case ZLINK_AUTO_HWM_PROFILE_COMPACT:
+            return bucket_.compact_hwm;
+        case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
+            return bucket_.low_latency_hwm;
+        case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
+            return bucket_.throughput_hwm;
+        case ZLINK_AUTO_HWM_PROFILE_BALANCED:
+        default:
+            return bucket_.balanced_hwm;
+    }
+}
+
+uint32_t connection_bucket_hwm_4k (zlink_auto_hwm_profile_t profile_, uint32_t connections_)
+{
+    const uint32_t peers = std::max<uint32_t> (connections_, 1u);
+    for (size_t i = 0; i != sizeof spot_connection_buckets / sizeof spot_connection_buckets[0];
+         ++i) {
+        if (peers <= spot_connection_buckets[i].max_peers)
+            return bucket_hwm_for_profile (spot_connection_buckets[i], profile_);
+    }
+    return bucket_hwm_for_profile (
+      spot_connection_buckets[sizeof spot_connection_buckets / sizeof spot_connection_buckets[0]
+                              - 1],
+      profile_);
+}
+
 uint64_t effective_message_bytes (int socket_type_, int override_)
 {
     if (override_ > 0)
@@ -137,6 +192,9 @@ zlink::auto_hwm_socket_plan_t::auto_hwm_socket_plan_t () :
     unit_budget_bytes (0),
     size_cap (0),
     pending_messages (0),
+    connection_bucket_enabled (false),
+    connection_bucket_count (1),
+    connection_bucket_hwm_4k (0),
     sndhwm (0),
     rcvhwm (0),
     manual_sndbuf (false),
@@ -238,34 +296,36 @@ void zlink::auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
                                           bool manual_rcvbuf_,
                                           auto_hwm_scope_t scope_,
                                           size_t scope_count_,
-                                          bool buffer_cost_enabled_)
+                                          bool buffer_cost_enabled_,
+                                          bool connection_bucket_enabled_)
 {
     if (!out_)
         return;
-
-    (void) buffer_cost_enabled_;
 
     *out_ = auto_hwm_socket_plan_t ();
     out_->role = role_;
     out_->policy_class = auto_hwm_policy_class_for_role (role_, socket_type_);
     out_->scope = scope_;
+    out_->connection_bucket_enabled = connection_bucket_enabled_;
     out_->manual_sndbuf = manual_sndbuf_;
     out_->manual_rcvbuf = manual_rcvbuf_;
     out_->effective_message_bytes = effective_message_bytes (socket_type_, message_unit_bytes_);
     const uint32_t buffer_connections = std::max<uint32_t> (
       clamp_size_to_u32 (std::max (managed_connections_, active_hwm_connections_)), 1u);
+    out_->connection_bucket_count = buffer_connections;
 
     out_->requested_sndbuf = manual_sndbuf_ ? sndbuf_ : -1;
     out_->requested_rcvbuf = manual_rcvbuf_ ? rcvbuf_ : -1;
     out_->effective_sndbuf = out_->requested_sndbuf;
     out_->effective_rcvbuf = out_->requested_rcvbuf;
 
-    (void) buffer_connections;
     out_->scope_count = clamp_size_to_u32 (scope_count_ > 0 ? scope_count_ : 1);
     out_->unit_budget_bytes = static_cast<uint64_t> (basis_hwm_for_class (
                                 ZLINK_AUTO_HWM_PROFILE_BALANCED, out_->policy_class))
                               * effective_message_bytes (socket_type_, 0);
     out_->size_cap = size_cap_for_class (ZLINK_AUTO_HWM_PROFILE_BALANCED, out_->policy_class);
+    if (!buffer_cost_enabled_ || !connection_bucket_policy_class (out_->policy_class))
+        out_->connection_bucket_enabled = false;
 }
 
 void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
@@ -281,7 +341,14 @@ void zlink::auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
         const uint64_t basis_message_bytes = stream_policy_class (plan.policy_class)
                                                ? auto_hwm_stream_message_bytes
                                                : auto_hwm_message_bytes;
-        plan.unit_budget_bytes = static_cast<uint64_t> (basis_hwm) * basis_message_bytes;
+        uint32_t budget_hwm = basis_hwm;
+        plan.connection_bucket_hwm_4k = 0;
+        if (plan.connection_bucket_enabled && !stream_policy_class (plan.policy_class)) {
+            plan.connection_bucket_hwm_4k =
+              connection_bucket_hwm_4k (context_->profile, plan.connection_bucket_count);
+            budget_hwm = std::min<uint32_t> (basis_hwm, plan.connection_bucket_hwm_4k);
+        }
+        plan.unit_budget_bytes = static_cast<uint64_t> (budget_hwm) * basis_message_bytes;
         plan.size_cap = size_cap_for_class (context_->profile, plan.policy_class);
         if (!plan.manual_sndbuf) {
             plan.requested_sndbuf = -1;
@@ -312,14 +379,16 @@ void zlink::auto_hwm_socket_plan_for_role (const auto_hwm_context_plan_t &contex
                                            bool manual_rcvbuf_,
                                            auto_hwm_scope_t scope_,
                                            size_t scope_count_,
-                                           bool buffer_cost_enabled_)
+                                           bool buffer_cost_enabled_,
+                                           bool connection_bucket_enabled_)
 {
     if (!out_)
         return;
 
     auto_hwm_socket_plan_prepare (
       role_, socket_type_, managed_connections_, active_hwm_connections_, out_, message_unit_bytes_,
-      sndbuf_, rcvbuf_, manual_sndbuf_, manual_rcvbuf_, scope_, scope_count_, buffer_cost_enabled_);
+      sndbuf_, rcvbuf_, manual_sndbuf_, manual_rcvbuf_, scope_, scope_count_, buffer_cost_enabled_,
+      connection_bucket_enabled_);
 
     auto_hwm_context_plan_t adjusted_context = context_;
     auto_hwm_context_finalize (&adjusted_context, out_, 1);

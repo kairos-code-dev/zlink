@@ -138,9 +138,11 @@ non_stream_connections * 256 * 4096
 + control_connections * 16 * 4096
 ```
 
-이 값은 애플리케이션의 용량 산정 입력이다. zlink는 context memory budget을
-connection 수로 나누지 않는다. benchmark나 운영 튜닝에서 고정값이 필요하면
-소켓별 `SNDHWM` / `RCVHWM`을 수동으로 주면 된다.
+이 값은 일반 socket의 용량 산정 입력이다. 일반 socket auto-HWM은 context memory
+budget을 connection 수로 나누지 않는다. SPOT mesh 내부의 `mesh-pub`, `mesh-xsub`,
+`external-router`는 예외적으로 connection bucket을 적용해 peer 수가 많은 경우
+profile HWM을 줄인다. benchmark나 운영 튜닝에서 고정값이 필요하면 소켓별
+`SNDHWM` / `RCVHWM`을 수동으로 주면 된다.
 
 ### HWM 동작 패턴
 
@@ -154,8 +156,10 @@ connection 수로 나누지 않는다. benchmark나 운영 튜닝에서 고정�
 ### 메모리 계산
 
 HWM은 연결별(per-connection)이므로, 총 queue 메모리는 HWM × 메시지 크기 ×
-연결 수로 추정할 수 있다. 자동 HWM은 profile, 소켓 역할, message unit으로
-HWM을 고르며 context memory budget에서 역산하지 않는다.
+연결 수로 추정할 수 있다. 일반 socket의 자동 HWM은 profile, 소켓 역할,
+message unit으로 HWM을 고르며 context memory budget에서 역산하지 않는다.
+SPOT mesh 내부 socket은 peer 수 bucket을 먼저 적용한 뒤 `4 KiB` 기준 byte
+예산을 message unit으로 환산한다.
 
 ```
 Estimated memory = SNDHWM × average_message_size × connection_count
@@ -165,6 +169,12 @@ Example 1: Regular service — HWM=100, message=1KB, connections=1000
 
 Example 2: STREAM at scale — HWM=10, message=1KB, connections=10000
            = 10 × 1KB × 10000 = ~100MB
+
+Example 3: SPOT mesh, balanced, 100 nodes, 4KB message
+           = 99 peers × 2 directions × 128 × 4KB = ~99MB
+
+Example 4: SPOT mesh, balanced, 1000 nodes, 4KB message
+           = 999 peers × 2 directions × 32 × 4KB = ~250MB
 ```
 
 단방향 `PUB/SUB`와 SPOT fanout에서는 큰 메시지가 큐에 오래 머물면 측정 레이턴시가

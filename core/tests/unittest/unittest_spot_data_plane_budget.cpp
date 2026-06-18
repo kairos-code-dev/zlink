@@ -7,6 +7,7 @@
 #include "core/multipart_send_txn.hpp"
 #include "services/spot/data_plane/spot_data_plane_internal.hpp"
 #include "services/spot/data_plane/spot_mesh_pub_hwm.hpp"
+#include "services/spot/common/spot_auto_hwm_internal.hpp"
 #include "services/spot/runtime/spot_runtime.hpp"
 #include "sockets/common/socket_base.hpp"
 
@@ -51,6 +52,21 @@ int planned_hwm (zlink::auto_hwm_role_t role_,
     zlink::auto_hwm_socket_plan_for_role (
       context_plan, role_, socket_type_, managed_connections_, managed_connections_, &socket_plan,
       message_unit_bytes_, -1, -1, false, false, zlink::auto_hwm_scope_none, 1, true);
+    return socket_plan.sndhwm;
+}
+
+int planned_connection_bucket_hwm (zlink::auto_hwm_role_t role_,
+                                   int socket_type_,
+                                   zlink_auto_hwm_profile_t profile_,
+                                   int message_unit_bytes_,
+                                   size_t managed_connections_)
+{
+    zlink::auto_hwm_context_plan_t context_plan;
+    zlink::auto_hwm_context_plan_make (true, profile_, &context_plan);
+    zlink::auto_hwm_socket_plan_t socket_plan;
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, role_, socket_type_, managed_connections_, managed_connections_, &socket_plan,
+      message_unit_bytes_, -1, -1, false, false, zlink::auto_hwm_scope_none, 1, true, true);
     return socket_plan.sndhwm;
 }
 
@@ -233,14 +249,14 @@ void test_mesh_pub_hwm_defaults_follow_transport_and_ready_peer_count ()
 
 void test_mesh_pub_hwm_refresh_follows_ready_peer_count_changes ()
 {
-    TEST_ASSERT_FALSE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tls://127.0.0.1:9000", 0, 1));
-    TEST_ASSERT_FALSE (zlink::spot_mesh_pub_hwm_t::should_refresh ("wss://127.0.0.1:9000", 0, 2));
-    TEST_ASSERT_FALSE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tcp://127.0.0.1:9000", 0, 1));
-    TEST_ASSERT_FALSE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tcp://127.0.0.1:9000", 1, 2));
-    TEST_ASSERT_FALSE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tls://127.0.0.1:9000", 1, 2));
-    TEST_ASSERT_FALSE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tls://127.0.0.1:9000", 2, 100));
-    TEST_ASSERT_FALSE (zlink::spot_mesh_pub_hwm_t::should_refresh ("wss://127.0.0.1:9000", 2, 100));
-    TEST_ASSERT_FALSE (zlink::spot_mesh_pub_hwm_t::should_refresh ("ws://127.0.0.1:9000", 2, 100));
+    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tls://127.0.0.1:9000", 0, 1));
+    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("wss://127.0.0.1:9000", 0, 2));
+    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tcp://127.0.0.1:9000", 0, 1));
+    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tcp://127.0.0.1:9000", 1, 2));
+    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tls://127.0.0.1:9000", 1, 2));
+    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tls://127.0.0.1:9000", 2, 100));
+    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("wss://127.0.0.1:9000", 2, 100));
+    TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::should_refresh ("ws://127.0.0.1:9000", 2, 100));
     TEST_ASSERT_FALSE (zlink::spot_mesh_pub_hwm_t::should_refresh ("tls://127.0.0.1:9000", 2, 2));
     TEST_ASSERT_FALSE (
       zlink::spot_mesh_pub_hwm_t::should_refresh ("wss://127.0.0.1:9000", 100, 100));
@@ -392,6 +408,119 @@ void test_auto_hwm_v2_hwm_is_independent_from_observed_count ()
     TEST_ASSERT_EQUAL_INT (1024, socket_plan.sndhwm);
 }
 
+void test_auto_hwm_connection_bucket_scales_spot_mesh_roles ()
+{
+    TEST_ASSERT_EQUAL_INT (256, planned_connection_bucket_hwm (
+                                  zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                  ZLINK_AUTO_HWM_PROFILE_BALANCED, 4096, 1));
+    TEST_ASSERT_EQUAL_INT (256, planned_connection_bucket_hwm (
+                                  zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                  ZLINK_AUTO_HWM_PROFILE_BALANCED, 4096, 64));
+    TEST_ASSERT_EQUAL_INT (128, planned_connection_bucket_hwm (
+                                  zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                  ZLINK_AUTO_HWM_PROFILE_BALANCED, 4096, 65));
+    TEST_ASSERT_EQUAL_INT (128, planned_connection_bucket_hwm (
+                                  zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                  ZLINK_AUTO_HWM_PROFILE_BALANCED, 4096, 128));
+    TEST_ASSERT_EQUAL_INT (64, planned_connection_bucket_hwm (
+                                 zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                 ZLINK_AUTO_HWM_PROFILE_BALANCED, 4096, 129));
+    TEST_ASSERT_EQUAL_INT (64, planned_connection_bucket_hwm (
+                                 zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                 ZLINK_AUTO_HWM_PROFILE_BALANCED, 4096, 512));
+    TEST_ASSERT_EQUAL_INT (32, planned_connection_bucket_hwm (
+                                 zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                 ZLINK_AUTO_HWM_PROFILE_BALANCED, 4096, 513));
+    TEST_ASSERT_EQUAL_INT (32, planned_connection_bucket_hwm (
+                                 zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                 ZLINK_AUTO_HWM_PROFILE_BALANCED, 4096, 999));
+    TEST_ASSERT_EQUAL_INT (16, planned_connection_bucket_hwm (
+                                 zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                 ZLINK_AUTO_HWM_PROFILE_BALANCED, 4096, 2049));
+
+    TEST_ASSERT_EQUAL_INT (8, planned_connection_bucket_hwm (
+                                zlink::auto_hwm_role_recv_ingress, ZLINK_CORE_SOCKET_XSUB,
+                                ZLINK_AUTO_HWM_PROFILE_COMPACT, 4096, 2049));
+    TEST_ASSERT_EQUAL_INT (32, planned_connection_bucket_hwm (
+                                 zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
+                                 ZLINK_AUTO_HWM_PROFILE_THROUGHPUT, 4096, 2049));
+}
+
+void test_auto_hwm_connection_bucket_preserves_4k_byte_budget ()
+{
+    TEST_ASSERT_EQUAL_INT (128, planned_connection_bucket_hwm (
+                                  zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                  ZLINK_AUTO_HWM_PROFILE_BALANCED, 1024, 999));
+    TEST_ASSERT_EQUAL_INT (32, planned_connection_bucket_hwm (
+                                 zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                 ZLINK_AUTO_HWM_PROFILE_BALANCED, 4096, 999));
+    TEST_ASSERT_EQUAL_INT (2, planned_connection_bucket_hwm (
+                                zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                ZLINK_AUTO_HWM_PROFILE_BALANCED, 64 * 1024, 999));
+    TEST_ASSERT_EQUAL_INT (1, planned_connection_bucket_hwm (
+                                zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
+                                ZLINK_AUTO_HWM_PROFILE_BALANCED, 128 * 1024, 999));
+}
+
+void test_auto_hwm_connection_bucket_is_opt_in_and_preserves_manual_buffers ()
+{
+    zlink::auto_hwm_context_plan_t context_plan;
+    zlink::auto_hwm_context_plan_make (true, ZLINK_AUTO_HWM_PROFILE_BALANCED, &context_plan);
+
+    zlink::auto_hwm_socket_plan_t socket_plan;
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, 999, 999, &socket_plan,
+      4096, -1, -1, false, false, zlink::auto_hwm_scope_none, 1, true, false);
+    TEST_ASSERT_EQUAL_INT (256, socket_plan.sndhwm);
+    TEST_ASSERT_FALSE (socket_plan.connection_bucket_enabled);
+
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_fanout, ZLINK_CORE_SOCKET_PUB, 999, 999, &socket_plan,
+      4096, -1, -1, false, false, zlink::auto_hwm_scope_none, 1, true, true);
+    TEST_ASSERT_EQUAL_INT (256, socket_plan.sndhwm);
+    TEST_ASSERT_FALSE (socket_plan.connection_bucket_enabled);
+
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, 999, 999, &socket_plan,
+      4096, -1, -1, false, false, zlink::auto_hwm_scope_none, 1, false, true);
+    TEST_ASSERT_EQUAL_INT (256, socket_plan.sndhwm);
+    TEST_ASSERT_FALSE (socket_plan.connection_bucket_enabled);
+
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, 999, 999, &socket_plan,
+      4096, -1, -1, false, false, zlink::auto_hwm_scope_none, 1, true, true);
+    TEST_ASSERT_EQUAL_INT (32, socket_plan.sndhwm);
+    TEST_ASSERT_TRUE (socket_plan.connection_bucket_enabled);
+
+    zlink::auto_hwm_socket_plan_for_role (
+      context_plan, zlink::auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB, 999, 999, &socket_plan,
+      4096, 1024 * 1024, 2 * 1024 * 1024, true, true, zlink::auto_hwm_scope_none, 1, true, true);
+    TEST_ASSERT_EQUAL_INT (32, socket_plan.sndhwm);
+    TEST_ASSERT_EQUAL_INT (1024 * 1024, socket_plan.requested_sndbuf);
+    TEST_ASSERT_EQUAL_INT (2 * 1024 * 1024, socket_plan.requested_rcvbuf);
+}
+
+void test_auto_hwm_connection_bucket_caps_spot_routed_latency_floor ()
+{
+    zlink::ctx_t ctx;
+
+    const zlink::spot_internal_auto_hwm_policy_t bucket_policy = {
+      zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER, 999, 999, 0, 0, true, true,
+      zlink::auto_hwm_scope_shared, 1, 4096, true};
+    const zlink::auto_hwm_socket_plan_t bucket_plan =
+      zlink::spot_internal_auto_hwm_plan (&ctx, bucket_policy);
+    TEST_ASSERT_EQUAL_INT (32, bucket_plan.sndhwm);
+    TEST_ASSERT_EQUAL_INT (32, bucket_plan.rcvhwm);
+
+    const zlink::spot_internal_auto_hwm_policy_t legacy_policy = {
+      zlink::auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER, 999, 999, 0, 0, true, true,
+      zlink::auto_hwm_scope_shared, 1, 4096, false};
+    const zlink::auto_hwm_socket_plan_t legacy_plan =
+      zlink::spot_internal_auto_hwm_plan (&ctx, legacy_policy);
+    TEST_ASSERT_EQUAL_INT (256, legacy_plan.sndhwm);
+    TEST_ASSERT_EQUAL_INT (256, legacy_plan.rcvhwm);
+}
+
 void test_auto_hwm_leaves_transport_buffers_unset ()
 {
     zlink::auto_hwm_context_plan_t context_plan;
@@ -433,17 +562,17 @@ void test_mesh_pub_hwm_hint_updates_private_runtime_owner ()
     TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::publish_ready_hint (&runtime, 1));
     TEST_ASSERT_EQUAL_UINT (1,
                             zlink::mesh_pub_ready_peer_count (&runtime.execution.mesh_peer_state));
-    TEST_ASSERT_EQUAL_UINT64 (0, zlink::mesh_pub_hwm_version (&runtime.execution.mesh_peer_state));
+    TEST_ASSERT_EQUAL_UINT64 (1, zlink::mesh_pub_hwm_version (&runtime.execution.mesh_peer_state));
 
     TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::publish_ready_hint (&runtime, 2));
     TEST_ASSERT_EQUAL_UINT (2,
                             zlink::mesh_pub_ready_peer_count (&runtime.execution.mesh_peer_state));
-    TEST_ASSERT_EQUAL_UINT64 (0, zlink::mesh_pub_hwm_version (&runtime.execution.mesh_peer_state));
+    TEST_ASSERT_EQUAL_UINT64 (2, zlink::mesh_pub_hwm_version (&runtime.execution.mesh_peer_state));
 
     zlink::spot_mesh_pub_hwm_t::reset_runtime_state (&runtime);
     TEST_ASSERT_EQUAL_UINT (0,
                             zlink::mesh_pub_ready_peer_count (&runtime.execution.mesh_peer_state));
-    TEST_ASSERT_EQUAL_UINT64 (1, zlink::mesh_pub_hwm_version (&runtime.execution.mesh_peer_state));
+    TEST_ASSERT_EQUAL_UINT64 (3, zlink::mesh_pub_hwm_version (&runtime.execution.mesh_peer_state));
 }
 
 void test_mesh_pub_hwm_runtime_owner_uses_bound_endpoint ()
@@ -472,12 +601,12 @@ void test_mesh_pub_hwm_runtime_owner_tracks_ready_count_changes ()
     runtime.bound_endpoint = "tls://127.0.0.1:9000";
 
     TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::publish_ready_hint (&runtime, 1));
-    TEST_ASSERT_EQUAL_UINT64 (0, zlink::mesh_pub_hwm_version (&runtime.execution.mesh_peer_state));
+    TEST_ASSERT_EQUAL_UINT64 (1, zlink::mesh_pub_hwm_version (&runtime.execution.mesh_peer_state));
 
     TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::publish_ready_hint (&runtime, 2));
     TEST_ASSERT_EQUAL_UINT (2,
                             zlink::mesh_pub_ready_peer_count (&runtime.execution.mesh_peer_state));
-    TEST_ASSERT_EQUAL_UINT64 (0, zlink::mesh_pub_hwm_version (&runtime.execution.mesh_peer_state));
+    TEST_ASSERT_EQUAL_UINT64 (2, zlink::mesh_pub_hwm_version (&runtime.execution.mesh_peer_state));
     TEST_ASSERT_EQUAL_INT (0, zlink::spot_mesh_pub_hwm_t::resolve_runtime_default (&runtime));
 }
 
@@ -591,6 +720,10 @@ int main (int argc, char **argv)
     RUN_TEST (test_auto_hwm_pc_profile_table_and_message_unit_scaling);
     RUN_TEST (test_auto_hwm_v2_policy_class_mapping_and_spot_fanout_limit);
     RUN_TEST (test_auto_hwm_v2_hwm_is_independent_from_observed_count);
+    RUN_TEST (test_auto_hwm_connection_bucket_scales_spot_mesh_roles);
+    RUN_TEST (test_auto_hwm_connection_bucket_preserves_4k_byte_budget);
+    RUN_TEST (test_auto_hwm_connection_bucket_is_opt_in_and_preserves_manual_buffers);
+    RUN_TEST (test_auto_hwm_connection_bucket_caps_spot_routed_latency_floor);
     RUN_TEST (test_auto_hwm_leaves_transport_buffers_unset);
     RUN_TEST (test_mesh_pub_hwm_hint_updates_private_runtime_owner);
     RUN_TEST (test_mesh_pub_hwm_runtime_owner_uses_bound_endpoint);

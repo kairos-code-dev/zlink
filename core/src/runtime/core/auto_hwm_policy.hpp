@@ -63,6 +63,9 @@ struct auto_hwm_socket_plan_t
     uint64_t unit_budget_bytes;
     uint32_t size_cap;
     uint64_t pending_messages;
+    bool connection_bucket_enabled;
+    uint32_t connection_bucket_count;
+    uint32_t connection_bucket_hwm_4k;
     int sndhwm;
     int rcvhwm;
     bool manual_sndbuf;
@@ -91,7 +94,8 @@ void auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
                                    bool manual_rcvbuf_ = false,
                                    auto_hwm_scope_t scope_ = auto_hwm_scope_none,
                                    size_t scope_count_ = 1,
-                                   bool buffer_cost_enabled_ = true);
+                                   bool buffer_cost_enabled_ = true,
+                                   bool connection_bucket_enabled_ = false);
 void auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
                                 auto_hwm_socket_plan_t *plans_,
                                 size_t plan_count_);
@@ -108,7 +112,8 @@ void auto_hwm_socket_plan_for_role (const auto_hwm_context_plan_t &context_,
                                     bool manual_rcvbuf_ = false,
                                     auto_hwm_scope_t scope_ = auto_hwm_scope_none,
                                     size_t scope_count_ = 1,
-                                    bool buffer_cost_enabled_ = true);
+                                    bool buffer_cost_enabled_ = true,
+                                    bool connection_bucket_enabled_ = false);
 }
 
 #endif

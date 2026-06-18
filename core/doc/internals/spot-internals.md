@@ -17,7 +17,7 @@ dispatch in a single unified runtime.
 | Goal | Implementation choice |
 |------|-----------------------|
 | **No per-Spot physical sockets** | All transport sockets are owned by `SpotNode`. A `Spot` facade owns only a logical queue and dispatch context. |
-| **Explicit admission boundary** | Public publish and routed send enqueue into `SpotNode`-owned send-side queues (`publish_ingress_queue`, `routed_send_queue`). Socket HWM computation and admission decision are separated, so internal socket wiring cannot contaminate the error semantics of public API calls. Relay and delivery sockets use HWM `0` to prevent hidden per-peer queue caps from making disconnect/drop decisions. |
+| **Explicit admission boundary** | Public publish and routed send enqueue into `SpotNode`-owned send-side queues (`publish_ingress_queue`, `routed_send_queue`). Socket HWM computation and admission decision are separated, so internal socket wiring cannot contaminate the error semantics of public API calls. `fanout` uses HWM `0`; remote mesh sockets use auto-HWM and reduce only the per-peer pipe budget through connection buckets. Public API backpressure is still decided by the node-owned send queues. |
 | **Data-plane-thread-exclusive sockets** | `mesh-pub`, `fanout`, and `external-router` are accessed only by the `SpotNode`-dedicated data-plane thread. Public threads cannot directly touch these sockets, preventing ownership diffusion. |
 | **Aggregate subscription** | Remote mesh subscriptions are reference-counted at the node level, not per-Spot. This prevents duplicate remote subscriptions when multiple local Spots subscribe to the same topic. |
 | **Actor-to-Spot decoupling** | Actors do not own sockets or inproc endpoints. Parts are relayed through the SpotNode Actor table and dispatched into a Spot's logical queue, allowing Actors to move between Spots (join) without tearing down transport connections. |
@@ -451,14 +451,19 @@ With the default context value the balanced default is therefore `256`; small
 payloads do not raise it to `1024` by themselves. Peer control sockets stay
 outside this admission group.
 
-Relay sockets (`fanout` SNDHWM 0, `mesh-pub` SNDHWM per auto-HWM) and delivery
-sockets use HWM `0`. This prevents hidden per-peer or per-target queue caps inside
-SPOT from deciding message loss or disconnect behavior.
+The `fanout` relay socket uses HWM `0`. `mesh-pub` for outbound remote mesh
+publish, `mesh-xsub` for inbound remote mesh publish, and `external-router` for
+routed mesh traffic use auto-HWM. Without a numeric override, these three sockets
+apply connection buckets to reduce the per-peer pipe budget. This HWM bounds
+internal transport pipe memory; public `publish` and routed `send` backpressure is
+still defined by `publish_ingress_queue` and `routed_send_queue`.
 
-The perf `Auto-HWM spotnode` detail shows admission HWM on `mesh-pub`, `mesh-xsub`,
-and `external-router`. In the default balanced path, `MsgUnit(B)=4096` and HWM
-`256` are expected. Rows for `pub-ingress-tx`, `ingress-sub`, `internal-router`,
-and `internal-router-tx` no longer exist.
+The perf `Auto-HWM spotnode` detail shows mesh transport HWM on `mesh-pub`,
+`mesh-xsub`, and `external-router`. In the default balanced path with
+`MsgUnit(B)=4096`, the profile value before connection buckets is `256`; the HWM
+after bucket application can be smaller depending on remote peer count. Rows for
+`pub-ingress-tx`, `ingress-sub`, `internal-router`, and `internal-router-tx` no
+longer exist.
 
 ## 7. Control Plane
 

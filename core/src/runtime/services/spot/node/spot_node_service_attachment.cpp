@@ -337,7 +337,7 @@ spot_node_t::plan_service_discovery_sockets_locked (const std::string &channel_n
                   _ctx, router_socket,
                   spot_internal_auto_hwm_policy_t{auto_hwm_role_routed, ZLINK_CORE_SOCKET_DEALER,
                                                   connected_peer_count, active_peer_count, 0, 0,
-                                                  true, true, auto_hwm_scope_none, 1, 0});
+                                                  true, true, auto_hwm_scope_none, 1, 0, false});
                 plan.new_router_sockets.push_back (std::make_pair (*it, router_socket));
             }
         }
@@ -359,7 +359,7 @@ spot_node_t::plan_service_discovery_sockets_locked (const std::string &channel_n
           _ctx, plan.pub_socket,
           spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
                                           connected_peer_count, active_peer_count, 0, 0, true, true,
-                                          auto_hwm_scope_none, 1, 0});
+                                          auto_hwm_scope_none, 1, 0, false});
     }
     if (plan.sub_socket) {
         size_t connected_peer_count = 0;
@@ -370,7 +370,7 @@ spot_node_t::plan_service_discovery_sockets_locked (const std::string &channel_n
           _ctx, plan.sub_socket,
           spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress, ZLINK_CORE_SOCKET_SUB,
                                           connected_peer_count, active_peer_count, 0, 0, true, true,
-                                          auto_hwm_scope_none, 1, 0});
+                                          auto_hwm_scope_none, 1, 0, false});
     }
     if (topology_.pubsub_active () && pub_endpoints_changed) {
         attachment.mark_auto_sub_replay_pending (

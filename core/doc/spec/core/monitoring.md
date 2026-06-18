@@ -121,9 +121,9 @@ typedef struct zlink_monitor_status_t
 | `auto_hwm_profile` | Current automatic HWM profile. Values match `zlink_auto_hwm_profile_t`. |
 | `auto_hwm_role` | Diagnostic role id. Current values are `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`, `5=spot_data`, `6=peer_queue`, `7=stream`; callers must tolerate future values. |
 | `auto_hwm_policy_class` | Planner policy class used for unit-budget and size-cap selection. This is diagnostic and may grow. |
-| `auto_hwm_unit_budget_bytes` | Per-connection unit budget selected from the active profile and policy class. |
+| `auto_hwm_unit_budget_bytes` | Per-connection unit budget selected from the active profile and policy class. For SPOT mesh transport sockets, this is the budget after connection bucket reduction. |
 | `auto_hwm_size_cap` | Message-count cap selected from the active profile, policy class, and effective message size. |
-| `auto_hwm_socket_message_slots` | Message slots derived from the selected unit budget and effective message unit. |
+| `auto_hwm_socket_message_slots` | Message slots derived from the selected unit budget, SPOT mesh connection bucket when applied, and effective message unit. |
 | `auto_hwm_effective_message_bytes` | Effective message unit in bytes used by the current policy calculation. |
 | `auto_hwm_applied_sndhwm` | Currently applied send HWM on the socket. |
 | `auto_hwm_applied_rcvhwm` | Currently applied recv HWM on the socket. |

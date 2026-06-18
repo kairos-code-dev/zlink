@@ -2,59 +2,60 @@
 
 # SPOT / SpotNode 내부 아키텍처
 
-이 문서는 core 유지보수자가 SPOT 내부 배선과 데이터 흐름을 빠르게 파악하도록
+이 문서는 core 유지보수자가 SPOT의 내부 연결 구조와 데이터 흐름을 빠르게 파악하도록
 돕는 내부 문서다. 공개 API 계약은
 [`doc/spec/core/service/spot.ko.md`](../spec/core/service/spot.ko.md)를 기준으로
-본다.
+삼는다.
 
 ## 0. SPOT이 무엇이며 왜 이렇게 설계되었는가
 
-SPOT은 zlink의 **서비스 레이어**다. raw socket 위에서 topic publish/subscribe,
-routed request/reply, Actor 기반 session dispatch를 하나의 통합 런타임으로 제공한다.
+SPOT은 zlink의 **서비스 계층(service layer)**이다. 원시 소켓(raw socket) 위에서
+토픽 발행/구독(publish/subscribe), 라우팅 요청/응답(routed request/reply),
+Actor 기반 세션 분배(session dispatch)를 하나의 통합 런타임으로 제공한다.
 
 ### 0.1 설계 목표
 
 | 목표 | 구현 선택 |
 |------|-----------|
-| **Spot별 물리 소켓 없음** | 모든 transport 소켓은 `SpotNode`가 소유한다. `Spot` facade는 logical queue와 dispatch context만 가진다. |
-| **명시적 입장 허용(admission) 경계** | public publish와 routed send는 `SpotNode` 소유 send-side queue(`publish_ingress_queue`, `routed_send_queue`)에 enqueue한다. 소켓 HWM 계산과 admission 결정이 분리되어, 내부 소켓 배선이 public API 오류 의미를 오염시키지 않는다. relay·delivery 소켓은 HWM `0`을 사용해 숨은 per-peer 큐 상한이 disconnect/drop 결정을 내리지 못하게 한다. |
-| **data-plane thread 전용 소켓** | `mesh-pub`, `fanout`, `external-router`는 `SpotNode` 전용 data-plane thread만 접근한다. public thread가 이 소켓을 직접 만질 수 없어 소유권이 분산되지 않는다. |
-| **집계 구독** | 원격 mesh 구독은 Spot 단위가 아니라 node 단위로 reference-count한다. 여러 local Spot이 같은 topic을 구독해도 원격에는 중복 구독이 전달되지 않는다. |
-| **Actor-Spot 분리** | Actor는 소켓이나 inproc(프로세스 내 통신) 엔드포인트를 소유하지 않는다. part는 SpotNode Actor table을 거쳐 Spot의 logical queue에 디스패치되므로, transport 연결을 끊지 않고도 Actor가 Spot 사이를 이동(join)할 수 있다. |
-| **결정론적 종료** | `Spot` facade를 destroy해도 backing `SpotNode`가 자동으로 종료되지 않는다. Entry Spot 수명은 facade가 아니라 `SpotNode`에 귀속된다. |
+| **Spot별 물리 소켓 없음** | 모든 전송 소켓(transport socket)은 `SpotNode`가 소유한다. `Spot` 파사드(facade)는 논리 큐(logical queue)와 분배 컨텍스트(dispatch context)만 가진다. |
+| **명시적 수용(admission) 경계** | 공개 발행과 라우팅 전송은 `SpotNode`가 소유한 송신 큐(`publish_ingress_queue`, `routed_send_queue`)에 쌓는다. 소켓 HWM 계산과 수용 여부 판단이 분리되어, 내부 소켓 배선이 공개 API의 오류 의미를 더럽히지 않는다. `fanout`은 HWM `0`을 쓰고, 원격 mesh 소켓은 auto-HWM을 쓰되 연결 수 bucket으로 peer별 pipe 예산만 줄인다. 공개 API의 backpressure 의미는 노드 단위 송신 큐가 정한다. |
+| **데이터 평면 스레드 전용 소켓** | `mesh-pub`, `fanout`, `external-router`는 `SpotNode` 전용 데이터 평면 스레드(data-plane thread)만 접근한다. 공개 스레드는 이 소켓을 직접 건드릴 수 없어 소유권이 분산되지 않는다. |
+| **집계 구독(aggregate subscription)** | 원격 메시(mesh) 구독은 Spot 단위가 아니라 node 단위로 참조 카운트(reference count)한다. 여러 로컬 Spot이 같은 토픽을 구독해도 원격에는 중복 구독이 전달되지 않는다. |
+| **Actor-Spot 분리** | Actor는 소켓이나 프로세스 내 통신(inproc) 엔드포인트를 소유하지 않는다. 메시지 조각(part)은 SpotNode의 Actor table을 거쳐 Spot의 논리 큐로 분배되므로, 전송 연결을 끊지 않고도 Actor가 Spot 사이를 옮겨 다닐(join) 수 있다. |
+| **결정론적 종료** | `Spot` 파사드를 파괴(destroy)해도 그 뒤를 받치는 `SpotNode`가 자동으로 종료되지는 않는다. Entry Spot의 수명은 파사드가 아니라 `SpotNode`에 묶인다. |
 
 ### 0.2 핵심 개념
 
-- **SpotNode**: lifecycle owner. transport 소켓, 피어 배선, Actor table을 소유한다.
-- **Spot**: `SpotNode` 위에서 빌려 쓰는 데이터 평면 facade. 같은 logical Spot을 가리키는
-  facade가 여러 개 존재할 수 있으며, 모두 같은 underlying queue를 공유한다.
-- **Entry Spot**: `SpotNode`당 하나, 자동 생성된다. 새로 만들어진 Actor는 여기서 시작한다.
-  애플리케이션은 Entry Spot에 dispatch handler를 등록해 초기 session 처리, 인증, Actor 라우팅
-  결정을 수행한다.
-- **Actor**: `SpotNode` Actor table이 관리하는 routing target. `zlink_actor_ref_t`(node rid +
-  actor id + generation)로 식별된다. socket ownership 없음.
-- **data-plane thread**: `SpotNode`당 하나의 전용 OS 스레드. `mesh-pub`, `fanout`,
-  `external-router` 소켓을 단독으로 소유하고, send-side 큐를 drain하며, local
-  fanout과 remote routing을 수행한다.
-- **dispatch worker pool**: `SpotNode`당 하나의 worker pool. data-plane 스레드가 post한
-  readable event를 꺼내 애플리케이션 dispatch 콜백을 실행한다. Spot별 콜백 직렬화를
-  보장한다.
+- **SpotNode**: 수명 주기 소유자(lifecycle owner). 전송 소켓, peer 배선, Actor table을 소유한다.
+- **Spot**: `SpotNode` 위에서 빌려 쓰는 데이터 평면 파사드. 같은 논리 Spot을 가리키는
+  파사드가 여러 개 존재할 수 있으며, 모두 같은 바탕 큐(underlying queue)를 공유한다.
+- **Entry Spot**: `SpotNode`당 하나씩 자동 생성된다. 새로 만들어진 Actor는 여기서 시작한다.
+  애플리케이션은 Entry Spot에 분배 핸들러(dispatch handler)를 등록해 초기 세션 처리, 인증,
+  Actor 라우팅 결정을 수행한다.
+- **Actor**: `SpotNode`의 Actor table이 관리하는 라우팅 대상(routing target).
+  `zlink_actor_ref_t`(node rid + actor id + generation)로 식별되며, 소켓을 소유하지 않는다.
+- **데이터 평면 스레드(data-plane thread)**: `SpotNode`당 하나씩 두는 전용 OS 스레드.
+  `mesh-pub`, `fanout`, `external-router` 소켓을 단독으로 소유하고, 송신 큐를 비우며(drain),
+  로컬 팬아웃(fanout)과 원격 라우팅을 수행한다.
+- **분배 워커 풀(dispatch worker pool)**: `SpotNode`당 하나씩 두는 워커 풀. 데이터 평면
+  스레드가 올린 읽기 가능 이벤트(readable event)를 꺼내 애플리케이션 분배 콜백을 실행한다.
+  Spot별로 콜백이 순차 실행되도록 보장한다.
 
 ### 0.3 문서 구성
 
 | 절 | 주제 |
 |----|------|
-| §1 | 런타임 컴포넌트 개요 |
-| §2 | mode별 내부 socket 토폴로지 |
-| §3–4 | topic·routed 데이터 평면 |
-| §5 | send-side queue와 admission |
-| §6 | Admission HWM |
-| §7 | Control plane |
-| §8 | Data-plane thread와 dispatch worker pool |
-| §9–10 | Actor dispatch 모델과 Entry Spot 큐 소유권 |
-| §11 | socket 제거 모델 배경 |
-| §12 | STREAM session과 Actor binding 시퀀스 |
-| §13–14 | 내부 자료구조와 Actor join lifecycle |
+| §1 | 런타임 구성 요소 개요 |
+| §2 | 모드별 내부 소켓 구성 |
+| §3–4 | 토픽·라우팅 데이터 평면 |
+| §5 | 송신 큐와 수용(admission) |
+| §6 | 수용 HWM |
+| §7 | 제어 평면(control plane) |
+| §8 | 데이터 평면 스레드와 분배 워커 풀 |
+| §9–10 | Actor 분배 모델과 Entry Spot 큐 소유권 |
+| §11 | 소켓 제거 모델의 배경 |
+| §12 | STREAM 세션과 Actor 바인딩 시퀀스 |
+| §13–14 | 내부 자료구조와 Actor join 수명 주기 |
 
 ## 1. 전체 구조
 
@@ -101,44 +102,44 @@ flowchart TB
     wp --> cb
 ```
 
-`SpotNode`는 lifecycle owner이고, `Spot`은 그 위에서 빌려 쓰는 데이터 평면
-facade다. `Spot`을 닫아도 backing `SpotNode`는 자동으로 닫히지 않는다.
+`SpotNode`는 수명 주기 소유자이고, `Spot`은 그 위에서 빌려 쓰는 데이터 평면
+파사드다. `Spot`을 닫아도 그 뒤를 받치는 `SpotNode`는 자동으로 닫히지 않는다.
 
-`Spot` facade는 물리 socket을 소유하지 않는다. 모든 transport socket은
-`SpotNode`가 소유하며, `Spot`은 logical dispatch queue와 dispatch event context만
-가진다. `Entry Spot`은 `SpotNode`당 하나이며 `SpotNode`가 소유한다. `Entry Spot`
-facade는 application이 `zlink_spot_node_entry_spot()`으로 얻어서 사용하고,
-`zlink_spot_destroy()`로 닫는다.
+`Spot` 파사드는 물리 소켓을 소유하지 않는다. 모든 전송 소켓은 `SpotNode`가
+소유하며, `Spot`은 논리 분배 큐와 분배 이벤트 컨텍스트만 가진다. `Entry Spot`은
+`SpotNode`당 하나이며 `SpotNode`가 소유한다. `Entry Spot` 파사드는 애플리케이션이
+`zlink_spot_node_entry_spot()`으로 얻어서 사용하고, `zlink_spot_destroy()`로 닫는다.
 
-### 1.1 logical Spot map과 get-or-new
+### 1.1 논리 Spot 맵과 get-or-new
 
-`SpotNode`는 logical Spot을 routing id index로 관리한다. `Spot` handle은 facade일
-뿐이므로 같은 logical Spot을 가리키는 facade가 여러 개 존재할 수 있다. 이 구조
-때문에 명시적 room id를 가진 Spot 확보는 `lookup -> zlink_spot_new() ->
-zlink_set_routing_id()` 조합으로 만들면 안 된다. 그 순서는 호출자가 내부 index
-변경과 경합 처리를 알아야 하므로 API 경계가 얕아진다.
+`SpotNode`는 논리 Spot을 routing id 색인으로 관리한다. `Spot` 핸들은 파사드일
+뿐이므로, 같은 논리 Spot을 가리키는 파사드가 여러 개 존재할 수 있다. 이 구조
+때문에, 명시적 room id를 가진 Spot을 확보할 때 `lookup -> zlink_spot_new() ->
+zlink_set_routing_id()` 조합으로 만들면 안 된다. 그 순서는 호출자가 내부 색인
+변경과 경합 처리까지 알아야 해서 API 경계가 얕아지기 때문이다.
 
 `zlink_spot_node_spot_get_or_new()`는 같은 `SpotNode`와 같은 Spot routing id에 대해
-logical Spot 생성 여부를 `SpotNode` 내부 lock 아래에서 결정한다. 처음 성공한
-호출만 logical state를 만들고 `created_out = 1`을 받는다. 이후 성공 호출은 같은
-logical state에 대한 새 facade만 만들고 `created_out = 0`을 받는다.
+논리 Spot을 새로 만들지 여부를 `SpotNode` 내부 잠금(lock) 아래에서 결정한다. 가장
+먼저 성공한 호출만 논리 상태(logical state)를 만들고 `created_out = 1`을 받는다.
+이후 성공한 호출은 같은 논리 상태를 가리키는 새 파사드만 만들고 `created_out = 0`을
+받는다.
 
-snapshot API는 진단용 facade 관찰도 포함할 수 있다. 따라서 같은 logical Spot에
-대해 여러 facade가 살아 있으면 snapshot row가 둘 이상 보일 수 있다. logical Spot
-생성 여부를 판단해야 하는 코드는 snapshot row 수가 아니라 get-or-new의
+스냅샷 API는 진단용 파사드까지 함께 보여 줄 수 있다. 따라서 같은 논리 Spot에 대해
+여러 파사드가 살아 있으면 스냅샷 행(row)이 둘 이상 보일 수 있다. 논리 Spot이 새로
+생성되었는지 판단해야 하는 코드는 스냅샷 행 수가 아니라 get-or-new가 돌려준
 `created_out` 값을 기준으로 삼는다.
 
-## 2. 내부 소켓 토폴로지
+## 2. 내부 소켓 구성
 
-SpotNode는 mode에 필요한 socket 묶음만 만든다.
+SpotNode는 모드(mode)에 필요한 소켓 묶음만 만든다.
 
-| mode | 생성되는 주요 plane |
+| 모드 | 생성되는 주요 평면 |
 |------|---------------------|
-| `PUBSUB` | topic publish/subscribe, peer control |
-| `ROUTED` | routed delivery, peer control |
-| `ALL` | topic, routed, peer control |
+| `PUBSUB` | 토픽 발행/구독, peer 제어 |
+| `ROUTED` | routed 전달, peer 제어 |
+| `ALL` | 토픽, routed, peer 제어 |
 
-꺼진 plane은 snapshot 호출이나 꺼진 API의 첫 호출로도 생성되지 않는다.
+꺼져 있는 평면은 스냅샷 호출이나 꺼진 API의 첫 호출로도 생성되지 않는다.
 
 ### 2.1 주요 소켓
 
@@ -186,29 +187,29 @@ flowchart LR
 
 | 소켓 | 타입 | 역할 | HWM 정책 |
 |------|------|------|----------|
-| `fanout` | `PUB` | 같은 node 안의 subscriber로 local fanout | SNDHWM 0 |
-| `mesh-pub` | `PUB` | remote node로 topic publish 전파 | pubsub admission SNDHWM (auto-HWM 또는 override) |
-| `mesh-xsub` | `XSUB` | remote node에서 topic publish 수신 | pubsub admission RCVHWM |
-| `external-router` | `ROUTER` | peer node와 routed frame 송수신 | router admission HWM (auto-HWM 또는 override) |
-| `peer_ctrl_pub` | `PUB` | peer control 송신 | control 기본값 |
-| `peer_ctrl_sub` | `SUB` | peer control 수신 | control 기본값 |
+| `fanout` | `PUB` | 같은 node 안의 구독자에게 로컬 팬아웃 | SNDHWM 0 |
+| `mesh-pub` | `PUB` | 원격 node로 토픽 발행 전파 | pubsub 수용 SNDHWM (auto-HWM 또는 override) |
+| `mesh-xsub` | `XSUB` | 원격 node에서 오는 토픽 발행 수신 | pubsub 수용 RCVHWM |
+| `external-router` | `ROUTER` | peer node와 routed 프레임 송수신 | router 수용 HWM (auto-HWM 또는 override) |
+| `peer_ctrl_pub` | `PUB` | peer 제어 송신 | control 기본값 |
+| `peer_ctrl_sub` | `SUB` | peer 제어 수신 | control 기본값 |
 
 `pub-ingress-tx`, `ingress-sub`, `internal-router`, `internal-router-tx`는 제거되었다.
-이 socket들이 담당하던 staging 역할은 `publish_ingress_queue`와 `routed_send_queue`가
-대체한다. `zlink_spot_node_internal_sockets()`은 이 4개의 row를 더 이상
-반환하지 않는다. perf의 `Auto-HWM spotnode` 표도 이에 맞게 갱신되었다.
+이 소켓들이 맡던 준비(staging) 역할은 이제 `publish_ingress_queue`와
+`routed_send_queue`가 대신한다. `zlink_spot_node_internal_sockets()`은 이 4개 행을
+더 이상 반환하지 않는다. perf의 `Auto-HWM spotnode` 표도 이에 맞게 갱신되었다.
 
-### 2.2 Router channel peer
+### 2.2 router channel peer
 
-router channel peer는 SPOT mesh peer와 다른 연결 종류다. SPOT mesh peer는
-SpotNode끼리 topic과 routed 메시지를 주고받는 기본 mesh 연결이고, router channel
-peer는 외부 router-capable channel의 `ROUTER`가 특정 `Spot`으로 들어오는 ingress
-경로를 갖도록 만드는 연결이다.
+router channel peer는 SPOT mesh peer와는 다른 종류의 연결이다. SPOT mesh peer는
+SpotNode끼리 토픽과 routed 메시지를 주고받는 기본 mesh 연결이고, router channel
+peer는 외부의 router 채널에 있는 `ROUTER`가 특정 `Spot`으로 들어오는 경로를 갖도록
+만드는 연결이다.
 
-상위 framework에서 routed Spot egress client를 제공하더라도 내부 기준은 같다.
-target SpotNode 쪽에는 router channel peer가 먼저 연결되어 있어야 하며, source 쪽
-client는 자신이 보유한 local egress channel을 통해 그 ingress channel로 메시지를
-보낸다. target Spot rid만으로 source connection을 역조회하지 않는다.
+상위 프레임워크가 외부로 내보내는(egress) routed Spot 클라이언트를 제공하더라도
+내부 기준은 같다. 대상 SpotNode 쪽에는 router channel peer가 먼저 연결되어 있어야
+하며, 출발지 쪽 클라이언트는 자신이 가진 로컬 송신 채널을 통해 그 채널로 메시지를
+들여보낸다. 대상 Spot rid만으로 출발지 연결을 역으로 찾아내지는 않는다.
 
 ```mermaid
 flowchart LR
@@ -225,25 +226,25 @@ flowchart LR
     routed_router --> target_spot
 ```
 
-수동 연결은 `manual_endpoints`와 `active_endpoints`에 endpoint 문자열로 저장된다.
-discovery 연결은 channel 이름별 discovery pointer와 discovery가 알려 준 active
-endpoint set으로 관리된다. 같은 channel 안에서 수동 endpoint와 discovery pointer를
-동시에 둘 수 없게 한 이유는 연결 소유자를 하나로 유지하기 위해서다.
+수동 연결은 `manual_endpoints`와 `active_endpoints`에 엔드포인트 문자열로 저장된다.
+디스커버리(discovery) 연결은 채널 이름별 디스커버리 포인터와, 디스커버리가 알려 준
+활성 엔드포인트 집합으로 관리된다. 같은 채널 안에서 수동 엔드포인트와 디스커버리
+포인터를 동시에 둘 수 없게 한 이유는 연결 소유자를 하나로 유지하기 위해서다.
 
-`zlink_spot_node_peers()`은 SPOT mesh peer와 router channel peer를
-구분한다. router channel peer row는 channel name, peer endpoint, source(manual
-또는 discovery), kind(router channel), state를 함께 보여 준다. 운영 도구는 이
-구분을 사용해 "mesh가 끊어진 것"과 "router channel ingress가 아직 준비되지 않은
-것"을 따로 진단할 수 있다.
+`zlink_spot_node_peers()`은 SPOT mesh peer와 router channel peer를 구분한다. router
+channel peer 행에는 채널 이름, peer 엔드포인트, 출처(수동 또는 디스커버리),
+종류(router channel), 상태가 함께 표시된다. 운영 도구는 이 구분을 사용해 "mesh가
+끊어진 것"과 "router channel로 메시지가 아직 들어올 수 없는 것"을 따로 진단할 수
+있다.
 
-## 3. Topic plane
+## 3. 토픽 평면(topic plane)
 
-topic plane은 local과 remote 모두 socket의 기본 subscription filter를 사용한다.
-runtime은 publish 시점에 target index를 조회하지 않는다.
+토픽 평면은 로컬과 원격 모두 소켓의 기본 구독 필터(subscription filter)를 사용한다.
+런타임은 발행 시점에 대상 색인을 조회하지 않는다.
 
-public publish는 `publish_ingress_queue`에 owned message entry를 넣고 즉시 반환한다.
-data-plane thread가 queue를 drain하면서 local fanout(`fanout` socket)과 remote mesh
-publish(`mesh-pub` socket)를 수행한다.
+공개 발행은 `publish_ingress_queue`에 소유 메시지 항목(owned message entry)을 넣고
+즉시 반환한다. 데이터 평면 스레드가 이 큐를 비우면서 로컬 팬아웃(`fanout` 소켓)과
+원격 mesh 발행(`mesh-pub` 소켓)을 수행한다.
 
 ```mermaid
 sequenceDiagram
@@ -271,44 +272,42 @@ sequenceDiagram
     end
 ```
 
-local subscriber의 실제 topic matching은 `fanout` PUB socket의 `SUBSCRIBE` 상태가
-맡는다. remote 전달의 matching은 peer node의 `mesh-xsub` aggregate subscription
-상태가 맡는다.
+로컬 구독자의 실제 토픽 매칭은 `fanout` PUB 소켓의 `SUBSCRIBE` 상태가 맡는다.
+원격 전달의 매칭은 peer node의 `mesh-xsub` 집계 구독 상태가 맡는다.
 
-### 3.1 Aggregate subscription 수명
+### 3.1 집계 구독의 수명
 
-runtime은 remote mesh에 반영할 node 단위 구독 수명을 따로 관리한다.
+런타임은 원격 mesh에 반영할 node 단위 구독 수명을 따로 관리한다.
 
 | 상태 | 자료구조 | 의미 |
 |------|----------|------|
-| exact topic | `topic -> refcount` | 같은 exact topic을 원하는 local subscriber 수 |
-| prefix | `prefix -> refcount` | 같은 prefix를 원하는 local subscriber 수 |
+| 정확 토픽(exact topic) | `topic -> refcount` | 같은 정확 토픽을 원하는 로컬 구독자 수 |
+| 접두사(prefix) | `prefix -> refcount` | 같은 접두사를 원하는 로컬 구독자 수 |
 
 규칙은 단순하다.
 
-1. refcount가 `0 -> 1`이 될 때만 remote aggregate subscribe를 보낸다.
-2. refcount가 `1 -> 0`이 될 때만 remote aggregate unsubscribe를 보낸다.
-3. 중간 증가와 감소는 local 상태만 바꾸며 remote mesh에는 중복 명령을 보내지 않는다.
+1. 참조 카운트가 `0 -> 1`이 될 때만 원격 집계 구독(subscribe)을 보낸다.
+2. 참조 카운트가 `1 -> 0`이 될 때만 원격 집계 구독 해제(unsubscribe)를 보낸다.
+3. 그 사이의 증가와 감소는 로컬 상태만 바꾸며, 원격 mesh에는 중복 명령을 보내지 않는다.
 
-이 규칙 때문에 같은 node 안의 여러 `Spot`이 같은 topic을 구독해도 remote peer에는
-하나의 node 대표 구독만 보인다.
+이 규칙 덕분에, 같은 node 안의 여러 `Spot`이 같은 토픽을 구독해도 원격 peer에는
+node를 대표하는 구독 하나만 보인다.
 
-## 4. Routed plane
+## 4. routed 평면(routed plane)
 
-routed plane은 `external-router` 한 축으로 고정된다.
+routed 평면은 `external-router` 한 축으로 고정된다.
 
 | router | 범위 | 역할 |
 |--------|------|------|
 | `external-router` | node 간 | peer node의 `external-router`와 ROUTER 링크로 송수신 |
 
-`internal-router`는 제거되었다. local routed delivery는 `routed_send_queue`를 통해
-data-plane thread가 직접 target `Spot`의 routed recv queue에 전달한다.
+`internal-router`는 제거되었다. 로컬 routed 전달은 `routed_send_queue`를 거쳐,
+데이터 평면 스레드가 대상 `Spot`의 routed 수신 큐에 직접 전달한다.
 
-### 4.1 Outbound routed send (local 및 remote)
+### 4.1 바깥으로 내보내는 routed 전송(로컬 및 원격)
 
-public routed send는 local target이든 remote target이든 모두 `routed_send_queue`에
-owned entry를 enqueue한다. target이 local인지 remote인지는 data-plane이 dequeue 후
-결정한다.
+공개 routed 전송은 대상이 로컬이든 원격이든 모두 `routed_send_queue`에 소유 항목을
+쌓는다. 대상이 로컬인지 원격인지는 데이터 평면이 큐에서 꺼낸 뒤에 결정한다.
 
 ```mermaid
 sequenceDiagram
@@ -333,12 +332,12 @@ sequenceDiagram
     end
 ```
 
-### 4.2 Inbound routed traffic (external_router_ingress_queue)
+### 4.2 외부에서 들어오는 routed 트래픽(external_router_ingress_queue)
 
-피어에서 들어오는 inbound routed frame은 `external-router` 소켓의 msg dispatch
-콜백을 통해 `external_router_ingress_queue`에 enqueue된다. data-plane 스레드가
-`drain_runtime_external_router_ingress_queue()`로 이를 처리하고 target `Spot` routed
-recv 큐에 delivery한다. inbound 경로는 `routed_send_queue`를 거치지 않는다.
+peer에서 들어오는 routed 프레임은 `external-router` 소켓의 메시지 분배 콜백을
+통해 `external_router_ingress_queue`에 쌓인다. 데이터 평면 스레드가
+`drain_runtime_external_router_ingress_queue()`로 이를 처리해 대상 `Spot`의 routed
+수신 큐로 전달한다. 이렇게 들어오는 경로는 `routed_send_queue`를 거치지 않는다.
 
 ```mermaid
 sequenceDiagram
@@ -363,126 +362,127 @@ remote routed delivery는 peer별 external route id map을 사용한다. 이 map
 `spot_runtime_t` 내부 메서드를 통해서만 갱신한다. 호출자는 map 구조나 lock 규칙을
 알 필요가 없다.
 
-## 5. Send-side queue와 admission
+## 5. 송신 큐와 수용(admission)
 
-public publish와 routed send의 첫 동작은 socket send가 아니라 queue enqueue다.
+공개 발행과 routed 전송의 첫 동작은 소켓 송신이 아니라 큐에 쌓기다.
 
-### 5.1 Queue 구조
+### 5.1 큐 구조
 
-`spot_data_plane_runtime_state_t` 내부에 세 개의 queue가 있다.
+`spot_data_plane_runtime_state_t` 안에 세 개의 큐가 있다.
 
-| Queue | 소유자 | 방향 | 역할 |
+| 큐 | 소유자 | 방향 | 역할 |
 |-------|--------|------|------|
-| `publish_ingress_queue` | `spot_data_plane_runtime_state_t` | outbound | public publish → data-plane forwarding |
-| `routed_send_queue` | `spot_data_plane_runtime_state_t` | outbound | public routed send → data-plane forwarding |
-| `external_router_ingress_queue` | `spot_data_plane_runtime_state_t` | inbound | peer `external-router` recv → routed delivery |
+| `publish_ingress_queue` | `spot_data_plane_runtime_state_t` | 나가는 방향 | 공개 발행 → 데이터 평면 전달 |
+| `routed_send_queue` | `spot_data_plane_runtime_state_t` | 나가는 방향 | 공개 routed 전송 → 데이터 평면 전달 |
+| `external_router_ingress_queue` | `spot_data_plane_runtime_state_t` | 들어오는 방향 | peer `external-router` 수신 → routed 전달 |
 
-`publish_ingress_queue`와 `routed_send_queue`는 public 스레드가 쓰고 data-plane
-스레드가 읽는 MPSC 구조다. `external_router_ingress_queue`는 `external-router`
-소켓의 msg dispatch 콜백이 쓰고 data-plane 스레드가 읽는 구조다.
+`publish_ingress_queue`와 `routed_send_queue`는 공개 스레드가 쓰고 데이터 평면
+스레드가 읽는 MPSC(다중 생산자-단일 소비자) 구조다. `external_router_ingress_queue`는
+`external-router` 소켓의 메시지 분배 콜백이 쓰고 데이터 평면 스레드가 읽는 구조다.
 
-### 5.2 Backpressure와 hysteresis
+### 5.2 배압(backpressure)과 이력 현상(hysteresis)
 
-`publish_ingress_queue`와 `routed_send_queue`는 byte 기반 soft limit와
+`publish_ingress_queue`와 `routed_send_queue`는 바이트 기반 soft limit와
 `backpressure_active` 플래그로 동작한다.
 
 | 상황 | 결과 |
 |------|------|
-| 여유 있음 | enqueue 성공, queue가 비어 있었으면 signaler로 data-plane thread 깨움 |
+| 여유 있음 | 쌓기 성공. 큐가 비어 있었으면 signaler로 데이터 평면 스레드를 깨움 |
 | 가득 참 + `ZLINK_DONTWAIT` | `EAGAIN` |
-| 가득 참 + blocking | `condition_variable`에서 drain 또는 timeout 대기 |
-| shutdown 진행 중 | `ESHUTDOWN` |
+| 가득 참 + 블로킹 | `condition_variable`에서 큐가 비거나 타임아웃될 때까지 대기 |
+| 종료 진행 중 | `ESHUTDOWN` |
 | 메모리 할당 실패 | `ENOMEM` |
 
-배압(backpressure)은 이력 현상(hysteresis)으로 동작한다. hard limit 도달 시
-`backpressure_active = true`로 바꾸고, data-plane이 queue를 절반 이하로 drain하면
-`cv.broadcast()`로 대기 중인 sender를 깨운다. 이력 현상은 한계에 근접한 상태에서
-on/off가 반복되는 채터링을 방지한다.
+배압은 이력 현상으로 동작한다. hard limit에 도달하면 `backpressure_active = true`로
+바꾸고, 데이터 평면이 큐를 절반 이하로 비우면 `cv.broadcast()`로 대기 중인 송신자를
+깨운다. 이력 현상은 한계에 가까운 상태에서 켜짐/꺼짐이 반복되는 채터링(chattering)을
+막아 준다.
 
-`send-ready callback`(`zlink_send_ready_handler()`)과 `ZLINK_POLLOUT`은 send-side
-큐 입장 허용과 연결된다. 큐가 resume limit 이하로 내려가면 armed(등록된)
-send-ready 콜백이 호출된다. 이 의미는 "transport 소켓이 쓰기 가능하다"가
-아니라 "SPOT send 입장 허용을 다시 시도할 가치가 있다"다.
+송신 준비 콜백(`zlink_send_ready_handler()`)과 `ZLINK_POLLOUT`은 송신 큐의 수용
+여부와 연결된다. 큐가 resume limit 이하로 내려가면, 등록(arm)해 둔 송신 준비 콜백이
+호출된다. 이 신호의 의미는 "전송 소켓이 쓰기 가능하다"가 아니라 "SPOT 송신 수용을
+다시 시도할 만하다"이다.
 
-### 5.3 Drain 순서
+### 5.3 큐를 비우는 순서
 
-data-plane loop는 매 iteration마다 다음 순서로 처리한다.
+데이터 평면 루프는 매 회전(iteration)마다 다음 순서로 처리한다.
 
 ```text
-1. drain_runtime_external_router_ingress_queue()   // inbound peer traffic
-2. drain_publish_ingress_queue()                   // public publish entries
-3. drain_runtime_routed_send_queue()               // public routed send entries
-4. flush_mesh_pub_pending()                        // staged mesh messages
-5. flush_local_fanout_pending()                    // staged local messages
-6. flush_staged_messages()                         // ingress → staged overflow
+1. drain_runtime_external_router_ingress_queue()   // peer에서 들어온 트래픽
+2. drain_publish_ingress_queue()                   // 공개 발행 항목
+3. drain_runtime_routed_send_queue()               // 공개 routed 전송 항목
+4. flush_mesh_pub_pending()                         // 대기 중인 mesh 메시지
+5. flush_local_fanout_pending()                     // 대기 중인 로컬 메시지
+6. flush_staged_messages()                          // 넘쳐서 대기열로 보낸 메시지
 ```
 
-batch 한도는 메시지 2048개 또는 16 MiB 바이트 중 먼저 도달하는 쪽이다.
-이 한도는 queue drain만 하느라 peer control과 mesh subscription 처리가 굶기지
-않도록 한다.
+한 번에 처리하는 배치 한도는 메시지 2048개 또는 16 MiB 중 먼저 도달하는 쪽이다.
+이 한도는 큐 비우기에만 매달리느라 peer 제어와 mesh 구독 처리가 굶지 않도록
+막아 준다.
 
-### 5.4 Queue 한도 계산
+### 5.4 큐 한도 계산
 
-queue 한도는 기존 `SpotNode` admission HWM 계산 결과를 slot 수 기준으로 따른다.
-별도 public option은 없다.
+큐 한도는 기존 `SpotNode`의 수용 HWM 계산 결과를 slot 수 기준으로 따른다. 이를 위한
+별도 공개 옵션은 없다.
 
 | 값 | 계산 |
 |----|------|
-| publish `admission_slots` | `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` override 또는 auto-HWM pubsub admission |
-| routed `admission_slots` | `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` override 또는 auto-HWM router admission |
+| publish `admission_slots` | `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` override 또는 auto-HWM pubsub 수용값 |
+| routed `admission_slots` | `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` override 또는 auto-HWM router 수용값 |
 | byte limit | `admission_slots * message_unit_bytes` (메모리 보호용 보조 한도) |
 
-queue full이 자주 보이면 queue 한도를 먼저 키우지 않는다. data-plane thread의
-drain 지연, local fanout / mesh-pub `EAGAIN`, `external-router` pending이 병목인지
-먼저 확인한다.
+큐가 가득 차는 일이 잦다고 해서 큐 한도부터 키우지는 않는다. 데이터 평면 스레드의
+비우기 지연, 로컬 fanout / mesh-pub의 `EAGAIN`, `external-router` 적체 중에서 무엇이
+병목인지 먼저 확인한다.
 
-## 6. Admission HWM
+## 6. 수용 HWM
 
-SpotNode는 admission HWM 설정만 공개한다. 이 설정은 send-side queue 한도와
-transport socket HWM 양쪽에 적용된다.
+SpotNode는 수용 HWM 설정만 공개한다. 이 설정은 송신 큐 한도와 전송 소켓 HWM
+양쪽에 적용된다.
 
-| 옵션 | admission 경로 | 기본 동작 |
+| 옵션 | 수용 경로 | 기본 동작 |
 |------|----------------|-----------|
-| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE` | topic publish admission | balanced auto-HWM profile |
-| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` | topic publish admission 숫자 override | 양수 값, `0`은 auto-HWM 복귀 |
-| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | routed admission | balanced auto-HWM profile |
-| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | routed admission 숫자 override | 양수 값, `0`은 auto-HWM 복귀 |
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE` | 토픽 발행 수용 | balanced auto-HWM profile |
+| `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` | 토픽 발행 수용값 숫자 override | 양수 값, `0`은 auto-HWM으로 복귀 |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE` | routed 수용 | balanced auto-HWM profile |
+| `ZLINK_SPOT_NODE_OPT_ROUTER_HWM` | routed 수용값 숫자 override | 양수 값, `0`은 auto-HWM으로 복귀 |
 
-숫자 override가 없으면 SpotNode admission HWM은 profile별 메시지 수 기준을
-사용한다. 기준값은 COMPACT `64`, LOW_LATENCY `128`, BALANCED `256`,
-THROUGHPUT `512`다. SPOT service handle에는 raw socket용
-`ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 설정할 수 없다. 대신 SPOT data-path
-socket은 context `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`가 양수이면 그 값을
-사용하고, context 값이 `0`이면 non-STREAM 기본 메시지 단위 `4096` byte로
-계산된다. 기본 context 값에서는 balanced 기본값이 `256`이며, 작은 payload가
-많다는 이유만으로 `1024`로 올라가지 않는다. peer control socket은 이 admission
-묶음에 포함되지 않으며 control-plane HWM을 유지한다.
+숫자 override가 없으면 SpotNode 수용 HWM은 profile별 메시지 수 기준을 사용한다.
+기준값은 COMPACT `64`, LOW_LATENCY `128`, BALANCED `256`, THROUGHPUT `512`다.
+SPOT 서비스 핸들에는 원시 소켓용 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 설정할 수
+없다. 대신 SPOT 데이터 경로 소켓은 context `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`가
+양수이면 그 값을 쓰고, context 값이 `0`이면 non-STREAM 기본 메시지 단위인 `4096`
+바이트로 계산한다. 기본 context 값에서는 balanced 기본값이 `256`이며, 작은 payload가
+많다는 이유만으로 `1024`로 올라가지는 않는다. peer 제어 소켓은 이 수용 묶음에
+포함되지 않으며 control-plane HWM을 유지한다.
 
-relay socket(`fanout`, `mesh-pub` SNDHWM = 0)과 delivery socket은 HWM `0`을
-사용한다. 이렇게 해야 SPOT 내부의 숨은 per-peer 또는 per-target 큐 제한이 메시지
-손실이나 연결 종료를 결정하지 않는다.
+`fanout` 중계 소켓은 HWM `0`을 쓴다. 원격 mesh로 나가는 `mesh-pub`, 원격 mesh에서
+받는 `mesh-xsub`, 그리고 routed mesh의 `external-router`는 auto-HWM을 쓴다. 숫자
+override가 없으면 이 세 소켓은 연결 수 bucket을 적용해 peer별 pipe 예산을 줄인다.
+이 HWM은 내부 전송 pipe의 메모리 상한일 뿐이고, 공개 `publish`와 routed `send`의
+backpressure 의미는 `publish_ingress_queue`와 `routed_send_queue`가 정한다.
 
-SPOT publish 큐 계획은 fanout이 커져도 per-connection admission HWM을 낮추지
-않는다.
+SPOT 발행 큐 계획은 fanout이 커져도 연결당 수용 HWM을 낮추지 않는다.
 
-perf `Auto-HWM spotnode` 상세 표에서는 `mesh-pub`와 `mesh-xsub` 및 `external-router`
-에만 admission HWM이 보인다. 기본 balanced 경로에서는 `MsgUnit(B)=4096`과
-HWM `256`이 정상이다. `pub-ingress-tx`, `ingress-sub`, `internal-router`,
-`internal-router-tx` row는 존재하지 않는다.
+perf `Auto-HWM spotnode` 상세 표에서는 `mesh-pub`, `mesh-xsub`, `external-router`
+에만 mesh 전송 HWM이 보인다. 기본 balanced 경로에서 `MsgUnit(B)=4096`이면 연결 수
+bucket을 적용하기 전 profile 값은 `256`이고, bucket 적용 뒤의 HWM은 원격 peer 수에
+따라 더 작아질 수 있다. `pub-ingress-tx`, `ingress-sub`, `internal-router`,
+`internal-router-tx` 행은 존재하지 않는다.
 
-## 7. Control plane
+## 7. control plane
 
-peer control plane은 data plane과 분리된 작은 메시지 흐름이다. 주요 목적은 아래와
+peer control plane은 data plane과 분리된 작은 메시지 흐름이다. 주요 목적은 다음과
 같다.
 
-- peer bootstrap 정보 전달
-- ready 상태 refresh
-- aggregate subscription replay
+- peer 부트스트랩(bootstrap) 정보 전달
+- ready 상태 갱신
+- 집계 구독 재전송(replay)
 - peer 연결 상태 반영
 
-control socket은 데이터 payload HWM 계산과 별도 메시지 단위를 사용할 수 있다. perf
-표에서 같은 payload 크기 블록 안에 다른 `MsgUnit(B)` 값이 보이면 control plane과
-data plane 기준이 다르기 때문이다.
+control 소켓은 데이터 payload의 HWM 계산과는 다른 메시지 단위를 쓸 수 있다. perf
+표에서 같은 payload 크기 블록 안에 `MsgUnit(B)` 값이 서로 다르게 보인다면 control
+plane과 data plane의 기준이 다르기 때문이다.
 
 ## 8. Data-plane thread와 dispatch worker pool
 

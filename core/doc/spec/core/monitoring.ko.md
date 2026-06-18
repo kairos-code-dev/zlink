@@ -125,9 +125,9 @@ typedef struct zlink_monitor_status_t
 | `auto_hwm_profile` | 현재 자동 HWM profile. 값은 `zlink_auto_hwm_profile_t`와 같다 |
 | `auto_hwm_role` | 자동 HWM 진단용 역할 번호. 현재 `1=control`, `2=routed`, `3=fanout`, `4=recv_ingress`, `5=spot_data`, `6=peer_queue`, `7=stream`이며 새 값이 추가될 수 있음 |
 | `auto_hwm_policy_class` | 단위 예산과 size cap 선택에 사용한 planner policy class. 진단용 값이며 새 값이 추가될 수 있음 |
-| `auto_hwm_unit_budget_bytes` | 현재 profile과 policy class에서 고른 연결당 단위 예산 |
+| `auto_hwm_unit_budget_bytes` | 현재 profile과 policy class에서 고른 연결당 단위 예산. SPOT mesh transport 소켓에서는 연결 수 bucket을 적용한 뒤의 예산 |
 | `auto_hwm_size_cap` | 현재 profile, policy class, 실효 메시지 크기에서 고른 메시지 수 상한 |
-| `auto_hwm_socket_message_slots` | 선택된 단위 예산과 실효 메시지 단위로 계산한 메시지 슬롯 수 |
+| `auto_hwm_socket_message_slots` | 선택된 단위 예산, SPOT mesh 연결 수 bucket, 실효 메시지 단위로 계산한 메시지 슬롯 수 |
 | `auto_hwm_effective_message_bytes` | 정책이 계산에 사용한 실효 메시지 단위 바이트 |
 | `auto_hwm_applied_sndhwm` | 현재 소켓에 적용된 송신 HWM |
 | `auto_hwm_applied_rcvhwm` | 현재 소켓에 적용된 수신 HWM |

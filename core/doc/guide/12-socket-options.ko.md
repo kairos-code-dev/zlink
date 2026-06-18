@@ -78,15 +78,30 @@ HWM=100이면 LWM=50. 큐가 100에서 block되고 50 이하로 drain되어야 �
 | STREAM | 8 | 16 | 64 | 256 |
 | control | 8 | 16 | 16 | 32 |
 
-계획기(planner)는 HWM을 연결 하나의 큐 깊이(queue depth)로 본다. 컨텍스트 메모리 예산을
-연결 수로 나누지 않는다. 대신 프로필의 바이트 범위(byte envelope)가 유지되도록 다음
-공식을 적용한다.
+일반 소켓의 계획기(planner)는 HWM을 연결 하나의 큐 깊이(queue depth)로 본다. 컨텍스트
+메모리 예산을 연결 수로 나누지 않는다. 대신 프로필의 바이트 범위(byte envelope)가 유지되도록
+다음 공식을 적용한다.
 
 ```text
 scaled_hwm = ceil(basis_hwm * basis_message_unit / effective_message_unit)
 ```
 
 자동 HWM의 최소값은 `1`이고 결과는 profile별 메시지 수 cap으로 제한된다.
+
+SPOT mesh 내부 소켓 중 `mesh-pub`, `mesh-xsub`, `external-router`는 연결 수가 많을 때 별도의
+connection bucket을 먼저 적용한다. bucket 값은 `4 KiB` 메시지 기준 HWM이며, 최종 HWM은 다음
+순서로 계산한다.
+
+```text
+base_hwm_4k = min(profile_hwm_4k, bucket_hwm_4k)
+unit_budget_bytes = base_hwm_4k * 4096
+scaled_hwm = ceil(unit_budget_bytes / effective_message_unit)
+```
+
+이 조정은 SPOT data-plane 내부 socket queue의 보조 상한이다. public publish와 routed send의
+backpressure 의미는 `publish_ingress_queue`와 `routed_send_queue`의 admission 규칙이 계속
+결정한다. local fanout, pub ingress, control socket, 일반 DEALER/PAIR/STREAM 소켓에는 이
+connection bucket을 적용하지 않는다.
 
 사용자가 `SNDHWM` / `RCVHWM`을 직접 설정하면 자동 HWM보다 그 값이 항상 우선한다.
 

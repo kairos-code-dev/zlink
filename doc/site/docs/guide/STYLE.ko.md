@@ -1,4 +1,4 @@
-[한국어](./STYLE.ko.md)
+[한국어](STYLE.ko.md)
 
 [가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md)
 
@@ -78,11 +78,11 @@ inproc endpoint를 알 필요가 없다.
   의심되면 해당 바인딩의 contract/소스를 확인한다.
 - 값은 현실적인 production-like 값을 쓴다(포트·심볼·금액 등).
 - 가능하면 `bindings/<lang>/samples/`의 실행되는 샘플과 1:1 대응시킨다([예제 추출
-  규약](./EXAMPLES.ko.md)).
+  규약](EXAMPLES.ko.md)).
 
 ## 8. 표기
 
 - 코드 식별자·상수는 백틱(`` `zlink_send` ``).
 - 강조는 **굵게**(과용 금지).
 - 영문 고유명사(SPOT, Actor, ROUTER)는 그대로 두고 일반 용어는 한국어로 쓴다.
-- 용어 첫 등장 시 [용어집](./glossary.ko.md)으로 링크하거나 한 줄 정의를 붙인다.
+- 용어 첫 등장 시 [용어집](glossary.ko.md)으로 링크하거나 한 줄 정의를 붙인다.

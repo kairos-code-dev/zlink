@@ -1,4 +1,4 @@
-[English](./services-internals.md) | [한국어](./services-internals.ko.md)
+[English](services-internals.md) | [한국어](services-internals.ko.md)
 
 # Service Layer Internal Design
 
@@ -257,7 +257,7 @@ Frame 4~N: Service entries (repeated service_count times)
 For detailed SPOT/SpotNode internal architecture including component
 diagrams, all 11 internal sockets with types/endpoints/HWM, topic and
 routed message flow sequences, control plane, and data plane polling,
-see the dedicated document: **[SPOT Internals](./spot-internals.md)**.
+see the dedicated document: **[SPOT Internals](spot-internals.md)**.
 
 ### 6.1 Component Diagram
 

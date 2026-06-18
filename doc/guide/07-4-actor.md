@@ -1,13 +1,13 @@
-[English](./07-4-actor.md) | [한국어](./07-4-actor.ko.md)
+[English](07-4-actor.md) | [한국어](07-4-actor.ko.md)
 
 <!-- zlink-nav:start -->
-[← SPOT](./07-3-spot.md) | [Registry →](./07-4-registry.md)
+[← SPOT](07-3-spot.md) | [Registry →](07-4-registry.md)
 <!-- zlink-nav:end -->
 
 # SPOT Actor Guide
 
 This guide covers Actor creation, Spot join/leave, teardown, and session binding.
-For SPOT basic setup and dispatch handler registration see the [SPOT guide](./07-3-spot.md).
+For SPOT basic setup and dispatch handler registration see the [SPOT guide](07-3-spot.md).
 For exact API contracts see the [SPOT spec](../spec/core/service/spot.md).
 
 ## 1. Distributing session messages with Actors
@@ -309,5 +309,5 @@ C samples showing three Actor patterns:
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← SPOT](./07-3-spot.md) | [Registry →](./07-4-registry.md)
+[← SPOT](07-3-spot.md) | [Registry →](07-4-registry.md)
 <!-- zlink-nav:bottom:end -->

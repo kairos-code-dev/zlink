@@ -24,8 +24,8 @@
 
 | 시나리오 | SPOT 적합도 | 파일 |
 |---------|:---------:|------|
-| MMORPG 존 인접 데이터 공유 | **높음** | [01-mmorpg-zone.md](./01-mmorpg-zone.md) |
-| 실시간 시세 분배 | **높음** | [02-realtime-quote.md](./02-realtime-quote.md) |
-| 분산 메트릭 수집 | 보통 | [03-distributed-metrics.md](./03-distributed-metrics.md) |
-| 마이크로서비스 이벤트 전파 | 보통 | [04-microservice-event.md](./04-microservice-event.md) |
-| 배치 기반 채널 메시징 (채팅) | 보통 | [05-batched-channel-chat.md](./05-batched-channel-chat.md) |
+| MMORPG 존 인접 데이터 공유 | **높음** | [01-mmorpg-zone.md](01-mmorpg-zone.md) |
+| 실시간 시세 분배 | **높음** | [02-realtime-quote.md](02-realtime-quote.md) |
+| 분산 메트릭 수집 | 보통 | [03-distributed-metrics.md](03-distributed-metrics.md) |
+| 마이크로서비스 이벤트 전파 | 보통 | [04-microservice-event.md](04-microservice-event.md) |
+| 배치 기반 채널 메시징 (채팅) | 보통 | [05-batched-channel-chat.md](05-batched-channel-chat.md) |

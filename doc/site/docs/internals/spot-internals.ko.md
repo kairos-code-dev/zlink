@@ -1,4 +1,4 @@
-[English](./spot-internals.md) | [한국어](./spot-internals.ko.md)
+[English](spot-internals.md) | [한국어](spot-internals.ko.md)
 
 # SPOT / SpotNode 내부 아키텍처
 
@@ -743,7 +743,7 @@ bind를 실행하기 전에 STREAM handle의 session owner `SpotNode`가 먼저 
 확인하고(아니면 `ENOTSUP` / `ZLINK_CONFIG_NOT_SUPPORTED`), 이미 다른 owner에 붙은
 stream을 다른 node로 다시 붙이려 하면 거부한다(`EBUSY` / `ZLINK_CONFIG_INVALID_STATE`).
 같은 stream/node 쌍으로 다시 호출하면 멱등으로 성공한다. STREAM 쪽 관점은
-[stream-socket.ko.md](./stream-socket.ko.md)를 참고한다.
+[stream-socket.ko.md](stream-socket.ko.md)를 참고한다.
 
 ### 12.1 Local Actor binding (co-located)
 

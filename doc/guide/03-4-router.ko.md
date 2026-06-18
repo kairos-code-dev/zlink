@@ -1,7 +1,7 @@
-[English](./03-4-router.md) | [한국어](./03-4-router.ko.md)
+[English](03-4-router.md) | [한국어](03-4-router.ko.md)
 
 <!-- zlink-nav:start -->
-[← DEALER](./03-3-dealer.ko.md) | [STREAM →](./03-5-stream.ko.md)
+[← DEALER](03-3-dealer.ko.md) | [STREAM →](03-5-stream.ko.md)
 <!-- zlink-nav:end -->
 
 # ROUTER 소켓
@@ -112,7 +112,7 @@ zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 > 미지/도달 불가 routing_id 로 보내면 `ZLINK_SUBMIT_NOT_CONNECTED` 를 반환한다.
 > 호출자가 명시적으로 `ROUTER_MANDATORY` 를 `0` 으로 끄면 미도달 메시지를 조용히 드롭한다.
 > 고급 배압(backpressure, 수신 측이 처리를 못 따라갈 때 송신 측을 늦추는 흐름 제어) 패턴은
-> [성능 가이드](./10-performance.ko.md)를 참고.
+> [성능 가이드](10-performance.ko.md)를 참고.
 
 ## 3. 사용 예제
 
@@ -255,7 +255,7 @@ if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
 data-plane receive 와 섞이지 않는다. `zlink_router_recv()`
 는 SPOT 에서 시작된 routed 트래픽도 같은 표면으로 전달한다.
 `source_spot_rid` 가 채워져 있으면 `zlink_router_reply_spot()` 으로
-응답한다. [SPOT 가이드](./07-3-spot.ko.md) 참고.
+응답한다. [SPOT 가이드](07-3-spot.ko.md) 참고.
 
 ## 5. 사용 패턴
 
@@ -664,7 +664,7 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 
 같은 routing_id를 가진 두 DEALER가 동시에 연결되면 기본적으로 두 번째 연결이 거부된다. `ZLINK_OPT_RID_DUPLICATE_POLICY`를 `ZLINK_RID_DUPLICATE_HANDOVER`로 설정하면 새 파이프가 기존 파이프를 대체한다.
 
-> routing_id의 상세 개념은 [08-routing-id.ko.md](./08-routing-id.ko.md)를 참고.
+> routing_id의 상세 개념은 [08-routing-id.ko.md](08-routing-id.ko.md)를 참고.
 
 ### 점진적 유지보수를 위한 가중치
 
@@ -720,7 +720,7 @@ ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 
 연결된 피어의 가중치 변화는 소켓 모니터의
 `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 전달된다. 이벤트 형태는
-[모니터링 가이드](./06-monitoring.ko.md)의 "피어 가중치 변화 감지"
+[모니터링 가이드](06-monitoring.ko.md)의 "피어 가중치 변화 감지"
 섹션을 참고.
 
 ## 8. ROUTER에서 SPOT으로 보내는 경우
@@ -748,7 +748,7 @@ framework를 사용할 때는 `AcceptSpotRoutesFromChannel(...)`로 이 수신 �
 > 섹션을 참고.
 
 ---
-[← DEALER](./03-3-dealer.ko.md) | [STREAM →](./03-5-stream.ko.md)
+[← DEALER](03-3-dealer.ko.md) | [STREAM →](03-5-stream.ko.md)
 
 ## 언어별 완전한 예제
 
@@ -810,5 +810,5 @@ ROUTER가 DEALER 요청을 수신하고 source 라우팅 ID로 응답하는 자�
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← DEALER](./03-3-dealer.ko.md) | [STREAM →](./03-5-stream.ko.md)
+[← DEALER](03-3-dealer.ko.md) | [STREAM →](03-5-stream.ko.md)
 <!-- zlink-nav:bottom:end -->

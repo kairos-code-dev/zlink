@@ -18,7 +18,7 @@
 - C는 그 helper 위에 올라가는 **얇은 C binding 계층**으로 다시 정리한다.
 
 관련 helper C API 초안:
-- [bindings-helper-capi-partwise-send-recv.ko.md](./bindings-helper-capi-partwise-send-recv.ko.md)
+- [bindings-helper-capi-partwise-send-recv.ko.md](bindings-helper-capi-partwise-send-recv.ko.md)
 
 ## 2. 왜 C binding 계층이 필요한가
 
@@ -129,7 +129,7 @@ C binding 계층은 helper를 직접 노출하지 않고, 현재와 비슷한 ag
 이득을 실제로 얻는 데 있다.
 
 이 순서는 helper 초안 문서인
-[bindings-helper-capi-partwise-send-recv.ko.md](./bindings-helper-capi-partwise-send-recv.ko.md)
+[bindings-helper-capi-partwise-send-recv.ko.md](bindings-helper-capi-partwise-send-recv.ko.md)
 의 `MORE/FINAL`, request 실패 규칙, routed metadata lifetime이 먼저 고정돼 있어야
 안전하게 진행할 수 있다.
 
@@ -140,7 +140,7 @@ helper substrate인 `*_part` 계열은 현재 `core/include/zlink.h`에 반영�
 aggregate convenience 계열도 같은 헤더에 남아 있으며, 구현은 helper 위에 올라가는
 얇은 wrapper로 정리돼 있다.
 
-[bindings-helper-capi-partwise-send-recv.ko.md](./bindings-helper-capi-partwise-send-recv.ko.md)
+[bindings-helper-capi-partwise-send-recv.ko.md](bindings-helper-capi-partwise-send-recv.ko.md)
 §10.9에 따라, §8.2의 문서 승격 작업은 아직 미뤄 둔다.
 
 현재 헤더 구조는 Option A인 단일 헤더 구분 방식을 따른다. helper와 C binding
@@ -152,7 +152,7 @@ convenience 경계는 section comment로 표시하고, 별도 헤더 분리는 `
 이 문서는 단독으로 완료되는 문서가 아니다. 아래 작업과 연결된다.
 
 1. helper C API 초안인
-   [bindings-helper-capi-partwise-send-recv.ko.md](./bindings-helper-capi-partwise-send-recv.ko.md)
+   [bindings-helper-capi-partwise-send-recv.ko.md](bindings-helper-capi-partwise-send-recv.ko.md)
    의 `*_part` 계열을 구현한다.
 2. 기존 aggregate 공개 C API를 helper 위로 다시 정리한다.
 3. C binding 문서에서 "공개 aggregate convenience"와 "helper substrate"를

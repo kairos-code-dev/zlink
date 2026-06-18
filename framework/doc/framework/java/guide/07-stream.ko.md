@@ -1,0 +1,166 @@
+<!-- framework-adapter-nav:start -->
+[문서 목록](../README.ko.md) | [이전: Actor/Session](06-actor-session.ko.md) | [다음: Registry](08-registry.ko.md)
+<!-- framework-adapter-nav:end -->
+
+# Java STREAM Guide
+
+`STREAM`은 외부 client(게임 클라이언트, 모바일 앱 등)와 서버 사이의 **연결 지향
+양방향 메시지 채널**이다. 일반 channel messaging과 달리 연결 수명, peer 식별,
+packet framing, session lifecycle이 주축이다. STREAM은 두 부분으로 나뉜다.
+
+- **서버**: framework session — `ZLinkSession`
+- **client**: Stream Connector — `ZLinkStreamConnector` (server framework에
+  의존하지 않는 독립 client 모듈)
+
+## 1. 서버 측 — framework session
+
+### 등록
+
+stream node 하나에 session 하나를 붙인다. 한 stream node에 session을 둘 이상
+등록하면 startup 단계 예외다. attribute 기반 등록은 없다(명시 등록만).
+
+```java
+@Override
+public void configure(ZLinkFrameworkOptions framework) {
+    options.codecs().addProtobuf();
+
+    ZLinkStreamNodeBuilder stream = options.addStreamNode("client.stream");
+    stream.bind("tcp://0.0.0.0:9100");
+    stream.registerSession(GameSession.class);
+}
+```
+
+### session 작성
+
+Java server framework는 header 기반 `ZLinkSession` 하나를 사용한다. packet session과
+raw session을 public type으로 나누지 않는다. framework가 frame을 디코드해
+`ZLinkStreamHeader header` + `Message payload` 두 부분으로 콜백한다. 응용은
+`header.name()`으로 분기하고 payload를 타입으로 디코드한다.
+
+```java
+@Component
+public final class GameSession implements ZLinkSession {
+    private final ZLinkSessionContext context;
+    private final ZLinkClient channels;
+
+    public GameSession(ZLinkSessionContext context, ZLinkClient channels) {
+        this.context = context;
+        this.channels = channels;
+    }
+
+    @Override
+    public ZLinkSessionContext context() {
+        return context;
+    }
+
+    @Override
+    public void onDispatch(
+        ZLinkStreamHeader header,
+        Message payload) {
+        switch (header.name()) {
+            case "ClientInput":
+                ClientInput input = payload.decode(ClientInput.class);
+                channels.sendToChannel("play", new ForwardInputCommand(input))
+                    .submit()
+                    .toCompletableFuture()
+                    .join();
+                return;
+            case "Ping":
+                context.client().reply(new Pong()).submit().toCompletableFuture().join();
+                return;
+            default:
+                return;
+        }
+    }
+}
+```
+
+`ZLinkSessionContext`로 할 수 있는 일:
+
+| 표면 | 용도 |
+|------|------|
+| `client().send(msg).submit()` / `client().reply(msg).submit()` | client로 push / 요청에 응답 |
+| `actors().bound()` / `actors().bind(...)` / `actors().find(...)` | actor로 relay([07-actor-session](06-actor-session.ko.md)) |
+| `close()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
+
+다른 서비스로 channel send/request를 보내야 할 때는 session 생성자에서
+`ZLinkClient`를 함께 주입받아 `sendToChannel(...)` 또는 `requestToChannel(...)`을
+호출한다. 이 호출은 현재 stream 연결이 아니라 등록된 channel의 client socket을 쓴다.
+
+### lifecycle과 실행 보장
+
+- 콜백은 socket monitor 이벤트에 매핑된다: `onConnected` <- connection ready,
+  `onDisconnected` <- disconnected. session에 귀속되는 transport 오류는
+  `onError`가 먼저, 연결 종료 확정 후 `onDisconnected`가 따른다.
+- handshake 실패와 bind/accept/close 같은 socket 레벨 오류는 session 콜백이 아니라
+  runtime monitoring으로만 간다([10-monitoring](09-monitoring.ko.md)).
+- **같은 session의 콜백은 직렬**로 돈다(두 dispatch/lifecycle이 겹치지 않음).
+  frame 도착 순서는 session별로 보존된다. session끼리는 독립으로 진행한다.
+- application handler 예외는 `onError`로 올라오지 않는다.
+- **recv 루프는 노출하지 않는다.** framework가 수신 dispatch를 소유하고 응용은
+  handler만 구현한다(DI/filter/logging을 일관되게 엮기 위해).
+
+## 2. client 측 — Stream Connector
+
+connector는 만들고(연결 안 함) -> 핸들러/이벤트 등록 -> `connect()` ->
+`dispatch()` 펌프 순서로 쓴다. UI 스레드/게임 루프가 있는 client는 수신
+콜백을 `dispatch()`를 부른 스레드에서 실행하도록 manual dispatch를 쓴다.
+
+```java
+ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(options);
+
+connector.on("GameStateNotify", (msg, ctx) -> {
+    render(msg);
+    return CompletableFuture.completedFuture(null);
+});
+
+connector.connect().submit()
+    .thenCompose(ignored -> connector.send(payload).submit());
+
+// 게임 루프/메인 스레드에서 주기적으로 콜백 실행
+while (running) {
+    connector.dispatch().submit().whenComplete((ignored, error) -> {
+        if (error != null) {
+            reportDispatchError(error);
+        }
+    });
+}
+```
+
+- URI scheme으로 transport가 추론된다: `tcp://`, `tls://`, `ws://`, `wss://`.
+- 네트워크 수신 루프는 느린 콜백에 막히지 않는다. 패킷을 읽어 콜백 work item만
+  큐에 넣고 다음 읽기로 넘어간다.
+- 기본값으로 heartbeat와 자동 reconnect가 켜져 있다. disconnect 시 대기 중인
+  모든 request가 실패하고 reconnect 후 자동 재전송되지 않는다(재전송은 응용 책임).
+- `tls://`와 `wss://`는 기본값으로 서버 인증서와 호스트명을 검증한다.
+  `skipServerCertificateValidation`은 테스트용 자체 서명 인증서에만 쓰며, 운영 환경에서는
+  사용하지 않는다.
+
+connector는 server framework와 별도 모듈이며 TCP/TLS/WS/WSS, manual dispatch,
+reconnect, codec helper를 제공한다.
+
+connector도 framework처럼 **custom codec**을 끼울 수 있다. `ZLinkStreamConnectorOptions`의
+`typedCodec`에 `ZLinkStreamCodec`(`encode(packetName, value)`/`decode(payload, type)`) 구현을
+주면 Avro·Thrift 같은 포맷을 쓴다. server framework 쪽 등록(`codecs().addSerializer(...)`)과
+대칭이며, 두 표면의 전체 목록은
+[framework-api §2.2](../../common/framework-api.ko.md) 표를 본다.
+
+## 3. 자주 막히는 곳
+
+- **콜백이 안 불린다(client)** -> manual dispatch인데 `dispatch()`를 주기적으로
+  안 부르고 있다.
+- **한 stream node에 session 둘** -> startup 예외. node 하나에 session 하나다.
+- **session 콜백에서 actor 상태 직접 접근** -> 하지 않는다. session은 actor
+  dispatch/spot 호출만 제출한다([07-actor-session](06-actor-session.ko.md)).
+
+## 4. 더 보기
+
+- session을 actor에 묶기: [07-actor-session](06-actor-session.ko.md)
+- 전체 예제: [stream 샘플](samples/stream-samples.ko.md)
+- client connector 상세: [stream-connector](../spec/stream-connector.ko.md)
+- 서버 정식 계약: [spring-boot-stream](../spec/spring-boot-stream.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: Actor/Session](06-actor-session.ko.md) | [다음: Registry](08-registry.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

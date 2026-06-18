@@ -3,10 +3,10 @@
 > 이 문서는 현재 작업에서 구현 기준으로 쓰는 작업 스펙이다.
 > 구현과 테스트를 마치면 공개 API 기준은 `doc/spec/core` 문서에 반영한다.
 > **관련 문서**:
-> [`ZMP_PROTOCOL_OVERVIEW.md`](./ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
-> [`ZMP_SPOT_ROUTED_PROTOCOL.md`](./ZMP_SPOT_ROUTED_PROTOCOL.md) — SPOT routed protocol envelope
-> [`ZMP_REQUEST_REPLY_PROTOCOL.md`](./ZMP_REQUEST_REPLY_PROTOCOL.md) — request-reply protocol envelope
-> [`SOCKET_REQUEST_REPLY_API_SPEC.md`](./SOCKET_REQUEST_REPLY_API_SPEC.md) — socket request-reply API
+> [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
+> [`ZMP_SPOT_ROUTED_PROTOCOL.md`](ZMP_SPOT_ROUTED_PROTOCOL.md) — SPOT routed protocol envelope
+> [`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md) — request-reply protocol envelope
+> [`SOCKET_REQUEST_REPLY_API_SPEC.md`](SOCKET_REQUEST_REPLY_API_SPEC.md) — socket request-reply API
 
 ## 목적
 
@@ -253,7 +253,7 @@ request 인지 reply 인지와 request seq 를 해석한다.
 - `router -> spot request/reply`
 
 이때 request/reply 의미는
-[`ZMP_REQUEST_REPLY_PROTOCOL.md`](./ZMP_REQUEST_REPLY_PROTOCOL.md)
+[`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md)
 를 그대로 따른다.
 
 ### 공개 표면 방향
@@ -394,7 +394,7 @@ handler 필드 규칙:
 - handler 에서 `spot_rid` 가 있으면 `zlink_spot_reply_spot(...)` 를 써야 한다
 - 위 규칙과 다른 reply 함수를 쓰면 `EINVAL` 로 즉시 실패해야 한다
 - wire `error reply` 는
-  [`ZMP_REQUEST_REPLY_PROTOCOL.md`](./ZMP_REQUEST_REPLY_PROTOCOL.md) 의 공통 오류 목록만 쓴다
+  [`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md) 의 공통 오류 목록만 쓴다
 - 즉 SPOT request-reply 가 wire 로 보내는 오류 코드는
   `ENOENT`, `EOPNOTSUPP`, `EINVAL` 로 제한한다
 - `ETIMEDOUT`, `EPROTO`, `EBUSY` 같은 값은
@@ -833,7 +833,7 @@ int zlink_router_spot_recv(void *router,
 - 기존 subscribe 경로로 들어가지 않는다
 
 `router -> spot` 송신 공개 API 는 socket 계열 기능이므로
-[`SOCKET_REQUEST_REPLY_API_SPEC.md`](./SOCKET_REQUEST_REPLY_API_SPEC.md)
+[`SOCKET_REQUEST_REPLY_API_SPEC.md`](SOCKET_REQUEST_REPLY_API_SPEC.md)
 문서에서 함께 다룬다.
 
 
@@ -948,7 +948,7 @@ router.sendSpot(destNodeId, destSpotRid, parts)
 메시지 header 가 아니라 직접 전달 프로토콜 envelope 로 싣는다.
 
 전송 형식의 정확한 wire 정의는
-[`ZMP_SPOT_ROUTED_PROTOCOL.md`](./ZMP_SPOT_ROUTED_PROTOCOL.md)
+[`ZMP_SPOT_ROUTED_PROTOCOL.md`](ZMP_SPOT_ROUTED_PROTOCOL.md)
 를 기준으로 본다.
 
 이 문서에서는 아래 사항만 상위 동작 관점에서 전제로 둔다.
@@ -1145,8 +1145,8 @@ transport 가 허용하는 범위 안에서 보낸 순서를 유지하는 것을
 
 다른 SPOT request 실패도 request-reply 공통 오류 규칙을 따른다.
 즉 wire `error reply` 로 보내는 오류 코드는
-[`ZMP_REQUEST_REPLY_PROTOCOL.md`](./ZMP_REQUEST_REPLY_PROTOCOL.md)
-와 [`SOCKET_REQUEST_REPLY_API_SPEC.md`](./SOCKET_REQUEST_REPLY_API_SPEC.md)
+[`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md)
+와 [`SOCKET_REQUEST_REPLY_API_SPEC.md`](SOCKET_REQUEST_REPLY_API_SPEC.md)
 의 공통 오류 목록 안에서만 고른다.
 
 즉 `spot not found` 는
@@ -1333,7 +1333,7 @@ request/reply 같은 상위 의미를
 - transport `routing_id` 와 application-level source/destination 주소는
   서로 다른 계층으로 구분한다
 - 공통 전송 형식은
-  [`ZMP_PROTOCOL_OVERVIEW.md`](./ZMP_PROTOCOL_OVERVIEW.md) 를 따른다
+  [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) 를 따른다
 
 지원 방향:
 
@@ -1353,5 +1353,5 @@ request/reply 같은 상위 의미를
 protocol-level envelope 방향을 우선 기준으로 해석한다.
 
 실제 envelope 형식 기준은
-[`ZMP_SPOT_ROUTED_PROTOCOL.md`](./ZMP_SPOT_ROUTED_PROTOCOL.md)
+[`ZMP_SPOT_ROUTED_PROTOCOL.md`](ZMP_SPOT_ROUTED_PROTOCOL.md)
 를 따른다.

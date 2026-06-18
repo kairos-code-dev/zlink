@@ -1,6 +1,6 @@
-[English](./discovery.md) | [한국어](./discovery.ko.md)
+[English](discovery.md) | [한국어](discovery.ko.md)
 
-[Spec Index](../../README.md) · [Core Index](../README.md) · [Service Common](./README.md)
+[Spec Index](../../README.md) · [Core Index](../README.md) · [Service Common](README.md)
 
 # Discovery
 
@@ -19,9 +19,9 @@ In a managed SPOT configuration, Discovery does not own the final answer for
 results so the send path can answer quickly.
 
 - Registry ownership authority and handover rules:
-  [registry.md](./registry.md)
+  [registry.md](registry.md)
 - SPOT direct submit public API contract:
-  [spot.md](./spot.md)
+  [spot.md](spot.md)
 
 The key job for Discovery is simple: inside the current Discovery
 `channel_name` view, given a `spot_rid`, answer which `SpotNode` currently

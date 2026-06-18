@@ -12,8 +12,8 @@ Connector 계층은 core socket API를 그대로 노출하는 바인딩이 아�
 
 | 문서 | 내용 |
 |------|------|
-| [dotnet-stream-connector-lifecycle.ko.md](./dotnet-stream-connector-lifecycle.ko.md) | .NET Stream Connector의 생성, 연결, heartbeat, reconnect, 종료 계약 초안. reconnect 알고리즘은 언어별 Connector 공통 기준으로 사용한다 |
-| [stream-connector-inbound-observer-plan.ko.md](./stream-connector-inbound-observer-plan.ko.md) | C++, Java, .NET, Node Stream Connector에 수신 frame 관찰 기능을 추가하기 위한 구현, 문서, 테스트 계획 |
+| [dotnet-stream-connector-lifecycle.ko.md](dotnet-stream-connector-lifecycle.ko.md) | .NET Stream Connector의 생성, 연결, heartbeat, reconnect, 종료 계약 초안. reconnect 알고리즘은 언어별 Connector 공통 기준으로 사용한다 |
+| [stream-connector-inbound-observer-plan.ko.md](stream-connector-inbound-observer-plan.ko.md) | C++, Java, .NET, Node Stream Connector에 수신 frame 관찰 기능을 추가하기 위한 구현, 문서, 테스트 계획 |
 
 ## 작성 기준
 

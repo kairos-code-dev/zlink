@@ -1,4 +1,4 @@
-[English](./discovery-internals.md) | [한국어](./discovery-internals.ko.md)
+[English](discovery-internals.md) | [한국어](discovery-internals.ko.md)
 
 # Discovery Service Internal Architecture
 
@@ -515,6 +515,6 @@ The boundary worth remembering:
   resolves the current Spot route and sends through the existing routed transport.
 - The **STREAM session relay hot path does not consult Discovery.** A session
   binding already holds the bound Actor ref; relay resolves it through the local
-  Actor table and ActorGateway state (see [spot-internals.md](./spot-internals.md)
+  Actor table and ActorGateway state (see [spot-internals.md](spot-internals.md)
   section 12), not a route lookup. Discovery sync may lag a fresh join without
   affecting an in-flight session relay.

@@ -1,7 +1,7 @@
-[English](./07-0-services.md) | [한국어](./07-0-services.ko.md)
+[English](07-0-services.md) | [한국어](07-0-services.ko.md)
 
 <!-- zlink-nav:start -->
-[← 모니터링](./06-monitoring.ko.md) | [Discovery →](./07-1-discovery.ko.md)
+[← 모니터링](06-monitoring.ko.md) | [Discovery →](07-1-discovery.ko.md)
 <!-- zlink-nav:end -->
 
 # 서비스 계층 개요
@@ -43,7 +43,7 @@ SPOT·Actor(실시간 상태)가 같은 라이브러리 안에 있다.
   상태 저장이 아니라 **그 상태에 닿는 메시지를 한 줄로 직렬 처리**하는 실행 모델이다.
   덕분에 룸 상태를 lock으로 보호하는 대신 동시성 문제 자체가 사라진다.
 - **Actor는 raw 소켓의 대안이 아니라 SPOT 위의 한 단계 더 높은 모델이다.** Actor
-  메시지도 결국 SPOT routed 평면 위로 흐른다([07-4](./07-4-actor.ko.md)). Actor는
+  메시지도 결국 SPOT routed 평면 위로 흐른다([07-4](07-4-actor.ko.md)). Actor는
   "그 SPOT에 도착한 메시지를 어느 세션/엔티티에게 줄지" 구분하고, 세션이 어느 서버에
   붙어 있든 같은 엔티티로 이어 주는 역할을 한다.
 - **순수 토픽 pub/sub과 SPOT 토픽의 차이**: raw PUB/SUB는 토픽이 정적이고 발행자
@@ -116,8 +116,8 @@ Registry 클러스터 기반의 서비스 등록·발견 시스템이다. 서비
   - `discovery_update` · `discovery_uplink`
   - `discovery_registry_client`
 
-자세한 내용은 [Service Discovery 가이드](./07-1-discovery.ko.md) 및
-[Registry 가이드](./07-4-registry.ko.md)를 참고.
+자세한 내용은 [Service Discovery 가이드](07-1-discovery.ko.md) 및
+[Registry 가이드](07-4-registry.ko.md)를 참고.
 
 ### 3.2 SPOT — channel 기반 routed + PUB/SUB 허브
 
@@ -152,7 +152,7 @@ publish/subscribe를 함께 수행한다.
   bind/unbind는 독립적이며 Actor가 join한 Spot을 바꾸지 않는다. Actor는 소켓이나
   inproc(프로세스 내부) 엔드포인트를 소유하지 않고 `zlink_actor_ref_t`로 식별한다.
 
-자세한 내용은 [SPOT 가이드](./07-3-spot.ko.md)와 [SPOT Actor 가이드](./07-4-actor.ko.md)를 참고.
+자세한 내용은 [SPOT 가이드](07-3-spot.ko.md)와 [SPOT Actor 가이드](07-4-actor.ko.md)를 참고.
 
 ### 3.3 소켓 패밀리 — Discovery 관리 raw 소켓
 
@@ -166,7 +166,7 @@ raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(자동 연결 타입
 - Lifecycle 위임 — Discovery가 연결된 소켓을 소유
 - 내부 모듈: `socket_discovery_attachment` (소켓 측 통합) · `discovery_owned_service` (등록 편의 API)
 
-자세한 내용은 [Service Discovery 가이드](./07-1-discovery.ko.md)를 참고.
+자세한 내용은 [Service Discovery 가이드](07-1-discovery.ko.md)를 참고.
 
 ### 3.4 Registry — 중앙 서비스 등록소
 
@@ -174,7 +174,7 @@ raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(자동 연결 타입
 
 - 내부 모듈: `registry_access` (API 접합 지점) · `registry_query_access` (원격 조회 접합 지점)
 
-자세한 내용은 [Registry 가이드](./07-4-registry.ko.md)를 참고.
+자세한 내용은 [Registry 가이드](07-4-registry.ko.md)를 참고.
 
 ## 4. Service Access Layer 패턴
 
@@ -268,5 +268,5 @@ flowchart TB
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← 모니터링](./06-monitoring.ko.md) | [Discovery →](./07-1-discovery.ko.md)
+[← 모니터링](06-monitoring.ko.md) | [Discovery →](07-1-discovery.ko.md)
 <!-- zlink-nav:bottom:end -->

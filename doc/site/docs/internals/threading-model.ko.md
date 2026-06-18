@@ -1,10 +1,10 @@
-[English](./threading-model.md) | [한국어](./threading-model.ko.md)
+[English](threading-model.md) | [한국어](threading-model.ko.md)
 
 # 스레딩 및 동시성 모델
 
 이 문서는 zlink의 내부 스레딩 구조를 설명한다. 어떤 스레드가 존재하고
 각각 무슨 일을 하는지, 서로 어떻게 통신하고 작업이 어떻게 스케줄링되는지를
-다룬다. 공개 API 안전 계약은 [Thread-Safety 내부 구조](./thread-safety.ko.md)를 본다.
+다룬다. 공개 API 안전 계약은 [Thread-Safety 내부 구조](thread-safety.ko.md)를 본다.
 
 ## 1. 스레드 구조
 
@@ -271,7 +271,7 @@ I/O 스레드를 같은 NUMA 노드에 두면 cross-node YPipe 접근이 없어�
 ## 8. 동시 접근 패턴
 
 이 스레딩 모델에서 다음 패턴은 안전하고 동작이 명확하게 정의된다
-(전체 계약은 [Thread-Safety 내부 구조](./thread-safety.ko.md) 참고).
+(전체 계약은 [Thread-Safety 내부 구조](thread-safety.ko.md) 참고).
 `send`/`publish`/`send_rid` 같은 hot path는 여러 스레드에서 동시에 쓸 수 있으며,
 control path는 정확성을 위해 내부에서 직렬화한다.
 
@@ -337,4 +337,4 @@ thread와 같은 thread에서 호출하거나, 호출 전에 모든 소켓을 �
 | Spot dispatch 콜백 실행 스레드 | Dispatch worker 스레드 (data-plane 스레드 아님) |
 
 ---
-[← 아키텍처](./architecture.ko.md) | [Thread-Safety →](./thread-safety.ko.md)
+[← 아키텍처](architecture.ko.md) | [Thread-Safety →](thread-safety.ko.md)

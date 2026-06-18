@@ -4,9 +4,9 @@
 > 이 문서는 현재 작업에서 구현 기준으로 쓰는 작업 스펙이다.
 > 구현과 테스트를 마치면 공개 API 기준은 `doc/spec/core` 문서에 반영한다.
 > **관련 문서**:
-> [`ZMP_PROTOCOL_OVERVIEW.md`](./ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
-> [`ZMP_REQUEST_REPLY_PROTOCOL.md`](./ZMP_REQUEST_REPLY_PROTOCOL.md) — request-reply protocol envelope
-> [`SPOT_ROUTED_MESSAGE_SPEC.md`](./SPOT_ROUTED_MESSAGE_SPEC.md) — SPOT 직접 전달 상위 설계
+> [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
+> [`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md) — request-reply protocol envelope
+> [`SPOT_ROUTED_MESSAGE_SPEC.md`](SPOT_ROUTED_MESSAGE_SPEC.md) — SPOT 직접 전달 상위 설계
 
 ---
 
@@ -24,7 +24,7 @@
 
 이 문서는 socket API 표면을 다룬다.
 wire 형식 자체는
-[`ZMP_REQUEST_REPLY_PROTOCOL.md`](./ZMP_REQUEST_REPLY_PROTOCOL.md)
+[`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md)
 를 따른다.
 
 ---
@@ -443,7 +443,7 @@ request 가능 여부는 소켓 타입 이름만으로 다 정하지 않는다.
 - `errno = 0` 이면 성공 reply 다
 - `errno != 0` 이면 timeout, disconnect, protocol 오류, remote error reply 같은 실패다
 - remote `error reply` 로 받은 `errno` 값은
-  [`ZMP_REQUEST_REPLY_PROTOCOL.md`](./ZMP_REQUEST_REPLY_PROTOCOL.md)
+  [`ZMP_REQUEST_REPLY_PROTOCOL.md`](ZMP_REQUEST_REPLY_PROTOCOL.md)
   의 error reply 규칙과 같은 값으로 해석한다
 
 추가 규칙:

@@ -1,7 +1,7 @@
-[English](./09-message-api.md) | [한국어](./09-message-api.ko.md)
+[English](09-message-api.md) | [한국어](09-message-api.ko.md)
 
 <!-- zlink-nav:start -->
-[← Routing ID](./08-routing-id.ko.md) | [성능 →](./10-performance.ko.md)
+[← Routing ID](08-routing-id.ko.md) | [성능 →](10-performance.ko.md)
 <!-- zlink-nav:end -->
 
 # Message API 상세
@@ -625,9 +625,9 @@ zlink_send_rid(router, &target_rid, parts, part_count, 0);
 
 request-reply 흐름은 전용 API 로 연다.
 
-- `DEALER` / `ROUTER`: [03-3-dealer.ko.md](./03-3-dealer.ko.md),
-  [03-4-router.ko.md](./03-4-router.ko.md)
-- SPOT routed request-reply: [07-3-spot.ko.md](./07-3-spot.ko.md)
+- `DEALER` / `ROUTER`: [03-3-dealer.ko.md](03-3-dealer.ko.md),
+  [03-4-router.ko.md](03-4-router.ko.md)
+- SPOT routed request-reply: [07-3-spot.ko.md](07-3-spot.ko.md)
 - 와이어(wire, 프로토콜 전송 계층) 봉투 구조: [../internals/protocol-zmp.ko.md](../internals/protocol-zmp.ko.md)
 
 메시지 API 관점에서 기억할 점:
@@ -638,5 +638,5 @@ request-reply 흐름은 전용 API 로 연다.
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Routing ID](./08-routing-id.ko.md) | [성능 →](./10-performance.ko.md)
+[← Routing ID](08-routing-id.ko.md) | [성능 →](10-performance.ko.md)
 <!-- zlink-nav:bottom:end -->

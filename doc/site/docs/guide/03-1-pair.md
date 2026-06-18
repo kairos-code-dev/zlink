@@ -1,7 +1,7 @@
-[English](./03-1-pair.md) | [한국어](./03-1-pair.ko.md)
+[English](03-1-pair.md) | [한국어](03-1-pair.ko.md)
 
 <!-- zlink-nav:start -->
-[← Socket Patterns](./03-0-socket-patterns.md) | [PUB/SUB →](./03-2-pubsub.md)
+[← Socket Patterns](03-0-socket-patterns.md) | [PUB/SUB →](03-2-pubsub.md)
 <!-- zlink-nav:end -->
 
 # PAIR Socket
@@ -110,7 +110,7 @@ if (rc == ZLINK_RECV_OK) {
 > When HWM is reached, `zlink_send()` blocks (default) or returns
 > `ZLINK_SUBMIT_BACKPRESSURED` with `ZLINK_DONTWAIT`. For advanced
 > backpressure patterns,
-> see [Performance Guide](./10-performance.md).
+> see [Performance Guide](10-performance.md).
 
 ## 3. Message Format
 
@@ -122,7 +122,7 @@ Multipart frame:  [frame1][frame2]...[frameN]
 ```
 
 > For `source_rid` and the common receive interface, see
-> [Socket Patterns Overview](./03-0-socket-patterns.md#7-common-receive-interface).
+> [Socket Patterns Overview](03-0-socket-patterns.md#7-common-receive-interface).
 
 Multipart send:
 
@@ -278,7 +278,7 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 ```
 
 ---
-[← Socket Patterns](./03-0-socket-patterns.md) | [PUB/SUB →](./03-2-pubsub.md)
+[← Socket Patterns](03-0-socket-patterns.md) | [PUB/SUB →](03-2-pubsub.md)
 
 
 ## Full language examples
@@ -339,5 +339,5 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Socket Patterns](./03-0-socket-patterns.md) | [PUB/SUB →](./03-2-pubsub.md)
+[← Socket Patterns](03-0-socket-patterns.md) | [PUB/SUB →](03-2-pubsub.md)
 <!-- zlink-nav:bottom:end -->

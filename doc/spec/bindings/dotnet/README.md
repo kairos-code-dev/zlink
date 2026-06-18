@@ -1,4 +1,4 @@
-[English](./README.md) | [한국어](./README.ko.md)
+[English](README.md) | [한국어](README.ko.md)
 
 [Spec Index](../../README.md) · [Bindings Policy](../README.md)
 
@@ -41,7 +41,7 @@ place where new user-facing behavior is discovered.
   helpers.
 - Documentation role: this README defines the library shape and review rules.
   `Contracts/` owns the exact public behavior surface.
-- API reference comments: [`api-reference-comments.md`](./api-reference-comments.md)
+- API reference comments: [`api-reference-comments.md`](api-reference-comments.md)
   defines how XML comments in `Contracts/` are written and reviewed.
 
 Runtime implementation files must not define user-facing behavior that cannot

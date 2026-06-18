@@ -14,14 +14,14 @@
 
 ## 버그 목록
 
-### [BUG-01](./01-wait-drained-socket-tracking-loss.ko.md): wait_drained 소켓 추적 유실
+### [BUG-01](01-wait-drained-socket-tracking-loss.ko.md): wait_drained 소켓 추적 유실
 
 - **상태**: 수정 완료
 - **계층**: service lifecycle (`service_runtime_base_t`)
 - **요약**: `wait_drained()` 타임아웃 시 `_closing_sockets`를 swap으로 빼간 뒤
   로컬 변수가 drop되면서 소켓 추적이 유실된다. abortive 경로가 no-op이 된다.
 
-### [BUG-02](./02-async-mailbox-reaper-data-race.ko.md): async mailbox vs reaper data race
+### [BUG-02](02-async-mailbox-reaper-data-race.ko.md): async mailbox vs reaper data race
 
 - **상태**: 분석 완료, 수정 대기
 - **계층**: socket core (`socket_base_t`, `own_t`)
@@ -78,7 +78,7 @@ pipe completion과 owned-object completion이 한 카운터에 섞여 있어
 
 ### async mailbox race는 트리거
 
-[BUG-02](./02-async-mailbox-reaper-data-race.ko.md)에서 분석한
+[BUG-02](02-async-mailbox-reaper-data-race.ko.md)에서 분석한
 I/O 스레드 vs reaper 간 data race는 이 구조 위에서 작동하는 **직접 트리거**다.
 
 async mailbox race가 없더라도 spot의 teardown 순서가 조금만 흔들리면
@@ -97,7 +97,7 @@ async mailbox race가 없더라도 spot의 teardown 순서가 조금만 흔들�
 `close()` 전에 async mailbox를 완전히 quiesce하여 data race를 막는다.
 이것만으로 현재 재현되는 assertion과 timeout의 직접 트리거를 차단할 수 있다.
 
-→ 상세: [BUG-02 해결 방향](./02-async-mailbox-reaper-data-race.ko.md#해결-방향)
+→ 상세: [BUG-02 해결 방향](02-async-mailbox-reaper-data-race.ko.md#해결-방향)
 
 ### 구조 개선 (반복 방지)
 
@@ -118,8 +118,8 @@ async mailbox race가 없더라도 spot의 teardown 순서가 조금만 흔들�
    graceful/abortive 모두 수렴 실패 시 error 반환,
    `ctx_term()`으로 실패를 밀어내지 않음
 
-→ 상세: [구조 개선안](./codex-spot-shutdown-structural-rework.ko.md),
-  [lifecycle contract 분석](./deterministic-lifecycle-root-cause-review.ko.md)
+→ 상세: [구조 개선안](codex-spot-shutdown-structural-rework.ko.md),
+  [lifecycle contract 분석](deterministic-lifecycle-root-cause-review.ko.md)
 
 ---
 
@@ -127,7 +127,7 @@ async mailbox race가 없더라도 spot의 teardown 순서가 조금만 흔들�
 
 | 문서 | 내용 |
 |------|------|
-| [BUG-01](./01-wait-drained-socket-tracking-loss.ko.md) | wait_drained 추적 유실 — **수정 완료** |
-| [BUG-02](./02-async-mailbox-reaper-data-race.ko.md) | async mailbox/reaper data race — 트리거 분석 |
-| [구조 개선안](./codex-spot-shutdown-structural-rework.ko.md) | core 이중 모델 해소, teardown 순서 개선 |
-| [lifecycle contract](./deterministic-lifecycle-root-cause-review.ko.md) | 전체 서비스 lifecycle 공통 계약 부재 분석 |
+| [BUG-01](01-wait-drained-socket-tracking-loss.ko.md) | wait_drained 추적 유실 — **수정 완료** |
+| [BUG-02](02-async-mailbox-reaper-data-race.ko.md) | async mailbox/reaper data race — 트리거 분석 |
+| [구조 개선안](codex-spot-shutdown-structural-rework.ko.md) | core 이중 모델 해소, teardown 순서 개선 |
+| [lifecycle contract](deterministic-lifecycle-root-cause-review.ko.md) | 전체 서비스 lifecycle 공통 계약 부재 분석 |

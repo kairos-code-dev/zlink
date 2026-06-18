@@ -1,7 +1,7 @@
 # Thread-Safe Socket 상태 추적
 
 이 문서는
-[`thread-safe-socket-plan.ko.md`](./thread-safe-socket-plan.ko.md)
+[`thread-safe-socket-plan.ko.md`](thread-safe-socket-plan.ko.md)
 대비 현재 구현/검증 상태를 추적한다.
 
 ## 상태 요약

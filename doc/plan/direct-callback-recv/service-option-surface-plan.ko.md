@@ -7,8 +7,8 @@
 
 이 문서의 canonical 전제는 다음 두 문서다.
 
-- [`direct-callback-recv-rewrite-spec.ko.md`](./direct-callback-recv-rewrite-spec.ko.md)
-- [`spot-node-direct-facade-plan.ko.md`](./spot-node-direct-facade-plan.ko.md)
+- [`direct-callback-recv-rewrite-spec.ko.md`](direct-callback-recv-rewrite-spec.ko.md)
+- [`spot-node-direct-facade-plan.ko.md`](spot-node-direct-facade-plan.ko.md)
 
 핵심 목표:
 
@@ -35,11 +35,11 @@
 각각의 canonical 문서는 다음이다.
 
 - RID 정책:
-  [`service-routing-id-policy-plan.ko.md`](./service-routing-id-policy-plan.ko.md)
+  [`service-routing-id-policy-plan.ko.md`](service-routing-id-policy-plan.ko.md)
 - monitor/readiness:
-  [`service-monitor-readiness-plan.ko.md`](./service-monitor-readiness-plan.ko.md)
+  [`service-monitor-readiness-plan.ko.md`](service-monitor-readiness-plan.ko.md)
 - `spot_node` direct facade 지원 범위:
-  [`spot-node-direct-facade-plan.ko.md`](./spot-node-direct-facade-plan.ko.md)
+  [`spot-node-direct-facade-plan.ko.md`](spot-node-direct-facade-plan.ko.md)
 
 ### 2.2 public subject
 

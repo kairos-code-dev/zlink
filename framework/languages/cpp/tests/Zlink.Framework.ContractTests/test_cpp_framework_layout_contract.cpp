@@ -176,7 +176,7 @@ std::size_t count_occurrences (const std::string &text, const std::string &needl
 
 bool draft_tracking_table_matches_files (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -193,8 +193,8 @@ bool draft_tracking_table_matches_files (const std::filesystem::path &root)
 
     bool ok = true;
     std::size_t file_count = 0;
-    const std::pair<const char *, const char *> scopes[] = {{"doc/spec", "(../spec/"},
-                                                            {"doc/internals", "(./"}};
+    const std::pair<const char *, const char *> scopes[] = {{"../../doc/framework/cpp/spec", "(../spec/"},
+                                                            {"../../doc/framework/cpp/internals", "("}};
     for (const auto &[scope_dir, link_prefix] : scopes) {
         for (const auto &entry : std::filesystem::directory_iterator (root / scope_dir)) {
             if (!entry.is_regular_file () || entry.path ().extension () != ".md") {
@@ -217,8 +217,8 @@ bool draft_tracking_table_matches_files (const std::filesystem::path &root)
 
     // 별도 산출물의 계약 문서도 추적표에 정확히 한 번 올린다.
     const std::string artifact_links[] = {
-      "(../../connector/doc/guide/INDEX.ko.md)",
-      "(../../http-client/doc/spec/cpp-http-client.ko.md)"};
+      "(../../../../languages/cpp/connector/doc/guide/INDEX.ko.md)",
+      "(../../../http-client/cpp/spec/cpp-http-client.ko.md)"};
     for (const auto &link : artifact_links) {
         if (count_occurrences (table, link) != 1) {
             std::cerr << "reference document tracking table must reference exactly once: " << link
@@ -279,7 +279,7 @@ bool non_empty_directories_do_not_keep_gitkeep (const std::filesystem::path &roo
 
 bool framework_overview_role_tables_cover_files (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-overview.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-overview.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -294,8 +294,8 @@ bool framework_overview_role_tables_cover_files (const std::filesystem::path &ro
     const auto tables = text.substr (start, end - start);
 
     bool ok = true;
-    const std::pair<const char *, const char *> scopes[] = {{"doc/spec", "(../spec/"},
-                                                            {"doc/internals", "(./"}};
+    const std::pair<const char *, const char *> scopes[] = {{"../../doc/framework/cpp/spec", "(../spec/"},
+                                                            {"../../doc/framework/cpp/internals", "("}};
     for (const auto &[scope_dir, link_prefix] : scopes) {
         for (const auto &entry : std::filesystem::directory_iterator (root / scope_dir)) {
             if (!entry.is_regular_file () || entry.path ().extension () != ".md") {
@@ -319,7 +319,7 @@ bool framework_overview_role_tables_cover_files (const std::filesystem::path &ro
 
 bool implementation_plan_expands_label_wildcards (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -359,7 +359,7 @@ bool implementation_plan_expands_label_wildcards (const std::filesystem::path &r
 
 bool implementation_plan_goal20_covers_connector_labels (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -397,7 +397,7 @@ bool implementation_plan_goal20_covers_connector_labels (const std::filesystem::
 
 bool implementation_plan_goal6_covers_parity_model (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -447,7 +447,7 @@ bool implementation_plan_goal6_covers_parity_model (const std::filesystem::path 
 
 bool implementation_plan_goal7_covers_runtime_integration (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -502,7 +502,7 @@ bool implementation_plan_goal7_covers_runtime_integration (const std::filesystem
 
 bool implementation_plan_goal8_covers_handler_serializer_model (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -555,7 +555,7 @@ bool implementation_plan_goal8_covers_handler_serializer_model (const std::files
 
 bool implementation_plan_goal9_covers_channel_messaging (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -611,7 +611,7 @@ bool implementation_plan_goal9_covers_channel_messaging (const std::filesystem::
 
 bool implementation_plan_goal10_covers_backpressure_reliability (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -666,7 +666,7 @@ bool implementation_plan_goal10_covers_backpressure_reliability (const std::file
 
 bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -735,7 +735,7 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
 
 bool actor_model_documents_actor_destroy_lifecycle (const std::filesystem::path &root)
 {
-    const auto path = root.parent_path ().parent_path () / "doc/spec/actor-model.ko.md";
+    const auto path = root.parent_path ().parent_path () / "doc/framework/common/actor-model.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -769,7 +769,7 @@ bool actor_model_documents_actor_destroy_lifecycle (const std::filesystem::path 
 
 bool framework_api_documents_actor_destroy_lifecycle (const std::filesystem::path &root)
 {
-    const auto path = root.parent_path ().parent_path () / "doc/spec/framework-api.ko.md";
+    const auto path = root.parent_path ().parent_path () / "doc/framework/common/framework-api.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -800,7 +800,7 @@ bool session_actor_dispatch_documents_disconnect_destroy_boundary (
   const std::filesystem::path &root)
 {
     const auto path =
-      root.parent_path ().parent_path () / "doc/spec/session-actor-dispatch.ko.md";
+      root.parent_path ().parent_path () / "doc/framework/common/session-actor-dispatch.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -829,7 +829,7 @@ bool session_actor_dispatch_documents_disconnect_destroy_boundary (
 
 bool implementation_plan_goal12_covers_spot_timer (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -889,7 +889,7 @@ bool implementation_plan_goal12_covers_spot_timer (const std::filesystem::path &
 
 bool implementation_plan_goal13_covers_stream_framework (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -948,7 +948,7 @@ bool implementation_plan_goal13_covers_stream_framework (const std::filesystem::
 
 bool implementation_plan_goal14_covers_actor_gateway (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1008,7 +1008,7 @@ bool implementation_plan_goal14_covers_actor_gateway (const std::filesystem::pat
 
 bool implementation_plan_goal15_covers_registry_topology (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1061,7 +1061,7 @@ bool implementation_plan_goal15_covers_registry_topology (const std::filesystem:
 
 bool implementation_plan_goal16_covers_observability (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1113,7 +1113,7 @@ bool implementation_plan_goal16_covers_observability (const std::filesystem::pat
 
 bool implementation_plan_goal17_covers_module_hosting (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1170,7 +1170,7 @@ bool implementation_plan_goal17_covers_module_hosting (const std::filesystem::pa
 
 bool implementation_plan_goal18_covers_http_client (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1243,7 +1243,7 @@ bool implementation_plan_goal18_covers_http_client (const std::filesystem::path 
 
 bool implementation_plan_goal19_covers_http_hosting (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1321,7 +1321,7 @@ bool implementation_plan_goal19_covers_http_hosting (const std::filesystem::path
 
 bool registry_draft_matches_monitoring_contract (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/spec/cpp-registry.ko.md";
+    const auto path = root / "../../doc/framework/cpp/spec/cpp-registry.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1352,7 +1352,7 @@ bool registry_draft_matches_monitoring_contract (const std::filesystem::path &ro
 
 bool implementation_plan_goal21_covers_sample_labels (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1387,7 +1387,7 @@ bool implementation_plan_goal21_covers_sample_labels (const std::filesystem::pat
 
 bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-implementation-plan.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-implementation-plan.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
@@ -1486,7 +1486,7 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
 
 bool posd_log_has_current_goal_mapping (const std::filesystem::path &root)
 {
-    const auto path = root / "doc/internals/cpp-framework-posd-refactoring-log.ko.md";
+    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-posd-refactoring-log.ko.md";
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();

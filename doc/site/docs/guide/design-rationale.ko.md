@@ -1,6 +1,6 @@
-[한국어](./design-rationale.ko.md)
+[한국어](design-rationale.ko.md)
 
-[가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md) · [개요](./01-overview.ko.md)
+[가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md) · [개요](01-overview.ko.md)
 
 # 설계 근거 — 왜 이렇게 만들었나
 
@@ -12,7 +12,7 @@
 ## 출발점 — libzmq에서 무엇을 바꿨나
 
 zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5에서 출발해 **핵심 패턴에
-집중하고 표면을 좁힌** 라이브러리다. 자세한 대비표는 [개요](./01-overview.ko.md)에
+집중하고 표면을 좁힌** 라이브러리다. 자세한 대비표는 [개요](01-overview.ko.md)에
 있다. 요지는 다음과 같다.
 
 - 소켓 타입 17종 → **8종** (PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM).
@@ -33,10 +33,10 @@ Small Message). 그보다 큰 메시지는 참조 카운팅으로 복사 없이 
 **사용자에게 의미**: 작은 제어 메시지(틱, 하트비트, 짧은 명령)가 많은
 워크로드에서 할당·복사 비용이 사라진다. 송신이 메시지를 "소비"하는 이동 시맨틱도
 이 모델에서 나온다 — 보관이 필요하면 명시적으로 복사한다([09 메시지
-API](./09-message-api.ko.md)).
+API](09-message-api.ko.md)).
 
 > VSM은 **메모리 최적화일 뿐 wire 형식에는 영향이 없다.** 수신 측은 송신 측이
-> inline 저장을 썼는지 알 필요가 없다([ZMP 레퍼런스](./zmp-protocol.ko.md)).
+> inline 저장을 썼는지 알 필요가 없다([ZMP 레퍼런스](zmp-protocol.ko.md)).
 
 ### Lock-Free — 스레드 간 통신에 YPipe
 
@@ -45,7 +45,7 @@ API](./09-message-api.ko.md)).
 
 **사용자에게 의미**: 핫 패스에서 락 경합이 없어 멀티코어 확장이 잘 된다. 대신
 소켓은 스레드 안전하지 않다 — 같은 소켓을 여러 스레드에서 동시에 다루지 않는 것이
-전제다([11 스레드 안전성](./11-thread-safety.ko.md)).
+전제다([11 스레드 안전성](11-thread-safety.ko.md)).
 
 ### True Async — Proactor 패턴
 
@@ -54,7 +54,7 @@ Boost.Asio 기반으로 I/O **완료** 이벤트를 핸들러로 전달한다(Pr
 
 **사용자에게 의미**: 콜백은 Context가 소유한 I/O 스레드에서 실행된다 — 콜백은 짧게
 유지하고 lock을 잡지 않으며, 그 안에서 핸들을 닫지 않는다. 다중 소켓을 한 루프에서
-다루려면 폴러를 쓴다(개념은 [02 Core API](./02-core-api.ko.md), 언어 표면은 각
+다루려면 폴러를 쓴다(개념은 [02 Core API](02-core-api.ko.md), 언어 표면은 각
 [바인딩 가이드](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/bindings/README.ko.md)).
 
 ### Protocol Agnostic — Transport와 Protocol의 분리
@@ -63,11 +63,11 @@ wire protocol(ZMP)과 transport(tcp/ipc/inproc/ws/tls)를 명확히 분리한다
 
 **사용자에게 의미**: 같은 메시징 코드가 transport만 바꿔 inproc(같은 프로세스)에서
 tcp(네트워크)로, 또는 tls(암호화)로 옮겨 간다 — 주소 스킴만 바뀐다([04
-트랜스포트](./04-transports.ko.md)).
+트랜스포트](04-transports.ko.md)).
 
 ## 더 깊이
 
 - 계층 아키텍처 전체: [internals/architecture](../internals/architecture.ko.md)
 - 설계 결정의 트레이드오프: [internals/design-decisions](../internals/design-decisions.ko.md)
-- wire protocol: [ZMP 프로토콜 레퍼런스](./zmp-protocol.ko.md)
-- 전달 보장이 어디까지인지: [신뢰성·전달 보장](./reliability.ko.md)
+- wire protocol: [ZMP 프로토콜 레퍼런스](zmp-protocol.ko.md)
+- 전달 보장이 어디까지인지: [신뢰성·전달 보장](reliability.ko.md)

@@ -1,4 +1,4 @@
-[English](./design-decisions.md) | [한국어](./design-decisions.ko.md)
+[English](design-decisions.md) | [한국어](design-decisions.ko.md)
 
 # 설계 결정 기록
 

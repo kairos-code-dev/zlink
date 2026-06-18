@@ -2,7 +2,7 @@
 
 > 상태: 계획 초안.
 > 선행 문서: 이 문서는
-> [`subscribe-surface-renaming-plan.ko.md`](./subscribe-surface-renaming-plan.ko.md)의
+> [`subscribe-surface-renaming-plan.ko.md`](subscribe-surface-renaming-plan.ko.md)의
 > subscribe 관련 naming 재편을 **대체**한다. 해당 문서에서 도입 예정이던
 > `zlink_set_subscribe`/`zlink_unset_subscribe` 전용 함수는 이 문서의
 > `zlink_set_subscription`/`zlink_unset_subscription` 경로로 흡수된다.

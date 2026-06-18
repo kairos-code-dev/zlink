@@ -1,4 +1,4 @@
-[English](./spot-internals.md) | [한국어](./spot-internals.ko.md)
+[English](spot-internals.md) | [한국어](spot-internals.ko.md)
 
 # SPOT / SpotNode Internals
 
@@ -745,7 +745,7 @@ known. This is the ActorGateway attachment. The owner is resolved through
 `SpotNode` (otherwise `ENOTSUP` / `ZLINK_CONFIG_NOT_SUPPORTED`) and rejects
 re-attaching a stream to a different owner (`EBUSY` /
 `ZLINK_CONFIG_INVALID_STATE`); re-attaching the same stream/node pair is
-idempotent. See [stream-socket.md](./stream-socket.md) for the STREAM-side view.
+idempotent. See [stream-socket.md](stream-socket.md) for the STREAM-side view.
 
 ### 12.1 Local Actor binding (co-located)
 

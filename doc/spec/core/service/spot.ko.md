@@ -1,6 +1,6 @@
-[English](./spot.md) | 한국어
+[English](spot.md) | 한국어
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [서비스 공통](./README.ko.md)
+[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [서비스 공통](README.ko.md)
 
 # SPOT
 

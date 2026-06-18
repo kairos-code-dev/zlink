@@ -1,6 +1,6 @@
-[English](./message.md) | [한국어](./message.ko.md)
+[English](message.md) | [한국어](message.ko.md)
 
-[Spec Index](../README.md) · [Core Index](./README.md)
+[Spec Index](../README.md) · [Core Index](README.md)
 
 # Message API Reference
 
@@ -359,6 +359,6 @@ metadata is not part of the active message path.
 
 See these documents for the adjacent contracts:
 
-- request-reply public API: [socket/README.md](./socket/README.md)
-- SPOT direct and request-reply public API: [service/spot.md](./service/spot.md)
+- request-reply public API: [socket/README.md](socket/README.md)
+- SPOT direct and request-reply public API: [service/spot.md](service/spot.md)
 - wire format and control-part rules: `doc/internals/protocol-zmp.md`

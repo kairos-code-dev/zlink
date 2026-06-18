@@ -1,4 +1,4 @@
-[← 목록](./README.md) | [시세 분배 →](./02-realtime-quote.md)
+[← 목록](README.md) | [시세 분배 →](02-realtime-quote.md)
 
 # MMORPG 존 인접 데이터 공유
 

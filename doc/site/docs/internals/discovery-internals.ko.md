@@ -1,4 +1,4 @@
-[English](./discovery-internals.md) | [한국어](./discovery-internals.ko.md)
+[English](discovery-internals.md) | [한국어](discovery-internals.ko.md)
 
 # Discovery 서비스 내부 아키텍처
 
@@ -518,5 +518,5 @@ table로 되쓰지 않는다.
   transport로 보낸다.
 - **STREAM session relay hot path는 Discovery를 조회하지 않는다.** session binding은 이미
   bound Actor ref를 들고 있고, relay는 그것을 local Actor table과 ActorGateway state로
-  해석한다([spot-internals.ko.md](./spot-internals.ko.md) 12절 참고). route 조회를 거치지
+  해석한다([spot-internals.ko.md](spot-internals.ko.md) 12절 참고). route 조회를 거치지
   않는다. Discovery sync가 최신 join보다 늦더라도 진행 중인 session relay에는 영향이 없다.

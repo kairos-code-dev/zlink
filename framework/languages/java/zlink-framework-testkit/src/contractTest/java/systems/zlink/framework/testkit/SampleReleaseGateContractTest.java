@@ -234,9 +234,9 @@ final class SampleReleaseGateContractTest {
         }
 
         String handlerSpec = Files.readString(frameworkJavaRoot()
-            .resolve("doc/spec/handler-interfaces.ko.md"));
+            .resolve("../../doc/framework/java/spec/handler-interfaces.ko.md"));
         String actorGuide = Files.readString(frameworkJavaRoot()
-            .resolve("doc/guide/06-actor-session.ko.md"));
+            .resolve("../../doc/framework/java/guide/06-actor-session.ko.md"));
         assertTrue(handlerSpec.contains("`destroyActor(actor)`는 Entry Spot context 전용 API이다"),
             "handler spec must keep destroyActor on Entry Spot context");
         assertTrue(handlerSpec.contains("user Spot context에는"),
@@ -449,9 +449,10 @@ final class SampleReleaseGateContractTest {
                 || serverProgramSource.contains("ZLinkFramework.start"),
             "TicTacToe Java Server roles must rely on Spring lifecycle keep-alive instead of direct framework execution");
         assertTrue(apiSource.contains("ZLinkFrameworkConfigurer")
-                && apiSource.contains("options.codecs().addMessagePack()")
+                && apiSource.contains("options.codecs().use(ZLinkMessagePackCodec.defaultCodec())")
                 && playSource.contains("ZLinkFrameworkConfigurer")
-                && playSource.contains("options.codecs().addMessagePack()")
+                && playSource.contains("options.codecs().use(ZLinkMessagePackCodec.defaultCodec())")
+                && serverBuildSource.contains("zlink-framework-codec-msgpack")
                 && apiHostFactorySource.contains("@SpringBootApplication")
                 && apiHostFactorySource.contains("SpringApplicationBuilder")
                 && apiHostFactorySource.contains(".web(WebApplicationType.SERVLET)")
@@ -827,9 +828,10 @@ final class SampleReleaseGateContractTest {
                 || serverProgramSource.contains("ZLinkFramework.start"),
             "Kotlin TicTacToe Server roles must rely on Spring lifecycle keep-alive instead of direct framework execution");
         assertTrue(apiSource.contains("ZLinkFrameworkConfigurer")
-                && apiSource.contains("options.codecs().addMessagePack()")
+                && apiSource.contains("options.codecs().use(ZLinkMessagePackCodec.defaultCodec())")
                 && playSource.contains("ZLinkFrameworkConfigurer")
-                && playSource.contains("options.codecs().addMessagePack()")
+                && playSource.contains("options.codecs().use(ZLinkMessagePackCodec.defaultCodec())")
+                && serverBuildSource.contains("zlink-framework-codec-msgpack")
                 && apiHostFactorySource.contains("@SpringBootApplication")
                 && apiHostFactorySource.contains("SpringApplicationBuilder")
                 && apiHostFactorySource.contains(".web(WebApplicationType.SERVLET)")
@@ -1588,7 +1590,7 @@ final class SampleReleaseGateContractTest {
 
     private static List<Path> officialActorDestroyDocs() throws IOException {
         List<Path> docs = new java.util.ArrayList<>();
-        for (String relativeRoot : List.of("doc/guide", "doc/spec", "doc/internals")) {
+        for (String relativeRoot : List.of("../../doc/framework/java/guide", "../../doc/framework/java/spec", "../../doc/framework/java/internals")) {
             Path root = frameworkJavaRoot().resolve(relativeRoot);
             if (!Files.exists(root)) {
                 continue;

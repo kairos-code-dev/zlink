@@ -1,4 +1,4 @@
-[English](./registry-internals.md) | [한국어](./registry-internals.ko.md)
+[English](registry-internals.md) | [한국어](registry-internals.ko.md)
 
 # Registry Service Internal Architecture
 
@@ -99,7 +99,7 @@ matching route row has flooded to every Registry.
 
 This is why STREAM session relay never queries the Registry. The session binding
 carries the bound Actor ref directly, and the owner SpotNode's ActorGateway
-resolves the current location locally (see [spot-internals.md](./spot-internals.md)
+resolves the current location locally (see [spot-internals.md](spot-internals.md)
 section 12). Registry route rows serve service-to-Actor routing and diagnostics,
 not the relay hot path.
 
@@ -272,7 +272,7 @@ Notes on the registry side:
 - The query is **not** fanned out to peer registries on demand. Registry answers from its local `service_map`, which is kept in sync by the flooding / heartbeat cycle described in §6. A spot ownership record propagates into the local `service_map` through SERVICE_LIST broadcast and `TOPOLOGY_REPORT` uplinks.
 - When the owner SpotNode has moved but the new registration has not yet flooded to this registry, the query may return **stale or empty** results. The Discovery client absorbs this by treating `ENOENT` as a caller-visible "not resolvable right now" signal rather than a hard error; applications typically retry after a short backoff.
 - The registry returns every matching entry, not just the freshest one. The Discovery client does the final owner-node selection during `refresh_spot_owner_cache_locked`, pairing each entry with its stamped `validated_service_seq` so subsequent cache hits can be validated against the current provider view.
-- A **reply must not be used as an owner record for incoming-request reply paths**. The resolver is a destination lookup only; reply paths must continue to use the concrete source addresses that came with the original request. See [Discovery Internals §10](./discovery-internals.md#10-spot-ownership-resolution-zlink_discovery_resolve_spot) for the client-side contract.
+- A **reply must not be used as an owner record for incoming-request reply paths**. The resolver is a destination lookup only; reply paths must continue to use the concrete source addresses that came with the original request. See [Discovery Internals §10](discovery-internals.md#10-spot-ownership-resolution-zlink_discovery_resolve_spot) for the client-side contract.
 
 ## 8. Control Task Cycle
 

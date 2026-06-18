@@ -1,0 +1,47 @@
+[← 목차](README.ko.md)
+
+# 6. Response 다루기
+
+## raw 응답
+
+`SubmitRawAsync()`는 `RawHttpResponse`를 돌려준다.
+
+```csharp
+RawHttpResponse response = await client.Get("/players/7281").SubmitRawAsync();
+int status = response.Status;
+string body = response.Body;
+string contentType = response.Headers["content-type"];
+```
+
+`Headers`는 대소문자 무시 조회를 지원한다.
+
+## typed JSON 응답
+
+`SubmitAsync<T>()`는 응답을 JSON으로 디코드해 `HttpResponse<T>`를 돌려준다.
+
+```csharp
+HttpResponse<PlayerProfile> response = await client.Get("/players/7281").SubmitAsync<PlayerProfile>();
+PlayerProfile profile = response.Body;     // 디코드된 DTO
+string raw = response.RawBody;             // 원본 응답 텍스트
+```
+
+- status가 **400 이상**이면 `ZLinkFrameworkException(RequestFailed)`를 던진다.
+- 본문 JSON 디코드 실패는 `ZLinkFrameworkException(PayloadDecodeFailed)`로 보고된다.
+
+## blocking 언래핑
+
+```csharp
+PlayerProfile profile = client.Get("/players/7281").Fetch<PlayerProfile>();
+```
+
+`Fetch<T>()`는 typed body를 직접 돌려주고 실패를 예외로 던진다. 테스트·CLI 전용이다
+([7장](07-async-coroutines.ko.md)).
+
+## status 처리 정리
+
+| 경로 | 4xx/5xx |
+|------|---------|
+| `SubmitRawAsync()` | status를 그대로 돌려준다(예외 없음) |
+| `SubmitAsync<T>()` / `Fetch<T>()` | `RequestFailed` 예외 |
+
+[다음: 비동기와 코루틴 →](07-async-coroutines.ko.md)

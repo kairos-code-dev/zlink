@@ -15,9 +15,9 @@ registry 중심 summary로 조회하는 계획을 정의한다.
 
 연관 canonical 문서:
 
-- [`direct-callback-recv-rewrite-spec.ko.md`](./direct-callback-recv-rewrite-spec.ko.md)
-- [`service-routing-id-policy-plan.ko.md`](./service-routing-id-policy-plan.ko.md)
-- [`service-monitor-readiness-plan.ko.md`](./service-monitor-readiness-plan.ko.md)
+- [`direct-callback-recv-rewrite-spec.ko.md`](direct-callback-recv-rewrite-spec.ko.md)
+- [`service-routing-id-policy-plan.ko.md`](service-routing-id-policy-plan.ko.md)
+- [`service-monitor-readiness-plan.ko.md`](service-monitor-readiness-plan.ko.md)
 
 ## 2. 설계 원칙
 

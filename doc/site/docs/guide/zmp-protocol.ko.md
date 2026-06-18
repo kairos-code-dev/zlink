@@ -1,4 +1,4 @@
-[한국어](./zmp-protocol.ko.md)
+[한국어](zmp-protocol.ko.md)
 
 [가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md)
 
@@ -83,7 +83,7 @@ ZMP 데이터 프레임 위에서, 요청/응답과 SPOT 라우팅은 **멀티�
 
 VSM(Very Small Message, 33바이트 이하 inline 저장)은 **메모리 최적화일 뿐 wire
 형식에 영향이 없다.** 헤더의 PAYLOAD SIZE가 항상 길이를 담으므로, 수신 측은 송신
-측이 inline 저장을 썼는지 알 필요가 없다([설계 근거](./design-rationale.ko.md)).
+측이 inline 저장을 썼는지 알 필요가 없다([설계 근거](design-rationale.ko.md)).
 
 ## 6. 새 바인딩을 만든다면
 
@@ -101,4 +101,4 @@ VSM(Very Small Message, 33바이트 이하 inline 저장)은 **메모리 최적�
 
 > 더 보기: [internals/protocol-zmp](../internals/protocol-zmp.ko.md)(정식 정의) ·
 > [internals/protocol-raw](../internals/protocol-raw.ko.md)(STREAM raw 프레이밍) ·
-> [설계 근거](./design-rationale.ko.md).
+> [설계 근거](design-rationale.ko.md).

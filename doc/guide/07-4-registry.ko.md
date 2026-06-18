@@ -1,7 +1,7 @@
-[English](./07-4-registry.md) | [한국어](./07-4-registry.ko.md)
+[English](07-4-registry.md) | [한국어](07-4-registry.ko.md)
 
 <!-- zlink-nav:start -->
-[← SPOT Actor](./07-4-actor.ko.md) | [Routing ID →](./08-routing-id.ko.md)
+[← SPOT Actor](07-4-actor.ko.md) | [Routing ID →](08-routing-id.ko.md)
 <!-- zlink-nav:end -->
 
 # Registry (중앙 서비스 디렉토리)
@@ -688,11 +688,11 @@ registry 스냅샷을 질의해 서비스 엔드포인트를 조회하는 자립
 
 ## 9. 다음 단계
 
-- [Service Discovery](./07-1-discovery.ko.md) -- 기반 인프라
-- [SPOT PUB/SUB](./07-3-spot.ko.md) -- 위치투명 발행/구독
+- [Service Discovery](07-1-discovery.ko.md) -- 기반 인프라
+- [SPOT PUB/SUB](07-3-spot.ko.md) -- 위치투명 발행/구독
 - [Registry API 레퍼런스](../spec/core/service/registry.ko.md) -- 전체 API 문서
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← SPOT Actor](./07-4-actor.ko.md) | [Routing ID →](./08-routing-id.ko.md)
+[← SPOT Actor](07-4-actor.ko.md) | [Routing ID →](08-routing-id.ko.md)
 <!-- zlink-nav:bottom:end -->

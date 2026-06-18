@@ -24,10 +24,10 @@ Framework 성능 측정의 목적은 언어별 framework가 같은 기능을 비
 
 언어별 세부 정책은 아래 문서에 둔다.
 
-- [C++ framework perf](./bindings/cpp-framework-performance.ko.md)
-- [Java framework perf](./bindings/java-framework-performance.ko.md)
-- [.NET framework perf](./bindings/dotnet-framework-performance.ko.md)
-- [Node framework perf](./bindings/node-framework-performance.ko.md)
+- [C++ framework perf](bindings/cpp-framework-performance.ko.md)
+- [Java framework perf](bindings/java-framework-performance.ko.md)
+- [.NET framework perf](bindings/dotnet-framework-performance.ko.md)
+- [Node framework perf](bindings/node-framework-performance.ko.md)
 
 ## 공통 원칙
 

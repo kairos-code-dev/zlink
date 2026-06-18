@@ -1,6 +1,6 @@
-[English](./utilities.md) | [한국어](./utilities.ko.md)
+[English](utilities.md) | [한국어](utilities.ko.md)
 
-[Spec Index](../README.md) · [Core Index](./README.md)
+[Spec Index](../README.md) · [Core Index](README.md)
 
 # Utilities
 

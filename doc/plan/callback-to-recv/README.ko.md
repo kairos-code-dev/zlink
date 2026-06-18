@@ -27,7 +27,7 @@
 
 문서 목록:
 
-- [core-surface-reduction-plan.ko.md](./core-surface-reduction-plan.ko.md)
+- [core-surface-reduction-plan.ko.md](core-surface-reduction-plan.ko.md)
   - 과거의 public surface 축소안
-- [perf-policy-alignment-plan.ko.md](./perf-policy-alignment-plan.ko.md)
+- [perf-policy-alignment-plan.ko.md](perf-policy-alignment-plan.ko.md)
   - 과거 perf 축소 정책 정렬안

@@ -178,7 +178,7 @@ monitor와 timer는 recv와 callback을 둘 다 유지한다.
 
 `SPOT`의 수신 모델은 아래 draft 문서를 기준으로 별도 유지한다.
 
-- [spot-multi-service-topology.ko.md](./spot-multi-service-topology.ko.md)
+- [spot-multi-service-topology.ko.md](spot-multi-service-topology.ko.md)
 
 다만 이 문서에서 고정하는 방향은 아래와 같다.
 

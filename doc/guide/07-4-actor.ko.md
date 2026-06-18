@@ -1,18 +1,18 @@
-[English](./07-4-actor.md) | [한국어](./07-4-actor.ko.md)
+[English](07-4-actor.md) | [한국어](07-4-actor.ko.md)
 
 <!-- zlink-nav:start -->
-[← SPOT](./07-3-spot.ko.md) | [Registry →](./07-4-registry.ko.md)
+[← SPOT](07-3-spot.ko.md) | [Registry →](07-4-registry.ko.md)
 <!-- zlink-nav:end -->
 
 # SPOT Actor 사용 가이드
 
 이 문서는 Actor 생성, Spot join/leave, 종료, 세션 바인딩 흐름을 설명한다.
-SPOT 기본 설정과 디스패치 핸들러 등록은 [SPOT 가이드](./07-3-spot.ko.md)를 본다.
+SPOT 기본 설정과 디스패치 핸들러 등록은 [SPOT 가이드](07-3-spot.ko.md)를 본다.
 정확한 함수 계약은 [SPOT spec](../spec/core/service/spot.ko.md)를 본다.
 
 > Actor가 **무슨 역할이고 언제** 쓰는지(세션↔처리 단위 binding, 재접속 이전성,
 > plain Spot과의 차이)는
-> [서비스 개요 §멘탈 모델](./07-0-services.ko.md#12-멘탈-모델--어느-층을-언제-쓰나)을
+> [서비스 개요 §멘탈 모델](07-0-services.ko.md#12-멘탈-모델--어느-층을-언제-쓰나)을
 > 먼저 본다.
 
 ## Actor 위치 조회와 전송
@@ -329,5 +329,5 @@ C 샘플에는 Actor 흐름을 나누어 보여 주는 세 파일이 있다.
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← SPOT](./07-3-spot.ko.md) | [Registry →](./07-4-registry.ko.md)
+[← SPOT](07-3-spot.ko.md) | [Registry →](07-4-registry.ko.md)
 <!-- zlink-nav:bottom:end -->

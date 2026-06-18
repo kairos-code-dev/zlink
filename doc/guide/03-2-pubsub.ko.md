@@ -1,7 +1,7 @@
-[English](./03-2-pubsub.md) | [한국어](./03-2-pubsub.ko.md)
+[English](03-2-pubsub.md) | [한국어](03-2-pubsub.ko.md)
 
 <!-- zlink-nav:start -->
-[← PAIR](./03-1-pair.ko.md) | [DEALER →](./03-3-dealer.ko.md)
+[← PAIR](03-1-pair.ko.md) | [DEALER →](03-3-dealer.ko.md)
 <!-- zlink-nav:end -->
 
 # PUB/SUB/XPUB/XSUB 발행-구독
@@ -138,7 +138,7 @@ SUB / XSUB는 recv-only 타입이다. poller의 `ZLINK_POLLIN`과 함께 써서
 
 > PUB의 송신 큐가 가득 차면(HWM) 기본값(`ZLINK_PUB_OPT_NODROP=1`)에서는
 > 조용히 drop하지 않고 `zlink_publish()`가 `ZLINK_SUBMIT_BACKPRESSURED`를
-> 반환한다. 상세는 [성능 가이드](./10-performance.ko.md)를 참고.
+> 반환한다. 상세는 [성능 가이드](10-performance.ko.md)를 참고.
 
 ## 3. 토픽 필터링
 
@@ -402,7 +402,7 @@ XPUB는 어떤 클라이언트가 어떤 토픽을 구독하거나 해지했는�
 > 발행은 `zlink_publish()`, 수신은 `zlink_subscribe()` 전용 API를 쓴다.
 
 > Proxy 패턴에서 XSUB/XPUB을 쓰는 방법은
-> [Proxy 가이드](./03-6-proxy.ko.md)를 참고.
+> [Proxy 가이드](03-6-proxy.ko.md)를 참고.
 
 ## 9. 구독 프레임 형식
 
@@ -592,7 +592,7 @@ MANUAL 모드에서 구독 프레임을 받은 뒤 `zlink_set_subscription()`를
 > 참고: `core/tests/integration/test_xpub_manual.cpp` — `test_missing_subscriptions()`: 두 구독자를 순차 처리하여 누락 방지
 
 ---
-[← PAIR](./03-1-pair.ko.md) | [DEALER →](./03-3-dealer.ko.md)
+[← PAIR](03-1-pair.ko.md) | [DEALER →](03-3-dealer.ko.md)
 
 ## 언어별 완전한 예제
 
@@ -654,5 +654,5 @@ PUB로 토픽을 발행하고 SUB로 구독·수신하는 자립형 예제다(�
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← PAIR](./03-1-pair.ko.md) | [DEALER →](./03-3-dealer.ko.md)
+[← PAIR](03-1-pair.ko.md) | [DEALER →](03-3-dealer.ko.md)
 <!-- zlink-nav:bottom:end -->

@@ -3,7 +3,7 @@
 > **상태: 완료 (2026-06-02).** P1~P7 전 단계 + 완료 판정 7항목 모두 충족.
 > 상세는 [§6 완료 로그](#6-완료-로그).
 
-> 이 문서는 [documentation-overhaul-plan](./documentation-overhaul-plan.ko.md)(v1)을
+> 이 문서는 [documentation-overhaul-plan](documentation-overhaul-plan.ko.md)(v1)을
 > **개정**한 것이다. v1은 "언어별 바인딩 가이드 6문서 × 7언어"를 만드는 방향이었는데,
 > 막상 써 보니 두 가지 문제가 드러났다:
 >

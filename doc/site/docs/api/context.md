@@ -1,6 +1,6 @@
-[English](./context.md) | [한국어](./context.ko.md)
+[English](context.md) | [한국어](context.ko.md)
 
-[Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md) · [Core Index](./README.md)
+[Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md) · [Core Index](README.md)
 
 # Context
 

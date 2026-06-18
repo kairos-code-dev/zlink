@@ -1,4 +1,4 @@
-[← MMORPG 존](./01-mmorpg-zone.md) | [목록](./README.md) | [메트릭 수집 →](./03-distributed-metrics.md)
+[← MMORPG 존](01-mmorpg-zone.md) | [목록](README.md) | [메트릭 수집 →](03-distributed-metrics.md)
 
 # 실시간 시세 분배
 

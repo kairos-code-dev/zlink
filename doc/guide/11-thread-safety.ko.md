@@ -1,7 +1,7 @@
-[English](./11-thread-safety.md) | [한국어](./11-thread-safety.ko.md)
+[English](11-thread-safety.md) | [한국어](11-thread-safety.ko.md)
 
 <!-- zlink-nav:start -->
-[← 성능](./10-performance.ko.md) | [소켓 옵션 →](./12-socket-options.ko.md)
+[← 성능](10-performance.ko.md) | [소켓 옵션 →](12-socket-options.ko.md)
 <!-- zlink-nav:end -->
 
 # 스레드 안전성 가이드
@@ -370,5 +370,5 @@ void *control(void *arg)
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← 성능](./10-performance.ko.md) | [소켓 옵션 →](./12-socket-options.ko.md)
+[← 성능](10-performance.ko.md) | [소켓 옵션 →](12-socket-options.ko.md)
 <!-- zlink-nav:bottom:end -->

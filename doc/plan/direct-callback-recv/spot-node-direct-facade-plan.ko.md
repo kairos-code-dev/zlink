@@ -12,7 +12,7 @@ node-owned default `SpotPub` / `SpotSub` facade로
 직접 publish / subscribe / callback 수신을 제공하는 계획을 정리한다.
 
 이 문서의 canonical 전제는
-[`direct-callback-recv-rewrite-spec.ko.md`](./direct-callback-recv-rewrite-spec.ko.md)
+[`direct-callback-recv-rewrite-spec.ko.md`](direct-callback-recv-rewrite-spec.ko.md)
 다.
 
 핵심 목표:
@@ -272,13 +272,13 @@ zlink_spot_pub_publish_bytes(pub, "chat", data, size, 0);
 ## 10. 연관 문서
 
 - 메인 스펙:
-  [`direct-callback-recv-rewrite-spec.ko.md`](./direct-callback-recv-rewrite-spec.ko.md)
+  [`direct-callback-recv-rewrite-spec.ko.md`](direct-callback-recv-rewrite-spec.ko.md)
 - option surface:
-  [`service-option-surface-plan.ko.md`](./service-option-surface-plan.ko.md)
+  [`service-option-surface-plan.ko.md`](service-option-surface-plan.ko.md)
 - monitor/readiness:
-  [`service-monitor-readiness-plan.ko.md`](./service-monitor-readiness-plan.ko.md)
+  [`service-monitor-readiness-plan.ko.md`](service-monitor-readiness-plan.ko.md)
 - proxy 재작성:
-  [`spot-proxy-rewrite-spec.ko.md`](./spot-proxy-rewrite-spec.ko.md)
+  [`spot-proxy-rewrite-spec.ko.md`](spot-proxy-rewrite-spec.ko.md)
 
 ## 11. Definition of Done
 

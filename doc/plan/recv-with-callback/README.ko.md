@@ -47,12 +47,12 @@
 
 문서 목록:
 
-- [core-surface-restoration-plan.ko.md](./core-surface-restoration-plan.ko.md)
+- [core-surface-restoration-plan.ko.md](core-surface-restoration-plan.ko.md)
   - `core/include/`, `core/src/`, `core/tests/` 기준 public callback/recv
     contract 복원 계획
-- [perf-lane-realignment-plan.ko.md](./perf-lane-realignment-plan.ko.md)
+- [perf-lane-realignment-plan.ko.md](perf-lane-realignment-plan.ko.md)
   - `core/perf/`와 `doc/perf/`를 single=callback, multi=recv canonical lane으로
     정렬하는 계획
-- [regression-and-doc-alignment-plan.ko.md](./regression-and-doc-alignment-plan.ko.md)
+- [regression-and-doc-alignment-plan.ko.md](regression-and-doc-alignment-plan.ko.md)
   - 기존 축소 문서, 회귀 테스트, API/guide/perf 문서를 새 contract로 갈아타는
     순서와 완료 기준

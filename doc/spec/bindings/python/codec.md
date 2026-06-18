@@ -1,4 +1,4 @@
-[Python Binding Specification](./README.md) · [Bindings Policy](../README.md)
+[Python Binding Specification](README.md) · [Bindings Policy](../README.md)
 
 # Python Codec Extension Specification
 

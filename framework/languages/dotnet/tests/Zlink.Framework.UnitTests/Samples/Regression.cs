@@ -58,9 +58,9 @@ public sealed class RegressionTests
     public void DotNet_Docs_Keep_Actor_Destroy_Entry_Owned()
     {
         var dotnetRoot = ResolveDotnetRoot();
-        var docs = EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "doc", "guide"))
-            .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "doc", "spec")))
-            .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "doc", "internals")))
+        var docs = EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "guide"))
+            .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "spec")))
+            .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "internals")))
             .Concat(Directory.EnumerateFiles(Path.Combine(dotnetRoot, "samples"), "README.md", SearchOption.AllDirectories))
             .Concat(Directory.EnumerateFiles(Path.Combine(dotnetRoot, "samples"), "README.ko.md", SearchOption.AllDirectories))
             .ToArray();
@@ -92,8 +92,8 @@ public sealed class RegressionTests
             }
         }
 
-        var actorSpec = File.ReadAllText(Path.Combine(dotnetRoot, "doc", "spec", "aspnet-core-actor.ko.md"));
-        var actorGuide = File.ReadAllText(Path.Combine(dotnetRoot, "doc", "guide", "06-actor-session.ko.md"));
+        var actorSpec = File.ReadAllText(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "spec", "aspnet-core-actor.ko.md"));
+        var actorGuide = File.ReadAllText(Path.Combine(dotnetRoot, "..", "..", "doc", "framework", "dotnet", "guide", "06-actor-session.ko.md"));
         Assert.Contains("DestroyActorAsync: Entry Spot", actorSpec, StringComparison.Ordinal);
         Assert.Contains("session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다", actorSpec, StringComparison.Ordinal);
         Assert.Contains("IZLinkEntrySpotContext.DestroyActorAsync(actor)", actorGuide, StringComparison.Ordinal);

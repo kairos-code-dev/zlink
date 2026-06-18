@@ -1,6 +1,6 @@
 # Framework API 패리티 — 코드 수정 추적
 
-> 상태: **수집 중**. 작성 2026-06-15. 짝 문서: [framework-guide-cpp-dotnet-alignment](./framework-guide-cpp-dotnet-alignment.ko.md).
+> 상태: **수집 중**. 작성 2026-06-15. 짝 문서: [framework-guide-cpp-dotnet-alignment](framework-guide-cpp-dotnet-alignment.ko.md).
 > 목적: cpp ↔ dotnet (이후 node·java 등) framework 가이드를 정렬하는 과정에서 드러난
 > **언어 간 framework API 차이**를 두 부류로 가른다. 가이드는 이 분류에 따라 쓴다.
 

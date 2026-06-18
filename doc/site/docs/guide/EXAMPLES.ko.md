@@ -1,6 +1,6 @@
-[한국어](./EXAMPLES.ko.md)
+[한국어](EXAMPLES.ko.md)
 
-[가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md) · [스타일 규약](./STYLE.ko.md)
+[가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md) · [스타일 규약](STYLE.ko.md)
 
 # 예제 코드 관리 규약 — 드리프트 방지
 
@@ -51,7 +51,7 @@ client.Send().Message(Message.From("PING")).Submit();
 - (권장) 가이드 코드 블록이 참조하는 샘플 파일이 실제로 존재하는지 검사하는
   링크 체크를 문서 회귀 테스트에 추가한다.
 - 추측 API 금지: 가이드에 쓴 메서드는 해당 바인딩의 `Contracts/`·소스에 실재해야
-  한다([스타일 규약 §7](./STYLE.ko.md)).
+  한다([스타일 규약 §7](STYLE.ko.md)).
 
 ## 4. 작성자 체크리스트
 
@@ -60,8 +60,8 @@ client.Send().Message(Message.From("PING")).Submit();
 - [ ] 호출한 API가 그 언어의 공개 contract에 실재하는가(지어내지 않았는가)?
 - [ ] 대응하는 샘플(`samples/...`)이 있는가, 없으면 추가했는가?
 - [ ] 값이 현실적인가(포트·심볼·금액 등 production-like)?
-- [ ] 코어 가이드의 같은 시나리오와 일관된가([공유 시나리오](./scenarios.ko.md))?
+- [ ] 코어 가이드의 같은 시나리오와 일관된가([공유 시나리오](scenarios.ko.md))?
 
 ---
 
-> 더 보기: [스타일 규약](./STYLE.ko.md) · [공유 시나리오](./scenarios.ko.md).
+> 더 보기: [스타일 규약](STYLE.ko.md) · [공유 시나리오](scenarios.ko.md).

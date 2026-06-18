@@ -1,7 +1,7 @@
-[English](./07-1-discovery.md) | [한국어](./07-1-discovery.ko.md)
+[English](07-1-discovery.md) | [한국어](07-1-discovery.ko.md)
 
 <!-- zlink-nav:start -->
-[← 서비스 개요](./07-0-services.ko.md) | [SPOT →](./07-3-spot.ko.md)
+[← 서비스 개요](07-0-services.ko.md) | [SPOT →](07-3-spot.ko.md)
 <!-- zlink-nav:end -->
 
 # Service Discovery
@@ -265,7 +265,7 @@ zlink_discovery_destroy(&discovery);
 
 다중 서비스 SpotNode 토폴로지에서는 연결할 소켓마다
 `ZLINK_AUTO_CONNECT_CLIENT_SERVER`를 채널 DEALER 호출에 사용한다. SPOT 가이드의
-[§3.1 Discovery 기반 자동 Mesh](./07-3-spot.ko.md#31-discovery-기반-자동-mesh)를
+[§3.1 Discovery 기반 자동 Mesh](07-3-spot.ko.md#31-discovery-기반-자동-mesh)를
 참고한다.
 
 ## 4.1 소켓 패밀리 Discovery
@@ -301,7 +301,7 @@ zlink_discovery_destroy(&discovery);
 ## 4.2 SpotNode에 Channel Dealer 등록하기
 
 `SpotNode`는 자기 mesh 연결에 SPOT Discovery 하나를 사용한다
-([SPOT 가이드](./07-3-spot.ko.md) 참고). 다른 channel을 호출해야 할 때는
+([SPOT 가이드](07-3-spot.ko.md) 참고). 다른 channel을 호출해야 할 때는
 channel별로 `DEALER`를 등록한다.
 
 ```c
@@ -461,10 +461,10 @@ Discovery가 하나의 Registry에만 연결해도 다른 Registry에 등록된 
 
 ## 7. 다음 단계
 
-- [SPOT PUB/SUB](./07-3-spot.ko.md) — Discovery 기반 위치투명 발행/구독
-- [Registry 가이드](./07-4-registry.ko.md) — 클러스터 구성, 토폴로지 조회, 운영 패턴
+- [SPOT PUB/SUB](07-3-spot.ko.md) — Discovery 기반 위치투명 발행/구독
+- [Registry 가이드](07-4-registry.ko.md) — 클러스터 구성, 토폴로지 조회, 운영 패턴
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← 서비스 개요](./07-0-services.ko.md) | [SPOT →](./07-3-spot.ko.md)
+[← 서비스 개요](07-0-services.ko.md) | [SPOT →](07-3-spot.ko.md)
 <!-- zlink-nav:bottom:end -->

@@ -1,6 +1,6 @@
-[English](./errno-map.md) | [한국어](./errno-map.ko.md)
+[English](errno-map.md) | [한국어](errno-map.ko.md)
 
-[Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md) · [Core Index](./README.md)
+[Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md) · [Core Index](README.md)
 
 # Per-Function Result Enums
 

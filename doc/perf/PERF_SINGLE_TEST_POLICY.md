@@ -10,12 +10,12 @@
 > 단, 각 언어의 구현 완성도와 지원 패턴 범위는 다를 수 있으므로 실제 parity
 > 수준은 언어별로 점검/정렬 대상이 된다.
 >
-> 언어별 적용 범위는 [PERF_POLICY.md](./PERF_POLICY.md) 상단을 참조한다.
+> 언어별 적용 범위는 [PERF_POLICY.md](PERF_POLICY.md) 상단을 참조한다.
 >
-> **상위 문서**: [PERF_POLICY.md](./PERF_POLICY.md) — 공통 원칙, 디렉터리 구조,
+> **상위 문서**: [PERF_POLICY.md](PERF_POLICY.md) — 공통 원칙, 디렉터리 구조,
 > RESULT 형식, 결과 저장, 출력 형식, 실패 처리, 환경 변수(공통), 리팩토링 원칙
 >
-> **관련 문서**: [PERF_MULTI_TEST_POLICY.md](./PERF_MULTI_TEST_POLICY.md)
+> **관련 문서**: [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md)
 >
 > 본 문서는 single suite **전용** 정책만 기술한다.
 > 양 suite에 공통으로 적용되는 규칙은 상위 문서에서 관리한다.
@@ -118,7 +118,7 @@ single 의 모든 패턴은 one-way 측정 surface를 사용한다.
 위 항목이 이미 존재하지만 실제로는 ready 이벤트 하나 대기하거나 phase 종료를
 우회적으로 표현한 것뿐이면 삭제한다.
 
-> 공통 금지 단계(`quiescent` 등)는 [PERF_POLICY.md § 1.1](./PERF_POLICY.md) 참조.
+> 공통 금지 단계(`quiescent` 등)는 [PERF_POLICY.md § 1.1](PERF_POLICY.md) 참조.
 
 ### 1.4 Poller wait timeout 및 shutdown 신호
 
@@ -133,7 +133,7 @@ single 패턴은 같은 process 안에서 sender thread + receiver(main) thread
 | receiver | `-1` poller wait → recv → `is_stop_token(...)` 검사 → 종료 |
 | `std::atomic<bool> sender_done` + 짧은 polling (1–10 ms) | **금지**. 기존 코드는 wire-level stop token 패턴으로 마이그레이션한다 |
 
-이 규칙의 의도는 multi 측 정책 ([PERF_MULTI_TEST_POLICY § 1.3.1](./PERF_MULTI_TEST_POLICY.md))
+이 규칙의 의도는 multi 측 정책 ([PERF_MULTI_TEST_POLICY § 1.3.1](PERF_MULTI_TEST_POLICY.md))
 과 동일한 idiom을 single 에도 적용하여 cross-platform / cross-binding
 shutdown 패턴을 wire 레벨로 통일하는 것이다. 별도 fd / eventfd / pipe /
 cancellation token / signal helper 를 도입하지 않는다.
@@ -246,7 +246,7 @@ active 구간 집계는 payload에 기록된 metric header를 기준으로만 �
 ## 3. 유효성 판정 (single 전용)
 
 > 상태 분류(success / unsupported / skip / fail), retry 금지, UNSUPPORTED 오용 금지
-> 등 공통 실패 처리 정책은 [PERF_POLICY.md § 7](./PERF_POLICY.md) 참조.
+> 등 공통 실패 처리 정책은 [PERF_POLICY.md § 7](PERF_POLICY.md) 참조.
 
 ### 3.1 완료 판정
 
@@ -280,7 +280,7 @@ status                = (expected_result_lines == actual_result_lines) ? "comple
 
 > 파일명 형식(`perf_<lang>_<suite>_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt`),
 > 저장 경로(`<suite>/report/`), 보존 정책(최대 100파일) 등 공통 규칙은
-> [PERF_POLICY.md § 2.1–2.3, § 4.3](./PERF_POLICY.md) 참조.
+> [PERF_POLICY.md § 2.1–2.3, § 4.3](PERF_POLICY.md) 참조.
 
 결과 파일에는 아래가 순서대로 기록된다.
 
@@ -317,10 +317,10 @@ status                = (expected_result_lines == actual_result_lines) ? "comple
 ## 5. 실행 방법
 
 > 정책 준수 실행기 목록과 통합 실행 옵션은
-> [PERF_POLICY.md § 3](./PERF_POLICY.md) 참조.
+> [PERF_POLICY.md § 3](PERF_POLICY.md) 참조.
 >
 > 수정 후 검증은 single smoke를 포함해야 하며, smoke 정의와 실행 규칙은
-> [PERF_POLICY.md § 3.2](./PERF_POLICY.md)를 따른다.
+> [PERF_POLICY.md § 3.2](PERF_POLICY.md)를 따른다.
 
 ### 5.1 CLI 옵션
 
@@ -447,7 +447,7 @@ SPOT 에서는 local pub/sub probe barrier 로 판정한다. perf는 추가 prec
 > 공통 환경 변수(`PERF_DEBUG`, `PERF_IO_THREADS`, `PERF_MSG_SIZES`,
 > `PERF_TRANSPORTS`, `PERF_TASKSET`, `PERF_FAIL_FAST`,
 > `PERF_DISABLE_RESOURCE_METRICS`, `PERF_MAX_SOCKETS`)는
-> [PERF_POLICY.md § 8](./PERF_POLICY.md) 참조.
+> [PERF_POLICY.md § 8](PERF_POLICY.md) 참조.
 
 single perf의 기본 `PERF_IO_THREADS`는 모든 언어와 모든 패턴에서 `1`이다.
 `SPOT`도 예외를 두지 않는다. `--io-threads` 또는 `PERF_IO_THREADS`를 명시한
@@ -487,7 +487,7 @@ single perf의 기본 `PERF_IO_THREADS`는 모든 언어와 모든 패턴에서 
 ## 8. 변경 이력
 
 - **v2.0 (2026-04-07)**
-  - 공통 정책을 [PERF_POLICY.md](./PERF_POLICY.md)로 통합, 중복 제거
+  - 공통 정책을 [PERF_POLICY.md](PERF_POLICY.md)로 통합, 중복 제거
   - single 전용 내용만 유지
 - **v1.9 (2026-03-21)**
   - 공통 원칙 및 바인딩 parity 기준 정렬

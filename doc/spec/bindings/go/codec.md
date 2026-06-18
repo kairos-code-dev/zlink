@@ -1,4 +1,4 @@
-[Go Binding Specification](./README.md) · [Bindings Policy](../README.md)
+[Go Binding Specification](README.md) · [Bindings Policy](../README.md)
 
 # Go Codec Extension Specification
 

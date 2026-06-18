@@ -1,7 +1,7 @@
-[English](./03-3-dealer.md) | [한국어](./03-3-dealer.ko.md)
+[English](03-3-dealer.md) | [한국어](03-3-dealer.ko.md)
 
 <!-- zlink-nav:start -->
-[← PUB/SUB](./03-2-pubsub.ko.md) | [ROUTER →](./03-4-router.ko.md)
+[← PUB/SUB](03-2-pubsub.ko.md) | [ROUTER →](03-4-router.ko.md)
 <!-- zlink-nav:end -->
 
 # DEALER 소켓
@@ -107,7 +107,7 @@ if (rc == ZLINK_RECV_OK) {
 
 > HWM(High-Water Mark, 큐 최대 허용 메시지 수) 도달 시 `zlink_send()`는 대기(기본) 또는 `ZLINK_DONTWAIT`로
 > `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 배압(backpressure) 패턴은
-> [성능 가이드](./10-performance.ko.md)를 참고.
+> [성능 가이드](10-performance.ko.md)를 참고.
 
 ## 3. 사용 예제
 
@@ -261,7 +261,7 @@ zlink_send(dealer2, &m2, 1, 0);
 ```
 
 > DEALER ↔ ROUTER 조합(로드밸런싱 + 응답 라우팅, 프록시 등)은
-> [ROUTER 소켓](./03-4-router.ko.md)을 참고.
+> [ROUTER 소켓](03-4-router.ko.md)을 참고.
 
 ## 6. 주의사항
 
@@ -321,7 +321,7 @@ zlink_connect(dealer, endpoint);  /* identified as D1 */
 ```
 
 ---
-[← PUB/SUB](./03-2-pubsub.ko.md) | [ROUTER →](./03-4-router.ko.md)
+[← PUB/SUB](03-2-pubsub.ko.md) | [ROUTER →](03-4-router.ko.md)
 
 ## 언어별 완전한 예제
 
@@ -383,5 +383,5 @@ DEALER가 ROUTER로 보내고 응답을 받는 자립형 예제다(모든 바인
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← PUB/SUB](./03-2-pubsub.ko.md) | [ROUTER →](./03-4-router.ko.md)
+[← PUB/SUB](03-2-pubsub.ko.md) | [ROUTER →](03-4-router.ko.md)
 <!-- zlink-nav:bottom:end -->

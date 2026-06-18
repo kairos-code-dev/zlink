@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const workspaceRoot = path.resolve(__dirname, '..', '..');
-const docRoot = path.join(workspaceRoot, 'doc');
+const docRoot = path.join(workspaceRoot, '..', '..', 'doc', 'framework', 'node');
 const samplesRoot = path.join(workspaceRoot, 'samples');
 
 const guideFiles = [

@@ -13,9 +13,9 @@
 
 설계 authority는 아래 문서들로 고정한다.
 
-- [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
-- [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
-- [`README.ko.md`](./README.ko.md)
+- [`gateway-removal-plan.ko.md`](gateway-removal-plan.ko.md)
+- [`socket-metadata-sharing-plan.ko.md`](socket-metadata-sharing-plan.ko.md)
+- [`README.ko.md`](README.ko.md)
 
 설계 판단이 흔들리면 먼저 authority 문서를 고치고 그 다음 코드를 수정한다.
 
@@ -23,17 +23,17 @@
 
 실행 authority:
 
-- [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+- [`gateway-removal-metadata-execution-guide.ko.md`](gateway-removal-metadata-execution-guide.ko.md)
 
 master plan authority:
 
-- [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
-- [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+- [`gateway-removal-plan.ko.md`](gateway-removal-plan.ko.md)
+- [`socket-metadata-sharing-plan.ko.md`](socket-metadata-sharing-plan.ko.md)
 
 자동 실행 관계:
 
 - 수동 실행 기준 문서는 이 guide와 상세 authority 문서들이다.
-- 자동 실행이 필요하면 [`run_gateway_removal_metadata_execution.sh`](./run_gateway_removal_metadata_execution.sh)를 사용한다.
+- 자동 실행이 필요하면 [`run_gateway_removal_metadata_execution.sh`](run_gateway_removal_metadata_execution.sh)를 사용한다.
 - 이 스크립트는 내부적으로 공통 supervisor인
   [`core/tools/run_codex_execution_guide_loop.sh`](../../../../core/tools/ralphloop/run_codex_execution_guide_loop.sh)
   를 호출한다.

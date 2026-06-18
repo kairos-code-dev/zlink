@@ -1,6 +1,6 @@
-[English](./utilities.md) | [한국어](./utilities.ko.md)
+[English](utilities.md) | [한국어](utilities.ko.md)
 
-[스펙 목차](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.ko.md) · [코어 목차](./README.ko.md)
+[스펙 목차](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.ko.md) · [코어 목차](README.ko.md)
 
 # 유틸리티
 

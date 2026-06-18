@@ -1,6 +1,6 @@
-[English](./errors.md) | [한국어](./errors.ko.md)
+[English](errors.md) | [한국어](errors.ko.md)
 
-[스펙 목차](../README.ko.md) · [코어 목차](./README.ko.md)
+[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
 
 # 에러 처리 & 버전
 
@@ -12,7 +12,7 @@
 `core/include/zlink.h`는 이 헤더를 포함해서 같은 공개 오류 표면을 다시
 노출합니다. 함수별 공개 결과 enum(`zlink_submit_result_t`,
 `zlink_close_result_t` 등)도 같은 헤더에 선언되며, 그 의미는
-[errno-map.ko.md](./errno-map.ko.md)에서 다룹니다.
+[errno-map.ko.md](errno-map.ko.md)에서 다룹니다.
 
 ## 에러 코드 상수
 

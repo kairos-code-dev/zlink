@@ -1,6 +1,6 @@
-[English](./polling.md) | [한국어](./polling.ko.md)
+[English](polling.md) | [한국어](polling.ko.md)
 
-[Spec Index](../README.md) · [Core Index](./README.md)
+[Spec Index](../README.md) · [Core Index](README.md)
 
 # Polling, Proxy & Capability
 

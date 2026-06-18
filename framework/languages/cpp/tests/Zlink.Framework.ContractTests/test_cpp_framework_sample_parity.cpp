@@ -722,8 +722,8 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
 TEST (CppFrameworkSampleParity, CommonSampleSpecsDocumentActorDestroyLifecycle)
 {
     const auto root = repository_root ();
-    const std::vector<std::string> common_specs{"framework/doc/spec/sample/bingo/README.ko.md",
-                                                "framework/doc/spec/sample/tictactoe/README.ko.md"};
+    const std::vector<std::string> common_specs{"framework/doc/framework/common/sample/bingo/README.ko.md",
+                                                "framework/doc/framework/common/sample/tictactoe/README.ko.md"};
 
     for (const auto &spec_path : common_specs) {
         const auto spec = read_file (root / spec_path);

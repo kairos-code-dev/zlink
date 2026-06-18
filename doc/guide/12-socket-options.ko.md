@@ -1,7 +1,7 @@
-[English](./12-socket-options.md) | [한국어](./12-socket-options.ko.md)
+[English](12-socket-options.md) | [한국어](12-socket-options.ko.md)
 
 <!-- zlink-nav:start -->
-[← 스레드 안전성](./11-thread-safety.ko.md)
+[← 스레드 안전성](11-thread-safety.ko.md)
 <!-- zlink-nav:end -->
 
 # 소켓 옵션 상세 가이드
@@ -607,5 +607,5 @@ zlink_socket_get_channel_name(socket, buf, sizeof(buf), &len);
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← 스레드 안전성](./11-thread-safety.ko.md)
+[← 스레드 안전성](11-thread-safety.ko.md)
 <!-- zlink-nav:bottom:end -->

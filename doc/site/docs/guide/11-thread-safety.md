@@ -1,7 +1,7 @@
-[English](./11-thread-safety.md) | [한국어](./11-thread-safety.ko.md)
+[English](11-thread-safety.md) | [한국어](11-thread-safety.ko.md)
 
 <!-- zlink-nav:start -->
-[← Performance](./10-performance.md) | [Socket Options →](./12-socket-options.md)
+[← Performance](10-performance.md) | [Socket Options →](12-socket-options.md)
 <!-- zlink-nav:end -->
 
 # Thread-Safety Guide
@@ -363,5 +363,5 @@ void *control(void *arg)
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Performance](./10-performance.md) | [Socket Options →](./12-socket-options.md)
+[← Performance](10-performance.md) | [Socket Options →](12-socket-options.md)
 <!-- zlink-nav:bottom:end -->

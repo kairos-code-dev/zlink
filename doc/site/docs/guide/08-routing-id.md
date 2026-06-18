@@ -1,7 +1,7 @@
-[English](./08-routing-id.md) | [한국어](./08-routing-id.ko.md)
+[English](08-routing-id.md) | [한국어](08-routing-id.ko.md)
 
 <!-- zlink-nav:start -->
-[← Registry](./07-4-registry.md) | [Message API →](./09-message-api.md)
+[← Registry](07-4-registry.md) | [Message API →](09-message-api.md)
 <!-- zlink-nav:end -->
 
 # Routing ID Concepts and Usage
@@ -329,5 +329,5 @@ if (rid_size == 2 && memcmp(rid, "D1", 2) == 0) {
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Registry](./07-4-registry.md) | [Message API →](./09-message-api.md)
+[← Registry](07-4-registry.md) | [Message API →](09-message-api.md)
 <!-- zlink-nav:bottom:end -->

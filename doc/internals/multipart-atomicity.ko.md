@@ -1,4 +1,4 @@
-[한국어](./multipart-atomicity.ko.md)
+[한국어](multipart-atomicity.ko.md)
 
 # Multipart 원자성 내부 설계
 

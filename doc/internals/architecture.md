@@ -1,4 +1,4 @@
-[English](./architecture.md) | [한국어](./architecture.ko.md)
+[English](architecture.md) | [한국어](architecture.ko.md)
 
 # zlink System Architecture - Internal Developer Reference
 
@@ -1464,10 +1464,10 @@ divorced from production reality.
 
 ### A. Related Documents
 
-- [ZMP v1.0 Protocol Details](./protocol-zmp.md)
-- [RAW Protocol Details](./protocol-raw.md)
-- [STREAM Socket WS/WSS Optimization](./stream-socket.md)
-- [Threading and Concurrency Model](./threading-model.md)
+- [ZMP v1.0 Protocol Details](protocol-zmp.md)
+- [RAW Protocol Details](protocol-raw.md)
+- [STREAM Socket WS/WSS Optimization](stream-socket.md)
+- [Threading and Concurrency Model](threading-model.md)
 - [Performance Characteristics and Tuning Guide](../guide/10-performance.md)
 
 ### B. Core Interface Summary

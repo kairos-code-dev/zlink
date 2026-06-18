@@ -1,7 +1,7 @@
-[English](./07-4-actor.md) | [한국어](./07-4-actor.ko.md)
+[English](07-4-actor.md) | [한국어](07-4-actor.ko.md)
 
 <!-- zlink-nav:start -->
-[← SPOT](./07-3-spot.ko.md) | [Registry →](./07-4-registry.ko.md)
+[← SPOT](07-3-spot.ko.md) | [Registry →](07-4-registry.ko.md)
 <!-- zlink-nav:end -->
 
 # SPOT Actor 사용 가이드
@@ -32,7 +32,7 @@
 **Actor에게 메시지는 STREAM 세션으로 전달한다.** 외부 클라이언트가 STREAM으로
 연결하면 그 **세션에 Actor를 bind**하고, 세션으로 들어온 패킷을 **그 actor id를 보고
 relay**한다 — `세션 bind → actor 지정 relay`로 Actor에게 메시지가 닿는다(백엔드에서
-Spot끼리 주고받는 메시징은 별개 경로이며 [Spot 가이드](./07-3-spot.ko.md)에서
+Spot끼리 주고받는 메시징은 별개 경로이며 [Spot 가이드](07-3-spot.ko.md)에서
 다룬다). 받는 쪽을 연결이 아니라 actor id로 가리키므로, 클라이언트가 끊겼다 **같은
 서버**에 다시 붙으면 actor id로 같은 Actor에 다시 bind해 이어 가고, **다른 서버**의
 Actor에 연결하려면 discovery로 그 Actor를 찾아야 한다.
@@ -215,9 +215,9 @@ sequenceDiagram
 - 외부 raw TCP 클라이언트를 STREAM 게이트웨이로 실제 연결하는 더 큰 패턴:
   `actor_room_server`, `actor_gateway_relay`.
 - 정확한 계약: [SPOT spec](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/service/spot.ko.md). 개념·언제 쓰나:
-  [서비스 개요 §멘탈 모델](./07-0-services.ko.md).
+  [서비스 개요 §멘탈 모델](07-0-services.ko.md).
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← SPOT](./07-3-spot.ko.md) | [Registry →](./07-4-registry.ko.md)
+[← SPOT](07-3-spot.ko.md) | [Registry →](07-4-registry.ko.md)
 <!-- zlink-nav:bottom:end -->

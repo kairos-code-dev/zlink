@@ -1,7 +1,7 @@
-[English](./07-1-discovery.md) | [한국어](./07-1-discovery.ko.md)
+[English](07-1-discovery.md) | [한국어](07-1-discovery.ko.md)
 
 <!-- zlink-nav:start -->
-[← Services](./07-0-services.md) | [SPOT →](./07-3-spot.md)
+[← Services](07-0-services.md) | [SPOT →](07-3-spot.md)
 <!-- zlink-nav:end -->
 
 # Service Discovery
@@ -270,7 +270,7 @@ zlink_discovery_destroy(&discovery);
 
 For the new multi-service SpotNode topology, use
 `ZLINK_AUTO_CONNECT_CLIENT_SERVER` for channel DEALER calls — see the SPOT guide
-[§3.1 Discovery-Based Automatic Mesh](./07-3-spot.md#31-discovery-based-automatic-mesh).
+[§3.1 Discovery-Based Automatic Mesh](07-3-spot.md#31-discovery-based-automatic-mesh).
 
 ## 4.1 Socket Family Discovery
 
@@ -305,7 +305,7 @@ terminates all attached sockets.
 ## 4.2 Attaching Channel Dealers to a SpotNode
 
 A `SpotNode` uses one SPOT Discovery for its own mesh wiring
-(see the [SPOT Guide](./07-3-spot.md)). When the node needs to call
+(see the [SPOT Guide](07-3-spot.md)). When the node needs to call
 **other channels**, it attaches a `DEALER` per channel.
 
 ```c
@@ -410,10 +410,10 @@ via `connect_registry()` is for **HA (failover)**, not for service visibility.
 
 ## 7. Next Steps
 
-- [SPOT PUB/SUB](./07-3-spot.md) -- Discovery-based location-transparent publish/subscribe
-- [Registry Guide](./07-4-registry.md) -- Cluster setup, topology introspection, and operational patterns
+- [SPOT PUB/SUB](07-3-spot.md) -- Discovery-based location-transparent publish/subscribe
+- [Registry Guide](07-4-registry.md) -- Cluster setup, topology introspection, and operational patterns
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Services](./07-0-services.md) | [SPOT →](./07-3-spot.md)
+[← Services](07-0-services.md) | [SPOT →](07-3-spot.md)
 <!-- zlink-nav:bottom:end -->

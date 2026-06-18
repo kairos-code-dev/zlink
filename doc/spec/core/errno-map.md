@@ -1,6 +1,6 @@
-[English](./errno-map.md) | [한국어](./errno-map.ko.md)
+[English](errno-map.md) | [한국어](errno-map.ko.md)
 
-[Spec Index](../README.md) · [Core Index](./README.md)
+[Spec Index](../README.md) · [Core Index](README.md)
 
 # Per-Function Result Enums
 

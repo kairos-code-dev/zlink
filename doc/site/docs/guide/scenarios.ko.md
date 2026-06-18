@@ -1,4 +1,4 @@
-[한국어](./scenarios.ko.md)
+[한국어](scenarios.ko.md)
 
 [가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md)
 
@@ -10,7 +10,7 @@
 위해서다.
 
 > 각 시나리오는 모든 언어의 `bindings/<lang>/samples/`에 동일 이름으로 실행 가능한
-> 샘플이 있다. 가이드 코드는 이 샘플과 1:1로 대응한다([예제 규약](./EXAMPLES.ko.md)).
+> 샘플이 있다. 가이드 코드는 이 샘플과 1:1로 대응한다([예제 규약](EXAMPLES.ko.md)).
 
 ## 정규 시나리오
 
@@ -47,5 +47,5 @@
 
 ---
 
-> 더 보기: [소켓 패턴 선택](./03-0-socket-patterns.ko.md) ·
-> [바인딩 가이드](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/bindings/README.ko.md) · [예제 규약](./EXAMPLES.ko.md).
+> 더 보기: [소켓 패턴 선택](03-0-socket-patterns.ko.md) ·
+> [바인딩 가이드](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/bindings/README.ko.md) · [예제 규약](EXAMPLES.ko.md).

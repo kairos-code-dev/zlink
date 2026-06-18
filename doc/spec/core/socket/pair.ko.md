@@ -1,7 +1,7 @@
-[English](./pair.md) | [한국어](./pair.ko.md)
+[English](pair.md) | [한국어](pair.ko.md)
 
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](./README.ko.md)
+[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md)
 
 # 소켓 -- PAIR
 

@@ -1,7 +1,7 @@
-[English](./05-tls-security.md) | [한국어](./05-tls-security.ko.md)
+[English](05-tls-security.md) | [한국어](05-tls-security.ko.md)
 
 <!-- zlink-nav:start -->
-[← Transport](./04-transports.ko.md) | [모니터링 →](./06-monitoring.ko.md)
+[← Transport](04-transports.ko.md) | [모니터링 →](06-monitoring.ko.md)
 <!-- zlink-nav:end -->
 
 # TLS/SSL 설정 및 보안 가이드
@@ -317,5 +317,5 @@ zlink_ctx_term(ctx);
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Transport](./04-transports.ko.md) | [모니터링 →](./06-monitoring.ko.md)
+[← Transport](04-transports.ko.md) | [모니터링 →](06-monitoring.ko.md)
 <!-- zlink-nav:bottom:end -->

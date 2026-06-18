@@ -1,6 +1,6 @@
-[English](./errors.md) | [한국어](./errors.ko.md)
+[English](errors.md) | [한국어](errors.ko.md)
 
-[Spec Index](../README.md) · [Core Index](./README.md)
+[Spec Index](../README.md) · [Core Index](README.md)
 
 # Error Handling & Version
 
@@ -12,7 +12,7 @@ The public extended errno definitions live in `core/include/zlink_errno.h`.
 `core/include/zlink.h` includes that header and re-exports the same public
 error surface. The per-function public result enums (`zlink_submit_result_t`,
 `zlink_close_result_t`, and the rest) are declared in the same header; their
-semantics are specified in [errno-map.md](./errno-map.md).
+semantics are specified in [errno-map.md](errno-map.md).
 
 ## Error Code Constants
 

@@ -24,7 +24,7 @@
 이 문서는 `gateway` 삭제 이후 후속 작업을 다룬다.
 즉 이 계획은 `gateway` 존치를 전제로 공통화를 준비하는 문서가 아니다.
 
-- 선행 작업: [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)의 삭제 범위 실행
+- 선행 작업: [`gateway-removal-plan.ko.md`](gateway-removal-plan.ko.md)의 삭제 범위 실행
 - 이 문서의 역할: 삭제 후에도 필요한 요구만 더 작은 metadata/member query surface로 재도입
 - 비전제: `gateway` API/타입/프로토콜을 유지한 채 내부만 공통화하는 접근
 

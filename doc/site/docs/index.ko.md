@@ -5,22 +5,22 @@ zlink 문서에 오신 것을 환영합니다. zlink은 libzmq 기반의 현대�
 
 ## 시작하기
 
-- [개요](./guide/01-overview.md) — 아키텍처와 libzmq 대비 주요 변경점
-- [핵심 API](./guide/02-core-api.md) — Context, Socket, Message 기본
+- [개요](guide/01-overview.md) — 아키텍처와 libzmq 대비 주요 변경점
+- [핵심 API](guide/02-core-api.md) — Context, Socket, Message 기본
 
 ## 소켓 패턴
 
-- [PAIR](./guide/03-1-pair.md) — 1:1 양방향
-- [PUB/SUB](./guide/03-2-pubsub.md) — 토픽 기반 발행/구독
-- [DEALER](./guide/03-3-dealer.md) — 비동기 요청
-- [ROUTER](./guide/03-4-router.md) — 라우팅
-- [STREAM](./guide/03-5-stream.md) — Raw TCP 통신
+- [PAIR](guide/03-1-pair.md) — 1:1 양방향
+- [PUB/SUB](guide/03-2-pubsub.md) — 토픽 기반 발행/구독
+- [DEALER](guide/03-3-dealer.md) — 비동기 요청
+- [ROUTER](guide/03-4-router.md) — 라우팅
+- [STREAM](guide/03-5-stream.md) — Raw TCP 통신
 
 ## 서비스
 
-- [Discovery](./guide/07-1-discovery.md) — 피어 발견
-- [SPOT](./guide/07-3-spot.md) — 위치 투명 발행/구독 메시
-- [Registry](./guide/07-4-registry.md) — 서비스 레지스트리
+- [Discovery](guide/07-1-discovery.md) — 피어 발견
+- [SPOT](guide/07-3-spot.md) — 위치 투명 발행/구독 메시
+- [Registry](guide/07-4-registry.md) — 서비스 레지스트리
 
 ## 코드 예제
 

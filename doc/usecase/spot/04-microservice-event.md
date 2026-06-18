@@ -1,4 +1,4 @@
-[← 메트릭 수집](./03-distributed-metrics.md) | [목록](./README.md) | [채널 메시징 →](./05-batched-channel-chat.md)
+[← 메트릭 수집](03-distributed-metrics.md) | [목록](README.md) | [채널 메시징 →](05-batched-channel-chat.md)
 
 # 마이크로서비스 이벤트 전파
 

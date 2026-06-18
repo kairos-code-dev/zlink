@@ -1,4 +1,4 @@
-[← 이벤트 전파](./04-microservice-event.md) | [목록](./README.md)
+[← 이벤트 전파](04-microservice-event.md) | [목록](README.md)
 
 # 배치 기반 채널 메시징 (채팅)
 

@@ -1,4 +1,4 @@
-[한국어](./reliability.ko.md)
+[한국어](reliability.ko.md)
 
 [가이드 목록](https://github.com/kairos-code-dev/zlink/blob/main/doc/guide/README.ko.md)
 
@@ -33,8 +33,8 @@
 
 > HWM은 기본적으로 **Auto HWM**(연결 수에 맞춰 자동 조정)이다. 프로필은
 > `BALANCED`(기본)·`COMPACT`·`LOW_LATENCY`·`THROUGHPUT`. 컨텍스트 auto-HWM을 끄면
-> 고정 기본값 `1000`을 쓴다. 자세한 내용은 [10 성능](./10-performance.ko.md),
-> [12 소켓 옵션](./12-socket-options.ko.md).
+> 고정 기본값 `1000`을 쓴다. 자세한 내용은 [10 성능](10-performance.ko.md),
+> [12 소켓 옵션](12-socket-options.ko.md).
 
 ---
 
@@ -54,7 +54,7 @@ ACK를 제공하지 않는다** — 전달 확인이 필요하면 요청/응답�
 > **PUB 기본값 주의**: zlink의 `ZLINK_PUB_OPT_NODROP` **기본값은 `1`**이다. 즉
 > 느린 구독자 때문에 HWM이 차면 조용히 버리지 않고 `zlink_publish()`가
 > `BACKPRESSURED`를 반환한다. 전통적 ZeroMQ처럼 "느리면 버린다"를 원하면
-> `NODROP=0`을 **명시적으로** 설정한다([03-2 PUB/SUB](./03-2-pubsub.ko.md)).
+> `NODROP=0`을 **명시적으로** 설정한다([03-2 PUB/SUB](03-2-pubsub.ko.md)).
 
 **PUB/SUB의 구조적 손실 지점** (보장되지 않음, 정직하게):
 - **slow-joiner**: 구독이 발행자에 전파되기 전에 발행된 메시지는 받지 못한다.
@@ -85,7 +85,7 @@ ACK를 제공하지 않는다** — 전달 확인이 필요하면 요청/응답�
 - `RECONNECT_IVL` 기본 `100ms`. `RECONNECT_IVL_MAX > 0`이면 지수 백오프(실패마다
   2배, MAX에서 상한).
 - 재연결 시점은 모니터 이벤트로 관측한다: `DISCONNECTED` → `CONNECT_DELAYED` /
-  `CONNECT_RETRIED` → `CONNECTION_READY`([06 모니터링](./06-monitoring.ko.md)).
+  `CONNECT_RETRIED` → `CONNECTION_READY`([06 모니터링](06-monitoring.ko.md)).
 
 **in-flight 메시지는 재연결을 가로질러 보존이 보장되지 않는다.** 끊기기 전에 큐에
 있던 메시지는 (a) 빠르게 재연결되면 그대로 흘러가고, (b) 그렇지 않으면 유실될 수
@@ -94,7 +94,7 @@ ACK를 제공하지 않는다** — 전달 확인이 필요하면 요청/응답�
 
 **LINGER** — 소켓을 닫을 때 미전송 메시지를 얼마나 기다릴지 정한다. 기본은 컨텍스트
 상속(`BLOCKY=1`이면 `-1` = 무한 대기). `0`이면 즉시 닫고 미전송 폐기. SUB/XSUB는
-생성 시 `0`으로 강제된다([12 소켓 옵션](./12-socket-options.ko.md)).
+생성 시 `0`으로 강제된다([12 소켓 옵션](12-socket-options.ko.md)).
 
 > 끊김에 강건해야 한다면: `DISCONNECTED`를 모니터링해 복구 로직을 돌리고, 중요한
 > 데이터는 요청/응답으로 ACK를 받거나 응용 레벨 재전송 버퍼를 둔다.
@@ -115,7 +115,7 @@ ACK를 제공하지 않는다** — 전달 확인이 필요하면 요청/응답�
   처리되면 안 되는 경우 응용이 dedup 키로 중복을 제거한다.
 
 가능한 결과값: `OK` · `TIMED_OUT` · `NOT_FOUND`(피어 도달 불가) ·
-`PROTOCOL_ERROR` · `TERMINATED` 등([03-3 DEALER](./03-3-dealer.ko.md)).
+`PROTOCOL_ERROR` · `TERMINATED` 등([03-3 DEALER](03-3-dealer.ko.md)).
 
 ---
 
@@ -127,12 +127,12 @@ SPOT routed 평면과 Actor 메시징은 raw 소켓 위에 라우팅을 얹은 �
 - SPOT routed 요청/응답은 raw 요청/응답과 같은 타임아웃 의미를 따른다(5절).
 - Actor가 이동(다른 Spot으로 join/leave) 중인 메시지는 유실되거나 다른 Spot으로
   갈 수 있다. 활성 경로는 user Spot **join 성공 시점**에 게시된다([07-4
-  Actor](./07-4-actor.ko.md)).
+  Actor](07-4-actor.ko.md)).
 - SPOT 토픽 pub/sub은 raw PUB/SUB와 같은 특성(slow-joiner, 느린 구독자 흐름 제어)을
   가진다.
 
 SPOT이 더해 주는 것은 전달 보장이 아니라 **실행 직렬성**(한 Spot의 메시지를 한 줄로
-처리)과 **위치 투명성**이다([07-3 SPOT](./07-3-spot.ko.md)).
+처리)과 **위치 투명성**이다([07-3 SPOT](07-3-spot.ko.md)).
 
 ---
 
@@ -141,7 +141,7 @@ SPOT이 더해 주는 것은 전달 보장이 아니라 **실행 직렬성**(한
 **보장:**
 - 멀티파트 메시지의 원자성(전체 또는 없음).
 - 한 연결/피어 안에서의 순서.
-- wire 무결성(ZMP 프레이밍, [ZMP 레퍼런스](./zmp-protocol.ko.md)).
+- wire 무결성(ZMP 프레이밍, [ZMP 레퍼런스](zmp-protocol.ko.md)).
 - 흐름 제어 신호(`BACKPRESSURED`)의 명확성.
 
 **비보장 (응용/인프라 책임):**
@@ -151,7 +151,7 @@ SPOT이 더해 주는 것은 전달 보장이 아니라 **실행 직렬성**(한
 - PUB/SUB의 slow-joiner·느린 구독자(기본은 drop 대신 backpressure지만, 여전히
   전달이 막힐 수 있음).
 
-> 더 보기: [10 성능](./10-performance.ko.md)(HWM·튜닝) ·
-> [12 소켓 옵션](./12-socket-options.ko.md)(LINGER·RECONNECT·HWM) ·
-> [06 모니터링](./06-monitoring.ko.md)(연결 이벤트) ·
-> [설계 근거](./design-rationale.ko.md)(왜 이런 모델인가).
+> 더 보기: [10 성능](10-performance.ko.md)(HWM·튜닝) ·
+> [12 소켓 옵션](12-socket-options.ko.md)(LINGER·RECONNECT·HWM) ·
+> [06 모니터링](06-monitoring.ko.md)(연결 이벤트) ·
+> [설계 근거](design-rationale.ko.md)(왜 이런 모델인가).

@@ -1,7 +1,7 @@
-[English](./07-3-spot.md) | [한국어](./07-3-spot.ko.md)
+[English](07-3-spot.md) | [한국어](07-3-spot.ko.md)
 
 <!-- zlink-nav:start -->
-[← Discovery](./07-1-discovery.ko.md) | [SPOT Actor →](./07-4-actor.ko.md)
+[← Discovery](07-1-discovery.ko.md) | [SPOT Actor →](07-4-actor.ko.md)
 <!-- zlink-nav:end -->
 
 # SPOT 사용 가이드
@@ -10,7 +10,7 @@
 정확한 함수 계약은 [SPOT spec](../spec/core/service/spot.ko.md)를 본다.
 
 > SPOT을 **언제·왜** 쓰는지(raw 소켓·Discovery·Actor와의 관계, 실행 직렬성)는
-> [서비스 개요 §멘탈 모델](./07-0-services.ko.md#12-멘탈-모델--어느-층을-언제-쓰나)에서
+> [서비스 개요 §멘탈 모델](07-0-services.ko.md#12-멘탈-모델--어느-층을-언제-쓰나)에서
 > 먼저 잡고 오면 이 문서의 how-to가 더 잘 읽힌다.
 
 ## 1. SPOT이 하는 일
@@ -418,7 +418,7 @@ for (;;) {
 ## 7. Actor로 세션 메시지 분배하기
 
 Actor 생성, Spot join/leave, 종료, STREAM session bind, C sample은
-[SPOT Actor 가이드](./07-4-actor.ko.md)를 본다.
+[SPOT Actor 가이드](07-4-actor.ko.md)를 본다.
 
 ## 8. 공개 폴러와의 관계, Spot 타이머
 
@@ -624,9 +624,9 @@ core API를 직접 사용할 때는 `zlink_spot_node_connect_router_channel_peer
 
 ## 15. Actor C sample
 
-[SPOT Actor 가이드](./07-4-actor.ko.md#5-actor-c-sample)를 본다.
+[SPOT Actor 가이드](07-4-actor.ko.md#5-actor-c-sample)를 본다.
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Discovery](./07-1-discovery.ko.md) | [SPOT Actor →](./07-4-actor.ko.md)
+[← Discovery](07-1-discovery.ko.md) | [SPOT Actor →](07-4-actor.ko.md)
 <!-- zlink-nav:bottom:end -->

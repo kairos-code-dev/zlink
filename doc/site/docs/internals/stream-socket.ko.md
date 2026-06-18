@@ -1,4 +1,4 @@
-[English](./stream-socket.md) | [한국어](./stream-socket.ko.md)
+[English](stream-socket.md) | [한국어](stream-socket.ko.md)
 
 # STREAM 소켓 WS/WSS 최적화
 
@@ -190,7 +190,7 @@ zlink_stream_packet_handler_fn(stream,
 
 STREAM 은 transport 전반에 공통된 기본 성능 프로파일을 쓴다.
 STREAM 외 공통 소켓 기본값은
-[socket-option-defaults.ko.md](./socket-option-defaults.ko.md)를 참고한다.
+[socket-option-defaults.ko.md](socket-option-defaults.ko.md)를 참고한다.
 
 ### 7.1 내부 상수 고정 항목
 
@@ -256,7 +256,7 @@ STREAM handle이 session owner SpotNode를 얻는 경로는 두 가지다.
 
 STREAM socket은 relay 상태를 직접 보관하지 않는다. owner 매핑, session-to-Actor binding,
 relay 경로는 모두 SpotNode Actor runtime에 있다. 배선과 local/remote relay 경로, cleanup
-규칙은 [spot-internals.ko.md](./spot-internals.ko.md) 12절("STREAM session과 Actor
+규칙은 [spot-internals.ko.md](spot-internals.ko.md) 12절("STREAM session과 Actor
 binding")에 정리되어 있다. STREAM 계층에서 중요한 것은 `source_rid`별 byte pipe가 relay가
 타는 transport라는 점, 그리고 session disconnect가 bound Actor의 joined Spot은 바꾸지 않고 그
 session의 binding만 제거한다는 점뿐이다.

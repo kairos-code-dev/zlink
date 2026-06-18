@@ -1,7 +1,7 @@
 # Actor 위치 생명주기와 Spot join 검토 및 구현 후 리팩토링 계획
 
 이 문서는
-[`spot-actor-location-lifecycle.ko.md`](./spot-actor-location-lifecycle.ko.md)를
+[`spot-actor-location-lifecycle.ko.md`](spot-actor-location-lifecycle.ko.md)를
 구현 가능한 수준으로 완성하고, 구현 뒤 POSD 기반 리팩토링까지 끝내기 위한 반복
 검토 계획이다.
 
@@ -30,9 +30,9 @@ draft 검토 단계의 목표:
 ## 대상 문서
 
 - 설계 초안:
-  [`doc/spec/draft/spot-actor-location-lifecycle.ko.md`](./spot-actor-location-lifecycle.ko.md)
+  [`doc/spec/draft/spot-actor-location-lifecycle.ko.md`](spot-actor-location-lifecycle.ko.md)
 - 이 계획:
-  [`doc/spec/draft/spot-actor-location-lifecycle-implementation-plan.ko.md`](./spot-actor-location-lifecycle-implementation-plan.ko.md)
+  [`doc/spec/draft/spot-actor-location-lifecycle-implementation-plan.ko.md`](spot-actor-location-lifecycle-implementation-plan.ko.md)
 
 ## 참조할 파일
 
@@ -112,7 +112,7 @@ draft 검토 단계의 목표:
 internals 문서는 수정하지 않는다. 아래 절차를 체크리스트가 모두 통과할 때까지
 반복한다.
 
-1. [`spot-actor-location-lifecycle.ko.md`](./spot-actor-location-lifecycle.ko.md)를
+1. [`spot-actor-location-lifecycle.ko.md`](spot-actor-location-lifecycle.ko.md)를
    처음부터 끝까지 읽는다.
 2. 현재 `core/include/zlink.h`와 실제 구현 파일을 확인해서 draft 변경안과 현재 구현의
    차이를 다시 검증한다.

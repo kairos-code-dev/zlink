@@ -1,6 +1,6 @@
-[English](./spot.md) | [한국어](./spot.ko.md)
+[English](spot.md) | [한국어](spot.ko.md)
 
-[Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/README.md) · [Core Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md) · [Service Common](./README.md)
+[Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/README.md) · [Core Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md) · [Service Common](README.md)
 
 # SPOT
 

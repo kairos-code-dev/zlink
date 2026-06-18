@@ -2,8 +2,8 @@
 
 이 문서는 아래 두 초안을 실제 코드, 샘플, 정식 spec, guide에 반영하기 위한 실행 계획이다.
 
-- [`framework-object-messaging-surface.ko.md`](./framework-object-messaging-surface.ko.md)
-- [`bindings-message-boundary-alignment.ko.md`](./bindings-message-boundary-alignment.ko.md)
+- [`framework-object-messaging-surface.ko.md`](framework-object-messaging-surface.ko.md)
+- [`bindings-message-boundary-alignment.ko.md`](bindings-message-boundary-alignment.ko.md)
 
 대상 draft 문서는 **구현 전 초안**이며 **현재 공개 계약이 아니다**. 구현 전 단계에서는
 정식 spec, guide, internals 문서에 새 계약을 섞어 쓰지 않는다. 이 문서는 구현 순서,
@@ -25,7 +25,7 @@
 
 ### Framework 기준
 
-[`framework-object-messaging-surface.ko.md`](./framework-object-messaging-surface.ko.md)
+[`framework-object-messaging-surface.ko.md`](framework-object-messaging-surface.ko.md)
 에서 확정한 기준을 따른다.
 
 - high-level outbound API는 `Message`가 아니라 업무 객체를 받는다.
@@ -37,7 +37,7 @@
 
 ### Bindings 기준
 
-[`bindings-message-boundary-alignment.ko.md`](./bindings-message-boundary-alignment.ko.md)
+[`bindings-message-boundary-alignment.ko.md`](bindings-message-boundary-alignment.ko.md)
 에서 확정한 기준을 따른다.
 
 - bindings base `Message`는 bytes container로 유지한다.

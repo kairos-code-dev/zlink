@@ -1,7 +1,7 @@
-[English](./03-5-stream.md) | [한국어](./03-5-stream.ko.md)
+[English](03-5-stream.md) | [한국어](03-5-stream.ko.md)
 
 <!-- zlink-nav:start -->
-[← ROUTER](./03-4-router.ko.md) | [프록시 →](./03-6-proxy.ko.md)
+[← ROUTER](03-4-router.ko.md) | [프록시 →](03-6-proxy.ko.md)
 <!-- zlink-nav:end -->
 
 # STREAM 소켓
@@ -29,7 +29,7 @@ external raw client  <---- RAW(4B length + body) ---->  STREAM(server)
 > 할 수 있다. 각 client session을 Actor에 bind하면 session 트래픽이 그 Actor와 주고받는
 > 형태로 relay된다. 이 패턴은 STREAM 소켓을 `zlink_stream_attach_actor_gateway()`로
 > SpotNode에 attach하는 데서 출발한다. session-to-Actor 전체 흐름은
-> [Actor 가이드](./07-4-actor.ko.md)를 참고한다.
+> [Actor 가이드](07-4-actor.ko.md)를 참고한다.
 
 ---
 
@@ -127,7 +127,7 @@ zlink_recv_handler(stream, on_message, NULL);
 
 > 송신 큐가 가득 차면(HWM, 고수위 표시) `zlink_send_rid()`는 블록(기본) 또는
 > `ZLINK_DONTWAIT` 로 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다.
-> 배압(backpressure) 패턴은 [성능 가이드](./10-performance.ko.md)를 참고.
+> 배압(backpressure) 패턴은 [성능 가이드](10-performance.ko.md)를 참고.
 
 - 수신 콜백은 한 번에 하나만 등록할 수 있으며, 이미 등록된 상태에서 attach를
   호출하면 `errno=EBUSY`와 함께 `-1`을 반환한다.
@@ -260,7 +260,7 @@ STREAM listener는 raw TCP 피어가 보낸 바이트를 직접 받을 수 있�
 위 테스트들은 STREAM 서버 + raw client 경로를 기준으로 동작한다.
 
 ---
-[← ROUTER](./03-4-router.ko.md) | [Proxy →](./03-6-proxy.ko.md) | [Transport →](./04-transports.ko.md)
+[← ROUTER](03-4-router.ko.md) | [Proxy →](03-6-proxy.ko.md) | [Transport →](04-transports.ko.md)
 
 ## 언어별 완전한 예제
 
@@ -380,5 +380,5 @@ STREAM 소켓으로 원시 바이트를 주고받는 자립형 예제다(모든 
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← ROUTER](./03-4-router.ko.md) | [프록시 →](./03-6-proxy.ko.md)
+[← ROUTER](03-4-router.ko.md) | [프록시 →](03-6-proxy.ko.md)
 <!-- zlink-nav:bottom:end -->

@@ -39,14 +39,14 @@ On Windows PowerShell:
 .\framework\languages\dotnet\samples\TicTacToe\run_sample.ps1
 ```
 
-The standalone client lives in [`Client`](./Client). Use it when you want to
+The standalone client lives in [`Client`](Client). Use it when you want to
 read or run just the client side of the flow. `Program` reads the client options
 and runs `TicTacToeClientScenario`; the scenario calls HTTP `POST /games`, reads
 the returned Play endpoint, creates the two stream connectors, and then verifies
 authentication, joins, moves, and pushes.
-The request, response, and push DTOs live in [`Shared`](./Shared) so the
+The request, response, and push DTOs live in [`Shared`](Shared) so the
 server and client use the same protocol contract. The reusable client flow lives
-in [`Client`](./Client); the sample runner starts the server roles and then
+in [`Client`](Client); the sample runner starts the server roles and then
 runs that client as the self-check.
 
 The server executable also supports separate roles:

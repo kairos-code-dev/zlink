@@ -1,4 +1,4 @@
-[English](./README.md) | [한국어](./README.ko.md)
+[English](README.md) | [한국어](README.ko.md)
 
 [Spec Index](https://github.com/kairos-code-dev/zlink/blob/main/doc/README.md)
 
@@ -13,30 +13,30 @@ is defined in `core/include/zlink.h`.
 
 | Document | Description |
 |----------|-------------|
-| [errors.md](./errors.md) | Error codes, error strings, and version query |
-| [errno-map.md](./errno-map.md) | Errno matrix for send, request, and reply functions |
-| [context.md](./context.md) | Context creation, termination, and option tuning |
-| [message.md](./message.md) | Message lifecycle, data access, ownership, and properties |
+| [errors.md](errors.md) | Error codes, error strings, and version query |
+| [errno-map.md](errno-map.md) | Errno matrix for send, request, and reply functions |
+| [context.md](context.md) | Context creation, termination, and option tuning |
+| [message.md](message.md) | Message lifecycle, data access, ownership, and properties |
 | [socket/](socket.md) | Socket specifications (common + per-type) |
-| [monitoring.md](./monitoring.md) | Socket monitors, monitor snapshots, and peer inspection |
-| [events.md](./events.md) | Canonical event catalog and readiness semantics |
+| [monitoring.md](monitoring.md) | Socket monitors, monitor snapshots, and peer inspection |
+| [events.md](events.md) | Canonical event catalog and readiness semantics |
 | [service/README.md](spot.md) | Shared service-layer concepts and document split |
 | [service/registry.md](registry.md) | Service registry creation, configuration, and clustering |
 | [service/discovery.md](discovery.md) | Service discovery, subscription, and peer lookup |
 | [service/spot.md](spot.md) | SPOT topic-based PUB/SUB and routed messaging |
-| [polling.md](./polling.md) | Proxy helpers and capability query |
-| [utilities.md](./utilities.md) | Timers, threads, stopwatch, and atomics |
+| [polling.md](polling.md) | Proxy helpers and capability query |
+| [utilities.md](utilities.md) | Timers, threads, stopwatch, and atomics |
 
 ## Types
 
 | Type | Defined in | Description |
 |------|-----------|-------------|
-| [`zlink_msg_t`](./message.md) | message.md | Opaque message container (64-byte, stack-allocatable) |
-| [`zlink_routing_id_t`](./message.md) | message.md | Peer routing identity (1-byte size + 255-byte data) |
+| [`zlink_msg_t`](message.md) | message.md | Opaque message container (64-byte, stack-allocatable) |
+| [`zlink_routing_id_t`](message.md) | message.md | Peer routing identity (1-byte size + 255-byte data) |
 | `zlink_socket_msg_handler_fn` | [socket/](socket.md) | Raw `STREAM` raw receive callback |
-| [`zlink_monitor_event_t`](./monitoring.md) | monitoring.md | Monitor event structure (event, value, addresses) |
-| [`zlink_monitor_snapshot_t`](./monitoring.md) | monitoring.md | Monitor snapshot (state and queue depth) |
-| [`zlink_fd_t`](./polling.md) | polling.md | Platform-dependent file descriptor type |
+| [`zlink_monitor_event_t`](monitoring.md) | monitoring.md | Monitor event structure (event, value, addresses) |
+| [`zlink_monitor_snapshot_t`](monitoring.md) | monitoring.md | Monitor snapshot (state and queue depth) |
+| [`zlink_fd_t`](polling.md) | polling.md | Platform-dependent file descriptor type |
 
 ## Callback Types
 
@@ -47,11 +47,11 @@ is defined in `core/include/zlink.h`.
 | [`zlink_reply_handler_fn`](socket.md) | socket/ | Asynchronous request-reply completion callback |
 | [`zlink_spot_handler_fn`](spot.md) | service/spot.md | SPOT routed message dispatch callback |
 | [`zlink_spot_dispatch_event_handler_fn`](spot.md) | service/spot.md | SPOT dispatch event callback |
-| [`zlink_monitor_handler_fn`](./monitoring.md) | monitoring.md | Socket monitor event callback |
+| [`zlink_monitor_handler_fn`](monitoring.md) | monitoring.md | Socket monitor event callback |
 | [`zlink_send_ready_handler_fn`](socket.md) | socket/ | Send-ready transition callback |
-| [`zlink_free_fn`](./message.md) | message.md | Deallocation callback for zero-copy messages |
-| [`zlink_timer_handler_fn`](./utilities.md) | utilities.md | Timer expiry callback |
-| [`zlink_thread_fn`](./utilities.md) | utilities.md | Thread entry-point function |
+| [`zlink_free_fn`](message.md) | message.md | Deallocation callback for zero-copy messages |
+| [`zlink_timer_handler_fn`](utilities.md) | utilities.md | Timer expiry callback |
+| [`zlink_thread_fn`](utilities.md) | utilities.md | Thread entry-point function |
 
 ## Internal Architecture
 

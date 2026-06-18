@@ -315,9 +315,9 @@ public sealed class RegressionTests
             var candidate = Path.Combine(
                 current.FullName,
                 "framework",
-                "languages",
-                "dotnet",
-                "doc");
+                "doc",
+                "framework",
+                "dotnet");
 
             if (Directory.Exists(candidate))
             {
@@ -328,7 +328,7 @@ public sealed class RegressionTests
         }
 
         throw new DirectoryNotFoundException(
-            "Could not find framework/languages/dotnet/doc from test runtime.");
+            "Could not find framework/doc/framework/dotnet from test runtime.");
     }
 
     private static string ResolveDoc(string fileName)

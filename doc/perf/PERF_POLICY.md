@@ -27,8 +27,8 @@
 | 문서 | 설명 |
 |------|------|
 | **PERF_POLICY.md** (본 문서) | 공통 원칙, 디렉터리 구조, RESULT 형식, 결과 저장, 출력 형식, 실패 처리, 환경 변수(공통), 리팩토링 원칙 |
-| [PERF_SINGLE_TEST_POLICY.md](./PERF_SINGLE_TEST_POLICY.md) | single suite 전용: recv 모델, phase, 패턴/transport, single 전용 환경 변수 |
-| [PERF_MULTI_TEST_POLICY.md](./PERF_MULTI_TEST_POLICY.md) | multi suite 전용: 프로세스 모델, backpressure, throughput/latency 측정, 패턴/transport, multi 전용 환경 변수 |
+| [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) | single suite 전용: recv 모델, phase, 패턴/transport, single 전용 환경 변수 |
+| [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) | multi suite 전용: 프로세스 모델, backpressure, throughput/latency 측정, 패턴/transport, multi 전용 환경 변수 |
 
 - 양 suite에 공통으로 적용되는 모든 규칙은 본 문서에서 관리한다.
 - 개별 정책 문서는 해당 suite **전용** 규칙만 기술하며, 공통 규칙은 본 문서를 참조한다.
@@ -592,8 +592,8 @@ perf/                                       # bindings/<lang>/perf/
   completion callback은 측정 data delivery surface로 분리하지 않는다.
 - **예외**: 공통 유틸리티 헤더는 `perf_` 접두어 없이 명명할 수 있다 (예: `bench_common.hpp`, `perf_common.hpp`).
 - 상세 파일명 규칙은 개별 정책 문서를 참조한다:
-  - Single: [PERF_SINGLE_TEST_POLICY.md § 10.1](./PERF_SINGLE_TEST_POLICY.md)
-  - Multi: [PERF_MULTI_TEST_POLICY.md § 11.1](./PERF_MULTI_TEST_POLICY.md)
+  - Single: [PERF_SINGLE_TEST_POLICY.md § 10.1](PERF_SINGLE_TEST_POLICY.md)
+  - Multi: [PERF_MULTI_TEST_POLICY.md § 11.1](PERF_MULTI_TEST_POLICY.md)
 
 #### 소스 위치 테이블
 
@@ -727,8 +727,8 @@ packet handler delivery:
 
 | suite | C 기준 스크립트 | bindings 스크립트 | 정책 문서 |
 |-------|--------------|-------------------|-----------|
-| single | `bindings/c/perf/run_benchmarks.sh` / `.ps1` | `bindings/<binding>/perf/run_benchmarks.sh` / binding-local 실행기 | [PERF_SINGLE_TEST_POLICY.md](./PERF_SINGLE_TEST_POLICY.md) |
-| multi | `bindings/c/perf/run_benchmarks_multi.sh` / `.ps1` | `bindings/<binding>/perf/run_benchmarks_multi.sh` / binding-local 실행기 | [PERF_MULTI_TEST_POLICY.md](./PERF_MULTI_TEST_POLICY.md) |
+| single | `bindings/c/perf/run_benchmarks.sh` / `.ps1` | `bindings/<binding>/perf/run_benchmarks.sh` / binding-local 실행기 | [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) |
+| multi | `bindings/c/perf/run_benchmarks_multi.sh` / `.ps1` | `bindings/<binding>/perf/run_benchmarks_multi.sh` / binding-local 실행기 | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) |
 
 ```bash
 # C 기준 single만 실행
@@ -980,8 +980,8 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - 바이너리 stderr는 stdout 결과에 통합하지 않지만, multi 엔진(`run_comparison.py`)은 stderr에서 `protocol not supported` 문자열을 감지하여 `unsupported` 자동 분류에 활용한다 (§ 7.4 참조).
 
 상세 형식은 suite별 정책 문서를 참조한다:
-- Single: [PERF_SINGLE_TEST_POLICY.md § 6.3](./PERF_SINGLE_TEST_POLICY.md)
-- Multi: [PERF_MULTI_TEST_POLICY.md § 6.3](./PERF_MULTI_TEST_POLICY.md)
+- Single: [PERF_SINGLE_TEST_POLICY.md § 6.3](PERF_SINGLE_TEST_POLICY.md)
+- Multi: [PERF_MULTI_TEST_POLICY.md § 6.3](PERF_MULTI_TEST_POLICY.md)
 
 **Single (runs=1):**
 ```text
@@ -1330,5 +1330,5 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 
 - 위 환경 변수는 C 기준과 모든 바인딩에서 동일하게 적용된다 (단, `PERF_RESULTS_MAX_FILES`는 multi 엔진만 참조하며, single 엔진은 100 하드코딩).
 - suite별 고유 환경 변수는 개별 정책 문서를 참조한다:
-  - Single: [PERF_SINGLE_TEST_POLICY.md § 11](./PERF_SINGLE_TEST_POLICY.md)
-  - Multi: [PERF_MULTI_TEST_POLICY.md § 12](./PERF_MULTI_TEST_POLICY.md)
+  - Single: [PERF_SINGLE_TEST_POLICY.md § 11](PERF_SINGLE_TEST_POLICY.md)
+  - Multi: [PERF_MULTI_TEST_POLICY.md § 12](PERF_MULTI_TEST_POLICY.md)

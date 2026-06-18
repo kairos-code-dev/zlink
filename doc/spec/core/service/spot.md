@@ -1,6 +1,6 @@
-English | [한국어](./spot.ko.md)
+English | [한국어](spot.ko.md)
 
-[Spec Index](../../README.md) · [Core Index](../README.md) · [Service Common](./README.md)
+[Spec Index](../../README.md) · [Core Index](../README.md) · [Service Common](README.md)
 
 # SPOT
 

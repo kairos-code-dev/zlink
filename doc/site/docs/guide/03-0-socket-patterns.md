@@ -1,7 +1,7 @@
-English | [한국어](./03-0-socket-patterns.ko.md)
+English | [한국어](03-0-socket-patterns.ko.md)
 
 <!-- zlink-nav:start -->
-[← Core API](./02-core-api.md) | [PAIR →](./03-1-pair.md)
+[← Core API](02-core-api.md) | [PAIR →](03-1-pair.md)
 <!-- zlink-nav:end -->
 
 # Socket Patterns Overview and Selection Guide
@@ -89,7 +89,7 @@ Is the communication peer an external client (browser, game)?
 
 > For location transparency (auto-connect, load balancing, topic mesh),
 > use the service layer (SPOT) instead of raw sockets.
-> See [Services Overview](./07-0-services.md) for details.
+> See [Services Overview](07-0-services.md) for details.
 
 ## 6. Sub-Documents
 
@@ -97,11 +97,11 @@ See the individual documents for detailed usage of each socket type.
 
 | Document | Socket | Description |
 |----------|--------|-------------|
-| [03-1-pair.md](./03-1-pair.md) | PAIR | 1:1 bidirectional exclusive connection |
-| [03-2-pubsub.md](./03-2-pubsub.md) | PUB/SUB/XPUB/XSUB | Publish-subscribe family |
-| [03-3-dealer.md](./03-3-dealer.md) | DEALER | Async request, round-robin |
-| [03-4-router.md](./03-4-router.md) | ROUTER | ID-based routing |
-| [03-5-stream.md](./03-5-stream.md) | STREAM | External client RAW communication |
+| [03-1-pair.md](03-1-pair.md) | PAIR | 1:1 bidirectional exclusive connection |
+| [03-2-pubsub.md](03-2-pubsub.md) | PUB/SUB/XPUB/XSUB | Publish-subscribe family |
+| [03-3-dealer.md](03-3-dealer.md) | DEALER | Async request, round-robin |
+| [03-4-router.md](03-4-router.md) | ROUTER | ID-based routing |
+| [03-5-stream.md](03-5-stream.md) | STREAM | External client RAW communication |
 
 ## 7. Disconnecting a Peer by Routing ID
 
@@ -159,7 +159,7 @@ zlink_recv_result_t zlink_recv (
   `source_spot_rid`, and `request_seq`. This one surface carries plain
   ROUTER traffic and SPOT-originated routed traffic. Request replies are
   delivered through a separate completion callback. See
-  [03-4-router.md](./03-4-router.md).
+  [03-4-router.md](03-4-router.md).
 - **SUB / XSUB**: use `zlink_subscribe()`. They are recv-only; no direct
   topic callback surface is provided.
 - **STREAM**: exception type. Choose one of three models:
@@ -197,7 +197,7 @@ Terms used throughout the documentation:
 | **admission guard** | Internal gate that checks handle validity and whether shutdown is in progress on API entry |
 | **approximate limit** | Not an exact hard limit. HWM allows slight overshoot for lock-free performance |
 
-> For the full thread-safety contract, see the [Thread-Safety Guide](./11-thread-safety.md).
+> For the full thread-safety contract, see the [Thread-Safety Guide](11-thread-safety.md).
 
 ## 9. Basic Usage Flow
 
@@ -257,5 +257,5 @@ zlink_ctx_term(ctx);
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Core API](./02-core-api.md) | [PAIR →](./03-1-pair.md)
+[← Core API](02-core-api.md) | [PAIR →](03-1-pair.md)
 <!-- zlink-nav:bottom:end -->

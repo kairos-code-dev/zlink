@@ -1,7 +1,7 @@
 # SupportChat TypeScript Sample (Node/NestJS)
 
-> 언어 중립 시나리오 정본은 [공통 샘플 — SupportChat](../../../../doc/spec/sample/supportchat/README.ko.md)다.
-> Node/NestJS framework 표면 정의는 [SupportChat Sample (Node/NestJS)](../../doc/guide/samples/supportchat-sample.ko.md)를 따른다.
+> 언어 중립 시나리오 정본은 [공통 샘플 — SupportChat](../../../../doc/framework/common/sample/supportchat/README.ko.md)다.
+> Node/NestJS framework 표면 정의는 [SupportChat Sample (Node/NestJS)](../../../../doc/framework/node/guide/samples/supportchat-sample.ko.md)를 따른다.
 > payload codec은 JSON이며, TypeScript Client/Server/Shared 구조로 dotnet `SupportChat` 역할 배치를 미러링한다.
 
 고객과 상담원이 같은 `ConversationSpot`에서 대화하는 고객 지원 채팅 샘플이다. session

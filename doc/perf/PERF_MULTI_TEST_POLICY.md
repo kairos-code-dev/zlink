@@ -10,12 +10,12 @@
 > 단, 각 언어의 구현 완성도와 지원 패턴 범위는 다를 수 있으므로 실제 parity
 > 수준은 언어별로 점검/정렬 대상이 된다.
 >
-> 언어별 적용 범위는 [PERF_POLICY.md](./PERF_POLICY.md) 상단을 참조한다.
+> 언어별 적용 범위는 [PERF_POLICY.md](PERF_POLICY.md) 상단을 참조한다.
 >
-> **상위 문서**: [PERF_POLICY.md](./PERF_POLICY.md) — 공통 원칙, 디렉터리 구조,
+> **상위 문서**: [PERF_POLICY.md](PERF_POLICY.md) — 공통 원칙, 디렉터리 구조,
 > RESULT 형식, 결과 저장, 출력 형식, 실패 처리, 환경 변수(공통), 리팩토링 원칙
 >
-> **관련 문서**: [PERF_SINGLE_TEST_POLICY.md](./PERF_SINGLE_TEST_POLICY.md)
+> **관련 문서**: [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md)
 >
 > 본 문서는 multi suite **전용** 정책만 기술한다.
 > 양 suite에 공통으로 적용되는 규칙은 상위 문서에서 관리한다.
@@ -189,7 +189,7 @@ duration 안의 `phase_active` payload만 포함한다.
 ### 1.5 Ready Gate
 
 > 공통 ready gate 원칙, helper 규칙, 금지 사항은
-> [PERF_POLICY.md § 1.1](./PERF_POLICY.md) 참조.
+> [PERF_POLICY.md § 1.1](PERF_POLICY.md) 참조.
 
 multi는 runner의 `READY,<endpoint>`/`START,<size>` orchestration과 별개로,
 각 바이너리 내부에서 아래 계약만으로 실제 메시징 시작 가능 여부를 판정한다.
@@ -741,7 +741,7 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 ### 3.4 실행 계약 불변식
 
 > 바이너리/runner 책임 분리의 공통 원칙은
-> [PERF_POLICY.md § 1.2](./PERF_POLICY.md) 참조.
+> [PERF_POLICY.md § 1.2](PERF_POLICY.md) 참조.
 
 - `pattern/transport/size` 는 측정의 최소 독립 단위다.
 - 각 size 케이스는 반드시 **독립된 server/client 프로세스 쌍**으로 실행한다.
@@ -870,7 +870,7 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 
 > 상태 분류(success / unsupported / skip / fail), retry 금지,
 > UNSUPPORTED 오용 금지, inflight 금지 등 공통 실패 처리 정책은
-> [PERF_POLICY.md § 7](./PERF_POLICY.md) 참조.
+> [PERF_POLICY.md § 7](PERF_POLICY.md) 참조.
 
 ### 6.1 상태 판정 토큰
 
@@ -929,7 +929,7 @@ one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 ## 7. Metric Tiers
 
 > Tier 1 필수 메트릭(throughput, bandwidth, latency, latency_p95, latency_p99)과
-> RESULT line 형식은 [PERF_POLICY.md § 4.2](./PERF_POLICY.md) 참조.
+> RESULT line 형식은 [PERF_POLICY.md § 4.2](PERF_POLICY.md) 참조.
 
 ### 7.1 Tier 2: 권장 (RESULT line 미출력, 향후 확장 예약)
 
@@ -956,7 +956,7 @@ MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MUL
 
 #### 바인딩 소스 파일 명명 규칙
 
-모든 벤치마크 소스 파일은 **`perf_`** 접두어를 사용한다. multi는 server/client 역할 분리를 필수로 하며, 소스 위치는 [PERF_POLICY.md § 2.0.2](./PERF_POLICY.md)를 참조한다.
+모든 벤치마크 소스 파일은 **`perf_`** 접두어를 사용한다. multi는 server/client 역할 분리를 필수로 하며, 소스 위치는 [PERF_POLICY.md § 2.0.2](PERF_POLICY.md)를 참조한다.
 
 | 언어 | server 파일 | client 파일 | 예시 |
 |------|-----------|-----------|------|
@@ -970,7 +970,7 @@ MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MUL
 - STREAM 계열은 public pattern 이름을 `stream` 하나만 사용한다.
 - 별도 모델 구분용 파일명 규칙을 추가하지 않는다.
 - 공통 유틸리티 파일도 `perf_` 접두어: `perf_common.hpp`, `PerfCommon.cs`, `PerfUtil.java`, `perf_common.py` 등
-- 실행 스크립트: C 기준과 각 bindings는 `perf/run_benchmarks_multi.sh` / `.ps1` 또는 동등한 binding-local 실행기를 사용한다 ([PERF_POLICY.md § 3.1](./PERF_POLICY.md) 참조)
+- 실행 스크립트: C 기준과 각 bindings는 `perf/run_benchmarks_multi.sh` / `.ps1` 또는 동등한 binding-local 실행기를 사용한다 ([PERF_POLICY.md § 3.1](PERF_POLICY.md) 참조)
 - 파일 분리 대신 단일 runner를 사용하는 경우에도 실행 시점에서는 반드시 server/client 별도 프로세스로 동작해야 하며 READY/RESULT 프로토콜은 동일하게 준수한다.
 
 #### 패턴별 소스 파일 / 바이너리 매핑 (C binding reference)
@@ -993,7 +993,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_STREAM | `*_stream_server.cpp` | `comp_src_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
-> STREAM client 예외(C 기준): `MULTI_STREAM` client는 [PERF_POLICY.md § 7.5](./PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. C++ 등 다른 binding perf runner가 이 공용 `perf_stream_client`를 symlink나 wrapper로 연결해 실행하는 것은 정책 위반이 아니다. 이 client는 외부 raw peer 검증 인프라이며, 측정 대상 binding surface는 각 언어의 `MULTI_STREAM` server/packet handler 구현이다. public pattern은 `MULTI_STREAM` 하나만 유지한다.
+> STREAM client 예외(C 기준): `MULTI_STREAM` client는 [PERF_POLICY.md § 7.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. C++ 등 다른 binding perf runner가 이 공용 `perf_stream_client`를 symlink나 wrapper로 연결해 실행하는 것은 정책 위반이 아니다. 이 client는 외부 raw peer 검증 인프라이며, 측정 대상 binding surface는 각 언어의 `MULTI_STREAM` server/packet handler 구현이다. public pattern은 `MULTI_STREAM` 하나만 유지한다.
 > SPOT 계열 topology 고정: `MULTI_SPOT`, `MULTI_SPOT_REQREP`,
 > `MULTI_SPOT_SENDSEND` 은 기본적으로
 > client process 당 SpotNode 1개를 만들고, `--clients N` 수만큼 logical spot을
@@ -1008,7 +1008,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
   단위 수신한다.
 - **Wire protocol**: client는
   `[2B header size][4B body size][header][body]` framing으로 통일한다.
-  상세는 [PERF_POLICY.md § 2.0.3 Wire Protocol](./PERF_POLICY.md)을 참조한다.
+  상세는 [PERF_POLICY.md § 2.0.3 Wire Protocol](PERF_POLICY.md)을 참조한다.
 - server는 raw recv 경계나 raw callback을 테스트하지 않는다.
   `zlink_stream_packet_handler()`가 전달한 완성 packet만 echo해야 한다.
 - 위 계약은 packet semantics를 고정하는 것이며, 내부 자료구조/세부 단계까지
@@ -1047,7 +1047,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 ## 9. 실행 방법
 
 > 정책 준수 실행기 목록과 공통 통합 실행 옵션은
-> [PERF_POLICY.md § 3](./PERF_POLICY.md) 참조.
+> [PERF_POLICY.md § 3](PERF_POLICY.md) 참조.
 
 ### 9.1 실행기 체인
 
@@ -1116,7 +1116,7 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
 - 기본 모드는 항상 해당 suite의 최신 benchmark binary/script를 사용해야 한다. 즉 multi official runner는 기본 실행에서 현재 소스 기준 configure/build를 수행해야 하며, `--reuse-build`를 주지 않았는데 stale 산출물을 실행하면 정책 위반이다.
 - `clients`, `stream clients`, `server/client io_threads`, `hwm` 기본값은 multi baseline 의미의 일부다. 기본값을 바꾸면 runner 구현, help 출력, Effective Options, 문서 예시를 같은 변경에서 함께 갱신해야 한다.
 - 수정 후 검증은 multi smoke를 포함해야 하며, smoke 정의와 실행 규칙은
-  [PERF_POLICY.md § 3.2](./PERF_POLICY.md)를 따른다.
+  [PERF_POLICY.md § 3.2](PERF_POLICY.md)를 따른다.
 
 ### 9.3 실행 예시
 
@@ -1185,7 +1185,7 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 ## 10. 출력 형식 (multi 전용)
 
 > RESULT line 형식(`RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>`),
-> 공통 출력 규칙, 실패 요약 형식은 [PERF_POLICY.md § 4–5](./PERF_POLICY.md) 참조.
+> 공통 출력 규칙, 실패 요약 형식은 [PERF_POLICY.md § 4–5](PERF_POLICY.md) 참조.
 
 ### 10.1 RESULT line metric (multi)
 
@@ -1233,7 +1233,7 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 
 실행 중 **사이즈별 결과 테이블 행을 즉시 출력**하여 진행 상황과 측정 데이터를 동시에 제공한다.
 
-> 공통 진행 로그 규칙은 [PERF_POLICY.md § 5.2](./PERF_POLICY.md) 참조.
+> 공통 진행 로그 규칙은 [PERF_POLICY.md § 5.2](PERF_POLICY.md) 참조.
 
 #### runs=1 출력 형식
 
@@ -1298,7 +1298,7 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 ## 11. 결과 저장 (multi 전용)
 
 > 파일명 형식, 저장 경로, 보존 정책 등 공통 규칙은
-> [PERF_POLICY.md § 2.1–2.3, § 4.3](./PERF_POLICY.md) 참조.
+> [PERF_POLICY.md § 2.1–2.3, § 4.3](PERF_POLICY.md) 참조.
 
 - **시간대**: `YYYYMMDD_HHMMSS`는 **로컬 시간** 기준이다. 결과 파일은 로컬 머신에만 저장되므로 로컬 시간이 직관적이다.
 - **태그 포함 정렬**: 태그는 타임스탬프 뒤에 위치하므로 사전순 정렬 시 동일 시각의 파일 간 순서만 영향받는다.
@@ -1334,7 +1334,7 @@ bindings/c/perf/run_benchmarks_multi.sh --duration 10
 > 공통 환경 변수(`PERF_DEBUG`, `PERF_IO_THREADS`, `PERF_MSG_SIZES`,
 > `PERF_TRANSPORTS`, `PERF_TASKSET`, `PERF_FAIL_FAST`,
 > `PERF_DISABLE_RESOURCE_METRICS`, `PERF_MAX_SOCKETS`)는
-> [PERF_POLICY.md § 8](./PERF_POLICY.md) 참조.
+> [PERF_POLICY.md § 8](PERF_POLICY.md) 참조.
 
 ### 12.1 Phase 제어
 
@@ -1433,14 +1433,14 @@ server/client I/O thread 수는 `1`이며, Effective Options에 실제 값을
 포화와 thread 경합을 먼저 만든다. C baseline과 같은 리소스 조건을 확인할
 때는 `--io-threads 4` 또는 `PERF_IO_THREADS=4`를 명시해서 실행한다.
 
-> **삭제된 환경 변수**: `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 삭제 대상이다. 구현에 존재하면 제거해야 한다. Retry 금지 정책은 [PERF_POLICY.md § 7](./PERF_POLICY.md) 참조.
+> **삭제된 환경 변수**: `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 삭제 대상이다. 구현에 존재하면 제거해야 한다. Retry 금지 정책은 [PERF_POLICY.md § 7](PERF_POLICY.md) 참조.
 
 ---
 
 ## 13. 구현 제약 (multi 전용)
 
 > Public API 전용, retry/workaround 금지, 코어 로직 인라인 원칙, 공통화 경계 등
-> 공통 구현 제약은 [PERF_POLICY.md § 1.1, § 8](./PERF_POLICY.md) 참조.
+> 공통 구현 제약은 [PERF_POLICY.md § 1.1, § 8](PERF_POLICY.md) 참조.
 
 ### 13.1 불필요한 메모리 할당/복사 금지
 
@@ -1487,7 +1487,7 @@ pattern별 공식 start contract 를 사용한다.
 
 ### 13.3 코어 로직 인라인 (multi 보충)
 
-> 기본 인라인 원칙은 [PERF_POLICY.md § 7.5](./PERF_POLICY.md) 참조.
+> 기본 인라인 원칙은 [PERF_POLICY.md § 7.5](PERF_POLICY.md) 참조.
 
 - **server 바이너리**: 소켓 생성, bind, poller 등록, recv drain, send backpressure,
   phase 제어가 각 파일에 인라인으로 존재해야 한다.

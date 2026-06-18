@@ -1,7 +1,7 @@
-[English](./03-0-socket-patterns.md) | [한국어](./03-0-socket-patterns.ko.md)
+[English](03-0-socket-patterns.md) | [한국어](03-0-socket-patterns.ko.md)
 
 <!-- zlink-nav:start -->
-[← Core API](./02-core-api.ko.md) | [PAIR →](./03-1-pair.ko.md)
+[← Core API](02-core-api.ko.md) | [PAIR →](03-1-pair.ko.md)
 <!-- zlink-nav:end -->
 
 # 소켓 패턴 개요 및 선택 가이드
@@ -90,7 +90,7 @@ Is the communication peer an external client (browser, game)?
 
 > 위치 투명성이 필요한 경우(자동 연결 · 로드밸런싱 · 토픽 메시)에는
 > 소켓 대신 서비스 레이어(SPOT)를 사용한다.
-> 상세는 [서비스 개요](./07-0-services.ko.md)를 참고.
+> 상세는 [서비스 개요](07-0-services.ko.md)를 참고.
 
 ## 6. 하위 문서
 
@@ -98,11 +98,11 @@ Is the communication peer an external client (browser, game)?
 
 | 문서 | 소켓 | 설명 |
 |------|------|------|
-| [03-1-pair.ko.md](./03-1-pair.ko.md) | PAIR | 1:1 양방향 독점 연결 |
-| [03-2-pubsub.ko.md](./03-2-pubsub.ko.md) | PUB/SUB/XPUB/XSUB | 발행-구독 패밀리 |
-| [03-3-dealer.ko.md](./03-3-dealer.ko.md) | DEALER | 비동기 요청, Round-robin |
-| [03-4-router.ko.md](./03-4-router.ko.md) | ROUTER | ID 기반 라우팅 |
-| [03-5-stream.ko.md](./03-5-stream.ko.md) | STREAM | 외부 클라이언트 RAW 통신 |
+| [03-1-pair.ko.md](03-1-pair.ko.md) | PAIR | 1:1 양방향 독점 연결 |
+| [03-2-pubsub.ko.md](03-2-pubsub.ko.md) | PUB/SUB/XPUB/XSUB | 발행-구독 패밀리 |
+| [03-3-dealer.ko.md](03-3-dealer.ko.md) | DEALER | 비동기 요청, Round-robin |
+| [03-4-router.ko.md](03-4-router.ko.md) | ROUTER | ID 기반 라우팅 |
+| [03-5-stream.ko.md](03-5-stream.ko.md) | STREAM | 외부 클라이언트 RAW 통신 |
 
 ## 7. 피어를 routing id로 끊기
 
@@ -154,7 +154,7 @@ zlink_recv_result_t zlink_recv (
   `source_spot_rid`, `request_seq`를 함께 반환한다. 이 하나의 표면이 일반
   ROUTER 트래픽과 SPOT에서 시작된 routed 트래픽을 모두 전달한다.
   request의 reply는 별도 완료 콜백으로 받는다. 자세한 내용은
-  [03-4-router.ko.md](./03-4-router.ko.md).
+  [03-4-router.ko.md](03-4-router.ko.md).
 - **SUB / XSUB**: `zlink_subscribe()`로 수신한다. recv-only이며, 직접
   토픽 콜백 표면은 제공하지 않는다.
 - **STREAM**: 예외 타입이다. `zlink_recv()` (raw recv),
@@ -190,7 +190,7 @@ monitor/timer처럼 사용 패턴이 분명한 예외 타입에만 쓴다. SPOT�
 | **admission guard** | API 진입 시 handle이 유효한지, 이미 종료 중인지를 검사하는 내부 게이트 |
 | **approximate limit** | 정확한 hard limit이 아닌 근사치 제한. HWM(High-Water Mark, 큐 최대 허용 메시지 수)은 락-프리 성능을 위해 소폭 초과를 허용한다 |
 
-> 스레드 안전성 계약의 전체 설명은 [스레드 안전성 가이드](./11-thread-safety.ko.md)를 참고.
+> 스레드 안전성 계약의 전체 설명은 [스레드 안전성 가이드](11-thread-safety.ko.md)를 참고.
 
 ## 9. 기본 사용 흐름
 
@@ -254,5 +254,5 @@ zlink_ctx_term(ctx);
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Core API](./02-core-api.ko.md) | [PAIR →](./03-1-pair.ko.md)
+[← Core API](02-core-api.ko.md) | [PAIR →](03-1-pair.ko.md)
 <!-- zlink-nav:bottom:end -->

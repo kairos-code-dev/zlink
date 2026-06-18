@@ -19,15 +19,15 @@ zlink를 쓰는 방법**(설치, 관용 예제, 타입 매핑, 언어 고유 규
 
 | 언어 | 사용 가이드 | 생성 API 레퍼런스 | 패키지 |
 |------|------------|------------------|--------|
-| .NET | [dotnet/](./dotnet/index.md) | docfx | `Systems.Zlink` |
-| C++ | [cpp/](./cpp/index.md) | doxygen | `zlink::zlink-cpp` (CMake) |
-| Java | [java/](./java/index.md) | javadoc | `systems.zlink:zlink-java` |
-| Node | [node/](./node/index.md) | typedoc | `@zlink-systems/zlink` |
-| Python | [python/](./python/index.md) | sphinx | `zlink` (PyPI) |
-| Go | [go/](./go/index.md) | godoc | `zlink.systems/zlink` |
-| Rust | [rust/](./rust/index.md) | rustdoc | `zlink` (crates.io) |
-| Kotlin | [java/ §Kotlin](./java/index.md#kotlin) | (java 공유) | `systems.zlink:zlink-java` |
-| JavaScript | [node/ §JavaScript](./node/index.md#javascript) | (node 공유) | `@zlink-systems/zlink` |
+| .NET | [dotnet/](dotnet/index.md) | docfx | `Systems.Zlink` |
+| C++ | [cpp/](cpp/index.md) | doxygen | `zlink::zlink-cpp` (CMake) |
+| Java | [java/](java/index.md) | javadoc | `systems.zlink:zlink-java` |
+| Node | [node/](node/index.md) | typedoc | `@zlink-systems/zlink` |
+| Python | [python/](python/index.md) | sphinx | `zlink` (PyPI) |
+| Go | [go/](go/index.md) | godoc | `zlink.systems/zlink` |
+| Rust | [rust/](rust/index.md) | rustdoc | `zlink` (crates.io) |
+| Kotlin | [java/ §Kotlin](java/index.md#kotlin) | (java 공유) | `systems.zlink:zlink-java` |
+| JavaScript | [node/ §JavaScript](node/index.md#javascript) | (node 공유) | `@zlink-systems/zlink` |
 
 > Kotlin과 JavaScript는 **런타임을 공유**합니다 — Kotlin은 Java 바인딩
 > (`systems.zlink.*`), JavaScript는 Node 바인딩(`@zlink-systems/zlink`)을 그대로

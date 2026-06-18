@@ -12,7 +12,7 @@
 callback-only 모델로 정리하는 구현 계획을 정의한다.
 
 이 문서의 canonical 전제는
-[`direct-callback-recv-rewrite-spec.ko.md`](./direct-callback-recv-rewrite-spec.ko.md)
+[`direct-callback-recv-rewrite-spec.ko.md`](direct-callback-recv-rewrite-spec.ko.md)
 다.
 
 핵심 목표는 다음과 같다.
@@ -368,13 +368,13 @@ void *mon = zlink_spot_monitor_open(
 ## 9. 연관 문서
 
 - 메인 스펙:
-  [`direct-callback-recv-rewrite-spec.ko.md`](./direct-callback-recv-rewrite-spec.ko.md)
+  [`direct-callback-recv-rewrite-spec.ko.md`](direct-callback-recv-rewrite-spec.ko.md)
 - option surface:
-  [`service-option-surface-plan.ko.md`](./service-option-surface-plan.ko.md)
+  [`service-option-surface-plan.ko.md`](service-option-surface-plan.ko.md)
 - RID 정책:
-  [`service-routing-id-policy-plan.ko.md`](./service-routing-id-policy-plan.ko.md)
+  [`service-routing-id-policy-plan.ko.md`](service-routing-id-policy-plan.ko.md)
 - registry topology:
-  [`registry-topology-introspection-plan.ko.md`](./registry-topology-introspection-plan.ko.md)
+  [`registry-topology-introspection-plan.ko.md`](registry-topology-introspection-plan.ko.md)
 
 ## 10. Definition of Done
 

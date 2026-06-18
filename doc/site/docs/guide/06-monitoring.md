@@ -1,7 +1,7 @@
-[English](./06-monitoring.md) | [한국어](./06-monitoring.ko.md)
+[English](06-monitoring.md) | [한국어](06-monitoring.ko.md)
 
 <!-- zlink-nav:start -->
-[← TLS/Security](./05-tls-security.md) | [Services →](./07-0-services.md)
+[← TLS/Security](05-tls-security.md) | [Services →](07-0-services.md)
 <!-- zlink-nav:end -->
 
 # Monitoring API Usage
@@ -672,7 +672,7 @@ if (items[0].revents & ZMQ_POLLIN)
 API for production event loops.
 
 ---
-[← TLS Security](./05-tls-security.md) | [Services Overview →](./07-0-services.md)
+[← TLS Security](05-tls-security.md) | [Services Overview →](07-0-services.md)
 
 
 ## Full language examples
@@ -733,5 +733,5 @@ API for production event loops.
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← TLS/Security](./05-tls-security.md) | [Services →](./07-0-services.md)
+[← TLS/Security](05-tls-security.md) | [Services →](07-0-services.md)
 <!-- zlink-nav:bottom:end -->

@@ -1,7 +1,7 @@
-[English](./01-overview.md) | [한국어](./01-overview.ko.md)
+[English](01-overview.md) | [한국어](01-overview.ko.md)
 
 <!-- zlink-nav:start -->
-[Core API →](./02-core-api.ko.md)
+[Core API →](02-core-api.ko.md)
 <!-- zlink-nav:end -->
 
 # zlink 개요 및 시작하기
@@ -116,8 +116,8 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 | **SPOT** | 위치 투명(location-transparent, 상대 주소를 몰라도 통신 가능) 토픽 pub/sub + routed 통신 메시(mesh). `SpotNode`가 transport를 소유하고 `Spot` facade가 데이터 평면을 제공 |
 | **Actor** | SPOT 안에서 STREAM 세션 메시지를 라우팅 대상으로 묶는 세션 기반 주소 지정 단위. `SpotNode`가 Actor 테이블을 관리하고 `Entry Spot`에서 메시지를 전달한다 |
 
-자세한 내용은 [서비스 계층 개요](./07-0-services.ko.md), [SPOT 가이드](./07-3-spot.ko.md),
-[SPOT Actor 가이드](./07-4-actor.ko.md)를 본다.
+자세한 내용은 [서비스 계층 개요](07-0-services.ko.md), [SPOT 가이드](07-3-spot.ko.md),
+[SPOT Actor 가이드](07-4-actor.ko.md)를 본다.
 
 ## 7. 빠른 시작
 
@@ -177,15 +177,15 @@ int main(void) {
 
 ## 8. 다음 단계
 
-- [Core API 상세](./02-core-api.ko.md)
-- [소켓 패턴별 사용법](./03-0-socket-patterns.ko.md)
-- [Transport 가이드](./04-transports.ko.md)
-- [TLS 보안 설정](./05-tls-security.ko.md)
-- [서비스 계층 개요](./07-0-services.ko.md)
-- [SPOT 가이드](./07-3-spot.ko.md)
-- [SPOT Actor 가이드](./07-4-actor.ko.md)
+- [Core API 상세](02-core-api.ko.md)
+- [소켓 패턴별 사용법](03-0-socket-patterns.ko.md)
+- [Transport 가이드](04-transports.ko.md)
+- [TLS 보안 설정](05-tls-security.ko.md)
+- [서비스 계층 개요](07-0-services.ko.md)
+- [SPOT 가이드](07-3-spot.ko.md)
+- [SPOT Actor 가이드](07-4-actor.ko.md)
 
 ---
 <!-- zlink-nav:bottom:start -->
-[Core API →](./02-core-api.ko.md)
+[Core API →](02-core-api.ko.md)
 <!-- zlink-nav:bottom:end -->

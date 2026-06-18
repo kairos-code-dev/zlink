@@ -1,7 +1,7 @@
-[English](./10-performance.md) | [한국어](./10-performance.ko.md)
+[English](10-performance.md) | [한국어](10-performance.ko.md)
 
 <!-- zlink-nav:start -->
-[← Message API](./09-message-api.ko.md) | [스레드 안전성 →](./11-thread-safety.ko.md)
+[← Message API](09-message-api.ko.md) | [스레드 안전성 →](11-thread-safety.ko.md)
 <!-- zlink-nav:end -->
 
 # 성능 특성 및 튜닝 가이드
@@ -319,7 +319,7 @@ void on_message(const zlink_routing_id_t *rid,
 ```
 
 > 스레드 안전 작업 큐 패턴은
-> [스레드 안전성 가이드](./11-thread-safety.ko.md) 섹션 6을 참고.
+> [스레드 안전성 가이드](11-thread-safety.ko.md) 섹션 6을 참고.
 
 ### 4.4 콜백 vs 풀 수신 모드
 
@@ -527,5 +527,5 @@ void on_pong(const zlink_routing_id_t *source_rid,
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Message API](./09-message-api.ko.md) | [스레드 안전성 →](./11-thread-safety.ko.md)
+[← Message API](09-message-api.ko.md) | [스레드 안전성 →](11-thread-safety.ko.md)
 <!-- zlink-nav:bottom:end -->

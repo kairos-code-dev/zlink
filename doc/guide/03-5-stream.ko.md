@@ -1,7 +1,7 @@
-[English](./03-5-stream.md) | [한국어](./03-5-stream.ko.md)
+[English](03-5-stream.md) | [한국어](03-5-stream.ko.md)
 
 <!-- zlink-nav:start -->
-[← ROUTER](./03-4-router.ko.md) | [프록시 →](./03-6-proxy.ko.md)
+[← ROUTER](03-4-router.ko.md) | [프록시 →](03-6-proxy.ko.md)
 <!-- zlink-nav:end -->
 
 # STREAM 소켓
@@ -15,7 +15,7 @@ STREAM 소켓은 **외부 RAW 클라이언트**와 통신하기 위한 **서버 
 - `ZLINK_SOCKET_STREAM`에 `zlink_connect()`를 호출하면 `EOPNOTSUPP`를 반환한다.
 - 클라이언트는 zlink STREAM 소켓이 아니라 OS/Asio/WebSocket 등의 **raw client**를 사용해야 한다.
 - STREAM은 raw 바이트 스트림을 그대로 전달한다. **프레이밍(패킷 경계)은 사용자가 정의**해야 한다.
-- zlink API에서 수신/송신 시 `source_rid`(서버가 자동 할당한 4B 연결 식별자)로 클라이언트를 구분한다([Routing ID](./08-routing-id.ko.md) 참고).
+- zlink API에서 수신/송신 시 `source_rid`(서버가 자동 할당한 4B 연결 식별자)로 클라이언트를 구분한다([Routing ID](08-routing-id.ko.md) 참고).
 
 유효 조합:
 
@@ -29,7 +29,7 @@ external raw client  <---- RAW 바이트 스트림 (framing 없음) ---->  STREA
 > 할 수 있다. 각 client session을 Actor에 bind하면 session 트래픽이 그 Actor와 주고받는
 > 형태로 relay된다. 이 패턴은 STREAM 소켓을 `zlink_stream_attach_actor_gateway()`로
 > SpotNode에 attach하는 데서 출발한다. session-to-Actor 전체 흐름은
-> [Actor 가이드](./07-4-actor.ko.md)를 참고한다.
+> [Actor 가이드](07-4-actor.ko.md)를 참고한다.
 
 ---
 
@@ -82,7 +82,7 @@ STREAM만의 고유 동작은 다음과 같다.
 ## 4. 콜백 예시
 
 STREAM raw 콜백에서 전달되는 모든 part는 애플리케이션 데이터다.
-connect/disconnect는 소켓 monitor로 관찰한다([Monitoring](./06-monitoring.ko.md) 참고).
+connect/disconnect는 소켓 monitor로 관찰한다([Monitoring](06-monitoring.ko.md) 참고).
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -119,7 +119,7 @@ zlink_recv_handler(stream, on_message, NULL);
 
 > 송신 큐가 가득 차면(HWM, 고수위 표시) `zlink_send_rid()`는 블록(기본) 또는
 > `ZLINK_DONTWAIT` 로 `ZLINK_SUBMIT_BACKPRESSURED` 를 반환한다.
-> 배압(backpressure) 패턴은 [성능 가이드](./10-performance.ko.md)를 참고.
+> 배압(backpressure) 패턴은 [성능 가이드](10-performance.ko.md)를 참고.
 
 - 수신 콜백은 한 번에 하나만 등록할 수 있으며, 이미 등록된 상태에서 attach를
   호출하면 `errno=EBUSY`와 함께 `ZLINK_HANDLER_BUSY`를 반환한다.
@@ -263,7 +263,7 @@ STREAM listener는 raw TCP 피어가 보낸 바이트를 직접 받을 수 있�
 위 테스트들은 STREAM 서버 + raw client 경로를 기준으로 동작한다.
 
 ---
-[← ROUTER](./03-4-router.ko.md) | [Proxy →](./03-6-proxy.ko.md) | [Transport →](./04-transports.ko.md)
+[← ROUTER](03-4-router.ko.md) | [Proxy →](03-6-proxy.ko.md) | [Transport →](04-transports.ko.md)
 
 ## 언어별 완전한 예제
 
@@ -383,5 +383,5 @@ STREAM 소켓으로 원시 바이트를 주고받는 자립형 예제다(모든 
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← ROUTER](./03-4-router.ko.md) | [프록시 →](./03-6-proxy.ko.md)
+[← ROUTER](03-4-router.ko.md) | [프록시 →](03-6-proxy.ko.md)
 <!-- zlink-nav:bottom:end -->

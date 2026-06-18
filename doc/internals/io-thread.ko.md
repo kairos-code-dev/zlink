@@ -1,4 +1,4 @@
-[English](./io-thread.md) | 한국어
+[English](io-thread.md) | 한국어
 
 # I/O Thread 내부 구조
 
@@ -6,7 +6,7 @@
 어떻게 생성되고, 작업이 어떻게 분배되는지 설명한다.
 
 고수준 스레딩 모델(application thread, reaper thread, 스레드 간 통신)은
-[Threading Model](./threading-model.ko.md)을 참고.
+[Threading Model](threading-model.ko.md)을 참고.
 
 ## 1. 개요
 
@@ -137,4 +137,4 @@ I/O 스레드를 CPU 코어 수 이상으로 설정해도 이점이 없고 conte
 | `core/src/runtime/core/mailbox.hpp` | Lock-free command queue + signaler |
 
 ---
-[← Threading Model](./threading-model.ko.md)
+[← Threading Model](threading-model.ko.md)

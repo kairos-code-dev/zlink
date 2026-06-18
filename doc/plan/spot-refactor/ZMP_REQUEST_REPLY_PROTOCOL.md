@@ -4,8 +4,8 @@
 > 이 문서는 현재 작업에서 구현 기준으로 쓰는 작업 스펙이다.
 > 구현과 테스트를 마치면 공개 API 기준은 `doc/spec/core` 문서에 반영한다.
 > **관련 문서**:
-> [`ZMP_PROTOCOL_OVERVIEW.md`](./ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
-> [`SOCKET_REQUEST_REPLY_API_SPEC.md`](./SOCKET_REQUEST_REPLY_API_SPEC.md) — socket 레벨 request-reply API
+> [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
+> [`SOCKET_REQUEST_REPLY_API_SPEC.md`](SOCKET_REQUEST_REPLY_API_SPEC.md) — socket 레벨 request-reply API
 
 ---
 
@@ -31,7 +31,7 @@
 
 이런 로직은 바인딩 또는 상위 레이어가 담당한다.
 socket 공개 표면은
-[`SOCKET_REQUEST_REPLY_API_SPEC.md`](./SOCKET_REQUEST_REPLY_API_SPEC.md)
+[`SOCKET_REQUEST_REPLY_API_SPEC.md`](SOCKET_REQUEST_REPLY_API_SPEC.md)
 에서 다룬다.
 
 ---
@@ -40,7 +40,7 @@ socket 공개 표면은
 
 - request-reply 는 `message` 레벨이 아니라 protocol 레벨에서 정의한다
 - 공통 transport 형식은
-  [`ZMP_PROTOCOL_OVERVIEW.md`](./ZMP_PROTOCOL_OVERVIEW.md) 를 따른다
+  [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) 를 따른다
 - envelope 는 payload 와 구분되는 상위 프로토콜 정보다
 - multipart 메시지에서도 request seq 의미는 logical message 전체에 적용된다
 

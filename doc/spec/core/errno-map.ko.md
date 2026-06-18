@@ -1,6 +1,6 @@
-[English](./errno-map.md) | [한국어](./errno-map.ko.md)
+[English](errno-map.md) | [한국어](errno-map.ko.md)
 
-[스펙 목차](../README.ko.md) · [코어 목차](./README.ko.md)
+[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
 
 # 함수별 결과 Enum
 

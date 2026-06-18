@@ -1,7 +1,7 @@
-English | [한국어](./04-transports.ko.md)
+English | [한국어](04-transports.ko.md)
 
 <!-- zlink-nav:start -->
-[← Proxy](./03-6-proxy.md) | [TLS/Security →](./05-tls-security.md)
+[← Proxy](03-6-proxy.md) | [TLS/Security →](05-tls-security.md)
 <!-- zlink-nav:end -->
 
 # Transport Guide
@@ -244,7 +244,7 @@ zlink_set_tls_client(socket, "/path/to/ca.pem", NULL, 1);
 zlink_connect(socket, "tls://server:5555");
 ```
 
-For detailed TLS configuration, see the [TLS Security Guide](./05-tls-security.md).
+For detailed TLS configuration, see the [TLS Security Guide](05-tls-security.md).
 
 ## 8. Transport Constraints
 
@@ -303,9 +303,9 @@ zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 printf("Bound endpoint: %s\n", endpoint);
 ```
 
-For performance comparisons, see the [Performance Guide](./10-performance.md).
+For performance comparisons, see the [Performance Guide](10-performance.md).
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Proxy](./03-6-proxy.md) | [TLS/Security →](./05-tls-security.md)
+[← Proxy](03-6-proxy.md) | [TLS/Security →](05-tls-security.md)
 <!-- zlink-nav:bottom:end -->

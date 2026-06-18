@@ -19,7 +19,7 @@ Bingo와 TicTacToe를 제외한 정본 샘플은 공통 샘플 기준에 따라 
 codec과 Registry/Discovery 기반 자동 연결을 사용한다. 다만 C++ framework는 compile-time
 타입과 public builder 표면을 기준으로 하므로 handler 자동 등록 예외다. C++ 샘플은 handler를
 자동 스캔하지 않고 명시 등록하되, 메시지 이름, 서버 역할, client self-check 순서는
-[공통 샘플 포팅 기준](../../../doc/spec/sample/README.ko.md#샘플-포팅-기준)을 따른다.
+[공통 샘플 포팅 기준](../../../doc/framework/common/sample/README.ko.md#샘플-포팅-기준)을 따른다.
 
 ## 실행
 

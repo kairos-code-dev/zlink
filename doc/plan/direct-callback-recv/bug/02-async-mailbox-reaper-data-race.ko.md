@@ -166,8 +166,8 @@ data plane 활성 중 attachment close나 `term_endpoint()` 선호출 등
 장기적으로는 pipe termination 상태를 `socket_base_t` 전용으로 분리하여
 `own_t::_term_acks`는 owned-object ack만 담당하게 하는 것이 맞다.
 
-→ 상세: [구조 개선안](./codex-spot-shutdown-structural-rework.ko.md),
-  [lifecycle contract 분석](./deterministic-lifecycle-root-cause-review.ko.md)
+→ 상세: [구조 개선안](codex-spot-shutdown-structural-rework.ko.md),
+  [lifecycle contract 분석](deterministic-lifecycle-root-cause-review.ko.md)
 
 ---
 
@@ -368,4 +368,4 @@ void own_t::unregister_term_ack ()
 | 7 | `term_endpoint()` 선호출 제거 | 경합 증폭기 제거 |
 | 8 | destroy strict fail-fast | ctx hang 방지 |
 
-→ 구조 개선 상세: [codex-spot-shutdown-structural-rework.ko.md](./codex-spot-shutdown-structural-rework.ko.md)
+→ 구조 개선 상세: [codex-spot-shutdown-structural-rework.ko.md](codex-spot-shutdown-structural-rework.ko.md)

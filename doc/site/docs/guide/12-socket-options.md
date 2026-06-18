@@ -1,7 +1,7 @@
-[English](./12-socket-options.md) | [한국어](./12-socket-options.ko.md)
+[English](12-socket-options.md) | [한국어](12-socket-options.ko.md)
 
 <!-- zlink-nav:start -->
-[← Thread Safety](./11-thread-safety.md)
+[← Thread Safety](11-thread-safety.md)
 <!-- zlink-nav:end -->
 
 # Socket Options Detailed Guide
@@ -571,5 +571,5 @@ supported.
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← Thread Safety](./11-thread-safety.md)
+[← Thread Safety](11-thread-safety.md)
 <!-- zlink-nav:bottom:end -->

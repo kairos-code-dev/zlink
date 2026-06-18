@@ -6,7 +6,7 @@
 정책을 공통 규칙으로 고정한다.
 
 이 문서의 canonical 전제는
-[`direct-callback-recv-rewrite-spec.ko.md`](./direct-callback-recv-rewrite-spec.ko.md)
+[`direct-callback-recv-rewrite-spec.ko.md`](direct-callback-recv-rewrite-spec.ko.md)
 다.
 
 핵심 목표:

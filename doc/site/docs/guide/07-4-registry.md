@@ -1,7 +1,7 @@
-[English](./07-4-registry.md) | [한국어](./07-4-registry.ko.md)
+[English](07-4-registry.md) | [한국어](07-4-registry.ko.md)
 
 <!-- zlink-nav:start -->
-[← SPOT Actor](./07-4-actor.md) | [Routing ID →](./08-routing-id.md)
+[← SPOT Actor](07-4-actor.md) | [Routing ID →](08-routing-id.md)
 <!-- zlink-nav:end -->
 
 # Registry (Central Service Directory)
@@ -624,11 +624,11 @@ Recommended workflow:
 
 ## 9. Next Steps
 
-- [Service Discovery](./07-1-discovery.md) -- Foundation infrastructure
-- [SPOT PUB/SUB](./07-3-spot.md) -- Location-transparent publish/subscribe
+- [Service Discovery](07-1-discovery.md) -- Foundation infrastructure
+- [SPOT PUB/SUB](07-3-spot.md) -- Location-transparent publish/subscribe
 - [Registry API Reference](../api/registry.md) -- Complete API documentation
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← SPOT Actor](./07-4-actor.md) | [Routing ID →](./08-routing-id.md)
+[← SPOT Actor](07-4-actor.md) | [Routing ID →](08-routing-id.md)
 <!-- zlink-nav:bottom:end -->

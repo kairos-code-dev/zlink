@@ -1,7 +1,7 @@
-English | [한국어](./01-overview.ko.md)
+English | [한국어](01-overview.ko.md)
 
 <!-- zlink-nav:start -->
-[Core API →](./02-core-api.md)
+[Core API →](02-core-api.md)
 <!-- zlink-nav:end -->
 
 # zlink Overview and Getting Started
@@ -116,8 +116,8 @@ lifecycle.
 | **SPOT** | Location-transparent topic pub/sub + routed communication mesh. `SpotNode` owns the transports; `Spot` facades provide the data plane |
 | **Actor** | Session-based addressing unit inside SPOT. Funnels STREAM session messages into a `Spot` dispatch context. `SpotNode` manages the Actor table; `Entry Spot` handles initial dispatch |
 
-See the [Service Layer Overview](./07-0-services.md), [SPOT Guide](./07-3-spot.md),
-and [SPOT Actor Guide](./07-4-actor.md) for details.
+See the [Service Layer Overview](07-0-services.md), [SPOT Guide](07-3-spot.md),
+and [SPOT Actor Guide](07-4-actor.md) for details.
 
 ## 7. Quick Start
 
@@ -177,15 +177,15 @@ int main(void) {
 
 ## 8. Next Steps
 
-- [Core API Details](./02-core-api.md)
-- [Socket Pattern Usage](./03-0-socket-patterns.md)
-- [Transport Guide](./04-transports.md)
-- [TLS Security Configuration](./05-tls-security.md)
-- [Service Layer Overview](./07-0-services.md)
-- [SPOT Guide](./07-3-spot.md)
-- [SPOT Actor Guide](./07-4-actor.md)
+- [Core API Details](02-core-api.md)
+- [Socket Pattern Usage](03-0-socket-patterns.md)
+- [Transport Guide](04-transports.md)
+- [TLS Security Configuration](05-tls-security.md)
+- [Service Layer Overview](07-0-services.md)
+- [SPOT Guide](07-3-spot.md)
+- [SPOT Actor Guide](07-4-actor.md)
 
 ---
 <!-- zlink-nav:bottom:start -->
-[Core API →](./02-core-api.md)
+[Core API →](02-core-api.md)
 <!-- zlink-nav:bottom:end -->

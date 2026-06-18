@@ -1,6 +1,6 @@
 # tabbed-docs-consolidation 실행 프롬프트
 
-[계획 런북](./tabbed-docs-consolidation-plan.ko.md)을 끝까지 완료시키기 위한
+[계획 런북](tabbed-docs-consolidation-plan.ko.md)을 끝까지 완료시키기 위한
 핸드오프 프롬프트. 새 세션/다른 에이전트에 그대로 붙여 넣는다. 현재 상태를
 현물로 재점검하므로 plan이 이미 완료 표시여도 안전하다(검증만 하고 잔여만 마무리).
 

@@ -14,30 +14,30 @@
 이 문서는 새 설계를 제안하지 않는다.
 설계 authority는 아래 메인 스펙 문서 하나로 고정한다.
 
-- [`raw-socket-service-discovery-spec.ko.md`](./raw-socket-service-discovery-spec.ko.md)
+- [`raw-socket-service-discovery-spec.ko.md`](raw-socket-service-discovery-spec.ko.md)
   - 목적 / 요구사항 / 문제 정의:
-    [`1. 목적`](./raw-socket-service-discovery-spec.ko.md#1-목적),
-    [`2. 요구사항 정리`](./raw-socket-service-discovery-spec.ko.md#2-요구사항-정리),
-    [`3. 문제 정의`](./raw-socket-service-discovery-spec.ko.md#3-문제-정의)
+    [`1. 목적`](raw-socket-service-discovery-spec.ko.md#1-목적),
+    [`2. 요구사항 정리`](raw-socket-service-discovery-spec.ko.md#2-요구사항-정리),
+    [`3. 문제 정의`](raw-socket-service-discovery-spec.ko.md#3-문제-정의)
   - 설계 원칙 / 개념 모델:
-    [`4. 설계 원칙`](./raw-socket-service-discovery-spec.ko.md#4-설계-원칙),
-    [`5. 개념 모델`](./raw-socket-service-discovery-spec.ko.md#5-개념-모델)
+    [`4. 설계 원칙`](raw-socket-service-discovery-spec.ko.md#4-설계-원칙),
+    [`5. 개념 모델`](raw-socket-service-discovery-spec.ko.md#5-개념-모델)
   - API / 모델 / 런타임:
-    [`6. Public Surface 제안`](./raw-socket-service-discovery-spec.ko.md#6-public-surface-제안),
-    [`7. Family / Role 모델`](./raw-socket-service-discovery-spec.ko.md#7-family--role-모델),
-    [`8. Registry / Discovery 프로토콜 확장`](./raw-socket-service-discovery-spec.ko.md#8-registry--discovery-프로토콜-확장),
-    [`9. Registry 저장 모델`](./raw-socket-service-discovery-spec.ko.md#9-registry-저장-모델),
-    [`10. Discovery 저장 모델`](./raw-socket-service-discovery-spec.ko.md#10-discovery-저장-모델),
-    [`11. Socket Attachment 설계`](./raw-socket-service-discovery-spec.ko.md#11-socket-attachment-설계),
-    [`12. Runtime 동작 상세`](./raw-socket-service-discovery-spec.ko.md#12-runtime-동작-상세),
-    [`13. 에러 정책`](./raw-socket-service-discovery-spec.ko.md#13-에러-정책)
+    [`6. Public Surface 제안`](raw-socket-service-discovery-spec.ko.md#6-public-surface-제안),
+    [`7. Family / Role 모델`](raw-socket-service-discovery-spec.ko.md#7-family--role-모델),
+    [`8. Registry / Discovery 프로토콜 확장`](raw-socket-service-discovery-spec.ko.md#8-registry--discovery-프로토콜-확장),
+    [`9. Registry 저장 모델`](raw-socket-service-discovery-spec.ko.md#9-registry-저장-모델),
+    [`10. Discovery 저장 모델`](raw-socket-service-discovery-spec.ko.md#10-discovery-저장-모델),
+    [`11. Socket Attachment 설계`](raw-socket-service-discovery-spec.ko.md#11-socket-attachment-설계),
+    [`12. Runtime 동작 상세`](raw-socket-service-discovery-spec.ko.md#12-runtime-동작-상세),
+    [`13. 에러 정책`](raw-socket-service-discovery-spec.ko.md#13-에러-정책)
   - 검증 / 실행 / 완료 기준:
-    [`14. 테스트 계획`](./raw-socket-service-discovery-spec.ko.md#14-테스트-계획),
-    [`15. 구현 단계 제안`](./raw-socket-service-discovery-spec.ko.md#15-구현-단계-제안),
-    [`16. 구현 매핑`](./raw-socket-service-discovery-spec.ko.md#16-구현-매핑),
-    [`17. 구현 체크리스트`](./raw-socket-service-discovery-spec.ko.md#17-구현-체크리스트),
-    [`18. Definition of Done`](./raw-socket-service-discovery-spec.ko.md#18-definition-of-done),
-    [`20. 추가 변경사항`](./raw-socket-service-discovery-spec.ko.md#20-추가-변경사항)
+    [`14. 테스트 계획`](raw-socket-service-discovery-spec.ko.md#14-테스트-계획),
+    [`15. 구현 단계 제안`](raw-socket-service-discovery-spec.ko.md#15-구현-단계-제안),
+    [`16. 구현 매핑`](raw-socket-service-discovery-spec.ko.md#16-구현-매핑),
+    [`17. 구현 체크리스트`](raw-socket-service-discovery-spec.ko.md#17-구현-체크리스트),
+    [`18. Definition of Done`](raw-socket-service-discovery-spec.ko.md#18-definition-of-done),
+    [`20. 추가 변경사항`](raw-socket-service-discovery-spec.ko.md#20-추가-변경사항)
 
 실행 중 설계 판단이 필요해 보이면
 먼저 메인 스펙을 갱신하고 그 다음 코드를 수정한다.
@@ -47,7 +47,7 @@
 
 단일 설계 authority:
 
-- [`raw-socket-service-discovery-spec.ko.md`](./raw-socket-service-discovery-spec.ko.md)
+- [`raw-socket-service-discovery-spec.ko.md`](raw-socket-service-discovery-spec.ko.md)
 
 이 가이드는 아래 내용을 메인 스펙에서 그대로 따른다.
 
@@ -62,7 +62,7 @@
 자동 실행 관계:
 
 - 수동 실행 기준 문서는 이 guide와 메인 스펙이다.
-- 자동 실행이 필요하면 [`run_discovery_service_execution.sh`](./run_discovery_service_execution.sh)를 사용한다.
+- 자동 실행이 필요하면 [`run_discovery_service_execution.sh`](run_discovery_service_execution.sh)를 사용한다.
 - 이 스크립트는 내부적으로 공통 supervisor인
   [`core/tools/run_codex_execution_guide_loop.sh`](../../../core/tools/ralphloop/run_codex_execution_guide_loop.sh)
   를 호출한다.
@@ -176,11 +176,11 @@ git push
 
 스펙 참조:
 
-- [`7.1 discovery family 확장`](./raw-socket-service-discovery-spec.ko.md#71-discovery-family-확장)
-- [`7.2 role enum`](./raw-socket-service-discovery-spec.ko.md#72-role-enum)
-- [`7.3 family-role 유효 조합`](./raw-socket-service-discovery-spec.ko.md#73-family-role-유효-조합)
-- [`8.1 register 계열 payload`](./raw-socket-service-discovery-spec.ko.md#81-register-계열-payload)
-- [`17.1 Step A: protocol / enum 정리`](./raw-socket-service-discovery-spec.ko.md#171-step-a-protocol--enum-정리)
+- [`7.1 discovery family 확장`](raw-socket-service-discovery-spec.ko.md#71-discovery-family-확장)
+- [`7.2 role enum`](raw-socket-service-discovery-spec.ko.md#72-role-enum)
+- [`7.3 family-role 유효 조합`](raw-socket-service-discovery-spec.ko.md#73-family-role-유효-조합)
+- [`8.1 register 계열 payload`](raw-socket-service-discovery-spec.ko.md#81-register-계열-payload)
+- [`17.1 Step A: protocol / enum 정리`](raw-socket-service-discovery-spec.ko.md#171-step-a-protocol--enum-정리)
 
 상태: `완료`
 
@@ -202,13 +202,13 @@ git push
 
 스펙 참조:
 
-- [`4.1 discovery는 service view다`](./raw-socket-service-discovery-spec.ko.md#41-discovery는-service-view다)
-- [`4.2 service 선택 책임은 discovery가 가진다`](./raw-socket-service-discovery-spec.ko.md#42-service-선택-책임은-discovery가-가진다)
-- [`5.1 service view`](./raw-socket-service-discovery-spec.ko.md#51-service-view)
-- [`6.1 discovery 생성 시 service_name 고정`](./raw-socket-service-discovery-spec.ko.md#61-discovery-생성-시-service_name-고정)
-- [`10.1 discovery state`](./raw-socket-service-discovery-spec.ko.md#101-discovery-state)
-- [`13.4 discovery destroy 실패`](./raw-socket-service-discovery-spec.ko.md#134-discovery-destroy-실패)
-- [`17.2 Step B: discovery surface ownership 전환`](./raw-socket-service-discovery-spec.ko.md#172-step-b-discovery-surface-ownership-전환)
+- [`4.1 discovery는 service view다`](raw-socket-service-discovery-spec.ko.md#41-discovery는-service-view다)
+- [`4.2 service 선택 책임은 discovery가 가진다`](raw-socket-service-discovery-spec.ko.md#42-service-선택-책임은-discovery가-가진다)
+- [`5.1 service view`](raw-socket-service-discovery-spec.ko.md#51-service-view)
+- [`6.1 discovery 생성 시 service_name 고정`](raw-socket-service-discovery-spec.ko.md#61-discovery-생성-시-service_name-고정)
+- [`10.1 discovery state`](raw-socket-service-discovery-spec.ko.md#101-discovery-state)
+- [`13.4 discovery destroy 실패`](raw-socket-service-discovery-spec.ko.md#134-discovery-destroy-실패)
+- [`17.2 Step B: discovery surface ownership 전환`](raw-socket-service-discovery-spec.ko.md#172-step-b-discovery-surface-ownership-전환)
 
 상태: `완료`
 
@@ -254,13 +254,13 @@ git push
 
 스펙 참조:
 
-- [`8.1 register 계열 payload`](./raw-socket-service-discovery-spec.ko.md#81-register-계열-payload)
-- [`8.2 service list shape`](./raw-socket-service-discovery-spec.ko.md#82-service-list-shape)
-- [`9.1 service view key`](./raw-socket-service-discovery-spec.ko.md#91-service-view-key)
-- [`9.2 provider key`](./raw-socket-service-discovery-spec.ko.md#92-provider-key)
-- [`9.3 provider entry`](./raw-socket-service-discovery-spec.ko.md#93-provider-entry)
-- [`9.4 registry 조회 surface 확장`](./raw-socket-service-discovery-spec.ko.md#94-registry-조회-surface-확장)
-- [`17.3 Step C: registry wire / state 확장`](./raw-socket-service-discovery-spec.ko.md#173-step-c-registry-wire--state-확장)
+- [`8.1 register 계열 payload`](raw-socket-service-discovery-spec.ko.md#81-register-계열-payload)
+- [`8.2 service list shape`](raw-socket-service-discovery-spec.ko.md#82-service-list-shape)
+- [`9.1 service view key`](raw-socket-service-discovery-spec.ko.md#91-service-view-key)
+- [`9.2 provider key`](raw-socket-service-discovery-spec.ko.md#92-provider-key)
+- [`9.3 provider entry`](raw-socket-service-discovery-spec.ko.md#93-provider-entry)
+- [`9.4 registry 조회 surface 확장`](raw-socket-service-discovery-spec.ko.md#94-registry-조회-surface-확장)
+- [`17.3 Step C: registry wire / state 확장`](raw-socket-service-discovery-spec.ko.md#173-step-c-registry-wire--state-확장)
 
 상태: `완료`
 
@@ -316,19 +316,19 @@ git push
 
 스펙 참조:
 
-- [`5.3 socket attachment`](./raw-socket-service-discovery-spec.ko.md#53-socket-attachment)
-- [`6.2 raw socket attach API`](./raw-socket-service-discovery-spec.ko.md#62-raw-socket-attach-api)
-- [`11.1 local attachment state`](./raw-socket-service-discovery-spec.ko.md#111-local-attachment-state)
-- [`11.2 attach lifecycle`](./raw-socket-service-discovery-spec.ko.md#112-attach-lifecycle)
-- [`11.3 bind와 register 관계`](./raw-socket-service-discovery-spec.ko.md#113-bind와-register-관계)
-- [`11.4 attach validation`](./raw-socket-service-discovery-spec.ko.md#114-attach-validation)
-- [`12.2 peer filtering 절차`](./raw-socket-service-discovery-spec.ko.md#122-peer-filtering-절차)
-- [`12.3 duplicate connect 방지`](./raw-socket-service-discovery-spec.ko.md#123-duplicate-connect-방지)
-- [`13.2 attach 실패`](./raw-socket-service-discovery-spec.ko.md#132-attach-실패)
-- [`13.5 attach 상태 API 금지 규칙`](./raw-socket-service-discovery-spec.ko.md#135-attach-상태-api-금지-규칙)
-- [`17.4 Step D: raw socket attachment 도입`](./raw-socket-service-discovery-spec.ko.md#174-step-d-raw-socket-attachment-도입)
-- [`17.5 Step E: bind / register / peer refresh 연결`](./raw-socket-service-discovery-spec.ko.md#175-step-e-bind--register--peer-refresh-연결)
-- [`17.7 Step G: attach 상태 API gate`](./raw-socket-service-discovery-spec.ko.md#177-step-g-attach-상태-api-gate)
+- [`5.3 socket attachment`](raw-socket-service-discovery-spec.ko.md#53-socket-attachment)
+- [`6.2 raw socket attach API`](raw-socket-service-discovery-spec.ko.md#62-raw-socket-attach-api)
+- [`11.1 local attachment state`](raw-socket-service-discovery-spec.ko.md#111-local-attachment-state)
+- [`11.2 attach lifecycle`](raw-socket-service-discovery-spec.ko.md#112-attach-lifecycle)
+- [`11.3 bind와 register 관계`](raw-socket-service-discovery-spec.ko.md#113-bind와-register-관계)
+- [`11.4 attach validation`](raw-socket-service-discovery-spec.ko.md#114-attach-validation)
+- [`12.2 peer filtering 절차`](raw-socket-service-discovery-spec.ko.md#122-peer-filtering-절차)
+- [`12.3 duplicate connect 방지`](raw-socket-service-discovery-spec.ko.md#123-duplicate-connect-방지)
+- [`13.2 attach 실패`](raw-socket-service-discovery-spec.ko.md#132-attach-실패)
+- [`13.5 attach 상태 API 금지 규칙`](raw-socket-service-discovery-spec.ko.md#135-attach-상태-api-금지-규칙)
+- [`17.4 Step D: raw socket attachment 도입`](raw-socket-service-discovery-spec.ko.md#174-step-d-raw-socket-attachment-도입)
+- [`17.5 Step E: bind / register / peer refresh 연결`](raw-socket-service-discovery-spec.ko.md#175-step-e-bind--register--peer-refresh-연결)
+- [`17.7 Step G: attach 상태 API gate`](raw-socket-service-discovery-spec.ko.md#177-step-g-attach-상태-api-gate)
 
 상태: `완료`
 
@@ -382,10 +382,10 @@ git push
 
 스펙 참조:
 
-- [`6.3 gateway / spot에도 같은 철학 적용`](./raw-socket-service-discovery-spec.ko.md#63-gateway--spot에도-같은-철학-적용)
-- [`15.4 Phase 4: gateway / spot 정렬`](./raw-socket-service-discovery-spec.ko.md#154-phase-4-gateway--spot-정렬)
-- [`16.5 gateway / spot 영향 범위`](./raw-socket-service-discovery-spec.ko.md#165-gateway--spot-영향-범위)
-- [`17.6 Step F: gateway / spot ownership 전환`](./raw-socket-service-discovery-spec.ko.md#176-step-f-gateway--spot-ownership-전환)
+- [`6.3 gateway / spot에도 같은 철학 적용`](raw-socket-service-discovery-spec.ko.md#63-gateway--spot에도-같은-철학-적용)
+- [`15.4 Phase 4: gateway / spot 정렬`](raw-socket-service-discovery-spec.ko.md#154-phase-4-gateway--spot-정렬)
+- [`16.5 gateway / spot 영향 범위`](raw-socket-service-discovery-spec.ko.md#165-gateway--spot-영향-범위)
+- [`17.6 Step F: gateway / spot ownership 전환`](raw-socket-service-discovery-spec.ko.md#176-step-f-gateway--spot-ownership-전환)
 
 상태: `완료`
 
@@ -433,10 +433,10 @@ git push
 
 스펙 참조:
 
-- [`2.2 role별 매칭 규칙`](./raw-socket-service-discovery-spec.ko.md#22-role별-매칭-규칙)
-- [`2.3 fan-out 규칙`](./raw-socket-service-discovery-spec.ko.md#23-fan-out-규칙)
-- [`20. 추가 변경사항`](./raw-socket-service-discovery-spec.ko.md#20-추가-변경사항)
-- [`17.8 Step H: raw socket 연결 규칙 정리`](./raw-socket-service-discovery-spec.ko.md#178-step-h-raw-socket-연결-규칙-정리)
+- [`2.2 role별 매칭 규칙`](raw-socket-service-discovery-spec.ko.md#22-role별-매칭-규칙)
+- [`2.3 fan-out 규칙`](raw-socket-service-discovery-spec.ko.md#23-fan-out-규칙)
+- [`20. 추가 변경사항`](raw-socket-service-discovery-spec.ko.md#20-추가-변경사항)
+- [`17.8 Step H: raw socket 연결 규칙 정리`](raw-socket-service-discovery-spec.ko.md#178-step-h-raw-socket-연결-규칙-정리)
 
 상태: `완료`
 
@@ -469,9 +469,9 @@ git push
 
 스펙 참조:
 
-- [`6.3 gateway / spot에도 같은 철학 적용`](./raw-socket-service-discovery-spec.ko.md#63-gateway--spot에도-같은-철학-적용)
-- [`15.6 Phase 6: spot_node data-plane surface 제거`](./raw-socket-service-discovery-spec.ko.md#156-phase-6-spot_node-data-plane-surface-제거)
-- [`17.9 Step I: spot_node data-plane surface 제거`](./raw-socket-service-discovery-spec.ko.md#179-step-i-spot_node-data-plane-surface-제거)
+- [`6.3 gateway / spot에도 같은 철학 적용`](raw-socket-service-discovery-spec.ko.md#63-gateway--spot에도-같은-철학-적용)
+- [`15.6 Phase 6: spot_node data-plane surface 제거`](raw-socket-service-discovery-spec.ko.md#156-phase-6-spot_node-data-plane-surface-제거)
+- [`17.9 Step I: spot_node data-plane surface 제거`](raw-socket-service-discovery-spec.ko.md#179-step-i-spot_node-data-plane-surface-제거)
 
 상태: `완료`
 
@@ -526,13 +526,13 @@ git push
 
 스펙 참조:
 
-- [`14.1 protocol 단위 테스트`](./raw-socket-service-discovery-spec.ko.md#141-protocol-단위-테스트)
-- [`14.2 discovery 단위 테스트`](./raw-socket-service-discovery-spec.ko.md#142-discovery-단위-테스트)
-- [`14.3 raw socket integration 테스트`](./raw-socket-service-discovery-spec.ko.md#143-raw-socket-integration-테스트)
-- [`14.4 회귀 테스트`](./raw-socket-service-discovery-spec.ko.md#144-회귀-테스트)
-- [`14.5 신규 회귀 테스트 작성 원칙`](./raw-socket-service-discovery-spec.ko.md#145-신규-회귀-테스트-작성-원칙)
-- [`16.6 테스트`](./raw-socket-service-discovery-spec.ko.md#166-테스트)
-- [`17.10 Step J: regression / cleanup`](./raw-socket-service-discovery-spec.ko.md#1710-step-j-regression--cleanup)
+- [`14.1 protocol 단위 테스트`](raw-socket-service-discovery-spec.ko.md#141-protocol-단위-테스트)
+- [`14.2 discovery 단위 테스트`](raw-socket-service-discovery-spec.ko.md#142-discovery-단위-테스트)
+- [`14.3 raw socket integration 테스트`](raw-socket-service-discovery-spec.ko.md#143-raw-socket-integration-테스트)
+- [`14.4 회귀 테스트`](raw-socket-service-discovery-spec.ko.md#144-회귀-테스트)
+- [`14.5 신규 회귀 테스트 작성 원칙`](raw-socket-service-discovery-spec.ko.md#145-신규-회귀-테스트-작성-원칙)
+- [`16.6 테스트`](raw-socket-service-discovery-spec.ko.md#166-테스트)
+- [`17.10 Step J: regression / cleanup`](raw-socket-service-discovery-spec.ko.md#1710-step-j-regression--cleanup)
 
 상태: `완료`
 
@@ -569,11 +569,11 @@ git push
 
 스펙 참조:
 
-- [`3.2 service ownership을 discovery로 올려야 하는 이유`](./raw-socket-service-discovery-spec.ko.md#32-service-ownership을-discovery로-올려야-하는-이유)
-- [`4.3 role 매칭 정책은 중앙화한다`](./raw-socket-service-discovery-spec.ko.md#43-role-매칭-정책은-중앙화한다)
-- [`4.5 attach된 자동 연결 ownership은 단일해야 한다`](./raw-socket-service-discovery-spec.ko.md#45-attach된-자동-연결-ownership은-단일해야-한다)
-- [`15.8 Phase 8: POSD 리팩토링 정리`](./raw-socket-service-discovery-spec.ko.md#158-phase-8-posd-리팩토링-정리)
-- [`17.11 Step K: POSD 리팩토링`](./raw-socket-service-discovery-spec.ko.md#1711-step-k-posd-리팩토링)
+- [`3.2 service ownership을 discovery로 올려야 하는 이유`](raw-socket-service-discovery-spec.ko.md#32-service-ownership을-discovery로-올려야-하는-이유)
+- [`4.3 role 매칭 정책은 중앙화한다`](raw-socket-service-discovery-spec.ko.md#43-role-매칭-정책은-중앙화한다)
+- [`4.5 attach된 자동 연결 ownership은 단일해야 한다`](raw-socket-service-discovery-spec.ko.md#45-attach된-자동-연결-ownership은-단일해야-한다)
+- [`15.8 Phase 8: POSD 리팩토링 정리`](raw-socket-service-discovery-spec.ko.md#158-phase-8-posd-리팩토링-정리)
+- [`17.11 Step K: POSD 리팩토링`](raw-socket-service-discovery-spec.ko.md#1711-step-k-posd-리팩토링)
 
 상태: `완료`
 
@@ -627,12 +627,12 @@ git push
 
 스펙 참조:
 
-- [`6. Public Surface 제안`](./raw-socket-service-discovery-spec.ko.md#6-public-surface-제안)
-- [`13. 에러 정책`](./raw-socket-service-discovery-spec.ko.md#13-에러-정책)
-- [`15.5 Phase 5: raw socket 연결 규칙 정리`](./raw-socket-service-discovery-spec.ko.md#155-phase-5-raw-socket-연결-규칙-정리)
-- [`15.6 Phase 6: spot_node data-plane surface 제거`](./raw-socket-service-discovery-spec.ko.md#156-phase-6-spot_node-data-plane-surface-제거)
-- [`15.7 Phase 7: docs / tests 정리`](./raw-socket-service-discovery-spec.ko.md#157-phase-7-docs--tests-정리)
-- [`18. Definition of Done`](./raw-socket-service-discovery-spec.ko.md#18-definition-of-done)
+- [`6. Public Surface 제안`](raw-socket-service-discovery-spec.ko.md#6-public-surface-제안)
+- [`13. 에러 정책`](raw-socket-service-discovery-spec.ko.md#13-에러-정책)
+- [`15.5 Phase 5: raw socket 연결 규칙 정리`](raw-socket-service-discovery-spec.ko.md#155-phase-5-raw-socket-연결-규칙-정리)
+- [`15.6 Phase 6: spot_node data-plane surface 제거`](raw-socket-service-discovery-spec.ko.md#156-phase-6-spot_node-data-plane-surface-제거)
+- [`15.7 Phase 7: docs / tests 정리`](raw-socket-service-discovery-spec.ko.md#157-phase-7-docs--tests-정리)
+- [`18. Definition of Done`](raw-socket-service-discovery-spec.ko.md#18-definition-of-done)
 
 상태: `완료`
 
@@ -670,9 +670,9 @@ git push
 
 종료 판정 스펙 참조:
 
-- [`14. 테스트 계획`](./raw-socket-service-discovery-spec.ko.md#14-테스트-계획)
-- [`17. 구현 체크리스트`](./raw-socket-service-discovery-spec.ko.md#17-구현-체크리스트)
-- [`18. Definition of Done`](./raw-socket-service-discovery-spec.ko.md#18-definition-of-done)
+- [`14. 테스트 계획`](raw-socket-service-discovery-spec.ko.md#14-테스트-계획)
+- [`17. 구현 체크리스트`](raw-socket-service-discovery-spec.ko.md#17-구현-체크리스트)
+- [`18. Definition of Done`](raw-socket-service-discovery-spec.ko.md#18-definition-of-done)
 
 - guide의 5.1~5.10이 전부 `완료`
 - 메인 스펙의 Definition of Done을 코드와 테스트로 만족
@@ -703,7 +703,7 @@ git push
 최종 종료 판정은 아래 증거를 기준으로 닫았다.
 
 - 최종 실행 결과:
-  [`logs/codex_execution_guide_loop_20260325_155234/03_last_message.txt`](./logs/codex_execution_guide_loop_20260325_155234/03_last_message.txt)
+  [`logs/codex_execution_guide_loop_20260325_155234/03_last_message.txt`](logs/codex_execution_guide_loop_20260325_155234/03_last_message.txt)
   - 내용: `미적용 사항이 없습니다.`
 - 최종 반영 commit:
   - `89046e93 refactor: finish discovery-owned service execution`

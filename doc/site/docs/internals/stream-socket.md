@@ -1,4 +1,4 @@
-[English](./stream-socket.md) | [한국어](./stream-socket.ko.md)
+[English](stream-socket.md) | [한국어](stream-socket.ko.md)
 
 # STREAM Socket WS/WSS Optimization
 
@@ -199,7 +199,7 @@ reasons worth calling out:
 
 STREAM uses a consolidated default performance profile across transports.
 For non-STREAM-wide socket defaults, see
-[socket-option-defaults.md](./socket-option-defaults.md).
+[socket-option-defaults.md](socket-option-defaults.md).
 
 ### 7.1 Fixed internal constants
 
@@ -271,7 +271,7 @@ There are two ways a STREAM handle acquires a session owner SpotNode:
 The STREAM socket holds none of the relay state itself. The owner mapping, the
 session-to-Actor bindings, and the relay paths all live in the SpotNode Actor
 runtime. The wiring, the local vs remote relay paths, and the cleanup rules are
-documented in [spot-internals.md](./spot-internals.md) section 12 ("STREAM
+documented in [spot-internals.md](spot-internals.md) section 12 ("STREAM
 session and Actor binding"). What matters at the STREAM layer is only that the
 byte pipe per `source_rid` is the transport the relay rides on, and that a
 session disconnect removes that session's bindings without changing any bound

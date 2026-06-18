@@ -1,7 +1,7 @@
-[English](./xpub.md) | [한국어](./xpub.ko.md)
+[English](xpub.md) | [한국어](xpub.ko.md)
 
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](./README.ko.md)
+[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md)
 
 # 소켓 -- XPUB
 

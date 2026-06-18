@@ -1,4 +1,4 @@
-[English](./services-internals.md) | [한국어](./services-internals.ko.md)
+[English](services-internals.md) | [한국어](services-internals.ko.md)
 
 # 서비스 계층 내부 설계
 
@@ -265,7 +265,7 @@ Frame 4~N: Service entries (repeated service_count times)
 
 SPOT/SpotNode 내부 아키텍처의 상세 내용 — 컴포넌트 다이어그램, 11개 내부
 소켓 (타입/endpoint/HWM), 토픽 및 routed 메시지 흐름 시퀀스, control plane,
-data plane polling — 은 별도 문서를 참고: **[SPOT 내부 구조](./spot-internals.ko.md)**.
+data plane polling — 은 별도 문서를 참고: **[SPOT 내부 구조](spot-internals.ko.md)**.
 
 ### 6.1 컴포넌트 다이어그램
 

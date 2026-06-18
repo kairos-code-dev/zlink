@@ -1,7 +1,7 @@
-[English](./03-6-proxy.md) | [한국어](./03-6-proxy.ko.md)
+[English](03-6-proxy.md) | [한국어](03-6-proxy.ko.md)
 
 <!-- zlink-nav:start -->
-[← STREAM](./03-5-stream.ko.md) | [Transport →](./04-transports.ko.md)
+[← STREAM](03-5-stream.ko.md) | [Transport →](04-transports.ko.md)
 <!-- zlink-nav:end -->
 
 # 프록시 패턴
@@ -222,5 +222,5 @@ flowchart LR
 
 ---
 <!-- zlink-nav:bottom:start -->
-[← STREAM](./03-5-stream.ko.md) | [Transport →](./04-transports.ko.md)
+[← STREAM](03-5-stream.ko.md) | [Transport →](04-transports.ko.md)
 <!-- zlink-nav:bottom:end -->

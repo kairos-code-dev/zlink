@@ -2,7 +2,7 @@
 
 > **상태**: Historical Draft
 > **관련 문서**:
-> [`ZMP_PROTOCOL_OVERVIEW.md`](./ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
+> [`ZMP_PROTOCOL_OVERVIEW.md`](ZMP_PROTOCOL_OVERVIEW.md) — 공통 ZMP 전송 형식
 >
 > 이 문서의 설계안은 현재 채택하지 않았다.
 > 현재 기준은 message-level metadata 를 유지하지 않는 방향이다.
@@ -352,7 +352,7 @@ flags byte:
 - transport 레벨에서 감지하므로 false positive가 구조적으로 불가능하다.
 
 extended header 안에 metadata entries와 request-reply envelope가 함께
-들어갈 수 있다. 상세는 [`MSG_REQUEST_REPLY_SPEC.md`](./MSG_REQUEST_REPLY_SPEC.md) 참조.
+들어갈 수 있다. 상세는 [`MSG_REQUEST_REPLY_SPEC.md`](MSG_REQUEST_REPLY_SPEC.md) 참조.
 
 ### 7.2 생성 조건
 
@@ -391,7 +391,7 @@ recv 시 core가 `EXTENDED_HEADER` flag를 확인하여 파싱한다.
 - metadata key-value와 request-reply 필드는 독립적으로 동작한다.
 - 한 메시지에 request-reply 필드와 metadata가 모두 존재할 수 있다.
   이 경우 wire에 두 header가 모두 실린다.
-- 상세는 [`MSG_REQUEST_REPLY_SPEC.md`](./MSG_REQUEST_REPLY_SPEC.md) 참조.
+- 상세는 [`MSG_REQUEST_REPLY_SPEC.md`](MSG_REQUEST_REPLY_SPEC.md) 참조.
 
 ---
 

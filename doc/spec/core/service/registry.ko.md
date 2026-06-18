@@ -1,6 +1,6 @@
-[English](./registry.md) | [한국어](./registry.ko.md)
+[English](registry.md) | [한국어](registry.ko.md)
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [서비스 공통](./README.ko.md)
+[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [서비스 공통](README.ko.md)
 
 # 레지스트리
 
@@ -67,9 +67,9 @@ owner_node_rid` 매핑이 어떻게 등록되고, 바뀌고, 사라지는지 정
 - Discovery는 이 결과를 가까운 곳에 저장해 둘 수 있지만, 최종 기준이 되지는
   않습니다.
 
-SPOT send/request/reply 함수 계약은 [spot.ko.md](./spot.ko.md)에서 정의합니다.
+SPOT send/request/reply 함수 계약은 [spot.ko.md](spot.ko.md)에서 정의합니다.
 Discovery가 주소를 가까운 곳에 저장하고 다시 조회하는 흐름은
-[discovery.ko.md](./discovery.ko.md)에서 정의합니다.
+[discovery.ko.md](discovery.ko.md)에서 정의합니다.
 
 응용이 보통 직접 호출하는 조회 함수는 Registry가 아니라 Discovery 쪽의
 `zlink_discovery_resolve_spot()`입니다. Registry는 그 함수가 의존하는 기준
@@ -175,7 +175,7 @@ tombstone TTL 의 정확한 값은 구현 정책입니다. 다만 older advertis
   됩니다.
 
 집계 방식의 생존 확인과 Discovery 쪽 캐시 확장 규칙은
-[discovery.ko.md](./discovery.ko.md)를 참조하세요.
+[discovery.ko.md](discovery.ko.md)를 참조하세요.
 
 ## 상수
 

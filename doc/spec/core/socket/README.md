@@ -8,14 +8,14 @@ behavioral details) live in separate files.
 
 | Socket Type | Spec |
 |-------------|------|
-| PAIR | [pair.md](./pair.md) |
-| DEALER | [dealer.md](./dealer.md) |
-| ROUTER | [router.md](./router.md) |
-| PUB | [pub.md](./pub.md) |
-| SUB | [sub.md](./sub.md) |
-| XPUB | [xpub.md](./xpub.md) |
-| XSUB | [xsub.md](./xsub.md) |
-| STREAM | [stream.md](./stream.md) |
+| PAIR | [pair.md](pair.md) |
+| DEALER | [dealer.md](dealer.md) |
+| ROUTER | [router.md](router.md) |
+| PUB | [pub.md](pub.md) |
+| SUB | [sub.md](sub.md) |
+| XPUB | [xpub.md](xpub.md) |
+| XSUB | [xsub.md](xsub.md) |
+| STREAM | [stream.md](stream.md) |
 
 ## Thread-Safety Summary
 
@@ -462,7 +462,7 @@ the messaging pattern. Receive mode for raw sockets is fixed per type:
 `PAIR`, `DEALER`, `SUB`, and `XSUB` are recv-only, and `ROUTER` uses
 `zlink_router_recv()`. Only `STREAM` offers a choice of raw recv, raw
 callback (`zlink_recv_handler()`), or packet callback
-(`zlink_stream_packet_handler()`) — see [stream.md](./stream.md). The socket
+(`zlink_stream_packet_handler()`) — see [stream.md](stream.md). The socket
 must be closed with `zlink_close()` before the context is terminated.
 
 **Returns:** Socket handle on success, `NULL` on failure (errno is set).
@@ -492,7 +492,7 @@ with `ENOTSUP`. After attach, `zlink_recv()`,
 the same handle fail with `errno=EBUSY`. A second attach on the same
 handle also fails with `errno=EBUSY`.
 
-See [stream.md](./stream.md) for the full contract.
+See [stream.md](stream.md) for the full contract.
 
 **Returns:** `ZLINK_HANDLER_OK` on success. On failure, returns a
 `zlink_handler_result_t` value. Detailed internal errno remains available

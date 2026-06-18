@@ -1,4 +1,4 @@
-[English](./registry-internals.md) | [한국어](./registry-internals.ko.md)
+[English](registry-internals.md) | [한국어](registry-internals.ko.md)
 
 # Registry 서비스 내부 아키텍처
 
@@ -96,7 +96,7 @@ Actor table 에는 먼저 보이고 대응하는 route row 가 모든 Registry �
 
 그래서 STREAM session relay 는 Registry 를 조회하지 않는다. session binding 이 bound Actor
 ref 를 직접 들고 있고 owner SpotNode 의 ActorGateway 가 현재 위치를 local 에서 해석한다
-([spot-internals.ko.md](./spot-internals.ko.md) 12절 참고). Registry route row 는
+([spot-internals.ko.md](spot-internals.ko.md) 12절 참고). Registry route row 는
 service-to-Actor routing 과 진단 용도이며 relay hot path 가 아니다.
 
 ## 4. 서비스 등록 시퀀스
@@ -270,7 +270,7 @@ Registry 측 주의사항:
 - 이 쿼리는 **요청마다 피어 Registry 로 팬아웃(fan-out, 분산 조회)하지 않는다**. Registry 는 §6 의 flooding / heartbeat 주기로 동기화된 로컬 `service_map` 에서 답한다. spot 소유 기록은 SERVICE_LIST 브로드캐스트와 `TOPOLOGY_REPORT` uplink 경로를 통해 로컬 `service_map` 에 반영된다.
 - owner SpotNode 가 이동했지만 새 등록이 아직 이 Registry 까지 전파되지 않았다면, 쿼리는 **오래된(stale) 결과이거나 빈 결과**를 반환할 수 있다. Discovery 클라이언트는 이를 `ENOENT` 로 호출자에게 "지금은 확정 불가" 신호로 돌려주며, 애플리케이션은 짧은 backoff 후 재시도하는 것이 일반적이다.
 - Registry 는 매칭되는 모든 엔트리를 반환하지, 가장 신선한 한 건만 고르지 않는다. Discovery 클라이언트가 `refresh_spot_owner_cache_locked` 단계에서 각 엔트리에 현재의 `validated_service_seq` 도장을 찍어 저장하므로 이후 캐시 hit 단계에서 membership 변화를 기준으로 검증할 수 있다.
-- 이 응답을 **들어오는 request 에 대한 reply 용 owner 주소로 재사용하면 안 된다**. 이 resolver 는 destination lookup 전용이고, reply 경로는 원래 request 와 함께 전달된 구체적인 source 주소를 그대로 써야 한다. 클라이언트 측 계약은 [Discovery Internals §10](./discovery-internals.ko.md#10-spot-소유-노드-조회-zlink_discovery_resolve_spot) 참고.
+- 이 응답을 **들어오는 request 에 대한 reply 용 owner 주소로 재사용하면 안 된다**. 이 resolver 는 destination lookup 전용이고, reply 경로는 원래 request 와 함께 전달된 구체적인 source 주소를 그대로 써야 한다. 클라이언트 측 계약은 [Discovery Internals §10](discovery-internals.ko.md#10-spot-소유-노드-조회-zlink_discovery_resolve_spot) 참고.
 
 ## 8. Owner-Bound Route 처리
 

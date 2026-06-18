@@ -7,15 +7,15 @@
 
 ## 권장 작업 순서
 
-1. [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md)
+1. [`gateway-removal-plan.ko.md`](gateway-removal-plan.ko.md)
    - `gateway` family를 먼저 source tree에서 제거하는 실행 계획 문서
    - public/internal/protocol/test/doc/core-perf/bindings 정리 범위와 완료 판정 포함
-2. [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+2. [`socket-metadata-sharing-plan.ko.md`](socket-metadata-sharing-plan.ko.md)
    - `gateway` 제거 이후에도 필요한 공통 `value` / `metadata` 공유 모델을 다시 도입하는 후속 설계 문서
    - raw socket/service profile이 공통 metadata distribution을 소비하도록 정리
-3. [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)
+3. [`gateway-removal-metadata-execution-guide.ko.md`](gateway-removal-metadata-execution-guide.ko.md)
    - 실제 작업 순서, 검증, commit/push 기준을 고정하는 execution guide
-4. [`run_gateway_removal_metadata_execution.sh`](./run_gateway_removal_metadata_execution.sh)
+4. [`run_gateway_removal_metadata_execution.sh`](run_gateway_removal_metadata_execution.sh)
    - 공통 supervisor를 감싸는 gateway 전용 랄프 루프 실행 스크립트
 
 ## 선행 결정
@@ -29,11 +29,11 @@
 ## 자동 실행
 
 - 랄프 루프로 작업을 밀고 싶으면
-  [`run_gateway_removal_metadata_execution.sh`](./run_gateway_removal_metadata_execution.sh)를 사용한다.
+  [`run_gateway_removal_metadata_execution.sh`](run_gateway_removal_metadata_execution.sh)를 사용한다.
 - 자동 실행에서도 authority는 하나가 아니다.
 - 실행 순서, 완료 판정, commit/push 기준은
-  [`gateway-removal-metadata-execution-guide.ko.md`](./gateway-removal-metadata-execution-guide.ko.md)가 고정한다.
+  [`gateway-removal-metadata-execution-guide.ko.md`](gateway-removal-metadata-execution-guide.ko.md)가 고정한다.
 - 실제 구현 범위와 설계 intent는
-  [`gateway-removal-plan.ko.md`](./gateway-removal-plan.ko.md),
-  [`socket-metadata-sharing-plan.ko.md`](./socket-metadata-sharing-plan.ko.md)
+  [`gateway-removal-plan.ko.md`](gateway-removal-plan.ko.md),
+  [`socket-metadata-sharing-plan.ko.md`](socket-metadata-sharing-plan.ko.md)
   를 함께 기준으로 확인한다.

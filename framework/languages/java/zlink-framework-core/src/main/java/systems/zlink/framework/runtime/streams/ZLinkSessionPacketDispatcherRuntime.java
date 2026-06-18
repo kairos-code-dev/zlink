@@ -10,6 +10,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
@@ -19,12 +20,12 @@ import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSessionContext>
     implements ZLinkSessionPacketDispatcher<TSessionContext> {
-    private final Map<String, ZLinkSessionPacketHandler<TSessionContext>> handlers;
+    private final Map<String, Object> handlers;
     private final ZLinkMessageSerializer serializer;
     private final Executor handlerExecutor;
 
     ZLinkSessionPacketDispatcherRuntime(
-        List<Class<? extends ZLinkSessionPacketHandler<?>>> handlerTypes,
+        List<Class<?>> handlerTypes,
         ZLinkHandlerFactory handlerFactory,
         ZLinkMessageSerializer serializer,
         Executor handlerExecutor) {
@@ -38,7 +39,7 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
         TSessionContext context,
         ZLinkStreamHeader header,
         Message payload) {
-        ZLinkSessionPacketHandler<TSessionContext> handler =
+        Object handler =
             handlers.get(header.packetName());
         if (handler == null) {
             return CompletableFuture.completedFuture(false);
@@ -47,8 +48,18 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
             return executeHandler(() -> invokeTypedHandler(typedHandler, context, header, payload))
                 .thenApply(ignored -> true);
         }
+        Class<?> messageType = messageType(handler);
+        if (messageType != null) {
+            Object decoded = serializer.deserialize(payload, messageType);
+            return executeHandler(() -> ZLinkHandlerMethodInvoker
+                .invokeHandler(handler, "handle", new Object[] {context, header, decoded}, List.of())
+                .thenApply(ignored -> null))
+                .thenApply(ignored -> true);
+        }
         return executeHandler(() ->
-            ZLinkHandlerStages.fromRunnable(() -> handler.handle(context, header, payload)))
+            ZLinkHandlerMethodInvoker
+                .invokeHandler(handler, "handle", new Object[] {context, header, payload}, List.of())
+                .thenApply(ignored -> null))
             .thenApply(ignored -> true);
     }
 
@@ -61,7 +72,9 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
         ZLinkTypedSessionPacketHandler<TSessionContext, Object> typed =
             (ZLinkTypedSessionPacketHandler<TSessionContext, Object>) handler;
         Object decoded = serializer.deserialize(payload, typed.messageType());
-        return ZLinkHandlerStages.fromRunnable(() -> typed.handle(context, header, decoded));
+        return ZLinkHandlerMethodInvoker
+            .invokeHandler(typed, "handle", new Object[] {context, header, decoded}, List.of())
+            .thenApply(ignored -> null);
     }
 
     private <T> CompletionStage<T> executeHandler(
@@ -88,17 +101,14 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
     }
 
     private static <TSessionContext extends ZLinkSessionContext>
-    Map<String, ZLinkSessionPacketHandler<TSessionContext>> buildHandlerMap(
-        List<Class<? extends ZLinkSessionPacketHandler<?>>> handlerTypes,
+    Map<String, Object> buildHandlerMap(
+        List<Class<?>> handlerTypes,
         ZLinkHandlerFactory handlerFactory) {
-        Map<String, ZLinkSessionPacketHandler<TSessionContext>> map =
+        Map<String, Object> map =
             new HashMap<>();
-        for (Class<? extends ZLinkSessionPacketHandler<?>> handlerType : handlerTypes) {
-            @SuppressWarnings("unchecked")
-            ZLinkSessionPacketHandler<TSessionContext> handler =
-                (ZLinkSessionPacketHandler<TSessionContext>)
-                    handlerFactory.create(handlerType);
-            String packetName = handler.packetName();
+        for (Class<?> handlerType : handlerTypes) {
+            Object handler = handlerFactory.create(handlerType);
+            String packetName = packetName(handler);
             if (packetName == null || packetName.isBlank()
                 || !packetName.equals(packetName.trim())) {
                 throw new ZLinkConfigurationException(
@@ -112,5 +122,32 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
             }
         }
         return Map.copyOf(map);
+    }
+
+    private static String packetName(Object handler) {
+        if (handler instanceof ZLinkSessionPacketHandler<?> packetHandler) {
+            return packetHandler.packetName();
+        }
+        try {
+            Object value = handler.getClass().getMethod("packetName").invoke(handler);
+            return value instanceof String text ? text : null;
+        } catch (ReflectiveOperationException ex) {
+            throw new ZLinkConfigurationException(
+                "session packet handler must declare packetName(): "
+                    + handler.getClass().getName());
+        }
+    }
+
+    private static Class<?> messageType(Object handler) {
+        try {
+            Object value = handler.getClass().getMethod("messageType").invoke(handler);
+            return value instanceof Class<?> klass ? klass : null;
+        } catch (NoSuchMethodException ex) {
+            return null;
+        } catch (ReflectiveOperationException ex) {
+            throw new ZLinkConfigurationException(
+                "session packet handler messageType() failed: "
+                    + handler.getClass().getName());
+        }
     }
 }

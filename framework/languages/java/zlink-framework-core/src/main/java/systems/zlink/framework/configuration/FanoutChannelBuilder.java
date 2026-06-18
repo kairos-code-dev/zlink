@@ -1,7 +1,5 @@
 package systems.zlink.framework.configuration;
 
-import systems.zlink.framework.channels.ZLinkPublishHandler;
-
 public interface FanoutChannelBuilder {
     FanoutChannelBuilder enablePublisher(String endpoint);
 
@@ -11,13 +9,13 @@ public interface FanoutChannelBuilder {
 
     FanoutChannelBuilder addHandlerGroup(String groupName);
 
-    <THandler extends ZLinkPublishHandler<TMessage>, TMessage> void addPublishHandler(
-        Class<THandler> handlerType,
-        Class<TMessage> messageType);
+    void addPublishHandler(
+        Class<?> handlerType,
+        Class<?> messageType);
 
-    <THandler extends ZLinkPublishHandler<TMessage>, TMessage> void addPublishHandler(
-        Class<THandler> handlerType,
-        Class<TMessage> messageType,
+    void addPublishHandler(
+        Class<?> handlerType,
+        Class<?> messageType,
         String packetName);
 
     FanoutChannelBuilder addPublishHandler(Class<?> handlerType);

@@ -22,12 +22,12 @@ public final class ChannelRegistration {
     private final List<String> routeBinds = new ArrayList<>();
     private final List<String> routeManualEndpoints = new ArrayList<>();
     private final Set<String> handlerGroups = new LinkedHashSet<>();
-    private final List<ChannelSendHandlerRegistration<?, ?>> sendHandlers = new ArrayList<>();
-    private final List<ChannelRequestHandlerRegistration<?, ?, ?>> requestHandlers = new ArrayList<>();
-    private final List<ChannelPublishHandlerRegistration<?, ?>> publishHandlers = new ArrayList<>();
-    private final List<ChannelRouteSendHandlerRegistration<?, ?>> routeSendHandlers =
+    private final List<ChannelSendHandlerRegistration> sendHandlers = new ArrayList<>();
+    private final List<ChannelRequestHandlerRegistration> requestHandlers = new ArrayList<>();
+    private final List<ChannelPublishHandlerRegistration> publishHandlers = new ArrayList<>();
+    private final List<ChannelRouteSendHandlerRegistration> routeSendHandlers =
         new ArrayList<>();
-    private final List<ChannelRouteRequestHandlerRegistration<?, ?, ?>> routeRequestHandlers =
+    private final List<ChannelRouteRequestHandlerRegistration> routeRequestHandlers =
         new ArrayList<>();
     private String spotRouteEgressTarget;
     private boolean clientEnabled;
@@ -57,11 +57,11 @@ public final class ChannelRegistration {
         return clientManualEndpoints;
     }
 
-    List<ChannelRequestHandlerRegistration<?, ?, ?>> requestHandlers() {
+    List<ChannelRequestHandlerRegistration> requestHandlers() {
         return requestHandlers;
     }
 
-    List<ChannelSendHandlerRegistration<?, ?>> sendHandlers() {
+    List<ChannelSendHandlerRegistration> sendHandlers() {
         return sendHandlers;
     }
 
@@ -73,7 +73,7 @@ public final class ChannelRegistration {
         return subscriberManualEndpoints;
     }
 
-    List<ChannelPublishHandlerRegistration<?, ?>> publishHandlers() {
+    List<ChannelPublishHandlerRegistration> publishHandlers() {
         return publishHandlers;
     }
 
@@ -85,11 +85,11 @@ public final class ChannelRegistration {
         return routeManualEndpoints;
     }
 
-    List<ChannelRouteRequestHandlerRegistration<?, ?, ?>> routeRequestHandlers() {
+    List<ChannelRouteRequestHandlerRegistration> routeRequestHandlers() {
         return routeRequestHandlers;
     }
 
-    List<ChannelRouteSendHandlerRegistration<?, ?>> routeSendHandlers() {
+    List<ChannelRouteSendHandlerRegistration> routeSendHandlers() {
         return routeSendHandlers;
     }
 
@@ -103,19 +103,19 @@ public final class ChannelRegistration {
 
     public List<Class<?>> handlerTypes() {
         List<Class<?>> types = new ArrayList<>();
-        for (ChannelSendHandlerRegistration<?, ?> handler : sendHandlers) {
+        for (ChannelSendHandlerRegistration handler : sendHandlers) {
             types.add(handler.handlerType());
         }
-        for (ChannelRequestHandlerRegistration<?, ?, ?> handler : requestHandlers) {
+        for (ChannelRequestHandlerRegistration handler : requestHandlers) {
             types.add(handler.handlerType());
         }
-        for (ChannelPublishHandlerRegistration<?, ?> handler : publishHandlers) {
+        for (ChannelPublishHandlerRegistration handler : publishHandlers) {
             types.add(handler.handlerType());
         }
-        for (ChannelRouteSendHandlerRegistration<?, ?> handler : routeSendHandlers) {
+        for (ChannelRouteSendHandlerRegistration handler : routeSendHandlers) {
             types.add(handler.handlerType());
         }
-        for (ChannelRouteRequestHandlerRegistration<?, ?, ?> handler : routeRequestHandlers) {
+        for (ChannelRouteRequestHandlerRegistration handler : routeRequestHandlers) {
             types.add(handler.handlerType());
         }
         return List.copyOf(types);
@@ -189,35 +189,35 @@ public final class ChannelRegistration {
         handlerGroups.add(groupName);
     }
 
-    void addSendHandler(ChannelSendHandlerRegistration<?, ?> handler) {
+    void addSendHandler(ChannelSendHandlerRegistration handler) {
         requireNonBlankPacketName(handler.packetName(),
             "client/server channel send handler packet name");
         sendHandlers.add(handler.withPacketName(
             resolvePacketName(handler.messageType(), handler.packetName())));
     }
 
-    void addRequestHandler(ChannelRequestHandlerRegistration<?, ?, ?> handler) {
+    void addRequestHandler(ChannelRequestHandlerRegistration handler) {
         requireNonBlankPacketName(handler.packetName(),
             "client/server channel request handler packet name");
         requestHandlers.add(handler.withPacketName(
             resolvePacketName(handler.requestType(), handler.packetName())));
     }
 
-    void addPublishHandler(ChannelPublishHandlerRegistration<?, ?> handler) {
+    void addPublishHandler(ChannelPublishHandlerRegistration handler) {
         requireNonBlankPacketName(handler.packetName(),
             "fanout channel publish handler packet name");
         publishHandlers.add(handler.withPacketName(
             resolvePacketName(handler.messageType(), handler.packetName())));
     }
 
-    void addRouteRequestHandler(ChannelRouteRequestHandlerRegistration<?, ?, ?> handler) {
+    void addRouteRequestHandler(ChannelRouteRequestHandlerRegistration handler) {
         requireNonBlankPacketName(handler.packetName(),
             "route mesh request handler packet name");
         routeRequestHandlers.add(handler.withPacketName(
             resolvePacketName(handler.requestType(), handler.packetName())));
     }
 
-    void addRouteSendHandler(ChannelRouteSendHandlerRegistration<?, ?> handler) {
+    void addRouteSendHandler(ChannelRouteSendHandlerRegistration handler) {
         requireNonBlankPacketName(handler.packetName(),
             "route mesh send handler packet name");
         routeSendHandlers.add(handler.withPacketName(
@@ -279,7 +279,7 @@ public final class ChannelRegistration {
             ZLinkScannedHandlerSurface.CHANNEL,
             ZLinkScannedHandlerKind.SEND,
             "duplicate client/server send handler packet name");
-        for (ChannelSendHandlerRegistration<?, ?> handler : sendHandlers) {
+        for (ChannelSendHandlerRegistration handler : sendHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
                     "duplicate client/server send handler packet name: "
@@ -291,7 +291,7 @@ public final class ChannelRegistration {
             ZLinkScannedHandlerSurface.CHANNEL,
             ZLinkScannedHandlerKind.REQUEST,
             "duplicate client/server request handler packet name");
-        for (ChannelRequestHandlerRegistration<?, ?, ?> handler : requestHandlers) {
+        for (ChannelRequestHandlerRegistration handler : requestHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
                     "duplicate client/server request handler packet name: "
@@ -324,7 +324,7 @@ public final class ChannelRegistration {
             ZLinkScannedHandlerSurface.CHANNEL,
             ZLinkScannedHandlerKind.PUBLISH,
             "duplicate fanout publish handler packet name");
-        for (ChannelPublishHandlerRegistration<?, ?> handler : publishHandlers) {
+        for (ChannelPublishHandlerRegistration handler : publishHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
                     "duplicate fanout publish handler packet name: "
@@ -351,7 +351,7 @@ public final class ChannelRegistration {
             ZLinkScannedHandlerSurface.ROUTE,
             ZLinkScannedHandlerKind.SEND,
             "duplicate route mesh send handler packet name");
-        for (ChannelRouteSendHandlerRegistration<?, ?> handler : routeSendHandlers) {
+        for (ChannelRouteSendHandlerRegistration handler : routeSendHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
                     "duplicate route mesh send handler packet name: "
@@ -364,7 +364,7 @@ public final class ChannelRegistration {
             ZLinkScannedHandlerSurface.ROUTE,
             ZLinkScannedHandlerKind.REQUEST,
             "duplicate route mesh request handler packet name");
-        for (ChannelRouteRequestHandlerRegistration<?, ?, ?> handler : routeRequestHandlers) {
+        for (ChannelRouteRequestHandlerRegistration handler : routeRequestHandlers) {
             if (!packetNames.add(handler.packetName())) {
                 throw new ZLinkConfigurationException(
                     "duplicate route mesh request handler packet name: "

@@ -33,18 +33,13 @@ import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkPublishContext;
-import systems.zlink.framework.channels.ZLinkPublishHandler;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
-import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendContext;
-import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkSendContext;
-import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
@@ -76,15 +71,15 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     private final List<ZLinkBackendRouterSocket> manualRouteRouters = new ArrayList<>();
     private final List<ZLinkBackendDiscovery> discoveries = new ArrayList<>();
     private final Map<String, ZLinkBackendDiscovery> discoveriesByName = new HashMap<>();
-    private final Map<String, Map<String, ChannelRequestHandlerRegistration<?, ?, ?>>> requestHandlers =
+    private final Map<String, Map<String, ChannelRequestHandlerRegistration>> requestHandlers =
         new HashMap<>();
-    private final Map<String, Map<String, ChannelSendHandlerRegistration<?, ?>>> sendHandlers =
+    private final Map<String, Map<String, ChannelSendHandlerRegistration>> sendHandlers =
         new HashMap<>();
-    private final Map<String, Map<String, ChannelPublishHandlerRegistration<?, ?>>> publishHandlers =
+    private final Map<String, Map<String, ChannelPublishHandlerRegistration>> publishHandlers =
         new HashMap<>();
-    private final Map<String, Map<String, ChannelRouteRequestHandlerRegistration<?, ?, ?>>> routeRequestHandlers =
+    private final Map<String, Map<String, ChannelRouteRequestHandlerRegistration>> routeRequestHandlers =
         new HashMap<>();
-    private final Map<String, Map<String, ChannelRouteSendHandlerRegistration<?, ?>>> routeSendHandlers =
+    private final Map<String, Map<String, ChannelRouteSendHandlerRegistration>> routeSendHandlers =
         new HashMap<>();
     private final Map<String, RouteInternalRequestHandler> routeInternalRequestHandlers = new HashMap<>();
     private final Map<String, ZLinkAsyncSerialQueue> sendDispatchQueues = new HashMap<>();
@@ -636,7 +631,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             if (dispatchSpotRelaySendOrRequest(channelName, router, received, packet)) {
                 return;
             }
-            ChannelRequestHandlerRegistration<?, ?, ?> registration =
+            ChannelRequestHandlerRegistration registration =
                 requestHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
             if (received.routingId().isEmpty()) {
                 return;
@@ -682,7 +677,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             if (dispatchSpotRelaySendOrRequest(channelName, router, received, packet)) {
                 return;
             }
-            ChannelRouteRequestHandlerRegistration<?, ?, ?> registration =
+            ChannelRouteRequestHandlerRegistration registration =
                 routeRequestHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
             if (received.routingId().isEmpty()) {
                 return;
@@ -747,7 +742,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     private void dispatchPublish(String channelName, ZLinkBackendTopicMessage received) {
         try {
             ParsedPacket packet = parsePacket(received.parts());
-            ChannelPublishHandlerRegistration<?, ?> registration =
+            ChannelPublishHandlerRegistration registration =
                 publishHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
             if (registration == null) {
                 return;
@@ -762,7 +757,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     }
 
     private void dispatchSend(String channelName, ParsedPacket packet) {
-        ChannelSendHandlerRegistration<?, ?> registration =
+        ChannelSendHandlerRegistration registration =
             sendHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
         if (registration == null) {
             return;
@@ -777,7 +772,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         String channelName,
         RoutingId sourceRoutingId,
         ParsedPacket packet) {
-        ChannelRouteSendHandlerRegistration<?, ?> registration =
+        ChannelRouteSendHandlerRegistration registration =
             routeSendHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
         if (registration == null) {
             return;
@@ -865,9 +860,10 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     message,
                     context);
             }
-            ZLinkSendHandler handler =
-                (ZLinkSendHandler) handlerFactory.create(registration.handlerType());
-            return ZLinkHandlerStages.fromRunnable(() -> handler.handle(message, context));
+            Object handler = handlerFactory.create(registration.handlerType());
+            return ZLinkHandlerMethodInvoker
+                .invokeHandler(handler, "handle", new Object[] {message, context}, suspendHandlerInvokers)
+                .thenApply(ignored -> null);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -903,9 +899,9 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     request,
                     context);
             }
-            ZLinkRequestHandler handler =
-                (ZLinkRequestHandler) handlerFactory.create(registration.handlerType());
-            return ZLinkHandlerStages.fromSupplier(() -> handler.handle(request, context));
+            Object handler = handlerFactory.create(registration.handlerType());
+            return ZLinkHandlerMethodInvoker
+                .invokeHandler(handler, "handle", new Object[] {request, context}, suspendHandlerInvokers);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -941,9 +937,10 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     message,
                     context);
             }
-            ZLinkPublishHandler handler =
-                (ZLinkPublishHandler) handlerFactory.create(registration.handlerType());
-            return ZLinkHandlerStages.fromRunnable(() -> handler.handle(message, context));
+            Object handler = handlerFactory.create(registration.handlerType());
+            return ZLinkHandlerMethodInvoker
+                .invokeHandler(handler, "handle", new Object[] {message, context}, suspendHandlerInvokers)
+                .thenApply(ignored -> null);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -957,7 +954,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         try {
             Object handler = handlerFactory.create(handlerType);
             return ZLinkHandlerMethodInvoker
-                .invoke(handler, method, methodArguments(method, message, context))
+                .invoke(handler, method, methodArguments(method, message, context), suspendHandlerInvokers)
                 .thenApply(ignored -> null);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
@@ -1018,12 +1015,14 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 Object handler = handlerFactory.create(registration.handlerType());
                 return ZLinkHandlerMethodInvoker
                     .invoke(handler, registration.handlerMethod(),
-                        methodArguments(registration.handlerMethod(), message, context))
+                        methodArguments(registration.handlerMethod(), message, context),
+                        suspendHandlerInvokers)
                     .thenApply(ignored -> null);
             }
-            ZLinkRouteSendHandler handler =
-                (ZLinkRouteSendHandler) handlerFactory.create(registration.handlerType());
-            return ZLinkHandlerStages.fromRunnable(() -> handler.handle(message, context));
+            Object handler = handlerFactory.create(registration.handlerType());
+            return ZLinkHandlerMethodInvoker
+                .invokeHandler(handler, "handle", new Object[] {message, context}, suspendHandlerInvokers)
+                .thenApply(ignored -> null);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -1043,13 +1042,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 Object handler = handlerFactory.create(registration.handlerType());
                 return ZLinkHandlerMethodInvoker
                     .invoke(handler, registration.handlerMethod(),
-                        methodArguments(registration.handlerMethod(), request, context))
+                        methodArguments(registration.handlerMethod(), request, context),
+                        suspendHandlerInvokers)
                     .thenApply(serializer::serialize);
             }
-            ZLinkRouteRequestHandler handler =
-                (ZLinkRouteRequestHandler) handlerFactory.create(registration.handlerType());
-            return ZLinkHandlerStages
-                .fromSupplier(() -> handler.handle(request, context))
+            Object handler = handlerFactory.create(registration.handlerType());
+            return ZLinkHandlerMethodInvoker
+                .invokeHandler(handler, "handle", new Object[] {request, context}, suspendHandlerInvokers)
                 .thenApply(serializer::serialize);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
@@ -1072,10 +1071,10 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static Map<String, ChannelRequestHandlerRegistration<?, ?, ?>> handlersByPacket(
+    private static Map<String, ChannelRequestHandlerRegistration> handlersByPacket(
         ChannelRegistration channel,
         ZLinkScannedHandlerCatalog handlerCatalog) {
-        Map<String, ChannelRequestHandlerRegistration<?, ?, ?>> handlers = new HashMap<>();
+        Map<String, ChannelRequestHandlerRegistration> handlers = new HashMap<>();
         for (ZLinkScannedHandler handler : handlerCatalog.matching(
             Set.copyOf(channel.handlerGroups()),
             ZLinkScannedHandlerSurface.CHANNEL,
@@ -1087,17 +1086,17 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 handler.replyType(),
                 handler.packetName()));
         }
-        for (ChannelRequestHandlerRegistration<?, ?, ?> handler : channel.requestHandlers()) {
+        for (ChannelRequestHandlerRegistration handler : channel.requestHandlers()) {
             handlers.put(handler.packetName(), handler);
         }
         return Map.copyOf(handlers);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static Map<String, ChannelSendHandlerRegistration<?, ?>> sendHandlersByPacket(
+    private static Map<String, ChannelSendHandlerRegistration> sendHandlersByPacket(
         ChannelRegistration channel,
         ZLinkScannedHandlerCatalog handlerCatalog) {
-        Map<String, ChannelSendHandlerRegistration<?, ?>> handlers = new HashMap<>();
+        Map<String, ChannelSendHandlerRegistration> handlers = new HashMap<>();
         for (ZLinkScannedHandler handler : handlerCatalog.matching(
             Set.copyOf(channel.handlerGroups()),
             ZLinkScannedHandlerSurface.CHANNEL,
@@ -1108,7 +1107,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 handler.messageType(),
                 handler.packetName()));
         }
-        for (ChannelSendHandlerRegistration<?, ?> handler : channel.sendHandlers()) {
+        for (ChannelSendHandlerRegistration handler : channel.sendHandlers()) {
             handlers.put(handler.packetName(), handler);
         }
         return Map.copyOf(handlers);
@@ -1139,10 +1138,10 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static Map<String, ChannelPublishHandlerRegistration<?, ?>> publishHandlersByPacket(
+    private static Map<String, ChannelPublishHandlerRegistration> publishHandlersByPacket(
         ChannelRegistration channel,
         ZLinkScannedHandlerCatalog handlerCatalog) {
-        Map<String, ChannelPublishHandlerRegistration<?, ?>> handlers = new HashMap<>();
+        Map<String, ChannelPublishHandlerRegistration> handlers = new HashMap<>();
         for (ZLinkScannedHandler handler : handlerCatalog.matching(
             Set.copyOf(channel.handlerGroups()),
             ZLinkScannedHandlerSurface.CHANNEL,
@@ -1153,17 +1152,17 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 handler.messageType(),
                 handler.packetName()));
         }
-        for (ChannelPublishHandlerRegistration<?, ?> handler : channel.publishHandlers()) {
+        for (ChannelPublishHandlerRegistration handler : channel.publishHandlers()) {
             handlers.put(handler.packetName(), handler);
         }
         return Map.copyOf(handlers);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static Map<String, ChannelRouteRequestHandlerRegistration<?, ?, ?>> routeHandlersByPacket(
+    private static Map<String, ChannelRouteRequestHandlerRegistration> routeHandlersByPacket(
         ChannelRegistration channel,
         ZLinkScannedHandlerCatalog handlerCatalog) {
-        Map<String, ChannelRouteRequestHandlerRegistration<?, ?, ?>> handlers = new HashMap<>();
+        Map<String, ChannelRouteRequestHandlerRegistration> handlers = new HashMap<>();
         for (ZLinkScannedHandler handler : handlerCatalog.matching(
             Set.copyOf(channel.handlerGroups()),
             ZLinkScannedHandlerSurface.ROUTE,
@@ -1175,17 +1174,17 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 handler.replyType(),
                 handler.packetName()));
         }
-        for (ChannelRouteRequestHandlerRegistration<?, ?, ?> handler : channel.routeRequestHandlers()) {
+        for (ChannelRouteRequestHandlerRegistration handler : channel.routeRequestHandlers()) {
             handlers.put(handler.packetName(), handler);
         }
         return Map.copyOf(handlers);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private static Map<String, ChannelRouteSendHandlerRegistration<?, ?>> routeSendHandlersByPacket(
+    private static Map<String, ChannelRouteSendHandlerRegistration> routeSendHandlersByPacket(
         ChannelRegistration channel,
         ZLinkScannedHandlerCatalog handlerCatalog) {
-        Map<String, ChannelRouteSendHandlerRegistration<?, ?>> handlers = new HashMap<>();
+        Map<String, ChannelRouteSendHandlerRegistration> handlers = new HashMap<>();
         for (ZLinkScannedHandler handler : handlerCatalog.matching(
             Set.copyOf(channel.handlerGroups()),
             ZLinkScannedHandlerSurface.ROUTE,
@@ -1196,7 +1195,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 handler.messageType(),
                 handler.packetName()));
         }
-        for (ChannelRouteSendHandlerRegistration<?, ?> handler : channel.routeSendHandlers()) {
+        for (ChannelRouteSendHandlerRegistration handler : channel.routeSendHandlers()) {
             handlers.put(handler.packetName(), handler);
         }
         return Map.copyOf(handlers);

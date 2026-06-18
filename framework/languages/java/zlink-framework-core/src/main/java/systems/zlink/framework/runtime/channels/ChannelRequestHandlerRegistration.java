@@ -1,24 +1,22 @@
 package systems.zlink.framework.runtime.channels;
 
 import java.lang.reflect.Method;
-import systems.zlink.framework.channels.ZLinkRequestHandler;
-
-record ChannelRequestHandlerRegistration<THandler extends ZLinkRequestHandler<TRequest, TReply>, TRequest, TReply>(
-    Class<THandler> handlerType,
+record ChannelRequestHandlerRegistration(
+    Class<?> handlerType,
     Method handlerMethod,
-    Class<TRequest> requestType,
-    Class<TReply> replyType,
+    Class<?> requestType,
+    Class<?> replyType,
     String packetName) {
     ChannelRequestHandlerRegistration(
-        Class<THandler> handlerType,
-        Class<TRequest> requestType,
-        Class<TReply> replyType,
+        Class<?> handlerType,
+        Class<?> requestType,
+        Class<?> replyType,
         String packetName) {
         this(handlerType, null, requestType, replyType, packetName);
     }
 
-    ChannelRequestHandlerRegistration<THandler, TRequest, TReply> withPacketName(String packetName) {
-        return new ChannelRequestHandlerRegistration<>(
+    ChannelRequestHandlerRegistration withPacketName(String packetName) {
+        return new ChannelRequestHandlerRegistration(
             handlerType,
             handlerMethod,
             requestType,

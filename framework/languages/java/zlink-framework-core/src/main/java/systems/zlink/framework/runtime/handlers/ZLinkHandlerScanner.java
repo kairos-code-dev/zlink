@@ -49,6 +49,33 @@ import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 
 public final class ZLinkHandlerScanner {
+    private static final String KOTLIN_REQUEST_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler";
+    private static final String KOTLIN_SEND_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSendHandler";
+    private static final String KOTLIN_PUBLISH_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingPublishHandler";
+    private static final String KOTLIN_ROUTE_REQUEST_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingRouteRequestHandler";
+    private static final String KOTLIN_ROUTE_SEND_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingRouteSendHandler";
+    private static final String KOTLIN_SPOT_PACKET_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotPacketHandler";
+    private static final String KOTLIN_SPOT_REQUEST_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotRequestHandler";
+    private static final String KOTLIN_SPOT_SUBSCRIPTION_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotSubscriptionHandler";
+    private static final String KOTLIN_SPOT_TIMER_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotTimerHandler";
+    private static final String KOTLIN_ENTRY_SPOT_ACTOR_SEND_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorSendHandler";
+    private static final String KOTLIN_ENTRY_SPOT_ACTOR_REQUEST_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler";
+    private static final String KOTLIN_SPOT_ACTOR_SEND_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorSendHandler";
+    private static final String KOTLIN_SPOT_ACTOR_REQUEST_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorRequestHandler";
+
     private ZLinkHandlerScanner() {
     }
 
@@ -71,13 +98,23 @@ public final class ZLinkHandlerScanner {
             addMethodHandlers(handlers, candidate, groups);
             addInterfaceHandler(handlers, candidate, groups, ZLinkSendHandler.class,
                 ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.SEND);
+            addInterfaceHandler(handlers, candidate, groups, KOTLIN_SEND_HANDLER,
+                ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.SEND);
             addInterfaceHandler(handlers, candidate, groups, ZLinkRequestHandler.class,
+                ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.REQUEST);
+            addInterfaceHandler(handlers, candidate, groups, KOTLIN_REQUEST_HANDLER,
                 ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.REQUEST);
             addInterfaceHandler(handlers, candidate, groups, ZLinkPublishHandler.class,
                 ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.PUBLISH);
+            addInterfaceHandler(handlers, candidate, groups, KOTLIN_PUBLISH_HANDLER,
+                ZLinkScannedHandlerSurface.CHANNEL, ZLinkScannedHandlerKind.PUBLISH);
             addInterfaceHandler(handlers, candidate, groups, ZLinkRouteSendHandler.class,
                 ZLinkScannedHandlerSurface.ROUTE, ZLinkScannedHandlerKind.SEND);
+            addInterfaceHandler(handlers, candidate, groups, KOTLIN_ROUTE_SEND_HANDLER,
+                ZLinkScannedHandlerSurface.ROUTE, ZLinkScannedHandlerKind.SEND);
             addInterfaceHandler(handlers, candidate, groups, ZLinkRouteRequestHandler.class,
+                ZLinkScannedHandlerSurface.ROUTE, ZLinkScannedHandlerKind.REQUEST);
+            addInterfaceHandler(handlers, candidate, groups, KOTLIN_ROUTE_REQUEST_HANDLER,
                 ZLinkScannedHandlerSurface.ROUTE, ZLinkScannedHandlerKind.REQUEST);
             addSpotInterfaceHandlers(handlers, candidate, groups);
             addSpotActorInterfaceHandlers(handlers, candidate, groups);
@@ -413,6 +450,32 @@ public final class ZLinkHandlerScanner {
             groups));
     }
 
+    private static void addInterfaceHandler(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups,
+        String handlerInterfaceName,
+        ZLinkScannedHandlerSurface surface,
+        ZLinkScannedHandlerKind kind) {
+        ParameterizedType matched = findInterface(candidate, handlerInterfaceName);
+        if (matched == null) {
+            return;
+        }
+        Type[] arguments = matched.getActualTypeArguments();
+        Class<?> messageType = requireClassArgument(candidate, arguments[0]);
+        Class<?> replyType = kind == ZLinkScannedHandlerKind.REQUEST
+            ? requireClassArgument(candidate, arguments[1])
+            : Void.class;
+        handlers.add(new ZLinkScannedHandler(
+            surface,
+            kind,
+            candidate,
+            messageType,
+            replyType,
+            resolvePacketName(messageType),
+            groups));
+    }
+
     private static void addSpotInterfaceHandlers(
         List<ZLinkScannedHandler> handlers,
         Class<?> candidate,
@@ -427,10 +490,24 @@ public final class ZLinkHandlerScanner {
             handlers,
             candidate,
             groups,
+            KOTLIN_SPOT_PACKET_HANDLER,
+            ZLinkScannedHandlerKind.SEND);
+        addSpotPacketInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
             ZLinkSpotRequestHandler.class,
             ZLinkScannedHandlerKind.REQUEST);
+        addSpotPacketInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            KOTLIN_SPOT_REQUEST_HANDLER,
+            ZLinkScannedHandlerKind.REQUEST);
         addSpotSubscriptionInterfaceHandler(handlers, candidate, groups);
+        addSpotSubscriptionInterfaceHandler(handlers, candidate, groups, KOTLIN_SPOT_SUBSCRIPTION_HANDLER);
         addSpotTimerInterfaceHandler(handlers, candidate, groups);
+        addSpotTimerInterfaceHandler(handlers, candidate, groups, KOTLIN_SPOT_TIMER_HANDLER);
     }
 
     private static void addSpotPacketInterfaceHandler(
@@ -464,11 +541,73 @@ public final class ZLinkHandlerScanner {
             groups));
     }
 
+    private static void addSpotPacketInterfaceHandler(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups,
+        String handlerInterfaceName,
+        ZLinkScannedHandlerKind kind) {
+        ParameterizedType matched = findInterface(candidate, handlerInterfaceName);
+        if (matched == null) {
+            return;
+        }
+        Type[] arguments = matched.getActualTypeArguments();
+        Class<?> spotType = requireClassArgument(candidate, arguments[0]);
+        Class<?> messageType = requireClassArgument(candidate, arguments[1]);
+        Class<?> replyType = kind == ZLinkScannedHandlerKind.REQUEST
+            ? requireClassArgument(candidate, arguments[2])
+            : Void.class;
+        handlers.add(new ZLinkScannedHandler(
+            ZLinkScannedHandlerSurface.SPOT,
+            kind,
+            candidate,
+            null,
+            spotType,
+            messageType,
+            replyType,
+            resolvePacketName(messageType),
+            "",
+            "",
+            null,
+            groups));
+    }
+
     private static void addSpotSubscriptionInterfaceHandler(
         List<ZLinkScannedHandler> handlers,
         Class<?> candidate,
         Set<String> groups) {
         ParameterizedType matched = findInterface(candidate, ZLinkSpotSubscriptionHandler.class);
+        if (matched == null) {
+            return;
+        }
+        ZLinkSpotSubscription annotation = candidate.getAnnotation(ZLinkSpotSubscription.class);
+        if (annotation == null) {
+            return;
+        }
+        Type[] arguments = matched.getActualTypeArguments();
+        Class<?> spotType = requireClassArgument(candidate, arguments[0]);
+        Class<?> messageType = requireClassArgument(candidate, arguments[1]);
+        handlers.add(new ZLinkScannedHandler(
+            ZLinkScannedHandlerSurface.SPOT,
+            ZLinkScannedHandlerKind.PUBLISH,
+            candidate,
+            null,
+            spotType,
+            messageType,
+            Void.class,
+            resolvePacketName(messageType),
+            requireTopic(candidate, annotation.topic()),
+            "",
+            null,
+            groups));
+    }
+
+    private static void addSpotSubscriptionInterfaceHandler(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups,
+        String handlerInterfaceName) {
+        ParameterizedType matched = findInterface(candidate, handlerInterfaceName);
         if (matched == null) {
             return;
         }
@@ -531,6 +670,44 @@ public final class ZLinkHandlerScanner {
             groups));
     }
 
+    private static void addSpotTimerInterfaceHandler(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups,
+        String handlerInterfaceName) {
+        ParameterizedType matched = findInterface(candidate, handlerInterfaceName);
+        if (matched == null) {
+            return;
+        }
+        ZLinkSpotTimer annotation = candidate.getAnnotation(ZLinkSpotTimer.class);
+        if (annotation == null) {
+            return;
+        }
+        if (annotation.name().isBlank()) {
+            throw new ZLinkConfigurationException(
+                "SPOT timer handler name is required: " + candidate.getName());
+        }
+        if (annotation.periodMillis() <= 0) {
+            throw new ZLinkConfigurationException(
+                "SPOT timer period must be positive: " + candidate.getName());
+        }
+        Type[] arguments = matched.getActualTypeArguments();
+        Class<?> spotType = requireClassArgument(candidate, arguments[0]);
+        handlers.add(new ZLinkScannedHandler(
+            ZLinkScannedHandlerSurface.SPOT,
+            ZLinkScannedHandlerKind.TIMER,
+            candidate,
+            null,
+            spotType,
+            Void.class,
+            Void.class,
+            "",
+            "",
+            annotation.name(),
+            Duration.ofMillis(annotation.periodMillis()),
+            groups));
+    }
+
     private static void addSpotActorInterfaceHandlers(
         List<ZLinkScannedHandler> handlers,
         Class<?> candidate,
@@ -545,7 +722,19 @@ public final class ZLinkHandlerScanner {
             handlers,
             candidate,
             groups,
+            KOTLIN_ENTRY_SPOT_ACTOR_SEND_HANDLER,
+            ZLinkScannedHandlerKind.ACTOR_SEND);
+        addSpotActorPacketInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
             ZLinkEntrySpotActorRequestHandler.class,
+            ZLinkScannedHandlerKind.ACTOR_REQUEST);
+        addSpotActorPacketInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            KOTLIN_ENTRY_SPOT_ACTOR_REQUEST_HANDLER,
             ZLinkScannedHandlerKind.ACTOR_REQUEST);
         addSpotActorPacketInterfaceHandler(
             handlers,
@@ -557,7 +746,19 @@ public final class ZLinkHandlerScanner {
             handlers,
             candidate,
             groups,
+            KOTLIN_SPOT_ACTOR_SEND_HANDLER,
+            ZLinkScannedHandlerKind.ACTOR_SEND);
+        addSpotActorPacketInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
             ZLinkSpotActorRequestHandler.class,
+            ZLinkScannedHandlerKind.ACTOR_REQUEST);
+        addSpotActorPacketInterfaceHandler(
+            handlers,
+            candidate,
+            groups,
+            KOTLIN_SPOT_ACTOR_REQUEST_HANDLER,
             ZLinkScannedHandlerKind.ACTOR_REQUEST);
     }
 
@@ -568,6 +769,37 @@ public final class ZLinkHandlerScanner {
         Class<?> handlerInterface,
         ZLinkScannedHandlerKind kind) {
         ParameterizedType matched = findInterface(candidate, handlerInterface);
+        if (matched == null) {
+            return;
+        }
+        Type[] arguments = matched.getActualTypeArguments();
+        Class<?> spotType = requireClassArgument(candidate, arguments[0]);
+        Class<?> messageType = requireClassArgument(candidate, arguments[2]);
+        Class<?> replyType = kind == ZLinkScannedHandlerKind.ACTOR_REQUEST
+            ? requireClassArgument(candidate, arguments[3])
+            : Void.class;
+        handlers.add(new ZLinkScannedHandler(
+            ZLinkScannedHandlerSurface.SPOT,
+            kind,
+            candidate,
+            null,
+            spotType,
+            messageType,
+            replyType,
+            resolvePacketName(messageType),
+            "",
+            "",
+            null,
+            groups));
+    }
+
+    private static void addSpotActorPacketInterfaceHandler(
+        List<ZLinkScannedHandler> handlers,
+        Class<?> candidate,
+        Set<String> groups,
+        String handlerInterfaceName,
+        ZLinkScannedHandlerKind kind) {
+        ParameterizedType matched = findInterface(candidate, handlerInterfaceName);
         if (matched == null) {
             return;
         }
@@ -647,6 +879,10 @@ public final class ZLinkHandlerScanner {
 
     private static ParameterizedType findInterface(Class<?> type, Class<?> targetRawType) {
         return ZLinkGenericTypeResolver.findInterface(type, targetRawType);
+    }
+
+    private static ParameterizedType findInterface(Class<?> type, String targetRawTypeName) {
+        return ZLinkGenericTypeResolver.findInterface(type, targetRawTypeName);
     }
 
     private static Class<?> requireClassArgument(Class<?> handlerType, Type argument) {

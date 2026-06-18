@@ -1,22 +1,20 @@
 package systems.zlink.framework.runtime.channels;
 
 import java.lang.reflect.Method;
-import systems.zlink.framework.channels.ZLinkSendHandler;
-
-record ChannelSendHandlerRegistration<THandler extends ZLinkSendHandler<TMessage>, TMessage>(
-    Class<THandler> handlerType,
+record ChannelSendHandlerRegistration(
+    Class<?> handlerType,
     Method handlerMethod,
-    Class<TMessage> messageType,
+    Class<?> messageType,
     String packetName) {
     ChannelSendHandlerRegistration(
-        Class<THandler> handlerType,
-        Class<TMessage> messageType,
+        Class<?> handlerType,
+        Class<?> messageType,
         String packetName) {
         this(handlerType, null, messageType, packetName);
     }
 
-    ChannelSendHandlerRegistration<THandler, TMessage> withPacketName(String packetName) {
-        return new ChannelSendHandlerRegistration<>(
+    ChannelSendHandlerRegistration withPacketName(String packetName) {
+        return new ChannelSendHandlerRegistration(
             handlerType,
             handlerMethod,
             messageType,

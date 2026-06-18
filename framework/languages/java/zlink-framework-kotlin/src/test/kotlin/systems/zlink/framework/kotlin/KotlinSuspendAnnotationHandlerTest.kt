@@ -78,6 +78,56 @@ final class KotlinSuspendAnnotationHandlerTest {
     }
 
     @Test
+    fun scannerTreatsKotlinSuspendingInterfacesLikeFirstClassHandlers() {
+        val catalog = ZLinkHandlerScanner.scan(setOf(KotlinSuspendHandlerMarker::class.java))
+
+        val request = catalog.matching(
+            setOf("kotlin-interface-channel"),
+            ZLinkScannedHandlerSurface.CHANNEL,
+            ZLinkScannedHandlerKind.REQUEST,
+        ).single()
+        val timer = catalog.matching(
+            setOf("kotlin-interface-spot"),
+            ZLinkScannedHandlerSurface.SPOT,
+            ZLinkScannedHandlerKind.TIMER,
+        ).single()
+
+        assertEquals(ProfileRequest::class.java, request.messageType())
+        assertEquals(ProfileReply::class.java, request.replyType())
+        assertEquals(InterfaceSpot::class.java, timer.spotType())
+        assertEquals("interface-timer", timer.timerName())
+        val requestMethod = ZLinkHandlerMethodInvoker.requireHandlerMethod(
+            request.handlerType(),
+            "handle",
+            arrayOf(ProfileRequest("Ada"), requestContext("profile")),
+        )
+        val timerMethod = ZLinkHandlerMethodInvoker.requireHandlerMethod(
+            timer.handlerType(),
+            "handle",
+            arrayOfNulls<Any>(2),
+        )
+        assertTrue(ZLinkHandlerMethodInvoker.isKotlinSuspendMethod(requestMethod))
+        assertTrue(ZLinkHandlerMethodInvoker.isKotlinSuspendMethod(timerMethod))
+    }
+
+    @Test
+    fun kotlinSuspendingInterfaceHandlerRunsThroughMethodInvoker() {
+        val handler = KotlinSuspendingInterfaceRequestHandler()
+
+        val reply = ZLinkHandlerMethodInvoker
+            .invokeHandler(
+                handler,
+                "handle",
+                arrayOf(ProfileRequest("Ada"), requestContext("profile")),
+                listOf(ZLinkCoroutineSuspendHandlerInvoker()),
+            )
+            .toCompletableFuture()
+            .get(1, TimeUnit.SECONDS)
+
+        assertEquals(ProfileReply("profile:Ada"), reply)
+    }
+
+    @Test
     fun scannerTreatsKotlinSuspendSpotActorAnnotationsLikeJavaMethodHandlers() {
         val catalog = ZLinkHandlerScanner.scan(setOf(KotlinSuspendHandlerMarker::class.java))
 
@@ -292,6 +342,24 @@ final class KotlinSuspendAnnotationHandlerTest {
 
 class KotlinSuspendHandlerMarker
 
+@ZLinkHandlerGroup("kotlin-interface-channel")
+class KotlinSuspendingInterfaceRequestHandler :
+    ZLinkSuspendingRequestHandler<ProfileRequest, ProfileReply> {
+    override suspend fun handle(
+        request: ProfileRequest,
+        context: ZLinkRequestContext,
+    ): ProfileReply =
+        ProfileReply("${context.channelName().orElse("missing")}:${request.name}")
+}
+
+@ZLinkHandlerGroup("kotlin-interface-spot")
+@systems.zlink.framework.handlers.ZLinkSpotTimer(name = "interface-timer", periodMillis = 1000)
+class KotlinSuspendingInterfaceTimerHandler :
+    ZLinkSuspendingSpotTimerHandler<InterfaceSpot> {
+    override suspend fun handle(spot: InterfaceSpot, tick: systems.zlink.framework.spots.ZLinkTimerTick) {
+    }
+}
+
 class KotlinCoroutineContextHandler {
     @ZLinkRequest
     suspend fun request(request: ProfileRequest): ProfileReply =
@@ -432,3 +500,7 @@ data class PlayerCommand(val value: String)
 data class PlayerReply(val value: String)
 
 data class PlayerEvent(val value: String)
+
+class InterfaceSpot(private val spotContext: ZLinkSpotContext) : ZLinkSpot<PlayerActor> {
+    override fun context(): ZLinkSpotContext = spotContext
+}

@@ -103,6 +103,23 @@ import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRuntime.SpotRelayIngress, AutoCloseable {
+    private static final String KOTLIN_SPOT_PACKET_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotPacketHandler";
+    private static final String KOTLIN_SPOT_REQUEST_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotRequestHandler";
+    private static final String KOTLIN_SPOT_SUBSCRIPTION_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotSubscriptionHandler";
+    private static final String KOTLIN_SPOT_TIMER_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotTimerHandler";
+    private static final String KOTLIN_ENTRY_SPOT_ACTOR_SEND_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorSendHandler";
+    private static final String KOTLIN_ENTRY_SPOT_ACTOR_REQUEST_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler";
+    private static final String KOTLIN_SPOT_ACTOR_SEND_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorSendHandler";
+    private static final String KOTLIN_SPOT_ACTOR_REQUEST_HANDLER =
+        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorRequestHandler";
+
     private static final long ROUTER_ENDPOINT_ROUTE_KIND = 0x5a4c5245L;
     private static final int ROUTER_PEER_CONVERGENCE_SNAPSHOTS = 10;
     private static final CancellationToken NONE_CANCELLATION = () -> false;
@@ -2496,10 +2513,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     private CompletionStage<Void> invokeTimerHandler(Class<?> handlerType, ZLinkSpot<?> spot, ZLinkTimerTick tick) {
         try {
             Object handler = handlerFactory.create(handlerType);
-            if (handler instanceof ZLinkSpotTimerHandler timerHandler) {
-                return ZLinkHandlerStages.fromRunnable(() -> timerHandler.handle(spot, tick));
-            }
-            return CompletableFuture.completedFuture(null);
+            return ZLinkHandlerMethodInvoker
+                .invokeHandler(handler, "handle", new Object[] {spot, tick}, suspendHandlerInvokers)
+                .thenApply(ignored -> null);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "failed to create timer handler: " + handlerType.getName(),
@@ -2515,7 +2531,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         try {
             Object handler = handlerFactory.create(handlerType);
             return ZLinkHandlerMethodInvoker
-                .invoke(handler, method, arguments)
+                .invoke(handler, method, arguments, suspendHandlerInvokers)
                 .thenApply(ignored -> null);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
@@ -2553,21 +2569,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         String failureMessage) {
         try {
             Object handler = handlerFactory.create(registration.handlerType());
-            if (handler instanceof ZLinkEntrySpotActorSendHandler entryHandler) {
-                return ZLinkHandlerStages.fromRunnable(() -> entryHandler.handle(
-                    (ZLinkEntrySpot) spotSurface,
-                    actor,
-                    dispatchContext,
-                    message,
-                    dispatchContext.cancellationToken()));
-            }
-            return ZLinkHandlerStages.fromRunnable(() ->
-                ((ZLinkSpotActorSendHandler) handler).handle(
-                    (ZLinkSpot) spotSurface,
-                    actor,
-                    dispatchContext,
-                    message,
-                    dispatchContext.cancellationToken()));
+            return ZLinkHandlerMethodInvoker
+                .invokeHandler(
+                    handler,
+                    "handle",
+                    new Object[] {
+                        spotSurface,
+                        actor,
+                        dispatchContext,
+                        message,
+                        dispatchContext.cancellationToken()
+                    },
+                    suspendHandlerInvokers)
+                .thenApply(ignored -> null);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 failureMessage + ": " + registration.handlerType().getName(),
@@ -2585,21 +2599,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         String failureMessage) {
         try {
             Object handler = handlerFactory.create(registration.handlerType());
-            if (handler instanceof ZLinkEntrySpotActorRequestHandler entryHandler) {
-                return ZLinkHandlerStages.fromSupplier(() -> entryHandler.handle(
-                    (ZLinkEntrySpot) spotSurface,
+            return ZLinkHandlerMethodInvoker.invokeHandler(
+                handler,
+                "handle",
+                new Object[] {
+                    spotSurface,
                     actor,
                     dispatchContext,
                     message,
-                    dispatchContext.cancellationToken()));
-            }
-            return ZLinkHandlerStages.fromSupplier(() ->
-                ((ZLinkSpotActorRequestHandler) handler).handle(
-                    (ZLinkSpot) spotSurface,
-                    actor,
-                    dispatchContext,
-                    message,
-                    dispatchContext.cancellationToken()));
+                    dispatchContext.cancellationToken()
+                },
+                suspendHandlerInvokers);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 failureMessage + ": " + registration.handlerType().getName(),
@@ -2617,11 +2627,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             Object handler = handlerFactory.create(registration.handlerType());
             if (registration.handlerMethod() != null) {
                 return ZLinkHandlerMethodInvoker
-                    .invoke(handler, registration.handlerMethod(), new Object[] {spot, message})
+                    .invoke(handler, registration.handlerMethod(), new Object[] {spot, message}, suspendHandlerInvokers)
                     .thenApply(ignored -> null);
             }
-            return ZLinkHandlerStages.fromRunnable(() ->
-                ((ZLinkSpotPacketHandler) handler).handle(spot, message));
+            return ZLinkHandlerMethodInvoker
+                .invokeHandler(handler, "handle", new Object[] {spot, message}, suspendHandlerInvokers)
+                .thenApply(ignored -> null);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "failed to invoke SPOT packet handler: "
@@ -2640,11 +2651,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             Object handler = handlerFactory.create(registration.handlerType());
             if (registration.handlerMethod() != null) {
                 return ZLinkHandlerMethodInvoker
-                    .invoke(handler, registration.handlerMethod(), new Object[] {spot, message})
+                    .invoke(handler, registration.handlerMethod(), new Object[] {spot, message}, suspendHandlerInvokers)
                     .thenApply(serializer::serialize);
             }
-            return ZLinkHandlerStages
-                .fromSupplier(() -> ((ZLinkSpotRequestHandler) handler).handle(spot, message))
+            return ZLinkHandlerMethodInvoker
+                .invokeHandler(handler, "handle", new Object[] {spot, message}, suspendHandlerInvokers)
                 .thenApply(serializer::serialize);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
@@ -2664,11 +2675,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             Object handler = handlerFactory.create(registration.handlerType());
             if (registration.handlerMethod() != null) {
                 return ZLinkHandlerMethodInvoker
-                    .invoke(handler, registration.handlerMethod(), new Object[] {spot, message})
+                    .invoke(handler, registration.handlerMethod(), new Object[] {spot, message}, suspendHandlerInvokers)
                     .thenApply(ignored -> null);
             }
-            return ZLinkHandlerStages.fromRunnable(() ->
-                ((ZLinkSpotSubscriptionHandler) handler).handle(spot, message));
+            return ZLinkHandlerMethodInvoker
+                .invokeHandler(handler, "handle", new Object[] {spot, message}, suspendHandlerInvokers)
+                .thenApply(ignored -> null);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "failed to invoke SPOT subscription handler: "
@@ -3555,7 +3567,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
     private static boolean isSpotPacketHandlerType(Class<?> handlerType) {
         if (findInterface(handlerType, ZLinkSpotPacketHandler.class) != null
-            || findInterface(handlerType, ZLinkSpotRequestHandler.class) != null) {
+            || findInterface(handlerType, ZLinkSpotRequestHandler.class) != null
+            || findInterface(handlerType, KOTLIN_SPOT_PACKET_HANDLER) != null
+            || findInterface(handlerType, KOTLIN_SPOT_REQUEST_HANDLER) != null) {
             return true;
         }
         for (Method method : handlerType.getMethods()) {
@@ -3570,7 +3584,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         return findInterface(handlerType, ZLinkEntrySpotActorSendHandler.class) != null
             || findInterface(handlerType, ZLinkEntrySpotActorRequestHandler.class) != null
             || findInterface(handlerType, ZLinkSpotActorSendHandler.class) != null
-            || findInterface(handlerType, ZLinkSpotActorRequestHandler.class) != null;
+            || findInterface(handlerType, ZLinkSpotActorRequestHandler.class) != null
+            || findInterface(handlerType, KOTLIN_ENTRY_SPOT_ACTOR_SEND_HANDLER) != null
+            || findInterface(handlerType, KOTLIN_ENTRY_SPOT_ACTOR_REQUEST_HANDLER) != null
+            || findInterface(handlerType, KOTLIN_SPOT_ACTOR_SEND_HANDLER) != null
+            || findInterface(handlerType, KOTLIN_SPOT_ACTOR_REQUEST_HANDLER) != null;
     }
 
     private static void addConfiguredPacketHandler(
@@ -3623,9 +3641,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             findInterface(handlerType, ZLinkSpotActorSendHandler.class));
         addConfiguredActorPacketHandler(
             handlerType,
+            ZLinkScannedHandlerKind.ACTOR_SEND,
+            findInterface(handlerType, KOTLIN_ENTRY_SPOT_ACTOR_SEND_HANDLER),
+            findInterface(handlerType, KOTLIN_SPOT_ACTOR_SEND_HANDLER));
+        addConfiguredActorPacketHandler(
+            handlerType,
             ZLinkScannedHandlerKind.ACTOR_REQUEST,
             findInterface(handlerType, ZLinkEntrySpotActorRequestHandler.class),
             findInterface(handlerType, ZLinkSpotActorRequestHandler.class));
+        addConfiguredActorPacketHandler(
+            handlerType,
+            ZLinkScannedHandlerKind.ACTOR_REQUEST,
+            findInterface(handlerType, KOTLIN_ENTRY_SPOT_ACTOR_REQUEST_HANDLER),
+            findInterface(handlerType, KOTLIN_SPOT_ACTOR_REQUEST_HANDLER));
     }
 
     private void addConfiguredActorPacketHandler(
@@ -3661,6 +3689,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         Class<?> handlerType,
         Class<?> expectedSpotType) {
         ParameterizedType packet = findInterface(handlerType, ZLinkSpotPacketHandler.class);
+        if (packet == null) {
+            packet = findInterface(handlerType, KOTLIN_SPOT_PACKET_HANDLER);
+        }
         if (packet != null) {
             Type[] arguments = packet.getActualTypeArguments();
             Class<?> spotType = requireClassArgument(handlerType, arguments[0]);
@@ -3672,6 +3703,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         ParameterizedType request = findInterface(handlerType, ZLinkSpotRequestHandler.class);
+        if (request == null) {
+            request = findInterface(handlerType, KOTLIN_SPOT_REQUEST_HANDLER);
+        }
         if (request != null) {
             Type[] arguments = request.getActualTypeArguments();
             Class<?> spotType = requireClassArgument(handlerType, arguments[0]);
@@ -3711,6 +3745,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         Class<?> handlerType,
         Class<?> expectedSpotType) {
         ParameterizedType subscription = findInterface(handlerType, ZLinkSpotSubscriptionHandler.class);
+        if (subscription == null) {
+            subscription = findInterface(handlerType, KOTLIN_SPOT_SUBSCRIPTION_HANDLER);
+        }
         if (subscription != null) {
             Type[] arguments = subscription.getActualTypeArguments();
             Class<?> spotType = requireClassArgument(handlerType, arguments[0]);
@@ -3846,6 +3883,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
     private static ParameterizedType findInterface(Class<?> type, Class<?> targetRawType) {
         return ZLinkGenericTypeResolver.findInterface(type, targetRawType);
+    }
+
+    private static ParameterizedType findInterface(Class<?> type, String targetRawTypeName) {
+        return ZLinkGenericTypeResolver.findInterface(type, targetRawTypeName);
     }
 
     private static Class<?> requireClassArgument(Class<?> handlerType, Type argument) {

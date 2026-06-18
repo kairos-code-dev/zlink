@@ -979,7 +979,7 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/handlers/TicTacToeGameTimerHandler.kt");
-        assertTrue(playAuthHandlerSource.contains("ZLinkCoroutineTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq>")
+        assertTrue(playAuthHandlerSource.contains("ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq>")
                 && playAuthHandlerSource.contains("AuthenticatePlayerReq(request.accessToken)")
                 && playAuthHandlerSource.contains("context.actors().bind(playActor).await()")
                 && playSessionSource.contains("handlers.tryHandleAsync(context, header, payload)")
@@ -1022,7 +1022,7 @@ final class SampleReleaseGateContractTest {
                 && gameCreatedHandlerSource.contains("fun handle(")
                 && gameCreatedHandlerSource.contains("request: Message")
                 && gameCreatedHandlerSource.contains("game.markCreated(request)")
-                && gameTimerHandlerSource.contains("ZLinkCoroutineSpotTimerHandler<TicTacToeGame>")
+                && gameTimerHandlerSource.contains("ZLinkSuspendingSpotTimerHandler<TicTacToeGame>")
                 && gameTimerHandlerSource.contains("spot.tick()"),
             "Kotlin TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
         assertTrue(gameSpotSource.contains("override fun onJoinedActor(")
@@ -1440,9 +1440,9 @@ final class SampleReleaseGateContractTest {
                 || sessionProgramSource.contains("CountDownLatch"),
             "Kotlin Bingo role entry points must not keep direct ZLink starts alive with CountDownLatch");
         assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
-                && apiHandlerSource.contains(": ZLinkRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes>")
+                && apiHandlerSource.contains(": ZLinkSuspendingRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes>")
                 && playHandlerSource.contains("@ZLinkHandlerGroup(\"play\")")
-                && playHandlerSource.contains(": ZLinkRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes>"),
+                && playHandlerSource.contains(": ZLinkSuspendingRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes>"),
             "Kotlin Bingo Api/Play handlers must use interface-based request mapping");
         assertTrue(sampleFileContains("kotlin", "Bingo", "Server/Api/src/main/kotlin",
                 "systems/zlink/samples/kotlin/bingo/server/api/Program.kt", "ApiServerApplication.run"),

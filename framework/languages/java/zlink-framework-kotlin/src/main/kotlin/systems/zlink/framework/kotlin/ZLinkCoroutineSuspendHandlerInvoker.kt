@@ -3,6 +3,11 @@ package systems.zlink.framework.kotlin
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.util.concurrent.CompletionStage
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.future.future
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.resume
@@ -11,9 +16,24 @@ import kotlin.coroutines.suspendCoroutine
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker
 
-class ZLinkCoroutineSuspendHandlerInvoker @JvmOverloads constructor(
-    private val coroutines: ZLinkCoroutineRuntime = ZLinkCoroutineRuntime(),
-) : ZLinkSuspendHandlerInvoker {
+class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendHandlerInvoker {
+    private val scope: CoroutineScope
+    private val dispatcher: CoroutineDispatcher
+
+    @JvmOverloads
+    constructor(dispatcher: CoroutineDispatcher = Dispatchers.Default) {
+        this.dispatcher = dispatcher
+        this.scope = CoroutineScope(SupervisorJob() + dispatcher)
+    }
+
+    @JvmOverloads
+    constructor(
+        scope: CoroutineScope,
+        dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    ) {
+        this.dispatcher = dispatcher
+        this.scope = scope
+    }
 
     override fun supports(method: Method): Boolean =
         ZLinkHandlerMethodInvoker.isKotlinSuspendMethod(method)
@@ -24,7 +44,7 @@ class ZLinkCoroutineSuspendHandlerInvoker @JvmOverloads constructor(
         method: Method,
         logicalArguments: Array<Any>,
     ): CompletionStage<Any> =
-        coroutines.completionStage {
+        scope.future(dispatcher) {
             invokeSuspend(handler, method, logicalArguments)
         } as CompletionStage<Any>
 

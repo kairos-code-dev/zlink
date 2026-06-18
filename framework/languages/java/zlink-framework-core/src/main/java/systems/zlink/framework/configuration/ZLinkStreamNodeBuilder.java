@@ -1,7 +1,6 @@
 package systems.zlink.framework.configuration;
 
 import systems.zlink.framework.streams.ZLinkSession;
-import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 
 public interface ZLinkStreamNodeBuilder {
     ZLinkStreamNodeBuilder bind(String endpoint);
@@ -10,6 +9,5 @@ public interface ZLinkStreamNodeBuilder {
 
     ZLinkStreamNodeBuilder registerSession(Class<? extends ZLinkSession> sessionType);
 
-    ZLinkStreamNodeBuilder addSessionPacketHandler(
-        Class<? extends ZLinkSessionPacketHandler<?>> handlerType);
+    ZLinkStreamNodeBuilder addSessionPacketHandler(Class<?> handlerType);
 }

@@ -6,7 +6,7 @@ import systems.zlink.framework.configuration.ZLinkFrameworkOptions
 
 fun ZLinkFrameworkOptions.useCoroutineHandlers(dispatcher: CoroutineDispatcher) {
     useSuspendHandlerInvoker(
-        ZLinkCoroutineSuspendHandlerInvoker(ZLinkCoroutineRuntime(dispatcher)),
+        ZLinkCoroutineSuspendHandlerInvoker(dispatcher),
     )
 }
 
@@ -15,6 +15,6 @@ fun ZLinkFrameworkOptions.useCoroutineHandlers(
     dispatcher: CoroutineDispatcher,
 ) {
     useSuspendHandlerInvoker(
-        ZLinkCoroutineSuspendHandlerInvoker(ZLinkCoroutineRuntime(scope, dispatcher)),
+        ZLinkCoroutineSuspendHandlerInvoker(scope, dispatcher),
     )
 }

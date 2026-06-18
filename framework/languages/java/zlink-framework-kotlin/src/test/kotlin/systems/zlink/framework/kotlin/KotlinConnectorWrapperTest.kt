@@ -6,15 +6,12 @@ import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.time.Duration.ofSeconds
-import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionException
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
-import java.util.Optional
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.async
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
@@ -23,11 +20,8 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.Test
 import systems.zlink.contracts.messaging.Message
-import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
@@ -141,91 +135,6 @@ final class KotlinConnectorWrapperTest {
         }
     }
 
-    @Test
-    fun coroutineRuntimeMapsSuspendHandlerToJavaHandler() {
-        ZLinkCoroutineRuntime().use { runtime ->
-            val handler = runtime.requestHandler<String, String> { request, _ -> "$request/reply" }
-
-            assertEquals(
-                "request/reply",
-                handler.handle("request", requestContext()),
-            )
-        }
-    }
-
-    @Test
-    fun coroutineRuntimeMapsSuspendStreamErrorHandlerToCompletionStage() {
-        ZLinkCoroutineRuntime().use { runtime ->
-            var observed: ZLinkStreamError? = null
-            val handler = runtime.streamErrorHandler { error ->
-                observed = error
-            }
-            val error = ZLinkStreamError(
-                ZLinkStreamErrorCode.REMOTE_ERROR,
-                "remote failed",
-            )
-
-            handler.handleAsync(error).toCompletableFuture().get(1, TimeUnit.SECONDS)
-
-            assertEquals(error, observed)
-        }
-    }
-
-    @Test
-    fun coroutineRuntimePropagatesSuspendHandlerFailure() {
-        ZLinkCoroutineRuntime().use { runtime ->
-            val handler = runtime.requestHandler<String, String> { _, _ ->
-                throw IllegalStateException("boom")
-            }
-
-            val failure = assertThrows<IllegalStateException> {
-                handler.handle("request", requestContext())
-            }
-
-            assertEquals("boom", failure.message)
-        }
-    }
-
-    @Test
-    fun closingCoroutineRuntimeCancelsInFlightCompletionStage() {
-        val runtime = ZLinkCoroutineRuntime()
-        val future = runtime.completionStage<String> {
-            awaitCancellation()
-        }.toCompletableFuture()
-
-        runtime.close()
-
-        assertThrows<Exception> {
-            future.get(1, TimeUnit.SECONDS)
-        }
-        assertTrue(future.isCancelled || future.isCompletedExceptionally)
-    }
-
-    @Test
-    fun closingCoroutineRuntimeCancelsInFlightBlockingHandler() {
-        val runtime = ZLinkCoroutineRuntime()
-        val started = CompletableDeferred<Unit>()
-        val handler = runtime.requestHandler<String, String> { _, _ ->
-            started.complete(Unit)
-            awaitCancellation()
-        }
-        val future = CompletableFuture.supplyAsync {
-            handler.handle("request", requestContext())
-        }
-
-        runBlocking {
-            withTimeout(1_000) {
-                started.await()
-            }
-        }
-        runtime.close()
-
-        assertThrows<Exception> {
-            future.get(1, TimeUnit.SECONDS)
-        }
-        assertTrue(future.isCompletedExceptionally)
-    }
-
     private fun options(endpoint: URI = URI.create("tcp://127.0.0.1:7200")) =
         ZLinkStreamConnectorOptions(
             endpoint,
@@ -236,15 +145,6 @@ final class KotlinConnectorWrapperTest {
 
     private fun payload(packetName: String, body: String) =
         ZLinkStreamEncodedPayload(packetName, Message.from(body), mapOf())
-
-    private fun requestContext() =
-        object : ZLinkRequestContext {
-            override fun channelName(): Optional<String> = Optional.of("test")
-            override fun packetName(): Optional<String> = Optional.of("request")
-            override fun contentType(): Optional<String> = Optional.empty()
-            override fun cancellationToken(): CancellationToken =
-                CancellationToken { false }
-        }
 
     private suspend fun sendAndDispatchUntilReceived(
         server: TcpServer,

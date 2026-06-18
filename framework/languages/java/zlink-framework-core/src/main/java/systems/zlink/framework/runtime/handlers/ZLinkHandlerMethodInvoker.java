@@ -10,6 +10,7 @@ import java.lang.reflect.WildcardType;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Collection;
+import java.util.Objects;
 import java.util.ServiceLoader;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -59,6 +60,45 @@ public final class ZLinkHandlerMethodInvoker {
         return invoke(handler, method, logicalArguments, SUSPEND_INVOKERS);
     }
 
+    public static CompletionStage<Object> invokeHandler(
+        Object handler,
+        String methodName,
+        Object[] logicalArguments,
+        Collection<ZLinkSuspendHandlerInvoker> suspendInvokers) {
+        Method method = requireHandlerMethod(handler.getClass(), methodName, logicalArguments);
+        return invoke(handler, method, logicalArguments, suspendInvokers);
+    }
+
+    public static Method requireHandlerMethod(
+        Class<?> handlerType,
+        String methodName,
+        Object[] logicalArguments) {
+        Objects.requireNonNull(handlerType, "handlerType");
+        Objects.requireNonNull(methodName, "methodName");
+        Object[] args = logicalArguments == null ? new Object[0] : logicalArguments;
+        Method fallback = null;
+        for (Method method : handlerType.getMethods()) {
+            if (!methodName.equals(method.getName())) {
+                continue;
+            }
+            Class<?>[] parameterTypes = logicalParameterTypes(method);
+            if (parameterTypes.length != args.length) {
+                continue;
+            }
+            if (argumentsMatch(parameterTypes, args)) {
+                return method;
+            }
+            if (fallback == null) {
+                fallback = method;
+            }
+        }
+        if (fallback != null) {
+            return fallback;
+        }
+        throw new ZLinkConfigurationException(
+            "handler method is not found: " + handlerType.getName() + "." + methodName);
+    }
+
     public static CompletionStage<Object> invoke(
         Object handler,
         Method method,
@@ -106,6 +146,51 @@ public final class ZLinkHandlerMethodInvoker {
             completion.completeExceptionally(ex);
         }
         return completion;
+    }
+
+    private static boolean argumentsMatch(Class<?>[] parameterTypes, Object[] arguments) {
+        for (int index = 0; index < parameterTypes.length; index++) {
+            Object argument = arguments[index];
+            if (argument == null) {
+                continue;
+            }
+            Class<?> parameterType = wrapPrimitive(parameterTypes[index]);
+            if (!parameterType.isInstance(argument)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static Class<?> wrapPrimitive(Class<?> type) {
+        if (!type.isPrimitive()) {
+            return type;
+        }
+        if (type == int.class) {
+            return Integer.class;
+        }
+        if (type == long.class) {
+            return Long.class;
+        }
+        if (type == boolean.class) {
+            return Boolean.class;
+        }
+        if (type == byte.class) {
+            return Byte.class;
+        }
+        if (type == short.class) {
+            return Short.class;
+        }
+        if (type == float.class) {
+            return Float.class;
+        }
+        if (type == double.class) {
+            return Double.class;
+        }
+        if (type == char.class) {
+            return Character.class;
+        }
+        return Void.class;
     }
 
     private static Object newContinuation(ClassLoader loader, CompletableFuture<Object> completion) {

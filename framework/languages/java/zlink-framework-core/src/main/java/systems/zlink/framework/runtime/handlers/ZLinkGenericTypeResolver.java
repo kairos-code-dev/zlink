@@ -16,6 +16,10 @@ public final class ZLinkGenericTypeResolver {
         return findInterface(type, targetRawType, Map.of());
     }
 
+    public static ParameterizedType findInterface(Class<?> type, String targetRawTypeName) {
+        return findInterface(type, targetRawTypeName, Map.of());
+    }
+
     public static Class<?> requireClassArgument(Class<?> handlerType, Type argument) {
         Type resolved = resolve(argument, Map.of());
         if (resolved instanceof Class<?> klass) {
@@ -46,6 +50,23 @@ public final class ZLinkGenericTypeResolver {
         return matchType(superclass, targetRawType, bindings);
     }
 
+    private static ParameterizedType findInterface(
+        Class<?> type,
+        String targetRawTypeName,
+        Map<TypeVariable<?>, Type> bindings) {
+        for (Type interfaceType : type.getGenericInterfaces()) {
+            ParameterizedType matched = matchType(interfaceType, targetRawTypeName, bindings);
+            if (matched != null) {
+                return matched;
+            }
+        }
+        Type superclass = type.getGenericSuperclass();
+        if (superclass == null || superclass == Object.class) {
+            return null;
+        }
+        return matchType(superclass, targetRawTypeName, bindings);
+    }
+
     private static ParameterizedType matchType(
         Type type,
         Class<?> targetRawType,
@@ -61,6 +82,25 @@ public final class ZLinkGenericTypeResolver {
         }
         if (resolved instanceof Class<?> raw) {
             return findInterface(raw, targetRawType, bindings);
+        }
+        return null;
+    }
+
+    private static ParameterizedType matchType(
+        Type type,
+        String targetRawTypeName,
+        Map<TypeVariable<?>, Type> bindings) {
+        Type resolved = resolve(type, bindings);
+        if (resolved instanceof ParameterizedType parameterized
+            && parameterized.getRawType() instanceof Class<?> raw) {
+            ParameterizedType concrete = resolvedParameterized(parameterized, bindings);
+            if (raw.getName().equals(targetRawTypeName)) {
+                return concrete;
+            }
+            return findInterface(raw, targetRawTypeName, bind(raw, concrete.getActualTypeArguments()));
+        }
+        if (resolved instanceof Class<?> raw) {
+            return findInterface(raw, targetRawTypeName, bindings);
         }
         return null;
     }

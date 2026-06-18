@@ -1,8 +1,5 @@
 package systems.zlink.framework.configuration;
 
-import systems.zlink.framework.channels.ZLinkRequestHandler;
-import systems.zlink.framework.channels.ZLinkSendHandler;
-
 public interface ClientServerChannelBuilder {
     ClientServerChannelBuilder enableServer(String endpoint);
 
@@ -12,26 +9,24 @@ public interface ClientServerChannelBuilder {
 
     ClientServerChannelBuilder addHandlerGroup(String groupName);
 
-    <THandler extends ZLinkSendHandler<TMessage>, TMessage> void addSendHandler(
-        Class<THandler> handlerType,
-        Class<TMessage> messageType);
+    void addSendHandler(
+        Class<?> handlerType,
+        Class<?> messageType);
 
-    <THandler extends ZLinkSendHandler<TMessage>, TMessage> void addSendHandler(
-        Class<THandler> handlerType,
-        Class<TMessage> messageType,
+    void addSendHandler(
+        Class<?> handlerType,
+        Class<?> messageType,
         String packetName);
 
-    <THandler extends ZLinkRequestHandler<TRequest, TReply>, TRequest, TReply>
     void addRequestHandler(
-        Class<THandler> handlerType,
-        Class<TRequest> requestType,
-        Class<TReply> replyType);
+        Class<?> handlerType,
+        Class<?> requestType,
+        Class<?> replyType);
 
-    <THandler extends ZLinkRequestHandler<TRequest, TReply>, TRequest, TReply>
     void addRequestHandler(
-        Class<THandler> handlerType,
-        Class<TRequest> requestType,
-        Class<TReply> replyType,
+        Class<?> handlerType,
+        Class<?> requestType,
+        Class<?> replyType,
         String packetName);
 
     ClientServerChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName);

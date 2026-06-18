@@ -2554,7 +2554,7 @@ int main ()
                          "-DZLINK_STREAM_CONNECTOR_BUILD_GODOT=OFF");
     ok &= file_contains (root / "connector/core/packaging/vcpkg/portfile.cmake",
                          "-DZLINK_STREAM_CONNECTOR_BUILD_AXMOL=OFF");
-    ok &= file_contains (root / "connector/doc/guide/01-overview.ko.md",
+    ok &= file_contains (root / "../../doc/stream-connector/cpp/guide/01-overview.ko.md",
                          "TypeScript connector 사용");
     ok &= file_does_not_contain (root / "CMakeLists.txt",
                                  "cocos-connector",

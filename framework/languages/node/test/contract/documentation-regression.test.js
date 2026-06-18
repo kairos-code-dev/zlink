@@ -41,7 +41,7 @@ test('node guide exposes the 12 required guide chapters', () => {
 
 test('node README links every guide chapter', () => {
   const readme = fs.readFileSync(path.join(docRoot, 'README.ko.md'), 'utf8');
-  const missing = guideFiles.filter((file) => !readme.includes(`./guide/${file}`));
+  const missing = guideFiles.filter((file) => !readme.includes(`guide/${file}`));
 
   assert.deepEqual(missing, []);
 });

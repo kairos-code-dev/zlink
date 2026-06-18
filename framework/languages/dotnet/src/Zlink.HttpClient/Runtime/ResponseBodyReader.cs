@@ -92,7 +92,7 @@ internal sealed class ResponseBodyReader(HttpClientOptions options)
         return headers;
     }
 
-    public static string? FindHeader(IReadOnlyDictionary<string, string> headers, string name)
+    private static string? FindHeader(IReadOnlyDictionary<string, string> headers, string name)
     {
         foreach (var (key, value) in headers)
         {

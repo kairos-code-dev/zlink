@@ -2,7 +2,7 @@
 
 # 6. Response 다루기
 
-응답을 받는 방법은 세 가지이고, 풀어 주는 깊이가 다르다.
+응답을 받는 방법은 세 가지이고 풀어 주는 깊이가 다르다.
 
 | 방법 | 반환 | 실패 보고 | 용도 |
 |------|------|-----------|------|
@@ -86,7 +86,7 @@ void from_json (const nlohmann::json &json, create_game_res_t &value)
 
 ## fetch: 전부 풀어서 받기
 
-`fetch<T>()`는 result와 봉투를 모두 풀어 DTO만 돌려주고, 모든 실패(transport,
+`fetch<T>()`는 result와 봉투를 모두 풀어 DTO만 돌려주고 모든 실패(transport,
 4xx/5xx, 디코딩)를 `framework_exception_t`로 던진다. blocking이므로
 테스트·client 시나리오 전용이다 — [7장](07-async-coroutines.ko.md)의 규칙 참고.
 

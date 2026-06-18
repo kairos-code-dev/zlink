@@ -5,7 +5,7 @@
 ## 무엇인가
 
 `zlink::http_client`는 C++ 애플리케이션이 HTTP API를 호출할 때 쓰는 client-side
-산출물이다. C++ 표준 라이브러리에는 HTTP client가 없고, Boost.Beast를 직접 쓰면
+산출물이다. C++ 표준 라이브러리에는 HTTP client가 없고 Boost.Beast를 직접 쓰면
 socket·resolver·parser 같은 낮은 수준 타입이 application 코드에 흘러들어온다.
 이 client는 그 복잡성을 fluent builder 뒤로 숨긴다.
 
@@ -15,7 +15,7 @@ socket·resolver·parser 같은 낮은 수준 타입이 application 코드에 �
 auto profile = client.get ("/players/7281").fetch<player_profile_t> ();
 ```
 
-JSON 전용 client가 아니다. 일반 HTTP client이며, typed JSON 경로
+JSON 전용 client가 아니다. 일반 HTTP client이며 typed JSON 경로
 (`body(dto)` / `submit<T>()` / `fetch<T>()`)는 그 위에 얹은 편의 계층이다.
 
 ## 설계 원칙

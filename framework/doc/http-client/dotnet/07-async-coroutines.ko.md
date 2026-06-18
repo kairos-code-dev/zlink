@@ -26,7 +26,7 @@ public async ValueTask NotifyMatchResultAsync(ZLinkHttpClient client, MatchResul
 }
 ```
 
-> DNS 해석(`getaddrinfo`)만 OS 레벨에서 blocking이지만, .NET은 이를 threadpool로
+> DNS 해석(`getaddrinfo`)만 OS 레벨에서 blocking이지만 .NET은 이를 threadpool로
 > offload하므로 호출/handler 스레드는 막히지 않는다.
 
 ## continuation 재개 위치
@@ -34,7 +34,7 @@ public async ValueTask NotifyMatchResultAsync(ZLinkHttpClient client, MatchResul
 `Zlink.HttpClient`는 continuation 재개 위치 주입을 제공하지 않는다. 평범한 `Task<T>`를 돌려주는
 라이브러리는 호출자의 `await` continuation 재개 위치를 강제할 수 없다(재개는 호출자의
 `SynchronizationContext`/awaiter가 결정). 따라서 `Zlink.HttpClient`는 표준 `Task`/
-`await` 동작만 제공하며, 재개 위치가 필요하면 호출자가 `ConfigureAwait`나 자신의
+`await` 동작만 제공하며 재개 위치가 필요하면 호출자가 `ConfigureAwait`나 자신의
 스케줄러로 제어한다.
 
 ## blocking: Fetch&lt;T&gt;()
@@ -61,6 +61,6 @@ var board = client.Get("/leaderboard").Fetch<Leaderboard>();   // blocking + 언
 ## streaming callback 위치
 
 `DownloadAsync(sink)`의 sink는 응답 chunk를 읽는 비동기 컨텍스트에서 호출된다. sink
-안에서 무거운 동기 작업으로 스레드를 막지 말고, 필요하면 thread-safe queue로 넘긴다.
+안에서 무거운 동기 작업으로 스레드를 막지 말고 필요하면 thread-safe queue로 넘긴다.
 
 [다음: Streaming →](08-streaming.ko.md)

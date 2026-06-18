@@ -46,13 +46,13 @@ auto client = zlink::http_client::client_t::create ("https://matchmaking.interna
   .build ();
 ```
 
-이때 execute scheduler는 HTTP 교환 작업을 실행하고, resume scheduler는 완료 후
+이때 execute scheduler는 HTTP 교환 작업을 실행하고 resume scheduler는 완료 후
 continuation과 callback이 실행될 위치를 정한다.
 
 ## co_await (framework handler 안에서의 표준)
 
 framework runtime/handler 코드는 `.coroutines(...)`로 구성한 client를 `co_await`로
-받는다. 성공이면 값이 나오고, 실패면 `framework_exception_t`가 던져진다.
+받는다. 성공이면 값이 나오고 실패면 `framework_exception_t`가 던져진다.
 
 ```cpp
 zlink::framework::task_t<void>
@@ -116,6 +116,6 @@ client.post ("/games")
 
 `body_stream(provider)`의 provider와 `download(sink)`의 sink는 HTTP 작업을 실행하는
 execute scheduler worker에서 호출된다. 이 callback 안에서 server handler state를 직접
-건드리지 말고, 필요한 경우 thread-safe queue나 server scheduler post를 사용한다.
+건드리지 말고 필요한 경우 thread-safe queue나 server scheduler post를 사용한다.
 
 [다음: Streaming →](08-streaming.ko.md)

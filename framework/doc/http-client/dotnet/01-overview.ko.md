@@ -5,9 +5,9 @@
 ## 무엇인가
 
 `Zlink.HttpClient`는 .NET 애플리케이션이 HTTP API를 호출할 때 쓰는 client-side
-산출물이다. .NET 표준 라이브러리에는 `System.Net.Http.HttpClient`가 있지만, 핸들러
+산출물이다. .NET 표준 라이브러리에는 `System.Net.Http.HttpClient`가 있지만 핸들러
 구성·redirect·cookie·압축·재시도 같은 설정이 호출부에 흩어진다. 이 client는 그
-복잡성을 fluent builder 뒤로 숨기고, zlink framework의 에러·코덱 모델과 맞춘다.
+복잡성을 fluent builder 뒤로 숨기고 zlink framework의 에러·코덱 모델과 맞춘다.
 
 ```csharp
 // HttpClient 직접 사용: SocketsHttpHandler, CookieContainer, AutomaticDecompression ...
@@ -15,7 +15,7 @@
 var profile = await client.Get("/players/7281").SubmitAsync<PlayerProfile>();
 ```
 
-JSON 전용 client가 아니다. 일반 HTTP client이며, typed JSON 경로
+JSON 전용 client가 아니다. 일반 HTTP client이며 typed JSON 경로
 (`Body(dto)` / `SubmitAsync<T>()` / `Fetch<T>()`)는 그 위에 얹은 편의 계층이다.
 
 ## 설계 원칙

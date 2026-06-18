@@ -16,7 +16,7 @@
 ## 1. 목적
 
 `zlink::http_client`는 C++에서 HTTP request를 보내기 위한 별도 client-side 산출물이다.
-JSON 전용 client가 아니라 일반 HTTP client이며, zlink의 call object와 fluent builder
+JSON 전용 client가 아니라 일반 HTTP client이며 zlink의 call object와 fluent builder
 스타일로 낮은 수준 타입과 설정의 복잡성을 흡수한다. typed JSON 경로
 (`body(dto)`/`submit<T>()`/`fetch<T>()`)는 그 위에 얹은 편의 계층이다.
 
@@ -61,7 +61,7 @@ response parser, SSL stream, SSL context 타입을 노출하지 않는다.
   `form(name, value)`(x-www-form-urlencoded), `multipart(...)`/`multipart_file(...)`
 - `submit<T>()`, `submit_raw()`, blocking `fetch<T>()`(typed body 직접 반환, 실패 시 throw)
 - `download(sink)`: 응답 body를 버퍼링 없이 chunk 단위로 streaming
-- connection keep-alive pool: 같은 origin(+proxy) 연결을 재사용하고, 죽은 pooled 연결은
+- connection keep-alive pool: 같은 origin(+proxy) 연결을 재사용하고 죽은 pooled 연결은
   fresh 연결로 1회 자동 재시도한다
 
 ## 3. Public API Shape
@@ -137,11 +137,11 @@ auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
   연결을 닫았으면(stale) fresh 연결로 1회 자동 재시도한다. `body_stream` request는
   provider를 되감을 수 없으므로 항상 fresh 연결을 쓴다.
 - coroutine scheduler: 설정하지 않은 client는 기존 blocking submit 의미를 유지한다.
-  `.coroutines()`를 명시하면 HTTP 작업을 내부 scheduler에 등록하고, custom scheduler를
+  `.coroutines()`를 명시하면 HTTP 작업을 내부 scheduler에 등록하고 custom scheduler를
   주입하면 HTTP 실행 위치와 continuation resume 위치를 분리할 수 있다.
 - redirect 자동 추적: `follow_redirects(max)`. `301/302`의 `POST`와 `303`은 `GET`으로
   바뀌고 body를 버린다. `307/308`은 method와 body를 보존한다. 절대 URL과 절대 경로
-  Location을 지원하며, 한도를 넘으면 `request_failed`로 닫힌다. 최초 요청 origin과 다른
+  Location을 지원하며 한도를 넘으면 `request_failed`로 닫힌다. 최초 요청 origin과 다른
   redirect hop에는 `Authorization` 헤더를 다시 보내지 않는다. 다른 이름의 비밀 헤더는
   일반 헤더와 구분할 수 없으므로 caller가 직접 관리한다.
 - retry: `retry(attempts)`. retriable한 transport 실패(연결 끊김, timeout)만 재시도하고
@@ -155,14 +155,14 @@ auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
 - 압축: `compression()`. `Accept-Encoding: gzip, deflate`를 보내고 gzip/deflate 응답
   body를 투명하게 해제한다(Boost.Beast zlib 사용, trailer checksum은 검증하지 않는다).
   `download(sink)` streaming 경로에는 적용되지 않는다.
-- 응답 body 상한: `max_response_body_size(bytes)`. 기본값은 16 MiB이며, buffered 응답과
+- 응답 body 상한: `max_response_body_size(bytes)`. 기본값은 16 MiB이며 buffered 응답과
   `download(sink)` streaming 응답 모두 같은 상한을 적용한다.
 - HTTP와 HTTPS endpoint, TLS server certificate verification, hostname verification,
   test certificate trust option
 - HTTP status mapping
 
 HTTP/2와 caller cancellation 공통 모델은 현재 구현 범위 밖이다. HTTP/2는 Boost.Beast가
-지원하지 않고, cancellation은 server runtime마다 의미가 달라 별도 설계가 필요하다.
+지원하지 않고 cancellation은 server runtime마다 의미가 달라 별도 설계가 필요하다.
 
 `base_url(...)`, `timeout(...)`, `max_response_body_size(...)`, `default_header(...)`,
 `trust_certificate_file(...)`, `follow_redirects(...)`, `retry(...)`, `proxy(...)`,
@@ -174,7 +174,7 @@ request path, request header name, query/form/multipart field name은 call을 �
 
 ## 4. JSON 계약
 
-JSON 변환은 `message_t` 또는 DTO serializer hook을 통해 처리한다. 샘플 application code가
+JSON 변환은 `message_t` 또는 DTO serializer hook으로 처리한다. 샘플 application code가
 `nlohmann::json::parse`로 field를 직접 꺼내지 않는다.
 
 typed JSON 요청/응답은 아래 흐름으로 작성한다.
@@ -205,11 +205,11 @@ caller가 반환된 task에 `.result()`를 호출하면 현재 스레드는 결�
 
 `.coroutines()`를 명시한 client는 HTTP 작업을 HTTP client 내부 scheduler에 등록한다. 이
 scheduler는 public header에 Boost.Asio, Boost.Beast, OpenSSL runtime 타입을 드러내지
-않는다. HTTP client는 process 안에서 공유되는 기본 scheduler를 사용하며, public shutdown
+않는다. HTTP client는 process 안에서 공유되는 기본 scheduler를 사용하며 public shutdown
 API를 제공하지 않는다.
 
 server runtime처럼 continuation을 다시 실행할 위치를 직접 정해야 하는 경우에는 resume
-scheduler를 주입한다. HTTP 작업은 내부 scheduler가 실행하고, 완료된 coroutine과 callback은
+scheduler를 주입한다. HTTP 작업은 내부 scheduler가 실행하고 완료된 coroutine과 callback은
 caller가 제공한 resume scheduler에서 이어진다.
 
 ```cpp
@@ -255,7 +255,7 @@ coroutine 설정이 있으면 resume scheduler가 정한 위치에서 callback�
 
 `body_stream(provider)`의 provider와 `download(sink)`의 sink는 HTTP 작업을 실행하는
 execute scheduler worker에서 호출된다. 이 callback 안에서 server handler state를 직접
-건드리지 말고, 필요한 경우 thread-safe queue나 server scheduler post를 사용한다.
+건드리지 말고 필요한 경우 thread-safe queue나 server scheduler post를 사용한다.
 
 ## 7. HTTP Hosting 테스트에서의 사용
 
@@ -298,12 +298,12 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
 - proxy auth: 인증 없는 request는 `407`로 거부되고 `proxy_basic_auth`로 통과한다
 - 압축: `compression()`이 gzip/deflate 응답을 평문으로 해제하고 `Content-Encoding`
   헤더를 제거한다
-- streaming download: `download(sink)`가 body를 chunk로 전달하고, redirect 중간 응답
+- streaming download: `download(sink)`가 body를 chunk로 전달하고 redirect 중간 응답
   body는 sink로 새지 않는다
 - response body limit: buffered 응답과 `download(sink)` 응답이 설정한 body 상한을 넘으면
   실패한다
 - streaming upload: `body_stream(provider)`가 chunked transfer-encoding으로 전달된다
-- 인증: `basic_auth`/`bearer_token`이 `Authorization` 헤더로 실리고, mTLS 서버는
+- 인증: `basic_auth`/`bearer_token`이 `Authorization` 헤더로 실리고 mTLS 서버는
   `client_certificate_file` 설정 시에만 handshake가 성공한다
 - keep-alive: 같은 client의 연속 request가 단일 connection을 재사용한다
 - request timeout override: request 단위 `timeout(...)`이 client 기본값을 덮어쓴다

@@ -6,14 +6,14 @@
 
 `zlink-http-client`는 Java 애플리케이션이 HTTP API를 호출할 때 쓰는 client-side 산출물이다.
 JDK에는 `java.net.http.HttpClient`가 있지만 cookie jar·redirect 횟수 제한·압축 통제 같은
-설정이 호출부에 흩어진다. 이 client는 그 복잡성을 fluent builder 뒤로 숨기고, framework의
+설정이 호출부에 흩어진다. 이 client는 그 복잡성을 fluent builder 뒤로 숨기고 framework의
 에러·코덱 모델과 맞춘다.
 
 ```java
 PlayerProfile profile = client.get("/players/7281").fetch(PlayerProfile.class);
 ```
 
-JSON 전용 client가 아니다. 일반 HTTP client이며, typed JSON 경로
+JSON 전용 client가 아니다. 일반 HTTP client이며 typed JSON 경로
 (`body(dto)` / `submit(Type)` / `fetch(Type)`)는 그 위에 얹은 편의 계층이다.
 
 ## 설계 원칙

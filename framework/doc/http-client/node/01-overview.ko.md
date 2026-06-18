@@ -7,13 +7,13 @@
 `@zlink-systems/http-client`는 Node 애플리케이션이 HTTP API를 호출할 때 쓰는 client-side
 산출물이다. Node에는 global `fetch`가 있지만 gzip을 자동 해제하고 cookie jar·redirect
 횟수 제한·세밀한 proxy/TLS 제어가 부족해 zlink 계약과 어긋난다. 이 client는 undici
-저수준 위에 fluent builder를 얹어 그 복잡성을 숨기고, framework의 에러·코덱 모델과 맞춘다.
+저수준 위에 fluent builder를 얹어 그 복잡성을 숨기고 framework의 에러·코덱 모델과 맞춘다.
 
 ```ts
 const profile = await client.get('/players/7281').submit<PlayerProfile>();
 ```
 
-JSON 전용 client가 아니다. 일반 HTTP client이며, typed JSON 경로
+JSON 전용 client가 아니다. 일반 HTTP client이며 typed JSON 경로
 (`body(dto)` / `submit<T>()`)는 그 위에 얹은 편의 계층이다.
 
 ## 설계 원칙
@@ -27,7 +27,7 @@ JSON 전용 client가 아니다. 일반 HTTP client이며, typed JSON 경로
 ## 백엔드 선택 — `fetch`가 아닌 undici
 
 parity 구현은 undici 저수준 `request`를 쓴다. `fetch`는 `follow_redirects(n)`에 대응하는
-숫자 redirect 한도가 없고, gzip을 자동 해제해 streaming·헤더 제거·decoded limit 의미론을
+숫자 redirect 한도가 없고 gzip을 자동 해제해 streaming·헤더 제거·decoded limit 의미론을
 깨며, client별 proxy/TLS 제어가 제한적이다. undici `request`는 auto-redirect·
 auto-decompress·cookie를 하지 않아 래퍼가 의미론을 통제할 수 있다.
 

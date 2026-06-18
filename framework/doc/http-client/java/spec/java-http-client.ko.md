@@ -8,7 +8,7 @@
 ## 1. 목적
 
 `zlink-http-client`는 Java에서 HTTP request를 보내기 위한 별도 client-side 산출물이다.
-JSON 전용 client가 아니라 일반 HTTP client이며, zlink fluent builder 스타일로
+JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder 스타일로
 `java.net.http`의 낮은 수준 설정을 흡수한다. typed JSON 경로(`body(dto)`/`submit(Type)`/
 `fetch(Type)`)는 그 위에 얹은 편의 계층이다.
 

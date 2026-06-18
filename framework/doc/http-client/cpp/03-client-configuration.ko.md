@@ -45,7 +45,7 @@ auto client = zlink::http_client::client_t::create ("https://game-api.example.in
 조용히 넘어가지 않는다.
 
 `default_header`로 넣은 헤더는 redirect 대상이 바뀌어도 그대로 적용된다. 비밀 값은
-`default_header`에 직접 넣지 말고, `basic_auth`나 `bearer_token`을 사용한다. 이 두 인증
+`default_header`에 직접 넣지 말고 `basic_auth`나 `bearer_token`을 사용한다. 이 두 인증
 API가 만드는 `Authorization` 헤더는 교차 origin redirect에서 자동으로 제거된다.
 
 ## base_url과 path prefix

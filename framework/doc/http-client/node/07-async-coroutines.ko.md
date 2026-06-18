@@ -23,17 +23,17 @@ async function notifyMatchResult(client: ZLinkHttpClient, result: MatchResult): 
 }
 ```
 
-> DNS 해석(`getaddrinfo`)만 OS 레벨에서 blocking이지만, Node는 이를 백그라운드 스레드
+> DNS 해석(`getaddrinfo`)만 OS 레벨에서 blocking이지만 Node는 이를 백그라운드 스레드
 > 풀로 offload하므로 event loop는 막히지 않는다.
 
 ## continuation 재개 위치
 
 Node는 단일 event loop라 continuation 재개 위치 주입 개념이 없다. `.coroutines()` 빌더 항목은
-존재하지 않으며, 표준 `Promise`/`await`만 제공한다.
+존재하지 않으며 표준 `Promise`/`await`만 제공한다.
 
 ## blocking 경로 없음
 
-Node에는 동기 blocking HTTP 접근이 없다. blocking 제출 경로를 제공하지 않으며, 모든
+Node에는 동기 blocking HTTP 접근이 없다. blocking 제출 경로를 제공하지 않으며 모든
 제출은 `await`한다.
 
 [다음: Streaming →](08-streaming.ko.md)

@@ -2,7 +2,7 @@
 
 # 12. 압축
 
-`Compression()`을 켜면 요청에 `Accept-Encoding: gzip, deflate`를 붙이고, 응답이
+`Compression()`을 켜면 요청에 `Accept-Encoding: gzip, deflate`를 붙이고 응답이
 `gzip` 또는 `deflate`로 인코딩됐으면 투명하게 해제한다.
 
 ```csharp

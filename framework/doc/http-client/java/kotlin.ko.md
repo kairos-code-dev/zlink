@@ -3,7 +3,7 @@
 # Kotlin coroutine 확장
 
 `zlink-http-client-kotlin`은 Java `zlink-http-client` **런타임을 그대로 재사용**하는 얇은
-idiom 레이어다. 별도 전송 구현은 없고, `CompletionStage`를 진짜 `suspend`로 잇는 coroutine
+idiom 레이어다. 별도 전송 구현은 없고 `CompletionStage`를 진짜 `suspend`로 잇는 coroutine
 확장과 DSL만 얹는다. 이 문서는 kotlin 특징만 다루며, 기능·의미론은 Java 가이드
 ([README](README.ko.md))를 따른다.
 

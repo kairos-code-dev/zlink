@@ -32,7 +32,7 @@ connection pool·proxy·TLS는 undici dispatcher에 위임한다.
 ## client 재사용
 
 client는 내부 dispatcher 하나를 감싸며 connection pool을 공유한다. **한 번 만들어
-재사용**하고, 끝나면 `close()`로 정리한다.
+재사용**하고 끝나면 `close()`로 정리한다.
 
 ## 요청별 timeout override
 

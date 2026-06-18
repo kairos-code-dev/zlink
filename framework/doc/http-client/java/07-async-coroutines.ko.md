@@ -25,13 +25,13 @@ public CompletionStage<Void> notifyMatchResult(ZLinkHttpClient client, MatchResu
 }
 ```
 
-> DNS 해석(`getaddrinfo`)만 OS 레벨에서 blocking이지만, JDK는 이를 HttpClient executor로
+> DNS 해석(`getaddrinfo`)만 OS 레벨에서 blocking이지만 JDK는 이를 HttpClient executor로
 > offload하므로 호출 스레드는 막히지 않는다.
 
 ## handler 규칙 — `.get()`/`.join()` 금지
 
 > **framework handler 스레드에서는 `CompletionStage` 합성(`thenCompose`/`thenApply`/
-> `thenAccept`)만 쓰고, `.get()`/`.join()`은 쓰지 않는다.** 이 repo의 java
+> `thenAccept`)만 쓰고 `.get()`/`.join()`은 쓰지 않는다.** 이 repo의 java
 > `await`/`join`은 blocking이라 handler 스레드를 막는다.
 
 | 호출 위치 | 권장 |

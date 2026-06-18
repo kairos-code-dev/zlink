@@ -21,7 +21,7 @@
 
 .NET framework의
 `ZLinkFrameworkErrorKind`에는 timeout 전용 kind가 없다. 따라서 timeout은 .NET 관용에
-맞춰 **`TimeoutException`**으로 보고된다. retriable 성격이며, `Retry`가 설정돼 있으면
+맞춰 **`TimeoutException`**으로 보고된다. retriable 성격이며 `Retry`가 설정돼 있으면
 재시도된다(framework 코덱 자체도 timeout을 `TimeoutException`
 으로 변환한다).
 

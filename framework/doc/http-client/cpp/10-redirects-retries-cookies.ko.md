@@ -3,7 +3,7 @@
 # 10. Redirect · Retry · Cookie
 
 세 기능 모두 **opt-in**이다. 켜지 않으면 redirect 응답은 그대로 반환되고,
-실패는 재시도 없이 보고되며, cookie는 무시된다.
+실패는 재시도 없이 보고되며 cookie는 무시된다.
 
 ## Redirect 자동 추적
 

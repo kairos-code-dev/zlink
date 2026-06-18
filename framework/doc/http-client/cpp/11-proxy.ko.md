@@ -28,7 +28,7 @@ target scheme에 따라 표준 proxy 프로토콜을 따른다. 호출자가 구
 | `https://` | `CONNECT host:port`로 tunnel을 연 뒤, tunnel 안에서 TLS handshake |
 
 `https://` target은 proxy를 지나도 **end-to-end TLS**다. proxy는 암호화된
-바이트만 중계하며 내용을 볼 수 없고, server certificate/hostname 검증도 origin
+바이트만 중계하며 내용을 볼 수 없고 server certificate/hostname 검증도 origin
 기준으로 그대로 수행된다.
 
 ## Proxy 인증

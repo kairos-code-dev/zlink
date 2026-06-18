@@ -2,7 +2,7 @@
 
 # 12. 압축
 
-`compression()`을 켜면 요청에 `Accept-Encoding: gzip, deflate`를 싣고, 서버가
+`compression()`을 켜면 요청에 `Accept-Encoding: gzip, deflate`를 싣고 서버가
 압축해 보낸 응답 body를 **투명하게 해제**한다. 호출 코드는 압축 여부를 모른다.
 
 ```cpp

@@ -1,7 +1,7 @@
 # ZLink HTTP Client For Node — 사용자 가이드
 
 `@zlink-systems/http-client`는 Node에서 HTTP request를 보내기 위한 범용 HTTP client다.
-zlink 스타일 fluent builder로 사용하며, 공개 표면은 undici 타입을 노출하지 않는다.
+zlink 스타일 fluent builder로 사용하며 공개 표면은 undici 타입을 노출하지 않는다.
 
 ```ts
 import { ZLinkHttpClient } from '@zlink-systems/http-client';

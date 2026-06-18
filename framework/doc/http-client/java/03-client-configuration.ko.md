@@ -33,7 +33,7 @@ redirect 루프를 래퍼에서 구현한다.
 ## client 재사용
 
 client는 내부 `HttpClient` 하나를 감싸며 connection pool을 공유한다. **한 번 만들어
-재사용**하고, try-with-resources나 `close()`로 정리한다.
+재사용**하고 try-with-resources나 `close()`로 정리한다.
 
 ## 요청별 timeout override
 

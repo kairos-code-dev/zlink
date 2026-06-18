@@ -1,7 +1,7 @@
 # ZLink HTTP Client For C++ — 사용자 가이드
 
 `zlink::http_client`는 C++에서 HTTP request를 보내기 위한 범용 HTTP client다.
-zlink 스타일 fluent builder로 사용하며, public header는 Boost.Beast/Asio/OpenSSL
+zlink 스타일 fluent builder로 사용하며 public header는 Boost.Beast/Asio/OpenSSL
 타입을 노출하지 않는다.
 
 ```cpp

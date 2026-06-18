@@ -2,7 +2,7 @@
 
 # 4. Request 만들기
 
-`client.get(path)` 같은 메서드 호출이 `request_builder_t`를 돌려주고, 거기에
+`client.get(path)` 같은 메서드 호출이 `request_builder_t`를 돌려주고 거기에
 query·헤더·body를 체인으로 얹은 뒤 `submit`/`fetch`/`download`로 보낸다.
 
 ## HTTP 메서드
@@ -26,7 +26,7 @@ if (head && head.value ().status == 200) {
 }
 ```
 
-path는 반드시 `/`로 시작해야 하며, 아니면 `request_protocol_error`로 던진다.
+path는 반드시 `/`로 시작해야 하며 아니면 `request_protocol_error`로 던진다.
 
 ## Query 파라미터
 

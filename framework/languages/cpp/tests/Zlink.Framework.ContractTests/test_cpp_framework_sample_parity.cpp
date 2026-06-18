@@ -25,6 +25,28 @@
 #include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_entry_spot.hpp"
 #include "../../samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp"
 #include "../../samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp"
+#include "../../samples/SupportChat/Server/Configuration/sample_names.hpp"
+#include "../../samples/SupportChat/Shared/Contracts/messages.hpp"
+#include "../../samples/SupportChat/Server/Support/Domain/SupportChat/conversation.hpp"
+#include "../../samples/SupportChat/Server/Support/Application/ConversationAssignment/agent_assignment_service.hpp"
+#include "../../samples/SupportChat/Server/Support/Application/ConversationAssignment/agent_availability_directory.hpp"
+#include "../../samples/SupportChat/Server/Support/Application/ConversationAssignment/support_conversation_allocator.hpp"
+#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Actors/support_user_actor_factory.hpp"
+#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Handlers/allocate_conversation_handler.hpp"
+#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Handlers/assign_agent_handler.hpp"
+#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Handlers/ensure_support_user_actor_handler.hpp"
+#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Spots/conversation_spot.hpp"
+#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Spots/support_entry_spot.hpp"
+#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Spots/Handlers/conversation_idle_timer_handler.hpp"
+#include "../../samples/SupportChat/Server/Api/Handlers/authenticate_user_handler.hpp"
+#include "../../samples/DeliveryDispatch/Client/delivery_dispatch_client_scenario.hpp"
+#include "../../samples/DeliveryDispatch/Server/delivery_dispatch_server_role.hpp"
+#include "../../samples/GameQuest/Client/game_quest_client_scenario.hpp"
+#include "../../samples/GameQuest/Server/game_quest_server_role.hpp"
+#include "../../samples/ShoppingMall/Client/shopping_mall_client_scenario.hpp"
+#include "../../samples/ShoppingMall/Server/shopping_mall_server_role.hpp"
+#include "../../samples/ShoppingMallCheckout/Client/shopping_mall_checkout_client_scenario.hpp"
+#include "../../samples/ShoppingMallCheckout/Server/shopping_mall_checkout_server_role.hpp"
 
 #include <gtest/gtest.h>
 
@@ -79,6 +101,15 @@ bool is_allowed_raw_codec_helper_file (const std::string &relative)
       "authenticate_play_session_handler.hpp",
       "TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_entry_spot.hpp",
       "TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_spot.hpp",
+      "DeliveryDispatch/Shared/Contracts/messages.hpp",
+      "GameQuest/Shared/Contracts/messages.hpp",
+      "ShoppingMall/Shared/Contracts/messages.hpp",
+      "ShoppingMallCheckout/Shared/Contracts/messages.hpp",
+      "SupportChat/Shared/Contracts/messages.hpp",
+      "SupportChat/Server/Session/Sessions/Handlers/authenticate_session_handler.hpp",
+      "SupportChat/Server/Support/support_server_host_factory.hpp",
+      "SupportChat/Server/Support/Adapters/ZLink/Spots/conversation_spot.hpp",
+      "SupportChat/Server/Support/Adapters/ZLink/Spots/support_entry_spot.hpp",
     };
     return std::find (allowed.begin (), allowed.end (), relative) != allowed.end ();
 }
@@ -250,6 +281,277 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (publisher.game_state.size (), 1U);
 }
 
+TEST (CppFrameworkSampleParity, SupportChatUsesDotNetSamplePacketSurface)
+{
+    using namespace zlink::samples::supportchat;
+
+    EXPECT_STREQ (sample_names_t::participant_joined_packet, "ParticipantJoinedNotify");
+    EXPECT_STREQ (sample_names_t::conversation_assigned_packet, "ConversationAssignedNotify");
+    EXPECT_STREQ (sample_names_t::chat_message_packet, "ChatMessageNotify");
+    EXPECT_STREQ (sample_names_t::typing_changed_packet, "TypingChangedNotify");
+    EXPECT_STREQ (sample_names_t::conversation_idle_packet, "ConversationIdleNotify");
+    EXPECT_STREQ (sample_names_t::conversation_closed_packet, "ConversationClosedNotify");
+
+    authenticate_user_handler_t auth;
+    const auto customer = auth.handle ({support_chat_tokens_t::customer1});
+    ASSERT_TRUE (customer.accepted);
+    EXPECT_EQ (customer.actor_id, std::string ("customer-1"));
+    EXPECT_EQ (customer.role, std::string (support_chat_roles_t::customer));
+    const auto agent = auth.handle ({support_chat_tokens_t::agent1});
+    ASSERT_TRUE (agent.accepted);
+    EXPECT_EQ (agent.role, std::string (support_chat_roles_t::agent));
+    const auto rejected = auth.handle ({"unknown-token"});
+    EXPECT_FALSE (rejected.accepted);
+
+    ensure_support_user_actor_handler_t actors;
+    const auto ensured =
+      actors.handle ({customer.actor_id, customer.display_name, customer.role});
+    EXPECT_EQ (ensured.actor_type, std::string (sample_names_t::support_actor_type));
+    EXPECT_EQ (ensured.actor.actor_id, customer.actor_id);
+    const auto ensured_again =
+      actors.handle ({customer.actor_id, customer.display_name, customer.role});
+    EXPECT_EQ (ensured_again.actor.generation, ensured.actor.generation)
+      << "reconnect must reuse the existing actor generation";
+
+    support_user_actor_factory_t actor_factory;
+    const auto customer_actor =
+      actor_factory.create (ensured.actor, customer.display_name, customer.role);
+    EXPECT_EQ (customer_actor.actor_id (), customer.actor_id);
+    EXPECT_EQ (customer_actor.role, std::string (support_chat_roles_t::customer));
+
+    support_conversation_allocator_t allocator;
+    const auto conversation_id = allocator.allocate (customer.actor_id, "checkout payment failed");
+    EXPECT_FALSE (conversation_id.empty ());
+
+    agent_availability_directory_t availability;
+    agent_assignment_service_t assignment (availability);
+    EXPECT_FALSE (assignment.assign_next_agent ().has_value ());
+    availability.set_available (agent.actor_id, agent.display_name, true);
+    const auto picked = assignment.assign_next_agent ();
+    ASSERT_TRUE (picked.has_value ());
+    EXPECT_EQ (picked->actor_id, agent.actor_id);
+
+    allocate_conversation_handler_t allocate_handler (allocator);
+    const auto allocated =
+      allocate_handler.handle ({customer.actor_id, customer.display_name, "subject"});
+    EXPECT_EQ (allocated.status, std::string (conversation_statuses_t::waiting_for_agent));
+
+    agent_availability_directory_t empty_availability;
+    agent_assignment_service_t empty_assignment (empty_availability);
+    assign_agent_handler_t assign_handler (empty_assignment);
+    const auto unassigned = assign_handler.handle ({allocated.conversation_id, ""});
+    EXPECT_EQ (unassigned.status, std::string (conversation_statuses_t::waiting_for_agent))
+      << "no available agent must stay in WaitingForAgent, not error";
+    EXPECT_TRUE (unassigned.agent_actor_id.empty ());
+
+    // Domain aggregate state transitions.
+    conversation_t conversation (allocated.conversation_id, "checkout payment failed",
+                                 customer.actor_id, customer.display_name, 1000);
+    EXPECT_EQ (conversation.status (), std::string (conversation_statuses_t::waiting_for_agent));
+    const auto assigned = conversation.join_agent (agent.actor_id, agent.display_name, 1100);
+    EXPECT_EQ (assigned.state.status, std::string (conversation_statuses_t::active));
+    EXPECT_EQ (assigned.state.agent_actor_id, agent.actor_id);
+    ASSERT_EQ (assigned.events.size (), 2U);
+    EXPECT_EQ (assigned.events[0].kind, conversation_event_kind_t::participant_joined);
+    EXPECT_EQ (assigned.events[1].kind, conversation_event_kind_t::assigned);
+
+    const auto sent = conversation.send_message (agent.actor_id, "greeting", 2000);
+    EXPECT_EQ (sent.state.last_message_seq, 1ULL);
+    ASSERT_FALSE (sent.events.empty ());
+    ASSERT_TRUE (sent.events[0].message.has_value ());
+    EXPECT_EQ (sent.events[0].message->message_seq, 1ULL);
+    EXPECT_TRUE (sent.state.has_idle_deadline);
+
+    const auto typing = conversation.set_typing (agent.actor_id, true);
+    ASSERT_FALSE (typing.events.empty ());
+    EXPECT_EQ (typing.events[0].kind, conversation_event_kind_t::typing_changed);
+    EXPECT_TRUE (typing.events[0].is_typing.value_or (false));
+
+    const auto idle = conversation.mark_idle (sent.state.idle_deadline_unix_ms + 1);
+    EXPECT_EQ (idle.state.status, std::string (conversation_statuses_t::waiting_for_close));
+    ASSERT_FALSE (idle.events.empty ());
+    EXPECT_EQ (idle.events[0].kind, conversation_event_kind_t::idle);
+
+    const auto closed = conversation.close (customer.actor_id, "resolved");
+    EXPECT_EQ (closed.state.status, std::string (conversation_statuses_t::closed));
+    EXPECT_THROW ((void) conversation.send_message (customer.actor_id, "after close", 9000),
+                  std::runtime_error);
+    EXPECT_THROW ((void) conversation.close (customer.actor_id, "again"), std::runtime_error);
+
+    // Conversation Spot registers the in-conversation actor handlers.
+    conversation_spot_t conversation_spot;
+    zlink::framework::spot_context_t conversation_context;
+    conversation_spot.configure (conversation_context);
+    const auto conversation_handlers = conversation_context.handlers ().descriptors ();
+    ASSERT_EQ (conversation_handlers.size (), 3U);
+    for (const auto &descriptor : conversation_handlers) {
+        EXPECT_EQ (descriptor.kind, zlink::framework::spot_handler_kind_t::actor_packet);
+    }
+
+    // Entry Spot registers the admission handlers and rejects non-customer opens.
+    support_entry_spot_t entry_spot;
+    zlink::framework::spot_context_t entry_context;
+    entry_spot.configure (entry_context);
+    const auto entry_handlers = entry_context.handlers ().descriptors ();
+    ASSERT_EQ (entry_handlers.size (), 2U);
+
+    auto agent_actor = actor_factory.create (actor_ref_snapshot_t{{}, "agent-9", 1}, "Agent 9",
+                                             support_chat_roles_t::agent);
+    zlink::framework::spot_actor_request_context_t available_context{
+      set_agent_available_req_t::packet_name, "application/json", {}, {}};
+    const auto availability_reply =
+      entry_spot.set_agent_available (agent_actor, available_context, {true});
+    EXPECT_TRUE (availability_reply.is_available);
+
+    auto customer_only = actor_factory.create (actor_ref_snapshot_t{{}, "customer-9", 1},
+                                               "Customer 9", support_chat_roles_t::customer);
+    EXPECT_THROW ((void) entry_spot.set_agent_available (customer_only, available_context, {true}),
+                  zlink::framework::framework_exception_t)
+      << "customer actors must not register availability";
+
+    // Idle timer handler forwards a time signal to the spot domain.
+    conversation_idle_timer_handler_t idle_timer;
+    (void) idle_timer;
+}
+
+TEST (CppFrameworkSampleParity, SupportChatEntrySpotUsesApiChannelOrchestration)
+{
+    const auto support_entry = read_file (
+      cpp_language_root ()
+      / "samples/SupportChat/Server/Support/Adapters/ZLink/Spots/support_entry_spot.hpp");
+    const auto api_handler = read_file (
+      cpp_language_root ()
+      / "samples/SupportChat/Server/Api/Handlers/open_conversation_handler.hpp");
+
+    EXPECT_NE (support_entry.find ("_context.outbound ()"), std::string::npos);
+    EXPECT_NE (support_entry.find ("request_to_channel"), std::string::npos);
+    EXPECT_NE (support_entry.find ("sample_names_t::api_channel"), std::string::npos);
+    EXPECT_NE (support_entry.find ("open_conversation_api_req_t"), std::string::npos);
+    EXPECT_EQ (support_entry.find ("allocator.allocate"), std::string::npos)
+      << "Entry Spot must not bypass the API channel allocation path";
+    EXPECT_EQ (support_entry.find ("assign_agent ("), std::string::npos)
+      << "Entry Spot must not run local agent assignment";
+
+    EXPECT_NE (api_handler.find ("sample_names_t::support_channel"), std::string::npos);
+    EXPECT_NE (api_handler.find ("allocate_conversation_req_t"), std::string::npos);
+    EXPECT_NE (api_handler.find ("assign_agent_req_t"), std::string::npos);
+}
+
+TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleScenarioSurface)
+{
+    using namespace zlink::samples::deliverydispatch;
+
+    delivery_dispatch_server_role_t server;
+    const auto created = server.create_delivery ("customer-1", "north gate");
+    EXPECT_EQ (created.status, std::string (delivery_status_t::created));
+    const auto assigned = server.assign_courier ("courier-a");
+    EXPECT_EQ (assigned.courier_id, "courier-a");
+    EXPECT_EQ (assigned.status, std::string (delivery_status_t::assigned));
+    EXPECT_EQ (server.advance (delivery_status_t::accepted).status,
+               std::string (delivery_status_t::accepted));
+    EXPECT_EQ (server.advance (delivery_status_t::picked_up).status,
+               std::string (delivery_status_t::picked_up));
+    EXPECT_EQ (server.advance (delivery_status_t::delivered).status,
+               std::string (delivery_status_t::delivered));
+}
+
+TEST (CppFrameworkSampleParity, GameQuestUsesDotNetSampleScenarioSurface)
+{
+    using namespace zlink::samples::gamequest;
+
+    game_quest_server_role_t server;
+    EXPECT_EQ (server.enter_area ("player-1", "quest-wolf-den").status,
+               std::string (quest_status_t::in_progress));
+    EXPECT_EQ (server.kill_monster ().monster_kills, 1);
+    EXPECT_EQ (server.collect_item ().collected_items, 1);
+    EXPECT_EQ (server.kill_monster ().monster_kills, 2);
+    EXPECT_EQ (server.complete_mission ().status, std::string (quest_status_t::completed));
+}
+
+TEST (CppFrameworkSampleParity, ShoppingMallUsesDotNetSampleScenarioSurface)
+{
+    using namespace zlink::samples::shoppingmall;
+
+    shopping_mall_server_role_t server;
+    const auto started = server.start_order ("customer-1", 4200);
+    EXPECT_EQ (started.status, std::string (order_status_t::pending));
+    EXPECT_EQ (started.total, 4200);
+    EXPECT_EQ (server.continue_workflow (order_status_t::paid).status,
+               std::string (order_status_t::paid));
+    EXPECT_EQ (server.continue_workflow (order_status_t::packed).status,
+               std::string (order_status_t::packed));
+    EXPECT_EQ (server.continue_workflow (order_status_t::shipped).status,
+               std::string (order_status_t::shipped));
+}
+
+TEST (CppFrameworkSampleParity, ShoppingMallCheckoutUsesDotNetSampleScenarioSurface)
+{
+    using namespace zlink::samples::shoppingmallcheckout;
+
+    shopping_mall_checkout_server_role_t server;
+    EXPECT_EQ (server.start_checkout ("customer-1").status,
+               std::string (checkout_status_t::cart_created));
+    EXPECT_EQ (server.advance (checkout_status_t::payment_authorized).status,
+               std::string (checkout_status_t::payment_authorized));
+    EXPECT_EQ (server.advance (checkout_status_t::inventory_reserved).status,
+               std::string (checkout_status_t::inventory_reserved));
+    EXPECT_EQ (server.advance (checkout_status_t::order_confirmed).status,
+               std::string (checkout_status_t::order_confirmed));
+}
+
+TEST (CppFrameworkSampleParity, DotNetParitySamplesUseRunnerOwnedServerProcess)
+{
+    struct sample_case_t
+    {
+        std::string sample;
+        std::string client;
+        std::string server_target;
+        std::string port_env;
+    };
+
+    const std::vector<sample_case_t> samples{
+      {"DeliveryDispatch", "Client/delivery_dispatch_client_scenario.hpp",
+       "sample_cpp_framework_deliverydispatch_server", "DELIVERYDISPATCH_DISPATCH_ENDPOINT"},
+      {"GameQuest", "Client/game_quest_client_scenario.hpp",
+       "sample_cpp_framework_gamequest_server", "GAMEQUEST_QUEST_ENDPOINT"},
+      {"ShoppingMall", "Client/shopping_mall_client_scenario.hpp",
+       "sample_cpp_framework_shoppingmall_server", "SHOPPINGMALL_WORKFLOW_ENDPOINT"},
+      {"ShoppingMallCheckout", "Client/shopping_mall_checkout_client_scenario.hpp",
+       "sample_cpp_framework_shoppingmallcheckout_server",
+       "SHOPPINGMALLCHECKOUT_CHECKOUT_ENDPOINT"}};
+
+    const auto samples_root = cpp_language_root () / "samples";
+    for (const auto &sample : samples) {
+        const auto client = read_file (samples_root / sample.sample / sample.client);
+        const auto server = read_file (samples_root / sample.sample / "Server/main.cpp");
+        const auto runner = read_file (samples_root / sample.sample / "run_sample.sh");
+        if (sample.sample == "DeliveryDispatch" || sample.sample == "GameQuest"
+            || sample.sample == "ShoppingMall"
+            || sample.sample == "ShoppingMallCheckout") {
+            EXPECT_NE (client.find ("channel_client_t"), std::string::npos)
+              << sample.sample << " client must use the framework channel client";
+            EXPECT_NE (client.find ("request_to_channel"), std::string::npos)
+              << sample.sample << " client must request over a framework channel";
+            EXPECT_NE (server.find ("add_client_server_channel"), std::string::npos)
+              << sample.sample << " server must expose a framework channel";
+            EXPECT_NE (server.find (".enable_server"), std::string::npos)
+              << sample.sample << " server must bind the framework channel";
+            EXPECT_EQ (client.find ("support::request_line"), std::string::npos)
+              << sample.sample << " client must not use the temporary line protocol";
+        }
+        EXPECT_EQ (client.find ("../Server/"), std::string::npos)
+          << sample.sample << " client must not include server role internals";
+        EXPECT_EQ (client.find ("_state_t{\""), std::string::npos)
+          << sample.sample << " client must not satisfy the scenario by mutating local state";
+        EXPECT_NE (runner.find (sample.server_target), std::string::npos)
+          << sample.sample << " runner must start the server executable";
+        EXPECT_NE (runner.find (sample.port_env), std::string::npos)
+          << sample.sample << " runner must pass a concrete endpoint to the client";
+        EXPECT_NE (runner.find ("trap cleanup EXIT"), std::string::npos)
+          << sample.sample << " runner must own server cleanup";
+    }
+}
+
 TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
 {
     const std::vector<std::string> banned_patterns{"configure_registry_host",
@@ -284,7 +586,10 @@ TEST (CppFrameworkSampleParity, SampleHostsUseFrameworkOptionsSurface)
 TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
 {
     const auto samples_root = cpp_language_root () / "samples";
-    const std::vector<std::string> expected_samples{"Bingo", "TicTacToe"};
+    const std::vector<std::string> expected_samples{"Bingo", "DeliveryDispatch",
+                                                    "GameQuest", "ShoppingMall",
+                                                    "ShoppingMallCheckout", "SupportChat",
+                                                    "TicTacToe"};
 
     for (const auto &sample : expected_samples) {
         EXPECT_TRUE (std::filesystem::is_directory (samples_root / sample))
@@ -299,7 +604,8 @@ TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
         if (name == "Shared") {
             continue;
         }
-        EXPECT_TRUE (name == "Bingo" || name == "TicTacToe")
+        EXPECT_TRUE (std::find (expected_samples.begin (), expected_samples.end (), name)
+                     != expected_samples.end ())
           << entry.path () << " adds a sample-name variant suffix";
     }
 }
@@ -307,7 +613,8 @@ TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
 TEST (CppFrameworkSampleParity, SharedSampleDirectoryContainsOnlyContracts)
 {
     const auto samples_root = cpp_language_root () / "samples";
-    for (const auto &sample : {"Bingo", "TicTacToe"}) {
+    for (const auto &sample : {"Bingo", "DeliveryDispatch", "GameQuest", "ShoppingMall",
+                               "ShoppingMallCheckout", "SupportChat", "TicTacToe"}) {
         const auto shared_root = samples_root / sample / "Shared";
         ASSERT_TRUE (std::filesystem::is_directory (shared_root)) << shared_root;
         for (const auto &entry : std::filesystem::recursive_directory_iterator (shared_root)) {

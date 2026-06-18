@@ -13,3 +13,8 @@ echo "node actor lifecycle sample gate completed"
 
 "${SCRIPT_DIR}/TicTacToe.Ts/run_sample.sh"
 "${SCRIPT_DIR}/Bingo.Ts/run_sample.sh"
+"${SCRIPT_DIR}/DeliveryDispatch.Ts/run_sample.sh"
+"${SCRIPT_DIR}/GameQuest.Ts/run_sample.sh"
+"${SCRIPT_DIR}/ShoppingMall.Ts/run_sample.sh"
+"${SCRIPT_DIR}/ShoppingMallCheckout.Ts/run_sample.sh"
+"${SCRIPT_DIR}/SupportChat.Ts/run_sample.sh"

@@ -276,6 +276,15 @@ spot_handler_registry_t spot_context_t::handlers ()
     return spot_handler_registry_t (_state);
 }
 
+channel_client_t spot_context_t::outbound () const
+{
+    if (!_state->channel_runtime) {
+        throw framework_exception_t (framework_error_kind_t::request_failed,
+                                     "SPOT channel outbound runtime is not configured");
+    }
+    return channel_client_t (message_bus_t (_state->channel_runtime));
+}
+
 task_t<bool> spot_context_t::close ()
 {
     return close_erased ();
@@ -989,6 +998,7 @@ std::optional<spot_route_t> spot_node_builder_t::resolve_spot (spot_rid_t spot_r
 spot_node_builder_t zlink_builder_t::add_spot_node (std::string spot_node_name)
 {
     auto state = std::make_shared<detail::spot_node_builder_state_t> (std::move (spot_node_name));
+    state->channel_runtime = _state->runtime;
     _state->spot_nodes[state->snapshot.name] = state;
     return spot_node_builder_t (state);
 }
@@ -1139,6 +1149,7 @@ spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name,
                                         + std::to_string (_state->next_spot_id++));
     auto context_state = std::make_shared<spot_context_state_t> ();
     context_state->node = _state;
+    context_state->channel_runtime = _state->channel_runtime;
     context_state->node_rid = node_rid_t::from_string (_state->snapshot.name);
     context_state->spot_rid = rid;
     context_state->spot_name = spot_name;
@@ -1207,6 +1218,7 @@ spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_n
 
     auto context_state = std::make_shared<spot_context_state_t> ();
     context_state->node = _state;
+    context_state->channel_runtime = _state->channel_runtime;
     context_state->node_rid = node_rid_t::from_string (_state->snapshot.name);
     context_state->spot_rid = spot_rid;
     context_state->spot_name = spot_name;

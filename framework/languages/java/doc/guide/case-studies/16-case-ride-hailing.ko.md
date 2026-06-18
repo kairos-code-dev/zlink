@@ -227,7 +227,7 @@ stream)는 그대로 두고, **내부 배차 메시징·상태 fanout·delivery 
 역할 메시지로 구성한다.
 
 - 구현 학습(deep-dive): [DeliveryDispatch Sample 문서](../samples/deliverydispatch-sample.ko.md)
-- 실행 코드: [Java DeliveryDispatch 샘플](../../../samples/DeliveryDispatch)
+- 실행 코드: [Java DeliveryDispatch 샘플](../../../samples/java/DeliveryDispatch)
 - 공통 시나리오(언어 중립): [spec/sample/deliverydispatch](../../../../../doc/spec/sample/deliverydispatch/README.ko.md)
 
 ### 서버 구성과 ZLink 요소

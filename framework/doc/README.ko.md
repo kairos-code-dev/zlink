@@ -13,7 +13,7 @@
 - **언어별 문서** (`../languages/<lang>/doc/`) — 공통 스펙을 각 언어와 대표
   프레임워크 API로 구체화한다. 공통 의미를 재정의하지 않는다.
 
-`.NET`, `C++`, `Java/Kotlin`, `Node.js`는 정식 또는 구현 기준 문서로 승격되었고,
+`.NET`, `C++`, `Java/Kotlin`, `Node.js`는 정식 문서로 승격되었고,
 그 외 언어는 아직 초안(`draft/`) 단계다.
 
 ## 1. 읽는 순서
@@ -34,6 +34,7 @@
 | [메시지 모델](./spec/message-model.ko.md) | header/payload 구조와 metadata 정책 |
 | [Channel topology](./spec/channel-topology.ko.md) | channel grouping, discovery, 수동 연결, 내부 transport 매핑 |
 | [Framework API](./spec/framework-api.ko.md) | 언어별 framework API의 공통 방향 |
+| [비동기 실행 정책](./spec/async-execution-policy.ko.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미 |
 | [Actor 모델](./spec/actor-model.ko.md) | actor 위치, session binding, Entry Spot, user Spot, dispatch 기준 |
 | [Session Actor Dispatch](./spec/session-actor-dispatch.ko.md) | session과 actor를 연결하는 helper와 routing 정책 |
 | [공통 샘플 시나리오](./spec/sample/README.ko.md) | 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMallCheckout, GameQuest)의 언어 중립 샘플 기준 |
@@ -62,7 +63,7 @@ Play 서버만으로 구성한 직접 play 연결 구조를 맡는다.
 |------|------|--------|
 | `.NET` | 정식 | [languages/dotnet/doc/README.ko.md](../languages/dotnet/doc/README.ko.md) |
 | `Java/Kotlin` | 정식 | [languages/java/doc/README.ko.md](../languages/java/doc/README.ko.md) |
-| `Node.js` | 구현 기준 | [languages/node/doc/README.ko.md](../languages/node/doc/README.ko.md) |
+| `Node.js` | 정식 | [languages/node/doc/README.ko.md](../languages/node/doc/README.ko.md) |
 | `Python` | 초안 | [languages/python/doc/draft/README.ko.md](../languages/python/doc/draft/README.ko.md) |
 | `C++` | 정식 | [languages/cpp/doc/README.ko.md](../languages/cpp/doc/README.ko.md) |
 | `Go` | 초안 | [languages/go/doc/draft/README.ko.md](../languages/go/doc/draft/README.ko.md) |

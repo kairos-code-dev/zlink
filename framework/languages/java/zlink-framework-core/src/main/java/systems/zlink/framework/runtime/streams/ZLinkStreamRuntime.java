@@ -155,6 +155,10 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         Message header,
         Message payload) {
         ZLinkBackendStreamSocket stream = streamsByName.get(streamNode.name());
+        if (isStreamNotification(header, payload)) {
+            dispatchStreamNotification(streamNode, stream, routingId);
+            return;
+        }
         SessionState state = sessions.computeIfAbsent(
             sessionKey(streamNode, routingId),
             ignored -> createSessionState(streamNode, stream, routingId));
@@ -163,6 +167,25 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         Message payloadCopy = Message.from(decodePayload(streamHeader, payload));
         state.queue().enqueue(() ->
             executeHandler(() -> state.context().dispatchStage(streamHeader, payloadCopy, state.session())));
+    }
+
+    private void dispatchStreamNotification(
+        StreamNodeRegistration streamNode,
+        ZLinkBackendStreamSocket stream,
+        RoutingId routingId) {
+        String key = sessionKey(streamNode, routingId);
+        SessionState state = sessions.get(key);
+        if (state == null) {
+            sessions.put(key, createSessionState(streamNode, stream, routingId));
+            return;
+        }
+        sessions.remove(key);
+        state.queue().enqueue(() -> executeHandler(() ->
+            ZLinkHandlerStages.fromRunnable(state.session()::onDisconnected)));
+    }
+
+    private static boolean isStreamNotification(Message header, Message payload) {
+        return header.toByteArray().length == 0 && payload.toByteArray().length == 0;
     }
 
     private void reportTransportError(

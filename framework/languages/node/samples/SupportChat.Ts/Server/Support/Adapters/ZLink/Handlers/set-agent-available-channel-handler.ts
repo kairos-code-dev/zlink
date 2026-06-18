@@ -1,0 +1,34 @@
+import { Inject } from '@nestjs/common';
+import { ZLINK_ACTOR_MANAGER, zlinkRequestHandler } from '@zlink-systems/nestjs';
+import { SupportEntrySpot } from '../Spots/support-entry-spot';
+import { SampleNames } from '../../../../Configuration/sample-names';
+import { PacketNames } from '../../../../../Shared/Contracts/messages';
+import type { ZLinkActorManager, ZLinkRequestHandler } from '@zlink-systems/framework';
+import type { SupportEntrySpot as SupportEntrySpotType } from '../Spots/support-entry-spot';
+import type { SupportUserActor } from '../Actors/support-user-actor';
+import type {
+  SetAgentAvailableReq,
+  SetAgentAvailableRes,
+  UserIdentity
+} from '../../../../../Shared/Contracts/messages';
+
+// Relays SetAgentAvailableReq to the SupportEntrySpot. A customer actor that sends this
+// request triggers an error response because only agent actors can set availability.
+@zlinkRequestHandler('support', PacketNames.setAgentAvailableReq)
+class SetAgentAvailableChannelHandler implements ZLinkRequestHandler<SetAgentAvailableReq & UserIdentity, SetAgentAvailableRes> {
+  constructor(
+    @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager,
+    @Inject(SupportEntrySpot) private readonly entrySpot: SupportEntrySpotType
+  ) {}
+
+  async handle(request: SetAgentAvailableReq & UserIdentity): Promise<SetAgentAvailableRes> {
+    const actor = await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType) as SupportUserActor;
+    try {
+      return this.entrySpot.setAgentAvailable(actor, request);
+    } catch (error) {
+      return { isAvailable: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+}
+
+export { SetAgentAvailableChannelHandler };

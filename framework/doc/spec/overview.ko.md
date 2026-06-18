@@ -2,9 +2,9 @@
 [문서 목록](../README.ko.md) | [이전: ZLink Framework 공통 스펙](./README.ko.md) | [다음: ZLink Framework Interaction Model](./interaction-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](./draft/README.ko.md)
+[스펙 목차](./README.ko.md)
 
-[문서 묶음](./README.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/draft/README.ko.md) | [Node.js](../../languages/node/doc/draft/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
+[문서 묶음](./README.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/README.ko.md) | [Node.js](../../languages/node/doc/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
 
 # ZLink Framework Overview
 
@@ -29,9 +29,9 @@ pub/sub, `SPOT`, `STREAM`, channel discovery를 사용할 수 있게 하는 상�
 - registry topology inspection
 - framework-friendly handler / client / event API
 
-즉 raw socket과 low-level discovery를 프레임워크 사용자가 직접 다루지 않고도,
+raw socket과 low-level discovery를 프레임워크 사용자가 직접 다루지 않고도
 기존 HTTP나 gRPC를 쓰던 감각에 가까운 개발 모델을 제공하는 것이 목표다.
-다만 내부에서 무엇을 쓰는지는 숨기더라도, framework가 실제로 통합할 transport
+다만 내부에서 무엇을 쓰는지는 숨기더라도 framework가 실제로 통합할 transport
 축 자체는 명확해야 한다.
 
 현재 이 문서는 아래 네 축을 직접 통합 대상으로 본다.
@@ -42,7 +42,7 @@ pub/sub, `SPOT`, `STREAM`, channel discovery를 사용할 수 있게 하는 상�
 3. `PUB/SUB`
 4. `STREAM`
 
-그리고 그 위에 사용자 경험은 아래처럼 다시 올린다.
+그 위에 사용자 경험은 아래처럼 다시 올린다.
 
 - 서버 간 `send`
 - 서버 간 `request`
@@ -63,7 +63,7 @@ adapter가 공통으로 지켜야 한다.
   packet 안의 frame으로 다룬다.
 
 이 구분은 성능과 소유권을 위한 기본 정책이다. 서버 간 body를 header와 함께 단일
-직렬화 envelope로 묶으면 body를 다시 복사하거나 재인코딩하게 되고, route나 dispatch가
+직렬화 envelope로 묶으면 body를 다시 복사하거나 재인코딩하게 되고 route나 dispatch가
 header만 읽는 장점도 잃는다.
 
 ## 3. 핵심 차별점
@@ -83,7 +83,7 @@ header만 읽는 장점도 잃는다.
 - framework는 그 channel 안의 `rid` 집합과 연결 상태를 기준으로 요청을 보낸다.
 - 요청은 중간 gateway 없이 provider로 직접 간다.
 
-즉 "위치투명성을 얻으려면 반드시 gateway를 거쳐야 한다"는 전제를 두지 않는다.
+"위치투명성을 얻으려면 반드시 gateway를 거쳐야 한다"는 전제를 두지 않는다.
 
 ## 4. 무엇을 대체할 수 있는가
 
@@ -102,7 +102,7 @@ header만 읽는 장점도 잃는다.
 - public API versioning
 - edge cache, billing, audit
 
-즉 `ZLink Framework`는 곧바로 edge API gateway 제품이 아니라,
+`ZLink Framework`는 곧바로 edge API gateway 제품이 아니라
 **내부 서비스 통신 기반**에 더 가깝다.
 
 ## 5. 그 위에 무엇을 만들 수 있는가

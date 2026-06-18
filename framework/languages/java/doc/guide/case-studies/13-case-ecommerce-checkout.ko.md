@@ -326,7 +326,7 @@ ShoppingMallCheckout 이다. Kafka 를 다시 만드는 것이 아니라, 외부
 workflow owner 를 분리해도 상태 전이·복구·audit·조회 projection 이 분명함을 보여 준다.
 
 - 구현 학습(deep-dive): [ShoppingMallCheckout Sample 문서](../samples/shoppingmall-checkout-sample.ko.md)
-- 실행 코드: [Java ShoppingMall 샘플](../../../samples/ShoppingMall)
+- 실행 코드: [Java ShoppingMall 샘플](../../../samples/java/ShoppingMall)
 - 공통 시나리오(언어 중립): [spec/sample/event/shoppingmall-checkout](../../../../../doc/spec/sample/event/shoppingmall-checkout.ko.md)
 
 ### 서버 구성 — stateless API + stateful order owner

@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ HTTP Hosting](./cpp-http-hosting.ko.md) | [다음: Spec -- ZLink Framework C++ Monitoring](./cpp-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md) | [HTTP Client](../../http-client/doc/README.ko.md)
 
@@ -371,6 +371,12 @@ app.add_zlink_framework ([&] (auto &options) {
 | `http_request_pipeline_t` | route matching, DI scope, middleware, handler invocation |
 | `http_error_mapper_t` | framework error와 HTTP status/body mapping |
 | `http_server_metrics_t` | accepted/active/rejected/request duration/status counters |
+
+위 component 이름은 §19 구현 단계 Phase 1 이후의 **목표 분리 구조**다. 현재 코드는
+`runtime::http_host_service_t`가 listener(nested `listener_t`)와 request pipeline
+(`http_request_pipeline`)을 함께 가지는 형태이며(§3 현재 상태), 위 표의 finer-grained
+component 분리는 단계적으로 진행한다. public 계약 타입(`http_request_t`, `http_response_t`,
+`http_context_t`, `http_*_options_builder_t`)은 `contracts/http/http.hpp`에 이미 존재한다.
 
 이 분리는 POSD 관점에서 중요하다. accept loop, TLS, timeout, route invocation을 한 class에 모두
 넣으면 shallow module이 된다. public API는 단순하지만, runtime 내부는 변경 이유별로 나뉘어야 한다.

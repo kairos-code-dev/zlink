@@ -141,6 +141,11 @@ class SupportChatClientScenario {
         ensure(noAgentConversation.state.status == SampleNames.WaitingForAgent)
         ensure(noAgentConversation.state.subject == "agent unavailable")
         expectNoPush<ConversationClosedNotify>(waitingCustomer, java.time.Duration.ofMillis(500))
+        expectFailure("Customer actor SetAgentAvailableReq must be rejected.") {
+            waitingCustomer
+                .request(SetAgentAvailableReq(true))
+                .await<SetAgentAvailableRes>()
+        }
 
         closingAgent.connect().await()
         val closingAgentAuth = closingAgent.request(AuthenticateReq("agent-2")).await<AuthenticateRes>()

@@ -12,6 +12,8 @@ import type {
   ZLinkSpotActorJoinResponse
 } from '../../contracts';
 import {
+  DefaultZLinkChannelClient,
+  DefaultZLinkFanoutClient,
   ZLinkChannelRuntimeManager,
   ZLinkRuntimeChannelTransport,
   ZLinkRuntimeRouteTransport
@@ -99,6 +101,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
         registration: this.options.registration,
         backendAdapterFactory: this.backendAdapterFactory,
         context,
+        channelClient: new DefaultZLinkChannelClient(this.options.registration, this.channelTransport),
+        fanoutClient: new DefaultZLinkFanoutClient(this.options.registration, this.channelTransport),
         providerResolver: this.options.providerResolver,
         actorResolver: (actorId) => this.actorManager?.getState(actorId)?.actor,
         actorDestroyer: (node, entryNodeRid, actor, signal) => {
@@ -202,6 +206,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
         onLeaveActor: (actor: ZLinkActor, signal?: AbortSignal) =>
           this.spotNodeRuntime?.notifyPrimaryEntrySpotActorLeft(actor, signal) ?? Promise.resolve()
       },
+      channelClient: new DefaultZLinkChannelClient(this.options.registration, this.channelTransport),
+      fanoutClient: new DefaultZLinkFanoutClient(this.options.registration, this.channelTransport),
       createNativeSpot: (spotRid: RoutingId) => this.spotNodeRuntime?.primaryNode?.getOrCreateSpot(spotRid).spot,
       actorResolver: (actorId: string) => this.actorManager?.getState(actorId)?.actor
     };

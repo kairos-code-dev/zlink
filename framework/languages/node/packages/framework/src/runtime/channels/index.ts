@@ -787,16 +787,20 @@ export class ZLinkChannelReceiveLoop {
         await new Promise<void>((resolve) => setImmediate(resolve));
         continue;
       }
-      try {
-        await this.dispatcher.dispatch(received, this.router);
-      } finally {
-        received.close();
-      }
+      void this.dispatchAndClose(received);
     }
   }
 
   stop(): void {
     this.stopped = true;
+  }
+
+  private async dispatchAndClose(received: { parts: readonly Message[]; routingId: unknown; requestSeq: bigint | null; close(): void }): Promise<void> {
+    try {
+      await this.dispatcher.dispatch(received, this.router);
+    } finally {
+      received.close();
+    }
   }
 }
 

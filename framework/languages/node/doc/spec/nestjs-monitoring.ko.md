@@ -456,7 +456,7 @@ export class StageNodeMonitor
 ```
 
 spot 도 registry 와 같은 이유로, raw monitor 보다 snapshot diff 표면이 더 잘 맞는다.
-즉 `status()`, `peers()`, `subjects()` 를 주기적으로 읽고, 변화가 있을 때 typed event
+`status()`, `peers()`, `subjects()` 를 주기적으로 읽고, 변화가 있을 때 typed event
 로 올리는 방향을 기본으로 본다.
 
 timer handler failure 는 snapshot diff 가 아니다. `TimerHandlerFailed` 와

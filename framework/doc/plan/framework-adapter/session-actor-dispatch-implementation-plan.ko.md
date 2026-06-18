@@ -1,4 +1,4 @@
-[계획 목록](./README.ko.md) | [Session Actor Dispatch Usability](../../spec/session-actor-dispatch.ko.md) | [POSD 리뷰](./worklog/posd-review.md) | [Sample POSD 리뷰](./worklog/sample-posd-review.md)
+[계획 목록](./README.ko.md) | [Session Actor Dispatch Usability](../../spec/session-actor-dispatch.ko.md) | [POSD 리뷰](./archive/posd-review.md) | [Sample POSD 리뷰](./archive/sample-posd-review.md)
 
 # Session Actor Dispatch 구현 및 샘플 전환 계획
 

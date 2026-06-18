@@ -35,6 +35,7 @@ class spot_node_builder_state_t
     std::map<std::string, spot_rid_t> spot_rids_by_name;
     std::map<std::string, std::string> spot_names_by_rid;
     std::map<std::string, spot_context_t> spot_contexts_by_rid;
+    std::shared_ptr<channel_runtime_state_t> channel_runtime;
     std::map<std::string, spot_rid_t> actor_spot_rids;
     std::map<std::string, std::uint64_t> actor_generations;
     std::set<std::string> actor_created_keys;
@@ -93,6 +94,7 @@ class spot_context_state_t
     void drain_serial ();
 
     std::shared_ptr<spot_node_builder_state_t> node;
+    std::shared_ptr<channel_runtime_state_t> channel_runtime;
     node_rid_t node_rid;
     spot_rid_t spot_rid;
     std::string spot_name;

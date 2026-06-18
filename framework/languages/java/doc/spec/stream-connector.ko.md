@@ -295,13 +295,15 @@ typed helper는 codec helper가 encode/decode할 수 있는 업무 객체 payloa
 Kotlin extension은 typed helper 위에 얇게 얹는다.
 
 ```kotlin
-suspend inline fun <reified TReply : Any> ZLinkStreamConnector.requestJson(
-    payload: Any
-): TReply
+// request 응답은 ZLinkStreamRequestCall 의 reified typed await 로 받는다(codec 가 JSON 등 처리).
+suspend inline fun <reified TReply> ZLinkStreamRequestCall.await(): TReply
 
-inline fun <reified TPayload : Any> ZLinkStreamConnector.onJson(
-    noinline handler: suspend (ZLinkStreamMessage<TPayload>) -> Unit
-): AutoCloseable
+// 구독은 connector 의 waitFor<T>() 또는 messages(packetName) Flow 로 한다.
+inline fun <reified TPayload> ZLinkStreamConnector.waitFor(): ZLinkStreamTypedWaitCall<TPayload>
+
+fun ZLinkStreamConnector.messages(
+    packetName: String,
+): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>
 ```
 
 ## 9. Dispatch Mode

@@ -2,9 +2,10 @@
 
 This directory contains executable Java and Kotlin sample checks for the sample
 gate. Java samples live under `java/`, and Kotlin samples live under `kotlin/`.
-Each language directory carries the same scenario set: `Bingo` and
-`TicTacToe`. Each sample exits with a non-zero status when its scenario
-invariant fails.
+Each language directory carries the executable scenario samples that have been
+ported to Java and Kotlin: `Bingo`, `TicTacToe`, `SupportChat`,
+`DeliveryDispatch`, `ShoppingMall`, `ShoppingMallCheckout`, and `GameQuest`.
+Each sample exits with a non-zero status when its scenario invariant fails.
 
 Open `framework/languages/java` in IntelliJ IDEA to work on the framework and
 samples together. The framework root includes this directory as the
@@ -24,9 +25,19 @@ samples/
   java/
     TicTacToe/
     Bingo/
+    SupportChat/
+    DeliveryDispatch/
+    ShoppingMall/
+    ShoppingMallCheckout/
+    GameQuest/
   kotlin/
     TicTacToe/
     Bingo/
+    SupportChat/
+    DeliveryDispatch/
+    ShoppingMall/
+    ShoppingMallCheckout/
+    GameQuest/
 ```
 
 The framework parity samples mirror the .NET sample role layout. Java and
@@ -68,7 +79,9 @@ names, packet names, and timing settings live under `server/configuration`.
 Client-only settings live under `client/configuration`.
 
 Bingo uses Protobuf payloads for Java and Kotlin STREAM traffic. TicTacToe uses
-MessagePack payloads for Java and Kotlin STREAM traffic.
+MessagePack payloads for Java and Kotlin STREAM traffic. The other ported
+samples use JSON payloads, Registry/Discovery automatic connection, and Spring
+component scanning for handler registration.
 
 Java TicTacToe keeps only the common direct API/Play sample. Session gateway and
 reconnect variants are not maintained as separate Java TicTacToe samples.

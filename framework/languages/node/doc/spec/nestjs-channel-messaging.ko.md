@@ -32,7 +32,7 @@
 - ZLink 메시지 handler 안.
 - 기존 `NestJS` HTTP controller 또는 route handler 안.
 
-즉 사용자가 `DealerSocket`[^dealer], `RouterSocket`[^router], `Discovery` 를 직접 조립할
+사용자가 `DealerSocket`[^dealer], `RouterSocket`[^router], `Discovery` 를 직접 조립할
 필요는 없다. 한 단계 위에 있는 표면만 다루도록 만들겠다는 뜻이다. 구체적으로는
 `ZLinkModule.forRoot(...)`, `ZLinkChannelClient`, handler 등록 정도가 그 표면이다.
 
@@ -226,8 +226,11 @@ channel 별 연결 방식은, 해당 역할 builder 에 수동 endpoint 를 넘�
 SPOT으로 들어오는 routed 메시지는 `ROUTER` 역할이 필요하다. 따라서
 `SpotNode`가 특정 channel에서 오는 SPOT route를 받으려면 SPOT builder 에서
 `.acceptSpotRoutesFromChannel(channelName)` 을 사용한다(dotnet `AcceptSpotRoutesFromChannel`
-대응). 또한 channel builder 쪽에서는 `.enableSpotRouteEgress(targetSpotNodeChannelName)` 으로
-대상 SPOT node channel 을 지정한다(dotnet `EnableSpotRouteEgress(...)` 대응).
+대응). egress(대상 SPOT node 로 보내는 쪽)는 node 에서 별도 `enableSpotRouteEgress` builder
+메서드로 노출하지 않는다(dotnet `EnableSpotRouteEgress(...)` 에 대응하는 node 메서드 없음).
+egress 쪽은 대상 SpotNode 의 ingress 로 향하는 outbound channel(client DEALER 또는
+`addRouteMeshChannel`)을 등록하고 `outbound.sendToSpot(spotRid, ...)` /
+`outbound.requestToSpot(spotRid, ...)` 으로 보낸다.
 
 대상 channel은 두 종류다.
 
@@ -384,7 +387,7 @@ export class AdminCommandHandler {
 export class HandlerModule {}
 ```
 
-그리고 channel 등록 쪽에서, 그 그룹을 **channel 에 끌어다 붙인다**. 이때 두 축이 서로
+channel 등록 쪽에서, 그 그룹을 **channel 에 끌어다 붙인다**. 이때 두 축이 서로
 분리된다.
 
 - channel 이름은 `tictactoe.api` 처럼 실제 배포 식별자다.
@@ -575,7 +578,7 @@ export class GetUserHandler implements ZLinkRequestHandler<UserRequest, UserRepl
 }
 ```
 
-그리고 NestJS module provider 등록 쪽에는 decorated handler class 만 넣는다.
+NestJS module provider 등록 쪽에는 decorated handler class 만 넣는다.
 
 ```ts
 @zlinkRequestHandler('user', 'UserRequest')

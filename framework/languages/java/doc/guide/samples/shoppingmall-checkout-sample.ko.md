@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: DeliveryDispatch Sample](./deliverydispatch-sample.ko.md) | [다음: SPOT 샘플](./spot-samples.ko.md)
+[문서 목록](../../README.ko.md) | [이전: DeliveryDispatch Sample](./deliverydispatch-sample.ko.md) | [다음: GameQuest Sample](./gamequest-sample.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java 묶음](../../README.ko.md) | [SPOT](../../spec/spring-boot-spot.ko.md) | [Actor/Session](../../spec/spring-boot-actor-session.ko.md) | [STREAM](../../spec/spring-boot-stream.ko.md)
@@ -56,5 +56,5 @@ append 되는지, 두 instance 어디서 조회해도 같은 projection인지, `
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: DeliveryDispatch Sample](./deliverydispatch-sample.ko.md) | [다음: SPOT 샘플](./spot-samples.ko.md)
+[문서 목록](../../README.ko.md) | [이전: DeliveryDispatch Sample](./deliverydispatch-sample.ko.md) | [다음: GameQuest Sample](./gamequest-sample.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

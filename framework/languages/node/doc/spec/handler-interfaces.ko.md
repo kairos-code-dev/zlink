@@ -1904,9 +1904,19 @@ runtime monitoring 은 운영 표면이다. socket 하부 monitor 와 registry/s
 
 ```ts
 export interface ZLinkMonitoringOptions {
-  addSocketEvents(sourceName: string, ...events: ZLinkSocketEventKind[]): void;
-  addRegistryEvents(sourceName: string, intervalMs: number): void;
-  addSpotEvents(sourceName: string, intervalMs: number): void;
+  socket?: ZLinkSocketMonitoringRegistration[];
+  registry?: ZLinkPollingMonitoringRegistration[];
+  spot?: ZLinkPollingMonitoringRegistration[];
+}
+
+export interface ZLinkSocketMonitoringRegistration {
+  readonly sourceName: string;
+  readonly events?: readonly ZLinkSocketEventKind[];
+}
+
+export interface ZLinkPollingMonitoringRegistration {
+  readonly sourceName: string;
+  readonly intervalMs: number;
 }
 
 export interface ZLinkRuntimeEvent {

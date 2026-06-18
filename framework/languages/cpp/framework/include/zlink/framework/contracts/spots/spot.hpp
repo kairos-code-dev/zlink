@@ -388,6 +388,7 @@ class spot_context_t
     spot_rid_t spot_rid () const;
     std::string spot_name () const;
     spot_handler_registry_t handlers ();
+    channel_client_t outbound () const;
     task_t<bool> close ();
 
     template <typename TEvent> send_call_t publish (std::string topic, TEvent event)

@@ -97,6 +97,10 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
   readonly registration: ZLinkFrameworkRegistration;
   readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   readonly context: ZLinkBackendContext;
+  readonly channelClient?: ZLinkChannelClient;
+  readonly fanoutClient?: ZLinkFanoutClient;
+  readonly remoteAddressResolver?: ZLinkSpotRemoteAddressResolver;
+  readonly routedTransport?: ZLinkSpotRoutedTransport;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
   readonly actorDestroyer?: (
@@ -211,6 +215,10 @@ export class ZLinkSpotNodeRuntimeManager {
       nodeRid: node.routingId,
       spotNodeName,
       providerResolver: this.options.providerResolver,
+      channelClient: this.options.channelClient,
+      fanoutClient: this.options.fanoutClient,
+      remoteAddressResolver: this.options.remoteAddressResolver,
+      routedTransport: this.options.routedTransport,
       timerHandlers: spotNode.entrySpotTimerHandlers,
       actorSendHandlers: spotNode.entrySpotActorSendHandlers,
       actorRequestHandlers: spotNode.entrySpotActorRequestHandlers,
@@ -388,6 +396,10 @@ interface ZLinkEntrySpotActivationOptions {
   readonly nativeSpot: ZLinkBackendSpot;
   readonly nodeRid: RoutingId;
   readonly spotNodeName: string;
+  readonly channelClient?: ZLinkChannelClient;
+  readonly fanoutClient?: ZLinkFanoutClient;
+  readonly remoteAddressResolver?: ZLinkSpotRemoteAddressResolver;
+  readonly routedTransport?: ZLinkSpotRoutedTransport;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly workerRuntime?: ZLinkSpotWorkerRuntime;
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
@@ -496,7 +508,13 @@ export class ZLinkEntrySpotActivation {
   constructor(private readonly options: ZLinkEntrySpotActivationOptions) {
     // Entry Spot follows the user Spot rule: outbound, timers, lifecycle and
     // actor packet dispatch all share the one per-activation serial executor.
-    this.outbound = new DefaultZLinkSpotOutbound(this.serial);
+    this.outbound = new DefaultZLinkSpotOutbound(
+      this.serial,
+      options.channelClient,
+      options.fanoutClient,
+      options.remoteAddressResolver,
+      options.routedTransport
+    );
     this.workerRuntime = options.workerRuntime ?? new ZLinkSpotWorkerRuntime();
     this.context = this.createContext();
     this.entrySpot = undefined as unknown as ZLinkEntrySpot;
@@ -1468,8 +1486,9 @@ function wrapRequestCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkRequestCal
       return this;
     },
     submit<TReply>(signal?: AbortSignal) {
+      const insideCurrentTurn = serial.isCurrentTurn;
       const pending = startRequestOnSerial(serial, () => ({ pending: inner.submit<TReply>(signal) }));
-      return deliverOnSerial(serial, pending);
+      return insideCurrentTurn ? pending : deliverOnSerial(serial, pending);
     }
   };
 }
@@ -1547,6 +1566,7 @@ function wrapRoutedSpotRequestCall(
       return this;
     },
     submit<TReply>(signal?: AbortSignal) {
+      const insideCurrentTurn = serial.isCurrentTurn;
       const pending = startRequestOnSerial<TReply>(serial, async () => {
         const remoteAddress = await resolver.resolve(spotRid, signal);
         return {
@@ -1557,7 +1577,7 @@ function wrapRoutedSpotRequestCall(
           })
         };
       });
-      return deliverOnSerial(serial, pending);
+      return insideCurrentTurn ? pending : deliverOnSerial(serial, pending);
     }
   };
 }

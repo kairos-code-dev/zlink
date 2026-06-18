@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](./cpp-channel-messaging.ko.md) | [다음: Draft -- ZLink Framework C++ Policy](../internals/cpp-framework-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [HTTP Client](../../http-client/doc/README.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md)
 

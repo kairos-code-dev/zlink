@@ -4,7 +4,7 @@
 
 [Framework 문서](../README.ko.md) | [공통 스펙 초안](./draft/README.ko.md)
 
-[개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [비동기 실행](./async-execution-policy.ko.md) | [Actor 모델](./actor-model.ko.md) | [Session Actor Dispatch 사용성](./session-actor-dispatch.ko.md) | [공통 샘플](./sample/README.ko.md) | [Session Gateway 보관본](./archive/session-gateway.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [.NET Session Actor Dispatch](../../languages/dotnet/doc/spec/session-actor-dispatch.ko.md) | [Java](../../languages/java/doc/draft/README.ko.md) | [Node.js](../../languages/node/doc/draft/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [Go](../../languages/go/doc/draft/README.ko.md) | [Rust](../../languages/rust/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
+[개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [비동기 실행](./async-execution-policy.ko.md) | [Actor 모델](./actor-model.ko.md) | [Session Actor Dispatch 사용성](./session-actor-dispatch.ko.md) | [공통 샘플](./sample/README.ko.md) | [Session Gateway 보관본](./archive/session-gateway.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [.NET Session Actor Dispatch](../../languages/dotnet/doc/spec/session-actor-dispatch.ko.md) | [Java](../../languages/java/doc/README.ko.md) | [Node.js](../../languages/node/doc/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [Go](../../languages/go/doc/draft/README.ko.md) | [Rust](../../languages/rust/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
 
 # ZLink Framework 공통 스펙
 
@@ -30,7 +30,7 @@
 - 문서와 샘플은 최소 지원 버전에서 성립하지 않는 `preview`, `latest`,
   `C# 13`, `C# 14` 전용 문법을 전제로 쓰지 않는다.
 
-즉 바인딩 구현과 샘플이 더 높은 런타임에서 함께 개발되더라도, 공개 framework
+바인딩 구현과 샘플이 더 높은 런타임에서 함께 개발되더라도, 공개 framework
 계약은 먼저 "어디까지를 최소 지원으로 볼 것인가"를 분명히 적어야 한다.
 
 ## 2. 문서 구성
@@ -49,11 +49,11 @@
 | 7 | [비동기 실행과 coroutine 정책](./async-execution-policy.ko.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미를 정의한다. |
 | 8 | [actor-model.ko.md](./actor-model.ko.md) | actor 개념을 cross-binding 기준으로 정의한다. actor 라이프사이클 (Entry Spot / session bind / user Spot join), application 로직 vs framework 자동 처리, outbound actor 호출, session actor dispatch 패턴, 등록 표면을 다룬다. |
 | 9 | [Session Actor Dispatch](./session-actor-dispatch.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 cross-binding 사용성 결정 사항. typed handler 의미, route resolver 계약, helper 의미, `SessionProxy` 의미, error 매트릭스를 다룬다. 구체 .NET 시그니처와 등록 코드, sample은 [bindings/dotnet/session-actor-dispatch.ko.md](../../languages/dotnet/doc/spec/session-actor-dispatch.ko.md)에 분리되어 있다. |
-| 10 | [공통 샘플 시나리오](./sample/README.ko.md) | Bingo와 TicTacToe의 언어 중립 샘플 기준. 서버 역할, 메시지 흐름, handler 등록 방식 차이를 정의한다. |
+| 10 | [공통 샘플 시나리오](./sample/README.ko.md) | 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMallCheckout, GameQuest)의 언어 중립 샘플 기준. 서버 역할, 메시지 흐름, handler 등록 방식 차이를 정의한다. |
 | 11 | [Session Gateway 보관본](./archive/session-gateway.ko.md) | 이전 session gateway/actor relay 초안의 보관본. 현재 public API 기준이 아니며, 배경과 문제 맥락을 확인할 때만 사용한다. 현재 기준은 위 §9이다. |
 | 12 | [.NET 문서](../../languages/dotnet/doc/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 문서. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
-| 13 | [Java 문서](../../languages/java/doc/draft/README.ko.md) | `Java`와 `Spring Boot` 전용 문서 진입점. |
-| 14 | [Node.js 문서](../../languages/node/doc/draft/README.ko.md) | `Node.js`와 `NestJS` 전용 문서 진입점. |
+| 13 | [Java 문서](../../languages/java/doc/README.ko.md) | `Java`와 `Spring Boot` 전용 문서 진입점. |
+| 14 | [Node.js 문서](../../languages/node/doc/README.ko.md) | `Node.js`와 `NestJS` 전용 문서 진입점. |
 | 15 | [Python 문서](../../languages/python/doc/draft/README.ko.md) | `Python`과 `FastAPI` 전용 문서 진입점. |
 | 16 | [Go 문서](../../languages/go/doc/draft/README.ko.md) | `Go`와 `net/http` 계열 전용 문서 진입점. |
 | 17 | [Rust 문서](../../languages/rust/doc/draft/README.ko.md) | `Rust`와 `Axum` 전용 문서 진입점. |
@@ -93,7 +93,7 @@ API 표면(6)과 비동기 실행 정책(7)을 본 다음, actor 모델(8)과 �
 - 마지막으로 `usecase-validation.ko.md`에서 그 요구가 현재 스펙으로 설명되는지
   확인한다.
 
-즉 이 문서 묶음은 "API를 먼저 적고 나중에 용도를 붙이는" 방식이 아니라,
+이 문서 묶음은 "API를 먼저 적고 나중에 용도를 붙이는" 방식이 아니라,
 "용도를 먼저 적고 API를 그 용도에 맞춰 좁히는" 방식을 따른다.
 
 ## 5. 언어별 상세 문서 작성 규칙
@@ -125,7 +125,7 @@ API 표면(6)과 비동기 실행 정책(7)을 본 다음, actor 모델(8)과 �
 - DI 또는 lifecycle 통합 방식
 - 샘플 코드에서의 실제 호출 모양
 
-즉 공통 문서가 "무슨 의미를 가져야 하는가"를 정하면, 언어 문서는
+공통 문서가 "무슨 의미를 가져야 하는가"를 정하면, 언어 문서는
 "그 의미가 이 언어에서 어떤 시그니처와 샘플로 보이는가"를 적는다.
 
 ### 5.2.1 네이밍 규칙
@@ -157,7 +157,7 @@ framework 문서의 public 이름 규칙은
 - C++: 메서드는 `snake_case`, 타입은 `_t` 접미사
 - Node/TypeScript: 메서드는 `camelCase`, 클래스는 `PascalCase`
 
-즉 framework adapter 문서도 `sendWithRoutingId`, `request_callback`,
+framework adapter 문서도 `sendWithRoutingId`, `request_callback`,
 `publishToTopic`, `recvTimeout` 같은 이름을 쓰지 않고, 가능하면 canonical
 action 이름을 유지해야 한다. 예를 들면 아래처럼 맞춘다.
 

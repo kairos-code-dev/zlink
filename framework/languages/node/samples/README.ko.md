@@ -43,11 +43,21 @@ Windows PowerShell 에서는 PowerShell runner 를 실행한다.
 ```bash
 ./framework/languages/node/samples/TicTacToe.Ts/run_sample.sh
 ./framework/languages/node/samples/Bingo.Ts/run_sample.sh
+./framework/languages/node/samples/DeliveryDispatch.Ts/run_sample.sh
+./framework/languages/node/samples/GameQuest.Ts/run_sample.sh
+./framework/languages/node/samples/ShoppingMall.Ts/run_sample.sh
+./framework/languages/node/samples/ShoppingMallCheckout.Ts/run_sample.sh
+./framework/languages/node/samples/SupportChat.Ts/run_sample.sh
 ```
 
 ```powershell
 .\framework\languages\node\samples\TicTacToe.Ts\run_sample.ps1
 .\framework\languages\node\samples\Bingo.Ts\run_sample.ps1
+.\framework\languages\node\samples\DeliveryDispatch.Ts\run_sample.ps1
+.\framework\languages\node\samples\GameQuest.Ts\run_sample.ps1
+.\framework\languages\node\samples\ShoppingMall.Ts\run_sample.ps1
+.\framework\languages\node\samples\ShoppingMallCheckout.Ts\run_sample.ps1
+.\framework\languages\node\samples\SupportChat.Ts\run_sample.ps1
 ```
 
 ## Configuration
@@ -73,6 +83,11 @@ Node 샘플은 NestJS module 구성을 기준으로 설정을 주입한다. 서�
 |--------|---------------|
 | `TicTacToe.Ts` | 기본 NestJS channel, HTTP API, stream connector, actor game 흐름 |
 | `Bingo.Ts` | NestJS DI, channel client/server, Spot, actor, session relay, bound push |
+| `DeliveryDispatch.Ts` | dispatch API, courier, tracking, session fanout 흐름 |
+| `GameQuest.Ts` | game API action과 quest mission 진행도 갱신 흐름 |
+| `ShoppingMall.Ts` | commerce API와 order workflow 상태 전이 흐름 |
+| `ShoppingMallCheckout.Ts` | checkout 단계별 상태 전이 흐름 |
+| `SupportChat.Ts` | support conversation, reconnect, idle, close 흐름 |
 
 ## 성공 조건
 

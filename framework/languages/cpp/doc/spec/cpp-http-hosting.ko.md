@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink HTTP Client For C++](../../http-client/doc/spec/cpp-http-client.ko.md) | [다음: Spec -- ZLink Framework C++ Embedded HTTP Server](./cpp-embedded-http-server.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Client](../../http-client/doc/spec/cpp-http-client.ko.md) | [Embedded HTTP Server](./cpp-embedded-http-server.ko.md)
 

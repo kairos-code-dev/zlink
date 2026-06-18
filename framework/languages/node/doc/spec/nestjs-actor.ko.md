@@ -91,7 +91,7 @@ application 이 등록한 resolver[^resolver] 에 위임한다.
 ## 2. Actor 개념
 
 이 절은 framework 의 actor 가 core 의 actor 모델을 어떻게 그대로 가져오는지,
-그리고 그것이 일반 handler 클래스와 어떻게 다른지를 비교해서 정리한다.
+그것이 일반 handler 클래스와 어떻게 다른지를 비교해서 정리한다.
 
 framework 의 **actor** 는 zlink core 가 정의한 actor 모델을 그대로 따른다. 즉
 ID 로 식별되는 stateful object 이며, SpotNode 에 소속되고, 선택적으로 session
@@ -195,8 +195,8 @@ export interface ZLinkActorManager {
 }
 ```
 
-`ActorAlreadyExists` / `ActorTypeMismatch` 는 `ZLinkFrameworkError` 의
-`kind` 값이다 (dotnet `ZLinkFrameworkErrorKind` 에 대응). actor type 충돌은
+`ActorAlreadyExists` / `ActorTypeMismatch` 는 `ZLinkFrameworkException` 의
+`kind`(`ZLinkFrameworkErrorKind`) 값이다 (dotnet `ZLinkFrameworkErrorKind` 에 대응). actor type 충돌은
 런타임 예외로 보고하며 결과 코드로 내려가지 않는다.
 
 actor 인스턴스를 만들어 내는 application 객체다. 사용 흐름은 두 단계다. 먼저
@@ -376,7 +376,7 @@ mailbox[^mailbox] 로 들어간다. 같은 actor 의 packet 끼리만 순서가 
 `onClosing(...)`, actor joined / left lifecycle callback 같은 작업이
 여기에 해당한다.
 
-즉 Entry Spot 은 lifecycle 을 보호하고, actor packet 의 처리 순서는 actor
+Entry Spot 은 lifecycle 을 보호하고, actor packet 의 처리 순서는 actor
 mailbox 가 보호하는 구도다.
 
 ```ts
@@ -413,7 +413,7 @@ export class MatchSpot implements ZLinkSpot {
 }
 ```
 
-즉 Entry Spot 전용 handler 등록 표면을 별도로 둔다. actor 객체는 상태를
+Entry Spot 전용 handler 등록 표면을 별도로 둔다. actor 객체는 상태를
 보관하는 자리고, message 와 lifecycle callback 은 현재 actor 가 어느 실행
 문맥에 있는지에 따라 Entry Spot registry 또는 user Spot registry 가 처리한다.
 
@@ -654,7 +654,7 @@ decorator 의 `entrySpot` 또는 `spot` 타입과 SpotNode registration 을 대�
 ## 5. Actor context
 
 이 절은 actor 안에서 어떤 표면을 통해 spot join 과 현재 상태 조회를 하는지,
-그리고 그 표면이 가진 멤버들이 무엇을 의미하는지 정리한다.
+그 표면이 가진 멤버들이 무엇을 의미하는지 정리한다.
 
 actor 가 다른 user Spot 으로 이동하려면 framework 가 attach 한
 `ZLinkActorContext` 를 거쳐야 한다. channel outbound 는 actor context 의
@@ -815,7 +815,7 @@ session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다. cli
 application 이 결정한다.
 
 이 패턴은 보통 **gateway / playhouse[^playhouse]** 같은 서버에서 사용한다.
-즉 client 는 stream 으로 들어오고, server 는 그 client 를 actor 로 다룬다.
+client 는 stream 으로 들어오고, server 는 그 client 를 actor 로 다룬다.
 모든 routing 을 actor id 기준으로 통일하는 모양이다.
 
 ### 8.1 session-actor binding 표면

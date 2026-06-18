@@ -268,7 +268,7 @@ room 루프가 아니라, 여러 gameplay 영역(combat·inventory·mission·fea
 백엔드 난제 — **흩어진 gameplay fact 의 player 단위 집계와 replay** — 를 맡는다.
 
 - 구현 학습(deep-dive): [GameQuest Sample 문서](../samples/gamequest-sample.ko.md)
-- 실행 코드: [Java GameQuest 샘플](../../../samples/GameQuest)
+- 실행 코드: [Java GameQuest 샘플](../../../samples/java/GameQuest)
 - 공통 시나리오(언어 중립): [spec/sample/event/gamequest](../../../../../doc/spec/sample/event/gamequest.ko.md)
 
 | 서버 | instance | 책임 |
@@ -291,7 +291,7 @@ room 루프가 아니라, 여러 gameplay 영역(combat·inventory·mission·fea
 
 - 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
 - 사용법: [05-spot](../05-spot.ko.md), [06-actor-session](../06-actor-session.ko.md), [07-stream](../07-stream.ko.md)
-- 실행 예제: [tictactoe 샘플](../samples/tictactoe-game-sample.ko.md), [bingo 샘플](../samples/bingo-game-sample.ko.md), [GameQuest 샘플](../../../samples/GameQuest)
+- 실행 예제: [tictactoe 샘플](../samples/tictactoe-game-sample.ko.md), [bingo 샘플](../samples/bingo-game-sample.ko.md), [GameQuest 샘플](../../../samples/java/GameQuest)
 - 다음 케이스: [16-case-ride-hailing](./16-case-ride-hailing.ko.md)
 
 ---

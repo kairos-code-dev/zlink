@@ -15,6 +15,12 @@ process 로 시작하는 방식을 사용한다.
 Bingo 샘플 payload는 Protobuf codec으로 등록하고, TicTacToe 샘플 payload는 JSON
 codec으로 등록한다. HTTP JSON request와 response는 HTTP route의 외부 표면에만 사용한다.
 
+Bingo와 TicTacToe를 제외한 정본 샘플은 공통 샘플 기준에 따라 JSON
+codec과 Registry/Discovery 기반 자동 연결을 사용한다. 다만 C++ framework는 compile-time
+타입과 public builder 표면을 기준으로 하므로 handler 자동 등록 예외다. C++ 샘플은 handler를
+자동 스캔하지 않고 명시 등록하되, 메시지 이름, 서버 역할, client self-check 순서는
+[공통 샘플 포팅 기준](../../../doc/spec/sample/README.ko.md#샘플-포팅-기준)을 따른다.
+
 ## 실행
 
 CMake sample smoke 는 각 role 실행 파일을 빌드하고 기본 실행 경로를 확인한다.
@@ -28,6 +34,10 @@ Linux 또는 WSL:
 ```bash
 ./framework/languages/cpp/samples/TicTacToe/run_sample.sh
 ./framework/languages/cpp/samples/Bingo/run_sample.sh
+./framework/languages/cpp/samples/DeliveryDispatch/run_sample.sh
+./framework/languages/cpp/samples/GameQuest/run_sample.sh
+./framework/languages/cpp/samples/ShoppingMall/run_sample.sh
+./framework/languages/cpp/samples/ShoppingMallCheckout/run_sample.sh
 ./framework/languages/cpp/samples/run_samples.sh
 ```
 
@@ -36,6 +46,10 @@ Windows PowerShell:
 ```powershell
 .\framework\languages\cpp\samples\TicTacToe\run_sample.ps1
 .\framework\languages\cpp\samples\Bingo\run_sample.ps1
+.\framework\languages\cpp\samples\DeliveryDispatch\run_sample.ps1
+.\framework\languages\cpp\samples\GameQuest\run_sample.ps1
+.\framework\languages\cpp\samples\ShoppingMall\run_sample.ps1
+.\framework\languages\cpp\samples\ShoppingMallCheckout\run_sample.ps1
 .\framework\languages\cpp\samples\run_samples.ps1
 ```
 

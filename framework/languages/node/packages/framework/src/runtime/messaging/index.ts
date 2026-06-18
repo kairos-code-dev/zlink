@@ -23,7 +23,7 @@ export class ZLinkAsyncSubmitter {
     private readonly registerSendReady: (handler: () => void) => void,
     options: { readonly timeoutMs?: number; readonly capacity?: number } = {}
   ) {
-    this.timeoutMs = options.timeoutMs ?? 1000;
+    this.timeoutMs = options.timeoutMs ?? 10000;
     this.capacity = options.capacity ?? 4096;
   }
 

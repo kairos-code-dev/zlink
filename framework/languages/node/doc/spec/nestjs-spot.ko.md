@@ -52,7 +52,7 @@ Framework` 가 이 개념을 새로 만들거나 없애려는 것이 아니다. 
 - `Spot` publish / subscribe
 - channel client attach 기반 channel send / request
 
-즉 이 문서의 핵심은 `SPOT` 기능 자체를 새로 만드는 일이 아니다. 이미 존재하는
+이 문서의 핵심은 `SPOT` 기능 자체를 새로 만드는 일이 아니다. 이미 존재하는
 바인딩 기능을 `NestJS` 안에 자연스럽게 녹여 넣는 방법을 정리하는 것이 목적이다.
 새 transport / wire 의미를 만들지 않으므로, 같은 channel 로 붙으면 dotnet SPOT
 노드와도 그대로 통신한다.
@@ -76,7 +76,7 @@ Framework` 가 이 개념을 새로 만들거나 없애려는 것이 아니다. 
 - MMORPG zone
 - 필요하다면 Redis pub/sub 같은 fan-out 주제 공간
 
-즉 `SPOT` 은 "토픽 시스템" 이 아니라 먼저 "논리 대상 인스턴스" 로 설명되어야
+`SPOT` 은 "토픽 시스템" 이 아니라 먼저 "논리 대상 인스턴스" 로 설명되어야
 한다. publish / subscribe 는 그 안에서 함께 사용할 수 있는 한 가지 활용 방식일
 뿐이다.
 
@@ -224,7 +224,7 @@ export class AppModule {}
 > 쓰던 `{ spotName, spotType }` 객체 형태와 `spotName` 기준 생성은 코드에 근거가
 > 없으므로 채택하지 않는다(§12 divergence 참고).
 
-즉 `SpotNode` 는 더 이상 여러 service surface 를 동시에 소유하는 hub 처럼
+`SpotNode` 는 더 이상 여러 service surface 를 동시에 소유하는 hub 처럼
 설명되지 않는다. 현재 방향에서 그 역할 분담은 다음과 같다.
 
 - `.addSpotNode(name)` 등록과 `.useDiscovery()` 가 노드의 channel 정체성을 닫는다.
@@ -536,7 +536,7 @@ runtime 이 만든 managed timer tick 을 Spot 문맥에서는 같은 spot queue
 해서 처리한다. Entry Spot timer 도 Entry Spot actor packet, lifecycle callback,
 request continuation 과 같은 실행 줄에서 처리한다.
 
-즉 framework 문서에서 "같은 spot 문맥" 이라고 설명하는 부분은 새 semantics 를
+framework 문서에서 "같은 spot 문맥" 이라고 설명하는 부분은 새 semantics 를
 정의하는 작업이 아니다. 기존 core 계약과 framework 가 소유한 timer dispatch 를
 사용자 눈높이로 풀어 적는 일에 더 가깝다. channel reply 역시 이제 그 "같은 spot
 문맥" 안에 포함된다.
@@ -692,7 +692,7 @@ resolve, activation, `onCreate(...)`, `onInitialize(...)` 실패는
 | `sendToChannel(channelName, message)` | `SendToChannel<TMessage>(string, TMessage)` | attach 된 channel 로 send |
 | `requestToChannel(channelName, request)` | `RequestToChannel<TRequest>(string, TRequest)` | attach 된 channel 로 request |
 
-즉 handler 나 lifecycle callback 안에서는 별도 client 를 찾지 않고
+handler 나 lifecycle callback 안에서는 별도 client 를 찾지 않고
 `context.outbound.requestToSpot(...)` 처럼 호출한다. timer 는
 `context.addTimer(name, periodMs, handlerType, options?)` 처럼 spot lifecycle
 registration 표면으로 둔다.
@@ -898,7 +898,7 @@ timer 를 중단하고 `TimerStoppedAfterUnhandledException` event 를 기록한
 - reflection / metadata 조회는 registration 단계까지만 허용한다.
 - per-packet allocation, 과도한 DI 재구성, 불필요한 객체 래핑은 피해야 한다.
 
-즉 `context.handlers.addPacket(...)` 같은 등록 표면은 startup 과 spot
+`context.handlers.addPacket(...)` 같은 등록 표면은 startup 과 spot
 `configure()` 단계에서만 비용이 들도록 둔다. 실제 packet hot path 에서는 반복적인
 reflection 이나 과도한 객체 생성이 남지 않게 해야 한다.
 
@@ -927,7 +927,7 @@ channel messaging 쪽은 `SPOT` room 의 핫패스에 비해 편의 기능을 �
 `ZLink Framework` 는 direct channel call 만 제공하는 계층처럼 비춰져서는 안 된다.
 `SPOT` 역시 framework 안에서 동등한 축으로 다뤄야 한다.
 
-즉 다음 두 축이 함께 존재해야 한다.
+다음 두 축이 함께 존재해야 한다.
 
 - `channelName` 기반 일반 channel messaging
 - `SPOT` 기반 current channel publish / subscribe 와 channel send / request
@@ -947,7 +947,7 @@ channel messaging 쪽은 `SPOT` room 의 핫패스에 비해 편의 기능을 �
 channel 의 `ROUTER(server)` 를 `rid` 로 직접 지정해서 호출하는 모델은 현재
 방향에서 채택하지 않는다.
 
-즉 `SPOT` 은 pub / sub 만으로 설명하면 부족하다. 다음 세 가지를 함께 설명해야
+`SPOT` 은 pub / sub 만으로 설명하면 부족하다. 다음 세 가지를 함께 설명해야
 한다.
 
 - room / stage / zone 같은 논리 인스턴스 모델
@@ -1049,12 +1049,13 @@ query metadata 또는 같은 process 안의 명시적 route channel 등록으로
 zlinkFramework()
   .addClientServerChannel('gateway.client')
     .enableClient('tcp://play-node-1:7201')
-    .enableSpotRouteEgress('play.route')
 ```
 
-`spotRouteEgress: 'play.route'` 의 값은 local channel 이름이 아니다. target
-SpotNode process 에서 `.acceptSpotRoutesFromChannel('play.route')` 로 연 ingress
-channel 이름이다. target Spot 은 문자열 overload 없이 `RoutingId` 로 지정한다.
+node 에는 별도 `enableSpotRouteEgress`/`spotRouteEgress` 표면이 없다. egress 쪽은 위처럼
+outbound channel(client DEALER 또는 `addRouteMeshChannel`)만 등록하고, target SpotNode
+process 가 자기 쪽에서 `.acceptSpotRoutesFromChannel('play.route')` 로 ingress channel 을
+연다. 실제 전송은 `outbound.sendToSpot(spotRid, ...)` / `outbound.requestToSpot(spotRid, ...)`
+으로 하며, target Spot 은 문자열 overload 없이 `RoutingId` 로 지정한다.
 
 ## 12. 회귀 테스트
 

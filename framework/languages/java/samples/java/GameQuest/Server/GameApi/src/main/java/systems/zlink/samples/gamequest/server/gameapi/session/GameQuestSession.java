@@ -1,0 +1,71 @@
+package systems.zlink.samples.gamequest.server.gameapi.session;
+
+import static systems.zlink.framework.ZLinkAwait.await;
+
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.streams.ZLinkSession;
+import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
+import systems.zlink.framework.streams.ZLinkStreamError;
+import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.samples.gamequest.server.gameapi.store.GameQuestStore;
+import systems.zlink.samples.gamequest.shared.contracts.Messages;
+
+/**
+ * Stream session for a single connected player. Mirrors the .NET
+ * {@code GameQuestSession}: it dispatches subscribe / progress / sync packets to
+ * the registered session packet handlers and unbinds the player on disconnect.
+ */
+public final class GameQuestSession implements ZLinkSession {
+    private final ZLinkSessionContext context;
+    private final ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers;
+    private final GameQuestSessionRegistry registry;
+    private final GameQuestStore store;
+
+    public GameQuestSession(
+        ZLinkSessionContext context,
+        ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers,
+        GameQuestSessionRegistry registry,
+        GameQuestStore store) {
+        this.context = context;
+        this.handlers = handlers;
+        this.registry = registry;
+        this.store = store;
+    }
+
+    @Override
+    public ZLinkSessionContext context() {
+        return context;
+    }
+
+    @Override
+    public void onConnected() {
+        System.err.printf("gamequest session connected session=%s%n", context.sessionId());
+    }
+
+    @Override
+    public void onDisconnected() {
+        for (Messages.UnbindQuestSessionReq unbind : registry.remove(context)) {
+            store.unbindSession(unbind);
+        }
+    }
+
+    @Override
+    public void onError(ZLinkStreamError error) {
+        System.err.printf("gamequest session error session=%s error=%s%n", context.sessionId(), error);
+    }
+
+    @Override
+    public void onDispatch(ZLinkStreamHeader header, Message payload) {
+        System.err.printf(
+            "gamequest session dispatch session=%s packet=%s codec=%s%n",
+            context.sessionId(), header.packetName(), header.codec());
+        boolean handled = await(handlers.tryHandleAsync(context, header, payload));
+        if (!handled) {
+            throw new IllegalStateException("Unsupported GameQuest packet '" + header.packetName() + "'.");
+        }
+        System.err.printf(
+            "gamequest session handled session=%s packet=%s%n",
+            context.sessionId(), header.packetName());
+    }
+}

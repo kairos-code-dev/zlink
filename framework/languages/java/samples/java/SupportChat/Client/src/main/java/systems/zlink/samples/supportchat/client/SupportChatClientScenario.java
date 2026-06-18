@@ -136,6 +136,11 @@ public final class SupportChatClientScenario {
         ensure(noAgentConversation.state().status().equals(SampleNames.WaitingForAgent));
         ensure(noAgentConversation.state().subject().equals("agent unavailable"));
         expectNoPush(waitingCustomer, SampleNames.ConversationClosedPacket, Duration.ofMillis(500));
+        expectFailure(
+            () -> waitingCustomer
+                .request(new Messages.SetAgentAvailableReq(true))
+                .await(Messages.SetAgentAvailableRes.class),
+            "Customer actor SetAgentAvailableReq must be rejected.");
 
         closingAgent.connect().await();
         Messages.AuthenticateRes closingAgentAuth = closingAgent

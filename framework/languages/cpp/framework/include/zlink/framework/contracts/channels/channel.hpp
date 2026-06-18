@@ -34,6 +34,8 @@ class route_client_state_t;
 class route_channel_builder_state_t;
 } // namespace detail
 
+class spot_context_t;
+
 enum class channel_capability_t
 {
     server,
@@ -299,6 +301,7 @@ class message_bus_t
     friend class zlink_builder_t;
     friend class request_client_t;
     friend class publisher_t;
+    friend class spot_context_t;
     friend class detail::channel_runtime_t;
     friend class detail::channel_runtime_manager_t;
 

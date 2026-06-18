@@ -8,7 +8,21 @@ const workspaceRoot = path.resolve(__dirname, '..', '..');
 const samplesRoot = path.join(workspaceRoot, 'samples');
 const requiredSamples = [
   'TicTacToe.Ts',
-  'Bingo.Ts'
+  'Bingo.Ts',
+  'DeliveryDispatch.Ts',
+  'GameQuest.Ts',
+  'ShoppingMall.Ts',
+  'ShoppingMallCheckout.Ts',
+  'SupportChat.Ts'
+];
+const topologySamples = [
+  'TicTacToe.Ts',
+  'Bingo.Ts',
+  'DeliveryDispatch.Ts',
+  'GameQuest.Ts',
+  'ShoppingMall.Ts',
+  'ShoppingMallCheckout.Ts',
+  'SupportChat.Ts'
 ];
 
 test('node samples define the required sample directories and README files', () => {
@@ -88,6 +102,85 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Configuration/sample-names.ts',
       'Shared/Contracts/bingo_messages.proto',
       'Shared/Contracts/protobuf-codec.ts',
+      'Shared/Contracts/messages.ts'
+    ],
+    'SupportChat.Ts': [
+      'Client/supportchat-client-scenario.ts',
+      'Client/main.ts',
+      'Client/Configuration/sample-config.ts',
+      'Client/Configuration/sample-names.ts',
+      'Server/Api/Handlers/authenticate-user-handler.ts',
+      'Server/Api/Handlers/open-conversation-handler.ts',
+      'Server/Api/supportchat-api-module.ts',
+      'Server/Api/main.ts',
+      'Server/Support/Domain/SupportChat/conversation.ts',
+      'Server/Support/Domain/SupportChat/conversation-models.ts',
+      'Server/Support/Application/ConversationAssignment/support-conversation-allocator.ts',
+      'Server/Support/Application/ConversationAssignment/agent-availability-directory.ts',
+      'Server/Support/Application/ConversationAssignment/agent-assignment-service.ts',
+      'Server/Support/Adapters/ZLink/Actors/support-user-actor.ts',
+      'Server/Support/Adapters/ZLink/Actors/support-user-actor-factory.ts',
+      'Server/Support/Adapters/ZLink/Handlers/allocate-conversation-handler.ts',
+      'Server/Support/Adapters/ZLink/Handlers/assign-agent-handler.ts',
+      'Server/Support/Adapters/ZLink/Handlers/ensure-support-user-actor-handler.ts',
+      'Server/Support/Adapters/ZLink/Handlers/open-conversation-channel-handler.ts',
+      'Server/Support/Adapters/ZLink/Handlers/set-agent-available-channel-handler.ts',
+      'Server/Support/Adapters/ZLink/Handlers/join-conversation-channel-handler.ts',
+      'Server/Support/Adapters/ZLink/Handlers/send-chat-message-channel-handler.ts',
+      'Server/Support/Adapters/ZLink/Handlers/set-typing-channel-handler.ts',
+      'Server/Support/Adapters/ZLink/Handlers/close-conversation-channel-handler.ts',
+      'Server/Support/Adapters/ZLink/Handlers/supportchat-notifications-handler.ts',
+      'Server/Support/Adapters/ZLink/Notifications/conversation-event-mapper.ts',
+      'Server/Support/Adapters/ZLink/Notifications/support-notification-publisher.ts',
+      'Server/Support/Adapters/ZLink/Spots/conversation-create-request.ts',
+      'Server/Support/Adapters/ZLink/Spots/support-entry-spot.ts',
+      'Server/Support/Adapters/ZLink/Spots/conversation-spot.ts',
+      'Server/Support/Adapters/ZLink/Spots/Handlers/open-conversation-actor-handler.ts',
+      'Server/Support/Adapters/ZLink/Spots/Handlers/set-agent-available-handler.ts',
+      'Server/Support/Adapters/ZLink/Spots/Handlers/send-chat-message-handler.ts',
+      'Server/Support/Adapters/ZLink/Spots/Handlers/set-typing-handler.ts',
+      'Server/Support/Adapters/ZLink/Spots/Handlers/close-conversation-handler.ts',
+      'Server/Support/Adapters/ZLink/Spots/Handlers/conversation-idle-timer-handler.ts',
+      'Server/Support/notification-delivery-log.ts',
+      'Server/Support/supportchat-support-module.ts',
+      'Server/Support/main.ts',
+      'Server/Session/Sessions/Handlers/authenticate-session-handler.ts',
+      'Server/Session/Sessions/supportchat-session.ts',
+      'Server/Session/supportchat-session-module.ts',
+      'Server/Session/main.ts',
+      'Server/Registry/registry-server-host.ts',
+      'Server/Registry/main.ts',
+      'Server/Configuration/sample-config.ts',
+      'Server/Configuration/sample-names.ts',
+      'Server/runtime-support.ts',
+      'Shared/Contracts/messages.ts'
+    ],
+    'DeliveryDispatch.Ts': [
+      'Client/deliverydispatch-client-scenario.ts',
+      'Client/main.ts',
+      'Server/main.ts',
+      'Shared/Configuration/sample-names.ts',
+      'Shared/Contracts/messages.ts'
+    ],
+    'GameQuest.Ts': [
+      'Client/gamequest-client-scenario.ts',
+      'Client/main.ts',
+      'Server/main.ts',
+      'Shared/Configuration/sample-names.ts',
+      'Shared/Contracts/messages.ts'
+    ],
+    'ShoppingMall.Ts': [
+      'Client/shoppingmall-client-scenario.ts',
+      'Client/main.ts',
+      'Server/main.ts',
+      'Shared/Configuration/sample-names.ts',
+      'Shared/Contracts/messages.ts'
+    ],
+    'ShoppingMallCheckout.Ts': [
+      'Client/shoppingmall-checkout-client-scenario.ts',
+      'Client/main.ts',
+      'Server/main.ts',
+      'Shared/Configuration/sample-names.ts',
       'Shared/Contracts/messages.ts'
     ]
   };
@@ -177,13 +270,13 @@ test('node client flow files use ClientScenario names', () => {
   assert.deepEqual(violations, []);
 });
 
-test('node samples keep only the common TicTacToe and Bingo variants', () => {
+test('node samples keep only the maintained canonical variants', () => {
   const entries = fs.readdirSync(samplesRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
 
-  assert.deepEqual(entries, ['Bingo.Ts', 'TicTacToe.Ts']);
+  assert.deepEqual(entries, [...requiredSamples].sort());
   assert.equal(entries.some((entry) => /SessionGateway|Gateway|StreamingClient/.test(entry)), false);
 });
 
@@ -199,6 +292,181 @@ test('node sample READMEs describe execution topology success condition and regr
   }
 
   assert.deepEqual(missing, []);
+});
+
+test('node dotnet-parity samples expose buildable scenario entrypoints', () => {
+  const cases = [
+    ['DeliveryDispatch.Ts', '@zlink-systems/sample-deliverydispatch-ts', 'deliverydispatch-client-scenario.ts', 'DeliveryDispatchClientScenario', 'PASS DeliveryDispatch.Ts'],
+    ['GameQuest.Ts', '@zlink-systems/sample-gamequest-ts', 'gamequest-client-scenario.ts', 'GameQuestClientScenario', 'PASS GameQuest.Ts'],
+    ['ShoppingMall.Ts', '@zlink-systems/sample-shoppingmall-ts', 'shoppingmall-client-scenario.ts', 'ShoppingMallClientScenario', 'PASS ShoppingMall.Ts'],
+    ['ShoppingMallCheckout.Ts', '@zlink-systems/sample-shoppingmall-checkout-ts', 'shoppingmall-checkout-client-scenario.ts', 'ShoppingMallCheckoutClientScenario', 'PASS ShoppingMallCheckout.Ts']
+  ];
+  const missing = [];
+
+  for (const [sample, packageName, scenarioFile, scenarioName, passMarker] of cases) {
+    const packageJson = fs.readFileSync(path.join(samplesRoot, sample, 'package.json'), 'utf8');
+    const tsconfig = fs.readFileSync(path.join(samplesRoot, sample, 'tsconfig.json'), 'utf8');
+    const client = fs.readFileSync(path.join(samplesRoot, sample, 'Client', 'main.ts'), 'utf8');
+    const scenario = fs.readFileSync(path.join(
+      samplesRoot,
+      sample,
+      'Client',
+      scenarioFile
+    ), 'utf8');
+    const server = fs.readFileSync(path.join(samplesRoot, sample, 'Server', 'main.ts'), 'utf8');
+    const contracts = fs.readFileSync(path.join(samplesRoot, sample, 'Shared', 'Contracts', 'messages.ts'), 'utf8');
+
+    for (const [content, text] of [
+      [packageJson, packageName],
+      [packageJson, 'tsc -p tsconfig.json'],
+      [tsconfig, '"outDir": "dist"'],
+      [tsconfig, '"Server/**/*.ts"'],
+      [client, scenarioName],
+      [client, passMarker],
+      [scenario, 'ensure('],
+      [server, sample === 'DeliveryDispatch.Ts'
+        ? 'createDeliveryDispatchModule'
+        : sample === 'GameQuest.Ts'
+          ? 'createGameQuestModule'
+          : sample === 'ShoppingMall.Ts'
+            ? 'createShoppingMallModule'
+            : 'createShoppingMallCheckoutModule'],
+      [contracts, 'PacketNames']
+    ]) {
+      if (!content.includes(text)) {
+        missing.push(`${sample}:${text}`);
+      }
+    }
+  }
+
+  assert.deepEqual(missing, []);
+});
+
+test('SupportChat TypeScript Entry Spot uses API channel orchestration', () => {
+  const supportEntry = fs.readFileSync(
+    path.join(samplesRoot, 'SupportChat.Ts', 'Server', 'Support', 'Adapters', 'ZLink', 'Spots', 'support-entry-spot.ts'),
+    'utf8'
+  );
+  const apiHandler = fs.readFileSync(
+    path.join(samplesRoot, 'SupportChat.Ts', 'Server', 'Api', 'Handlers', 'open-conversation-handler.ts'),
+    'utf8'
+  );
+
+  assert.match(supportEntry, /context\.outbound\s*\n?\s*\.requestToChannel/);
+  assert.match(supportEntry, /SampleNames\.apiChannel/);
+  assert.match(supportEntry, /openConversationApiReq/);
+  assert.doesNotMatch(supportEntry, /allocator\.allocate|assignNextAgent|actors\.get/);
+
+  assert.match(apiHandler, /SampleNames\.supportChannel/);
+  assert.match(apiHandler, /allocateConversationReq/);
+  assert.match(apiHandler, /assignAgentReq/);
+});
+
+test('DeliveryDispatch TypeScript sample uses framework channel topology', () => {
+  const clientScenario = readSample('DeliveryDispatch.Ts', 'Client/deliverydispatch-client-scenario.ts');
+  const clientModule = readSample('DeliveryDispatch.Ts', 'Client/deliverydispatch-client-module.ts');
+  const serverModule = readSample('DeliveryDispatch.Ts', 'Server/DispatchCenter/deliverydispatch-dispatch-module.ts');
+  const serverMain = readSample('DeliveryDispatch.Ts', 'Server/main.ts');
+  const runSample = fs.readFileSync(path.join(samplesRoot, 'DeliveryDispatch.Ts', 'run_sample.sh'), 'utf8');
+
+  assert.match(clientScenario, /requestToChannel/);
+  assert.match(clientScenario, /SampleNames\.dispatchChannel/);
+  assert.match(clientModule, /zlinkFramework\(\)/);
+  assert.match(clientModule, /\.enableClient\(config\.dispatchEndpoint\)/);
+  assert.match(serverModule, /zlinkFramework\(\)/);
+  assert.match(serverModule, /\.enableServer\(config\.dispatchEndpoint\)/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.createDeliveryReq/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.assignDeliveryReq/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.advanceDeliveryReq/);
+  assert.match(serverMain, /NestFactory\.createApplicationContext/);
+  assert.match(runSample, /DELIVERYDISPATCH_DISPATCH_ENDPOINT/);
+  assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
+  assert.doesNotMatch(clientScenario, /fetch\(|http\.createServer|SAMPLE_ENDPOINT|support::request_line/);
+  assert.doesNotMatch(serverMain, /http\.createServer|SAMPLE_ENDPOINT/);
+});
+
+test('GameQuest TypeScript sample uses framework channel topology', () => {
+  const clientScenario = readSample('GameQuest.Ts', 'Client/gamequest-client-scenario.ts');
+  const clientModule = readSample('GameQuest.Ts', 'Client/gamequest-client-module.ts');
+  const serverModule = readSample('GameQuest.Ts', 'Server/QuestMission/gamequest-quest-module.ts');
+  const serverMain = readSample('GameQuest.Ts', 'Server/main.ts');
+  const runSample = fs.readFileSync(path.join(samplesRoot, 'GameQuest.Ts', 'run_sample.sh'), 'utf8');
+
+  assert.match(clientScenario, /requestToChannel/);
+  assert.match(clientScenario, /SampleNames\.questChannel/);
+  assert.match(clientModule, /zlinkFramework\(\)/);
+  assert.match(clientModule, /\.enableClient\(config\.questEndpoint\)/);
+  assert.match(serverModule, /zlinkFramework\(\)/);
+  assert.match(serverModule, /\.enableServer\(config\.questEndpoint\)/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.enterAreaReq/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.killMonsterReq/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.collectItemReq/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.completeMissionReq/);
+  assert.match(serverMain, /NestFactory\.createApplicationContext/);
+  assert.match(runSample, /GAMEQUEST_QUEST_ENDPOINT/);
+  assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
+  assert.doesNotMatch(clientScenario, /fetch\(|http\.createServer|SAMPLE_ENDPOINT|support::request_line/);
+  assert.doesNotMatch(serverMain, /http\.createServer|SAMPLE_ENDPOINT/);
+});
+
+test('ShoppingMall TypeScript sample uses framework channel topology', () => {
+  const clientScenario = readSample('ShoppingMall.Ts', 'Client/shoppingmall-client-scenario.ts');
+  const clientModule = readSample('ShoppingMall.Ts', 'Client/shoppingmall-client-module.ts');
+  const serverModule = readSample('ShoppingMall.Ts', 'Server/OrderWorkflow/shoppingmall-workflow-module.ts');
+  const serverMain = readSample('ShoppingMall.Ts', 'Server/main.ts');
+  const runSample = fs.readFileSync(path.join(samplesRoot, 'ShoppingMall.Ts', 'run_sample.sh'), 'utf8');
+
+  assert.match(clientScenario, /requestToChannel/);
+  assert.match(clientScenario, /SampleNames\.workflowChannel/);
+  assert.match(clientModule, /zlinkFramework\(\)/);
+  assert.match(clientModule, /\.enableClient\(config\.workflowEndpoint\)/);
+  assert.match(serverModule, /zlinkFramework\(\)/);
+  assert.match(serverModule, /\.enableServer\(config\.workflowEndpoint\)/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.startOrderReq/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.continueOrderWorkflowReq/);
+  assert.match(serverMain, /NestFactory\.createApplicationContext/);
+  assert.match(runSample, /SHOPPINGMALL_WORKFLOW_ENDPOINT/);
+  assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
+  assert.doesNotMatch(clientScenario, /fetch\(|http\.createServer|SAMPLE_ENDPOINT|support::request_line/);
+  assert.doesNotMatch(serverMain, /http\.createServer|SAMPLE_ENDPOINT/);
+});
+
+test('ShoppingMallCheckout TypeScript sample uses framework channel topology', () => {
+  const clientScenario = readSample('ShoppingMallCheckout.Ts', 'Client/shoppingmall-checkout-client-scenario.ts');
+  const clientModule = readSample('ShoppingMallCheckout.Ts', 'Client/shoppingmall-checkout-client-module.ts');
+  const serverModule = readSample('ShoppingMallCheckout.Ts', 'Server/CheckoutWorkflow/shoppingmall-checkout-module.ts');
+  const serverMain = readSample('ShoppingMallCheckout.Ts', 'Server/main.ts');
+  const runSample = fs.readFileSync(path.join(samplesRoot, 'ShoppingMallCheckout.Ts', 'run_sample.sh'), 'utf8');
+
+  assert.match(clientScenario, /requestToChannel/);
+  assert.match(clientScenario, /SampleNames\.checkoutChannel/);
+  assert.match(clientModule, /zlinkFramework\(\)/);
+  assert.match(clientModule, /\.enableClient\(config\.checkoutEndpoint\)/);
+  assert.match(serverModule, /zlinkFramework\(\)/);
+  assert.match(serverModule, /\.enableServer\(config\.checkoutEndpoint\)/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.startCheckoutReq/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.authorizePaymentReq/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.reserveInventoryReq/);
+  assert.match(serverModule, /addRequestHandler\(PacketNames\.confirmOrderReq/);
+  assert.match(serverMain, /NestFactory\.createApplicationContext/);
+  assert.match(runSample, /SHOPPINGMALLCHECKOUT_CHECKOUT_ENDPOINT/);
+  assert.match(runSample, /tcp:\/\/127\.0\.0\.1/);
+  assert.doesNotMatch(clientScenario, /fetch\(|http\.createServer|SAMPLE_ENDPOINT|support::request_line/);
+  assert.doesNotMatch(serverMain, /http\.createServer|SAMPLE_ENDPOINT/);
+});
+
+test('dotnet-parity TypeScript clients do not import server modules', () => {
+  const violations = [];
+  for (const sample of ['DeliveryDispatch.Ts', 'GameQuest.Ts', 'ShoppingMall.Ts', 'ShoppingMallCheckout.Ts']) {
+    for (const file of sampleSourceFiles(path.join(samplesRoot, sample, 'Client'))) {
+      const content = fs.readFileSync(file, 'utf8');
+      if (/from ['"]\.\.\/Server\//.test(content)) {
+        violations.push(path.relative(samplesRoot, file));
+      }
+    }
+  }
+
+  assert.deepEqual(violations, []);
 });
 
 test('node samples use only framework and connector public APIs', () => {
@@ -551,7 +819,10 @@ test('node samples do not hide readiness with sleeps or pre-ready pings', () => 
   const violations = [];
   const allowedTimingFiles = new Set([
     'samples/Bingo.Ts/Server/Play/notification-delivery-log.ts',
-    'samples/Bingo.Ts/Server/runtime-support.ts'
+    'samples/Bingo.Ts/Server/runtime-support.ts',
+    'samples/SupportChat.Ts/Client/supportchat-client-scenario.ts',
+    'samples/SupportChat.Ts/Server/Support/notification-delivery-log.ts',
+    'samples/SupportChat.Ts/Server/runtime-support.ts'
   ]);
   for (const file of sampleSourceFiles(samplesRoot)) {
     if (allowedTimingFiles.has(path.relative(workspaceRoot, file))) {
@@ -1172,7 +1443,7 @@ test('node TypeScript samples keep actor destroy in Entry Spot after room leave'
 
 test('node sample runners own server process orchestration', () => {
   const missing = [];
-  for (const sample of requiredSamples) {
+  for (const sample of topologySamples) {
     const runSample = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.sh'), 'utf8');
     const runSamplePs1 = fs.readFileSync(path.join(samplesRoot, sample, 'run_sample.ps1'), 'utf8');
     const client = fs.readFileSync(path.join(samplesRoot, sample, 'Client', 'main.ts'), 'utf8');
@@ -1206,13 +1477,14 @@ test('node sample runners own server process orchestration', () => {
   assert.deepEqual(missing, []);
 });
 
-test('node samples keep only message contracts under Shared', () => {
+test('node samples keep only contracts and shared sample configuration under Shared', () => {
   const violations = [];
   for (const sample of requiredSamples) {
     const sharedRoot = path.join(samplesRoot, sample, 'Shared');
     for (const file of sampleSourceFiles(sharedRoot)) {
       const relative = path.relative(path.join(samplesRoot, sample), file);
-      if (!relative.startsWith(`Shared${path.sep}Contracts${path.sep}`)) {
+      if (!relative.startsWith(`Shared${path.sep}Contracts${path.sep}`)
+        && relative !== path.join('Shared', 'Configuration', 'sample-names.ts')) {
         violations.push(relative);
       }
     }
@@ -1352,14 +1624,12 @@ function findUnreachableSampleTypeScriptFiles() {
   }
 
   for (const sample of requiredSamples) {
-    for (const entry of [
-      'Client/main.ts',
-      'Server/Api/main.ts',
-      'Server/Play/main.ts',
-      'Server/Registry/main.ts',
-      'Server/Session/main.ts'
-    ]) {
-      add(path.join(samplesRoot, sample, entry));
+    // Every role entry point is a `main.ts`; discover them dynamically so samples
+    // with different server roles (Support, Dispatch, GameApi, CommerceApi, ...) are covered.
+    for (const file of listFiles(path.join(samplesRoot, sample))) {
+      if (path.basename(file) === 'main.ts') {
+        add(file);
+      }
     }
   }
 

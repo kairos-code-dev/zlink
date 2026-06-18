@@ -2,7 +2,7 @@
 [문서 목록](../README.ko.md) | [이전: ZLink Framework API](./framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](./session-actor-dispatch.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](./draft/README.ko.md)
+[스펙 목차](./README.ko.md)
 
 [문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [Session Actor Dispatch 사용성](./session-actor-dispatch.ko.md)
 

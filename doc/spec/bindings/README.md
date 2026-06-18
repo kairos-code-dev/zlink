@@ -1099,6 +1099,16 @@ attach 표면**에서 동일한 패턴으로 노출한다. 이름은 언어 관�
 - `flags`, `timeout`, callback, async 선택은 시작점 파라미터가 아니라
   builder의 선택 단계로 둔다. 시작점은 대상 주소·요청 시퀀스처럼 의미상
   키만 받는다.
+- 샘플과 문서 예제의 메시징 호출은 기본값을 반복해서 적지 않는다.
+  `request`, `requestToChannel`, `send`, `sendToChannel`, `reply`,
+  `publish` 같은 메시지 전송 함수에서 packet 이름은 요청 객체나 등록된 packet
+  타입에서 추론되는 이름을 기본으로 사용한다. `.packetName(...)`,
+  `.packet_name(...)`, `.PacketName(...)` 같은 packet 이름 override는 실제 전송할
+  packet 이름이 요청 타입의 기본 packet 이름과 다를 때만 사용한다. 같은 방식으로
+  `.timeout(...)`, `.Timeout(...)` 같은 per-call timeout은 해당 호출이 소켓이나
+  framework에 설정된 기본 timeout과 다른 값을 요구할 때만 사용한다. 이 규칙은
+  예제를 짧게 보이게 하려는 규칙이 아니라, 사용자가 불필요한 옵션을 표준 사용법으로
+  오해하지 않게 하기 위한 샘플 계약이다.
 - request/reply protocol envelope을 직접 만드는 helper는 public binding 표면에
   두지 않는다. `requestFrame(...)` 같은 API는 request sequence와 frame layout을
   caller에게 노출하므로 runtime/internal helper에 머물러야 한다.

@@ -2,9 +2,9 @@
 [문서 목록](../README.ko.md) | [이전: ZLink Framework Message Model](./message-model.ko.md) | [다음: ZLink Framework API](./framework-api.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](./draft/README.ko.md)
+[스펙 목차](./README.ko.md)
 
-[문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/draft/README.ko.md) | [Node.js](../../languages/node/doc/draft/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
+[문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/README.ko.md) | [Node.js](../../languages/node/doc/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
 
 # ZLink Framework Channel Topology
 
@@ -104,8 +104,7 @@ view를 소유하는 모델"로 읽는 편이 맞다. 즉:
 - spot 타입 등록은 `AddSpotFactory<TSpot>()`처럼 타입 기반으로 두고,
   생성은 `CreateAsync<TSpot>(...)`처럼 그 타입으로 고른다.
 
-즉 SPOT 내부 peer topology와 channel 단위 호출은 서로 다른 경로로 설명하는 편이
-더 자연스럽다.
+SPOT 내부 peer topology와 channel 단위 호출은 서로 다른 경로로 설명한다.
 
 ## 4. playhouse use case에 대한 해석
 
@@ -118,12 +117,12 @@ view를 소유하는 모델"로 읽는 편이 맞다. 즉:
 - `inventory` channel은 `EnableClient()`만 가질 수 있다.
 - `audit` channel은 `EnablePublisher()`만 가질 수 있다.
 
-즉 outward API는 공용 client 하나로 보이더라도, 내부 runtime은 channel마다
+outward API는 공용 client 하나로 보이더라도 내부 runtime은 channel마다
 역할별 역할을 가질 수 있다. 현재 스펙은 이 channel별 역할 구조를
 기본 방향으로 본다.
 
-그리고 channel messaging의 일반 handler dispatch는 local `ROUTER(server)`가
-받은 request 또는 command를 기준으로 설명하는 편이 맞다. outbound
+channel messaging의 일반 handler dispatch는 local `ROUTER(server)`가
+받은 request 또는 command를 기준으로 설명한다. outbound
 `DEALER(client)`가 받는 response는 먼저 보낸 request의 pending reply를 매칭하는
 경로로 보고, 일반 handler dispatch 경로와 섞지 않는다.
 
@@ -205,7 +204,7 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 - `stage-node.orders.client` 수동 연결
 - `stage-node.game.stage.publisher` 수동 연결
 
-즉 수동 연결에서 framework가 관리하는 단위는 "channel 이름" 하나가 아니라,
+수동 연결에서 framework가 관리하는 단위는 "channel 이름" 하나가 아니라
 "channel 안의 특정 역할 runtime"이다.
 
 ### 5.3 Registry topology query
@@ -230,11 +229,10 @@ runtime monitoring은 raw socket 이름보다 logical source 이름을 먼저 �
 - spot event source는 `spot node` 등록 이름을 쓴다.
   예: `stage-node`
 
-즉 monitoring source 이름도 channel grouping과 역할 구분 원칙을 그대로
-따르는 편이 더 자연스럽다.
+monitoring source 이름도 channel grouping과 역할 구분 원칙을 그대로 따른다.
 
-즉 공용 표면은 "channel별 역할 등록 방식"을 먼저 보이고, 내부 구현은
-"channel별 역할 + 역할별 transport 매핑"을 기본으로 두는 편이 좋다.
+공용 표면은 "channel별 역할 등록 방식"을 먼저 보이고, 내부 구현은
+"channel별 역할 + 역할별 transport 매핑"을 기본으로 둔다.
 
 ## 6. 범위 밖에 두는 것
 

@@ -22,6 +22,9 @@
       "@zlink-systems/framework": [
         "packages/framework/src"
       ],
+      "@zlink-systems/http-client": [
+        "packages/http-client/src"
+      ],
       "@zlink-systems/nestjs": [
         "packages/nestjs/src"
       ],

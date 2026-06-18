@@ -5,6 +5,9 @@
       "path": "./packages/framework"
     },
     {
+      "path": "./packages/http-client"
+    },
+    {
       "path": "./packages/nestjs"
     },
     {

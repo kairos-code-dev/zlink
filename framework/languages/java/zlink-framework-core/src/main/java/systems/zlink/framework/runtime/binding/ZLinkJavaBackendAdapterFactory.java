@@ -12,6 +12,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.eventing.MonitorEvent;
+import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
@@ -313,7 +314,14 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void close() { socket.close(); }
     }
 
-    private record JavaStreamSocket(StreamSocket socket) implements ZLinkBackendStreamSocket, JavaSocketBacked {
+    private static final class JavaStreamSocket implements ZLinkBackendStreamSocket, JavaSocketBacked {
+        private final StreamSocket socket;
+        private SocketMonitor monitor;
+
+        private JavaStreamSocket(StreamSocket socket) {
+            this.socket = socket;
+        }
+
         @Override public Socket nativeSocket() { return socket; }
         @Override public String name() { return "stream"; }
         @Override public void bind(String endpoint) { socket.bind(endpoint); }
@@ -321,7 +329,12 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             socket.options().notify(true);
             socket.onPacket(handler::handle);
         }
-        @Override public void onTransportError(ZLinkBackendStreamErrorHandler handler) { }
+        @Override public void onTransportError(ZLinkBackendStreamErrorHandler handler) {
+            closeMonitor();
+            monitor = socket.monitorOpen(MonitorEventType.DISCONNECTED);
+            monitor.onEvent(event -> event.routingId().ifPresent(routingId ->
+                handler.handle(routingId, 0, event.event().name())));
+        }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) {
             return submitFramedStream(socket.send(routingId), 1, null, null, parts, flags);
         }
@@ -362,7 +375,17 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                 header.close();
             }
         }
-        @Override public void close() { socket.close(); }
+        @Override public void close() {
+            closeMonitor();
+            socket.close();
+        }
+
+        private void closeMonitor() {
+            if (monitor != null) {
+                monitor.close();
+                monitor = null;
+            }
+        }
     }
 
     private record JavaRegistry(Registry registry) implements ZLinkBackendRegistry {

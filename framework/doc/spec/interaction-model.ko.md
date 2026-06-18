@@ -2,9 +2,9 @@
 [문서 목록](../README.ko.md) | [이전: ZLink Framework Overview](./overview.ko.md) | [다음: ZLink Framework Message Model](./message-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](./draft/README.ko.md)
+[스펙 목차](./README.ko.md)
 
-[문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/draft/README.ko.md) | [Node.js](../../languages/node/doc/draft/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
+[문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/README.ko.md) | [Node.js](../../languages/node/doc/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
 
 # ZLink Framework Interaction Model
 
@@ -65,7 +65,7 @@
   설명한다.
 - `ROUTER -> DEALER` 임의 push는 현재 channel messaging 공용 계약에 넣지 않는다.
 - 다만 같은 SPOT mesh 안의 `spot-to-spot` send는
-  `ROUTER <-> ROUTER` routed 경로로 설명하는 편이 맞다.
+  `ROUTER <-> ROUTER` routed 경로로 설명한다.
 - SPOT 쪽은 routed 호출보다 attach된 channel client를 통한
   `SendChannel(...).Submit(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
 - caller가 `targetRid`와 `spotId`를 이미 알고 있더라도, 기본 application public
@@ -101,9 +101,9 @@
 - framework 표면은 Header 기반 packet path만 먼저 지원한다. raw byte dispatch는
   MVP 범위에 넣지 않는다.
 - session error는 application handler 예외가 아니라, monitor에서 관찰 가능한
-  transport 오류를 session 단위로 다시 올리는 축으로 제한하는 편이 맞다.
-- 이 session error는 raw monitor event를 그대로 노출하기보다, error kind enum과
-  native detail을 함께 가진 구조화된 값으로 다시 올리는 편이 맞다.
+  transport 오류를 session 단위로 다시 올리는 축으로 제한한다.
+- 이 session error는 raw monitor event를 그대로 노출하지 않고, error kind enum과
+  native detail을 함께 가진 구조화된 값으로 다시 올린다.
 - packet framing 규약을 framework가 얼마나 감출지는 별도 설계가 필요하다.
 - session callback은 transport callback 안에서 직접 실행하지 않는다. framework는
   수신 이벤트를 비동기 실행 단위로 넘긴 뒤 application callback을 호출한다.
@@ -184,8 +184,8 @@ request continuation 과 동시에 실행되지 않는다. room, stage, match �
   상호작용 의미를 먼저 드러내야 한다.
 - `SpotNode` peer topology와 channel 단위 호출은 서로 다른 의미다.
 - 현재 방향에서는 `SpotNode.router` 경로를 공개 high-level direct API로 그대로
-  드러내기보다, current channel publish와 cross-channel send/request를 분리해서
-  설명하는 편이 더 명확하다.
+  드러내지 않고, current channel publish와 cross-channel send/request를 분리해서
+  설명한다.
 - 같은 내부 topology를 쓰더라도, use case가 다르면 공용 이름도 다르게 둔다.
   예를 들어 `request-response`와 `worker-dispatch`는 둘 다 어떤 routed transport
   위에 올릴 수 있어도, 같은 개념으로 설명하지 않는다.

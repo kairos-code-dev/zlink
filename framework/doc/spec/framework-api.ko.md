@@ -2,9 +2,9 @@
 [문서 목록](../README.ko.md) | [이전: ZLink Framework Channel Topology](./channel-topology.ko.md) | [다음: ZLink Framework Actor Model](./actor-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](./draft/README.ko.md)
+[스펙 목차](./README.ko.md)
 
-[문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/draft/README.ko.md) | [Node.js](../../languages/node/doc/draft/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
+[문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/README.ko.md) | [Node.js](../../languages/node/doc/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
 
 # ZLink Framework API
 
@@ -149,7 +149,7 @@ framework는 monitoring 표면을 별도 축으로 설명하는 편이 맞다.
 - application은 typed runtime event handler를 구현해서 이 이벤트를 받는 모델을
   기본으로 본다.
 
-즉 framework는 모든 source를 같은 raw monitor API로 보이게 하기보다,
+framework는 모든 source를 같은 raw monitor API로 보이게 하지 않고,
 source별 구현 차이를 숨긴 typed runtime event surface를 제공하는 편이 더
 자연스럽다.
 
@@ -324,7 +324,7 @@ public sealed class ProfileHandlers
 
 수동 연결을 둘 때는 `channel` 전체가 아니라 `channel + capability` 기준으로
 설정해야 한다. 예를 들어 `account.client` 수동 연결과 `account.subscriber`
-수동 연결은 별도 집합으로 보는 편이 맞다. 그리고 수동 연결 역할은 startup
+수동 연결은 별도 집합으로 본다. 수동 연결 역할은 startup
 설정만이 아니라, 런타임 `Connect`, `Disconnect`, `ListConnections` 같은 제어도
 지원해야 한다.
 

@@ -50,7 +50,7 @@ Registry 는 channel 등록, heartbeat[^heartbeat], topology[^topology] broadcas
 - `RegistryQueryClient` -- 원격 Registry 에 topology 를 묻는 클라이언트다.
   `connect(endpoint)` 로 접속한 뒤 `topology(filter?)` 를 통해 조회한다.
 
-즉 이 문서가 새로 만드는 Registry 기능은 없다. 이미 존재하는 binding 표면을
+이 문서가 새로 만드는 Registry 기능은 없다. 이미 존재하는 binding 표면을
 `NestJS` 의 lifecycle 과 DI 안에 자연스럽게 녹여 내는 일에 초점이 있다.
 
 이 binding 객체(`Registry`, `RegistryQueryClient`)는 framework public 표면에

@@ -2,7 +2,7 @@
 [문서 목록](../README.ko.md) | [이전: ZLink Framework Actor Model](./actor-model.ko.md) | [다음: ZLink Framework Use Case Validation](./usecase-validation.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](./draft/README.ko.md)
+[스펙 목차](./README.ko.md)
 
 [문서 묶음](./README.ko.md) | [Actor 모델](./actor-model.ko.md) | [Session Gateway 보관본](./archive/session-gateway.ko.md) | [framework API](./framework-api.ko.md) | [.NET Session Actor Dispatch](../../languages/dotnet/doc/spec/session-actor-dispatch.ko.md)
 

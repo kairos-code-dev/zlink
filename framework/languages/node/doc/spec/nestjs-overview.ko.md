@@ -237,7 +237,7 @@ DI 단계에서 확정되기 전에는 어떤 역할이 필요한지 알 수 없
 | provider token | 주입 타입 | .NET 대응 | 역할 누락 시 |
 |------|------|------|------|
 | `ZLINK_CHANNEL_CLIENT` | `ZLinkChannelClient` | `IZLinkChannelClient` | 없는 channel/client 역할 호출 시 `ZLinkConfigurationException` |
-| `ZLINK_ROUTE_CLIENT` | `ZLinkRouteClient`(`ZLinkMultipartRouteClient` 포함) | `IZLinkRouteClient`/`IZLinkMultipartRouteClient` | route channel 없으면 호출 시 `ZLinkConfigurationException` |
+| `ZLINK_ROUTE_CLIENT` | `ZLinkRouteClient` | `IZLinkRouteClient` | route channel 없으면 호출 시 `ZLinkConfigurationException` |
 | `ZLINK_FANOUT_CLIENT` | `ZLinkFanoutClient` | `IZLinkFanoutClient` | publisher 역할 없으면 호출 시 `ZLinkConfigurationException` |
 | `ZLINK_BOUND_SESSION_FACTORY` | `ZLinkBoundSessionFactory` | `IZLinkBoundSessionFactory` | binding 없는 actor 호출 시 `ActorSessionNotBound` |
 | `ZLINK_MESSAGE_METADATA_POLICY` | `ZLinkMessageMetadataPolicy` | `IZLinkMessageMetadataPolicy` | 항상 유효 |

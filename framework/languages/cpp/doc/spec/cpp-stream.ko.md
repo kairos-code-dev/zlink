@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ SPOT](./cpp-spot.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Alignment](./handler-interfaces.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../doc/spec/README.ko.md)
 
 [C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [STREAM 샘플](../internals/stream-samples.ko.md) | [STREAM decisions](../internals/stream-open-items.ko.md)
 

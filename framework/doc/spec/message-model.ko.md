@@ -2,9 +2,9 @@
 [문서 목록](../README.ko.md) | [이전: ZLink Framework Interaction Model](./interaction-model.ko.md) | [다음: ZLink Framework Channel Topology](./channel-topology.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](./draft/README.ko.md)
+[스펙 목차](./README.ko.md)
 
-[문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/draft/README.ko.md) | [Node.js](../../languages/node/doc/draft/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
+[문서 묶음](./README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/README.ko.md) | [Node.js](../../languages/node/doc/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
 
 # ZLink Framework Message Model
 
@@ -89,7 +89,7 @@ payload part가 필요해질 수 있으므로, wire 수준에서는 `parts[2...]
 session은 하나의 stream packet을 보내고 받는다. 그 packet 내부에 stream header와
 payload framing이 들어간다.
 
-즉 STREAM 경로의 기본 모양은 아래와 같이 본다.
+STREAM 경로의 기본 모양은 아래와 같이 본다.
 
 | 경로 | wire message shape |
 |------|--------------------|
@@ -151,7 +151,7 @@ binding 또는 framework 위에 얹는 별도 codec extension/provider 계층으
 
 나중에 필요하면 다른 codec을 같은 방식으로 추가할 수 있어야 한다.
 
-즉 `ZLink Framework`는 "payload가 어떤 codec인가"를 handler와 client가 알 수 있게
+`ZLink Framework`는 "payload가 어떤 codec인가"를 handler와 client가 알 수 있게
 해 주되, core transport가 그 codec 내용을 직접 이해하려고 하지는 않는 방향이
 맞다.
 

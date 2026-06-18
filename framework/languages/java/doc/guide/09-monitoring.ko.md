@@ -26,14 +26,14 @@ status/topology 변화, spot peer/subject 변화, timer handler 실패 같은 **
 
 ## 2. Source 등록
 
-`ZLinkMonitoringCustomizer`는 **source 등록만** 한다. 실제 source(socket/registry/
+`ZLinkMonitoringOptionsCustomizer`는 **source 등록만** 한다. 실제 source(socket/registry/
 spot)는 같은 앱에 framework 또는 registry 등록으로 이미 올라와 있어야 한다.
 
 ```java
 @Bean
-ZLinkMonitoringCustomizer monitoring() {
+ZLinkMonitoringOptionsCustomizer monitoring() {
     return options -> {
-        options.addSocketEvents("profile.server", SocketEvent.CONNECTION_READY);
+        options.addSocketEvents("profile.server", ZLinkSocketEventKind.CONNECTION_READY);
         options.addRegistryEvents("registry", Duration.ofSeconds(1));
         options.addSpotEvents("stage-node", Duration.ofSeconds(1));
     };
@@ -105,7 +105,7 @@ Spring application event bridge는 선택 기능이다. public 기준은 typed h
 
 ## 4. 자주 막히는 곳
 
-- **이벤트가 안 온다** -> `ZLinkMonitoringCustomizer`는 source 등록만 한다. 해당
+- **이벤트가 안 온다** -> `ZLinkMonitoringOptionsCustomizer`는 source 등록만 한다. 해당
   source가 framework/registry 등록으로 실제로 떠 있는지 확인한다.
 - **discovery 상태를 받고 싶다** -> discovery는 runtime event가 아니다. Registry
   snapshot/query로 조회한다([09-registry](./08-registry.ko.md)).

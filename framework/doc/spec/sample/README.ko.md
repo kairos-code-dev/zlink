@@ -8,8 +8,8 @@
 .NET, Java, Node, C++ 등에서 구현할 때 한 언어 문서가 다른 언어의 사실상 기준이
 되지 않게 하기 위해서다.
 
-정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMallCheckout,
-GameQuest)은 `.NET` 샘플에서 검증된 흐름을 기준으로 삼되, 모든 framework 언어
+정본 7종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall,
+ShoppingMallCheckout, GameQuest)은 `.NET` 샘플에서 검증된 흐름을 기준으로 삼되, 모든 framework 언어
 (dotnet/java/kotlin/node/cpp)가 동일하게 코드와 문서로 구현한다. 언어별 framework를
 구현할 때 같은 역할 분리, 같은 request/response/notify 이름, 같은 상태 필드, 같은
 smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사용자가 샘플을 읽었을 때
@@ -23,8 +23,29 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 | [TicTacToe](./tictactoe/README.ko.md) | API 서버와 Play 서버만으로 가장 작은 실시간 게임 흐름을 보여 준다. | `Api` 역할 분리, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | 수동 endpoint 연결 | 선언형 등록 우선, 불가능하면 명시 등록 | JSON |
 | [SupportChat](./supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support`, `Registry` 분리 | Registry/Discovery 자동 연결 | typed handler와 domain event publisher | JSON |
 | [DeliveryDispatch](./deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 fanout, 고객 stream push를 확인한다. | `DispatchApi`, `DispatchCenter`, `Courier`, `Tracking`, `Session`, `Registry` 분리 | Registry/Discovery 자동 연결 | channel handler, fanout subscriber, Spot actor join | JSON |
+| ShoppingMall | commerce API가 주문을 시작하고 order workflow가 상태 전이와 projection을 처리한다. | `CommerceApi`, `OrderWorkflow`, `Registry` 분리 | Registry/Discovery 자동 연결 | workflow handler와 projection adapter | JSON |
 | [ShoppingMallCheckout](./event/shoppingmall-checkout.ko.md) | 단일 Commerce API 서버 타입에서 event-sourced 주문 workflow와 projection을 구성한다. | `CommerceApi`, `Registry`, `OrderEventStore`, `OrderReadModelStore`, `CommerceStateStore` 분리 | Registry/Discovery 자동 연결 | event-sourced OrderWorkflow Spot, projection adapter | JSON |
 | [GameQuest](./event/gamequest.ko.md) | stateless Game API action event를 ZLink fanout으로 받아 event sourced quest aggregate와 projection을 갱신한다. | `GameApi`, `QuestMission`, `Registry`, `QuestEventStore`, `QuestReadModelStore`, `GameplayStateStore` 분리 | Registry/Discovery 자동 연결 | fanout subscriber, event-sourced PlayerQuest Spot, projection adapter | JSON |
+
+## 샘플 포팅 기준
+
+Bingo와 TicTacToe는 각자 맡은 기능을 보여 주는 예외 샘플이다. Bingo는 Protobuf
+payload와 Registry/Discovery 기반 gateway 분리를 보여 주고, TicTacToe는 작은 실시간
+game 흐름을 수동 endpoint 연결로 보여 준다.
+
+그 밖의 정본 샘플(SupportChat, DeliveryDispatch, ShoppingMall, ShoppingMallCheckout, GameQuest)은
+아래 기준을 따른다.
+
+- payload codec은 JSON을 기본으로 사용한다. 샘플끼리 payload를 비교하기 쉽고, event
+  sourcing과 projection state를 사람이 읽기 쉬워야 하기 때문이다.
+- 서버 간 연결은 Registry/Discovery 기반 자동 연결로 구성한다. 샘플 코드가 endpoint
+  연결 순서나 route warmup을 직접 관리하지 않게 하기 위해서다.
+- framework가 handler를 스캔하고 등록할 수 있는 언어에서는 모든 handler를 자동 등록한다.
+  샘플마다 handler 목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가
+  누락을 client 시나리오가 늦게 발견하게 된다.
+- C++ 샘플은 handler 자동 등록 예외다. C++ framework는 compile-time 타입과 명시 등록을
+  기준으로 삼으므로, C++ 샘플은 같은 메시지·역할·JSON codec·Registry/Discovery 기준을
+  유지하되 handler 등록은 해당 C++ public builder 표면에 맞게 명시한다.
 
 ## 공통 작성 원칙
 

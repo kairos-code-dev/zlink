@@ -2,7 +2,7 @@
 [문서 목록](../README.ko.md) | [이전: framework API](./framework-api.ko.md) | [다음: Actor 모델](./actor-model.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[Framework 문서](../README.ko.md) | [공통 스펙](./README.ko.md)
+[스펙 목차](./README.ko.md)
 
 # 비동기 실행과 coroutine 정책
 

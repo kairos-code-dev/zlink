@@ -1029,6 +1029,71 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   target_link_libraries(sample_cpp_framework_tictactoe_client PRIVATE
     zlink::http_client
     zlink::stream_e2e_client)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_server
+    samples/DeliveryDispatch/Server/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-server"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_deliverydispatch_client
+    samples/DeliveryDispatch/Client/main.cpp
+    "framework-sample-deliverydispatch;framework-sample-client"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_gamequest_server
+    samples/GameQuest/Server/main.cpp
+    "framework-sample-gamequest;framework-sample-server"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_gamequest_client
+    samples/GameQuest/Client/main.cpp
+    "framework-sample-gamequest;framework-sample-client"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_shoppingmall_server
+    samples/ShoppingMall/Server/main.cpp
+    "framework-sample-shoppingmall;framework-sample-server"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_shoppingmall_client
+    samples/ShoppingMall/Client/main.cpp
+    "framework-sample-shoppingmall;framework-sample-client"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_shoppingmallcheckout_server
+    samples/ShoppingMallCheckout/Server/main.cpp
+    "framework-sample-shoppingmallcheckout;framework-sample-server"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_shoppingmallcheckout_client
+    samples/ShoppingMallCheckout/Client/main.cpp
+    "framework-sample-shoppingmallcheckout;framework-sample-client"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_supportchat_registry
+    samples/SupportChat/Server/Registry/main.cpp
+    "framework-sample-supportchat;framework-sample-registry"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_supportchat_api
+    samples/SupportChat/Server/Api/main.cpp
+    "framework-sample-supportchat;framework-sample-api"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_supportchat_support
+    samples/SupportChat/Server/Support/main.cpp
+    "framework-sample-supportchat;framework-sample-support"
+    zlink::framework)
+  add_zlink_framework_sample(
+    sample_cpp_framework_supportchat_session
+    samples/SupportChat/Server/Session/main.cpp
+    "framework-sample-supportchat;framework-sample-session"
+    zlink::framework
+    zlink::stream_connector)
+  add_executable(sample_cpp_framework_supportchat_client
+    samples/SupportChat/Client/main.cpp)
+  target_link_libraries(sample_cpp_framework_supportchat_client PRIVATE
+    zlink::stream_e2e_client)
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS AND ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE)

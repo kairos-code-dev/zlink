@@ -53,9 +53,17 @@ request 구성(`get/post/put/delete/patch/head/options`, `header`, `query`, `tim
 
 ## 5. 전송 의미론
 
-redirect·retry·cookie jar·compression·TLS·proxy·body 소스 상호 배타 규칙은 재사용 런타임의
-계약을 그대로 따른다([java spec §5](../../java/spec/java-http-client.ko.md#5-전송-의미론)와
-동일 계약). Kotlin 모듈은 전송 의미론을 재정의하지 않는다.
+- **redirect**: `301/302/303/307/308` + `Location`. `303`/(`301`·`302`+`POST`)→`GET`,
+  본문 제거. same-origin `Authorization` 보존, cross-origin 제거. 횟수 한도 초과 시 예외.
+- **retry**: retriable transport 실패(`IOException`)만, 고정 50ms 간격, streaming 제외.
+  status 코드(4xx/5xx)는 재시도하지 않는다.
+- **cookie jar**: host 정확 매칭, 기본 `Path=/`, `Path`/`Secure`/`Max-Age`만 해석,
+  secure cookie는 https에만, host당 128개.
+- **compression**: gzip+deflate 해제, `content-encoding` 헤더 제거, decoded 크기 한도,
+  streaming chunk는 비해제.
+- **TLS**: `trustCertificateFile`로 테스트 인증서 신뢰, `clientCertificateFile`로 mTLS.
+- **proxy**: `proxy(url)` + `proxyBasicAuth` → `Proxy-Authorization`.
+- **body 소스 상호 배타**: `body`/`bodyStream`/`form`/`multipart` 중 하나.
 
 ## 6. 에러 매핑
 

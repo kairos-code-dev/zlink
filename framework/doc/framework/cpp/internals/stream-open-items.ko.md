@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Spec -- C++ Stage Wrapper On SPOT](../spec/stage-wrapper-on-spot.ko.md) | [다음: C++ Stream Connector 가이드](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Spec -- C++ Stage Wrapper On SPOT](../spec/stage-wrapper-on-spot.ko.md) | [다음: C++ Stream Connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../common/README.ko.md)
@@ -35,5 +35,5 @@ core public 표면 밖의 extension 검토 범위다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Spec -- C++ Stage Wrapper On SPOT](../spec/stage-wrapper-on-spot.ko.md) | [다음: C++ Stream Connector 가이드](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: Spec -- C++ Stage Wrapper On SPOT](../spec/stage-wrapper-on-spot.ko.md) | [다음: C++ Stream Connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

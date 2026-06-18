@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: C++ Stream Connector 가이드](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: C++ Stream Connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../common/README.ko.md)
@@ -108,5 +108,5 @@ session은 attach된 ActorGateway를 통해 actor로 packet을 넘긴다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: C++ Stream Connector 가이드](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: C++ Stream Connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

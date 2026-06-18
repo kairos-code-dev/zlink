@@ -29,7 +29,7 @@
 | actor / Entry Spot | 높음 | session과 묶인 actor로 packet 자동 dispatch | [9](09-actor-session.ko.md) |
 | session ↔ actor 바인딩·게이트웨이 | 높음 | 연결 서버와 로직 서버를 분리(재접속 이전성) | [9 §4–5](09-actor-session.ko.md#4-session-actor-바인딩) |
 | STREAM session(서버) | 중간 | 외부 client(TCP/WS)를 framework로 받기 | [10](10-stream.ko.md) |
-| Stream Connector(client) | 중간 | client 측에서 STREAM 서버에 접속 | [connector 가이드](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md) |
+| Stream Connector(client) | 중간 | client 측에서 STREAM 서버에 접속 | [connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md) |
 | Registry topology 조회 | 중간 | 클러스터 topology snapshot/query | [11](11-registry.ko.md) |
 | runtime monitoring | 낮음 | socket/registry/spot 이벤트·health·metric 관찰 | [12](12-monitoring.ko.md) |
 

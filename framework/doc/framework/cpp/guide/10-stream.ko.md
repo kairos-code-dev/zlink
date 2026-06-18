@@ -117,7 +117,7 @@ auto notify = co_await client.wait_for<game_state_notify_t> ().async ();   // �
 ```
 
 connector의 계약과 사용법은
-[stream connector 가이드](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md)를
+[stream connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)를
 본다. 동작 예제는 [samples/TicTacToe/Client](../../../../languages/cpp/samples/TicTacToe/Client)가 기준이다.
 
 connector도 framework처럼 **custom codec**을 끼울 수 있다. connector typed 경로는
@@ -152,11 +152,11 @@ stream 패킷도 채널 메시지와 같은 typed DTO(`packet_name`)다. 서버 
   `enable_actor_gateway`(spot 노드 쪽) 짝이 맞는지 확인한다([9장 §5](09-actor-session.ko.md#5-actor-gateway)).
 - **패킷 디코딩 실패** → `packet_name`과 codec 등록을 확인한다.
 - **heartbeat·재연결·TLS 동작** → 이는 서버 session이 아니라 클라이언트
-  connector의 책임이다. [connector 가이드](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md)가 다룬다.
+  connector의 책임이다. [connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)가 다룬다.
 
 ## 7. 더 보기
 
-- 클라이언트 connector(연결·heartbeat·재연결·TLS): [connector 가이드](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md)
+- 클라이언트 connector(연결·heartbeat·재연결·TLS): [connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)
 - 인터페이스/계약 카탈로그: [13장 인터페이스 카탈로그](13-interface-catalog.ko.md)
 - 실행 가능한 전체 예제: [14장 샘플 맵](14-samples-map.ko.md)
 - session ↔ actor 바인딩·게이트웨이: [9장 Actor · Session](09-actor-session.ko.md)

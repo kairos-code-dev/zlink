@@ -1605,7 +1605,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 |-----------|-----------|
 | [cpp-framework-implementation-plan.ko.md](cpp-framework-implementation-plan.ko.md) | Goal 1-22 실행 계획 |
 | [cpp-framework-overview.ko.md](cpp-framework-overview.ko.md) | Goal 1-22 |
-| [connector/doc/guide/INDEX.ko.md](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md) | Goal 14-16 |
+| [connector/doc/guide/INDEX.ko.md](../../../stream-connector/cpp/guide/INDEX.ko.md) | Goal 14-16 |
 | [cpp-http-client.ko.md](../../../http-client/cpp/spec/cpp-http-client.ko.md) | Goal 18 |
 | [cpp-framework-policy.ko.md](cpp-framework-policy.ko.md) | Goal 1-22 |
 | [cpp-application-framework.ko.md](../spec/cpp-application-framework.ko.md) | Goal 6, Goal 19, Goal 21, Goal 22 |

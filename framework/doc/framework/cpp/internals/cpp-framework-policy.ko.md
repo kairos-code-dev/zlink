@@ -1343,7 +1343,7 @@ result, event model로 표현한다. 이 기준을 지키면 C++ public API는 `
 계약을 제공하면서도 C++20의 RAII, template, coroutine 사용성을 유지할 수 있다.
 
 C++ Stream Connector 패키징은 별도 문서인
-[STREAM Connector 가이드](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md)를 따른다. framework sample이나
+[STREAM Connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)를 따른다. framework sample이나
 framework target에 connector public API를 섞지 않는다.
 Unreal Connector도 같은 문서에서 다루며 framework target에 포함하지 않는다.
 

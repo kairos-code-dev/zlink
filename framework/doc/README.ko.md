@@ -10,7 +10,7 @@
 |---------|--------|------|
 | **Framework adapter** | [framework/common/](framework/common/README.ko.md) | 언어 중립 공통 스펙(`framework/common/`) + 언어별 guide·spec·internals(`framework/<lang>/`) |
 | **HTTP Client** | [http-client/](http-client/dotnet/README.ko.md) | 언어별 HTTP client 문서(`http-client/<lang>/`) |
-| **Stream Connector** | [cpp connector](../languages/cpp/connector/doc/guide/INDEX.ko.md) | C++ Stream Connector 라이브러리 문서(이전 예정: `stream-connector/`) |
+| **Stream Connector** | [stream-connector/](stream-connector/cpp/guide/INDEX.ko.md) | C++ Stream Connector 라이브러리 문서(`stream-connector/cpp/`) |
 
 아래는 **Framework adapter** 컴포넌트 상세다. `framework/common/`이 언어 중립 정식 계약,
 `framework/<lang>/`이 각 언어 표면이다. `.NET`·`C++`·`Java/Kotlin`·`Node.js` 네 언어가

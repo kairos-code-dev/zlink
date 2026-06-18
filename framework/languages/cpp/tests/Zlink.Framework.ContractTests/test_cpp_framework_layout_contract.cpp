@@ -217,7 +217,7 @@ bool draft_tracking_table_matches_files (const std::filesystem::path &root)
 
     // 별도 산출물의 계약 문서도 추적표에 정확히 한 번 올린다.
     const std::string artifact_links[] = {
-      "(../../../../languages/cpp/connector/doc/guide/INDEX.ko.md)",
+      "(../../../stream-connector/cpp/guide/INDEX.ko.md)",
       "(../../../http-client/cpp/spec/cpp-http-client.ko.md)"};
     for (const auto &link : artifact_links) {
         if (count_occurrences (table, link) != 1) {

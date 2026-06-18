@@ -30,7 +30,7 @@
 | 산출물 | 문서 |
 |--------|------|
 | HTTP client (`zlink::http_client`) | [가이드](../../http-client/cpp/README.ko.md) · [spec](../../http-client/cpp/spec/cpp-http-client.ko.md) |
-| Stream connector (`zlink::stream_connector`) | [사용자 가이드](../../../languages/cpp/connector/doc/guide/INDEX.ko.md) |
+| Stream connector (`zlink::stream_connector`) | [사용자 가이드](../../stream-connector/cpp/guide/INDEX.ko.md) |
 
 ## internals 목록
 

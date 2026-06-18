@@ -4,7 +4,7 @@
 
 [스펙 목차](../../common/README.ko.md)
 
-[Framework Adapter 정책](../../common/README.ko.md) | [구현 계획](cpp-framework-implementation-plan.ko.md) | [POSD 기록](cpp-framework-posd-refactoring-log.ko.md) | [C++ 정책](cpp-framework-policy.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/cpp-channel-messaging.ko.md) | [channel 샘플](channel-messaging-samples.ko.md) | [SPOT](../spec/cpp-spot.ko.md) | [SPOT 샘플](spot-samples.ko.md) | [ActorGateway relay](../spec/actor-gateway-session-relay.ko.md) | [Stage wrapper](../spec/stage-wrapper-on-spot.ko.md) | [STREAM](../spec/cpp-stream.ko.md) | [STREAM decisions](stream-open-items.ko.md) | [STREAM Connector 가이드](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md) | [HTTP Client](../../../http-client/cpp/spec/cpp-http-client.ko.md) | [HTTP Hosting](../spec/cpp-http-hosting.ko.md) | [Embedded HTTP Server](../spec/cpp-embedded-http-server.ko.md) | [STREAM 샘플](stream-samples.ko.md) | [Monitoring](../spec/cpp-monitoring.ko.md) | [Registry](../spec/cpp-registry.ko.md)
+[Framework Adapter 정책](../../common/README.ko.md) | [구현 계획](cpp-framework-implementation-plan.ko.md) | [POSD 기록](cpp-framework-posd-refactoring-log.ko.md) | [C++ 정책](cpp-framework-policy.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/cpp-channel-messaging.ko.md) | [channel 샘플](channel-messaging-samples.ko.md) | [SPOT](../spec/cpp-spot.ko.md) | [SPOT 샘플](spot-samples.ko.md) | [ActorGateway relay](../spec/actor-gateway-session-relay.ko.md) | [Stage wrapper](../spec/stage-wrapper-on-spot.ko.md) | [STREAM](../spec/cpp-stream.ko.md) | [STREAM decisions](stream-open-items.ko.md) | [STREAM Connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md) | [HTTP Client](../../../http-client/cpp/spec/cpp-http-client.ko.md) | [HTTP Hosting](../spec/cpp-http-hosting.ko.md) | [Embedded HTTP Server](../spec/cpp-embedded-http-server.ko.md) | [STREAM 샘플](stream-samples.ko.md) | [Monitoring](../spec/cpp-monitoring.ko.md) | [Registry](../spec/cpp-registry.ko.md)
 
 # Draft -- ZLink Framework For C++
 
@@ -139,7 +139,7 @@ Stream Connector는 C++ framework 샘플이나 framework package가 아니다. C
 Stream Connector는 별도 public header, 별도 CMake target, 별도 배포 단위를 가지는
 client-side library로 둔다. Unreal용 connector도 별도 Unreal plugin 배포 단위로 두고,
 Unreal 전용 함수와 타입을 제공한다. 자세한 내용은
-[STREAM Connector 가이드](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md)를 따른다.
+[STREAM Connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)를 따른다.
 
 codec 구조는 binding, framework, connector가 같은 원칙을 따른다. base C++ binding은
 raw `message_t`와 protocol enum만 제공하고 JSON, MessagePack, Protobuf dependency를
@@ -208,7 +208,7 @@ host/runtime 표면으로만 구체화한다.
 | [actor-gateway-session-relay.ko.md](../spec/actor-gateway-session-relay.ko.md) | STREAM session과 actor를 ActorGateway로 bind/relay하는 C++ standalone runtime 초안 |
 | [cpp-stream.ko.md](../spec/cpp-stream.ko.md) | framework Header 기반 packet stream과 handler 통합 |
 | [stream-open-items.ko.md](stream-open-items.ko.md) | STREAM 결정 기록 |
-| [connector/doc/guide/INDEX.ko.md](../../../../languages/cpp/connector/doc/guide/INDEX.ko.md) | C++용 Stream Connector 별도 라이브러리, 배포 단위, Unreal/Godot/Axmol adapter 기준 |
+| [connector/doc/guide/INDEX.ko.md](../../../stream-connector/cpp/guide/INDEX.ko.md) | C++용 Stream Connector 별도 라이브러리, 배포 단위, Unreal/Godot/Axmol adapter 기준 |
 | [cpp-http-client.ko.md](../../../http-client/cpp/spec/cpp-http-client.ko.md) | C++ framework 샘플과 HTTP e2e에서 쓰는 fluent HTTP/JSON client |
 | [cpp-http-hosting.ko.md](../spec/cpp-http-hosting.ko.md) | ASP.NET Core Minimal API에 대응하는 HTTP hosting과 zlink request 연동 |
 | [cpp-embedded-http-server.ko.md](../spec/cpp-embedded-http-server.ko.md) | 내장 HTTP 웹서버 runtime 개발 기준 |

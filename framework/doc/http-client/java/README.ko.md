@@ -30,7 +30,7 @@ HttpResponse<CreateGameRes> game = ZLinkHttpClient.create("https://game-api.exam
 | 12 | [압축](12-compression.ko.md) | gzip/deflate 투명 해제 |
 | 13 | [에러 처리](13-error-handling.ko.md) | 예외 모델, retriable, 예외 경로 |
 
-Kotlin coroutine(`suspend`) 확장과 DSL은 [Kotlin coroutine 확장](kotlin.ko.md)에서 다룬다
+Kotlin coroutine(`suspend`) 확장과 DSL은 [Kotlin coroutine 확장](../kotlin/README.ko.md)에서 다룬다
 (java 런타임을 공유하는 얇은 idiom 레이어).
 
 정식 계약과 회귀 테스트 축은 spec 문서

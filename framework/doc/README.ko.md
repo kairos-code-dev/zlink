@@ -78,12 +78,14 @@ stage state sync, real-time notification fanout, scatter-gather query, workflow 
 
 ## 2. HTTP Client (`http-client/`)
 
-fluent HTTP/JSON client. 네 언어가 동일한 13장 골격을 공유한다.
+fluent HTTP/JSON client. `.NET`·`Java`·`Node.js`·`C++`가 동일한 13장 골격을
+공유하고, Kotlin은 Java 런타임에 coroutine 확장을 얹는다.
 
 | 언어 | 진입점 |
 |------|--------|
 | `.NET` | [http-client/dotnet](http-client/dotnet/README.ko.md) |
-| `Java/Kotlin` | [http-client/java](http-client/java/README.ko.md) |
+| `Java` | [http-client/java](http-client/java/README.ko.md) |
+| `Kotlin` | [http-client/kotlin](http-client/kotlin/README.ko.md) |
 | `Node.js` | [http-client/node](http-client/node/README.ko.md) |
 | `C++` | [http-client/cpp](http-client/cpp/README.ko.md) |
 

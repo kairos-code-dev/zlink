@@ -222,6 +222,7 @@ framework/languages/dotnet/**/bin/
 framework/languages/dotnet/**/obj/
 framework/languages/dotnet/**/.vs/
 framework/languages/dotnet/**/TestResults/
+framework/languages/dotnet/artifacts/
 framework/languages/dotnet/**/*.user
 framework/languages/dotnet/**/*.suo
 framework/languages/dotnet/**/*.userosscache

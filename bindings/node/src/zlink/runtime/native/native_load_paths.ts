@@ -46,9 +46,9 @@ export function prepareDevelopmentRuntimeLink(packageRoot: string): void {
   const addonDir = path.join(packageRoot, 'build', 'Release');
   const coreDir = path.join(packageRoot, '..', '..', 'core', 'build', 'lib');
   const coreAltDir = path.join(packageRoot, '..', 'build_cpp', 'lib');
-  refreshAddonRuntimeLink(path.join(addonDir, 'libzlink.so.6'), [
-    path.join(coreDir, 'libzlink.so.6'),
-    path.join(coreAltDir, 'libzlink.so.6')
+  refreshAddonRuntimeLink(path.join(addonDir, 'libzlink.so.7'), [
+    path.join(coreDir, 'libzlink.so.7'),
+    path.join(coreAltDir, 'libzlink.so.7')
   ]);
   prependLibraryPath([coreDir, coreAltDir, addonDir]);
 }

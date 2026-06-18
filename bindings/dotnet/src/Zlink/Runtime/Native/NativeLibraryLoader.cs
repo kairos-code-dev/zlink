@@ -192,7 +192,7 @@ internal static class NativeLibraryLoader
             return new[] { "zlink", "zlink.dll" };
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             return new[] { "zlink", "libzlink.dylib" };
-        return new[] { "zlink", "libzlink.so", "libzlink.so.6" };
+        return new[] { "zlink", "libzlink.so", "libzlink.so.7" };
     }
 
     private static string GetRid()
@@ -217,6 +217,6 @@ internal static class NativeLibraryLoader
             return new[] { "zlink.dll" };
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             return new[] { "libzlink.dylib" };
-        return new[] { "libzlink.so", "libzlink.so.6" };
+        return new[] { "libzlink.so", "libzlink.so.7" };
     }
 }

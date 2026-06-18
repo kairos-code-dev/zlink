@@ -15,7 +15,7 @@ Gradle 또는 Maven으로 추가합니다. 네이티브 코어가 플랫폼별�
 
 ```groovy
 dependencies {
-    implementation 'systems.zlink:zlink-java:6.0.4'
+    implementation 'systems.zlink:zlink-java:7.0.0'
 }
 ```
 
@@ -25,7 +25,7 @@ dependencies {
 <dependency>
     <groupId>systems.zlink</groupId>
     <artifactId>zlink-java</artifactId>
-    <version>6.0.4</version>
+    <version>7.0.0</version>
 </dependency>
 ```
 

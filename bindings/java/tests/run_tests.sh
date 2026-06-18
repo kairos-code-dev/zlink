@@ -6,9 +6,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CORE_LIB="${ROOT_DIR}/../core/build/lib/libzlink.so"
 if [[ -f "${CORE_LIB}" ]]; then
   export ZLINK_LIBRARY_PATH="${CORE_LIB}"
-  CORE_SONAME_TARGET="$(readlink "${ROOT_DIR}/../core/build/lib/libzlink.so.6" || true)"
+  CORE_SONAME_TARGET="$(readlink "${ROOT_DIR}/../core/build/lib/libzlink.so.7" || true)"
   if [[ -z "${CORE_SONAME_TARGET}" ]]; then
-    CORE_SONAME_TARGET="libzlink.so.6"
+    CORE_SONAME_TARGET="libzlink.so.7"
   fi
   CORE_SONAME_LIB="${ROOT_DIR}/../core/build/lib/${CORE_SONAME_TARGET}"
   for native_dir in \
@@ -17,7 +17,7 @@ if [[ -f "${CORE_LIB}" ]]; then
     if [[ -d "${native_dir}" ]]; then
       cp -f "${CORE_LIB}" "${native_dir}/libzlink.so"
       cp -f "${CORE_SONAME_LIB}" "${native_dir}/${CORE_SONAME_TARGET}"
-      ln -sfn "${CORE_SONAME_TARGET}" "${native_dir}/libzlink.so.6"
+      ln -sfn "${CORE_SONAME_TARGET}" "${native_dir}/libzlink.so.7"
     fi
   done
 fi

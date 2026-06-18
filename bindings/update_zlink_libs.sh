@@ -367,8 +367,8 @@ replace_regex_optional(node_version_test, r"assert\.equal\(v\[2\],\s*\d+\);",
 
 replace_regex(python_pyproject, r'^version\s*=\s*"[^"]+"$',
               f'version = "{expect}"')
-replace_regex(python_pkg_info, r"^Version:\s*.*$",
-              f"Version: {expect}")
+replace_regex_optional(python_pkg_info, r"^Version:\s*.*$",
+                       f"Version: {expect}")
 python_major_updated = replace_regex_optional(
     python_version_test,
     r"self\.assertEqual\(major,\s*\d+\)",

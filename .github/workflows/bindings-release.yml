@@ -148,8 +148,10 @@ jobs:
           install -m755 \
             core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
             bindings/node/prebuilds/linux-x64/libzlink.so.${{ needs.resolve.outputs.version }}
-          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/node/prebuilds/linux-x64/libzlink.so.5
-          ln -sfn libzlink.so.5 bindings/node/prebuilds/linux-x64/libzlink.so
+          major="${{ needs.resolve.outputs.version }}"
+          major="${major%%.*}"
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} "bindings/node/prebuilds/linux-x64/libzlink.so.${major}"
+          ln -sfn "libzlink.so.${major}" bindings/node/prebuilds/linux-x64/libzlink.so
 
       - uses: actions/setup-node@v4
         with:
@@ -171,8 +173,11 @@ jobs:
           cd bindings/node
           npm ci
           cp prebuilds/linux-x64/libzlink.so build/Release/libzlink.so
-          cp prebuilds/linux-x64/libzlink.so.5 build/Release/libzlink.so.5
+          major="${{ needs.resolve.outputs.version }}"
+          major="${major%%.*}"
+          cp "prebuilds/linux-x64/libzlink.so.${major}" "build/Release/libzlink.so.${major}"
           npm test
+          cp build/Release/zlink.node prebuilds/linux-x64/zlink.node
 
       - name: Package
         run: |
@@ -232,8 +237,10 @@ jobs:
           install -m755 \
             core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
             bindings/go/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
-          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/go/native/linux-x86_64/libzlink.so.5
-          ln -sfn libzlink.so.5 bindings/go/native/linux-x86_64/libzlink.so
+          major="${{ needs.resolve.outputs.version }}"
+          major="${major%%.*}"
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} "bindings/go/native/linux-x86_64/libzlink.so.${major}"
+          ln -sfn "libzlink.so.${major}" bindings/go/native/linux-x86_64/libzlink.so
 
       - uses: actions/setup-go@v5
         with:
@@ -511,8 +518,10 @@ jobs:
           install -m755 \
             core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
             bindings/cpp/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
-          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/cpp/native/linux-x86_64/libzlink.so.5
-          ln -sfn libzlink.so.5 bindings/cpp/native/linux-x86_64/libzlink.so
+          major="${{ needs.resolve.outputs.version }}"
+          major="${major%%.*}"
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} "bindings/cpp/native/linux-x86_64/libzlink.so.${major}"
+          ln -sfn "libzlink.so.${major}" bindings/cpp/native/linux-x86_64/libzlink.so
 
       - name: Build and test
         run: |
@@ -567,8 +576,10 @@ jobs:
           install -m755 \
             core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
             bindings/rust/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
-          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/rust/native/linux-x86_64/libzlink.so.5
-          ln -sfn libzlink.so.5 bindings/rust/native/linux-x86_64/libzlink.so
+          major="${{ needs.resolve.outputs.version }}"
+          major="${major%%.*}"
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} "bindings/rust/native/linux-x86_64/libzlink.so.${major}"
+          ln -sfn "libzlink.so.${major}" bindings/rust/native/linux-x86_64/libzlink.so
 
       - uses: dtolnay/rust-toolchain@stable
 

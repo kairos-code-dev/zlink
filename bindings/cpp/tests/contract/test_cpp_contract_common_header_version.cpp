@@ -2,9 +2,9 @@
 
 #include <zlink/common.h>
 
-static_assert(ZLINK_VERSION_MAJOR == 6, "zlink/common.h major version must match package version");
+static_assert(ZLINK_VERSION_MAJOR == 7, "zlink/common.h major version must match package version");
 static_assert(ZLINK_VERSION_MINOR == 0, "zlink/common.h minor version must match package version");
-static_assert(ZLINK_VERSION_PATCH == 4, "zlink/common.h patch version must match package version");
+static_assert(ZLINK_VERSION_PATCH == 0, "zlink/common.h patch version must match package version");
 static_assert(ZLINK_VERSION == ZLINK_MAKE_VERSION(6, 0, 4),
   "zlink/common.h aggregate version must match package version");
 

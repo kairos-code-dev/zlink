@@ -12,6 +12,7 @@ const prebuildRoot = path.join(packageRoot, 'prebuilds');
 const packageVersion = JSON.parse(
   fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8')
 ).version;
+const packageMajor = packageVersion.split('.')[0];
 
 function fail(message) {
   throw new Error(message);
@@ -59,22 +60,25 @@ function isWindowsSystemDll(name) {
 function validateLinux(dir, arch) {
   const addon = path.join(dir, 'zlink.node');
   const dynamic = readElfDynamic(addon);
-  if (!dynamic.includes('Shared library: [libzlink.so.6]')) {
-    fail(`${addon} must depend on libzlink.so.6`);
+  if (!dynamic.includes('Shared library: [libzlink.so.7]')) {
+    fail(`${addon} must depend on libzlink.so.7`);
   }
-  if (dynamic.includes('Shared library: [libzlink.so.5]')) {
-    fail(`${addon} still depends on stale libzlink.so.5`);
+  if (dynamic.includes('Shared library: [libzlink.so.6]') || dynamic.includes('Shared library: [libzlink.so.5]')) {
+    fail(`${addon} still depends on a stale libzlink SONAME`);
   }
   if (!dynamic.includes('Library runpath: [$ORIGIN]')) {
     fail(`${addon} must use $ORIGIN runpath`);
   }
-  const linuxCoreLib = `libzlink.so.${packageVersion}`;
+  const linuxCoreLib = `libzlink.so.${packageMajor}`;
   if (!fs.existsSync(path.join(dir, linuxCoreLib))) {
     fail(`${dir} is missing ${linuxCoreLib}`);
   }
+  for (const stale of fs.readdirSync(dir)) {
+    if (/^libzlink\.so\.\d+\.\d+\.\d+$/.test(stale) && stale !== linuxCoreLib) {
+      fail(`${dir} contains stale ${stale}`);
+    }
+  }
   for (const stale of [
-    'libzlink.so.6.0.0',
-    'libzlink.so.6.0.1',
     'libzlink_c.so',
     'libzlink_c.so.1',
     'libzlink_c.so.1.0.0',
@@ -135,10 +139,6 @@ function validateWindows(dir, arch) {
 function validateDir(entry) {
   const dir = path.join(prebuildRoot, entry);
   const addon = path.join(dir, 'zlink.node');
-  if (!fs.existsSync(addon)) {
-    fail(`${entry} is missing zlink.node`);
-  }
-
   const [platform, arch] = entry.split('-');
   if (platform === 'linux') {
     validateLinux(dir, arch);
@@ -153,7 +153,12 @@ function validateDir(entry) {
 
 const entries = fs.readdirSync(prebuildRoot)
   .filter((entry) => fs.statSync(path.join(prebuildRoot, entry)).isDirectory())
+  .filter((entry) => fs.existsSync(path.join(prebuildRoot, entry, 'zlink.node')))
   .sort();
+
+if (entries.length === 0) {
+  fail('no zlink.node prebuilds found');
+}
 
 for (const entry of entries) {
   validateDir(entry);

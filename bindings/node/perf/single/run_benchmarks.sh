@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
-CORE_RUNTIME="$REPO_ROOT/core/build/lib/libzlink.so.6"
+CORE_RUNTIME="$REPO_ROOT/core/build/lib/libzlink.so.7"
 cd "$ROOT_DIR"
 
 REUSE_BUILD=0

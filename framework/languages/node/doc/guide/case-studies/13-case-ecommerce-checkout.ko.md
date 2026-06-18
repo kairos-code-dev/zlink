@@ -174,7 +174,6 @@ export class PlaceOrderHandler
     }
     const charge = await this.services
       .requestToChannel('payments', new Charge(req.orderId, req.accountId, req.amountMinor, req.orderId))
-      .timeout(2000)
       .submit<Charged>();
     await this.orders.withTransaction(async (tx) => {
       await this.orders.insertOrder(req.orderId, charge.receiptId, tx);

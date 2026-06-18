@@ -1483,7 +1483,6 @@ protobuf, json, messagepack 사용자는 `message_t`와 serializer registry에�
 ```cpp
 auto reply = co_await client
   .request("profile", query)
-  .timeout(std::chrono::seconds(2))
   .async<profile_reply_t>();
 
 use_profile(reply);

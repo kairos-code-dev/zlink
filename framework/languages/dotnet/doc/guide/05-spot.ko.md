@@ -398,7 +398,6 @@ public sealed class StageNoticeHandler
         await outbound.SendToChannel("orders", new RoomNoticeMessage(request.Text)).Async(ct);
         var state = await outbound
             .RequestToChannel("orders", new GetOrderStateRequest())
-            .Timeout(TimeSpan.FromMilliseconds(200))
             .Async<GetOrderStateReply>(ct);
 
         // (c) 다른 Spot 으로 (RoutingId)

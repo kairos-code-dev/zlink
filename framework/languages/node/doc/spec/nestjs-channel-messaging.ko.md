@@ -934,7 +934,6 @@ export class ProfileController {
 ```ts
 const reply = await client
   .requestToChannel('profile', new GetProfileRequest(accountId))
-  .timeout(200)
   .submit<GetProfileReply>();
 
 interface RefreshProfileCachePayload {
@@ -943,7 +942,6 @@ interface RefreshProfileCachePayload {
 
 await client
   .sendToChannel('profile', { accountId } satisfies RefreshProfileCachePayload)
-  .packetName('profile.refresh-cache')
   .submit();
 ```
 

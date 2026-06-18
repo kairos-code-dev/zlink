@@ -132,7 +132,7 @@ loop 를 직접 다루지 않고, 등록 표면만 본다.
 - session/actor 입장
 - spot state 접근 규칙
 
-즉 wrapper 문서가 말해야 하는 것은 "같은 `Spot` 상태는 같은 실행 계약으로
+wrapper 문서가 말해야 하는 것은 "같은 `Spot` 상태는 같은 실행 계약으로
 처리된다" 는 점이다. 사용자가 내부 runtime 구현을 직접 소유한다는 뜻은 아니다.
 
 `Stage` wrapper 관점에서는 다음과 같이 정리할 수 있다.
@@ -166,7 +166,7 @@ loop 를 직접 다루지 않고, 등록 표면만 본다.
 - join 된 actor 로 들어가는 모든 packet 은 **같은 `Spot` 실행 문맥** 으로 다시
   모아서 처리한다.
 
-즉 actor 가 `Spot` 에 붙었다는 것은 단순히 membership table 에 등록되었다는
+actor 가 `Spot` 에 붙었다는 것은 단순히 membership table 에 등록되었다는
 뜻만이 아니다. 그 actor 에 대한 후속 packet, disconnect, timer 후속 작업까지
 모두 그 `Spot` 이 소유한 실행 문맥으로 다시 들어온다는 의미를 포함한다.
 
@@ -224,7 +224,7 @@ handler 가 같은 `Spot` state 를 동시에 만지고 있는가" 를 매번 �
 - stream packet 은 framework 가 header와 payload를 보존한 actor dispatch로
   정규화한 뒤, 같은 actor dispatch 경로를 그대로 탄다.
 
-즉 "`Spot` 에 actor 가 join 된다" 는 말은 membership 만 가리키는 것이 아니다.
+"`Spot` 에 actor 가 join 된다" 는 말은 membership 만 가리키는 것이 아니다.
 **그 actor 의 packet 처리 ownership 이 해당 `Spot` 으로 넘어간다** 는 뜻으로
 읽어야 한다.
 
@@ -282,7 +282,7 @@ public sealed class Timer : IZlinkTimer
 }
 ```
 
-즉 framework 의 `Context.AddTimer<THandler>(...)` 는 native timer handle 을
+framework 의 `Context.AddTimer<THandler>(...)` 는 native timer handle 을
 그대로 드러내는 표면이 아니다. framework runtime 이 만든 managed `.NET` timer
 를 spot lifecycle / DI 모델에 붙여 주는 wrapper 로 읽는 편이 맞다.
 
@@ -336,7 +336,7 @@ timer handler 는 `ZLinkTimerTick` 을 받아 callback 번호, fixed-rate 시간
 
 현재 `IZLinkSpotManager` 의 기본 정의는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) 의 section 6.3 을 따른다.
-즉 현재 framework 기본 계약은 `TSpot` 타입으로 factory를 고르는 생성과,
+현재 framework 기본 계약은 `TSpot` 타입으로 factory를 고르는 생성과,
 `TSpot + spotRid`로 기존 logical spot을 확보하는 수준이다.
 
 `Stage wrapper` 를 만들려면 최소한 다음 중 하나가 더 필요하다.
@@ -377,7 +377,7 @@ public interface IStageSpotManager
 이것은 `SPOT` 의 필수 계약일 필요는 없다. 즉 기본 `zlink framework` 범위를 넘는
 영역이다. 다만 `Stage wrapper` 초안에서는 별도의 축으로 명시되어 있어야 한다.
 
-즉 현재 `SPOT` 문서만으로는 다음을 충분히 설명하지 못한다.
+현재 `SPOT` 문서만으로는 다음을 충분히 설명하지 못한다.
 
 - client connection과 spot의 연결
 - actor 인증과 입장
@@ -391,7 +391,7 @@ public interface IStageSpotManager
 `Stage wrapper` 를 실제로 사용하는 응용은 보통 `stageId` 만 들고 있는 경우가
 많다.
 
-즉 상위 계층에는 다음 중 하나가 필요하다.
+상위 계층에는 다음 중 하나가 필요하다.
 
 - `stageId -> stage 위치 정보` lookup
 - `logical key -> channel / node / spot` 해석 helper

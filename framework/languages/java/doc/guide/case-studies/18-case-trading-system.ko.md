@@ -94,7 +94,6 @@ public final class TickPublishHandler implements ZLinkSpotPacketHandler<SymbolBo
 // 리스크 점검 같은 주변부는 일반 channel request (마이크로초 핫패스 밖)
 RiskDecision decision = client
     .requestToChannel("risk", new CheckLimit(order.accountId(), order.notional()))
-    .timeout(Duration.ofMillis(50))
     .submit(RiskDecision.class)
     .toCompletableFuture()
     .join();

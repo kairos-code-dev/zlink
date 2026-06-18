@@ -90,7 +90,6 @@ async function publishTick(spot: SymbolBookSpot, trade: Trade): Promise<void> {
 // 리스크 점검 같은 주변부는 일반 channel request (마이크로초 핫패스 밖)
 const decision = await client
   .requestToChannel('risk', new CheckLimit(order.accountId, order.notional))
-  .timeout(50)
   .submit<RiskDecision>();
 ```
 

@@ -42,7 +42,7 @@
 - `Spot` publish / subscribe
 - channel client attach 기반 channel send / request
 
-즉 이 문서의 핵심은 `SPOT` 기능 자체를 새로 만드는 일이 아니다. 이미 존재하는
+이 문서의 핵심은 `SPOT` 기능 자체를 새로 만드는 일이 아니다. 이미 존재하는
 binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 정리하는 것이
 목적이다.
 
@@ -66,7 +66,7 @@ binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 
 - MMORPG zone
 - 필요하다면 Redis pub/sub 같은 fan-out[^fan-out] 주제 공간
 
-즉 `SPOT` 은 "토픽 시스템" 이 아니라 먼저 "논리 대상 인스턴스" 로 설명되어야
+`SPOT` 은 "토픽 시스템" 이 아니라 먼저 "논리 대상 인스턴스" 로 설명되어야
 한다. publish / subscribe 는 그 안에서 함께 사용할 수 있는 한 가지 활용 방식일
 뿐이다.
 
@@ -161,7 +161,7 @@ builder.Services.AddZLinkFramework(options =>
 - mesh 안에서는 `mesh.AddNode(name)` 로 노드를 추가한다.
 - mesh 단위의 discovery 설정은 `mesh.UseDiscovery().AddRegistryEndpoint(...)` 가 담당한다.
 
-즉 같은 채널을 가리키는 `SpotNode` 묶음을 한 mesh 에 모아 두는 모양이다. 덕분에
+같은 채널을 가리키는 `SpotNode` 묶음을 한 mesh 에 모아 두는 모양이다. 덕분에
 한 앱 안에서 서로 다른 channel mesh 를 따로 등록할 수도 있고, 한 mesh 안에 같은
 channel 을 공유하는 여러 노드를 함께 둘 수도 있다.
 
@@ -196,7 +196,7 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
     기준으로 어떤 factory를 쓸지 선택한다.
   - 이미 등록된 이름을 다시 사용하면 조용히 덮어쓰지 않고 예외를 던진다.
 
-즉 `SpotNode` 는 더 이상 여러 service surface 를 동시에 소유하는 hub 처럼
+`SpotNode` 는 더 이상 여러 service surface 를 동시에 소유하는 hub 처럼
 설명되지 않는다. 현재 방향에서 그 역할 분담은 다음과 같다.
 
 - `AddSpotMesh(channelName).UseDiscovery().AddRegistryEndpoint(...)` 등록이 노드의
@@ -574,7 +574,7 @@ runtime 이 만든 managed `.NET` timer tick 을 user Spot 문맥에서는 같�
 queue 로 enqueue 해서 처리한다. Entry Spot timer 는 같은 등록 표면을 쓰지만
 Entry Spot 전체 queue 로 enqueue 하지 않는다.
 
-즉 framework 문서에서 "같은 spot 문맥" 이라고 설명하는 부분은 새 semantics 를
+framework 문서에서 "같은 spot 문맥" 이라고 설명하는 부분은 새 semantics 를
 정의하는 작업이 아니다. 기존 core 계약과 framework 가 소유한 timer dispatch 를
 `.NET` 사용자 눈높이로 풀어 적는 일에 더 가깝다. channel reply 역시 이제 그
 "같은 spot 문맥" 안에 포함된다.
@@ -604,7 +604,7 @@ request, publish, subscribe 를 처리할 뿐이다.
 
 여기서 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle 이
 아니라는 사실이다. 생성 결과는 `spotRid`, `Existing`/`Created`/`Rejected` 상태,
-그리고 create callback이 돌려준 선택적 reply `Message`면 충분하다. 이후 메시징은
+create callback이 돌려준 선택적 reply `Message`면 충분하다. 이후 메시징은
 현재 channel publish 또는 attach 된 channel client 를 통한 send / request 로 푸는
 쪽이, 지금의 topology 초안과 더 잘 맞는다.
 
@@ -725,7 +725,6 @@ var reply = await spot.Context.Outbound
     .RequestToChannel(
         "orders",
         new GetStageStateRequest())
-    .Timeout(TimeSpan.FromMilliseconds(200))
     .Async<GetStageStateReply>(cancellationToken);
 
 await spot.Context.Outbound
@@ -786,7 +785,6 @@ var reply = await spot.Context.Outbound
     .RequestToChannel(
         "orders",
         new GetStageStateRequest())
-    .Timeout(TimeSpan.FromMilliseconds(200))
     .Async<GetStageStateReply>(cancellationToken);
 
 await spot.Context.Outbound
@@ -930,7 +928,7 @@ timer 를 중단하고 `TimerStoppedAfterUnhandledException` event 를 기록한
 - per-packet allocation, 과도한 DI 재구성, 불필요한 boxing[^boxing] 은 피해야
   한다.
 
-즉 `Context.AddPacket<THandler>(...)` 같은 등록 표면은 startup 과 spot
+`Context.AddPacket<THandler>(...)` 같은 등록 표면은 startup 과 spot
 `Configure()` 단계에서만 비용이 들도록 둔다. actor `Configure()` 는 message
 handler 를 등록하지 않는다. 실제 packet
 hot path 에서는 반복적인 reflection 이나 과도한 객체 생성이 남지 않게 해야
@@ -961,7 +959,7 @@ room 의 핫패스에 비해 편의 기능을 조금 더 허용할 여지가 있
 `ZLink Framework` 는 direct channel call 만 제공하는 계층처럼 비춰져서는 안
 된다. `SPOT` 역시 framework 안에서 동등한 축으로 다뤄야 한다.
 
-즉 다음 두 축이 함께 존재해야 한다.
+다음 두 축이 함께 존재해야 한다.
 
 - `channelName` 기반 일반 channel messaging
 - `SPOT` 기반 current channel publish / subscribe 와 channel send / request
@@ -982,7 +980,7 @@ client 경로를 함께 가진다. framework 문서에서는 다음 두 종류�
 특정 channel 의 `ROUTER(server)`[^dealer-router] 를 `rid` 로 직접 지정해서
 호출하는 모델은 현재 방향에서 채택하지 않는다.
 
-즉 `SPOT` 은 pub / sub 만으로 설명하면 부족하다. 다음 세 가지를 함께 설명해야
+`SPOT` 은 pub / sub 만으로 설명하면 부족하다. 다음 세 가지를 함께 설명해야
 한다.
 
 - room / stage / zone 같은 논리 인스턴스 모델

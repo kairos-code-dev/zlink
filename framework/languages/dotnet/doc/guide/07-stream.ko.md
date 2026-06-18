@@ -206,8 +206,6 @@ await connector
 // 요청-응답
 var reply = await connector
     .Request(new GetProfileRequest(accountId))
-    .PacketName("profile.get")
-    .Timeout(TimeSpan.FromMilliseconds(200))
     .Async<GetProfileReply>(cancellationToken);
 
 // 큰 payload 명시 압축 (LZ4)

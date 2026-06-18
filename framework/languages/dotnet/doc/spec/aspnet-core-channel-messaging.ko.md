@@ -26,7 +26,7 @@
 - ZLink 메시지 handler 안.
 - 기존 `ASP.NET Core` HTTP handler 또는 controller 안.
 
-즉 사용자가 `DealerSocket`[^dealer], `RouterSocket`[^router], `Discovery` 를 직접 조립할
+사용자가 `DealerSocket`[^dealer], `RouterSocket`[^router], `Discovery` 를 직접 조립할
 필요는 없다. 한 단계 위에 있는 표면만 다루도록 만들겠다는 뜻이다. 구체적으로는
 `AddZLinkFramework(...)`, `IZLinkChannelClient`, handler 등록 정도가 그 표면이다.
 
@@ -328,7 +328,7 @@ public sealed class AdminCommandHandler
 }
 ```
 
-그리고 channel 등록 쪽에서, 그 그룹을 **channel 에 끌어다 붙인다**. 이때 두 축이 서로
+channel 등록 쪽에서, 그 그룹을 **channel 에 끌어다 붙인다**. 이때 두 축이 서로
 분리된다.
 
 - channel 이름은 `tictactoe.api` 처럼 실제 배포 식별자다.
@@ -819,12 +819,10 @@ app.MapPost("/profiles/get", async (
 ```csharp
 var reply = await client
     .RequestToChannel("profile", new GetProfileRequest { AccountId = accountId })
-    .Timeout(TimeSpan.FromMilliseconds(200))
     .Async<GetProfileReply>(cancellationToken);
 
 await client
     .SendToChannel("profile", new RefreshProfileCacheCommand { AccountId = accountId })
-    .PacketName("profile.refresh-cache")
     .Async(cancellationToken);
 ```
 

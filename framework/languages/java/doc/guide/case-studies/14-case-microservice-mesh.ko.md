@@ -75,9 +75,9 @@ public final class DashboardBff {
     private final ZLinkClient client;
     public Dashboard load(String userId) {
         CompletionStage<ProfileDto> p = client.requestToChannel("profile", new GetProfile(userId))
-            .timeout(Duration.ofMillis(200)).submit(ProfileDto.class);
+            .submit(ProfileDto.class);
         CompletionStage<QuoteDto> q = client.requestToChannel("pricing", new Quote(userId))
-            .timeout(Duration.ofMillis(200)).submit(QuoteDto.class);
+            .submit(QuoteDto.class);
         CompletableFuture.allOf(p.toCompletableFuture(), q.toCompletableFuture()).join();
         return new Dashboard(p.toCompletableFuture().join(), q.toCompletableFuture().join());
     }
@@ -117,9 +117,9 @@ public final class DashboardBff {
     private final ZLinkClient client;
     public Dashboard load(String userId) {
         CompletionStage<ProfileDto> p = client.requestToChannel("profile", new GetProfile(userId))
-            .timeout(Duration.ofMillis(200)).submit(ProfileDto.class);
+            .submit(ProfileDto.class);
         CompletionStage<QuoteDto> q = client.requestToChannel("pricing", new Quote(userId))
-            .timeout(Duration.ofMillis(200)).submit(QuoteDto.class);
+            .submit(QuoteDto.class);
         CompletableFuture.allOf(p.toCompletableFuture(), q.toCompletableFuture()).join();
         return new Dashboard(p.toCompletableFuture().join(), q.toCompletableFuture().join());
     }

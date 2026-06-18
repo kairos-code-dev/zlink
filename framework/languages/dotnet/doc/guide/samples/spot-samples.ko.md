@@ -1176,7 +1176,6 @@ public sealed class SampleActor : IZLinkActor
                 X = X,
                 Y = Y
             })
-            .PacketName("SampleActorSnapshot")
             .Async(cancellationToken);
     }
 
@@ -1185,7 +1184,6 @@ public sealed class SampleActor : IZLinkActor
         CancellationToken cancellationToken)
         => _context.BoundSession
             .Send(pushed)
-            .PacketName("SampleRoomChatPushed")
             .Async(cancellationToken);
 
     public void ClearStream()
@@ -1601,7 +1599,6 @@ public sealed class SampleStateUpdatedHandler
                     ActorCount = message.ActorCount,
                     ConnectedSessionCount = message.ConnectedSessionCount
                 })
-            .Timeout(TimeSpan.FromMilliseconds(200))
             .Async<SampleSyncStateReply>(cancellationToken);
     }
 }

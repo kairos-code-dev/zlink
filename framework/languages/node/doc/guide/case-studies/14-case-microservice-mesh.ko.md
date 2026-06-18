@@ -79,8 +79,8 @@ export class DashboardBff {
 
   async load(userId: string): Promise<Dashboard> {
     const [profile, quote] = await Promise.all([
-      this.client.requestToChannel('profile', new GetProfile(userId)).timeout(200).submit<ProfileDto>(),
-      this.client.requestToChannel('pricing', new Quote(userId)).timeout(200).submit<QuoteDto>(),
+      this.client.requestToChannel('profile', new GetProfile(userId)).submit<ProfileDto>(),
+      this.client.requestToChannel('pricing', new Quote(userId)).submit<QuoteDto>(),
     ]);
     return new Dashboard(profile, quote);
   }
@@ -123,8 +123,8 @@ export class DashboardBff {
 
   async load(userId: string): Promise<Dashboard> {
     const [profile, quote] = await Promise.all([
-      this.client.requestToChannel('profile', new GetProfile(userId)).timeout(200).submit<ProfileDto>(),
-      this.client.requestToChannel('pricing', new Quote(userId)).timeout(200).submit<QuoteDto>(),
+      this.client.requestToChannel('profile', new GetProfile(userId)).submit<ProfileDto>(),
+      this.client.requestToChannel('pricing', new Quote(userId)).submit<QuoteDto>(),
     ]);
     return new Dashboard(profile, quote);
   }

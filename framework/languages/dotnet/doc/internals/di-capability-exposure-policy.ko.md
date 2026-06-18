@@ -223,7 +223,7 @@ configuration error 로 표현한다.
 이 정책은 다음 코드 경로에 반영한다.
 
 1. `ZLinkFrameworkRegistrationValidator` 에 역할 validation 을 둔다.
-2. `ServiceCollectionExtensions.AddZLinkPublicClients(...)` 에서 public service 를
+2. `ZLinkFrameworkServiceRegistrar.AddPublicClients(...)` 에서 public service 를
    역할 조건에 따라 등록한다.
 3. missing bound session factory/service 는 public DI
    표면에서 제거한다.

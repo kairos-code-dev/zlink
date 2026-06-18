@@ -39,8 +39,7 @@
 | 분류 | 인터페이스 | 역할 | section |
 |------|-----------|------|---------|
 | context | `IZLinkHandlerContext` | 모든 handler context의 공통 기반 | 3.1 |
-| context | `IZLinkSpotSelf` | spot 자신의 identity 조회 | 3.2 |
-| context | `IZLinkSpotContext` | SPOT handler context 기반. packet/subscribe/timer 등록과 channel 호출 표면 | 3.2 / 4.3.1 |
+| context | `IZLinkSpotContext` | SPOT handler context 기반. spot identity(`SpotRid`/`NodeRid`), packet/subscribe/timer 등록과 channel 호출 표면 | 3.2 / 4.3.1 |
 | handler | `IZLinkRequestHandler<TRequest, TResponse>` | request-response handler | 4.1 |
 | handler | `IZLinkSendHandler<TMessage>` | one-way send handler | 4.2 |
 | handler | `IZLinkRouteSendHandler<TMessage>` | routed channel one-way send handler | 4.2.1 |
@@ -143,11 +142,13 @@ handler 종류마다 받아야 하는 부가 정보가 다르다. 그 차이를 
 | `ZLinkPublishContext` | publish handler | topic, source |
 | `ZLinkRouteSendContext` | routed channel send handler | source routing id, router channel id |
 | `ZLinkRouteRequestContext` | routed channel request handler | source routing id, router channel id |
-| `ZLinkSpotRequestContext` | SPOT request handler | self spot info, source rid, source spot rid |
-| `ZLinkSpotSubscriptionContext` | SPOT subscription handler | self spot info, topic, source rid, dispatch metadata |
+| `ZLinkSpotActorRequestContext` | SPOT / Entry Spot actor request handler | `Metadata`, `Reply`(`ZLinkSpotActorReplyOptions`) |
+| `ZLinkSpotActorSendContext` | SPOT / Entry Spot actor send handler | `Metadata`, `Reply`(`ZLinkSpotActorReplyOptions`) |
 
-파생 context 의 상세 필드는 구현에 들어가기 전에 더 좁혀야 한다. 현재 스펙
-단계에서는 이름과 역할 정도만 고정해 둔다.
+일반 SPOT packet/request/subscription/timer handler 는 별도 per-call context 타입을
+받지 않는다. handler 는 `(TSpot spot, 메시지, CancellationToken)` 형태로 spot 인스턴스와
+메시지를 직접 받고, spot identity 는 아래의 `IZLinkSpotContext` 로 조회한다. per-call
+context 타입은 actor packet handler(위 두 타입)와 channel handler 계열에만 붙는다.
 
 `SPOT` 객체 안에서는 외부 lookup 과 별개로, 현재 spot 자신의 identity 도
 조회할 수 있어야 한다. 이 문서에서는 별도의 `Self` wrapper 를 두지 않는다.
@@ -1308,7 +1309,7 @@ enum 이다.
 필수 계약이 아니라, 현재 backend 가 제공할 수 있을 때에 한해 채워지는
 optional detail 로 본다.
 
-즉 현재 방향은 다음과 같이 정리할 수 있다.
+현재 방향은 다음과 같이 정리할 수 있다.
 
 - header session
   - `OnDispatchAsync(...)`로 framework가 decode 한 `ZlinkStreamHeader`와
@@ -1333,7 +1334,7 @@ optional detail 로 본다.
 먼저 독립적인 transport 객체로 만들어진다. 인증과 입장 절차가 끝난 뒤에야,
 특정 `Spot` 또는 actor 에 귀속되는 구조다.
 
-즉 binding/framework 가 노출해야 할 표면은 다음과 같다. "`session` 을 어느
+binding/framework 가 노출해야 할 표면은 다음과 같다. "`session` 을 어느
 `Spot` 에 join 시키는가"라는 상위 조합 표면이다. `Spot` 자체가 session
 타입을 직접 소유하는 고정 모델이 아니다.
 
@@ -1804,7 +1805,7 @@ framework 가 두 모드를 모두 제공할 수는 있다. 다만 기본 성능
 `playhouse/extensions` 에서 보이듯, serializer 계층은 transport interface
 와 분리해 두는 쪽이 자연스럽다.
 
-즉 `STREAM` handler 는 `Message` 를 받기만 한다. protobuf/json 같은 객체
+`STREAM` handler 는 `Message` 를 받기만 한다. protobuf/json 같은 객체
 변환은 별도의 serializer 또는 extension helper 가 담당한다.
 
 ```csharp
@@ -1841,7 +1842,7 @@ public static class MessageExtensions
   로 해석한다.
 - 그 밖의 일반 class 는 json 으로 해석한다.
 
-즉 두 가지 구조 중 후자를 택한다.
+두 가지 구조 중 후자를 택한다.
 
 - 첫 번째: transport 가 serializer 를 직접 내장하는 구조.
 - 두 번째 (기본): `Message` 위에 type 기준의 parse helper 를 얹는 구조.
@@ -1942,7 +1943,7 @@ packet key 해석 규칙은 다음 순서를 기본으로 본다.
 2. 지정되어 있지 않으면, payload 타입에 선언된 packet metadata 를 본다.
 3. 그것도 없으면, `Type.Name` 을 packet key 로 사용한다.
 
-즉 단순한 경우라면 타입 이름만으로도 충분하다. 모호하거나 충돌이 발생하는
+단순한 경우라면 타입 이름만으로도 충분하다. 모호하거나 충돌이 발생하는
 경우에만, 명시적인 `PacketName` 을 지정하도록 유도한다.
 
 timeout 은 request 와 send 간에 다르게 다룬다.
@@ -1976,7 +1977,7 @@ timeout 은 request 와 send 간에 다르게 다룬다.
 호출자가 `await` 하면, 호출 흐름은 submit 완료 시점까지 멈춘다. 다만 구현
 은 thread 를 점유해서는 안 된다.
 
-즉 backpressure 가 걸려 있는 동안에는 현재 thread 나 thread pool worker
+backpressure 가 걸려 있는 동안에는 현재 thread 나 thread pool worker
 를 잡지 않는다. socket ready callback 이나 poller wakeup 이 도달하면,
 pending submit 을 이어서 진행해야 한다.
 
@@ -2257,17 +2258,37 @@ payload 를 하나의 `Message` 로 합쳐서 직렬화하지 않는다. 대신 
   경로에서는, payload 앞에 metadata part 를 더 붙일 수 있다.
 
 ```csharp
-internal interface IZLinkRouteTransport
+// 공개 진입점은 IZLinkRouteClient 다(typed Send/Request).
+public interface IZLinkRouteClient
 {
-    IZLinkSendCall SendToAsync<TMessage>(
+    IZLinkSendCall Send<TMessage>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TMessage message);
 
-    IZLinkRequestCall RequestToAsync<TRequest>(
+    IZLinkRequestCall Request<TRequest>(
         string routerChannelId,
         RoutingId targetNodeRid,
         TRequest request);
+}
+
+// part 를 분리해 보내는 internal multipart helper.
+internal interface IZLinkMultipartRouteClient : IZLinkRouteClient
+{
+    ValueTask SendPartsTo(
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        string packetName,
+        IReadOnlyList<Message> payloadParts,
+        CancellationToken cancellationToken);
+
+    ValueTask<TReply> RequestPartsTo<TReply>(
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        string packetName,
+        IReadOnlyList<Message> payloadParts,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
 }
 ```
 
@@ -3287,7 +3308,7 @@ callback payload 는 record struct 로 둔다.
 같은 운영 정보를 한꺼번에 전달하기 어렵기 때문이다.
 
 native monitor enum 과 raw status 값에 대해서도 비슷한 원칙을 적용한다.
-즉 framework 가 항상 보장하는 필수 계약이 아니라, backend 가 제공할 수
+framework 가 항상 보장하는 필수 계약이 아니라, backend 가 제공할 수
 있을 때에만 채워지는 optional diagnostic detail 로 둔다. 이 방향이 backend
 교체 정책과도 부합한다.
 
@@ -3482,8 +3503,8 @@ public sealed class ProfileHandlers
 처리한다.
 
 attribute scan 용 보조 표면도 둘 수 있다. 예를 들어
-`MapHandlersFromAssemblyContaining<TMarker>()` 나
-`MapHandlersFromAssembly(...)` 같은 것들이다. 빠른 prototype 단계이거나,
+`AddHandlersFromAssemblyOf<TMarker>()` 나
+`AddHandlersFromAssembly(...)` 같은 것들이다. 빠른 prototype 단계이거나,
 group attribute 없이 일괄 매핑해야 하는 경우에 쓸 수 있다.
 
 다만 이 보조 표면은 framework 가 제공할 수는 있어도 정식 경로는 아니다.

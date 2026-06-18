@@ -1484,24 +1484,15 @@ handler 를 찾지 못했거나 payload decode 에 실패한 inbound request 는
 ## 10. Diagnostic helper
 
 이 절은 `.NET` 사용자가 connection 이나 topology[^topology] 상태를 점검할 때
-쓸 수 있는 helper 문서다. session actor dispatch 의 필수 API 는 아니며,
-운영 점검용으로만 둔다.
+쓸 수 있는 경로를 정리한다. session actor dispatch 전용 diagnostics 인터페이스를
+따로 두지 않는다. registry/discovery 점검은 정식 `IZLinkRegistryQuery`
+([handler-interfaces.ko.md](./handler-interfaces.ko.md) §10) 표면으로 한다.
+운영 점검용이며 session actor dispatch 의 필수 API 는 아니다.
 
-```csharp
-public interface IZLinkTopologyDiagnostics
-{
-    ValueTask<ZLinkRoutedChannelSnapshot> GetRoutedChannelAsync(
-        string routerChannelId,
-        CancellationToken cancellationToken = default);
-}
-```
-
-retry helper 와는 성격이 다르다. diagnostic helper 가 보여 주는 것은 다음
-세 가지로 한정된다.
+`IZLinkRegistryQuery` 로 확인하는 점검 항목:
 
 - registry view
 - discovery member
-- local routed channel state
 
 ## 11. 다른 문서와의 관계
 

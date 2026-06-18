@@ -88,6 +88,9 @@ user Spot handler 에서 받은 spot context 로 호출한다.
 | `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join. `.Async(ct)` 로 종결하며 `Accepted`와 reply `Message`를 받는다 |
 | `JoinEntrySpot(spotNodeRid, requestMessage)` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청도 빈 `Message`로 명시하며 `.Async(ct)` 로 종결한다 |
 
+`JoinSpot`/`JoinEntrySpot` 도 `Request` 처럼 reply 대기 `Timeout(...)` override 를 받는다.
+생략하면 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은 기본값).
+
 `spotRid`는 user Spot 의 `RoutingId`이고, `spotNodeRid`는 Entry Spot 을 가진
 SpotNode 의 `RoutingId`다. `matchId`나 `roomId` 같은 domain 값에서
 `RoutingId`를 얻는 규칙은 application registry 가 정한다.
@@ -154,7 +157,6 @@ public sealed class JoinMatchHandler
         var matchSpotRid = RoutingId.From(request.MatchId);
         var joined = await actor.Context
             .JoinSpot(matchSpotRid, request.Encode())
-            .Timeout(TimeSpan.FromSeconds(2))
             .Async(ct);
         if (!joined.Accepted)
         {

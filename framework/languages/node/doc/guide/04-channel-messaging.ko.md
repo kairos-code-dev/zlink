@@ -15,7 +15,6 @@ class GetProfileReq {
 
 await client
   .requestToChannel('profile', new GetProfileReq('u1'))
-  .timeout(1000)
   .submit();
 ```
 
@@ -63,7 +62,6 @@ interface WarmProfilePayload {
 
 await client
   .sendToChannel('profile', { userId: 'u1' } satisfies WarmProfilePayload)
-  .packetName('WarmProfile')
   .submit();
 ```
 

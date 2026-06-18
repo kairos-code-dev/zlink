@@ -72,7 +72,6 @@ public sealed class PlaceOrderHandler
 // 클라이언트: gRPC stub 대신 IZLinkChannelClient 주입
 var placed = await client
     .RequestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
-    .Timeout(TimeSpan.FromSeconds(2))    // reply 대기 상한
     .Async<OrderPlaced>(ct);
 ```
 
@@ -295,7 +294,6 @@ public sealed class PriceService(IZLinkChannelClient client)
     {
         var reply = await client
             .RequestToChannel("price", new PriceRequest(symbol))
-            .Timeout(TimeSpan.FromSeconds(2))          // reply 대기 상한
             .Async<PriceReply>(ct);
         return reply.Price;
     }
@@ -303,16 +301,17 @@ public sealed class PriceService(IZLinkChannelClient client)
     public ValueTask RefreshAsync(string accountId, CancellationToken ct)
         => client
             .SendToChannel("profile", new RefreshCacheCommand(accountId))
-            .PacketName("profile.refresh-cache")        // 선택: packet 이름 override
             .Async(ct);
 }
 ```
 
 - reply 타입은 메시지가 아니라 **`.Async<TReply>(...)`** 에서 지정한다.
-- `Request` 에만 `Timeout(...)` 이 있다. `Send` 는 응답을 기다리지 않으므로 없다.
-- `Timeout(...)` 을 생략해도 **무기한 대기하지 않는다.** 전역 `options.DefaultTimeout`
-  (미설정 시 기본 **30초**)이 적용된다. 전역값은 §10 처럼 `options.DefaultTimeout` 으로
-  바꾸고, 이 호출만 다르게 두고 싶을 때 `Timeout(...)` 으로 override 한다.
+- **`PacketName(...)` 과 `Timeout(...)` 은 override 종결자다.** packet name 은 기본적으로
+  payload 타입 이름으로 정해지고, reply 대기는 전역 `options.DefaultTimeout`(미설정 시
+  기본 **30초**)을 따른다. 실제 packet 이름이 기본과 다를 때만 `PacketName(...)` 을, 이
+  호출의 reply 대기를 전역값과 다르게 둘 때만 `Timeout(...)` 을 붙인다. 둘 다 기본값으로
+  충분하면 붙이지 않는다(샘플 메시징 호출은 모두 기본값을 쓴다). `Send`/`Publish` 는 응답을
+  기다리지 않으므로 `Timeout(...)` 이 없다.
 - socket 은 호출마다 만드는 게 아니라 **startup 에 선언한 역할만큼만** 미리 만들어
   둔다. 그래서 호출한 channel 에 client 역할이 등록돼 있지 않으면, 그 channel 용
   socket 이 애초에 없으므로 `ZLinkConfigurationException` 으로 실패한다
@@ -506,8 +505,6 @@ var target = RoutingId.From("play-node-1");
 
 var room = await routeClient
     .Request("tictactoe.router", target, new AllocateRoom("alice"))
-    .PacketName("room.allocate")
-    .Timeout(TimeSpan.FromSeconds(2))
     .Async<RoomAllocated>(ct);
 
 public sealed class AllocateRoomRouteHandler

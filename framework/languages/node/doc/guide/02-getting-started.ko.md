@@ -53,7 +53,6 @@ export class ProfileClient {
   getProfile(id: string) {
     return this.client
       .requestToChannel('api', new GetProfileReq(id))
-      .timeout(1000)
       .submit();
   }
 }

@@ -638,7 +638,6 @@ builder instance 는 한 번만 실행할 수 있다. 같은 builder 에서 `Sub
 ```csharp
 var reply = await client
     .Request(new GetProfileRequest { AccountId = accountId })
-    .Timeout(TimeSpan.FromMilliseconds(200))
     .Metadata("traceId", traceId)
     .Async<GetProfileReply>(cancellationToken);
 ```
@@ -654,7 +653,6 @@ client
 
 client
     .Send(new ChatMessage { Text = "hello" })
-    .PacketName("chat.message")
     .Metadata("traceId", traceId)
     .Async(cancellationToken);
 ```
@@ -913,8 +911,6 @@ client
 
 var reply = await client
     .Request(new ChatRequest("hello"))
-    .PacketName("chat.request")
-    .Timeout(TimeSpan.FromSeconds(1))
     .Async<ChatReply>(cancellationToken);
 ```
 

@@ -101,7 +101,6 @@ public sealed class TickPublishHandler
 // 리스크 점검 같은 주변부는 일반 channel request (마이크로초 핫패스 밖)
 var decision = await client
     .RequestToChannel("risk", new CheckLimit(order.AccountId, order.Notional))
-    .Timeout(TimeSpan.FromMilliseconds(50))
     .Async<RiskDecision>(ct);
 ```
 

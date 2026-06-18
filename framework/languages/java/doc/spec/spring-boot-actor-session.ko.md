@@ -165,6 +165,9 @@ public interface ZLinkBoundSession {
 이 경로는 thread blocking helper를 제공하지 않는다. Kotlin에서는 같은 Java
 `CompletionStage`를 `suspend` wrapper로 감싸서 사용한다.
 
+`joinSpot(...)`/`joinEntrySpot(...)` 도 `timeout(Duration)` override 를 갖는다. 생략하면
+기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은 기본값).
+
 `ZLinkBoundSession`은 server-to-client request API를 제공하지 않는다. client
 request에 대한 응답은 actor request handler의 반환값과 원래 request correlation으로
 처리한다.

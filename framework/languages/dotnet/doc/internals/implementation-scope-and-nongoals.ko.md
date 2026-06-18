@@ -34,7 +34,7 @@
 - handler group mapping 모델. 즉 `[ZLinkHandlerGroup("...")]` 클래스
   attribute[^attribute] 와 channel 등록 쪽의 `channel.AddHandlerGroup("...")`
   호출을 짝으로 두는 모델이다.
-  `MapHandlersFromAssemblyContaining<TMarker>()` 같은 assembly 전체
+  `AddHandlersFromAssemblyOf<TMarker>()` 같은 assembly 전체
   scan[^assembly-scan] 은 보조 수단으로만 남긴다. 정식 sample, scope, regression
   기준은 group mapping 모델에 맞춘다.
 - spot 의 packet / subscribe / timer descriptor

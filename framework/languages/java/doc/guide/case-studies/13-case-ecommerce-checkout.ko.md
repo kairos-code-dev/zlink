@@ -168,7 +168,6 @@ public final class PlaceOrderHandler implements ZLinkRequestHandler<PlaceOrder, 
         Order existing = orders.find(req.orderId()).orElse(null);
         if (existing != null) { return existing.toReply(); }
         Charged charge = services.requestToChannel("payments", new Charge(req.orderId(), req.accountId(), req.amountMinor(), req.orderId()))
-            .timeout(Duration.ofSeconds(2))
             .submit(Charged.class)
             .toCompletableFuture()
             .join();

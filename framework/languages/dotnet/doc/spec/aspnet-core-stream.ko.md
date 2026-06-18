@@ -325,14 +325,14 @@ builder.Services.AddZLinkFramework(options =>
 본체에 직접 섞지 않는다. 대신 별도의 codec extension / helper 계층으로 얹는다.
 `STREAM` 도 같은 감각이 자연스럽다.
 
-즉 framework 의 기본 표면은 다음 정도까지만 유지한다.
+framework 의 기본 표면은 다음 정도까지만 유지한다.
 
 - `IZLinkSession`
 - `IZLinkSessionContext`
 - `IZLinkStream`
 - `Message`
 
-그리고 객체 변환은 binding core 의 `Message` 자체가 아니라, 그 위에 얹는 별도
+객체 변환은 binding core 의 `Message` 자체가 아니라, 그 위에 얹는 별도
 확장 패키지나 serializer provider 가 맡는다.
 
 예를 들면 다음과 같이 쓴다.

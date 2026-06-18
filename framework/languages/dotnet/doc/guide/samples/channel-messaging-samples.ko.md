@@ -607,7 +607,6 @@ var fastReply = await client
     .Request(
         "profile",
         new GetUserRequest { AccountId = accountId })
-    .Timeout(TimeSpan.FromMilliseconds(200))
     .Async<GetUserReply>(cancellationToken);
 ```
 
@@ -616,7 +615,6 @@ await client
     .Send(
         "profile",
         new RefreshUserCacheCommand { AccountId = accountId })
-    .PacketName("profile.refresh-cache")
     .Async(cancellationToken);
 ```
 

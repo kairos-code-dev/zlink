@@ -139,7 +139,6 @@ call 객체에는 전송 전에 옵션을 얹을 수 있다.
 ```cpp
 auto reply = co_await _client
                .request ("tictactoe.play", create_game_req_t{name})
-               .timeout (std::chrono::seconds (2))
                .metadata ("trace-id", trace_id)
                .async<create_game_res_t> ();
 ```

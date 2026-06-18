@@ -13,7 +13,6 @@
 
 ```java
 client.requestToChannel("profile", new GetProfileRequest(accountId))
-    .timeout(Duration.ofMillis(200))
     .submit(GetProfileReply.class);
 ```
 

@@ -177,7 +177,6 @@ public sealed class PlaceOrderHandler(
         // (2) 동기 결제: gRPC stub 대신 channel 이름 + Timeout(reply 대기 상한)
         var charge = await services
             .RequestToChannel("payments", new Charge(req.OrderId, req.AccountId, req.AmountMinor, req.OrderId))
-            .Timeout(TimeSpan.FromSeconds(2))
             .Async<Charged>(ct);
 
         // (3) 주문 row + outbox row 한 트랜잭션 — 여전히 앱 책임(dual-write 는 그대로)

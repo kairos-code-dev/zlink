@@ -530,7 +530,6 @@ export class JoinMatchHandler
     const matchSpotRid = routingIdFrom(request.matchId);
     const result = await actor.context
       .joinSpot(matchSpotRid, request)
-      .timeout(2000)
       .submit<JoinMatchSpotResult>();
 
     await this.notifications.publish(result.reply.events);
@@ -708,6 +707,9 @@ export interface ZLinkActorJoinEntrySpotCall {
 | `joinEntrySpot(spotNodeRid, request).submit<TReply>()` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청도 명시해서 넘기며, 결과는 result code, actor ref, reply를 담는다 |
 | `Entry Spot context.destroyActor(actor)` | Entry Spot 에 있는 actor 를 종료. lifecycle callback 없이 native actor ref와 framework registry를 정리 |
 
+`joinSpot(...)`/`joinEntrySpot(...)` 도 `timeout(...)` override 를 갖는다. 생략하면 기본
+timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은 기본값).
+
 actor request 에 대한 reply 는 actor context 의 별도 `reply(...)` 호출이 아니라
 request handler 의 반환값으로 처리한다. actor, Entry Spot actor, user Spot actor
 request handler 는 모두 `TReply` 를 반환하고, framework 가 원래 request 의
@@ -780,7 +782,6 @@ decode/encode 한다.
 const matchSpotRid = routingIdFrom(matchId);
 const result = await actor.context
   .joinSpot(matchSpotRid, new JoinMatchReq(/* ... */))
-  .timeout(2000)
   .submit<JoinMatchRes>();
 ```
 

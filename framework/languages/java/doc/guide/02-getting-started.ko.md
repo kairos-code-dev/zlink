@@ -116,7 +116,6 @@ public final class PriceController {
     @GetMapping("/price/{symbol}")
     public CompletionStage<PriceReply> price(@PathVariable String symbol) {
         return client.requestToChannel("price", new PriceRequest(symbol))
-            .timeout(Duration.ofSeconds(1))
             .submit(PriceReply.class);
     }
 }

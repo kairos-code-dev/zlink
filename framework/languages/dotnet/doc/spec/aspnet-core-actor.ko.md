@@ -82,7 +82,7 @@ application 이 등록한 resolver[^resolver] 에 위임한다.
 ## 2. Actor 개념
 
 이 절은 framework 의 actor 가 core 의 actor 모델을 어떻게 그대로 가져오는지,
-그리고 그것이 일반 handler 클래스와 어떻게 다른지를 비교해서 정리한다.
+그것이 일반 handler 클래스와 어떻게 다른지를 비교해서 정리한다.
 
 framework 의 **actor** 는 zlink core 가 정의한 actor 모델을 그대로 따른다. 즉
 ID 로 식별되는 stateful object 이며, SpotNode 에 소속되고, 선택적으로 session
@@ -340,7 +340,7 @@ mailbox[^mailbox] 로 들어간다. 같은 actor 의 packet 끼리만 순서가 
 `OnClosingAsync(...)`, actor joined / left lifecycle callback 같은 작업이
 여기에 해당한다.
 
-즉 Entry Spot 은 lifecycle 을 보호하고, actor packet 의 처리 순서는 actor
+Entry Spot 은 lifecycle 을 보호하고, actor packet 의 처리 순서는 actor
 mailbox 가 보호하는 구도다.
 
 ```csharp
@@ -379,7 +379,7 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot
 }
 ```
 
-즉 Entry Spot 전용 handler 등록 표면을 별도로 둔다. actor 객체는 상태를
+Entry Spot 전용 handler 등록 표면을 별도로 둔다. actor 객체는 상태를
 보관하는 자리고, message 와 lifecycle callback 은 현재 actor 가 어느 실행
 문맥에 있는지에 따라 Entry Spot registry 또는 user Spot registry 가 처리한다.
 
@@ -393,7 +393,7 @@ transport 위치값도 handler 표면에 노출하지 않는다.
 과 user Spot 의 등록 표면을 어떻게 나누는지 정리한다.
 
 actor 가 처리할 packet handler 는 **현재 실행 문맥의 registry 에 등록한다.**
-즉 Entry Spot 은 Entry Spot 전용 registry 를 갖고, user Spot 은 각 Spot
+Entry Spot 은 Entry Spot 전용 registry 를 갖고, user Spot 은 각 Spot
 타입마다 별도의 registry 를 갖는다.
 
 일반 channel handler 처럼 attribute scan[^attribute-scan] 과 그룹 매핑으로
@@ -477,7 +477,6 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
         var matchSpotRid = RoutingId.From(request.MatchId);
         var result = await actor.Context
             .JoinSpot(matchSpotRid, request.Encode())
-            .Timeout(TimeSpan.FromSeconds(2))
             .Async(cancellationToken)
             .ConfigureAwait(false);
         var reply = result.Reply.Decode<JoinMatchSpotResult>();
@@ -553,7 +552,7 @@ builder.Services.AddZLinkFramework(options =>
 ## 5. Actor context
 
 이 절은 actor 안에서 어떤 표면을 통해 spot join 과 현재 상태 조회를 하는지,
-그리고 그 표면이 가진 멤버들이 무엇을 의미하는지 정리한다.
+그 표면이 가진 멤버들이 무엇을 의미하는지 정리한다.
 
 actor 가 다른 user Spot 으로 이동하려면 framework 가 attach 한
 `IZLinkActorContext` 를 거쳐야 한다. channel outbound 는 actor context 의
@@ -592,6 +591,10 @@ public interface IZLinkActorContext
 | `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
 | `JoinSpot(spotRid, requestMessage).Async(...)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). request와 reply는 `Message`이며 JSON, Protobuf, MessagePack 같은 codec 확장 함수는 application 이 선택한다. `Accepted == true` 이 성공이다. STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
 | `JoinEntrySpot(spotNodeRid, requestMessage).Async(...)` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청도 빈 `Message`로 명시해서 넘기며, 결과는 `Accepted`, `ActorRef`, reply `Message`를 담는다 |
+
+`JoinSpot`/`JoinEntrySpot` 도 channel `Request` 처럼 reply 대기 `Timeout(...)` override 를
+갖는다. 생략하면 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은
+모두 기본값을 쓴다).
 
 actor request 에 대한 reply 는 actor context 의 별도 `Reply(...)` 호출이 아니라
 request handler 의 반환값으로 처리한다. actor, Entry Spot actor, user Spot actor
@@ -680,7 +683,6 @@ method 시그니처 검증은 startup validation 단계에서 이루어진다. �
 var matchSpotRid = RoutingId.From(matchId);
 var result = await actor.Context
     .JoinSpot(matchSpotRid, new JoinMatchReq(...).Encode())
-    .Timeout(TimeSpan.FromSeconds(2))
     .Async(cancellationToken);
 
 var reply = result.Reply.Decode<JoinMatchSpotResult>();
@@ -716,7 +718,7 @@ session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다. cli
 application 이 결정한다.
 
 이 패턴은 보통 **gateway / playhouse[^playhouse]** 같은 서버에서 사용한다.
-즉 client 는 stream 으로 들어오고, server 는 그 client 를 actor 로 다룬다.
+client 는 stream 으로 들어오고, server 는 그 client 를 actor 로 다룬다.
 모든 routing 을 actor id 기준으로 통일하는 모양이다.
 
 ### 8.1 session-actor binding 표면

@@ -209,35 +209,8 @@ tick 을 건너뛰면 `ScheduledIndex` 는 시간표를 따라 앞으로 가고,
 callback 이 왔는가"는 `DeliveryIndex`, "논리 시간표에서 몇 번째 tick 인가"는
 `ScheduledIndex` 를 기준으로 삼는다.
 
-활용 패턴 몇 가지는 다음과 같다.
-
-```csharp
-public sealed class StageTickHandler : IZLinkSpotTimerHandler<StageSpot>
-{
-    public ValueTask HandleAsync(
-        StageSpot spot,
-        ZLinkTimerTick tick,
-        CancellationToken cancellationToken)
-    {
-        // 1. fixed-rate 논리 시간 기준으로 simulation 을 진행한다.
-        spot.AdvanceSimulation(tick.ScheduledIndex, tick.Period);
-
-        // 2. timer 가 많이 늦었으면 비용이 큰 부가 작업은 건너뛴다.
-        if (tick.Delay < TimeSpan.FromMilliseconds(250))
-        {
-            spot.RebuildDerivedView();
-        }
-
-        // 3. skip 이 있었다면 최신 상태 기준으로 빠르게 보정한다.
-        if (tick.SkippedTicks > 0)
-        {
-            spot.MarkTimerLagged(tick.SkippedTicks);
-        }
-
-        return ValueTask.CompletedTask;
-    }
-}
-```
+이 세 값(`ScheduledIndex` · `Delay` · `SkippedTicks`)이 실제로 어떻게 맞물리는지는
+아래 "고빈도 전투 room" 예시에서 코드로 본다.
 
 `ScheduledAt` 과 `StartedAt` 은 목적이 다르다. `ScheduledAt` 은 timer 가 원래
 실행됐어야 하는 논리 시각이고, `StartedAt` 은 실제 callback 이 시작된 시각이다.
@@ -280,6 +253,91 @@ _timer = await Context.AddTimer<StageTickHandler>(
 
 기본값은 `SkipLateTicks` 다. `MaxCatchUpTicks` 는 `CatchUpBounded` 에서만 의미가
 있고, `CatchUpBounded` 로 설정했는데 `MaxCatchUpTicks <= 0` 이면 설정 오류다.
+
+### 예시: 고빈도 전투 room — tick 이 밀릴 때
+
+위 metadata·정책이 실제로 어디서 쓰이는지 가장 잘 드러나는 곳이 게임의 고빈도
+timer 다. 실시간 전투 room 을 보자. 두 개의 timer 를 둔다.
+
+- **`battle.sim` (50ms, 20Hz)** — 전투 simulation step. cooldown, 투사체 이동,
+  도트 데미지가 모두 step 수에 묶여 있어 **빠진 step 을 그냥 버리면 게임이 어긋난다.**
+  그래서 `CatchUpBounded` 로 빠진 step 을 일부 보충하되, GC 정지처럼 길게 멈췄을 때
+  수백 step 을 몰아 도는 death-spiral 은 `MaxCatchUpTicks` 로 막는다.
+- **`battle.snapshot` (100ms)** — 클라이언트로 world 상태 broadcast. 밀린 snapshot 을
+  몰아 보내봐야 **클라이언트엔 최신 한 장만 의미 있다.** 그래서 `SkipLateTicks`.
+
+```csharp
+public async ValueTask OnInitializeAsync(CancellationToken ct)
+{
+    // 50ms 전투 simulation — 빠진 step 을 최대 4개(=200ms)까지만 보충
+    _sim = await Context.AddTimer<BattleSimHandler>(
+        "battle.sim",
+        TimeSpan.FromMilliseconds(50),
+        new ZLinkTimerOptions
+        {
+            OverrunPolicy = ZLinkTimerOverrunPolicy.CatchUpBounded,
+            MaxCatchUpTicks = 4
+        },
+        ct);
+
+    // 100ms world snapshot — 밀리면 과거는 버리고 최신만
+    _snapshot = await Context.AddTimer<BattleSnapshotHandler>(
+        "battle.snapshot",
+        TimeSpan.FromMilliseconds(100),
+        new ZLinkTimerOptions { OverrunPolicy = ZLinkTimerOverrunPolicy.SkipLateTicks },
+        ct);
+}
+```
+
+simulation handler 에서 `tick` 의 세 값이 각각 제 역할을 한다.
+
+```csharp
+public sealed class BattleSimHandler : IZLinkSpotTimerHandler<BattleRoomSpot>
+{
+    public ValueTask HandleAsync(
+        BattleRoomSpot room, ZLinkTimerTick tick, CancellationToken ct)
+    {
+        // ① 논리 시간은 wall clock 이 아니라 ScheduledIndex 로 잡는다.
+        //    프레임이 밀려도 cooldown·투사체·도트가 "몇 번째 step" 기준으로 정확히 진행된다.
+        room.AdvanceCombat(step: tick.ScheduledIndex, dt: tick.Period);
+
+        // ② Delay 로 부하를 감지해, 권위 판정(데미지/사망)은 유지하되
+        //    다시 만들 수 있는 파생 데이터는 이번 tick 에서 건너뛴다.
+        if (tick.Delay < TimeSpan.FromMilliseconds(100))
+        {
+            room.RebuildAoeSpatialIndex();   // AOE 조회용 공간 해시 — 비싸고 다음 tick 에 다시 만들면 됨
+        }
+
+        // ③ SkippedTicks > 0 이면 정책 한도를 넘겨 버려진 step 이 있었다는 뜻.
+        //    하나씩 재현하지 말고 최신 상태로 빠르게 맞추고, 운영 지표로 남긴다.
+        if (tick.SkippedTicks > 0)
+        {
+            room.FastForwardTo(tick.ScheduledIndex);
+            room.ReportSimLag(tick.SkippedTicks, tick.Delay);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+부하 시나리오로 따라가 보자. 서버가 GC/CPU 스파이크로 **180ms 멈췄다 깨어났다.**
+
+- `battle.sim` 은 그동안 약 3~4 step 이 밀렸다. `CatchUpBounded(4)` 라 깨어난 직후
+  handler 가 연속 호출되어 빠진 step 을 메운다. 각 호출의 `ScheduledIndex` 가
+  1씩 올라가므로 simulation 은 "건너뛴 step 까지 포함한 논리 시간"을 그대로 따라간다
+  (`DeliveryIndex` 는 실제 callback 수라서 catch-up 동안 천천히 따라붙는다).
+- 멈춤이 더 길어 4 step 한도를 넘기면 초과분은 버려지고 그 수가 `SkippedTicks` 로
+  들어온다. 이때 step 을 하나씩 재현하면 또 밀리므로 `FastForwardTo` 로 한 번에 맞춘다.
+- 깨어난 첫 tick 들은 `Delay` 가 크므로 ② 분기에서 공간 해시 재생성 같은 비싼 작업을
+  걸러, room 이 빨리 정상 주기로 복귀하게 한다.
+- `battle.snapshot` 은 `SkipLateTicks` 라 밀린 동안의 snapshot 이 한 장으로 합쳐져,
+  깨어나면 현재 상태 한 장만 broadcast 한다. 오래된 world 를 몰아 보내지 않는다.
+
+요약하면 `ScheduledIndex` 는 **시간 정확성**(빠져도 어긋나지 않게), `Delay` 는
+**부하 적응**(밀리면 덜어내기), `SkippedTicks` 는 **복구 신호**(버려진 만큼 빠르게
+맞추고 계측)에 쓴다. 정책은 "빠진 걸 따라잡아야 하나(`CatchUpBounded`) / 최신만
+중요한가(`SkipLateTicks`) / 겹치면 안 되나(`DelayNextTick`)"로 고른다.
 
 ### 예외와 종료
 
@@ -363,7 +421,7 @@ public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotPublisherC
   `State`/`Reply` 만 들고 다니고, 이후 메시징은 publish 나 attach 된 channel client
   로 한다.
 
-## 5. SPOT 의 세 가지 outbound 표면
+## 5. SPOT 의 세 가지 outbound 함수
 
 SPOT 에서 밖으로 나가는 호출은 세 축으로 나뉜다.
 
@@ -402,22 +460,158 @@ public sealed class StageNoticeHandler
 }
 ```
 
-### current Spot 밖에서
+### 반대 방향 — SPOT 으로 들어오는 함수
 
-HTTP handler, 일반 channel handler, background service 처럼 **current Spot 이
-없는** 코드에는 target Spot 으로 직접 send/request 하는 public client 를 두지 않는다.
-이 경로에서는 actor 생성 또는 Entry Spot join 으로 `ActorRef` 를 얻고, session 이
-필요하면 그 ref 를 session actor handle 로 bind 한다. current Spot callback 안에서만
-`spot.Context.Outbound.SendToSpot(...)` 과 `spot.Context.Outbound.RequestToSpot(...)` 을
-사용한다.
+위가 spot 에서 밖으로 나가는 호출이라면, 반대로 밖에서 spot **안으로** 들어오는
+메시지는 §3 에서 등록한 handler 가 받는다. 보내는 함수와 받는 handler 는 한 쌍이다.
 
-이 경로는 session actor binding 또는 channel request 같은 더 높은 수준의 흐름으로
-표현한다. Spot transport 의 세부 배선은 application guide 가 아니라 internals 문서에서
-다룬다.
+```mermaid
+flowchart TD
+  Pub[Publish / PublishSpot] -->|topic event| Sub["AddSubscribe&lt;T&gt;(topic)"]
+  SendSpot[다른 Spot 의 SendToSpot / RequestToSpot] -->|send/request packet| Pkt["AddPacket&lt;T&gt;"]
+  ActorDispatch[actor dispatch · session actor] -->|actor packet| ActorPkt["AddActorPacket&lt;T, TActor&gt;"]
+```
 
-### local spot 없는 노드에서 publish — `IZLinkSpotPublisherClient`
+| 들어오는 메시지 | 보내는 쪽 함수 | 받는 handler (등록은 §3) |
+|------------------|----------------|----------------------------|
+| topic event | spot 안 `Publish` · 외부 `IZLinkSpotPublisherClient.PublishSpot` | `AddSubscribe<T>(topic)` → `IZLinkSpotSubscriptionHandler<TSpot, TEvent>` |
+| send packet | spot 안 `SendToSpot` · 외부 `IZLinkRouteClient.Send(ch, spotRid, …)` | `AddPacket<T>` → `IZLinkSpotPacketHandler<TSpot, TMessage>` |
+| request | spot 안 `RequestToSpot` · 외부 `IZLinkRouteClient.Request(ch, spotRid, …)` | `AddPacket<T>` → `IZLinkSpotRequestHandler<TSpot, TRequest, TReply>` |
+| actor packet | actor dispatch / session relay | `AddActorPacket<T, TActor>` → `IZLinkSpotActorSendHandler` / `IZLinkSpotActorRequestHandler` |
 
-로컬 spot 인스턴스가 없는 노드가 SPOT channel 로 이벤트만 쏠 때 쓴다.
+spot callback **안**에서는 `spot.Context.Outbound.SendToSpot/RequestToSpot/Publish`
+를 쓰고, spot callback **밖**(HTTP handler, 일반 channel/route handler, background
+service)에서는 `IZLinkRouteClient` 와 `IZLinkSpotPublisherClient` 로 같은 spot 에
+보낸다(아래 "외부 코드에서 spot 으로 보내기" 참고).
+
+#### (가) topic event — `PublishSpot` → `AddSubscribe<T>`
+
+받는 쪽: spot 은 `Configure()` 에서 topic 을 구독하고, event 가 오면 같은 Spot
+실행 큐에서 직렬로 처리한다.
+
+```csharp
+// StageSpot.Configure() 안
+Context.Handlers.AddSubscribe<StageStateUpdatedHandler>("stage.state.updated");
+
+public sealed class StageStateUpdatedHandler
+    : IZLinkSpotSubscriptionHandler<StageSpot, StageStateUpdatedEvent>
+{
+    public ValueTask HandleAsync(
+        StageSpot spot, StageStateUpdatedEvent message, CancellationToken ct)
+    {
+        spot.ApplyPeerState(message);   // lock 불필요 — 같은 Spot 큐에서 직렬 실행
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+호출하는 쪽: 로컬 spot 인스턴스가 없는 노드(예: HTTP handler)에서
+`IZLinkSpotPublisherClient.PublishSpot(...)` 으로 같은 topic 에 쏘면 위 handler 가 받는다.
+
+```csharp
+// 외부 노드의 HTTP handler — current Spot 없이 topic 으로 publish
+await spotPublisher
+    .PublishSpot("game.stage", "stage.state.updated",
+        new StageStateUpdatedEvent(stageRid))
+    .Async(ct);
+```
+
+#### (나) send/request packet → `AddPacket<T>`
+
+받는 쪽: `AddPacket<T>` 으로 등록한 handler 가 routed 로 들어온 send/request 를
+받는다(request 면 reply 를 반환한다). 보내는 쪽이 다른 Spot 이든 외부 코드든 같다.
+
+```csharp
+// StageSpot.Configure() 안
+Context.Handlers.AddPacket<GetStageStateHandler>();
+
+public sealed class GetStageStateHandler
+    : IZLinkSpotRequestHandler<StageSpot, GetStageStateRequest, GetStageStateReply>
+{
+    public ValueTask<GetStageStateReply> HandleAsync(
+        StageSpot spot, GetStageStateRequest request, CancellationToken ct)
+        => ValueTask.FromResult(new GetStageStateReply(spot.Occupants));
+}
+```
+
+호출하는 쪽은 둘이다. **spot callback 안**에서는 편의 함수 `RequestToSpot(spotRid, ...)`
+를 쓴다.
+
+```csharp
+// 다른 StageSpot 의 handler 안에서 — peer stage 상태를 조회
+var peer = await spot.Context.Outbound
+    .RequestToSpot(peerStageRid, new GetStageStateRequest())
+    .Async<GetStageStateReply>(ct);
+```
+
+**spot callback 밖**(HTTP handler, 일반 channel/route handler, background service)에서는
+`IZLinkRouteClient` 로 `spotRid` 에 보낸다(route egress 배선은 아래 참고).
+
+```csharp
+// 일반 코드(spot 아님) — route client 로 spotRid 에 request
+public sealed class StageQueryAdapter(IZLinkRouteClient routes)
+{
+    public ValueTask<GetStageStateReply> GetAsync(RoutingId spotRid, CancellationToken ct)
+        => routes
+            .Request("game.stage.route", spotRid, new GetStageStateRequest())
+            .Async<GetStageStateReply>(ct);
+}
+```
+
+#### (다) actor packet — actor dispatch → `AddActorPacket<T, TActor>`
+
+받는 쪽: actor 를 호스팅하는 spot(`IZLinkSpot<TActor>`)은 `AddActorPacket` 으로
+actor packet handler 를 등록한다. handler 는 spot 과 함께 dispatch 대상 actor 를 받는다.
+
+```csharp
+// StageSpot.Configure() 안 (StageSpot : IZLinkSpot<StageActor>)
+Context.Handlers.AddActorPacket<MoveActorHandler, StageActor>();
+
+public sealed class MoveActorHandler
+    : IZLinkSpotActorRequestHandler<StageSpot, StageActor, MoveActorCommand, MoveActorReply>
+{
+    public ValueTask<MoveActorReply> HandleAsync(
+        StageSpot spot, StageActor actor,
+        ZLinkSpotActorRequestContext context,
+        MoveActorCommand message, CancellationToken ct)
+    {
+        actor.MoveTo(message.X, message.Y);
+        return ValueTask.FromResult(new MoveActorReply(message.X, message.Y));
+    }
+}
+```
+
+호출하는 쪽: client stream 의 session 이 들어온 packet 을 bind 된 actor 로 relay 하면,
+그 actor 가 join 해 있는 spot 의 위 handler 로 dispatch 된다.
+
+```csharp
+// SampleSession.OnDispatchAsync — client packet 을 bound actor 로 relay
+var actorRef = Context.Actors.Find(actorId)
+    ?? throw new InvalidOperationException("actor not bound");
+await actorRef.RelayAsync(header, payload, ct);
+```
+
+자세한 actor bind/dispatch 흐름은 [06-actor-session](06-actor-session.ko.md)에서 다룬다.
+
+> 일반 channel 로 들어오는 send/request(§5 (b) 의 반대 방향)는 spot handler 가 아니라
+> channel handler 가 받는다([04-channel-messaging](04-channel-messaging.ko.md) §3). spot 의
+> inbound 함수는 위 세 가지로 한정된다.
+
+### 외부 코드에서 spot 으로 보내기 — `IZLinkRouteClient` · `IZLinkSpotPublisherClient`
+
+HTTP handler, 일반 channel/route handler, background service 처럼 **current Spot 이
+없는** 코드에서는 아래 두 client 를 주입받아 spot 으로 보낸다.
+
+| 보내는 것 | 주입받는 public client | 받는 handler |
+|-----------|------------------------|--------------|
+| send / request | `IZLinkRouteClient.Send/Request(routerChannelId, spotRid, …)` | spot 의 `AddPacket<T>`(§(나)) |
+| publish | `IZLinkSpotPublisherClient.PublishSpot(channel, topic, event)` | spot 의 `AddSubscribe<T>`(§(가)) |
+
+> actor packet(§(다))은 이 두 client 가 아니라 session 이 bind 된 actor 로 relay 하는
+> 경로다([06-actor-session](06-actor-session.ko.md)).
+
+send/request 예시는 §(나) "호출하는 쪽" 의 `IZLinkRouteClient` 코드를 그대로 쓴다.
+publish 예시는 다음과 같다 — 로컬 spot 인스턴스가 없는 노드가 spot channel 로 이벤트만 쏜다.
 
 ```csharp
 app.MapPost("/stage/publish", async (
@@ -433,8 +627,102 @@ app.MapPost("/stage/publish", async (
 });
 ```
 
-이 client 를 쓰려면 노드에 `AttachSpotPublisherClient("game.stage")` 가
-부착돼 있어야 한다.
+두 client 모두 host 배선이 전제다. `IZLinkRouteClient` 로 spot 에 보내려면 그 노드에
+spot route egress(`EnableSpotRouteEgress`)가, 받는 spot 노드에는
+`AcceptSpotRoutesFromChannel` 이 있어야 한다. `IZLinkSpotPublisherClient` 는
+`AttachSpotPublisherClient("game.stage")` 가 켜져 있어야 한다(아래 "함수를 켜는 배선").
+배선이 없으면 주입도 전송도 되지 않는다.
+
+### 함수를 켜는 배선 — host/factory 설정
+
+위 호출은 코드만으로 동작하지 않는다. **메시지가 흐르려면 먼저 노드 사이에 연결이
+있어야** 하고, 그 연결을 만드는 함수가 곧 host 설정에서 켜는 배선이다.
+
+기본 그림은 이렇다. spot 은 `SpotNode` 안에 살고, **같은 spot mesh 의 SpotNode 들은
+서로 router↔router 로 이미 연결**된다(각 노드 `EnableRouter` + discovery). 그래서
+spot↔spot 메시징은 이 연결을 그대로 타고, 추가 배선이 없다. 반면 **외부 채널/노드는
+이 mesh 에 없으므로** ① 연결을 만드는 함수를 양쪽에 켜고 ② 그 연결 위에서 정해진
+client 로 보낸다.
+
+```mermaid
+flowchart LR
+  subgraph nodeA["SpotNode A · game.stage"]
+    spotA["Spot"] --- rA(["router"])
+  end
+  subgraph nodeB["SpotNode B · game.stage"]
+    spotB["Spot"] --- rB(["router"])
+  end
+  rA <==>|"이미 연결됨: 양쪽 EnableRouter + discovery<br/>메시징: Outbound.SendToSpot / RequestToSpot"| rB
+  api["API 서버<br/>(일반 channel)"] -->|"연결: EnableSpotRouteEgress ↔ AcceptSpotRoutesFromChannel<br/>메시징: IZLinkRouteClient.Send / Request"| rA
+  edge["edge 노드<br/>(local spot 없음)"] -->|"연결: AttachSpotPublisherClient ↔ EnablePubSub<br/>메시징: IZLinkSpotPublisherClient.PublishSpot"| nodeA
+  strm["STREAM 노드<br/>(client session)"] -->|"연결: AttachActorGateway ↔ EnableRouter<br/>메시징: actorRef.RelayAsync"| rA
+```
+
+정리하면, **굵은 화살표(spot↔spot)는 spot mesh 가 알아서 깔아 주는 연결**이고,
+나머지 세 화살표는 외부와 잇기 위해 직접 켜야 하는 연결이다. 각 화살표의 "연결" 함수가
+아래 표의 양쪽 배선이고, "메시징" 함수가 그 위에서 부르는 호출이다. §2 의 기본 노드
+등록에 더해, 함수별 배선은 다음과 같다.
+
+| 함수 | 호출 코드 | 보내는 노드 배선 | 받는 노드 배선 |
+|------|-----------|------------------|----------------|
+| (a) publish (local spot) | `Outbound.Publish(topic, …)` | `EnablePubSub(ep)` | 구독 노드 `EnablePubSub(ep)` |
+| (가) 외부 publish | `publisher.PublishSpot(ch, topic, …)` | `AttachSpotPublisherClient(ch)` | `EnablePubSub(ep)` |
+| (b) channel send/req | `Outbound.SendToChannel/RequestToChannel(name, …)` | `AttachChannelClient(name)` | 해당 channel server |
+| (나) spot↔spot — 같은 mesh | `Outbound.SendToSpot/RequestToSpot(rid, …)` | `EnableRouter(ep)` + discovery | `EnableRouter(ep)` + discovery |
+| (나) 외부 channel → spot | `IZLinkRouteClient.Send/Request(ch, spotRid, …)` | channel `EnableSpotRouteEgress(ingress)` | `EnableRouter(ep)` + `AcceptSpotRoutesFromChannel(ingress)` |
+| (다) actor packet | session `actorRef.RelayAsync(…)` | STREAM `AttachActorGateway(spotNode)` | `EnableRouter(ep)` + `AddEntrySpot<…>()` + `AddActorFactory<…>(type)` |
+
+> **(가) subscribe 받는 쪽**은 별도 attach 가 없다. `EnablePubSub` 만 켜면 spot 의
+> `AddSubscribe<T>(topic)`(§3) 이 그 topic 을 받는다.
+
+#### 받는 노드 (spot 을 호스팅하는 play 노드)
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.AddActorFactory<StageActorFactory>("player");   // (다) actor 생성 매핑
+
+    var mesh = options.AddSpotMesh("game.stage");
+    mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+
+    var node = mesh.AddNode("play-node");
+    node.EnableRouter("tcp://0.0.0.0:9001");                // (나)(다) routed packet 수신
+    node.EnablePubSub("tcp://0.0.0.0:9000");                // (a)(가) publish/subscribe
+    node.AcceptSpotRoutesFromChannel("api");                // (나) 다른 channel 에서 오는 route 수락
+    node.AddEntrySpot<StageEntrySpot>();                    // (다) actor 가 머무는 entry spot
+    node.AddSpotFactory<StageSpot>();
+});
+```
+
+#### 보내는 노드 (외부 publish · session · 다른 channel egress)
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    // (가) local spot 없이 game.stage 로 publish
+    var mesh = options.AddSpotMesh("game.stage");
+    mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+    var edge = mesh.AddNode("edge-node");
+    edge.AttachSpotPublisherClient("game.stage");
+
+    // (나) 다른 channel 에서 play-node 의 "api" ingress 로 spot route egress
+    var gateway = options.AddClientServerChannel("gateway.client");
+    gateway.EnableClient("tcp://play-node-1:9001");
+    gateway.EnableSpotRouteEgress("api");
+
+    // (다) client stream → session 이 actor 로 relay. SpotNode 를 owner gateway 로 지정
+    var stream = options.AddStreamNode("client-stream");
+    stream.Bind("tcp://0.0.0.0:7101");
+    stream.AttachActorGateway("play-node");
+});
+```
+
+핵심은 **짝**이다. `EnableSpotRouteEgress("api")` 의 인자는 local 이름이 아니라
+target 노드가 `AcceptSpotRoutesFromChannel("api")` 로 연 ingress 이름이고,
+`AttachSpotPublisherClient("game.stage")` 는 받는 노드의 `EnablePubSub` 와,
+`AttachActorGateway("play-node")` 는 그 SpotNode 의 `EnableRouter`/`AddEntrySpot` 와
+짝을 이뤄야 한다. 한쪽만 켜면 호출은 컴파일은 되지만 런타임에 도달하지 못한다
+(§7 "자주 막히는 곳" 참고).
 
 ## 6. Stage wrapper (playhouse Stage 류)
 

@@ -7,8 +7,8 @@
 # GameQuest Sample (Java)
 
 > 언어 중립 시나리오 정본은 [공통 샘플 — GameQuest](../../../common/sample/event/gamequest.ko.md)다.
-> 실행 코드는 `samples/java/GameQuest`(Java)에 있다. Kotlin 미러(`samples/kotlin/GameQuest`)는
-> 아직 포팅되지 않았다.
+> Java 실행 코드는 `samples/java/GameQuest`에 있고, 같은 시나리오의 Kotlin 실행 코드는
+> `samples/kotlin/GameQuest`에 있다.
 
 ## 1. 목적
 

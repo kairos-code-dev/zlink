@@ -4,11 +4,11 @@
 
 [Kotlin 묶음](../../README.ko.md) | [SPOT](../../../java/spec/spring-boot-spot.ko.md) | [Actor/Session](../../../java/spec/spring-boot-actor-session.ko.md) | [STREAM](../../../java/spec/spring-boot-stream.ko.md)
 
-# GameQuest Sample (Java)
+# GameQuest Sample (Kotlin)
 
 > 언어 중립 시나리오 정본은 [공통 샘플 — GameQuest](../../../common/sample/event/gamequest.ko.md)다.
-> 실행 코드는 `samples/java/GameQuest`(Java)에 있다. Kotlin 미러(`samples/kotlin/GameQuest`)는
-> 아직 포팅되지 않았다.
+> Kotlin 실행 코드는 `samples/kotlin/GameQuest`에 있고, 같은 시나리오의 Java 실행 코드는
+> `samples/java/GameQuest`에 있다.
 
 ## 1. 목적
 
@@ -42,14 +42,14 @@ quest aggregate를 복원하고, 조건 평가·progress/completion/reward event
 
 ## 4. 비동기 진행 관용구
 
-client는 stream connector의 `await(...)`/`request(...).await(Class)` 와 `CompletionStage`로
-진행하고, server assertion 대기는 `LockSupport.parkNanos` polling을 쓴다. 금지 패턴
+client는 stream connector의 Kotlin coroutine wrapper와 `await(...)`로 진행하고, server assertion
+대기는 coroutine-friendly polling을 쓴다. 금지 패턴
 (Thread.sleep / while(true) / CountDownLatch)은 쓰지 않는다.
 
 ## 5. 경계 메모
 
 dotnet 행위 정본은 `samples/dotnet/.../GameQuest`다. dotnet은 `GameApi`의 action API를
-HTTP(ASP.NET) + WebSocket으로 노출하지만, Java 샘플은 같은 시나리오를 JSON-codec ZLink
+HTTP(ASP.NET) + WebSocket으로 노출하지만, Kotlin 샘플은 같은 시나리오를 JSON-codec ZLink
 client/server channel + STREAM session으로 옮긴다(게이트가 HTTP를 요구하지 않음). owner
 routing은 `playerId` 기준으로 안정적이고, event-sourced quest 상태는 spot이 소유한다.
 

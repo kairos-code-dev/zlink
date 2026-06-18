@@ -105,8 +105,6 @@ ShoppingMall, GameQuest)은 공통 샘플 기준에 따라 JSON codec, Registry/
 | [spot-samples](guide/samples/spot-samples.ko.md) | room/stage/zone 기준 Spot 등록과 publish/request 샘플 |
 | [stream-samples](guide/samples/stream-samples.ko.md) | stream 등록, header session, actor relay 샘플 |
 
-> GameQuest per-app 문서는 GameQuest 샘플 코드 이식 후 추가한다.
-
 ## 5. 케이스 스터디
 
 도입 판단과 아키텍처 매핑을 위한 도메인별 케이스 스터디는

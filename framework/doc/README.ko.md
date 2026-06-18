@@ -2,81 +2,134 @@
 [문서 목록](README.ko.md) | [다음: ZLink Framework 공통 스펙](framework/common/README.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# ZLink Framework 문서
+# ZLink Framework 문서 맵
 
-이 디렉토리는 `ZLink Framework` 문서의 진입점이다. 문서는 **컴포넌트별**로 나뉜다.
+`ZLink Framework` 문서의 진입점이다. 문서는 **컴포넌트별**로 나뉘고, 각 컴포넌트는
+**공통(언어 중립)** 과 **언어별** 문서로 나뉜다. 아래 맵에서 필요한 위치로 바로 이동한다.
 
-| 컴포넌트 | 진입점 | 내용 |
-|---------|--------|------|
-| **Framework adapter** | [framework/common/](framework/common/README.ko.md) | 언어 중립 공통 스펙(`framework/common/`) + 언어별 guide·spec·internals(`framework/<lang>/`) |
-| **HTTP Client** | [http-client/](http-client/dotnet/README.ko.md) | 언어별 HTTP client 문서(`http-client/<lang>/`) |
-| **Stream Connector** | [stream-connector/](stream-connector/cpp/guide/INDEX.ko.md) | C++ Stream Connector 라이브러리 문서(`stream-connector/cpp/`) |
+## 컴포넌트 한눈에
 
-아래는 **Framework adapter** 컴포넌트 상세다. `framework/common/`이 언어 중립 정식 계약,
-`framework/<lang>/`이 각 언어 표면이다. `.NET`·`C++`·`Java/Kotlin`·`Node.js` 네 언어가
-정식 문서로 제공된다.
+| 컴포넌트 | 디렉토리 | 진입점 | 내용 |
+|---------|----------|--------|------|
+| **Framework adapter** | `framework/` | [공통 스펙](framework/common/README.ko.md) | 메시징·SPOT·actor·stream 프레임워크 본체 |
+| **HTTP Client** | `http-client/` | [언어별 문서](http-client/dotnet/README.ko.md) | fluent HTTP/JSON client |
+| **Stream Connector** | `stream-connector/` | [INDEX](stream-connector/cpp/guide/INDEX.ko.md) | client 측 STREAM 접속 라이브러리(C++) |
+| 구현 계획 | `plan/` | [codec 통합 계획](plan/framework-codec-extension-unification-plan.ko.md) | 컴포넌트 횡단 작업 순서 |
 
-## 1. 읽는 순서
+정식 언어: `.NET` · `Java/Kotlin` · `Node.js` · `C++`.
 
-1. [공통 스펙 목록](framework/common/README.ko.md)
-2. [Use case 목록](framework/common/use-cases/README.ko.md)
-3. [Use case 검증](framework/common/spec/usecase-validation.ko.md)
-4. [구현 계획](#3-구현-계획)
-5. [언어별 문서](#4-언어별-문서)
+---
 
-## 2. 공통 스펙
+## 1. Framework adapter (`framework/`)
+
+### 1.1 공통 — 언어 중립 정식 계약 (`framework/common/`)
+
+[공통 문서 색인](framework/common/README.ko.md) · 공통 의미를 바꿀 때는 여기를 먼저 고친다.
+
+**스펙** (`framework/common/spec/`)
 
 | 문서 | 다루는 범위 |
 |------|-------------|
-| [공통 스펙 목록](framework/common/README.ko.md) | 공통 스펙 전체 목록과 읽는 순서, 네이밍 정책 |
 | [개요](framework/common/spec/overview.ko.md) | Framework의 목적과 우선 범위 |
-| [상호작용 모델](framework/common/spec/interaction-model.ko.md) | request-response, command, publish-subscribe 같은 사용자 모델 |
+| [상호작용 모델](framework/common/spec/interaction-model.ko.md) | request-response, command, publish-subscribe 사용자 모델 |
 | [메시지 모델](framework/common/spec/message-model.ko.md) | header/payload 구조와 metadata 정책 |
 | [Channel topology](framework/common/spec/channel-topology.ko.md) | channel grouping, discovery, 수동 연결, 내부 transport 매핑 |
 | [Framework API](framework/common/spec/framework-api.ko.md) | 언어별 framework API의 공통 방향 |
-| [비동기 실행 정책](framework/common/spec/async-execution-policy.ko.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미 |
+| [비동기 실행 정책](framework/common/spec/async-execution-policy.ko.md) | async submit, blocking 금지, coroutine/adapter 공통 의미 |
 | [Actor 모델](framework/common/spec/actor-model.ko.md) | actor 위치, session binding, Entry Spot, user Spot, dispatch 기준 |
 | [Session Actor Dispatch](framework/common/spec/session-actor-dispatch.ko.md) | session과 actor를 연결하는 helper와 routing 정책 |
-| [공통 샘플 시나리오](framework/common/sample/README.ko.md) | 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall, GameQuest)의 언어 중립 샘플 기준 |
-| [Use case 목록](framework/common/use-cases/README.ko.md) | use case 문서 전체 목록과 관리 규칙 |
 | [Use case 검증](framework/common/spec/usecase-validation.ko.md) | 현재 스펙이 use case를 얼마나 설명하는지 점검 |
 
-언어 중립 샘플 설계는 [framework/common/sample/](framework/common/sample/README.ko.md)에 둔다. 정본 6종은
-모든 framework 언어(dotnet/java/kotlin/node/cpp)가 같은 역할 분리·메시지 이름·smoke
-검증 순서로 구현한다. Bingo는 분리된 Session/API/Play gateway 구조를, TicTacToe는 API와
-Play 서버만으로 구성한 직접 play 연결 구조를 맡는다.
+**Use case** ([색인](framework/common/use-cases/README.ko.md)) — 9종: service-to-service RPC,
+playhouse play→api, worker dispatch, domain event fanout, cache invalidation,
+stage state sync, real-time notification fanout, scatter-gather query, workflow orchestration.
 
-## 3. 구현 계획
+**공통 샘플 시나리오** ([색인](framework/common/sample/README.ko.md)) — 정본 6종을 모든 언어가
+같은 역할 분리·메시지 이름·smoke 순서로 구현한다.
+
+| 샘플 | 핵심 |
+|------|------|
+| TicTacToe | route mesh, actor game join (API+Play 직접 연결) |
+| Bingo | Registry/Discovery, Entry Spot, room Spot, bound push (Session/API/Play 분리) |
+| SupportChat | conversation Spot, idle/close timer, 재접속 |
+| DeliveryDispatch | 배달 상태 전이, 재배정 timer, 고객 stream push |
+| ShoppingMall | order workflow 상태 전이, event sourcing/보상 |
+| GameQuest | stateless API scale-out, owner routing, fanout + event sourcing |
+
+### 1.2 언어별 (`framework/<lang>/`)
+
+각 언어 문서는 `guide`(사용자 가이드·샘플) · `spec`(그 언어의 공개 계약) ·
+`internals`(구현·검증 기준)로 나뉜다. 각 언어 README가 그 언어 전체를 색인한다.
+
+| 언어 | 진입점 | guide | spec | internals |
+|------|--------|-------|------|-----------|
+| `.NET` | [framework/dotnet](framework/dotnet/README.ko.md) | 12장 + case-studies + samples | ASP.NET Core 계약 | DI·lifecycle·회귀 |
+| `Java/Kotlin` | [framework/java](framework/java/README.ko.md) | Spring Boot 가이드 | Spring 계약 | 구현·검증 |
+| `Node.js` | [framework/node](framework/node/README.ko.md) | NestJS 가이드 | NestJS 계약 | 구현·검증 |
+| `C++` | [framework/cpp](framework/cpp/README.ko.md) | 가이드 + 샘플 맵·기능 맵 | C++ 계약 | 구현 계획·POSD |
+
+> 가이드 골격(언어별 세부 번호는 다를 수 있음): 개요 → 시작하기 → 핵심 개념 →
+> 채널 메시징 → SPOT → actor/session → STREAM → Registry → 모니터링 → 기능 맵 →
+> 인터페이스 카탈로그 → gRPC 대안. 그 뒤 case-studies(이커머스·메시·게임·라이드헤일링·
+> 채팅·트레이딩)와 정본 샘플 문서가 이어진다.
+
+---
+
+## 2. HTTP Client (`http-client/`)
+
+fluent HTTP/JSON client. 네 언어가 동일한 13장 골격을 공유한다.
+
+| 언어 | 진입점 |
+|------|--------|
+| `.NET` | [http-client/dotnet](http-client/dotnet/README.ko.md) |
+| `Java/Kotlin` | [http-client/java](http-client/java/README.ko.md) |
+| `Node.js` | [http-client/node](http-client/node/README.ko.md) |
+| `C++` | [http-client/cpp](http-client/cpp/README.ko.md) |
+
+장 구성: 01 개요 · 02 시작하기 · 03 client 설정 · 04 요청 보내기 · 05 request body ·
+06 응답 처리 · 07 async/coroutine · 08 streaming · 09 인증/TLS · 10 redirect/retry/cookie ·
+11 proxy · 12 압축 · 13 에러 처리. 각 언어 `spec/`에 공개 계약이 있다.
+
+---
+
+## 3. Stream Connector (`stream-connector/`)
+
+client 측에서 STREAM 서버에 접속하는 별도 라이브러리(C++). Unreal/Godot/Axmol engine adapter 포함.
+
+[가이드 INDEX](stream-connector/cpp/guide/INDEX.ko.md)
+
+| 영역 | 문서 |
+|------|------|
+| 가이드 | [01 개요](stream-connector/cpp/guide/01-overview.ko.md) · [02 시작하기](stream-connector/cpp/guide/02-getting-started.ko.md) · [03 옵션](stream-connector/cpp/guide/03-connector-options.ko.md) · [04 송신](stream-connector/cpp/guide/04-sending.ko.md) · [05 수신](stream-connector/cpp/guide/05-receiving.ko.md) · [06 lifecycle](stream-connector/cpp/guide/06-lifecycle.ko.md) · [07 에러 처리](stream-connector/cpp/guide/07-error-handling.ko.md) · [08 e2e client](stream-connector/cpp/guide/08-e2e-client.ko.md) · [09 engine adapter](stream-connector/cpp/guide/09-engine-adapters.ko.md) · [10 packaging](stream-connector/cpp/guide/10-packaging.ko.md) · [11 성능](stream-connector/cpp/guide/11-performance.ko.md) |
+| core | [async runtime](stream-connector/cpp/core/guide/async-runtime.ko.md) |
+| e2e-client | [coroutine client](stream-connector/cpp/e2e-client/guide/coroutine-client.ko.md) |
+
+> `.NET`·`Java/Kotlin`·`Node.js`는 connector가 framework guide의 STREAM·streaming-client
+> 장에 thin client로 포함된다(별도 트리 없음).
+
+---
+
+## 4. 구현 계획 (`plan/`)
 
 | 문서 | 다루는 범위 |
 |------|-------------|
-| [Framework codec extension 통합 계획](plan/framework-codec-extension-unification-plan.ko.md) | JSON 기본값, Protobuf/MessagePack 선택 extension, custom codec, connector/HTTP client 적용 구조를 정리하는 순서 |
+| [Framework codec extension 통합 계획](plan/framework-codec-extension-unification-plan.ko.md) | JSON 기본값, Protobuf/MessagePack extension, custom codec, connector/HTTP client 적용 구조 |
 
-## 4. 언어별 문서
+---
 
-| 언어 | 상태 | 진입점 |
-|------|------|--------|
-| `.NET` | 정식 | [framework/dotnet/README.ko.md](framework/dotnet/README.ko.md) |
-| `Java/Kotlin` | 정식 | [framework/java/README.ko.md](framework/java/README.ko.md) |
-| `Node.js` | 정식 | [framework/node/README.ko.md](framework/node/README.ko.md) |
-| `C++` | 정식 | [framework/cpp/README.ko.md](framework/cpp/README.ko.md) |
+## 읽는 순서
 
-언어별 문서는 모두 이 `framework/doc/` 디렉토리 아래에서 관리한다. 언어별 framework 문서는
-`framework/<lang>/{guide,spec,internals}`로 나뉜다. `guide`는 샘플과 튜토리얼, `spec`은 그
-언어의 공개 계약, `internals`는 구현과 검증 기준이다.
-`framework/languages/<lang>/doc/` 아래에 새 문서를 만들지 않는다. 나중에 언어별 guide,
-spec, internals, HTTP client 문서, stream connector 문서를 수정할 때도 `framework/doc/`
-아래의 해당 컴포넌트 디렉토리를 기준으로 진행한다.
+1. [공통 개요](framework/common/spec/overview.ko.md) → [상호작용 모델](framework/common/spec/interaction-model.ko.md) → [actor 모델](framework/common/spec/actor-model.ko.md)
+2. 사용할 언어의 [framework/&lt;lang&gt;](framework/dotnet/README.ko.md) guide
+3. HTTP가 필요하면 [http-client/&lt;lang&gt;](http-client/dotnet/README.ko.md), 외부 client 접속이면 [stream-connector](stream-connector/cpp/guide/INDEX.ko.md)
 
-## 5. 유지 규칙
+## 유지 규칙
 
-- 공통 의미를 바꿀 때는 `framework/common/`을 먼저 고치고, 언어 문서는 링크로 연결한다.
+- 공통 의미는 `framework/common/spec/`을 먼저 고치고, 언어 문서는 링크로 연결한다.
 - 언어별 문서는 공통 의미를 해당 언어의 시그니처와 샘플로만 구체화한다.
-- 언어별 문서의 기준 위치는 항상 `framework/doc/`이다. 언어 구현 디렉토리인
-  `framework/languages/<lang>/` 아래에는 새 문서 디렉토리를 추가하지 않는다.
-- 새 문서를 추가하면 이 목록과 해당 디렉토리 `README.ko.md`를 함께 갱신한다.
-- 구현 계획과 worklog는 [plan/](plan)에 둔다.
-- HTTP Client 문서는 [http-client/<lang>/](http-client/dotnet/README.ko.md)에서 관리한다.
+- 새 문서를 추가하면 이 맵과 해당 디렉토리 `README.ko.md`를 함께 갱신한다.
+- 컴포넌트 경계를 지킨다: framework 본체는 `framework/`, HTTP client는 `http-client/`,
+  STREAM connector는 `stream-connector/`.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

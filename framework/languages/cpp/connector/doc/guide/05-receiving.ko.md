@@ -87,7 +87,7 @@ if (!ready) {
 auto capacity = ready.value().player_capacity;
 ```
 
-timeout을 생략하면 `connector_options_t::request_timeout` 값을 사용한다.
+timeout을 생략하면 `connector_options_t::wait_timeout` 값을 사용한다.
 
 ### where() — 조건 필터
 

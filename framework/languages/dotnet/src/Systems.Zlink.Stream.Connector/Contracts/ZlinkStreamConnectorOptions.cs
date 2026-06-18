@@ -10,6 +10,8 @@ public sealed class ZlinkStreamConnectorOptions
 
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
+    public TimeSpan WaitTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
     public ZlinkStreamHeartbeatOptions Heartbeat { get; init; } = new();
 
     public ZlinkStreamReconnectOptions Reconnect { get; init; } = new();

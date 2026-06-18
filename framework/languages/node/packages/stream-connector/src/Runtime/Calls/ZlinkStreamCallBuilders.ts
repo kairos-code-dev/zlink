@@ -199,7 +199,7 @@ export class ZlinkStreamWaitBuilder<TPayload = ZlinkStreamEncodedPayload> implem
     this.markExecuted();
     return this.connector.waitForMessage(
       this.name,
-      this.timeoutMs ?? this.connector.options.requestTimeoutMs,
+      this.timeoutMs ?? this.connector.options.waitTimeoutMs,
       this.predicate,
       signal
     );

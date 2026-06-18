@@ -7,6 +7,7 @@ public record ZLinkStreamConnectorOptions(
     URI endpoint,
     ZLinkStreamDispatchMode dispatchMode,
     Duration requestTimeout,
+    Duration waitTimeout,
     int maxReconnectAttempts,
     Duration connectTimeout,
     int maxSendPayloadSize,
@@ -53,6 +54,47 @@ public record ZLinkStreamConnectorOptions(
         if (nameResolver == null) {
             nameResolver = ZLinkStreamPacketNameResolver.defaultResolver();
         }
+    }
+
+    public ZLinkStreamConnectorOptions(
+        URI endpoint,
+        ZLinkStreamDispatchMode dispatchMode,
+        Duration requestTimeout,
+        int maxReconnectAttempts,
+        Duration connectTimeout,
+        int maxSendPayloadSize,
+        int maxReceivePayloadSize,
+        boolean heartbeatEnabled,
+        Duration heartbeatInterval,
+        Duration heartbeatTimeout,
+        boolean reconnectEnabled,
+        Duration reconnectInitialDelay,
+        Duration reconnectMaxDelay,
+        double reconnectBackoffFactor,
+        boolean skipServerCertificateValidation,
+        ZLinkStreamCompression compression,
+        ZLinkStreamPacketNameResolver nameResolver,
+        ZLinkStreamTypedCodec typedCodec) {
+        this(
+            endpoint,
+            dispatchMode,
+            requestTimeout,
+            Duration.ofSeconds(5),
+            maxReconnectAttempts,
+            connectTimeout,
+            maxSendPayloadSize,
+            maxReceivePayloadSize,
+            heartbeatEnabled,
+            heartbeatInterval,
+            heartbeatTimeout,
+            reconnectEnabled,
+            reconnectInitialDelay,
+            reconnectMaxDelay,
+            reconnectBackoffFactor,
+            skipServerCertificateValidation,
+            compression,
+            nameResolver,
+            typedCodec);
     }
 
     public ZLinkStreamConnectorOptions(

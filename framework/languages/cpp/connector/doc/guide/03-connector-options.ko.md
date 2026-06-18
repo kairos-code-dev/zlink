@@ -41,10 +41,11 @@ options.transport = zlink::stream_connector::transport_t::websocket_secure;
 
 ```cpp
 options.connect_timeout   = std::chrono::seconds{5};   // connect 시도 전체 제한
-options.request_timeout   = std::chrono::seconds{30};  // request/wait 기본 제한
+options.request_timeout   = std::chrono::seconds{30};  // request 기본 제한
+options.wait_timeout      = std::chrono::seconds{5};   // wait_for 기본 제한
 ```
 
-`request_timeout`은 `request().submit()`, `wait_for().submit()`의 기본값이다. 호출마다 `.timeout()`으로 덮어쓸 수 있다.
+`request_timeout`은 `request().submit()`의 기본값이고, `wait_timeout`은 `wait_for().submit()`의 기본값이다. 호출마다 `.timeout()`으로 덮어쓸 수 있다.
 
 ## heartbeat
 
@@ -124,6 +125,7 @@ zsc::connector_options_t options;
 options.endpoint                 = "wss://game.example.com:443/stream";
 options.connect_timeout          = std::chrono::seconds{5};
 options.request_timeout          = std::chrono::seconds{10};
+options.wait_timeout             = std::chrono::seconds{5};
 options.heartbeat.interval       = std::chrono::seconds{15};
 options.heartbeat.timeout        = std::chrono::seconds{45};
 options.reconnect.max_attempts   = 5;

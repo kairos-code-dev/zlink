@@ -186,7 +186,6 @@ public final class GameQuestClientScenario {
                 Messages.QuestCompletedNotify.class,
                 message -> message.payload().playerId().equals(playerId)
                     && message.payload().progress().questId().equals(questId))
-            .timeout(SampleTimings.NotifyTimeout)
             .submit(Messages.QuestCompletedNotify.class);
     }
 

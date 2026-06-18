@@ -35,7 +35,7 @@ auto value = reply.value(); // T&&
 | `disconnected` | 연결이 없는 상태에서 operation 호출 또는 transport 끊김 | send, request, wait, dispatch |
 | `configuration_error` | endpoint, packet name, timeout 같은 설정이 잘못됨 | connect, send, request |
 | `validation_failed` | 요청 인자가 계약 범위를 벗어남 | send, request |
-| `request_timeout` | reply나 wait 대상 packet이 timeout 안에 도착하지 않음 | request, wait_for |
+| `request_timeout` / `wait_timeout` | reply나 wait 대상 packet이 timeout 안에 도착하지 않음 | request, wait_for |
 | `connect_timeout` | connect 시도가 `connect_timeout` 안에 완료되지 않음 | connect |
 | `frame_decode_failed` | 수신 frame을 STREAM 계약에 맞게 파싱할 수 없음 | receive loop |
 | `frame_too_large` | send payload 또는 metadata가 설정 한도를 넘음 | send, request |

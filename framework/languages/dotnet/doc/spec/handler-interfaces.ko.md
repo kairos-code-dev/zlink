@@ -2000,7 +2000,8 @@ pending submit 을 이어서 진행해야 한다.
   frame 을 중복 전송하거나 중복 dispose 해서는 안 된다.
 - stream connector public options 에는 `SendTimeout` 을 두지 않는다.
   connector send 는 응답이 없는 submit 이다. connector 의 request reply
-  대기에는 `RequestTimeout` 만 사용한다.
+  대기에는 `RequestTimeout` 을 사용하고, `WaitFor(...)` 의 push 대기에는
+  `WaitTimeout` 을 사용한다.
 
 따라서 public 호출 감각은 다음과 같이 잡힌다.
 

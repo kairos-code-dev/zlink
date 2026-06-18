@@ -83,7 +83,7 @@ Java는 event를 `on...` registration으로 노출한다. .NET의 event와 의�
 `waitFor(...)`는 특정 packet name의 server push를 한 번 기다리는 call builder를 반환한다.
 필요한 message만 고를 때는 builder의 `where(...)`를 사용한다. timeout이 지나면 반환된
 `CompletionStage`가 timeout 실패로 끝난다. 별도 timeout을 지정하지 않으면 connector
-options의 `requestTimeout()` 값을 사용한다. `MANUAL` dispatch mode에서는 caller가
+options의 `waitTimeout()` 값을 사용한다. `MANUAL` dispatch mode에서는 caller가
 기존처럼 `dispatch().submit()` 또는 `dispatch().await()`를 호출해야 wait handler가 실행된다.
 
 Java API에서 `submit(...)`은 비동기 작업을 시작하고 `CompletionStage`를 반환한다.
@@ -101,6 +101,7 @@ public final class ZLinkStreamConnectorOptions {
     Optional<ZLinkStreamTransport> transport();
     Duration connectTimeout();      // default 5s
     Duration requestTimeout();      // default 30s
+    Duration waitTimeout();         // default 5s
     ZLinkStreamHeartbeatOptions heartbeat();
     ZLinkStreamReconnectOptions reconnect();
     int maxSendPayloadSize();       // default 64 * 1024

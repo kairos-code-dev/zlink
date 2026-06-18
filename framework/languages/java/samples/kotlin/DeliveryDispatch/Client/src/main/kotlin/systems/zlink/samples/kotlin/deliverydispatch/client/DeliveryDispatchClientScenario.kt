@@ -74,7 +74,6 @@ class DeliveryDispatchClientScenario(
     ): Deferred<systems.zlink.stream.connector.ZLinkStreamMessage<DeliveryStatusNotify>> {
         val wait = customer.waitFor<DeliveryStatusNotify>()
             .where { it.payload().deliveryId == deliveryId && it.payload().status == status }
-            .timeout(SampleTimings.NotifyTimeout)
         return async { wait.await() }
     }
 

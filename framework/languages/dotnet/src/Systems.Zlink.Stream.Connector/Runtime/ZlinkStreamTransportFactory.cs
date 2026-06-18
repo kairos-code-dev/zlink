@@ -51,6 +51,13 @@ internal static class ZlinkStreamTransportFactory
                 "RequestTimeout must be positive.");
         }
 
+        if (options.WaitTimeout <= TimeSpan.Zero)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "WaitTimeout must be positive.");
+        }
+
         if (options.Heartbeat.Enabled)
         {
             var heartbeat = options.Heartbeat;

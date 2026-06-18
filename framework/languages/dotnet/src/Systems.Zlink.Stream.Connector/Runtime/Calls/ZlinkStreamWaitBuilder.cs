@@ -37,7 +37,7 @@ internal sealed class ZlinkStreamWaitBuilder : IZlinkStreamWaitCall
         return await _connector.WaitForEncodedAsync(
                 _state.ResolveMessageName(),
                 _predicate,
-                _state.Timeout ?? _connector.Options.RequestTimeout,
+                _state.Timeout ?? _connector.Options.WaitTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
     }

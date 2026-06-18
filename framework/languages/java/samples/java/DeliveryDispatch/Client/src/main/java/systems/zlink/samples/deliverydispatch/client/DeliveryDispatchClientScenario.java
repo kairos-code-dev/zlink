@@ -74,7 +74,6 @@ public final class DeliveryDispatchClientScenario {
                 Messages.DeliveryStatusNotify.class,
                 message -> message.payload().deliveryId().equals(deliveryId)
                     && message.payload().status().equals(status))
-            .timeout(SampleTimings.NotifyTimeout)
             .submit(Messages.DeliveryStatusNotify.class);
     }
 

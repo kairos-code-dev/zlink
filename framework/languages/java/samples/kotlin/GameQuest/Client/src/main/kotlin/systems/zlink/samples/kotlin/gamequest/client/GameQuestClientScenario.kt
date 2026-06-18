@@ -216,7 +216,6 @@ class GameQuestClientScenario(
     ): Deferred<ZLinkStreamMessage<QuestCompletedNotify>> {
         val wait = connector.waitFor<QuestCompletedNotify>()
             .where { it.payload().playerId == playerId && it.payload().progress.questId == questId }
-            .timeout(SampleTimings.NotifyTimeout)
         return async { wait.await() }
     }
 

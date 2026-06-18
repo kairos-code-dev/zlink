@@ -12,6 +12,7 @@ export interface ZlinkStreamConnectorOptions {
   readonly transportFactory?: ZlinkStreamTransportFactory;
   readonly connectTimeoutMs?: number;
   readonly requestTimeoutMs?: number;
+  readonly waitTimeoutMs?: number;
   readonly heartbeat?: ZlinkStreamHeartbeatOptions;
   readonly reconnect?: ZlinkStreamReconnectOptions;
   readonly maxSendPayloadSize?: number;
@@ -62,6 +63,7 @@ export interface RequiredZlinkStreamConnectorOptions {
   readonly transport: ZlinkStreamTransport;
   readonly connectTimeoutMs: number;
   readonly requestTimeoutMs: number;
+  readonly waitTimeoutMs: number;
   readonly heartbeat: Required<ZlinkStreamHeartbeatOptions>;
   readonly reconnect: Required<ZlinkStreamReconnectOptions>;
   readonly maxSendPayloadSize: number;

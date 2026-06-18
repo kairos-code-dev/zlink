@@ -90,7 +90,7 @@ class connector_t
     /// Waits for the next unread packet with the given name and consumes it.
     result_t<packet_t> wait_for (std::string packet_name)
     {
-        return wait_for (std::move (packet_name), options ().request_timeout);
+        return wait_for (std::move (packet_name), options ().wait_timeout);
     }
 
     /// Waits for the next unread packet with the given name and consumes it.
@@ -113,7 +113,7 @@ class connector_t
     template <typename TMessage> wait_call_t<TMessage> wait_for (std::string packet_name)
     {
         return wait_call_t<TMessage> (
-          _state, std::move (packet_name), options ().request_timeout);
+          _state, std::move (packet_name), options ().wait_timeout);
     }
 
     /// Starts a typed wait call with the given packet name and timeout.

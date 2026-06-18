@@ -352,7 +352,7 @@ public sealed partial class StreamConnectorTests
                 => _connector.WaitForRecordedAsync(
                     _name,
                     _predicate ?? (static _ => true),
-                    _timeout ?? _connector.Options.RequestTimeout,
+                    _timeout ?? _connector.Options.WaitTimeout,
                     cancellationToken);
         }
 

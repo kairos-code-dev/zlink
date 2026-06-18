@@ -49,7 +49,7 @@ public interface ZLinkStreamConnector {
         return new DefaultZLinkStreamWaitCall(
             this,
             name,
-            options().requestTimeout(),
+            options().waitTimeout(),
             options().typedCodec());
     }
 

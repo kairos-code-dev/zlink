@@ -52,8 +52,11 @@ struct connector_options_t
     /// Maximum time allowed for a connect attempt, including configured reconnect attempts.
     std::chrono::milliseconds connect_timeout{5000};
 
-    /// Default timeout for request/reply and wait_for operations.
+    /// Default timeout for request/reply operations.
     std::chrono::milliseconds request_timeout{30000};
+
+    /// Default timeout for wait_for operations.
+    std::chrono::milliseconds wait_timeout{5000};
 
     /// Heartbeat behavior for this connector.
     heartbeat_options_t heartbeat;

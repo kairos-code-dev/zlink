@@ -21,6 +21,7 @@ export function normalizeOptions(options: ZlinkStreamConnectorOptions): Required
   }
   validatePositive(options.connectTimeoutMs ?? 5000, 'ConnectTimeout');
   validatePositive(options.requestTimeoutMs ?? 30000, 'RequestTimeout');
+  validatePositive(options.waitTimeoutMs ?? 5000, 'WaitTimeout');
   validatePositive(options.maxSendPayloadSize ?? 64 * 1024, 'MaxSendPayloadSize');
   validatePositive(options.maxReceivePayloadSize ?? 64 * 1024, 'MaxReceivePayloadSize');
   validatePositive(options.maxInboundObserverNotifications ?? 1024, 'MaxInboundObserverNotifications');
@@ -35,6 +36,7 @@ export function normalizeOptions(options: ZlinkStreamConnectorOptions): Required
     transport: inferredTransport,
     connectTimeoutMs: options.connectTimeoutMs ?? 5000,
     requestTimeoutMs: options.requestTimeoutMs ?? 30000,
+    waitTimeoutMs: options.waitTimeoutMs ?? 5000,
     heartbeat: {
       enabled: options.heartbeat?.enabled ?? true,
       intervalMs: options.heartbeat?.intervalMs ?? 1000,

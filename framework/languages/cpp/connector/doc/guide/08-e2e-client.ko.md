@@ -109,7 +109,7 @@ auto push = co_await std::move(wait_task);
 
 | 상황 | error_code |
 |------|-----------|
-| timeout 만료 | `request_timeout` |
+| timeout 만료 | `request_timeout` error code |
 | connector close | `closed` |
 | transport 끊김 | `disconnected` |
 | coroutine task 파괴 | `canceled` |

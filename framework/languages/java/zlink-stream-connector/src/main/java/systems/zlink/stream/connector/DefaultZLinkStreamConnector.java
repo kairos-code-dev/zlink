@@ -695,6 +695,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         Objects.requireNonNull(options.nameResolver(), "nameResolver");
         requirePositive(options.connectTimeout(), "connectTimeout");
         requirePositive(options.requestTimeout(), "requestTimeout");
+        requirePositive(options.waitTimeout(), "waitTimeout");
         requirePositive(options.heartbeatInterval(), "heartbeatInterval");
         requirePositive(options.heartbeatTimeout(), "heartbeatTimeout");
         if (options.heartbeatEnabled()

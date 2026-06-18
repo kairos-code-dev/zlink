@@ -40,11 +40,11 @@ public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
     /// </summary>
     int ReceiveHighWaterMark { get; set; }
     /// <summary>
-    /// Gets or sets the OS send buffer size in bytes; 0 uses the OS default.
+    /// Gets or sets the OS send buffer size in bytes; -1 keeps the OS default.
     /// </summary>
     int SendBufferSize { get; set; }
     /// <summary>
-    /// Gets or sets the OS receive buffer size in bytes; 0 uses the OS default.
+    /// Gets or sets the OS receive buffer size in bytes; -1 keeps the OS default.
     /// </summary>
     int ReceiveBufferSize { get; set; }
     /// <summary>

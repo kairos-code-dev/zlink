@@ -1489,14 +1489,14 @@ if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" == "1" ]]; then
   DISPLAY_HWM="${HWM:-auto-hwm}"
   DISPLAY_SNDHWM="${SNDHWM:-${HWM:-auto-hwm}}"
   DISPLAY_RCVHWM="${RCVHWM:-${HWM:-auto-hwm}}"
-  DISPLAY_SNDBUF="${SNDBUF:-auto-hwm}"
-  DISPLAY_RCVBUF="${RCVBUF:-auto-hwm}"
+  DISPLAY_SNDBUF="${SNDBUF:--1}"
+  DISPLAY_RCVBUF="${RCVBUF:--1}"
 else
   DISPLAY_HWM="auto-hwm"
   DISPLAY_SNDHWM="auto-hwm"
   DISPLAY_RCVHWM="auto-hwm"
-  DISPLAY_SNDBUF="auto-hwm"
-  DISPLAY_RCVBUF="auto-hwm"
+  DISPLAY_SNDBUF="-1"
+  DISPLAY_RCVBUF="-1"
 fi
 display_connect_concurrency="${CONNECT_CONCURRENCY:-}"
 if [[ -z "${display_connect_concurrency}" ]]; then

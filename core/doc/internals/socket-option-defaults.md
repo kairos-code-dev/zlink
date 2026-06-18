@@ -77,8 +77,6 @@ For detailed behavior and scope of each option, see the
 | `ZLINK_SOCKET_SUB` | `ZLINK_OPT_LINGER` override | forced to `0` (inherits the XSUB constructor path) |
 | `ZLINK_SOCKET_SUB` | Subscription set | empty at creation |
 | `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_BACKLOG` override | `65536` |
-| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_SNDBUF` override | `262144` when the option stays unset (`<0`) |
-| `ZLINK_SOCKET_STREAM` | `ZLINK_OPT_RCVBUF` override | `262144` when the option stays unset (`<0`) |
 | `ZLINK_SOCKET_STREAM` | `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` | not supported (`EOPNOTSUPP`) |
 
 ## 3. Read-Only Initial State Values

@@ -348,8 +348,8 @@ based on the following classification:
 | `ZLINK_OPT_AFFINITY` | I/O thread affinity bitmask (`uint64_t`) |
 | `ZLINK_OPT_RATE` | Multicast data rate in kbps (`int`) |
 | `ZLINK_OPT_RECOVERY_IVL` | Multicast recovery interval in milliseconds (`int`) |
-| `ZLINK_OPT_SNDBUF` | Kernel transmit buffer size in bytes (`int`; 0 = OS default) |
-| `ZLINK_OPT_RCVBUF` | Kernel receive buffer size in bytes (`int`; 0 = OS default) |
+| `ZLINK_OPT_SNDBUF` | Kernel transmit buffer size in bytes (`int`; -1 = keep OS default, >=0 = request size from OS) |
+| `ZLINK_OPT_RCVBUF` | Kernel receive buffer size in bytes (`int`; -1 = keep OS default, >=0 = request size from OS) |
 | `ZLINK_OPT_SNDHWM` | Send high water mark (`int`; 0 = unlimited) |
 | `ZLINK_OPT_RCVHWM` | Receive high water mark (`int`; 0 = unlimited) |
 | `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | Message-unit size in bytes used by automatic HWM planning (`int`; 0 = socket-type default, negative values fail with `EINVAL`) |

@@ -40,8 +40,8 @@ public partial class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the underlying OS send buffer size in bytes; 0 uses the OS
-    /// default.
+    /// Gets or sets the underlying OS send buffer size in bytes; -1 keeps the
+    /// OS default.
     /// </summary>
     public int SendBufferSize
     {
@@ -50,7 +50,7 @@ public partial class CommonSocketOptions
     }
 
     /// <summary>
-    /// Gets or sets the underlying OS receive buffer size in bytes; 0 uses the
+    /// Gets or sets the underlying OS receive buffer size in bytes; -1 keeps the
     /// OS default.
     /// </summary>
     public int ReceiveBufferSize

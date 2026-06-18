@@ -87,22 +87,22 @@ refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_, const void *optval_
       ctx, runtime_->mesh_pub,
       spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
                                       connected_peer_count, active_peer_count, 0, 0, true, false,
-                                      true, true, auto_hwm_scope_shared, 1, msg_unit});
+                                      auto_hwm_scope_shared, 1, msg_unit});
     apply_spot_internal_auto_hwm (
       ctx, runtime_->local_fanout_xpub,
       spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
-                                      local_sub_count, local_sub_count, 0, 0, true, false, true,
-                                      true, auto_hwm_scope_shared, 1, msg_unit});
+                                      local_sub_count, local_sub_count, 0, 0, true, false,
+                                      auto_hwm_scope_shared, 1, msg_unit});
     apply_spot_internal_auto_hwm (
       ctx, runtime_->mesh_xsub,
       spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress, ZLINK_CORE_SOCKET_XSUB,
                                       connected_peer_count, active_peer_count, 0, 0, false, true,
-                                      true, true, auto_hwm_scope_shared, 1, msg_unit});
+                                      auto_hwm_scope_shared, 1, msg_unit});
     apply_spot_internal_auto_hwm (
       ctx, runtime_->external_router,
       spot_internal_auto_hwm_policy_t{auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                                       connected_peer_count, active_peer_count, 0, 0, true, true,
-                                      true, true, auto_hwm_scope_shared, 1, msg_unit});
+                                      auto_hwm_scope_shared, 1, msg_unit});
 
     const int zero = 0;
     const int pubsub_hwm = spot_node_pubsub_admission_hwm (hwm);

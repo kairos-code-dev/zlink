@@ -340,7 +340,7 @@ status                = (expected_result_lines == actual_result_lines) ? "comple
 | `--hwm N` | debug 전용 송수신 HWM 공통 fallback. `PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | auto-HWM |
 | `--send-hwm N` | debug 전용 송신 HWM 우선값. `PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `--hwm` |
 | `--recv-hwm N` | debug 전용 수신 HWM 우선값. `PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `--hwm` |
-| `--buf SIZE` | debug 전용 송수신 OS buffer 공통 override. `PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | auto-HWM |
+| `--buf SIZE` | debug 전용 송수신 OS buffer 공통 override. `PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `-1` |
 | `--sndbuf SIZE` | debug 전용 송신 OS buffer override. `PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `--buf` |
 | `--rcvbuf SIZE` | debug 전용 수신 OS buffer override. `PERF_SINGLE_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `--buf` |
 | `--auto-hwm-profile NAME` | context auto-HWM profile (`compact`, `low_latency`, `balanced`, `throughput`) | `balanced` |

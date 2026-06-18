@@ -217,9 +217,8 @@ These values are fixed as internal constants and not controlled by STREAM env kn
 
 - backlog: `65536`
 - `sndhwm` / `rcvhwm`: start from the routed-role auto-HWM floor
-- `sndbuf` / `rcvbuf`: use the auto-HWM transport-budget result
-- if auto HWM is disabled and `sndbuf` / `rcvbuf` stay unset, STREAM falls
-  back to the compatibility default `262144`
+- `sndbuf` / `rcvbuf`: default `-1`, leaving OS buffer defaults and TCP
+  autotuning in control
 - accept concurrency (STREAM only): default `4`, max `128`
 - session scheduler (STREAM): default `rr`
 

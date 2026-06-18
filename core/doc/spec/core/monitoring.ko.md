@@ -131,8 +131,8 @@ typedef struct zlink_monitor_status_t
 | `auto_hwm_effective_message_bytes` | 정책이 계산에 사용한 실효 메시지 단위 바이트 |
 | `auto_hwm_applied_sndhwm` | 현재 소켓에 적용된 송신 HWM |
 | `auto_hwm_applied_rcvhwm` | 현재 소켓에 적용된 수신 HWM |
-| `auto_hwm_effective_sndbuf` | 현재 소켓에 적용된 송신 buffer 크기. 단위는 byte |
-| `auto_hwm_effective_rcvbuf` | 현재 소켓에 적용된 수신 buffer 크기. 단위는 byte |
+| `auto_hwm_effective_sndbuf` | 현재 소켓 옵션의 송신 buffer 크기. 단위는 byte. `-1`이면 OS 기본값 유지 |
+| `auto_hwm_effective_rcvbuf` | 현재 소켓 옵션의 수신 buffer 크기. 단위는 byte. `-1`이면 OS 기본값 유지 |
 | `auto_hwm_last_recalc_ms` | 최근 자동 HWM 재계산 시각(ms) |
 | `auto_hwm_last_recalc_reason` | 최근 재계산 사유 enum 값 |
 | `auto_hwm_send_blocked_ratio_ppm` | 최근 송신 시도 중 backpressure(배압)로 막힌 비율(ppm) |

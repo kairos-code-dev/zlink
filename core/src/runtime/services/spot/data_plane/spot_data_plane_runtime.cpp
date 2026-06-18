@@ -77,7 +77,7 @@ static void apply_internal_auto_hwm (ctx_t *ctx_,
     apply_spot_internal_auto_hwm (ctx_, socket_,
                                   spot_internal_auto_hwm_policy_t{
                                     role_, socket_type_, managed_connections_, active_connections_,
-                                    0, 0, apply_sndhwm_, apply_rcvhwm_, true, true});
+                                    0, 0, apply_sndhwm_, apply_rcvhwm_, auto_hwm_scope_none, 1, 0});
 }
 
 static void close_mesh_peer_observer (spot_node_t *node_, spot_data_plane_runtime_state_t *state_)

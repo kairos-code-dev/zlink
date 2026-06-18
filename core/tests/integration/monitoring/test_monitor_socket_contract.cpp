@@ -1367,8 +1367,8 @@ void test_pubsub_delivery_ready_snapshot_and_reopen_after_ready ()
     TEST_ASSERT_TRUE ((status.detail_flags & ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUDGET) != 0);
     TEST_ASSERT_TRUE ((status.detail_flags & ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS) != 0);
     TEST_ASSERT_GREATER_THAN_UINT64 (0, status.auto_hwm_effective_message_bytes);
-    TEST_ASSERT_GREATER_THAN_INT (0, status.auto_hwm_effective_sndbuf);
-    TEST_ASSERT_GREATER_THAN_INT (0, status.auto_hwm_effective_rcvbuf);
+    TEST_ASSERT_EQUAL_INT (-1, status.auto_hwm_effective_sndbuf);
+    TEST_ASSERT_EQUAL_INT (-1, status.auto_hwm_effective_rcvbuf);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (&snapshot_monitor));
 

@@ -42,8 +42,9 @@ DEALER는 연결된 peer 중 광고된 가중치가 `0`인 대상을 후보 집�
 
 DEALER는 context auto HWM(고수위 표시, High-Water Mark) 정책에서 `peer_queue` policy class로 분류됩니다.
 활성 auto-HWM profile이 단위 예산과 메시지 크기 cap을 고르며, 기본 profile은
-`balanced`입니다. 사용자가 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF`를 직접
-설정하면 자동값보다 그 값이 우선합니다.
+`balanced`입니다. 사용자가 `SNDHWM`, `RCVHWM`을 직접 설정하면 자동값보다
+그 값이 우선합니다. `SNDBUF` / `RCVBUF` 기본값은 `-1`이며 auto-HWM profile은
+이 값을 자동으로 바꾸지 않습니다.
 
 ## 함수
 

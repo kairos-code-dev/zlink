@@ -225,7 +225,7 @@ int spot_runtime_t::start ()
       owner_ctx, data_ctrl_front,
       spot_internal_auto_hwm_policy_t{auto_hwm_role_control, ZLINK_CORE_SOCKET_PAIR,
                                       connected_peer_count, active_peer_count, 0, 0, true, true,
-                                      true, true});
+                                      auto_hwm_scope_none, 1, 0});
     spot_node_access_t::track_owned_socket (owner, data_ctrl_front);
 
     const int linger = 0;

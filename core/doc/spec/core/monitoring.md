@@ -127,8 +127,8 @@ typedef struct zlink_monitor_status_t
 | `auto_hwm_effective_message_bytes` | Effective message unit in bytes used by the current policy calculation. |
 | `auto_hwm_applied_sndhwm` | Currently applied send HWM on the socket. |
 | `auto_hwm_applied_rcvhwm` | Currently applied recv HWM on the socket. |
-| `auto_hwm_effective_sndbuf` | Currently applied send buffer size in bytes. |
-| `auto_hwm_effective_rcvbuf` | Currently applied recv buffer size in bytes. |
+| `auto_hwm_effective_sndbuf` | Current send buffer option in bytes. `-1` means the OS default is kept. |
+| `auto_hwm_effective_rcvbuf` | Current recv buffer option in bytes. `-1` means the OS default is kept. |
 | `auto_hwm_last_recalc_ms` | Timestamp of the most recent auto-HWM recalculation in milliseconds. |
 | `auto_hwm_last_recalc_reason` | Enum value that records why the latest recalculation ran. |
 | `auto_hwm_send_blocked_ratio_ppm` | Parts-per-million ratio of send attempts that were blocked by backpressure. |

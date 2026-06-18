@@ -314,8 +314,8 @@ def _build_options(args, patterns, transports, msg_sizes):
     hwm = args.hwm or "auto-hwm"
     sndhwm = args.send_hwm or args.hwm or "auto-hwm"
     rcvhwm = args.recv_hwm or args.hwm or "auto-hwm"
-    sndbuf = args.sndbuf or args.buf or "auto-hwm"
-    rcvbuf = args.rcvbuf or args.buf or "auto-hwm"
+    sndbuf = args.sndbuf or args.buf or "-1"
+    rcvbuf = args.rcvbuf or args.buf or "-1"
     return {
         "lang": "python",
         "suite": "single",

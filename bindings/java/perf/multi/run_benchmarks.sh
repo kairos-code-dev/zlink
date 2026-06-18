@@ -1194,14 +1194,14 @@ if [[ "${PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES:-0}" == "1" \
   display_hwm="${HWM:-manual-unset}"
   display_send_hwm="${SEND_HWM:-${HWM:-manual-unset}}"
   display_recv_hwm="${RECV_HWM:-${HWM:-manual-unset}}"
-  display_sndbuf="${SNDBUF:-auto-hwm}"
-  display_rcvbuf="${RCVBUF:-auto-hwm}"
+  display_sndbuf="${SNDBUF:--1}"
+  display_rcvbuf="${RCVBUF:--1}"
 else
   display_hwm="auto-hwm"
   display_send_hwm="auto-hwm"
   display_recv_hwm="auto-hwm"
-  display_sndbuf="auto-hwm"
-  display_rcvbuf="auto-hwm"
+  display_sndbuf="-1"
+  display_rcvbuf="-1"
 fi
 skip_entries=()
 run_patterns=()
@@ -1794,8 +1794,8 @@ def emit_options(label):
     emit(f"- hwm: {hwm or 'auto-hwm'}")
     emit(f"- sndhwm: {send_hwm or 'auto-hwm'}")
     emit(f"- rcvhwm: {recv_hwm or 'auto-hwm'}")
-    emit(f"- sndbuf: {sndbuf or 'auto-hwm'}")
-    emit(f"- rcvbuf: {rcvbuf or 'auto-hwm'}")
+    emit(f"- sndbuf: {sndbuf or '-1'}")
+    emit(f"- rcvbuf: {rcvbuf or '-1'}")
     emit(f"- ctx_auto_hwm_enable: {ctx_auto_hwm_enable}")
     emit(f"- ctx_auto_hwm_profile: {ctx_auto_hwm_profile}")
     emit(f"- sndtimeo_ms: {sndtimeo_ms}")

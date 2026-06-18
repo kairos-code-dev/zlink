@@ -120,7 +120,7 @@ socket_base_t *create_remote_mesh_sender_socket_local (spot_runtime_t *runtime_,
       ctx, socket,
       spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_DEALER,
                                       connected_peer_count, active_peer_count, 0, 0, true, true,
-                                      true, true});
+                                      auto_hwm_scope_none, 1, 0});
 
     std::string ca;
     std::string host;

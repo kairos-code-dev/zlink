@@ -206,7 +206,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
         spot_tcp_line = (
             "AUTO_HWM_DETAIL,pattern=SPOT,transport=tcp,component=publisher,"
             "msg_size=65536,owner=node,socket=mesh-pub,socket_type=pub,"
-            "role=spot_data,sndhwm=16,rcvhwm=0,effective_sndbuf=262144,"
+            "role=spot_data,sndhwm=16,rcvhwm=0,effective_sndbuf=-1,"
             "effective_rcvbuf=0,effective_message_bytes=4096,"
             "socket_message_slots=16"
         )
@@ -214,7 +214,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
         pair_line = (
             "AUTO_HWM_DETAIL,pattern=PAIR,transport=tcp,component=sender,"
             "msg_size=65536,owner=socket,socket=sender,socket_type=pair,"
-            "role=fanout,sndhwm=16,rcvhwm=0,effective_sndbuf=262144,"
+            "role=fanout,sndhwm=16,rcvhwm=0,effective_sndbuf=-1,"
             "effective_rcvbuf=0,effective_message_bytes=4096,"
             "socket_message_slots=16"
         )
@@ -236,7 +236,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
         self.assertEqual(output.count("| 65536"), 1)
         self.assertIn("| 65536", output)
         self.assertIn("| mesh-pub", output)
-        self.assertIn("| 256", output)
+        self.assertIn("| 0          | 0", output)
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):

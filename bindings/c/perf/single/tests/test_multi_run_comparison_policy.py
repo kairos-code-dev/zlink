@@ -58,8 +58,8 @@ def auto_hwm_detail_line(pattern, transport, component, msg_size, **fields):
         ),
         "sndhwm": fields.pop("sndhwm", "512"),
         "rcvhwm": fields.pop("rcvhwm", "512"),
-        "effective_sndbuf": fields.pop("effective_sndbuf", "262144"),
-        "effective_rcvbuf": fields.pop("effective_rcvbuf", "262144"),
+        "effective_sndbuf": fields.pop("effective_sndbuf", "-1"),
+        "effective_rcvbuf": fields.pop("effective_rcvbuf", "-1"),
     }
     values.update({key: str(value) for key, value in fields.items()})
     return "AUTO_HWM_DETAIL," + ",".join(

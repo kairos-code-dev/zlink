@@ -26,8 +26,8 @@ STREAM is classified as the `stream` policy class by the context automatic HWM
 policy. The active auto-HWM profile selects the unit budget and message-size
 cap; the default profile is `balanced`, and context auto-HWM is enabled by
 default. If an application disables context auto-HWM, STREAM keeps the normal
-HWM default `1000`. If the application leaves `SNDBUF` / `RCVBUF` unset,
-STREAM uses the compatibility default `262144`.
+HWM default `1000`. `SNDBUF` / `RCVBUF` default to `-1`; STREAM and auto-HWM
+profiles do not change these values automatically.
 
 ## Stream Options (`zlink_stream_option_t`)
 

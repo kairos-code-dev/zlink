@@ -1046,8 +1046,8 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients, env
     hwm = args.hwm or "auto-hwm"
     sndhwm = args.send_hwm or args.hwm or "auto-hwm"
     rcvhwm = args.recv_hwm or args.hwm or "auto-hwm"
-    sndbuf = args.sndbuf or args.buf or "auto-hwm"
-    rcvbuf = args.rcvbuf or args.buf or "auto-hwm"
+    sndbuf = args.sndbuf or args.buf or "-1"
+    rcvbuf = args.rcvbuf or args.buf or "-1"
     transport_transition_ms = args.transport_transition_ms or _env_pair_value(
         "PERF_MULTI_TRANSPORT_TRANSITION_MS", "PERF_TRANSPORT_TRANSITION_MS", "3000"
     )

@@ -56,8 +56,6 @@ struct spot_internal_auto_hwm_policy_t
     int rcvhwm_floor;
     bool apply_sndhwm;
     bool apply_rcvhwm;
-    bool apply_sndbuf;
-    bool apply_rcvbuf;
     auto_hwm_scope_t scope;
     size_t scope_count;
     int message_unit_bytes;
@@ -104,8 +102,6 @@ inline int spot_internal_auto_hwm_default_hwm (ctx_t *ctx_,
                                                     floor_,
                                                     false,
                                                     false,
-                                                    false,
-                                                    false,
                                                     auto_hwm_scope_none,
                                                     1,
                                                     0};
@@ -139,16 +135,8 @@ inline void apply_spot_internal_auto_hwm (ctx_t *ctx_,
     if (policy_.apply_rcvhwm) {
         (void) socket_->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
     }
-    if (policy_.apply_sndbuf) {
-        (void) socket_->setsockopt (ZLINK_INTERNAL_OPT_SNDBUF, &socket_plan.requested_sndbuf,
-                                    sizeof (socket_plan.requested_sndbuf));
-    }
-    if (policy_.apply_rcvbuf) {
-        (void) socket_->setsockopt (ZLINK_INTERNAL_OPT_RCVBUF, &socket_plan.requested_rcvbuf,
-                                    sizeof (socket_plan.requested_rcvbuf));
-    }
     socket_->clear_auto_hwm_manual_overrides (policy_.apply_sndhwm, policy_.apply_rcvhwm,
-                                              policy_.apply_sndbuf, policy_.apply_rcvbuf);
+                                              false, false);
 }
 }
 

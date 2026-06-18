@@ -192,9 +192,9 @@ void zlink::socket_base_t::set_auto_hwm_policy_enabled (bool enabled_)
             options.rcvhwm = defaults.rcvhwm;
             refresh_hwms = true;
         }
-        if (!_manual_sndbuf && !_manual_sndhwm)
+        if (!_manual_sndbuf)
             options.sndbuf = defaults.sndbuf;
-        if (!_manual_rcvbuf && !_manual_rcvhwm)
+        if (!_manual_rcvbuf)
             options.rcvbuf = defaults.rcvbuf;
 
         if (refresh_hwms)
@@ -286,9 +286,9 @@ void zlink::socket_base_t::apply_auto_hwm_socket_plan (const auto_hwm_context_pl
             recalc_reason = ZLINK_AUTO_HWM_RECALC_REASON_DEFERRED_SHRINK;
         }
     }
-    if (!_manual_sndbuf && !_manual_sndhwm)
+    if (!_manual_sndbuf)
         options.sndbuf = _auto_hwm_socket_plan.requested_sndbuf;
-    if (!_manual_rcvbuf && !_manual_rcvhwm)
+    if (!_manual_rcvbuf)
         options.rcvbuf = _auto_hwm_socket_plan.requested_rcvbuf;
 
     if (refresh_hwms)

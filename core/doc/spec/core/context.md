@@ -183,11 +183,12 @@ Configures the context before or after sockets have been created. Refer to the
 option constants table above for valid option names and their semantics.
 `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` takes effect on existing sockets
 immediately, but only for sockets that still use automatic `SNDHWM` /
-`RCVHWM` / `SNDBUF` / `RCVBUF` values rather than manual overrides.
+`RCVHWM` values rather than manual overrides.
 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` updates the profile used by the next
 automatic HWM calculation and is safe to change while the context is live.
-The profile selects the per-connection unit budget, size cap, and automatic
-`SNDBUF` / `RCVBUF` floor used by the automatic HWM planner.
+The profile selects the per-connection unit budget and size cap used by the
+automatic HWM planner. `SNDBUF` / `RCVBUF` default to `-1`, and auto-HWM
+profiles do not change these values automatically.
 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` updates the message unit used by
 automatic HWM planning for sockets that do not have an explicit per-socket
 override. A value of `0` returns those sockets to their socket-type default.

@@ -359,14 +359,13 @@ When enabled, HWM settings are ignored. Multipart messages cannot be received in
 | **What it does** | Sets kernel-level socket send/receive buffer sizes |
 | **Applied at** | `tcp.cpp` — `setsockopt(SO_SNDBUF/SO_RCVBUF)` |
 | **Default** | `-1` (keep OS default) |
-| **0** | Use OS default |
-| **>0** | Set to specified size (bytes) |
+| **>=0** | Request the specified size from the OS, in bytes |
 
 Independent of HWM. HWM limits message count in the zlink pipe; SNDBUF/RCVBUF limits byte size in the OS kernel socket buffer.
 
-**Per-socket-type:**
-- `STREAM`: if the application leaves the options unset, STREAM uses the
-  compatibility default `262144`.
+Auto-HWM profiles and STREAM defaults do not change these values automatically.
+For large meshes where connection count and memory ceilings matter, applications
+or deployment settings can set smaller explicit values.
 
 ---
 
@@ -546,8 +545,6 @@ Some socket types override common defaults at creation time:
 | `ROUTER` | `ROUTER_MANDATORY` | `1` | Surface failures to unconnected peers instead of silently dropping |
 | `PUB` / `XPUB` | `PUB_NODROP` | `1` | Surface `BACKPRESSURED` on HWM instead of silently dropping |
 | `STREAM` | `BACKLOG` | `65536` | Accommodate many external clients |
-| `STREAM` | `SNDBUF` | `262144` when unset | Compatibility default for stream sockets |
-| `STREAM` | `RCVBUF` | `262144` when unset | Compatibility default for stream sockets |
 
 > **Defaults and observable behavior:**
 >

@@ -364,15 +364,14 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 | **하는 일** | 커널 소켓 송수신 버퍼 크기 설정 |
 | **적용 위치** | `tcp.cpp` -- `setsockopt(SO_SNDBUF/SO_RCVBUF)` |
 | **기본값** | `-1` (OS 기본값 유지) |
-| **0** | OS 기본값 사용 |
-| **>0** | 지정 크기(바이트)로 설정 |
+| **0 이상** | 지정 크기(바이트)를 OS에 요청 |
 
 HWM과 독립적이다. HWM은 zlink 파이프 수준의 메시지 수 제한이고
 SNDBUF/RCVBUF는 OS 커널 소켓 버퍼의 바이트 크기다.
 
-**소켓 타입별 차이:**
-- `STREAM`: 애플리케이션이 `SNDBUF` / `RCVBUF`를 주지 않으면 호환 기본값
-  `262144`를 사용한다.
+auto-HWM profile과 STREAM 기본값은 이 값을 자동으로 바꾸지 않는다. 대규모
+mesh처럼 연결 수가 많고 메모리 상한이 중요하면 애플리케이션이나 운영 설정에서
+작은 값을 명시할 수 있다.
 
 ---
 
@@ -553,8 +552,6 @@ Registry에 보고합니다. 다른 노드에서 실시간 Discovery 연결 없�
 | `ROUTER` | `ROUTER_MANDATORY` | `1` | 미연결 peer 대상 전송 실패를 surface |
 | `PUB` / `XPUB` | `PUB_NODROP` | `1` | HWM 시 조용한 drop 대신 `BACKPRESSURED` surface |
 | `STREAM` | `BACKLOG` | `65536` | 다수 외부 클라이언트 수용 |
-| `STREAM` | `SNDBUF` | 미설정이면 `262144` | stream 소켓 호환 기본값 |
-| `STREAM` | `RCVBUF` | 미설정이면 `262144` | stream 소켓 호환 기본값 |
 
 > **기본값과 관찰 가능한 동작:**
 >

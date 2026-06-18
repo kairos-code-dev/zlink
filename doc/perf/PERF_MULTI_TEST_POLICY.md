@@ -311,9 +311,11 @@ ready 판정, active 시작 조건을 바꾸면 안 된다.
 
 ### 1.6 Auto-HWM 정책
 
-- multi 기본 정책은 context auto-HWM 이다. perf는
+- multi 기본 HWM 정책은 context auto-HWM 이다. perf는
   `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` 을 켜고 benchmark socket과 spot handle의
-  기본 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF` 를 core 계산값에 맡긴다.
+  기본 `SNDHWM`, `RCVHWM`을 core 계산값에 맡긴다.
+- multi 기본 OS socket buffer 정책은 `SNDBUF=-1`, `RCVBUF=-1`이다. 기본
+  경로는 OS 기본 buffer와 TCP 자동 조정에 맡긴다.
 - multi 기본 context I/O thread 수는 server와 client 모두 `4`다. C 기준과
   binding perf는 이 값을 같게 적용해야 한다. 언어 runtime 기본값을 그대로
   쓰거나 single suite 기본값 `1`을 multi에 가져오면 비교 의미가 달라진다.
@@ -1089,7 +1091,7 @@ run_benchmarks_multi.sh / .ps1                         # 공식 multi entrypoint
 | `--hwm N` | debug 전용 소켓 HWM 공통 fallback. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | auto-HWM |
 | `--send-hwm N` | debug 전용 소켓 송신 HWM. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `--hwm` fallback |
 | `--recv-hwm N` | debug 전용 소켓 수신 HWM. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `--hwm` fallback |
-| `--buf SIZE` | debug 전용 송수신 OS buffer 공통 override. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | auto-HWM |
+| `--buf SIZE` | debug 전용 송수신 OS buffer 공통 override. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `-1` |
 | `--sndbuf SIZE` | debug 전용 송신 OS buffer override. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `--buf` |
 | `--rcvbuf SIZE` | debug 전용 수신 OS buffer override. `PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1` 필요 | `--buf` |
 | `--sndtimeo N` / `--send-timeout-ms N` | 송신 타임아웃(ms) | 200 |

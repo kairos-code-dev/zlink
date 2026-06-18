@@ -439,10 +439,12 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `bindings/c/p
   - median/최종 report 저장
 - 바이너리 내부에서 측정 hot path를 흐리게 하는 report formatting, 문자열 조합,
   동적 집계 컨테이너 orchestration 로직을 추가하면 안 된다.
-- perf 기본 socket sizing은 context auto-HWM 을 따른다. perf가 여는
-  benchmark socket은 역할별 예외 없이 같은 context budget 아래에서 core
-  계산값을 사용한다. 기본 경로에서 `SNDHWM`, `RCVHWM`, `SNDBUF`, `RCVBUF`
-  를 숫자로 직접 고정하지 않는다.
+- perf 기본 HWM sizing은 context auto-HWM 을 따른다. perf가 여는 benchmark
+  socket은 역할별 예외 없이 같은 context budget 아래에서 core 계산값을 사용한다.
+  기본 경로에서 `SNDHWM`, `RCVHWM`을 숫자로 직접 고정하지 않는다.
+- perf 기본 OS socket buffer sizing은 `SNDBUF=-1`, `RCVBUF=-1`이다.
+  기본 경로는 OS 기본 buffer와 TCP 자동 조정에 맡기며, `SNDBUF`, `RCVBUF`를
+  숫자로 직접 고정하지 않는다.
 - benchmark는 메시지 크기별로 context
   `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 현재 테스트 메시지 크기와 같은 값으로
   설정한다. raw socket `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 저수준 socket별

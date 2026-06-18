@@ -84,12 +84,12 @@ int spot_runtime_t::create_attachment (int kind_, const char *endpoint_, uint64_
                                             next_local_sub_count + connected_peer_count, 1u),
                                           std::max<size_t> (
                                             next_local_sub_count + active_peer_count, 1u),
-                                          0, 0, true, true, true, true, auto_hwm_scope_per_spot,
+                                          0, 0, true, true, auto_hwm_scope_per_spot,
                                           next_spot_scope_count, 0}
         : spot_internal_auto_hwm_policy_t{auto_hwm_role_recv_ingress, ZLINK_CORE_SOCKET_SUB,
                                           std::max<size_t> (next_local_sub_count, 1u),
                                           std::max<size_t> (next_local_sub_count, 1u), 0, 0, true,
-                                          true, true, true, auto_hwm_scope_per_spot,
+                                          true, auto_hwm_scope_per_spot,
                                           next_spot_scope_count, 0});
     if (kind_ == spot_attachment_pub) {
         socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &pubsub_admission_hwm,
@@ -115,7 +115,7 @@ int spot_runtime_t::create_attachment (int kind_, const char *endpoint_, uint64_
           spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_PUB,
                                           std::max<size_t> (next_local_sub_count, 1u),
                                           std::max<size_t> (next_local_sub_count, 1u), 0, 0, true,
-                                          true, true, true, auto_hwm_scope_per_spot,
+                                          true, auto_hwm_scope_per_spot,
                                           next_spot_scope_count, 0});
         relay_socket->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &zero, sizeof (zero));
         relay_socket->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &zero, sizeof (zero));

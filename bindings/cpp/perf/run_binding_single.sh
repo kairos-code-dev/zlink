@@ -676,14 +676,14 @@ if [[ "${ALLOW_MANUAL_SOCKET_OVERRIDES}" == "1" ]]; then
   print_effective_option "hwm" "$(value_or_default "${DISPLAY_HWM}" "auto-hwm")"
   print_effective_option "send_hwm" "$(value_or_default "${DISPLAY_SEND_HWM}" "$(value_or_default "${DISPLAY_HWM}" "auto-hwm")")"
   print_effective_option "recv_hwm" "$(value_or_default "${DISPLAY_RECV_HWM}" "$(value_or_default "${DISPLAY_HWM}" "auto-hwm")")"
-  print_effective_option "sndbuf" "$(value_or_default "${DISPLAY_SNDBUF}" "auto-hwm")"
-  print_effective_option "rcvbuf" "$(value_or_default "${DISPLAY_RCVBUF}" "auto-hwm")"
+  print_effective_option "sndbuf" "$(value_or_default "${DISPLAY_SNDBUF}" "-1")"
+  print_effective_option "rcvbuf" "$(value_or_default "${DISPLAY_RCVBUF}" "-1")"
 else
   print_effective_option "hwm" "auto-hwm"
   print_effective_option "send_hwm" "auto-hwm"
   print_effective_option "recv_hwm" "auto-hwm"
-  print_effective_option "sndbuf" "auto-hwm"
-  print_effective_option "rcvbuf" "auto-hwm"
+  print_effective_option "sndbuf" "-1"
+  print_effective_option "rcvbuf" "-1"
 fi
 print_effective_option "sndtimeo_ms" "${DISPLAY_SNDTIMEO_MS}"
 print_effective_option "rcvtimeo_ms" "${DISPLAY_RCVTIMEO_MS}"

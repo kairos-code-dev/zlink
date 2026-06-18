@@ -4191,8 +4191,8 @@ def build_effective_option_items(args, selected_patterns):
                 ("hwm", hwm_display),
                 ("sndhwm", sndhwm_display),
                 ("rcvhwm", rcvhwm_display),
-                ("sndbuf", sndbuf or "auto-hwm"),
-                ("rcvbuf", rcvbuf or "auto-hwm"),
+                ("sndbuf", sndbuf or "-1"),
+                ("rcvbuf", rcvbuf or "-1"),
                 (
                     "ctx_auto_hwm_enable",
                     _read_env_value("PERF_CTX_AUTO_HWM_ENABLE") or "core-default",

@@ -180,12 +180,12 @@ zlink_config_result_t zlink_ctx_set(void *context_, zlink_ctx_option_t option_, 
 
 소켓이 생성되기 전 또는 후에 context를 구성합니다. 유효한 옵션 이름과 의미는 위의 옵션 상수
 테이블을 참조하세요. `ZLINK_CTX_OPT_AUTO_HWM_ENABLE`은 이미 만들어진 소켓에도
-즉시 반영되며, 아직 수동 `SNDHWM` / `RCVHWM` / `SNDBUF` / `RCVBUF` 값을
-주지 않은 소켓만 자동 정책으로 다시 계산합니다.
+즉시 반영되며, 아직 수동 `SNDHWM` / `RCVHWM` 값을 주지 않은 소켓만 자동
+정책으로 다시 계산합니다.
 `ZLINK_CTX_OPT_AUTO_HWM_PROFILE`은 다음 자동 HWM 계산에서 쓰는 profile을
 바꾸며, runtime 중에도 안전하게 조정할 수 있습니다. profile은 자동 HWM
-planner가 쓰는 연결당 단위 예산, size cap, 자동 `SNDBUF` / `RCVBUF`
-하한을 고릅니다.
+planner가 쓰는 연결당 단위 예산과 size cap을 고릅니다. `SNDBUF` / `RCVBUF`
+기본값은 `-1`이며, auto-HWM profile은 이 값을 자동으로 바꾸지 않습니다.
 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 명시적인 소켓별 override가 없는
 소켓의 자동 HWM 계산 메시지 단위를 바꿉니다. 값 `0`은 해당 소켓을 소켓 타입별
 기본 메시지 단위로 되돌립니다.

@@ -43,8 +43,9 @@ positive weights change the send ratio.
 
 DEALER is classified as the `peer_queue` policy class by the context automatic
 HWM policy. The active auto-HWM profile selects the unit budget and
-message-size cap; the default profile is `balanced`. Manual `SNDHWM`,
-`RCVHWM`, `SNDBUF`, and `RCVBUF` settings override the automatic values.
+message-size cap; the default profile is `balanced`. Manual `SNDHWM` and
+`RCVHWM` settings override the automatic values. `SNDBUF` / `RCVBUF` default to
+`-1`, and auto-HWM profiles do not change these values automatically.
 
 ## Functions
 

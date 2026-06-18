@@ -346,8 +346,8 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 | `ZLINK_OPT_AFFINITY` | I/O 스레드 어피니티 비트마스크 (`uint64_t`) |
 | `ZLINK_OPT_RATE` | 멀티캐스트 전송률 (kbps, `int`) |
 | `ZLINK_OPT_RECOVERY_IVL` | 멀티캐스트 복구 간격 (ms, `int`) |
-| `ZLINK_OPT_SNDBUF` | 커널 송신 버퍼 크기 (`int`; 0=OS 기본값) |
-| `ZLINK_OPT_RCVBUF` | 커널 수신 버퍼 크기 (`int`; 0=OS 기본값) |
+| `ZLINK_OPT_SNDBUF` | 커널 송신 버퍼 크기 (`int`; -1=OS 기본값 유지, 0 이상=OS에 크기 요청) |
+| `ZLINK_OPT_RCVBUF` | 커널 수신 버퍼 크기 (`int`; -1=OS 기본값 유지, 0 이상=OS에 크기 요청) |
 | `ZLINK_OPT_SNDHWM` | 송신 하이 워터 마크 (`int`; 0=무제한) |
 | `ZLINK_OPT_RCVHWM` | 수신 하이 워터 마크 (`int`; 0=무제한) |
 | `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 자동 HWM 계산에서 메시지 슬롯으로 환산할 때 쓰는 바이트 단위 (`int`; 0=소켓 타입 기본값, 음수는 `EINVAL`) |

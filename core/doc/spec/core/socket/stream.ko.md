@@ -26,8 +26,8 @@ handle에서 이 세 모델 중 정확히 하나만 활성화할 수 있습니�
 STREAM은 context auto HWM(고수위 표시, High-Water Mark) 정책에서 `stream` policy class로 분류됩니다. 기본
 context에서는 auto-HWM이 켜져 있으며, 활성 profile은 `balanced`입니다.
 애플리케이션이 context auto-HWM을 끄면 STREAM은 일반 HWM 기본값 `1000`을
-유지합니다. 애플리케이션이 `SNDBUF` / `RCVBUF`를 직접 주지 않으면 STREAM은 호환
-기본값 `262144`를 사용합니다.
+유지합니다. `SNDBUF` / `RCVBUF` 기본값은 `-1`이며, STREAM과 auto-HWM profile은
+이 값을 자동으로 바꾸지 않습니다.
 
 ## Stream 옵션 (`zlink_stream_option_t`)
 

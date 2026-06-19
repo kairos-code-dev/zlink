@@ -21,7 +21,7 @@ handler와 outbound client만 작성하고, 연결과 라우팅은 framework가 
 +----------------------------------------------------------+
 | Spring Boot app (bean, DI, lifecycle, suspend handler)   |
 +----------------------------------------------------------+
-| ZLink Framework for Kotlin (coroutine idiom 레이어)       |
+| ZLink Framework for Kotlin (coroutine idiom layer)       |
 | - suspend handler - Flow stream - awaitReply 확장        |
 +----------------------------------------------------------+
 | ZLink Framework for Java (channel/SPOT/actor/stream)     |
@@ -38,23 +38,23 @@ framework는 새 transport를 만들지 않는다. `zlink-framework-kotlin`은 J
 ([spec](../../java/spec/README.ko.md)·[internals](../../java/internals/dotnet-to-java-surface-mapping.ko.md)),
 이 guide는 Kotlin 사용 표면만 다룬다.
 
-### zlink core 와 기본 소켓 패턴
+### zlink core 와 기본 socket 패턴
 
-위 레이어 그림처럼 framework 는 직접 소켓을 열지 않는다. zlink core(C API)가 소켓 패턴을
+위 layer 그림처럼 framework 는 직접 socket을 열지 않는다. zlink core(C API)가 socket 패턴을
 제공하고, Java 바인딩이 이를 typed 클래스로 노출하며, framework 가 channel·spot 으로
-감싼다. 그래서 가이드 곳곳에 `DEALER`·`ROUTER`·`PUB/SUB` 이름이 보이며, 어떤 소켓 위에서
+감싼다. 그래서 가이드 곳곳에 `DEALER`·`ROUTER`·`PUB/SUB` 이름이 보이며, 어떤 socket 위에서
 도는지 알면 channel 종류 선택이 쉬워진다.
 
-| framework 구성 | 하부 소켓 | 쓰임 |
+| framework 구성 | 하부 socket | 쓰임 |
 |----------------|-----------|------|
 | client-server channel | `DEALER → ROUTER` | 1:1 request/response·단방향 send |
 | fanout channel | `PUB → SUB` | 이벤트 fan-out (여러 구독자) |
 | mesh channel | `DEALER`/`ROUTER` peer mesh | 로드밸런싱·엔티티 라우팅 |
 | STREAM session | `STREAM` | 외부 client(raw TCP/WS) 연동 |
 
-각 소켓의 메시징 패턴·라우팅 전략·호환성 매트릭스·코드 예제는 zlink core 가이드가
+각 socket의 메시징 패턴·라우팅 전략·호환성 매트릭스·코드 예제는 zlink core 가이드가
 자세히 다룬다:
-[소켓 패턴 개요](../../../../../core/doc/guide/03-0-socket-patterns.ko.md) ·
+[socket 패턴 개요](../../../../../core/doc/guide/03-0-socket-patterns.ko.md) ·
 [DEALER](../../../../../core/doc/guide/03-3-dealer.ko.md) ·
 [ROUTER](../../../../../core/doc/guide/03-4-router.ko.md) ·
 [PUB/SUB](../../../../../core/doc/guide/03-2-pubsub.ko.md) ·
@@ -70,7 +70,7 @@ framework는 새 transport를 만들지 않는다. `zlink-framework-kotlin`은 J
 | actor/session | actor factory, Entry Spot, `ZLinkBoundSession` |
 | STREAM | `ZLinkSuspendingSession`, Stream Connector + `Flow` |
 | Registry | embedded registry, topology query |
-| Monitoring | `suspend` runtime event handler |
+| Monitoring | runtime event handler (`ZLinkRuntimeEventHandler`) |
 
 coroutine handler를 켜는 한 줄(`useCoroutineHandlers(dispatcher)`)과 첫 request는
 [02-getting-started](02-getting-started.ko.md)에서 다룬다. Java 표면과의 1:1 대응표는

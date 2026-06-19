@@ -18,8 +18,8 @@ STREAM 소켓은 ZMP(zlink Message Protocol) 핸드셰이크 없이 연결하는
 | raw_encoder_t | src/runtime/protocol/raw_encoder.cpp | passthrough 인코딩 (framing 없음) |
 | raw_decoder_t | src/runtime/protocol/raw_decoder.cpp | passthrough 디코딩 (바이트 span -> msg_t) |
 | asio_raw_engine_t | src/runtime/engine/asio/asio_raw_engine.cpp | RAW I/O 엔진 |
-| ws_transport_t | src/runtime/transports/ws/ | WebSocket 전송 |
-| wss_transport_t | src/runtime/transports/ws/ | WebSocket + TLS |
+| ws_transport_t | src/runtime/transports/ws/ | WebSocket transport |
+| wss_transport_t | src/runtime/transports/tls/ | WebSocket + TLS transport |
 
 ### 2.2 데이터 흐름
 
@@ -46,8 +46,8 @@ sequenceDiagram
 - `msg_t` payload 를 Beast write 버퍼로 직접 전달한다 (중간 copy 없음).
 
 ### 3.3 Beast Write Buffer
-- 64KB write 버퍼. 여러 소형 메시지가 하나의 Beast write 로 묶이도록
-  선택한 크기다.
+- Beast write 버퍼 기본값은 64KB다. WS write는 전달받은 버퍼 하나를
+  단일 binary frame(`async_write` 한 번)으로 보낸다.
 
 ### 3.4 프레임 분할
 - `auto_fragment(false)` — 논리 메시지 하나가 하나의 WebSocket 프레임에
@@ -70,7 +70,7 @@ payload 에서는 WS 가 TCP 라인 레이트에 근접하고, WSS 비용은 TLS
 ## 5. 설계 트레이드오프
 
 - Speculative write 미지원 (WebSocket 프레임 기반)
-- Gather write는 WS/WSS에서 지원 (Beast가 내부에서 버퍼링)
+- Gather write는 WS/WSS에서 미지원 (`supports_gather_write()`가 false)
 - TLS/WSS는 암호화 오버헤드 존재
 
 ## 6. Packet Handler 수신 모드
@@ -108,26 +108,23 @@ length-prefix(길이 접두사) 디코더와 버퍼링 상태 머신을 거듭 �
 - 두 size 는 모두 `0` 일 수 있다. `header_size=0 && body_size=0` 인 패킷도
   콜백을 그대로 유발하며, header 와 body 가 비어 있어도 non-`NULL`
   인 `zlink_msg_t` 두 개로 전달된다.
-- 최대 크기는 내부 한계로 제한된다. 한계를 넘는 size 광고는 malformed
-  framing 으로 취급된다 (6.4 참고).
+- size 검사는 `maxmsgsize` 가 양수로 설정된 경우에만 적용된다(기본값 `-1`은
+  무제한). 설정된 한계를 넘는 size 광고는 malformed framing 으로 취급된다 (6.4 참고).
 
 ### 6.2 Per-connection 누적기
 
-들어오는 바이트는 `source_rid` (원격쪽 STREAM routing identity) 를 키로 삼은
-per-connection decoder 를 거친다.
+들어오는 바이트는 각 연결(pipe)의 packet state(`pipe_t::_stream_packet_state`)를
+거친다. handler 는 `pipe_->stream_packet_state()` 로 이 상태에 접근한다.
 
 ```
   wire bytes (arbitrary fragmentation)
          |
          v
   +-------------------------+
-  | stream decoder (per rid)|
-  |   state: PARSE_HEADER_SIZE
-  |          PARSE_BODY_SIZE
-  |          ALLOC_MSGS
-  |          READ_HEADER
-  |          READ_BODY
-  |          DELIVER
+  | pipe packet state       |
+  |   stage: prefix_stage   |
+  |          header_stage   |
+  |          body_stage     |
   +-------------------------+
          |
          v
@@ -159,7 +156,7 @@ zlink_stream_packet_handler_fn(stream,
   콜백이 `zlink_msg_close()` 로 닫을 책임을 진다.
 - 같은 `source_rid` 에서 오는 패킷들은 직렬화된다. 같은 피어의 뒤
   패킷이 앞 패킷을 앞지를 수 없다. 서로 다른 `source_rid` 의 패킷
-  은 서로 다른 worker 스레드에서 병렬로 디스패치될 수 있다.
+  은 서로 다른 worker 스레드에서 병렬로 dispatch될 수 있다.
 - 콜백 안에서의 self-close 는 raw `zlink_recv_handler` 케이스와 같은
   규칙을 따른다. 콜백 안에서 수신 모드를 바꾸거나 소켓을 닫으려
   하면 `EBUSY` 로 실패한다.

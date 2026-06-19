@@ -8,11 +8,10 @@
 
 # ZLink Framework NestJS Channel Messaging
 
-> 이 문서는 dotnet `aspnet-core-channel-messaging.ko.md` 를 `NestJS` 표면으로 옮긴
-> **이식 스펙**이다. 개념·의미론·동작은 dotnet 과 동일하고, 호스트 표면(ASP.NET
-> Core → NestJS)과 언어 표면(C# → TypeScript)만 바꾼다. 번역 규칙은
+> 이 문서는 Node.js `ZLink Framework`(NestJS)의 channel messaging **스펙**이다.
+> 호스트 표면은 NestJS, 언어 표면은 TypeScript 다. 번역 규칙은
 > [dotnet-to-node-surface-mapping.ko.md](../internals/dotnet-to-node-surface-mapping.ko.md)
-> 가 소유한다. 두 표기가 어긋나면 dotnet **코드**가 최종 기준이다.
+> 가 소유한다. 표기가 어긋나면 `framework/languages/node` 코드가 기준이다.
 
 ## 1. 목표
 
@@ -85,7 +84,7 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 | `channel.AddSendHandler<H, TMsg>()` | `zlinkSendHandler(group, packet)` + `.addHandlerGroup(group)` |
 | `channel.AddPublishHandler<H, TMsg>()` | `zlinkPublishHandler(group, packet)` + `.addHandlerGroup(group)` |
 | `options.UseDiscovery().AddRegistryEndpoint(...)` | `.useDiscovery().addRegistryEndpoint(...)` |
-| `options.DefaultTimeout = ...` | `defaultTimeoutMs: number` |
+| `options.RequestTimeout = ...` | `requestTimeoutMs: number` |
 | `options.Codecs.Use(ZLinkProtobufCodec.Default)` | `zlinkFramework().codecs().use(zlinkProtobufCodec())` |
 | `options.AddHandlersFromAssemblyOf<T>()` | NestJS `providers` + handler decorator discovery |
 
@@ -276,8 +275,8 @@ local handler 없이 `ZLinkChannelClient` 만 쓰는 앱도 똑같이 가능하�
 ZLinkModule.forRoot(
   zlinkFramework()
     .options({
-      // 예제용 짧은 값. defaultTimeoutMs의 실제 기본은 30000(30초)다.
-      defaultTimeoutMs: 1000,
+      // 예제용 짧은 값. requestTimeoutMs의 실제 기본은 30000(30초)다.
+      requestTimeoutMs: 1000,
     })
     .codecs()
       .use(zlinkProtobufCodec())
@@ -296,8 +295,8 @@ ZLinkModule.forRoot(
 ZLinkModule.forRoot(
   zlinkFramework()
     .options({
-      // 예제용 짧은 값. defaultTimeoutMs의 실제 기본은 30000(30초)다.
-      defaultTimeoutMs: 1000,
+      // 예제용 짧은 값. requestTimeoutMs의 실제 기본은 30000(30초)다.
+      requestTimeoutMs: 1000,
     })
     .codecs()
       .use(zlinkProtobufCodec())
@@ -400,7 +399,7 @@ ZLinkModule.forRoot(
       .enableServer('tcp://0.0.0.0:7101')
       .addHandlerGroup('api')
     .addRouteMeshChannel('tictactoe.admin')
-      .enableServer('tcp://0.0.0.0:7102')
+      .enableRouter('tcp://0.0.0.0:7102')
       .addHandlerGroup('admin.route')
     .build()
 );
@@ -534,16 +533,15 @@ AbortSignal` 로 받고, 기본은 시그니처를 짧게 유지한다.
 ```ts
 @Injectable()
 export class GetUserHandler {
-  constructor(private readonly client: ZLinkChannelClient) {}
+  constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly client: ZLinkChannelClient) {}
 
   async handle(
     request: UserRequest,
     context: ZLinkRequestContext,
   ): Promise<UserReply> {
-    const account = await this.client.request<GetAccountReply>(
-      'account',
-      new GetAccountRequest(request.accountId),
-    );
+    const account = await this.client
+      .requestToChannel('account', new GetAccountRequest(request.accountId))
+      .submit<GetAccountReply>();
 
     return {
       accountId: request.accountId,
@@ -809,7 +807,7 @@ export interface ZLinkFanoutClient {
 ```ts
 @Controller('profiles')
 export class ProfileRefreshController {
-  constructor(private readonly publisher: ZLinkFanoutClient) {}
+  constructor(@Inject(ZLINK_FANOUT_CLIENT) private readonly publisher: ZLinkFanoutClient) {}
 
   @Post('refresh')
   async refresh(@Body() request: RefreshProfileHttpRequest) {
@@ -911,7 +909,7 @@ HTTP controller 에서도 그대로 provider token 으로 주입받아 쓸 수 �
 ```ts
 @Controller('profiles')
 export class ProfileController {
-  constructor(private readonly client: ZLinkChannelClient) {}
+  constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly client: ZLinkChannelClient) {}
 
   @Post('get')
   async get(@Body() request: GetProfileHttpRequest): Promise<GetProfileReply> {

@@ -383,8 +383,8 @@ component 분리는 단계적으로 진행한다. public 계약 타입(`http_req
 
 ## 9. Endpoint 와 TLS
 
-endpoint는 `http://host:port` 또는 `https://host:port` 형식이다. host와 port가 없으면 startup
-validation에서 실패한다.
+endpoint는 `http://host:port` 또는 `https://host:port` 형식이다. port를 생략하면 scheme에 따라
+기본 port(`http` 80, `https` 443)를 채운다. host가 없으면 startup validation에서 실패한다.
 
 TLS는 endpoint별 설정이다. HTTPS endpoint에는 certificate와 private key가 필요하다. TLS 설정이
 없는 HTTPS endpoint는 runtime start 뒤가 아니라 options apply 또는 hosted service start 전에
@@ -446,7 +446,7 @@ Read request
 - malformed request는 `400 Bad Request`로 닫는다.
 - 지원하지 않는 method는 `405 Method Not Allowed`로 닫는다.
 - route가 없으면 `404 Not Found`로 닫는다.
-- content type이 맞지 않으면 `415 Unsupported Media Type`을 사용한다.
+- content type이 맞지 않으면 `request_protocol_error`를 던지고 `400 Bad Request`로 닫는다.
 - body size가 limit를 넘으면 `413 Payload Too Large`를 사용한다.
 - handler timeout은 `504 Gateway Timeout`을 사용한다.
 - shutdown 중 새 request는 `503 Service Unavailable`로 닫거나 connection을 drain 정책에 따라 닫는다.
@@ -547,11 +547,11 @@ server option은 endpoint 전체 또는 HTTP server 전체에 적용된다. rout
 | `max_connections` | 구현 기본값 | 동시에 유지할 active connection 수 |
 | `max_request_body_size` | 1 MiB 또는 정책값 | JSON body 최대 크기 |
 | `max_header_size` | 정책값 | header 전체 크기 제한 |
-| `request_headers_timeout` | 15s | header read 제한 시간 |
-| `request_body_timeout` | 30s | body read 제한 시간 |
-| `write_timeout` | 30s | response write 제한 시간 |
-| `keep_alive_timeout` | 60s | 다음 request 대기 시간 |
-| `graceful_shutdown_timeout` | 30s | shutdown drain 제한 시간 |
+| `request_headers_timeout` | 5s | header read 제한 시간 |
+| `request_body_timeout` | 5s | body read 제한 시간 |
+| `write_timeout` | 5s | response write 제한 시간 |
+| `keep_alive_timeout` | 5s | (현재 runtime 미사용 — header read마다 `request_headers_timeout` 적용) |
+| `graceful_shutdown_timeout` | 5s | (현재 stop()은 open socket 즉시 종료 — 미사용) |
 | `max_keep_alive_requests` | 100 또는 무제한 | connection당 request 수 제한 |
 
 Public builder 이름은 아래처럼 고정한다.

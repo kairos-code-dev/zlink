@@ -55,7 +55,7 @@ TypeScript 에서는 C# 의 `I` prefix 인터페이스 관례를 쓰지 않는�
 | 코어 framework | `@zlink-systems/framework` | `Systems.Zlink.Framework` |
 | NestJS 통합 | `@zlink-systems/nestjs` | `Zlink.Framework.AspNetCore` |
 | Stream Connector(client) | `@zlink-systems/stream-connector` | `Systems.Zlink.Stream.Connector` |
-| codec(json/msgpack/protobuf) | `@zlink-systems/stream-connector-{json,msgpack,protobuf}` | `Systems.Zlink.Stream.Connector.{Json,MessagePack,Protobuf}` |
+| codec(msgpack/protobuf) | `@zlink-systems/framework-codec-{msgpack,protobuf}` | `Systems.Zlink.Stream.Connector.{MessagePack,Protobuf}` |
 | 하부 바인딩 | `@zlink-systems/zlink` | `bindings/dotnet` |
 
 ## 3. 호스트 매핑 — ASP.NET Core → NestJS
@@ -115,11 +115,11 @@ dotnet framework runtime 은 `IHostedService`(`StartAsync`/`StopAsync`) 로
 
 | dotnet (`IHostedService`) | node (NestJS hook) | 시점 |
 |------|------|------|
-| `StartAsync` | `onApplicationBootstrap()` | 모든 provider 준비 후 runtime 시동(bind/connect/discovery 시작) |
-| `StopAsync` | `onApplicationShutdown(signal)` 또는 `onModuleDestroy()` | graceful close(linger, drain) |
+| `StartAsync` | `onModuleInit()` | 모든 provider 준비 후 runtime 시동(bind/connect/discovery 시작) |
+| `StopAsync` | `onModuleDestroy()` | graceful close(linger, drain) |
 
 runtime 시동에서 socket bind/connect 와 discovery 시작이 일어나므로, handler
-provider 들이 DI 에서 모두 resolvable 한 시점(`onApplicationBootstrap`) 에 시동을
+provider 들이 DI 에서 모두 resolvable 한 시점(`onModuleInit`) 에 시동을
 건다. lifecycle 의 정식 의미(시동 순서, 실패 처리, 종료 보장)는
 [lifecycle-and-failure-semantics](lifecycle-and-failure-semantics.ko.md) 가
 소유한다.
@@ -252,7 +252,7 @@ dotnet `IZLinkFrameworkOptions` 의 등록 메서드를 node fluent builder 표�
 | `UseFilter<TFilter>()` | `filters: [FilterClass]` | [handler-interfaces §filter](../spec/handler-interfaces.ko.md) |
 | `ConfigureDispatch(...)` | `dispatch: { mode }` | handler-interfaces |
 | `AddHandlersFromAssemblyOf<TMarker>()` | `discover: { modules / include }`(NestJS DiscoveryService) | §4.2 |
-| `AddActorFactory(...)` | `actorFactories: [...]` | [nestjs-actor](../spec/nestjs-actor.ko.md) |
+| `AddActorFactory(...)` | `actorFactory(actorType, factoryType)` | [nestjs-actor](../spec/nestjs-actor.ko.md) |
 | `Codecs.Use(ZLinkProtobufCodec.Default)` / `AddJson()` / `Use(ZLinkMessagePackCodec.Default)` | `codecs().use(zlinkProtobufCodec())` / `addJson()` / `use(zlinkMessagePackCodec())` | handler-interfaces §codec |
 | `ConfigureMetadata(...)` | `metadata: {...}` | nestjs-actor |
 
@@ -272,12 +272,12 @@ backend port 계약(dotnet `Runtime/Backend/Contracts`):
 
 | 포트 인터페이스 | 역할 | node 구현 대상(@zlink-systems/zlink) |
 |------|------|------|
-| `IZLinkBackendAdapterFactory` | 5개 어댑터를 만들어 내는 factory | `ZLinkNodeBackendAdapterFactory` |
-| `IZLinkChannelBackendAdapter` | dealer/router/pub/sub socket wrapping | DealerSocket/RouterSocket/Pub/Sub |
-| `IZLinkSpotBackendAdapter` | `SpotNode`/`Spot`/timer wrapping | SpotNode/Spot/Timer |
-| `IZLinkStreamBackendAdapter` | stream socket wrapping | StreamSocket |
-| `IZLinkRegistryBackendAdapter` | `Registry`/`RegistryQueryClient` | Registry/RegistryQueryClient |
-| `IZLinkMonitoringBackendAdapter` | socket/discovery/registry/spot event source | SocketMonitor/Discovery 이벤트 |
+| `ZLinkBackendAdapterFactory` | 5개 어댑터를 만들어 내는 factory | `ZLinkNodeBackendAdapterFactory` |
+| `ZLinkChannelBackendAdapter` | dealer/router/pub/sub socket wrapping | DealerSocket/RouterSocket/Pub/Sub |
+| `ZLinkSpotBackendAdapter` | `SpotNode`/`Spot`/timer wrapping | SpotNode/Spot/Timer |
+| `ZLinkStreamBackendAdapter` | stream socket wrapping | StreamSocket |
+| `ZLinkRegistryBackendAdapter` | `Registry`/`RegistryQueryClient` | Registry/RegistryQueryClient |
+| `ZLinkMonitoringBackendAdapter` | socket/discovery/registry/spot event source | SocketMonitor/Discovery 이벤트 |
 
 규칙(= [backend-dependency-policy](backend-dependency-policy.ko.md) 와 동일):
 

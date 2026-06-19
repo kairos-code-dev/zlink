@@ -8,7 +8,7 @@ registry는 **노드들이 서로의 주소를 찾는 이름 서비스**다. reg
 모든 채널 client에 상대 endpoint를 직접 적어야 한다. registry를 두면 서버는
 자기 endpoint를 등록(publish)하고, 클라이언트는 채널 이름만으로 상대를 찾는다.
 
-registry가 없을 때와 있을 때 — 토폴로지가 그물에서 별형으로 바뀐다.
+registry가 없을 때와 있을 때 — 토폴로지가 mesh에서 별형으로 바뀐다.
 
 ```mermaid
 flowchart LR

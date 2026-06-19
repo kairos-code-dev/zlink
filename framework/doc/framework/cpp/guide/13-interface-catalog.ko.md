@@ -60,7 +60,7 @@
 `add_serializer<T>(serialize_fn, deserialize_fn)`를 호출해 등록한다.
 
 route mesh 핸들러는 `route_channel_builder_t::add_send_handler`/`add_request_handler`
-(첫 인자가 페이로드, 둘째가 `route_handler_context_t`)로 등록한다.
+(첫 인자가 payload, 둘째가 `route_handler_context_t`)로 등록한다.
 
 ## 2. Configuration — app · options · builder · module
 

@@ -30,7 +30,7 @@ sequenceDiagram
     SS->>AM: find(actor_id)
     AM-->>SS: session_actor_t
     SS->>GW: actor.relay(header, payload)
-    GW->>SP: actor 패킷 핸들러 디스패치 (8장 직렬 큐)
+    GW->>SP: actor 패킷 핸들러 dispatch (8장 직렬 큐)
     SP-->>GW: 응답
     GW-->>C: reply 패킷
     end
@@ -38,7 +38,7 @@ sequenceDiagram
     rect rgb(187, 247, 208)
     Note over SP,C: 3) 알림 역류
     SP->>GW: bound_session.send(...)
-    GW->>SS: 바인딩된 actor의 세션으로
+    GW->>SS: 바인딩된 actor의 session으로
     SS-->>C: game_state_notify 패킷
     end
 ```
@@ -79,7 +79,7 @@ actor 타입이다.
 
 ## 3. actor 생성/조회
 
-인증 뒤에 세션과 actor를 묶을 때는 `session_actor_manager_t`를 사용한다.
+인증 뒤에 session과 actor를 묶을 때는 `session_actor_manager_t`를 사용한다.
 같은 stream node가 actor를 직접 만들 수 있으면 `get_or_create(actor_type, actor_id)`를
 호출한다. 다른 서버가 이미 만든 actor 참조를 받아 바인딩해야 하면 `bind(actor_ref)`를
 호출한다. C++ 공개 계약에는 별도 handler 명명 규칙이 없다.
@@ -152,9 +152,9 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
 | API | 의미 |
 |-----|------|
 | `session_actor_manager_t::get_or_create(actor_type, actor_id)` | 같은 stream node에서 actor 생성 또는 조회 (`result_t<session_actor_t>`) |
-| `session_actor_manager_t::bind(actor_ref)` | 이미 만들어진 actor 참조를 세션 actor로 바인딩 (`request_call_t<session_actor_t>`) |
+| `session_actor_manager_t::bind(actor_ref)` | 이미 만들어진 actor 참조를 session actor로 바인딩 (`request_call_t<session_actor_t>`) |
 | `session_actor_manager_t::find(actor_id)` | 바인딩된 actor 핸들 조회 (`std::optional<session_actor_t>`) |
-| `session_actor_manager_t::unbind_session(actor_id)` | 세션-액터 바인딩 해제 |
+| `session_actor_manager_t::unbind_session(actor_id)` | session-액터 바인딩 해제 |
 | `session_actor_t::relay(header, payload).async()` | 클라이언트 패킷을 actor가 입장한 spot으로 relay |
 
 ## 5. actor gateway
@@ -166,7 +166,7 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
 options.add_spot_mesh (...).add_node ("bingo.room.node")
   .enable_actor_gateway ();
 
-// stream 노드 쪽 — 이 stream의 세션 actor를 해당 spot 노드로 보낸다
+// stream 노드 쪽 — 이 stream의 session actor를 해당 spot 노드로 보낸다
 options.add_stream_node ("tictactoe.stream")
   .bind (topology.stream_endpoint)
   .register_session<play_session_t> ()
@@ -190,7 +190,7 @@ actor·session 경로의 실패도 채널과 같은 모델이다 — `co_await` 
 
 - 인터페이스/계약 카탈로그: [13장 인터페이스 카탈로그](13-interface-catalog.ko.md)
 - 실행 가능한 전체 예제: [14장 샘플 맵](14-samples-map.ko.md)
-- 외부 client 연결·세션 수명 관리: [10장 Stream](10-stream.ko.md)
+- 외부 client 연결·session 수명 관리: [10장 Stream](10-stream.ko.md)
 - spot 직렬 실행·room/entry 작성: [8장 SPOT](08-spot.ko.md)
 
 [다음: Stream →](10-stream.ko.md)

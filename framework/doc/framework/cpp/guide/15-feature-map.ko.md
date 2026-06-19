@@ -11,7 +11,7 @@
 |------|------|
 | **낮음** | handler 1개 + channel 등록 수준. 가이드만으로 도입 가능 |
 | **중간** | lifecycle/factory/등록 조합을 이해해야 함 |
-| **높음** | 분산 토폴로지·세션 라우팅 결정이 필요 |
+| **높음** | 분산 토폴로지·session routing 결정이 필요 |
 
 ## 2. 기능 × 난이도 × 언제 쓰나
 
@@ -23,7 +23,7 @@
 | dealer mesh (수평 확장) | 중간 | 외부 LB 없이 같은 채널에 노드 추가·분산 | [7 §5](07-channel-messaging.ko.md#5-dealer-mesh-외부-로드밸런서-없이-수평-확장) |
 | route mesh (주소 라우팅) | 높음 | routing id로 특정 노드 고정 라우팅(SPOT 백본) | [7 §7](07-channel-messaging.ko.md#7-route-mesh-고급) |
 | SPOT(room/stage/zone) | 중간 | 동적 생성·소멸 논리 노드 단위 라우팅 | [8](08-spot.ko.md) |
-| channel handler에서 target Spot 호출 | 중간 | HTTP/세션 gateway가 current Spot 없이 특정 Spot 호출 | [8 §6](08-spot.ko.md#6-spot에서-바깥으로-보내기) |
+| channel handler에서 target Spot 호출 | 중간 | HTTP/session gateway가 current Spot 없이 특정 Spot 호출 | [8 §6](08-spot.ko.md#6-spot에서-바깥으로-보내기) |
 | Spot timer (게임 루프 등) | 중간 | 주기 tick, heartbeat, 정리 작업 | [8 §5](08-spot.ko.md#5-timer) |
 | Stage wrapper | 중간 | `playhouse` Stage 류를 SPOT 위에 직접 얹을 때(전용 타입 없음) | [8 §7](08-spot.ko.md#7-stage-wrapper-playhouse-stage-류) |
 | actor / Entry Spot | 높음 | session과 묶인 actor로 packet 자동 dispatch | [9](09-actor-session.ko.md) |
@@ -44,7 +44,7 @@ flowchart TD
   Q3 -->|아니오| Q4{여러 구독자에게<br/>흩뿌리나?}
   Q4 -->|예| Pub[pub/sub<br/>07]
   Q4 -->|아니오| Send[one-way send<br/>07]
-  Q2 -->|예| Q5{참가자별 상태/<br/>세션이 있나?}
+  Q2 -->|예| Q5{참가자별 상태/<br/>session이 있나?}
   Q5 -->|아니오| Spot[SPOT<br/>08]
   Q5 -->|예| Q6{연결 서버와<br/>로직 서버를 나누나?}
   Q6 -->|아니오| Actor[actor + SPOT<br/>09]
@@ -55,7 +55,7 @@ flowchart TD
   [2장 Getting Started](02-getting-started.ko.md)로 충분.
 - **이벤트를 흩뿌린다** → pub/sub.
 - **처리량을 늘린다(같은 서비스 N개)** → dealer mesh.
-- **방/판/존 같은 동적 단위** → SPOT. 그 안에 참가자별 상태/세션이 있으면 actor.
+- **방/판/존 같은 동적 단위** → SPOT. 그 안에 참가자별 상태/session이 있으면 actor.
 - **일반 handler에서 Spot 흐름으로** → actor 생성 또는 Entry Spot join으로 `actor_ref_t` 확보.
 - **외부 게임/모바일 client** → STREAM(서버) + Stream Connector(client).
 - **연결 서버와 로직 서버 분리(재접속 이전성)** → session ↔ actor 게이트웨이.

@@ -141,7 +141,7 @@ stream 패킷도 채널 메시지와 같은 typed DTO(`packet_name`)다. 서버 
 `header.packet_name()`으로 어떤 DTO인지 식별하고, payload를 해당 타입으로
 디코딩한다. `stream_header_t::codec()` 값은 `stream_codec_t`이며 현재 값은
 `raw`, `json`, `message_pack`, `protobuf`다. spot까지 relay되는 패킷은 spot의
-`add_actor_packet<&T::method>()` 등록과 만나 typed 핸들러로 디스패치된다
+`add_actor_packet<&T::method>()` 등록과 만나 typed 핸들러로 dispatch된다
 ([8장 §3](08-spot.ko.md#3-room-spot-작성)).
 
 ## 6. 자주 막히는 곳

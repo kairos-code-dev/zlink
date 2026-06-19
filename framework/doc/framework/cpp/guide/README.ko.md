@@ -18,7 +18,7 @@ int main (int argc, char **argv)
 }
 ```
 
-핸들러 클래스 하나를 등록하면 메시지 디코딩·라우팅·인코딩은 프레임워크가 처리한다.
+핸들러 클래스 하나를 등록하면 메시지 디코딩·routing·인코딩은 프레임워크가 처리한다.
 
 ---
 
@@ -147,7 +147,8 @@ class support_session_t : public zlink::framework::packet_stream_session_t {
                             const stream_header_t &header,
                             const message_t &payload) override
     {
-        co_await _actors.relay (header, payload);   // actor → SPOT으로 전달
+        auto actor = co_await _actors.find (actor_id);
+        co_await actor.value ().relay (header, payload).async ();   // actor → SPOT으로 전달
     }
 };
 ```
@@ -160,7 +161,7 @@ class support_session_t : public zlink::framework::packet_stream_session_t {
 ### HTTP Hosting — 서버 프로세스 안에 REST API 내장
 
 별도 웹 서버 없이 같은 프로세스 안에 REST endpoint를 올린다. 경로 파라미터,
-인증, TLS를 지원하며 readiness / liveness / health check endpoint도 한 줄로
+middleware/handler에서 인증 로직을 구현할 수 있고 TLS를 지원하며 readiness / liveness / health check endpoint도 한 줄로
 등록한다.
 
 ```cpp
@@ -188,7 +189,7 @@ options.http ()
   자동 주입된다. singleton / scoped / transient 수명을 지원한다.
 - **Logging** — `logger_t<TOwner>` DI로 받아 소스 이름이 자동 태그된 로그를
   남긴다.
-- **Monitoring / Health** — 소켓·discovery·spot·타이머 이벤트를 typed 구독으로
+- **Monitoring / Health** — socket·discovery·spot·타이머 이벤트를 typed 구독으로
   받는다. `/ready`, `/healthz` endpoint에 health check를 연결한다.
 
 [4장 →](04-di-container.ko.md) · [5장 →](05-configuration.ko.md) · [12장 →](12-monitoring.ko.md)

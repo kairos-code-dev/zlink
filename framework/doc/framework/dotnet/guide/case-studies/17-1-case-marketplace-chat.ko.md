@@ -159,6 +159,10 @@ public sealed class MarketplaceChatSession(IZLinkSessionContext context, IZLinkA
     public IZLinkSessionContext Context { get; } = context;
     private IZLinkSessionActor? _user;
 
+    public ValueTask OnConnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;
+    public ValueTask OnDisconnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;
+    public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken ct) => ValueTask.CompletedTask;
+
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
         Message payload,
@@ -179,8 +183,9 @@ public sealed class MarketplaceChatSession(IZLinkSessionContext context, IZLinkA
 ```
 
 ```csharp
-public sealed class UserActor(IZLinkActorContext context) : IZLinkActor
+public sealed class UserActor(string actorId, IZLinkActorContext context) : IZLinkActor
 {
+    public string ActorId { get; } = actorId;
     public IZLinkActorContext Context { get; } = context;
 
     public ValueTask PushAsync(ChatMessage message, CancellationToken ct)

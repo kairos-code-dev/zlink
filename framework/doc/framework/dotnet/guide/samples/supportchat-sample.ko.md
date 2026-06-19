@@ -26,7 +26,8 @@ SupportChat 은 고객 1명과 상담원 1명이 같은 conversation 에서 대�
   `Conversation` aggregate 가 소유하고, `ConversationSpot`[^spot] 의 단일 actor 큐를 통해
   직렬로만 접근된다.
 - reconnect 가 발생해도 같은 actor 와 conversation 상태를 유지한다.
-- idle timer 가 새 메시지 없는 conversation 을 `WaitingForClose` → `Closed` 로 전환한다.
+- idle timer 가 새 메시지 없는 conversation 을 `WaitingForClose` 로 전환한다. `Closed` 는
+  명시적 `CloseConversationReq` 처리에서만 일어난다.
 - 배정 가능한 상담원이 없으면 오류가 아니라 `WaitingForAgent` 상태로 남는다.
 
 payload codec 은 읽기 쉬운 JSON 을 사용한다.
@@ -117,8 +118,8 @@ public sealed record ConversationState(
 ```
 
 `Role` 은 `Customer`/`Agent`, `Status` 는 `WaitingForAgent`/`Active`/`WaitingForClose`/
-`Closed` 를 쓴다. `ConversationId` 는 도메인 식별자이며, Spot routing id 의 hex 문자열을
-public DTO 로 노출하지 않는다. Api·Support 서버 사이의 orchestration DTO
+`Closed` 를 쓴다. `ConversationId` 는 conversation Spot 의 routing id hex 문자열
+(`SpotRid.ToHex()`)을 그대로 쓴다. Api·Support 서버 사이의 orchestration DTO
 (`OpenConversationApiReq`, `AllocateConversationReq`, `AssignAgentReq`,
 `EnsureSupportUserActorReq`, `ActorRefSnapshot`)도 같은 파일에 둔다.
 
@@ -144,7 +145,7 @@ Server/Support/
   Domain/
     SupportChat/        # Conversation aggregate, 메시지 sequence, status 전이, policy
   Application/
-    ConversationAssignment/   # ConversationAllocator, AgentAssignmentService 등
+    ConversationAssignment/   # SupportConversationAllocator, AgentAssignmentService 등
   Adapters/
     ZLink/
       Actors/           # SupportUserActor (customer/agent)
@@ -171,10 +172,10 @@ timer handler 파일이 아니라 `ConversationSpot` 의 idle check 와 domain `
   `Active`. customer 는 `ParticipantJoinedNotify`, agent 는 `ConversationAssignedNotify` push.
 - **메시지·typing**: `ConversationSpot` 이 단조 증가 `MessageSeq` 를 부여하고 상대방에게
   `ChatMessageNotify`/`TypingChangedNotify` 를 push 한다.
-- **idle·close**: Spot timer 가 idle deadline 을 넘기면 `ConversationIdleNotify`, close
-  grace 후 `ConversationClosedNotify` 를 양쪽 bound session 에 push 한다. timer 는 신호만
-  전달하고 전이 판정은 domain 이 한다. 명시적 `CloseConversationReq` 도 같은 `Closed`
-  계약을 쓴다.
+- **idle·close**: Spot timer 가 idle deadline 을 넘기면 conversation 을 `WaitingForClose`
+  로 두고 `ConversationIdleNotify` 를 양쪽 bound session 에 push 한다. timer 는 신호만
+  전달하고 전이 판정은 domain 이 한다. `Closed` 전환과 `ConversationClosedNotify` 는
+  명시적 `CloseConversationReq` 처리에서 일어난다.
 - **reconnect**: 같은 `ActorId` 가 다시 인증하면 새 actor 를 만들지 않고 새 stream session
   binding 만 갱신한다. client 는 `JoinConversationReq` 로 현재 상태를 다시 확인한다.
 

@@ -71,7 +71,7 @@ export class SubmitOrderHandler
   async handle(
     spot: SymbolBookSpot,
     order: SubmitOrder,
-    context: ZLinkSpotRequestContext,
+    context: ZLinkHandlerContext,
   ): Promise<OrderAck> {
     const fills = spot.match(order);
     return new OrderAck(order.orderId, fills);
@@ -106,8 +106,7 @@ ZLinkModule.forRoot(
 );
 ```
 
-주문 라우팅·리스크 점검은 channel messaging(`requestToChannel`/`sendToChannel` +
-`timeout`)으로, 리테일/알고 client 수용은 STREAM 으로 받는다
+주문 라우팅·리스크 점검은 channel messaging(`requestToChannel`는 `.timeout(...)` 지원, `sendToChannel`)으로, 리테일/알고 client 수용은 STREAM 으로 받는다
 ([04-channel-messaging](../04-channel-messaging.ko.md),
 [07-stream](../07-stream.ko.md)). 단 **마이크로초 매칭 핫루프는 이 channel 경로 밖**에서
 Disruptor/Aeron 으로 남긴다.

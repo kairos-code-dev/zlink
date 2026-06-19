@@ -190,10 +190,11 @@ frame prefix 의 `u16 header_len` 으로 표현되므로 65535 bytes 를 넘을 
 metadata 는 route, trace id, locale 같은 작은 key-value 를 담는 용도이므로, 사용자가
 한도를 키우는 option 은 제공하지 않는다. 큰 업무 데이터는 payload 로 보내야 한다.
 
-수신 packet 자체를 내부 bounded queue 에 쌓거나 임의로 drop 하지 않는다. receive loop는
-packet을 읽은 뒤 사용자 callback work item만 dispatch queue에 넣고 다음 read를 계속한다.
-사용자 callback이 느리면 `Dispatch.Async()`를 호출하는 application loop가 늦어질 뿐,
-network receive loop를 막지 않는다.
+수신 메시지는 `WaitFor`/`ReceivedCount` 용으로 bounded store 에 기록되며, 한도
+(`MaxReceivedMessages`, 기본 1024)를 넘으면 가장 오래된 메시지를 제거한다. receive loop는
+packet을 읽은 뒤 사용자 callback work item을 dispatch queue에 넣고 다음 read를 계속한다.
+기본 `Manual` dispatch mode 에서는 사용자 callback이 느리면 `Dispatch.Async()`를 호출하는
+application loop가 늦어질 뿐, network receive loop를 막지 않는다.
 
 사용자 callback 실행은 별도의 dispatch queue로 분리한다. 기본값인
 `DispatchMode = Manual`에서는 receive loop, reconnect loop, request callback task가
@@ -533,6 +534,10 @@ public interface IZlinkStreamConnector : IAsyncDisposable
 
     IDisposable ObserveInbound(
         Func<ZlinkStreamInboundObservation, CancellationToken, ValueTask> observer);
+
+    int ReceivedCount(string name);
+
+    IZlinkStreamWaitCall WaitFor(string name);
 }
 
 public sealed record ZlinkStreamConnectionStateChanged(
@@ -588,8 +593,9 @@ codec 은 `ZlinkStreamEncodedPayload` 안에 들어 있는 값을 그대로 사�
 
 호출 흐름은 다음과 같다.
 
-- 호출자는 `ToJson`, `ToMsgPack`, `ToProto` 같은 명시형 helper 를 통해, payload bytes 와
-  codec 값을 함께 만든다.
+- 호출자는 `ToJson` helper 로 JSON payload bytes 와 codec 값을 함께 만든다. MessagePack·
+  Protobuf 는 connector option 의 `PayloadCodec`(`ZLinkMessagePackCodec.Default` /
+  `ZLinkProtobufCodec.Default`)에 codec 을 넣어 처리한다.
 - 각 codec package 는 일반 CLR 객체를 곧장 넘길 수 있는 typed convenience builder 도
   함께 제공한다.
 - 예를 들어 JSON package 의 namespace 를 사용하면, `Request(request)` 는 JSON 으로
@@ -734,7 +740,9 @@ public readonly struct ZlinkStreamResult<T>
 두 표면의 error 전달 방식은 서로 다르다.
 
 - async API 는 실패 시 exception 을 던진다.
-- callback 기반 API 는 `ErrorReceived` 를 호출한다.
+- callback 기반 request API 는 실패를 `ZlinkStreamResult`/`ZlinkStreamResult<T>` 로 그
+  callback 에 넘긴다. `ErrorReceived` 이벤트는 request id 없는 remote error 같은
+  stream-level error 에 쓴다.
 
 다만 두 경로에서 사용하는 error code 가 가지는 의미는 서로 같아야 한다.
 

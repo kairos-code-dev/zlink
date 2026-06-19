@@ -22,9 +22,9 @@ stream node 하나에 session 하나를 붙인다. 한 stream node에 session을
 ```java
 @Override
 public void configure(ZLinkFrameworkOptions framework) {
-    options.codecs().use(ZLinkProtobufCodec.defaultCodec());
+    framework.codecs().use(ZLinkProtobufCodec.defaultCodec());
 
-    ZLinkStreamNodeBuilder stream = options.addStreamNode("client.stream");
+    ZLinkStreamNodeBuilder stream = framework.addStreamNode("client.stream");
     stream.bind("tcp://0.0.0.0:9100");
     stream.registerSession(GameSession.class);
 }
@@ -42,6 +42,10 @@ raw session을 public type으로 나누지 않는다. framework가 frame을 디�
 public final class GameSession implements ZLinkSession {
     private final ZLinkSessionContext context;
     private final ZLinkClient channels;
+
+    @Override public void onConnected() {}
+    @Override public void onDisconnected() {}
+    @Override public void onError(ZLinkStreamError error) {}
 
     public GameSession(ZLinkSessionContext context, ZLinkClient channels) {
         this.context = context;
@@ -109,8 +113,8 @@ connector는 만들고(연결 안 함) -> 핸들러/이벤트 등록 -> `connect
 ```java
 ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(options);
 
-connector.on("GameStateNotify", (msg, ctx) -> {
-    render(msg);
+connector.on("GameStateNotify", (message) -> {
+    render(message);
     return CompletableFuture.completedFuture(null);
 });
 

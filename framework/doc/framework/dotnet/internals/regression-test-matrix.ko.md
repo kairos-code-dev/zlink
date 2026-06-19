@@ -32,8 +32,9 @@ use case validation 문서는 설계 설명이 어디까지 닿아 있는지를 
 | runtime RID[^rid] | `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64` |
 | test mode | debug, release |
 
-최소 지원 버전이 `net8.0` 이므로, 회귀 테스트도 위 두 target framework 를
-함께 돌려야 한다.
+현재 저장소의 기본 빌드(`ZLinkFrameworkTargetFrameworks` 기본값)는 `net8.0` 단일 TFM
+이므로, 회귀 테스트는 `net8.0` 으로 돌린다. `net10.0` 은 아래처럼 회귀 matrix 보고용
+multi-target 빌드에서 추가로 다룬다.
 
 - 현재 저장소의 기본 빌드는 `net8.0` 단일 TFM 이다.
 - `net10.0` 은 회귀 matrix 보고용 multi-target 빌드에서 추가로 컴파일·실행하는
@@ -161,7 +162,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | explicit egress channel Spot route 경로 | `integration-single-process` | routed Spot 호출은 target 정보만으로 egress transport를 고르지 않고, caller가 명시한 local egress channel, egress 설정의 target SpotNode ingress channel, `RoutingId` target으로 routed message를 보낸다 |
 | actor manager 생성 중복/타입 충돌 | `integration-single-process` | `IZLinkActorManager.CreateAsync(...)` 중복 생성은 `ActorAlreadyExists`, `GetOrCreateAsync(...)` actor type 충돌은 `ActorTypeMismatch` 로 실패한다 |
 | local actor bind 생성 금지 | `integration-single-process` | `BindAsync(...)` 는 local actor 가 없을 때 factory 를 호출하지 않고 `ActorRouteNotFound` 로 실패한다 |
-| session actor bind resolver 제거 | `integration-single-process` | `BindAsync(...)` 는 application resolver fallback 없이 logical actor handle 을 등록한다 |
+| session actor bind resolver fallback 없음 | `integration-single-process` | `BindAsync(...)` 는 application resolver fallback 없이 logical actor handle 을 등록한다 |
 | remote actor dispatch 생성 금지 | `integration-single-process` | routed actor dispatch 수신 경로는 local actor 가 없을 때 factory 를 호출하지 않고 dispatch 를 실패시킨다 |
 | session actor relay bridge | `integration-single-process` | `BindAsync(...)` 와 `IZLinkSessionActor.RelayAsync(...)` 가 public session 표면에서 동작한다 |
 | session actor explicit disconnect notification | `contract`, `integration-single-process` | session disconnect 는 bound actor 전체에 자동 전파되지 않고, `NotifyDisconnectedAsync(...)` 또는 runtime 명시 호출 시 현재 Spot 의 `OnDisconnectActorAsync(...)` callback 이 호출된다 |
@@ -177,8 +178,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | Registry route 기본 구현 discovery validation | `unit` | `UseDiscovery().AddRegistryEndpoint(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
 | Registry Spot RID route | `integration-single-process` | `IZLinkSpotManager.CreateAsync(string)` 으로 만든 Spot 을 string overload 로 찾고 종료 후 not found 를 반환한다 |
 | stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
-| sample-only session metadata store 제거 | `unit` | Bingo 샘플이 actor-session store 없이 actor-bound session 을 사용한다 |
-| TicTacToe SessionGateway 샘플 제거 | `unit` | TicTacToe SessionGateway 변형이 sample tree 와 solution 에 남아 있지 않다 |
+| actor-session store 없이 동작 | `unit` | Bingo 샘플이 actor-session store 없이 actor-bound session 을 사용한다 |
+| SessionGateway 변형 없음 | `unit` | TicTacToe SessionGateway 변형이 sample tree 와 solution 에 남아 있지 않다 |
 | stale bound session send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |
 | bound session gateway relay | `integration-single-process` | Play 서버에서 Session 서버로 가는 bound session send가 core ActorGateway binding 을 통해 client STREAM에 단일 stream packet으로 도착한다 |
 | bound session disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `IZLinkBoundSession.DisconnectAsync(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |
@@ -192,7 +193,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | actor request handler reply | `unit` | actor request packet은 actor request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
 | Spot actor request handler reply | `unit` | Entry Spot/user Spot actor request packet은 request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
 | local actor request relay reply | `integration-single-process` | local session actor relay도 actor request handler 반환값으로 stream response를 작성한다 |
-| actor reply public surface 제거 | `unit` | actor context Reply와 actor stream client 계약이 public surface에 다시 노출되지 않는다 |
+| actor reply public surface 없음 | `unit` | actor context Reply와 actor stream client 계약이 public surface에 다시 노출되지 않는다 |
 
 ## 6. Stream Regression 항목
 

@@ -23,7 +23,8 @@ framework는 새로운 wire 의미를 만들지 않는다. `.NET`과 같은 chan
 > 고정한다.
 > Reactor `Mono`/`Flux`(또는 RxJava) 표면을 자동으로 노출하는 것은 비목표다.
 > 필요하면 Kotlin coroutine wrapper처럼 별도 thin wrapper에서 다룬다.
-> Java public API에는 `submitAwait` 같은 blocking/parking helper를 두지 않는다.
+> Java handler 런타임 경로에는 blocking/parking을 강요하지 않는다. 단 call/connector
+> 표면에는 테스트·클라이언트용 `await(...)` helper가 있다.
 > Kotlin wrapper는 Java runtime을 다시 구현하지 않는다. `suspend` handler는
 > framework가 소유하는 coroutine에서 실행하고 결과를 `CompletionStage<T>`로 돌려주며,
 > ordering, timeout, cancellation, exception mapping은 Java core 정책을 따른다.
@@ -31,7 +32,7 @@ framework는 새로운 wire 의미를 만들지 않는다. `.NET`과 같은 chan
 ## 2. 패키지와 네이밍
 
 module artifact 와 package 는 아래를 정확히 쓴다. binding group 은 `systems.zlink`
-다. connector client 타입은 `Zlink`(소문자 `l`) prefix를 쓴다(§2.1).
+다. connector client 타입도 `ZLink`(대문자 `L`) prefix를 쓴다(§2.1).
 
 | 역할 | Java module(artifact) | package | `.NET` 대응 |
 |------|-----------------------|---------|-------------|
@@ -50,9 +51,10 @@ prefix(대문자 `L`)는 그대로 유지한다.
 - **server framework public 타입은 `ZLink` prefix(대문자 `L`)** 를 쓴다.
   예: `ZLinkRequestHandler`, `ZLinkRequestContext`, `@ZLinkRequest`,
   `ZLinkSpotManager`, `@EnableZLinkFramework`.
-- **client 측 Stream Connector 타입은 `Zlink` prefix(소문자 `l`)** 를 쓴다.
-  예: `ZlinkStreamConnector`, `ZlinkStreamConnectorOptions`. connector가 server
-  framework 모듈에 의존하지 않는 독립 client 라이브러리이기 때문이다.
+- **client 측 Stream Connector 타입도 `ZLink` prefix(대문자 `L`)** 를 쓴다.
+  예: `ZLinkStreamConnector`, `ZLinkStreamConnectorOptions`, `ZLinkStreamConnectorFactory`.
+  (Java 는 connector 가 독립 client 라이브러리지만 `.NET` 의 소문자 `Zlink` 구분을 두지
+  않고 `ZLink` 로 통일한다.)
 - 하부 zlink core C API는 `zlink_*` snake_case 그대로다(변경 없음).
 
 ### 2.2 메서드/타입 이름 매핑 예
@@ -103,11 +105,11 @@ handler 콜백은 `ZLinkPublishHandler`/`ZLinkPublishContext`/`@ZLinkPublish`
 
 ### 2.5 cancellation 표현
 
-`.NET` 의 `CancellationToken cancellationToken` 파라미터는 Java handler 시그니처에
-**별도 파라미터로 옮기지 않는다.** cancellation은 handler/`context` 안으로 접는다.
-`ZLinkRequestContext` 등 context가 cancellation 신호(host shutdown, request 취소)를
-노출한다. handler는 일반 함수처럼 값을 반환하거나 예외를 던진다. 이렇게 하면 handler
-시그니처가 짧게 유지되고, 취소는 context 한곳에서만 본다.
+channel handler(request/send/publish)는 `.NET` 의 `CancellationToken` 파라미터를 **별도
+파라미터로 옮기지 않고** `context` 안으로 접는다. `ZLinkRequestContext` 등 context가
+cancellation 신호(host shutdown, request 취소)를 노출한다. 반면 **Spot actor handler
+인터페이스**(`ZLinkSpotActorRequestHandler`, `ZLinkEntrySpotActorSendHandler` 등)는 `handle(...)`
+시그니처 끝에 `CancellationToken cancellationToken` 를 별도 파라미터로 받는다.
 
 Kotlin은 Java API의 의미를 바꾸지 않고 아래처럼 감싼다.
 
@@ -120,10 +122,10 @@ suspend fun <TReply : Any> ZLinkClient.request(
 ```
 
 Kotlin adapter의 cancellation은 `.NET`의 `CancellationToken`을 새 파라미터로 복사하는
-방식이 아니다. Java context가 노출하는 shutdown/request/session 신호를 coroutine
-`Job` cancellation으로 연결한다. coroutine이 취소되면 해당 handler의
-`CompletionStage`도 취소 또는 exceptional completion으로 끝나야 하며, pending request
-정리는 Java core가 담당한다.
+방식이 아니다. pending request 정리는 Java core가 담당한다.
+
+> **설계상 모델 — 미구현.** Java context의 shutdown/request/session 신호를 coroutine
+> `Job` cancellation으로 잇는 bridge는 현재 invoker 구현에는 들어 있지 않다.
 
 Kotlin handler registration은 Java handler registration과 같은 key 공간을 쓴다.
 같은 channel/Spot/session 안에서 `kind + packetName`이 겹치면 Java handler와 Kotlin
@@ -219,9 +221,10 @@ handler를 모든 channel에 자동으로 열지 않는다.
 
 ## 6. 최종 기준
 
-Java 문서와 `.NET` 문서가 다르면 `.NET` 코드가 기능 기준이다. Java 구현 중 binding
-public API가 부족하면 framework 내부에서 reflection이나 internal 접근으로 우회하지
-않고 Java binding public API를 추가한다.
+이 매핑 문서는 `.NET` reference 구현을 parity 출처로 삼는다. Java 사용자·구현은 Java
+표면을 기준으로 하며, `.NET` 참조는 parity 작업용이다. Java 구현 중 binding public
+API가 부족하면 framework 내부에서 reflection이나 internal 접근으로 우회하지 않고 Java
+binding public API를 추가한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

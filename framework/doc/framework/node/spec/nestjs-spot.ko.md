@@ -8,14 +8,10 @@
 
 # ZLink Framework NestJS SPOT Integration
 
-> 이 문서는 **이식 기준(canonical) 스펙**이다. dotnet
-> [aspnet-core-spot.ko.md](../../dotnet/spec/aspnet-core-spot.ko.md) 의
-> 의미·동작을 그대로 두고, 표면만 NestJS / TypeScript 모양으로 옮긴다. 번역
-> 규칙은 [dotnet-to-node-surface-mapping.ko.md](../internals/dotnet-to-node-surface-mapping.ko.md)
-> 를 따른다. 두 표기가 어긋나면 dotnet **코드**
-> (`framework/languages/dotnet/src/Zlink.Framework/Runtime/Spots`,
-> `Contracts/Spots`) 가 최종 기준이다. 이 문서대로 구현하면 dotnet 과 동일한
-> SPOT 동작을 얻는다.
+> 이 문서는 Node.js `ZLink Framework`(NestJS)의 SPOT **스펙**이다. 표면은 NestJS /
+> TypeScript 모양이다. 번역 규칙은
+> [dotnet-to-node-surface-mapping.ko.md](../internals/dotnet-to-node-surface-mapping.ko.md)
+> 를 따른다. 표기가 어긋나면 `framework/languages/node` 코드가 기준이다.
 
 ## 1. 목표
 
@@ -645,9 +641,9 @@ dotnet 코드(`ZLinkSpotActivation`)에서 확인한 user Spot lifecycle 호출 
 ```ts
 const stage = await spotManager.create(StageSpot);
 
-await spotPublisherClient.publish('game.stage', 'stage.state.updated', {
+await spotPublisherClient.publishSpot('game.stage', 'stage.state.updated', {
   stageRid: stage.spotRid,
-});
+}).submit();
 
 const info = await spotManager.find(stage.spotRid);
 ```
@@ -796,7 +792,7 @@ export class StagePublishController {
       'game.stage',
       'stage.state.updated',
       new StageStateUpdatedEvent(request.stageRid, request.userCount),
-    );
+    ).submit();
   }
 }
 ```

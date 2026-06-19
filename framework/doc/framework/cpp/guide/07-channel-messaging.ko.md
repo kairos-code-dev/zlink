@@ -5,13 +5,13 @@
 ## 1. 채널이 하는 일
 
 채널은 이름을 가진 메시징 경로다. 서버 프로세스끼리 typed 메시지를 주고받는
-기본 수단이며, endpoint 연결·재접속·직렬화·디스패치는 런타임이 처리한다.
+기본 수단이며, endpoint 연결·재접속·직렬화·dispatch는 런타임이 처리한다.
 
 | 종류 | 선언 | 패턴 |
 |------|------|------|
 | client/server | `add_client_server_channel(name)` | request-reply, 단방향 send — ROUTER 서버에 DEALER 클라이언트 (DEALER=client, ROUTER=server) |
 | fanout | `add_fanout_channel(name)` | publisher → 다수 subscriber (topic) |
-| dealer mesh | `add_dealer_mesh_channel(name)` | dealer ↔ dealer — round-robin·가중치 분산 |
+| dealer mesh | `add_dealer_mesh_channel(name)` | dealer ↔ dealer — round-robin 분산 |
 | route mesh | `add_route_mesh_channel(name)` | router ↔ router — routing id 로 주소 라우팅 (SPOT node 구성: [8장](08-spot.ko.md)) |
 
 ## 2. 서버 쪽: 핸들러 그룹과 채널
@@ -83,7 +83,7 @@ flowchart LR
 ```
 
 채널 이름(`tictactoe.play`)이 양쪽을 잇는 키다. 서버는 endpoint에 bind하고
-그룹의 핸들러로 디스패치하며, 클라이언트는 같은 이름으로 연결해 typed 요청을
+그룹의 핸들러로 dispatch하며, 클라이언트는 같은 이름으로 연결해 typed 요청을
 보낸다.
 
 ## 3. 클라이언트 쪽: channel_client_t
@@ -248,7 +248,7 @@ options.add_dealer_mesh_channel ("image.resize")
 
 dealer mesh는 DEALER ↔ DEALER 대칭이라 **한 노드가 server와 client를 둘 다** 할 수
 있다 — `enable_server(endpoint)`로 받으면서(제공) `enable_client(...)`로 다른 peer에
-보낸다(소비). 둘은 같은 DEALER 소켓을 공유한다.
+보낸다(소비). 둘은 같은 DEALER socket을 공유한다.
 
 ```mermaid
 flowchart LR
@@ -320,7 +320,7 @@ publish 한 message 는 **구독자 수와 무관하게 한 번만 인코딩**�
 route mesh 는 **router ↔ router** 연결로, `routing_id` 를 지정해 **특정 주소로
 라우팅**한다(dealer 의 round-robin 분산과 대비). dealer mesh 와 똑같이 한 노드가
 **server 와 client 를 둘 다** 한다 — `enable_server(endpoint)` 로 bind 해서 받고(제공),
-`enable_client(endpoint)` 로 다른 router 에 연결한다(소비). 둘은 같은 ROUTER 소켓을
+`enable_client(endpoint)` 로 다른 router 에 연결한다(소비). 둘은 같은 ROUTER socket을
 공유한다. SPOT 노드가 이 route mesh 로 구성되므로, SPOT 라우팅 백본이 필요할 때 쓴다.
 TicTacToe Play 서버 선언:
 

@@ -52,7 +52,7 @@ config.load_env ("MATCH_API__");
 config.load_cli (argc, argv);
 ```
 
-부트스트랩이 필요한 경우(예: `--config=<path>`로 파일 위치 자체를 받는 경우)
+bootstrap이 필요한 경우(예: `--config=<path>`로 파일 위치 자체를 받는 경우)
 CLI를 먼저 한 번 읽고, 파일 로드 후 다시 CLI로 덮는다. TicTacToe 샘플의 실제
 패턴:
 
@@ -116,7 +116,7 @@ auto topology = app.config ().bind<topology_t> ("sample.topology")
 auto topology = app.config ().bind_required<topology_t> ("sample.topology");
 ```
 
-bind한 struct를 DI에 싱글톤으로 올려 두면 핸들러가 주입받을 수 있다
+bind한 struct를 DI에 singleton으로 올려 두면 핸들러가 주입받을 수 있다
 ([4장](04-di-container.ko.md)).
 
 ```cpp
@@ -136,9 +136,9 @@ auto suffix = app.config ().environment ();     // "staging"
 
 ## 7. 권장 패턴 정리
 
-1. **부트스트랩 함수 하나로 모은다** — `load_*` 순서가 곧 우선순위 정책이므로
+1. **bootstrap 함수 하나로 모은다** — `load_*` 순서가 곧 우선순위 정책이므로
    앱마다 흩어 놓지 않는다 (샘플의 `load_sample_configuration` 패턴).
-2. **토폴로지는 `bind<T>` struct로** — 문자열 키 조회를 코드 곳곳에 퍼뜨리지
+2. **topology는 `bind<T>` struct로** — 문자열 키 조회를 코드 곳곳에 퍼뜨리지
    말고 한 곳에서 struct로 바인딩한 뒤 DI로 전달한다.
 3. **기본값은 struct 멤버 초기화로** — `value_or` 체인이 자연스럽게 "설정이
    있으면 덮어쓰기"가 된다.

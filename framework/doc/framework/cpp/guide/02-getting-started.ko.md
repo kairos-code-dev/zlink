@@ -243,7 +243,7 @@ sequenceDiagram
     A->>R: Discovery: control socket 연결
     P->>R: Discovery: 역할 등록 (server "bingo.play" @ PlayChannelEndpoint)
     A->>R: Discovery: 역할 등록 (client "bingo.play")
-    loop heartbeat 주기 (기본 5초)
+    loop heartbeat 주기 (기본 1초)
       P->>R: Discovery: heartbeat (server 역할 alive)
       A->>R: Discovery: heartbeat (client 역할 alive)
     end

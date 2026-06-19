@@ -19,17 +19,17 @@ ZLink framework 는 **다섯 가지 핵심 개념**으로 선다:
 | **channel(채널)** | 서버 간 호출을 묶는 논리 이름. `host:port` 대신 `"orders"` 같은 이름으로 부른다 |
 | **역할(capability)** | 한 channel 이 맡는 일 — server로 받기, client로 보내기, publisher, subscriber |
 | **handler(핸들러)** | 들어온 메시지를 처리하는 클래스나 SPOT 메서드 |
-| **client(클라이언트)** | 다른 서비스로 호출을 보내는 주입 객체(예: `channel_client_t`) |
+| **client** | 다른 서비스로 호출을 보내는 주입 객체(예: `channel_client_t`) |
 | **request / send / publish** | 각각 응답 받는 호출 / 응답 없는 단방향 통지 / 여러 구독자에게 발행 |
 | **packet name(패킷 이름)** | 같은 channel 안에서 어느 메시지 종류인지 구분하는 키 |
-| **codec(코덱)** | payload를 바이트로 직렬화·역직렬화하는 방식 |
-| **SPOT(스팟)** | room/zone처럼 동적으로 생겼다 사라지는 상태 노드. 한 SPOT의 callback은 직렬 실행된다 |
-| **actor(액터)** | 외부 client나 사용자 하나를 대표하는 서버 쪽 객체 |
+| **codec** | payload를 바이트로 직렬화·역직렬화하는 방식 |
+| **SPOT** | room/zone처럼 동적으로 생겼다 사라지는 상태 노드. 한 SPOT의 callback은 직렬 실행된다 |
+| **actor** | 외부 client나 사용자 하나를 대표하는 서버 쪽 객체 |
 | **Entry Spot** | actor가 생성 직후 머무는 기본 실행 위치 |
 | **STREAM(스트림)** | 외부 client와의 연결 지향 양방향 채널 |
 | **session(세션)** | STREAM 연결 하나에 대응하는 서버 측 객체 |
-| **Registry(레지스트리)** | 어떤 서비스가 어디 떠 있는지 모으는 중앙 디렉터리 서버 |
-| **Discovery(디스커버리)** | client가 Registry를 보고 연결 대상을 자동으로 찾는 것 |
+| **Registry** | 어떤 서비스가 어디 떠 있는지 모으는 중앙 디렉터리 서버 |
+| **Discovery** | client가 Registry를 보고 연결 대상을 자동으로 찾는 것 |
 | **RoutingId** | 노드·SPOT의 논리 주소 |
 | **correlation(상관)** | 요청과 응답을 짝지어 주는 식별 정보. framework가 자동 처리 |
 | **deadline / timeout** | 응답을 얼마나 기다릴지의 상한 시간 |
@@ -48,7 +48,7 @@ channel 은 **서버↔서버 연결을 묶는 논리 이름**이다. 주소(`ho
 |------|------|-----------|
 | client-server | `add_client_server_channel` | request-reply · 단방향 send — **ROUTER 서버에 DEALER 클라이언트**가 붙는다 (DEALER 소켓 = client, ROUTER 소켓 = server) |
 | fanout | `add_fanout_channel` | publisher → 다수 subscriber, topic (PUB / SUB) |
-| dealer mesh | `add_dealer_mesh_channel` | dealer ↔ dealer — round-robin·가중치 기반 분산 (외부 LB 없이 수평 확장) |
+| dealer mesh | `add_dealer_mesh_channel` | dealer ↔ dealer — round-robin 분산 (외부 LB 없이 수평 확장) |
 | route mesh | `add_route_mesh_channel` | router ↔ router — routing id 로 특정 주소에 라우팅 (SPOT node 가 이 route mesh 로 구성된다: [8장](08-spot.ko.md)) |
 
 **소켓 구조 한눈에** — 어떤 소켓이 어떻게 붙는지가 네 종류의 차이다.
@@ -71,11 +71,11 @@ graph LR
     P --> S3["subscriber C<br/>SUB"]
 ```
 
-- **dealer mesh** — DEALER 끼리 붙어, 한 요청을 서버들에 **round-robin·가중치로 분산**(아무 서버나).
+- **dealer mesh** — DEALER 끼리 붙어, 한 요청을 서버들에 **round-robin으로 분산**(아무 서버나).
 
 ```mermaid
 graph LR
-    C["client<br/>DEALER"] -->|"round-robin / 가중치"| A["server A<br/>DEALER"]
+    C["client<br/>DEALER"] -->|"round-robin"| A["server A<br/>DEALER"]
     C --> B["server B<br/>DEALER"]
     C --> D["server C<br/>DEALER"]
 ```
@@ -339,7 +339,7 @@ stateDiagram-v2
     configure: add_zlink_framework
     configure: add_hosted_service
     configure --> serving: run(argc, argv)
-    serving: 채널·HTTP·spot 디스패치
+    serving: 채널·HTTP·spot dispatch
     serving --> stopping: stop() / request_stop() / 신호
     stopping: hosted service stop → 채널·HTTP 정리
     stopping --> [*]: 종료 코드 반환

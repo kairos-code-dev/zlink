@@ -135,7 +135,7 @@ class create_game_http_handler_t
 | `channel_client_t` | 채널 요청 송신 — `request(channel, msg).async<TReply>()` |
 | `logger_t<TOwner>` | 소유 타입 이름으로 태그된 로거 — `_logger.info(...)` |
 | `session_actor_manager_t` | stream session에서 actor 생성·조회·바인딩 |
-| `logger_factory_t` | `create<TCategory>()` — 카테고리를 동적으로 정할 때 |
+| `logger_factory_t` | `create("category")` — 카테고리를 동적으로 정할 때(`create<TCategory>()`는 타입명 기반) |
 
 `logger_t<T>`는 `T`의 타입명을 로그 소스 이름으로 자동 태그한다 — 한 앱에 여러 핸들러가 있어도 로그 소스를 구분할 수 있다.
 

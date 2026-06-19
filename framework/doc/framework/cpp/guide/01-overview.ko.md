@@ -41,9 +41,9 @@ handler, client, filter를 작성하고, 연결·발견·라우팅·재연결·c
 
 | 직접 만들어야 했던 것 | 프레임워크가 처리하는 방식 |
 |-----------------------|---------------------------|
-| 소켓 생성·바인딩·연결 관리 | 채널/stream 이름으로 선언하면 런타임이 연결 |
+| socket 생성·바인딩·연결 관리 | 채널/stream 이름으로 선언하면 런타임이 연결 |
 | 메시지 직렬화·역직렬화 | codec 등록 한 번으로 struct를 그대로 주고받음 |
-| 요청 라우팅·디스패치 | 핸들러 클래스 등록하면 메시지가 자동으로 찾아옴 |
+| 요청 라우팅·dispatch | 핸들러 클래스 등록하면 메시지가 자동으로 찾아옴 |
 | 로깅·검증·권한 확인 같은 공통 처리 반복 | HTTP route는 middleware, ZLink handler는 handler filter로 분리 |
 | 동시 요청의 상태 보호 | SPOT의 직렬 실행으로 락 없이 상태 관리 |
 | 서비스 생성·의존성 관리 | DI 컨테이너 — `dependency_types` 선언만으로 생성자 주입 |
@@ -59,7 +59,7 @@ C++ 서버가 서로 통신할 때 흔히 드는 비용은 다음과 같다.
 - 메시징 라이브러리를 직접 쓰면 socket·endpoint·재연결·discovery를 앱이 관리한다.
 - 요청/응답, 단방향 전송, 이벤트 fan-out마다 다른 코드 경로가 생긴다.
 - 로깅·검증·권한 확인 같은 공통 처리가 HTTP middleware와 handler 코드 사이에 흩어진다.
-- 게임 room, stage 같은 동적 단위를 다루려면 라우팅과 세션 관리를 또 따로 짠다.
+- 게임 room, stage 같은 동적 단위를 다루려면 라우팅과 session 관리를 또 따로 짠다.
 
 ZLink Framework는 이 모든 호출의 단위를 **논리 채널 이름 하나**로 좁힌다. 응용은
 "`order` 채널로 요청을 보낸다"만 알면 되고, 그 채널이 어디에 몇 개 떠 있는지는
@@ -223,22 +223,22 @@ options.add_client_server_channel ("inventory.service")
 
 [7장 →](07-channel-messaging.ko.md)
 
-### zlink core 와 기본 소켓 패턴
+### zlink core 와 기본 socket 패턴
 
-위 채널 패턴들은 zlink core 의 소켓 위에서 돈다. framework 는 직접 소켓을 열지 않고,
-zlink core(C API)가 제공하는 소켓 패턴을 C++ 바인딩이 타입으로 노출하며, framework 가
+위 채널 패턴들은 zlink core 의 socket 위에서 돈다. framework 는 직접 socket을 열지 않고,
+zlink core(C API)가 제공하는 socket 패턴을 C++ 바인딩이 타입으로 노출하며, framework 가
 channel·spot 으로 감싼다. 그래서 가이드 곳곳에 `DEALER`·`ROUTER`·`PUB/SUB` 이름이 보인다.
 
-| framework 구성 | 하부 소켓 | 쓰임 |
+| framework 구성 | 하부 socket | 쓰임 |
 |----------------|-----------|------|
 | client-server channel | `DEALER → ROUTER` | 1:1 request/response·단방향 send |
 | fanout channel | `PUB → SUB` | 이벤트 fan-out (여러 구독자) |
 | mesh channel | `DEALER`/`ROUTER` peer mesh | 로드밸런싱·엔티티 라우팅 |
 | STREAM session | `STREAM` | 외부 client(raw TCP/WS) 연동 |
 
-각 소켓의 메시징 패턴·라우팅 전략·호환성 매트릭스·코드 예제는 zlink core 가이드가
+각 socket의 메시징 패턴·라우팅 전략·호환성 매트릭스·코드 예제는 zlink core 가이드가
 자세히 다룬다:
-[소켓 패턴 개요](../../../../../core/doc/guide/03-0-socket-patterns.ko.md) ·
+[socket 패턴 개요](../../../../../core/doc/guide/03-0-socket-patterns.ko.md) ·
 [DEALER](../../../../../core/doc/guide/03-3-dealer.ko.md) ·
 [ROUTER](../../../../../core/doc/guide/03-4-router.ko.md) ·
 [PUB/SUB](../../../../../core/doc/guide/03-2-pubsub.ko.md) ·
@@ -299,7 +299,7 @@ actor·session을 함께 쓰면 클라이언트 실시간 연결을 SPOT에 참�
 
 [8장 →](08-spot.ko.md)
 
-### Actor · Session — 클라이언트 세션
+### Actor · Session — 클라이언트 session
 
 Actor는 연결 하나(사용자 하나)를 대표하는 서버 쪽 객체다. 클라이언트가
 stream으로 접속하면 session이 actor를 생성하고, actor는 SPOT에 입장해 상태
@@ -330,7 +330,7 @@ stream node가 접속을 받고, 연결마다 session 인스턴스를 생성한�
 
 [11장 →](11-registry.ko.md)
 
-## 3. 전체 토폴로지
+## 3. 전체 topology
 
 각 기능이 어떻게 맞물리는지 보여주는 예시다(TicTacToe 샘플 기준). 이 지도를
 각 기능 장이 확대해 들어간다.

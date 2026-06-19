@@ -75,7 +75,7 @@ ZLink 는 **매칭 핫루프가 아니라 그 주변**(OMS·주문 라우팅·�
 @Component
 public final class SubmitOrderHandler implements ZLinkSpotRequestHandler<SymbolBookSpot, SubmitOrder, OrderAck> {
     @Override
-    public OrderAck handle(SymbolBookSpot spot, SubmitOrder order, ZLinkSpotRequestContext context) {
+    public OrderAck handle(SymbolBookSpot spot, SubmitOrder order) {
         List<Fill> fills = spot.match(order);
         return new OrderAck(order.orderId(), fills);
     }
@@ -84,7 +84,7 @@ public final class SubmitOrderHandler implements ZLinkSpotRequestHandler<SymbolB
 @Component
 public final class TickPublishHandler implements ZLinkSpotPacketHandler<SymbolBookSpot, Trade> {
     @Override
-    public void handle(SymbolBookSpot spot, Trade trade, ZLinkSpotPacketContext context) {
+    public void handle(SymbolBookSpot spot, Trade trade) {
         spot.context().outbound().publish("md." + spot.symbol(), trade).submit();
     }
 }

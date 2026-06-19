@@ -14,7 +14,7 @@ STREAM 소켓은 **외부 RAW 클라이언트**와 통신하기 위한 **서버 
 - `ZLINK_SOCKET_STREAM`은 `zlink_bind()`만 지원한다.
 - `ZLINK_SOCKET_STREAM`에 `zlink_connect()`를 호출하면 `EOPNOTSUPP`를 반환한다.
 - 클라이언트는 zlink STREAM 소켓이 아니라 OS/Asio/WebSocket 등의 **raw client**를 사용해야 한다.
-- STREAM은 raw 바이트 스트림을 그대로 전달한다. **프레이밍(패킷 경계)은 사용자가 정의**해야 한다.
+- STREAM은 raw 바이트 스트림을 그대로 전달한다. **framing(패킷 경계)은 사용자가 정의**해야 한다.
 - zlink API에서 수신/송신 시 `source_rid`(서버가 자동 할당한 4B 연결 식별자)로 클라이언트를 구분한다([Routing ID](08-routing-id.ko.md) 참고).
 
 유효 조합:
@@ -59,7 +59,7 @@ STREAM은 기반 소켓 계열(raw socket family)에서 유일한 예외 타입�
   `ZLINK_POLLIN`과 함께 사용한다.
 - **콜백 수신(raw callback)**: `zlink_recv_handler()`로 수신 조각을 콜백으로 받는다.
   이벤트 기반(event-driven) 서버에 적합하다.
-- **패킷 콜백(packet callback)**: `zlink_stream_packet_handler()`로 고정 프레이밍(framing,
+- **패킷 콜백(packet callback)**: `zlink_stream_packet_handler()`로 고정 framing(framing,
   패킷 경계를 구분하는 방식) 규약(2B header size + 4B body size + header + body, big-endian)을
   따르는 패킷을 조립된 header/body 형태로 받는다.
 
@@ -103,7 +103,7 @@ void on_message(const zlink_routing_id_t *source_rid,
     }
 }
 
-/* Attach callback dispatch (permanent, cannot be undone) */
+/* Attach callback dispatch (콜백 밖에서 해제 가능; 콜백 실행 중 detach/close는 EBUSY) */
 zlink_recv_handler(stream, on_message, NULL);
 ```
 
@@ -113,8 +113,8 @@ zlink_recv_handler(stream, on_message, NULL);
 |---|---|
 | Attach API | `zlink_recv_handler()` |
 | 콜백 | `zlink_socket_msg_handler_fn` |
-| 수명 | 한 번 부착하면 영구(detach·재부착 불가) |
-| 프레이밍 | transport에서 수신된 raw 바이트 |
+| 수명 | 콜백 밖에서 dispatch 해제 가능. 콜백 실행 중 detach/close는 `EBUSY` |
+| framing | transport에서 수신된 raw 바이트 |
 | 전송 | `zlink_send_rid()` |
 
 > 송신 큐가 가득 차면(HWM, 고수위 표시) `zlink_send_rid()`는 블록(기본) 또는
@@ -131,7 +131,7 @@ zlink_recv_handler(stream, on_message, NULL);
 
 ## 4.1 패킷 콜백 모드
 
-고정 프레이밍 규약(2바이트 big-endian header size + 4바이트 big-endian
+고정 framing 규약(2바이트 big-endian header size + 4바이트 big-endian
 body size + header payload + body payload)을 사용하는 상위 프로토콜에서는
 `zlink_stream_packet_handler()`로 패킷 단위 콜백을 등록할 수 있다.
 core가 조각(fragment) 누적과 길이 해석을 직접 처리하므로 응용은 header/body를
@@ -167,7 +167,7 @@ zlink_stream_packet_handler(stream, on_packet, NULL);
 - 같은 핸들에서 직접 수신 모드(`zlink_recv()`), 콜백 수신 모드
   (`zlink_recv_handler()`), 데이터 경로 `ZLINK_POLLIN` 등록은 모두
   `EBUSY` 로 실패한다. 두 번째 패킷 핸들러 등록도 마찬가지다.
-- 프레이밍 규약을 지키지 않는 비정형 패킷(malformed packet)(길이 제한 초과, 조립 실패,
+- framing 규약을 지키지 않는 비정형 패킷(malformed packet)(길이 제한 초과, 조립 실패,
   불완전 상태 연결 종료 등)은 연결을 닫는 기본 동작으로 이어진다. 이
   이벤트는 소켓 모니터(socket monitor) 경로로 관찰한다.
 
@@ -179,7 +179,7 @@ zlink_stream_packet_handler(stream, on_packet, NULL);
 ## 5. 클라이언트 구현 원칙
 
 클라이언트는 raw socket/websocket로 구현한다.
-STREAM은 raw 바이트를 그대로 전달하므로 **패킷 경계(프레이밍)는 애플리케이션이 정의**해야 한다.
+STREAM은 raw 바이트를 그대로 전달하므로 **패킷 경계(framing)는 애플리케이션이 정의**해야 한다.
 
 개념적 POSIX TCP 예시 (RAW 모드 — zlink framing 없음, 바이트 그대로):
 
@@ -193,7 +193,7 @@ ssize_t n = recv(fd, buf, sizeof(buf), 0);
 
 서버가 **패킷 핸들러**(`zlink_stream_packet_handler`)를 쓰면 클라이언트는 각
 패킷을 2바이트 BE header size + 4바이트 BE body size + header + body로
-프레이밍해야 한다:
+framing해야 한다:
 
 ```c
 // 패킷 모드: [2B header_size BE][4B body_size BE][header][body]
@@ -217,7 +217,7 @@ send(fd, body, body_len, 0);
   - `ZLINK_OPT_SNDBUF` / `ZLINK_OPT_RCVBUF`
   - `ZLINK_OPT_BACKLOG`
   - `ZLINK_OPT_LINGER`
-  - `ZLINK_STREAM_OPT_NOTIFY` (`zlink_set_stream_option()` / `zlink_get_stream_option()`): STREAM connect/disconnect 알림 토글
+  - `ZLINK_STREAM_OPT_NOTIFY` (`zlink_set_stream_option()` / `zlink_get_stream_option()`): 현재는 옵션 값을 set/get만 한다(저장/조회)
 - TLS/WSS 서버: `zlink_set_tls_server()`
 - TLS 클라이언트: `zlink_set_tls_client()`
 
@@ -247,7 +247,7 @@ STREAM listener는 raw TCP 피어가 보낸 바이트를 직접 받을 수 있�
 ## 7. 에러/제약
 
 - `zlink_connect(stream, ...)` -> `EOPNOTSUPP`
-- STREAM에서 `routing_id` 프레임 크기가 4바이트가 아니면 프로토콜 오류
+- STREAM 대상 `routing_id`는 4바이트여야 하며, 크기가 다르면 호출자 인자 오류(`EINVAL`)
 - `MAXMSGSIZE` 초과 메시지는 연결 종료(disconnect 이벤트)
 
 ---

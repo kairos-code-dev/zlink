@@ -10,7 +10,7 @@
 > 상세 내용은 `doc/plan/spot-refactor` 아래의 프로토콜 문서를 참조합니다.
 > 공개 메시지 API는 메시지 레벨의 request-reply 상태를 노출하지 않습니다.
 
-메시지 API는 zlink 메시지의 생성, 송신, 수신, 관리를 위한 함수를 제공합니다.
+메시지 API는 zlink 메시지의 생성, 데이터 접근, 소유권, multipart 관리를 위한 함수를 제공합니다(송신/수신은 socket API 범위).
 메시지는 소켓 간 데이터 교환의 기본 단위이며, 임의의 바이너리 payload를
 전달하고, 제로카피 시맨틱을 지원하며, 멀티파트 시퀀스를 구성할 수 있습니다.
 
@@ -22,7 +22,7 @@
 | multipart | 여러 프레임(part)을 하나의 논리적 메시지로 묶어 전송하는 방식 |
 | zero-copy | 데이터를 복사하지 않고 포인터/참조만 전달하여 전송하는 기법 |
 | reference count (refcount) | 같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼를 해제한다 |
-| routing_id | Router 소켓이 피어를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
+| routing_id | Router 소켓이 peer를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
 | ZMP | zlink Message Protocol. zlink 전용 와이어(유선) 프로토콜 |
 | control part | request-reply, SPOT routed 같은 상위 프로토콜이 payload 앞에 붙이는 내부 part |
 
@@ -36,8 +36,9 @@ typedef struct zlink_msg_t
 ```
 
 `zlink_msg_t`는 64바이트 불투명 메시지 구조체입니다. 내부 레이아웃은
-플랫폼에 따라 다르며 직접 접근해서는 안 됩니다. 모든 메시지는 사용 전에
-초기화하고 사용 후에 닫아야 합니다.
+플랫폼에 따라 다르며 직접 접근해서는 안 됩니다. 공개 헤더는 플랫폼별 alignment(예:
+64비트에서 8바이트)를 함께 선언합니다. 모든 메시지는 사용 전에 초기화하고 사용 후에
+닫아야 합니다.
 
 ```c
 typedef struct zlink_routing_id_t
@@ -47,7 +48,7 @@ typedef struct zlink_routing_id_t
 } zlink_routing_id_t;
 ```
 
-`zlink_routing_id_t`는 `ROUTER` 소켓이 특정 피어에 주소를 지정하는 데 사용하는
+`zlink_routing_id_t`는 `ROUTER` 소켓이 특정 peer에 주소를 지정하는 데 사용하는
 라우팅 아이덴티티를 전달합니다. `size`는 `data`에서 유효한 바이트 수를 나타냅니다.
 
 ```c
@@ -60,19 +61,26 @@ typedef void (zlink_free_fn) (void *data_, void *hint_);
 
 ## 상수
 
+### 메타데이터 매크로
+
+| 상수 | 값 | 의미 |
+|------|------|------|
+| `ZLINK_MSG_METADATA_KEY_USER_MIN` | `0x0100` | 사용자 정의 metadata 키의 최소값 |
+| `ZLINK_MSG_METADATA_VALUE_MAX` | `65535` | metadata 값의 최대 바이트 길이 |
+
 ### 문자열 메타데이터 속성 (예약)
 
 아래 키들은 장래 `zlink_msg_gets()`가 노출할 수 있도록 예약된 식별자입니다.
 **현재 `zlink_msg_gets()` 구현은 스텁 상태**로 모든 호출이 `NULL` +
 `errno=EINVAL`을 반환하므로 응용 코드에서 이 함수에 의존하면 안 됩니다.
-피어 상세 정보가 필요하면 socket monitor 이벤트 payload나 service snapshot/query
+peer 상세 정보가 필요하면 socket monitor 이벤트 payload나 service snapshot/query
 API를 사용하세요.
 
 | 키 (예약) | 의미 |
 |------|------|
-| `"Socket-Type"` | 피어의 소켓 타입 |
-| `"Identity"` | 피어 아이덴티티 |
-| `"Peer-Address"` | 피어 네트워크 주소 |
+| `"Socket-Type"` | peer의 소켓 타입 |
+| `"Identity"` | peer 아이덴티티 |
+| `"Peer-Address"` | peer 네트워크 주소 |
 
 ## 함수
 
@@ -324,7 +332,7 @@ const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_);
 메시지별 문자열 메타데이터 조회를 위해 예약된 심볼입니다(`"Socket-Type"`,
 `"Identity"`, `"Peer-Address"` 등). **현재 구현은 스텁**으로, 모든 호출이
 `NULL`을 반환하며 `errno`에 `EINVAL`을 설정합니다. 응용 코드에서 이 함수에
-의존하면 안 됩니다. 피어 상세 정보는 socket monitor 이벤트 payload와 service
+의존하면 안 됩니다. peer 상세 정보는 socket monitor 이벤트 payload와 service
 snapshot/query API를 통해 제공합니다.
 
 **반환값:** `NULL` (현재 메타데이터를 노출하지 않습니다).
@@ -358,7 +366,8 @@ void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 ## 메시지 API 의 범위
 
 공개 메시지 API 는 payload part 컨테이너입니다. message-level
-request-reply 함수나 per-message metadata 함수를 제공하지 않습니다.
+request-reply 함수를 제공하지 않으며, per-message metadata 값도 현재 노출하지
+않습니다(예약 심볼 `zlink_msg_gets` 는 헤더에 있으나 stub).
 request-reply 는 `zlink_msg_t` 바깥의 ZMP control part 로 전달되며,
 metadata 는 공개 메시지 경로에 포함되어 있지 않습니다.
 

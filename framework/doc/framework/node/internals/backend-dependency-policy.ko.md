@@ -49,9 +49,8 @@ API 가 곧 `@zlink-systems/zlink` 의 객체 모델 그대로여야 한다" 는
 
 현재 문서 기준에서 아래 타입은 public contract 에 그대로 남겨 둔다.
 
-- `RoutingId`(branded `string`)
+- `RoutingId`(`string` alias)
 - `Message`(payload 구조 타입, `Buffer` 기반)
-- `SendFlags`
 
 이 타입들은 특정 runtime 객체가 아니다. transport identity[^transport-identity],
 payload, submit option 처럼 의미가 분명한 기초 primitive 에 해당한다. 특히
@@ -101,11 +100,11 @@ framework 와 backend 사이에는 항상 어댑터 한 층을 두고, 역할을
 나누어 둔다.
 
 - framework 내부에는 backend adapter layer[^backend-adapter] 를 둔다. 이 어댑터는
-  `Runtime/Backend/Contracts` 의 포트 인터페이스(`ZLinkBackendAdapterFactory`,
+  `runtime/backend/contracts` 의 포트 인터페이스(`ZLinkBackendAdapterFactory`,
   `ZLinkChannelBackendAdapter`, `ZLinkSpotBackendAdapter`,
   `ZLinkStreamBackendAdapter`, `ZLinkRegistryBackendAdapter`,
   `ZLinkMonitoringBackendAdapter`)를 `@zlink-systems/zlink` 위에 구현한 것이다.
-  (.NET 의 `Runtime/Backend/DotNet` 디렉토리에 대응하는 Node 어댑터 디렉토리.)
+  실제 구현은 `runtime/backend/node`(`ZLinkNodeBackendAdapterFactory`)에 있다.
 - registration, lifecycle[^lifecycle], monitoring, query 같은 framework 본연의
   역할은 framework service(NestJS provider) 가 맡는다. 실제 backend 호출은
   adapter layer 가 떠맡는다.

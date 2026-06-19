@@ -135,10 +135,10 @@ framework timer와 같은 tick metadata와 overrun policy를 만든다. 사용�
 handle, poller slot, timer recv 순서를 직접 다루지 않는다.
 
 C++ framework timer는 CAPI SPOT dispatch event 뒤에 timer recv를 수행하는 경로를
-실행 직렬화 경계로 사용한다. 따라서 다른 binding처럼 자체 timer를 따로 만들고
-callback 실행 직렬화를 위한 별도 queue를 추가하지 않는다. C++에서는 CAPI timer를
-사용하는 것이 binding 호출 오버헤드를 늘리지 않고, core가 이미 제공하는 SPOT dispatch
-ordering을 그대로 framework handler 표면에 투영한다.
+사용한다. handler/lifecycle/timer callback 실행 순서는 Spot context마다 만들어지는
+`serial_execution_queue_t`(spot executor)가 직렬화한다. C++에서는 CAPI timer를 사용하는
+것이 binding 호출 오버헤드를 늘리지 않고, core가 제공하는 SPOT dispatch ordering을 그대로
+framework handler 표면에 투영한다.
 
 ```cpp
 timer_ = context_.add_timer<stage_tick_handler_t>(

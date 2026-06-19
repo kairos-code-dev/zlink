@@ -164,8 +164,7 @@ lookup 성공뿐 아니라 잘못된 의존이 생기지 않는지도 검증한�
 - ActorGateway session binding은 Registry row나 sample-only metadata store에 저장하지
   않는다.
 
-다음 항목은 별도 runtime polling worker와 log sink가 연결될 때 확장한다. 현재 draft에서는
-정식 공개 계약처럼 쓰지 않는다.
+다음 항목은 현재 공개 계약에 포함되지 않는다(미구현 — 향후 확장 후보).
 
 - remote registry query timeout을 caller result로 돌려주고 monitoring event로 남기는 정책.
 - Registry polling worker가 설정된 interval마다 snapshot을 읽고 file log와 monitoring event에

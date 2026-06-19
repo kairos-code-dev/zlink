@@ -76,18 +76,15 @@ source별 event filter를 한 곳에서 해석하게 해서 handler가 불필요
 ## 3. Handler 예시
 
 ```cpp
-class profile_socket_monitor_t final
-    : public runtime_event_handler_t<socket_event_payload_t> {
-public:
-    void handle(const socket_event_payload_t &event) override {
-    }
-};
+app.monitoring().on<socket_event_payload_t>(
+    [](const socket_event_payload_t &event) {
+    });
 ```
 
 source 이름은 logical name을 쓰는 편이 자연스럽다. 모든 monitoring source 이름은 비어 있으면
-안 되고, 같은 종류 안에서 같은 이름을 두 번 등록할 수 없다. 등록되지 않은 source에서 올라온
-runtime event는 monitoring runtime이 handler 호출 전에 버린다. 이 규칙 때문에 handler는 자신이
-구독한 source인지 매번 다시 검사하지 않아도 된다.
+안 되고, 같은 종류 안에서 같은 이름을 두 번 등록할 수 없다. framework runtime이 올리는 event
+(`add_socket_events` 등)는 등록된 source만 handler로 전달된다. (`monitoring().publisher().publish(...)`
+직접 호출 경로는 source 검증을 거치지 않는다.)
 
 - socket: `profile.server`, `profile.client`
 - discovery: `profile.client.discovery`

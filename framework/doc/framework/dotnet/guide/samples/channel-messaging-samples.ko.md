@@ -267,7 +267,7 @@ app.MapPost("/profiles/get", async (
     CancellationToken cancellationToken) =>
 {
     var reply = await client
-        .Request(
+        .RequestToChannel(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
         .Async<GetUserReply>(cancellationToken);
@@ -348,7 +348,7 @@ app.MapPost("/profiles/get", async (
     CancellationToken cancellationToken) =>
 {
     var reply = await client
-        .Request(
+        .RequestToChannel(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
         .Async<GetUserReply>(cancellationToken);
@@ -362,7 +362,7 @@ app.MapPost("/profiles/refresh-cache", async (
     CancellationToken cancellationToken) =>
 {
     await client
-        .Send(
+        .SendToChannel(
             "profile",
             new RefreshUserCacheCommand { AccountId = request.AccountId })
         .Async(cancellationToken);
@@ -393,7 +393,7 @@ public sealed class UserHandlers
         CancellationToken cancellationToken)
     {
         var account = await _client
-            .Request(
+            .RequestToChannel(
                 "account",
                 new GetAccountRequest { AccountId = request.AccountId })
             .Async<GetAccountReply>(cancellationToken);
@@ -588,7 +588,7 @@ public sealed class UserCacheRefreshedEvent
 
 ```csharp
 await client
-    .Send(
+    .SendToChannel(
         "profile",
         new RefreshUserCacheCommand { AccountId = accountId })
     .Async(cancellationToken);
@@ -596,7 +596,7 @@ await client
 
 ```csharp
 var reply = await client
-    .Request(
+    .RequestToChannel(
         "profile",
         new GetUserRequest { AccountId = accountId })
     .Async<GetUserReply>(cancellationToken);
@@ -604,7 +604,7 @@ var reply = await client
 
 ```csharp
 var fastReply = await client
-    .Request(
+    .RequestToChannel(
         "profile",
         new GetUserRequest { AccountId = accountId })
     .Async<GetUserReply>(cancellationToken);
@@ -612,7 +612,7 @@ var fastReply = await client
 
 ```csharp
 await client
-    .Send(
+    .SendToChannel(
         "profile",
         new RefreshUserCacheCommand { AccountId = accountId })
     .Async(cancellationToken);
@@ -633,7 +633,7 @@ binding 문서에서 따로 다룬다. framework 문서에서는 아래처럼, t
 
 ```csharp
 GetUserReply reply = await client
-    .Request(
+    .RequestToChannel(
         "profile",
         new GetUserRequest { AccountId = accountId })
     .Async<GetUserReply>(cancellationToken);
@@ -744,7 +744,7 @@ app.MapPost("/profiles/get", async (
     CancellationToken cancellationToken) =>
 {
     var reply = await client
-        .Request(
+        .RequestToChannel(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
         .Async<GetUserReply>(cancellationToken);
@@ -829,7 +829,9 @@ app.MapPost("/profiles/get", async (
     있으면 즉시 실패시키는 단계다. 런타임에서 늦게 드러나는 실패를 막는다.
 
 [^packetname]: **packet name** 은 메시지 종류를 가리키는 문자열 키다. 기본값은 payload
-    타입 이름이고, `[ZLinkRequest(PacketName = "...")]` 로 override 할 수 있다.
+    타입 이름이고, payload 타입에 `[ZLinkPacket("...")]` 를 붙이거나 outbound 호출에서
+    `.PacketName("...")` 로 override 한다. handler 쪽 method 는 `[ZLinkRequest(PacketName = "...")]`
+    로 받을 packet 이름을 지정한다.
 
 [^fanout]: **fan-out** 은 하나의 publish 가 여러 구독자에게 동시에 퍼져 나가는 흐름을
     가리킨다.

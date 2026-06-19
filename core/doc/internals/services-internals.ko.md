@@ -9,7 +9,7 @@ zlink 서비스 계층은 Discovery와 SPOT 두 가지 고수준 서비스를 �
 
 SPOT에서 transport 보안 소유권은 의도적으로 좁게 유지한다.
 `SpotNode`가 mesh/control 소켓의 TLS/WSS 연결 설정을 책임지고, unified `Spot`은
-빌린 데이터 평면 facade(data-plane facade)로만 남는다. 이 facade는 node
+빌려 쓰는 data plane facade로만 남는다. 이 facade는 node
 수명주기를 소유하지 않으며, 그 자체가 TLS 설정 진입점도 아니다.
 
 ## 2. Registry 내부 구현
@@ -17,21 +17,30 @@ SPOT에서 transport 보안 소유권은 의도적으로 좁게 유지한다.
 ### 2.1 데이터 구조
 
 ```cpp
-struct service_entry_t {
-    std::string service_name;
-    std::string endpoint;
-    zlink_routing_id_t routing_id;
-    uint16_t service_role;
-    uint64_t registered_at;
-    uint64_t last_heartbeat;
-    uint32_t weight;
+struct service_key_t {
+    std::string channel_name;          // 서비스 키는 channel_name 하나
 };
 
-struct registry_state_t {
-    uint32_t registry_id;
-    uint64_t list_seq;
-    std::map<std::string, std::vector<service_entry_t>> services;
+struct provider_entry_t {              // provider별 등록 세부
+    uint16_t service_role;
+    std::string endpoint;
+    zlink_routing_id_t routing_id;
+    uint32_t weight;
+    int64_t value;
+    std::vector<unsigned char> metadata;
+    uint64_t registration_id;
+    uint64_t provider_update_seq;
+    uint64_t registered_at;
+    uint64_t last_heartbeat;
+    uint32_t source_registry;
 };
+
+struct service_entry_t {
+    uint16_t auto_connect_type;
+    provider_map_t providers;          // provider key → provider_entry_t
+};
+
+// service_map_t = std::map<service_key_t, service_entry_t>
 ```
 
 ### 2.2 Registry 상태 머신
@@ -74,9 +83,15 @@ stateDiagram-v2
 Discovery는 프로바이더를 (auto_connect_type, service_role) 쌍으로 추적한다:
 
 ```cpp
-// Service types
-static const uint16_t auto_connect_type_spot_node = 2;
-static const uint16_t auto_connect_type_socket = 3;
+// Auto-connect types (zlink_auto_connect_type_t)
+enum {
+    ZLINK_AUTO_CONNECT_INVALID       = 0,
+    ZLINK_AUTO_CONNECT_ROUTE_MESH    = 1,
+    ZLINK_AUTO_CONNECT_CLIENT_SERVER = 2,
+    ZLINK_AUTO_CONNECT_DEALER_MESH   = 3,
+    ZLINK_AUTO_CONNECT_FANOUT        = 4,
+    ZLINK_AUTO_CONNECT_SPOT_MESH     = 5
+};
 
 // Service roles
 enum service_role_t {
@@ -102,23 +117,20 @@ Discovery는 연결된 서비스의 lifecycle owner 역할을 한다. 각 자동
 
 ```cpp
 namespace discovery_owned_service {
-    int register_endpoint(discovery_t *, uint16_t auto_connect_type,
-                          const char *endpoint, uint32_t weight,
+    int register_endpoint(discovery_t *, const char *endpoint,
                           std::string *resolved_endpoint_out,
                           const zlink_routing_id_t *routing_id = NULL,
-                          uint16_t service_role = 0);
-    int update_weight(discovery_t *, uint16_t auto_connect_type,
-                      const char *endpoint, uint32_t weight,
-                      uint16_t service_role = 0);
-    int unregister_endpoint(discovery_t *, uint16_t auto_connect_type,
-                            const char *endpoint,
+                          uint16_t service_role = 0, uint32_t weight = 100);
+    int update_attributes(discovery_t *, const char *endpoint,
+                          uint16_t service_role = 0, uint32_t weight = 100);
+    int unregister_endpoint(discovery_t *, const char *endpoint,
                             uint16_t service_role = 0);
 }
 ```
 
-Discovery는 내부적으로 `(auto_connect_type, service_role, service_name,
-endpoint)` 키의 `_registered_services` 맵을 유지하고,
-`refresh_registered_service_heartbeats()`로 등록된 모든 서비스의
+Discovery는 내부적으로 `(service_role, channel_name, endpoint)` 키의
+`_registered_services` 맵을 유지하고(`auto_connect_type`은 `discovery_t`의 별도
+상태다), `refresh_registered_service_heartbeats()`로 등록된 모든 서비스의
 heartbeat를 주기적으로 갱신한다.
 
 ### 3.4 소켓 Discovery 연결
@@ -166,6 +178,10 @@ Frame 1~N: Payload (variable)
 | 0x000B | TOPOLOGY_QUERY | Client → Registry |
 | 0x000C | TOPOLOGY_REPLY | Registry → Client |
 | 0x000D | UNREGISTER_ACK | Registry → Service |
+| 0x000E | BIND_ROUTE | Service → Registry |
+| 0x000F | UNBIND_ROUTE | Service → Registry |
+| 0x0010 | RESOLVE_ROUTE | Client → Registry |
+| 0x0011 | RESOLVE_ROUTE_REPLY | Registry → Client |
 
 #### 등록 및 하트비트 흐름
 
@@ -227,13 +243,13 @@ Frame 4~N: Service entries (repeated service_count times)
 
 ### 5.4 전달 정책
 - 로컬 publish (spot_pub):
-  로컬 spot_sub 분배 + PUB 송출 (원격 전파)
+  로컬 spot_sub 분배 + PUB으로 내보내기 (원격 전파)
 - 원격 수신 (SUB):
   로컬 spot_sub 분배만 (재발행 없음, 루프 방지)
 
 ### 5.4.1 SpotNode HWM 경계
 - unified `Spot` handle HWM과 SpotNode admission HWM은 서로 다른 계층이다.
-- `Spot` handle은 공통 `SNDHWM` 또는 `RCVHWM` 옵션을 받지 않는다.
+- 등록된 `Spot` handle은 공통 `SNDHWM`/`RCVHWM` 옵션을 받아 pub/sub pending option으로 저장한다.
 - `SpotNode` HWM은 relay나 delivery queue 예산이 아니라 admission(입력 허가) 예산이다.
   HWM(High Water Mark)은 큐가 이 값을 넘으면 새 메시지 수락을 제한하는 상한이다.
   - pubsub admission은 local publish 입력을 제어한다.
@@ -242,8 +258,7 @@ Frame 4~N: Service entries (repeated service_count times)
   override가 없으면 `16`에서 시작한다.
 - admission 숫자 옵션에 `0`을 설정하면 override를 지우고 선택된 profile 값으로
   돌아간다.
-- relay와 delivery 소켓은 HWM `0`을 사용한다. 기존 queue hard-limit 동작은 제거되어
-  더 이상 delivery target을 끊지 않는다.
+- relay와 delivery 소켓은 HWM `0`을 사용한다 — delivery target을 큐 한계로 끊지 않는다.
 - `peer_ctrl`는 control-plane 소켓이므로 SpotNode admission HWM 묶음에
   포함하지 않는다.
 

@@ -108,7 +108,7 @@
 이 계약이 없으면 `Stage` wrapper 는 단순한 DTO 라우팅 레이어에 머무른다. 즉
 실제 room / stage 상태를 안전하게 다루는 상위 모델로는 설명하기 어려워진다.
 
-이 부분은 이제 **core spec 이 명확하게 답하는 영역** 이다. core spec 은 다음을
+이 부분은 **core spec 이 답하는 영역** 이다. core spec 은 다음을
 보장한다.
 
 - 같은 `Spot` 의 dispatch callback 은 직렬화된다.
@@ -116,8 +116,8 @@
   `TIMER_READABLE` 이 모두 같은 dispatch event 축으로 올라온다.
 - channel request reply 의 transport owner 는 attached `DEALER` 다. 하지만
   callback delivery owner 는 request 를 시작한 `Spot` 의 dispatch stream 이다.
-- `RequestToChannelAsync(...)` 의 continuation 도 같은 spot execution context 에서
-  실행된다. 즉 임의의 thread 에서 직접 promise 를 resolve 하지 않는다.
+- `Context.Outbound.RequestToChannel(...).Async<TReply>()` 의 continuation 도 같은 spot
+  execution context 에서 실행된다. 즉 임의의 thread 에서 직접 promise 를 resolve 하지 않는다.
 
 따라서 framework 문서에서 해야 할 일은 새로운 의미를 만드는 것이 아니다. 그
 계약을 상위 표면으로 분명하게 옮겨 주는 일이다.
@@ -181,8 +181,8 @@ actor 가 `Spot` 에 붙었다는 것은 단순히 membership table 에 등록�
    envelope로 정규화한다.
 5. 정규화된 dispatch를 해당 actor가 attach된 `Spot` runtime의 inbox에 넣는다.
 6. 그 `Spot` inbox를 소비하는 실행기는 하나뿐이라고 가정한다.
-7. 그 실행기 안에서만 `IZLinkSpotContext.AddHandler(...)`로 등록한 actor handler가
-   호출된다.
+7. 그 실행기 안에서만 `Context.Handlers.AddActorRequest(...)` 같은 registry 메서드로
+   등록한 actor handler가 호출된다.
 8. actor가 room 상태를 바꾸거나 `Spot` 메서드를 호출해도, 이미 같은 `Spot`의 실행
    문맥 안이므로 추가적인 lock이 필요 없다.
 
@@ -324,8 +324,10 @@ timer handler 는 `ZLinkTimerTick` 을 받아 callback 번호, fixed-rate 시간
 이 절은 `Stage` 생성 시점에 초기 payload 를 함께 받는 표면이 왜 따로 필요한지를
 정리한다.
 
-현재 `IZLinkSpotManager` 는 `spotRid` 의 생성과 삭제를 설명하기에는 충분하다.
-하지만 `Stage` 생성처럼 초기 payload 를 함께 받는 모델을 설명하기에는 부족하다.
+초기 payload 는 `Message` request 로 전달된다 — `CreateAsync<TSpot>(Message request)`,
+`GetOrCreateAsync<TSpot>(RoutingId, Message request)`, 그리고 spot 쪽
+`IZLinkSpot.OnCreateAsync(Message request, ...)` 가 이를 받는다. `Stage` 전용 typed
+metadata wrapper 는 그 위에 올릴 별도 상위 확장 후보다.
 
 예를 들면 `playhouse` 의 stage 생성은 보통 다음 정보를 함께 들고 들어간다.
 
@@ -336,8 +338,10 @@ timer handler 는 `ZLinkTimerTick` 을 받아 callback 번호, fixed-rate 시간
 
 현재 `IZLinkSpotManager` 의 기본 정의는
 [handler-interfaces.ko.md](handler-interfaces.ko.md) 의 section 6.3 을 따른다.
-현재 framework 기본 계약은 `TSpot` 타입으로 factory를 고르는 생성과,
-`TSpot + spotRid`로 기존 logical spot을 확보하는 수준이다.
+현재 framework 기본 계약은 `TSpot` 타입으로 factory를 고르는 생성,
+`TSpot + spotRid`로 기존 logical spot을 확보하는 것, 그리고 생성·확보 모두 `Message`
+request payload overload(`CreateAsync<TSpot>(Message)`, `GetOrCreateAsync<TSpot>(RoutingId, Message)`)를
+함께 제공한다.
 
 `Stage wrapper` 를 만들려면 최소한 다음 중 하나가 더 필요하다.
 

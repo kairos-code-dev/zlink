@@ -22,7 +22,7 @@ codec, compression, reconnect, dispatch queue처럼 client 실행에 필요한 �
 | 모듈 | 역할 |
 |------|------|
 | `zlink-stream-connector` | TCP/TLS/WS/WSS transport, frame codec, send/request, dispatch |
-| `zlink-stream-connector-kotlin` | coroutine, `Flow`, DSL extension |
+| `zlink-framework-kotlin` | coroutine, `Flow`, DSL extension |
 | `zlink-framework-codec-protobuf` | framework/connector/http-client에서 공유하는 Protobuf codec extension |
 | `zlink-framework-codec-msgpack` | framework/connector/http-client에서 공유하는 MessagePack codec extension |
 
@@ -50,7 +50,7 @@ public interface ZLinkStreamConnector {
     ZLinkStreamSendCall send(ZLinkStreamEncodedPayload payload);
     ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload);
     ZLinkStreamSendCall send(Object payload);
-    ZLinkStreamTypedRequestCall request(Object payload);
+    ZLinkStreamRequestCall request(Object payload);
     ZLinkStreamWaitCall waitFor(String name);
     ZLinkStreamWaitCall waitFor(Class<?> payloadType);
 
@@ -98,34 +98,28 @@ Java API에서 `submit(...)`은 비동기 작업을 시작하고 `CompletionStag
 ## 4. Options
 
 ```java
-public final class ZLinkStreamConnectorOptions {
-    URI endpoint();
-    Optional<ZLinkStreamTransport> transport();
-    Duration connectTimeout();      // default 5s
-    Duration requestTimeout();      // default 30s
-    Duration waitTimeout();         // default 5s
-    ZLinkStreamHeartbeatOptions heartbeat();
-    ZLinkStreamReconnectOptions reconnect();
-    int maxSendPayloadSize();       // default 64 * 1024
-    int maxReceivePayloadSize();    // default 64 * 1024
-    boolean skipServerCertificateValidation();
-    ZLinkStreamDispatchMode dispatchMode(); // default MANUAL
-    ZLinkStreamCompression compression();   // default NONE
-    ZLinkStreamPacketNameResolver nameResolver();
-}
-
-public final class ZLinkStreamHeartbeatOptions {
-    boolean enabled();        // default true
-    Duration interval();      // default 1s
-    Duration timeout();       // default 5s
-}
-
-public final class ZLinkStreamReconnectOptions {
-    boolean enabled();        // default true
-    Duration initialDelay();  // default 250ms
-    Duration maxDelay();      // default 5s
-    double backoffFactor();   // default 2.0
-    OptionalInt maxAttempts(); // default 3
+// transport(TCP/TLS/WS/WSS)는 endpoint URI scheme으로 정해진다. heartbeat/reconnect 설정은
+// 별도 nested 객체가 아니라 flat field다. `createDefault(URI endpoint)`로 기본값 인스턴스를 만든다.
+public record ZLinkStreamConnectorOptions(
+    URI endpoint,
+    ZLinkStreamDispatchMode dispatchMode,      // default MANUAL
+    Duration requestTimeout,                   // default 30s
+    Duration waitTimeout,                      // default 5s
+    int maxReconnectAttempts,                  // default 3
+    Duration connectTimeout,                   // default 5s
+    int maxSendPayloadSize,                    // default 64 * 1024
+    int maxReceivePayloadSize,                 // default 64 * 1024
+    boolean heartbeatEnabled,                  // default true
+    Duration heartbeatInterval,                // default 1s
+    Duration heartbeatTimeout,                 // default 5s
+    boolean reconnectEnabled,                  // default true
+    Duration reconnectInitialDelay,
+    Duration reconnectMaxDelay,                // default 5s
+    double reconnectBackoffFactor,             // default 2.0
+    boolean skipServerCertificateValidation,
+    ZLinkStreamCompression compression,
+    ZLinkStreamPacketNameResolver nameResolver,
+    ZLinkStreamTypedCodec typedCodec) {
 }
 ```
 
@@ -135,14 +129,10 @@ public final class ZLinkStreamReconnectOptions {
 
 ## 5. Transport와 codec
 
-```java
-public enum ZLinkStreamTransport {
-    TCP,
-    TLS,
-    WEB_SOCKET,
-    WEB_SOCKET_SECURE
-}
+transport(TCP/TLS/WS/WSS)는 별도 enum 옵션이 아니라 endpoint URI scheme
+(`tcp://`/`tls://`/`ws://`/`wss://`)으로 선택된다.
 
+```java
 public enum ZLinkStreamCodec {
     RAW,
     JSON,
@@ -165,7 +155,6 @@ URI scheme에서 transport를 추론한다.
 | `ws://` | `WEB_SOCKET` |
 | `wss://` | `WEB_SOCKET_SECURE` |
 
-`transport`를 명시했는데 endpoint scheme과 어긋나면 configuration error다.
 TLS transport는 기본값에서 서버 인증서 체인과 호스트명을 모두 검증한다. 호스트명 검증은
 `HTTPS` endpoint identification 규칙을 사용한다.
 
@@ -173,24 +162,25 @@ TLS transport는 기본값에서 서버 인증서 체인과 호스트명을 모�
 
 ```java
 public record ZLinkStreamEncodedPayload(
-    ZLinkStreamCodec codec,
-    byte[] payload,
-    @Nullable Class<?> messageType) {
+    String packetName,
+    Message payload,
+    Map<String, String> metadata,
+    ZLinkStreamCodec codec) {
 }
 
 public record ZLinkStreamMessage<TPayload>(
-    String name,
-    ZLinkStreamMetadata metadata,
-    TPayload payload) {
+    String packetName,
+    TPayload payload,
+    Map<String, String> metadata) {
 }
 
 public record ZLinkStreamHeader(
     ZLinkStreamMessageKind kind,
     ZLinkStreamCodec codec,
     EnumSet<ZLinkStreamHeaderFlag> flags,
-    Optional<ZLinkStreamRequestSeq> requestSeq,
+    Optional<Long> requestSequence,
     String name,
-    ZLinkStreamMetadata metadata) {
+    Map<String, String> metadata) {
 }
 ```
 
@@ -208,7 +198,7 @@ metadata는 작은 key-value만 담는다. 큰 업무 데이터는 payload로 �
 public interface ZLinkStreamSendCall {
     ZLinkStreamSendCall packetName(String name);
     ZLinkStreamSendCall metadata(String key, String value);
-    ZLinkStreamSendCall metadata(ZLinkStreamMetadata metadata);
+    ZLinkStreamSendCall metadata(Map<String, String> metadata);
     ZLinkStreamSendCall compress();
     CompletionStage<Void> submit();
 }
@@ -216,18 +206,10 @@ public interface ZLinkStreamSendCall {
 public interface ZLinkStreamRequestCall {
     ZLinkStreamRequestCall packetName(String name);
     ZLinkStreamRequestCall metadata(String key, String value);
-    ZLinkStreamRequestCall metadata(ZLinkStreamMetadata metadata);
+    ZLinkStreamRequestCall metadata(Map<String, String> metadata);
     ZLinkStreamRequestCall timeout(Duration timeout);
     ZLinkStreamRequestCall compress();
     CompletionStage<ZLinkStreamEncodedPayload> submit();
-}
-
-public interface ZLinkStreamTypedRequestCall {
-    ZLinkStreamTypedRequestCall packetName(String packetName);
-    ZLinkStreamTypedRequestCall metadata(String key, String value);
-    ZLinkStreamTypedRequestCall metadata(Map<String, String> metadata);
-    ZLinkStreamTypedRequestCall compress();
-    ZLinkStreamTypedRequestCall timeout(Duration timeout);
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
     <TReply> TReply await(Class<TReply> replyType) throws Exception;
 }
@@ -313,8 +295,8 @@ fun ZLinkStreamConnector.messages(
 
 ```java
 public enum ZLinkStreamDispatchMode {
-    MANUAL,
-    IMMEDIATE
+    AUTO,
+    MANUAL
 }
 ```
 
@@ -322,18 +304,17 @@ public enum ZLinkStreamDispatchMode {
 handler를 직접 호출하지 않고 dispatch queue에 넣는다. application은 자신이 원하는
 thread에서 `dispatch().submit()` 또는 `dispatch().await()`를 호출한다.
 
-`IMMEDIATE`는 내부 worker 흐름에서 callback을 바로 실행한다. UI thread나 game loop가
+`AUTO`는 내부 worker 흐름에서 callback을 바로 실행한다. UI thread나 game loop가
 있는 client sample은 `MANUAL`을 유지한다.
 
 ## 10. 상태와 reconnect
 
 ```java
 public enum ZLinkStreamConnectionState {
-    CREATED,
+    DISCONNECTED,
     CONNECTING,
     CONNECTED,
     RECONNECTING,
-    DISCONNECTED,
     CLOSED
 }
 ```
@@ -341,7 +322,7 @@ public enum ZLinkStreamConnectionState {
 상태 전이는 아래를 기준으로 한다.
 
 ```text
-CREATED -> CONNECTING -> CONNECTED
+DISCONNECTED -> CONNECTING -> CONNECTED
 CONNECTED -> RECONNECTING -> CONNECTED
 CONNECTED -> DISCONNECTED
 DISCONNECTED -> CONNECTING
@@ -399,8 +380,7 @@ try (AutoCloseable log = connector.observeInbound(observation -> {
 `ZLinkStreamInboundObservation`은 message kind, packet name, codec, request sequence,
 metadata, payload byte length, 압축 여부, 수신 시간, payload preview를 담는다. metadata와
 preview는 복사된 값이므로 observer가 값을 바꿔도 dispatch와 pending request 완료에
-영향을 주지 않는다. payload preview 기본 길이는 0이다. 첫 Java 구현은 observer queue
-크기를 1024개 notification으로 고정한다.
+영향을 주지 않는다. payload preview 기본 길이는 0이다. observer queue 크기는 1024개 notification이다.
 
 observer callback은 receive 경로에서 직접 실행하지 않는다. callback 실패는
 `OBSERVER_FAILED`, bounded queue overflow는 `OBSERVER_DROPPED` error event로 보고한다.
@@ -423,7 +403,7 @@ class ZLinkKotlinStreamConnector {
     fun close(): ZLinkKotlinLifecycleCall
     fun dispatch(): ZLinkKotlinLifecycleCall
     fun send(payload: Any): ZLinkKotlinSendCall
-    fun request(payload: Any): ZLinkStreamTypedRequestCall
+    fun request(payload: Any): ZLinkStreamRequestCall
     fun <TPayload> waitFor(): ZLinkStreamTypedWaitCall<TPayload>
     fun <TPayload> waitFor(name: String): ZLinkStreamTypedWaitCall<TPayload>
     fun messages(packetName: String): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>
@@ -439,7 +419,7 @@ class ZLinkKotlinSendCall {
 }
 
 suspend fun ZLinkStreamRequestCall.await(): ZLinkStreamEncodedPayload
-suspend fun <TReply> ZLinkStreamTypedRequestCall.await(): TReply
+suspend fun <TReply> ZLinkStreamRequestCall.await(): TReply
 
 class ZLinkStreamTypedWaitCall<TPayload> {
     fun timeout(timeout: Duration): ZLinkStreamTypedWaitCall<TPayload>

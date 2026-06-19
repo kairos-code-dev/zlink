@@ -10,7 +10,7 @@
 |------|------|
 | **낮음** | handler 1개 + channel 등록 수준. 가이드만으로 도입 가능 |
 | **중간** | lifecycle/factory/등록 조합을 이해해야 함 |
-| **높음** | 분산 토폴로지·세션 라우팅 결정이 필요 |
+| **높음** | 분산 topology·session routing 결정이 필요 |
 
 ## 2. 기능 × 난이도 × 언제 쓰나
 
@@ -41,7 +41,7 @@ flowchart TD
   Q3 -->|아니오| Q4{여러 구독자에게<br/>흩뿌리나?}
   Q4 -->|예| Pub[pub/sub<br/>04]
   Q4 -->|아니오| Send[one-way send<br/>04]
-  Q2 -->|예| Q5{참가자별 상태/<br/>세션이 있나?}
+  Q2 -->|예| Q5{참가자별 상태/<br/>session이 있나?}
   Q5 -->|아니오| Spot[SPOT<br/>05]
   Q5 -->|예| Q6{연결 서버와<br/>로직 서버를 나누나?}
   Q6 -->|아니오| Actor[actor + SPOT<br/>06]
@@ -51,9 +51,9 @@ flowchart TD
 - **서비스끼리 호출만** -> request/reply 또는 send. 난이도 낮음,
   [02-getting-started](02-getting-started.ko.md)로 충분.
 - **이벤트를 흩뿌린다** -> pub/sub.
-- **방/판/존 같은 동적 단위** -> SPOT. 그 안에 참가자별 상태/세션이 있으면 actor.
+- **방/판/존 같은 동적 단위** -> SPOT. 그 안에 참가자별 상태/session이 있으면 actor.
 - **외부 게임/모바일 client** -> STREAM(서버) + Stream Connector(client).
-- **연결 서버와 로직 서버 분리(재접속 이전성)** -> session actor dispatch.
+- **연결 서버와 로직 서버 분리(재접속해도 같은 actor에 다시 bind)** -> session actor dispatch.
 
 ## 4. 완료 기준
 

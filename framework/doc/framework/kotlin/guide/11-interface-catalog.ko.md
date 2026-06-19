@@ -24,7 +24,7 @@ inbound handler는 Kotlin coroutine interface(`ZLinkSuspending*`)를, outbound·
 | Spot 관리 | `ZLinkSpotManager` |
 | actor 관리 | `ZLinkActorManager` |
 | session | `ZLinkSuspendingSession` |
-| session packet handler | `ZLinkSuspendingTypedSessionPacketHandler<TCtx, TMessage>` |
+| session packet handler | `ZLinkSuspendingTypedSessionPacketHandler<TSessionContext : ZLinkSessionContext, TMessage : Any>` |
 | actor push | `ZLinkBoundSession` |
 | connector | `ZLinkStreamConnector` → `connector.kotlin()` |
 | monitoring | `ZLinkRuntimeEventHandler<TEvent>` (동기 관찰) |

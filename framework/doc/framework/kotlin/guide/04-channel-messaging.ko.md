@@ -11,12 +11,15 @@
 
 ## 2. Request/reply
 
-호출 쪽은 `suspend` 확장 `request<TReply>(channel, message)`로 한 줄 호출한다.
+호출 쪽은 `requestToChannel(channel, request)` builder에 `submit(TReply::class.java).await()`를
+이어 reply를 받는다. 업무 객체는 등록된 codec으로 직렬화된다. (payload가 이미 `Message`면
+`request<TReply>(channel, message)` suspend 확장도 쓸 수 있다.)
 
 ```kotlin
-import systems.zlink.framework.kotlin.request
-
-val reply: GetProfileReply = client.request("profile", GetProfileRequest(accountId))
+val reply: GetProfileReply = client
+    .requestToChannel("profile", GetProfileRequest(accountId))
+    .submit(GetProfileReply::class.java)
+    .await()
 ```
 
 timeout이나 metadata가 필요하면 builder를 직접 쓴다.
@@ -56,9 +59,7 @@ class GetProfileHandler : ZLinkSuspendingRequestHandler<GetProfileRequest, GetPr
 ## 3. Fanout
 
 ```kotlin
-import systems.zlink.framework.kotlin.publishToTopic
-
-fanoutClient.publishToTopic("profile", "profile.changed", ProfileChanged(accountId))
+fanoutClient.publish("profile", "profile.changed", ProfileChanged(accountId)).submit().await()
 ```
 
 fanout은 reply를 기대하지 않는 event 전파다. 구독 쪽은
@@ -73,14 +74,14 @@ class ProfileChangedHandler : ZLinkSuspendingPublishHandler<ProfileChanged> {
 }
 ```
 
-one-way send는 `client.send("audit", AuditEvent(...))` suspend 확장 또는
+one-way send는 `client.sendToChannel("audit", AuditEvent(...)).submit().await()` 또는
 `ZLinkSuspendingSendHandler<TMessage>` 수신 handler를 쓴다.
 
 ## 4. Route mesh
 
 route mesh는 target node `RoutingId`를 application이 직접 알고 있을 때만 쓴다.
-`ZLinkRouteClient`의 `request<TReply>(channel, target, message)` / `send(channel, target, message)`
-suspend 확장으로 호출한다. session actor relay는 route mesh를 흉내 내지 않고
+`ZLinkRouteClient`의 `requestTo(channel, target, request).submit(TReply::class.java).await()` /
+`sendTo(channel, target, message).submit().await()`로 호출한다. session actor relay는 route mesh를 흉내 내지 않고
 ActorGateway를 사용한다([06-actor-session](06-actor-session.ko.md)).
 
 ## 5. 커스텀 codec (Avro 예시)

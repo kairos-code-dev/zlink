@@ -27,7 +27,7 @@ typedef void (zlink_thread_fn)(void *);
 ## 원자적 카운터
 
 원자적 카운터는 공유 정수에 대한 원자적 증가, 감소, 읽기 작업을 제공합니다
-(네이티브 atomic이 있는 플랫폼에서는 lock-free, 그 외에는 내부 mutex 기반).
+(native atomic이 있는 플랫폼에서는 lock-free, 그 외에는 내부 mutex 기반).
 카운터는 `zlink_atomic_counter_new`로 생성하고
 `zlink_atomic_counter_destroy`로 파괴해야 합니다.
 
@@ -338,14 +338,14 @@ unsigned long zlink_stopwatch_stop(void *watch_);
 
 ### zlink_sleep
 
-지정된 초 동안 슬립합니다.
+지정된 초 동안 일시 중지(sleep)합니다.
 
 ```c
 void zlink_sleep(int seconds_);
 ```
 
-호출 스레드를 최소 `seconds_`초 동안 일시 중지합니다. 이는 플랫폼별 슬립
-함수에 대한 이식 가능한 편의 래퍼입니다.
+호출 스레드를 최소 `seconds_`초 동안 일시 중지합니다. 이는 플랫폼별 sleep
+함수에 대한 이식 가능한 편의 wrapper입니다.
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
@@ -381,7 +381,7 @@ void *zlink_thread_start(zlink_thread_fn *func_, void *arg_);
 void zlink_thread_join(void *thread_);
 ```
 
-`thread_`로 식별되는 스레드가 종료될 때까지 호출 스레드를 블록한 다음 핸들을
+`thread_`로 식별되는 스레드가 종료될 때까지 호출 스레드를 기다리게 한 다음 핸들을
 해제합니다. 이 호출 이후 핸들을 사용해서는 안 됩니다.
 
 **스레드 안전성:** 핸들당 정확히 한 번만 호출해야 합니다. 조인 대상 스레드에서

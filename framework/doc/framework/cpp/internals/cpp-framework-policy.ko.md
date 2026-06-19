@@ -6,13 +6,10 @@
 
 [C++ 묶음](../README.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/cpp-channel-messaging.ko.md) | [SPOT](../spec/cpp-spot.ko.md) | [STREAM](../spec/cpp-stream.ko.md) | [HTTP Client](../../../http-client/cpp/README.ko.md) | [HTTP Hosting](../spec/cpp-http-hosting.ko.md)
 
-# Draft -- ZLink Framework C++ Policy
+# ZLink Framework C++ Policy
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `C++`에서 `ZLink Framework`를 어떤 제품과 API 표면으로
-> 만들지 정리하기 위한 정책 문서다.
-> 구현이 끝난 뒤에는 실제 public header, 테스트, 샘플, 패키지 구조와 맞춰 정식
-> spec 문서로 나누어 반영한다.
+> 이 문서는 `C++` `ZLink Framework`가 제공하는 제품/API 표면의 정책을 정리한다.
+> 기준은 `framework/languages/cpp`의 public header, 테스트, 샘플이다.
 >
 > 이 문서는 `framework/doc/spec` 아래의 공통 framework 정책을 상위 기준으로 따른다.
 > 언어별 스펙은 공통 정책을 반드시 반영해야 하며, 이 문서는 그 공통 정책을 `C++`
@@ -102,10 +99,10 @@ public:
     using request_type = create_order_http_req_t;
     using reply_type = create_order_http_res_t;
     using dependency_types = zlink::framework::dependency_list_t<
-      zlink::framework::request_client_t>;
+      zlink::framework::channel_client_t>;
 
     explicit create_order_http_handler_t(
-      zlink::framework::request_client_t &client);
+      zlink::framework::channel_client_t &client);
 
     zlink::framework::task_t<create_order_http_res_t> handle(
       const create_order_http_req_t &request);
@@ -1450,8 +1447,7 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
 
 테스트 도구 결정은 아래와 같다.
 
-- CMake option은 `ZLINK_FRAMEWORK_CPP_BUILD_TESTS`, `ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES`,
-  `ZLINK_FRAMEWORK_CPP_REGISTER_CTEST`를 둔다.
+- CMake option은 `ZLINK_FRAMEWORK_CPP_BUILD_TESTS`, `ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES`를 둔다.
 - test runner는 CTest다. `framework/languages/cpp` 안의 test executable과 sample smoke를
   CTest label로 등록한다.
 - test harness는 GoogleTest를 기본으로 사용한다. runtime boundary, handler invoker,

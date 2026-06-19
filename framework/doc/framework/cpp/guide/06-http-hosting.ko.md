@@ -100,12 +100,12 @@ options.http ().configure_server ([] (zlink::framework::http_server_options_buil
 
 | 옵션 | 의미 | 기본값 |
 |------|------|--------|
-| `set_max_connections(n)` | 동시 연결 한도 — 초과 시 503 | 1024 |
+| `set_max_connections(n)` | 동시 연결 한도 — 초과 시 HTTP는 503, HTTPS는 연결 종료 | 1024 |
 | `set_max_request_body_size(bytes)` / `set_max_header_size(bytes)` | 요청 크기 한도 — 초과 시 413/431 | 1MB / 64KB |
 | `set_request_headers_timeout(ms)` / `set_request_body_timeout(ms)` | 수신 단계별 timeout | 5000ms / 5000ms |
 | `set_write_timeout(ms)` | 응답 쓰기 timeout | 5000ms |
 | `set_keep_alive_timeout(ms)` / `set_max_keep_alive_requests(n)` | keep-alive 연결 유지 정책 | 5000ms / 100 |
-| `set_graceful_shutdown_timeout(ms)` | 종료 시 진행 중 요청 대기 한도 | 5000ms |
+| `set_graceful_shutdown_timeout(ms)` | (현재 stop()은 open socket 즉시 종료 — 값 미사용) | 5000ms |
 
 종료 시 서버는 열린 연결을 정리하고 내려간다 — keep-alive로 붙어 있는
 클라이언트가 있어도 `stop()`이 매달리지 않는다.

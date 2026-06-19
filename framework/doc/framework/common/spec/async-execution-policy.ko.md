@@ -197,8 +197,8 @@ client connector 표면:
 
 | 영역 | callback/result connector 표면 | coroutine adapter |
 |------|------------------------------|-------------------|
-| lifecycle / send / request | framework connector가 소유하는 callback 또는 result 기반 표면. 예외와 coroutine에 의존하지 않음 | `connect().async()`, `close().async()`, `dispatch().async()`, `request(...).async()`, `wait_for(...).async()` |
-| callback completion | `on_completed(...).start()` | callback 기반 completion이 필요할 때 사용 |
+| lifecycle / send / request | framework connector가 소유하는 callback 또는 result 기반 표면. 예외와 coroutine에 의존하지 않음 | `connect().async()`, `close().async()`, `send(...).async()`, `request(...).async()`, `wait_for(...).async()` (`connector.dispatch()`는 별도) |
+| callback completion | core connector의 `submit(callback)` | callback 기반 completion이 필요할 때 사용 |
 | coroutine completion | bindings나 낮은 수준 connector 표면에는 직접 섞지 않음 | `co_await` 가능한 `task_t<T>` 반환 |
 
 Unreal, Godot, Axmol 같은 engine adapter는 기본 connector를 복제하지 않고, engine main

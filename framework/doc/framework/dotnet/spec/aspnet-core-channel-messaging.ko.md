@@ -130,7 +130,7 @@ builder.Services.AddZLinkFramework(options =>
 연결 방식으로 쓴다. 즉 `channel.EnableClient()` 만 호출해도, 그 channel 은 자동으로
 Discovery 기반 연결로 동작한다.
 
-> 현재 단계에서는 Discovery registry endpoint 를 channel 별로 다르게 두는 표면을
+> Discovery registry endpoint 는 channel 별로 다르게 두는 표면을
 > 두지 않는다. registry 목록은 앱 전체에서 한 벌만 관리한다.
 
 #### 수동 연결 예시
@@ -155,7 +155,7 @@ builder.Services.AddZLinkFramework(options =>
 이 경우 framework 는 해당 channel 에 Discovery 를 강제하지 않는다. 그 channel 의
 client 역할은 사용자가 직접 적어 준 peer 목록만 보고 연결을 관리한다.
 
-지금 초안에서 수동 연결은 remote `RoutingId`[^rid] 를 받지 않는다. 이유는 다음과 같다.
+수동 연결은 remote `RoutingId`[^rid] 를 받지 않는다. 이유는 다음과 같다.
 binding 하부 모델이 "이미 connect 된 DEALER 를 attach 한다" 는 방식이라, framework
 표면도 endpoint 집합만 다루는 편이 자연스럽기 때문이다.
 
@@ -521,7 +521,7 @@ public sealed class UserHandlers
         CancellationToken cancellationToken)
     {
         var account = await _client
-            .Request(
+            .RequestToChannel(
                 "account",
                 new GetAccountRequest { AccountId = request.AccountId })
             .Async<GetAccountReply>(cancellationToken);
@@ -798,7 +798,7 @@ app.MapPost("/profiles/get", async (
     CancellationToken cancellationToken) =>
 {
     var reply = await client
-        .Request(
+        .RequestToChannel(
             "profile",
             new GetProfileRequest { AccountId = request.AccountId })
         .Async<GetProfileReply>(cancellationToken);

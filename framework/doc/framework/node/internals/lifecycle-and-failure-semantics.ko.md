@@ -9,10 +9,9 @@
 # ZLink Framework Node.js Lifecycle And Failure Semantics
 
 > 이 문서는 [표면 매핑 정책](dotnet-to-node-surface-mapping.ko.md)을 따른다.
-> 개념·의미론·동작은 dotnet 과 **동일**하고, 호스트 표면만 NestJS 의
-> `DynamicModule` + lifecycle hook 으로, 언어 표면만 TypeScript 로 옮긴다.
-> 정식 기준은 `framework/languages/dotnet` 의 코드다. 이 문서대로 구현하면
-> .NET 버전과 **같은 startup / shutdown / failure 동작**이 나와야 한다.
+> 호스트 표면은 NestJS 의 `DynamicModule` + lifecycle hook, 언어 표면은 TypeScript
+> 다. 기준은 `framework/languages/node` 의 코드이며, dotnet 동작은 parity 비교용
+> 선택 참고다.
 
 ## 1. 목적
 
@@ -24,10 +23,10 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 
 NestJS 표면에서 lifecycle 의 두 경계는 다음과 같이 본다.
 
-- **시동(startup)**: NestJS provider lifecycle hook `onApplicationBootstrap()`.
+- **시동(startup)**: NestJS provider lifecycle hook `onModuleInit()`.
   모든 provider 가 DI 에서 resolvable 해진 뒤에 runtime 시동(bind / connect /
   discovery 시작)을 건다.
-- **종료(shutdown)**: NestJS `onApplicationShutdown(signal?)` 또는
+- **종료(shutdown)**: NestJS `onModuleDestroy(signal?)` 또는
   `onModuleDestroy()`. graceful close(linger, drain)를 수행한다.
 
 dotnet 의 `IHostedService.StartAsync` / `StopAsync` 가 정확히 이 두 hook 으로
@@ -50,9 +49,9 @@ dotnet 의 `IHostedService.StartAsync` / `StopAsync` 가 정확히 이 두 hook 
 
 이 가운데 1~2 단계는 `ZLinkModule.forRoot(...)` / `forRootFactory(...)` 가
 `DynamicModule` 을 만들어 내는 **등록 시점**에 끝난다. 3~7 단계가 NestJS
-lifecycle hook(`onApplicationBootstrap()`) 안에서 일어나는 실제 시동이다.
+lifecycle hook(`onModuleInit()`) 안에서 일어나는 실제 시동이다.
 
-`onApplicationBootstrap()` 안에서의 세부 순서는 dotnet runtime state 생성
+`onModuleInit()` 안에서의 세부 순서는 dotnet runtime state 생성
 순서를 그대로 따른다.
 
 1. backend channel adapter 로 `Context` 생성
@@ -102,7 +101,7 @@ lifecycle hook(`onApplicationBootstrap()`) 안에서 일어나는 실제 시동�
 앞의 두 항목(잘못된 registration 조합, 필수 endpoint 누락)은 등록 시점 검증에서
 걸리므로 `ZLinkModule.forRoot(...)` / `forRootFactory(...)` 호출 자체가 reject /
 throw 한다. 나머지(bind 실패, runtime 객체 생성 실패, monitoring source
-mismatch)는 lifecycle hook(`onApplicationBootstrap()`) 안에서 던져지고, NestJS
+mismatch)는 lifecycle hook(`onModuleInit()`) 안에서 던져지고, NestJS
 가 application 부팅을 중단시킨다.
 
 startup 단계에서 runtime state 를 만들다가 어느 한 컴포넌트라도 생성에
@@ -127,22 +126,19 @@ monitoring 시동이 도중에 실패하면, 이미 붙인 monitor 를 정리하
 3. embedded Registry stop
 4. `Context` dispose
 
-NestJS 에서는 이 순서가 `onApplicationShutdown(signal?)` / `onModuleDestroy()`
+NestJS 에서는 이 순서가 `onModuleDestroy(signal?)` / `onModuleDestroy()`
 hook 의 실행 순서로 나타난다. monitoring hook 이 먼저 polling 을 멈추고 monitor
 를 (등록의 역순으로) 떼어 낸 다음, framework runtime hook 이 자기 state 를
 graceful 하게 내린다. embedded registry stop 은 framework runtime state 가 내려간
 **뒤에** 일어난다.
 
-framework runtime state 를 내리는 세부 순서는 dotnet 의 dispose 순서를 그대로
-따른다.
+framework runtime 을 내리는 세부 순서는 `ZLinkFrameworkRuntimeHost.stop()` 기준이다.
 
 1. stop token 을 cancel 하고 listener task 들이 끝날 때까지 drain
-2. spot node dispose
-3. route(mesh) channel dispose
-4. spot discovery dispose
-5. stream node dispose
-6. client → publisher → subscriber → server channel bundle dispose
-7. 마지막으로 `Context` dispose
+2. `streamRuntime` dispose
+3. `spotNodeRuntime` dispose
+4. `channelRuntime` dispose
+5. 마지막으로 runtime state / `Context` dispose
 
 이 순서를 따르는 이유는 두 가지다.
 
@@ -254,7 +250,7 @@ binding 을 지우지 못하도록 조건부 unbind 에 사용한다.
   전달받고, 빠르게 종료할 기회를 가진다.
 - graceful timeout[^graceful-timeout] 을 넘긴 작업은 host 의 shutdown 정책에
   따라 중간에 끊어질 수 있다. NestJS 에서는 `app.enableShutdownHooks()` 로
-  활성화된 종료 신호(`onApplicationShutdown(signal)`)가 이 경계를 정한다.
+  활성화된 종료 신호(`onModuleDestroy()`)가 이 경계를 정한다.
 - shutdown 도중에 새로 던지는 outbound request 의 성공은 보장하지 않는다.
 
 ## 11. 회귀 테스트
@@ -276,7 +272,7 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 
 | 테스트 케이스(node) | 확인 기준 |
 | ------------- | --------- |
-| `Host_Starts_And_Stops_FrameworkRuntimeContext` | host 의 시작·종료(`onApplicationBootstrap` / `onApplicationShutdown`)에 맞춰 framework runtime context 가 생성되고 정리된다. |
+| `Host_Starts_And_Stops_FrameworkRuntimeContext` | host 의 시작·종료(`onModuleInit` / `onModuleDestroy`)에 맞춰 framework runtime context 가 생성되고 정리된다. |
 | `Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry 와 framework runtime 사이의 시작 순서(registry 먼저)가 유지된다. |
 | `runtime task runner observes detached task exceptions without unhandled rejection` | detached runtime task 예외가 unhandled rejection 으로 새지 않고 runtime error sink 로 보고된다. |
 | `framework runtime state aborts listener tasks before disposing backend context` | shutdown 시 listener task 가 stop signal 을 먼저 보고 종료한 뒤 backend context 가 정리된다. |
@@ -286,7 +282,7 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^reconnect]: reconnect 는 끊어진 연결을 다시 맺으려고 시도하는 동작을 가리킨다. 자동 재시도 정책과 명시적 호출 두 가지 모양이 있다.
-[^lifecycle]: lifecycle 은 컴포넌트가 시작·동작·종료되는 전체 수명 주기와, 그 단계마다 일어나는 일을 가리킨다. NestJS 에서는 `onApplicationBootstrap` / `onModuleDestroy` / `onApplicationShutdown` 같은 lifecycle hook 으로 그 단계가 드러난다.
+[^lifecycle]: lifecycle 은 컴포넌트가 시작·동작·종료되는 전체 수명 주기와, 그 단계마다 일어나는 일을 가리킨다. NestJS 에서는 `onModuleInit` / `onModuleDestroy` / `onModuleDestroy` 같은 lifecycle hook 으로 그 단계가 드러난다.
 [^startup-validation]: startup validation 은 host 가 본격적으로 동작하기 전에 설정과 등록 정보를 검사해서, 잘못된 구성이라면 그 자리에서 막아 내는 단계다. node 에서는 `ZLinkModule.forRoot(...)` / `forRootFactory(...)` 등록 시점에 수행된다.
 [^registration-surface]: registration surface 는 `ZLinkModule.forRoot(...)` 의 options 객체를 통해 framework 에 쌓이는 설정의 집합을 가리킨다.
 [^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, client, publisher, subscriber)를 가리킨다.

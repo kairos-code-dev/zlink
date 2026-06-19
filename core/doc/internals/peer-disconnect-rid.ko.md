@@ -4,7 +4,7 @@
 
 이 문서는 `zlink_disconnect_rid()`와
 `zlink_spot_node_disconnect_peer_rid()`가 내부에서 어떤 소유권 경계를
-쓰는지 설명한다. Routing ID(라우팅 식별자)는 각 연결을 구분하는 고유 바이트 열이다.
+쓰는지 설명한다. Routing ID는 각 연결을 구분하는 고유 바이트 열이다.
 
 ## 소켓 경로
 
@@ -26,13 +26,13 @@
 소유하므로 수동 disconnect를 attach 중에는 `EFSM`(종료 중에는 `ESHUTDOWN`)으로
 거부한다.
 
-ROUTER와 STREAM은 라우팅 맵을 가진 소켓이라 맵을 조회해 대상 pipe를
+ROUTER와 STREAM은 routing map을 가진 소켓이라 맵을 조회해 대상 pipe를
 찾는다. STREAM은 로컬 연결 id를 4바이트 routing id로 쓰므로 입력
 rid 길이를 `sizeof(uint32_t)`로 제한한다.
 
-그 밖의 소켓은 현재 attached pipe 스냅샷에서 source routing id가 같은
-pipe를 찾는다. 같은 rid가 둘 이상이면 종료 대상을 확정할 수 없으므로
-`EADDRINUSE`를 반환하고 어떤 pipe도 종료하지 않는다.
+그 밖의 소켓은 현재 attached pipe snapshot에서, attached pipe 또는 그 peer pipe의
+routing id가 target rid와 일치하는 pipe를 찾는다. 일치하는 pipe가 둘 이상이면 종료
+대상을 확정할 수 없으므로 `EADDRINUSE`를 반환하고 어떤 pipe도 종료하지 않는다.
 
 ## 중복 rid 정책
 
@@ -45,10 +45,10 @@ ROUTER는 새 pipe가 기존 피어 identity를 대체할 수 있는지 판단�
 
 ## SpotNode 경로
 
-SpotNode는 Discovery provider가 알려 준 node routing id와 엔드포인트 집합의
+SpotNode는 Discovery provider가 알려 준 node routing id와 endpoint 집합의
 인덱스를 유지한다. `zlink_spot_node_disconnect_peer_rid()`는 target node rid로
-엔드포인트 집합을 찾은 뒤, 기존 엔드포인트 disconnect 경로와 같은 control command를
-엔드포인트별로 보낸다.
+endpoint 집합을 찾은 뒤, 기존 endpoint disconnect 경로와 같은 control command를
+endpoint별로 보낸다.
 
 Spot facade에는 별도 함수가 없다. 피어 연결과 mesh 소켓은 Spot이 아니라
 SpotNode runtime이 소유한다.

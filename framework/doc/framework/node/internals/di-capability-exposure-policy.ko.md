@@ -9,10 +9,8 @@
 # ZLink Framework Node.js DI Capability Exposure Policy
 
 > 이 문서는 `Node.js` `ZLink Framework`(NestJS)에서 DI 로 노출되는 public service 표면을 어떤
-> 역할 구성과 묶는지 정리하고, 현재 .NET 코드에 반영된 정책을 그대로 옮겨
-> 기록한다. 개념·의미론은 .NET 과 동일하며, 표면(IServiceCollection → DynamicModule,
-> constructor injection → provider token 주입)만 NestJS 로 바꾼다. 표기가 어긋나면
-> `framework/languages/dotnet/src` 코드가 최종 기준이다.
+> 역할 구성과 묶는지 정리한다. 표면은 NestJS 관용구(DynamicModule, provider token
+> 주입)를 쓴다. 표기가 어긋나면 `framework/languages/node` 코드가 기준이다.
 
 ## 1. 문제
 
@@ -98,7 +96,7 @@ token 은 framework 가 export 한다. 아래 표는 .NET interface ↔ node pro
 | provider token | 주입 타입 | 이유 | 역할 누락 시 동작 |
 |----------------|-----------|------|------------------------|
 | `ZLINK_CHANNEL_CLIENT` | `ZLinkChannelClient` | channel 이름을 호출 시점에 받는 outbound client | channel 이 없거나 client 역할이 없으면 호출 시 `ZLinkConfigurationException` |
-| `ZLINK_ROUTE_CLIENT` | `ZLinkRouteClient` (`ZLinkMultipartRouteClient` 포함) | route channel id 를 호출 시점에 받는 outbound route client | route channel 이 없으면 호출 시 `ZLinkConfigurationException` |
+| `ZLINK_ROUTE_CLIENT` | `ZLinkRouteClient` (`send`/`request`) | route channel id 를 호출 시점에 받는 outbound route client | route channel 이 없으면 호출 시 `ZLinkConfigurationException` |
 | `ZLINK_FANOUT_CLIENT` | `ZLinkFanoutClient` | fanout channel 이름을 호출 시점에 받는 publisher | publisher 역할이 없으면 호출 시 `ZLinkConfigurationException` |
 | `ZLINK_BOUND_SESSION_FACTORY` | `ZLinkBoundSessionFactory` | actor bound session factory | binding 없는 actor 에서 호출 시 `ActorSessionNotBound` |
 | `ZLINK_MESSAGE_METADATA_POLICY` | `ZLinkMessageMetadataPolicy` | 메시지 metadata 복사 정책 | 항상 유효 |
@@ -148,7 +146,7 @@ proxy 를 등록하는 방식은 줄인다.
 | `ZLINK_BOUND_SESSION_FACTORY` | `ZLinkBoundSessionFactory` | framework runtime | 항상 등록 |
 | `ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER` | `ZLinkSpotRemoteAddressResolver` | `spot.remoteAddressResolver`(`AddSpotRemoteAddressResolver<TResolver>()` 대응) 또는 registry remote address 구성 | 조건을 만족할 때만 등록 |
 
-기존 missing proxy 는 사용 시점까지 오류를 늦춘다. bound session factory 는
+missing proxy 패턴은 사용 시점까지 오류를 늦춘다. bound session factory 는
 항상 등록하고, 현재 actor 에 묶인 session binding 이 없을 때 호출 지점에서
 `ActorSessionNotBound` 로 실패한다.
 
@@ -198,9 +196,9 @@ local `SpotNode` 를 띄우는 서버는 `ZLinkSpotOutbound` 와 resolver 를 �
 resolver 구현을 DI 로 제공할 수 있지만, local spot 문맥이 없으므로
 `ZLinkSpotOutbound` 를 주입받으면 안 된다.
 
-> 참고: registry 기반 remote address resolver 를 쓰는 경우(.NET
-> `RegistrySpotRemoteAddresses`), validation 은 추가로 route mesh channel
-> (`.addRouteMeshChannel(...)`)과 discovery endpoint(`.useDiscovery()`)를 요구한다. 둘 중 하나라도 없으면
+> 참고: registry 기반 remote address resolver 를 쓰는 경우, validation 은 추가로 route
+> mesh channel(`.addRouteMeshChannel(...)`)과 non-empty registry endpoint
+> (`.useDiscovery().addRegistryEndpoint(...)`)를 요구한다. 둘 중 하나라도 없으면
 > `ZLinkConfigurationException` 으로 실패한다.
 
 ### 4.3 Spot publisher client

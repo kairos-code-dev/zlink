@@ -22,7 +22,8 @@ Kafka 나 Redis Stream 을 다시 만드는 것이 아니라, **작게 시작해
 이 샘플이 한 번에 보여 주는 것:
 
 - `CommerceApi` 는 HTTP API, 입력 검증, idempotency lookup, projection **조회만** 한다.
-- `OrderWorkflow` 의 `OrderWorkflowSpot`[^spot] 만 주문 domain event 를 append 한다.
+- `OrderWorkflow` 의 owner route handler 가 `OrderId` 소유 `OrderWorkflowSpot`[^spot] 을
+  보장한 뒤, `OrderWorkflowService` 가 주문 domain event 를 append 한다.
 - 어느 `CommerceApi` instance 가 받아도 `OrderId` 기준 같은 owner 로 route 된다.
 - projection 은 `OrderEventStore` replay 로 다시 만들 수 있다.
 - 결제 실패, 재고 부족, 중복 요청, projection rebuild, scale-out routing 을 검증한다.
@@ -131,8 +132,8 @@ event 를 다시 append 한다.
 ## 4. 실행 흐름
 
 - **성공**: `StartOrderReq` → `CommerceApi` 가 idempotency lookup·검증 후 `OrderId` 생성 →
-  `StartOrderWorkflowReq` 전달 → `OrderWorkflowSpot` 이
-  `OrderStartedEvent → InventoryReservedEvent → PaymentAuthorizedEvent → OrderConfirmedEvent`
+  `StartOrderWorkflowReq` 전달 → owner route handler 가 Spot 을 보장하고 `OrderWorkflowService`
+  가 `OrderStartedEvent → InventoryReservedEvent → PaymentAuthorizedEvent → OrderConfirmedEvent`
   를 append 하며 단계마다 projection 갱신. client 는 `GetOrderStateReq` 로 진행/최종 상태 조회.
 - **재고 실패**: `OrderStartedEvent → InventoryReservationFailedEvent → OrderFailedEvent`.
 - **결제 실패(보상)**: `OrderStartedEvent → InventoryReservedEvent → PaymentFailedEvent →
@@ -147,15 +148,14 @@ event 를 다시 append 한다.
 - projection 을 삭제해도 `RebuildOrderProjectionReq` 로 event replay 만으로 재생성된다.
 - 중복 `StartOrderReq` 는 같은 `OrderId` 를 반환하고 event 를 중복 append 하지 않는다.
 - 결제 실패 후 `InventoryReleasedEvent` 보상이 append 된다.
-- scale-out self-check 는 `CommerceApi x2`, `OrderWorkflow x2` 구성에서 서로 다른 주문이
-  서로 다른 instance 에서 처리되고 두 instance 어디서 조회해도 같은 projection 을 반환함을
-  검증한다.
+- scale-out self-check 는 `CommerceApi x2`, `OrderWorkflow x2` 구성에서 두 `CommerceApi`
+  instance 어디서 조회해도 같은 projection(event sequence·count)을 반환함을 검증한다.
 
 ## 6. 회귀 테스트
 
 ShoppingMall 샘플을 구현할 때는 아래 기존 회귀 테스트가 깨지지 않아야 한다. 이
 테스트들은 이 샘플이 사용하는 framework 표면(workflow Spot instance 초기화, Spot
-lifecycle, channel request, projection event publish)을 이미 고정하고 있다.
+lifecycle, route mesh request, projection read model 저장)을 이미 고정하고 있다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|

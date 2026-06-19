@@ -6,11 +6,9 @@
 
 [.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Actor](../../spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](../../spec/session-actor-dispatch.ko.md)
 
-> 이 문서는 Bingo 샘플을 구현하기 전 작성한 설계 노트다.
-> 현재 공개 사용 가이드가 아니며, 샘플 구현이 끝난 뒤 별도 guide 문서로 다시
-> 정리한다. 실시간 게임 도메인에 ZLink 를 도입할지 판단하는 내용은
-> [15-case-realtime-game](../case-studies/15-case-realtime-game.ko.md)이 맡고, 이 문서는 샘플
-> 설계와 구현 흐름을 정리한다.
+> 이 문서는 Bingo 샘플의 설계와 구현 흐름을 정리한다. 실시간 게임 도메인에 ZLink 를
+> 도입할지 판단하는 내용은
+> [15-case-realtime-game](../case-studies/15-case-realtime-game.ko.md)이 맡는다.
 
 ## 1. 목적
 
@@ -23,8 +21,7 @@
 - Session 서버가 클라이언트 요청을 bound actor 로 relay 하는 흐름
 - API 서버가 매칭 요청을 받고 Play 서버에 room 생성 또는 배정을 요청하는 흐름
 - actor 가 Entry Spot 을 거쳐 user Spot 인 `BingoRoomSpot` 에 join 하는 흐름
-- room 에 처음 들어온 actor 를 host 로 지정하고, host 시작 요청으로 게임을
-  시작하는 흐름
+- 2명이 모두 join 되면 room 이 자동으로 게임을 시작하고, 각 player 가 card 를 제출하는 흐름
 - room timer 로 번호 추첨, 자동 mark, 승리 판정, server push 를 처리하는 흐름
 
 ## 2. 샘플 범위
@@ -40,7 +37,8 @@
 | `BingoRoomSpot` | 매칭된 한 room 의 참가자, host, 게임 상태, timer, 승리 판정을 소유한다. |
 
 서버 사이의 Spot route 는 Registry 기반 framework 기본 구현을 사용한다.
-샘플 서버는 `UseRegistrySpotRemoteAddresses("bingo")` 만 켠다. Play 서버의
+샘플 Play 서버는 `UseDiscovery().AddRegistryEndpoint(...)` 로 Registry 를 연결하고
+channel·SpotMesh 를 등록한다. Play 서버의
 actor 준비 응답은 actor id/type 과 ActorGateway remote address snapshot 을 돌려주고,
 Session 서버는 현재 STREAM session 을 그 actor handle 에 bind 한다. actor-session binding 은 framework / core runtime 내부 상태로
 관리된다.
@@ -67,11 +65,10 @@ direct 샘플은 첫 범위에서 제외한다. session 과 spot 을 한 인스�
 8. `ApiServer` 는 `PlayServer` 에 room 생성 또는 기존 room 배정을 요청한다.
 9. `PlayServer` 는 `BingoRoomSpot` 을 확보하고 matching 을 요청한 actor 를
    `BingoEntrySpot` 에서 해당 room 으로 join 시킨다.
-10. room 은 처음 join 한 actor 를 `HostActorId` 로 지정한다.
-11. matching 결과는 client 에게 `MatchBingoRes` 로 전달된다.
-12. host client 가 `StartBingoGameReq` 를 보내면 room 이 시작 조건을 확인한다.
-13. 시작 조건을 만족하면 room status 를 `Running` 으로 바꾸고 timer 를 시작한다.
-14. timer tick 마다 room 이 번호를 뽑고 모든 player card 를 자동 mark 한다.
+10. matching 결과는 client 에게 `MatchBingoRes` 로 전달된다.
+11. 2명이 모두 join 되면 room status 를 `Running` 으로 바꾸고 시작 이벤트를 낸다(자동 시작).
+12. 각 player 가 `SubmitBingoCardReq` 로 card 를 제출하고, 두 카드가 모두 도착하면 room timer 가 번호 추첨을 시작한다.
+13. timer tick 마다 room 이 번호를 뽑고 모든 player card 를 자동 mark 한다.
 15. 승자가 나오면 room status 를 `Finished` 로 바꾸고 모든 참가자에게 종료
     이벤트를 push 한다.
 
@@ -109,12 +106,12 @@ lobby 와 admission 에 집중하고, room 은 실제 match 진행에 집중한�
 
 | 항목 | 규칙 |
 |------|------|
-| 플레이어 수 | 정확히 4명 |
+| 플레이어 수 | 정확히 2명 (two-player 모드, `RequiredPlayers: 2`) |
 | 보드 | 5 x 5 |
 | 번호 범위 | 1부터 75까지 |
 | 가운데 칸 | free cell 로 시작부터 mark 처리 |
-| host 지정 | room 에 처음 join 한 actor 가 host 가 된다. |
-| 시작 조건 | host 가 시작 요청을 보내고, 4명이 모두 join 되어 있어야 한다. |
+| 시작 조건 | 2명이 모두 join 되면 room 이 자동으로 `Running` 으로 전환하고 시작 이벤트를 낸다(별도 host 시작 요청 없음). |
+| 카드 제출 | 각 player 가 `SubmitBingoCardReq` 로 자기 bingo card 를 제출한다. 두 카드가 모두 도착하면 서버가 번호 추첨을 시작한다. |
 | 번호 추첨 | room timer 가 일정 주기로 하나씩 뽑는다. |
 | mark 방식 | 자동 mark. 서버가 뽑은 번호가 카드에 있으면 room 이 바로 mark 한다. |
 | 승리 조건 | 새 draw sequence 기준으로 complete line 이 1개 이상이면 승리 |
@@ -165,11 +162,11 @@ room status 는 문자열로 시작한다.
 | 값 | 의미 |
 |----|------|
 | `WaitingForPlayers` | room 이 만들어졌지만 아직 게임이 시작되지 않았다. |
-| `Running` | host 시작 요청이 승인되어 번호 추첨이 진행 중이다. |
+| `Running` | 2명이 모두 join 되어 자동 시작했고 번호 추첨이 진행 중이다. |
 | `Finished` | 승자가 확정되어 게임이 끝났다. |
 
-`CanStart` 는 client 화면에서 시작 버튼을 켤지 판단하기 위한 편의 정보다. 실제
-시작 가능 여부는 `StartBingoGameReq` 를 처리할 때 room 이 다시 확인한다.
+`Running` 으로의 전환은 2명이 모두 join 되는 순간 room 이 스스로 판정한다. 각 player 의
+`SubmitBingoCardReq` 가 모두 도착하면 번호 추첨이 시작된다.
 
 ## 7. DTO 초안
 
@@ -203,9 +200,7 @@ public sealed record AllocateBingoRoomReq(
     string DisplayName,
     string Mode);
 
-public sealed record AllocateBingoRoomRes(
-    string RoomId,
-    BingoRoomState State);
+public sealed record AllocateBingoRoomRes(string RoomId);
 ```
 
 room join 과 게임 진행 DTO 는 다음과 같다.
@@ -218,13 +213,11 @@ public sealed record BingoRoomJoinReq(
 
 public sealed record BingoRoomJoinRes(BingoRoomState State);
 
-public sealed record StartBingoGameReq(string RoomId);
+public sealed record SubmitBingoCardReq(
+    string RoomId,
+    IReadOnlyList<int> Card);
 
-public sealed record StartBingoGameRes(BingoRoomState State);
-
-public sealed record LeaveRoomReq(string RoomId);
-
-public sealed record LeaveRoomRes(BingoRoomState State);
+public sealed record SubmitBingoCardRes(BingoRoomState State);
 ```
 
 server push DTO 는 다음과 같다.
@@ -245,8 +238,6 @@ public sealed record BingoNumberDrawnNotify(
     int DrawSeq,
     int Number,
     BingoRoomState State);
-
-public sealed record BingoStateNotify(BingoRoomState State);
 
 public sealed record BingoGameEndedNotify(BingoRoomState State);
 ```
@@ -280,13 +271,11 @@ matching 흐름은 다음과 같다.
 
 게임 시작 흐름은 다음과 같다.
 
-1. host client 는 `StartBingoGameReq` 를 보낸다.
-2. `SessionServer` 는 요청을 bound actor 로 relay 한다.
-3. actor 는 현재 join 된 `BingoRoomSpot` 에 시작 요청을 전달한다.
-4. room 은 요청 actor 가 `HostActorId` 와 같은지 확인한다.
-5. room 은 참가자가 정확히 4명인지 확인한다.
-6. 조건을 만족하면 room status 를 `Running` 으로 바꾸고 timer 를 시작한다.
-7. room 은 모든 참가자에게 `BingoGameStartedNotify` 를 push 한다.
+1. 두 번째 player 가 room 에 join 하면 참가자가 정확히 2명이 된다.
+2. room 은 그 순간 status 를 `Running` 으로 바꾸고(자동 시작) 모든 참가자에게
+   `BingoGameStartedNotify` 를 push 한다.
+3. 각 player 는 `SubmitBingoCardReq` 로 자기 bingo card 를 제출한다.
+4. 두 카드가 모두 도착하면 room 이 timer 를 시작해 번호 추첨을 진행한다.
 
 게임 진행 흐름은 다음과 같다.
 
@@ -306,11 +295,11 @@ matching 흐름은 다음과 같다.
 |------|------|
 | gateway 형태로 구성한다. | Session 서버, API 서버, Play 서버의 역할이 분리되어 matching room 구조와 Entry Spot 역할이 잘 드러난다. |
 | Entry Spot 은 lobby 와 admission 만 맡는다. | room 입장 전 공통 처리를 모으고, 실제 게임 규칙은 room 에 숨긴다. |
-| 게임 규칙은 `BingoRoomSpot` 에 둔다. | host, seat, 카드 생성, 번호 추첨, mark, 빙고 판정을 한 모듈 안에 숨긴다. |
+| 게임 규칙은 `BingoRoomSpot` 에 둔다. | seat, 카드 생성, 번호 추첨, mark, 빙고 판정을 한 모듈 안에 숨긴다. |
 | actor 는 player identity 와 client push 표면을 맡는다. | actor 가 빙고 규칙을 알 필요가 없고, session binding 과 사용자 상태만 다루면 된다. |
-| room 의 첫 참가자를 host 로 지정한다. | 별도 방장 선택 API 없이 시작 권한을 자연스럽게 보여 줄 수 있다. |
-| host 시작 요청 후 timer 를 시작한다. | 실제 게임처럼 대기 room 과 진행 중 room 의 차이를 보여 준다. |
-| client 는 mark 나 bingo claim 을 보내지 않는다. | 첫 샘플에서는 불필요한 검증 분기를 없애고 server authoritative 흐름을 보여 준다. |
+| 2명이 모두 join 되면 자동으로 시작한다. | 별도 방장 선택·시작 요청 API 없이 matching room 구조를 단순하게 보여 줄 수 있다. |
+| 각 player 가 card 를 제출한 뒤 timer 를 시작한다. | 실제 게임처럼 대기 room 과 진행 중 room 의 차이를 보여 준다. |
+| client 는 card 제출 외에 mark 나 bingo claim 을 보내지 않는다. | 카드만 받고 mark·판정은 server authoritative 로 처리한다. |
 | 같은 draw sequence 의 승자는 공동 승리로 처리한다. | 네트워크 도착 순서나 push 순서가 게임 결과를 바꾸지 않게 한다. |
 
 수동 mark, ready 버튼, 방장 위임, 여러 라운드, 랭킹 유지 같은 기능은 첫 구현
@@ -318,13 +307,11 @@ matching 흐름은 다음과 같다.
 
 ## 10. 완료 기준
 
-- 4개의 client connector 가 `SessionServer` 에 접속하고 각각 다른 actor 로
+- 2개의 client connector 가 `SessionServer` 에 접속하고 각각 다른 actor 로
   인증된다.
 - client 는 `MatchBingoReq` 하나로 room 배정과 actor room join 결과를 받는다.
-- 첫 번째로 room 에 join 된 actor 가 `HostActorId` 로 설정된다.
-- host 가 아닌 actor 의 `StartBingoGameReq` 는 거부된다.
-- 4명이 모이기 전 host 의 `StartBingoGameReq` 는 거부된다.
-- host 가 4명 room 에서 시작 요청을 보내면 room status 가 `Running` 으로 바뀐다.
+- 2명이 모두 join 되면 room status 가 자동으로 `Running` 으로 바뀐다.
+- 각 player 의 `SubmitBingoCardReq` 가 모두 도착하면 room timer 가 번호 추첨을 시작한다.
 - room timer 가 번호를 뽑고, 각 player card 의 mark 를 server 쪽에서 갱신한다.
 - 같은 draw sequence 에서 여러 winner 가 나오면 모두 `Winners` 에 포함된다.
 - actor request reply 는 handler 반환값으로 처리하고, actor context `Reply(...)`

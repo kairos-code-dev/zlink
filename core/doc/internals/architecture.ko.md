@@ -714,7 +714,7 @@ STREAM 소켓과 외부 클라이언트 연동용 프로토콜이다. 별도 프
 
 모든 메시지 데이터를 담는 64바이트 고정 크기 구조체다.
 `malloc` 호출 없이 작은 메시지를 처리하도록 설계되었다.
-33바이트 이하는 VSM(Very Small Message, 구조체 내부 인라인 저장) 방식으로,
+41바이트 이하는 VSM(Very Small Message, 구조체 내부 인라인 저장) 방식으로,
 그 이상은 별도 할당 버퍼를 가리키는 포인터(LMSG)로 처리한다.
 
 ```
@@ -734,7 +734,7 @@ STREAM 소켓과 외부 클라이언트 연동용 프로토콜이다. 별도 프
 |  Type-specific data area (union):                               |
 |                                                                 |
 |  +-----------------------------------------------------------+  |
-|  |  type_vsm (<=33B on 64-bit)                                  |
+|  |  type_vsm (<=41B on 64-bit)                                  |
 |  |  Very Small Message: data stored directly in msg_t buffer    |
 |  |  - uint8_t data[max_vsm_size]                                |
 |  |  - uint8_t size                                              |
@@ -742,7 +742,7 @@ STREAM 소켓과 외부 클라이언트 연동용 프로토콜이다. 별도 프
 |  +-----------------------------------------------------------+  |
 |                            OR                                   |
 |  +-----------------------------------------------------------+  |
-|  |  type_lmsg (>33B on 64-bit)                                  |
+|  |  type_lmsg (>41B on 64-bit)                                  |
 |  |  Large Message: pointer to separately allocated buffer       |
 |  |  - content_t* content                                        |
 |  |    +-- void* data          (data pointer)                    |
@@ -772,7 +772,7 @@ STREAM 소켓과 외부 클라이언트 연동용 프로토콜이다. 별도 프
 
 | 유형           | 값  | 설명                                           |
 |---------------|-----|------------------------------------------------|
-| `type_vsm`    | 101 | VSM (Very Small Message, ≤33B — msg_t 내부 버퍼에 인라인 저장, malloc 없음) |
+| `type_vsm`    | 101 | VSM (Very Small Message, ≤41B — msg_t 내부 버퍼에 인라인 저장, malloc 없음) |
 | `type_lmsg`   | 102 | Large Message (malloc'd 버퍼)                  |
 | `type_cmsg`   | 104 | Constant Message (상수 데이터 참조)            |
 | `type_zclmsg` | 105 | Zero-copy Large Message (사용자 버퍼 직접 사용)|
@@ -1468,7 +1468,7 @@ i_engine
 | Speculative I/O    | 비동기 호출 전 동기 I/O를 먼저 시도하여 콜백 오버헤드 제거       |
 | Gather Write       | writev()로 헤더+바디를 시스템 콜 1회로 전송                     |
 | Zero-Copy Message  | msg_t에 사용자 버퍼 포인터만 저장, 복사 없이 전송               |
-| VSM (Inline)       | 33바이트 이하 메시지는 msg_t 내부 버퍼에 직접 저장 (malloc 없음)|
+| VSM (Inline)       | 41바이트 이하 메시지는 msg_t 내부 버퍼에 직접 저장 (malloc 없음)|
 | Lock-free YPipe    | CAS 연산 기반 스레드 간 메시지 교환, 뮤텍스 없음               |
 | Cache Line 최적화  | YPipe 노드를 캐시 라인 크기에 맞춰 배치                         |
 | Backpressure (배압) | 10MB 한도 초과 시 읽기 중단으로 메모리 폭주 방지                |

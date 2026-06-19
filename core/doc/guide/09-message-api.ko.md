@@ -14,8 +14,8 @@
 
 | 용어 | 설명 |
 |------|------|
-| VSM (Very Small Message, 초소형 메시지) | 33바이트 이하 메시지. `zlink_msg_t` 내부에 인라인 저장된다 |
-| LMSG (Large Message, 대형 메시지) | 33바이트 초과 메시지. 힙 할당 버퍼를 참조 카운팅으로 관리한다 |
+| VSM (Very Small Message, 초소형 메시지) | 41바이트 이하 메시지. `zlink_msg_t` 내부에 인라인 저장된다 |
+| LMSG (Large Message, 대형 메시지) | 41바이트 초과 메시지. 힙 할당 버퍼를 참조 카운팅으로 관리한다 |
 | CMSG (Constant Message, 상수 메시지) | 외부 상수 데이터를 복사 없이 참조하는 메시지 (`ffn=NULL`) |
 | ZCLMSG (Zero-copy Large, 제로카피 대형 메시지) | 외부 버퍼를 참조하며 해제 콜백(`ffn`)으로 수명을 관리하는 메시지 |
 | multipart | 여러 프레임(part)을 하나의 논리적 메시지로 묶어 원자적으로 전송하는 방식 |
@@ -36,8 +36,8 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기다.
 
 | Type | 조건 | Memory | 사용 시점 |
 |------|------|--------|-----------|
-| VSM (Very Small Message) | ≤33B (64-bit) | msg_t 내부 inline 저장 | 소형 data, 가장 빈번 |
-| LMSG (Large Message) | >33B | malloc'd buffer, reference counted | 대형 data |
+| VSM (Very Small Message) | ≤41B (64-bit) | msg_t 내부 inline 저장 | 소형 data, 가장 빈번 |
+| LMSG (Large Message) | >41B | malloc'd buffer, reference counted | 대형 data |
 | CMSG (Constant Message) | constant data | 외부 pointer 참조 (copy 없음) | `zlink_msg_init_data(..., NULL, NULL)` |
 | ZCLMSG (Zero-copy Large) | zero-copy | 외부 buffer + free callback | `zlink_msg_init_data()` |
 
@@ -55,11 +55,11 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기다.
 |               zlink_msg_t  (64 bytes)                |
 +------------------------------------------------------+
 |                                                      |
-|  VSM  (<=33B):                                       |
+|  VSM  (<=41B):                                       |
 |    [ type | size | data ......................... ]  |
 |                          ^ stored inline             |
 |                                                      |
-|  LMSG (>33B):                                        |
+|  LMSG (>41B):                                        |
 |    [ type | content_ptr ]                            |
 |                   |                                  |
 |                   v                                  |
@@ -104,7 +104,7 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기다.
 | `zlink_msg_data` | data buffer pointer 반환 (쓰기 가능) | 변화 없음 |
 | `zlink_msg_size` | data size(byte) 반환 | 변화 없음 |
 | `zlink_msg_refcnt` | storage reference count 반환 | 변화 없음 |
-| `zlink_msg_gets` | message metadata property를 string으로 반환 | 변화 없음 |
+| `zlink_msg_gets` | (현재 stub: property를 보지 않고 항상 `NULL`/`EINVAL`. public 사용 경로로 의존 금지) | 변화 없음 |
 
 ### 3.3 Move vs Copy
 
@@ -135,10 +135,12 @@ void on_message(const zlink_routing_id_t *source_rid,
 
 | Type | `zlink_msg_close()` 동작 |
 |------|--------------------------|
-| VSM | struct를 빈 상태로 reset (heap 해제 없음) |
+| VSM | heap 해제 없이 닫는다 |
 | LMSG | refcount 감소. 0이 되면 heap buffer `free()` |
-| CMSG | struct를 빈 상태로 reset (외부 buffer는 건드리지 않음) |
+| CMSG | 외부 buffer는 건드리지 않고 닫는다 |
 | ZCLMSG | refcount 감소. 0이 되면 `ffn(data, hint)` callback 호출 |
+
+`zlink_msg_close()` 후 메시지는 invalid 상태가 된다. 다시 쓰려면 `zlink_msg_init*`로 재초기화한다.
 
 ```c
 void on_message(const zlink_routing_id_t *source_rid,
@@ -171,7 +173,7 @@ zlink_msg_init(&msg);
 #### zlink_msg_init_size — Size 지정 (copy 필요)
 
 지정한 size의 buffer를 할당한 뒤 `zlink_msg_data()`로 data를 직접 채운다.
-≤33B이면 VSM(inline), >33B이면 LMSG(heap)로 자동 결정된다.
+≤41B이면 VSM(inline), >41B이면 LMSG(heap)로 자동 결정된다.
 
 ```c
 zlink_msg_t msg;
@@ -305,8 +307,9 @@ if (rc != ZLINK_SUBMIT_OK) {
 
 ### 4.6 Recv
 
-메시지는 소켓에 등록한 핸들러 콜백으로 받는다.
-콜백이 `zlink_msg_t` 파트를 직접 넘겨준다:
+raw `STREAM`은 `zlink_recv_handler()`로 등록한 콜백으로 `zlink_msg_t` 파트를 받는다
+(recv 핸들러는 STREAM 전용이다). PAIR/SUB/DEALER는 `zlink_recv()`, ROUTER는
+`zlink_router_recv()`로 받는다. STREAM 콜백이 파트를 직접 넘겨주는 형태는 다음과 같다:
 
 ```c
 zlink_msg_t part;
@@ -482,13 +485,13 @@ void on_request(const zlink_routing_id_t *source_rid,
 ### Pattern 2: Topic + Data (PUB/SUB)
 
 ```c
-/* PUB: [topic][payload] as parts array */
-zlink_msg_t pub_parts[2];
-zlink_msg_init_size(&pub_parts[0], 7);
-memcpy(zlink_msg_data(&pub_parts[0]), "weather", 7);
-zlink_msg_init_size(&pub_parts[1], 5);
-memcpy(zlink_msg_data(&pub_parts[1]), "sunny", 5);
-zlink_send(pub, pub_parts, 2, 0);
+/* SPOT topic publish — 일반 PUB send(zlink_send)는 PUB/SUB에서 ENOTSUP다.
+   topic publish 전용 API를 쓴다(topic_id = "weather"). */
+zlink_msg_t payload;
+zlink_msg_init_size(&payload, 5);
+memcpy(zlink_msg_data(&payload), "sunny", 5);
+zlink_spot_publish(spot, "weather", &payload, 1, 0);
+zlink_msg_close(&payload);
 
 /* SUB handler callback receives topic and payload separately */
 void on_spot(const zlink_routing_id_t *source_rid,
@@ -628,7 +631,7 @@ request-reply 흐름은 전용 API 로 연다.
 - `DEALER` / `ROUTER`: [03-3-dealer.ko.md](03-3-dealer.ko.md),
   [03-4-router.ko.md](03-4-router.ko.md)
 - SPOT routed request-reply: [07-3-spot.ko.md](07-3-spot.ko.md)
-- 와이어(wire, 프로토콜 전송 계층) 봉투 구조: [../internals/protocol-zmp.ko.md](../internals/protocol-zmp.ko.md)
+- 와이어(wire, 프로토콜 transport 계층) 봉투 구조: [../internals/protocol-zmp.ko.md](../internals/protocol-zmp.ko.md)
 
 메시지 API 관점에서 기억할 점:
 

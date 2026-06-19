@@ -47,7 +47,7 @@
 - 기본 codec[^codec] 은 framework core 가 JSON 하나로 고정(lock-in) 한다.
   protobuf, msgpack 같은 추가 codec 은 framework core 패키지에 두지 않는다.
   대신 별도의 codec extension package
-  (예: `Systems.Zlink.Framework.Codec.Protobuf`) 에서 제공한다. sample 이
+  (예: `Zlink.Framework.Codecs.Protobuf`) 에서 제공한다. sample 이
   protobuf payload 를 다루더라도, framework core 자체가 protobuf 에 의존하게
   만들지는 않는다.
 - 저장소가 지금 함께 패키징하는 runtime RID[^rid] 여섯 가지
@@ -71,7 +71,7 @@
 - automatic embedded registry discovery endpoint 추론
 - `IHealthCheck` 자동 등록
 - `IObservable` 기반 topology[^topology] event 표면
-- framework 기본 패키지 안에 포함된 serializer 구현체
+- framework 기본 패키지 안에 포함된 추가 protobuf/msgpack serializer 구현체(JSON 기본 codec 은 포함)
 - preview 단계 언어 기능(`preview language feature`) 의존
 
 ## 4. 별도 확장 후보

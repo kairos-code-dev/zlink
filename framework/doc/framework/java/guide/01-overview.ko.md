@@ -34,9 +34,10 @@ framework는 새 transport를 만들지 않는다. 기존 binding 기능을 Spri
 
 ### zlink core 와 기본 소켓 패턴
 
-위 레이어 그림처럼 framework 는 직접 소켓을 열지 않는다. zlink core(C API)가 소켓 패턴을
-제공하고, Java 바인딩이 이를 typed 클래스로 노출하며, framework 가 channel·spot 으로
-감싼다. 그래서 가이드 곳곳에 `DEALER`·`ROUTER`·`PUB/SUB` 이름이 보이며, 어떤 소켓 위에서
+위 레이어 그림처럼 framework 는 새 소켓 의미를 만들지 않는다. 사용자가 low-level 소켓을
+직접 열지 않고, framework runtime 이 Java 바인딩 소켓을 생성·bind·connect 한다. zlink
+core(C API)가 소켓 패턴을 제공하고, Java 바인딩이 이를 typed 클래스로 노출하며, framework
+가 channel·spot 으로 감싼다. 그래서 가이드 곳곳에 `DEALER`·`ROUTER`·`PUB/SUB` 이름이 보이며, 어떤 소켓 위에서
 도는지 알면 channel 종류 선택이 쉬워진다.
 
 | framework 구성 | 하부 소켓 | 쓰임 |

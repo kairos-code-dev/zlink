@@ -7,7 +7,7 @@
 # SPOT Actor 사용 가이드
 
 이 문서는 Actor 생성, Spot join/leave, 종료, 세션 바인딩 흐름을 설명한다.
-SPOT 기본 설정과 디스패치 핸들러 등록은 [SPOT 가이드](07-3-spot.ko.md)를 본다.
+SPOT 기본 설정과 dispatch 핸들러 등록은 [SPOT 가이드](07-3-spot.ko.md)를 본다.
 정확한 함수 계약은 [SPOT spec](../spec/core/service/spot.ko.md)를 본다.
 
 > Actor가 **무슨 역할이고 언제** 쓰는지(세션↔처리 단위 binding, 재접속 이전성,
@@ -41,17 +41,17 @@ if (rc == ZLINK_CONFIG_OK) {
 정의하는 packet/handler 계약이다. core는 `router -> actor` direct send/request API를
 추가하지 않는다.
 
-## 1. Actor로 세션 메시지 분배하기
+## 1. Actor로 세션 메시지 묶기
 
-Actor는 세션 메시지를 특정 처리 단위로 모으고, Spot 디스패치 콜백에서
+Actor는 세션 메시지를 특정 처리 단위로 모으고, Spot dispatch 콜백에서
 읽을 대상을 구분할 때 쓴다. 하나의 세션은 여러 Actor를 바인딩할 수 있고,
 하나의 Actor는 동시에 하나의 세션에만 바인딩된다.
 
 Actor는 생성 직후 `Entry Spot`에 속한다. `Entry Spot`은 `SpotNode`가 항상 가지고
-있는 기본 Spot이다. `Entry Spot`에 디스패치 핸들러를 등록하면 새 Actor의 초기
+있는 기본 Spot이다. `Entry Spot`에 dispatch 핸들러를 등록하면 새 Actor의 초기
 메시지를 받아 인증하거나 대상 Spot을 선택할 수 있다.
 
-Entry Spot 파사드는 아래처럼 얻는다.
+Entry Spot facade는 아래처럼 얻는다.
 
 ```c
 void *entry = NULL;
@@ -59,8 +59,8 @@ zlink_spot_node_entry_spot(node, &entry);
 zlink_spot_dispatch_event_handler(entry, my_dispatch_handler, userdata);
 ```
 
-Entry Spot 파사드를 다 쓴 뒤에는 `zlink_spot_destroy(&entry)`로 닫는다.
-Entry Spot 자체는 `SpotNode`가 소유하므로 파사드를 닫아도 Entry Spot은 사라지지 않는다.
+Entry Spot facade를 다 쓴 뒤에는 `zlink_spot_destroy(&entry)`로 닫는다.
+Entry Spot 자체는 `SpotNode`가 소유하므로 facade를 닫아도 Entry Spot은 사라지지 않는다.
 
 최소 흐름은 다음과 같다.
 
@@ -71,7 +71,7 @@ Entry Spot 자체는 `SpotNode`가 소유하므로 파사드를 닫아도 Entry 
 4. `zlink_stream_bind_actor()`로 세션과 Actor를 연결한다.
 5. STREAM 패킷 핸들러나 앱 로직에서 `zlink_stream_send_bound_actor_part()`를
    호출해 Actor ID를 지정한다.
-6. 디스패치 콜백에서 `ACTOR_READABLE`을 받으면 `subject` Actor ref를 복사하고
+6. dispatch 콜백에서 `ACTOR_READABLE`을 받으면 `subject` Actor ref를 복사하고
    `zlink_spot_node_actor_recv_part()`로 소진(drain)한다.
 
 ```c
@@ -96,7 +96,7 @@ zlink_stream_send_bound_actor_part(
   ZLINK_PART_FINAL);
 ```
 
-Actor에 읽을 데이터가 생기면 디스패치 콜백이 소진할 Actor ref를 알려준다.
+Actor에 읽을 데이터가 생기면 dispatch 콜백이 소진할 Actor ref를 알려준다.
 
 ```c
 case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
@@ -128,8 +128,8 @@ case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
 ```
 
 Actor 주소를 다른 노드에서 알아야 하면, Actor 소유 Discovery에서
-`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜고 Actor를 user Spot으로 join한 뒤
-`zlink_discovery_resolve_actor()`로 조회한다. **route sync가 켜져 있으면 활성 경로
+`ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC`를 켜고
+`zlink_discovery_resolve_actor()`로 조회한다(join은 조회 선행조건이 아니다). **route sync가 켜져 있으면 활성 경로
 (active route)는 Actor 생성 시점에 Entry Spot을 가리키며 게시되고, user Spot join
 성공 시 join한 user Spot으로, 명시적 leave 성공 시 다시 Entry Spot으로 갱신된다.**
 STREAM 세션 바인딩이나 해제는 활성 경로를 바꾸지 않는다.
@@ -173,8 +173,7 @@ zlink_remote_actor_get_ref(
     3000);               /* timeout_ms */
 ```
 
-원격 Actor 생성 API와 입장 허용(admission) 핸들러는 제거되었다. 원격 노드에서
-시작해야 하는 Actor는 application이 해당 SpotNode에서
+원격 노드에서 시작해야 하는 Actor는 application이 해당 SpotNode에서
 `zlink_spot_node_actor_new()`로 직접 생성한다. 같은 process 안에 SpotNode handle이
 있다면 그 handle을 사용하고, 다른 process라면 원격 SpotNode가 제공하는 application
 계층 RPC로 생성 요청을 전달한다. 생성 뒤 필요하면 `zlink_spot_node_actor_join_spot()`
@@ -184,7 +183,7 @@ zlink_remote_actor_get_ref(
 ## 2. Spot join
 
 Actor를 사용자 Spot으로 보내려면 `zlink_spot_node_actor_join_spot()`으로 참가 요청을
-전송한다. 대상 Spot은 `ACTOR_JOIN_READABLE` 디스패치 이벤트를 받고,
+전송한다. 대상 Spot은 `ACTOR_JOIN_READABLE` dispatch 이벤트를 받고,
 `zlink_spot_actor_join_recv()`로 요청 payload를 읽은 뒤 `zlink_spot_actor_join_reply()`로
 수락 또는 거부를 전달한다. join completion은 전용 `zlink_actor_join_spot_handler_fn`으로
 전달되며, 최종 Actor ref와 joined Spot rid를 포함한다.
@@ -256,7 +255,7 @@ lifecycle event는 관측용이다. application state machine이 join 완료나 
 
 `leave`는 Actor를 현재 Spot에서 같은 node의 Entry Spot으로 돌려보내는 async submit
 API다. Actor가 이미 Entry Spot에 있으면 멱등(idempotent) 성공이고, lifecycle event은
-발생하지 않는다. 탈퇴 후 Actor 메시지는 Entry Spot 디스패치 이벤트로 올라간다.
+발생하지 않는다. 탈퇴 후 Actor 메시지는 Entry Spot dispatch 이벤트로 올라간다.
 
 ```c
 static void on_leave(

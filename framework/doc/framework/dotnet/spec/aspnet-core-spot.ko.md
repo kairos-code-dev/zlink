@@ -191,13 +191,12 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
     머무는 동안 처리할 application actor packet handler와 lifecycle callback이
     없다는 뜻이다.
 - `AddSpotFactory<StageSpot>()`
-  - 이 노드가 생성하고 소유할 `StageSpot` factory를 `stage` 이름으로 등록한다.
-  - 같은 `SpotNode`에 여러 spot factory를 둘 수 있는 경우, 생성 시점에 이 이름을
-    기준으로 어떤 factory를 쓸지 선택한다.
-  - 이미 등록된 이름을 다시 사용하면 조용히 덮어쓰지 않고 예외를 던진다.
+  - 이 노드가 생성하고 소유할 `StageSpot` factory를 generic spot 타입으로 등록한다(이름 인자 없음).
+  - 같은 `SpotNode`에 여러 spot factory를 둘 수 있고, 생성 시점에는 `CreateAsync<TSpot>()`
+    처럼 spot 타입으로 어떤 factory를 쓸지 선택한다.
+  - 같은 spot 타입을 다시 등록하면 조용히 덮어쓰지 않고 예외를 던진다.
 
-`SpotNode` 는 더 이상 여러 service surface 를 동시에 소유하는 hub 처럼
-설명되지 않는다. 현재 방향에서 그 역할 분담은 다음과 같다.
+`SpotNode` 의 역할 분담은 다음과 같다.
 
 - `AddSpotMesh(channelName).UseDiscovery().AddRegistryEndpoint(...)` 등록이 노드의
   channel 정체성을 닫는다.
@@ -268,12 +267,12 @@ public sealed class StageEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntry
 
     public void Configure()
     {
-        Context.AddPacket<StageAdmissionHandler>();
-        Context.AddSubscribe<StageAdmissionEventHandler>("stage.admission");
-        Context.AddHandler<AuthenticateStageActorHandler>();
-        Context.AddHandler<JoinStageHandler>();
-        Context.AddHandler<StageEntryJoinedHandler>();
-        Context.AddHandler<StageEntryLeftHandler>();
+        Context.Handlers.AddPacket<StageAdmissionHandler>();
+        Context.Handlers.AddSubscribe<StageAdmissionEventHandler>("stage.admission");
+        Context.Handlers.AddHandler<AuthenticateStageActorHandler>();
+        Context.Handlers.AddHandler<JoinStageHandler>();
+        Context.Handlers.AddHandler<StageEntryJoinedHandler>();
+        Context.Handlers.AddHandler<StageEntryLeftHandler>();
     }
 }
 ```
@@ -293,10 +292,10 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddHandler<MoveOnStageHandler>();
-        Context.AddHandler<ReportStageStateHandler>();
-        Context.AddHandler<StageJoinedHandler>();
-        Context.AddHandler<StageLeftHandler>();
+        Context.Handlers.AddHandler<MoveOnStageHandler>();
+        Context.Handlers.AddHandler<ReportStageStateHandler>();
+        Context.Handlers.AddHandler<StageJoinedHandler>();
+        Context.Handlers.AddHandler<StageLeftHandler>();
     }
 }
 ```
@@ -539,9 +538,9 @@ builder.Services.AddZLinkFramework(options =>
   `.NET` timer를 사용한다.
 - managed timer tick 은 user Spot 에서는 routed, subscribe, channel reply와
   동일한 직렬 실행 경로로 들어온다.
-- Entry Spot timer callback 은 Entry Spot 전체 직렬 실행 줄에 묶지 않는다.
-  Entry Spot 은 여러 actor 가 공유하는 입구이므로 timer 하나가 관계없는 Entry
-  Spot callback 을 전역으로 막으면 안 된다. 단일 timer instance 안에서는 이전
+- Entry Spot timer callback 도 user Spot 과 마찬가지로 Entry Spot 전체 직렬 실행 줄
+  (`ExecuteQueuedAsync`)에서 처리된다. route packet·subscription·timer·worker completion
+  이 모두 같은 Entry Spot 실행 줄을 통과하므로, 단일 timer instance 안에서는 이전
   callback 이 끝나기 전에 다음 callback 을 겹쳐 실행하지 않는다.
 
 여기서 핵심은 channel reply completion 과 timer callback 이 모두 같은 spot
@@ -553,7 +552,7 @@ builder.Services.AddZLinkFramework(options =>
   continuation도 spot state에 별도 lock 없이 접근할 수 있다.
 - binding이 attached dealer마다 별도 progress pump를 돌리지 않아도 된다.
   `Spot` progress loop 하나로 channel reply completion까지 처리된다.
-- actor가 `Spot`에 join된 뒤에는 `IZLinkSpotContext.AddHandler(...)`로
+- actor가 `Spot`에 join된 뒤에는 `IZLinkSpotContext.Handlers.AddHandler(...)`로
   등록한 actor packet handler 역시 같은 spot execution context에서 실행된다.
   stream session은 packet ingress를 맡고, actor가 room 또는 stage 상태를 다루는
   코드는 `Spot` 실행 문맥으로 들어간다.
@@ -570,14 +569,13 @@ dispatch event 종류와 drain 대상은 아래처럼 정리된다.
 | `ChannelReplyReadable` | `ChannelDealer` | `DrainChannelReplyFrom(subject)` |
 
 timer 는 이 low-level dispatch table 에 직접 기대지 않는다. 대신 framework
-runtime 이 만든 managed `.NET` timer tick 을 user Spot 문맥에서는 같은 spot
-queue 로 enqueue 해서 처리한다. Entry Spot timer 는 같은 등록 표면을 쓰지만
-Entry Spot 전체 queue 로 enqueue 하지 않는다.
+runtime 이 만든 managed `.NET` timer tick 을 user Spot 과 Entry Spot 모두 같은 spot
+실행 줄로 enqueue 해서 처리한다. Entry Spot timer 도 같은 등록 표면을 쓰며 Entry Spot
+실행 줄에서 직렬 처리된다.
 
-framework 문서에서 "같은 spot 문맥" 이라고 설명하는 부분은 새 semantics 를
-정의하는 작업이 아니다. 기존 core 계약과 framework 가 소유한 timer dispatch 를
-`.NET` 사용자 눈높이로 풀어 적는 일에 더 가깝다. channel reply 역시 이제 그
-"같은 spot 문맥" 안에 포함된다.
+framework 문서에서 "같은 spot 문맥" 이라고 설명하는 부분은 core 계약과 framework 가
+소유한 timer dispatch 를 `.NET` 사용자 눈높이로 풀어 적은 것이다. channel reply
+completion 도 같은 spot 문맥 안에서 처리된다.
 
 ### 4.5 Spot 생성과 lifecycle 초안
 
@@ -635,7 +633,7 @@ metadata에는 factory 식별자와 선택적인 `spotRid`를 넣고, metadata �
 payload를 create request로 보낸다. 이 식별자는 framework 내부 값이며 public
 `spotRid` API로 노출하지 않는다.
 
-`GetAsync(...)` 와 `ListAsync(...)` 는 운영 코드가 현재 존재하는 logical spot rid를
+`FindAsync(...)` 와 `ListAsync(...)` 는 운영 코드가 현재 존재하는 logical spot rid를
 확인할 수 있게 하는 조회 표면이다. 조회 결과에는 `SpotRid`만 포함한다.
 `CloseAsync(...)` 는 user Spot 을 정상 종료한다. 이미 join된 actor 가 남아 있으면
 `false` 를 반환하고 종료하지 않는다. Spot 내부 packet handler 나 timer handler 에서는
@@ -653,7 +651,7 @@ startup 시점에 예외를 던진다. 설정 실수를 바로 드러내는 쪽�
 var stage = await spotManager.CreateAsync<StageSpot>(cancellationToken);
 
 await spotPublisherClient
-    .Publish(
+    .PublishSpot(
         "game.stage",
         "stage.state.updated",
         new StageStateUpdatedEvent
@@ -662,7 +660,7 @@ await spotPublisherClient
         })
     .Async(cancellationToken);
 
-var spotInfo = await spotManager.GetAsync(stage.SpotRid, cancellationToken);
+var spotInfo = await spotManager.FindAsync(stage.SpotRid, cancellationToken);
 ```
 
 처럼 사용하면 된다. 생성된 `Spot` 인스턴스를 응용이 직접 오래 관리하는 모델은
@@ -813,7 +811,7 @@ local spot 인스턴스를 가지지 않는 외부 노드가 특정 SPOT channel
 
 ```csharp
 await spotPublisherClient
-    .Publish(
+    .PublishSpot(
         "game.stage",
         "stage.state.updated",
         new StageStateUpdatedEvent())
@@ -854,10 +852,10 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddPacket<GetStageStateHandler>();
-        Context.AddPacket<ReportStageStateHandler>();
+        Context.Handlers.AddPacket<GetStageStateHandler>();
+        Context.Handlers.AddPacket<ReportStageStateHandler>();
 
-        Context.AddSubscribe<StageStateUpdatedHandler>(
+        Context.Handlers.AddSubscribe<StageStateUpdatedHandler>(
             "stage.state.updated");
     }
 
@@ -878,11 +876,11 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
 
 여기서 기대하는 동작은 다음과 같다.
 
-- `Context.AddPacket<THandler>(...)`는 request와 send packet을 함께 등록한다.
+- `Context.Handlers.AddPacket<THandler>(...)`는 request와 send packet을 함께 등록한다.
 - packet dispatch key는 packet 타입의 header `msgId`다.
 - `protobuf`[^protobuf]를 쓰면 `msgId`는 protobuf message 이름이 된다.
 - `json`을 쓰면 `msgId`는 CLR class 이름이 된다.
-- `Context.AddSubscribe<THandler>(...)`는 topic consumer 등록이다.
+- `Context.Handlers.AddSubscribe<THandler>(...)`는 topic consumer 등록이다.
 - `Context.AddTimer<THandler>(...)`는 현재 spot lifecycle 안에 timer를 등록한다.
   세 번째 인자인 `ZLinkTimerOptions` 로 overrun 정책과 handler 예외 정책을 정한다.
 - handler는 별도의 class로 두고, `StageSpot` 안에는 코어 로직만 남길 수 있다.
@@ -928,7 +926,7 @@ timer 를 중단하고 `TimerStoppedAfterUnhandledException` event 를 기록한
 - per-packet allocation, 과도한 DI 재구성, 불필요한 boxing[^boxing] 은 피해야
   한다.
 
-`Context.AddPacket<THandler>(...)` 같은 등록 표면은 startup 과 spot
+`Context.Handlers.AddPacket<THandler>(...)` 같은 등록 표면은 startup 과 spot
 `Configure()` 단계에서만 비용이 들도록 둔다. actor `Configure()` 는 message
 handler 를 등록하지 않는다. 실제 packet
 hot path 에서는 반복적인 reflection 이나 과도한 객체 생성이 남지 않게 해야
@@ -1022,7 +1020,7 @@ ActorGateway 는 별도 node builder 가 아니라, stream 이 router 역할을
   메서드 override만으로 설명하지 않는다.
 - Entry Spot 과 user Spot 은 packet, subscription, timer, channel outbound,
   actor handler 등록 표면을 맞춘다. 실행 직렬화 정책만 서로 다르다.
-- `IZLinkSpotManager`는 생성과 조회를 함께 가진다. `GetAsync(...)`,
+- `IZLinkSpotManager`는 생성과 조회를 함께 가진다. `FindAsync(...)`,
   `ListAsync(...)`는 별도 query 서비스로 분리하지 않고 manager에 남긴다.
 - subscriber concurrency와 backpressure[^backpressure]는 per-handler나 per-topic
   API가 아니라, subscriber 역할 option에서 노드 단위로 설정한다.

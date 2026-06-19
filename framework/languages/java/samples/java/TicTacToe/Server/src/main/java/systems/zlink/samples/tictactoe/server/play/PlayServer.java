@@ -1,7 +1,6 @@
 package systems.zlink.samples.tictactoe.server.play;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
@@ -29,10 +28,6 @@ public final class PlayServer {
             options.addClientServerChannel(SampleNames.PlayChannel)
                 .enableServer(settings.playChannelEndpoint())
                 .addHandlerGroup(SampleNames.PlayChannel);
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayRouteChannel);
-            route.enableServer(settings.playRouterEndpoint());
-            route.enableClient(settings.playRouterEndpoint());
-            route.configureRouting().setRoutingId(RoutingId.from(SampleNames.PlayRouterId));
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SpotMesh)
                 .addNode(SampleNames.PlayNode);
             node.enableRouter(settings.spotEndpoint())

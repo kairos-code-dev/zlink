@@ -102,13 +102,12 @@ function Start-GradleRole {
 
 $Status = 1
 try {
-    $ports = Reserve-Ports 6
+    $ports = Reserve-Ports 5
     $ApiPort = $ports[0]
     $ApiChannelPort = $ports[1]
     $PlayStreamPort = $ports[2]
     $PlayChannelPort = $ports[3]
-    $PlayRouterPort = $ports[4]
-    $SpotPort = $ports[5]
+    $SpotPort = $ports[4]
 
     $ConfigFile = Join-Path $SampleDir "build/sample-application.properties"
     @(
@@ -116,7 +115,6 @@ try {
         "sample.apiPublicUrl=http://127.0.0.1:$ApiPort",
         "sample.apiChannelEndpoint=tcp://127.0.0.1:$ApiChannelPort",
         "sample.playChannelEndpoint=tcp://127.0.0.1:$PlayChannelPort",
-        "sample.playRouterEndpoint=tcp://127.0.0.1:$PlayRouterPort",
         "sample.playEndpoint=tcp://127.0.0.1:$PlayStreamPort",
         "sample.spotEndpoint=tcp://127.0.0.1:$SpotPort",
         "sample.logDirectory=$LogDir"
@@ -125,7 +123,6 @@ try {
     Start-GradleRole -Arguments @("-Pzlink.useLocalBindings=true", "--settings-file", "standalone.settings.gradle.kts", ":Server:run", "--quiet", "--args=play --config $ConfigFile") -LogName "play.log"
     Wait-Port $PlayStreamPort
     Wait-Port $PlayChannelPort
-    Wait-Port $PlayRouterPort
 
     Start-GradleRole -Arguments @("-Pzlink.useLocalBindings=true", "--settings-file", "standalone.settings.gradle.kts", ":Server:run", "--quiet", "--args=api --config $ConfigFile") -LogName "api.log"
     Wait-Port $ApiPort

@@ -73,7 +73,7 @@ sealed class TicTacToeGame(
         Message request,
         CancellationToken cancellationToken)
     {
-        var joinRequest = request.FromJson<TicTacToeGameJoinReq>();
+        var joinRequest = request.Decode<TicTacToeGameJoinReq>();
         var reply = await JoinPlayerAsync(player, joinRequest.RoomId, cancellationToken);
         logger.LogInformation(
             "TicTacToeGame: actor join accepted. actor={ActorId}, roomId={RoomId}, mark={Mark}",

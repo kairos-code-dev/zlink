@@ -57,7 +57,12 @@ class conversation_spot_t : public zlink::framework::spot_t
     on_actor_join (const support_user_actor_t &actor, const zlink::message_t &request_message)
     {
         join_conversation_req_t join;
-        from_stream_payload (request_message, join);
+        try {
+            from_stream_payload (request_message, join);
+        }
+        catch (...) {
+            join.conversation_id = std::string (_context.spot_rid ().value ());
+        }
         auto &conversation = require_conversation ();
         if (join.conversation_id != conversation.conversation_id ()) {
             return zlink::framework::spot_actor_join_response_t::reject ();

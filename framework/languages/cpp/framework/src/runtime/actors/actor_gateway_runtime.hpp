@@ -57,6 +57,7 @@ class actor_gateway_runtime_t
     explicit actor_gateway_runtime_t (std::shared_ptr<actor_gateway_state_t> state);
 
     session_actor_manager_t manager () const;
+    actor_gateway_t gateway () const;
     std::vector<relayed_frame_t> relayed_frames () const;
     std::vector<relayed_frame_t> bound_session_pushes () const;
     bool actor_bound (std::string actor_id) const;

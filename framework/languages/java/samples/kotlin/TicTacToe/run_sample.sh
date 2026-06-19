@@ -121,7 +121,7 @@ reserved = []
 ports = []
 try:
     chosen = set()
-    while len(reserved) < 6:
+    while len(reserved) < 5:
         port = random.randint(20000, 32767)
         if port in chosen:
             continue
@@ -141,7 +141,7 @@ finally:
 PY
 }
 
-read -r api_port api_channel_port play_stream_port play_channel_port play_router_port spot_port < <(reserve_ports)
+read -r api_port api_channel_port play_stream_port play_channel_port spot_port < <(reserve_ports)
 
 config_file="$(pwd)/build/sample-application.properties"
 cat >"${config_file}" <<EOF
@@ -149,7 +149,6 @@ sample.apiBindUrl=http://127.0.0.1:${api_port}
 sample.apiPublicUrl=http://127.0.0.1:${api_port}
 sample.apiChannelEndpoint=tcp://127.0.0.1:${api_channel_port}
 sample.playChannelEndpoint=tcp://127.0.0.1:${play_channel_port}
-sample.playRouterEndpoint=tcp://127.0.0.1:${play_router_port}
 sample.playEndpoint=tcp://127.0.0.1:${play_stream_port}
 sample.spotEndpoint=tcp://127.0.0.1:${spot_port}
 sample.logDirectory=${log_dir}

@@ -20,6 +20,5 @@ private fun usage(): String =
     "Usage: gradle :Server:run --args='[play|api] [--config PATH] [--api-url URL] " +
         "[--api-bind URL] [--api-channel-endpoint tcp://HOST:PORT] " +
         "[--play-channel-endpoint tcp://HOST:PORT] " +
-        "[--play-router-endpoint tcp://HOST:PORT] " +
         "[--play-endpoint tcp://HOST:PORT] " +
         "[--spot-endpoint tcp://HOST:PORT] [--log-dir DIR]'"

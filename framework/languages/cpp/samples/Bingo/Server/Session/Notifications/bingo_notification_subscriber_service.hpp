@@ -3,8 +3,6 @@
 
 #include "../../../Shared/Contracts/messages.hpp"
 
-#include "runtime/actors/actor_gateway_runtime.hpp"
-
 #include <zlink.hpp>
 #include <zlink/framework.hpp>
 #include <zlink/codecs/protobuf.hpp>
@@ -32,7 +30,7 @@ class bingo_notification_subscriber_service_t final : public zlink::framework::h
 
     void start (zlink::framework::service_provider_t &provider) override
     {
-        _gateway = &provider.get_required<zlink::framework::detail::actor_gateway_runtime_t> ();
+        _gateway = &provider.get_required<zlink::framework::actor_gateway_t> ();
         _stop.store (false, std::memory_order_release);
         _worker = std::thread ([this] { run (); });
     }
@@ -77,7 +75,7 @@ class bingo_notification_subscriber_service_t final : public zlink::framework::h
                 continue;
             }
             auto send_task = actor->bound_session ().send (notify).async ();
-            zlink::framework::detail::observe_task_completion (
+            zlink::framework::observe_task_completion (
               send_task, [] (const zlink::framework::result_t<void> &) {});
         }
     }
@@ -152,7 +150,7 @@ class bingo_notification_subscriber_service_t final : public zlink::framework::h
     std::string _endpoint;
     std::atomic_bool _stop{false};
     std::thread _worker;
-    zlink::framework::detail::actor_gateway_runtime_t *_gateway = nullptr;
+    zlink::framework::actor_gateway_t *_gateway = nullptr;
 };
 
 } // namespace zlink::samples::bingo

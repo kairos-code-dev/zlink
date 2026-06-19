@@ -96,7 +96,7 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
                 continue;
             }
             auto send_task = actor->context.bound_session ().send (notify).async ();
-            zlink::framework::detail::observe_task_completion (
+            zlink::framework::observe_task_completion (
               send_task, [] (const zlink::framework::result_t<void> &) {});
         }
     }

@@ -48,6 +48,8 @@ class actor_ref_t
     std::uint64_t _generation = 0;
 };
 
+class actor_gateway_t;
+
 struct actor_join_result_t
 {
     int result_code = 0;
@@ -133,6 +135,7 @@ class bound_session_t
 
   private:
     friend class actor_context_t;
+    friend class actor_gateway_t;
     friend class session_actor_t;
     friend class session_actor_manager_t;
     friend class detail::actor_gateway_runtime_t;
@@ -193,6 +196,7 @@ class actor_context_t
 
   private:
     friend class spot_node_builder_t;
+    friend class actor_gateway_t;
     friend class detail::spot_node_runtime_t;
     friend class session_actor_t;
     friend class session_actor_manager_t;
@@ -229,6 +233,7 @@ class session_actor_t
 
   private:
     friend class session_actor_manager_t;
+    friend class actor_gateway_t;
     friend class detail::actor_gateway_runtime_t;
 
     explicit session_actor_t (std::shared_ptr<detail::actor_gateway_state_t> state,
@@ -256,8 +261,34 @@ class session_actor_manager_t
     void unbind_session (std::string actor_id) noexcept;
 
   private:
+    friend class actor_gateway_t;
     friend class detail::actor_gateway_runtime_t;
     explicit session_actor_manager_t (std::shared_ptr<detail::actor_gateway_state_t> state);
+
+    std::shared_ptr<detail::actor_gateway_state_t> _state;
+};
+
+class actor_gateway_t
+{
+  public:
+    actor_gateway_t ();
+    ~actor_gateway_t ();
+
+    actor_gateway_t (actor_gateway_t &&) noexcept;
+    actor_gateway_t &operator= (actor_gateway_t &&) noexcept;
+    actor_gateway_t (const actor_gateway_t &) = default;
+    actor_gateway_t &operator= (const actor_gateway_t &) = default;
+
+    session_actor_manager_t manager () const;
+    actor_context_t actor_context (const actor_ref_t &actor_ref) const;
+    void bind_session_stream (std::string actor_id,
+                              stream_t stream,
+                              stream_codec_t codec = stream_codec_t::message_pack);
+    void unbind_session_stream (std::string actor_id);
+
+  private:
+    friend class detail::actor_gateway_runtime_t;
+    explicit actor_gateway_t (std::shared_ptr<detail::actor_gateway_state_t> state);
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
 };

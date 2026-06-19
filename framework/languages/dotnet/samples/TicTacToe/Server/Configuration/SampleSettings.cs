@@ -7,7 +7,6 @@ sealed record SampleSettings(
     string ApiPublicUrl,
     string ApiChannelEndpoint,
     string PlayChannelEndpoint,
-    string PlayRouterEndpoint,
     string PlayEndpoint,
     string SpotEndpoint,
     string LogDirectory)
@@ -29,7 +28,6 @@ sealed record SampleSettings(
             section[nameof(ApiPublicUrl)] ?? defaults.ApiPublicUrl,
             section[nameof(ApiChannelEndpoint)] ?? defaults.ApiChannelEndpoint,
             section[nameof(PlayChannelEndpoint)] ?? defaults.PlayChannelEndpoint,
-            section[nameof(PlayRouterEndpoint)] ?? defaults.PlayRouterEndpoint,
             section[nameof(PlayEndpoint)] ?? defaults.PlayEndpoint,
             section[nameof(SpotEndpoint)] ?? defaults.SpotEndpoint,
             section[nameof(LogDirectory)] ?? defaults.LogDirectory);
@@ -43,7 +41,6 @@ sealed record SampleSettings(
             "http://127.0.0.1:18080",
             "tcp://127.0.0.1:18081",
             "tcp://127.0.0.1:18082",
-            "tcp://127.0.0.1:18085",
             "tcp://127.0.0.1:18083",
             "tcp://127.0.0.1:18084",
             Path.Combine("logs", "tictactoe"));
@@ -54,7 +51,6 @@ sealed record SampleSettings(
         string? apiUrl = null;
         string? apiChannel = null;
         string? playChannel = null;
-        string? playRouter = null;
         string? play = null;
         string? spot = null;
         string? logDirectory = null;
@@ -86,9 +82,6 @@ sealed record SampleSettings(
                 case "--play-channel-endpoint":
                     playChannel = ReadValue();
                     break;
-                case "--play-router-endpoint":
-                    playRouter = ReadValue();
-                    break;
                 case "--play-endpoint":
                     play = ReadValue();
                     break;
@@ -106,7 +99,6 @@ sealed record SampleSettings(
             apiUrl ?? apiBind ?? defaults.ApiPublicUrl,
             apiChannel ?? defaults.ApiChannelEndpoint,
             playChannel ?? defaults.PlayChannelEndpoint,
-            playRouter ?? defaults.PlayRouterEndpoint,
             play ?? defaults.PlayEndpoint,
             spot ?? defaults.SpotEndpoint,
             logDirectory ?? defaults.LogDirectory);

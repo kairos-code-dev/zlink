@@ -834,7 +834,7 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
     }
 }
 
-TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGateway)
+TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithActorGateway)
 {
     const auto tictactoe_root = cpp_language_root () / "samples/TicTacToe";
     const auto api_factory = read_file (tictactoe_root / "Server/Api/api_server_host_factory.hpp");
@@ -851,7 +851,7 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGa
     EXPECT_EQ (play_factory.find ("options.use_discovery ()"), std::string::npos);
     EXPECT_EQ (play_factory.find ("options.use_registry_spot_remote_addresses"), std::string::npos);
     EXPECT_NE (api_factory.find (".enable_client (topology.play_endpoint)"), std::string::npos);
-    EXPECT_NE (play_factory.find ("options.add_route_mesh_channel"), std::string::npos);
+    EXPECT_EQ (play_factory.find ("options.add_route_mesh_channel"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<entry_spot_t> ()"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)"),

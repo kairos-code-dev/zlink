@@ -47,7 +47,7 @@ trap cleanup EXIT
 
 if [[ -n "${TICTACTOE_BASE_PORT:-}" ]]; then
   PORTS=()
-  for offset in $(seq 1 6); do
+  for offset in $(seq 1 5); do
     PORTS+=("$((TICTACTOE_BASE_PORT + offset))")
   done
 else
@@ -58,7 +58,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 6:
+    while len(sockets) < 5:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -82,9 +82,8 @@ API_BIND_URL="${TICTACTOE_API_BIND_URL:-http://127.0.0.1:${PORTS[0]}}"
 API_PUBLIC_URL="${TICTACTOE_API_PUBLIC_URL:-${API_BIND_URL}}"
 API_CHANNEL_ENDPOINT="${TICTACTOE_API_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
 PLAY_CHANNEL_ENDPOINT="${TICTACTOE_PLAY_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
-PLAY_ROUTER_ENDPOINT="${TICTACTOE_PLAY_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
-PLAY_ENDPOINT="${TICTACTOE_PLAY_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
-SPOT_ENDPOINT="${TICTACTOE_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
+PLAY_ENDPOINT="${TICTACTOE_PLAY_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
+SPOT_ENDPOINT="${TICTACTOE_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
 CONFIG_FILE="${RUN_DIR}/appsettings.json"
 
 python3 - "${CONFIG_FILE}" <<PY
@@ -98,7 +97,6 @@ settings = {
         "ApiPublicUrl": "${API_PUBLIC_URL}",
         "ApiChannelEndpoint": "${API_CHANNEL_ENDPOINT}",
         "PlayChannelEndpoint": "${PLAY_CHANNEL_ENDPOINT}",
-        "PlayRouterEndpoint": "${PLAY_ROUTER_ENDPOINT}",
         "PlayEndpoint": "${PLAY_ENDPOINT}",
         "SpotEndpoint": "${SPOT_ENDPOINT}",
         "LogDirectory": "${LOG_DIR}"
@@ -152,7 +150,6 @@ dotnet build "${SCRIPT_DIR}/TicTacToe.sln" --maxcpucount:1
 start_server play play
 wait_port play-stream "${PLAY_ENDPOINT}"
 wait_port play-channel "${PLAY_CHANNEL_ENDPOINT}"
-wait_port play-router "${PLAY_ROUTER_ENDPOINT}"
 
 start_server api api
 wait_port api-http "${API_BIND_URL}"

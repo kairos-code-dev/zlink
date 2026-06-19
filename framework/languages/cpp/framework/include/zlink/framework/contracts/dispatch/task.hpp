@@ -292,4 +292,10 @@ void observe_task_completion (task_t<T> &task, TCallback &&callback)
 
 } // namespace detail
 
+template <typename T, typename TCallback>
+void observe_task_completion (task_t<T> &task, TCallback &&callback)
+{
+    detail::observe_task_completion (task, std::forward<TCallback> (callback));
+}
+
 } // namespace zlink::framework

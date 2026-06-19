@@ -101,6 +101,7 @@ class spot_context_state_t
     std::vector<spot_packet_descriptor_t> packets;
     std::vector<spot_handler_descriptor_t> handlers;
     std::vector<spot_handler_registry_t::invoker_t> handler_invokers;
+    std::map<std::type_index, spot_actor_admission_callbacks_t> actor_admissions;
     std::vector<std::string> ordering_log;
     std::vector<std::shared_ptr<timer_state_t>> timers;
     std::shared_ptr<void> spot_instance;
@@ -142,6 +143,14 @@ class spot_node_runtime_t
     const std::vector<std::string> &ordering_log (const spot_context_t &context) const;
     void on_destroy_actor (std::function<result_t<void> (const actor_ref_t &)> destroy_actor);
     void on_actor_ref_updated (std::function<result_t<void> (const actor_ref_t &)> update_actor);
+    spot_node_manager_t manager () const;
+    result_t<actor_join_reply_t> join_actor_to_spot_erased (const actor_ref_t &actor_ref,
+                                                            spot_rid_t spot_rid,
+                                                            const zlink::message_t &request);
+    result_t<actor_join_reply_t>
+    join_actor_to_entry_spot_erased (const actor_ref_t &actor_ref,
+                                     node_rid_t spot_node_rid,
+                                     const zlink::message_t &request);
     result_t<std::optional<zlink::message_t>>
     relay_actor_packet (const actor_ref_t &actor_ref,
                         actor_context_t actor_context,

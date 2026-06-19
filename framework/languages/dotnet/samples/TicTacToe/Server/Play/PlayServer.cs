@@ -34,12 +34,6 @@ internal sealed class PlayServer(SampleSettings settings)
                 .EnableServer(settings.PlayChannelEndpoint)
                 .AddRequestHandler<CreateGameHandler>();
 
-            options.AddRouteMeshChannel(SampleChannels.Router)
-                .EnableServer(settings.PlayRouterEndpoint)
-                .EnableClient(settings.PlayRouterEndpoint)
-                .ConfigureRouting()
-                .RoutingId = RoutingId.From(SampleTypes.PlayRouterId);
-
             options.AddStreamNode(SampleNodes.ClientStream)
                 .AttachActorGateway(SampleNodes.PlaySpot)
                 .Bind(settings.PlayEndpoint)

@@ -10,7 +10,6 @@ public record SampleSettings(
     String apiPublicUrl,
     String apiChannelEndpoint,
     String playChannelEndpoint,
-    String playRouterEndpoint,
     String playEndpoint,
     String spotEndpoint,
     String logDirectory) {
@@ -20,7 +19,6 @@ public record SampleSettings(
             "http://127.0.0.1:18080",
             "tcp://127.0.0.1:47201",
             "tcp://127.0.0.1:47203",
-            "tcp://127.0.0.1:47204",
             "tcp://127.0.0.1:47202",
             "tcp://127.0.0.1:47205",
             "logs/tictactoe");
@@ -38,7 +36,6 @@ public record SampleSettings(
             readOption(args, "--api-url", readOption(args, "--api-bind", defaults.apiPublicUrl())),
             readOption(args, "--api-channel-endpoint", defaults.apiChannelEndpoint()),
             readOption(args, "--play-channel-endpoint", defaults.playChannelEndpoint()),
-            readOption(args, "--play-router-endpoint", defaults.playRouterEndpoint()),
             readOption(args, "--play-endpoint", defaults.playEndpoint()),
             readOption(args, "--spot-endpoint", defaults.spotEndpoint()),
             readOption(args, "--log-dir", defaults.logDirectory()));
@@ -59,7 +56,6 @@ public record SampleSettings(
             properties.getProperty("sample.apiPublicUrl", defaults.apiPublicUrl()),
             properties.getProperty("sample.apiChannelEndpoint", defaults.apiChannelEndpoint()),
             properties.getProperty("sample.playChannelEndpoint", defaults.playChannelEndpoint()),
-            properties.getProperty("sample.playRouterEndpoint", defaults.playRouterEndpoint()),
             properties.getProperty("sample.playEndpoint", defaults.playEndpoint()),
             properties.getProperty("sample.spotEndpoint", defaults.spotEndpoint()),
             properties.getProperty("sample.logDirectory", defaults.logDirectory()));

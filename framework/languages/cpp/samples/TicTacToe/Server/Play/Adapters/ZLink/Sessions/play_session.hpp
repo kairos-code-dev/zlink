@@ -3,8 +3,6 @@
 
 #include "Handlers/authenticate_play_session_handler.hpp"
 
-#include "runtime/actors/actor_gateway_runtime.hpp"
-
 #include <optional>
 #include <string>
 
@@ -17,11 +15,11 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
     using dependency_types =
       zlink::framework::dependency_list_t<zlink::framework::session_actor_manager_t,
                                           authenticate_play_session_handler_t,
-                                          zlink::framework::detail::actor_gateway_runtime_t>;
+                                          zlink::framework::actor_gateway_t>;
 
     play_session_t (zlink::framework::session_actor_manager_t &actors,
                     authenticate_play_session_handler_t &authenticate,
-                    zlink::framework::detail::actor_gateway_runtime_t &gateway) :
+                    zlink::framework::actor_gateway_t &gateway) :
         _actors (actors), _authenticate (authenticate), _gateway (gateway)
     {
     }
@@ -94,7 +92,7 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
 
     zlink::framework::session_actor_manager_t &_actors;
     authenticate_play_session_handler_t &_authenticate;
-    zlink::framework::detail::actor_gateway_runtime_t &_gateway;
+    zlink::framework::actor_gateway_t &_gateway;
     std::optional<std::string> _bound_actor_id;
 };
 

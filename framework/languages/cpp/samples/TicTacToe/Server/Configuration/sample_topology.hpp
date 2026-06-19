@@ -26,8 +26,6 @@ struct sample_topology_t
           section.get ("sessionSpotEndpoint").value_or (topology.session_spot_endpoint);
         topology.session_router_endpoint =
           section.get ("sessionRouterEndpoint").value_or (topology.session_router_endpoint);
-        topology.play_router_endpoint =
-          section.get ("playRouterEndpoint").value_or (topology.play_router_endpoint);
         topology.play_spot_endpoint =
           section.get ("playSpotEndpoint").value_or (topology.play_spot_endpoint);
         topology.play_spot_router_endpoint =
@@ -50,7 +48,6 @@ struct sample_topology_t
     std::string play_endpoint = "tcp://127.0.0.1:48104";
     std::string session_spot_endpoint = "tcp://127.0.0.1:48105";
     std::string session_router_endpoint = "tcp://127.0.0.1:48106";
-    std::string play_router_endpoint = "tcp://127.0.0.1:48109";
     std::string play_spot_endpoint = "tcp://127.0.0.1:48110";
     std::string play_spot_router_endpoint = "tcp://127.0.0.1:48111";
     std::string stream_endpoint = "tcp://127.0.0.1:48112";

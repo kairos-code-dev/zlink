@@ -459,6 +459,42 @@ void session_actor_manager_t::unbind_session (std::string actor_id) noexcept
     }
 }
 
+actor_gateway_t::actor_gateway_t () : _state (std::make_shared<detail::actor_gateway_state_t> ())
+{
+}
+
+actor_gateway_t::actor_gateway_t (std::shared_ptr<detail::actor_gateway_state_t> state) :
+    _state (std::move (state))
+{
+}
+
+actor_gateway_t::~actor_gateway_t () = default;
+actor_gateway_t::actor_gateway_t (actor_gateway_t &&) noexcept = default;
+actor_gateway_t &actor_gateway_t::operator= (actor_gateway_t &&) noexcept = default;
+
+session_actor_manager_t actor_gateway_t::manager () const
+{
+    return session_actor_manager_t (_state);
+}
+
+actor_context_t actor_gateway_t::actor_context (const actor_ref_t &actor_ref) const
+{
+    return actor_context_t (_state, actor_ref);
+}
+
+void actor_gateway_t::bind_session_stream (std::string actor_id,
+                                           stream_t stream,
+                                           stream_codec_t codec)
+{
+    detail::actor_gateway_runtime_t (_state).bind_session_stream (
+      std::move (actor_id), std::move (stream), codec);
+}
+
+void actor_gateway_t::unbind_session_stream (std::string actor_id)
+{
+    detail::actor_gateway_runtime_t (_state).unbind_session_stream (std::move (actor_id));
+}
+
 } // namespace zlink::framework
 
 namespace zlink::framework::detail
@@ -477,6 +513,11 @@ actor_gateway_runtime_t::actor_gateway_runtime_t (std::shared_ptr<actor_gateway_
 session_actor_manager_t actor_gateway_runtime_t::manager () const
 {
     return session_actor_manager_t (_state);
+}
+
+actor_gateway_t actor_gateway_runtime_t::gateway () const
+{
+    return actor_gateway_t (_state);
 }
 
 std::vector<relayed_frame_t> actor_gateway_runtime_t::relayed_frames () const

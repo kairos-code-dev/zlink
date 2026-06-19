@@ -20,7 +20,7 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 | 샘플 | 목적 | 서버 구성 | 연결 방식 | Handler 등록 방식 | 기본 payload codec |
 |------|------|-----------|-----------|-------------------|--------------------|
 | [Bingo](bingo/README.ko.md) | session gateway, actor binding, Entry Spot, room Spot, timer, bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Play`, `Registry` 분리 | Registry/Discovery 자동 연결 | typed handler 계약 명시 등록 | Protobuf |
-| [TicTacToe](tictactoe/README.ko.md) | API 서버와 Play 서버만으로 가장 작은 실시간 게임 흐름을 보여 준다. | `Api` 역할 분리, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | 수동 endpoint 연결 | 선언형 등록 우선, 불가능하면 명시 등록 | JSON |
+| [TicTacToe](tictactoe/README.ko.md) | 2개 API와 2개 Play로 수동 endpoint scale-out, Redis 기반 room route 조회, 실시간 게임 흐름을 보여 준다. | `Api` 2개, `Play` 2개, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | 수동 endpoint 연결 + Redis room route store | 선언형 등록 우선, 불가능하면 명시 등록 | JSON |
 | [SupportChat](supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support`, `Registry` 분리 | Registry/Discovery 자동 연결 | typed handler와 domain event publisher | JSON |
 | [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 fanout, 고객 stream push를 확인한다. | `DispatchApi`, `DispatchCenter`, `Courier`, `Tracking`, `Session`, `Registry` 분리 | Registry/Discovery 자동 연결 | channel handler, fanout subscriber, Spot actor join | JSON |
 | ShoppingMall | commerce API가 주문을 시작하고 order workflow가 상태 전이와 projection을 처리한다. | `CommerceApi`, `OrderWorkflow`, `Registry` 분리 | Registry/Discovery 자동 연결 | workflow handler와 projection adapter | JSON |
@@ -30,8 +30,8 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 ## 샘플 포팅 기준
 
 Bingo와 TicTacToe는 각자 맡은 기능을 보여 주는 예외 샘플이다. Bingo는 Protobuf
-payload와 Registry/Discovery 기반 gateway 분리를 보여 주고, TicTacToe는 작은 실시간
-game 흐름을 수동 endpoint 연결로 보여 준다.
+payload와 Registry/Discovery 기반 gateway 분리를 보여 주고, TicTacToe는 Redis room route
+store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
 
 그 밖의 정본 샘플(SupportChat, DeliveryDispatch, ShoppingMall, GameQuest)은
 아래 기준을 따른다.
@@ -47,8 +47,8 @@ game 흐름을 수동 endpoint 연결로 보여 준다.
   샘플마다 handler 목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가
   누락을 client 시나리오가 늦게 발견하게 된다.
 - C++ 샘플은 handler 자동 등록 예외다. C++ framework는 compile-time 타입과 명시 등록을
-  기준으로 삼으므로, C++ 샘플은 같은 메시지·역할·JSON codec·Registry/Discovery 기준을
-  유지하되 handler 등록은 해당 C++ public builder 표면에 맞게 명시한다.
+  기준으로 삼으므로, C++ 샘플은 같은 메시지·역할·JSON codec·연결 방식을 유지하되 handler
+  등록은 해당 C++ public builder 표면에 맞게 명시한다.
 
 ## 공통 작성 원칙
 
@@ -96,7 +96,8 @@ game 흐름을 수동 endpoint 연결로 보여 준다.
   wire 계약이 아닌 값에만 사용한다. 샘플은 짧은 데모보다 여러 언어에서 같은 메시지
   흐름을 비교할 수 있는 가시성을 우선한다.
 - Bingo와 TicTacToe는 같은 기능을 반복해서 보여 주지 않는다. Bingo는 Registry/Discovery를
-  이용한 분리 gateway 구조를, TicTacToe는 수동 endpoint를 쓰는 직접 play 연결 구조를 맡는다.
+  이용한 분리 gateway 구조를, TicTacToe는 수동 endpoint와 Redis room route store를 쓰는
+  scale-out 구조를 맡는다.
 - codec 선택은 샘플의 역할을 방해하지 않도록 단순하게 둔다. Bingo는 여러 언어가 공유하는
   schema가 분명한 Protobuf payload를 맡고, TicTacToe와 나머지 샘플은 읽고 비교하기 쉬운
   JSON payload를 기본으로 둔다. Bingo의 Protobuf 사용도 업무 API 차이가 아니라 dependency와

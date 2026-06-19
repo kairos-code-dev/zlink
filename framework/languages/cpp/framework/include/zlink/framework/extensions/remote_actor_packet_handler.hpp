@@ -19,30 +19,24 @@ class remote_actor_packet_handler_t
     using reply_type = TReply;
 
     using dependency_types =
-      dependency_list_t<detail::spot_node_runtime_t,
-                        detail::actor_gateway_runtime_t,
-                        serializer_registry_t>;
+      dependency_list_t<spot_node_manager_t, actor_gateway_t, serializer_registry_t>;
 
     explicit remote_actor_packet_handler_t (
-      detail::spot_node_runtime_t &spots,
-      detail::actor_gateway_runtime_t &gateway,
+      spot_node_manager_t &spots,
+      actor_gateway_t &gateway,
       serializer_registry_t &serializers) :
         _spots (spots), _gateway (gateway), _serializers (serializers)
     {
     }
 
-    template <typename TSpotRuntime = detail::spot_node_runtime_t,
-              typename TActorGateway = detail::actor_gateway_runtime_t>
     task_t<TReply> handle (const TRequest &request)
     {
         auto actor_ref = actor_ref_t (
           node_rid_t::from_string (request.actor_node_rid),
           request.actor_type, request.actor_id, request.actor_generation);
-        auto &spots = static_cast<TSpotRuntime &> (_spots);
-        auto &gateway = static_cast<TActorGateway &> (_gateway);
-        auto reply = spots.relay_actor_packet (
+        auto reply = _spots.relay_actor_packet (
           actor_ref,
-          gateway.actor_context (actor_ref),
+          _gateway.actor_context (actor_ref),
           request.relayed_packet_name,
           zlink::message_t::from (request.payload),
           _provider,
@@ -55,15 +49,11 @@ class remote_actor_packet_handler_t
         }
 
         TReply response;
-        if (auto actor = spots.template actor_instance<TActor> (actor_ref);
-            actor && !actor->get ().context.actor_ref ().empty ()) {
-            const auto &updated = actor->get ().context.actor_ref ();
-            response.actor_ref_present = true;
-            response.actor_node_rid = std::string (updated.node_rid ().value ());
-            response.actor_type = std::string (updated.actor_type ());
-            response.actor_id = std::string (updated.actor_id ());
-            response.actor_generation = updated.generation ();
-        }
+        response.actor_ref_present = true;
+        response.actor_node_rid = std::string (actor_ref.node_rid ().value ());
+        response.actor_type = std::string (actor_ref.actor_type ());
+        response.actor_id = std::string (actor_ref.actor_id ());
+        response.actor_generation = actor_ref.generation ();
         if (reply.value ()) {
             response.has_reply = true;
             response.reply_payload = reply.value ()->to_bytes ();
@@ -72,8 +62,8 @@ class remote_actor_packet_handler_t
     }
 
   private:
-    detail::spot_node_runtime_t &_spots;
-    detail::actor_gateway_runtime_t &_gateway;
+    spot_node_manager_t &_spots;
+    actor_gateway_t &_gateway;
     serializer_registry_t &_serializers;
     service_provider_t _provider;
 };

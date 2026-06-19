@@ -13,8 +13,6 @@
 #include "Adapters/ZLink/Spots/bingo_room_spot.hpp"
 #include "Application/RoomAllocation/bingo_room_allocator.hpp"
 
-#include "runtime/actors/actor_gateway_runtime.hpp"
-#include "runtime/spots/spot_runtime.hpp"
 #include <zlink/framework/extensions/remote_actor_packet_handler.hpp>
 #include <zlink/codecs/protobuf.hpp>
 
@@ -22,43 +20,6 @@
 
 namespace zlink::samples::bingo
 {
-
-class play_spot_gateway_wiring_service_t final : public zlink::framework::hosted_service_t
-{
-  public:
-    void start (zlink::framework::service_provider_t &provider) override
-    {
-        auto &gateway = provider.get_required<zlink::framework::detail::actor_gateway_runtime_t> ();
-        auto &spots = provider.get_required<zlink::framework::detail::spot_node_runtime_t> ();
-        gateway.on_join_spot ([&spots] (const zlink::framework::actor_ref_t &actor_ref,
-                                        zlink::framework::spot_rid_t spot_rid,
-                                        const zlink::message_t &payload) {
-            (void) spots.get_or_create_spot (sample_names_t::room_spot, spot_rid);
-            auto actor = spots.actor_instance<player_actor_t> (actor_ref);
-            if (!actor) {
-                return zlink::framework::result_t<zlink::framework::detail::actor_join_reply_t>::
-                  failure (zlink::framework::framework_error_kind_t::actor_route_not_found,
-                           "player actor instance is not registered");
-            }
-            return spots.join_actor_to_spot<bingo_room_spot_t> (actor_ref, std::move (spot_rid),
-                                                                actor->get (), payload);
-        });
-        gateway.on_join_entry_spot ([&spots] (const zlink::framework::actor_ref_t &actor_ref,
-                                              zlink::framework::node_rid_t node_rid,
-                                              const zlink::message_t &payload) {
-            auto actor = spots.actor_instance<player_actor_t> (actor_ref);
-            if (!actor) {
-                return zlink::framework::result_t<zlink::framework::detail::actor_join_reply_t>::
-                  failure (zlink::framework::framework_error_kind_t::actor_route_not_found,
-                           "player actor instance is not registered");
-            }
-            return spots.join_actor_to_entry_spot<bingo_entry_spot_t> (
-              actor_ref, std::move (node_rid), actor->get (), payload);
-        });
-    }
-
-    void stop () noexcept override {}
-};
 
 using remote_actor_packet_handler_t =
   zlink::framework::extensions::remote_actor_packet_handler_t<player_actor_t,
@@ -85,7 +46,6 @@ class play_server_host_factory_t
         if (auto_stop) {
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
-        app.add_hosted_service (std::make_unique<play_spot_gateway_wiring_service_t> ());
         app.add_hosted_service (
           std::make_unique<bingo_notification_publisher_hosted_service_t> (notifications));
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {

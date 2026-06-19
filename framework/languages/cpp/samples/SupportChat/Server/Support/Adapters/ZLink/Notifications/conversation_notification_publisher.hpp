@@ -126,7 +126,7 @@ class conversation_notification_publisher_t
     template <typename TNotify> void push (const support_user_actor_t &actor, const TNotify &notify)
     {
         auto send_task = actor.context.bound_session ().send (notify).async ();
-        zlink::framework::detail::observe_task_completion (
+        zlink::framework::observe_task_completion (
           send_task, [] (const zlink::framework::result_t<void> &) {});
     }
 };

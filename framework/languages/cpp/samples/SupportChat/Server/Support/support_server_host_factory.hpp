@@ -6,6 +6,7 @@
 #include "../Configuration/sample_topology.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
+#include "Adapters/ZLink/Actors/support_actor_directory.hpp"
 #include "Adapters/ZLink/Actors/support_user_actor_factory.hpp"
 #include "Adapters/ZLink/Handlers/allocate_conversation_handler.hpp"
 #include "Adapters/ZLink/Handlers/assign_agent_handler.hpp"
@@ -17,56 +18,12 @@
 #include "Application/ConversationAssignment/agent_availability_directory.hpp"
 #include "Application/ConversationAssignment/support_conversation_allocator.hpp"
 
-#include "runtime/actors/actor_gateway_runtime.hpp"
-#include "runtime/spots/spot_runtime.hpp"
 #include <zlink/framework/extensions/remote_actor_packet_handler.hpp>
 
 #include <memory>
 
 namespace zlink::samples::supportchat
 {
-
-// Wires the actor gateway join callbacks to the spot node runtime, creating the
-// ConversationSpot on demand and joining the SupportUserActor. Mirrors the Bingo
-// play server spot gateway wiring.
-class support_spot_gateway_wiring_service_t final : public zlink::framework::hosted_service_t
-{
-  public:
-    void start (zlink::framework::service_provider_t &provider) override
-    {
-        auto &gateway = provider.get_required<zlink::framework::detail::actor_gateway_runtime_t> ();
-        auto &spots = provider.get_required<zlink::framework::detail::spot_node_runtime_t> ();
-        gateway.on_join_spot ([&spots] (const zlink::framework::actor_ref_t &actor_ref,
-                                        zlink::framework::spot_rid_t spot_rid,
-                                        const zlink::message_t &payload) {
-            (void) spots.get_or_create_spot (sample_names_t::conversation_spot, spot_rid, payload);
-            auto actor = spots.actor_instance<support_user_actor_t> (actor_ref);
-            if (!actor) {
-                return zlink::framework::result_t<zlink::framework::detail::actor_join_reply_t>::
-                  failure (zlink::framework::framework_error_kind_t::actor_route_not_found,
-                           "support actor instance is not registered");
-            }
-            auto join_payload =
-              to_stream_payload (join_conversation_req_t{std::string (spot_rid.value ())});
-            return spots.join_actor_to_spot<conversation_spot_t> (actor_ref, std::move (spot_rid),
-                                                                  actor->get (), join_payload);
-        });
-        gateway.on_join_entry_spot ([&spots] (const zlink::framework::actor_ref_t &actor_ref,
-                                              zlink::framework::node_rid_t node_rid,
-                                              const zlink::message_t &payload) {
-            auto actor = spots.actor_instance<support_user_actor_t> (actor_ref);
-            if (!actor) {
-                return zlink::framework::result_t<zlink::framework::detail::actor_join_reply_t>::
-                  failure (zlink::framework::framework_error_kind_t::actor_route_not_found,
-                           "support actor instance is not registered");
-            }
-            return spots.join_actor_to_entry_spot<support_entry_spot_t> (
-              actor_ref, std::move (node_rid), actor->get (), payload);
-        });
-    }
-
-    void stop () noexcept override {}
-};
 
 using remote_actor_packet_handler_t =
   zlink::framework::extensions::remote_actor_packet_handler_t<support_user_actor_t,
@@ -92,7 +49,6 @@ class support_server_host_factory_t
         if (auto_stop) {
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
-        app.add_hosted_service (std::make_unique<support_spot_gateway_wiring_service_t> ());
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
             options.services ()
               .add_singleton<support_conversation_allocator_t> ()

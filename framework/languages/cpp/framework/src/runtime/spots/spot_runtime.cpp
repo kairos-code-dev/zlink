@@ -574,6 +574,13 @@ spot_handler_registry_t &spot_handler_registry_t::add_handler_erased (spot_handl
     return *this;
 }
 
+void spot_handler_registry_t::register_actor_admission_erased (
+  std::type_index actor_type,
+  detail::spot_actor_admission_callbacks_t callbacks)
+{
+    _state->actor_admissions[actor_type] = std::move (callbacks);
+}
+
 std::vector<spot_handler_descriptor_t> spot_handler_registry_t::descriptors () const
 {
     return _state->handlers;
@@ -1021,6 +1028,218 @@ namespace zlink::framework::detail
 spot_node_runtime_t::spot_node_runtime_t (std::shared_ptr<spot_node_builder_state_t> state) :
     _state (std::move (state))
 {
+}
+
+} // namespace zlink::framework::detail
+
+namespace zlink::framework
+{
+
+spot_node_manager_t::spot_node_manager_t () :
+    _state (std::make_shared<detail::spot_node_builder_state_t> (""))
+{
+}
+
+spot_node_manager_t::spot_node_manager_t (
+  std::shared_ptr<detail::spot_node_builder_state_t> state) :
+    _state (std::move (state))
+{
+}
+
+spot_node_manager_t::~spot_node_manager_t () = default;
+spot_node_manager_t::spot_node_manager_t (spot_node_manager_t &&) noexcept = default;
+spot_node_manager_t &spot_node_manager_t::operator= (spot_node_manager_t &&) noexcept = default;
+
+spot_create_result_t spot_node_manager_t::create_spot (std::string spot_name)
+{
+    return detail::spot_node_runtime_t (_state).create_spot (std::move (spot_name));
+}
+
+spot_create_result_t spot_node_manager_t::create_spot (std::string spot_name,
+                                                       zlink::message_t request)
+{
+    return detail::spot_node_runtime_t (_state).create_spot (std::move (spot_name),
+                                                             std::move (request));
+}
+
+spot_create_result_t spot_node_manager_t::get_or_create_spot (std::string spot_name,
+                                                              spot_rid_t spot_rid)
+{
+    return detail::spot_node_runtime_t (_state).get_or_create_spot (std::move (spot_name),
+                                                                    std::move (spot_rid));
+}
+
+spot_create_result_t spot_node_manager_t::get_or_create_spot (std::string spot_name,
+                                                              spot_rid_t spot_rid,
+                                                              zlink::message_t request)
+{
+    return detail::spot_node_runtime_t (_state).get_or_create_spot (
+      std::move (spot_name), std::move (spot_rid), std::move (request));
+}
+
+std::optional<spot_info_t> spot_node_manager_t::find_spot (spot_rid_t spot_rid) const
+{
+    return detail::spot_node_runtime_t (_state).find_spot (std::move (spot_rid));
+}
+
+std::vector<spot_info_t> spot_node_manager_t::list_spots () const
+{
+    return detail::spot_node_runtime_t (_state).list_spots ();
+}
+
+task_t<bool> spot_node_manager_t::close_spot (spot_rid_t spot_rid)
+{
+    return detail::spot_node_runtime_t (_state).close_spot (std::move (spot_rid));
+}
+
+std::optional<std::string> spot_node_manager_t::spot_name_for (spot_rid_t spot_rid) const
+{
+    return detail::spot_node_runtime_t (_state).spot_name_for (std::move (spot_rid));
+}
+
+std::optional<spot_route_t> spot_node_manager_t::resolve_spot (spot_rid_t spot_rid) const
+{
+    return detail::spot_node_runtime_t (_state).resolve_spot (std::move (spot_rid));
+}
+
+result_t<std::optional<zlink::message_t>>
+spot_node_manager_t::relay_actor_packet (const actor_ref_t &actor_ref,
+                                         actor_context_t actor_context,
+                                         std::string_view packet_name,
+                                         const zlink::message_t &message,
+                                         service_provider_t &services,
+                                         serializer_registry_t &serializers,
+                                         spot_actor_message_metadata_t metadata)
+{
+    return detail::spot_node_runtime_t (_state).relay_actor_packet (
+      actor_ref, std::move (actor_context), packet_name, message, services, serializers,
+      std::move (metadata));
+}
+
+} // namespace zlink::framework
+
+namespace zlink::framework::detail
+{
+
+spot_node_manager_t spot_node_runtime_t::manager () const
+{
+    return spot_node_manager_t (_state);
+}
+
+result_t<actor_join_reply_t>
+spot_node_runtime_t::join_actor_to_spot_erased (const actor_ref_t &actor_ref,
+                                                spot_rid_t spot_rid,
+                                                const zlink::message_t &request)
+{
+    if (actor_ref.empty ()) {
+        return result_t<actor_join_reply_t>::failure (framework_error_kind_t::actor_route_not_found,
+                                                      "actor ref is empty");
+    }
+    auto context = find_context (spot_rid);
+    if (!context || !context->_state->spot_instance) {
+        std::optional<std::string> dynamic_spot_name;
+        for (const auto &[spot_name, _] : _state->spot_factories) {
+            if (_state->snapshot.entry_spot_name && spot_name == *_state->snapshot.entry_spot_name) {
+                continue;
+            }
+            if (dynamic_spot_name) {
+                dynamic_spot_name.reset ();
+                break;
+            }
+            dynamic_spot_name = spot_name;
+        }
+        if (dynamic_spot_name) {
+            (void) get_or_create_spot (*dynamic_spot_name, spot_rid, request);
+            context = find_context (spot_rid);
+        }
+        if (!context || !context->_state->spot_instance) {
+            return result_t<actor_join_reply_t>::failure (
+              framework_error_kind_t::spot_route_not_found, "target spot is not registered");
+        }
+    }
+    const auto actor_factory = _state->actor_factories.find (std::string (actor_ref.actor_type ()));
+    if (actor_factory == _state->actor_factories.end ()) {
+        return result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::actor_route_not_found, "actor factory is not registered");
+    }
+    const auto actor = _state->actor_instances.find (actor_key (actor_ref));
+    if (actor == _state->actor_instances.end () || !actor->second) {
+        return result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::actor_route_not_found, "actor instance is not registered");
+    }
+    const auto admission =
+      context->_state->actor_admissions.find (actor_factory->second.actor_type);
+    if (admission == context->_state->actor_admissions.end () || !admission->second.join) {
+        return result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::handler_not_found,
+          "spot actor join callback is not registered");
+    }
+
+    const auto response =
+      admission->second.join (context->_state->spot_instance.get (), actor->second.get (), request);
+    if (!response.accepted) {
+        return result_t<actor_join_reply_t>::success (
+          actor_join_reply_t{1, actor_ref, response.reply.value_or (zlink::message_t{})});
+    }
+
+    const auto key = actor_key (actor_ref);
+    if (const auto previous = _state->actor_spot_rids.find (key);
+        previous != _state->actor_spot_rids.end ()) {
+        if (auto previous_context = find_context (previous->second)) {
+            auto &previous_state = *previous_context->_state;
+            if (previous_state.actor_count > 0) {
+                previous_state.actor_count--;
+            }
+            if (const auto previous_admission =
+                  previous_state.actor_admissions.find (actor_factory->second.actor_type);
+                previous_admission != previous_state.actor_admissions.end ()
+                && previous_admission->second.onLeaveActor && previous_state.spot_instance) {
+                previous_admission->second.onLeaveActor (previous_state.spot_instance.get (),
+                                                         actor->second.get ());
+            }
+        }
+        _state->actor_spot_rids.erase (previous);
+        _state->actor_generations.erase (key);
+    }
+
+    auto &target_state = *context->_state;
+    _state->actor_spot_rids[key] = target_state.spot_rid;
+    _state->actor_generations[key] = actor_ref.generation () + 1;
+    target_state.actor_count++;
+    auto committed = actor_ref_t (
+      node_rid_t::from_string (_state->snapshot.name), std::string (actor_ref.actor_type ()),
+      std::string (actor_ref.actor_id ()), actor_ref.generation () + 1);
+    actor_factory->second.configure_instance (actor->second.get (), committed, nullptr);
+    if (admission->second.entry_spot && _state->actor_created_keys.insert (key).second
+        && admission->second.onCreateActor) {
+        admission->second.onCreateActor (target_state.spot_instance.get (), actor->second.get ());
+    }
+    if (admission->second.on_actor_joined) {
+        admission->second.on_actor_joined (target_state.spot_instance.get (), actor->second.get ());
+    }
+    return result_t<actor_join_reply_t>::success (
+      actor_join_reply_t{0, committed, response.reply.value_or (zlink::message_t{})});
+}
+
+result_t<actor_join_reply_t>
+spot_node_runtime_t::join_actor_to_entry_spot_erased (const actor_ref_t &actor_ref,
+                                                      node_rid_t spot_node_rid,
+                                                      const zlink::message_t &request)
+{
+    if (spot_node_rid.empty () || spot_node_rid.value () != _state->snapshot.name) {
+        return result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::spot_route_not_found, "spot node rid does not match this node");
+    }
+    if (!_state->snapshot.entry_spot_name) {
+        return result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::spot_route_not_found, "entry spot is not registered");
+    }
+    const auto entry_rid = _state->spot_rids_by_name.find (*_state->snapshot.entry_spot_name);
+    if (entry_rid == _state->spot_rids_by_name.end ()) {
+        return result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::spot_route_not_found, "entry spot is not created");
+    }
+    return join_actor_to_spot_erased (actor_ref, entry_rid->second, request);
 }
 
 void spot_node_runtime_t::on_destroy_actor (

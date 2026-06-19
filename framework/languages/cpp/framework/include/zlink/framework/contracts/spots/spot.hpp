@@ -189,6 +189,16 @@ class spot_node_builder_state_t;
 class spot_node_runtime_state_t;
 class spot_node_runtime_t;
 
+struct spot_actor_admission_callbacks_t
+{
+    std::function<spot_actor_join_response_t (void *, void *, const zlink::message_t &)> join;
+    std::function<void (void *, void *)> on_actor_joined;
+    std::function<void (void *, void *)> onCreateActor;
+    std::function<void (void *, void *)> onLeaveActor;
+    std::function<void (void *, void *)> onDisconnectActor;
+    bool entry_spot = false;
+};
+
 template <typename T> struct spot_member_function_traits_t;
 
 template <typename TResult, typename TSpot, typename... TArgs>
@@ -650,7 +660,7 @@ class spot_handler_registry_t
                        "SPOT actor packet context must be spot_actor_send_context_t or "
                        "spot_actor_request_context_t");
         auto registered_packet_name = packet_name;
-        return add_handler_erased (
+        auto &registry = add_handler_erased (
           spot_handler_kind_t::actor_packet, std::move (packet_name), {},
           std::type_index (typeid (spot_type)), std::type_index (typeid (message_type)),
           std::type_index (typeid (actor_type)), std::type_index (typeid (void)),
@@ -674,6 +684,8 @@ class spot_handler_registry_t
                     serializers);
               }
           });
+        registry.template register_actor_admission<spot_type, actor_type> ();
+        return registry;
     }
 
     std::vector<spot_handler_descriptor_t> descriptors () const;
@@ -725,6 +737,60 @@ class spot_handler_registry_t
     friend class detail::spot_node_runtime_t;
     explicit spot_handler_registry_t (std::shared_ptr<detail::spot_context_state_t> state);
 
+    template <typename TSpot, typename TActor> void register_actor_admission ()
+    {
+        detail::spot_actor_admission_callbacks_t callbacks;
+        callbacks.entry_spot = std::is_base_of_v<entry_spot_t, TSpot>;
+        callbacks.join = [] (void *spot, void *actor, const zlink::message_t &request) {
+            auto &typed_spot = *static_cast<TSpot *> (spot);
+            auto &typed_actor = *static_cast<TActor *> (actor);
+            if constexpr (requires {
+                              typed_spot.on_actor_join (typed_actor, request);
+                          }) {
+                return typed_spot.on_actor_join (typed_actor, request);
+            } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot>) {
+                return spot_actor_join_response_t::accept ();
+            } else {
+                return spot_actor_join_response_t::reject ();
+            }
+        };
+        callbacks.on_actor_joined = [] (void *spot, void *actor) {
+            if constexpr (requires {
+                              static_cast<TSpot *> (spot)->on_actor_joined (
+                                *static_cast<TActor *> (actor));
+                          }) {
+                static_cast<TSpot *> (spot)->on_actor_joined (*static_cast<TActor *> (actor));
+            }
+        };
+        callbacks.onCreateActor = [] (void *spot, void *actor) {
+            if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
+                          && requires {
+                                 static_cast<TSpot *> (spot)->onCreateActor (
+                                   *static_cast<TActor *> (actor));
+                             }) {
+                static_cast<TSpot *> (spot)->onCreateActor (*static_cast<TActor *> (actor));
+            }
+        };
+        callbacks.onLeaveActor = [] (void *spot, void *actor) {
+            if constexpr (requires {
+                              static_cast<TSpot *> (spot)->onLeaveActor (
+                                *static_cast<TActor *> (actor));
+                          }) {
+                static_cast<TSpot *> (spot)->onLeaveActor (*static_cast<TActor *> (actor));
+            }
+        };
+        callbacks.onDisconnectActor = [] (void *spot, void *actor) {
+            if constexpr (requires {
+                              static_cast<TSpot *> (spot)->onDisconnectActor (
+                                *static_cast<TActor *> (actor));
+                          }) {
+                static_cast<TSpot *> (spot)->onDisconnectActor (*static_cast<TActor *> (actor));
+            }
+        };
+        register_actor_admission_erased (std::type_index (typeid (TActor)),
+                                         std::move (callbacks));
+    }
+
     spot_handler_registry_t &add_handler_erased (spot_handler_kind_t kind,
                                                  std::string packet_name,
                                                  std::string topic,
@@ -745,7 +811,47 @@ class spot_handler_registry_t
                                             const zlink::message_t &message,
                                             spot_actor_message_metadata_t metadata = {}) const;
 
+    void register_actor_admission_erased (std::type_index actor_type,
+                                          detail::spot_actor_admission_callbacks_t callbacks);
+
     std::shared_ptr<detail::spot_context_state_t> _state;
+};
+
+class spot_node_manager_t
+{
+  public:
+    spot_node_manager_t ();
+    ~spot_node_manager_t ();
+
+    spot_node_manager_t (spot_node_manager_t &&) noexcept;
+    spot_node_manager_t &operator= (spot_node_manager_t &&) noexcept;
+    spot_node_manager_t (const spot_node_manager_t &) = default;
+    spot_node_manager_t &operator= (const spot_node_manager_t &) = default;
+
+    spot_create_result_t create_spot (std::string spot_name);
+    spot_create_result_t create_spot (std::string spot_name, zlink::message_t request);
+    spot_create_result_t get_or_create_spot (std::string spot_name, spot_rid_t spot_rid);
+    spot_create_result_t
+    get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
+    std::optional<spot_info_t> find_spot (spot_rid_t spot_rid) const;
+    std::vector<spot_info_t> list_spots () const;
+    task_t<bool> close_spot (spot_rid_t spot_rid);
+    std::optional<std::string> spot_name_for (spot_rid_t spot_rid) const;
+    std::optional<spot_route_t> resolve_spot (spot_rid_t spot_rid) const;
+    result_t<std::optional<zlink::message_t>>
+    relay_actor_packet (const actor_ref_t &actor_ref,
+                        actor_context_t actor_context,
+                        std::string_view packet_name,
+                        const zlink::message_t &message,
+                        service_provider_t &services,
+                        serializer_registry_t &serializers,
+                        spot_actor_message_metadata_t metadata = {});
+
+  private:
+    friend class detail::spot_node_runtime_t;
+    explicit spot_node_manager_t (std::shared_ptr<detail::spot_node_builder_state_t> state);
+
+    std::shared_ptr<detail::spot_node_builder_state_t> _state;
 };
 
 namespace detail
@@ -907,8 +1013,10 @@ class spot_node_builder_t
                                     typed_actor.set_actor_context (
                                       *static_cast<actor_context_t *> (actor_context));
                                 }) {
-                      typed_actor.set_actor_context (
-                        *static_cast<actor_context_t *> (actor_context));
+                      if (actor_context != nullptr) {
+                          typed_actor.set_actor_context (
+                            *static_cast<actor_context_t *> (actor_context));
+                      }
                   }
               });
         } else {
@@ -926,8 +1034,10 @@ class spot_node_builder_t
                                     typed_actor.set_actor_context (
                                       *static_cast<actor_context_t *> (actor_context));
                                 }) {
-                      typed_actor.set_actor_context (
-                        *static_cast<actor_context_t *> (actor_context));
+                      if (actor_context != nullptr) {
+                          typed_actor.set_actor_context (
+                            *static_cast<actor_context_t *> (actor_context));
+                      }
                   }
               });
         }

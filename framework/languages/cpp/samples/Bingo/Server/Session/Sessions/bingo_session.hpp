@@ -3,8 +3,6 @@
 
 #include "Handlers/authenticate_session_handler.hpp"
 
-#include "runtime/actors/actor_gateway_runtime.hpp"
-
 #include <optional>
 #include <string>
 
@@ -20,12 +18,12 @@ class bingo_session_t final : public zlink::framework::packet_stream_session_t
       zlink::framework::dependency_list_t<zlink::framework::session_actor_manager_t,
                                           zlink::framework::channel_client_t,
                                           authenticate_session_handler_t,
-                                          zlink::framework::detail::actor_gateway_runtime_t>;
+                                          zlink::framework::actor_gateway_t>;
 
     bingo_session_t (zlink::framework::session_actor_manager_t &actors,
                      zlink::framework::channel_client_t &client,
                      authenticate_session_handler_t &authenticate,
-                     zlink::framework::detail::actor_gateway_runtime_t &gateway) :
+                     zlink::framework::actor_gateway_t &gateway) :
         _actors (actors), _client (client), _authenticate (authenticate), _gateway (gateway)
     {
     }
@@ -149,7 +147,7 @@ class bingo_session_t final : public zlink::framework::packet_stream_session_t
     zlink::framework::session_actor_manager_t &_actors;
     zlink::framework::channel_client_t &_client;
     authenticate_session_handler_t &_authenticate;
-    zlink::framework::detail::actor_gateway_runtime_t &_gateway;
+    zlink::framework::actor_gateway_t &_gateway;
     std::optional<std::string> _bound_actor_id;
 };
 

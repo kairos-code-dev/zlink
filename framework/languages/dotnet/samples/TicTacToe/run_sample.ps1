@@ -9,15 +9,14 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 try {
     $basePort = if ($env:TICTACTOE_BASE_PORT) { [int]$env:TICTACTOE_BASE_PORT } else { 0 }
-    $ports = New-SamplePorts -Count 6 -BasePort $basePort
+    $ports = New-SamplePorts -Count 5 -BasePort $basePort
 
     $apiBindUrl = if ($env:TICTACTOE_API_BIND_URL) { $env:TICTACTOE_API_BIND_URL } else { "http://127.0.0.1:$($ports[0])" }
     $apiPublicUrl = if ($env:TICTACTOE_API_PUBLIC_URL) { $env:TICTACTOE_API_PUBLIC_URL } else { $apiBindUrl }
     $apiChannelEndpoint = if ($env:TICTACTOE_API_CHANNEL_ENDPOINT) { $env:TICTACTOE_API_CHANNEL_ENDPOINT } else { "tcp://127.0.0.1:$($ports[1])" }
     $playChannelEndpoint = if ($env:TICTACTOE_PLAY_CHANNEL_ENDPOINT) { $env:TICTACTOE_PLAY_CHANNEL_ENDPOINT } else { "tcp://127.0.0.1:$($ports[2])" }
-    $playRouterEndpoint = if ($env:TICTACTOE_PLAY_ROUTER_ENDPOINT) { $env:TICTACTOE_PLAY_ROUTER_ENDPOINT } else { "tcp://127.0.0.1:$($ports[3])" }
-    $playEndpoint = if ($env:TICTACTOE_PLAY_ENDPOINT) { $env:TICTACTOE_PLAY_ENDPOINT } else { "tcp://127.0.0.1:$($ports[4])" }
-    $spotEndpoint = if ($env:TICTACTOE_SPOT_ENDPOINT) { $env:TICTACTOE_SPOT_ENDPOINT } else { "tcp://127.0.0.1:$($ports[5])" }
+    $playEndpoint = if ($env:TICTACTOE_PLAY_ENDPOINT) { $env:TICTACTOE_PLAY_ENDPOINT } else { "tcp://127.0.0.1:$($ports[3])" }
+    $spotEndpoint = if ($env:TICTACTOE_SPOT_ENDPOINT) { $env:TICTACTOE_SPOT_ENDPOINT } else { "tcp://127.0.0.1:$($ports[4])" }
     $configFile = Join-Path $RunDir "appsettings.json"
 
     $settings = @{
@@ -26,7 +25,6 @@ try {
             ApiPublicUrl = $apiPublicUrl
             ApiChannelEndpoint = $apiChannelEndpoint
             PlayChannelEndpoint = $playChannelEndpoint
-            PlayRouterEndpoint = $playRouterEndpoint
             PlayEndpoint = $playEndpoint
             SpotEndpoint = $spotEndpoint
             LogDirectory = $LogDir
@@ -39,7 +37,6 @@ try {
     Start-SampleDotnetAssembly -Name "play" -Project (Join-Path $ScriptDir "Server/TicTacToe.Server.csproj") -LogDirectory $LogDir -Arguments @("play", "--config", $configFile) | Out-Null
     Wait-SampleTcpEndpoint "play-stream" $playEndpoint
     Wait-SampleTcpEndpoint "play-channel" $playChannelEndpoint
-    Wait-SampleTcpEndpoint "play-router" $playRouterEndpoint
 
     Start-SampleDotnetAssembly -Name "api" -Project (Join-Path $ScriptDir "Server/TicTacToe.Server.csproj") -LogDirectory $LogDir -Arguments @("api", "--config", $configFile) | Out-Null
     Wait-SampleTcpEndpoint "api-http" $apiBindUrl

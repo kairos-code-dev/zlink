@@ -33,7 +33,7 @@ typedef int zlink_fd_t;
 
 ### zlink_poller_source_kind_t
 
-폴러 이벤트를 생성한 소스의 종류를 식별합니다.
+poller 이벤트를 생성한 소스의 종류를 식별합니다.
 
 ```c
 typedef enum zlink_poller_source_kind_t
@@ -73,7 +73,7 @@ typedef struct zlink_pollitem_t
 
 ### zlink_poller_event_t
 
-폴러 API가 반환하는 이벤트 구조체입니다.
+poller API가 반환하는 이벤트 구조체입니다.
 
 ```c
 typedef struct zlink_poller_event_t
@@ -90,9 +90,9 @@ typedef struct zlink_poller_event_t
 | 필드 | 설명 |
 |------|------|
 | `source_kind` | 이벤트를 트리거한 소스의 종류 |
-| `socket` | zlink 소켓 핸들 (`source_kind`가 `SOCKET`일 때 유효) |
-| `fd` | 네이티브 파일 디스크립터 (`source_kind`가 `FD`일 때 유효) |
-| `timer` | 타이머 핸들 (`source_kind`가 `TIMER`일 때 유효) |
+| `socket` | zlink 소켓 핸들 (`source_kind`가 `ZLINK_POLLER_SOURCE_SOCKET`일 때 유효) |
+| `fd` | 네이티브 파일 디스크립터 (`source_kind`가 `ZLINK_POLLER_SOURCE_FD`일 때 유효) |
+| `timer` | 타이머 핸들 (`source_kind`가 `ZLINK_POLLER_SOURCE_TIMER`일 때 유효) |
 | `user_data` | 소스 등록 시 제공된 불투명 포인터 |
 | `events` | 발생한 이벤트의 비트마스크 |
 
@@ -121,12 +121,12 @@ typedef enum zlink_poller_event_flag_e
 | 상수 | 값 | 설명 |
 |------|----|------|
 | `ZLINK_POLLIN` | 1 | 읽기 가능한 데이터가 있음 |
-| `ZLINK_POLLOUT` | 2 | 송신 재시도 준비 신호. 해당 핸들이 backpressure(배압) 상태에서 벗어나 송신을 다시 시도할 가치가 있음을 뜻합니다. transport가 단순히 writable하다는 뜻이 아니며, 재시도 성공을 보장하지도 않습니다. `zlink_send_ready_handler()` 콜백과 동일한 readiness 축을 공유합니다. `ZLINK_SUBMIT_BACKPRESSURED` 이후 이 신호가 관찰되면 재시도할 수 있지만, 재시도가 다시 `BACKPRESSURED`로 실패할 수도 있습니다. |
+| `ZLINK_POLLOUT` | 2 | 송신 재시도 준비 신호. 해당 핸들이 backpressure 상태에서 벗어나 송신을 다시 시도할 가치가 있음을 뜻합니다. transport가 단순히 writable하다는 뜻이 아니며, 재시도 성공을 보장하지도 않습니다. `zlink_send_ready_handler()` 콜백과 동일한 readiness 축을 공유합니다. `ZLINK_SUBMIT_BACKPRESSURED` 이후 이 신호가 관찰되면 재시도할 수 있지만, 재시도가 다시 `ZLINK_SUBMIT_BACKPRESSURED`로 실패할 수도 있습니다. |
 | `ZLINK_POLLERR` | 4 | 디스크립터에서 오류 발생 |
 | `ZLINK_POLLPRI` | 8 | 긴급/우선순위 데이터 사용 가능 |
 | `ZLINK_POLLITEMS_DFLT` | 16 | 기본 poll-item 배열 크기 |
-| `ZLINK_POLLCOMPLETION` | 32 | request/reply 완료 readiness. 반드시 단독으로 등록해야 하며(다른 이벤트 플래그와 결합하면 `EINVAL`로 실패), request 가능한 소켓(`DEALER`/`ROUTER`)에만 유효합니다. |
-| `ZLINK_HAVE_POLLER` | 1 | 폴러 지원이 포함되어 컴파일됨 |
+| `ZLINK_POLLCOMPLETION` | 32 | request/reply 완료 readiness. 반드시 단독으로 등록해야 하며(다른 이벤트 플래그와 결합하면 `ZLINK_CONFIG_INVALID_ARGUMENT` 반환, 내부 진단 errno는 `EINVAL`), request 가능한 소켓(`ZLINK_SOCKET_DEALER`/`ZLINK_SOCKET_ROUTER`)에만 유효합니다. |
+| `ZLINK_HAVE_POLLER` | 1 | poller 지원이 포함되어 컴파일됨 |
 
 ## 함수 -- 배열 Poll
 
@@ -168,23 +168,23 @@ int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_, zlink_conf
 
 ---
 
-## 함수 -- 폴러 API
+## 함수 -- poller API
 
-폴러는 `zlink_poll`을 보완하는 객체 기반 API입니다. 단일 이벤트 루프에서 소켓,
+poller는 `zlink_poll`을 보완하는 객체 기반 API입니다. 단일 이벤트 루프에서 소켓,
 네이티브 파일 디스크립터, 타이머를 지원합니다.
 
 ### zlink_poller_new
 
-새 폴러 인스턴스를 생성합니다.
+새 poller 인스턴스를 생성합니다.
 
 ```c
 void *zlink_poller_new (void);
 ```
 
-불투명 폴러 핸들을 할당하고 반환합니다. 더 이상 필요하지 않으면
+불투명 poller 핸들을 할당하고 반환합니다. 더 이상 필요하지 않으면
 `zlink_poller_destroy`로 파괴합니다.
 
-**반환값:** 성공 시 폴러 핸들, 실패 시 `NULL` (errno가 설정됨).
+**반환값:** 성공 시 poller 핸들, 실패 시 `NULL` (errno가 설정됨).
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
@@ -194,17 +194,17 @@ void *zlink_poller_new (void);
 
 ### zlink_poller_destroy
 
-폴러를 파괴하고 리소스를 해제합니다.
+poller를 파괴하고 리소스를 해제합니다.
 
 ```c
 zlink_close_result_t zlink_poller_destroy (void **poller_p_);
 ```
 
-폴러 핸들을 해제합니다. 파괴 후 `*poller_p_`의 포인터는 `NULL`로 설정됩니다.
+poller 핸들을 해제합니다. 파괴 후 `*poller_p_`의 포인터는 `NULL`로 설정됩니다.
 
 **반환값:** 성공 시 `ZLINK_CLOSE_OK`, 실패 시 `zlink_close_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**스레드 안전성:** 다른 스레드가 동일한 폴러를 사용 중일 때 호출해서는 안 됩니다.
+**스레드 안전성:** 다른 스레드가 동일한 poller를 사용 중일 때 호출해서는 안 됩니다.
 
 **참고:** `zlink_poller_new`
 
@@ -212,7 +212,7 @@ zlink_close_result_t zlink_poller_destroy (void **poller_p_);
 
 ### zlink_poller_size
 
-폴러에 등록된 소스의 수를 반환합니다.
+poller에 등록된 소스의 수를 반환합니다.
 
 ```c
 int zlink_poller_size (void *poller_, zlink_config_result_t *error_out_);
@@ -225,19 +225,19 @@ int zlink_poller_size (void *poller_, zlink_config_result_t *error_out_);
 `*error_out_`에 `zlink_config_result_t`가 기록됩니다. `zlink_errno()`는
 진단용 내부 errno를 그대로 유지합니다.
 
-**스레드 안전성:** 동일한 폴러에서 추가/제거 작업과 동시에 호출해서는 안 됩니다.
+**스레드 안전성:** 동일한 poller에서 추가/제거 작업과 동시에 호출해서는 안 됩니다.
 
 ---
 
 ### zlink_poller_add
 
-zlink 소켓을 폴러에 등록합니다.
+zlink 소켓을 poller에 등록합니다.
 
 ```c
 zlink_config_result_t zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_);
 ```
 
-`socket_`을 폴러에 추가하고 `events_`에 지정된 이벤트를 모니터링합니다.
+`socket_`을 poller에 추가하고 `events_`에 지정된 이벤트를 모니터링합니다.
 `user_data_` 포인터는 저장되어 이벤트 발생 시 `zlink_poller_event_t`에
 반환됩니다.
 라이브러리는 `user_data_` 값을 해석하지 않으며, 호출자는 이 값을 정수 slot 같은
@@ -247,14 +247,14 @@ zlink_config_result_t zlink_poller_add (void *poller_, void *socket_, void *user
 
 | 이름 | 설명 |
 |------|------|
-| `poller_` | 폴러 핸들 |
+| `poller_` | poller 핸들 |
 | `socket_` | 모니터링할 zlink 소켓 |
 | `user_data_` | 이벤트와 함께 반환되는 불투명 포인터 |
 | `events_` | 이벤트 마스크 (`ZLINK_POLLIN`, `ZLINK_POLLOUT` 등) |
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
+**스레드 안전성:** 동일한 poller에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
 **참고:** `zlink_poller_modify`, `zlink_poller_remove`
 
@@ -272,7 +272,7 @@ zlink_config_result_t zlink_poller_modify (void *poller_, void *socket_, short e
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
+**스레드 안전성:** 동일한 poller에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
 **참고:** `zlink_poller_add`
 
@@ -280,7 +280,7 @@ zlink_config_result_t zlink_poller_modify (void *poller_, void *socket_, short e
 
 ### zlink_poller_remove
 
-폴러에서 zlink 소켓을 제거합니다.
+poller에서 zlink 소켓을 제거합니다.
 
 ```c
 zlink_config_result_t zlink_poller_remove (void *poller_, void *socket_);
@@ -290,7 +290,7 @@ zlink_config_result_t zlink_poller_remove (void *poller_, void *socket_);
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
+**스레드 안전성:** 동일한 poller에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
 **참고:** `zlink_poller_add`
 
@@ -298,7 +298,7 @@ zlink_config_result_t zlink_poller_remove (void *poller_, void *socket_);
 
 ### zlink_poller_add_fd
 
-네이티브 파일 디스크립터를 폴러에 등록합니다.
+네이티브 파일 디스크립터를 poller에 등록합니다.
 
 ```c
 zlink_config_result_t zlink_poller_add_fd (void *poller_, zlink_fd_t fd_, void *user_data_, short events_);
@@ -310,14 +310,14 @@ zlink_config_result_t zlink_poller_add_fd (void *poller_, zlink_fd_t fd_, void *
 
 | 이름 | 설명 |
 |------|------|
-| `poller_` | 폴러 핸들 |
+| `poller_` | poller 핸들 |
 | `fd_` | 네이티브 파일 디스크립터 |
 | `user_data_` | 이벤트와 함께 반환되는 불투명 포인터 |
 | `events_` | 이벤트 마스크 |
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
+**스레드 안전성:** 동일한 poller에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
 **참고:** `zlink_poller_modify_fd`, `zlink_poller_remove_fd`
 
@@ -325,26 +325,26 @@ zlink_config_result_t zlink_poller_add_fd (void *poller_, zlink_fd_t fd_, void *
 
 ### zlink_poller_add_timer
 
-타이머를 폴러에 등록합니다.
+타이머를 poller에 등록합니다.
 
 ```c
 zlink_config_result_t zlink_poller_add_timer (void *poller_, void *timer_, void *user_data_);
 ```
 
-타이머 핸들 `timer_`를 폴러에 추가합니다. 타이머가 발동하면 폴러는
+타이머 핸들 `timer_`를 poller에 추가합니다. 타이머가 발동하면 poller는
 `source_kind`가 `ZLINK_POLLER_SOURCE_TIMER`로 설정된 이벤트를 반환합니다.
 
 **매개변수:**
 
 | 이름 | 설명 |
 |------|------|
-| `poller_` | 폴러 핸들 |
+| `poller_` | poller 핸들 |
 | `timer_` | 타이머 핸들 (`zlink_timer_new` 또는 `zlink_spot_timer_new`에서 반환) |
 | `user_data_` | 이벤트와 함께 반환되는 불투명 포인터 |
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
+**스레드 안전성:** 동일한 poller에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
 **참고:** `zlink_poller_remove_timer`
 
@@ -362,7 +362,7 @@ zlink_config_result_t zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, sho
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
+**스레드 안전성:** 동일한 poller에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
 **참고:** `zlink_poller_add_fd`
 
@@ -370,7 +370,7 @@ zlink_config_result_t zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, sho
 
 ### zlink_poller_remove_fd
 
-폴러에서 파일 디스크립터를 제거합니다.
+poller에서 파일 디스크립터를 제거합니다.
 
 ```c
 zlink_config_result_t zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
@@ -380,7 +380,7 @@ zlink_config_result_t zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
+**스레드 안전성:** 동일한 poller에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
 **참고:** `zlink_poller_add_fd`
 
@@ -388,17 +388,17 @@ zlink_config_result_t zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
 
 ### zlink_poller_remove_timer
 
-폴러에서 타이머를 제거합니다.
+poller에서 타이머를 제거합니다.
 
 ```c
 zlink_config_result_t zlink_poller_remove_timer (void *poller_, void *timer_);
 ```
 
-타이머의 등록을 해제합니다. 더 이상 폴러 이벤트를 생성하지 않습니다.
+타이머의 등록을 해제합니다. 더 이상 poller 이벤트를 생성하지 않습니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
+**스레드 안전성:** 동일한 poller에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
 **참고:** `zlink_poller_add_timer`
 
@@ -424,7 +424,7 @@ int zlink_poller_wait (void *poller_,
 
 성공 시 반환값 `n`은 이번 호출에서 `events_[0]`부터 실제 기록한 이벤트 개수입니다.
 반환값은 `n_events_`보다 클 수 없습니다. 호출자는 `events_[0:n]` 범위만 읽어야
-하며, 그 뒤 영역은 유효한 결과로 보장되지 않습니다. 폴러는 준비된 이벤트만 앞쪽에
+하며, 그 뒤 영역은 유효한 결과로 보장되지 않습니다. poller는 준비된 이벤트만 앞쪽에
 채우며, 전체 등록 소스 수나 전체 ready 수를 별도로 반환하지 않습니다.
 각 이벤트의 `user_data` 필드는 등록 시 전달한 값을 그대로 돌려주므로, 호출자는
 socket/timer 핸들 비교 대신 이 값을 빠른 dispatch key로 사용할 수 있습니다.
@@ -436,7 +436,7 @@ socket/timer 핸들 비교 대신 이 값을 빠른 dispatch key로 사용할 �
 
 | 이름 | 설명 |
 |------|------|
-| `poller_` | 폴러 핸들 |
+| `poller_` | poller 핸들 |
 | `events_` | 채울 이벤트 구조체 배열 |
 | `n_events_` | 반환할 최대 이벤트 수 |
 | `timeout_` | 최대 대기 시간(밀리초); `0`이면 즉시, `-1`이면 무한 대기 |
@@ -451,7 +451,7 @@ socket/timer 핸들 비교 대신 이 값을 빠른 dispatch key로 사용할 �
 - `ZLINK_CONFIG_INVALID_ARGUMENT` -- `events_`가 유효하지 않거나 `n_events_`가
   1보다 작습니다.
 
-**스레드 안전성:** 동일한 폴러에서 다른 작업과 동시에 호출해서는 안 됩니다.
+**스레드 안전성:** 동일한 poller에서 다른 작업과 동시에 호출해서는 안 됩니다.
 
 ---
 

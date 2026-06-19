@@ -227,6 +227,14 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           },
           service_lifetime_t::scoped);
     }
+    if (!_state->services.contains (std::type_index (typeid (actor_gateway_t)))) {
+        _state->services.add_factory<actor_gateway_t> (
+          [] (service_provider_t &provider) {
+              return std::make_unique<actor_gateway_t> (
+                provider.get_required<detail::actor_gateway_runtime_t> ().gateway ());
+          },
+          service_lifetime_t::scoped);
+    }
     _state->services.add_singleton<channel_client_t> (
       std::make_unique<channel_client_t> (_state->zlink.message_bus ()));
     if (!_state->services.contains (std::type_index (typeid (serializer_registry_t)))) {
@@ -273,6 +281,10 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             _state->services.add_singleton<detail::spot_node_runtime_t> (
               std::make_unique<detail::spot_node_runtime_t> (*runtime));
         }
+        if (!_state->services.contains (std::type_index (typeid (spot_node_manager_t)))) {
+            _state->services.add_singleton<spot_node_manager_t> (
+              std::make_unique<spot_node_manager_t> (runtime->manager ()));
+        }
         auto framework_provider = _state->services.build_provider ();
         auto &actor_gateway = framework_provider.get_required<detail::actor_gateway_runtime_t> ();
         runtime->on_destroy_actor ([&actor_gateway] (const actor_ref_t &actor_ref) {
@@ -281,6 +293,17 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         runtime->on_actor_ref_updated ([&actor_gateway] (const actor_ref_t &actor_ref) {
             return actor_gateway.update_actor_ref (actor_ref);
         });
+        actor_gateway.on_join_spot (
+          [runtime = *runtime] (const actor_ref_t &actor_ref, spot_rid_t spot_rid,
+                                const zlink::message_t &payload) mutable {
+              return runtime.join_actor_to_spot_erased (actor_ref, std::move (spot_rid), payload);
+          });
+        actor_gateway.on_join_entry_spot (
+          [runtime = *runtime] (const actor_ref_t &actor_ref, node_rid_t node_rid,
+                                const zlink::message_t &payload) mutable {
+              return runtime.join_actor_to_entry_spot_erased (actor_ref, std::move (node_rid),
+                                                              payload);
+          });
         actor_gateway.on_relay (
           [runtime = *runtime, services = &_state->services, serializers = &_state->serializers] (
             const actor_ref_t &actor_ref, actor_context_t actor_context,

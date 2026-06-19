@@ -8,8 +8,6 @@
 
 #include <zlink/framework.hpp>
 
-#include "runtime/spots/spot_runtime.hpp"
-
 namespace zlink::samples::tictactoe
 {
 
@@ -21,12 +19,12 @@ class create_game_handler_t
     using dependency_types =
       zlink::framework::dependency_list_t<tictactoe_game_creator_t,
                                           sample_topology_t,
-                                          zlink::framework::detail::spot_node_runtime_t>;
+                                          zlink::framework::spot_node_manager_t>;
     static constexpr const char *topic_name = "CreateGame";
 
     create_game_handler_t (tictactoe_game_creator_t &creator,
                            sample_topology_t &topology,
-                           zlink::framework::detail::spot_node_runtime_t &spots) :
+                           zlink::framework::spot_node_manager_t &spots) :
         _creator (creator), _topology (topology), _spots (spots)
     {
     }
@@ -49,7 +47,7 @@ class create_game_handler_t
   private:
     tictactoe_game_creator_t &_creator;
     sample_topology_t &_topology;
-    zlink::framework::detail::spot_node_runtime_t &_spots;
+    zlink::framework::spot_node_manager_t &_spots;
 };
 
 } // namespace zlink::samples::tictactoe

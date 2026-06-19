@@ -33,7 +33,7 @@ ZMP(zlink Message Protocol)는 zlink가 wire 위에서 쓰는 프레이밍 프�
 | VERSION | 1 | 1B | `0x01` |
 | FLAGS | 2 | 1B | 프레임 플래그(아래) |
 | RESERVED | 3 | 1B | `0x00` |
-| PAYLOAD SIZE | 4–7 | 4B | 페이로드 길이, **Big Endian** 32비트 |
+| PAYLOAD SIZE | 4–7 | 4B | payload 길이, **Big Endian** 32비트 |
 
 멀티바이트 정수는 Big Endian이다.
 
@@ -47,8 +47,9 @@ ZMP(zlink Message Protocol)는 zlink가 wire 위에서 쓰는 프레이밍 프�
 | 3 | SUBSCRIBE | `0x08` | 구독 요청(PUB/SUB) |
 | 4 | CANCEL | `0x10` | 구독 취소 |
 
-`CONTROL`과 `IDENTITY`는 동시 설정 불가, `CONTROL`과 `MORE`도 동시 설정 불가,
-`SUBSCRIBE`와 `CANCEL`은 상호 배타다(디코더가 검증).
+`CONTROL`과 `IDENTITY`는 동시 설정 불가, `CONTROL`과 `MORE`도 동시 설정 불가.
+`SUBSCRIBE` 또는 `CANCEL`이 설정된 frame은 그 bit 하나만 설정한다(둘은 상호 배타이며
+다른 flag와 함께 올 수 없다; 디코더가 검증).
 
 ## 3. 연결 핸드셰이크
 
@@ -63,25 +64,27 @@ Client ──── HELLO ────▶ Server
 ```
 
 control part 타입: `HELLO`(인사) · `READY`(메타데이터 교환) · `HEARTBEAT` /
-`HEARTBEAT_ACK` · `ERROR`. HELLO는 socket type과 routing id를 싣고 READY는 소켓
-타입과 routing id 속성을 교환한다. 정확한 페이로드 레이아웃은 internals를 본다.
+`HEARTBEAT_ACK` · `ERROR`. HELLO는 socket type과 routing id를 싣는다. READY는
+기본적으로 control type만 보내고, `ZLINK_OPT_ZMP_METADATA`가 켜진 경우에만
+`Socket-Type`/`Routing-Id` 속성을 싣는다(기본값 off). 정확한 payload 레이아웃은 internals를 본다.
 
 ## 4. 상위 envelope (요청/응답 · SPOT routed)
 
 ZMP 데이터 프레임 위에서, 요청/응답과 SPOT 라우팅은 **멀티파트 control part**를
-페이로드 앞에 덧붙이는 방식으로 구현한다(메시지 구조에 끼워 넣지 않음).
+payload 앞에 덧붙이는 방식으로 구현한다(메시지 구조에 끼워 넣지 않음).
 
-- **요청/응답 envelope**: 페이로드 앞에 4개 control part(protocol id · version ·
+- **요청/응답 envelope**: payload 앞에 4개 control part(protocol id · version ·
   message type[request/reply/error] · request seq[8B BE uint64]).
-- **SPOT routed envelope**: source/destination의 class·node rid·endpoint rid를
-  담는 control part. SPOT 요청/응답은 두 envelope이 함께 쌓인다.
+- **SPOT routed envelope**: protocol/version/class·node rid·endpoint rid를 하나의
+  packed header part에 담는다. SPOT 요청/응답은 이 header part 1개 뒤에 요청/응답
+  control part 4개와 payload가 따른다.
 
 정확한 part 수와 바이트 레이아웃, 인코딩 순서는
 [internals/protocol-zmp](../internals/protocol-zmp.ko.md) §3~6이 정식으로 정의한다.
 
 ## 5. VSM과 wire의 관계
 
-VSM(Very Small Message, 33바이트 이하 inline 저장)은 **메모리 최적화일 뿐 wire
+VSM(Very Small Message, 64-bit에서 41바이트 이하 inline 저장)은 **메모리 최적화일 뿐 wire
 형식에 영향이 없다.** 헤더의 PAYLOAD SIZE가 항상 길이를 담으므로, 수신 측은 송신
 측이 inline 저장을 썼는지 알 필요가 없다([설계 근거](design-rationale.ko.md)).
 

@@ -15,8 +15,7 @@ builder 정의** 를 한곳에 모아 두는 카탈로그다.
 이 문서는 [.NET Interface Catalog](../../dotnet/spec/handler-interfaces.ko.md)
 를 TypeScript / NestJS 표면으로 옮긴 결과다. 번역 규칙은
 [.NET → Node.js 표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)
-이 소유한다. 두 문서의 표기가 어긋나면 dotnet **코드**
-(`framework/languages/dotnet/src/Zlink.Framework/Contracts/`)가 기능의 최종 기준이다.
+이 소유한다. 표기가 어긋나면 `framework/languages/node` 코드가 기준이다.
 
 이 문서대로 구현하면 .NET 버전과 **동일한 계약 표면**(contract surface)을 가진 Node.js
 framework 가 나온다. 개념·의미론·동작은 dotnet 과 동일하고, 표면만 NestJS / TypeScript
@@ -758,18 +757,18 @@ export interface ZLinkStreamError {
 export interface ZLinkSession {
   readonly context: ZLinkSessionContext;
 
-  onConnected(): Promise<void>;
+  onConnected?(context: ZLinkSessionContext): Promise<void>;
 
-  onDisconnected(): Promise<void>;
+  onDisconnected?(context: ZLinkSessionContext): Promise<void>;
 
-  onError(error: ZLinkStreamError): Promise<void>;
+  onError?(context: ZLinkSessionContext, error: ZLinkStreamError): Promise<void>;
 
   /**
    * framework 가 decode 한 ZlinkStreamHeader 와 Message payload 를 받는다.
    * payload 는 callback 동안 borrowed 이다. 읽거나 relay 로 넘길 수 있지만,
    * callback 뒤에도 보관할 때만 별도 copy/move 한다.
    */
-  onDispatch?(header: ZlinkStreamHeader, payload: Message): Promise<void>;
+  onDispatch?(header: ZlinkStreamHeader, payload: Message, signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkSessionContext {
@@ -905,7 +904,7 @@ export interface ZLinkActorContext {
   readonly boundSession: ZLinkBoundSession;
 
   getSpot(): ZLinkSpot;
-  getSpotAs<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): TSpot;
+  getSpot<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): TSpot;
 
   joinSpot<TRequest>(spotRid: RoutingId, request: TRequest): ZLinkActorJoinSpotCall;
 
@@ -944,7 +943,7 @@ export interface ZLinkActorManager {
 > 가 아니라 `ZLinkActorJoinResult<TReply>`(resultCode + ActorRef + reply)를 반환한다.
 > `IZLinkActorContext` 는 generic `GetSpot<TSpot>()` 오버로드와 `JoinEntrySpot(..., request)` 을
 > 가진다. C# overload 가 TS 에서 generic method overload 로 표현되지 않는 부분은
-> `getSpot()` / `getSpotAs<TSpot>(spotType)` 로 분리했다. 의미는 dotnet 과 동일하다.
+> `getSpot()` / `getSpot<TSpot>(spotType)` 로 분리했다. 의미는 dotnet 과 동일하다.
 
 ##### actor join callback
 

@@ -6,11 +6,10 @@
 
 [C++ 묶음](../README.ko.md) | [STREAM](../spec/cpp-stream.ko.md)
 
-# Draft -- C++ STREAM Decisions
+# C++ STREAM Decisions
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `C++` `STREAM`에서 `.NET` framework와 맞춰 닫은
-> 결정을 정리한다.
+> 이 문서는 `C++` `STREAM`의 wire 의미와 host 동작 결정을 정리한다. 기준은
+> `framework/languages/cpp` 구현이다.
 
 framework core에서 `STREAM`은 packet 방식만 지원하고, Header는 framework가 정의한
 `stream_header_t` 방식만 지원한다. raw stream session과 사용자 정의 Header framing은
@@ -23,11 +22,11 @@ core public 표면 밖의 extension 검토 범위다.
   `content_type`, `correlation_id` 같은 사용 편의 accessor를 제공할 수 있지만, wire
   의미는 `.NET`의 `ZlinkStreamHeader`와 맞춘다.
 - Header decode나 semantic validation에 실패한 packet은 application handler로 넘기지
-  않는다. session에 귀속할 수 있는 transport 오류는 `on_error(...)`로 올리고,
-  handshake 실패처럼 session을 만들 수 없는 오류는 runtime monitoring에만 남긴다.
-- `stream_t::write_packet(...)`은 `stream_write_call_t`를 반환한다. timeout,
-  disconnected, backpressure 실패는 다른 framework call object와 같은 `result_t<void>`
-  또는 `framework_exception_t` 규칙을 따른다.
+  않는다. 현재 host는 이 실패를 `result_t` failure로 끝낸 뒤 예외를 삼키고
+  `on_disconnected(...)`만 호출한다(`on_error` dispatch/monitoring publish 경로는 미연결).
+- `stream_t::write_packet(...)`은 `stream_write_call_t`를 반환한다. 현재 write 경로는
+  timeout 값을 저장만 하고 사용하지 않으며, 실패는 `disconnected`/writer 반환 실패로
+  나타난다(별도 backpressure 처리 경로는 미구현).
 - host lifecycle은 STREAM session lifecycle을 소유한다. session은 connect 시 scope를
   만들고, `on_disconnected(...)`와 binding cleanup이 끝난 뒤 scope를 닫는다.
 - `on_error(...)`는 application handler 예외를 받지 않는다. monitor에서 관찰 가능한

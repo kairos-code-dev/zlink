@@ -6,11 +6,10 @@
 
 [Framework Adapter 정책](../../common/README.ko.md) | [구현 계획](cpp-framework-implementation-plan.ko.md) | [POSD 기록](cpp-framework-posd-refactoring-log.ko.md) | [C++ 정책](cpp-framework-policy.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/cpp-channel-messaging.ko.md) | [channel 샘플](channel-messaging-samples.ko.md) | [SPOT](../spec/cpp-spot.ko.md) | [SPOT 샘플](spot-samples.ko.md) | [ActorGateway relay](../spec/actor-gateway-session-relay.ko.md) | [Stage wrapper](../spec/stage-wrapper-on-spot.ko.md) | [STREAM](../spec/cpp-stream.ko.md) | [STREAM decisions](stream-open-items.ko.md) | [STREAM Connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md) | [HTTP Client](../../../http-client/cpp/spec/cpp-http-client.ko.md) | [HTTP Hosting](../spec/cpp-http-hosting.ko.md) | [Embedded HTTP Server](../spec/cpp-embedded-http-server.ko.md) | [STREAM 샘플](stream-samples.ko.md) | [Monitoring](../spec/cpp-monitoring.ko.md) | [Registry](../spec/cpp-registry.ko.md)
 
-# Draft -- ZLink Framework For C++
+# ZLink Framework For C++
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `C++`에서 `ZLink Framework`를 어떤 모양으로 노출할지
-> 정리하기 위한 문서다.
+> 이 문서는 `C++` `ZLink Framework`의 public API와 runtime 구조 overview다.
+> 기준은 `framework/languages/cpp` 구현이다.
 
 ## 1. 목적
 

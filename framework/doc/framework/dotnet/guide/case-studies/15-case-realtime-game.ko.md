@@ -155,8 +155,7 @@ options.AddActorFactory<PlayerActorFactory>("player");
 > protocol 위 다국어 binding 이라 한 시스템을 여러 언어로 섞을 수 있다. 예컨대
 > **room/match 로직은 C++**(고성능 tick), **API·매치메이킹은 .NET 또는 Java** 로
 > 두고 **같은 channel/spot/packet 계약**으로 상호 호출한다. 계약은 packet 이름 +
-> codec DTO(교차 언어는 protobuf 권장)다([12 §2.1](../12-grpc-alternative.ko.md);
-> 현재 `.NET` reference, C++/Java/Node 1차 개발 중).
+> codec DTO(교차 언어는 protobuf 권장)다([12 §2.1](../12-grpc-alternative.ko.md)).
 
 ## 4. 양쪽 코드 비교 — "한 수 두기" 경로
 
@@ -240,11 +239,11 @@ sequenceDiagram
   participant S as Session 서버
   participant P as Play 서버
   C->>S: STREAM connect + auth
-  S->>P: BindActorHandle by actorId
+  S->>P: BindAsync (actor id 기준)
   C->>S: PlaceMark
-  S->>P: RelayToActor
+  S->>P: RelayAsync
   P->>P: room SPOT 단일 큐 직렬 처리
-  P-->>S: BoundSession push
+  P-->>S: BoundSession.Send
   S-->>C: STREAM push
 ```
 

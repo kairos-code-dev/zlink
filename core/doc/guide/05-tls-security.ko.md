@@ -60,7 +60,7 @@ zlink_bind(socket, "wss://*:8443");
 
 `STREAM` 소켓은 bind 전용이라 `STREAM` 기반 WSS 서버에는 **외부** raw
 WebSocket/TLS 클라이언트가 접속한다. 일반 zlink ZMP 소켓 타입(PAIR/DEALER 등)은
-zlink의 WSS connecter와 `zlink_set_tls_client()`로 직접 `wss://`에 **connect**할 수 있다:
+`zlink_set_tls_client()`로 `wss://` endpoint에 직접 **connect**할 수 있다:
 
 ```c
 void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
@@ -74,11 +74,11 @@ zlink_connect(socket, "wss://server:8443");
 |------|:--:|:---:|
 | 기본 소켓 생성 | O | O |
 | `zlink_set_tls_server()` (서버 cert+key) | - | 필수 |
-| `zlink_set_tls_client()` (클라이언트 CA+hostname+trust) | - | zlink `wss://` connect 시 필수 |
+| `zlink_set_tls_client()` (클라이언트 CA+hostname+trust) | - | 사설 CA·hostname override·시스템 CA 비활성화가 필요할 때 (기본은 시스템 CA + endpoint hostname 검증) |
 
 ## 5. TLS API 상세
 
-TLS는 개별 소켓 옵션 대신 두 개의 전용 함수로 설정한다.
+TLS 기본 설정은 두 개의 전용 함수로 하고, 고급 설정은 `ZLINK_OPT_TLS_*` 옵션(`zlink_set_option()`)을 쓴다.
 
 ### zlink_set_tls_server()
 
@@ -92,7 +92,7 @@ zlink_set_tls_server(socket, cert_path, key_path, require_client_cert);
 |----------|------|------|
 | `cert_path` | string | 인증서 파일 경로 (PEM 형식) |
 | `key_path` | string | 개인키 파일 경로 (PEM 형식) |
-| `require_client_cert` | int | 클라이언트 인증서 요구 여부 (0 = 아니오, 1 = 예) |
+| `require_client_cert` | int | 클라이언트 인증서 요구(mTLS) 여부 (0 = 아니오, 1 = 예). raw socket/Registry TLS 경로에 적용되며, SpotNode TLS 경로는 이 인자를 사용하지 않는다 |
 
 ```c
 /* PEM format file paths */
@@ -114,7 +114,7 @@ zlink_set_tls_client(socket, ca_cert_path, hostname, trust_system);
 | 파라미터 | 타입 | 설명 |
 |----------|------|------|
 | `ca_cert_path` | string | CA 인증서 경로 (서버 인증서 검증). 시스템 스토어만 쓰려면 `""` 전달 |
-| `hostname` | string | 서버 호스트명 (CN/SAN 검증, 필수) |
+| `hostname` | string | 서버 호스트명 (CN/SAN 검증). non-NULL 필수, 빈 문자열이면 connect endpoint host로 검증 |
 | `trust_system` | int | 시스템 CA 스토어 신뢰 여부 (0 = 아니오, 1 = 예) |
 
 ```c
@@ -132,7 +132,7 @@ zlink_set_tls_client(socket, "", "server.example.com", 1);
 - `hostname`은 CN/SAN 검증에 쓰이며 인증서와 일치해야 한다.
   프로덕션에서는 호스트명 검증을 반드시 권장한다.
 
-> 참고: `core/tests/e2e/spot/spot_pubsub_scenario_shared.cpp` — `trust_system = 0` 설정 후 사설 CA 사용
+> 참고: `core/tests/integration/test_asio_ssl.cpp` — TLS 인증서/사설 CA 설정 테스트
 
 ## 6. 테스트용 인증서 생성
 
@@ -280,13 +280,13 @@ int main(void) {
     zlink_set_tls_client(client, "ca.crt", "localhost", 0);
     zlink_connect(client, "tls://127.0.0.1:5555");
 
-    /* Encrypted communication — server receives via handler callback */
+    /* 암호화된 통신 — server는 zlink_recv()로 수신 (PAIR은 recv handler 미지원) */
     zlink_msg_t part;
     zlink_msg_init_size(&part, 12);
     memcpy(zlink_msg_data(&part), "Secure Hello", 12);
     zlink_send(client, &part, 1, 0);
 
-    /* on_message callback receives: parts[0] = "Secure Hello" */
+    /* server측 zlink_recv()가 parts[0] = "Secure Hello"를 받는다 */
 
     zlink_close(client);
     zlink_close(server);

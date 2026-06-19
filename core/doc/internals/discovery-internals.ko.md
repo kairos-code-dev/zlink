@@ -87,7 +87,7 @@ sequenceDiagram
     Note over Disc: control_task tick
 
     Disc->>DEALER: ensure_bootstrap_dealer()
-    DEALER->>REG: BOOTSTRAP_REQ (0x0008)<br/>[routing_id]
+    DEALER->>REG: BOOTSTRAP_REQ (0x0008)<br/>[auto_connect_type, routing_id,<br/>channel_name]
     REG->>DEALER: BOOTSTRAP_REP (0x0009)<br/>[registry_id, heartbeat_interval,<br/>pub_endpoint, uplink_endpoint]
 
     Disc->>Disc: registry 설정 저장
@@ -122,7 +122,8 @@ sequenceDiagram
 
     Service->>Disc: register_endpoint(type, endpoint, weight)
     Disc->>Disc: _registered_services에 저장
-    Disc->>DEALER: REGISTER (0x0001)<br/>[auto_connect_type, channel_name,<br/>service_role, endpoint, routing_id]
+    Disc->>DEALER: REGISTER (0x0001)<br/>[auto_connect_type, service_role,<br/>channel_name, endpoint,<br/>weight, value, metadata]
+    Note over Disc,DEALER: routing_id는 transient DEALER에 설정<br/>(프레임에 포함되지 않음)
     REG->>DEALER: REGISTER_ACK (0x0002)<br/>[status, resolved_endpoint]
 
     loop heartbeat_interval 마다
@@ -172,7 +173,7 @@ Frame 4~N: Service entries (repeated):
       provider_update_seq (uint64_t)
       weight (uint16_t)
       value (int64_t)
-      provider_blob (variable)
+      metadata (variable)
 ```
 
 Registry 피어는 별도 `REGISTRY_SYNC` 멀티파트 메시지로 route binding snapshot을
@@ -371,7 +372,7 @@ sequenceDiagram
     Disc->>Store: key 조회
     Store-->>Disc: topology_summary_t
     Note over Disc: state == READY?<br/>endpoint 비어있지 않음?<br/>validated_service_seq == current<br/>검증 age ≤ 250ms?
-    Disc->>Prov: provider 목록 스캔 (role=SPOT, endpoint 일치)
+    Disc->>Prov: provider 목록 스캔 (role=SPOT/ROUTER, endpoint 일치)
     Prov-->>Disc: provider.routing_id
     Disc-->>API: 0, route_out 채움
     API-->>App: ZLINK_CONFIG_OK
@@ -432,13 +433,13 @@ bursty lookup은 캐시로 흡수한다.
 
 ### 10.5 endpoint → owner rid 역변환
 
-topology summary에는 `endpoint`(전송 URI)만 저장되며, owner SpotNode의 routing id는 직접 저장되지 않는다. 캐시 hit 후 Discovery는 `resolve_owner_node_from_endpoint_locked(endpoint, ...)`를 호출해 다음 순서로 역변환한다.
+topology summary에는 `endpoint`(URI 문자열)만 저장되며, owner SpotNode의 routing id는 직접 저장되지 않는다. 캐시 hit 후 Discovery는 `resolve_owner_node_from_endpoint_locked(endpoint, ...)`를 호출해 다음 순서로 역변환한다.
 
-1. 먼저 이 Discovery가 직접 등록한 local service 중 `service_role == SPOT`이고 `endpoint`가 일치하며 `routing_id.size > 0`인 항목을 찾는다.
+1. 먼저 이 Discovery가 직접 등록한 local service 중 `service_role`이 `SPOT` 또는 `ROUTER`이고 `endpoint`가 일치하며 `routing_id.size > 0`인 항목을 찾는다.
 2. local service에서 찾지 못하면 `_service_state`의 현재 provider 목록 스냅샷에서 같은 조건의 provider를 고른다.
 3. 찾은 항목의 `routing_id`를 `route_out->owner_node_rid`에 복사한다.
 
-이 2단계 설계 덕분에 spot 소유 노드가 endpoint를 바꿔도, 메시의 provider 명단이 SERVICE_LIST 브로드캐스트 경로로 갱신되어 있기만 하면 resolve_spot은 일관된 답을 반환한다.
+이 2단계 설계 덕분에 spot 소유 노드가 endpoint를 바꿔도, mesh의 provider 명단이 SERVICE_LIST 브로드캐스트 경로로 갱신되어 있기만 하면 resolve_spot은 일관된 답을 반환한다.
 
 ## 11. 메시지 프로토콜
 
@@ -504,7 +505,9 @@ sequenceDiagram
 `zlink_discovery_resolve_actor()`는 actor id를 현재 route로 해석하며
 `ZLINK_ROUTE_KIND_ACTOR` row를 쓴다. route value는 owner SpotNode가 Actor의
 현재 위치에서 게시한 `zlink_actor_route_t`다. Actor ref(node rid + actor id +
-generation)와 current Spot rid, current Spot kind를 담는다.
+generation)와 current Spot rid, current Spot kind를 담는다. Registry route 조회가
+실패하면 local actor runtime의 active route를 fallback으로 확인하고, 그 route가
+Actor의 현재 위치와 일치하면 그대로 반환한다.
 
 이 row는 Actor table 현재 위치의 **게시된 파생물**이다. owner SpotNode가 위치 변경
 (Actor 생성, join accept, leave)을 commit할 때, 그리고 node에 `actor_route_sync_enabled()`

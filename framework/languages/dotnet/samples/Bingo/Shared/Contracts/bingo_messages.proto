@@ -147,17 +147,23 @@ message BingoGameEndedNotify {
   BingoRoomState state = 1;
 }
 
-message BingoWinnerAnnouncedNotify {
+message BingoRewardAnnouncedNotify {
   string room_id = 1;
-  string winner_actor_id = 2;
+  string actor_id = 2;
   int32 draw_seq = 3;
-  string receiving_spot_node_rid = 4;
+  string item_id = 4;
+  string item_name = 5;
+  string rarity = 6;
+  string receiving_spot_node_rid = 7;
 }
 
-message BingoWinnerEvent {
+message BingoRewardAcquiredEvent {
   string room_id = 1;
-  string winner_actor_id = 2;
+  string actor_id = 2;
   int32 draw_seq = 3;
+  string item_id = 4;
+  string item_name = 5;
+  string rarity = 6;
 }
 
 message BingoRoomState {

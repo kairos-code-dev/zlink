@@ -30,26 +30,25 @@ internal static class Program
 
     private static IZlinkStreamConnector CreateClient(string streamEndpoint, string clientName)
     {
-        var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-        {
-            Endpoint = new Uri(streamEndpoint),
-            ConnectTimeout = SampleTimings.ConnectTimeout,
-            RequestTimeout = SampleTimings.RequestTimeout,
-            DispatchMode = ZlinkStreamDispatchMode.Immediate,
-            PayloadCodec = ZLinkProtobufCodec.Default,
-        });
-        connector.ObserveInbound((observation, _) =>
-        {
-            Console.WriteLine(
-                "stream-inbound sample=Bingo client={0} kind={1} name={2} seq={3} bytes={4}",
-                clientName,
-                observation.Kind,
-                observation.Name,
-                observation.RequestSeq?.Value.ToString() ?? "-",
-                observation.PayloadLength);
-            return ValueTask.CompletedTask;
-        });
-        return connector;
+        return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri(streamEndpoint),
+                ConnectTimeout = SampleTimings.ConnectTimeout,
+                RequestTimeout = SampleTimings.RequestTimeout,
+                DispatchMode = ZlinkStreamDispatchMode.Immediate,
+                PayloadCodec = ZLinkProtobufCodec.Default,
+            })
+            .WithInboundObserver((observation, _) =>
+            {
+                Console.WriteLine(
+                    "stream-inbound sample=Bingo client={0} kind={1} name={2} seq={3} bytes={4}",
+                    clientName,
+                    observation.Kind,
+                    observation.Name,
+                    observation.RequestSeq?.Value.ToString() ?? "-",
+                    observation.PayloadLength);
+                return ValueTask.CompletedTask;
+            });
     }
 
     private static string? ReadOption(string[] args, string name)

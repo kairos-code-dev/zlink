@@ -7,7 +7,7 @@ public static class SampleNames
     public const string ApiChannel = "bingo.api";
     public const string PlayChannel = "bingo.play";
     public const string RouterChannel = "bingo.gateway";
-    public const string WinnerTopic = "bingo.room.winner";
+    public const string RewardTopic = "bingo.room.reward";
     public const string StreamNode = "bingo.client.stream";
     public const string SessionSpotNode = "bingo.session.node";
     public const string PlayerActorType = "bingo.player";
@@ -26,7 +26,7 @@ public static class SampleNames
     public const string GameStartedPacket = nameof(BingoGameStartedNotify);
     public const string NumberDrawnPacket = nameof(BingoNumberDrawnNotify);
     public const string GameEndedPacket = nameof(BingoGameEndedNotify);
-    public const string WinnerAnnouncedPacket = nameof(BingoWinnerAnnouncedNotify);
+    public const string RewardAnnouncedPacket = nameof(BingoRewardAnnouncedNotify);
 }
 
 public static class SampleTimings

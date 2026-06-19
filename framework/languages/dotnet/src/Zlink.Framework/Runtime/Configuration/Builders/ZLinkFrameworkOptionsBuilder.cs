@@ -206,11 +206,32 @@ internal sealed class ZLinkSpotMeshBuilder(
         return new ZLinkDiscoveryBuilder(discovery.Endpoints);
     }
 
+    public IZLinkSpotMeshBuilder UseRegistrySpotResolver()
+    {
+        if (registration.SpotRemoteAddressResolverType is not null
+            || registration.RegistrySpotRemoteAddresses is not null)
+        {
+            throw new ZLinkConfigurationException("SPOT remote address resolver is already registered.");
+        }
+
+        registration.RegistrySpotRemoteAddresses = new ZLinkRegistrySpotRemoteAddressesRegistration
+        {
+            Namespace = discovery.ChannelName,
+        };
+        return this;
+    }
+
     public IZLinkSpotMeshNodeBuilder AddNode(string spotNodeName)
     {
         var spotNode = ZLinkRegistrationBuilderGuard.AddSpotNode(
             registration.SpotNodes,
             spotNodeName);
+        if (registration.RegistrySpotRemoteAddresses is not null
+            && string.Equals(registration.RegistrySpotRemoteAddresses.Namespace, discovery.ChannelName, StringComparison.Ordinal)
+            && string.IsNullOrWhiteSpace(registration.RegistrySpotRemoteAddresses.RouterChannelId))
+        {
+            registration.RegistrySpotRemoteAddresses.RouterChannelId = spotNodeName;
+        }
 
         return new ZLinkSpotNodeBuilder(spotNode);
     }

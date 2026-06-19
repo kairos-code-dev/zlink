@@ -76,6 +76,17 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public void WithInboundObserverRegistersObserverAndReturnsConnector()
+    {
+        var connector = new RecordingConnector();
+
+        var returned = connector.WithInboundObserver((_, _) => ValueTask.CompletedTask);
+
+        Assert.Same(connector, returned);
+        Assert.Equal(1, connector.InboundObserverCount);
+    }
+
+    [Fact]
     public async Task MessagePackConnectorExtensionsDelegateBuilderAndDecodeReply()
     {
         var connector = new RecordingConnector(ZLinkMessagePackCodec.Default);
@@ -233,6 +244,8 @@ public sealed partial class StreamConnectorTests
 
         public int PendingDispatchCount => 0;
 
+        public int InboundObserverCount { get; private set; }
+
         public int ReceivedCount(string name)
             => _received.TryGetValue(name, out var messages) ? messages.Count : 0;
 
@@ -265,7 +278,10 @@ public sealed partial class StreamConnectorTests
 
         public IDisposable ObserveInbound(
             Func<ZlinkStreamInboundObservation, CancellationToken, ValueTask> observer)
-            => new Subscription(() => { });
+        {
+            InboundObserverCount++;
+            return new Subscription(() => InboundObserverCount--);
+        }
 
         public IDisposable On(
             string name,

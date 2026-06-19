@@ -99,7 +99,8 @@ try {
     Wait-SampleTcpEndpoint "session-b-stream" $env:BINGO_SESSION_B_STREAM_ENDPOINT
     Wait-SampleTcpEndpoint "session-b-play-route" $env:BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT
 
-    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Probe/Bingo.Probe.csproj") -Arguments @("--registry-endpoint", $env:BINGO_REGISTRY_ROUTER_ENDPOINT, "--timeout-seconds", "10")
+    $settleSeconds = if ($env:BINGO_STARTUP_SETTLE_SECONDS) { [double]$env:BINGO_STARTUP_SETTLE_SECONDS } else { 2.0 }
+    Start-Sleep -Seconds $settleSeconds
 
     $clientLog = Join-Path $LogDir "client.log"
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/Bingo.Client.csproj") -Arguments @("--stream-a-endpoint", $env:BINGO_SESSION_A_STREAM_ENDPOINT, "--stream-b-endpoint", $env:BINGO_SESSION_B_STREAM_ENDPOINT) *> $clientLog

@@ -26,45 +26,27 @@ public static class SessionServerHostFactory
         builder.Services.AddSingleton(session);
         builder.Services.AddZLinkFramework(options =>
         {
-            options.DefaultTimeout = SampleTimings.RequestTimeout;
+            options.SetDefaultTimeout(SampleTimings.RequestTimeout);
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
-            {
-                var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
-                channel.EnableClient(topology.ApiA.ChannelEndpoint);
-                channel.EnableClient(topology.ApiB.ChannelEndpoint);
-                channel.ConfigureClientSocket().SendTimeout = TimeSpan.FromSeconds(1);
-
-            }
-            {
-                var channel = options.AddRouteMeshChannel(SampleNames.PlayChannel);
-                channel.EnableServer(session.PlayRouteEndpoint);
-                channel.EnableClient(session.PreferredPlayChannelEndpoint);
-                channel.ConfigureSocket().SendTimeout = TimeSpan.FromSeconds(1);
-                channel.ConfigureRouting().RoutingId = session.PlayRouteRid;
-
-            }
-            {
-                var mesh = options.AddSpotMesh(SampleNames.RoomSpotDiscovery);
-                mesh.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
-                {
-                    var node = mesh.AddNode(SampleNames.SessionSpotNode);
-                    {
-                        var router = node.EnableRouter(session.RouterEndpoint);
-                        router.SetRouterRoutingId(session.RouterRoutingId);
-
-                    }
-
-                }
-
-            }
-            {
-                var stream = options.AddStreamNode(SampleNames.StreamNode);
-                stream.AttachActorGateway(SampleNames.SessionSpotNode);
-                stream.Bind(session.StreamEndpoint);
-                stream.RegisterSession<Sessions.BingoSession>();
-
-            }
+            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
+            options.AddClientServerChannel(SampleNames.ApiChannel)
+                .EnableClient(topology.ApiA.ChannelEndpoint)
+                .EnableClient(topology.ApiB.ChannelEndpoint)
+                .SetClientSendTimeout(TimeSpan.FromSeconds(1));
+            options.AddRouteMeshChannel(SampleNames.PlayChannel)
+                .EnableServer(session.PlayRouteEndpoint)
+                .EnableClient(session.PreferredPlayChannelEndpoint)
+                .SetSendTimeout(TimeSpan.FromSeconds(1))
+                .SetRoutingId(session.PlayRouteRid);
+            options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
+                .AddNode(SampleNames.SessionSpotNode)
+                .EnableRouter(session.RouterEndpoint)
+                .SetRouterRoutingId(session.RouterRoutingId);
+            options.AddStreamNode(SampleNames.StreamNode)
+                .AttachActorGateway(SampleNames.SessionSpotNode)
+                .Bind(session.StreamEndpoint)
+                .RegisterSession<Sessions.BingoSession>();
         });
 
         return builder.Build();

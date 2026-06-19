@@ -4,13 +4,13 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace Bingo.Server.Play.Adapters.ZLink.Spots.Handlers;
 
-internal sealed class BingoWinnerEventHandler : IZLinkSpotSubscriptionHandler<BingoRoom, BingoWinnerEvent>
+internal sealed class BingoRewardAcquiredEventHandler : IZLinkSpotSubscriptionHandler<BingoRoom, BingoRewardAcquiredEvent>
 {
     public ValueTask HandleAsync(
         BingoRoom spot,
-        BingoWinnerEvent message,
+        BingoRewardAcquiredEvent message,
         CancellationToken cancellationToken)
     {
-        return spot.AnnounceWinnerAsync(message, cancellationToken);
+        return spot.AnnounceRewardAsync(message, cancellationToken);
     }
 }

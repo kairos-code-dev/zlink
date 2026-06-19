@@ -12,6 +12,13 @@ public static class BingoSamplePlayers
     public const string Observer = "observer";
 }
 
+public static class BingoRewardItems
+{
+    public const string GoldenDauberId = "golden-dauber";
+    public const string GoldenDauberName = "Golden Dauber";
+    public const string LegendaryRarity = "Legendary";
+}
+
 public static class BingoRoomStatuses
 {
     public const string WaitingForPlayers = "WaitingForPlayers";

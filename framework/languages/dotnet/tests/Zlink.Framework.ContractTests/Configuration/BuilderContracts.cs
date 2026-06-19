@@ -33,6 +33,30 @@ public sealed class BuilderContracts
     }
 
     [Fact]
+    public void Fluent_builder_extensions_keep_configuration_chains()
+    {
+        var options = new FrameworkOptions();
+
+        Assert.Same(options, options.SetDefaultTimeout(TimeSpan.FromSeconds(3)));
+        Assert.Equal(TimeSpan.FromSeconds(3), options.DefaultTimeout);
+        Assert.Same(
+            options.SpotRemoteAddresses,
+            options.UseRegistrySpotRemoteAddresses("rooms").SetRouterChannelId("room-node"));
+        Assert.Equal("room-node", options.SpotRemoteAddresses.RouterChannelId);
+
+        var clientServer = options.AddClientServerChannel("api");
+        Assert.Same(clientServer, clientServer.SetClientSendTimeout(TimeSpan.FromSeconds(1)));
+
+        var routeMesh = options.AddRouteMeshChannel("play");
+        Assert.Same(routeMesh, routeMesh
+            .SetSendTimeout(TimeSpan.FromSeconds(1))
+            .SetRoutingId(RoutingId.From("play-a")));
+
+        var spotMesh = options.AddSpotMesh("rooms");
+        Assert.Same(spotMesh, spotMesh.UseRegistrySpotResolver());
+    }
+
+    [Fact]
     [ContractExample(
         typeof(IZLinkClientServerChannelBuilder),
         typeof(IZLinkFanoutChannelBuilder),
@@ -589,6 +613,11 @@ public sealed class BuilderContracts
         public IZLinkDiscoveryBuilder UseDiscovery()
         {
             return new DiscoveryBuilder();
+        }
+
+        public IZLinkSpotMeshBuilder UseRegistrySpotResolver()
+        {
+            return this;
         }
 
         public IZLinkSpotMeshNodeBuilder AddNode(string spotNodeName)

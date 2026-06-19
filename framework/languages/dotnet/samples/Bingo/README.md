@@ -19,7 +19,8 @@ Directory layout:
 - `Server/Api/` contains player authentication and matching API handlers.
 - `Server/Play/` contains player actors, Entry Spot admission, room spots,
   Redis-backed room matching, submitted cards, server-driven draws, automatic
-  marks, winner detection, Spot pub/sub winner fan-out, and session-bound push.
+  marks, winner detection, rare reward fan-out over Spot pub/sub, and
+  session-bound push.
 - `Server/Session/` contains the stream Session server and actor relay handlers.
 - `Server/Registry/` contains the embedded discovery registry host.
 
@@ -48,10 +49,11 @@ On Windows PowerShell:
 
 The script starts one Registry, two Api servers, two Play servers, two Session
 servers, and a Redis match queue as separate processes. It waits for their
-endpoints, runs the topology probe, and then runs the connector client. The
+endpoints, waits briefly for local server connections to settle, and then runs
+the connector client. The
 client flow is self-checking. It fails if the three connectors do not
 authenticate as distinct actors, match into one room across Play nodes, observe
-the winner event from the non-owner Play node, or deliver push notifications to
-the bound client sessions. After the game finishes, the server self-check also
-verifies that room actors leave the room Spot, return to Entry Spot, and are
-destroyed from the Entry Spot context.
+the rare reward event from the non-owner Play node, or deliver push
+notifications to the bound client sessions. After the game finishes, the server
+self-check also verifies that room actors leave the room Spot, return to Entry
+Spot, and are destroyed from the Entry Spot context.

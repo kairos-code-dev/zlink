@@ -29,7 +29,7 @@ internal sealed class BingoRoom(
 
     public void Configure()
     {
-        Context.Handlers.AddSubscribe<BingoWinnerEventHandler>(SampleNames.WinnerTopic);
+        Context.Handlers.AddSubscribe<BingoRewardAcquiredEventHandler>(SampleNames.RewardTopic);
     }
 
     public ValueTask OnClosingAsync(CancellationToken cancellationToken)
@@ -144,23 +144,28 @@ internal sealed class BingoRoom(
         if (change.State.Status == BingoRoomStatus.Finished && change.State.Winners.Count > 0)
         {
             logger.LogInformation(
-                "bingo winner: publishing. room={RoomId}, winner={WinnerActorId}, nodeRid={NodeRid}",
+                "bingo reward: publishing. room={RoomId}, actor={ActorId}, item={ItemId}, nodeRid={NodeRid}",
                 change.State.RoomId,
                 change.State.Winners[0],
+                BingoRewardItems.GoldenDauberId,
                 Context.NodeRid.ToHex());
             await Context.Outbound.Publish(
-                    SampleNames.WinnerTopic,
-                    new BingoWinnerEvent
+                    SampleNames.RewardTopic,
+                    new BingoRewardAcquiredEvent
                     {
                         RoomId = change.State.RoomId,
-                        WinnerActorId = change.State.Winners[0],
+                        ActorId = change.State.Winners[0],
                         DrawSeq = change.State.DrawSeq,
+                        ItemId = BingoRewardItems.GoldenDauberId,
+                        ItemName = BingoRewardItems.GoldenDauberName,
+                        Rarity = BingoRewardItems.LegendaryRarity,
                     })
                 .Async(cancellationToken);
             logger.LogInformation(
-                "bingo winner: published. room={RoomId}, winner={WinnerActorId}, nodeRid={NodeRid}",
+                "bingo reward: published. room={RoomId}, actor={ActorId}, item={ItemId}, nodeRid={NodeRid}",
                 change.State.RoomId,
                 change.State.Winners[0],
+                BingoRewardItems.GoldenDauberId,
                 Context.NodeRid.ToHex());
         }
     }
@@ -194,16 +199,17 @@ internal sealed class BingoRoom(
         }
     }
 
-    internal async ValueTask AnnounceWinnerAsync(BingoWinnerEvent message, CancellationToken cancellationToken)
+    internal async ValueTask AnnounceRewardAsync(BingoRewardAcquiredEvent message, CancellationToken cancellationToken)
     {
         if (!_settings.IsObserver
             || _observerActor is null
             || !string.Equals(message.RoomId, _settings.ObservedRoomId, StringComparison.Ordinal))
         {
             logger.LogInformation(
-                "bingo winner: ignored. room={RoomId}, winner={WinnerActorId}, observer={IsObserver}, hasActor={HasActor}, observedRoom={ObservedRoomId}, nodeRid={NodeRid}",
+                "bingo reward: ignored. room={RoomId}, actor={ActorId}, item={ItemId}, observer={IsObserver}, hasActor={HasActor}, observedRoom={ObservedRoomId}, nodeRid={NodeRid}",
                 message.RoomId,
-                message.WinnerActorId,
+                message.ActorId,
+                message.ItemId,
                 _settings.IsObserver,
                 _observerActor is not null,
                 _settings.ObservedRoomId ?? "-",
@@ -212,18 +218,22 @@ internal sealed class BingoRoom(
         }
 
         logger.LogInformation(
-            "bingo winner: announcing. room={RoomId}, winner={WinnerActorId}, observer={ActorId}, nodeRid={NodeRid}",
+            "bingo reward: announcing. room={RoomId}, actor={ActorId}, item={ItemId}, observer={ObserverActorId}, nodeRid={NodeRid}",
             message.RoomId,
-            message.WinnerActorId,
+            message.ActorId,
+            message.ItemId,
             _observerActor.ActorId,
             Context.NodeRid.ToHex());
         await _observerActor.Context.BoundSession
             .Send(
-                new BingoWinnerAnnouncedNotify
+                new BingoRewardAnnouncedNotify
                 {
                     RoomId = message.RoomId,
-                    WinnerActorId = message.WinnerActorId,
+                    ActorId = message.ActorId,
                     DrawSeq = message.DrawSeq,
+                    ItemId = message.ItemId,
+                    ItemName = message.ItemName,
+                    Rarity = message.Rarity,
                     ReceivingSpotNodeRid = Context.NodeRid.ToHex(),
                 })
             .Async(cancellationToken);

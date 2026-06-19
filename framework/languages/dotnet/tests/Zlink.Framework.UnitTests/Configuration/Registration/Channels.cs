@@ -39,6 +39,24 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void GlobalDiscovery_DoesNotConflict_WithManualRouteMeshClient()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+            options.AddRouteMeshChannel("play")
+                .EnableServer("tcp://127.0.0.1:7101")
+                .EnableClient("tcp://127.0.0.1:7102");
+        });
+
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+        var route = Assert.Single(registration.RouteChannels.Values);
+        Assert.Equal(["tcp://127.0.0.1:7102"], route.ManualConnections);
+    }
+
+    [Fact]
     public void ConfigureDispatch_Exposes_Unhandled_And_Diagnostics_Defaults()
     {
         var services = new ServiceCollection();

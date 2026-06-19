@@ -30,7 +30,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 || discoveryConfigured
                 || routed.ManualConnections.Count > 0))
         {
-            ZLinkPeerAcquisitionPolicy.RequireSinglePeerSource(
+            ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"Route channel '{routed.RouterChannelId}'",
                 discoveryConfigured,
                 routed.ManualConnections);

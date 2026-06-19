@@ -147,13 +147,16 @@ internal sealed class BingoClientScenario
         Ensure(
             client1Result.Payload.State.Players.All(static player => player.Marks[4]));
 
-        var winner = await observer.WaitFor<BingoWinnerAnnouncedNotify>()
+        var reward = await observer.WaitFor<BingoRewardAnnouncedNotify>()
             .Where(message => message.Payload.RoomId == client1MatchRes.RoomId)
             .Async(cancellationToken);
-        Ensure(winner.Payload.WinnerActorId == client1Auth.ActorId);
-        Ensure(winner.Payload.DrawSeq == client1Result.Payload.State.DrawSeq);
-        Ensure(winner.Payload.ReceivingSpotNodeRid == observed.ObserverNodeRid);
-        Ensure(winner.Payload.ReceivingSpotNodeRid != client1MatchRes.RoomOwnerNodeRid);
+        Ensure(reward.Payload.ActorId == client1Auth.ActorId);
+        Ensure(reward.Payload.DrawSeq == client1Result.Payload.State.DrawSeq);
+        Ensure(reward.Payload.ItemId == BingoRewardItems.GoldenDauberId);
+        Ensure(reward.Payload.ItemName == BingoRewardItems.GoldenDauberName);
+        Ensure(reward.Payload.Rarity == BingoRewardItems.LegendaryRarity);
+        Ensure(reward.Payload.ReceivingSpotNodeRid == observed.ObserverNodeRid);
+        Ensure(reward.Payload.ReceivingSpotNodeRid != client1MatchRes.RoomOwnerNodeRid);
 
         var stopped = await observer.Request(new StopObservingBingoEventsReq { RoomId = client1MatchRes.RoomId })
             .Async<StopObservingBingoEventsRes>(cancellationToken);

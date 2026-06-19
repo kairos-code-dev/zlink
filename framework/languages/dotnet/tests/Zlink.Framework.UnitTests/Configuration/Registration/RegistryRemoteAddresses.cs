@@ -35,6 +35,25 @@ public sealed class RegistryRemoteAddressesTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void SpotMesh_UseRegistrySpotResolver_UsesMeshNamespaceAndFirstNodeRouter()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+            options.AddSpotMesh("rooms")
+                .UseRegistrySpotResolver()
+                .AddNode("room-node")
+                .EnableRouter("tcp://127.0.0.1:6201");
+        });
+
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+        Assert.Equal("rooms", registration.RegistrySpotRemoteAddresses?.Namespace);
+        Assert.Equal("room-node", registration.RegistrySpotRemoteAddresses?.RouterChannelId);
+    }
+
+    [Fact]
     public void RegistrySpotRemoteAddresses_Require_SpotDiscovery()
     {
         var services = new ServiceCollection();

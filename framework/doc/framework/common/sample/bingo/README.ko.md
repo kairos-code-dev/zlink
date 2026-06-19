@@ -31,8 +31,9 @@ gateway 구조에서도 scale-out, remote Spot join, Spot pub/sub event fan-out�
 - room Spot은 제출된 카드, 번호 추첨, mark, 승리 판정을 소유한다.
 - 두 player client의 card가 모두 제출되면 room Spot이 server timer로 번호를 뽑고,
   Play 서버는 번호와 state를 bound session으로 Notify한다.
-- 승자가 나오면 owner `BingoRoom`은 Spot pub/sub topic으로 `BingoWinnerEvent`를 publish하고,
-  다른 Play 서버의 `BingoRoom`은 event를 받아 observer client로 push한다.
+- 승자가 나오고 결과 처리 중 희귀 보상이 지급되면 owner `BingoRoom`은 Spot pub/sub
+  topic으로 `BingoRewardAcquiredEvent`를 publish하고, 다른 Play 서버의 `BingoRoom`은
+  event를 받아 observer client로 push한다.
 - Registry/Discovery를 사용해 서버 간 endpoint를 자동으로 발견하고 연결한다.
 - handler는 interface 구현체를 framework에 명시 등록하는 방식을 사용한다.
 - Bingo의 stream, channel, actor, room Spot payload는 Protobuf를 사용한다.
@@ -40,7 +41,7 @@ gateway 구조에서도 scale-out, remote Spot join, Spot pub/sub event fan-out�
 Client self-check도 샘플의 일부다. client는 `.NET` 샘플처럼 각 request 응답과 server
 push payload를 즉시 검증해야 한다. 특히 `PlayerJoinedNotify`,
 `BingoGameStartedNotify`, `BingoNumberDrawnNotify`, `BingoGameEndedNotify`,
-`BingoWinnerAnnouncedNotify` 대기는
+`BingoRewardAnnouncedNotify` 대기는
 stream connector의 public wait interface를 직접 사용한다. inbox를 두더라도 push 도착을
 기다리는 로직을 sample-local polling 함수로 숨기면 안 된다.
 
@@ -113,7 +114,7 @@ channel, stream, Spot node endpoint를 Registry에 등록하고, 다른 서버�
 | API -> Play channel | Discovery 자동 연결 | matching API가 현재 Play 서버 endpoint를 Registry에서 찾는다. |
 | Session -> Play actor gateway | Registry 기반 actor locator | Session 서버가 Play 서버 actor의 위치를 직접 관리하지 않게 한다. |
 | Play actor -> remote room Spot | Registry-backed Spot resolver | actor가 다른 Play 서버의 room Spot에 join할 수 있게 한다. |
-| Play Spot pub/sub -> Play Spot pub/sub | Discovery 자동 연결 | winner event를 다른 Play 서버의 `BingoRoom`으로 fan-out한다. |
+| Play Spot pub/sub -> Play Spot pub/sub | Discovery 자동 연결 | reward event를 다른 Play 서버의 `BingoRoom`으로 fan-out한다. |
 | Play -> Session bound push | Registry 기반 session route | Play 서버가 현재 client session 위치를 framework route로 찾는다. |
 | Play -> Redis match queue | Redis endpoint 설정 | 여러 Play 서버가 waiting room state를 공유한다. |
 
@@ -184,7 +185,7 @@ fallback으로 성공시키면 안 된다.
 | `Bingo.Session` | session Spot node | ActorGateway attach와 bound session push 수신을 담당한다. |
 | `Bingo.Play` | actor runtime | player actor를 만들고 Entry Spot에 join시킨다. |
 | `Bingo.Play` | `BingoEntrySpot` | actor가 특정 room에 들어가기 전의 admission 지점을 맡는다. |
-| `Bingo.Play` | `BingoRoom` room Spot | game room에서는 room 참가자, 제출된 카드, draw deck, 승리 판정, player Notify 생성을 소유한다. observer용 local room에서는 winner topic 수신과 observer push 전달만 맡는다. |
+| `Bingo.Play` | `BingoRoom` room Spot | game room에서는 room 참가자, 제출된 카드, draw deck, 승리 판정, player Notify 생성을 소유한다. observer용 local room에서는 reward topic 수신과 observer push 전달만 맡는다. |
 | `Bingo.Play` | `Play` channel server | API 서버의 room 배정 요청을 받는다. |
 | `Bingo.Play` | Redis match queue adapter | 여러 Play 서버가 같은 waiting room state를 공유하게 한다. |
 
@@ -207,9 +208,6 @@ Bingo/
     Program
     BingoClientScenario
     client build/module files
-  Probe/
-    Program
-    probe build/module files
   Shared/
     shared build/module files
     Configuration/
@@ -283,8 +281,7 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 | 위치 | 공통 아키텍처 역할 | 책임 |
 |------|----------------------|------|
 | `Client/Program` | 외부 driving adapter | Session stream 연결을 만들고 client self-check 시나리오를 실행한다. |
-| `Client/BingoClientScenario` | sample scenario | 인증, matching, observer 등록, card 제출, draw push, winner publish 수신, final state 검증을 순서대로 수행한다. |
-| `Probe/*` | topology probe | Registry와 서버 endpoint가 준비되었는지 샘플 실행 전에 확인한다. |
+| `Client/BingoClientScenario` | sample scenario | 인증, matching, observer 등록, card 제출, draw push, rare reward publish 수신, final state 검증을 순서대로 수행한다. |
 | `Shared/Configuration/*` | shared settings | sample service 이름, packet 이름, endpoint topology를 공유한다. |
 | `Shared/Contracts/*` | shared contract | Protobuf schema처럼 언어 간 동일해야 하는 payload 계약을 둔다. |
 | `Server/Registry/*` | discovery adapter | 각 서버의 channel, stream, Spot endpoint를 발견 가능하게 한다. |
@@ -301,7 +298,7 @@ adapter에 둔다. 이 규칙 덕분에 다른 언어로 옮겨도 gateway 구�
 같게 유지된다.
 
 `Adapters/ZLink/Notifications`는 Spot 타입이 아니다. 이 위치의 코드는 domain event를
-stream push message로 바꾸는 adapter일 뿐이며, winner event를 수신하기 위한 별도
+stream push message로 바꾸는 adapter일 뿐이며, reward event를 수신하기 위한 별도
 notification Spot을 만들면 안 된다. Spot pub/sub event 수신은 `Spots/BingoRoom` 안에서만
 구현한다.
 
@@ -313,7 +310,7 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
 
 언어별 구현은 아래 기준을 만족해야 한다.
 
-- 샘플 루트에는 client, probe, shared contracts, registry, api, session, play 역할이
+- 샘플 루트에는 client, shared contracts, registry, api, session, play 역할이
   한 번만 보이게 구성한다. IDE나 build tool에서 같은 역할의 프로젝트나 module이 중복으로
   보이면 안 된다.
 - 각 실행 역할은 명시적인 entry point를 가진다. 실행 시작 코드는 짧게 두고, host 구성과
@@ -328,10 +325,9 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   샘플 실행은 Registry, API 2개, Session 2개, Play 2개 server를 띄우고 client가 Session
   stream에 접속해 `bingo=completed`와 server evidence에 해당하는 성공 결과를 만들 수 있어야
   한다.
-- Probe 또는 동등한 readiness 확인 흐름은 서버 구동 단계에만 둔다. 단순 sleep으로 서버
-  준비 상태를 숨기지 말고, Registry와 필요한 endpoint가 실제로 준비되었는지 확인한다.
-  게임 시나리오 안에서 Spot pub/sub 준비 상태를 확인하기 위한 probe message를 주고받으면
-  안 된다.
+- runner는 서버 프로세스를 띄운 뒤 필요한 TCP endpoint가 열린 것을 확인하고, 짧은 안정화
+  시간을 둔 뒤 client self-check를 시작한다. 별도 readiness 프로젝트나 게임 시나리오
+  안의 pub/sub 확인 message를 사용하지 않는다.
 - 샘플 실행에는 Redis가 필요하다. 애플리케이션 코드는 Redis endpoint만 설정으로 받고,
   Docker container 생성이나 종료를 직접 맡지 않는다. `run_sample`은 외부 Redis endpoint가
   주어지지 않으면 Docker로 Redis container를 준비하고, 샘플 종료 시 정리한다.
@@ -345,10 +341,10 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   framework의 internal runtime 객체나 sample-local route helper로 remote join 경로를
   우회하면 안 된다.
 - Spot pub/sub 흐름은 각 언어 framework의 public Spot pub/sub API를 사용해야 한다.
-  `BingoRoom`은 public publish API로 winner event를 발행하고, 같은 `BingoRoom` 타입이
-  public subscribe 등록 API로 winner topic을 구독한다. winner event를 받기 위해
+  `BingoRoom`은 public publish API로 reward event를 발행하고, 같은 `BingoRoom` 타입이
+  public subscribe 등록 API로 reward topic을 구독한다. reward event를 받기 위해
   `BingoNotificationSpot` 같은 별도 Spot 타입을 만들면 안 된다.
-  topic 이름은 `bingo.room.winner`처럼 모든 언어에서 같은 문자열 의미를 유지해야 한다.
+  topic 이름은 `bingo.room.reward`처럼 모든 언어에서 같은 문자열 의미를 유지해야 한다.
 - push 대기는 connector 객체의 public wait interface를 직접 사용한다. 필요한 push를 고를
   때는 connector wait API의 filter 기능을 사용하고, 받은 message 객체의 public interface로
   payload를 읽어 `Ensure(condition)`처럼 조건식이 직접 보이는 방식으로 검증한다.
@@ -426,7 +422,7 @@ Server/Play/
 | `Application/RoomAllocation/BingoRoomAllocator` | matching 요청을 받아 Redis match queue와 room Spot 생성을 조율한다. |
 | `Application/RoomAllocation/RedisBingoMatchQueue` | mode별 waiting room record와 actor reservation을 Redis에 atomic하게 저장한다. |
 | `Adapters/ZLink/Spots/BingoRoom` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, notification publish 연결을 맡는다. |
-| `Adapters/ZLink/Spots/BingoRoom` | observer용 local room 인스턴스에서 winner topic subscribe callback을 받고 observer actor에게 push를 전달한다. |
+| `Adapters/ZLink/Spots/BingoRoom` | observer용 local room 인스턴스에서 reward topic subscribe callback을 받고 observer actor에게 push를 전달한다. |
 | `Adapters/ZLink/Notifications/*` | domain event를 bound session push message로 바꾸고 전송한다. |
 | `Adapters/ZLink/Handlers/*` | channel request와 Spot actor request를 받아 application/domain adapter로 연결한다. |
 
@@ -488,7 +484,7 @@ Bingo client는 아래 순서로 scenario를 실행하고 각 단계의 값을 �
    `ObserveBingoEventsRes.Subscribed = true`를 확인한다. 이 요청은 owner가 아닌 Play 서버에
    observer용 local `BingoRoom` 인스턴스를 만들거나 찾은 뒤, observer actor를
    `BingoRoomJoinReq.ObserveOnly = true` payload로 그 `BingoRoom`에 join시킨다. 이 응답을
-   받은 뒤에 `player-2` matching과 card 제출을 진행해야 winner event를 놓치지 않는다.
+   받은 뒤에 `player-2` matching과 card 제출을 진행해야 reward event를 놓치지 않는다.
 4. `player-2`가 `MatchBingoReq`를 보내면 같은 room id와 `Running` 상태를 확인한다.
    self-check는 `player-2.ActorNodeRid != MatchBingoRes.RoomOwnerNodeRid`를 확인해
    `player-2` actor가 다른 Play 서버의 room Spot에 remote join했음을 검증한다.
@@ -503,13 +499,14 @@ Bingo client는 아래 순서로 scenario를 실행하고 각 단계의 값을 �
    `DrawSeq`, `Number`, state가 서로 같은지 확인한다.
 9. 두 player client는 `BingoGameEndedNotify`를 기다리고, final state의 `Finished`, drawn
    number sequence, winners, player list, center free-cell mark를 확인한다.
-10. observer client는 connector wait API로 `BingoWinnerAnnouncedNotify`를 기다리고,
-   `RoomId`, `WinnerActorId`, `DrawSeq`, `ReceivingSpotNodeRid`를 확인한다.
+10. observer client는 connector wait API로 `BingoRewardAnnouncedNotify`를 기다리고,
+   `RoomId`, `ActorId`, `DrawSeq`, `ItemId`, `ItemName`, `Rarity`,
+   `ReceivingSpotNodeRid`를 확인한다.
    `ReceivingSpotNodeRid`는 `ObserveBingoEventsRes.ObserverNodeRid`와 같고,
    `MatchBingoRes.RoomOwnerNodeRid`와 달라야 한다.
 11. observer client는 `StopObservingBingoEventsReq(RoomId)`를 보내 observer actor가
    observer용 local `BingoRoom`에서 나와 Entry Spot으로 돌아왔는지 확인한다. 이 흐름은
-   winner event 수신을 위한 세 번째 actor가 game room cleanup과 섞이지 않게 한다.
+   reward event 수신을 위한 세 번째 actor가 game room cleanup과 섞이지 않게 한다.
 12. 세 client는 inbound observer 로그에 `stream-inbound` marker가 남았는지 확인한다.
    로그에는 sample 이름, client 역할, message kind, packet name, request sequence,
    payload byte length가 포함되어야 한다. heartbeat control frame은 observer 기능
@@ -682,10 +679,13 @@ BingoGameEndedNotify {
   State: BingoRoomState
 }
 
-BingoWinnerAnnouncedNotify {
+BingoRewardAnnouncedNotify {
   RoomId: string
-  WinnerActorId: string
+  ActorId: string
   DrawSeq: int
+  ItemId: string
+  ItemName: string
+  Rarity: string
   ReceivingSpotNodeRid: string
 }
 ```
@@ -693,10 +693,13 @@ BingoWinnerAnnouncedNotify {
 Spot pub/sub으로 전달하는 event:
 
 ```text
-BingoWinnerEvent {
+BingoRewardAcquiredEvent {
   RoomId: string
-  WinnerActorId: string
+  ActorId: string
   DrawSeq: int
+  ItemId: string
+  ItemName: string
+  Rarity: string
 }
 ```
 
@@ -837,8 +840,8 @@ room 안에 있던 player에게 room event로 start notify를 보낸다. 반면 
 새로 join한 actor의 handler는 `JoinSpot` 응답을 받은 뒤 `BingoRoomJoinRes.State.Status`가
 `Running`이면 자기 public bound session API로 `BingoGameStartedNotify`를 보낸다. 이렇게 해야
 owner room이 아직 join 응답을 기다리는 actor의 session 경로를 가정하지 않고, remote join
-완료 이후의 public actor/session 계약만 사용하게 된다. 이 분리는 probe나 sleep으로 timing을
-숨기는 우회가 아니며, 각 언어 샘플도 같은 책임 경계를 따라야 한다.
+완료 이후의 public actor/session 계약만 사용하게 된다. 이 분리는 runner의 endpoint 확인과
+짧은 안정화 대기와 별개의 책임 경계이며, 각 언어 샘플도 같은 구조를 따라야 한다.
 
 observer용 `BingoRoom`은 같은 Spot 타입이지만 게임 참가 room이 아니다. routing id는
 관찰 대상 `RoomId`와 현재 Play SpotNode rid에서 만든 local observer room id를 사용한다.
@@ -849,7 +852,7 @@ observer용 `BingoRoom`은 같은 Spot 타입이지만 게임 참가 room이 아
 `BingoRoomSettingsPayload.Purpose`는 game room이면 `"Game"`, observer용 local room이면
 `"Observer"`로 설정한다. observer용 room은 `ObservedRoomId`에 관찰 대상 owner room id를
 담고, `RequiredPlayers`와 `MaxDrawNumber`는 game rule에 사용하지 않는다.
-`BingoWinnerEvent`를 수신한 `BingoRoom`은 `event.RoomId`가 자기 `ObservedRoomId`와 같을
+`BingoRewardAcquiredEvent`를 수신한 `BingoRoom`은 `event.RoomId`가 자기 `ObservedRoomId`와 같을
 때만 observer actor에게 push한다. owner game room이나 다른 room을 관찰하는 observer room이
 같은 topic event를 받더라도, 등록된 observer와 `ObservedRoomId`가 맞지 않으면 drop한다.
 
@@ -883,10 +886,11 @@ sequenceDiagram
     A2->>S2: Bound session send
     S1-->>C1: Stream BingoGameEndedNotify
     S2-->>C2: Stream BingoGameEndedNotify
-    R->>BR2: Publish BingoWinnerEvent
-    BR2-->>A3: BingoWinnerAnnouncedNotify
+    R->>R: Grant rare reward
+    R->>BR2: Publish BingoRewardAcquiredEvent
+    BR2-->>A3: BingoRewardAnnouncedNotify
     A3->>S2: Bound session send
-    S2-->>O: Stream BingoWinnerAnnouncedNotify
+    S2-->>O: Stream BingoRewardAnnouncedNotify
     O->>S2: StopObservingBingoEventsReq
     S2->>A3: Relay to bound observer actor
     A3->>BR2: Leave observer BingoRoom
@@ -900,17 +904,17 @@ client는 자기 card를 제출한 뒤 번호 추첨을 요청하지 않는다. 
 card가 어떻게 mark되는지, 승자가 누구인지는 서버 timer가 보낸 Notify와 state로
 확인한다.
 
-`BingoWinnerEvent`는 game state를 바꾸는 경로가 아니다. 승자 판정과 player push는
+`BingoRewardAcquiredEvent`는 game state를 바꾸는 경로가 아니다. 승자 판정과 player push는
 owner `BingoRoom`이 먼저 결정한다. owner room은 두 player에게 `BingoGameEndedNotify`를
-보낸 뒤 winner event를 Spot pub/sub으로 publish한다. Spot pub/sub은 이미 결정된 winner
-event를 다른 Play 서버의 observer용 local `BingoRoom`에 알리고, observer client push를
-검증하기 위해 사용한다.
+보낸 뒤, 승자에게 지급된 희귀 보상 정보를 reward event로 Spot pub/sub에 publish한다.
+Spot pub/sub은 이미 결정된 보상 이벤트를 다른 Play 서버의 observer용 local `BingoRoom`에
+알리고, observer client push를 검증하기 위해 사용한다.
 observer용 `BingoRoom`은 event를 받으면 자기 observer actor에게
-`BingoWinnerAnnouncedNotify`를 보내고, observer actor는 자기 bound session으로 client에
+`BingoRewardAnnouncedNotify`를 보내고, observer actor는 자기 bound session으로 client에
 push한다. observer용 room은 event의 `RoomId`가 자기 `ObservedRoomId`와 일치할 때만 push한다.
 별도 notification 전용 Spot 타입을 만들지 않는다.
 
-observer client가 winner notify를 확인한 뒤에는 `StopObservingBingoEventsReq`를 보낸다.
+observer client가 reward notify를 확인한 뒤에는 `StopObservingBingoEventsReq`를 보낸다.
 observer actor는 observer용 local `BingoRoom`에서 leave되고 Entry Spot으로 돌아온다. 이
 정리는 observer 구독 수명만 끝내며, game room의 player cleanup이나 winner 판정 상태를
 바꾸지 않는다.
@@ -981,7 +985,7 @@ runtime event, 또는 framework 테스트 중 하나로 아래 사실을 확인�
 
 observer actor는 player actor cleanup 대상이 아니다. observer actor는
 `StopObservingBingoEventsReq` 처리 중 observer용 local `BingoRoom`에서 leave되어 Entry Spot으로
-돌아온다. 샘플은 observer actor가 winner event 수신 후 관찰 room을 떠났다는 server-side
+돌아온다. 샘플은 observer actor가 reward event 수신 후 관찰 room을 떠났다는 server-side
 evidence를 남겨야 한다.
 
 ## 16. 완료 기준
@@ -1000,7 +1004,7 @@ evidence를 남겨야 한다.
 - 첫 `MatchBingoReq`는 room을 만들고 waiting state를 반환한다.
 - observer client는 `ObserveBingoEventsReq(RoomId)`를 보내 owner가 아닌 Play 서버의
   observer용 local `BingoRoom`에 join하고 `ObserveBingoEventsRes.Subscribed = true`를 확인한다.
-- observer용 local `BingoRoom`은 observer actor를 보관하고 winner topic을 구독하지만,
+- observer용 local `BingoRoom`은 observer actor를 보관하고 reward topic을 구독하지만,
   player membership, card 제출, draw timer, winner 판정에는 참여하지 않는다.
 - 두 번째 `MatchBingoReq`는 같은 room에 remote Spot join하고 room을 자동 시작시킨다.
 - `player-2.ActorNodeRid != MatchBingoRes.RoomOwnerNodeRid`를 확인해 remote join을 검증한다.
@@ -1010,11 +1014,14 @@ evidence를 남겨야 한다.
 - 승자가 나오면 room state가 `Finished`가 되고 `Winners`가 채워진다.
 - `BingoNumberDrawnNotify`와 `BingoGameEndedNotify`가 bound session을 통해 두 player
   client에 전달된다.
-- owner `BingoRoom`은 `BingoWinnerEvent`를 Spot pub/sub topic으로 publish한다.
-- owner가 아닌 Play 서버의 `BingoRoom`은 `BingoWinnerEvent`를 수신하고 observer client에
-  `BingoWinnerAnnouncedNotify`를 push한다.
-- winner event 수신을 위해 `BingoNotificationSpot` 같은 별도 Spot 타입을 만들지 않는다.
-- `BingoWinnerAnnouncedNotify.ReceivingSpotNodeRid`는
+- owner `BingoRoom`은 승자에게 지급된 희귀 보상 정보를 담은 `BingoRewardAcquiredEvent`를
+  Spot pub/sub topic으로 publish한다.
+- owner가 아닌 Play 서버의 `BingoRoom`은 `BingoRewardAcquiredEvent`를 수신하고 observer client에
+  `BingoRewardAnnouncedNotify`를 push한다.
+- reward event 수신을 위해 `BingoNotificationSpot` 같은 별도 Spot 타입을 만들지 않는다.
+- `BingoRewardAnnouncedNotify.ItemId`, `ItemName`, `Rarity`는 owner가 publish한 보상 정보와
+  같아야 한다.
+- `BingoRewardAnnouncedNotify.ReceivingSpotNodeRid`는
   `ObserveBingoEventsRes.ObserverNodeRid`와 같고 `MatchBingoRes.RoomOwnerNodeRid`와 달라야 한다.
 - observer client는 `StopObservingBingoEventsReq`를 보내 observer actor가 observer용
   local `BingoRoom`에서 leave되고 Entry Spot으로 돌아온 것을 확인한다.

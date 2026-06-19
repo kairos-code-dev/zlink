@@ -186,6 +186,8 @@ public interface IZLinkSpotMeshBuilder : IZLinkSpotNodeBuilder
 {
     IZLinkDiscoveryBuilder UseDiscovery();
 
+    IZLinkSpotMeshBuilder UseRegistrySpotResolver();
+
     IZLinkSpotMeshNodeBuilder AddNode(string spotNodeName);
 }
 
@@ -242,4 +244,52 @@ public interface IZLinkFrameworkOptions
 public interface IZLinkMetadataPolicyBuilder
 {
     void AddForwardedMetadataKey(string key);
+}
+
+public static class ZLinkFrameworkBuilderExtensions
+{
+    public static IZLinkFrameworkOptions SetDefaultTimeout(
+        this IZLinkFrameworkOptions options,
+        TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        options.DefaultTimeout = timeout;
+        return options;
+    }
+
+    public static IZLinkRouteMeshChannelBuilder SetSendTimeout(
+        this IZLinkRouteMeshChannelBuilder builder,
+        TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.ConfigureSocket().SendTimeout = timeout;
+        return builder;
+    }
+
+    public static IZLinkRouteMeshChannelBuilder SetRoutingId(
+        this IZLinkRouteMeshChannelBuilder builder,
+        RoutingId routingId)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.ConfigureRouting().RoutingId = routingId;
+        return builder;
+    }
+
+    public static IZLinkClientServerChannelBuilder SetClientSendTimeout(
+        this IZLinkClientServerChannelBuilder builder,
+        TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.ConfigureClientSocket().SendTimeout = timeout;
+        return builder;
+    }
+
+    public static IZLinkRegistrySpotRemoteAddressesOptions SetRouterChannelId(
+        this IZLinkRegistrySpotRemoteAddressesOptions options,
+        string routerChannelId)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        options.RouterChannelId = routerChannelId;
+        return options;
+    }
 }

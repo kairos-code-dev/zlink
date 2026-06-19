@@ -200,9 +200,7 @@ wait_port session-b-router "${BINGO_SESSION_B_ROUTER_ENDPOINT}"
 wait_port session-b-stream "${BINGO_SESSION_B_STREAM_ENDPOINT}"
 wait_port session-b-play-route "${BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT}"
 
-dotnet run --no-build --project "${SCRIPT_DIR}/Probe/Bingo.Probe.csproj" -- \
-  --registry-endpoint "${BINGO_REGISTRY_ROUTER_ENDPOINT}" \
-  --timeout-seconds 10
+sleep "${BINGO_STARTUP_SETTLE_SECONDS:-2}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/Bingo.Client.csproj" -- \
   --stream-a-endpoint "${BINGO_SESSION_A_STREAM_ENDPOINT}" \

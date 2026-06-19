@@ -65,9 +65,10 @@ spotManager.getOrCreate(GameRoomSpot::class.java, roomRid).await()
 ```
 
 `getOrCreate(spotType, spotRid)`는 같은 `spotRid`가 이미 있으면 그 Spot을
-재사용하고, 없으면 새로 만든다. 새 Spot의 시작 payload가 필요하면 별도
-`create(spotType, spotRid)`로 만들고 lifecycle callback(`onCreateSuspending`)에서 받는다.
-두 호출 모두 `CompletionStage`를 반환하므로 `suspend` 문맥에서 `.await()`로 기다린다.
+재사용하고, 없으면 새로 만든다. 새 Spot의 시작 payload가 필요하면 `create(spotType, request)`
+(자동 `spotRid`) 또는 `getOrCreate(spotType, spotRid, request)`(고정 `spotRid`)로 만들고
+lifecycle callback(`onCreateSuspending`)에서 받는다. `create(spotType, spotRid)`는 payload
+없이 고정 rid로만 만든다. 이 호출들은 `CompletionStage`를 반환하므로 `suspend` 문맥에서 `.await()`로 기다린다.
 
 Spot factory는 Spot type 기준으로 등록한다. 같은 Spot type 중복 등록은 startup
 validation 오류다.

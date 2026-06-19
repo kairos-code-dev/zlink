@@ -62,20 +62,20 @@ typedef struct {
 ## 4. 소켓 모니터 이벤트
 
 `zlink_socket_monitor_open()`으로 관찰하는 이벤트다.
-기반 소켓(raw socket)의 전송/세션 상태를 알려준다.
+기반 소켓(raw socket)의 transport·세션 상태를 알려준다.
 
 ### 이벤트 전체 표
 
-| 상수 | 값 | 설명 | `value` | 발생 측 |
+| 이벤트 이름 | 값 | 설명 | `value` | 발생 측 |
 |---|---|---|---|---|
 | `CONNECTION_READY` | `0x1000` | 핸드셰이크 이후 ready edge | reserved | 양쪽 |
 | `CONNECTED` | `0x0001` | TCP 연결 성립 (핸드셰이크 전) | fd | 클라이언트 |
 | `ACCEPTED` | `0x0020` | 수신 연결 accept | fd | 서버 |
 | `DISCONNECTED` | `0x0200` | 세션 종료 | reason 코드 | 양쪽 |
 | `LISTENING` | `0x0008` | bind 성공, 수신 대기 중 | fd | 서버 |
-| `CLOSED` | `0x0080` | 의도적 close 완료 | — | 양쪽 |
+| `CLOSED` | `0x0080` | 의도적 close 완료 | fd | 양쪽 |
 | `CONNECT_DELAYED` | `0x0002` | 비동기 연결 재시도 예약 | errno | 클라이언트 |
-| `CONNECT_RETRIED` | `0x0004` | 비동기 재연결 진행 중 | — | 클라이언트 |
+| `CONNECT_RETRIED` | `0x0004` | 비동기 재연결 진행 중 | 재시도 interval (ms) | 클라이언트 |
 | `BIND_FAILED` | `0x0010` | bind 실패 | errno | 서버 |
 | `ACCEPT_FAILED` | `0x0040` | accept 실패 | errno | 서버 |
 | `CLOSE_FAILED` | `0x0100` | close 실패 | errno | 양쪽 |
@@ -116,7 +116,7 @@ flowchart LR
 |------|------|------|
 | 0 | `UNKNOWN` | 원인 불명 |
 | 3 | `HANDSHAKE_FAILED` | 핸드셰이크 실패 |
-| 4 | `TRANSPORT_ERROR` | 전송계층 오류 |
+| 4 | `TRANSPORT_ERROR` | transport 계층 오류 |
 | 5 | `CTX_TERM` | 컨텍스트 종료 |
 
 ### 프로토콜 에러 코드
@@ -214,7 +214,7 @@ flowchart LR
 |------|------|------|-----------|
 | 0 | UNKNOWN | 원인 불명 | 로그 기록 후 관찰 |
 | 3 | HANDSHAKE_FAILED | 핸드셰이크 실패 | TLS/프로토콜 설정 확인 |
-| 4 | TRANSPORT_ERROR | 전송계층 오류 | 네트워크 상태 확인 |
+| 4 | TRANSPORT_ERROR | transport 계층 오류 | 네트워크 상태 확인 |
 | 5 | CTX_TERM | 컨텍스트 종료 | 종료 처리 |
 
 ### reason 코드 처리 예제

@@ -8,7 +8,8 @@
 
 # Spec -- C++ Stage Wrapper On SPOT
 
-> 이 문서는 **구현 완료된 설계 계약**이다.
+> 이 문서는 `SPOT` 위에 상위 stage 모델을 얹는 **패턴 가이드**다. C++ framework public
+> 표면에 별도 stage wrapper 계약 타입/빌더는 없고, 테스트의 지역 예제 패턴으로 존재한다.
 > stage 같은 상위 모델을 `SPOT` 위에 감쌀 때 필요한
 > 조건을 정리한다.
 

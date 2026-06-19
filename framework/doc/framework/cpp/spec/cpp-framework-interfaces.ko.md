@@ -678,7 +678,7 @@ struct handler_options_t {
     std::optional<std::string> packet_name;
     std::optional<std::chrono::milliseconds> timeout;
     std::optional<std::size_t> max_concurrency;
-    handler_execution_t execution = handler_execution_t::standard;
+    handler_execution_t execution = handler_execution_t::inline_on_runtime;
     bool ordered = false;
 };
 
@@ -731,7 +731,7 @@ public:
     zlink::routing_id_t node_rid() const;
     std::string_view actor_id() const;
     std::uint64_t generation() const;
-    bool is_unchecked() const;
+    bool empty() const;
 };
 
 template <typename TReply>
@@ -1110,7 +1110,7 @@ public:
     route_request_call_t &packet_name(std::string packet_name);
     route_request_call_t &metadata(std::string key, std::string value);
     route_request_call_t &timeout(std::chrono::milliseconds timeout);
-    task_t<std::uint64_t> async();
+    template <typename TReply>
     task_t<TReply> async();
 };
 

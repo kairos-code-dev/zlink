@@ -123,7 +123,7 @@ proxy 를 등록하는 방식은 줄인다.
 
 | Interface | 등록 조건 | 권장 동작 |
 |-----------|-----------|-----------|
-| `IZLinkBoundSessionFactory` | framework runtime | 항상 등록 |
+| `IZLinkBoundSessionFactory` (internal runtime service) | framework runtime | 항상 등록 (public 표면은 `Context.BoundSession`) |
 | `IZLinkSpotRemoteAddressResolver` | `AddSpotRemoteAddressResolver<TResolver>()` | 조건을 만족할 때만 등록 |
 
 기존 missing proxy 는 사용 시점까지 오류를 늦춘다. bound session factory 는
@@ -194,9 +194,10 @@ publisher client 를 전제로 하고 후자는 일반 channel publisher 를 전
 
 ### 4.4 Bound session
 
-`IZLinkBoundSessionFactory` 는 framework runtime 과 함께 등록한다. bound session 은
-actor runtime state 에 저장된 현재 session rid 와 binding token 을 사용한다.
-binding 이 없는 actor 에서 호출하면 `ActorSessionNotBound` 로 실패한다.
+bound session 의 public 표면은 `IZLinkActorContext.BoundSession`(`IZLinkBoundSession`)이다.
+내부적으로는 `IZLinkBoundSessionFactory`(internal runtime service)가 framework runtime 과
+함께 등록된다. bound session 은 actor runtime state 에 저장된 현재 session rid 와 binding
+token 을 사용한다. binding 이 없는 actor 에서 호출하면 `ActorSessionNotBound` 로 실패한다.
 
 ```text
 ZLinkFrameworkException:
@@ -214,7 +215,7 @@ configuration error 로 표현한다.
 | `IZLinkChannelClient.RequestToChannel(channelName, ...)` | channel 이 없거나 client 역할이 없음 | `ZLinkConfigurationException` |
 | `IZLinkChannelClient.SendToChannel(channelName, ...)` | channel 이 없거나 client 역할이 없음 | `ZLinkConfigurationException` |
 | `IZLinkFanoutClient.Publish(channelName, ...)` | channel 이 없거나 publisher 역할이 없음 | `ZLinkConfigurationException` |
-| `IZLinkRouteClient.Send(routerChannelId, ...)` | route mesh channel 이 없음 | `ZLinkConfigurationException` |
+| `IZLinkRouteClient.Send(routerChannelId, targetNodeRid, ...)` / `Request(routerChannelId, targetNodeRid, ...)` | route mesh channel 이 없음 | `ZLinkConfigurationException` |
 
 역할 누락은 `InvalidOperationException` 이 아니라 위 예외로 처리한다.
 

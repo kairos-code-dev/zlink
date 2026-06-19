@@ -83,7 +83,7 @@ ShoppingMall, GameQuest)은 공통 샘플 기준에 따라 JSON codec, Registry/
 | [supportchat-sample](guide/samples/supportchat-sample.ko.md) | conversation Spot, idle timer, reconnect, 양방향 push (JSON) |
 | [deliverydispatch-sample](guide/samples/deliverydispatch-sample.ko.md) | 배차, timeout 재배정, 상태 fanout, 고객 stream push |
 | [shoppingmall-sample](guide/samples/shoppingmall-sample.ko.md) | event-sourced workflow Spot, projection, scale-out |
-| [gamequest-sample](guide/samples/gamequest-sample.ko.md) | event-sourced quest Spot, fanout owner routing, projection rebuild, snapshot 재동기화 (JSON, Java) |
+| [gamequest-sample](guide/samples/gamequest-sample.ko.md) | event-sourced quest Spot, fanout owner routing, projection rebuild, snapshot 재동기화 (JSON, Java/Kotlin) |
 | [channel-messaging-samples](guide/samples/channel-messaging-samples.ko.md) | channel 등록, handler, outbound client 샘플 |
 | [spot-samples](guide/samples/spot-samples.ko.md) | room/stage/zone 기준 Spot 등록과 publish/request 샘플 |
 | [stream-samples](guide/samples/stream-samples.ko.md) | stream 등록, header session, actor relay 샘플 |

@@ -1528,6 +1528,22 @@ static napi_value create_monitor_status_value (napi_env env, const zlink_monitor
     set_uint32_property (env, obj, "autoHwmSizeCap", snapshot.auto_hwm_size_cap);
     set_int64_property (env, obj, "autoHwmSocketMessageSlots",
                         static_cast<int64_t> (snapshot.auto_hwm_socket_message_slots));
+    napi_value auto_hwm_connection_bucket_enabled;
+    napi_get_boolean (env, snapshot.auto_hwm_connection_bucket_enabled != 0,
+                      &auto_hwm_connection_bucket_enabled);
+    napi_set_named_property (env, obj, "autoHwmConnectionBucketEnabled",
+                             auto_hwm_connection_bucket_enabled);
+    set_uint32_property (env, obj, "autoHwmConnectionBucketCount",
+                         snapshot.auto_hwm_connection_bucket_count);
+    set_uint32_property (env, obj, "autoHwmConnectionBucketIndex",
+                         snapshot.auto_hwm_connection_bucket_index);
+    set_uint32_property (env, obj, "autoHwmConnectionBucketHwm4K",
+                         snapshot.auto_hwm_connection_bucket_hwm_4k);
+    napi_value auto_hwm_connection_bucket_hysteresis_retained;
+    napi_get_boolean (env, snapshot.auto_hwm_connection_bucket_hysteresis_retained != 0,
+                      &auto_hwm_connection_bucket_hysteresis_retained);
+    napi_set_named_property (env, obj, "autoHwmConnectionBucketHysteresisRetained",
+                             auto_hwm_connection_bucket_hysteresis_retained);
     set_int64_property (env, obj, "autoHwmEffectiveMessageBytes",
                         static_cast<int64_t> (snapshot.auto_hwm_effective_message_bytes));
     set_int64_property (env, obj, "autoHwmAppliedSndHwm", snapshot.auto_hwm_applied_sndhwm);

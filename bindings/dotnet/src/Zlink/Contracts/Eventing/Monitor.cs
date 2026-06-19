@@ -101,6 +101,26 @@ public sealed partial class MonitorStatus
     /// </summary>
     public ulong AutoHwmSocketMessageSlots { get; }
     /// <summary>
+    /// Gets whether a connection-count bucket applied to this socket.
+    /// </summary>
+    public bool AutoHwmConnectionBucketEnabled { get; }
+    /// <summary>
+    /// Gets the peer count used by the connection bucket planner.
+    /// </summary>
+    public uint AutoHwmConnectionBucketCount { get; }
+    /// <summary>
+    /// Gets the selected connection bucket index.
+    /// </summary>
+    public uint AutoHwmConnectionBucketIndex { get; }
+    /// <summary>
+    /// Gets the selected bucket HWM for a 4 KiB message unit.
+    /// </summary>
+    public uint AutoHwmConnectionBucketHwm4K { get; }
+    /// <summary>
+    /// Gets whether hysteresis retained the previous connection bucket.
+    /// </summary>
+    public bool AutoHwmConnectionBucketHysteresisRetained { get; }
+    /// <summary>
     /// Gets the automatic high water mark effective message bytes.
     /// </summary>
     public ulong AutoHwmEffectiveMessageBytes { get; }

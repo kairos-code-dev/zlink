@@ -55,6 +55,13 @@ impl MonitorStatus {
             auto_hwm_unit_budget_bytes: raw.auto_hwm_unit_budget_bytes,
             auto_hwm_size_cap: raw.auto_hwm_size_cap,
             auto_hwm_socket_message_slots: raw.auto_hwm_socket_message_slots,
+            auto_hwm_connection_bucket_enabled: raw.auto_hwm_connection_bucket_enabled != 0,
+            auto_hwm_connection_bucket_count: raw.auto_hwm_connection_bucket_count,
+            auto_hwm_connection_bucket_index: raw.auto_hwm_connection_bucket_index,
+            auto_hwm_connection_bucket_hwm_4k: raw.auto_hwm_connection_bucket_hwm_4k,
+            auto_hwm_connection_bucket_hysteresis_retained: raw
+                .auto_hwm_connection_bucket_hysteresis_retained
+                != 0,
             auto_hwm_effective_message_bytes: raw.auto_hwm_effective_message_bytes,
             auto_hwm_applied_sndhwm: raw.auto_hwm_applied_sndhwm,
             auto_hwm_applied_rcvhwm: raw.auto_hwm_applied_rcvhwm,

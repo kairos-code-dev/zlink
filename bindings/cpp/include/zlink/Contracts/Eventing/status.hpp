@@ -67,6 +67,11 @@ struct monitor_status_t
         auto_hwm_unit_budget_bytes (0),
         auto_hwm_size_cap (0),
         auto_hwm_socket_message_slots (0),
+        auto_hwm_connection_bucket_enabled (false),
+        auto_hwm_connection_bucket_count (0),
+        auto_hwm_connection_bucket_index (0xffffffffu),
+        auto_hwm_connection_bucket_hwm_4k (0),
+        auto_hwm_connection_bucket_hysteresis_retained (false),
         auto_hwm_effective_message_bytes (0),
         auto_hwm_applied_sndhwm (0),
         auto_hwm_applied_rcvhwm (0),
@@ -94,6 +99,11 @@ struct monitor_status_t
     uint64_t auto_hwm_unit_budget_bytes;
     uint32_t auto_hwm_size_cap;
     uint64_t auto_hwm_socket_message_slots;
+    bool auto_hwm_connection_bucket_enabled;
+    uint32_t auto_hwm_connection_bucket_count;
+    uint32_t auto_hwm_connection_bucket_index;
+    uint32_t auto_hwm_connection_bucket_hwm_4k;
+    bool auto_hwm_connection_bucket_hysteresis_retained;
     uint64_t auto_hwm_effective_message_bytes;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;

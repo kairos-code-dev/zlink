@@ -145,6 +145,9 @@ inline void apply_spot_internal_auto_hwm (ctx_t *ctx_,
 
     const auto_hwm_socket_plan_t socket_plan =
       spot_internal_auto_hwm_plan (ctx_, policy_, hysteresis_enabled, previous_bucket_index);
+    auto_hwm_context_plan_t context_plan;
+    auto_hwm_context_plan_make (ctx_->auto_hwm_enabled (), profile, &context_plan,
+                                configured_message_unit);
     const auto_hwm_scope_t scope =
       policy_.scope == auto_hwm_scope_none ? auto_hwm_scope_shared : policy_.scope;
     size_t scope_count = policy_.scope_count;
@@ -162,6 +165,8 @@ inline void apply_spot_internal_auto_hwm (ctx_t *ctx_,
     if (policy_.apply_rcvhwm) {
         (void) socket_->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm));
     }
+    socket_->record_auto_hwm_socket_plan (context_plan, socket_plan,
+                                          ZLINK_AUTO_HWM_RECALC_REASON_NONE);
     if (socket_plan.connection_bucket_enabled
         && socket_plan.connection_bucket_index != auto_hwm_connection_bucket_none) {
         socket_->set_auto_hwm_connection_bucket_state (

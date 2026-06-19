@@ -754,6 +754,9 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                         role="spot_data",
                         effective_message_bytes="64",
                         unit_budget_bytes="524288",
+                        observed_connections="100",
+                        selected_bucket="65-128",
+                        bucket_limited_hwm_4k="128",
                         sndhwm="512",
                         rcvhwm="512",
                     )
@@ -770,10 +773,13 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             self.assertEqual(output.count("peer_ctrl_pub"), 1)
             self.assertEqual(output.count("peer_ctrl_sub"), 1)
             self.assertEqual(output.count("| pub    | pub  | spot_data"), 1)
-            self.assertIn("| peer_ctrl_pub | pub  | control | 16", output)
-            self.assertIn("| peer_ctrl_sub | sub  | control | -", output)
-            self.assertIn("| pub    | pub  | spot_data | 512", output)
+            self.assertIn("| peer_ctrl_pub | pub  | control | ?", output)
+            self.assertIn("| peer_ctrl_sub | sub  | control | ?", output)
+            self.assertIn("| pub    | pub  | spot_data | 100", output)
             self.assertIn("| -      | 16", output)
+            self.assertIn("ObservedConn", output)
+            self.assertIn("BucketHWM4K", output)
+            self.assertIn("| 100          | 65-128 | 128", output)
         finally:
             reset_auto_hwm_detail_state()
 

@@ -146,6 +146,16 @@ pub struct MonitorStatus {
     pub auto_hwm_size_cap: u32,
     /// The number of message slots auto-sizing allotted to the socket.
     pub auto_hwm_socket_message_slots: u64,
+    /// Whether a connection-count bucket applied to the socket plan.
+    pub auto_hwm_connection_bucket_enabled: bool,
+    /// The peer count used to choose the connection bucket.
+    pub auto_hwm_connection_bucket_count: u32,
+    /// The selected connection bucket index, or `u32::MAX` when no bucket applies.
+    pub auto_hwm_connection_bucket_index: u32,
+    /// The selected bucket HWM for a 4 KiB message unit.
+    pub auto_hwm_connection_bucket_hwm_4k: u32,
+    /// Whether hysteresis retained the previous connection bucket.
+    pub auto_hwm_connection_bucket_hysteresis_retained: bool,
     /// The effective per-message size, in bytes, used when sizing.
     pub auto_hwm_effective_message_bytes: u64,
     /// The send high-water mark currently applied.

@@ -9,7 +9,11 @@ public sealed partial class MonitorStatus
         uint autoHwmEnabled, uint autoHwmProfile, uint autoHwmRole,
         uint autoHwmPolicyClass,
         ulong autoHwmUnitBudgetBytes, uint autoHwmSizeCap,
-        ulong autoHwmSocketMessageSlots, ulong autoHwmEffectiveMessageBytes,
+        ulong autoHwmSocketMessageSlots,
+        uint autoHwmConnectionBucketEnabled, uint autoHwmConnectionBucketCount,
+        uint autoHwmConnectionBucketIndex, uint autoHwmConnectionBucketHwm4K,
+        uint autoHwmConnectionBucketHysteresisRetained,
+        ulong autoHwmEffectiveMessageBytes,
         int autoHwmAppliedSndHwm,
         int autoHwmAppliedRcvHwm,
         int autoHwmEffectiveSndbuf, int autoHwmEffectiveRcvbuf,
@@ -29,6 +33,12 @@ public sealed partial class MonitorStatus
         AutoHwmUnitBudgetBytes = autoHwmUnitBudgetBytes;
         AutoHwmSizeCap = autoHwmSizeCap;
         AutoHwmSocketMessageSlots = autoHwmSocketMessageSlots;
+        AutoHwmConnectionBucketEnabled = autoHwmConnectionBucketEnabled != 0;
+        AutoHwmConnectionBucketCount = autoHwmConnectionBucketCount;
+        AutoHwmConnectionBucketIndex = autoHwmConnectionBucketIndex;
+        AutoHwmConnectionBucketHwm4K = autoHwmConnectionBucketHwm4K;
+        AutoHwmConnectionBucketHysteresisRetained =
+            autoHwmConnectionBucketHysteresisRetained != 0;
         AutoHwmEffectiveMessageBytes = autoHwmEffectiveMessageBytes;
         AutoHwmAppliedSndHwm = autoHwmAppliedSndHwm;
         AutoHwmAppliedRcvHwm = autoHwmAppliedRcvHwm;

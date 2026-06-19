@@ -263,6 +263,12 @@ zlink_auto_hwm_profile_t zlink::ctx_t::auto_hwm_profile () const
     return _auto_hwm_profile;
 }
 
+bool zlink::ctx_t::auto_hwm_enabled () const
+{
+    scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));
+    return _auto_hwm_enabled;
+}
+
 int zlink::ctx_t::auto_hwm_msg_unit_bytes () const
 {
     scoped_lock_t locker (const_cast<mutex_t &> (_opt_sync));

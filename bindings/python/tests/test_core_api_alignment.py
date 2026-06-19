@@ -586,6 +586,12 @@ class CoreApiAlignmentTests(unittest.TestCase):
                     self.assertTrue(
                         hasattr(status, "auto_hwm_socket_message_slots")
                     )
+                    self.assertTrue(
+                        hasattr(status, "auto_hwm_connection_bucket_count")
+                    )
+                    self.assertTrue(
+                        hasattr(status, "auto_hwm_connection_bucket_hwm_4k")
+                    )
 
     def test_request_reply_canonical_roundtrip(self):
         ctx = zlink.create_context()

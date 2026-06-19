@@ -262,6 +262,24 @@ inline bool perf_auto_hwm_recv_side_visible (uint32_t socket_type_, uint32_t rol
     return true;
 }
 
+inline const char *perf_auto_hwm_bucket_label (uint32_t bucket_index_)
+{
+    switch (bucket_index_) {
+    case 0:
+        return "1-64";
+    case 1:
+        return "65-128";
+    case 2:
+        return "129-512";
+    case 3:
+        return "513-2048";
+    case 4:
+        return "2049+";
+    default:
+        return "";
+    }
+}
+
 inline std::string perf_auto_hwm_sndhwm_display (const zlink_monitor_status_t &snapshot_,
                                                  uint32_t socket_type_)
 {
@@ -380,6 +398,12 @@ inline void perf_emit_spot_node_auto_hwm_detail (const zlink_spot_node_socket_en
               << ",policy_class_id=" << snapshot.auto_hwm_policy_class
               << ",unit_budget_bytes=" << snapshot.auto_hwm_unit_budget_bytes
               << ",size_cap=" << snapshot.auto_hwm_size_cap << ",scope=" << scope
+              << ",observed_connections=" << snapshot.auto_hwm_connection_bucket_count
+              << ",selected_bucket="
+              << perf_auto_hwm_bucket_label (snapshot.auto_hwm_connection_bucket_index)
+              << ",bucket_limited_hwm_4k=" << snapshot.auto_hwm_connection_bucket_hwm_4k
+              << ",bucket_hysteresis_retained="
+              << snapshot.auto_hwm_connection_bucket_hysteresis_retained
               << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
               << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
               << ",socket_message_slots=" << snapshot.auto_hwm_socket_message_slots

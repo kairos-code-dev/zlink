@@ -153,6 +153,16 @@ struct service_model_access_t
         out.monitor_status_.auto_hwm_size_cap = entry_.monitor_status.auto_hwm_size_cap;
         out.monitor_status_.auto_hwm_socket_message_slots =
           entry_.monitor_status.auto_hwm_socket_message_slots;
+        out.monitor_status_.auto_hwm_connection_bucket_enabled =
+          entry_.monitor_status.auto_hwm_connection_bucket_enabled != 0;
+        out.monitor_status_.auto_hwm_connection_bucket_count =
+          entry_.monitor_status.auto_hwm_connection_bucket_count;
+        out.monitor_status_.auto_hwm_connection_bucket_index =
+          entry_.monitor_status.auto_hwm_connection_bucket_index;
+        out.monitor_status_.auto_hwm_connection_bucket_hwm_4k =
+          entry_.monitor_status.auto_hwm_connection_bucket_hwm_4k;
+        out.monitor_status_.auto_hwm_connection_bucket_hysteresis_retained =
+          entry_.monitor_status.auto_hwm_connection_bucket_hysteresis_retained != 0;
         out.monitor_status_.auto_hwm_effective_message_bytes =
           entry_.monitor_status.auto_hwm_effective_message_bytes;
         out.monitor_status_.auto_hwm_applied_sndhwm = entry_.monitor_status.auto_hwm_applied_sndhwm;

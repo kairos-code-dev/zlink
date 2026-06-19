@@ -19,6 +19,11 @@ import systems.zlink.contracts.sockets.AutoHwmRecalcReason;
  * @param autoHwmUnitBudgetBytes the per-message unit budget in bytes
  * @param autoHwmSizeCap the computed auto-HWM size cap
  * @param autoHwmSocketMessageSlots the socket's message slot capacity
+ * @param autoHwmConnectionBucketEnabled whether a connection bucket applied
+ * @param autoHwmConnectionBucketCount the peer count used by the bucket planner
+ * @param autoHwmConnectionBucketIndex the selected bucket index
+ * @param autoHwmConnectionBucketHwm4K the selected bucket HWM for 4 KiB messages
+ * @param autoHwmConnectionBucketHysteresisRetained whether hysteresis retained the previous bucket
  * @param autoHwmEffectiveMessageBytes the effective message size in bytes
  * @param autoHwmAppliedSndHwm the applied send high-water mark
  * @param autoHwmAppliedRcvHwm the applied receive high-water mark
@@ -39,6 +44,11 @@ public record MonitorStatus(MonitorSourceKind sourceKind, int stateFlags,
                               long autoHwmUnitBudgetBytes,
                               int autoHwmSizeCap,
                               long autoHwmSocketMessageSlots,
+                              boolean autoHwmConnectionBucketEnabled,
+                              int autoHwmConnectionBucketCount,
+                              int autoHwmConnectionBucketIndex,
+                              int autoHwmConnectionBucketHwm4K,
+                              boolean autoHwmConnectionBucketHysteresisRetained,
                               long autoHwmEffectiveMessageBytes,
                               int autoHwmAppliedSndHwm,
                               int autoHwmAppliedRcvHwm,

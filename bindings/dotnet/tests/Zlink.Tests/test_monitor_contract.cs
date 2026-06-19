@@ -56,6 +56,8 @@ public sealed class test_monitor_contract
         Assert.True(snapshot.AutoHwmUnitBudgetBytes >= 0);
         Assert.True(snapshot.AutoHwmSizeCap >= 0);
         Assert.True(snapshot.AutoHwmSocketMessageSlots >= 0);
+        Assert.True(snapshot.AutoHwmConnectionBucketCount >= 0);
+        Assert.True(snapshot.AutoHwmConnectionBucketHwm4K >= 0);
 
         monitor.Close();
         Assert.Throws<ObjectDisposedException>(() => monitor.Status());

@@ -97,6 +97,11 @@ typedef struct zlink_monitor_status_t
     uint64_t auto_hwm_unit_budget_bytes;
     uint32_t auto_hwm_size_cap;
     uint64_t auto_hwm_socket_message_slots;
+    uint32_t auto_hwm_connection_bucket_enabled;
+    uint32_t auto_hwm_connection_bucket_count;
+    uint32_t auto_hwm_connection_bucket_index;
+    uint32_t auto_hwm_connection_bucket_hwm_4k;
+    uint32_t auto_hwm_connection_bucket_hysteresis_retained;
     uint64_t auto_hwm_effective_message_bytes;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
@@ -124,6 +129,11 @@ typedef struct zlink_monitor_status_t
 | `auto_hwm_unit_budget_bytes` | Per-connection unit budget selected from the active profile and policy class. For SPOT mesh transport sockets, this is the budget after connection bucket reduction. |
 | `auto_hwm_size_cap` | Message-count cap selected from the active profile, policy class, and effective message size. |
 | `auto_hwm_socket_message_slots` | Message slots derived from the selected unit budget, SPOT mesh connection bucket and hysteresis result when applied, and effective message unit. |
+| `auto_hwm_connection_bucket_enabled` | `1` when a connection-count bucket applies to this socket plan, otherwise `0`. |
+| `auto_hwm_connection_bucket_count` | Peer count used to select the connection bucket. It is the larger of `managed_connections` and `active_hwm_connections`, with a minimum of `1`. |
+| `auto_hwm_connection_bucket_index` | Selected bucket index. Current values are `0=1-64`, `1=65-128`, `2=129-512`, `3=513-2048`, and `4=2049+`; `UINT32_MAX` means no bucket applies. |
+| `auto_hwm_connection_bucket_hwm_4k` | Selected bucket HWM for a 4 KiB message unit, or `0` when no bucket applies. |
+| `auto_hwm_connection_bucket_hysteresis_retained` | `1` when the previous bucket was retained because the peer count stayed inside the hysteresis band, otherwise `0`. |
 | `auto_hwm_effective_message_bytes` | Effective message unit in bytes used by the current policy calculation. |
 | `auto_hwm_applied_sndhwm` | Currently applied send HWM on the socket. |
 | `auto_hwm_applied_rcvhwm` | Currently applied recv HWM on the socket. |

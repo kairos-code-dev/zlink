@@ -135,6 +135,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     void schedule_auto_hwm_recalculate ();
     int auto_hwm_recalculate_now ();
     zlink_auto_hwm_profile_t auto_hwm_profile () const;
+    bool auto_hwm_enabled () const;
     int auto_hwm_msg_unit_bytes () const;
 
   private:

@@ -23,6 +23,11 @@ internal struct ZlinkMonitorStatus
     public ulong AutoHwmUnitBudgetBytes;
     public uint AutoHwmSizeCap;
     public ulong AutoHwmSocketMessageSlots;
+    public uint AutoHwmConnectionBucketEnabled;
+    public uint AutoHwmConnectionBucketCount;
+    public uint AutoHwmConnectionBucketIndex;
+    public uint AutoHwmConnectionBucketHwm4K;
+    public uint AutoHwmConnectionBucketHysteresisRetained;
     public ulong AutoHwmEffectiveMessageBytes;
     public int AutoHwmAppliedSndHwm;
     public int AutoHwmAppliedRcvHwm;

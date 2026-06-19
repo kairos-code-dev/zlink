@@ -101,6 +101,11 @@ typedef struct zlink_monitor_status_t
     uint64_t auto_hwm_unit_budget_bytes;
     uint32_t auto_hwm_size_cap;
     uint64_t auto_hwm_socket_message_slots;
+    uint32_t auto_hwm_connection_bucket_enabled;
+    uint32_t auto_hwm_connection_bucket_count;
+    uint32_t auto_hwm_connection_bucket_index;
+    uint32_t auto_hwm_connection_bucket_hwm_4k;
+    uint32_t auto_hwm_connection_bucket_hysteresis_retained;
     uint64_t auto_hwm_effective_message_bytes;
     int32_t auto_hwm_applied_sndhwm;
     int32_t auto_hwm_applied_rcvhwm;
@@ -128,6 +133,11 @@ typedef struct zlink_monitor_status_t
 | `auto_hwm_unit_budget_bytes` | 현재 profile과 policy class에서 고른 연결당 단위 예산. SPOT mesh transport 소켓에서는 연결 수 bucket을 적용한 뒤의 예산 |
 | `auto_hwm_size_cap` | 현재 profile, policy class, 실효 메시지 크기에서 고른 메시지 수 상한 |
 | `auto_hwm_socket_message_slots` | 선택된 단위 예산, SPOT mesh 연결 수 bucket과 hysteresis 적용 결과, 실효 메시지 단위로 계산한 메시지 슬롯 수 |
+| `auto_hwm_connection_bucket_enabled` | 연결 수 bucket이 이 socket plan에 적용되면 `1`, 아니면 `0` |
+| `auto_hwm_connection_bucket_count` | 연결 수 bucket 선택에 사용한 peer 수. `managed_connections`와 `active_hwm_connections` 중 큰 값이며 최소 `1` |
+| `auto_hwm_connection_bucket_index` | 선택된 bucket index. 현재 `0=1-64`, `1=65-128`, `2=129-512`, `3=513-2048`, `4=2049+`이며, bucket이 적용되지 않으면 `UINT32_MAX` |
+| `auto_hwm_connection_bucket_hwm_4k` | 선택된 bucket의 4 KiB 기준 HWM. bucket이 적용되지 않으면 `0` |
+| `auto_hwm_connection_bucket_hysteresis_retained` | 경계 여유 구간 때문에 이전 bucket을 유지했으면 `1`, 아니면 `0` |
 | `auto_hwm_effective_message_bytes` | 정책이 계산에 사용한 실효 메시지 단위 바이트 |
 | `auto_hwm_applied_sndhwm` | 현재 소켓에 적용된 송신 HWM |
 | `auto_hwm_applied_rcvhwm` | 현재 소켓에 적용된 수신 HWM |

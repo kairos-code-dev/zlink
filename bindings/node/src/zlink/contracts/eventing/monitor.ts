@@ -49,6 +49,11 @@ export interface MonitorStatus {
   readonly autoHwmUnitBudgetBytes: bigint;
   readonly autoHwmSizeCap: number;
   readonly autoHwmSocketMessageSlots: bigint;
+  readonly autoHwmConnectionBucketEnabled: boolean;
+  readonly autoHwmConnectionBucketCount: number;
+  readonly autoHwmConnectionBucketIndex: number;
+  readonly autoHwmConnectionBucketHwm4K: number;
+  readonly autoHwmConnectionBucketHysteresisRetained: boolean;
   readonly autoHwmEffectiveMessageBytes: bigint;
   readonly autoHwmAppliedSndHwm: number;
   readonly autoHwmAppliedRcvHwm: number;

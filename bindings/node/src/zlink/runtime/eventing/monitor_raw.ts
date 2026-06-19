@@ -13,6 +13,11 @@ export interface MonitorStatusRaw {
   autoHwmUnitBudgetBytes: number | bigint;
   autoHwmSizeCap: number;
   autoHwmSocketMessageSlots: number | bigint;
+  autoHwmConnectionBucketEnabled: boolean;
+  autoHwmConnectionBucketCount: number;
+  autoHwmConnectionBucketIndex: number;
+  autoHwmConnectionBucketHwm4K: number;
+  autoHwmConnectionBucketHysteresisRetained: boolean;
   autoHwmEffectiveMessageBytes: number | bigint;
   autoHwmAppliedSndHwm: number;
   autoHwmAppliedRcvHwm: number;

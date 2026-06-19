@@ -57,6 +57,8 @@ test('socket monitor exposes recv and snapshot surface', () => {
     assert.equal(typeof snapshot.autoHwmUnitBudgetBytes, 'bigint');
     assert.equal(typeof snapshot.autoHwmSizeCap, 'number');
     assert.equal(typeof snapshot.autoHwmSocketMessageSlots, 'bigint');
+    assert.equal(typeof snapshot.autoHwmConnectionBucketCount, 'number');
+    assert.equal(typeof snapshot.autoHwmConnectionBucketHwm4K, 'number');
     monitor.close();
     socket.close();
     ctx.close();

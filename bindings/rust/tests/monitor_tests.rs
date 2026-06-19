@@ -83,6 +83,8 @@ fn socket_monitor_status() {
     let _ = snap.auto_hwm_unit_budget_bytes;
     let _ = snap.auto_hwm_size_cap;
     let _ = snap.auto_hwm_socket_message_slots;
+    let _ = snap.auto_hwm_connection_bucket_count;
+    let _ = snap.auto_hwm_connection_bucket_hwm_4k;
 }
 
 #[test]

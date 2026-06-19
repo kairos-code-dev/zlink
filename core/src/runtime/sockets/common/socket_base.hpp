@@ -257,6 +257,9 @@ class socket_base_t : public own_t,
                                      const auto_hwm_socket_plan_t &plan_,
                                      bool force_apply_,
                                      uint32_t recalc_reason_);
+    void record_auto_hwm_socket_plan (const auto_hwm_context_plan_t &context_,
+                                      const auto_hwm_socket_plan_t &plan_,
+                                      uint32_t recalc_reason_);
     void refresh_auto_hwm_policy (bool force_apply_ = false);
     void set_auto_hwm_role (auto_hwm_role_t role_);
     void set_auto_hwm_scope (auto_hwm_scope_t scope_, size_t scope_count_);

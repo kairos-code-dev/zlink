@@ -3046,6 +3046,11 @@ napi_value monitor_status (napi_env env, napi_callback_info info)
     napi_value auto_hwm_unit_budget_bytes;
     napi_value auto_hwm_size_cap;
     napi_value auto_hwm_socket_message_slots;
+    napi_value auto_hwm_connection_bucket_enabled;
+    napi_value auto_hwm_connection_bucket_count;
+    napi_value auto_hwm_connection_bucket_index;
+    napi_value auto_hwm_connection_bucket_hwm_4k;
+    napi_value auto_hwm_connection_bucket_hysteresis_retained;
     napi_value auto_hwm_effective_message_bytes;
     napi_value auto_hwm_applied_sndhwm, auto_hwm_applied_rcvhwm;
     napi_value auto_hwm_effective_sndbuf, auto_hwm_effective_rcvbuf;
@@ -3067,6 +3072,16 @@ napi_value monitor_status (napi_env env, napi_callback_info info)
     napi_create_uint32 (env, snapshot.auto_hwm_size_cap, &auto_hwm_size_cap);
     napi_create_int64 (env, static_cast<int64_t> (snapshot.auto_hwm_socket_message_slots),
                        &auto_hwm_socket_message_slots);
+    napi_get_boolean (env, snapshot.auto_hwm_connection_bucket_enabled != 0,
+                      &auto_hwm_connection_bucket_enabled);
+    napi_create_uint32 (env, snapshot.auto_hwm_connection_bucket_count,
+                        &auto_hwm_connection_bucket_count);
+    napi_create_uint32 (env, snapshot.auto_hwm_connection_bucket_index,
+                        &auto_hwm_connection_bucket_index);
+    napi_create_uint32 (env, snapshot.auto_hwm_connection_bucket_hwm_4k,
+                        &auto_hwm_connection_bucket_hwm_4k);
+    napi_get_boolean (env, snapshot.auto_hwm_connection_bucket_hysteresis_retained != 0,
+                      &auto_hwm_connection_bucket_hysteresis_retained);
     napi_create_int64 (env, static_cast<int64_t> (snapshot.auto_hwm_effective_message_bytes),
                        &auto_hwm_effective_message_bytes);
     napi_create_int32 (env, snapshot.auto_hwm_applied_sndhwm, &auto_hwm_applied_sndhwm);
@@ -3092,6 +3107,16 @@ napi_value monitor_status (napi_env env, napi_callback_info info)
     napi_set_named_property (env, obj, "autoHwmUnitBudgetBytes", auto_hwm_unit_budget_bytes);
     napi_set_named_property (env, obj, "autoHwmSizeCap", auto_hwm_size_cap);
     napi_set_named_property (env, obj, "autoHwmSocketMessageSlots", auto_hwm_socket_message_slots);
+    napi_set_named_property (env, obj, "autoHwmConnectionBucketEnabled",
+                             auto_hwm_connection_bucket_enabled);
+    napi_set_named_property (env, obj, "autoHwmConnectionBucketCount",
+                             auto_hwm_connection_bucket_count);
+    napi_set_named_property (env, obj, "autoHwmConnectionBucketIndex",
+                             auto_hwm_connection_bucket_index);
+    napi_set_named_property (env, obj, "autoHwmConnectionBucketHwm4K",
+                             auto_hwm_connection_bucket_hwm_4k);
+    napi_set_named_property (env, obj, "autoHwmConnectionBucketHysteresisRetained",
+                             auto_hwm_connection_bucket_hysteresis_retained);
     napi_set_named_property (env, obj, "autoHwmEffectiveMessageBytes",
                              auto_hwm_effective_message_bytes);
     napi_set_named_property (env, obj, "autoHwmAppliedSndHwm", auto_hwm_applied_sndhwm);

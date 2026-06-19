@@ -54,6 +54,13 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_status_t *out_)
     out_->auto_hwm_unit_budget_bytes = _auto_hwm_socket_plan.unit_budget_bytes;
     out_->auto_hwm_size_cap = _auto_hwm_socket_plan.size_cap;
     out_->auto_hwm_socket_message_slots = _auto_hwm_socket_plan.socket_message_slots;
+    out_->auto_hwm_connection_bucket_enabled =
+      _auto_hwm_socket_plan.connection_bucket_enabled ? 1u : 0u;
+    out_->auto_hwm_connection_bucket_count = _auto_hwm_socket_plan.connection_bucket_count;
+    out_->auto_hwm_connection_bucket_index = _auto_hwm_socket_plan.connection_bucket_index;
+    out_->auto_hwm_connection_bucket_hwm_4k = _auto_hwm_socket_plan.connection_bucket_hwm_4k;
+    out_->auto_hwm_connection_bucket_hysteresis_retained =
+      _auto_hwm_socket_plan.connection_bucket_hysteresis_retained ? 1u : 0u;
     out_->auto_hwm_effective_message_bytes = _auto_hwm_socket_plan.effective_message_bytes;
     out_->auto_hwm_applied_sndhwm = options.sndhwm;
     out_->auto_hwm_applied_rcvhwm = options.rcvhwm;

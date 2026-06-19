@@ -42,6 +42,21 @@ def _monitor_status_from_native(snapshot):
         auto_hwm_unit_budget_bytes=int(snapshot.auto_hwm_unit_budget_bytes),
         auto_hwm_size_cap=int(snapshot.auto_hwm_size_cap),
         auto_hwm_socket_message_slots=int(snapshot.auto_hwm_socket_message_slots),
+        auto_hwm_connection_bucket_enabled=bool(
+            snapshot.auto_hwm_connection_bucket_enabled
+        ),
+        auto_hwm_connection_bucket_count=int(
+            snapshot.auto_hwm_connection_bucket_count
+        ),
+        auto_hwm_connection_bucket_index=int(
+            snapshot.auto_hwm_connection_bucket_index
+        ),
+        auto_hwm_connection_bucket_hwm_4k=int(
+            snapshot.auto_hwm_connection_bucket_hwm_4k
+        ),
+        auto_hwm_connection_bucket_hysteresis_retained=bool(
+            snapshot.auto_hwm_connection_bucket_hysteresis_retained
+        ),
         auto_hwm_effective_message_bytes=int(snapshot.auto_hwm_effective_message_bytes),
         auto_hwm_applied_sndhwm=int(snapshot.auto_hwm_applied_sndhwm),
         auto_hwm_applied_rcvhwm=int(snapshot.auto_hwm_applied_rcvhwm),

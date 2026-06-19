@@ -69,28 +69,33 @@ func (e *MonitorEvent) IsConnectionReady() bool {
 }
 
 type MonitorStatus struct {
-	SourceKind                   MonitorSourceKind
-	StateFlags                   uint32
-	DetailFlags                  uint32
-	SndPendingMsgs               uint64
-	RcvPendingMsgs               uint64
-	AutoHwmEnabled               bool
-	AutoHwmProfile               uint32
-	AutoHwmRole                  uint32
-	AutoHwmPolicyClass           uint32
-	AutoHwmUnitBudgetBytes       uint64
-	AutoHwmSizeCap               uint32
-	AutoHwmSocketMessageSlots    uint64
-	AutoHwmEffectiveMessageBytes uint64
-	AutoHwmAppliedSndHwm         int32
-	AutoHwmAppliedRcvHwm         int32
-	AutoHwmEffectiveSndBuf       int32
-	AutoHwmEffectiveRcvBuf       int32
-	AutoHwmLastRecalcMs          uint64
-	AutoHwmLastRecalcReason      AutoHwmRecalcReason
-	AutoHwmSendBlockedRatioPPM   uint32
-	AutoHwmDeferredSndHwm        int32
-	AutoHwmDeferredRcvHwm        int32
+	SourceKind                                MonitorSourceKind
+	StateFlags                                uint32
+	DetailFlags                               uint32
+	SndPendingMsgs                            uint64
+	RcvPendingMsgs                            uint64
+	AutoHwmEnabled                            bool
+	AutoHwmProfile                            uint32
+	AutoHwmRole                               uint32
+	AutoHwmPolicyClass                        uint32
+	AutoHwmUnitBudgetBytes                    uint64
+	AutoHwmSizeCap                            uint32
+	AutoHwmSocketMessageSlots                 uint64
+	AutoHwmConnectionBucketEnabled            bool
+	AutoHwmConnectionBucketCount              uint32
+	AutoHwmConnectionBucketIndex              uint32
+	AutoHwmConnectionBucketHwm4K              uint32
+	AutoHwmConnectionBucketHysteresisRetained bool
+	AutoHwmEffectiveMessageBytes              uint64
+	AutoHwmAppliedSndHwm                      int32
+	AutoHwmAppliedRcvHwm                      int32
+	AutoHwmEffectiveSndBuf                    int32
+	AutoHwmEffectiveRcvBuf                    int32
+	AutoHwmLastRecalcMs                       uint64
+	AutoHwmLastRecalcReason                   AutoHwmRecalcReason
+	AutoHwmSendBlockedRatioPPM                uint32
+	AutoHwmDeferredSndHwm                     int32
+	AutoHwmDeferredRcvHwm                     int32
 }
 
 func (s *MonitorStatus) IsReady() bool {
@@ -99,28 +104,33 @@ func (s *MonitorStatus) IsReady() bool {
 
 func monitorStatusFromC(raw C.zlink_monitor_status_t) MonitorStatus {
 	return MonitorStatus{
-		SourceKind:                   MonitorSourceKind(raw.source_kind),
-		StateFlags:                   uint32(raw.state_flags),
-		DetailFlags:                  uint32(raw.detail_flags),
-		SndPendingMsgs:               uint64(raw.snd_pending_msgs),
-		RcvPendingMsgs:               uint64(raw.rcv_pending_msgs),
-		AutoHwmEnabled:               uint32(raw.auto_hwm_enabled) != 0,
-		AutoHwmProfile:               uint32(raw.auto_hwm_profile),
-		AutoHwmRole:                  uint32(raw.auto_hwm_role),
-		AutoHwmPolicyClass:           uint32(raw.auto_hwm_policy_class),
-		AutoHwmUnitBudgetBytes:       uint64(raw.auto_hwm_unit_budget_bytes),
-		AutoHwmSizeCap:               uint32(raw.auto_hwm_size_cap),
-		AutoHwmSocketMessageSlots:    uint64(raw.auto_hwm_socket_message_slots),
-		AutoHwmEffectiveMessageBytes: uint64(raw.auto_hwm_effective_message_bytes),
-		AutoHwmAppliedSndHwm:         int32(raw.auto_hwm_applied_sndhwm),
-		AutoHwmAppliedRcvHwm:         int32(raw.auto_hwm_applied_rcvhwm),
-		AutoHwmEffectiveSndBuf:       int32(raw.auto_hwm_effective_sndbuf),
-		AutoHwmEffectiveRcvBuf:       int32(raw.auto_hwm_effective_rcvbuf),
-		AutoHwmLastRecalcMs:          uint64(raw.auto_hwm_last_recalc_ms),
-		AutoHwmLastRecalcReason:      AutoHwmRecalcReason(raw.auto_hwm_last_recalc_reason),
-		AutoHwmSendBlockedRatioPPM:   uint32(raw.auto_hwm_send_blocked_ratio_ppm),
-		AutoHwmDeferredSndHwm:        int32(raw.auto_hwm_deferred_sndhwm),
-		AutoHwmDeferredRcvHwm:        int32(raw.auto_hwm_deferred_rcvhwm),
+		SourceKind:                                MonitorSourceKind(raw.source_kind),
+		StateFlags:                                uint32(raw.state_flags),
+		DetailFlags:                               uint32(raw.detail_flags),
+		SndPendingMsgs:                            uint64(raw.snd_pending_msgs),
+		RcvPendingMsgs:                            uint64(raw.rcv_pending_msgs),
+		AutoHwmEnabled:                            uint32(raw.auto_hwm_enabled) != 0,
+		AutoHwmProfile:                            uint32(raw.auto_hwm_profile),
+		AutoHwmRole:                               uint32(raw.auto_hwm_role),
+		AutoHwmPolicyClass:                        uint32(raw.auto_hwm_policy_class),
+		AutoHwmUnitBudgetBytes:                    uint64(raw.auto_hwm_unit_budget_bytes),
+		AutoHwmSizeCap:                            uint32(raw.auto_hwm_size_cap),
+		AutoHwmSocketMessageSlots:                 uint64(raw.auto_hwm_socket_message_slots),
+		AutoHwmConnectionBucketEnabled:            uint32(raw.auto_hwm_connection_bucket_enabled) != 0,
+		AutoHwmConnectionBucketCount:              uint32(raw.auto_hwm_connection_bucket_count),
+		AutoHwmConnectionBucketIndex:              uint32(raw.auto_hwm_connection_bucket_index),
+		AutoHwmConnectionBucketHwm4K:              uint32(raw.auto_hwm_connection_bucket_hwm_4k),
+		AutoHwmConnectionBucketHysteresisRetained: uint32(raw.auto_hwm_connection_bucket_hysteresis_retained) != 0,
+		AutoHwmEffectiveMessageBytes:              uint64(raw.auto_hwm_effective_message_bytes),
+		AutoHwmAppliedSndHwm:                      int32(raw.auto_hwm_applied_sndhwm),
+		AutoHwmAppliedRcvHwm:                      int32(raw.auto_hwm_applied_rcvhwm),
+		AutoHwmEffectiveSndBuf:                    int32(raw.auto_hwm_effective_sndbuf),
+		AutoHwmEffectiveRcvBuf:                    int32(raw.auto_hwm_effective_rcvbuf),
+		AutoHwmLastRecalcMs:                       uint64(raw.auto_hwm_last_recalc_ms),
+		AutoHwmLastRecalcReason:                   AutoHwmRecalcReason(raw.auto_hwm_last_recalc_reason),
+		AutoHwmSendBlockedRatioPPM:                uint32(raw.auto_hwm_send_blocked_ratio_ppm),
+		AutoHwmDeferredSndHwm:                     int32(raw.auto_hwm_deferred_sndhwm),
+		AutoHwmDeferredRcvHwm:                     int32(raw.auto_hwm_deferred_rcvhwm),
 	}
 }
 

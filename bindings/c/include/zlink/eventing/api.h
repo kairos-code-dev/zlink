@@ -80,6 +80,21 @@ typedef struct zlink_monitor_status_t
     /* Message slot count calculated from the unit budget and message size. */
     uint64_t auto_hwm_socket_message_slots;
 
+    /* Non-zero when a connection-count bucket limited this socket plan. */
+    uint32_t auto_hwm_connection_bucket_enabled;
+
+    /* Connection count observed by the automatic HWM bucket planner. */
+    uint32_t auto_hwm_connection_bucket_count;
+
+    /* Selected connection bucket index, or UINT32_MAX when no bucket applies. */
+    uint32_t auto_hwm_connection_bucket_index;
+
+    /* Selected bucket HWM for a 4 KiB message unit, or 0 when no bucket applies. */
+    uint32_t auto_hwm_connection_bucket_hwm_4k;
+
+    /* Non-zero when hysteresis retained the previous connection bucket. */
+    uint32_t auto_hwm_connection_bucket_hysteresis_retained;
+
     /* Message size in bytes used by the automatic HWM calculation. */
     uint64_t auto_hwm_effective_message_bytes;
 

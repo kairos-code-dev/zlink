@@ -22,6 +22,12 @@ export function materializeMonitorStatus(raw: MonitorStatusRaw): MonitorStatus {
     autoHwmUnitBudgetBytes: BigInt(raw.autoHwmUnitBudgetBytes),
     autoHwmSizeCap: raw.autoHwmSizeCap,
     autoHwmSocketMessageSlots: BigInt(raw.autoHwmSocketMessageSlots),
+    autoHwmConnectionBucketEnabled: raw.autoHwmConnectionBucketEnabled,
+    autoHwmConnectionBucketCount: raw.autoHwmConnectionBucketCount,
+    autoHwmConnectionBucketIndex: raw.autoHwmConnectionBucketIndex,
+    autoHwmConnectionBucketHwm4K: raw.autoHwmConnectionBucketHwm4K,
+    autoHwmConnectionBucketHysteresisRetained:
+      raw.autoHwmConnectionBucketHysteresisRetained,
     autoHwmEffectiveMessageBytes: BigInt(raw.autoHwmEffectiveMessageBytes),
     autoHwmAppliedSndHwm: raw.autoHwmAppliedSndHwm,
     autoHwmAppliedRcvHwm: raw.autoHwmAppliedRcvHwm,

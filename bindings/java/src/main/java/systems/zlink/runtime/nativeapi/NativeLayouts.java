@@ -42,6 +42,12 @@ public final class NativeLayouts {
                     ValueLayout.JAVA_INT.withName("auto_hwm_size_cap"),
                     MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("auto_hwm_socket_message_slots"),
+                    ValueLayout.JAVA_INT.withName("auto_hwm_connection_bucket_enabled"),
+                    ValueLayout.JAVA_INT.withName("auto_hwm_connection_bucket_count"),
+                    ValueLayout.JAVA_INT.withName("auto_hwm_connection_bucket_index"),
+                    ValueLayout.JAVA_INT.withName("auto_hwm_connection_bucket_hwm_4k"),
+                    ValueLayout.JAVA_INT.withName("auto_hwm_connection_bucket_hysteresis_retained"),
+                    MemoryLayout.paddingLayout(4),
                     ValueLayout.JAVA_LONG_UNALIGNED.withName("auto_hwm_effective_message_bytes"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_applied_sndhwm"),
                     ValueLayout.JAVA_INT.withName("auto_hwm_applied_rcvhwm"),
@@ -88,6 +94,21 @@ public final class NativeLayouts {
     public static final long MONITOR_SNAPSHOT_AUTO_HWM_SOCKET_MESSAGE_SLOTS_OFFSET =
             MONITOR_SNAPSHOT_LAYOUT.byteOffset(
                     PathElement.groupElement("auto_hwm_socket_message_slots"));
+    public static final long MONITOR_SNAPSHOT_AUTO_HWM_CONNECTION_BUCKET_ENABLED_OFFSET =
+            MONITOR_SNAPSHOT_LAYOUT.byteOffset(
+                    PathElement.groupElement("auto_hwm_connection_bucket_enabled"));
+    public static final long MONITOR_SNAPSHOT_AUTO_HWM_CONNECTION_BUCKET_COUNT_OFFSET =
+            MONITOR_SNAPSHOT_LAYOUT.byteOffset(
+                    PathElement.groupElement("auto_hwm_connection_bucket_count"));
+    public static final long MONITOR_SNAPSHOT_AUTO_HWM_CONNECTION_BUCKET_INDEX_OFFSET =
+            MONITOR_SNAPSHOT_LAYOUT.byteOffset(
+                    PathElement.groupElement("auto_hwm_connection_bucket_index"));
+    public static final long MONITOR_SNAPSHOT_AUTO_HWM_CONNECTION_BUCKET_HWM_4K_OFFSET =
+            MONITOR_SNAPSHOT_LAYOUT.byteOffset(
+                    PathElement.groupElement("auto_hwm_connection_bucket_hwm_4k"));
+    public static final long MONITOR_SNAPSHOT_AUTO_HWM_CONNECTION_BUCKET_HYSTERESIS_RETAINED_OFFSET =
+            MONITOR_SNAPSHOT_LAYOUT.byteOffset(
+                    PathElement.groupElement("auto_hwm_connection_bucket_hysteresis_retained"));
     public static final long MONITOR_SNAPSHOT_AUTO_HWM_EFFECTIVE_MESSAGE_BYTES_OFFSET =
             MONITOR_SNAPSHOT_LAYOUT.byteOffset(
                     PathElement.groupElement("auto_hwm_effective_message_bytes"));

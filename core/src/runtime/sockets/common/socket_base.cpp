@@ -302,6 +302,21 @@ void zlink::socket_base_t::apply_auto_hwm_socket_plan (const auto_hwm_context_pl
     _auto_hwm_last_recalc_reason = recalc_reason;
 }
 
+void zlink::socket_base_t::record_auto_hwm_socket_plan (const auto_hwm_context_plan_t &context_,
+                                                        const auto_hwm_socket_plan_t &plan_,
+                                                        uint32_t recalc_reason_)
+{
+    uint32_t recalc_reason = recalc_reason_;
+    if (recalc_reason == ZLINK_AUTO_HWM_RECALC_REASON_NONE) {
+        recalc_reason = _auto_hwm_last_recalc_ms == 0 ? ZLINK_AUTO_HWM_RECALC_REASON_INITIAL
+                                                      : ZLINK_AUTO_HWM_RECALC_REASON_REFRESH;
+    }
+    _auto_hwm_context_plan = context_;
+    _auto_hwm_socket_plan = plan_;
+    _auto_hwm_last_recalc_ms = _clock.now_ms ();
+    _auto_hwm_last_recalc_reason = recalc_reason;
+}
+
 bool zlink::socket_base_t::auto_hwm_connection_bucket_state (
   uint32_t *bucket_index_out_,
   zlink_auto_hwm_profile_t *profile_out_,

@@ -32,6 +32,11 @@ class MonitorStatus:
         auto_hwm_unit_budget_bytes=None,
         auto_hwm_size_cap=None,
         auto_hwm_socket_message_slots=None,
+        auto_hwm_connection_bucket_enabled=None,
+        auto_hwm_connection_bucket_count=None,
+        auto_hwm_connection_bucket_index=None,
+        auto_hwm_connection_bucket_hwm_4k=None,
+        auto_hwm_connection_bucket_hysteresis_retained=None,
         auto_hwm_effective_message_bytes=None,
         auto_hwm_applied_sndhwm=None,
         auto_hwm_applied_rcvhwm=None,
@@ -55,6 +60,13 @@ class MonitorStatus:
         self.auto_hwm_unit_budget_bytes = auto_hwm_unit_budget_bytes
         self.auto_hwm_size_cap = auto_hwm_size_cap
         self.auto_hwm_socket_message_slots = auto_hwm_socket_message_slots
+        self.auto_hwm_connection_bucket_enabled = auto_hwm_connection_bucket_enabled
+        self.auto_hwm_connection_bucket_count = auto_hwm_connection_bucket_count
+        self.auto_hwm_connection_bucket_index = auto_hwm_connection_bucket_index
+        self.auto_hwm_connection_bucket_hwm_4k = auto_hwm_connection_bucket_hwm_4k
+        self.auto_hwm_connection_bucket_hysteresis_retained = (
+            auto_hwm_connection_bucket_hysteresis_retained
+        )
         self.auto_hwm_effective_message_bytes = auto_hwm_effective_message_bytes
         self.auto_hwm_applied_sndhwm = auto_hwm_applied_sndhwm
         self.auto_hwm_applied_rcvhwm = auto_hwm_applied_rcvhwm
@@ -118,4 +130,3 @@ class MonitorSocket(Protocol):
     async def __aenter__(self): ...
 
     async def __aexit__(self, exc_type, exc, tb): ...
-

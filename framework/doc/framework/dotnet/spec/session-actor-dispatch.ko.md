@@ -1150,9 +1150,10 @@ public interface IZLinkSessionActors
 ```
 
 이 표면만 남기면 session 코드의 의도가 분명해진다. session 은 "받은 client
-packet 을 어떤 actor 에 relay 할지"만 결정한다. 같은 process 의 actor 는 actor id
-overload 로 bind 할 수 있고, 다른 process 의 actor 는 `JoinSpot(...)` /
-`JoinEntrySpot(..., request)` 결과의 `ActorRef` 를 넘기는 overload 로 bind 한다.
+packet 을 어떤 actor 에 relay 할지"만 결정한다. 같은 process 의 actor 는 `IZLinkActor`
+인스턴스(예: `IZLinkActorManager.GetOrCreateAsync(...)` 결과)로 bind 하고, 다른 process 의
+actor 는 `JoinSpot(...)` / `JoinEntrySpot(..., request)` 결과의 `ActorRef` 를 넘기는
+overload 로 bind 한다.
 한 session 이 여러 actor 를 bind 할 수 있으므로 이미 bind 한 actor handle 이 필요하면
 `Bound` 로 현재 binding snapshot 을 보거나 `Find(actorId)` 로
 actor id 기준 조회를 한다. session 은 actor handle 목록을 별도 application 상태로
@@ -1291,22 +1292,22 @@ public sealed class TicTacToeEntrySpot : IZLinkEntrySpot
 
     public void Configure()
     {
-        Context.AddHandler<JoinMatchEntryHandler>();
-        Context.AddHandler<TicTacToeEntryJoinedHandler>();
-        Context.AddHandler<TicTacToeEntryLeftHandler>();
+        Context.Handlers.AddHandler<JoinMatchEntryHandler>();
+        Context.Handlers.AddHandler<TicTacToeEntryJoinedHandler>();
+        Context.Handlers.AddHandler<TicTacToeEntryLeftHandler>();
     }
 }
 
-public sealed class TicTacToeGame : IZLinkSpot
+public sealed class TicTacToeGame : IZLinkSpot<PlayActor>
 {
     public IZLinkSpotContext Context { get; }
 
     public void Configure()
     {
-        Context.AddHandler<PlaceMarkHandler>();
-        Context.AddHandler<MoveHandler>();
-        Context.AddHandler<TicTacToeGameJoinedHandler>();
-        Context.AddHandler<TicTacToeGameLeftHandler>();
+        Context.Handlers.AddHandler<PlaceMarkHandler>();
+        Context.Handlers.AddHandler<MoveHandler>();
+        Context.Handlers.AddHandler<TicTacToeGameJoinedHandler>();
+        Context.Handlers.AddHandler<TicTacToeGameLeftHandler>();
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
@@ -1336,7 +1337,7 @@ session callback 이 직접 결정하는 것은 다음과 같다.
 framework helper 는 actor-session binding 과 transport 세부 작업만 가려 준다.
 
 ```csharp
-public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSession
+public sealed class TicTacToeSession(IZLinkSessionContext context, IZLinkActorManager actors) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
 
@@ -1349,8 +1350,10 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
         {
             AuthReq request = payload.Decode<AuthReq>();
 
+            IZLinkActor authActor = await actors.GetOrCreateAsync(
+                request.ActorId, "player", cancellationToken);
             IZLinkSessionActor actor = await context.Actors.BindAsync(
-                request.ActorId,
+                authActor,
                 cancellationToken);
 
             authenticatedActors.Remember(request.ActorId, actor);
@@ -1391,10 +1394,12 @@ public sealed class JoinMatchHandler
     public async ValueTask<JoinMatchRes> HandleAsync(
         PlayerEntrySpot entrySpot,
         PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
         JoinMatchReq request,
         CancellationToken cancellationToken)
     {
         _ = entrySpot;
+        _ = context;
         // request.MatchId는 application 도메인이 정한 match id다.
         // application registry가 user Spot RoutingId로 변환하거나 조회한다.
         var matchSpotRid = RoutingId.From(request.MatchId);
@@ -1411,6 +1416,7 @@ public sealed class PlaceMarkHandler
     public ValueTask<PlaceMarkRes> HandleAsync(
         TicTacToeGameSpot spot,
         PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
         PlaceMarkReq request,
         CancellationToken cancellationToken)
     {
@@ -1454,6 +1460,9 @@ public enum ZLinkFrameworkErrorKind
     RequestRejected,
     RequestProtocolError,
     RequestFailed,
+    WorkerQueueFull,
+    WorkerTimedOut,
+    WorkerFailed,
 }
 ```
 

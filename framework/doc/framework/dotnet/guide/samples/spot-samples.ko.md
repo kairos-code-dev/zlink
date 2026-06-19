@@ -41,9 +41,9 @@
   public surface 에 포함하지 않는다. spot rid 기반 호출은 모두
   `IZLinkSpotOutbound` 가 resolver[^resolver] 를 거쳐 처리한다.
 
-## 2. 인터페이스 초안
+## 2. 인터페이스 요약
 
-이 절은 샘플이 전제로 삼는 인터페이스 초안을 한 자리에 모아 둔다. 아래는
+이 절은 샘플이 전제로 삼는 인터페이스를 한 자리에 모아 둔다. 아래는
 샘플 구현이 의존하는 최소한의 표면 정의다.
 
 > **주의**: 아래 정의는 [handler-interfaces.ko.md](../../spec/handler-interfaces.ko.md)의
@@ -57,6 +57,13 @@ public interface IZLinkSpot
 
     void Configure()
     {
+    }
+
+    ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 
     ValueTask OnInitializeAsync(
@@ -115,45 +122,46 @@ public interface IZLinkSpotOutbound
     }
 }
 
-public interface IZLinkSpotContext : IZLinkSpotOutbound
+public interface IZLinkSpotContext
 {
     RoutingId SpotRid { get; }
     RoutingId NodeRid { get; }
 
-    // IZLinkSpot.Context 는 framework 가 생성자에 넘긴 context 를
-    // 그대로 노출하는 공개 계약이다.
+    // 등록 표면: handler 는 Context.Handlers 에 등록한다.
+    IZLinkSpotHandlerRegistry Handlers { get; }
 
-    void AddPacket<THandler>()
-        where THandler : class
-    {
-    }
+    // outbound 호출 표면: publish/send/request 는 Context.Outbound 로 한다.
+    IZLinkSpotOutbound Outbound { get; }
 
-    void AddSubscribe<THandler>(
-        string topic)
-        where THandler : class
-    {
-    }
-
-    void AddHandler<THandler>()
-        where THandler : class
-    {
-    }
-
-    void AddActorPacket<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-    }
+    ValueTask<bool> CloseAsync(
+        CancellationToken cancellationToken = default);
 
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
         ZLinkTimerOptions? options = null,
         CancellationToken cancellationToken = default)
+        where THandler : class;
+}
+
+// handler 등록 메서드는 Context.Handlers(IZLinkSpotHandlerRegistry)에 있다.
+public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
+{
+    void AddPacket<THandler>()
+        where THandler : class;
+
+    void AddSubscribe<THandler>(string topic)
+        where THandler : class;
+}
+
+public interface IZLinkActorHandlerRegistry
+{
+    void AddHandler<THandler>()
+        where THandler : class;
+
+    void AddActorPacket<THandler, TActor>()
         where THandler : class
-    {
-        return ValueTask.FromResult<IZLinkTimer>(default!);
-    }
+        where TActor : IZLinkActor;
 }
 
 public interface IZLinkSpotPacketHandler<TSpot, in TMessage>
@@ -220,11 +228,11 @@ public readonly record struct ZLinkSpotInfo(
 
 public interface IZLinkChannelClient
 {
-    IZLinkSendCall Send<TMessage>(
+    IZLinkSendCall SendToChannel<TMessage>(
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall Request<TMessage>(
+    IZLinkRequestCall RequestToChannel<TMessage>(
         string channelName,
         TMessage request);
 }
@@ -605,9 +613,9 @@ builder.Services.AddZLinkFramework(options =>
 
 이 절은 spot 인스턴스를 만들고 그 인스턴스를 다시 조회하는 표면을 정리한다.
 
-spot 인스턴스를 만들 때는 factory 타입이 아니라 등록할 때 사용한 이름을
-넘긴다. 이렇게 해야 같은 `SpotNode` 에 여러 spot factory 가 등록되어 있을 때
-어떤 타입을 만들지 명확해진다.
+spot 인스턴스를 만들 때는 generic spot 타입을 지정한다(`CreateAsync<StageSpot>()`).
+이렇게 같은 `SpotNode` 에 여러 spot factory 가 등록되어 있어도 어떤 타입을 만들지
+명확해진다.
 
 ```csharp
 app.MapPost("/stage/create", async (
@@ -615,7 +623,7 @@ app.MapPost("/stage/create", async (
     CancellationToken cancellationToken) =>
 {
     var created = await spotManager.CreateAsync<StageSpot>(cancellationToken);
-    var spotInfo = await spotManager.GetAsync(created.SpotRid, cancellationToken);
+    var spotInfo = await spotManager.FindAsync(created.SpotRid, cancellationToken);
 
     return Results.Ok(new
     {
@@ -773,11 +781,11 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleAct
 
     public void Configure()
     {
-        Context.AddPacket<SampleGetStateHandler>();
-        Context.AddPacket<SampleReportStateHandler>();
-        Context.AddHandler<SampleMoveActorHandler>();
+        Context.Handlers.AddPacket<SampleGetStateHandler>();
+        Context.Handlers.AddPacket<SampleReportStateHandler>();
+        Context.Handlers.AddHandler<SampleMoveActorHandler>();
 
-        Context.AddSubscribe<SampleStateUpdatedHandler>(
+        Context.Handlers.AddSubscribe<SampleStateUpdatedHandler>(
             "sample.state.updated");
     }
 
@@ -915,7 +923,7 @@ public interface IZLinkActor
 - `IZLinkActor.Configure()`
   - actor 가 생성된 직후 한 번 호출된다. actor 자체의 초기화에만 사용한다.
     actor packet handler 등록은
-    `IZLinkSpotContext.AddHandler<THandler>()` 로 분리한다.
+    `IZLinkSpotContext.Handlers.AddHandler<THandler>()` 로 분리한다.
 - `IZLinkActorContext.GetSpot<TSpot>()`
   - 현재 들어가 있는 room 인스턴스를 가져온다. 아직 room 에 join 하지 않았다면
     실패한다.
@@ -988,7 +996,7 @@ session disconnect 를 actor 에 알려야 하면 session code 가 대상 actor 
 `NotifyDisconnectedAsync(...)` 를 호출한다.
 
 ```csharp
-public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
+public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleActor>
 {
     private readonly Dictionary<string, SampleActor> _actors =
         new(StringComparer.Ordinal);
@@ -1004,11 +1012,11 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddPacket<SampleGetStateHandler>();
-        Context.AddPacket<SampleReportStateHandler>();
-        Context.AddHandler<SampleMoveActorHandler>();
+        Context.Handlers.AddPacket<SampleGetStateHandler>();
+        Context.Handlers.AddPacket<SampleReportStateHandler>();
+        Context.Handlers.AddHandler<SampleMoveActorHandler>();
 
-        Context.AddSubscribe<SampleStateUpdatedHandler>(
+        Context.Handlers.AddSubscribe<SampleStateUpdatedHandler>(
             "sample.state.updated");
     }
 
@@ -1487,7 +1495,7 @@ packet 의 hot path[^hot-path] 까지 다시 끌고 들어오지 않는 편이 �
    `SampleSendRoomChatCommand` 같은 패킷은 framework 내부의 `Async(...)`를
    거쳐 actor가 속한 `Spot` 문맥으로 제출된다.
 9. 같은 `Spot` 실행 문맥 안에서 실제 처리는
-   `IZLinkSpotContext.AddHandler(...)`로 등록한 actor packet handler가
+   `IZLinkSpotContext.Handlers.AddHandler(...)`로 등록한 actor packet handler가
    담당한다.
 10. room 전체 로직이 필요한 경우, handler는 인자로 받은 `SampleSpot`과 actor의
     method를 함께 사용해 처리를 이어 간다.
@@ -1694,13 +1702,13 @@ server tick 수를 계산할 수 있다.
 - `SampleSpot` 과 그 spot 에 귀속된 handler, timer handler, join handler 는
   모두 같은 per-spot DI[^di] scope 에서 resolve 된다고 보는 편이 맞다.
 - 그래서 public registration 함수에 매번 `IServiceProvider services` 를 넘기지
-  않고, `Context.AddPacket<THandler>()` 처럼 타입만 등록하는 형태가 더
+  않고, `Context.Handlers.AddPacket<THandler>()` 처럼 타입만 등록하는 형태가 더
   자연스럽다.
 - local spot 인스턴스가 없는 외부 노드는 `IZLinkSpotPublisherClient` 를 별도로
   주입받아 SPOT channel publish 를 할 수 있다.
-- `Context.AddPacket<THandler>(...)` 는 request packet 과 send packet 을 함께
+- `Context.Handlers.AddPacket<THandler>(...)` 는 request packet 과 send packet 을 함께
   등록한다.
-- `Context.AddSubscribe<THandler>(...)` 는 topic subscription consumer 를
+- `Context.Handlers.AddSubscribe<THandler>(...)` 는 topic subscription consumer 를
   등록한다.
 - `Context.AddTimer<THandler>(...)` 는 spot lifecycle[^lifecycle] 안에서 timer
   를 등록한다.
@@ -1725,8 +1733,8 @@ server tick 수를 계산할 수 있다.
 
 이 문서에서는 `SampleSpot` 이 자기 초기화 단계에서 다음 세 가지를 직접 등록한다.
 
-- `Context.AddPacket<THandler>(...)`
-- `Context.AddSubscribe<THandler>(topic)`
+- `Context.Handlers.AddPacket<THandler>(...)`
+- `Context.Handlers.AddSubscribe<THandler>(topic)`
 - `Context.AddTimer<THandler>(name, period, ...)`
 
 반면 stream session 은 `SampleSpot` 초기화 단계에서 정적으로 등록하지 않는다.
@@ -1770,44 +1778,32 @@ handler 가 다른 서버나 다른 spot 으로 outbound 호출을 보내야 한
 이 절은 `AddPacket(...)` 이 별도의 문자열 없이도 packet 타입을 어떻게
 식별하는지를 설명한다.
 
-이 문서에서는 `Context.AddPacket<THandler>(...)` 가 별도의 문자열을 받지
-않는다. packet 매핑의 기준은 header 의 `msgId` 다.
+이 문서에서는 `Context.Handlers.AddPacket<THandler>(...)` 가 별도의 문자열을 받지
+않는다. packet 매핑의 기준은 header 의 **packet name**(`MessageName`)이다.
 
-이 문서의 전체 샘플 코드는 `options.Codecs.Use(ZLinkProtobufCodec.Default)` 를 쓴다.
-그러므로 기본 예시는 Protobuf framework codec extension 기준이다. 즉 위 코드에서 packet 타입은 모두
-`protoc` 가 생성한 `IMessage<T>` 계열 타입이라고 보면 된다. 이 문서는 생성된
-protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
-붙이는 방식을 전제로 하지 않는다.
+packet name 은 codec 과 무관하게 같은 규칙으로 정해진다 — packet 타입에
+`[ZLinkPacket("...")]` 가 붙어 있으면 그 값을 쓰고, 없으면 그 packet 타입의 CLR 타입
+이름을 쓴다(`ZLinkMessageNameResolver`). protobuf 든 json 이든 결과 packet name 은
+같다.
 
 위 코드의 등록은 다음과 같이 해석된다.
 
-- `Context.AddPacket<SampleGetStateHandler>()`
-  - `SampleGetStateRequest` 의 protobuf `msgName` 으로 등록된다.
-- `Context.AddPacket<SampleReportStateHandler>()`
-  - `SampleReportStateCommand` 의 protobuf `msgName` 으로 등록된다.
+- `Context.Handlers.AddPacket<SampleGetStateHandler>()`
+  - handler 의 packet 타입 `SampleGetStateRequest` 의 packet name 으로 등록된다.
+- `Context.Handlers.AddPacket<SampleReportStateHandler>()`
+  - handler 의 packet 타입 `SampleReportStateCommand` 의 packet name 으로 등록된다.
 
-`msgId` 가 어디서 오는지는 codec 에 따라 달라진다.
+정리하면, framework 는 `SampleGetStateHandler` 같은 handler 타입에서 packet 타입을
+읽어 온 뒤, 그 packet 타입의 packet name(`[ZLinkPacket]` 값 또는 CLR 타입 이름)을
+dispatch key 로 등록한다.
 
-- `protobuf` 를 사용하는 경우
-  - `msgId = msgName`
-- `json` 을 사용하는 경우
-  - `msgId = class name`
+예를 들어 `[ZLinkPacket]` 을 붙이지 않으면 다음과 같이 매핑된다.
 
-정리하면, framework 는 `SampleGetStateHandler` 같은 handler 타입에서 packet
-타입을 읽어 온다. 그 다음 그 packet 타입의 `msgId` 를 dispatch key 로
-등록하는 방식을 기본으로 본다.
+- `SampleGetStateRequest` → packet name `SampleGetStateRequest`
+- `SampleReportStateCommand` → packet name `SampleReportStateCommand`
 
-예를 들면 다음과 같이 매핑된다.
-
-- `SampleGetStateRequest` 의 `msgId`
-  - `protobuf` 면 protobuf packet name
-  - `json` 이면 `SampleGetStateRequest`
-- `SampleReportStateCommand` 의 `msgId`
-  - `protobuf` 면 protobuf packet name
-  - `json` 이면 `SampleReportStateCommand`
-
-결국 `Context.AddPacket<SampleGetStateHandler>()` 는
-`SampleGetStateRequest` 의 `msgId` 를 기준으로 등록되는 셈이다.
+결국 `Context.Handlers.AddPacket<SampleGetStateHandler>()` 는
+`SampleGetStateRequest` 의 packet name 을 기준으로 등록되는 셈이다.
 
 ## 7. 어떤 상황에 어떤 API를 쓰는가
 
@@ -1832,7 +1828,7 @@ protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
 - 현재 spot 자신의 id를 알고 싶다
   - `SampleSpot.Context.SpotRid`
 - 특정 `spotRid`가 어떤 이름으로 생성됐는지 다시 확인하고 싶다
-  - `IZLinkSpotManager.GetAsync(spotRid)` 또는 `ListAsync()`
+  - `IZLinkSpotManager.FindAsync(spotRid)` 또는 `ListAsync()`
 - stage 안에서 fan-out 하고 싶다
   - `Publish(topic, ...).Async(...)`
 - local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish하고 싶다

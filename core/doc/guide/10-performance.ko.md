@@ -246,15 +246,16 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 3. 전송 준비 콜백이 호출되면 전송을 재개한다.
 
 이 API는 전송 가능한 모든 핸들(raw 소켓, SPOT)에서 동일하게 동작한다.
-기본적으로 송신 역압(backpressure)은 폴러(poller) `ZLINK_POLLOUT`으로
-감지하며 `zlink_send_ready_handler()`를 등록하면 해당 콜백으로 전환된다.
-콜백 등록 이후 데이터 평면 `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다.
+송신 backpressure는 poller `ZLINK_POLLOUT`으로 감지하거나
+`zlink_send_ready_handler()` 콜백으로 받는다. 둘은 같은 send-recovery readiness 축을
+관찰하며 같은 subject에 함께 등록할 수 있다. readiness 신호는 재시도할 가치가 있다는
+힌트일 뿐 재시도 성공을 보장하지 않는다.
 
 **동작 규칙:**
 - 여러 번 호출하여 콜백을 교체할 수 있다 (이전 핸들러를 원자적으로 덮어씀).
 - `NULL` 전달은 `EINVAL` — 한번 등록하면 해제는 불가하고 다른 함수로 교체만 가능하다.
 - 자기 콜백 내에서 교체 불가 (`EDEADLK`). 콜백 밖에서는 자유롭게 교체 가능.
-- 등록 이후 데이터 평면 폴러 `ZLINK_POLLOUT` 은 `ZLINK_HANDLER_BUSY` 를 반환한다.
+- send-ready handler와 `ZLINK_POLLOUT`은 같은 subject에 병행 등록할 수 있다.
 
 ```c
 typedef struct {
@@ -337,7 +338,8 @@ void on_message(const zlink_routing_id_t *rid,
 
 ### 4.4 콜백 vs 풀 수신 모드
 
-zlink 소켓은 두 가지 수신 모드를 지원한다. 선택에 따라 스레딩과
+raw `STREAM`은 두 가지 수신 모드를 지원한다(콜백 수신 핸들러는 STREAM 전용이며,
+다른 소켓 타입은 `ENOTSUP`/`ZLINK_HANDLER_NOT_SUPPORTED`). 선택에 따라 스레딩과
 흐름 제어 동작이 달라진다.
 
 | 항목 | 콜백 모드 | 풀(pull) 모드 |

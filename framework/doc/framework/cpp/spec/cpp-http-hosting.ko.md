@@ -469,7 +469,7 @@ health 집계 규칙은 `contracts/eventing/health.hpp`와 runtime diagnostics �
 | success status | `200 OK` |
 | route not found | `404 Not Found` |
 | method mismatch | `405 Method Not Allowed` |
-| unsupported media type | `415 Unsupported Media Type` |
+| unsupported content type | `400 Bad Request`(`request_protocol_error`) |
 | invalid JSON | `400 Bad Request` |
 | body limit exceeded | `413 Payload Too Large` |
 | serializer registration | `map_*<THandler>`가 request/reply JSON serializer를 등록한다 |
@@ -500,7 +500,7 @@ framework error kind는 HTTP status로 매핑한다.
 
 HTTP server runtime이 body size limit을 초과한 request를 감지하면 `413 Payload Too Large`로
 닫는다. JSON route에 `application/json`과 호환되지 않는 content type이 들어오면
-`415 Unsupported Media Type`으로 닫는다. 두 status는 handler failure가 아니라 server
+`request_protocol_error`를 던지고 `400 Bad Request`로 닫는다. 두 status는 handler failure가 아니라 server
 request validation 실패다.
 
 error kind가 명확하지 않은 예외는 `500 Internal Server Error`로 닫고 log/monitoring에
@@ -608,7 +608,7 @@ Bingo sample은 `.NET` Bingo가 HTTP entry를 사용하지 않으므로 HTTP pat
 
 ## 11. 결정된 구현 기준
 
-아래 항목은 구현 전에 따를 기준으로 닫았다.
+아래 항목은 현재 구현 기준이다.
 
 | 항목 | 결정 |
 |------|------|
@@ -660,7 +660,7 @@ Bingo sample은 `.NET` Bingo가 HTTP entry를 사용하지 않으므로 HTTP pat
 - DI: HTTP handler가 `request_client_t`를 생성자 주입으로 받는다
 - middleware: before hook 등록 순서, after hook 역순 실행, 요청 단위 상태 보존, short-circuit
 - error mapping: invalid JSON은 `400`, unknown route는 `404`, timeout은 `504`
-- server validation: unsupported content type은 `415`, body limit 초과는 `413`
+- server validation: unsupported content type은 `400`, body limit 초과는 `413`
 - embedded server lifecycle: keep-alive, request timeout, graceful shutdown drain, connection
   metrics는 [Embedded HTTP Server](cpp-embedded-http-server.ko.md) 회귀 테스트로 검증한다
 - lifecycle: `app.stop()`이 HTTP accept loop를 닫고 worker thread를 join한다

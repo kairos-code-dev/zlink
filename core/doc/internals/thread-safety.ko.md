@@ -120,7 +120,7 @@ stateDiagram-v2
   자기 핸들의 `close` 를 호출하면, 실제 teardown 은 콜백 복귀(epilogue)까지
   지연된다. 콜백 내 use-after-free 를 방지한다.
 - **STREAM raw 콜백 제한.** STREAM raw 콜백 내에서 `close` 를
-  호출하면 `EBUSY` 로 실패한다 — raw 디스패치가 in-flight 상태이기 때문이다.
+  호출하면 `EBUSY` 로 실패한다 — raw dispatch가 in-flight 상태이기 때문이다.
 
 ## 3. Subject별 구현 참고
 
@@ -214,7 +214,7 @@ Registry 가 lifecycle 과 control-path 계층을 구현할 때 쓰는
 - **SPOT dispatch 이벤트 핸들러**(`zlink_spot_dispatch_event_handler`)는
   SPOT dispatch worker pool 에서 실행된다.
 
-디스패치 메커니즘은 원자적 load 로 핸들러 포인터를 읽으며,
+dispatch 메커니즘은 원자적 load 로 핸들러 포인터를 읽으며,
 hot path 에 광범위 잠금 없이 핸들러 교체의 가시성을 보장한다.
 
 **핸들러 로딩:**
@@ -226,7 +226,7 @@ handler = socket_msg_handler.load(std::memory_order_acquire);
 
 모든 핸들러 함수 포인터와 관련 subject/userdata 포인터는
 `memory_order_acquire` load 를 씁니다. Setter 함수는 대응하는
-`memory_order_release` store 를 씁니다. 이 덕분에 콜백 디스패치가
+`memory_order_release` store 를 씁니다. 이 덕분에 콜백 dispatch가
 핸들러 포인터를 읽을 때, setter 스레드가 핸들러를 설치하기 전에 쓴
 모든 데이터도 함께 볼 수 있습니다.
 
@@ -238,20 +238,21 @@ handler(subject, userdata);
 leave_callback_api();   // clears in-flight flag
 ```
 
-`enter_callback_api` / `leave_callback_api` 쌍은 `close` 가 콜백을
-in-flight 연산으로 인식하게 하여, 핸들을 콜백 실행 중에 teardown 하는 대신
-`EBUSY` 를 반환하도록 보장합니다.
+`enter_callback_api` / `leave_callback_api` 쌍은 `close` 가 콜백을 in-flight
+연산으로 인식하게 한다. 콜백 종류에 따라 콜백 실행 중 `close` 는 `EBUSY` 로
+거부되거나(STREAM raw), close 를 수락하고 epilogue 로 지연한다(send-ready/monitor).
+자세한 것은 아래 참고.
 
 **STREAM raw 콜백 제약 근거:**
 
 STREAM raw 콜백은 더 엄격한 제한을 가진다 — raw 콜백 내에서의
 `close` 는 항상 `EBUSY` 로 실패한다. Send-ready/monitor 콜백에서
-`close` 가 epilogue 로 지연되는 것과 달리, STREAM raw 디스패치는 지연 close 를
+`close` 가 epilogue 로 지연되는 것과 달리, STREAM raw dispatch는 지연 close 를
 지원하지 않는다.
 
 **Send-ready 핸들러 `EDEADLK` 제약 근거:**
 
-자기 콜백 내에서 send-ready 핸들러를 교체하면 재진입(reentrant) 디스패치
+자기 콜백 내에서 send-ready 핸들러를 교체하면 재진입(reentrant) dispatch
 상황이 벌어진다. 이를 감지해 `EDEADLK` 로 거부한다.
 
 ## 6. 설계 원칙

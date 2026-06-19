@@ -146,10 +146,15 @@ public sealed class QuoteHandler(IPriceStore store)
 ```
 
 ```csharp
-// 등록: 위치 해결은 Registry 하나. sidecar/Consul/xDS 없음
+// BFF 노드 등록(profile·pricing 의 client): 위치 해결은 Registry 하나. sidecar/Consul/xDS 없음
 options.AddClientServerChannel("profile").EnableClient();
 options.AddClientServerChannel("pricing").EnableClient();
 options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
+
+// pricing 서버 노드 등록(QuoteHandler 를 server 로 노출)
+options.AddClientServerChannel("pricing")
+    .EnableServer("tcp://0.0.0.0:6001")
+    .AddRequestHandler<QuoteHandler>();
 
 // 운영: standalone Registry 를 다른 프로세스에서 조회
 builder.Services.AddZLinkRegistryQueryClient(query =>

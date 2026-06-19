@@ -9,12 +9,12 @@
 ## 1. 개요
 
 DEALER 소켓은 비동기 요청 소켓이다.
-여러 피어에 **라운드 로빈(round-robin, 순환 분배)** 방식으로 송신하고, **페어 큐잉(fair-queuing, 균등 수신 분배)** 방식으로 수신한다.
+여러 peer에 **round-robin**으로 송신하고, **fair-queuing**으로 수신한다.
 send/recv 순서 강제가 없어 자유로운 비동기 메시징이 가능하다.
 
 **핵심 특성:**
-- 송신: 라운드 로빈 — 연결된 피어에 순환 분배
-- 수신: 페어 큐잉 — 모든 피어에서 공정하게 수신
+- 송신: round-robin — 연결된 peer에 차례로 분배
+- 수신: fair-queuing — 모든 peer에서 공정하게 수신
 - send/recv 순서 강제 없음 (비동기)
 
 **유효한 소켓 조합:** DEALER ↔ ROUTER, DEALER ↔ DEALER
@@ -38,7 +38,7 @@ zlink_send(dealer, parts, 2, 0);
 ### 구체적 시나리오: 3개 DEALER가 1개 ROUTER로 전송
 
 3개의 DEALER 클라이언트가 하나의 ROUTER 서버에 연결한다. 각 DEALER는
-독립적으로 요청을 전송하며 ROUTER는 페어 큐잉으로 수신하고
+독립적으로 요청을 전송하며 ROUTER는 fair-queuing으로 수신하고
 `source_rid`로 각 송신자를 구분한다.
 
 | 송신자 | routing_id | 메시지 | ROUTER 수신 |
@@ -48,8 +48,8 @@ zlink_send(dealer, parts, 2, 0);
 | DEALER 3 | `D3` | `"buy MSFT 200"` | source_rid=`D3`, data=`"buy MSFT 200"` |
 
 ROUTER는 `zlink_send_rid()`에 해당 `source_rid`를 전달하여 각 DEALER에
-응답한다. DEALER는 *송신* 연결에 라운드 로빈을 사용하므로 하나의
-DEALER가 여러 ROUTER에 연결하면 메시지가 라운드 로빈으로 순환 분배된다
+응답한다. DEALER는 *송신* 연결에 round-robin을 사용하므로 하나의
+DEALER가 여러 ROUTER에 연결하면 메시지가 round-robin으로 순환 분배된다
 (msg1 -> ROUTER-A, msg2 -> ROUTER-B, ...).
 
 ## 2. 기본 사용법
@@ -117,8 +117,10 @@ zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "data", 4);
 zlink_submit_result_t rc = zlink_send(dealer, &msg, 1, ZLINK_DONTWAIT);
-if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
-    /* HWM exceeded or no peer connected */
+if (rc == ZLINK_SUBMIT_NOT_ADMITTED) {
+    /* no peer connected (보낼 pipe 없음) */
+} else if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
+    /* HWM exceeded (연결된 peer가 느림) */
 }
 ```
 
@@ -129,7 +131,7 @@ if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER에서 식별할 ID (전용 함수) |
 | `ZLINK_DEALER_OPT_PROBE` | int | 0 | 연결 시 빈 메시지 전송 (연결 알림) |
 | `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_dealer_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
-| `ZLINK_DEALER_OPT_WEIGHT` | int | 100 | 송신 round-robin의 피어별 로드밸런싱 가중치 |
+| `ZLINK_DEALER_OPT_WEIGHT` | int | 100 | 송신 round-robin의 peer별 load balancing 가중치 |
 | `ZLINK_OPT_SNDHWM` | int | 자동 | DEALER의 peer-queue 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
 | `ZLINK_OPT_RCVHWM` | int | 자동 | DEALER의 peer-queue 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
 | `ZLINK_OPT_LINGER` | int | -1 | close 시 대기 시간 (ms) |
@@ -151,7 +153,7 @@ zlink_connect(dealer, "tcp://127.0.0.1:5558");
 ### 4.1 request-reply 시작
 
 DEALER가 응답을 기다리는 흐름은 일반 `send/recv`와 별도로
-`zlink_dealer_request()`를 사용한다. 이 함수는 ZMP(zlink 전용 메시지 프로토콜) request-reply 엔벨로프(요청-응답 식별을 위한 헤더 래퍼)를
+`zlink_dealer_request()`를 사용한다. 이 함수는 ZMP(zlink 전용 메시지 프로토콜) request-reply envelope(요청-응답 식별용 헤더 wrapper)를
 붙여 보내고, 응답은 콜백으로 전달된다.
 
 > ZMP request-reply envelope의 와이어 프레임 형식은
@@ -164,14 +166,14 @@ static void on_reply(zlink_request_result_t result,
                      void *userdata)
 {
     if (result != ZLINK_REQUEST_OK) {
-        /* result 값: ZLINK_REQUEST_TIMED_OUT, NOT_FOUND,
-           TERMINATED, PROTOCOL_ERROR */
+        /* result 값: ZLINK_REQUEST_TIMED_OUT, ZLINK_REQUEST_NOT_FOUND,
+           ZLINK_REQUEST_TERMINATED, ZLINK_REQUEST_PROTOCOL_ERROR */
         fprintf(stderr, "request failed: %d\n", (int)result);
         return;
     }
 
-    for (size_t i = 0; i < part_count; ++i)
-        zlink_msg_close(&parts[i]);
+    /* parts는 runtime이 소유한 borrowed view다. 콜백에서 닫지 않으며,
+       콜백 이후 보관하려면 복사한다. */
 }
 
 int timeout_ms = 1000;
@@ -199,7 +201,7 @@ if (rc != ZLINK_SUBMIT_OK) { /* submit 실패 처리 */ }
 ### 패턴 1: 1:1 양방향 비동기
 
 PAIR와 유사하지만 HWM과 자동 재연결을 지원한다. 응답이 필요한 경우 반드시 1:1로 구성해야 한다.
-routing_id가 없으므로 1:N 구성에서는 어떤 피어가 응답했는지 구분할 수 없다.
+routing_id가 없으므로 1:N 구성에서는 어떤 peer가 응답했는지 구분할 수 없다.
 
 ```c
 void *a = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
@@ -224,9 +226,9 @@ zlink_send(b, &pong, 1, 0);
 /* on_message_b receives "ping", on_message_a receives "pong" */
 ```
 
-### 패턴 2: 1:N 라운드 로빈 작업 분배
+### 패턴 2: 1:N round-robin 작업 분배
 
-PUSH/PULL 없이 작업을 N개 워커에 라운드 로빈으로 순환 분배하는 패턴.
+PUSH/PULL 없이 작업을 N개 워커에 round-robin으로 순환 분배하는 패턴.
 응답이 필요 없는 작업 분배 또는 파이프라인 단계 간 전달에 사용한다.
 
 ```c
@@ -260,34 +262,34 @@ zlink_send(dealer2, &m2, 1, 0);
 /* on_message receives each DEALER's message with its routing_id */
 ```
 
-> DEALER ↔ ROUTER 조합(로드밸런싱 + 응답 라우팅, 프록시 등)은
+> DEALER ↔ ROUTER 조합(load balancing + 응답 라우팅, 프록시 등)은
 > [ROUTER 소켓](03-4-router.ko.md)을 참고.
 
 ## 6. 주의사항
 
-### 피어 없음 vs HWM 배압
+### peer 없음 vs HWM 배압
 
-둘은 별개의 결과다. **연결된 피어가 없으면**(양수 가중치 pipe 없음) 송신은
-`ZLINK_SUBMIT_NOT_ADMITTED`를 반환하며 메시지는 큐에 쌓이지 않는다. 피어가
+둘은 별개의 결과다. **연결된 peer가 없으면**(양수 가중치 pipe 없음) 송신은
+`ZLINK_SUBMIT_NOT_ADMITTED`를 반환하며 메시지는 큐에 쌓이지 않는다. peer가
 **연결되어 있지만** 그 송신 큐가 HWM에 도달하면 대기(기본) 또는
 `ZLINK_DONTWAIT` 시 `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다.
 
 ```c
-/* 연결된 피어 없이 송신 */
+/* 연결된 peer 없이 송신 */
 zlink_msg_t msg;
 zlink_msg_init_size(&msg, 4);
 memcpy(zlink_msg_data(&msg), "data", 4);
 zlink_submit_result_t rc = zlink_send(dealer, &msg, 1, ZLINK_DONTWAIT);
 if (rc == ZLINK_SUBMIT_NOT_ADMITTED) {
-    /* 메시지를 받아줄 연결된 피어가 없음 */
+    /* 메시지를 받아줄 연결된 peer가 없음 */
 } else if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
-    /* 피어는 연결됐지만 큐가 HWM에 도달 */
+    /* peer는 연결됐지만 큐가 HWM에 도달 */
 }
 ```
 
-### 라운드 로빈 분배
+### round-robin 분배
 
-여러 피어가 연결된 경우 메시지는 라운드 로빈으로 순환 분배된다. 특정 피어에게만 전송하려면 ROUTER를 사용한다.
+여러 peer가 연결된 경우 메시지는 round-robin으로 순환 분배된다. 특정 peer에게만 전송하려면 ROUTER를 사용한다.
 
 ### 가중치 기반 송신 대상 선택
 

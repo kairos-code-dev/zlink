@@ -10,12 +10,13 @@
 
 ## 1. 기본 생각
 
-`Stage` 같은 상위 객체는 `SPOT` 자체를 대체하는 것이 아니라, `SPOT` 위에 얹는
-도메인 모델로 보는 편이 맞다.
+playhouse `Stage` 같은 상위 객체는 `SPOT` 자체를 대체하는 것이 아니라, `SPOT` 위에 얹는
+도메인 모델로 보는 편이 맞다. Java에서는 사용자가 만든 그 도메인 객체가
+`ZLinkSpot<TActor>` 를 구현한다(별도 framework `Stage` 타입은 없다).
 
-`Stage` wrapper는 아래 역할을 가져야 한다.
+이 상위 도메인 객체(`Stage` wrapper)는 아래 역할을 가져야 한다.
 
-- 현재 `SpotRid`, `NodeRid` 노출
+- 현재 spot rid·node rid 노출(`context.spotRid()`/`context.nodeRid()`, 반환 `RoutingId`)
 - packet handler registry
 - timer 등록
 - outbound channel client 접근

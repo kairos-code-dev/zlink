@@ -149,7 +149,15 @@ class route_channel_host_service_t::route_loop_t
             }
         }
         if (!_runtime->bind_endpoint ().empty ()) {
-            _router->bind (_runtime->bind_endpoint ());
+            try {
+                _router->bind (_runtime->bind_endpoint ());
+            }
+            catch (const std::exception &error) {
+                throw framework_exception_t (
+                  framework_error_kind_t::request_failed,
+                  "route channel '" + _route_channel_id + "' bind failed at "
+                    + _runtime->bind_endpoint () + ": " + error.what ());
+            }
         }
         for (const auto &endpoint : _runtime->manual_connections ()) {
             try {

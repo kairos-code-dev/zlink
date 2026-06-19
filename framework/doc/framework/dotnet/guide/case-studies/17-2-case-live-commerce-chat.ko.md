@@ -13,7 +13,7 @@
 > - STREAM 이 viewer 연결을 받고 stream room 으로 packet 을 보낸다.
 > - stream SPOT 이 slow mode, moderator action, pinned message, lightweight fan-out 을
 >   직렬 처리한다.
-> - **그대로 남는 것**: 영상 송출, 상품/결제, 메시지 장기 저장, 대규모 CDN, abuse 분석.
+> - **그대로 남는 것**: 영상 전송, 상품/결제, 메시지 장기 저장, 대규모 CDN, abuse 분석.
 
 ## 1. 도메인 — 라이브 채팅의 진짜 난제
 
@@ -164,6 +164,10 @@ public sealed class LiveChatSession(IZLinkSessionContext context, IZLinkActorMan
     public IZLinkSessionContext Context { get; } = context;
     private IZLinkSessionActor? _viewer;
 
+    public ValueTask OnConnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;
+    public ValueTask OnDisconnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;
+    public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken ct) => ValueTask.CompletedTask;
+
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
         Message payload,
@@ -204,13 +208,13 @@ public sealed class SendLiveMessageHandler(
         var decision = await moderation.CheckAsync(stream.StreamId, viewer.ActorId, req.Text, ct);
         if (!decision.Allowed)
         {
-            await viewer.PushAsync(new ChatRejected(decision.Reason), ct);
+            await viewer.Context.BoundSession.Send(new ChatRejected(decision.Reason)).Async(ct);
             return;
         }
 
         var message = await recent.AppendAsync(stream.StreamId, viewer.ActorId, req.Text, ct);
         foreach (var watching in stream.ActiveViewers)
-            await watching.PushAsync(message, ct);
+            await watching.Context.BoundSession.Send(message).Async(ct);
     }
 }
 ```
@@ -230,7 +234,7 @@ public sealed class PinMessageHandler
         stream.RequireModerator(moderator.ActorId);
         stream.Pin(req.MessageId);
         foreach (var watching in stream.ActiveViewers)
-            await watching.PushAsync(new MessagePinned(req.MessageId), ct);
+            await watching.Context.BoundSession.Send(new MessagePinned(req.MessageId)).Async(ct);
     }
 }
 ```

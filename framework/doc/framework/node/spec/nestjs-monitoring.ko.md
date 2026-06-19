@@ -8,9 +8,15 @@
 
 # ZLink Framework NestJS Monitoring
 
-> 이 문서는 [.NET ASP.NET Core Monitoring 스펙](../../dotnet/spec/aspnet-core-monitoring.ko.md)
-> 을 NestJS 표면으로 옮긴 정식 스펙이다. **개념·의미론·동작은 .NET 과 동일**하고,
-> 표면만 TypeScript / NestJS 모양으로 바꾼다. 번역 규칙은
+> 이 문서는 Node.js `ZLink Framework`(NestJS)의 monitoring **스펙**이다. 기준은
+> `framework/languages/node` 코드이며, 표면은 TypeScript / NestJS 모양이다.
+>
+> **현재 구현 상태:** monitoring 등록 표면(`monitoring: {...}` 옵션, `ZLinkModule`
+> 통합), `ZLinkRuntimeEventHandler<TEvent>` provider 자동 discovery, timer handler
+> failure 의 즉시 event 발행은 **설계 모델 — 미구현**이다. 현재는 `runtime/diagnostics`
+> 의 socket/registry/spot snapshot source 를 직접 쓰는 수준만 구현돼 있다.
+>
+> 번역 규칙은
 > [.NET → Node.js 표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)
 > 을 따른다. 이 문서대로 구현하면 .NET 과 동일한 monitoring 동작을 얻는다.
 
@@ -163,9 +169,8 @@ source 이름은 다음 규칙으로 잡는 편이 자연스럽다.
   - spot node 등록 이름
   - 예: `stage-node`
 
-> **드래프트와의 차이**: 기존 node 드래프트의 `monitoring.discovery: [...]` 등록
-> 키는 제거한다. `.NET` 코드(`IZLinkMonitoringOptions`)에 discovery 등록 메서드가
-> 없고, discovery 는 runtime event 가 아니라 registry query 로만 관측되기 때문이다
+> monitoring 에는 `monitoring.discovery: [...]` 등록 키가 없다. discovery 는 runtime
+> event 가 아니라 registry query 로만 관측한다
 > (§5.4, §7).
 
 ## 4. 인터페이스

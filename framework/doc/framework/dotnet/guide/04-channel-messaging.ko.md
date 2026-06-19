@@ -75,7 +75,7 @@ var placed = await client
     .Async<OrderPlaced>(ct);
 ```
 
-이 호출 표면(`Request`/`Send`/`Publish` + 종결자)은
+이 호출 표면(`RequestToChannel`/`SendToChannel`/`Publish` + 종결자)은
 [11-interface-catalog](11-interface-catalog.ko.md) §1.6 의 계약 테스트
 `ChannelContracts.Channel_messaging_replaces_grpc_unary_command_and_streaming_for_web_services`
 로 검증된다. 아래 본문 예제는 같은 표면을 profile/account/user 등 다른 웹 도메인으로
@@ -405,8 +405,11 @@ abstract/interface 면 명시 codec 없이는 설정 오류가 난다.
 
 기본 codec 외의 포맷(Avro·Thrift 등)이 필요하면 `IZLinkMessageSerializer` 를 구현해
 content type 으로 등록한다. serializer 는 업무 객체 ↔ `Message`(byte payload) 변환만
-맡고, packet name 결정·codec 선택은 framework 가 그대로 처리한다. framework 당 custom
-serializer 는 하나만 둔다(둘 이상이면 구성 오류).
+맡고, packet name 결정·codec 선택은 framework 가 그대로 처리한다. custom serializer 는
+한 payload 타입에 대해 **둘 이상이 매칭하면** 구성 오류가 난다. 타입 조건 없이 모든
+타입을 받는 fallback serializer(`AddSerializer(contentType, serializer)`)는 하나만 두고,
+타입 조건을 받는 `AddSerializer(contentType, serializer, canSerialize)` 는 서로 겹치지
+않게 여러 개 둘 수 있다.
 
 ```csharp
 public sealed class AvroOrderSerializer : IZLinkMessageSerializer

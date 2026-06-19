@@ -152,9 +152,12 @@ codecs.Use(ZLinkProtobufCodec.Default);
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkCodecRegistryBuilder` | JSON 기본 codec 활성화(`AddJson`)와 framework codec extension 등록(`Use`)을 담당한다. custom serializer는 extension 내부에서 `AddSerializer`로 등록한다. `options.Codecs` 로 접근 |
+| `IZLinkCodecRegistryBuilder` | JSON 기본 codec 활성화(`AddJson`), framework codec extension 등록(`Use`), custom serializer 등록(`AddSerializer`)을 담당한다. `options.Codecs` 로 접근 |
+| `IZLinkCodecExtension` | codec 묶음을 registry 에 붙이는 확장점. `Register(IZLinkCodecRegistryBuilder)` 로 자기 codec 을 등록한다(예: protobuf·messagepack codec) |
+| `IZLinkMessageSerializer` | 업무 객체 ↔ `Message`(byte payload) 변환을 맡는 custom serializer 계약(예: Avro·Thrift). `AddSerializer` 로 등록 |
 
-검증: `CodecContracts.Codec_registry_builder_declares_the_codecs_an_application_enables`.
+검증: `CodecContracts.Codec_registry_builder_registers_extensions_and_serializers`,
+`CodecContracts.Message_serializer_converts_business_objects_to_and_from_messages`.
 
 ### 1.6 웹 백엔드 — gRPC 대체 시나리오
 
@@ -716,15 +719,16 @@ await timer.CancelAsync();   // IZLinkTimer
 |-----------------|-------------|:-----------:|
 | `Channels` | `ChannelContracts` | 4 |
 | `Handlers` | `HandlerContracts` | 2 |
-| `Codecs` | `CodecContracts` | 1 |
-| `Configuration` | `BuilderContracts` · `ConnectionAndConfigContracts` | 5 |
+| `Codecs` | `CodecContracts` | 2 |
+| `Configuration` | `BuilderContracts` · `ConnectionAndConfigContracts` | 4 |
 | `Spots` | `SpotContracts` | 6 |
+| `Workers` | `SpotContracts`(`IZLinkWorkerCall<>`·`IZLinkWorkerOptions`) | (위 Spots 에 포함) |
 | `Actors` | `ActorContracts` | 1 |
 | `Streams` | `StreamContracts` | 3 |
 | `Registry` | `RegistryContracts` | 1 |
 | `Eventing` | `EventingContracts` | 1 |
 | `Timers` | `TimerContracts` | 1 |
-| `Dispatch` | `ConnectionAndConfigContracts`(`IZLinkDispatchOptions`) | (위 5 에 포함) |
+| `Dispatch` | `ConnectionAndConfigContracts`(`IZLinkDispatchOptions`) | (위 4 에 포함) |
 
 `ContractSurfaceCoverage` 가 위 시나리오의 `[ContractExample(...)]` 합집합 ==
 `Zlink.Framework.Contracts.*` 의 public interface 집합임을 단언한다. 따라서 이

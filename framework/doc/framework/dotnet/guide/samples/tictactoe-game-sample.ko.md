@@ -16,7 +16,7 @@ TicTacToe 샘플은 API 서버와 Play 서버만 사용하는 가장 작은 실�
 client 는 API 서버에서 room 정보를 받은 뒤 Play 서버의 STREAM[^stream] endpoint 에
 직접 연결한다.
 
-별도 Session 서버나 TicTacToe SessionGateway 변형은 유지하지 않는다. Session 서버를
+TicTacToe 는 Api 서버와 Play 서버를 직접 연결하는 단일 구조 샘플이다. Session 서버를
 분리한 gateway 구조는 Bingo 샘플이 담당한다.
 
 actor[^actor] 식별 필드의 이름은 public DTO[^dto] 상에서 `ActorId` 로 통일한다.
@@ -143,10 +143,11 @@ handler 를 맡는다.
 - room 식별용 public field는 `RoomId`만 사용하고, core routing id hex 문자열을
   public DTO 로 노출하지 않는다.
 - TicTacToe는 수동 endpoint 연결만 사용하고 Registry/Discovery 자동 연결을 쓰지 않는다.
-- TicTacToe SessionGateway 변형 샘플은 solution, runner, 문서, 테스트에 남아 있으면 안 된다.
+- TicTacToe 는 Api + Play 직접 연결 단일 구조를 따른다.
 - Play 서버는 Domain / Application / Adapters 구조를 유지한다.
-- Entry Spot 과 game room Spot 의 actor packet handler 는 `Context.AddHandler<THandler>()`
-  로 등록하고, game room Spot 의 join admission 은 `OnActorJoinAsync(...)` 로 선언한다.
+- Entry Spot 과 game room Spot 의 actor packet handler 는
+  `Context.Handlers.AddActorRequest<THandler, TActor>(...)` 로 등록하고, game room Spot 의
+  join admission 은 `OnActorJoinAsync(...)` 로 선언한다.
 
 ## 5. 회귀 테스트
 

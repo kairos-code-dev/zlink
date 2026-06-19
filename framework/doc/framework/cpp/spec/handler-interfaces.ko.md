@@ -116,7 +116,7 @@ service를 DI로 받는다.
 ```cpp
 class order_service_t final {
 public:
-    explicit order_service_t(zlink::framework::request_client_t &client)
+    explicit order_service_t(zlink::framework::channel_client_t &client)
       : client_(client)
     {
     }
@@ -130,20 +130,15 @@ public:
     }
 
 private:
-    zlink::framework::request_client_t &client_;
+    zlink::framework::channel_client_t &client_;
 };
 ```
 
 event publish는 channel name과 topic을 함께 받는다.
 
 ```cpp
-publisher.publish(
-  "orders",
-  "orders.created",
-  event,
-  zlink::framework::send_options_t{
-    .packet_name = "orders.created",
-  });
+publisher.publish("orders", "orders.created", event)
+  .packet_name("orders.created");
 ```
 
 ## 5. Host 구성 기준

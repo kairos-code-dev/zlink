@@ -15,8 +15,9 @@
 - handler interface와 annotation mapping
 - global discovery와 역할별 manual connection
 - backend adapter layer
-- runtime building block: `Runtime/Execution/`의 serial executor(session/spot
-  콜백 직렬 dispatch), polling backoff, bounded task set, runtime task runner
+- runtime building block: `systems.zlink.framework.execution`의 serial executor
+  (`ZLinkAsyncSerialQueue`/`ZLinkSpotDispatchQueue`, session/spot 콜백 직렬 dispatch)와
+  worker pool(`ZLinkWorkerPool`)
 - codec registry와 JSON 기본 codec
 - embedded registry와 `ZLinkRegistryQuery`
 - remote `ZLinkRegistryQueryClient`
@@ -29,10 +30,11 @@
 - ActorGateway 기반 session actor relay
 - `ZLinkBoundSession` push와 disconnect
 - Java Stream Connector
-- connector codec helper: JSON, MessagePack, Protobuf, auto codec
+- connector codec helper: JSON, MessagePack, Protobuf (typed connector 기본은 JSON)
 - Kotlin coroutine/DSL wrapper
 - testkit: fake backend, in-process host, sample fixture
-- samples: `samples/java/*`와 `samples/kotlin/*` 아래의 `TicTacToe`, `Bingo`
+- samples: `samples/java/*`와 `samples/kotlin/*` 아래의 `TicTacToe`, `Bingo`,
+  `SupportChat`, `DeliveryDispatch`, `ShoppingMall`, `GameQuest`
 
 구현은 단계적으로 나눌 수 있다. 그러나 위 항목을 기본 범위 밖으로 밀어 두면
 `.NET`과 같은 수준의 포팅으로 보지 않는다.

@@ -59,7 +59,7 @@ flowchart LR
 |----------|-------------|
 | `.proto` + 코드 생성 | 서비스 간 계약을 stub 으로 찍어냄. CI 에 proto 컴파일 단계 |
 | gRPC stub/channel | 호출. channel 재사용·deadline 을 직접 관리 |
-| Envoy sidecar + mesh control plane | HTTP/2 는 L4 LB 가 안 되므로 **L7(request-level) 분배**·mTLS·재시도 |
+| Envoy sidecar + mesh control plane | HTTP/2 는 L4 LB 가 안 되므로 **L7(request-level) load balancing**·mTLS·재시도 |
 | service discovery(Consul/xDS) | 어느 pod 이 떠 있는지 |
 | Kafka | `order.events` 영속 fan-out + saga choreography 백본 |
 | outbox publisher | DB→Kafka 이중 쓰기 문제 해소 |
@@ -174,6 +174,7 @@ export class PlaceOrderHandler
     }
     const charge = await this.services
       .requestToChannel('payments', new Charge(req.orderId, req.accountId, req.amountMinor, req.orderId))
+      .timeout(2000)
       .submit<Charged>();
     await this.orders.withTransaction(async (tx) => {
       await this.orders.insertOrder(req.orderId, charge.receiptId, tx);
@@ -196,7 +197,7 @@ export class PlaceOrderHandler
 |----|-------------------|-------|
 | 계약 | `.proto` + 코드 생성(CI 단계) | class DTO(공유 DTO 패키지), proto 파이프라인 없음 |
 | 호출 | `payments.charge(req, deadline)` (생성된 stub) | `services.requestToChannel('payments', req).timeout(...)` |
-| 위치/분배 | Consul/xDS + Envoy `DestinationRule`(L7) | `useDiscovery().addRegistryEndpoint(...)`  + Registry(framework 가 peer 분배) |
+| 위치/분배 | Consul/xDS + Envoy `DestinationRule`(L7) | `useDiscovery().addRegistryEndpoint(...)`  + Registry(framework 가 peer routing) |
 | 전송 보안 | Envoy mTLS | 배포 계층/TLS 지원 범위/네트워크 정책에서 별도 결정 |
 | 멱등/outbox/saga | **앱 책임** | **앱 책임(동일)** |
 

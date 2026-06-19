@@ -131,9 +131,9 @@ public class ZLinkApplicationConfig implements ZLinkFrameworkConfigurer {
 
 ```java
 public interface ZLinkHandlerContext {
-    @Nullable String channelName();
-    @Nullable String packetName();
-    @Nullable String contentType();
+    Optional<String> channelName();
+    Optional<String> packetName();
+    Optional<String> contentType();
     CancellationToken cancellationToken();
 }
 ```
@@ -157,7 +157,7 @@ framework와 application 코드의 책임 경계가 흐려진다.
 ```java
 public interface ZLinkPublishContext extends ZLinkHandlerContext {
     String topic();
-    @Nullable String source();
+    Optional<String> source();
 }
 ```
 
@@ -310,10 +310,8 @@ Entry Spot actor request/send는 Entry Spot 전용 interface를 사용하고, us
 request/send는 Spot handler interface를 사용한다. actor join admission, post-join,
 left, disconnected lifecycle은 위 member callback 표면만 사용한다.
 
-stream은 `.NET` 기준과 같이 header session 하나로 설명한다. 이전 설계의
-`packet session`/`raw session` 분리는 현재 포팅 기준이 아니다. callback으로 전달된
-payload는 framework가 빌려준 값이므로 callback 밖에서 보관해야 하면 별도 copy를
-만든다.
+stream은 header session 하나로 설명한다. callback으로 전달된 payload는 framework가
+빌려준 값이므로 callback 밖에서 보관해야 하면 별도 copy를 만든다.
 
 ```java
 public interface ZLinkSession {
@@ -740,21 +738,16 @@ public interface ZLinkSpotOutbound {
 }
 
 // 코드 기준: .NET `IZLinkActorHandlerRegistry`는 actor packet/lifecycle 등록을
-// `<THandler, TActor>` 제네릭 쌍으로 묶는다. Java는 타입 소거 때문에 `TActor`를
-// `Class<? extends ZLinkActor> actorType` 인자로 받아 같은 actor-type 바인딩을 유지한다.
-public interface ZLinkActorHandlerRegistry {
-    void addHandler(Class<?> handlerType);
-    void addHandler(Class<?> handlerType, String packetName);
-    void addActorPacket(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
-    void addActorPacket(
-        Class<?> handlerType,
-        Class<? extends ZLinkActor> actorType,
-        String packetName);
-}
-
-public interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
+// actor-type 바인딩은 handler가 구현한 generic 인터페이스
+// (`ZLinkSpotActorRequestHandler<TSpot, TActor, ...>` 등)에서 가져오므로 별도 actorType
+// 인자를 받지 않는다.
+public interface ZLinkSpotHandlerRegistry {
     void addPacket(Class<?> handlerType);
-    void addSubscribe(Class<?> handlerType, String topic);
+    void addSubscribe(String topic, Class<?> handlerType);
+    void addHandler(Class<?> handlerType);
+    void addActorPacket(Class<?> handlerType);
+    void addActorSend(Class<?> handlerType);
+    void addActorRequest(Class<?> handlerType);
 }
 
 public interface ZLinkSpotContext {
@@ -782,12 +775,12 @@ public interface ZLinkEntrySpotContext {
 }
 
 public interface ZLinkRouteClient {
-    <TMessage> ZLinkSendCall send(
+    <TMessage> ZLinkSendCall sendTo(
         String routerChannelId,
         RoutingId targetNodeRid,
         TMessage message);
 
-    <TMessage> ZLinkRequestCall request(
+    <TMessage> ZLinkRequestCall requestTo(
         String routerChannelId,
         RoutingId targetNodeRid,
         TMessage request);
@@ -860,13 +853,6 @@ public interface ZLinkSpot<TActor extends ZLinkActor> {
     }
 
     default void onClosing() {
-    }
-
-    default ZLinkSpotActorJoinResponse onActorJoin(
-        TActor actor,
-        Message request,
-        CancellationToken cancellationToken) {
-        return ZLinkSpotActorJoinResponse.reject();
     }
 
     default ZLinkSpotActorJoinResponse onActorJoin(
@@ -992,7 +978,7 @@ Entry Spot을 정리한다. actor join과 entry actor packet dispatch는 별도 
 client 측 STREAM connector는 server session과 별도 모듈로 둔다.
 
 ```java
-public interface ZLinkStreamConnector extends AutoCloseable {
+public interface ZLinkStreamConnector {
     boolean isConnected();
     ZLinkStreamConnectionState state();
     ZLinkStreamConnectorOptions options();
@@ -1168,10 +1154,10 @@ public @interface ZLinkSpotRequest {
     String packetName() default "";
 }
 
-@Target(ElementType.METHOD)
+@Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ZLinkSpotSubscription {
-    String spotNodeName();
+    String spotNodeName() default "";
     String topic();
 }
 

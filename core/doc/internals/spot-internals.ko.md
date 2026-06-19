@@ -229,12 +229,12 @@ flowchart LR
 ```
 
 수동 연결은 `manual_endpoints`와 `active_endpoints`에 엔드포인트 문자열로 저장된다.
-디스커버리(discovery) 연결은 채널 이름별 디스커버리 포인터와, 디스커버리가 알려 준
-활성 엔드포인트 집합으로 관리된다. 같은 채널 안에서 수동 엔드포인트와 디스커버리
-포인터를 동시에 둘 수 없게 한 이유는 연결 소유자를 하나로 유지하기 위해서다.
+discovery 연결은 채널 이름별 discovery 포인터와, discovery가 알려 준 활성 엔드포인트
+집합으로 관리된다. 같은 채널 안에서 수동 엔드포인트와 discovery 포인터를 동시에 둘 수
+없게 한 이유는 연결 소유자를 하나로 유지하기 위해서다.
 
 `zlink_spot_node_peers()`은 SPOT mesh peer와 router channel peer를 구분한다. router
-channel peer 행에는 채널 이름, peer 엔드포인트, 출처(수동 또는 디스커버리),
+channel peer 행에는 채널 이름, peer 엔드포인트, 출처(수동 또는 discovery),
 종류(router channel), 상태가 함께 표시된다. 운영 도구는 이 구분을 사용해 "mesh가
 끊어진 것"과 "router channel로 메시지가 아직 들어올 수 없는 것"을 따로 진단할 수
 있다.
@@ -411,11 +411,12 @@ data plane 루프는 매 회전(iteration)마다 다음 순서로 처리한다.
 
 ```text
 1. drain_runtime_external_router_ingress_queue()   // peer에서 들어온 트래픽
-2. drain_publish_ingress_queue()                   // 공개 발행 항목
-3. drain_runtime_routed_send_queue()               // 공개 routed 전송 항목
-4. flush_mesh_pub_pending()                         // 대기 중인 mesh 메시지
-5. flush_local_fanout_pending()                     // 대기 중인 로컬 메시지
-6. flush_staged_messages()                          // 넘쳐서 대기열로 보낸 메시지
+2. drain_pub_ingress_socket()                      // pub ingress SUB 소켓 수신
+3. drain_publish_ingress_queue()                   // 공개 발행 항목
+4. drain_runtime_routed_send_queue()               // 공개 routed 전송 항목
+5. flush_mesh_pub_pending()                         // 대기 중인 mesh 메시지
+6. flush_local_fanout_pending()                     // 대기 중인 로컬 메시지
+7. flush_staged_messages()                          // 넘쳐서 대기열로 보낸 메시지
 ```
 
 한 번에 처리하는 배치 한도는 메시지 2048개 또는 16 MiB 중 먼저 도달하는 쪽이다.
@@ -505,8 +506,8 @@ routed 메시지는 `external-router`로 주고받고, 들어오는 메시지도
 
 이 스레드가 독점하는 것:
 
-- `mesh-pub`, `fanout`, `external-router`, `mesh-xsub`, `peer_ctrl_pub`,
-  `peer_ctrl_sub` 소켓
+- `mesh-pub`, `mesh-xsub`, `fanout`, `external-router`, `pub_ingress_sub`,
+  `ctrl`, `peer_ctrl_pub`, `peer_ctrl_sub` 소켓 (mesh peer observer monitor 포함)
 - `publish_ingress_queue`, `routed_send_queue`, `external_router_ingress_queue` 비우기
 - 로컬 fanout 전달, 원격 mesh 발행, 들어오고 나가는 routed 전달
 
@@ -736,8 +737,13 @@ flowchart TB
 
 ## 12. STREAM session과 Actor binding
 
-session owner node와 Actor owner node는 같을 수도, 다를 수도 있다. 내부 처리 경로는
-다르지만 공개 API는 동일하다.
+이 절은 STREAM 세션에 **Actor를 bind하는 경우**를 다룬다. STREAM 세션 자체는 그냥
+STREAM socket일 뿐, 어떤 SpotNode에도 매여 있지 않다. 세션이 SpotNode와 엮이는 건 그
+세션에 Actor를 붙이려고 ActorGateway로 attach하는 순간부터다 — 그때 그 SpotNode가
+**session owner node**가 된다. Actor는 자신을 들고 있는 SpotNode(**Actor owner node**)에
+속한다. bind할 때 이 둘 — 세션이 붙은 SpotNode와 Actor를 든 SpotNode — 이 같은 노드일
+수도(§12.1 co-located), 서로 다른 노드일 수도(§12.2 split deployment) 있다. 내부 처리
+경로는 다르지만 공개 API는 동일하다.
 
 bind를 실행하기 전에 STREAM handle의 session owner `SpotNode`가 먼저 정해져 있어야
 한다. 이것이 ActorGateway attach다. owner는
@@ -807,16 +813,13 @@ sequenceDiagram
 
   Client->>Stream: client frame
   Stream->>SessNode: stream callback(session_rid)
-  SessNode->>ActorNode: bind control request
-  ActorNode->>ActorObj: attach bound session ref
-  ActorNode-->>SessNode: bind OK
-  SessNode->>List: store actor_ref
-  Note over ActorNode: bind does not change active route
+  SessNode->>List: bind = remote actor_ref 등록 (session owner 로컬만)
+  Note over SessNode,ActorNode: bind는 actor node로 control 요청을 보내지 않고<br/>active route도 바꾸지 않는다
 
   SessNode->>List: relay to actor_id
   List-->>SessNode: actor_ref
-  SessNode->>ActorNode: relay frame
-  ActorNode->>ActorObj: resolve actor
+  SessNode->>ActorNode: gateway packet (session_to_actor)
+  ActorNode->>ActorObj: 첫 relay 때 bound-session metadata 설정
   ActorObj->>Spot: enqueue unread part
   Spot->>Handler: ACTOR_READABLE
   Handler->>ActorNode: actor_recv_part(actor_ref)
@@ -828,15 +831,24 @@ sequenceDiagram
   Stream-->>Client: client frame
 ```
 
-remote Actor는 bind control request, session→Actor relay frame, Actor→session frame이
-node 사이를 오간다. session owner는 Actor의 joined Spot을 저장하지 않고, Actor owner는
+remote bind 자체는 session owner 쪽 로컬 등록이다: `sessions.bind_actor_ref()`로 remote
+actor ref만 `sessions.bindings`에 넣고 끝난다 — Actor owner node로 control 요청을 보내지
+않는다. node 사이를 실제로 오가는 것은 session→Actor relay(gateway packet)와 Actor→session
+frame뿐이고, target Actor의 bound-session metadata는 첫 relay를 처리할 때 Actor owner
+쪽에서 설정된다. session owner는 Actor의 joined Spot을 저장하지 않고, Actor owner는
 STREAM session의 애플리케이션 상태를 저장하지 않는다.
 
-bound session disconnect와 remote join handoff가 겹칠 때는 session Actor list의
-compare-and-swap이 성공했는지가 기준이 된다. 성공 전에 끊기면 source Actor를 Entry
-Spot으로 되돌리는 abort이고, 성공 뒤에 끊기면 target Actor의 Entry Spot cleanup이다.
+bound session disconnect와 remote join handoff가 겹칠 때는 **join commit(source Actor
+제거 + binding을 target actor ref로 이전)이 끝났는지**가 기준이 된다. commit 전에 끊기면
+source Actor를 Entry Spot으로 되돌리는 abort이고, commit 뒤에 끊기면 target Actor의
+Entry Spot cleanup이다.
 
-### 12.3 원격 bind 에러 경로
+### 12.3 원격 bind 에러 경로 (설계상 모델 — 미구현)
+
+> 아래 표는 process 경계를 넘는 remote bind 제어 프로토콜의 **설계상 에러 모델**이다.
+> 현재 구현의 remote bind는 §12.2처럼 session owner 쪽 로컬 ref 등록이라, `bind control
+> request` 송신·timeout·target node 거부 같은 경로는 **아직 동작하지 않는다**(§14.2의
+> "process 경계 network control frame은 후속 범위"와 같은 맥락).
 
 | 조건 | 결과 |
 |------|------|
@@ -962,7 +974,7 @@ Actor, session, route, join, lifecycle 상태는 모두 프로세스마다 하�
 | `nodes.known_nodes` | `set<spot_node_t*>` | live `SpotNode` handle. node 포인터 use-after-free 검증에 사용 |
 | `nodes.known_spots` | `set<spot_handle_t*>` | live Spot 핸들. handle use-after-free 검증에 사용 |
 | `sessions` | `actor_session_state_t` | STREAM session binding과 stream→owner map (아래 하위 행 참고) |
-| `sessions.bindings` | `map<session_binding_key_t, session_binding_t>` | `(stream, session rid)` 복합키. 한 session의 actor id별 Actor 항목을 담는다. remote join commit의 compare-and-swap 트랜잭션 지점 |
+| `sessions.bindings` | `map<session_binding_key_t, session_binding_t>` | `(stream, session rid)` 복합키. 한 session의 actor id별 Actor 항목을 담는다. remote join을 commit할 때 이 binding의 actor ref를 target으로 바꾸는 지점 |
 | `sessions.stream_owners` | `map<void*, spot_node_t*>` | STREAM handle → session owner SpotNode(ActorGateway) |
 | `sessions.explicit_stream_owners` | `set<void*>` | `zlink_stream_attach_actor_gateway()`로 owner를 지정한 stream. sticky하며 binding이 사라져도 회수되지 않는다 |
 | `routes` | `actor_route_state_t` | 게시된 actor route와 disconnect note (아래 하위 행 참고) |
@@ -971,6 +983,9 @@ Actor, session, route, join, lifecycle 상태는 모두 프로세스마다 하�
 | `joins` | `actor_join_state_t` | pending join 큐와 부가 상태 (아래 하위 행 참고) |
 | `joins.queues` | `map<spot_logical_state_t*, deque<queued_join_request_t*>>` | target Spot별 pending join request. enqueue 시 추가, reply 또는 cleanup 시 제거 |
 | `joins.live_requests` | `set<queued_join_request_t*>` | 현재 pending join. timeout 스윕에 사용 |
+| `joins.pending_count_by_actor` | `map<actor_handle_t*, size_t>` | actor별 pending join 수. actor에 진행 중인 join이 있는지 빠르게 판정 |
+| `joins.pending_count_by_spot` | `map<spot_logical_state_t*, size_t>` | Spot별 pending join 수. Spot 정리 시 남은 join 유무 판정 |
+| `joins.pending_remote_actor_keys` | `set<pair<spot_node_t*, string>>` | remote join이 만든 pending target actor `(node, actor id)` 집합. 중복 remote pending 방지 |
 | `lifecycle` | `actor_lifecycle_state_t` | Spot별 `on_join`/`on_leave` 등록과 이벤트 큐 |
 | `protocol_drop_count` | `uint64_t` | protocol 오류(stale ref, unknown actor id 등)로 drop된 relay frame 누적 카운터. relay 손실 진단에 활용 |
 | `next_join_epoch` | `uint64_t` | join sequence 번호를 단조 증가로 발급하는 카운터 |
@@ -1059,8 +1074,10 @@ local join 원자성 규칙:
 
 remote join은 source node의 Actor를 target node의 target Spot으로 넘기는 handoff다.
 현재 구현은 같은 process 안에 등록된 source/target `SpotNode` 사이에서만 이 동작을
-수행한다. process 경계를 넘는 network control frame, session Actor list의
-compare-and-swap, 재시도 가능한 `JoinOp` 정리는 다음 단계의 범위다.
+수행한다. 이때 commit은 `actor_runtime().mutex` 아래에서 source Actor를 제거하고
+binding을 target actor ref로 이전(`transfer_bound_session`)하는 방식이라, 별도의
+compare-and-swap을 쓰지 않는다. process 경계를 넘는 network control frame과 재시도
+가능한 `JoinOp` 정리는 다음 단계의 범위다.
 
 `JoinOp`은 source node에서 만들며, 다음 상태를 보존한다.
 
@@ -1102,7 +1119,7 @@ sequenceDiagram
   TargetApp->>TargetSpot: zlink_spot_actor_join_reply(accept)
   TargetSpot->>TargetNode: accept join_epoch
   TargetNode->>SourceNode: ready to commit
-  SourceNode->>SessionNode: compare-and-swap actor ref
+  SourceNode->>SessionNode: transfer binding to target ref (mutex)
   SessionNode-->>SourceNode: mapping updated
   SourceNode->>TargetNode: commit visible
   TargetNode->>TargetActor: activate actor and route
@@ -1120,8 +1137,8 @@ remote join 원자성 규칙:
 - target node는 prepare 단계에서 pending Actor state를 만들 수 있지만, 이 Actor는
   dispatch되지도 않고 active route를 publish하지도 않는다.
 - target Spot이 accept하더라도 source Actor는 아직 source Spot에서 제거되지 않는다.
-- source Actor는 session Actor list의 compare-and-swap이 성공하고 target Actor activate와
-  active route 갱신까지 끝난 뒤에야 source Spot에서 제거되어 retired 상태가 된다.
+- source Actor는 binding이 target actor ref로 이전되고 target Actor activate와 active
+  route 갱신까지 끝난 뒤에야 source Spot에서 제거되어 retired 상태가 된다.
 - commit이 성공한 뒤에는 session owner node의 session Actor list와 active route가 target
   node의 Actor ref를 가리킨다.
 - `JoinOp` cleanup은 request owner에게 completion frame이 확실히 전달된 뒤에 수행한다.
@@ -1137,11 +1154,11 @@ target Spot이 reject하거나 timeout, prepare 실패, target shutdown이 일�
 - target의 pending Actor state와 payload reference는 폐기한다.
 - active route는 옮기지 않는다.
 
-bound session disconnect와 remote join handoff가 겹칠 때는 session Actor list의
-compare-and-swap이 성공했는지가 기준이 된다.
+bound session disconnect와 remote join handoff가 겹칠 때는 **join commit(binding의 target
+이전)이 끝났는지**가 기준이 된다.
 
-- **성공 전에 disconnect**: source Actor를 source Spot에서 Entry Spot으로 되돌리는 abort다.
+- **commit 전에 disconnect**: source Actor를 source Spot에서 Entry Spot으로 되돌리는 abort다.
   target의 pending Actor state와 payload reference는 폐기한다.
-- **성공 뒤에 disconnect**: 이때는 target Actor가 정본(canonical) Actor다. commit visible
+- **commit 뒤에 disconnect**: 이때는 target Actor가 정본(canonical) Actor다. commit visible
   절차를 끝낸 뒤, target node의 disconnect cleanup이 target Actor를 Entry Spot으로 옮기고
   bound session ref를 제거한다. source Actor는 다시 active 상태로 돌아오지 않는다.

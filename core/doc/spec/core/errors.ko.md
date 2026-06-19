@@ -67,9 +67,9 @@ zlink가 `ZLINK_HAUSNUMERO`를 기준으로 해당 코드를 정의합니다. PO
 `<zlink.h>`에 정의된 다음 매크로를 통해 컴파일 시점 버전 감지가 가능합니다:
 
 ```c
-#define ZLINK_VERSION_MAJOR 6
-#define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 4
+#define ZLINK_VERSION_MAJOR 7
+#define ZLINK_VERSION_MINOR 1
+#define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) \
     ((major) * 10000 + (minor) * 100 + (patch))
@@ -96,9 +96,9 @@ zlink가 `ZLINK_HAUSNUMERO`를 기준으로 해당 코드를 정의합니다. PO
 int zlink_errno(void);
 ```
 
-각 스레드는 자체 에러 번호를 유지합니다. zlink 함수가 실패 표시(일반적으로
-`-1` 또는 `NULL`)를 반환한 후 `zlink_errno()`를 호출하여 구체적인 에러 코드를
-얻습니다. 값은 표준 POSIX errno이거나 위에 나열된 `ZLINK_HAUSNUMERO` 기반
+각 스레드는 자체 에러 번호를 유지합니다. zlink 함수가 실패를 나타낸 뒤(함수마다
+`-1`, `NULL`, 또는 `zlink_*_result_t` 실패 값 등 반환 계약이 다름)
+`zlink_errno()`를 호출하여 구체적인 에러 코드를 얻습니다. 값은 표준 POSIX errno이거나 위에 나열된 `ZLINK_HAUSNUMERO` 기반
 확장 코드 중 하나입니다.
 
 **반환값:** 현재 스레드 로컬 errno 값.

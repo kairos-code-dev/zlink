@@ -11,7 +11,7 @@
 > - STREAM 이 viewer 연결을 받고 stream room 으로 packet 을 보낸다.
 > - stream SPOT 이 slow mode, moderator action, pinned message, lightweight fan-out 을
 >   직렬 처리한다.
-> - **그대로 남는 것**: 영상 송출, 상품/결제, 메시지 장기 저장, 대규모 CDN, abuse 분석.
+> - **그대로 남는 것**: 영상 전송, 상품/결제, 메시지 장기 저장, 대규모 CDN, abuse 분석.
 
 ## 1. 도메인 — 라이브 채팅의 진짜 난제
 
@@ -154,7 +154,7 @@ ZLink 로 구축할 때는 stream room 을 SPOT 으로 두는 편이 자연스�
 ```ts
 @Injectable()
 export class LiveChatSession implements ZLinkSession {
-  private viewer?: ZLinkActor;
+  private viewer?: ZLinkSessionActor;
 
   constructor(
     readonly context: ZLinkSessionContext,
@@ -163,7 +163,7 @@ export class LiveChatSession implements ZLinkSession {
 
   async onDispatch(header: ZlinkStreamHeader, payload: Message): Promise<void> {
     if (header.name === 'auth') {
-      const req = payload.decode<AuthViewerReq>();
+      const req = JSON.parse(payload.getString()) as AuthViewerReq;
       const actor = await this.actors.getOrCreate(req.viewerId, 'viewer');
       this.viewer = await this.context.actors.bind(actor);
       await this.context.client.reply(new AuthViewerOk()).submit();

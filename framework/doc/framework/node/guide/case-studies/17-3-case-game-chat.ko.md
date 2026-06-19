@@ -163,7 +163,7 @@ room actor 또는 SPOT 으로 둔다.
 ```ts
 @Injectable()
 export class GameChatSession implements ZLinkSession {
-  private player?: ZLinkActor;
+  private player?: ZLinkSessionActor;
 
   constructor(
     readonly context: ZLinkSessionContext,
@@ -172,7 +172,7 @@ export class GameChatSession implements ZLinkSession {
 
   async onDispatch(header: ZlinkStreamHeader, payload: Message): Promise<void> {
     if (header.name === 'auth') {
-      const req = payload.decode<AuthPlayerReq>();
+      const req = JSON.parse(payload.getString()) as AuthPlayerReq;
       const actor = await this.actors.getOrCreate(req.playerId, 'player');
       this.player = await this.context.actors.bind(actor);
       await this.context.client.reply(new AuthPlayerOk()).submit();
@@ -188,7 +188,10 @@ export class GameChatSession implements ZLinkSession {
 
 ```ts
 export class PlayerActor implements ZLinkActor {
-  constructor(readonly context: ZLinkActorContext) {}
+  constructor(
+    readonly actorId: string,
+    readonly context: ZLinkActorContext,
+  ) {}
 
   pushChat(message: GameChatMessage): Promise<void> {
     return this.context.boundSession.send(message).submit();

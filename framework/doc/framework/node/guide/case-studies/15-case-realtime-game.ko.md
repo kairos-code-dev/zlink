@@ -114,7 +114,7 @@ export class PlaceMarkHandler
 ```ts
 @Injectable()
 export class GameSession implements ZLinkSession {
-  private actor?: ZLinkActor;
+  private actor?: ZLinkSessionActor;
 
   constructor(
     readonly context: ZLinkSessionContext,
@@ -123,7 +123,7 @@ export class GameSession implements ZLinkSession {
 
   async onDispatch(header: ZlinkStreamHeader, payload: Message): Promise<void> {
     if (header.name === 'auth') {
-      const req = payload.decode<AuthReq>();
+      const req = JSON.parse(payload.getString()) as AuthReq;
       const actor = await this.actors.getOrCreate(req.playerId, 'player');
       this.actor = await this.context.actors.bind(actor);
       await this.context.client.reply(new AuthOk()).submit();

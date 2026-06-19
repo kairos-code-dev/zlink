@@ -99,7 +99,10 @@ export class SayHandler
 }
 
 export class UserActor implements ZLinkActor {
-  constructor(readonly context: ZLinkActorContext) {}
+  constructor(
+    readonly actorId: string,
+    readonly context: ZLinkActorContext,
+  ) {}
 
   pushChat(chat: ChatMessage): Promise<void> {
     return this.context.boundSession.send(chat).submit();
@@ -119,8 +122,8 @@ export class ChatSession implements ZLinkSession {
 
   async onDispatch(header: ZlinkStreamHeader, payload: Message): Promise<void> {
     if (header.name === 'auth') {
-      const req = payload.decode<AuthReq>();
-      const actor = await this.actors.getOrCreate(req.userId, 'chat-user');
+      const req = JSON.parse(payload.getString()) as AuthReq;
+      const actor = await this.actors.getOrCreate(req.userId, 'user');
       this.user = await this.context.actors.bind(actor);
       await this.context.client.reply(new AuthOk()).submit();
       return;

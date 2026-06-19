@@ -15,10 +15,10 @@
 
 actor 는 **ID 로 식별되는 상태 보유 객체**다. 같은 `ActorId` 로 들어오는 메시지는
 항상 **같은 인스턴스**가 처리한다(일반 handler 는 stateless 라 메시지마다 새로
-resolve 된다). 게임에서 한 플레이어, 한 세션의 진행 상태를 담기에 맞다.
+resolve 된다). 게임에서 한 플레이어, 한 session 의 진행 상태를 담기에 맞다.
 
 호출자는 actor 가 어느 노드/Spot 에 있는지 몰라도 된다. `actorId` 만으로 호출하면
-라우팅은 framework 가 등록된 resolver 로 푼다.
+routing 은 framework 가 등록된 resolver 로 푼다.
 
 actor 의 상태는 **서로 독립인 두 축**으로 본다.
 
@@ -98,9 +98,11 @@ SpotNode 의 `RoutingId`다. `matchId`나 `roomId` 같은 domain 값에서
 ## 3. Entry Spot 과 user Spot 의 actor handler
 
 actor packet handler 는 actor 클래스가 아니라 **Entry Spot / user Spot 의
-`Configure()`** 에서 등록한다. lifecycle callback 은 Spot 이 구현하는
-`OnCreateActorAsync`/`OnJoinedActorAsync`/`OnLeaveActorAsync`/`OnDisconnectActorAsync` 메서드다.
-Entry Spot 과 user Spot 은 handler 등록 표면이 같지만 실행 정책이 다르다.
+`Configure()`** 에서 등록한다. lifecycle callback 은 Spot 이 구현하는 메서드다.
+`OnCreateActorAsync` 는 **Entry Spot 전용**이고,
+`OnJoinedActorAsync`/`OnLeaveActorAsync`/`OnDisconnectActorAsync` 는 Entry Spot 과
+user Spot 양쪽에 있다. Entry Spot 과 user Spot 은 handler 등록 표면이 같지만 실행
+정책이 다르다.
 
 ```csharp
 public sealed class PlayerEntrySpot(IZLinkEntrySpotContext context)
@@ -305,7 +307,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
 ```
 
 > `OnDispatchAsync` 안의 `context.Client.Reply(...)` 는 **session** 표면이다. actor request
-> handler 의 응답 방식(반환값)과 다르다는 점에 주의한다. STREAM 세션 작성법은
+> handler 의 응답 방식(반환값)과 다르다는 점에 주의한다. STREAM session 작성법은
 > [07-stream](07-stream.ko.md)이 다룬다.
 
 ### Play 서버: actor 가 자기 client 로 push
@@ -316,10 +318,10 @@ handler 가 받은 actor 의 `Context.BoundSession` 를 쓴다. stream packet �
 
 ```csharp
 public sealed class JoinMatchActorHandler
-    : IZLinkSpotActorRequestHandler<GameSpot, PlayerActor, JoinMatchReq, JoinMatchRes>
+    : IZLinkSpotActorRequestHandler<MatchSpot, PlayerActor, JoinMatchReq, JoinMatchRes>
 {
     public async ValueTask<JoinMatchRes> HandleAsync(
-        GameSpot spot,
+        MatchSpot spot,
         PlayerActor actor,
         ZLinkSpotActorRequestContext context,
         JoinMatchReq request,
@@ -346,10 +348,10 @@ actor id 로 직접 조회하는 public client 는 제공하지 않는다.
 
 ```csharp
 public sealed class PlayerNotifyHandler
-    : IZLinkSpotActorSendHandler<GameSpot, PlayerActor, GameStateNotify>
+    : IZLinkSpotActorSendHandler<MatchSpot, PlayerActor, GameStateNotify>
 {
     public ValueTask HandleAsync(
-        GameSpot spot,
+        MatchSpot spot,
         PlayerActor actor,
         ZLinkSpotActorSendContext context,
         GameStateNotify message,

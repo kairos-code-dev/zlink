@@ -8,7 +8,7 @@
 
 ## 1. 개요
 
-PAIR 소켓은 정확히 하나의 피어와 1:1 양방향 독점 연결을 맺는다. 두 번째 피어가 연결하면 그 나중 연결이 거부되고, 첫 번째 피어가 pipe를 유지한다.
+PAIR 소켓은 정확히 하나의 peer와 1:1 양방향 독점 연결을 맺는다. 두 번째 peer가 연결하면 그 나중 연결이 거부되고, 첫 번째 peer가 pipe를 유지한다.
 
 **핵심 특성:**
 - 단일 파이프만 허용 (1:1 독점)
@@ -84,7 +84,7 @@ zlink_send(server, parts, 2, 0);
    parts[0] = "foo", parts[1] = "foobar", part_count = 2 */
 ```
 
-> 참고: `core/tests/integration/test_pair_inproc.cpp` — `test_zlink_send_multipart()` 테스트
+> 참고: `core/tests/integration/test_public_inproc_multipart_send.cpp` — `test_public_inproc_pair_send_multipart_blocking()` 테스트
 
 ### 수신 모드
 
@@ -106,7 +106,7 @@ if (rc == ZLINK_RECV_OK) {
 }
 ```
 
-> HWM(High-Water Mark, 큐 최대 허용 메시지 수) 도달 시 `zlink_send()`는 대기(기본) 또는 `ZLINK_DONTWAIT`로
+> HWM(High-Water Mark, queue 최대 허용 메시지 수) 도달 시 `zlink_send()`는 대기(기본) 또는 `ZLINK_DONTWAIT`로
 > `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다. 고급 배압(backpressure) 패턴은
 > [성능 가이드](10-performance.ko.md)를 참고.
 
@@ -225,9 +225,9 @@ zlink_connect(client, "ipc:///tmp/myapp.ipc");
 
 ## 6. 주의사항
 
-### 단일 피어만 허용
+### 단일 peer만 허용
 
-PAIR 소켓은 하나의 연결만 유지한다. 두 번째 피어가 연결하면 그 나중 연결이 거부되고, 첫 번째 피어가 pipe를 유지한다.
+PAIR 소켓은 하나의 연결만 유지한다. 두 번째 peer가 연결하면 그 나중 연결이 거부되고, 첫 번째 peer가 pipe를 유지한다.
 
 ```
  Allowed:  PAIR A ↔ PAIR B      (1:1)
@@ -237,23 +237,24 @@ PAIR 소켓은 하나의 연결만 유지한다. 두 번째 피어가 연결하�
 
 N:1 통신이 필요하면 DEALER/ROUTER를 사용한다.
 
-### inproc bind 순서
+### inproc connect/bind 순서
 
-inproc transport는 **반드시 bind가 connect보다 먼저** 호출되어야 한다.
+inproc transport는 보통 bind를 먼저 호출하지만, connect를 먼저 해도 된다 — bind
+이전의 connect는 pending connection으로 보관되었다가 bind 시점에 연결된다.
 
 ```c
-/* Correct order */
-zlink_bind(a, "inproc://signal");     /* 1. bind first */
+/* 권장 순서 */
+zlink_bind(a, "inproc://signal");     /* 1. bind */
 zlink_connect(b, "inproc://signal");  /* 2. connect */
 
-/* Wrong order -- fails */
-zlink_connect(b, "inproc://signal");  /* fails because bind has not been called yet */
-zlink_bind(a, "inproc://signal");
+/* connect-before-bind 도 동작 — connect는 pending으로 보관됐다가 bind에서 연결됨 */
+zlink_connect(b, "inproc://signal");  /* pending connection으로 보관 */
+zlink_bind(a, "inproc://signal");     /* 이 시점에 b의 pending connect가 연결됨 */
 ```
 
 ### IPC 경로 길이
 
-IPC 엔드포인트의 파일 경로는 시스템 제한(보통 108자)을 넘을 수 없다.
+IPC endpoint의 파일 경로는 시스템 제한(보통 108자)을 넘을 수 없다.
 
 ```c
 /* Path too long → ENAMETOOLONG error */
@@ -264,7 +265,7 @@ zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 
 ### HWM 동작
 
-피어가 없거나 느릴 때 송신 메시지는 HWM까지 큐에 쌓인다. HWM을 넘으면 `zlink_send()`가 대기(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED`를 반환한다(`ZLINK_DONTWAIT`).
+peer가 연결되지 않았으면 PAIR 송신은 queue에 쌓이지 않고 곧바로 backpressure로 처리된다(`ZLINK_DONTWAIT`면 `ZLINK_SUBMIT_BACKPRESSURED`, 아니면 sndtimeo까지 대기). peer가 연결돼 있고 느릴 때는 HWM까지 queue에 쌓이고, HWM을 넘으면 `zlink_send()`가 대기(기본) 또는 `ZLINK_SUBMIT_BACKPRESSURED`(`ZLINK_DONTWAIT`)를 반환한다.
 
 ### LINGER 설정
 

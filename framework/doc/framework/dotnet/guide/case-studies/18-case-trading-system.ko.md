@@ -6,21 +6,21 @@
 
 > [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
 > "심볼별 오더북 = 결정적 직렬 처리" 가 SPOT 의 단일 실행 큐와 맞는 사례이자,
-> **마이크로초 HFT 핫패스는 ZLink 영역이 아니라는 경계**가 가장 분명한 사례다.
+> **마이크로초 HFT hot path는 ZLink 영역이 아니라는 경계**가 가장 분명한 사례다.
 > 실행 가능한 샘플이 아니라, ZLink 를 쓰기 좋은 경계와 쓰면 안 되는 경계를 가르는
 > 도입 판단 문서다.
 
 > **이 케이스에서 ZLink 이 좋은 지점**
 > - symbol SPOT 이 "심볼별 직렬" 매칭 모델을 단일 실행 큐로 표현한다.
 > - 주문 라우팅·시세 fan-out·연결 수용을 한 framework 로 묶는다.
-> - **그대로 남는 것(경계)**: 마이크로초 매칭 핫루프(Disruptor/Aeron/colocation)·FIX·audit 은 전용 인프라 유지.
+> - **그대로 남는 것(경계)**: 마이크로초 매칭 hot loop(Disruptor/Aeron/colocation)·FIX·audit 은 전용 인프라 유지.
 
 ## 1. 도메인 — 트레이딩 시스템의 진짜 난제
 
 - **매칭 엔진은 수평 확장이 안 되는 단일 스레드 결정적 상태 기계다.** 심볼별
   오더북(정렬된 bid/ask)은 입력 순서가 결과를 정하므로, **심볼당 하나의 직렬
   라인**에서 처리해야 한다. sequencer 가 타임스탬프·배치해 공급한다.
-- **마이크로초 지연.** 핫루프는 **LMAX Disruptor**(lock-free 링버퍼),
+- **마이크로초 지연.** hot loop는 **LMAX Disruptor**(lock-free 링버퍼),
   **Aeron**(UDP 저지연 메시징), **SBE**(zero-copy 인코딩), **colocation**(거래소
   옆 전용 서버, 커널 바이패스)로 마이크로초를 다툰다. 클라우드 하이퍼바이저를
   거부하고 전용 CPU 코어를 쓴다.
@@ -69,9 +69,9 @@ fixSession.Send(new NewOrderSingle(...));
 서 있어야 하는 것: FIX gateway, sequencer, Disruptor 매칭 엔진(전용 코어),
 Aeron 시세 버스, SBE 스키마, audit store, colocation 인프라.
 
-## 3. ZLink 스택 — symbol SPOT + pub/sub (핫패스 밖)
+## 3. ZLink 스택 — symbol SPOT + pub/sub (hot path 밖)
 
-ZLink 는 **매칭 핫루프가 아니라 그 주변**(OMS·주문 라우팅·시세 배포·리스크·
+ZLink 는 **매칭 hot loop가 아니라 그 주변**(OMS·주문 라우팅·시세 배포·리스크·
 리테일/알고 게이트웨이)에 맞는다. 심볼 오더북을 SPOT 으로 모델링하면 "심볼당 직렬"
 이 framework 보장으로 떨어진다.
 
@@ -98,7 +98,7 @@ public sealed class TickPublishHandler
 ```
 
 ```csharp
-// 리스크 점검 같은 주변부는 일반 channel request (마이크로초 핫패스 밖)
+// 리스크 점검 같은 주변부는 일반 channel request (마이크로초 hot path 밖)
 var decision = await client
     .RequestToChannel("risk", new CheckLimit(order.AccountId, order.Notional))
     .Async<RiskDecision>(ct);
@@ -116,9 +116,9 @@ var decision = await client
 options.AddClientServerChannel("risk").EnableClient();
 ```
 
-주문 라우팅·리스크 점검은 channel messaging(`Request`/`Send` + `Timeout`)으로,
+주문 라우팅·리스크 점검은 channel messaging(`RequestToChannel`/`SendToChannel`; `Timeout` 은 request 에)으로,
 리테일/알고 client 수용은 STREAM 으로 받는다([4](../04-channel-messaging.ko.md),
-[7](../07-stream.ko.md)). 단 **마이크로초 매칭 핫루프는 이 channel 경로 밖**에서
+[7](../07-stream.ko.md)). 단 **마이크로초 매칭 hot loop는 이 channel 경로 밖**에서
 Disruptor/Aeron 으로 남긴다.
 
 ## 4. 양쪽 코드 비교 — "주문 제출 → 매칭 → 시세"
@@ -132,7 +132,7 @@ Disruptor/Aeron 으로 남긴다.
 | 주문 라우팅/리스크 | 내부 버스 | `Request/Send` channel |
 
 > **모델은 같고 latency tier 는 다르다.** SPOT 의 직렬 보장은 매칭 엔진의 결정성과
-> 같은 _shape_ 다. 하지만 마이크로초가 생사인 매칭 핫루프는 Disruptor/Aeron/
+> 같은 _shape_ 다. 하지만 마이크로초가 생사인 매칭 hot loop는 Disruptor/Aeron/
 > colocation 으로 남긴다 — ZLink 는 그 _주변부_ 를 단순화한다.
 
 ## 5. 아키텍처 비교 — 컴포넌트와 메시지 흐름
@@ -179,7 +179,7 @@ Disruptor/Aeron 으로 남긴다.
 
 - **빠지는 박스:** 시세 배포용 별도 메시징 버스(주변부 한정), 연결 수용 gateway,
   discovery/mesh.
-- **그대로인 박스:** **마이크로초 매칭 핫루프(Disruptor/Aeron/colocation)**,
+- **그대로인 박스:** **마이크로초 매칭 hot loop(Disruptor/Aeron/colocation)**,
   FIX gateway, audit DB.
 
 ### 메시지 흐름 — 시퀀스 비교
@@ -215,7 +215,7 @@ sequenceDiagram
   GW->>SP: Send order
   SP->>SP: SPOT 단일 큐 직렬 매칭
   SP->>SUB: Publish md.symbol
-  Note over SP: 마이크로초 핫루프는 Disruptor/Aeron 유지
+  Note over SP: 마이크로초 hot loop는 Disruptor/Aeron 유지
 ```
 
 흐름의 _모양_ 은 같다(심볼 직렬 → 시세 fan-out). 차이는 latency tier 다 — ZLink 는
@@ -225,7 +225,7 @@ sequenceDiagram
 
 - **줄어드는 것:** 주변부의 시세 배포 transport, 연결 수용 gateway, discovery/mesh.
 - **그대로 남는 것:** **마이크로초 HFT 매칭 코어**(Aeron/Disruptor/SBE/colocation),
-  **FIX 외부 연동**, **regulatory audit 영속(DB/event store)**. ZLink 는 이 핫패스
+  **FIX 외부 연동**, **regulatory audit 영속(DB/event store)**. ZLink 는 이 hot path
   latency tier 를 노리지 않는다. 공통 경계는
   [12-grpc-alternative](../12-grpc-alternative.ko.md)의 §4 경계 절 참고.
 

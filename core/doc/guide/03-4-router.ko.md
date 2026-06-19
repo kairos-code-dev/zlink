@@ -147,8 +147,8 @@ if (zlink_router_recv(router,
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
 | `ZLINK_ROUTER_OPT_MANDATORY` | int | 1 | 미도달 시 `ZLINK_SUBMIT_NOT_CONNECTED` 반환. 기본값이 `1` 이므로 `zlink_send_rid()` 로 미연결 피어를 지정하면 실패가 호출자에게 반환된다. 조용한 드롭이 필요하면 `0` 으로 설정한다. |
-| `ZLINK_OPT_RID_DUPLICATE_POLICY` | int | `ZLINK_RID_DUPLICATE_REJECT` | routing_id 충돌 시 기존 파이프(pipe, 두 소켓을 연결하는 내부 메시지 채널)를 유지할지 새 파이프가 인수할지 정한다. |
-| `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 0 | `zlink_router_request()` 기본 timeout. `0`이면 구현 기본값 `5000ms` 사용 |
+| `ZLINK_OPT_RID_DUPLICATE_POLICY` | int | `ZLINK_RID_DUPLICATE_REJECT` | routing_id 충돌 시 기존 pipe(두 소켓을 연결하는 내부 메시지 채널)를 유지할지 새 pipe가 인수할지 정한다. |
+| `ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS` | int | 5000 | `zlink_router_request()` 기본 timeout(ms). 설정/호출 인자로 `0`을 주면 구현 기본값 `5000ms`로 해석 |
 | `zlink_set_routing_id()` | binary | 자동(UUID) | ROUTER 자신의 routing_id (전용 함수) |
 | `ZLINK_OPT_SNDHWM` | int | 자동 | ROUTER의 routed 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
 | `ZLINK_OPT_RCVHWM` | int | 자동 | ROUTER의 routed 역할에 맞춰 산정된 자동 HWM. 수동 설정 시 우선 |
@@ -179,8 +179,8 @@ zlink_set_router_option(router, ZLINK_ROUTER_OPT_MANDATORY,
 
 > **관찰 가능한 동작:** `MANDATORY=1` 기본값에서는 writable / `ZLINK_POLLOUT`
 > 관찰값이 실제로 쓸 수 있는 피어가 있을 때만 send-recovery 준비 상태로
-> 드러난다. 같은 routing_id를 가진 피어가 들어오면 기본값에서는 기존 파이프를
-> 유지하고 새 중복 파이프는 등록하지 않는다. 피어가
+> 드러난다. 같은 routing_id를 가진 피어가 들어오면 기본값에서는 기존 pipe를
+> 유지하고 새 중복 pipe는 등록하지 않는다. 피어가
 > 들고 날 때 `send_rid` 가 `NOT_CONNECTED` 를 반환하는 일이 흔하다.
 
 > 참고: `core/tests/integration/test_router_mandatory.cpp` — `test_basic()`
@@ -201,7 +201,7 @@ SPOT 에서 시작된 요청일 때만 spot rid 가 채워진다.
 
 > ZMP request-reply envelope wire 형식은
 > [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
-> ROUTER 디스패치 내부 구조는
+> ROUTER dispatch 내부 구조는
 > [서비스 내부 설계](../internals/services-internals.ko.md)를 참고.
 
 ```c
@@ -259,7 +259,7 @@ data-plane receive 와 섞이지 않는다. `zlink_router_recv()`
 
 ## 5. 사용 패턴
 
-### 패턴 1: ROUTER ↔ ROUTER 메시/클러스터
+### 패턴 1: ROUTER ↔ ROUTER mesh/클러스터
 
 ROUTER의 핵심 패턴이다. N개 노드가 각각 상대의 routing_id를 지정해 특정 노드에 전송한다.
 1:1이면 DEALER로 충분하므로, ROUTER ↔ ROUTER는 N개 이상 노드 간 통신에서 의미가 있다.
@@ -326,7 +326,7 @@ zlink_send(d2, &m2, 1, 0);
 /* Each DEALER drains replies with zlink_recv() in its own poller loop */
 ```
 
-> ROUTER ↔ ROUTER는 브로커, 클러스터 노드 간 메시 통신에 적합하다.
+> ROUTER ↔ ROUTER는 브로커, 클러스터 노드 간 mesh 통신에 적합하다.
 > 모든 노드가 능동적으로 대상을 routing_id로 지정할 수 있다.
 
 ### 패턴 2: DEALER → ROUTER 로드밸런싱 요청-응답
@@ -527,8 +527,9 @@ void worker_thread(void *arg) {
                  zlink_msg_t *parts, size_t part_count,
                  void *userdata)
     {
-        /* 처리 후 동일 routing_id로 응답 */
-        zlink_send_rid(worker, source_rid, parts, part_count, 0);
+        /* DEALER backend는 받은 envelope frame을 그대로 보존해 응답한다.
+           routed send(zlink_send_rid)는 ROUTER/STREAM 전용이라 DEALER에선 쓸 수 없다. */
+        zlink_send(worker, parts, part_count, 0);
     }
 
     void *worker = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
@@ -662,7 +663,7 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 
 ### routing_id 충돌
 
-같은 routing_id를 가진 두 DEALER가 동시에 연결되면 기본적으로 두 번째 연결이 거부된다. `ZLINK_OPT_RID_DUPLICATE_POLICY`를 `ZLINK_RID_DUPLICATE_HANDOVER`로 설정하면 새 파이프가 기존 파이프를 대체한다.
+같은 routing_id를 가진 두 DEALER가 동시에 연결되면 기본적으로 두 번째 연결이 거부된다. `ZLINK_OPT_RID_DUPLICATE_POLICY`를 `ZLINK_RID_DUPLICATE_HANDOVER`로 설정하면 새 pipe가 기존 pipe를 대체한다.
 
 > routing_id의 상세 개념은 [08-routing-id.ko.md](08-routing-id.ko.md)를 참고.
 

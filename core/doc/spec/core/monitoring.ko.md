@@ -52,8 +52,8 @@ typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 | `event` | 이벤트 타입을 나타내는 비트마스크 (`ZLINK_EVENT_*` 상수 중 하나). |
 | `value` | 이벤트별 값 (아래 참조). |
 | `routing_id` | peer-bound 이벤트의 피어 라우팅 아이덴티티. peer-less 이벤트에서도 초기화되며 0일 수 있음. |
-| `local_addr` | null 종료 로컬 엔드포인트 주소 문자열. 항상 초기화됨. |
-| `remote_addr` | null 종료 원격 엔드포인트 주소 문자열. 항상 초기화됨. |
+| `local_addr` | null 종료 로컬 endpoint 주소 문자열. 항상 초기화됨. |
+| `remote_addr` | null 종료 원격 endpoint 주소 문자열. 항상 초기화됨. |
 
 `value` 필드 해석:
 - 다수 failure 이벤트: errno 또는 프로토콜 에러 코드
@@ -145,7 +145,7 @@ typedef struct zlink_monitor_status_t
 | `auto_hwm_effective_rcvbuf` | 현재 소켓 옵션의 수신 buffer 크기. 단위는 byte. `-1`이면 OS 기본값 유지 |
 | `auto_hwm_last_recalc_ms` | 최근 자동 HWM 재계산 시각(ms) |
 | `auto_hwm_last_recalc_reason` | 최근 재계산 사유 enum 값 |
-| `auto_hwm_send_blocked_ratio_ppm` | 최근 송신 시도 중 backpressure(배압)로 막힌 비율(ppm) |
+| `auto_hwm_send_blocked_ratio_ppm` | 최근 송신 시도 중 backpressure로 막힌 비율(ppm) |
 | `auto_hwm_deferred_sndhwm` | 지연 중인 송신 HWM 축소값. 없으면 `-1` |
 | `auto_hwm_deferred_rcvhwm` | 지연 중인 수신 HWM 축소값. 없으면 `-1` |
 
@@ -223,7 +223,7 @@ typedef enum zlink_monitor_source_kind_t
 |------|-----|------|
 | `ZLINK_DISCONNECT_REASON_UNKNOWN` | `0` | 사유를 확인할 수 없음. |
 | `ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED` | `3` | 핸드셰이크 실패. |
-| `ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR` | `4` | 트랜스포트 계층 에러. |
+| `ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR` | `4` | transport 계층 에러. |
 | `ZLINK_DISCONNECT_REASON_CTX_TERM` | `5` | Context 종료로 인한 연결 해제. |
 
 ### 프로토콜 에러

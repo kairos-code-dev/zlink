@@ -13,7 +13,7 @@
 > - STREAM 이 viewer 연결을 받고 stream room 으로 packet 을 보낸다.
 > - stream SPOT 이 slow mode, moderator action, pinned message, lightweight fan-out 을
 >   직렬 처리한다.
-> - **그대로 남는 것**: 영상 송출, 상품/결제, 메시지 장기 저장, 대규모 CDN, abuse 분석.
+> - **그대로 남는 것**: 영상 전송, 상품/결제, 메시지 장기 저장, 대규모 CDN, abuse 분석.
 
 ## 1. 도메인 — 라이브 채팅의 진짜 난제
 
@@ -168,10 +168,14 @@ public final class LiveChatSession implements ZLinkSession {
     @Override
     public ZLinkSessionContext context() { return context; }
 
+    @Override public void onConnected() {}
+    @Override public void onDisconnected() {}
+    @Override public void onError(ZLinkStreamError error) {}
+
     @Override
     public void onDispatch(ZLinkStreamHeader header, Message payload) {
         if ("auth".equals(header.name())) {
-            AuthViewerReq req = payload.decode(AuthViewerReq.class);
+            AuthViewerReq req = StreamPayloads.decode(header, payload, AuthViewerReq.class);
             viewer = actors.getOrCreate(req.viewerId(), "viewer")
                 .thenCompose(actor -> context.actors().bind(actor))
                 .thenCompose(bound -> context.client().reply(new AuthViewerOk()).submit().thenApply(ignored -> bound))
@@ -189,7 +193,7 @@ public final class LiveChatSession implements ZLinkSession {
 @Component
 public final class SendLiveMessageHandler implements ZLinkSpotActorSendHandler<StreamSpot, ViewerActor, SendLiveChat> {
     @Override
-    public void handle(StreamSpot stream, ViewerActor viewer, ZLinkSpotActorSendContext context, SendLiveChat req) {
+    public void handle(StreamSpot stream, ViewerActor viewer, ZLinkSpotActorSendContext context, SendLiveChat req, CancellationToken cancellationToken) {
         stream.requireOpen();
         stream.requireNotMuted(viewer.actorId());
         stream.rateLimit().requireAllowed(viewer.actorId());
@@ -205,7 +209,7 @@ public final class SendLiveMessageHandler implements ZLinkSpotActorSendHandler<S
 @Component
 public final class PinMessageHandler implements ZLinkSpotActorSendHandler<StreamSpot, ModeratorActor, PinMessage> {
     @Override
-    public void handle(StreamSpot stream, ModeratorActor moderator, ZLinkSpotActorSendContext context, PinMessage req) {
+    public void handle(StreamSpot stream, ModeratorActor moderator, ZLinkSpotActorSendContext context, PinMessage req, CancellationToken cancellationToken) {
         stream.requireModerator(moderator.actorId());
         stream.pin(req.messageId());
         for (ViewerActor watching : stream.activeViewers()) { watching.push(new MessagePinned(req.messageId())); }

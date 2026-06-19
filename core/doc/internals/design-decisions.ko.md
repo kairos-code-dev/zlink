@@ -13,7 +13,7 @@
 **결정**: 모든 소켓의 자동 생성 own routing_id는 16B UUID(binary).
 
 **근거**:
-- 16B UUID는 노드/프로세스 간 전역 유일성을 보장한다
+- 16B random UUID는 노드/프로세스 간 충돌 가능성을 사실상 무시할 수준으로 낮춘다
 - 모니터링/디버깅에서 소켓 식별에 충분한 엔트로피를 제공한다
 - 4B/5B 등 짧은 식별자로는 확보하기 어려운, 프로세스 간 충돌 회피 여유를 준다
 
@@ -28,7 +28,7 @@
 
 ### 1.3 문자열 alias 유지
 
-**결정**: `zlink_set_routing_id()` / `zlink_get_routing_id()`와 `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`(`zlink_set_router_option()`으로 설정)는 가변 길이 문자열로 유지한다.
+**결정**: `zlink_set_routing_id()` / `zlink_get_routing_id()`와 `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`(`zlink_set_router_option()`으로 설정)는 가변 길이 byte routing id/alias(문자열로도 쓸 수 있음)로 유지한다.
 
 **근거**:
 - ROUTER에서 문자열 alias 기반 디버깅/로깅 패턴이 널리 쓰인다
@@ -41,7 +41,7 @@
 
 **근거**:
 - 코어에서 이미 socket_id 기반 자동 생성이 동작 중이다
-- 서비스 유틸(routing_id_utils.hpp)은 override 목적으로만 쓴다
+- 서비스 유틸(routing_id_utils.hpp)은 override를 적용하거나, override가 없으면 서비스 소켓에 routing_id를 채우는 데 쓴다
 - 계층 위반 방지(services → core 의존 역전 없음)
 
 ---
@@ -65,7 +65,7 @@
 **결정**: 송수신 준비 시점은 `CONNECTION_READY` 이벤트로 알린다.
 
 **근거**:
-- CONNECTED/ACCEPTED는 전송계층 레벨이라 혼동을 유발한다
+- CONNECTED/ACCEPTED는 transport 레벨이라 혼동을 유발한다
 - 사용자에게 "실제 송수신 가능 시점"을 명확히 알려 준다
 - 핸드셰이크 완료를 곧 연결 완료로 의미를 통일한다
 
@@ -108,7 +108,7 @@
 **결정**: SPOT 클러스터는 PUB/SUB mesh(각 노드가 서로 연결된 그물망 구조)로 구성한다.
 
 **근거**:
-- 토픽 기반 팬아웃(fanout, 한 발신자 → 다수 수신자 분배)에 PUB/SUB가 자연스럽다
+- 토픽 기반 fanout(한 발신자가 다수 수신자에게 보내기)에 PUB/SUB가 자연스럽다
 - ROUTER 기반보다 구독 필터링이 효율적이다
 - Discovery 기반 자동 mesh 구성이 가능하다
 

@@ -3,26 +3,36 @@ namespace TicTacToe.Server.Configuration;
 internal static class SampleChannels
 {
     public const string Api = "Api";
-    public const string Play = "Play";
+
+    public static string Play(int index) => index switch
+    {
+        0 => "PlayA",
+        1 => "PlayB",
+        _ => $"Play{index + 1}",
+    };
 }
 
 internal static class SampleTypes
 {
     public const string PlayerActor = "player";
     public const string GameSpot = "tictactoe-game";
-
-    public const string PlaySpotNodeId = "2001";
 }
 
 internal static class SampleDefaults
 {
     public const string GameName = "tictactoe-game";
+    public const int RequiredLevel = 3;
 }
 
 internal static class SampleNodes
 {
     public const string ClientStream = "client-stream";
     public const string PlaySpot = "play-node";
+}
+
+internal static class SampleTopics
+{
+    public const string PlayerMilestone = "tictactoe.player.milestone";
 }
 
 internal static class SampleTimeouts

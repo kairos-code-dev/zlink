@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Execution;
 using Zlink.Framework.Runtime.Host;
@@ -42,7 +41,6 @@ internal sealed class ZLinkRouteChannelInitializer(
         {
             router.SetRoutingId(routedRegistration.RoutingConfig.RoutingId);
         }
-
         router.Bind(routedRegistration.BindEndpoint!);
         var discovery = AttachDiscoveryIfNeeded(state, adapter, routedRegistration, router);
         var handlers = new ZLinkRouteHandlerRegistry(CreateRouteHandlerDescriptors(routedRegistration));

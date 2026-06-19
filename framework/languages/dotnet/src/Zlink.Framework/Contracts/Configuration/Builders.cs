@@ -123,6 +123,8 @@ public interface IZLinkSpotNodeBuilder
 
     IZLinkSpotNodeBuilder ConnectRouter(string endpoint);
 
+    IZLinkSpotNodeBuilder ConnectRouter(RoutingId peerRid, string endpoint);
+
     IZLinkSpotNodeBuilder SetRouterRoutingId(RoutingId routingId);
 
     IZLinkSocketConfig ConfigureRouterSocket();
@@ -170,7 +172,7 @@ public interface IZLinkSpotMeshNodeBuilder : IZLinkSpotNodeBuilder
 {
 }
 
-public interface IZLinkSpotMeshBuilder
+public interface IZLinkSpotMeshBuilder : IZLinkSpotNodeBuilder
 {
     IZLinkDiscoveryBuilder UseDiscovery();
 

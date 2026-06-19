@@ -459,7 +459,7 @@ public sealed class BuilderContracts
             where TSession : class, IZLinkSession => this;
     }
 
-    private sealed class SpotNodeBuilder : IZLinkSpotMeshNodeBuilder
+    private class SpotNodeBuilder : IZLinkSpotMeshNodeBuilder
     {
         public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
         {
@@ -467,6 +467,11 @@ public sealed class BuilderContracts
         }
 
         public IZLinkSpotNodeBuilder ConnectRouter(string endpoint)
+        {
+            return this;
+        }
+
+        public IZLinkSpotNodeBuilder ConnectRouter(RoutingId peerRid, string endpoint)
         {
             return this;
         }
@@ -550,7 +555,7 @@ public sealed class BuilderContracts
             where TEntrySpot : IZLinkEntrySpot => this;
     }
 
-    private sealed class SpotMeshBuilder(List<string> spotNodes) : IZLinkSpotMeshBuilder
+    private sealed class SpotMeshBuilder(List<string> spotNodes) : SpotNodeBuilder, IZLinkSpotMeshBuilder
     {
         public IZLinkDiscoveryBuilder UseDiscovery()
         {

@@ -27,7 +27,7 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
         var spotRid = RoutingId.From(message.RoomId);
         var joined = await actor.Context.JoinSpot(
                 spotRid,
-                new TicTacToeGameJoinReq(message.RoomId, actor.ActorId).ToJson())
+                new TicTacToeGameJoinReq(message.RoomId, actor.RequirePlayer()).ToJson())
             .Async(cancellationToken);
 
         var joinReply = joined.Reply.FromJson<TicTacToeGameJoinRes>();

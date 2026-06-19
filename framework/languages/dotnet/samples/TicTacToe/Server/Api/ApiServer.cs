@@ -12,22 +12,21 @@ internal sealed class ApiServer(SampleSettings settings)
         var builder = WebApplication.CreateBuilder();
         SampleLogging.Configure(builder.Logging, settings, "api");
         builder.WebHost.UseUrls(settings.ApiBindUrl);
+        builder.Services.AddSingleton(settings);
         builder.Services.AddZLinkFramework(options =>
         {
             options.DefaultTimeout = SampleTimeouts.Request;
             options.Codecs.AddJson();
-            {
-                var channel = options.AddClientServerChannel(SampleChannels.Api)
-                    .EnableServer(settings.ApiChannelEndpoint);
-                channel.AddRequestHandler<AuthenticatePlayerHandler>();
 
-            }
+            options.AddClientServerChannel(SampleChannels.Api)
+                .EnableServer(settings.ApiChannelEndpoint)
+                .AddRequestHandler<AuthenticatePlayerHandler>();
 
-            {
-                options.AddClientServerChannel(SampleChannels.Play)
-                    .EnableClient(settings.PlayChannelEndpoint);
+            options.AddClientServerChannel(SampleChannels.Play(0))
+                .EnableClient(settings.PlayChannelEndpoints[0]);
 
-            }
+            options.AddClientServerChannel(SampleChannels.Play(1))
+                .EnableClient(settings.PlayChannelEndpoints[1]);
         });
 
         var app = builder.Build();

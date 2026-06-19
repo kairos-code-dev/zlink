@@ -29,7 +29,10 @@ internal static class ZLinkRetryingSubmitter
 
             if (elapsed.Elapsed >= timeout)
             {
-                throw new InvalidOperationException(failureMessage, lastError);
+                var message = lastError is ZlinkSubmitException submitError
+                    ? $"{failureMessage} Last submit result: {submitError.Result}."
+                    : failureMessage;
+                throw new InvalidOperationException(message, lastError);
             }
 
             var remaining = timeout - elapsed.Elapsed;

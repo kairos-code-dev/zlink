@@ -15,31 +15,47 @@ public static class TicTacToeGameStatuses
     public const string TurnTimedOut = "TurnTimedOut";
 }
 
+public sealed record PlayerInfo(
+    string ActorId,
+    string DisplayName,
+    int Level,
+    int Wins);
+
+public sealed record PlayNodeInfo(
+    string StreamEndpoint,
+    string SpotNodeRid);
+
 public sealed record CreateGameHttpReq(string? GameName);
 
 public sealed record CreateGameHttpRes(
     string RoomId,
-    string PlayEndpoint,
-    string GameName);
+    string OwnerPlayEndpoint,
+    IReadOnlyList<string> PlayEndpoints,
+    IReadOnlyList<PlayNodeInfo> PlayNodes,
+    string GameName,
+    int RequiredLevel);
 
 public sealed record CreateGameReq(string GameName);
 
 public sealed record CreateGameRes(
     string RoomId,
-    string PlayEndpoint,
-    string GameName);
+    string OwnerPlayEndpoint,
+    IReadOnlyList<string> PlayEndpoints,
+    IReadOnlyList<PlayNodeInfo> PlayNodes,
+    string GameName,
+    int RequiredLevel);
 
 public sealed record AuthenticatePlayerReq(string AccessToken);
 
-public sealed record AuthenticatePlayerRes(string ActorId);
+public sealed record AuthenticatePlayerRes(PlayerInfo Player);
 
 public sealed record AuthenticateReq(string AccessToken);
 
-public sealed record AuthenticateRes(string ActorId);
+public sealed record AuthenticateRes(PlayerInfo Player);
 
 public sealed record TicTacToeGameJoinReq(
     string RoomId,
-    string ActorId);
+    PlayerInfo Player);
 
 public sealed record TicTacToeGameJoinRes(GameState State);
 
@@ -47,17 +63,38 @@ public sealed record JoinGameReq(string RoomId);
 
 public sealed record JoinGameRes(GameState State);
 
+public sealed record ObserveMilestoneReq();
+
+public sealed record ObserveMilestoneRes(bool Subscribed);
+
 public sealed record PlaceMarkReq(int Cell);
 
 public sealed record PlaceMarkRes(GameState State);
 
+public sealed record LeaveGameReq(string RoomId);
+
 public sealed record PlayerJoinedNotify(
     string RoomId,
     string ActorId,
+    string DisplayName,
+    int Level,
     string Mark,
     GameState State);
 
 public sealed record GameStateNotify(GameState State);
+
+public sealed record WinMilestoneNotify(
+    string RoomId,
+    string ActorId,
+    string DisplayName,
+    int Wins,
+    string ReceivingSpotNodeRid);
+
+public sealed record PlayerWinMilestoneEvent(
+    string RoomId,
+    string ActorId,
+    string DisplayName,
+    int Wins);
 
 public sealed record GameState(
     string RoomId,

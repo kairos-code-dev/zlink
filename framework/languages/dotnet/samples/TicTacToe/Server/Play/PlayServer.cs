@@ -18,6 +18,7 @@ internal sealed class PlayServer(SampleSettings settings)
         SampleLogging.Configure(builder.Logging, settings, "play");
 
         builder.Services.AddSingleton(settings);
+        builder.Services.AddSingleton<IRoomRouteStore, RedisRoomRouteStore>();
         builder.Services.AddSingleton<TicTacToeGameCreator>();
 
         builder.Services.AddZLinkFramework(options =>
@@ -26,11 +27,13 @@ internal sealed class PlayServer(SampleSettings settings)
             options.AddHandlersFromAssemblyOf(typeof(PlayServer));
             options.Codecs.AddJson();
             options.AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor);
+            options.AddSpotRemoteAddressResolver<RedisSpotRemoteAddressResolver>();
 
             options.AddClientServerChannel(SampleChannels.Api)
-                .EnableClient(settings.ApiChannelEndpoint);
+                .EnableClient(settings.ApiChannelEndpoints[0])
+                .EnableClient(settings.ApiChannelEndpoints[1]);
 
-            options.AddClientServerChannel(SampleChannels.Play)
+            options.AddClientServerChannel(SampleChannels.Play(settings.PlayIndex))
                 .EnableServer(settings.PlayChannelEndpoint)
                 .AddRequestHandler<CreateGameHandler>();
 
@@ -40,9 +43,13 @@ internal sealed class PlayServer(SampleSettings settings)
                 .RegisterSession<PlaySession>();
 
             options.AddSpotMesh(SampleNodes.PlaySpot)
-                .AddNode(SampleNodes.PlaySpot)
                 .EnableRouter(settings.SpotEndpoint)
-                .SetRouterRoutingId(RoutingId.From(SampleTypes.PlaySpotNodeId))
+                .SetRouterRoutingId(RoutingId.From(settings.PlaySpotNodeRid))
+                .ConnectRouter(
+                    RoutingId.From(settings.PeerPlaySpotNodeRid),
+                    settings.PeerSpotEndpoint)
+                .EnablePubSub(settings.SpotPubSubEndpoint)
+                .ConnectPubSub(settings.PeerSpotPubSubEndpoint)
                 .AddEntrySpot<PlayEntrySpot>()
                 .AddSpotFactory<TicTacToeGame>();
         });

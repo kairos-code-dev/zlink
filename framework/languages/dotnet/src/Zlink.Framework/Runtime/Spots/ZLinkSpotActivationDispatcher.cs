@@ -1,25 +1,42 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Spots;
 
-internal sealed class ZLinkSpotActivationDispatcher(
-    ZLinkFrameworkRuntime runtime,
-    IZLinkBackendSpot nativeSpot,
-    string channelName,
-    ZLinkSpotPacketRegistry packets,
-    ZLinkSpotActorJoinRegistry actorJoins,
-    ZLinkSpotActorMembership actors,
-    ZLinkSpotSubscriptionRegistry subscriptions,
-    Func<ZLinkSpotActorHandlerRegistry?> actorHandlers,
-    Func<ZLinkSpotHandlerInvoker> handlerInvoker)
+internal sealed class ZLinkSpotActivationDispatcher
 {
-    private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher =
-        new(actorHandlers, handlerInvoker);
-    private readonly ZLinkSpotActorJoinDispatcher _actorJoinDispatcher =
-        new(
+    private readonly ZLinkFrameworkRuntime runtime;
+    private readonly IZLinkBackendSpot nativeSpot;
+    private readonly string channelName;
+    private readonly ZLinkSpotActorMembership actors;
+    private readonly ZLinkSpotSubscriptionRegistry subscriptions;
+    private readonly Func<ZLinkSpotHandlerInvoker> handlerInvoker;
+    private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher;
+    private readonly ZLinkSpotActorJoinDispatcher _actorJoinDispatcher;
+    private readonly ZLinkSpotRouteDispatcher _routeDispatcher;
+
+    public ZLinkSpotActivationDispatcher(
+        ZLinkFrameworkRuntime runtime,
+        IZLinkBackendSpot nativeSpot,
+        string channelName,
+        ZLinkSpotPacketRegistry packets,
+        ZLinkSpotActorJoinRegistry actorJoins,
+        ZLinkSpotActorMembership actors,
+        ZLinkSpotSubscriptionRegistry subscriptions,
+        Func<ZLinkSpotActorHandlerRegistry?> actorHandlers,
+        Func<ZLinkSpotHandlerInvoker> handlerInvoker)
+    {
+        this.runtime = runtime;
+        this.nativeSpot = nativeSpot;
+        this.channelName = channelName;
+        this.actors = actors;
+        this.subscriptions = subscriptions;
+        this.handlerInvoker = handlerInvoker;
+        _actorPacketDispatcher = new ZLinkSpotActorPacketDispatcher(actorHandlers, handlerInvoker);
+        _actorJoinDispatcher = new ZLinkSpotActorJoinDispatcher(
             runtime,
             nativeSpot,
             channelName,
@@ -27,12 +44,13 @@ internal sealed class ZLinkSpotActivationDispatcher(
             actors,
             handlerInvoker,
             runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotActorJoinDispatcher>());
-    private readonly ZLinkSpotRouteDispatcher _routeDispatcher =
-        new(
+        _routeDispatcher = new ZLinkSpotRouteDispatcher(
             channelName,
             packets,
             handlerInvoker,
+            DispatchInternalRoutePacketAsync,
             runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotRouteDispatcher>());
+    }
 
     public async ValueTask DispatchActorJoinDrainAsync(CancellationToken cancellationToken)
     {
@@ -155,6 +173,93 @@ internal sealed class ZLinkSpotActivationDispatcher(
         CancellationToken cancellationToken)
     {
         await _routeDispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask<bool> DispatchInternalRoutePacketAsync(
+        Received received,
+        ZLinkEnvelopeHeader header,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(
+                header.MessageName,
+                ZLinkRemoteActorJoinPackets.RequestPacketName,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (received.Parts.Count < 2)
+        {
+            ReplyInternalRouteError(
+                received,
+                header,
+                new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                    "Remote actor join request body part is missing."));
+            return true;
+        }
+
+        ZLinkRemoteActorJoinReply reply;
+        try
+        {
+            var joinRequest = ZLinkEnvelopeCodec.DecodePart<ZLinkRemoteActorJoinRequest>(received.Parts[1]);
+            using var request = Message.From(joinRequest.Request);
+            reply = await runtime.JoinRoutedActorAsync(
+                    joinRequest.ActorId,
+                    joinRequest.ActorType,
+                    nativeSpot.RoutingId,
+                    request,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            ReplyInternalRouteError(received, header, ex);
+            return true;
+        }
+
+        var replyParts = ZLinkSpotReplyEnvelope.EncodeResponseParts(
+            channelName,
+            header.MessageName,
+            header.CorrelationId,
+            reply,
+            typeof(ZLinkRemoteActorJoinReply));
+        try
+        {
+            received.Reply()
+                .Message(replyParts[0])
+                .Message(replyParts[1])
+                .Submit();
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(replyParts);
+        }
+
+        return true;
+    }
+
+    private void ReplyInternalRouteError(
+        Received received,
+        ZLinkEnvelopeHeader header,
+        Exception exception)
+    {
+        var replyParts = ZLinkSpotReplyEnvelope.EncodeErrorParts(
+            channelName,
+            header.MessageName,
+            header.CorrelationId,
+            exception);
+        try
+        {
+            received.Reply()
+                .Message(replyParts[0])
+                .Message(replyParts[1])
+                .Submit();
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(replyParts);
+        }
     }
 
     public async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)

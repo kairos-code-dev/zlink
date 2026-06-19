@@ -23,6 +23,11 @@ internal sealed class ZLinkBoundSessionDispatchScope : IAsyncDisposable
     public static bool TryDeferClose(
         string actorId,
         Func<CancellationToken, ValueTask> closeAsync)
+        => TryDefer(actorId, closeAsync);
+
+    public static bool TryDefer(
+        string actorId,
+        Func<CancellationToken, ValueTask> operationAsync)
     {
         var scope = CurrentScope.Value;
         if (scope is null
@@ -32,7 +37,7 @@ internal sealed class ZLinkBoundSessionDispatchScope : IAsyncDisposable
             return false;
         }
 
-        scope._deferredCloses.Add(closeAsync);
+        scope._deferredCloses.Add(operationAsync);
         return true;
     }
 

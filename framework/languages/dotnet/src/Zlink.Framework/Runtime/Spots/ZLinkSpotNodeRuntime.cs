@@ -238,6 +238,14 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
         return _peerConnector.ConnectRouterAsync(endpoint, cancellationToken);
     }
 
+    public ValueTask<bool> ConnectRouterAsync(
+        RoutingId peerRid,
+        string endpoint,
+        CancellationToken cancellationToken)
+    {
+        return _peerConnector.ConnectRouterAsync(peerRid, endpoint, cancellationToken);
+    }
+
     public ValueTask<bool> ConnectPubSubAsync(string endpoint, CancellationToken cancellationToken)
     {
         return _peerConnector.ConnectPubSubAsync(endpoint, cancellationToken);

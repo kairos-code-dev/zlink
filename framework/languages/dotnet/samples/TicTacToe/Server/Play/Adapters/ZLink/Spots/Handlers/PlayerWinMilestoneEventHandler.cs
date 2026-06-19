@@ -1,0 +1,23 @@
+using TicTacToe.Shared.Contracts;
+using Zlink.Framework.Contracts.Spots;
+
+namespace TicTacToe.Server.Play.Adapters.ZLink.Spots.Handlers;
+
+internal sealed class PlayerWinMilestoneEventHandler(
+    ILogger<PlayerWinMilestoneEventHandler> logger)
+    : IZLinkSpotSubscriptionHandler<PlayEntrySpot, PlayerWinMilestoneEvent>
+{
+    public async ValueTask HandleAsync(
+        PlayEntrySpot spot,
+        PlayerWinMilestoneEvent message,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "entry spot: milestone event received. actor={ActorId}, roomId={RoomId}, wins={Wins}",
+            message.ActorId,
+            message.RoomId,
+            message.Wins);
+
+        await spot.NotifyMilestoneAsync(message, cancellationToken);
+    }
+}

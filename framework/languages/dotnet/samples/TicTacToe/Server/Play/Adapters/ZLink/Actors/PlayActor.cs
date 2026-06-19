@@ -1,4 +1,5 @@
 using Zlink.Framework.Contracts.Actors;
+using TicTacToe.Shared.Contracts;
 
 namespace TicTacToe.Server.Play.Adapters.ZLink.Actors;
 
@@ -13,9 +14,27 @@ internal sealed class PlayActor(
 
     public string RoomId { get; private set; } = string.Empty;
 
+    public PlayerInfo? Player { get; private set; }
+
     public bool DestroyAfterEntrySpotJoin { get; private set; }
 
     public bool Disconnected { get; private set; }
+
+    public void ApplyPlayer(PlayerInfo player)
+    {
+        if (!string.Equals(player.ActorId, ActorId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Authenticated player '{player.ActorId}' does not match actor '{ActorId}'.");
+        }
+
+        Player = player;
+    }
+
+    public PlayerInfo RequirePlayer()
+    {
+        return Player ?? throw new InvalidOperationException("Actor has not been authenticated.");
+    }
 
     public void JoinRoom(string roomId)
     {

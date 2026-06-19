@@ -8,6 +8,7 @@ namespace TicTacToe.Server.Play.Application.GameCreation;
 
 internal sealed class TicTacToeGameCreator(
     IZLinkSpotManager spots,
+    IRoomRouteStore routes,
     SampleSettings settings)
 {
     public async ValueTask<CreateGameRes> CreateAsync(
@@ -23,9 +24,21 @@ internal sealed class TicTacToeGameCreator(
             throw new InvalidOperationException("TicTacToe game spot creation was rejected.");
         }
 
+        await routes.SaveAsync(
+            roomId,
+            new RoomRoute(
+                SampleNodes.PlaySpot,
+                settings.PlaySpotNodeRid,
+                roomId,
+                nameof(ZLinkSpotKind.User)),
+            cancellationToken);
+
         return new CreateGameRes(
             roomId,
             settings.PlayEndpoint,
-            gameName);
+            settings.PlayEndpoints,
+            settings.PlayNodes,
+            gameName,
+            SampleDefaults.RequiredLevel);
     }
 }

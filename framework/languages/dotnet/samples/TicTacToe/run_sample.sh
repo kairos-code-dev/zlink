@@ -7,6 +7,7 @@ LOG_DIR="${RUN_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
 PIDS=()
+REDIS_CONTAINER_ID=""
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -37,6 +38,9 @@ cleanup() {
   for pid in "${PIDS[@]}"; do
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
+    docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
+  fi
   if [[ "${TICTACTOE_KEEP_RUN_DIR:-}" != "1" ]]; then
     rm -rf "${RUN_DIR}"
   else
@@ -47,7 +51,7 @@ trap cleanup EXIT
 
 if [[ -n "${TICTACTOE_BASE_PORT:-}" ]]; then
   PORTS=()
-  for offset in $(seq 1 5); do
+  for offset in $(seq 1 13); do
     PORTS+=("$((TICTACTOE_BASE_PORT + offset))")
   done
 else
@@ -58,7 +62,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 5:
+    while len(sockets) < 13:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -78,32 +82,70 @@ PY
 )"
 fi
 
-API_BIND_URL="${TICTACTOE_API_BIND_URL:-http://127.0.0.1:${PORTS[0]}}"
-API_PUBLIC_URL="${TICTACTOE_API_PUBLIC_URL:-${API_BIND_URL}}"
-API_CHANNEL_ENDPOINT="${TICTACTOE_API_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
-PLAY_CHANNEL_ENDPOINT="${TICTACTOE_PLAY_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
-PLAY_ENDPOINT="${TICTACTOE_PLAY_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
-SPOT_ENDPOINT="${TICTACTOE_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
-CONFIG_FILE="${RUN_DIR}/appsettings.json"
+API_A_BIND_URL="${TICTACTOE_API_A_BIND_URL:-http://127.0.0.1:${PORTS[0]}}"
+API_B_BIND_URL="${TICTACTOE_API_B_BIND_URL:-http://127.0.0.1:${PORTS[1]}}"
+API_A_PUBLIC_URL="${TICTACTOE_API_A_PUBLIC_URL:-${API_A_BIND_URL}}"
+API_B_PUBLIC_URL="${TICTACTOE_API_B_PUBLIC_URL:-${API_B_BIND_URL}}"
+API_A_CHANNEL_ENDPOINT="${TICTACTOE_API_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
+API_B_CHANNEL_ENDPOINT="${TICTACTOE_API_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
+PLAY_A_CHANNEL_ENDPOINT="${TICTACTOE_PLAY_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
+PLAY_B_CHANNEL_ENDPOINT="${TICTACTOE_PLAY_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
+PLAY_A_ENDPOINT="${TICTACTOE_PLAY_A_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
+PLAY_B_ENDPOINT="${TICTACTOE_PLAY_B_ENDPOINT:-tcp://127.0.0.1:${PORTS[7]}}"
+SPOT_A_ENDPOINT="${TICTACTOE_SPOT_A_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
+SPOT_B_ENDPOINT="${TICTACTOE_SPOT_B_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
+SPOT_A_PUBSUB_ENDPOINT="${TICTACTOE_SPOT_A_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
+SPOT_B_PUBSUB_ENDPOINT="${TICTACTOE_SPOT_B_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
+REDIS_ENDPOINT="${TICTACTOE_REDIS_ENDPOINT:-127.0.0.1:${PORTS[12]}}"
+API_A_CONFIG_FILE="${RUN_DIR}/appsettings.api-a.json"
+API_B_CONFIG_FILE="${RUN_DIR}/appsettings.api-b.json"
+PLAY_A_CONFIG_FILE="${RUN_DIR}/appsettings.play-a.json"
+PLAY_B_CONFIG_FILE="${RUN_DIR}/appsettings.play-b.json"
 
-python3 - "${CONFIG_FILE}" <<PY
+if [[ -z "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "TICTACTOE_REDIS_ENDPOINT is not set and docker is not available." >&2
+    exit 1
+  fi
+  REDIS_CONTAINER_ID="$(docker run -d --rm -p "127.0.0.1:${PORTS[12]}:6379" redis:7-alpine)"
+fi
+
+python3 - "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${PLAY_A_CONFIG_FILE}" "${PLAY_B_CONFIG_FILE}" <<PY
 import json
 import sys
 
-path = sys.argv[1]
-settings = {
-    "Sample": {
-        "ApiBindUrl": "${API_BIND_URL}",
-        "ApiPublicUrl": "${API_PUBLIC_URL}",
-        "ApiChannelEndpoint": "${API_CHANNEL_ENDPOINT}",
-        "PlayChannelEndpoint": "${PLAY_CHANNEL_ENDPOINT}",
-        "PlayEndpoint": "${PLAY_ENDPOINT}",
-        "SpotEndpoint": "${SPOT_ENDPOINT}",
-        "LogDirectory": "${LOG_DIR}"
+api_a_path, api_b_path, play_a_path, play_b_path = sys.argv[1:]
+
+def sample(instance_name, api_index, play_index, peer_play_index):
+    return {
+        "Sample": {
+            "InstanceName": instance_name,
+            "ApiIndex": api_index,
+            "PlayIndex": play_index,
+            "ApiBindUrls": ["${API_A_BIND_URL}", "${API_B_BIND_URL}"],
+            "ApiPublicUrls": ["${API_A_PUBLIC_URL}", "${API_B_PUBLIC_URL}"],
+            "ApiChannelEndpoints": ["${API_A_CHANNEL_ENDPOINT}", "${API_B_CHANNEL_ENDPOINT}"],
+            "PlayChannelEndpoints": ["${PLAY_A_CHANNEL_ENDPOINT}", "${PLAY_B_CHANNEL_ENDPOINT}"],
+            "PlayEndpoints": ["${PLAY_A_ENDPOINT}", "${PLAY_B_ENDPOINT}"],
+            "SpotEndpoints": ["${SPOT_A_ENDPOINT}", "${SPOT_B_ENDPOINT}"],
+            "SpotPubSubEndpoints": ["${SPOT_A_PUBSUB_ENDPOINT}", "${SPOT_B_PUBSUB_ENDPOINT}"],
+            "PlaySpotNodeRid": f"play-node-{play_index + 1}",
+            "PeerPlaySpotNodeRid": f"play-node-{peer_play_index + 1}",
+            "PeerSpotEndpoint": ["${SPOT_A_ENDPOINT}", "${SPOT_B_ENDPOINT}"][peer_play_index],
+            "PeerSpotPubSubEndpoint": ["${SPOT_A_PUBSUB_ENDPOINT}", "${SPOT_B_PUBSUB_ENDPOINT}"][peer_play_index],
+            "RedisEndpoint": "${REDIS_ENDPOINT}",
+            "LogDirectory": "${LOG_DIR}"
+        }
     }
-}
-with open(path, "w", encoding="utf-8") as output:
-    json.dump(settings, output, indent=2)
+
+for path, settings in [
+    (api_a_path, sample("api-a", 0, 0, 1)),
+    (api_b_path, sample("api-b", 1, 0, 1)),
+    (play_a_path, sample("play-a", 0, 0, 1)),
+    (play_b_path, sample("play-b", 0, 1, 0)),
+]:
+    with open(path, "w", encoding="utf-8") as output:
+        json.dump(settings, output, indent=2)
 PY
 
 endpoint_host() {
@@ -140,23 +182,44 @@ wait_port() {
 start_server() {
   local name="$1"
   local mode="$2"
+  local config_file="$3"
   dotnet run --no-build --project "${SCRIPT_DIR}/Server/TicTacToe.Server.csproj" -- \
-    "${mode}" --config "${CONFIG_FILE}" >"${LOG_DIR}/${name}.log" 2>&1 &
+    "${mode}" --config "${config_file}" >"${LOG_DIR}/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
 
 dotnet build "${SCRIPT_DIR}/TicTacToe.sln" --maxcpucount:1
 
-start_server play play
-wait_port play-stream "${PLAY_ENDPOINT}"
-wait_port play-channel "${PLAY_CHANNEL_ENDPOINT}"
+wait_port redis "tcp://${REDIS_ENDPOINT}"
 
-start_server api api
-wait_port api-http "${API_BIND_URL}"
-wait_port api-channel "${API_CHANNEL_ENDPOINT}"
+start_server play-a play-a "${PLAY_A_CONFIG_FILE}"
+wait_port play-a-stream "${PLAY_A_ENDPOINT}"
+wait_port play-a-channel "${PLAY_A_CHANNEL_ENDPOINT}"
+wait_port play-a-spot "${SPOT_A_ENDPOINT}"
+wait_port play-a-spot-pubsub "${SPOT_A_PUBSUB_ENDPOINT}"
+
+start_server play-b play-b "${PLAY_B_CONFIG_FILE}"
+wait_port play-b-stream "${PLAY_B_ENDPOINT}"
+wait_port play-b-channel "${PLAY_B_CHANNEL_ENDPOINT}"
+wait_port play-b-spot "${SPOT_B_ENDPOINT}"
+wait_port play-b-spot-pubsub "${SPOT_B_PUBSUB_ENDPOINT}"
+sleep 2
+
+start_server api-a api-a "${API_A_CONFIG_FILE}"
+wait_port api-a-http "${API_A_BIND_URL}"
+wait_port api-a-channel "${API_A_CHANNEL_ENDPOINT}"
+
+start_server api-b api-b "${API_B_CONFIG_FILE}"
+wait_port api-b-http "${API_B_BIND_URL}"
+wait_port api-b-channel "${API_B_CHANNEL_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/TicTacToe.Client.csproj" -- \
-  --api-url "${API_PUBLIC_URL}" >"${LOG_DIR}/client.log" 2>&1
+  --api-url "${API_A_PUBLIC_URL}" >"${LOG_DIR}/client.log" 2>&1
 grep -q "stream-inbound sample=TicTacToe" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=TicTacToe .* seq=[0-9]" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.log"
+grep -q "observer-win-milestone=verified" "${LOG_DIR}/client.log"
+grep -q "actor: LeaveGameReq completed. actor=player-x" "${LOG_DIR}"/play-*.log
+grep -q "actor: LeaveGameReq completed. actor=player-o" "${LOG_DIR}"/play-*.log
+grep -q "entry spot: actor destroy completed. actor=player-x" "${LOG_DIR}"/play-*.log
+grep -q "entry spot: actor destroy completed. actor=player-o" "${LOG_DIR}"/play-*.log

@@ -46,7 +46,9 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
             spots);
         var actorSessionManager = new ZLinkActorSessionManager(runtime, services, getActorSpotNode);
         var actors = new ZLinkFrameworkActorFacade(
+            runtime,
             registration,
+            services,
             spots,
             actorSessionManager,
             getOrStartState,

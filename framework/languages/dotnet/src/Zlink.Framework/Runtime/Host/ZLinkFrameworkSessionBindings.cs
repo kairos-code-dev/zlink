@@ -29,4 +29,11 @@ internal sealed class ZLinkFrameworkSessionBindings
         return _sessionActorBindings.TryGet(actorId, bindingToken, out context);
     }
 
+    public bool TryGetByActorId(
+        string actorId,
+        out ZLinkSessionContext context)
+    {
+        return _sessionActorBindings.TryGetByActorId(actorId, out context);
+    }
+
 }

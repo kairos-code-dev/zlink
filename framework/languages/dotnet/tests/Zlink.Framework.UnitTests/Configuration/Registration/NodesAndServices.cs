@@ -57,6 +57,25 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void AddZLinkFramework_AddSpotMesh_CanConfigureDefaultSpotNode()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddSpotMesh("stage-node")
+                .EnableRouter("tcp://127.0.0.1:9000")
+                .AddSpotFactory<TestSpot>();
+        });
+
+        var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
+        var node = Assert.Single(registration.SpotNodes.Values);
+        Assert.Equal("stage-node", node.SpotNodeName);
+        Assert.NotNull(node.Router);
+        Assert.Contains(typeof(TestSpot), node.SpotFactories);
+    }
+
+    [Fact]
     public void AddZLinkFramework_AllowsSpotMeshToInheritGlobalDiscovery()
     {
         var services = new ServiceCollection();

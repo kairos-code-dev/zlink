@@ -46,6 +46,23 @@ internal sealed partial class ZLinkSpotActivation
         }
 
         var state = new ActorJoinCallState(actor, request, descriptor);
+        if (ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this))
+        {
+            state.Result = await InvokeActorJoinAsync(
+                    state.Descriptor,
+                    state.Actor,
+                    state.Request,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (state.Result.Accepted)
+            {
+                await CommitActorJoinCoreAsync(state.Actor, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            return state.Result;
+        }
+
         await ExecuteSerializedAsync(
             async static (activation, state, ct) =>
             {

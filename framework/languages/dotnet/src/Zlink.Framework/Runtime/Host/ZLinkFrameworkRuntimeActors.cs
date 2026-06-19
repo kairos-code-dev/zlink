@@ -1,3 +1,4 @@
+using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Host;
@@ -39,6 +40,35 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         await _actors.DestroyActorAsync(entrySpotNodeRid, actor, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    internal async ValueTask<ZLinkRemoteActorJoinReply> JoinRoutedActorAsync(
+        string actorId,
+        string actorType,
+        RoutingId spotRid,
+        Message request,
+        CancellationToken cancellationToken = default)
+    {
+        var activation = await GetSpotActivationByRidAsync(spotRid, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
+
+        var creation = await CreateLocalActorAsync(actorId, actorType, cancellationToken)
+            .ConfigureAwait(false);
+        var result = await activation.JoinActorAsync(creation.Actor, request, cancellationToken)
+            .ConfigureAwait(false);
+        var actorState = GetOrCreateActorState(actorId);
+        var actorRef = actorState.NativeActorRef
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorId}' does not have a native Actor ref.");
+
+        return new ZLinkRemoteActorJoinReply(
+            result.Accepted,
+            actorRef.NodeRid.ToBytes().ToArray(),
+            actorRef.ActorId,
+            actorRef.Generation,
+            result.Reply?.ToArray() ?? Array.Empty<byte>());
     }
 
     internal async ValueTask JoinActorToSpotAsync(
@@ -163,6 +193,13 @@ internal sealed partial class ZLinkFrameworkRuntime
         out ZLinkSessionContext context)
     {
         return _sessionBindings.TryGet(actorId, bindingToken, out context);
+    }
+
+    internal bool TryGetSessionActorContext(
+        string actorId,
+        out ZLinkSessionContext context)
+    {
+        return _sessionBindings.TryGetByActorId(actorId, out context);
     }
 
     internal void BindActorSession(

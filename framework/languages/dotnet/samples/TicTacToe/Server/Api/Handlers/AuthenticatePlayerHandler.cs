@@ -20,9 +20,24 @@ sealed class AuthenticatePlayerHandler(ILogger<AuthenticatePlayerHandler> logger
             throw new InvalidOperationException("Authentication token is empty.");
         }
 
+        var player = CreatePlayer(actorId);
+
         logger.LogInformation(
-            "play -> api: authenticate accepted. player={ActorId}",
-            actorId);
-        return ValueTask.FromResult(new AuthenticatePlayerRes(actorId));
+            "play -> api: authenticate accepted. player={ActorId}, level={Level}, wins={Wins}",
+            player.ActorId,
+            player.Level,
+            player.Wins);
+        return ValueTask.FromResult(new AuthenticatePlayerRes(player));
+    }
+
+    private static PlayerInfo CreatePlayer(string actorId)
+    {
+        return actorId switch
+        {
+            "player-x" => new PlayerInfo(actorId, "Player X", Level: 5, Wins: 99),
+            "player-o" => new PlayerInfo(actorId, "Player O", Level: 4, Wins: 12),
+            "observer" => new PlayerInfo(actorId, "Observer", Level: 1, Wins: 0),
+            _ => new PlayerInfo(actorId, actorId, Level: 3, Wins: 0),
+        };
     }
 }

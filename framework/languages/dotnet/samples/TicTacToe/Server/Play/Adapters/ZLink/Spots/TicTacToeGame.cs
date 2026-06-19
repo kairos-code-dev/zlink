@@ -1,6 +1,7 @@
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Codecs.Json;
 using System.Text;
+using TicTacToe.Server.Configuration;
 using TicTacToe.Server.Play.Adapters.ZLink.Actors;
 using TicTacToe.Server.Play.Domain.TicTacToe;
 using TicTacToe.Server.Play.Adapters.ZLink.Spots.Handlers;
@@ -21,13 +22,13 @@ sealed class TicTacToeGame(
     private readonly string _roomId = DecodeRoomId(context.SpotRid);
     private readonly TicTacToeMatch _match = new(DecodeRoomId(context.SpotRid), TurnTimeout);
     private IZLinkTimer? _gameTick;
-    private bool _cleanupStarted;
 
     public IZLinkSpotContext Context { get; } = context;
 
     public void Configure()
     {
         Context.Handlers.AddActorRequest<PlayActorPlaceMarkHandler, PlayActor>(nameof(PlaceMarkReq));
+        Context.Handlers.AddActorSend<PlayActorLeaveGameHandler, PlayActor>(nameof(LeaveGameReq));
     }
 
     public ValueTask OnJoinedActorAsync(
@@ -74,7 +75,7 @@ sealed class TicTacToeGame(
         CancellationToken cancellationToken)
     {
         var joinRequest = request.Decode<TicTacToeGameJoinReq>();
-        var reply = await JoinPlayerAsync(player, joinRequest.RoomId, cancellationToken);
+        var reply = await JoinPlayerAsync(player, joinRequest.RoomId, joinRequest.Player, cancellationToken);
         logger.LogInformation(
             "TicTacToeGame: actor join accepted. actor={ActorId}, roomId={RoomId}, mark={Mark}",
             player.ActorId,
@@ -116,9 +117,28 @@ sealed class TicTacToeGame(
     public async ValueTask<TicTacToeGameJoinRes> JoinPlayerAsync(
         PlayActor actor,
         string roomId,
+        PlayerInfo player,
         CancellationToken cancellationToken)
     {
+        if (!string.Equals(roomId, _roomId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Actor requested join for a different room. roomId={roomId}");
+        }
+
+        if (!string.Equals(player.ActorId, actor.ActorId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Join player '{player.ActorId}' does not match actor '{actor.ActorId}'.");
+        }
+
+        if (player.Level < SampleDefaults.RequiredLevel)
+        {
+            throw new InvalidOperationException(
+                $"Player level {player.Level} is below required level {SampleDefaults.RequiredLevel}.");
+        }
+
         actor.JoinRoom(roomId);
+        actor.ApplyPlayer(player);
         _actors[actor.ActorId] = actor;
 
         var change = _match.JoinPlayer(actor.ActorId, DateTimeOffset.UtcNow);
@@ -136,8 +156,10 @@ sealed class TicTacToeGame(
         int cell,
         CancellationToken cancellationToken)
     {
+        var before = _match.Snapshot();
         var change = _match.PlaceMark(actor.ActorId, cell, DateTimeOffset.UtcNow);
         await BroadcastAsync(change.State, actor.ActorId, cancellationToken);
+        await PublishWinMilestoneAsync(actor, before, change.State, cancellationToken);
         return new PlaceMarkRes(change.State);
     }
 
@@ -146,30 +168,35 @@ sealed class TicTacToeGame(
         var change = _match.Tick(DateTimeOffset.UtcNow);
         if (!change.HasChanged)
         {
-            await LeaveFinishedActorsAsync(change.State, cancellationToken);
             return;
         }
 
         await BroadcastAsync(change.State, null, cancellationToken);
-        await LeaveFinishedActorsAsync(change.State, cancellationToken);
     }
 
-    private async ValueTask LeaveFinishedActorsAsync(
-        GameState state,
+    public async ValueTask LeaveGameAsync(
+        PlayActor actor,
+        string roomId,
         CancellationToken cancellationToken)
     {
-        if (_cleanupStarted || !IsTerminal(state))
+        if (!string.Equals(roomId, _roomId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Actor requested leave for a different room. roomId={roomId}");
+        }
+
+        var state = _match.Snapshot();
+        if (!IsTerminal(state))
+        {
+            throw new InvalidOperationException($"Game is not finished. status={state.Status}");
+        }
+
+        if (!_actors.ContainsKey(actor.ActorId))
         {
             return;
         }
 
-        _cleanupStarted = true;
-        var actors = _actors.Values.ToArray();
-        foreach (var actor in actors)
-        {
-            actor.MarkForDestroyAfterRoomLeave();
-            await Context.leaveActor(actor, cancellationToken);
-        }
+        actor.MarkForDestroyAfterRoomLeave();
+        await Context.leaveActor(actor, cancellationToken);
     }
 
     private ValueTask BroadcastAsync(
@@ -194,9 +221,12 @@ sealed class TicTacToeGame(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var player = joinedActor.RequirePlayer();
         var message = new PlayerJoinedNotify(
             state.RoomId,
             joinedActor.ActorId,
+            player.DisplayName,
+            player.Level,
             mark,
             state);
 
@@ -206,6 +236,38 @@ sealed class TicTacToeGame(
         return SendSessionPushAsync(
             recipients,
             actor => actor.Context.BoundSession.Send(message).Async(cancellationToken));
+    }
+
+    private ValueTask PublishWinMilestoneAsync(
+        PlayActor actor,
+        GameState before,
+        GameState after,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(before.Status, TicTacToeGameStatuses.Won, StringComparison.Ordinal)
+            || !string.Equals(after.Status, TicTacToeGameStatuses.Won, StringComparison.Ordinal)
+            || !string.Equals(after.Winner, actor.ActorId, StringComparison.Ordinal))
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        var player = actor.RequirePlayer();
+        var wins = player.Wins + 1;
+        if (wins != 100)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        logger.LogInformation(
+            "game spot: publishing win milestone. actor={ActorId}, roomId={RoomId}, wins={Wins}",
+            player.ActorId,
+            after.RoomId,
+            wins);
+        return Context.Outbound.Publish(
+                SampleTopics.PlayerMilestone,
+                new PlayerWinMilestoneEvent(after.RoomId, player.ActorId, player.DisplayName, wins))
+            .PacketName(nameof(PlayerWinMilestoneEvent))
+            .Async(cancellationToken);
     }
 
     private static async ValueTask SendSessionPushAsync(

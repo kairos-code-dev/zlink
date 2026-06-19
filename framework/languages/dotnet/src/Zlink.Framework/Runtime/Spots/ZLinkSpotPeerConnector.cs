@@ -19,6 +19,21 @@ internal sealed class ZLinkSpotPeerConnector(
         return ValueTask.FromResult(true);
     }
 
+    public ValueTask<bool> ConnectRouterAsync(
+        RoutingId peerRid,
+        string endpoint,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!connections.TryAddRouterManual(endpoint))
+        {
+            return ValueTask.FromResult(false);
+        }
+
+        ConnectRouterPeer(peerRid, endpoint);
+        return ValueTask.FromResult(true);
+    }
+
     public ValueTask<bool> ConnectPubSubAsync(string endpoint, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -60,6 +75,18 @@ internal sealed class ZLinkSpotPeerConnector(
         try
         {
             node.ConnectRouterChannelPeer(routerChannelName, endpoint);
+        }
+        catch (ZlinkConnectException error)
+            when (error.Result == ZlinkConnectException.ErrorCode.Busy)
+        {
+        }
+    }
+
+    private void ConnectRouterPeer(RoutingId peerRid, string endpoint)
+    {
+        try
+        {
+            node.ConnectRouterChannelPeerRid(routerChannelName, peerRid, endpoint);
         }
         catch (ZlinkConnectException error)
             when (error.Result == ZlinkConnectException.ErrorCode.Busy)

@@ -22,6 +22,7 @@ internal static class TicTacToeClientArguments
         var gameName = ReadOption(args, "--game-name") ?? defaults.GameName;
         var xActorId = ReadOption(args, "--x-actor-id") ?? defaults.XActorId;
         var oActorId = ReadOption(args, "--o-actor-id") ?? defaults.OActorId;
+        var observerActorId = ReadOption(args, "--observer-actor-id") ?? defaults.ObserverActorId;
 
         return defaults with
         {
@@ -29,6 +30,7 @@ internal static class TicTacToeClientArguments
             GameName = gameName,
             XActorId = xActorId,
             OActorId = oActorId,
+            ObserverActorId = observerActorId,
         };
     }
 
@@ -54,6 +56,7 @@ public sealed record TicTacToeClientOptions(
     string GameName,
     string XActorId,
     string OActorId,
+    string ObserverActorId,
     TimeSpan HttpTimeout,
     TimeSpan StreamTimeout)
 {
@@ -63,6 +66,7 @@ public sealed record TicTacToeClientOptions(
             "tictactoe-game",
             "player-x",
             "player-o",
+            "observer",
             TimeSpan.FromSeconds(10),
             TimeSpan.FromSeconds(5));
 }
@@ -71,7 +75,8 @@ public static class TicTacToeClientConnections
 {
     public static IZlinkStreamConnector CreateStreamClient(
         string streamEndpoint,
-        TicTacToeClientOptions options)
+        TicTacToeClientOptions options,
+        string role)
     {
         var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
@@ -83,7 +88,8 @@ public static class TicTacToeClientConnections
         connector.ObserveInbound((observation, _) =>
         {
             Console.WriteLine(
-                "stream-inbound sample=TicTacToe client=player kind={0} name={1} seq={2} bytes={3}",
+                "stream-inbound sample=TicTacToe client={0} kind={1} name={2} seq={3} bytes={4}",
+                role,
                 observation.Kind,
                 observation.Name,
                 observation.RequestSeq?.Value.ToString() ?? "-",

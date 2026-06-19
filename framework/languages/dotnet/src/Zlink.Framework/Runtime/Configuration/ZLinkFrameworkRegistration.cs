@@ -207,8 +207,12 @@ internal sealed class ZLinkSpotRouterCapabilityRegistration
 
     public ZLinkRouteConfig RoutingConfig { get; } = new();
 
-    public List<string> ManualConnections { get; } = [];
+    public List<ZLinkSpotRouterManualConnectionRegistration> ManualConnections { get; } = [];
 }
+
+internal sealed record ZLinkSpotRouterManualConnectionRegistration(
+    string Endpoint,
+    RoutingId? PeerRid);
 
 internal sealed class ZLinkSpotPubSubCapabilityRegistration
 {

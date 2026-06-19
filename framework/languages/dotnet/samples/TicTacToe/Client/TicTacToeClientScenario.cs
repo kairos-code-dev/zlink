@@ -20,17 +20,37 @@ public sealed class TicTacToeClientScenario
             .Fetch<CreateGameHttpRes>();
 
         Ensure(!string.IsNullOrWhiteSpace(room.RoomId));
-        Ensure(!string.IsNullOrWhiteSpace(room.PlayEndpoint));
+        Ensure(!string.IsNullOrWhiteSpace(room.OwnerPlayEndpoint));
+        Ensure(room.PlayEndpoints.Count >= 2);
+        Ensure(room.PlayEndpoints.Contains(room.OwnerPlayEndpoint, StringComparer.Ordinal));
+        Ensure(room.PlayNodes.Count == room.PlayEndpoints.Count);
+        Ensure(room.PlayNodes.Any(node => string.Equals(node.StreamEndpoint, room.OwnerPlayEndpoint, StringComparison.Ordinal)));
+        Ensure(room.RequiredLevel == 3);
         Ensure(room.GameName == options.GameName);
 
-        await using var client1 = TicTacToeClientConnections.CreateStreamClient(room.PlayEndpoint, options);
-        await using var client2 = TicTacToeClientConnections.CreateStreamClient(room.PlayEndpoint, options);
+        var guestPlayEndpoint = room.PlayEndpoints.First(endpoint =>
+            !string.Equals(endpoint, room.OwnerPlayEndpoint, StringComparison.Ordinal));
+        var observerPlayEndpoint = guestPlayEndpoint;
+        var observerPlayNode = room.PlayNodes.Single(node =>
+            string.Equals(node.StreamEndpoint, observerPlayEndpoint, StringComparison.Ordinal));
+
+        await using var client1 = TicTacToeClientConnections.CreateStreamClient(room.OwnerPlayEndpoint, options, "host");
+        await using var client2 = TicTacToeClientConnections.CreateStreamClient(guestPlayEndpoint, options, "guest");
+        await using var observer = TicTacToeClientConnections.CreateStreamClient(observerPlayEndpoint, options, "observer");
 
         // Client 1 connects, authenticates as player X, and joins the empty room.
         await client1.Connect.Async(cancellationToken);
 
         var client1Authentication = await client1.Request(new AuthenticateReq(options.XActorId)).Async<AuthenticateRes>(cancellationToken);
-        Ensure(client1Authentication.ActorId == options.XActorId);
+        Ensure(client1Authentication.Player.ActorId == options.XActorId);
+        Ensure(client1Authentication.Player.Level >= room.RequiredLevel);
+        Ensure(client1Authentication.Player.Wins == 99);
+
+        await observer.Connect.Async(cancellationToken);
+        var observerAuthentication = await observer.Request(new AuthenticateReq(options.ObserverActorId)).Async<AuthenticateRes>(cancellationToken);
+        Ensure(observerAuthentication.Player.ActorId == options.ObserverActorId);
+        var observerSubscription = await observer.Request(new ObserveMilestoneReq()).Async<ObserveMilestoneRes>(cancellationToken);
+        Ensure(observerSubscription.Subscribed);
 
         var client1Join = await client1.Request(new JoinGameReq(room.RoomId)).Async<JoinGameRes>(cancellationToken);
         Ensure(client1Join.State.RoomId == room.RoomId);
@@ -42,8 +62,9 @@ public sealed class TicTacToeClientScenario
         await client2.Connect.Async(cancellationToken);
 
         var client2Authentication = await client2.Request(new AuthenticateReq(options.OActorId)).Async<AuthenticateRes>(cancellationToken);
-        Ensure(client2Authentication.ActorId == options.OActorId);
-        Ensure(client2Authentication.ActorId != client1Authentication.ActorId);
+        Ensure(client2Authentication.Player.ActorId == options.OActorId);
+        Ensure(client2Authentication.Player.Level >= room.RequiredLevel);
+        Ensure(client2Authentication.Player.ActorId != client1Authentication.Player.ActorId);
 
         var client2Join = await client2.Request(new JoinGameReq(room.RoomId)).Async<JoinGameRes>(cancellationToken);
         Ensure(client2Join.State.RoomId == room.RoomId);
@@ -55,6 +76,8 @@ public sealed class TicTacToeClientScenario
             .Where(message => message.Payload.ActorId == options.OActorId)
             .Async(cancellationToken);
         Ensure(client1SawClient2Join.Payload.ActorId == options.OActorId);
+        Ensure(client1SawClient2Join.Payload.DisplayName == client2Authentication.Player.DisplayName);
+        Ensure(client1SawClient2Join.Payload.Level == client2Authentication.Player.Level);
         Ensure(client1SawClient2Join.Payload.Mark == TicTacToeMarks.O);
         Ensure(client1SawClient2Join.Payload.State.Status == TicTacToeGameStatuses.InProgress);
         Ensure(client2.ReceivedCount(nameof(PlayerJoinedNotify)) == 0);
@@ -129,6 +152,22 @@ public sealed class TicTacToeClientScenario
         Ensure(client2SawFinal.Payload.State.Status == TicTacToeGameStatuses.Won);
         Ensure(client2SawFinal.Payload.State.Winner == options.XActorId);
         Ensure(client2SawFinal.Payload.State.Board == client1FinalMove.State.Board);
+
+        var observerSawMilestone = await observer.WaitFor<WinMilestoneNotify>()
+            .Where(message => message.Payload.ActorId == options.XActorId
+                              && message.Payload.RoomId == room.RoomId)
+            .Async(cancellationToken);
+        Ensure(observerSawMilestone.Payload.DisplayName == client1Authentication.Player.DisplayName);
+        Ensure(observerSawMilestone.Payload.Wins == 100);
+        Ensure(observerSawMilestone.Payload.ReceivingSpotNodeRid == observerPlayNode.SpotNodeRid);
+        Console.WriteLine(
+            "observer-win-milestone=verified actor={0} wins={1} receivingSpotNodeRid={2}",
+            observerSawMilestone.Payload.ActorId,
+            observerSawMilestone.Payload.Wins,
+            observerSawMilestone.Payload.ReceivingSpotNodeRid);
+
+        await client1.Send(new LeaveGameReq(room.RoomId)).Async(cancellationToken);
+        await client2.Send(new LeaveGameReq(room.RoomId)).Async(cancellationToken);
     }
 
     private static void Ensure(

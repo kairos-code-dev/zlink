@@ -64,4 +64,24 @@ internal sealed class ZLinkSessionActorBindingTable
         }
     }
 
+    public bool TryGetByActorId(
+        string actorId,
+        out ZLinkSessionContext context)
+    {
+        lock (_entries)
+        {
+            foreach (var entry in _entries)
+            {
+                if (string.Equals(entry.Key.ActorId, actorId, StringComparison.Ordinal))
+                {
+                    context = entry.Value.Context;
+                    return true;
+                }
+            }
+
+            context = null!;
+            return false;
+        }
+    }
+
 }

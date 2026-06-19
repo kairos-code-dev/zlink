@@ -8,6 +8,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
     string channelName,
     ZLinkSpotPacketRegistry packets,
     Func<ZLinkSpotHandlerInvoker> handlerInvoker,
+    Func<Received, ZLinkEnvelopeHeader, CancellationToken, ValueTask<bool>>? internalPackets = null,
     ILogger<ZLinkSpotRouteDispatcher>? logger = null)
 {
     private readonly ILogger<ZLinkSpotRouteDispatcher> _logger =
@@ -25,6 +26,12 @@ internal sealed class ZLinkSpotRouteDispatcher(
             }
 
             var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+            if (internalPackets is not null
+                && await internalPackets(received, header, cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+
             if (!packets.TryResolve(header, out var descriptor) || descriptor is null)
             {
                 if (header.Kind == ZLinkMessageKind.Request)

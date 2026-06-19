@@ -33,6 +33,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         return await _spotFacade.GetAsync(spotRid, cancellationToken);
     }
 
+    internal async ValueTask<ZLinkSpotActivation?> GetSpotActivationByRidAsync(
+        RoutingId spotRid,
+        CancellationToken cancellationToken)
+    {
+        var state = await GetStartedStateForRoutingAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return _spots.GetActivationBySpotRid(state, spotRid);
+    }
+
     internal async ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListSpotsAsync(
         CancellationToken cancellationToken)
     {

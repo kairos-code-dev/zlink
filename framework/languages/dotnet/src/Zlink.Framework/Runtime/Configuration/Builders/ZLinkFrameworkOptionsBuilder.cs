@@ -199,6 +199,8 @@ internal sealed class ZLinkSpotMeshBuilder(
     ZLinkSpotDiscoveryRegistration discovery)
     : IZLinkSpotMeshBuilder
 {
+    private ZLinkSpotNodeBuilder? _defaultNode;
+
     public IZLinkDiscoveryBuilder UseDiscovery()
     {
         return new ZLinkDiscoveryBuilder(discovery.Endpoints);
@@ -211,6 +213,85 @@ internal sealed class ZLinkSpotMeshBuilder(
             spotNodeName);
 
         return new ZLinkSpotNodeBuilder(spotNode);
+    }
+
+    public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
+        => DefaultNode().EnableRouter(endpoint);
+
+    public IZLinkSpotNodeBuilder ConnectRouter(string endpoint)
+        => DefaultNode().ConnectRouter(endpoint);
+
+    public IZLinkSpotNodeBuilder ConnectRouter(RoutingId peerRid, string endpoint)
+        => DefaultNode().ConnectRouter(peerRid, endpoint);
+
+    public IZLinkSpotNodeBuilder SetRouterRoutingId(RoutingId routingId)
+        => DefaultNode().SetRouterRoutingId(routingId);
+
+    public IZLinkSocketConfig ConfigureRouterSocket()
+        => DefaultNode().ConfigureRouterSocket();
+
+    public IZLinkRouteConfig ConfigureRouterRouting()
+        => DefaultNode().ConfigureRouterRouting();
+
+    public IZLinkSpotNodeBuilder EnablePubSub(string endpoint)
+        => DefaultNode().EnablePubSub(endpoint);
+
+    public IZLinkSpotNodeBuilder ConnectPubSub(string endpoint)
+        => DefaultNode().ConnectPubSub(endpoint);
+
+    public IZLinkSpotNodeBuilder SetPubSubRoutingId(RoutingId routingId)
+        => DefaultNode().SetPubSubRoutingId(routingId);
+
+    public IZLinkSpotPublisherConfig ConfigurePubSubPublisher()
+        => DefaultNode().ConfigurePubSubPublisher();
+
+    public IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber()
+        => DefaultNode().ConfigurePubSubSubscriber();
+
+    public IZLinkSpotNodeBuilder AttachChannelClient(string channelName)
+        => DefaultNode().AttachChannelClient(channelName);
+
+    public IZLinkSpotNodeBuilder AttachChannelClient(string channelName, string endpoint)
+        => DefaultNode().AttachChannelClient(channelName, endpoint);
+
+    public IZLinkSocketConfig ConfigureChannelClientSocket(string channelName)
+        => DefaultNode().ConfigureChannelClientSocket(channelName);
+
+    public IZLinkOutboundRouteConfig ConfigureChannelClientRouting(string channelName)
+        => DefaultNode().ConfigureChannelClientRouting(channelName);
+
+    public IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName)
+        => DefaultNode().AttachSpotPublisherClient(channelName);
+
+    public IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName, string endpoint)
+        => DefaultNode().AttachSpotPublisherClient(channelName, endpoint);
+
+    public IZLinkSocketConfig ConfigureSpotPublisherClientSocket(string channelName)
+        => DefaultNode().ConfigureSpotPublisherClientSocket(channelName);
+
+    public IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName)
+        => DefaultNode().AcceptSpotRoutesFromChannel(channelName);
+
+    public IZLinkSpotNodeBuilder AcceptSpotRoutesFromChannel(string channelName, string endpoint)
+        => DefaultNode().AcceptSpotRoutesFromChannel(channelName, endpoint);
+
+    public IZLinkEntrySpotOptions ConfigureEntrySpot()
+        => DefaultNode().ConfigureEntrySpot();
+
+    public IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
+        where TSpot : IZLinkSpot
+        => DefaultNode().AddSpotFactory<TSpot>();
+
+    public IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>()
+        where TEntrySpot : IZLinkEntrySpot
+        => DefaultNode().AddEntrySpot<TEntrySpot>();
+
+    private ZLinkSpotNodeBuilder DefaultNode()
+    {
+        return _defaultNode ??= new ZLinkSpotNodeBuilder(
+            ZLinkRegistrationBuilderGuard.AddSpotNode(
+                registration.SpotNodes,
+                discovery.ChannelName));
     }
 
 }

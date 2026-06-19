@@ -1,11 +1,15 @@
+using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Spots;
 using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Host;
 
 internal sealed class ZLinkFrameworkActorFacade(
+    ZLinkFrameworkRuntime runtime,
     ZLinkFrameworkRegistration registration,
+    IServiceProvider services,
     ZLinkSpotRuntimeManager spots,
     ZLinkActorSessionManager actorSessionManager,
     Func<ZLinkFrameworkRuntimeState> getState,
@@ -27,9 +31,9 @@ internal sealed class ZLinkFrameworkActorFacade(
         var state = getState();
         var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
         var node = getActorSpotNode();
+        var localActivation = spots.GetActivationBySpotRid(state, spotRid);
 
-        if (actorState.Stream is ZLinkManagedStream
-            && actorState.CurrentDispatch is null
+        if (localActivation is null
             && node is not null
             && actorState.NativeActorRef is { } actorRef)
         {
@@ -43,12 +47,21 @@ internal sealed class ZLinkFrameworkActorFacade(
                 cancellationToken).ConfigureAwait(false);
         }
 
-        var joinResult = await spots.JoinActorAsync(
-            state,
-            spotRid,
-            actor,
-            request,
-            cancellationToken).ConfigureAwait(false);
+        ZLinkSpotActorJoinResult joinResult;
+        if (localActivation is not null)
+        {
+            joinResult = await localActivation.JoinActorAsync(actor, request, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            joinResult = await spots.JoinActorAsync(
+                state,
+                spotRid,
+                actor,
+                request,
+                cancellationToken).ConfigureAwait(false);
+        }
         return new ZLinkActorJoinResult(
             Accepted: joinResult.Accepted,
             ToActorRef(actorState),
@@ -204,18 +217,185 @@ internal sealed class ZLinkFrameworkActorFacade(
         Message request,
         CancellationToken cancellationToken)
     {
-        var activation = spots.GetActivationBySpotRid(state, spotRid)
-            ?? throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
-
-        if (!activation.TryResolveActorJoinDescriptor(out var descriptor) || descriptor is null)
+        var activation = spots.GetActivationBySpotRid(state, spotRid);
+        if (activation is not null)
         {
-            throw new InvalidOperationException(
-                $"SPOT '{activation.SpotRid}' does not declare an actor join callback.");
+            if (!activation.TryResolveActorJoinDescriptor(out var descriptor) || descriptor is null)
+            {
+                throw new InvalidOperationException(
+                    $"SPOT '{activation.SpotRid}' does not declare an actor join callback.");
+            }
+
+            return await SubmitNativeJoinActorAsync(
+                    actor,
+                    actorRef,
+                    node,
+                    activation.NodeRid,
+                    activation.SpotRid,
+                    activation.ChannelName,
+                    request,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
+        var remoteAddress = await ResolveRemoteActorJoinTargetAsync(spotRid, cancellationToken)
+            .ConfigureAwait(false);
+        return await SubmitRoutedJoinActorAsync(
+                actor,
+                actorRef,
+                actorSessionManager.GetOrCreateState(actor.ActorId),
+                remoteAddress.TargetNodeRid,
+                remoteAddress.SpotRid,
+                remoteAddress.RouterChannelId,
+                request,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<ZLinkActorJoinResult> SubmitRoutedJoinActorAsync(
+        IZLinkActor actor,
+        ZLinkBackendActorRef actorRef,
+        ZLinkActorRuntimeState actorState,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        string routerChannelId,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(actorState.ActorType))
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actor.ActorId}' does not have an actor type for remote SPOT join.");
+        }
+
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Request,
+            routerChannelId,
+            ZLinkRemoteActorJoinPackets.RequestPacketName,
+            registration.DefaultTimeout);
+        var payload = new ZLinkRemoteActorJoinRequest(
+            actor.ActorId,
+            actorState.ActorType,
+            request.ToArray());
+        var parts = ZLinkEnvelopeCodec.EncodeParts(
+            header,
+            payload,
+            typeof(ZLinkRemoteActorJoinRequest));
+        var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
+                routerChannelId,
+                targetNodeRid,
+                targetSpotRid,
+                parts,
+                registration.DefaultTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var reply = ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorJoinReply>(
+            replyParts,
+            "Remote actor join reply was empty.",
+            $"Remote actor join failed for '{actor.ActorId}' to SPOT '{targetSpotRid}'.");
+        var resultActorRef = new ZLinkBackendActorRef(
+            RoutingId.From(reply.ActorNodeRid),
+            reply.ActorId,
+            reply.ActorGeneration);
+        var resultReply = Message.From(reply.Reply);
+
+        if (reply.Accepted)
+        {
+            if (resultActorRef.NodeRid != actorRef.NodeRid)
+            {
+                await ApplyRemoteActorMigrationAsync(actorState, resultActorRef, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                actorState.NativeActorRef = resultActorRef;
+            }
+        }
+
+        return new ZLinkActorJoinResult(
+            reply.Accepted,
+            ToActorRef(reply.Accepted ? resultActorRef : actorRef),
+            resultReply);
+    }
+
+    private async ValueTask ApplyRemoteActorMigrationAsync(
+        ZLinkActorRuntimeState actorState,
+        ZLinkBackendActorRef targetActorRef,
+        CancellationToken cancellationToken)
+    {
+        if (ZLinkBoundSessionDispatchScope.TryDefer(
+                actorState.ActorId,
+                _ =>
+                {
+                    QueueRemoteActorMigration(actorState, targetActorRef);
+                    return ValueTask.CompletedTask;
+                }))
+        {
+            return;
+        }
+
+        await ApplyRemoteActorMigrationCoreAsync(actorState, targetActorRef, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private void QueueRemoteActorMigration(
+        ZLinkActorRuntimeState actorState,
+        ZLinkBackendActorRef targetActorRef)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ApplyRemoteActorMigrationCoreAsync(actorState, targetActorRef, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                ZLinkFrameworkDebugLog.TaskFailure("remote actor migration", ex);
+            }
+        });
+    }
+
+    private async ValueTask ApplyRemoteActorMigrationCoreAsync(
+        ZLinkActorRuntimeState actorState,
+        ZLinkBackendActorRef targetActorRef,
+        CancellationToken cancellationToken)
+    {
+        actorState.NativeActorRef = targetActorRef;
+        await RebindRemoteSessionActorAsync(actorState, targetActorRef, cancellationToken)
+            .ConfigureAwait(false);
+        actorState.InvalidateContext();
+    }
+
+    private async ValueTask<ZLinkSpotRemoteAddress> ResolveRemoteActorJoinTargetAsync(
+        RoutingId spotRid,
+        CancellationToken cancellationToken)
+    {
+        var resolver = services.GetService(typeof(IZLinkSpotRemoteAddressResolver))
+            as IZLinkSpotRemoteAddressResolver;
+        if (resolver is null)
+        {
+            throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
+        }
+
+        return await resolver.ResolveSpotRemoteAddressAsync(spotRid, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<ZLinkActorJoinResult> SubmitNativeJoinActorAsync(
+        IZLinkActor actor,
+        ZLinkBackendActorRef actorRef,
+        IZLinkBackendSpotNode node,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        string channelName,
+        Message request,
+        CancellationToken cancellationToken)
+    {
         var joinHeader = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Request,
-            activation.ChannelName,
+            channelName,
             typeof(Message).Name,
             ZLinkEnvelopeCodec.DefaultContentType,
             null, null, null, null, null);
@@ -230,8 +410,8 @@ internal sealed class ZLinkFrameworkActorFacade(
 
         var submitted = node.JoinActor(
             actorRef,
-            activation.NodeRid,
-            activation.SpotRid,
+            targetNodeRid,
+            targetSpotRid,
             joinParts,
             (result, reply) => tcs.TrySetResult((result, reply)),
             registration.DefaultTimeout);
@@ -241,7 +421,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor join submit failed for '{actor.ActorId}' to SPOT '{activation.SpotRid}'.");
+                $"Actor join submit failed for '{actor.ActorId}' to SPOT '{targetSpotRid}'.");
         }
 
         var (joinResult, replyParts) = await tcs.Task.ConfigureAwait(false);
@@ -249,7 +429,7 @@ internal sealed class ZLinkFrameworkActorFacade(
             joinResult.Result,
             replyParts,
             actor.ActorId,
-            activation.SpotRid);
+            targetSpotRid);
         var accepted = joinResult.JoinResultCode == 0;
         var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
         var resultActor = accepted ? joinResult.Actor : actorRef;
@@ -266,6 +446,47 @@ internal sealed class ZLinkFrameworkActorFacade(
             Accepted: accepted,
             ToActorRef(resultActor),
             reply);
+    }
+
+    private async ValueTask RebindRemoteSessionActorAsync(
+        ZLinkActorRuntimeState actorState,
+        ZLinkBackendActorRef targetActorRef,
+        CancellationToken cancellationToken)
+    {
+        if (!actorState.TryGetBoundSession(out var session))
+        {
+            return;
+        }
+
+        if (!runtime.TryGetSessionActorContext(
+                actorState.ActorId,
+                session.BindingToken,
+                out var context)
+            && !runtime.TryGetSessionActorContext(actorState.ActorId, out context))
+        {
+            return;
+        }
+
+        var rebound = await context.ActorCoordinator.BindActorAsync(
+                context,
+                ToActorRef(targetActorRef),
+                cancellationToken)
+            .ConfigureAwait(false);
+        runtime.UnbindSessionActor(actorState.ActorId, context, session.BindingToken);
+        runtime.UnbindActorSession(actorState.ActorId, session.BindingToken);
+
+        using var bindPayload = Message.From(ReadOnlySpan<byte>.Empty);
+        await rebound.RelayAsync(
+                new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Send,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.None,
+                    null,
+                    ZLinkRemoteActorJoinPackets.BoundSessionBindPacketName,
+                    ZlinkStreamMetadata.Empty),
+                bindPayload,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static ActorRef ToActorRef(ZLinkActorRuntimeState actorState)

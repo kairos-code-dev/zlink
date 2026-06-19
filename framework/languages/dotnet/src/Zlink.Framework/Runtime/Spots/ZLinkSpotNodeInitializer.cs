@@ -113,9 +113,11 @@ internal sealed class ZLinkSpotNodeInitializer(
         ZLinkSpotNodeRegistration registration,
         ZLinkSpotNodeRuntime nodeRuntime)
     {
-        foreach (var endpoint in registration.Router?.ManualConnections ?? [])
+        foreach (var connection in registration.Router?.ManualConnections ?? [])
         {
-            _ = nodeRuntime.ConnectRouterAsync(endpoint, CancellationToken.None);
+            _ = connection.PeerRid is { } peerRid
+                ? nodeRuntime.ConnectRouterAsync(peerRid, connection.Endpoint, CancellationToken.None)
+                : nodeRuntime.ConnectRouterAsync(connection.Endpoint, CancellationToken.None);
         }
 
         foreach (var endpoint in registration.PubSub?.ManualConnections ?? [])

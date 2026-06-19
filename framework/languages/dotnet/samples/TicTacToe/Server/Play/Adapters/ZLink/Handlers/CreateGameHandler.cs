@@ -23,7 +23,7 @@ sealed class CreateGameHandler(
         logger.LogInformation(
             "play: TicTacToeGame spot created. roomId={RoomId}, endpoint={Endpoint}",
             created.RoomId,
-            created.PlayEndpoint);
+            created.OwnerPlayEndpoint);
         return created;
     }
 }

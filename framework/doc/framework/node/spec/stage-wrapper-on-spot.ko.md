@@ -8,10 +8,9 @@
 
 # Stage Wrapper On SPOT
 
-> 이 문서는 `framework/doc/framework/dotnet/spec/stage-wrapper-on-spot.ko.md` 의
-> Node.js / NestJS 표면 이식이다. 조건과 의미론은 dotnet 과 동일하며, 표면만
-> NestJS 모양으로 옮긴다. 의미론의 최종 기준은 dotnet **코드**
-> (`framework/languages/dotnet/src/Zlink.Framework/Runtime/Spots`)다. 표면 매핑
+> 이 문서는 Node.js / NestJS 에서 `SPOT` 위에 상위 stage 모델을 얹는 조건을 다룬다.
+> 표면은 NestJS 모양이며, 기준은 `framework/languages/node` 의 공개 표면과 런타임이다.
+> 이 항목은 기본 공개 API 계약이 아니라 상위 모델 가이드다. 표면 매핑
 > 규칙은 [dotnet-to-node-surface-mapping](../internals/dotnet-to-node-surface-mapping.ko.md)
 > 가 소유한다.
 
@@ -115,7 +114,7 @@
 이 계약이 없으면 `Stage` wrapper 는 단순한 DTO 라우팅 레이어에 머무른다. 즉
 실제 room / stage 상태를 안전하게 다루는 상위 모델로는 설명하기 어려워진다.
 
-이 부분은 이제 **core spec 이 명확하게 답하는 영역** 이다. core spec 은 다음을
+이 부분은 **core spec 이 명확하게 답하는 영역** 이다. core spec 은 다음을
 보장한다.
 
 - 같은 `Spot` 의 dispatch callback 은 직렬화된다.
@@ -266,10 +265,12 @@ export interface ZLinkSpot {
 }
 
 export interface ZLinkSpotContext {
-  addTimer<THandler>(
+  addTimer<THandler extends ZLinkSpotTimerHandler>(
     name: string,
     periodMs: number,
+    handlerType: Type<THandler>,
     options?: ZLinkTimerOptions,
+    signal?: AbortSignal,
   ): Promise<ZLinkTimer>;
 }
 ```
@@ -355,10 +356,18 @@ timer handler 는 `ZLinkTimerTick` 을 받아 callback 번호, fixed-rate 시간
 맞다.
 
 ```ts
-export interface StageSpotManager {
-  create<TSpot extends ZLinkSpot, TMetadata>(
+// 실제 framework 표면은 ZLinkSpotManager 다. Stage 생성은 이 위에 얹는다.
+export interface ZLinkSpotManager {
+  create<TSpot extends ZLinkSpot>(
+    spotType: Type<TSpot>,
+    request?: Message,
+    signal?: AbortSignal,
+  ): Promise<ZLinkSpotCreateResult>;
+  getOrCreate<TSpot extends ZLinkSpot>(
+    spotType: Type<TSpot>,
     spotRid: RoutingId,
-    metadata: TMetadata,
+    request?: Message,
+    signal?: AbortSignal,
   ): Promise<ZLinkSpotCreateResult>;
 }
 ```

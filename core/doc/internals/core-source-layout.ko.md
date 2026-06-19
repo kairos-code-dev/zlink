@@ -35,6 +35,8 @@
 +------------------------------------------------------------+
 | core/include/                                              |
 | |-- zlink.h                                                |
+| |-- zlink_enum.h                                           |
+| |-- zlink_errno.h                                          |
 | `-- zlink/                                                 |
 |     |-- common.h                                           |
 |     |-- service_common.h                                   |
@@ -54,7 +56,8 @@
 `core/include/zlink/<domain>/api.h`(core, eventing, message, socket)와
 `core/include/zlink/service/*.h`(actor, discovery, registry, spot)에 나누어
 둔다. registry, discovery, spot처럼 독립된 서비스 영역은 `service/` 아래 개별
-헤더에 둔다.
+헤더에 둔다. `zlink_enum.h`와 `zlink_errno.h`는 enum 상수와 errno 정의를 담은
+top-level 공개 헤더이며 `common.h`가 포함한다.
 
 ## API Facade
 

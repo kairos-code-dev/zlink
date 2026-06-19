@@ -15,9 +15,7 @@
 | integration-multi-process | registry discovery, reconnect, remote actor/session relay |
 | sample regression | 실제 sample 실행과 self-check |
 
-JUnit 테스트 이름은 `.NET` 테스트 메서드를 camelCase로 옮긴 대응을 우선하되,
-Java 구현에서 이미 고정된 이름이 있으면 현재 JUnit 이름을 그대로 쓴다. 확인
-기준(의미)은 그대로 유지하며 `.NET` 코드가 최종 기준이다.
+JUnit 테스트 이름과 gate 의미는 Java 구현에 고정된 현재 이름을 기준으로 한다.
 
 아래 표의 항목은 현재 Java 구현에서 실제 JUnit 이름과 gate 의미를 함께 고정한다.
 새 항목을 "필수 예정 gate"로 추가할 때는 sample release gate를 완료했다고 판단하기
@@ -46,8 +44,8 @@ server runtime, client runtime을 나누어 시작한 뒤 `useDiscovery().addReg
 | client/server Spot route egress without client | unit | `DefaultZLinkFrameworkOptionsTest.clientServerSpotRouteEgressRequiresClientCapability` | `enableSpotRouteEgress(...)`는 client 역할 없는 client/server channel에서 startup validation 오류 |
 | route shared packet reply correlation | integration-single-process | `ChannelMessagingTest.routeMesh_matchesRepliesByRequestSequenceWhenPacketNameIsShared` | 같은 packet 이름의 동시 route request가 request sequence로 자기 reply를 받음 |
 | annotation handler dispatch | integration-single-process | `ChannelMessagingTest.scannedMethodHandlerGroup_requestAndSendDispatch` / `scannedMethodHandlerGroup_publishDispatches` | `@ZLinkRequest`, `@ZLinkSend`, `@ZLinkPublish` method handler가 scanner와 runtime dispatch에 연결됨 |
-| send/publish async submit | unit | `ZLinkAsyncSubmitterTest.submitAsync_drainsPendingItemFromReadyCallback` | ready 전 caller thread를 막지 않음 |
-| pending request cleanup | unit | `ZLinkAsyncSubmitterTest.submitAsync_failsPendingItemWhenSendTimeoutExpires` / `disposeAsync_failsPendingItems` | timeout, cancellation, stop에서 pending 제거 |
+| send/publish async submit | unit | `ZLinkAsyncSubmitterTest.submit_drainsPendingItemFromReadyCallback` | ready 전 caller thread를 막지 않음 |
+| pending request cleanup | unit | `ZLinkAsyncSubmitterTest.submit_failsPendingItemWhenSendTimeoutExpires` / `close_failsPendingItems` | timeout, cancellation, stop에서 pending 제거 |
 
 ## 3. Spot/Actor regression
 
@@ -102,8 +100,7 @@ backend, integration-single-process, sample regression 증거를 분리해 기�
 
 ## 4. STREAM/Connector regression
 
-connector 테스트 이름은 `Systems.Zlink.Stream.Connector.Tests`의 메서드를 camelCase로
-옮긴 대응이다.
+connector 테스트 이름은 Java connector 테스트에 고정된 현재 이름을 쓴다.
 
 | 항목 | 계층 | JUnit 테스트 | 통과 기준 |
 |------|------|--------------|-----------|
@@ -182,7 +179,10 @@ transport error callback public API가 추가되어야 한다.
 | `TicTacToe` | direct STREAM + Spot + channel 흐름 성공 |
 | `Bingo` | 4 connector client, matching, timer, bound push 성공 |
 
-위 sample은 `samples/java/*`와 `samples/kotlin/*` 양쪽에 있어야 한다. sample source와 runner 구조는
+sample release gate runner(`run_samples.sh`)는 `TicTacToe`, `Bingo`, `SupportChat`,
+`DeliveryDispatch`, `ShoppingMall` 을 모두 실행한다. 위 표의 `TicTacToe`/`Bingo` 는 상세
+parity 설명 대상이고, 전체 gate 목록은 이 다섯 sample이다. 이들은 `samples/java/*`와
+`samples/kotlin/*` 양쪽에 있어야 한다. sample source와 runner 구조는
 `SampleReleaseGateContractTest.requiredSamplesExposeExecutableEntryPoints`,
 `sampleSourcesUseOnlyPublicFrameworkAndConnectorApi`,
 `bingoMirrorsFourClientMatchingTimerAndBoundPushGate`,

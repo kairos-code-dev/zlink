@@ -144,15 +144,16 @@ public class MeshOpsConfig implements ZLinkFrameworkConfigurer {
         options.addClientServerChannel("profile").enableClient();
         options.addClientServerChannel("pricing").enableClient();
         options.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
-        options.monitoring().enable();
-        options.filters().add(CorrelationFilter.class);
+        // monitoring은 ZLinkMonitoringOptionsCustomizer bean(addSocketEvents/addRegistryEvents/
+        // addSpotEvents)으로 구성한다
+        options.useFilter(CorrelationFilter.class);
     }
 }
 
 @RestController
 public final class TopologyController {
     @GetMapping("/admin/topology")
-    Topology topology(ZLinkRegistryQueryClient registry) {
+    List<ZLinkRegistryTopologyEntry> topology(ZLinkRegistryQueryClient registry) {
         return registry.topology().toCompletableFuture().join();
     }
 }
@@ -162,17 +163,18 @@ public final class TopologyController {
 @Component
 public final class CorrelationFilter implements ZLinkHandlerFilter {
     @Override
-    public CompletionStage<Object> invoke(ZLinkHandlerInvocation invocation, ZLinkHandlerFilterChain chain) {
-        String correlationId = invocation.metadata().getOrDefault("x-correlation-id", TraceIds.current());
-        try (CorrelationScope ignored = CorrelationScope.open(correlationId)) { return chain.next(invocation); }
+    public <T> CompletionStage<T> invokeAsync(ZLinkInvocationContext context, ZLinkNext<T> next) {
+        String correlationId = TraceIds.current();
+        try (CorrelationScope ignored = CorrelationScope.open(correlationId)) {
+            return next.invokeAsync();
+        }
     }
 }
 ```
 
-> retry·circuit-breaking 은 ZLink 가 자동으로 하지 않는다(`ZLinkFrameworkException.
-> IsRetriable` 는 재시도 가능 여부 **힌트**일 뿐, 자동 재시도가 아니다). Polly 같은
-> 정책 라이브러리를 호출 측에 그대로 두거나 `ZLinkHandlerFilter` 로 공통화한다 —
-> 즉 **복원력 정책은 그대로 앱이 소유**한다.
+> retry·circuit-breaking 은 ZLink 가 자동으로 하지 않는다. 복원력 정책 라이브러리를
+> 호출 측에 그대로 두거나 `ZLinkHandlerFilter` 로 공통화한다 — 즉 **복원력 정책은
+> 그대로 앱이 소유**한다.
 
 ## 4. 양쪽 코드 비교 — fan-out 한 번
 

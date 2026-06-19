@@ -163,10 +163,14 @@ public final class MarketplaceChatSession implements ZLinkSession {
     @Override
     public ZLinkSessionContext context() { return context; }
 
+    @Override public void onConnected() {}
+    @Override public void onDisconnected() {}
+    @Override public void onError(ZLinkStreamError error) {}
+
     @Override
     public void onDispatch(ZLinkStreamHeader header, Message payload) {
         if ("auth".equals(header.name())) {
-            AuthReq req = payload.decode(AuthReq.class);
+            AuthReq req = StreamPayloads.decode(header, payload, AuthReq.class);
             user = actors.getOrCreate(req.userId(), "chat-user")
                 .thenCompose(actor -> context.actors().bind(actor))
                 .thenCompose(bound -> context.client().reply(new AuthOk()).submit().thenApply(ignored -> bound))
@@ -182,14 +186,22 @@ public final class MarketplaceChatSession implements ZLinkSession {
 
 ```java
 public final class UserActor implements ZLinkActor {
+    private final String actorId;
     private final ZLinkActorContext context;
+    public UserActor(String actorId, ZLinkActorContext context) { this.actorId = actorId; this.context = context; }
+    @Override public String actorId() { return actorId; }
+    @Override public ZLinkActorContext context() { return context; }
     public CompletionStage<Void> push(ChatMessage message) { return context.boundSession().send(message).submit(); }
 }
 ```
 
 ```java
 public final class UserActor implements ZLinkActor {
+    private final String actorId;
     private final ZLinkActorContext context;
+    public UserActor(String actorId, ZLinkActorContext context) { this.actorId = actorId; this.context = context; }
+    @Override public String actorId() { return actorId; }
+    @Override public ZLinkActorContext context() { return context; }
     public CompletionStage<Void> push(ChatMessage message) { return context.boundSession().send(message).submit(); }
 }
 ```

@@ -98,14 +98,14 @@ graph LR
 
 | 역할 | 의미 | 비고 |
 |------|------|------|
-| `EnableServer()` | 이 channel 의 request/send 를 local handler 가 받는다 | `Bind(...)` 필수 |
+| `EnableServer(endpoint)` | 이 channel 의 request/send 를 local handler 가 받는다 | endpoint 인자 필수 |
 | `EnableClient()` | 이 channel 로 request/send 를 내보낸다 | outbound 전용 앱 가능 |
-| `EnablePublisher()` | 이 channel 로 이벤트를 publish 한다 | `Bind(...)` 필수 |
+| `EnablePublisher(endpoint)` | 이 channel 로 이벤트를 publish 한다 | endpoint 인자 필수 |
 | `EnableSubscriber()` | 이 channel 의 이벤트를 구독한다 | |
 
 한 channel 이 여러 역할을 가질 수 있다(예: 서버이면서 다른 노드의 이벤트를 구독).
-server/publisher 는 외부가 접근할 endpoint 가 필요하므로 `Bind(...)`가 필수고,
-client/subscriber 는 필요 없다. request/send/pub-sub 사용법과 handler 노출·연결
+server/publisher 는 외부가 접근할 endpoint 가 필요하므로 `EnableServer(endpoint)`·
+`EnablePublisher(endpoint)` 에 endpoint 를 직접 넘기고, client/subscriber 는 필요 없다. request/send/pub-sub 사용법과 handler 노출·연결
 제어 전체는 [04-channel-messaging](04-channel-messaging.ko.md)이 다룬다.
 
 > **주의:** channel 이름과 handler **group 이름**은 서로 다른 namespace 다. group 은
@@ -204,7 +204,8 @@ Registry 없이 endpoint 를 직접 지정하는 **수동 연결**도 가능하�
   (`IZLinkRequestHandler<TRequest, TReply>` 등)이나 attribute 기반
   (`[ZLinkHandlerGroup]` + `[ZLinkRequest]`/`[ZLinkSend]`/`[ZLinkPublish]` 메서드)으로
   작성하고, 의존성은 **생성자 주입**으로 받는다. 수명은 **transient**(요청마다 새로),
-  실행은 **동시**(worker 풀). 그래서 가변 도메인 상태를 핸들러 멤버에 두지 않는다.
+  실행은 채널별 **async 수신 루프**에서(HTTP 핸들러는 `ASP.NET Core` 요청 파이프라인)
+  돈다. 그래서 가변 도메인 상태를 핸들러 멤버에 두지 않는다.
 - **SPOT 핸들러** — spot 클래스(`IZLinkSpot`)의 메서드가 아니라, 그 spot 에
   **바인딩된 별도 핸들러 class** 다. `IZLinkSpotRequestHandler<TSpot, TRequest, TReply>`
   / `IZLinkSpotPacketHandler<TSpot, TMessage>` / `IZLinkSpotTimerHandler<TSpot>` 를
@@ -216,7 +217,7 @@ Registry 없이 endpoint 를 직접 지정하는 **수동 연결**도 가능하�
 |---|---|---|---|
 | 기반 | 독립 class (interface/attribute) | `IZLinkSpot` 구현 | `IZLinkSpot` 구현 |
 | 수명 | transient (요청마다) | 노드와 동일 (영속) | 상태 단위와 동일 (영속) |
-| 실행 | 동시 (worker 풀) | **전체 직렬** — 단일 큐 | **전체 직렬** — 단일 큐 |
+| 실행 | 비동기 (채널별 수신 루프·HTTP 파이프라인) | **전체 직렬** — 단일 큐 | **전체 직렬** — 단일 큐 |
 | 공유 상태 | 핸들러에 두지 않음 | 큐 안에서 안전 | 락 없이 안전 |
 | 역할 | 요청 처리·위임 | 배정·매칭·할당 | 도메인 상태 소유·처리 |
 | 계약 | interface 구현 / attribute 메서드 | `Configure()` + `Context.Handlers` 등록 | `Configure()` + `Context.Handlers` 등록 |
@@ -226,11 +227,11 @@ Registry 없이 endpoint 를 직접 지정하는 **수동 연결**도 가능하�
 
 ```mermaid
 graph TB
-    subgraph N ["노드 핸들러 — 동시 (worker 풀)"]
+    subgraph N ["노드 핸들러 — 비동기 (수신 루프 · HTTP 파이프라인)"]
         direction LR
-        NR1["req A"] --> NW1["worker 1 ▶ 처리"]
-        NR2["req B"] --> NW2["worker 2 ▶ 처리"]
-        NR3["req C"] --> NW3["worker 3 ▶ 처리"]
+        NR1["req A"] --> NW1["핸들러 A ▶ 처리"]
+        NR2["req B"] --> NW2["핸들러 B ▶ 처리"]
+        NR3["req C"] --> NW3["핸들러 C ▶ 처리"]
     end
     subgraph S ["SPOT 핸들러 — 직렬 (단일 큐)"]
         direction LR
@@ -241,7 +242,7 @@ graph TB
     end
 ```
 
-노드 핸들러는 요청마다 다른 worker 가 **동시에** 처리하니 핸들러에 가변 상태를 두면
+노드 핸들러는 요청마다 새 인스턴스로 비동기 처리되니 핸들러 멤버에 가변 상태를 두면
 경합이 난다. SPOT 핸들러는 단일 큐로 **한 번에 하나씩** 처리하니 상태에 lock 이
 필요 없다.
 
@@ -258,9 +259,10 @@ client 역할에 Discovery·수동 연결 둘 다 없음, 허용되지 않는 ha
 ### 6.2 실행 모델 — `async`/`await`, `ValueTask`
 
 프레임워크 전반의 비동기 값은 `ValueTask` / `ValueTask<T>` 로 표현된다. handler 와
-outbound 호출은 모두 비동기다 — `Async(...)` / `Async<T>(...)` 의 완료는 **transport 위임까지**만
-보장하고(remote handler 완료나 subscriber 수신을 보장하지 않는다),
-`Request(...).Timeout(...)` 은 **reply 대기 시간**만 정한다. 규칙은 하나다 —
+outbound 호출은 모두 비동기다 — send/publish 의 `Async(...)` 완료는 **transport 위임까지**만
+보장하고(remote handler 완료나 subscriber 수신을 보장하지 않는다), request 의
+`Async<TReply>(...)` 는 **remote reply 가 도착할 때까지 기다려** 그 reply 를 돌려준다.
+`RequestToChannel(...).Timeout(...)` 은 그 **reply 대기 시간**의 상한을 정한다. 규칙은 하나다 —
 **런타임(핸들러) 스레드에서는 `await`, blocking(`.Result`/`.GetAwaiter().GetResult()`)은
 테스트·클라이언트 시나리오에서만.**
 
@@ -275,9 +277,10 @@ public async ValueTask<CreateGameReply> HandleAsync (
 }
 ```
 
-채널·HTTP 핸들러는 **worker 풀**에서 실행된다. 핸들러가 `await` 에 도달하면 async
-상태 머신만 멈추고(suspend) 실행 스레드는 풀로 돌아가 다른 큐 항목을 처리한다. 같은
-SPOT 큐는 그 handler 완료 전까지 다음 callback 을 시작하지 않는다.
+채널 핸들러는 채널별 async 수신 루프에서, HTTP 핸들러는 `ASP.NET Core` 요청
+파이프라인에서 실행된다. 핸들러가 `await` 에 도달하면 async 상태 머신만 멈추고(suspend)
+실행 스레드는 풀로 돌아가 다른 일을 처리한다. SPOT 핸들러는 §6.1 처럼 단일 큐로 직렬
+실행돼, 같은 SPOT 큐는 그 handler 완료 전까지 다음 callback 을 시작하지 않는다.
 
 핵심은 **이벤트마다 async task 하나, 스레드는 공유**다 — SPOT 의 event(message·timer)는
 각각 task 가 되어 소수의 worker 스레드에 다중화되고, `await` 에 걸린 task 는 스레드를

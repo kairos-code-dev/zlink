@@ -74,12 +74,11 @@ public final class StageSpot implements ZLinkSpot<ZLinkActor> {
 
     @Override
     public void onInitialize() {
-        return context.addTimer(
+        this.heartbeat = ZLinkAwait.await(context.addTimer(
             "heartbeat",
             Duration.ofSeconds(1),
             StageHeartbeatHandler.class,
-            null
-        ).thenAccept(timer -> this.heartbeat = timer);
+            null));
     }
 }
 ```
@@ -93,29 +92,27 @@ timer는 공용 scheduler가 아니라 spot lifecycle 안에서 이름과 함께
 @Component
 public final class StageHandlers {
     @ZLinkSpotRequest
-    public CompletionStage<GetStageStateReply> getStageStateAsync(
+    public GetStageStateReply getStageState(
         StageSpot spot,
-        GetStageStateRequest request,
-        ZLinkSpotRequestContext context) {
-        return spot.context().outbound().requestToChannel(
+        GetStageStateRequest request) {
+        GetProfileReply profile = ZLinkAwait.await(spot.context().outbound().requestToChannel(
             "profile",
             new GetProfileRequest(request.accountId())
-        ).submit(GetProfileReply.class).thenApply(profile -> new GetStageStateReply(
-            spot.context().spotRid(),
-            profile.nickname()
-        ));
+        ).submit(GetProfileReply.class));
+        return new GetStageStateReply(spot.context().spotRid(), profile.nickname());
     }
 
     @ZLinkSpotSubscription(spotNodeName = "stage-node", topic = "stage.state.updated")
     public void onStageState(
-        StageStateUpdated event,
-        ZLinkSpotSubscriptionContext context) {
+        StageSpot spot,
+        StageStateUpdated event) {
     }
 }
 ```
 
-`SPOT` 안에서 다른 channel을 호출할 때도 기본은 `channel name` 기준이다.
-`targetRid + spotRid` direct routed 호출은 advanced surface로만 남긴다.
+`SPOT` 안에서 다른 channel을 호출할 때도 기본은 `channel name` 기준이다. spot 으로 보내는
+outbound 는 `sendToSpot/requestToSpot(RoutingId spotRid, ...)` 로 `spotRid` 를 받고, target node
+해석은 resolver 가 처리한다.
 
 ## 5. 외부 노드에서 `SPOT` publish
 

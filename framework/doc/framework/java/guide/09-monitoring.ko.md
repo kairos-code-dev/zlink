@@ -95,13 +95,14 @@ socket event kind는 `CONNECTED`, `CONNECTION_READY`, `DISCONNECTED`,
 
 ### spot
 
-spot event는 `STATUS_CHANGED`, `PEERS_CHANGED`, `SUBJECTS_CHANGED` 고정이다.
+발행되는 snapshot spot event는 `STATUS_CHANGED`, `PEERS_CHANGED`, `SUBJECTS_CHANGED` 3종이다.
+`ZLinkSpotEventKind` enum에는 `TIMER_HANDLER_FAILED`, `TIMER_STOPPED_AFTER_UNHANDLED_EXCEPTION`
+도 정의되어 있으나 현재 monitoring runtime은 이 timer event를 발행하지 않는다.
 
-> **timer 실패는 polling 주기를 기다리지 않는다.** status/peer/subject 변화는
-> `addSpotEvents(...)`의 interval로 snapshot diff하지만, timer handler 실패는
-> 발생 시점에 즉시 발행된다. timer 정책은 [06-spot §4](05-spot.ko.md) 참고.
+> **poll 모델.** registry/spot interval 중 최소값으로 단일 poller를 만들어, 매 tick 모든
+> source를 snapshot diff한다. per-source 별도 interval로 도는 것은 아니다.
 
-Spring application event bridge는 선택 기능이다. public 기준은 typed handler다.
+public 기준은 typed handler(`ZLinkRuntimeEventHandler<TEvent>`)다.
 
 ## 4. 자주 막히는 곳
 

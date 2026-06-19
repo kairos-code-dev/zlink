@@ -51,7 +51,7 @@ void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);  /* triggers thread launc
 │  2. io_context.poll()  — non-blocking       │
 │     준비된 I/O 이벤트 일괄 처리             │
 │  3. 준비된 이벤트가 없으면:                 │
-│     io_context.run_for(100ms) — blocking    │
+│     io_context.run_for(≤100ms) — blocking   │
 │  4. 폐기된 poll entry 정리                  │
 │                                             │
 │  ← 반복 ───────────────────────────────────→│
@@ -65,27 +65,35 @@ void *socket = zlink_socket(ctx, ZLINK_SOCKET_DEALER);  /* triggers thread launc
 
 ## 4. 소켓 I/O 처리
 
-소켓(TCP, IPC)은 `start_wait_read()` / `start_wait_write()`로
-poller에 등록되며, 내부적으로 Boost ASIO의 `async_wait`를 호출한다.
-소켓이 읽기/쓰기 가능해지면:
+네트워크 I/O는 Proactor 모델로 처리한다. engine(`asio_engine_t`)이 transport에
+`async_read_some()` / `async_write_some()`을 요청하면 I/O 스레드의 `io_context`가
+OS 비동기 I/O 완료를 기다렸다가 completion 콜백을 부른다. engine은 읽기/쓰기 준비
+상태를 직접 폴링하지 않고 완료 결과만 처리한다.
 
-- **Read ready** → engine의 `in_event()` 콜백이 호출되어 네트워크에서
-  데이터를 읽고 프로토콜 프레임을 디코딩한 뒤 receive pipe로 메시지를 전달한다.
-- **Write ready** → engine의 `out_event()` 콜백이 호출되어 send pipe에서
-  메시지를 꺼내 인코딩한 뒤 네트워크에 전송한다.
+- **Read 완료** → 읽은 바이트를 프로토콜 디코더에 넘겨 프레임을 디코딩한 뒤
+  receive pipe로 메시지를 전달하고, 다시 `async_read_some()`을 건다.
+- **Write 완료** → send pipe에서 꺼낸 메시지를 인코딩해 보낸 뒤, 남은 데이터가
+  있으면 다음 `async_write_some()`을 건다.
 
-콜백은 자동으로 재등록되므로 소켓이 폐기될 때까지 모니터링이 이어진다.
+`asio_poller`의 `async_wait` readiness 경로는 네트워크 데이터가 아니라 mailbox
+명령 wakeup에만 쓴다.
 
 ## 5. 명령(Command) 처리
 
-각 I/O 스레드는 **mailbox**를 가진다 — 락-프리 큐
-(`ypipe_t<command_t>`) 와 깨우기 신호용 signaler 의 조합이다.
+각 I/O 스레드는 **mailbox**를 가진다 — command pipe
+(`ypipe_t<command_t>`, 전송 측은 mutex로 보호) 와 깨우기 신호용 signaler 의 조합이다.
 
 ```cpp
 // io_thread.cpp — process_mailbox()
-command_t cmd;
-while (_mailbox.recv(&cmd, 0) == 0)
-    cmd.destination->process_command(cmd);
+do {
+    command_t cmd;
+    int rc = _mailbox.recv(&cmd, 0);
+    while (rc == 0 || errno == EINTR) {      // EINTR 재시도
+        if (rc == 0)
+            cmd.destination->process_command(cmd);
+        rc = _mailbox.recv(&cmd, 0);
+    }
+} while (_mailbox.reschedule_if_needed());    // 남은 명령 있으면 재예약
 ```
 
 명령은 application 스레드에서 `ctx_t::send_command()` 로 도착하며,
@@ -94,21 +102,23 @@ while (_mailbox.recv(&cmd, 0) == 0)
 | Command | 용도 |
 |---------|------|
 | `plug` | 새 session/engine을 이 I/O 스레드에 부착 |
-| `attach` | pipe를 session에 연결 |
-| `bind` | endpoint에서 listen 시작 |
+| `attach` | engine을 session에 부착 |
+| `bind` | session과 socket 사이 pipe 수립 |
 | `activate_read` | pipe 읽기 재개 |
 | `activate_write` | pipe 쓰기 재개 |
 | `stop` | I/O 스레드 종료 |
 
-mailbox handle 자체도 poller에 등록되어 있어, 명령이 도착하면 블로킹
-대기 중인 이벤트 루프를 깨운다.
+mailbox는 I/O 스레드의 `io_context`에 연결되어(`set_io_context()`), 명령을 send하면
+ASIO handler가 post되어 블로킹 대기 중인 이벤트 루프가 깨어나 명령을 처리한다.
 
 ## 6. 스레드 할당
 
 소켓이 새 연결을 생성할 때 다음 기준으로 I/O 스레드를 선택한다:
 
-1. **어피니티 마스크** — 설정된 경우 후보 집합을 제한
-2. **최소 부하 선택** — 후보 중 등록된 핸들 수가 가장 적은 스레드 선택
+1. **affinity mask** — 설정된 경우 후보 집합을 제한
+2. **부하 분산** — 일반 연결은 후보 중 등록된 핸들 수가 가장 적은 스레드(least-load)를
+   고르고, STREAM 연결은 기본적으로 후보를 round-robin으로 고른다
+   (`ZLINK_ASIO_STREAM_SESSION_SCHED=minload`로 least-load 전환)
 
 이렇게 네트워크 연결이 I/O 스레드에 분산된다. 할당 단위는
 소켓이 아닌 **연결(connection)** 이다 — 하나의 소켓이 여러 연결을 가지면

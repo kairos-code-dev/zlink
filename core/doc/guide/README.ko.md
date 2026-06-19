@@ -42,9 +42,9 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) 기반의 현대적 메시�
 - [03-5 STREAM](03-5-stream.ko.md) — 외부 raw TCP 피어
 - [03-6 Proxy](03-6-proxy.ko.md) — 프론트/백엔드 중계
 
-## Part 3 · 전송 & 보안 (how-to)
+## Part 3 · Transport & 보안 (how-to)
 
-- [04 트랜스포트](04-transports.ko.md) — `tcp`/`ipc`/`inproc`/`ws`/`tls`
+- [04 Transport](04-transports.ko.md) — `tcp`/`ipc`/`inproc`/`ws`/`wss`/`tls`
 - [05 TLS/보안](05-tls-security.ko.md)
 
 ## Part 4 · 서비스 계층 (how-to)

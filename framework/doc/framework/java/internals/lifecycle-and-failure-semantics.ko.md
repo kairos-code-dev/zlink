@@ -11,10 +11,8 @@ Spring host에서 lifecycle의 두 경계는 다음과 같다.
 - **종료(shutdown)**: `SmartLifecycle.stop()`. graceful close(linger/drain)를
   수행한다.
 
-`ApplicationRunner`는 구동 driver로 쓰지 않고 one-shot readiness 신호용으로만
-예약한다. 설정 검증은 시동 hook이 아니라 등록 시점(`@EnableZLinkFramework`
-auto-config / `ZLinkFrameworkConfigurer` 적용 시점, `.NET`
-`AddZLinkFramework(...)` 등록 호출 안 검증 대응)에 먼저 끝낸다.
+설정 검증은 시동 hook이 아니라 등록 시점(`@EnableZLinkFramework` auto-config /
+`ZLinkFrameworkConfigurer` 적용 시점)에 먼저 끝낸다.
 
 ## 1. Startup 순서
 
@@ -37,24 +35,24 @@ idempotent해야 한다.
 ## 2. Shutdown 순서
 
 호스트 종료는 `SmartLifecycle.stop()` 실행 순서로 나타난다. monitoring을 가장 먼저
-떼어 내고, framework runtime state를 `.NET`의
-`ZLinkFrameworkRuntimeState.DisposeAsync` dispose 순서 그대로 내린다. embedded
-registry stop은 framework state가 내려간 **뒤에** 일어난다.
+떼어 내고, framework runtime을 `ZLinkFrameworkRuntime.close()` 순서로 내린다. embedded
+registry stop은 framework가 내려간 **뒤에** 일어난다.
 
 1. monitoring polling과 monitor attach 해제
-2. framework runtime state dispose (세부 순서는 아래)
+2. framework runtime close (세부 순서는 아래)
 3. embedded registry stop
-4. (framework state dispose의 마지막 단계로) Java binding context close
 
-framework runtime state를 내리는 세부 순서(`DisposeAsync`):
+`ZLinkFrameworkRuntime.close()`의 세부 순서:
 
-1. stop token cancel 후 listener task drain
-2. SpotNode dispose
-3. route(mesh) channel dispose
-4. spot discovery dispose
-5. stream node dispose
-6. client → publisher → subscriber → server channel bundle dispose
-7. 마지막으로 Java binding context dispose
+1. `spots.beginClose()`
+2. `channels.close()` — channel runtime의 Java binding context도 이 단계에서 닫힌다
+3. `streams.close()`
+4. `actors.close()`
+5. `spots.close()`
+6. handler executor close
+
+Java binding context는 별도의 마지막 단계가 아니라 각 channel/stream runtime의 close
+안에서 닫힌다.
 
 embedded registry stop이 framework state dispose 뒤에 오는 이유는, service runtime을
 먼저 내린 뒤 registry를 정리해야 다른 노드들이 topology 변화를 정상적인 절차로 읽어
@@ -72,7 +70,7 @@ cancellation 정책에 따라 정리한다.
 
 - 중복 channel, handler, actor factory, Spot factory
 - endpoint 누락
-- discovery/manual connection 혼용
+- (route mesh) discovery/manual connection 혼용 — client/subscriber는 manual endpoint가 있으면 그 채널에서 discovery attach 대신 manual connect를 쓴다
 - stream node session type 중복
 - actor factory without SpotNode
 - monitoring source 이름 불일치
@@ -92,7 +90,8 @@ cancellation 정책에 따라 정리한다.
 ## 5. Submit 의미
 
 `send`와 `publish`는 remote handler 완료를 기다리지 않는다. transport에 submit할 수
-있게 될 때까지 비동기 대기한다. `request`는 submit timeout과 reply timeout을 분리한다.
+있게 될 때까지 비동기 대기한다. `request`는 단일 `timeout(Duration)`을 받고, 같은 값이
+pending request timeout과 submit retry deadline에 함께 쓰인다.
 
 ## 6. STREAM session 의미
 

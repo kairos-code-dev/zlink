@@ -28,8 +28,11 @@
 public class ZLinkConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
+        framework.addHandlersFromPackageOf(ZLinkConfig.class);
+
         framework.addClientServerChannel("api")
-            .enableServer("tcp://0.0.0.0:7100");
+            .enableServer("tcp://0.0.0.0:7100")
+            .addHandlerGroup("api");
 
         framework.addClientServerChannel("profile")
             .enableClient();
@@ -66,8 +69,7 @@ framework.addClientServerChannel("profile")
 하부 `DEALER(client)`가 connect된 peer 집합으로 요청을 보내는 모델이므로,
 startup과 런타임 제어 모두 endpoint 집합만 관리하면 된다.
 
-manual 역할은 startup 등록만이 아니라 런타임 `connect`, `disconnect`,
-`listConnections` 제어도 지원해야 한다.
+manual 역할은 startup 시점에 endpoint 집합을 등록한다.
 
 일반 `PUB/SUB` event publish는 `ZLinkFanoutClient` 같은 별도 surface로 설명한다.
 이 표면도 `channel name + topic` 기준으로 동작한다.
@@ -84,16 +86,14 @@ public final class UserHandlers {
     }
 
     @ZLinkRequest
-    public CompletionStage<GetUserReply> getUserAsync(
+    public GetUserReply getUser(
         GetUserRequest request,
         ZLinkRequestContext context) {
-        return client.requestToChannel(
+        GetAccountReply account = client.requestToChannel(
             "account",
             new GetAccountRequest(request.accountId())
-        ).submit(GetAccountReply.class).thenApply(account -> new GetUserReply(
-            request.accountId(),
-            account.nickname()
-        ));
+        ).submit(GetAccountReply.class).toCompletableFuture().join();
+        return new GetUserReply(request.accountId(), account.nickname());
     }
 }
 ```

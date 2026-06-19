@@ -154,7 +154,7 @@
 | [guide/case-studies/13-case-ecommerce-checkout.ko.md](guide/case-studies/13-case-ecommerce-checkout.ko.md) | 케이스: 전자상거래 체크아웃 — channel messaging 도입 판단 + 양쪽 비교 |
 | [guide/case-studies/14-case-microservice-mesh.ko.md](guide/case-studies/14-case-microservice-mesh.ko.md) | 케이스: 내부 마이크로서비스 mesh + 운영(discovery/topology) |
 | [guide/case-studies/15-case-realtime-game.ko.md](guide/case-studies/15-case-realtime-game.ko.md) | 케이스: 실시간 멀티플레이 게임 — STREAM + SPOT + actor |
-| [guide/case-studies/16-case-ride-hailing.ko.md](guide/case-studies/16-case-ride-hailing.ko.md) | 케이스: 라이드헤일링 디스패치 — zone SPOT + 위치 fan-out |
+| [guide/case-studies/16-case-ride-hailing.ko.md](guide/case-studies/16-case-ride-hailing.ko.md) | 케이스: 라이드헤일링 dispatch — zone SPOT + 위치 fan-out |
 | [guide/case-studies/17-case-chat-messaging.ko.md](guide/case-studies/17-case-chat-messaging.ko.md) | 케이스: 채팅·메시징 — room SPOT + BoundSession |
 | [guide/case-studies/17-1-case-marketplace-chat.ko.md](guide/case-studies/17-1-case-marketplace-chat.ko.md) | 케이스: 마켓플레이스 채팅 — 구매자·판매자 conversation |
 | [guide/case-studies/17-2-case-live-commerce-chat.ko.md](guide/case-studies/17-2-case-live-commerce-chat.ko.md) | 케이스: 라이브 커머스·라이브스트림 채팅 — stream SPOT + moderation |
@@ -292,7 +292,7 @@
 [^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, subscriber, publisher)를 가리킨다.
 [^backpressure]: backpressure 는 송신 측이 수신 측의 처리 속도를 넘어 메시지를 밀어 넣지 못하도록 흐름을 조절하는 메커니즘이다.
 [^stream-actor-bridge]: stream-to-actor bridge 는 STREAM 으로 들어온 외부 트래픽을 framework 내부의 actor 메시지로 이어 주는 연결 지점을 가리킨다.
-[^session-actor-dispatch]: session actor dispatch 는 클라이언트 세션에서 들어온 요청을, 그 세션과 묶인 actor 로 자동 전달하는 패턴이다.
+[^session-actor-dispatch]: session actor dispatch 는 클라이언트 session에서 들어온 요청을, 그 session과 묶인 actor 로 자동 전달하는 패턴이다.
 [^fail-fast]: fail-fast 는 잘못된 설정이나 상태를 발견하면 즉시 예외를 던지고 실행을 멈추는 전략이다. 늦게 발견되어 더 큰 문제로 번지는 것을 막는다.
 [^attribute-scan]: attribute scan 은 어셈블리에 정의된 타입과 메서드를 훑어 보면서 특정 attribute 가 붙은 항목을 찾아 등록하는 방식이다.
 

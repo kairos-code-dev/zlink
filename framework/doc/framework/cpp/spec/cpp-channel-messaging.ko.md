@@ -73,10 +73,10 @@ app.add_zlink_framework([](auto &options) {
 이 설정은 `profile` channel 전체가 아니라 `profile.client` 연결 집합에만 적용된다.
 같은 `profile` channel이라도 `profile.subscriber`는 별도 연결 집합으로 본다.
 같은 역할 안에서는 수동 연결과 Discovery 연결을 섞지 않는다.
-`client()`는 registry discovery로 peer를 찾는 선언이므로 같은 설정에
+`enable_client()`는 registry discovery로 peer를 찾는 선언이므로 같은 설정에
 `options.use_discovery().add_registry_endpoint (...)`가 필요하다. discovery를 쓰지 않는 경우에는
-`client(endpoint)`로 manual connection을 명시한다. `client(endpoint)`와 fanout
-`subscriber(endpoint)`는 반복 호출할 수 있고, 호출 순서대로 manual endpoint를 역할
+`enable_client(endpoint)`로 manual connection을 명시한다. `enable_client(endpoint)`와 fanout
+`enable_subscriber(endpoint)`는 반복 호출할 수 있고, 호출 순서대로 manual endpoint를 역할
 snapshot에 추가한다.
 
 ## 3. Handler 등록
@@ -106,8 +106,8 @@ handle을 얻은 뒤 ActorGateway/session actor 경로로 연결한다.
 request/send 같은 outbound 호출은 call object를 반환하고, 마지막 `async()`에서
 실행한다. 반환된 call object에서 `packet_name(...)`, `metadata(key, value)`,
 `timeout(...)`을 설정할 수 있고, 이 값은 submit 시점에 framework envelope 정책으로
-넘어간다. 서버 framework public API는 blocking 동기 호출을 제공하지 않으며,
-handler에서는 `co_await call.async()`를 사용한다.
+넘어간다. 서버 framework public API는 blocking 동기 호출을 제공하지 않으며, handler에서
+request는 `co_await call.async<reply_t>()`, send/publish는 `co_await call.async()`를 사용한다.
 handler 안에서 blocking wait를 쓰지 않는다.
 
 ## 4. Dispatch 기준
@@ -149,8 +149,8 @@ handler 안에서 blocking wait를 쓰지 않는다.
   `zlink_builder_t::route_channel(name, configure)`와 `route_channel_builder_t`는 framework
   내부와 고급 확장용 낮은 수준 표면으로 남긴다.
 - dealer mesh channel은 `options.add_dealer_mesh_channel(name)`으로 선언하되
-  `enable_server(endpoint)` 또는 `enable_client(endpoint)` 중 하나 이상을 함께 둔다.
-  peer 획득 경로가 없으면 framework
+  `enable_server(endpoint)`, `enable_client(endpoint)`(manual), 또는 `enable_client()`
+  (registry discovery) 중 하나 이상을 함께 둔다. peer 획득 경로가 없으면 framework
   options 적용 시점에 실패한다.
 - client/server channel은 server 또는 client 역할 중 하나 이상이 필요하고, fanout
   channel은 publisher 또는 subscriber 역할 중 하나 이상이 필요하다. 아무 역할도 없는
@@ -161,7 +161,7 @@ handler 안에서 blocking wait를 쓰지 않는다.
   envelope를 반환한다. framework 내부 routed packet은
   `route_internal_packet_dispatcher_t`와 composite dispatcher가 먼저 처리한다.
 - 같은 역할에서 Discovery와 manual 연결을 같이 섞지 않는다. endpoint 인자 없는
-  `client()` 또는 `subscriber()`는 discovery mode를 뜻하고, endpoint를 받는 overload는
+  `enable_client()` 또는 `enable_subscriber()`는 discovery mode를 뜻하고, endpoint를 받는 overload는
   manual endpoint를 추가한다.
 - runtime 연결 제어가 필요하면 framework core의 역할 단위 connection manager가
   담당한다. 사용자는 raw socket이 아니라 channel 역할 표면으로 연결을 다룬다.

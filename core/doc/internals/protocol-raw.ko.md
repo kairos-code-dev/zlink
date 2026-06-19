@@ -2,7 +2,7 @@
 
 # RAW (STREAM) 프로토콜 상세
 
-RAW 프로토콜은 외부 클라이언트가 ZMP(zlink Message Protocol) 프레이밍 없이 연결할 때 사용된다. STREAM 소켓은 이 프로토콜로 지원되는 모든 트랜스포트(tcp, tls, ws, wss)에서 임의의 연결을 수락한다.
+RAW 프로토콜은 외부 클라이언트가 ZMP(zlink Message Protocol) 프레이밍 없이 연결할 때 사용된다. STREAM 소켓은 이 프로토콜로 지원되는 모든 transport(tcp, ipc, tls, ws, wss)에서 임의의 연결을 수락한다.
 
 ## 1. 개요
 STREAM 소켓 전용 프로토콜. ZMP를 쓰지 않는 외부 클라이언트와 통신하는 용도다.
@@ -11,11 +11,11 @@ STREAM 소켓 전용 프로토콜. ZMP를 쓰지 않는 외부 클라이언트�
 순수 RAW 모드는 zlink 수준의 프레이밍을 추가하지 않는다. 연결은 투명한 바이트
 스트림이다. peer가 보낸 바이트는 그대로 메시지 데이터로 전달되고, 애플리케이션이
 보낸 바이트도 변형 없이 나간다. 메시지 경계는 애플리케이션이 정의하며, 하부
-트랜스포트(tcp/tls/ws/wss)가 바이트 스트림을 제공한다.
+transport(tcp/ipc/tls/ws/wss)가 바이트 스트림을 제공한다.
 
 ## 3. 설계 의도
 - 스트림 투명성: 와이어에 zlink 프레이밍 오버헤드 없음
-- zlink 계층 핸드셰이크 없음 — 트랜스포트가 준비되면 바로 데이터가 흐른다
+- zlink 계층 핸드셰이크 없음 — transport가 준비되면 바로 데이터가 흐른다
 - 애플리케이션이 필요한 application-level 프레이밍을 스스로 정한다
 
 ## 4. STREAM 소켓 내부 API (멀티파트)

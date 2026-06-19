@@ -11,7 +11,7 @@ actor는 **ID로 식별되는 상태 보유 객체**다. 같은 `actorId`로 들
 게임에서 한 플레이어, 한 세션의 진행 상태를 담기에 맞다.
 
 호출자는 actor가 어느 노드/Spot에 있는지 몰라도 된다. `actorId`만으로 호출하면
-라우팅은 framework가 등록된 resolver로 푼다.
+routing은 framework가 등록된 resolver로 푼다.
 
 actor의 상태는 서로 독립인 두 축으로 본다.
 
@@ -30,7 +30,7 @@ actor는 factory로 만든다. factory는 `actorType` 짧은 문자열로 등록
 ```java
 @Override
 public void configure(ZLinkFrameworkOptions framework) {
-    options.addActorFactory("player", PlayerActorFactory.class);
+    framework.addActorFactory("player", PlayerActorFactory.class);
     // Entry Spot / user Spot 등록은 SpotNode 쪽에서 (§3)
 }
 
@@ -59,21 +59,20 @@ handler에서 받은 spot context로 호출한다.
 
 `joinSpot(...).submit(replyType)`는 actor join 요청을 제출하고, join reply를
 `replyType`으로 역직렬화한 뒤 `CompletionStage`로 반환한다. 성공하면 actor context의
-`spotRid()`, `isJoined()`, `getSpot(Class)`가 join된 user Spot을 가리킨다. Java
-framework는 이 호출에 blocking helper를 제공하지 않는다.
+`spotRid()`, `isJoined()`, `getSpot(Class)`가 join된 user Spot을 가리킨다. 테스트·클라이언트
+시나리오에서는 `await(replyType)` blocking helper도 쓸 수 있다.
 
 actor 객체를 끝내려면 actor가 Entry Spot에 있는 상태에서
 `ZLinkEntrySpotContext.destroyActor(actor)`를 호출한다. 이 호출은 lifecycle callback을
 호출하지 않고 native actor ref와 framework registry를 정리한다. user Spot에 있는 actor는
 바로 destroy할 수 없으므로 먼저 leave 또는
-`joinEntrySpot(..., request)` 흐름을 완료해야 한다. Kotlin에서는
-`systems.zlink.framework.kotlin.destroyActor(actor)` suspending extension으로 같은 동작을
-호출할 수 있다.
+`joinEntrySpot(..., request)` 흐름을 완료해야 한다.
 
 ## 3. Entry Spot과 user Spot의 actor handler
 
-actor handler와 lifecycle callback은 actor 클래스가 아니라 Entry Spot / user
-Spot의 `configure()`에서 등록한다. Entry Spot과 user Spot은 등록 표면이 같지만
+actor packet handler는 actor 클래스가 아니라 Entry Spot / user Spot의 `configure()`에서
+등록한다. lifecycle callback은 Spot/EntrySpot 인터페이스 메서드로 구현한다. Entry Spot과
+user Spot은 등록 표면이 같지만
 실행 정책이 다르다.
 
 ```java
@@ -111,16 +110,15 @@ public final class PlayerEntrySpot implements ZLinkEntrySpot<PlayerActor> {
 worker 함수는 Spot 상태를 직접 만지지 않고, 완료 callback에서 상태를 갱신한다.
 
 ```java
-context.runWorker(() -> ScoreCalculator.calculate(snapshot))
-    .submit(result -> {
-        currentScore = result;
-        return CompletableFuture.completedFuture(null);
-    });
+context.runWorker(token -> ScoreCalculator.calculate(snapshot))
+    .submit(
+        (result, token) -> currentScore = result,
+        (error, token) -> { /* worker 실패 처리 */ });
 ```
 
 > **응답 body는 반환값으로.** actor request handler는 응답 body를 직접 보내지
-> 않고 반환한 `TReply`로 정한다. `context`의 reply는 metadata/compression 같은
-> 응답 frame 옵션만 기록한다.
+> 않고 반환한 `TReply`로 정한다. Java 의 `ZLinkSpotActorRequestContext` 는
+> `ZLinkHandlerContext` 만 확장하고 reply/metadata/compression 옵션 setter 표면은 없다.
 
 ## 4. session actor dispatch — 연결 서버와 로직 서버 분리
 
@@ -172,6 +170,10 @@ public final class TicTacToeSession implements ZLinkSession {
     public ZLinkSessionContext context() {
         return context;
     }
+
+    @Override public void onConnected() {}
+    @Override public void onDisconnected() {}
+    @Override public void onError(ZLinkStreamError error) {}
 
     @Override
     public void onDispatch(

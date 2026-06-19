@@ -63,7 +63,7 @@ flowchart LR
 |----------|-------------|
 | `.proto` + 코드 생성 | 서비스 간 계약을 stub 으로 찍어냄. CI 에 proto 컴파일 단계 |
 | gRPC stub/channel | 호출. channel 재사용·deadline 을 직접 관리 |
-| Envoy sidecar + mesh control plane | HTTP/2 는 L4 LB 가 안 되므로 **L7(request-level) 분배**·mTLS·재시도 |
+| Envoy sidecar + mesh control plane | HTTP/2 는 L4 LB 가 안 되므로 **L7(request-level) load balancing**·mTLS·재시도 |
 | service discovery(Consul/xDS) | 어느 pod 이 떠 있는지 |
 | Kafka | `order.events` 영속 fan-out + saga choreography 백본 |
 | outbox publisher | DB→Kafka 이중 쓰기 문제 해소 |
@@ -147,7 +147,7 @@ class CheckoutZLinkConfig {
     fun checkoutFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.useCoroutineHandlers(Dispatchers.Default)
-            options.codecs().use(ZLinkProtobufCodec.defaultCodec())
+            options.codecs().addJson()   // data class DTO는 JSON codec; Protobuf는 생성된 MessageLite 타입에 쓴다
             options.addClientServerChannel("orders")
                 .enableServer("tcp://0.0.0.0:7401")
                 .addHandlerGroup("orders")
@@ -168,10 +168,10 @@ class PlaceOrderHandler(
     override suspend fun handle(req: PlaceOrder, context: ZLinkRequestContext): OrderPlaced {
         orders.find(req.orderId)?.let { return it.toReply() }
         // 결제는 suspend 한 줄. 응답 대기 동안 스레드는 park되지 않는다.
-        val charge: Charged = services.request(
+        val charge: Charged = services.requestToChannel(
             "payments",
             Charge(req.orderId, req.accountId, req.amountMinor, req.orderId),
-        )
+        ).submit(Charged::class.java).await()
         orders.beginTransaction().use { tx ->
             orders.insertOrder(req.orderId, charge.receiptId, tx)
             orders.insertOutbox("OrderPlaced", req.orderId, tx)
@@ -193,8 +193,8 @@ class PlaceOrderHandler(
 | 축 | 기존(gRPC + mesh) | ZLink |
 |----|-------------------|-------|
 | 계약 | `.proto` + 코드 생성(CI 단계) | `data class` DTO(공유 DTO 패키지), proto 파이프라인 없음 |
-| 호출 | `payments.charge(req, deadline)` (생성된 stub) | `services.request<Charged>("payments", req)` (suspend 확장) |
-| 위치/분배 | Consul/xDS + Envoy `DestinationRule`(L7) | `useDiscovery().addRegistryEndpoint(...)`  + Registry(framework 가 peer 분배) |
+| 호출 | `payments.charge(req, deadline)` (생성된 stub) | `services.requestToChannel("payments", req).submit(Charged::class.java).await()` |
+| 위치/분배 | Consul/xDS + Envoy `DestinationRule`(L7) | `useDiscovery().addRegistryEndpoint(...)`  + Registry(framework 가 peer load balancing) |
 | 전송 보안 | Envoy mTLS | 배포 계층/TLS 지원 범위/네트워크 정책에서 별도 결정 |
 | 멱등/outbox/saga | **앱 책임** | **앱 책임(동일)** |
 

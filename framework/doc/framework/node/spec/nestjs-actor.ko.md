@@ -6,13 +6,10 @@
 
 [node 묶음](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [channel](nestjs-channel-messaging.ko.md) | [SPOT](nestjs-spot.ko.md) | [STREAM](nestjs-stream.ko.md) | [Registry](nestjs-registry.ko.md)
 
-> 이 문서는 `framework/languages/dotnet` 의 actor 계약을 NestJS / TypeScript
-> 표면으로 옮긴 **정식 spec** 이다. 개념·의미론·동작은 dotnet 과 동일하고,
-> 표면만 바꾼다. 번역 규칙은
+> 이 문서는 Node.js `ZLink Framework`(NestJS)의 actor 계약을 다루는 **정식 spec**
+> 이다. 표면은 NestJS / TypeScript 관용구를 쓴다. 번역 규칙은
 > [.NET → Node.js 표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)
-> 이 소유한다. 표기가 어긋나면 dotnet **코드**
-> (`framework/languages/dotnet/src/Zlink.Framework/Contracts/Actors`,
-> `Contracts/Spots`, `Contracts/Streams`)가 기능의 최종 기준이다.
+> 이 소유한다. 표기가 어긋나면 `framework/languages/node` 코드가 기준이다.
 
 # ZLink Framework NestJS Actor
 
@@ -205,12 +202,11 @@ NestJS provider 로 등록한다. 그 다음 module options 의 `actorFactories:
 
 ```ts
 export interface ZLinkActorFactory {
-  readonly actorType: string;
-
   create(
     actorId: string,
     context: ZLinkActorContext,
-  ): Promise<ZLinkActor>;
+    signal?: AbortSignal,
+  ): Promise<ZLinkActor> | ZLinkActor;
 }
 ```
 
@@ -442,13 +438,16 @@ registry 표면은 다음과 같다.
 
 ```ts
 export interface ZLinkActorHandlerRegistry {
-  addHandler(handler: Type, packetName?: string): void;
+  addHandler(handlerType: Type): this;
 }
 
-// user Spot registry는 packet/subscribe 등록을 더 갖는다.
+// user Spot registry는 packet/subscribe/actor 등록을 더 갖는다.
 export interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
-  addPacket(handler: Type): void;
-  addSubscribe(handler: Type, topic: string): void;
+  addPacket(handlerType: Type, packetName?: string): this;
+  addSubscribe(handlerType: Type, topic: string): this;
+  addSpotHandler(handlerType: Type): this;
+  actorSend(packetName: string, handlerType: Type, actorType?: Type): this;
+  actorRequest(packetName: string, handlerType: Type, actorType?: Type): this;
 }
 ```
 
@@ -669,7 +668,7 @@ export interface ZLinkActorContext {
   readonly boundSession: ZLinkBoundSession;
 
   getSpot(): ZLinkSpot;
-  getSpot<TSpot extends ZLinkSpot>(): TSpot;
+  getSpot<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): TSpot;
 
   joinSpot<TRequest>(
     spotRid: string,

@@ -5,10 +5,9 @@
 [DI 노출 정책](../internals/di-capability-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md) | [Backend 의존 정책](../internals/backend-dependency-policy.ko.md)
 
 > 이 문서는 [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)을
-> 따른다. 개념·의미론·동작은 `framework/languages/dotnet` 과 **동일**하고,
-> 호스트 표면만 NestJS 의 `DynamicModule` + provider lifecycle hook 으로, 언어
-> 표면만 TypeScript(`Promise`, `interface`, decorator)로 옮긴다. 표기가
-> 어긋나면 `framework/languages/dotnet/src` **코드**가 기능의 최종 기준이다.
+> 따른다. 호스트 표면은 NestJS 의 `DynamicModule` + provider lifecycle hook, 언어
+> 표면은 TypeScript(`Promise`, `interface`, decorator)다. 표기가 어긋나면
+> `framework/languages/node` **코드**가 기준이다.
 >
 > .NET 에 1:1 단일 대응 문서가 없는 **신규 spec** 이다. .NET 의
 > `Zlink.Framework.AspNetCore`(host integration) + `Runtime/Host`(runtime
@@ -29,8 +28,8 @@ framework 는 새 transport 를 만들지 않는다. 기존 Node 바인딩
 이 문서가 닫는 두 가지 골격은 다음과 같다.
 
 1. **부트스트랩 척추** — `ZLinkModule.forRoot/forRootFactory` 가 `DynamicModule` 을
-   만들고, provider 를 등록하고, lifecycle hook(`onApplicationBootstrap` /
-   `onApplicationShutdown`)으로 runtime 을 시동·종료한다. 이 골격 위에
+   만들고, provider 를 등록하고, lifecycle hook(`onModuleInit` /
+   `onModuleDestroy`)으로 runtime 을 시동·종료한다. 이 골격 위에
    handler-interfaces 의 계약을 얹으면 runtime spine 이 완성된다.
 2. **backend 스왑 지점** — framework 의 **유일한** backend 의존은 6개의 backend
    포트 인터페이스(§5)다. .NET 은 이 포트를 `bindings/dotnet` 위에 구현하고,
@@ -140,7 +139,7 @@ export class PricingModule {}
 |------|------|------|
 | `services.AddZLinkRegistry(reg => ...)` | `ZLinkRegistryModule.forRoot(options)` / `forRootFactory(...)` | embedded Registry 를 bind·구동하고 `ZLINK_REGISTRY_QUERY` provider 노출 |
 | `services.AddZLinkRegistryQueryClient(c => ...)` | `ZLinkRegistryQueryClientModule.forRoot(options)` / `forRootFactory(...)` | 원격 Registry 에 connect 해 topology 조회만 하는 client(`ZLINK_REGISTRY_QUERY_CLIENT`) |
-| `services.AddZLinkMonitoring(m => ...)` | `ZLinkMonitoringModule.forRoot(options)` | runtime/registry/spot/socket 이벤트 source attach([nestjs-monitoring](nestjs-monitoring.ko.md)) |
+| `services.AddZLinkMonitoring(m => ...)` | `ZLinkMonitoringOptions`(별도 NestJS module 미구현) | runtime/registry/spot/socket 이벤트 source([nestjs-monitoring](nestjs-monitoring.ko.md)) |
 
 ```ts
 // node — embedded Registry
@@ -266,10 +265,10 @@ NestJS provider lifecycle hook 으로 .NET `IHostedService` 를 매핑한다.
 
 | .NET (`IHostedService`) | node (NestJS hook) | 시점 |
 |------|------|------|
-| `StartAsync(ct)` | `onApplicationBootstrap()` | 모든 provider 가 DI 에서 resolvable 해진 뒤 runtime 시동(bind/connect/discovery) |
-| `StopAsync(ct)` | `onApplicationShutdown(signal?)`(또는 `onModuleDestroy()`) | graceful close(linger, drain) |
+| `StartAsync(ct)` | `onModuleInit()` | 모든 provider 가 DI 에서 resolvable 해진 뒤 runtime 시동(bind/connect/discovery) |
+| `StopAsync(ct)` | `onModuleDestroy()`(또는 `onModuleDestroy()`) | graceful close(linger, drain) |
 
-`onApplicationBootstrap()` 시점에 시동하는 이유는, socket bind/connect 와
+`onModuleInit()` 시점에 시동하는 이유는, socket bind/connect 와
 discovery 시작이 일어나려면 handler provider 들이 모두 resolvable 해야 하기
 때문이다.
 
@@ -280,7 +279,7 @@ discovery 시작이 일어나려면 handler provider 들이 모두 resolvable �
 된다. Node 도 **register → framework → monitoring** 순서의 lifecycle 참여자로
 구성한다.
 
-`onApplicationBootstrap()` 안의 세부 시동 순서(.NET `ZLinkFrameworkRuntime
+`onModuleInit()` 안의 세부 시동 순서(.NET `ZLinkFrameworkRuntime
 .StartAsync` → state factory 생성 순서):
 
 1. embedded registry 가 있으면 **먼저** 시동(`ZLinkFrameworkRuntime.StartAsync`

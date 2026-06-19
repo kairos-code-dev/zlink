@@ -151,14 +151,9 @@ ZLinkModule.forRoot(
       .enableClient()
     .addClientServerChannel('pricing')
       .enableClient()
-    .options({
-      monitoring: {
-        registry: [{ sourceName: 'registry', intervalMs: 1000 }],
-      },
-      providers: [RegistryMonitor],
-    })
     .build()
 );
+// RegistryMonitor 같은 provider는 @Module의 providers에 등록한다.
 ```
 
 ```ts
@@ -181,10 +176,10 @@ export class TopologyController {
 export class CorrelationFilter implements ZLinkHandlerFilter {
   async invoke(
     invocation: ZLinkHandlerInvocation,
-    chain: ZLinkHandlerFilterChain,
+    next: ZLinkHandlerDelegate,
   ): Promise<unknown> {
-    const correlationId = invocation.metadata.get('x-correlation-id') ?? TraceIds.current();
-    return CorrelationScope.run(correlationId, () => chain.next(invocation));
+    const correlationId = TraceIds.current();
+    return CorrelationScope.run(correlationId, () => next());
   }
 }
 ```

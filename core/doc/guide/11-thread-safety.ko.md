@@ -32,7 +32,7 @@
 
 | 카테고리 | 포함 API | 스레드 안전? | 참고 |
 |---|---|---|---|
-| **전송** | `send`, `publish`, `send_rid` | 예 — 동시 호출 가능 | hot path(hot path, 고빈도 데이터 경로) 위주로 최적화 |
+| **전송** | `send`, `publish`, `send_rid` | 예 — 동시 호출 가능 | hot path(고빈도 데이터 경로) 위주로 최적화 |
 | **설정·운영** | `bind`, `connect`, `set_option` 등 | 예 — 순차 처리 | 메시지마다 호출은 비권장 |
 | **정리** | `close`, `destroy` | 예 — 명확한 에러 코드 | 사용 중이면 `ZLINK_CLOSE_BUSY` 반환 |
 

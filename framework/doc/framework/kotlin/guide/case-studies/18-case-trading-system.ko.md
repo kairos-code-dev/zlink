@@ -91,9 +91,11 @@ class TickPublishHandler :
 ```
 
 ```kotlin
-// 리스크 점검 같은 주변부는 일반 channel request (마이크로초 핫패스 밖)
+// 리스크 점검 같은 주변부는 일반 channel request (마이크로초 hot path 밖)
 val decision: RiskDecision =
-    client.request("risk", CheckLimit(order.accountId, order.notional))   // suspend 확장
+    client.requestToChannel("risk", CheckLimit(order.accountId, order.notional))
+        .submit(RiskDecision::class.java)
+        .await()
 ```
 
 ```kotlin

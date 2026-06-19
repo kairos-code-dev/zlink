@@ -5,7 +5,7 @@
 # Node Stream Connector
 
 Node Stream Connector는 `@zlink-systems/stream-connector` 패키지로 제공되는 client
-connector다. 서버 framework와 별도 모듈이며 TCP, request/reply, push dispatch, typed
+connector다. 서버 framework와 별도 모듈이며 TCP, request/reply, dispatch(Manual/Immediate), typed
 codec helper를 client code에서 사용하게 한다.
 
 ## Inbound Observer

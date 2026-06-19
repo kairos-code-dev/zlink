@@ -32,7 +32,7 @@
 
 | 카테고리 | 포함 API | 스레드 안전? | 참고 |
 |---|---|---|---|
-| **전송** | `send`, `publish`, `send_rid` | 예 — 동시 호출 가능 | 핫 패스(hot path, 고빈도 데이터 경로) 위주로 최적화 |
+| **전송** | `send`, `publish`, `send_rid` | 예 — 동시 호출 가능 | hot path(hot path, 고빈도 데이터 경로) 위주로 최적화 |
 | **설정·운영** | `bind`, `connect`, `set_option` 등 | 예 — 순차 처리 | 메시지마다 호출은 비권장 |
 | **정리** | `close`, `destroy` | 예 — 명확한 에러 코드 | 사용 중이면 `ZLINK_CLOSE_BUSY` 반환 |
 
@@ -40,7 +40,7 @@
 구독 변경, 옵션 변경도 전송 중에 마음껏 할 수 있습니다. 다 쓰고 나면
 핸들을 닫고 반환 코드를 확인하세요.
 
-### 2.1 전송 (핫 패스)
+### 2.1 전송 (hot path)
 
 다음 함수들은 같은 핸들에서 완전한 동시 호출을 허용합니다:
 
@@ -122,11 +122,12 @@ void *send_thread(void *arg)
 {
     void *socket = arg;
     char buf[] = "data";
-    for (int i = 0; i < 100000; i++)
+    for (int i = 0; i < 100000; i++) {
         zlink_msg_t part;
         zlink_msg_init_size(&part, sizeof(buf) - 1);
         memcpy(zlink_msg_data(&part), buf, sizeof(buf) - 1);
         zlink_send(socket, &part, 1, 0);  /* hot path */
+    }
     return NULL;
 }
 
@@ -154,7 +155,7 @@ void *setup_thread(void *arg)
 |---|---|---|---|
 | Socket | `send` | bind, connect, set_option 등 | `close` |
 | SPOT | `publish` | subscribe, unsubscribe 등 | `destroy` |
-| SPOT Node | *(송신 없음; 데이터 평면은 `Spot` 사용)* | bind, connect_peer 등 | `destroy` |
+| SPOT Node | *(송신 없음; data plane은 `Spot` 사용)* | bind, connect_peer 등 | `destroy` |
 | Discovery | *(없음)* | connect_registry 등 | `destroy` |
 | Registry | *(없음)* | bind, add_peer 등 | `destroy` |
 
@@ -167,7 +168,7 @@ zlink가 명확한 에러 코드를 반환합니다:
 |---|---|---|
 | 다른 스레드가 핸들 사용 중 `close` 호출 | 닫기 **거부** | `ZLINK_CLOSE_BUSY` |
 | `close` 수락 후 API 호출 | 호출 **거부** | `ZLINK_CLOSE_SHUTDOWN` (또는 해당 함수군 `*_TERMINATED`) |
-| `close`/`destroy` 두 번 호출 | 즉시 반환 | 소켓: `EALREADY`; 서비스 핸들(SPOT/Discovery/Registry): `ESHUTDOWN` |
+| `close`/`destroy` 두 번 호출 | 즉시 반환 | 소켓: 이미 닫힌 핸들은 `ZLINK_CLOSE_SHUTDOWN`(EALREADY는 close 결과 enum에 없음); 서비스 핸들: destroy 성공 시 포인터가 NULL이 되고, 같은 포인터로 재호출하면 `ZLINK_CLOSE_INVALID_HANDLE` |
 
 `ZLINK_CLOSE_BUSY` 이후에는 핸들이 정상 상태로 돌아갑니다 — 아무것도
 손상되지 않았으니 계속 쓰거나 나중에 다시 닫으면 됩니다.

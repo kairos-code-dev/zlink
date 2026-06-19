@@ -16,19 +16,21 @@ routed request/reply, Actor 기반 session dispatch를 하나의 통합 런타�
 
 | 목표 | 구현 선택 |
 |------|-----------|
-| **Spot별 물리 소켓 없음** | 모든 transport socket은 `SpotNode`가 소유한다. `Spot` facade는 논리 큐(logical queue)와 dispatch 컨텍스트만 가진다. |
+| **Spot별 물리 소켓 없음** | 모든 transport socket은 `SpotNode`가 소유한다. `Spot` 핸들은 논리 큐(logical queue)와 dispatch 컨텍스트만 가진다. |
 | **명시적 admission 경계** | 공개 발행과 routed 전송은 `SpotNode`가 소유한 송신 큐(`publish_ingress_queue`, `routed_send_queue`)에 쌓는다. 소켓 HWM 계산과 받아들일지 말지(admission) 판단을 분리해, 내부 소켓 배선이 공개 API의 오류 의미를 더럽히지 않게 한다. `fanout`은 HWM `0`을 쓰고, 원격 mesh 소켓은 auto-HWM을 쓰되 연결 수 bucket으로 peer별 pipe 예산만 줄인다. 공개 API의 backpressure 의미는 node 단위 송신 큐가 정한다. |
 | **data plane 스레드 전용 소켓** | `mesh-pub`, `fanout`, `external-router`는 `SpotNode` 전용 data plane 스레드만 접근한다. 공개 스레드는 이 소켓을 직접 건드릴 수 없어 소유권이 흩어지지 않는다. |
 | **집계 구독(aggregate subscription)** | 원격 mesh 구독은 Spot 단위가 아니라 node 단위로 reference count한다. 여러 로컬 Spot이 같은 토픽을 구독해도 원격에는 중복 구독이 전달되지 않는다. |
 | **Actor-Spot 분리** | Actor는 socket이나 inproc(프로세스 내 통신) endpoint를 소유하지 않는다. 메시지 한 조각(part)은 SpotNode의 Actor table을 거쳐 Spot의 논리 큐로 dispatch되므로, 연결을 끊지 않고도 Actor가 Spot 사이를 옮겨 다닐(join) 수 있다. |
-| **결정론적 종료** | `Spot` facade를 파괴(destroy)해도 그 뒤를 받치는 `SpotNode`가 자동으로 종료되지는 않는다. Entry Spot의 수명은 facade가 아니라 `SpotNode`에 묶인다. |
+| **결정론적 종료** | `Spot` 핸들을 파괴(destroy)해도 그 뒤를 받치는 `SpotNode`가 자동으로 종료되지는 않는다. Entry Spot의 수명은 핸들이 아니라 `SpotNode`에 묶인다. |
 
 ### 0.2 핵심 개념
 
 - **SpotNode**: 수명(lifecycle)을 책임지는 주체. transport socket, peer 연결, Actor table을 소유한다.
-- **Spot**: `SpotNode` 위에서 빌려 쓰는 facade. 여기서 facade는 실체(소켓·큐)를
-  직접 들고 있지 않고 그 위를 덮는 얇은 핸들이라는 뜻이다. 같은 논리 Spot 하나를 여러
-  facade가 가리킬 수 있고, 그것들은 모두 같은 바탕 큐(underlying queue)를 공유한다.
+- **Spot**: 실제 소켓이나 큐를 직접 들고 있지 않고, `SpotNode` 안에 있는 진짜 상태를
+  **가리키기만 하는 얇은 핸들**이다. 그래서 같은 Spot 하나를 이런 핸들 여러 개가 동시에
+  가리킬 수 있고, 그것들은 모두 같은 바탕 큐(underlying queue)를 공유한다. (이렇게 실체
+  위에 얇게 얹혀 표면 노릇만 하는 객체를 facade 패턴이라 부른다 — 코드 타입은
+  `spot_handle_t`다.)
 - **Entry Spot**: `SpotNode`당 하나씩 자동으로 만들어진다. 새로 생성된 Actor는 여기서 시작한다.
   애플리케이션은 Entry Spot에 dispatch handler를 등록해 초기 세션 처리, 인증, Actor 라우팅
   결정을 수행한다.
@@ -54,7 +56,7 @@ routed request/reply, Actor 기반 session dispatch를 하나의 통합 런타�
 | §7 | control plane(control plane) |
 | §8 | data plane 스레드와 dispatch 워커 풀 |
 | §9–10 | Actor dispatch 모델과 Entry Spot 큐 소유권 |
-| §11 | 소켓 제거 모델의 배경 |
+| §11 | Spot이 socket을 갖지 않는 이유 |
 | §12 | STREAM 세션과 Actor 바인딩 시퀀스 |
 | §13–14 | 내부 자료구조와 Actor join 수명 주기 |
 
@@ -103,18 +105,18 @@ flowchart TB
     wp --> cb
 ```
 
-`SpotNode`는 수명 주기 소유자이고, `Spot`은 그 위에서 빌려 쓰는 facade다. `Spot`을
+`SpotNode`는 수명 주기 소유자이고, `Spot`은 그 위에서 빌려 쓰는 얇은 핸들이다. `Spot`을
 닫아도 그 뒤를 받치는 `SpotNode`는 자동으로 닫히지 않는다.
 
-`Spot` facade는 물리 소켓을 소유하지 않는다. 모든 전송 소켓은 `SpotNode`가
+`Spot` 핸들은 물리 소켓을 소유하지 않는다. 모든 전송 소켓은 `SpotNode`가
 소유하며, `Spot`은 논리 dispatch 큐와 dispatch 이벤트 컨텍스트만 가진다. `Entry Spot`은
-`SpotNode`당 하나이며 `SpotNode`가 소유한다. `Entry Spot` facade는 애플리케이션이
+`SpotNode`당 하나이며 `SpotNode`가 소유한다. `Entry Spot` 핸들은 애플리케이션이
 `zlink_spot_node_entry_spot()`으로 얻어서 사용하고, `zlink_spot_destroy()`로 닫는다.
 
 ### 1.1 논리 Spot 맵과 get-or-new
 
-`SpotNode`는 논리 Spot을 routing id 색인으로 관리한다. `Spot` 핸들은 facade일
-뿐이므로, 같은 논리 Spot을 가리키는 facade가 여러 개 존재할 수 있다. 이 구조
+`SpotNode`는 논리 Spot을 routing id 색인으로 관리한다. `Spot` 핸들은 실체 위에 얹힌
+표면일 뿐이므로, 같은 논리 Spot을 가리키는 핸들이 여러 개 존재할 수 있다. 이 구조
 때문에, 명시적 room id를 가진 Spot을 확보할 때 `lookup -> zlink_spot_new() ->
 zlink_set_routing_id()` 조합으로 만들면 안 된다. 그 순서는 호출자가 내부 색인
 변경과 경합 처리까지 알아야 해서 API 경계가 얕아지기 때문이다.
@@ -122,11 +124,11 @@ zlink_set_routing_id()` 조합으로 만들면 안 된다. 그 순서는 호출�
 `zlink_spot_node_spot_get_or_new()`는 같은 `SpotNode`와 같은 Spot routing id에 대해
 논리 Spot을 새로 만들지 여부를 `SpotNode` 내부 잠금(lock) 아래에서 결정한다. 가장
 먼저 성공한 호출만 논리 상태(logical state)를 만들고 `created_out = 1`을 받는다.
-이후 성공한 호출은 같은 논리 상태를 가리키는 새 facade만 만들고 `created_out = 0`을
+이후 성공한 호출은 같은 논리 상태를 가리키는 새 핸들만 만들고 `created_out = 0`을
 받는다.
 
-스냅샷 API는 진단용 facade까지 함께 보여 줄 수 있다. 따라서 같은 논리 Spot에 대해
-여러 facade가 살아 있으면 스냅샷 행(row)이 둘 이상 보일 수 있다. 논리 Spot이 새로
+스냅샷 API는 진단용 핸들까지 함께 보여 줄 수 있다. 따라서 같은 논리 Spot에 대해
+여러 핸들이 살아 있으면 스냅샷 행(row)이 둘 이상 보일 수 있다. 논리 Spot이 새로
 생성되었는지 판단해야 하는 코드는 스냅샷 행 수가 아니라 get-or-new가 돌려준
 `created_out` 값을 기준으로 삼는다.
 
@@ -195,10 +197,9 @@ flowchart LR
 | `peer_ctrl_pub` | `PUB` | peer 제어 송신 | control 기본값 |
 | `peer_ctrl_sub` | `SUB` | peer 제어 수신 | control 기본값 |
 
-`pub-ingress-tx`, `ingress-sub`, `internal-router`, `internal-router-tx`는 제거되었다.
-이 소켓들이 맡던 준비(staging) 역할은 이제 `publish_ingress_queue`와
-`routed_send_queue`가 대신한다. `zlink_spot_node_internal_sockets()`은 이 4개 행을
-더 이상 반환하지 않는다. perf의 `Auto-HWM spotnode` 표도 이에 맞게 갱신되었다.
+`zlink_spot_node_internal_sockets()`은 위 표의 socket들을 보고한다. 발행과 routed
+전송의 staging(준비)은 socket이 아니라 `publish_ingress_queue`·`routed_send_queue`가
+맡는다.
 
 ### 2.2 router channel peer
 
@@ -302,8 +303,8 @@ routed 평면은 `external-router` 한 축으로 고정된다.
 |--------|------|------|
 | `external-router` | node 간 | peer node의 `external-router`와 ROUTER 링크로 송수신 |
 
-`internal-router`는 제거되었다. 로컬 routed 전달은 `routed_send_queue`를 거쳐,
-data plane 스레드가 대상 `Spot`의 routed 수신 큐에 직접 전달한다.
+로컬 routed 전달은 `routed_send_queue`를 거쳐, data plane 스레드가 대상 `Spot`의
+routed 수신 큐에 직접 전달한다.
 
 ### 4.1 바깥으로 내보내는 routed 전송(로컬 및 원격)
 
@@ -423,7 +424,7 @@ data plane 루프는 매 회전(iteration)마다 다음 순서로 처리한다.
 
 ### 5.4 큐 한도 계산
 
-큐 한도는 기존 `SpotNode`의 수용 HWM 계산 결과를 slot 수 기준으로 따른다. 이를 위한
+큐 한도는 `SpotNode`의 수용 HWM 계산 결과를 slot 수 기준으로 따른다. 이를 위한
 별도 공개 옵션은 없다.
 
 | 값 | 계산 |
@@ -473,8 +474,7 @@ SPOT 발행 큐 계획은 fanout이 커져도 연결당 수용 HWM을 낮추지 
 perf `Auto-HWM spotnode` 상세 표에서는 `mesh-pub`, `mesh-xsub`, `external-router`
 에만 mesh 전송 HWM이 보인다. 기본 balanced 경로에서 `MsgUnit(B)=4096`이면 연결 수
 bucket을 적용하기 전 profile 값은 `256`이고, bucket 적용 뒤의 HWM은 원격 peer 수에
-따라 더 작아질 수 있다. `pub-ingress-tx`, `ingress-sub`, `internal-router`,
-`internal-router-tx` 행은 존재하지 않는다.
+따라 더 작아질 수 있다.
 
 ## 7. control plane
 
@@ -523,8 +523,8 @@ data plane 스레드 루프는 poller와 signaler(FD)를 함께 쓴다. 세 큐�
 poller에 등록돼 있어서, 어느 큐든 비었다가 채워지면(empty→non-empty) 곧바로 깨어난다.
 할 일이 없을 때의 점검 주기(idle tick)는 100 ms(`data_plane_idle_tick_ms`)다.
 
-예전에 있던 service-data runtime의 주기적 task 의존은 완전히 없앴다. 이제 SPOT
-data plane의 실행 일정은 `SpotNode` 전용 스레드 안에서만 정해진다.
+SPOT data plane의 실행 일정은 `SpotNode` 전용 스레드 안에서만 정해진다. 외부의 주기
+task 같은 것에 기대지 않는다.
 
 ### 8.2 dispatch worker pool
 
@@ -696,24 +696,23 @@ socket은 전부 `SpotNode`가 들고 있고, 여러 `Spot`이 그것을 함께 
 Spot 안쪽의 큐에는 따로 HWM이나 크기 한계를 두지 않는다.
 
 `Entry Spot`은 `SpotNode`당 하나다. `SpotNode`를 만들 때 자동으로 생기고, `SpotNode`를
-destroy하기 전까지 살아 있다. 애플리케이션은 `zlink_spot_node_entry_spot()`으로 facade를
+destroy하기 전까지 살아 있다. 애플리케이션은 `zlink_spot_node_entry_spot()`으로 핸들을
 얻어 dispatch handler를 등록한다. Actor가 생성된 직후에 session relay 메시지가 도착하면
 Entry Spot의 dispatch queue에서 `ACTOR_READABLE` readiness가 올라간다.
 
-user Spot의 logical state는 마지막 facade가 닫힐 때 제거된다. 단, joined Actor나 pending
-join request가 남아 있으면 마지막 facade close는 `ZLINK_CLOSE_BUSY`로 실패한다. Entry
-Spot의 logical state는 facade의 reference count와 상관없이 `SpotNode`가 소유한다.
+user Spot의 logical state는 마지막 핸들이 닫힐 때 제거된다. 단, joined Actor나 pending
+join request가 남아 있으면 마지막 핸들 close는 `ZLINK_CLOSE_BUSY`로 실패한다. Entry
+Spot의 logical state는 핸들의 reference count와 상관없이 `SpotNode`가 소유한다.
 
-## 11. Spot socket 제거 모델
+## 11. Spot은 socket을 갖지 않는다
 
-예전 구조에서는 `Spot` facade나 side handle이 Spot마다 socket을 직접 만들고 inproc
-socket을 queue처럼 쓰는 부분이 있었다. 그런데 `SpotNode`가 메시지를 한 번 받아서
-logical `Spot`으로 중계하는 구조에서는, Spot마다 둔 socket HWM으로 dispatch 상태를
-나타내는 방식이 맞지 않는다. 그래서 HWM은 `SpotNode`가 소유한 transport socket의
-admission에 두고, Spot별 큐는 이미 받은 입력을 어느 dispatch context에서 처리할지
-정하는 staging(준비) 상태로만 쓴다.
+`Spot`은 자기 socket을 만들지 않는다. `SpotNode`가 메시지를 한 번 받아서 logical
+`Spot`으로 중계하는 구조라, Spot마다 socket을 두고 그 HWM으로 dispatch 상태를 나타내는
+방식은 맞지 않는다. 그래서 HWM은 `SpotNode`가 소유한 transport socket의 admission에
+두고, Spot별 큐는 이미 받은 입력을 어느 dispatch context에서 처리할지 정하는
+staging(준비) 상태로만 쓴다.
 
-목표 구조는 다음과 같다.
+구조는 다음과 같다.
 
 ```mermaid
 flowchart TB
@@ -732,7 +731,7 @@ flowchart TB
   Logical --> Runtime
 ```
 
-`Spot` facade는 `spot_pub_t`, `spot_sub_t`, routed receive socket 같은 물리 socket을
+`Spot` 핸들은 `spot_pub_t`, `spot_sub_t`, routed receive socket 같은 물리 socket을
 직접 갖지 않는다. `Spot`에 필요한 것은 logical state를 가리키는 reference뿐이다.
 
 ## 12. STREAM session과 Actor binding
@@ -853,7 +852,7 @@ Spot으로 되돌리는 abort이고, 성공 뒤에 끊기면 target Actor의 Ent
 
 ### 13.1 Spot logical queue (`spot_logical_state_t`)
 
-`spot_logical_state_t`는 `Spot` facade(`spot_handle_t`)가 `shared_ptr`로 공유하는
+`spot_logical_state_t`는 `Spot` 핸들(`spot_handle_t`)이 `shared_ptr`로 공유하는
 logical state다. Entry Spot은 `spot_node_handle_state_t.entry_spot`이 소유하고,
 user Spot은 `spots_by_rid` map에 보관한다.
 
@@ -946,7 +945,7 @@ Actor readable dispatch는 `actor_handle_t.joined_spot_state`의 dispatch handle
 `const zlink_actor_ref_t*`다.
 
 Actor join dispatch는 `joins.queues`에 request가 추가될 때 target Spot dispatch
-handler에 `ACTOR_JOIN_READABLE` readiness를 올린다. subject는 target Spot facade다.
+handler에 `ACTOR_JOIN_READABLE` readiness를 올린다. subject는 target Spot 핸들이다.
 
 ### 13.5 Actor runtime 상태 목록
 
@@ -958,10 +957,10 @@ Actor, session, route, join, lifecycle 상태는 모두 프로세스마다 하�
 | 멤버 | 타입 | 역할 |
 |------|------|------|
 | `mutex` | `std::timed_mutex` | runtime 전체를 보호하는 단일 잠금. 테이블 변경 동안만 보유하고 I/O 중에는 해제한다 |
-| `nodes` | `actor_node_registry_t` | node와 Spot facade 추적 (아래 하위 행 참고) |
+| `nodes` | `actor_node_registry_t` | node와 Spot 핸들 추적 (아래 하위 행 참고) |
 | `nodes.nodes_by_rid` | `map<string, spot_node_t*>` | node rid → SpotNode 역방향 조회. `SpotNode` 생성 시 추가, destroy 시 제거 |
 | `nodes.known_nodes` | `set<spot_node_t*>` | live `SpotNode` handle. node 포인터 use-after-free 검증에 사용 |
-| `nodes.known_spots` | `set<spot_handle_t*>` | live Spot facade. handle use-after-free 검증에 사용 |
+| `nodes.known_spots` | `set<spot_handle_t*>` | live Spot 핸들. handle use-after-free 검증에 사용 |
 | `sessions` | `actor_session_state_t` | STREAM session binding과 stream→owner map (아래 하위 행 참고) |
 | `sessions.bindings` | `map<session_binding_key_t, session_binding_t>` | `(stream, session rid)` 복합키. 한 session의 actor id별 Actor 항목을 담는다. remote join commit의 compare-and-swap 트랜잭션 지점 |
 | `sessions.stream_owners` | `map<void*, spot_node_t*>` | STREAM handle → session owner SpotNode(ActorGateway) |
@@ -990,7 +989,7 @@ Spot owner topology row는 owner node의 endpoint와 logical Spot rid, 그리고
 
 외부 ROUTER나 backend Spot이 Actor id를 출발점으로 메시지를 보낼 때, core 내부에서
 Actor queue로 곧장 전달하지는 않는다. 대신 Discovery가 `actor_id`를 current Spot route로
-풀어 주고, caller는 기존 Spot routed transport에 `node_rid + current_spot_rid`를 넘긴다.
+풀어 주고, caller는 Spot routed transport에 `node_rid + current_spot_rid`를 넘긴다.
 그렇게 target Spot에 도착한 payload를 어떤 Actor로 처리할지는 상위 프로토콜의 몫이다.
 
 `queued_join_request_t`는 request와 reply payload를 owned multipart parts로

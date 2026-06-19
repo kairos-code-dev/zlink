@@ -109,7 +109,7 @@ class ChatSession(
 
     override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: Message) {
         if (header.name() == "auth") {
-            val req = payload.decode(AuthReq::class.java)
+            val req = StreamPayloads.decode(header, payload, AuthReq::class.java)
             val actor = actors.getOrCreate(req.userId, "chat-user").await()
             user = context.actors().bind(actor).await()
             context.client().reply(AuthOk()).submit().await()

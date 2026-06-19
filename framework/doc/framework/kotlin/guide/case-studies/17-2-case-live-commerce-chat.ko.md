@@ -13,7 +13,7 @@
 > - STREAM 이 viewer 연결을 받고 stream room 으로 packet 을 보낸다.
 > - stream SPOT 이 slow mode, moderator action, pinned message, lightweight fan-out 을
 >   직렬 처리한다.
-> - **그대로 남는 것**: 영상 송출, 상품/결제, 메시지 장기 저장, 대규모 CDN, abuse 분석.
+> - **그대로 남는 것**: 영상 전송, 상품/결제, 메시지 장기 저장, 대규모 CDN, abuse 분석.
 
 ## 1. 도메인 — 라이브 채팅의 진짜 난제
 
@@ -165,7 +165,7 @@ class LiveChatSession(
 
     override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: Message) {
         if (header.name() == "auth") {
-            val req = payload.decode(AuthViewerReq::class.java)
+            val req = StreamPayloads.decode(header, payload, AuthViewerReq::class.java)
             val actor = actors.getOrCreate(req.viewerId, "viewer").await()
             viewer = context.actors().bind(actor).await()
             context.client().reply(AuthViewerOk()).submit().await()

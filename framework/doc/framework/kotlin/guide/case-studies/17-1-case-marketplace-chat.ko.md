@@ -160,7 +160,7 @@ class MarketplaceChatSession(
 
     override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: Message) {
         if (header.name() == "auth") {
-            val req = payload.decode(AuthReq::class.java)
+            val req = StreamPayloads.decode(header, payload, AuthReq::class.java)
             val actor = actors.getOrCreate(req.userId, "chat-user").await()
             user = context.actors().bind(actor).await()
             context.client().reply(AuthOk()).submit().await()
@@ -173,14 +173,26 @@ class MarketplaceChatSession(
 ```
 
 ```kotlin
-class UserActor(private val context: ZLinkActorContext) : ZLinkActor {
+class UserActor(
+    private val actorId: String,
+    private val context: ZLinkActorContext,
+) : ZLinkActor {
+    override fun actorId(): String = actorId
+    override fun context(): ZLinkActorContext = context
+
     fun push(message: ChatMessage): CompletionStage<Void> =
         context.boundSession().send(message).submit()
 }
 ```
 
 ```kotlin
-class UserActor(private val context: ZLinkActorContext) : ZLinkActor {
+class UserActor(
+    private val actorId: String,
+    private val context: ZLinkActorContext,
+) : ZLinkActor {
+    override fun actorId(): String = actorId
+    override fun context(): ZLinkActorContext = context
+
     fun push(message: ChatMessage): CompletionStage<Void> =
         context.boundSession().send(message).submit()
 }

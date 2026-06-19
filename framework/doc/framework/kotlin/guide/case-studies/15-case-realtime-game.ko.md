@@ -118,7 +118,7 @@ class GameSession(
 
     override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: Message) {
         if (header.name() == "auth") {
-            val req = payload.decode(AuthReq::class.java)
+            val req = StreamPayloads.decode(header, payload, AuthReq::class.java)
             val player = actors.getOrCreate(req.playerId, "player").await()
             actor = context.actors().bind(player).await()
             context.client().reply(AuthOk()).submit().await()

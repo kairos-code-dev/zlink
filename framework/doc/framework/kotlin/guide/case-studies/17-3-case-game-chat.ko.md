@@ -170,7 +170,7 @@ class GameChatSession(
 
     override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: Message) {
         if (header.name() == "auth") {
-            val req = payload.decode(AuthPlayerReq::class.java)
+            val req = StreamPayloads.decode(header, payload, AuthPlayerReq::class.java)
             val actor = actors.getOrCreate(req.playerId, "player").await()
             player = context.actors().bind(actor).await()
             context.client().reply(AuthPlayerOk()).submit().await()
@@ -183,14 +183,26 @@ class GameChatSession(
 ```
 
 ```kotlin
-class PlayerActor(private val context: ZLinkActorContext) : ZLinkActor {
+class PlayerActor(
+    private val actorId: String,
+    private val context: ZLinkActorContext,
+) : ZLinkActor {
+    override fun actorId(): String = actorId
+    override fun context(): ZLinkActorContext = context
+
     fun pushChat(message: GameChatMessage): CompletionStage<Void> =
         context.boundSession().send(message).submit()
 }
 ```
 
 ```kotlin
-class PlayerActor(private val context: ZLinkActorContext) : ZLinkActor {
+class PlayerActor(
+    private val actorId: String,
+    private val context: ZLinkActorContext,
+) : ZLinkActor {
+    override fun actorId(): String = actorId
+    override fun context(): ZLinkActorContext = context
+
     fun pushChat(message: GameChatMessage): CompletionStage<Void> =
         context.boundSession().send(message).submit()
 }

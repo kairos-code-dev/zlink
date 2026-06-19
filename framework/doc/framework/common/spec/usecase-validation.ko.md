@@ -34,7 +34,7 @@ use case를 설명할 틀을 갖추었는지를 본다.
 | [Cache Invalidation And Config Refresh](../use-cases/05-cache-invalidation-and-config-refresh.ko.md) | publish-subscribe | 운영성 이벤트 용도까지 무리 없이 설명 가능 | 만족 | 일반 메시징 시스템 핵심 use case |
 | [Stage State Sync](../use-cases/06-stage-state-sync.ko.md) | publish-subscribe | `SPOT` 기반 설명과 subject/topic 방향이 연결됨 | 만족 | `playhouse`와 직접 연결됨 |
 | [Real Time Notification Fanout](../use-cases/07-real-time-notification-fanout.ko.md) | publish-subscribe | fan-out 모델로 설명 가능하지만 target grouping과 subscriber 정책이 덜 정해짐 | 부분 만족 | front 계층 use case 보강 필요 |
-| [Scatter Gather Query](../use-cases/08-scatter-gather-query.ko.md) | scatter-gather | interaction-model에 항목을 추가했지만 aggregate result와 timeout 정책이 부족함 | 부분 만족 | 고급 request 조합 모델 필요 |
+| [Scatter Gather Query](../use-cases/08-scatter-gather-query.ko.md) | scatter-gather | interaction-model에 항목은 있으나 aggregate result와 timeout 정책이 부족함 | 부분 만족 | 고급 request 조합 모델 필요 |
 | [Workflow Orchestration](../use-cases/09-workflow-orchestration.ko.md) | request-response + publish-subscribe | header metadata 방향은 있으나 보상 처리와 장기 상관관계 모델은 미정 | 부분 만족 | metadata와 tracing 설계 필요 |
 
 ## 4. 현재 스펙의 결론

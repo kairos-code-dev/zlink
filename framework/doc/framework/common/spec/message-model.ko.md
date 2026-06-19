@@ -15,16 +15,16 @@
 요청/응답과 이벤트를 같은 큰 틀 안에서 다루기 좋다. 특히 payload를 header와 함께
 하나의 직렬화된 객체로 다시 감싸지 않는다는 점이 이 문서의 핵심 계약이다.
 
-다만 중요한 원칙이 하나 있다. application이 직접 호출하는 framework messaging API는
-payload object를 직접 받지 않고, 이미 직렬화와 metadata 확정이 끝난 `Message`를
-받는다. request/reply handler 시그니처는 dispatch가 끝난 뒤 typed request payload를
-받을 수 있지만, outbound `send/request/reply/join` 호출부가 domain object나 generated
-object를 framework messaging API에 바로 넘기지는 않는다.
+application이 직접 호출하는 framework messaging 빌더 API(`requestToChannel`/`sendToChannel`/
+`publish` 등)는 typed payload object를 받고, 등록된 serializer/codec registry가 내부에서
+byte payload와 packet name을 확정해 `Message`로 변환한다. request/reply handler도 dispatch가
+끝난 뒤 typed payload를 받는다. (이미 만들어진 `Message`를 직접 운반하는 `Message` 인자
+저수준 표면도 함께 있다.)
 
-따라서 payload object를 byte payload로 바꾸고 packet name을 확정하는 책임은
-`Message.from(...)`, `Message.From(...)`, `message_t::from(...)` 또는 언어별 codec
-extension의 같은 의미 factory에 둔다. framework messaging API는 만들어진 `Message`를
-운반하고, 등록된 handler metadata로 수신 payload를 typed handler 인자로 decode한다.
+payload object를 byte payload로 바꾸고 packet name을 확정하는 책임은 등록된
+serializer/codec registry에 둔다. `Message`를 직접 만들어 넘길 때는 `Message.from(...)`,
+`Message.From(...)`, `message_t::from(...)` 같은 언어별 factory를 쓴다. 수신 payload는
+등록된 handler metadata로 typed handler 인자로 decode한다.
 
 ## 2. 기본 구조 초안
 

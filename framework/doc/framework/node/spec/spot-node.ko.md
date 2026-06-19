@@ -4,10 +4,9 @@
 
 이 문서는 `Node.js` framework 의 `SpotNode` 설정 중 core route 계약과 직접
 맞물리는 부분, 그리고 spot manager 표면(create / get / list / close)을 정리한다.
-의미·동작은 `framework/languages/dotnet` 의 정식 계약과 동일하며, 표면만 NestJS /
-TypeScript 로 옮긴다. dotnet 표기와 어긋나면 dotnet **코드**가 최종 기준이다.
-Spot handler 작성법과 packet dispatch 규칙은 [nestjs-spot.ko.md](nestjs-spot.ko.md)
-를 기준으로 한다.
+표면은 NestJS / TypeScript 모양이다. 표기와 어긋나면 `framework/languages/node`
+코드가 기준이다. Spot handler 작성법과 packet dispatch 규칙은
+[nestjs-spot.ko.md](nestjs-spot.ko.md)를 기준으로 한다.
 
 이 문서대로 구현하면 .NET 버전과 동일한 SpotNode 동작이 나온다.
 
@@ -93,7 +92,7 @@ NestJS DI 로 생성자 주입한다(`ZLinkChannelClient` 등 다른 outbound cl
 ```ts
 @Injectable()
 export class StageService {
-  constructor(private readonly spotManager: ZLinkSpotManager) {}
+  constructor(@Inject(ZLINK_SPOT_MANAGER) private readonly spotManager: ZLinkSpotManager) {}
 
   async openStage(): Promise<string> {
     const result = await this.spotManager.create(StageSpot);

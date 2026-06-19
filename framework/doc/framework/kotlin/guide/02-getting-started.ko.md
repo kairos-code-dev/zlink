@@ -13,7 +13,7 @@ dependencies {
     implementation("systems.zlink:zlink-framework-core")
     implementation("systems.zlink:zlink-framework-spring-boot-starter")
     implementation("systems.zlink:zlink-framework-kotlin")
-    implementation("systems.zlink:zlink-binding")
+    implementation("systems.zlink:zlink")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
 }
 ```
@@ -29,8 +29,9 @@ public contract로 노출하지 않는다. 애플리케이션 코드는 `ZLinkCl
 
 ### coroutine handler 켜기
 
-`suspend` handler를 쓰려면 configurer에서 coroutine invoker를 한 번 켠다. 켜지 않으면
-suspend handler가 등록되지 않는다.
+`suspend` handler 인터페이스는 scanner가 직접 인식해 package scan으로 등록한다.
+`useCoroutineHandlers(...)`는 등록을 켜는 스위치가 아니라, suspend handler를 실행할
+coroutine dispatcher/scope를 지정하는 설정이다.
 
 ```kotlin
 import kotlinx.coroutines.Dispatchers

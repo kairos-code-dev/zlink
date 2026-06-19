@@ -147,7 +147,8 @@ Courier A 는 `timeout-reassign` mode(`delivery-success` 는 수락하고 `deliv
 - client 는 `SubscribeDelivery` 후 `SubscribeDeliveryAccepted` 의 `DeliveryId` 를 확인한다.
 - `delivery-success` 는 `Assigned → Accepted → PickedUp → Delivered` 순서로 도착한다.
 - `delivery-reassign` 은 `Assigned → Reassigned → Accepted → PickedUp → Delivered` 순서로 도착한다.
-- 재배정 건의 `Accepted`/`PickedUp`/`Delivered` 가 `courier-b` 처리임을 검증한다.
+- 재배정 건의 `Reassigned`/`Accepted`/`Delivered` 가 `courier-b` 처리임을 검증한다
+  (`PickedUp` 의 courier 는 client 가 아니라 server evidence 가 확인한다).
 - server evidence check(`ServerAssertionReq`)가 두 delivery 의 상태 순서를 누락 없이
   기록했는지 확인한다.
 

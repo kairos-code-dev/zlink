@@ -1,6 +1,6 @@
 [문서 목록](../../README.ko.md) | [이전: 케이스 — 실시간 멀티플레이 게임](15-case-realtime-game.ko.md) | [다음: 케이스 — 채팅·메시징 플랫폼](17-case-chat-messaging.ko.md)
 
-# 케이스 — 라이드헤일링 실시간 디스패치
+# 케이스 — 라이드헤일링 실시간 dispatch
 
 > [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
 > 대량 위치 fan-out + 지역(zone) 단위 매칭을 다루며, **geo-index·영속 이력은
@@ -12,7 +12,7 @@
 > - zone SPOT 이 지역 단위 배정을 직렬 처리해 배정 분산 락을 없앤다.
 > - **그대로 남는 것**: 근접 질의(Redis GEO)와 위치 이력 영속(Kafka)은 그대로다.
 
-## 1. 도메인 — 실시간 디스패치의 진짜 난제
+## 1. 도메인 — 실시간 dispatch의 진짜 난제
 
 - **고처리량 위치 ingestion.** 운전자 앱이 4–5초마다 위치를 보낸다. 500만 운전자면
   분당 ~100만 업데이트가 영속 연결로 쏟아진다.
@@ -77,9 +77,9 @@ export class DriverSession implements ZLinkSession {
   ) {}
 
   async onDispatch(header: ZlinkStreamHeader, payload: Message): Promise<void> {
-    const loc = payload.decode<DriverLocation>();
+    const loc = JSON.parse(payload.getString()) as DriverLocation;
     this.geo.update(loc);
-    await this.feed.publish('driver.location', loc).submit();
+    await this.feed.publishToChannel('loc.events', 'driver.location', loc).submit();
   }
 }
 ```
@@ -93,7 +93,7 @@ export class AssignRideHandler
   async handle(
     spot: ZoneSpot,
     req: AssignRide,
-    context: ZLinkSpotRequestContext,
+    context: ZLinkHandlerContext,
   ): Promise<RideAssigned> {
     const candidates = await this.geo.nearby(req.lat, req.lng, 2000);
     return spot.assign(candidates, req.riderId);

@@ -8,11 +8,10 @@
 
 # ZLink Framework Node.js Behavior Matrix
 
-> 이 문서의 **동작(behavior) 행은 백엔드와 무관하며 .NET 버전과 완전히
-> 동일하다.** Node.js / NestJS / TypeScript 표면(decorator, options 키, TS 타입
-> 등)만 옮겼다. 같은 channel/packet 으로 붙으면 .NET 서비스와 Node 서비스가
-> 동일한 판정과 동일한 런타임 동작을 보여야 한다. 표기와 코드가 어긋나면 dotnet
-> **코드**(`framework/languages/dotnet/src`)가 기능의 최종 기준이다. 번역 규칙은
+> 이 문서의 **동작(behavior) 행은 백엔드와 무관하다.** Node.js / NestJS /
+> TypeScript 표면(decorator, options 키, TS 타입 등)이 기준이며, 같은 channel/packet
+> 으로 붙으면 다른 언어 서비스와도 동일한 판정과 런타임 동작을 보인다. 표기와 코드가
+> 어긋나면 `framework/languages/node` 코드가 기준이다. 번역 규칙은
 > [표면 매핑 정책](dotnet-to-node-surface-mapping.ko.md)이 소유한다.
 
 ## 1. 목적
@@ -62,8 +61,8 @@
 | `handlerGroups: ['...']`로 명시한 그룹의 handler만 그 channel에서 dispatch | 허용 | handler class decorator 의 group 과 channel 매핑을 조합해서 노출 범위를 제한한다 |
 | 같은 channel에 여러 그룹 매핑 | 허용 | `handlerGroups`에 여러 그룹을 넣어 그룹들의 합집합을 한 채널에 노출한다 |
 | `handlerGroups`가 가리키는 그룹에 handler 0개 | 비허용 | startup validation 오류 |
-| client-server channel에서 `spotRouteEgress`만 등록하고 client 역할 없음 | 비허용 | routed Spot egress 는 local client DEALER 가 필요하다 |
-| route mesh channel에서 `spotRouteEgress` 등록 | 허용 | target SpotNode ingress channel 로 routed Spot relay 를 보낼 수 있다. 실제 target ROUTER 연결과 target ROUTER `RoutingId` metadata 가 모두 필요하다 |
+| client-server channel에서 `acceptSpotRoutesFromChannel`만 등록하고 client 역할 없음 | 비허용 | routed Spot egress 는 local client DEALER 가 필요하다 |
+| route mesh channel에서 `acceptSpotRoutesFromChannel` 등록 | 허용 | target SpotNode ingress channel 로 routed Spot relay 를 보낼 수 있다. 실제 target ROUTER 연결과 target ROUTER `RoutingId` metadata 가 모두 필요하다 |
 
 ## 4. Spot Capability Matrix
 
@@ -74,8 +73,8 @@
 | `.addSpotNode(name)` | 허용 | 활성 SPOT[^spot] channel view와 node 런타임을 함께 소유한다 |
 | spot mesh에 `discovery` 없음 | 허용 | top-level discovery endpoint 를 상속하거나 local-only mesh 로 시작한다 |
 | spot mesh + 빈 `discovery` + local-only spot factory | 허용 | discovery endpoint 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
-| top-level standalone node 등록 | 비허용 | public 등록 표면에서 제거되었다. SPOT node 는 항상 spot mesh 안에서 등록한다 |
-| 분리된 SPOT discovery 등록과 node 등록 | 비허용 | public 등록 표면에서 제거되었다. discovery 와 node 집합은 spot mesh가 함께 소유한다 |
+| top-level standalone `addSpotNode(name)` 등록 | 허용 | spot mesh 없이도 단독 SpotNode 를 등록·검증한다 |
+| 분리된 SPOT discovery 등록과 node 등록 | 비허용 | discovery 와 node 집합은 spot mesh가 함께 소유한다 |
 | 같은 mesh에 `nodes` 여러 개 | 허용 | 같은 channel view를 공유하는 여러 SpotNode를 등록한다 |
 | 같은 mesh의 router-capable node를 stream ActorGateway 로 참조 | 허용 | session relay ingress 를 일반 SpotNode router 역할로 시작한다 |
 | 같은 `SpotNode`에 같은 `spotRid` factory 중복 등록 | 비허용 | startup validation 오류 |
@@ -102,7 +101,7 @@
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
 | `.addRouteMeshChannel(name)` + 전역 `.useDiscovery()` 있음 | 허용 | discovery 기반 routed channel node를 만든다 |
-| `.addRouteMeshChannel(name).enableClient(endpoint)` 있음 | 허용 | manual 기반 routed channel node를 만든다 |
+| `.addRouteMeshChannel(name).enableRouter(...).connect(endpoint)` 있음 | 허용 | manual 기반 routed channel node를 만든다 |
 | `routeMesh` channel + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | routed channel bind endpoint 없음 | 비허용 | startup validation 오류 |
 | 같은 routed channel에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |

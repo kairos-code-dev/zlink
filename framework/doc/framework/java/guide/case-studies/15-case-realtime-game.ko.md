@@ -96,7 +96,7 @@ node.addSpotFactory(MatchSpot.class);
 @Component
 public final class PlaceMarkHandler implements ZLinkSpotActorRequestHandler<MatchSpot, PlayerActor, PlaceMark, PlaceMarkResult> {
     @Override
-    public PlaceMarkResult handle(MatchSpot spot, PlayerActor actor, ZLinkSpotActorRequestContext context, PlaceMark req) {
+    public PlaceMarkResult handle(MatchSpot spot, PlayerActor actor, ZLinkSpotActorRequestContext context, PlaceMark req, CancellationToken cancellationToken) {
         return spot.placeMark(actor.actorId(), req.cell());
     }
 }
@@ -120,7 +120,7 @@ public final class GameSession implements ZLinkSession {
     @Override
     public void onDispatch(ZLinkStreamHeader header, Message payload) {
         if ("auth".equals(header.name())) {
-            AuthReq req = payload.decode(AuthReq.class);
+            AuthReq req = StreamPayloads.decode(header, payload, AuthReq.class);
             actor = actors.getOrCreate(req.playerId(), "player")
                 .thenCompose(actor -> context.actors().bind(actor))
                 .thenCompose(bound -> context.client().reply(new AuthOk()).submit().thenApply(ignored -> bound))
@@ -153,7 +153,7 @@ public final class GameSession implements ZLinkSession {
 | 연결 수용 | WebSocket gateway 직접 구현 | STREAM `ZLinkSession`(framework 소유) |
 | 재접속 라우팅 | Redis 세션 스토어 get/set | `bind`(actorId 멱등) |
 | 방 직렬성 | per-room `lock`/actor runtime | SPOT 단일 실행 큐(lock 없음) |
-| 입력 처리 | `room.PlaceMark(...)` (lock 안) | `ZLinkSpotActorRequestHandler.HandleAsync` |
+| 입력 처리 | `room.PlaceMark(...)` (lock 안) | `ZLinkSpotActorRequestHandler.handle` |
 | 연결/로직 분리 | gateway↔게임노드 라우팅 직접 | session actor dispatch |
 
 ## 5. 아키텍처 비교 — 컴포넌트와 메시지 흐름

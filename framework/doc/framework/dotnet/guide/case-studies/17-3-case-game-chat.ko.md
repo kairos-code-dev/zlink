@@ -171,6 +171,10 @@ public sealed class GameChatSession(IZLinkSessionContext context, IZLinkActorMan
     public IZLinkSessionContext Context { get; } = context;
     private IZLinkSessionActor? _player;
 
+    public ValueTask OnConnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;
+    public ValueTask OnDisconnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;
+    public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken ct) => ValueTask.CompletedTask;
+
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
         Message payload,
@@ -191,8 +195,9 @@ public sealed class GameChatSession(IZLinkSessionContext context, IZLinkActorMan
 ```
 
 ```csharp
-public sealed class PlayerActor(IZLinkActorContext context) : IZLinkActor
+public sealed class PlayerActor(string actorId, IZLinkActorContext context) : IZLinkActor
 {
+    public string ActorId { get; } = actorId;
     public IZLinkActorContext Context { get; } = context;
 
     public ValueTask PushChatAsync(GameChatMessage message, CancellationToken ct)

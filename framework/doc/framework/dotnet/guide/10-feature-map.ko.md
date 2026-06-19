@@ -13,7 +13,7 @@
 |------|------|
 | **낮음** | handler 1개 + channel 등록 수준. 가이드만으로 도입 가능 |
 | **중간** | lifecycle/factory/등록 조합을 이해해야 함 |
-| **높음** | 분산 토폴로지·세션 라우팅 결정이 필요 |
+| **높음** | 분산 토폴로지·session routing 결정이 필요 |
 
 ## 2. 기능 × 난이도 × 언제 쓰나
 
@@ -67,7 +67,7 @@ flowchart TD
 
 | 샘플 | 핵심 기능 묶음 | codec | 케이스 스터디 | deep-dive 문서 |
 |------|----------------|:-----:|---------------|----------------|
-| TicTacToe | 수동 endpoint 직접 연결, STREAM auth, actor game join | MessagePack | [15 실시간 게임](case-studies/15-case-realtime-game.ko.md) | [TicTacToe](samples/tictactoe-game-sample.ko.md) |
+| TicTacToe | 수동 endpoint 직접 연결, STREAM auth, actor game join | JSON | [15 실시간 게임](case-studies/15-case-realtime-game.ko.md) | [TicTacToe](samples/tictactoe-game-sample.ko.md) |
 | Bingo | Registry/Discovery 분리 gateway, Entry Spot, room Spot timer, bound push | Protobuf | [15 실시간 게임](case-studies/15-case-realtime-game.ko.md) | [Bingo](samples/bingo-game-sample.ko.md) |
 | SupportChat | conversation Spot, reconnect 이전성, idle timer→close, bound push | JSON | [17 채팅·메시징](case-studies/17-case-chat-messaging.ko.md) | [SupportChat](samples/supportchat-sample.ko.md) |
 | DeliveryDispatch | HTTP intake, timeout 재배정, status fanout, delivery Spot, 고객 push | JSON | [16 라이드헤일링](case-studies/16-case-ride-hailing.ko.md) | [DeliveryDispatch](samples/deliverydispatch-sample.ko.md) |

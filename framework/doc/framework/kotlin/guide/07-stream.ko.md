@@ -48,8 +48,9 @@ class GameSession(
     override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: Message) {
         when (header.name()) {
             "ClientInput" -> {
-                val input = payload.decode(ClientInput::class.java)
-                channels.send("play", ForwardInputCommand(input))   // suspend 확장
+                // StreamPayloads는 codec으로 payload를 푸는 app-side helper(샘플 참고)
+                val input = StreamPayloads.decode(header, payload, ClientInput::class.java)
+                channels.sendToChannel("play", ForwardInputCommand(input)).submit().await()
             }
             "Ping" -> context.client().reply(Pong()).submit().await()
             else -> return
@@ -64,7 +65,7 @@ class GameSession(
 |------|------|
 | `client().send(msg).submit().await()` / `client().reply(msg).submit().await()` | client로 push / 요청에 응답 |
 | `actors().bound()` / `actors().bind(...)` / `actors().find(...)` | actor로 relay([06-actor-session](06-actor-session.ko.md)) |
-| `close()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
+| `close()` | session context의 close hook (현재 구현은 완료된 future를 반환하는 no-op) |
 
 다른 서비스로 channel send/request를 보내야 할 때는 session 생성자에서
 `ZLinkClient`를 함께 주입받아 `send(...)`/`request<T>(...)` suspend 확장을 호출한다. 이
@@ -114,6 +115,7 @@ val state: GameStateNotify =
     connector.waitFor<GameStateNotify>()
         .timeout(Duration.ofSeconds(5))
         .await()
+        .payload()   // await는 ZLinkStreamMessage<GameStateNotify>를 반환한다
 ```
 
 - URI scheme으로 transport가 추론된다: `tcp://`, `tls://`, `ws://`, `wss://`.

@@ -51,9 +51,10 @@ public contract 를 안정적으로 얹는 것을 목표로 한다. 구체적으
 - `RoutingId`
 - `Message`
 - `SendFlags`
+- `ActorRef`
 
 이 타입들은 특정 runtime 객체가 아니다. transport identity[^transport-identity],
-payload, submit option 처럼 의미가 분명한 기초 primitive 에 해당한다. 즉 나중에
+payload, submit option, actor handle 처럼 의미가 분명한 기초 primitive 에 해당한다. 즉 나중에
 backend 가 교체되더라도 같은 의미를 유지하도록
 compatibility layer[^compatibility-layer] 를 끼워 줄 수 있는 종류다.
 

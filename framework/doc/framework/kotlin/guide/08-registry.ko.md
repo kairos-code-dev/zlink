@@ -64,13 +64,13 @@ warm-up 확인, 관리 화면에 쓴다. controller는 `suspend fun`으로 두�
 @RestController
 class TopologyController(private val registry: ZLinkRegistryQuery) {
     @GetMapping("/admin/topology")
-    suspend fun topology(): List<RegistryTopologyEntry> =
+    suspend fun topology(): List<ZLinkRegistryTopologyEntry> =
         registry.topology().await()
 
     @GetMapping("/health")
-    suspend fun health(): ResponseEntity<RegistryStatus> {
+    suspend fun health(): ResponseEntity<ZLinkRegistryStatus> {
         val status = registry.status().await()
-        return if (status.isActive) ResponseEntity.ok(status)
+        return if (status.state == RegistryState.ACTIVE) ResponseEntity.ok(status)
         else ResponseEntity.status(503).build()
     }
 }
@@ -102,8 +102,8 @@ client가 좁은 이유는 하부 C API가 topology snapshot만 지원하기 때
 ## 5. Hot path
 
 일반 request hot path는 registry query를 직접 호출하지 않는다. 각 channel/Spot
-runtime의 discovery view가 peer 선택을 담당한다. Registry를 key-value 저장소로
-노출하는 것도 아니다. Redis/DB가 필요하면 custom resolver/store를 등록한다.
+runtime의 discovery view가 peer 선택을 담당한다. Registry는 key-value 저장소가 아니다.
+SPOT owner route를 외부 저장소로 풀어야 할 때만 custom Spot remote address resolver를 등록한다.
 
 ## 6. 더 보기
 

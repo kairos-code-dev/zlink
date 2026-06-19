@@ -23,8 +23,9 @@ framework는 Entry Spot routing id 설정을 `SpotNode` builder에서 제공한�
 ```
 
 `ConfigureEntrySpot(...)`은 `AddEntrySpot<TEntrySpot>()`과 별개다.
-`AddEntrySpot<TEntrySpot>()`은 Entry Spot에서 실행할 handler registry 타입을
-등록한다. `ConfigureEntrySpot(...)`은 handler 타입 등록 여부와 관계없이 native
+`AddEntrySpot<TEntrySpot>()`은 Entry Spot 구현 타입(`TEntrySpot : IZLinkEntrySpot`)을
+등록한다. actor packet handler 는 그 Entry Spot 의 `Configure()` 에서 등록한다.
+`ConfigureEntrySpot(...)`은 Entry Spot 타입 등록 여부와 관계없이 native
 Entry Spot facade의 설정을 적용한다.
 
 ## 적용 순서
@@ -32,28 +33,27 @@ Entry Spot facade의 설정을 적용한다.
 framework는 Entry Spot routing id를 native SpotNode가 bind되기 전에 적용한다.
 core는 SpotNode bind 이후 Entry Spot rid 변경을 잠그기 때문에 이 순서가 필요하다.
 
-1. `Node.EntrySpot()`으로 native Entry Spot facade를 얻는다.
-2. `ConfigureEntrySpot(...)`에서 `RoutingId`가 설정되어 있으면
-   `entrySpot.SetRoutingId(...)`를 호출한다.
-3. SpotNode를 bind한다.
-4. discovery, route channel, publisher 같은 node 역할을 붙인다.
-5. Entry Spot activation을 만든다.
-6. Entry Spot dispatch pump를 붙인다.
-7. 이후 Actor 생성과 Actor remote address publish는 설정된 Entry Spot rid를 사용한다.
+1. `ApplyEntrySpotRoutingIdBeforeBind()`로 `ConfigureEntrySpot(...)`에 설정된
+   `RoutingId`를 native Entry Spot facade(`entrySpot.SetRoutingId(...)`)에 적용한다.
+2. router/pub bind endpoint를 설정한다(`SetRouterBind`/`SetPubBind`).
+3. discovery, manual peer, accepted spot route channel, publisher 같은 node 역할을 붙인다.
+4. `InitializeEntrySpotAsync()`로 Entry Spot 을 초기화한다(activation·dispatch pump 포함).
+5. 이후 생성되는 Actor 는 설정된 Entry Spot rid 를 사용한다.
 
 이 순서는 Actor가 생성되기 전에 Entry Spot rid가 정해지도록 하기 위한 것이다.
-Actor remote address sync가 켜져 있으면 Entry Spot에 있는 Actor의 `CurrentSpotRid`는 설정된
-Entry Spot rid와 같아야 한다.
+
+> **설계상 모델 — 미구현.** Actor remote address publish/sync 와
+> Actor remote location(`CurrentSpotKind`/`CurrentSpotRid`)은 현재 `.NET` framework
+> 표면에 없다. 구현된 remote address 표면은 아래 `ZLinkSpotRemoteAddress` 다.
 
 ## Route 의미
 
 framework가 core discovery route를 노출할 때 Entry Spot과 user Spot을 구분한다.
+구현된 표면은 `ZLinkSpotRemoteAddress`(`TargetNodeRid`, `SpotRid`, `SpotKind`)다.
 
-- Actor remote location의 `CurrentSpotKind`가 `Entry`이면 `CurrentSpotRid`는 Entry
-  Spot rid다.
-- Actor remote location의 `CurrentSpotKind`가 `User`이면 `CurrentSpotRid`는 user
-  Spot rid다.
-- Spot remote address resolver의 `ZLinkSpotRemoteAddress.SpotKind`도 core `ResolveSpot()` 결과를
+- `ZLinkSpotRemoteAddress.SpotKind`가 `Entry`이면 `SpotRid`는 Entry Spot rid다.
+- `ZLinkSpotRemoteAddress.SpotKind`가 `User`이면 `SpotRid`는 user Spot rid다.
+- Spot remote address resolver의 `ZLinkSpotRemoteAddress.SpotKind`는 core `ResolveSpot()` 결과를
   보존한다.
 
 Spot RID route는 framework가 관리하는 이름 색인이다. 이 색인은 Spot rid를 찾는

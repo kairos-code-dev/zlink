@@ -18,22 +18,22 @@ ZLink Framework 는 내부 서비스 통신과 실시간 상태 서버를 한 �
 | registry | 여러 프로세스의 topology 를 발견하고 조회할 때 |
 | monitoring | runtime 상태 변화를 typed event 로 관찰할 때 |
 
-## 2. zlink core 와 기본 소켓 패턴
+## 2. zlink core 와 기본 socket 패턴
 
-ZLink Framework 는 zlink core 위에 있다. core(C API)가 소켓 패턴을 제공하고, Node 바인딩이
+ZLink Framework 는 zlink core 위에 있다. core(C API)가 socket 패턴을 제공하고, Node 바인딩이
 이를 노출하며, framework 가 channel·spot 으로 감싼다. 그래서 가이드 곳곳에 `DEALER`·
-`ROUTER`·`PUB/SUB` 이름이 보이며, 어떤 소켓 위에서 도는지 알면 channel 종류 선택이 쉬워진다.
+`ROUTER`·`PUB/SUB` 이름이 보이며, 어떤 socket 위에서 도는지 알면 channel 종류 선택이 쉬워진다.
 
-| framework 구성 | 하부 소켓 | 쓰임 |
+| framework 구성 | 하부 socket | 쓰임 |
 |----------------|-----------|------|
 | client-server channel | `DEALER → ROUTER` | 1:1 request/response·단방향 send |
 | fanout channel | `PUB → SUB` | 이벤트 fan-out (여러 구독자) |
 | mesh channel | `DEALER`/`ROUTER` peer mesh | 로드밸런싱·엔티티 라우팅 |
 | STREAM session | `STREAM` | 외부 client(raw TCP/WS) 연동 |
 
-각 소켓의 메시징 패턴·라우팅 전략·호환성 매트릭스·코드 예제는 zlink core 가이드가
+각 socket의 메시징 패턴·라우팅 전략·호환성 매트릭스·코드 예제는 zlink core 가이드가
 자세히 다룬다:
-[소켓 패턴 개요](../../../../../core/doc/guide/03-0-socket-patterns.ko.md) ·
+[socket 패턴 개요](../../../../../core/doc/guide/03-0-socket-patterns.ko.md) ·
 [DEALER](../../../../../core/doc/guide/03-3-dealer.ko.md) ·
 [ROUTER](../../../../../core/doc/guide/03-4-router.ko.md) ·
 [PUB/SUB](../../../../../core/doc/guide/03-2-pubsub.ko.md) ·

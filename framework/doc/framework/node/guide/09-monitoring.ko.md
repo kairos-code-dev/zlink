@@ -29,5 +29,5 @@ discovery 는 별도 runtime event 가 아니다. 현재 provider 상태는 regi
 
 ## 회귀 테스트
 
-socket, registry, Spot monitoring source 는 `test/contract/monitoring-runtime.test.js`
+socket, registry, Spot monitoring source 는 `framework/languages/node/test/contract/monitoring-runtime.test.js`
 에서 확인한다.

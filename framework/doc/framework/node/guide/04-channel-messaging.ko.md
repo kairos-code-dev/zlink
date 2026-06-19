@@ -62,6 +62,7 @@ interface WarmProfilePayload {
 
 await client
   .sendToChannel('profile', { userId: 'u1' } satisfies WarmProfilePayload)
+  .packetName('WarmProfile')
   .submit();
 ```
 
@@ -91,6 +92,7 @@ zlinkFramework()
     .enableSubscriber(eventsEndpoint)
     .addPublishHandler('RoomChanged', RoomChangedHandler)
   .addRouteMeshChannel('route')
+    .enableRouter(routeEndpoint)
     .addSendHandler('ActorLeft', ActorLeftRouteHandler)
     .addRequestHandler('ActorLookup', ActorLookupRouteHandler);
 ```

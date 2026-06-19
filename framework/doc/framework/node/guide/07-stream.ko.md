@@ -88,8 +88,9 @@ JSON은 connector core의 기본 codec이다. 기본 예시는
 그 경우에만 `.packetName(...)` 또는 `messageType` 인자를 명시한다.
 
 MessagePack이나 Protobuf가 필요하면 connector 전용 패키지가 아니라 framework codec extension
-package를 참조한다. 같은 extension을 framework, connector, HTTP client에 등록하면 세 표면이
-같은 codec 정책을 공유한다.
+package를 참조한다. 단, 현재 Node server STREAM runtime은 dispatch/send/reply 경로에서 JSON
+frame을 만든다. MessagePack/Protobuf codec 공유는 connector 측 표면에 적용되며, server stream
+codec 적용은 추후 범위다.
 
 connector도 framework처럼 **custom codec**을 끼울 수 있다. 사용자 codec은 framework
 extension과 `ZlinkStreamPayloadCodec`(`encode`/`decode` 구현)을 함께 제공한다. server

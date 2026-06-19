@@ -75,6 +75,7 @@ session, Spot 내부 handler 도 같은 원칙을 따른다. 다만 actor packet
 channel group 이 아니라 spot actor handler decorator 로 대상 Spot 타입을 명시한다.
 
 ```ts
+import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework, zlinkRequestHandler } from '@zlink-systems/nestjs';
 
 @zlinkRequestHandler('api', 'GetProfile')

@@ -18,7 +18,7 @@
 
 | Java 표면 | Kotlin 표면 |
 |-----------|-------------|
-| `ZLinkRequestHandler<T, R>` (blocking/`CompletionStage`) | `ZLinkSuspendingRequestHandler<T, R>` (`suspend fun handle`) |
+| `ZLinkRequestHandler<T, R>` (plain `TReply` 반환) | `ZLinkSuspendingRequestHandler<T, R>` (`suspend fun handle`) |
 | `ZLinkSendHandler` / `ZLinkPublishHandler` | `ZLinkSuspendingSendHandler` / `ZLinkSuspendingPublishHandler` |
 | `ZLinkSpot<TActor>` (override `onCreate`, `onActorJoin`) | `ZLinkSuspendingSpot<TActor>` (`onCreateSuspending`, `onActorJoinSuspending`) |
 | `ZLinkSession` | `ZLinkSuspendingSession` (`onConnectedSuspending` 등) |

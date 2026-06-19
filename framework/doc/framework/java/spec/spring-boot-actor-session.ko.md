@@ -68,7 +68,7 @@ public interface ZLinkActor {
 }
 
 public interface ZLinkActorFactory {
-    CompletionStage<ZLinkActor> create(
+    ZLinkActor create(
         String actorId,
         ZLinkActorContext context);
 }
@@ -162,8 +162,8 @@ public interface ZLinkBoundSession {
 `joinSpot(...)`은 actor가 Entry Spot 이후 실제 user Spot으로 들어가는 요청이다. 호출은
 `CompletionStage`로 완료되며 framework는 backend `SpotNode.joinActor(...)` 결과를
 받은 뒤 actor context의 `spotRid()`, `isJoined()`, `getSpot()` 상태를 갱신한다.
-이 경로는 thread blocking helper를 제공하지 않는다. Kotlin에서는 같은 Java
-`CompletionStage`를 `suspend` wrapper로 감싸서 사용한다.
+이 경로는 테스트·클라이언트 시나리오용 `await(...)` blocking helper도 제공한다. Kotlin에서는
+같은 Java `CompletionStage`를 `suspend` wrapper로 감싸서 사용한다.
 
 `joinSpot(...)`/`joinEntrySpot(...)` 도 `timeout(Duration)` override 를 갖는다. 생략하면
 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은 기본값).
@@ -208,7 +208,8 @@ public interface ZLinkEntrySpotActorRequestHandler<
         TEntrySpot entrySpot,
         TActor actor,
         ZLinkSpotActorRequestContext context,
-        TRequest request);
+        TRequest request,
+        CancellationToken cancellationToken);
 }
 
 public interface ZLinkSpotActorSendHandler<
@@ -219,7 +220,8 @@ public interface ZLinkSpotActorSendHandler<
         TSpot spot,
         TActor actor,
         ZLinkSpotActorSendContext context,
-        TMessage message);
+        TMessage message,
+        CancellationToken cancellationToken);
 }
 ```
 
@@ -242,8 +244,8 @@ public interface ZLinkSpotActorSendHandler<
 Kotlin은 Java contract 위에 coroutine extension을 얹는다.
 
 ```kotlin
-val actor = actorManager.getOrCreate("player-42", "player")
-session.context.actors.bind(actor)
+val actor = actorManager.getOrCreate("player-42", "player").await()
+session.context.actors.bind(actor).await()
 
 actor.context.boundSession.send(PlayerJoined(...)).submit()
 ```

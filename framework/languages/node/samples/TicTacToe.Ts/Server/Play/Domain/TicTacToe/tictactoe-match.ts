@@ -64,7 +64,7 @@ class TicTacToeMatch<TActor extends TicTacToeActor = TicTacToeActor> {
     this.players.set(actor.actorId, joined);
     if (this.players.size === 2) {
       this.status = GameStatus.InProgress;
-      this.nextTurn = this.xActorId();
+      this.nextTurn = GameMarks.x;
       this.resetTurnDeadline();
     }
     return { state: this.snapshot(), joined, newlyJoined: true };
@@ -78,7 +78,7 @@ class TicTacToeMatch<TActor extends TicTacToeActor = TicTacToeActor> {
     if (this.status !== GameStatus.InProgress) {
       throw new Error(`Room '${this.roomId}' is not in progress.`);
     }
-    if (this.nextTurn !== actorId) {
+    if (this.nextTurn !== player.mark) {
       throw new Error(`Actor '${actorId}' cannot move out of turn.`);
     }
     this.board.place(player.mark, cell);
@@ -92,7 +92,8 @@ class TicTacToeMatch<TActor extends TicTacToeActor = TicTacToeActor> {
     if (this.status !== GameStatus.InProgress || this.turnDeadline === null || now < this.turnDeadline) {
       return { state: this.snapshot(), changed: false };
     }
-    const timedOut = this.nextTurn;
+    const timedOut = [...this.players.values()]
+      .find((player) => player.mark === this.nextTurn)?.actorId ?? null;
     const winner = [...this.players.values()]
       .find((player) => player.actorId !== timedOut)?.actorId ?? null;
     this.status = GameStatus.TurnTimedOut;
@@ -145,7 +146,7 @@ class TicTacToeMatch<TActor extends TicTacToeActor = TicTacToeActor> {
     if (nextPlayer === undefined) {
       throw new Error(`Room '${this.roomId}' cannot advance without another player.`);
     }
-    this.nextTurn = nextPlayer.actorId;
+    this.nextTurn = nextPlayer.mark;
     this.resetTurnDeadline();
   }
 

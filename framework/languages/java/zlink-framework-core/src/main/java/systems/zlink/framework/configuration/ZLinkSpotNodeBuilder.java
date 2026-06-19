@@ -13,7 +13,12 @@ public interface ZLinkSpotNodeBuilder {
 
     ZLinkSpotNodeBuilder enablePubSub(String endpoint);
 
-    ZLinkSpotNodeBuilder connectPubSub(String endpoint);
+    ZLinkSpotNodeBuilder connectPeerPub(String endpoint);
+
+    @Deprecated(since = "7.1", forRemoval = false)
+    default ZLinkSpotNodeBuilder connectPubSub(String endpoint) {
+        return connectPeerPub(endpoint);
+    }
 
     ZLinkSpotNodeBuilder setPubSubRoutingId(RoutingId routingId);
 

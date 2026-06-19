@@ -48,6 +48,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             channelName,
             packets,
             handlerInvoker,
+            runtime.Registration.Codecs,
             DispatchInternalRoutePacketAsync,
             runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotRouteDispatcher>());
     }
@@ -91,9 +92,10 @@ internal sealed class ZLinkSpotActivationDispatcher
         while (i < parts.Count)
         {
             var headerPart = parts[i++];
+            var runtimeState = runtime.GetOrCreateActorState(headerPart.Actor.ActorId);
             if (!actors.TryGetActor(headerPart.Actor.ActorId, out var actor) || actor is null)
             {
-                actor = runtime.GetOrCreateActorState(headerPart.Actor.ActorId).Actor;
+                actor = runtimeState.Actor;
             }
 
             if (actor is null)
@@ -104,6 +106,24 @@ internal sealed class ZLinkSpotActivationDispatcher
 
             if (!ZLinkSpotActorFrameReader.TryRead(parts, ref i, headerPart, out var frame))
             {
+                continue;
+            }
+
+            if (ZLinkActorGatewayForwarder.ShouldForward(
+                    runtimeState,
+                    frame.Actor,
+                    out var targetActor))
+            {
+                using (frame.Body)
+                {
+                    ZLinkActorGatewayForwarder.Forward(
+                        runtime,
+                        targetActor,
+                        frame.SourceNodeRid,
+                        frame.SourceSessionRid,
+                        frame.Header,
+                        frame.Body);
+                }
                 continue;
             }
 
@@ -265,7 +285,7 @@ internal sealed class ZLinkSpotActivationDispatcher
     public async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)
     {
         await subscriptions
-            .DrainAsync(nativeSpot, InvokeSubscriptionAsync, cancellationToken)
+            .DrainAsync(nativeSpot, runtime.Registration.Codecs, InvokeSubscriptionAsync, cancellationToken)
             .ConfigureAwait(false);
     }
 

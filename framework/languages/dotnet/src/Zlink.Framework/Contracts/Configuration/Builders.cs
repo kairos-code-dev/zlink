@@ -56,6 +56,14 @@ public interface IZLinkClientServerChannelBuilder
 
     IZLinkClientServerChannelBuilder EnableClient(string endpoint);
 
+    IZLinkSocketConfig ConfigureServerSocket();
+
+    IZLinkRouteConfig ConfigureServerRouting();
+
+    IZLinkSocketConfig ConfigureClientSocket();
+
+    IZLinkOutboundRouteConfig ConfigureClientRouting();
+
     IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName);
 
     IZLinkClientServerChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
@@ -132,6 +140,8 @@ public interface IZLinkSpotNodeBuilder
     IZLinkRouteConfig ConfigureRouterRouting();
 
     IZLinkSpotNodeBuilder EnablePubSub(string endpoint);
+
+    IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint);
 
     IZLinkSpotNodeBuilder ConnectPubSub(string endpoint);
 

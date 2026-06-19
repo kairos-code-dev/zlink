@@ -452,7 +452,7 @@ builder.Services.AddZLinkFramework(options =>
     node.ConnectRouter("tcp://10.0.0.10:9000");
 
     node.EnablePubSub("tcp://0.0.0.0:9000");
-    node.ConnectPubSub("tcp://10.0.0.20:9100");
+    node.ConnectPeerPub("tcp://10.0.0.20:9100");
 
     node.AttachChannelClient("orders", "tcp://10.0.0.30:9200");
     node.AttachSpotPublisherClient("game.stage", "tcp://10.0.0.40:9300");
@@ -478,7 +478,7 @@ builder.Services.AddZLinkFramework(options =>
 - `pub/sub` 는 local publish 소켓과 local subscribe 소켓을 함께 쓰는
   역할이다. 다만 수동 연결에서 등록하는 주소는 "다른 `SpotNode` 의 mesh
   publish bind 주소"라는 점에 유의한다.
-- 즉 `ConnectPubSub(endpoint)` 는 local
+- 즉 `ConnectPeerPub(endpoint)` 는 local
   `SUB/XSUB` 쪽이 remote `PUB/XPUB` 주소에 붙는다는 의미다.
 - `pub/sub` 와 spot publisher client 는 둘 다 endpoint 집합만 등록한다. 다만
   그 endpoint 집합 자체는 서로 다르다.

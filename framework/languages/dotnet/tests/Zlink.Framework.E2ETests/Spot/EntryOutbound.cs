@@ -7,6 +7,76 @@ namespace Zlink.Framework.E2ETests.Spot;
 public sealed class EntryOutboundTests : SpotTestSupport
 {
     [Fact]
+    public async Task EntrySpot_RequestToChannel_Uses_ManualAttachedChannelClient_AcrossHosts()
+    {
+        var ordersServer = GetFreeTcpEndpoint();
+        var spotNode = GetFreeTcpEndpoint();
+
+        var ordersBuilder = Host.CreateApplicationBuilder();
+        ordersBuilder.Services.AddScoped<EntrySpotOrdersRequestHandler>();
+        ordersBuilder.Services.AddZLinkFramework(options =>
+        {
+            options.AddHandlersFromAssemblyOf<EntryOutboundTests>();
+            {
+                var channel = options.AddClientServerChannel("orders.api");
+                channel.EnableServer(ordersServer);
+                channel.AddRequestHandler<EntrySpotOrdersRequestHandler, EntrySpotOrderRequest, EntrySpotOrderReply>();
+
+            }
+        });
+
+        var spotBuilder = Host.CreateApplicationBuilder();
+        spotBuilder.Services.AddSingleton<EntrySpotCallbackRecorder>();
+        spotBuilder.Services.AddScoped<GeneralEntrySpot>();
+        spotBuilder.Services.AddScoped<EntrySpotChannelRequestHandler>();
+        spotBuilder.Services.AddZLinkFramework(options =>
+        {
+            {
+                var mesh = options.AddSpotMesh("entry.manual.test");
+                {
+                    var spot = mesh.AddNode("entry-node");
+                    {
+                        var router = spot.EnableRouter(spotNode);
+
+                    }
+                    spot.AttachChannelClient("orders.api", ordersServer);
+                    spot.AddEntrySpot<GeneralEntrySpot>();
+
+                }
+
+            }
+        });
+
+        var ordersHost = ordersBuilder.Build();
+        var spotHost = spotBuilder.Build();
+        await ordersHost.StartAsync();
+        await spotHost.StartAsync();
+        try
+        {
+            var runtime = spotHost.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+            var recorder = spotHost.Services.GetRequiredService<EntrySpotCallbackRecorder>();
+
+            await RetryAsync(
+                async () =>
+                {
+                    await InvokeEntrySpotPacketAsync(
+                        runtime,
+                        "entry-node",
+                        "game.entry-general",
+                        new EntrySpotChannelRequestCommand("manual"));
+                    return recorder.Events.Contains("channel-reply:order:manual");
+                },
+                static result => result,
+                TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            await StopAndDisposeHostAsync(spotHost);
+            await StopAndDisposeHostAsync(ordersHost);
+        }
+    }
+
+    [Fact]
     public async Task EntrySpot_RequestToChannel_Uses_DiscoveredAttachedChannelClient()
     {
         var registryPubEndpoint = GetFreeTcpEndpoint();
@@ -30,7 +100,7 @@ public sealed class EntryOutboundTests : SpotTestSupport
             options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
 
             {
-                var channel = options.AddClientServerChannel("orders");
+                var channel = options.AddClientServerChannel("orders.api");
                 channel.EnableServer(ordersServer);
                 channel.AddRequestHandler<EntrySpotOrdersRequestHandler, EntrySpotOrderRequest, EntrySpotOrderReply>();
 
@@ -44,7 +114,7 @@ public sealed class EntryOutboundTests : SpotTestSupport
                     var router = spot.EnableRouter(spotNode);
 
                 }
-                spot.AttachChannelClient("orders");
+                spot.AttachChannelClient("orders.api");
                 spot.AddEntrySpot<GeneralEntrySpot>();
 
                 }
@@ -107,7 +177,7 @@ public sealed class EntryOutboundTests : SpotTestSupport
             options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
 
             {
-                var channel = options.AddClientServerChannel("orders");
+                var channel = options.AddClientServerChannel("orders.api");
                 channel.EnableServer(ordersServer);
                 channel.AddRequestHandler<EntrySpotGatedOrdersRequestHandler, EntrySpotOrderRequest, EntrySpotOrderReply>();
 
@@ -121,7 +191,7 @@ public sealed class EntryOutboundTests : SpotTestSupport
                     var router = spot.EnableRouter(spotNode);
 
                 }
-                spot.AttachChannelClient("orders");
+                spot.AttachChannelClient("orders.api");
                 spot.AddEntrySpot<GeneralEntrySpot>();
 
                 }

@@ -194,7 +194,7 @@ public abstract partial class SpotTestSupport
             CancellationToken cancellationToken)
         {
             var reply = await spot.Context.Outbound.RequestToChannel(
-                    "orders",
+                    "orders.api",
                     new EntrySpotOrderRequest(message.Value))
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<EntrySpotOrderReply>(cancellationToken)

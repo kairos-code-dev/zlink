@@ -46,6 +46,10 @@ public sealed class BuilderContracts
             var channel = options.AddClientServerChannel("api")
                 .EnableServer("tcp://127.0.0.1:5000")
                 .EnableClient("tcp://127.0.0.1:5000");
+            channel.ConfigureServerSocket().TcpNoDelay = true;
+            channel.ConfigureServerRouting().RoutingId = RoutingId.From("api-server");
+            channel.ConfigureClientSocket().SendTimeout = TimeSpan.FromSeconds(1);
+            channel.ConfigureClientRouting().ProbeRouterOnConnect = true;
             channel.AddHandlerGroup("api");
             channel.AddSendHandler<ApiSendHandler, ApiEvent>();
             channel.AddSendHandler<AttributeApiSendHandler>("api.event");
@@ -143,7 +147,7 @@ public sealed class BuilderContracts
         spot.ConfigureRouterSocket().TcpNoDelay = true;
 
         spot.EnablePubSub("tcp://127.0.0.1:5500")
-            .ConnectPubSub("tcp://127.0.0.1:5502");
+            .ConnectPeerPub("tcp://127.0.0.1:5502");
         spot.ConfigurePubSubPublisher().NoDrop = true;
         spot.ConfigurePubSubSubscriber().ReceiveHighWaterMark = 64;
 
@@ -330,6 +334,26 @@ public sealed class BuilderContracts
             return this;
         }
 
+        public IZLinkSocketConfig ConfigureServerSocket()
+        {
+            return new ConnectionAndConfigContracts.SocketConfig();
+        }
+
+        public IZLinkRouteConfig ConfigureServerRouting()
+        {
+            return new ConnectionAndConfigContracts.RouteConfig();
+        }
+
+        public IZLinkSocketConfig ConfigureClientSocket()
+        {
+            return new ConnectionAndConfigContracts.SocketConfig();
+        }
+
+        public IZLinkOutboundRouteConfig ConfigureClientRouting()
+        {
+            return new ConnectionAndConfigContracts.OutboundRouteConfig();
+        }
+
         public IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName) => this;
 
         public IZLinkClientServerChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
@@ -492,6 +516,11 @@ public sealed class BuilderContracts
         }
 
         public IZLinkSpotNodeBuilder EnablePubSub(string endpoint)
+        {
+            return this;
+        }
+
+        public IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint)
         {
             return this;
         }

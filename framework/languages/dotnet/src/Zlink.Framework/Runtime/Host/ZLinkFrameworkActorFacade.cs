@@ -1,6 +1,5 @@
 using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Backend.Contracts;
-using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Spots;
 using Zlink.Framework.Runtime.Streams;
 
@@ -326,35 +325,13 @@ internal sealed class ZLinkFrameworkActorFacade(
     {
         if (ZLinkBoundSessionDispatchScope.TryDefer(
                 actorState.ActorId,
-                _ =>
-                {
-                    QueueRemoteActorMigration(actorState, targetActorRef);
-                    return ValueTask.CompletedTask;
-                }))
+                ct => ApplyRemoteActorMigrationCoreAsync(actorState, targetActorRef, ct)))
         {
             return;
         }
 
         await ApplyRemoteActorMigrationCoreAsync(actorState, targetActorRef, cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private void QueueRemoteActorMigration(
-        ZLinkActorRuntimeState actorState,
-        ZLinkBackendActorRef targetActorRef)
-    {
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await ApplyRemoteActorMigrationCoreAsync(actorState, targetActorRef, CancellationToken.None)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                ZLinkFrameworkDebugLog.TaskFailure("remote actor migration", ex);
-            }
-        });
     }
 
     private async ValueTask ApplyRemoteActorMigrationCoreAsync(

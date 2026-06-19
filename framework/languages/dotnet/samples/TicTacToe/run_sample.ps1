@@ -65,7 +65,7 @@ try {
                 PlaySpotNodeRid = "play-node-$($PlayIndex + 1)"
                 PeerPlaySpotNodeRid = "play-node-$($PeerPlayIndex + 1)"
                 PeerSpotEndpoint = @($spotAEndpoint, $spotBEndpoint)[$PeerPlayIndex]
-                PeerSpotPubSubEndpoint = @($spotAPubSubEndpoint, $spotBPubSubEndpoint)[$PeerPlayIndex]
+                PeerSpotPubEndpoint = @($spotAPubSubEndpoint, $spotBPubSubEndpoint)[$PeerPlayIndex]
                 RedisEndpoint = $redisEndpoint
                 LogDirectory = $LogDir
             }

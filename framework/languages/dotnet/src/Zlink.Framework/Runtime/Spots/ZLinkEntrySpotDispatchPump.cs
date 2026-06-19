@@ -41,6 +41,11 @@ internal sealed class ZLinkEntrySpotDispatchPump(
                 case ZLinkBackendSpotDispatchEvent.ChannelReplyReadable:
                     info.DrainChannelReply?.Invoke();
                     return;
+                case ZLinkBackendSpotDispatchEvent.SubscribeReadable:
+                    taskRunner.RunDetached(
+                        "entry-spot-subscription-dispatch",
+                        ct => activation.DispatchSubscriptionsAsync(ct));
+                    return;
                 case ZLinkBackendSpotDispatchEvent.ActorJoinReadable:
                     taskRunner.RunDetached(
                         "entry-spot-actor-join-dispatch",

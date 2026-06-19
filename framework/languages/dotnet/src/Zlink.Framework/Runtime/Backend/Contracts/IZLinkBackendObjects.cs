@@ -9,6 +9,7 @@ internal enum ZLinkBackendSpotDispatchEvent
     ChannelReplyReadable = 2,
     ActorJoinReadable = 3,
     ActorReadable = 4,
+    SubscribeReadable = 5,
 }
 
 internal readonly record struct ZLinkBackendActorRef(

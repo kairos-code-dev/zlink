@@ -132,7 +132,7 @@ def sample(instance_name, api_index, play_index, peer_play_index):
             "PlaySpotNodeRid": f"play-node-{play_index + 1}",
             "PeerPlaySpotNodeRid": f"play-node-{peer_play_index + 1}",
             "PeerSpotEndpoint": ["${SPOT_A_ENDPOINT}", "${SPOT_B_ENDPOINT}"][peer_play_index],
-            "PeerSpotPubSubEndpoint": ["${SPOT_A_PUBSUB_ENDPOINT}", "${SPOT_B_PUBSUB_ENDPOINT}"][peer_play_index],
+            "PeerSpotPubEndpoint": ["${SPOT_A_PUBSUB_ENDPOINT}", "${SPOT_B_PUBSUB_ENDPOINT}"][peer_play_index],
             "RedisEndpoint": "${REDIS_ENDPOINT}",
             "LogDirectory": "${LOG_DIR}"
         }

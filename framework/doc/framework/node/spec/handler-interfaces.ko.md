@@ -1612,6 +1612,7 @@ export interface ZLinkSpotNodeBuilder {
   connectRouter(endpoint: string): this;
   routerRoutingId(routingId: RoutingId): this;
   enablePubSub(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this;
+  connectPeerPub(endpoint: string): this;
   connectPubSub(endpoint: string): this;
   pubSubRoutingId(routingId: RoutingId): this;
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
@@ -1641,7 +1642,8 @@ builder 함수 의미:
 - `connectRouter(endpoint)`: remote router endpoint 를 수동 연결 목록에 추가.
 - `routerRoutingId(routingId)`: local router routing id 지정.
 - `enablePubSub(endpoint, routingId?, connect?)`: 현재 SPOT channel 의 publish/subscribe 역할 활성화.
-- `connectPubSub(endpoint)`: remote pub/sub endpoint 를 수동 연결 목록에 추가.
+- `connectPeerPub(endpoint)`: peer SpotNode의 PUB endpoint를 수동 연결 목록에 추가한다.
+- `connectPubSub(endpoint)`: `connectPeerPub(endpoint)`와 같은 동작을 하는 호환 alias다.
 - `pubSubRoutingId(routingId)`: local pub/sub routing id 지정.
 - `configureEntrySpot(...)`: native Entry Spot facade 의 routing id 같은 Entry Spot
   옵션을 지정한다.

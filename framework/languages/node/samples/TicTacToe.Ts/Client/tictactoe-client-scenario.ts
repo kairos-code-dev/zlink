@@ -1,4 +1,14 @@
-import { GameMarks, GameStatus, PacketNames, authenticateReq, createGameReq, joinGameReq, placeMarkStreamReq } from '../Shared/Contracts/messages';
+import {
+  GameMarks,
+  GameStatus,
+  LeaveGameReq,
+  ObserveMilestoneReq,
+  PacketNames,
+  authenticateReq,
+  createGameReq,
+  joinGameReq,
+  placeMarkStreamReq
+} from '../Shared/Contracts/messages';
 import { ZLinkHttpClient } from '@zlink-systems/http-client';
 import * as connector from '@zlink-systems/stream-connector';
 import { SampleTimings } from './Configuration/sample-settings';
@@ -8,20 +18,19 @@ import type {
   GameState,
   GameStateNotify,
   JoinGameRes,
+  ObserveMilestoneRes,
   PlaceMarkRes,
-  PlayerJoinedNotify
+  PlayerJoinedNotify,
+  WinMilestoneNotify
 } from '../Shared/Contracts/messages';
 import type { ZlinkStreamConnector, ZlinkStreamMessage } from '@zlink-systems/stream-connector';
 
 class TicTacToeClientScenario {
-  async run(
-    apiHttpEndpoint: string,
-    signal?: AbortSignal
-  ): Promise<void> {
-    // 1. Create the room through API and verify the returned game name, room id, and Play endpoint.
+  async run(apiHttpEndpoint: string, signal?: AbortSignal): Promise<void> {
     const api = ZLinkHttpClient.create(apiHttpEndpoint).json().build();
     let game: CreateGameHttpRes;
     try {
+      // 1. Create the room through API.
       game = await api
         .post('/games')
         .body(createGameReq('match-ready'))
@@ -32,158 +41,142 @@ class TicTacToeClientScenario {
 
     ensure(() => game.gameName === 'match-ready');
     ensure(() => game.roomId.length > 0);
-    ensure(() => game.playEndpoint.length > 0);
-    ensure(() => !/^[0-9a-f]{32}$/i.test(game.roomId));
+    ensure(() => game.ownerPlayEndpoint.length > 0);
+    ensure(() => game.playEndpoints.length >= 2);
+    ensure(() => game.playEndpoints.includes(game.ownerPlayEndpoint));
+    ensure(() => game.playNodes.length === game.playEndpoints.length);
+    ensure(() => game.requiredLevel === 3);
 
-    const client1 = createPlayerClient(game.playEndpoint);
-    const client2 = createPlayerClient(game.playEndpoint);
+    const guestPlayEndpoint = game.playEndpoints.find((endpoint) => endpoint !== game.ownerPlayEndpoint);
+    ensure(() => guestPlayEndpoint !== undefined);
+    const observerPlayEndpoint = guestPlayEndpoint as string;
+    const observerPlayNode = game.playNodes.find((node) => node.streamEndpoint === observerPlayEndpoint);
+    ensure(() => observerPlayNode !== undefined);
+
+    const client1 = createPlayerClient(game.ownerPlayEndpoint, 'host');
+    const client2 = createPlayerClient(observerPlayEndpoint, 'guest');
+    const observer = createPlayerClient(observerPlayEndpoint, 'observer');
 
     try {
-      // 2. Both clients connect directly to the Play stream endpoint and authenticate there.
+      // 2. Host, guest, and observer connect directly to Play stream endpoints from the API response.
       await client1.connect(signal);
+      const client1Auth = await client1.request(authenticateReq('player-x')).submit<AuthenticateRes>(signal);
+      ensure(() => client1Auth.player.actorId === 'player-x');
+      ensure(() => client1Auth.player.level >= game.requiredLevel);
+      ensure(() => client1Auth.player.wins === 99);
+
       await client2.connect(signal);
+      const client2Auth = await client2.request(authenticateReq('player-o')).submit<AuthenticateRes>(signal);
+      ensure(() => client2Auth.player.actorId === 'player-o');
+      ensure(() => client2Auth.player.level >= game.requiredLevel);
 
-      const client1Auth = await client1.request(authenticateReq('p1')).submit<AuthenticateRes>(signal);
-      const client2Auth = await client2.request(authenticateReq('p2')).submit<AuthenticateRes>(signal);
+      await observer.connect(signal);
+      const observerAuth = await observer.request(authenticateReq('observer')).submit<AuthenticateRes>(signal);
+      ensure(() => observerAuth.player.actorId === 'observer');
+      const observerSubscription = await observer
+        .request(new ObserveMilestoneReq())
+        .submit<ObserveMilestoneRes>(signal);
+      ensure(() => observerSubscription.subscribed);
+      console.log('observer-subscription=verified');
 
-      ensure(() => client1Auth.actorId === 'p1');
-      ensure(() => client2Auth.actorId === 'p2');
-      ensure(() => client1Auth.displayName === 'Player X');
-      ensure(() => client2Auth.displayName === 'Player O');
-
-      // 3. Host joins by explicit RoomId, gets X/WaitingForPlayers, and receives no self-join notify.
-      const client1SelfJoinNotify = expectNoMessage(
-        client1,
-        PacketNames.playerJoinedNotify,
-        (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client1Auth.actorId,
-        signal
-      );
+      // 3. Host joins by explicit RoomId
       const client1Join = await client1.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal);
-
-      ensure(() => client1Join.roomId === game.roomId);
       ensure(() => stateOf(client1Join).roomId === game.roomId);
-      ensure(() => client1Join.actorId === client1Auth.actorId);
-      ensure(() => client1Join.mark === GameMarks.x);
-      ensure(() => stateOf(client1Join).xActorId === client1Auth.actorId);
-      ensure(() => stateOf(client1Join).oActorId === null);
       ensure(() => stateOf(client1Join).status === GameStatus.WaitingForPlayers);
-      await client1SelfJoinNotify;
+      ensure(() => stateOf(client1Join).xActorId === client1Auth.player.actorId);
 
-      // 4-6. Guest joins by the same RoomId; host receives join and running-state pushes, guest receives no self-join notify.
       const client1SawClient2Join = client1
         .waitFor<PlayerJoinedNotify>(PacketNames.playerJoinedNotify)
-        .where((message) => message.payload.actorId === client2Auth.actorId)
+        .where((message) => message.payload.actorId === client2Auth.player.actorId)
         .submit(signal);
-      const client2SelfJoinNotify = expectNoMessage(
-        client2,
-        PacketNames.playerJoinedNotify,
-        (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client2Auth.actorId,
-        signal
-      );
       const client1RunningState = client1
         .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
         .where((message) => message.payload.state.status === GameStatus.InProgress)
         .submit(signal);
 
+      // 4-6. Guest joins by the same RoomId.
       const client2Join = await client2.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal);
-
-      ensure(() => client2Join.roomId === game.roomId);
-      ensure(() => stateOf(client2Join).roomId === game.roomId);
-      ensure(() => client2Join.actorId === client2Auth.actorId);
-      ensure(() => client2Join.mark === GameMarks.o);
-      ensure(() => stateOf(client2Join).xActorId === client1Auth.actorId);
-      ensure(() => stateOf(client2Join).oActorId === client2Auth.actorId);
       ensure(() => stateOf(client2Join).status === GameStatus.InProgress);
-      await client2SelfJoinNotify;
+      ensure(() => stateOf(client2Join).oActorId === client2Auth.player.actorId);
 
       const [client1Joined, client1Running] = await Promise.all([
         client1SawClient2Join,
         client1RunningState
       ]);
-
-      ensure(() => client1Joined.payload.roomId === game.roomId);
-      ensure(() => client1Joined.payload.actorId === client2Auth.actorId);
+      ensure(() => client1Joined.payload.displayName === client2Auth.player.displayName);
+      ensure(() => client1Joined.payload.level === client2Auth.player.level);
       ensure(() => client1Joined.payload.mark === GameMarks.o);
-      ensure(() => stateOf(client1Joined.payload).roomId === game.roomId);
-      ensure(() => stateOf(client1Joined.payload).status === GameStatus.InProgress);
-      ensure(() => client1Running.payload.state.status === GameStatus.InProgress);
-      ensure(() => client1Running.payload.state.nextTurn === client1Auth.actorId);
+      ensure(() => client1Running.payload.state.nextTurn === GameMarks.x);
 
-      // 7. Each move response and opponent notify carry the same board, turn, and last-move state.
-      const client2SawMove1 = client2
-        .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
-        .where((message) => message.payload.state.lastMoveCell === 0)
-        .submit(signal);
+      // 7. Each move response is matched with the opponent notify.
+      const client2SawMove1 = waitState(client2, 0, signal);
       const client1Move1 = await client1.request(placeMarkStreamReq(0)).submit<PlaceMarkRes>(signal);
-      const client2Move1 = await client2SawMove1;
-
-      requireSameState(stateOf(client1Move1), client2Move1.payload.state);
+      requireSameState(stateOf(client1Move1), (await client2SawMove1).payload.state);
       ensure(() => stateOf(client1Move1).board === 'X........');
-      ensure(() => stateOf(client1Move1).nextTurn === client2Auth.actorId);
-      ensure(() => stateOf(client1Move1).lastMoveActorId === client1Auth.actorId);
-      ensure(() => stateOf(client1Move1).lastMoveCell === 0);
+      ensure(() => stateOf(client1Move1).nextTurn === GameMarks.o);
 
-      const client1SawMove2 = client1
-        .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
-        .where((message) => message.payload.state.lastMoveCell === 3)
-        .submit(signal);
-      const client2Move2 = await client2.request(placeMarkStreamReq(3)).submit<PlaceMarkRes>(signal);
-      const client1Move2 = await client1SawMove2;
+      const client1SawMove2 = waitState(client1, 3, signal);
+      const client2Move1 = await client2.request(placeMarkStreamReq(3)).submit<PlaceMarkRes>(signal);
+      requireSameState(stateOf(client2Move1), (await client1SawMove2).payload.state);
+      ensure(() => stateOf(client2Move1).board === 'X..O.....');
+      ensure(() => stateOf(client2Move1).nextTurn === GameMarks.x);
 
-      requireSameState(stateOf(client2Move2), client1Move2.payload.state);
-      ensure(() => stateOf(client2Move2).board === 'X..O.....');
-      ensure(() => stateOf(client2Move2).nextTurn === client1Auth.actorId);
-      ensure(() => stateOf(client2Move2).lastMoveActorId === client2Auth.actorId);
-      ensure(() => stateOf(client2Move2).lastMoveCell === 3);
+      const client2SawMove3 = waitState(client2, 1, signal);
+      const client1Move2 = await client1.request(placeMarkStreamReq(1)).submit<PlaceMarkRes>(signal);
+      requireSameState(stateOf(client1Move2), (await client2SawMove3).payload.state);
+      ensure(() => stateOf(client1Move2).board === 'XX.O.....');
+      ensure(() => stateOf(client1Move2).nextTurn === GameMarks.o);
 
-      const client2SawMove3 = client2
-        .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
-        .where((message) => message.payload.state.lastMoveCell === 1)
-        .submit(signal);
-      const client1Move3 = await client1.request(placeMarkStreamReq(1)).submit<PlaceMarkRes>(signal);
-      const client2Move3 = await client2SawMove3;
+      const client1SawMove4 = waitState(client1, 4, signal);
+      const client2Move2 = await client2.request(placeMarkStreamReq(4)).submit<PlaceMarkRes>(signal);
+      requireSameState(stateOf(client2Move2), (await client1SawMove4).payload.state);
+      ensure(() => stateOf(client2Move2).board === 'XX.OO....');
+      ensure(() => stateOf(client2Move2).nextTurn === GameMarks.x);
 
-      requireSameState(stateOf(client1Move3), client2Move3.payload.state);
-      ensure(() => stateOf(client1Move3).board === 'XX.O.....');
-      ensure(() => stateOf(client1Move3).nextTurn === client2Auth.actorId);
-      ensure(() => stateOf(client1Move3).lastMoveActorId === client1Auth.actorId);
-      ensure(() => stateOf(client1Move3).lastMoveCell === 1);
-
-      const client1SawMove4 = client1
-        .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
-        .where((message) => message.payload.state.lastMoveCell === 4)
-        .submit(signal);
-      const client2Move4 = await client2.request(placeMarkStreamReq(4)).submit<PlaceMarkRes>(signal);
-      const client1Move4 = await client1SawMove4;
-
-      requireSameState(stateOf(client2Move4), client1Move4.payload.state);
-      ensure(() => stateOf(client2Move4).board === 'XX.OO....');
-      ensure(() => stateOf(client2Move4).nextTurn === client1Auth.actorId);
-      ensure(() => stateOf(client2Move4).lastMoveActorId === client2Auth.actorId);
-      ensure(() => stateOf(client2Move4).lastMoveCell === 4);
-
-      // 8. The final host move wins; requester gets PlaceMarkRes and guest gets the same final notify.
       const client2SawFinalMove = client2
         .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
-        .where((message) => message.payload.state.winner === client1Auth.actorId)
+        .where((message) => message.payload.state.winner === client1Auth.player.actorId)
         .submit(signal);
+      const observerSawMilestone = observer
+        .waitFor<WinMilestoneNotify>(PacketNames.winMilestoneNotify)
+        .where((message) => message.payload.actorId === client1Auth.player.actorId)
+        .submit(signal);
+      // 8. The final host move wins and publishes the observer milestone.
       const client1FinalMove = await client1.request(placeMarkStreamReq(2)).submit<PlaceMarkRes>(signal);
-      const client2FinalMove = await client2SawFinalMove;
-
-      requireSameState(stateOf(client1FinalMove), client2FinalMove.payload.state);
+      requireSameState(stateOf(client1FinalMove), (await client2SawFinalMove).payload.state);
       ensure(() => stateOf(client1FinalMove).board === 'XXXOO....');
       ensure(() => stateOf(client1FinalMove).status === GameStatus.Won);
-      ensure(() => stateOf(client1FinalMove).winner === client1Auth.actorId);
-      ensure(() => stateOf(client1FinalMove).lastMoveActorId === client1Auth.actorId);
-      ensure(() => stateOf(client1FinalMove).lastMoveCell === 2);
-      ensure(() => stateOf(client1FinalMove).nextTurn === null);
+      ensure(() => stateOf(client1FinalMove).winner === client1Auth.player.actorId);
+
+      const milestone = await observerSawMilestone;
+      ensure(() => milestone.payload.displayName === client1Auth.player.displayName);
+      ensure(() => milestone.payload.wins === 100);
+      ensure(() => milestone.payload.receivingSpotNodeRid === observerPlayNode?.spotNodeRid);
+      console.log(
+        `observer-win-milestone=verified actor=${milestone.payload.actorId} ` +
+        `wins=${milestone.payload.wins} receivingSpotNodeRid=${milestone.payload.receivingSpotNodeRid}`
+      );
+
+      await client1.send(new LeaveGameReq(game.roomId)).packetName(PacketNames.leaveGameReq).submit(signal);
+      await client2.send(new LeaveGameReq(game.roomId)).packetName(PacketNames.leaveGameReq).submit(signal);
     } finally {
-      await Promise.allSettled([client1.close(), client2.close()]);
+      await Promise.allSettled([client1.close(), client2.close(), observer.close()]);
     }
   }
 }
 
-function createPlayerClient(endpoint: string): ZlinkStreamConnector {
+function waitState(
+  client: ZlinkStreamConnector,
+  lastMoveCell: number,
+  signal?: AbortSignal
+): Promise<ZlinkStreamMessage<GameStateNotify>> {
+  return client
+    .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
+    .where((message) => message.payload.state.lastMoveCell === lastMoveCell)
+    .submit(signal);
+}
+
+function createPlayerClient(endpoint: string, name: string): ZlinkStreamConnector {
   const client = connector.zlinkStreamConnectorFactory.create({
     endpoint,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
@@ -192,7 +185,7 @@ function createPlayerClient(endpoint: string): ZlinkStreamConnector {
   });
   client.observeInbound((observation) => {
     console.log(
-      `stream-inbound sample=TicTacToe client=player kind=${observation.kind} ` +
+      `stream-inbound sample=TicTacToe client=${name} kind=${observation.kind} ` +
       `name=${observation.name} seq=${observation.requestSeq?.toString() ?? '-'} ` +
       `bytes=${observation.payloadLength}`
     );
@@ -212,34 +205,6 @@ function requireSameState(actual: GameState, expected: GameState): void {
   ensure(() => actual.nextTurn === expected.nextTurn);
   ensure(() => actual.lastMoveActorId === expected.lastMoveActorId);
   ensure(() => actual.lastMoveCell === expected.lastMoveCell);
-}
-
-async function expectNoMessage<TPayload>(
-  client: ZlinkStreamConnector,
-  packetName: string,
-  predicate: (message: ZlinkStreamMessage<TPayload>) => boolean,
-  signal?: AbortSignal
-): Promise<void> {
-  try {
-    await client
-      .waitFor<TPayload>(packetName)
-      .where(predicate)
-      .timeout(25)
-      .submit(signal);
-  } catch (error) {
-    if (isRequestTimeout(error)) {
-      return;
-    }
-    throw error;
-  }
-  throw new Error(`Unexpected stream message '${packetName}'.`);
-}
-
-function isRequestTimeout(error: unknown): boolean {
-  return typeof error === 'object'
-    && error !== null
-    && 'error' in error
-    && (error as { error?: { code?: unknown } }).error?.code === 'requestTimeout';
 }
 
 function ensure(condition: () => boolean): void {

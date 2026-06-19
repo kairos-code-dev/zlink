@@ -34,11 +34,8 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
 
             if (!routerEnabled)
             {
-                ConnectDiscoveredPubSubPeer(peer.Endpoint);
                 continue;
             }
-
-            ConnectDiscoveredPubSubPeer(peer.Endpoint);
 
             var routerEndpoint = ResolveRouterEndpoint(
                 discovery,
@@ -57,23 +54,6 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
             Debug(
                 $"connect peer={peer.Endpoint} rid={peerRoutingId.ToHex()} routerEndpoint={routerEndpoint}");
             ConnectRouterPeer(peerRoutingId, routerEndpoint);
-        }
-    }
-
-    private void ConnectDiscoveredPubSubPeer(string endpoint)
-    {
-        if (!pubSubEnabled || !peerConnections.TryAddPubSubDiscovered(endpoint))
-        {
-            return;
-        }
-
-        try
-        {
-            node.ConnectPeer(endpoint);
-        }
-        catch (ZlinkConnectException error)
-            when (error.NativeErrno == 16)
-        {
         }
     }
 

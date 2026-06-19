@@ -32,6 +32,24 @@ internal static class ZLinkEntrySpotActorDispatcher
                 continue;
             }
 
+            if (ZLinkActorGatewayForwarder.ShouldForward(
+                    actorState,
+                    frame.Actor,
+                    out var targetActor))
+            {
+                using (frame.Body)
+                {
+                    ZLinkActorGatewayForwarder.Forward(
+                        runtime,
+                        targetActor,
+                        frame.SourceNodeRid,
+                        frame.SourceSessionRid,
+                        frame.Header,
+                        frame.Body);
+                }
+                continue;
+            }
+
             await DispatchPacketAndDisposeBodyAsync(
                     runtime,
                     activation,

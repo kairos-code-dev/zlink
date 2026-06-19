@@ -237,7 +237,7 @@ final class DefaultZLinkFrameworkOptionsTest {
 
         { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play");
                 node.setRouterRoutingId(nodeRid).connectRouter("inproc://spot-router-peer");
-                node.setPubSubRoutingId(pubSubRid).connectPubSub("inproc://spot-pub-peer"); }; };
+                node.setPubSubRoutingId(pubSubRid).connectPeerPub("inproc://spot-pub-peer"); }; };
 
         options.validate();
         assertEquals(nodeRid, options.registration().spotNodes().get(0).routerRoutingId());
@@ -259,7 +259,7 @@ final class DefaultZLinkFrameworkOptionsTest {
 
         DefaultZLinkFrameworkOptions pubSub = new DefaultZLinkFrameworkOptions();
         assertThrows(ZLinkConfigurationException.class, () ->
-            { var mesh = pubSub.addSpotMesh("game"); { var node = mesh.addNode("play"); node.connectPubSub(" "); }; });
+            { var mesh = pubSub.addSpotMesh("game"); { var node = mesh.addNode("play"); node.connectPeerPub(" "); }; });
     }
 
     @Test

@@ -7,6 +7,7 @@ LOG_DIR="${RUN_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
 PIDS=()
+REDIS_CONTAINER=""
 
 cleanup() {
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
@@ -37,6 +38,9 @@ cleanup() {
   for pid in "${PIDS[@]}"; do
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "${REDIS_CONTAINER}" ]]; then
+    docker rm -f "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
+  fi
   if [[ "${BINGO_KEEP_RUN_DIR:-}" != "1" ]]; then
     rm -rf "${RUN_DIR}"
   else
@@ -47,7 +51,7 @@ trap cleanup EXIT
 
 if [[ -n "${BINGO_BASE_PORT:-}" ]]; then
   PORTS=()
-  for offset in $(seq 1 13); do
+  for offset in $(seq 1 22); do
     PORTS+=("$((BINGO_BASE_PORT + offset))")
   done
 else
@@ -58,7 +62,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 13:
+    while len(sockets) < 22:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -80,17 +84,24 @@ fi
 
 export BINGO_REGISTRY_PUB_ENDPOINT="${BINGO_REGISTRY_PUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
 export BINGO_REGISTRY_ROUTER_ENDPOINT="${BINGO_REGISTRY_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
-export BINGO_API_CHANNEL_ENDPOINT="${BINGO_API_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
-export BINGO_PLAY_CHANNEL_ENDPOINT="${BINGO_PLAY_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
-export BINGO_SESSION_SPOT_ENDPOINT="${BINGO_SESSION_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
-export BINGO_SESSION_ROUTER_ENDPOINT="${BINGO_SESSION_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
-export BINGO_RECONNECT_SESSION_SPOT_ENDPOINT="${BINGO_RECONNECT_SESSION_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
-export BINGO_RECONNECT_SESSION_ROUTER_ENDPOINT="${BINGO_RECONNECT_SESSION_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[7]}}"
-export BINGO_PLAY_ROUTER_ENDPOINT="${BINGO_PLAY_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
-export BINGO_PLAY_SPOT_ENDPOINT="${BINGO_PLAY_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
-export BINGO_PLAY_SPOT_ROUTER_ENDPOINT="${BINGO_PLAY_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
-export BINGO_STREAM_ENDPOINT="${BINGO_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
-export BINGO_RECONNECT_STREAM_ENDPOINT="${BINGO_RECONNECT_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[12]}}"
+export BINGO_API_A_CHANNEL_ENDPOINT="${BINGO_API_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
+export BINGO_PLAY_A_CHANNEL_ENDPOINT="${BINGO_PLAY_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
+export BINGO_SESSION_A_SPOT_ENDPOINT="${BINGO_SESSION_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
+export BINGO_SESSION_A_ROUTER_ENDPOINT="${BINGO_SESSION_A_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
+export BINGO_SESSION_B_SPOT_ENDPOINT="${BINGO_SESSION_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
+export BINGO_SESSION_B_ROUTER_ENDPOINT="${BINGO_SESSION_B_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[7]}}"
+export BINGO_PLAY_B_CHANNEL_ENDPOINT="${BINGO_PLAY_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
+export BINGO_PLAY_A_SPOT_ENDPOINT="${BINGO_PLAY_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
+export BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT="${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
+export BINGO_SESSION_A_STREAM_ENDPOINT="${BINGO_SESSION_A_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
+export BINGO_SESSION_B_STREAM_ENDPOINT="${BINGO_SESSION_B_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[12]}}"
+export BINGO_PLAY_B_SPOT_ENDPOINT="${BINGO_PLAY_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
+export BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT="${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[14]}}"
+export BINGO_API_B_CHANNEL_ENDPOINT="${BINGO_API_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[15]}}"
+export BINGO_API_A_PLAY_ROUTE_ENDPOINT="${BINGO_API_A_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[17]}}"
+export BINGO_API_B_PLAY_ROUTE_ENDPOINT="${BINGO_API_B_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[18]}}"
+export BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT="${BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[19]}}"
+export BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT="${BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[20]}}"
 export BINGO_METADATA_DIR="${BINGO_METADATA_DIR:-${RUN_DIR}/metadata}"
 
 endpoint_host() {
@@ -122,16 +133,40 @@ wait_port() {
   return 1
 }
 
+require_log_count() {
+  local expected="$1"
+  local pattern="$2"
+  local file="$3"
+  local actual
+  actual="$(grep -Ec "${pattern}" "${file}" || true)"
+  if [[ "${actual}" != "${expected}" ]]; then
+    echo "Expected ${expected} matches for '${pattern}' in ${file}, found ${actual}." >&2
+    return 1
+  fi
+}
+
+if [[ -z "${BINGO_REDIS_ENDPOINT:-}" ]]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required when BINGO_REDIS_ENDPOINT is not set." >&2
+    exit 1
+  fi
+  REDIS_CONTAINER="bingo-redis-${PORTS[16]}"
+  export BINGO_REDIS_ENDPOINT="127.0.0.1:${PORTS[16]}"
+  docker run -d --rm --name "${REDIS_CONTAINER}" -p "${PORTS[16]}:6379" redis:7.2-alpine >/dev/null
+  wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
+fi
+
 start_server() {
   local name="$1"
   local project="$2"
+  shift 2
   local project_dir
   local project_name
   local assembly
   project_dir="$(cd "$(dirname "${project}")" && pwd)"
   project_name="$(basename "${project}" .csproj)"
   assembly="${project_dir}/bin/Debug/net8.0/${project_name}.dll"
-  dotnet "${assembly}" >"${LOG_DIR}/${name}.log" 2>&1 &
+  dotnet "${assembly}" "$@" >"${LOG_DIR}/${name}.log" 2>&1 &
   PIDS+=("$!")
 }
 
@@ -140,30 +175,50 @@ dotnet build "${SCRIPT_DIR}/Bingo.csproj" --maxcpucount:1
 start_server registry "${SCRIPT_DIR}/Server/Registry/Bingo.Server.Registry.csproj"
 wait_port registry-router "${BINGO_REGISTRY_ROUTER_ENDPOINT}"
 
-start_server api "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj"
-wait_port api "${BINGO_API_CHANNEL_ENDPOINT}"
+start_server api-a "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --node a
+wait_port api-a "${BINGO_API_A_CHANNEL_ENDPOINT}"
+wait_port api-a-play-route "${BINGO_API_A_PLAY_ROUTE_ENDPOINT}"
+start_server api-b "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --node b
+wait_port api-b "${BINGO_API_B_CHANNEL_ENDPOINT}"
+wait_port api-b-play-route "${BINGO_API_B_PLAY_ROUTE_ENDPOINT}"
 
-start_server play "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj"
-wait_port play "${BINGO_PLAY_CHANNEL_ENDPOINT}"
-wait_port play-spot-router "${BINGO_PLAY_SPOT_ROUTER_ENDPOINT}"
-wait_port play-spot-pub "${BINGO_PLAY_SPOT_ENDPOINT}"
+start_server play-a "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --node a
+wait_port play-a "${BINGO_PLAY_A_CHANNEL_ENDPOINT}"
+wait_port play-a-spot-router "${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT}"
+wait_port play-a-spot-pub "${BINGO_PLAY_A_SPOT_ENDPOINT}"
+start_server play-b "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --node b
+wait_port play-b "${BINGO_PLAY_B_CHANNEL_ENDPOINT}"
+wait_port play-b-spot-router "${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT}"
+wait_port play-b-spot-pub "${BINGO_PLAY_B_SPOT_ENDPOINT}"
 
-start_server session "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj"
-wait_port session-route "${BINGO_SESSION_SPOT_ENDPOINT}"
-wait_port session-router "${BINGO_SESSION_ROUTER_ENDPOINT}"
-wait_port session-stream "${BINGO_STREAM_ENDPOINT}"
+start_server session-a "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --node a
+wait_port session-a-router "${BINGO_SESSION_A_ROUTER_ENDPOINT}"
+wait_port session-a-stream "${BINGO_SESSION_A_STREAM_ENDPOINT}"
+wait_port session-a-play-route "${BINGO_SESSION_A_PLAY_ROUTE_ENDPOINT}"
+start_server session-b "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --node b
+wait_port session-b-router "${BINGO_SESSION_B_ROUTER_ENDPOINT}"
+wait_port session-b-stream "${BINGO_SESSION_B_STREAM_ENDPOINT}"
+wait_port session-b-play-route "${BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Probe/Bingo.Probe.csproj" -- \
   --registry-endpoint "${BINGO_REGISTRY_ROUTER_ENDPOINT}" \
   --timeout-seconds 10
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/Bingo.Client.csproj" -- \
-  --stream-endpoint "${BINGO_STREAM_ENDPOINT}" >"${LOG_DIR}/client.log" 2>&1
+  --stream-a-endpoint "${BINGO_SESSION_A_STREAM_ENDPOINT}" \
+  --stream-b-endpoint "${BINGO_SESSION_B_STREAM_ENDPOINT}" >"${LOG_DIR}/client.log" 2>&1
 
+grep -q "bingo=completed" "${LOG_DIR}/client.log"
 grep -q "stream-inbound sample=Bingo" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "${LOG_DIR}/client.log"
-grep -q "bingo room: actor left. room=.*actor=player-1" "${LOG_DIR}/play.log"
-grep -q "bingo room: actor left. room=.*actor=player-2" "${LOG_DIR}/play.log"
-grep -q "entry spot: actor destroy completed. actor=player-1" "${LOG_DIR}/play.log"
-grep -q "entry spot: actor destroy completed. actor=player-2" "${LOG_DIR}/play.log"
+grep -q "bingo observer room: actor left. observedRoom=.*observer=observer" "${LOG_DIR}/play-b.log"
+grep -q "bingo room: actor left. room=.*actor=player-1" "${LOG_DIR}/play-a.log"
+grep -q "bingo room: actor left. room=.*actor=player-2" "${LOG_DIR}/play-a.log"
+grep -q "entry spot: actor destroy completed. actor=player-1" "${LOG_DIR}/play-a.log"
+grep -q "entry spot: actor destroy completed. actor=player-2" "${LOG_DIR}/play-a.log"
+require_log_count 1 "entry spot: actor left\\. actor=player-1" "${LOG_DIR}/play-a.log"
+require_log_count 1 "entry spot: actor left\\. actor=player-2" "${LOG_DIR}/play-a.log"
+require_log_count 1 "entry spot: actor destroy completed\\. actor=player-1" "${LOG_DIR}/play-a.log"
+require_log_count 1 "entry spot: actor destroy completed\\. actor=player-2" "${LOG_DIR}/play-a.log"
+require_log_count 0 "entry spot: actor destroy completed\\. actor=observer" "${LOG_DIR}/play-b.log"

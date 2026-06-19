@@ -1,4 +1,6 @@
 using Bingo.Server.Configuration;
+using Bingo.Server.Api.Handlers;
+using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.Protobuf;
@@ -7,7 +9,7 @@ namespace Bingo.Server.Api;
 
 public static class ApiServerHostFactory
 {
-    public static IHost Build(SampleTopology topology)
+    public static IHost Build(SampleTopology topology, SampleApiNode node)
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
@@ -15,16 +17,19 @@ public static class ApiServerHostFactory
             options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
-                channel.EnableServer(topology.ApiChannelEndpoint);
+                channel.EnableServer(node.ChannelEndpoint);
                 channel.AddHandlerGroup("api");
 
             }
             {
-                var channel = options.AddClientServerChannel(SampleNames.PlayChannel);
-                channel.EnableClient();
+                var channel = options.AddRouteMeshChannel(SampleNames.PlayChannel);
+                channel.EnableServer(node.PlayRouteEndpoint);
+                channel.EnableClient(topology.PlayA.PlayChannelEndpoint);
+                channel.EnableClient(topology.PlayB.PlayChannelEndpoint);
+                channel.ConfigureSocket().SendTimeout = TimeSpan.FromSeconds(1);
+                channel.ConfigureRouting().RoutingId = node.RouteRid;
 
             }
         });

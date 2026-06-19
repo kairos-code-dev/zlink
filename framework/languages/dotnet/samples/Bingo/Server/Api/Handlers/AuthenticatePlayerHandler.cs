@@ -20,7 +20,8 @@ internal sealed class AuthenticatePlayerHandler
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!request.AccessToken.StartsWith("player-", StringComparison.Ordinal))
+        if (!request.AccessToken.StartsWith("player-", StringComparison.Ordinal)
+            && !string.Equals(request.AccessToken, BingoSamplePlayers.Observer, StringComparison.Ordinal))
         {
             return ValueTask.FromResult(new AuthenticatePlayerRes
             {
@@ -29,7 +30,9 @@ internal sealed class AuthenticatePlayerHandler
             });
         }
 
-        var displayName = request.AccessToken.Replace("player-", "Player ", StringComparison.Ordinal);
+        var displayName = string.Equals(request.AccessToken, BingoSamplePlayers.Observer, StringComparison.Ordinal)
+            ? "Observer"
+            : request.AccessToken.Replace("player-", "Player ", StringComparison.Ordinal);
         return ValueTask.FromResult(new AuthenticatePlayerRes
         {
             Accepted = true,

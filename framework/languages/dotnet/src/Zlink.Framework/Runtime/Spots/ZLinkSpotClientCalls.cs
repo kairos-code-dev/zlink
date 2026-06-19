@@ -122,7 +122,8 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
         return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
             reply,
             "SPOT request reply is empty.",
-            "SPOT request failed.");
+            "SPOT request failed.",
+            activation.Codecs);
     }
 
     private ValueTask<ZLinkSpotRemoteAddress> ResolveRemoteAddressAsync(CancellationToken cancellationToken)
@@ -205,6 +206,7 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
         return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
             reply,
             "SPOT channel request reply is empty.",
-            "SPOT channel request failed.");
+            "SPOT channel request failed.",
+            activation.Codecs);
     }
 }

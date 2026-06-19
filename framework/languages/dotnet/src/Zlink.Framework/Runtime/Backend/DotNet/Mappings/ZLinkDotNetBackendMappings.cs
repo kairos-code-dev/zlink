@@ -166,6 +166,7 @@ internal static class ZLinkDotNetBackendMappings
         return new ZLinkBackendSpotDispatchInfo(
             info.Event switch
             {
+                SpotDispatchEvent.SubscribeReadable => ZLinkBackendSpotDispatchEvent.SubscribeReadable,
                 SpotDispatchEvent.RoutedReadable => ZLinkBackendSpotDispatchEvent.RouteReadable,
                 SpotDispatchEvent.ChannelReplyReadable => ZLinkBackendSpotDispatchEvent.ChannelReplyReadable,
                 SpotDispatchEvent.ActorJoinReadable => ZLinkBackendSpotDispatchEvent.ActorJoinReadable,
@@ -173,6 +174,7 @@ internal static class ZLinkDotNetBackendMappings
                 _ => ZLinkBackendSpotDispatchEvent.Internal,
             },
             DrainChannelReply: info.Event == SpotDispatchEvent.ChannelReplyReadable
+                               && info.SubjectKind == SpotDispatchSubjectKind.ChannelDealer
                 ? info.DrainChannelReply
                 : null,
             ActorParts: actorParts);

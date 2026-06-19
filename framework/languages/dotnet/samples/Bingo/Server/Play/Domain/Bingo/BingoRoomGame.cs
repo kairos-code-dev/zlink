@@ -53,7 +53,10 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
         {
             Status = BingoRoomStatus.Running;
             _game = new BingoGame(_settings, _players.Select(static roomPlayer => roomPlayer.ActorId).ToArray());
-            events.AddRange(EventsForAll(BingoRoomEventKind.GameStarted, Snapshot()));
+            events.AddRange(EventsForExistingPlayers(
+                BingoRoomEventKind.GameStarted,
+                Snapshot(),
+                player.ActorId));
         }
 
         return new BingoGameChange(Snapshot(), events);
@@ -159,6 +162,17 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
         BingoRoomState state)
     {
         return _players
+            .Select(player => new BingoGameEvent(kind, player.ActorId, state))
+            .ToArray();
+    }
+
+    private IReadOnlyList<BingoGameEvent> EventsForExistingPlayers(
+        BingoRoomEventKind kind,
+        BingoRoomState state,
+        string joinedActorId)
+    {
+        return _players
+            .Where(player => !string.Equals(player.ActorId, joinedActorId, StringComparison.Ordinal))
             .Select(player => new BingoGameEvent(kind, player.ActorId, state))
             .ToArray();
     }

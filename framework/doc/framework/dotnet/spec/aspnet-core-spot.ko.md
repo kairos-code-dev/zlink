@@ -376,7 +376,7 @@ builder.Services.AddZLinkFramework(options =>
     node.ConnectRouter("tcp://10.0.0.10:9000");
 
     node.EnablePubSub("tcp://0.0.0.0:9000");
-    node.ConnectPubSub("tcp://10.0.0.20:9100");
+    node.ConnectPeerPub("tcp://10.0.0.20:9100");
 
     node.AttachChannelClient("orders", "tcp://10.0.0.30:9200");
     node.AttachSpotPublisherClient("game.stage", "tcp://10.0.0.40:9300");

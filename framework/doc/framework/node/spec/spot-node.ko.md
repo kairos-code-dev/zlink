@@ -57,7 +57,7 @@ dotnet builder 메서드와 node builder 메서드의 대응은 다음과 같다
 | `ConfigureRouting(r => ...)` | `routing: {...}` | router routing 옵션 |
 | `ConfigurePublisher(p => ...)` | `publisher: {...}` | pub/sub 전용 |
 | `ConfigureSubscriber(s => ...)` | `subscriber: {...}` | pub/sub 전용 |
-| `ConnectRouter(ep)` / `ConnectPubSub(ep)` | `connectRouter(ep)` / `connectPubSub(ep)` 또는 `enable*(..., ep)` | 수동 연결 endpoint |
+| `ConnectRouter(ep)` / `ConnectPeerPub(ep)` | `connectRouter(ep)` / `connectPeerPub(ep)` 또는 `enable*(..., ep)` | 수동 연결 endpoint |
 
 `.acceptSpotRoutesFromChannel(name)` 은 dotnet `AcceptSpotRoutesFromChannel` 에
 대응하며, 수동 endpoint 는 메서드의 endpoint 인자로 옮긴다. 같은

@@ -26,6 +26,30 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
         return this;
     }
 
+    public IZLinkSocketConfig ConfigureServerSocket()
+    {
+        registration.Server ??= new ZLinkChannelServerCapabilityRegistration();
+        return registration.Server.SocketConfig;
+    }
+
+    public IZLinkRouteConfig ConfigureServerRouting()
+    {
+        registration.Server ??= new ZLinkChannelServerCapabilityRegistration();
+        return registration.Server.RoutingConfig;
+    }
+
+    public IZLinkSocketConfig ConfigureClientSocket()
+    {
+        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
+        return registration.Client.SocketConfig;
+    }
+
+    public IZLinkOutboundRouteConfig ConfigureClientRouting()
+    {
+        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
+        return registration.Client.RoutingConfig;
+    }
+
     public IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName)
     {
         ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);

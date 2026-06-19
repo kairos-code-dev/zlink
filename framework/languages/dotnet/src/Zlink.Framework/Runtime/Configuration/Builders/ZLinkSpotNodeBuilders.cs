@@ -60,13 +60,18 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
-    public IZLinkSpotNodeBuilder ConnectPubSub(string endpoint)
+    public IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint)
     {
         ZLinkChannelEndpointBuilderSupport.AddManualConnection(
             EnsurePubSub().ManualConnections,
             endpoint,
-            "Manual SPOT pub/sub endpoint must not be empty.");
+            "Manual SPOT peer PUB endpoint must not be empty.");
         return this;
+    }
+
+    public IZLinkSpotNodeBuilder ConnectPubSub(string endpoint)
+    {
+        return ConnectPeerPub(endpoint);
     }
 
     public IZLinkSpotNodeBuilder SetPubSubRoutingId(RoutingId routingId)

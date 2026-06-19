@@ -496,7 +496,8 @@ public interface ZLinkSpotNodeBuilder {
     ZLinkSpotNodeBuilder setRouterRoutingId(RoutingId routingId);
 
     ZLinkSpotNodeBuilder enablePubSub(String endpoint);
-    ZLinkSpotNodeBuilder connectPubSub(String endpoint);
+    ZLinkSpotNodeBuilder connectPeerPub(String endpoint);
+    ZLinkSpotNodeBuilder connectPubSub(String endpoint); // compatibility alias
     ZLinkSpotNodeBuilder setPubSubRoutingId(RoutingId routingId);
 
     ZLinkSpotNodeBuilder attachChannelClient(String channelName);

@@ -8,10 +8,15 @@ const PacketNames = Object.freeze({
   createGameHttpRes: 'CreateGameHttpRes',
   joinGameReq: 'JoinGameReq',
   joinGameRes: 'JoinGameRes',
+  observeMilestoneReq: 'ObserveMilestoneReq',
+  observeMilestoneRes: 'ObserveMilestoneRes',
   placeMarkReq: 'PlaceMarkReq',
   placeMarkRes: 'PlaceMarkRes',
+  leaveGameReq: 'LeaveGameReq',
   playerJoinedNotify: 'PlayerJoinedNotify',
-  gameStateNotify: 'GameStateNotify'
+  gameStateNotify: 'GameStateNotify',
+  winMilestoneNotify: 'WinMilestoneNotify',
+  playerWinMilestoneEvent: 'PlayerWinMilestoneEvent'
 });
 
 export interface AuthenticateReq {
@@ -39,8 +44,7 @@ export class AuthenticatePlayerReq {
 }
 
 export interface AuthenticatePlayerRes {
-  actorId: string;
-  displayName: string;
+  player: PlayerInfo;
 }
 
 export interface CreateGameReq {
@@ -60,18 +64,35 @@ export class CreateGame implements CreateGameReq {
 export interface CreateGameRes {
   roomId: string;
   gameName: string;
-  playEndpoint: string;
+  ownerPlayEndpoint: string;
+  playEndpoints: string[];
+  playNodes: PlayNodeInfo[];
+  requiredLevel: number;
 }
 
 export interface CreateGameHttpRes {
   roomId: string;
   gameName: string;
-  playEndpoint: string;
+  ownerPlayEndpoint: string;
+  playEndpoints: string[];
+  playNodes: PlayNodeInfo[];
+  requiredLevel: number;
 }
 
 export interface AuthenticateRes {
+  player: PlayerInfo;
+}
+
+export interface PlayerInfo {
   actorId: string;
   displayName: string;
+  level: number;
+  wins: number;
+}
+
+export interface PlayNodeInfo {
+  streamEndpoint: string;
+  spotNodeRid: string;
 }
 
 export interface JoinGameReq {
@@ -87,10 +108,19 @@ export class JoinGameReq {
 }
 
 export interface JoinGameRes {
-  roomId: string;
-  actorId: string;
-  mark: string;
   state: unknown;
+}
+
+export interface TicTacToeGameJoinReq {
+  roomId: string;
+  player: PlayerInfo;
+}
+
+export class ObserveMilestoneReq {
+}
+
+export interface ObserveMilestoneRes {
+  subscribed: boolean;
 }
 
 export interface PlaceMarkStreamReq {
@@ -102,15 +132,18 @@ export class PlaceMarkReq {
 }
 
 export interface PlaceMarkRes {
-  roomId: string;
-  actorId: string;
-  cell: number;
   state: unknown;
+}
+
+export class LeaveGameReq {
+  constructor(readonly roomId: string) {}
 }
 
 export interface PlayerJoinedNotify {
   roomId: string;
   actorId: string;
+  displayName: string;
+  level: number;
   mark: string;
   state: unknown;
 }
@@ -144,9 +177,26 @@ export interface GameStateNotify {
   state: GameState;
 }
 
+export interface WinMilestoneNotify {
+  roomId: string;
+  actorId: string;
+  displayName: string;
+  wins: number;
+  receivingSpotNodeRid: string;
+}
+
+export interface PlayerWinMilestoneEvent {
+  roomId: string;
+  actorId: string;
+  displayName: string;
+  wins: number;
+}
+
 export interface TicTacToeActor {
   actorId: string;
   displayName: string;
+  level: number;
+  wins: number;
   roomId?: string;
   attachClient(client: TicTacToeActorClient): void;
   detachClient(client: TicTacToeActorClient): void;
@@ -167,7 +217,22 @@ export interface TicTacToeActorClient {
 }
 
 function actorDisplayName(actorId: string): string {
-  return actorId === 'p1' ? 'Player X' : 'Player O';
+  if (actorId === 'player-x') {
+    return 'Player X';
+  }
+  if (actorId === 'player-o') {
+    return 'Player O';
+  }
+  return 'Observer';
+}
+
+function playerInfo(accessToken: string): PlayerInfo {
+  return {
+    actorId: accessToken,
+    displayName: actorDisplayName(accessToken),
+    level: 3,
+    wins: accessToken === 'player-x' ? 99 : 0
+  };
 }
 
 function authenticateReq(accessToken: string): AuthenticateReq {
@@ -180,8 +245,7 @@ function authenticatePlayerReq(accessToken: string): AuthenticatePlayerReq {
 
 function authenticatePlayerRes(accessToken: string): AuthenticatePlayerRes {
   return {
-    actorId: accessToken,
-    displayName: actorDisplayName(accessToken)
+    player: playerInfo(accessToken)
   };
 }
 
@@ -189,44 +253,81 @@ function createGameReq(gameName?: string): CreateGameReq {
   return new CreateGame(gameName);
 }
 
-function createGameRes(roomId: string, gameName: string, playEndpoint: string): CreateGameRes {
-  return { roomId, gameName, playEndpoint };
+function createGameRes(
+  roomId: string,
+  gameName: string,
+  ownerPlayEndpoint: string,
+  playEndpoints: string[],
+  playNodes: PlayNodeInfo[],
+  requiredLevel: number
+): CreateGameRes {
+  return { roomId, gameName, ownerPlayEndpoint, playEndpoints, playNodes, requiredLevel };
 }
 
 function createGameHttpRes(response: CreateGameRes): CreateGameHttpRes {
   return {
     roomId: response.roomId,
     gameName: response.gameName,
-    playEndpoint: response.playEndpoint
+    ownerPlayEndpoint: response.ownerPlayEndpoint,
+    playEndpoints: response.playEndpoints,
+    playNodes: response.playNodes,
+    requiredLevel: response.requiredLevel
   };
 }
 
-function authenticateRes(actorId: string, displayName: string): AuthenticateRes {
-  return { actorId, displayName };
+function authenticateRes(player: PlayerInfo): AuthenticateRes {
+  return { player };
 }
 
 function joinGameReq(roomId: string): JoinGameReq {
   return new JoinGameReq(roomId);
 }
 
-function joinGameRes(roomId: string, actorId: string, mark: string, state: unknown): JoinGameRes {
-  return { roomId, actorId, mark, state };
+function joinGameRes(state: unknown): JoinGameRes {
+  return { state };
+}
+
+function observeMilestoneRes(subscribed: boolean): ObserveMilestoneRes {
+  return { subscribed };
 }
 
 function placeMarkStreamReq(cell: number): PlaceMarkStreamReq {
   return new PlaceMarkReq(cell);
 }
 
-function placeMarkRes(roomId: string, actorId: string, cell: number, state: unknown): PlaceMarkRes {
-  return { roomId, actorId, cell, state };
+function placeMarkRes(state: unknown): PlaceMarkRes {
+  return { state };
 }
 
-function playerJoinedNotify(roomId: string, actorId: string, mark: string, state: unknown): PlayerJoinedNotify {
-  return { roomId, actorId, mark, state };
+function playerJoinedNotify(
+  roomId: string,
+  actorId: string,
+  displayName: string,
+  level: number,
+  mark: string,
+  state: unknown
+): PlayerJoinedNotify {
+  return { roomId, actorId, displayName, level, mark, state };
 }
 
 function gameStateNotify(state: GameState): GameStateNotify {
   return { state };
+}
+
+function playerWinMilestoneEvent(
+  roomId: string,
+  actorId: string,
+  displayName: string,
+  wins: number
+): PlayerWinMilestoneEvent {
+  return { roomId, actorId, displayName, wins };
+}
+
+function winMilestoneNotify(
+  event: PlayerWinMilestoneEvent,
+  receivingSpotNodeRid: string
+): WinMilestoneNotify {
+  return { ...event, receivingSpotNodeRid };
 }
 
 export {
@@ -242,7 +343,11 @@ export {
   gameStateNotify,
   joinGameReq,
   joinGameRes,
+  observeMilestoneRes,
   placeMarkRes,
   placeMarkStreamReq,
-  playerJoinedNotify
+  playerInfo,
+  playerWinMilestoneEvent,
+  playerJoinedNotify,
+  winMilestoneNotify
 };

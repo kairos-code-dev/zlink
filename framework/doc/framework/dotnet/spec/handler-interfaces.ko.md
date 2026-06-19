@@ -2881,7 +2881,8 @@ public interface IZLinkSpotNodeBuilder
 
     IZLinkSpotNodeBuilder EnablePubSub(string endpoint);
 
-    IZLinkSpotNodeBuilder ConnectPubSub(string endpoint);
+    IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint);
+    IZLinkSpotNodeBuilder ConnectPubSub(string endpoint); // compatibility alias
 
     IZLinkSpotNodeBuilder SetPubSubRoutingId(RoutingId routingId);
 

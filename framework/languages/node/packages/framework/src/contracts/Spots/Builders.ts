@@ -5,8 +5,10 @@ import type { ZLinkEntrySpot, ZLinkSpot } from './ZLinkSpot';
 export interface ZLinkSpotNodeBuilder {
   enableRouter(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this;
   connectRouter(endpoint: string): this;
+  connectRouter(peerRid: RoutingId, endpoint: string): this;
   routerRoutingId(routingId: RoutingId): this;
   enablePubSub(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this;
+  connectPeerPub(endpoint: string): this;
   connectPubSub(endpoint: string): this;
   pubSubRoutingId(routingId: RoutingId): this;
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
@@ -15,6 +17,7 @@ export interface ZLinkSpotNodeBuilder {
   attachChannelClient(channelName: string, endpoint?: string | readonly string[]): this;
   attachSpotPublisherClient(channelName: string, endpoint?: string | readonly string[]): this;
   acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this;
+  acceptSpotRoutesFromChannel(channelName: string, peerRid: RoutingId, endpoint: string): this;
 }
 
 export interface ZLinkSpotMeshNodeBuilder extends ZLinkSpotNodeBuilder {}

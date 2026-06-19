@@ -229,6 +229,23 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
             .Submit();
     }
 
+    public bool ForwardActorBoundSessionPart(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        Message message,
+        bool hasMore,
+        SendFlags flags)
+    {
+        return nativeSpotNode.ForwardActorBoundSessionPart(
+            actor.ToNative(),
+            sourceNodeRid,
+            sourceSessionRid,
+            message,
+            hasMore,
+            flags);
+    }
+
     public ValueTask CloseActorBoundSessionAsync(
         ZLinkBackendActorRef actor,
         TimeSpan timeout,

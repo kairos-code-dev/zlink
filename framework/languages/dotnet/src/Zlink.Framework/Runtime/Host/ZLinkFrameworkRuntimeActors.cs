@@ -264,6 +264,29 @@ internal sealed partial class ZLinkFrameworkRuntime
         return node.SendActorBoundSession(actorRef, parts, flags);
     }
 
+    internal bool ForwardActorBoundSessionPart(
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        Message message,
+        bool hasMore,
+        SendFlags flags)
+    {
+        var node = GetActorSpotNode()
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                "Actor session forward requires a router-capable SpotNode.",
+                isRetriable: false);
+
+        return node.ForwardActorBoundSessionPart(
+            actorRef,
+            sourceNodeRid,
+            sourceSessionRid,
+            message,
+            hasMore,
+            flags);
+    }
+
     internal async ValueTask CloseActorBoundSessionAsync(
         string actorId,
         CancellationToken cancellationToken)

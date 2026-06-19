@@ -22,7 +22,7 @@ sealed record SampleSettings(
     string PlaySpotNodeRid,
     string PeerPlaySpotNodeRid,
     string PeerSpotEndpoint,
-    string PeerSpotPubSubEndpoint,
+    string PeerSpotPubEndpoint,
     string RedisEndpoint,
     string LogDirectory)
 {
@@ -72,7 +72,7 @@ sealed record SampleSettings(
             section[nameof(PlaySpotNodeRid)] ?? PlaySpotNodeRidAt(playIndex),
             section[nameof(PeerPlaySpotNodeRid)] ?? PlaySpotNodeRidAt(peerPlayIndex),
             section[nameof(PeerSpotEndpoint)] ?? At(spotEndpoints, peerPlayIndex),
-            section[nameof(PeerSpotPubSubEndpoint)] ?? At(spotPubSubEndpoints, peerPlayIndex),
+            section[nameof(PeerSpotPubEndpoint)] ?? At(spotPubSubEndpoints, peerPlayIndex),
             section[nameof(RedisEndpoint)] ?? defaults.RedisEndpoint,
             section[nameof(LogDirectory)] ?? defaults.LogDirectory);
 
@@ -197,7 +197,7 @@ sealed record SampleSettings(
             playSpotNodeRid ?? defaults.PlaySpotNodeRid,
             defaults.PeerPlaySpotNodeRid,
             defaults.PeerSpotEndpoint,
-            defaults.PeerSpotPubSubEndpoint,
+            defaults.PeerSpotPubEndpoint,
             redisEndpoint ?? defaults.RedisEndpoint,
             logDirectory ?? defaults.LogDirectory);
     }

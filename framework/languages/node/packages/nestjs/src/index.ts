@@ -70,7 +70,7 @@ interface FrameworkRuntimeHost {
   onApplicationShutdown(): Promise<void>;
   setActorManager?(actorManager: unknown): void;
   setSpotManager?(spotManager: unknown): void;
-  createActorManagerOptions?(): object;
+  createActorManagerOptions?(remoteAddressResolver?: ZLinkSpotRemoteAddressResolver): object;
   createSpotManagerOptions?(): object;
 }
 
@@ -327,11 +327,16 @@ export interface ZLinkNestStreamNodeBuilder extends ZLinkNestFrameworkOptionsBui
 
 export interface ZLinkNestSpotNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
   enableRouter(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this;
+  connectRouter(endpoint: string): this;
+  connectRouter(peerRid: string, endpoint: string): this;
   enablePubSub(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this;
+  connectPeerPub(endpoint: string): this;
+  connectPubSub(endpoint: string): this;
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
   attachChannelClient(channelName: string, endpoint?: string | readonly string[]): this;
   attachSpotPublisherClient(channelName: string, endpoint?: string | readonly string[]): this;
   acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this;
+  acceptSpotRoutesFromChannel(channelName: string, peerRid: string, endpoint: string): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
 }
@@ -871,6 +876,25 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements Z
     return this;
   }
 
+  connectRouter(peerRidOrEndpoint: string, endpoint?: string): this {
+    this.spotOptions.router ??= {};
+    const router = this.spotOptions.router as {
+      manualConnections?: string[];
+      manualPeerConnections?: { peerRid: string; endpoint: string }[];
+    };
+    if (endpoint === undefined) {
+      router.manualConnections ??= [];
+      router.manualConnections.push(peerRidOrEndpoint);
+      return this;
+    }
+    router.manualPeerConnections ??= [];
+    router.manualPeerConnections.push({
+      peerRid: peerRidOrEndpoint,
+      endpoint
+    });
+    return this;
+  }
+
   enablePubSub(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this {
     this.spotOptions.pubSub = {
       bind,
@@ -878,6 +902,20 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements Z
       manualConnections: connect === undefined ? undefined : endpointList(connect)
     };
     return this;
+  }
+
+  connectPeerPub(endpoint: string): this {
+    this.spotOptions.pubSub ??= {};
+    const pubSub = this.spotOptions.pubSub as {
+      manualConnections?: string[];
+    };
+    pubSub.manualConnections ??= [];
+    pubSub.manualConnections.push(endpoint);
+    return this;
+  }
+
+  connectPubSub(endpoint: string): this {
+    return this.connectPeerPub(endpoint);
   }
 
   configureEntrySpot(options: ZLinkEntrySpotOptions): this {
@@ -901,10 +939,26 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements Z
     return this;
   }
 
-  acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this {
+  acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this;
+  acceptSpotRoutesFromChannel(channelName: string, peerRid: string, endpoint: string): this;
+  acceptSpotRoutesFromChannel(channelName: string, peerRidOrEndpoint?: string | readonly string[], endpoint?: string): this {
+    if (endpoint !== undefined && typeof peerRidOrEndpoint === 'string') {
+      const existing = this.spotOptions.acceptedSpotRouteChannels?.[channelName];
+      this.spotOptions.acceptedSpotRouteChannels = {
+        ...(this.spotOptions.acceptedSpotRouteChannels ?? {}),
+        [channelName]: {
+          ...(existing ?? {}),
+          manualPeerConnections: [
+            ...(existing?.manualPeerConnections ?? []),
+            { peerRid: peerRidOrEndpoint, endpoint }
+          ]
+        }
+      };
+      return this;
+    }
     this.spotOptions.acceptedSpotRouteChannels = {
       ...(this.spotOptions.acceptedSpotRouteChannels ?? {}),
-      [channelName]: endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) }
+      [channelName]: peerRidOrEndpoint === undefined ? {} : { manualConnections: endpointList(peerRidOrEndpoint) }
     };
     return this;
   }
@@ -2248,12 +2302,16 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     token: ZLINK_ACTOR_MANAGER,
     requiresRuntime: true,
     isEnabled: (registration) => framework.hasActorManager(registration),
-    create: (registration, runtime, moduleRef, discovery) => {
+    create: async (registration, runtime, moduleRef, discovery) => {
       const host = requireRuntime(runtime);
+      const remoteAddressResolver = framework.hasSpotRemoteAddressResolver(registration)
+        ? await createSpotRemoteAddressResolver(registration, moduleRef, discovery)
+        : undefined;
+      const hostActorOptions = host.createActorManagerOptions?.(remoteAddressResolver) as Record<string, unknown> | undefined;
       const actorManager = new framework.DefaultZLinkActorManager({
         actorFactories: registration.actorFactories,
-        ...host.createActorManagerOptions?.(),
-        boundSessionFactory: host.boundSessionFactory.create.bind(host.boundSessionFactory),
+        ...hostActorOptions,
+        boundSessionFactory: hostActorOptions?.boundSessionFactory ?? host.boundSessionFactory.create.bind(host.boundSessionFactory),
         providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery)
       });
       host.setActorManager?.(actorManager);

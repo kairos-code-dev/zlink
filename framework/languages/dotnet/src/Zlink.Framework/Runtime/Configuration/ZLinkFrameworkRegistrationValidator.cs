@@ -19,13 +19,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         }
 
         if (registration.RegistrySpotRemoteAddresses is not null
-            && registration.RouteChannels.Count == 0)
-        {
-            throw new ZLinkConfigurationException(
-                "Registry remote address resolver requires AddRouteMeshChannel(...).");
-        }
-
-        if (registration.RegistrySpotRemoteAddresses is not null
             && (registration.SpotDiscovery is null
                 || ResolveSpotDiscoveryEndpoints(registration).Count == 0))
         {
@@ -190,19 +183,22 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         if (!string.IsNullOrWhiteSpace(routerChannelId))
         {
-            if (!registration.RouteChannels.ContainsKey(routerChannelId))
+            if (!registration.RouteChannels.ContainsKey(routerChannelId)
+                && !registration.SpotNodes.ContainsKey(routerChannelId))
             {
                 throw new ZLinkConfigurationException(
-                    $"{capabilityName} references unknown route mesh channel '{routerChannelId}'.");
+                    $"{capabilityName} references unknown route mesh channel or SPOT node '{routerChannelId}'.");
             }
 
             return;
         }
 
-        if (registration.RouteChannels.Count != 1)
+        var routerCapableSpotNodeCount = registration.SpotNodes.Values.Count(
+            static spotNode => spotNode.Router is not null);
+        if (registration.RouteChannels.Count + routerCapableSpotNodeCount != 1)
         {
             throw new ZLinkConfigurationException(
-                $"{capabilityName} requires RouterChannelId when there is not exactly one route mesh channel.");
+                $"{capabilityName} requires RouterChannelId when there is not exactly one route mesh channel or router-capable SPOT node.");
         }
     }
 

@@ -23,34 +23,35 @@ public static class SessionServerHostFactory
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(topology);
+        builder.Services.AddSingleton(session);
         builder.Services.AddZLinkFramework(options =>
         {
             options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
-            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var channel = options.AddClientServerChannel(SampleNames.ApiChannel);
-                channel.EnableClient();
+                channel.EnableClient(topology.ApiA.ChannelEndpoint);
+                channel.EnableClient(topology.ApiB.ChannelEndpoint);
+                channel.ConfigureClientSocket().SendTimeout = TimeSpan.FromSeconds(1);
 
             }
             {
-                var channel = options.AddClientServerChannel(SampleNames.PlayChannel);
-                channel.EnableClient();
+                var channel = options.AddRouteMeshChannel(SampleNames.PlayChannel);
+                channel.EnableServer(session.PlayRouteEndpoint);
+                channel.EnableClient(session.PreferredPlayChannelEndpoint);
+                channel.ConfigureSocket().SendTimeout = TimeSpan.FromSeconds(1);
+                channel.ConfigureRouting().RoutingId = session.PlayRouteRid;
 
             }
             {
                 var mesh = options.AddSpotMesh(SampleNames.RoomSpotDiscovery);
+                mesh.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
                 {
                     var node = mesh.AddNode(SampleNames.SessionSpotNode);
                     {
                         var router = node.EnableRouter(session.RouterEndpoint);
                         router.SetRouterRoutingId(session.RouterRoutingId);
-
-                    }
-                    {
-                        var pubsub = node.EnablePubSub(session.PubEndpoint);
-                        pubsub.SetPubSubRoutingId(session.PubRoutingId);
 
                     }
 

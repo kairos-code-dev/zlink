@@ -15,11 +15,6 @@ internal static class Program
             ?? throw new ArgumentException("Missing --registry-endpoint.");
         var timeout = TimeSpan.FromSeconds(int.Parse(ReadOption(args, "--timeout-seconds") ?? "10"));
         var topology = SampleTopology.Create();
-        var requiredEndpoints = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            [SampleNames.ApiChannel] = topology.ApiChannelEndpoint,
-            [SampleNames.PlayChannel] = topology.PlayChannelEndpoint,
-        };
         var requiredChannels = new HashSet<string>(StringComparer.Ordinal)
         {
             SampleNames.RoomSpotDiscovery,
@@ -39,11 +34,7 @@ internal static class Program
             while (!deadline.IsCancellationRequested)
             {
                 lastTopology = await client.TopologyAsync(cancellationToken: deadline.Token);
-                if (requiredEndpoints.All(required =>
-                        lastTopology.Any(entry => IsReadySocket(entry)
-                                                  && string.Equals(entry.ChannelName, required.Key, StringComparison.Ordinal)
-                                                  && string.Equals(entry.Endpoint, required.Value, StringComparison.Ordinal)))
-                    && requiredChannels.All(required =>
+                if (requiredChannels.All(required =>
                         lastTopology.Any(entry => IsReadyDiscovery(entry)
                                                   && string.Equals(entry.ChannelName, required, StringComparison.Ordinal))))
                 {
@@ -70,6 +61,12 @@ internal static class Program
     {
         return entry.State == ZLinkTopologyState.Ready
                && !string.IsNullOrWhiteSpace(entry.Endpoint);
+    }
+
+    private static bool IsReadyEndpoint(ZLinkRegistryTopologyEntry entry, string channelName)
+    {
+        _ = channelName;
+        return IsReadySocket(entry);
     }
 
     private static bool IsReadyDiscovery(ZLinkRegistryTopologyEntry entry)

@@ -14,7 +14,7 @@ namespace Bingo.Server.Api.Handlers;
 
 [ZLinkHandlerGroup("api")]
 internal sealed class MatchBingoHandler(
-    IZLinkChannelClient client,
+    IZLinkRouteClient routes,
     ILogger<MatchBingoHandler> logger)
     : IZLinkRequestHandler<MatchBingoApiReq, MatchBingoApiRes>
 {
@@ -24,18 +24,24 @@ internal sealed class MatchBingoHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        logger.LogInformation("api match: request. actor={ActorId}, mode={Mode}", request.ActorId, request.Mode);
-        var allocated = await client.RequestToChannel(
+        logger.LogInformation("api match: request. actor={ActorId}, mode={Mode}, actorNode={ActorNodeRid}", request.ActorId, request.Mode, request.ActorNodeRid);
+        var allocated = await routes.Request(
                 SampleNames.PlayChannel,
+                RoutingId.FromHex(request.ActorNodeRid),
                 new AllocateBingoRoomReq
                 {
                     Mode = request.Mode,
                     ActorId = request.ActorId,
+                    PreferredOwnerNodeRid = request.ActorNodeRid,
                 })
             .Async<AllocateBingoRoomRes>(cancellationToken)
             ;
-        logger.LogInformation("api match: allocated. actor={ActorId}, room={RoomId}", request.ActorId, allocated.RoomId);
+        logger.LogInformation("api match: allocated. actor={ActorId}, room={RoomId}, owner={OwnerNodeRid}", request.ActorId, allocated.RoomId, allocated.RoomOwnerNodeRid);
 
-        return new MatchBingoApiRes { RoomId = allocated.RoomId };
+        return new MatchBingoApiRes
+        {
+            RoomId = allocated.RoomId,
+            RoomOwnerNodeRid = allocated.RoomOwnerNodeRid,
+        };
     }
 }

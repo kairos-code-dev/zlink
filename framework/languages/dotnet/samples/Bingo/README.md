@@ -1,7 +1,7 @@
 # Bingo Sample
 
-This sample implements the matching room Bingo flow from
-`framework/doc/framework/dotnet/guide/samples/bingo-game-sample.ko.md`.
+This sample implements the common Bingo flow from
+`framework/doc/framework/common/sample/bingo/README.ko.md`.
 
 Bingo is the Protobuf game sample. Its stream, channel, actor, and room Spot
 payloads use the framework Protobuf codec so the multi-server game flow also
@@ -10,16 +10,16 @@ shows a schema-oriented binary contract.
 Directory layout:
 
 - `Shared/` contains only the public sample DTO and protobuf contracts.
-- `Client/` contains the real stream connector client. The scenario creates two
-  client connectors and connects all of them to the Session server stream
-  endpoint.
+- `Client/` contains the real stream connector client. The scenario creates
+  three client connectors: `player-1` connects to Session A, while `player-2`
+  and `observer` connect to Session B.
 - `Client/Configuration/` contains client-only endpoint and packet settings.
 - `Server/Configuration/` contains the server topology, packet names, and
   framework timing settings used by the server roles.
 - `Server/Api/` contains player authentication and matching API handlers.
 - `Server/Play/` contains player actors, Entry Spot admission, room spots,
-  submitted cards, client-driven number requests, automatic marks, winner
-  detection, and session-bound push.
+  Redis-backed room matching, submitted cards, server-driven draws, automatic
+  marks, winner detection, Spot pub/sub winner fan-out, and session-bound push.
 - `Server/Session/` contains the stream Session server and actor relay handlers.
 - `Server/Registry/` contains the embedded discovery registry host.
 
@@ -46,12 +46,12 @@ On Windows PowerShell:
 .\framework\languages\dotnet\samples\Bingo\run_sample.ps1
 ```
 
-The script starts the Registry, Api, Play, and Session server projects as
-separate processes, waits for their endpoints, runs the probe, and then runs the
-connector client. The client flow is self-checking. It fails if the two
-connector clients do not authenticate as distinct actors, match into one room,
-automatically start after the second player submits a card, drive the game with
-number requests, produce the expected winner, or deliver push notifications to
+The script starts one Registry, two Api servers, two Play servers, two Session
+servers, and a Redis match queue as separate processes. It waits for their
+endpoints, runs the topology probe, and then runs the connector client. The
+client flow is self-checking. It fails if the three connectors do not
+authenticate as distinct actors, match into one room across Play nodes, observe
+the winner event from the non-owner Play node, or deliver push notifications to
 the bound client sessions. After the game finishes, the server self-check also
 verifies that room actors leave the room Spot, return to Entry Spot, and are
 destroyed from the Entry Spot context.

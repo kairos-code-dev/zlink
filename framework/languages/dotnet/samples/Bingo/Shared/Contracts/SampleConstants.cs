@@ -9,6 +9,7 @@ public static class BingoSamplePlayers
 {
     public const string Player1 = "player-1";
     public const string Player2 = "player-2";
+    public const string Observer = "observer";
 }
 
 public static class BingoRoomStatuses

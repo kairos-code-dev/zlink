@@ -48,6 +48,13 @@ internal static class ZLinkClientCallCodec
         IReadOnlyList<Message> reply,
         string emptyMessage,
         string errorMessage)
+        => DecodeEnvelopeReply<TReply>(reply, emptyMessage, errorMessage, null);
+
+    public static TReply DecodeEnvelopeReply<TReply>(
+        IReadOnlyList<Message> reply,
+        string emptyMessage,
+        string errorMessage,
+        ZLinkCodecRegistryBuilder? codecs)
     {
         if (reply.Count == 0)
         {
@@ -60,7 +67,7 @@ internal static class ZLinkClientCallCodec
             throw new InvalidOperationException(replyHeader.ErrorMessage ?? errorMessage);
         }
 
-        return (TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply))
+        return (TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), codecs)
             ?? throw new InvalidOperationException("Reply body is null.");
     }
 
@@ -68,10 +75,17 @@ internal static class ZLinkClientCallCodec
         IReadOnlyList<Message> reply,
         string emptyMessage,
         string errorMessage)
+        => DecodeEnvelopeReplyAndDispose<TReply>(reply, emptyMessage, errorMessage, null);
+
+    public static TReply DecodeEnvelopeReplyAndDispose<TReply>(
+        IReadOnlyList<Message> reply,
+        string emptyMessage,
+        string errorMessage,
+        ZLinkCodecRegistryBuilder? codecs)
     {
         try
         {
-            return DecodeEnvelopeReply<TReply>(reply, emptyMessage, errorMessage);
+            return DecodeEnvelopeReply<TReply>(reply, emptyMessage, errorMessage, codecs);
         }
         finally
         {

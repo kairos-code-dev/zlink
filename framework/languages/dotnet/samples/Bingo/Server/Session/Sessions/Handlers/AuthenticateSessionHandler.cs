@@ -8,7 +8,10 @@ using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace Bingo.Server.Session.Sessions.Handlers;
 
-internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channels)
+internal sealed class AuthenticateBingoSessionHandler(
+    IZLinkChannelClient channels,
+    IZLinkRouteClient routes,
+    SampleSessionNode session)
     : IZLinkSessionPacketHandler<IZLinkSessionContext>
 {
     public string PacketName => nameof(AuthenticateReq);
@@ -33,12 +36,14 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channe
             throw new InvalidOperationException(authenticated.Reason ?? "Player authentication failed.");
         }
 
-        var ensured = await channels.RequestToChannel(
+        var ensured = await routes.Request(
                 SampleNames.PlayChannel,
+                session.PreferredPlayNodeRid,
                 new EnsurePlayerActorReq
                 {
                     ActorId = authenticated.ActorId,
                     DisplayName = authenticated.DisplayName,
+                    PreferredActorNodeRid = session.PreferredPlayNodeRid.ToHex(),
                 })
             .Async<EnsurePlayerActorRes>(cancellationToken) ;
 
@@ -50,6 +55,7 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channe
             {
                 ActorId = ensured.ActorId,
                 DisplayName = authenticated.DisplayName,
+                ActorNodeRid = ensured.Actor.NodeRid,
             })
             .Async();
     }

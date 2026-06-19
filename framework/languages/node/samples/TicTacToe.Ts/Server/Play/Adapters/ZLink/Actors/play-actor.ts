@@ -18,6 +18,8 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
   readonly actorId: string;
   readonly context: ZLinkActorContext;
   displayName: string;
+  level: number;
+  wins: number;
   roomId?: string;
   destroyAfterEntrySpotJoin: boolean;
   disconnected: boolean;
@@ -28,6 +30,8 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
     this.actorId = actorId;
     this.context = context;
     this.displayName = displayName;
+    this.level = 0;
+    this.wins = 0;
     this.destroyAfterEntrySpotJoin = false;
     this.disconnected = false;
     this.nextSeq = 0;
@@ -55,11 +59,8 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
   }
 
   async push(packetName: string, payload: unknown): Promise<void> {
-    if (this.client === undefined) {
-      return;
-    }
     this.nextSeq += 1;
-    await this.client
+    await this.context.boundSession
       .send(payload)
       .packetName(packetName)
       .metadata('seq', String(this.nextSeq))

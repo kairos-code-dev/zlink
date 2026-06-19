@@ -13,8 +13,13 @@ internal sealed record BingoRoomSettings(
     string RoomName,
     string Mode,
     int RequiredPlayers,
-    int MaxDrawNumber)
+    int MaxDrawNumber,
+    string Purpose,
+    string? ObservedRoomId)
 {
+    public const string GamePurpose = "Game";
+    public const string ObserverPurpose = "Observer";
+
     public static BingoRoomSettings Create(string mode, int roomSeq)
     {
         if (!string.Equals(mode, BingoSampleModes.TwoPlayer, StringComparison.Ordinal))
@@ -26,8 +31,28 @@ internal sealed record BingoRoomSettings(
             $"Bingo Room {roomSeq:000}",
             mode,
             RequiredPlayers: 2,
-            MaxDrawNumber: 15);
+            MaxDrawNumber: 15,
+            GamePurpose,
+            null);
     }
+
+    public static BingoRoomSettings CreateObserver(string observedRoomId, string localNodeRid)
+    {
+        if (string.IsNullOrWhiteSpace(observedRoomId))
+        {
+            throw new InvalidOperationException("Observed room id is required.");
+        }
+
+        return new BingoRoomSettings(
+            $"Bingo Observer {localNodeRid}",
+            BingoSampleModes.TwoPlayer,
+            RequiredPlayers: 0,
+            MaxDrawNumber: 0,
+            ObserverPurpose,
+            observedRoomId);
+    }
+
+    public bool IsObserver => string.Equals(Purpose, ObserverPurpose, StringComparison.Ordinal);
 }
 
 internal enum BingoRoomEventKind

@@ -49,7 +49,7 @@ internal sealed class PlayServer(SampleSettings settings)
                     RoutingId.From(settings.PeerPlaySpotNodeRid),
                     settings.PeerSpotEndpoint)
                 .EnablePubSub(settings.SpotPubSubEndpoint)
-                .ConnectPubSub(settings.PeerSpotPubSubEndpoint)
+                .ConnectPeerPub(settings.PeerSpotPubEndpoint)
                 .AddEntrySpot<PlayEntrySpot>()
                 .AddSpotFactory<TicTacToeGame>();
         });

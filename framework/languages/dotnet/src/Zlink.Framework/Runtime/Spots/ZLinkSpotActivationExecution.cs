@@ -32,6 +32,8 @@ internal sealed partial class ZLinkSpotActivation
                     }
                 },
                 channelReplyReadable: drain => drain?.Invoke(),
+                subscribeReadable: () => QueueSerialized(
+                    static (activation, ct) => activation.DispatchSubscriptionsAsync(ct)),
                 actorJoinReadable: () => QueueSerialized(
                     static (activation, ct) => activation._dispatcher.DispatchActorJoinDrainAsync(ct)),
                 actorPartsReadable: actorParts => QueueSerialized(

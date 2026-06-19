@@ -11,10 +11,11 @@ internal static class ZLinkRegistryRouteRuntime
     {
         if (!string.IsNullOrWhiteSpace(configured))
         {
-            if (!state.RouteChannels.ContainsKey(configured))
+            if (!state.RouteChannels.ContainsKey(configured)
+                && !state.SpotNodes.ContainsKey(configured))
             {
                 throw new ZLinkConfigurationException(
-                    $"Route mesh channel '{configured}' is not registered.");
+                    $"Route mesh channel or SPOT node '{configured}' is not registered.");
             }
 
             return configured;
@@ -25,8 +26,13 @@ internal static class ZLinkRegistryRouteRuntime
             return state.RouteChannels.Keys.Single();
         }
 
+        if (state.RouteChannels.Count == 0 && state.SpotNodes.Count == 1)
+        {
+            return state.SpotNodes.Keys.Single();
+        }
+
         throw new ZLinkConfigurationException(
-            "Registry remote address resolver requires RouterChannelId when there is not exactly one route mesh channel.");
+            "Registry remote address resolver requires RouterChannelId when there is not exactly one route mesh channel or router-capable SPOT node.");
     }
 
     public static IZLinkBackendDiscovery ResolveDiscoveryAttachedRouteChannel(

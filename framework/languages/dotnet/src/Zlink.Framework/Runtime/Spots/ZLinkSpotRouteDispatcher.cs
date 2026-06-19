@@ -8,6 +8,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
     string channelName,
     ZLinkSpotPacketRegistry packets,
     Func<ZLinkSpotHandlerInvoker> handlerInvoker,
+    ZLinkCodecRegistryBuilder codecs,
     Func<Received, ZLinkEnvelopeHeader, CancellationToken, ValueTask<bool>>? internalPackets = null,
     ILogger<ZLinkSpotRouteDispatcher>? logger = null)
 {
@@ -70,7 +71,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
             object? message;
             try
             {
-                message = ZLinkEnvelopeCodec.DecodeBody(received.Parts, descriptor.MessageType);
+                message = ZLinkEnvelopeCodec.DecodeBody(received.Parts, descriptor.MessageType, codecs);
             }
             catch (Exception ex) when (descriptor.IsRequest)
             {
@@ -112,7 +113,8 @@ internal sealed class ZLinkSpotRouteDispatcher(
                     descriptor.MessageName,
                     header.CorrelationId,
                     reply,
-                    descriptor.ReplyType);
+                    descriptor.ReplyType,
+                    codecs);
             }
             catch (Exception ex)
             {

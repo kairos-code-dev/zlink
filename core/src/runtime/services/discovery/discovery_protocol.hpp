@@ -199,10 +199,7 @@ inline bool socket_auto_connect_target_matches (uint16_t auto_connect_type_,
         case ZLINK_AUTO_CONNECT_FANOUT:
             return local_role_ == service_role_sub && remote_role_ == service_role_pub;
         case ZLINK_AUTO_CONNECT_SPOT_MESH:
-            return local_role_ == service_role_spot && remote_role_ == service_role_spot
-                   && compare_connect_keys (local_rid_, remote_rid_, local_endpoint_,
-                                            remote_endpoint_)
-                        < 0;
+            return local_role_ == service_role_spot && remote_role_ == service_role_spot;
         default:
             return false;
     }

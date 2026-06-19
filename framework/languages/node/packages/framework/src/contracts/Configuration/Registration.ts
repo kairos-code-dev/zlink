@@ -236,7 +236,13 @@ export interface ZLinkSpotActorRequestHandlerRegistration {
 export interface ZLinkSpotRouterCapabilityOptions {
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
+  readonly manualPeerConnections?: readonly ZLinkSpotRouterPeerConnectionOptions[];
   readonly routingId?: string;
+}
+
+export interface ZLinkSpotRouterPeerConnectionOptions {
+  readonly peerRid: RoutingId;
+  readonly endpoint: string;
 }
 
 export interface ZLinkSpotPubSubCapabilityOptions {
@@ -255,6 +261,7 @@ export interface ZLinkSpotPublisherClientOptions {
 
 export interface ZLinkSpotRouteChannelAcceptanceOptions {
   readonly manualConnections?: readonly string[];
+  readonly manualPeerConnections?: readonly ZLinkSpotRouterPeerConnectionOptions[];
 }
 
 export interface ZLinkRouteChannelHandlerOptions {
@@ -606,10 +613,20 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     return this;
   }
 
-  connectRouter(endpoint: string): this {
+  connectRouter(endpoint: string): this;
+  connectRouter(peerRid: RoutingId, endpoint: string): this;
+  connectRouter(peerRidOrEndpoint: RoutingId | string, endpoint?: string): this {
     this.spotNode.router ??= { manualConnections: [] };
-    this.spotNode.router.manualConnections ??= [];
-    this.spotNode.router.manualConnections.push(endpoint);
+    if (endpoint === undefined) {
+      this.spotNode.router.manualConnections ??= [];
+      this.spotNode.router.manualConnections.push(peerRidOrEndpoint as string);
+      return this;
+    }
+    this.spotNode.router.manualPeerConnections ??= [];
+    this.spotNode.router.manualPeerConnections.push({
+      peerRid: peerRidOrEndpoint,
+      endpoint
+    });
     return this;
   }
 
@@ -629,11 +646,15 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     return this;
   }
 
-  connectPubSub(endpoint: string): this {
+  connectPeerPub(endpoint: string): this {
     this.spotNode.pubSub ??= { manualConnections: [] };
     this.spotNode.pubSub.manualConnections ??= [];
     this.spotNode.pubSub.manualConnections.push(endpoint);
     return this;
+  }
+
+  connectPubSub(endpoint: string): this {
+    return this.connectPeerPub(endpoint);
   }
 
   pubSubRoutingId(routingId: RoutingId): this {
@@ -678,10 +699,23 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     return this;
   }
 
-  acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this {
+  acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this;
+  acceptSpotRoutesFromChannel(channelName: string, peerRid: RoutingId, endpoint: string): this;
+  acceptSpotRoutesFromChannel(channelName: string, peerRidOrEndpoint?: RoutingId | string | readonly string[], endpoint?: string): this {
     this.spotNode.acceptedSpotRouteChannels ??= {};
     this.spotNode.acceptedSpotRouteChannels[channelName] ??= { manualConnections: [] };
-    appendEndpoints(this.spotNode.acceptedSpotRouteChannels[channelName], endpoint);
+    if (endpoint !== undefined) {
+      this.spotNode.acceptedSpotRouteChannels[channelName].manualPeerConnections ??= [];
+      this.spotNode.acceptedSpotRouteChannels[channelName].manualPeerConnections!.push({
+        peerRid: peerRidOrEndpoint as RoutingId,
+        endpoint
+      });
+      return this;
+    }
+    appendEndpoints(
+      this.spotNode.acceptedSpotRouteChannels[channelName],
+      peerRidOrEndpoint as string | readonly string[] | undefined
+    );
     return this;
   }
 }
@@ -863,6 +897,7 @@ interface MutableSpotNodeOptions {
 interface MutableSpotRouterCapabilityOptions {
   bind?: string;
   manualConnections?: string[];
+  manualPeerConnections?: ZLinkSpotRouterPeerConnectionOptions[];
   routingId?: string;
 }
 
@@ -882,6 +917,7 @@ interface MutableSpotPublisherClientOptions {
 
 interface MutableSpotRouteChannelAcceptanceOptions {
   manualConnections?: string[];
+  manualPeerConnections?: ZLinkSpotRouterPeerConnectionOptions[];
 }
 
 function toChannelMap(channels: ZLinkFrameworkRegistrationOptions['channels']): Map<string, ZLinkChannelOptions> {
@@ -1205,10 +1241,14 @@ function validateAcceptedSpotRouteChannels(
 ): void {
   for (const [channelName, acceptance] of Object.entries(spotNode.acceptedSpotRouteChannels ?? {})) {
     requireName(`SpotNode '${spotNodeName}' accepted SPOT route channel name`, channelName);
-    validateManualConnections(
-      `SpotNode '${spotNodeName}' accepted SPOT route channel '${channelName}'`,
-      acceptance.manualConnections
-    );
+	    validateManualConnections(
+	      `SpotNode '${spotNodeName}' accepted SPOT route channel '${channelName}'`,
+	      acceptance.manualConnections
+	    );
+	    validateRouterPeerConnections(
+	      `SpotNode '${spotNodeName}' accepted SPOT route channel '${channelName}'`,
+	      acceptance.manualPeerConnections
+	    );
     if (registration.routeChannelOptions.has(channelName)) {
       continue;
     }
@@ -1232,6 +1272,7 @@ function validateSpotNodeCapability(
     requireEndpoint(capabilityName, capability.bind);
   }
   validateManualConnections(capabilityName, capability.manualConnections);
+  validateRouterPeerConnections(capabilityName, 'manualPeerConnections' in capability ? capability.manualPeerConnections : undefined);
   if (capability.routingId !== undefined && (capability.routingId.trim().length === 0 || capability.routingId.trim() !== capability.routingId)) {
     throw new ZLinkConfigurationException(`${capabilityName} routingId must not be empty or padded.`);
   }
@@ -1240,6 +1281,20 @@ function validateSpotNodeCapability(
 function validateManualConnections(capabilityName: string, manualConnections: readonly string[] | undefined): void {
   if ((manualConnections ?? []).some((endpoint) => endpoint.trim().length === 0)) {
     throw new ZLinkConfigurationException(`${capabilityName} manual connection endpoint must not be empty.`);
+  }
+}
+
+function validateRouterPeerConnections(
+  capabilityName: string,
+  manualPeerConnections: readonly ZLinkSpotRouterPeerConnectionOptions[] | undefined
+): void {
+  for (const connection of manualPeerConnections ?? []) {
+    if (String(connection.peerRid).trim().length === 0) {
+      throw new ZLinkConfigurationException(`${capabilityName} manual peer routing id must not be empty.`);
+    }
+    if (connection.endpoint.trim().length === 0) {
+      throw new ZLinkConfigurationException(`${capabilityName} manual peer connection endpoint must not be empty.`);
+    }
   }
 }
 

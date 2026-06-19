@@ -7,7 +7,8 @@ internal static class ZLinkSpotReplyEnvelope
         string messageName,
         string? correlationId,
         object? reply,
-        Type? replyType)
+        Type? replyType,
+        ZLinkCodecRegistryBuilder? codecs = null)
     {
         var replyHeader = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Response,
@@ -19,7 +20,7 @@ internal static class ZLinkSpotReplyEnvelope
             null,
             null,
             null);
-        return ZLinkEnvelopeCodec.EncodeParts(replyHeader, reply, replyType);
+        return ZLinkEnvelopeCodec.EncodeParts(replyHeader, reply, replyType, codecs);
     }
 
     public static IReadOnlyList<Message> EncodeErrorParts(

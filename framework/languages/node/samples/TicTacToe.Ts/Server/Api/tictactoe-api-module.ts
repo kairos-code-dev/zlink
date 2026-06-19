@@ -5,8 +5,9 @@ import { CreateGameEndpoint } from './Handlers/create-game-http-handler';
 import { PacketNames } from '../../Shared/Contracts/messages';
 import { SampleNames, SampleTimings } from '../Configuration/sample-settings';
 function createTicTacToeApiModule(config: {
-  apiEndpoint: string;
-  playEndpoint: string;
+  apiEndpoints: string[];
+  apiIndex: number;
+  playChannelEndpoints: string[];
 }) {
   class TicTacToeApiModule {}
 
@@ -18,10 +19,10 @@ function createTicTacToeApiModule(config: {
           .codecs()
             .addJson()
           .addClientServerChannel(SampleNames.apiChannel)
-            .enableServer(config.apiEndpoint)
+            .enableServer(config.apiEndpoints[config.apiIndex])
             .addRequestHandler(PacketNames.authenticatePlayerReq, AuthenticatePlayerHandler)
           .addClientServerChannel(SampleNames.playChannel)
-            .enableClient(config.playEndpoint)
+            .enableClient(config.playChannelEndpoints)
           .build()
       })
     ],

@@ -1,8 +1,18 @@
 import { Message as BindingMessage } from '@zlink-systems/zlink';
+import { PlayActorLeaveGameHandler } from './Handlers/play-actor-leave-game-handler';
 import { PlayActorPlaceMarkHandler } from './Handlers/play-actor-place-mark-handler';
 import { TicTacToeGameTimerHandler } from './Handlers/tictactoe-game-timer-handler';
 import { TicTacToeMatch } from '../../../Domain/TicTacToe/tictactoe-match';
-import { GameStatus, PacketNames, gameStateNotify, joinGameRes, placeMarkRes, playerJoinedNotify } from '../../../../../Shared/Contracts/messages';
+import {
+  GameStatus,
+  PacketNames,
+  gameStateNotify,
+  joinGameRes,
+  placeMarkRes,
+  playerJoinedNotify,
+  playerWinMilestoneEvent
+} from '../../../../../Shared/Contracts/messages';
+import { SampleDefaults, SampleNames } from '../../../../Configuration/sample-settings';
 import type {
   Message,
   ZLinkActor,
@@ -13,7 +23,9 @@ import type {
 } from '@zlink-systems/framework';
 import type {
   JoinGameRes,
+  GameState,
   PlaceMarkRes,
+  TicTacToeGameJoinReq,
   TicTacToeActor
 } from '../../../../../Shared/Contracts/messages';
 import type { TicTacToeMatch as TicTacToeMatchType } from '../../../Domain/TicTacToe/tictactoe-match';
@@ -27,10 +39,10 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
   private roomId = InitialRoomId;
   private match: TicTacToeMatchType<PlaySpotActor> = new TicTacToeMatch<PlaySpotActor>(InitialRoomId);
   private gameTick?: ZLinkTimer;
-  private cleanupStarted = false;
 
   async configure(): Promise<void> {
     this.context.handlers.actorRequest(PacketNames.placeMarkReq, PlayActorPlaceMarkHandler);
+    this.context.handlers.actorSend(PacketNames.leaveGameReq, PlayActorLeaveGameHandler);
     this.gameTick = await this.context.addTimer(
       'game-tick',
       GameTickPeriodMs,
@@ -48,9 +60,12 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
     this.gameTick = undefined;
   }
 
-  async onActorJoin(actor: PlaySpotActor): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actor: PlaySpotActor, requestMessage: Message): Promise<ZLinkSpotActorJoinResponse> {
     try {
-      const response = await this.join(actor);
+      console.log(`game spot: onActorJoin received. actor=${actor.actorId} roomId=${this.roomId}`);
+      const request = JSON.parse(requestMessage.getString()) as TicTacToeGameJoinReq;
+      const response = await this.join(actor, request);
+      console.log(`game spot: onActorJoin completed. actor=${actor.actorId} roomId=${this.roomId}`);
       return { accepted: true, reply: createJsonMessage(response) };
     } catch (error) {
       return {
@@ -61,7 +76,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
   }
 
   async onJoinedActor(actor: PlaySpotActor): Promise<void> {
-    void actor;
+    console.log(`game spot: actor joined. actor=${actor.actorId} roomId=${this.roomId}`);
   }
 
   async onLeaveActor(actor: PlaySpotActor): Promise<void> {
@@ -75,20 +90,17 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
   async placeMark(actor: PlaySpotActor, cell: number): Promise<PlaceMarkRes> {
     const match = this.requireMatch();
     const roomId = this.requireRoomId();
+    const before = match.snapshot();
     const change = match.placeMark(actor.actorId, cell);
     const state = change.state;
-      for (const joined of match.players.values()) {
-        if (joined.actorId === actor.actorId) {
-          continue;
-        }
-        await joined.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
+    for (const joined of match.players.values()) {
+      if (joined.actorId === actor.actorId) {
+        continue;
+      }
+      await joined.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
     }
-    if (isTerminal(state.status)) {
-      setImmediate(() => {
-        void this.leaveFinishedActors();
-      });
-    }
-    return placeMarkRes(roomId, actor.actorId, cell, state);
+    await this.publishWinMilestone(actor, before, state);
+    return placeMarkRes(state);
   }
 
   async tick(): Promise<void> {
@@ -102,12 +114,59 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
         );
       }
     }
-    await this.leaveFinishedActors();
   }
 
-  private async join(actor: PlaySpotActor): Promise<JoinGameRes> {
+  async leaveGame(actor: PlaySpotActor, roomId: string): Promise<void> {
+    if (roomId !== this.requireRoomId()) {
+      throw new Error(`Actor requested leave for a different room. roomId=${roomId}`);
+    }
+    if (!isTerminal(this.match.snapshot().status)) {
+      throw new Error('Game is not finished.');
+    }
+    actor.markForDestroyAfterRoomLeave();
+    await this.context.leaveActor(actor);
+  }
+
+  private async publishWinMilestone(
+    actor: PlaySpotActor,
+    before: GameState,
+    after: GameState
+  ): Promise<void> {
+    if (
+      before.status === GameStatus.Won ||
+      after.status !== GameStatus.Won ||
+      after.winner !== actor.actorId
+    ) {
+      return;
+    }
+    const wins = actor.wins + 1;
+    if (wins !== 100) {
+      return;
+    }
+    await this.context.outbound
+      .publish(
+        SampleNames.playerMilestoneTopic,
+        playerWinMilestoneEvent(after.roomId, actor.actorId, actor.displayName, wins)
+      )
+      .packetName(PacketNames.playerWinMilestoneEvent)
+      .submit();
+  }
+
+  private async join(actor: PlaySpotActor, request: TicTacToeGameJoinReq): Promise<JoinGameRes> {
     const match = this.requireMatch();
     const roomId = this.requireRoomId();
+    if (request.roomId !== roomId) {
+      throw new Error(`Actor requested join for a different room. roomId=${request.roomId}`);
+    }
+    if (request.player.actorId !== actor.actorId) {
+      throw new Error(`Join player '${request.player.actorId}' does not match actor '${actor.actorId}'.`);
+    }
+    if (request.player.level < SampleDefaults.requiredLevel) {
+      throw new Error(`Player level ${request.player.level} is below required level ${SampleDefaults.requiredLevel}.`);
+    }
+    actor.displayName = request.player.displayName;
+    actor.level = request.player.level;
+    actor.wins = request.player.wins;
     const result = match.joinPlayer(actor);
     actor.roomId = roomId;
     const state = result.state;
@@ -118,24 +177,19 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
         }
         await player.actor.push(
           PacketNames.playerJoinedNotify,
-          playerJoinedNotify(roomId, result.joined.actorId, result.joined.mark, state)
+          playerJoinedNotify(
+            roomId,
+            result.joined.actorId,
+            result.joined.actor.displayName,
+            result.joined.actor.level,
+            result.joined.mark,
+            state
+          )
         );
         await player.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
       }
     }
-    return joinGameRes(roomId, result.joined.actorId, result.joined.mark, state);
-  }
-
-  private async leaveFinishedActors(): Promise<void> {
-    const match = this.requireMatch();
-    if (this.cleanupStarted || !isTerminal(match.snapshot().status)) {
-      return;
-    }
-    this.cleanupStarted = true;
-    for (const player of [...match.players.values()]) {
-      player.actor.markForDestroyAfterRoomLeave();
-      await this.context.leaveActor(player.actor);
-    }
+    return joinGameRes(state);
   }
 
   private requireRoomId(): string {

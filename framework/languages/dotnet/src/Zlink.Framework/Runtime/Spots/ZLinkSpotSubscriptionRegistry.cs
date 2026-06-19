@@ -55,6 +55,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
 
     public async ValueTask DrainAsync(
         IZLinkBackendSpot nativeSpot,
+        ZLinkCodecRegistryBuilder? codecs,
         Func<ZLinkSpotSubscriptionDescriptor, object?, CancellationToken, ValueTask> dispatchAsync,
         CancellationToken cancellationToken)
     {
@@ -78,12 +79,13 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 return;
             }
 
-            await DispatchMessageAsync(message, dispatchAsync, cancellationToken).ConfigureAwait(false);
+            await DispatchMessageAsync(message, codecs, dispatchAsync, cancellationToken).ConfigureAwait(false);
         }
     }
 
     private async ValueTask DispatchMessageAsync(
         TopicMessage message,
+        ZLinkCodecRegistryBuilder? codecs,
         Func<ZLinkSpotSubscriptionDescriptor, object?, CancellationToken, ValueTask> dispatchAsync,
         CancellationToken cancellationToken)
     {
@@ -107,7 +109,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 continue;
             }
 
-            var body = ZLinkEnvelopeCodec.DecodeBody(message.Parts, descriptor.MessageType);
+            var body = ZLinkEnvelopeCodec.DecodeBody(message.Parts, descriptor.MessageType, codecs);
             await dispatchAsync(descriptor, body, cancellationToken).ConfigureAwait(false);
             dispatched = true;
             Interlocked.Increment(ref _dispatchCount);

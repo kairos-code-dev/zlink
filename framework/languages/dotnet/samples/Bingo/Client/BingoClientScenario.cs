@@ -9,6 +9,7 @@ internal sealed class BingoClientScenario
     public async ValueTask RunAsync(
         IZlinkStreamConnector client1,
         IZlinkStreamConnector client2,
+        IZlinkStreamConnector observer,
         CancellationToken cancellationToken = default)
     {
         // Client 1 connects, authenticates, and creates the waiting room.
@@ -21,7 +22,17 @@ internal sealed class BingoClientScenario
 
         Ensure(client1MatchRes.State.Status == BingoRoomStatuses.WaitingForPlayers);
         Ensure(client1MatchRes.State.HostActorId == client1Auth.ActorId);
+        Ensure(client1MatchRes.RoomOwnerNodeRid == client1Auth.ActorNodeRid);
         Ensure(client1.ReceivedCount(nameof(PlayerJoinedNotify)) == 0);
+
+        await observer.Connect.Async(cancellationToken);
+        var observerAuth = await observer.Request(new AuthenticateReq { AccessToken = BingoSamplePlayers.Observer }).Async<AuthenticateRes>(cancellationToken);
+        Ensure(observerAuth.ActorId == BingoSamplePlayers.Observer);
+
+        var observed = await observer.Request(new ObserveBingoEventsReq { RoomId = client1MatchRes.RoomId })
+            .Async<ObserveBingoEventsRes>(cancellationToken);
+        Ensure(observed.Subscribed);
+        Ensure(observed.ObserverNodeRid != client1MatchRes.RoomOwnerNodeRid);
 
         // Client 2 connects, authenticates, and joins the same room.
         await client2.Connect.Async(cancellationToken);
@@ -30,11 +41,14 @@ internal sealed class BingoClientScenario
 
         Ensure(client2Auth.ActorId == BingoSamplePlayers.Player2);
         Ensure(client2Auth.ActorId != client1Auth.ActorId);
+        Ensure(client2Auth.ActorNodeRid != client1Auth.ActorNodeRid);
 
         var client2MatchRes = await client2.Request(new MatchBingoReq { Mode = BingoSampleModes.TwoPlayer }).Async<MatchBingoRes>(cancellationToken);
 
         Ensure(client2MatchRes.RoomId == client1MatchRes.RoomId);
         Ensure(client2MatchRes.State.Status == BingoRoomStatuses.Running);
+        Ensure(client2MatchRes.RoomOwnerNodeRid == client1MatchRes.RoomOwnerNodeRid);
+        Ensure(client2Auth.ActorNodeRid != client2MatchRes.RoomOwnerNodeRid);
 
         // Joining another player is delivered as a push to existing room members.
         var client1SawClient2Join = await client1.WaitFor<PlayerJoinedNotify>()
@@ -51,7 +65,6 @@ internal sealed class BingoClientScenario
 
         var client1Started = await client1StartedTask;
         Ensure(client1Started.Payload.State.Status == BingoRoomStatuses.Running);
-
         var client2Started = await client2StartedTask;
         Ensure(client2Started.Payload.State.Status == BingoRoomStatuses.Running);
 
@@ -133,6 +146,19 @@ internal sealed class BingoClientScenario
             client1Result.Payload.State.Players.All(static player => player.Card.Count == 9));
         Ensure(
             client1Result.Payload.State.Players.All(static player => player.Marks[4]));
+
+        var winner = await observer.WaitFor<BingoWinnerAnnouncedNotify>()
+            .Where(message => message.Payload.RoomId == client1MatchRes.RoomId)
+            .Async(cancellationToken);
+        Ensure(winner.Payload.WinnerActorId == client1Auth.ActorId);
+        Ensure(winner.Payload.DrawSeq == client1Result.Payload.State.DrawSeq);
+        Ensure(winner.Payload.ReceivingSpotNodeRid == observed.ObserverNodeRid);
+        Ensure(winner.Payload.ReceivingSpotNodeRid != client1MatchRes.RoomOwnerNodeRid);
+
+        var stopped = await observer.Request(new StopObservingBingoEventsReq { RoomId = client1MatchRes.RoomId })
+            .Async<StopObservingBingoEventsRes>(cancellationToken);
+        Ensure(stopped.Stopped);
+        Ensure(stopped.ObserverNodeRid == observed.ObserverNodeRid);
     }
 
     private static void Ensure(

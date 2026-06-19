@@ -255,7 +255,7 @@ public sealed class ManagerTests : SpotTestSupport
                     var spot = mesh.AddNode("subscriber-node");
                 {
                     var pubsub = spot.EnablePubSub(subscriberNodeEndpoint);
-                    pubsub.ConnectPubSub(publisherNodeEndpoint);
+                    pubsub.ConnectPeerPub(publisherNodeEndpoint);
 
                 }
                 spot.AddSpotFactory<LocalSubscriberStageSpot>();

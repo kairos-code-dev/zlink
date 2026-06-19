@@ -82,6 +82,14 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
         IReadOnlyList<Message> parts,
         SendFlags flags);
 
+    bool ForwardActorBoundSessionPart(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        Message message,
+        bool hasMore,
+        SendFlags flags);
+
     ValueTask CloseActorBoundSessionAsync(
         ZLinkBackendActorRef actor,
         TimeSpan timeout,

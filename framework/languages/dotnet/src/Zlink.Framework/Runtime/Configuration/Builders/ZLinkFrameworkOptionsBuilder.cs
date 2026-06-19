@@ -236,6 +236,9 @@ internal sealed class ZLinkSpotMeshBuilder(
     public IZLinkSpotNodeBuilder EnablePubSub(string endpoint)
         => DefaultNode().EnablePubSub(endpoint);
 
+    public IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint)
+        => DefaultNode().ConnectPeerPub(endpoint);
+
     public IZLinkSpotNodeBuilder ConnectPubSub(string endpoint)
         => DefaultNode().ConnectPubSub(endpoint);
 

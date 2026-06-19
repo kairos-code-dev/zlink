@@ -6,6 +6,7 @@ internal static class ZLinkSpotNativeDispatchRouter
         IZLinkBackendSpot nativeSpot,
         Action<IReadOnlyList<Received>> routeReadable,
         Action<Action?> channelReplyReadable,
+        Action subscribeReadable,
         Action actorJoinReadable,
         Action<IReadOnlyList<ZLinkBackendActorPart>> actorPartsReadable)
     {
@@ -20,6 +21,9 @@ internal static class ZLinkSpotNativeDispatchRouter
                         break;
                     case ZLinkBackendSpotDispatchEvent.ChannelReplyReadable:
                         channelReplyReadable(info.DrainChannelReply);
+                        break;
+                    case ZLinkBackendSpotDispatchEvent.SubscribeReadable:
+                        subscribeReadable();
                         break;
                     case ZLinkBackendSpotDispatchEvent.ActorJoinReadable:
                         actorJoinReadable();

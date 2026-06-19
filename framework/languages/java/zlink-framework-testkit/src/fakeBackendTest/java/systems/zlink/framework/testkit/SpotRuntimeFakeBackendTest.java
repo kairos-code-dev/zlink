@@ -692,7 +692,7 @@ final class SpotRuntimeFakeBackendTest {
                     .setRouterRoutingId(RoutingId.from("spot-node-1"))
                     .connectRouter("inproc://spot-router-peer");
                 node.enablePubSub("inproc://spot-pub")
-                    .connectPubSub("inproc://spot-pub-peer"); }; };
+                    .connectPeerPub("inproc://spot-pub-peer"); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 

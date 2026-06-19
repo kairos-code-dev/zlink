@@ -11,6 +11,7 @@ message AuthenticateReq {
 message AuthenticateRes {
   string actor_id = 1;
   string display_name = 2;
+  string actor_node_rid = 3;
 }
 
 message AuthenticatePlayerReq {
@@ -27,6 +28,7 @@ message AuthenticatePlayerRes {
 message EnsurePlayerActorReq {
   string actor_id = 1;
   string display_name = 2;
+  string preferred_actor_node_rid = 3;
 }
 
 message ActorRefSnapshot {
@@ -48,25 +50,30 @@ message MatchBingoReq {
 message MatchBingoRes {
   string room_id = 1;
   BingoRoomState state = 2;
+  string room_owner_node_rid = 3;
 }
 
 message MatchBingoApiReq {
   string actor_id = 1;
   string display_name = 2;
   string mode = 3;
+  string actor_node_rid = 4;
 }
 
 message MatchBingoApiRes {
   string room_id = 1;
+  string room_owner_node_rid = 2;
 }
 
 message AllocateBingoRoomReq {
   string mode = 1;
   string actor_id = 2;
+  string preferred_owner_node_rid = 3;
 }
 
 message AllocateBingoRoomRes {
   string room_id = 1;
+  string room_owner_node_rid = 2;
 }
 
 message BingoRoomSettingsPayload {
@@ -74,12 +81,15 @@ message BingoRoomSettingsPayload {
   string mode = 2;
   int32 required_players = 3;
   int32 max_draw_number = 4;
+  string purpose = 5;
+  optional string observed_room_id = 6;
 }
 
 message BingoRoomJoinReq {
   string room_id = 1;
   string actor_id = 2;
   string display_name = 3;
+  bool observe_only = 4;
 }
 
 message BingoRoomJoinRes {
@@ -93,6 +103,24 @@ message SubmitBingoCardReq {
 
 message SubmitBingoCardRes {
   BingoRoomState state = 1;
+}
+
+message ObserveBingoEventsReq {
+  string room_id = 1;
+}
+
+message ObserveBingoEventsRes {
+  bool subscribed = 1;
+  string observer_node_rid = 2;
+}
+
+message StopObservingBingoEventsReq {
+  string room_id = 1;
+}
+
+message StopObservingBingoEventsRes {
+  bool stopped = 1;
+  string observer_node_rid = 2;
 }
 
 message PlayerJoinedNotify {
@@ -117,6 +145,19 @@ message BingoNumberDrawnNotify {
 
 message BingoGameEndedNotify {
   BingoRoomState state = 1;
+}
+
+message BingoWinnerAnnouncedNotify {
+  string room_id = 1;
+  string winner_actor_id = 2;
+  int32 draw_seq = 3;
+  string receiving_spot_node_rid = 4;
+}
+
+message BingoWinnerEvent {
+  string room_id = 1;
+  string winner_actor_id = 2;
+  int32 draw_seq = 3;
 }
 
 message BingoRoomState {

@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
+import { ZLINK_FRAMEWORK_RUNTIME } from '@zlink-systems/nestjs';
 import { closeNestRuntime, waitForShutdown } from '../runtime-support';
 import { loadSampleConfig } from '../Configuration/sample-config';
 import { createTicTacToePlayModule } from './tictactoe-play-module';
@@ -10,6 +11,16 @@ async function main(): Promise<void> {
     logger: false,
     abortOnError: false
   });
+  const runtime = channelApp.get(ZLINK_FRAMEWORK_RUNTIME) as unknown as {
+    spotNodeRuntime?: {
+      primaryNode?: {
+        entrySpot(): { routingId: unknown };
+        status(): { connectedPeerCount?: number };
+        peers(): unknown[];
+      };
+    };
+  };
+  void logSpotPeerReady(runtime);
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
     endpoint: config.playEndpoint,
@@ -18,6 +29,28 @@ async function main(): Promise<void> {
   })}\n`);
   await waitForShutdown();
   await closeNestRuntime(channelApp);
+}
+
+async function logSpotPeerReady(runtime: {
+  spotNodeRuntime?: {
+    primaryNode?: {
+      status(): { connectedPeerCount?: number };
+    };
+  };
+}): Promise<void> {
+  const node = runtime.spotNodeRuntime?.primaryNode;
+  if (node === undefined) {
+    return;
+  }
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    if ((node.status().connectedPeerCount ?? 0) > 0) {
+      process.stdout.write(`${JSON.stringify({ event: 'spotPeerReady' })}\n`);
+      return;
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  process.stderr.write('Timed out waiting for Play SpotNode peer connection.\n');
 }
 
 main().catch((error: unknown) => {

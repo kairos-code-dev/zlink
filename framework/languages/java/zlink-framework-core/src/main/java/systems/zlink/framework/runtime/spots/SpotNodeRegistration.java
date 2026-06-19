@@ -197,7 +197,7 @@ public final class SpotNodeRegistration {
 
     void addPubSubManualConnection(String endpoint) {
         enablePubSub();
-        pubSubManualConnections.add(requireEndpoint(endpoint, "pub/sub manual endpoint"));
+        pubSubManualConnections.add(requireEndpoint(endpoint, "peer pub endpoint"));
     }
 
     void addSpotFactory(Class<? extends ZLinkSpot<?>> spotType) {

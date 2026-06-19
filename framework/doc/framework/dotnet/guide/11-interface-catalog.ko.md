@@ -295,7 +295,7 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
         spot.SetRouterRoutingId(RoutingId.From("spot-router"));
 
         spot.EnablePubSub("tcp://0.0.0.0:9000");
-        spot.ConnectPubSub("tcp://127.0.0.1:5500");
+        spot.ConnectPeerPub("tcp://127.0.0.1:5500");
         spot.ConfigurePubSubPublisher().NoDrop = true;
 
         spot.AttachChannelClient("api", "tcp://127.0.0.1:5300");
@@ -334,7 +334,7 @@ client·subscriber·spot router 가 서로 다른 연결 집합이다.
 channel.EnableClient("tcp://127.0.0.1:5001");
 subscriber.EnableSubscriber("tcp://127.0.0.1:5002");
 spot.ConnectRouter("tcp://127.0.0.1:5003");
-spot.ConnectPubSub("tcp://127.0.0.1:5004");
+spot.ConnectPeerPub("tcp://127.0.0.1:5004");
 spot.AttachSpotPublisherClient("events", "tcp://127.0.0.1:5005");
 spot.AcceptSpotRoutesFromChannel("play-router", "tcp://127.0.0.1:5006");
 ```

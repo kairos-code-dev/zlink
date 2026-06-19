@@ -67,7 +67,7 @@ public final class SpotBuilders {
         }
 
         @Override
-        public ZLinkSpotNodeBuilder connectPubSub(String endpoint) {
+        public ZLinkSpotNodeBuilder connectPeerPub(String endpoint) {
             registration.addPubSubManualConnection(endpoint);
             return this;
         }

@@ -678,6 +678,16 @@ void test_discovery_protocol_applies_socket_auto_connect_policy ()
     TEST_ASSERT_FALSE (socket_auto_connect_target_matches (
       ZLINK_AUTO_CONNECT_DEALER_MESH, service_role_dealer, service_role_dealer, local_rid,
       local_rid, "tcp://a", "tcp://a"));
+
+    TEST_ASSERT_TRUE (socket_auto_connect_target_matches (
+      ZLINK_AUTO_CONNECT_SPOT_MESH, service_role_spot, service_role_spot, local_rid, remote_rid,
+      "tcp://a", "tcp://b"));
+    TEST_ASSERT_TRUE (socket_auto_connect_target_matches (
+      ZLINK_AUTO_CONNECT_SPOT_MESH, service_role_spot, service_role_spot, remote_rid, local_rid,
+      "tcp://b", "tcp://a"));
+    TEST_ASSERT_FALSE (socket_auto_connect_target_matches (
+      ZLINK_AUTO_CONNECT_SPOT_MESH, service_role_spot, service_role_router, local_rid,
+      remote_rid, "tcp://a", "tcp://b"));
 }
 
 void test_discovery_new_accepts_socket_family ()

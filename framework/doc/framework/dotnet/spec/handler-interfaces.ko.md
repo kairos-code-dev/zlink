@@ -143,7 +143,7 @@ handler 종류마다 받아야 하는 부가 정보가 다르다. 그 차이를 
 | `ZLinkRouteSendContext` | routed channel send handler | source routing id, router channel id |
 | `ZLinkRouteRequestContext` | routed channel request handler | source routing id, router channel id |
 | `ZLinkSpotActorRequestContext` | SPOT / Entry Spot actor request handler | `Metadata`, `Reply`(`ZLinkSpotActorReplyOptions`) |
-| `ZLinkSpotActorSendContext` | SPOT / Entry Spot actor send handler | `Metadata`, `Reply`(`ZLinkSpotActorReplyOptions`) |
+| `ZLinkSpotActorSendContext` | SPOT / Entry Spot actor send handler | `Metadata` |
 
 일반 SPOT packet/request/subscription/timer handler 는 별도 per-call context 타입을
 받지 않는다. handler 는 `(TSpot spot, 메시지, CancellationToken)` 형태로 spot 인스턴스와
@@ -401,10 +401,13 @@ public interface IZLinkSpotOutbound
         TRequest request);
 }
 
-public interface IZLinkSpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutbound
+public interface IZLinkSpotContext
 {
     RoutingId SpotRid { get; }
     RoutingId NodeRid { get; }
+
+    IZLinkSpotHandlerRegistry Handlers { get; }
+    IZLinkSpotOutbound Outbound { get; }
 
     ValueTask leaveActor(
         IZLinkActor actor,
@@ -3241,9 +3244,7 @@ public interface IZLinkRegistryQuery
 
 `MemberPeersAsync(...)` 는 `channelName` 하나만 인자로 받는다.
 
-이전에 있던 `(ZLinkServiceType serviceType, string serviceName, ...)`
-형태는 더 이상 사용하지 않는다. service type/name 구분 대신, channel 이름
-자체가 member peer 집합의 단위가 된다.
+channel 이름 자체가 member peer 집합의 단위가 된다.
 
 ### 10.2 IZLinkRegistryQueryClient
 
@@ -3373,7 +3374,6 @@ public enum ZLinkSpotEventKind
 
 public readonly record struct ZLinkSpotTimerDiagnostic(
     RoutingId SpotRid,
-    RoutingId SpotRid,
     bool IsEntrySpot,
     string TimerName,
     string HandlerType,
@@ -3401,8 +3401,7 @@ public readonly record struct ZLinkSpotEvent(
 `ZLinkSpotNodeStatus` 와 `ZLinkSpotNodePeerEntry` 의 첫 번째 필드는
 `ChannelName` 이다.
 
-예전에는 `ServiceName` 이라는 이름을 썼다. 다만 channel 단위로 통일하면서
-`ChannelName` 으로 rename 되었다.
+이 필드는 channel 단위로 통일되어 `ChannelName` 이다.
 
 이 두 record 를 필드 단위로 풀어 쓰는 다른 문서들도, 이 이름을 기준으로
 참고하면 된다.
@@ -3534,8 +3533,8 @@ public sealed class ZLinkSpotActorRequestAttribute : Attribute
 
 method 시그니처는 아래 순서를 따른다.
 
-- send: `(spotOrEntrySpot, actor, message, CancellationToken)` 반환값 없음
-- request: `(spotOrEntrySpot, actor, request, CancellationToken)` reply 반환
+- send: `(spotOrEntrySpot, actor, ZLinkSpotActorSendContext context, message, CancellationToken)` 반환값 없음
+- request: `(spotOrEntrySpot, actor, ZLinkSpotActorRequestContext context, request, CancellationToken)` reply 반환
 - actor join: `(spot, actor, Message request, CancellationToken)` `ZLinkSpotActorJoinResult` 반환
 - joined/left/disconnected: Spot class 의 public instance callback
   `(actor, CancellationToken)` 반환값 없음

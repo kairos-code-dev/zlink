@@ -9,8 +9,9 @@
 언어를 익힌 사용자가 다른 언어 가이드를 같은 시나리오로 바로 읽을 수 있게 하기
 위해서다.
 
-> 각 시나리오는 모든 언어의 `bindings/<lang>/samples/`에 동일 이름으로 실행 가능한
-> 샘플이 있다. 가이드 코드는 이 샘플과 1:1로 대응한다([예제 규약](EXAMPLES.ko.md)).
+> 각 시나리오는 모든 언어의 `bindings/<lang>/samples/`에 같은 의미의 실행 가능한
+> 샘플이 있다(파일명은 언어 idiom을 따른다). 가이드 코드는 이 샘플과 1:1로
+> 대응한다([예제 규약](EXAMPLES.ko.md)).
 
 ## 정규 시나리오
 
@@ -22,7 +23,7 @@
 | 4 | **토픽 Pub/Sub** | PUB / SUB | 토픽 기반 이벤트 fan-out | `PubSubRecv` / `pubsub_recv_sample` |
 | 5 | **Discovery + Registry** | 서비스 계층 | 이름 기반 발견·자동 연결 | `DiscoveryRegistry`, `RegistryQuery` |
 | 6 | **SPOT 메시징** | SPOT | 동적 상태 단위 + 토픽/라우팅 | `SpotRecv`, `SpotRequestAsync` |
-| 7 | **Actor 룸 서버** | SPOT + Actor + STREAM | 세션↔엔티티 binding, 룸 디스패치 | `ActorRoomServer`, `ActorSinglePlayerQueue`, `ActorGatewayRelay` |
+| 7 | **Actor 룸 서버** | SPOT + Actor + STREAM | 세션↔엔티티 binding, 룸 dispatch | `ActorRoomServer`, `ActorSinglePlayerQueue`, `ActorGatewayRelay` |
 | 8 | **STREAM 패킷** | STREAM | 외부 raw TCP 클라이언트 | `StreamPacketCallback` / `stream_packet_callback_sample` |
 
 ## 시나리오별 고정 값 (전 언어 공통)

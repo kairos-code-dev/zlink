@@ -10,7 +10,7 @@
 |------|------|
 | **낮음** | handler 1개 + channel 등록 수준. 가이드만으로 도입 가능 |
 | **중간** | lifecycle/factory/등록 조합을 이해해야 함 |
-| **높음** | 분산 토폴로지·세션 라우팅 결정이 필요 |
+| **높음** | 분산 토폴로지·session routing 결정이 필요 |
 
 ## 2. 기능 × 난이도 × 언제 쓰나
 
@@ -19,7 +19,7 @@
 | 서버 간 request/reply | 낮음 | 서비스 A가 서비스 B의 결과가 필요할 때 | `ZLinkClient.requestToChannel` | [05](04-channel-messaging.ko.md) |
 | 서버 간 one-way send | 낮음 | 응답 없는 작업 위임/통지 | `ZLinkClient.sendToChannel` | [05](04-channel-messaging.ko.md) |
 | event fanout (pub/sub) | 낮음 | domain event를 여러 구독자에게 전파 | `ZLinkFanoutClient.publish` | [05](04-channel-messaging.ko.md) |
-| target node 지정 route | 중간 | application이 target `RoutingId`를 직접 알 때 | `ZLinkRouteClient.request` | [05](04-channel-messaging.ko.md) |
+| target node 지정 route | 중간 | application이 target `RoutingId`를 직접 알 때 | `ZLinkRouteClient.requestTo` | [05](04-channel-messaging.ko.md) |
 | room/stage/zone 생성 | 중간 | 동적 생성·소멸 논리 노드 단위 라우팅 | `ZLinkSpotManager.create` | [06](05-spot.ko.md) |
 | Spot 내부 timer | 중간 | 주기 tick, heartbeat, 정리 작업 | `ZLinkTimer` | [06](05-spot.ko.md) |
 | actor 생성/재사용 | 높음 | session과 묶인 상태 보유 객체로 packet dispatch | `ZLinkActorManager.getOrCreate` | [07](06-actor-session.ko.md) |
@@ -41,7 +41,7 @@ flowchart TD
   Q3 -->|아니오| Q4{여러 구독자에게<br/>흩뿌리나?}
   Q4 -->|예| Pub[pub/sub<br/>05]
   Q4 -->|아니오| Send[one-way send<br/>05]
-  Q2 -->|예| Q5{참가자별 상태/<br/>세션이 있나?}
+  Q2 -->|예| Q5{참가자별 상태/<br/>session이 있나?}
   Q5 -->|아니오| Spot[SPOT<br/>06]
   Q5 -->|예| Q6{연결 서버와<br/>로직 서버를 나누나?}
   Q6 -->|아니오| Actor[actor + SPOT<br/>07]
@@ -51,7 +51,7 @@ flowchart TD
 - **서비스끼리 호출만** -> request/reply 또는 send. 난이도 낮음,
   [02-getting-started](02-getting-started.ko.md)로 충분.
 - **이벤트를 흩뿌린다** -> pub/sub.
-- **방/판/존 같은 동적 단위** -> SPOT. 그 안에 참가자별 상태/세션이 있으면 actor.
+- **방/판/존 같은 동적 단위** -> SPOT. 그 안에 참가자별 상태/session이 있으면 actor.
 - **외부 게임/모바일 client** -> STREAM(서버) + Stream Connector(client).
 - **연결 서버와 로직 서버 분리(재접속 이전성)** -> session actor dispatch.
 

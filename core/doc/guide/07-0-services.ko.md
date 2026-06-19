@@ -99,7 +99,7 @@ flowchart TB
 | **Registry** | 서비스 등록소 | 서비스 엔트리를 등록·관리하는 중앙 저장소 |
 | **Discovery** | 서비스 발견 | Registry를 구독하여 서비스 목록을 로컬 캐시로 유지 |
 | **SPOT** | 동적 상태 단위 | 위치투명 토픽 pub/sub + 라우팅. 상태 단위마다 단일 실행 큐로 lock 없이 직렬 처리 |
-| **Actor** | 세션↔처리 단위 binding | STREAM 세션 메시지를 Spot 디스패치 컨텍스트로 모으는 SPOT 내부 단위. 세션 위치와 무관하게 같은 엔티티로 이어 줌(재접속 이전성) |
+| **Actor** | 세션↔처리 단위 binding | STREAM 세션 메시지를 Spot dispatch 컨텍스트로 모으는 SPOT 내부 단위. 세션 위치와 무관하게 같은 엔티티로 이어 줌(재접속 이전성) |
 
 ## 3. 서비스 구성 요소
 
@@ -124,7 +124,7 @@ Registry 클러스터 기반의 서비스 등록·발견 시스템이다. 서비
 `SpotNode`는 SPOT 토폴로지의 핵심 런타임이다. 하나의 SPOT channel Discovery
 view를 연결해 같은 channel의 다른 `SpotNode`와 mesh를 구성하고, 다른
 channel을 호출해야 할 때는 `DEALER`를 별도로 등록한다. 그 위에 공개
-`Spot` 파사드 하나가 올라가 channel send/request, 피어 라우팅 통신,
+`Spot` facade 하나가 올라가 channel send/request, 피어 라우팅 통신,
 publish/subscribe를 함께 수행한다.
 
 - SPOT mesh: `zlink_spot_node_attach_discovery()` — SPOT channel view를
@@ -145,10 +145,11 @@ publish/subscribe를 함께 수행한다.
 - **Thread-safe** — 하나의 `spot` / `spot_node` 핸들에서 여러 스레드가
   operational API를 동시에 호출할 수 있다
 
-- **Actor**: STREAM 세션 메시지를 Spot 디스패치 컨텍스트로 모으는 SPOT 내부 라우팅 대상이다.
-  `SpotNode`가 Actor 테이블을 소유하고, 새로 생성된 Actor는 `Entry Spot`에서 디스패치된다.
-  Actor는 `zlink_spot_node_actor_join_spot()`으로 다른 `Spot`으로 이동하며, 명시적
-  `zlink_spot_node_actor_leave_spot()` 호출로만 `Entry Spot`으로 복귀한다. STREAM 세션
+- **Actor**: STREAM 세션 메시지를 Spot dispatch 컨텍스트로 모으는 SPOT 내부 라우팅 대상이다.
+  `SpotNode`가 Actor 테이블을 소유하고, 새로 생성된 Actor는 `Entry Spot`에서 dispatch된다.
+  Actor는 `zlink_spot_node_actor_join_spot()`으로 다른 `Spot`으로 이동하며,
+  `zlink_spot_node_actor_leave_spot()` 또는 `zlink_spot_node_actor_join_entry_spot()`로
+  `Entry Spot`으로 보낼 수 있다. STREAM 세션
   bind/unbind는 독립적이며 Actor가 join한 Spot을 바꾸지 않는다. Actor는 소켓이나
   inproc(프로세스 내부) 엔드포인트를 소유하지 않고 `zlink_actor_ref_t`로 식별한다.
 
@@ -156,10 +157,10 @@ publish/subscribe를 함께 수행한다.
 
 ### 3.3 소켓 패밀리 — Discovery 관리 raw 소켓
 
-raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스(자동 연결 타입
-`ZLINK_AUTO_CONNECT_CLIENT_SERVER`)에 연결하면 자동 피어 발견과 lifecycle
-관리를 맡길 수 있다. SPOT 추상화 없이 소켓 수준에서 위치투명 통신을
-제공한다.
+raw ROUTER/DEALER/PUB/SUB 소켓을 Discovery 인스턴스에 연결하면 자동 피어 발견과
+lifecycle 관리를 맡길 수 있다. 자동 연결 타입은 역할에 맞춘다 — ROUTER↔DEALER는
+`ZLINK_AUTO_CONNECT_CLIENT_SERVER`, PUB↔SUB는 `ZLINK_AUTO_CONNECT_FANOUT`이다.
+SPOT 추상화 없이 소켓 수준에서 위치투명 통신을 제공한다.
 
 - Discovery로 자동 엔드포인트 등록 및 heartbeat
 - 역할 기반 피어 매칭 (PUB↔SUB, ROUTER↔DEALER)
@@ -215,9 +216,8 @@ flowchart LR
 1. 핸들 전용 가중치 옵션을 `0`으로 설정한다.
 2. 연결된 피어가 자신의 가중치 캐시를 갱신할 시간을 둔다. 이 갱신은
    소켓 모니터의 `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 확인할 수 있다.
-   서비스 계층 관점이 필요하면 같은 피어를 관리하는 `Discovery`
-   핸들에서 `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED`를
-   관찰한다.
+   서비스 계층 관점이 필요하면 `zlink_discovery_member_peers()`를 주기적으로
+   읽어 이전 결과와 비교한다(Discovery 핸들 자체에는 socket monitor를 열 수 없다).
 3. 진행 중인 reply가 완료될 때까지 기다린다. 운영 시 이 시간은 보통 SLA를
    기준으로 설정한다.
 4. 노드를 재시작하거나 교체한 뒤 양수 가중치로 다시 서비스에 합류시킨다.
@@ -262,7 +262,7 @@ flowchart TB
 
 - **Discovery가 기반 인프라**: SPOT과 소켓 패밀리 모두 Discovery로 대상을 발견한다.
 - **SPOT**은 PUB/SUB 패턴으로 토픽 메시지를 전파하고 routed 통신을 제공한다.
-- **Actor**는 SPOT 안에서 동작하는 세션 기반 라우팅 대상이다. STREAM 세션 메시지를 Spot 디스패치 컨텍스트로 모으며, 별도 서비스가 아니라 `SpotNode`가 관리하는 내부 주소 지정 단위다.
+- **Actor**는 SPOT 안에서 동작하는 세션 기반 라우팅 대상이다. STREAM 세션 메시지를 Spot dispatch 컨텍스트로 모으며, 별도 서비스가 아니라 `SpotNode`가 관리하는 내부 주소 지정 단위다.
 - **소켓 패밀리**는 raw ROUTER/DEALER/PUB/SUB 소켓이 Discovery로 피어를 등록하고 발견해 소켓 수준의 위치투명 통신을 제공한다.
 - 모든 서비스는 독립적으로 동작하며, 동일한 Registry 클러스터를 공유할 수 있다.
 

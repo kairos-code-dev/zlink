@@ -23,8 +23,9 @@
 
 ## 2. Kotlin wrapper
 
-Kotlin wrapper는 Java API 위의 thin wrapper다. Java와 다른 lifecycle, buffering,
-error 의미를 만들지 않는다.
+Kotlin wrapper는 Java runtime 위에 coroutine/Flow 편의 표면을 추가한다 — suspending
+handler 인터페이스, coroutine invoker, `callbackFlow` 기반 Flow adapter 를 제공한다.
+buffering/lifecycle/error 의미는 각 Kotlin API별로 본다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

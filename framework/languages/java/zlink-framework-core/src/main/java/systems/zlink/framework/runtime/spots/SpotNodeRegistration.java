@@ -23,7 +23,7 @@ public final class SpotNodeRegistration {
         new LinkedHashMap<>();
     private final Map<String, SpotRouteChannelAcceptanceRegistration> acceptedSpotRouteChannels =
         new LinkedHashMap<>();
-    private final List<String> routerManualConnections = new ArrayList<>();
+    private final List<RouterManualConnection> routerManualConnections = new ArrayList<>();
     private final List<String> pubSubManualConnections = new ArrayList<>();
     private boolean routerEnabled;
     private boolean pubSubEnabled;
@@ -101,7 +101,7 @@ public final class SpotNodeRegistration {
         return Map.copyOf(acceptedSpotRouteChannels);
     }
 
-    public List<String> routerManualConnections() {
+    public List<RouterManualConnection> routerManualConnections() {
         return List.copyOf(routerManualConnections);
     }
 
@@ -192,7 +192,19 @@ public final class SpotNodeRegistration {
 
     void addRouterManualConnection(String endpoint) {
         enableRouter();
-        routerManualConnections.add(requireEndpoint(endpoint, "router manual endpoint"));
+        routerManualConnections.add(new RouterManualConnection(
+            null,
+            requireEndpoint(endpoint, "router manual endpoint")));
+    }
+
+    void addRouterManualConnection(RoutingId peerRoutingId, String endpoint) {
+        if (peerRoutingId == null || peerRoutingId.size() == 0) {
+            throw new ZLinkConfigurationException("router manual peer routing id is required");
+        }
+        enableRouter();
+        routerManualConnections.add(new RouterManualConnection(
+            peerRoutingId,
+            requireEndpoint(endpoint, "router manual endpoint")));
     }
 
     void addPubSubManualConnection(String endpoint) {
@@ -265,5 +277,8 @@ public final class SpotNodeRegistration {
             throw new ZLinkConfigurationException(label + " is required");
         }
         return endpoint;
+    }
+
+    public record RouterManualConnection(RoutingId peerRoutingId, String endpoint) {
     }
 }

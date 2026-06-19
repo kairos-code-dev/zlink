@@ -16,6 +16,13 @@ internal static partial class NativeMethods
         IntPtr entries,
         ref nuint count);
 
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_drain_reply(IntPtr spot);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_drain_channel_reply(
+        IntPtr spot, IntPtr dealerSubject);
+
     // Pre-encoded channel-name interop for the data plane: callers pin a cached
     // UTF-8 buffer once instead of re-marshalling the managed string on every
     // part, mirroring zlink_spot_publish_part_utf8.

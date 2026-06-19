@@ -468,6 +468,18 @@ bool is_remote_actor_ref_for_node (zlink::spot_node_t *request_node_, const zlin
     return !same_routing_id (local_rid, ref_->node_rid);
 }
 
+zlink_submit_result_t
+send_actor_gateway_packet_from_source (zlink::spot_node_t *origin_node_,
+                                       const zlink_routing_id_t &source_node_rid_,
+                                       const zlink_routing_id_t &target_node_rid_,
+                                       uint8_t kind_,
+                                       const zlink_routing_id_t &session_rid_,
+                                       const char *actor_id_,
+                                       uint64_t generation_,
+                                       zlink_msg_t *payload_,
+                                       zlink_send_flags_t flags_,
+                                       zlink_part_flag_t part_flag_);
+
 zlink_submit_result_t send_actor_gateway_packet (zlink::spot_node_t *origin_node_,
                                                  const zlink_routing_id_t &target_node_rid_,
                                                  uint8_t kind_,
@@ -488,6 +500,29 @@ zlink_submit_result_t send_actor_gateway_packet (zlink::spot_node_t *origin_node
     if (origin_node_->node_routing_id (&source_node_rid) != 0)
         return errno_to_submit_result (errno);
 
+    return send_actor_gateway_packet_from_source (origin_node_, source_node_rid, target_node_rid_,
+                                                 kind_, session_rid_, actor_id_, generation_,
+                                                 payload_, flags_, part_flag_);
+}
+
+zlink_submit_result_t
+send_actor_gateway_packet_from_source (zlink::spot_node_t *origin_node_,
+                                       const zlink_routing_id_t &source_node_rid_,
+                                       const zlink_routing_id_t &target_node_rid_,
+                                       uint8_t kind_,
+                                       const zlink_routing_id_t &session_rid_,
+                                       const char *actor_id_,
+                                       uint64_t generation_,
+                                       zlink_msg_t *payload_,
+                                       zlink_send_flags_t flags_,
+                                       zlink_part_flag_t part_flag_)
+{
+    if (!origin_node_ || !valid_routing_id (&source_node_rid_)
+        || !valid_routing_id (&target_node_rid_) || !payload_) {
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+
     zlink_msg_t control;
     if (!zlink::spot_actor_gateway::init_control_msg (kind_, session_rid_, actor_id_, generation_,
                                                       part_flag_, &control))
@@ -502,7 +537,7 @@ zlink_submit_result_t send_actor_gateway_packet (zlink::spot_node_t *origin_node
 
     zlink_msg_t packet_parts[2] = {control, payload_copy};
     std::vector<zlink_msg_t> combined;
-    const std::string source_node = routing_id_key (source_node_rid);
+    const std::string source_node = routing_id_key (source_node_rid_);
     const std::string target_node = routing_id_key (target_node_rid_);
     if (zlink::spot_reqrep_internal::build_spot_routed_message (
           zlink::spot_routed_protocol::actor_gateway_endpoint_class, source_node,
@@ -2620,6 +2655,38 @@ zlink_spot_node_actor_send_bound_session_msg (void *node_,
     (void) zlink_msg_close (message_);
     (void) zlink_msg_init (message_);
     return ZLINK_SUBMIT_OK;
+}
+
+extern "C" zlink_submit_result_t
+zlink_spot_node_actor_forward_bound_session_part (
+  void *node_,
+  const zlink_actor_ref_t *actor_ref_,
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink_routing_id_t *source_session_rid_,
+  zlink_msg_t *message_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_)
+{
+    if (!node_) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+    if (!actor_ref_ || !source_node_rid_ || !source_session_rid_ || !message_
+        || !valid_actor_id (actor_ref_->actor_id) || !valid_routing_id (&actor_ref_->node_rid)
+        || actor_ref_->generation == 0 || !valid_routing_id (source_node_rid_)
+        || !valid_routing_id (source_session_rid_)) {
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    if (!is_registered_spot_node_handle (node_)) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+
+    return send_actor_gateway_packet_from_source (
+      static_cast<zlink::spot_node_t *> (node_), *source_node_rid_, actor_ref_->node_rid,
+      zlink::spot_actor_gateway::packet_session_to_actor, *source_session_rid_,
+      actor_ref_->actor_id, actor_ref_->generation, message_, flags_, part_flag_);
 }
 
 extern "C" zlink_recv_result_t zlink_spot_recv_actor_lifecycle (

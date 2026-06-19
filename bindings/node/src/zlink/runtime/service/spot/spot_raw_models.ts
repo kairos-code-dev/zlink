@@ -36,6 +36,7 @@ export interface SpotDispatchRaw {
   subjectKind: number;
   subjectHandle: bigint;
   actorParts?: ActorPartRaw[];
+  routed?: SpotRoutedRaw;
 }
 
 export interface SpotActorJoinRecvRaw {

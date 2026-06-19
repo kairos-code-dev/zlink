@@ -189,6 +189,12 @@ int dispatch_external_router_delivery_with_envelope (zlink::spot_node_t *origin_
                                           flags_);
     }
 
+    if (envelope_.destination_class == routed_protocol::router_endpoint_class
+        && envelope_.destination_endpoint_rid_value.size > 0) {
+        return send_external_router_once (runtime, &envelope_.destination_endpoint_rid_value,
+                                          combined_, flags_);
+    }
+
     const std::vector<std::string> candidate_route_ids =
       runtime->external_route_ids_for_destination (envelope_.destination_node_rid);
     if (candidate_route_ids.empty ()) {

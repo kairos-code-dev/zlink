@@ -213,54 +213,181 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
           };
         };
       }
+      if (property === 'createActor') {
+        return (actorId: string) =>
+          (target as unknown as { createActor(actorId: string): { actorRef: unknown } })
+            .createActor(actorId)
+            .actorRef;
+      }
+      if (property === 'actorLookup') {
+        return (actorId: string) => {
+          try {
+            return (target as unknown as { actorLookup(actorId: string): unknown }).actorLookup(actorId);
+          } catch (error) {
+            if (isBindingNotFound(error)) {
+              return undefined;
+            }
+            throw error;
+          }
+        };
+      }
+      if (property === 'sendToChannel') {
+        return (channelName: string, payload: unknown, flags: number) => {
+          const operation = (target as unknown as {
+            sendToChannel(channelName: string): unknown;
+          }).sendToChannel(channelName);
+          submitSendOperation(operation, payload, flags);
+          return true;
+        };
+      }
+      if (property === 'requestToChannel') {
+        return (channelName: string, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) => {
+          const operation = (target as unknown as {
+            requestToChannel(channelName: string): unknown;
+          }).requestToChannel(channelName);
+          return submitRequestOperation(operation, payload, callback, flags, timeoutMs);
+        };
+      }
+      if (property === 'publish') {
+        return (topic: string, payload: unknown, flags: number) => {
+          const operation = (target as unknown as {
+            publish(topic: string): unknown;
+          }).publish(topic);
+          submitSendOperation(operation, payload, flags);
+          return true;
+        };
+      }
       if (property === 'sendToSpot') {
-        return (targetRid: unknown, spotRid: unknown, payload: unknown, flags: number) =>
-          (target as unknown as {
-            sendToSpot(targetRid: unknown, spotRid: unknown, payload: unknown, flags: number): boolean;
-          }).sendToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid), payload, flags);
+        return (targetRid: unknown, spotRid: unknown, payload: unknown, flags: number) => {
+          const operation = (target as unknown as {
+            sendToSpot(targetRid: unknown, spotRid: unknown): unknown;
+          }).sendToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid));
+          submitSendOperation(operation, payload, flags);
+          return true;
+        };
       }
       if (property === 'requestToSpot') {
-        return (targetRid: unknown, spotRid: unknown, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) =>
-          (target as unknown as {
-            requestToSpot(
-              targetRid: unknown,
-              spotRid: unknown,
-              payload: unknown,
-              callback: unknown,
-              flags: number,
-              timeoutMs?: number
-            ): boolean;
-          }).requestToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid), payload, callback, flags, timeoutMs);
+        return (targetRid: unknown, spotRid: unknown, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) => {
+          const operation = (target as unknown as {
+            requestToSpot(targetRid: unknown, spotRid: unknown): unknown;
+          }).requestToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid));
+          return submitRequestOperation(operation, payload, callback, flags, timeoutMs);
+        };
+      }
+      if (property === 'recvRoute') {
+        return (received: unknown, flags: number) => {
+          try {
+            return (target as unknown as {
+              recvRouted(received: unknown, flags: number): boolean;
+            }).recvRouted(received, flags);
+          } catch (error) {
+            if (isNonBlockingRecvEmpty(error)) {
+              return false;
+            }
+            throw error;
+          }
+        };
       }
       if (property === 'joinActor') {
-        return (actor: unknown, destNodeRid: unknown, destSpotRid: unknown, payload: unknown, callback: unknown, timeoutMs?: number) =>
-          (target as unknown as {
-            joinActor(
-              actor: unknown,
-              destNodeRid: unknown,
-              destSpotRid: unknown,
-              payload: unknown,
-              callback: unknown,
-              timeoutMs?: number
-            ): boolean;
-          }).joinActor(actor, toNativeRoutingId(destNodeRid), toNativeRoutingId(destSpotRid), payload, callback, timeoutMs);
+        return (actor: unknown, destNodeRid: unknown, destSpotRid: unknown, payload: unknown, callback: unknown, timeoutMs?: number) => {
+          const operation = (target as unknown as {
+            joinActor(actor: unknown, destNodeRid: unknown, destSpotRid: unknown): unknown;
+          }).joinActor(actor, toNativeRoutingId(destNodeRid), toNativeRoutingId(destSpotRid));
+          return submitRequestOperation(operation, payload, callback, 0, timeoutMs);
+        };
       }
       if (property === 'joinActorEntrySpot') {
-        return (actor: unknown, destNodeRid: unknown, request: unknown, callback: unknown, timeoutMs?: number) =>
-          (target as unknown as {
-            joinActorEntrySpot(
-              actor: unknown,
-              destNodeRid: unknown,
-              request: unknown,
-              callback: unknown,
-              timeoutMs?: number
-            ): boolean;
-          }).joinActorEntrySpot(actor, toNativeRoutingId(destNodeRid), request, callback, timeoutMs);
+        return (actor: unknown, destNodeRid: unknown, request: unknown, callback: unknown, timeoutMs?: number) => {
+          const operation = (target as unknown as {
+            joinActorEntrySpot(actor: unknown, destNodeRid: unknown, request: unknown): unknown;
+          }).joinActorEntrySpot(actor, toNativeRoutingId(destNodeRid), request);
+          return submitPreparedRequestOperation(operation, callback, 0, timeoutMs);
+        };
       }
       const value = Reflect.get(target, property, target);
       return typeof value === 'function' ? value.bind(target) : value;
     }
   }) as T & ZLinkBackendObject;
+}
+
+type ZLinkBindingOperation = { [key: string]: (...args: unknown[]) => unknown };
+
+function submitSendOperation(operation: unknown, payload: unknown, flags: number): void {
+  let current = appendOperationParts(operation, payload);
+  if (flags !== 0 && hasOperationMethod(current, 'flags')) {
+    current = current.flags(flags) as ZLinkBindingOperation;
+  }
+  if (!hasOperationMethod(current, 'submit')) {
+    throw new TypeError('Binding send operation does not expose submit().');
+  }
+  current.submit();
+}
+
+function submitRequestOperation(
+  operation: unknown,
+  payload: unknown,
+  callback: unknown,
+  flags: number,
+  timeoutMs?: number
+): boolean {
+  let current = appendOperationParts(operation, payload);
+  if (timeoutMs !== undefined && timeoutMs > 0 && hasOperationMethod(current, 'timeout')) {
+    current = current.timeout(timeoutMs) as ZLinkBindingOperation;
+  }
+  if (flags !== 0 && hasOperationMethod(current, 'flags')) {
+    current = current.flags(flags) as ZLinkBindingOperation;
+  }
+  if (!hasOperationMethod(current, 'submit')) {
+    throw new TypeError('Binding request operation does not expose submit().');
+  }
+  return Boolean(current.submit(callback));
+}
+
+function submitPreparedRequestOperation(
+  operation: unknown,
+  callback: unknown,
+  flags: number,
+  timeoutMs?: number
+): boolean {
+  let current = operation;
+  if (timeoutMs !== undefined && timeoutMs > 0 && hasOperationMethod(current, 'timeout')) {
+    current = current.timeout(timeoutMs) as ZLinkBindingOperation;
+  }
+  if (flags !== 0 && hasOperationMethod(current, 'flags')) {
+    current = current.flags(flags) as ZLinkBindingOperation;
+  }
+  if (!hasOperationMethod(current, 'submit')) {
+    throw new TypeError('Binding request operation does not expose submit().');
+  }
+  return Boolean(current.submit(callback));
+}
+
+function appendOperationParts(operation: unknown, payload: unknown): ZLinkBindingOperation {
+  const parts = Array.isArray(payload) ? payload : [payload];
+  if (parts.length === 0) {
+    throw new TypeError('Binding operation payload must contain at least one part.');
+  }
+  let current: unknown = operation;
+  for (const part of parts) {
+    if (!hasOperationMethod(current, 'message')) {
+      throw new TypeError('Binding operation does not expose message().');
+    }
+    current = current.message(part);
+  }
+  return current as ZLinkBindingOperation;
+}
+
+function hasOperationMethod(value: unknown, method: string): value is ZLinkBindingOperation {
+  return typeof value === 'object' && value !== null && typeof (value as { [key: string]: unknown })[method] === 'function';
+}
+
+function isBindingNotFound(error: unknown): boolean {
+  return error instanceof zlink.ConfigError && error.result === zlink.ConfigResult.NotFound;
+}
+
+function isNonBlockingRecvEmpty(error: unknown): boolean {
+  return error instanceof zlink.RecvError &&
+    error.result === zlink.RecvResult.NoData;
 }
 
 function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBackendObject {
@@ -529,9 +656,11 @@ function closeSocketRoutes(target: unknown, peerRoutingIds: Set<unknown>): void 
   }
 }
 
-function isDisconnectRouteNotFoundError(error: unknown): boolean {
-  return error instanceof Error && 'code' in error &&
-    (error as { code: unknown }).code === zlink.ConnectResult.NotFound;
+export function isDisconnectRouteNotFoundError(error: unknown): boolean {
+  return isBindingNotFound(error) || (
+    error instanceof Error && 'code' in error &&
+    (error as { code: unknown }).code === zlink.ConnectResult.NotFound
+  );
 }
 
 function hasDisconnectRid(target: unknown): target is { disconnectRid(routingId: unknown): void } {

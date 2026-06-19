@@ -63,6 +63,8 @@ napi_value spot_set_option (napi_env env, napi_callback_info info);
 napi_value spot_get_option (napi_env env, napi_callback_info info);
 napi_value spot_reply_spot (napi_env env, napi_callback_info info);
 napi_value spot_reply_router (napi_env env, napi_callback_info info);
+napi_value spot_drain_reply (napi_env env, napi_callback_info info);
+napi_value spot_drain_channel_reply (napi_env env, napi_callback_info info);
 napi_value spot_dispatch_event_handler (napi_env env, napi_callback_info info);
 napi_value spot_recv_routed (napi_env env, napi_callback_info info);
 napi_value spot_recv_routed_no_wait (napi_env env, napi_callback_info info);

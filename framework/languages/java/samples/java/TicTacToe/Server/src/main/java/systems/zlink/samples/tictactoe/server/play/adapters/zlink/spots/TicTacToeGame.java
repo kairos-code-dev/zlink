@@ -16,13 +16,16 @@ import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.samples.tictactoe.server.play.adapters.zlink.actors.PlayActor;
+import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.play.domain.tictactoe.TicTacToeMatch;
 import systems.zlink.samples.tictactoe.server.play.adapters.zlink.spots.handlers.TicTacToeGameCreatedHandler;
 import systems.zlink.samples.tictactoe.server.play.adapters.zlink.spots.handlers.TicTacToeGameTimerHandler;
 import systems.zlink.samples.tictactoe.shared.contracts.GameState;
 import systems.zlink.samples.tictactoe.shared.contracts.GameStateNotify;
 import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkRes;
+import systems.zlink.samples.tictactoe.shared.contracts.PlayerInfo;
 import systems.zlink.samples.tictactoe.shared.contracts.PlayerJoinedNotify;
+import systems.zlink.samples.tictactoe.shared.contracts.PlayerWinMilestoneEvent;
 import systems.zlink.samples.tictactoe.shared.contracts.TicTacToeGameJoinReq;
 import systems.zlink.samples.tictactoe.shared.contracts.TicTacToeGameJoinRes;
 
@@ -69,11 +72,15 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
         PlayActor actor,
         Message request,
         CancellationToken cancellationToken) {
+        System.out.println("room: actor join received. actor=" + actor.actorId()
+            + " roomId=" + roomId);
         TicTacToeGameJoinReq joinRequest = decode(request, TicTacToeGameJoinReq.class);
-        if (!actor.actorId().equals(joinRequest.actorId())) {
+        if (!actor.actorId().equals(joinRequest.player().actorId())) {
             throw new IllegalStateException("join request actor id does not match bound actor");
         }
-        TicTacToeGameJoinRes reply = join(actor, joinRequest.roomId());
+        TicTacToeGameJoinRes reply = join(actor, joinRequest.roomId(), joinRequest.player());
+        System.out.println("room: actor join completed. actor=" + actor.actorId()
+            + " roomId=" + roomId);
         return ZLinkSpotActorJoinResponse.accept(encode(reply));
     }
 
@@ -120,11 +127,15 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
         created = true;
     }
 
-    public TicTacToeGameJoinRes join(PlayActor actor, String roomId) {
+    public TicTacToeGameJoinRes join(PlayActor actor, String roomId, PlayerInfo player) {
         ensureCreated();
         if (!this.roomId.equals(roomId)) {
             throw new IllegalStateException("join request room id does not match game room");
         }
+        if (player.level() < SampleNames.RequiredLevel) {
+            throw new IllegalStateException("player level does not satisfy room requirement");
+        }
+        actor.applyPlayer(player);
         TicTacToeMatch.JoinResult joined = match.join(
             actor.actorId(),
             Instant.now(),
@@ -140,12 +151,14 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
 
     public PlaceMarkRes placeMark(PlayActor actor, int cell) {
         ensureCreated();
+        GameState before = match.snapshot();
         GameState state = match.placeMark(
             actor.actorId(),
             cell,
             Instant.now(),
             TURN_TIMEOUT);
         broadcast(state, actor.actorId());
+        publishWinMilestone(actor, before, state);
         return new PlaceMarkRes(state);
     }
 
@@ -220,9 +233,12 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
         PlayActor joinedActor,
         String mark,
         GameState state) {
+        PlayerInfo player = joinedActor.requirePlayer();
         PlayerJoinedNotify message = new PlayerJoinedNotify(
             state.roomId(),
             joinedActor.actorId(),
+            player.displayName(),
+            player.level(),
             mark,
             state);
         actors.stream()
@@ -246,5 +262,37 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
         return "Won".equals(state.status())
             || "Draw".equals(state.status())
             || "TurnTimedOut".equals(state.status());
+    }
+
+    public void leaveGame(PlayActor actor, String roomId) {
+        if (!this.roomId.equals(roomId)) {
+            throw new IllegalStateException("leave request room id does not match game room");
+        }
+        actor.markForDestroyAfterRoomLeave();
+        await(context.leaveActor(actor));
+        System.out.println("actor: LeaveGameReq completed. actor=" + actor.actorId());
+    }
+
+    private void publishWinMilestone(
+        PlayActor actor,
+        GameState before,
+        GameState after) {
+        if (!"Won".equals(after.status())
+            || "Won".equals(before.status())
+            || !actor.actorId().equals(after.winner())) {
+            return;
+        }
+        PlayerInfo player = actor.requirePlayer();
+        int wins = actor.incrementWins();
+        if (player.wins() < 99 || wins != 100) {
+            return;
+        }
+        context.outbound()
+            .publish(SampleNames.PlayerMilestoneTopic, new PlayerWinMilestoneEvent(
+                after.roomId(),
+                actor.actorId(),
+                player.displayName(),
+                wins))
+            .await();
     }
 }

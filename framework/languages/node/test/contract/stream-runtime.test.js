@@ -73,6 +73,40 @@ test('managed stream actor bind calls native ActorGateway before local binding i
   assert.equal(runtime.find('actor-a'), actor);
 });
 
+test('managed stream actor rebind is idempotent for the same actor ref', async () => {
+  const socket = new FakeStreamSocket();
+  const runtime = new framework.ZLinkStreamBindingRuntime({ actorBindTimeoutMs: 1234 });
+  const context = runtime.createSessionContext(new framework.ZLinkManagedStream(socket, 'backend-rid', 'public-session'));
+  const actorRef = { nodeRid: 'node-a', actorId: 'actor-a', generation: 1n };
+
+  await context.actors.bind(actorRef);
+  await runtime.rebindActor(actorRef);
+
+  assert.equal(socket.boundActors.length, 1);
+  assert.deepEqual(socket.boundActors[0], {
+    sessionRid: 'backend-rid',
+    actor: actorRef,
+    timeoutMs: 1234
+  });
+});
+
+test('managed stream actor refresh rebinds native gateway for the same actor ref', async () => {
+  const socket = new FakeStreamSocket();
+  const runtime = new framework.ZLinkStreamBindingRuntime({ actorBindTimeoutMs: 1234 });
+  const context = runtime.createSessionContext(new framework.ZLinkManagedStream(socket, 'backend-rid', 'public-session'));
+  const actorRef = { nodeRid: 'node-a', actorId: 'actor-a', generation: 1n };
+
+  await context.actors.bind(actorRef);
+  await runtime.refreshActor(actorRef);
+
+  assert.equal(socket.boundActors.length, 2);
+  assert.deepEqual(socket.boundActors[1], {
+    sessionRid: 'backend-rid',
+    actor: actorRef,
+    timeoutMs: 1234
+  });
+});
+
 test('managed stream actor bind failure does not create stale local binding', async () => {
   const socket = new FakeStreamSocket();
   socket.bindError = new Error('native bind failed');
@@ -86,6 +120,79 @@ test('managed stream actor bind failure does not create stale local binding', as
 
   assert.equal(context.actors.find('actor-a'), undefined);
   assert.equal(runtime.find('actor-a'), undefined);
+});
+
+test('runtime host bound session uses local stream route before native ActorGateway', async () => {
+  const actorRef = { nodeRid: 'node-a', actorId: 'actor-native', generation: 7n };
+  const nativeSends = [];
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  host.spotNodeRuntime = {
+    primaryNode: {
+      sendActorBoundSession(actor, parts, flags) {
+        nativeSends.push({ actor, frame: decodeFrame(bytesOf(parts[0])), flags });
+        return true;
+      },
+      async closeActorBoundSession() {}
+    }
+  };
+
+  const stream = recordingStream('session-native', 'rid-native');
+  const context = host.streamBindingRuntime.createSessionContext(stream);
+  await context.actors.bind(actorRef);
+
+  const submit = host.createActorManagerOptions()
+    .boundSessionFactory(actorRef.actorId)
+    .send({ ok: true })
+    .packetName('Notify')
+    .submit();
+
+  assert.equal(nativeSends.length, 0);
+  assert.equal(stream.writes.length, 1);
+  await submit;
+  assert.equal(stream.writes.length, 1);
+  const frame = decodeFrame(bytesOf(stream.writes[0]));
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Send);
+  assert.equal(frame.header.name, 'Notify');
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { ok: true });
+});
+
+test('runtime host bound session falls back to native ActorGateway when no local route exists', async () => {
+  const actorRef = { nodeRid: 'node-a', actorId: 'actor-native', generation: 7n };
+  const nativeSends = [];
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  host.spotNodeRuntime = {
+    primaryNode: {
+      sendActorBoundSession(actor, parts, flags) {
+        nativeSends.push({ actor, frame: decodeFrame(bytesOf(parts[0])), flags });
+        return true;
+      },
+      async closeActorBoundSession() {}
+    }
+  };
+  host.setActorManager({
+    getState(actorId) {
+      return actorId === actorRef.actorId ? { nativeActorRef: actorRef } : undefined;
+    }
+  });
+
+  const submit = host.createActorManagerOptions()
+    .boundSessionFactory(actorRef.actorId)
+    .send({ ok: true })
+    .packetName('Notify')
+    .submit();
+
+  assert.equal(nativeSends.length, 0);
+  await submit;
+  assert.equal(nativeSends.length, 1);
+  assert.deepEqual(nativeSends[0].actor, actorRef);
+  assert.equal(nativeSends[0].flags, 1);
+  assert.equal(nativeSends[0].frame.header.kind, connector.ZlinkStreamMessageKind.Send);
+  assert.equal(nativeSends[0].frame.header.name, 'Notify');
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(nativeSends[0].frame.payload)), { ok: true });
 });
 
 test('session actor relay sends header and payload through managed stream ActorGateway route', async () => {
@@ -401,6 +508,22 @@ function fakeStream(sessionId, routingId) {
   };
 }
 
+function recordingStream(sessionId, routingId) {
+  const writes = [];
+  return {
+    sessionId,
+    routingId,
+    localAddr: undefined,
+    remoteAddr: undefined,
+    writes,
+    write(message) {
+      writes.push(message);
+      return true;
+    },
+    async close() {}
+  };
+}
+
 function binaryMessageFactory() {
   return {
     createTextMessage(payload) {
@@ -424,6 +547,19 @@ function decodeFrame(bytes) {
     header: connector.ZlinkStreamHeaderCodec.decode(frame.header),
     payload: frame.payload
   };
+}
+
+function bytesOf(message) {
+  if (message.toBytes !== undefined) {
+    return message.toBytes();
+  }
+  if (message.data !== undefined) {
+    return message.data();
+  }
+  if (message.bytes !== undefined) {
+    return message.bytes;
+  }
+  throw new Error('Test message does not expose bytes.');
 }
 
 function unpickleLz4(payload) {

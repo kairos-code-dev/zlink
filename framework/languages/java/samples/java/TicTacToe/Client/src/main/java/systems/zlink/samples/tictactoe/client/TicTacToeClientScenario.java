@@ -10,9 +10,13 @@ import systems.zlink.samples.tictactoe.shared.contracts.CreateGameHttpRes;
 import systems.zlink.samples.tictactoe.shared.contracts.GameStateNotify;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameReq;
 import systems.zlink.samples.tictactoe.shared.contracts.JoinGameRes;
+import systems.zlink.samples.tictactoe.shared.contracts.LeaveGameReq;
+import systems.zlink.samples.tictactoe.shared.contracts.ObserveMilestoneReq;
+import systems.zlink.samples.tictactoe.shared.contracts.ObserveMilestoneRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkReq;
 import systems.zlink.samples.tictactoe.shared.contracts.PlaceMarkRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlayerJoinedNotify;
+import systems.zlink.samples.tictactoe.shared.contracts.WinMilestoneNotify;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
@@ -27,27 +31,43 @@ public final class TicTacToeClientScenario {
                 .body(new CreateGameHttpReq(options.gameName()))
                 .fetch(CreateGameHttpRes.class);
         }
-        ZLinkStreamConnector host = playerConnector(game.playEndpoint());
-        ZLinkStreamConnector guest = playerConnector(game.playEndpoint());
+        String observerEndpoint = nonOwnerEndpoint(game);
+        ZLinkStreamConnector host = playerConnector(game.ownerPlayEndpoint());
+        ZLinkStreamConnector guest = playerConnector(observerEndpoint);
+        ZLinkStreamConnector observer = playerConnector(observerEndpoint);
 
         try {
             host.connect().await();
             guest.connect().await();
+            observer.connect().await();
 
             ensure(game.roomId() != null && !game.roomId().isBlank());
-            ensure(game.playEndpoint() != null && !game.playEndpoint().isBlank());
+            ensure(game.ownerPlayEndpoint() != null && !game.ownerPlayEndpoint().isBlank());
             ensure(options.gameName().equals(game.gameName()));
+            ensure(game.requiredLevel() == 3);
 
             AuthenticateRes hostAuth = host
                 .request(new AuthenticateReq(options.xActorId()))
                 .await(AuthenticateRes.class);
-            ensure(options.xActorId().equals(hostAuth.actorId()));
+            ensure(options.xActorId().equals(hostAuth.player().actorId()));
+            ensure(hostAuth.player().wins() == 99);
 
             AuthenticateRes guestAuth = guest
                 .request(new AuthenticateReq(options.oActorId()))
                 .await(AuthenticateRes.class);
-            ensure(options.oActorId().equals(guestAuth.actorId()));
-            ensure(!guestAuth.actorId().equals(hostAuth.actorId()));
+            ensure(options.oActorId().equals(guestAuth.player().actorId()));
+            ensure(!guestAuth.player().actorId().equals(hostAuth.player().actorId()));
+
+            AuthenticateRes observerAuth = observer
+                .request(new AuthenticateReq(options.observerActorId()))
+                .await(AuthenticateRes.class);
+            ensure(options.observerActorId().equals(observerAuth.player().actorId()));
+            ObserveMilestoneRes subscribed = observer
+                .request(new ObserveMilestoneReq())
+                .await(ObserveMilestoneRes.class);
+            ensure(subscribed.subscribed());
+            System.out.println("observer-connected endpoint=" + observerEndpoint);
+            System.out.println("observer-subscription=verified subscribed=" + subscribed.subscribed());
 
             JoinGameRes hostJoin = host
                 .request(new JoinGameReq(game.roomId()))
@@ -170,6 +190,12 @@ public final class TicTacToeClientScenario {
                     message -> "Won".equals(message.payload().state().status())
                         && options.xActorId().equals(message.payload().state().winner()))
                 .submit(GameStateNotify.class);
+            var observerSawMilestone = observer
+                .waitFor(WinMilestoneNotify.class)
+                .where(WinMilestoneNotify.class,
+                    message -> options.xActorId().equals(message.payload().actorId())
+                        && message.payload().wins() == 100)
+                .submit(WinMilestoneNotify.class);
             PlaceMarkRes hostWin = host
                 .request(new PlaceMarkReq(2))
                 .await(PlaceMarkRes.class);
@@ -181,10 +207,35 @@ public final class TicTacToeClientScenario {
             ensure(hostWinNotify.state().board().equals(hostWin.state().board()));
             ensure("Won".equals(hostWinNotify.state().status()));
             ensure(options.xActorId().equals(hostWinNotify.state().winner()));
+
+            WinMilestoneNotify milestone = observer.await(observerSawMilestone).payload();
+            String expectedRid = game.playNodes().stream()
+                .filter(node -> observerEndpoint.equals(node.streamEndpoint()))
+                .findFirst()
+                .orElseThrow()
+                .spotNodeRid();
+            ensure(milestone.wins() == 100);
+            ensure(expectedRid.equals(milestone.receivingSpotNodeRid()));
+            System.out.println("observer-win-milestone=verified actor="
+                + milestone.actorId()
+                + " wins=" + milestone.wins()
+                + " receivingSpotNodeRid=" + milestone.receivingSpotNodeRid());
+
+            host.send(new LeaveGameReq(game.roomId())).await();
+            guest.send(new LeaveGameReq(game.roomId())).await();
+            System.out.println("tictactoe completed");
         } finally {
             host.close().await();
             guest.close().await();
+            observer.close().await();
         }
+    }
+
+    private static String nonOwnerEndpoint(CreateGameHttpRes game) {
+        return game.playEndpoints().stream()
+            .filter(endpoint -> !endpoint.equals(game.ownerPlayEndpoint()))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("non-owner Play endpoint is required"));
     }
 
     private static ZLinkStreamConnector playerConnector(String endpoint) {

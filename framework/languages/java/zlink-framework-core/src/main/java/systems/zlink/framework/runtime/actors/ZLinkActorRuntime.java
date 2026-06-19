@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -30,6 +31,8 @@ import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 public final class ZLinkActorRuntime implements ZLinkActorManager {
@@ -48,6 +51,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     private Function<ZLinkActor, CompletionStage<Void>> disconnectedNotifier =
         ignored -> CompletableFuture.completedFuture(null);
     private Function<RoutingId, ZLinkSpot<?>> spotResolver = ignored -> null;
+    private ZLinkSpotRemoteAddressResolver remoteAddressResolver;
 
     public ZLinkActorRuntime(
         ZLinkBackendSpotNode spotNode,
@@ -283,6 +287,10 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
 
     public void setSpotResolver(Function<RoutingId, ZLinkSpot<?>> spotResolver) {
         this.spotResolver = spotResolver == null ? ignored -> null : spotResolver;
+    }
+
+    public void setRemoteAddressResolver(ZLinkSpotRemoteAddressResolver remoteAddressResolver) {
+        this.remoteAddressResolver = remoteAddressResolver;
     }
 
     public CompletionStage<Void> notifyDisconnected(ZLinkActor actor) {
@@ -680,13 +688,28 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 throw new ZLinkConfigurationException("replyType is required");
             }
             Message requestPart = Message.from(request);
-            try {
-                return spotNode.joinActor(
-                        context.actorRef,
-                        context.actorRef.nodeRid(),
-                        spotRid,
-                        List.of(requestPart),
-                        timeout)
+            ZLinkSpot<?> localSpot = spotResolver.apply(spotRid);
+            CompletionStage<RoutingId> targetNode =
+                localSpot != null
+                    ? CompletableFuture.completedFuture(context.actorRef.nodeRid())
+                    : resolveRemoteTargetNode(spotRid);
+            return targetNode.handle((nodeRid, error) -> {
+                    if (error != null) {
+                        requestPart.close();
+                        throw new CompletionException(error);
+                    }
+                    try {
+                        return spotNode.joinActor(
+                            context.actorRef,
+                            nodeRid,
+                            spotRid,
+                            List.of(requestPart),
+                            timeout);
+                    } finally {
+                        requestPart.close();
+                    }
+                })
+                .thenCompose(stage -> stage)
                     .thenApply(result -> {
                         if (result.result() != ZLinkBackendRequestResult.OK) {
                             throw new ZLinkConfigurationException(
@@ -718,9 +741,20 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                             result.replyParts().forEach(Message::close);
                         }
                     });
-            } finally {
-                requestPart.close();
+        }
+
+        private CompletionStage<RoutingId> resolveRemoteTargetNode(RoutingId spotRid) {
+            if (remoteAddressResolver == null) {
+                return CompletableFuture.completedFuture(context.actorRef.nodeRid());
             }
+            return remoteAddressResolver.resolveSpotRemoteAddressAsync(spotRid)
+                .thenApply(address -> {
+                    if (address == null || address.targetNodeRid() == null) {
+                        throw new ZLinkConfigurationException(
+                            "SPOT remote address resolver returned no target node: " + spotRid);
+                    }
+                    return address.targetNodeRid();
+                });
         }
     }
 }

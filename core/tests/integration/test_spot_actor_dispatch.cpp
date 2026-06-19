@@ -1192,6 +1192,11 @@ void test_actor_send_bound_session_raw_and_packet ()
 {
     TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
 }
+
+void test_actor_send_bound_session_from_unrelated_stream_callback ()
+{
+    TEST_IGNORE_MESSAGE ("raw tcp helper unavailable on Windows");
+}
 #else
 bool parse_tcp_endpoint (const char *endpoint_, char *host_, int *port_)
 {
@@ -1275,6 +1280,63 @@ void close_raw_fd (int fd_)
 {
     if (fd_ >= 0)
         close (fd_);
+}
+
+struct cross_stream_callback_probe_t
+{
+    cross_stream_callback_probe_t () :
+        actor (NULL),
+        saw_target (false),
+        sent_from_trigger (false),
+        send_result (ZLINK_SUBMIT_INTERNAL_ERROR)
+    {
+        memset (&target_rid, 0, sizeof (target_rid));
+    }
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    void *actor;
+    bool saw_target;
+    bool sent_from_trigger;
+    zlink_submit_result_t send_result;
+    zlink_routing_id_t target_rid;
+};
+
+void on_cross_stream_callback (const zlink_routing_id_t *source_rid_,
+                               zlink_msg_t *parts_,
+                               size_t part_count_,
+                               void *userdata_)
+{
+    cross_stream_callback_probe_t *probe =
+      static_cast<cross_stream_callback_probe_t *> (userdata_);
+    if (!probe || !source_rid_ || !parts_ || part_count_ == 0)
+        return;
+
+    const std::string payload = msg_text (&parts_[0]);
+    if (payload == "target") {
+        {
+            std::lock_guard<std::mutex> lock (probe->mutex);
+            probe->target_rid = *source_rid_;
+            probe->saw_target = true;
+        }
+        probe->cv.notify_all ();
+        return;
+    }
+
+    if (payload == "trigger") {
+        zlink_msg_t reply;
+        init_text_msg (&reply, "from-trigger-callback");
+        const zlink_submit_result_t rc =
+          zlink_actor_send_bound_session_msg (probe->actor, &reply, ZLINK_DONTWAIT);
+        if (rc != ZLINK_SUBMIT_OK)
+            zlink_msg_close (&reply);
+        {
+            std::lock_guard<std::mutex> lock (probe->mutex);
+            probe->send_result = rc;
+            probe->sent_from_trigger = true;
+        }
+        probe->cv.notify_all ();
+    }
 }
 
 void test_actor_send_bound_session_raw_and_packet ()
@@ -1363,6 +1425,72 @@ void test_actor_send_bound_session_raw_and_packet ()
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&late_msg));
 
     close_raw_fd (client_fd);
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 0));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+void test_actor_send_bound_session_from_unrelated_stream_callback ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    zlink_spot_node_options_t options;
+    options.mode = ZLINK_SPOT_NODE_MODE_ALL;
+    void *node = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (node);
+    void *actor = zlink_spot_node_actor_new (node, "cross-callback-actor");
+    TEST_ASSERT_NOT_NULL (actor);
+
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    const int zero = 0;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_set_option (stream, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (stream, endpoint, sizeof (endpoint));
+
+    cross_stream_callback_probe_t probe;
+    probe.actor = actor;
+    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
+                       zlink_recv_handler (stream, on_cross_stream_callback, &probe));
+
+    const int target_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_TRUE (target_fd >= 0);
+    TEST_ASSERT_EQUAL_INT (0, set_raw_timeout (target_fd, 3000));
+    const char target[] = "target";
+    TEST_ASSERT_EQUAL_INT (0, send_all (target_fd, target, sizeof (target) - 1));
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (lock, std::chrono::seconds (3),
+                                             [&] { return probe.saw_target; }));
+    }
+
+    zlink_actor_ref_t ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       wait_stream_bind_actor (node, stream, &probe.target_rid, &ref, 1000));
+
+    const int trigger_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_TRUE (trigger_fd >= 0);
+    TEST_ASSERT_EQUAL_INT (0, set_raw_timeout (trigger_fd, 3000));
+    const char trigger[] = "trigger";
+    TEST_ASSERT_EQUAL_INT (0, send_all (trigger_fd, trigger, sizeof (trigger) - 1));
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (lock, std::chrono::seconds (3),
+                                             [&] { return probe.sent_from_trigger; }));
+        TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK, probe.send_result);
+    }
+
+    char recv_buf[32] = {0};
+    TEST_ASSERT_EQUAL_INT (0, recv_exact (target_fd, recv_buf, 21));
+    TEST_ASSERT_EQUAL_STRING_LEN ("from-trigger-callback", recv_buf, 21);
+
+    close_raw_fd (trigger_fd);
+    close_raw_fd (target_fd);
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 0));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
@@ -2994,6 +3122,7 @@ int main ()
     RUN_TEST (test_actor_join_entry_spot_timeout_releases_request);
     RUN_TEST (test_actor_join_timeout_without_dispatch_handler);
     RUN_TEST (test_actor_send_bound_session_raw_and_packet);
+    RUN_TEST (test_actor_send_bound_session_from_unrelated_stream_callback);
     RUN_TEST (test_spot_snapshot_destroy_joined_and_pending_counts);
     RUN_TEST (test_stream_close_aborts_pending_join_without_leaving_current_spot);
     RUN_TEST (test_stream_remote_actor_owner_missing_route_and_unbind_cleanup);

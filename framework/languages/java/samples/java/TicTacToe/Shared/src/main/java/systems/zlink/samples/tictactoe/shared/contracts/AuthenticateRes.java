@@ -1,4 +1,4 @@
 package systems.zlink.samples.tictactoe.shared.contracts;
 
-public record AuthenticateRes(String actorId) {
+public record AuthenticateRes(PlayerInfo player) {
 }

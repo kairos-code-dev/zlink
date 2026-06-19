@@ -227,6 +227,8 @@ void define_spot_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("spotGetOption", spot_get_option),
       ZLINK_METHOD ("spotReplySpot", spot_reply_spot),
       ZLINK_METHOD ("spotReplyRouter", spot_reply_router),
+      ZLINK_METHOD ("spotDrainReply", spot_drain_reply),
+      ZLINK_METHOD ("spotDrainChannelReply", spot_drain_channel_reply),
       ZLINK_METHOD ("spotDispatchEventHandler", spot_dispatch_event_handler),
       ZLINK_METHOD ("spotRecvRouted", spot_recv_routed),
       ZLINK_METHOD ("spotRecvRoutedNoWait", spot_recv_routed_no_wait),

@@ -274,6 +274,8 @@ export interface ServiceNativeBinding {
     requestSeq: bigint,
     parts: unknown
   ) => void;
+  spotDrainReply: (spot: NativeHandle) => number;
+  spotDrainChannelReply: (spot: NativeHandle, subjectHandle: bigint) => number;
   spotReplySpot: (
     spot: NativeHandle,
     destNodeRid: Buffer,

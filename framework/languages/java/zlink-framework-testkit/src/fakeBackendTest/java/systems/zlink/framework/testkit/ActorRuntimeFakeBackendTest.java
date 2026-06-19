@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
@@ -25,6 +26,9 @@ import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotKind;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
@@ -298,6 +302,40 @@ final class ActorRuntimeFakeBackendTest {
     }
 
     @Test
+    void actorJoinSpotUsesRemoteAddressResolverWhenSpotIsNotLocal() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotRemoteAddressResolver(RemoteRoomResolver.class);
+        { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
+            route.enableClient("inproc://remote-route");
+            route.enableSpotRouteEgress("rooms"); };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://local-router");
+                node.connectRouter(RoutingId.from("remote-node"), "inproc://remote-router");
+                node.acceptSpotRoutesFromChannel("rooms", "inproc://remote-route"); }; };
+        options.addActorFactory("player", PlayerActorFactory.class);
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            ZLinkActor actor = runtime.actorManager()
+                .create("player-remote-join", "player")
+                .toCompletableFuture()
+                .join();
+
+            var joined = actor.context()
+                .joinSpot(RoutingId.from("remote-room"), "join-request")
+                .submit(String.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals(0, joined.resultCode());
+        }
+
+        assertTrue(backendFactory.calls().contains(
+            "spotNode.joinActor.player-remote-join.remote-node.remote-room"));
+    }
+
+    @Test
     void actorCreateDoesNotNotifyEntrySpotOwnedByDifferentNode() {
         SecondEntrySpot.createCount = 0;
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
@@ -372,6 +410,19 @@ final class ActorRuntimeFakeBackendTest {
         @Override
         public ZLinkActorContext context() {
             return context;
+        }
+    }
+
+    public static final class RemoteRoomResolver implements ZLinkSpotRemoteAddressResolver {
+        @Override
+        public CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(
+            RoutingId spotRid) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                new ZLinkSpotRemoteAddress(
+                    "rooms",
+                    RoutingId.from("remote-node"),
+                    spotRid,
+                    ZLinkSpotKind.USER));
         }
     }
 

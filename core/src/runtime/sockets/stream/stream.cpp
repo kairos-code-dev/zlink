@@ -489,7 +489,7 @@ bool zlink::stream_t::stream_dispatch_active () const
 
 bool zlink::stream_t::stream_dispatch_in_callback () const
 {
-    return stream_dispatch_owns_tls ();
+    return stream_dispatch_owns_socket (this);
 }
 
 uint32_t zlink::stream_t::stream_dispatch_inflight () const

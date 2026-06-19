@@ -243,4 +243,86 @@ public sealed class test_callback_delivery
         Assert.Equal(RequestResult.Ok, observedResult);
         Assert.Equal("pong", observedPayload);
     }
+
+    [Fact]
+    public void spot_direct_reply_dispatch_drains_request_to_spot_callback()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
+        using var requester = node.CreateSpot();
+        using var responder = node.CreateSpot();
+        using var callbackSignal = new ManualResetEventSlim(false);
+
+        var nodeRid = CoreTestSupport.RoutingIdUtf8("dotnet-direct-node");
+        var requesterRid = CoreTestSupport.RoutingIdUtf8("dotnet-direct-requester");
+        var responderRid = CoreTestSupport.RoutingIdUtf8("dotnet-direct-responder");
+        node.SetRoutingId(nodeRid);
+        requester.SetRoutingId(requesterRid);
+        responder.SetRoutingId(responderRid);
+
+        int requesterDispatchCount = 0;
+        int callbackCount = 0;
+        RequestResult observedResult = RequestResult.ProtocolError;
+        string observedPayload = string.Empty;
+        Exception? callbackError = null;
+
+        requester.SetDispatchHandler(info =>
+        {
+            if (info.Event == SpotDispatchEvent.ChannelReplyReadable
+                && info.SubjectKind == SpotDispatchSubjectKind.Spot)
+            {
+                requesterDispatchCount++;
+            }
+        });
+
+        responder.SetDispatchHandler(info =>
+        {
+            if (info.Event != SpotDispatchEvent.RoutedReadable)
+                return;
+
+            while (true)
+            {
+                using var received = Received.Create();
+                if (!responder.RecvRouted(received, RecvFlags.DontWait))
+                    return;
+                using Message reply = Message.From("direct-reply");
+                received.Reply().Message(reply).Submit();
+            }
+        });
+
+        using Message request = Message.From("direct-request");
+        requester.RequestToSpot(nodeRid, responderRid)
+            .Message(request)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Submit((result, parts) =>
+            {
+                callbackCount++;
+                try
+                {
+                    observedResult = result;
+                    Message part = Assert.Single(parts);
+                    observedPayload = part.GetString();
+                    foreach (Message replyPart in parts)
+                        replyPart.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    callbackError = ex;
+                }
+                finally
+                {
+                    callbackSignal.Set();
+                }
+            });
+
+        Assert.True(callbackSignal.Wait(3000));
+        Assert.Equal(1, requesterDispatchCount);
+        Assert.Equal(1, callbackCount);
+        Assert.Equal(RequestResult.Ok, observedResult);
+        Assert.Equal("direct-reply", observedPayload);
+        Assert.Null(callbackError);
+    }
 }

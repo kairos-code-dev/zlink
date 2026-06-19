@@ -111,6 +111,9 @@ export interface ZLinkBackendActorJoinReplyOperation {
 
 export interface ZLinkBackendSpotDispatchInfo {
   readonly event: ZLinkBackendSpotDispatchEvent;
+  readonly subjectKind?: number;
+  readonly subjectHandle?: bigint;
+  readonly routed?: Received | null;
 }
 
 export interface ZLinkBackendSocketMonitorEvent {
@@ -309,6 +312,9 @@ export interface ZLinkBackendSpot extends ZLinkBackendObject {
   setRoutingId(routingId: RoutingId): void;
   setSubscription(topic: string): void;
   subscribe(result: TopicMessage, flags: ZLinkBackendRecvFlags): boolean;
+  recvActorLifecycle(flags: ZLinkBackendRecvFlags): unknown | null;
+  drainReply(): number;
+  drainChannelReply(subjectHandle: bigint): number;
   recvRoute(result: Received, flags: ZLinkBackendRecvFlags): boolean;
   setDispatchHandler(handler: (info: ZLinkBackendSpotDispatchInfo) => void): void;
   onSendReady(handler: () => void): void;

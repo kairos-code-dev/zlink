@@ -37,6 +37,17 @@ async function setPubBindOnReservedPort(node) {
   throw lastError;
 }
 
+async function waitFor(condition, label, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (condition()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`${label} timed out`);
+}
+
 test('spot exposes unified publish and subscribe surface', () => {
   const ctx = zlink.createContext();
   const node = zlink.createSpotNode(ctx);
@@ -77,7 +88,10 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
     while (Date.now() < deadline) {
       if (serverNode.status().connectedPeerCount > 0
           && clientNode.status().connectedPeerCount > 0) {
-        serverSpot.publish(topic).message(Buffer.from('payload')).submit();
+        serverSpot.publish(topic)
+          .message(zlink.Message.from(Buffer.from('header')))
+          .message(zlink.Message.from(Buffer.from('payload')))
+          .submit();
       }
       const received = new zlink.TopicMessage();
       try {
@@ -93,7 +107,7 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
       assert.equal(received.topic, topic);
       assert.deepEqual(
         received.parts.map((part) => part.data().toString()),
-        ['payload']
+        ['header', 'payload']
       );
       serverSpot.publish(topic).message(Buffer.from('payload-into')).submit();
       const payloadDeadline = Date.now() + 5000;
@@ -104,7 +118,7 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
           await new Promise((resolve) => setTimeout(resolve, 25));
           continue;
         }
-        if (payload.singlePartOrThrow().size() !== 12) {
+        if (payload.parts.length !== 1 || payload.parts[0].data().toString() !== 'payload-into') {
           await new Promise((resolve) => setTimeout(resolve, 25));
           continue;
         }
@@ -133,6 +147,152 @@ test('remote spot peer delivery works over tcp direct peer connect', async () =>
     }
     serverNode.close();
     clientNode.close();
+    ctx.close();
+  }
+});
+
+test('spot publish is delivered to peers that connected to the publisher bind', async () => {
+  const ctx = zlink.createContext();
+  const nodeA = zlink.createSpotNode(ctx);
+  const nodeB = zlink.createSpotNode(ctx);
+  const topic = 'spot:direction';
+  let endpointA = '';
+  let endpointB = '';
+  let spotA;
+  let spotB;
+
+  try {
+    endpointA = await setPubBindOnReservedPort(nodeA);
+    endpointB = await setPubBindOnReservedPort(nodeB);
+    nodeA.connectPeer(endpointB);
+    nodeB.connectPeer(endpointA);
+    spotA = nodeA.createSpot();
+    spotB = nodeB.entrySpot();
+    spotB.setSubscription(topic);
+
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      if (nodeA.status().connectedPeerCount > 0 && nodeB.status().connectedPeerCount > 0) {
+        spotA.publish(topic).message(zlink.Message.from(Buffer.from('from-a'))).submit();
+      }
+      const received = new zlink.TopicMessage();
+      if (spotB.subscribe(received, zlink.RecvFlags.DontWait)) {
+        try {
+          assert.equal(received.topic, topic);
+          assert.deepEqual(received.parts.map((part) => part.data().toString()), ['from-a']);
+          return;
+        } finally {
+          received.close();
+        }
+      }
+      received.close();
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+
+    assert.fail('spot publish direction timeout');
+  } finally {
+    spotB?.close();
+    spotA?.close();
+    nodeB.close();
+    nodeA.close();
+    ctx.close();
+  }
+});
+
+test('spot publish is delivered to local entry spot multipart subscriber', async () => {
+  const ctx = zlink.createContext();
+  const node = zlink.createSpotNode(ctx);
+  const publisher = node.createSpot();
+  const subscriber = node.entrySpot();
+  const topic = 'spot:local-entry';
+
+  try {
+    subscriber.setSubscription(topic);
+    publisher.publish(topic)
+      .message(zlink.Message.from(Buffer.from('header')))
+      .message(zlink.Message.from(Buffer.from('payload')))
+      .submit();
+
+    const received = new zlink.TopicMessage();
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      if (subscriber.subscribe(received, zlink.RecvFlags.DontWait)) {
+        assert.equal(received.topic, topic);
+        assert.deepEqual(
+          received.parts.map((part) => part.data().toString()),
+          ['header', 'payload']
+        );
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.fail('local entry spot subscribe timeout');
+  } finally {
+    subscriber.close();
+    publisher.close();
+    node.close();
+    ctx.close();
+  }
+});
+
+test('spot publish reaches local and peer entry spot subscribers for same topic', async () => {
+  const ctx = zlink.createContext();
+  const nodeA = zlink.createSpotNode(ctx);
+  const nodeB = zlink.createSpotNode(ctx);
+  const topic = 'spot:local-and-peer';
+  let endpointA = '';
+  let endpointB = '';
+  let publisher;
+  let localSubscriber;
+  let peerSubscriber;
+
+  try {
+    endpointA = await setPubBindOnReservedPort(nodeA);
+    endpointB = await setPubBindOnReservedPort(nodeB);
+    nodeA.connectPeer(endpointB);
+    nodeB.connectPeer(endpointA);
+    publisher = nodeA.createSpot();
+    localSubscriber = nodeA.entrySpot();
+    peerSubscriber = nodeB.entrySpot();
+    localSubscriber.setSubscription(topic);
+    peerSubscriber.setSubscription(topic);
+
+    await waitFor(
+      () => nodeA.status().connectedPeerCount > 0 && nodeB.status().connectedPeerCount > 0,
+      'local and peer spot connection'
+    );
+
+    publisher.publish(topic)
+      .message(zlink.Message.from(Buffer.from('header')))
+      .message(zlink.Message.from(Buffer.from('payload')))
+      .submit();
+
+    const local = new zlink.TopicMessage();
+    const peer = new zlink.TopicMessage();
+    const deadline = Date.now() + 5000;
+    let sawLocal = false;
+    let sawPeer = false;
+    while (Date.now() < deadline && (!sawLocal || !sawPeer)) {
+      if (!sawLocal && localSubscriber.subscribe(local, zlink.RecvFlags.DontWait)) {
+        sawLocal = true;
+      }
+      if (!sawPeer && peerSubscriber.subscribe(peer, zlink.RecvFlags.DontWait)) {
+        sawPeer = true;
+      }
+      if (!sawLocal || !sawPeer) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+    assert.equal(sawLocal, true);
+    assert.equal(sawPeer, true);
+    assert.deepEqual(local.parts.map((part) => part.data().toString()), ['header', 'payload']);
+    assert.deepEqual(peer.parts.map((part) => part.data().toString()), ['header', 'payload']);
+  } finally {
+    peerSubscriber?.close();
+    localSubscriber?.close();
+    publisher?.close();
+    nodeB.close();
+    nodeA.close();
     ctx.close();
   }
 });

@@ -95,6 +95,19 @@ internal sealed partial class Spot
             && subjectKind == SpotDispatchSubjectKind.ChannelDealer
                 ? info->Subject
                 : IntPtr.Zero;
+        if (eventKind == SpotDispatchEvent.ChannelReplyReadable
+            && subjectKind == SpotDispatchSubjectKind.Spot)
+        {
+            try
+            {
+                DrainReplies();
+            }
+            catch (Exception ex)
+            {
+                CallbackExceptionHub.Report(ex);
+            }
+        }
+
         SpotDispatchInfo dispatchInfo = new(eventKind, subjectKind,
             timer, channelDealerSubject, DrainChannelReplyFrom, actorMessages);
         try

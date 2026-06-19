@@ -169,9 +169,11 @@ export function decodeChannelPayload(
   return Buffer.from(envelope.payload);
 }
 
-export function closeMessages(parts: readonly Message[]): void {
+export function closeMessages(parts: readonly MessageLike[]): void {
   for (const part of parts) {
-    part.close();
+    if (typeof (part as { close?: unknown }).close === 'function') {
+      (part as Message).close();
+    }
   }
 }
 

@@ -4,6 +4,7 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
+import systems.zlink.samples.tictactoe.shared.contracts.PlayerInfo;
 
 @ZLinkHandlerGroup("api")
 public final class AuthenticatePlayerHandler {
@@ -13,6 +14,18 @@ public final class AuthenticatePlayerHandler {
         if (actorId.isBlank()) {
             throw new IllegalArgumentException("authentication token is empty");
         }
-        return new AuthenticatePlayerRes(actorId);
+        return new AuthenticatePlayerRes(new PlayerInfo(
+            actorId,
+            displayName(actorId),
+            3,
+            "player-x".equals(actorId) ? 99 : 0));
+    }
+
+    private static String displayName(String actorId) {
+        return switch (actorId) {
+            case "player-x" -> "Player X";
+            case "player-o" -> "Player O";
+            default -> "Observer";
+        };
     }
 }

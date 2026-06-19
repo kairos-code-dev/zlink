@@ -53,6 +53,12 @@ public final class SpotBuilders {
         }
 
         @Override
+        public ZLinkSpotNodeBuilder connectRouter(RoutingId peerRoutingId, String endpoint) {
+            registration.addRouterManualConnection(peerRoutingId, endpoint);
+            return this;
+        }
+
+        @Override
         public ZLinkSpotNodeBuilder setRouterRoutingId(RoutingId routingId) {
             registration.enableRouter();
             registration.setRouterRoutingId(routingId);

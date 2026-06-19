@@ -155,6 +155,9 @@ export class NodeWebSocketConnection implements ZlinkStreamConnection {
         this.readWaiter = undefined;
         resolve();
       };
+      if (this.messageQueue.length > 0 || this.closed || this.error !== undefined) {
+        this.wakeReader();
+      }
     });
   }
 

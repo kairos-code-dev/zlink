@@ -9,6 +9,8 @@ public interface ZLinkSpotNodeBuilder {
 
     ZLinkSpotNodeBuilder connectRouter(String endpoint);
 
+    ZLinkSpotNodeBuilder connectRouter(RoutingId peerRoutingId, String endpoint);
+
     ZLinkSpotNodeBuilder setRouterRoutingId(RoutingId routingId);
 
     ZLinkSpotNodeBuilder enablePubSub(String endpoint);

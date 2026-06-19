@@ -266,8 +266,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 registration,
                 nodeRegistration,
                 node);
-            for (String endpoint : nodeRegistration.routerManualConnections()) {
-                node.connectPeer(endpoint);
+            for (SpotNodeRegistration.RouterManualConnection connection
+                    : nodeRegistration.routerManualConnections()) {
+                if (hasRoutingId(connection.peerRoutingId())) {
+                    node.connectPeer(connection.endpoint());
+                    node.connectRouterChannelPeerRid(
+                        nodeRegistration.meshName(),
+                        connection.peerRoutingId(),
+                        connection.endpoint());
+                    connectedRouterPeerRids.add(connection.peerRoutingId());
+                } else {
+                    node.connectPeer(connection.endpoint());
+                }
             }
             for (String endpoint : nodeRegistration.pubSubManualConnections()) {
                 node.connectPeer(endpoint);

@@ -67,6 +67,7 @@ test('ZLinkActorManager create notifies Entry Spot after native actor creation',
 
   const actor = await manager.create('alice', 'player');
   assert.equal(await manager.getOrCreate('alice', 'player'), actor);
+  assert.deepEqual(actor.context.actorRef, { nodeRid: 'node-a', actorId: 'alice', generation: 1n });
 
   assert.deepEqual(events, [
     'create:alice',
@@ -74,6 +75,34 @@ test('ZLinkActorManager create notifies Entry Spot after native actor creation',
     'createNative:alice',
     'entryCreate:node-a:alice'
   ]);
+});
+
+test('ZLinkActorManager resolves native actor node lazily at actor creation', async () => {
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  let node;
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    nativeActorNodeProvider: () => node
+  });
+  node = createMockSpotNode({
+    createActor(actorId) {
+      return { nodeRid: 'node-lazy', actorId, generation: 3n };
+    }
+  });
+
+  const actor = await manager.create('lazy', 'player');
+
+  assert.deepEqual(actor.context.actorRef, { nodeRid: 'node-lazy', actorId: 'lazy', generation: 3n });
 });
 
 test('ZLinkActorManager clears failed create state when Entry Spot create callback fails', async () => {
@@ -515,6 +544,97 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
     'lookup:alice',
     'createNative:alice',
     'join:1:node-a:stage-1:payload:hello:25'
+  ]);
+  request.close();
+});
+
+test('ZLinkActorNativeJoinCoordinator uses remote address resolver target node for user spot joins', async () => {
+  const events = [];
+  const createdRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const node = createMockSpotNode({
+    actorLookup() {
+      return undefined;
+    },
+    createActor() {
+      return createdRef;
+    },
+    entrySpot() {
+      return {
+        requestToSpot(targetNodeRid, targetSpotRid, payload, callback) {
+          const [header, body] = payload;
+          const decoded = JSON.parse(header.data().toString());
+          events.push(`routeJoin:${targetNodeRid}:${targetSpotRid}:${decoded.actorId}:${decoded.actorType}:${body.data().toString()}`);
+          callback(0, [
+            zlink.Message.from(JSON.stringify({
+              accepted: true,
+              actorNodeRid: 'node-a',
+              actorId: 'alice',
+              actorGeneration: '2'
+            })),
+            zlink.Message.from('remote-reply')
+          ]);
+          return true;
+        },
+      };
+    }
+  });
+  const remoteAddressResolver = {
+    async resolve(spotRid) {
+      events.push(`resolve:${spotRid}`);
+      return {
+        routerChannelId: 'play-node',
+        targetNodeRid: 'node-a',
+        spotRid,
+        spotKind: framework.ZLinkSpotKind.User
+      };
+    }
+  };
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
+      node,
+      remoteAddressResolver,
+      routedTransport: {
+        async requestRawToSpot(remoteAddress, rawRequest) {
+          const decoded = JSON.parse(rawRequest.data().toString());
+          events.push(`routeJoin:${remoteAddress.targetNodeRid}:${remoteAddress.spotRid}:${decoded.actorId}:${decoded.actorType}:${Buffer.from(decoded.request, 'base64').toString()}`);
+          return [
+            zlink.Message.from(JSON.stringify({
+              accepted: true,
+              actorNodeRid: 'node-a',
+              actorId: 'alice',
+              actorGeneration: '2',
+              reply: Buffer.from('remote-reply').toString('base64')
+            }))
+          ];
+        }
+      },
+      async remoteActorBinder(actorRef) {
+        events.push(`bind:${actorRef.nodeRid}:${actorRef.actorId}:${actorRef.generation}`);
+      }
+    })
+  });
+  const actor = await manager.create('alice', 'player');
+  const request = zlink.Message.from('payload');
+  const result = await actor.context.joinSpot('room-1', request).submit();
+
+  assert.equal(result.resultCode, 0);
+  assert.equal(result.reply, 'remote-reply');
+  assert.deepEqual(events, [
+    'resolve:room-1',
+    'routeJoin:node-a:room-1:alice:player:payload',
+    'bind:node-a:alice:2'
   ]);
   request.close();
 });

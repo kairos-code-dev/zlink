@@ -43,6 +43,55 @@ internal sealed partial class SpotNode
         return new ActorSendBoundSessionOperation(this, actor);
     }
 
+    public bool ForwardActorBoundSessionPart(
+        ActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        Message message,
+        bool hasMore,
+        SendFlags flags = SendFlags.None)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        EnsureNotDisposed();
+        using var cloned = message.Copy();
+        ZlinkMsg nativePart = default;
+        cloned.MoveTo(ref nativePart);
+        var submitted = false;
+        try
+        {
+            var nativeActor = ActorInterop.ToNative(actor);
+            var nativeSourceNode = sourceNodeRid.ToNative();
+            var nativeSourceSession = sourceSessionRid.ToNative();
+            var rc = NativeMethods.zlink_spot_node_actor_forward_bound_session_part(
+                _handle,
+                ref nativeActor,
+                ref nativeSourceNode,
+                ref nativeSourceSession,
+                ref nativePart,
+                (int)flags,
+                hasMore ? NativeMethods.ZlinkPartFlag.More : NativeMethods.ZlinkPartFlag.Final);
+            submitted = true;
+            if (rc != 0)
+            {
+                throw ZlinkException.CreateSubmitException(NativeMethods.zlink_errno());
+            }
+
+            return true;
+        }
+        catch (ZlinkException error) when ((flags & SendFlags.DontWait) != 0
+            && RequestReplySupport.MapSendNoWaitResult(error) == SendResult.Backpressured)
+        {
+            return false;
+        }
+        finally
+        {
+            if (!submitted)
+            {
+                NativeMethods.zlink_msg_close(ref nativePart);
+            }
+        }
+    }
+
     public void CloseActorBoundSession(ActorRef actor, TimeSpan timeout = default)
     {
         EnsureNotDisposed();

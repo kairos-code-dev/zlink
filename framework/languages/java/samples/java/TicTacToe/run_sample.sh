@@ -3,11 +3,17 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+core_lib="$(cd ../../../../../.. && pwd)/core/build/lib/libzlink.so"
+if [[ -f "${core_lib}" ]]; then
+  export ZLINK_LIBRARY_PATH="${core_lib}"
+fi
+
 pids=()
+redis_container_id=""
 role_pattern='systems\.zlink\.samples\.tictactoe\.server\.Program|systems\.zlink\.samples\.tictactoe\.client\.Program'
-log_dir="build/sample-logs"
+run_dir="$(mktemp -d)"
+log_dir="${run_dir}/logs"
 mkdir -p "${log_dir}"
-rm -f "${log_dir}"/*.log
 
 print_logs() {
   local status="$1"
@@ -83,6 +89,14 @@ cleanup() {
   for pid in "${pids[@]}"; do
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "${redis_container_id}" ]]; then
+    docker rm -f "${redis_container_id}" >/dev/null 2>&1 || true
+  fi
+  if [[ "${TICTACTOE_JAVA_KEEP_RUN_DIR:-}" == "1" ]]; then
+    echo "runDir=${run_dir}"
+  else
+    rm -rf "${run_dir}"
+  fi
 }
 trap cleanup EXIT
 
@@ -121,7 +135,7 @@ reserved = []
 ports = []
 try:
     chosen = set()
-    while len(reserved) < 5:
+    while len(reserved) < 15:
         port = random.randint(20000, 32767)
         if port in chosen:
             continue
@@ -141,25 +155,108 @@ finally:
 PY
 }
 
-read -r api_port api_channel_port play_stream_port play_channel_port spot_port < <(reserve_ports)
+read -r api_a_http_port api_b_http_port api_a_channel_port api_b_channel_port play_a_channel_port play_b_channel_port play_a_stream_port play_b_stream_port play_a_spot_port play_b_spot_port play_a_route_port play_b_route_port play_a_pub_port play_b_pub_port redis_port < <(reserve_ports)
 
-config_file="$(pwd)/build/sample-application.properties"
-cat >"${config_file}" <<EOF
-sample.apiBindUrl=http://127.0.0.1:${api_port}
-sample.apiPublicUrl=http://127.0.0.1:${api_port}
-sample.apiChannelEndpoint=tcp://127.0.0.1:${api_channel_port}
-sample.playChannelEndpoint=tcp://127.0.0.1:${play_channel_port}
-sample.playEndpoint=tcp://127.0.0.1:${play_stream_port}
-sample.spotEndpoint=tcp://127.0.0.1:${spot_port}
+if [[ -z "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "TICTACTOE_REDIS_ENDPOINT is not set and docker is not available." >&2
+    exit 1
+  fi
+  redis_container_id="$(docker run -d --rm -p "127.0.0.1:${redis_port}:6379" redis:7-alpine)"
+  redis_endpoint="127.0.0.1:${redis_port}"
+else
+  redis_endpoint="${TICTACTOE_REDIS_ENDPOINT}"
+fi
+
+api_a_config="${run_dir}/sample.api-a.properties"
+api_b_config="${run_dir}/sample.api-b.properties"
+play_a_config="${run_dir}/sample.play-a.properties"
+play_b_config="${run_dir}/sample.play-b.properties"
+
+common_play_channels="tcp://127.0.0.1:${play_a_channel_port},tcp://127.0.0.1:${play_b_channel_port}"
+common_play_streams="tcp://127.0.0.1:${play_a_stream_port},tcp://127.0.0.1:${play_b_stream_port}"
+common_spots="tcp://127.0.0.1:${play_a_spot_port},tcp://127.0.0.1:${play_b_spot_port}"
+common_routes="tcp://127.0.0.1:${play_a_route_port},tcp://127.0.0.1:${play_b_route_port}"
+common_pubs="tcp://127.0.0.1:${play_a_pub_port},tcp://127.0.0.1:${play_b_pub_port}"
+
+cat >"${api_a_config}" <<EOF
+sample.apiBindUrl=http://127.0.0.1:${api_a_http_port}
+sample.apiPublicUrl=http://127.0.0.1:${api_a_http_port}
+sample.apiChannelEndpoint=tcp://127.0.0.1:${api_a_channel_port}
+sample.playChannelEndpoint=tcp://127.0.0.1:${play_a_channel_port}
+sample.playChannelEndpoints=${common_play_channels}
+sample.playEndpoint=tcp://127.0.0.1:${play_a_stream_port}
+sample.playEndpoints=${common_play_streams}
+sample.spotEndpoint=tcp://127.0.0.1:${play_a_spot_port}
+sample.spotEndpoints=${common_spots}
+sample.routeEndpoint=tcp://127.0.0.1:${play_a_route_port}
+sample.routeEndpoints=${common_routes}
+sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}
+sample.spotPubSubEndpoints=${common_pubs}
+sample.redisEndpoint=${redis_endpoint}
+sample.playSpotNodeRid=play-node-1
+sample.peerPlaySpotNodeRid=play-node-2
+sample.peerSpotEndpoint=tcp://127.0.0.1:${play_b_spot_port}
+sample.peerRouteEndpoint=tcp://127.0.0.1:${play_b_route_port}
+sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}
 sample.logDirectory=${log_dir}
 EOF
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="play --config ${config_file}" >"${log_dir}/play.log" 2>&1 &
-pids+=("$!")
-wait_log_contains "${log_dir}/play.log" "Started Program"
+cat >"${api_b_config}" <<EOF
+sample.apiBindUrl=http://127.0.0.1:${api_b_http_port}
+sample.apiPublicUrl=http://127.0.0.1:${api_b_http_port}
+sample.apiChannelEndpoint=tcp://127.0.0.1:${api_b_channel_port}
+sample.playChannelEndpoint=tcp://127.0.0.1:${play_b_channel_port}
+sample.playChannelEndpoints=${common_play_channels}
+sample.playEndpoint=tcp://127.0.0.1:${play_b_stream_port}
+sample.playEndpoints=${common_play_streams}
+sample.spotEndpoint=tcp://127.0.0.1:${play_b_spot_port}
+sample.spotEndpoints=${common_spots}
+sample.routeEndpoint=tcp://127.0.0.1:${play_b_route_port}
+sample.routeEndpoints=${common_routes}
+sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}
+sample.spotPubSubEndpoints=${common_pubs}
+sample.redisEndpoint=${redis_endpoint}
+sample.playSpotNodeRid=play-node-2
+sample.peerPlaySpotNodeRid=play-node-1
+sample.peerSpotEndpoint=tcp://127.0.0.1:${play_a_spot_port}
+sample.peerRouteEndpoint=tcp://127.0.0.1:${play_a_route_port}
+sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}
+sample.logDirectory=${log_dir}
+EOF
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="api --config ${config_file}" >"${log_dir}/api.log" 2>&1 &
-pids+=("$!")
-wait_log_contains "${log_dir}/api.log" "Started Program"
+cp "${api_a_config}" "${play_a_config}"
+cp "${api_b_config}" "${play_b_config}"
+{
+  echo "sample.apiChannelEndpoint=tcp://127.0.0.1:${api_a_channel_port}"
+  echo "sample.playChannelEndpoint=tcp://127.0.0.1:${play_a_channel_port}"
+} >>"${play_a_config}"
+{
+  echo "sample.apiChannelEndpoint=tcp://127.0.0.1:${api_a_channel_port}"
+  echo "sample.playChannelEndpoint=tcp://127.0.0.1:${play_b_channel_port}"
+} >>"${play_b_config}"
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Client:run --quiet --args="--api-url http://127.0.0.1:${api_port}" >"${log_dir}/client.log" 2>&1
+wait_port "${redis_port}"
+
+../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="play --config ${play_a_config}" >"${log_dir}/play-a.log" 2>&1 &
+pids+=("$!")
+wait_log_contains "${log_dir}/play-a.log" "Started Program"
+
+../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="play --config ${play_b_config}" >"${log_dir}/play-b.log" 2>&1 &
+pids+=("$!")
+wait_log_contains "${log_dir}/play-b.log" "Started Program"
+
+../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="api --config ${api_a_config}" >"${log_dir}/api-a.log" 2>&1 &
+pids+=("$!")
+wait_log_contains "${log_dir}/api-a.log" "Started Program"
+
+../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="api --config ${api_b_config}" >"${log_dir}/api-b.log" 2>&1 &
+pids+=("$!")
+wait_log_contains "${log_dir}/api-b.log" "Started Program"
+
+../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Client:run --quiet --args="--api-url http://127.0.0.1:${api_a_http_port}" >"${log_dir}/client.log" 2>&1
+
+rg -q "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${log_dir}/client.log"
+rg -q "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
+rg -q "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" "${log_dir}/client.log"
+rg -q "tictactoe completed" "${log_dir}/client.log"

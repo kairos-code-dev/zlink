@@ -485,6 +485,19 @@ internal sealed partial class Spot : ISpot
         if (dealerSubject == IntPtr.Zero)
             throw new ArgumentException("dealerSubject must not be null.",
                 nameof(dealerSubject));
+        int rc = NativeMethods.zlink_spot_drain_channel_reply(_handle,
+            dealerSubject);
+        if (rc < 0)
+            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
+    }
+
+    public int DrainReplies()
+    {
+        EnsureNotDisposed();
+        int rc = NativeMethods.zlink_spot_drain_reply(_handle);
+        if (rc < 0)
+            throw ZlinkException.CreateRecvException(NativeMethods.zlink_errno());
+        return rc;
     }
 
     private static SendResult MapSendResult(int rc)

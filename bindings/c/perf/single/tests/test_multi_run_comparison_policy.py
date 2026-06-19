@@ -121,7 +121,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         try:
             os.environ["PERF_TRANSPORTS"] = "tcp,tls,ws,wss"
             os.environ["PERF_MSG_SIZES"] = "64,256,1024,4096,65536,131072"
-            os.environ["PERF_STREAM_MSG_SIZES"] = "64,256,1024,4096,65536,131072"
+            os.environ["PERF_STREAM_MSG_SIZES"] = "64,256,1024,65536"
             patterns = [pattern for _, pattern in RC.MULTI_COMPARISONS]
             self.assertTrue(
                 RC.is_default_full_matrix(
@@ -268,6 +268,21 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             )
         finally:
             RC.run_sizes_test_stream_shared = old_stream
+
+    def test_multi_stream_default_sizes_ignore_non_stream_multi_sizes(self):
+        old_env = os.environ.copy()
+        try:
+            os.environ["PERF_MSG_SIZES"] = "64,256,1024,4096,65536,131072"
+            spec = importlib.util.spec_from_file_location(
+                "multi_run_comparison_stream_size_policy", MODULE_PATH
+            )
+            reloaded = importlib.util.module_from_spec(spec)
+            assert spec and spec.loader
+            spec.loader.exec_module(reloaded)
+            self.assertEqual(reloaded.STREAM_MSG_SIZES, [64, 256, 1024, 65536])
+        finally:
+            os.environ.clear()
+            os.environ.update(old_env)
 
     def test_multi_sizes_run_as_isolated_cases_without_transition_sleep(self):
         old_allow_multi = RC.ALLOW_MULTI

@@ -137,6 +137,15 @@ zlink_spot_node_actor_recv_part (void *node_,
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg (
   void *node_, const zlink_actor_ref_t *actor_, zlink_msg_t *message_, zlink_send_flags_t flags_);
 
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_forward_bound_session_part (
+  void *node_,
+  const zlink_actor_ref_t *actor_,
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink_routing_id_t *source_session_rid_,
+  zlink_msg_t *message_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
+
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_recv_actor_lifecycle (
   void *spot_, zlink_spot_actor_lifecycle_event_t *event_out_, zlink_recv_flags_t flags_);
 
@@ -212,6 +221,10 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual 
   void *node_, const char *channel_name_, void *dealer_);
 
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_pub_ingress (void *node_, void *pub_);
+
+ZLINK_EXPORT int zlink_spot_drain_reply (void *spot_);
+
+ZLINK_EXPORT int zlink_spot_drain_channel_reply (void *spot_, void *dealer_subject_);
 
 typedef struct zlink_spot_node_status_t
 {

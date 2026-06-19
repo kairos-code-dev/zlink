@@ -19,7 +19,7 @@ import { normalizeOperationPayload } from '../../buffers/message_conversion';
 import { Message, Received, RoutingId, TopicMessage, type MessageLike } from '../../../contracts';
 import { RecvFlags, SendFlags } from '../../../contracts/sockets/socket_constants';
 import { SubmitResult } from '../../../contracts/errors/errors';
-import { SpotDispatchEvent, SpotDispatchSubjectKind, type ActorJoinRequest, type ActorJoinReplyOperation, type ActorPart, type ActorRef, type ReplyOperation, type RequestCallback, type RequestOperation, type SendOperation, type SpotActorLifecycleEvent, type SpotDispatchEventHandler, type SpotSendReadyHandler, type SubscriptionEntry } from '../../../contracts/service';
+import { SpotDispatchEvent, SpotDispatchSubjectKind, type ActorJoinRequest, type ActorJoinReplyOperation, type ActorPart, type ActorRef, type ReplyOperation, type RequestCallback, type RequestOperation, type SendOperation, type SpotActorLifecycleEvent, type SpotDispatchEventHandler, type SpotDispatchInfo, type SpotSendReadyHandler, type SubscriptionEntry } from '../../../contracts/service';
 import { SpotOption } from './spot_options';
 import { actorJoinInfoFromRaw, actorJoinInfoToRaw, actorPartFromRaw, actorRefFromRaw, spotActorLifecycleInfoFromRaw } from './actor_models';
 import { RuntimeActorJoinReplyOperation } from './actor_operations';
@@ -383,12 +383,15 @@ export class Spot extends NativeHandle {
         const actorRef = rawActorParts[0]?.info.actor
           ? actorRefFromRaw(rawActorParts[0].info.actor)
           : null;
+        const routed = raw.routed === undefined ? null : this.materializeRouted(raw.routed);
         let index = 0;
-        handler({
+        const dispatchInfo = {
           event: raw.event as SpotDispatchEvent,
           subjectKind: raw.subjectKind as SpotDispatchSubjectKind,
+          subjectHandle: raw.subjectHandle,
           timer: null,
           actorRef,
+          routed,
           recvActorPart(flags: RecvFlags = RecvFlags.None): ActorPart | null {
             const current = index++;
             const rawPart = rawActorParts[current] ?? null;
@@ -401,9 +404,41 @@ export class Spot extends NativeHandle {
             actorParts[current] ??= actorPartFromRaw(rawPart);
             return actorParts[current];
           }
-        });
+        } as SpotDispatchInfo & { readonly subjectHandle: bigint };
+        handler(dispatchInfo);
       });
     });
+  }
+
+  private materializeRouted(raw: SpotRoutedRaw): Received {
+    const received = new Received();
+    materializeReceivedInto(
+      received,
+      {
+        parts: raw.parts,
+        routingId: raw.sourceRid ?? null,
+        requestSeq: raw.requestSeq ?? null,
+        spotRid: raw.spotRid ?? null
+      },
+      (requestSeq, parts, flags) => {
+        if (!raw.sourceRid) {
+          throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed reply target');
+        }
+        const sourceRid = RoutingId.from(raw.sourceRid);
+        if (raw.spotRid) {
+          this.replyToSpotInternal(sourceRid, RoutingId.from(raw.spotRid), requestSeq, parts, flags);
+          return;
+        }
+        this.replyToRouterInternal(sourceRid, requestSeq, parts, flags);
+      },
+      (parts, flags) => {
+        if (!raw.sourceRid || !raw.spotRid) {
+          throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
+        }
+        return this.sendToSpotRawDirect(raw.sourceRid, raw.spotRid, parts, flags);
+      }
+    );
+    return received;
   }
   recvActorJoin(flags: RecvFlags = RecvFlags.None): ActorJoinRequest | null {
     let raw;
@@ -447,6 +482,16 @@ export class Spot extends NativeHandle {
       kind: raw.kind,
       info: spotActorLifecycleInfoFromRaw(raw.info)
     };
+  }
+  drainReply(): number {
+    return configCall('spot reply drain failed', () =>
+      nativeBinding.spotDrainReply(this._native) as number
+    );
+  }
+  drainChannelReply(subjectHandle: bigint): number {
+    return configCall('spot channel reply drain failed', () =>
+      nativeBinding.spotDrainChannelReply(this._native, subjectHandle) as number
+    );
   }
   actors(): ActorRef[] {
     return (configCall('spot actors snapshot failed', () =>

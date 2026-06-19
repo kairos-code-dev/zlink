@@ -1921,7 +1921,7 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     'entrySpot:setRoutingId:entry-node-a',
     'spot:setRouterBind:tcp://0.0.0.0:9301',
     'spot:setPubBind:tcp://0.0.0.0:9303',
-    'spot:connectPeer:tcp://127.0.0.1:9302',
+    'spot:connectRouterChannelPeer:game:tcp://127.0.0.1:9302',
     'spot:connectPeer:tcp://127.0.0.1:9304',
     'dealer:create',
     'dealer:setChannelName:api',
@@ -1936,6 +1936,77 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     'spot:dispose',
     'context:dispose'
   ]);
+});
+
+test('framework runtime host delivers attached Spot publisher events to peer Entry Spot subscriptions', async () => {
+  const endpointA = await reserveTcpEndpoint();
+  const endpointB = await reserveTcpEndpoint();
+  const received = [];
+
+  class SubscribeHandler {
+    async handle(_spot, event) {
+      received.push(event);
+    }
+  }
+
+  class EntrySpot {
+    constructor(context) {
+      this.context = context;
+    }
+
+    configure() {
+      this.context.handlers.addSubscribe(SubscribeHandler, 'entry.topic');
+    }
+  }
+
+  const runtimeA = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration(nestjs.zlinkFramework()
+      .codecs()
+        .addJson()
+      .addSpotNode('game')
+        .enablePubSub(endpointA, 'node-a', endpointB)
+        .attachSpotPublisherClient('game.events', endpointA)
+      .build())
+  });
+  const runtimeB = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration(nestjs.zlinkFramework()
+      .codecs()
+        .addJson()
+      .addSpotNode('game')
+        .enablePubSub(endpointB, 'node-b', endpointA)
+        .addEntrySpot(EntrySpot)
+      .build())
+  });
+
+  try {
+    await runtimeB.start();
+    await runtimeA.start();
+    await waitForCondition(() => runtimeA.context !== undefined && runtimeB.context !== undefined, 'framework runtimes');
+
+    await waitForCondition(() => {
+      const nodeA = runtimeA.spotNodeRuntime?.nodesByName?.get?.('game');
+      const nodeB = runtimeB.spotNodeRuntime?.nodesByName?.get?.('game');
+      return (nodeA?.status?.().connectedPeerCount ?? 0) > 0 &&
+        (nodeB?.status?.().connectedPeerCount ?? 0) > 0;
+    }, 'Spot pub/sub peers');
+    await waitForCondition(() => {
+      const nodeB = runtimeB.spotNodeRuntime?.nodesByName?.get?.('game');
+      return (nodeB?.status?.().readySubjectCount ?? 0) > 0;
+    }, 'Spot subscription readiness');
+
+    await runtimeA.spotPublisherTransport.publishSpot(
+      'game.events',
+      'entry.topic',
+      'EntryEvent',
+      { value: 'published' }
+    );
+
+    await waitForCondition(() => received.length === 1, 'Spot subscription event');
+    assert.deepEqual(received, [{ value: 'published' }]);
+  } finally {
+    await runtimeA.stop();
+    await runtimeB.stop();
+  }
 });
 
 test('framework runtime host initializes registered Entry Spot lifecycle and handlers', async () => {
@@ -2099,3 +2170,14 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
     'context:dispose'
   ]);
 });
+
+async function waitForCondition(predicate, label, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.fail(`${label} timed out`);
+}

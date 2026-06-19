@@ -176,12 +176,160 @@ test('spot requestToSpot promise resolves through peer spot routed reply', async
         serverCtx.close();
     }
 });
+test('spot requestToSpot promise resolves through peer entry spot routed reply', async () => {
+    const serverPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const serverRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const clientPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const clientRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const serverCtx = zlink.createContext();
+    const clientCtx = zlink.createContext();
+    const serverNode = zlink.createSpotNode(serverCtx);
+    const clientNode = zlink.createSpotNode(clientCtx);
+    const serverEntrySpot = serverNode.entrySpot();
+    const clientSpot = clientNode.createSpot();
+    try {
+        serverNode.setRoutingId(textRoutingId('REQREP_ENTRY_SERVER_NODE'));
+        clientNode.setRoutingId(textRoutingId('REQREP_ENTRY_CLIENT_NODE'));
+        clientSpot.setRoutingId(textRoutingId('REQREP_ENTRY_CLIENT_SPOT'));
+        serverNode.setRouterBind(serverRouterEndpoint);
+        serverNode.setPubBind(serverPeerEndpoint);
+        clientNode.setRouterBind(clientRouterEndpoint);
+        clientNode.setPubBind(clientPeerEndpoint);
+        serverNode.connectPeer(clientPeerEndpoint);
+        clientNode.connectPeer(serverPeerEndpoint);
+        await Promise.all([
+            waitForSpotPeer(serverNode),
+            waitForSpotPeer(clientNode)
+        ]);
+        const handled = new Promise((resolve, reject) => {
+            const deadline = Date.now() + 5000;
+            const received = new zlink.Received();
+            const poll = () => {
+                try {
+                    if (!serverEntrySpot.recvRouted(received, zlink.RecvFlags.DontWait)) {
+                        if (Date.now() < deadline) {
+                            setImmediate(poll);
+                            return;
+                        }
+                        reject(new Error('timed out waiting for peer entry spot request'));
+                        return;
+                    }
+                    try {
+                        assert.ok(received.routingId);
+                        assert.ok(received.spotRid);
+                        assert.notEqual(received.requestSeq, null);
+                        assert.equal(received.parts.length, 1);
+                        assert.equal(received.parts[0].data().toString(), 'entry-ping');
+                        received.reply().message(Buffer.from('entry-pong')).submit();
+                        resolve(null);
+                    }
+                    finally {
+                        received.close();
+                    }
+                }
+                catch (error) {
+                    if (error instanceof zlink.RecvError && Date.now() < deadline) {
+                        setImmediate(poll);
+                        return;
+                    }
+                    reject(error);
+                }
+            };
+            poll();
+        });
+        const reply = await clientSpot.requestToSpot(serverNode.routingId, serverEntrySpot.routingId).message(Buffer.from('entry-ping')).timeout(2000).submit();
+        assert.equal(reply.length, 1);
+        assert.equal(reply[0].data().toString(), 'entry-pong');
+        await handled;
+    }
+    finally {
+        clientSpot.close();
+        serverNode.close();
+        clientNode.close();
+        serverCtx.close();
+        clientCtx.close();
+    }
+});
+test('spot requestToSpot from spot created after peer connect resolves through peer entry spot routed reply', async () => {
+    const serverPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const serverRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const clientPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const clientRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const serverCtx = zlink.createContext();
+    const clientCtx = zlink.createContext();
+    const serverNode = zlink.createSpotNode(serverCtx);
+    const clientNode = zlink.createSpotNode(clientCtx);
+    const serverEntrySpot = serverNode.entrySpot();
+    let clientSpot;
+    try {
+        serverNode.setRoutingId(textRoutingId('REQREP_LATE_ENTRY_SERVER_NODE'));
+        clientNode.setRoutingId(textRoutingId('REQREP_LATE_ENTRY_CLIENT_NODE'));
+        serverNode.setRouterBind(serverRouterEndpoint);
+        serverNode.setPubBind(serverPeerEndpoint);
+        clientNode.setRouterBind(clientRouterEndpoint);
+        clientNode.setPubBind(clientPeerEndpoint);
+        serverNode.connectPeer(clientPeerEndpoint);
+        clientNode.connectPeer(serverPeerEndpoint);
+        await Promise.all([
+            waitForSpotPeer(serverNode),
+            waitForSpotPeer(clientNode)
+        ]);
+        clientSpot = clientNode.getOrCreateSpot(textRoutingId('REQREP_LATE_ENTRY_CLIENT_SPOT')).spot;
+        const handled = new Promise((resolve, reject) => {
+            const deadline = Date.now() + 5000;
+            const received = new zlink.Received();
+            const poll = () => {
+                try {
+                    if (!serverEntrySpot.recvRouted(received, zlink.RecvFlags.DontWait)) {
+                        if (Date.now() < deadline) {
+                            setImmediate(poll);
+                            return;
+                        }
+                        reject(new Error('timed out waiting for late peer entry spot request'));
+                        return;
+                    }
+                    try {
+                        assert.ok(received.routingId);
+                        assert.ok(received.spotRid);
+                        assert.notEqual(received.requestSeq, null);
+                        assert.equal(received.parts.length, 1);
+                        assert.equal(received.parts[0].data().toString(), 'late-entry-ping');
+                        received.reply().message(Buffer.from('late-entry-pong')).submit();
+                        resolve(null);
+                    }
+                    finally {
+                        received.close();
+                    }
+                }
+                catch (error) {
+                    if (error instanceof zlink.RecvError && Date.now() < deadline) {
+                        setImmediate(poll);
+                        return;
+                    }
+                    reject(error);
+                }
+            };
+            poll();
+        });
+        const reply = await clientSpot.requestToSpot(serverNode.routingId, serverEntrySpot.routingId).message(Buffer.from('late-entry-ping')).timeout(2000).submit();
+        assert.equal(reply.length, 1);
+        assert.equal(reply[0].data().toString(), 'late-entry-pong');
+        await handled;
+    }
+    finally {
+        clientSpot?.close();
+        serverNode.close();
+        clientNode.close();
+        serverCtx.close();
+        clientCtx.close();
+    }
+});
 test('spot requestToSpot resolves across child processes', async () => {
     const serverPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const serverRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const clientPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const clientRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const fixturesDir = path.join(__dirname, '..', '..', 'tests', 'fixtures');
+    const fixturesDir = path.join(__dirname, 'fixtures');
     const serverPath = path.join(fixturesDir, 'spot_reqrep_child_server.js');
     const clientPath = path.join(fixturesDir, 'spot_reqrep_child_client.js');
     const server = spawn(process.execPath, [

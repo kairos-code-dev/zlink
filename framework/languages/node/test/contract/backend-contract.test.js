@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+const zlink = require('../../../../../bindings/node/dist');
 const backend = require('../../packages/framework/dist/runtime/backend');
 
 test('backend adapter factory exposes the five backend adapters', () => {
@@ -68,4 +69,30 @@ test('backend adapter unwraps SpotNode when attaching stream ActorGateway', asyn
     await spotNode.dispose();
     await context.dispose();
   }
+});
+
+test('backend adapter normalizes missing SpotNode actor lookup to undefined', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const channel = factory.createChannelAdapter();
+  const spotAdapter = factory.createSpotAdapter();
+  const context = channel.createContext();
+  const spotNode = spotAdapter.createSpotNode(context, 3);
+
+  try {
+    assert.equal(spotNode.actorLookup('missing-actor'), undefined);
+
+    const actorRef = spotNode.createActor('existing-actor');
+    assert.equal(actorRef.actorId, 'existing-actor');
+    assert.equal(typeof actorRef.generation, 'bigint');
+    assert.deepEqual(spotNode.actorLookup('existing-actor'), actorRef);
+  } finally {
+    await spotNode.dispose();
+    await context.dispose();
+  }
+});
+
+test('backend socket wrapper treats missing route disconnect as idempotent cleanup', () => {
+  const error = new zlink.ConfigError(zlink.ConfigResult.NotFound, 2);
+
+  assert.equal(backend.isDisconnectRouteNotFoundError(error), true);
 });

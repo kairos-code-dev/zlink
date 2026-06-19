@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { RoutingId } from '../../core';
-import type { Message } from '../../messaging';
+import type { Message, Received } from '../../messaging';
 import type { MonitorEvent, Timer } from '../../eventing';
 import type { RequestResult } from '../../errors/errors';
 import type { RecvFlags } from '../../sockets/socket_constants';
@@ -175,6 +175,7 @@ export interface SpotDispatchInfo {
   readonly subjectKind: SpotDispatchSubjectKind;
   readonly timer: Timer | null;
   readonly actorRef: ActorRef | null;
+  readonly routed: Received | null;
   recvActorPart(flags?: RecvFlags): ActorPart | null;
 }
 /** Invoked for each spot dispatch event. */

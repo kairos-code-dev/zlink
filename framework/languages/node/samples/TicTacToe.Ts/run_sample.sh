@@ -242,6 +242,22 @@ raise SystemExit(1)
 PY
 }
 
+wait_grep() {
+  local name="$1"
+  local pattern="$2"
+  shift 2
+  local deadline
+  deadline=$((SECONDS + 10))
+  while (( SECONDS < deadline )); do
+    if grep -q "${pattern}" "$@" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name}" >&2
+  return 1
+}
+
 start_server() {
   local name="$1"
   local entry="$2"
@@ -281,6 +297,6 @@ grep -q "stream-inbound sample=TicTacToe" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=TicTacToe .* seq=[0-9]" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.log"
 grep -q "observer-win-milestone=verified" "${LOG_DIR}/client.log"
-grep -q "actor: LeaveGameReq completed. actor=player-x" "${LOG_DIR}"/play-*.log
-grep -q "actor: LeaveGameReq completed. actor=player-o" "${LOG_DIR}"/play-*.log
+wait_grep "host leave marker" "actor: LeaveGameReq completed. actor=player-x" "${LOG_DIR}"/play-*.log
+wait_grep "guest leave marker" "actor: LeaveGameReq completed. actor=player-o" "${LOG_DIR}"/play-*.log
 echo "PASS TicTacToe.Ts"

@@ -23,6 +23,7 @@ import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
+import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.contracts.core.RoutingId;
 
@@ -86,6 +87,12 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
             : null;
         if (this.actors != null) {
             runtimeHandlers.add(ZLinkActorManager.class, this.actors);
+            Class<? extends ZLinkSpotRemoteAddressResolver> resolverType =
+                options.registration().spotRemoteAddressResolverType();
+            if (resolverType != null) {
+                this.actors.setRemoteAddressResolver(
+                    (ZLinkSpotRemoteAddressResolver) runtimeHandlers.create(resolverType));
+            }
         }
         if (this.actors != null) {
             this.spots.attachActorRuntime(this.actors);

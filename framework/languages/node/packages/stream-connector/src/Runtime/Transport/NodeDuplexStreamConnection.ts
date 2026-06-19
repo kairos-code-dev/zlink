@@ -98,6 +98,9 @@ export class NodeDuplexStreamConnection implements ZlinkStreamConnection {
         this.readWaiter = undefined;
         resolve();
       };
+      if (this.buffer.size > 0 || this.closed || this.error !== undefined) {
+        this.wakeReader();
+      }
     });
   }
 

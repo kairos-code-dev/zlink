@@ -282,9 +282,20 @@ int zlink::spot_reqrep_internal::queue_spot_reply_completion (
     zlink::ctx_t *ctx = resolve_spot_state_ctx (state_);
     if (!ctx)
         return -1;
-    return zlink::request_completion::enqueue (&state_->completion_state.direct, ctx,
-                                               "zlink.spot.reqrep.completion", handler_, userdata_,
-                                               errnum_, parts_, part_count_);
+    if (zlink::request_completion::enqueue (&state_->completion_state.direct, ctx,
+                                            "zlink.spot.reqrep.completion", handler_, userdata_,
+                                            errnum_, parts_, part_count_)
+        != 0) {
+        return -1;
+    }
+
+    if (errnum_ != ETERM) {
+        zlink_spot_notify_dispatch_info (state_->owner,
+                                         ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE,
+                                         ZLINK_SPOT_DISPATCH_SUBJECT_SPOT, state_->owner);
+    }
+
+    return 0;
 }
 
 int zlink::spot_reqrep_internal::queue_router_reply_completion (
@@ -440,6 +451,13 @@ int zlink::spot_reqrep_internal::drain_spot_reply_completions (
     return zlink::request_completion::drain (&state_->completion_state.direct, owner_handle_);
 }
 
+extern "C" int zlink_spot_drain_reply (void *spot_)
+{
+    std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> state =
+      zlink::spot_reqrep_internal::try_find_spot_state (spot_);
+    return zlink::spot_reqrep_internal::drain_spot_completion_progress (state, spot_);
+}
+
 int zlink::spot_reqrep_internal::drain_spot_channel_reply_completions_from (
   const std::shared_ptr<spot_request_reply_state_t> &state_, void *owner_handle_, void *dealer_)
 {
@@ -459,6 +477,14 @@ int zlink::spot_reqrep_internal::drain_spot_channel_reply_completions_from (
     }
 
     return zlink::request_completion::drain (&source->completion, owner_handle_);
+}
+
+extern "C" int zlink_spot_drain_channel_reply (void *spot_, void *dealer_subject_)
+{
+    std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> state =
+      zlink::spot_reqrep_internal::try_find_spot_state (spot_);
+    return zlink::spot_reqrep_internal::drain_spot_channel_reply_completions_from (
+      state, spot_, dealer_subject_);
 }
 
 int zlink::spot_reqrep_internal::drain_spot_completion_progress (

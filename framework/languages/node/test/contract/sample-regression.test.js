@@ -218,13 +218,14 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     ['TicTacToe module', files.ticTacToeModule, '.addSpotFactory(TicTacToeGameSpot)'],
     ['TicTacToe create', files.ticTacToeCreate, 'ZLINK_SPOT_MANAGER'],
     ['TicTacToe create', files.ticTacToeCreate, '.getOrCreate(TicTacToeGameSpot'],
-    ['TicTacToe entry', files.ticTacToeEntry, 'context.joinSpot(roomId)'],
+    ['TicTacToe entry', files.ticTacToeEntry, 'actor.context.joinSpot(roomId, request)'],
     ['TicTacToe entry', files.ticTacToeEntry, 'onCreateActor'],
     ['TicTacToe entry', files.ticTacToeEntry, 'onJoinedActor'],
     ['TicTacToe entry', files.ticTacToeEntry, 'destroyActor(actor'],
     ['TicTacToe game', files.ticTacToeGame, 'onActorJoin'],
     ['TicTacToe game', files.ticTacToeGame, 'onLeaveActor'],
-    ['TicTacToe game', files.ticTacToeGame, 'context.leaveActor(player.actor'],
+    ['TicTacToe game', files.ticTacToeGame, 'this.context.leaveActor(actor)'],
+    ['TicTacToe session', files.ticTacToeSession, 'this.context.actors.bind(this.actor)'],
     ['TicTacToe session', files.ticTacToeSession, 'spotManager.executeOnSpot']
   ]) {
     if (!content.includes(text)) {
@@ -586,6 +587,7 @@ test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
   const joinHandler = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'Handlers', 'play-actor-join-game-handler.ts'), 'utf8');
   const moveHandler = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'Handlers', 'play-actor-place-mark-handler.ts'), 'utf8');
   const gameSpot = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'tictactoe-game-spot.ts'), 'utf8');
+  const playActor = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Actors', 'play-actor.ts'), 'utf8');
   const playSession = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Sessions', 'play-session.ts'), 'utf8');
   const required = [
     [board, 'class TicTacToeBoard'],
@@ -596,6 +598,7 @@ test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
     [joinHandler, 'entrySpot.join(actor, request.roomId)'],
     [moveHandler, 'spot.placeMark(actor, request.cell)'],
     [gameSpot, 'gameStateNotify(state)'],
+    [playActor, 'this.context.boundSession'],
     [playSession, 'spotManager.executeOnSpot'],
     [client, 'payload.state.status === GameStatus.InProgress'],
     [client, 'stateOf(client1FinalMove).status === GameStatus.Won'],
@@ -734,8 +737,14 @@ test('Bingo TypeScript sample publishes drawn number before finished notify', ()
 
 test('node topology samples run server roles as separate processes over TCP route endpoints', () => {
   const cases = [
-    ['TicTacToe.Ts', 'Server/Api/main.ts', 'TICTACTOE_API_ENDPOINT'],
-    ['TicTacToe.Ts', 'Server/Play/main.ts', 'TICTACTOE_PLAY_ENDPOINT'],
+    ['TicTacToe.Ts', 'Server/Api/main.ts', 'TICTACTOE_API_A_ENDPOINT'],
+    ['TicTacToe.Ts', 'Server/Api/main.ts', 'TICTACTOE_API_B_ENDPOINT'],
+    ['TicTacToe.Ts', 'Server/Play/main.ts', 'TICTACTOE_PLAY_A_CHANNEL_ENDPOINT'],
+    ['TicTacToe.Ts', 'Server/Play/main.ts', 'TICTACTOE_PLAY_B_CHANNEL_ENDPOINT'],
+    ['TicTacToe.Ts', 'Server/Play/main.ts', 'TICTACTOE_PLAY_A_SPOT_ENDPOINT'],
+    ['TicTacToe.Ts', 'Server/Play/main.ts', 'TICTACTOE_PLAY_B_SPOT_ENDPOINT'],
+    ['TicTacToe.Ts', 'Server/Play/main.ts', 'TICTACTOE_PLAY_A_SPOT_PUBSUB_ENDPOINT'],
+    ['TicTacToe.Ts', 'Server/Play/main.ts', 'TICTACTOE_PLAY_B_SPOT_PUBSUB_ENDPOINT'],
     ['Bingo.Ts', 'Server/Api/main.ts', 'BINGO_API_ENDPOINT'],
     ['Bingo.Ts', 'Server/Play/main.ts', 'BINGO_PLAY_ENDPOINT'],
     ['Bingo.Ts', 'Server/Play/main.ts', 'BINGO_NOTIFICATION_ENDPOINT'],
@@ -744,7 +753,8 @@ test('node topology samples run server roles as separate processes over TCP rout
     ['Bingo.Ts', 'Server/Registry/main.ts', 'BINGO_REGISTRY_ROUTER_ENDPOINT']
   ];
   const clientEndpointEnvs = new Set([
-    'TICTACTOE_PLAY_STREAM_ENDPOINT',
+    'TICTACTOE_PLAY_A_STREAM_ENDPOINT',
+    'TICTACTOE_PLAY_B_STREAM_ENDPOINT',
     'TICTACTOE_API_HTTP_ENDPOINT',
     'BINGO_SESSION_ENDPOINT'
   ]);
@@ -867,17 +877,16 @@ test('node client scenarios follow the common sample document order', () => {
     '1. Create the room through API',
     ".body(createGameReq('match-ready'))",
     'game.roomId.length > 0',
-    'game.playEndpoint.length > 0',
-    'createPlayerClient(game.playEndpoint)',
-    'createPlayerClient(game.playEndpoint)',
-    '2. Both clients connect directly',
-    "client1.request(authenticateReq('p1'))",
-    "client2.request(authenticateReq('p2'))",
+    'game.ownerPlayEndpoint.length > 0',
+    'createPlayerClient(game.ownerPlayEndpoint',
+    'createPlayerClient(observerPlayEndpoint',
+    '2. Host, guest, and observer connect directly',
+    "client1.request(authenticateReq('player-x'))",
+    "client2.request(authenticateReq('player-o'))",
     '3. Host joins by explicit RoomId',
     'client1.request(joinGameReq(game.roomId))',
     "stateOf(client1Join).roomId === game.roomId",
-    'client1Join.mark === GameMarks.x',
-    'await client1SelfJoinNotify',
+    'stateOf(client1Join).xActorId === client1Auth.player.actorId',
     '4-6. Guest joins by the same RoomId',
     'client1SawClient2Join',
     'client2SelfJoinNotify',

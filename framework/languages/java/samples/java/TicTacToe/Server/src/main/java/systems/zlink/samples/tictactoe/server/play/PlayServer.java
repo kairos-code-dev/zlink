@@ -1,11 +1,13 @@
 package systems.zlink.samples.tictactoe.server.play;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
 import systems.zlink.samples.tictactoe.server.configuration.SampleLogging;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
+import systems.zlink.samples.tictactoe.server.configuration.RedisSpotRemoteAddressResolver;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.play.adapters.zlink.actors.PlayActorFactory;
 import systems.zlink.samples.tictactoe.server.play.adapters.zlink.spots.PlayEntrySpot;
@@ -28,10 +30,22 @@ public final class PlayServer {
             options.addClientServerChannel(SampleNames.PlayChannel)
                 .enableServer(settings.playChannelEndpoint())
                 .addHandlerGroup(SampleNames.PlayChannel);
+            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.RouteChannel);
+            route.enableServer(settings.routeEndpoint())
+                .enableClient(settings.peerRouteEndpoint())
+                .enableSpotRouteEgress(SampleNames.RouteChannel)
+                .configureRouting()
+                .setRoutingId(RoutingId.from(settings.playSpotNodeRid()));
+            options.addSpotRemoteAddressResolver(RedisSpotRemoteAddressResolver.class);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SpotMesh)
                 .addNode(SampleNames.PlayNode);
             node.enableRouter(settings.spotEndpoint())
-                .setRouterRoutingId(RoutingId.from(SampleNames.PlayNodeRoutingId));
+                .setRouterRoutingId(RoutingId.from(settings.playSpotNodeRid()));
+            node.connectRouter(RoutingId.from(settings.peerPlaySpotNodeRid()), settings.peerSpotEndpoint());
+            node.acceptSpotRoutesFromChannel(SampleNames.RouteChannel, settings.peerRouteEndpoint());
+            node.enablePubSub(settings.spotPubSubEndpoint())
+                .setPubSubRoutingId(RoutingId.from(settings.playSpotNodeRid() + "-pub"));
+            node.connectPeerPub(settings.peerSpotPubSubEndpoint());
             node.configureEntrySpot().setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId));
             node.addEntrySpot(PlayEntrySpot.class);
             node.addSpotFactory(TicTacToeGame.class);

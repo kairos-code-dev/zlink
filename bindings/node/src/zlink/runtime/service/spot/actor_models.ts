@@ -22,7 +22,7 @@ import type {
 import { wrapRoutingId } from '../../core/routing_id_conversion';
 
 export interface ActorRefRaw {
-  nodeRid: Buffer;
+  nodeRid?: Buffer | null;
   actorId: string;
   generation: bigint | number;
 }
@@ -117,10 +117,24 @@ export const actorJoinRequestHandles = new WeakMap<ActorJoinInfo, bigint>();
 export function actorRefFromRaw(raw: ActorRefRaw): ActorRef {
   const generation = BigInt(raw.generation);
   return Object.freeze({
-    nodeRid: RoutingId.from(raw.nodeRid),
-    actorId: raw.actorId,
+    nodeRid: wrapRoutingId(raw.nodeRid ?? null) ?? emptyRoutingId(),
+    actorId: raw.actorId ?? '',
     generation
   });
+}
+
+function actorRefFromResultRaw(raw: ActorRefRaw | null | undefined, result: RequestResult): ActorRef {
+  if (result !== RequestResult.Ok && !isActorRefRaw(raw)) {
+    return failedActorRef();
+  }
+  if (!isActorRefRaw(raw)) {
+    throw new TypeError('actor result missing actor ref');
+  }
+  return actorRefFromRaw(raw);
+}
+
+function isActorRefRaw(raw: ActorRefRaw | null | undefined): raw is ActorRefRaw {
+  return raw !== null && raw !== undefined && raw.nodeRid !== null && raw.nodeRid !== undefined;
 }
 
 export function actorRefToRaw(actor: ActorRef): { nodeRid: Buffer; actorId: string; generation: bigint } {
@@ -242,10 +256,11 @@ export function actorJoinResultFromRaw(raw: ActorJoinResultRaw | null): ActorJoi
   if (!raw) {
     return failedActorJoinResult();
   }
+  const result = raw.result as RequestResult;
   return {
-    result: raw.result as RequestResult,
+    result,
     joinResultCode: raw.joinResultCode ?? 0,
-    actor: actorRefFromRaw(raw.actor),
+    actor: actorRefFromResultRaw(raw.actor, result),
     joinedSpotRid: (wrapRoutingId(raw.joinedSpotRid ?? null) as RoutingId) ?? emptyRoutingId(),
     joinEpoch: BigInt(raw.joinEpoch ?? 0),
     flags: raw.flags | 0,
@@ -256,10 +271,11 @@ export function actorJoinEntrySpotResultFromRaw(raw: ActorJoinEntrySpotResultRaw
   if (!raw) {
     return failedActorJoinEntrySpotResult();
   }
+  const result = raw.result as RequestResult;
   return {
-    result: raw.result as RequestResult,
+    result,
     joinResultCode: raw.joinResultCode ?? 0,
-    actor: actorRefFromRaw(raw.actor),
+    actor: actorRefFromResultRaw(raw.actor, result),
     targetNodeRid: (wrapRoutingId(raw.targetNodeRid ?? null) as RoutingId) ?? emptyRoutingId(),
     joinedSpotRid: (wrapRoutingId(raw.joinedSpotRid ?? null) as RoutingId) ?? emptyRoutingId(),
     joinEpoch: BigInt(raw.joinEpoch ?? 0),

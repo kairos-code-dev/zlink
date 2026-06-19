@@ -27,8 +27,11 @@ public final class CreateGameHttpHandler {
             .await(CreateGameRes.class);
         return new CreateGameHttpRes(
             game.roomId(),
-            game.playEndpoint(),
-            game.gameName());
+            game.gameName(),
+            game.ownerPlayEndpoint(),
+            game.playEndpoints(),
+            game.playNodes(),
+            game.requiredLevel());
     }
 
     private static String gameName(CreateGameHttpReq request) {

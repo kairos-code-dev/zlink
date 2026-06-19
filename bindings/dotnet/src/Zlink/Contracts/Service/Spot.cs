@@ -142,6 +142,11 @@ public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
     /// </summary>
     bool RecvRouted(Received result, RecvFlags flags = RecvFlags.None);
     /// <summary>
+    /// Runs pending reply callbacks for requests sent directly from this spot.
+    /// Returns the number of callbacks that ran.
+    /// </summary>
+    int DrainReplies();
+    /// <summary>
     /// Receives the next pending actor-join request, or null when none is
     /// available.
     /// </summary>

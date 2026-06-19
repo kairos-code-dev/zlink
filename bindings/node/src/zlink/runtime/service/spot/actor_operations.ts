@@ -91,18 +91,34 @@ type ActorJoinEntrySpotInvoker = (
 export class RuntimeActorJoinReplyOperation implements ActorJoinReplyOperation {
   private readonly _invoke: (parts: OperationPayloadValue<MessageLike>) => void;
   private readonly _payload = new OperationPayload<MessageLike, MessageLike>((message) => message);
+  private _hasPayload = false;
+  private _submitted = false;
 
   constructor(invoke: (parts: OperationPayloadValue<MessageLike>) => void) {
     this._invoke = invoke;
   }
 
   message(message: MessageLike): ActorJoinReplyOperation {
+    if (this._submitted) {
+      throw new TypeError('operation has already been submitted');
+    }
+    this._hasPayload = true;
     this._payload.append(message);
     return this;
   }
 
   submit(): void {
-    this._invoke(this._payload.consume());
+    if (this._submitted) {
+      throw new TypeError('operation has already been submitted');
+    }
+    if (!this._hasPayload) {
+      this._submitted = true;
+      this._invoke([]);
+      return;
+    }
+    const payload = this._payload.consume();
+    this._submitted = true;
+    this._invoke(payload);
   }
 }
 

@@ -439,6 +439,45 @@ test('ZLinkSpotSerialExecutor runs spot work in submission order', async () => {
   assert.deepEqual(events, ['first:start', 'first:end', 'second']);
 });
 
+test('spot manager local actor join completes after entry leave callback', async () => {
+  const events = [];
+  class StageSpot {
+    async onActorJoin(actor, request) {
+      events.push(`join:${actor.actorId}:${request.getString()}`);
+      return { accepted: true, reply: zlink.Message.from('joined') };
+    }
+    async onJoinedActor(actor) {
+      events.push(`joined:${actor.actorId}`);
+    }
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [StageSpot],
+    entrySpotCallbacks: {
+      async onLeaveActor(actor) {
+        events.push(`entry-left:${actor.actorId}`);
+      }
+    }
+  });
+  await manager.getOrCreate(StageSpot, 'stage-1');
+  const actor = { actorId: 'alice' };
+  const request = zlink.Message.from('hello');
+  const result = await Promise.race([
+    manager.admitActorJoin('stage-1', actor, request, () => events.push('commit')),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('admitActorJoin timed out')), 100))
+  ]);
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.reply.getString(), 'joined');
+  assert.deepEqual(events, [
+    'join:alice:hello',
+    'entry-left:alice',
+    'commit',
+    'joined:alice'
+  ]);
+  request.close();
+  result.reply.close();
+});
+
 test('spot outbound requestToChannel completion runs on the spot serial executor', async () => {
   const events = [];
   class StageSpot {}

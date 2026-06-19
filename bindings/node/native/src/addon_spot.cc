@@ -332,13 +332,18 @@ static const size_t k_spot_dispatch_event_slot_count = 256;
 struct spot_dispatch_event_js_payload_t
 {
     spot_dispatch_event_js_payload_t () :
-        event (0), subject_kind (0), subject_handle (0), part_count (0)
+        event (0), subject_kind (0), subject_handle (0), part_count (0), routed_part_count (0),
+        routed_request_seq (0)
     {
+        memset (&routed_source_rid, 0, sizeof (routed_source_rid));
+        memset (&routed_spot_rid, 0, sizeof (routed_spot_rid));
     }
     ~spot_dispatch_event_js_payload_t ()
     {
         if (part_count > 0)
             close_recv_parts (actor_parts.data (), part_count);
+        if (routed_part_count > 0)
+            close_recv_parts (routed_parts.data (), routed_part_count);
     }
 
     int event;
@@ -348,6 +353,11 @@ struct spot_dispatch_event_js_payload_t
     std::vector<zlink_msg_t> actor_parts;
     std::vector<int> actor_more;
     size_t part_count;
+    zlink_routing_id_t routed_source_rid;
+    zlink_routing_id_t routed_spot_rid;
+    uint64_t routed_request_seq;
+    std::vector<zlink_msg_t> routed_parts;
+    size_t routed_part_count;
 };
 
 struct spot_dispatch_event_js_state_t
@@ -543,7 +553,42 @@ static int spot_recv_parts (void *spot,
 
     copy_routing_id (source_rid, source_rid_ptr);
     copy_routing_id (spot_rid, spot_rid_ptr);
-    return collect_recv_parts (spot, &first_part, has_more, parts);
+    if (!append_msg_move (parts, &first_part)) {
+        zlink_msg_close (&first_part);
+        errno = ENOMEM;
+        return ZLINK_RECV_INTERNAL_ERROR;
+    }
+
+    while (has_more) {
+        const zlink_routing_id_t *next_source_rid = NULL;
+        const zlink_routing_id_t *next_spot_rid = NULL;
+        uint64_t next_request_seq = 0;
+        zlink_msg_t next_part;
+        if (zlink_msg_init (&next_part) != 0) {
+            close_msg_vector (*parts);
+            parts->clear ();
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
+        zlink_part_flag_t more = ZLINK_PART_FINAL;
+        rc = zlink_spot_recv_part (spot, &next_source_rid, &next_spot_rid, &next_request_seq,
+                                   &next_part, &more, ZLINK_RECV_FLAGS_DONTWAIT);
+        if (rc != ZLINK_RECV_OK) {
+            zlink_msg_close (&next_part);
+            close_msg_vector (*parts);
+            parts->clear ();
+            return rc;
+        }
+        if (!append_msg_move (parts, &next_part)) {
+            zlink_msg_close (&next_part);
+            close_msg_vector (*parts);
+            parts->clear ();
+            errno = ENOMEM;
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
+        has_more = more;
+    }
+
+    return ZLINK_RECV_OK;
 }
 
 static int router_request_spot_parts (void *router,
@@ -765,7 +810,41 @@ static int spot_subscribe_recv_parts (void *spot,
     }
 
     copy_routing_id (source_rid, source_rid_ptr);
-    return collect_recv_parts (spot, &first_part, has_more, parts);
+    if (!append_msg_move (parts, &first_part)) {
+        zlink_msg_close (&first_part);
+        errno = ENOMEM;
+        return ZLINK_RECV_INTERNAL_ERROR;
+    }
+
+    while (has_more) {
+        const zlink_routing_id_t *next_source_rid = NULL;
+        zlink_msg_t next_part;
+        if (zlink_msg_init (&next_part) != 0) {
+            close_msg_vector (*parts);
+            parts->clear ();
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
+        zlink_part_flag_t more = ZLINK_PART_FINAL;
+        size_t next_topic_len = 0;
+        rc = zlink_spot_subscribe_part (spot, &next_source_rid, NULL, 0, &next_topic_len,
+                                        &next_part, &more, ZLINK_RECV_FLAGS_DONTWAIT);
+        if (rc != ZLINK_RECV_OK) {
+            zlink_msg_close (&next_part);
+            close_msg_vector (*parts);
+            parts->clear ();
+            return rc;
+        }
+        if (!append_msg_move (parts, &next_part)) {
+            zlink_msg_close (&next_part);
+            close_msg_vector (*parts);
+            parts->clear ();
+            errno = ENOMEM;
+            return ZLINK_RECV_INTERNAL_ERROR;
+        }
+        has_more = more;
+    }
+
+    return ZLINK_RECV_OK;
 }
 
 static bool move_recv_parts_to_payload (zlink_msg_t *parts,
@@ -893,8 +972,17 @@ spot_dispatch_event_tsfn_call_js (napi_env env, napi_value js_cb, void *context,
             return;
         napi_set_element (env, actor_parts, static_cast<uint32_t> (i), part);
     }
-    napi_set_named_property (env, info, "actorParts", actor_parts);
-    argv[0] = info;
+	    napi_set_named_property (env, info, "actorParts", actor_parts);
+	    if (payload->routed_part_count > 0) {
+	        napi_value routed = create_spot_routed_value (
+	          env, payload->routed_source_rid.size > 0 ? &payload->routed_source_rid : NULL,
+	          payload->routed_spot_rid.size > 0 ? &payload->routed_spot_rid : NULL,
+	          payload->routed_request_seq, payload->routed_parts.data (), payload->routed_part_count);
+	        if (!routed)
+	            return;
+	        napi_set_named_property (env, info, "routed", routed);
+	    }
+	    argv[0] = info;
     napi_value recv;
     napi_value this_arg;
     napi_get_undefined (env, &this_arg);
@@ -938,9 +1026,9 @@ spot_dispatch_event_dispatch (void *spot_, const zlink_spot_dispatch_info_t *inf
     payload->event = static_cast<int> (info->event);
     payload->subject_kind = static_cast<uint32_t> (info->subject_kind);
     payload->subject_handle = static_cast<uint64_t> (reinterpret_cast<uintptr_t> (info->subject));
-    if (info->event == ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE
-        && info->subject_kind == ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR && info->subject
-        && state->node) {
+	    if (info->event == ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE
+	        && info->subject_kind == ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR && info->subject
+	        && state->node) {
         for (;;) {
             zlink_actor_recv_info_t recv_info;
             zlink_msg_t part;
@@ -972,10 +1060,34 @@ spot_dispatch_event_dispatch (void *spot_, const zlink_spot_dispatch_info_t *inf
             payload->actor_infos.push_back (recv_info);
             payload->actor_more.push_back (static_cast<int> (more));
             zlink_msg_close (&part);
-            if (more == ZLINK_PART_FINAL)
-                break;
-        }
-    }
+	            if (more == ZLINK_PART_FINAL)
+	                break;
+	        }
+	    }
+	    if (info->event == ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE) {
+	        zlink_routing_id_t source_rid;
+	        zlink_routing_id_t spot_rid;
+	        uint64_t request_seq = 0;
+	        std::vector<zlink_msg_t> parts;
+	        int rc = spot_recv_parts (spot_, &source_rid, &spot_rid, &request_seq, &parts,
+	                                  ZLINK_RECV_FLAGS_DONTWAIT);
+	        if (rc == ZLINK_RECV_OK && !parts.empty ()) {
+	            payload->routed_source_rid = source_rid;
+	            payload->routed_spot_rid = spot_rid;
+	            payload->routed_request_seq = request_seq;
+	            payload->routed_parts.resize (parts.size ());
+	            for (size_t i = 0; i < parts.size (); ++i) {
+	                if (zlink_msg_init (&payload->routed_parts[i]) != 0)
+	                    break;
+	                if (zlink_msg_move (&payload->routed_parts[i], &parts[i]) != 0) {
+	                    zlink_msg_close (&payload->routed_parts[i]);
+	                    break;
+	                }
+	                payload->routed_part_count = i + 1;
+	            }
+	        }
+	        close_msg_vector (parts);
+	    }
     if (napi_call_threadsafe_function (tsfn, payload.get (), napi_tsfn_nonblocking) != napi_ok) {
         return;
     }
@@ -1709,6 +1821,49 @@ napi_value spot_reply_router (napi_env env, napi_callback_info info)
     napi_value ok;
     napi_get_undefined (env, &ok);
     return ok;
+}
+
+napi_value spot_drain_reply (napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *spot = NULL;
+    napi_get_value_external (env, argv[0], &spot);
+    const int drained = zlink_spot_drain_reply (spot);
+    if (drained < 0)
+        return throw_last_error (env, "spotDrainReply failed");
+    napi_value result;
+    napi_create_int32 (env, drained, &result);
+    return result;
+}
+
+napi_value spot_drain_channel_reply (napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error (env, NULL,
+                               "spotDrainChannelReply requires (spot, subjectHandle)");
+        return NULL;
+    }
+    void *spot = NULL;
+    napi_get_value_external (env, argv[0], &spot);
+    uint64_t subject_handle = 0;
+    bool lossless = false;
+    napi_get_value_bigint_uint64 (env, argv[1], &subject_handle, &lossless);
+    if (!lossless) {
+        napi_throw_range_error (env, NULL, "subjectHandle is out of range");
+        return NULL;
+    }
+    void *subject = reinterpret_cast<void *> (static_cast<uintptr_t> (subject_handle));
+    const int drained = zlink_spot_drain_channel_reply (spot, subject);
+    if (drained < 0)
+        return throw_last_error (env, "spotDrainChannelReply failed");
+    napi_value result;
+    napi_create_int32 (env, drained, &result);
+    return result;
 }
 
 napi_value spot_dispatch_event_handler (napi_env env, napi_callback_info info)

@@ -369,6 +369,8 @@ public sealed class test_socket_surface
             typeof(RecvFlags)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpot),
             nameof(ISpot.RecvRouted), typeof(Received), typeof(RecvFlags)));
+        Assert.True(HasPublicInstanceMethod(typeof(ISpot),
+            nameof(ISpot.DrainReplies)));
         AssertNoPublicInstanceMethod(typeof(ISpot), "RecvRoutedPart");
         AssertNoPublicInstanceMethod(typeof(ISpot), "SubscribePart");
         Assert.True(HasPublicInstanceMethod(typeof(ISpot),

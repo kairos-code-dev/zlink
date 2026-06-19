@@ -1,7 +1,12 @@
 package systems.zlink.samples.tictactoe.shared.contracts;
 
+import java.util.List;
+
 public record CreateGameHttpRes(
     String roomId,
-    String playEndpoint,
-    String gameName) {
+    String gameName,
+    String ownerPlayEndpoint,
+    List<String> playEndpoints,
+    List<PlayNodeInfo> playNodes,
+    int requiredLevel) {
 }

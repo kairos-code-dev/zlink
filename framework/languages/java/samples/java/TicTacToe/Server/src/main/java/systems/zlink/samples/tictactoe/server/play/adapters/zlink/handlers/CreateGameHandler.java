@@ -33,9 +33,6 @@ public final class CreateGameHandler {
     public CreateGameRes create(CreateGameReq request) {
         TicTacToeGameCreator.GameRoom room = gameCreator.nextRoom(request.gameName());
         await(spots.getObject().create(TicTacToeGame.class, RoutingId.from(room.roomId())));
-        return new CreateGameRes(
-            room.roomId(),
-            settings.playEndpoint(),
-            room.gameName());
+        return gameCreator.created(room);
     }
 }

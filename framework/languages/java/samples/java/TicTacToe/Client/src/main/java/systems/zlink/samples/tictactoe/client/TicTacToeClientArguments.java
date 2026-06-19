@@ -10,7 +10,8 @@ public final class TicTacToeClientArguments {
             readOption(args, "--api-url", defaults.apiUrl()),
             readOption(args, "--game-name", defaults.gameName()),
             readOption(args, "--x-actor-id", defaults.xActorId()),
-            readOption(args, "--o-actor-id", defaults.oActorId()));
+            readOption(args, "--o-actor-id", defaults.oActorId()),
+            readOption(args, "--observer-actor-id", defaults.observerActorId()));
     }
 
     private static String readOption(

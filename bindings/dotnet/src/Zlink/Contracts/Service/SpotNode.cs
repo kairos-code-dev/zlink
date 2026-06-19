@@ -143,6 +143,17 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     SendOperation SendActorBoundSession(ActorRef actor);
     /// <summary>
+    /// Forwards one stream session part to a remote actor while preserving the
+    /// original session owner and session routing ids.
+    /// </summary>
+    bool ForwardActorBoundSessionPart(
+        ActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        Message message,
+        bool hasMore,
+        SendFlags flags = SendFlags.None);
+    /// <summary>
     /// Closes the resource.
     /// </summary>
     void CloseActorBoundSession(ActorRef actor, TimeSpan timeout = default);

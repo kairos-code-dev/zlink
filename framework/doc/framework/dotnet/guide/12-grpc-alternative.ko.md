@@ -61,10 +61,10 @@ channel/spot 계약으로 메시징할 수 있다.
 - 각 언어 binding 은 같은 core(C ABI, ZMP) 위에 handler/SPOT/STREAM 표면을 올린다.
   그래서 handler 작성 언어가 달라도 wire 상으로는 같은 channel·packet 이다.
 
-> **구현 상태(정직하게).** `.NET` 이 reference 구현이고, **C++/Java/Node 가 1차로
-> 개발 중**, **Python/Go/Rust 가 뒤따른다.** 이 가이드는 `.NET` binding 기준이며,
-> 같은 channel/packet 계약을 다른 binding 이 자기 언어로 구현한다. 즉
-> cross-language 는 ZLink 의 **설계 목표이자 진행 중인 로드맵**이다.
+> **다른 언어 binding.** `.NET` 이 reference 구현이며, 같은 channel/packet 계약을
+> 다른 언어 binding 이 자기 언어로 구현한다. 이 가이드는 `.NET` binding 기준이다.
+> cross-language 는 ZLink 의 **설계 목표**다 — 호출 계약이 binding 구현 언어와
+> 무관하기 때문이다.
 
 ## 3. 이런 문제가 반복되면 ZLink 후보
 

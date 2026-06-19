@@ -17,6 +17,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
@@ -31,6 +32,7 @@ import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class ActorRuntimeFakeBackendTest {
@@ -322,17 +324,68 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            var joined = actor.context()
+            ZLinkActorJoinResult<String> joined = actor.context()
                 .joinSpot(RoutingId.from("remote-room"), "join-request")
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
 
             assertEquals(0, joined.resultCode());
+            assertEquals("joined", joined.reply());
         }
 
         assertTrue(backendFactory.calls().contains(
-            "spotNode.joinActor.player-remote-join.remote-node.remote-room"));
+            "router.request.remote-node.__zlink.routed_spot.egress.request"),
+            () -> "calls: " + backendFactory.calls());
+    }
+
+    @Test
+    void boundManagedActorRoutesPacketsToRemoteJoinedSpotInsteadOfNativeGateway() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotRemoteAddressResolver(RemoteRoomResolver.class);
+        { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
+            route.enableClient("inproc://remote-route");
+            route.enableSpotRouteEgress("rooms"); };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://local-router");
+                node.connectRouter(RoutingId.from("remote-node"), "inproc://remote-router");
+                node.acceptSpotRoutesFromChannel("rooms", "inproc://remote-route"); }; };
+        { var stream = options.addStreamNode("gateway"); stream.bind("inproc://fake-gateway");
+            stream.attachActorGateway("play");
+            stream.registerSession(DestroySession.class); };
+        options.addActorFactory("player", PlayerActorFactory.class);
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            ZLinkActor actor = runtime.actorManager()
+                .create("player-remote-relay", "player")
+                .toCompletableFuture()
+                .join();
+            actor.context()
+                .joinSpot(RoutingId.from("remote-room"), "join-request")
+                .submit(String.class)
+                .toCompletableFuture()
+                .join();
+
+            var sessionActor = runtime.sessionActors("gateway", RoutingId.from("session-1"))
+                .bind(actor)
+                .toCompletableFuture()
+                .join();
+            sessionActor.relay(
+                    new ZLinkStreamHeader("MoveReq", java.util.Map.of(), Optional.empty()),
+                    Message.from("move".getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                .toCompletableFuture()
+                .join();
+        }
+
+        assertTrue(backendFactory.calls().contains(
+            "router.send.remote-node.__zlink.routed_spot.egress.send"),
+            () -> "calls: " + backendFactory.calls());
+        assertEquals(
+            false,
+            backendFactory.calls().contains("relayBoundActor.player-remote-relay.JSON.MoveReq"),
+            () -> "calls: " + backendFactory.calls());
     }
 
     @Test

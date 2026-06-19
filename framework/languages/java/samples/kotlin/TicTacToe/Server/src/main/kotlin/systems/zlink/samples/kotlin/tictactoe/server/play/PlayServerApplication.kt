@@ -11,6 +11,7 @@ import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.samples.kotlin.tictactoe.server.configuration.RedisRoomRouteStore
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator
 import systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.spots.handlers.TicTacToeGameCreatedHandler
@@ -32,8 +33,15 @@ class PlayServerApplication {
         TicTacToeGameCreatedHandler()
 
     @Bean
-    fun ticTacToeGameCreator(): TicTacToeGameCreator =
-        TicTacToeGameCreator()
+    fun redisRoomRouteStore(settings: SampleSettings): RedisRoomRouteStore =
+        RedisRoomRouteStore(settings)
+
+    @Bean
+    fun ticTacToeGameCreator(
+        settings: SampleSettings,
+        routes: RedisRoomRouteStore,
+    ): TicTacToeGameCreator =
+        TicTacToeGameCreator(settings, routes)
 
     @Bean
     fun ticTacToeJsonMapper(): ObjectMapper =

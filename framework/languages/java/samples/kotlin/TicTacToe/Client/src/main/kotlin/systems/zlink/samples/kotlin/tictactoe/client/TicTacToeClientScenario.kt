@@ -4,6 +4,7 @@ import java.time.Duration
 import java.net.URI
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 import systems.zlink.framework.kotlin.kotlin
@@ -16,9 +17,13 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.CreateGameHttpRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.GameStateNotify
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.JoinGameRes
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.LeaveGameReq
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.ObserveMilestoneReq
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.ObserveMilestoneRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerJoinedNotify
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.WinMilestoneNotify
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
@@ -31,23 +36,35 @@ class TicTacToeClientScenario {
                 .body(CreateGameHttpReq(options.gameName))
                 .fetch<CreateGameHttpRes>()
         }
-        val hostStream = playerConnector(game.playEndpoint)
-        val guestStream = playerConnector(game.playEndpoint)
+        val observerEndpoint = game.playEndpoints.first { it != game.ownerPlayEndpoint }
+        val hostStream = playerConnector(game.ownerPlayEndpoint)
+        val guestStream = playerConnector(observerEndpoint)
+        val observerStream = playerConnector(observerEndpoint)
 
         try {
             hostStream.connect().await()
             guestStream.connect().await()
+            observerStream.connect().await()
 
             ensure(game.roomId.isNotBlank())
-            ensure(game.playEndpoint.isNotBlank())
+            ensure(game.ownerPlayEndpoint.isNotBlank())
             ensure(game.gameName == options.gameName)
+            ensure(game.requiredLevel == 3)
 
             val xAuthentication = hostStream.request(AuthenticateReq(options.xActorId)).await<AuthenticateRes>()
-            ensure(xAuthentication.actorId == options.xActorId)
+            ensure(xAuthentication.player.actorId == options.xActorId)
+            ensure(xAuthentication.player.wins == 99)
 
             val oAuthentication = guestStream.request(AuthenticateReq(options.oActorId)).await<AuthenticateRes>()
-            ensure(oAuthentication.actorId == options.oActorId)
-            ensure(oAuthentication.actorId != xAuthentication.actorId)
+            ensure(oAuthentication.player.actorId == options.oActorId)
+            ensure(oAuthentication.player.actorId != xAuthentication.player.actorId)
+
+            val observerAuthentication = observerStream.request(AuthenticateReq(options.observerActorId)).await<AuthenticateRes>()
+            ensure(observerAuthentication.player.actorId == options.observerActorId)
+            val subscription = observerStream.request(ObserveMilestoneReq()).await<ObserveMilestoneRes>()
+            ensure(subscription.subscribed)
+            println("observer-connected endpoint=$observerEndpoint")
+            println("observer-subscription=verified subscribed=${subscription.subscribed}")
 
             val xJoin = hostStream.request(JoinGameReq(game.roomId)).await<JoinGameRes>()
             ensure(xJoin.state.roomId == game.roomId)
@@ -140,6 +157,9 @@ class TicTacToeClientScenario {
             val guestSawHostWin = guestStream.waitFor<GameStateNotify>()
                 .where { message -> message.payload().state.status == "Won" }
                 .let { wait -> async { wait.await() } }
+            val observerSawMilestone = observerStream.waitFor<WinMilestoneNotify>()
+                .where { message -> message.payload().actorId == options.xActorId && message.payload().wins == 100 }
+                .let { wait -> async { wait.await() } }
             val hostWin = hostStream.request(PlaceMarkReq(2)).await<PlaceMarkRes>()
             ensure(hostWin.state.board == "XXXOO....")
             ensure(hostWin.state.status == "Won")
@@ -149,9 +169,25 @@ class TicTacToeClientScenario {
             ensure(hostWinNotify.state.board == hostWin.state.board)
             ensure(hostWinNotify.state.status == "Won")
             ensure(hostWinNotify.state.winner == options.xActorId)
+
+            val milestone = observerSawMilestone.await().payload()
+            val expectedRid = game.playNodes.first { it.streamEndpoint == observerEndpoint }.spotNodeRid
+            ensure(milestone.wins == 100)
+            ensure(milestone.receivingSpotNodeRid == expectedRid)
+            println(
+                "observer-win-milestone=verified actor=${milestone.actorId} " +
+                    "wins=${milestone.wins} receivingSpotNodeRid=${milestone.receivingSpotNodeRid}",
+            )
+
+            hostStream.send(LeaveGameReq(game.roomId)).await()
+            delay(500)
+            guestStream.send(LeaveGameReq(game.roomId)).await()
+            delay(500)
+            println("tictactoe completed")
         } finally {
             hostStream.close().await()
             guestStream.close().await()
+            observerStream.close().await()
         }
     }
 

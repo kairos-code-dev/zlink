@@ -4,6 +4,7 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkRequest
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlayerReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlayerRes
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerInfo
 
 @ZLinkHandlerGroup("api")
 class AuthenticatePlayerHandler {
@@ -11,6 +12,20 @@ class AuthenticatePlayerHandler {
     suspend fun handle(request: AuthenticatePlayerReq): AuthenticatePlayerRes {
         val actorId = request.accessToken.trim()
         require(actorId.isNotBlank()) { "authentication token is empty" }
-        return AuthenticatePlayerRes(actorId)
+        return AuthenticatePlayerRes(
+            PlayerInfo(
+                actorId = actorId,
+                displayName = displayName(actorId),
+                level = 3,
+                wins = if (actorId == "player-x") 99 else 0,
+            ),
+        )
     }
+
+    private fun displayName(actorId: String): String =
+        when (actorId) {
+            "player-x" -> "Player X"
+            "player-o" -> "Player O"
+            else -> "Observer"
+        }
 }

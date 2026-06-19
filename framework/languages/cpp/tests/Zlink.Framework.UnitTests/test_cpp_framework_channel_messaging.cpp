@@ -81,6 +81,56 @@ class local_handler_t
     std::string last_route_source;
 };
 
+class nested_request_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
+
+    explicit nested_request_handler_t (zlink::framework::channel_client_t &client) :
+        _client (client)
+    {
+    }
+
+    zlink::framework::task_t<reply_t> handle_request (const request_t &request)
+    {
+        if (request.value == 50) {
+            auto nested = co_await _client.request ("hosted-nested", request_t{51})
+                            .packet_name ("request")
+                            .timeout (std::chrono::milliseconds (2000))
+                            .async<reply_t> ();
+            co_return reply_t{nested.value + 1};
+        }
+        co_return reply_t{request.value + 100};
+    }
+
+  private:
+    zlink::framework::channel_client_t &_client;
+};
+
+struct scoped_channel_dependency_t
+{
+    int offset = 300;
+};
+
+class scoped_channel_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<scoped_channel_dependency_t>;
+
+    explicit scoped_channel_handler_t (scoped_channel_dependency_t &dependency) :
+        _dependency (dependency)
+    {
+    }
+
+    reply_t handle_request (const request_t &request)
+    {
+        return {request.value + _dependency.offset};
+    }
+
+  private:
+    scoped_channel_dependency_t &_dependency;
+};
+
 class local_internal_dispatcher_t final
     : public zlink::framework::detail::route_internal_packet_dispatcher_t
 {
@@ -535,6 +585,69 @@ int main ()
         return 83;
     }
 
+    zlink::framework::zlink_builder_t nested_hosted_builder;
+    const auto nested_hosted_endpoint = unique_tcp_endpoint ();
+    auto nested_hosted_channel = nested_hosted_builder.channel ("hosted-nested");
+    nested_hosted_channel.enable_server ().bind (nested_hosted_endpoint);
+    nested_hosted_channel.enable_client ().connect (nested_hosted_endpoint);
+    zlink::framework::detail::channel_runtime_t::from (nested_hosted_builder.message_bus ())
+      .bind_serializers (serializers);
+    zlink::framework::service_collection_t nested_services;
+    nested_services.add_singleton<zlink::framework::channel_client_t> (
+      std::make_unique<zlink::framework::channel_client_t> (nested_hosted_builder.message_bus ()));
+    nested_services.add_transient<nested_request_handler_t, zlink::framework::channel_client_t> ();
+    auto nested_provider = nested_services.build_provider ();
+    zlink::framework::handler_registry_t nested_handlers;
+    nested_handlers.on_request<nested_request_handler_t, request_t, reply_t> (
+      "hosted-nested", "request", &nested_request_handler_t::handle_request,
+      {.packet_name = "request"});
+    zlink::framework::runtime::channel_host_service_t nested_hosted_service (
+      nested_hosted_builder.message_bus (), nested_hosted_builder.channels (), nested_handlers,
+      serializers);
+    nested_hosted_service.start (nested_provider);
+    auto nested_hosted_reply =
+      nested_hosted_builder.request_client ("hosted-nested")
+        .request (request_t{50})
+        .packet_name ("request")
+        .timeout (std::chrono::milliseconds (2000))
+        .async<reply_t> ()
+        .result ();
+    nested_hosted_service.stop ();
+    if (!nested_hosted_reply || nested_hosted_reply.value ().value != 152) {
+        return 84;
+    }
+
+    zlink::framework::zlink_builder_t scoped_hosted_builder;
+    const auto scoped_hosted_endpoint = unique_tcp_endpoint ();
+    auto scoped_hosted_channel = scoped_hosted_builder.channel ("hosted-scoped");
+    scoped_hosted_channel.enable_server ().bind (scoped_hosted_endpoint);
+    scoped_hosted_channel.enable_client ().connect (scoped_hosted_endpoint);
+    zlink::framework::detail::channel_runtime_t::from (scoped_hosted_builder.message_bus ())
+      .bind_serializers (serializers);
+    zlink::framework::service_collection_t scoped_services;
+    scoped_services.add_scoped<scoped_channel_dependency_t> ();
+    scoped_services.add_transient<scoped_channel_handler_t, scoped_channel_dependency_t> ();
+    auto scoped_provider = scoped_services.build_provider ();
+    zlink::framework::handler_registry_t scoped_handlers;
+    scoped_handlers.on_request<scoped_channel_handler_t, request_t, reply_t> (
+      "hosted-scoped", "request", &scoped_channel_handler_t::handle_request,
+      {.packet_name = "request"});
+    zlink::framework::runtime::channel_host_service_t scoped_hosted_service (
+      scoped_hosted_builder.message_bus (), scoped_hosted_builder.channels (), scoped_handlers,
+      serializers);
+    scoped_hosted_service.start (scoped_provider);
+    auto scoped_hosted_reply =
+      scoped_hosted_builder.request_client ("hosted-scoped")
+        .request (request_t{40})
+        .packet_name ("request")
+        .timeout (std::chrono::milliseconds (2000))
+        .async<reply_t> ()
+        .result ();
+    scoped_hosted_service.stop ();
+    if (!scoped_hosted_reply || scoped_hosted_reply.value ().value != 340) {
+        return 85;
+    }
+
     zlink::framework::detail::channel_reply_writer_t reply_writer;
     const zlink::framework::framework_error_kind_t reply_error_kinds[] = {
       zlink::framework::framework_error_kind_t::route_not_connected,
@@ -733,6 +846,52 @@ int main ()
     if (!spot_request || route_runtime.pending_request_count () != 2
         || route_runtime.outbound_packets ().back ().target_spot_rid.value () != target_spot) {
         return 38;
+    }
+    zlink::framework::detail::route_channel_runtime_t spot_backend_runtime ("spot.route");
+    spot_backend_runtime.start ();
+    spot_backend_runtime.connect ("tcp://spot-route-peer:7500");
+    int spot_backend_sends = 0;
+    int spot_backend_requests = 0;
+    spot_backend_runtime.set_send_backend (
+      [&] (const zlink::routing_id_t &target,
+           const zlink::framework::runtime::messaging::message_parts_t &parts) {
+          if (target != target_node || parts.size () == 0) {
+              return zlink::framework::result_t<void>::failure (
+                zlink::framework::framework_error_kind_t::request_failed,
+                "unexpected spot send backend input");
+          }
+          ++spot_backend_sends;
+          return zlink::framework::result_t<void>::success ();
+      });
+    spot_backend_runtime.set_request_backend (
+      [&] (const zlink::routing_id_t &target,
+           const zlink::framework::runtime::messaging::message_parts_t &parts,
+           std::chrono::milliseconds timeout) {
+          if (target != target_node || parts.size () == 0
+              || (timeout != std::chrono::milliseconds (0)
+                  && timeout != std::chrono::milliseconds (25))) {
+              return zlink::framework::result_t<
+                zlink::framework::runtime::messaging::message_parts_t>::failure (
+                zlink::framework::framework_error_kind_t::request_failed,
+                "unexpected spot request backend input");
+          }
+          ++spot_backend_requests;
+          return zlink::framework::result_t<
+            zlink::framework::runtime::messaging::message_parts_t>::success (parts);
+      });
+    if (!spot_backend_runtime.submit_spot_send_parts (target_node, target_spot, request_parts)
+        || spot_backend_sends != 1) {
+        return 380;
+    }
+    if (!spot_backend_runtime.request_to_spot_parts (target_node, target_spot, request_parts)
+        || spot_backend_requests != 1 || spot_backend_runtime.pending_request_count () != 0) {
+        return 381;
+    }
+    auto spot_backend_reply = spot_backend_runtime.request_reply_to_spot_parts (
+      target_node, target_spot, request_parts, std::chrono::milliseconds (25));
+    if (!spot_backend_reply || spot_backend_reply.value ().size () != request_parts.size ()
+        || spot_backend_requests != 2 || spot_backend_runtime.pending_request_count () != 0) {
+        return 382;
     }
     if (!route_runtime.complete_request (route_request.value ())
         || route_runtime.pending_request_count () != 1) {

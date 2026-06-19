@@ -187,6 +187,11 @@ final class SpotRoutedSupport implements AutoCloseable {
                     requestSeqOut, InternalAccess.messageNativeHandle(firstPart),
                     hasMoreOut, flags.value());
                 if (rc != 0) {
+                    if (flags == RecvFlags.DONT_WAIT
+                        && (rc == RecvResult.NO_DATA.value()
+                            || rc == RecvResult.BUSY.value())) {
+                        return null;
+                    }
                     throw new ZlinkRecvException(RecvResult.fromValue(rc));
                 }
                 success = true;

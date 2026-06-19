@@ -8,6 +8,7 @@ object TicTacToeClientArguments {
             gameName = readOption(args, "--game-name") ?: defaults.gameName,
             xActorId = readOption(args, "--x-actor-id") ?: defaults.xActorId,
             oActorId = readOption(args, "--o-actor-id") ?: defaults.oActorId,
+            observerActorId = readOption(args, "--observer-actor-id") ?: defaults.observerActorId,
         )
     }
 

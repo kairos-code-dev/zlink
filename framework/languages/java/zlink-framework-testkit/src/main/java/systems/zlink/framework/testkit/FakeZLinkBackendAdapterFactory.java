@@ -76,6 +76,8 @@ import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkRegistryBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
+import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
+import systems.zlink.framework.runtime.spots.ZLinkRoutedSpotRelayPackets;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
@@ -537,6 +539,19 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) { record("send." + routingId + "." + firstPart(parts)); return true; }
         @Override public boolean request(RoutingId routingId, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
             record("request." + routingId + "." + firstPart(parts));
+            if (isRoutedActorJoinRequest(parts)) {
+                ZLinkActorSpotRoutePackets.JoinRequest request =
+                    ZLinkActorSpotRoutePackets.decodeJoinRequest(parts.get(3));
+                callback.handle(new ZLinkBackendReceived(
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    List.of(ZLinkActorSpotRoutePackets.encodeJoinReply(
+                        true,
+                        request.actorRef(),
+                        Message.from("joined".getBytes(StandardCharsets.UTF_8))))));
+                return true;
+            }
             callback.handle(new ZLinkBackendReceived(
                 Optional.empty(),
                 Optional.empty(),
@@ -557,6 +572,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 Optional.empty(),
                 List.of(Message.from("reply".getBytes(StandardCharsets.UTF_8)))));
             return true;
+        }
+
+        private static boolean isRoutedActorJoinRequest(List<Message> parts) {
+            return parts.size() >= 4
+                && ZLinkRoutedSpotRelayPackets.REQUEST_PACKET_NAME.equals(firstPart(parts))
+                && ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(parts.get(2).toUtf8String());
         }
     }
 

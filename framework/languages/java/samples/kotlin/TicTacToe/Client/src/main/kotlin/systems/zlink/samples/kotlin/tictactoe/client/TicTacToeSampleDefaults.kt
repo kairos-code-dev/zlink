@@ -7,5 +7,6 @@ object TicTacToeSampleDefaults {
     const val GameName: String = "tictactoe-game"
     const val XActorId: String = "player-x"
     const val OActorId: String = "player-o"
+    const val ObserverActorId: String = "player-observer"
     val RequestTimeout: Duration = Duration.ofSeconds(10)
 }

@@ -24,6 +24,13 @@ class CreateGameHttpHandler(
             .timeout(SampleNames.RequestTimeout)
             .submit(CreateGameRes::class.java)
             .await()
-        return CreateGameHttpRes(game.roomId, game.playEndpoint, game.gameName)
+        return CreateGameHttpRes(
+            roomId = game.roomId,
+            gameName = game.gameName,
+            ownerPlayEndpoint = game.ownerPlayEndpoint,
+            playEndpoints = game.playEndpoints,
+            playNodes = game.playNodes,
+            requiredLevel = game.requiredLevel,
+        )
     }
 }

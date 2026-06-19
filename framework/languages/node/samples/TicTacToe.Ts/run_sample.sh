@@ -8,6 +8,7 @@ mkdir -p "${LOG_DIR}"
 
 PIDS=()
 REDIS_CONTAINER_ID=""
+REDIS_KEY_PREFIX="tictactoe:${RANDOM}:$$:room:"
 
 cleanup() {
   local status="$?"
@@ -103,7 +104,11 @@ if [[ -z "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
     echo "TICTACTOE_REDIS_ENDPOINT is not set and docker is not available." >&2
     exit 1
   fi
-  REDIS_CONTAINER_ID="$(docker run -d --rm -p "127.0.0.1:${PORTS[14]}:6379" redis:7-alpine)"
+  REDIS_CONTAINER_ID="$(docker run -d --rm \
+    --name "zlink-tictactoe-ts-redis-${PORTS[14]}-$$" \
+    --label "systems.zlink.sample=tictactoe-ts" \
+    -p "127.0.0.1:${PORTS[14]}:6379" \
+    redis:7-alpine)"
 fi
 
 python3 - "${API_A_CONFIG}" "${API_B_CONFIG}" "${PLAY_A_CONFIG}" "${PLAY_B_CONFIG}" <<PY
@@ -132,6 +137,7 @@ def sample(instance, api_index, play_index, peer_play_index):
             "playSpotPubSubEndpoints": ["${PLAY_A_SPOT_PUBSUB_ENDPOINT}", "${PLAY_B_SPOT_PUBSUB_ENDPOINT}"],
             "playStreamEndpoint": ["${PLAY_A_STREAM_ENDPOINT}", "${PLAY_B_STREAM_ENDPOINT}"][play_index],
             "redisEndpoint": "${REDIS_ENDPOINT}",
+            "redisKeyPrefix": "${REDIS_KEY_PREFIX}",
             "playSpotNodeRid": f"play-node-{play_index + 1}",
             "peerPlaySpotNodeRid": f"play-node-{peer_play_index + 1}",
             "peerPlaySpotEndpoint": ["${PLAY_A_SPOT_ENDPOINT}", "${PLAY_B_SPOT_ENDPOINT}"][peer_play_index],
@@ -154,6 +160,7 @@ endpoint_host() {
   local endpoint="$1"
   endpoint="${endpoint#tcp://}"
   endpoint="${endpoint#http://}"
+  endpoint="${endpoint#redis://}"
   echo "${endpoint%:*}"
 }
 
@@ -161,6 +168,7 @@ endpoint_port() {
   local endpoint="$1"
   endpoint="${endpoint#tcp://}"
   endpoint="${endpoint#http://}"
+  endpoint="${endpoint#redis://}"
   echo "${endpoint##*:}"
 }
 

@@ -146,6 +146,7 @@ route_channel_initializer_t::initialize (const route_channel_registration_t &reg
 {
     auto runtime = std::make_shared<route_channel_runtime_t> (registration.router_channel_id ());
     if (!registration.bind_endpoint ().empty ()) {
+        runtime->bind_endpoint (registration.bind_endpoint ());
         runtime->connect (registration.bind_endpoint ());
     }
     if (registration.routing_id ()) {
@@ -157,6 +158,7 @@ route_channel_initializer_t::initialize (const route_channel_registration_t &reg
     for (const auto &endpoint : registration.manual_connections ()) {
         runtime->connect (endpoint);
     }
+    runtime->manual_connections (registration.manual_connections ());
     runtime->start ();
     return initialized_route_channel_t{std::move (runtime),
                                        registration.create_handler_registry ()};

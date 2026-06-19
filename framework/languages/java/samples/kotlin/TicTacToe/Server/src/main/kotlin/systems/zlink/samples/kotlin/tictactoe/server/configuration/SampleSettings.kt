@@ -10,8 +10,22 @@ data class SampleSettings(
     val apiPublicUrl: String,
     val apiChannelEndpoint: String,
     val playChannelEndpoint: String,
+    val playChannelEndpoints: List<String>,
     val playEndpoint: String,
+    val playEndpoints: List<String>,
     val spotEndpoint: String,
+    val spotEndpoints: List<String>,
+    val routeEndpoint: String,
+    val routeEndpoints: List<String>,
+    val spotPubSubEndpoint: String,
+    val spotPubSubEndpoints: List<String>,
+    val redisEndpoint: String,
+    val redisKeyPrefix: String,
+    val playSpotNodeRid: String,
+    val peerPlaySpotNodeRid: String,
+    val peerSpotEndpoint: String,
+    val peerRouteEndpoint: String,
+    val peerSpotPubSubEndpoint: String,
     val logDirectory: String,
 ) {
     val apiHttpPort: Int
@@ -24,8 +38,22 @@ data class SampleSettings(
                 apiPublicUrl = "http://127.0.0.1:18081",
                 apiChannelEndpoint = "tcp://127.0.0.1:47301",
                 playChannelEndpoint = "tcp://127.0.0.1:47303",
+                playChannelEndpoints = listOf("tcp://127.0.0.1:47303", "tcp://127.0.0.1:47313"),
                 playEndpoint = "tcp://127.0.0.1:47302",
+                playEndpoints = listOf("tcp://127.0.0.1:47302", "tcp://127.0.0.1:47312"),
                 spotEndpoint = "tcp://127.0.0.1:47305",
+                spotEndpoints = listOf("tcp://127.0.0.1:47305", "tcp://127.0.0.1:47315"),
+                routeEndpoint = "tcp://127.0.0.1:47306",
+                routeEndpoints = listOf("tcp://127.0.0.1:47306", "tcp://127.0.0.1:47316"),
+                spotPubSubEndpoint = "tcp://127.0.0.1:47307",
+                spotPubSubEndpoints = listOf("tcp://127.0.0.1:47307", "tcp://127.0.0.1:47317"),
+                redisEndpoint = "127.0.0.1:6379",
+                redisKeyPrefix = "zlink:tictactoe-kotlin:room:",
+                playSpotNodeRid = "play-node-1",
+                peerPlaySpotNodeRid = "play-node-2",
+                peerSpotEndpoint = "tcp://127.0.0.1:47315",
+                peerRouteEndpoint = "tcp://127.0.0.1:47316",
+                peerSpotPubSubEndpoint = "tcp://127.0.0.1:47317",
                 logDirectory = "logs/tictactoe",
             )
 
@@ -41,8 +69,22 @@ data class SampleSettings(
                 apiPublicUrl = readOption(args, "--api-url") ?: apiBind,
                 apiChannelEndpoint = readOption(args, "--api-channel-endpoint") ?: defaults.apiChannelEndpoint,
                 playChannelEndpoint = readOption(args, "--play-channel-endpoint") ?: defaults.playChannelEndpoint,
+                playChannelEndpoints = readListOption(args, "--play-channel-endpoints", defaults.playChannelEndpoints),
                 playEndpoint = readOption(args, "--play-endpoint") ?: defaults.playEndpoint,
+                playEndpoints = readListOption(args, "--play-endpoints", defaults.playEndpoints),
                 spotEndpoint = readOption(args, "--spot-endpoint") ?: defaults.spotEndpoint,
+                spotEndpoints = readListOption(args, "--spot-endpoints", defaults.spotEndpoints),
+                routeEndpoint = readOption(args, "--route-endpoint") ?: defaults.routeEndpoint,
+                routeEndpoints = readListOption(args, "--route-endpoints", defaults.routeEndpoints),
+                spotPubSubEndpoint = readOption(args, "--spot-pubsub-endpoint") ?: defaults.spotPubSubEndpoint,
+                spotPubSubEndpoints = readListOption(args, "--spot-pubsub-endpoints", defaults.spotPubSubEndpoints),
+                redisEndpoint = readOption(args, "--redis-endpoint") ?: defaults.redisEndpoint,
+                redisKeyPrefix = readOption(args, "--redis-key-prefix") ?: defaults.redisKeyPrefix,
+                playSpotNodeRid = readOption(args, "--play-spot-node-rid") ?: defaults.playSpotNodeRid,
+                peerPlaySpotNodeRid = readOption(args, "--peer-play-spot-node-rid") ?: defaults.peerPlaySpotNodeRid,
+                peerSpotEndpoint = readOption(args, "--peer-spot-endpoint") ?: defaults.peerSpotEndpoint,
+                peerRouteEndpoint = readOption(args, "--peer-route-endpoint") ?: defaults.peerRouteEndpoint,
+                peerSpotPubSubEndpoint = readOption(args, "--peer-spot-pubsub-endpoint") ?: defaults.peerSpotPubSubEndpoint,
                 logDirectory = readOption(args, "--log-dir") ?: defaults.logDirectory,
             )
         }
@@ -58,8 +100,22 @@ data class SampleSettings(
                 apiPublicUrl = properties.getProperty("sample.apiPublicUrl", defaults.apiPublicUrl),
                 apiChannelEndpoint = properties.getProperty("sample.apiChannelEndpoint", defaults.apiChannelEndpoint),
                 playChannelEndpoint = properties.getProperty("sample.playChannelEndpoint", defaults.playChannelEndpoint),
+                playChannelEndpoints = readListProperty(properties, "sample.playChannelEndpoints", defaults.playChannelEndpoints),
                 playEndpoint = properties.getProperty("sample.playEndpoint", defaults.playEndpoint),
+                playEndpoints = readListProperty(properties, "sample.playEndpoints", defaults.playEndpoints),
                 spotEndpoint = properties.getProperty("sample.spotEndpoint", defaults.spotEndpoint),
+                spotEndpoints = readListProperty(properties, "sample.spotEndpoints", defaults.spotEndpoints),
+                routeEndpoint = properties.getProperty("sample.routeEndpoint", defaults.routeEndpoint),
+                routeEndpoints = readListProperty(properties, "sample.routeEndpoints", defaults.routeEndpoints),
+                spotPubSubEndpoint = properties.getProperty("sample.spotPubSubEndpoint", defaults.spotPubSubEndpoint),
+                spotPubSubEndpoints = readListProperty(properties, "sample.spotPubSubEndpoints", defaults.spotPubSubEndpoints),
+                redisEndpoint = properties.getProperty("sample.redisEndpoint", defaults.redisEndpoint),
+                redisKeyPrefix = properties.getProperty("sample.redisKeyPrefix", defaults.redisKeyPrefix),
+                playSpotNodeRid = properties.getProperty("sample.playSpotNodeRid", defaults.playSpotNodeRid),
+                peerPlaySpotNodeRid = properties.getProperty("sample.peerPlaySpotNodeRid", defaults.peerPlaySpotNodeRid),
+                peerSpotEndpoint = properties.getProperty("sample.peerSpotEndpoint", defaults.peerSpotEndpoint),
+                peerRouteEndpoint = properties.getProperty("sample.peerRouteEndpoint", defaults.peerRouteEndpoint),
+                peerSpotPubSubEndpoint = properties.getProperty("sample.peerSpotPubSubEndpoint", defaults.peerSpotPubSubEndpoint),
                 logDirectory = properties.getProperty("sample.logDirectory", defaults.logDirectory),
             )
         }
@@ -72,5 +128,19 @@ data class SampleSettings(
             require(index + 1 < args.size) { "Missing value for '$name'." }
             return args[index + 1]
         }
+
+        private fun readListOption(args: Array<String>, name: String, defaultValue: List<String>): List<String> =
+            split(readOption(args, name), defaultValue)
+
+        private fun readListProperty(properties: Properties, name: String, defaultValue: List<String>): List<String> =
+            split(properties.getProperty(name), defaultValue)
+
+        private fun split(value: String?, defaultValue: List<String>): List<String> =
+            value
+                ?.split(",")
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+                ?.takeIf { it.isNotEmpty() }
+                ?: defaultValue
     }
 }

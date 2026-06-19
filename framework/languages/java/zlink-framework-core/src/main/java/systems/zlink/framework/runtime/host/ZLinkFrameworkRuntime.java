@@ -87,6 +87,9 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
             : null;
         if (this.actors != null) {
             runtimeHandlers.add(ZLinkActorManager.class, this.actors);
+            this.actors.setRoutedTransport(
+                this.channels,
+                () -> this.spots.primaryNode().entrySpot().routingId());
             Class<? extends ZLinkSpotRemoteAddressResolver> resolverType =
                 options.registration().spotRemoteAddressResolverType();
             if (resolverType != null) {

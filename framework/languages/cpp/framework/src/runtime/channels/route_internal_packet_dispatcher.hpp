@@ -39,6 +39,7 @@ class composite_route_internal_packet_dispatcher_t final : public route_internal
 {
   public:
     void add (const route_internal_packet_dispatcher_t &dispatcher);
+    void add (std::shared_ptr<route_internal_packet_dispatcher_t> dispatcher);
 
     bool can_handle_send (std::string_view packet_name) const override;
     bool can_handle_request (std::string_view packet_name) const override;
@@ -52,6 +53,7 @@ class composite_route_internal_packet_dispatcher_t final : public route_internal
     const route_internal_packet_dispatcher_t *resolve_request (std::string_view packet_name) const;
 
     std::vector<const route_internal_packet_dispatcher_t *> _dispatchers;
+    std::vector<std::shared_ptr<route_internal_packet_dispatcher_t>> _owned_dispatchers;
 };
 
 } // namespace zlink::framework::detail

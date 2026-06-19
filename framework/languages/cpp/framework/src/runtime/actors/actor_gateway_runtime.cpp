@@ -2,6 +2,8 @@
 
 #include "actor_gateway_runtime.hpp"
 
+#include "runtime/spots/spot_route_packets.hpp"
+
 #include <utility>
 
 namespace zlink::framework
@@ -490,6 +492,17 @@ void actor_gateway_t::bind_session_stream (std::string actor_id,
       std::move (actor_id), std::move (stream), codec);
 }
 
+void actor_gateway_t::bind_session_route (actor_ref_t actor_ref,
+                                          route_client_t route_client,
+                                          std::string route_channel_name,
+                                          zlink::routing_id_t target_node_rid,
+                                          stream_codec_t codec)
+{
+    detail::actor_gateway_runtime_t (_state).bind_session_route (
+      std::move (actor_ref), std::move (route_client), std::move (route_channel_name),
+      std::move (target_node_rid), codec);
+}
+
 void actor_gateway_t::unbind_session_stream (std::string actor_id)
 {
     detail::actor_gateway_runtime_t (_state).unbind_session_stream (std::move (actor_id));
@@ -615,10 +628,86 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
       };
 }
 
+void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
+                                                 route_client_t route_client,
+                                                 std::string route_channel_name,
+                                                 zlink::routing_id_t target_node_rid,
+                                                 stream_codec_t codec)
+{
+    const auto actor_id = std::string (actor_ref.actor_id ());
+    const std::lock_guard lock (_state->mutex);
+    auto found = _state->actors_by_id.find (actor_id);
+    if (found == _state->actors_by_id.end ()) {
+        _state->actors_by_id.emplace (
+          actor_id, actor_record_t{actor_ref, true, false, codec});
+    } else {
+        found->second.ref = actor_ref;
+        found->second.bound = true;
+        found->second.disconnected = false;
+        found->second.bound_session_codec = codec;
+    }
+    _state->bound_session_sinks[actor_id] =
+      [actor_ref = std::move (actor_ref),
+       route_client = std::move (route_client),
+       route_channel_name = std::move (route_channel_name),
+       target_node_rid = std::move (target_node_rid)] (std::string packet_name,
+                                                       const zlink::message_t &payload) mutable {
+          auto reply = route_client
+                         .request (route_channel_name,
+                                   target_node_rid,
+                                   make_actor_bound_session_route_request (
+                                     actor_ref, packet_name, payload))
+                         .packet_name (actor_bound_session_route_request_t::packet_name)
+                         .timeout (std::chrono::milliseconds (5000))
+                         .async<actor_bound_session_route_reply_t> ()
+                         .result ();
+          if (!reply) {
+              return task_t<void> (result_t<void>::failure (
+                reply.error_kind (),
+                reply.error () ? reply.error ()->what () : "routed bound session send failed"));
+          }
+          return task_t<void> (result_t<void>::success ());
+      };
+}
+
 void actor_gateway_runtime_t::unbind_session_stream (std::string actor_id)
 {
     const std::lock_guard lock (_state->mutex);
     _state->bound_session_sinks.erase (actor_id);
+}
+
+result_t<void> actor_gateway_runtime_t::dispatch_bound_session_send (
+  const actor_ref_t &actor_ref,
+  std::string packet_name,
+  const zlink::message_t &payload) const
+{
+    std::function<task_t<void> (std::string, const zlink::message_t &)> sink;
+    {
+        const std::lock_guard lock (_state->mutex);
+        const auto actor_id = std::string (actor_ref.actor_id ());
+        const auto found = _state->actors_by_id.find (actor_id);
+        if (found == _state->actors_by_id.end () || !found->second.bound) {
+            return result_t<void>::failure (framework_error_kind_t::actor_session_not_bound,
+                                            "actor session is not bound");
+        }
+        if (found->second.ref.generation () != actor_ref.generation ()) {
+            return result_t<void>::failure (framework_error_kind_t::actor_stale_generation,
+                                            "actor generation is stale");
+        }
+        const auto found_sink = _state->bound_session_sinks.find (actor_id);
+        if (found_sink == _state->bound_session_sinks.end ()) {
+            return result_t<void>::failure (framework_error_kind_t::actor_session_not_bound,
+                                            "actor session stream is not bound");
+        }
+        sink = found_sink->second;
+    }
+    auto sent = sink (std::move (packet_name), payload).result ();
+    if (!sent) {
+        return result_t<void>::failure (
+          sent.error_kind (),
+          sent.error () ? sent.error ()->what () : "actor bound session dispatch failed");
+    }
+    return result_t<void>::success ();
 }
 
 void actor_gateway_runtime_t::on_join_spot (

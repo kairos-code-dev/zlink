@@ -31,10 +31,24 @@ struct authenticate_req_t
     std::string access_token;
 };
 
+struct player_info_t
+{
+    std::string actor_id;
+    std::string display_name;
+    int level = 0;
+    int wins = 0;
+};
+
+struct play_node_info_t
+{
+    std::string stream_endpoint;
+    std::string spot_node_rid;
+};
+
 struct authenticate_res_t
 {
     static constexpr const char *packet_name = "AuthenticateRes";
-    std::string actor_id;
+    player_info_t player;
 };
 
 struct authenticate_player_req_t
@@ -47,7 +61,7 @@ struct authenticate_player_res_t
 {
     static constexpr const char *packet_name = "AuthenticatePlayerRes";
     bool accepted = false;
-    std::string actor_id;
+    player_info_t player;
     std::string reason;
 };
 
@@ -82,8 +96,11 @@ struct create_game_res_t
 {
     static constexpr const char *packet_name = "CreateGameRes";
     std::string room_id;
-    std::string play_endpoint;
     std::string game_name;
+    std::string owner_play_endpoint;
+    std::vector<std::string> play_endpoints;
+    std::vector<play_node_info_t> play_nodes;
+    int required_level = 0;
 };
 
 struct create_game_http_req_t
@@ -96,14 +113,24 @@ struct create_game_http_res_t
 {
     static constexpr const char *packet_name = "CreateGameHttpRes";
     std::string room_id;
-    std::string play_endpoint;
     std::string game_name;
+    std::string owner_play_endpoint;
+    std::vector<std::string> play_endpoints;
+    std::vector<play_node_info_t> play_nodes;
+    int required_level = 0;
 };
 
 struct join_game_req_t
 {
     static constexpr const char *packet_name = "JoinGameReq";
     std::string room_id;
+    player_info_t player;
+};
+
+struct tictactoe_game_join_req_t
+{
+    std::string room_id;
+    player_info_t player;
 };
 
 struct tictactoe_state_t
@@ -143,8 +170,46 @@ struct player_joined_notify_t
     static constexpr const char *packet_name = "PlayerJoinedNotify";
     std::string room_id;
     std::string actor_id;
+    std::string display_name;
+    int level = 0;
     std::string mark;
     tictactoe_state_t state;
+};
+
+struct observe_milestone_req_t
+{
+    static constexpr const char *packet_name = "ObserveMilestoneReq";
+};
+
+struct observe_milestone_res_t
+{
+    static constexpr const char *packet_name = "ObserveMilestoneRes";
+    bool subscribed = false;
+};
+
+struct leave_game_req_t
+{
+    static constexpr const char *packet_name = "LeaveGameReq";
+    std::string room_id;
+};
+
+struct player_win_milestone_event_t
+{
+    static constexpr const char *packet_name = "PlayerWinMilestoneEvent";
+    std::string room_id;
+    std::string actor_id;
+    std::string display_name;
+    int wins = 0;
+};
+
+struct win_milestone_notify_t
+{
+    static constexpr const char *packet_name = "WinMilestoneNotify";
+    std::string room_id;
+    std::string actor_id;
+    std::string display_name;
+    int wins = 0;
+    std::string receiving_spot_node_rid;
 };
 
 struct game_state_notify_t
@@ -174,6 +239,33 @@ inline void from_json (const nlohmann::json &json, authenticate_req_t &value)
     value.access_token = json.value ("accessToken", "");
 }
 
+inline void to_json (nlohmann::json &json, const player_info_t &value)
+{
+    json = {{"actorId", value.actor_id},
+            {"displayName", value.display_name},
+            {"level", value.level},
+            {"wins", value.wins}};
+}
+
+inline void from_json (const nlohmann::json &json, player_info_t &value)
+{
+    value.actor_id = json.value ("actorId", "");
+    value.display_name = json.value ("displayName", "");
+    value.level = json.value ("level", 0);
+    value.wins = json.value ("wins", 0);
+}
+
+inline void to_json (nlohmann::json &json, const play_node_info_t &value)
+{
+    json = {{"streamEndpoint", value.stream_endpoint}, {"spotNodeRid", value.spot_node_rid}};
+}
+
+inline void from_json (const nlohmann::json &json, play_node_info_t &value)
+{
+    value.stream_endpoint = json.value ("streamEndpoint", "");
+    value.spot_node_rid = json.value ("spotNodeRid", "");
+}
+
 inline void to_json (nlohmann::json &json, const authenticate_player_req_t &value)
 {
     json = {{"accessToken", value.access_token}};
@@ -186,13 +278,13 @@ inline void from_json (const nlohmann::json &json, authenticate_player_req_t &va
 
 inline void to_json (nlohmann::json &json, const authenticate_player_res_t &value)
 {
-    json = {{"accepted", value.accepted}, {"actorId", value.actor_id}, {"reason", value.reason}};
+    json = {{"accepted", value.accepted}, {"player", value.player}, {"reason", value.reason}};
 }
 
 inline void from_json (const nlohmann::json &json, authenticate_player_res_t &value)
 {
     value.accepted = json.value ("accepted", false);
-    value.actor_id = json.value ("actorId", "");
+    value.player = json.value ("player", player_info_t{});
     value.reason = json.value ("reason", "");
 }
 
@@ -253,12 +345,24 @@ inline void from_json (const nlohmann::json &json, create_game_http_req_t &value
 
 inline void to_json (nlohmann::json &json, const join_game_req_t &value)
 {
-    json = {{"roomId", value.room_id}};
+    json = {{"roomId", value.room_id}, {"player", value.player}};
 }
 
 inline void from_json (const nlohmann::json &json, join_game_req_t &value)
 {
     value.room_id = json.value ("roomId", "");
+    value.player = json.value ("player", player_info_t{});
+}
+
+inline void to_json (nlohmann::json &json, const tictactoe_game_join_req_t &value)
+{
+    json = {{"roomId", value.room_id}, {"player", value.player}};
+}
+
+inline void from_json (const nlohmann::json &json, tictactoe_game_join_req_t &value)
+{
+    value.room_id = json.value ("roomId", "");
+    value.player = json.value ("player", player_info_t{});
 }
 
 inline void to_json (nlohmann::json &json, const place_mark_req_t &value)
@@ -301,40 +405,52 @@ inline void from_json (const nlohmann::json &json, tictactoe_state_t &value)
 
 inline void to_json (nlohmann::json &json, const authenticate_res_t &value)
 {
-    json = {{"actorId", value.actor_id}};
+    json = {{"player", value.player}};
 }
 
 inline void from_json (const nlohmann::json &json, authenticate_res_t &value)
 {
-    value.actor_id = json.value ("actorId", "");
+    value.player = json.value ("player", player_info_t{});
 }
 
 inline void to_json (nlohmann::json &json, const create_game_res_t &value)
 {
     json = {{"roomId", value.room_id},
-            {"playEndpoint", value.play_endpoint},
-            {"gameName", value.game_name}};
+            {"gameName", value.game_name},
+            {"ownerPlayEndpoint", value.owner_play_endpoint},
+            {"playEndpoints", value.play_endpoints},
+            {"playNodes", value.play_nodes},
+            {"requiredLevel", value.required_level}};
 }
 
 inline void from_json (const nlohmann::json &json, create_game_res_t &value)
 {
     value.room_id = json.value ("roomId", "");
-    value.play_endpoint = json.value ("playEndpoint", "");
     value.game_name = json.value ("gameName", "");
+    value.owner_play_endpoint = json.value ("ownerPlayEndpoint", "");
+    value.play_endpoints = json.value ("playEndpoints", std::vector<std::string>{});
+    value.play_nodes = json.value ("playNodes", std::vector<play_node_info_t>{});
+    value.required_level = json.value ("requiredLevel", 0);
 }
 
 inline void to_json (nlohmann::json &json, const create_game_http_res_t &value)
 {
     json = {{"roomId", value.room_id},
-            {"playEndpoint", value.play_endpoint},
-            {"gameName", value.game_name}};
+            {"gameName", value.game_name},
+            {"ownerPlayEndpoint", value.owner_play_endpoint},
+            {"playEndpoints", value.play_endpoints},
+            {"playNodes", value.play_nodes},
+            {"requiredLevel", value.required_level}};
 }
 
 inline void from_json (const nlohmann::json &json, create_game_http_res_t &value)
 {
     value.room_id = json.value ("roomId", "");
-    value.play_endpoint = json.value ("playEndpoint", "");
     value.game_name = json.value ("gameName", "");
+    value.owner_play_endpoint = json.value ("ownerPlayEndpoint", "");
+    value.play_endpoints = json.value ("playEndpoints", std::vector<std::string>{});
+    value.play_nodes = json.value ("playNodes", std::vector<play_node_info_t>{});
+    value.required_level = json.value ("requiredLevel", 0);
 }
 
 inline void to_json (nlohmann::json &json, const join_game_res_t &value)
@@ -361,6 +477,8 @@ inline void to_json (nlohmann::json &json, const player_joined_notify_t &value)
 {
     json = {{"roomId", value.room_id},
             {"actorId", value.actor_id},
+            {"displayName", value.display_name},
+            {"level", value.level},
             {"mark", value.mark},
             {"state", value.state}};
 }
@@ -369,8 +487,71 @@ inline void from_json (const nlohmann::json &json, player_joined_notify_t &value
 {
     value.room_id = json.value ("roomId", "");
     value.actor_id = json.value ("actorId", "");
+    value.display_name = json.value ("displayName", "");
+    value.level = json.value ("level", 0);
     value.mark = json.value ("mark", "");
     value.state = json.value ("state", tictactoe_state_t{});
+}
+
+inline void to_json (nlohmann::json &json, const observe_milestone_req_t &)
+{
+    json = nlohmann::json::object ();
+}
+
+inline void from_json (const nlohmann::json &, observe_milestone_req_t &) {}
+
+inline void to_json (nlohmann::json &json, const observe_milestone_res_t &value)
+{
+    json = {{"subscribed", value.subscribed}};
+}
+
+inline void from_json (const nlohmann::json &json, observe_milestone_res_t &value)
+{
+    value.subscribed = json.value ("subscribed", false);
+}
+
+inline void to_json (nlohmann::json &json, const leave_game_req_t &value)
+{
+    json = {{"roomId", value.room_id}};
+}
+
+inline void from_json (const nlohmann::json &json, leave_game_req_t &value)
+{
+    value.room_id = json.value ("roomId", "");
+}
+
+inline void to_json (nlohmann::json &json, const player_win_milestone_event_t &value)
+{
+    json = {{"roomId", value.room_id},
+            {"actorId", value.actor_id},
+            {"displayName", value.display_name},
+            {"wins", value.wins}};
+}
+
+inline void from_json (const nlohmann::json &json, player_win_milestone_event_t &value)
+{
+    value.room_id = json.value ("roomId", "");
+    value.actor_id = json.value ("actorId", "");
+    value.display_name = json.value ("displayName", "");
+    value.wins = json.value ("wins", 0);
+}
+
+inline void to_json (nlohmann::json &json, const win_milestone_notify_t &value)
+{
+    json = {{"roomId", value.room_id},
+            {"actorId", value.actor_id},
+            {"displayName", value.display_name},
+            {"wins", value.wins},
+            {"receivingSpotNodeRid", value.receiving_spot_node_rid}};
+}
+
+inline void from_json (const nlohmann::json &json, win_milestone_notify_t &value)
+{
+    value.room_id = json.value ("roomId", "");
+    value.actor_id = json.value ("actorId", "");
+    value.display_name = json.value ("displayName", "");
+    value.wins = json.value ("wins", 0);
+    value.receiving_spot_node_rid = json.value ("receivingSpotNodeRid", "");
 }
 
 inline void to_json (nlohmann::json &json, const game_state_notify_t &value)

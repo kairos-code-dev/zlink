@@ -5,14 +5,14 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import java.util.Map;
 
 public final class RedisRoomRouteStore implements AutoCloseable {
-    private static final String KEY_PREFIX = "zlink:tictactoe:room:";
-
     private final RedisClient client;
     private final StatefulRedisConnection<String, String> connection;
+    private final String keyPrefix;
 
     public RedisRoomRouteStore(SampleSettings settings) {
         this.client = RedisClient.create(redisUri(settings.redisEndpoint()));
         this.connection = client.connect();
+        this.keyPrefix = settings.redisKeyPrefix();
     }
 
     public void save(RoomRoute route) {
@@ -40,8 +40,8 @@ public final class RedisRoomRouteStore implements AutoCloseable {
         client.shutdown();
     }
 
-    private static String key(String roomId) {
-        return KEY_PREFIX + roomId;
+    private String key(String roomId) {
+        return keyPrefix + roomId;
     }
 
     private static String redisUri(String endpoint) {

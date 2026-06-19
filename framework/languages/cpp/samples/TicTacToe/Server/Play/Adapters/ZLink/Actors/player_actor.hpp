@@ -6,19 +6,25 @@
 
 #include <zlink/framework.hpp>
 
+#include "../../../../Configuration/sample_names.hpp"
+#include "../../../../../Shared/Contracts/messages.hpp"
+
 namespace zlink::samples::tictactoe
 {
 
 struct player_actor_t
 {
     std::string actor_id;
+    mutable std::string node_rid;
     mutable unsigned long long generation = 1;
     mutable bool destroy_after_entry_spot_join = false;
     mutable bool disconnected = false;
+    mutable player_info_t player;
     mutable zlink::framework::actor_context_t context;
 
     void set_actor_ref (const zlink::framework::actor_ref_t &actor_ref) const
     {
+        node_rid = std::string (actor_ref.node_rid ().value ());
         generation = actor_ref.generation ();
     }
 
@@ -30,6 +36,18 @@ struct player_actor_t
     void mark_for_destroy_after_room_leave () const { destroy_after_entry_spot_join = true; }
 
     void mark_disconnected () const { disconnected = true; }
+
+    void apply_player (player_info_t value) const { player = std::move (value); }
+
+    player_info_t require_player () const
+    {
+        if (player.actor_id.empty ()) {
+            return {actor_id, actor_id, sample_names_t::required_level, 0};
+        }
+        return player;
+    }
+
+    int increment_wins () const { return ++player.wins; }
 };
 
 struct player_actor_factory_t

@@ -603,6 +603,11 @@ static_assert (
                  zlink::framework::spot_pub_sub_capability_builder_t &>);
 
 static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_pub_sub_capability_builder_t &> ()
+                             .connect_peer_pub ("tcp://127.0.0.1:5502")),
+                 zlink::framework::spot_pub_sub_capability_builder_t &>);
+
+static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
                              .connect_router ("tcp://127.0.0.1:5503")),
                  zlink::framework::spot_node_options_builder_t &>);
@@ -611,6 +616,21 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
                              .connect_pub_sub ("tcp://127.0.0.1:5504")),
                  zlink::framework::spot_node_options_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
+                             .connect_peer_pub ("tcp://127.0.0.1:5504")),
+                 zlink::framework::spot_node_options_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
+                             .use_registry_spot_resolver ("route")),
+                 zlink::framework::spot_node_options_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_mesh_builder_t &> ()
+                             .use_registry_spot_resolver ("route")),
+                 zlink::framework::spot_mesh_builder_t &>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()

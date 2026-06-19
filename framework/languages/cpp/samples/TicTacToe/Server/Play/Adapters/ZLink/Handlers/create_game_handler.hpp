@@ -31,17 +31,17 @@ class create_game_handler_t
 
     create_game_res_t handle (const create_game_req_t &request)
     {
-        const auto room_id = _creator.create_room_id ();
+        auto response = _creator.create (request.game_name);
         const auto spot_rid = zlink::framework::spot_rid_t::from_string (
-          std::string (sample_names_t::spot_node) + ":" + room_id);
+          std::string (sample_names_t::spot_node) + ":" + response.room_id);
         auto created = _spots.get_or_create_spot (sample_names_t::match_spot, spot_rid,
-                                                  zlink::message_t::from (room_id));
+                                                  zlink::message_t::from (response.room_id));
         if (created.state == zlink::framework::spot_create_state_t::rejected) {
             throw zlink::framework::framework_exception_t (
               zlink::framework::framework_error_kind_t::spot_create_failed,
               "TicTacToe room Spot rejected create request");
         }
-        return {room_id, _topology.stream_endpoint, request.game_name};
+        return response;
     }
 
   private:

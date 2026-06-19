@@ -197,6 +197,22 @@ class stream_host_service_t::listener_t
         boost::asio::write (socket, boost::asio::buffer (frame));
     }
 
+    void write_error_frame (tcp::socket &socket,
+                            const stream_header_t &request_header,
+                            const result_t<void> &error)
+    {
+        if (!request_header.request_seq ()) {
+            return;
+        }
+        auto message = error.error () ? error.error ()->what () : "STREAM request failed";
+        stream_header_t error_header (stream_message_kind_t::error, stream_codec_t::json,
+                                      stream_header_flags_t::has_request_seq,
+                                      request_header.request_seq (),
+                                      std::string (request_header.packet_name ()), {});
+        write_frame (socket, error_header,
+                     zlink::message_t::from (std::string ("{\"error\":\"") + message + "\"}"));
+    }
+
     void flush_writes (tcp::socket &socket, stream_t &stream, std::size_t &flushed)
     {
         const auto headers = _runtime.written_headers (stream);
@@ -246,6 +262,10 @@ class stream_host_service_t::listener_t
                 if (auto dispatched =
                       _runtime.dispatch_packet (session, stream, frame.header, frame.payload);
                     !dispatched) {
+                    if (frame.header.kind () == stream_message_kind_t::request) {
+                        write_error_frame (*connection, frame.header, dispatched);
+                        continue;
+                    }
                     return;
                 }
                 flush_writes (*connection, stream, flushed);

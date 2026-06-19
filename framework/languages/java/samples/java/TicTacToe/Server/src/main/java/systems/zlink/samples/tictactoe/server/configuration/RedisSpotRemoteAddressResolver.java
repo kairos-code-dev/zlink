@@ -17,8 +17,6 @@ public final class RedisSpotRemoteAddressResolver implements ZLinkSpotRemoteAddr
     @Override
     public CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(RoutingId spotRid) {
         RedisRoomRouteStore.RoomRoute route = routes.require(spotRid.toString());
-        System.out.println("resolver: roomId=" + spotRid
-            + " ownerSpotNodeRid=" + route.ownerSpotNodeRid());
         return CompletableFuture.completedFuture(new ZLinkSpotRemoteAddress(
             SampleNames.RouteChannel,
             RoutingId.from(route.ownerSpotNodeRid()),

@@ -357,6 +357,18 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         String localEgressChannelName,
         RoutingId targetSpotRid,
         List<Message> spotParts) {
+        return sendToSpotViaEgressChannel(
+            localEgressChannelName,
+            null,
+            targetSpotRid,
+            spotParts);
+    }
+
+    public CompletionStage<Void> sendToSpotViaEgressChannel(
+        String localEgressChannelName,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        List<Message> spotParts) {
         ChannelRegistration registration = requireSpotRouteEgress(localEgressChannelName);
         List<Message> relayParts =
             ZLinkRoutedSpotRelayPackets.createSendRelayParts(targetSpotRid, spotParts);
@@ -366,9 +378,11 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     requireClient(localEgressChannelName).send(relayParts, SendFlags.NONE);
                     return;
                 }
-                RoutingId targetPeerRid = resolveRouteEgressPeerRid(
-                    localEgressChannelName,
-                    registration.spotRouteEgressTarget());
+                RoutingId targetPeerRid = targetNodeRid == null
+                    ? resolveRouteEgressPeerRid(
+                        localEgressChannelName,
+                        registration.spotRouteEgressTarget())
+                    : targetNodeRid;
                 requireRouteRouter(localEgressChannelName).send(targetPeerRid, relayParts, SendFlags.NONE);
             } finally {
                 relayParts.forEach(Message::close);
@@ -378,6 +392,20 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
     public CompletionStage<List<Message>> requestToSpotViaEgressChannel(
         String localEgressChannelName,
+        RoutingId targetSpotRid,
+        List<Message> spotParts,
+        Duration timeout) {
+        return requestToSpotViaEgressChannel(
+            localEgressChannelName,
+            null,
+            targetSpotRid,
+            spotParts,
+            timeout);
+    }
+
+    public CompletionStage<List<Message>> requestToSpotViaEgressChannel(
+        String localEgressChannelName,
+        RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         List<Message> spotParts,
         Duration timeout) {
@@ -399,10 +427,16 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 }, SendFlags.NONE, timeout);
                 return result;
             }
-            RoutingId targetPeerRid = resolveRouteEgressPeerRid(
-                localEgressChannelName,
-                registration.spotRouteEgressTarget());
-            requireRouteRouter(localEgressChannelName).request(targetPeerRid, relayParts, reply -> {
+            RoutingId targetPeerRid = targetNodeRid == null
+                ? resolveRouteEgressPeerRid(
+                    localEgressChannelName,
+                    registration.spotRouteEgressTarget())
+                : targetNodeRid;
+            submitRouteRequestWithRetry(
+                requireRouteRouter(localEgressChannelName),
+                targetPeerRid,
+                relayParts,
+                reply -> {
                 try {
                     result.complete(ZLinkRoutedSpotRelayPackets.copyReplyParts(reply.parts()));
                 } catch (RuntimeException ex) {
@@ -410,7 +444,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 } finally {
                     reply.parts().forEach(Message::close);
                 }
-            }, SendFlags.NONE, timeout);
+            }, timeout, registration.routeManualEndpoints(), result);
             return result;
         } catch (RuntimeException ex) {
             result.completeExceptionally(ex);
@@ -418,6 +452,56 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         } finally {
             relayParts.forEach(Message::close);
         }
+    }
+
+    private void submitRouteRequestWithRetry(
+        ZLinkBackendRouterSocket router,
+        RoutingId targetPeerRid,
+        List<Message> requestParts,
+        ZLinkBackendRequestCallback callback,
+        Duration timeout,
+        List<String> reconnectEndpoints,
+        CompletableFuture<?> result) {
+        long timeoutNanos = timeout == null || timeout.isZero()
+            ? defaultTimeout.toNanos()
+            : timeout.toNanos();
+        long deadline = System.nanoTime() + timeoutNanos;
+        class Attempt implements Runnable {
+            private boolean reconnected;
+
+            @Override
+            public void run() {
+                if (result.isDone()) {
+                    return;
+                }
+                try {
+                    boolean submitted = router.request(
+                        targetPeerRid,
+                        requestParts,
+                        callback,
+                        SendFlags.DONT_WAIT,
+                        timeout);
+                    if (submitted) {
+                        return;
+                    }
+                    if (!reconnected) {
+                        reconnected = true;
+                        for (String endpoint : reconnectEndpoints) {
+                            router.connect(endpoint);
+                        }
+                    }
+                    if (System.nanoTime() >= deadline) {
+                        result.completeExceptionally(new TimeoutException(
+                            "routed SPOT route mesh request was not ready before timeout"));
+                        return;
+                    }
+                    timeoutExecutor.schedule(this, 10, TimeUnit.MILLISECONDS);
+                } catch (RuntimeException ex) {
+                    result.completeExceptionally(ex);
+                }
+            }
+        }
+        new Attempt().run();
     }
 
     @Override
@@ -820,7 +904,12 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 return true;
             }
             requireSpotRelayIngress()
-                .handleRequest(channelName, router, received.parts(), defaultTimeout)
+                .handleRequest(
+                    channelName,
+                    router,
+                    received.routingId().get(),
+                    received.parts(),
+                    defaultTimeout)
                 .thenAccept(reply -> replyRawAndClose(
                     router,
                     received.routingId().get(),
@@ -1682,6 +1771,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         CompletionStage<List<Message>> handleRequest(
             String channelName,
             ZLinkBackendRouterSocket router,
+            RoutingId sourcePeerRid,
             List<Message> relayParts,
             Duration timeout);
     }

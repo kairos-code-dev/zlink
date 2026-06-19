@@ -26,13 +26,13 @@ class RedisRoomRouteStore {
   async save(route: RoomRoute): Promise<void> {
     await redisCommand(this.config.redisEndpoint, [
       'SET',
-      routeKey(route.roomId),
+      routeKey(this.config, route.roomId),
       JSON.stringify(route)
     ]);
   }
 
   async load(roomId: string): Promise<RoomRoute> {
-    const value = await redisCommand(this.config.redisEndpoint, ['GET', routeKey(roomId)]);
+    const value = await redisCommand(this.config.redisEndpoint, ['GET', routeKey(this.config, roomId)]);
     if (value === null) {
       throw new Error(`Room route not found. roomId=${roomId}`);
     }
@@ -45,7 +45,7 @@ class RedisSpotRemoteAddressResolver implements ZLinkSpotRemoteAddressResolver {
   private readonly config = loadSampleConfig();
 
   async resolve(spotRid: RoutingId): Promise<ZLinkSpotRemoteAddress> {
-    const value = await redisCommand(this.config.redisEndpoint, ['GET', routeKey(String(spotRid))]);
+    const value = await redisCommand(this.config.redisEndpoint, ['GET', routeKey(this.config, String(spotRid))]);
     if (value === null) {
       throw new Error(`Room route not found. roomId=${String(spotRid)}`);
     }
@@ -59,8 +59,8 @@ class RedisSpotRemoteAddressResolver implements ZLinkSpotRemoteAddressResolver {
   }
 }
 
-function routeKey(roomId: string): string {
-  return `tictactoe:room:${roomId}`;
+function routeKey(config: TicTacToeSampleConfig, roomId: string): string {
+  return `${config.redisKeyPrefix}${roomId}`;
 }
 
 function redisCommand(endpoint: string, parts: string[]): Promise<string | null> {

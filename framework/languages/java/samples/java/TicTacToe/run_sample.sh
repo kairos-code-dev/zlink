@@ -10,6 +10,7 @@ fi
 
 pids=()
 redis_container_id=""
+redis_key_prefix="zlink:tictactoe:${RANDOM}:$$:room:"
 role_pattern='systems\.zlink\.samples\.tictactoe\.server\.Program|systems\.zlink\.samples\.tictactoe\.client\.Program'
 run_dir="$(mktemp -d)"
 log_dir="${run_dir}/logs"
@@ -113,6 +114,40 @@ wait_port() {
   return 1
 }
 
+endpoint_host() {
+  local endpoint="$1"
+  endpoint="${endpoint#redis://}"
+  endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#http://}"
+  echo "${endpoint%:*}"
+}
+
+endpoint_port() {
+  local endpoint="$1"
+  endpoint="${endpoint#redis://}"
+  endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#http://}"
+  echo "${endpoint##*:}"
+}
+
+wait_endpoint() {
+  local name="$1"
+  local endpoint="$2"
+  local host
+  local port
+  host="$(endpoint_host "${endpoint}")"
+  port="$(endpoint_port "${endpoint}")"
+  local deadline=$((SECONDS + 45))
+  while (( SECONDS < deadline )); do
+    if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  return 1
+}
+
 wait_log_contains() {
   local log_file="$1"
   local pattern="$2"
@@ -162,7 +197,11 @@ if [[ -z "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
     echo "TICTACTOE_REDIS_ENDPOINT is not set and docker is not available." >&2
     exit 1
   fi
-  redis_container_id="$(docker run -d --rm -p "127.0.0.1:${redis_port}:6379" redis:7-alpine)"
+  redis_container_id="$(docker run -d --rm \
+    --name "zlink-tictactoe-java-redis-${redis_port}-$$" \
+    --label "systems.zlink.sample=tictactoe-java" \
+    -p "127.0.0.1:${redis_port}:6379" \
+    redis:7-alpine)"
   redis_endpoint="127.0.0.1:${redis_port}"
 else
   redis_endpoint="${TICTACTOE_REDIS_ENDPOINT}"
@@ -194,6 +233,7 @@ sample.routeEndpoints=${common_routes}
 sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}
 sample.spotPubSubEndpoints=${common_pubs}
 sample.redisEndpoint=${redis_endpoint}
+sample.redisKeyPrefix=${redis_key_prefix}
 sample.playSpotNodeRid=play-node-1
 sample.peerPlaySpotNodeRid=play-node-2
 sample.peerSpotEndpoint=tcp://127.0.0.1:${play_b_spot_port}
@@ -217,6 +257,7 @@ sample.routeEndpoints=${common_routes}
 sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}
 sample.spotPubSubEndpoints=${common_pubs}
 sample.redisEndpoint=${redis_endpoint}
+sample.redisKeyPrefix=${redis_key_prefix}
 sample.playSpotNodeRid=play-node-2
 sample.peerPlaySpotNodeRid=play-node-1
 sample.peerSpotEndpoint=tcp://127.0.0.1:${play_a_spot_port}
@@ -236,7 +277,7 @@ cp "${api_b_config}" "${play_b_config}"
   echo "sample.playChannelEndpoint=tcp://127.0.0.1:${play_b_channel_port}"
 } >>"${play_b_config}"
 
-wait_port "${redis_port}"
+wait_endpoint redis "${redis_endpoint}"
 
 ../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="play --config ${play_a_config}" >"${log_dir}/play-a.log" 2>&1 &
 pids+=("$!")

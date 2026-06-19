@@ -51,6 +51,7 @@ public final class PlayServer {
             node.addSpotFactory(TicTacToeGame.class);
             options.addStreamNode(SampleNames.PlayStream)
                 .bind(settings.playEndpoint())
+                .attachActorGateway(SampleNames.PlayNode)
                 .registerSession(PlaySession.class)
                 .addSessionPacketHandler(AuthenticatePlaySessionHandler.class);
         };

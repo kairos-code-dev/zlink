@@ -53,6 +53,7 @@ import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.channels.ChannelKind;
@@ -693,6 +694,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 "local actor is not available: " + actorRef.actorId()));
         }
         ZLinkActor actor = localActor.get();
+        Optional<RoutingId> joinedSpotRid = actorRuntime.spotRid(actor);
+        if (joinedSpotRid.isPresent()
+            && currentSpotSurface(actor) == null
+            && spotSurfaceFor(joinedSpotRid.get()) == null
+            && actorRuntime.canRouteRemoteJoinedSpot(joinedSpotRid.get())) {
+            return actorRuntime.dispatchRemoteJoinedActor(
+                actorRuntime.currentRef(actor),
+                joinedSpotRid.get(),
+                header,
+                payload);
+        }
         Object spotSurface = localActorSpotSurface(actor);
         boolean isRequest = header.requestSequence().isPresent()
             || header.kind() == ZLinkStreamMessageKind.REQUEST;
@@ -753,6 +765,20 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         RoutingId targetSpotRid = ZLinkRoutedSpotRelayPackets.decodeTargetSpotRid(relayParts);
         List<Message> spotParts = ZLinkRoutedSpotRelayPackets.copySpotPayloadParts(relayParts);
         try {
+            EntrySpotActivation entryActivation = entrySpotActivationFor(targetSpotRid);
+            if (entryActivation != null
+                && !spotParts.isEmpty()
+                && ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(parsePacket(spotParts).packetName())) {
+                entryActivation.handleRoutedBoundSessionSendParts(spotParts);
+                return;
+            }
+            SpotActivation localActivation = spots.get(targetSpotRid);
+            if (localActivation != null
+                && !spotParts.isEmpty()
+                && ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(parsePacket(spotParts).packetName())) {
+                localActivation.handleRoutedActorPacketParts(spotParts);
+                return;
+            }
             if (!router.sendToSpot(targetNodeRid, targetSpotRid, spotParts, SendFlags.NONE)) {
                 throw new ZLinkConfigurationException(
                     "routed SPOT ingress channel is not ready for send: " + channelName);
@@ -766,6 +792,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     public CompletionStage<List<Message>> handleRequest(
         String channelName,
         ZLinkBackendRouterSocket router,
+        RoutingId sourcePeerRid,
         List<Message> relayParts,
         Duration timeout) {
         CompletableFuture<List<Message>> result = new CompletableFuture<>();
@@ -773,6 +800,26 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         RoutingId targetSpotRid = ZLinkRoutedSpotRelayPackets.decodeTargetSpotRid(relayParts);
         List<Message> spotParts = ZLinkRoutedSpotRelayPackets.copySpotPayloadParts(relayParts);
         try {
+            EntrySpotActivation entryActivation = entrySpotActivationFor(targetSpotRid);
+            if (entryActivation != null
+                && !spotParts.isEmpty()
+                && ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(parsePacket(spotParts).packetName())) {
+                return entryActivation.handleRoutedBoundSessionSendRequestParts(spotParts);
+            }
+            SpotActivation localActivation = spots.get(targetSpotRid);
+            if (localActivation != null
+                && !spotParts.isEmpty()
+                && ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(parsePacket(spotParts).packetName())) {
+                return localActivation.handleRoutedActorJoinParts(channelName, sourcePeerRid, spotParts);
+            }
+            if (localActivation != null
+                && !spotParts.isEmpty()
+                && ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(parsePacket(spotParts).packetName())) {
+                return localActivation.handleRoutedActorPacketParts(spotParts)
+                    .thenApply(reply -> reply
+                        .map(List::of)
+                        .orElseGet(() -> List.of(Message.from(new byte[0]))));
+            }
             if (!router.requestToSpot(targetNodeRid, targetSpotRid, spotParts, reply -> {
                 try {
                     result.complete(ZLinkRoutedSpotRelayPackets.copyReplyParts(reply.parts()));
@@ -1009,6 +1056,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         for (EntrySpotActivation entrySpot : entrySpots) {
             if (entrySpot.backendSpot.routingId().equals(spotRid)) {
                 return entrySpot.entrySpot;
+            }
+        }
+        return null;
+    }
+
+    private EntrySpotActivation entrySpotActivationFor(RoutingId spotRid) {
+        for (EntrySpotActivation activation : entrySpots) {
+            if (activation.backendSpot.routingId().equals(spotRid)) {
+                return activation;
             }
         }
         return null;
@@ -1742,6 +1798,23 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 return;
             }
             ParsedPacket packet = parsePacket(received.parts());
+            if (ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(packet.packetName())) {
+                if (received.requestSeq().isPresent()) {
+                    handleRoutedBoundSessionSendRequestParts(received.parts())
+                        .thenAccept(received::reply)
+                        .whenComplete((ignored, error) -> received.close());
+                } else {
+                    handleRoutedBoundSessionSendParts(received.parts());
+                    received.close();
+                }
+                return;
+            }
+            if (ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(packet.packetName())) {
+                handleRoutedActorPacketParts(received.parts())
+                    .thenAccept(reply -> reply.ifPresent(message -> received.reply(List.of(message))))
+                    .whenComplete((ignored, error) -> received.close());
+                return;
+            }
             SpotPacketHandlerRegistration handler =
                 context.packetHandler(packet.packetName());
             if (handler == null) {
@@ -1774,6 +1847,40 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                         invokeSpotPacketHandler(handler, entrySpot, payloadCopy))
                         .whenComplete((ignored, error) -> payloadCopy.close()));
             }
+        }
+
+        private void handleRoutedBoundSessionSendParts(List<Message> parts) {
+            ZLinkActorSpotRoutePackets.BoundSessionSend send =
+                ZLinkActorSpotRoutePackets.decodeBoundSessionSend(parts);
+            sendActorBoundSessionWithRetry(
+                primaryNode(),
+                send.actorRef(),
+                send.actorRef().actorId(),
+                send.frame().toByteArray(),
+                "routed actor bound session send failed")
+                .whenComplete((ignored, error) -> send.close());
+        }
+
+        private CompletionStage<List<Message>> handleRoutedBoundSessionSendRequestParts(List<Message> parts) {
+            ZLinkActorSpotRoutePackets.BoundSessionSend send =
+                ZLinkActorSpotRoutePackets.decodeBoundSessionSend(parts);
+            return sendActorBoundSessionWithRetry(
+                primaryNode(),
+                send.actorRef(),
+                send.actorRef().actorId(),
+                send.frame().toByteArray(),
+                "routed actor bound session send failed")
+                .thenApply(ignored -> List.of(Message.from(new byte[0])))
+                .whenComplete((ignored, error) -> {
+                    send.close();
+                });
+        }
+
+        private CompletionStage<Optional<Message>> handleRoutedActorPacketParts(List<Message> parts) {
+            ZLinkActorSpotRoutePackets.ActorPacket packet =
+                ZLinkActorSpotRoutePackets.decodeActorPacket(parts);
+            return dispatchLocalSessionActor(packet.actorRef(), packet.header(), packet.payload())
+                .whenComplete((ignored, error) -> packet.close());
         }
 
         private void drainSubscriptions() {
@@ -4009,6 +4116,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 return CompletableFuture.completedFuture(null);
             }
             ParsedPacket packet = parsePacket(received.parts());
+            if (ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(packet.packetName())) {
+                return dispatchRoutedActorJoinAsync(received, packet);
+            }
             SpotPacketHandlerRegistration handler =
                 context.packetHandler(packet.packetName());
             if (handler == null) {
@@ -4419,6 +4529,105 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 })
                 .thenApply(ignored -> (Void) null)
                 .whenComplete((ignored, error) -> payloadCopy.close());
+        }
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        private CompletionStage<Void> dispatchRoutedActorJoinAsync(
+            ZLinkBackendReceived received,
+            ParsedPacket packet) {
+            return handleRoutedActorJoinParts(null, null, received.parts())
+                .thenAccept(replyParts -> {
+                    try {
+                        received.reply(replyParts);
+                    } finally {
+                        replyParts.forEach(Message::close);
+                    }
+                })
+                .whenComplete((ignored, error) -> received.close());
+        }
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        private CompletionStage<Optional<Message>> handleRoutedActorPacketParts(List<Message> parts) {
+            ZLinkActorSpotRoutePackets.ActorPacket packet =
+                ZLinkActorSpotRoutePackets.decodeActorPacket(parts);
+            return dispatchLocalSessionActor(packet.actorRef(), packet.header(), packet.payload())
+                .whenComplete((ignored, error) -> packet.close());
+        }
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        private CompletionStage<List<Message>> handleRoutedActorJoinParts(
+            String routeChannelName,
+            RoutingId sourcePeerRid,
+            List<Message> parts) {
+            if (actorRuntime == null) {
+                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                    "actor runtime is required for routed Spot actor join"));
+            }
+            ParsedPacket packet = parsePacket(parts);
+            ZLinkActorSpotRoutePackets.JoinRequest joinRequest =
+                ZLinkActorSpotRoutePackets.decodeJoinRequest(packet.payload());
+            Message joinPayload = parts.size() > 2
+                ? Message.from(parts.get(2).toByteArray())
+                : Message.from(new byte[0]);
+            return actorRuntime.getOrCreate(joinRequest.actorId(), joinRequest.actorType())
+                .thenCompose(actor -> {
+                    return ZLinkHandlerStages
+                        .fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(actor, joinPayload, NONE_CANCELLATION))
+                        .thenCompose(response -> {
+                            ZLinkSpotActorJoinResponse effective =
+                                response == null ? ZLinkSpotActorJoinResponse.reject() : response;
+                            if (!effective.accepted()) {
+                                return CompletableFuture.completedFuture(effective);
+                            }
+                            if (routeChannelName != null) {
+                                actorRuntime.bindRoutedSession(
+                                    actor,
+                                    routeChannelName,
+                                    joinRequest.actorRef().nodeRid(),
+                                    joinRequest.sourceEntrySpotRid(),
+                                    joinRequest.actorRef());
+                            }
+                            actorRuntime.markJoined(
+                                actor,
+                                joinRequest.actorRef(),
+                                backendSpot.routingId(),
+                                spotFor(backendSpot.routingId()));
+                            return notifySpotActorLifecycle(spot, actor, true)
+                                .thenApply(ignored -> effective)
+                                .whenComplete((reply, error) -> {
+                                    if (error != null) {
+                                        actorRuntime.markLeft(actor);
+                                    }
+                                });
+                        })
+                        .thenApply(response -> {
+                            ZLinkSpotActorJoinResponse effective =
+                                response == null ? ZLinkSpotActorJoinResponse.reject() : response;
+                            return ZLinkActorSpotRoutePackets.encodeJoinReply(
+                                effective.accepted(),
+                                joinRequest.actorRef(),
+                                effective.reply());
+                        });
+                })
+                .handle((reply, error) -> {
+                    try {
+                        if (error != null) {
+                            try (Message rejectedPayload = Message.from(new byte[0]);
+                                 Message rejected = ZLinkActorSpotRoutePackets.encodeJoinReply(
+                                     false,
+                                     joinRequest.actorRef(),
+                                     rejectedPayload)) {
+                                return List.of(Message.from(rejected.toByteArray()));
+                            }
+                        } else {
+                            try (reply) {
+                                return List.of(Message.from(reply.toByteArray()));
+                            }
+                        }
+                    } finally {
+                        joinPayload.close();
+                    }
+                });
         }
 
         @SuppressWarnings({"rawtypes", "unchecked"})

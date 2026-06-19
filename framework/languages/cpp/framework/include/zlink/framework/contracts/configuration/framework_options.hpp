@@ -761,6 +761,11 @@ class spot_pub_sub_capability_builder_t
         return *this;
     }
 
+    spot_pub_sub_capability_builder_t &connect_peer_pub (std::string endpoint)
+    {
+        return connect (std::move (endpoint));
+    }
+
   private:
     std::optional<zlink::routing_id_t> *_routing_id;
     std::vector<std::string> *_manual_connections;
@@ -838,6 +843,11 @@ class spot_node_options_builder_t
         return *this;
     }
 
+    spot_node_options_builder_t &connect_peer_pub (std::string endpoint)
+    {
+        return connect_pub_sub (std::move (endpoint));
+    }
+
     spot_node_options_builder_t &enable_pub_sub (std::string endpoint,
                                                  zlink::routing_id_t routing_id)
     {
@@ -855,6 +865,24 @@ class spot_node_options_builder_t
     {
         detail::require_non_blank (channel_name, "SPOT discovery channel name is required");
         _discovery_channel = std::move (channel_name);
+        apply ();
+        return *this;
+    }
+
+    spot_node_options_builder_t &use_registry_spot_resolver ()
+    {
+        _options->registry_spot_remote_addresses_enabled = true;
+        _options->registry_spot_route_channel.reset ();
+        apply ();
+        return *this;
+    }
+
+    spot_node_options_builder_t &use_registry_spot_resolver (std::string route_channel_name)
+    {
+        detail::require_non_blank (route_channel_name,
+                                   "registry spot resolver route channel is required");
+        _options->registry_spot_remote_addresses_enabled = true;
+        _options->registry_spot_route_channel = std::move (route_channel_name);
         apply ();
         return *this;
     }
@@ -1133,6 +1161,22 @@ class spot_mesh_builder_t
 
     discovery_options_builder_t use_discovery () { return discovery_options_builder_t (_options); }
 
+    spot_mesh_builder_t &use_registry_spot_resolver ()
+    {
+        _options->registry_spot_remote_addresses_enabled = true;
+        _options->registry_spot_route_channel.reset ();
+        return *this;
+    }
+
+    spot_mesh_builder_t &use_registry_spot_resolver (std::string route_channel_name)
+    {
+        detail::require_non_blank (route_channel_name,
+                                   "registry spot resolver route channel is required");
+        _options->registry_spot_remote_addresses_enabled = true;
+        _options->registry_spot_route_channel = std::move (route_channel_name);
+        return *this;
+    }
+
     spot_node_options_builder_t add_node (std::string spot_node_name)
     {
         auto node = spot_node_options_builder_t (std::move (spot_node_name), _options);
@@ -1341,6 +1385,16 @@ class zlink_framework_options_t
         _options->registry_spot_remote_addresses_enabled = true;
         _options->registry_spot_route_channel = std::move (route_channel_name);
         return *this;
+    }
+
+    zlink_framework_options_t &use_registry_spot_resolver ()
+    {
+        return use_registry_spot_remote_addresses ();
+    }
+
+    zlink_framework_options_t &use_registry_spot_resolver (std::string route_channel_name)
+    {
+        return use_registry_spot_remote_addresses (std::move (route_channel_name));
     }
 
     spot_mesh_builder_t add_spot_mesh (std::string channel_name)

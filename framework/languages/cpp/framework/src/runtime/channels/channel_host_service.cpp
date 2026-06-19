@@ -8,6 +8,8 @@
 #include <zlink.hpp>
 
 #include <chrono>
+#include <deque>
+#include <mutex>
 #include <utility>
 
 namespace zlink::framework::runtime
@@ -42,8 +44,8 @@ class channel_host_service_t::server_loop_t
 
     void run ()
     {
-        detail::channel_packet_dispatcher_t dispatcher (_runtime);
         while (!_stop->load (std::memory_order_acquire)) {
+            flush_replies ();
             zlink::received_t received;
             const int rc = _router->recv (received, zlink::recv_flags_t::dontwait);
             if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
@@ -54,20 +56,9 @@ class channel_host_service_t::server_loop_t
                 std::this_thread::sleep_for (std::chrono::milliseconds (1));
                 continue;
             }
-            auto reply = dispatcher.dispatch_server_message (
-              _channel_name, copy_parts (received.parts ()), *_services, *_serializers, *_handlers);
-            if (!reply || reply.value ().size () == 0 || !received.request_seq ()) {
-                continue;
-            }
-            if (reply.value ().size () == 1) {
-                zlink::message_t part = clone (reply.value ()[0]);
-                received.reply ().message (part).submit ();
-                continue;
-            }
-            zlink::message_t header = clone (reply.value ()[0]);
-            zlink::message_t body = clone (reply.value ()[1]);
-            received.reply ().message (header).message (body).submit ();
+            dispatch_async (std::move (received));
         }
+        flush_replies ();
     }
 
     void stop () noexcept
@@ -87,9 +78,16 @@ class channel_host_service_t::server_loop_t
             catch (...) {
             }
         }
+        join_workers ();
     }
 
   private:
+    struct completed_reply_t
+    {
+        zlink::received_t received;
+        zlink::framework::runtime::messaging::message_parts_t parts;
+    };
+
     static zlink::message_t clone (const zlink::message_t &message)
     {
         return zlink::message_t::from (message.to_string ());
@@ -106,6 +104,58 @@ class channel_host_service_t::server_loop_t
         return zlink::framework::runtime::messaging::message_parts_t (std::move (copied));
     }
 
+    void dispatch_async (zlink::received_t received)
+    {
+        auto request_parts = copy_parts (received.parts ());
+        std::lock_guard<std::mutex> lock (_workers_mutex);
+        _workers.emplace_back (
+          [this, received = std::move (received), request_parts = std::move (request_parts)] () mutable {
+              detail::channel_packet_dispatcher_t dispatcher (_runtime);
+              auto scope = _services->create_scope (service_scope_kind_t::handler_invocation);
+              auto reply = dispatcher.dispatch_server_message (
+                _channel_name, request_parts, scope.provider (), *_serializers, *_handlers);
+              if (!reply || reply.value ().size () == 0 || !received.request_seq ()) {
+                  return;
+              }
+              std::lock_guard<std::mutex> reply_lock (_replies_mutex);
+              _replies.push_back (completed_reply_t{std::move (received), std::move (reply.value ())});
+          });
+    }
+
+    void flush_replies ()
+    {
+        for (;;) {
+            completed_reply_t completed;
+            {
+                std::lock_guard<std::mutex> lock (_replies_mutex);
+                if (_replies.empty ()) {
+                    return;
+                }
+                completed = std::move (_replies.front ());
+                _replies.pop_front ();
+            }
+            if (completed.parts.size () == 1) {
+                zlink::message_t part = clone (completed.parts[0]);
+                completed.received.reply ().message (part).submit ();
+                continue;
+            }
+            zlink::message_t header = clone (completed.parts[0]);
+            zlink::message_t body = clone (completed.parts[1]);
+            completed.received.reply ().message (header).message (body).submit ();
+        }
+    }
+
+    void join_workers () noexcept
+    {
+        std::lock_guard<std::mutex> lock (_workers_mutex);
+        for (auto &worker : _workers) {
+            if (worker.joinable ()) {
+                worker.join ();
+            }
+        }
+        _workers.clear ();
+    }
+
     detail::channel_runtime_t _runtime;
     std::string _channel_name;
     std::vector<std::string> _endpoints;
@@ -115,6 +165,10 @@ class channel_host_service_t::server_loop_t
     std::atomic_bool *_stop;
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::router_socket_t> _router;
+    std::mutex _workers_mutex;
+    std::vector<std::thread> _workers;
+    std::mutex _replies_mutex;
+    std::deque<completed_reply_t> _replies;
 };
 
 channel_host_service_t::channel_host_service_t (message_bus_t bus,

@@ -27,6 +27,8 @@ class channel_runtime_manager_t
     channel_runtime_bundle_t &get_or_create_client_bundle (const std::string &channel_name);
     channel_runtime_bundle_t &get_or_create_publisher_bundle (const std::string &channel_name);
     route_channel_runtime_t &get_route_channel (const std::string &router_channel_id);
+    const route_handler_registry_t &get_route_handlers (const std::string &router_channel_id) const;
+    std::vector<std::string> route_channel_ids () const;
 
     void initialize_inbound_channels ();
     void initialize_publisher_channels ();

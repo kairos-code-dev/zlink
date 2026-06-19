@@ -25,8 +25,11 @@ class CreateGameHandler(
         spots.getObject().create(TicTacToeGame::class.java, RoutingId.from(room.roomId)).await()
         return CreateGameRes(
             roomId = room.roomId,
-            playEndpoint = settings.playEndpoint,
             gameName = room.gameName,
+            ownerPlayEndpoint = room.ownerPlayEndpoint,
+            playEndpoints = room.playEndpoints,
+            playNodes = room.playNodes,
+            requiredLevel = room.requiredLevel,
         )
     }
 }

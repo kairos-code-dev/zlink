@@ -74,8 +74,10 @@ add_library(zlink_framework STATIC
   framework/src/runtime/channels/route_handler_invoker.cpp
   framework/src/runtime/channels/route_handler_registry.cpp
   framework/src/runtime/channels/route_internal_packet_dispatcher.cpp
+  framework/src/runtime/channels/route_channel_host_service.cpp
   framework/src/runtime/channels/route_packet_dispatcher.cpp
   framework/src/runtime/channels/route_receive_pump.cpp
+  framework/src/runtime/actors/actor_route_internal_dispatcher.cpp
   framework/src/runtime/actors/actor_gateway_runtime.cpp
   framework/src/runtime/backend/native_route_backend.cpp
   framework/src/runtime/host/assembly.cpp
@@ -101,6 +103,9 @@ add_library(zlink_framework STATIC
   framework/src/runtime/messaging/request_failure_mapper.cpp
   framework/src/runtime/messaging/submit_queue.cpp
   framework/src/runtime/registry/registry_runtime.cpp
+  framework/src/runtime/spots/spot_node_host_service.cpp
+  framework/src/runtime/spots/spot_route_internal_dispatcher.cpp
+  framework/src/runtime/spots/spot_route_packets.cpp
   framework/src/runtime/spots/spot_runtime.cpp
   framework/src/runtime/streams/stream_runtime.cpp
   framework/src/runtime/streams/stream_host_service.cpp

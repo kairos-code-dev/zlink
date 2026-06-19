@@ -18,7 +18,11 @@ public final class PlayActorPlaceMarkHandler {
         ZLinkSpotActorRequestContext context,
         PlaceMarkReq request,
         CancellationToken cancellationToken) {
+        System.out.println("actor: PlaceMarkReq received. actor=" + actor.actorId()
+            + " cell=" + request.cell());
         actor.requireJoinedGame();
-        return spot.placeMark(actor, request.cell());
+        PlaceMarkRes response = spot.placeMark(actor, request.cell());
+        System.out.println("actor: PlaceMarkReq completed. actor=" + actor.actorId());
+        return response;
     }
 }

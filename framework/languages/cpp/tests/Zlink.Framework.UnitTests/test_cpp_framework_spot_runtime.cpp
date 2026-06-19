@@ -1,8 +1,14 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/framework.hpp>
+#include <zlink.hpp>
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
+#include "runtime/channels/channel_runtime.hpp"
+#include "runtime/channels/route_handler_registry.hpp"
+#include "runtime/channels/route_packet_dispatcher.hpp"
+#include "runtime/spots/spot_route_internal_dispatcher.hpp"
+#include "runtime/spots/spot_route_packets.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <chrono>
@@ -222,6 +228,19 @@ struct stage_spot_t : public zlink::framework::spot_t
     static inline std::string last_create_request;
 };
 
+struct subscription_spot_t : public zlink::framework::spot_t
+{
+    void configure (zlink::framework::spot_context_t &context)
+    {
+        context.handlers ().add_subscribe<&subscription_spot_t::on_state_update> (
+          "stage.state.updated");
+    }
+
+    void on_state_update (const state_update_t &message) { last_value = message.value; }
+
+    int last_value{};
+};
+
 struct serial_probe_spot_t : public zlink::framework::spot_t
 {
     void configure (zlink::framework::spot_context_t &context)
@@ -391,6 +410,16 @@ int main ()
 
     zlink::framework::spot_node_builder_t builder;
     zlink::framework::zlink_builder_t manual_host;
+    zlink::framework::serializer_registry_t manual_serializers;
+    manual_serializers.add<state_update_t> (
+      [] (const state_update_t &value) {
+          return zlink::message_t::from (std::to_string (value.value));
+      },
+      [] (const zlink::message_t &message) {
+          return state_update_t{std::stoi (message.to_string ())};
+      });
+    zlink::framework::detail::channel_runtime_t::from (manual_host.message_bus ())
+      .bind_serializers (manual_serializers);
     builder = manual_host.add_spot_node ("manual-stage");
     auto create_factory_spot = [] {
         return std::make_shared<factory_spot_t> ("factory-reply");
@@ -443,6 +472,20 @@ int main ()
     const auto remote_route = builder.resolve_spot (remote_rid);
     if (!remote_route || remote_route->spot_name != "remote-stage") {
         return 5;
+    }
+
+    zlink::framework::zlink_builder_t registry_host;
+    auto registry_owner = registry_host.add_spot_node ("registry-owner");
+    registry_owner.add_spot<stage_spot_t> ("stage");
+    auto registry_lookup = registry_host.add_spot_node ("registry-lookup");
+    registry_lookup.use_registry_spot_resolver ().add_spot<stage_spot_t> ("stage");
+    const auto registry_owned_spot =
+      registry_owner.get_or_create_spot (
+        "stage", zlink::framework::spot_rid_t::from_string ("registry-room-1"));
+    const auto registry_route = registry_lookup.resolve_spot (registry_owned_spot.spot_rid);
+    if (!registry_route || registry_route->node_rid.value () != "registry-owner"
+        || registry_route->spot_name != "stage") {
+        return 90;
     }
 
     auto close_create = builder.create_spot ("stage");
@@ -779,6 +822,73 @@ int main ()
       .add_spot<relay_spot_t> ("relay-room");
     auto relay_spot = relay_builder.create_spot ("relay-room");
     auto relay_runtime = zlink::framework::detail::spot_node_runtime_t::from (relay_builder);
+    const auto routed_actor_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("play-a"), "relay-player", "routed-actor", 9);
+    auto routed_join = relay_runtime.join_remote_actor_to_spot_erased (
+      routed_actor_ref, relay_spot.spot_rid, zlink::message_t{});
+    if (!routed_join || routed_join.value ().result_code != 0
+        || routed_join.value ().actor.node_rid ().value () != "play-a"
+        || routed_join.value ().actor.generation () != 9) {
+        return 86;
+    }
+    const auto routed_instance = relay_runtime.actor_instance<relay_actor_t> (routed_actor_ref);
+    if (!routed_instance || routed_instance->get ().actor_id != "routed-actor") {
+        return 87;
+    }
+    zlink::framework::serializer_registry_t route_join_serializers;
+    zlink::framework::detail::register_spot_route_packet_serializers (route_join_serializers);
+    zlink::framework::service_collection_t route_join_services;
+    auto route_join_provider = route_join_services.build_provider ();
+    zlink::framework::detail::route_handler_registry_t route_join_handlers;
+    zlink::framework::detail::spot_route_internal_dispatcher_t route_join_internal (
+      relay_runtime, route_join_serializers);
+    zlink::framework::detail::route_packet_dispatcher_t route_join_dispatcher (
+      "relay.route", route_join_provider, route_join_serializers, route_join_handlers,
+      route_join_internal);
+    zlink::framework::runtime::messaging::envelope_codec_t route_join_envelope;
+    zlink::framework::runtime::messaging::envelope_header_t route_join_header;
+    route_join_header.kind = zlink::framework::runtime::messaging::message_kind_t::request;
+    route_join_header.channel_name = "relay.route";
+    route_join_header.message_name =
+      zlink::framework::detail::spot_actor_join_route_request_t::packet_name;
+    const auto route_join_request =
+      zlink::framework::detail::make_spot_actor_join_route_request (
+        zlink::framework::actor_ref_t (
+          zlink::framework::node_rid_t::from_string ("play-b"), "relay-player",
+          "routed-through-channel", 3),
+        relay_spot.spot_rid, zlink::message_t::from (std::string ("route-payload")));
+    auto route_join_parts = route_join_envelope.encode_parts (
+      route_join_header,
+      std::type_index (typeid (zlink::framework::detail::spot_actor_join_route_request_t)),
+      &route_join_request, route_join_serializers);
+    auto route_join_dispatch = route_join_dispatcher.dispatch (
+      zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("play-b")), 90, route_join_parts});
+    if (!route_join_dispatch || !route_join_dispatch.value ()
+        || !route_join_dispatch.value ()->request_seq
+        || route_join_dispatch.value ()->request_seq.value () != 90) {
+        return 90;
+    }
+    auto route_join_reply_body =
+      route_join_envelope.decode_body (route_join_dispatch.value ()->parts);
+    if (!route_join_reply_body) {
+        return 91;
+    }
+    const auto route_join_reply =
+      route_join_serializers
+        .get<zlink::framework::detail::spot_actor_join_route_reply_t> ()
+        .deserialize (route_join_reply_body.value ());
+    if (route_join_reply.result_code != 0 || route_join_reply.actor_node_rid != "play-b"
+        || route_join_reply.actor_generation != 3) {
+        return 92;
+    }
+    const auto routed_channel_instance = relay_runtime.actor_instance<relay_actor_t> (
+      zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("play-b"),
+                                     "relay-player", "routed-through-channel", 3));
+    if (!routed_channel_instance
+        || routed_channel_instance->get ().actor_id != "routed-through-channel") {
+        return 93;
+    }
     relay_actor_t relay_actor{"relay-actor"};
     zlink::framework::actor_ref_t relay_actor_ref (
       zlink::framework::node_rid_t::from_string ("relay-stage"), "relay-player", "relay-actor", 1);
@@ -879,6 +989,13 @@ int main ()
         return 9;
     }
 
+    zlink::framework::spot_node_builder_t registry_alias;
+    registry_alias.use_registry_spot_resolver ("alias.route");
+    if (!registry_alias.snapshot ().registry_spot_route_channel
+        || *registry_alias.snapshot ().registry_spot_route_channel != "alias.route") {
+        return 90;
+    }
+
     bool registry_conflict_failed = false;
     try {
         registry.add_spot_resolver ("custom", [] (zlink::framework::spot_rid_t) {
@@ -929,6 +1046,13 @@ int main ()
     }
     if (!empty_pub_sub_manual_endpoint_failed) {
         return 41;
+    }
+
+    zlink::framework::spot_node_builder_t peer_pub_alias;
+    peer_pub_alias.connect_peer_pub ("tcp://127.0.0.1:9006");
+    if (peer_pub_alias.snapshot ().pub_sub_manual_connections.size () != 1
+        || peer_pub_alias.snapshot ().pub_sub_manual_connections[0] != "tcp://127.0.0.1:9006") {
+        return 410;
     }
 
     bool empty_attach_failed = false;
@@ -1187,6 +1311,42 @@ int main ()
         return 14;
     }
 
+    zlink::framework::zlink_builder_t pubsub_host;
+    zlink::framework::detail::channel_runtime_t::from (pubsub_host.message_bus ())
+      .bind_serializers (spot_serializers);
+    auto subscription_spot = std::make_shared<subscription_spot_t> ();
+    auto pubsub_builder = pubsub_host.add_spot_node ("pubsub-node");
+    pubsub_builder.enable_pub_sub ("inproc://cpp-framework-spot-pubsub")
+      .add_spot<subscription_spot_t> ("subscription", [subscription_spot] {
+          return subscription_spot;
+      });
+    auto pubsub_created = pubsub_builder.create_spot ("subscription");
+    auto pubsub_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (pubsub_builder);
+    zlink::context_t native_context;
+    auto native_node = std::make_shared<zlink::service::spot_node_t> (native_context);
+    native_node->set_pub_bind ("inproc://cpp-framework-spot-pubsub");
+    pubsub_runtime.attach_native_node (native_node);
+    auto native_publish =
+      pubsub_created.context.publish ("stage.state.updated", state_update_t{9}).async ().result ();
+    if (!native_publish) {
+        return 91;
+    }
+    const auto subscription_deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (500);
+    while (subscription_spot->last_value != 9
+           && std::chrono::steady_clock::now () < subscription_deadline) {
+        (void) pubsub_runtime.drain_subscriptions (spot_provider, spot_serializers);
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    pubsub_runtime.detach_native_node ();
+    native_node->close ();
+    native_context.shutdown ();
+    native_context.term ();
+    if (subscription_spot->last_value != 9) {
+        return 92;
+    }
+
     auto send_result =
       context.send_to (remote_route->node_rid, remote_route->spot_rid, state_update_t{2})
         .async ()
@@ -1217,7 +1377,9 @@ int main ()
 
     const auto runtime = zlink::framework::detail::spot_node_runtime_t::from (builder);
     const auto &ordering = runtime.ordering_log (context);
-    if (ordering.size () != 3 || ordering[0] != "publish:stage.state.updated"
+    const auto state_update_packet = zlink::framework::detail::message_name<state_update_t> ();
+    if (ordering.size () != 3
+        || ordering[0] != "publish:stage.state.updated:" + state_update_packet + ":1"
         || ordering[1] != "send_to:remote-stage" || ordering[2] != "request_to:remote-stage") {
         return 18;
     }

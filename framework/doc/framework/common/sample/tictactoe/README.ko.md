@@ -35,8 +35,9 @@ address resolver 계약 뒤에 숨긴다.
 - actor는 room join payload에 user 정보를 함께 보내고, room Spot은 level 조건을 확인한 뒤
   join을 허용한다.
 - 승리로 player win count가 100이 되면 room Spot이 Spot pub/sub topic으로 milestone
-  event를 publish하고, 다른 Play 서버의 `PlayEntrySpot` notification role이 같은 event를
-  받아 observer client로 push한다.
+  event를 publish하고, 다른 Play 서버의 `PlayEntrySpot` 안에 등록된 observer handler가
+  같은 event를 받아 observer client로 push한다. 이 handler는 `PlayEntrySpot`의 내부 책임이지
+  별도 Spot 타입이 아니다.
 - client는 API 서버에서 받은 Play endpoint 목록으로 직접 stream 연결을 만든다.
 - Play session은 인증 후 actor를 만들고 현재 stream session에 bind한다.
 - room Spot은 board, turn, 승패 판정을 소유한다.
@@ -99,11 +100,11 @@ graph LR
   연결한다.
 - guest actor가 같은 `RoomId`로 join하면 Redis-backed resolver가 owner SpotNode 위치를
   찾아 remote room Spot으로 라우팅한다.
-- observer actor는 owner가 아닌 Play 서버의 well-known local notification role에
-  등록되고 milestone topic을 구독한다. 이 role은 기본적으로 `PlayEntrySpot`이 맡으며,
-  별도 Spot 타입을 새로 만들라는 뜻이 아니다.
+- observer actor는 owner가 아닌 Play 서버의 well-known local `PlayEntrySpot`에 observer로
+  등록되고, `PlayEntrySpot`이 milestone topic을 구독한다. 별도 Spot 타입을 새로 만들라는
+  뜻이 아니다.
 - 게임에서 host가 승리해 누적 승수가 100이 되면 owner room Spot이 milestone event를
-  publish하고, observer actor가 붙은 Play 서버의 `PlayEntrySpot` notification role이 이
+  publish하고, observer actor가 붙은 Play 서버의 `PlayEntrySpot` observer handler가 이
   event를 받아 observer client로 push한다.
 - Play 서버는 stream 인증 시 수동 설정된 API 서버 channel endpoint로 인증을 확인한다.
 
@@ -212,11 +213,11 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 | `Server/Play/Application/GameCreation/*` | application use case | room id 생성, Spot 생성 요청, Redis room route 기록을 조율한다. |
 | `Server/Play/Adapters/ZLink/*` | ZLink adapter | channel, stream session, actor, Spot callback을 application/domain 호출로 변환한다. |
 
-observer milestone 알림을 처리하는 local notification role은 `PlayEntrySpot` 안의 책임으로
-둔다. 언어별 framework 제약 때문에 helper class나 private registry 객체를 둘 수는 있지만,
-`PlayerNotificationSpot` 같은 별도 public sample Spot 타입을 만들어 room Spot과 나란히
-노출하지 않는다. 이 규칙은 C++, Node, Kotlin, Java 샘플을 같은 구조로 읽게 하기 위한
-것이다.
+observer milestone 알림 처리는 `PlayEntrySpot` 안의 observer handler와 private registry
+책임으로 둔다. 언어별 framework 제약 때문에 helper class나 private registry 객체를 둘 수는
+있지만, `PlayerNotificationSpot` 같은 별도 public sample Spot 타입을 만들어 room Spot과
+나란히 노출하지 않는다. 이 규칙은 C++, Node, Kotlin, Java 샘플을 같은 구조로 읽게 하기
+위한 것이다.
 
 의존 방향은 `Adapters -> Application -> Domain`이다. Domain은 ZLink framework, HTTP,
 stream connector, logger를 알지 않는다. Application은 use case 조율을 맡고, 외부 입출력
@@ -250,6 +251,9 @@ TicTacToe 샘플은 모든 framework 언어에서 같은 public framework 모델
 - 샘플 실행에는 Redis가 필요하다. 애플리케이션 코드는 Redis endpoint만 설정으로 받고,
   Docker container 생성이나 종료를 직접 맡지 않는다. `run_sample`은 외부 Redis endpoint가
   주어지지 않으면 Docker로 Redis container를 준비하고, 샘플 종료 시 정리한다.
+- `run_sample`이 Redis container를 직접 준비할 때는 실행마다 임시 container와 localhost
+  포트를 사용해야 한다. 외부 Redis endpoint를 명시한 경우에도 실행별 key prefix를 설정해
+  다른 테스트나 다른 샘플 실행의 room route와 섞이지 않게 해야 한다.
 - Redis client dependency는 room route store adapter 안에만 둔다. handler, actor, Spot,
   Domain 코드가 Redis client 타입을 직접 참조하면 안 된다.
 - actor가 room에 join하는 흐름은 각 언어 framework의 public actor/Spot API와 public spot
@@ -371,9 +375,9 @@ Spot pub/sub에는 Redis room route store를 사용하지 않는다. publish 대
 등록된다. `PlayEntrySpot`은 publish event를 받으면 자기 `Context.NodeRid`를 담아
 `WinMilestoneNotify` client push로 바꾼다.
 
-여기서 “notification role”은 별도 Spot lifecycle을 뜻하지 않는다. C++, Node, Kotlin,
-Java처럼 파일 구조와 framework callback 표현이 다른 언어도 observer 목록 관리와
-`WinMilestoneNotify` 전송 책임을 `PlayEntrySpot` 또는 그 안의 private helper에 둔다.
+여기서 observer handler는 별도 Spot lifecycle을 뜻하지 않는다. C++, Node, Kotlin, Java처럼
+파일 구조와 framework callback 표현이 다른 언어도 observer 목록 관리와 `WinMilestoneNotify`
+전송 책임을 `PlayEntrySpot` 또는 그 안의 private helper에 둔다.
 room 상태를 소유하는 `TicTacToeGame`에 observer를 붙이면 owner가 아닌 Play 서버에서
 milestone을 받는 흐름을 설명하기 어렵고, 별도 public Spot 타입을 만들면 샘플의 Spot 구조가
 언어마다 달라지므로 피한다.
@@ -385,9 +389,8 @@ room Spot은 이번 판의 승리 결과로 event payload의 `Wins`만 100으로
 외부 저장소 흐름이 더 커지기 때문이다.
 
 언어별 public API 이름은 다를 수 있지만 의미는 같아야 한다. SpotNode는 pub/sub endpoint를
-enable하고 peer endpoint에 connect한다. local Entry Spot notification role은 public
-subscribe 등록 API로 topic을 구독한다. room Spot은 public outbound publish API로 event를
-발행한다.
+enable하고 peer endpoint에 connect한다. local `PlayEntrySpot`은 public subscribe 등록 API로
+topic을 구독한다. room Spot은 public outbound publish API로 event를 발행한다.
 
 이 흐름은 알림과 projection에 사용하는 event fan-out 예시다. turn 처리, board mutation,
 join admission처럼 반드시 한 owner room Spot에서 결정해야 하는 상태 변경을 pub/sub으로
@@ -991,7 +994,8 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
 - host player는 `Wins = 99`로 인증되고, host 승리 후 room Spot은 `Wins = 100` milestone
   event를 publish한다.
 - observer client는 owner가 아닌 Play 서버에 붙은 actor로 `ObserveMilestoneReq`를 보내
-  well-known local `PlayEntrySpot`의 notification role에 등록되고 milestone topic을 구독한다.
+  well-known local `PlayEntrySpot`에 observer로 등록되고, `PlayEntrySpot`이 milestone topic을
+  구독한다.
 - observer client는 `ObserveMilestoneRes.Subscribed = true`를 확인한 뒤 game move를
   진행한다.
 - observer client는 milestone publish 후

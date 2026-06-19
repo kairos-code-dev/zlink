@@ -30,6 +30,7 @@ import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.ActorRequestCallbacks;
 import systems.zlink.runtime.nativeapi.MessagePartsBuffer;
 import systems.zlink.runtime.nativeapi.Native;
+import systems.zlink.runtime.nativeapi.RequestProgressPump;
 
 final class SpotActorJoinPlane {
     private final NativeSpotNode node;
@@ -204,6 +205,8 @@ final class SpotActorJoinPlane {
                     MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
                     throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
+                RequestProgressPump.trackSpotRequest(token.future(),
+                    node.handle(), "zlink-spot-node-actor-join-progress");
             }
             return true;
         }
@@ -324,6 +327,8 @@ final class SpotActorJoinPlane {
                     MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
                     throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
                 }
+                RequestProgressPump.trackSpotRequest(token.future(),
+                    node.handle(), "zlink-spot-node-actor-entry-join-progress");
             }
             return true;
         }

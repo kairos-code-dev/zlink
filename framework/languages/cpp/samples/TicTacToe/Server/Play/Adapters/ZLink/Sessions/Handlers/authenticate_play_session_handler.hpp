@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../../Handlers/ensure_player_actor_handler.hpp"
+#include "../../../../../Configuration/sample_topology.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -13,11 +14,13 @@ class authenticate_play_session_handler_t
   public:
     using dependency_types =
       zlink::framework::dependency_list_t<zlink::framework::channel_client_t,
-                                          ensure_player_actor_handler_t>;
+                                          ensure_player_actor_handler_t,
+                                          sample_topology_t>;
 
     authenticate_play_session_handler_t (zlink::framework::channel_client_t &client,
-                                         ensure_player_actor_handler_t &ensure_actor) :
-        _client (client), _ensure_actor (ensure_actor)
+                                         ensure_player_actor_handler_t &ensure_actor,
+                                         sample_topology_t &topology) :
+        _client (client), _ensure_actor (ensure_actor), _topology (topology)
     {
     }
 
@@ -39,18 +42,18 @@ class authenticate_play_session_handler_t
                                  sample_names_t::api_channel,
                                  authenticate_player_req_t{request.access_token})
                                .async<authenticate_player_res_t> ();
-        if (!authenticated.accepted || authenticated.actor_id.empty ()) {
+        if (!authenticated.accepted || authenticated.player.actor_id.empty ()) {
             co_return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
               zlink::framework::framework_error_kind_t::request_failed,
               authenticated.reason.empty () ? "Player authentication failed."
                                             : authenticated.reason);
         }
 
-        const auto ensured = _ensure_actor.handle ({authenticated.actor_id});
+        const auto ensured = _ensure_actor.handle ({authenticated.player.actor_id});
         auto bound = co_await actors.bind (to_actor_ref (ensured)).async ();
 
         co_await stream
-          .reply_packet (header, to_stream_payload (authenticate_res_t{ensured.actor_id}))
+          .reply_packet (header, to_stream_payload (authenticate_res_t{authenticated.player}))
           .async ();
 
         co_return bound;
@@ -60,13 +63,13 @@ class authenticate_play_session_handler_t
     zlink::framework::actor_ref_t to_actor_ref (const ensure_player_actor_res_t &ensured) const
     {
         return zlink::framework::actor_ref_t (
-          zlink::framework::node_rid_t::from_string (_play_node_name), ensured.actor_type,
+          zlink::framework::node_rid_t::from_string (_topology.selected_play_node_rid ()), ensured.actor_type,
           ensured.actor.actor_id, ensured.actor.generation);
     }
 
     zlink::framework::channel_client_t &_client;
     ensure_player_actor_handler_t &_ensure_actor;
-    const char *_play_node_name = sample_names_t::spot_node;
+    sample_topology_t &_topology;
 };
 
 } // namespace zlink::samples::tictactoe

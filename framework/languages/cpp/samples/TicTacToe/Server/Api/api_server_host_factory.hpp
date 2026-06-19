@@ -38,19 +38,21 @@ class api_server_host_factory_t
 
             options.codecs ()
               .add_json ()
+              .add_json<authenticate_player_req_t> ()
+              .add_json<authenticate_player_res_t> ()
               .add_json<create_game_req_t> ()
               .add_json<create_game_res_t> ();
 
             options.add_client_server_channel (sample_names_t::api_channel)
-              .enable_server (topology.api_endpoint)
+              .enable_server (topology.selected_api_endpoint ())
               .use_handler_group ("api");
 
             options.http ()
-              .listen (topology.api_http_endpoint)
+              .listen (topology.selected_api_http_endpoint ())
               .map_post<create_game_http_handler_t> ("/games");
 
             options.add_client_server_channel (sample_names_t::play_channel)
-              .enable_client (topology.play_endpoint);
+              .enable_client (topology.selected_play_endpoint ());
         });
         if (auto_stop) {
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));

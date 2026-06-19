@@ -8,6 +8,7 @@
 #include <zlink/framework.hpp>
 
 #include <algorithm>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,9 @@ class entry_spot_t : public zlink::framework::entry_spot_t
     {
         _context = context;
         context.handlers ().add_actor_packet<&entry_spot_t::join_game> ();
+        context.handlers ().add_actor_packet<&entry_spot_t::observe_milestone> ();
+        context.handlers ().add_subscribe<&entry_spot_t::on_player_win_milestone> (
+          sample_names_t::player_milestone_topic);
     }
 
     void configure (zlink::framework::spot_context_t &context)
@@ -36,11 +40,24 @@ class entry_spot_t : public zlink::framework::entry_spot_t
     {
         const auto spot_rid = zlink::framework::spot_rid_t::from_string (
           std::string (sample_names_t::spot_node) + ":" + request.room_id);
+        auto payload = tictactoe_game_join_req_t{request.room_id, request.player};
+        if (payload.player.actor_id.empty ()) {
+            payload.player = {actor.actor_id, actor.actor_id, sample_names_t::required_level, 0};
+        }
         auto joined =
-          co_await actor.context.join_spot (spot_rid, to_stream_payload (request)).async ();
+          co_await actor.context.join_spot (spot_rid, to_stream_payload (payload)).async ();
         join_game_res_t reply;
         from_stream_payload (joined.reply, reply);
         co_return reply;
+    }
+
+    observe_milestone_res_t observe_milestone (
+      const player_actor_t &actor,
+      zlink::framework::spot_actor_request_context_t &,
+      const observe_milestone_req_t &)
+    {
+        observers[actor.actor_id] = const_cast<player_actor_t *> (&actor);
+        return {true};
     }
 
     void onCreateActor (const player_actor_t &actor)
@@ -61,6 +78,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
     {
         actor_ids.erase (std::remove (actor_ids.begin (), actor_ids.end (), actor.actor_id),
                          actor_ids.end ());
+        observers.erase (actor.actor_id);
     }
 
     void onDisconnectActor (const player_actor_t &actor) { actor.mark_disconnected (); }
@@ -70,14 +88,33 @@ class entry_spot_t : public zlink::framework::entry_spot_t
     std::vector<std::string> actor_ids;
 
   private:
+    void on_player_win_milestone (const player_win_milestone_event_t &event)
+    {
+        for (auto &[_, actor] : observers) {
+            auto sent =
+              actor->context.bound_session ()
+                .send (win_milestone_notify_t{event.room_id,
+                                              event.actor_id,
+                                              event.display_name,
+                                              event.wins,
+                                              std::string (_context.node_rid ().value ())})
+                .async ()
+                .result ();
+            (void) sent;
+        }
+    }
+
     static zlink::framework::actor_ref_t actor_ref_for (const player_actor_t &actor)
     {
         return zlink::framework::actor_ref_t (
-          zlink::framework::node_rid_t::from_string (sample_names_t::spot_node),
+          zlink::framework::node_rid_t::from_string (actor.node_rid.empty ()
+                                                       ? std::string (sample_names_t::spot_node)
+                                                       : actor.node_rid),
           sample_names_t::actor_type, actor.actor_id, actor.generation);
     }
 
     zlink::framework::entry_spot_context_t _context;
+    std::map<std::string, player_actor_t *> observers;
 };
 
 } // namespace zlink::samples::tictactoe

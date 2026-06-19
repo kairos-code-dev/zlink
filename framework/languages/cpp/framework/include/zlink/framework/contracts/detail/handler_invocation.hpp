@@ -5,6 +5,7 @@
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 
+#include <exception>
 #include <type_traits>
 
 namespace zlink::framework::detail
@@ -18,6 +19,10 @@ inline result_t<zlink::message_t> current_exception_to_message_result (const cha
     catch (const framework_exception_t &error) {
         return result_t<zlink::message_t>::failure (error.kind (), error.what (),
                                                     error.is_retriable ());
+    }
+    catch (const std::exception &error) {
+        return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+                                                    error.what ());
     }
     catch (...) {
         return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,

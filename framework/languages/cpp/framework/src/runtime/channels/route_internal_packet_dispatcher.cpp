@@ -44,6 +44,16 @@ void composite_route_internal_packet_dispatcher_t::add (
     _dispatchers.push_back (&dispatcher);
 }
 
+void composite_route_internal_packet_dispatcher_t::add (
+  std::shared_ptr<route_internal_packet_dispatcher_t> dispatcher)
+{
+    if (!dispatcher) {
+        return;
+    }
+    _dispatchers.push_back (dispatcher.get ());
+    _owned_dispatchers.push_back (std::move (dispatcher));
+}
+
 bool composite_route_internal_packet_dispatcher_t::can_handle_send (
   std::string_view packet_name) const
 {

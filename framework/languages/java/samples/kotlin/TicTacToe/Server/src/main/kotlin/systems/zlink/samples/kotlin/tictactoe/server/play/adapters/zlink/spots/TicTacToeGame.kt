@@ -6,19 +6,23 @@ import java.time.Instant
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.ZLinkAwait
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkTimer
 import systems.zlink.framework.spots.ZLinkTimerOptions
+import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.actors.PlayActor
 import systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.spots.handlers.TicTacToeGameCreatedHandler
 import systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.spots.handlers.TicTacToeGameTimerHandler
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.GameState
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.GameStateNotify
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlaceMarkRes
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerInfo
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerJoinedNotify
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerWinMilestoneEvent
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoinReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.TicTacToeGameJoinRes
 
@@ -54,10 +58,10 @@ class TicTacToeGame(
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
         val joinRequest = json.readValue(request.toByteArray(), TicTacToeGameJoinReq::class.java)
-        require(joinRequest.actorId == actor.actorId) {
+        require(joinRequest.player.actorId == actor.actorId) {
             "join request actor id does not match bound actor"
         }
-        val reply = join(actor, joinRequest.roomId)
+        val reply = join(actor, joinRequest.roomId, joinRequest.player)
         return ZLinkSpotActorJoinResponse.accept(Message.from(json.writeValueAsBytes(reply)))
     }
 
@@ -99,9 +103,11 @@ class TicTacToeGame(
         created = true
     }
 
-    suspend fun join(actor: PlayActor, roomId: String): TicTacToeGameJoinRes {
+    suspend fun join(actor: PlayActor, roomId: String, player: PlayerInfo): TicTacToeGameJoinRes {
         ensureCreated()
         check(roomId == this.roomId) { "join request room id does not match game room" }
+        check(player.level >= SampleNames.RequiredLevel) { "player level does not satisfy room requirement" }
+        actor.applyPlayer(player)
         var slot = players.firstOrNull { it.actor.actorId == actor.actorId }
         val isNewPlayer = slot == null
         if (slot == null) {
@@ -133,12 +139,14 @@ class TicTacToeGame(
         check(slot.mark == nextTurn) { "unexpected turn" }
         require(cell in board.indices && board[cell] == '.') { "invalid cell" }
 
+        val before = snapshot()
         board[cell] = slot.mark[0]
         lastMoveActorId = actor.actorId
         lastMoveCell = cell
         advance(slot)
         val state = snapshot()
         broadcast(state, actor.actorId)
+        publishWinMilestone(actor, before, state)
         return PlaceMarkRes(state)
     }
 
@@ -251,9 +259,12 @@ class TicTacToeGame(
         joinedSlot: PlayerSlot,
         state: GameState,
     ) {
+        val player = joinedActor.requirePlayer()
         val message = PlayerJoinedNotify(
             roomId = state.roomId,
             actorId = joinedActor.actorId,
+            displayName = player.displayName,
+            level = player.level,
             mark = joinedSlot.mark,
             state = state,
         )
@@ -272,5 +283,38 @@ class TicTacToeGame(
     private data class PlayerSlot(var actor: PlayActor, val mark: String)
 
     private fun isTerminal(state: GameState): Boolean =
-        state.status == "Won" || state.status == "Draw" || state.status == "TurnTimedOut"
+        state.status == "TurnTimedOut"
+
+    fun leaveGame(actor: PlayActor, roomId: String) {
+        check(this.roomId == roomId) { "leave request room id does not match game room" }
+        actor.markForDestroyAfterRoomLeave()
+        ZLinkAwait.await(context.leaveActor(actor))
+        println("actor: LeaveGameReq completed. actor=${actor.actorId}")
+    }
+
+    private suspend fun publishWinMilestone(
+        actor: PlayActor,
+        before: GameState,
+        after: GameState,
+    ) {
+        if (after.status != "Won" || before.status == "Won" || after.winner != actor.actorId) {
+            return
+        }
+        val player = actor.requirePlayer()
+        val wins = actor.incrementWins()
+        if (player.wins < 99 || wins != 100) {
+            return
+        }
+        context.outbound()
+            .publish(
+                SampleNames.PlayerMilestoneTopic,
+                PlayerWinMilestoneEvent(
+                    roomId = after.roomId,
+                    actorId = actor.actorId,
+                    displayName = player.displayName,
+                    wins = wins,
+                ),
+            )
+            .await()
+    }
 }

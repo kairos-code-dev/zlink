@@ -3,6 +3,7 @@
 
 #include "runtime/dispatch/offload_executor.hpp"
 #include "runtime/execution/serial_execution_queue.hpp"
+#include "runtime/registry/registry_runtime.hpp"
 
 #include <zlink/framework/contracts/actors/actor.hpp>
 
@@ -23,6 +24,8 @@ namespace zlink::framework::detail
 
 namespace runtime = zlink::framework::runtime;
 
+namespace service = zlink::service;
+
 class spot_node_builder_state_t
 {
   public:
@@ -35,7 +38,9 @@ class spot_node_builder_state_t
     std::map<std::string, spot_rid_t> spot_rids_by_name;
     std::map<std::string, std::string> spot_names_by_rid;
     std::map<std::string, spot_context_t> spot_contexts_by_rid;
+    std::weak_ptr<service::spot_node_t> native_node;
     std::shared_ptr<channel_runtime_state_t> channel_runtime;
+    std::shared_ptr<registry_runtime_state_t> registry_runtime;
     std::map<std::string, spot_rid_t> actor_spot_rids;
     std::map<std::string, std::uint64_t> actor_generations;
     std::set<std::string> actor_created_keys;
@@ -48,8 +53,19 @@ class spot_node_builder_state_t
     };
     std::function<result_t<void> (const actor_ref_t &)> destroy_actor_registry;
     std::function<result_t<void> (const actor_ref_t &)> update_actor_registry_ref;
+    std::function<result_t<std::optional<zlink::message_t>> (
+      const actor_ref_t &,
+      actor_context_t,
+      std::string_view,
+      const zlink::message_t &,
+      service_provider_t &,
+      serializer_registry_t &,
+      spot_actor_message_metadata_t)>
+      actor_packet_relay;
     std::map<std::string, actor_factory_registration_t> actor_factories;
     std::map<std::string, std::shared_ptr<void>> actor_instances;
+    std::map<std::string, spot_route_t> actor_routes;
+    std::map<std::string, std::shared_ptr<service::spot_t>> native_spots_by_rid;
     std::map<std::string, std::function<std::optional<spot_route_t> (spot_rid_t)>> resolvers;
     std::uint64_t next_spot_id = 1;
 };
@@ -73,6 +89,7 @@ class spot_context_state_t
         const auto rid = std::string (spot_rid.value ());
         node->spot_contexts_by_rid.erase (rid);
         node->spot_names_by_rid.erase (rid);
+        node->native_spots_by_rid.erase (rid);
         for (auto iterator = node->spot_rids_by_name.begin ();
              iterator != node->spot_rids_by_name.end (); ++iterator) {
             if (std::string (iterator->second.value ()) == rid) {
@@ -103,6 +120,7 @@ class spot_context_state_t
     std::vector<spot_handler_registry_t::invoker_t> handler_invokers;
     std::map<std::type_index, spot_actor_admission_callbacks_t> actor_admissions;
     std::vector<std::string> ordering_log;
+    std::weak_ptr<service::spot_t> native_spot;
     std::vector<std::shared_ptr<timer_state_t>> timers;
     std::shared_ptr<void> spot_instance;
     std::shared_ptr<runtime::offload_executor_t> serial_executor;
@@ -138,15 +156,44 @@ class spot_node_runtime_t
     std::optional<spot_info_t> find_spot (spot_rid_t spot_rid) const;
     std::vector<spot_info_t> list_spots () const;
     task_t<bool> close_spot (spot_rid_t spot_rid);
+    node_rid_t node_rid () const;
     std::optional<std::string> spot_name_for (spot_rid_t spot_rid) const;
     std::optional<spot_route_t> resolve_spot (spot_rid_t spot_rid) const;
+    std::optional<spot_rid_t> actor_spot (const actor_ref_t &actor_ref) const;
+    void record_actor_spot (const actor_ref_t &actor_ref, spot_rid_t spot_rid);
+    std::optional<spot_route_t> actor_route (const actor_ref_t &actor_ref) const;
+    void record_actor_route (const actor_ref_t &actor_ref, spot_route_t route);
+    std::optional<actor_ref_t> current_actor_ref (const actor_ref_t &actor_ref) const;
     const std::vector<std::string> &ordering_log (const spot_context_t &context) const;
+    void attach_native_node (std::shared_ptr<service::spot_node_t> node);
+    void detach_native_node ();
+    std::vector<spot_context_t> active_contexts () const;
+    result_t<void> dispatch_subscription (const spot_context_t &context,
+                                          std::string topic,
+                                          const zlink::message_t &message,
+                                          service_provider_t &services,
+                                          serializer_registry_t &serializers) const;
+    std::size_t drain_subscriptions (service_provider_t &services,
+                                     serializer_registry_t &serializers) const;
     void on_destroy_actor (std::function<result_t<void> (const actor_ref_t &)> destroy_actor);
     void on_actor_ref_updated (std::function<result_t<void> (const actor_ref_t &)> update_actor);
+    void on_actor_packet_relay (
+      std::function<result_t<std::optional<zlink::message_t>> (
+        const actor_ref_t &,
+        actor_context_t,
+        std::string_view,
+        const zlink::message_t &,
+        service_provider_t &,
+        serializer_registry_t &,
+        spot_actor_message_metadata_t)> relay);
     spot_node_manager_t manager () const;
     result_t<actor_join_reply_t> join_actor_to_spot_erased (const actor_ref_t &actor_ref,
                                                             spot_rid_t spot_rid,
                                                             const zlink::message_t &request);
+    result_t<actor_join_reply_t>
+    join_remote_actor_to_spot_erased (const actor_ref_t &actor_ref,
+                                      spot_rid_t spot_rid,
+                                      const zlink::message_t &request);
     result_t<actor_join_reply_t>
     join_actor_to_entry_spot_erased (const actor_ref_t &actor_ref,
                                      node_rid_t spot_node_rid,
@@ -358,6 +405,9 @@ class spot_node_runtime_t
         auto &context_state = *context._state;
         const auto key = actor_key (actor_ref);
         _state->actor_spot_rids[key] = context_state.spot_rid;
+        _state->actor_routes[key] =
+          spot_route_t{node_rid_t::from_string (_state->snapshot.name), context_state.spot_rid,
+                       context_state.spot_name};
         _state->actor_generations[key] = actor_ref.generation () + 1;
         context_state.actor_count++;
         context_state.on_actor_joined_callbacks[std::type_index (typeid (TActor))] = [] (void *spot,
@@ -406,6 +456,7 @@ class spot_node_runtime_t
         }
         auto previous_context = find_context (found_location->second);
         _state->actor_spot_rids.erase (found_location);
+        _state->actor_routes.erase (key);
         _state->actor_generations.erase (key);
         if (!previous_context) {
             return;

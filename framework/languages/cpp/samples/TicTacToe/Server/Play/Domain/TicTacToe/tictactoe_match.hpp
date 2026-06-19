@@ -20,14 +20,6 @@ class tictactoe_match_t
     {
     }
 
-    create_game_res_t create (const create_game_req_t &request)
-    {
-        if (request.game_name.empty ()) {
-            throw std::runtime_error ("game name must not be empty");
-        }
-        return {_state.room_id, "", request.game_name};
-    }
-
     join_game_res_t join (const std::string &actor_id, const join_game_req_t &request)
     {
         if (request.room_id != _state.room_id) {

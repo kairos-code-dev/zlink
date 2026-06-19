@@ -19,19 +19,52 @@ struct sample_topology_t
         topology.registry_router_endpoint =
           section.get ("registryRouterEndpoint").value_or (topology.registry_router_endpoint);
         topology.api_endpoint = section.get ("apiEndpoint").value_or (topology.api_endpoint);
+        topology.api_a_endpoint = section.get ("apiAEndpoint").value_or (topology.api_a_endpoint);
+        topology.api_b_endpoint = section.get ("apiBEndpoint").value_or (topology.api_b_endpoint);
         topology.api_http_endpoint =
           section.get ("apiHttpEndpoint").value_or (topology.api_http_endpoint);
+        topology.api_a_http_endpoint =
+          section.get ("apiAHttpEndpoint").value_or (topology.api_a_http_endpoint);
+        topology.api_b_http_endpoint =
+          section.get ("apiBHttpEndpoint").value_or (topology.api_b_http_endpoint);
         topology.play_endpoint = section.get ("playEndpoint").value_or (topology.play_endpoint);
+        topology.play_a_endpoint =
+          section.get ("playAEndpoint").value_or (topology.play_a_endpoint);
+        topology.play_b_endpoint =
+          section.get ("playBEndpoint").value_or (topology.play_b_endpoint);
+        topology.play_a_route_endpoint =
+          section.get ("playARouteEndpoint").value_or (topology.play_a_route_endpoint);
+        topology.play_b_route_endpoint =
+          section.get ("playBRouteEndpoint").value_or (topology.play_b_route_endpoint);
         topology.session_spot_endpoint =
           section.get ("sessionSpotEndpoint").value_or (topology.session_spot_endpoint);
         topology.session_router_endpoint =
           section.get ("sessionRouterEndpoint").value_or (topology.session_router_endpoint);
         topology.play_spot_endpoint =
           section.get ("playSpotEndpoint").value_or (topology.play_spot_endpoint);
+        topology.play_a_spot_endpoint =
+          section.get ("playASpotEndpoint").value_or (topology.play_a_spot_endpoint);
+        topology.play_b_spot_endpoint =
+          section.get ("playBSpotEndpoint").value_or (topology.play_b_spot_endpoint);
         topology.play_spot_router_endpoint =
           section.get ("playSpotRouterEndpoint").value_or (topology.play_spot_router_endpoint);
+        topology.play_a_spot_router_endpoint =
+          section.get ("playASpotRouterEndpoint").value_or (topology.play_a_spot_router_endpoint);
+        topology.play_b_spot_router_endpoint =
+          section.get ("playBSpotRouterEndpoint").value_or (topology.play_b_spot_router_endpoint);
         topology.stream_endpoint =
           section.get ("streamEndpoint").value_or (topology.stream_endpoint);
+        topology.play_a_stream_endpoint =
+          section.get ("playAStreamEndpoint").value_or (topology.play_a_stream_endpoint);
+        topology.play_b_stream_endpoint =
+          section.get ("playBStreamEndpoint").value_or (topology.play_b_stream_endpoint);
+        topology.api_node = section.get ("apiNode").value_or (topology.api_node);
+        topology.play_node = section.get ("playNode").value_or (topology.play_node);
+        topology.play_a_node_rid = section.get ("playANodeRid").value_or (topology.play_a_node_rid);
+        topology.play_b_node_rid = section.get ("playBNodeRid").value_or (topology.play_b_node_rid);
+        topology.redis_endpoint = section.get ("redisEndpoint").value_or (topology.redis_endpoint);
+        topology.redis_key_prefix =
+          section.get ("redisKeyPrefix").value_or (topology.redis_key_prefix);
         if (auto value = section.get ("sessionRid")) {
             topology.session_rid = zlink::routing_id_t::from (*value);
         }
@@ -44,15 +77,90 @@ struct sample_topology_t
     std::string registry_pub_endpoint = "tcp://127.0.0.1:48101";
     std::string registry_router_endpoint = "tcp://127.0.0.1:48102";
     std::string api_endpoint = "tcp://127.0.0.1:48103";
+    std::string api_a_endpoint = "tcp://127.0.0.1:48103";
+    std::string api_b_endpoint = "tcp://127.0.0.1:48123";
     std::string api_http_endpoint = "http://127.0.0.1:48113";
+    std::string api_a_http_endpoint = "http://127.0.0.1:48113";
+    std::string api_b_http_endpoint = "http://127.0.0.1:48124";
     std::string play_endpoint = "tcp://127.0.0.1:48104";
+    std::string play_a_endpoint = "tcp://127.0.0.1:48104";
+    std::string play_b_endpoint = "tcp://127.0.0.1:48114";
+    std::string play_a_route_endpoint = "tcp://127.0.0.1:48115";
+    std::string play_b_route_endpoint = "tcp://127.0.0.1:48116";
     std::string session_spot_endpoint = "tcp://127.0.0.1:48105";
     std::string session_router_endpoint = "tcp://127.0.0.1:48106";
     std::string play_spot_endpoint = "tcp://127.0.0.1:48110";
+    std::string play_a_spot_endpoint = "tcp://127.0.0.1:48110";
+    std::string play_b_spot_endpoint = "tcp://127.0.0.1:48120";
     std::string play_spot_router_endpoint = "tcp://127.0.0.1:48111";
+    std::string play_a_spot_router_endpoint = "tcp://127.0.0.1:48111";
+    std::string play_b_spot_router_endpoint = "tcp://127.0.0.1:48121";
     std::string stream_endpoint = "tcp://127.0.0.1:48112";
+    std::string play_a_stream_endpoint = "tcp://127.0.0.1:48112";
+    std::string play_b_stream_endpoint = "tcp://127.0.0.1:48122";
+    std::string api_node = "a";
+    std::string play_node = "a";
+    std::string play_a_node_rid = "play-node-1";
+    std::string play_b_node_rid = "play-node-2";
+    std::string redis_endpoint = "127.0.0.1:6379";
+    std::string redis_key_prefix = "zlink:tictactoe-cpp:room:";
     zlink::routing_id_t session_rid = zlink::routing_id_t::from ("1101");
     zlink::routing_id_t play_rid = zlink::routing_id_t::from ("2202");
+
+    std::string selected_api_endpoint () const
+    {
+        return api_node == "b" ? api_b_endpoint : api_a_endpoint;
+    }
+
+    std::string selected_api_http_endpoint () const
+    {
+        return api_node == "b" ? api_b_http_endpoint : api_a_http_endpoint;
+    }
+
+    std::string selected_play_endpoint () const
+    {
+        return play_node == "b" ? play_b_endpoint : play_a_endpoint;
+    }
+
+    std::string peer_play_endpoint () const
+    {
+        return play_node == "b" ? play_a_endpoint : play_b_endpoint;
+    }
+
+    std::string selected_play_route_endpoint () const
+    {
+        return play_node == "b" ? play_b_route_endpoint : play_a_route_endpoint;
+    }
+
+    std::string peer_play_route_endpoint () const
+    {
+        return play_node == "b" ? play_a_route_endpoint : play_b_route_endpoint;
+    }
+
+    std::string selected_play_spot_endpoint () const
+    {
+        return play_node == "b" ? play_b_spot_endpoint : play_a_spot_endpoint;
+    }
+
+    std::string peer_play_spot_endpoint () const
+    {
+        return play_node == "b" ? play_a_spot_endpoint : play_b_spot_endpoint;
+    }
+
+    std::string selected_play_spot_router_endpoint () const
+    {
+        return play_node == "b" ? play_b_spot_router_endpoint : play_a_spot_router_endpoint;
+    }
+
+    std::string selected_stream_endpoint () const
+    {
+        return play_node == "b" ? play_b_stream_endpoint : play_a_stream_endpoint;
+    }
+
+    std::string selected_play_node_rid () const
+    {
+        return play_node == "b" ? play_b_node_rid : play_a_node_rid;
+    }
 };
 
 } // namespace zlink::samples::tictactoe

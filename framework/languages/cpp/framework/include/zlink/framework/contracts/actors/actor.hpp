@@ -49,6 +49,7 @@ class actor_ref_t
 };
 
 class actor_gateway_t;
+class route_client_t;
 
 struct actor_join_result_t
 {
@@ -284,6 +285,11 @@ class actor_gateway_t
     void bind_session_stream (std::string actor_id,
                               stream_t stream,
                               stream_codec_t codec = stream_codec_t::message_pack);
+    void bind_session_route (actor_ref_t actor_ref,
+                             route_client_t route_client,
+                             std::string route_channel_name,
+                             zlink::routing_id_t target_node_rid,
+                             stream_codec_t codec = stream_codec_t::message_pack);
     void unbind_session_stream (std::string actor_id);
 
   private:

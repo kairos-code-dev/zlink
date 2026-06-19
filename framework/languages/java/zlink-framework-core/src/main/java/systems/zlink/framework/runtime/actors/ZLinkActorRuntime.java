@@ -30,6 +30,7 @@ import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
+import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
@@ -52,6 +53,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         ignored -> CompletableFuture.completedFuture(null);
     private Function<RoutingId, ZLinkSpot<?>> spotResolver = ignored -> null;
     private ZLinkSpotRemoteAddressResolver remoteAddressResolver;
+    private ZLinkChannelRuntime routedTransport;
+    private Supplier<RoutingId> sourceEntrySpotRid = () -> RoutingId.from(new byte[0]);
 
     public ZLinkActorRuntime(
         ZLinkBackendSpotNode spotNode,
@@ -180,6 +183,19 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         return context.actorRef;
     }
 
+    public ZLinkBackendActorRef currentRef(ZLinkActor actor) {
+        return refFor(actor);
+    }
+
+    String actorTypeFor(ZLinkActor actor) {
+        String actorType = actorTypes.get(actor.actorId());
+        if (actorType == null || actorType.isBlank()) {
+            throw new ZLinkConfigurationException(
+                "actor type is not available: " + actor.actorId());
+        }
+        return actorType;
+    }
+
     long bindSession(ZLinkActor actor, ZLinkBoundSession boundSession) {
         DefaultActorContext context = contextsByActor.get(actor);
         if (context == null) {
@@ -225,6 +241,57 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 "actor is not managed by this runtime: " + actor.actorId());
         }
         return Optional.ofNullable(context.spotRid);
+    }
+
+    public boolean canRouteRemoteJoinedSpot(RoutingId spotRid) {
+        return spotRid != null
+            && spotResolver.apply(spotRid) == null
+            && remoteAddressResolver != null
+            && routedTransport != null;
+    }
+
+    public CompletionStage<Optional<Message>> dispatchRemoteJoinedActor(
+        ZLinkBackendActorRef actorRef,
+        RoutingId spotRid,
+        systems.zlink.framework.streams.ZLinkStreamHeader header,
+        Message payload) {
+        if (!canRouteRemoteJoinedSpot(spotRid)) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "actor Spot is not routable: " + spotRid));
+        }
+        return remoteAddressResolver.resolveSpotRemoteAddressAsync(spotRid)
+            .thenCompose(address -> {
+                List<Message> parts =
+                    ZLinkActorSpotRoutePackets.createActorPacketParts(actorRef, header, payload);
+                try {
+                    if (header.requestSequence().isPresent()
+                        || header.kind() == systems.zlink.framework.streams.ZLinkStreamMessageKind.REQUEST) {
+                        return routedTransport.requestToSpotViaEgressChannel(
+                                address.routerChannelId(),
+                                address.targetNodeRid(),
+                                address.spotRid(),
+                                parts,
+                                defaultTimeout)
+                            .thenApply(replyParts -> {
+                                try {
+                                    return replyParts.isEmpty()
+                                        ? Optional.<Message>empty()
+                                        : Optional.of(Message.from(replyParts.get(0)));
+                                } finally {
+                                    replyParts.forEach(Message::close);
+                                }
+                            });
+                    }
+                    return routedTransport.sendToSpotViaEgressChannel(
+                            address.routerChannelId(),
+                            address.targetNodeRid(),
+                            address.spotRid(),
+                            parts)
+                        .thenApply(ignored -> Optional.<Message>empty());
+                } finally {
+                    parts.forEach(Message::close);
+                }
+            });
     }
 
     public boolean hasActorsInSpot(RoutingId spotRid) {
@@ -293,6 +360,15 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         this.remoteAddressResolver = remoteAddressResolver;
     }
 
+    public void setRoutedTransport(
+        ZLinkChannelRuntime routedTransport,
+        Supplier<RoutingId> sourceEntrySpotRid) {
+        this.routedTransport = routedTransport;
+        this.sourceEntrySpotRid = sourceEntrySpotRid == null
+            ? () -> RoutingId.from(new byte[0])
+            : sourceEntrySpotRid;
+    }
+
     public CompletionStage<Void> notifyDisconnected(ZLinkActor actor) {
         if (actor == null) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
@@ -330,8 +406,34 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         ZLinkActor actor,
         ZLinkBackendSpotNode spotNode,
         ZLinkBackendActorRef actorRef) {
+        DefaultActorContext context = contextsByActor.get(actor);
+        if (context == null) {
+            throw new ZLinkConfigurationException(
+                "actor is not managed by this runtime: " + actor.actorId());
+        }
+        context.actorRef = actorRef;
         ZLinkNativeBoundSessionRuntime boundSession = new ZLinkNativeBoundSessionRuntime(
             spotNode,
+            actorRef,
+            serializer,
+            this,
+            actor,
+            defaultTimeout,
+            defaultStreamCodec);
+        long bindingToken = bindSession(actor, boundSession);
+        boundSession.setBindingToken(bindingToken);
+    }
+
+    public void bindRoutedSession(
+        ZLinkActor actor,
+        String routeChannelName,
+        RoutingId targetRoutePeerRid,
+        RoutingId targetEntrySpotRid,
+        ZLinkBackendActorRef actorRef) {
+        ZLinkRoutedBoundSessionRuntime boundSession = new ZLinkRoutedBoundSessionRuntime(
+            spotNode.entrySpot(),
+            targetRoutePeerRid,
+            targetEntrySpotRid,
             actorRef,
             serializer,
             this,
@@ -689,11 +791,16 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             }
             Message requestPart = Message.from(request);
             ZLinkSpot<?> localSpot = spotResolver.apply(spotRid);
+            if (localSpot == null && remoteAddressResolver != null && routedTransport != null) {
+                return joinRemoteRoutedSpot(replyType, requestPart)
+                    .whenComplete((ignored, error) -> requestPart.close())
+                    .thenApply(result -> decodeJoinResult(result, replyType));
+            }
             CompletionStage<RoutingId> targetNode =
                 localSpot != null
                     ? CompletableFuture.completedFuture(context.actorRef.nodeRid())
                     : resolveRemoteTargetNode(spotRid);
-            return targetNode.handle((nodeRid, error) -> {
+                return targetNode.handle((nodeRid, error) -> {
                     if (error != null) {
                         requestPart.close();
                         throw new CompletionException(error);
@@ -710,37 +817,88 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                     }
                 })
                 .thenCompose(stage -> stage)
-                    .thenApply(result -> {
-                        if (result.result() != ZLinkBackendRequestResult.OK) {
-                            throw new ZLinkConfigurationException(
-                                "actor spot join failed: " + result.result());
+                    .thenApply(result -> decodeJoinResult(result, replyType));
+        }
+
+        private <TReply> ZLinkActorJoinResult<TReply> decodeJoinResult(
+            ZLinkBackendActorJoinResult result,
+            Class<TReply> replyType) {
+            if (result.result() != ZLinkBackendRequestResult.OK) {
+                throw new ZLinkConfigurationException(
+                    "actor spot join failed: " + result.result());
+            }
+            Message emptyReply = null;
+            try {
+                if (result.joinResultCode() == 0) {
+                    context.actorRef = result.actor();
+                    context.spotRid = result.joinedSpotRid();
+                    context.spot = spotResolver.apply(result.joinedSpotRid());
+                    context.joined = true;
+                }
+                Message firstReply = result.replyParts().isEmpty()
+                    ? (emptyReply = Message.from(new byte[0]))
+                    : result.replyParts().get(0);
+                TReply reply = serializer.deserialize(firstReply, replyType);
+                return new ZLinkActorJoinResult<>(
+                    result.joinResultCode(),
+                    new ZLinkActorRef(
+                        result.actor().nodeRid(),
+                        result.actor().actorId(),
+                        result.actor().epoch()),
+                    reply);
+            } finally {
+                if (emptyReply != null) {
+                    emptyReply.close();
+                }
+                result.replyParts().forEach(Message::close);
+            }
+        }
+
+        private <TReply> CompletionStage<ZLinkBackendActorJoinResult> joinRemoteRoutedSpot(
+            Class<TReply> replyType,
+            Message requestPart) {
+            return remoteAddressResolver.resolveSpotRemoteAddressAsync(spotRid)
+                .thenCompose(address -> {
+                    List<Message> joinParts = ZLinkActorSpotRoutePackets.createJoinRequestParts(
+                        context.actorRef.actorId(),
+                        actorTypes.getOrDefault(context.actorRef.actorId(), ""),
+                        context.actorRef,
+                        sourceEntrySpotRid.get(),
+                        requestPart);
+                    try {
+                        return routedTransport.requestToSpotViaEgressChannel(
+                            address.routerChannelId(),
+                            address.targetNodeRid(),
+                            address.spotRid(),
+                            joinParts,
+                            timeout);
+                    } finally {
+                        joinParts.forEach(Message::close);
+                    }
+                })
+                .thenApply(replyParts -> {
+                    Message emptyReply = null;
+                    try {
+                        Message first = replyParts.isEmpty()
+                            ? (emptyReply = Message.from(new byte[0]))
+                            : replyParts.get(0);
+                        ZLinkActorSpotRoutePackets.JoinReply reply =
+                            ZLinkActorSpotRoutePackets.decodeJoinReply(first);
+                        return new ZLinkBackendActorJoinResult(
+                            ZLinkBackendRequestResult.OK,
+                            reply.accepted() ? 0 : 1,
+                            reply.actorRef(),
+                            spotRid,
+                            reply.actorRef().epoch(),
+                            0,
+                            List.of(reply.reply()));
+                    } finally {
+                        if (emptyReply != null) {
+                            emptyReply.close();
                         }
-                        Message emptyReply = null;
-                        try {
-                            if (result.joinResultCode() == 0) {
-                                context.actorRef = result.actor();
-                                context.spotRid = result.joinedSpotRid();
-                                context.spot = spotResolver.apply(result.joinedSpotRid());
-                                context.joined = true;
-                            }
-                            Message firstReply = result.replyParts().isEmpty()
-                                ? (emptyReply = Message.from(new byte[0]))
-                                : result.replyParts().get(0);
-                            TReply reply = serializer.deserialize(firstReply, replyType);
-                            return new ZLinkActorJoinResult<>(
-                                result.joinResultCode(),
-                                new ZLinkActorRef(
-                                    result.actor().nodeRid(),
-                                    result.actor().actorId(),
-                                    result.actor().epoch()),
-                                reply);
-                        } finally {
-                            if (emptyReply != null) {
-                                emptyReply.close();
-                            }
-                            result.replyParts().forEach(Message::close);
-                        }
-                    });
+                        replyParts.forEach(Message::close);
+                    }
+                });
         }
 
         private CompletionStage<RoutingId> resolveRemoteTargetNode(RoutingId spotRid) {

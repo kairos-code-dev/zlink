@@ -403,8 +403,21 @@ class spot_context_t
 
     template <typename TEvent> send_call_t publish (std::string topic, TEvent event)
     {
-        (void) event;
-        return publish_erased (std::move (topic));
+        auto *serializers = serializer_registry ();
+        if (serializers == nullptr) {
+            return send_call_t (result_t<void>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "spot publish requires a serializer registry"));
+        }
+        try {
+            auto payload = serializers->get<TEvent> ().serialize (event);
+            return publish_erased (std::move (topic), detail::message_name<TEvent> (),
+                                   std::move (payload));
+        }
+        catch (const framework_exception_t &error) {
+            return send_call_t (
+              result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+        }
     }
 
     template <typename TReply, typename TRequest>
@@ -526,7 +539,10 @@ class spot_context_t
 
     explicit spot_context_t (std::shared_ptr<detail::spot_context_state_t> state);
 
-    send_call_t publish_erased (std::string topic);
+    send_call_t publish_erased (std::string topic,
+                                std::string packet_name,
+                                zlink::message_t payload);
+    serializer_registry_t *serializer_registry () const noexcept;
     send_call_t send_to_erased (node_rid_t node_rid, spot_rid_t spot_rid);
     erased_request_call_t request_to_erased (node_rid_t node_rid, spot_rid_t spot_rid);
     spot_context_t &register_packet_erased (std::string packet_name, std::type_index payload_type);
@@ -838,6 +854,7 @@ class spot_node_manager_t
     task_t<bool> close_spot (spot_rid_t spot_rid);
     std::optional<std::string> spot_name_for (spot_rid_t spot_rid) const;
     std::optional<spot_route_t> resolve_spot (spot_rid_t spot_rid) const;
+    std::optional<actor_ref_t> current_actor_ref (const actor_ref_t &actor_ref) const;
     result_t<std::optional<zlink::message_t>>
     relay_actor_packet (const actor_ref_t &actor_ref,
                         actor_context_t actor_context,
@@ -915,10 +932,13 @@ class spot_node_builder_t
     spot_node_builder_t &enable_pub_sub (std::string endpoint);
     spot_node_builder_t &enable_pub_sub (std::string endpoint, zlink::routing_id_t routing_id);
     spot_node_builder_t &connect_pub_sub (std::string endpoint);
+    spot_node_builder_t &connect_peer_pub (std::string endpoint);
     spot_node_builder_t &enable_actor_gateway ();
     spot_node_builder_t &use_discovery (std::string channel_name);
     spot_node_builder_t &use_registry_spot_remote_addresses ();
     spot_node_builder_t &use_registry_spot_remote_addresses (std::string route_channel_name);
+    spot_node_builder_t &use_registry_spot_resolver ();
+    spot_node_builder_t &use_registry_spot_resolver (std::string route_channel_name);
     spot_node_builder_t &accept_routes_from_channel (std::string route_channel_name,
                                                      std::string endpoint);
     spot_node_builder_t &

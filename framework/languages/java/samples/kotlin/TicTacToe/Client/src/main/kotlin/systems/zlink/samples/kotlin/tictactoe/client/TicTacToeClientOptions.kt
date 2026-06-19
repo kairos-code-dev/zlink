@@ -5,6 +5,7 @@ data class TicTacToeClientOptions(
     val gameName: String,
     val xActorId: String,
     val oActorId: String,
+    val observerActorId: String,
 ) {
     companion object {
         fun createDefault(): TicTacToeClientOptions =
@@ -13,6 +14,7 @@ data class TicTacToeClientOptions(
                 gameName = TicTacToeSampleDefaults.GameName,
                 xActorId = TicTacToeSampleDefaults.XActorId,
                 oActorId = TicTacToeSampleDefaults.OActorId,
+                observerActorId = TicTacToeSampleDefaults.ObserverActorId,
             )
     }
 }

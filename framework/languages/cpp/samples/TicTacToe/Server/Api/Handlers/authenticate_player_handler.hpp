@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "../../Configuration/sample_names.hpp"
 #include "../../../Shared/Contracts/messages.hpp"
 
 #include <string>
@@ -18,9 +19,12 @@ class authenticate_player_handler_t
     authenticate_player_res_t handle (const authenticate_player_req_t &request)
     {
         if (request.access_token.empty ()) {
-            return {false, "", "actor id must not be empty"};
+            return {false, {}, "actor id must not be empty"};
         }
-        return {true, request.access_token, ""};
+        const int wins = request.access_token == sample_names_t::x_actor_id ? 99 : 0;
+        return {true,
+                {request.access_token, request.access_token, sample_names_t::required_level, wins},
+                ""};
     }
 };
 

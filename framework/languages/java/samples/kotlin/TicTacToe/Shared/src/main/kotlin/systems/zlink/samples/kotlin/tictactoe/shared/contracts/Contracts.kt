@@ -2,19 +2,45 @@ package systems.zlink.samples.kotlin.tictactoe.shared.contracts
 
 data class AuthenticatePlayerReq(val accessToken: String)
 
-data class AuthenticatePlayerRes(val actorId: String)
+data class AuthenticatePlayerRes(val player: PlayerInfo)
 
-data class AuthenticateRes(val actorId: String)
+data class AuthenticateRes(val player: PlayerInfo)
 
 data class AuthenticateReq(val accessToken: String)
 
 data class CreateGameHttpReq(val gameName: String?)
 
-data class CreateGameHttpRes(val roomId: String, val playEndpoint: String, val gameName: String)
+data class CreateGameHttpRes(
+    val roomId: String,
+    val gameName: String,
+    val ownerPlayEndpoint: String,
+    val playEndpoints: List<String>,
+    val playNodes: List<PlayNodeInfo>,
+    val requiredLevel: Int,
+)
 
 data class CreateGameReq(val gameName: String)
 
-data class CreateGameRes(val roomId: String, val playEndpoint: String, val gameName: String)
+data class CreateGameRes(
+    val roomId: String,
+    val gameName: String,
+    val ownerPlayEndpoint: String,
+    val playEndpoints: List<String>,
+    val playNodes: List<PlayNodeInfo>,
+    val requiredLevel: Int,
+)
+
+data class PlayNodeInfo(
+    val streamEndpoint: String,
+    val spotNodeRid: String,
+)
+
+data class PlayerInfo(
+    val actorId: String,
+    val displayName: String,
+    val level: Int,
+    val wins: Int,
+)
 
 data class GameState(
     val roomId: String,
@@ -34,7 +60,7 @@ data class JoinGameRes(val state: GameState)
 
 data class JoinGameReq(val roomId: String)
 
-data class TicTacToeGameJoinReq(val roomId: String, val actorId: String)
+data class TicTacToeGameJoinReq(val roomId: String, val player: PlayerInfo)
 
 data class TicTacToeGameJoinRes(val state: GameState)
 
@@ -45,6 +71,29 @@ data class PlaceMarkReq(val cell: Int)
 data class PlayerJoinedNotify(
     val roomId: String,
     val actorId: String,
+    val displayName: String,
+    val level: Int,
     val mark: String,
     val state: GameState,
+)
+
+class ObserveMilestoneReq
+
+data class ObserveMilestoneRes(val subscribed: Boolean)
+
+data class LeaveGameReq(val roomId: String)
+
+data class PlayerWinMilestoneEvent(
+    val roomId: String,
+    val actorId: String,
+    val displayName: String,
+    val wins: Int,
+)
+
+data class WinMilestoneNotify(
+    val roomId: String,
+    val actorId: String,
+    val displayName: String,
+    val wins: Int,
+    val receivingSpotNodeRid: String,
 )

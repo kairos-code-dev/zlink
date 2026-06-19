@@ -85,6 +85,27 @@ channel_runtime_manager_t::get_route_channel (const std::string &router_channel_
                                  "route channel '" + router_channel_id + "' is not registered");
 }
 
+const route_handler_registry_t &
+channel_runtime_manager_t::get_route_handlers (const std::string &router_channel_id) const
+{
+    if (auto found = _state->route_handlers.find (router_channel_id);
+        found != _state->route_handlers.end ()) {
+        return found->second;
+    }
+    static const route_handler_registry_t empty;
+    return empty;
+}
+
+std::vector<std::string> channel_runtime_manager_t::route_channel_ids () const
+{
+    std::vector<std::string> ids;
+    ids.reserve (_state->route_channels.size ());
+    for (const auto &[route_id, _] : _state->route_channels) {
+        ids.push_back (route_id);
+    }
+    return ids;
+}
+
 void channel_runtime_manager_t::initialize_inbound_channels ()
 {
     for (const auto &[channel_name, channel] : _state->channels) {
@@ -150,6 +171,7 @@ void channel_runtime_manager_t::initialize_route_channels (
             continue;
         }
         auto initialized = initializer.initialize (registration->registration);
+        _state->route_handlers[route_id] = std::move (initialized.handlers);
         _state->route_channels.emplace (route_id, std::move (initialized.runtime));
     }
 }

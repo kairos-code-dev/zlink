@@ -54,6 +54,10 @@ class route_channel_runtime_t
     bool connect (std::string endpoint);
     bool disconnect (const std::string &endpoint);
     std::vector<std::string> list_connections () const;
+    void bind_endpoint (std::string endpoint);
+    const std::string &bind_endpoint () const noexcept;
+    void manual_connections (std::vector<std::string> endpoints);
+    std::vector<std::string> manual_connections () const;
 
     template <typename TMessage>
     result_t<void> submit_send (const zlink::routing_id_t &target_node_rid,
@@ -101,6 +105,12 @@ class route_channel_runtime_t
                                                    const zlink::routing_id_t &target_spot_rid,
                                                    runtime::messaging::message_parts_t parts);
 
+    result_t<runtime::messaging::message_parts_t>
+    request_reply_to_spot_parts (const zlink::routing_id_t &target_node_rid,
+                                 const zlink::routing_id_t &target_spot_rid,
+                                 runtime::messaging::message_parts_t parts,
+                                 std::chrono::milliseconds timeout);
+
     result_t<void> complete_request (std::uint64_t request_seq);
     void set_send_backend (send_backend_t backend);
     void set_request_backend (request_backend_t backend);
@@ -116,6 +126,8 @@ class route_channel_runtime_t
     mutable std::mutex _mutex;
     std::optional<zlink::routing_id_t> _routing_id;
     std::optional<std::string> _spot_route_egress_target;
+    std::string _bind_endpoint;
+    std::vector<std::string> _manual_connections;
     bool _running = false;
     route_connection_set_t _connections;
     channel_pending_requests_t _pending_requests;

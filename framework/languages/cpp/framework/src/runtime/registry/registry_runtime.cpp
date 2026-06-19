@@ -703,7 +703,28 @@ void registry_runtime_t::project_spot_node (const zlink_builder_state_t &builder
 
 void registry_runtime_t::add_spot_route (spot_route_t route)
 {
-    _state->spot_routes[std::string (route.spot_rid.value ())] = std::move (route);
+    const auto key = std::string (route.spot_rid.value ());
+    _state->spot_routes[key] = std::move (route);
+    const auto &stored = _state->spot_routes.at (key);
+    for (const auto &[_, discovery] : _state->spot_route_discoveries) {
+        if (discovery) {
+            (void) discovery->bind_spot_route (stored);
+        }
+    }
+}
+
+void registry_runtime_t::attach_spot_route_discovery (
+  std::string route_channel_name,
+  std::shared_ptr<spot_route_discovery_bridge_t> discovery)
+{
+    if (route_channel_name.empty () || !discovery) {
+        return;
+    }
+    auto bridge = discovery;
+    _state->spot_route_discoveries[std::move (route_channel_name)] = std::move (discovery);
+    for (const auto &[_, route] : _state->spot_routes) {
+        (void) bridge->bind_spot_route (route);
+    }
 }
 
 void registry_runtime_t::cleanup_stale_spot_routes (const std::set<std::string> &active_spot_rids)
@@ -722,6 +743,16 @@ result_t<spot_route_t> registry_runtime_t::resolve_spot_remote_address (spot_rid
     ++_state->spot_lookup_count;
     const auto found = _state->spot_routes.find (std::string (spot_rid.value ()));
     if (found == _state->spot_routes.end ()) {
+        for (const auto &[_, discovery] : _state->spot_route_discoveries) {
+            if (!discovery) {
+                continue;
+            }
+            auto route = discovery->resolve_spot_route (spot_rid);
+            if (route) {
+                _state->spot_routes[std::string (spot_rid.value ())] = route.value ();
+                return route;
+            }
+        }
         return result_t<spot_route_t>::failure (framework_error_kind_t::spot_route_not_found,
                                                 "registry spot route was not found");
     }

@@ -80,6 +80,17 @@ public class SocketPollingContractTest {
     }
 
     @Test
+    public void spotRecvRoutedDontWaitReturnsFalseWhenNoRouteMessageIsAvailable() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = Zlink.createContext();
+             SpotNode node = ctx.createSpotNode();
+             Received received = new Received()) {
+            assertFalse(node.entrySpot().recvRouted(received, RecvFlags.DONT_WAIT));
+        }
+    }
+
+    @Test
     public void pollerRejectsEmptyReusableEventBuffer() {
         assertThrows(IllegalArgumentException.class, () -> new PollEvents(0));
     }

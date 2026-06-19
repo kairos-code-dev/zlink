@@ -17,6 +17,7 @@ type TicTacToeSampleConfig = {
   playSpotPubSubEndpoints: string[];
   playStreamEndpoint: string;
   redisEndpoint: string;
+  redisKeyPrefix: string;
   playSpotNodeRid: string;
   peerPlaySpotNodeRid: string;
   peerPlaySpotEndpoint: string;
@@ -50,6 +51,7 @@ function loadSampleConfig(): TicTacToeSampleConfig {
     ),
     playStreamEndpoint: requireEnv('TICTACTOE_PLAY_STREAM_ENDPOINT'),
     redisEndpoint: requireEnv('TICTACTOE_REDIS_ENDPOINT'),
+    redisKeyPrefix: process.env.TICTACTOE_REDIS_KEY_PREFIX ?? 'tictactoe:room:',
     playSpotNodeRid: process.env.TICTACTOE_PLAY_SPOT_NODE_RID ?? 'play-node-1',
     peerPlaySpotNodeRid: process.env.TICTACTOE_PEER_PLAY_SPOT_NODE_RID ?? 'play-node-2',
     peerPlaySpotEndpoint: requireEnv('TICTACTOE_PEER_PLAY_SPOT_ENDPOINT'),

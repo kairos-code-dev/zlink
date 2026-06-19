@@ -90,6 +90,7 @@ class channel_runtime_state_t
     std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> publisher_bundles;
     std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> subscriber_bundles;
     std::map<std::string, std::shared_ptr<route_channel_runtime_t>> route_channels;
+    std::map<std::string, route_handler_registry_t> route_handlers;
     std::map<std::uint64_t, channel_reliability_event_t> pending_operations;
     std::vector<outbound_call_record_t> outbound_calls;
     serializer_registry_t *serializers = nullptr;

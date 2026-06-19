@@ -79,6 +79,29 @@ std::vector<std::string> route_channel_runtime_t::list_connections () const
     return _connections.list ();
 }
 
+void route_channel_runtime_t::bind_endpoint (std::string endpoint)
+{
+    std::lock_guard lock (_mutex);
+    _bind_endpoint = std::move (endpoint);
+}
+
+const std::string &route_channel_runtime_t::bind_endpoint () const noexcept
+{
+    return _bind_endpoint;
+}
+
+void route_channel_runtime_t::manual_connections (std::vector<std::string> endpoints)
+{
+    std::lock_guard lock (_mutex);
+    _manual_connections = std::move (endpoints);
+}
+
+std::vector<std::string> route_channel_runtime_t::manual_connections () const
+{
+    std::lock_guard lock (_mutex);
+    return _manual_connections;
+}
+
 result_t<void>
 route_channel_runtime_t::submit_send_parts (const zlink::routing_id_t &target_node_rid,
                                             runtime::messaging::message_parts_t parts)
@@ -160,12 +183,25 @@ route_channel_runtime_t::submit_spot_send_parts (const zlink::routing_id_t &targ
                                                  const zlink::routing_id_t &target_spot_rid,
                                                  runtime::messaging::message_parts_t parts)
 {
-    std::lock_guard lock (_mutex);
-    if (auto connected = ensure_connected (); !connected) {
-        return connected;
+    send_backend_t backend;
+    std::optional<zlink::routing_id_t> backend_target;
+    runtime::messaging::message_parts_t backend_parts;
+    {
+        std::lock_guard lock (_mutex);
+        if (auto connected = ensure_connected (); !connected) {
+            return connected;
+        }
+        _outbound_packets.push_back (
+          route_outbound_packet_t{target_node_rid, target_spot_rid, std::move (parts), std::nullopt});
+        if (_send_backend) {
+            backend = _send_backend;
+            backend_target = _outbound_packets.back ().target_node_rid;
+            backend_parts = _outbound_packets.back ().parts;
+        }
     }
-    _outbound_packets.push_back (
-      route_outbound_packet_t{target_node_rid, target_spot_rid, std::move (parts), std::nullopt});
+    if (backend) {
+        return backend (*backend_target, backend_parts);
+    }
     return result_t<void>::success ();
 }
 
@@ -174,17 +210,69 @@ route_channel_runtime_t::request_to_spot_parts (const zlink::routing_id_t &targe
                                                 const zlink::routing_id_t &target_spot_rid,
                                                 runtime::messaging::message_parts_t parts)
 {
-    std::lock_guard lock (_mutex);
-    if (auto connected = ensure_connected (); !connected) {
-        return result_t<std::uint64_t>::failure (
-          connected.error_kind (),
-          connected.error () ? connected.error ()->what () : "route channel is not connected");
+    request_backend_t backend;
+    std::uint64_t request_seq = 0;
+    {
+        std::lock_guard lock (_mutex);
+        if (auto connected = ensure_connected (); !connected) {
+            return result_t<std::uint64_t>::failure (
+              connected.error_kind (),
+              connected.error () ? connected.error ()->what () : "route channel is not connected");
+        }
+        request_seq = _pending_requests.next_request_seq ();
+        _pending_requests.register_request (request_seq, _router_channel_id);
+        _outbound_packets.push_back (
+          route_outbound_packet_t{target_node_rid, target_spot_rid, parts, request_seq});
+        if (_request_backend) {
+            backend = _request_backend;
+        }
     }
-    const auto request_seq = _pending_requests.next_request_seq ();
-    _pending_requests.register_request (request_seq, _router_channel_id);
-    _outbound_packets.push_back (
-      route_outbound_packet_t{target_node_rid, target_spot_rid, std::move (parts), request_seq});
+    if (backend) {
+        auto reply = backend (target_node_rid, parts, std::chrono::milliseconds (0));
+        std::lock_guard lock (_mutex);
+        _pending_requests.remove (request_seq);
+        if (!reply) {
+            return result_t<std::uint64_t>::failure (
+              reply.error_kind (),
+              reply.error () ? reply.error ()->what () : "route spot request failed");
+        }
+    }
     return result_t<std::uint64_t>::success (request_seq);
+}
+
+result_t<runtime::messaging::message_parts_t>
+route_channel_runtime_t::request_reply_to_spot_parts (const zlink::routing_id_t &target_node_rid,
+                                                      const zlink::routing_id_t &target_spot_rid,
+                                                      runtime::messaging::message_parts_t parts,
+                                                      std::chrono::milliseconds timeout)
+{
+    request_backend_t backend;
+    std::uint64_t request_seq = 0;
+    {
+        std::lock_guard lock (_mutex);
+        if (auto connected = ensure_connected (); !connected) {
+            return result_t<runtime::messaging::message_parts_t>::failure (
+              connected.error_kind (),
+              connected.error () ? connected.error ()->what () : "route channel is not connected");
+        }
+        request_seq = _pending_requests.next_request_seq ();
+        _pending_requests.register_request (request_seq, _router_channel_id);
+        _outbound_packets.push_back (
+          route_outbound_packet_t{target_node_rid, target_spot_rid, parts, request_seq});
+        if (!_request_backend) {
+            _pending_requests.remove (request_seq);
+            return result_t<runtime::messaging::message_parts_t>::failure (
+              framework_error_kind_t::timeout,
+              "route spot request reply was not completed by a backend");
+        }
+        backend = _request_backend;
+    }
+    auto reply = backend (target_node_rid, parts, timeout);
+    {
+        std::lock_guard lock (_mutex);
+        _pending_requests.remove (request_seq);
+    }
+    return reply;
 }
 
 result_t<void> route_channel_runtime_t::complete_request (std::uint64_t request_seq)

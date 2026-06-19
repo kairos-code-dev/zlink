@@ -283,6 +283,13 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             if (!nativeActorGatewayAttached && managedActor.isPresent()) {
                 return relayLocal(header, payloadBytes);
             }
+            if (managedActor.isPresent() && localActorDispatcher != null) {
+                Optional<RoutingId> joinedSpotRid = actors.spotRid(managedActor.get());
+                if (joinedSpotRid.isPresent()
+                    && actors.canRouteRemoteJoinedSpot(joinedSpotRid.get())) {
+                    return relayLocal(header, payloadBytes);
+                }
+            }
             return awaitRouteReady()
                 .thenCompose(ignored -> ensureNativeBinding())
                 .thenCompose(ignored -> relayWithRetry(header, payloadBytes));

@@ -155,11 +155,10 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     const auto authenticated = auth.handle ({"player-1"});
     ASSERT_TRUE (authenticated.accepted);
 
-    bingo_room_allocator_t rooms;
-    allocate_bingo_room_handler_t allocator (rooms);
-    const auto allocated = allocator.handle ({"two-player", authenticated.actor_id});
+    sample_topology_t topology;
+    const allocate_bingo_room_res_t allocated{"two-player-room-1", topology.selected_play_node_rid ()};
 
-    ensure_player_actor_handler_t actors;
+    ensure_player_actor_handler_t actors (topology);
     const auto actor = actors.handle ({authenticated.actor_id, authenticated.display_name});
     EXPECT_STREQ (actor.actor_type.c_str (), sample_names_t::player_actor_type);
 
@@ -180,7 +179,7 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     zlink::framework::spot_context_t room_context;
     room_spot.configure (room_context);
     const auto room_handlers = room_context.handlers ().descriptors ();
-    ASSERT_EQ (room_handlers.size (), 1U);
+    ASSERT_EQ (room_handlers.size (), 4U);
     EXPECT_EQ (room_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_packet);
     EXPECT_EQ (room_handlers[0].packet_name, submit_bingo_card_req_t::packet_name);
 
@@ -188,7 +187,7 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     zlink::framework::spot_context_t entry_context;
     entry_spot.configure (entry_context);
     const auto entry_handlers = entry_context.handlers ().descriptors ();
-    ASSERT_EQ (entry_handlers.size (), 1U);
+    ASSERT_EQ (entry_handlers.size (), 2U);
     EXPECT_EQ (entry_handlers[0].packet_name, match_bingo_req_t::packet_name);
 
     auto second_actor = actor_factory.create (actor_ref_snapshot_t{{}, "player-2", 1}, "Player 2");
@@ -227,16 +226,23 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     ASSERT_TRUE (authenticated.accepted);
 
     sample_topology_t topology;
-    tictactoe_game_creator_t creator;
-    const create_game_res_t created{creator.create_room_id (), topology.stream_endpoint,
-                                    "tictactoe-game"};
-    EXPECT_EQ (created.play_endpoint, topology.stream_endpoint);
+    const create_game_res_t created{std::string ("room-1"),
+                                    std::string ("tictactoe-game"),
+                                    topology.stream_endpoint,
+                                    {topology.stream_endpoint, topology.play_b_stream_endpoint},
+                                    {{topology.stream_endpoint, topology.play_a_node_rid},
+                                     {topology.play_b_stream_endpoint, topology.play_b_node_rid}},
+                                    sample_names_t::required_level};
+    EXPECT_EQ (created.owner_play_endpoint, topology.stream_endpoint);
     EXPECT_EQ (created.game_name, "tictactoe-game");
     tictactoe_match_t room (created.room_id);
-    room.create ({created.game_name});
-    EXPECT_EQ (room.join (sample_names_t::x_actor_id, {created.room_id}).state.x_actor_id,
+    EXPECT_EQ (room.join (sample_names_t::x_actor_id,
+                          {created.room_id, authenticated.player}).state.x_actor_id,
                sample_names_t::x_actor_id);
-    EXPECT_EQ (room.join (sample_names_t::o_actor_id, {created.room_id}).state.status,
+    EXPECT_EQ (room.join (sample_names_t::o_actor_id,
+                          {created.room_id,
+                           {sample_names_t::o_actor_id, sample_names_t::o_actor_id,
+                            sample_names_t::required_level, 0}}).state.status,
                "InProgress");
 
     entry_spot_t entry_spot;
@@ -244,11 +250,15 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     ASSERT_TRUE (game_spot.on_create (zlink::message_t::from (created.room_id)).accepted);
     const auto x_join =
       game_spot.on_actor_join (player_actor_t{sample_names_t::x_actor_id},
-                               to_stream_payload (join_game_req_t{created.room_id}));
+                               to_stream_payload (tictactoe_game_join_req_t{
+                                 created.room_id, authenticated.player}));
     ASSERT_TRUE (x_join.accepted);
     const auto game_join =
       game_spot.on_actor_join (player_actor_t{sample_names_t::o_actor_id},
-                               to_stream_payload (join_game_req_t{created.room_id}));
+                               to_stream_payload (tictactoe_game_join_req_t{
+                                 created.room_id,
+                                 {sample_names_t::o_actor_id, sample_names_t::o_actor_id,
+                                  sample_names_t::required_level, 0}}));
     ASSERT_TRUE (game_join.accepted);
     zlink::framework::spot_actor_request_context_t place_context{
       place_mark_req_t::packet_name, "application/json", {}, {}};
@@ -259,15 +269,18 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     zlink::framework::spot_context_t game_context;
     game_spot.configure (game_context);
     const auto game_handlers = game_context.handlers ().descriptors ();
-    ASSERT_EQ (game_handlers.size (), 1U);
+    ASSERT_EQ (game_handlers.size (), 2U);
     EXPECT_EQ (game_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_packet);
     EXPECT_EQ (game_handlers[0].packet_name, place_mark_req_t::packet_name);
+    EXPECT_EQ (game_handlers[1].packet_name, leave_game_req_t::packet_name);
 
     zlink::framework::spot_context_t entry_context;
     entry_spot.configure (entry_context);
     const auto entry_handlers = entry_context.handlers ().descriptors ();
-    ASSERT_EQ (entry_handlers.size (), 1U);
+    ASSERT_EQ (entry_handlers.size (), 3U);
     EXPECT_EQ (entry_handlers[0].packet_name, join_game_req_t::packet_name);
+    EXPECT_EQ (entry_handlers[1].packet_name, observe_milestone_req_t::packet_name);
+    EXPECT_EQ (entry_handlers[2].kind, zlink::framework::spot_handler_kind_t::subscription);
 
     const auto mapped = tictactoe_game_contract_mapper_t::to_contract (moved.state);
     EXPECT_EQ (mapped.room_id, created.room_id);
@@ -700,6 +713,8 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
     EXPECT_NE (tictactoe_runner.find ("full client/server self-check completed"),
                std::string::npos)
       << "TicTacToe runner must report the public client/server self-check";
+    EXPECT_NE (tictactoe_runner.find ("observer-win-milestone=verified"), std::string::npos)
+      << "TicTacToe runner must verify observer milestone delivery";
     EXPECT_NE (tictactoe_runner.find ("\n\"$CLIENT_BIN\""), std::string::npos)
       << "TicTacToe runner must execute the public client binary";
     EXPECT_EQ (tictactoe_runner.find ("full e2e completed"), std::string::npos)
@@ -849,9 +864,10 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithActorGateway
     EXPECT_FALSE (std::filesystem::exists (tictactoe_root / "Server/Registry"));
     EXPECT_EQ (api_factory.find ("options.use_discovery ()"), std::string::npos);
     EXPECT_EQ (play_factory.find ("options.use_discovery ()"), std::string::npos);
-    EXPECT_EQ (play_factory.find ("options.use_registry_spot_remote_addresses"), std::string::npos);
-    EXPECT_NE (api_factory.find (".enable_client (topology.play_endpoint)"), std::string::npos);
-    EXPECT_EQ (play_factory.find ("options.add_route_mesh_channel"), std::string::npos);
+    EXPECT_NE (play_factory.find (".use_registry_spot_resolver"), std::string::npos);
+    EXPECT_NE (api_factory.find (".enable_client (topology.selected_play_endpoint ())"),
+               std::string::npos);
+    EXPECT_NE (play_factory.find ("options.add_route_mesh_channel"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<entry_spot_t> ()"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)"),
@@ -861,9 +877,10 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithActorGateway
     EXPECT_NE (play_factory.find ("options.add_stream_node (sample_names_t::stream_name)"),
                std::string::npos);
     EXPECT_NE (play_factory.find (".register_session<play_session_t> ()"), std::string::npos);
-    EXPECT_NE (play_factory.find (".attach_actor_gateway (sample_names_t::spot_node)"),
+    EXPECT_NE (play_factory.find (".attach_actor_gateway (topology.selected_play_node_rid ())"),
                std::string::npos);
-    EXPECT_NE (api_factory.find (".listen (topology.api_http_endpoint)"), std::string::npos);
+    EXPECT_NE (api_factory.find (".listen (topology.selected_api_http_endpoint ())"),
+               std::string::npos);
     EXPECT_NE (api_factory.find (".map_post<create_game_http_handler_t> (\"/games\")"),
                std::string::npos);
     EXPECT_NE (api_factory.find (".add_json"), std::string::npos);
@@ -878,7 +895,8 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithActorGateway
     EXPECT_NE (create_game_handler.find ("zlink::framework::channel_client_t"), std::string::npos);
     EXPECT_NE (create_game_handler.find ("sample_names_t::play_channel"), std::string::npos);
     EXPECT_NE (create_game_handler.find ("create_game_req_t{game_name}"), std::string::npos);
-    EXPECT_NE (play_factory.find ("add_singleton<tictactoe_game_creator_t>"), std::string::npos);
+    EXPECT_NE (play_factory.find ("add_singleton<tictactoe_game_creator_t"), std::string::npos);
+    EXPECT_NE (play_factory.find ("redis_room_route_store_t"), std::string::npos);
     EXPECT_NE (play_factory.find (".add<create_game_handler_t> (\"play\")"), std::string::npos);
     EXPECT_EQ (api_factory.find ("add_singleton<create_game_room_handler_t>"), std::string::npos);
     EXPECT_FALSE (std::filesystem::exists (
@@ -894,7 +912,10 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithActorGateway
     EXPECT_EQ (client.find (".json ()"), std::string::npos);
     EXPECT_EQ (client.find ("create_room (options)"), std::string::npos);
     EXPECT_EQ (client.find ("static create_game_http_res_t create_room"), std::string::npos);
-    EXPECT_NE (client.find ("connector_options.endpoint = room.play_endpoint"), std::string::npos);
+    EXPECT_NE (client.find ("connector_options.endpoint = room.owner_play_endpoint"),
+               std::string::npos);
+    EXPECT_NE (client.find ("observe_milestone_req_t"), std::string::npos);
+    EXPECT_NE (client.find ("win_milestone_notify_t"), std::string::npos);
     EXPECT_NE (client.find ("client1.request (authenticate_req_t"), std::string::npos);
     EXPECT_NE (client.find (".async<authenticate_res_t> ()"), std::string::npos);
     EXPECT_NE (client.find ("client1.wait_for<game_state_notify_t>"), std::string::npos);

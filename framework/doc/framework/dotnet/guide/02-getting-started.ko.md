@@ -32,7 +32,7 @@ channel request를 보내는 부분만 본다.
 
 현재 저장소의 `TicTacToe.Server.csproj`는 NuGet 패키지가 아니라 프로젝트 참조로
 `src/Zlink.Framework`, `src/Zlink.Framework.AspNetCore`,
-`bindings/dotnet/src/Zlink`, `src/Zlink.Framework.Codecs.MessagePack`을
+`src/Systems.Zlink.Stream.Connector`, `bindings/dotnet/src/Zlink`를
 가져온다. 소스에서 사용하는 framework namespace는 `Zlink.Framework.*`다.
 
 ## 2. 첫 요청 흐름
@@ -88,7 +88,7 @@ builder.WebHost.UseUrls(settings.ApiBindUrl);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.Use(ZLinkMessagePackCodec.Default);
+    options.Codecs.AddJson();
 
     options.AddClientServerChannel(SampleChannels.Play)
         .EnableClient(settings.PlayChannelEndpoint);
@@ -132,19 +132,17 @@ public static async Task<IResult> HandleAsync(
 
 ## 5. Play 서버: channel handler 노출하기
 
-Play 서버는 `Play` channel의 server 역할을 열고 handler group `"play"`를 붙인다.
+Play 서버는 `Play` channel의 server 역할을 열고 `CreateGameHandler`를
+`AddRequestHandler<>`로 등록한다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.Use(ZLinkMessagePackCodec.Default);
-    options.AddHandlersFromAssemblyOf<PlayServer>();
-    {
-        var channel =     options.AddClientServerChannel(SampleChannels.Play);
-        channel.EnableServer(settings.PlayChannelEndpoint);
-        channel.AddHandlerGroup("play");
+    options.Codecs.AddJson();
 
-    }
+    options.AddClientServerChannel(SampleChannels.Play)
+        .EnableServer(settings.PlayChannelEndpoint)
+        .AddRequestHandler<CreateGameHandler>();
 });
 ```
 
@@ -152,13 +150,12 @@ builder.Services.AddZLinkFramework(options =>
 실제 구현은 room SPOT을 만들기 때문에 [05-spot](05-spot.ko.md)에서 다시 이어진다.
 
 ```csharp
-[ZLinkHandlerGroup("play")]
 sealed class CreateGameHandler(
     TicTacToeGameCreator games,
     ILogger<CreateGameHandler> logger)
+    : IZLinkRequestHandler<CreateGameReq, CreateGameRes>
 {
-    [ZLinkRequest]
-    public async ValueTask<CreateGameRes> CreateAsync(
+    public async ValueTask<CreateGameRes> HandleAsync(
         CreateGameReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)

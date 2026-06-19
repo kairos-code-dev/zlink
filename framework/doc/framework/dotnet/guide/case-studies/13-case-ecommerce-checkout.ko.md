@@ -354,8 +354,8 @@ route 된다(케이스 §3 의 channel routing 을 owner 소유권으로 확장)
   projection 을 삭제해도 stream replay 로 다시 만든다(`RebuildOrderProjectionReq`).
 - **idempotency 를 owner 안에서**: 같은 `IdempotencyKey` 는 같은 `OrderId` 로 모이고,
   pending → started mapping 으로 중복 시작과 중간 실패 복구를 구분한다.
-- **보상 흐름**: 결제 실패 시 `InventoryReleasedEvent → OrderFailedEvent` 로 재고 예약을
-  되돌린다(성공/재고실패/결제실패 3 branch 의 event sequence 고정).
+- **보상 흐름**: 결제 실패 시 `PaymentFailedEvent → InventoryReleasedEvent → OrderFailedEvent`
+  로 재고 예약을 되돌린다(성공/재고실패/결제실패 3 branch 의 event sequence 고정).
 - **scale-out routing**: 서로 다른 주문은 서로 다른 `OrderWorkflow` instance 에서 동시
   처리되고, 두 instance 어디서 조회해도 같은 projection 을 반환한다.
 - **codec**: 읽기 쉬운 JSON payload.

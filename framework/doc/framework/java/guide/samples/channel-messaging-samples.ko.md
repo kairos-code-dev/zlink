@@ -131,7 +131,7 @@ CompletionStage<Void> submitted = fanoutClient.publish(
 ## 7. Routed channel 호출
 
 ```java
-routeClient.request(
+routeClient.requestTo(
     "play-route",
     targetNodeRid,
     new InspectRoomRequest(roomId)

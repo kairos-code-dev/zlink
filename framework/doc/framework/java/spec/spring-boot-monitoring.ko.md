@@ -30,7 +30,7 @@ framework나 registry 등록으로 만들어져 있어야 한다.
 @Configuration
 public class MonitoringConfig {
     @Bean
-    ZLinkMonitoringCustomizer zlinkMonitoringCustomizer() {
+    ZLinkMonitoringOptionsCustomizer zlinkMonitoringOptionsCustomizer() {
         return options -> {
             options.addSocketEvents(
                 "profile.server",
@@ -88,8 +88,7 @@ source 이름은 logical name을 쓰는 편이 자연스럽다.
 - registry: `registry`, `ops-registry`
 - spot: `stage-node`
 
-Spring adapter는 typed event handler를 우선 호출한다. 필요하면 같은 event를 Spring
-`ApplicationEventPublisher`로도 내보낼 수 있지만, public 계약은
+Spring adapter는 typed event handler를 호출한다. public 계약은
 `ZLinkRuntimeEventHandler<T>`가 기준이다.
 
 ## 4. Event 모델
@@ -98,13 +97,9 @@ event payload는 source별 record로 둔다. application handler는 native event
 registry snapshot 형식을 직접 해석하지 않는다.
 
 ```java
-public sealed interface ZLinkRuntimeEvent permits
-    ZLinkSocketEvent,
-    ZLinkRegistryEvent,
-    ZLinkSpotEvent {
-
+public interface ZLinkRuntimeEvent {
     String sourceName();
-    Instant observedAt();
+    Instant timestamp();
 }
 
 public interface ZLinkRuntimeEventHandler<T extends ZLinkRuntimeEvent> {
@@ -113,9 +108,7 @@ public interface ZLinkRuntimeEventHandler<T extends ZLinkRuntimeEvent> {
 ```
 
 handler 실패는 monitoring runner를 중단하지 않는다. 실패 event를 내부 logger와
-diagnostic counter에 기록하고 다음 event dispatch를 계속한다. 같은 event를 Spring
-`ApplicationEventPublisher`로 내보내는 기능은 bridge일 뿐이며, typed handler 호출
-여부를 바꾸지 않는다.
+diagnostic counter에 기록하고 다음 event dispatch를 계속한다.
 
 ## 5. Lifecycle
 
@@ -133,14 +126,13 @@ runtime을 멈춘다. 일시적인 registry query 실패나 spot snapshot 실패
 
 ## 6. 검증 기준
 
-- monitoring source 이름이 실제 channel, registry, SpotNode와 맞지 않으면
-  startup validation 오류다.
+- socket/SpotNode monitoring source 이름이 runtime source name과 맞지 않으면
+  startup validation 오류다. registry source는 embedded registry 존재 여부로 매핑되어
+  event label로 쓰인다.
 - registry/spot polling interval이 `0` 이하이면 startup validation 오류다.
 - socket native event는 typed event로 변환된다.
-- registry/spot snapshot diff는 typed event로 변환된다.
-- timer handler exception은 spot runtime event로 관찰된다.
+- registry/spot snapshot diff는 typed event로 변환된다(발행 spot event는 status/peers/subjects).
 - `ZLinkRuntimeEventHandler<T>` 실패는 monitoring runner를 중단하지 않는다.
-- Spring application event bridge를 켜도 typed handler가 계속 호출된다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

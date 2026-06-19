@@ -263,7 +263,6 @@ void *orders_discovery = zlink_discovery_new(
 zlink_discovery_connect_registry(orders_discovery, "tcp://127.0.0.1:5551");
 
 void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
-zlink_socket_attach_discovery(dealer, orders_discovery);
 
 zlink_spot_node_attach_channel_dealer(node, orders_discovery, dealer);
 ```

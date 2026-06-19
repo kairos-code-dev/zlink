@@ -59,7 +59,7 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 기본 shutdown 순서는 다음과 같이 본다.
 
 1. monitoring source detach
-2. channel runtime, spot node, stream node stop
+2. SpotNode → route channel → SPOT discovery → stream node → channel bundle(client/publisher/subscriber/server) 순으로 dispose
 3. embedded Registry stop
 4. `Context` dispose
 
@@ -74,8 +74,8 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 
 | 동작 | 실패 의미 |
 | ---- | --------- |
-| `Request(...).Async<TReply>(...)` | route-not-ready, reply timeout, serialization 실패, runtime stop 을 모두 예외로 본다 |
-| `Send(...).Async(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
+| `RequestToChannel(...).Async<TReply>(...)` | route-not-ready, reply timeout, serialization 실패, runtime stop 을 모두 예외로 본다 |
+| `SendToChannel(...).Async(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
 | `Publish(...).Async(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
 
 `Send(...).Async(...)` 과 `Publish(...).Async(...)` 은 원격 peer 의 handler
@@ -123,8 +123,9 @@ nonblocking send, pending queue, ready notification 조합으로 내부에서 �
 
 ## 8. Session Actor Route 변경 의미
 
-session 이 actor 에 attach 되면 framework 는 actor id, actor type, session rid,
-session owner SpotNode, session binding token 을 ActorGateway binding 으로 연결한다.
+session 이 actor 에 attach 되면 framework 는 actor id, session rid, session binding token 을
+ActorGateway binding 으로 연결한다(session binding 자체는 actor type 을 저장하지 않는다 —
+actor type 은 actor 생성·route join 에서 쓰는 별도 상태다).
 이후 session -> actor relay 는 logical actor handle 을 core ActorGateway 로 내려보내고,
 packet 마다 application resolver 를 호출하지 않는다.
 
@@ -137,8 +138,8 @@ binding 을 지우지 못하도록 조건부 unbind 에 사용한다.
 
 - `OnInitializeAsync(...)` 는 spot 의 실행 문맥에서 단 한 번만 호출된다.
 - `Configure()` 는 `OnInitializeAsync(...)` 보다 먼저 한 번 호출된다.
-  `Context.AddPacket<THandler>()`, `Context.AddSubscribe<THandler>()`,
-  `Context.AddHandler<THandler>()` 같은 handler 등록은 오직 이 단계에서만
+  `Context.Handlers.AddPacket<THandler>()`, `Context.Handlers.AddSubscribe<THandler>()`,
+  `Context.Handlers.AddHandler<THandler>()` 같은 handler 등록은 오직 이 단계에서만
   허용된다. actor join 과 actor lifecycle 은 Spot 멤버 callback 으로
   descriptor에 반영된다.
 - `OnClosingAsync(...)` 는 `IZLinkSpotManager.CloseAsync(...)` 또는
@@ -148,7 +149,7 @@ binding 을 지우지 못하도록 조건부 unbind 에 사용한다.
   의미는 아니다.
 - framework 는 spot 마다 별도의 scope[^per-spot-scope] 를 만들고, 등록해 둔
   handler 타입은 그 scope 안에서 resolve 한다.
-- `Context.AddPacket<THandler>()`, `Context.AddSubscribe<THandler>()`,
+- `Context.Handlers.AddPacket<THandler>()`, `Context.Handlers.AddSubscribe<THandler>()`,
   `Context.AddTimer<THandler>()` 는 service locator 가 아니라 "이 타입을 이 spot
   scope 에서 사용해 달라" 는 등록 의미로 본다.
 - spot 이 제거되면, 그에 묶여 있던 scope 도 함께 정리된다.

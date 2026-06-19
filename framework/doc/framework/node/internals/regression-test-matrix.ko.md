@@ -9,11 +9,9 @@
 # ZLink Framework Node.js Regression Test Matrix
 
 > 이 문서는 [표면 매핑 정책](dotnet-to-node-surface-mapping.ko.md)을 따른다.
-> 회귀 항목의 **의미·통과 기준·커버리지는 dotnet 과 동일**하고, 테스트 표면만
-> Node.js(`node:test` 기반 `*.test.js`, `test(...)`)로 옮긴다. 정식
-> 기준은 `framework/languages/dotnet` 의 코드와 dotnet 회귀 matrix 다. 이
-> 문서대로 테스트를 구현하면 Node 구현이 .NET 버전과 **동등함을 증명**하는
-> 테스트 묶음이 나온다.
+> 회귀 항목의 기준은 `framework/languages/node` 의 구현과 Node 테스트
+> (`node:test` 기반 `*.test.js`, `test(...)`)다. dotnet 회귀 matrix 는 parity
+> 비교용 선택 참고로만 본다.
 
 ## 1. 목적
 
@@ -100,11 +98,11 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| duplicate channel 이름 등록 (`channels` 키 / `registerClientServerChannel`, `registerFanoutChannel`) | `unit` | startup validation 예외 |
+| duplicate channel 이름 등록 (`channels` 키 / `addClientServerChannel`, `addFanoutChannel`) | `unit` | startup validation 예외 |
 | 같은 channel 이름을 client-server와 fanout 역할로 동시에 등록 | `unit` | startup validation 예외 |
 | server 역할에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | `.addClientServerChannel(...)` + `.enableClient(endpoint)` | `integration-single-process` | manual request/send 성공 |
-| `registerClientServerChannel(...)` + `enableClient(...)` + 전역 `useDiscovery().addRegistryEndpoint(...)` | `integration-single-process` | discovery 기반 request/send 성공 |
+| `addClientServerChannel(...)` + `enableClient(...)` + 전역 `useDiscovery().addRegistryEndpoint(...)` | `integration-single-process` | discovery 기반 request/send 성공 |
 | `.addFanoutChannel(...)` + `.enableSubscriber(endpoint)` | `integration-single-process` | manual 기반 subscribe 성공 |
 | client 역할에 peer acquisition 경로 없음 | `unit` | startup validation 예외 |
 | 같은 역할에서 discovery/manual 혼용 | `unit` | startup validation 예외 |
@@ -160,8 +158,8 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | bound session factory registration | `unit` | `ZLinkBoundSessionFactory` 는 framework runtime 과 함께 등록된다 |
 | Spot remote address resolver without SpotNode | `unit` | remote address 정보만 제공하는 서버는 SpotNode 없이 `ZLinkSpotRemoteAddressResolver` 를 등록할 수 있다 |
 | Spot outbound with resolver only | `unit` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `ZLinkSpotOutbound` 는 DI 에 없다 |
-| route channel missing at call time | `unit` | `ZLinkRouteClient` 호출 시 route channel 이 없으면 `ZLinkConfigurationError` |
-| channel client missing at call time | `unit` | `ZLinkChannelClient` 호출 시 channel client 역할이 없으면 `ZLinkConfigurationError` |
+| route channel missing at call time | `unit` | `ZLinkRouteClient` 호출 시 route channel 이 없으면 `ZLinkConfigurationException` |
+| channel client missing at call time | `unit` | `ZLinkChannelClient` 호출 시 channel client 역할이 없으면 `ZLinkConfigurationException` |
 
 ## 5. Spot Regression 항목
 
@@ -172,11 +170,11 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | duplicate Spot factory type | `unit` | startup validation 예외 |
-| duplicate `registerEntrySpot(EntrySpotClass)` | `unit` | 같은 `SpotNode` 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
-| `registerSpotMesh(...)`에 `useDiscovery().addRegistryEndpoint(...)` 없음 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
-| `registerSpotMesh(channel, configureMesh)` | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
-| `registerSpotMesh(...)` + 빈 `addRegistryEndpoint` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
-| `registerSpotMesh(...)` + router-capable `addNode(...)` + `attachActorGateway(...)` | `integration-single-process` | session relay ingress 를 mesh 소유권 아래 시작한다 |
+| duplicate `addEntrySpot(EntrySpotClass)` | `unit` | 같은 `SpotNode` 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
+| `addSpotMesh(...)`에 `useDiscovery().addRegistryEndpoint(...)` 없음 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
+| `addSpotMesh(channel, configureMesh)` | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
+| `addSpotMesh(...)` + 빈 `addRegistryEndpoint` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
+| `addSpotMesh(...)` + router-capable `addNode(...)` + `attachActorGateway(...)` | `integration-single-process` | session relay ingress 를 mesh 소유권 아래 시작한다 |
 | `create(spotType)` | `integration-single-process` | `spotId`, `Created` 상태가 일관되게 유지된다 |
 | `create(spotType)` empty create payload | `integration-single-process` | payload 없는 생성도 빈 `Message`로 `ZLinkSpot.onCreate(...)`를 한 번 호출한다 |
 | `create(spotType, request)` payload | `integration-single-process` | create request `Message`가 `ZLinkSpot.onCreate(...)`로 한 번 전달된다 |
@@ -213,7 +211,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | explicit egress channel Spot route 경로 | `integration-single-process` | routed Spot 호출은 target 정보만으로 egress transport를 고르지 않고, caller가 명시한 local egress channel, egress 설정의 target SpotNode ingress channel, `routingId` target으로 routed message를 보낸다 |
 | actor manager 생성 중복/타입 충돌 | `integration-single-process` | `ZLinkActorManager.create(...)` 중복 생성은 `ActorAlreadyExists`, `getOrCreate(...)` actor type 충돌은 `ActorTypeMismatch` 로 실패한다 |
 | local actor bind 생성 금지 | `integration-single-process` | `bind(...)` 는 local actor 가 없을 때 factory 를 호출하지 않고 `ActorRouteNotFound` 로 실패한다 |
-| session actor bind resolver 제거 | `integration-single-process` | `bind(...)` 는 application resolver fallback 없이 logical actor handle 을 등록한다 |
+| session actor bind: fallback 없이 logical actor handle 등록 | `integration-single-process` | `bind(...)` 는 application resolver fallback 없이 logical actor handle 을 등록한다 |
 | remote actor dispatch 생성 금지 | `integration-single-process` | routed actor dispatch 수신 경로는 local actor 가 없을 때 factory 를 호출하지 않고 dispatch 를 실패시킨다 |
 | session actor relay bridge | `integration-single-process` | `bind(...)` 와 `ZLinkSessionActor.relay(...)` 가 public session 표면에서 동작한다 |
 | session actor explicit disconnect notification | `contract`, `integration-single-process` | session disconnect 는 bound actor 전체에 자동 전파되지 않고, `notifyDisconnected(...)` 또는 runtime 명시 호출 시 현재 Spot actor disconnected handler 가 호출된다 |
@@ -229,7 +227,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | Registry route 기본 구현 discovery validation | `unit` | `useDiscovery().addRegistryEndpoint(...)` 없이 Registry 기본 route resolver 를 켜면 startup validation 오류가 난다 |
 | Registry Spot RID route | `integration-single-process` | `ZLinkSpotManager.getOrCreate(spotType, spotRid, request?)` 로 만든 Spot 을 `find(...)` 로 찾고, `close(...)` 성공 후 not found 를 반환한다 |
 | stale session unbind guard | `integration-single-process` | 이전 binding token 으로 도착한 disconnect 가 새 actor-session binding 을 지우지 않는다 |
-| sample-only session metadata store 제거 | `unit` | TicTacToe.Ts 와 Bingo.Ts 샘플이 sample-only actor-session store 없이 framework/session 흐름을 사용한다 |
+| sample-only store 없이 framework/session 흐름 사용 | `unit` | TicTacToe.Ts 와 Bingo.Ts 샘플이 sample-only actor-session store 없이 framework/session 흐름을 사용한다 |
 | stale bound session send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |
 | bound session gateway relay | `integration-single-process` | Play 서버에서 Session 서버로 가는 bound session send가 core ActorGateway binding 을 통해 client STREAM에 단일 stream packet으로 도착한다 |
 | bound session disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `ZLinkBoundSession.disconnect(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |
@@ -243,7 +241,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | actor request handler reply | `unit` | actor request packet은 actor request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
 | Spot actor request handler reply | `unit` | Entry Spot/user Spot actor request packet은 request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
 | local actor request relay reply | `integration-single-process` | local session actor relay도 actor request handler 반환값으로 stream response를 작성한다 |
-| actor reply public surface 제거 | `unit` | actor context reply와 actor stream client 계약이 public surface에 다시 노출되지 않는다 |
+| actor context reply를 public surface로 노출하지 않음 | `unit` | actor context reply와 actor stream client 계약이 public surface에 다시 노출되지 않는다 |
 
 ## 6. Stream Regression 항목
 

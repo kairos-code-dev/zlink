@@ -11,7 +11,7 @@
 | duplicate channel name | startup validation 오류 |
 | 같은 channel에 중복 `kind + packetName` handler | startup validation 오류 |
 | client 역할에 discovery/manual 경로 없음 | startup validation 오류 |
-| 같은 역할에서 discovery와 manual connection 혼용 | startup validation 오류 |
+| route mesh 역할에서 discovery와 manual connection 혼용 | startup validation 오류 (client/server·subscriber는 manual connection이 discovery보다 우선해 함께 둘 수 있다) |
 | server/publisher/route/stream endpoint 누락 | startup validation 오류 |
 | duplicate actor type factory | startup validation 오류 |
 | actor factory without SpotNode | startup validation 오류 |
@@ -57,10 +57,9 @@
 
 ## 5. JUnit 테스트 이름 매핑
 
-Behavior Matrix의 판정은 `.NET` 테스트(`Channels`, `HandlerExposure`,
-`NodesAndServices`, `RegistryAndMonitoring`)를 camelCase JUnit 메서드로 옮겨 고정한다.
-확인 기준(의미)은 그대로 유지하며 `.NET` 코드가 최종 기준이다. (`.NET`의
-`AddZLinkFramework_*` prefix는 Java에서 `addZLinkFramework_*`로 옮긴다.)
+Behavior Matrix의 판정은 Java framework의 JUnit 테스트로 고정한다. 아래 표는 각 판정
+항목에 대응하는 Java 테스트(클래스 / 메서드)를 정리한다. Java 테스트 메서드는
+`addZLinkFramework_*` 형태의 camelCase를 쓴다.
 
 | 판정 항목 | JUnit 테스트 (클래스 / 메서드) |
 |-----------|--------------------------------|

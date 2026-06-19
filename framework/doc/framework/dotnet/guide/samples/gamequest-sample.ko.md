@@ -23,10 +23,11 @@ event 를 player 단위로 누적해 quest 진행을 결정** 하는 다른 게�
 - `GameApi` 의 gameplay action 경로(`/combat/kill`, `/inventory/collect`,
   `/mission/complete`, `/world/enter`, `/feature/unlock`)가 단일 gameplay service 를 거쳐
   gameplay event 를 ZLink fanout 으로 publish 한다.
-- `QuestMission` 서버가 여러 event type 을 구독하고 `PlayerId` 기준 `PlayerQuestSpot`[^spot]
-  owner 로 route 한다.
-- owner 로 route 된 event 는 `QuestEventProcessor` 가 현재 projection 과 source-event
-  dedup 을 읽어 progress/completion/reward event 로 append 한다(reward 는 idempotent).
+- `QuestMission` 서버가 여러 event type 을 구독하고, `PlayerId` 의 local owner 인지
+  `OwnerRouter` 로 판정한다(owner 가 아니면 skip). `PlayerQuestSpot`[^spot] 은 owner 보장용이다.
+- local owner 인 instance 는 `PlayerQuestSpot` 생성을 보장한 뒤 `QuestEventProcessor` 가
+  현재 projection 과 source-event dedup 을 읽어 progress/completion/reward event 로
+  append 한다(reward 는 idempotent).
   `(PlayerId, QuestId)` event stream replay 로 projection 을 다시 만드는 경로는 self-check
   에서 검증한다.
 - fanout event 누락 가능성은 gameplay snapshot 재동기화로 보정하고, 결과도 quest domain
@@ -144,19 +145,20 @@ update 는 같은 owner 흐름으로 모인다.
 
 - **gameplay → quest 진행**: client action(`KillMonsterReq` 등) → `GameApi` gameplay
   service 가 `GameplayEventEnvelope` 를 fanout publish → `QuestMission` 이 구독해 `PlayerId`
-  owner(`PlayerQuestSpot`)로 route → `QuestEventProcessor` 가 현재 projection 과
-  source-event dedup 을 읽어 조건 평가 →
+  의 local owner 판정(owner 면 `PlayerQuestSpot` 보장) → `QuestEventProcessor` 가 현재
+  projection 과 source-event dedup 을 읽어 조건 평가 →
   `QuestProgressedEvent`/`QuestCompletedEvent`/`QuestRewardGrantedEvent` append 및 projection 갱신.
-- **notify**: projection 변화는 player WebSocket 을 소유한 `GameApi` instance 로 subscription
-  binding 을 따라 `QuestProgressNotify`/`QuestCompletedNotify` 가 전달된다.
+- **notify**: projection 변화는 gameplay event 의 `SourceApi` 가 가리키는 `GameApi` 의
+  notify endpoint 로 보내고, 그 `GameApi` 의 session registry 가 player session 을 찾아
+  `QuestProgressNotify`/`QuestCompletedNotify` 를 전달한다.
 - **누락 보정**: fanout event 누락이 의심되면 `SyncQuestProgressReq` →
   `GetGameplaySnapshotReq` 로 gameplay snapshot 을 재동기화하고
   `QuestProgressReconciledEvent` 로 결과를 남긴다.
 
 ## 5. 완료 기준 / self-check
 
-- `QuestMission` 은 event publisher 의 물리 endpoint 를 모른 채 여러 gameplay event type 을
-  fanout 으로 구독한다.
+- `QuestMission` 의 handler·application code 는 publisher endpoint 를 몰라도 여러 gameplay
+  event type 을 fanout 으로 구독한다. publisher endpoint 는 구성 단계(`EnableSubscriber`)에서 준다.
 - 같은 `PlayerId` 의 event 는 항상 같은 `PlayerQuestSpot` owner 흐름에서 처리된다.
 - quest event stream replay 만으로 quest 진행과 reward 지급 여부를 재계산할 수 있다
   (self-check 의 projection rebuild 로 검증).
@@ -168,7 +170,9 @@ update 는 같은 owner 흐름으로 모인다.
 
 GameQuest 샘플을 구현할 때는 아래 기존 회귀 테스트가 깨지지 않아야 한다. 이
 테스트들은 GameQuest 가 사용하는 framework 표면(action event fanout, PlayerQuest Spot
-instance, Spot actor 흐름, client stream notify)을 이미 고정하고 있다.
+instance, client stream notify)을 이미 고정하고 있다. GameQuest 는 actor 를 쓰지 않으며
+(`PlayerQuestSpot` 은 actor 없는 `IZLinkSpot`), actor lifecycle 테스트는 일반 framework
+회귀 범위다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|

@@ -205,7 +205,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         return context.setBoundSession(boundSession);
     }
 
-    boolean clearSessionBinding(ZLinkActor actor, long bindingToken) {
+    public boolean clearSessionBinding(ZLinkActor actor, long bindingToken) {
         DefaultActorContext context = contextsByActor.get(actor);
         if (context == null) {
             throw new ZLinkConfigurationException(
@@ -266,7 +266,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 try {
                     if (header.requestSequence().isPresent()
                         || header.kind() == systems.zlink.framework.streams.ZLinkStreamMessageKind.REQUEST) {
-                        return routedTransport.requestToSpotViaEgressChannel(
+                        return routedTransport.requestToSpotViaRouterChannel(
                                 address.routerChannelId(),
                                 address.targetNodeRid(),
                                 address.spotRid(),
@@ -282,7 +282,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                                 }
                             });
                     }
-                    return routedTransport.sendToSpotViaEgressChannel(
+                    return routedTransport.sendToSpotViaRouterChannel(
                             address.routerChannelId(),
                             address.targetNodeRid(),
                             address.spotRid(),
@@ -424,7 +424,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         boundSession.setBindingToken(bindingToken);
     }
 
-    public void bindRoutedSession(
+    public long bindRoutedSession(
         ZLinkActor actor,
         String routeChannelName,
         RoutingId targetRoutePeerRid,
@@ -432,6 +432,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         ZLinkBackendActorRef actorRef) {
         ZLinkRoutedBoundSessionRuntime boundSession = new ZLinkRoutedBoundSessionRuntime(
             spotNode.entrySpot(),
+            routedTransport,
+            routeChannelName,
             targetRoutePeerRid,
             targetEntrySpotRid,
             actorRef,
@@ -442,6 +444,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             defaultStreamCodec);
         long bindingToken = bindSession(actor, boundSession);
         boundSession.setBindingToken(bindingToken);
+        return bindingToken;
     }
 
     public void markLeft(ZLinkActor actor) {
@@ -827,14 +830,16 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 throw new ZLinkConfigurationException(
                     "actor spot join failed: " + result.result());
             }
+            if (result.joinResultCode() != 0) {
+                throw new ZLinkConfigurationException(
+                    "actor spot join rejected: " + result.joinResultCode());
+            }
             Message emptyReply = null;
             try {
-                if (result.joinResultCode() == 0) {
-                    context.actorRef = result.actor();
-                    context.spotRid = result.joinedSpotRid();
-                    context.spot = spotResolver.apply(result.joinedSpotRid());
-                    context.joined = true;
-                }
+                context.actorRef = result.actor();
+                context.spotRid = result.joinedSpotRid();
+                context.spot = spotResolver.apply(result.joinedSpotRid());
+                context.joined = true;
                 Message firstReply = result.replyParts().isEmpty()
                     ? (emptyReply = Message.from(new byte[0]))
                     : result.replyParts().get(0);
@@ -866,7 +871,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                         sourceEntrySpotRid.get(),
                         requestPart);
                     try {
-                        return routedTransport.requestToSpotViaEgressChannel(
+                        return routedTransport.requestToSpotViaRouterChannel(
                             address.routerChannelId(),
                             address.targetNodeRid(),
                             address.spotRid(),

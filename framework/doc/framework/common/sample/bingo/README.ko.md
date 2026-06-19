@@ -170,6 +170,11 @@ fallback으로 성공시키면 안 된다.
 - `run_sample`은 Redis endpoint 설정이 이미 있으면 그 Redis를 사용한다.
 - Redis endpoint 설정이 없으면 runner가 pinned Redis image로 container를 띄우고 ready
   상태를 확인한 뒤 Play 프로세스에 전달한다.
+- runner가 만든 Redis container는 실행마다 고유한 이름을 사용하고, Docker가 배정한
+  loopback port를 Play 프로세스에 전달한다. 다른 테스트가 쓰는 Redis container나 호스트
+  Redis와 섞이지 않게 하기 위해서다.
+- runner는 Play 서버에 실행마다 고유한 Redis key prefix도 전달한다. 외부 Redis endpoint를
+  지정해 여러 샘플을 병렬로 실행해도 match queue key가 서로 충돌하지 않게 하기 위해서다.
 - runner는 정상 종료와 실패 종료 모두에서 Redis container를 정리한다.
 - Docker를 사용할 수 없고 Redis endpoint도 없으면 runner는 명확한 오류를 출력하고 중단한다.
 - C++, .NET, Java, Kotlin, Node 샘플은 모두 같은 Redis endpoint 계약을 사용한다.

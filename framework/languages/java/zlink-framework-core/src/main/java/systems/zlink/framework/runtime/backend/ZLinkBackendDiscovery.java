@@ -12,6 +12,8 @@ public interface ZLinkBackendDiscovery extends ZLinkBackendObject {
 
     ZLinkBackendSpotRoute resolveSpot(RoutingId spotRid);
 
+    void setSpotOwnerSyncEnabled(boolean enabled);
+
     ZLinkBackendActorRoute resolveActor(String actorId);
 
     List<ZLinkBackendRegistryMemberPeerEntry> memberPeers();

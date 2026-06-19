@@ -8,7 +8,7 @@ namespace Bingo.Server.Play.Application.RoomAllocation;
 
 internal sealed class BingoRoomAllocator(
     IZLinkSpotManager spots,
-    RedisBingoMatchQueue matchQueue)
+    IBingoMatchQueue matchQueue)
 {
     private int _roomSeq;
 

@@ -17,17 +17,21 @@ int main (int argc, char **argv)
 
     bingo_client_options_t options{load_sample_topology (argc, argv)};
     zlink::stream_connector::connector_options_t connector_options;
-    connector_options.endpoint = options.stream_endpoint;
     connector_options.connect_timeout = options.connect_timeout;
     connector_options.request_timeout = options.request_timeout;
     connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
+    connector_options.endpoint = options.session_a_stream_endpoint;
     auto core_client1 = zlink::stream_connector::connector_factory_t::create (
       connector_options);
+    connector_options.endpoint = options.session_b_stream_endpoint;
     auto core_client2 = zlink::stream_connector::connector_factory_t::create (
+      connector_options);
+    auto core_observer = zlink::stream_connector::connector_factory_t::create (
       connector_options);
     core_client1.codecs ().use (zlink::framework_codecs::protobuf<> ());
     core_client2.codecs ().use (zlink::framework_codecs::protobuf<> ());
+    core_observer.codecs ().use (zlink::framework_codecs::protobuf<> ());
     [[maybe_unused]] auto inbound_log1 = core_client1.observe_inbound (
       [] (const zlink::stream_connector::inbound_observation_t &observation) {
           std::cout << "stream-inbound sample=Bingo client=player1 kind="
@@ -46,8 +50,22 @@ int main (int argc, char **argv)
                                                 : std::string ("-"))
                     << " bytes=" << observation.payload_length << '\n';
       });
+    [[maybe_unused]] auto inbound_log3 = core_observer.observe_inbound (
+      [] (const zlink::stream_connector::inbound_observation_t &observation) {
+          std::cout << "stream-inbound sample=Bingo client=observer kind="
+                    << static_cast<int> (observation.kind) << " name=" << observation.name
+                    << " seq="
+                    << (observation.request_seq ? std::to_string (*observation.request_seq)
+                                                : std::string ("-"))
+                    << " bytes=" << observation.payload_length << '\n';
+      });
 
     auto client1 = zlink::stream_e2e_client::use (core_client1);
     auto client2 = zlink::stream_e2e_client::use (core_client2);
-    return bingo_client_scenario_t{}.run (client1, client2) ? 0 : 1;
+    auto observer = zlink::stream_e2e_client::use (core_observer);
+    const auto completed = bingo_client_scenario_t{}.run (client1, client2, observer);
+    if (completed) {
+        std::cout << "bingo=completed\n";
+    }
+    return completed ? 0 : 1;
 }

@@ -340,6 +340,79 @@ final class ActorRuntimeFakeBackendTest {
     }
 
     @Test
+    void remoteRoutedActorJoinRejectDoesNotDeserializeEmptyReply() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotRemoteAddressResolver(RemoteRoomResolver.class);
+        { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
+            route.enableClient("inproc://remote-route");
+            route.enableSpotRouteEgress("rooms"); };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://local-router");
+                node.connectRouter(RoutingId.from("remote-node"), "inproc://remote-router");
+                node.acceptSpotRoutesFromChannel("rooms", "inproc://remote-route"); }; };
+        options.addActorFactory("player", PlayerActorFactory.class);
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            ZLinkActor actor = runtime.actorManager()
+                .create("player-reject-join", "player")
+                .toCompletableFuture()
+                .join();
+
+            CompletionException error = assertThrows(
+                CompletionException.class,
+                () -> actor.context()
+                    .joinSpot(RoutingId.from("remote-room"), "join-request")
+                    .submit(String.class)
+                    .toCompletableFuture()
+                    .join());
+
+            assertTrue(error.getCause() instanceof ZLinkConfigurationException);
+            assertEquals("actor spot join rejected: 1", error.getCause().getMessage());
+        }
+    }
+
+    @Test
+    void actorJoinSpotUsesRegistrySpotResolverWithoutExplicitRouteEgress() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("inproc://registry"); };
+        { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route"); };
+        { var mesh = options.addSpotMesh("game").useRegistrySpotResolver(); { var node = mesh.addNode("play"); node.enableRouter("inproc://local-router"); }; };
+        options.addActorFactory("player", PlayerActorFactory.class);
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            ZLinkActor actor = runtime.actorManager()
+                .create("player-registry-remote-join", "player")
+                .toCompletableFuture()
+                .join();
+
+            ZLinkActorJoinResult<String> joined = actor.context()
+                .joinSpot(RoutingId.from("remote-room"), "join-request")
+                .submit(String.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals(0, joined.resultCode());
+            assertEquals("joined", joined.reply());
+        }
+
+        assertTrue(backendFactory.calls().contains(
+            "router.request.node.__zlink.routed_spot.egress.request"),
+            () -> "calls: " + backendFactory.calls());
+        assertTrue(backendFactory.calls().contains(
+            "discovery.game.setSpotOwnerSyncEnabled.true"),
+            () -> "calls: " + backendFactory.calls());
+        assertEquals(
+            false,
+            backendFactory.calls().stream().anyMatch(call -> call.startsWith("spotNode.joinActor.")),
+            () -> "calls: " + backendFactory.calls());
+    }
+
+    @Test
     void boundManagedActorRoutesPacketsToRemoteJoinedSpotInsteadOfNativeGateway() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotRemoteAddressResolver(RemoteRoomResolver.class);

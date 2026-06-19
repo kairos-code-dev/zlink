@@ -17,6 +17,7 @@ import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
+import systems.zlink.framework.runtime.registry.ZLinkRegistrySpotRemoteAddressResolver;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.runtime.streams.ZLinkStreamRuntime;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -53,6 +54,8 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
         ZLinkStreamCodec defaultStreamCodec = defaultStreamCodec(options);
         ZLinkHandlerFactory.MutableServices runtimeHandlers =
             ZLinkHandlerFactory.services(handlerFactory);
+        runtimeHandlers.add(ZLinkFrameworkRegistration.class, this.registration);
+        runtimeHandlers.add(ZLinkFrameworkRuntime.class, this);
         this.channels = new ZLinkChannelRuntime(
             backendFactory.createChannelAdapter(adapterOptions),
             backendFactory,
@@ -61,6 +64,8 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
             serializer,
             runtimeHandlers);
         runtimeHandlers.add(ZLinkClient.class, this.channels);
+        runtimeHandlers.add(ZLinkFanoutClient.class, this.channels);
+        runtimeHandlers.add(ZLinkRouteClient.class, this.channels);
         this.spots = options.registration().spotNodes().isEmpty()
             ? null
             : new ZLinkSpotRuntime(
@@ -95,6 +100,9 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
             if (resolverType != null) {
                 this.actors.setRemoteAddressResolver(
                     (ZLinkSpotRemoteAddressResolver) runtimeHandlers.create(resolverType));
+            } else if (options.registration().registrySpotRemoteAddresses() != null) {
+                this.actors.setRemoteAddressResolver(
+                    new ZLinkRegistrySpotRemoteAddressResolver(this, options.registration()));
             }
         }
         if (this.actors != null) {

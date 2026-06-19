@@ -96,7 +96,7 @@ SPOT_A_ENDPOINT="${TICTACTOE_SPOT_A_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
 SPOT_B_ENDPOINT="${TICTACTOE_SPOT_B_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
 SPOT_A_PUBSUB_ENDPOINT="${TICTACTOE_SPOT_A_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
 SPOT_B_PUBSUB_ENDPOINT="${TICTACTOE_SPOT_B_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
-REDIS_ENDPOINT="${TICTACTOE_REDIS_ENDPOINT:-127.0.0.1:${PORTS[12]}}"
+REDIS_ENDPOINT="${TICTACTOE_REDIS_ENDPOINT:-}"
 API_A_CONFIG_FILE="${RUN_DIR}/appsettings.api-a.json"
 API_B_CONFIG_FILE="${RUN_DIR}/appsettings.api-b.json"
 PLAY_A_CONFIG_FILE="${RUN_DIR}/appsettings.play-a.json"
@@ -107,7 +107,8 @@ if [[ -z "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
     echo "TICTACTOE_REDIS_ENDPOINT is not set and docker is not available." >&2
     exit 1
   fi
-  REDIS_CONTAINER_ID="$(docker run -d --rm -p "127.0.0.1:${PORTS[12]}:6379" redis:7-alpine)"
+  REDIS_CONTAINER_ID="$(docker run -d --rm --name "zlink-tictactoe-dotnet-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7-alpine)"
+  REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 fi
 
 python3 - "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${PLAY_A_CONFIG_FILE}" "${PLAY_B_CONFIG_FILE}" <<PY

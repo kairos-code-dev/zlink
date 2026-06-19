@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "../../Configuration/sample_names.hpp"
+#include "../../Configuration/sample_topology.hpp"
 #include "Handlers/authenticate_session_handler.hpp"
 
 #include <optional>
@@ -18,13 +20,16 @@ class bingo_session_t final : public zlink::framework::packet_stream_session_t
       zlink::framework::dependency_list_t<zlink::framework::session_actor_manager_t,
                                           zlink::framework::channel_client_t,
                                           authenticate_session_handler_t,
-                                          zlink::framework::actor_gateway_t>;
+                                          zlink::framework::actor_gateway_t,
+                                          sample_topology_t>;
 
     bingo_session_t (zlink::framework::session_actor_manager_t &actors,
                      zlink::framework::channel_client_t &client,
                      authenticate_session_handler_t &authenticate,
-                     zlink::framework::actor_gateway_t &gateway) :
-        _actors (actors), _client (client), _authenticate (authenticate), _gateway (gateway)
+                     zlink::framework::actor_gateway_t &gateway,
+                     sample_topology_t &topology) :
+        _actors (actors), _client (client), _authenticate (authenticate), _gateway (gateway),
+        _topology (topology)
     {
     }
 
@@ -119,6 +124,8 @@ class bingo_session_t final : public zlink::framework::packet_stream_session_t
                               request_seq.has_value (),
                               request_seq.value_or (0),
                               std::string (header.packet_name ()),
+                              sample_names_t::play_route_channel,
+                              _topology.selected_session_route_rid (),
                               header.metadata ().values (),
                               payload.to_bytes ()})
                           .async<remote_actor_packet_res_t> ();
@@ -148,6 +155,7 @@ class bingo_session_t final : public zlink::framework::packet_stream_session_t
     zlink::framework::channel_client_t &_client;
     authenticate_session_handler_t &_authenticate;
     zlink::framework::actor_gateway_t &_gateway;
+    sample_topology_t &_topology;
     std::optional<std::string> _bound_actor_id;
 };
 

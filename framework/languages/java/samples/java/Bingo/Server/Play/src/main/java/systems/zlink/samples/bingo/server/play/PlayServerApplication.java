@@ -20,7 +20,9 @@ import systems.zlink.samples.bingo.server.play.adapters.zlink.notifications.Bing
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoRoomSpot;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomSpotCreatedHandler;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoEntrySpot;
+import systems.zlink.samples.bingo.server.play.adapters.zlink.handlers.BingoMatchQueue;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.handlers.BingoRoomDirectory;
+import systems.zlink.samples.bingo.server.play.adapters.zlink.handlers.RedisBingoMatchQueue;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
 
@@ -45,27 +47,30 @@ public final class PlayServerApplication {
     ZLinkFrameworkConfigurer playFramework() {
         return options -> {
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            options.codecs().addJson();
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addHandlersFromPackageOf(PlayServerApplication.class);
-            options.addClientServerChannel(SampleNames.PlayChannel)
-                .enableServer(SampleTopology.PlayChannelEndpoint)
-                .addHandlerGroup("play");
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.RoomRouteChannel);
-            route.enableServer(SampleTopology.PlayRouteEndpoint);
-            route.enableClient(SampleTopology.SessionRouteEndpoint);
-            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.PlayRid));
-            options.useRegistrySpotRemoteAddresses(SampleNames.RoomSpotDiscovery)
-                .setRouterChannelId(SampleNames.RoomRouteChannel);
+            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
+            route.enableServer(SampleTopology.selectedPlayRouteEndpoint());
+            route.enableClient(SampleTopology.peerPlayRouteEndpoint());
+            route.enableClient(SampleTopology.SessionAPlayRouteEndpoint);
+            route.enableClient(SampleTopology.SessionBPlayRouteEndpoint);
+            route.addHandlerGroup("play-route");
+            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
-                .addNode(SampleNames.RoomSpotNode);
-            node.enableRouter(SampleTopology.PlaySpotRouterEndpoint)
-                .setRouterRoutingId(RoutingId.from(SampleTopology.PlayRid));
-            node.enablePubSub(SampleTopology.PlaySpotEndpoint);
+                .useRegistrySpotResolver()
+                .addNode(SampleTopology.selectedPlayNodeRid());
+            node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
+                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
+            node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint())
+                .setPubSubRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             node.attachChannelClient(SampleNames.ApiChannel);
-            node.acceptSpotRoutesFromChannel(SampleNames.RoomRouteChannel);
+            node.acceptSpotRoutesFromChannel(
+                SampleNames.PlayChannel,
+                SampleTopology.selectedPlayRouteEndpoint());
             node.addEntrySpot(BingoEntrySpot.class);
             node.addSpotFactory(BingoRoomSpot.class);
         };
@@ -74,8 +79,14 @@ public final class PlayServerApplication {
     @Bean
     BingoRoomDirectory bingoRoomDirectory(
         ObjectProvider<ZLinkSpotManager> spots,
-        ObjectMapper json) {
-        return new BingoRoomDirectory(spots.getObject(), json);
+        ObjectMapper json,
+        BingoMatchQueue matchQueue) {
+        return new BingoRoomDirectory(spots.getObject(), json, matchQueue);
+    }
+
+    @Bean
+    BingoMatchQueue redisBingoMatchQueue() {
+        return new RedisBingoMatchQueue();
     }
 
     @Bean

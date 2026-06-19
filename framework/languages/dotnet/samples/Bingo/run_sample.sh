@@ -8,8 +8,10 @@ mkdir -p "${LOG_DIR}"
 
 PIDS=()
 REDIS_CONTAINER=""
+export BINGO_REDIS_KEY_PREFIX="${BINGO_REDIS_KEY_PREFIX:-bingo:dotnet:${RANDOM}:$$:}"
 
 cleanup() {
+  set +e
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     if kill -0 "${pid}" 2>/dev/null; then
@@ -150,9 +152,9 @@ if [[ -z "${BINGO_REDIS_ENDPOINT:-}" ]]; then
     echo "Docker is required when BINGO_REDIS_ENDPOINT is not set." >&2
     exit 1
   fi
-  REDIS_CONTAINER="bingo-redis-${PORTS[16]}"
-  export BINGO_REDIS_ENDPOINT="127.0.0.1:${PORTS[16]}"
-  docker run -d --rm --name "${REDIS_CONTAINER}" -p "${PORTS[16]}:6379" redis:7.2-alpine >/dev/null
+  REDIS_CONTAINER="bingo-dotnet-redis-${RANDOM}-$$"
+  docker run -d --rm --name "${REDIS_CONTAINER}" -p "127.0.0.1::6379" redis:7.2-alpine >/dev/null
+  export BINGO_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
   wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 fi
 

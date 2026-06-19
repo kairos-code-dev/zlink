@@ -193,7 +193,8 @@ class spot_node_runtime_t
     result_t<actor_join_reply_t>
     join_remote_actor_to_spot_erased (const actor_ref_t &actor_ref,
                                       spot_rid_t spot_rid,
-                                      const zlink::message_t &request);
+                                      const zlink::message_t &request,
+                                      actor_context_t actor_context = {});
     result_t<actor_join_reply_t>
     join_actor_to_entry_spot_erased (const actor_ref_t &actor_ref,
                                      node_rid_t spot_node_rid,

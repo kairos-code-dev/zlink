@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/channels/route_internal_packet_dispatcher.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
@@ -11,6 +12,8 @@ class spot_route_internal_dispatcher_t final : public route_internal_packet_disp
 {
   public:
     spot_route_internal_dispatcher_t (spot_node_runtime_t runtime,
+                                      actor_gateway_runtime_t actor_gateway,
+                                      route_client_t route_client,
                                       serializer_registry_t &serializers);
 
     bool can_handle_send (std::string_view packet_name) const override;
@@ -22,6 +25,8 @@ class spot_route_internal_dispatcher_t final : public route_internal_packet_disp
 
   private:
     spot_node_runtime_t _runtime;
+    actor_gateway_runtime_t _actor_gateway;
+    route_client_t _route_client;
     serializer_registry_t *_serializers;
 };
 

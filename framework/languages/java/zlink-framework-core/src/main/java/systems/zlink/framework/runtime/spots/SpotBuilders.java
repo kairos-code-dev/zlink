@@ -7,6 +7,7 @@ import systems.zlink.framework.configuration.ZLinkDiscoveryBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
+import systems.zlink.framework.runtime.configuration.ZLinkRegistrySpotRemoteAddressesRegistration;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkSpot;
 
@@ -28,6 +29,18 @@ public final class SpotBuilders {
         @Override
         public ZLinkDiscoveryBuilder useDiscovery() {
             return registration.registryEndpoints()::add;
+        }
+
+        @Override
+        public ZLinkSpotMeshBuilder useRegistrySpotResolver() {
+            if (registration.spotRemoteAddressResolverType() != null
+                || registration.registrySpotRemoteAddresses() != null) {
+                throw new systems.zlink.framework.errors.ZLinkConfigurationException(
+                    "SPOT remote address resolver is already registered.");
+            }
+            registration.setRegistrySpotRemoteAddresses(
+                new ZLinkRegistrySpotRemoteAddressesRegistration(meshName));
+            return this;
         }
 
         public ZLinkSpotNodeBuilder addNode(String spotNodeName) {

@@ -7,10 +7,11 @@ public final class Messages {
     private Messages() {
     }
 
+    @ZLinkPacket("AuthenticateReq")
     public record AuthenticateReq(String accessToken) {
     }
 
-    public record AuthenticateRes(String actorId, String displayName) {
+    public record AuthenticateRes(String actorId, String displayName, String actorNodeRid) {
     }
 
     @ZLinkPacket("AuthenticatePlayer")
@@ -21,7 +22,7 @@ public final class Messages {
     }
 
     @ZLinkPacket("EnsurePlayerActor")
-    public record EnsurePlayerActorReq(String actorId, String displayName) {
+    public record EnsurePlayerActorReq(String actorId, String displayName, String preferredActorNodeRid) {
     }
 
     public record ActorRefSnapshot(byte[] nodeRid, String actorId, long generation) {
@@ -34,25 +35,25 @@ public final class Messages {
     public record MatchBingoReq(String mode) {
     }
 
-    public record MatchBingoRes(String roomId, BingoRoomState state) {
+    public record MatchBingoRes(String roomId, BingoRoomState state, String roomOwnerNodeRid) {
     }
 
     @ZLinkPacket("MatchBingoApiReq")
-    public record MatchBingoApiReq(String actorId, String displayName, String mode) {
+    public record MatchBingoApiReq(String actorId, String displayName, String mode, String actorNodeRid) {
     }
 
-    public record MatchBingoApiRes(String roomId) {
+    public record MatchBingoApiRes(String roomId, String roomOwnerNodeRid) {
     }
 
     @ZLinkPacket("AllocateBingoRoomReq")
-    public record AllocateBingoRoomReq(String actorId, String mode) {
+    public record AllocateBingoRoomReq(String actorId, String mode, String preferredOwnerNodeRid) {
     }
 
-    public record AllocateBingoRoomRes(String roomId) {
+    public record AllocateBingoRoomRes(String roomId, String roomOwnerNodeRid) {
     }
 
     @ZLinkPacket("BingoRoomJoinReq")
-    public record BingoRoomJoinReq(String roomId, String actorId, String displayName) {
+    public record BingoRoomJoinReq(String roomId, String actorId, String displayName, boolean observeOnly) {
     }
 
     public record BingoRoomJoinRes(BingoRoomState state) {
@@ -88,6 +89,39 @@ public final class Messages {
     }
 
     public record BingoGameEndedNotify(BingoRoomState state) {
+    }
+
+    @ZLinkPacket("ObserveBingoEventsReq")
+    public record ObserveBingoEventsReq(String roomId) {
+    }
+
+    public record ObserveBingoEventsRes(boolean subscribed, String observerNodeRid) {
+    }
+
+    @ZLinkPacket("StopObservingBingoEventsReq")
+    public record StopObservingBingoEventsReq(String roomId) {
+    }
+
+    public record StopObservingBingoEventsRes(boolean stopped, String observerNodeRid) {
+    }
+
+    public record BingoWinnerEvent(
+        String roomId,
+        String actorId,
+        int drawSeq,
+        String itemId,
+        String itemName,
+        String rarity) {
+    }
+
+    public record BingoWinnerAnnouncedNotify(
+        String roomId,
+        String actorId,
+        int drawSeq,
+        String itemId,
+        String itemName,
+        String rarity,
+        String receivingSpotNodeRid) {
     }
 
     public record BingoWinner(String actorId) {

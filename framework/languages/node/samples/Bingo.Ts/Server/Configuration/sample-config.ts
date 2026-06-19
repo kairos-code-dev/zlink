@@ -6,6 +6,8 @@ type BingoSampleConfig = {
   playEndpoint: string;
   notificationEndpoint: string;
   apiEndpoint: string;
+  redisEndpoint: string;
+  redisKeyPrefix: string;
 };
 
 function loadSampleConfig(): BingoSampleConfig {
@@ -19,7 +21,9 @@ function loadSampleConfig(): BingoSampleConfig {
     sessionEndpoint: requireEnv('BINGO_SESSION_ENDPOINT'),
     playEndpoint: requireEnv('BINGO_PLAY_ENDPOINT'),
     notificationEndpoint: requireEnv('BINGO_NOTIFICATION_ENDPOINT'),
-    apiEndpoint: requireEnv('BINGO_API_ENDPOINT')
+    apiEndpoint: requireEnv('BINGO_API_ENDPOINT'),
+    redisEndpoint: requireEnv('BINGO_REDIS_ENDPOINT'),
+    redisKeyPrefix: process.env.BINGO_REDIS_KEY_PREFIX ?? 'bingo:node:'
   };
 }
 

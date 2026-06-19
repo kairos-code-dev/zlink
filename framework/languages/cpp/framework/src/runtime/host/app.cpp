@@ -112,7 +112,9 @@ build_route_internal_dispatchers (const zlink_builder_t &builder,
               dynamic_cast<composite_route_internal_packet_dispatcher_t *> (found->second.get ());
             if (composite != nullptr) {
                 composite->add (
-                  std::make_shared<spot_route_internal_dispatcher_t> (*runtime, serializers));
+                  std::make_shared<spot_route_internal_dispatcher_t> (*runtime, actor_gateway,
+                                                                      builder.route_client (serializers),
+                                                                      serializers));
             }
         }
     }

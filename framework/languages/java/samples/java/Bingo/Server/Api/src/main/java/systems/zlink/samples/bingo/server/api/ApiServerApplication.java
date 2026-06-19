@@ -4,6 +4,7 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
+import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
@@ -31,13 +32,15 @@ public final class ApiServerApplication {
     ZLinkFrameworkConfigurer apiFramework() {
         return options -> {
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            options.codecs().addJson();
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addHandlersFromPackageOf(ApiServerApplication.class);
             options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableServer(SampleTopology.ApiChannelEndpoint)
+                .enableServer(SampleTopology.selectedApiChannelEndpoint())
                 .addHandlerGroup("api");
-            options.addClientServerChannel(SampleNames.PlayChannel)
-                .enableClient();
+            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
+            route.enableClient(SampleTopology.PlayARouteEndpoint);
+            route.enableClient(SampleTopology.PlayBRouteEndpoint);
         };
     }
 }

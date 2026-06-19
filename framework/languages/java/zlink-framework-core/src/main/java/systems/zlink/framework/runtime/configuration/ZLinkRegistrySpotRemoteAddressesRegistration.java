@@ -8,7 +8,7 @@ public final class ZLinkRegistrySpotRemoteAddressesRegistration
     private final String namespaceName;
     private String routerChannelId;
 
-    ZLinkRegistrySpotRemoteAddressesRegistration(String namespaceName) {
+    public ZLinkRegistrySpotRemoteAddressesRegistration(String namespaceName) {
         if (namespaceName == null || namespaceName.isBlank()) {
             throw new ZLinkConfigurationException("namespaceName name is required");
         }

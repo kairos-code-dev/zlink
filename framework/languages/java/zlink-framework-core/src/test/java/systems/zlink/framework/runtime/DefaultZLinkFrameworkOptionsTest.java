@@ -42,6 +42,7 @@ import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class DefaultZLinkFrameworkOptionsTest {
@@ -97,6 +98,18 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void singleRegisteredSerializerProvidesDefaultStreamCodec() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.codecs().addSerializer("application/x-test", new ZLinkJsonMessageSerializer(), ignored -> true);
+        options.codecs().addStreamCodec("application/x-test", ZLinkStreamCodec.PROTOBUF);
+
+        assertEquals(
+            ZLinkStreamCodec.PROTOBUF,
+            options.registration().codecs().streamCodecForCustomSerializer().orElseThrow());
+    }
+
+    @Test
     void configureDispatchRejectsReplyErrorForSendAndPublish() {
         DefaultZLinkFrameworkOptions send = new DefaultZLinkFrameworkOptions();
         { var dispatch = send.configureDispatch(); dispatch.unhandled().setSend(ZLinkUnhandledDispatchAction.REPLY_ERROR); };
@@ -136,6 +149,15 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void routeMeshClientWithManualConnectionDoesNotRequireBindEndpoint() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        { var channel = options.addRouteMeshChannel("play"); channel.enableClient("inproc://play-a"); };
+
+        options.validate();
+    }
+
+    @Test
     void clientServerSpotRouteEgressRequiresClientCapability() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
@@ -154,6 +176,17 @@ final class DefaultZLinkFrameworkOptionsTest {
         options.useRegistrySpotRemoteAddresses("game");
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
+    void spotMeshUseRegistrySpotResolverUsesMeshNamespace() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addSpotMesh("rooms")
+            .useRegistrySpotResolver()
+            .addNode("play-a");
+
+        assertEquals("rooms", options.registration().registrySpotRemoteAddresses().namespaceName());
     }
 
     @Test
@@ -244,8 +277,8 @@ final class DefaultZLinkFrameworkOptionsTest {
         assertEquals(pubSubRid, options.registration().spotNodes().get(0).pubSubRoutingId());
         assertEquals(nodeRid, options.registration().spotNodes().get(0).nodeRoutingId());
         assertEquals(
-            List.of("inproc://spot-router-peer"),
-            options.registration().spotNodes().get(0).routerManualConnections());
+            "inproc://spot-router-peer",
+            options.registration().spotNodes().get(0).routerManualConnections().get(0).endpoint());
         assertEquals(
             List.of("inproc://spot-pub-peer"),
             options.registration().spotNodes().get(0).pubSubManualConnections());
@@ -556,7 +589,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void routeMeshChannelWithoutBindIsRejected() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addRouteMeshChannel("route"); channel.enableClient("inproc://route"); };
+        { var channel = options.addRouteMeshChannel("route"); };
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
     }

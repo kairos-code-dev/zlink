@@ -23,6 +23,14 @@ struct bingo_sample_players_t
 {
     static constexpr const char *player1 = "player-1";
     static constexpr const char *player2 = "player-2";
+    static constexpr const char *observer = "observer";
+};
+
+struct bingo_reward_items_t
+{
+    static constexpr const char *golden_dauber_id = "rare-golden-dauber";
+    static constexpr const char *golden_dauber_name = "Golden Dauber";
+    static constexpr const char *legendary_rarity = "Legendary";
 };
 
 struct bingo_room_status_t
@@ -43,6 +51,7 @@ struct authenticate_res_t
     static constexpr const char *packet_name = "AuthenticateRes";
     std::string actor_id;
     std::string display_name;
+    std::string actor_node_rid;
 };
 
 struct authenticate_player_req_t
@@ -65,11 +74,12 @@ struct ensure_player_actor_req_t
     static constexpr const char *packet_name = "EnsurePlayerActorReq";
     std::string actor_id;
     std::string display_name;
+    std::string preferred_actor_node_rid;
 };
 
 struct actor_ref_snapshot_t
 {
-    std::array<unsigned char, 16> node_rid{};
+    std::string node_rid;
     std::string actor_id;
     unsigned long long generation = 0;
 };
@@ -95,6 +105,8 @@ struct remote_actor_packet_req_t
     bool request_seq_present = false;
     unsigned long long request_seq = 0;
     std::string relayed_packet_name;
+    std::string bound_session_route_channel;
+    std::string bound_session_node_rid;
     std::map<std::string, std::string> metadata;
     std::vector<unsigned char> payload;
 };
@@ -123,12 +135,14 @@ struct match_bingo_api_req_t
     std::string actor_id;
     std::string display_name;
     std::string mode;
+    std::string actor_node_rid;
 };
 
 struct match_bingo_api_res_t
 {
     static constexpr const char *packet_name = "MatchBingoApiRes";
     std::string room_id;
+    std::string room_owner_node_rid;
 };
 
 struct allocate_bingo_room_req_t
@@ -136,12 +150,25 @@ struct allocate_bingo_room_req_t
     static constexpr const char *packet_name = "AllocateBingoRoomReq";
     std::string mode;
     std::string actor_id;
+    std::string preferred_owner_node_rid;
 };
 
 struct allocate_bingo_room_res_t
 {
     static constexpr const char *packet_name = "AllocateBingoRoomRes";
     std::string room_id;
+    std::string room_owner_node_rid;
+};
+
+struct bingo_room_settings_payload_t
+{
+    static constexpr const char *packet_name = "BingoRoomSettingsPayload";
+    std::string room_name;
+    std::string mode;
+    int required_players = 2;
+    int max_draw_number = 75;
+    std::string purpose = "Game";
+    std::string observed_room_id;
 };
 
 struct bingo_player_state_t
@@ -173,6 +200,7 @@ struct match_bingo_res_t
     static constexpr const char *packet_name = "MatchBingoRes";
     std::string room_id;
     bingo_room_state_t state;
+    std::string room_owner_node_rid;
 };
 
 struct bingo_room_join_req_t
@@ -181,6 +209,7 @@ struct bingo_room_join_req_t
     std::string room_id;
     std::string actor_id;
     std::string display_name;
+    bool observe_only = false;
 };
 
 struct bingo_room_join_res_t
@@ -200,6 +229,32 @@ struct submit_bingo_card_res_t
 {
     static constexpr const char *packet_name = "SubmitBingoCardRes";
     bingo_room_state_t state;
+};
+
+struct observe_bingo_events_req_t
+{
+    static constexpr const char *packet_name = "ObserveBingoEventsReq";
+    std::string room_id;
+};
+
+struct observe_bingo_events_res_t
+{
+    static constexpr const char *packet_name = "ObserveBingoEventsRes";
+    bool subscribed = false;
+    std::string observer_node_rid;
+};
+
+struct stop_observing_bingo_events_req_t
+{
+    static constexpr const char *packet_name = "StopObservingBingoEventsReq";
+    std::string room_id;
+};
+
+struct stop_observing_bingo_events_res_t
+{
+    static constexpr const char *packet_name = "StopObservingBingoEventsRes";
+    bool stopped = false;
+    std::string observer_node_rid;
 };
 
 struct player_joined_notify_t
@@ -240,6 +295,29 @@ struct game_ended_notify_t
     bingo_room_state_t state;
 };
 
+struct bingo_reward_announced_notify_t
+{
+    static constexpr const char *packet_name = "BingoRewardAnnouncedNotify";
+    std::string room_id;
+    std::string actor_id;
+    int draw_seq = 0;
+    std::string item_id;
+    std::string item_name;
+    std::string rarity;
+    std::string receiving_spot_node_rid;
+};
+
+struct bingo_reward_acquired_event_t
+{
+    static constexpr const char *packet_name = "BingoRewardAcquiredEvent";
+    std::string room_id;
+    std::string actor_id;
+    int draw_seq = 0;
+    std::string item_id;
+    std::string item_name;
+    std::string rarity;
+};
+
 inline void to_json (nlohmann::json &json, const authenticate_req_t &value)
 {
     json = {{"accessToken", value.access_token}};
@@ -278,13 +356,16 @@ inline void from_json (const nlohmann::json &json, authenticate_player_res_t &va
 
 inline void to_json (nlohmann::json &json, const ensure_player_actor_req_t &value)
 {
-    json = {{"actorId", value.actor_id}, {"displayName", value.display_name}};
+    json = {{"actorId", value.actor_id},
+            {"displayName", value.display_name},
+            {"preferredActorNodeRid", value.preferred_actor_node_rid}};
 }
 
 inline void from_json (const nlohmann::json &json, ensure_player_actor_req_t &value)
 {
     value.actor_id = json.value ("actorId", "");
     value.display_name = json.value ("displayName", "");
+    value.preferred_actor_node_rid = json.value ("preferredActorNodeRid", "");
 }
 
 inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
@@ -295,7 +376,7 @@ inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
 
 inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
 {
-    value.node_rid = json.value ("nodeRid", std::array<unsigned char, 16>{});
+    value.node_rid = json.value ("nodeRid", "");
     value.actor_id = json.value ("actorId", "");
     value.generation = json.value ("generation", 0ULL);
 }
@@ -324,6 +405,8 @@ inline void to_json (nlohmann::json &json, const remote_actor_packet_req_t &valu
             {"requestSeqPresent", value.request_seq_present},
             {"requestSeq", value.request_seq},
             {"packetName", value.relayed_packet_name},
+            {"boundSessionRouteChannel", value.bound_session_route_channel},
+            {"boundSessionNodeRid", value.bound_session_node_rid},
             {"metadata", value.metadata},
             {"payload", value.payload}};
 }
@@ -340,6 +423,8 @@ inline void from_json (const nlohmann::json &json, remote_actor_packet_req_t &va
     value.request_seq_present = json.value ("requestSeqPresent", false);
     value.request_seq = json.value ("requestSeq", 0ULL);
     value.relayed_packet_name = json.value ("packetName", "");
+    value.bound_session_route_channel = json.value ("boundSessionRouteChannel", "");
+    value.bound_session_node_rid = json.value ("boundSessionNodeRid", "");
     value.metadata = json.value ("metadata", std::map<std::string, std::string>{});
     value.payload = json.value ("payload", std::vector<unsigned char>{});
 }
@@ -378,7 +463,10 @@ inline void from_json (const nlohmann::json &json, match_bingo_req_t &value)
 
 inline void to_json (nlohmann::json &json, const match_bingo_api_req_t &value)
 {
-    json = {{"actorId", value.actor_id}, {"displayName", value.display_name}, {"mode", value.mode}};
+    json = {{"actorId", value.actor_id},
+            {"displayName", value.display_name},
+            {"mode", value.mode},
+            {"actorNodeRid", value.actor_node_rid}};
 }
 
 inline void from_json (const nlohmann::json &json, match_bingo_api_req_t &value)
@@ -386,43 +474,73 @@ inline void from_json (const nlohmann::json &json, match_bingo_api_req_t &value)
     value.actor_id = json.value ("actorId", "");
     value.display_name = json.value ("displayName", "");
     value.mode = json.value ("mode", "");
+    value.actor_node_rid = json.value ("actorNodeRid", "");
 }
 
 inline void to_json (nlohmann::json &json, const match_bingo_api_res_t &value)
 {
-    json = {{"roomId", value.room_id}};
+    json = {{"roomId", value.room_id}, {"roomOwnerNodeRid", value.room_owner_node_rid}};
 }
 
 inline void from_json (const nlohmann::json &json, match_bingo_api_res_t &value)
 {
     value.room_id = json.value ("roomId", "");
+    value.room_owner_node_rid = json.value ("roomOwnerNodeRid", "");
 }
 
 inline void to_json (nlohmann::json &json, const allocate_bingo_room_req_t &value)
 {
-    json = {{"mode", value.mode}, {"actorId", value.actor_id}};
+    json = {{"mode", value.mode},
+            {"actorId", value.actor_id},
+            {"preferredOwnerNodeRid", value.preferred_owner_node_rid}};
 }
 
 inline void from_json (const nlohmann::json &json, allocate_bingo_room_req_t &value)
 {
     value.mode = json.value ("mode", "");
     value.actor_id = json.value ("actorId", "");
+    value.preferred_owner_node_rid = json.value ("preferredOwnerNodeRid", "");
 }
 
 inline void to_json (nlohmann::json &json, const allocate_bingo_room_res_t &value)
 {
-    json = {{"roomId", value.room_id}};
+    json = {{"roomId", value.room_id}, {"roomOwnerNodeRid", value.room_owner_node_rid}};
 }
 
 inline void from_json (const nlohmann::json &json, allocate_bingo_room_res_t &value)
 {
     value.room_id = json.value ("roomId", "");
+    value.room_owner_node_rid = json.value ("roomOwnerNodeRid", "");
+}
+
+inline void to_json (nlohmann::json &json, const bingo_room_settings_payload_t &value)
+{
+    json = {{"roomName", value.room_name},
+            {"mode", value.mode},
+            {"requiredPlayers", value.required_players},
+            {"maxDrawNumber", value.max_draw_number},
+            {"purpose", value.purpose}};
+    if (!value.observed_room_id.empty ()) {
+        json["observedRoomId"] = value.observed_room_id;
+    }
+}
+
+inline void from_json (const nlohmann::json &json, bingo_room_settings_payload_t &value)
+{
+    value.room_name = json.value ("roomName", "");
+    value.mode = json.value ("mode", "");
+    value.required_players = json.value ("requiredPlayers", 2);
+    value.max_draw_number = json.value ("maxDrawNumber", 75);
+    value.purpose = json.value ("purpose", "Game");
+    value.observed_room_id = json.value ("observedRoomId", "");
 }
 
 inline void to_json (nlohmann::json &json, const bingo_room_join_req_t &value)
 {
-    json = {
-      {"roomId", value.room_id}, {"actorId", value.actor_id}, {"displayName", value.display_name}};
+    json = {{"roomId", value.room_id},
+            {"actorId", value.actor_id},
+            {"displayName", value.display_name},
+            {"observeOnly", value.observe_only}};
 }
 
 inline void from_json (const nlohmann::json &json, bingo_room_join_req_t &value)
@@ -430,6 +548,7 @@ inline void from_json (const nlohmann::json &json, bingo_room_join_req_t &value)
     value.room_id = json.value ("roomId", "");
     value.actor_id = json.value ("actorId", "");
     value.display_name = json.value ("displayName", "");
+    value.observe_only = json.value ("observeOnly", false);
 }
 
 inline void to_json (nlohmann::json &json, const submit_bingo_card_req_t &value)
@@ -493,24 +612,30 @@ inline void from_json (const nlohmann::json &json, bingo_room_state_t &value)
 
 inline void to_json (nlohmann::json &json, const authenticate_res_t &value)
 {
-    json = {{"actorId", value.actor_id}, {"displayName", value.display_name}};
+    json = {{"actorId", value.actor_id},
+            {"displayName", value.display_name},
+            {"actorNodeRid", value.actor_node_rid}};
 }
 
 inline void from_json (const nlohmann::json &json, authenticate_res_t &value)
 {
     value.actor_id = json.value ("actorId", json.value ("ActorId", ""));
     value.display_name = json.value ("displayName", json.value ("DisplayName", ""));
+    value.actor_node_rid = json.value ("actorNodeRid", "");
 }
 
 inline void to_json (nlohmann::json &json, const match_bingo_res_t &value)
 {
-    json = {{"roomId", value.room_id}, {"state", value.state}};
+    json = {{"roomId", value.room_id},
+            {"state", value.state},
+            {"roomOwnerNodeRid", value.room_owner_node_rid}};
 }
 
 inline void from_json (const nlohmann::json &json, match_bingo_res_t &value)
 {
     value.room_id = json.value ("roomId", "");
     value.state = json.value ("state", bingo_room_state_t{});
+    value.room_owner_node_rid = json.value ("roomOwnerNodeRid", "");
 }
 
 inline void to_json (nlohmann::json &json, const bingo_room_join_res_t &value)
@@ -531,6 +656,48 @@ inline void to_json (nlohmann::json &json, const submit_bingo_card_res_t &value)
 inline void from_json (const nlohmann::json &json, submit_bingo_card_res_t &value)
 {
     value.state = json.value ("state", bingo_room_state_t{});
+}
+
+inline void to_json (nlohmann::json &json, const observe_bingo_events_req_t &value)
+{
+    json = {{"roomId", value.room_id}};
+}
+
+inline void from_json (const nlohmann::json &json, observe_bingo_events_req_t &value)
+{
+    value.room_id = json.value ("roomId", "");
+}
+
+inline void to_json (nlohmann::json &json, const observe_bingo_events_res_t &value)
+{
+    json = {{"subscribed", value.subscribed}, {"observerNodeRid", value.observer_node_rid}};
+}
+
+inline void from_json (const nlohmann::json &json, observe_bingo_events_res_t &value)
+{
+    value.subscribed = json.value ("subscribed", false);
+    value.observer_node_rid = json.value ("observerNodeRid", "");
+}
+
+inline void to_json (nlohmann::json &json, const stop_observing_bingo_events_req_t &value)
+{
+    json = {{"roomId", value.room_id}};
+}
+
+inline void from_json (const nlohmann::json &json, stop_observing_bingo_events_req_t &value)
+{
+    value.room_id = json.value ("roomId", "");
+}
+
+inline void to_json (nlohmann::json &json, const stop_observing_bingo_events_res_t &value)
+{
+    json = {{"stopped", value.stopped}, {"observerNodeRid", value.observer_node_rid}};
+}
+
+inline void from_json (const nlohmann::json &json, stop_observing_bingo_events_res_t &value)
+{
+    value.stopped = json.value ("stopped", false);
+    value.observer_node_rid = json.value ("observerNodeRid", "");
 }
 
 inline void to_json (nlohmann::json &json, const player_joined_notify_t &value)
@@ -594,6 +761,48 @@ inline void to_json (nlohmann::json &json, const game_ended_notify_t &value)
 inline void from_json (const nlohmann::json &json, game_ended_notify_t &value)
 {
     value.state = json.value ("state", bingo_room_state_t{});
+}
+
+inline void to_json (nlohmann::json &json, const bingo_reward_announced_notify_t &value)
+{
+    json = {{"roomId", value.room_id},
+            {"actorId", value.actor_id},
+            {"drawSeq", value.draw_seq},
+            {"itemId", value.item_id},
+            {"itemName", value.item_name},
+            {"rarity", value.rarity},
+            {"receivingSpotNodeRid", value.receiving_spot_node_rid}};
+}
+
+inline void from_json (const nlohmann::json &json, bingo_reward_announced_notify_t &value)
+{
+    value.room_id = json.value ("roomId", "");
+    value.actor_id = json.value ("actorId", "");
+    value.draw_seq = json.value ("drawSeq", 0);
+    value.item_id = json.value ("itemId", "");
+    value.item_name = json.value ("itemName", "");
+    value.rarity = json.value ("rarity", "");
+    value.receiving_spot_node_rid = json.value ("receivingSpotNodeRid", "");
+}
+
+inline void to_json (nlohmann::json &json, const bingo_reward_acquired_event_t &value)
+{
+    json = {{"roomId", value.room_id},
+            {"actorId", value.actor_id},
+            {"drawSeq", value.draw_seq},
+            {"itemId", value.item_id},
+            {"itemName", value.item_name},
+            {"rarity", value.rarity}};
+}
+
+inline void from_json (const nlohmann::json &json, bingo_reward_acquired_event_t &value)
+{
+    value.room_id = json.value ("roomId", "");
+    value.actor_id = json.value ("actorId", "");
+    value.draw_seq = json.value ("drawSeq", 0);
+    value.item_id = json.value ("itemId", "");
+    value.item_name = json.value ("itemName", "");
+    value.rarity = json.value ("rarity", "");
 }
 
 namespace detail

@@ -177,11 +177,11 @@ if [[ -z "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
     exit 1
   fi
   redis_container_id="$(docker run -d --rm \
-    --name "zlink-tictactoe-kotlin-redis-${redis_port}-$$" \
+    --name "zlink-tictactoe-kotlin-redis-${RANDOM}-$$" \
     --label "systems.zlink.sample=tictactoe-kotlin" \
-    -p "127.0.0.1:${redis_port}:6379" \
+    -p "127.0.0.1::6379" \
     redis:7-alpine)"
-  redis_endpoint="127.0.0.1:${redis_port}"
+  redis_endpoint="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 else
   redis_endpoint="${TICTACTOE_REDIS_ENDPOINT}"
 fi

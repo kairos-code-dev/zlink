@@ -210,6 +210,9 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                 route.spotRid(),
                 toFrameworkSpotKind(route.spotKind()));
         }
+        @Override public void setSpotOwnerSyncEnabled(boolean enabled) {
+            nativeDiscovery.setSpotOwnerSyncEnabled(enabled);
+        }
         @Override public ZLinkBackendActorRoute resolveActor(String actorId) {
             var route = nativeDiscovery.resolveActor(actorId);
             return new ZLinkBackendActorRoute(route.actor().nodeRid(), route.actor().actorId());

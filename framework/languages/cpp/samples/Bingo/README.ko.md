@@ -83,3 +83,9 @@ Windows PowerShell에서는 아래 script 를 실행한다.
 script 는 CTest sample parity와 actor lifecycle runtime gate를 먼저 실행한다. 그 다음
 Registry, API, Play, Session 서버 실행 파일을 계속 실행 모드로 띄우고 public client
 실행 파일로 full client/server self-check 를 수행한다.
+
+`BINGO_REDIS_ENDPOINT`가 설정되어 있지 않으면 script 가 Redis Docker container를
+Docker가 배정한 loopback port로 띄우고, self-check 가 끝나면 정상/실패와 관계없이 그
+container를 정리한다. 외부 Redis를 쓰려면 `BINGO_REDIS_ENDPOINT`를 지정한다. script 는 실행마다
+고유한 `BINGO_REDIS_KEY_PREFIX`도 전달하므로 같은 Redis를 쓰는 다른 테스트의 match queue
+key와 섞이지 않는다.

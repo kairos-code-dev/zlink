@@ -6,6 +6,7 @@ $runDir = Join-Path ([System.IO.Path]::GetTempPath()) ("zlink-bingo-ts-" + [Syst
 $logDir = Join-Path $runDir "logs"
 New-Item -ItemType Directory -Path $logDir | Out-Null
 $processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
+$redisContainer = $null
 
 function Get-FreePorts([int]$Count) {
     $listeners = New-Object System.Collections.Generic.List[System.Net.Sockets.TcpListener]
@@ -109,6 +110,19 @@ try {
     $env:BINGO_PLAY_ENDPOINT = if ($env:BINGO_PLAY_ENDPOINT) { $env:BINGO_PLAY_ENDPOINT } else { "tcp://127.0.0.1:$($ports[3])" }
     $env:BINGO_NOTIFICATION_ENDPOINT = if ($env:BINGO_NOTIFICATION_ENDPOINT) { $env:BINGO_NOTIFICATION_ENDPOINT } else { "tcp://127.0.0.1:$($ports[4])" }
     $env:BINGO_API_ENDPOINT = if ($env:BINGO_API_ENDPOINT) { $env:BINGO_API_ENDPOINT } else { "tcp://127.0.0.1:$($ports[5])" }
+    $env:BINGO_REDIS_KEY_PREFIX = if ($env:BINGO_REDIS_KEY_PREFIX) { $env:BINGO_REDIS_KEY_PREFIX } else { "bingo:node:${PID}:$([Guid]::NewGuid().ToString('N')):" }
+    if (-not $env:BINGO_REDIS_ENDPOINT) {
+        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+            throw "Docker is required when BINGO_REDIS_ENDPOINT is not set."
+        }
+        $redisContainer = "bingo-node-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+        & docker run -d --rm --name $redisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to start Redis Docker container."
+        }
+        $redisPort = (& docker port $redisContainer "6379/tcp") -replace '^.*:', ''
+        $env:BINGO_REDIS_ENDPOINT = "127.0.0.1:$redisPort"
+    }
     $env:ZLINK_SAMPLE_CONFIG = Join-Path $runDir "sample.config.json"
 
     @{
@@ -119,6 +133,8 @@ try {
             playEndpoint = $env:BINGO_PLAY_ENDPOINT
             notificationEndpoint = $env:BINGO_NOTIFICATION_ENDPOINT
             apiEndpoint = $env:BINGO_API_ENDPOINT
+            redisEndpoint = $env:BINGO_REDIS_ENDPOINT
+            redisKeyPrefix = $env:BINGO_REDIS_KEY_PREFIX
         }
     } | ConvertTo-Json -Depth 8 | Set-Content -Path $env:ZLINK_SAMPLE_CONFIG -Encoding UTF8
 
@@ -133,6 +149,7 @@ try {
     Start-Server "registry" "dist/Server/Registry/main.js"
     Wait-Port "registry-pub" $env:BINGO_REGISTRY_PUB_ENDPOINT
     Wait-Port "registry-router" $env:BINGO_REGISTRY_ROUTER_ENDPOINT
+    Wait-Port "redis" "tcp://$env:BINGO_REDIS_ENDPOINT"
 
     Start-Server "play" "dist/Server/Play/main.js"
     Wait-Port "play" $env:BINGO_PLAY_ENDPOINT
@@ -163,6 +180,9 @@ finally {
         if (-not $process.HasExited) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         }
+    }
+    if ($redisContainer) {
+        & docker rm -f $redisContainer *> $null
     }
     if ($env:BINGO_TS_KEEP_RUN_DIR -ne "1") {
         Remove-Item -Recurse -Force $runDir -ErrorAction SilentlyContinue

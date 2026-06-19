@@ -1335,7 +1335,8 @@ spot_node_runtime_t::join_actor_to_spot_erased (const actor_ref_t &actor_ref,
 result_t<actor_join_reply_t>
 spot_node_runtime_t::join_remote_actor_to_spot_erased (const actor_ref_t &actor_ref,
                                                        spot_rid_t spot_rid,
-                                                       const zlink::message_t &request)
+                                                       const zlink::message_t &request,
+                                                       actor_context_t actor_context)
 {
     if (actor_ref.empty ()) {
         return result_t<actor_join_reply_t>::failure (framework_error_kind_t::actor_route_not_found,
@@ -1380,7 +1381,7 @@ spot_node_runtime_t::join_remote_actor_to_spot_erased (const actor_ref_t &actor_
               framework_error_kind_t::actor_route_not_found, "actor factory returned null");
         }
     }
-    actor_factory->second.configure_instance (actor_instance.get (), actor_ref, nullptr);
+    actor_factory->second.configure_instance (actor_instance.get (), actor_ref, &actor_context);
 
     const auto admission =
       context->_state->actor_admissions.find (actor_factory->second.actor_type);

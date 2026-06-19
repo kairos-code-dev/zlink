@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../Domain/Bingo/bingo_room_game.hpp"
+#include "bingo_match_queue.hpp"
 
-#include <map>
-#include <stdexcept>
+#include <atomic>
 #include <string>
 
 namespace zlink::samples::bingo
@@ -13,32 +12,22 @@ namespace zlink::samples::bingo
 class bingo_room_allocator_t
 {
   public:
-    std::string allocate (const std::string &mode)
+    explicit bingo_room_allocator_t (bingo_match_queue_t &match_queue) :
+        _match_queue (match_queue)
     {
-        for (const auto &[room_id, room] : _rooms) {
-            if (room.snapshot ().status == bingo_room_status_t::waiting
-                && room.snapshot ().players.size () < 2) {
-                return room_id;
-            }
-        }
-
-        const std::string room_id = mode + "-room-" + std::to_string (_next++);
-        _rooms.emplace (room_id, bingo_room_game_t (room_id));
-        return room_id;
     }
 
-    bingo_room_game_t &get (const std::string &room_id)
+    bingo_match_reservation_t allocate (const std::string &mode,
+                                        const std::string &actor_id,
+                                        const std::string &preferred_owner_node_rid)
     {
-        auto found = _rooms.find (room_id);
-        if (found == _rooms.end ()) {
-            throw std::runtime_error ("unknown bingo room");
-        }
-        return found->second;
+        const auto room_id = mode + "-room-" + std::to_string (++_next);
+        return _match_queue.reserve (mode, actor_id, preferred_owner_node_rid, room_id, 2);
     }
 
   private:
-    int _next = 1;
-    std::map<std::string, bingo_room_game_t> _rooms;
+    bingo_match_queue_t &_match_queue;
+    std::atomic<unsigned long long> _next{0};
 };
 
 } // namespace zlink::samples::bingo

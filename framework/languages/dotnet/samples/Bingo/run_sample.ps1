@@ -29,6 +29,8 @@ function Require-LogCount {
 }
 
 try {
+    Set-DefaultEnv "BINGO_REDIS_KEY_PREFIX" "bingo:dotnet:${PID}:$([Guid]::NewGuid().ToString('N')):"
+
     $basePort = if ($env:BINGO_BASE_PORT) { [int]$env:BINGO_BASE_PORT } else { 0 }
     $ports = New-SamplePorts -Count 22 -BasePort $basePort
 
@@ -60,12 +62,13 @@ try {
             throw "Docker is required when BINGO_REDIS_ENDPOINT is not set."
         }
 
-        $RedisContainer = "bingo-redis-$($ports[16])"
-        Set-DefaultEnv "BINGO_REDIS_ENDPOINT" "127.0.0.1:$($ports[16])"
-        & docker run -d --rm --name $RedisContainer -p "$($ports[16]):6379" redis:7.2-alpine | Out-Null
+        $RedisContainer = "bingo-dotnet-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+        & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to start Redis container."
         }
+        $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
+        Set-DefaultEnv "BINGO_REDIS_ENDPOINT" "127.0.0.1:$redisPort"
         Wait-SampleTcpEndpoint "redis" "tcp://$env:BINGO_REDIS_ENDPOINT"
     }
 

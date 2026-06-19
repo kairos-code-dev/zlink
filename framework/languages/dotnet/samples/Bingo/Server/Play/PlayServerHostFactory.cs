@@ -1,4 +1,5 @@
 using Bingo.Server.Play.Adapters.ZLink.Actors;
+using Bingo.Server.Play.Adapters.ZLink.Matchmaking;
 using Bingo.Server.Play.Adapters.ZLink.Notifications;
 using Bingo.Server.Play.Application.RoomAllocation;
 using Bingo.Server.Play.Adapters.ZLink.Spots;
@@ -20,7 +21,7 @@ public static class PlayServerHostFactory
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(node);
         builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(topology.RedisEndpoint));
-        builder.Services.AddSingleton<RedisBingoMatchQueue>();
+        builder.Services.AddSingleton<IBingoMatchQueue, RedisBingoMatchQueue>();
         builder.Services.AddSingleton<BingoRoomAllocator>();
         builder.Services.AddSingleton<BingoRoomEventMapper>();
         builder.Services.AddSingleton<BingoNotificationPublisher>();

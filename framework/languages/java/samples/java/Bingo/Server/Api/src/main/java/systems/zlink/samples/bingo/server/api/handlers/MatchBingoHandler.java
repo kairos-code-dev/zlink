@@ -1,6 +1,7 @@
 package systems.zlink.samples.bingo.server.api.handlers;
 
-import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -13,21 +14,25 @@ public final class MatchBingoHandler
     implements ZLinkRequestHandler<
         Messages.MatchBingoApiReq,
         Messages.MatchBingoApiRes> {
-    private final ZLinkClient client;
+    private final ZLinkRouteClient routes;
 
-    public MatchBingoHandler(ZLinkClient client) {
-        this.client = client;
+    public MatchBingoHandler(ZLinkRouteClient routes) {
+        this.routes = routes;
     }
 
     @Override
     public Messages.MatchBingoApiRes handle(
         Messages.MatchBingoApiReq request,
         ZLinkRequestContext context) {
-        Messages.AllocateBingoRoomRes allocated = client.requestToChannel(
+        Messages.AllocateBingoRoomRes allocated = routes.requestTo(
                 SampleNames.PlayChannel,
-                new Messages.AllocateBingoRoomReq(request.actorId(), request.mode()))
+                RoutingId.from(request.actorNodeRid()),
+                new Messages.AllocateBingoRoomReq(
+                    request.actorId(),
+                    request.mode(),
+                    request.actorNodeRid()))
             .timeout(SampleTimings.RequestTimeout)
             .await(Messages.AllocateBingoRoomRes.class);
-        return new Messages.MatchBingoApiRes(allocated.roomId());
+        return new Messages.MatchBingoApiRes(allocated.roomId(), allocated.roomOwnerNodeRid());
     }
 }

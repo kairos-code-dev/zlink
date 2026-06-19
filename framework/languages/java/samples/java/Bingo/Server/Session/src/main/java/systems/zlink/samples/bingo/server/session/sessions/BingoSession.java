@@ -42,7 +42,15 @@ public final class BingoSession implements ZLinkSession {
 
     @Override
     public void onDispatch(ZLinkStreamHeader header, Message payload) {
-        boolean handled = await(handlers.tryHandleAsync(context, header, payload));
+        System.out.println("bingo session: dispatch packet=" + header.packetName());
+        boolean handled;
+        try {
+            handled = await(handlers.tryHandleAsync(context, header, payload));
+        } catch (RuntimeException ex) {
+            ex.printStackTrace(System.out);
+            throw ex;
+        }
+        System.out.println("bingo session: dispatch handled=" + handled + " packet=" + header.packetName());
         if (handled) {
             return;
         }

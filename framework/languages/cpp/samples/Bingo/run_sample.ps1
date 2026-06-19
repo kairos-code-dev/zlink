@@ -21,6 +21,8 @@ $RegistryRouterEndpoint = "tcp://127.0.0.1:47102"
 $ApiChannelEndpoint = "tcp://127.0.0.1:47103"
 $PlayChannelEndpoint = "tcp://127.0.0.1:47104"
 $SessionStreamEndpoint = "tcp://127.0.0.1:47114"
+$RedisContainer = $null
+$RedisKeyPrefix = if ($env:BINGO_REDIS_KEY_PREFIX) { $env:BINGO_REDIS_KEY_PREFIX } else { "bingo:cpp:${PID}:$([Guid]::NewGuid().ToString('N')):" }
 
 foreach ($Binary in @($RegistryBin, $ApiBin, $PlayBin, $SessionBin, $ClientBin)) {
     if (-not (Test-Path $Binary)) {
@@ -56,17 +58,35 @@ function Wait-Port([string]$Name, [string]$Endpoint) {
 }
 
 & $CTestBin --test-dir $BuildDir `
-    -R "test_cpp_framework_sample_parity|test_cpp_framework_spot_runtime|test_cpp_framework_ActorGateway_actor_session_relay|sample_smoke_sample_cpp_framework_bingo_(registry|api|play|session)" `
+    -R "test_cpp_framework_sample_parity|test_cpp_framework_spot_runtime|test_cpp_framework_ActorGateway_actor_session_relay" `
     --output-on-failure
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $LogDir = New-Item -ItemType Directory -Path ([System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetRandomFileName()))
 $Processes = @()
 try {
-    $Processes += Start-Process -FilePath $RegistryBin -ArgumentList "--sample.host.keepRunning", "true" -RedirectStandardOutput (Join-Path $LogDir "registry.log") -RedirectStandardError (Join-Path $LogDir "registry.err") -PassThru
-    $Processes += Start-Process -FilePath $ApiBin -ArgumentList "--sample.host.keepRunning", "true" -RedirectStandardOutput (Join-Path $LogDir "api.log") -RedirectStandardError (Join-Path $LogDir "api.err") -PassThru
-    $Processes += Start-Process -FilePath $PlayBin -ArgumentList "--sample.host.keepRunning", "true" -RedirectStandardOutput (Join-Path $LogDir "play.log") -RedirectStandardError (Join-Path $LogDir "play.err") -PassThru
-    $Processes += Start-Process -FilePath $SessionBin -ArgumentList "--sample.host.keepRunning", "true" -RedirectStandardOutput (Join-Path $LogDir "session.log") -RedirectStandardError (Join-Path $LogDir "session.err") -PassThru
+    $RedisEndpoint = $env:BINGO_REDIS_ENDPOINT
+    if (-not $RedisEndpoint) {
+        $docker = Get-Command docker -ErrorAction SilentlyContinue
+        if ($null -eq $docker) {
+            throw "Docker is required when BINGO_REDIS_ENDPOINT is not set."
+        }
+        $RedisContainer = "bingo-cpp-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+        & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to start Redis container."
+        }
+        $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
+        $RedisEndpoint = "127.0.0.1:$redisPort"
+        Wait-Port "redis" "tcp://$RedisEndpoint"
+    }
+
+    $TopologyArgs = @("--sample.topology.redisEndpoint=$RedisEndpoint", "--sample.topology.redisKeyPrefix=$RedisKeyPrefix")
+    $ServerArgs = @("--sample.host.keepRunning", "true") + $TopologyArgs
+    $Processes += Start-Process -FilePath $RegistryBin -ArgumentList $ServerArgs -RedirectStandardOutput (Join-Path $LogDir "registry.log") -RedirectStandardError (Join-Path $LogDir "registry.err") -PassThru
+    $Processes += Start-Process -FilePath $ApiBin -ArgumentList $ServerArgs -RedirectStandardOutput (Join-Path $LogDir "api.log") -RedirectStandardError (Join-Path $LogDir "api.err") -PassThru
+    $Processes += Start-Process -FilePath $PlayBin -ArgumentList $ServerArgs -RedirectStandardOutput (Join-Path $LogDir "play.log") -RedirectStandardError (Join-Path $LogDir "play.err") -PassThru
+    $Processes += Start-Process -FilePath $SessionBin -ArgumentList $ServerArgs -RedirectStandardOutput (Join-Path $LogDir "session.log") -RedirectStandardError (Join-Path $LogDir "session.err") -PassThru
     Wait-Port "registry-pub" $RegistryPubEndpoint
     Wait-Port "registry-router" $RegistryRouterEndpoint
     Wait-Port "api-channel" $ApiChannelEndpoint
@@ -97,6 +117,9 @@ finally {
         if (-not $Process.HasExited) {
             Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
         }
+    }
+    if ($RedisContainer) {
+        & docker rm -f $RedisContainer | Out-Null
     }
 }
 

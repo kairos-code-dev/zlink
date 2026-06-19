@@ -319,6 +319,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteRequestCall(
+            channelName,
             requireRouteRouter(channelName),
             target,
             encoded.payload(),
@@ -390,6 +391,27 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         });
     }
 
+    public CompletionStage<Void> sendToSpotViaRouterChannel(
+        String routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        List<Message> spotParts) {
+        ZLinkBackendRouterSocket router = requireRouteRouter(routerChannelId);
+        List<Message> relayParts =
+            ZLinkRoutedSpotRelayPackets.createSendRelayParts(targetSpotRid, spotParts);
+        return CompletableFuture.runAsync(() -> {
+            try {
+                if (!router.send(targetNodeRid, relayParts, SendFlags.NONE)) {
+                    throw new ZLinkConfigurationException(
+                        "routed SPOT ingress channel is not ready for send: "
+                            + routerChannelId);
+                }
+            } finally {
+                relayParts.forEach(Message::close);
+            }
+        });
+    }
+
     public CompletionStage<List<Message>> requestToSpotViaEgressChannel(
         String localEgressChannelName,
         RoutingId targetSpotRid,
@@ -418,7 +440,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             if (registration.kind() == ChannelKind.CLIENT_SERVER) {
                 requireClient(localEgressChannelName).request(relayParts, reply -> {
                     try {
-                        result.complete(ZLinkRoutedSpotRelayPackets.copyReplyParts(reply.parts()));
+                        result.complete(ZLinkRoutedSpotRelayPackets.decodeReplyParts(reply.parts()));
                     } catch (RuntimeException ex) {
                         result.completeExceptionally(ex);
                     } finally {
@@ -438,13 +460,54 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 relayParts,
                 reply -> {
                 try {
-                    result.complete(ZLinkRoutedSpotRelayPackets.copyReplyParts(reply.parts()));
+                    result.complete(ZLinkRoutedSpotRelayPackets.decodeReplyParts(reply.parts()));
                 } catch (RuntimeException ex) {
                     result.completeExceptionally(ex);
                 } finally {
                     reply.parts().forEach(Message::close);
                 }
             }, timeout, registration.routeManualEndpoints(), result);
+            return result;
+        } catch (RuntimeException ex) {
+            result.completeExceptionally(ex);
+            return result;
+        } finally {
+            relayParts.forEach(Message::close);
+        }
+    }
+
+    public CompletionStage<List<Message>> requestToSpotViaRouterChannel(
+        String routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        List<Message> spotParts,
+        Duration timeout) {
+        ChannelRegistration registration = registrationsByName.get(routerChannelId);
+        if (registration == null || registration.kind() != ChannelKind.ROUTE_MESH) {
+            throw new ZLinkConfigurationException(
+                "route mesh channel is not configured: " + routerChannelId);
+        }
+        CompletableFuture<List<Message>> result = new CompletableFuture<>();
+        trackPendingRequest(result, timeout);
+        List<Message> relayParts =
+            ZLinkRoutedSpotRelayPackets.createRequestRelayParts(targetSpotRid, spotParts);
+        try {
+            submitRouteRequestWithRetry(
+                requireRouteRouter(routerChannelId),
+                targetNodeRid,
+                relayParts,
+                reply -> {
+                    try {
+                        result.complete(ZLinkRoutedSpotRelayPackets.decodeReplyParts(reply.parts()));
+                    } catch (RuntimeException ex) {
+                        result.completeExceptionally(ex);
+                    } finally {
+                        reply.parts().forEach(Message::close);
+                    }
+                },
+                timeout,
+                registration.routeManualEndpoints(),
+                result);
             return result;
         } catch (RuntimeException ex) {
             result.completeExceptionally(ex);
@@ -462,6 +525,9 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         Duration timeout,
         List<String> reconnectEndpoints,
         CompletableFuture<?> result) {
+        List<byte[]> requestPayloads = requestParts.stream()
+            .map(Message::toByteArray)
+            .toList();
         long timeoutNanos = timeout == null || timeout.isZero()
             ? defaultTimeout.toNanos()
             : timeout.toNanos();
@@ -474,10 +540,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 if (result.isDone()) {
                     return;
                 }
+                List<Message> attemptParts = requestPayloads.stream()
+                    .map(Message::from)
+                    .toList();
                 try {
                     boolean submitted = router.request(
                         targetPeerRid,
-                        requestParts,
+                        attemptParts,
                         callback,
                         SendFlags.DONT_WAIT,
                         timeout);
@@ -498,6 +567,8 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     timeoutExecutor.schedule(this, 10, TimeUnit.MILLISECONDS);
                 } catch (RuntimeException ex) {
                     result.completeExceptionally(ex);
+                } finally {
+                    attemptParts.forEach(Message::close);
                 }
             }
         }
@@ -910,11 +981,17 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     received.routingId().get(),
                     received.parts(),
                     defaultTimeout)
-                .thenAccept(reply -> replyRawAndClose(
-                    router,
-                    received.routingId().get(),
-                    received.requestSeq().get(),
-                    reply));
+                .thenAccept(reply -> {
+                    try {
+                        replyRawAndClose(
+                            router,
+                            received.routingId().get(),
+                            received.requestSeq().get(),
+                            ZLinkRoutedSpotRelayPackets.createReplyParts(reply));
+                    } finally {
+                        reply.forEach(Message::close);
+                    }
+                });
             return true;
         }
         return false;
@@ -1639,6 +1716,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     }
 
     private final class RouteRequestCall implements ZLinkRequestCall {
+        private final String channelName;
         private final ZLinkBackendRouterSocket router;
         private final RoutingId target;
         private final Message payload;
@@ -1646,11 +1724,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         private final Duration timeout;
 
         private RouteRequestCall(
+            String channelName,
             ZLinkBackendRouterSocket router,
             RoutingId target,
             Message payload,
             Optional<String> packetName,
             Duration timeout) {
+            this.channelName = channelName;
             this.router = router;
             this.target = target;
             this.payload = payload;
@@ -1660,7 +1740,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
         @Override
         public ZLinkRequestCall packetName(String packetName) {
-            return new RouteRequestCall(router, target, payload, Optional.of(packetName), timeout);
+            return new RouteRequestCall(
+                channelName,
+                router,
+                target,
+                payload,
+                Optional.of(packetName),
+                timeout);
         }
 
         @Override
@@ -1670,7 +1756,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
         @Override
         public ZLinkRequestCall timeout(Duration timeout) {
-            return new RouteRequestCall(router, target, payload, packetName, timeout);
+            return new RouteRequestCall(channelName, router, target, payload, packetName, timeout);
         }
 
         @Override
@@ -1679,22 +1765,33 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             trackPendingRequest(result, timeout);
             List<Message> requestParts = parts(packetName, payload);
             try {
-                router.request(target, requestParts, reply -> {
-                    Message emptyReply = null;
-                    try {
-                        Message firstReply = reply.parts().isEmpty()
-                            ? (emptyReply = Message.from(new byte[0]))
-                            : reply.parts().get(0);
-                        result.complete(serializer.deserialize(firstReply, replyType));
-                    } catch (RuntimeException ex) {
-                        result.completeExceptionally(ex);
-                    } finally {
-                        if (emptyReply != null) {
-                            emptyReply.close();
+                ChannelRegistration registration = registrationsByName.get(channelName);
+                List<String> reconnectEndpoints = registration == null
+                    ? List.of()
+                    : registration.routeManualEndpoints();
+                submitRouteRequestWithRetry(
+                    router,
+                    target,
+                    requestParts,
+                    reply -> {
+                        Message emptyReply = null;
+                        try {
+                            Message firstReply = reply.parts().isEmpty()
+                                ? (emptyReply = Message.from(new byte[0]))
+                                : reply.parts().get(0);
+                            result.complete(serializer.deserialize(firstReply, replyType));
+                        } catch (RuntimeException ex) {
+                            result.completeExceptionally(ex);
+                        } finally {
+                            if (emptyReply != null) {
+                                emptyReply.close();
+                            }
+                            reply.parts().forEach(Message::close);
                         }
-                        reply.parts().forEach(Message::close);
-                    }
-                }, SendFlags.NONE, timeout);
+                    },
+                    timeout,
+                    reconnectEndpoints,
+                    result);
             } finally {
                 requestParts.forEach(Message::close);
             }

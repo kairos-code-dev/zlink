@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
+redis_container_id=""
 role_pattern='systems\.zlink\.samples\.kotlin\.bingo\.(server\.(registry|api|play|session)\.ProgramKt|client\.ProgramKt|probe\.ProgramKt)'
 log_dir="build/sample-logs"
 mkdir -p "${log_dir}"
@@ -44,6 +45,7 @@ kill_role_processes_forcibly() {
 
 cleanup() {
   local status="$?"
+  set +e
   print_logs "${status}"
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     local pid="${pids[$i]}"
@@ -83,6 +85,9 @@ cleanup() {
   for pid in "${pids[@]}"; do
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "${redis_container_id}" ]]; then
+    docker rm -f "${redis_container_id}" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -172,7 +177,19 @@ play_route_host="${play_route%:*}"
 play_route_port="${play_route##*:}"
 stream_host="${stream_endpoint%:*}"
 stream_port="${stream_endpoint##*:}"
-export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dzlink.samples.bingo.registryPubEndpoint=tcp://${registry_pub_host}:${registry_pub_port} -Dzlink.samples.bingo.registryRouterEndpoint=tcp://${registry_router_host}:${registry_router_port} -Dzlink.samples.bingo.apiChannelEndpoint=tcp://${api_host}:${api_port} -Dzlink.samples.bingo.playChannelEndpoint=tcp://${play_channel_host}:${play_channel_port} -Dzlink.samples.bingo.sessionSpotEndpoint=tcp://${session_spot_host}:${session_spot_port} -Dzlink.samples.bingo.sessionRouterEndpoint=tcp://${session_router_host}:${session_router_port} -Dzlink.samples.bingo.playSpotEndpoint=tcp://${play_spot_host}:${play_spot_port} -Dzlink.samples.bingo.playSpotRouterEndpoint=tcp://${play_router_host}:${play_router_port} -Dzlink.samples.bingo.sessionRouteEndpoint=tcp://${session_route_host}:${session_route_port} -Dzlink.samples.bingo.playRouteEndpoint=tcp://${play_route_host}:${play_route_port} -Dzlink.samples.bingo.streamEndpoint=tcp://${stream_host}:${stream_port}"
+bingo_redis_key_prefix="${BINGO_REDIS_KEY_PREFIX:-bingo:kotlin:${RANDOM}:$$:}"
+if [[ -z "${BINGO_REDIS_ENDPOINT:-}" ]]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required when BINGO_REDIS_ENDPOINT is not set." >&2
+    exit 1
+  fi
+  redis_container_id="$(docker run -d --rm --name "bingo-kotlin-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+  BINGO_REDIS_ENDPOINT="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+fi
+redis_host="${BINGO_REDIS_ENDPOINT%:*}"
+redis_port="${BINGO_REDIS_ENDPOINT##*:}"
+wait_port "${redis_host}" "${redis_port}"
+export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dzlink.samples.bingo.registryPubEndpoint=tcp://${registry_pub_host}:${registry_pub_port} -Dzlink.samples.bingo.registryRouterEndpoint=tcp://${registry_router_host}:${registry_router_port} -Dzlink.samples.bingo.apiChannelEndpoint=tcp://${api_host}:${api_port} -Dzlink.samples.bingo.playChannelEndpoint=tcp://${play_channel_host}:${play_channel_port} -Dzlink.samples.bingo.sessionSpotEndpoint=tcp://${session_spot_host}:${session_spot_port} -Dzlink.samples.bingo.sessionRouterEndpoint=tcp://${session_router_host}:${session_router_port} -Dzlink.samples.bingo.playSpotEndpoint=tcp://${play_spot_host}:${play_spot_port} -Dzlink.samples.bingo.playSpotRouterEndpoint=tcp://${play_router_host}:${play_router_port} -Dzlink.samples.bingo.sessionRouteEndpoint=tcp://${session_route_host}:${session_route_port} -Dzlink.samples.bingo.playRouteEndpoint=tcp://${play_route_host}:${play_route_port} -Dzlink.samples.bingo.streamEndpoint=tcp://${stream_host}:${stream_port} -Dzlink.samples.bingo.redisEndpoint=${BINGO_REDIS_ENDPOINT} -Dzlink.samples.bingo.redisKeyPrefix=${bingo_redis_key_prefix}"
 
 build_framework_jars
 gradle_run classes

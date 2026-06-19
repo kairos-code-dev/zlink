@@ -53,6 +53,7 @@ class remote_actor_packet_handler_t
         }
 
         auto current_actor_ref = _spots.current_actor_ref (actor_ref).value_or (actor_ref);
+        bind_routed_session_if_present (request, current_actor_ref);
 
         TReply response;
         response.actor_ref_present = true;

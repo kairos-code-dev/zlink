@@ -64,7 +64,8 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         Message request,
         CancellationToken cancellationToken) {
         Messages.BingoRoomJoinReq joinRequest = decode(request, Messages.BingoRoomJoinReq.class);
-        return ZLinkSpotActorJoinResponse.accept(encode(join(actor, joinRequest)));
+        Message reply = encode(join(actor, joinRequest));
+        return ZLinkSpotActorJoinResponse.accept(reply);
     }
 
     @Override

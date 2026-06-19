@@ -16,6 +16,7 @@ import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
@@ -27,6 +28,8 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
     private final ZLinkBackendSpot sourceEntrySpot;
+    private final ZLinkChannelRuntime routedTransport;
+    private final String routeChannelName;
     private final RoutingId targetNodeRid;
     private final RoutingId targetEntrySpotRid;
     private final ZLinkBackendActorRef actorRef;
@@ -39,6 +42,8 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
 
     ZLinkRoutedBoundSessionRuntime(
         ZLinkBackendSpot sourceEntrySpot,
+        ZLinkChannelRuntime routedTransport,
+        String routeChannelName,
         RoutingId targetNodeRid,
         RoutingId targetEntrySpotRid,
         ZLinkBackendActorRef actorRef,
@@ -48,6 +53,8 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         Duration timeout,
         ZLinkStreamCodec defaultCodec) {
         this.sourceEntrySpot = sourceEntrySpot;
+        this.routedTransport = routedTransport;
+        this.routeChannelName = routeChannelName;
         this.targetNodeRid = targetNodeRid;
         this.targetEntrySpotRid = targetEntrySpotRid;
         this.actorRef = actorRef;
@@ -68,6 +75,8 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             ZLinkPayloadEncoding.encode(serializer, message);
         return new SendCall(
             sourceEntrySpot,
+            routedTransport,
+            routeChannelName,
             targetNodeRid,
             targetEntrySpotRid,
             actorRef,
@@ -87,6 +96,8 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
 
     private record SendCall(
         ZLinkBackendSpot sourceEntrySpot,
+        ZLinkChannelRuntime routedTransport,
+        String routeChannelName,
         RoutingId targetNodeRid,
         RoutingId targetEntrySpotRid,
         ZLinkBackendActorRef actorRef,
@@ -103,6 +114,8 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             }
             return new SendCall(
                 sourceEntrySpot,
+                routedTransport,
+                routeChannelName,
                 targetNodeRid,
                 targetEntrySpotRid,
                 actorRef,
@@ -120,6 +133,8 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             next.put(key, value);
             return new SendCall(
                 sourceEntrySpot,
+                routedTransport,
+                routeChannelName,
                 targetNodeRid,
                 targetEntrySpotRid,
                 actorRef,
@@ -149,25 +164,29 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             Message frame = Message.from(frameBytes);
             List<Message> parts = ZLinkActorSpotRoutePackets.createBoundSessionSendParts(actorRef, frame);
             try {
-                java.util.concurrent.CompletableFuture<Void> result = new java.util.concurrent.CompletableFuture<>();
-                boolean submitted = sourceEntrySpot.requestToSpot(
+                if (routedTransport != null && routeChannelName != null && !routeChannelName.isBlank()) {
+                    return routedTransport.requestToSpotViaRouterChannel(
+                            routeChannelName,
+                            targetNodeRid,
+                            targetEntrySpotRid,
+                            parts,
+                            timeout)
+                        .thenApply(reply -> {
+                            reply.forEach(Message::close);
+                            return null;
+                        });
+                }
+                boolean submitted = sourceEntrySpot.sendToSpot(
                     targetNodeRid,
                     targetEntrySpotRid,
                     parts,
-                    reply -> {
-                        try {
-                            result.complete(null);
-                        } finally {
-                            reply.parts().forEach(Message::close);
-                        }
-                    },
-                    SendFlags.NONE,
-                    timeout);
+                    SendFlags.NONE);
                 if (!submitted) {
-                    result.completeExceptionally(new ZLinkConfigurationException(
-                        "routed actor bound session target is not ready"));
+                    return java.util.concurrent.CompletableFuture.failedFuture(
+                        new ZLinkConfigurationException(
+                            "routed actor bound session target is not ready"));
                 }
-                return result;
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
             } finally {
                 parts.forEach(Message::close);
                 frame.close();

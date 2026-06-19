@@ -11,7 +11,8 @@ public sealed record SampleTopology(
     SamplePlayNode PlayB,
     SampleSessionNode SessionA,
     SampleSessionNode SessionB,
-    string RedisEndpoint)
+    string RedisEndpoint,
+    string RedisKeyPrefix)
 {
     public static SampleTopology Create()
     {
@@ -63,7 +64,8 @@ public sealed record SampleTopology(
                 RoutingId.From("1106"),
                 playB.NodeRid,
                 playB.PlayChannelEndpoint),
-            ReadEndpoint("BINGO_REDIS_ENDPOINT", "127.0.0.1:6379"));
+            ReadEndpoint("BINGO_REDIS_ENDPOINT", "127.0.0.1:6379"),
+            ReadText("BINGO_REDIS_KEY_PREFIX", "bingo:"));
     }
 
     public SampleApiNode Api(string nodeName)
@@ -82,6 +84,12 @@ public sealed record SampleTopology(
     }
 
     private static string ReadEndpoint(string name, string defaultValue)
+    {
+        var value = Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrWhiteSpace(value) ? defaultValue : value;
+    }
+
+    private static string ReadText(string name, string defaultValue)
     {
         var value = Environment.GetEnvironmentVariable(name);
         return string.IsNullOrWhiteSpace(value) ? defaultValue : value;

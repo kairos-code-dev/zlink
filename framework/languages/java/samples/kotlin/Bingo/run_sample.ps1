@@ -11,6 +11,7 @@ Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LogDir "*.log")
 $Gradle = if ($IsWindows) { Join-Path $SampleDir "../../gradlew.bat" } else { Join-Path $SampleDir "../../gradlew" }
 $RolePattern = "systems\.zlink\.samples\.kotlin\.bingo\.(server\.(registry|api|play|session)\.ProgramKt|client\.ProgramKt|probe\.ProgramKt)"
 $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
+$RedisContainer = $null
 
 function Print-Logs {
     param([int]$Status)
@@ -43,6 +44,9 @@ function Cleanup {
         }
     }
     Stop-RoleProcesses
+    if ($RedisContainer) {
+        & docker rm -f $RedisContainer *> $null
+    }
 }
 
 function Reserve-Endpoints {
@@ -122,7 +126,24 @@ try {
     $playRoute = Split-Endpoint $endpoints[9]
     $stream = Split-Endpoint $endpoints[10]
 
-    $env:JAVA_TOOL_OPTIONS = "$oldJavaToolOptions -Dzlink.samples.bingo.registryPubEndpoint=tcp://$($registryPub.Host):$($registryPub.Port) -Dzlink.samples.bingo.registryRouterEndpoint=tcp://$($registryRouter.Host):$($registryRouter.Port) -Dzlink.samples.bingo.apiChannelEndpoint=tcp://$($apiChannel.Host):$($apiChannel.Port) -Dzlink.samples.bingo.playChannelEndpoint=tcp://$($playChannel.Host):$($playChannel.Port) -Dzlink.samples.bingo.sessionSpotEndpoint=tcp://$($sessionSpot.Host):$($sessionSpot.Port) -Dzlink.samples.bingo.sessionRouterEndpoint=tcp://$($sessionRouter.Host):$($sessionRouter.Port) -Dzlink.samples.bingo.playSpotEndpoint=tcp://$($playSpot.Host):$($playSpot.Port) -Dzlink.samples.bingo.playSpotRouterEndpoint=tcp://$($playRouter.Host):$($playRouter.Port) -Dzlink.samples.bingo.sessionRouteEndpoint=tcp://$($sessionRoute.Host):$($sessionRoute.Port) -Dzlink.samples.bingo.playRouteEndpoint=tcp://$($playRoute.Host):$($playRoute.Port) -Dzlink.samples.bingo.streamEndpoint=tcp://$($stream.Host):$($stream.Port)"
+    $redisEndpoint = $env:BINGO_REDIS_ENDPOINT
+    if (-not $redisEndpoint) {
+        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+            throw "Docker is required when BINGO_REDIS_ENDPOINT is not set."
+        }
+        $RedisContainer = "bingo-kotlin-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+        & docker run -d --rm --name $RedisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to start Redis Docker container."
+        }
+        $redisPort = (& docker port $RedisContainer "6379/tcp") -replace '^.*:', ''
+        $redisEndpoint = "127.0.0.1:$redisPort"
+    }
+    $redis = Split-Endpoint $redisEndpoint
+    Wait-Port $redis.Host $redis.Port
+    $redisKeyPrefix = if ($env:BINGO_REDIS_KEY_PREFIX) { $env:BINGO_REDIS_KEY_PREFIX } else { "bingo:kotlin:${PID}:$([Guid]::NewGuid().ToString('N')):" }
+
+    $env:JAVA_TOOL_OPTIONS = "$oldJavaToolOptions -Dzlink.samples.bingo.registryPubEndpoint=tcp://$($registryPub.Host):$($registryPub.Port) -Dzlink.samples.bingo.registryRouterEndpoint=tcp://$($registryRouter.Host):$($registryRouter.Port) -Dzlink.samples.bingo.apiChannelEndpoint=tcp://$($apiChannel.Host):$($apiChannel.Port) -Dzlink.samples.bingo.playChannelEndpoint=tcp://$($playChannel.Host):$($playChannel.Port) -Dzlink.samples.bingo.sessionSpotEndpoint=tcp://$($sessionSpot.Host):$($sessionSpot.Port) -Dzlink.samples.bingo.sessionRouterEndpoint=tcp://$($sessionRouter.Host):$($sessionRouter.Port) -Dzlink.samples.bingo.playSpotEndpoint=tcp://$($playSpot.Host):$($playSpot.Port) -Dzlink.samples.bingo.playSpotRouterEndpoint=tcp://$($playRouter.Host):$($playRouter.Port) -Dzlink.samples.bingo.sessionRouteEndpoint=tcp://$($sessionRoute.Host):$($sessionRoute.Port) -Dzlink.samples.bingo.playRouteEndpoint=tcp://$($playRoute.Host):$($playRoute.Port) -Dzlink.samples.bingo.streamEndpoint=tcp://$($stream.Host):$($stream.Port) -Dzlink.samples.bingo.redisEndpoint=$redisEndpoint -Dzlink.samples.bingo.redisKeyPrefix=$redisKeyPrefix"
 
     Push-Location "../../.."
     try {

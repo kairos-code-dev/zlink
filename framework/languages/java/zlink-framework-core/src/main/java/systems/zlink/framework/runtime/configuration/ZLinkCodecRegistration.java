@@ -91,6 +91,9 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder {
         });
 
         if (fallbackSerializers.isEmpty()) {
+            if (serializers.size() == 1) {
+                return streamCodec(serializers.keySet().iterator().next());
+            }
             return Optional.empty();
         }
         if (fallbackSerializers.size() > 1) {

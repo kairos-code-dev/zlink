@@ -7,9 +7,11 @@ LOG_DIR="${RUN_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
 PIDS=()
+REDIS_CONTAINER_ID=""
 
 cleanup() {
   local status="$?"
+  set +e
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     if kill -0 "${pid}" 2>/dev/null; then
@@ -38,6 +40,9 @@ cleanup() {
   for pid in "${PIDS[@]}"; do
     wait "${pid}" 2>/dev/null || true
   done
+  if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
+    docker rm -f "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
+  fi
   if [[ "${BINGO_TS_KEEP_RUN_DIR:-}" != "1" ]]; then
     rm -rf "${RUN_DIR}"
   else
@@ -79,7 +84,17 @@ export BINGO_SESSION_ENDPOINT="${BINGO_SESSION_ENDPOINT:-tcp://127.0.0.1:${PORTS
 export BINGO_PLAY_ENDPOINT="${BINGO_PLAY_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
 export BINGO_NOTIFICATION_ENDPOINT="${BINGO_NOTIFICATION_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
 export BINGO_API_ENDPOINT="${BINGO_API_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
+export BINGO_REDIS_KEY_PREFIX="${BINGO_REDIS_KEY_PREFIX:-bingo:node:${RANDOM}:$$:}"
 export ZLINK_SAMPLE_CONFIG="${RUN_DIR}/sample.config.json"
+
+if [[ -z "${BINGO_REDIS_ENDPOINT:-}" ]]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is required when BINGO_REDIS_ENDPOINT is not set." >&2
+    exit 1
+  fi
+  REDIS_CONTAINER_ID="$(docker run -d --rm --name "bingo-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+  export BINGO_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+fi
 
 python3 - "${ZLINK_SAMPLE_CONFIG}" <<PY
 import json
@@ -93,7 +108,9 @@ with open(sys.argv[1], "w", encoding="utf-8") as output:
             "sessionEndpoint": "${BINGO_SESSION_ENDPOINT}",
             "playEndpoint": "${BINGO_PLAY_ENDPOINT}",
             "notificationEndpoint": "${BINGO_NOTIFICATION_ENDPOINT}",
-            "apiEndpoint": "${BINGO_API_ENDPOINT}"
+            "apiEndpoint": "${BINGO_API_ENDPOINT}",
+            "redisEndpoint": "${BINGO_REDIS_ENDPOINT}",
+            "redisKeyPrefix": "${BINGO_REDIS_KEY_PREFIX}"
         }
     }, output, indent=2)
 PY
@@ -173,6 +190,7 @@ start_server() {
 start_server registry dist/Server/Registry/main.js
 wait_port registry-pub "${BINGO_REGISTRY_PUB_ENDPOINT}"
 wait_port registry-router "${BINGO_REGISTRY_ROUTER_ENDPOINT}"
+wait_port redis "tcp://${BINGO_REDIS_ENDPOINT}"
 
 start_server play dist/Server/Play/main.js
 wait_port play "${BINGO_PLAY_ENDPOINT}"

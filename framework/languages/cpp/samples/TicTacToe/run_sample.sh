@@ -156,9 +156,9 @@ if [[ -z "${TICTACTOE_CPP_REDIS_ENDPOINT:-}" ]]; then
     echo "Docker is required when TICTACTOE_CPP_REDIS_ENDPOINT is not set." >&2
     exit 1
   fi
-  REDIS_CONTAINER="zlink-tictactoe-cpp-redis-${REDIS_PORT}-$$"
-  TICTACTOE_CPP_REDIS_ENDPOINT="127.0.0.1:${REDIS_PORT}"
-  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1:${REDIS_PORT}:6379" redis:7-alpine >/dev/null
+  REDIS_CONTAINER="zlink-tictactoe-cpp-redis-${RANDOM}-$$"
+  docker run -d --rm --name "$REDIS_CONTAINER" -p "127.0.0.1::6379" redis:7-alpine >/dev/null
+  TICTACTOE_CPP_REDIS_ENDPOINT="$(docker port "$REDIS_CONTAINER" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 fi
 wait_port redis "$TICTACTOE_CPP_REDIS_ENDPOINT"
 

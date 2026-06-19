@@ -552,6 +552,13 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
                 completed_requests.emplace_back (
                   *value.request_seq,
                   result_t<zlink::message_t>::success (std::move (value.packet.payload)));
+            } else if (value.kind == message_kind_t::error && value.request_seq
+                       && state->pending_requests.find (*value.request_seq)
+                            != state->pending_requests.end ()) {
+                completed_requests.emplace_back (
+                  *value.request_seq,
+                  result_t<zlink::message_t>::failure (
+                    error_code_t::remote_error, value.packet.payload.to_string ()));
             } else {
                 pushed_packets.push_back (std::move (value.packet));
             }

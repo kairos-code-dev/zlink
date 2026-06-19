@@ -1241,6 +1241,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         for (String endpoint : frameworkRegistration.registryEndpoints()) {
             discovery.connectRegistry(endpoint);
         }
+        if (frameworkRegistration.registrySpotRemoteAddresses() != null) {
+            discovery.setSpotOwnerSyncEnabled(true);
+        }
         node.attachDiscovery(discovery);
         attachedChannelDiscoveries.add(discovery);
         spotDiscoveriesByMesh.putIfAbsent(nodeRegistration.meshName(), discovery);
@@ -4499,9 +4502,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         private CompletionStage<Void> dispatchActorJoinAsync(ZLinkBackendActorJoinRequest request) {
-            Message payloadCopy = request.parts().isEmpty()
-                ? Message.from(new byte[0])
-                : Message.from(request.parts().get(0).toByteArray());
+            Message payloadCopy = actorJoinPayload(request.parts());
             request.parts().forEach(Message::close);
             return withCurrentOutbound(context.outbound, () ->
                 invokeActorJoinCallback(request, payloadCopy))
@@ -4529,6 +4530,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 })
                 .thenApply(ignored -> (Void) null)
                 .whenComplete((ignored, error) -> payloadCopy.close());
+        }
+
+        private Message actorJoinPayload(List<Message> parts) {
+            if (parts.isEmpty()) {
+                return Message.from(new byte[0]);
+            }
+            if (parts.size() >= 3
+                && ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(parts.get(0).toUtf8String())) {
+                return Message.from(parts.get(2).toByteArray());
+            }
+            return Message.from(parts.get(0).toByteArray());
         }
 
         @SuppressWarnings({"rawtypes", "unchecked"})
@@ -4571,21 +4583,25 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 : Message.from(new byte[0]);
             return actorRuntime.getOrCreate(joinRequest.actorId(), joinRequest.actorType())
                 .thenCompose(actor -> {
+                    final long[] routedBindingToken = {-1};
+                    if (routeChannelName != null) {
+                        routedBindingToken[0] = actorRuntime.bindRoutedSession(
+                            actor,
+                            routeChannelName,
+                            sourcePeerRid == null ? joinRequest.actorRef().nodeRid() : sourcePeerRid,
+                            joinRequest.sourceEntrySpotRid(),
+                            joinRequest.actorRef());
+                    }
                     return ZLinkHandlerStages
                         .fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(actor, joinPayload, NONE_CANCELLATION))
                         .thenCompose(response -> {
                             ZLinkSpotActorJoinResponse effective =
                                 response == null ? ZLinkSpotActorJoinResponse.reject() : response;
                             if (!effective.accepted()) {
+                                if (routedBindingToken[0] >= 0) {
+                                    actorRuntime.clearSessionBinding(actor, routedBindingToken[0]);
+                                }
                                 return CompletableFuture.completedFuture(effective);
-                            }
-                            if (routeChannelName != null) {
-                                actorRuntime.bindRoutedSession(
-                                    actor,
-                                    routeChannelName,
-                                    joinRequest.actorRef().nodeRid(),
-                                    joinRequest.sourceEntrySpotRid(),
-                                    joinRequest.actorRef());
                             }
                             actorRuntime.markJoined(
                                 actor,
@@ -4597,8 +4613,16 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                                 .whenComplete((reply, error) -> {
                                     if (error != null) {
                                         actorRuntime.markLeft(actor);
+                                        if (routedBindingToken[0] >= 0) {
+                                            actorRuntime.clearSessionBinding(actor, routedBindingToken[0]);
+                                        }
                                     }
                                 });
+                        })
+                        .whenComplete((ignored, error) -> {
+                            if (error != null && routedBindingToken[0] >= 0) {
+                                actorRuntime.clearSessionBinding(actor, routedBindingToken[0]);
+                            }
                         })
                         .thenApply(response -> {
                             ZLinkSpotActorJoinResponse effective =

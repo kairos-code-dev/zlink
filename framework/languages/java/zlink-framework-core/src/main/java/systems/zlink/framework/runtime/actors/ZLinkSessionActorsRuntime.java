@@ -280,15 +280,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     "payload is required"));
             }
             byte[] payloadBytes = payload.toByteArray();
-            if (!nativeActorGatewayAttached && managedActor.isPresent()) {
-                return relayLocal(header, payloadBytes);
-            }
             if (managedActor.isPresent() && localActorDispatcher != null) {
-                Optional<RoutingId> joinedSpotRid = actors.spotRid(managedActor.get());
-                if (joinedSpotRid.isPresent()
-                    && actors.canRouteRemoteJoinedSpot(joinedSpotRid.get())) {
-                    return relayLocal(header, payloadBytes);
-                }
+                return relayLocal(header, payloadBytes);
             }
             return awaitRouteReady()
                 .thenCompose(ignored -> ensureNativeBinding())
@@ -330,11 +323,39 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     header.requestSequence(),
                     header.packetName(),
                     Map.of());
-                if (!stream.reply(sessionRid, replyHeader, List.of(reply), SendFlags.DONT_WAIT)) {
-                    return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                        "local actor session reply failed: " + ref.actorId()));
+                byte[] replyBytes = reply.toByteArray();
+                CompletableFuture<Void> result = new CompletableFuture<>();
+                long deadline = System.nanoTime() + RELAY_SUBMIT_TIMEOUT.toNanos();
+                class Attempt implements Runnable {
+                    @Override
+                    public void run() {
+                        if (result.isDone()) {
+                            return;
+                        }
+                        try (Message attemptReply = Message.from(replyBytes)) {
+                            if (stream.reply(
+                                sessionRid,
+                                replyHeader,
+                                List.of(attemptReply),
+                                SendFlags.DONT_WAIT)) {
+                                result.complete(null);
+                                return;
+                            }
+                        } catch (RuntimeException ex) {
+                            result.completeExceptionally(ex);
+                            return;
+                        }
+                        if (System.nanoTime() >= deadline) {
+                            result.completeExceptionally(new TimeoutException(
+                                "local actor session reply was not ready before timeout: "
+                                    + ref.actorId()));
+                            return;
+                        }
+                        RELAY_RETRY_EXECUTOR.schedule(this, 10, TimeUnit.MILLISECONDS);
+                    }
                 }
-                return CompletableFuture.completedFuture(null);
+                new Attempt().run();
+                return result;
             } finally {
                 reply.close();
             }

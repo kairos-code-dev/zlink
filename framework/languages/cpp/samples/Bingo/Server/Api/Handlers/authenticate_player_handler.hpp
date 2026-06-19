@@ -24,6 +24,10 @@ class authenticate_player_handler_t
 
     authenticate_player_res_t handle (const authenticate_player_req_t &request)
     {
+        if (request.access_token == bingo_sample_players_t::observer) {
+            _logger.info ("authenticate observer", {{"actor_id", request.access_token}});
+            return {true, request.access_token, "Observer", ""};
+        }
         if (request.access_token.rfind ("player-", 0) != 0) {
             _logger.warn ("reject player authentication", {{"access_token", request.access_token}});
             return {false, "", "", "access token must be a sample player id"};

@@ -1,12 +1,10 @@
 using StackExchange.Redis;
+using Bingo.Server.Configuration;
+using Bingo.Server.Play.Application.RoomAllocation;
 
-namespace Bingo.Server.Play.Application.RoomAllocation;
+namespace Bingo.Server.Play.Adapters.ZLink.Matchmaking;
 
-internal sealed record BingoMatchReservation(
-    string RoomId,
-    string OwnerPlayNodeRid);
-
-internal sealed class RedisBingoMatchQueue(IConnectionMultiplexer redis)
+internal sealed class RedisBingoMatchQueue(IConnectionMultiplexer redis, SampleTopology topology) : IBingoMatchQueue
 {
     private const string Script = """
 local key = KEYS[1]
@@ -90,8 +88,8 @@ return { roomId, existingOwnerRid }
             (string)values[1]!);
     }
 
-    private static RedisKey MatchKey(string mode)
+    private RedisKey MatchKey(string mode)
     {
-        return $"bingo:match:{mode}";
+        return $"{topology.RedisKeyPrefix}match:{mode}";
     }
 }

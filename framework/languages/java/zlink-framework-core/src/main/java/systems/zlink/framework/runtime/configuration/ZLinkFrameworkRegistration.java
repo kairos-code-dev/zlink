@@ -147,7 +147,7 @@ public final class ZLinkFrameworkRegistration {
         return registrySpotRemoteAddresses;
     }
 
-    void setRegistrySpotRemoteAddresses(
+    public void setRegistrySpotRemoteAddresses(
         ZLinkRegistrySpotRemoteAddressesRegistration registrySpotRemoteAddresses) {
         this.registrySpotRemoteAddresses = registrySpotRemoteAddresses;
     }
@@ -274,8 +274,14 @@ public final class ZLinkFrameworkRegistration {
             throw new ZLinkConfigurationException(
                 "registry SPOT remote addresses require AddRouteMeshChannel(...)");
         }
-        if (spotNodes.isEmpty()) {
-            return;
+        if (registrySpotRemoteAddresses.routerChannelId() == null) {
+            if (routeChannels != 1) {
+                throw new ZLinkConfigurationException(
+                    "registry SPOT remote addresses require routerChannelId when route mesh channel is ambiguous");
+            }
+            if (spotNodes.isEmpty()) {
+                return;
+            }
         }
         long spotDiscoverableNodes = spotNodes.stream()
             .filter(node -> node.routerEnabled() || node.pubSubEnabled())
@@ -285,10 +291,6 @@ public final class ZLinkFrameworkRegistration {
                 "registry SPOT remote addresses require at least one discoverable SpotNode");
         }
         if (registrySpotRemoteAddresses.routerChannelId() == null) {
-            if (routeChannels != 1) {
-                throw new ZLinkConfigurationException(
-                    "registry SPOT remote addresses require routerChannelId when route mesh channel is ambiguous");
-            }
             return;
         }
         ChannelRegistration routerChannel =

@@ -16,9 +16,13 @@
 #include "runtime/channels/route_handler_registry.hpp"
 #include "runtime/channels/route_internal_packet_dispatcher.hpp"
 #include "runtime/channels/route_receive_pump.hpp"
+#include "runtime/actors/actor_gateway_runtime.hpp"
+#include "runtime/actors/actor_route_internal_dispatcher.hpp"
 #include "runtime/backend/native_route_backend.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
+#include "runtime/spots/spot_route_packets.hpp"
+#include "runtime/streams/stream_runtime.hpp"
 
 #include <zlink.hpp>
 
@@ -1330,6 +1334,59 @@ int main ()
     auto delayed_reply = delayed_task.result ();
     if (!delayed_reply || delayed_reply.value ().value != 451 || !delayed_completed.load ()) {
         return 65;
+    }
+
+    zlink::framework::detail::register_spot_route_packet_serializers (serializers);
+    zlink::framework::zlink_builder_t stream_builder;
+    stream_builder.stream ("routed-bound-session").bind ("tcp://0.0.0.0:9300");
+    auto stream_runtime = zlink::framework::detail::stream_runtime_t::from (stream_builder);
+    auto stream = stream_runtime.open_session ("routed-bound-session");
+    zlink::framework::detail::actor_gateway_runtime_t actor_gateway;
+    auto actor_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("play-node"),
+      "PlayerActor",
+      "observer",
+      3);
+    auto bound_actor = actor_gateway.manager ().bind (actor_ref).async ().result ();
+    if (!bound_actor) {
+        return 66;
+    }
+    actor_gateway.bind_session_stream ("observer", stream, zlink::framework::stream_codec_t::json);
+    zlink::framework::detail::actor_route_internal_dispatcher_t actor_dispatcher (
+      actor_gateway, serializers);
+    zlink::framework::runtime::messaging::envelope_header_t bound_header;
+    bound_header.kind = zlink::framework::runtime::messaging::message_kind_t::request;
+    bound_header.channel_name = "actor.route";
+    bound_header.message_name =
+      zlink::framework::detail::actor_bound_session_route_request_t::packet_name;
+    auto bound_request =
+      zlink::framework::detail::make_actor_bound_session_route_request (
+        actor_ref, "BingoRewardAnnouncedNotify", zlink::message_t::from ("reward"));
+    auto bound_parts = envelope_codec.encode_parts (
+      bound_header,
+      std::type_index (
+        typeid (zlink::framework::detail::actor_bound_session_route_request_t)),
+      &bound_request,
+      serializers);
+    auto bound_reply = actor_dispatcher.dispatch_request (
+      zlink::framework::detail::route_received_packet_t{
+        zlink::routing_id_t::from (std::string ("play-node")),
+        99,
+        std::move (bound_parts)},
+      bound_header);
+    const auto routed_headers = stream_runtime.written_headers (stream);
+    if (!bound_reply || routed_headers.size () != 1) {
+        return 67;
+    }
+    const auto &routed_header = routed_headers[0];
+    if (routed_header.kind () != zlink::framework::stream_message_kind_t::send) {
+        return 68;
+    }
+    if (routed_header.codec () != zlink::framework::stream_codec_t::json) {
+        return 69;
+    }
+    if (routed_header.packet_name () != "BingoRewardAnnouncedNotify") {
+        return 70;
     }
 
     return 0;

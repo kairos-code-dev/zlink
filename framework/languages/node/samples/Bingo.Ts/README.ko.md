@@ -20,6 +20,12 @@ cd framework\languages\node\samples\Bingo.Ts
 .\run_sample.ps1
 ```
 
+`BINGO_REDIS_ENDPOINT`가 설정되어 있지 않으면 runner가 Redis Docker container를
+Docker가 배정한 loopback port로 띄우고, self-check가 끝나면 정상/실패와 관계없이
+container를 정리한다. 외부 Redis를 쓰려면 `BINGO_REDIS_ENDPOINT`를 지정한다. runner는 실행마다
+고유한 `BINGO_REDIS_KEY_PREFIX`도 전달하므로 같은 Redis를 쓰는 다른 테스트의 match queue
+key와 섞이지 않는다.
+
 ## Topology
 
 - `run_sample.sh`, `run_sample.ps1`: Registry, Play, API, Session 서버 process 를 시작하고 readiness 를

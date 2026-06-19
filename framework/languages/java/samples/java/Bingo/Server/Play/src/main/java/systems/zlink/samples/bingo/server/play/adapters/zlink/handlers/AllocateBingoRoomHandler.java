@@ -1,13 +1,13 @@
 package systems.zlink.samples.bingo.server.play.adapters.zlink.handlers;
 
-import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkRequestHandler;
+import systems.zlink.framework.channels.ZLinkRouteRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
-@ZLinkHandlerGroup("play")
+@ZLinkHandlerGroup("play-route")
 public final class AllocateBingoRoomHandler
-    implements ZLinkRequestHandler<
+    implements ZLinkRouteRequestHandler<
         Messages.AllocateBingoRoomReq,
         Messages.AllocateBingoRoomRes> {
     private final BingoRoomDirectory rooms;
@@ -19,8 +19,13 @@ public final class AllocateBingoRoomHandler
     @Override
     public Messages.AllocateBingoRoomRes handle(
         Messages.AllocateBingoRoomReq request,
-        ZLinkRequestContext context) {
+        ZLinkRouteRequestContext context) {
+        BingoMatchReservation reservation = rooms.allocate(
+            request.actorId(),
+            request.mode(),
+            request.preferredOwnerNodeRid());
         return new Messages.AllocateBingoRoomRes(
-            rooms.allocate(request.actorId(), request.mode()));
+            reservation.roomId(),
+            reservation.ownerPlayNodeRid());
     }
 }

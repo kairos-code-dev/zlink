@@ -110,6 +110,12 @@ struct relay_reply_t
 struct relay_actor_t
 {
     std::string actor_id;
+    zlink::framework::actor_context_t context;
+
+    void set_actor_context (const zlink::framework::actor_context_t &actor_context)
+    {
+        context = actor_context;
+    }
 };
 
 struct relay_actor_factory_t
@@ -840,8 +846,10 @@ int main ()
     zlink::framework::service_collection_t route_join_services;
     auto route_join_provider = route_join_services.build_provider ();
     zlink::framework::detail::route_handler_registry_t route_join_handlers;
+    zlink::framework::detail::actor_gateway_runtime_t route_join_actor_gateway;
     zlink::framework::detail::spot_route_internal_dispatcher_t route_join_internal (
-      relay_runtime, route_join_serializers);
+      relay_runtime, route_join_actor_gateway, relay_host.route_client (route_join_serializers),
+      route_join_serializers);
     zlink::framework::detail::route_packet_dispatcher_t route_join_dispatcher (
       "relay.route", route_join_provider, route_join_serializers, route_join_handlers,
       route_join_internal);
@@ -888,6 +896,13 @@ int main ()
     if (!routed_channel_instance
         || routed_channel_instance->get ().actor_id != "routed-through-channel") {
         return 93;
+    }
+    if (routed_channel_instance->get ().context.actor_ref ().actor_id ()
+        != "routed-through-channel") {
+        return 94;
+    }
+    if (!route_join_actor_gateway.actor_bound ("routed-through-channel")) {
+        return 95;
     }
     relay_actor_t relay_actor{"relay-actor"};
     zlink::framework::actor_ref_t relay_actor_ref (

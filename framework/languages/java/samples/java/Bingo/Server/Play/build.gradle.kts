@@ -22,8 +22,12 @@ dependencies {
     implementation("systems.zlink:zlink-stream-connector:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink:6.0.4")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
+    implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
     implementation("org.springframework.boot:spring-boot-starter:3.5.14")
     implementation("io.netty:netty-buffer:4.1.100.Final")
+    testImplementation(platform("org.junit:junit-bom:5.11.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 java {
@@ -35,4 +39,8 @@ java {
 application {
     mainClass.set("systems.zlink.samples.bingo.server.play.Program")
     applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+}
+
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
 }

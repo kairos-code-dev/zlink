@@ -12,7 +12,7 @@ struct player_actor_factory_t
 {
     player_actor_t create (std::string actor_id) const
     {
-        return create (actor_ref_snapshot_t{{}, std::move (actor_id), 0});
+        return create (actor_ref_snapshot_t{"", std::move (actor_id), 0});
     }
 
     player_actor_t create (actor_ref_snapshot_t actor, std::string display_name = {}) const

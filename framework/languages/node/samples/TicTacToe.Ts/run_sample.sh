@@ -92,7 +92,7 @@ PLAY_A_ROUTE_ENDPOINT="${TICTACTOE_PLAY_A_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORT
 PLAY_B_ROUTE_ENDPOINT="${TICTACTOE_PLAY_B_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
 PLAY_A_SPOT_PUBSUB_ENDPOINT="${TICTACTOE_PLAY_A_SPOT_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[12]}}"
 PLAY_B_SPOT_PUBSUB_ENDPOINT="${TICTACTOE_PLAY_B_SPOT_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
-REDIS_ENDPOINT="${TICTACTOE_REDIS_ENDPOINT:-127.0.0.1:${PORTS[14]}}"
+REDIS_ENDPOINT="${TICTACTOE_REDIS_ENDPOINT:-}"
 
 API_A_CONFIG="${RUN_DIR}/sample.api-a.json"
 API_B_CONFIG="${RUN_DIR}/sample.api-b.json"
@@ -105,10 +105,11 @@ if [[ -z "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
     exit 1
   fi
   REDIS_CONTAINER_ID="$(docker run -d --rm \
-    --name "zlink-tictactoe-ts-redis-${PORTS[14]}-$$" \
+    --name "zlink-tictactoe-ts-redis-${RANDOM}-$$" \
     --label "systems.zlink.sample=tictactoe-ts" \
-    -p "127.0.0.1:${PORTS[14]}:6379" \
+    -p "127.0.0.1::6379" \
     redis:7-alpine)"
+  REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 fi
 
 python3 - "${API_A_CONFIG}" "${API_B_CONFIG}" "${PLAY_A_CONFIG}" "${PLAY_B_CONFIG}" <<PY

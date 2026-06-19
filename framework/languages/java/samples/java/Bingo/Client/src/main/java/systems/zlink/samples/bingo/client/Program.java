@@ -15,8 +15,8 @@ public final class Program {
     }
 
     public static void main(String[] args) throws Exception {
-        ZLinkStreamConnector client1 = createClient();
-        ZLinkStreamConnector client2 = createClient();
+        ZLinkStreamConnector client1 = createClient(SampleTopology.SessionAStreamEndpoint);
+        ZLinkStreamConnector client2 = createClient(SampleTopology.SessionBStreamEndpoint);
         try {
             new BingoClientScenario().run(client1, client2);
         } finally {
@@ -26,9 +26,9 @@ public final class Program {
         System.out.println("Bingo client self-check passed");
     }
 
-    private static ZLinkStreamConnector createClient() {
+    private static ZLinkStreamConnector createClient(String endpoint) {
         return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
-            URI.create(SampleTopology.StreamEndpoint),
+            URI.create(endpoint),
             ZLinkStreamDispatchMode.AUTO,
             SampleTimings.RequestTimeout,
             2,

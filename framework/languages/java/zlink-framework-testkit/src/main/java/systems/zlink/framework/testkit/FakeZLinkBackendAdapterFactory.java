@@ -462,6 +462,11 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
 
         @Override
+        public void setSpotOwnerSyncEnabled(boolean enabled) {
+            record("setSpotOwnerSyncEnabled." + enabled);
+        }
+
+        @Override
         public ZLinkBackendActorRoute resolveActor(String actorId) {
             return new ZLinkBackendActorRoute(RoutingId.from("node"), actorId);
         }
@@ -542,14 +547,29 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             if (isRoutedActorJoinRequest(parts)) {
                 ZLinkActorSpotRoutePackets.JoinRequest request =
                     ZLinkActorSpotRoutePackets.decodeJoinRequest(parts.get(3));
+                List<Message> relayReply;
+                Message joinedPayload = Message.from("joined".getBytes(StandardCharsets.UTF_8));
+                Message rejectedPayload = Message.from(new byte[0]);
+                Message joinReply = null;
+                try {
+                    boolean accepted = !request.actorId().contains("reject");
+                    joinReply = ZLinkActorSpotRoutePackets.encodeJoinReply(
+                        accepted,
+                        request.actorRef(),
+                        accepted ? joinedPayload : rejectedPayload);
+                    relayReply = ZLinkRoutedSpotRelayPackets.createReplyParts(List.of(joinReply));
+                } finally {
+                    if (joinReply != null) {
+                        joinReply.close();
+                    }
+                    joinedPayload.close();
+                    rejectedPayload.close();
+                }
                 callback.handle(new ZLinkBackendReceived(
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
-                    List.of(ZLinkActorSpotRoutePackets.encodeJoinReply(
-                        true,
-                        request.actorRef(),
-                        Message.from("joined".getBytes(StandardCharsets.UTF_8))))));
+                    relayReply));
                 return true;
             }
             callback.handle(new ZLinkBackendReceived(

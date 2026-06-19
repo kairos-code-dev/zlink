@@ -37,27 +37,23 @@ public final class SessionServerApplication {
         return options -> {
             options.addHandlersFromPackageOf(SessionServerApplication.class);
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            options.codecs().addJson();
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
-            options.addClientServerChannel(SampleNames.PlayChannel)
-                .enableClient();
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.RoomRouteChannel);
-            route.enableServer(SampleTopology.SessionRouteEndpoint);
-            route.enableClient(SampleTopology.PlayRouteEndpoint);
-            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.SessionRouterRid));
-            options.useRegistrySpotRemoteAddresses(SampleNames.RoomSpotDiscovery)
-                .setRouterChannelId(SampleNames.RoomRouteChannel);
+            RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
+            route.enableServer(SampleTopology.selectedSessionRouteEndpoint());
+            route.enableClient("b".equals(SampleTopology.SessionNode)
+                ? SampleTopology.PlayBRouteEndpoint
+                : SampleTopology.PlayARouteEndpoint);
+            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()));
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
                 .addNode(SampleNames.SessionSpotNode);
-            node.enableRouter(SampleTopology.SessionRouterEndpoint)
-                .setRouterRoutingId(RoutingId.from(SampleTopology.SessionRouterRid));
-            node.enablePubSub(SampleTopology.SessionSpotEndpoint)
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionPubRid));
-            node.acceptSpotRoutesFromChannel(SampleNames.RoomRouteChannel);
+            node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
+                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()));
             options.addStreamNode(SampleNames.StreamNode)
                 .attachActorGateway(SampleNames.SessionSpotNode)
-                .bind(SampleTopology.StreamEndpoint)
+                .bind(SampleTopology.selectedStreamEndpoint())
                 .registerSession(BingoSession.class)
                 .addSessionPacketHandler(AuthenticateSessionHandler.class);
         };

@@ -12,6 +12,8 @@ object SampleTopology {
     val SessionRouteEndpoint: String = property("sessionRouteEndpoint", "tcp://127.0.0.1:47112")
     val PlayRouteEndpoint: String = property("playRouteEndpoint", "tcp://127.0.0.1:47113")
     val StreamEndpoint: String = property("streamEndpoint", "tcp://127.0.0.1:47114")
+    val RedisEndpoint: String = property("redisEndpoint", "127.0.0.1:6379")
+    val RedisKeyPrefix: String = property("redisKeyPrefix", "bingo:kotlin:")
     const val SessionRouterRid: String = "1101"
     const val SessionPubRid: String = "1102"
     const val PlayRid: String = "2202"

@@ -137,15 +137,20 @@ class route_channel_host_service_t::route_loop_t
         if (_runtime->routing_id ()) {
             _router->set_routing_id (*_runtime->routing_id ());
         }
-        if (!discovery.registry_endpoints.empty ()) {
+        const bool use_spot_route_discovery =
+          !discovery.registry_endpoints.empty () && _runtime->spot_route_egress_target ();
+        if (use_spot_route_discovery) {
             try {
                 _spot_route_discovery = std::make_shared<native_spot_route_discovery_bridge_t> (
                   *_context, _route_channel_id, discovery);
                 _router->attach_discovery (_spot_route_discovery->discovery ());
                 registry.attach_spot_route_discovery (_route_channel_id, _spot_route_discovery);
             }
-            catch (...) {
-                _spot_route_discovery.reset ();
+            catch (const std::exception &error) {
+                throw framework_exception_t (
+                  framework_error_kind_t::request_failed,
+                  "route channel '" + _route_channel_id
+                    + "' discovery attach failed: " + error.what ());
             }
         }
         if (!_runtime->bind_endpoint ().empty ()) {

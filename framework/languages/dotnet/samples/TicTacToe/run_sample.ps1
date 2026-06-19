@@ -26,7 +26,7 @@ try {
     $spotBEndpoint = if ($env:TICTACTOE_SPOT_B_ENDPOINT) { $env:TICTACTOE_SPOT_B_ENDPOINT } else { "tcp://127.0.0.1:$($ports[9])" }
     $spotAPubSubEndpoint = if ($env:TICTACTOE_SPOT_A_PUBSUB_ENDPOINT) { $env:TICTACTOE_SPOT_A_PUBSUB_ENDPOINT } else { "tcp://127.0.0.1:$($ports[10])" }
     $spotBPubSubEndpoint = if ($env:TICTACTOE_SPOT_B_PUBSUB_ENDPOINT) { $env:TICTACTOE_SPOT_B_PUBSUB_ENDPOINT } else { "tcp://127.0.0.1:$($ports[11])" }
-    $redisEndpoint = if ($env:TICTACTOE_REDIS_ENDPOINT) { $env:TICTACTOE_REDIS_ENDPOINT } else { "127.0.0.1:$($ports[12])" }
+    $redisEndpoint = $env:TICTACTOE_REDIS_ENDPOINT
     $apiAConfigFile = Join-Path $RunDir "appsettings.api-a.json"
     $apiBConfigFile = Join-Path $RunDir "appsettings.api-b.json"
     $playAConfigFile = Join-Path $RunDir "appsettings.play-a.json"
@@ -36,10 +36,12 @@ try {
         if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
             throw "TICTACTOE_REDIS_ENDPOINT is not set and docker is not available."
         }
-        $redisContainerId = (& docker run -d --rm -p "127.0.0.1:$($ports[12]):6379" redis:7-alpine).Trim()
+        $redisContainerId = (& docker run -d --rm --name "zlink-tictactoe-dotnet-redis-$PID-$([Guid]::NewGuid().ToString('N'))" -p "127.0.0.1::6379" redis:7-alpine).Trim()
         if ($LASTEXITCODE -ne 0) {
             throw "docker failed to start Redis."
         }
+        $redisPort = (& docker port $redisContainerId "6379/tcp") -replace '^.*:', ''
+        $redisEndpoint = "127.0.0.1:$redisPort"
     }
 
     function New-TicTacToeSettings {

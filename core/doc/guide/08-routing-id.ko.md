@@ -39,13 +39,14 @@ typedef struct {
 | **생성 시점** | 소켓 생성 시 | 피어 연결 시 |
 | **크기** | 16B (UUID) | 가변 (ROUTER), 4B (STREAM) |
 | **사용** | 핸드셰이크에서 전송 | 수신 시 별도 `source_rid` 출력으로 반환 |
-| **설정** | `zlink_set_routing_id()` | 피어가 설정한 값 사용 |
+| **설정** | `zlink_set_routing_id()` | ROUTER: 피어가 설정한 값 / STREAM: 서버가 4B uint32 할당 |
 
 자체 라우팅 ID는 소켓 생성 시 자동으로 UUID가 할당되며 핸드셰이크 시 피어에게 전송된다.
 
-피어 라우팅 ID는 피어가 보낸 자체 라우팅 ID이며, 공개 수신 surface는 이를 in-band
-메시지 프레임이 아니라 별도 `source_rid` 출력(콜백 인자 또는 `zlink_router_recv()` /
-`zlink_recv()` 출력)으로 노출한다.
+ROUTER의 peer 라우팅 ID는 피어가 보낸 own ID이고, STREAM의 `source_rid`는 STREAM
+소켓이 연결마다 할당한 4바이트 `uint32`다. 공개 수신 surface는 이를 in-band 메시지
+프레임이 아니라 별도 `source_rid` 출력(STREAM은 콜백/`zlink_recv()`, ROUTER는
+`zlink_router_recv()`)으로 노출한다.
 
 ## 4. 사용자 지정 routing_id
 
@@ -59,7 +60,7 @@ zlink_set_routing_id(socket, id, strlen(id));
 
 주의사항:
 - 반드시 `zlink_bind()` 또는 `zlink_connect()` **이전에** 설정한다.
-- 연결 후에는 변경할 수 없다.
+- 연결 후 다시 설정해도 이미 맺어진 연결의 handshake에는 반영되지 않는다.
 - 빈 문자열("")은 허용되지 않는다.
 - 같은 ROUTER에 동일 라우팅 ID를 가진 두 피어가 연결되면 충돌이 발생한다.
 
@@ -110,14 +111,15 @@ zlink_connect(socket, "tcp://server2:5556");
 - `zlink_set_routing_id()`는 소켓 전체에 적용된다.
 - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (`zlink_set_router_option()`으로 설정)는 개별 연결에 적용된다.
 - 하나의 소켓에서 여러 연결에 각각 다른 별칭을 지정할 수 있다.
-- `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`는 ROUTER 연결 경로 전용이다.
+- `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`는 ROUTER 핸들 전용이다(DEALER에 설정하면 `EINVAL`).
 - `zlink_set_router_option()`은 ROUTER/DEALER 핸들만 받는다. `ZLINK_SOCKET_STREAM`
   (또는 다른 타입)에 호출하면 `ZLINK_CONFIG_INVALID_ARGUMENT`(`EINVAL`)를 반환한다.
 
 ## 6. ROUTER 소켓에서 routing_id 사용법
 
-ROUTER 소켓에서 `zlink_recv()`와 recv 콜백은 송신자의 라우팅 ID를
-**별도 파라미터**(`source_rid`)로 반환한다. 메시지 프레임에는 데이터만 포함된다.
+ROUTER 소켓은 `zlink_router_recv()`로 수신하며, 송신자의 라우팅 ID를
+**별도 파라미터**(`source_node_rid`)로 반환한다. ROUTER는 `zlink_recv()`나 recv
+콜백을 지원하지 않는다. 메시지 프레임에는 데이터만 포함된다.
 응답할 때는 `zlink_send_rid()`에 동일 라우팅 ID를 전달해 올바른 피어에게 전송한다.
 
 > **libzmq와의 차이:** libzmq ROUTER는 `zmq_recv()`의 첫 프레임으로
@@ -162,19 +164,20 @@ zlink_connect(dealer1, endpoint);
 zlink_set_routing_id(dealer2, "D2", 2);
 zlink_connect(dealer2, endpoint);
 
-/* ROUTER handler distinguishes clients by source_rid */
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* source_rid->data contains "D1" or "D2" */
-    /* Reply to specific client */
+/* ROUTER: router_recv 로 꺼낸 source_node_rid 로 클라이언트를 구분한다 */
+const zlink_routing_id_t *source_node_rid;
+const zlink_routing_id_t *source_spot_rid;
+uint64_t request_seq;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+if (zlink_router_recv(router, &source_node_rid, &source_spot_rid,
+                      &request_seq, &parts, &part_count, 0) == ZLINK_RECV_OK) {
+    /* source_node_rid->data 가 "D1" 또는 "D2" */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "reply", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
+    zlink_multipart_close(parts, part_count);
 }
 ```
 
@@ -183,22 +186,22 @@ void on_message(const zlink_routing_id_t *source_rid,
 ### zlink_msg_t를 사용한 routing_id 처리
 
 ```c
-/* Handler callback provides routing_id and data directly */
-void on_message(const zlink_routing_id_t *source_rid,
-                zlink_msg_t *parts, size_t part_count,
-                void *userdata)
-{
-    /* Check routing_id size and content */
-    printf("routing_id: %zu bytes\n", source_rid->size);
+/* router_recv 가 돌려준 source_node_rid 의 크기/내용을 직접 확인한다 */
+const zlink_routing_id_t *source_node_rid;
+const zlink_routing_id_t *source_spot_rid;
+uint64_t request_seq;
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+if (zlink_router_recv(router, &source_node_rid, &source_spot_rid,
+                      &request_seq, &parts, &part_count, 0) == ZLINK_RECV_OK) {
+    printf("routing_id: %zu bytes\n", source_node_rid->size);
 
-    /* Reply: use source_rid */
     zlink_msg_t reply;
     zlink_msg_init_size(&reply, 5);
     memcpy(zlink_msg_data(&reply), "reply", 5);
-    zlink_send_rid(router, source_rid, &reply, 1, 0);
+    zlink_send_rid(router, source_node_rid, &reply, 1, 0);
 
-    for (size_t i = 0; i < part_count; i++)
-        zlink_msg_close(&parts[i]);
+    zlink_multipart_close(parts, part_count);
 }
 ```
 

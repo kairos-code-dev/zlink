@@ -35,8 +35,7 @@ class create_game_http_handler_t
 
 ## 2. 런타임 이벤트
 
-런타임 내부에서 일어나는 일(소켓 연결, discovery 변화, spot 입퇴장, timer
-지연 등)은 이벤트로 노출된다. 소스별로 켜고, typed 핸들러로 받는다.
+런타임 내부에서 일어나는 일(socket 연결, discovery 변화, spot 입퇴장, timer handler 실패/예외 후 정지 등)은 이벤트로 노출된다. 소스별로 켜고, typed 핸들러로 받는다.
 
 ```cpp
 app.monitoring ()
@@ -66,7 +65,7 @@ app.monitoring ().on_trace ([] (const zlink::framework::runtime_event_base_t &ev
 
 | 소스 등록 | 내용 |
 |-----------|------|
-| `add_socket_events(name)` | 연결/해제/재시도 |
+| `add_socket_events(name)` | connected/connection_ready/disconnected/handshake_failed/peer_admission_changed/closed |
 | `add_discovery_events(name)` | discovery 변화 |
 | `add_registry_events(name, interval)` | registry 상태·topology·서비스 요약 변화 |
 | `add_spot_events(name, interval)` | spot 상태·peer·subject 변화 |

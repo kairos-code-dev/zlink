@@ -37,19 +37,20 @@
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `EnableServer(endpoint)`만 등록 | 허용 | server 역할만 열리고, handler 매핑이 없으면 처리할 packet도 없다 |
-| `EnableServer()`만 등록 + bind endpoint 없음 | 비허용 | startup validation 오류 |
+| `EnableServer(endpoint)` + handler 노출(또는 SPOT route acceptance) | 허용 | inbound request/send 를 handler 가 받는다 |
+| `EnableServer(endpoint)`만 등록(handler·SPOT route 없음) | 비허용 | server 는 handler group·typed handler 매핑이나 SPOT route acceptance 가 있어야 한다(startup validation 오류) |
+| `EnableServer("")` 등록(빈 endpoint) | 비허용 | startup validation 오류 |
 | `EnableClient()`만 등록 + 전역 `UseDiscovery().AddRegistryEndpoint(...)` 있음 | 허용 | outbound request/send runtime을 만든다 |
 | `EnableClient(endpoint)` 등록 | 허용 | manual 기반 outbound request/send runtime을 만든다 |
 | `EnableClient()`만 등록 + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | `EnablePublisher(endpoint)`만 등록 | 허용 | event publish만 가능하다 |
-| `EnablePublisher()`만 등록 + bind endpoint 없음 | 비허용 | startup validation 오류 |
-| `EnableSubscriber()`만 등록 + 전역 `UseDiscovery().AddRegistryEndpoint(...)` 있음 | 허용 | discovery 기반 event subscribe runtime을 만든다 |
-| `EnableSubscriber(endpoint)` 등록 | 허용 | manual 기반 subscribe runtime을 만든다 |
+| `EnablePublisher("")` 등록(빈 endpoint) | 비허용 | startup validation 오류 |
+| `EnableSubscriber()` + publish handler 노출 + 전역 `UseDiscovery().AddRegistryEndpoint(...)` | 허용 | discovery 기반 event subscribe runtime을 만든다 |
+| `EnableSubscriber(endpoint)` + publish handler 노출 | 허용 | manual 기반 subscribe runtime을 만든다. publish handler 가 없으면 비허용(startup validation 오류) |
 | `EnableSubscriber()`만 등록 + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | 같은 channel에서 `server + client` 함께 등록 | 허용 | inbound와 outbound runtime을 모두 가진다 |
 | 같은 channel에서 `publisher + subscriber` 함께 등록 | 허용 | event fan-out과 수신을 모두 가진다 |
-| 같은 channel 역할 안에서 discovery + manual 함께 등록 | 비허용 | startup validation 오류. 단, routed Spot route mesh egress 는 수동 연결을 실제 transport 로 쓰고 discovery/query 를 target ROUTER `RoutingId` metadata 조회에만 쓰는 좁은 예외를 둔다 |
+| route mesh 역할에서 discovery + manual 함께 등록 | 비허용 | route mesh 는 `RequireSinglePeerSource` 로 둘을 섞을 수 없다(startup validation 오류). client/server·subscriber 는 `RequirePeerSource` 라 둘을 함께 둘 수 있다. 단, routed Spot route mesh egress 는 수동 연결을 실제 transport 로 쓰고 discovery/query 를 target ROUTER `RoutingId` metadata 조회에만 쓰는 좁은 예외를 둔다 |
 | 같은 channel server에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 다른 channel server에 같은 `kind + packetName` handler 등록 | 허용 | channel별로 handler namespace가 분리되어 있다 |
 | client/server channel에 publish handler 등록(typed 또는 publish 그룹 매핑) | 비허용 | startup validation 오류: `client/server channel '{name}' cannot register publish handlers` |
@@ -72,8 +73,8 @@
 | `AddSpotMesh` 호출 | 허용 | mesh가 활성 SPOT[^spot] channel view와 node 집합을 함께 소유한다 |
 | `AddSpotMesh`에 `UseDiscovery().AddRegistryEndpoint(...)` 없음 | 허용 | top-level discovery endpoint 를 상속하거나 local-only mesh 로 시작한다 |
 | `AddSpotMesh` + 빈 `UseDiscovery` + local-only spot factory | 허용 | discovery endpoint 없이 단일 local SpotNode 하나를 mesh 소유권 아래 띄운다 |
-| top-level standalone node 등록 | 비허용 | public 등록 표면에서 제거되었다. SPOT node 는 항상 `AddSpotMesh` 안에서 등록한다 |
-| 분리된 SPOT discovery 등록과 node 등록 | 비허용 | public 등록 표면에서 제거되었다. discovery 와 node 집합은 `AddSpotMesh`가 함께 소유한다 |
+| top-level standalone node 등록 | 비허용 | public 등록 표면에는 top-level standalone node 등록 API 가 없다. SPOT node 는 항상 `AddSpotMesh` 안에서 등록한다 |
+| 분리된 SPOT discovery 등록과 node 등록 | 비허용 | SPOT discovery 와 node 집합은 `AddSpotMesh`가 함께 등록·소유한다 |
 | 같은 mesh에 `AddNode(...)` 여러 개 | 허용 | 같은 channel view를 공유하는 여러 SpotNode를 등록한다 |
 | 같은 mesh의 router-capable `AddNode(...)`를 stream ActorGateway 로 참조 | 허용 | session relay ingress 를 일반 SpotNode router 역할로 시작한다 |
 | 같은 `SpotNode`에 같은 `spotRid` factory 중복 등록 | 비허용 | startup validation 오류 |

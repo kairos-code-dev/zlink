@@ -160,8 +160,8 @@ app.MapGet("/health", async (IZLinkRegistryQuery registry) =>
 
 제공 메서드: `StatusAsync`, `ServiceSummaryAsync(filter?)`,
 `TopologyAsync(filter?)`, `MemberPeersAsync(channelName)`.
-모두 `ValueTask` 비동기다(framework 가 host lifecycle 경계를 query 표면에서 숨기지
-않으려고).
+모두 `ValueTask` 비동기다. embedded Registry 가 아직 시작되지 않았으면 첫 query 호출이
+그 자리에서 Registry 를 시작시킨다(lazy start).
 
 ### 원격 — `IZLinkRegistryQueryClient`
 
@@ -189,7 +189,7 @@ app.MapGet("/admin/topology", async (IZLinkRegistryQueryClient query) =>
 
 ## 6. Registry 기반 route 기본 구현
 
-actor/spot 라우팅을 Registry 로 기본 구현하려면 명시적으로 켠다.
+SPOT 라우팅을 Registry 로 기본 구현하려면 명시적으로 켠다.
 `UseDiscovery().AddRegistryEndpoint(...)` 만으로는 자동 등록되지 않는다.
 
 ```csharp
@@ -200,7 +200,7 @@ builder.Services.AddZLinkFramework(options =>
         options.AddRouteMeshChannel("play")
             .EnableServer("tcp://0.0.0.0:7201");
 
-    options.UseRegistrySpotRemoteAddresses("game");           // spot owner 조회 + spot 이름 directory
+    options.UseRegistrySpotRemoteAddresses("game");           // SPOT RoutingId → owner node 주소 resolver
 });
 ```
 

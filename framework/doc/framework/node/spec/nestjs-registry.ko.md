@@ -317,7 +317,7 @@ provider 는 token 으로 주입받는다. NestJS 표준에 맞게 `ZLinkRegistr
 @Controller('admin')
 export class AdminController {
   constructor(
-    @Inject(ZLinkRegistryQuery)
+    @Inject(ZLINK_REGISTRY_QUERY)
     private readonly registry: ZLinkRegistryQuery,
   ) {}
 
@@ -374,7 +374,7 @@ export interface ZLinkRegistryQueryClient {
 @Controller('admin')
 export class AdminController {
   constructor(
-    @Inject(ZLinkRegistryQueryClient)
+    @Inject(ZLINK_REGISTRY_QUERY_CLIENT)
     private readonly query: ZLinkRegistryQueryClient,
   ) {}
 
@@ -413,9 +413,9 @@ export interface ZLinkRegistryStatus {
   topologyEntryCount: number;
   peerRegistryCount: number;
   connectedPeerRegistryCount: number;
-  listSeq: number;
+  listSeq: bigint;
   lastError: number;
-  lastChangedMs: number;
+  lastChangedMs: bigint;
 }
 
 export interface ZLinkRegistryTopologyEntry {
@@ -430,7 +430,7 @@ export interface ZLinkRegistryTopologyEntry {
   desiredCount: number;
   readyCount: number;
   errorCode: number;
-  lastReportedMs: number;
+  lastReportedMs: bigint;
   spotKind: ZLinkSpotKind;
 }
 
@@ -443,7 +443,7 @@ export interface ZLinkRegistryServiceSummaryEntry {
   readyCount: number;
   errorCount: number;
   stoppedCount: number;
-  lastReportedMs: number;
+  lastReportedMs: bigint;
 }
 
 export interface ZLinkMemberPeerEntry {
@@ -452,7 +452,7 @@ export interface ZLinkMemberPeerEntry {
   channelName: string;
   endpoint: string;
   routingId?: RoutingId;
-  value: number;
+  value: bigint;
   weight: number;
 }
 ```
@@ -479,8 +479,8 @@ export interface ZLinkRegistryTopologyFilter {
 
 enum 값(`ZLinkRegistryState`, `ZLinkTopologyState`, `ZLinkTopologySource`,
 `ZLinkServiceKind`, `ZLinkServiceRole`, `ZLinkAutoConnectType`, `ZLinkSpotKind`)은
-wire 호환을 위해 dotnet 과 같은 정수 값을 그대로 사용한다. 정확한 값은
-`handler-interfaces` 카탈로그와 dotnet 코드(`Contracts/Registry/Models.cs`)를
+wire 호환을 위해 다른 언어 구현과 같은 정수 값을 그대로 사용한다. 정확한 값은
+`handler-interfaces` 카탈로그와 Node 코드(`contracts/Registry/Models.ts`)를
 기준으로 확정한다.
 
 ## 8. 전체 구성 예시
@@ -525,7 +525,7 @@ export class AppModule {}
 @Controller('admin')
 export class AdminController {
   constructor(
-    @Inject(ZLinkRegistryQuery)
+    @Inject(ZLINK_REGISTRY_QUERY)
     private readonly registry: ZLinkRegistryQuery,
   ) {}
 
@@ -564,7 +564,7 @@ export class RegistryModule {}
 @Controller()
 export class RegistryAdminController {
   constructor(
-    @Inject(ZLinkRegistryQuery)
+    @Inject(ZLINK_REGISTRY_QUERY)
     private readonly registry: ZLinkRegistryQuery,
   ) {}
 
@@ -606,7 +606,7 @@ export class AppModule {}
 @Controller('admin')
 export class TopologyController {
   constructor(
-    @Inject(ZLinkRegistryQueryClient)
+    @Inject(ZLINK_REGISTRY_QUERY_CLIENT)
     private readonly query: ZLinkRegistryQueryClient,
   ) {}
 
@@ -629,7 +629,7 @@ ZLinkModule.forRoot(
     .useDiscovery()
       .addRegistryEndpoint('tcp://127.0.0.1:5551')
     .addRouteMeshChannel('play')
-      .enableServer('tcp://0.0.0.0:7201')
+      .enableRouter('tcp://0.0.0.0:7201')
     .options({
       registrySpotRemoteAddresses: { namespace: 'game' },
     })

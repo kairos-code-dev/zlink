@@ -173,10 +173,14 @@ public final class GameChatSession implements ZLinkSession {
     @Override
     public ZLinkSessionContext context() { return context; }
 
+    @Override public void onConnected() {}
+    @Override public void onDisconnected() {}
+    @Override public void onError(ZLinkStreamError error) {}
+
     @Override
     public void onDispatch(ZLinkStreamHeader header, Message payload) {
         if ("auth".equals(header.name())) {
-            AuthPlayerReq req = payload.decode(AuthPlayerReq.class);
+            AuthPlayerReq req = StreamPayloads.decode(header, payload, AuthPlayerReq.class);
             player = actors.getOrCreate(req.playerId(), "player")
                 .thenCompose(actor -> context.actors().bind(actor))
                 .thenCompose(bound -> context.client().reply(new AuthPlayerOk()).submit().thenApply(ignored -> bound))
@@ -192,14 +196,11 @@ public final class GameChatSession implements ZLinkSession {
 
 ```java
 public final class PlayerActor implements ZLinkActor {
+    private final String actorId;
     private final ZLinkActorContext context;
-    public CompletionStage<Void> pushChat(GameChatMessage message) { return context.boundSession().send(message).submit(); }
-}
-```
-
-```java
-public final class PlayerActor implements ZLinkActor {
-    private final ZLinkActorContext context;
+    public PlayerActor(String actorId, ZLinkActorContext context) { this.actorId = actorId; this.context = context; }
+    @Override public String actorId() { return actorId; }
+    @Override public ZLinkActorContext context() { return context; }
     public CompletionStage<Void> pushChat(GameChatMessage message) { return context.boundSession().send(message).submit(); }
 }
 ```
@@ -208,7 +209,7 @@ public final class PlayerActor implements ZLinkActor {
 @Component
 public final class SendPartyChatHandler implements ZLinkSpotActorSendHandler<PartyRoomSpot, PartyActor, SendPartyChat> {
     @Override
-    public void handle(PartyRoomSpot spot, PartyActor party, ZLinkSpotActorSendContext context, SendPartyChat req) {
+    public void handle(PartyRoomSpot spot, PartyActor party, ZLinkSpotActorSendContext context, SendPartyChat req, CancellationToken cancellationToken) {
         party.requireMember(req.senderId());
         for (PlayerActor member : party.members()) { member.pushChat(new PartyChatMessage(req.senderId(), req.text())); }
     }

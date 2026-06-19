@@ -38,15 +38,14 @@ spot)는 같은 앱에 framework 또는 registry 등록으로 이미 올라와 �
 @Bean
 fun monitoring(): ZLinkMonitoringOptionsCustomizer =
     ZLinkMonitoringOptionsCustomizer { options ->
-        options.addSocketEvents("profile.server", ZLinkSocketEventKind.CONNECTION_READY)
+        options.addSocketEvents("profile", ZLinkSocketEventKind.CONNECTION_READY)
         options.addRegistryEvents("registry", Duration.ofSeconds(1))
         options.addSpotEvents("stage-node", Duration.ofSeconds(1))
     }
 ```
 
-- socket source 이름은 `channel + capability`(예: `profile.server`,
-  `profile.client`), registry는 infrastructure 이름(예: `registry`), spot은 spot
-  node 등록 이름(예: `stage-node`)이다.
+- socket source 이름은 channel name(예: `profile`), registry는 infrastructure 이름
+  (예: `registry`), spot은 spot node 등록 이름(예: `stage-node`)이다.
 - registry/spot polling 주기는 **항상 명시**해야 한다(숨은 기본 주기 없음 — 운영
   코드가 polling 비용을 설정에서 바로 읽도록).
 - 존재하지 않는 source 이름을 등록하면 startup validation 오류다.
@@ -90,13 +89,13 @@ socket event kind는 `CONNECTED`, `CONNECTION_READY`, `DISCONNECTED`,
 
 ### spot
 
-spot event는 `STATUS_CHANGED`, `PEERS_CHANGED`, `SUBJECTS_CHANGED` 고정이다.
+snapshot diff로 발행되는 spot event는 `STATUS_CHANGED`, `PEERS_CHANGED`,
+`SUBJECTS_CHANGED` 3종이다. (`ZLinkSpotEventKind` enum에는 timer 관련 kind도 있다.)
 
-> **timer 실패는 polling 주기를 기다리지 않는다.** status/peer/subject 변화는
-> `addSpotEvents(...)`의 interval로 snapshot diff하지만, timer handler 실패는
-> 발생 시점에 즉시 발행된다. timer 정책은 [05-spot §5](05-spot.ko.md) 참고.
+> status/peer/subject 변화는 `addSpotEvents(...)`의 interval로 snapshot diff해서 발행한다.
+> timer 정책은 [05-spot §5](05-spot.ko.md) 참고.
 
-Spring application event bridge는 선택 기능이다. public 기준은 typed handler다.
+public 기준은 typed `ZLinkRuntimeEventHandler<TEvent>`다.
 
 ## 4. 자주 막히는 곳
 

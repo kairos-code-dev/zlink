@@ -22,14 +22,15 @@
 | Transport | PAIR | PUB/SUB | DEALER | ROUTER | STREAM |
 |-----------|:----:|:-------:|:------:|:------:|:------:|
 | tcp       |  O   |    O    |   O    |   O    | O (bind) |
-| ipc       |  O   |    O    |   O    |   O    |   -    |
+| ipc       |  O   |    O    |   O    |   O    | O (bind) |
 | inproc    |  O   |    O    |   O    |   O    |   -    |
 | tls       |  O   |    O    |   O    |   O    | O (bind) |
 | ws        |  O   |    O    |   O    |   O    | O (bind) |
 | wss       |  O   |    O    |   O    |   O    | O (bind) |
 
 - STREAM은 **bind만** 지원하며, 클라이언트는 raw socket/websocket으로 구현한다.
-- STREAM은 ipc/inproc을 지원하지 않는다.
+- STREAM은 inproc을 지원하지 않는다(ipc는 bind만 지원).
+- `tls`/`ws`/`wss`는 빌드 옵션에 따라 제공되며, `zlink_has("tls"|"ws"|"wss")`로 확인할 수 있다.
 
 ## 2. TCP
 
@@ -73,14 +74,14 @@ zlink_connect(other_socket, endpoint);
 
 ### DNS 이름 사용
 
-connect 시 호스트명을 쓰면 내부적으로 DNS를 리졸빙한다.
+connect 시 호스트명을 쓰면 내부적으로 DNS를 resolve한다.
 
 ```c
 /* Connect using DNS name */
 zlink_connect(socket, "tcp://localhost:5555");
 ```
 
-> 주의: DNS 리졸빙은 블로킹으로 동작한다. 프로덕션에서는 IP 주소를 권장한다.
+> 주의: DNS resolve은 블로킹으로 동작한다. 프로덕션에서는 IP 주소를 권장한다.
 > 참고: `core/tests/integration/test_pair_tcp.cpp` — `test_pair_tcp_connect_by_name()`
 
 ### 에러 처리
@@ -141,9 +142,9 @@ zlink_get_option(socket, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len);
 /* 경로 너무 김 */
 zlink_bind_result_t rc = zlink_bind(
     socket, "ipc:///very/long/path/.../endpoint.ipc");
-if (rc == ZLINK_BIND_INVALID_ARGUMENT) {
-    /* IPC 경로 시스템 한계(108자) 초과 — INVALID_ARGUMENT */
-    printf("IPC path exceeds system limit (108 characters)\n");
+if (rc == ZLINK_BIND_INTERNAL_ERROR) {
+    /* IPC 경로가 플랫폼 sun_path 한계 이상 — ENAMETOOLONG */
+    printf("IPC path exceeds platform sun_path limit\n");
 }
 ```
 
@@ -153,7 +154,7 @@ if (rc == ZLINK_BIND_INVALID_ARGUMENT) {
 
 - **Linux/macOS에서만 지원** (Windows 미지원)
 - TCP 대비 낮은 오버헤드 (네트워크 스택 우회)
-- 파일 경로 기반 주소 (경로 최대 108자)
+- 파일 경로 기반 주소 (경로는 플랫폼 sun_path 한계보다 짧아야 함)
 
 ## 4. inproc
 
@@ -252,7 +253,7 @@ zlink_set_tls_server(socket, "/path/to/cert.pem", "/path/to/key.pem", 0);
 zlink_bind(socket, "tls://*:5555");
 
 /* Client */
-zlink_set_tls_client(socket, "/path/to/ca.pem", NULL, 1);
+zlink_set_tls_client(socket, "/path/to/ca.pem", "server", 1);
 zlink_connect(socket, "tls://server:5555");
 ```
 
@@ -262,11 +263,11 @@ zlink_connect(socket, "tls://server:5555");
 
 | 제약 | 설명 |
 |------|------|
-| STREAM | bind만 지원, ipc/inproc 미지원 |
+| STREAM | bind만 지원, inproc 미지원(ipc는 bind만) |
 | inproc | bind가 connect보다 먼저 호출 필요 |
 | ipc | Unix/Linux/macOS만 지원 (Windows 미지원) |
 | inproc context | 동일 context 내에서만 사용 |
-| IPC 경로 | Unix 도메인 소켓 경로 최대 108자 |
+| IPC 경로 | Unix 도메인 소켓 경로는 플랫폼 sun_path 한계보다 짧아야 함 |
 
 ## 9. Transport 선택 가이드
 

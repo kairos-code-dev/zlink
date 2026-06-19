@@ -25,7 +25,7 @@
 P2~P8 구현 중 위 표의 기능을 더 깊게 사용하다가 공개 API가 부족하면 다음 순서로
 처리한다.
 
-1. dotnet framework 의 `Runtime/Backend/DotNet/` 사용 경로를 다시 확인한다.
+1. Node framework 의 `runtime/backend/contracts` 와 adapter, contract test 경로를 확인한다.
 2. `bindings/node` 공개 계약(`dist/index.d.ts`, `src/zlink/contracts`)에 필요한
    기능이 있는지 확인한다.
 3. 없으면 `bindings/node` 공개 API와 테스트를 먼저 추가한다.

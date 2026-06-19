@@ -13,8 +13,8 @@
 문서가 늘어나다 보면 "설명은 있지만 정작 지금 구현 계획에 들어가는가" 라는 점이
 흐려지기 쉽다. 이 문서는 그 경계를 분명히 한다. 즉 현재 `Node.js / NestJS` 문서
 묶음에서 실제로 구현 대상으로 잡은 항목과, 처음부터 framework 기본 범위 밖으로
-빼 둔 항목을 한 자리에서 구분한다. 범위와 비목표의 의미는 `.NET` 판과
-동일하며, 표면(surface)만 NestJS 모양으로 바꾼다.
+빼 둔 항목을 한 자리에서 구분한다. 기준은 `framework/languages/node` 구현이며,
+표면(surface)은 NestJS 모양을 쓴다.
 
 ## 2. 현재 계획 구현 범위
 
@@ -42,9 +42,9 @@
 - spot 의 packet / subscribe / timer descriptor
 - stream node 등록(`.addStreamNode(...)`) 과 framework Header 기반 packet session
   등록
-- registry 등록(`AddZLinkRegistry` 대응 options), `ZLinkRegistryQuery`
-  (`memberPeers(member, signal?)`), `ZLinkRegistryQueryClient`
-- monitoring 등록(`AddZLinkMonitoring` 대응 options) 과
+- registry 등록(`ZLinkRegistryModule.forRoot(...)`), `ZLinkRegistryQuery`
+  (`memberPeers(channelName, signal?)`), `ZLinkRegistryQueryClient`
+- monitoring 등록(`ZLinkMonitoringOptions`) 과
   socket / registry / spot 모니터링 source
 - `NestJS DI`[^di] 와 lifecycle hook[^lifecycle-hook]
   (`onApplicationBootstrap` / `onApplicationShutdown`) 통합
@@ -66,7 +66,7 @@
 아래 항목은 본문에 설명이나 배경 설명이 있더라도, framework 기본 구현 범위에는
 포함하지 않는다.
 
-- worker dispatch 보장, retry, in-flight task semantics
+- CPU thread offload, retry 보장 (단, `runWorker(...)`의 in-flight/queue 제한은 공개 설정으로 제공한다)
 - scatter-gather aggregate helper[^scatter-gather]
 - workflow orchestration[^workflow-orchestration] 메타데이터와 compensation 모델
 - stage wrapper[^stage-wrapper] 전용 metadata / membership 모델
@@ -115,7 +115,7 @@ surface 테스트를 같이 갱신해야 한다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | 비목표인 direct route public 호출은 사라지고, actor / session 표면은 그대로 남아 있다. |
+| `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | direct route public 호출은 public surface에 없고, actor / session 표면은 노출된다. |
 | `ScaffoldSmokeTests.PublicSurface_DoesNotExpose_BackendConcreteTypes` | backend 교체 범위 밖의 concrete type 이 public API 로 새어 나오지 않는다. |
 | `BackendAdapterFactoryTests.BackendFactory_Creates_Channel_Registry_Spot_And_Stream_Wrappers` | 현재 구현 범위인 channel, Registry, SPOT, STREAM backend wrapper 가 정상적으로 생성된다. |
 | `documentation-regression.test.js` | 범위 문서를 포함한 구현 기준 문서가 회귀 테스트 단락과 유효한 링크를 유지한다. |

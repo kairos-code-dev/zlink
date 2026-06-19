@@ -70,14 +70,14 @@ public final class TopologyController {
     }
 
     @GetMapping("/admin/topology")
-    public CompletionStage<List<RegistryTopologyEntry>> topology() {
+    public CompletionStage<List<ZLinkRegistryTopologyEntry>> topology() {
         return registry.topology();
     }
 
     @GetMapping("/health")
-    public CompletionStage<ResponseEntity<RegistryStatus>> health() {
+    public CompletionStage<ResponseEntity<ZLinkRegistryStatus>> health() {
         return registry.status().thenApply(status ->
-            status.isActive()
+            status.state() == RegistryState.ACTIVE
                 ? ResponseEntity.ok(status)
                 : ResponseEntity.status(503).build());
     }

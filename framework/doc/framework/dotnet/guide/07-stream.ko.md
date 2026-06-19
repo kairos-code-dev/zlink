@@ -134,11 +134,10 @@ public sealed class ClientHeaderSession(
 - `IZLinkStream.Write(Message payload, ...)` 는 backpressure 를 `false` 반환으로
   표현하며 caller payload 를 소비하지 않는다. 보통은 `Send`/`Reply`/`BoundSession`
   를 쓴다.
-- payload 디코드는 transport core 에 섞지 않고 등록된 codec 에 위임한다. 위 예제의
-  `payload.Decode<T>()` 처럼 codec helper 로 `Message` 를 타입으로 풀고, 타입
-  특성으로 codec 을 고른다(생성된 protobuf 타입 → protobuf, 그 외 POCO → json).
-  핫패스에서는 `Message.AsReadOnlySpan()` 기반 helper 를 쓰고 `ToArray()` 복사를
-  피한다.
+- payload 디코드는 transport core 에 섞지 않고 codec helper 에 맡긴다. JSON payload 는
+  `Message.Decode<T>()`(= `FromJson<T>`), protobuf payload 는 `Message.FromProto<T>()` 로
+  타입을 푼다. 핫패스에서는 `Message.AsReadOnlySpan()` 기반 helper 를 쓰고 `ToArray()`
+  복사를 피한다.
 
 ## 2. client 측 — Stream Connector
 
@@ -190,8 +189,9 @@ while (running)
 - `ZlinkStreamDispatchMode.Manual`(기본)은 수신/재연결/콜백을 큐에 쌓아 두고, 응용이
   `Dispatch.Async()` 를 부른 스레드에서 실행한다. UI 스레드/게임 루프가 있는 client
   는 반드시 `Manual` 을 쓴다. `Immediate` 는 내부 worker 에서 바로 실행한다.
-- 네트워크 수신 루프는 느린 콜백에 막히지 않는다. 패킷을 읽어 콜백 work item 만
-  큐에 넣고 다음 읽기로 넘어간다.
+- `Manual` 모드에서는 네트워크 수신 루프가 느린 콜백에 막히지 않는다. 패킷을 읽어
+  콜백 work item 만 큐에 넣고 다음 읽기로 넘어간다. `Immediate` 모드는 수신 루프가
+  콜백 실행을 그 자리에서 기다리므로 느린 콜백이 다음 읽기를 늦춘다.
 
 ### send / request
 
@@ -215,8 +215,8 @@ await connector
 
 - 기본 packet 이름은 namespace 없는 CLR 타입 이름. `[ZlinkStreamPacketName("...")]`
   또는 `.PacketName(...)` 으로 override.
-- request/response 는 `request_seq` 로 correlate 된다. 응답/오류 packet 이름은 원
-  요청과 같아야 한다.
+- request/response 는 `request_seq` 로 correlate 된다. packet 이름은 correlation 에
+  쓰지 않고, `request_seq` 와 kind(Response/Error)로만 pending request 를 짝짓는다.
 
 ### heartbeat / reconnect
 
@@ -250,8 +250,9 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 
 - client 의 `Async(...)` 종결자는 실패 시 `ZlinkStreamException`(`ZlinkStreamError`)을
   던지고, `Submit(callback)` 요청 API 는 `ZlinkStreamResult` 실패를 callback 에 넘긴다.
-  remote error 나 사용자 callback 오류는 `ErrorReceived` 이벤트로도 알린다. error code
-  의미는 같다.
+  `request_seq` 가 붙은 remote error 는 그 pending request 의 실패로 전달된다.
+  `request_seq` 없는 remote error 와 사용자 callback 오류는 `ErrorReceived` 이벤트로
+  알린다. error code 의미는 같다.
 - 주요 코드: `Disconnected`, `RequestTimeout`, `ConnectTimeout`, `FrameTooLarge`,
   `FrameDecodeFailed`, `TlsValidationFailed`, `RemoteError` 등.
 - 서버가 `kind=Error` 로 응답했고 request id 가 없으면 `RemoteError` 로 전달된다.

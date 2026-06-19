@@ -329,11 +329,10 @@ Entry 단계와 user Spot 단계는 같은 actor 객체를 보더라도 의미�
 - **session 초기 상태 설정** -- session metadata, profile lookup 같은 초기
   작업이 여기 들어간다.
 
-Entry Spot 의 actor packet 은 Entry Spot 전체 실행 줄에 세우지 않는다. 이렇게
-둔 이유는 다음과 같다. Entry Spot 은 모든 actor 가 처음 거치는 공용 입구다.
-여기서 actor packet 을 전역으로 직렬화하면, 서로 관계없는 actor 까지 같이
-기다리게 된다. 따라서 Entry Spot actor packet 은 대상 actor 의
-mailbox[^mailbox] 로 들어간다. 같은 actor 의 packet 끼리만 순서가 보장된다.
+Entry Spot 의 actor packet 은 Entry Spot 전체 직렬 실행 줄에서 처리된다. native
+batch 의 arrival order 대로 하나씩 await 되어, 서로 다른 actor 의 packet 도 같은 Entry
+Spot 실행 줄에서 순서대로 직렬 실행된다. enqueue 순서는 native batch 순서와 동일하게
+유지된다.
 
 반면 Entry Spot 자체의 registry 나 lifecycle 상태를 다루는 작업은 Entry Spot
 실행 문맥에서 직렬화해도 된다. 예를 들어 `OnInitializeAsync(...)`,
@@ -359,10 +358,10 @@ public sealed class PlayerEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntr
 
     public void Configure()
     {
-        Context.AddHandler<AuthenticateRequestHandler>();
-        Context.AddHandler<JoinMatchRequestHandler>();
-        Context.AddHandler<PlayerEntryJoinedHandler>();
-        Context.AddHandler<PlayerEntryLeftHandler>();
+        Context.Handlers.AddHandler<AuthenticateRequestHandler>();
+        Context.Handlers.AddHandler<JoinMatchRequestHandler>();
+        Context.Handlers.AddHandler<PlayerEntryJoinedHandler>();
+        Context.Handlers.AddHandler<PlayerEntryLeftHandler>();
     }
 }
 
@@ -372,9 +371,9 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddHandler<PlaceMarkRequestHandler>();
-        Context.AddHandler<PlayerMatchJoinedHandler>();
-        Context.AddHandler<PlayerMatchLeftHandler>();
+        Context.Handlers.AddHandler<PlaceMarkRequestHandler>();
+        Context.Handlers.AddHandler<PlayerMatchJoinedHandler>();
+        Context.Handlers.AddHandler<PlayerMatchLeftHandler>();
     }
 }
 ```
@@ -398,7 +397,7 @@ Entry Spot 은 Entry Spot 전용 registry 를 갖고, user Spot 은 각 Spot
 
 일반 channel handler 처럼 attribute scan[^attribute-scan] 과 그룹 매핑으로
 노출하는 모델이 아니다. 대신 각 Spot 의 `Configure()` 안에서
-`Context.AddHandler<THandler>()` 로 등록한다. 이 메서드는 handler 가 구현한
+`Context.Handlers.AddHandler<THandler>()` 로 등록한다. 이 메서드는 handler 가 구현한
 actor handler interface 에서 actor 타입과 packet/lifecycle 종류를 추론한다.
 handler 가 여러 actor handler interface 를 구현해서 모호한 경우에는
 `Context.AddActorPacket<THandler, TActor>()` 같은 명시 등록 메서드를 사용한다.

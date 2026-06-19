@@ -44,7 +44,7 @@ zlink_socket_attach_discovery(sub, discovery);
 | 용어 | 설명 |
 |------|------|
 | **Registry** | 등록된 서비스를 추적하고 서비스 목록을 브로드캐스트하는 중앙 서버 (PUB + ROUTER 소켓) |
-| **Discovery** | Registry에 부트스트랩(bootstrap, 초기 연결)하여 서비스 목록을 구독(SUB)하고, 연결된 서비스의 커넥션을 관리하는 클라이언트 에이전트 |
+| **Discovery** | Registry에 bootstrap(bootstrap, 초기 연결)하여 서비스 목록을 구독(SUB)하고, 연결된 서비스의 커넥션을 관리하는 클라이언트 에이전트 |
 | **소켓 패밀리** | Discovery를 통해 피어를 등록·발견하는 raw ROUTER/DEALER/PUB/SUB 소켓 |
 | **서비스 역할** | 자동 피어 매칭에 사용되는 소켓 수준 역할 (ROUTER/DEALER/PUB/SUB) |
 | **Heartbeat** | 주기적 생존 신호 (기본: 5초 주기, 15초 타임아웃) |
@@ -97,11 +97,11 @@ flowchart TB
 각 **Registry**는 두 개의 소켓을 노출한다:
 
 - **PUB** — 전체 서비스 목록을 주기적으로 브로드캐스트 (기본 30초)
-- **ROUTER** — 등록, heartbeat, 부트스트랩, 쿼리 메시지를 수신
+- **ROUTER** — 등록, heartbeat, bootstrap, 쿼리 메시지를 수신
 
 각 **Discovery**는 Registry에 다음과 같이 연결한다:
 
-- **DEALER → ROUTER** — 부트스트랩 요청, 서비스 등록, heartbeat 전송
+- **DEALER → ROUTER** — bootstrap 요청, 서비스 등록, heartbeat 전송
 - **SUB → PUB** — 서비스 목록 브로드캐스트 수신
 
 **구체적 시나리오** — 위 아키텍처 다이어그램의 `price-feed` 예시:
@@ -113,14 +113,14 @@ flowchart TB
 3. Registry 2가 다음 서비스 목록 브로드캐스트에 이 엔드포인트를 포함한다.
    플러딩(flooding, 전체 브로드캐스트 전파)으로 Registry 1, 3도 이 정보를 받는다.
 4. **Node C**는 자신의 `"price-feed"` Discovery에 SUB 소켓을 연결해 둔
-   상태다. 브로드캐스트가 도착하면 Discovery가 PUB 프로바이더를 확인하고
+   상태다. 브로드캐스트가 도착하면 Discovery가 PUB provider를 확인하고
    SUB 소켓을 `tcp://10.0.1.8:9100`에 **자동 연결**한다.
 5. Node B에 장애가 발생하면, 하트비트 중단 → Registry가 해당 엔트리 만료 →
    Node C가 업데이트된 목록을 수신 → 자동으로 연결 해제.
 
 Node C의 코드에는 `tcp://10.0.1.8:9100` 주소가 어디에도 없다.
 
-### Bootstrap(부트스트랩) 및 연결 흐름
+### Bootstrap(bootstrap) 및 연결 흐름
 
 ```mermaid
 sequenceDiagram
@@ -147,7 +147,7 @@ sequenceDiagram
 ```
 
 1. 서비스를 Discovery에 **등록**한다 (또는 SPOT 노드를 등록).
-2. Discovery가 Registry의 ROUTER 엔드포인트에 **부트스트랩 요청**을 전송한다.
+2. Discovery가 Registry의 ROUTER 엔드포인트에 **bootstrap 요청**을 전송한다.
 3. Registry가 구독할 PUB 엔드포인트와 하트비트 주기를 응답한다.
 4. Discovery가 PUB 엔드포인트를 **구독**하고 주기적 서비스 목록 수신을 시작한다.
 5. Discovery가 자신의 서비스를 **등록**하고 하트비트 전송을 시작한다.
@@ -196,8 +196,8 @@ sequenceDiagram
     B->>Reg: register (rid=B, advertise=tcp://hostB:9100)
     Reg-->>A: service_list {A, B}
     Reg-->>B: service_list {A, B}
-    Note over A,B: 양쪽에서 order(A, B): A < B → B 가 A 로 dial
-    B->>A: connect (tcp://hostA:9100)
+    Note over A,B: 양쪽에서 order(A, B): A < B → A 가 B 로 dial
+    A->>B: connect (tcp://hostB:9100)
 ```
 
 서로 다른 호스트에서 같은 `routing_id`가 올라오는 예외 상황(잘못된 설정, 좀비
@@ -216,11 +216,11 @@ Registry는 중앙 조정 서버다. 운영 환경에서는 HA를 위해 3노드
 void *ctx = zlink_ctx_new();
 void *registry = zlink_registry_new(ctx);
 
-/* Add cluster peers (optional, must be called before bind) */
+/* Add cluster peers (optional; typically configured before bind) */
 zlink_registry_add_peer(registry, "tcp://registry2:5550");
 zlink_registry_add_peer(registry, "tcp://registry3:5550");
 
-/* Heartbeat configuration (optional, must be called before bind) */
+/* Heartbeat configuration (optional; typically configured before bind) */
 zlink_registry_set(registry, ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS, 5000);
     zlink_registry_set(registry, ZLINK_REGISTRY_OPT_HEARTBEAT_TIMEOUT_MS, 15000);
 
@@ -269,7 +269,7 @@ zlink_discovery_destroy(&discovery);
 ```
 
 다중 서비스 SpotNode 토폴로지에서는 연결할 소켓마다
-`ZLINK_AUTO_CONNECT_CLIENT_SERVER`를 채널 DEALER 호출에 사용한다. SPOT 가이드의
+`ZLINK_AUTO_CONNECT_CLIENT_SERVER`(또는 `ZLINK_AUTO_CONNECT_DEALER_MESH`)를 채널 DEALER 호출에 사용한다. SPOT 가이드의
 [§3.2 Discovery 기반 연결](07-3-spot.ko.md#32-discovery-기반-연결)를
 참고한다.
 
@@ -325,7 +325,6 @@ void *orders_disc = zlink_discovery_new(ctx,
 zlink_discovery_connect_registry(orders_disc, "tcp://registry1:5551");
 
 void *orders_dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
-zlink_socket_attach_discovery(orders_dealer, orders_disc);
 
 zlink_spot_node_attach_channel_dealer(node, orders_disc, orders_dealer);
 ```
@@ -359,7 +358,7 @@ int64_t v = 0;
 zlink_discovery_get_value(discovery, &v);
 ```
 
-변경된 값은 다음 하트비트 주기에 전송된다. 원격 피어 정보는
+등록된 서비스가 있으면 변경된 값은 즉시 attribute update로 전파되고, 이후 heartbeat로 유지된다. 원격 피어 정보는
 `zlink_discovery_member_peers()` 또는 `zlink_registry_member_peers()`로
 조회할 수 있다.
 
@@ -403,9 +402,9 @@ Discovery가 하나의 Registry에만 연결해도 다른 Registry에 등록된 
 
 ### Discovery Failover
 
-- Discovery는 하나 이상의 Registry control endpoint에 부트스트랩 연결한다.
-- 부트스트랩 metadata로 내부 broadcast/uplink 경로를 학습한다.
-- 한 Registry 노드가 실패해도 다른 부트스트랩 control endpoint로
+- Discovery는 하나 이상의 Registry control endpoint에 bootstrap 연결한다.
+- bootstrap metadata로 내부 broadcast/uplink 경로를 학습한다.
+- 한 Registry 노드가 실패해도 다른 bootstrap control endpoint로
   계속 동작할 수 있다.
 
 ## 언어별 완전한 예제

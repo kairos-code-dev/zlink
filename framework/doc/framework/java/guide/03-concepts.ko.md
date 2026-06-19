@@ -37,8 +37,9 @@ scan된 handler를 모든 channel에 자동으로 열지 않는다.
 
 ## 4. Spot
 
-Spot은 room, stage, zone처럼 동적으로 생성되는 논리 노드다. Java 포팅은 Spot type
-factory, Entry Spot, timer, actor dispatch를 `.NET`과 같은 의미로 제공한다.
+Spot은 room, stage, zone처럼 동적으로 생성되는 논리 노드다. Java 는 Spot type
+factory(`addSpotFactory`), Entry Spot(`addEntrySpot`), timer(`ZLinkSpotContext.addTimer`),
+actor dispatch 를 제공한다.
 
 ## 5. STREAM과 Connector
 

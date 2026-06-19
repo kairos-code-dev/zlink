@@ -67,7 +67,7 @@ application model로 묶이는지를 함께 본다.
 | `IServiceProvider` | `service_provider_t` |
 | service lifetime | `singleton`, `scoped`, `transient` |
 | `IConfiguration` | `config_builder_t`, typed options binding |
-| Options pattern | `options<T>()` / typed config binding |
+| Options pattern | `config_builder_t::bind<T>()` / `bind_required<T>()` |
 | Minimal API route handler | `options.http().map_get/map_post/map_put/map_delete<THandler>(...)` |
 | model binding | DTO JSON, route parameter, query string binding |
 | middleware | HTTP middleware, zlink handler filter |
@@ -125,7 +125,7 @@ DI는 framework core 기능이다. 외부 DI 라이브러리를 public dependenc
 - SPOT activation scope
 - timer handler scope
 - hosted service scope
-- required service / optional service
+- required service(`get_required<T>()`; 미등록 service는 예외)
 - duplicate registration validation
 - shutdown 중 resolve 금지
 

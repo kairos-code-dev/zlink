@@ -50,7 +50,7 @@ class stream_write_call_t;
 template <typename T>
 class task_t;
 template <typename TActor>
-class bind_actor_call_t;
+class request_call_t;
 
 enum class stream_message_kind_t : std::uint8_t {
     send = 1,
@@ -125,7 +125,7 @@ public:
 
 class session_actor_manager_t {
 public:
-    bind_actor_call_t<session_actor_t> bind(actor_ref_t actor);
+    request_call_t<session_actor_t> bind(actor_ref_t actor);
 };
 
 class packet_stream_session_t {
@@ -162,7 +162,7 @@ public:
 };
 
 app.add_zlink_framework([](auto &options) {
-    options.spot_node("session-actors")
+    options.add_spot_node("session-actors")
       .bind("tcp://0.0.0.0:7101")
       .enable_actor_gateway();
     options.add_stream_node("route-stream")

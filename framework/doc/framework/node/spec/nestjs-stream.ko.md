@@ -6,13 +6,10 @@
 
 [Node.js 묶음](../README.ko.md) | [인터페이스](handler-interfaces.ko.md) | [channel](nestjs-channel-messaging.ko.md) | [SPOT](nestjs-spot.ko.md)
 
-> 이 문서는 **이식 기준 스펙**이다. `framework/languages/dotnet` 의 STREAM 정식
-> 계약([aspnet-core-stream.ko.md](../../dotnet/spec/aspnet-core-stream.ko.md))
-> 을 NestJS 표면으로 옮긴다. 표면(surface)만 바꾸고 개념·의미론·동작은 그대로
-> 둔다. 두 표기가 어긋나면 dotnet **코드**(`framework/languages/dotnet/src`)가
-> 기능의 최종 기준이다. 번역 규칙은
+> 이 문서는 Node.js `ZLink Framework`(NestJS)의 STREAM **스펙**이다. 표면은 NestJS
+> 모양이다. 표기가 어긋나면 `framework/languages/node` 코드가 기준이다. 번역 규칙은
 > [dotnet→node 표면 매핑](../internals/dotnet-to-node-surface-mapping.ko.md) 를
-> 따른다. 이 스펙대로 구현하면 dotnet 과 동일한 STREAM 동작을 얻는다.
+> 따른다.
 
 # ZLink Framework NestJS STREAM Integration
 
@@ -138,11 +135,11 @@ export class ZLinkMessageMetadata {
 export interface ZLinkSession {
   readonly context: ZLinkSessionContext;
 
-  onConnected(signal?: AbortSignal): Promise<void>;
+  onConnected?(context: ZLinkSessionContext): Promise<void>;
 
-  onDisconnected(signal?: AbortSignal): Promise<void>;
+  onDisconnected?(context: ZLinkSessionContext): Promise<void>;
 
-  onError(error: ZLinkStreamError, signal?: AbortSignal): Promise<void>;
+  onError?(context: ZLinkSessionContext, error: ZLinkStreamError): Promise<void>;
 
   /**
    * framework 가 소유한 inbound stream payload 를 처리한다.
@@ -150,7 +147,7 @@ export interface ZLinkSession {
    * relay(...) 같은 framework API 에 넘길 수 있지만, 직접 해제하거나
    * 소유권을 옮기지 않는다(callback 이후까지 보관할 때만 copy 한다).
    */
-  onDispatch(
+  onDispatch?(
     header: ZlinkStreamHeader,
     payload: Message,
     signal?: AbortSignal,

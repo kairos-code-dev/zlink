@@ -146,34 +146,35 @@ class MeshOpsConfig {
             options.addClientServerChannel("profile").enableClient()
             options.addClientServerChannel("pricing").enableClient()
             options.useDiscovery().addRegistryEndpoint("tcp://registry1:5551")
-            options.monitoring().enable()
-            options.filters().add(CorrelationFilter::class.java)
+            options.useFilter(CorrelationFilter::class.java)
         }
 }
+
+// monitoring은 별도 ZLinkMonitoringOptionsCustomizer bean으로 켠다([09-monitoring](../09-monitoring.ko.md)).
 
 @RestController
 class TopologyController(private val registry: ZLinkRegistryQueryClient) {
     @GetMapping("/admin/topology")
-    suspend fun topology(): Topology = registry.topology().await()
+    suspend fun topology(): List<ZLinkRegistryTopologyEntry> = registry.topology().await()
 }
 ```
 
 ```kotlin
 @Component
 class CorrelationFilter : ZLinkHandlerFilter {
-    override fun invoke(
-        invocation: ZLinkHandlerInvocation,
-        chain: ZLinkHandlerFilterChain,
-    ): CompletionStage<Any> {
-        val correlationId = invocation.metadata().getOrDefault("x-correlation-id", TraceIds.current())
-        return CorrelationScope.open(correlationId).use { chain.next(invocation) }
+    override fun <T> invokeAsync(
+        context: ZLinkInvocationContext,
+        next: ZLinkNext<T>,
+    ): CompletionStage<T> {
+        val correlationId = TraceIds.current()
+        return CorrelationScope.open(correlationId).use { next.invokeAsync() }
     }
 }
 ```
 
-> retry·circuit-breaking 은 ZLink 가 자동으로 하지 않는다(`ZLinkFrameworkException.
-> IsRetriable` 는 재시도 가능 여부 **힌트**일 뿐, 자동 재시도가 아니다). Polly 같은
-> 정책 라이브러리를 호출 측에 그대로 두거나 `ZLinkHandlerFilter` 로 공통화한다 —
+> retry·circuit-breaking 은 ZLink 가 자동으로 하지 않는다. 재시도 여부는 앱이 예외
+> 타입이나 정책 라이브러리로 직접 정한다. Polly 같은 정책 라이브러리를 호출 측에 그대로
+> 두거나 `ZLinkHandlerFilter` 로 공통화한다 —
 > 즉 **복원력 정책은 그대로 앱이 소유**한다.
 
 ## 4. 양쪽 코드 비교 — fan-out 한 번

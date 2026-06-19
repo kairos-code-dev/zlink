@@ -44,7 +44,7 @@ zlink_socket_attach_discovery(sub, discovery);
 | 용어 | 설명 |
 |------|------|
 | **Registry** | 등록된 서비스를 추적하고 서비스 목록을 브로드캐스트하는 중앙 서버 (PUB + ROUTER 소켓) |
-| **Discovery** | Registry에 bootstrap(bootstrap, 초기 연결)하여 서비스 목록을 구독(SUB)하고, 연결된 서비스의 커넥션을 관리하는 클라이언트 에이전트 |
+| **Discovery** | Registry에 bootstrap(초기 연결)하여 서비스 목록을 구독(SUB)하고, 연결된 서비스의 커넥션을 관리하는 클라이언트 에이전트 |
 | **소켓 패밀리** | Discovery를 통해 피어를 등록·발견하는 raw ROUTER/DEALER/PUB/SUB 소켓 |
 | **서비스 역할** | 자동 피어 매칭에 사용되는 소켓 수준 역할 (ROUTER/DEALER/PUB/SUB) |
 | **Heartbeat** | 주기적 생존 신호 (기본: 5초 주기, 15초 타임아웃) |
@@ -120,7 +120,7 @@ flowchart TB
 
 Node C의 코드에는 `tcp://10.0.1.8:9100` 주소가 어디에도 없다.
 
-### Bootstrap(bootstrap) 및 연결 흐름
+### Bootstrap 및 연결 흐름
 
 ```mermaid
 sequenceDiagram

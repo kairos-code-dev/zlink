@@ -12,7 +12,7 @@
 dependencies {
     implementation("systems.zlink:zlink-framework-core")
     implementation("systems.zlink:zlink-framework-spring-boot-starter")
-    implementation("systems.zlink:zlink-binding")
+    // zlink 바인딩(systems.zlink:zlink)은 zlink-framework-core 가 api 의존으로 함께 가져온다
 }
 ```
 
@@ -86,8 +86,8 @@ public class PriceServerConfig implements ZLinkFrameworkConfigurer {
 }
 ```
 
-핵심: server 역할을 하려면 `bind(...)`가 필수다. server는 요청을 받는 쪽이라,
-다른 앱이 접속해 올 주소를 미리 열어 둬야 하기 때문이다. 요청을 보내기만 하는
+핵심: server 역할을 하려면 `enableServer(endpoint)` 에 endpoint 를 넘겨야 한다(server bind
+endpoint). server는 요청을 받는 쪽이라, 다른 앱이 접속해 올 주소를 미리 열어 둬야 하기 때문이다. 요청을 보내기만 하는
 client는 이 주소가 필요 없다.
 
 ## 5. caller: outbound client

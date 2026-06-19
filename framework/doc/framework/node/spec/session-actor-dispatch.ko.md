@@ -8,14 +8,11 @@
 
 # ZLink Framework Node.js Session Actor Dispatch
 
-> 이 문서는 [.NET session-actor-dispatch spec](../../dotnet/spec/session-actor-dispatch.ko.md)
-> 의 Node.js / NestJS 표면 이식이다. **dispatch 의미(순서, Entry Spot vs user Spot
-> routing, 실행 문맥)는 backend 와 무관한 공통 의미론이므로 .NET 과 완전히
-> 동일하다.** 표면 용어(`IZLinkX`→`ZLinkX`, `HandleAsync`→`handle`,
-> `ValueTask`→`Promise`, attribute→decorator, `RoutingId`→string, ASP.NET→NestJS)
-> 만 옮긴다. 이 문서대로 구현하면 .NET 과 동일한 dispatch 동작이 나온다. 표기가
-> .NET 문서와 어긋나면 .NET **코드**(`framework/languages/dotnet/src`)가 기능의
-> 최종 기준이다.
+> 이 문서는 Node.js `ZLink Framework`(NestJS)의 session-actor-dispatch **스펙**이다.
+> dispatch 의미(순서, Entry Spot vs user Spot routing, 실행 문맥)는 backend 와 무관한
+> 공통 의미론이다. 표면 용어(`I` prefix 없음, `handle`, `Promise`, decorator,
+> `RoutingId`=string, NestJS)는 TypeScript 모양이다. 표기가 어긋나면
+> `framework/languages/node` 코드가 기준이다.
 
 ## 1. 목적
 
@@ -1130,7 +1127,7 @@ room 에서 leave 시키지 않는다.
 
 ```ts
 interface ZLinkSpotRemoteAddressResolver {
-  resolveSpotRemoteAddress(
+  resolve(
     spotRid: RoutingId,
     signal?: AbortSignal,
   ): Promise<ZLinkSpotRemoteAddress>;
@@ -1234,9 +1231,9 @@ export class TicTacToeEntrySpot implements ZLinkEntrySpot {
   readonly context!: ZLinkEntrySpotContext;
 
   configure(): void {
-    this.context.addHandler(JoinMatchEntryHandler);
-    this.context.addHandler(TicTacToeEntryJoinedHandler);
-    this.context.addHandler(TicTacToeEntryLeftHandler);
+    this.context.handlers.addHandler(JoinMatchEntryHandler);
+    this.context.handlers.addHandler(TicTacToeEntryJoinedHandler);
+    this.context.handlers.addHandler(TicTacToeEntryLeftHandler);
   }
 }
 
@@ -1249,8 +1246,8 @@ export class TicTacToeGame implements ZLinkSpot {
   }
 
   configure(): void {
-    this.context.addHandler(PlaceMarkHandler);
-    this.context.addHandler(MoveHandler);
+    this.context.handlers.addHandler(PlaceMarkHandler);
+    this.context.handlers.addHandler(MoveHandler);
   }
 }
 ```
@@ -1322,7 +1319,7 @@ export class JoinMatchHandler {
     void entrySpot;
     // request.matchId는 application 도메인이 정한 match id다.
     // application registry가 user Spot routing id로 변환하거나 조회한다.
-    const matchSpotRid = RoutingId.from(request.matchId);
+    const matchSpotRid = request.matchId;
     const joined = await actor.context
       .joinSpot(matchSpotRid, request)
       .submit<JoinMatchSpotResult>();

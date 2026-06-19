@@ -14,7 +14,7 @@
 등록하고 관리하는 편을 기본으로 본다.
 
 - `addSpotMesh(...).useDiscovery(...addRegistryEndpoint...)` 기준의 discovery 등록
-- `SpotNode` bean 생성과 역할별 등록
+- spot node 설정 등록과, 그에 따른 `ZLinkSpotManager`/`ZLinkSpotOutbound` 등 capability bean 조건부 노출
 - current channel publish/subscribe와 attach된 channel client 경로
 - local spot 인스턴스가 없는 외부 노드용 publisher client 경로
 - Entry Spot과 user Spot factory
@@ -53,7 +53,7 @@ public class SpotConfig implements ZLinkFrameworkConfigurer {
         node.enablePubSub("tcp://0.0.0.0:9001");
         node.acceptSpotRoutesFromChannel("play-route");
         node.configureEntrySpot()
-            .setRoutingId(RoutingId.of("play.entry"));
+            .setRoutingId(RoutingId.from("play.entry"));
         node.addEntrySpot(GameEntrySpot.class);
         node.addSpotFactory(GameRoomSpot.class);
     }

@@ -88,7 +88,7 @@ Is the communication peer an external client (browser, game)?
 | 웹 클라이언트 연동 | STREAM + ws/wss | WebSocket RAW 통신 |
 | 외부 TCP 클라이언트 | STREAM + tcp/tls | Length-Prefix RAW 통신 |
 
-> 위치 투명성이 필요한 경우(자동 연결 · 로드밸런싱 · 토픽 메시)에는
+> 위치 투명성이 필요한 경우(자동 연결 · 로드밸런싱 · topic mesh)에는
 > 소켓 대신 서비스 레이어(SPOT)를 사용한다.
 > 상세는 [서비스 개요](07-0-services.ko.md)를 참고.
 
@@ -108,9 +108,9 @@ Is the communication peer an external client (browser, game)?
 ## 7. 피어를 routing id로 끊기
 
 일반적인 연결/해제 수명 주기는 엔드포인트 문자열을 기준으로 동작한다. 그런데
-메시지를 수신하면 `source_rid`(송신 피어의 고유 식별자)로 상대방을 직접 특정할 수 있다.
-엔드포인트 문자열을 저장하지 않고 수신한 `source_rid`만으로 해당 피어 연결을 끊으려면
-`zlink_disconnect_rid()`를 사용한다.
+STREAM(또는 ROUTER typed recv)에서 메시지를 수신하면 `source_rid`(송신 피어의 고유
+식별자)로 상대방을 직접 특정할 수 있다. 엔드포인트 문자열을 저장하지 않고 수신한
+`source_rid`만으로 해당 피어 연결을 끊으려면 `zlink_disconnect_rid()`를 사용한다.
 
 ```c
 zlink_connect_result_t rc = zlink_disconnect_rid(socket, &source_rid);
@@ -136,9 +136,10 @@ zlink_recv_result_t zlink_recv (
     zlink_recv_flags_t flags);
 ```
 
-- **`source_rid`**: 이 수신 표면을 사용하는 모든 소켓에서 송신 피어의
-  routing_id가 채워진다. 메시지 프레임이 아니라 zlink가 피어의 identity를
-  자동으로 resolve해 전달하는 별도 파라미터다.
+- **`source_rid`**: STREAM 공통 recv에서 송신 피어의 routing_id가 채워진다
+  (PAIR/DEALER는 NULL). PUB/SUB/XPUB/XSUB/ROUTER는 이 공통 recv 대신 패턴별 typed
+  recv를 쓰며, ROUTER typed recv가 source rid를 별도로 돌려준다. 메시지 프레임이
+  아니라 zlink가 피어의 identity를 자동으로 resolve해 전달하는 별도 파라미터다.
 - **`parts` / `part_count`**: 모든 소켓에서 멀티파트가 기본이다.
   `part_count=1`이면 단일 프레임, `part_count=2+`이면 멀티파트.
 

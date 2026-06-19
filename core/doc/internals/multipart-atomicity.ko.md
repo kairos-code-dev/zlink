@@ -191,17 +191,18 @@ multipart boundary를 실질적으로 유지하는 핵심은 `fq_t`와 `pipe_t`�
 
 `fq_t::recvpipe()`는 첫 part를 읽은 뒤 `_more`를 유지한다.
 
-- [fq.cpp#L64](../../src/runtime/sockets/internal/fq.cpp#L64)
+- [fq.cpp#L129](../../src/runtime/sockets/internal/fq.cpp#L129)
 
 핵심 동작:
 
 - 첫 part를 읽으면 `_more = true/false`
 - `_more == true`인 동안은 같은 multipart의 후속 part를 기대
-- 후속 part를 바로 읽지 못하면 `EPROTO`
+- 후속 part를 바로 읽지 못하면 partial을 버리고 `EAGAIN`을 반환(상위 helper가
+  필요하면 `EPROTO`로 매핑)
 
 관련 코드:
 
-- [fq.cpp#L91](../../src/runtime/sockets/internal/fq.cpp#L91)
+- [fq.cpp#L166](../../src/runtime/sockets/internal/fq.cpp#L166)
 
 즉 socket 내부 semantics는 이미
 "multipart를 시작했으면 중간 part 경계에서 정상적으로 끊기지 않는다"
@@ -237,13 +238,16 @@ follow-up frame은 일반 `recv timeout` 의미론이 아니라
 
 관련 코드:
 
-- [recv_internal.cpp#L88](../../src/runtime/core/recv_internal.cpp#L88)
+- [recv_internal.cpp#L136](../../src/runtime/core/recv_internal.cpp#L136)
 
 `recv_followup_msg_internal()`의 의미:
 
 - 첫 part 이후 follow-up은 `ZLINK_DONTWAIT`로 조회
 - `EAGAIN` / `EINTR`는 일반 timeout이 아니라 프로토콜 실패로 승격
 - 호출자에게는 `EPROTO`로 반환
+
+단, payload sequence export 등 일부 경로는 blocking follow-up
+(`recv_followup_msg_socket_wait()`)으로 다음 part를 기다린다.
 
 즉 raw socket public recv는 libzmq의 fq 모델과 같은 방향이다.
 
@@ -330,7 +334,7 @@ multipart를 aggregate shape로 설명하게 해 준다.
 핵심 원칙:
 
 - 콜백은 반쪽짜리 multipart를 part 단위로 흘려받지 않는다.
-- 내부 디스패치가 multipart payload shape를 맞춰 콜백에 전달한다.
+- 내부 dispatch가 multipart payload shape를 맞춰 콜백에 전달한다.
 
 즉 public direct recv와 콜백 recv는 같은 payload shape 계약을 공유한다.
 
@@ -641,10 +645,10 @@ multipart 도중에는 poll/select에서 항상 readable로 보고된다.
 **프로세스를 abort**한다. 이는 sender가 atomicity를 지켰다면
 절대 발생하지 않아야 하는 상황이라는 가정이다.
 
-`zlink`는 같은 상황에서 **EPROTO를 반환**한다.
+`zlink`는 같은 상황에서 partial을 버리고 **EAGAIN(일시적 miss)을 반환**한다.
 
 ```cpp
-// zlink fq.cpp:91
+// zlink fq.cpp — recvpipe()
 if (_more) {
     _more = false;
     _active--;
@@ -653,13 +657,14 @@ if (_more) {
         _current = 0;
     rc = msg_->init ();
     errno_assert (rc == 0);
-    errno = EPROTO;
+    errno = EAGAIN;
     return -1;
 }
 ```
 
 이 차이는 의도한 것이다. pipe가 multipart 전송 도중 disconnect될 수 있는
-상황(네트워크 끊김 등)에서 프로세스를 죽이는 대신 에러를 보고한다.
+상황(네트워크 끊김 등)에서 프로세스를 죽이는 대신 partial을 버리고 일시적
+miss(EAGAIN)로 보고한다.
 
 ---
 
@@ -1451,7 +1456,7 @@ multipart atomicity가 유지된다고 보려면 아래가 계속 참이어야 �
 3. routed/topic prefix frame은 payload shape 밖으로 분리되지만,
    내부 assembly에는 포함된다.
 4. callback/direct recv가 같은 payload shape contract를 유지한다.
-5. bindings가 `free(parts)` 같은 옛 계약을 다시 도입하지 않는다.
+5. bindings는 recv-owned parts 포인터를 `free()`하지 않는다.
 6. ypipe의 incomplete flag와 flush 타이밍이 pipe_t::write()에서 올바르게
    전달된다 (more → incomplete=true, !more → incomplete=false).
 7. rollback이 flush 경계 이후의 frame만 정확히 제거하며,

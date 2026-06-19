@@ -13,4 +13,4 @@
 | [stream-connector](stream-connector.ko.md) | Java/Kotlin Stream Connector |
 | [spring-boot-registry](spring-boot-registry.ko.md) | embedded registry, remote query |
 | [spring-boot-monitoring](spring-boot-monitoring.ko.md) | runtime event, typed handler |
-| [stage-wrapper-on-spot](stage-wrapper-on-spot.ko.md) | Spot 위에 stage 모델을 얹는 조건 |
+| [stage-wrapper-on-spot](stage-wrapper-on-spot.ko.md) | Spot 위에 상위 stage 모델(playhouse 등)을 얹는 조건 — 기본 공개 API 계약이 아니라 상위 모델 가이드 |

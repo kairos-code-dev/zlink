@@ -347,8 +347,8 @@ zlink_timer_start(timer, 100000000ULL, 0);  /* interval_ns, repeat_count */
 /* Pull 모드 */
 uint64_t fire_count;
 zlink_recv_result_t rc = zlink_timer_recv(timer, &fire_count);
-/* rc 값: ZLINK_RECV_OK, NO_DATA (큐에 fire 없음), TERMINATED,
-   INVALID_HANDLE, NOT_SUPPORTED */
+/* rc 값: ZLINK_RECV_OK, NO_DATA (timer 미실행 + 큐 빔; running timer는 fire까지 대기),
+   TERMINATED, INVALID_HANDLE, NOT_SUPPORTED */
 
 /* Callback 모드 */
 void on_fire(void *timer, uint64_t fire_count, void *userdata) {
@@ -387,6 +387,7 @@ zlink_poller_remove_timer(poller, timer);
 | `repeat_count=0` | 무한 반복 |
 | `repeat_count=N` | 정확히 N회 fire 후 자동 정지 |
 | recv vs callback | 충돌 시 `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` 반환 (socket 과 동일) |
+| 소비 모델 배타 | 한 timer는 recv/callback/poller 중 하나만 — 콜백이 활성이면 poller 등록은 `BUSY`로 거부 |
 | 일반 timer | 프로세스 전역 공유 스케줄러 사용 |
 | SPOT timer | SpotNode 전용 공유 스케줄러 사용 |
 

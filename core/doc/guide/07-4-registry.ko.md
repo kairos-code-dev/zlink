@@ -62,7 +62,7 @@ zlink_ctx_term(ctx);
 
 ## 3. Registry 구성
 
-모든 구성 API는 `zlink_registry_bind()` **전에** 호출해야 한다.
+초기 구성 API는 보통 `zlink_registry_bind()` **전에** 호출한다.
 
 ### 3.1 하트비트
 
@@ -97,7 +97,7 @@ handle에 직접 구성한다:
 zlink_set_tls_server(registry, cert_pem, key_pem, 0 /* require_client_cert */);
 
 /* TLS client configuration (for peer registry connections) */
-zlink_set_tls_client(registry, ca_pem, NULL /* hostname */, 0 /* trust_system */);
+zlink_set_tls_client(registry, ca_pem, "registry-host" /* hostname, non-NULL */, 0 /* trust_system */);
 ```
 
 ## 4. 배포 패턴
@@ -176,14 +176,14 @@ zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
 ```
 
-> **팁**: 모든 컴포넌트가 같은 프로세스에 있을 때 `inproc://`(프로세스 내부) 전송 방식을
-> 쓰면 Registry와 Discovery 간 제로카피(zero-copy, 메모리 복사 없이 전달) 통신이 가능하다.
+> **팁**: Discovery가 연결하는 Registry endpoint는 `tcp://`, `ws://`, `wss://`, `tls://`만
+> 지원한다(`inproc://`는 거부된다).
 
 ## 5. 클러스터 구성 및 데이터 동기화
 
 ### 5.1 클러스터 구성
 
-각 Registry 노드에는 고유 ID와 피어의 PUB 엔드포인트가 필요하다:
+각 Registry 노드에는 고유 ID와 피어의 PUB endpoint가 필요하다:
 
 ```c
 /* Node 1 */
@@ -209,7 +209,7 @@ flowchart LR
     R3 -- "PUB/SUB" --> R2
 ```
 
-- 각 Registry가 다른 모든 Registry의 PUB 엔드포인트를 구독
+- 각 Registry가 다른 모든 Registry의 PUB endpoint를 구독
 - 서비스 목록 변경이 다음 브로드캐스트 주기에 플러딩으로 전파
 - **Eventually Consistent**: 모든 Registry가 동일한 상태로 수렴
 - `registry_id` + `list_seq`로 중복/역전 업데이트를 안전하게 무시
@@ -294,7 +294,7 @@ printf("registry_id=%u  state=%d  entries=%u  peers=%u/%u\n",
 | 필드 | 설명 |
 |------|------|
 | `registry_id` | 숫자 Registry ID |
-| `bind_endpoint` | 현재 바인드 엔드포인트 |
+| `bind_endpoint` | 현재 바인드 endpoint |
 | `state` | 현재 Registry 상태 |
 | `topology_entry_count` | 토폴로지 테이블 전체 엔트리 수 |
 | `peer_registry_count` | 설정된 피어 Registry 수 |
@@ -356,7 +356,7 @@ zlink_registry_service_summary(registry, &filter, entries, &count);
 
 ### 6.1 로컬 조회 (같은 프로세스)
 
-#### 전체 스냅샷
+#### 전체 snapshot
 
 ```c
 /* Query required count first (NULL filter, NULL entries) */
@@ -403,16 +403,19 @@ for (size_t i = 0; i < count; i++) {
 
 | 필드 | 설명 |
 |------|------|
+| `auto_connect_type` | 자동 연결 타입 (`ZLINK_AUTO_CONNECT_*`) |
 | `routing_id` | 서비스 인스턴스의 라우팅 ID |
-| `service_kind` | `SPOT_PUB`, `SPOT_SUB`, `SOCKET`, 또는 `DISCOVERY` |
+| `service_kind` | `ZLINK_SERVICE_KIND_SPOT_PUB`/`SPOT_SUB`/`SOCKET`/`DISCOVERY` |
+| `service_role` | 서비스 인스턴스의 역할 (`ZLINK_SERVICE_ROLE_*`) |
 | `channel_name` | 논리적 channel 이름 |
-| `endpoint` | 광고된 엔드포인트 |
-| `source` | 추가 방식 (`MANUAL`/`DISCOVERY`/`REGISTRY`) |
-| `state` | `DISCOVERED`/`CONNECTING`/`READY`/`LOST`/`ERROR`/`STOPPED` |
+| `endpoint` | 광고된 endpoint |
+| `source` | 추가 방식 (`ZLINK_TOPOLOGY_SOURCE_MANUAL`/`DISCOVERY`/`REGISTRY`) |
+| `state` | `ZLINK_TOPOLOGY_STATE_DISCOVERED`/`CONNECTING`/`READY`/`LOST`/`ERROR`/`STOPPED` |
 | `desired_count` | 기대 피어 인스턴스 수 |
 | `ready_count` | 현재 ready 상태 인스턴스 수 |
 | `error_code` | `ERROR` 상태일 때 오류 코드 |
 | `last_reported_ms` | 마지막 업데이트 타임스탬프 (epoch ms) |
+| `spot_kind` | SPOT 종류 (`ZLINK_SPOT_KIND_*`) |
 
 #### 필터 필드
 
@@ -421,7 +424,9 @@ for (size_t i = 0; i < count; i++) {
 
 | 필드 | 설명 |
 |------|------|
+| `auto_connect_type` | 자동 연결 타입으로 필터링 |
 | `service_kind` | 서비스 종류로 필터링 |
+| `service_role` | 서비스 역할로 필터링 |
 | `channel_name` | channel 이름으로 필터링 |
 | `routing_id` | 라우팅 ID로 필터링 |
 | `state` | 토폴로지 상태로 필터링 |
@@ -517,7 +522,8 @@ free(peers);
 | `auto_connect_type` | 자동 연결 channel 타입 (`ZLINK_AUTO_CONNECT_*`) |
 | `service_role` | 서비스 인스턴스의 역할 |
 | `channel_name` | null 종료 channel 이름 |
-| `endpoint` | null 종료 엔드포인트 |
+| `endpoint` | null 종료 endpoint |
+| `weight` | 피어 가중치 (`0..100`) |
 | `routing_id` | 피어의 라우팅 아이덴티티 |
 | `value` | 서비스별 숫자 값 (`int64_t`) |
 
@@ -591,9 +597,9 @@ Discovery 인스턴스에 브로드캐스트된다.
 
 ### 7.3 Discovery 페일오버
 
-- Discovery는 하나 이상의 Registry ROUTER 엔드포인트에 부트스트랩(bootstrap, 초기 연결) 연결한다.
+- Discovery는 하나 이상의 Registry ROUTER endpoint에 부트스트랩(bootstrap, 초기 연결) 연결한다.
 - 부트스트랩 메타데이터로 내부 broadcast/uplink 경로를 학습한다.
-- 한 Registry 노드가 실패해도 다른 부트스트랩 엔드포인트로 계속 동작한다.
+- 한 Registry 노드가 실패해도 다른 부트스트랩 endpoint로 계속 동작한다.
 - Discovery의 페일오버 로직이 서비스를 자동으로 재등록한다.
 
 ### 7.4 클러스터 내 Registry 노드 장애
@@ -624,13 +630,13 @@ Registry와 로컬 서비스 모니터는 목적이 다르다:
 
 권장 워크플로우:
 
-1. Registry 토폴로지 스냅샷으로 글로벌 현황 파악
+1. Registry 토폴로지 snapshot으로 글로벌 현황 파악
 2. 이상 항목 식별 (`LOST`, `ERROR` 엔트리)
 3. 해당 프로세스의 로컬 서비스 모니터로 상세 분석
 
 ## 언어별 완전한 예제
 
-registry 스냅샷을 질의해 서비스 엔드포인트를 조회하는 자립형 예제다(모든 바인딩, 빌드·실행 검증됨).
+registry snapshot을 질의해 서비스 endpoint를 조회하는 자립형 예제다(모든 바인딩, 빌드·실행 검증됨).
 
 === "C++"
 

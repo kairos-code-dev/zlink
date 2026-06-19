@@ -227,7 +227,7 @@ payload 를 보관해야 하는 경우에만 `Copy()` 또는 `Move()` 로 소유
 반대로 application 이 직접 만든 `Message` 를 `IZLinkStream.Write(...)` 같은
 raw write API 에 넘길 때는 framework 가 그 `Message` 의 소유권을 가져가지
 않는다. write 호출자는 자신이 만든 `Message` 의 수명을 계속 책임진다. 보통의
-session 응답은 `Context.Send(...)`, `Context.Reply(...)` 같은 typed builder 를
+session 응답은 `Context.Client.Send(...)`, `Context.Client.Reply(...)` 같은 typed builder 를
 사용하므로 raw `Message` 수명을 직접 다룰 일이 적다.
 
 session 이 일부 packet 만 직접 처리하고 나머지 정책을 스스로 정하고 싶을 때는
@@ -376,8 +376,9 @@ application 표면으로는 올리지 않는다** 는 뜻으로 본다.
 - packet decode helper 와 encode helper 는 framework 본체가 아니라 serializer
   확장 패키지가 맡는다. framework core 는 `Message`, `AsReadOnlySpan()`,
   session contract 까지만 책임진다.
-- protobuf / json / messagepack serializer 는 확장 패키지로 분리한다. transport
-  core 나 framework 기본 runtime 에 codec[^codec] 구현을 직접 섞지 않는다.
+- JSON encode/decode helper(`Message.Decode<T>`/`ToJson<T>`)는 framework core
+  (`Zlink.Framework`)가 제공한다. protobuf / messagepack serializer 는 별도 codec[^codec]
+  확장 패키지로 분리하고, transport core 나 framework 기본 runtime 에 그 구현을 직접 섞지 않는다.
 - `OnErrorAsync(...)` 는 session 에 귀속되는 transport 오류만 받는다.
   handshake 실패와 socket / node 단위 오류는 runtime monitoring 에서 다룬다.
   즉 session callback 에 올리지 않는다.

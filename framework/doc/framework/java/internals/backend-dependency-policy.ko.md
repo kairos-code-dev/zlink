@@ -22,17 +22,16 @@ binding 구현 객체에 얽히면 binding 내부 구조가 바뀔 때 framework
 
 ## 3. Adapter 계약
 
-backend 의존은 `Runtime/Backend/Contracts/` 의 port interface 한 묶음으로
-격리한다. 이 port를 `bindings/java` 위에 구현한 어댑터가
-`Runtime/Backend/DotNet/`(.NET) 의 Java 대응물이다. `.NET` 의
-`IZLinkBackendAdapterFactory` 와 5개 adapter port를 그대로 옮긴다(`I` prefix는
-떼고 `ZLink` prefix는 유지).
+backend 의존은 `systems.zlink.framework.runtime.backend` 의 port interface 한 묶음으로
+격리한다. 이 port를 `bindings/java` 위에 구현한 어댑터(`ZLinkJavaBackendAdapterFactory`)가
+Java backend 구현이다. `ZLinkBackendAdapterFactory` 와 5개 adapter port로 구성된다
+(`ZLink` prefix 유지, `I` prefix 없음).
 
-| port interface (`Runtime/Backend/Contracts/`) | 역할 | Java backend 구현 대상 (`bindings/java`) |
+| port interface (`systems.zlink.framework.runtime.backend`) | 역할 | Java backend 구현 대상 (`bindings/java`) |
 |-----------------------------------------------|------|------------------------------------------|
 | `ZLinkBackendAdapterFactory` | 정확히 5개 adapter를 만드는 factory | `ZLinkJavaBackendAdapterFactory` |
 | `ZLinkChannelBackendAdapter` | dealer/router/publisher/subscriber socket wrapping, send/request, receive pump | dealer/router/publisher/subscriber socket |
-| `ZLinkSpotBackendAdapter` | `SpotNode`/`Spot`/timer wrapping | spotNode/spot/timer |
+| `ZLinkSpotBackendAdapter` | `SpotNode`/`Spot` wrapping(SpotNode 생성) | spotNode/spot |
 | `ZLinkStreamBackendAdapter` | stream socket wrapping, session attach, frame send/reply | stream socket |
 | `ZLinkRegistryBackendAdapter` | embedded `Registry`/`RegistryQueryClient` wrapping | registry/registryQueryClient |
 | `ZLinkMonitoringBackendAdapter` | socket/discovery/registry/spot event source를 framework typed event로 변환 | socket monitor/discovery 이벤트 |
@@ -65,11 +64,10 @@ concrete type은 public surface에 새어 나오지 않는다.
 adapter는 framework internal package에 둔다. 사용자 guide와 sample은 adapter 타입을
 직접 보여 주지 않는다.
 
-> 참고: port의 정확한 시그니처는 `framework/languages/dotnet/src/Zlink.Framework/
-> Runtime/Backend/Contracts/*.cs` 를 코드로 읽어 Java adapter 구현 가이드에 옮긴다.
-> backend 의존 정책의 정식 기준은 `.NET` 코드다. 이 절은 Node
-> [backend-dependency-policy §7](../../node/internals/backend-dependency-policy.ko.md)
-> 의 어댑터 구성 규칙을 Java/Spring 표면으로 옮긴 것이다.
+> 참고: port의 정확한 시그니처는 Java 구현
+> (`systems.zlink.framework.runtime.backend`)을 기준으로 한다. 다른 언어의 어댑터 구성
+> 규칙과 비교하려면 Node [backend-dependency-policy](../../node/internals/backend-dependency-policy.ko.md)를
+> 선택적으로 참고한다.
 
 ## 4. Public API에 새면 안 되는 것
 

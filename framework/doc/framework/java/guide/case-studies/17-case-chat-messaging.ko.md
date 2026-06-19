@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../README.ko.md) | [이전: 케이스 — 라이드헤일링 실시간 디스패치](16-case-ride-hailing.ko.md) | [다음: 케이스 — 마켓플레이스 구매자·판매자 채팅](17-1-case-marketplace-chat.ko.md)
+[문서 목록](../../README.ko.md) | [이전: 케이스 — 라이드헤일링 실시간 dispatch](16-case-ride-hailing.ko.md) | [다음: 케이스 — 마켓플레이스 구매자·판매자 채팅](17-1-case-marketplace-chat.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 케이스 — 채팅·메시징 플랫폼
@@ -79,7 +79,7 @@ node.addSpotFactory(ChatRoomSpot.class);
 public final class SayHandler implements ZLinkSpotActorSendHandler<ChatRoomSpot, UserActor, Say> {
     private final MessageDb db;
     @Override
-    public void handle(ChatRoomSpot spot, UserActor actor, ZLinkSpotActorSendContext context, Say msg) {
+    public void handle(ChatRoomSpot spot, UserActor actor, ZLinkSpotActorSendContext context, Say msg, CancellationToken cancellationToken) {
         ChatMessage chat = new ChatMessage(spot.roomId(), actor.actorId(), msg.text());
         db.append(chat);
         for (UserActor member : spot.members()) { member.pushChat(chat); }
@@ -87,7 +87,11 @@ public final class SayHandler implements ZLinkSpotActorSendHandler<ChatRoomSpot,
 }
 
 public final class UserActor implements ZLinkActor {
+    private final String actorId;
     private final ZLinkActorContext context;
+    public UserActor(String actorId, ZLinkActorContext context) { this.actorId = actorId; this.context = context; }
+    @Override public String actorId() { return actorId; }
+    @Override public ZLinkActorContext context() { return context; }
     public CompletionStage<Void> pushChat(ChatMessage chat) { return context.boundSession().send(chat).submit(); }
 }
 ```
@@ -110,7 +114,7 @@ public final class ChatSession implements ZLinkSession {
     @Override
     public void onDispatch(ZLinkStreamHeader header, Message payload) {
         if ("auth".equals(header.name())) {
-            AuthReq req = payload.decode(AuthReq.class);
+            AuthReq req = StreamPayloads.decode(header, payload, AuthReq.class);
             user = actors.getOrCreate(req.userId(), "chat-user")
                 .thenCompose(actor -> context.actors().bind(actor))
                 .thenCompose(bound -> context.client().reply(new AuthOk()).submit().thenApply(ignored -> bound))
@@ -261,7 +265,8 @@ client-facing endpoint 를 열지 않는다(케이스 §3 의 gateway 경계를 
 - **idle timer → close**: `ConversationSpot` timer 가 idle → close grace 를 거쳐
   `ConversationClosedNotify` 를 양쪽 bound session 에 push 한다(timer 는 신호만,
   전이 판정은 domain).
-- **codec**: 읽기 쉬운 JSON payload.
+- **codec**: stream은 `ZLinkProtobufCodec`을 쓰고, protobuf 타입이 아닌 Java record는
+  JSON bytes fallback으로 인코드된다.
 
 ### client self-check 가 검증하는 의미
 
@@ -281,5 +286,5 @@ client-facing endpoint 를 열지 않는다(케이스 §3 의 gateway 경계를 
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../README.ko.md) | [이전: 케이스 — 라이드헤일링 실시간 디스패치](16-case-ride-hailing.ko.md) | [다음: 케이스 — 마켓플레이스 구매자·판매자 채팅](17-1-case-marketplace-chat.ko.md)
+[문서 목록](../../README.ko.md) | [이전: 케이스 — 라이드헤일링 실시간 dispatch](16-case-ride-hailing.ko.md) | [다음: 케이스 — 마켓플레이스 구매자·판매자 채팅](17-1-case-marketplace-chat.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

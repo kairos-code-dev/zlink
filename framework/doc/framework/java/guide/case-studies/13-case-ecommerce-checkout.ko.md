@@ -145,10 +145,10 @@ outbox·idempotency 는 그대로 짠다** — 분산 데이터 문제는 transp
 public class CheckoutZLinkConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions options) {
-        options.codecs().use(ZLinkProtobufCodec.defaultCodec());
-        ZLinkClientServerChannelBuilder orders = options.addClientServerChannel("orders");
+        options.codecs().addJson();
+        var orders = options.addClientServerChannel("orders");
         orders.enableServer("tcp://0.0.0.0:7401");
-        orders.addRequestHandler(PlaceOrderHandler.class);
+        orders.addRequestHandler(PlaceOrderHandler.class, PlaceOrder.class, OrderPlaced.class);
         options.addClientServerChannel("payments").enableClient();
         options.addFanoutChannel("order.events").enablePublisher("tcp://0.0.0.0:7402");
         options.useDiscovery().addRegistryEndpoint("tcp://registry1:5551");
@@ -333,11 +333,11 @@ workflow owner 를 분리해도 상태 전이·복구·audit·조회 projection 
 | 서버 | instance | 책임 |
 |------|:--------:|------|
 | `CommerceApi` | 2 | HTTP API, 입력 검증, idempotency lookup, projection **조회만** (event append 안 함) |
-| `OrderWorkflow` | 2 | `OrderWorkflowSpot` 호스팅, `OrderId` owner 로 상태 전이·event append·projection 갱신 |
+| `OrderWorkflow` | 2 | `OrderWorkflowService`/channel handler 가 `OrderId` owner 별 상태 전이·event append·projection 갱신 |
 | stores | 1 set | `OrderEventStore`(기준 stream) + `OrderReadModelStore`(projection) + `CommerceStateStore` |
 
-어느 `CommerceApi` instance 가 받아도 `OrderId` 기준 같은 `OrderWorkflowSpot` owner 로
-route 된다(케이스 §3 의 channel routing 을 owner 소유권으로 확장).
+어느 `CommerceApi` instance 가 받아도, 애플리케이션 `OrderWorkflowRouter` 가 `OrderId` 로
+같은 workflow instance channel 을 선택한다(케이스 §3 의 channel routing 을 owner 소유권으로 확장).
 
 ### 케이스 본문 너머로 이 샘플이 더 보여 주는 것
 

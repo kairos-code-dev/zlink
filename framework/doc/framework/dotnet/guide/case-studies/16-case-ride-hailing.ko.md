@@ -123,8 +123,15 @@ public sealed class EtaProjector : IZLinkPublishHandler<DriverLocation>
 ```
 
 ```csharp
-// 등록 골격(정식은 05·07): STREAM(위치 수신) + fanout(loc.events) + zone SpotMesh
-options.AddStreamNode("ingest").RegisterSession<DriverSession>();
+// ETA 서비스 노드 등록: loc.events 구독(EtaProjector 를 subscriber 로 노출)
+options.AddFanoutChannel("loc.events")
+    .EnableSubscriber("tcp://loc-publisher:7600")
+    .AddHandlerGroup("loc.events");
+```
+
+```csharp
+// 위치 ingest 노드 등록 골격(정식은 05·07): STREAM(위치 수신) + fanout(loc.events) publisher + zone SpotMesh
+options.AddStreamNode("ingest").Bind("tcp://0.0.0.0:7700").RegisterSession<DriverSession>();
 options.AddFanoutChannel("loc.events").EnablePublisher("tcp://0.0.0.0:7600");
 {
     var n = options.AddSpotMesh("zones").AddNode("zone-node");
@@ -269,9 +276,10 @@ stream)는 그대로 두고, **내부 배차 메시징·상태 fanout·delivery 
 ### client self-check 가 검증하는 의미
 
 `delivery-success` 는 `Assigned → Accepted → PickedUp → Delivered` 가 순서대로,
-`delivery-reassign` 은 `Assigned → Reassigned → Accepted → PickedUp → Delivered` 가
-순서대로 도착하는지 확인하고, 재배정 건의 `Accepted`/`PickedUp`/`Delivered` 가 `courier-b`
-처리임을 검증한다. 서버 evidence check 가 두 delivery 의 상태 순서를 누락 없이 기록한다.
+`delivery-reassign` 은 client 가 `Assigned → Reassigned → Accepted → Delivered` 를
+순서대로 받아, 재배정 건의 `Reassigned`/`Accepted`/`Delivered` 가 `courier-b` 처리임을
+검증한다(`PickedUp` 의 courier 는 client 가 아니라 서버 evidence 가 확인한다). 서버
+evidence check 가 두 delivery 의 상태 순서를 누락 없이 기록한다.
 
 ## 8. 더 보기
 

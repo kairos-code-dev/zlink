@@ -46,9 +46,9 @@ flowchart TB
 
 | 소켓 | 타입 | 엔드포인트 | 용도 |
 |------|------|----------|------|
-| `_router_socket` | ROUTER | `bind()`으로 설정 | REGISTER, HEARTBEAT, BOOTSTRAP, TOPOLOGY 요청 처리 |
-| `_pub_socket` | XPUB | `bind()`으로 설정 | 모든 Discovery SUB에 SERVICE_LIST 브로드캐스트 |
-| `_peer_sub_socket` | SUB | 피어 PUB에 connect | 피어 Registry에서 SERVICE_LIST 수신 (클러스터 동기화) |
+| `_runtime_socket_state.router_socket` | ROUTER | `bind()`으로 설정 | REGISTER, HEARTBEAT, BOOTSTRAP, TOPOLOGY 요청 처리 |
+| `_runtime_socket_state.pub_socket` | XPUB | `bind()`으로 설정 | 모든 Discovery SUB에 SERVICE_LIST 브로드캐스트 |
+| `_runtime_socket_state.peer_sub_socket` | SUB | 피어 PUB에 connect | 피어 Registry에서 SERVICE_LIST 수신 (클러스터 동기화) |
 
 XPUB을 사용해 구독 이벤트를 감지하고 새 구독자에게 즉시 SERVICE_LIST를 전송한다.
 
@@ -56,16 +56,17 @@ XPUB을 사용해 구독 이벤트를 감지하고 새 구독자에게 즉시 SE
 
 ```cpp
 struct service_key_t {
-    uint16_t auto_connect_type;       // spot_node(2), socket(3)
-    std::string service_name;
+    std::string channel_name;         // key는 channel_name 하나
+                                      // (auto_connect_type은 service_entry_t에 있음)
 };
 
 struct provider_entry_t {
     uint16_t service_role;       // spot(2), router(3), dealer(4), pub(5), sub(6)
     std::string endpoint;
     zlink_routing_id_t routing_id;
+    uint32_t weight;
     int64_t value;
-    std::vector<uint8_t> provider_blob;
+    std::vector<uint8_t> metadata;
     uint64_t registration_id;
     uint64_t provider_update_seq;
     uint64_t registered_at;
@@ -76,8 +77,8 @@ struct provider_entry_t {
 struct route_entry_t {
     route_key_t key;
     std::vector<uint8_t> value;
-    owner_identity_t owner;
-    zlink_routing_id_t owner_routing_id;
+    owner_identity_t owner;           // routing id는 owner.routing_id_key에서 복원
+    uint64_t updated_at_ms;
     uint32_t advertising_registry;
 };
 
@@ -109,11 +110,11 @@ sequenceDiagram
     participant Pub as Registry XPUB
     participant Subs as Discovery SUB들
 
-    Disc->>Router: REGISTER (0x0001)<br/>[auto_connect_type, name, role,<br/>endpoint, routing_id, value]
+    Disc->>Router: REGISTER (0x0001)<br/>[auto_connect_type, service_role, channel_name,<br/>endpoint, weight, value, metadata]
+    Note over Disc,Router: routing_id는 transient DEALER에 설정(프레임 아님)
     Router->>Store: insert provider_entry
-    Router->>Disc: REGISTER_ACK<br/>[source_registry, registration_id]
     Router->>Router: increment list_seq
-    Router->>Disc: REGISTER_ACK (0x0002)<br/>[status=0, resolved_endpoint]
+    Router->>Disc: REGISTER_ACK (0x0002)<br/>[status, resolved_endpoint,<br/>source_registry, registration_id]
     Note over Pub: list_seq 변경 → 브로드캐스트
     Pub->>Subs: SERVICE_LIST (0x0005)<br/>[registry_id, list_seq, entries...]
 ```
@@ -269,7 +270,7 @@ sequenceDiagram
 
 Registry 측 주의사항:
 
-- 이 쿼리는 **요청마다 피어 Registry 로 팬아웃(fan-out, 분산 조회)하지 않는다**. Registry 는 §6 의 flooding / heartbeat 주기로 동기화된 로컬 `service_map` 에서 답한다. spot 소유 기록은 SERVICE_LIST 브로드캐스트와 `TOPOLOGY_REPORT` uplink 경로를 통해 로컬 `service_map` 에 반영된다.
+- 이 쿼리는 **요청마다 피어 Registry 로 fanout 하지 않는다**. Registry 는 §6 의 flooding / heartbeat 주기로 동기화된 로컬 `service_map` 에서 답한다. spot 소유 기록은 SERVICE_LIST 브로드캐스트와 `TOPOLOGY_REPORT` uplink 경로를 통해 로컬 `service_map` 에 반영된다.
 - owner SpotNode 가 이동했지만 새 등록이 아직 이 Registry 까지 전파되지 않았다면, 쿼리는 **오래된(stale) 결과이거나 빈 결과**를 반환할 수 있다. Discovery 클라이언트는 이를 `ENOENT` 로 호출자에게 "지금은 확정 불가" 신호로 돌려주며, 애플리케이션은 짧은 backoff 후 재시도하는 것이 일반적이다.
 - Registry 는 매칭되는 모든 엔트리를 반환하지, 가장 신선한 한 건만 고르지 않는다. Discovery 클라이언트가 `refresh_spot_owner_cache_locked` 단계에서 각 엔트리에 현재의 `validated_service_seq` 도장을 찍어 저장하므로 이후 캐시 hit 단계에서 membership 변화를 기준으로 검증할 수 있다.
 - 이 응답을 **들어오는 request 에 대한 reply 용 owner 주소로 재사용하면 안 된다**. 이 resolver 는 destination lookup 전용이고, reply 경로는 원래 request 와 함께 전달된 구체적인 source 주소를 그대로 써야 한다. 클라이언트 측 계약은 [Discovery Internals §10](discovery-internals.ko.md#10-spot-소유-노드-조회-zlink_discovery_resolve_spot) 참고.
@@ -313,7 +314,7 @@ value 안에 binding token 같은 payload 를 넣고 unbind 전에 다시 확인
 ```mermaid
 flowchart TD
     tick["control_task tick"] --> ensure["XPUB + ROUTER<br/>소켓 바인드 확인"]
-    ensure --> drain_router["ROUTER 소켓 drain<br/>(모든 pending 요청)"]
+    ensure --> drain_router["ROUTER 소켓 drain<br/>(pending 요청 반복 처리, 최대 64회/tick)"]
     drain_router --> drain_xpub["XPUB 소켓 drain<br/>(구독 이벤트)"]
     drain_xpub --> drain_peer["peer SUB 소켓 drain<br/>(peer SERVICE_LIST)"]
     drain_peer --> expire["remove_expired()<br/>(heartbeat timeout 확인)"]
@@ -330,9 +331,9 @@ sequenceDiagram
     participant Disc as Discovery DEALER
     participant Router as Registry ROUTER
 
-    Disc->>Router: BOOTSTRAP_REQ (0x0008)<br/>[routing_id]
-    Router->>Router: bootstrap 설정 조회
-    Router->>Disc: BOOTSTRAP_REP (0x0009)<br/>[registry_id,<br/>heartbeat_interval_ms,<br/>pub_endpoint,<br/>uplink_endpoint]
+    Disc->>Router: BOOTSTRAP_REQ (0x0008)<br/>[auto_connect_type, routing_id,<br/>channel_name]
+    Router->>Router: bootstrap 설정 조회 + channel contract 검증
+    Router->>Disc: BOOTSTRAP_REP (0x0009)<br/>[heartbeat_interval_ms, registry_id,<br/>feature_flags, status_errno,<br/>pub_endpoint, uplink_endpoint]
 
     Note over Disc: 이제 어디에:<br/>- 구독할지 (pub_endpoint)<br/>- heartbeat 보낼지 (uplink_endpoint)<br/>알게 됨
 ```

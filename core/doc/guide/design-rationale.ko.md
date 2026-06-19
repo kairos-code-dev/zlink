@@ -27,8 +27,8 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5에서 출발해 **핵
 
 ### Zero-Copy — 작은 메시지는 inline, 큰 메시지는 참조 카운팅
 
-33바이트 이하 메시지는 별도 힙 할당 없이 메시지 객체 안에 직접 저장한다(VSM, Very
-Small Message). 그보다 큰 메시지는 참조 카운팅으로 복사 없이 공유한다.
+작은 메시지(64-bit에서 41바이트 이하)는 별도 힙 할당 없이 메시지 객체 안에 직접
+저장한다(VSM, Very Small Message). 그보다 큰 메시지는 참조 카운팅으로 복사 없이 공유한다.
 
 **사용자에게 의미**: 작은 제어 메시지(틱, 하트비트, 짧은 명령)가 많은
 워크로드에서 할당·복사 비용이 사라진다. 송신이 메시지를 "소비"하는 이동 시맨틱도
@@ -54,7 +54,7 @@ Boost.Asio 기반으로 I/O **완료** 이벤트를 핸들러로 전달한다(Pr
 
 **사용자에게 의미**: 콜백은 Context가 소유한 I/O 스레드에서 실행된다 — 콜백은 짧게
 유지하고 lock을 잡지 않으며, 그 안에서 핸들을 닫지 않는다. 다중 소켓을 한 루프에서
-폴러를 쓴다(개념은 [02 Core API](02-core-api.ko.md), 언어 표면은 각
+poller로 묶는다(개념은 [02 Core API](02-core-api.ko.md), 언어 표면은 각
 [바인딩 가이드](../../../bindings/doc/guide/README.ko.md)).
 
 ### Protocol Agnostic — Transport와 Protocol의 분리
@@ -62,8 +62,9 @@ Boost.Asio 기반으로 I/O **완료** 이벤트를 핸들러로 전달한다(Pr
 wire protocol(ZMP)과 transport(tcp/ipc/inproc/ws/tls)를 명확히 분리한다.
 
 **사용자에게 의미**: 같은 메시징 코드가 transport만 바꿔 inproc(같은 프로세스)에서
-tcp(네트워크)로, 또는 tls(암호화)로 옮겨 간다 — 주소 스킴만 바뀐다([04
-트랜스포트](04-transports.ko.md)).
+tcp(네트워크)로 옮겨 간다 — 주소 스킴만 바뀐다. 단 tls/wss는 주소 스킴 외에
+`zlink_set_tls_server()`(서버 cert/key) / 필요 시 `zlink_set_tls_client()` 설정이 더
+필요하다([04 Transport](04-transports.ko.md), [05 TLS/보안](05-tls-security.ko.md)).
 
 ## 더 깊이
 

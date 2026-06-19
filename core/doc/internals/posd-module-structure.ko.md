@@ -38,7 +38,7 @@ flowchart TB
         registry_access["registry_access_t"]
         registry_query_access["registry_query_access_t"]
         spot_node_access["spot_node_access_t"]
-        spot_subject_access["spot_subject_access_t"]
+        spot_subject_access["spot_subject_access"]
     end
 
     subgraph SvcRT ["Service Runtime"]
@@ -116,10 +116,10 @@ API facade 의 규칙:
 | Access Seam | 위치 | 역할 |
 |-------------|------|------|
 | `discovery_access_t` | `services/discovery/` | Discovery lifecycle, connect_registry, option, monitor |
-| `registry_access_t` | `services/discovery/` | Registry lifecycle, bind, config, snapshot/query |
-| `registry_query_access_t` | `services/discovery/` | 원격 Registry topology query |
+| `registry_access_t` | `services/registry/` | Registry lifecycle, bind, config, snapshot/query |
+| `registry_query_access_t` | `services/registry/` | 원격 Registry topology query |
 | `spot_node_access_t` | `services/spot/` | SpotNode lifecycle, bind, discovery attach |
-| `spot_subject_access_t` | `services/spot/` | publish, subscribe, option, handler, monitor, type casting |
+| `spot_subject_access` (free function) | `services/spot/` | publish, subscribe, option, handler, monitor, type casting |
 
 `service_public_api_guard_t` 는 모든 서비스에 공통되는 입장 허용/close 가드다.
 public API 진입과 close/busy 상태를 추적하고, destroy 시 `EBUSY`/`ESHUTDOWN`
@@ -148,12 +148,11 @@ lifecycle 게이트를 제공한다. 콜백 모드 추적은 별도의 `service_
 | `spot_subject_access.cpp/hpp` | subject-level API seam |
 | `spot_runtime.cpp/hpp` | runtime lifecycle |
 
-최근 리팩토링으로 `spot_node_t`는 큰 내부 상태 구조체를 헤더 본문 안에 직접
-길게 품는 대신, `spot_node_state.hpp`가 제공하는 상태 묶음을 조합해서
-쓴다. 이렇게 하면 discovery, service attachment, summary 소유권이 더
-또렷하게 분리된다.
+`spot_node_t`는 큰 내부 상태 구조체를 헤더에 직접 품지 않고,
+`spot_node_state.hpp`가 제공하는 상태 묶음을 조합해서 쓴다. 그래서 discovery,
+service attachment, summary 소유권이 또렷하게 분리된다.
 
-data plane의 메시지 전달 흐름도 같은 기준으로 나누었다.
+data plane의 메시지 전달 흐름도 같은 기준으로 나뉜다.
 `spot_data_plane_forwarding.cpp`는 ingress, mesh, local fanout 사이의 전달
 순서를 맡고, 보류 큐의 메모리 제한 검사와 메시지 복사, target별 참조
 해제는 `spot_data_plane_pending.cpp`가 맡는다. 이렇게 나누면 느린 peer 때문에
@@ -199,9 +198,9 @@ Family 구현 (pair, pub, sub, xpub, xsub, dealer, router, stream)은
 routing/subscription/load-balancing 의미에 집중하고,
 runtime internal field를 직접 참조하지 않는다.
 
-`socket_base_t`는 semantic entrypoint로 남지만, req/reply 상태와 part helper
-상태는 이제 `shared_ptr<void>`가 아니라 typed bridge accessor를 거쳐 접근한다.
-API 계층은 raw cast를 반복하지 않고 이 bridge를 쓴다.
+`socket_base_t`는 semantic entrypoint이고, req/reply 상태와 part helper
+상태는 typed bridge accessor를 거쳐 접근한다. API 계층은 raw cast를 반복하지
+않고 이 bridge를 쓴다.
 
 ### 3.5 Runtime Core (`core/src/runtime/core/`)
 
@@ -245,9 +244,9 @@ Option은 세 카테고리로 나뉘어 각 도메인 소유자가 validation/ap
 프로토콜별 framing/routing 차이는 각 모듈에 남기고, 두 경로가 반드시 같아야
 하는 기계 작업만 공통 모듈로 올린다.
 
-`socket_request_reply_dispatch.cpp`는 이제 dispatch callback 설치, pending
-completion 정리, close/drain 같은 lifecycle 중심 코드만 담는다. 실제
-framing/send/recv 코드는 runtime I/O 모듈로 분리해 dispatch 파일이 다시
+`socket_request_reply_dispatch.cpp`는 dispatch callback 설치, pending
+completion 정리, close/drain 같은 lifecycle 중심 코드를 담는다. 실제
+framing/send/recv 코드는 runtime I/O 모듈에 분리해 두어 dispatch 파일이
 거대한 helper 집합이 되지 않게 한다.
 
 #### Stream / ASIO Policy Seams
@@ -281,19 +280,19 @@ flowchart TB
 
 ```
 core/src/
-  api/                107 files — C ABI facade (split by concern)
+  api/                120 files — C ABI facade (split by concern)
   runtime/
-    core/              77 files — runtime core, options dispatch, multipart send
-    engine/            14 files — Boost.Asio execution backbone
+    core/              76 files — runtime core, options dispatch, multipart send
+    engine/            15 files — Boost.Asio execution backbone
     protocol/          20 files — raw/zmp/metadata
-    sockets/           53 files — socket families + base runtime components
+    sockets/           55 files — socket families + base runtime components
     services/
       common/           8 files — service_runtime_base, service_public_api_guard
       control/          2 files — service control runtime
-      discovery/       26 files — discovery + registry access
-      registry/        13 files — registry runtime
-      spot/            70 files — node/pub/sub/data_plane/dispatch/runtime
-      actor/           11 files — actor relay multipart/packet/result/validation
+      discovery/       27 files — discovery runtime
+      registry/        16 files — registry runtime + registry access
+      spot/            86 files — node/pub/sub/data_plane/dispatch/runtime
+      actor/           15 files — actor relay multipart/packet/result/validation
     transports/        46 files — tcp/ipc/tls/ws/pgm
     utils/             44 files — domain-agnostic utilities
 ```

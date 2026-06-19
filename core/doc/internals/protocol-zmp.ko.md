@@ -2,10 +2,8 @@
 
 # ZMP v1.0 프로토콜 상세
 
-> 주의:
-> 현재 개발 라운드의 구현 기준은 `doc/plan/spot-refactor` 아래 문서들이다.
-> 이 문서는 내부 배경 설명으로 유지되며, request-reply 와 SPOT 직접 전달의
-> 최종 공개 계약은 작업 계획 폴더의 문서를 우선한다.
+> 이 문서는 ZMP 와이어 프로토콜과 request-reply / SPOT 직접 전달 envelope의
+> 내부 구조를 설명한다.
 
 ### 용어
 
@@ -16,7 +14,7 @@
 | control part | application payload 앞에 오는 내부 제어 파트 |
 | request-reply envelope | request type, `request_seq`(요청 고유 번호)를 담는 control part 묶음 |
 | SPOT routed envelope | source/destination SPOT 주소를 담는 control part 묶음 |
-| routing_id | transport 피어를 식별하는 바이트 열 |
+| routing_id | transport peer를 식별하는 바이트 열 |
 
 ## 1. 기본 방향
 
@@ -61,8 +59,10 @@ request-reply 와 SPOT routed 는 전용 공개 API 가 control part 를 앞에
 | 3 | SUBSCRIBE | `0x08` | 구독 요청 |
 | 4 | CANCEL | `0x10` | 구독 취소 |
 
-request-reply 와 SPOT routed envelope 의 첫 part 는 `CONTROL` 비트가 켜진
-control part 여야 한다.
+request-reply 와 SPOT routed envelope 의 part 들은 ZMP `CONTROL` 프레임이 아니라
+application payload 앞에 붙는 일반 multipart 데이터 frame(`MORE` 플래그)으로
+전송된다. ZMP `CONTROL` 비트는 HELLO/READY/heartbeat 같은 프로토콜 control
+frame에만 쓰이며, decoder는 `CONTROL` 과 `MORE` 를 함께 켠 frame을 거부한다.
 
 ## 3. request-reply envelope
 
@@ -73,11 +73,9 @@ sequenceDiagram
     participant C as Client
     participant S as Server
 
-    C->>S: HELLO (greeting)
-    S->>C: HELLO (greeting)
-    C->>S: READY (metadata)
-    S->>C: READY (metadata)
-    Note over C,S: 데이터 교환 시작
+    C->>S: HELLO + READY (연결 시 한 outbound 버퍼로 송신)
+    S->>C: HELLO + READY (연결 시 한 outbound 버퍼로 송신)
+    Note over C,S: 양쪽이 peer HELLO/READY 수신 후 데이터 교환 시작
 ```
 
 request-reply 는 payload 앞에 4개 control part 를 붙인다.

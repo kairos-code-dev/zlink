@@ -37,17 +37,14 @@ application은 같은 프로세스 registry를 조회할 때도 runtime 객체�
 `ZLinkRegistryQuery` bean을 사용한다. registry runtime 구현은 Spring lifecycle bean
 뒤에 숨기며, public constructor나 public `start` 함수로 노출하지 않는다.
 
-필수 option은 아래와 같다.
+option은 아래와 같다(필수: `pubEndpoint`, `routerEndpoint`).
 
-| Option | 의미 |
-|--------|------|
-| `registryId` | 운영 snapshot과 monitoring event에 표시할 registry id |
-| `pubEndpoint` | service announcement를 publish하는 endpoint |
-| `routerEndpoint` | query request를 받는 endpoint |
-| `heartbeatInterval` | peer registry 로 heartbeat 를 보내는 주기 |
-| `heartbeatTimeout` | peer registry heartbeat 만료로 보는 시간 |
-| `broadcastInterval` | service 목록을 다시 broadcast 하는 주기 |
-| `addPeer(...)` | 연결할 peer registry 의 pub endpoint 추가 |
+| Option | 필수/선택 | 의미 |
+|--------|-----------|------|
+| `pubEndpoint` | 필수 | service announcement를 publish하는 endpoint |
+| `routerEndpoint` | 필수 | query request를 받는 endpoint |
+| `registryId` | 선택 | 운영 snapshot과 monitoring event에 표시할 registry id |
+| `addPeer(...)` | 선택 | 연결할 peer registry 의 pub endpoint 추가 |
 
 `pubEndpoint`나 `routerEndpoint`가 비어 있으면 startup validation 오류다. Registry
 host와 framework host가 같은 프로세스에 있더라도 registry option bean과
@@ -84,15 +81,15 @@ public class RegistryQueryClientConfig {
 public interface ZLinkRegistryQuery {
     CompletionStage<ZLinkRegistryStatus> status();
     CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummary(
-        @Nullable ZLinkRegistryServiceSummaryFilter filter);
+        ZLinkRegistryServiceSummaryFilter filter);
     CompletionStage<List<ZLinkRegistryTopologyEntry>> topology(
-        @Nullable ZLinkRegistryTopologyFilter filter);
+        ZLinkRegistryTopologyFilter filter);
     CompletionStage<List<ZLinkMemberPeerEntry>> memberPeers(String channelName);
 }
 
 public interface ZLinkRegistryQueryClient extends AutoCloseable {
     CompletionStage<List<ZLinkRegistryTopologyEntry>> topology(
-        @Nullable ZLinkRegistryTopologyFilter filter);
+        ZLinkRegistryTopologyFilter filter);
 }
 ```
 
@@ -104,7 +101,7 @@ query client는 hidden retry를 하지 않는다. 연결 실패와 timeout은 �
 
 ## 3. Discovery와의 관계
 
-일반 request 핫패스는 각 channel의 discovery view를 기준으로 설명한다.
+일반 request hot path는 각 channel의 discovery view를 기준으로 설명한다.
 registry query는 운영 점검과 topology snapshot 용도로 분리하는 편이 맞다.
 
 Actor/session binding은 Registry row로 저장하지 않는다. session은 actor id/type과

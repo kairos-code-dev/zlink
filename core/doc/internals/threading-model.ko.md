@@ -15,8 +15,8 @@
 | Application thread | `zlink_send()`, `zlink_recv()`, `bind()`, `connect()` 등 호출 | 사용자 정의 |
 | I/O thread | Boost.Asio `io_context` 실행. 비동기 네트워크 I/O, 프레임 인코딩/디코딩, socket 이벤트 dispatch | 설정 가능 (기본: 4) |
 | Reaper thread | 종료된 socket과 session의 지연 소멸 | 1 (전역) |
-| SpotNode data-plane thread | `mesh-pub`, `fanout`, `external-router` 소켓 독점 소유; 인그레스 큐 drain; 로컬 팬아웃·피어 메시 전달 | SpotNode당 1개 |
-| Dispatch worker thread | Spot dispatch 콜백 실행; Spot별 직렬화·코얼레싱 | SpotNode당 N개 (기본: `min(2, cpu_count)` ~ `max(1, cpu_count)`) |
+| SpotNode data-plane thread | `mesh-pub`, `fanout`, `external-router` 소켓 독점 소유; ingress 큐 drain; 로컬 fanout·peer mesh 전달 | SpotNode당 1개 |
+| Dispatch worker thread | Spot dispatch 콜백 실행; Spot별 직렬화·coalescing | SpotNode당 N개 (기본: `min(2, cpu_count)` ~ `max(1, cpu_count)`) |
 
 I/O thread 수는 context 생성 시 설정한다:
 
@@ -48,7 +48,7 @@ flowchart TB
         R1["지연 socket/session 소멸"]
     end
     subgraph SPOT_DATA["SpotNode Data-plane Thread (SpotNode당 1개)"]
-        DP["mesh-pub / fanout / external-router 소켓\n인그레스 큐 drain · 로컬 팬아웃 · 피어 메시 전달"]
+        DP["mesh-pub / fanout / external-router 소켓\ningress 큐 drain · 로컬 fanout · peer mesh 전달"]
     end
     subgraph SPOT_WORKERS["Dispatch Worker Threads (SpotNode당 N개)"]
         W1["Spot dispatch 콜백 실행"]
@@ -66,12 +66,13 @@ flowchart TB
 
 Application thread와 I/O thread를 분리하는 목적은 두 가지다.
 
-1. **지연 시간 격리**: application thread는 네트워크 I/O를 기다리며 블록되지 않는다.
-   `zlink_send()` 호출은 락-프리(lock-free) 파이프에 쓰고 즉시 반환하며, 데이터는 I/O thread가
-   비동기로 처리한다.
-2. **소켓별 잠금 없는 동시성**: 소켓마다 하나의 I/O 스레드 이벤트 루프에 고정되므로,
-   일반 데이터 경로 연산에서는 소켓 내부에 잠금이 필요 없다. 동기화는 애플리케이션 스레드
-   진입점에서 입장 허용 게이트(admission gate)로만 처리한다.
+1. **지연 시간 격리**: application thread는 네트워크 I/O 완료를 기다리며 블록되지 않는다.
+   `zlink_send()`는 메시지를 pipe에 넣고 바로 반환한다. YPipe 자체는 SPSC 구조지만, public
+   send 경로는 admission/`_out_sync` fast lock을 거치고 HWM에 막히면(blocking send) 잠시
+   대기할 수 있다. 실제 네트워크 전송은 I/O thread가 비동기로 처리한다.
+2. **연결별 I/O thread 격리**: 각 연결은 하나의 I/O 스레드 이벤트 루프에서 처리되므로,
+   transport/session 이벤트 경로에서는 연결 내부에 잠금이 거의 필요 없다. public API
+   진입의 동기화는 애플리케이션 스레드 진입점의 입장 허용 게이트(admission gate)로 처리한다.
 
 Reaper thread는 use-after-free와 double-free 버그를 막는다. I/O thread가 이벤트 루프를
 실행하는 도중에는 안전하게 해제할 수 없는 자원을 Reaper에 넘기면, Reaper가 이벤트 루프 밖에서
@@ -81,19 +82,25 @@ Reaper thread는 use-after-free와 double-free 버그를 막는다. I/O thread�
 
 ## 3. I/O Thread 할당
 
-### 3.1 Socket-to-thread 고정
+### 3.1 Connection-to-thread 고정
 
-소켓은 생성될 때 하나의 I/O thread에 할당된다. 이 할당은 소켓이 살아 있는 동안
-바뀌지 않는다. 해당 소켓의 모든 데이터 평면 연산(send, recv, timer, 콜백)은
-오직 그 I/O 스레드에서만 실행된다.
+소켓을 만들 때는 socket 객체와 mailbox만 생기고, 아직 I/O thread를 고르지 않는다.
+I/O thread 선택은 `bind`/`connect`로 transport endpoint를 만들거나 async dispatch를
+시작할 때, 연결(connection/session) 단위로 이뤄진다. 한 소켓이 여러 연결을 가지면
+연결마다 다른 I/O thread에 걸칠 수 있고, 한 번 정해진 연결의 I/O thread는 그 연결이
+살아 있는 동안 바뀌지 않는다.
+
+public `send`/`recv`는 호출자(application) thread에서 socket으로 바로 진입해
+lock-free pipe에 쓰거나 읽는다. 실제 transport 송수신, timer, session 이벤트는
+그 연결의 I/O thread에서 처리된다.
 
 ### 3.2 부하 분산 (least-load)
 
-할당에는 **least-load(최소 부하 선택)** 정책을 쓴다. 현재 할당된 소켓 수가 가장 적은
-I/O thread가 다음 소켓을 받는다.
+연결 할당에는 **least-load(최소 부하 선택)** 정책을 쓴다. 현재 등록된 핸들(연결)
+수가 가장 적은 I/O thread가 다음 연결을 받는다(STREAM은 기본 round-robin, §io-thread).
 
 ```
-new_socket → argmin(socket_count[t] for t in io_threads)
+new_connection → argmin(handle_count[t] for t in io_threads)
 ```
 
 스캔은 최소값을 고르기 전에 회전 시작 인덱스(`_next_io_thread`)를 쓰므로,
@@ -195,12 +202,12 @@ process_reaped()       → --sockets; terminating && sockets == 0 이면 종료
 ### 6.1 Data-plane thread
 
 `spot_node_t`마다 하나의 OS 스레드(`spot_runtime_t::data_plane_thread`)가
-`spot_data_plane_loop_t::run_until_shutdown()`을 실행한다. 이 스레드는 다음 자원을
-독점으로 소유한다:
+`spot_data_plane_loop_t::run_until_shutdown()`을 실행한다. 이 스레드는 다음 같은
+주요 자원을 독점으로 소유한다(이 밖에 `ctrl`/`data_ctrl_back`, `pub_ingress_sub` 등도 포함):
 
 - `mesh-pub`, `fanout`, `external-router`, `mesh-xsub`, `peer_ctrl_pub`, `peer_ctrl_sub` 소켓
 - `publish_ingress_queue`, `routed_send_queue`, `external_router_ingress_queue` drain
-- 로컬 팬아웃 전달, 원격 메시 publish, 인바운드/아웃바운드 라우팅 전달
+- 로컬 fanout 전달, 원격 mesh publish, inbound/outbound 라우팅 전달
 
 public 스레드는 이 소켓들에 직접 접근하지 않는다. 이 경계를 위반하면 소켓 소유권,
 poller 관심 등록, shutdown 순서가 public call path에 뒤섞인다.
@@ -222,7 +229,7 @@ data-plane 스레드 루프는 세 큐의 signaler FD를 포함한 poller와 함
 | 2 | `publish_ingress_queue` | application에서 제출한 topic publish 처리 |
 | 3 | `routed_send_queue` | application에서 제출한 routed send 처리 |
 | 4 | flush `mesh-pub` pending | 원격 피어로 publish 전달 |
-| 5 | flush `fanout` pending | 로컬 구독자로 팬아웃 전달 |
+| 5 | flush `fanout` pending | 로컬 구독자로 fanout 전달 |
 | 6 | flush staged messages | 잔여 staged 프레임 전송 |
 
 배치 한도는 단일 전역 상한이 아니라 단계별이다. publish ingress는 반복당 2048
@@ -234,7 +241,7 @@ data-plane 스레드 루프는 세 큐의 signaler FD를 포함한 poller와 함
 `spot_runtime_t::dispatch_workers`(`spot_dispatch_worker_pool_t`)가 application
 dispatch 콜백을 실행한다. data-plane 스레드는 콜백을 직접 호출하지 않는다. 대신
 대상 Spot 상태가 준비되면 풀의 `post_dispatch_event(void* spot_)`를 호출한다.
-풀은 `_queued` 집합으로 코얼레싱한다. 동일한 Spot 포인터는 두 번 이상 enqueue되지
+풀은 `_queued` 집합으로 coalescing한다. 동일한 Spot 포인터는 두 번 이상 enqueue되지
 않는다.
 
 Spot별 직렬화: 한 번에 하나의 worker만 주어진 Spot을 처리한다. 콜백이 반환된 뒤
@@ -343,8 +350,8 @@ thread와 같은 thread에서 호출하거나, 호출 전에 모든 소켓을 �
 
 | 속성 | 값 |
 |------|----|
-| 소켓 고정 | 생성 시 결정된 I/O 스레드, 이후 변경 없음 |
-| 할당 정책 | Least-load (소켓 수 최소 스레드) |
+| 연결 고정 | bind/connect/dispatch 시 연결 단위로 I/O 스레드 결정, 이후 변경 없음 |
+| 할당 정책 | Least-load (핸들 수 최소 스레드, STREAM은 기본 round-robin) |
 | Application→I/O 데이터 경로 | 락-프리 YPipe (SPSC) |
 | Application→I/O 제어 경로 | Mailbox (스레드 안전, signaler 기반) |
 | 지연 소멸 | Reaper 스레드 (전역 1개) |
@@ -353,7 +360,7 @@ thread와 같은 thread에서 호출하거나, 호출 전에 모든 소켓을 �
 | 콜백 실행 스레드 | 콜백별: socket message → I/O 스레드; monitor → service-control 스레드; send-ready → 호출자의 send 스레드; SPOT dispatch → dispatch worker |
 | SpotNode data-plane thread | SpotNode당 1개; mesh-pub/fanout/external-router 독점 소유 |
 | Application→data-plane 경로 | publish_ingress_queue / routed_send_queue (signaler 기반 wakeup) |
-| Dispatch worker thread | SpotNode당 N개; Spot별 직렬화·코얼레싱; 기본 min(2,cpu)~max(1,cpu) |
+| Dispatch worker thread | SpotNode당 N개; Spot별 직렬화·coalescing; 기본 min(2,cpu)~max(1,cpu) |
 | Dispatch worker idle timeout | 1000 ms (내부 상수) |
 | Spot dispatch 콜백 실행 스레드 | Dispatch worker 스레드 (data-plane 스레드 아님) |
 

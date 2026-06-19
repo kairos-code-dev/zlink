@@ -26,7 +26,7 @@ routed request/reply, Actor 기반 session dispatch를 하나의 통합 런타�
 ### 0.2 핵심 개념
 
 - **SpotNode**: 수명(lifecycle)을 책임지는 주체. transport socket, peer 연결, Actor table을 소유한다.
-- **Spot**: `SpotNode` 위에서 빌려 쓰는 data plane facade. 여기서 facade는 실체(소켓·큐)를
+- **Spot**: `SpotNode` 위에서 빌려 쓰는 facade. 여기서 facade는 실체(소켓·큐)를
   직접 들고 있지 않고 그 위를 덮는 얇은 핸들이라는 뜻이다. 같은 논리 Spot 하나를 여러
   facade가 가리킬 수 있고, 그것들은 모두 같은 바탕 큐(underlying queue)를 공유한다.
 - **Entry Spot**: `SpotNode`당 하나씩 자동으로 만들어진다. 새로 생성된 Actor는 여기서 시작한다.
@@ -34,9 +34,10 @@ routed request/reply, Actor 기반 session dispatch를 하나의 통합 런타�
   결정을 수행한다.
 - **Actor**: `SpotNode`의 Actor table이 관리하는 라우팅 대상.
   `zlink_actor_ref_t`(node rid + actor id + generation)로 식별되며, 소켓을 소유하지 않는다.
-- **data plane 스레드**: `SpotNode`당 하나씩 두는 전용 OS 스레드. `mesh-pub`, `fanout`,
-  `external-router` 소켓을 단독으로 소유하고, 송신 큐를 비우며(drain) 로컬 fanout과 원격
-  라우팅을 수행한다.
+- **data plane 스레드**: 한 노드의 실제 메시지가 전부 지나가는 “외길” 스레드.
+  `SpotNode`마다 하나씩 두고, 밖으로 나갈 메시지가 쌓인 송신 큐를 비워(drain) 같은 노드
+  안에는 `fanout`, 다른 노드에는 `mesh-pub` 소켓으로 내보내고 `external-router`로 routed
+  메시지를 주고받는다. 소스에선 이 스레드를 `data plane`이라 부른다.
 - **dispatch worker pool**: `SpotNode`당 하나씩 두는 worker pool. data plane 스레드가 올린
   readable event를 꺼내 애플리케이션 dispatch 콜백을 실행한다. 같은 Spot에 대한 콜백은
   한 번에 하나씩만 순서대로 실행되도록 보장한다.
@@ -102,8 +103,8 @@ flowchart TB
     wp --> cb
 ```
 
-`SpotNode`는 수명 주기 소유자이고, `Spot`은 그 위에서 빌려 쓰는 data plane
-facade다. `Spot`을 닫아도 그 뒤를 받치는 `SpotNode`는 자동으로 닫히지 않는다.
+`SpotNode`는 수명 주기 소유자이고, `Spot`은 그 위에서 빌려 쓰는 facade다. `Spot`을
+닫아도 그 뒤를 받치는 `SpotNode`는 자동으로 닫히지 않는다.
 
 `Spot` facade는 물리 소켓을 소유하지 않는다. 모든 전송 소켓은 `SpotNode`가
 소유하며, `Spot`은 논리 dispatch 큐와 dispatch 이벤트 컨텍스트만 가진다. `Entry Spot`은
@@ -462,6 +463,11 @@ override가 없으면 이 세 소켓은 연결 수 bucket을 적용해 peer별 p
 이 HWM은 내부 전송 pipe의 메모리 상한일 뿐이고, 공개 `publish`와 routed `send`의
 backpressure 의미는 `publish_ingress_queue`와 `routed_send_queue`가 정한다.
 
+연결 수 bucket은 socket별 마지막 bucket 상태를 기억해 hysteresis를 적용한다. 현재
+`1-64` bucket인 socket은 peer 수가 `80` 이상일 때 다음 bucket으로 이동하고, 현재
+`65-128` bucket인 socket은 peer 수가 `48` 이하로 내려갈 때 이전 bucket으로 돌아간다.
+profile이나 메시지 단위가 바뀌면 이전 bucket 상태를 유지하지 않고 새 설정으로 다시 계산한다.
+
 SPOT 발행 큐 계획은 fanout이 커져도 연결당 수용 HWM을 낮추지 않는다.
 
 perf `Auto-HWM spotnode` 상세 표에서는 `mesh-pub`, `mesh-xsub`, `external-router`
@@ -472,8 +478,9 @@ bucket을 적용하기 전 profile 값은 `256`이고, bucket 적용 뒤의 HWM�
 
 ## 7. control plane
 
-peer control plane은 data plane과 분리된 작은 메시지 흐름이다. 주요 목적은 다음과
-같다.
+control plane은 메시지를 실어 나르는 큰 흐름(§8의 data plane) 옆에서, **사용자 데이터는
+싣지 않고 “누가 연결됐고 무엇을 구독했는지” 같은 관리용 정보만 가볍게 주고받는 곁길**이다.
+주요 목적은 다음과 같다.
 
 - peer 부트스트랩(bootstrap) 정보 전달
 - ready 상태 갱신
@@ -488,9 +495,15 @@ plane과 data plane의 기준이 다르기 때문이다.
 
 ### 8.1 data plane 스레드
 
-`SpotNode`마다 전용 OS 스레드(`spot_runtime_t::data_plane_thread`)가 하나씩 있고,
-이 스레드가 `spot_data_plane_loop_t::run_until_shutdown()`을 실행한다. 이 스레드가
-다음을 독점한다.
+SPOT은 메시지를 실제로 주고받는 일을 **딱 한 스레드에 몰아준다.** `SpotNode`마다 이
+전담 스레드가 하나 있어서, 밖으로 나갈 메시지가 쌓인 송신 큐를 쉬지 않고 비워(drain)
+내보낸다 — 같은 노드 안의 구독자에게는 `fanout`, 다른 노드에게는 `mesh-pub` 소켓으로.
+routed 메시지는 `external-router`로 주고받고, 들어오는 메시지도 이 스레드가 받아 해당
+`Spot`의 큐에 넣는다. **한 노드의 실제 메시지는 전부 이 한 스레드를 지난다** — 그래서
+이 길을 data plane이라 부른다. 코드에선 `spot_runtime_t::data_plane_thread`가
+`spot_data_plane_loop_t::run_until_shutdown()`을 돌린다.
+
+이 스레드가 독점하는 것:
 
 - `mesh-pub`, `fanout`, `external-router`, `mesh-xsub`, `peer_ctrl_pub`,
   `peer_ctrl_sub` 소켓

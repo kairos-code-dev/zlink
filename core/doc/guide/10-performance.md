@@ -138,8 +138,12 @@ This estimate is the capacity-planning input for ordinary sockets. Ordinary
 socket auto-HWM does not divide a context memory budget across connections.
 SPOT mesh internal sockets `mesh-pub`, `mesh-xsub`, and `external-router` are
 the exception: they apply connection buckets to reduce the profile HWM when
-many peers are connected. If benchmarking or production tuning needs fixed
-queue depths, set `SNDHWM` / `RCVHWM` manually on the socket.
+many peers are connected. These buckets have a 20-25% hysteresis gap. For
+example, a socket in the `1-64` bucket moves to the next bucket at `80` peers,
+not `65`; a socket in the `65-128` bucket moves back at `48` peers, not `64`.
+Profile and message-unit changes force recalculation before hysteresis is
+applied. If benchmarking or production tuning needs fixed queue depths, set
+`SNDHWM` / `RCVHWM` manually on the socket.
 
 ### HWM Behavior by Socket Type
 

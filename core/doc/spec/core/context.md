@@ -191,7 +191,11 @@ profiles do not change these values automatically.
 For SPOT mesh internal sockets, `mesh-pub`, `mesh-xsub`, and `external-router`
 may further reduce the profile HWM through connection-count buckets when many
 peers are connected. That adjustment is a data-plane socket queue bound; it
-does not change the automatic HWM calculation for ordinary sockets.
+does not change the automatic HWM calculation for ordinary sockets. Bucket
+boundaries use hysteresis: for example, a socket currently in the `1-64` bucket
+moves to the next bucket at `80` peers or more, while a socket currently in the
+`65-128` bucket moves back only at `48` peers or fewer. Profile and message-unit
+changes force a recalculation before hysteresis is considered.
 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` updates the message unit used by
 automatic HWM planning for sockets that do not have an explicit per-socket
 override. A value of `0` returns those sockets to their socket-type default.

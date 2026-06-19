@@ -102,6 +102,13 @@ unit_budget_bytes = base_hwm_4k * 4096
 scaled_hwm = ceil(unit_budget_bytes / effective_message_unit)
 ```
 
+Bucket boundaries use hysteresis. A socket currently in the `1-64` bucket moves
+to the `65-128` bucket at `80` peers or more. A socket currently in the
+`65-128` bucket moves back to `1-64` only at `48` peers or fewer. This gap keeps
+HWM from changing repeatedly when peer count oscillates near a boundary. Profile
+or message-unit changes force recalculation even when hysteresis would otherwise
+retain the current bucket.
+
 This adjustment is an auxiliary bound on SPOT data-plane socket queues. Public
 publish and routed-send backpressure semantics are still owned by
 `publish_ingress_queue` and `routed_send_queue` admission. Local fanout, pub

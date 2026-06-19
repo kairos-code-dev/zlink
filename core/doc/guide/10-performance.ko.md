@@ -141,8 +141,12 @@ non_stream_connections * 256 * 4096
 이 값은 일반 socket의 용량 산정 입력이다. 일반 socket auto-HWM은 context memory
 budget을 connection 수로 나누지 않는다. SPOT mesh 내부의 `mesh-pub`, `mesh-xsub`,
 `external-router`는 예외적으로 connection bucket을 적용해 peer 수가 많은 경우
-profile HWM을 줄인다. benchmark나 운영 튜닝에서 고정값이 필요하면 소켓별
-`SNDHWM` / `RCVHWM`을 수동으로 주면 된다.
+profile HWM을 줄인다. 이 bucket은 20-25% 정도의 hysteresis 구간을 둔다. 예를 들어
+`1-64` bucket에서 다음 bucket으로 이동하는 기준은 `65`가 아니라 `80`이고,
+`65-128` bucket에서 이전 bucket으로 돌아가는 기준은 `64`가 아니라 `48`이다.
+profile이나 메시지 단위가 바뀌면 이 여유 구간보다 새 설정을 우선해 다시 계산한다.
+benchmark나 운영 튜닝에서 고정값이 필요하면 소켓별 `SNDHWM` / `RCVHWM`을 수동으로
+주면 된다.
 
 ### HWM 동작 패턴
 

@@ -458,6 +458,12 @@ apply connection buckets to reduce the per-peer pipe budget. This HWM bounds
 internal transport pipe memory; public `publish` and routed `send` backpressure is
 still defined by `publish_ingress_queue` and `routed_send_queue`.
 
+Connection buckets remember the last bucket per socket and apply hysteresis. A
+socket currently in the `1-64` bucket moves to the next bucket at `80` peers or
+more; a socket currently in the `65-128` bucket moves back at `48` peers or
+fewer. Profile or message-unit changes discard the retained bucket and recalculate
+from the new settings.
+
 The perf `Auto-HWM spotnode` detail shows mesh transport HWM on `mesh-pub`,
 `mesh-xsub`, and `external-router`. In the default balanced path with
 `MsgUnit(B)=4096`, the profile value before connection buckets is `256`; the HWM

@@ -188,7 +188,10 @@ planner가 쓰는 연결당 단위 예산과 size cap을 고릅니다. `SNDBUF` 
 SPOT mesh의 `mesh-pub`, `mesh-xsub`, `external-router` 내부 socket은 연결 수가
 많아질 때 profile HWM을 connection bucket으로 더 줄일 수 있습니다. 이 조정은
 SPOT data-plane 내부 queue의 보조 상한이며, 일반 socket의 자동 HWM 계산에는
-적용되지 않습니다.
+적용되지 않습니다. bucket 경계에서는 hysteresis를 적용합니다. 예를 들어 현재
+`1-64` bucket이면 peer 수가 `80` 이상이 될 때 다음 bucket으로 이동하고, 현재
+`65-128` bucket이면 peer 수가 `48` 이하로 내려갈 때 이전 bucket으로 돌아갑니다.
+profile이나 메시지 단위가 바뀌면 hysteresis보다 새 설정 재계산을 우선합니다.
 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 명시적인 소켓별 override가 없는
 소켓의 자동 HWM 계산 메시지 단위를 바꿉니다. 값 `0`은 해당 소켓을 소켓 타입별
 기본 메시지 단위로 되돌립니다.

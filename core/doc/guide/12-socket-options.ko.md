@@ -98,6 +98,12 @@ unit_budget_bytes = base_hwm_4k * 4096
 scaled_hwm = ceil(unit_budget_bytes / effective_message_unit)
 ```
 
+bucket 경계에는 hysteresis가 있다. 현재 `1-64` bucket이면 peer 수가 `80` 이상일 때
+`65-128` bucket으로 이동한다. 현재 `65-128` bucket이면 peer 수가 `48` 이하로 내려갈
+때 `1-64` bucket으로 돌아간다. 이 여유 구간은 peer 수가 경계 근처에서 흔들릴 때 HWM이
+반복해서 바뀌는 일을 막는다. profile 또는 메시지 단위를 바꾸면 같은 bucket에 머무를 수
+있는 상황이라도 새 설정으로 다시 계산한다.
+
 이 조정은 SPOT data-plane 내부 socket queue의 보조 상한이다. public publish와 routed send의
 backpressure 의미는 `publish_ingress_queue`와 `routed_send_queue`의 admission 규칙이 계속
 결정한다. local fanout, pub ingress, control socket, 일반 DEALER/PAIR/STREAM 소켓에는 이

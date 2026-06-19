@@ -38,7 +38,7 @@ ZLink 가 줄이는 건 연결 위치 조회 직접 관리·room fan-out 결정�
 | 컴포넌트 | 왜 필요한가 |
 |----------|-------------|
 | WS gateway fleet | 수백만 동시 연결 수용(stateless 노드 여러 대) |
-| Redis 연결 레지스트리 | "누가 어느 노드에 붙었나" 추적 → 전달 라우팅의 근거 |
+| Redis 연결 레지스트리 | "누가 어느 노드에 붙었나" 추적 → 전달 routing 의 근거 |
 | group/fan-out service | room 멤버 목록 조회 + 각 멤버 노드로 전달 결정 |
 | Redis pub/sub | 노드 간 메시지 전달 버스 |
 | 메시지 DB | 스크롤백·검색용 **영속 이력** |
@@ -114,8 +114,9 @@ public sealed class SayHandler(IMessageDb db)
     }
 }
 
-public sealed class UserActor(IZLinkActorContext context) : IZLinkActor
+public sealed class UserActor(string actorId, IZLinkActorContext context) : IZLinkActor
 {
+    public string ActorId { get; } = actorId;
     public IZLinkActorContext Context { get; } = context;
 
     public ValueTask PushChatAsync(ChatMessage chat, CancellationToken ct)
@@ -127,6 +128,7 @@ public sealed class UserActor(IZLinkActorContext context) : IZLinkActor
 // 등록 골격(정식은 05·07): STREAM(연결) + room SpotMesh(pub/sub 포함)
 {
     var s = options.AddStreamNode("chat");
+    s.Bind("tcp://0.0.0.0:9100");
     s.AttachActorGateway("rooms");
     s.RegisterSession<ChatSession>();
 

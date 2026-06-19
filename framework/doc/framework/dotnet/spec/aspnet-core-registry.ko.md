@@ -84,7 +84,7 @@ Registry 만 단독 프로세스로 띄우는 모델이다. 운영 환경에서 
 않는다. 즉 같은 `AddZLinkRegistry(...)` 호출을 그대로 쓰되, 서비스 handler 를
 함께 등록하느냐 마느냐에 따라 모델이 갈릴 뿐이다.
 
-## 4. ASP.NET Core 등록 모델 초안
+## 4. ASP.NET Core 등록 모델
 
 이 절은 두 배포 모델을 각각 `AddZLinkRegistry(...)` 로 어떻게 표현하는지를
 정리한다.
@@ -269,8 +269,6 @@ public interface IZLinkRegistryQuery
         CancellationToken cancellationToken = default);
     ValueTask<ZLinkRegistryServiceSummaryEntry[]> ServiceSummaryAsync(
         ZLinkRegistryServiceSummaryFilter? filter = null,
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
         CancellationToken cancellationToken = default);
     ValueTask<ZLinkRegistryTopologyEntry[]> TopologyAsync(
         ZLinkRegistryTopologyFilter? filter = null,
@@ -491,7 +489,8 @@ builder.Services.AddZLinkFramework(options =>
 이 API 들은 Registry 를 일반 key-value 저장소처럼 노출하지 않는다. framework 는
 Discovery 가 제공하는 owner-bound route/topology 를 사용하고, application 은 route key 나
 payload 형식을 알 필요가 없다. Redis 나 database 같은 별도 저장소가 필요한 경우에만
-`AddSpotRemoteAddressResolver<T>()`,
+`AddSpotRemoteAddressResolver<TResolver>()` 로 custom resolver 를 등록해 SPOT owner route
+조회를 그 저장소로 위임한다.
 
 
 ## 9. 결정된 기준

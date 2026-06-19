@@ -48,7 +48,7 @@ ACK를 제공하지 않는다** — 전달 확인이 필요하면 요청/응답�
 | **PAIR** | best-effort, 방향별 순서 보존 | 블로킹 또는 `BACKPRESSURED` |
 | **PUB / SUB** | best-effort | **`NODROP=1`이 기본** → drop 없이 `BACKPRESSURED` 반환 |
 | **DEALER** | best-effort, 라운드로빈 | 블로킹 또는 `BACKPRESSURED` |
-| **ROUTER** | best-effort, 피어별 큐 | `MANDATORY=1`(기본) → 도달 불가/큐참 시 `NOT_CONNECTED` |
+| **ROUTER** | best-effort, 피어별 큐 | `MANDATORY=1`(기본) → 도달 불가 시 `NOT_CONNECTED`, 피어 큐가 차면 `BACKPRESSURED` |
 | **STREAM** | best-effort, 연결별 | 연결(source_rid)별 큐잉 |
 
 > **PUB 기본값 주의**: zlink의 `ZLINK_PUB_OPT_NODROP` **기본값은 `1`**이다. 즉
@@ -72,7 +72,7 @@ ACK를 제공하지 않는다** — 전달 확인이 필요하면 요청/응답�
   중간에 섞이지 않는다([internals/multipart-atomicity](../internals/multipart-atomicity.ko.md)).
 - **보장되지 않는 것**:
   - 여러 스레드가 같은 소켓에 보낼 때 스레드 간 순서(각 메시지는 원자적이지만
-    인입 순서는 정해지지 않음).
+    도착 순서는 정해지지 않음).
   - 재연결을 가로지르는 순서(아래 4절).
   - DEALER의 fair-queue 수신에서 서로 다른 송신자 간의 엄격한 순서.
 
@@ -106,7 +106,7 @@ ACK를 제공하지 않는다** — 전달 확인이 필요하면 요청/응답�
 `dealer.request()`·`spot.request*()`는 타임아웃을 받는다(기본 `5000ms`).
 
 타임아웃이 발생하면:
-- 결과가 `TIMED_OUT`으로 콜백/Future에 전달된다.
+- 결과가 `TIMED_OUT`으로 콜백(C core; binding에 따라 Future)에 전달된다.
 - **요청은 취소된다** — 그 이후로 더 전달을 시도하지 않는다.
 - 그러나 **늦은 응답이 도착할 수 있다.** 요청이 이미 나갔다면 서버가 늦게 응답을
   보낼 수 있으므로 응답 콜백만이 유일한 수신 경로라고 가정하지 않는다.
@@ -114,20 +114,20 @@ ACK를 제공하지 않는다** — 전달 확인이 필요하면 요청/응답�
 - **멱등성은 응용 책임이다.** 요청/응답은 중복 처리를 막지 않는다. 같은 요청이 두 번
   처리되면 안 되는 경우 응용이 dedup 키로 중복을 제거한다.
 
-가능한 결과값: `OK` · `TIMED_OUT` · `NOT_FOUND`(피어 도달 불가) ·
-`PROTOCOL_ERROR` · `TERMINATED` 등([03-3 DEALER](03-3-dealer.ko.md)).
+가능한 결과값: `OK` · `TIMED_OUT` · `NOT_CONNECTED`(피어 도달 불가) ·
+`NOT_FOUND`(대상 없음) · `PROTOCOL_ERROR` · `TERMINATED` 등([03-3 DEALER](03-3-dealer.ko.md)).
 
 ---
 
 ## 6. 서비스 계층(SPOT/Actor)의 전달
 
-SPOT routed 평면과 Actor 메시징은 raw 소켓 위에 라우팅을 얹은 것이며 **raw 소켓
+SPOT routed 경로와 Actor 메시징은 raw 소켓 위에 라우팅을 얹은 것이며 **raw 소켓
 이상의 전달 보장을 추가하지 않는다.**
 
 - SPOT routed 요청/응답은 raw 요청/응답과 같은 타임아웃 의미를 따른다(5절).
 - Actor가 이동(다른 Spot으로 join/leave) 중인 메시지는 유실되거나 다른 Spot으로
-  갈 수 있다. 활성 경로는 user Spot **join 성공 시점**에 게시된다([07-4
-  Actor](07-4-actor.ko.md)).
+  갈 수 있다. Discovery actor-route sync가 켜진 경우, 활성 경로는 user Spot
+  **join 성공 시점**에 게시된다([07-4 Actor](07-4-actor.ko.md)).
 - SPOT 토픽 pub/sub은 raw PUB/SUB와 같은 특성(slow-joiner, 느린 구독자 흐름 제어)을
   가진다.
 

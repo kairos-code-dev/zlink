@@ -60,16 +60,14 @@ handler에서 받은 spot context로 호출한다.
 `replyType`으로 역직렬화한다. 성공하면 actor context의 `spotRid()`, `isJoined()`,
 `getSpot(Class)`가 join된 user Spot을 가리킨다.
 
-actor 객체를 끝내려면 actor가 Entry Spot에 있는 상태에서 Kotlin suspend 확장
-`destroyActor(actor)`를 호출한다(`systems.zlink.framework.kotlin.destroyActor`). 이 호출은
+actor 객체를 끝내려면 actor가 Entry Spot에 있는 상태에서 Entry Spot context의
+`destroyActor(actor)`를 호출하고 반환된 `CompletionStage`를 `await()`로 기다린다. 이 호출은
 lifecycle callback을 호출하지 않고 native actor ref와 framework registry를 정리한다.
 user Spot에 있는 actor는 바로 destroy할 수 없으므로 먼저 leave 또는
 `joinEntrySpot(..., request)` 흐름을 완료해야 한다.
 
 ```kotlin
-import systems.zlink.framework.kotlin.destroyActor
-
-entrySpotContext.destroyActor(actor)   // suspend
+entrySpotContext.destroyActor(actor).await()
 ```
 
 ## 3. Entry Spot과 user Spot의 actor handler
@@ -199,7 +197,9 @@ class AuthenticatePlaySessionHandler(
         request: AuthenticateReq,
     ) {
         val authenticated: AuthenticatePlayerRes =
-            channels.request("api", AuthenticatePlayerReq(request.accessToken))
+            channels.requestToChannel("api", AuthenticatePlayerReq(request.accessToken))
+                .submit(AuthenticatePlayerRes::class.java)
+                .await()
         val playActor = actors.getOrCreate(authenticated.actorId, "player").await()
         val bound = context.actors().bind(playActor).await()
         context.client().reply(AuthenticateRes(bound.actorId())).submit().await()

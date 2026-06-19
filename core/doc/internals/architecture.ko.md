@@ -281,7 +281,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다.
 |   src/runtime/engine/asio/                                                      |
 |   - asio_engine_t      : Proactor pattern-based async I/O engine (base) |
 |   - asio_zmp_engine_t  : ZMP protocol (8B fixed header + handshake)     |
-|   - asio_raw_engine_t  : RAW protocol (4B Length-Prefix, STREAM only)   |
+|   - asio_raw_engine_t  : RAW protocol (no framing, STREAM only)         |
 |                                                                         |
 +-------------------------------------------------------------------------+
 |                          PROTOCOL LAYER                                 |
@@ -289,7 +289,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다.
 |   +---------------------------+    +---------------------------+        |
 |   |    ZMP v1.0 Protocol      |    |     RAW Protocol          |        |
 |   |    src/runtime/protocol/zmp_*     |    |     src/runtime/protocol/raw_*    |        |
-|   |    - 8-byte fixed header  |    |     - 4-byte length prefix|        |
+|   |    - 8-byte fixed header  |    |     - no framing          |        |
 |   |    - Handshake support    |    |     - No handshake        |        |
 |   +---------------------------+    +---------------------------+        |
 |                                                                         |
@@ -478,7 +478,7 @@ Engine Layer는 Boost.Asio 기반의 비동기 I/O 처리를 담당합니다.
 | 엔진                  | 프로토콜  | 트랜스포트              | 특징                            |
 |-----------------------|-----------|------------------------|---------------------------------|
 | `asio_zmp_engine_t`   | ZMP v1.0  | TCP, TLS, IPC, WS, WSS | 핸드셰이크 + 8바이트 고정 헤더  |
-| `asio_raw_engine_t`   | RAW       | TCP, TLS, IPC, WS, WSS | 4바이트 길이 접두사, STREAM 전용|
+| `asio_raw_engine_t`   | RAW       | TCP, TLS, IPC, WS, WSS | 프레이밍 없음, STREAM 전용 |
 
 > WS/WSS도 `asio_zmp_engine_t` 또는 `asio_raw_engine_t`를 사용하며,
 > WebSocket 프레이밍은 `ws_transport_t`/`wss_transport_t`가 처리합니다.
@@ -583,18 +583,22 @@ Engine Layer는 Boost.Asio 기반의 비동기 I/O 처리를 담당합니다.
 
 ### 6.5 RAW 프로토콜 프레임 구조
 
-STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
+STREAM 소켓과 외부 클라이언트 연동용 프로토콜이다. 별도 프레이밍 헤더를 붙이지
+않고 메시지 바이트를 그대로 주고받으며, 메시지 경계는 애플리케이션이 정의한다.
 
 ```
-+----------------------+-----------------------------+
-|  Length (4 Bytes)    |     Payload (N Bytes)       |
-|  (Big Endian)        |                             |
-+----------------------+-----------------------------+
++-------------------------------------------------+
+|              Payload (N Bytes, as-is)           |
++-------------------------------------------------+
 ```
 
 - 핸드셰이크 없음 (즉시 데이터 송수신)
-- 간단한 구현: `read(4)` -> `read(length)`
+- `raw_encoder_t` 는 메시지 바이트를 그대로 내보내고, `raw_decoder_t` 는 수신한
+  바이트 span 을 그대로 메시지로 만든다 (추가 프레이밍 없음)
 - 외부 클라이언트 연동 용이
+- `zlink_stream_packet_handler()` 로 packet handler 모드를 켜면
+  `header_size(2B) + body_size(4B)` 형태의 length-prefixed packet 프레이밍을
+  파싱한다 (자세한 내용은 [RAW 프로토콜 상세](protocol-raw.ko.md))
 
 ### 6.6 ZMP 핸드셰이크 시퀀스
 
@@ -615,8 +619,8 @@ STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
        |                                   |
 ```
 
-- **HELLO**: 소켓 타입(1B) + Identity 길이(1B) + Identity 값(0-255B)
-- **READY**: Socket-Type 속성 (항상), Identity 속성 (DEALER/ROUTER만)
+- **HELLO**: control 프레임 타입(1B) + 소켓 타입(1B) + Identity 길이(1B) + Identity 값(0-255B)
+- **READY**: `zmp_metadata` 옵션이 켜진 경우 `Socket-Type` 속성을 싣고, DEALER/ROUTER 는 `Routing-Id` 속성을 추가한다
 
 ### 6.7 프로토콜-트랜스포트-엔진 매핑
 
@@ -699,8 +703,8 @@ STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
 | TCP       | -          | -      | O                 | O            | 표준 네트워크 통신      |
 | IPC       | -          | -      | 옵션              | O            | 로컬 프로세스 간 통신   |
 | TLS       | O          | O      | -                 | -            | 암호화된 네트워크 통신  |
-| WS        | O          | -      | -                 | O            | 웹 클라이언트 연동      |
-| WSS       | O          | O      | -                 | O            | 암호화된 웹 클라이언트  |
+| WS        | O          | -      | -                 | -            | 웹 클라이언트 연동      |
+| WSS       | O          | O      | -                 | -            | 암호화된 웹 클라이언트  |
 
 ---
 
@@ -997,7 +1001,7 @@ Application Thread              I/O Thread
 |       v                                                           |
 |  (7) encoder: message -> byte stream                              |
 |       |  - ZMP: 8-byte header + payload                           |
-|       |  - RAW: 4-byte length + payload                           |
+|       |  - RAW: payload bytes as-is                               |
 |       v                                                           |
 |  (8) speculative_write() attempt                                  |
 |       |  - Success: synchronous write completes immediately       |
@@ -1025,7 +1029,7 @@ Application Thread              I/O Thread
 |       |                                                           |
 |       v                                                           |
 |  (3) decoder: byte stream -> message                              |
-|       |  - Parse header (ZMP 8B / RAW 4B)                         |
+|       |  - Parse header (ZMP 8B, RAW none)                        |
 |       |  - Verify payload size                                    |
 |       |  - Create msg_t                                           |
 |       v                                                           |
@@ -1172,7 +1176,7 @@ core/
 |   |   +-- zmp_encoder.cpp/hpp      # ZMP encoder
 |   |   +-- zmp_decoder.cpp/hpp      # ZMP decoder
 |   |   +-- zmp_metadata.hpp         # ZMP metadata
-|   |   +-- raw_encoder.cpp/hpp      # RAW (Length-Prefix) encoder
+|   |   +-- raw_encoder.cpp/hpp      # RAW encoder (no extra framing)
 |   |   +-- raw_decoder.cpp/hpp      # RAW decoder
 |   |   +-- encoder.hpp              # Encoder base template
 |   |   +-- decoder.hpp              # Decoder base template

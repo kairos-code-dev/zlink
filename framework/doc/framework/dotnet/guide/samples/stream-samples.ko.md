@@ -19,7 +19,7 @@
 
 `STREAM` 은 두 가지 표면이 한자리에 섞이면 읽기가 무척 어려워진다. 즉 recv
 loop 를 직접 돌려야 하는 low-level 표면과, framework 가 dispatch 를 대신 맡아
-주는 session 표면이 함께 등장하면 그렇다. 그래서 이 문서는 framework 초안을
+주는 session 표면이 함께 등장하면 그렇다. 그래서 이 문서는 framework session 표면을
 기준으로 다음 두 가지만 다룬다.
 
 1. header session
@@ -27,7 +27,7 @@ loop 를 직접 돌려야 하는 low-level 표면과, framework 가 dispatch 를
 
 recv 방식을 사용하는 샘플은 이 문서에 포함하지 않는다.
 
-## 2. 인터페이스 초안
+## 2. 인터페이스 요약
 
 이 절은 STREAM 샘플이 전제로 삼는 최소 타입을 정리한다.
 
@@ -94,7 +94,7 @@ public interface IZLinkSessionActors
     IReadOnlyCollection<IZLinkSessionActor> Bound { get; }
 
     ValueTask<IZLinkSessionActor> BindAsync(
-        string actorId,
+        IZLinkActor actor,
         CancellationToken cancellationToken = default);
 
     ValueTask<IZLinkSessionActor> BindAsync(
@@ -136,11 +136,16 @@ public interface IZLinkSessionActor
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkSessionContext :
-    IZLinkSessionContext,
-    IZLinkSessionClient,
-    IZLinkSessionActors,
-    IZLinkSessionContext;
+public interface IZLinkSessionContext
+{
+    string SessionId { get; }
+    RoutingId? RoutingId { get; }
+    string? LocalAddr { get; }
+    string? RemoteAddr { get; }
+    IZLinkSessionClient Client { get; }
+    IZLinkSessionActors Actors { get; }
+    ValueTask CloseAsync();
+}
 ```
 
 session context 는 callback 인자가 아니라 session 인스턴스 생성 시점에
@@ -228,7 +233,7 @@ public sealed class ClientHeaderSession(
                 ClientInput input = payload.Decode<ClientInput>();
 
                 await channels
-                    .Send(
+                    .SendToChannel(
                         "play",
                         new ForwardInputCommand
                         {
@@ -244,7 +249,7 @@ public sealed class ClientHeaderSession(
                 Ping ping = payload.Decode<Ping>();
 
                 await channels
-                    .Send(
+                    .SendToChannel(
                         "api",
                         new ReportPingCommand
                         {
@@ -253,7 +258,7 @@ public sealed class ClientHeaderSession(
                     .Async(cancellationToken);
 
                 await context
-                    .Reply(new Pong
+                    .Client.Reply(new Pong
                     {
                         Sequence = ping.Sequence
                     })
@@ -294,9 +299,11 @@ public sealed class ClientHeaderSession(
 - `RouteHeader.MsgId` 를 dispatch 기준으로 사용한다.
 - `Message payload` 를 각 protobuf 타입으로 parse 한다.
 
-예컨대 session payload decode 는 다음처럼 target type 기준으로 serializer 를
-골라 두는 방식이 가능하다. 실제 payload bytes 에 직접 접근하는 부분은 serializer
-helper 내부 구현에 숨겨 둔다.
+framework 가 주는 payload decode helper 는 codec 별로 따로다 — JSON 은
+`Message.Decode<T>()`(= `FromJson<T>`), protobuf 는 `Message.FromProto<T>()` 다. 한 helper
+가 자동으로 codec 을 고르지는 않는다. 아래 `SessionPayloadCodecs.Decode<T>` 는 그 둘을
+target type 기준으로 골라 주는 **응용 쪽 dispatcher** 예시다. 실제 payload bytes 에
+직접 접근하는 부분은 helper 내부 구현에 숨겨 둔다.
 
 ```csharp
 public static class SessionPayloadCodecs
@@ -383,7 +390,7 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
         CancellationToken cancellationToken)
     {
         return context
-            .Reply(new Pong())
+            .Client.Reply(new Pong())
             .Async();
     }
 }

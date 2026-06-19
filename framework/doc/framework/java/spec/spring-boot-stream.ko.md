@@ -121,12 +121,9 @@ client 측 STREAM connector는 Spring server session과 별도 모듈이다. Jav
 `.NET`의 `Systems.Zlink.Stream.Connector` 역할을 아래 표면으로 제공한다.
 
 ```java
+// transport(TCP/TLS/WS/WSS)는 endpoint URI scheme(`ws://`/`wss://`/`tls://`/`tcp://`)으로 선택된다.
 ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(
-    ZLinkStreamConnectorOptions.builder()
-        .endpoint(URI.create("ws://127.0.0.1:7201"))
-        .transport(ZLinkStreamTransport.WEB_SOCKET)
-        .requestTimeout(Duration.ofSeconds(30))
-        .build());
+    ZLinkStreamConnectorOptions.createDefault(URI.create("ws://127.0.0.1:7201")));
 
 connector.on("MatchFound", (message) -> {
     return CompletableFuture.completedFuture(null);

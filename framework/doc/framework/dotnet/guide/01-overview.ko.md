@@ -27,8 +27,8 @@ HTTP pipeline 전용이므로, ZLink handler 앞뒤의 로깅·검증·권한 �
 > **ZLink 은 다국어 framework 다.** 호출 계약이 언어 중립 wire protocol(ZMP) +
 > codec + 논리 channel/packet 이라, 서로 다른 언어로 구현된 서비스가 같은 channel
 > 위에서 상호 호출한다(예: room 서버 C++, API 서버 .NET·Java). 이 가이드는 `.NET`
-> binding 기준이며, `.NET` 이 reference 구현, **C++/Java/Node 가 1차 개발 중,
-> Python/Go/Rust 가 뒤따른다.** 자세한 cross-language 모델은
+> binding 기준이며 `.NET` 구현을 reference 로 삼는다. 다른 언어로 구현된 서비스도
+> 같은 channel 계약 위에서 함께 통신한다. 자세한 cross-language 모델은
 > [12-grpc-alternative §2.1](12-grpc-alternative.ko.md)이 다룬다.
 
 ### 어떤 문제를 푸는가
@@ -291,8 +291,8 @@ flowchart LR
 
 | 항목 | 값 |
 |------|-----|
-| assembly | `Zlink.Framework` |
-| namespace | `Zlink.Framework` / `Zlink.Framework.Contracts.*` |
+| assembly | `Zlink.Framework`(계약·runtime), `Zlink.Framework.AspNetCore`(DI·hosted service 통합) |
+| namespace | `Zlink.Framework` / `Zlink.Framework.Contracts.*`, 등록 확장(`AddZLinkFramework`)은 `Zlink.Framework.AspNetCore` |
 | public 계약 | `Zlink.Framework.Contracts.*`와 `spec/handler-interfaces.ko.md` |
 | 등록 진입점 | `builder.Services.AddZLinkFramework(...)` |
 

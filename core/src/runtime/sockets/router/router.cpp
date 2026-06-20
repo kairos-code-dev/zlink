@@ -230,6 +230,15 @@ int zlink::router_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
     if (!socket_msg_dispatch_active ())
         return 0;
 
+    if (router_debug_enabled ()) {
+        fprintf (stderr, "router xsocket_msg_dispatch: pipe=%p size=%zu routing_id=%d more=%d "
+                         "handler=%d\n",
+                 static_cast<void *> (pipe_), msg_ ? msg_->size () : 0,
+                 msg_ && msg_->is_routing_id () ? 1 : 0,
+                 msg_ && ((msg_->flags () & msg_t::more) != 0) ? 1 : 0,
+                 socket_msg_handler () ? 1 : 0);
+    }
+
     if (msg_->is_routing_id ()) {
         pipe_t *socket_pipe = pipe_;
         if (socket_pipe && _anonymous_pipes.count (socket_pipe) == 0

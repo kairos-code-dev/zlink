@@ -338,6 +338,10 @@ void spot_external_router_dispatch (const zlink_routing_id_t *,
                                     size_t part_count_,
                                     void *userdata_)
 {
+    if (spot_direct_route_debug_enabled ()) {
+        std::fprintf (stderr, "[spot-direct] external-router dispatch parts=%zu\n",
+                      part_count_);
+    }
     zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (userdata_);
     if (!node || !parts_ || part_count_ == 0) {
         zlink::request_reply::close_request_reply_parts (parts_, part_count_);
@@ -385,11 +389,23 @@ extern "C" int zlink_spot_install_external_router_dispatch (void *node_, void *s
         return -1;
     }
 
-    if (socket->socket_msg_dispatch_active ())
+    if (socket->socket_msg_dispatch_active ()) {
+        if (spot_direct_route_debug_enabled ()) {
+            std::fprintf (stderr,
+                          "[spot-direct] external-router dispatch already active socket=%d\n",
+                          socket->socket_id ());
+        }
         return 0;
+    }
 
-    return socket->socket_set_msg_handler_with_userdata (&spot_external_router_dispatch, NULL,
-                                                         node);
+    const int rc =
+      socket->socket_set_msg_handler_with_userdata (&spot_external_router_dispatch, NULL, node);
+    if (spot_direct_route_debug_enabled ()) {
+        std::fprintf (stderr, "[spot-direct] external-router dispatch install rc=%d errno=%d "
+                              "socket=%d\n",
+                      rc, errno, socket->socket_id ());
+    }
+    return rc;
 }
 
 int zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (

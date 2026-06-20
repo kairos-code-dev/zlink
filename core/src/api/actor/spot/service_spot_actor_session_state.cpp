@@ -64,6 +64,7 @@ actor_session_state_t::find_binding (const void *stream_,
 actor_session_state_t::binding_map_t::iterator actor_session_state_t::find_remote_binding (
   const zlink_routing_id_t &session_rid_, const char *actor_id_, uint64_t generation_)
 {
+    binding_map_t::iterator actor_id_match = bindings.end ();
     for (binding_map_t::iterator binding_it = bindings.begin (); binding_it != bindings.end ();
          ++binding_it) {
         if (!same_routing_id (binding_it->second.session_rid, session_rid_))
@@ -72,11 +73,14 @@ actor_session_state_t::binding_map_t::iterator actor_session_state_t::find_remot
           binding_it->second.actors.find (actor_id_);
         if (actor_it == binding_it->second.actors.end ())
             continue;
-        if (generation_ != 0 && actor_it->second.ref.generation != generation_)
+        if (generation_ != 0 && actor_it->second.ref.generation != generation_) {
+            if (actor_id_match == bindings.end ())
+                actor_id_match = binding_it;
             continue;
+        }
         return binding_it;
     }
-    return bindings.end ();
+    return actor_id_match;
 }
 
 actor_session_state_t::binding_map_t::iterator actor_session_state_t::bindings_end ()

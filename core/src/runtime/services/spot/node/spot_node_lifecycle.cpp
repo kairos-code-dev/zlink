@@ -380,6 +380,21 @@ int spot_node_t::attach_router_channel_discovery (const char *channel_name_,
         errno = EINVAL;
         return -1;
     }
+    std::string router_advertise;
+    {
+        scoped_lock_t lock (_sync);
+        router_advertise = _endpoint_state.router_bind_endpoint;
+    }
+    if (!router_advertise.empty () && !validate_public_endpoint (router_advertise)) {
+        errno = EINVAL;
+        return -1;
+    }
+    zlink_routing_id_t node_rid;
+    memset (&node_rid, 0, sizeof (node_rid));
+    if (!router_advertise.empty ()
+        && (node_routing_id (&node_rid) != 0 || node_rid.size == 0)) {
+        return -1;
+    }
     {
         scoped_lock_t lock (_sync);
         spot_node_router_channel_peer_state_t &state =
@@ -400,6 +415,23 @@ int spot_node_t::attach_router_channel_discovery (const char *channel_name_,
         if (state.discovery == discovery_)
             state.discovery = NULL;
         service_attachments ().pending_router_channel_refreshes.erase (channel_name);
+        return -1;
+    }
+    std::string resolved_router;
+    if (!router_advertise.empty ()
+        && discovery_owned_service::register_endpoint (
+             discovery_, router_advertise.c_str (), &resolved_router, &node_rid,
+             discovery_protocol::service_role_router, 100)
+             != 0) {
+        const int saved_errno = errno;
+        (void) discovery_access_t::remove_observer (discovery_, this);
+        scoped_lock_t lock (_sync);
+        spot_node_router_channel_peer_state_t &state =
+          service_attachments ().router_channel_peers[channel_name];
+        if (state.discovery == discovery_)
+            state.discovery = NULL;
+        service_attachments ().pending_router_channel_refreshes.erase (channel_name);
+        errno = saved_errno;
         return -1;
     }
     wake_control_task ();

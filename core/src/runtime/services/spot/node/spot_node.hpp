@@ -313,8 +313,10 @@ class spot_node_t : public discovery_observer_t
       discovery_t **discovery_out_,
       std::map<std::string, discovery_t *> *service_discoveries_out_,
       std::map<std::string, discovery_t *> *channel_dealer_discoveries_out_,
+      std::map<std::string, discovery_t *> *router_channel_discoveries_out_,
       std::vector<std::string> *active_peer_endpoints_out_,
-      std::string *bound_endpoint_out_);
+      std::string *bound_endpoint_out_,
+      std::string *router_bind_endpoint_out_);
     void clear_service_attachment_runtime_locked (
       std::deque<attachment_monitor_handle_t> *monitors_out_);
     void close_attachment_monitors (std::deque<attachment_monitor_handle_t> *monitors_);

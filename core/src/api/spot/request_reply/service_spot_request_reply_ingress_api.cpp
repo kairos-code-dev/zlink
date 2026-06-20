@@ -218,3 +218,58 @@ extern "C" int zlink_spot_process_external_router (void *node_, void *socket_)
             return -1;
     }
 }
+
+extern "C" int zlink_spot_drain_external_router_ingress (void *node_)
+{
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (node);
+    if (!node || !runtime) {
+        errno = EFAULT;
+        return -1;
+    }
+    zlink::spot_data_plane_forwarder_t::pump_socket_commands (
+      runtime->execution.data_plane_state.external_router);
+    runtime->execution.data_plane_state.external_router->socket_msg_dispatch_drain_pending ();
+    if (zlink::spot_reqrep_internal::drain_runtime_external_router_ingress_queue (runtime) != 0) {
+        return -1;
+    }
+    if (runtime->execution.data_plane_state.external_router->socket_msg_dispatch_active ())
+        return 0;
+    return zlink_spot_process_external_router (
+      node_, runtime->execution.data_plane_state.external_router);
+}
+
+extern "C" int zlink_spot_try_process_external_router_parts (void *node_,
+                                                             zlink_msg_t *parts_,
+                                                             size_t part_count_,
+                                                             int *processed_out_)
+{
+    if (processed_out_)
+        *processed_out_ = 0;
+    if (!node_ || !parts_ || part_count_ == 0 || !processed_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink::spot_reqrep_internal::parsed_spot_envelope_t envelope;
+    if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (parts_, part_count_,
+                                                                  &envelope)) {
+        errno = 0;
+        return 0;
+    }
+
+    std::vector<zlink_msg_t> combined;
+    combined.reserve (part_count_);
+    for (size_t i = 0; i < part_count_; ++i) {
+        combined.push_back (zlink_msg_t ());
+        zlink_msg_init (&combined.back ());
+        if (zlink_msg_move (&combined.back (), &parts_[i]) != 0) {
+            zlink::request_reply::close_built_parts (&combined);
+            return -1;
+        }
+    }
+
+    *processed_out_ = 1;
+    return zlink::spot_reqrep_internal::process_external_router_combined_for_data_plane (
+      static_cast<zlink::spot_node_t *> (node_), &combined);
+}

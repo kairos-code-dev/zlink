@@ -736,9 +736,9 @@ test('Bingo TypeScript sample publishes drawn number before finished notify', ()
     'Spots',
     'bingo-room-spot.ts'
   ), 'utf8');
-  const drawIndex = roomSpot.indexOf('numberDrawnNotify');
+  const drawIndex = roomSpot.indexOf('PacketNames.numberDrawnNotify');
   const finishedBranchIndex = roomSpot.indexOf('if (drawn.finished)');
-  const endedIndex = roomSpot.indexOf('BingoGameEndedNotify');
+  const endedIndex = roomSpot.indexOf('PacketNames.gameEndedNotify');
 
   assert.equal(drawIndex > 0, true);
   assert.equal(finishedBranchIndex > drawIndex, true);

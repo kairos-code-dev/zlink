@@ -127,14 +127,14 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
           this.game.players
             .map((entry) => entry.actor as PlayerActorType)
             .filter((entry) => entry.actorId !== actor.actorId),
-          'PlayerJoinedNotify',
+          PacketNames.playerJoinedNotify,
           playerJoinedNotify(this.roomId, actor, joined.player.seat, joined.player.isHost, state)
         );
       }
       if (joined.started) {
         await this.pushPlayers(
           this.playerActors(),
-          'BingoGameStartedNotify',
+          PacketNames.gameStartedNotify,
           stateEnvelope(this.snapshot())
         );
       }
@@ -172,13 +172,13 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     const state = this.snapshot();
     await this.pushPlayers(
       this.playerActors(),
-      'BingoNumberDrawnNotify',
+      PacketNames.numberDrawnNotify,
       numberDrawnNotify(this.roomId, drawn.drawSeq, drawn.number, state)
     );
     if (drawn.finished) {
       await this.pushPlayers(
         this.playerActors(),
-        'BingoGameEndedNotify',
+        PacketNames.gameEndedNotify,
         stateEnvelope(state)
       );
       await this.publishReward(state);

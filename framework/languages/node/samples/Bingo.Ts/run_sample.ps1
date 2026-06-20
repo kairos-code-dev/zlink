@@ -27,6 +27,13 @@ function Get-FreePorts([int]$Count) {
     }
 }
 
+function Use-Default([string]$Value, [string]$Fallback) {
+    if ([string]::IsNullOrEmpty($Value)) {
+        return $Fallback
+    }
+    return $Value
+}
+
 function Get-EndpointParts([string]$Endpoint) {
     $value = $Endpoint -replace '^tcp://', ''
     $index = $value.LastIndexOf(':')
@@ -54,11 +61,25 @@ function Wait-Port([string]$Name, [string]$Endpoint) {
     throw "Timed out waiting for $Name at $Endpoint"
 }
 
-function Wait-DiscoveryReady([string]$RegistryEndpoint) {
+function Write-SampleConfig([string]$Path, [hashtable]$Sample) {
+    @{ sample = $Sample } | ConvertTo-Json -Depth 8 | Set-Content -Path $Path -Encoding UTF8
+}
+
+function Wait-DiscoveryReady(
+    [string]$RegistryEndpoint,
+    [string]$SessionARid,
+    [string]$SessionBRid,
+    [string]$PlayARid,
+    [string]$PlayBRid
+) {
     $script = @'
 const registryEndpoint = process.argv[2];
+const requiredRouteRids = new Set(process.argv.slice(3, 7));
+const requiredSpotRids = new Set(process.argv.slice(5, 7));
 const zlink = require('@zlink-systems/zlink');
-const required = new Set(['bingo.api', 'bingo.play', 'bingo.notifications']);
+const requiredChannels = new Set(['bingo.api', 'bingo.play']);
+const roomRouteChannel = 'bingo.room.route';
+const roomSpotChannel = 'bingo.room';
 const pause = new Int32Array(new SharedArrayBuffer(4));
 const context = zlink.createContext();
 const client = zlink.createRegistryQueryClient(context);
@@ -66,52 +87,99 @@ const client = zlink.createRegistryQueryClient(context);
 try {
   client.connect(registryEndpoint);
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const ready = new Set(client
-      .topology()
+    const topology = client.topology();
+    const readyChannels = new Set(topology
       .filter((entry) =>
-        required.has(entry.channelName) &&
+        requiredChannels.has(entry.channelName) &&
         entry.state === 3 &&
         typeof entry.endpoint === 'string' &&
         entry.endpoint.length > 0)
       .map((entry) => entry.channelName));
-    if ([...required].every((channelName) => ready.has(channelName))) {
+    const readyRouteRids = new Set(topology
+      .filter((entry) =>
+        entry.channelName === roomRouteChannel &&
+        entry.state === 3 &&
+        entry.serviceRole === 3 &&
+        typeof entry.endpoint === 'string' &&
+        entry.endpoint.length > 0)
+      .map((entry) => String(entry.routingId)));
+    const readySpotRids = new Set(topology
+      .filter((entry) =>
+        entry.channelName === roomSpotChannel &&
+        entry.state === 3 &&
+        entry.serviceRole === 2 &&
+        typeof entry.endpoint === 'string' &&
+        entry.endpoint.length > 0)
+      .map((entry) => String(entry.routingId)));
+    if (
+      [...requiredChannels].every((channelName) => readyChannels.has(channelName)) &&
+      [...requiredRouteRids].every((routingId) => readyRouteRids.has(routingId)) &&
+      [...requiredSpotRids].every((routingId) => readySpotRids.has(routingId))
+    ) {
       process.exit(0);
     }
     Atomics.wait(pause, 0, 0, 100);
   }
   console.error('Timed out waiting for registry discovery readiness.');
+  console.error(JSON.stringify(
+    client.topology(),
+    (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+    2
+  ));
   process.exit(1);
 } finally {
   client.close();
   context.close();
 }
 '@
-    $script | node - $RegistryEndpoint
+    $script | node - $RegistryEndpoint $SessionARid $SessionBRid $PlayARid $PlayBRid
     if ($LASTEXITCODE -ne 0) {
         throw "Timed out waiting for registry discovery readiness."
     }
 }
 
-function Start-Server([string]$Name, [string]$Entry) {
+function Start-Server([string]$Name, [string]$Entry, [string]$ConfigPath) {
+    $environment = @{
+        ZLINK_SAMPLE_CONFIG = $ConfigPath
+    }
     $process = Start-Process -FilePath "node" `
         -ArgumentList @((Join-Path $scriptDir $Entry)) `
         -WorkingDirectory $scriptDir `
         -RedirectStandardOutput (Join-Path $logDir "$Name.log") `
         -RedirectStandardError (Join-Path $logDir "$Name.err.log") `
+        -Environment $environment `
         -PassThru
     $processes.Add($process)
 }
 
 try {
-    $ports = Get-FreePorts 6
-    $env:BINGO_REGISTRY_PUB_ENDPOINT = if ($env:BINGO_REGISTRY_PUB_ENDPOINT) { $env:BINGO_REGISTRY_PUB_ENDPOINT } else { "tcp://127.0.0.1:$($ports[0])" }
-    $env:BINGO_REGISTRY_ROUTER_ENDPOINT = if ($env:BINGO_REGISTRY_ROUTER_ENDPOINT) { $env:BINGO_REGISTRY_ROUTER_ENDPOINT } else { "tcp://127.0.0.1:$($ports[1])" }
-    $env:BINGO_SESSION_ENDPOINT = if ($env:BINGO_SESSION_ENDPOINT) { $env:BINGO_SESSION_ENDPOINT } else { "tcp://127.0.0.1:$($ports[2])" }
-    $env:BINGO_PLAY_ENDPOINT = if ($env:BINGO_PLAY_ENDPOINT) { $env:BINGO_PLAY_ENDPOINT } else { "tcp://127.0.0.1:$($ports[3])" }
-    $env:BINGO_NOTIFICATION_ENDPOINT = if ($env:BINGO_NOTIFICATION_ENDPOINT) { $env:BINGO_NOTIFICATION_ENDPOINT } else { "tcp://127.0.0.1:$($ports[4])" }
-    $env:BINGO_API_ENDPOINT = if ($env:BINGO_API_ENDPOINT) { $env:BINGO_API_ENDPOINT } else { "tcp://127.0.0.1:$($ports[5])" }
-    $env:BINGO_REDIS_KEY_PREFIX = if ($env:BINGO_REDIS_KEY_PREFIX) { $env:BINGO_REDIS_KEY_PREFIX } else { "bingo:node:${PID}:$([Guid]::NewGuid().ToString('N')):" }
-    if (-not $env:BINGO_REDIS_ENDPOINT) {
+    $ports = Get-FreePorts 18
+    $registryPubEndpoint = Use-Default $env:BINGO_REGISTRY_PUB_ENDPOINT "tcp://127.0.0.1:$($ports[0])"
+    $registryRouterEndpoint = Use-Default $env:BINGO_REGISTRY_ROUTER_ENDPOINT "tcp://127.0.0.1:$($ports[1])"
+    $sessionAEndpoint = Use-Default $env:BINGO_SESSION_A_ENDPOINT "tcp://127.0.0.1:$($ports[2])"
+    $sessionARouteEndpoint = Use-Default $env:BINGO_SESSION_A_ROUTE_ENDPOINT "tcp://127.0.0.1:$($ports[3])"
+    $sessionASpotEndpoint = Use-Default $env:BINGO_SESSION_A_SPOT_ENDPOINT "tcp://127.0.0.1:$($ports[4])"
+    $sessionASpotNodeRid = Use-Default $env:BINGO_SESSION_A_SPOT_NODE_RID "bingo-session-node-a"
+    $sessionBEndpoint = Use-Default $env:BINGO_SESSION_B_ENDPOINT "tcp://127.0.0.1:$($ports[5])"
+    $sessionBRouteEndpoint = Use-Default $env:BINGO_SESSION_B_ROUTE_ENDPOINT "tcp://127.0.0.1:$($ports[6])"
+    $sessionBSpotEndpoint = Use-Default $env:BINGO_SESSION_B_SPOT_ENDPOINT "tcp://127.0.0.1:$($ports[7])"
+    $sessionBSpotNodeRid = Use-Default $env:BINGO_SESSION_B_SPOT_NODE_RID "bingo-session-node-b"
+    $playAEndpoint = Use-Default $env:BINGO_PLAY_A_ENDPOINT "tcp://127.0.0.1:$($ports[8])"
+    $playARouteEndpoint = Use-Default $env:BINGO_PLAY_A_ROUTE_ENDPOINT "tcp://127.0.0.1:$($ports[9])"
+    $playASpotEndpoint = Use-Default $env:BINGO_PLAY_A_SPOT_ENDPOINT "tcp://127.0.0.1:$($ports[10])"
+    $playASpotPubSubEndpoint = Use-Default $env:BINGO_PLAY_A_SPOT_PUBSUB_ENDPOINT "tcp://127.0.0.1:$($ports[11])"
+    $playASpotNodeRid = Use-Default $env:BINGO_PLAY_A_SPOT_NODE_RID "bingo-play-node-a"
+    $playBEndpoint = Use-Default $env:BINGO_PLAY_B_ENDPOINT "tcp://127.0.0.1:$($ports[12])"
+    $playBRouteEndpoint = Use-Default $env:BINGO_PLAY_B_ROUTE_ENDPOINT "tcp://127.0.0.1:$($ports[13])"
+    $playBSpotEndpoint = Use-Default $env:BINGO_PLAY_B_SPOT_ENDPOINT "tcp://127.0.0.1:$($ports[14])"
+    $playBSpotPubSubEndpoint = Use-Default $env:BINGO_PLAY_B_SPOT_PUBSUB_ENDPOINT "tcp://127.0.0.1:$($ports[15])"
+    $playBSpotNodeRid = Use-Default $env:BINGO_PLAY_B_SPOT_NODE_RID "bingo-play-node-b"
+    $apiAEndpoint = Use-Default $env:BINGO_API_A_ENDPOINT "tcp://127.0.0.1:$($ports[16])"
+    $apiBEndpoint = Use-Default $env:BINGO_API_B_ENDPOINT "tcp://127.0.0.1:$($ports[17])"
+    $redisKeyPrefix = Use-Default $env:BINGO_REDIS_KEY_PREFIX "bingo:node:${PID}:$([Guid]::NewGuid().ToString('N')):"
+
+    $redisEndpoint = $env:BINGO_REDIS_ENDPOINT
+    if ([string]::IsNullOrEmpty($redisEndpoint)) {
         if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
             throw "Docker is required when BINGO_REDIS_ENDPOINT is not set."
         }
@@ -121,22 +189,59 @@ try {
             throw "Failed to start Redis Docker container."
         }
         $redisPort = (& docker port $redisContainer "6379/tcp") -replace '^.*:', ''
-        $env:BINGO_REDIS_ENDPOINT = "127.0.0.1:$redisPort"
+        $redisEndpoint = "127.0.0.1:$redisPort"
     }
-    $env:ZLINK_SAMPLE_CONFIG = Join-Path $runDir "sample.config.json"
 
-    @{
-        sample = @{
-            registryPubEndpoint = $env:BINGO_REGISTRY_PUB_ENDPOINT
-            registryRouterEndpoint = $env:BINGO_REGISTRY_ROUTER_ENDPOINT
-            sessionEndpoint = $env:BINGO_SESSION_ENDPOINT
-            playEndpoint = $env:BINGO_PLAY_ENDPOINT
-            notificationEndpoint = $env:BINGO_NOTIFICATION_ENDPOINT
-            apiEndpoint = $env:BINGO_API_ENDPOINT
-            redisEndpoint = $env:BINGO_REDIS_ENDPOINT
-            redisKeyPrefix = $env:BINGO_REDIS_KEY_PREFIX
-        }
-    } | ConvertTo-Json -Depth 8 | Set-Content -Path $env:ZLINK_SAMPLE_CONFIG -Encoding UTF8
+    $clientConfig = Join-Path $runDir "client.config.json"
+    $registryConfig = Join-Path $runDir "registry.config.json"
+    $apiAConfig = Join-Path $runDir "api-a.config.json"
+    $apiBConfig = Join-Path $runDir "api-b.config.json"
+    $playAConfig = Join-Path $runDir "play-a.config.json"
+    $playBConfig = Join-Path $runDir "play-b.config.json"
+    $sessionAConfig = Join-Path $runDir "session-a.config.json"
+    $sessionBConfig = Join-Path $runDir "session-b.config.json"
+
+    $base = @{
+        registryPubEndpoint = $registryPubEndpoint
+        registryRouterEndpoint = $registryRouterEndpoint
+        redisEndpoint = $redisEndpoint
+        redisKeyPrefix = $redisKeyPrefix
+    }
+    Write-SampleConfig $clientConfig ($base + @{
+        sessionAEndpoint = $sessionAEndpoint
+        sessionBEndpoint = $sessionBEndpoint
+    })
+    Write-SampleConfig $registryConfig $base
+    Write-SampleConfig $apiAConfig ($base + @{ apiEndpoint = $apiAEndpoint })
+    Write-SampleConfig $apiBConfig ($base + @{ apiEndpoint = $apiBEndpoint })
+    Write-SampleConfig $playAConfig ($base + @{
+        playEndpoint = $playAEndpoint
+        playRouteEndpoint = $playARouteEndpoint
+        playSpotEndpoint = $playASpotEndpoint
+        playSpotPubSubEndpoint = $playASpotPubSubEndpoint
+        playSpotNodeRid = $playASpotNodeRid
+    })
+    Write-SampleConfig $playBConfig ($base + @{
+        playEndpoint = $playBEndpoint
+        playRouteEndpoint = $playBRouteEndpoint
+        playSpotEndpoint = $playBSpotEndpoint
+        playSpotPubSubEndpoint = $playBSpotPubSubEndpoint
+        playSpotNodeRid = $playBSpotNodeRid
+    })
+    Write-SampleConfig $sessionAConfig ($base + @{
+        sessionEndpoint = $sessionAEndpoint
+        sessionRouteEndpoint = $sessionARouteEndpoint
+        sessionSpotEndpoint = $sessionASpotEndpoint
+        sessionSpotNodeRid = $sessionASpotNodeRid
+        preferredPlayNodeRid = $playASpotNodeRid
+    })
+    Write-SampleConfig $sessionBConfig ($base + @{
+        sessionEndpoint = $sessionBEndpoint
+        sessionRouteEndpoint = $sessionBRouteEndpoint
+        sessionSpotEndpoint = $sessionBSpotEndpoint
+        sessionSpotNodeRid = $sessionBSpotNodeRid
+        preferredPlayNodeRid = $playBSpotNodeRid
+    })
 
     Push-Location $scriptDir
     try {
@@ -146,25 +251,54 @@ try {
         Pop-Location
     }
 
-    Start-Server "registry" "dist/Server/Registry/main.js"
-    Wait-Port "registry-pub" $env:BINGO_REGISTRY_PUB_ENDPOINT
-    Wait-Port "registry-router" $env:BINGO_REGISTRY_ROUTER_ENDPOINT
-    Wait-Port "redis" "tcp://$env:BINGO_REDIS_ENDPOINT"
+    Start-Server "registry" "dist/Server/Registry/main.js" $registryConfig
+    Wait-Port "registry-pub" $registryPubEndpoint
+    Wait-Port "registry-router" $registryRouterEndpoint
+    Wait-Port "redis" "tcp://$redisEndpoint"
 
-    Start-Server "play" "dist/Server/Play/main.js"
-    Wait-Port "play" $env:BINGO_PLAY_ENDPOINT
-    Wait-Port "notifications" $env:BINGO_NOTIFICATION_ENDPOINT
+    Start-Server "play-a" "dist/Server/Play/main.js" $playAConfig
+    Wait-Port "play-a" $playAEndpoint
+    Wait-Port "play-a-route" $playARouteEndpoint
+    Wait-Port "play-a-spot" $playASpotEndpoint
+    Wait-Port "play-a-spot-pubsub" $playASpotPubSubEndpoint
 
-    Start-Server "api" "dist/Server/Api/main.js"
-    Wait-Port "api" $env:BINGO_API_ENDPOINT
+    Start-Server "play-b" "dist/Server/Play/main.js" $playBConfig
+    Wait-Port "play-b" $playBEndpoint
+    Wait-Port "play-b-route" $playBRouteEndpoint
+    Wait-Port "play-b-spot" $playBSpotEndpoint
+    Wait-Port "play-b-spot-pubsub" $playBSpotPubSubEndpoint
 
-    Start-Server "session" "dist/Server/Session/main.js"
-    Wait-Port "session" $env:BINGO_SESSION_ENDPOINT
-    Wait-DiscoveryReady $env:BINGO_REGISTRY_ROUTER_ENDPOINT
-    Start-Sleep -Milliseconds 500
+    Start-Server "api-a" "dist/Server/Api/main.js" $apiAConfig
+    Wait-Port "api-a" $apiAEndpoint
+
+    Start-Server "api-b" "dist/Server/Api/main.js" $apiBConfig
+    Wait-Port "api-b" $apiBEndpoint
+
+    Start-Server "session-a" "dist/Server/Session/main.js" $sessionAConfig
+    Wait-Port "session-a" $sessionAEndpoint
+    Wait-Port "session-a-route" $sessionARouteEndpoint
+    Wait-Port "session-a-spot" $sessionASpotEndpoint
+
+    Start-Server "session-b" "dist/Server/Session/main.js" $sessionBConfig
+    Wait-Port "session-b" $sessionBEndpoint
+    Wait-Port "session-b-route" $sessionBRouteEndpoint
+    Wait-Port "session-b-spot" $sessionBSpotEndpoint
+    Wait-DiscoveryReady $registryRouterEndpoint $sessionASpotNodeRid $sessionBSpotNodeRid $playASpotNodeRid $playBSpotNodeRid
+    Start-Sleep -Seconds 2
 
     $clientLog = Join-Path $logDir "client.log"
-    node (Join-Path $scriptDir "dist/Client/main.js") *> $clientLog
+    $clientEnv = @{ ZLINK_SAMPLE_CONFIG = $clientConfig }
+    $client = Start-Process -FilePath "node" `
+        -ArgumentList @((Join-Path $scriptDir "dist/Client/main.js")) `
+        -WorkingDirectory $scriptDir `
+        -RedirectStandardOutput $clientLog `
+        -RedirectStandardError (Join-Path $logDir "client.err.log") `
+        -Environment $clientEnv `
+        -Wait `
+        -PassThru
+    if ($client.ExitCode -ne 0) {
+        throw "Bingo.Ts client exited with $($client.ExitCode)."
+    }
     if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo" -Quiet)) {
         throw "Bingo.Ts client did not write stream-inbound marker."
     }
@@ -173,6 +307,12 @@ try {
     }
     if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo .* name=.*Notify" -Quiet)) {
         throw "Bingo.Ts client did not write stream-inbound push marker."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "client=observer" -Quiet)) {
+        throw "Bingo.Ts client did not write observer inbound marker."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "name=BingoRewardAnnouncedNotify" -Quiet)) {
+        throw "Bingo.Ts client did not observe reward push."
     }
     Write-Host "bingo=completed"
 }

@@ -5,8 +5,7 @@ import {
   bingoRoomJoinReq,
   bingoRoomSettingsPayload,
   matchBingoRes,
-  observeBingoEventsRes,
-  stopObservingBingoEventsRes
+  observeBingoEventsRes
 } from '../../../../../Shared/Contracts/messages';
 import { BingoRoomAllocator } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import { createObserverRoomSettings } from '../../../Domain/Bingo/bingo-room-models';
@@ -25,9 +24,7 @@ import type {
   MatchBingoReq,
   MatchBingoRes,
   ObserveBingoEventsReq,
-  ObserveBingoEventsRes,
-  StopObservingBingoEventsReq,
-  StopObservingBingoEventsRes
+  ObserveBingoEventsRes
 } from '../../../../../Shared/Contracts/messages';
 import type { PlayerActor as PlayerActorType } from '../Actors/player-actor';
 
@@ -86,12 +83,6 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
       .joinSpot(observerRid, bingoRoomJoinReq(request.roomId, actor.actorId, actor.displayName, true))
       .submit<BingoRoomJoinRes>();
     return observeBingoEventsRes(joined.resultCode === 0, String(this.context.nodeRid));
-  }
-
-  async stopObserving(actor: PlayerActorType, request: StopObservingBingoEventsReq): Promise<StopObservingBingoEventsRes> {
-    const observerRid = this.observerRoomRid(request.roomId);
-    const stopped = await this.roomDirectory.executeInRoom(observerRid, (room) => room.stopObserving(actor, request));
-    return stopObservingBingoEventsRes(stopped, String(this.context.nodeRid));
   }
 
   private observerRoomRid(roomId: string): string {

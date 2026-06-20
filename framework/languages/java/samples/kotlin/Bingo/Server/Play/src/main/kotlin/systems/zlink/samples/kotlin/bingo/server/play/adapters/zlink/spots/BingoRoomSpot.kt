@@ -1,8 +1,7 @@
 package systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots
 
-import java.util.ArrayDeque
-import java.time.Duration
 import com.fasterxml.jackson.databind.ObjectMapper
+import java.time.Duration
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
@@ -18,10 +17,8 @@ import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.notificatio
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomSpotCreatedHandler
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomTimerHandler
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.handlers.BingoWinnerEventHandler
-import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoCard
-import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomEvent
-import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomEventKind
-import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomPlayer
+import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoGame
+import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomGame
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomSettings
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
@@ -38,20 +35,12 @@ class BingoRoomSpot(
     private val notifications: BingoNotificationPublisher,
     private val createdHandler: BingoRoomSpotCreatedHandler,
     private val json: ObjectMapper,) : ZLinkSuspendingSpot<PlayerActor>() {
-    private val players = mutableListOf<BingoRoomPlayer>()
     private val actors = mutableMapOf<String, PlayerActor>()
     private val observers = mutableMapOf<String, PlayerActor>()
-    private val drawDeck = ArrayDeque<Int>()
-    private val drawnNumbers = mutableListOf<Int>()
-    private val winners = mutableListOf<String>()
     private var settings = BingoRoomSettings.create("two-player", 0)
+    private var game: BingoRoomGame? = BingoGame.room(context.spotRid().toString(), settings)
     private var timer: ZLinkTimer? = null
-    private var status: String = WaitingForPlayers
     private var cleanupStarted = false
-
-    init {
-        resetDrawDeck()
-    }
 
     override fun context(): ZLinkSpotContext = context
 
@@ -136,35 +125,17 @@ class BingoRoomSpot(
         if (settings.isObserver) {
             throw IllegalStateException("Player actor cannot join an observer BingoRoom.")
         }
-        val existing = players.firstOrNull { it.actorId == actor.actorId() }
-        if (existing != null) {
-            return BingoRoomJoinRes(snapshot())
-        }
-
-        if (status != WaitingForPlayers || players.size >= settings.requiredPlayers) {
-            throw IllegalStateException("Room ${request.roomId} cannot accept more players.")
-        }
-
+        val change = requireGame().join(actor.actorId(), request.displayName)
         actors[actor.actorId()] = actor
-        val player = BingoRoomPlayer(actor.actorId(), actor.displayName, players.size, null)
-        players += player
-
-        val state = snapshot()
         println(
             "bingo room: actor joined. room=${context.spotRid()}, actor=${actor.actorId()}, " +
-                "count=${state.players.size}, status=${state.status}, nodeRid=${context.nodeRid()}",
+                "count=${change.state.players.size}, status=${change.state.status}, nodeRid=${context.nodeRid()}",
         )
-        notifications.publish(playerJoinedEvents(player, state), actors::get)
-        if (players.size == settings.requiredPlayers) {
-            status = Running
-            val started = snapshot()
-            notifications.publish(
-                eventsForAllExcept(BingoRoomEventKind.GAME_STARTED, started, actor.actorId()),
-                actors::get,
-            )
-            return BingoRoomJoinRes(started)
-        }
-        return BingoRoomJoinRes(state)
+        notifications.publish(
+            change.events,
+            { actorId -> if (actorId == actor.actorId()) null else actors[actorId] },
+        )
+        return BingoRoomJoinRes(change.state)
     }
 
     suspend fun submitCard(
@@ -174,49 +145,20 @@ class BingoRoomSpot(
         if (request.roomId != context.spotRid().toString()) {
             throw IllegalStateException("Submit request room id does not match bingo room.")
         }
-        if (settings.isObserver) {
-            throw IllegalStateException("Observer BingoRoom does not own game state.")
-        }
-        check(status == Running) { "bingo card can be submitted only after the room starts" }
-        val player = players.firstOrNull { it.actorId == actor.actorId() }
-            ?: throw IllegalStateException("player has not joined the bingo room")
-        check(player.card == null) { "bingo card was already submitted" }
-        player.card = BingoCard.from(request.card)
-        return SubmitBingoCardRes(snapshot())
+        val change = requireGame().submitCard(actor.actorId(), request.card)
+        notifications.publish(change.events, actors::get)
+        return SubmitBingoCardRes(change.state)
     }
 
     suspend fun tick() {
-        if (settings.isObserver || cleanupStarted || status != Running || !allCardsSubmitted() || drawDeck.isEmpty()) {
+        val game = this.game
+        if (game == null || cleanupStarted) {
             return
         }
-
-        val number = drawDeck.remove()
-        drawnNumbers += number
-        val newlyCompleted = mutableListOf<String>()
-        for (player in players) {
-            val card = player.card ?: continue
-            val before = card.completedLines()
-            card.markDrawnNumber(number)
-            if (card.completedLines() > before) {
-                newlyCompleted += player.actorId
-            }
-        }
-
-        if (newlyCompleted.isNotEmpty()) {
-            status = Finished
-            winners += newlyCompleted
-        }
-
-        val state = snapshot()
-        val kind = if (status == Finished) {
-            BingoRoomEventKind.GAME_ENDED
-        } else {
-            BingoRoomEventKind.STATE
-        }
-        notifications.publish(numberDrawnEvents(state, number), actors::get)
-        notifications.publish(eventsForAll(kind, state), actors::get)
-        publishWinner(state)
-        leaveFinishedActors()
+        val change = game.drawNext()
+        notifications.publish(change.events, actors::get)
+        publishWinner(change)
+        leaveFinishedActors(change)
     }
 
     suspend fun announceWinner(event: BingoWinnerEvent) {
@@ -273,102 +215,14 @@ class BingoRoomSpot(
         return StopObservingBingoEventsRes(true, context.nodeRid().toString())
     }
 
-    private suspend fun leaveFinishedActors() {
-        if (cleanupStarted || status != Finished) {
+    private suspend fun leaveFinishedActors(change: BingoRoomGame.Change) {
+        if (cleanupStarted || change.state.status != BingoRoomGame.Finished) {
             return
         }
         cleanupStarted = true
         for (actor in actors.values.toList()) {
             actor.markForDestroyAfterRoomLeave()
             context.leaveActor(actor).await()
-        }
-    }
-
-    private fun snapshot(): BingoRoomState {
-        val hostActorId = players.firstOrNull()?.actorId ?: ""
-        val lastDrawn = drawnNumbers.lastOrNull()
-        return BingoRoomState(
-            context.spotRid().toString(),
-            status,
-            hostActorId,
-            false,
-            drawnNumbers.size,
-            lastDrawn,
-            drawnNumbers.toList(),
-            players.map { it.toState(hostActorId) },
-            winners.toList(),
-        )
-    }
-
-    private fun playerJoinedEvents(
-        joined: BingoRoomPlayer,
-        state: BingoRoomState,
-    ): List<BingoRoomEvent> =
-        players.map { player ->
-            if (player.actorId == joined.actorId) {
-                return@map null
-            }
-            BingoRoomEvent(
-                BingoRoomEventKind.PLAYER_JOINED,
-                player.actorId,
-                state,
-                joined.actorId,
-                joined.displayName,
-                joined.seat,
-                joined.seat == 0,
-                0,
-            )
-        }.filterNotNull()
-
-    private fun numberDrawnEvents(
-        state: BingoRoomState,
-        number: Int,
-    ): List<BingoRoomEvent> =
-        players.map { player ->
-            BingoRoomEvent(
-                BingoRoomEventKind.NUMBER_DRAWN,
-                player.actorId,
-                state,
-                null,
-                null,
-                -1,
-                false,
-                number,
-            )
-        }
-
-    private fun eventsForAll(
-        kind: BingoRoomEventKind,
-        state: BingoRoomState,
-    ): List<BingoRoomEvent> =
-        players.map { player ->
-            BingoRoomEvent(
-                kind,
-                player.actorId,
-                state,
-                null,
-                null,
-                -1,
-                false,
-                0,
-            )
-        }
-
-    private fun eventsForAllExcept(
-        kind: BingoRoomEventKind,
-        state: BingoRoomState,
-        excludedActorId: String,
-    ): List<BingoRoomEvent> =
-        eventsForAll(kind, state)
-            .filter { event -> event.recipientActorId != excludedActorId }
-
-    private fun allCardsSubmitted(): Boolean =
-        players.size == settings.requiredPlayers && players.all { it.card != null }
-
-    private fun resetDrawDeck() {
-        drawDeck.clear()
-        for (number in 1..settings.maxDrawNumber) {
-            drawDeck.add(number)
         }
     }
 
@@ -379,12 +233,13 @@ class BingoRoomSpot(
             "Bingo room draw period must be positive."
         }
         this.settings = settings
+        game = if (settings.isObserver) null else BingoGame.room(context.spotRid().toString(), settings)
         cleanupStarted = false
-        resetDrawDeck()
     }
 
-    private suspend fun publishWinner(state: BingoRoomState) {
-        if (state.status != Finished || state.winners.isEmpty()) {
+    private suspend fun publishWinner(change: BingoRoomGame.Change) {
+        val state = change.state
+        if (state.status != BingoRoomGame.Finished || state.winners.isEmpty()) {
             return
         }
         val winner = state.winners.first()
@@ -423,7 +278,7 @@ class BingoRoomSpot(
         return BingoRoomJoinRes(
             BingoRoomState(
                 request.roomId,
-                Running,
+                BingoRoomGame.Running,
                 "",
                 false,
                 0,
@@ -435,9 +290,6 @@ class BingoRoomSpot(
         )
     }
 
-    companion object {
-        private const val WaitingForPlayers = "WaitingForPlayers"
-        private const val Running = "Running"
-        private const val Finished = "Finished"
-    }
+    private fun requireGame(): BingoRoomGame =
+        game ?: throw IllegalStateException("Observer BingoRoom does not own game state.")
 }

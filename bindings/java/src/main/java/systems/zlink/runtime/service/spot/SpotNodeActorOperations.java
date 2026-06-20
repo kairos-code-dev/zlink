@@ -110,6 +110,17 @@ final class SpotNodeActorOperations {
         return new SendBoundSessionBuilder(actor);
     }
 
+    SendOperation forwardActorBoundSession(
+        ActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid) {
+        Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(sourceNodeRid, "sourceNodeRid");
+        Objects.requireNonNull(sourceSessionRid, "sourceSessionRid");
+        node.ensureOpen();
+        return new ForwardBoundSessionBuilder(actor, sourceNodeRid, sourceSessionRid);
+    }
+
     void closeActorBoundSession(ActorRef actor, Duration timeout) {
         Objects.requireNonNull(actor, "actor");
         node.ensureOpen();
@@ -121,6 +132,84 @@ final class SpotNodeActorOperations {
                 throw InternalAccess.zlinkExceptionFromLastError(
                     "zlink_spot_node_actor_close_bound_session");
             }
+        }
+    }
+
+    private final class ForwardBoundSessionBuilder
+        implements SendOperation, SendSubmitOperation {
+        private final ActorRef actor;
+        private final RoutingId sourceNodeRid;
+        private final RoutingId sourceSessionRid;
+        private final MessagePartsBuffer parts = new MessagePartsBuffer();
+        private SendFlags flags = SendFlags.NONE;
+        private boolean submitted;
+
+        ForwardBoundSessionBuilder(
+            ActorRef actor,
+            RoutingId sourceNodeRid,
+            RoutingId sourceSessionRid) {
+            this.actor = actor;
+            this.sourceNodeRid = sourceNodeRid;
+            this.sourceSessionRid = sourceSessionRid;
+        }
+
+        @Override
+        public SendSubmitOperation message(Message part) {
+            ensureNotSubmitted();
+            parts.add(Objects.requireNonNull(part, "part"));
+            return this;
+        }
+
+        @Override
+        public SendSubmitOperation flags(SendFlags value) {
+            ensureNotSubmitted();
+            flags = Objects.requireNonNull(value, "flags");
+            return this;
+        }
+
+        @Override
+        public boolean submit() {
+            ensureNotSubmitted();
+            if (parts.isEmpty())
+                throw new IllegalArgumentException("at least one message required");
+            submitted = true;
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment refSegment =
+                    ActorInterop.actorRefToNative(arena, actor);
+                MemorySegment sourceNodeRidSegment =
+                    ActorInterop.nativeRoutingId(arena, sourceNodeRid);
+                MemorySegment sourceSessionRidSegment =
+                    ActorInterop.nativeRoutingId(arena, sourceSessionRid);
+                for (int i = 0; i < parts.size(); i++) {
+                    Message part = parts.get(i);
+                    MemorySegment nativeMsg = arena.allocate(
+                        NativeLayouts.MESSAGE_LAYOUT);
+                    InternalAccess.messageCopyTo(part, nativeMsg);
+                    int rc = Native.spotNodeActorForwardBoundSessionPart(
+                        node.handle(),
+                        refSegment,
+                        sourceNodeRidSegment,
+                        sourceSessionRidSegment,
+                        nativeMsg,
+                        flags.value(),
+                        i + 1 < parts.size() ? 1 : 0);
+                    if (rc != 0) {
+                        NativeMessage.messageClose(nativeMsg);
+                        if (flags == SendFlags.DONT_WAIT
+                            && SubmitResult.fromValue(rc)
+                                == SubmitResult.BACKPRESSURED) {
+                            return false;
+                        }
+                        throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
+                    }
+                }
+            }
+            return true;
+        }
+
+        private void ensureNotSubmitted() {
+            if (submitted)
+                throw new IllegalStateException("operation already submitted");
         }
     }
 

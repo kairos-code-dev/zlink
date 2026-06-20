@@ -795,6 +795,12 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_NODE_ACTOR_FORWARD_BOUND_SESSION_PART = downcall(
+            "zlink_spot_node_actor_forward_bound_session_part",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_NODE_ACTOR_CLOSE_BOUND_SESSION = downcall(
             "zlink_spot_node_actor_close_bound_session",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -3060,6 +3066,23 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_spot_node_actor_send_bound_session_msg failed", t);
+        }
+    }
+
+    public static int spotNodeActorForwardBoundSessionPart(
+                                                       MemorySegment node,
+                                                       MemorySegment actor,
+                                                       MemorySegment sourceNodeRid,
+                                                       MemorySegment sourceSessionRid,
+                                                       MemorySegment message,
+                                                       int flags,
+                                                       int partFlag) {
+        try {
+            return (int) MH_SPOT_NODE_ACTOR_FORWARD_BOUND_SESSION_PART.invokeExact(
+              node, actor, sourceNodeRid, sourceSessionRid, message, flags, partFlag);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_node_actor_forward_bound_session_part failed", t);
         }
     }
 

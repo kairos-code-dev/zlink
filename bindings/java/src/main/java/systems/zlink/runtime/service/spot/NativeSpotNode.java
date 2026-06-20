@@ -508,6 +508,20 @@ public final class NativeSpotNode implements SpotNode {
         return actorOperations.sendActorBoundSession(actor);
     }
 
+    /**
+     * Session-to-actor forward builder for a STREAM session route owned by
+     * another source SpotNode.
+     */
+    public SendOperation forwardActorBoundSession(
+        ActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid) {
+        return actorOperations.forwardActorBoundSession(
+            actor,
+            sourceNodeRid,
+            sourceSessionRid);
+    }
+
     public void closeActorBoundSession(ActorRef actor, Duration timeout) {
         actorOperations.closeActorBoundSession(actor, timeout);
     }

@@ -189,6 +189,8 @@ export interface ServiceNativeBinding {
     dealer: NativeHandle
   ) => void;
   spotNodeAttachPubIngress: (node: NativeHandle, pub: NativeHandle) => void;
+  spotNodeProcessExternalRouter: (node: NativeHandle) => void;
+  spotNodeTryProcessExternalRouterParts: (node: NativeHandle, parts: unknown) => boolean;
   spotNodeAttachRouterChannelDiscovery: (
     node: NativeHandle,
     channelName: string,

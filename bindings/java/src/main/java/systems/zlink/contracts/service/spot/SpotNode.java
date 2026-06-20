@@ -124,6 +124,15 @@ public interface SpotNode extends AutoCloseable {
      */
     SendOperation sendActorBoundSession(ActorRef actor);
 
+    /**
+     * Session-to-actor forward builder for a STREAM session route owned by
+     * another source SpotNode.
+     */
+    SendOperation forwardActorBoundSession(
+      ActorRef actor,
+      RoutingId sourceNodeRid,
+      RoutingId sourceSessionRid);
+
     void closeActorBoundSession(ActorRef actor, Duration timeout);
 
     AutoHwmProfile routerHwmProfile();

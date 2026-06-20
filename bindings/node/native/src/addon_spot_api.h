@@ -20,6 +20,8 @@ napi_value spot_node_attach_router_channel_discovery (napi_env env, napi_callbac
 napi_value spot_node_attach_channel_dealer (napi_env env, napi_callback_info info);
 napi_value spot_node_attach_channel_dealer_manual (napi_env env, napi_callback_info info);
 napi_value spot_node_attach_pub_ingress (napi_env env, napi_callback_info info);
+napi_value spot_node_process_external_router (napi_env env, napi_callback_info info);
+napi_value spot_node_try_process_external_router_parts (napi_env env, napi_callback_info info);
 napi_value spot_node_set_tls_server (napi_env env, napi_callback_info info);
 napi_value spot_node_set_tls_client (napi_env env, napi_callback_info info);
 napi_value spot_node_setsockopt (napi_env env, napi_callback_info info);

@@ -3,6 +3,7 @@
 import { randomBytes } from 'node:crypto';
 import { RuntimeContext as Context } from '../../core/context';
 import { RuntimeDealerSocket as DealerSocket, RuntimePubSocket as PubSocket } from '../../sockets';
+import { normalizeOperationPayload } from '../../buffers/message_conversion';
 import { Discovery } from '../discovery/discovery';
 import { Actor } from './actor';
 import { Spot } from './spot';
@@ -136,6 +137,16 @@ export class SpotNode extends NativeHandle {
     configCall('spot node pub ingress attachment failed', () => {
       requireNative().spotNodeAttachPubIngress(this._native, getNativeHandle(pub));
     });
+  }
+  processExternalRouter(): void {
+    configCall('spot node external router processing failed', () => {
+      requireNative().spotNodeProcessExternalRouter(this._native);
+    });
+  }
+  tryProcessExternalRouterParts(parts: MessageLike | readonly MessageLike[]): boolean {
+    return configCall('spot node routed parts processing failed', () =>
+      requireNative().spotNodeTryProcessExternalRouterParts(this._native, normalizeOperationPayload(parts))
+    ) as boolean;
   }
   attachDiscovery(discovery: Discovery): void {
     configCall('spot node discovery attachment failed', () => {

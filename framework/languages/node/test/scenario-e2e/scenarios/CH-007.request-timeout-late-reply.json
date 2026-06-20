@@ -1,0 +1,108 @@
+{
+  "id": "CH-007",
+  "name": "request timeout does not break later replies",
+  "roles": {
+    "registry": {
+      "count": 0
+    },
+    "server": [
+      {
+        "name": "api-a",
+        "channel": "scenario-api"
+      }
+    ],
+    "client": [
+      {
+        "name": "client-a"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "waitReady": {
+        "target": "server:api-a"
+      }
+    },
+    {
+      "clientTimeoutRequest": {
+        "client": "client-a",
+        "channel": "scenario-api",
+        "packetName": "ScenarioProfileRequest",
+        "requestId": "ch-007-timeout-1",
+        "value": "slow",
+        "timeoutMs": 100
+      }
+    },
+    {
+      "concurrentTimeoutAndRequest": {
+        "client": "client-a",
+        "channel": "scenario-api",
+        "packetName": "ScenarioProfileRequest",
+        "timeoutRequestId": "ch-007-timeout-2",
+        "timeoutValue": "slow",
+        "timeoutMs": 100,
+        "normalRequestId": "ch-007-normal-during-timeout",
+        "normalValue": "bob",
+        "expectNormalReply": "profile:bob"
+      }
+    },
+    {
+      "clientRequest": {
+        "client": "client-a",
+        "channel": "scenario-api",
+        "packetName": "ScenarioProfileRequest",
+        "requestId": "ch-007-normal-before-late",
+        "value": "carol",
+        "expectReply": "profile:carol"
+      }
+    },
+    {
+      "waitFor": {
+        "durationMs": 1200
+      }
+    },
+    {
+      "clientRequest": {
+        "client": "client-a",
+        "channel": "scenario-api",
+        "packetName": "ScenarioProfileRequest",
+        "requestId": "ch-007-normal-after-late",
+        "value": "dave",
+        "expectReply": "profile:dave"
+      }
+    },
+    {
+      "assertEvidence": {
+        "target": "server:api-a",
+        "completedRequestId": "ch-007-timeout-2"
+      }
+    }
+  ],
+  "expect": {
+    "reply": {
+      "requestId": "ch-007-normal-after-late",
+      "value": "profile:dave"
+    },
+    "serverEvidence": {
+      "requestIds": [
+        "ch-007-timeout-1",
+        "ch-007-timeout-2",
+        "ch-007-normal-during-timeout",
+        "ch-007-normal-before-late",
+        "ch-007-normal-after-late"
+      ],
+      "completedRequestIds": [
+        "ch-007-timeout-1",
+        "ch-007-timeout-2",
+        "ch-007-normal-during-timeout",
+        "ch-007-normal-before-late",
+        "ch-007-normal-after-late"
+      ]
+    }
+  },
+  "artifacts": {
+    "logs": "logs",
+    "report": "report.json",
+    "evidence": "server:/evidence"
+  }
+}

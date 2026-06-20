@@ -40,10 +40,13 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="Channels/ClientServer.cs" />
+    <Compile Include="Channels/Codec.cs" />
+    <Compile Include="Channels/DispatchErrors.cs" />
     <Compile Include="Channels/DealerMesh.cs" />
     <Compile Include="Channels/Fanout.cs" />
     <Compile Include="Channels/FiltersAndHttp.cs" />
     <Compile Include="Channels/HandlerClients.cs" />
+    <Compile Include="Channels/Registration.cs" />
     <Compile Include="Channels/Support.cs" />
     <Compile Include="Channels/RouteChannel.cs" />
     <Compile Include="Lifecycle/Host.cs" />
@@ -80,6 +83,7 @@
     <Compile Include="MultiProcess/Topology.StreamSessions.cs" />
     <Compile Include="MultiProcess/Topology.Support.cs" />
     <Compile Include="Registry/Discovery.cs" />
+    <Compile Include="Registry/DiscoveryScaleout.cs" />
     <Compile Include="Registry/EmbeddedRegistry.cs" />
     <Compile Include="Stream/ActorBinding.cs" />
     <Compile Include="Stream/ActorDisconnectNotify.cs" />

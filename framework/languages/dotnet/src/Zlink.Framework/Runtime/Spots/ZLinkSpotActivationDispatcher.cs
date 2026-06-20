@@ -60,6 +60,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotActorJoinDispatcher>());
         _routeDispatcher = new ZLinkSpotRouteDispatcher(
             channelName,
+            nativeSpot.RoutingId.ToString(),
             packets,
             handlerInvoker,
             runtime.Registration.Codecs,

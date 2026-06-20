@@ -244,11 +244,15 @@ export class ZLinkDispatchErrorReporter {
 
   report(event: ZLinkMessageDispatchErrorEvent): void {
     this.reportedEvents += 1;
+    const reportedError = new Error(`ZLink message dispatch error: ${formatDispatchErrorEvent(event)}`) as Error & {
+      cause?: unknown;
+    };
+    if (event.error !== undefined) {
+      reportedError.cause = event.error;
+    }
     this.errorSink.reportRuntimeTaskException(
       'dispatch-error',
-      event.error ?? new Error(
-        `ZLink message dispatch error: surface=${event.surface}, kind=${event.messageKind}, reason=${event.reason}, action=${event.action}`
-      )
+      reportedError
     );
     if (this.observerType === undefined) {
       return;
@@ -286,6 +290,26 @@ export class ZLinkDispatchErrorReporter {
     }
     return new observerType();
   }
+}
+
+function formatDispatchErrorEvent(event: ZLinkMessageDispatchErrorEvent): string {
+  return [
+    `surface=${event.surface}`,
+    `messageKind=${event.messageKind}`,
+    `reason=${event.reason}`,
+    `action=${event.action}`,
+    formatOptionalDispatchField('packetName', event.packetName),
+    formatOptionalDispatchField('channelName', event.channelName),
+    formatOptionalDispatchField('topic', event.topic),
+    formatOptionalDispatchField('spotRid', event.spotRid),
+    formatOptionalDispatchField('actorId', event.actorId),
+    formatOptionalDispatchField('sourceRid', event.sourceRid),
+    formatOptionalDispatchField('correlationId', event.correlationId)
+  ].filter((value): value is string => value !== undefined).join(', ');
+}
+
+function formatOptionalDispatchField(name: string, value: string | undefined): string | undefined {
+  return value === undefined ? undefined : `${name}=${value}`;
 }
 
 export class ZLinkChannelRuntimeManager {
@@ -1003,6 +1027,9 @@ class ZLinkChannelSocketRegistry {
     const router = this.adapter.createRouterSocket(this.context);
     router.setChannelName(channelName);
     this.trackSubmitter(router);
+    if (channel.server.routingId !== undefined && channel.server.routingId.length > 0) {
+      router.setRoutingId(channel.server.routingId);
+    }
     router.bind(channel.server.bind);
     if (this.hasDiscovery()) {
       router.attachDiscovery(this.createDiscovery(channelName, ZLinkAutoConnectType.ClientServer));
@@ -1328,15 +1355,42 @@ export class ZLinkChannelRequestDispatcher {
         { context, handler },
         () => Promise.resolve(handler.handle(decodeChannelPayload(envelope, this.options.codecs), context))
       );
-      appendParts(
-        router.reply(received.routingId, received.requestSeq),
-        encodeChannelReplyParts(envelope.header, reply, this.options.codecs)
-      ).submit();
+      try {
+        appendParts(
+          router.reply(received.routingId, received.requestSeq),
+          encodeChannelReplyParts(envelope.header, reply, this.options.codecs)
+        ).submit();
+      } catch (error) {
+        this.options.dispatchErrors.report({
+          surface: ZLinkDispatchErrorSurface.Channel,
+          messageKind: ZLinkDispatchMessageKind.Request,
+          reason: ZLinkDispatchErrorReason.UnexpectedReply,
+          action: ZLinkDispatchErrorAction.Drop,
+          packetName,
+          channelName: this.options.channelName,
+          correlationId: envelope.header.correlationId ?? undefined,
+          error
+        });
+      }
     } catch (error) {
-      appendParts(
-        router.reply(received.routingId, received.requestSeq),
-        encodeChannelErrorReplyParts(envelope.header, error instanceof Error ? error.message : String(error))
-      ).submit();
+      try {
+        appendParts(
+          router.reply(received.routingId, received.requestSeq),
+          encodeChannelErrorReplyParts(envelope.header, error instanceof Error ? error.message : String(error))
+        ).submit();
+      } catch (replyError) {
+        this.options.dispatchErrors.report({
+          surface: ZLinkDispatchErrorSurface.Channel,
+          messageKind: ZLinkDispatchMessageKind.Request,
+          reason: ZLinkDispatchErrorReason.UnexpectedReply,
+          action: ZLinkDispatchErrorAction.Drop,
+          packetName,
+          channelName: this.options.channelName,
+          correlationId: envelope.header.correlationId ?? undefined,
+          error: replyError
+        });
+        return;
+      }
       this.options.dispatchErrors.report({
         surface: ZLinkDispatchErrorSurface.Channel,
         messageKind: ZLinkDispatchMessageKind.Request,

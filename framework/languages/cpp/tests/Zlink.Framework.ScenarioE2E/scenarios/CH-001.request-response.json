@@ -1,0 +1,31 @@
+{
+  "id": "CH-001",
+  "name": "request-response across server process",
+  "roles": {
+    "registry": { "count": 0 },
+    "server": [{ "name": "api-a", "channel": "scenario.api" }],
+    "client": [{ "name": "client-a" }]
+  },
+  "steps": [
+    { "waitReady": { "target": "server:api-a" } },
+    {
+      "clientRequest": {
+        "client": "client-a",
+        "channel": "scenario.api",
+        "requestId": "ch-001-1",
+        "value": "alpha",
+        "expectReply": "profile:alpha"
+      }
+    },
+    { "assertEvidence": { "target": "server:api-a", "requestId": "ch-001-1" } }
+  ],
+  "expect": {
+    "reply": { "requestId": "ch-001-1", "value": "profile:alpha" },
+    "serverEvidence": { "requestIds": ["ch-001-1"] }
+  },
+  "artifacts": {
+    "logs": "logs",
+    "evidence": "server:/evidence",
+    "report": "report.json"
+  }
+}

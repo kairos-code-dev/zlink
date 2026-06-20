@@ -1,0 +1,50 @@
+{
+  "id": "DERR-007",
+  "name": "handler exception returns public error and dispatch evidence",
+  "roles": {
+    "registry": {
+      "count": 0
+    },
+    "server": [
+      {
+        "name": "api-a",
+        "channel": "scenario.api"
+      }
+    ],
+    "client": [
+      {
+        "name": "client-a"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "waitReady": {
+        "target": "server:api-a"
+      }
+    },
+    {
+      "handlerExceptionRequest": {
+        "client": "client-a",
+        "channel": "scenario.api",
+        "packetName": "ScenarioProfileRequest",
+        "requestId": "derr-007-throw-1",
+        "value": "throw",
+        "expectError": "request_failed"
+      }
+    }
+  ],
+  "expect": {
+    "reply": {},
+    "serverEvidence": {
+      "dispatchErrors": [
+        "surface=channel kind=request reason=handler_exception action=reply_error packetName=ScenarioProfileRequest"
+      ]
+    }
+  },
+  "artifacts": {
+    "logs": "logs",
+    "report": "report.json",
+    "evidence": "server:/evidence"
+  }
+}

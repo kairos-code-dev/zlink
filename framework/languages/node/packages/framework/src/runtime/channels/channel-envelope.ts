@@ -1,6 +1,10 @@
 import { Message, type MessageLike } from '@zlink-systems/zlink';
 import { randomUUID } from 'node:crypto';
-import type { ZLinkMessageSerializer } from '../../contracts';
+import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException,
+  type ZLinkMessageSerializer
+} from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
 import { selectDefaultSerializer } from '../messaging/payload-codec';
@@ -156,17 +160,26 @@ export function decodeChannelPayload(
   envelope: ZLinkChannelEnvelope,
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): unknown {
-  const serializer = codecs?.serializers.get(envelope.header.contentType);
-  if (serializer !== undefined) {
-    return serializer.deserialize(Message.from(envelope.payload), Object as never);
-  }
-  if (envelope.header.contentType === BINARY_CONTENT_TYPE) {
+  try {
+    const serializer = codecs?.serializers.get(envelope.header.contentType);
+    if (serializer !== undefined) {
+      return serializer.deserialize(Message.from(envelope.payload), Object as never);
+    }
+    if (envelope.header.contentType === BINARY_CONTENT_TYPE) {
+      return Buffer.from(envelope.payload);
+    }
+    if (envelope.header.contentType === JSON_CONTENT_TYPE) {
+      return parseWireJson(envelope.payload.toString());
+    }
     return Buffer.from(envelope.payload);
+  } catch (error) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+      `PayloadDecodeFailed: failed to decode channel payload for '${envelope.header.channelName}:${envelope.header.messageName}'.`,
+      false,
+      error
+    );
   }
-  if (envelope.header.contentType === JSON_CONTENT_TYPE) {
-    return parseWireJson(envelope.payload.toString());
-  }
-  return Buffer.from(envelope.payload);
 }
 
 export function closeMessages(parts: readonly MessageLike[]): void {

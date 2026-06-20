@@ -48,6 +48,7 @@ struct channel_capability_snapshot_t
 {
     bool enabled = false;
     bool discovery = false;
+    std::optional<zlink::routing_id_t> routing_id;
     std::vector<std::string> bind_endpoints;
     std::vector<std::string> connect_endpoints;
 };
@@ -111,6 +112,7 @@ class capability_builder_t
     capability_builder_t &bind (std::string endpoint);
     capability_builder_t &connect (std::string endpoint);
     capability_builder_t &use_discovery ();
+    capability_builder_t &set_routing_id (zlink::routing_id_t routing_id);
 
     channel_capability_snapshot_t snapshot () const;
 
@@ -271,12 +273,13 @@ class message_bus_t
         auto state = _state;
         return send_call_t (
           detail::message_name<TMessage> (),
-          [state, channel_name = std::move (channel_name), message = std::move (message)] (
+            [state, channel_name = std::move (channel_name), message = std::move (message)] (
             const std::string &packet_name, std::chrono::milliseconds timeout,
             const send_call_t::metadata_map_t &metadata) {
-              (void) message;
               return task_t<void> (
-                message_bus_t (state).submit_send (channel_name, packet_name, timeout, metadata));
+                message_bus_t (state).submit_send (channel_name, packet_name,
+                                                   std::type_index (typeid (TMessage)),
+                                                   &message, timeout, metadata));
           });
     }
 
@@ -288,9 +291,9 @@ class message_bus_t
                              topic = std::move (topic), event = std::move (event)] (
                               const std::string &packet_name, std::chrono::milliseconds timeout,
                               const send_call_t::metadata_map_t &metadata) {
-                                (void) event;
                                 return task_t<void> (message_bus_t (state).submit_publish (
-                                  channel_name, topic, packet_name, timeout, metadata));
+                                  channel_name, topic, packet_name,
+                                  std::type_index (typeid (TEvent)), &event, timeout, metadata));
                             });
     }
 
@@ -359,11 +362,15 @@ class message_bus_t
     serializer_registry_t *serializers () const noexcept;
     result_t<void> submit_send (std::string channel_name,
                                 std::string packet_name,
+                                std::type_index message_type,
+                                const void *message,
                                 std::chrono::milliseconds timeout,
                                 const send_call_t::metadata_map_t &metadata);
     result_t<void> submit_publish (std::string channel_name,
                                    std::string topic,
                                    std::string packet_name,
+                                   std::type_index event_type,
+                                   const void *event,
                                    std::chrono::milliseconds timeout,
                                    const send_call_t::metadata_map_t &metadata);
 
@@ -604,6 +611,18 @@ class channel_client_t
     channel_request_call_t request (std::string channel_name, TRequest request)
     {
         return request_to_channel (std::move (channel_name), std::move (request));
+    }
+
+    template <typename TMessage>
+    send_call_t send_to_channel (std::string channel_name, TMessage message)
+    {
+        return _bus.send (std::move (channel_name), std::move (message));
+    }
+
+    template <typename TMessage>
+    send_call_t send (std::string channel_name, TMessage message)
+    {
+        return send_to_channel (std::move (channel_name), std::move (message));
     }
 
   private:

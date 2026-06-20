@@ -29,6 +29,7 @@ public static class PlayServerHostFactory
         builder.Services.AddZLinkFramework(options =>
         {
             options.SetDefaultTimeout(SampleTimings.RequestTimeout);
+            options.ConfigureDispatch().SetMessageDispatchErrorObserver<BingoDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);

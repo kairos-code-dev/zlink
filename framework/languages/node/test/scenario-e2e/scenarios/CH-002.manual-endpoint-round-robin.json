@@ -1,0 +1,51 @@
+{
+  "id": "CH-002",
+  "name": "manual endpoint round-robin across three server processes",
+  "roles": {
+    "registry": { "count": 0 },
+    "server": [
+      { "name": "api-a", "channel": "scenario-api" },
+      { "name": "api-b", "channel": "scenario-api" },
+      { "name": "api-c", "channel": "scenario-api" }
+    ],
+    "client": [{ "name": "client-a" }]
+  },
+  "steps": [
+    { "waitReady": { "targets": ["server:api-a", "server:api-b", "server:api-c"] } },
+    {
+      "roundRobinRequest": {
+        "client": "client-a",
+        "channel": "scenario-api",
+        "packetName": "ScenarioProfileRequest",
+        "warmupCount": 3,
+        "requestCount": 90,
+        "requestIdPrefix": "ch-002",
+        "valuePrefix": "profile"
+      }
+    },
+    {
+      "assertDistribution": {
+        "expectedCounts": {
+          "api-a": 30,
+          "api-b": 30,
+          "api-c": 30
+        }
+      }
+    }
+  ],
+  "expect": {
+    "reply": { "requestIdPrefix": "ch-002", "valuePrefix": "profile:" },
+    "serverEvidence": {
+      "requestCounts": {
+        "api-a": 30,
+        "api-b": 30,
+        "api-c": 30
+      }
+    }
+  },
+  "artifacts": {
+    "logs": "logs",
+    "evidence": "servers:/evidence",
+    "report": "report.json"
+  }
+}

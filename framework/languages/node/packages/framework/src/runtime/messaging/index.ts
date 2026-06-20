@@ -39,8 +39,8 @@ export class ZLinkAsyncSubmitter {
     return this.enqueue(pending);
   }
 
-  submitRequest<TReply>(submit: ZLinkRequestSubmit<TReply>, signal?: AbortSignal): Promise<TReply> {
-    const pending = this.createPending<TReply>(submit, false, signal);
+  submitRequest<TReply>(submit: ZLinkRequestSubmit<TReply>, signal?: AbortSignal, timeoutMs?: number): Promise<TReply> {
+    const pending = this.createPending<TReply>(submit, false, signal, timeoutMs);
     if (pending.trySubmit()) {
       return pending.promise;
     }
@@ -64,7 +64,8 @@ export class ZLinkAsyncSubmitter {
   private createPending<TReply>(
     submit: ZLinkRequestSubmit<TReply>,
     completeOnAccepted: boolean,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    timeoutMs?: number
   ): ZLinkPendingSubmit<TReply> {
     if (this.disposed) {
       throw new ZLinkConfigurationException('ZLink async submitter is disposed.');
@@ -74,7 +75,7 @@ export class ZLinkAsyncSubmitter {
       submit,
       completeOnAccepted,
       {
-        timeoutMs: this.timeoutMs,
+        timeoutMs: timeoutMs ?? this.timeoutMs,
         signal
       }
     );

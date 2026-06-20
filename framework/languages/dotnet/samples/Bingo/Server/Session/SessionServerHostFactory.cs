@@ -27,6 +27,7 @@ public static class SessionServerHostFactory
         builder.Services.AddZLinkFramework(options =>
         {
             options.SetDefaultTimeout(SampleTimings.RequestTimeout);
+            options.ConfigureDispatch().SetMessageDispatchErrorObserver<BingoDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);

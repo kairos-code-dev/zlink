@@ -6,6 +6,7 @@
 #include <zlink/Contracts/Service/operation_contracts.hpp>
 #include <zlink/Contracts/Sockets/routed_socket_contracts.hpp>
 
+#include <cerrno>
 #include <utility>
 #include <vector>
 
@@ -39,6 +40,39 @@ result_t<void> submit_failure (const char *message)
     return result_t<void>::failure (framework_error_kind_t::request_failed, message);
 }
 
+bool is_route_unreachable_errno (int value)
+{
+    return value == EHOSTUNREACH || value == ENETUNREACH || value == ECONNREFUSED
+           || value == ENOTCONN;
+}
+
+framework_exception_t map_native_route_exception (const std::exception &error)
+{
+    if (const auto *request_error = dynamic_cast<const zlink::request_error_t *> (&error);
+        request_error != nullptr) {
+        if (request_error->result () == zlink::request_result_t::timed_out) {
+            return framework_exception_t (framework_error_kind_t::timeout,
+                                          "route request timed out");
+        }
+        if (request_error->result () == zlink::request_result_t::not_connected
+            || is_route_unreachable_errno (request_error->internal_errno ())) {
+            return framework_exception_t (framework_error_kind_t::route_not_connected,
+                                          request_error->what ());
+        }
+        return framework_exception_t (framework_error_kind_t::request_failed,
+                                      request_error->what ());
+    }
+    if (const auto *submit_error = dynamic_cast<const zlink::submit_error_t *> (&error);
+        submit_error != nullptr) {
+        if (submit_error->result () == zlink::submit_result_t::not_connected
+            || is_route_unreachable_errno (submit_error->internal_errno ())) {
+            return framework_exception_t (framework_error_kind_t::route_not_connected,
+                                          submit_error->what ());
+        }
+    }
+    return framework_exception_t (framework_error_kind_t::request_failed, error.what ());
+}
+
 } // namespace
 
 native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router) : _router (&router)
@@ -67,7 +101,8 @@ native_route_backend_t::submit_send (const zlink::routing_id_t &target_node_rid,
         return result_t<void>::success ();
     }
     catch (const std::exception &ex) {
-        return result_t<void>::failure (framework_error_kind_t::request_failed, ex.what ());
+        const auto error = map_native_route_exception (ex);
+        return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
     }
 }
 
@@ -95,8 +130,9 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
           runtime::messaging::message_parts_t (std::move (reply)));
     }
     catch (const std::exception &ex) {
+        const auto error = map_native_route_exception (ex);
         return result_t<runtime::messaging::message_parts_t>::failure (
-          framework_error_kind_t::request_failed, ex.what ());
+          error.kind (), error.what (), error.is_retriable ());
     }
 }
 

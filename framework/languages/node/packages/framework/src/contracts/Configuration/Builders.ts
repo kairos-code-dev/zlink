@@ -36,6 +36,7 @@ export interface ZLinkMetadataPolicyBuilder {
 
 export interface ZLinkClientServerChannelBuilder {
   enableServer(endpoint: string): this;
+  routingId(routingId: string): this;
   enableClient(): this;
   enableClient(endpoint: string): this;
 }

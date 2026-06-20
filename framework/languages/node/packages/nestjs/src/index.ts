@@ -146,7 +146,10 @@ type Mutable<T> = {
 };
 
 interface ZLinkNestClientServerChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
-  readonly server?: { readonly bind?: string };
+  readonly server?: {
+    readonly bind?: string;
+    readonly routingId?: string;
+  };
   readonly client?: ZLinkClientCapabilityOptions;
   readonly requestHandlers?: readonly ZLinkChannelRequestHandlerRegistration[];
   readonly requestHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
@@ -296,6 +299,7 @@ export interface ZLinkNestCodecRegistryBuilder extends ZLinkNestFrameworkOptions
 
 export interface ZLinkNestClientServerChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
   enableServer(bind: string | undefined): this;
+  routingId(routingId: string | undefined): this;
   enableClient(endpoint?: string | readonly string[]): this;
   addRequestHandler(packetName: string, handlerType: Type): this;
   addSendHandler(packetName: string, handlerType: Type): this;
@@ -762,6 +766,14 @@ class DefaultZLinkNestClientServerChannelBuilder extends ZLinkNestChildBuilder i
 
   enableServer(bind: string | undefined): this {
     this.channelOptions.server = { bind };
+    return this;
+  }
+
+  routingId(routingId: string | undefined): this {
+    this.channelOptions.server = {
+      ...this.channelOptions.server,
+      routingId
+    };
     return this;
   }
 

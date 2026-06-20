@@ -9,8 +9,12 @@
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
+#include "runtime/messaging/request_failure_mapper.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
+#include <cerrno>
+#include <mutex>
+#include <optional>
 #include <thread>
 #include <utility>
 
@@ -76,6 +80,119 @@ bool has_connection (const channel_capability_snapshot_t *capability)
                || !capability->connect_endpoints.empty ());
 }
 
+framework_exception_t map_native_request_exception (const std::exception &error)
+{
+    if (const auto *request_error = dynamic_cast<const zlink::request_error_t *> (&error);
+        request_error != nullptr) {
+        if (request_error->result () == zlink::request_result_t::timed_out) {
+            return framework_exception_t (framework_error_kind_t::timeout,
+                                          "channel request timed out");
+        }
+        return framework_exception_t (framework_error_kind_t::request_failed,
+                                      request_error->what ());
+    }
+    if (const auto *recv_error = dynamic_cast<const zlink::recv_error_t *> (&error);
+        recv_error != nullptr) {
+        if (recv_error->result () == zlink::recv_result_t::no_data
+            || recv_error->internal_errno () == EAGAIN) {
+            return framework_exception_t (framework_error_kind_t::timeout,
+                                          "channel request timed out");
+        }
+        return framework_exception_t (framework_error_kind_t::request_failed, recv_error->what ());
+    }
+    if (const auto *submit_error = dynamic_cast<const zlink::submit_error_t *> (&error);
+        submit_error != nullptr) {
+        if (submit_error->result () == zlink::submit_result_t::backpressured
+            && submit_error->internal_errno () == EAGAIN) {
+            return framework_exception_t (framework_error_kind_t::timeout,
+                                          "channel request timed out");
+        }
+        return framework_exception_t (framework_error_kind_t::request_failed,
+                                      submit_error->what ());
+    }
+    return framework_exception_t (framework_error_kind_t::request_failed, error.what ());
+}
+
+result_t<void> validate_channel_native_reply (
+  const runtime::messaging::message_parts_t &parts)
+{
+    if (parts.size () != 2) {
+        return result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "channel native request returned an invalid reply frame count");
+    }
+    runtime::messaging::envelope_codec_t envelope;
+    auto header = envelope.decode_header (parts);
+    if (!header) {
+        return result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          header.error () ? header.error ()->what () : "channel reply header decode failed");
+    }
+    if (header.value ().kind == runtime::messaging::message_kind_t::error) {
+        return result_t<void>::success ();
+    }
+    if (header.value ().kind != runtime::messaging::message_kind_t::response) {
+        return result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "channel native request returned an invalid reply message kind");
+    }
+    auto body = envelope.decode_body (parts);
+    if (!body) {
+        return result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          body.error () ? body.error ()->what () : "channel reply body decode failed");
+    }
+    return result_t<void>::success ();
+}
+
+class channel_native_publisher_t
+{
+  public:
+    explicit channel_native_publisher_t (const channel_capability_snapshot_t &publisher) :
+        _socket (_context)
+    {
+        for (const auto &endpoint : publisher.bind_endpoints) {
+            _socket.bind (endpoint);
+        }
+        for (const auto &endpoint : publisher.connect_endpoints) {
+            _socket.connect (endpoint);
+        }
+    }
+
+    result_t<void> publish (const std::string &topic,
+                            const runtime::messaging::message_parts_t &parts)
+    {
+        std::lock_guard lock (_mutex);
+        drain_subscription_events ();
+        zlink::message_t publish_header = zlink::message_t::from (parts[0].to_string ());
+        zlink::message_t publish_body = zlink::message_t::from (parts[1].to_string ());
+        const bool sent =
+          _socket.publish (topic).message (publish_header).message (publish_body).submit ();
+        if (!sent) {
+            return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                            "channel native publish failed");
+        }
+        return result_t<void>::success ();
+    }
+
+  private:
+    void drain_subscription_events ()
+    {
+        const auto deadline =
+          std::chrono::steady_clock::now () + std::chrono::milliseconds (200);
+        while (std::chrono::steady_clock::now () < deadline) {
+            zlink::subscription_event_t subscription;
+            (void) _socket.receive_subscription_event (subscription,
+                                                       zlink::recv_flags_t::dontwait);
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+        }
+    }
+
+    zlink::context_t _context;
+    zlink::xpub_socket_t _socket;
+    std::mutex _mutex;
+};
+
 class pending_operation_controller_t
 {
   public:
@@ -119,6 +236,14 @@ class pending_operation_controller_t
                                             "reply does not match a pending outbound request");
         }
         decrement_pending ();
+        return result_t<void>::success ();
+    }
+
+    result_t<void> cancel_request (std::uint64_t request_seq)
+    {
+        if (_state.pending_requests.remove (request_seq)) {
+            decrement_pending ();
+        }
         return result_t<void>::success ();
     }
 
@@ -268,6 +393,7 @@ result_t<void> channel_runtime_t::dispatch_send (std::string channel_name,
 
 result_t<std::uint64_t> channel_runtime_t::reserve_outbound_request (std::string channel_name)
 {
+    std::lock_guard lock (_state->mutex);
     const auto *client = client_capability (*_state, channel_name);
     if (!has_connection (client)) {
         return result_t<std::uint64_t>::failure (framework_error_kind_t::disconnected,
@@ -279,27 +405,38 @@ result_t<std::uint64_t> channel_runtime_t::reserve_outbound_request (std::string
 result_t<std::uint64_t> channel_runtime_t::queue_pending_send (std::string channel_name,
                                                                std::string idempotency_key)
 {
+    std::lock_guard lock (_state->mutex);
     return pending_operation_controller_t (*_state).queue_send (std::move (channel_name),
                                                                 std::move (idempotency_key));
 }
 
 result_t<void> channel_runtime_t::complete_outbound_reply (std::uint64_t request_seq)
 {
+    std::lock_guard lock (_state->mutex);
     return pending_operation_controller_t (*_state).complete_request (request_seq);
+}
+
+result_t<void> channel_runtime_t::cancel_outbound_request (std::uint64_t request_seq)
+{
+    std::lock_guard lock (_state->mutex);
+    return pending_operation_controller_t (*_state).cancel_request (request_seq);
 }
 
 result_t<void> channel_runtime_t::mark_send_ready (std::uint64_t operation_id)
 {
+    std::lock_guard lock (_state->mutex);
     return pending_operation_controller_t (*_state).mark_send_ready (operation_id);
 }
 
 result_t<void> channel_runtime_t::expire_pending (std::uint64_t operation_id)
 {
+    std::lock_guard lock (_state->mutex);
     return pending_operation_controller_t (*_state).expire (operation_id);
 }
 
 result_t<void> channel_runtime_t::retry_pending (std::uint64_t operation_id)
 {
+    std::lock_guard lock (_state->mutex);
     return pending_operation_controller_t (*_state).retry (operation_id);
 }
 
@@ -317,6 +454,7 @@ void channel_runtime_t::shutdown () noexcept
 
 std::size_t channel_runtime_t::pending_count () const noexcept
 {
+    std::lock_guard lock (_state->mutex);
     return _state->pending;
 }
 
@@ -328,6 +466,7 @@ std::size_t channel_runtime_t::pending_limit () const noexcept
 std::vector<channel_runtime_state_t::outbound_call_record_t>
 channel_runtime_t::outbound_calls () const
 {
+    std::lock_guard lock (_state->mutex);
     return _state->outbound_calls;
 }
 
@@ -343,6 +482,7 @@ dispatch_options_t channel_runtime_t::dispatch_options () const
 
 void channel_runtime_t::drain () noexcept
 {
+    std::lock_guard lock (_state->mutex);
     pending_operation_controller_t (*_state).drain ();
 }
 
@@ -413,6 +553,14 @@ capability_builder_t &capability_builder_t::use_discovery ()
     detail::ensure_discovery_allowed (snapshot);
     snapshot.enabled = true;
     snapshot.discovery = true;
+    return *this;
+}
+
+capability_builder_t &capability_builder_t::set_routing_id (zlink::routing_id_t routing_id)
+{
+    auto &snapshot = capability_snapshot (*_state);
+    snapshot.enabled = true;
+    snapshot.routing_id = std::move (routing_id);
     return *this;
 }
 
@@ -555,11 +703,13 @@ message_bus_t &message_bus_t::operator= (message_bus_t &&) noexcept = default;
 
 std::size_t message_bus_t::pending_count () const noexcept
 {
+    std::lock_guard lock (_state->mutex);
     return _state->pending;
 }
 
 std::size_t message_bus_t::pending_limit () const noexcept
 {
+    std::lock_guard lock (_state->mutex);
     return _state->max_pending;
 }
 
@@ -578,8 +728,12 @@ message_bus_t::submit_request (std::string channel_name,
 {
     detail::channel_runtime_t runtime (_state);
     const auto *client = detail::client_capability (*_state, channel_name);
-    _state->outbound_calls.push_back (
-      {"request", channel_name, "", std::move (packet_name), timeout, metadata});
+    const auto call_packet_name = std::move (packet_name);
+    {
+        std::lock_guard lock (_state->mutex);
+        _state->outbound_calls.push_back (
+          {"request", channel_name, "", call_packet_name, timeout, metadata});
+    }
     auto reservation = runtime.reserve_outbound_request (channel_name);
     if (!reservation) {
         return erased_request_result_t (framework_exception_t (
@@ -591,32 +745,127 @@ message_bus_t::submit_request (std::string channel_name,
             runtime::messaging::client_call_codec_t codec;
             auto header = codec.create_envelope (runtime::messaging::message_kind_t::request,
                                                  channel_name,
-                                                 _state->outbound_calls.back ().packet_name,
+                                                 call_packet_name,
                                                  timeout);
             header.metadata = metadata;
             runtime::messaging::envelope_codec_t envelope;
             auto parts =
               envelope.encode_parts (header, request_type, request, *_state->serializers);
 
-            zlink::context_t context;
-            zlink::dealer_socket_t dealer (context);
-            dealer.channel_name (channel_name);
-            for (const auto &endpoint : client->connect_endpoints) {
-                dealer.connect (endpoint);
+            detail::channel_runtime_manager_t manager (_state);
+            std::vector<std::string> endpoints;
+            {
+                std::lock_guard lock (_state->mutex);
+                auto &bundle = manager.get_or_create_client_bundle (channel_name);
+                endpoints = bundle.manual_connections_from_next ();
             }
-            std::this_thread::sleep_for (std::chrono::milliseconds (50));
+            if (endpoints.empty ()) {
+                (void) runtime.cancel_outbound_request (reservation.value ());
+                return erased_request_result_t (framework_exception_t (
+                  framework_error_kind_t::disconnected,
+                  "channel client has no manual endpoint"));
+            }
 
-            zlink::message_t request_header =
-              zlink::message_t::from (parts[0].to_string ());
-            zlink::message_t request_body =
-              zlink::message_t::from (parts[1].to_string ());
-            auto native_reply =
-              dealer.request ()
-                .message (request_header)
-                .message (request_body)
-                .timeout (timeout)
-                .async ()
-                .get ();
+            std::optional<framework_exception_t> last_attempt_error;
+            runtime::messaging::message_parts_t reply_parts;
+            bool received_reply = false;
+            const auto deadline = timeout > std::chrono::milliseconds::zero ()
+                                    ? std::chrono::steady_clock::now () + timeout
+                                    : std::chrono::steady_clock::time_point::max ();
+            auto remaining_timeout = [&] {
+                if (timeout <= std::chrono::milliseconds::zero ()) {
+                    return timeout;
+                }
+                const auto now = std::chrono::steady_clock::now ();
+                if (now >= deadline) {
+                    return std::chrono::milliseconds::zero ();
+                }
+                return std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
+            };
+            for (const auto &endpoint : endpoints) {
+                try {
+                    const auto connect_timeout = remaining_timeout ();
+                    if (timeout > std::chrono::milliseconds::zero ()
+                        && connect_timeout <= std::chrono::milliseconds::zero ()) {
+                        throw framework_exception_t (framework_error_kind_t::timeout,
+                                                     "channel request timed out");
+                    }
+                    zlink::message_t request_header =
+                      zlink::message_t::from (parts[0].to_string ());
+                    zlink::message_t request_body =
+                      zlink::message_t::from (parts[1].to_string ());
+                    zlink::context_t context;
+                    zlink::dealer_socket_t dealer (context);
+                    dealer.channel_name (channel_name);
+                    dealer.options ().immediate (true);
+                    dealer.options ().connect_timeout (connect_timeout);
+                    dealer.options ().request_timeout (connect_timeout);
+                    dealer.connect (endpoint);
+                    if (timeout > std::chrono::milliseconds::zero ()) {
+                        const auto wait_for_connect =
+                          std::min (std::chrono::milliseconds (200), remaining_timeout ());
+                        if (wait_for_connect > std::chrono::milliseconds::zero ()) {
+                            std::this_thread::sleep_for (wait_for_connect);
+                        }
+                    } else {
+                        std::this_thread::sleep_for (std::chrono::milliseconds (200));
+                    }
+                    const auto request_timeout = remaining_timeout ();
+                    if (timeout > std::chrono::milliseconds::zero ()
+                        && request_timeout <= std::chrono::milliseconds::zero ()) {
+                        throw framework_exception_t (framework_error_kind_t::timeout,
+                                                     "channel request timed out");
+                    }
+                    auto pending_reply =
+                      dealer.request ()
+                        .message (request_header)
+                        .message (request_body)
+                        .timeout (request_timeout)
+                        .async ();
+                    auto native_reply = pending_reply.get ();
+                    if (timeout > std::chrono::milliseconds::zero ()
+                        && std::chrono::steady_clock::now () >= deadline) {
+                        throw framework_exception_t (framework_error_kind_t::timeout,
+                                                     "channel request timed out");
+                    }
+                    if (native_reply.size () != 2) {
+                        throw framework_exception_t (
+                          framework_error_kind_t::request_protocol_error,
+                          "channel native request returned an invalid reply frame count");
+                    }
+                    auto candidate_reply_parts =
+                      runtime::messaging::message_parts_t (std::move (native_reply));
+                    auto validation =
+                      detail::validate_channel_native_reply (candidate_reply_parts);
+                    if (!validation) {
+                        throw framework_exception_t (
+                          validation.error_kind (),
+                          validation.error () ? validation.error ()->what ()
+                                               : "channel reply decode failed");
+                    }
+                    reply_parts = std::move (candidate_reply_parts);
+                    received_reply = true;
+                    break;
+                }
+                catch (const framework_exception_t &error) {
+                    last_attempt_error = error;
+                }
+                catch (const std::exception &error) {
+                    last_attempt_error = detail::map_native_request_exception (error);
+                }
+                catch (...) {
+                    last_attempt_error = framework_exception_t (
+                      framework_error_kind_t::request_failed, "channel native request failed");
+                }
+            }
+            if (!received_reply) {
+                (void) runtime.cancel_outbound_request (reservation.value ());
+                if (last_attempt_error) {
+                    return erased_request_result_t (*last_attempt_error);
+                }
+                return erased_request_result_t (framework_exception_t (
+                  framework_error_kind_t::request_failed, "channel native request failed"));
+            }
             auto completion = runtime.complete_outbound_reply (reservation.value ());
             if (!completion) {
                 return erased_request_result_t (framework_exception_t (
@@ -624,7 +873,6 @@ message_bus_t::submit_request (std::string channel_name,
                   completion.error () ? completion.error ()->what () : "channel request failed"));
             }
 
-            runtime::messaging::message_parts_t reply_parts (std::move (native_reply));
             auto reply_header = envelope.decode_header (reply_parts);
             if (!reply_header) {
                 return erased_request_result_t (framework_exception_t (
@@ -633,9 +881,12 @@ message_bus_t::submit_request (std::string channel_name,
                                         : "channel reply header decode failed"));
             }
             if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
-                return erased_request_result_t (framework_exception_t (
-                  framework_error_kind_t::request_failed,
-                  reply_header.value ().error_message.value_or ("channel request failed")));
+                runtime::messaging::request_failure_mapper_t failure_mapper;
+                return erased_request_result_t (
+                  failure_mapper.error_header_exception (
+                    reply_header.value ().error_code.value_or ("request_failed"),
+                    reply_header.value ().error_message.value_or ("channel request failed"),
+                    "channel request"));
             }
             auto body = envelope.decode_body (reply_parts);
             if (!body) {
@@ -646,21 +897,20 @@ message_bus_t::submit_request (std::string channel_name,
             return erased_request_result_t (body.value (), *_state->serializers);
         }
         catch (const framework_exception_t &error) {
-            runtime.drain ();
+            (void) runtime.cancel_outbound_request (reservation.value ());
             return erased_request_result_t (error);
         }
         catch (const std::exception &error) {
-            runtime.drain ();
-            return erased_request_result_t (
-              framework_exception_t (framework_error_kind_t::request_failed, error.what ()));
+            (void) runtime.cancel_outbound_request (reservation.value ());
+            return erased_request_result_t (detail::map_native_request_exception (error));
         }
         catch (...) {
-            runtime.drain ();
+            (void) runtime.cancel_outbound_request (reservation.value ());
             return erased_request_result_t (framework_exception_t (
               framework_error_kind_t::request_failed, "channel native request failed"));
         }
     }
-    runtime.drain ();
+    (void) runtime.cancel_outbound_request (reservation.value ());
     return erased_request_result_t (
       framework_exception_t (framework_error_kind_t::timeout,
                              "request reply was not completed by the local test runtime"));
@@ -668,15 +918,76 @@ message_bus_t::submit_request (std::string channel_name,
 
 result_t<void> message_bus_t::submit_send (std::string channel_name,
                                            std::string packet_name,
+                                           std::type_index message_type,
+                                           const void *message,
                                            std::chrono::milliseconds timeout,
                                            const send_call_t::metadata_map_t &metadata)
 {
-    _state->outbound_calls.push_back (
-      {"send", channel_name, "", std::move (packet_name), timeout, metadata});
+    const auto call_packet_name = std::move (packet_name);
+    {
+        std::lock_guard lock (_state->mutex);
+        _state->outbound_calls.push_back (
+          {"send", channel_name, "", call_packet_name, timeout, metadata});
+    }
     const auto *client = detail::client_capability (*_state, channel_name);
     if (!detail::has_connection (client)) {
         return result_t<void>::failure (framework_error_kind_t::disconnected,
                                         "channel client is not connected");
+    }
+    if (_state->serializers != nullptr && client != nullptr && !client->connect_endpoints.empty ()) {
+        try {
+            runtime::messaging::client_call_codec_t codec;
+            auto header = codec.create_envelope (runtime::messaging::message_kind_t::command,
+                                                 channel_name,
+                                                 call_packet_name,
+                                                 timeout);
+            header.metadata = metadata;
+            runtime::messaging::envelope_codec_t envelope;
+            auto parts = envelope.encode_parts (header, message_type, message, *_state->serializers);
+
+            zlink::context_t context;
+            zlink::dealer_socket_t dealer (context);
+            dealer.channel_name (channel_name);
+            dealer.options ().immediate (true);
+            dealer.options ().connect_timeout (timeout);
+            detail::channel_runtime_manager_t manager (_state);
+            std::vector<std::string> endpoints;
+            {
+                std::lock_guard lock (_state->mutex);
+                auto &bundle = manager.get_or_create_client_bundle (channel_name);
+                endpoints = bundle.manual_connections_from_next ();
+            }
+            if (endpoints.empty ()) {
+                return result_t<void>::failure (framework_error_kind_t::disconnected,
+                                                "channel client has no manual endpoint");
+            }
+            for (const auto &endpoint : endpoints) {
+                dealer.connect (endpoint);
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (200));
+
+            zlink::message_t send_header = zlink::message_t::from (parts[0].to_string ());
+            zlink::message_t send_body = zlink::message_t::from (parts[1].to_string ());
+            const bool sent = dealer.send ()
+                                .message (send_header)
+                                .message (send_body)
+                                .submit ();
+            if (!sent) {
+                return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                                "channel native send failed");
+            }
+        }
+        catch (const framework_exception_t &error) {
+            return result_t<void>::failure (error.kind (), error.what ());
+        }
+        catch (const std::exception &error) {
+            return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                            error.what ());
+        }
+        catch (...) {
+            return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                            "channel native send failed");
+        }
     }
     return result_t<void>::success ();
 }
@@ -684,15 +995,58 @@ result_t<void> message_bus_t::submit_send (std::string channel_name,
 result_t<void> message_bus_t::submit_publish (std::string channel_name,
                                               std::string topic,
                                               std::string packet_name,
+                                              std::type_index event_type,
+                                              const void *event,
                                               std::chrono::milliseconds timeout,
                                               const send_call_t::metadata_map_t &metadata)
 {
-    _state->outbound_calls.push_back (
-      {"publish", channel_name, topic, std::move (packet_name), timeout, metadata});
+    const auto call_packet_name = std::move (packet_name);
+    {
+        std::lock_guard lock (_state->mutex);
+        _state->outbound_calls.push_back (
+          {"publish", channel_name, topic, call_packet_name, timeout, metadata});
+    }
     const auto *publisher = detail::publisher_capability (*_state, channel_name);
     if (!detail::has_connection (publisher)) {
         return result_t<void>::failure (framework_error_kind_t::disconnected,
                                         "channel publisher is not connected");
+    }
+    if (_state->serializers != nullptr && publisher != nullptr
+        && (!publisher->bind_endpoints.empty () || !publisher->connect_endpoints.empty ())) {
+        try {
+            runtime::messaging::client_call_codec_t codec;
+            auto header = codec.create_envelope (runtime::messaging::message_kind_t::publish,
+                                                 channel_name,
+                                                 call_packet_name,
+                                                 timeout, topic);
+            header.metadata = metadata;
+            runtime::messaging::envelope_codec_t envelope;
+            auto parts = envelope.encode_parts (header, event_type, event, *_state->serializers);
+            std::shared_ptr<detail::channel_native_publisher_t> native_publisher;
+            {
+                std::lock_guard lock (_state->mutex);
+                auto &stored = _state->native_publishers[channel_name];
+                if (!stored) {
+                    stored = std::make_shared<detail::channel_native_publisher_t> (*publisher);
+                }
+                native_publisher = stored;
+            }
+            auto published = native_publisher->publish (topic, parts);
+            if (!published) {
+                return published;
+            }
+        }
+        catch (const framework_exception_t &error) {
+            return result_t<void>::failure (error.kind (), error.what ());
+        }
+        catch (const std::exception &error) {
+            return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                            error.what ());
+        }
+        catch (...) {
+            return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                            "channel native publish failed");
+        }
     }
     return result_t<void>::success ();
 }

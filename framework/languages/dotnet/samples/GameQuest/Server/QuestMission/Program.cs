@@ -25,6 +25,7 @@ internal static class Program
         builder.Services.AddZLinkFramework(options =>
         {
             options.DefaultTimeout = SampleNames.RequestTimeout;
+            options.ConfigureDispatch().SetMessageDispatchErrorObserver<GameQuestDispatchErrorObserver>();
             options.Codecs.AddJson();
             options.AddHandlersFromAssemblyOf(typeof(Program));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);

@@ -1,0 +1,22 @@
+{
+  "scenarioId": "DERR-007",
+  "language": "node",
+  "runtimeVersion": "v22.22.0",
+  "transportBackend": "tcp",
+  "codec": "json",
+  "result": "passed",
+  "scenarioFile": "framework/languages/node/test/scenario-e2e/scenarios/DERR-007.handler-exception.json",
+  "processCount": 2,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "logPath": "/home/hep7/project/kairos/zlink/framework/languages/node/test/scenario-e2e/.scenario-e2e/logs",
+  "evidencePath": "http://127.0.0.1:3719/evidence",
+  "executedScriptPath": "/home/hep7/project/kairos/zlink/framework/languages/node/test/scenario-e2e/run_scenario_e2e.sh",
+  "processIds": {
+    "client:client-a": 3568,
+    "server:api-a": 3546
+  },
+  "failureLayer": null,
+  "completedAt": "2026-06-20T23:03:59.717Z"
+}

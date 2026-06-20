@@ -133,7 +133,10 @@ export interface ZLinkChannelOptions {
   readonly publishHandlers?: readonly ZLinkChannelPublishHandlerRegistration[];
   readonly requestHandlers?: readonly ZLinkChannelRequestHandlerRegistration[];
   readonly sendHandlers?: readonly ZLinkChannelSendHandlerRegistration[];
-  readonly server?: { readonly bind?: string };
+  readonly server?: {
+    readonly bind?: string;
+    readonly routingId?: string;
+  };
   readonly subscriber?: ZLinkClientCapabilityOptions;
 }
 
@@ -500,6 +503,12 @@ class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuild
   enableServer(endpoint: string): this {
     this.channel.server ??= {};
     this.channel.server.bind = endpoint;
+    return this;
+  }
+
+  routingId(routingId: string): this {
+    this.channel.server ??= {};
+    this.channel.server.routingId = routingId;
     return this;
   }
 
@@ -871,7 +880,10 @@ interface MutableChannelOptions {
   publishHandlers?: ZLinkChannelPublishHandlerRegistration[];
   requestHandlers?: ZLinkChannelRequestHandlerRegistration[];
   sendHandlers?: ZLinkChannelSendHandlerRegistration[];
-  server?: { bind?: string };
+  server?: {
+    bind?: string;
+    routingId?: string;
+  };
   subscriber?: MutableClientCapabilityOptions;
 }
 
@@ -1136,6 +1148,9 @@ function validateChannelCapabilities(
   for (const [channelName, channel] of Object.entries(channels ?? {})) {
     if (channel.server !== undefined) {
       requireEndpoint(`channel '${channelName}' server`, channel.server.bind);
+      if (channel.server.routingId !== undefined) {
+        requireName(`channel '${channelName}' server routingId`, channel.server.routingId);
+      }
     }
     if (channel.publisher !== undefined) {
       requireEndpoint(`channel '${channelName}' publisher`, channel.publisher.bind);

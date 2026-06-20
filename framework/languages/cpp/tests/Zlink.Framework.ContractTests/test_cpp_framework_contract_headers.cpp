@@ -297,6 +297,20 @@ struct named_publish_handler_t
     void handle (const named_request_t &) {}
 };
 
+struct named_route_handler_t
+{
+    named_reply_t handle_request (const named_request_t &,
+                                  const zlink::framework::route_handler_context_t &)
+    {
+        return {};
+    }
+
+    void handle_send (const named_request_t &,
+                      const zlink::framework::route_handler_context_t &)
+    {
+    }
+};
+
 class named_session_t final : public zlink::framework::packet_stream_session_t
 {
   public:
@@ -473,6 +487,16 @@ static_assert (
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::client_server_channel_builder_t &> ()
+                             .server_routing_id (zlink::routing_id_t::from ("api"))),
+                 zlink::framework::client_server_channel_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::capability_builder_t &> ()
+                             .set_routing_id (zlink::routing_id_t::from ("api"))),
+                 zlink::framework::capability_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::client_server_channel_builder_t &> ()
                              .enable_spot_route_egress ("play.route")),
                  zlink::framework::client_server_channel_builder_t &>);
 
@@ -529,6 +553,20 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::route_mesh_channel_builder_t &> ()
                              .enable_client ("tcp://127.0.0.1:5301")),
                  zlink::framework::route_mesh_channel_builder_t &>);
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::route_mesh_channel_builder_t &> ()
+                .add_request_handler<named_route_handler_t, named_request_t, named_reply_t> (
+                  "request", &named_route_handler_t::handle_request)),
+    zlink::framework::route_mesh_channel_builder_t &>);
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::route_mesh_channel_builder_t &> ()
+                .add_send_handler<named_route_handler_t, named_request_t> (
+                  "send", &named_route_handler_t::handle_send)),
+    zlink::framework::route_mesh_channel_builder_t &>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()

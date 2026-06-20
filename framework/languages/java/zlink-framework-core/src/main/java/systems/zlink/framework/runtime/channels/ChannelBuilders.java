@@ -1,5 +1,6 @@
 package systems.zlink.framework.runtime.channels;
 
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.DealerMeshChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
@@ -31,6 +32,12 @@ public final class ChannelBuilders {
         public ClientServerChannelBuilder enableServer(String endpoint) {
             registration.enableServer();
             registration.addServerBind(endpoint);
+            return this;
+        }
+
+        @Override
+        public ClientServerChannelBuilder serverRoutingId(RoutingId routingId) {
+            registration.setServerRoutingId(routingId);
             return this;
         }
 

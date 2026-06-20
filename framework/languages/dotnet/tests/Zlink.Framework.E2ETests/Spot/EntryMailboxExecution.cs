@@ -227,12 +227,12 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
             actorRuntime,
             activation,
             [
-                CreateEntryActorHeaderPart(actorA, "entry-block"),
-                CreateEntryActorBodyPart(actorA, "block-a"),
-                CreateEntryActorHeaderPart(actorB, "entry-record"),
-                CreateEntryActorBodyPart(actorB, "record-b"),
-                CreateEntryActorHeaderPart(actorA, "entry-record"),
-                CreateEntryActorBodyPart(actorA, "after-a"),
+                CreateEntryActorHeaderPart(actorRuntime, actorA, "entry-block"),
+                CreateEntryActorBodyPart(actorRuntime, actorA, "block-a"),
+                CreateEntryActorHeaderPart(actorRuntime, actorB, "entry-record"),
+                CreateEntryActorBodyPart(actorRuntime, actorB, "record-b"),
+                CreateEntryActorHeaderPart(actorRuntime, actorA, "entry-record"),
+                CreateEntryActorBodyPart(actorRuntime, actorA, "after-a"),
             ],
             CancellationToken.None);
 

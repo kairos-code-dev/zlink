@@ -64,4 +64,6 @@ include(
     "zlink-framework-kotlin",
     "zlink-http-client-kotlin",
     "zlink-framework-testkit",
+    "zlink-framework-scenario-e2e",
+    "zlink-framework-kotlin-scenario-e2e",
 )

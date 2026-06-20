@@ -30,6 +30,7 @@ internal static class Program
         builder.Services.AddZLinkFramework(options =>
         {
             options.DefaultTimeout = SampleNames.RequestTimeout;
+            options.ConfigureDispatch().SetMessageDispatchErrorObserver<GameQuestDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(Program));
             {
                 var channel = options.AddFanoutChannel(SampleNames.FanoutChannel);

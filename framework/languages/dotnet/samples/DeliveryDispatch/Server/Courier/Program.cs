@@ -19,6 +19,7 @@ builder.Services.AddSingleton(new CourierOptions(courierId, mode));
 builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = SampleTimings.FrameworkTimeout;
+    options.ConfigureDispatch().SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>();
     options.AddHandlersFromAssemblyOf(typeof(OfferDeliveryHandler));
     options.Codecs.AddJson();
     {

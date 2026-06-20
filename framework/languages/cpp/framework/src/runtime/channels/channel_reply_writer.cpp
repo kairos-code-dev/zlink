@@ -25,6 +25,8 @@ std::string error_code_name (framework_error_kind_t kind)
             return "request_rejected";
         case framework_error_kind_t::request_protocol_error:
             return "request_protocol_error";
+        case framework_error_kind_t::payload_decode_failed:
+            return "payload_decode_failed";
         case framework_error_kind_t::timeout:
             return "timeout";
         case framework_error_kind_t::worker_queue_full:

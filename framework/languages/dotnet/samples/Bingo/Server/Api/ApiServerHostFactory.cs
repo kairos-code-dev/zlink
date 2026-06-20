@@ -16,6 +16,7 @@ public static class ApiServerHostFactory
         builder.Services.AddZLinkFramework(options =>
         {
             options.SetDefaultTimeout(SampleTimings.RequestTimeout);
+            options.ConfigureDispatch().SetMessageDispatchErrorObserver<BingoDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.AddClientServerChannel(SampleNames.ApiChannel)

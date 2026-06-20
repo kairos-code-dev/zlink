@@ -33,6 +33,7 @@ internal static class Program
         builder.Services.AddZLinkFramework(options =>
         {
             options.DefaultTimeout = SampleTimings.WorkflowTimeout;
+            options.ConfigureDispatch().SetMessageDispatchErrorObserver<ShoppingMallDispatchErrorObserver>();
             options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {

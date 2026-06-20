@@ -71,9 +71,11 @@ public abstract partial class SpotTestSupport
     }
 
     private protected static ZLinkBackendActorPart CreateEntryActorHeaderPart(
+        ZLinkFrameworkRuntime runtime,
         IZLinkActor actor,
         string packetName)
     {
+        var actorRef = ResolveNativeActorRef(runtime, actor);
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Send,
             ZlinkStreamCodec.Raw,
@@ -83,7 +85,7 @@ public abstract partial class SpotTestSupport
             ZlinkStreamMetadata.Empty);
 
         return new ZLinkBackendActorPart(
-            new ZLinkBackendActorRef(RoutingId.From("01"), actor.ActorId, 0),
+            actorRef,
             RoutingId.From("02"),
             RoutingId.From("03"),
             Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
@@ -91,14 +93,23 @@ public abstract partial class SpotTestSupport
     }
 
     private protected static ZLinkBackendActorPart CreateEntryActorBodyPart(
+        ZLinkFrameworkRuntime runtime,
         IZLinkActor actor,
         string value)
     {
         return new ZLinkBackendActorPart(
-            new ZLinkBackendActorRef(RoutingId.From("01"), actor.ActorId, 0),
+            ResolveNativeActorRef(runtime, actor),
             RoutingId.From("02"),
             RoutingId.From("03"),
             Message.From(value),
             More: false);
+    }
+
+    private static ZLinkBackendActorRef ResolveNativeActorRef(
+        ZLinkFrameworkRuntime runtime,
+        IZLinkActor actor)
+    {
+        return runtime.GetOrCreateActorState(actor.ActorId).NativeActorRef
+            ?? throw new InvalidOperationException($"Actor '{actor.ActorId}' does not have a native Actor ref.");
     }
 }

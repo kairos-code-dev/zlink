@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <deque>
+#include <iostream>
 #include <mutex>
 #include <utility>
 
@@ -21,6 +22,7 @@ class channel_host_service_t::server_loop_t
     server_loop_t (message_bus_t bus,
                    std::string channel_name,
                    std::vector<std::string> endpoints,
+                   std::optional<zlink::routing_id_t> routing_id,
                    service_provider_t &services,
                    serializer_registry_t &serializers,
                    const handler_registry_t &handlers,
@@ -35,6 +37,9 @@ class channel_host_service_t::server_loop_t
         _context (std::make_unique<zlink::context_t> ()),
         _router (std::make_unique<zlink::router_socket_t> (*_context))
     {
+        if (routing_id) {
+            _router->set_routing_id (*routing_id);
+        }
         for (const auto &endpoint : _endpoints) {
             _router->bind (endpoint);
         }
@@ -136,12 +141,30 @@ class channel_host_service_t::server_loop_t
             }
             if (completed.parts.size () == 1) {
                 zlink::message_t part = clone (completed.parts[0]);
-                completed.received.reply ().message (part).submit ();
+                try {
+                    completed.received.reply ().message (part).submit ();
+                }
+                catch (const std::exception &error) {
+                    std::cerr << "zlink framework channel late reply ignored: " << error.what ()
+                              << '\n';
+                }
+                catch (...) {
+                    std::cerr << "zlink framework channel late reply ignored\n";
+                }
                 continue;
             }
             zlink::message_t header = clone (completed.parts[0]);
             zlink::message_t body = clone (completed.parts[1]);
-            completed.received.reply ().message (header).message (body).submit ();
+            try {
+                completed.received.reply ().message (header).message (body).submit ();
+            }
+            catch (const std::exception &error) {
+                std::cerr << "zlink framework channel late reply ignored: " << error.what ()
+                          << '\n';
+            }
+            catch (...) {
+                std::cerr << "zlink framework channel late reply ignored\n";
+            }
         }
     }
 
@@ -193,7 +216,8 @@ void channel_host_service_t::start (service_provider_t &services)
             continue;
         }
         auto loop = std::make_unique<server_loop_t> (_bus, channel.name,
-                                                     channel.server.bind_endpoints, services,
+                                                     channel.server.bind_endpoints,
+                                                     channel.server.routing_id, services,
                                                      *_serializers, *_handlers, _stop);
         auto *raw = loop.get ();
         _loops.push_back (std::move (loop));

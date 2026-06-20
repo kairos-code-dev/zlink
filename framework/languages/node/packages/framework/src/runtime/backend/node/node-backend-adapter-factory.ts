@@ -170,6 +170,16 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
           await closeWithBusyRetry(target);
         };
       }
+      if (property === 'topology') {
+        return (filter: unknown) =>
+          toFrameworkRoutingIdEntries((target as unknown as { topology(filter?: unknown): unknown })
+            .topology(toNativeTopologyFilter(filter)));
+      }
+      if (property === 'memberPeers') {
+        return (channelName: string) =>
+          toFrameworkRoutingIdEntries((target as unknown as { memberPeers(channelName: string): unknown })
+            .memberPeers(channelName));
+      }
       if (property === 'attachDiscovery') {
         return (discovery: ZLinkBackendDiscovery) =>
           (target as unknown as { attachDiscovery(discovery: unknown): void })
@@ -699,7 +709,10 @@ function closeSocketRoutes(target: unknown, peerRoutingIds: Set<unknown>): void 
 export function isDisconnectRouteNotFoundError(error: unknown): boolean {
   return isBindingNotFound(error) || (
     error instanceof Error && 'code' in error &&
-    (error as { code: unknown }).code === zlink.ConnectResult.NotFound
+    ((error as { code: unknown }).code === zlink.ConnectResult.NotFound ||
+      (error as { code: unknown }).code === zlink.ConnectResult.Busy ||
+      ((error as { code: unknown }).code === zlink.ConnectResult.InternalError &&
+        /current state/i.test(error.message)))
   );
 }
 
@@ -758,12 +771,12 @@ async function closeWithBusyRetry(target: { close(): void }): Promise<void> {
 
 function isBusyCloseError(error: unknown): boolean {
   return error instanceof Error && 'code' in error &&
-    ([401, 403, 404].includes((error as { code: number }).code));
+    ([401, 404].includes((error as { code: number }).code));
 }
 
 function isSuccessfulOrAlreadyShutdownCloseError(error: unknown): boolean {
   return error instanceof Error && 'code' in error &&
-    ([0, 402].includes((error as { code: number }).code));
+    ([0, 402, 403].includes((error as { code: number }).code));
 }
 
 function disableSocketLinger(target: unknown): void {
@@ -895,6 +908,32 @@ function toNativeRoutingId(routingId: unknown): unknown {
     return zlink.RoutingId.from(routingId);
   }
   return routingId;
+}
+
+function toNativeTopologyFilter(filter: unknown): unknown {
+  if (filter === undefined || filter === null || typeof filter !== 'object' || !('routingId' in filter)) {
+    return filter;
+  }
+  return {
+    ...(filter as Record<string, unknown>),
+    routingId: toNativeRoutingId((filter as { routingId?: unknown }).routingId)
+  };
+}
+
+function toFrameworkRoutingIdEntries(entries: unknown): unknown {
+  if (!Array.isArray(entries)) {
+    return entries;
+  }
+  return entries.map((entry) => {
+    if (entry === null || typeof entry !== 'object' || !('routingId' in entry)) {
+      return entry;
+    }
+    const routingId = (entry as { routingId?: unknown }).routingId;
+    return {
+      ...(entry as Record<string, unknown>),
+      routingId: routingId === undefined || routingId === null ? undefined : String(routingId)
+    };
+  });
 }
 
 function toNativeActorRef(actor: unknown): unknown {

@@ -10,12 +10,14 @@
 #include "runtime/channels/channel_runtime_bundle.hpp"
 #include "runtime/channels/route_channel_registration.hpp"
 #include "runtime/channels/route_channel_runtime.hpp"
+#include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/registry/registry_runtime.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <typeindex>
@@ -27,6 +29,10 @@ namespace zlink::framework::detail
 class spot_node_builder_state_t;
 class channel_runtime_state_t;
 class stream_runtime_state_t;
+class channel_native_publisher_t;
+
+result_t<void> validate_channel_native_reply (
+  const runtime::messaging::message_parts_t &parts);
 
 class capability_builder_state_t
 {
@@ -82,6 +88,7 @@ class channel_runtime_state_t
     };
 
     std::map<std::string, channel_snapshot_t> channels;
+    mutable std::mutex mutex;
     std::size_t max_pending = 1024;
     std::size_t pending = 0;
     channel_pending_requests_t pending_requests;
@@ -89,6 +96,7 @@ class channel_runtime_state_t
     std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> client_bundles;
     std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> publisher_bundles;
     std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> subscriber_bundles;
+    std::map<std::string, std::shared_ptr<channel_native_publisher_t>> native_publishers;
     std::map<std::string, std::shared_ptr<route_channel_runtime_t>> route_channels;
     std::map<std::string, route_handler_registry_t> route_handlers;
     std::map<std::uint64_t, channel_reliability_event_t> pending_operations;
@@ -139,6 +147,7 @@ class channel_runtime_t
     result_t<std::uint64_t> queue_pending_send (std::string channel_name,
                                                 std::string idempotency_key = {});
     result_t<void> complete_outbound_reply (std::uint64_t request_seq);
+    result_t<void> cancel_outbound_request (std::uint64_t request_seq);
     result_t<void> mark_send_ready (std::uint64_t operation_id);
     result_t<void> expire_pending (std::uint64_t operation_id);
     result_t<void> retry_pending (std::uint64_t operation_id);

@@ -162,6 +162,7 @@ test('zlinkFramework builder maps channel and route mesh options', () => {
   const options = builder
     .addClientServerChannel('api')
       .enableServer('tcp://127.0.0.1:7101')
+      .routingId('api-a')
       .addHandlerGroup('api')
     .addClientServerChannel('play')
       .enableClient('tcp://127.0.0.1:7102')
@@ -176,7 +177,7 @@ test('zlinkFramework builder maps channel and route mesh options', () => {
     .build();
 
   assert.deepEqual(options.clientServerChannels.api, {
-    server: { bind: 'tcp://127.0.0.1:7101' },
+    server: { bind: 'tcp://127.0.0.1:7101', routingId: 'api-a' },
     handlerGroups: ['api']
   });
   assert.deepEqual(options.clientServerChannels.play, {

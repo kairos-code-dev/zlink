@@ -101,6 +101,40 @@ test('registry spot remote address resolver resolves spot owner route through di
   ]);
 });
 
+test('registry spot remote address resolver accepts framework string RoutingId with node backend', async () => {
+  const pubEndpoint = await reserveTcpEndpoint();
+  const routerEndpoint = await reserveTcpEndpoint();
+  const registry = new framework.ZLinkRegistryRuntime({
+    registration: {
+      pubEndpoint,
+      routerEndpoint,
+      registryId: 31
+    }
+  });
+  const registration = framework.createFrameworkRegistration({
+    discovery: { registries: [routerEndpoint] },
+    routeChannels: ['play'],
+    registrySpotRemoteAddresses: { namespace: 'bingo' }
+  });
+  let resolver;
+
+  try {
+    await registry.start();
+    resolver = new framework.ZLinkRegistrySpotRemoteAddressResolver({ registration });
+    await assert.rejects(
+      () => resolver.resolve('bingo-room-a'),
+      (error) => {
+        assert.equal(error.name, 'ConfigError');
+        assert.match(error.message, /discovery_resolve_spot failed: Operation not supported/);
+        return true;
+      }
+    );
+  } finally {
+    await resolver?.dispose();
+    await registry.stop();
+  }
+});
+
 test('registry modules expose runtime query and remote query client providers', () => {
   const registryModule = nestjs.ZLinkRegistryModule.forRoot({
     pubEndpoint: 'tcp://0.0.0.0:5550',

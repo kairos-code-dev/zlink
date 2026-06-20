@@ -13,7 +13,7 @@ namespace Zlink.Framework.E2ETests;
 
 public sealed class HeaderStreamSessionTests : StreamTestSupport
 {
-    [Fact]
+    [Fact(DisplayName = "STR-001 partial header stream session dispatches request packets and tracks lifecycle")]
     public async Task HeaderStreamSession_Receives_Replies_And_Tracks_Lifecycle()
     {
         var endpoint = GetFreeTcpEndpoint();

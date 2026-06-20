@@ -6,6 +6,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotRouteDispatcher(
     string channelName,
+    string spotRid,
     ZLinkSpotPacketRegistry packets,
     Func<ZLinkSpotHandlerInvoker> handlerInvoker,
     ZLinkCodecRegistryBuilder codecs,
@@ -36,6 +37,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
 
             if (!packets.TryResolve(header, out var descriptor) || descriptor is null)
             {
+                var dispatchSpotRid = received.SpotRid?.ToString() ?? spotRid;
                 if (header.Kind == ZLinkMessageKind.Request)
                 {
                     ZLinkMessageFlowLogger.HandlerMissing(
@@ -46,7 +48,8 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         header.MessageName,
                         "reply-error",
                         "no-handler",
-                        channelName);
+                        channelName,
+                        spotRid: dispatchSpotRid);
                     ReplyError(
                         received,
                         header,
@@ -60,6 +63,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         ZLinkDispatchErrorAction.ReplyError,
                         header.MessageName,
                         ChannelName: channelName,
+                        SpotRid: dispatchSpotRid,
                         CorrelationId: header.CorrelationId,
                         Exception: new ZLinkFrameworkException(
                             ZLinkFrameworkErrorKind.HandlerNotFound,
@@ -74,7 +78,8 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         "Send",
                         header.MessageName,
                         "no-handler",
-                        channelName);
+                        channelName,
+                        spotRid: dispatchSpotRid);
                     dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
                         ZLinkDispatchErrorSurface.SpotRoute,
                         ZLinkDispatchMessageKind.Send,
@@ -82,6 +87,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         ZLinkDispatchErrorAction.Drop,
                         header.MessageName,
                         ChannelName: channelName,
+                        SpotRid: dispatchSpotRid,
                         CorrelationId: header.CorrelationId));
                 }
 

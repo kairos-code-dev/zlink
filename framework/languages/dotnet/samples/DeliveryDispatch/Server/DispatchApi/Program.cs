@@ -12,6 +12,7 @@ builder.Services.AddSingleton<EvidenceStore>();
 builder.Services.AddZLinkFramework(options =>
 {
     options.DefaultTimeout = SampleTimings.FrameworkTimeout;
+    options.ConfigureDispatch().SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>();
     options.Codecs.AddJson();
     {
         var channel = options.AddClientServerChannel(SampleNames.DispatchRouteChannel);

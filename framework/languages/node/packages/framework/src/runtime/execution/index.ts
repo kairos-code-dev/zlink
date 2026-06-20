@@ -21,6 +21,9 @@ export class ZLinkRuntimeErrorSink {
   }
 
   reportRuntimeTaskException(taskName: string, error: unknown): void {
+    if (process.env.ZLINK_DEBUG_RUNTIME_TASKS === '1') {
+      console.error(`[zlink-runtime-task] ${taskName}`, error);
+    }
     for (const handler of this.handlers) {
       try {
         handler({ taskName, error });

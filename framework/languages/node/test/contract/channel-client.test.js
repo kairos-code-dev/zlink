@@ -1,5 +1,8 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const net = require('node:net');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 const { once } = require('node:events');
 const { Module } = require('@nestjs/common');
@@ -580,7 +583,7 @@ test('ZLinkModule channel client uses runtime host channel transport after boots
   }
 });
 
-test('ZLinkFrameworkRuntimeHost dispatches client-server channel request handlers', async () => {
+test('CH-001 ZLinkFrameworkRuntimeHost dispatches client-server channel request handlers', async () => {
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const calls = [];
   const serverRegistration = framework.createFrameworkRegistration({
@@ -623,6 +626,653 @@ test('ZLinkFrameworkRuntimeHost dispatches client-server channel request handler
   } finally {
     await clientRuntime.stop();
     await serverRuntime.stop();
+  }
+});
+
+test('CH-006 ZLinkFrameworkRuntimeHost dispatches client-server send handlers', async () => {
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const calls = [];
+  const serverRegistration = framework.createFrameworkRegistration({
+    channels: {
+      play: {
+        server: { bind: endpoint },
+        sendHandlers: [{
+          packetName: 'RecordCommand',
+          handler: {
+            handle(payload, context) {
+              assert.equal(context.channelName, 'play');
+              assert.equal(context.packetName, 'RecordCommand');
+              calls.push(payload.gameName);
+            }
+          }
+        }]
+      }
+    }
+  });
+  const clientRegistration = framework.createFrameworkRegistration({
+    channels: {
+      play: { client: { manualConnections: [endpoint] } }
+    }
+  });
+  const serverRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: serverRegistration });
+  const clientRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: clientRegistration });
+
+  try {
+    await serverRuntime.start();
+    await clientRuntime.start();
+    const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
+    await submitWhenReachable(() =>
+      client.sendToChannel('play', { gameName: 'sample' }).packetName('RecordCommand').submit()
+    );
+
+    await waitFor(() => calls.length === 1, 'CH-006 channel send handler evidence');
+    assert.deepEqual(calls, ['sample']);
+  } finally {
+    await clientRuntime.stop();
+    await serverRuntime.stop();
+  }
+});
+
+test('DERR-001 ZLinkFrameworkRuntimeHost replies error and reports observer for missing channel request handler', async () => {
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const dispatchEvents = [];
+  const runtimeFailures = [];
+  class DispatchObserver {
+    onDispatchError(event) {
+      dispatchEvents.push(event);
+    }
+  }
+  const serverRegistration = framework.createFrameworkRegistration({
+    dispatch: { messageDispatchErrorObserverType: DispatchObserver },
+    channels: {
+      play: {
+        server: { bind: endpoint },
+        requestHandlers: [{
+          packetName: 'KnownReq',
+          handler: {
+            handle(payload, context) {
+              assert.equal(context.channelName, 'play');
+              assert.equal(context.packetName, 'KnownReq');
+              return { value: `known:${payload.value}` };
+            }
+          }
+        }]
+      }
+    }
+  });
+  const clientRegistration = framework.createFrameworkRegistration({
+    channels: {
+      play: { client: { manualConnections: [endpoint] } }
+    }
+  });
+  const serverRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: serverRegistration });
+  const clientRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: clientRegistration });
+
+  try {
+    await serverRuntime.start();
+    serverRuntime.errorSink?.onRuntimeTaskException((failure) => {
+      runtimeFailures.push(failure);
+    });
+    await clientRuntime.start();
+    const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
+
+    const knownBefore = await submitWhenReachable(() =>
+      client.requestToChannel('play', { value: 'before' }).packetName('KnownReq').timeout(1000).submit()
+    );
+    assert.deepEqual(knownBefore, { value: 'known:before' });
+
+    await assert.rejects(
+      () => client.requestToChannel('play', { value: 'missing' }).packetName('UnknownReq').timeout(1000).submit(),
+      /No channel request handler is registered for 'play:UnknownReq'/
+    );
+
+    await waitUntil(() => dispatchEvents.length === 1 && runtimeFailures.length === 1, 1000);
+    assert.equal(dispatchEvents[0].surface, framework.ZLinkDispatchErrorSurface.Channel);
+    assert.equal(dispatchEvents[0].messageKind, framework.ZLinkDispatchMessageKind.Request);
+    assert.equal(dispatchEvents[0].reason, framework.ZLinkDispatchErrorReason.HandlerMissing);
+    assert.equal(dispatchEvents[0].action, framework.ZLinkDispatchErrorAction.ReplyError);
+    assert.equal(dispatchEvents[0].packetName, 'UnknownReq');
+    assert.equal(dispatchEvents[0].channelName, 'play');
+    assert.equal(runtimeFailures[0].taskName, 'dispatch-error');
+    assert.match(runtimeFailures[0].error.message, /reason=handlerMissing/);
+    assert.match(runtimeFailures[0].error.message, /action=replyError/);
+    assert.match(runtimeFailures[0].error.message, /packetName=UnknownReq/);
+    assert.match(runtimeFailures[0].error.message, /channelName=play/);
+
+    const knownAfter = await client
+      .requestToChannel('play', { value: 'after' })
+      .packetName('KnownReq')
+      .timeout(1000)
+      .submit();
+    assert.deepEqual(knownAfter, { value: 'known:after' });
+  } finally {
+    await clientRuntime.stop();
+    await serverRuntime.stop();
+  }
+});
+
+test('DERR-002 ZLinkFrameworkRuntimeHost reports observer for missing channel send handler', async () => {
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const dispatchEvents = [];
+  const runtimeFailures = [];
+  class DispatchObserver {
+    onDispatchError(event) {
+      dispatchEvents.push(event);
+    }
+  }
+  const serverRegistration = framework.createFrameworkRegistration({
+    dispatch: { messageDispatchErrorObserverType: DispatchObserver },
+    channels: {
+      play: {
+        server: { bind: endpoint },
+        requestHandlers: [{
+          packetName: 'KnownReq',
+          handler: {
+            handle(payload, context) {
+              assert.equal(context.channelName, 'play');
+              assert.equal(context.packetName, 'KnownReq');
+              return { value: `known:${payload.value}` };
+            }
+          }
+        }]
+      }
+    }
+  });
+  const clientRegistration = framework.createFrameworkRegistration({
+    channels: {
+      play: { client: { manualConnections: [endpoint] } }
+    }
+  });
+  const serverRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: serverRegistration });
+  const clientRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: clientRegistration });
+
+  try {
+    await serverRuntime.start();
+    serverRuntime.errorSink?.onRuntimeTaskException((failure) => {
+      runtimeFailures.push(failure);
+    });
+    await clientRuntime.start();
+    const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
+
+    const knownBefore = await submitWhenReachable(() =>
+      client.requestToChannel('play', { value: 'before-send-error' }).packetName('KnownReq').timeout(1000).submit()
+    );
+    assert.deepEqual(knownBefore, { value: 'known:before-send-error' });
+
+    await client.sendToChannel('play', { value: 'missing-send' }).packetName('UnknownCommand').submit();
+
+    await waitUntil(() => dispatchEvents.length === 1 && runtimeFailures.length === 1, 1000);
+    assert.equal(dispatchEvents[0].surface, framework.ZLinkDispatchErrorSurface.Channel);
+    assert.equal(dispatchEvents[0].messageKind, framework.ZLinkDispatchMessageKind.Send);
+    assert.equal(dispatchEvents[0].reason, framework.ZLinkDispatchErrorReason.HandlerMissing);
+    assert.equal(dispatchEvents[0].action, framework.ZLinkDispatchErrorAction.Drop);
+    assert.equal(dispatchEvents[0].packetName, 'UnknownCommand');
+    assert.equal(dispatchEvents[0].channelName, 'play');
+    assert.equal(runtimeFailures[0].taskName, 'dispatch-error');
+    assert.match(runtimeFailures[0].error.message, /reason=handlerMissing/);
+    assert.match(runtimeFailures[0].error.message, /action=drop/);
+    assert.match(runtimeFailures[0].error.message, /packetName=UnknownCommand/);
+    assert.match(runtimeFailures[0].error.message, /channelName=play/);
+
+    const knownAfter = await client
+      .requestToChannel('play', { value: 'after-send-error' })
+      .packetName('KnownReq')
+      .timeout(1000)
+      .submit();
+    assert.deepEqual(knownAfter, { value: 'known:after-send-error' });
+  } finally {
+    await clientRuntime.stop();
+    await serverRuntime.stop();
+  }
+});
+
+test('REG-003 ZLinkFrameworkRuntimeHost dispatches manual channel handlers and reports missing packets', async () => {
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const fanoutEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const dispatchEvents = [];
+  const sendCalls = [];
+  const publishCalls = [];
+  class DispatchObserver {
+    onDispatchError(event) {
+      dispatchEvents.push(event);
+    }
+  }
+  const serverRegistration = framework.createFrameworkRegistration({
+    dispatch: { messageDispatchErrorObserverType: DispatchObserver },
+    channels: {
+      'manual-reg': {
+        server: { bind: endpoint },
+        requestHandlers: [{
+          packetName: 'ManualRegisteredReq',
+          handler: {
+            handle(payload, context) {
+              assert.equal(context.channelName, 'manual-reg');
+              assert.equal(context.packetName, 'ManualRegisteredReq');
+              return { value: `manual:${payload.value}` };
+            }
+          }
+        }],
+        sendHandlers: [{
+          packetName: 'ManualRegisteredCommand',
+          handler: {
+            handle(payload, context) {
+              sendCalls.push({
+                payload,
+                channelName: context.channelName,
+                packetName: context.packetName
+              });
+            }
+          }
+        }]
+      }
+    }
+  });
+  const clientRegistration = framework.createFrameworkRegistration({
+    channels: {
+      'manual-reg': { client: { manualConnections: [endpoint] } }
+    }
+  });
+  const publisherRegistration = framework.createFrameworkRegistration({
+    channels: {
+      'manual-events': { publisher: { bind: fanoutEndpoint } }
+    }
+  });
+  const subscriberRegistration = framework.createFrameworkRegistration({
+    dispatch: { messageDispatchErrorObserverType: DispatchObserver },
+    channels: {
+      'manual-events': {
+        subscriber: { manualConnections: [fanoutEndpoint] },
+        publishHandlers: [{
+          packetName: 'ManualRegisteredEvent',
+          handler: {
+            handle(payload, context) {
+              publishCalls.push({
+                payload,
+                channelName: context.channelName,
+                packetName: context.packetName,
+                topic: context.topic
+              });
+            }
+          }
+        }]
+      }
+    }
+  });
+  const serverRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: serverRegistration });
+  const clientRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: clientRegistration });
+  const publisherRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: publisherRegistration });
+  const subscriberRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: subscriberRegistration });
+
+  try {
+    await serverRuntime.start();
+    await clientRuntime.start();
+    await publisherRuntime.start();
+    await subscriberRuntime.start();
+    const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
+    const fanout = new framework.DefaultZLinkFanoutClient(publisherRegistration, publisherRuntime.channelTransport);
+
+    const reply = await submitWhenReachable(() =>
+      client
+        .requestToChannel('manual-reg', { value: 'registered' })
+        .packetName('ManualRegisteredReq')
+        .timeout(1000)
+        .submit()
+    );
+    assert.deepEqual(reply, { value: 'manual:registered' });
+
+    await client
+      .sendToChannel('manual-reg', { value: 'command' })
+      .packetName('ManualRegisteredCommand')
+      .submit();
+    await waitFor(() => sendCalls.length === 1, 'REG-003 manual send handler');
+    assert.deepEqual(sendCalls, [{
+      payload: { value: 'command' },
+      channelName: 'manual-reg',
+      packetName: 'ManualRegisteredCommand'
+    }]);
+
+    await publishUntilHandled(
+      fanout,
+      'manual-events',
+      'manual',
+      'ManualRegisteredEvent',
+      { value: 'published' },
+      () => publishCalls.length === 1
+    );
+    assert.deepEqual(publishCalls, [{
+      payload: { value: 'published' },
+      channelName: 'manual-events',
+      packetName: 'ManualRegisteredEvent',
+      topic: 'manual'
+    }]);
+
+    await assert.rejects(
+      () => client
+        .requestToChannel('manual-reg', { value: 'missing' })
+        .packetName('ManualMissingReq')
+        .timeout(1000)
+        .submit(),
+      /No channel request handler is registered for 'manual-reg:ManualMissingReq'/
+    );
+
+    await client
+      .sendToChannel('manual-reg', { value: 'missing-command' })
+      .packetName('ManualMissingCommand')
+      .submit();
+
+    await publishUntilHandled(
+      fanout,
+      'manual-events',
+      'manual',
+      'ManualMissingEvent',
+      { value: 'missing-event' },
+      () => hasDispatchEvent(
+        dispatchEvents,
+        framework.ZLinkDispatchMessageKind.Publish,
+        framework.ZLinkDispatchErrorReason.HandlerMissing,
+        framework.ZLinkDispatchErrorAction.Drop,
+        'ManualMissingEvent',
+        'manual-events'
+      )
+    );
+
+    await waitUntil(() =>
+      hasDispatchEvent(
+        dispatchEvents,
+        framework.ZLinkDispatchMessageKind.Request,
+        framework.ZLinkDispatchErrorReason.HandlerMissing,
+        framework.ZLinkDispatchErrorAction.ReplyError,
+        'ManualMissingReq',
+        'manual-reg'
+      ) &&
+      hasDispatchEvent(
+        dispatchEvents,
+        framework.ZLinkDispatchMessageKind.Send,
+        framework.ZLinkDispatchErrorReason.HandlerMissing,
+        framework.ZLinkDispatchErrorAction.Drop,
+        'ManualMissingCommand',
+        'manual-reg'
+      ) &&
+      hasDispatchEvent(
+        dispatchEvents,
+        framework.ZLinkDispatchMessageKind.Publish,
+        framework.ZLinkDispatchErrorReason.HandlerMissing,
+        framework.ZLinkDispatchErrorAction.Drop,
+        'ManualMissingEvent',
+        'manual-events'
+      ),
+    1000);
+  } finally {
+    await subscriberRuntime.stop();
+    await publisherRuntime.stop();
+    await clientRuntime.stop();
+    await serverRuntime.stop();
+  }
+});
+
+test('DERR-007 ZLinkFrameworkRuntimeHost replies error and reports observer for handler exception', async () => {
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const dispatchEvents = [];
+  const runtimeFailures = [];
+  class DispatchObserver {
+    onDispatchError(event) {
+      dispatchEvents.push(event);
+    }
+  }
+  const serverRegistration = framework.createFrameworkRegistration({
+    dispatch: { messageDispatchErrorObserverType: DispatchObserver },
+    channels: {
+      play: {
+        server: { bind: endpoint },
+        requestHandlers: [{
+          packetName: 'KnownReq',
+          handler: {
+            handle(payload, context) {
+              assert.equal(context.channelName, 'play');
+              assert.equal(context.packetName, 'KnownReq');
+              return { value: `known:${payload.value}` };
+            }
+          }
+        }, {
+          packetName: 'ThrowReq',
+          handler: {
+            handle() {
+              throw new Error('DERR-007 handler exception');
+            }
+          }
+        }]
+      }
+    }
+  });
+  const clientRegistration = framework.createFrameworkRegistration({
+    channels: {
+      play: { client: { manualConnections: [endpoint] } }
+    }
+  });
+  const serverRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: serverRegistration });
+  const clientRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: clientRegistration });
+
+  try {
+    await serverRuntime.start();
+    serverRuntime.errorSink?.onRuntimeTaskException((failure) => {
+      runtimeFailures.push(failure);
+    });
+    await clientRuntime.start();
+    const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
+
+    const knownBefore = await submitWhenReachable(() =>
+      client.requestToChannel('play', { value: 'before-handler-error' }).packetName('KnownReq').timeout(1000).submit()
+    );
+    assert.deepEqual(knownBefore, { value: 'known:before-handler-error' });
+
+    await assert.rejects(
+      () => client.requestToChannel('play', { value: 'boom' }).packetName('ThrowReq').timeout(1000).submit(),
+      /DERR-007 handler exception/
+    );
+
+    await waitUntil(() => dispatchEvents.length === 1 && runtimeFailures.length === 1, 1000);
+    assert.equal(dispatchEvents[0].surface, framework.ZLinkDispatchErrorSurface.Channel);
+    assert.equal(dispatchEvents[0].messageKind, framework.ZLinkDispatchMessageKind.Request);
+    assert.equal(dispatchEvents[0].reason, framework.ZLinkDispatchErrorReason.HandlerException);
+    assert.equal(dispatchEvents[0].action, framework.ZLinkDispatchErrorAction.ReplyError);
+    assert.equal(dispatchEvents[0].packetName, 'ThrowReq');
+    assert.equal(dispatchEvents[0].channelName, 'play');
+    assert.equal(dispatchEvents[0].error?.message, 'DERR-007 handler exception');
+    assert.equal(runtimeFailures[0].taskName, 'dispatch-error');
+    assert.match(runtimeFailures[0].error.message, /reason=handlerException/);
+    assert.match(runtimeFailures[0].error.message, /action=replyError/);
+    assert.match(runtimeFailures[0].error.message, /packetName=ThrowReq/);
+    assert.match(runtimeFailures[0].error.message, /channelName=play/);
+
+    const knownAfter = await client
+      .requestToChannel('play', { value: 'after-handler-error' })
+      .packetName('KnownReq')
+      .timeout(1000)
+      .submit();
+    assert.deepEqual(knownAfter, { value: 'known:after-handler-error' });
+  } finally {
+    await clientRuntime.stop();
+    await serverRuntime.stop();
+  }
+});
+
+test('CH-002 manual endpoint round-robin distributes requests across three servers', async () => {
+  const endpoints = [
+    `tcp://127.0.0.1:${await reservePort()}`,
+    `tcp://127.0.0.1:${await reservePort()}`,
+    `tcp://127.0.0.1:${await reservePort()}`
+  ];
+  const servers = [
+    createRoundRobinServer(endpoints[0], 'server-a'),
+    createRoundRobinServer(endpoints[1], 'server-b'),
+    createRoundRobinServer(endpoints[2], 'server-c')
+  ];
+  const clientRegistration = framework.createFrameworkRegistration({
+    channels: {
+      'round-robin': { client: { manualConnections: endpoints } }
+    }
+  });
+  const clientRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: clientRegistration });
+
+  try {
+    for (const server of servers) {
+      await server.runtime.start();
+    }
+    await clientRuntime.start();
+    const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
+    const seenServers = new Set();
+    for (let i = 0; i < 30 && seenServers.size < 3; i++) {
+      const reply = await submitWhenReachable(() =>
+        client
+          .requestToChannel('round-robin', { requestId: `warmup-${i}` })
+          .packetName('RoundRobinProbe')
+          .timeout(1000)
+          .submit()
+      );
+      seenServers.add(reply.serverId);
+    }
+    assert.deepEqual([...seenServers].sort(), ['server-a', 'server-b', 'server-c']);
+
+    const replies = [];
+    for (let i = 0; i < 90; i++) {
+      replies.push(await client
+        .requestToChannel('round-robin', { requestId: `verify-${i}` })
+        .packetName('RoundRobinProbe')
+        .timeout(1000)
+        .submit());
+    }
+
+    assertRoundRobinCounts(countBy(replies.map((reply) => reply.serverId)));
+    assertRoundRobinCounts(Object.fromEntries(servers.map((server) => [
+      server.serverId,
+      server.evidence.filter((requestId) => requestId.startsWith('verify-')).length
+    ])));
+  } finally {
+    await clientRuntime.stop();
+    for (const server of [...servers].reverse()) {
+      await server.runtime.stop();
+    }
+  }
+});
+
+test('DSC-008 requestToChannel traffic survives discovery scale-out and scale-in', async () => {
+  const registryPubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const registryRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const providerAEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const providerBEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const providerCEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const registry = new framework.ZLinkRegistryRuntime({
+    registration: {
+      pubEndpoint: registryPubEndpoint,
+      routerEndpoint: registryRouterEndpoint
+    }
+  });
+  const providerA = createScaleoutProvider(registryRouterEndpoint, providerAEndpoint, 'provider-a');
+  const providerB = createScaleoutProvider(registryRouterEndpoint, providerBEndpoint, 'provider-b');
+  const providerC = createScaleoutProvider(registryRouterEndpoint, providerCEndpoint, 'provider-c');
+  const query = new framework.DefaultZLinkRegistryQuery(registry);
+  let clientAppA;
+  let clientAppB;
+
+  try {
+    await registry.start();
+    await providerA.runtime.start();
+    clientAppA = await createScaleoutClientApp(registryRouterEndpoint);
+    clientAppB = await createScaleoutClientApp(registryRouterEndpoint);
+    const clientA = clientAppA.get(nestjs.ZLINK_CHANNEL_CLIENT);
+    const clientB = clientAppB.get(nestjs.ZLINK_CHANNEL_CLIENT);
+
+    const first = await requestScaleoutProbe(clientA, 'node-warmup-a');
+    assert.equal(first.providerId, 'provider-a');
+    assert.equal(providerA.evidence.includes('node-warmup-a'), true);
+
+    const traffic = createScaleoutTraffic();
+    const trafficA = runScaleoutTraffic(clientA, 'node-traffic-a', traffic);
+    const trafficB = runScaleoutTraffic(clientB, 'node-traffic-b', traffic);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    for (const providerId of traffic.observedProviders) {
+      assert.equal(providerId, 'provider-a');
+    }
+
+    await providerB.runtime.start();
+    await waitForReadyEndpoints(query, [providerAEndpoint, providerBEndpoint]);
+    await providerC.runtime.start();
+    await waitForReadyEndpoints(query, [providerAEndpoint, providerBEndpoint, providerCEndpoint]);
+    await waitForTrafficProviders(traffic, ['provider-b', 'provider-c']);
+    assertRequestIdsHandledOnce(traffic.completedRequestIds, providerA, providerB, providerC);
+
+    await providerA.runtime.stop();
+    await waitUntilEndpointIsNotReady(query, providerAEndpoint);
+
+    const providerACountBeforeScaleIn = providerA.evidence.length;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    traffic.stop = true;
+    await Promise.all([trafficA, trafficB]);
+    assertRequestIdsHandledOnce(traffic.completedRequestIds, providerA, providerB, providerC);
+    const scaleinRequestIds = [];
+    const scaleinProviders = new Set();
+    for (let i = 0; i < 10; i += 1) {
+      const requestId = `node-scalein-${i}`;
+      scaleinRequestIds.push(requestId);
+      const client = i % 2 === 0 ? clientA : clientB;
+      const reply = await requestScaleoutProbe(client, requestId);
+      scaleinProviders.add(reply.providerId);
+      assert.notEqual(reply.providerId, 'provider-a');
+    }
+    assert.equal(providerA.evidence.length, providerACountBeforeScaleIn);
+    for (const providerId of scaleinProviders) {
+      assert.equal(providerId === 'provider-b' || providerId === 'provider-c', true);
+    }
+    assertRequestIdsHandledOnce(scaleinRequestIds, providerA, providerB, providerC);
+  } finally {
+    await clientAppB?.close();
+    await clientAppA?.close();
+    await providerC.runtime.stop();
+    await providerB.runtime.stop();
+    await providerA.runtime.stop();
+    await registry.stop();
+  }
+});
+
+test('DSC-009 same routing id different endpoint replaces discovered provider', async () => {
+  const registryPubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const registryRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const providerV1Endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const providerV2Endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const providerRid = 'api-a';
+  const registry = new framework.ZLinkRegistryRuntime({
+    registration: {
+      pubEndpoint: registryPubEndpoint,
+      routerEndpoint: registryRouterEndpoint
+    }
+  });
+  const providerV1 = createScaleoutProvider(registryRouterEndpoint, providerV1Endpoint, 'provider-v1', providerRid);
+  const providerV2 = createScaleoutProvider(registryRouterEndpoint, providerV2Endpoint, 'provider-v2', providerRid);
+  const query = new framework.DefaultZLinkRegistryQuery(registry);
+  let clientApp;
+
+  try {
+    await registry.start();
+    await providerV1.runtime.start();
+    clientApp = await createScaleoutClientApp(registryRouterEndpoint);
+    const client = clientApp.get(nestjs.ZLINK_CHANNEL_CLIENT);
+
+    const before = await requestScaleoutProbe(client, 'node-same-rid-v1');
+    assert.equal(before.providerId, 'provider-v1');
+
+    await providerV1.runtime.stop();
+    await providerV2.runtime.start();
+    await waitForSingleReadyEndpoint(query, providerRid, providerV2Endpoint);
+
+    for (let i = 0; i < 20; i += 1) {
+      const reply = await requestScaleoutProbe(client, `node-same-rid-v2-${i}`);
+      assert.equal(reply.providerId, 'provider-v2');
+    }
+  } finally {
+    await clientApp?.close();
+    await providerV2.runtime.stop();
+    await providerV1.runtime.stop();
+    await registry.stop();
   }
 });
 
@@ -683,6 +1333,63 @@ test('ZLinkFrameworkRuntimeHost uses channel serializer registry for typed reque
 
     assert.deepEqual(calls, [{ created: 'sample' }]);
     assert.deepEqual(reply, { created: 'sample' });
+  } finally {
+    await clientRuntime.stop();
+    await serverRuntime.stop();
+  }
+});
+
+test('CDC-001 ZLinkFrameworkRuntimeHost JSON codec round-trips nested arrays and nullable fields', async () => {
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const request = {
+    name: 'root',
+    revision: 42,
+    optionalLabel: null,
+    tags: ['alpha', 'beta'],
+    children: [
+      { name: 'first', rank: 1 },
+      { name: 'second', rank: 2 }
+    ],
+    nested: { name: 'nested', rank: 3 }
+  };
+  const serverRegistration = framework.createFrameworkRegistration({
+    channels: {
+      codec: {
+        server: { bind: endpoint },
+        requestHandlers: [{
+          packetName: 'JsonCodecProbe',
+          handler: {
+            handle(payload, context) {
+              assert.equal(context.channelName, 'codec');
+              assert.equal(context.packetName, 'JsonCodecProbe');
+              assert.deepEqual(payload, request);
+              return payload;
+            }
+          }
+        }]
+      }
+    }
+  });
+  const clientRegistration = framework.createFrameworkRegistration({
+    channels: {
+      codec: { client: { manualConnections: [endpoint] } }
+    }
+  });
+  const serverRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: serverRegistration });
+  const clientRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: clientRegistration });
+
+  try {
+    await serverRuntime.start();
+    await clientRuntime.start();
+    const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
+    const reply = await submitWhenReachable(() =>
+      client.requestToChannel('codec', request).packetName('JsonCodecProbe').timeout(1000).submit()
+    );
+
+    assert.deepEqual(reply, request);
+    assert.equal(reply.optionalLabel, null);
+    assert.deepEqual(reply.tags, ['alpha', 'beta']);
+    assert.deepEqual(reply.nested, { name: 'nested', rank: 3 });
   } finally {
     await clientRuntime.stop();
     await serverRuntime.stop();
@@ -750,15 +1457,18 @@ test('ZLinkFrameworkRuntimeHost uses protobuf codec extension for channels', asy
   }
 });
 
-test('ZLinkFrameworkRuntimeHost dispatches fanout subscriber publish handlers', async () => {
-  const ctx = zlink.createContext();
-  const publisher = zlink.createPubSocket(ctx);
+test('PUB-001 ZLinkFrameworkRuntimeHost delivers the same sequence to three fanout subscribers', async () => {
   const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const topic = 'profile.updated';
-  const calls = [];
-  const publisherMonitor = publisher.monitorOpen([zlink.MonitorEventType.ConnectionReady]);
-  publisher.bind(endpoint);
-  const subscriberRegistration = framework.createFrameworkRegistration({
+  const topic = 'score';
+  const first = [];
+  const second = [];
+  const third = [];
+  const publisherRegistration = framework.createFrameworkRegistration({
+    channels: {
+      events: { publisher: { bind: endpoint } }
+    }
+  });
+  const createSubscriberRegistration = (calls) => framework.createFrameworkRegistration({
     channels: {
       events: {
         subscriber: { manualConnections: [endpoint] },
@@ -779,38 +1489,33 @@ test('ZLinkFrameworkRuntimeHost dispatches fanout subscriber publish handlers', 
       }
     }
   });
-  const subscriberRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: subscriberRegistration });
+  const publisherRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: publisherRegistration });
+  const firstRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: createSubscriberRegistration(first) });
+  const secondRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: createSubscriberRegistration(second) });
+  const thirdRuntime = new framework.ZLinkFrameworkRuntimeHost({ registration: createSubscriberRegistration(third) });
 
   try {
-    await subscriberRuntime.start();
-    publisherMonitor.recv();
-    publisherMonitor.close();
+    await publisherRuntime.start();
+    await firstRuntime.start();
+    await secondRuntime.start();
+    await thirdRuntime.start();
 
-    submitMultipart(publisher.publish(topic), encodeDotnetEnvelope({
-      kind: 4,
-      channelName: 'events',
-      messageName: 'ProfileChanged',
-      contentType: 'application/json',
-      correlationId: null,
-      deadline: null,
-      topic,
-      errorCode: null,
-      errorMessage: null,
-      source: 'publisher-node'
-    }, { profileId: 'p1' }));
-
-    await waitFor(() => calls.length === 1, 'fanout subscriber publish handler');
-    assert.deepEqual(calls, [{
-      payload: { profileId: 'p1' },
-      channelName: 'events',
-      packetName: 'ProfileChanged',
-      topic,
-      contentType: 'application/json'
-    }]);
+    const fanout = new framework.DefaultZLinkFanoutClient(publisherRegistration, publisherRuntime.channelTransport);
+    const common = await publishUntilCommonFanoutSequence(fanout, topic, first, second, third);
+    for (const calls of [first, second, third]) {
+      assert.ok(calls.some((call) =>
+        call.payload.sequence === common &&
+        call.channelName === 'events' &&
+        call.packetName === 'ProfileChanged' &&
+        call.topic === topic &&
+        call.contentType === 'application/json'
+      ));
+    }
   } finally {
-    await subscriberRuntime.stop();
-    publisher.close();
-    ctx.close();
+    await thirdRuntime.stop();
+    await secondRuntime.stop();
+    await firstRuntime.stop();
+    await publisherRuntime.stop();
   }
 });
 
@@ -1246,7 +1951,7 @@ test('channel runtime drains backpressured requests from send-ready callback', a
   await manager.dispose();
 });
 
-test('ZLinkFanoutClient publishes through public pub/sub binding sockets', async () => {
+test('PUB-001 partial ZLinkFanoutClient publishes through public pub/sub binding sockets', async () => {
   const ctx = zlink.createContext();
   const pub = zlink.createPubSocket(ctx);
   const sub = zlink.createSubSocket(ctx);
@@ -1257,6 +1962,7 @@ test('ZLinkFanoutClient publishes through public pub/sub binding sockets', async
   try {
     pub.bind(endpoint);
     sub.setSubscription(topic);
+    sub.recvTimeout = 20;
     sub.connect(endpoint);
 
     const registration = framework.createFrameworkRegistration({
@@ -1268,15 +1974,18 @@ test('ZLinkFanoutClient publishes through public pub/sub binding sockets', async
     );
 
     const received = new zlink.TopicMessage();
-    await fanout.publishToChannel('events', topic, 'published').packetName('Event').submit();
-    assert.equal(sub.subscribe(received), true);
-    assert.equal(received.topic, topic);
-    const envelope = decodeDotnetEnvelope(received.parts);
-    assert.equal(envelope.header.kind, 4);
-    assert.equal(envelope.header.channelName, 'events');
-    assert.equal(envelope.header.messageName, 'Event');
-    assert.equal(envelope.header.topic, topic);
-    assert.equal(envelope.body, 'published');
+    try {
+      await publishUntilSubscribed(fanout, sub, received, topic, 'Event', 'published');
+      assert.equal(received.topic, topic);
+      const envelope = decodeDotnetEnvelope(received.parts);
+      assert.equal(envelope.header.kind, 4);
+      assert.equal(envelope.header.channelName, 'events');
+      assert.equal(envelope.header.messageName, 'Event');
+      assert.equal(envelope.header.topic, topic);
+      assert.equal(envelope.body, 'published');
+    } finally {
+      received.close();
+    }
   } finally {
     dealer.close();
     sub.close();
@@ -1399,6 +2108,229 @@ test('ZLinkChannelRequestDispatcher replies error and reports observer for missi
   assert.equal(events[0].packetName, 'MissingReq');
   assert.equal(events[0].channelName, 'api');
   assert.equal(events[0].correlationId, 'corr-1');
+});
+
+test('DERR-006 ZLinkChannelRequestDispatcher replies error and reports observer for payload decode failure', async () => {
+  const events = [];
+  const runtimeFailures = [];
+  let handlerInvocations = 0;
+  class DispatchObserver {
+    onDispatchError(event) {
+      events.push(event);
+    }
+  }
+  const replies = [];
+  const dispatcher = new framework.ZLinkChannelRequestDispatcher({
+    channelName: 'api',
+    dispatchErrors: new framework.ZLinkDispatchErrorReporter(
+      DispatchObserver,
+      undefined,
+      {
+        reportRuntimeTaskException(taskName, error) {
+          runtimeFailures.push({ taskName, error });
+        }
+      }
+    ),
+    handlers: new Map([
+      ['BrokenReq', {
+        handle() {
+          handlerInvocations += 1;
+          return { value: 'unexpected' };
+        }
+      }],
+      ['KnownReq', {
+        handle(payload) {
+          return { value: `known:${payload.value}` };
+        }
+      }]
+    ]),
+    sendHandlers: new Map()
+  });
+  const parts = [
+    fakeMessagePart(Buffer.from(JSON.stringify({
+      kind: 1,
+      channelName: 'api',
+      messageName: 'BrokenReq',
+      contentType: 'application/json',
+      correlationId: 'corr-decode',
+      deadline: null,
+      topic: null,
+      errorCode: null,
+      errorMessage: null
+    }))),
+    fakeMessagePart(Buffer.from('{'))
+  ];
+  const router = {
+    reply() {
+      return captureMultipart(replies);
+    }
+  };
+
+  await dispatcher.dispatch({
+    parts,
+    routingId: 'client-1',
+    requestSeq: 11n
+  }, router);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(handlerInvocations, 0);
+  assert.equal(replies.length, 2);
+  const replyEnvelope = decodeDotnetEnvelope(replies);
+  assert.equal(replyEnvelope.header.kind, 5);
+  assert.equal(replyEnvelope.header.correlationId, 'corr-decode');
+  assert.match(replyEnvelope.header.errorMessage, /PayloadDecodeFailed/);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].surface, framework.ZLinkDispatchErrorSurface.Channel);
+  assert.equal(events[0].messageKind, framework.ZLinkDispatchMessageKind.Request);
+  assert.equal(events[0].reason, framework.ZLinkDispatchErrorReason.PayloadDecodeFailed);
+  assert.equal(events[0].action, framework.ZLinkDispatchErrorAction.ReplyError);
+  assert.equal(events[0].packetName, 'BrokenReq');
+  assert.equal(events[0].channelName, 'api');
+  assert.equal(events[0].correlationId, 'corr-decode');
+  assert.equal(events[0].error?.kind, framework.ZLinkFrameworkErrorKind.PayloadDecodeFailed);
+  assert.equal(runtimeFailures[0].taskName, 'dispatch-error');
+  assert.match(runtimeFailures[0].error.message, /reason=payloadDecodeFailed/);
+  assert.match(runtimeFailures[0].error.message, /action=replyError/);
+  assert.match(runtimeFailures[0].error.message, /packetName=BrokenReq/);
+
+  replies.length = 0;
+  await dispatcher.dispatch({
+    parts: encodeDotnetEnvelope({
+      kind: 1,
+      channelName: 'api',
+      messageName: 'KnownReq',
+      contentType: 'application/json',
+      correlationId: 'corr-after-decode',
+      deadline: null,
+      topic: null,
+      errorCode: null,
+      errorMessage: null
+    }, { value: 'after-decode-error' }).map(fakeMessagePart),
+    routingId: 'client-1',
+    requestSeq: 12n
+  }, router);
+  const afterEnvelope = decodeDotnetEnvelope(replies);
+  assert.equal(afterEnvelope.header.kind, 2);
+  assert.deepEqual(afterEnvelope.body, { value: 'known:after-decode-error' });
+});
+
+test('DERR-009 ZLinkChannelRequestDispatcher writes dispatch errors to file log', async () => {
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'zlink-node-derr-009-'));
+  const logPath = path.join(logDir, 'dispatch-errors.log');
+  const events = [];
+  class DispatchObserver {
+    onDispatchError(event) {
+      events.push(event);
+      fs.appendFileSync(
+        logPath,
+        [
+          'dispatch-error',
+          `surface=${event.surface}`,
+          `messageKind=${event.messageKind}`,
+          `reason=${event.reason}`,
+          `action=${event.action}`,
+          `packetName=${event.packetName}`,
+          `channelName=${event.channelName}`,
+          `correlationId=${event.correlationId}`
+        ].join(' ') + '\n'
+      );
+    }
+  }
+  const dispatcher = new framework.ZLinkChannelRequestDispatcher({
+    channelName: 'api',
+    dispatchErrors: new framework.ZLinkDispatchErrorReporter(
+      DispatchObserver,
+      undefined,
+      { reportRuntimeTaskException() {} }
+    ),
+    handlers: new Map([
+      ['DecodeReq', {
+        handle() {
+          return { value: 'unexpected' };
+        }
+      }],
+      ['ThrowReq', {
+        handle() {
+          throw new Error('DERR-007 handler exception');
+        }
+      }]
+    ]),
+    sendHandlers: new Map()
+  });
+  const router = {
+    reply() {
+      return captureMultipart([]);
+    }
+  };
+
+  try {
+    await dispatcher.dispatch({
+      parts: encodeDotnetEnvelope({
+        kind: 1,
+        channelName: 'api',
+        messageName: 'MissingReq',
+        contentType: 'application/json',
+        correlationId: 'corr-missing',
+        deadline: null,
+        topic: null,
+        errorCode: null,
+        errorMessage: null
+      }, { value: 'missing' }).map(fakeMessagePart),
+      routingId: 'client-1',
+      requestSeq: 21n
+    }, router);
+    await dispatcher.dispatch({
+      parts: [
+        fakeMessagePart(Buffer.from(JSON.stringify({
+          kind: 1,
+          channelName: 'api',
+          messageName: 'DecodeReq',
+          contentType: 'application/json',
+          correlationId: 'corr-decode',
+          deadline: null,
+          topic: null,
+          errorCode: null,
+          errorMessage: null
+        }))),
+        fakeMessagePart(Buffer.from('{'))
+      ],
+      routingId: 'client-1',
+      requestSeq: 22n
+    }, router);
+    await dispatcher.dispatch({
+      parts: encodeDotnetEnvelope({
+        kind: 1,
+        channelName: 'api',
+        messageName: 'ThrowReq',
+        contentType: 'application/json',
+        correlationId: 'corr-throw',
+        deadline: null,
+        topic: null,
+        errorCode: null,
+        errorMessage: null
+      }, { value: 'boom' }).map(fakeMessagePart),
+      routingId: 'client-1',
+      requestSeq: 23n
+    }, router);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(events.length, 3);
+    const text = fs.readFileSync(logPath, 'utf8');
+    assert.equal((text.match(/dispatch-error/g) ?? []).length, 3);
+    assert.match(text, /surface=channel/);
+    assert.match(text, /messageKind=request/);
+    assert.match(text, /reason=handlerMissing/);
+    assert.match(text, /reason=payloadDecodeFailed/);
+    assert.match(text, /reason=handlerException/);
+    assert.match(text, /action=replyError/);
+    assert.match(text, /packetName=MissingReq/);
+    assert.match(text, /packetName=DecodeReq/);
+    assert.match(text, /packetName=ThrowReq/);
+    assert.match(text, /channelName=api/);
+    assert.match(text, /correlationId=corr-decode/);
+  } finally {
+    fs.rmSync(logDir, { recursive: true, force: true });
+  }
 });
 
 test('ZLinkDispatchErrorReporter isolates observer failures', async () => {
@@ -1540,8 +2472,204 @@ async function submitWhenReachable(submit) {
   throw lastError;
 }
 
+function createScaleoutProvider(registryRouterEndpoint, bindEndpoint, providerId, routingId) {
+  const evidence = [];
+  const registration = framework.createFrameworkRegistration({
+    discovery: { registries: [registryRouterEndpoint] },
+    channels: {
+      'scaleout-api': {
+        server: {
+          bind: bindEndpoint,
+          routingId
+        },
+        requestHandlers: [{
+          packetName: 'ScaleoutProbe',
+          handler: {
+            handle(payload) {
+              evidence.push(payload.requestId);
+              return {
+                requestId: payload.requestId,
+                providerId
+              };
+            }
+          }
+        }]
+      }
+    }
+  });
+  return {
+    evidence,
+    runtime: new framework.ZLinkFrameworkRuntimeHost({ registration })
+  };
+}
+
+function createRoundRobinServer(bindEndpoint, serverId) {
+  const evidence = [];
+  const registration = framework.createFrameworkRegistration({
+    channels: {
+      'round-robin': {
+        server: { bind: bindEndpoint },
+        requestHandlers: [{
+          packetName: 'RoundRobinProbe',
+          handler: {
+            handle(payload, context) {
+              assert.equal(context.channelName, 'round-robin');
+              assert.equal(context.packetName, 'RoundRobinProbe');
+              evidence.push(payload.requestId);
+              return { requestId: payload.requestId, serverId };
+            }
+          }
+        }]
+      }
+    }
+  });
+  return {
+    serverId,
+    evidence,
+    runtime: new framework.ZLinkFrameworkRuntimeHost({ registration })
+  };
+}
+
+function countBy(values) {
+  const counts = {};
+  for (const value of values) {
+    counts[value] = (counts[value] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function assertRoundRobinCounts(counts) {
+  assert.deepEqual(counts, {
+    'server-a': 30,
+    'server-b': 30,
+    'server-c': 30
+  });
+}
+
+function createScaleoutClient(registryRouterEndpoint) {
+  const registration = framework.createFrameworkRegistration({
+    discovery: { registries: [registryRouterEndpoint] },
+    requestTimeoutMs: 1000,
+    channels: {
+      'scaleout-api': {
+        client: {}
+      }
+    }
+  });
+  return new framework.ZLinkFrameworkRuntimeHost({ registration });
+}
+
+async function createScaleoutClientApp(registryRouterEndpoint) {
+  class ScaleoutClientModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .useDiscovery()
+        .addRegistryEndpoint(registryRouterEndpoint)
+      .addClientServerChannel('scaleout-api')
+        .enableClient()
+      .build())]
+  })(ScaleoutClientModule);
+  return NestFactory.createApplicationContext(ScaleoutClientModule, { logger: false });
+}
+
+function requestScaleoutProbe(client, requestId) {
+  return submitWhenReachable(() =>
+    client
+      .requestToChannel('scaleout-api', { requestId })
+      .packetName('ScaleoutProbe')
+      .timeout(1000)
+      .submit()
+  );
+}
+
+function createScaleoutTraffic() {
+  return {
+    stop: false,
+    completedRequestIds: [],
+    observedProviders: new Set()
+  };
+}
+
+async function runScaleoutTraffic(client, clientId, traffic) {
+  let index = 0;
+  while (!traffic.stop) {
+    const requestId = `${clientId}-${index}`;
+    index += 1;
+    try {
+      const reply = await requestScaleoutProbe(client, requestId);
+      traffic.completedRequestIds.push(requestId);
+      traffic.observedProviders.add(reply.providerId);
+    } catch {
+      // Discovery can briefly route to a peer that is changing state; completed requests are checked below.
+    }
+  }
+}
+
+async function waitForTrafficProviders(traffic, providers) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (providers.every((provider) => traffic.observedProviders.has(provider))) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(
+    `HAR-007 classification-required labels=core-capi,bindings,framework,sample,harness: transition traffic did not observe providers ${providers.join(',')}`
+  );
+}
+
+function assertRequestIdsHandledOnce(requestIds, ...providers) {
+  for (const requestId of requestIds) {
+    const count = providers.reduce((sum, provider) =>
+      sum + provider.evidence.filter((observed) => observed === requestId).length, 0);
+    assert.equal(count, 1, `${requestId} should be handled exactly once`);
+  }
+}
+
+async function waitForReadyEndpoints(query, endpoints) {
+  const expected = new Set(endpoints);
+  await waitForTopology(query, (entries) =>
+    [...expected].every((endpoint) => entries.some((entry) => entry.endpoint === endpoint))
+  );
+}
+
+async function waitUntilEndpointIsNotReady(query, endpoint) {
+  await waitForTopology(query, (entries) => entries.every((entry) => entry.endpoint !== endpoint));
+}
+
+async function waitForSingleReadyEndpoint(query, routingId, endpoint) {
+  await waitForTopology(query, (entries) =>
+    entries.length === 1 && entries[0].routingId === routingId && entries[0].endpoint === endpoint,
+    routingId
+  );
+}
+
+async function waitForTopology(query, predicate, routingId) {
+  const deadline = Date.now() + 5000;
+  let lastEntries = [];
+  while (Date.now() < deadline) {
+    lastEntries = await query.topology({
+      autoConnectType: framework.ZLinkAutoConnectType.ClientServer,
+      serviceKind: framework.ZLinkServiceKind.Socket,
+      serviceRole: framework.ZLinkServiceRole.Router,
+      channelName: 'scaleout-api',
+      routingId,
+      state: framework.ZLinkTopologyState.Ready
+    });
+    if (predicate(lastEntries)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(
+    `HAR-007 classification-required labels=core-capi,bindings,framework,sample,harness: topology did not converge: ${JSON.stringify(lastEntries)}`
+  );
+}
+
 function isHostUnreachable(error) {
-  return error instanceof Error && error.code === 2 && /Host unreachable/.test(error.message);
+  return error instanceof Error &&
+    ((error.code === 2 && /Host unreachable/.test(error.message)) ||
+      (error.code === 5 && /Connection refused/.test(error.message)));
 }
 
 async function waitFor(predicate, label) {
@@ -1553,6 +2681,80 @@ async function waitFor(predicate, label) {
     await new Promise((resolve) => setImmediate(resolve));
   }
   assert.fail(`${label} did not complete`);
+}
+
+async function publishUntilCommonFanoutSequence(fanout, topic, first, second, third) {
+  const deadline = Date.now() + 3000;
+  let sequence = 0;
+  while (Date.now() < deadline) {
+    const common = commonFanoutSequence(first, second, third);
+    if (common !== undefined) {
+      return common;
+    }
+    await fanout
+      .publishToChannel('events', topic, { sequence, profileId: `p${sequence}` })
+      .packetName('ProfileChanged')
+      .submit();
+    sequence += 1;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  const common = commonFanoutSequence(first, second, third);
+  if (common !== undefined) {
+    return common;
+  }
+  assert.fail(`fanout sequence did not reach all subscribers: first=${JSON.stringify(first)}, second=${JSON.stringify(second)}, third=${JSON.stringify(third)}`);
+}
+
+async function publishUntilHandled(fanout, channelName, topic, packetName, payload, predicate) {
+  const deadline = Date.now() + 1000;
+  while (Date.now() < deadline) {
+    await fanout
+      .publishToChannel(channelName, topic, payload)
+      .packetName(packetName)
+      .submit();
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`publish handler evidence did not appear for ${channelName}:${packetName}`);
+}
+
+function commonFanoutSequence(first, second, third) {
+  const secondSequences = new Set(second.map((call) => call.payload.sequence));
+  const thirdSequences = new Set(third.map((call) => call.payload.sequence));
+  return first
+    .map((call) => call.payload.sequence)
+    .find((sequence) => secondSequences.has(sequence) && thirdSequences.has(sequence));
+}
+
+function hasDispatchEvent(events, messageKind, reason, action, packetName, channelName) {
+  return events.some((event) =>
+    event.surface === framework.ZLinkDispatchErrorSurface.Channel &&
+    event.messageKind === messageKind &&
+    event.reason === reason &&
+    event.action === action &&
+    event.packetName === packetName &&
+    event.channelName === channelName
+  );
+}
+
+async function publishUntilSubscribed(fanout, subscriber, received, topic, packetName, payload) {
+  const deadline = Date.now() + 1000;
+  while (Date.now() < deadline) {
+    await fanout.publishToChannel('events', topic, payload).packetName(packetName).submit();
+    try {
+      if (subscriber.subscribe(received)) {
+        return;
+      }
+    } catch (error) {
+      if (!(error instanceof zlink.RecvError && error.result === zlink.RecvResult.NoData)) {
+        throw error;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail('fanout pub/sub socket proof did not receive a publish before timeout');
 }
 
 async function reservePort() {

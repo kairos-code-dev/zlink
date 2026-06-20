@@ -33,14 +33,15 @@ public final class ZLinkDispatchErrorReporter {
     public void report(ZLinkMessageDispatchErrorEvent error) {
         reportedCount.incrementAndGet();
         LOGGER.log(
-            Level.WARNING,
-            () -> "ZLink message dispatch error: surface=" + error.surface()
+            Level.SEVERE,
+            "ZLink message dispatch error: surface=" + error.surface()
                 + ", kind=" + error.messageKind()
                 + ", reason=" + error.reason()
                 + ", action=" + error.action()
                 + ", packet=" + valueOrEmpty(error.packetName())
                 + ", channel=" + valueOrEmpty(error.channelName())
-                + ", spot=" + valueOrEmpty(error.spotRid()));
+                + ", spot=" + valueOrEmpty(error.spotRid()),
+            error.exception());
         CompletableFuture.runAsync(() -> {
             try {
                 ZLinkMessageDispatchErrorObserver observer = resolveObserver();

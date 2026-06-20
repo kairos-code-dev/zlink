@@ -13,6 +13,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -46,6 +47,7 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorEvent;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
@@ -63,6 +65,8 @@ import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.spots.ZLinkRoutedSpotRelayPackets;
 
 public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient, AutoCloseable {
+    private static final String FRAMEWORK_ERROR_REPLY_MARKER = "ZLinkFrameworkError";
+
     private final ZLinkBackendContext context;
     private final Map<String, ZLinkBackendDealerSocket> clients = new HashMap<>();
     private final Map<String, ZLinkBackendRouterSocket> servers = new HashMap<>();
@@ -174,6 +178,9 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             if (channel.kind() == ChannelKind.CLIENT_SERVER && !channel.serverBinds().isEmpty()) {
                 ZLinkBackendRouterSocket router = backend.createRouterSocket(context);
                 router.setChannelName(channel.name());
+                if (channel.serverRoutingId() != null) {
+                    router.setRoutingId(channel.serverRoutingId());
+                }
                 if (discovery != null) {
                     router.attachDiscovery(discovery);
                 } else {
@@ -919,7 +926,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                                 requestSeq,
                                 ZLinkDispatchErrorSurface.CHANNEL,
                                 ZLinkDispatchMessageKind.REQUEST,
-                                ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                                dispatchReasonFromError(error),
                                 packet.packetName(),
                                 channelName,
                                 null,
@@ -1010,7 +1017,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                                 requestSeq,
                                 ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                                 ZLinkDispatchMessageKind.REQUEST,
-                                ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                                dispatchReasonFromError(error),
                                 packet.packetName(),
                                 channelName,
                                 routingId.toString(),
@@ -1083,7 +1090,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                             reportDispatchError(
                                 ZLinkDispatchErrorSurface.CHANNEL,
                                 ZLinkDispatchMessageKind.PUBLISH,
-                                ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                                dispatchReasonFromError(error),
                                 ZLinkDispatchErrorAction.DROP,
                                 packet.packetName(),
                                 channelName,
@@ -1121,7 +1128,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                         reportDispatchError(
                             ZLinkDispatchErrorSurface.CHANNEL,
                             ZLinkDispatchMessageKind.SEND,
-                            ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                            dispatchReasonFromError(error),
                             ZLinkDispatchErrorAction.DROP,
                             packet.packetName(),
                             channelName,
@@ -1158,7 +1165,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                         reportDispatchError(
                             ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                             ZLinkDispatchMessageKind.SEND,
-                            ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                            dispatchReasonFromError(error),
                             ZLinkDispatchErrorAction.DROP,
                             packet.packetName(),
                             channelName,
@@ -1180,9 +1187,11 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         String channelName,
         String sourceRid,
         Throwable error) {
-        Message reply = Message.from(("ZLinkFrameworkException:" + errorText(reason, packetName, error))
-            .getBytes(StandardCharsets.UTF_8));
-        replyAndClose(router, routingId, requestSeq, reply);
+        Throwable cause = unwrapCompletion(error);
+        List<Message> reply = List.of(
+            Message.from(FRAMEWORK_ERROR_REPLY_MARKER.getBytes(StandardCharsets.UTF_8)),
+            Message.from(errorText(reason, packetName, cause).getBytes(StandardCharsets.UTF_8)));
+        replyRawAndClose(router, routingId, requestSeq, reply);
         reportDispatchError(
             surface,
             kind,
@@ -1191,7 +1200,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             packetName,
             channelName,
             sourceRid,
-            error);
+            cause);
     }
 
     private void reportDispatchError(
@@ -1216,6 +1225,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         String topic,
         String sourceRid,
         Throwable error) {
+        Throwable cause = unwrapCompletion(error);
         dispatchErrors.report(new ZLinkMessageDispatchErrorEvent(
             surface,
             kind,
@@ -1228,7 +1238,20 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             null,
             sourceRid,
             null,
-            error));
+            cause));
+    }
+
+    private static Throwable unwrapCompletion(Throwable error) {
+        if (error instanceof CompletionException && error.getCause() != null) {
+            return error.getCause();
+        }
+        return error;
+    }
+
+    private static ZLinkDispatchErrorReason dispatchReasonFromError(Throwable error) {
+        return unwrapCompletion(error) instanceof PayloadDecodeDispatchException
+            ? ZLinkDispatchErrorReason.PAYLOAD_DECODE_FAILED
+            : ZLinkDispatchErrorReason.HANDLER_EXCEPTION;
     }
 
     private static String errorText(
@@ -1308,10 +1331,17 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         String channelName,
         ChannelSendHandlerRegistration registration,
         Message payload) {
+        Object message;
         try {
-            Object message = serializer.deserialize(payload, registration.messageType());
-            ZLinkSendContext context =
-                new DefaultSendContext(channelName, registration.packetName());
+            message = serializer.deserialize(payload, registration.messageType());
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(payloadDecodeFailure(
+                channelName,
+                registration.packetName(),
+                ex));
+        }
+        try {
+            ZLinkSendContext context = new DefaultSendContext(channelName, registration.packetName());
             return invokeWithFilters(context, message, () ->
                 invokeSendHandlerCore(registration, message, context));
         } catch (RuntimeException ex) {
@@ -1346,10 +1376,17 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         String channelName,
         ChannelRequestHandlerRegistration registration,
         Message payload) {
+        Object request;
         try {
-            Object request = serializer.deserialize(payload, registration.requestType());
-            ZLinkRequestContext context =
-                new DefaultRequestContext(channelName, registration.packetName());
+            request = serializer.deserialize(payload, registration.requestType());
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(payloadDecodeFailure(
+                channelName,
+                registration.packetName(),
+                ex));
+        }
+        try {
+            ZLinkRequestContext context = new DefaultRequestContext(channelName, registration.packetName());
             return invokeWithFilters(context, request, () ->
                 invokeRequestHandlerCore(registration, request, context))
                 .thenApply(serializer::serialize);
@@ -1385,10 +1422,17 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ChannelPublishHandlerRegistration registration,
         String topic,
         Message payload) {
+        Object message;
         try {
-            Object message = serializer.deserialize(payload, registration.messageType());
-            ZLinkPublishContext context =
-                new DefaultPublishContext(channelName, registration.packetName(), topic);
+            message = serializer.deserialize(payload, registration.messageType());
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(payloadDecodeFailure(
+                channelName,
+                registration.packetName(),
+                ex));
+        }
+        try {
+            ZLinkPublishContext context = new DefaultPublishContext(channelName, registration.packetName(), topic);
             return invokeWithFilters(context, message, () ->
                 invokePublishHandlerCore(registration, message, context));
         } catch (RuntimeException ex) {
@@ -1479,8 +1523,16 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ChannelRouteSendHandlerRegistration registration,
         RoutingId sourceRoutingId,
         Message payload) {
+        Object message;
         try {
-            Object message = serializer.deserialize(payload, registration.messageType());
+            message = serializer.deserialize(payload, registration.messageType());
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(payloadDecodeFailure(
+                channelName,
+                registration.packetName(),
+                ex));
+        }
+        try {
             ZLinkRouteSendContext context =
                 new DefaultRouteSendContext(channelName, registration.packetName(), sourceRoutingId);
             if (registration.handlerMethod() != null) {
@@ -1506,8 +1558,16 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ChannelRouteRequestHandlerRegistration registration,
         RoutingId sourceRoutingId,
         Message payload) {
+        Object request;
         try {
-            Object request = serializer.deserialize(payload, registration.requestType());
+            request = serializer.deserialize(payload, registration.requestType());
+        } catch (RuntimeException ex) {
+            return CompletableFuture.failedFuture(payloadDecodeFailure(
+                channelName,
+                registration.packetName(),
+                ex));
+        }
+        try {
             ZLinkRouteRequestContext context =
                 new DefaultRouteRequestContext(channelName, registration.packetName(), sourceRoutingId);
             if (registration.handlerMethod() != null) {
@@ -1524,6 +1584,21 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 .thenApply(serializer::serialize);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    private static PayloadDecodeDispatchException payloadDecodeFailure(
+        String channelName,
+        String packetName,
+        RuntimeException cause) {
+        return new PayloadDecodeDispatchException(
+            "PayloadDecodeFailed: failed to decode payload for '" + channelName + ":" + packetName + "'.",
+            cause);
+    }
+
+    private static final class PayloadDecodeDispatchException extends RuntimeException {
+        PayloadDecodeDispatchException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 
@@ -1969,23 +2044,40 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 requestParts,
                 timeout,
                 reply -> {
-                    Message emptyReply = null;
                     try {
-                        Message firstReply = reply.parts().isEmpty()
-                            ? (emptyReply = Message.from(new byte[0]))
-                            : reply.parts().get(0);
-                        result.complete(serializer.deserialize(firstReply, replyType));
+                        completeRequestReply(reply, replyType, result);
                     } catch (RuntimeException ex) {
                         result.completeExceptionally(ex);
                     } finally {
-                        if (emptyReply != null) {
-                            emptyReply.close();
-                        }
                         reply.parts().forEach(Message::close);
                     }
                 },
                 result);
             return result;
+        }
+    }
+
+    private <TReply> void completeRequestReply(
+        ZLinkBackendReceived reply,
+        Class<TReply> replyType,
+        CompletableFuture<TReply> result) {
+        if (reply.parts().size() >= 2
+            && FRAMEWORK_ERROR_REPLY_MARKER.equals(reply.parts().get(0).toUtf8String())) {
+            String message = reply.parts().get(1).toUtf8String();
+            result.completeExceptionally(new ZLinkFrameworkException(
+                message));
+            return;
+        }
+        Message emptyReply = null;
+        Message firstReply = reply.parts().isEmpty()
+            ? (emptyReply = Message.from(new byte[0]))
+            : reply.parts().get(0);
+        try {
+            result.complete(serializer.deserialize(firstReply, replyType));
+        } finally {
+            if (emptyReply != null) {
+                emptyReply.close();
+            }
         }
     }
 
@@ -2080,18 +2172,11 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     target,
                     requestParts,
                     reply -> {
-                        Message emptyReply = null;
                         try {
-                            Message firstReply = reply.parts().isEmpty()
-                                ? (emptyReply = Message.from(new byte[0]))
-                                : reply.parts().get(0);
-                            result.complete(serializer.deserialize(firstReply, replyType));
+                            completeRequestReply(reply, replyType, result);
                         } catch (RuntimeException ex) {
                             result.completeExceptionally(ex);
                         } finally {
-                            if (emptyReply != null) {
-                                emptyReply.close();
-                            }
                             reply.parts().forEach(Message::close);
                         }
                     },

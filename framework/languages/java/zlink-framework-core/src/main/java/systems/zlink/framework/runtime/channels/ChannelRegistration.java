@@ -34,6 +34,7 @@ public final class ChannelRegistration {
     private boolean serverEnabled;
     private boolean publisherEnabled;
     private boolean subscriberEnabled;
+    private RoutingId serverRoutingId;
     private RoutingId routeRoutingId;
 
     public ChannelRegistration(String name, ChannelKind kind) {
@@ -125,6 +126,10 @@ public final class ChannelRegistration {
         return routeRoutingId;
     }
 
+    public RoutingId serverRoutingId() {
+        return serverRoutingId;
+    }
+
     boolean clientEnabled() {
         return clientEnabled;
     }
@@ -155,6 +160,14 @@ public final class ChannelRegistration {
 
     void addServerBind(String endpoint) {
         serverBinds.add(requireEndpoint(endpoint));
+    }
+
+    void setServerRoutingId(RoutingId routingId) {
+        if (routingId == null) {
+            throw new ZLinkConfigurationException(
+                "client/server channel server routing id is required: " + name);
+        }
+        serverRoutingId = routingId;
     }
 
     void addClientManualEndpoint(String endpoint) {

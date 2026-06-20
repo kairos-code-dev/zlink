@@ -30,6 +30,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <future>
 #include <mutex>
 #include <optional>
@@ -90,6 +92,17 @@ class local_handler_t
     std::string last_route_source;
 };
 
+class throwing_handler_t
+{
+  public:
+    reply_t handle_request (const request_t &)
+    {
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_failed,
+          "DERR-007 handler exception");
+    }
+};
+
 class dispatch_observer_spot_t final : public zlink::framework::spot_t
 {
 };
@@ -103,9 +116,11 @@ class recording_dispatch_observer_t : public zlink::framework::message_dispatch_
   public:
     explicit recording_dispatch_observer_t (
       std::vector<zlink::framework::message_dispatch_error_event_t> &events,
-      std::mutex &mutex) :
+      std::mutex &mutex,
+      std::filesystem::path log_path = {}) :
         _events (&events),
-        _mutex (&mutex)
+        _mutex (&mutex),
+        _log_path (std::move (log_path))
     {
     }
 
@@ -114,13 +129,121 @@ class recording_dispatch_observer_t : public zlink::framework::message_dispatch_
     {
         std::lock_guard lock (*_mutex);
         _events->push_back (error);
+        if (!_log_path.empty ()) {
+            std::ofstream log (_log_path, std::ios::app);
+            log << "dispatch-error"
+                << " surface=" << surface_name (error.surface)
+                << " messageKind=" << message_kind_name (error.message_kind)
+                << " reason=" << reason_name (error.reason)
+                << " action=" << action_name (error.action)
+                << " packetName=" << error.packet_name.value_or ("")
+                << " channelName=" << error.channel_name.value_or ("")
+                << " correlationId=" << error.correlation_id.value_or ("")
+                << '\n';
+        }
         throw std::runtime_error ("observer failed");
     }
 
   private:
+    static const char *surface_name (zlink::framework::dispatch_error_surface_t surface)
+    {
+        switch (surface) {
+            case zlink::framework::dispatch_error_surface_t::channel:
+                return "channel";
+            case zlink::framework::dispatch_error_surface_t::dealer_mesh_channel:
+                return "dealer_mesh_channel";
+            case zlink::framework::dispatch_error_surface_t::route_mesh_channel:
+                return "route_mesh_channel";
+            case zlink::framework::dispatch_error_surface_t::spot_route:
+                return "spot_route";
+            case zlink::framework::dispatch_error_surface_t::spot_actor:
+                return "spot_actor";
+            case zlink::framework::dispatch_error_surface_t::spot_subscription:
+                return "spot_subscription";
+            case zlink::framework::dispatch_error_surface_t::stream_session:
+                return "stream_session";
+            default:
+                return "unknown";
+        }
+    }
+
+    static const char *message_kind_name (zlink::framework::dispatch_message_kind_t kind)
+    {
+        switch (kind) {
+            case zlink::framework::dispatch_message_kind_t::request:
+                return "request";
+            case zlink::framework::dispatch_message_kind_t::send:
+                return "send";
+            case zlink::framework::dispatch_message_kind_t::publish:
+                return "publish";
+            case zlink::framework::dispatch_message_kind_t::response:
+                return "response";
+            case zlink::framework::dispatch_message_kind_t::error:
+                return "error";
+            case zlink::framework::dispatch_message_kind_t::actor_request:
+                return "actor_request";
+            case zlink::framework::dispatch_message_kind_t::actor_send:
+                return "actor_send";
+            default:
+                return "unknown";
+        }
+    }
+
+    static const char *reason_name (zlink::framework::dispatch_error_reason_t reason)
+    {
+        switch (reason) {
+            case zlink::framework::dispatch_error_reason_t::handler_missing:
+                return "handler_missing";
+            case zlink::framework::dispatch_error_reason_t::payload_decode_failed:
+                return "payload_decode_failed";
+            case zlink::framework::dispatch_error_reason_t::handler_exception:
+                return "handler_exception";
+            case zlink::framework::dispatch_error_reason_t::invalid_frame:
+                return "invalid_frame";
+            case zlink::framework::dispatch_error_reason_t::reply_path_missing:
+                return "reply_path_missing";
+            case zlink::framework::dispatch_error_reason_t::unexpected_reply:
+                return "unexpected_reply";
+            default:
+                return "unknown";
+        }
+    }
+
+    static const char *action_name (zlink::framework::dispatch_error_action_t action)
+    {
+        switch (action) {
+            case zlink::framework::dispatch_error_action_t::reply_error:
+                return "reply_error";
+            case zlink::framework::dispatch_error_action_t::drop:
+                return "drop";
+            default:
+                return "unknown";
+        }
+    }
+
     std::vector<zlink::framework::message_dispatch_error_event_t> *_events;
     std::mutex *_mutex;
+    std::filesystem::path _log_path;
 };
+
+std::string read_file (const std::filesystem::path &path)
+{
+    std::ifstream input (path);
+    std::stringstream buffer;
+    buffer << input.rdbuf ();
+    return buffer.str ();
+}
+
+std::size_t count_occurrences (const std::string &text, const std::string &needle)
+{
+    std::size_t count = 0;
+    std::size_t offset = 0;
+    while ((offset = text.find (needle, offset)) != std::string::npos) {
+        ++count;
+        offset += needle.size ();
+    }
+    return count;
+}
 
 std::vector<zlink::framework::message_dispatch_error_event_t>
 wait_dispatch_errors (std::vector<zlink::framework::message_dispatch_error_event_t> &events,
@@ -427,13 +550,36 @@ int main ()
         return 74;
     }
 
+    fanout.channel ("profile")
+      .enable_server ()
+      .set_routing_id (zlink::routing_id_t::from (std::string ("profile-api")))
+      .bind ("tcp://127.0.0.1:7399");
+    std::optional<zlink::framework::channel_snapshot_t> routed_server_snapshot;
+    for (const auto &channel : fanout.channels ()) {
+        if (channel.name == "profile") {
+            routed_server_snapshot = channel;
+            break;
+        }
+    }
+    if (!routed_server_snapshot || !routed_server_snapshot->server.routing_id
+        || routed_server_snapshot->server.routing_id->to_string () != "profile-api") {
+        return 75;
+    }
+
     zlink::framework::zlink_builder_t local_server;
     local_server.channel ("local").enable_server ().bind ("tcp://127.0.0.1:7401");
     std::vector<zlink::framework::message_dispatch_error_event_t> dispatch_errors;
     std::mutex dispatch_errors_mutex;
+    const auto dispatch_log_path =
+      std::filesystem::temp_directory_path ()
+      / ("zlink-cpp-derr-009-"
+         + std::to_string (std::chrono::steady_clock::now ().time_since_epoch ().count ())
+         + ".log");
+    std::filesystem::remove (dispatch_log_path);
     zlink::framework::dispatch_options_t local_dispatch;
     local_dispatch.set_message_dispatch_error_observer (
-      std::make_shared<recording_dispatch_observer_t> (dispatch_errors, dispatch_errors_mutex));
+      std::make_shared<recording_dispatch_observer_t> (dispatch_errors, dispatch_errors_mutex,
+                                                       dispatch_log_path));
     zlink::framework::detail::apply_dispatch_options (local_server, local_dispatch);
     const auto reported_before_no_observer =
       zlink::framework::detail::dispatch_error_reporter_t::reported ();
@@ -458,6 +604,7 @@ int main ()
 
     zlink::framework::service_collection_t services;
     services.add_singleton<local_handler_t> ();
+    services.add_singleton<throwing_handler_t> ();
     auto provider = services.build_provider ();
 
     zlink::framework::serializer_registry_t serializers;
@@ -470,7 +617,11 @@ int main ()
       "local", "request", &local_handler_t::handle_request, {.packet_name = "request"});
     handlers.on_request<local_handler_t, request_t, reply_t> (
       "hosted", "request", &local_handler_t::handle_request, {.packet_name = "request"});
+    handlers.on_request<throwing_handler_t, request_t, reply_t> (
+      "local", "request", &throwing_handler_t::handle_request, {.packet_name = "throw"});
     handlers.on_send<local_handler_t, event_t> ("local", "send", &local_handler_t::handle_send,
+                                                {.packet_name = "event"});
+    handlers.on_send<local_handler_t, event_t> ("hosted", "send", &local_handler_t::handle_send,
                                                 {.packet_name = "event"});
 
     auto local_runtime =
@@ -559,6 +710,143 @@ int main ()
         || observed_dispatch_errors[0].correlation_id.value_or ("") != "corr-1") {
         return 97;
     }
+    clear_dispatch_errors (dispatch_errors, dispatch_errors_mutex);
+
+    zlink::framework::runtime::messaging::envelope_header_t missing_send_header;
+    missing_send_header.kind = zlink::framework::runtime::messaging::message_kind_t::command;
+    missing_send_header.channel_name = "local";
+    missing_send_header.message_name = "missing-command";
+    missing_send_header.topic = "command";
+    missing_send_header.correlation_id = "corr-send-missing";
+    auto missing_send_parts = envelope_codec.encode_raw_body_parts (
+      missing_send_header, zlink::message_t::from (std::string ("33")));
+    const auto missing_send_result = packet_dispatcher.dispatch_server_message (
+      "local", missing_send_parts, provider, serializers, handlers);
+    if (!missing_send_result || missing_send_result.value ().size () != 0) {
+        return 103;
+    }
+    observed_dispatch_errors = wait_dispatch_errors (dispatch_errors, dispatch_errors_mutex, 1);
+    if (observed_dispatch_errors.size () != 1
+        || observed_dispatch_errors[0].surface
+             != zlink::framework::dispatch_error_surface_t::channel
+        || observed_dispatch_errors[0].message_kind
+             != zlink::framework::dispatch_message_kind_t::send
+        || observed_dispatch_errors[0].reason
+             != zlink::framework::dispatch_error_reason_t::handler_missing
+        || observed_dispatch_errors[0].action
+             != zlink::framework::dispatch_error_action_t::drop
+        || observed_dispatch_errors[0].packet_name.value_or ("") != "missing-command"
+        || observed_dispatch_errors[0].channel_name.value_or ("") != "local"
+        || observed_dispatch_errors[0].topic.value_or ("") != "command"
+        || observed_dispatch_errors[0].correlation_id.value_or ("") != "corr-send-missing") {
+        return 104;
+    }
+    clear_dispatch_errors (dispatch_errors, dispatch_errors_mutex);
+
+    zlink::framework::runtime::messaging::envelope_header_t malformed_header;
+    malformed_header.kind = zlink::framework::runtime::messaging::message_kind_t::request;
+    malformed_header.channel_name = "local";
+    malformed_header.message_name = "request";
+    malformed_header.topic = "request";
+    malformed_header.correlation_id = "corr-payload-decode";
+    const auto last_request_before_malformed =
+      provider.get_required<local_handler_t> ().last_request;
+    auto malformed_parts = envelope_codec.encode_raw_body_parts (
+      malformed_header, zlink::message_t::from (std::string ("not-an-int")));
+    const auto malformed_reply = packet_dispatcher.dispatch_server_message (
+      "local", malformed_parts, provider, serializers, handlers);
+    if (!malformed_reply) {
+        return 108;
+    }
+    const auto malformed_reply_header = envelope_codec.decode_header (malformed_reply.value ());
+    if (!malformed_reply_header
+        || malformed_reply_header.value ().kind
+             != zlink::framework::runtime::messaging::message_kind_t::error
+        || malformed_reply_header.value ().error_code.value_or ("") != "payload_decode_failed"
+        || provider.get_required<local_handler_t> ().last_request
+             != last_request_before_malformed) {
+        return 109;
+    }
+    observed_dispatch_errors = wait_dispatch_errors (dispatch_errors, dispatch_errors_mutex, 1);
+    if (observed_dispatch_errors.size () != 1
+        || observed_dispatch_errors[0].surface
+             != zlink::framework::dispatch_error_surface_t::channel
+        || observed_dispatch_errors[0].message_kind
+             != zlink::framework::dispatch_message_kind_t::request
+        || observed_dispatch_errors[0].reason
+             != zlink::framework::dispatch_error_reason_t::payload_decode_failed
+        || observed_dispatch_errors[0].action
+             != zlink::framework::dispatch_error_action_t::reply_error
+        || observed_dispatch_errors[0].packet_name.value_or ("") != "request"
+        || observed_dispatch_errors[0].channel_name.value_or ("") != "local"
+        || observed_dispatch_errors[0].topic.value_or ("") != "request"
+        || observed_dispatch_errors[0].correlation_id.value_or ("") != "corr-payload-decode"
+        || !observed_dispatch_errors[0].exception) {
+        return 110;
+    }
+    clear_dispatch_errors (dispatch_errors, dispatch_errors_mutex);
+
+    zlink::framework::runtime::messaging::envelope_header_t throwing_header;
+    throwing_header.kind = zlink::framework::runtime::messaging::message_kind_t::request;
+    throwing_header.channel_name = "local";
+    throwing_header.message_name = "throw";
+    throwing_header.topic = "request";
+    throwing_header.correlation_id = "corr-handler-exception";
+    auto throwing_parts = envelope_codec.encode_raw_body_parts (
+      throwing_header, zlink::message_t::from (std::string ("24")));
+    const auto throwing_reply = packet_dispatcher.dispatch_server_message (
+      "local", throwing_parts, provider, serializers, handlers);
+    if (!throwing_reply) {
+        return 105;
+    }
+    const auto throwing_reply_header = envelope_codec.decode_header (throwing_reply.value ());
+    if (!throwing_reply_header
+        || throwing_reply_header.value ().kind
+             != zlink::framework::runtime::messaging::message_kind_t::error
+        || throwing_reply_header.value ().error_code.value_or ("") != "request_failed"
+        || throwing_reply_header.value ().error_message.value_or ("")
+             != "DERR-007 handler exception") {
+        return 106;
+    }
+    observed_dispatch_errors = wait_dispatch_errors (dispatch_errors, dispatch_errors_mutex, 1);
+    if (observed_dispatch_errors.size () != 1
+        || observed_dispatch_errors[0].surface
+             != zlink::framework::dispatch_error_surface_t::channel
+        || observed_dispatch_errors[0].message_kind
+             != zlink::framework::dispatch_message_kind_t::request
+        || observed_dispatch_errors[0].reason
+             != zlink::framework::dispatch_error_reason_t::handler_exception
+        || observed_dispatch_errors[0].action
+             != zlink::framework::dispatch_error_action_t::reply_error
+        || observed_dispatch_errors[0].packet_name.value_or ("") != "throw"
+        || observed_dispatch_errors[0].channel_name.value_or ("") != "local"
+        || observed_dispatch_errors[0].topic.value_or ("") != "request"
+        || observed_dispatch_errors[0].correlation_id.value_or ("")
+             != "corr-handler-exception"
+        || !observed_dispatch_errors[0].exception) {
+        return 107;
+    }
+    clear_dispatch_errors (dispatch_errors, dispatch_errors_mutex);
+    const auto dispatch_log_text = read_file (dispatch_log_path);
+    std::filesystem::remove (dispatch_log_path);
+    if (count_occurrences (dispatch_log_text, "dispatch-error") < 4
+        || dispatch_log_text.find ("surface=channel") == std::string::npos
+        || dispatch_log_text.find ("messageKind=request") == std::string::npos
+        || dispatch_log_text.find ("messageKind=send") == std::string::npos
+        || dispatch_log_text.find ("reason=handler_missing") == std::string::npos
+        || dispatch_log_text.find ("reason=payload_decode_failed") == std::string::npos
+        || dispatch_log_text.find ("reason=handler_exception") == std::string::npos
+        || dispatch_log_text.find ("action=reply_error") == std::string::npos
+        || dispatch_log_text.find ("action=drop") == std::string::npos
+        || dispatch_log_text.find ("packetName=missing") == std::string::npos
+        || dispatch_log_text.find ("packetName=missing-command") == std::string::npos
+        || dispatch_log_text.find ("packetName=request") == std::string::npos
+        || dispatch_log_text.find ("packetName=throw") == std::string::npos
+        || dispatch_log_text.find ("channelName=local") == std::string::npos
+        || dispatch_log_text.find ("correlationId=corr-payload-decode")
+             == std::string::npos) {
+        return 111;
+    }
 
     zlink::context_t native_context;
     zlink::router_socket_t native_server (native_context);
@@ -642,20 +930,23 @@ int main ()
     zlink::socket_monitor_t native_bus_server_monitor = native_bus_server.monitor_open ();
     native_bus_server.bind (native_bus_endpoint);
     auto native_bus_server_done = std::async (std::launch::async, [&] () -> int {
-        zlink::received_t native_received;
-        if (native_bus_server.recv (native_received) != 0 || !native_received.request_seq ()) {
-            return 80;
+        for (int request_index = 0; request_index < 2; ++request_index) {
+            zlink::received_t native_received;
+            if (native_bus_server.recv (native_received) != 0 || !native_received.request_seq ()) {
+                return 80;
+            }
+            const auto native_dispatch_reply = packet_dispatcher.dispatch_server_message (
+              "local", copy_message_parts (native_received.parts ()), provider, serializers,
+              handlers);
+            if (!native_dispatch_reply || native_dispatch_reply.value ().size () != 2) {
+                return 81;
+            }
+            zlink::message_t reply_header =
+              zlink::message_t::from (native_dispatch_reply.value ()[0].to_string ());
+            zlink::message_t reply_body =
+              zlink::message_t::from (native_dispatch_reply.value ()[1].to_string ());
+            native_received.reply ().message (reply_header).message (reply_body).submit ();
         }
-        const auto native_dispatch_reply = packet_dispatcher.dispatch_server_message (
-          "local", copy_message_parts (native_received.parts ()), provider, serializers, handlers);
-        if (!native_dispatch_reply || native_dispatch_reply.value ().size () != 2) {
-            return 81;
-        }
-        zlink::message_t reply_header =
-          zlink::message_t::from (native_dispatch_reply.value ()[0].to_string ());
-        zlink::message_t reply_body =
-          zlink::message_t::from (native_dispatch_reply.value ()[1].to_string ());
-        native_received.reply ().message (reply_header).message (reply_body).submit ();
         return 0;
     });
     auto native_bus_reply =
@@ -665,18 +956,65 @@ int main ()
         .timeout (std::chrono::milliseconds (2000))
         .async<reply_t> ()
         .result ();
+    if (!native_bus_reply || native_bus_reply.value ().value != 127) {
+        return 82;
+    }
+    auto native_bus_missing_reply =
+      native_bus_builder.request_client ("native-bus")
+        .request (request_t{27})
+        .packet_name ("missing")
+        .timeout (std::chrono::milliseconds (2000))
+        .async<reply_t> ()
+        .result ();
+    if (native_bus_missing_reply
+        || native_bus_missing_reply.error_kind ()
+             != zlink::framework::framework_error_kind_t::handler_not_found) {
+        return 246;
+    }
     const int native_bus_server_result = native_bus_server_done.get ();
     if (native_bus_server_result != 0) {
         return native_bus_server_result;
     }
-    if (!native_bus_reply || native_bus_reply.value ().value != 127) {
-        return 82;
+
+    zlink::framework::runtime::messaging::envelope_header_t validation_header;
+    validation_header.kind = zlink::framework::runtime::messaging::message_kind_t::response;
+    validation_header.channel_name = "native-bus";
+    validation_header.message_name = "request";
+    validation_header.topic = "request";
+    validation_header.correlation_id = "native-reply-validation";
+    auto valid_native_reply = envelope_codec.encode_raw_body_parts (
+      validation_header, zlink::message_t::from (std::string ("32")));
+    if (!zlink::framework::detail::validate_channel_native_reply (valid_native_reply)) {
+        return 242;
+    }
+    std::vector<zlink::message_t> one_frame_reply;
+    one_frame_reply.push_back (zlink::message_t::from (std::string ("bad-header")));
+    if (zlink::framework::detail::validate_channel_native_reply (
+          zlink::framework::runtime::messaging::message_parts_t (
+            std::move (one_frame_reply)))) {
+        return 243;
+    }
+    std::vector<zlink::message_t> three_frame_reply;
+    three_frame_reply.push_back (zlink::message_t::from (valid_native_reply[0].to_string ()));
+    three_frame_reply.push_back (zlink::message_t::from (valid_native_reply[1].to_string ()));
+    three_frame_reply.push_back (zlink::message_t::from (std::string ("extra-frame")));
+    if (zlink::framework::detail::validate_channel_native_reply (
+          zlink::framework::runtime::messaging::message_parts_t (
+            std::move (three_frame_reply)))) {
+        return 244;
+    }
+    validation_header.kind = zlink::framework::runtime::messaging::message_kind_t::request;
+    auto request_kind_reply = envelope_codec.encode_raw_body_parts (
+      validation_header, zlink::message_t::from (std::string ("32")));
+    if (zlink::framework::detail::validate_channel_native_reply (request_kind_reply)) {
+        return 245;
     }
 
     zlink::framework::zlink_builder_t hosted_builder;
     const auto hosted_endpoint = unique_tcp_endpoint ();
+    const auto hosted_server_rid = zlink::routing_id_t::from (std::string ("hosted-server"));
     auto hosted_channel = hosted_builder.channel ("hosted");
-    hosted_channel.enable_server ().bind (hosted_endpoint);
+    hosted_channel.enable_server ().set_routing_id (hosted_server_rid).bind (hosted_endpoint);
     hosted_channel.enable_client ().connect (hosted_endpoint);
     zlink::framework::detail::channel_runtime_t::from (hosted_builder.message_bus ())
       .bind_serializers (serializers);
@@ -690,10 +1028,72 @@ int main ()
         .timeout (std::chrono::milliseconds (2000))
         .async<reply_t> ()
         .result ();
-    hosted_service.stop ();
     if (!hosted_reply || hosted_reply.value ().value != 128) {
+        hosted_service.stop ();
         return 83;
     }
+    auto hosted_send =
+      hosted_builder.message_bus ()
+        .send ("hosted", event_t{30})
+        .packet_name ("event")
+        .async ()
+        .result ();
+    for (int attempt = 0; attempt < 50
+                        && provider.get_required<local_handler_t> ().last_event != 30;
+         ++attempt) {
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
+    if (!hosted_send || provider.get_required<local_handler_t> ().last_event != 30) {
+        hosted_service.stop ();
+        return 87;
+    }
+    zlink::context_t peer_context;
+    zlink::router_socket_t peer_router (peer_context);
+    peer_router.connect (hosted_endpoint);
+    zlink::framework::runtime::messaging::envelope_header_t hosted_header;
+    hosted_header.kind = zlink::framework::runtime::messaging::message_kind_t::request;
+    hosted_header.channel_name = "hosted";
+    hosted_header.message_name = "request";
+    hosted_header.topic = "request";
+    hosted_header.correlation_id = "hosted-router-request";
+    auto hosted_parts = envelope_codec.encode_raw_body_parts (
+      hosted_header, zlink::message_t::from (std::string ("29")));
+    std::vector<zlink::message_t> routed_hosted_reply;
+    bool routed_request_completed = false;
+    for (int attempt = 0; attempt < 50 && !routed_request_completed; ++attempt) {
+        try {
+            auto attempt_header = zlink::message_t::from (hosted_parts[0].to_string ());
+            auto attempt_body = zlink::message_t::from (hosted_parts[1].to_string ());
+            routed_hosted_reply =
+              peer_router.request (hosted_server_rid)
+                .message (attempt_header)
+                .message (attempt_body)
+                .timeout (std::chrono::milliseconds (200))
+                .async ()
+                .get ();
+            routed_request_completed = true;
+        }
+        catch (const std::exception &) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (20));
+        }
+    }
+    if (routed_hosted_reply.size () != 2) {
+        hosted_service.stop ();
+        return 85;
+    }
+    auto routed_reply_parts = copy_message_parts (routed_hosted_reply);
+    const auto routed_reply_header = envelope_codec.decode_header (routed_reply_parts);
+    const auto routed_reply_body = envelope_codec.decode_body (routed_reply_parts);
+    if (!routed_reply_header
+        || routed_reply_header.value ().kind
+             != zlink::framework::runtime::messaging::message_kind_t::response
+        || routed_reply_header.value ().correlation_id != "hosted-router-request"
+        || !routed_reply_body
+        || serializers.get<reply_t> ().deserialize (routed_reply_body.value ()).value != 129) {
+        hosted_service.stop ();
+        return 86;
+    }
+    hosted_service.stop ();
 
     zlink::framework::zlink_builder_t nested_hosted_builder;
     const auto nested_hosted_endpoint = unique_tcp_endpoint ();
@@ -850,6 +1250,21 @@ int main ()
     if (manual_connections.size () != 2 || manual_connections[0] != "tcp://127.0.0.1:7400"
         || manual_connections[1] != "tcp://127.0.0.1:7401") {
         return 23;
+    }
+    const auto first_manual_connection = bundle.next_manual_connection ();
+    const auto second_manual_connection = bundle.next_manual_connection ();
+    const auto third_manual_connection = bundle.next_manual_connection ();
+    if (!first_manual_connection || !second_manual_connection || !third_manual_connection
+        || first_manual_connection.value () != "tcp://127.0.0.1:7400"
+        || second_manual_connection.value () != "tcp://127.0.0.1:7401"
+        || third_manual_connection.value () != "tcp://127.0.0.1:7400") {
+        return 240;
+    }
+    const auto ordered_manual_connections = bundle.manual_connections_from_next ();
+    if (ordered_manual_connections.size () != 2
+        || ordered_manual_connections[0] != "tcp://127.0.0.1:7401"
+        || ordered_manual_connections[1] != "tcp://127.0.0.1:7400") {
+        return 241;
     }
     bundle.remove_manual_connection ("tcp://127.0.0.1:7401");
     if (bundle.contains_manual_connection ("tcp://127.0.0.1:7401")) {
@@ -1428,7 +1843,10 @@ int main ()
         .packet_name ("typed.client.request")
         .timeout (std::chrono::milliseconds (10))
         .async<reply_t> ().result ();
-    if (missing_peer_reply || public_route.pending_request_count () != 1) {
+    if (missing_peer_reply
+        || missing_peer_reply.error_kind ()
+             != zlink::framework::framework_error_kind_t::route_not_connected
+        || public_route.pending_request_count () != 1) {
         return 72;
     }
     public_route.set_request_backend (

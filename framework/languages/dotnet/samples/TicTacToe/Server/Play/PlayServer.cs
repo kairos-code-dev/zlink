@@ -24,6 +24,7 @@ internal sealed class PlayServer(SampleSettings settings)
         builder.Services.AddZLinkFramework(options =>
         {
             options.DefaultTimeout = SampleTimeouts.Request;
+            options.ConfigureDispatch().SetMessageDispatchErrorObserver<TicTacToeDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(PlayServer));
             options.Codecs.AddJson();
             options.AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor);

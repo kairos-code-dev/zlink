@@ -255,6 +255,13 @@ class client_server_channel_builder_t
         return *this;
     }
 
+    client_server_channel_builder_t &server_routing_id (zlink::routing_id_t routing_id)
+    {
+        _server_routing_id = std::move (routing_id);
+        apply_channel ();
+        return *this;
+    }
+
     client_server_channel_builder_t &enable_client ()
     {
         _client_enabled = true;
@@ -299,6 +306,7 @@ class client_server_channel_builder_t
     {
         const auto channel_name = _channel_name;
         const auto server_endpoint = _server_endpoint;
+        const auto server_routing_id = _server_routing_id;
         const auto client_enabled = _client_enabled;
         const auto client_endpoints = _client_endpoints;
         const auto client_uses_discovery = _client_uses_discovery;
@@ -320,11 +328,15 @@ class client_server_channel_builder_t
         }
         _options->set_zlink_action (
           "client_server_channel:" + channel_name,
-          [channel_name, server_endpoint, client_enabled, client_endpoints,
+          [channel_name, server_endpoint, server_routing_id, client_enabled, client_endpoints,
            client_uses_discovery] (zlink_builder_t &zlink) {
               auto channel = zlink.channel (channel_name);
               if (!server_endpoint.empty ()) {
-                  channel.enable_server ().bind (server_endpoint);
+                  auto server = channel.enable_server ();
+                  if (server_routing_id) {
+                      server.set_routing_id (*server_routing_id);
+                  }
+                  server.bind (server_endpoint);
               }
               if (client_enabled) {
                   auto client = channel.enable_client ();
@@ -343,6 +355,7 @@ class client_server_channel_builder_t
     std::shared_ptr<detail::framework_options_state_t> _options;
     std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
     std::string _server_endpoint;
+    std::optional<zlink::routing_id_t> _server_routing_id;
     std::vector<std::string> _client_endpoints;
     bool _client_enabled = false;
     bool _client_uses_discovery = false;
@@ -602,6 +615,32 @@ class route_mesh_channel_builder_t
         return *this;
     }
 
+    template <typename TOwner, typename TMessage>
+    route_mesh_channel_builder_t &
+    add_send_handler (std::string packet_name,
+                      void (TOwner::*method) (const TMessage &, const route_handler_context_t &))
+    {
+        _route_handlers.push_back ([packet = std::move (packet_name), method] (
+                                     route_channel_builder_t &channel) mutable {
+            channel.add_send_handler<TOwner, TMessage> (std::move (packet), method);
+        });
+        apply ();
+        return *this;
+    }
+
+    template <typename TOwner, typename TRequest, typename TReply>
+    route_mesh_channel_builder_t &add_request_handler (
+      std::string packet_name,
+      TReply (TOwner::*method) (const TRequest &, const route_handler_context_t &))
+    {
+        _route_handlers.push_back ([packet = std::move (packet_name), method] (
+                                     route_channel_builder_t &channel) mutable {
+            channel.add_request_handler<TOwner, TRequest, TReply> (std::move (packet), method);
+        });
+        apply ();
+        return *this;
+    }
+
     route_mesh_channel_builder_t &
     enable_spot_route_egress (std::string target_spot_node_channel_name)
     {
@@ -621,11 +660,12 @@ class route_mesh_channel_builder_t
         const auto routing_id = _routing_id;
         const auto manual_connections = _manual_connections;
         const auto route_handler_groups = _route_handler_groups;
+        const auto route_handlers = _route_handlers;
         const auto spot_route_egress_target = _spot_route_egress_target;
         _options->set_zlink_action (
           "route_mesh_channel:" + channel_name,
           [channel_name, bind_endpoint, routing_id, manual_connections, route_handler_groups,
-           spot_route_egress_target] (zlink_builder_t &zlink) {
+           route_handlers, spot_route_egress_target] (zlink_builder_t &zlink) {
               auto channel = zlink.route_channel (channel_name);
               if (!bind_endpoint.empty ()) {
                   channel.bind (bind_endpoint);
@@ -638,6 +678,9 @@ class route_mesh_channel_builder_t
               }
               for (const auto &group : route_handler_groups) {
                   channel.add_handler_group (group);
+              }
+              for (const auto &handler : route_handlers) {
+                  handler (channel);
               }
               if (!spot_route_egress_target.empty ()) {
                   channel.enable_spot_route_egress (spot_route_egress_target);
@@ -652,6 +695,7 @@ class route_mesh_channel_builder_t
     std::optional<zlink::routing_id_t> _routing_id;
     std::vector<std::string> _manual_connections;
     std::vector<std::string> _route_handler_groups;
+    std::vector<std::function<void (route_channel_builder_t &)>> _route_handlers;
     std::string _spot_route_egress_target;
 };
 

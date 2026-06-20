@@ -6,7 +6,6 @@
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Actors/player_actor_factory.hpp"
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Handlers/allocate_bingo_room_handler.hpp"
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
-#include "../../samples/Bingo/Server/Play/Adapters/ZLink/Spots/Handlers/bingo_room_timer_handler.hpp"
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_entry_spot.hpp"
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp"
 #include "../../samples/Bingo/Server/Play/Application/RoomAllocation/bingo_room_allocator.hpp"
@@ -205,9 +204,11 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
                              submit_bingo_card_req_t::packet_name, "application/json", {}, {}},
                            {allocated.room_id, {7, 8, 9, 10, 11, 12, 13, 14, 15}});
 
-    bingo_room_timer_handler_t timer;
-    const auto drawn = timer.handle (room_spot, 1);
-    EXPECT_EQ (drawn.state.room_id, allocated.room_id);
+    const auto &finished = room_spot.snapshot ();
+    EXPECT_EQ (finished.room_id, allocated.room_id);
+    EXPECT_EQ (finished.status, bingo_room_status_t::finished);
+    EXPECT_GT (finished.draw_seq, 0);
+    ASSERT_FALSE (finished.winners.empty ());
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)

@@ -134,16 +134,16 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
         players[actor.actor_id] = player;
         actor.apply_player (player);
         if (player.wins == 100) {
-            auto published =
+            auto publish_task =
               _context
                 .publish (sample_names_t::player_milestone_topic,
                           player_win_milestone_event_t{state.room_id,
                                                        player.actor_id,
                                                        player.display_name,
                                                        player.wins})
-                .async ()
-                .result ();
-            (void) published;
+                .async ();
+            zlink::framework::observe_task_completion (
+              publish_task, [] (const zlink::framework::result_t<void> &) {});
         }
     }
 

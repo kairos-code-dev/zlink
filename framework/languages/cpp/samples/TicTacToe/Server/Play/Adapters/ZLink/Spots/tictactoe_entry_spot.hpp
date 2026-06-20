@@ -91,16 +91,14 @@ class entry_spot_t : public zlink::framework::entry_spot_t
     void on_player_win_milestone (const player_win_milestone_event_t &event)
     {
         for (auto &[_, actor] : observers) {
-            auto sent =
-              actor->context.bound_session ()
-                .send (win_milestone_notify_t{event.room_id,
-                                              event.actor_id,
-                                              event.display_name,
-                                              event.wins,
-                                              std::string (_context.node_rid ().value ())})
-                .async ()
-                .result ();
-            (void) sent;
+            auto send_task =
+              actor->push (win_milestone_notify_t{event.room_id,
+                                                  event.actor_id,
+                                                  event.display_name,
+                                                  event.wins,
+                                                  std::string (_context.node_rid ().value ())});
+            zlink::framework::observe_task_completion (
+              send_task, [] (const zlink::framework::result_t<void> &) {});
         }
     }
 

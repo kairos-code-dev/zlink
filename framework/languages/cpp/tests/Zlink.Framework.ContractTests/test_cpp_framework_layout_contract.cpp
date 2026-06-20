@@ -2127,14 +2127,16 @@ int main ()
       require_exists (root / "samples/Bingo/Server/Play/Adapters/ZLink/Actors/player_actor.hpp");
     ok &= require_exists (
       root / "samples/Bingo/Server/Play/Adapters/ZLink/Actors/player_actor_factory.hpp");
-    ok &= require_exists (root
-                          / "samples/Bingo/Server/Play/Adapters/ZLink/Notifications/"
-                            "bingo_notification_publisher.hpp");
+    ok &= require_absent (root
+                            / "samples/Bingo/Server/Play/Adapters/ZLink/Notifications/"
+                              "bingo_notification_publisher.hpp",
+                          "BingoRoom publishes reward events and PlayerActor owns session push");
     ok &=
       require_exists (root / "samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp");
-    ok &= require_exists (root
-                          / "samples/Bingo/Server/Play/Adapters/ZLink/Spots/Handlers/"
-                            "bingo_room_timer_handler.hpp");
+    ok &= require_absent (root
+                            / "samples/Bingo/Server/Play/Adapters/ZLink/Spots/Handlers/"
+                              "bingo_room_timer_handler.hpp",
+                          "BingoRoom owns draw progression instead of delegating to a shallow handler");
     ok &=
       require_exists (root / "samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_entry_spot.hpp");
     ok &= require_absent (root

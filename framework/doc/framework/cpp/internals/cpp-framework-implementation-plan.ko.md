@@ -1608,6 +1608,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | [connector/doc/guide/INDEX.ko.md](../../../stream-connector/cpp/guide/INDEX.ko.md) | Goal 14-16 |
 | [cpp-http-client.ko.md](../../../http-client/cpp/spec/cpp-http-client.ko.md) | Goal 18 |
 | [cpp-framework-policy.ko.md](cpp-framework-policy.ko.md) | Goal 1-22 |
+| [regression-test-matrix.ko.md](regression-test-matrix.ko.md) | Goal 1-22 회귀 테스트 gate |
 | [cpp-application-framework.ko.md](../spec/cpp-application-framework.ko.md) | Goal 6, Goal 19, Goal 21, Goal 22 |
 | [cpp-framework-interfaces.ko.md](../spec/cpp-framework-interfaces.ko.md) | Goal 1-19, Goal 22 |
 | [handler-interfaces.ko.md](../spec/handler-interfaces.ko.md) | Goal 8-14 |

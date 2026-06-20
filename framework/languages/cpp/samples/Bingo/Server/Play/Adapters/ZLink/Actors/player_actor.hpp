@@ -31,6 +31,12 @@ struct player_actor_t
     void mark_for_destroy_after_room_leave () const { destroy_after_entry_spot_join = true; }
 
     void mark_disconnected () const { disconnected = true; }
+
+    template <typename TNotify>
+    auto push (const TNotify &notify) const
+    {
+        return context.bound_session ().send (notify).async ();
+    }
 };
 
 } // namespace zlink::samples::bingo

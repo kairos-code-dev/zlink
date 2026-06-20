@@ -15,13 +15,13 @@
 namespace zlink::samples::bingo
 {
 
-class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_game_t
+class bingo_room_spot_t : public zlink::framework::spot_t
 {
   public:
     bingo_room_spot_t () = default;
 
     explicit bingo_room_spot_t (std::string room_id) :
-        bingo_room_game_t (std::move (room_id))
+        _game (std::move (room_id))
     {
     }
 
@@ -55,7 +55,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
           actor.actor.actor_id.empty () ? request.actor_id : actor.actor.actor_id;
         const auto display_name =
           actor.display_name.empty () ? request.display_name : actor.display_name;
-        set_room_id_if_empty (request.room_id);
+        _game.set_room_id_if_empty (request.room_id);
         if (request.observe_only) {
             if (!_is_observer || request.room_id != _observed_room_id) {
                 throw std::runtime_error ("observe-only actor can join only its observer room");
@@ -71,7 +71,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
         if (_is_observer) {
             throw std::runtime_error ("player actor cannot join an observer room");
         }
-        join (actor_id, display_name);
+        _game.join (actor_id, display_name);
         std::cerr << "bingo room: actor joined. room=" << snapshot ().room_id
                   << ", actor=" << actor_id
                   << ", requestActor=" << request.actor_id
@@ -87,7 +87,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
       const zlink::framework::spot_actor_request_context_t &,
       const observe_bingo_events_req_t &request)
     {
-        set_room_id_if_empty (request.room_id);
+        _game.set_room_id_if_empty (request.room_id);
         observers[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
         return {true, actor.actor.node_rid};
     }
@@ -100,18 +100,26 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
         (void) request;
         const auto actor_id = actor.actor.actor_id;
         observers.erase (actor.actor.actor_id);
-        auto left = _context.leaveActor (actor_ref_for (actor), const_cast<player_actor_t &> (actor))
-                      .result ();
-        if (!left) {
-            std::cerr << "bingo observer room: leave failed. observedRoom=" << _observed_room_id
-                      << ", observer=" << actor_id
-                      << ", error=" << (left.error () ? left.error ()->what () : "unknown")
-                      << '\n';
-        } else {
-            std::cerr << "bingo observer room: actor left. observedRoom=" << _observed_room_id
-                      << ", observer=" << actor_id
-                      << ", nodeRid=" << _context.node_rid ().value () << '\n';
-        }
+        const auto observed_room_id = _observed_room_id;
+        const auto node_rid = std::string (_context.node_rid ().value ());
+        auto leave_task =
+          _context.leaveActor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
+        zlink::framework::observe_task_completion (
+          leave_task,
+          [observed_room_id, actor_id, node_rid] (
+            const zlink::framework::result_t<zlink::framework::actor_ref_t> &left) {
+              if (!left) {
+                  std::cerr << "bingo observer room: leave failed. observedRoom="
+                            << observed_room_id
+                            << ", observer=" << actor_id
+                            << ", error="
+                            << (left.error () ? left.error ()->what () : "unknown") << '\n';
+                  return;
+              }
+              std::cerr << "bingo observer room: actor left. observedRoom=" << observed_room_id
+                        << ", observer=" << actor_id
+                        << ", nodeRid=" << node_rid << '\n';
+          });
         return {true, actor.actor.node_rid};
     }
 
@@ -123,9 +131,9 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
         if (context.packet_name.empty ()) {
             throw std::runtime_error ("packet name is required");
         }
-        (void) bingo_room_game_t::submit_card (actor.actor.actor_id, request.card);
-        if (should_draw ()) {
-            while (const auto drawn = draw_next ()) {
+        (void) _game.submit_card (actor.actor.actor_id, request.card);
+        if (_game.should_draw ()) {
+            while (const auto drawn = _game.draw_next ()) {
                 send_to_players (*drawn);
                 if (drawn->state.status == bingo_room_status_t::finished) {
                     send_to_players (game_ended_notify_t{drawn->state});
@@ -169,10 +177,12 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
                   << ", nodeRid=" << _context.node_rid ().value () << '\n';
         actors.erase (actor.actor.actor_id);
         observers.erase (actor.actor.actor_id);
-        leave (actor.actor.actor_id);
+        _game.leave (actor.actor.actor_id);
     }
 
     void onDisconnectActor (const player_actor_t &actor) { actor.mark_disconnected (); }
+
+    const bingo_room_state_t &snapshot () const noexcept { return _game.snapshot (); }
 
   private:
     void publish_reward (const number_drawn_notify_t &drawn)
@@ -180,7 +190,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
         if (drawn.state.winners.empty ()) {
             return;
         }
-        auto published =
+        auto publish_task =
           _context
             .publish (sample_names_t::reward_topic,
                       bingo_reward_acquired_event_t{drawn.state.room_id,
@@ -189,13 +199,21 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
                                                     bingo_reward_items_t::golden_dauber_id,
                                                     bingo_reward_items_t::golden_dauber_name,
                                                     bingo_reward_items_t::legendary_rarity})
-            .async ()
-            .result ();
+            .async ();
         std::cerr << "bingo reward: published. room=" << drawn.state.room_id
                   << ", actor=" << drawn.state.winners.front ()
                   << ", item=" << bingo_reward_items_t::golden_dauber_id
                   << ", nodeRid=" << _context.node_rid ().value () << '\n';
-        (void) published;
+        zlink::framework::observe_task_completion (
+          publish_task, [room_id = drawn.state.room_id] (
+                          const zlink::framework::result_t<void> &published) {
+              if (!published) {
+                  std::cerr << "bingo reward: publish failed. room=" << room_id
+                            << ", error="
+                            << (published.error () ? published.error ()->what () : "unknown")
+                            << '\n';
+              }
+          });
     }
 
     template <typename TNotify>
@@ -205,14 +223,17 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
             if (!excluded_actor_id.empty () && actor_id == excluded_actor_id) {
                 continue;
             }
-            auto sent = actor->context.bound_session ().send (notify).async ().result ();
-            if (!sent) {
-                std::cerr << "bingo notify: send failed. actor=" << actor_id
-                          << ", packet=" << TNotify::packet_name
-                          << ", error="
-                          << (sent.error () ? sent.error ()->what () : "unknown") << '\n';
-            }
-            (void) sent;
+            auto send_task = actor->push (notify);
+            zlink::framework::observe_task_completion (
+              send_task, [actor_id] (const zlink::framework::result_t<void> &sent) {
+                  if (!sent) {
+                      std::cerr << "bingo notify: send failed. actor=" << actor_id
+                                << ", packet=" << TNotify::packet_name
+                                << ", error="
+                                << (sent.error () ? sent.error ()->what () : "unknown")
+                                << '\n';
+                  }
+              });
         }
     }
 
@@ -237,27 +258,29 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
                       << ", item=" << event.item_id
                       << ", observer=" << actor->actor.actor_id
                       << ", nodeRid=" << _context.node_rid ().value () << '\n';
-            auto sent =
-              actor->context.bound_session ()
-                .send (bingo_reward_announced_notify_t{event.room_id,
-                                                       event.actor_id,
-                                                       event.draw_seq,
-                                                       event.item_id,
-                                                       event.item_name,
-                                                       event.rarity,
-                                                       std::string (_context.node_rid ().value ())})
-                .async ()
-                .result ();
-            if (!sent) {
-                std::cerr << "bingo reward: announce send failed. room=" << event.room_id
-                          << ", observer=" << actor->actor.actor_id
-                          << ", error="
-                          << (sent.error () ? sent.error ()->what () : "unknown") << '\n';
-            } else {
-                std::cerr << "bingo reward: announce sent. room=" << event.room_id
-                          << ", observer=" << actor->actor.actor_id << '\n';
-            }
-            (void) sent;
+            auto send_task =
+              actor->push (bingo_reward_announced_notify_t{event.room_id,
+                                                           event.actor_id,
+                                                           event.draw_seq,
+                                                           event.item_id,
+                                                           event.item_name,
+                                                           event.rarity,
+                                                           std::string (
+                                                             _context.node_rid ().value ())});
+            zlink::framework::observe_task_completion (
+              send_task, [room_id = event.room_id, observer = actor->actor.actor_id] (
+                           const zlink::framework::result_t<void> &sent) {
+                  if (!sent) {
+                      std::cerr << "bingo reward: announce send failed. room=" << room_id
+                                << ", observer=" << observer
+                                << ", error="
+                                << (sent.error () ? sent.error ()->what () : "unknown")
+                                << '\n';
+                      return;
+                  }
+                  std::cerr << "bingo reward: announce sent. room=" << room_id
+                            << ", observer=" << observer << '\n';
+              });
         }
     }
 
@@ -282,18 +305,24 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
                       << ", routed=" << (before_ref ? "true" : "false")
                       << ", nodeRid=" << _context.node_rid ().value () << '\n';
             actor->mark_for_destroy_after_room_leave ();
-            auto left = _context.leaveActor (actor_ref_for (*actor), *actor).result ();
-            if (!left) {
-                std::cerr << "bingo cleanup: player leave failed. room=" << snapshot ().room_id
-                          << ", actor=" << actor_id
-                          << ", error="
-                          << (left.error () ? left.error ()->what () : "unknown")
-                          << '\n';
-                continue;
-            }
-            std::cerr << "bingo cleanup: player left. room=" << snapshot ().room_id
-                      << ", actor=" << actor_id
-                      << ", nodeRid=" << _context.node_rid ().value () << '\n';
+            auto leave_task = _context.leaveActor (actor_ref_for (*actor), *actor);
+            zlink::framework::observe_task_completion (
+              leave_task, [room_id = snapshot ().room_id,
+                           actor_id,
+                           node_rid = std::string (_context.node_rid ().value ())] (
+                            const zlink::framework::result_t<zlink::framework::actor_ref_t> &left) {
+                  if (!left) {
+                      std::cerr << "bingo cleanup: player leave failed. room=" << room_id
+                                << ", actor=" << actor_id
+                                << ", error="
+                                << (left.error () ? left.error ()->what () : "unknown")
+                                << '\n';
+                      return;
+                  }
+                  std::cerr << "bingo cleanup: player left. room=" << room_id
+                            << ", actor=" << actor_id
+                            << ", nodeRid=" << node_rid << '\n';
+              });
         }
     }
 
@@ -305,6 +334,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
     }
 
     zlink::framework::spot_context_t _context;
+    bingo_room_game_t _game;
     std::map<std::string, player_actor_t *> actors;
     std::map<std::string, player_actor_t *> observers;
     bool _is_observer = false;

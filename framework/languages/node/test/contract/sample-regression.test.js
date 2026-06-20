@@ -204,9 +204,6 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
   const violations = [];
   for (const [name, content, text] of [
     ['Bingo module', files.bingoModule, '.addSpotFactory(BingoRoomSpot)'],
-    ['Bingo allocator', files.bingoAllocator, 'ZLINK_SPOT_MANAGER'],
-    ['Bingo allocator', files.bingoAllocator, '.getOrCreate(BingoRoomSpot'],
-    ['Bingo allocator', files.bingoAllocator, '.executeOnSpot<BingoRoomSpotType'],
     ['Bingo match', files.bingoMatch, 'ZLINK_ACTOR_MANAGER'],
     ['Bingo entry', files.bingoEntry, '.joinSpot(roomId'],
     ['Bingo entry', files.bingoEntry, 'onCreateActor'],
@@ -233,6 +230,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     }
   }
   for (const [name, content, pattern] of [
+    ['Bingo allocator', files.bingoAllocator, /ZLINK_SPOT_MANAGER|\.getOrCreate\(|\.executeOnSpot|Adapters\/ZLink|RedisBingoMatchQueue/],
     ['Bingo entry', files.bingoEntry, /\.onActorJoin\s*\(/],
     ['TicTacToe entry', files.ticTacToeEntry, /cleanupFinishedRoom|\.onJoinedActor\s*\(/],
     ['TicTacToe session', files.ticTacToeSession, /TicTacToeGameCreator|cleanupFinishedRoom/]

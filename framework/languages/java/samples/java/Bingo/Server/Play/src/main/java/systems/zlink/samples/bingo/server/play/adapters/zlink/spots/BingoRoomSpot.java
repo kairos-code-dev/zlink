@@ -17,8 +17,8 @@ import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
+import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.actors.PlayerActor;
-import systems.zlink.samples.bingo.server.play.adapters.zlink.notifications.BingoNotificationPublisher;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomSpotCreatedHandler;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomTimerHandler;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers.BingoWinnerEventHandler;
@@ -29,24 +29,21 @@ import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     private final ZLinkSpotContext context;
-    private final BingoNotificationPublisher notifications;
     private final BingoRoomSpotCreatedHandler createdHandler;
     private final ObjectMapper json;
     private final Map<String, PlayerActor> actors = new HashMap<>();
     private final Map<String, PlayerActor> observers = new HashMap<>();
     private BingoRoomModels.BingoRoomSettings settings =
-        BingoRoomModels.BingoRoomSettings.create("two-player", 0);
+        BingoRoomModels.BingoRoomSettings.create("two-player", 0, SampleTimings.DrawPeriod.toMillis());
     private BingoRoomGame game;
     private ZLinkTimer timer;
     private boolean cleanupStarted;
 
     public BingoRoomSpot(
         ZLinkSpotContext context,
-        BingoNotificationPublisher notifications,
         BingoRoomSpotCreatedHandler createdHandler,
         ObjectMapper json) {
         this.context = context;
-        this.notifications = notifications;
         this.createdHandler = createdHandler;
         this.json = json;
         this.game = BingoGame.room(context.spotRid().toString(), settings);
@@ -149,7 +146,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
                 + ", count=" + change.state().players().size()
                 + ", status=" + change.state().status()
                 + ", nodeRid=" + context.nodeRid());
-        notifications.publish(
+        publishEvents(
             change.events(),
             actorId -> actorId.equals(actor.actorId()) ? null : actors.get(actorId));
         return new Messages.BingoRoomJoinRes(change.state());
@@ -165,7 +162,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             throw new IllegalStateException("Observer BingoRoom does not own game state.");
         }
         BingoRoomGame.Change change = game.submitCard(actor.actorId(), request.card());
-        notifications.publish(change.events(), actors::get);
+        publishEvents(change.events(), actors::get);
         return new Messages.SubmitBingoCardRes(change.state());
     }
 
@@ -174,7 +171,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             return;
         }
         BingoRoomGame.Change change = game.drawNext();
-        notifications.publish(change.events(), actors::get);
+        publishEvents(change.events(), actors::get);
         publishWinner(change);
         leaveFinishedActors(change);
     }
@@ -199,16 +196,14 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
                     + ", item=" + event.itemId()
                     + ", observer=" + observer.actorId()
                     + ", nodeRid=" + context.nodeRid());
-            observer.context().boundSession()
-                .send(new Messages.BingoRewardAnnouncedNotify(
+            observer.push(new Messages.BingoRewardAnnouncedNotify(
                     event.roomId(),
                     event.actorId(),
                     event.drawSeq(),
                     event.itemId(),
                     event.itemName(),
                     event.rarity(),
-                    context.nodeRid().toString()))
-                .await();
+                    context.nodeRid().toString()));
             System.out.println(
                 "bingo reward: announce sent. room=" + event.roomId()
                     + ", observer=" + observer.actorId());
@@ -280,6 +275,37 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
                 + ", actor=" + winner
                 + ", item=rare-golden-dauber"
                 + ", nodeRid=" + context.nodeRid());
+    }
+
+    private void publishEvents(
+        List<BingoRoomModels.RoomEvent> events,
+        java.util.function.Function<String, PlayerActor> actorResolver) {
+        for (BingoRoomModels.RoomEvent event : events) {
+            publishEvent(event, actorResolver.apply(event.recipientActorId()));
+        }
+    }
+
+    private void publishEvent(BingoRoomModels.RoomEvent event, PlayerActor recipient) {
+        if (recipient == null) {
+            return;
+        }
+        switch (event.kind()) {
+            case PLAYER_JOINED -> recipient.push(new Messages.PlayerJoinedNotify(
+                    event.state().roomId(),
+                    event.joinedActorId(),
+                    event.joinedDisplayName(),
+                    event.seat(),
+                    event.host(),
+                    event.state()));
+            case GAME_STARTED -> recipient.push(new Messages.BingoGameStartedNotify(event.state()));
+            case NUMBER_DRAWN -> recipient.push(new Messages.BingoNumberDrawnNotify(
+                    event.state().roomId(),
+                    event.state().drawSeq(),
+                    event.drawnNumber(),
+                    event.state()));
+            case STATE -> recipient.push(new Messages.BingoStateNotify(event.state()));
+            case GAME_ENDED -> recipient.push(new Messages.BingoGameEndedNotify(event.state()));
+        }
     }
 
     private Messages.BingoRoomJoinRes joinObserver(

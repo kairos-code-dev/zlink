@@ -18,6 +18,7 @@ import type {
   ZLinkEntrySpotContext,
   ZLinkSpotManager
 } from '@zlink-systems/framework';
+import { ZLinkSpotCreateState } from '@zlink-systems/framework';
 import type { BingoRoomAllocator as BingoRoomAllocatorType } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import type {
   BingoRoomJoinRes,
@@ -47,8 +48,17 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     if (process.env.BINGO_DEBUG_FLOW === '1') {
       console.log(`play-entry-match allocate actor=${actor.actorId}`);
     }
-    const allocated = await this.roomDirectory.allocate(actor, request.mode);
+    const allocated = await this.roomDirectory.allocate(actor, String(this.context.nodeRid), request.mode);
     const roomId = allocated.roomId;
+    if (allocated.created) {
+      const created = await this.spots.getOrCreate(BingoRoomSpot, roomId);
+      if (created.state !== ZLinkSpotCreateState.Created) {
+        throw new Error('Bingo room creation was rejected.');
+      }
+      await this.spots.executeOnSpot<BingoRoomSpot, void>(BingoRoomSpot, roomId, (room) => {
+        room.initializeRoom(allocated.settings);
+      });
+    }
     if (process.env.BINGO_DEBUG_FLOW === '1') {
       console.log(`play-entry-match join actor=${actor.actorId} room=${roomId}`);
     }
@@ -61,7 +71,8 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     if (joined.resultCode !== 0) {
       throw new Error(`Room ${roomId} rejected actor '${actor.actorId}'.`);
     }
-    const state = joined.reply?.state ?? await this.roomDirectory.executeInRoom(roomId, (room) => room.snapshot());
+    const state = joined.reply?.state
+      ?? await this.spots.executeOnSpot<BingoRoomSpot, unknown>(BingoRoomSpot, roomId, (room) => room.snapshot());
     if (process.env.BINGO_DEBUG_FLOW === '1') {
       console.log(`play-entry-match done actor=${actor.actorId} room=${roomId}`);
     }

@@ -1,4 +1,4 @@
-package systems.zlink.samples.bingo.server.play.adapters.zlink.handlers;
+package systems.zlink.samples.bingo.server.play.adapters.zlink.matchmaking;
 
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
@@ -6,6 +6,8 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import java.time.Instant;
 import java.util.List;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
+import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoMatchQueue;
+import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoMatchReservation;
 
 public final class RedisBingoMatchQueue implements BingoMatchQueue, AutoCloseable {
     private static final String SCRIPT = """

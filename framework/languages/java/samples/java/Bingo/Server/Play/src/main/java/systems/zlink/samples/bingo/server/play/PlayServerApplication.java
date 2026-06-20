@@ -3,7 +3,6 @@ package systems.zlink.samples.bingo.server.play;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -11,19 +10,18 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
-import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.actors.PlayerActorFactory;
-import systems.zlink.samples.bingo.server.play.adapters.zlink.notifications.BingoNotificationPublisher;
+import systems.zlink.samples.bingo.server.play.adapters.zlink.matchmaking.RedisBingoMatchQueue;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoRoomSpot;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomSpotCreatedHandler;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoEntrySpot;
-import systems.zlink.samples.bingo.server.play.adapters.zlink.handlers.BingoMatchQueue;
-import systems.zlink.samples.bingo.server.play.adapters.zlink.handlers.BingoRoomDirectory;
-import systems.zlink.samples.bingo.server.play.adapters.zlink.handlers.RedisBingoMatchQueue;
+import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoMatchQueue;
+import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoRoomAllocator;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
+import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
 
 
@@ -79,21 +77,13 @@ public final class PlayServerApplication {
     }
 
     @Bean
-    BingoRoomDirectory bingoRoomDirectory(
-        ObjectProvider<ZLinkSpotManager> spots,
-        ObjectMapper json,
-        BingoMatchQueue matchQueue) {
-        return new BingoRoomDirectory(spots.getObject(), json, matchQueue);
+    BingoRoomAllocator bingoRoomAllocator(BingoMatchQueue matchQueue) {
+        return new BingoRoomAllocator(matchQueue, SampleTimings.DrawPeriod.toMillis());
     }
 
     @Bean
     BingoMatchQueue redisBingoMatchQueue() {
         return new RedisBingoMatchQueue();
-    }
-
-    @Bean
-    BingoNotificationPublisher bingoNotificationPublisher() {
-        return new BingoNotificationPublisher();
     }
 
     @Bean

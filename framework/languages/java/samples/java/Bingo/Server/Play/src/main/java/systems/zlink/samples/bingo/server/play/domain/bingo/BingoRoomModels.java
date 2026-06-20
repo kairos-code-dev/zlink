@@ -2,7 +2,6 @@ package systems.zlink.samples.bingo.server.play.domain.bingo;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.List;
-import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class BingoRoomModels {
@@ -56,7 +55,7 @@ public final class BingoRoomModels {
         public static final String GamePurpose = "Game";
         public static final String ObserverPurpose = "Observer";
 
-        public static BingoRoomSettings create(String mode, int roomSeq) {
+        public static BingoRoomSettings create(String mode, int roomSeq, long drawPeriodMillis) {
             if (!"two-player".equals(mode)) {
                 throw new IllegalStateException("Unsupported bingo mode. mode=" + mode);
             }
@@ -65,12 +64,15 @@ public final class BingoRoomModels {
                 mode,
                 2,
                 15,
-                SampleTimings.DrawPeriod.toMillis(),
+                drawPeriodMillis,
                 GamePurpose,
                 null);
         }
 
-        public static BingoRoomSettings createObserver(String observedRoomId, String localNodeRid) {
+        public static BingoRoomSettings createObserver(
+            String observedRoomId,
+            String localNodeRid,
+            long drawPeriodMillis) {
             if (observedRoomId == null || observedRoomId.isBlank()) {
                 throw new IllegalStateException("Observed room id is required.");
             }
@@ -79,7 +81,7 @@ public final class BingoRoomModels {
                 "two-player",
                 0,
                 15,
-                SampleTimings.DrawPeriod.toMillis(),
+                drawPeriodMillis,
                 ObserverPurpose,
                 observedRoomId);
         }

@@ -52,10 +52,7 @@ public final class MatchBingoActorHandler
             throw new IllegalStateException("MatchBingoReq was cancelled");
         }
         if (joined.reply().state().status().equals("Running")) {
-            actor.context()
-                .boundSession()
-                .send(new Messages.BingoGameStartedNotify(joined.reply().state()))
-                .await();
+            actor.push(new Messages.BingoGameStartedNotify(joined.reply().state()));
         }
         return new Messages.MatchBingoRes(
             matched.roomId(),

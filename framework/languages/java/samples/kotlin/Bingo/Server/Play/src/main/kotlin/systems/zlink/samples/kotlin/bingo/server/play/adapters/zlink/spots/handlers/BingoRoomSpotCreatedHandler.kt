@@ -2,6 +2,7 @@ package systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.hand
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import systems.zlink.contracts.messaging.Message
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomSettings
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.BingoRoomSpot
 
@@ -17,7 +18,11 @@ class BingoRoomSpotCreatedHandler(
 
     private fun decodeSettings(request: Message): BingoRoomSettings {
         if (request.isEmpty()) {
-            return BingoRoomSettings.create("two-player", 0)
+            return BingoRoomSettings.create(
+                "two-player",
+                0,
+                SampleTimings.DrawPeriod.toMillis(),
+            )
         }
         return json.readValue(request.toByteArray(), BingoRoomSettings::class.java)
     }

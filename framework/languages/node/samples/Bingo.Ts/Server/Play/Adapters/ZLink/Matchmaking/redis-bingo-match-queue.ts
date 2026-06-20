@@ -1,31 +1,15 @@
 import * as net from 'node:net';
-import type { BingoMode } from '../../../../Shared/Contracts/messages';
-
-type WaitingRoomRecord = {
-  roomId: string;
-  ownerPlayNodeRid: string;
-  reservedActorIds: string[];
-  requiredPlayers: number;
-  createdAtUnixMs: number;
-};
-
-type ReserveWaitingRoomInput = {
-  mode: BingoMode;
-  actorId: string;
-  ownerPlayNodeRid: string;
-  requiredPlayers: number;
-  createRoomId: () => string;
-};
-
-type ReserveWaitingRoomResult = {
-  record: WaitingRoomRecord;
-  created: boolean;
-  completed: boolean;
-};
+import type { BingoMode } from '../../../Domain/Bingo/bingo-room-models';
+import type {
+  BingoMatchQueue,
+  ReserveWaitingRoomInput,
+  ReserveWaitingRoomResult,
+  WaitingRoomRecord
+} from '../../../Application/RoomAllocation/bingo-match-queue';
 
 type RedisValue = string | number | null | RedisValue[];
 
-class RedisBingoMatchQueue {
+class RedisBingoMatchQueue implements BingoMatchQueue {
   constructor(
     private readonly redisEndpoint: string,
     private readonly keyPrefix: string
@@ -183,4 +167,3 @@ function parseRedisEndpoint(endpoint: string): { host: string; port: number } {
 }
 
 export { RedisBingoMatchQueue };
-export type { ReserveWaitingRoomResult, WaitingRoomRecord };

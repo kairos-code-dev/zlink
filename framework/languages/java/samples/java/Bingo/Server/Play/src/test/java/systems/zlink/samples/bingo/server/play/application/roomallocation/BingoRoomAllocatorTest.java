@@ -1,20 +1,22 @@
-package systems.zlink.samples.bingo.server.play.adapters.zlink.handlers;
+package systems.zlink.samples.bingo.server.play.application.roomallocation;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
-final class BingoRoomDirectoryTest {
+final class BingoRoomAllocatorTest {
     @Test
     void allocateUsesSameSequenceForSettingsAndRoomId() {
         CapturingMatchQueue queue = new CapturingMatchQueue();
-        BingoRoomDirectory directory = new BingoRoomDirectory(null, new ObjectMapper(), queue);
+        BingoRoomAllocator allocator = new BingoRoomAllocator(queue, 100);
 
-        BingoMatchReservation reservation =
-            directory.allocate("player-1", "two-player", "remote-play-node");
+        BingoRoomAllocation allocation =
+            allocator.allocate("player-1", "two-player", "remote-play-node");
 
-        assertEquals("two-player-room-1", reservation.roomId());
+        assertEquals("two-player-room-1", allocation.roomId());
+        assertEquals("remote-play-node", allocation.ownerPlayNodeRid());
+        assertEquals("Bingo Room 001", allocation.settings().roomName());
+        assertEquals(100, allocation.settings().drawPeriodMillis());
         assertEquals("two-player-room-1", queue.newRoomId);
         assertEquals(2, queue.requiredPlayers);
     }

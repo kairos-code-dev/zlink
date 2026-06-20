@@ -58,4 +58,10 @@ public final class PlayerActor implements ZLinkActor {
     public void markDisconnected() {
         disconnected = true;
     }
+
+    public void push(Object message) {
+        context.boundSession()
+            .send(message)
+            .await();
+    }
 }

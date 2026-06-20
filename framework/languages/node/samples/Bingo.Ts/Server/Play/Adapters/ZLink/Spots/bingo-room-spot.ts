@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { createProtobufMessageSerializer } from '@zlink-systems/framework-codec-protobuf';
 import {
   BingoRewardItems,
-  BingoRoomStatus,
   PacketNames,
   bingoRewardAcquiredEvent,
   bingoRewardAnnouncedNotify,
@@ -12,6 +11,7 @@ import {
   submitBingoCardRes
 } from '../../../../../Shared/Contracts/messages';
 import { BingoRoomGame } from '../../../Domain/Bingo/bingo-room-game';
+import { BingoRoomStatus } from '../../../Domain/Bingo/bingo-room-game';
 import { createRoomSettings, roomSettingsFromPayload } from '../../../Domain/Bingo/bingo-room-models';
 import { SampleNames } from '../../../../Configuration/sample-names';
 import { SubmitBingoCardHandler } from './Handlers/submit-bingo-card-handler';
@@ -121,23 +121,13 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
       throw new Error(`Join request room id '${request.roomId}' does not match '${this.roomId}'.`);
     }
     const joined = this.game.join(actor);
-      const state = this.snapshot();
-      if (joined.joined) {
-        await this.pushPlayers(
-          this.game.players
-            .map((entry) => entry.actor as PlayerActorType)
-            .filter((entry) => entry.actorId !== actor.actorId),
-          PacketNames.playerJoinedNotify,
-          playerJoinedNotify(this.roomId, actor, joined.player.seat, joined.player.isHost, state)
-        );
-      }
-      if (joined.started) {
-        await this.pushPlayers(
-          this.playerActors(),
-          PacketNames.gameStartedNotify,
-          stateEnvelope(this.snapshot())
-        );
-      }
+    const state = this.snapshot();
+    if (joined.joined) {
+      await this.notifyPlayerJoined(actor, joined.player.seat, joined.player.isHost, state);
+    }
+    if (joined.started) {
+      await this.notifyGameStarted();
+    }
     return { state };
   }
 
@@ -238,6 +228,27 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
 
   private async pushPlayers(players: PlayerActorType[], packetName: string, payload: unknown): Promise<void> {
     await Promise.all(players.map((player) => player.push(packetName, payload)));
+  }
+
+  private async notifyPlayerJoined(
+    actor: PlayerActorType,
+    seat: number,
+    isHost: boolean,
+    state: BingoRoomSnapshot
+  ): Promise<void> {
+    await this.pushPlayers(
+      this.playerActors().filter((entry) => entry.actorId !== actor.actorId),
+      PacketNames.playerJoinedNotify,
+      playerJoinedNotify(this.roomId, actor, seat, isHost, state)
+    );
+  }
+
+  private async notifyGameStarted(): Promise<void> {
+    await this.pushPlayers(
+      this.playerActors(),
+      PacketNames.gameStartedNotify,
+      stateEnvelope(this.snapshot())
+    );
   }
 
   private joinObserver(actor: PlayerActorType, request: BingoRoomJoinReq): BingoRoomJoinRes {

@@ -1,5 +1,13 @@
-import { BingoModes, BingoRoomStatus } from '../../../../Shared/Contracts/messages';
-import type { BingoMode, BingoRoomSettingsPayload } from '../../../../Shared/Contracts/messages';
+type BingoMode = 'two-player';
+
+type BingoRoomSettingsInput = {
+  mode?: BingoMode;
+  roomName?: string;
+  requiredPlayers?: number;
+  maxDrawNumber?: number;
+  purpose?: string;
+  observedRoomId?: string | null;
+};
 
 type BingoRoomSettings = {
   mode: BingoMode;
@@ -11,7 +19,7 @@ type BingoRoomSettings = {
   observedRoomId: string | null;
 };
 
-function createRoomSettings(roomSeqOrMode: number | BingoMode = 0, mode: BingoMode = BingoModes.twoPlayer): BingoRoomSettings {
+function createRoomSettings(roomSeqOrMode: number | BingoMode = 0, mode: BingoMode = 'two-player'): BingoRoomSettings {
   const roomSeq = typeof roomSeqOrMode === 'number' ? roomSeqOrMode : 0;
   const resolvedMode = typeof roomSeqOrMode === 'number' ? mode : roomSeqOrMode;
   const maxDrawNumber = 15;
@@ -29,7 +37,7 @@ function createRoomSettings(roomSeqOrMode: number | BingoMode = 0, mode: BingoMo
 function createObserverRoomSettings(observedRoomId: string, ownerNodeRid: string): BingoRoomSettings {
   const maxDrawNumber = 15;
   return {
-    mode: BingoModes.twoPlayer,
+    mode: 'two-player',
     roomName: `Bingo Reward Observer ${ownerNodeRid}`,
     requiredPlayers: 1,
     maxDrawNumber,
@@ -39,11 +47,11 @@ function createObserverRoomSettings(observedRoomId: string, ownerNodeRid: string
   };
 }
 
-function roomSettingsFromPayload(payload: Partial<BingoRoomSettingsPayload>): BingoRoomSettings {
+function roomSettingsFromPayload(payload: BingoRoomSettingsInput): BingoRoomSettings {
   const maxDrawNumber = payload.maxDrawNumber ?? 15;
   const purpose = payload.purpose === 'Observer' ? 'Observer' : 'Game';
   return {
-    mode: payload.mode ?? BingoModes.twoPlayer,
+    mode: payload.mode ?? 'two-player',
     roomName: payload.roomName ?? 'Bingo Room 000',
     requiredPlayers: payload.requiredPlayers ?? 2,
     maxDrawNumber,
@@ -54,4 +62,4 @@ function roomSettingsFromPayload(payload: Partial<BingoRoomSettingsPayload>): Bi
 }
 
 export { createObserverRoomSettings, createRoomSettings, roomSettingsFromPayload };
-export type { BingoRoomSettings };
+export type { BingoMode, BingoRoomSettings };

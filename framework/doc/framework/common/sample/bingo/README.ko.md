@@ -252,8 +252,8 @@ Bingo/
           BingoRoomModels
       Application/
         RoomAllocation/
+          BingoMatchQueue
           BingoRoomAllocator
-          RedisBingoMatchQueue
       Adapters/
         ZLink/
           Actors/
@@ -262,6 +262,8 @@ Bingo/
           Handlers/
             AllocateBingoRoomHandler
             EnsurePlayerActorHandler
+          Matchmaking/
+            RedisBingoMatchQueue
           Spots/
             BingoEntrySpot
             BingoRoom
@@ -271,7 +273,6 @@ Bingo/
               StopObservingBingoEventsHandler
               BingoRewardAcquiredEventHandler
               SubmitBingoCardHandler
-              BingoRoomDrawTimerHandler
 ```
 
 위 구조는 파일명 고정 규칙이 아니라 역할과 경계의 기준이다. 예를 들어 Java/Kotlin은
@@ -291,8 +292,9 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 | `Server/Api/*` | API channel adapter | 인증과 matching 요청을 처리하고 Play 서버 room allocation으로 연결한다. |
 | `Server/Session/*` | stream gateway adapter | client stream, 인증, actor binding, bound session relay를 처리한다. |
 | `Server/Play/Domain/Bingo/*` | domain model | card, draw deck, room status, winner 판정 같은 게임 규칙을 framework 타입 없이 표현한다. |
-| `Server/Play/Application/RoomAllocation/*` | application use case | Redis match queue, waiting room 재사용, room Spot 생성을 조율한다. |
+| `Server/Play/Application/RoomAllocation/*` | application use case | match queue 계약, waiting room 재사용 결정, room allocation 결과 생성을 조율한다. |
 | `Server/Play/Adapters/ZLink/*` | ZLink adapter | channel, actor, Spot callback, bound session push, Spot pub/sub publish/subscribe를 application/domain 호출로 변환한다. |
+| `Server/Play/Adapters/ZLink/Matchmaking/*` | external adapter | Redis를 사용해 mode별 waiting room record와 actor reservation을 atomic하게 저장한다. |
 
 의존 방향은 `Adapters -> Application -> Domain`이다. Domain은 ZLink framework, Registry,
 stream session, actor gateway, logger를 알지 않는다. Application은 room 배정 같은 use
@@ -391,8 +393,8 @@ Server/Play/
       BingoRoomModels
   Application/
     RoomAllocation/
+      BingoMatchQueue
       BingoRoomAllocator
-      RedisBingoMatchQueue
   Adapters/
     ZLink/
       Actors/
@@ -401,6 +403,8 @@ Server/Play/
       Handlers/
         AllocateBingoRoomHandler
         EnsurePlayerActorHandler
+      Matchmaking/
+        RedisBingoMatchQueue
       Spots/
         BingoEntrySpot
         BingoRoom
@@ -410,7 +414,6 @@ Server/Play/
           StopObservingBingoEventsHandler
           BingoRewardAcquiredEventHandler
           SubmitBingoCardHandler
-          BingoRoomDrawTimerHandler
 ```
 
 역할은 아래처럼 나눈다.
@@ -420,9 +423,10 @@ Server/Play/
 | `Domain/Bingo/BingoCard` | 3 x 3 card 검증, free cell, mark, complete line 계산을 소유한다. |
 | `Domain/Bingo/BingoGame` | 제출된 card, draw deck, drawn numbers, winners, draw 종료 조건을 소유한다. |
 | `Domain/Bingo/BingoRoomGame` | player join, room status, card 제출 가능 여부, draw timer 시작/종료 신호, room event 생성을 소유한다. |
-| `Application/RoomAllocation/BingoRoomAllocator` | matching 요청을 받아 Redis match queue와 room Spot 생성을 조율한다. |
-| `Application/RoomAllocation/RedisBingoMatchQueue` | mode별 waiting room record와 actor reservation을 Redis에 atomic하게 저장한다. |
-| `Adapters/ZLink/Spots/BingoRoom` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, player bound session push, reward pub/sub publish/subscribe를 맡는다. |
+| `Application/RoomAllocation/BingoMatchQueue` | room allocation use case가 필요로 하는 waiting room reservation 계약을 정의한다. |
+| `Application/RoomAllocation/BingoRoomAllocator` | matching 요청을 받아 match queue reservation과 room allocation 결과 생성을 조율한다. |
+| `Adapters/ZLink/Matchmaking/RedisBingoMatchQueue` | mode별 waiting room record와 actor reservation을 Redis에 atomic하게 저장한다. |
+| `Adapters/ZLink/Spots/BingoRoom` | ZLink Spot lifecycle, actor join callback, draw 진행, domain 호출, player actor push, reward pub/sub publish/subscribe를 맡는다. |
 | `Adapters/ZLink/Spots/BingoRoom` | observer용 local room 인스턴스에서 reward topic subscribe callback을 받고 observer actor에게 push를 전달한다. |
 | `Adapters/ZLink/Actors/PlayerActor` | player별 bound session push를 감싼다. room Spot은 actor의 public method만 호출하고 stream frame을 직접 만들지 않는다. |
 | `Adapters/ZLink/Handlers/*` | channel request와 Spot actor request를 받아 application/domain adapter로 연결한다. |

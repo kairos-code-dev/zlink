@@ -1,7 +1,12 @@
 import { BingoGame } from './bingo-game';
-import { BingoRoomStatus } from '../../../../Shared/Contracts/messages';
 import type { BingoGame as BingoGameType } from './bingo-game';
 import type { BingoCard } from './bingo-card';
+
+enum BingoRoomStatus {
+  WaitingForPlayers = 'WaitingForPlayers',
+  Running = 'Running',
+  Finished = 'Finished'
+}
 
 type BingoActor = {
   actorId: string;
@@ -136,5 +141,5 @@ class BingoRoomGame {
   }
 }
 
-export { BingoRoomGame };
+export { BingoRoomGame, BingoRoomStatus };
 export type { BingoActor, BingoPlayerSeat, BingoRoomSettings, BingoRoomSnapshot };

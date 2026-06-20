@@ -10,6 +10,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotCreateState
 import systems.zlink.framework.spots.ZLinkSpotManager
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomSettings
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
@@ -64,7 +65,11 @@ class BingoEntrySpot(
         request: ObserveBingoEventsReq,
     ): ObserveBingoEventsRes {
         val observerRid = "observe:${request.roomId}:${context.nodeRid()}"
-        val settings = BingoRoomSettings.createObserver(request.roomId, context.nodeRid().toString())
+        val settings = BingoRoomSettings.createObserver(
+            request.roomId,
+            context.nodeRid().toString(),
+            SampleTimings.DrawPeriod.toMillis(),
+        )
         val settingsPart = Message.from(json.writeValueAsBytes(settings))
         try {
             val created = spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(observerRid), settingsPart).await()

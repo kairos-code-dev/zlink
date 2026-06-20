@@ -13,6 +13,7 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotCreateState;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
+import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.actors.PlayerActor;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
@@ -81,7 +82,10 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
         Messages.ObserveBingoEventsReq request) {
         String observerRid = "observe:" + request.roomId() + ":" + context.nodeRid();
         BingoRoomModels.BingoRoomSettings settings =
-            BingoRoomModels.BingoRoomSettings.createObserver(request.roomId(), context.nodeRid().toString());
+            BingoRoomModels.BingoRoomSettings.createObserver(
+                request.roomId(),
+                context.nodeRid().toString(),
+                SampleTimings.DrawPeriod.toMillis());
         Message settingsPart = serialize(settings);
         try {
             var created = await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(observerRid), settingsPart));

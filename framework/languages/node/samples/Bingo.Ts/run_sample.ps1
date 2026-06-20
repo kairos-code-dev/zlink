@@ -152,6 +152,19 @@ function Start-Server([string]$Name, [string]$Entry, [string]$ConfigPath) {
     $processes.Add($process)
 }
 
+function Start-ServerAndWait([string]$Name, [string]$Entry, [string]$ConfigPath, [hashtable]$Endpoints) {
+    Start-Server $Name $Entry $ConfigPath
+    foreach ($endpointName in $Endpoints.Keys) {
+        Wait-Port $endpointName $Endpoints[$endpointName]
+    }
+}
+
+function Assert-LogContains([string]$Path, [string]$Pattern, [string]$Message) {
+    if (-not (Select-String -Path $Path -Pattern $Pattern -Quiet)) {
+        throw $Message
+    }
+}
+
 try {
     $ports = Get-FreePorts 18
     $registryPubEndpoint = Use-Default $env:BINGO_REGISTRY_PUB_ENDPOINT "tcp://127.0.0.1:$($ports[0])"
@@ -251,38 +264,45 @@ try {
         Pop-Location
     }
 
-    Start-Server "registry" "dist/Server/Registry/main.js" $registryConfig
-    Wait-Port "registry-pub" $registryPubEndpoint
-    Wait-Port "registry-router" $registryRouterEndpoint
+    Start-ServerAndWait "registry" "dist/Server/Registry/main.js" $registryConfig @{
+        "registry-pub" = $registryPubEndpoint
+        "registry-router" = $registryRouterEndpoint
+    }
     Wait-Port "redis" "tcp://$redisEndpoint"
 
-    Start-Server "play-a" "dist/Server/Play/main.js" $playAConfig
-    Wait-Port "play-a" $playAEndpoint
-    Wait-Port "play-a-route" $playARouteEndpoint
-    Wait-Port "play-a-spot" $playASpotEndpoint
-    Wait-Port "play-a-spot-pubsub" $playASpotPubSubEndpoint
+    Start-ServerAndWait "play-a" "dist/Server/Play/main.js" $playAConfig @{
+        "play-a" = $playAEndpoint
+        "play-a-route" = $playARouteEndpoint
+        "play-a-spot" = $playASpotEndpoint
+        "play-a-spot-pubsub" = $playASpotPubSubEndpoint
+    }
 
-    Start-Server "play-b" "dist/Server/Play/main.js" $playBConfig
-    Wait-Port "play-b" $playBEndpoint
-    Wait-Port "play-b-route" $playBRouteEndpoint
-    Wait-Port "play-b-spot" $playBSpotEndpoint
-    Wait-Port "play-b-spot-pubsub" $playBSpotPubSubEndpoint
+    Start-ServerAndWait "play-b" "dist/Server/Play/main.js" $playBConfig @{
+        "play-b" = $playBEndpoint
+        "play-b-route" = $playBRouteEndpoint
+        "play-b-spot" = $playBSpotEndpoint
+        "play-b-spot-pubsub" = $playBSpotPubSubEndpoint
+    }
 
-    Start-Server "api-a" "dist/Server/Api/main.js" $apiAConfig
-    Wait-Port "api-a" $apiAEndpoint
+    Start-ServerAndWait "api-a" "dist/Server/Api/main.js" $apiAConfig @{
+        "api-a" = $apiAEndpoint
+    }
 
-    Start-Server "api-b" "dist/Server/Api/main.js" $apiBConfig
-    Wait-Port "api-b" $apiBEndpoint
+    Start-ServerAndWait "api-b" "dist/Server/Api/main.js" $apiBConfig @{
+        "api-b" = $apiBEndpoint
+    }
 
-    Start-Server "session-a" "dist/Server/Session/main.js" $sessionAConfig
-    Wait-Port "session-a" $sessionAEndpoint
-    Wait-Port "session-a-route" $sessionARouteEndpoint
-    Wait-Port "session-a-spot" $sessionASpotEndpoint
+    Start-ServerAndWait "session-a" "dist/Server/Session/main.js" $sessionAConfig @{
+        "session-a" = $sessionAEndpoint
+        "session-a-route" = $sessionARouteEndpoint
+        "session-a-spot" = $sessionASpotEndpoint
+    }
 
-    Start-Server "session-b" "dist/Server/Session/main.js" $sessionBConfig
-    Wait-Port "session-b" $sessionBEndpoint
-    Wait-Port "session-b-route" $sessionBRouteEndpoint
-    Wait-Port "session-b-spot" $sessionBSpotEndpoint
+    Start-ServerAndWait "session-b" "dist/Server/Session/main.js" $sessionBConfig @{
+        "session-b" = $sessionBEndpoint
+        "session-b-route" = $sessionBRouteEndpoint
+        "session-b-spot" = $sessionBSpotEndpoint
+    }
     Wait-DiscoveryReady $registryRouterEndpoint $sessionASpotNodeRid $sessionBSpotNodeRid $playASpotNodeRid $playBSpotNodeRid
     Start-Sleep -Seconds 2
 
@@ -299,21 +319,11 @@ try {
     if ($client.ExitCode -ne 0) {
         throw "Bingo.Ts client exited with $($client.ExitCode)."
     }
-    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo" -Quiet)) {
-        throw "Bingo.Ts client did not write stream-inbound marker."
-    }
-    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo .* seq=[0-9]" -Quiet)) {
-        throw "Bingo.Ts client did not write sequenced stream-inbound response marker."
-    }
-    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo .* name=.*Notify" -Quiet)) {
-        throw "Bingo.Ts client did not write stream-inbound push marker."
-    }
-    if (-not (Select-String -Path $clientLog -Pattern "client=observer" -Quiet)) {
-        throw "Bingo.Ts client did not write observer inbound marker."
-    }
-    if (-not (Select-String -Path $clientLog -Pattern "name=BingoRewardAnnouncedNotify" -Quiet)) {
-        throw "Bingo.Ts client did not observe reward push."
-    }
+    Assert-LogContains $clientLog "stream-inbound sample=Bingo" "Bingo.Ts client did not write stream-inbound marker."
+    Assert-LogContains $clientLog "stream-inbound sample=Bingo .* seq=[0-9]" "Bingo.Ts client did not write sequenced stream-inbound response marker."
+    Assert-LogContains $clientLog "stream-inbound sample=Bingo .* name=.*Notify" "Bingo.Ts client did not write stream-inbound push marker."
+    Assert-LogContains $clientLog "client=observer" "Bingo.Ts client did not write observer inbound marker."
+    Assert-LogContains $clientLog "name=BingoRewardAnnouncedNotify" "Bingo.Ts client did not observe reward push."
     Write-Host "bingo=completed"
 }
 finally {

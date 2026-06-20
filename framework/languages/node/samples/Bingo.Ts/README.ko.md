@@ -41,8 +41,8 @@ key와 섞이지 않는다.
 - `Server/Play/Domain/Bingo/`: 3 x 3 card 검증, draw order, winner 판정을 맡는 순수 게임
   규칙을 둔다. ZLink framework 타입을 참조하지 않는다.
 - `Server/Play/Application/RoomAllocation/`: matching 요청을 room 배정 use case 로 처리한다.
-- `Server/Play/Adapters/ZLink/`: actor, Entry Spot, room Spot, handler, notification publisher,
-  bound session 연결을 맡는다.
+- `Server/Play/Adapters/ZLink/Matchmaking/`: Redis-backed match queue adapter를 둔다.
+- `Server/Play/Adapters/ZLink/`: actor, Entry Spot, room Spot, handler, bound session 연결을 맡는다.
 - `Server/Registry/`: 내장 ZLink Registry host 를 실행한다. Session 과 API 는 peer
   endpoint 를 직접 들고 있지 않고 Registry/Discovery 를 통해 연결 대상을 찾는다.
 - `Server/Configuration/`: 서버 role 의 channel 이름, 서비스 이름, timeout, 실행 endpoint 설정을 둔다.

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
+import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoRoomSpot;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
 
@@ -23,7 +24,10 @@ public final class BingoRoomSpotCreatedHandler {
 
     private BingoRoomModels.BingoRoomSettings decodeSettings(Message request) {
         if (request.isEmpty()) {
-            return BingoRoomModels.BingoRoomSettings.create("two-player", 0);
+            return BingoRoomModels.BingoRoomSettings.create(
+                "two-player",
+                0,
+                SampleTimings.DrawPeriod.toMillis());
         }
         try {
             return json.readValue(

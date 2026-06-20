@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.bingo.server.play.domain.bingo
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoPlayerState
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomState
 
@@ -58,6 +57,7 @@ data class BingoRoomSettings(
         fun create(
             mode: String,
             roomSeq: Int,
+            drawPeriodMillis: Long,
         ): BingoRoomSettings {
             check(mode == "two-player") { "Unsupported bingo mode. mode=$mode" }
             return BingoRoomSettings(
@@ -65,7 +65,7 @@ data class BingoRoomSettings(
                 mode = mode,
                 requiredPlayers = 2,
                 maxDrawNumber = 15,
-                drawPeriodMillis = SampleTimings.DrawPeriod.toMillis(),
+                drawPeriodMillis = drawPeriodMillis,
                 observedRoomId = null,
             )
         }
@@ -73,6 +73,7 @@ data class BingoRoomSettings(
         fun createObserver(
             observedRoomId: String,
             ownerNodeRid: String,
+            drawPeriodMillis: Long,
         ): BingoRoomSettings {
             check(observedRoomId.isNotBlank()) { "observedRoomId is required" }
             return BingoRoomSettings(
@@ -80,7 +81,7 @@ data class BingoRoomSettings(
                 mode = "observer",
                 requiredPlayers = 0,
                 maxDrawNumber = 15,
-                drawPeriodMillis = SampleTimings.DrawPeriod.toMillis(),
+                drawPeriodMillis = drawPeriodMillis,
                 observedRoomId = observedRoomId,
             )
         }

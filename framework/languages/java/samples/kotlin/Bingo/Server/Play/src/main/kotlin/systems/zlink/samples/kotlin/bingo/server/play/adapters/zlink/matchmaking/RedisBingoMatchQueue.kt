@@ -1,10 +1,12 @@
-package systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.handlers
+package systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.matchmaking
 
 import io.lettuce.core.RedisClient
 import io.lettuce.core.ScriptOutputType
 import io.lettuce.core.api.StatefulRedisConnection
 import java.time.Instant
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
+import systems.zlink.samples.kotlin.bingo.server.play.application.roomallocation.BingoMatchQueue
+import systems.zlink.samples.kotlin.bingo.server.play.application.roomallocation.BingoMatchReservation
 
 class RedisBingoMatchQueue : BingoMatchQueue, AutoCloseable {
     private val client: RedisClient = RedisClient.create(redisUri(SampleTopology.RedisEndpoint))

@@ -11,7 +11,9 @@ import { StopObservingBingoEventsHandler } from './Adapters/ZLink/Spots/Handlers
 import { SubmitBingoCardHandler } from './Adapters/ZLink/Spots/Handlers/submit-bingo-card-handler';
 import { BingoRoomTimerHandler } from './Adapters/ZLink/Spots/Handlers/bingo-room-timer-handler';
 import { BingoRewardAcquiredEventHandler } from './Adapters/ZLink/Spots/Handlers/bingo-reward-acquired-event-handler';
+import { RedisBingoMatchQueue } from './Adapters/ZLink/Matchmaking/redis-bingo-match-queue';
 import { BingoRoomAllocator } from './Application/RoomAllocation/bingo-room-allocator';
+import { BINGO_MATCH_QUEUE } from './Application/RoomAllocation/bingo-match-queue';
 import { SampleNames, SampleTimings } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import { PacketNames } from '../../Shared/Contracts/messages';
@@ -62,6 +64,10 @@ function createBingoPlayModule(config: {
     ],
     providers: [
       { provide: BINGO_SAMPLE_CONFIG, useValue: config },
+      {
+        provide: BINGO_MATCH_QUEUE,
+        useFactory: () => new RedisBingoMatchQueue(config.redisEndpoint, config.redisKeyPrefix)
+      },
       AllocateBingoRoomHandler,
       EnsurePlayerActorHandler,
       PlayerActorFactory,

@@ -63,11 +63,7 @@ class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
             throw IllegalStateException("MatchBingoReq was cancelled")
         }
         if (joined.reply().state.status == "Running") {
-            actor.context()
-                .boundSession()
-                .send(BingoGameStartedNotify(joined.reply().state))
-                .submit()
-                .await()
+            actor.push(BingoGameStartedNotify(joined.reply().state))
         }
         return MatchBingoRes(matched.roomId, joined.reply().state, matched.roomOwnerNodeRid)
     }

@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.spots;
 import systems.zlink.framework.runtime.backend.*;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
@@ -10,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -53,11 +55,17 @@ import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
+import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
+import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
+import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
+import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorEvent;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
+import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.handlers.ZLinkGenericTypeResolver;
@@ -100,7 +108,10 @@ import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.framework.spots.ZLinkTimerTick;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRuntime.SpotRelayIngress, AutoCloseable {
@@ -120,6 +131,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         "systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorSendHandler";
     private static final String KOTLIN_SPOT_ACTOR_REQUEST_HANDLER =
         "systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorRequestHandler";
+    private static final String REMOTE_BOUND_SESSION_BIND_PACKET_NAME =
+        "zlink.framework.actor.bound_session.bind";
 
     private static final long ROUTER_ENDPOINT_ROUTE_KIND = 0x5a4c5245L;
     private static final int ROUTER_PEER_CONVERGENCE_SNAPSHOTS = 10;
@@ -155,6 +168,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     private final ZLinkBackendSpotNode primaryNode;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkHandlerFactory handlerFactory;
+    private final ZLinkDispatchErrorReporter dispatchErrors;
     private final Executor handlerExecutor;
     private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
     private final ZLinkScannedHandlerCatalog handlerCatalog;
@@ -222,6 +236,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         this.handlerExecutor = java.util.Objects.requireNonNull(
             registration.handlerExecutor(),
             "handlerExecutor");
+        this.dispatchErrors = new ZLinkDispatchErrorReporter(
+            registration.dispatchOptions(),
+            handlerFactory,
+            this.handlerExecutor);
         this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         this.workerPool = new ZLinkWorkerPool(
             registration.workers().minThreads(),
@@ -270,14 +288,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             for (SpotNodeRegistration.RouterManualConnection connection
                     : nodeRegistration.routerManualConnections()) {
                 if (hasRoutingId(connection.peerRoutingId())) {
-                    node.connectPeer(connection.endpoint());
                     node.connectRouterChannelPeerRid(
                         nodeRegistration.meshName(),
                         connection.peerRoutingId(),
                         connection.endpoint());
                     connectedRouterPeerRids.add(connection.peerRoutingId());
                 } else {
-                    node.connectPeer(connection.endpoint());
+                    node.connectRouterChannelPeer(
+                        nodeRegistration.meshName(),
+                        connection.endpoint());
                 }
             }
             for (String endpoint : nodeRegistration.pubSubManualConnections()) {
@@ -1442,6 +1461,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             } else {
                 binding.node().connectRouterChannelPeer(binding.meshName(), endpoint);
             }
+            if (hasRoutingId(peerRoutingId)) {
+                connectedRouterPeerRids.add(peerRoutingId);
+            }
         } catch (ZlinkConnectException ex) {
             if (isIdempotentConnectFailure(ex)) {
                 int sightings = discoveredRouterPeerSightings.merge(key, 1, Integer::sum);
@@ -1821,11 +1843,59 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             SpotPacketHandlerRegistration handler =
                 context.packetHandler(packet.packetName());
             if (handler == null) {
+                if (received.requestSeq().isPresent()) {
+                    received.reply(List.of(Message.from((
+                        "No SPOT route request handler is registered for '"
+                            + packet.packetName() + "'.").getBytes(StandardCharsets.UTF_8))));
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                        ZLinkDispatchMessageKind.REQUEST,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        ZLinkDispatchErrorAction.REPLY_ERROR,
+                        packet.packetName(),
+                        null,
+                        null,
+                        backendSpot.routingId(),
+                        null,
+                        received.routingId().orElse(null),
+                        received.requestSeq().map(Object::toString).orElse(null),
+                        null);
+                } else {
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                        ZLinkDispatchMessageKind.SEND,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        ZLinkDispatchErrorAction.DROP,
+                        packet.packetName(),
+                        null,
+                        null,
+                        backendSpot.routingId(),
+                        null,
+                        received.routingId().orElse(null),
+                        null,
+                        null);
+                }
                 received.close();
                 return;
             }
             if (received.requestSeq().isPresent()) {
                 if (!handler.request()) {
+                    received.reply(List.of(Message.from((
+                        "SPOT route handler for '" + packet.packetName()
+                            + "' does not accept requests.").getBytes(StandardCharsets.UTF_8))));
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                        ZLinkDispatchMessageKind.REQUEST,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        ZLinkDispatchErrorAction.REPLY_ERROR,
+                        packet.packetName(),
+                        null,
+                        null,
+                        backendSpot.routingId(),
+                        null,
+                        received.routingId().orElse(null),
+                        received.requestSeq().map(Object::toString).orElse(null),
+                        null);
                     received.close();
                     return;
                 }
@@ -1842,6 +1912,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             }
             try (received) {
                 if (handler.request()) {
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                        ZLinkDispatchMessageKind.SEND,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        ZLinkDispatchErrorAction.DROP,
+                        packet.packetName(),
+                        null,
+                        null,
+                        backendSpot.routingId(),
+                        null,
+                        received.routingId().orElse(null),
+                        null,
+                        null);
                     return;
                 }
                 Message payloadCopy = Message.from(packet.payload());
@@ -1900,19 +1983,49 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         private void dispatchSubscription(ZLinkBackendTopicMessage received) {
             try {
                 if (received.parts().isEmpty()) {
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
+                        ZLinkDispatchMessageKind.PUBLISH,
+                        ZLinkDispatchErrorReason.INVALID_FRAME,
+                        ZLinkDispatchErrorAction.DROP,
+                        null,
+                        null,
+                        received.topic(),
+                        backendSpot.routingId(),
+                        null,
+                        null,
+                        null,
+                        null);
                     return;
                 }
                 ParsedPacket packet = parsePacket(received.parts());
+                boolean dispatched = false;
                 for (SpotSubscriptionHandlerRegistration handler :
                     context.subscriptionHandlers(received.topic())) {
                     if (!handler.packetName().equals(packet.packetName())) {
                         continue;
                     }
+                    dispatched = true;
                     Message payloadCopy = Message.from(packet.payload());
                     context.enqueueDispatch(() ->
                         withCurrentOutbound(context.outbound, () ->
                             invokeSpotSubscriptionHandler(handler, entrySpot, payloadCopy))
                             .whenComplete((ignored, error) -> payloadCopy.close()));
+                }
+                if (!dispatched) {
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
+                        ZLinkDispatchMessageKind.PUBLISH,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        ZLinkDispatchErrorAction.DROP,
+                        packet.packetName(),
+                        null,
+                        received.topic(),
+                        backendSpot.routingId(),
+                        null,
+                        null,
+                        null,
+                        null);
                 }
             } finally {
                 received.parts().forEach(Message::close);
@@ -1995,21 +2108,101 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 Optional<ZLinkActor> localActor =
                     actorRuntime.localActor(headerPart.actor().actorId());
                 if (localActor.isEmpty()) {
-                    if (pendingHeader) {
+                    boolean request = packetHeader.requestSeq().isPresent();
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_ACTOR,
+                        request
+                            ? ZLinkDispatchMessageKind.ACTOR_REQUEST
+                            : ZLinkDispatchMessageKind.ACTOR_SEND,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        request
+                            ? ZLinkDispatchErrorAction.REPLY_ERROR
+                            : ZLinkDispatchErrorAction.DROP,
+                        packetHeader.packetName(),
+                        null,
+                        null,
+                        backendSpot.routingId(),
+                        headerPart.actor().actorId(),
+                        headerPart.sourceNodeRid(),
+                        packetHeader.requestSeq().map(Object::toString).orElse(null),
+                        null);
+                    if (request) {
+                        ZLinkBackendActorReceived headerCopy = pendingHeader
+                            ? headerPart
+                            : copyActorReceived(headerPart);
+                        replyActorDispatchError(
+                            packetHeader,
+                            headerCopy,
+                            headerPart.actor().actorId(),
+                            new ZLinkConfigurationException(
+                                "SPOT actor is not registered locally: "
+                                    + headerPart.actor().actorId()),
+                            "actor missing error reply failed");
+                    } else if (pendingHeader) {
                         headerPart.close();
                     }
                     continue;
                 }
                 ZLinkActor actor = localActor.get();
+                Object spotSurface = localActorSpotSurface(actor);
+                Optional<RoutingId> joinedSpotRid = actorRuntime.spotRid(actor);
+                if (joinedSpotRid.isPresent()
+                    && !actorRuntime.currentRef(actor).nodeRid().equals(primaryNode.routingId())
+                    && spotSurfaceFor(joinedSpotRid.get()) == null
+                    && actorRuntime.canRouteRemoteJoinedSpot(joinedSpotRid.get())) {
+                    ZLinkBackendActorReceived headerCopy = pendingHeader
+                        ? headerPart
+                        : copyActorReceived(headerPart);
+                    Message payloadCopy = bodyPart == null
+                        ? Message.from(new byte[0])
+                        : Message.from(bodyPart.message());
+                    context.enqueueDispatch(() -> dispatchRemoteJoinedActorPacket(
+                        actor,
+                        joinedSpotRid.get(),
+                        packetHeader,
+                        headerCopy,
+                        payloadCopy));
+                    continue;
+                }
                 SpotActorPacketHandlerRegistration handler =
                     resolveActorPacketHandler(
                         packetHeader.packetName(),
-                        entrySpot,
+                        spotSurface,
                         packetHeader.requestSeq().isPresent()
                             ? ZLinkScannedHandlerKind.ACTOR_REQUEST
                             : ZLinkScannedHandlerKind.ACTOR_SEND);
                 if (handler == null) {
-                    if (pendingHeader) {
+                    boolean request = packetHeader.requestSeq().isPresent();
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_ACTOR,
+                        request
+                            ? ZLinkDispatchMessageKind.ACTOR_REQUEST
+                            : ZLinkDispatchMessageKind.ACTOR_SEND,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        request
+                            ? ZLinkDispatchErrorAction.REPLY_ERROR
+                            : ZLinkDispatchErrorAction.DROP,
+                        packetHeader.packetName(),
+                        null,
+                        null,
+                        backendSpot.routingId(),
+                        actor.actorId(),
+                        headerPart.sourceNodeRid(),
+                        packetHeader.requestSeq().map(Object::toString).orElse(null),
+                        null);
+                    if (request) {
+                        ZLinkBackendActorReceived headerCopy = pendingHeader
+                            ? headerPart
+                            : copyActorReceived(headerPart);
+                        replyActorDispatchError(
+                            packetHeader,
+                            headerCopy,
+                            actor.actorId(),
+                            new ZLinkConfigurationException(
+                                "No SPOT actor request handler is registered for '"
+                                    + packetHeader.packetName() + "'."),
+                            "actor dispatch error reply failed");
+                    } else if (pendingHeader) {
                         headerPart.close();
                     }
                     continue;
@@ -2036,6 +2229,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 context.enqueueDispatch(
                     () -> dispatchActorPacket(
                         handler,
+                        spotSurface,
                         actor,
                         packetHeader,
                         headerCopy,
@@ -2043,18 +2237,65 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             }
         }
 
+        private CompletionStage<Void> dispatchRemoteJoinedActorPacket(
+            ZLinkActor actor,
+            RoutingId spotRid,
+            ActorPacketHeader packetHeader,
+            ZLinkBackendActorReceived headerPart,
+            Message payload) {
+            if (headerPart.sourceNodeRid() == null || headerPart.sourceSessionRid() == null) {
+                payload.close();
+                headerPart.close();
+                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                    "remote joined actor packet is missing source session route: " + actor.actorId()));
+            }
+            ZLinkStreamHeader header = new ZLinkStreamHeader(
+                packetHeader.requestSeq().isPresent()
+                    ? ZLinkStreamMessageKind.REQUEST
+                    : ZLinkStreamMessageKind.SEND,
+                ZLinkStreamCodec.fromValue(packetHeader.codec()),
+                EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+                packetHeader.requestSeq(),
+                packetHeader.packetName(),
+                Map.of());
+            try (Message headerPartMessage = Message.from(ZLinkStreamHeaderCodec.encode(header));
+                 Message body = Message.from(payload)) {
+                ZLinkBackendActorRef targetActor = actorRuntime.currentRef(actor);
+                boolean forwarded = primaryNode.forwardActorBoundSession(
+                    targetActor,
+                    headerPart.sourceNodeRid(),
+                    headerPart.sourceSessionRid(),
+                    List.of(headerPartMessage, body),
+                    SendFlags.NONE);
+                if (!forwarded) {
+                    return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                        "remote joined actor packet forward failed: " + actor.actorId()));
+                }
+                return CompletableFuture.completedFuture(null);
+            } finally {
+                payload.close();
+                headerPart.close();
+            }
+        }
+
         private CompletionStage<Void> dispatchActorPacket(
             SpotActorPacketHandlerRegistration handler,
+            Object spotSurface,
             ZLinkActor actor,
             ActorPacketHeader packetHeader,
             ZLinkBackendActorReceived headerPart,
             Message payload) {
-            actorRuntime.bindNativeSession(actor, primaryNode, headerPart.actor());
+            actorRuntime.bindNativeSession(
+                actor,
+                primaryNode,
+                headerPart.actor(),
+                headerPart.sourceNodeRid(),
+                headerPart.sourceSessionRid());
             CompletionStage<Optional<Message>> stage = withCurrentOutbound(
                 context.outbound,
                 () -> handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST
-                    ? invokeActorRequestHandler(handler, actor, payload)
-                    : invokeActorSendHandler(handler, actor, payload)
+                    ? invokeActorRequestHandler(handler, spotSurface, actor, payload)
+                    : invokeActorSendHandler(handler, spotSurface, actor, payload)
                         .thenApply(ignored -> Optional.empty()));
             return stage.handle((reply, error) -> {
                     if (error != null) {
@@ -2088,6 +2329,31 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     payload.close();
                     headerPart.close();
                 });
+        }
+
+        private void replyActorDispatchError(
+            ActorPacketHeader packetHeader,
+            ZLinkBackendActorReceived headerPart,
+            String actorId,
+            Throwable error,
+            String failureMessage) {
+            byte[] frameBytes;
+            try (Message frame = encodeActorErrorFrame(packetHeader, error)) {
+                frameBytes = frame.toByteArray();
+            } catch (RuntimeException ex) {
+                headerPart.close();
+                return;
+            }
+            context.enqueueDispatch(() -> sendActorBoundSessionWithRetry(
+                    primaryNode,
+                    new ZLinkBackendActorRef(
+                        headerPart.actor().nodeRid(),
+                        actorId,
+                        headerPart.actor().epoch()),
+                    actorId,
+                    frameBytes,
+                    failureMessage)
+                .whenComplete((ignored, sendError) -> headerPart.close()));
         }
 
         private ActorPacketHeader decodeActorPacketHeader(ZLinkBackendActorReceived headerPart) {
@@ -2306,13 +2572,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
         private CompletionStage<Void> invokeActorSendHandler(
             SpotActorPacketHandlerRegistration registration,
+            Object spotSurface,
             ZLinkActor actor,
             Message payload) {
             Object message = serializer.deserialize(payload, registration.messageType());
             if (registration.handlerMethod() == null) {
                 return invokeActorSendInterfaceHandler(
                     registration,
-                    entrySpot,
+                    spotSurface,
                     actor,
                     new DefaultSpotActorSendContext(registration.packetName()),
                     message,
@@ -2320,25 +2587,26 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             }
             return invokeVoidMethodHandler(
                 registration.handlerType(),
-                registration.handlerMethod(),
-                actorPacketArguments(
                     registration.handlerMethod(),
-                    entrySpot,
-                    actor,
-                    new DefaultSpotActorSendContext(registration.packetName()),
-                    message),
+                    actorPacketArguments(
+                        registration.handlerMethod(),
+                        spotSurface,
+                        actor,
+                        new DefaultSpotActorSendContext(registration.packetName()),
+                        message),
                 "failed to invoke Spot actor send handler");
         }
 
         private CompletionStage<Optional<Message>> invokeActorRequestHandler(
             SpotActorPacketHandlerRegistration registration,
+            Object spotSurface,
             ZLinkActor actor,
             Message payload) {
             Object message = serializer.deserialize(payload, registration.messageType());
             if (registration.handlerMethod() == null) {
                 return invokeActorRequestInterfaceHandler(
                         registration,
-                        entrySpot,
+                        spotSurface,
                         actor,
                         new DefaultSpotActorRequestContext(registration.packetName()),
                         message,
@@ -2350,7 +2618,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     registration.handlerMethod(),
                     actorPacketArguments(
                         registration.handlerMethod(),
-                        entrySpot,
+                        spotSurface,
                         actor,
                         new DefaultSpotActorRequestContext(registration.packetName()),
                         message),
@@ -3432,7 +3700,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     return;
                 }
                 try (Message frame = Message.from(frameBytes)) {
-                    if (node.sendActorBoundSession(actor, List.of(frame), SendFlags.DONT_WAIT)) {
+                    if (node.sendActorBoundSession(actor, List.of(frame), SendFlags.NONE)) {
                         result.complete(null);
                         return;
                     }
@@ -3482,9 +3750,45 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             received.hasMore());
     }
 
+    private void reportDispatchError(
+        ZLinkDispatchErrorSurface surface,
+        ZLinkDispatchMessageKind messageKind,
+        ZLinkDispatchErrorReason reason,
+        ZLinkDispatchErrorAction action,
+        String packetName,
+        String channelName,
+        String topic,
+        RoutingId spotRid,
+        String actorId,
+        RoutingId sourceRid,
+        String correlationId,
+        Throwable exception) {
+        dispatchErrors.report(new ZLinkMessageDispatchErrorEvent(
+            surface,
+            messageKind,
+            reason,
+            action,
+            packetName == null || packetName.isBlank() ? null : packetName,
+            channelName,
+            topic,
+            spotRid == null ? null : spotRid.toString(),
+            actorId,
+            sourceRid == null ? null : sourceRid.toString(),
+            correlationId,
+            exception));
+    }
+
     private static String errorMessage(Throwable error) {
         Throwable current = error;
-        while (current instanceof CompletionException && current.getCause() != null) {
+        while ((current instanceof CompletionException
+            || current instanceof InvocationTargetException)
+            && current.getCause() != null) {
+            current = current.getCause();
+        }
+        if (current instanceof ZLinkConfigurationException
+            && current.getCause() != null
+            && current.getMessage() != null
+            && current.getMessage().startsWith("failed to invoke ")) {
             current = current.getCause();
         }
         return current.getMessage() == null
@@ -4125,11 +4429,59 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             SpotPacketHandlerRegistration handler =
                 context.packetHandler(packet.packetName());
             if (handler == null) {
+                if (received.requestSeq().isPresent()) {
+                    received.reply(List.of(Message.from((
+                        "No SPOT route request handler is registered for '"
+                            + packet.packetName() + "'.").getBytes(StandardCharsets.UTF_8))));
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                        ZLinkDispatchMessageKind.REQUEST,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        ZLinkDispatchErrorAction.REPLY_ERROR,
+                        packet.packetName(),
+                        null,
+                        null,
+                        backendSpot.routingId(),
+                        null,
+                        received.routingId().orElse(null),
+                        received.requestSeq().map(Object::toString).orElse(null),
+                        null);
+                } else {
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                        ZLinkDispatchMessageKind.SEND,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        ZLinkDispatchErrorAction.DROP,
+                        packet.packetName(),
+                        null,
+                        null,
+                        backendSpot.routingId(),
+                        null,
+                        received.routingId().orElse(null),
+                        null,
+                        null);
+                }
                 received.close();
                 return CompletableFuture.completedFuture(null);
             }
             if (received.requestSeq().isPresent()) {
                 if (!handler.request()) {
+                    received.reply(List.of(Message.from((
+                        "SPOT route handler for '" + packet.packetName()
+                            + "' does not accept requests.").getBytes(StandardCharsets.UTF_8))));
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                        ZLinkDispatchMessageKind.REQUEST,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        ZLinkDispatchErrorAction.REPLY_ERROR,
+                        packet.packetName(),
+                        null,
+                        null,
+                        backendSpot.routingId(),
+                        null,
+                        received.routingId().orElse(null),
+                        received.requestSeq().map(Object::toString).orElse(null),
+                        null);
                     received.close();
                     return CompletableFuture.completedFuture(null);
                 }
@@ -4143,6 +4495,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     });
             }
             if (handler.request()) {
+                reportDispatchError(
+                    ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                    ZLinkDispatchMessageKind.SEND,
+                    ZLinkDispatchErrorReason.HANDLER_MISSING,
+                    ZLinkDispatchErrorAction.DROP,
+                    packet.packetName(),
+                    null,
+                    null,
+                    backendSpot.routingId(),
+                    null,
+                    received.routingId().orElse(null),
+                    null,
+                    null);
                 received.close();
                 return CompletableFuture.completedFuture(null);
             }
@@ -4168,20 +4533,50 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         private CompletionStage<Void> dispatchSubscriptionAsync(ZLinkBackendTopicMessage received) {
             try {
                 if (received.parts().isEmpty()) {
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
+                        ZLinkDispatchMessageKind.PUBLISH,
+                        ZLinkDispatchErrorReason.INVALID_FRAME,
+                        ZLinkDispatchErrorAction.DROP,
+                        null,
+                        null,
+                        received.topic(),
+                        backendSpot.routingId(),
+                        null,
+                        null,
+                        null,
+                        null);
                     return CompletableFuture.completedFuture(null);
                 }
                 ParsedPacket packet = parsePacket(received.parts());
                 CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
+                boolean dispatched = false;
                 for (SpotSubscriptionHandlerRegistration handler :
                     context.subscriptionHandlers(received.topic())) {
                     if (!handler.packetName().equals(packet.packetName())) {
                         continue;
                     }
+                    dispatched = true;
                     Message payloadCopy = Message.from(packet.payload());
                     tail = tail.thenCompose(ignored ->
                         withCurrentOutbound(context.outbound, () ->
                             invokeSpotSubscriptionHandler(handler, spot, payloadCopy))
                             .whenComplete((ignored2, error) -> payloadCopy.close()));
+                }
+                if (!dispatched) {
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
+                        ZLinkDispatchMessageKind.PUBLISH,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        ZLinkDispatchErrorAction.DROP,
+                        packet.packetName(),
+                        null,
+                        received.topic(),
+                        backendSpot.routingId(),
+                        null,
+                        null,
+                        null,
+                        null);
                 }
                 return tail;
             } finally {
@@ -4270,7 +4665,37 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 Optional<ZLinkActor> localActor =
                     actorRuntime.localActor(headerPart.actor().actorId());
                 if (localActor.isEmpty()) {
-                    if (pendingHeader) {
+                    boolean request = packetHeader.requestSeq().isPresent();
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_ACTOR,
+                        request
+                            ? ZLinkDispatchMessageKind.ACTOR_REQUEST
+                            : ZLinkDispatchMessageKind.ACTOR_SEND,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        request
+                            ? ZLinkDispatchErrorAction.REPLY_ERROR
+                            : ZLinkDispatchErrorAction.DROP,
+                        packetHeader.packetName(),
+                        null,
+                        null,
+                        backendSpot.routingId(),
+                        headerPart.actor().actorId(),
+                        headerPart.sourceNodeRid(),
+                        packetHeader.requestSeq().map(Object::toString).orElse(null),
+                        null);
+                    if (request) {
+                        ZLinkBackendActorReceived headerCopy = pendingHeader
+                            ? headerPart
+                            : copyActorReceived(headerPart);
+                        replyActorDispatchError(
+                            packetHeader,
+                            headerCopy,
+                            headerPart.actor().actorId(),
+                            new ZLinkConfigurationException(
+                                "SPOT actor is not registered locally: "
+                                    + headerPart.actor().actorId()),
+                            "user actor missing error reply failed");
+                    } else if (pendingHeader) {
                         headerPart.close();
                     }
                     continue;
@@ -4284,7 +4709,37 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                             ? ZLinkScannedHandlerKind.ACTOR_REQUEST
                             : ZLinkScannedHandlerKind.ACTOR_SEND);
                 if (handler == null) {
-                    if (pendingHeader) {
+                    boolean request = packetHeader.requestSeq().isPresent();
+                    reportDispatchError(
+                        ZLinkDispatchErrorSurface.SPOT_ACTOR,
+                        request
+                            ? ZLinkDispatchMessageKind.ACTOR_REQUEST
+                            : ZLinkDispatchMessageKind.ACTOR_SEND,
+                        ZLinkDispatchErrorReason.HANDLER_MISSING,
+                        request
+                            ? ZLinkDispatchErrorAction.REPLY_ERROR
+                            : ZLinkDispatchErrorAction.DROP,
+                        packetHeader.packetName(),
+                        null,
+                        null,
+                        backendSpot.routingId(),
+                        actor.actorId(),
+                        headerPart.sourceNodeRid(),
+                        packetHeader.requestSeq().map(Object::toString).orElse(null),
+                        null);
+                    if (request) {
+                        ZLinkBackendActorReceived headerCopy = pendingHeader
+                            ? headerPart
+                            : copyActorReceived(headerPart);
+                        replyActorDispatchError(
+                            packetHeader,
+                            headerCopy,
+                            actor.actorId(),
+                            new ZLinkConfigurationException(
+                                "No SPOT actor request handler is registered for '"
+                                    + packetHeader.packetName() + "'."),
+                            "user actor dispatch error reply failed");
+                    } else if (pendingHeader) {
                         headerPart.close();
                     }
                     continue;
@@ -4326,7 +4781,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             ActorPacketHeader packetHeader,
             ZLinkBackendActorReceived headerPart,
             Message payload) {
-            actorRuntime.bindNativeSession(actor, primaryNode, headerPart.actor());
+            actorRuntime.bindNativeSession(
+                actor,
+                primaryNode,
+                headerPart.actor(),
+                headerPart.sourceNodeRid(),
+                headerPart.sourceSessionRid());
             CompletionStage<Optional<Message>> stage = withCurrentOutbound(
                 context.outbound,
                 () -> handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST
@@ -4365,6 +4825,31 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     payload.close();
                     headerPart.close();
                 });
+        }
+
+        private void replyActorDispatchError(
+            ActorPacketHeader packetHeader,
+            ZLinkBackendActorReceived headerPart,
+            String actorId,
+            Throwable error,
+            String failureMessage) {
+            byte[] frameBytes;
+            try (Message frame = encodeActorErrorFrame(packetHeader, error)) {
+                frameBytes = frame.toByteArray();
+            } catch (RuntimeException ex) {
+                headerPart.close();
+                return;
+            }
+            context.enqueueDispatch(() -> sendActorBoundSessionWithRetry(
+                    primaryNode,
+                    new ZLinkBackendActorRef(
+                        headerPart.actor().nodeRid(),
+                        actorId,
+                        headerPart.actor().epoch()),
+                    actorId,
+                    frameBytes,
+                    failureMessage)
+                .whenComplete((ignored, sendError) -> headerPart.close()));
         }
 
         private ActorPacketHeader decodeActorPacketHeader(ZLinkBackendActorReceived headerPart) {
@@ -4584,7 +5069,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             return actorRuntime.getOrCreate(joinRequest.actorId(), joinRequest.actorType())
                 .thenCompose(actor -> {
                     final long[] routedBindingToken = {-1};
-                    if (routeChannelName != null) {
+                    ZLinkBackendActorRef localActorRef = actorRuntime.actorRef(actor);
+                    if (joinRequest.hasSourceSessionRoute()) {
+                        RoutingId sourceNodeRid = sourcePeerRid == null
+                            ? joinRequest.sourceNodeRid()
+                            : sourcePeerRid;
+                        routedBindingToken[0] = actorRuntime.bindNativeSession(
+                            actor,
+                            primaryNode,
+                            localActorRef,
+                            sourceNodeRid,
+                            joinRequest.sourceSessionRid());
+                    } else if (routeChannelName != null) {
                         routedBindingToken[0] = actorRuntime.bindRoutedSession(
                             actor,
                             routeChannelName,
@@ -4605,7 +5101,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                             }
                             actorRuntime.markJoined(
                                 actor,
-                                joinRequest.actorRef(),
+                                localActorRef,
                                 backendSpot.routingId(),
                                 spotFor(backendSpot.routingId()));
                             return notifySpotActorLifecycle(spot, actor, true)
@@ -4629,20 +5125,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                                 response == null ? ZLinkSpotActorJoinResponse.reject() : response;
                             return ZLinkActorSpotRoutePackets.encodeJoinReply(
                                 effective.accepted(),
-                                joinRequest.actorRef(),
+                                localActorRef,
                                 effective.reply());
                         });
                 })
                 .handle((reply, error) -> {
                     try {
                         if (error != null) {
-                            try (Message rejectedPayload = Message.from(new byte[0]);
-                                 Message rejected = ZLinkActorSpotRoutePackets.encodeJoinReply(
-                                     false,
-                                     joinRequest.actorRef(),
-                                     rejectedPayload)) {
-                                return List.of(Message.from(rejected.toByteArray()));
-                            }
+                            throw new CompletionException(error);
                         } else {
                             try (reply) {
                                 return List.of(Message.from(reply.toByteArray()));

@@ -5,6 +5,8 @@
 #include "runtime/channels/route_internal_packet_dispatcher.hpp"
 #include "runtime/channels/route_packet.hpp"
 
+#include <zlink/framework/contracts/dispatch/execution.hpp>
+
 #include <optional>
 #include <string>
 
@@ -19,7 +21,8 @@ class route_packet_dispatcher_t
                                service_provider_t &services,
                                serializer_registry_t &serializers,
                                const route_handler_registry_t &handlers,
-                               const route_internal_packet_dispatcher_t &internal_packets);
+                               const route_internal_packet_dispatcher_t &internal_packets,
+                               dispatch_options_t dispatch_options = {});
 
     result_t<std::optional<route_dispatch_reply_t>>
     dispatch (const route_received_packet_t &received) const;
@@ -44,6 +47,7 @@ class route_packet_dispatcher_t
     const route_handler_registry_t *_handlers = nullptr;
     const route_internal_packet_dispatcher_t *_internal_packets = nullptr;
     route_handler_invoker_t _invoker;
+    dispatch_options_t _dispatch_options;
 };
 
 } // namespace zlink::framework::detail

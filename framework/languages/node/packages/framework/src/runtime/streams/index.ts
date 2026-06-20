@@ -58,10 +58,18 @@ const ZLINK_SEND_DONT_WAIT = 1 as ZLinkBackendSendFlags;
 export interface ZLinkStreamBindingRuntimeOptions {
   readonly transport?: ZLinkBoundSessionTransport;
   readonly messageFactory?: ZLinkStreamMessageFactory;
+  readonly streamPayloadCodec?: ZLinkStreamPayloadCodec;
   readonly actorBindTimeoutMs?: number;
   readonly actorRefResolver?: (actor: ZLinkActor) => ActorRef;
   readonly relay?: (actor: ZLinkSessionActor, header: ZlinkStreamHeader, payload: Message, signal?: AbortSignal) => Promise<boolean>;
   readonly notifyDisconnected?: (actor: ZLinkSessionActor, signal?: AbortSignal) => Promise<void>;
+}
+
+export interface ZLinkStreamPayloadCodec {
+  encode(payload: unknown): {
+    readonly codec: ZLinkStreamCodec;
+    readonly payload: Uint8Array;
+  };
 }
 
 export interface ZLinkStreamMessageFactory {
@@ -683,6 +691,40 @@ export class ZLinkStreamBindingRuntime {
     }
   }
 
+  sendLocalBoundSessionError(
+    actorId: string,
+    packetName: string,
+    requestSeq: bigint,
+    error: unknown,
+    metadata: ReadonlyMap<string, string>
+  ): boolean {
+    const route = this.routes.route(actorId);
+    if (route === undefined) {
+      return false;
+    }
+    const frame = this.frameMessages.createJsonFrameMessage(
+      ZLinkStreamMessageKind.Error,
+      packetName,
+      metadata,
+      false,
+      requestSeq,
+      {
+        code: error instanceof Error ? error.constructor.name : undefined,
+        message: error instanceof Error ? error.message : String(error)
+      }
+    );
+    try {
+      if (!route.context.stream.write(frame)) {
+        throw new Error(`Actor '${actorId}' local bound session error response failed.`);
+      }
+      this.routes.requireCurrentToken(actorId, route.bindingToken);
+      return true;
+    } finally {
+      frame.close();
+    }
+  }
+
+
   async sendNativeBoundSession(
     node: ZLinkBackendSpotNode,
     actorRef: ActorRef,
@@ -938,7 +980,8 @@ class ZLinkStreamFrameMessageFactory {
     requestSeq: bigint | undefined,
     payload: unknown
   ): Message {
-    let body = utf8Encode(JSON.stringify(payload));
+    const encoded = this.encodePayload(payload);
+    let body = encoded.payload;
     if (compressed) {
       body = lz4Pickle(body);
     }
@@ -946,7 +989,7 @@ class ZLinkStreamFrameMessageFactory {
     const frame = encodeStreamFrame(
       {
         kind,
-        codec: ZLinkStreamCodec.Json,
+        codec: encoded.codec,
         flags,
         requestSeq,
         name: packetName,
@@ -955,6 +998,17 @@ class ZLinkStreamFrameMessageFactory {
       body
     );
     return this.createBinaryMessage(frame);
+  }
+
+  private encodePayload(payload: unknown): { codec: ZLinkStreamCodec; payload: Uint8Array } {
+    const codec = this.options.streamPayloadCodec;
+    if (codec !== undefined) {
+      return codec.encode(payload);
+    }
+    return {
+      codec: ZLinkStreamCodec.Json,
+      payload: utf8Encode(JSON.stringify(payload))
+    };
   }
 
   private requireMessageFactory(): ZLinkStreamMessageFactory {
@@ -1056,10 +1110,16 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
 
   tryCompleteResponse(header: ZlinkStreamHeader, payload: Message): boolean {
     const decoded = tryGetStreamFrameHeader(header);
-    if (decoded?.kind !== ZLinkStreamMessageKind.Response || decoded.requestSeq === undefined) {
+    if (decoded?.requestSeq === undefined) {
       return false;
     }
-    return this.requests.complete(decoded.requestSeq, payload);
+    if (decoded.kind === ZLinkStreamMessageKind.Response) {
+      return this.requests.complete(decoded.requestSeq, payload);
+    }
+    if (decoded.kind === ZLinkStreamMessageKind.Error) {
+      return this.requests.fail(decoded.requestSeq, decodeStreamErrorPayload(payload));
+    }
+    return false;
   }
 
   payloadForHeader(header: ZlinkStreamHeader, payload: Message): Message {
@@ -1219,6 +1279,15 @@ export class ZLinkPendingSessionRequest {
     this.resolvePromise(copyMessage(payload));
   }
 
+  fail(error: unknown): void {
+    if (this.completed) {
+      return;
+    }
+    this.completed = true;
+    this.clearTimeout();
+    this.rejectPromise(error);
+  }
+
   cancel(): void {
     if (this.completed) {
       return;
@@ -1265,6 +1334,16 @@ class ZLinkSessionRequestTracker {
     return true;
   }
 
+  fail(requestSeq: bigint, error: unknown): boolean {
+    const pending = this.pending.get(requestSeq);
+    if (pending === undefined) {
+      return false;
+    }
+    this.pending.delete(requestSeq);
+    pending.fail(error);
+    return true;
+  }
+
   remove(requestSeq: bigint): void {
     this.pending.delete(requestSeq);
   }
@@ -1274,6 +1353,18 @@ class ZLinkSessionRequestTracker {
       this.nextRequestSeq = (this.nextRequestSeq + 1n) & 0xffffffffffffffffn;
     } while (this.nextRequestSeq === 0n);
     return this.nextRequestSeq;
+  }
+}
+
+function decodeStreamErrorPayload(payload: Message): Error {
+  try {
+    const value = JSON.parse(Buffer.from(messageToBytes(payload)).toString()) as {
+      readonly code?: unknown;
+      readonly message?: unknown;
+    };
+    return new Error(typeof value.message === 'string' ? value.message : 'Stream request failed.');
+  } catch {
+    return new Error('Stream request failed.');
   }
 }
 

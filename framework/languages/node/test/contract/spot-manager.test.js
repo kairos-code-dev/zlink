@@ -3,6 +3,7 @@ const test = require('node:test');
 
 const zlink = require('../../../../../bindings/node/dist');
 const framework = require('../../packages/framework/dist/internal');
+const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
 const connector = require('../../packages/stream-connector/dist');
 const json = connector;
 const msgpack = require('../../packages/framework-codec-msgpack/dist');
@@ -160,6 +161,203 @@ test('spot handler registry records packet and subscribe registrations from conf
     { kind: 'packet', handlerType: PacketHandler, packetName: 'stage.packet' },
     { kind: 'subscribe', handlerType: SubscribeHandler, topic: 'stage.updated' }
   ]);
+});
+
+test('ZLinkSpotManager reports SPOT subscription dispatch errors to global observer', async () => {
+  const dispatchEvents = [];
+  class DispatchObserver {
+    onDispatchError(event) {
+      dispatchEvents.push(event);
+    }
+  }
+  let dispatchHandler;
+  const subscriptionQueue = [{ topic: 'unmatched', routingId: 'source-node', parts: [] }];
+  const nativeSpot = {
+    routingId: 'stage-subscription',
+    setDispatchHandler(handler) {
+      dispatchHandler = handler;
+    },
+    setSubscription() {},
+    subscribe(result) {
+      const next = subscriptionQueue.shift();
+      if (next === undefined) {
+        return false;
+      }
+      result.topic = next.topic;
+      result.routingId = next.routingId;
+      result.parts = next.parts;
+      return true;
+    },
+    recvActorLifecycle() { return null; },
+    drainReply() { return 0; },
+    drainChannelReply() { return 0; },
+    recvRoute() { return false; },
+    onSendReady() {},
+    async dispose() {}
+  };
+  class StageSpot {}
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [StageSpot],
+    createNativeSpot: () => nativeSpot,
+    dispatchErrors: new framework.ZLinkDispatchErrorReporter(
+      DispatchObserver,
+      undefined,
+      { reportRuntimeTaskException() {} }
+    )
+  });
+
+  await manager.getOrCreate(StageSpot, 'stage-subscription');
+  dispatchHandler({ event: 1 });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(dispatchEvents.length, 1);
+  assert.equal(dispatchEvents[0].surface, framework.ZLinkDispatchErrorSurface.SpotSubscription);
+  assert.equal(dispatchEvents[0].messageKind, framework.ZLinkDispatchMessageKind.Publish);
+  assert.equal(dispatchEvents[0].reason, framework.ZLinkDispatchErrorReason.InvalidFrame);
+  assert.equal(dispatchEvents[0].action, framework.ZLinkDispatchErrorAction.Drop);
+  assert.equal(dispatchEvents[0].topic, 'unmatched');
+  assert.equal(dispatchEvents[0].sourceRid, 'source-node');
+});
+
+test('ZLinkSpotManager reports SPOT actor dispatch errors to global observer', async () => {
+  const dispatchEvents = [];
+  class DispatchObserver {
+    onDispatchError(event) {
+      dispatchEvents.push(event);
+    }
+  }
+  let dispatchHandler;
+  const badPart = zlink.Message.from('bad-frame');
+  const actorParts = [{
+    info: { actor: { nodeRid: 'node-a', actorId: 'actor-1', generation: 0n } },
+    message: badPart,
+    more: false
+  }];
+  const nativeSpot = {
+    routingId: 'stage-actor',
+    setDispatchHandler(handler) {
+      dispatchHandler = handler;
+    },
+    setSubscription() {},
+    subscribe() { return false; },
+    recvActorLifecycle() { return null; },
+    drainReply() { return 0; },
+    drainChannelReply() { return 0; },
+    recvRoute() { return false; },
+    onSendReady() {},
+    async dispose() {}
+  };
+  class StageSpot {}
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [StageSpot],
+    createNativeSpot: () => nativeSpot,
+    dispatchErrors: new framework.ZLinkDispatchErrorReporter(
+      DispatchObserver,
+      undefined,
+      { reportRuntimeTaskException() {} }
+    )
+  });
+
+  try {
+    await manager.getOrCreate(StageSpot, 'stage-actor');
+    dispatchHandler({
+      event: 5,
+      recvActorPart() {
+        return actorParts.shift() ?? null;
+      }
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(dispatchEvents.length, 1);
+    assert.equal(dispatchEvents[0].surface, framework.ZLinkDispatchErrorSurface.SpotActor);
+    assert.equal(dispatchEvents[0].messageKind, framework.ZLinkDispatchMessageKind.ActorSend);
+    assert.equal(dispatchEvents[0].reason, framework.ZLinkDispatchErrorReason.InvalidFrame);
+    assert.equal(dispatchEvents[0].action, framework.ZLinkDispatchErrorAction.Drop);
+    assert.equal(dispatchEvents[0].spotRid, 'stage-actor');
+    assert.equal(dispatchEvents[0].actorId, 'actor-1');
+  } finally {
+    badPart.close();
+  }
+});
+
+test('ZLinkSpotManager replies routed actor request dispatch errors', async () => {
+  let dispatchHandler;
+  const dispatchEvents = [];
+  const replyMessages = [];
+  class DispatchObserver {
+    onDispatchError(event) {
+      dispatchEvents.push(event);
+    }
+  }
+  const requestHeader = streamProtocol.encodeStreamHeader({
+    kind: streamProtocol.ZLinkStreamMessageKind.Request,
+    codec: streamProtocol.ZLinkStreamCodec.Json,
+    flags: 0,
+    requestSeq: 1n,
+    name: 'MissingActorPacket',
+    metadata: new Map()
+  });
+  const relay = zlink.Message.from(JSON.stringify({
+    packetName: '__zlink.actor.packet.relay',
+    actorId: 'actor-1',
+    header: Buffer.from(requestHeader).toString('base64'),
+    payload: Buffer.from('payload').toString('base64')
+  }));
+  const nativeSpot = {
+    routingId: 'stage-routed-actor',
+    setDispatchHandler(handler) {
+      dispatchHandler = handler;
+    },
+    setSubscription() {},
+    subscribe() { return false; },
+    recvActorLifecycle() { return null; },
+    drainReply() { return 0; },
+    drainChannelReply() { return 0; },
+    recvRoute() { return false; },
+    onSendReady() {},
+    async dispose() {}
+  };
+  const routed = {
+    parts: [relay],
+    requestSeq: 1n,
+    reply() {
+      return {
+        message(message) {
+          replyMessages.push(Buffer.from(message).toString());
+          return this;
+        },
+        submit() {
+          return true;
+        }
+      };
+    },
+    close() {}
+  };
+  class StageSpot {}
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [StageSpot],
+    createNativeSpot: () => nativeSpot,
+    dispatchErrors: new framework.ZLinkDispatchErrorReporter(
+      DispatchObserver,
+      undefined,
+      { reportRuntimeTaskException() {} }
+    )
+  });
+
+  try {
+    await manager.getOrCreate(StageSpot, 'stage-routed-actor');
+    dispatchHandler({ event: 2, routed });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(replyMessages.length, 1);
+    assert.equal(JSON.parse(replyMessages[0]).ok, false);
+    assert.equal(dispatchEvents.length, 1);
+    assert.equal(dispatchEvents[0].surface, framework.ZLinkDispatchErrorSurface.SpotActor);
+    assert.equal(dispatchEvents[0].reason, framework.ZLinkDispatchErrorReason.HandlerMissing);
+    assert.equal(dispatchEvents[0].action, framework.ZLinkDispatchErrorAction.ReplyError);
+  } finally {
+    relay.close();
+  }
 });
 
 test('ZLinkSpotManager awaits async configure before onInitialize', async () => {

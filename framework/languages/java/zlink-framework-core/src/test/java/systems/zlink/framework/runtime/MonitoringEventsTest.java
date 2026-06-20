@@ -385,6 +385,16 @@ final class MonitoringEventsTest {
         }
 
         @Override
+        public boolean forwardActorBoundSession(
+            ZLinkBackendActorRef actor,
+            RoutingId sourceNodeRid,
+            RoutingId sourceSessionRid,
+            List<Message> parts,
+            SendFlags flags) {
+            return false;
+        }
+
+        @Override
         public void closeActorBoundSession(
             ZLinkBackendActorRef actor,
             java.time.Duration timeout) {

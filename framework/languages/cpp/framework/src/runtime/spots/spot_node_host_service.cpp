@@ -7,6 +7,7 @@
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <chrono>
+#include <exception>
 #include <utility>
 
 namespace zlink::framework::runtime
@@ -15,6 +16,7 @@ namespace zlink::framework::runtime
 struct spot_node_host_service_t::native_node_t
 {
     zlink::context_t context;
+    std::unique_ptr<zlink::service::discovery_t> discovery;
     std::shared_ptr<zlink::service::spot_node_t> node;
     detail::spot_node_runtime_t runtime;
 
@@ -27,8 +29,9 @@ struct spot_node_host_service_t::native_node_t
 };
 
 spot_node_host_service_t::spot_node_host_service_t (
-  std::vector<node_runtime_t> spot_nodes) :
-    _spot_nodes (std::move (spot_nodes))
+  std::vector<node_runtime_t> spot_nodes,
+  discovery_snapshot_t discovery) :
+    _spot_nodes (std::move (spot_nodes)), _discovery (std::move (discovery))
 {
 }
 
@@ -57,6 +60,29 @@ void spot_node_host_service_t::start (service_provider_t &services)
         }
         for (const auto &endpoint : snapshot.pub_sub_manual_connections) {
             native->node->connect_peer (endpoint);
+        }
+        if (snapshot.discovery_channel_name && snapshot.pub_sub_manual_connections.empty ()) {
+            native->discovery = std::make_unique<zlink::service::discovery_t> (
+              native->context, zlink::auto_connect_type::spot_mesh,
+              *snapshot.discovery_channel_name);
+            for (const auto &endpoint : _discovery.registry_endpoints) {
+                std::exception_ptr last_error;
+                for (int attempt = 0; attempt < 100; ++attempt) {
+                    try {
+                        native->discovery->connect_registry (endpoint);
+                        last_error = nullptr;
+                        break;
+                    }
+                    catch (...) {
+                        last_error = std::current_exception ();
+                        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+                    }
+                }
+                if (last_error) {
+                    std::rethrow_exception (last_error);
+                }
+            }
+            native->node->attach_discovery (*native->discovery);
         }
         native->runtime.attach_native_node (native->node);
         _nodes.push_back (std::move (native));

@@ -1996,6 +1996,46 @@ JSON loader는 `nlohmann/json`을 사용한다. YAML은 필요하면 configurati
 둔다. metrics와 health 표면은 core 관찰 기능으로 둔다. exporter, label schema,
 tracing hook은 별도 observability 초안에서 확정한다.
 
+### 13.1 message dispatch error observer
+
+미등록 메시지와 dispatch 실패 관측은 전역 `message_dispatch_error_observer_t` 로 처리한다.
+channel 별, spot 별 observer 등록은 이 버전의 공개 계약이 아니다. request 실패는 reply path 가 있으면
+error reply 로 끝나고, local actor call 처럼 reply frame 이 없는 경로는 `task_t` 또는 pending operation
+을 framework error 로 완료한다. one-way 실패는 drop 되지만 기본 로그, counter, observer event 를 남긴다.
+
+```cpp
+class dispatch_options_t
+{
+  public:
+    dispatch_options_t &set_message_dispatch_error_observer(
+      std::shared_ptr<message_dispatch_error_observer_t> observer);
+
+    dispatch_options_t &set_message_dispatch_error_observer(
+      std::function<void (const message_dispatch_error_event_t &)> observer);
+};
+
+class message_dispatch_error_observer_t
+{
+  public:
+    virtual ~message_dispatch_error_observer_t () = default;
+    virtual void on_dispatch_error (
+      const message_dispatch_error_event_t &error) = 0;
+};
+```
+
+`message_dispatch_error_event_t` 는 `surface`, `message_kind`, `reason`, `action`,
+`packet_name`, `channel_name`, `topic`, `spot_rid`, `actor_id`, `source_rid`,
+`correlation_id`, `exception` 을 담는 snapshot 이다. native message 소유권이나 frame 참조는
+포함하지 않는다.
+
+```cpp
+app.add_zlink_framework([](auto &options) {
+  options.configure_dispatch()
+    .set_message_dispatch_error_observer(
+      std::make_shared<my_dispatch_error_observer>());
+});
+```
+
 ## 14. 전체 샘플
 
 아래 샘플은 framework 사용자가 기대하는 최종 표면이다.

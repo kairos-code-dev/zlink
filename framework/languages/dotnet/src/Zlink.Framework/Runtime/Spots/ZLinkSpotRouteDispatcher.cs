@@ -9,6 +9,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
     ZLinkSpotPacketRegistry packets,
     Func<ZLinkSpotHandlerInvoker> handlerInvoker,
     ZLinkCodecRegistryBuilder codecs,
+    ZLinkDispatchErrorReporter dispatchErrors,
     Func<Received, ZLinkEnvelopeHeader, CancellationToken, ValueTask<bool>>? internalPackets = null,
     ILogger<ZLinkSpotRouteDispatcher>? logger = null)
 {
@@ -39,7 +40,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
                 {
                     ZLinkMessageFlowLogger.HandlerMissing(
                         _logger,
-                        LogLevel.Warning,
+                        LogLevel.Error,
                         "Spot",
                         "Request",
                         header.MessageName,
@@ -50,8 +51,19 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         received,
                         header,
                         new ZLinkFrameworkException(
+	                            ZLinkFrameworkErrorKind.HandlerNotFound,
+	                            $"No SPOT route request handler is registered for '{channelName}:{header.MessageName}'."));
+                    dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                        ZLinkDispatchErrorSurface.SpotRoute,
+                        ZLinkDispatchMessageKind.Request,
+                        ZLinkDispatchErrorReason.HandlerMissing,
+                        ZLinkDispatchErrorAction.ReplyError,
+                        header.MessageName,
+                        ChannelName: channelName,
+                        CorrelationId: header.CorrelationId,
+                        Exception: new ZLinkFrameworkException(
                             ZLinkFrameworkErrorKind.HandlerNotFound,
-                            $"No SPOT route request handler is registered for '{channelName}:{header.MessageName}'."));
+                            $"No SPOT route request handler is registered for '{channelName}:{header.MessageName}'.")));
                 }
                 else
                 {
@@ -63,6 +75,14 @@ internal sealed class ZLinkSpotRouteDispatcher(
                         header.MessageName,
                         "no-handler",
                         channelName);
+                    dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                        ZLinkDispatchErrorSurface.SpotRoute,
+                        ZLinkDispatchMessageKind.Send,
+                        ZLinkDispatchErrorReason.HandlerMissing,
+                        ZLinkDispatchErrorAction.Drop,
+                        header.MessageName,
+                        ChannelName: channelName,
+                        CorrelationId: header.CorrelationId));
                 }
 
                 return;
@@ -89,16 +109,49 @@ internal sealed class ZLinkSpotRouteDispatcher(
                     header,
                     new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.PayloadDecodeFailed,
-                        $"PayloadDecodeFailed: failed to decode SPOT route request payload for '{channelName}:{header.MessageName}'.",
-                        innerException: ex));
+	                        $"PayloadDecodeFailed: failed to decode SPOT route request payload for '{channelName}:{header.MessageName}'.",
+	                        innerException: ex));
+                dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                    ZLinkDispatchErrorSurface.SpotRoute,
+                    ZLinkDispatchMessageKind.Request,
+                    ZLinkDispatchErrorReason.PayloadDecodeFailed,
+                    ZLinkDispatchErrorAction.ReplyError,
+                    header.MessageName,
+                    ChannelName: channelName,
+                    CorrelationId: header.CorrelationId,
+                    Exception: ex));
                 return;
             }
 
             if (!descriptor.IsRequest)
             {
-                await handlerInvoker()
-                    .InvokePacketAsync(descriptor, message, cancellationToken)
-                    .ConfigureAwait(false);
+                try
+                {
+                    await handlerInvoker()
+                        .InvokePacketAsync(descriptor, message, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    ZLinkMessageFlowLogger.Rejected(
+                        _logger,
+                        LogLevel.Error,
+                        "Spot",
+                        "Send",
+                        header.MessageName,
+                        "handler-exception",
+                        ex,
+                        channelName);
+                    dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                        ZLinkDispatchErrorSurface.SpotRoute,
+                        ZLinkDispatchMessageKind.Send,
+                        ZLinkDispatchErrorReason.HandlerException,
+                        ZLinkDispatchErrorAction.Drop,
+                        header.MessageName,
+                        ChannelName: channelName,
+                        CorrelationId: header.CorrelationId,
+                        Exception: ex));
+                }
                 return;
             }
 
@@ -123,6 +176,15 @@ internal sealed class ZLinkSpotRouteDispatcher(
                     descriptor.MessageName,
                     header.CorrelationId,
                     ex);
+                dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                    ZLinkDispatchErrorSurface.SpotRoute,
+                    ZLinkDispatchMessageKind.Request,
+                    ZLinkDispatchErrorReason.HandlerException,
+                    ZLinkDispatchErrorAction.ReplyError,
+                    header.MessageName,
+                    ChannelName: channelName,
+                    CorrelationId: header.CorrelationId,
+                    Exception: ex));
             }
 
             try

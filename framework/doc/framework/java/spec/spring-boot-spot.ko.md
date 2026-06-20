@@ -113,6 +113,15 @@ handler, actor lifecycle member callback, timer callback은 같은 Entry Spot �
 user Spot이 room, stage, zone 같은 도메인 상태를 보관한다는 실행 모델을 유지하기 위한
 것이다.
 
+SPOT route request 에 handler 가 없거나 payload decode, handler 예외, invalid frame 이 발생하면 reply
+path 가 있는 경우 error reply 를 반환한다. actor request 도 같은 원칙을 따른다. 같은 process 안의
+local actor call 처럼 reply frame 이 없는 경로는 `CompletionStage` 를 framework error 로 완료한다.
+
+SPOT route send, subscription, actor send 는 reply 를 만들 수 없으므로 실패한 메시지를 drop 한다.
+route send 와 actor send 는 Warning 로그와 counter, subscription 은 Debug 로그 또는 counter 와 전역
+`ZLinkMessageDispatchErrorObserver` event 를 남긴다. observer 실패는 dispatch loop 나 shutdown 을
+깨지 않는다.
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../../../README.ko.md) | [이전: ZLink Framework Spring Boot Registry](spring-boot-registry.ko.md) | [다음: ZLink Framework Spring Boot STREAM](spring-boot-stream.ko.md)

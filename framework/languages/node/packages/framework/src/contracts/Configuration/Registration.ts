@@ -26,6 +26,11 @@ import type {
   ZLinkTimerOptions
 } from '../../contracts';
 import type { ZLinkCodecExtension, ZLinkCodecRegistryBuilder, ZLinkMessageSerializer } from '../Codecs';
+import type {
+  ZLinkDispatchOptions,
+  ZLinkDispatchOptionsBuilder,
+  ZLinkMessageDispatchErrorObserver
+} from '../Dispatch';
 
 export interface ZLinkFrameworkRegistration {
   readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer>;
@@ -47,6 +52,7 @@ export interface ZLinkFrameworkRegistration {
   readonly spotRemoteAddressResolverType?: Type;
   readonly registrySpotRemoteAddresses?: ZLinkRegistrySpotRemoteAddressesRegistration;
   readonly worker?: ZLinkWorkerOptions;
+  readonly dispatch?: ZLinkDispatchOptions;
 }
 
 /**
@@ -112,6 +118,7 @@ export interface ZLinkFrameworkRegistrationOptions {
     readonly routerChannelId?: string;
   };
   readonly worker?: ZLinkWorkerOptions;
+  readonly dispatch?: ZLinkDispatchOptions;
 }
 
 export interface ZLinkDiscoveryOptions {
@@ -343,7 +350,8 @@ export function createFrameworkRegistration(
     hasRegistrySpotRemoteAddresses: options.registrySpotRemoteAddresses !== undefined,
     spotRemoteAddressResolverType: options.spotRemoteAddressResolver,
     registrySpotRemoteAddresses: normalizeRegistrySpotRemoteAddresses(options.registrySpotRemoteAddresses, options.discovery),
-    worker: options.worker === undefined ? undefined : { ...options.worker }
+    worker: options.worker === undefined ? undefined : { ...options.worker },
+    dispatch: options.dispatch === undefined ? undefined : { ...options.dispatch }
   };
   validateFrameworkRegistration(registration, options);
   return registration;
@@ -386,6 +394,11 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   configureWorker(options: ZLinkWorkerOptions): this {
     this.options.worker = { ...this.options.worker, ...options };
     return this;
+  }
+
+  configureDispatch(): ZLinkDispatchOptionsBuilder {
+    this.options.dispatch ??= {};
+    return new DefaultDispatchOptionsBuilder(this.options.dispatch);
   }
 
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
@@ -451,6 +464,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
       streamNodes: this.options.streamNodes,
       spotNodes: this.options.spotNodes,
       spotFactories: this.options.spotFactories,
+      dispatch: this.options.dispatch,
       worker: this.options.worker
     };
   }
@@ -468,6 +482,15 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   private spotNodeOptions(name: string): MutableSpotNodeOptions {
     this.options.spotNodes[name] ??= {};
     return this.options.spotNodes[name];
+  }
+}
+
+class DefaultDispatchOptionsBuilder implements ZLinkDispatchOptionsBuilder {
+  constructor(private readonly dispatch: ZLinkDispatchOptions) {}
+
+  setMessageDispatchErrorObserver(observerType: Type<ZLinkMessageDispatchErrorObserver>): this {
+    this.dispatch.messageDispatchErrorObserverType = observerType;
+    return this;
   }
 }
 
@@ -744,6 +767,7 @@ interface MutableFrameworkRegistrationOptions {
   spotNodes: Record<string, MutableSpotNodeOptions>;
   spotFactories: Type<ZLinkSpot>[];
   worker?: ZLinkWorkerOptions;
+  dispatch?: ZLinkDispatchOptions;
   requestTimeoutMs?: number;
 }
 

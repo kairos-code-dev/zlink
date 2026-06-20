@@ -258,6 +258,18 @@ runtime 설정으로 닫고, 한도 초과는 `request_rejected` 같은 실패 r
 - session actor relay는 ActorGateway 경로를 사용하고 application route mesh channel로
   우회하지 않는다.
 
+### 7.1 dispatch 실패 정책
+
+SPOT route request 에 handler 가 없거나 payload decode, handler 예외, invalid frame 이 발생하면 reply
+path 가 있는 경우 error reply 를 반환한다. actor request 도 같은 원칙을 따른다. 같은 process 안의
+local actor call 처럼 reply frame 이 없는 경로는 `task_t` 또는 pending operation 을 framework error 로
+완료한다.
+
+SPOT route send, subscription, actor send 는 reply 를 만들 수 없으므로 실패한 메시지를 drop 한다.
+route send 와 actor send 는 Warning 로그와 counter, subscription 은 Debug 로그 또는 counter 와 전역
+`message_dispatch_error_observer_t` event 를 남긴다. observer 예외는 dispatch loop 나 shutdown 을
+깨지 않는다.
+
 ## 8. 회귀 테스트
 
 SPOT 회귀 테스트는 `.NET` framework의 Spot, actor, timer 기대값을 C++ host 모델로 고정한다.

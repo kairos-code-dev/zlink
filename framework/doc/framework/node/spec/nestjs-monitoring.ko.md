@@ -538,6 +538,10 @@ export class DiscoveryStatusProbe {
   snapshot diff 기반의 합성 event 다. timer failure event 는 framework timer loop 에서
   즉시 만든다. discovery 는 runtime event 자체가 아니므로 별도 event payload 를 두지
   않는다.
+- 등록되지 않은 메시지와 dispatch 실패는 monitoring source 가 아니라
+  `configureDispatch().setMessageDispatchErrorObserver(...)` 로 등록한 전역 observer 가 받는다.
+  request 실패는 error reply 로 돌아가고 one-way 실패는 drop 되지만 로그, counter, observer event 로
+  남는다. observer 실패는 runtime error sink 로 분리한다.
 
 ## 8. 회귀 테스트
 

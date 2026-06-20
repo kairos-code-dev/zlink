@@ -25,6 +25,8 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
     private static final java.time.Duration DEFAULT_TIMEOUT = java.time.Duration.ofSeconds(30);
+    private static final String REMOTE_BOUND_SESSION_BIND_PACKET_NAME =
+        "zlink.framework.actor.bound_session.bind";
     private final ZLinkBackendStreamSocket stream;
     private final RoutingId sessionRid;
     private final String actorId;
@@ -58,6 +60,38 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
 
     void setUnbindListener(Runnable unbindListener) {
         this.unbindListener = unbindListener == null ? () -> {} : unbindListener;
+    }
+
+    CompletionStage<Void> rebindNativeActor(
+        ZLinkBackendActorRef targetActor,
+        java.time.Duration timeout) {
+        if (!actorId.equals(targetActor.actorId())) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "bound session actor id mismatch: " + actorId));
+        }
+        ZLinkStreamHeader header = new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.SEND,
+            ZLinkStreamCodec.RAW,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.empty(),
+            REMOTE_BOUND_SESSION_BIND_PACKET_NAME,
+            Map.of());
+        return stream.bindActor(sessionRid, targetActor)
+            .submit(timeout)
+            .thenCompose(ignored -> {
+                try (Message body = Message.from(new byte[0])) {
+                    if (stream.relayBoundActor(
+                        sessionRid,
+                        actorId,
+                        header,
+                        List.of(body),
+                        SendFlags.NONE)) {
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                        "remote bound session bind relay failed: " + actorId));
+                }
+            });
     }
 
     @Override

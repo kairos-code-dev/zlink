@@ -16,8 +16,10 @@ import type {
   ZLinkChannelOptions,
   ZLinkCodecExtension,
   ZLinkCodecRegistryOptions,
+  ZLinkDispatchOptionsBuilder,
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
+  ZLinkMessageDispatchErrorObserver,
   ZLinkMessageSerializer,
   ZLinkNamedCodec,
   ZLinkProviderResolver,
@@ -72,6 +74,7 @@ interface FrameworkRuntimeHost {
   setSpotManager?(spotManager: unknown): void;
   createActorManagerOptions?(remoteAddressResolver?: ZLinkSpotRemoteAddressResolver): object;
   createSpotManagerOptions?(): object;
+  createRegistrySpotRemoteAddressResolver?(): ZLinkSpotRemoteAddressResolver;
 }
 
 interface RegistryRuntime {
@@ -263,6 +266,7 @@ interface ZLinkNestModuleRegistrationOptions extends Omit<
 export interface ZLinkNestFrameworkOptionsBuilder {
   options(options: ZLinkNestFrameworkAdditionalOptions): this;
   codecs(): ZLinkNestCodecRegistryBuilder;
+  configureDispatch(): ZLinkDispatchOptionsBuilder;
   actorFactory(actorType: string, factoryType: Type): this;
   useDiscovery(): ZLinkNestDiscoveryBuilder;
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder;
@@ -544,6 +548,16 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     return new DefaultZLinkNestCodecRegistryBuilder(this);
   }
 
+  configureDispatch(): ZLinkDispatchOptionsBuilder {
+    this.additionalOptions = {
+      ...this.additionalOptions,
+      dispatch: this.additionalOptions.dispatch ?? {}
+    };
+    return new DefaultZLinkNestDispatchOptionsBuilder(
+      this.additionalOptions.dispatch as NonNullable<ZLinkFrameworkRegistrationOptions['dispatch']>
+    );
+  }
+
   addNamedCodec(codec: ZLinkNamedCodec): void {
     if (!this.codecOptions.codecs.includes(codec)) {
       this.codecOptions.codecs.push(codec);
@@ -650,6 +664,10 @@ abstract class ZLinkNestChildBuilder implements ZLinkNestFrameworkOptionsBuilder
     return this.root.codecs();
   }
 
+  configureDispatch(): ZLinkDispatchOptionsBuilder {
+    return this.root.configureDispatch();
+  }
+
   actorFactory(actorType: string, factoryType: Type): this {
     this.root.actorFactory(actorType, factoryType);
     return this;
@@ -695,6 +713,15 @@ class DefaultZLinkNestDiscoveryBuilder extends ZLinkNestChildBuilder implements 
 
   addRegistryEndpoint(endpoint: string): this {
     this.discovery.registries = [...(this.discovery.registries ?? []), endpoint];
+    return this;
+  }
+}
+
+class DefaultZLinkNestDispatchOptionsBuilder implements ZLinkDispatchOptionsBuilder {
+  constructor(private readonly dispatch: NonNullable<ZLinkFrameworkRegistrationOptions['dispatch']>) {}
+
+  setMessageDispatchErrorObserver(observerType: Type<ZLinkMessageDispatchErrorObserver>): this {
+    this.dispatch.messageDispatchErrorObserverType = observerType;
     return this;
   }
 }
@@ -1674,6 +1701,7 @@ function createRegistrationOptions(options: ZLinkNestModuleRegistrationOptions):
     actorFactories: options.actorFactories,
     channels,
     codecs: options.codecs,
+    dispatch: options.dispatch,
     discovery: options.discovery,
     registrySpotRemoteAddresses: options.registrySpotRemoteAddresses,
     routeChannels,
@@ -2305,7 +2333,7 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     create: async (registration, runtime, moduleRef, discovery) => {
       const host = requireRuntime(runtime);
       const remoteAddressResolver = framework.hasSpotRemoteAddressResolver(registration)
-        ? await createSpotRemoteAddressResolver(registration, moduleRef, discovery)
+        ? await createSpotRemoteAddressResolver(registration, moduleRef, discovery, host)
         : undefined;
       const hostActorOptions = host.createActorManagerOptions?.(remoteAddressResolver) as Record<string, unknown> | undefined;
       const actorManager = new framework.DefaultZLinkActorManager({
@@ -2325,12 +2353,17 @@ function conditionalClientProvidersForFactory(): Provider[] {
     ...CONDITIONAL_CLIENT_PROVIDER_SPECS.map(createConditionalClientProviderForFactory),
     {
       provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
-      inject: [ZLINK_FRAMEWORK_REGISTRATION, ModuleRef, DiscoveryService],
-      useFactory: async (registration: ZLinkFrameworkRegistration, moduleRef: ModuleRef, discovery: DiscoveryService) => {
+      inject: [ZLINK_FRAMEWORK_REGISTRATION, ModuleRef, DiscoveryService, ZLINK_FRAMEWORK_RUNTIME],
+      useFactory: async (
+        registration: ZLinkFrameworkRegistration,
+        moduleRef: ModuleRef,
+        discovery: DiscoveryService,
+        runtime: FrameworkRuntimeHost
+      ) => {
         if (!framework.hasSpotRemoteAddressResolver(registration)) {
           return null;
         }
-        return await createSpotRemoteAddressResolver(registration, moduleRef, discovery);
+        return await createSpotRemoteAddressResolver(registration, moduleRef, discovery, runtime);
       }
     }
   ];
@@ -2483,7 +2516,7 @@ async function createSpotOutbound(
   discovery: DiscoveryService | undefined
 ): Promise<unknown> {
   const resolver = framework.hasSpotRemoteAddressResolver(registration)
-    ? await createSpotRemoteAddressResolver(registration, moduleRef, discovery)
+    ? await createSpotRemoteAddressResolver(registration, moduleRef, discovery, runtime)
     : undefined;
   return new framework.DefaultZLinkSpotOutbound(
     new framework.ZLinkSpotSerialExecutor(),
@@ -2497,7 +2530,8 @@ async function createSpotOutbound(
 async function createSpotRemoteAddressResolver(
   registration: ZLinkFrameworkRegistration,
   moduleRef?: ModuleRef,
-  discovery?: DiscoveryService
+  discovery?: DiscoveryService,
+  runtime?: FrameworkRuntimeHost
 ): Promise<ZLinkSpotRemoteAddressResolver> {
   if (registration.spotRemoteAddressResolverType !== undefined) {
     const providerResolver = moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery);
@@ -2509,7 +2543,11 @@ async function createSpotRemoteAddressResolver(
     return resolver;
   }
   if (registration.registrySpotRemoteAddresses !== undefined) {
-    return new framework.ZLinkRegistrySpotRemoteAddressResolver({ registration });
+    const resolver = runtime?.createRegistrySpotRemoteAddressResolver?.();
+    if (resolver === undefined) {
+      throw new framework.ZLinkConfigurationException('Registry SPOT remote address resolver requires framework runtime.');
+    }
+    return resolver;
   }
   throw new framework.ZLinkConfigurationException('Spot remote address resolver is not registered.');
 }
@@ -2528,9 +2566,9 @@ function spotRemoteAddressResolverProviders(registration: ZLinkFrameworkRegistra
   }
   return [{
     provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
-    inject: [ModuleRef, DiscoveryService],
-    useFactory: (moduleRef: ModuleRef, discovery: DiscoveryService) =>
-      createSpotRemoteAddressResolver(registration, moduleRef, discovery)
+    inject: [ModuleRef, DiscoveryService, ZLINK_FRAMEWORK_RUNTIME],
+    useFactory: (moduleRef: ModuleRef, discovery: DiscoveryService, runtime: FrameworkRuntimeHost) =>
+      createSpotRemoteAddressResolver(registration, moduleRef, discovery, runtime)
   }];
 }
 

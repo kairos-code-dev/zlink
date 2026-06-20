@@ -12,9 +12,30 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
 
     public ZLinkDiagnosticsOptionsModel Diagnostics { get; } = new();
 
+    public Type? MessageDispatchErrorObserverType { get; private set; }
+
+    public IZLinkMessageDispatchErrorObserver? MessageDispatchErrorObserver { get; private set; }
+
     IZLinkUnhandledDispatchOptions IZLinkDispatchOptions.Unhandled => Unhandled;
 
     IZLinkDiagnosticsOptions IZLinkDispatchOptions.Diagnostics => Diagnostics;
+
+    public IZLinkDispatchOptions SetMessageDispatchErrorObserver<TObserver>()
+        where TObserver : class, IZLinkMessageDispatchErrorObserver
+    {
+        MessageDispatchErrorObserverType = typeof(TObserver);
+        MessageDispatchErrorObserver = null;
+        return this;
+    }
+
+    public IZLinkDispatchOptions SetMessageDispatchErrorObserver(
+        IZLinkMessageDispatchErrorObserver observer)
+    {
+        ArgumentNullException.ThrowIfNull(observer);
+        MessageDispatchErrorObserver = observer;
+        MessageDispatchErrorObserverType = null;
+        return this;
+    }
 }
 
 internal sealed class ZLinkUnhandledDispatchOptionsModel : IZLinkUnhandledDispatchOptions

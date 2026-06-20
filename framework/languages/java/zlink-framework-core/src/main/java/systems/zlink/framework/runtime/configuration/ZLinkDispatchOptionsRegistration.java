@@ -5,6 +5,7 @@ import systems.zlink.framework.configuration.ZLinkDispatchMode;
 import systems.zlink.framework.configuration.ZLinkDispatchOptions;
 import systems.zlink.framework.configuration.ZLinkLogLevel;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
+import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorObserver;
 import systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction;
 import systems.zlink.framework.configuration.ZLinkUnhandledDispatchOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -14,6 +15,8 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
     private final DiagnosticsOptions diagnostics = new DiagnosticsOptions();
     private ZLinkDispatchMode spotDispatchMode = ZLinkDispatchMode.COMPILED;
     private ZLinkDispatchMode streamDispatchMode = ZLinkDispatchMode.COMPILED;
+    private Class<? extends ZLinkMessageDispatchErrorObserver> messageDispatchErrorObserverType;
+    private ZLinkMessageDispatchErrorObserver messageDispatchErrorObserver;
 
     @Override
     public ZLinkDispatchMode spotDispatchMode() {
@@ -43,6 +46,30 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
     @Override
     public DiagnosticsOptions diagnostics() {
         return diagnostics;
+    }
+
+    public Class<? extends ZLinkMessageDispatchErrorObserver> messageDispatchErrorObserverType() {
+        return messageDispatchErrorObserverType;
+    }
+
+    public ZLinkMessageDispatchErrorObserver messageDispatchErrorObserver() {
+        return messageDispatchErrorObserver;
+    }
+
+    @Override
+    public ZLinkDispatchOptions setMessageDispatchErrorObserver(
+        Class<? extends ZLinkMessageDispatchErrorObserver> observerType) {
+        messageDispatchErrorObserverType = requireNonNull(observerType, "messageDispatchErrorObserverType");
+        messageDispatchErrorObserver = null;
+        return this;
+    }
+
+    @Override
+    public ZLinkDispatchOptions setMessageDispatchErrorObserver(
+        ZLinkMessageDispatchErrorObserver observer) {
+        messageDispatchErrorObserver = requireNonNull(observer, "messageDispatchErrorObserver");
+        messageDispatchErrorObserverType = null;
+        return this;
     }
 
     void validate() {

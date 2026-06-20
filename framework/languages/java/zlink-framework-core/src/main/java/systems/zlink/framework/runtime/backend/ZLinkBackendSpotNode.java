@@ -62,6 +62,13 @@ public interface ZLinkBackendSpotNode extends ZLinkBackendObject {
 
     boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags);
 
+    boolean forwardActorBoundSession(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        List<Message> parts,
+        SendFlags flags);
+
     void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout);
 
     SpotNodeStatus status();

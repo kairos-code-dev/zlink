@@ -78,6 +78,35 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
   assert.equal(container.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT) instanceof framework.DefaultZLinkSpotPublisherClient, true);
 });
 
+test('ZLinkModule.forRoot creates Spot manager before runtime bootstrap', async () => {
+  class ActorFactory {}
+  class StageSpot {
+    constructor(context) {
+      this.context = context;
+    }
+  }
+  class DispatchObserver {
+    onDispatchError() {}
+  }
+  const builder = nestjs.zlinkFramework();
+  builder.configureDispatch().setMessageDispatchErrorObserver(DispatchObserver);
+  const module = nestjs.ZLinkModule.forRoot(builder
+    .actorFactory('player', ActorFactory)
+    .addSpotNode('game')
+      .addSpotFactory(StageSpot)
+    .build());
+  const container = await resolveModuleProviders(module, [
+    nestjs.ZLINK_FRAMEWORK_RUNTIME,
+    nestjs.ZLINK_SPOT_MANAGER
+  ]);
+
+  const runtime = container.get(nestjs.ZLINK_FRAMEWORK_RUNTIME);
+  const spotManager = container.get(nestjs.ZLINK_SPOT_MANAGER);
+
+  assert.equal(runtime.isStarted, false);
+  assert.equal(spotManager instanceof framework.DefaultZLinkSpotManager, true);
+});
+
 test('ZLinkModule.forRoot public DI clients expose callable framework contracts', async () => {
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .options({ spotPublisherClients: ['spot-events'] })
@@ -125,7 +154,12 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
 });
 
 test('zlinkFramework builder maps channel and route mesh options', () => {
-  const options = nestjs.zlinkFramework()
+  class DispatchObserver {
+    onDispatchError() {}
+  }
+  const builder = nestjs.zlinkFramework();
+  builder.configureDispatch().setMessageDispatchErrorObserver(DispatchObserver);
+  const options = builder
     .addClientServerChannel('api')
       .enableServer('tcp://127.0.0.1:7101')
       .addHandlerGroup('api')
@@ -158,6 +192,7 @@ test('zlinkFramework builder maps channel and route mesh options', () => {
     manualConnections: ['tcp://127.0.0.1:7202'],
     handlerGroups: ['route-api']
   });
+  assert.equal(options.dispatch.messageDispatchErrorObserverType, DispatchObserver);
 });
 
 test('ZLinkModule.forRoot boots through the real NestJS DI container and lifecycle', async () => {
@@ -1694,6 +1729,35 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
                 calls.push('context:dispose');
               }
             };
+          },
+          createDiscovery(_context, autoConnectType, channelName) {
+            calls.push(`discovery:create:${channelName}:${autoConnectType}`);
+            return {
+              nativeInstance: {},
+              channelName,
+              autoConnectType,
+              connectRegistry() {},
+              async dispose() {
+                calls.push(`discovery:dispose:${channelName}`);
+              }
+            };
+          },
+          createRouterSocket() {
+            calls.push('route:createRouter');
+            return {
+              nativeInstance: {},
+              setChannelName(channelName) { calls.push(`route:setChannelName:${channelName}`); },
+              setRoutingId(routingId) { calls.push(`route:setRoutingId:${routingId}`); },
+              bind(endpoint) { calls.push(`route:bind:${endpoint}`); },
+              connect() {},
+              disconnect() {},
+              attachDiscovery() {},
+              recv() { return null; },
+              reply() { return { message() { return this; }, submit() {} }; },
+              async dispose() {
+                calls.push('route:dispose');
+              }
+            };
           }
         };
       },
@@ -1752,7 +1816,7 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
   await runtime.stop();
 
   assert.deepEqual(calls, [
-    'spot:create:3',
+    'spot:create:2',
     'spot:setRouterBind:tcp://0.0.0.0:9110',
     'stream:attachActorGateway',
     'stream:bind:tcp://0.0.0.0:9100',
@@ -1920,8 +1984,8 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     'spot:setRoutingId:node-a',
     'entrySpot:setRoutingId:entry-node-a',
     'spot:setRouterBind:tcp://0.0.0.0:9301',
-    'spot:setPubBind:tcp://0.0.0.0:9303',
     'spot:connectRouterChannelPeer:game:tcp://127.0.0.1:9302',
+    'spot:setPubBind:tcp://0.0.0.0:9303',
     'spot:connectPeer:tcp://127.0.0.1:9304',
     'dealer:create',
     'dealer:setChannelName:api',
@@ -1933,6 +1997,368 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     'publisherSpot:publish:room.events:GameEvent:published',
     'publisherSpot:dispose',
     'dealer:dispose',
+    'spot:dispose',
+    'context:dispose'
+  ]);
+});
+
+test('framework runtime host drains Spot route channel after SpotNodes are available', async () => {
+  const calls = [];
+  const spotNode = {
+    nativeInstance: {},
+    routingId: 'room-node',
+    setRoutingId(routingId) { calls.push(`spot:setRoutingId:${routingId}`); },
+    setRouterBind(endpoint) { calls.push(`spot:setRouterBind:${endpoint}`); },
+    setPubBind() {},
+    attachDiscovery() {},
+    connectPeer() {},
+    disconnectPeer() {},
+    connectRouterChannelPeer() {},
+    connectRouterChannelPeerRid() {},
+    disconnectRouterChannelPeer() {},
+    disconnectRouterChannelPeerRid() {},
+    attachSpotRouteChannelDiscovery() {},
+    createSpot() {},
+    getOrCreateSpot() {},
+    status() {},
+    peers() { return []; },
+    subjects() { return []; },
+    attachChannelDealer() {},
+    attachChannelDealerManual() {},
+    entrySpot() {
+      return {
+        setRoutingId() {},
+        setDispatchHandler() {},
+        recvActorJoin() { return null; },
+        replyActorJoin() { return { message() { return this; }, submit() {} }; }
+      };
+    },
+    createActor() {},
+    actorLookup() {},
+    joinActor() { return true; },
+    joinActorEntrySpot() { return true; },
+    async destroyActor() {},
+    sendActorBoundSession() { return true; },
+    async closeActorBoundSession() {},
+    processExternalRouter() {
+      if (!calls.includes('spot:processExternalRouter')) {
+        calls.push('spot:processExternalRouter');
+      }
+    },
+    async dispose() {
+      calls.push('spot:dispose');
+    }
+  };
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addRouteMeshChannel('room.route')
+        .enableRouter('tcp://0.0.0.0:9410')
+        .routingId('room-node')
+      .addSpotNode('room')
+        .enableRouter('tcp://0.0.0.0:9411', 'room-node')
+        .acceptSpotRoutesFromChannel('room.route')
+      .build()))
+  }, {
+    backendAdapterFactory: {
+      createChannelAdapter() {
+        return {
+          createContext() {
+            return {
+              nativeInstance: {},
+              shutdown() {},
+              async dispose() {
+                calls.push('context:dispose');
+              }
+            };
+          },
+          createDiscovery(_context, autoConnectType, channelName) {
+            calls.push(`discovery:create:${channelName}:${autoConnectType}`);
+            return {
+              nativeInstance: {},
+              channelName,
+              autoConnectType,
+              connectRegistry() {},
+              async dispose() {
+                calls.push(`discovery:dispose:${channelName}`);
+              }
+            };
+          },
+          createRouterSocket() {
+            calls.push('route:createRouter');
+            return {
+              nativeInstance: {},
+              setChannelName(channelName) { calls.push(`route:setChannelName:${channelName}`); },
+              setRoutingId(routingId) { calls.push(`route:setRoutingId:${routingId}`); },
+              bind(endpoint) { calls.push(`route:bind:${endpoint}`); },
+              connect() {},
+              disconnect() {},
+              attachDiscovery() {},
+              recv() {
+                if (!calls.includes('route:recv')) {
+                  calls.push('route:recv');
+                }
+                return undefined;
+              },
+              reply() { return { message() { return this; }, submit() {} }; },
+              async dispose() {
+                calls.push('route:dispose');
+              }
+            };
+          }
+        };
+      },
+      createSpotAdapter() {
+        return {
+          createSpotNode(_context, mode) {
+            calls.push(`spot:create:${mode}`);
+            return spotNode;
+          }
+        };
+      }
+    }
+  });
+
+  await runtime.start();
+  await waitForCondition(() => calls.includes('route:recv'), 'Spot route channel drain');
+  await waitForCondition(() => calls.includes('spot:processExternalRouter'), 'Spot route external router processing');
+  await runtime.stop();
+
+  assert.deepEqual(calls.filter((call) => call !== 'route:recv' && call !== 'spot:processExternalRouter'), [
+    'spot:create:2',
+    'spot:setRoutingId:room-node',
+    'spot:setRouterBind:tcp://0.0.0.0:9411',
+    'discovery:create:room.route:1',
+    'route:createRouter',
+    'route:setChannelName:room.route',
+    'route:setRoutingId:room-node',
+    'route:bind:tcp://0.0.0.0:9410',
+    'discovery:dispose:room.route',
+    'spot:dispose',
+    'route:dispose',
+    'context:dispose'
+  ]);
+});
+
+test('framework runtime host attaches Discovery for router-only ActorGateway SpotNode', async () => {
+  const calls = [];
+  const spotNode = {
+    nativeInstance: {},
+    routingId: 'session-node',
+    setRoutingId(routingId) { calls.push(`spot:setRoutingId:${routingId}`); },
+    setRouterBind(endpoint) { calls.push(`spot:setRouterBind:${endpoint}`); },
+    setPubBind() {},
+    attachDiscovery(discovery) { calls.push(`spot:attachDiscovery:${discovery.channelName}:${discovery.autoConnectType}`); },
+    connectPeer() {},
+    disconnectPeer() {},
+    connectRouterChannelPeer() {},
+    connectRouterChannelPeerRid() {},
+    disconnectRouterChannelPeer() {},
+    disconnectRouterChannelPeerRid() {},
+    attachSpotRouteChannelDiscovery() {},
+    createSpot() {},
+    getOrCreateSpot() {},
+    status() {},
+    peers() { return []; },
+    subjects() { return []; },
+    attachChannelDealer() {},
+    attachChannelDealerManual() {},
+    entrySpot() {
+      return {
+        setRoutingId() {},
+        setDispatchHandler() {},
+        recvActorJoin() { return null; },
+        replyActorJoin() { return { message() { return this; }, submit() {} }; }
+      };
+    },
+    createActor() {},
+    actorLookup() {},
+    joinActor() { return true; },
+    joinActorEntrySpot() { return true; },
+    async destroyActor() {},
+    sendActorBoundSession() { return true; },
+    async closeActorBoundSession() {},
+    async dispose() {
+      calls.push('spot:dispose');
+    }
+  };
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      discovery: { registries: ['tcp://127.0.0.1:9390'] },
+      spotNodes: {
+        session: {
+          router: {
+            bind: 'tcp://0.0.0.0:9391',
+            routingId: 'session-node'
+          }
+        }
+      }
+    })
+  }, {
+    backendAdapterFactory: {
+      createChannelAdapter() {
+        return {
+          createContext() {
+            return {
+              nativeInstance: {},
+              shutdown() {},
+              async dispose() {
+                calls.push('context:dispose');
+              }
+            };
+          },
+          createDiscovery(_context, autoConnectType, channelName) {
+            calls.push(`discovery:create:${channelName}:${autoConnectType}`);
+            return {
+              nativeInstance: {},
+              channelName,
+              autoConnectType,
+              connectRegistry(endpoint) {
+                calls.push(`discovery:connectRegistry:${endpoint}`);
+              },
+              async dispose() {
+                calls.push(`discovery:dispose:${channelName}`);
+              }
+            };
+          }
+        };
+      },
+      createSpotAdapter() {
+        return {
+          createSpotNode(_context, mode) {
+            calls.push(`spot:create:${mode}`);
+            return spotNode;
+          }
+        };
+      }
+    }
+  });
+
+  await runtime.start();
+  await runtime.stop();
+
+  assert.deepEqual(calls, [
+    'spot:create:2',
+    'spot:setRoutingId:session-node',
+    'spot:setRouterBind:tcp://0.0.0.0:9391',
+    'discovery:create:session:5',
+    'discovery:connectRegistry:tcp://127.0.0.1:9390',
+    'spot:attachDiscovery:session:5',
+    'discovery:dispose:session',
+    'spot:dispose',
+    'context:dispose'
+  ]);
+});
+
+test('framework runtime host attaches Discovery for router and pubSub SpotNode after binds', async () => {
+  const calls = [];
+  const spotNode = {
+    nativeInstance: {},
+    routingId: 'room-node',
+    setRoutingId(routingId) { calls.push(`spot:setRoutingId:${routingId}`); },
+    setRouterBind(endpoint) { calls.push(`spot:setRouterBind:${endpoint}`); },
+    setPubBind(endpoint) { calls.push(`spot:setPubBind:${endpoint}`); },
+    attachDiscovery(discovery) { calls.push(`spot:attachDiscovery:${discovery.channelName}:${discovery.autoConnectType}`); },
+    connectPeer() {},
+    disconnectPeer() {},
+    connectRouterChannelPeer() {},
+    connectRouterChannelPeerRid() {},
+    disconnectRouterChannelPeer() {},
+    disconnectRouterChannelPeerRid() {},
+    attachSpotRouteChannelDiscovery() {},
+    createSpot() {},
+    getOrCreateSpot() {},
+    status() {},
+    peers() { return []; },
+    subjects() { return []; },
+    attachChannelDealer() {},
+    attachChannelDealerManual() {},
+    entrySpot() {
+      return {
+        setRoutingId() {},
+        setDispatchHandler() {},
+        recvActorJoin() { return null; },
+        replyActorJoin() { return { message() { return this; }, submit() {} }; }
+      };
+    },
+    createActor() {},
+    actorLookup() {},
+    joinActor() { return true; },
+    joinActorEntrySpot() { return true; },
+    async destroyActor() {},
+    sendActorBoundSession() { return true; },
+    async closeActorBoundSession() {},
+    async dispose() {
+      calls.push('spot:dispose');
+    }
+  };
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      discovery: { registries: ['tcp://127.0.0.1:9395'] },
+      spotNodes: {
+        room: {
+          router: {
+            bind: 'tcp://0.0.0.0:9396',
+            routingId: 'room-node'
+          },
+          pubSub: {
+            bind: 'tcp://0.0.0.0:9397',
+            routingId: 'room-node'
+          }
+        }
+      }
+    })
+  }, {
+    backendAdapterFactory: {
+      createChannelAdapter() {
+        return {
+          createContext() {
+            return {
+              nativeInstance: {},
+              shutdown() {},
+              async dispose() {
+                calls.push('context:dispose');
+              }
+            };
+          },
+          createDiscovery(_context, autoConnectType, channelName) {
+            calls.push(`discovery:create:${channelName}:${autoConnectType}`);
+            return {
+              nativeInstance: {},
+              channelName,
+              autoConnectType,
+              connectRegistry(endpoint) {
+                calls.push(`discovery:connectRegistry:${endpoint}`);
+              },
+              async dispose() {
+                calls.push(`discovery:dispose:${channelName}`);
+              }
+            };
+          }
+        };
+      },
+      createSpotAdapter() {
+        return {
+          createSpotNode(_context, mode) {
+            calls.push(`spot:create:${mode}`);
+            return spotNode;
+          }
+        };
+      }
+    }
+  });
+
+  await runtime.start();
+  await runtime.stop();
+
+  assert.deepEqual(calls, [
+    'spot:create:3',
+    'spot:setRoutingId:room-node',
+    'spot:setRouterBind:tcp://0.0.0.0:9396',
+    'spot:setPubBind:tcp://0.0.0.0:9397',
+    'discovery:create:room:5',
+    'discovery:connectRegistry:tcp://127.0.0.1:9395',
+    'spot:attachDiscovery:room:5',
+    'discovery:dispose:room',
     'spot:dispose',
     'context:dispose'
   ]);

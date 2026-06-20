@@ -3,6 +3,7 @@ const test = require('node:test');
 
 const connector = require('../../packages/stream-connector/dist');
 const framework = require('../../packages/framework/dist/internal');
+const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
 
 test('stream runtime is exported from framework root surface', () => {
   assert.equal(typeof framework.ZLinkStreamBindingRuntime, 'function');
@@ -284,6 +285,45 @@ test('stream binding runtime can remove actor binding during actor destroy clean
   );
 });
 
+test('local bound session error response rejects pending actor request', async () => {
+  const stream = recordingStream('session-error-response', 'rid-error-response');
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory()
+  });
+  const context = runtime.createSessionContext(stream);
+  await context.actors.bind({ nodeRid: 'node-a', actorId: 'actor-error', generation: 1 });
+  const pending = context.startRequest(1000);
+
+  assert.equal(runtime.sendLocalBoundSessionError(
+    'actor-error',
+    'Move',
+    pending.requestSeq,
+    new Error('remote actor failed'),
+    new Map()
+  ), true);
+
+  const frame = decodeFrame(stream.writes[0].bytes);
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Error);
+  const header = {
+    kind: streamProtocol.ZLinkStreamMessageKind.Error,
+    codec: streamProtocol.ZLinkStreamCodec.Json,
+    flags: streamProtocol.ZLinkStreamHeaderFlags.HasRequestSeq,
+    requestSeq: pending.requestSeq,
+    name: 'Move',
+    metadata: { values: new Map() }
+  };
+  const payload = {
+    data: () => Buffer.from(frame.payload),
+    close() {}
+  };
+
+  assert.equal(context.tryCompleteResponse(header, payload), true);
+  await assert.rejects(
+    () => pending.promise,
+    /remote actor failed/
+  );
+});
+
 test('stream session and bound session require packetName for structural payloads', async () => {
   const written = [];
   const sent = [];
@@ -439,6 +479,50 @@ test('session client reply writes response frame only while dispatching request 
   assert.equal(frame.header.name, 'Move');
   assert.equal(frame.header.metadata.get('trace'), 'reply-1');
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { accepted: true });
+});
+
+test('session client reply uses configured stream payload codec', async () => {
+  const written = [];
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory(),
+    streamPayloadCodec: {
+      encode(payload) {
+        return {
+          codec: connector.ZlinkStreamCodec.Protobuf,
+          payload: new TextEncoder().encode(`proto:${payload.accepted}`)
+        };
+      }
+    }
+  });
+  const context = runtime.createSessionContext({
+    ...fakeStream('session-protobuf-reply', 'rid-protobuf-reply'),
+    write(message) {
+      written.push(message.bytes);
+      return true;
+    }
+  });
+
+  context.enterDispatch({
+    kind: connector.ZlinkStreamMessageKind.Request,
+    codec: connector.ZlinkStreamCodec.Protobuf,
+    flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+    requestSeq: 44n,
+    name: 'AuthenticateReq',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  });
+  try {
+    await context.client.reply({ accepted: true }).submit();
+  } finally {
+    context.exitDispatch();
+  }
+
+  assert.equal(written.length, 1);
+  const frame = decodeFrame(written[0]);
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
+  assert.equal(frame.header.codec, connector.ZlinkStreamCodec.Protobuf);
+  assert.equal(frame.header.requestSeq, 44n);
+  assert.equal(frame.header.name, 'AuthenticateReq');
+  assert.equal(new TextDecoder().decode(frame.payload), 'proto:true');
 });
 
 test('session client reply compress writes dotnet LZ4-pickled response payload', async () => {

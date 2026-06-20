@@ -165,22 +165,26 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             List<Message> parts = ZLinkActorSpotRoutePackets.createBoundSessionSendParts(actorRef, frame);
             try {
                 if (routedTransport != null && routeChannelName != null && !routeChannelName.isBlank()) {
-                    return routedTransport.requestToSpotViaRouterChannel(
-                            routeChannelName,
-                            targetNodeRid,
-                            targetEntrySpotRid,
-                            parts,
-                            timeout)
-                        .thenApply(reply -> {
-                            reply.forEach(Message::close);
-                            return null;
-                        });
+                    System.out.println("zlink routed bound session via channel: actor="
+                        + actorRef.actorId()
+                        + " channel=" + routeChannelName
+                        + " targetNode=" + targetNodeRid
+                        + " targetSpot=" + targetEntrySpotRid);
+                    return routedTransport.sendToSpotViaRouterChannel(
+                        routeChannelName,
+                        targetNodeRid,
+                        targetEntrySpotRid,
+                        parts);
                 }
+                System.out.println("zlink routed bound session direct fallback: actor="
+                    + actorRef.actorId()
+                    + " targetNode=" + targetNodeRid
+                    + " targetSpot=" + targetEntrySpotRid);
                 boolean submitted = sourceEntrySpot.sendToSpot(
-                    targetNodeRid,
-                    targetEntrySpotRid,
-                    parts,
-                    SendFlags.NONE);
+                        targetNodeRid,
+                        targetEntrySpotRid,
+                        parts,
+                        SendFlags.NONE);
                 if (!submitted) {
                     return java.util.concurrent.CompletableFuture.failedFuture(
                         new ZLinkConfigurationException(

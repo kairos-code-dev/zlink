@@ -69,6 +69,16 @@ callback 기반 completion API는 awaitable 값을 반환하지 않으므로, �
 `Submit(callback)`, `submit(callback)`, `onCompleted(...).start()` 같은 이름을 유지할 수
 있다. 이 경우에도 network 의미는 위의 async 실행과 같아야 한다.
 
+message dispatch error observer 도 같은 원칙을 따른다. observer 는 request error reply, 기본 로그,
+metric/counter 기록 뒤에 실행되는 관측 callback 이며 dispatch 결정을 바꾸는 hook 이 아니다. observer
+event 는 native frame, raw message, caller-provided buffer 를 들고 있지 않은 snapshot 이어야 한다.
+callback 이 예외를 던지거나 rejected future/promise 를 반환해도 원래 dispatch 결과는 바뀌지 않는다.
+
+언어별 구현은 receive path 에서 observer user code 를 직접 실행하지 않는다. framework executor,
+serial executor, microtask/task runner, 또는 bounded queue 로 분리한다. bounded queue 를 쓰는 구현은
+queue overflow 때 아직 전달하지 않은 새 event 를 drop 하고 overflow counter 를 올린다. shutdown 은
+짧은 drain 기회를 줄 수 있지만 observer 때문에 무기한 대기하지 않는다.
+
 ## 3. 서버와 클라이언트 표면 구분
 
 언어별 framework 문서에서는 서버 framework 표면과 client connector 표면을 구분해서

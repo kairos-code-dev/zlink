@@ -1,6 +1,7 @@
 import type { ZLinkSpot, ZLinkSpotMeshBuilder, ZLinkSpotNodeBuilder } from '../Spots';
 import type { ZLinkSession, ZLinkSessionFactory } from '../Streams';
 import type { ZLinkCodecRegistryBuilder } from '../Codecs';
+import type { ZLinkDispatchOptionsBuilder } from '../Dispatch';
 import type { Type } from '../Common';
 import type { ZLinkWorkerOptions } from './Registration';
 
@@ -13,6 +14,7 @@ export interface ZLinkFrameworkOptions {
    * pending-queue limits); they do not enable CPU thread offload.
    */
   configureWorker(options: ZLinkWorkerOptions): this;
+  configureDispatch(): ZLinkDispatchOptionsBuilder;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
   addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;

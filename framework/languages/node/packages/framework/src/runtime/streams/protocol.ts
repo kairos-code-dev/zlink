@@ -8,7 +8,10 @@ import { resolveFrameworkPacketName } from '../messaging/packet-name';
 const defaultMaxDecompressedPayloadSize = 64 * 1024;
 
 export enum ZLinkStreamCodec {
-  Json = 1
+  Raw = 0,
+  Json = 1,
+  MessagePack = 2,
+  Protobuf = 3
 }
 
 export enum ZLinkStreamMessageKind {

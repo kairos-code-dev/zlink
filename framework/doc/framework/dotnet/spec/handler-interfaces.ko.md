@@ -3750,6 +3750,42 @@ channel 이름의 위치도 정해 둔다. handler class 나 method attribute �
   in-process 조회와 원격 조회는 lifecycle, 실패 모델, 제공 범위가 다르기
   때문이다. 그래서 별도의 interface 로 유지한다.
 
+### 14.1 message dispatch error observer
+
+미등록 메시지와 dispatch 실패 관측은 전역 `IZLinkMessageDispatchErrorObserver` 로 처리한다.
+channel 별, spot 별 observer 등록은 이 버전의 공개 계약이 아니다. request 실패는 reply path 가 있으면
+error reply 로 끝나고, one-way 실패는 drop 되지만 기본 로그, metric, observer event 를 남긴다.
+
+```csharp
+public interface IZLinkDispatchOptions
+{
+    IZLinkDispatchOptions SetMessageDispatchErrorObserver<TObserver>()
+        where TObserver : class, IZLinkMessageDispatchErrorObserver;
+
+    IZLinkDispatchOptions SetMessageDispatchErrorObserver(
+        IZLinkMessageDispatchErrorObserver observer);
+}
+
+public interface IZLinkMessageDispatchErrorObserver
+{
+    ValueTask OnDispatchErrorAsync(
+        ZLinkMessageDispatchErrorEvent error,
+        CancellationToken cancellationToken);
+}
+```
+
+`ZLinkMessageDispatchErrorEvent` 는 `Surface`, `MessageKind`, `Reason`, `Action`,
+`PacketName`, `ChannelName`, `Topic`, `SpotRid`, `ActorId`, `SourceRid`, `CorrelationId`,
+`Exception` 을 담는 불변 snapshot 이다. native message 소유권이나 frame 참조는 포함하지 않는다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.ConfigureDispatch()
+        .SetMessageDispatchErrorObserver<MyDispatchErrorObserver>();
+});
+```
+
 ## 15. 회귀 테스트
 
 이 절은 이 문서의 interface 정의를 보호하는 회귀 테스트들을 가리킨다.

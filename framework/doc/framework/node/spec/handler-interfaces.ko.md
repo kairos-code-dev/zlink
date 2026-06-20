@@ -2298,6 +2298,36 @@ outbound-only 앱이라면 server 역할을 가진 channel 이 아예 없을 수
 - `ZLinkRegistryQuery` 와 `ZLinkRegistryQueryClient` 는 묶지 않는다. in-process 조회와 원격 조회는
   lifecycle/실패 모델/제공 범위가 다르다.
 
+### 14.1 message dispatch error observer
+
+미등록 메시지와 dispatch 실패 관측은 전역 `ZLinkMessageDispatchErrorObserver` 로 처리한다.
+channel 별, spot 별 observer 등록은 이 버전의 공개 계약이 아니다. request 실패는 reply path 가 있으면
+error reply 로 끝나고, local actor call 처럼 reply frame 이 없는 경로는 `Promise` 를 framework error 로
+reject 한다. one-way 실패는 drop 되지만 기본 로그, counter, observer event 를 남긴다.
+
+```ts
+export interface ZLinkDispatchOptionsBuilder {
+  setMessageDispatchErrorObserver(
+    observerType: Type<ZLinkMessageDispatchErrorObserver>
+  ): this;
+}
+
+export interface ZLinkMessageDispatchErrorObserver {
+  onDispatchError(error: ZLinkMessageDispatchErrorEvent): Promise<void> | void;
+}
+```
+
+`ZLinkMessageDispatchErrorEvent` 는 `surface`, `messageKind`, `reason`, `action`,
+`packetName`, `channelName`, `topic`, `spotRid`, `actorId`, `sourceRid`, `correlationId`,
+`error` 를 담는 readonly snapshot 이다. native frame 이나 buffer ownership 은 포함하지 않는다.
+
+```ts
+const framework = zlinkFramework();
+
+framework.configureDispatch()
+  .setMessageDispatchErrorObserver(MyDispatchErrorObserver);
+```
+
 ## 15. 회귀 테스트
 
 이 문서의 interface 항목은 두 가지를 확인한다.

@@ -33,7 +33,7 @@ export class ZLinkRuntimeErrorSink {
 
 export class ZLinkRuntimeTaskRunner {
   constructor(
-    private readonly errorSink: ZLinkRuntimeErrorSink,
+    readonly errorSink: ZLinkRuntimeErrorSink,
     private readonly shutdownSignal: AbortSignal
   ) {}
 

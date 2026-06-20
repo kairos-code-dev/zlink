@@ -10,6 +10,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
     ZLinkHandlerDispatcher dispatcher,
     Func<string, IReadOnlySet<string>> resolveMappedGroups,
     ZLinkCodecRegistryBuilder codecs,
+    ZLinkDispatchErrorReporter dispatchErrors,
     ILogger logger)
 {
     public async Task DispatchAsync(
@@ -33,7 +34,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 $"No request handler is registered for '{channelName}:{header.MessageName}'.");
             ZLinkMessageFlowLogger.HandlerMissing(
                 logger,
-                LogLevel.Warning,
+                LogLevel.Error,
                 transportName,
                 "Request",
                 header.MessageName,
@@ -41,6 +42,15 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 "no-handler",
                 channelName);
             replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error));
+            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ResolveSurface(transportName),
+                ZLinkDispatchMessageKind.Request,
+                ZLinkDispatchErrorReason.HandlerMissing,
+                ZLinkDispatchErrorAction.ReplyError,
+                header.MessageName,
+                ChannelName: channelName,
+                CorrelationId: header.CorrelationId,
+                Exception: error));
             return;
         }
 
@@ -65,6 +75,15 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 ex,
                 channelName);
             replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, error));
+            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ResolveSurface(transportName),
+                ZLinkDispatchMessageKind.Request,
+                ZLinkDispatchErrorReason.PayloadDecodeFailed,
+                ZLinkDispatchErrorAction.ReplyError,
+                header.MessageName,
+                ChannelName: channelName,
+                CorrelationId: header.CorrelationId,
+                Exception: error));
             return;
         }
 
@@ -86,6 +105,22 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
         catch (Exception ex)
         {
             replyError(ZLinkChannelReplyWriter.CreateErrorHeader(channelName, header, ex));
+            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ResolveSurface(transportName),
+                ZLinkDispatchMessageKind.Request,
+                ZLinkDispatchErrorReason.HandlerException,
+                ZLinkDispatchErrorAction.ReplyError,
+                header.MessageName,
+                ChannelName: channelName,
+                CorrelationId: header.CorrelationId,
+                Exception: ex));
         }
+    }
+
+    private static ZLinkDispatchErrorSurface ResolveSurface(string transportName)
+    {
+        return string.Equals(transportName, "DealerMeshChannel", StringComparison.Ordinal)
+            ? ZLinkDispatchErrorSurface.DealerMeshChannel
+            : ZLinkDispatchErrorSurface.Channel;
     }
 }

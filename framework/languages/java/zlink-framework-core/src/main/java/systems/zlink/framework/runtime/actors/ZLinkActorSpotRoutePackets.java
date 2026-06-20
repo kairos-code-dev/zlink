@@ -22,14 +22,18 @@ public final class ZLinkActorSpotRoutePackets {
         String actorId,
         String actorType,
         ZLinkBackendActorRef actorRef,
-        RoutingId sourceEntrySpotRid) {
+        RoutingId sourceEntrySpotRid,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid) {
         return Message.from(String.join(
             "\n",
             actorId,
             actorType,
             actorRef.nodeRid().toString(),
             Long.toUnsignedString(actorRef.epoch()),
-            sourceEntrySpotRid.toString()).getBytes(StandardCharsets.UTF_8));
+            sourceEntrySpotRid.toString(),
+            sourceNodeRid == null ? "" : sourceNodeRid.toString(),
+            sourceSessionRid == null ? "" : sourceSessionRid.toString()).getBytes(StandardCharsets.UTF_8));
     }
 
     public static List<Message> createJoinRequestParts(
@@ -37,10 +41,18 @@ public final class ZLinkActorSpotRoutePackets {
         String actorType,
         ZLinkBackendActorRef actorRef,
         RoutingId sourceEntrySpotRid,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
         Message joinPayload) {
         return List.of(
             Message.from(JOIN_SPOT_PACKET_NAME.getBytes(StandardCharsets.UTF_8)),
-            encodeJoinRequest(actorId, actorType, actorRef, sourceEntrySpotRid),
+            encodeJoinRequest(
+                actorId,
+                actorType,
+                actorRef,
+                sourceEntrySpotRid,
+                sourceNodeRid,
+                sourceSessionRid),
             Message.from(joinPayload));
     }
 
@@ -113,19 +125,24 @@ public final class ZLinkActorSpotRoutePackets {
 
     public static JoinRequest decodeJoinRequest(Message message) {
         String[] fields = message.toUtf8String().split("\n", -1);
-        if (fields.length != 5
+        if ((fields.length != 5 && fields.length != 7)
             || fields[0].isBlank()
             || fields[1].isBlank()
             || fields[2].isBlank()
             || fields[4].isBlank()) {
             throw new ZLinkConfigurationException("invalid actor Spot route join request");
         }
+        if (fields.length == 7 && (fields[5].isBlank() != fields[6].isBlank())) {
+            throw new ZLinkConfigurationException("invalid actor Spot route source session metadata");
+        }
         return new JoinRequest(
             fields[0],
             fields[1],
             RoutingId.from(fields[2]),
             Long.parseUnsignedLong(fields[3]),
-            RoutingId.from(fields[4]));
+            RoutingId.from(fields[4]),
+            fields.length == 7 && !fields[5].isBlank() ? RoutingId.from(fields[5]) : null,
+            fields.length == 7 && !fields[6].isBlank() ? RoutingId.from(fields[6]) : null);
     }
 
     public static Message encodeJoinReply(
@@ -168,9 +185,15 @@ public final class ZLinkActorSpotRoutePackets {
         String actorType,
         RoutingId actorNodeRid,
         long actorGeneration,
-        RoutingId sourceEntrySpotRid) {
+        RoutingId sourceEntrySpotRid,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid) {
         public ZLinkBackendActorRef actorRef() {
             return new ZLinkBackendActorRef(actorNodeRid, actorId, actorGeneration);
+        }
+
+        public boolean hasSourceSessionRoute() {
+            return sourceNodeRid != null && sourceSessionRid != null;
         }
     }
 

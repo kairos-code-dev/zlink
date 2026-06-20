@@ -668,6 +668,7 @@ test('ZLinkRoutePacketDispatcher invokes routed send and request handlers', asyn
     probe.close();
     const dispatcher = new framework.ZLinkRoutePacketDispatcher({
       routerChannelId: 'mesh',
+      dispatchErrors: noDispatchErrorReporter(),
       handlers: [
         {
           kind: 'send',
@@ -739,6 +740,37 @@ test('ZLinkRoutePacketDispatcher invokes routed send and request handlers', asyn
     localRouter.close();
     ctx.close();
   }
+});
+
+test('ZLinkRoutePacketDispatcher forwards SPOT-addressed route frames to local SPOT delivery', async () => {
+  const forwarded = [];
+  const dispatcher = new framework.ZLinkRoutePacketDispatcher({
+    routerChannelId: 'mesh',
+    dispatchErrors: noDispatchErrorReporter(),
+    handlers: []
+  });
+  const parts = [
+    fakeMessagePart(Buffer.from('spot-header')),
+    fakeMessagePart(Buffer.from('spot-body'))
+  ];
+
+  await dispatcher.dispatch({
+    parts,
+    routingId: 'node-b',
+    spotRid: 'room-1',
+    requestSeq: null,
+    send() {
+      return captureRawMultipart(forwarded);
+    }
+  }, {
+    reply() {
+      throw new Error('reply path must not be used for SPOT-addressed frame');
+    }
+  });
+
+  assert.equal(forwarded.length, 2);
+  assert.equal(forwarded[0].data().toString(), 'spot-header');
+  assert.equal(forwarded[1].data().toString(), 'spot-body');
 });
 
 test('ZLinkModule route channel dispatches inbound routed handlers after bootstrap', async () => {
@@ -1052,6 +1084,8 @@ test('ZLinkChannelRequestDispatcher invokes request handler and replies through 
       new framework.ZLinkDealerChannelClientTransport(dealer)
     );
     const dispatcher = new framework.ZLinkChannelRequestDispatcher({
+      channelName: 'api',
+      dispatchErrors: noDispatchErrorReporter(),
       handlers: new Map([
         ['Ping', {
           async handle(payload) {
@@ -1083,6 +1117,139 @@ test('ZLinkChannelRequestDispatcher invokes request handler and replies through 
     router.close();
     ctx.close();
   }
+});
+
+test('ZLinkChannelRequestDispatcher replies error and reports observer for missing request handler', async () => {
+  const events = [];
+  class DispatchObserver {
+    onDispatchError(event) {
+      events.push(event);
+    }
+  }
+  const replies = [];
+  const dispatcher = new framework.ZLinkChannelRequestDispatcher({
+    channelName: 'api',
+    dispatchErrors: new framework.ZLinkDispatchErrorReporter(
+      DispatchObserver,
+      undefined,
+      { reportRuntimeTaskException() {} }
+    ),
+    handlers: new Map(),
+    sendHandlers: new Map()
+  });
+  const parts = encodeDotnetEnvelope({
+    kind: 1,
+    channelName: 'api',
+    messageName: 'MissingReq',
+    contentType: 'application/json',
+    correlationId: 'corr-1',
+    deadline: null,
+    topic: null,
+    errorCode: null,
+    errorMessage: null
+  }, { value: 'request' }).map(fakeMessagePart);
+  const router = {
+    reply() {
+      return captureMultipart(replies);
+    }
+  };
+
+  await dispatcher.dispatch({
+    parts,
+    routingId: 'client-1',
+    requestSeq: 7n
+  }, router);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(replies.length, 2);
+  const replyEnvelope = decodeDotnetEnvelope(replies);
+  assert.equal(replyEnvelope.header.kind, 5);
+  assert.equal(replyEnvelope.header.correlationId, 'corr-1');
+  assert.equal(events.length, 1);
+  assert.equal(events[0].surface, framework.ZLinkDispatchErrorSurface.Channel);
+  assert.equal(events[0].messageKind, framework.ZLinkDispatchMessageKind.Request);
+  assert.equal(events[0].reason, framework.ZLinkDispatchErrorReason.HandlerMissing);
+  assert.equal(events[0].action, framework.ZLinkDispatchErrorAction.ReplyError);
+  assert.equal(events[0].packetName, 'MissingReq');
+  assert.equal(events[0].channelName, 'api');
+  assert.equal(events[0].correlationId, 'corr-1');
+});
+
+test('ZLinkDispatchErrorReporter isolates observer failures', async () => {
+  const sinkFailures = [];
+  class ThrowingObserver {
+    onDispatchError() {
+      throw new Error('observer failed');
+    }
+  }
+  const reporter = new framework.ZLinkDispatchErrorReporter(
+    ThrowingObserver,
+    undefined,
+    {
+      reportRuntimeTaskException(source, error) {
+        sinkFailures.push({ source, error });
+      }
+    }
+  );
+
+  assert.doesNotThrow(() => reporter.report({
+    surface: framework.ZLinkDispatchErrorSurface.Channel,
+    messageKind: framework.ZLinkDispatchMessageKind.Request,
+    reason: framework.ZLinkDispatchErrorReason.HandlerMissing,
+    action: framework.ZLinkDispatchErrorAction.ReplyError,
+    packetName: 'MissingReq',
+    channelName: 'api',
+    correlationId: 'corr-1'
+  }));
+  assert.equal(reporter.reportedCount, 1);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(sinkFailures.length, 2);
+  assert.equal(sinkFailures[0].source, 'dispatch-error');
+  assert.equal(sinkFailures[1].source, 'dispatch-error-observer');
+  assert.equal(reporter.observerFailureCount, 1);
+
+  class FactoryObserver {
+    onDispatchError() {}
+  }
+  const factoryFailures = [];
+  const factoryReporter = new framework.ZLinkDispatchErrorReporter(
+    FactoryObserver,
+    {
+      create() {
+        throw new Error('factory failed');
+      }
+    },
+    {
+      reportRuntimeTaskException(source, error) {
+        factoryFailures.push({ source, error });
+      }
+    }
+  );
+
+  assert.doesNotThrow(() => factoryReporter.report({
+    surface: framework.ZLinkDispatchErrorSurface.Channel,
+    messageKind: framework.ZLinkDispatchMessageKind.Request,
+    reason: framework.ZLinkDispatchErrorReason.HandlerMissing,
+    action: framework.ZLinkDispatchErrorAction.ReplyError
+  }));
+  assert.equal(factoryReporter.reportedCount, 1);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(factoryFailures.length, 2);
+  assert.equal(factoryFailures[0].source, 'dispatch-error');
+  assert.equal(factoryFailures[1].source, 'dispatch-error-observer');
+  assert.equal(factoryReporter.observerFailureCount, 1);
+
+  const noObserverReporter = noDispatchErrorReporter();
+  assert.doesNotThrow(() => noObserverReporter.report({
+    surface: framework.ZLinkDispatchErrorSurface.Channel,
+    messageKind: framework.ZLinkDispatchMessageKind.Send,
+    reason: framework.ZLinkDispatchErrorReason.HandlerMissing,
+    action: framework.ZLinkDispatchErrorAction.Drop
+  }));
+  assert.equal(noObserverReporter.reportedCount, 1);
+  assert.equal(noObserverReporter.observerFailureCount, 0);
 });
 
 async function recvRouterMessage(router) {
@@ -1203,6 +1370,34 @@ function submitMultipart(operation, parts) {
     current = current.message(parts[index]);
   }
   current.submit();
+}
+
+function noDispatchErrorReporter() {
+  return new framework.ZLinkDispatchErrorReporter(
+    undefined,
+    undefined,
+    { reportRuntimeTaskException() {} }
+  );
+}
+
+function captureMultipart(parts) {
+  return {
+    message(part) {
+      parts.push(fakeMessagePart(part));
+      return this;
+    },
+    submit() {}
+  };
+}
+
+function captureRawMultipart(parts) {
+  return {
+    message(part) {
+      parts.push(part);
+      return this;
+    },
+    submit() {}
+  };
 }
 
 function submitRequestMultipart(operation, parts) {

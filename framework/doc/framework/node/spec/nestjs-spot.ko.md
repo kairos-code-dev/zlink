@@ -987,6 +987,17 @@ builder 가 아니라, stream 이 router
 [stage-wrapper-on-spot.ko.md](stage-wrapper-on-spot.ko.md) 에서 다루는 상위
 wrapper 축으로 본다.
 
+### 10.1 dispatch 실패 정책
+
+SPOT route request 에 handler 가 없거나 payload decode, handler 예외, invalid frame 이 발생하면 reply
+path 가 있는 경우 error reply 를 반환한다. actor request 도 같은 원칙을 따른다. 같은 process 안의
+local actor call 처럼 reply frame 이 없는 경로는 `Promise` 를 framework error 로 reject 한다.
+
+SPOT route send, subscription, actor send 는 reply 를 만들 수 없으므로 실패한 메시지를 drop 한다.
+route send 와 actor send 는 Warning 로그와 counter, subscription 은 Debug 로그 또는 counter 와 전역
+`ZLinkMessageDispatchErrorObserver` event 를 남긴다. observer 실패는 dispatch loop 나 shutdown 을
+깨지 않는다.
+
 ## 11. Router channel route 수신
 
 `ZLinkSpotRemoteAddress.routerChannelId` 는 resolver 가 반환한 위치 정보 중

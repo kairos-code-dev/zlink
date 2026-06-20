@@ -12,9 +12,21 @@ import type {
   ZLinkRouteClient,
   ZLinkSendCall,
   ZLinkSpotRemoteAddress,
-  ZLinkSpotPublisherClient
+  ZLinkSpotPublisherClient,
+  Type,
+  ZLinkMessageDispatchErrorObserver,
+  ZLinkMessageDispatchErrorEvent,
+  ZLinkProviderResolver
 } from '../../contracts';
-import { ZLinkAutoConnectType } from '../../contracts';
+import {
+  ZLinkAutoConnectType,
+  ZLinkDispatchErrorAction,
+  ZLinkDispatchErrorReason,
+  ZLinkDispatchErrorSurface,
+  ZLinkDispatchMessageKind,
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException
+} from '../../contracts';
 import { invokeZLinkHandlerFilters } from '../handlers';
 import type {
   DealerSocket,
@@ -38,7 +50,7 @@ import type {
   ZLinkBackendSubscriberSocket,
   ZLinkChannelBackendAdapter
 } from '../backend/contracts';
-import type { ZLinkRuntimeTaskRunner } from '../execution';
+import type { ZLinkRuntimeErrorSink, ZLinkRuntimeTaskRunner } from '../execution';
 import { ZLinkAsyncSubmitter } from '../messaging';
 import {
   closeMessages,
@@ -216,10 +228,70 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
   }
 }
 
+export interface ZLinkDispatchErrorSink {
+  reportRuntimeTaskException(taskName: string, error: unknown): void;
+}
+
+export class ZLinkDispatchErrorReporter {
+  private reportedEvents = 0;
+  private observerFailures = 0;
+
+  constructor(
+    private readonly observerType: Type<ZLinkMessageDispatchErrorObserver> | undefined,
+    private readonly providerResolver: ZLinkProviderResolver | undefined,
+    private readonly errorSink: ZLinkDispatchErrorSink
+  ) {}
+
+  report(event: ZLinkMessageDispatchErrorEvent): void {
+    this.reportedEvents += 1;
+    this.errorSink.reportRuntimeTaskException(
+      'dispatch-error',
+      event.error ?? new Error(
+        `ZLink message dispatch error: surface=${event.surface}, kind=${event.messageKind}, reason=${event.reason}, action=${event.action}`
+      )
+    );
+    if (this.observerType === undefined) {
+      return;
+    }
+    queueMicrotask(() => {
+      void this.resolveObserver()
+        .then((observer) => observer.onDispatchError(event))
+        .catch((error) => {
+          this.observerFailures += 1;
+          this.errorSink.reportRuntimeTaskException('dispatch-error-observer', error);
+        });
+    });
+  }
+
+  get reportedCount(): number {
+    return this.reportedEvents;
+  }
+
+  get observerFailureCount(): number {
+    return this.observerFailures;
+  }
+
+  private async resolveObserver(): Promise<ZLinkMessageDispatchErrorObserver> {
+    const observerType = this.observerType;
+    if (observerType === undefined) {
+      throw new Error('Dispatch error observer is not configured.');
+    }
+    const existing = this.providerResolver?.get?.(observerType);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const created = await this.providerResolver?.create?.(observerType);
+    if (created !== undefined) {
+      return created;
+    }
+    return new observerType();
+  }
+}
+
 export class ZLinkChannelRuntimeManager {
   private readonly channelReceiveLoops: ZLinkChannelReceiveLoop[] = [];
   private readonly subscriberReceiveLoops: ZLinkSubscriberReceiveLoop[] = [];
-  private readonly routeReceiveLoops: ZLinkRouteReceiveLoop[] = [];
+  private readonly routeReceiveLoops: Array<{ stop(): void }> = [];
   private readonly sockets: ZLinkChannelSocketRegistry;
   private readonly codecs: ZLinkChannelEnvelopeCodecRegistry;
   private spotNodes?: ReadonlyMap<string, ZLinkBackendSpotNode>;
@@ -227,7 +299,8 @@ export class ZLinkChannelRuntimeManager {
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
     private readonly adapter: ZLinkChannelBackendAdapter,
-    context: ZLinkBackendContext
+    context: ZLinkBackendContext,
+    private readonly providerResolver?: ZLinkProviderResolver
   ) {
     this.sockets = new ZLinkChannelSocketRegistry(registration, adapter, context);
     this.codecs = { serializers: registration.messageSerializers };
@@ -250,6 +323,7 @@ export class ZLinkChannelRuntimeManager {
       const dispatcher = new ZLinkChannelRequestDispatcher({
         channelName,
         codecs: this.codecs,
+        dispatchErrors: this.createDispatchErrorReporter(taskRunner.errorSink),
         handlers: new Map(channel.requestHandlers?.map((handler) => [handler.packetName, handler.handler])),
         sendHandlers: new Map(channel.sendHandlers?.map((handler) => [handler.packetName, handler.handler]))
       });
@@ -268,6 +342,7 @@ export class ZLinkChannelRuntimeManager {
       const dispatcher = new ZLinkChannelPublishDispatcher({
         channelName,
         codecs: this.codecs,
+        dispatchErrors: this.createDispatchErrorReporter(taskRunner.errorSink),
         handlers: new Map(channel.publishHandlers?.map((handler) => [handler.packetName, handler.handler]))
       });
       const loop = new ZLinkSubscriberReceiveLoop(this.adapter, subscriber, dispatcher);
@@ -276,24 +351,41 @@ export class ZLinkChannelRuntimeManager {
     }
     for (const routeChannel of this.registration.routeChannelOptions.values()) {
       if (routeChannel.bind !== undefined) {
-          const router = this.sockets.routeRouter(routeChannel.routerChannelId);
+        const router = this.sockets.routeRouter(routeChannel.routerChannelId);
         const handlers = collectRouteChannelHandlers(routeChannel);
-        if (handlers.length > 0) {
-          if (taskRunner === undefined) {
-            throw new ZLinkConfigurationException(`Route channel '${routeChannel.routerChannelId}' handler dispatch requires a runtime task runner.`);
-          }
-          const dispatcher = new ZLinkRoutePacketDispatcher({
-            routerChannelId: routeChannel.routerChannelId,
-            codecs: this.codecs,
-            handlers
-          });
-          const loop = new ZLinkRouteReceiveLoop(router, dispatcher);
-          this.routeReceiveLoops.push(loop);
-          tasks.push(taskRunner.run(`route:${routeChannel.routerChannelId}`, (signal) => loop.run(signal)));
+        const spotRouteNode = this.spotRouteNode(routeChannel.routerChannelId);
+        if (process.env.ZLINK_DEBUG_SPOT_DIRECT_ROUTE === '1') {
+          console.error(`[framework-route] start channel=${routeChannel.routerChannelId} spotRouteNode=${spotRouteNode === undefined ? 'none' : 'present'}`);
+        }
+        if (taskRunner === undefined) {
+          throw new ZLinkConfigurationException(`Route channel '${routeChannel.routerChannelId}' dispatch requires a runtime task runner.`);
+        }
+        const dispatcher = new ZLinkRoutePacketDispatcher({
+          routerChannelId: routeChannel.routerChannelId,
+          codecs: this.codecs,
+          dispatchErrors: this.createDispatchErrorReporter(taskRunner.errorSink),
+          handlers,
+          spotRouteNode
+        });
+        const loop = new ZLinkRouteReceiveLoop(router, dispatcher);
+        this.routeReceiveLoops.push(loop);
+        tasks.push(taskRunner.run(`route:${routeChannel.routerChannelId}`, (signal) => loop.run(signal)));
+        if (spotRouteNode !== undefined) {
+          const spotLoop = new ZLinkSpotRouteReceiveLoop(spotRouteNode);
+          this.routeReceiveLoops.push(spotLoop);
+          tasks.push(taskRunner.run(`route:${routeChannel.routerChannelId}:spot`, (signal) => spotLoop.run(signal)));
         }
       }
     }
     return tasks;
+  }
+
+  private createDispatchErrorReporter(errorSink: ZLinkRuntimeErrorSink): ZLinkDispatchErrorReporter {
+    return new ZLinkDispatchErrorReporter(
+      this.registration.dispatch?.messageDispatchErrorObserverType,
+      this.providerResolver,
+      errorSink
+    );
   }
 
   async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
@@ -632,6 +724,15 @@ export class ZLinkChannelRuntimeManager {
     return this.spotNodes?.get(routerChannelId)?.entrySpot();
   }
 
+  private spotRouteNode(routerChannelId: string): ZLinkBackendSpotNode | undefined {
+    for (const [spotNodeName, spotNode] of this.registration.spotNodes) {
+      if (spotNode.acceptedSpotRouteChannels?.[routerChannelId] !== undefined) {
+        return this.spotNodes?.get(spotNodeName);
+      }
+    }
+    return undefined;
+  }
+
   async dispose(): Promise<void> {
     const channelLoops = [...this.channelReceiveLoops];
     const subscriberLoops = [...this.subscriberReceiveLoops];
@@ -909,6 +1010,7 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
 export interface ZLinkChannelRequestDispatcherOptions {
   readonly channelName: string;
   readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
+  readonly dispatchErrors: ZLinkDispatchErrorReporter;
   readonly handlers: ReadonlyMap<string, ZLinkChannelRequestHandler>;
   readonly sendHandlers?: ReadonlyMap<string, ZLinkChannelSendHandler>;
   readonly filters?: readonly ZLinkHandlerFilter[];
@@ -943,9 +1045,22 @@ export class ZLinkChannelRequestDispatcher {
     this.filters = options.filters ?? [];
   }
 
-  async dispatch(received: { parts: readonly Message[]; routingId: unknown; requestSeq: bigint | null }, router: {
+  async dispatch(received: {
+    parts: readonly Message[];
+    routingId: unknown;
+    spotRid?: unknown;
+    requestSeq: bigint | null;
+    send?: () => ZLinkMultipartOperation<ZLinkMultipartSubmitOperation>;
+  }, router: {
     reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
   }): Promise<void> {
+    if (received.spotRid !== null && received.spotRid !== undefined) {
+      if (received.send === undefined) {
+        throw new ZLinkConfigurationException('Routed SPOT packet is missing a local SPOT delivery context.');
+      }
+      appendParts(received.send(), received.parts).submit();
+      return;
+    }
     if (received.parts.length === 0 || received.parts[0].data().length === 0) {
       return;
     }
@@ -957,6 +1072,15 @@ export class ZLinkChannelRequestDispatcher {
     if (envelope.header.kind === ZLinkChannelMessageKind.Command) {
       const handler = this.options.sendHandlers?.get(packetName);
       if (handler === undefined) {
+        this.options.dispatchErrors.report({
+          surface: ZLinkDispatchErrorSurface.Channel,
+          messageKind: ZLinkDispatchMessageKind.Send,
+          reason: ZLinkDispatchErrorReason.HandlerMissing,
+          action: ZLinkDispatchErrorAction.Drop,
+          packetName,
+          channelName: this.options.channelName,
+          correlationId: envelope.header.correlationId ?? undefined
+        });
         return;
       }
       const context: ZLinkSendContext = {
@@ -964,11 +1088,24 @@ export class ZLinkChannelRequestDispatcher {
         contentType: envelope.header.contentType,
         packetName
       };
-      await invokeZLinkHandlerFilters(
-        this.filters,
-        { context, handler },
-        () => Promise.resolve(handler.handle(decodeChannelPayload(envelope, this.options.codecs), context))
-      );
+      try {
+        await invokeZLinkHandlerFilters(
+          this.filters,
+          { context, handler },
+          () => Promise.resolve(handler.handle(decodeChannelPayload(envelope, this.options.codecs), context))
+        );
+      } catch (error) {
+        this.options.dispatchErrors.report({
+          surface: ZLinkDispatchErrorSurface.Channel,
+          messageKind: ZLinkDispatchMessageKind.Send,
+          reason: ZLinkDispatchErrorReason.HandlerException,
+          action: ZLinkDispatchErrorAction.Drop,
+          packetName,
+          channelName: this.options.channelName,
+          correlationId: envelope.header.correlationId ?? undefined,
+          error
+        });
+      }
       return;
     }
     if (envelope.header.kind !== ZLinkChannelMessageKind.Request) {
@@ -976,7 +1113,32 @@ export class ZLinkChannelRequestDispatcher {
     }
     const handler = this.options.handlers.get(packetName);
     if (handler === undefined) {
-      throw new ZLinkConfigurationException(`No channel request handler is registered for packet '${packetName}'.`);
+      if (received.requestSeq === null) {
+        this.options.dispatchErrors.report({
+          surface: ZLinkDispatchErrorSurface.Channel,
+          messageKind: ZLinkDispatchMessageKind.Request,
+          reason: ZLinkDispatchErrorReason.ReplyPathMissing,
+          action: ZLinkDispatchErrorAction.Drop,
+          packetName,
+          channelName: this.options.channelName,
+          correlationId: envelope.header.correlationId ?? undefined
+        });
+        return;
+      }
+      appendParts(
+        router.reply(received.routingId, received.requestSeq),
+        encodeChannelErrorReplyParts(envelope.header, `No channel request handler is registered for '${this.options.channelName}:${packetName}'.`)
+      ).submit();
+      this.options.dispatchErrors.report({
+        surface: ZLinkDispatchErrorSurface.Channel,
+        messageKind: ZLinkDispatchMessageKind.Request,
+        reason: ZLinkDispatchErrorReason.HandlerMissing,
+        action: ZLinkDispatchErrorAction.ReplyError,
+        packetName,
+        channelName: this.options.channelName,
+        correlationId: envelope.header.correlationId ?? undefined
+      });
+      return;
     }
     if (received.requestSeq === null) {
       throw new ZLinkConfigurationException('Channel request cannot be replied to because requestSeq is missing.');
@@ -987,15 +1149,34 @@ export class ZLinkChannelRequestDispatcher {
       contentType: envelope.header.contentType,
       packetName
     };
-    const reply = await invokeZLinkHandlerFilters(
-      this.filters,
-      { context, handler },
-      () => Promise.resolve(handler.handle(decodeChannelPayload(envelope, this.options.codecs), context))
-    );
-    appendParts(
-      router.reply(received.routingId, received.requestSeq),
-      encodeChannelReplyParts(envelope.header, reply, this.options.codecs)
-    ).submit();
+    try {
+      const reply = await invokeZLinkHandlerFilters(
+        this.filters,
+        { context, handler },
+        () => Promise.resolve(handler.handle(decodeChannelPayload(envelope, this.options.codecs), context))
+      );
+      appendParts(
+        router.reply(received.routingId, received.requestSeq),
+        encodeChannelReplyParts(envelope.header, reply, this.options.codecs)
+      ).submit();
+    } catch (error) {
+      appendParts(
+        router.reply(received.routingId, received.requestSeq),
+        encodeChannelErrorReplyParts(envelope.header, error instanceof Error ? error.message : String(error))
+      ).submit();
+      this.options.dispatchErrors.report({
+        surface: ZLinkDispatchErrorSurface.Channel,
+        messageKind: ZLinkDispatchMessageKind.Request,
+        reason: error instanceof ZLinkFrameworkException && error.kind === ZLinkFrameworkErrorKind.PayloadDecodeFailed
+          ? ZLinkDispatchErrorReason.PayloadDecodeFailed
+          : ZLinkDispatchErrorReason.HandlerException,
+        action: ZLinkDispatchErrorAction.ReplyError,
+        packetName,
+        channelName: this.options.channelName,
+        correlationId: envelope.header.correlationId ?? undefined,
+        error
+      });
+    }
   }
 }
 
@@ -1036,6 +1217,7 @@ export class ZLinkChannelReceiveLoop {
 export interface ZLinkChannelPublishDispatcherOptions {
   readonly channelName: string;
   readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
+  readonly dispatchErrors: ZLinkDispatchErrorReporter;
   readonly handlers: ReadonlyMap<string, ZLinkRuntimePublishHandler>;
   readonly filters?: readonly ZLinkHandlerFilter[];
 }
@@ -1065,6 +1247,17 @@ export class ZLinkChannelPublishDispatcher {
     }
     const handler = this.options.handlers.get(packetName);
     if (handler === undefined) {
+      this.options.dispatchErrors.report({
+        surface: ZLinkDispatchErrorSurface.Channel,
+        messageKind: ZLinkDispatchMessageKind.Publish,
+        reason: ZLinkDispatchErrorReason.HandlerMissing,
+        action: ZLinkDispatchErrorAction.Drop,
+        packetName,
+        channelName: this.options.channelName,
+        topic: envelope.header.topic ?? topicMessage.topic,
+        sourceRid: envelope.header.source ?? undefined,
+        correlationId: envelope.header.correlationId ?? undefined
+      });
       return;
     }
 
@@ -1075,11 +1268,26 @@ export class ZLinkChannelPublishDispatcher {
       topic: envelope.header.topic ?? topicMessage.topic,
       source: envelope.header.source ?? undefined
     };
-    await invokeZLinkHandlerFilters(
-      this.filters,
-      { context, handler },
-      () => Promise.resolve(handler.handle(decodeChannelPayload(envelope, this.options.codecs), context))
-    );
+    try {
+      await invokeZLinkHandlerFilters(
+        this.filters,
+        { context, handler },
+        () => Promise.resolve(handler.handle(decodeChannelPayload(envelope, this.options.codecs), context))
+      );
+    } catch (error) {
+      this.options.dispatchErrors.report({
+        surface: ZLinkDispatchErrorSurface.Channel,
+        messageKind: ZLinkDispatchMessageKind.Publish,
+        reason: ZLinkDispatchErrorReason.HandlerException,
+        action: ZLinkDispatchErrorAction.Drop,
+        packetName,
+        channelName: this.options.channelName,
+        topic: context.topic,
+        sourceRid: context.source,
+        correlationId: envelope.header.correlationId ?? undefined,
+        error
+      });
+    }
   }
 }
 
@@ -1121,7 +1329,9 @@ export class ZLinkSubscriberReceiveLoop {
 export interface ZLinkRoutePacketDispatcherOptions {
   readonly routerChannelId: string;
   readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
+  readonly dispatchErrors: ZLinkDispatchErrorReporter;
   readonly handlers: readonly ZLinkRouteHandlerRegistration[];
+  readonly spotRouteNode?: ZLinkBackendSpotNode;
 }
 
 function collectRouteChannelHandlers(routeChannel: ZLinkRouteChannelOptions): ZLinkRouteHandlerRegistration[] {
@@ -1144,10 +1354,13 @@ export class ZLinkRoutePacketDispatcher {
   private readonly sendHandlers = new Map<string, ZLinkRouteRuntimeSendHandler>();
   private readonly requestHandlers = new Map<string, ZLinkRouteRuntimeRequestHandler>();
   private readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
+  private readonly dispatchErrors: ZLinkDispatchErrorReporter;
 
   constructor(options: ZLinkRoutePacketDispatcherOptions) {
     this.routerChannelId = options.routerChannelId;
     this.codecs = options.codecs;
+    this.dispatchErrors = options.dispatchErrors;
+    this.spotRouteNode = options.spotRouteNode;
     for (const handler of options.handlers) {
       const target = handler.kind === 'send' ? this.sendHandlers : this.requestHandlers;
       if (target.has(handler.packetName)) {
@@ -1158,10 +1371,41 @@ export class ZLinkRoutePacketDispatcher {
   }
 
   private readonly routerChannelId: string;
+  private readonly spotRouteNode?: ZLinkBackendSpotNode;
 
-  async dispatch(received: { parts: readonly Message[]; routingId: unknown; requestSeq: bigint | null }, router: {
+  async dispatch(received: {
+    parts: readonly Message[];
+    routingId: unknown;
+    spotRid?: unknown;
+    requestSeq: bigint | null;
+    send?: () => ZLinkMultipartOperation<ZLinkMultipartSubmitOperation>;
+  }, router: {
     reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
   }): Promise<void> {
+    if (received.spotRid !== null && received.spotRid !== undefined) {
+      if (received.send === undefined) {
+        throw new ZLinkConfigurationException('Routed SPOT packet is missing a local SPOT delivery context.');
+      }
+      appendParts(received.send(), received.parts).submit();
+      return;
+    }
+    if (this.spotRouteNode !== undefined) {
+      let processed = false;
+      try {
+        processed = this.spotRouteNode.tryProcessExternalRouterParts(received.parts);
+      } catch (error) {
+        if (process.env.ZLINK_DEBUG_SPOT_DIRECT_ROUTE === '1') {
+          console.error(`[framework-route] tryProcessExternalRouterParts error=${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        }
+        throw error;
+      }
+      if (process.env.ZLINK_DEBUG_SPOT_DIRECT_ROUTE === '1') {
+        console.error(`[framework-route] tryProcessExternalRouterParts processed=${processed}`);
+      }
+      if (processed) {
+        return;
+      }
+    }
     if (received.parts.length === 0 || received.parts[0].data().length === 0) {
       return;
     }
@@ -1174,9 +1418,33 @@ export class ZLinkRoutePacketDispatcher {
     if (envelope.header.kind === ZLinkChannelMessageKind.Command) {
       const handler = this.sendHandlers.get(packetName);
       if (handler === undefined) {
+        this.dispatchErrors.report({
+          surface: ZLinkDispatchErrorSurface.RouteMeshChannel,
+          messageKind: ZLinkDispatchMessageKind.Send,
+          reason: ZLinkDispatchErrorReason.HandlerMissing,
+          action: ZLinkDispatchErrorAction.Drop,
+          packetName,
+          channelName: this.routerChannelId,
+          sourceRid: String(received.routingId),
+          correlationId: envelope.header.correlationId ?? undefined
+        });
         return;
       }
-      await handler.handle(decodeChannelPayload(envelope, this.codecs), this.createRouteContext(packetName, received.routingId));
+      try {
+        await handler.handle(decodeChannelPayload(envelope, this.codecs), this.createRouteContext(packetName, received.routingId));
+      } catch (error) {
+        this.dispatchErrors.report({
+          surface: ZLinkDispatchErrorSurface.RouteMeshChannel,
+          messageKind: ZLinkDispatchMessageKind.Send,
+          reason: ZLinkDispatchErrorReason.HandlerException,
+          action: ZLinkDispatchErrorAction.Drop,
+          packetName,
+          channelName: this.routerChannelId,
+          sourceRid: String(received.routingId),
+          correlationId: envelope.header.correlationId ?? undefined,
+          error
+        });
+      }
       return;
     }
 
@@ -1185,6 +1453,16 @@ export class ZLinkRoutePacketDispatcher {
     }
 
     if (received.requestSeq === null) {
+      this.dispatchErrors.report({
+        surface: ZLinkDispatchErrorSurface.RouteMeshChannel,
+        messageKind: ZLinkDispatchMessageKind.Request,
+        reason: ZLinkDispatchErrorReason.ReplyPathMissing,
+        action: ZLinkDispatchErrorAction.Drop,
+        packetName,
+        channelName: this.routerChannelId,
+        sourceRid: String(received.routingId),
+        correlationId: envelope.header.correlationId ?? undefined
+      });
       throw new ZLinkConfigurationException('Route request cannot be replied to because requestSeq is missing.');
     }
 
@@ -1194,6 +1472,16 @@ export class ZLinkRoutePacketDispatcher {
         router.reply(received.routingId, received.requestSeq),
         encodeChannelErrorReplyParts(envelope.header, `No routed request handler is registered for '${this.routerChannelId}:${packetName}'.`)
       ).submit();
+      this.dispatchErrors.report({
+        surface: ZLinkDispatchErrorSurface.RouteMeshChannel,
+        messageKind: ZLinkDispatchMessageKind.Request,
+        reason: ZLinkDispatchErrorReason.HandlerMissing,
+        action: ZLinkDispatchErrorAction.ReplyError,
+        packetName,
+        channelName: this.routerChannelId,
+        sourceRid: String(received.routingId),
+        correlationId: envelope.header.correlationId ?? undefined
+      });
       return;
     }
 
@@ -1208,6 +1496,17 @@ export class ZLinkRoutePacketDispatcher {
         router.reply(received.routingId, received.requestSeq),
         encodeChannelErrorReplyParts(envelope.header, error instanceof Error ? error.message : String(error))
       ).submit();
+      this.dispatchErrors.report({
+        surface: ZLinkDispatchErrorSurface.RouteMeshChannel,
+        messageKind: ZLinkDispatchMessageKind.Request,
+        reason: ZLinkDispatchErrorReason.HandlerException,
+        action: ZLinkDispatchErrorAction.ReplyError,
+        packetName,
+        channelName: this.routerChannelId,
+        sourceRid: String(received.routingId),
+        correlationId: envelope.header.correlationId ?? undefined,
+        error
+      });
     }
   }
 
@@ -1256,11 +1555,35 @@ export class ZLinkRouteReceiveLoop {
         await new Promise<void>((resolve) => setImmediate(resolve));
         continue;
       }
+      if (process.env.ZLINK_DEBUG_SPOT_DIRECT_ROUTE === '1') {
+        console.error(
+          `[framework-route] recv routingId=${String(received.routingId)} spotRid=${String(received.spotRid ?? '')} parts=${received.parts.length}`
+        );
+      }
       try {
         await this.dispatcher.dispatch(received, this.router);
       } finally {
         received.close();
       }
+    }
+  }
+
+  stop(): void {
+    this.stopped = true;
+  }
+}
+
+export class ZLinkSpotRouteReceiveLoop {
+  private stopped = false;
+
+  constructor(
+    private readonly spotNode: ZLinkBackendSpotNode
+  ) {}
+
+  async run(signal?: AbortSignal): Promise<void> {
+    while (!this.stopped && signal?.aborted !== true) {
+      this.spotNode.processExternalRouter();
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
 

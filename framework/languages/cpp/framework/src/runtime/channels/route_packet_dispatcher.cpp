@@ -3,7 +3,10 @@
 #include "runtime/channels/route_packet_dispatcher.hpp"
 
 #include "runtime/channels/channel_reply_writer.hpp"
+#include "runtime/diagnostics/dispatch_error_reporter.hpp"
 
+#include <exception>
+#include <optional>
 #include <utility>
 
 namespace zlink::framework::detail
@@ -19,12 +22,14 @@ route_packet_dispatcher_t::route_packet_dispatcher_t (
   service_provider_t &services,
   serializer_registry_t &serializers,
   const route_handler_registry_t &handlers,
-  const route_internal_packet_dispatcher_t &internal_packets) :
+  const route_internal_packet_dispatcher_t &internal_packets,
+  dispatch_options_t dispatch_options) :
     _router_channel_id (std::move (router_channel_id)),
     _services (&services),
     _serializers (&serializers),
     _handlers (&handlers),
-    _internal_packets (&internal_packets)
+    _internal_packets (&internal_packets),
+    _dispatch_options (std::move (dispatch_options))
 {
 }
 
@@ -67,11 +72,39 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
         || _handlers->find (_router_channel_id, runtime::messaging::message_kind_t::command,
                             header.message_name)
              == nullptr) {
+        dispatch_error_reporter_t (_dispatch_options)
+          .report (message_dispatch_error_event_t{
+            dispatch_error_surface_t::route_mesh_channel,
+            dispatch_message_kind_t::send,
+            dispatch_error_reason_t::handler_missing,
+            dispatch_error_action_t::drop,
+            header.message_name,
+            _router_channel_id,
+            header.topic,
+            std::nullopt,
+            std::nullopt,
+            received.source_node_rid.to_string (),
+            header.correlation_id,
+            std::exception_ptr{}});
         return result_t<std::optional<route_dispatch_reply_t>>::success (std::nullopt);
     }
 
     auto body = runtime::messaging::envelope_codec_t{}.decode_body (received.parts);
     if (!body) {
+        dispatch_error_reporter_t (_dispatch_options)
+          .report (message_dispatch_error_event_t{
+            dispatch_error_surface_t::route_mesh_channel,
+            dispatch_message_kind_t::send,
+            dispatch_error_reason_t::payload_decode_failed,
+            dispatch_error_action_t::drop,
+            header.message_name,
+            _router_channel_id,
+            header.topic,
+            std::nullopt,
+            std::nullopt,
+            received.source_node_rid.to_string (),
+            header.correlation_id,
+            body.error () ? std::make_exception_ptr (*body.error ()) : std::exception_ptr{}});
         return result_t<std::optional<route_dispatch_reply_t>>::failure (
           body.error_kind (),
           body.error () ? body.error ()->what () : "route command body missing");
@@ -83,6 +116,21 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
                                       *_services, *_serializers, body.value (), context)
                         .result ();
     if (!dispatched) {
+        dispatch_error_reporter_t (_dispatch_options)
+          .report (message_dispatch_error_event_t{
+            dispatch_error_surface_t::route_mesh_channel,
+            dispatch_message_kind_t::send,
+            dispatch_reason_from_error (dispatched.error_kind ()),
+            dispatch_error_action_t::drop,
+            header.message_name,
+            _router_channel_id,
+            header.topic,
+            std::nullopt,
+            std::nullopt,
+            received.source_node_rid.to_string (),
+            header.correlation_id,
+            dispatched.error () ? std::make_exception_ptr (*dispatched.error ())
+                                : std::exception_ptr{}});
         return result_t<std::optional<route_dispatch_reply_t>>::failure (
           dispatched.error_kind (),
           dispatched.error () ? dispatched.error ()->what () : "routed send handler failed");
@@ -124,9 +172,10 @@ result_t<std::optional<route_dispatch_reply_t>> route_packet_dispatcher_t::dispa
 
     auto body = runtime::messaging::envelope_codec_t{}.decode_body (received.parts);
     if (!body) {
-        return result_t<std::optional<route_dispatch_reply_t>>::failure (
-          body.error_kind (),
-          body.error () ? body.error ()->what () : "route request body missing");
+        framework_exception_t error (body.error_kind (),
+                                     body.error () ? body.error ()->what ()
+                                                   : "route request body missing");
+        return reply_error (received, header, error);
     }
     framework::route_handler_context_t context{_router_channel_id, received.source_node_rid,
                                                header.message_name, header.content_type};
@@ -154,6 +203,20 @@ route_packet_dispatcher_t::reply_error (const route_received_packet_t &received,
                                         const runtime::messaging::envelope_header_t &header,
                                         const framework_exception_t &error) const
 {
+    dispatch_error_reporter_t (_dispatch_options)
+      .report (message_dispatch_error_event_t{
+        dispatch_error_surface_t::route_mesh_channel,
+        dispatch_message_kind_t::request,
+        dispatch_reason_from_error (error.kind ()),
+        dispatch_error_action_t::reply_error,
+        header.message_name,
+        _router_channel_id,
+        header.topic,
+        std::nullopt,
+        std::nullopt,
+        received.source_node_rid.to_string (),
+        header.correlation_id,
+        std::make_exception_ptr (error)});
     channel_reply_writer_t writer;
     auto reply = writer.reply_raw_envelope (
       writer.create_error_header (_router_channel_id, header, error), zlink::message_t::from (""));

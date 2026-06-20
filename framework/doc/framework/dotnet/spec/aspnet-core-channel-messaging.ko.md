@@ -984,6 +984,17 @@ builder.Services.AddZLinkFramework(options =>
   쓸 수 있는 일반 DI 서비스로 열고, 운영 API 는 그 서비스를 얇게 감싸는 형태를 기본으로
   본다.
 
+### 10.1 dispatch 실패 정책
+
+등록된 request handler 가 없거나 request payload decode, handler 실행 중 예외, invalid request frame 이
+발생하면 server runtime 은 error reply 를 반환한다. 같은 사건은 Error 로그, metric, 전역
+`IZLinkMessageDispatchErrorObserver` event 로도 남긴다.
+
+send 또는 publish 에서 handler 를 찾지 못하면 reply 를 만들지 않고 drop 한다. send 는 Warning 로그와
+metric, publish 는 Debug 로그 또는 metric 과 observer event 를 남긴다. observer 가 없더라도 기본
+로그와 metric 은 생략하지 않는다. observer callback 실패는 runtime error sink 로 분리하며 원래 reply
+또는 drop 결과를 바꾸지 않는다.
+
 ## 11. 회귀 테스트
 
 이 절에서는 channel 문서가 다루는 항목이 함께 깨지지 않도록, 어떤 시나리오를 회귀

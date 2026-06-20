@@ -17,7 +17,8 @@ import type {
   SpotRoute,
   TopicMessage,
   MemberPeerEntry,
-  MonitorEventType
+  MonitorEventType,
+  MessageLike
 } from '@zlink-systems/zlink';
 import type {
   Message,
@@ -27,6 +28,8 @@ import type {
 export type ZLinkBackendSendFlags = SendFlagsValue;
 export type ZLinkBackendRecvFlags = RecvFlagsValue;
 export type ZLinkBackendSpotNodeMode = SpotNodeModeValue;
+export const ZLINK_BACKEND_SPOT_NODE_MODE_PUBSUB = 1 as ZLinkBackendSpotNodeMode;
+export const ZLINK_BACKEND_SPOT_NODE_MODE_ROUTED = 2 as ZLinkBackendSpotNodeMode;
 export const ZLINK_BACKEND_SPOT_NODE_MODE_ALL = 3 as ZLinkBackendSpotNodeMode;
 
 export enum ZLinkBackendSpotDispatchEvent {
@@ -272,6 +275,8 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   disconnectRouterChannelPeer(channelName: string, endpoint: string): void;
   disconnectRouterChannelPeerRid(channelName: string, peerRid: RoutingId): void;
   attachSpotRouteChannelDiscovery(channelName: string, discovery: ZLinkBackendDiscovery): void;
+  processExternalRouter(): void;
+  tryProcessExternalRouterParts(parts: readonly MessageLike[]): boolean;
   createSpot(): ZLinkBackendSpot;
   getOrCreateSpot(spotRid: RoutingId): { readonly spot: ZLinkBackendSpot; readonly created: boolean };
   status(): SpotNodeStatus;

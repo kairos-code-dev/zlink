@@ -175,6 +175,11 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
           (target as unknown as { attachDiscovery(discovery: unknown): void })
             .attachDiscovery(unwrapBackendObject(discovery));
       }
+      if (property === 'resolveSpot') {
+        return (spotRid: unknown) =>
+          (target as unknown as { resolveSpot(spotRid: unknown): unknown })
+            .resolveSpot(toNativeRoutingId(spotRid));
+      }
       if (property === 'attachChannelDealer') {
         return (discovery: ZLinkBackendDiscovery, dealer: ZLinkBackendDealerSocket) =>
           (target as unknown as { attachChannelDealer(discovery: unknown, dealer: unknown): void })
@@ -184,6 +189,16 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
         return (channelName: string, discovery: ZLinkBackendDiscovery) =>
           (target as unknown as { attachSpotRouteChannelDiscovery(channelName: string, discovery: unknown): void })
             .attachSpotRouteChannelDiscovery(channelName, unwrapBackendObject(discovery));
+      }
+      if (property === 'processExternalRouter') {
+        return () =>
+          (target as unknown as { processExternalRouter(): void })
+            .processExternalRouter();
+      }
+      if (property === 'tryProcessExternalRouterParts') {
+        return (parts: readonly unknown[]) =>
+          (target as unknown as { tryProcessExternalRouterParts(parts: readonly unknown[]): boolean })
+            .tryProcessExternalRouterParts(parts);
       }
       if (property === 'setRoutingId') {
         return (routingId: unknown) =>

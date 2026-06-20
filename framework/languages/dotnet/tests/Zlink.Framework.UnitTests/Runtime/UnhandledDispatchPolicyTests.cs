@@ -2,14 +2,17 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 using Zlink.Framework.Runtime.Channels;
 using Zlink.Framework.Runtime.Configuration;
 using Zlink.Framework.Runtime.Diagnostics;
+using Zlink.Framework.Runtime.Dispatch;
 using Zlink.Framework.Runtime.Handlers;
 using Zlink.Framework.Runtime.Messaging;
 using Zlink.Framework.Runtime.Spots;
+using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -211,11 +214,172 @@ public sealed class UnhandledDispatchPolicyTests
         }
     }
 
+    [Fact]
+    public async Task DispatchErrorReporter_DeliversSnapshot_AndObserverFailureIsIsolated()
+    {
+        var observer = new ThrowingDispatchErrorObserver();
+        var options = new ZLinkDispatchOptionsModel();
+        options.SetMessageDispatchErrorObserver(observer);
+        var reporter = new ZLinkDispatchErrorReporter(
+            options,
+            new ServiceCollection().BuildServiceProvider());
+        var error = new ZLinkMessageDispatchErrorEvent(
+            ZLinkDispatchErrorSurface.Channel,
+            ZLinkDispatchMessageKind.Request,
+            ZLinkDispatchErrorReason.HandlerMissing,
+            ZLinkDispatchErrorAction.ReplyError,
+            "MissingReq",
+            ChannelName: "api",
+            CorrelationId: "corr-1");
+
+        reporter.Report(error);
+
+        var observed = await observer.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Same(error, observed);
+    }
+
+    [Fact]
+    public async Task DispatchErrorReporter_IsolatesObserverConstructionFailure()
+    {
+        var options = new ZLinkDispatchOptionsModel();
+        options.SetMessageDispatchErrorObserver<FailingConstructionDispatchErrorObserver>();
+        var reporter = new ZLinkDispatchErrorReporter(
+            options,
+            new ServiceCollection().BuildServiceProvider());
+        var error = new ZLinkMessageDispatchErrorEvent(
+            ZLinkDispatchErrorSurface.Channel,
+            ZLinkDispatchMessageKind.Request,
+            ZLinkDispatchErrorReason.HandlerMissing,
+            ZLinkDispatchErrorAction.ReplyError,
+            "MissingReq",
+            ChannelName: "api",
+            CorrelationId: "corr-1");
+        var failure = new TaskCompletionSource<Exception>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnFailure(Exception ex) => failure.TrySetResult(ex);
+
+        ZLinkRuntimeErrorSink.UnhandledCallbackException += OnFailure;
+        try
+        {
+            var thrown = Record.Exception(() => reporter.Report(error));
+            Assert.Null(thrown);
+
+            var observed = await failure.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Contains("observer construction failed", observed.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            ZLinkRuntimeErrorSink.UnhandledCallbackException -= OnFailure;
+        }
+    }
+
+    [Fact]
+    public async Task SpotActorSendMissingHandler_LogsAndReportsObserverEvent()
+    {
+        var observer = new CapturingDispatchErrorObserver();
+        var options = new ZLinkDispatchOptionsModel();
+        options.SetMessageDispatchErrorObserver(observer);
+        var logger = new CapturingLogger<ZLinkSpotActorPacketDispatcher>();
+        var dispatcher = new ZLinkSpotActorPacketDispatcher(
+            static () => new ZLinkSpotActorHandlerRegistry(ZLinkSpotActorHandlerSurface.UserSpot),
+            static () => throw new InvalidOperationException("Handler invoker should not be used."),
+            new ZLinkDispatchErrorReporter(
+                options,
+                new ServiceCollection().BuildServiceProvider()),
+            logger);
+        var actor = new TestActor("actor-1");
+        var runtimeState = new ZLinkActorRuntimeState(actor.ActorId)
+        {
+            Actor = actor
+        };
+        using var body = Message.From("payload");
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Raw,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "missing-actor-send",
+            ZlinkStreamMetadata.Empty);
+
+        await dispatcher.DispatchAsync(actor, runtimeState, header, body, CancellationToken.None);
+
+        var observed = await observer.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(ZLinkDispatchErrorSurface.SpotActor, observed.Surface);
+        Assert.Equal(ZLinkDispatchMessageKind.ActorSend, observed.MessageKind);
+        Assert.Equal(ZLinkDispatchErrorReason.HandlerMissing, observed.Reason);
+        Assert.Equal(ZLinkDispatchErrorAction.Drop, observed.Action);
+        Assert.Equal("missing-actor-send", observed.PacketName);
+        Assert.Equal("actor-1", observed.ActorId);
+        Assert.Contains(logger.Messages, message => message.Contains("no-handler", StringComparison.Ordinal));
+    }
+
     private sealed class NeverInvokedHandler;
 
     private sealed record TestRequest(string Value);
 
     private sealed record TestReply(string Value);
+
+    private sealed class TestActor(string actorId) : IZLinkActor
+    {
+        public string ActorId { get; } = actorId;
+
+        public IZLinkActorContext Context
+            => throw new InvalidOperationException("Context is not needed by this test.");
+    }
+
+    private sealed class CapturingDispatchErrorObserver : IZLinkMessageDispatchErrorObserver
+    {
+        private readonly TaskCompletionSource<ZLinkMessageDispatchErrorEvent> _observed =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ValueTask OnDispatchErrorAsync(
+            ZLinkMessageDispatchErrorEvent error,
+            CancellationToken cancellationToken)
+        {
+            _observed.TrySetResult(error);
+            return ValueTask.CompletedTask;
+        }
+
+        public async Task<ZLinkMessageDispatchErrorEvent> WaitAsync(TimeSpan timeout)
+        {
+            return await _observed.Task.WaitAsync(timeout);
+        }
+    }
+
+    private sealed class ThrowingDispatchErrorObserver : IZLinkMessageDispatchErrorObserver
+    {
+        private readonly TaskCompletionSource<ZLinkMessageDispatchErrorEvent> _observed =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ValueTask OnDispatchErrorAsync(
+            ZLinkMessageDispatchErrorEvent error,
+            CancellationToken cancellationToken)
+        {
+            _observed.TrySetResult(error);
+            throw new InvalidOperationException("observer failed");
+        }
+
+        public async Task<ZLinkMessageDispatchErrorEvent> WaitAsync(TimeSpan timeout)
+        {
+            return await _observed.Task.WaitAsync(timeout);
+        }
+    }
+
+    private sealed class FailingConstructionDispatchErrorObserver : IZLinkMessageDispatchErrorObserver
+    {
+        public FailingConstructionDispatchErrorObserver()
+        {
+            throw new InvalidOperationException("observer construction failed");
+        }
+
+        public ValueTask OnDispatchErrorAsync(
+            ZLinkMessageDispatchErrorEvent error,
+            CancellationToken cancellationToken)
+        {
+            throw new InvalidOperationException("Observer should not be invoked.");
+        }
+    }
 
     private sealed class CapturingLogger<T> : ILogger<T>
     {

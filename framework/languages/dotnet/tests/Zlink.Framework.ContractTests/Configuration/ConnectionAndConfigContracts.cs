@@ -14,6 +14,7 @@ public sealed class ConnectionAndConfigContracts
         typeof(IZLinkSpotSubscriberConfig),
         typeof(IZLinkEntrySpotOptions),
         typeof(IZLinkDispatchOptions),
+        typeof(IZLinkMessageDispatchErrorObserver),
         typeof(IZLinkUnhandledDispatchOptions),
         typeof(IZLinkDiagnosticsOptions))]
     public void Configuration_contracts_keep_socket_routing_spot_and_dispatch_options_typed()
@@ -168,6 +169,18 @@ public sealed class ConnectionAndConfigContracts
         public IZLinkUnhandledDispatchOptions Unhandled { get; } = new UnhandledDispatchOptions();
 
         public IZLinkDiagnosticsOptions Diagnostics { get; } = new DiagnosticsOptions();
+
+        public IZLinkDispatchOptions SetMessageDispatchErrorObserver<TObserver>()
+            where TObserver : class, IZLinkMessageDispatchErrorObserver
+        {
+            return this;
+        }
+
+        public IZLinkDispatchOptions SetMessageDispatchErrorObserver(
+            IZLinkMessageDispatchErrorObserver observer)
+        {
+            return this;
+        }
     }
 
     private sealed class UnhandledDispatchOptions : IZLinkUnhandledDispatchOptions

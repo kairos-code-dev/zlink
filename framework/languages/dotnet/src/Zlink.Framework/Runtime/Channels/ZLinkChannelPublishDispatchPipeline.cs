@@ -9,6 +9,7 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
     ZLinkHandlerDispatcher dispatcher,
     Func<string, IReadOnlySet<string>> resolveMappedGroups,
     LogLevel unhandledLogLevel,
+    ZLinkDispatchErrorReporter dispatchErrors,
     ZLinkCodecRegistryBuilder codecs,
     ILogger logger)
 {
@@ -32,6 +33,16 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
                 header.MessageName,
                 "no-handler",
                 channelName);
+            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.Channel,
+                ZLinkDispatchMessageKind.Publish,
+                ZLinkDispatchErrorReason.HandlerMissing,
+                ZLinkDispatchErrorAction.Drop,
+                header.MessageName,
+                ChannelName: channelName,
+                Topic: topicMessage.Topic,
+                SourceRid: header.Source,
+                CorrelationId: header.CorrelationId));
             return;
         }
 
@@ -41,7 +52,35 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
             decodedMessages ??= new Dictionary<Type, object?>();
             if (!decodedMessages.TryGetValue(endpoint.MessageType, out var message))
             {
-                message = ZLinkEnvelopeCodec.DecodeBody(topicMessage.Parts, endpoint.MessageType, codecs);
+                try
+                {
+                    message = ZLinkEnvelopeCodec.DecodeBody(topicMessage.Parts, endpoint.MessageType, codecs);
+                }
+                catch (Exception ex)
+                {
+                    ZLinkMessageFlowLogger.PayloadDecodeFailed(
+                        logger,
+                        "Channel",
+                        "Publish",
+                        header.MessageName,
+                        "drop",
+                        "payload-decode-failed",
+                        ex,
+                        channelName);
+                    dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                        ZLinkDispatchErrorSurface.Channel,
+                        ZLinkDispatchMessageKind.Publish,
+                        ZLinkDispatchErrorReason.PayloadDecodeFailed,
+                        ZLinkDispatchErrorAction.Drop,
+                        header.MessageName,
+                        ChannelName: channelName,
+                        Topic: topicMessage.Topic,
+                        SourceRid: header.Source,
+                        CorrelationId: header.CorrelationId,
+                        Exception: ex));
+                    return;
+                }
+
                 decodedMessages.Add(endpoint.MessageType, message);
             }
 
@@ -52,8 +91,34 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
                 topicMessage.Topic,
                 header.Source,
                 cancellationToken);
-            await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                ZLinkMessageFlowLogger.Rejected(
+                    logger,
+                    LogLevel.Error,
+                    "Channel",
+                    "Publish",
+                    header.MessageName,
+                    "handler-exception",
+                    ex,
+                    channelName);
+                dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                    ZLinkDispatchErrorSurface.Channel,
+                    ZLinkDispatchMessageKind.Publish,
+                    ZLinkDispatchErrorReason.HandlerException,
+                    ZLinkDispatchErrorAction.Drop,
+                    header.MessageName,
+                    ChannelName: channelName,
+                    Topic: topicMessage.Topic,
+                    SourceRid: header.Source,
+                    CorrelationId: header.CorrelationId,
+                    Exception: ex));
+            }
         }
     }
 }

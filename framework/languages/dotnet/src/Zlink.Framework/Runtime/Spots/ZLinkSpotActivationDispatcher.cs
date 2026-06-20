@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Actors;
+using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Spots;
@@ -17,6 +18,8 @@ internal sealed class ZLinkSpotActivationDispatcher
     private readonly ZLinkSpotActorPacketDispatcher _actorPacketDispatcher;
     private readonly ZLinkSpotActorJoinDispatcher _actorJoinDispatcher;
     private readonly ZLinkSpotRouteDispatcher _routeDispatcher;
+    private readonly ZLinkDispatchErrorReporter _dispatchErrors;
+    private readonly ILogger<ZLinkSpotActivationDispatcher> _logger;
 
     public ZLinkSpotActivationDispatcher(
         ZLinkFrameworkRuntime runtime,
@@ -35,7 +38,18 @@ internal sealed class ZLinkSpotActivationDispatcher
         this.actors = actors;
         this.subscriptions = subscriptions;
         this.handlerInvoker = handlerInvoker;
-        _actorPacketDispatcher = new ZLinkSpotActorPacketDispatcher(actorHandlers, handlerInvoker);
+        _logger = runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotActivationDispatcher>()
+            ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ZLinkSpotActivationDispatcher>.Instance;
+        _dispatchErrors = new ZLinkDispatchErrorReporter(
+            runtime.Registration.DispatchOptions,
+            runtime.Services,
+            _logger);
+        _actorPacketDispatcher = new ZLinkSpotActorPacketDispatcher(
+            actorHandlers,
+            handlerInvoker,
+            _dispatchErrors,
+            runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotActorPacketDispatcher>()
+                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ZLinkSpotActorPacketDispatcher>.Instance);
         _actorJoinDispatcher = new ZLinkSpotActorJoinDispatcher(
             runtime,
             nativeSpot,
@@ -49,6 +63,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             packets,
             handlerInvoker,
             runtime.Registration.Codecs,
+            _dispatchErrors,
             DispatchInternalRoutePacketAsync,
             runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkSpotRouteDispatcher>());
     }
@@ -285,7 +300,7 @@ internal sealed class ZLinkSpotActivationDispatcher
     public async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)
     {
         await subscriptions
-            .DrainAsync(nativeSpot, runtime.Registration.Codecs, InvokeSubscriptionAsync, cancellationToken)
+            .DrainAsync(nativeSpot, runtime.Registration.Codecs, _dispatchErrors, _logger, InvokeSubscriptionAsync, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -385,7 +400,30 @@ internal sealed class ZLinkSpotActivationDispatcher
         object? message,
         CancellationToken cancellationToken)
     {
-        await handlerInvoker().InvokeSubscriptionAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await handlerInvoker().InvokeSubscriptionAsync(descriptor, message, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            ZLinkMessageFlowLogger.Rejected(
+                _logger,
+                LogLevel.Error,
+                "SpotSubscription",
+                "Publish",
+                descriptor.MessageName,
+                "handler-exception",
+                ex,
+                channelName: descriptor.Topic);
+            _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.SpotSubscription,
+                ZLinkDispatchMessageKind.Publish,
+                ZLinkDispatchErrorReason.HandlerException,
+                ZLinkDispatchErrorAction.Drop,
+                descriptor.MessageName,
+                Topic: descriptor.Topic,
+                Exception: ex));
+        }
     }
 
 }

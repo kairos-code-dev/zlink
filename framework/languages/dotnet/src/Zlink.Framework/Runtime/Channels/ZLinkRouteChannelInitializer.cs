@@ -46,6 +46,7 @@ internal sealed class ZLinkRouteChannelInitializer(
         var handlers = new ZLinkRouteHandlerRegistry(CreateRouteHandlerDescriptors(routedRegistration));
         return new ZLinkRouteChannelRuntime(
             services,
+            registration,
             routedRegistration,
             router,
             discovery,

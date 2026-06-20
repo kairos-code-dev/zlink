@@ -91,6 +91,11 @@ internal static class ZLinkFrameworkServiceRegistrar
     {
         services.AddSingleton(registration);
         services.TryAddSingleton<IZLinkBackendAdapterFactory, ZLinkDotNetBackendAdapterFactory>();
+        if (registration.DispatchOptions.MessageDispatchErrorObserverType is { } observerType)
+        {
+            services.TryAddTransient(observerType);
+        }
+
         services.TryAddSingleton(static provider =>
             new ZLinkHandlerRegistry(
                 provider.GetServices<ZLinkHandlerEndpointDescriptor>()));

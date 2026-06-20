@@ -9,6 +9,7 @@
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
+#include "runtime/spots/spot_runtime.hpp"
 
 #include <thread>
 #include <utility>
@@ -222,6 +223,14 @@ channel_runtime_t::channel_runtime_t (std::shared_ptr<channel_runtime_state_t> s
 {
 }
 
+void apply_dispatch_options (zlink_builder_t &builder, const dispatch_options_t &options)
+{
+    builder._state->runtime->dispatch = options;
+    for (auto &[_, spot_node] : builder._state->spot_nodes) {
+        spot_node->dispatch = options;
+    }
+}
+
 result_t<zlink::message_t>
 channel_runtime_t::dispatch_request (std::string channel_name,
                                      std::string topic,
@@ -325,6 +334,11 @@ channel_runtime_t::outbound_calls () const
 void channel_runtime_t::bind_serializers (serializer_registry_t &serializers) noexcept
 {
     _state->serializers = &serializers;
+}
+
+dispatch_options_t channel_runtime_t::dispatch_options () const
+{
+    return _state->dispatch;
 }
 
 void channel_runtime_t::drain () noexcept

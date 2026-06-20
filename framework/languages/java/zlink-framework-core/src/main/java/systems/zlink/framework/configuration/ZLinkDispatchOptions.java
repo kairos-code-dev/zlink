@@ -12,4 +12,10 @@ public interface ZLinkDispatchOptions {
     ZLinkUnhandledDispatchOptions unhandled();
 
     ZLinkDiagnosticsOptions diagnostics();
+
+    ZLinkDispatchOptions setMessageDispatchErrorObserver(
+        Class<? extends ZLinkMessageDispatchErrorObserver> observerType);
+
+    ZLinkDispatchOptions setMessageDispatchErrorObserver(
+        ZLinkMessageDispatchErrorObserver observer);
 }

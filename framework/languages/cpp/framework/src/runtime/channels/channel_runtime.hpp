@@ -93,6 +93,7 @@ class channel_runtime_state_t
     std::map<std::string, route_handler_registry_t> route_handlers;
     std::map<std::uint64_t, channel_reliability_event_t> pending_operations;
     std::vector<outbound_call_record_t> outbound_calls;
+    dispatch_options_t dispatch;
     serializer_registry_t *serializers = nullptr;
     bool shutdown = false;
     bool closed = false;
@@ -147,6 +148,7 @@ class channel_runtime_t
     std::size_t pending_limit () const noexcept;
     std::vector<channel_runtime_state_t::outbound_call_record_t> outbound_calls () const;
     void bind_serializers (serializer_registry_t &serializers) noexcept;
+    dispatch_options_t dispatch_options () const;
     void drain () noexcept;
 
     static channel_runtime_t from (const message_bus_t &bus);

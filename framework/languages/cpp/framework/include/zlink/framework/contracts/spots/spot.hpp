@@ -36,6 +36,7 @@ namespace zlink::framework
 
 class actor_context_t;
 class actor_ref_t;
+class spot_node_manager_t;
 
 class spot_t
 {
@@ -398,6 +399,7 @@ class spot_context_t
     spot_rid_t spot_rid () const;
     std::string spot_name () const;
     spot_handler_registry_t handlers ();
+    spot_node_manager_t manager () const;
     channel_client_t outbound () const;
     task_t<bool> close ();
 
@@ -865,6 +867,7 @@ class spot_node_manager_t
                         spot_actor_message_metadata_t metadata = {});
 
   private:
+    friend class spot_context_t;
     friend class detail::spot_node_runtime_t;
     explicit spot_node_manager_t (std::shared_ptr<detail::spot_node_builder_state_t> state);
 

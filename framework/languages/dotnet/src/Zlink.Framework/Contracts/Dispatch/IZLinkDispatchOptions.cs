@@ -11,7 +11,34 @@ public interface IZLinkDispatchOptions
     IZLinkUnhandledDispatchOptions Unhandled { get; }
 
     IZLinkDiagnosticsOptions Diagnostics { get; }
+
+    IZLinkDispatchOptions SetMessageDispatchErrorObserver<TObserver>()
+        where TObserver : class, IZLinkMessageDispatchErrorObserver;
+
+    IZLinkDispatchOptions SetMessageDispatchErrorObserver(
+        IZLinkMessageDispatchErrorObserver observer);
 }
+
+public interface IZLinkMessageDispatchErrorObserver
+{
+    ValueTask OnDispatchErrorAsync(
+        ZLinkMessageDispatchErrorEvent error,
+        CancellationToken cancellationToken);
+}
+
+public sealed record ZLinkMessageDispatchErrorEvent(
+    ZLinkDispatchErrorSurface Surface,
+    ZLinkDispatchMessageKind MessageKind,
+    ZLinkDispatchErrorReason Reason,
+    ZLinkDispatchErrorAction Action,
+    string? PacketName,
+    string? ChannelName = null,
+    string? Topic = null,
+    string? SpotRid = null,
+    string? ActorId = null,
+    string? SourceRid = null,
+    string? CorrelationId = null,
+    Exception? Exception = null);
 
 public interface IZLinkUnhandledDispatchOptions
 {
@@ -52,4 +79,42 @@ public enum ZLinkMessageFlowLogMode
     KeyTransitions,
     Verbose,
     Diagnostic
+}
+
+public enum ZLinkDispatchErrorSurface
+{
+    Channel,
+    DealerMeshChannel,
+    RouteMeshChannel,
+    SpotRoute,
+    SpotSubscription,
+    SpotActor,
+    StreamSession
+}
+
+public enum ZLinkDispatchMessageKind
+{
+    Request,
+    Send,
+    Publish,
+    Response,
+    Error,
+    ActorRequest,
+    ActorSend
+}
+
+public enum ZLinkDispatchErrorReason
+{
+    HandlerMissing,
+    PayloadDecodeFailed,
+    HandlerException,
+    InvalidFrame,
+    ReplyPathMissing,
+    UnexpectedReply
+}
+
+public enum ZLinkDispatchErrorAction
+{
+    ReplyError,
+    Drop
 }

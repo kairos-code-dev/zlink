@@ -11,6 +11,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
     ZLinkRouteHandlerRegistry handlers,
     ZLinkRouteHandlerInvoker handlerInvoker,
     IZLinkRouteInternalPacketDispatcher internalPackets,
+    ZLinkDispatchErrorReporter dispatchErrors,
     ILogger<ZLinkRoutePacketDispatcher>? logger = null)
 {
     private readonly ILogger<ZLinkRoutePacketDispatcher> _logger =
@@ -63,19 +64,53 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 header.MessageName,
                 "no-handler",
                 routerChannelId);
+            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.RouteMeshChannel,
+                ZLinkDispatchMessageKind.Send,
+                ZLinkDispatchErrorReason.HandlerMissing,
+                ZLinkDispatchErrorAction.Drop,
+                header.MessageName,
+                ChannelName: routerChannelId,
+                CorrelationId: header.CorrelationId));
             return;
         }
 
         var sourceRid = RequireSourceRoutingId(received, "Route send");
 
-        await handlerInvoker.InvokeSendAsync(
-                descriptor,
+        try
+        {
+            await handlerInvoker.InvokeSendAsync(
+                    descriptor,
+                    routerChannelId,
+                    sourceRid,
+                    header,
+                    received.Parts,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            ZLinkMessageFlowLogger.Rejected(
+                _logger,
+                LogLevel.Error,
+                "RouteMeshChannel",
+                "Send",
+                header.MessageName,
+                "handler-exception",
+                ex,
                 routerChannelId,
-                sourceRid,
-                header,
-                received.Parts,
-                cancellationToken)
-            .ConfigureAwait(false);
+                spotRid: sourceRid.ToString());
+            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.RouteMeshChannel,
+                ZLinkDispatchMessageKind.Send,
+                ZLinkDispatchErrorReason.HandlerException,
+                ZLinkDispatchErrorAction.Drop,
+                header.MessageName,
+                ChannelName: routerChannelId,
+                SourceRid: sourceRid.ToString(),
+                CorrelationId: header.CorrelationId,
+                Exception: ex));
+        }
     }
 
     private async ValueTask DispatchRequestAsync(
@@ -105,7 +140,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
         {
             ZLinkMessageFlowLogger.HandlerMissing(
                 _logger,
-                LogLevel.Warning,
+                LogLevel.Error,
                 "RouteMeshChannel",
                 "Request",
                 header.MessageName,
@@ -119,6 +154,18 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.RouteHandlerNotFound,
                     $"No routed request handler is registered for '{routerChannelId}:{header.MessageName}'."));
+            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.RouteMeshChannel,
+                ZLinkDispatchMessageKind.Request,
+                ZLinkDispatchErrorReason.HandlerMissing,
+                ZLinkDispatchErrorAction.ReplyError,
+                header.MessageName,
+                ChannelName: routerChannelId,
+                SourceRid: sourceRid.ToString(),
+                CorrelationId: header.CorrelationId,
+                Exception: new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RouteHandlerNotFound,
+                    $"No routed request handler is registered for '{routerChannelId}:{header.MessageName}'.")));
             return;
         }
 
@@ -137,6 +184,16 @@ internal sealed class ZLinkRoutePacketDispatcher(
         catch (Exception ex)
         {
             ReplyError(sourceRid, received.RequestSeq, header, ex);
+            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.RouteMeshChannel,
+                ZLinkDispatchMessageKind.Request,
+                ZLinkDispatchErrorReason.HandlerException,
+                ZLinkDispatchErrorAction.ReplyError,
+                header.MessageName,
+                ChannelName: routerChannelId,
+                SourceRid: sourceRid.ToString(),
+                CorrelationId: header.CorrelationId,
+                Exception: ex));
         }
     }
 
@@ -156,6 +213,16 @@ internal sealed class ZLinkRoutePacketDispatcher(
         catch (Exception ex)
         {
             ReplyError(sourceRid, received.RequestSeq, header, ex);
+            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.RouteMeshChannel,
+                ZLinkDispatchMessageKind.Request,
+                ZLinkDispatchErrorReason.HandlerException,
+                ZLinkDispatchErrorAction.ReplyError,
+                header.MessageName,
+                ChannelName: routerChannelId,
+                SourceRid: sourceRid.ToString(),
+                CorrelationId: header.CorrelationId,
+                Exception: ex));
         }
     }
 

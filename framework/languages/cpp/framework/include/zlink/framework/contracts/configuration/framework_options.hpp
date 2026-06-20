@@ -1445,6 +1445,7 @@ class zlink_framework_options_t
         }
         _options->http.validate ();
         detail::validate_framework_options (*_options, *_handler_groups);
+        detail::apply_dispatch_options (*_zlink, _options->dispatch);
         _options->active_zlink = _zlink;
         try {
             for (const auto &action : _options->deferred_zlink_actions) {

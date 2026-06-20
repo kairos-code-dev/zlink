@@ -47,6 +47,15 @@ server runtime, client runtime을 나누어 시작한 뒤 `useDiscovery().addReg
 | send/publish async submit | unit | `ZLinkAsyncSubmitterTest.submit_drainsPendingItemFromReadyCallback` | ready 전 caller thread를 막지 않음 |
 | pending request cleanup | unit | `ZLinkAsyncSubmitterTest.submit_failsPendingItemWhenSendTimeoutExpires` / `close_failsPendingItems` | timeout, cancellation, stop에서 pending 제거 |
 
+## 2.1 Dispatch Error Observer Regression
+
+| ID | 계층 | JUnit 테스트 | 통과 기준 |
+|----|------|--------------|-----------|
+| DERR-001, DERR-007, DERR-011, DERR-014 | unit | `DefaultZLinkFrameworkOptionsTest.configureDispatchRegistersMessageDispatchErrorObserver`, `dispatchErrorReporterIsolatesObserverFailures` | 전역 observer 등록 표면과 observer 실패 격리가 유지되고 channel dispatch event payload가 손실되지 않음 |
+| DERR-002, DERR-008 | integration-single-process | `ChannelMessagingTest` route mesh missing-handler dispatch 항목 | route request handler 없음은 error reply, route send handler 없음은 drop과 observer event로 끝남 |
+| DERR-003, DERR-004, DERR-009, DERR-010, DERR-016 | fake backend, integration-single-process | `SpotRuntimeFakeBackendTest`, `ActorRuntimeFakeBackendTest`, `SpotManagerTest` dispatch error 항목 | SPOT route, subscription, actor dispatch 실패가 request면 error reply 또는 caller-visible error, one-way면 drop과 observer event로 끝남 |
+| DERR-005, DERR-006, DERR-013, DERR-015 | unit, integration-single-process | `ChannelMessagingTest`, `SpotRuntimeFakeBackendTest` dispatch error 항목 | decode 실패와 handler 예외는 error reply 또는 관측 가능한 drop으로 끝나며, observer 미등록 시에도 기본 로그와 counter가 남음 |
+
 ## 3. Spot/Actor regression
 
 `RemoteActorGatewayTest`, `ActorSessionStateTest`, `BoundSessionTest`는 testkit

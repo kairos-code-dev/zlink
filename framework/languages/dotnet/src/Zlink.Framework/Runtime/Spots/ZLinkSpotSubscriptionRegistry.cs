@@ -1,4 +1,6 @@
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -56,6 +58,8 @@ internal sealed class ZLinkSpotSubscriptionRegistry
     public async ValueTask DrainAsync(
         IZLinkBackendSpot nativeSpot,
         ZLinkCodecRegistryBuilder? codecs,
+        ZLinkDispatchErrorReporter dispatchErrors,
+        ILogger logger,
         Func<ZLinkSpotSubscriptionDescriptor, object?, CancellationToken, ValueTask> dispatchAsync,
         CancellationToken cancellationToken)
     {
@@ -79,23 +83,60 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 return;
             }
 
-            await DispatchMessageAsync(message, codecs, dispatchAsync, cancellationToken).ConfigureAwait(false);
+            await DispatchMessageAsync(message, codecs, dispatchErrors, logger, dispatchAsync, cancellationToken).ConfigureAwait(false);
         }
     }
 
     private async ValueTask DispatchMessageAsync(
         TopicMessage message,
         ZLinkCodecRegistryBuilder? codecs,
+        ZLinkDispatchErrorReporter dispatchErrors,
+        ILogger logger,
         Func<ZLinkSpotSubscriptionDescriptor, object?, CancellationToken, ValueTask> dispatchAsync,
         CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _messageCount);
         LastTopic = message.Topic;
 
-        if (!_descriptorsByTopic.TryGetValue(message.Topic, out var descriptors)
-            || message.Parts.Count == 0)
+        if (message.Parts.Count == 0)
         {
             Interlocked.Increment(ref _ignoreCount);
+            ZLinkMessageFlowLogger.Dropped(
+                logger,
+                LogLevel.Warning,
+                "SpotSubscription",
+                "Publish",
+                "<unknown>",
+                "invalid-frame",
+                channelName: message.Topic);
+            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.SpotSubscription,
+                ZLinkDispatchMessageKind.Publish,
+                ZLinkDispatchErrorReason.InvalidFrame,
+                ZLinkDispatchErrorAction.Drop,
+                null,
+                Topic: message.Topic));
+            return;
+        }
+
+        if (!_descriptorsByTopic.TryGetValue(message.Topic, out var descriptors))
+        {
+            Interlocked.Increment(ref _ignoreCount);
+            ZLinkMessageFlowLogger.Dropped(
+                logger,
+                LogLevel.Debug,
+                "SpotSubscription",
+                "Publish",
+                "<unknown>",
+                "no-handler",
+                channelName: message.Topic);
+            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.SpotSubscription,
+                ZLinkDispatchMessageKind.Publish,
+                ZLinkDispatchErrorReason.HandlerMissing,
+                ZLinkDispatchErrorAction.Drop,
+                null,
+                Topic: message.Topic));
             return;
         }
 
@@ -118,6 +159,23 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         if (!dispatched)
         {
             Interlocked.Increment(ref _ignoreCount);
+            ZLinkMessageFlowLogger.Dropped(
+                logger,
+                LogLevel.Debug,
+                "SpotSubscription",
+                "Publish",
+                header.MessageName,
+                "no-handler",
+                channelName: message.Topic);
+            dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.SpotSubscription,
+                ZLinkDispatchMessageKind.Publish,
+                ZLinkDispatchErrorReason.HandlerMissing,
+                ZLinkDispatchErrorAction.Drop,
+                header.MessageName,
+                Topic: message.Topic,
+                SourceRid: header.Source,
+                CorrelationId: header.CorrelationId));
         }
     }
 }

@@ -171,6 +171,39 @@ framework는 모든 source를 같은 raw monitor API로 보이게 하지 않고,
 source별 구현 차이를 숨긴 typed runtime event surface를 제공하는 편이 더
 자연스럽다.
 
+### 2.4.1 message dispatch error observer
+
+framework message dispatch 단계에서 등록되지 않은 packet, payload decode 실패, handler 예외,
+invalid frame 을 만나면 언어별 runtime 은 같은 의미의 dispatch error event 를 만든다. 이 event 는
+전역 observer 하나로만 전달한다. channel 별 또는 spot 별 observer 는 이 버전의 공개 계약이 아니다.
+사용자가 특정 channel, topic, spot, actor 만 보고 싶으면 event 안의 context 필드로 직접 필터링한다.
+
+request 로 인식한 메시지는 reply path 가 있으면 항상 error reply 로 끝난다. 같은 process 안의 actor
+호출처럼 reply frame 이 없는 경로는 caller future, promise, 또는 task 를 framework error 로 완료한다.
+send, publish, subscription, actor send 같은 one-way 메시지는 reply 를 만들 수 없으므로 drop 하되,
+기본 로그, metric 또는 counter, observer event 를 남긴다.
+
+event 는 원본 native frame 이나 message ownership 을 노출하지 않는 불변 snapshot 이다. 공통 의미는
+아래 필드를 가진다.
+
+| 필드 | 의미 |
+|------|------|
+| `surface` | `Channel`, `RouteMeshChannel`, `SpotRoute`, `SpotSubscription`, `SpotActor`, `StreamSession` |
+| `messageKind` | `Request`, `Send`, `Publish`, `ActorRequest`, `ActorSend` |
+| `reason` | `HandlerMissing`, `PayloadDecodeFailed`, `HandlerException`, `InvalidFrame`, `ReplyPathMissing` |
+| `action` | `ReplyError` 또는 `Drop` |
+| `packetName` | packet/message 이름. 알 수 없으면 언어별 null/optional 값 |
+| `channelName` | channel 또는 route mesh channel 이름 |
+| `topic` | publish/subscription topic |
+| `spotRid` | SPOT routing id |
+| `actorId` | actor id |
+| `sourceRid` | routing source id |
+| `correlationId` | request correlation id 또는 sequence |
+| `exception` | decode 실패나 handler 예외. handler 없음에는 값이 없을 수 있다 |
+
+observer 등록 여부와 관계없이 기본 로그와 metric/counter 는 남아야 한다. observer callback 실패는
+별도 error sink 나 내부 로그로만 기록하고 dispatch loop, error reply 전송, shutdown 을 깨지 않는다.
+
 ### 2.5 public contract와 runtime 구현의 분리 기준
 
 이 기준은 `.NET` framework adapter만을 위한 규칙이 아니다. Java, Node.js,

@@ -19,9 +19,11 @@
 #include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/actors/actor_route_internal_dispatcher.hpp"
 #include "runtime/backend/native_route_backend.hpp"
+#include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
+#include "runtime/spots/spot_runtime.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
 #include <zlink.hpp>
@@ -29,10 +31,13 @@
 #include <atomic>
 #include <chrono>
 #include <future>
+#include <mutex>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -84,6 +89,64 @@ class local_handler_t
     int last_route_event = 0;
     std::string last_route_source;
 };
+
+class dispatch_observer_spot_t final : public zlink::framework::spot_t
+{
+};
+
+class dispatch_observer_actor_t
+{
+};
+
+class recording_dispatch_observer_t : public zlink::framework::message_dispatch_error_observer_t
+{
+  public:
+    explicit recording_dispatch_observer_t (
+      std::vector<zlink::framework::message_dispatch_error_event_t> &events,
+      std::mutex &mutex) :
+        _events (&events),
+        _mutex (&mutex)
+    {
+    }
+
+    void on_dispatch_error (
+      const zlink::framework::message_dispatch_error_event_t &error) override
+    {
+        std::lock_guard lock (*_mutex);
+        _events->push_back (error);
+        throw std::runtime_error ("observer failed");
+    }
+
+  private:
+    std::vector<zlink::framework::message_dispatch_error_event_t> *_events;
+    std::mutex *_mutex;
+};
+
+std::vector<zlink::framework::message_dispatch_error_event_t>
+wait_dispatch_errors (std::vector<zlink::framework::message_dispatch_error_event_t> &events,
+                      std::mutex &mutex,
+                      std::size_t expected)
+{
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        {
+            std::lock_guard lock (mutex);
+            if (events.size () >= expected) {
+                return events;
+            }
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    std::lock_guard lock (mutex);
+    return events;
+}
+
+void clear_dispatch_errors (
+  std::vector<zlink::framework::message_dispatch_error_event_t> &events,
+  std::mutex &mutex)
+{
+    std::lock_guard lock (mutex);
+    events.clear ();
+}
 
 class nested_request_handler_t
 {
@@ -366,6 +429,32 @@ int main ()
 
     zlink::framework::zlink_builder_t local_server;
     local_server.channel ("local").enable_server ().bind ("tcp://127.0.0.1:7401");
+    std::vector<zlink::framework::message_dispatch_error_event_t> dispatch_errors;
+    std::mutex dispatch_errors_mutex;
+    zlink::framework::dispatch_options_t local_dispatch;
+    local_dispatch.set_message_dispatch_error_observer (
+      std::make_shared<recording_dispatch_observer_t> (dispatch_errors, dispatch_errors_mutex));
+    zlink::framework::detail::apply_dispatch_options (local_server, local_dispatch);
+    const auto reported_before_no_observer =
+      zlink::framework::detail::dispatch_error_reporter_t::reported ();
+    zlink::framework::detail::dispatch_error_reporter_t ({})
+      .report (zlink::framework::message_dispatch_error_event_t{
+        zlink::framework::dispatch_error_surface_t::channel,
+        zlink::framework::dispatch_message_kind_t::send,
+        zlink::framework::dispatch_error_reason_t::handler_missing,
+        zlink::framework::dispatch_error_action_t::drop,
+        std::string ("NoObserver"),
+        std::string ("local"),
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        nullptr});
+    if (zlink::framework::detail::dispatch_error_reporter_t::reported ()
+        != reported_before_no_observer + 1) {
+        return 102;
+    }
 
     zlink::framework::service_collection_t services;
     services.add_singleton<local_handler_t> ();
@@ -452,6 +541,23 @@ int main ()
              != zlink::framework::runtime::messaging::message_kind_t::error
         || packet_error_header.value ().error_code.value_or ("") != "handler_not_found") {
         return 21;
+    }
+    auto observed_dispatch_errors =
+      wait_dispatch_errors (dispatch_errors, dispatch_errors_mutex, 1);
+    if (observed_dispatch_errors.size () != 1
+        || observed_dispatch_errors[0].surface
+             != zlink::framework::dispatch_error_surface_t::channel
+        || observed_dispatch_errors[0].message_kind
+             != zlink::framework::dispatch_message_kind_t::request
+        || observed_dispatch_errors[0].reason
+             != zlink::framework::dispatch_error_reason_t::handler_missing
+        || observed_dispatch_errors[0].action
+             != zlink::framework::dispatch_error_action_t::reply_error
+        || observed_dispatch_errors[0].packet_name.value_or ("") != "missing"
+        || observed_dispatch_errors[0].channel_name.value_or ("") != "local"
+        || observed_dispatch_errors[0].topic.value_or ("") != "request"
+        || observed_dispatch_errors[0].correlation_id.value_or ("") != "corr-1") {
+        return 97;
     }
 
     zlink::context_t native_context;
@@ -939,8 +1045,13 @@ int main ()
         return 45;
     }
 
+    clear_dispatch_errors (dispatch_errors, dispatch_errors_mutex);
+    zlink::framework::detail::route_handler_registry_t route_missing_handlers;
+    zlink::framework::detail::no_route_internal_packet_dispatcher_t route_missing_internal;
     zlink::framework::detail::route_receive_pump_t route_pump{
-      zlink::framework::detail::route_packet_dispatcher_t ("game.route")};
+      zlink::framework::detail::route_packet_dispatcher_t (
+        "game.route", provider, serializers, route_missing_handlers, route_missing_internal,
+        local_dispatch)};
     route_pump.enqueue (zlink::framework::detail::route_received_packet_t{
       zlink::routing_id_t::from (std::string ("source-node")), 77, request_parts});
     const auto route_receive = route_pump.drain ();
@@ -957,6 +1068,83 @@ int main ()
         || route_error_header.value ().channel_name != "game.route"
         || route_error_header.value ().error_code.value_or ("") != "route_handler_not_found") {
         return 47;
+    }
+    observed_dispatch_errors = wait_dispatch_errors (dispatch_errors, dispatch_errors_mutex, 1);
+    if (observed_dispatch_errors.size () != 1
+        || observed_dispatch_errors[0].surface
+             != zlink::framework::dispatch_error_surface_t::route_mesh_channel
+        || observed_dispatch_errors[0].message_kind
+             != zlink::framework::dispatch_message_kind_t::request
+        || observed_dispatch_errors[0].reason
+             != zlink::framework::dispatch_error_reason_t::handler_missing
+        || observed_dispatch_errors[0].action
+             != zlink::framework::dispatch_error_action_t::reply_error
+        || observed_dispatch_errors[0].packet_name.value_or ("") != "request"
+        || observed_dispatch_errors[0].channel_name.value_or ("") != "game.route"
+        || observed_dispatch_errors[0].topic.value_or ("") != "request"
+        || observed_dispatch_errors[0].source_rid.value_or ("") != "source-node"
+        || observed_dispatch_errors[0].correlation_id.value_or ("") != "corr-1") {
+        return 98;
+    }
+
+    clear_dispatch_errors (dispatch_errors, dispatch_errors_mutex);
+    zlink::framework::zlink_builder_t spot_builder;
+    auto spot_node = spot_builder.add_spot_node ("spot-node");
+    spot_node.add_spot<dispatch_observer_spot_t> ("room");
+    spot_node.add_actor_factory<dispatch_observer_actor_t> ("TestActor");
+    zlink::framework::detail::apply_dispatch_options (spot_builder, local_dispatch);
+    auto spot_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (spot_builder, "spot-node");
+    if (!spot_runtime) {
+        return 99;
+    }
+    auto created_spot = spot_runtime->create_spot ("room");
+    auto subscription_result =
+      spot_runtime->dispatch_subscription (created_spot.context, "missing-topic",
+                                           zlink::message_t::from (std::string ("12")),
+                                           provider, serializers);
+    observed_dispatch_errors = wait_dispatch_errors (dispatch_errors, dispatch_errors_mutex, 1);
+    if (!subscription_result || observed_dispatch_errors.size () != 1
+        || observed_dispatch_errors[0].surface
+             != zlink::framework::dispatch_error_surface_t::spot_subscription
+        || observed_dispatch_errors[0].message_kind
+             != zlink::framework::dispatch_message_kind_t::publish
+        || observed_dispatch_errors[0].reason
+             != zlink::framework::dispatch_error_reason_t::handler_missing
+        || observed_dispatch_errors[0].action != zlink::framework::dispatch_error_action_t::drop
+        || observed_dispatch_errors[0].topic.value_or ("") != "missing-topic"
+        || observed_dispatch_errors[0].spot_rid.value_or ("") != created_spot.spot_rid.value ()) {
+        return 100;
+    }
+
+    clear_dispatch_errors (dispatch_errors, dispatch_errors_mutex);
+    auto observer_actor_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("spot-node"),
+      "TestActor",
+      "actor-1",
+      1);
+    spot_runtime->record_actor_spot (observer_actor_ref, created_spot.spot_rid);
+    auto actor_dispatch_result =
+      spot_runtime->relay_actor_packet (observer_actor_ref, {}, "MissingActorPacket",
+                                        zlink::message_t::from (std::string ("13")), provider,
+                                        serializers);
+    observed_dispatch_errors = wait_dispatch_errors (dispatch_errors, dispatch_errors_mutex, 1);
+    if (actor_dispatch_result
+        || actor_dispatch_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::handler_not_found
+        || observed_dispatch_errors.size () != 1
+        || observed_dispatch_errors[0].surface
+             != zlink::framework::dispatch_error_surface_t::spot_actor
+        || observed_dispatch_errors[0].message_kind
+             != zlink::framework::dispatch_message_kind_t::actor_request
+        || observed_dispatch_errors[0].reason
+             != zlink::framework::dispatch_error_reason_t::handler_missing
+        || observed_dispatch_errors[0].action
+             != zlink::framework::dispatch_error_action_t::reply_error
+        || observed_dispatch_errors[0].packet_name.value_or ("") != "MissingActorPacket"
+        || observed_dispatch_errors[0].actor_id.value_or ("") != "actor-1"
+        || observed_dispatch_errors[0].spot_rid.value_or ("") != created_spot.spot_rid.value ()) {
+        return 101;
     }
 
     zlink::framework::detail::route_handler_registry_t route_handlers;

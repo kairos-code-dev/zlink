@@ -15,11 +15,15 @@
 namespace zlink::framework
 {
 
+struct dispatch_options_t;
+class zlink_builder_t;
+
 namespace detail
 {
 class channel_runtime_manager_t;
 class spot_node_runtime_t;
 class zlink_builder_state_t;
+void apply_dispatch_options (zlink_builder_t &builder, const dispatch_options_t &options);
 } // namespace detail
 
 class zlink_builder_t
@@ -58,6 +62,8 @@ class zlink_builder_t
     route_client_t route_client (serializer_registry_t &serializers) const;
 
   private:
+    friend void detail::apply_dispatch_options (zlink_builder_t &builder,
+                                                const dispatch_options_t &options);
     friend class detail::channel_runtime_manager_t;
     friend class detail::registry_runtime_t;
     friend class detail::spot_node_runtime_t;

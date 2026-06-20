@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Zlink.Framework.Runtime.Actors;
@@ -6,7 +7,6 @@ using Zlink.Framework.Runtime.Execution;
 using Zlink.Framework.Runtime.Host;
 using Zlink.Framework.Runtime.Messaging;
 using Zlink.Framework.Runtime.Registry;
-using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.Runtime.Channels;
@@ -20,6 +20,10 @@ internal sealed class ZLinkChannelPacketDispatcher(
 {
     private static readonly IReadOnlySet<string> EmptyGroups = new HashSet<string>(StringComparer.Ordinal);
     private readonly ZLinkSpotRouteRelayIngressTransport _spotRouteRelay = new(runtime, registration);
+    private readonly ZLinkDispatchErrorReporter _dispatchErrors = new(
+        registration.DispatchOptions,
+        ResolveServices(runtime),
+        logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
     private readonly ILogger<ZLinkChannelPacketDispatcher> _logger =
         logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance;
     private readonly ZLinkChannelRequestDispatchPipeline _requestPipeline = new(
@@ -27,12 +31,20 @@ internal sealed class ZLinkChannelPacketDispatcher(
         dispatcher,
         channelName => ResolveMappedGroups(registration, channelName),
         registration.Codecs,
+        new ZLinkDispatchErrorReporter(
+            registration.DispatchOptions,
+            ResolveServices(runtime),
+            logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance),
         logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
     private readonly ZLinkChannelCommandDispatchPipeline _commandPipeline = new(
         handlerRegistry,
         dispatcher,
         channelName => ResolveMappedGroups(registration, channelName),
         registration.DispatchOptions.Unhandled.SendLogLevel,
+        new ZLinkDispatchErrorReporter(
+            registration.DispatchOptions,
+            ResolveServices(runtime),
+            logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance),
         registration.Codecs,
         logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
     private readonly ZLinkChannelPublishDispatchPipeline _publishPipeline = new(
@@ -40,6 +52,10 @@ internal sealed class ZLinkChannelPacketDispatcher(
         dispatcher,
         channelName => ResolveMappedGroups(registration, channelName),
         registration.DispatchOptions.Unhandled.PublishLogLevel,
+        new ZLinkDispatchErrorReporter(
+            registration.DispatchOptions,
+            ResolveServices(runtime),
+            logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance),
         registration.Codecs,
         logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
 
@@ -137,6 +153,16 @@ internal sealed class ZLinkChannelPacketDispatcher(
                         "unknown",
                         "unexpected-reply",
                         channelName);
+                    _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                        ZLinkDispatchErrorSurface.DealerMeshChannel,
+                        received.MessageType == ReceivedMessageType.Reply
+                            ? ZLinkDispatchMessageKind.Response
+                            : ZLinkDispatchMessageKind.Error,
+                        ZLinkDispatchErrorReason.UnexpectedReply,
+                        ZLinkDispatchErrorAction.Drop,
+                        "unknown",
+                        ChannelName: channelName,
+                        CorrelationId: received.RequestSeq?.ToString(CultureInfo.InvariantCulture)));
                 }
                 return;
             case ReceivedMessageType.Request:
@@ -208,6 +234,14 @@ internal sealed class ZLinkChannelPacketDispatcher(
                 "header-decode-failed",
                 ex,
                 channelName);
+            _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.DealerMeshChannel,
+                ZLinkDispatchMessageKind.Request,
+                ZLinkDispatchErrorReason.InvalidFrame,
+                ZLinkDispatchErrorAction.Drop,
+                "unknown",
+                ChannelName: channelName,
+                Exception: ex));
             return;
         }
 
@@ -221,6 +255,14 @@ internal sealed class ZLinkChannelPacketDispatcher(
                 header.MessageName,
                 "invalid-request-kind",
                 channelName);
+            _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.DealerMeshChannel,
+                ZLinkDispatchMessageKind.Request,
+                ZLinkDispatchErrorReason.InvalidFrame,
+                ZLinkDispatchErrorAction.Drop,
+                header.MessageName,
+                ChannelName: channelName,
+                CorrelationId: header.CorrelationId));
             return;
         }
 
@@ -265,6 +307,14 @@ internal sealed class ZLinkChannelPacketDispatcher(
                 "header-decode-failed",
                 ex,
                 channelName);
+            _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+                ZLinkDispatchErrorSurface.DealerMeshChannel,
+                ZLinkDispatchMessageKind.Send,
+                ZLinkDispatchErrorReason.InvalidFrame,
+                ZLinkDispatchErrorAction.Drop,
+                "unknown",
+                ChannelName: channelName,
+                Exception: ex));
             return;
         }
 
@@ -288,6 +338,14 @@ internal sealed class ZLinkChannelPacketDispatcher(
             header.MessageName,
             "unsupported-dealer-raw-kind",
             channelName);
+        _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            ZLinkDispatchErrorSurface.DealerMeshChannel,
+            ZLinkDispatchMessageKind.Send,
+            ZLinkDispatchErrorReason.InvalidFrame,
+            ZLinkDispatchErrorAction.Drop,
+            header.MessageName,
+            ChannelName: channelName,
+            CorrelationId: header.CorrelationId));
     }
 
     private static IReadOnlySet<string> ResolveMappedGroups(
@@ -297,6 +355,11 @@ internal sealed class ZLinkChannelPacketDispatcher(
         return registration.Channels.TryGetValue(channelName, out var channel)
             ? channel.HandlerGroups
             : EmptyGroups;
+    }
+
+    private static IServiceProvider ResolveServices(ZLinkFrameworkRuntime? runtime)
+    {
+        return runtime?.Services ?? EmptyServiceProvider.Instance;
     }
 
     private static ulong RequireRequestSeq(Received received)

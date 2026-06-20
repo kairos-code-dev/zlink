@@ -400,6 +400,22 @@ static_assert (
     decltype (std::declval<zlink::framework::zlink_framework_options_t &> ().configure_dispatch ()),
     zlink::framework::dispatch_options_t &>);
 
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::dispatch_options_t &> ()
+                .set_message_dispatch_error_observer (
+                  std::declval<
+                    std::shared_ptr<zlink::framework::message_dispatch_error_observer_t>> ())),
+    zlink::framework::dispatch_options_t &>);
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::dispatch_options_t &> ()
+                .set_message_dispatch_error_observer (
+                  std::declval<std::function<void (
+                    const zlink::framework::message_dispatch_error_event_t &)>> ())),
+    zlink::framework::dispatch_options_t &>);
+
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::http_context_t &> ()
                                           .response_header ("X-Test", "value")),
                               zlink::framework::http_context_t &>);
@@ -529,6 +545,9 @@ static_assert (
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().close ()),
                  zlink::framework::task_t<bool>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().manager ()),
+                 zlink::framework::spot_node_manager_t>);
 static_assert (has_run_worker<zlink::framework::spot_context_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().run_worker (

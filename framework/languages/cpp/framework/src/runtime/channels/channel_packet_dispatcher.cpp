@@ -3,7 +3,10 @@
 #include "runtime/channels/channel_packet_dispatcher.hpp"
 
 #include "runtime/channels/channel_reply_writer.hpp"
+#include "runtime/diagnostics/dispatch_error_reporter.hpp"
 
+#include <exception>
+#include <optional>
 #include <utility>
 
 namespace zlink::framework::detail
@@ -30,6 +33,24 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
     }
     auto body = codec.decode_body (parts);
     if (!body) {
+        dispatch_error_reporter_t (_runtime.dispatch_options ())
+          .report (message_dispatch_error_event_t{
+            dispatch_error_surface_t::channel,
+            header.value ().kind == runtime::messaging::message_kind_t::request
+              ? dispatch_message_kind_t::request
+              : dispatch_message_kind_t::send,
+            dispatch_error_reason_t::payload_decode_failed,
+            header.value ().kind == runtime::messaging::message_kind_t::request
+              ? dispatch_error_action_t::reply_error
+              : dispatch_error_action_t::drop,
+            header.value ().message_name,
+            channel_name,
+            header.value ().topic,
+            std::nullopt,
+            std::nullopt,
+            std::nullopt,
+            header.value ().correlation_id,
+            body.error () ? std::make_exception_ptr (*body.error ()) : std::exception_ptr{}});
         if (header.value ().kind == runtime::messaging::message_kind_t::request) {
             channel_reply_writer_t writer;
             framework_exception_t error (body.error_kind (), body.error ()
@@ -54,6 +75,20 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
             framework_exception_t error (reply.error_kind (), reply.error ()
                                                                 ? reply.error ()->what ()
                                                                 : "channel request failed");
+            dispatch_error_reporter_t (_runtime.dispatch_options ())
+              .report (message_dispatch_error_event_t{
+                dispatch_error_surface_t::channel,
+                dispatch_message_kind_t::request,
+                dispatch_reason_from_error (reply.error_kind ()),
+                dispatch_error_action_t::reply_error,
+                header.value ().message_name,
+                channel_name,
+                header.value ().topic,
+                std::nullopt,
+                std::nullopt,
+                std::nullopt,
+                header.value ().correlation_id,
+                reply.error () ? std::make_exception_ptr (*reply.error ()) : std::exception_ptr{}});
             return result_t<runtime::messaging::message_parts_t>::success (
               writer.reply_raw_envelope (
                 writer.create_error_header (std::move (channel_name), header.value (), error),
@@ -66,13 +101,26 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
     }
 
     if (header.value ().kind == runtime::messaging::message_kind_t::command) {
-        auto result = _runtime.dispatch_send (
-          std::move (channel_name), header.value ().topic.value_or (""),
-          header.value ().message_name, services, serializers, handlers, body.value ());
+        auto result = _runtime.dispatch_send (channel_name, header.value ().topic.value_or (""),
+                                              header.value ().message_name, services, serializers,
+                                              handlers, body.value ());
         if (!result) {
-            return result_t<runtime::messaging::message_parts_t>::failure (
-              result.error_kind (),
-              result.error () ? result.error ()->what () : "channel command failed");
+            dispatch_error_reporter_t (_runtime.dispatch_options ())
+              .report (message_dispatch_error_event_t{
+                dispatch_error_surface_t::channel,
+                dispatch_message_kind_t::send,
+                dispatch_reason_from_error (result.error_kind ()),
+                dispatch_error_action_t::drop,
+                header.value ().message_name,
+                channel_name,
+                header.value ().topic,
+                std::nullopt,
+                std::nullopt,
+                std::nullopt,
+                header.value ().correlation_id,
+                result.error () ? std::make_exception_ptr (*result.error ()) : std::exception_ptr{}});
+            return result_t<runtime::messaging::message_parts_t>::success (
+              runtime::messaging::message_parts_t{});
         }
         return result_t<runtime::messaging::message_parts_t>::success (
           runtime::messaging::message_parts_t{});

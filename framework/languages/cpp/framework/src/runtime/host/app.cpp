@@ -448,7 +448,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             }
         }
         add_hosted_service (
-          std::make_unique<runtime::spot_node_host_service_t> (std::move (spot_node_runtimes)));
+          std::make_unique<runtime::spot_node_host_service_t> (
+            std::move (spot_node_runtimes), _state->zlink.discovery_options ()));
     }
     for (const auto &spot_node : spot_node_snapshot) {
         if (!spot_node.actor_gateway_enabled) {

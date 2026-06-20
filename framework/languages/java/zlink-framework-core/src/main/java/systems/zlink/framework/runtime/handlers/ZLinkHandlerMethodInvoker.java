@@ -76,7 +76,6 @@ public final class ZLinkHandlerMethodInvoker {
         Objects.requireNonNull(handlerType, "handlerType");
         Objects.requireNonNull(methodName, "methodName");
         Object[] args = logicalArguments == null ? new Object[0] : logicalArguments;
-        Method fallback = null;
         for (Method method : handlerType.getMethods()) {
             if (!methodName.equals(method.getName())) {
                 continue;
@@ -88,15 +87,10 @@ public final class ZLinkHandlerMethodInvoker {
             if (argumentsMatch(parameterTypes, args)) {
                 return method;
             }
-            if (fallback == null) {
-                fallback = method;
-            }
-        }
-        if (fallback != null) {
-            return fallback;
         }
         throw new ZLinkConfigurationException(
-            "handler method is not found: " + handlerType.getName() + "." + methodName);
+            "handler method is not found: " + handlerType.getName() + "." + methodName
+                + argumentTypesMessage(args));
     }
 
     public static CompletionStage<Object> invoke(
@@ -111,6 +105,13 @@ public final class ZLinkHandlerMethodInvoker {
                 return CompletableFuture.completedFuture(result);
             } catch (IllegalAccessException | InvocationTargetException ex) {
                 return CompletableFuture.failedFuture(unwrapReflectionFailure(ex));
+            } catch (IllegalArgumentException ex) {
+                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                    "handler method arguments do not match: "
+                        + method.getDeclaringClass().getName()
+                        + "." + method.getName()
+                        + argumentTypesMessage(logicalArguments),
+                    ex));
             }
         }
         Collection<ZLinkSuspendHandlerInvoker> effectiveInvokers =
@@ -160,6 +161,19 @@ public final class ZLinkHandlerMethodInvoker {
             }
         }
         return true;
+    }
+
+    private static String argumentTypesMessage(Object[] arguments) {
+        Object[] args = arguments == null ? new Object[0] : arguments;
+        StringBuilder message = new StringBuilder("(");
+        for (int index = 0; index < args.length; index++) {
+            if (index > 0) {
+                message.append(", ");
+            }
+            Object argument = args[index];
+            message.append(argument == null ? "null" : argument.getClass().getName());
+        }
+        return message.append(")").toString();
     }
 
     private static Class<?> wrapPrimitive(Class<?> type) {

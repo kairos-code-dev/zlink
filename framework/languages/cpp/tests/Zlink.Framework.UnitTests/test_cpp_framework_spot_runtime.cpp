@@ -136,12 +136,16 @@ struct relay_spot_t : public zlink::framework::spot_t
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
 
+    void onLeaveActor (relay_actor_t &) { left_count++; }
+
     relay_reply_t on_relay (relay_actor_t &actor,
                             zlink::framework::spot_actor_request_context_t &,
                             const relay_request_t &request)
     {
         return {actor.actor_id + ":" + std::to_string (request.value)};
     }
+
+    static inline int left_count{};
 };
 
 struct stage_spot_t : public zlink::framework::spot_t
@@ -830,6 +834,7 @@ int main ()
     auto relay_runtime = zlink::framework::detail::spot_node_runtime_t::from (relay_builder);
     const auto routed_actor_ref = zlink::framework::actor_ref_t (
       zlink::framework::node_rid_t::from_string ("play-a"), "relay-player", "routed-actor", 9);
+    relay_spot_t::left_count = 0;
     auto routed_join = relay_runtime.join_remote_actor_to_spot_erased (
       routed_actor_ref, relay_spot.spot_rid, zlink::message_t{});
     if (!routed_join || routed_join.value ().result_code != 0
@@ -840,6 +845,13 @@ int main ()
     const auto routed_instance = relay_runtime.actor_instance<relay_actor_t> (routed_actor_ref);
     if (!routed_instance || routed_instance->get ().actor_id != "routed-actor") {
         return 87;
+    }
+    auto remote_leave =
+      relay_spot.context.leaveActor (routed_join.value ().actor, routed_instance->get ()).result ();
+    if (!remote_leave || remote_leave.value ().node_rid ().value () != "play-a"
+        || relay_spot.context.manager ().current_actor_ref (routed_actor_ref)
+        || relay_runtime.actor_spot (routed_actor_ref) || relay_spot_t::left_count == 0) {
+        return 82;
     }
     zlink::framework::serializer_registry_t route_join_serializers;
     zlink::framework::detail::register_spot_route_packet_serializers (route_join_serializers);

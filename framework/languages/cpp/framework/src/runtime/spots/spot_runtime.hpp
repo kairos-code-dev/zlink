@@ -6,6 +6,7 @@
 #include "runtime/registry/registry_runtime.hpp"
 
 #include <zlink/framework/contracts/actors/actor.hpp>
+#include <zlink/framework/contracts/dispatch/execution.hpp>
 
 #include <cstdint>
 #include <exception>
@@ -40,6 +41,7 @@ class spot_node_builder_state_t
     std::map<std::string, spot_context_t> spot_contexts_by_rid;
     std::weak_ptr<service::spot_node_t> native_node;
     std::shared_ptr<channel_runtime_state_t> channel_runtime;
+    dispatch_options_t dispatch;
     std::shared_ptr<registry_runtime_state_t> registry_runtime;
     std::map<std::string, spot_rid_t> actor_spot_rids;
     std::map<std::string, std::uint64_t> actor_generations;

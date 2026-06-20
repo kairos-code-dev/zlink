@@ -2,6 +2,7 @@ package systems.zlink.samples.bingo.client;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 import systems.zlink.samples.bingo.client.configuration.SampleTimings;
 import systems.zlink.samples.bingo.client.configuration.SampleTopology;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
@@ -17,17 +18,19 @@ public final class Program {
     public static void main(String[] args) throws Exception {
         ZLinkStreamConnector client1 = createClient(SampleTopology.SessionAStreamEndpoint);
         ZLinkStreamConnector client2 = createClient(SampleTopology.SessionBStreamEndpoint);
+        ZLinkStreamConnector observer = createClient(SampleTopology.SessionBStreamEndpoint);
         try {
-            new BingoClientScenario().run(client1, client2);
+            new BingoClientScenario().run(client1, client2, observer);
         } finally {
             client1.close().await();
             client2.close().await();
+            observer.close().await();
         }
-        System.out.println("Bingo client self-check passed");
+        System.out.println("bingo=completed");
     }
 
     private static ZLinkStreamConnector createClient(String endpoint) {
-        return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
+        ZLinkStreamConnector client = ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             URI.create(endpoint),
             ZLinkStreamDispatchMode.AUTO,
             SampleTimings.RequestTimeout,
@@ -42,5 +45,13 @@ public final class Program {
             Duration.ofSeconds(5),
             2.0,
             ZLinkProtobufCodec.defaultCodec()));
+        client.observeInbound(observation -> {
+            System.out.println(
+                "stream-inbound sample=Bingo kind=" + observation.kind()
+                    + " name=" + observation.packetName()
+                    + " bytes=" + observation.payloadLength());
+            return CompletableFuture.completedFuture(null);
+        });
+        return client;
     }
 }

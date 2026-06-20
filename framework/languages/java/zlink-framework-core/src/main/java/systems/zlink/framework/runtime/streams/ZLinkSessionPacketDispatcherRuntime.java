@@ -12,6 +12,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
+import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
@@ -23,15 +24,18 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
     private final Map<String, Object> handlers;
     private final ZLinkMessageSerializer serializer;
     private final Executor handlerExecutor;
+    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
 
     ZLinkSessionPacketDispatcherRuntime(
         List<Class<?>> handlerTypes,
         ZLinkHandlerFactory handlerFactory,
         ZLinkMessageSerializer serializer,
-        Executor handlerExecutor) {
+        Executor handlerExecutor,
+        List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers) {
         this.handlers = buildHandlerMap(handlerTypes, handlerFactory);
         this.serializer = java.util.Objects.requireNonNull(serializer, "serializer");
         this.handlerExecutor = java.util.Objects.requireNonNull(handlerExecutor, "handlerExecutor");
+        this.suspendHandlerInvokers = java.util.List.copyOf(suspendHandlerInvokers);
     }
 
     @Override
@@ -52,14 +56,14 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
         if (messageType != null) {
             Object decoded = serializer.deserialize(payload, messageType);
             return executeHandler(() -> ZLinkHandlerMethodInvoker
-                .invokeHandler(handler, "handle", new Object[] {context, header, decoded}, List.of())
+                .invokeHandler(handler, "handle", new Object[] {context, header, decoded}, suspendHandlerInvokers)
                 .thenApply(ignored -> null))
                 .thenApply(ignored -> true);
         }
         return executeHandler(() ->
             ZLinkHandlerMethodInvoker
-                .invokeHandler(handler, "handle", new Object[] {context, header, payload}, List.of())
-                .thenApply(ignored -> null))
+                .invokeHandler(handler, "handle", new Object[] {context, header, payload}, suspendHandlerInvokers)
+            .thenApply(ignored -> null))
             .thenApply(ignored -> true);
     }
 
@@ -73,7 +77,7 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
             (ZLinkTypedSessionPacketHandler<TSessionContext, Object>) handler;
         Object decoded = serializer.deserialize(payload, typed.messageType());
         return ZLinkHandlerMethodInvoker
-            .invokeHandler(typed, "handle", new Object[] {context, header, decoded}, List.of())
+            .invokeHandler(typed, "handle", new Object[] {context, header, decoded}, suspendHandlerInvokers)
             .thenApply(ignored -> null);
     }
 

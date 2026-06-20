@@ -2,10 +2,10 @@ package systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.handlers
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.messaging.Message
+import systems.zlink.framework.spots.ZLinkSpotCreateState
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomSettings
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.BingoRoomSpot
@@ -13,18 +13,15 @@ import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.Bingo
 class BingoRoomDirectory(
     private val spots: ZLinkSpotManager,
     private val json: ObjectMapper,
+    private val matchQueue: BingoMatchQueue,
 ) {
-    private val gate = Mutex()
-    private val actorAllocations = mutableMapOf<String, RoomAllocation>()
-    private var currentRoomId: String? = null
-    private var currentRoomSettings: BingoRoomSettings? = null
-    private var reservedSeats: Int = 0
     private var roomSeq: Int = 0
 
     suspend fun allocate(
         actorId: String,
         mode: String,
-    ): String {
+        preferredOwnerNodeRid: String,
+    ): BingoMatchReservation {
         if (actorId.isBlank()) {
             throw IllegalStateException("actorId is required")
         }
@@ -32,43 +29,43 @@ class BingoRoomDirectory(
             throw IllegalStateException("Unsupported bingo mode. mode=$mode")
         }
 
-        var settings: BingoRoomSettings? = null
-        val roomId = gate.withLock {
-            actorAllocations[actorId]?.also { allocation ->
-                settings = allocation.settings
-            }?.roomId ?: run {
-                var nextSettings = BingoRoomSettings.create(mode, roomSeq + 1)
-                if (
-                    currentRoomId == null ||
-                    currentRoomSettings == null ||
-                    currentRoomSettings?.mode != nextSettings.mode ||
-                    reservedSeats >= currentRoomSettings!!.requiredPlayers
-                ) {
-                    nextSettings = BingoRoomSettings.create(mode, ++roomSeq)
-                    currentRoomId = "bingo-room-%03d".format(roomSeq)
-                    currentRoomSettings = nextSettings
-                    reservedSeats = 0
-                }
-                settings = nextSettings
-                reservedSeats++
-                currentRoomId!!.also {
-                    actorAllocations[actorId] = RoomAllocation(it, nextSettings)
-                }
-            }
+        val settings = BingoRoomSettings.create(mode, nextRoomSeq())
+        val reservation = matchQueue.reserve(
+            mode,
+            actorId,
+            preferredOwnerNodeRid,
+            "${settings.mode}-room-$roomSeq",
+            settings.requiredPlayers,
+        )
+        if (reservation.ownerPlayNodeRid != SampleTopology.selectedPlayNodeRid()) {
+            println(
+                "bingo room allocation: remote owner. room=${reservation.roomId}, " +
+                    "owner=${reservation.ownerPlayNodeRid}, local=${SampleTopology.selectedPlayNodeRid()}",
+            )
+            return reservation
         }
 
         val settingsPart = Message.from(json.writeValueAsBytes(settings))
         return try {
-            spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(roomId), settingsPart)
+            val created = spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(reservation.roomId), settingsPart)
                 .await()
-            roomId
+            check(created.state() != ZLinkSpotCreateState.REJECTED) {
+                "Bingo room creation was rejected. room=${reservation.roomId}"
+            }
+            println(
+                "bingo room allocation: local owner. room=${reservation.roomId}, " +
+                    "owner=${reservation.ownerPlayNodeRid}, local=${SampleTopology.selectedPlayNodeRid()}, " +
+                    "state=${created.state()}",
+            )
+            reservation
         } finally {
             settingsPart.close()
         }
     }
 
-    private data class RoomAllocation(
-        val roomId: String,
-        val settings: BingoRoomSettings,
-    )
+    @Synchronized
+    private fun nextRoomSeq(): Int {
+        roomSeq += 1
+        return roomSeq
+    }
 }

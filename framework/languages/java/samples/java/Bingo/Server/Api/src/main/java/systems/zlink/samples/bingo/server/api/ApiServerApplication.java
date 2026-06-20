@@ -4,6 +4,7 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -41,6 +42,7 @@ public final class ApiServerApplication {
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
             route.enableClient(SampleTopology.PlayARouteEndpoint);
             route.enableClient(SampleTopology.PlayBRouteEndpoint);
+            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.selectedApiRouteRid()));
         };
     }
 }

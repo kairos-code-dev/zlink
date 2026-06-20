@@ -64,7 +64,9 @@ public final class PlayServerApplication {
                 .useRegistrySpotResolver()
                 .addNode(SampleTopology.selectedPlayNodeRid());
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
-                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
+                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
+                .connectRouter(SampleTopology.SessionARouterEndpoint)
+                .connectRouter(SampleTopology.SessionBRouterEndpoint);
             node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint())
                 .setPubSubRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             node.attachChannelClient(SampleNames.ApiChannel);

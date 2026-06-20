@@ -40,8 +40,6 @@ class session_server_host_factory_t
                                                 authenticate_player_res_t,
                                                 ensure_player_actor_req_t,
                                                 ensure_player_actor_res_t,
-                                                remote_actor_packet_req_t,
-                                                remote_actor_packet_res_t,
                                                 match_bingo_req_t,
                                                 match_bingo_res_t,
                                                 submit_bingo_card_req_t,
@@ -65,13 +63,15 @@ class session_server_host_factory_t
               .enable_client (topology.session_node == "b" ? topology.play_b_route_endpoint
                                                            : topology.play_a_route_endpoint);
             options.add_spot_mesh (sample_names_t::room_spot_discovery)
+              .use_registry_spot_resolver (sample_names_t::play_route_channel)
               .add_node (sample_names_t::session_spot_node)
               .enable_router (topology.session_router_endpoint, topology.session_router_rid)
+              .enable_actor_gateway ()
               .enable_pub_sub (topology.session_spot_endpoint, topology.session_pub_rid);
             options.add_stream_node (sample_names_t::stream_node)
               .bind (topology.selected_stream_endpoint ())
               .register_session<bingo_session_t> ()
-              .attach_actor_gateway (topology.preferred_play_node_rid ());
+              .attach_actor_gateway (sample_names_t::session_spot_node);
         });
         return app;
     }

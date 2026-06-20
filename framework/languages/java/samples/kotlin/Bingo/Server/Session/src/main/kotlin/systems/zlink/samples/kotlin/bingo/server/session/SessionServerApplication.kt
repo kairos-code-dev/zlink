@@ -5,9 +5,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
-import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.samples.kotlin.bingo.server.session.sessions.BingoSession
 import systems.zlink.samples.kotlin.bingo.server.session.sessions.handlers.AuthenticateSessionHandler
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
@@ -26,27 +26,29 @@ class SessionServerApplication {
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(SessionServerApplication::class.java)
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            options.codecs().addJson()
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
-            options.addClientServerChannel(SampleNames.PlayChannel)
-                .enableClient()
-            val route = options.addRouteMeshChannel(SampleNames.RoomRouteChannel)
-            route.enableServer(SampleTopology.SessionRouteEndpoint)
-            route.enableClient(SampleTopology.PlayRouteEndpoint)
-            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.SessionRouterRid))
-            options.useRegistrySpotRemoteAddresses(SampleNames.RoomSpotDiscovery)
-                .setRouterChannelId(SampleNames.RoomRouteChannel)
+            val route = options.addRouteMeshChannel(SampleNames.PlayChannel)
+            route.enableServer(SampleTopology.selectedSessionRouteEndpoint())
+            route.enableClient(
+                if (SampleTopology.SessionNode == "b") {
+                    SampleTopology.PlayBRouteEndpoint
+                } else {
+                    SampleTopology.PlayARouteEndpoint
+                },
+            )
+            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()))
             val node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
                 .addNode(SampleNames.SessionSpotNode)
-            node.enableRouter(SampleTopology.SessionRouterEndpoint)
-                .setRouterRoutingId(RoutingId.from(SampleTopology.SessionRouterRid))
-            node.enablePubSub(SampleTopology.SessionSpotEndpoint)
-                .setPubSubRoutingId(RoutingId.from(SampleTopology.SessionPubRid))
-            node.acceptSpotRoutesFromChannel(SampleNames.RoomRouteChannel)
+            node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
+                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()))
+                .connectRouter(SampleTopology.PlayASpotRouterEndpoint)
+                .connectRouter(SampleTopology.PlayBSpotRouterEndpoint)
             options.addStreamNode(SampleNames.StreamNode)
                 .attachActorGateway(SampleNames.SessionSpotNode)
-                .bind(SampleTopology.StreamEndpoint)
+                .bind(SampleTopology.selectedStreamEndpoint())
                 .registerSession(BingoSession::class.java)
                 .addSessionPacketHandler(AuthenticateSessionHandler::class.java)
         }

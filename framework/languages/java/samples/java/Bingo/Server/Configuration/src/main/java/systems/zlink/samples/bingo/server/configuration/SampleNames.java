@@ -9,6 +9,7 @@ public final class SampleNames {
     public static final String RoomSpotNode = "bingo.room.node";
     public static final String RoomSpotDiscovery = "bingo.rooms";
     public static final String RoomRouteChannel = "bingo.rooms.route";
+    public static final String WinnerTopic = "bingo.room.reward";
 
     private SampleNames() {
     }

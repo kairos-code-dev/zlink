@@ -389,7 +389,7 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
         return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
           framework_error_kind_t::actor_route_not_found, "actor ref is empty"));
     }
-    std::lock_guard<std::recursive_mutex> node_lock (_state->node->mutex);
+    std::unique_lock<std::recursive_mutex> node_lock (_state->node->mutex);
     const auto key =
       std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ());
     const auto found_location = _state->node->actor_spot_rids.find (key);
@@ -419,6 +419,7 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
             const auto source_admission = source_state.actor_admissions.find (actor_type);
             if (source_admission != source_state.actor_admissions.end ()
                 && source_admission->second.onLeaveActor && source_state.spot_instance) {
+                node_lock.unlock ();
                 if (!source_state.run_serial_sync ("spot-lifecycle-leave", [&] {
                         source_admission->second.onLeaveActor (source_state.spot_instance.get (),
                                                               actor);
@@ -426,6 +427,7 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
                     return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
                       framework_error_kind_t::request_rejected, "spot serial queue is full"));
                 }
+                node_lock.lock ();
             }
             return task_t<actor_ref_t> (result_t<actor_ref_t>::success (actor_ref));
         }
@@ -471,12 +473,14 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
         const auto source_left = source_state.onLeaveActor_callbacks.find (actor_type);
         if (source_left != source_state.onLeaveActor_callbacks.end ()
             && source_state.spot_instance) {
+            node_lock.unlock ();
             if (!source_state.run_serial_sync ("spot-lifecycle-leave", [&] {
                     source_left->second (source_state.spot_instance.get (), actor);
                 })) {
                 return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
                   framework_error_kind_t::request_rejected, "spot serial queue is full"));
             }
+            node_lock.lock ();
         }
 
         auto &entry_state = *entry_context->second._state;
@@ -505,12 +509,14 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
 
         const auto entry_joined = entry_state.on_actor_joined_callbacks.find (actor_type);
         if (entry_joined != entry_state.on_actor_joined_callbacks.end () && entry_state.spot_instance) {
+            node_lock.unlock ();
             if (!entry_state.run_serial_sync ("spot-lifecycle-join", [&] {
                     entry_joined->second (entry_state.spot_instance.get (), actor);
                 })) {
                 return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
                   framework_error_kind_t::request_rejected, "spot serial queue is full"));
             }
+            node_lock.lock ();
         }
         return task_t<actor_ref_t> (result_t<actor_ref_t>::success (committed));
     }
@@ -1586,15 +1592,16 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
     }
 
     const auto key = actor_key (actor_ref);
-    auto &actor_instance = _state->actor_instances[key];
-    if (!actor_instance) {
-        actor_instance =
+    auto &actor_instance_slot = _state->actor_instances[key];
+    if (!actor_instance_slot) {
+        actor_instance_slot =
           found_factory->second.create_instance (std::string (actor_ref.actor_id ()));
-        if (!actor_instance) {
+        if (!actor_instance_slot) {
             return result_t<std::optional<zlink::message_t>>::failure (
               framework_error_kind_t::actor_route_not_found, "actor factory returned null");
         }
     }
+    auto actor_instance = actor_instance_slot;
     found_factory->second.configure_instance (actor_instance.get (), actor_ref, &actor_context);
 
     auto found_location = _state->actor_spot_rids.find (key);

@@ -9,6 +9,8 @@ import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.actors.Play
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.BingoEntrySpot
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
+import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoGameStartedNotify
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoApiReq
@@ -35,6 +37,7 @@ class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
                 actor.actorId(),
                 actor.displayName,
                 request.mode,
+                SampleTopology.selectedPlayNodeRid(),
             ),
         )
             .timeout(SampleTimings.RequestTimeout)
@@ -50,6 +53,7 @@ class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
                     matched.roomId,
                     actor.actorId(),
                     actor.displayName,
+                    false,
                 ),
             )
             .timeout(SampleTimings.RequestTimeout)
@@ -58,6 +62,13 @@ class MatchBingoActorHandler() : ZLinkSuspendingEntrySpotActorRequestHandler<
         if (cancellationToken.isCancellationRequested) {
             throw IllegalStateException("MatchBingoReq was cancelled")
         }
-        return MatchBingoRes(matched.roomId, joined.reply().state)
+        if (joined.reply().state.status == "Running") {
+            actor.context()
+                .boundSession()
+                .send(BingoGameStartedNotify(joined.reply().state))
+                .submit()
+                .await()
+        }
+        return MatchBingoRes(matched.roomId, joined.reply().state, matched.roomOwnerNodeRid)
     }
 }

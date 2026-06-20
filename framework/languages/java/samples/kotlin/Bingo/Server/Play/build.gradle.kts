@@ -25,6 +25,7 @@ dependencies {
     implementation("systems.zlink:zlink:6.0.4")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.2")
+    implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
     implementation("org.springframework.boot:spring-boot-starter:3.5.14")
     implementation("io.netty:netty-buffer:4.1.100.Final")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")

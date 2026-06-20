@@ -40,6 +40,7 @@ class bingo_client_scenario_t
         try {
             const std::vector<int> client1_card_numbers{1, 2, 3, 4, 0, 6, 7, 8, 9};
             const std::vector<int> client2_card_numbers{10, 11, 12, 13, 0, 14, 4, 5, 6};
+            constexpr int expected_draw_count = 3;
 
             trace ("connect client1");
             co_await client1.connect ().async ();
@@ -178,11 +179,74 @@ class bingo_client_scenario_t
                 }
                 return result.value ();
             });
+            auto client1_ended_future = std::async (std::launch::async, [&client1] {
+                auto result = client1.wait_for<game_ended_notify_t> ().async ().result ();
+                if (!result) {
+                    throw std::runtime_error ("client1 game ended wait failed");
+                }
+                return result.value ();
+            });
+            auto client2_ended_future = std::async (std::launch::async, [&client2] {
+                auto result = client2.wait_for<game_ended_notify_t> ().async ().result ();
+                if (!result) {
+                    throw std::runtime_error ("client2 game ended wait failed");
+                }
+                return result.value ();
+            });
+            std::vector<std::future<number_drawn_notify_t>> client1_draw_futures;
+            std::vector<std::future<number_drawn_notify_t>> client2_draw_futures;
+            for (int draw_seq = 1; draw_seq <= expected_draw_count; ++draw_seq) {
+                client1_draw_futures.push_back (
+                  std::async (std::launch::async, [&client1, draw_seq] {
+                      auto result =
+                        client1.wait_for<number_drawn_notify_t> ()
+                          .where (&number_drawn_notify_t::draw_seq, draw_seq)
+                          .async ()
+                          .result ();
+                      if (!result) {
+                          throw std::runtime_error ("client1 draw notify wait failed");
+                      }
+                      return result.value ();
+                  }));
+                client2_draw_futures.push_back (
+                  std::async (std::launch::async, [&client2, draw_seq] {
+                      auto result =
+                        client2.wait_for<number_drawn_notify_t> ()
+                          .where (&number_drawn_notify_t::draw_seq, draw_seq)
+                          .async ()
+                          .result ();
+                      if (!result) {
+                          throw std::runtime_error ("client2 draw notify wait failed");
+                      }
+                      return result.value ();
+                  }));
+            }
             auto client1_card =
               co_await client1.request (submit_bingo_card_req_t{room_id, client1_card_numbers})
                 .async<submit_bingo_card_res_t> ();
             trace ("wait reward announcement");
             auto reward = reward_future.get ();
+            std::vector<number_drawn_notify_t> drawn_numbers;
+            for (int draw_seq = 1; draw_seq <= expected_draw_count; ++draw_seq) {
+                auto client1_drawn = client1_draw_futures[draw_seq - 1].get ();
+                auto client2_drawn = client2_draw_futures[draw_seq - 1].get ();
+                drawn_numbers.push_back (client1_drawn);
+                ensure (client1_drawn.draw_seq == draw_seq);
+                ensure (client2_drawn.draw_seq == draw_seq);
+                ensure (client2_drawn.number == client1_drawn.number);
+            }
+            ensure (drawn_numbers.size () == expected_draw_count);
+            ensure (drawn_numbers.back ().state.status == bingo_room_status_t::finished);
+            auto client1_ended = client1_ended_future.get ();
+            auto client2_ended = client2_ended_future.get ();
+            ensure (client1_ended.state.status == bingo_room_status_t::finished);
+            ensure (client2_ended.state.status == bingo_room_status_t::finished);
+            ensure (client2_ended.state.drawn_numbers == client1_ended.state.drawn_numbers);
+            ensure (client2_ended.state.winners == client1_ended.state.winners);
+            ensure (client1_ended.state.drawn_numbers.size () == drawn_numbers.size ());
+            for (std::size_t index = 0; index < drawn_numbers.size (); ++index) {
+                ensure (client1_ended.state.drawn_numbers[index] == drawn_numbers[index].number);
+            }
             ensure (client1_card.state.status == bingo_room_status_t::finished);
             ensure (std::all_of (
               client1_card.state.players.begin (), client1_card.state.players.end (),
@@ -205,12 +269,10 @@ class bingo_client_scenario_t
             auto stopped =
               co_await observer.request (stop_observing_bingo_events_req_t{room_id})
                 .async<stop_observing_bingo_events_res_t> ();
+            trace ("stop observing completed");
             ensure (stopped.stopped);
             ensure (stopped.observer_node_rid == observed.observer_node_rid);
 
-            co_await client1.close ().async ();
-            co_await client2.close ().async ();
-            co_await observer.close ().async ();
             co_return true;
         }
         catch (const std::exception &ex) {

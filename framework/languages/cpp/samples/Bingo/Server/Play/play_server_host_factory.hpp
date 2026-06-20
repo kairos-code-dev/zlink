@@ -14,30 +14,12 @@
 #include "Adapters/ZLink/Spots/bingo_room_spot.hpp"
 #include "Application/RoomAllocation/bingo_room_allocator.hpp"
 
-#include <zlink/framework/extensions/remote_actor_packet_handler.hpp>
 #include <zlink/codecs/protobuf.hpp>
 
 #include <memory>
 
 namespace zlink::samples::bingo
 {
-
-using remote_actor_packet_handler_t =
-  zlink::framework::extensions::remote_actor_packet_handler_t<player_actor_t,
-                                                              remote_actor_packet_req_t,
-                                                              remote_actor_packet_res_t>;
-
-class bingo_entry_spot_manager_service_t final : public zlink::framework::hosted_service_t
-{
-  public:
-    void start (zlink::framework::service_provider_t &provider) override
-    {
-        bingo_entry_spot_t::use_spot_manager (
-          provider.get_required<zlink::framework::spot_node_manager_t> ());
-    }
-
-    void stop () noexcept override {}
-};
 
 class play_server_host_factory_t
 {
@@ -64,13 +46,10 @@ class play_server_host_factory_t
               .add_singleton<bingo_room_allocator_t, bingo_match_queue_t> ();
             options.handlers ()
               .add<allocate_bingo_room_handler_t> ("play")
-              .add<ensure_player_actor_handler_t> ("play")
-              .add<remote_actor_packet_handler_t> ("play");
+              .add<ensure_player_actor_handler_t> ("play");
             options.codecs ().use (
               zlink::framework_codecs::protobuf<ensure_player_actor_req_t,
                                                 ensure_player_actor_res_t,
-                                                remote_actor_packet_req_t,
-                                                remote_actor_packet_res_t,
                                                 allocate_bingo_room_req_t,
                                                 allocate_bingo_room_res_t,
                                                 match_bingo_api_req_t,
@@ -113,15 +92,12 @@ class play_server_host_factory_t
               .enable_actor_gateway ()
               .enable_pub_sub (topology.selected_play_spot_endpoint (),
                                zlink::routing_id_t::from (topology.selected_play_node_rid ()))
-              .connect_peer_pub (topology.play_node == "b" ? topology.play_a_spot_endpoint
-                                                            : topology.play_b_spot_endpoint)
               .accept_routes_from_channel (sample_names_t::play_route_channel)
               .attach_channel_client (sample_names_t::api_channel)
               .add_entry_spot<bingo_entry_spot_t> ()
               .add_spot<bingo_room_spot_t> (sample_names_t::room_spot)
               .add_actor_factory<player_actor_factory_t> (sample_names_t::player_actor_type);
         });
-        app.add_hosted_service (std::make_unique<bingo_entry_spot_manager_service_t> ());
         return app;
     }
 };

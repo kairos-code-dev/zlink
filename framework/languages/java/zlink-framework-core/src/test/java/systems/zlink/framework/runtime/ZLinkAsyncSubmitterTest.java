@@ -4,6 +4,7 @@ import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOption
 
 import systems.zlink.framework.runtime.backend.*;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,6 +18,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.CloseResult;
+import systems.zlink.contracts.errors.ZlinkCloseException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -80,6 +83,18 @@ final class ZLinkAsyncSubmitterTest {
             CompletionException.class,
             pending::join);
         assertInstanceOf(ZLinkConfigurationException.class, error.getCause());
+    }
+
+    @Test
+    void close_ignoresBackendCloseExceptionDuringRuntimeShutdown() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile"); };
+
+        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(
+            options,
+            new CloseFailureBackend());
+
+        assertDoesNotThrow(runtime::close);
     }
 
     private static class NoReplyBackend implements ZLinkBackendAdapterFactory, ZLinkChannelBackendAdapter {
@@ -156,7 +171,14 @@ final class ZLinkAsyncSubmitterTest {
         }
     }
 
-    private static final class NoReplyDealer implements ZLinkBackendDealerSocket {
+    private static final class CloseFailureBackend extends NoReplyBackend {
+        @Override
+        public ZLinkBackendDealerSocket createDealerSocket(ZLinkBackendContext context) {
+            return new CloseFailureDealer();
+        }
+    }
+
+    private static class NoReplyDealer implements ZLinkBackendDealerSocket {
         @Override public String name() { return "dealer"; }
         @Override public void bind(String endpoint) { }
         @Override public void connect(String endpoint) { }
@@ -173,6 +195,12 @@ final class ZLinkAsyncSubmitterTest {
         }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return null; }
         @Override public void close() { }
+    }
+
+    private static final class CloseFailureDealer extends NoReplyDealer {
+        @Override public void close() {
+            throw new ZlinkCloseException(CloseResult.SHUTDOWN);
+        }
     }
 
     private static final class BlockingPublisher implements ZLinkBackendPublisherSocket {

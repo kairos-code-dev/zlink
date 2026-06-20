@@ -25,47 +25,37 @@ public final class MatchBingoActorHandler
         ZLinkSpotActorRequestContext context,
         Messages.MatchBingoReq request,
         CancellationToken cancellationToken) {
-        Messages.MatchBingoApiRes matched;
-        try {
-            System.out.println("bingo match: api request actor=" + actor.actorId());
-            matched = entrySpot.context().outbound().requestToChannel(
-                    SampleNames.ApiChannel,
-                    new Messages.MatchBingoApiReq(
-                        actor.actorId(),
-                        actor.displayName(),
-                        request.mode(),
-                        SampleTopology.selectedPlayNodeRid()))
-                .timeout(SampleTimings.RequestTimeout)
-                .await(Messages.MatchBingoApiRes.class);
-            System.out.println("bingo match: allocated room=" + matched.roomId());
-        } catch (RuntimeException ex) {
-            ex.printStackTrace(System.out);
-            throw ex;
-        }
+        Messages.MatchBingoApiRes matched = entrySpot.context().outbound().requestToChannel(
+                SampleNames.ApiChannel,
+                new Messages.MatchBingoApiReq(
+                    actor.actorId(),
+                    actor.displayName(),
+                    request.mode(),
+                    SampleTopology.selectedPlayNodeRid()))
+            .timeout(SampleTimings.RequestTimeout)
+            .await(Messages.MatchBingoApiRes.class);
 
         if (cancellationToken.isCancellationRequested()) {
             throw new IllegalStateException("MatchBingoReq was cancelled");
         }
-        ZLinkActorJoinResult<Messages.BingoRoomJoinRes> joined;
-        try {
-            System.out.println("bingo match: join room=" + matched.roomId() + " actor=" + actor.actorId());
-            joined = actor.context()
-                .joinSpot(
-                    RoutingId.from(matched.roomId()),
-                    new Messages.BingoRoomJoinReq(
-                        matched.roomId(),
-                        actor.actorId(),
-                        actor.displayName(),
-                        false))
-                .timeout(SampleTimings.RequestTimeout)
-                .await(Messages.BingoRoomJoinRes.class);
-            System.out.println("bingo match: joined room=" + matched.roomId() + " actor=" + actor.actorId());
-        } catch (RuntimeException ex) {
-            ex.printStackTrace(System.out);
-            throw ex;
-        }
+        ZLinkActorJoinResult<Messages.BingoRoomJoinRes> joined = actor.context()
+            .joinSpot(
+                RoutingId.from(matched.roomId()),
+                new Messages.BingoRoomJoinReq(
+                    matched.roomId(),
+                    actor.actorId(),
+                    actor.displayName(),
+                    false))
+            .timeout(SampleTimings.RequestTimeout)
+            .await(Messages.BingoRoomJoinRes.class);
         if (cancellationToken.isCancellationRequested()) {
             throw new IllegalStateException("MatchBingoReq was cancelled");
+        }
+        if (joined.reply().state().status().equals("Running")) {
+            actor.context()
+                .boundSession()
+                .send(new Messages.BingoGameStartedNotify(joined.reply().state()))
+                .await();
         }
         return new Messages.MatchBingoRes(
             matched.roomId(),

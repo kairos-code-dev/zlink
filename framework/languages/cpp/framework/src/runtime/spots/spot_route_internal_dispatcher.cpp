@@ -64,7 +64,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             metadata.values = request.metadata;
             service_collection_t services;
             auto provider = services.build_provider ();
-            auto relayed = runtime.relay_actor_packet (
+            auto relayed = runtime.manager ().relay_actor_packet (
               actor_ref, _actor_gateway.actor_context (actor_ref), request.packet_name_value,
               zlink::message_t::from (request.payload), provider, *_serializers, std::move (metadata));
             if (!relayed) {
@@ -72,7 +72,13 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                   relayed.error_kind (),
                   relayed.error () ? relayed.error ()->what () : "remote actor packet failed");
             }
+            auto current_actor_ref = runtime.current_actor_ref (actor_ref).value_or (actor_ref);
             auto reply = spot_actor_packet_route_reply_t{
+              .actor_ref_present = true,
+              .actor_node_rid = std::string (current_actor_ref.node_rid ().value ()),
+              .actor_type = std::string (current_actor_ref.actor_type ()),
+              .actor_id = std::string (current_actor_ref.actor_id ()),
+              .actor_generation = current_actor_ref.generation (),
               .has_reply = relayed.value ().has_value (),
               .payload = relayed.value () ? relayed.value ()->to_bytes ()
                                           : std::vector<std::uint8_t>{}};

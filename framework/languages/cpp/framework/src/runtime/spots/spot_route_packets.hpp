@@ -51,6 +51,11 @@ struct spot_actor_packet_route_request_t
 
 struct spot_actor_packet_route_reply_t
 {
+    bool actor_ref_present = false;
+    std::string actor_node_rid;
+    std::string actor_type;
+    std::string actor_id;
+    std::uint64_t actor_generation = 0;
     bool has_reply = false;
     std::vector<std::uint8_t> payload;
 };

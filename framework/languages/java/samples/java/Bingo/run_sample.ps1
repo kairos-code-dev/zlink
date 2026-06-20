@@ -9,7 +9,7 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LogDir "*.log")
 
 $Gradle = if ($IsWindows) { Join-Path $SampleDir "../../gradlew.bat" } else { Join-Path $SampleDir "../../gradlew" }
-$RolePattern = "systems\.zlink\.samples\.bingo\.(server\.(registry|api|play|session)\.Program|client\.Program|probe\.Program)"
+$RolePattern = "systems\.zlink\.samples\.bingo\.(server\.(registry|api|play|session)\.Program|client\.Program)"
 $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
 $RedisContainer = $null
 
@@ -103,28 +103,43 @@ function Invoke-Gradle {
 }
 
 function Start-GradleRole {
-    param([string[]]$Arguments, [string]$LogName)
+    param([string[]]$Arguments, [string]$LogName, [string]$JavaToolOptions)
     $logPath = Join-Path $LogDir $LogName
     $errorLogPath = Join-Path $LogDir ($LogName + ".err.log")
-    $process = Start-Process -FilePath $Gradle -ArgumentList $Arguments -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -PassThru
-    $Processes.Add($process)
+    $previous = $env:JAVA_TOOL_OPTIONS
+    try {
+        $env:JAVA_TOOL_OPTIONS = $JavaToolOptions
+        $process = Start-Process -FilePath $Gradle -ArgumentList $Arguments -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -PassThru
+        $Processes.Add($process)
+    } finally {
+        $env:JAVA_TOOL_OPTIONS = $previous
+    }
 }
 
 $Status = 1
 $oldJavaToolOptions = $env:JAVA_TOOL_OPTIONS
 try {
-    $endpoints = Reserve-Endpoints 11
+    $endpoints = Reserve-Endpoints 21
     $registryPub = Split-Endpoint $endpoints[0]
     $registryRouter = Split-Endpoint $endpoints[1]
-    $apiChannel = Split-Endpoint $endpoints[2]
-    $playChannel = Split-Endpoint $endpoints[3]
-    $sessionSpot = Split-Endpoint $endpoints[4]
-    $sessionRouter = Split-Endpoint $endpoints[5]
-    $playSpot = Split-Endpoint $endpoints[6]
-    $playRouter = Split-Endpoint $endpoints[7]
-    $sessionRoute = Split-Endpoint $endpoints[8]
-    $playRoute = Split-Endpoint $endpoints[9]
-    $stream = Split-Endpoint $endpoints[10]
+    $apiAChannel = Split-Endpoint $endpoints[2]
+    $playAChannel = Split-Endpoint $endpoints[3]
+    $sessionASpot = Split-Endpoint $endpoints[4]
+    $sessionARouter = Split-Endpoint $endpoints[5]
+    $playASpot = Split-Endpoint $endpoints[6]
+    $playARouter = Split-Endpoint $endpoints[7]
+    $sessionARoute = Split-Endpoint $endpoints[8]
+    $playARoute = Split-Endpoint $endpoints[9]
+    $sessionAStream = Split-Endpoint $endpoints[10]
+    $apiBChannel = Split-Endpoint $endpoints[11]
+    $playBChannel = Split-Endpoint $endpoints[12]
+    $sessionBSpot = Split-Endpoint $endpoints[13]
+    $sessionBRouter = Split-Endpoint $endpoints[14]
+    $playBSpot = Split-Endpoint $endpoints[15]
+    $playBRouter = Split-Endpoint $endpoints[16]
+    $sessionBRoute = Split-Endpoint $endpoints[17]
+    $playBRoute = Split-Endpoint $endpoints[18]
+    $sessionBStream = Split-Endpoint $endpoints[19]
 
     $redisEndpoint = $env:BINGO_REDIS_ENDPOINT
     if (-not $redisEndpoint) {
@@ -143,7 +158,7 @@ try {
     Wait-Port $redis.Host $redis.Port
     $redisKeyPrefix = if ($env:BINGO_REDIS_KEY_PREFIX) { $env:BINGO_REDIS_KEY_PREFIX } else { "bingo:java:${PID}:$([Guid]::NewGuid().ToString('N')):" }
 
-    $env:JAVA_TOOL_OPTIONS = "$oldJavaToolOptions -Dzlink.samples.bingo.registryPubEndpoint=tcp://$($registryPub.Host):$($registryPub.Port) -Dzlink.samples.bingo.registryRouterEndpoint=tcp://$($registryRouter.Host):$($registryRouter.Port) -Dzlink.samples.bingo.apiChannelEndpoint=tcp://$($apiChannel.Host):$($apiChannel.Port) -Dzlink.samples.bingo.playChannelEndpoint=tcp://$($playChannel.Host):$($playChannel.Port) -Dzlink.samples.bingo.sessionSpotEndpoint=tcp://$($sessionSpot.Host):$($sessionSpot.Port) -Dzlink.samples.bingo.sessionRouterEndpoint=tcp://$($sessionRouter.Host):$($sessionRouter.Port) -Dzlink.samples.bingo.playSpotEndpoint=tcp://$($playSpot.Host):$($playSpot.Port) -Dzlink.samples.bingo.playSpotRouterEndpoint=tcp://$($playRouter.Host):$($playRouter.Port) -Dzlink.samples.bingo.sessionRouteEndpoint=tcp://$($sessionRoute.Host):$($sessionRoute.Port) -Dzlink.samples.bingo.playRouteEndpoint=tcp://$($playRoute.Host):$($playRoute.Port) -Dzlink.samples.bingo.streamEndpoint=tcp://$($stream.Host):$($stream.Port) -Dzlink.samples.bingo.redisEndpoint=$redisEndpoint -Dzlink.samples.bingo.redisKeyPrefix=$redisKeyPrefix"
+    $commonJavaOptions = "$oldJavaToolOptions -Dzlink.samples.bingo.registryPubEndpoint=tcp://$($registryPub.Host):$($registryPub.Port) -Dzlink.samples.bingo.registryRouterEndpoint=tcp://$($registryRouter.Host):$($registryRouter.Port) -Dzlink.samples.bingo.apiAChannelEndpoint=tcp://$($apiAChannel.Host):$($apiAChannel.Port) -Dzlink.samples.bingo.apiBChannelEndpoint=tcp://$($apiBChannel.Host):$($apiBChannel.Port) -Dzlink.samples.bingo.playAChannelEndpoint=tcp://$($playAChannel.Host):$($playAChannel.Port) -Dzlink.samples.bingo.playBChannelEndpoint=tcp://$($playBChannel.Host):$($playBChannel.Port) -Dzlink.samples.bingo.sessionASpotEndpoint=tcp://$($sessionASpot.Host):$($sessionASpot.Port) -Dzlink.samples.bingo.sessionBSpotEndpoint=tcp://$($sessionBSpot.Host):$($sessionBSpot.Port) -Dzlink.samples.bingo.sessionARouterEndpoint=tcp://$($sessionARouter.Host):$($sessionARouter.Port) -Dzlink.samples.bingo.sessionBRouterEndpoint=tcp://$($sessionBRouter.Host):$($sessionBRouter.Port) -Dzlink.samples.bingo.playASpotEndpoint=tcp://$($playASpot.Host):$($playASpot.Port) -Dzlink.samples.bingo.playBSpotEndpoint=tcp://$($playBSpot.Host):$($playBSpot.Port) -Dzlink.samples.bingo.playASpotRouterEndpoint=tcp://$($playARouter.Host):$($playARouter.Port) -Dzlink.samples.bingo.playBSpotRouterEndpoint=tcp://$($playBRouter.Host):$($playBRouter.Port) -Dzlink.samples.bingo.sessionAPlayRouteEndpoint=tcp://$($sessionARoute.Host):$($sessionARoute.Port) -Dzlink.samples.bingo.sessionBPlayRouteEndpoint=tcp://$($sessionBRoute.Host):$($sessionBRoute.Port) -Dzlink.samples.bingo.playARouteEndpoint=tcp://$($playARoute.Host):$($playARoute.Port) -Dzlink.samples.bingo.playBRouteEndpoint=tcp://$($playBRoute.Host):$($playBRoute.Port) -Dzlink.samples.bingo.sessionAStreamEndpoint=tcp://$($sessionAStream.Host):$($sessionAStream.Port) -Dzlink.samples.bingo.sessionBStreamEndpoint=tcp://$($sessionBStream.Host):$($sessionBStream.Port) -Dzlink.samples.bingo.redisEndpoint=$redisEndpoint -Dzlink.samples.bingo.redisKeyPrefix=$redisKeyPrefix"
 
     Push-Location "../../.."
     try {
@@ -153,29 +168,47 @@ try {
         Pop-Location
     }
 
-    Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", "classes", "--quiet")
+    Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Registry:installDist", ":Server:Session:installDist", ":Server:Api:installDist", ":Server:Play:installDist", ":Client:installDist", "--quiet")
 
-    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Registry:run", "--quiet") -LogName "registry.log"
+    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Registry:run", "--quiet") -LogName "registry.log" -JavaToolOptions $commonJavaOptions
     Wait-Port $registryPub.Host $registryPub.Port
     Wait-Port $registryRouter.Host $registryRouter.Port
 
-    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Session:run", "--quiet") -LogName "session.log"
-    Wait-Port $sessionRoute.Host $sessionRoute.Port
-    Wait-Port $sessionSpot.Host $sessionSpot.Port
-    Wait-Port $sessionRouter.Host $sessionRouter.Port
-    Wait-Port $stream.Host $stream.Port
+    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Session:run", "--quiet") -LogName "session-a.log" -JavaToolOptions "$commonJavaOptions -Dzlink.samples.bingo.sessionNode=a"
+    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Session:run", "--quiet") -LogName "session-b.log" -JavaToolOptions "$commonJavaOptions -Dzlink.samples.bingo.sessionNode=b"
+    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Api:run", "--quiet") -LogName "api-a.log" -JavaToolOptions "$commonJavaOptions -Dzlink.samples.bingo.apiNode=a"
+    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Api:run", "--quiet") -LogName "api-b.log" -JavaToolOptions "$commonJavaOptions -Dzlink.samples.bingo.apiNode=b"
+    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Play:run", "--quiet") -LogName "play-a.log" -JavaToolOptions "$commonJavaOptions -Dzlink.samples.bingo.playNode=a -Dzlink.samples.bingo.playRid=2201"
+    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Play:run", "--quiet") -LogName "play-b.log" -JavaToolOptions "$commonJavaOptions -Dzlink.samples.bingo.playNode=b -Dzlink.samples.bingo.playRid=2202"
 
-    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Api:run", "--quiet") -LogName "api.log"
-    Wait-Port $apiChannel.Host $apiChannel.Port
+    Wait-Port $sessionARoute.Host $sessionARoute.Port
+    Wait-Port $sessionARouter.Host $sessionARouter.Port
+    Wait-Port $sessionAStream.Host $sessionAStream.Port
+    Wait-Port $sessionBRoute.Host $sessionBRoute.Port
+    Wait-Port $sessionBRouter.Host $sessionBRouter.Port
+    Wait-Port $sessionBStream.Host $sessionBStream.Port
+    Wait-Port $apiAChannel.Host $apiAChannel.Port
+    Wait-Port $apiBChannel.Host $apiBChannel.Port
+    Wait-Port $playARoute.Host $playARoute.Port
+    Wait-Port $playARouter.Host $playARouter.Port
+    Wait-Port $playASpot.Host $playASpot.Port
+    Wait-Port $playBRoute.Host $playBRoute.Port
+    Wait-Port $playBRouter.Host $playBRouter.Port
+    Wait-Port $playBSpot.Host $playBSpot.Port
 
-    Start-GradleRole -Arguments @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:Play:run", "--quiet") -LogName "play.log"
-    Wait-Port $playChannel.Host $playChannel.Port
-    Wait-Port $playRoute.Host $playRoute.Port
-    Wait-Port $playRouter.Host $playRouter.Port
-    Wait-Port $playSpot.Host $playSpot.Port
-
-    Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Probe:run", "--quiet")
-    Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Client:run", "--quiet")
+    Start-Sleep -Seconds 2
+    $clientLog = Join-Path $LogDir "client.log"
+    $env:JAVA_TOOL_OPTIONS = $commonJavaOptions
+    & $Gradle --settings-file standalone.settings.gradle.kts --no-daemon :Client:run --quiet *> $clientLog
+    if ($LASTEXITCODE -ne 0) {
+        throw "Client run failed."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "bingo=completed" -Quiet)) {
+        throw "Client completion marker was not found."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo" -Quiet)) {
+        throw "Client inbound stream evidence was not found."
+    }
     $Status = 0
 } finally {
     Cleanup $Status

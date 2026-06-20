@@ -1,5 +1,6 @@
 package systems.zlink.samples.kotlin.bingo.server.play.domain.bingo
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoPlayerState
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomState
@@ -47,7 +48,12 @@ data class BingoRoomSettings(
     val requiredPlayers: Int,
     val maxDrawNumber: Int,
     val drawPeriodMillis: Long,
+    val observedRoomId: String?,
 ) {
+    @get:JsonIgnore
+    val isObserver: Boolean
+        get() = observedRoomId != null && observedRoomId.isNotBlank()
+
     companion object {
         fun create(
             mode: String,
@@ -60,6 +66,22 @@ data class BingoRoomSettings(
                 requiredPlayers = 2,
                 maxDrawNumber = 15,
                 drawPeriodMillis = SampleTimings.DrawPeriod.toMillis(),
+                observedRoomId = null,
+            )
+        }
+
+        fun createObserver(
+            observedRoomId: String,
+            ownerNodeRid: String,
+        ): BingoRoomSettings {
+            check(observedRoomId.isNotBlank()) { "observedRoomId is required" }
+            return BingoRoomSettings(
+                roomName = "Bingo Reward Observer $ownerNodeRid",
+                mode = "observer",
+                requiredPlayers = 0,
+                maxDrawNumber = 15,
+                drawPeriodMillis = SampleTimings.DrawPeriod.toMillis(),
+                observedRoomId = observedRoomId,
             )
         }
     }

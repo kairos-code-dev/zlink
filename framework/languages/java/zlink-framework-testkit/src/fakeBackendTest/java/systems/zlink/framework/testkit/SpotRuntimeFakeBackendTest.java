@@ -711,7 +711,7 @@ final class SpotRuntimeFakeBackendTest {
                 "spotNode.setRoutingId",
                 "spotNode.setRouterBind.inproc://spot-router",
                 "spotNode.setPubBind.inproc://spot-pub",
-                "spotNode.connectPeer.inproc://spot-router-peer",
+                "spotNode.connectRouterChannelPeer.game.inproc://spot-router-peer",
                 "spotNode.connectPeer.inproc://spot-pub-peer",
                 "close.context",
                 "close.spotNode",
@@ -860,6 +860,26 @@ final class SpotRuntimeFakeBackendTest {
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());
+    }
+
+    @Test
+    void discoveredSpotMeshRouterPeerRegistersOnlyRouterChannelPeer() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
+        { var mesh = options.addSpotMesh("rooms"); { var node = mesh.addNode("play"); node.enableRouter("inproc://rooms-router"); }; };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            awaitCondition(() -> backendFactory.calls().contains(
+                "spotNode.connectRouterChannelPeerRid.rooms.rooms-node-2.inproc://rooms-router-peer"));
+        }
+
+        int channelPeerIndex = backendFactory.calls().indexOf(
+            "spotNode.connectRouterChannelPeerRid.rooms.rooms-node-2.inproc://rooms-router-peer");
+        assertFalse(backendFactory.calls().contains("spotNode.connectPeer.inproc://rooms-router-peer"));
+        assertTrue(channelPeerIndex >= 0);
     }
 
     @Test

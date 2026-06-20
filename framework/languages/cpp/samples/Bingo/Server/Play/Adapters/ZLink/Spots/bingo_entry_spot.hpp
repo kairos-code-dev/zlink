@@ -7,7 +7,6 @@
 #include <zlink/framework.hpp>
 
 #include <algorithm>
-#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -18,12 +17,6 @@ namespace zlink::samples::bingo
 class bingo_entry_spot_t : public zlink::framework::entry_spot_t
 {
   public:
-    static void use_spot_manager (zlink::framework::spot_node_manager_t manager)
-    {
-        spot_manager () =
-          std::make_shared<zlink::framework::spot_node_manager_t> (std::move (manager));
-    }
-
     void configure (zlink::framework::entry_spot_context_t &context)
     {
         _context = context;
@@ -36,14 +29,10 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
                           zlink::framework::spot_actor_request_context_t &,
                           const observe_bingo_events_req_t &request)
     {
-        auto manager = spot_manager ();
-        if (!manager) {
-            throw std::runtime_error ("spot manager is not configured");
-        }
         const auto display_name =
           actor.display_name.empty () ? actor.actor.actor_id : actor.display_name;
         const auto observer_rid = observer_room_rid (request.room_id, _context.node_rid ());
-        auto created = manager->get_or_create_spot (
+        auto created = _context.manager ().get_or_create_spot (
           sample_names_t::room_spot, observer_rid,
           to_stream_payload (bingo_room_settings_payload_t{
             "Bingo Observer " + std::string (_context.node_rid ().value ()),
@@ -134,12 +123,6 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
     std::vector<std::string> joined_actor_ids;
 
   private:
-    static std::shared_ptr<zlink::framework::spot_node_manager_t> &spot_manager ()
-    {
-        static std::shared_ptr<zlink::framework::spot_node_manager_t> manager;
-        return manager;
-    }
-
     static zlink::framework::spot_rid_t
     observer_room_rid (const std::string &room_id, zlink::framework::node_rid_t node_rid)
     {

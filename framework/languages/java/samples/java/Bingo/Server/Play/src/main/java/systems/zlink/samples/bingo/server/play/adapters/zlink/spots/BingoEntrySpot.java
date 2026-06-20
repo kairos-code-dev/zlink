@@ -2,18 +2,33 @@ package systems.zlink.samples.bingo.server.play.adapters.zlink.spots;
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkSpotCreateState;
+import systems.zlink.framework.spots.ZLinkSpotManager;
+import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.actors.PlayerActor;
+import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
+import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
     private final ZLinkEntrySpotContext context;
+    private final ZLinkSpotManager spots;
+    private final ObjectMapper json;
 
-    public BingoEntrySpot(ZLinkEntrySpotContext context) {
+    public BingoEntrySpot(
+        ZLinkEntrySpotContext context,
+        ZLinkSpotManager spots,
+        ObjectMapper json) {
         this.context = context;
+        this.spots = spots;
+        this.json = json;
     }
 
     @Override
@@ -59,5 +74,42 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
         PlayerActor actor,
         CancellationToken cancellationToken) {
         actor.markDisconnected();
+    }
+
+    public Messages.ObserveBingoEventsRes observeEvents(
+        PlayerActor actor,
+        Messages.ObserveBingoEventsReq request) {
+        String observerRid = "observe:" + request.roomId() + ":" + context.nodeRid();
+        BingoRoomModels.BingoRoomSettings settings =
+            BingoRoomModels.BingoRoomSettings.createObserver(request.roomId(), context.nodeRid().toString());
+        Message settingsPart = serialize(settings);
+        try {
+            var created = await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(observerRid), settingsPart));
+            if (created.state() == ZLinkSpotCreateState.REJECTED) {
+                throw new IllegalStateException("Observer BingoRoom creation was rejected.");
+            }
+        } finally {
+            settingsPart.close();
+        }
+        var joined = actor.context()
+            .joinSpot(
+                RoutingId.from(observerRid),
+                new Messages.BingoRoomJoinReq(
+                    request.roomId(),
+                    actor.actorId(),
+                    actor.displayName(),
+                    true))
+            .await(Messages.BingoRoomJoinRes.class);
+        return new Messages.ObserveBingoEventsRes(
+            joined.reply().state().status().equals("Running"),
+            joined.actor().nodeRid().toString());
+    }
+
+    private Message serialize(BingoRoomModels.BingoRoomSettings settings) {
+        try {
+            return Message.from(json.writeValueAsBytes(settings));
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Failed to encode observer room settings.", ex);
+        }
     }
 }

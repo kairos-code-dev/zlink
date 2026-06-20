@@ -78,11 +78,22 @@ void from_json (const nlohmann::json &json, spot_actor_packet_route_request_t &v
 
 void to_json (nlohmann::json &json, const spot_actor_packet_route_reply_t &value)
 {
-    json = nlohmann::json{{"hasReply", value.has_reply}, {"payload", value.payload}};
+    json = nlohmann::json{{"actorRefPresent", value.actor_ref_present},
+                          {"actorNodeRid", value.actor_node_rid},
+                          {"actorType", value.actor_type},
+                          {"actorId", value.actor_id},
+                          {"actorGeneration", value.actor_generation},
+                          {"hasReply", value.has_reply},
+                          {"payload", value.payload}};
 }
 
 void from_json (const nlohmann::json &json, spot_actor_packet_route_reply_t &value)
 {
+    value.actor_ref_present = json.value ("actorRefPresent", false);
+    value.actor_node_rid = json.value ("actorNodeRid", "");
+    value.actor_type = json.value ("actorType", "");
+    value.actor_id = json.value ("actorId", "");
+    value.actor_generation = json.value ("actorGeneration", std::uint64_t{0});
     value.has_reply = json.at ("hasReply").get<bool> ();
     value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
 }

@@ -42,17 +42,23 @@ import socket
 sockets = []
 try:
     chosen = set()
+    blocked = set()
     while len(sockets) < 22:
         port = random.randint(48000, 60999)
-        if port in chosen:
+        if port in chosen or port in blocked or port + 1000 in chosen or port + 1000 in blocked:
             continue
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        ctrl = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             sock.bind(("127.0.0.1", port))
+            ctrl.bind(("127.0.0.1", port + 1000))
         except OSError:
             sock.close()
+            ctrl.close()
             continue
         chosen.add(port)
+        blocked.add(port + 1000)
+        ctrl.close()
         sockets.append(sock)
     print(" ".join(str(sock.getsockname()[1]) for sock in sockets))
 finally:
@@ -105,7 +111,7 @@ wait_port() {
   local port
   host="$(endpoint_host "$endpoint")"
   port="$(endpoint_port "$endpoint")"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 600); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi

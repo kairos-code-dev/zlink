@@ -6,7 +6,6 @@
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Actors/player_actor_factory.hpp"
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Handlers/allocate_bingo_room_handler.hpp"
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
-#include "../../samples/Bingo/Server/Play/Adapters/ZLink/Notifications/bingo_notification_publisher.hpp"
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Spots/Handlers/bingo_room_timer_handler.hpp"
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_entry_spot.hpp"
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp"
@@ -206,11 +205,9 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
                              submit_bingo_card_req_t::packet_name, "application/json", {}, {}},
                            {allocated.room_id, {7, 8, 9, 10, 11, 12, 13, 14, 15}});
 
-    bingo_notification_publisher_t publisher;
     bingo_room_timer_handler_t timer;
     const auto drawn = timer.handle (room_spot, 1);
-    publisher.publish_drawn (drawn);
-    EXPECT_EQ (publisher.drawn.size (), 1U);
+    EXPECT_EQ (drawn.state.room_id, allocated.room_id);
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
@@ -930,6 +927,8 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     const auto play_factory = read_file (bingo_root / "Server/Play/play_server_host_factory.hpp");
     const auto session_factory =
       read_file (bingo_root / "Server/Session/session_server_host_factory.hpp");
+    const auto session = read_file (bingo_root / "Server/Session/Sessions/bingo_session.hpp");
+    const auto contracts = read_file (bingo_root / "Shared/Contracts/messages.hpp");
     const auto client = read_file (bingo_root / "Client/bingo_client_scenario.hpp");
     const auto client_main = read_file (bingo_root / "Client/main.cpp");
 
@@ -957,6 +956,14 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_EQ (client_main.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (client.find ("bingo-client.log"), std::string::npos);
     EXPECT_EQ (client.find ("std::ofstream"), std::string::npos);
+    EXPECT_NE (session_factory.find (".enable_actor_gateway ()"), std::string::npos);
+    EXPECT_NE (session_factory.find (".attach_actor_gateway (sample_names_t::session_spot_node)"),
+               std::string::npos);
+    EXPECT_NE (session.find (".relay_request (header, payload)"), std::string::npos);
+    EXPECT_NE (session.find (".relay (header, payload)"), std::string::npos);
+    EXPECT_EQ (session.find ("RemoteActorPacket"), std::string::npos);
+    EXPECT_EQ (play_factory.find ("remote_actor_packet_handler"), std::string::npos);
+    EXPECT_EQ (contracts.find ("RemoteActorPacket"), std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, CodecHelpersStayConfinedToRawLifecycleBoundaries)

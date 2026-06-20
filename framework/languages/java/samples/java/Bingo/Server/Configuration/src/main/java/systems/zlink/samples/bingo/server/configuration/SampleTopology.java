@@ -68,6 +68,8 @@ public final class SampleTopology {
     public static final String SessionNode = property("sessionNode", "a");
     public static final String SessionARouteRid = property("sessionAPlayRouteRid", "1201");
     public static final String SessionBRouteRid = property("sessionBPlayRouteRid", "1202");
+    public static final String ApiARouteRid = property("apiAPlayRouteRid", "1301");
+    public static final String ApiBRouteRid = property("apiBPlayRouteRid", "1302");
     public static final String SessionARouterRid = property("sessionARouterRid", "1101");
     public static final String SessionBRouterRid = property("sessionBRouterRid", "1102");
     public static final String PlayANodeRid = property("playANodeRid", "2201");
@@ -79,6 +81,10 @@ public final class SampleTopology {
 
     public static String selectedApiChannelEndpoint() {
         return "b".equals(ApiNode) ? ApiBChannelEndpoint : ApiAChannelEndpoint;
+    }
+
+    public static String selectedApiRouteRid() {
+        return "b".equals(ApiNode) ? ApiBRouteRid : ApiARouteRid;
     }
 
     public static String selectedPlayChannelEndpoint() {

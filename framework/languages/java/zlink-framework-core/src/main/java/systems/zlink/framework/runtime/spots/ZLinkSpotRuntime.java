@@ -445,15 +445,33 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         if (kind == ZLinkScannedHandlerKind.ACTOR_REQUEST) {
             ParameterizedType entry =
                 findInterface(handlerType, ZLinkEntrySpotActorRequestHandler.class);
+            if (entry != null) {
+                return entry;
+            }
+            ParameterizedType spot =
+                findInterface(handlerType, ZLinkSpotActorRequestHandler.class);
+            if (spot != null) {
+                return spot;
+            }
+            entry = findInterface(handlerType, KOTLIN_ENTRY_SPOT_ACTOR_REQUEST_HANDLER);
             return entry != null
                 ? entry
-                : findInterface(handlerType, ZLinkSpotActorRequestHandler.class);
+                : findInterface(handlerType, KOTLIN_SPOT_ACTOR_REQUEST_HANDLER);
         }
         ParameterizedType entry =
             findInterface(handlerType, ZLinkEntrySpotActorSendHandler.class);
+        if (entry != null) {
+            return entry;
+        }
+        ParameterizedType spot =
+            findInterface(handlerType, ZLinkSpotActorSendHandler.class);
+        if (spot != null) {
+            return spot;
+        }
+        entry = findInterface(handlerType, KOTLIN_ENTRY_SPOT_ACTOR_SEND_HANDLER);
         return entry != null
             ? entry
-            : findInterface(handlerType, ZLinkSpotActorSendHandler.class);
+            : findInterface(handlerType, KOTLIN_SPOT_ACTOR_SEND_HANDLER);
     }
 
     private void prepareHandlerSerializerTypes() {

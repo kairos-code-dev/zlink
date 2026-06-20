@@ -114,7 +114,7 @@ public final class Messages {
         String rarity) {
     }
 
-    public record BingoWinnerAnnouncedNotify(
+    public record BingoRewardAnnouncedNotify(
         String roomId,
         String actorId,
         int drawSeq,

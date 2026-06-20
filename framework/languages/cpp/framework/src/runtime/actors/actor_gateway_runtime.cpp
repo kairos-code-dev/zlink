@@ -115,7 +115,17 @@ send_call_t bound_session_t::send_erased (std::string packet_name, const zlink::
       [sink = std::move (sink), payload] (const std::string &name,
                                           std::chrono::milliseconds,
                                           const send_call_t::metadata_map_t &) mutable {
-          return sink (name, payload);
+          try {
+              return sink (name, payload);
+          }
+          catch (const framework_exception_t &error) {
+              return task_t<void> (
+                result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+          }
+          catch (const std::exception &error) {
+              return task_t<void> (
+                result_t<void>::failure (framework_error_kind_t::request_failed, error.what ()));
+          }
       });
 }
 
@@ -647,16 +657,28 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
         found->second.bound_session_codec = codec;
     }
     _state->bound_session_sinks[actor_id] =
-      [actor_ref = std::move (actor_ref),
+      [state = _state,
+       actor_id,
        route_client = std::move (route_client),
        route_channel_name = std::move (route_channel_name),
        target_node_rid = std::move (target_node_rid)] (std::string packet_name,
                                                        const zlink::message_t &payload) mutable {
+          actor_ref_t current_actor_ref;
+          {
+              const std::lock_guard lock (state->mutex);
+              const auto found = state->actors_by_id.find (actor_id);
+              if (found == state->actors_by_id.end () || !found->second.bound) {
+                  return task_t<void> (result_t<void>::failure (
+                    framework_error_kind_t::actor_session_not_bound,
+                    "actor session is not bound"));
+              }
+              current_actor_ref = found->second.ref;
+          }
           auto reply = route_client
                          .request (route_channel_name,
                                    target_node_rid,
                                    make_actor_bound_session_route_request (
-                                     actor_ref, packet_name, payload))
+                                     current_actor_ref, packet_name, payload))
                          .packet_name (actor_bound_session_route_request_t::packet_name)
                          .timeout (std::chrono::milliseconds (5000))
                          .async<actor_bound_session_route_reply_t> ()

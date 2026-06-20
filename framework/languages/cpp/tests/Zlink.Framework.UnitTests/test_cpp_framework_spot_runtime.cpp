@@ -42,10 +42,12 @@ struct player_actor_factory_t
     int moved_value{};
     int ref_updates{};
     std::uint64_t last_generation{};
+    zlink::framework::actor_ref_t current_ref;
 
     void set_actor_ref (const zlink::framework::actor_ref_t &actor_ref)
     {
         ++ref_updates;
+        current_ref = actor_ref;
         last_generation = actor_ref.generation ();
     }
 };
@@ -366,6 +368,59 @@ struct lifecycle_thread_probe_entry_spot_t : public zlink::framework::entry_spot
 
     int joined_count{};
     std::thread::id last_join_thread;
+};
+
+struct auto_destroy_entry_spot_t : public zlink::framework::entry_spot_t
+{
+    void configure (zlink::framework::entry_spot_context_t &context) { entry_context = context; }
+
+    void on_actor_joined (player_actor_factory_t &actor)
+    {
+        ++joined_count;
+        if (destroy_on_join && !actor.current_ref.empty ()) {
+            const auto destroyed = entry_context.destroyActor (actor.current_ref, actor).result ();
+            if (destroyed) {
+                ++destroyed_count;
+            }
+        }
+    }
+
+    zlink::framework::entry_spot_context_t entry_context;
+    int joined_count{};
+    int destroyed_count{};
+    bool destroy_on_join = false;
+};
+
+struct actor_packet_self_leave_spot_t : public zlink::framework::spot_t
+{
+    void configure (zlink::framework::spot_context_t &context)
+    {
+        spot_context = context;
+        context.handlers ().add_actor_packet<&actor_packet_self_leave_spot_t::on_leave_request> (
+          "self.leave");
+    }
+
+    zlink::framework::spot_actor_join_response_t on_actor_join (player_actor_factory_t &,
+                                                                const zlink::message_t &)
+    {
+        return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+
+    void onLeaveActor (player_actor_factory_t &) { ++left_count; }
+
+    relay_reply_t on_leave_request (player_actor_factory_t &actor,
+                                    zlink::framework::spot_actor_request_context_t &,
+                                    const relay_request_t &request)
+    {
+        auto left = spot_context.leaveActor (actor.current_ref, actor).result ();
+        if (!left) {
+            throw std::runtime_error ("self leave failed");
+        }
+        return {std::to_string (request.value)};
+    }
+
+    zlink::framework::spot_context_t spot_context;
+    int left_count{};
 };
 
 } // namespace
@@ -763,6 +818,165 @@ int main ()
     }
     if (lifecycle_gateway.manager ().find ("context-leave-player")) {
         return 81;
+    }
+
+    auto auto_destroy_entry = std::make_shared<auto_destroy_entry_spot_t> ();
+    auto auto_destroy_stage = std::make_shared<stage_spot_t> ();
+    zlink::framework::spot_node_builder_t auto_destroy_builder;
+    zlink::framework::zlink_builder_t auto_destroy_host;
+    auto_destroy_builder = auto_destroy_host.add_spot_node ("auto-destroy-stage");
+    auto_destroy_builder
+      .add_entry_spot<auto_destroy_entry_spot_t> ([auto_destroy_entry] {
+          return auto_destroy_entry;
+      })
+      .add_actor_factory<player_actor_factory_t> ("player")
+      .add_spot<stage_spot_t> ("stage", [auto_destroy_stage] {
+          return auto_destroy_stage;
+      });
+    auto auto_destroy_entry_created = auto_destroy_builder.create_spot ("entry");
+    auto auto_destroy_stage_created = auto_destroy_builder.create_spot ("stage");
+    auto auto_destroy_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (auto_destroy_builder);
+    zlink::framework::detail::actor_gateway_runtime_t auto_destroy_gateway;
+    player_actor_factory_t auto_destroy_actor_state;
+    auto_destroy_runtime.on_destroy_actor (
+      [&] (const zlink::framework::actor_ref_t &actor_ref) {
+          return auto_destroy_gateway.destroy_actor (actor_ref);
+      });
+    auto_destroy_runtime.on_actor_ref_updated (
+      [&] (const zlink::framework::actor_ref_t &actor_ref) {
+          return auto_destroy_gateway.update_actor_ref (actor_ref);
+      });
+    auto_destroy_gateway.on_join_spot (
+      [&] (const zlink::framework::actor_ref_t &actor_ref,
+           zlink::framework::spot_rid_t spot_rid,
+           const zlink::message_t &request) {
+          return auto_destroy_runtime.join_actor_to_spot<stage_spot_t> (
+            actor_ref, std::move (spot_rid), auto_destroy_actor_state, request);
+      });
+    auto_destroy_gateway.on_join_entry_spot (
+      [&] (const zlink::framework::actor_ref_t &actor_ref,
+           zlink::framework::node_rid_t node_rid,
+           const zlink::message_t &request) {
+          return auto_destroy_runtime.join_actor_to_entry_spot<auto_destroy_entry_spot_t> (
+            actor_ref, std::move (node_rid), auto_destroy_actor_state, request);
+      });
+    auto auto_destroy_actor =
+      auto_destroy_gateway.manager ().create ("player", "auto-destroy-player").value ();
+    auto auto_destroy_context = auto_destroy_actor.context ();
+    auto auto_destroy_initial_entry_join =
+      auto_destroy_context
+        .join_entry_spot (zlink::framework::node_rid_t::from_string ("auto-destroy-stage"),
+                          zlink::message_t{})
+        .async ()
+        .result ();
+    if (!auto_destroy_initial_entry_join
+        || auto_destroy_initial_entry_join.value ().result_code != 0
+        || auto_destroy_entry->joined_count != 1
+        || auto_destroy_entry->destroyed_count != 0) {
+        return 95;
+    }
+    auto auto_destroy_stage_join =
+      auto_destroy_context
+        .join_spot (auto_destroy_stage_created.spot_rid,
+                    zlink::message_t::from (std::string ("46")))
+        .async ()
+        .result ();
+    if (!auto_destroy_stage_join || auto_destroy_stage_join.value ().result_code != 0
+        || auto_destroy_stage->joined_count != 1) {
+        return 96;
+    }
+    auto_destroy_entry->destroy_on_join = true;
+    auto auto_destroy_leave =
+      auto_destroy_stage_created.context
+        .leaveActor (auto_destroy_stage_join.value ().actor, auto_destroy_actor_state)
+        .result ();
+    if (!auto_destroy_leave) {
+        return 97;
+    }
+    if (auto_destroy_entry->joined_count != 2) {
+        return 98;
+    }
+    if (auto_destroy_entry->destroyed_count != 1) {
+        return 99;
+    }
+    if (auto_destroy_gateway.manager ().find ("auto-destroy-player")) {
+        return 100;
+    }
+
+    auto packet_leave_entry = std::make_shared<auto_destroy_entry_spot_t> ();
+    auto packet_leave_spot = std::make_shared<actor_packet_self_leave_spot_t> ();
+    zlink::framework::spot_node_builder_t packet_leave_builder;
+    zlink::framework::zlink_builder_t packet_leave_host;
+    packet_leave_builder = packet_leave_host.add_spot_node ("packet-leave-stage");
+    packet_leave_builder
+      .add_entry_spot<auto_destroy_entry_spot_t> ([packet_leave_entry] {
+          return packet_leave_entry;
+      })
+      .add_actor_factory<player_actor_factory_t> ("player")
+      .add_spot<actor_packet_self_leave_spot_t> ("stage", [packet_leave_spot] {
+          return packet_leave_spot;
+      });
+    auto packet_leave_stage_created = packet_leave_builder.create_spot ("stage");
+    auto packet_leave_entry_created = packet_leave_builder.create_spot ("entry");
+    auto packet_leave_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (packet_leave_builder);
+    zlink::framework::detail::actor_gateway_runtime_t packet_leave_gateway;
+    player_actor_factory_t packet_leave_actor_state;
+    packet_leave_runtime.on_destroy_actor (
+      [&] (const zlink::framework::actor_ref_t &actor_ref) {
+          return packet_leave_gateway.destroy_actor (actor_ref);
+      });
+    packet_leave_runtime.on_actor_ref_updated (
+      [&] (const zlink::framework::actor_ref_t &actor_ref) {
+          return packet_leave_gateway.update_actor_ref (actor_ref);
+      });
+    packet_leave_gateway.on_join_entry_spot (
+      [&] (const zlink::framework::actor_ref_t &actor_ref,
+           zlink::framework::node_rid_t node_rid,
+           const zlink::message_t &request) {
+          return packet_leave_runtime.join_actor_to_entry_spot<auto_destroy_entry_spot_t> (
+            actor_ref, std::move (node_rid), packet_leave_actor_state, request);
+      });
+    auto packet_leave_actor =
+      packet_leave_gateway.manager ().create ("player", "packet-leave-player").value ();
+    auto packet_leave_initial_join =
+      packet_leave_actor.context ()
+        .join_entry_spot (zlink::framework::node_rid_t::from_string ("packet-leave-stage"),
+                          zlink::message_t{})
+        .async ()
+        .result ();
+    auto packet_leave_stage_join =
+      packet_leave_runtime.join_actor_to_spot<actor_packet_self_leave_spot_t> (
+        packet_leave_initial_join.value ().actor, packet_leave_stage_created.spot_rid,
+        packet_leave_actor_state, zlink::message_t{});
+    if (!packet_leave_stage_join || packet_leave_stage_join.value ().result_code != 0) {
+        return 101;
+    }
+    zlink::framework::service_collection_t packet_leave_services;
+    auto packet_leave_provider = packet_leave_services.build_provider ();
+    zlink::framework::serializer_registry_t packet_leave_serializers;
+    packet_leave_serializers.add<relay_request_t> (
+      [] (const relay_request_t &value) {
+          return zlink::message_t::from (std::to_string (value.value));
+      },
+      [] (const zlink::message_t &message) {
+          auto bytes = message.to_bytes ();
+          return relay_request_t{std::stoi (std::string (bytes.begin (), bytes.end ()))};
+      });
+    packet_leave_serializers.add<relay_reply_t> (
+      [] (const relay_reply_t &value) { return zlink::message_t::from (value.value); },
+      [] (const zlink::message_t &message) { return relay_reply_t{message.to_string ()}; });
+    packet_leave_entry->destroy_on_join = true;
+    auto packet_leave_reply = packet_leave_runtime.relay_actor_packet (
+      packet_leave_stage_join.value ().actor, zlink::framework::actor_context_t{}, "self.leave",
+      zlink::message_t::from (std::string ("7")), packet_leave_provider,
+      packet_leave_serializers);
+    if (!packet_leave_reply || !packet_leave_reply.value ()
+        || packet_leave_reply.value ()->to_string () != "7"
+        || packet_leave_spot->left_count != 1
+        || packet_leave_gateway.manager ().find ("packet-leave-player")) {
+        return 102;
     }
 
     auto thread_probe_entry = std::make_shared<lifecycle_thread_probe_entry_spot_t> ();

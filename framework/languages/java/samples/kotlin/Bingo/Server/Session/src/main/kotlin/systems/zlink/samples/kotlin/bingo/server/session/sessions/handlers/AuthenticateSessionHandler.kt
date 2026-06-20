@@ -4,11 +4,13 @@ import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkStreamHeader
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticatePlayerReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticatePlayerRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateReq
@@ -18,6 +20,7 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
 
 class AuthenticateSessionHandler(
     private val channels: ZLinkClient,
+    private val routes: ZLinkRouteClient,
 ) : ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq> {
     override fun packetName(): String = "AuthenticateReq"
 
@@ -45,12 +48,14 @@ class AuthenticateSessionHandler(
                 authenticated.reason ?: "Player authentication failed.",
             )
         }
-        val ensured = channels
-            .requestToChannel(
+        val ensured = routes
+            .requestTo(
                 SampleNames.PlayChannel,
+                RoutingId.from(SampleTopology.preferredPlayNodeRid()),
                 EnsurePlayerActorReq(
                     authenticated.actorId,
                     authenticated.displayName,
+                    SampleTopology.preferredPlayNodeRid(),
                 ),
             )
             .timeout(SampleTimings.RequestTimeout)
@@ -70,6 +75,7 @@ class AuthenticateSessionHandler(
                 AuthenticateRes(
                     ensured.actorId,
                     authenticated.displayName,
+                    SampleTopology.preferredPlayNodeRid(),
                 ),
             )
             .submit()

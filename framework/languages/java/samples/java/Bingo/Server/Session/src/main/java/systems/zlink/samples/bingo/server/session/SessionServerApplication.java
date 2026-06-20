@@ -50,7 +50,9 @@ public final class SessionServerApplication {
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
                 .addNode(SampleNames.SessionSpotNode);
             node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
-                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()));
+                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()))
+                .connectRouter(SampleTopology.PlayASpotRouterEndpoint)
+                .connectRouter(SampleTopology.PlayBSpotRouterEndpoint);
             options.addStreamNode(SampleNames.StreamNode)
                 .attachActorGateway(SampleNames.SessionSpotNode)
                 .bind(SampleTopology.selectedStreamEndpoint())

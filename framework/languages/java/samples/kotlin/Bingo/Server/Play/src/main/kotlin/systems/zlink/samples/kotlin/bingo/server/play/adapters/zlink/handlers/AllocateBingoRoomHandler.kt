@@ -1,19 +1,24 @@
 package systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.handlers
 
-import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
+import systems.zlink.framework.channels.ZLinkRouteRequestContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
+import systems.zlink.framework.kotlin.ZLinkSuspendingRouteRequestHandler
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AllocateBingoRoomReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AllocateBingoRoomRes
 
-@ZLinkHandlerGroup("play")
+@ZLinkHandlerGroup("play-route")
 class AllocateBingoRoomHandler(
     private val rooms: BingoRoomDirectory,
-) : ZLinkSuspendingRequestHandler<AllocateBingoRoomReq, AllocateBingoRoomRes> {
+) : ZLinkSuspendingRouteRequestHandler<AllocateBingoRoomReq, AllocateBingoRoomRes> {
     override suspend fun handle(
         request: AllocateBingoRoomReq,
-        context: ZLinkRequestContext,
+        context: ZLinkRouteRequestContext,
     ) = run {
-        AllocateBingoRoomRes(rooms.allocate(request.actorId, request.mode))
+        val reservation = rooms.allocate(
+            request.actorId,
+            request.mode,
+            request.preferredOwnerNodeRid,
+        )
+        AllocateBingoRoomRes(reservation.roomId, reservation.ownerPlayNodeRid)
     }
 }

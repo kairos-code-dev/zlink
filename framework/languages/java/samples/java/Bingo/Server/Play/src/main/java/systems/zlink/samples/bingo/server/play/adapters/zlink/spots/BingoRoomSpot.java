@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
@@ -15,10 +16,12 @@ import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
+import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.actors.PlayerActor;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.notifications.BingoNotificationPublisher;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomSpotCreatedHandler;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomTimerHandler;
+import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers.BingoWinnerEventHandler;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoGame;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomGame;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
@@ -30,6 +33,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     private final BingoRoomSpotCreatedHandler createdHandler;
     private final ObjectMapper json;
     private final Map<String, PlayerActor> actors = new HashMap<>();
+    private final Map<String, PlayerActor> observers = new HashMap<>();
     private BingoRoomModels.BingoRoomSettings settings =
         BingoRoomModels.BingoRoomSettings.create("two-player", 0);
     private BingoRoomGame game;
@@ -51,6 +55,13 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     @Override
     public ZLinkSpotContext context() {
         return context;
+    }
+
+    @Override
+    public void configure() {
+        context.handlers().addSubscribe(
+            SampleNames.WinnerTopic,
+            BingoWinnerEventHandler.class);
     }
 
     @Override
@@ -78,7 +89,13 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     public void onLeaveActor(
         PlayerActor actor,
         CancellationToken cancellationToken) {
+        System.out.println(
+            "bingo room: actor left. room=" + context.spotRid()
+                + ", actor=" + actor.actorId()
+                + ", observer=" + settings.isObserver()
+                + ", nodeRid=" + context.nodeRid());
         actors.remove(actor.actorId());
+        observers.remove(actor.actorId());
     }
 
     @Override
@@ -90,6 +107,9 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
 
     @Override
     public void onInitialize() {
+        if (settings.isObserver()) {
+            return;
+        }
         timer = await(context.addTimer(
                 "bingo-draw",
                 Duration.ofMillis(settings.drawPeriodMillis()),
@@ -110,14 +130,28 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         if (!actor.actorId().equals(request.actorId())) {
             throw new IllegalStateException("Join request actor id does not match bound actor.");
         }
-        if (!request.roomId().equals(context.spotRid().toString())) {
+        if (!request.observeOnly() && !request.roomId().equals(context.spotRid().toString())) {
             throw new IllegalStateException("Join request room id does not match bingo room.");
         }
         actor.setDisplayName(request.displayName());
         actor.joinRoom(request.roomId());
+        if (request.observeOnly()) {
+            return joinObserver(actor, request);
+        }
+        if (settings.isObserver()) {
+            throw new IllegalStateException("Player actor cannot join an observer BingoRoom.");
+        }
         actors.put(actor.actorId(), actor);
         BingoRoomGame.Change change = game.join(actor.actorId(), request.displayName());
-        notifications.publish(change.events(), actors::get);
+        System.out.println(
+            "bingo room: actor joined. room=" + context.spotRid()
+                + ", actor=" + actor.actorId()
+                + ", count=" + change.state().players().size()
+                + ", status=" + change.state().status()
+                + ", nodeRid=" + context.nodeRid());
+        notifications.publish(
+            change.events(),
+            actorId -> actorId.equals(actor.actorId()) ? null : actors.get(actorId));
         return new Messages.BingoRoomJoinRes(change.state());
     }
 
@@ -127,19 +161,79 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         if (!request.roomId().equals(context.spotRid().toString())) {
             throw new IllegalStateException("Submit request room id does not match bingo room.");
         }
+        if (game == null) {
+            throw new IllegalStateException("Observer BingoRoom does not own game state.");
+        }
         BingoRoomGame.Change change = game.submitCard(actor.actorId(), request.card());
         notifications.publish(change.events(), actors::get);
         return new Messages.SubmitBingoCardRes(change.state());
     }
 
     public void tick() {
+        if (game == null || cleanupStarted) {
+            return;
+        }
         BingoRoomGame.Change change = game.drawNext();
         notifications.publish(change.events(), actors::get);
+        publishWinner(change);
         leaveFinishedActors(change);
     }
 
+    public void announceWinner(Messages.BingoWinnerEvent event) {
+        if (!settings.isObserver()
+            || observers.isEmpty()
+            || !event.roomId().equals(settings.observedRoomId())) {
+            System.out.println(
+                "bingo reward: ignored. room=" + event.roomId()
+                    + ", actor=" + event.actorId()
+                    + ", item=" + event.itemId()
+                    + ", observer=" + settings.isObserver()
+                    + ", observedRoom=" + settings.observedRoomId()
+                    + ", nodeRid=" + context.nodeRid());
+            return;
+        }
+        for (PlayerActor observer : List.copyOf(observers.values())) {
+            System.out.println(
+                "bingo reward: announcing. room=" + event.roomId()
+                    + ", actor=" + event.actorId()
+                    + ", item=" + event.itemId()
+                    + ", observer=" + observer.actorId()
+                    + ", nodeRid=" + context.nodeRid());
+            observer.context().boundSession()
+                .send(new Messages.BingoRewardAnnouncedNotify(
+                    event.roomId(),
+                    event.actorId(),
+                    event.drawSeq(),
+                    event.itemId(),
+                    event.itemName(),
+                    event.rarity(),
+                    context.nodeRid().toString()))
+                .await();
+            System.out.println(
+                "bingo reward: announce sent. room=" + event.roomId()
+                    + ", observer=" + observer.actorId());
+        }
+    }
+
+    public Messages.StopObservingBingoEventsRes stopObserving(
+        PlayerActor actor,
+        Messages.StopObservingBingoEventsReq request) {
+        if (!settings.isObserver()
+            || !request.roomId().equals(settings.observedRoomId())
+            || !observers.containsKey(actor.actorId())) {
+            return new Messages.StopObservingBingoEventsRes(false, context.nodeRid().toString());
+        }
+        observers.remove(actor.actorId());
+        await(context.leaveActor(actor));
+        System.out.println(
+            "bingo observer room: actor left. observedRoom=" + settings.observedRoomId()
+                + ", observer=" + actor.actorId()
+                + ", nodeRid=" + context.nodeRid());
+        return new Messages.StopObservingBingoEventsRes(true, context.nodeRid().toString());
+    }
+
     public void applySettings(BingoRoomModels.BingoRoomSettings settings) {
-        if (settings.requiredPlayers() <= 0) {
+        if (!settings.isObserver() && settings.requiredPlayers() <= 0) {
             throw new IllegalStateException("Bingo room requires at least one player.");
         }
         if (settings.maxDrawNumber() <= 0) {
@@ -149,7 +243,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             throw new IllegalStateException("Bingo room draw period must be positive.");
         }
         this.settings = settings;
-        this.game = BingoGame.room(context.spotRid().toString(), settings);
+        this.game = settings.isObserver() ? null : BingoGame.room(context.spotRid().toString(), settings);
         this.cleanupStarted = false;
     }
 
@@ -163,6 +257,52 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             actor.markForDestroyAfterRoomLeave();
             await(context.leaveActor(actor));
         }
+    }
+
+    private void publishWinner(BingoRoomGame.Change change) {
+        if (!change.state().status().equals("Finished") || change.state().winners().isEmpty()) {
+            return;
+        }
+        String winner = change.state().winners().getFirst();
+        context.outbound()
+            .publish(
+                SampleNames.WinnerTopic,
+                new Messages.BingoWinnerEvent(
+                    change.state().roomId(),
+                    winner,
+                    change.state().drawSeq(),
+                    "rare-golden-dauber",
+                    "Golden Dauber",
+                    "Legendary"))
+            .await();
+        System.out.println(
+            "bingo reward: published. room=" + change.state().roomId()
+                + ", actor=" + winner
+                + ", item=rare-golden-dauber"
+                + ", nodeRid=" + context.nodeRid());
+    }
+
+    private Messages.BingoRoomJoinRes joinObserver(
+        PlayerActor actor,
+        Messages.BingoRoomJoinReq request) {
+        if (!settings.isObserver() || !request.roomId().equals(settings.observedRoomId())) {
+            throw new IllegalStateException("Observe-only actor can join only its observer BingoRoom.");
+        }
+        observers.put(actor.actorId(), actor);
+        System.out.println(
+            "bingo observer room: actor joined. observedRoom=" + settings.observedRoomId()
+                + ", observer=" + actor.actorId()
+                + ", nodeRid=" + context.nodeRid());
+        return new Messages.BingoRoomJoinRes(new Messages.BingoRoomState(
+            request.roomId(),
+            "Running",
+            "",
+            false,
+            0,
+            null,
+            List.of(),
+            List.of(),
+            List.of()));
     }
 
     private <T> T decode(Message request, Class<T> type) {

@@ -5,4 +5,5 @@ object SampleNames {
     const val GameStartedPacket: String = "BingoGameStartedNotify"
     const val NumberDrawnPacket: String = "BingoNumberDrawnNotify"
     const val GameEndedPacket: String = "BingoGameEndedNotify"
+    const val RewardAnnouncedPacket: String = "BingoRewardAnnouncedNotify"
 }

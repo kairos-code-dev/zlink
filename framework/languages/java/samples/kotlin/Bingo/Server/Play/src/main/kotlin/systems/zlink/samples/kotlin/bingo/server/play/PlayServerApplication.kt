@@ -9,16 +9,20 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
+import systems.zlink.framework.configuration.RouteMeshChannelBuilder
+import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
-import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.actors.PlayerActorFactory
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.notifications.BingoNotificationPublisher
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.BingoRoomSpot
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomSpotCreatedHandler
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.BingoEntrySpot
+import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.handlers.BingoMatchQueue
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.handlers.BingoRoomDirectory
+import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.handlers.RedisBingoMatchQueue
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
 
@@ -35,26 +39,32 @@ class PlayServerApplication {
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(PlayServerApplication::class.java)
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            options.codecs().addJson()
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
-            options.addClientServerChannel(SampleNames.PlayChannel)
-                .enableServer(SampleTopology.PlayChannelEndpoint)
-                .addHandlerGroup("play")
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
-            val route = options.addRouteMeshChannel(SampleNames.RoomRouteChannel)
-            route.enableServer(SampleTopology.PlayRouteEndpoint)
-            route.enableClient(SampleTopology.SessionRouteEndpoint)
-            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.PlayRid))
-            options.useRegistrySpotRemoteAddresses(SampleNames.RoomSpotDiscovery)
-                .setRouterChannelId(SampleNames.RoomRouteChannel)
+            val route: RouteMeshChannelBuilder = options.addRouteMeshChannel(SampleNames.PlayChannel)
+            route.enableServer(SampleTopology.selectedPlayRouteEndpoint())
+            route.enableClient(SampleTopology.peerPlayRouteEndpoint())
+            route.enableClient(SampleTopology.SessionAPlayRouteEndpoint)
+            route.enableClient(SampleTopology.SessionBPlayRouteEndpoint)
+            route.addHandlerGroup("play-route")
+            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
             options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory::class.java)
-            val node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
-                .addNode(SampleNames.RoomSpotNode)
-            node.enableRouter(SampleTopology.PlaySpotRouterEndpoint)
-                .setRouterRoutingId(RoutingId.from(SampleTopology.PlayRid))
-            node.enablePubSub(SampleTopology.PlaySpotEndpoint)
+            val node: ZLinkSpotNodeBuilder = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
+                .useRegistrySpotResolver()
+                .addNode(SampleTopology.selectedPlayNodeRid())
+            node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
+                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
+                .connectRouter(SampleTopology.SessionARouterEndpoint)
+                .connectRouter(SampleTopology.SessionBRouterEndpoint)
+            node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint())
+                .setPubSubRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
             node.attachChannelClient(SampleNames.ApiChannel)
-            node.acceptSpotRoutesFromChannel(SampleNames.RoomRouteChannel)
+            node.acceptSpotRoutesFromChannel(
+                SampleNames.PlayChannel,
+                SampleTopology.selectedPlayRouteEndpoint(),
+            )
             node.addEntrySpot(BingoEntrySpot::class.java)
             node.addSpotFactory(BingoRoomSpot::class.java)
         }
@@ -63,8 +73,12 @@ class PlayServerApplication {
     fun bingoRoomDirectory(
         spots: ObjectProvider<ZLinkSpotManager>,
         json: ObjectMapper,
+        matchQueue: BingoMatchQueue,
     ): BingoRoomDirectory =
-        BingoRoomDirectory(spots.getObject(), json)
+        BingoRoomDirectory(spots.getObject(), json, matchQueue)
+
+    @Bean
+    fun redisBingoMatchQueue(): BingoMatchQueue = RedisBingoMatchQueue()
 
     @Bean
     fun bingoNotificationPublisher(): BingoNotificationPublisher = BingoNotificationPublisher()

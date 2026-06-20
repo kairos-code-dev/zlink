@@ -255,3 +255,9 @@ wait_port "${play_b_spot_host}" "${play_b_spot_port}"
 
 sleep 2
 JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1
+
+grep -q "bingo=completed" "${log_dir}/client.log"
+grep -q "stream-inbound sample=Bingo" "${log_dir}/client.log"
+grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "${log_dir}/client.log"
+
+echo "bingo full client/server self-check completed"

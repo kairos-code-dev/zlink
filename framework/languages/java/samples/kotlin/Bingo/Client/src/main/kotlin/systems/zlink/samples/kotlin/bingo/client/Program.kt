@@ -2,31 +2,34 @@ package systems.zlink.samples.kotlin.bingo.client
 
 import java.net.URI
 import java.time.Duration
+import java.util.concurrent.CompletableFuture
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 import systems.zlink.framework.kotlin.kotlin
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.samples.kotlin.bingo.client.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.client.configuration.SampleTopology
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
-import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 
 suspend fun main() {
-    val client1 = createClient()
-    val client2 = createClient()
+    val client1 = createClient(SampleTopology.SessionAStreamEndpoint)
+    val client2 = createClient(SampleTopology.SessionBStreamEndpoint)
+    val observer = createClient(SampleTopology.SessionBStreamEndpoint)
     try {
-        BingoClientScenario().run(client1, client2)
+        BingoClientScenario().run(client1, client2, observer)
     } finally {
         client1.close().await()
         client2.close().await()
+        observer.close().await()
     }
-    println("Bingo client self-check passed")
+    println("bingo=completed")
 }
 
-private fun createClient(): ZLinkKotlinStreamConnector =
-    ZLinkStreamConnectorFactory.create(
+private fun createClient(endpoint: String): ZLinkKotlinStreamConnector {
+    val client = ZLinkStreamConnectorFactory.create(
         ZLinkStreamConnectorOptions(
-            URI.create(SampleTopology.StreamEndpoint),
+            URI.create(endpoint),
             ZLinkStreamDispatchMode.AUTO,
             SampleTimings.RequestTimeout,
             2,
@@ -41,4 +44,13 @@ private fun createClient(): ZLinkKotlinStreamConnector =
             2.0,
             ZLinkProtobufCodec.defaultCodec(),
         ),
-    ).kotlin()
+    )
+    client.observeInbound { observation ->
+        println(
+            "stream-inbound sample=Bingo kind=${observation.kind()} " +
+                "name=${observation.packetName()} bytes=${observation.payloadLength()}",
+        )
+        CompletableFuture.completedFuture(null)
+    }
+    return client.kotlin()
+}

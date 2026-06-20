@@ -24,6 +24,7 @@ import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
+import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.streams.ZLinkSession;
@@ -47,6 +48,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private final ZLinkActorRuntime actors;
     private final ZLinkHandlerFactory handlerFactory;
     private final Executor handlerExecutor;
+    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
     private final ZLinkStreamCodec defaultCodec;
     private final Predicate<RoutingId> actorGatewayRouteReady;
     private final ZLinkSessionActorsRuntime.LocalActorDispatcher localActorDispatcher;
@@ -94,6 +96,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         this.handlerExecutor = java.util.Objects.requireNonNull(
             registration.handlerExecutor(),
             "handlerExecutor");
+        this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         this.defaultCodec = defaultCodec(registration);
         this.actorGatewayRouteReady =
             actorGatewayRouteReady == null ? ignored -> true : actorGatewayRouteReady;
@@ -231,7 +234,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 streamNode.sessionPacketHandlers(),
                 handlerFactory,
                 serializer,
-                handlerExecutor);
+                handlerExecutor,
+                suspendHandlerInvokers);
         ZLinkHandlerFactory.MutableServices sessionFactory =
             ZLinkHandlerFactory.services(handlerFactory)
                 .add(ZLinkSessionContext.class, context)

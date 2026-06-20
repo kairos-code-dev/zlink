@@ -65,7 +65,10 @@ int main (int argc, char **argv)
     auto observer = zlink::stream_e2e_client::use (core_observer);
     const auto completed = bingo_client_scenario_t{}.run (client1, client2, observer);
     if (completed) {
-        std::cout << "bingo=completed\n";
+        inbound_log1.close ();
+        inbound_log2.close ();
+        inbound_log3.close ();
+        std::cout << "bingo=completed" << std::endl;
     }
     return completed ? 0 : 1;
 }

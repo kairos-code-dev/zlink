@@ -164,6 +164,7 @@ result_t<actor_join_reply_t> join_actor_to_spot_through_route (
 
 result_t<std::optional<zlink::message_t>> relay_actor_packet_through_route (
   spot_node_runtime_t runtime,
+  actor_gateway_runtime_t actor_gateway,
   route_client_t route_client,
   std::optional<std::string> route_channel_name,
   const actor_ref_t &actor_ref,
@@ -197,6 +198,17 @@ result_t<std::optional<zlink::message_t>> relay_actor_packet_through_route (
               reply.error_kind (),
               reply.error () ? reply.error ()->what () : "remote actor packet relay failed");
         }
+        if (reply.value ().actor_ref_present) {
+            auto updated_actor_ref = actor_ref_t (
+              node_rid_t::from_string (reply.value ().actor_node_rid),
+              reply.value ().actor_type,
+              reply.value ().actor_id,
+              reply.value ().actor_generation);
+            (void) actor_gateway.update_actor_ref (updated_actor_ref);
+            runtime.record_actor_route (
+              updated_actor_ref,
+              spot_route_t{route.node_rid, spot_rid, route.spot_name});
+        }
         if (!reply.value ().has_reply) {
             return result_t<std::optional<zlink::message_t>>::success (std::nullopt);
         }
@@ -212,17 +224,31 @@ result_t<std::optional<zlink::message_t>> relay_actor_packet_through_route (
 
     auto local = runtime.relay_actor_packet (actor_ref, actor_context, header.packet_name (),
                                              payload, provider, serializers, metadata);
-    if (local || local.error_kind () != framework_error_kind_t::spot_route_not_found) {
+    if (local
+        || (local.error_kind () != framework_error_kind_t::spot_route_not_found
+            && local.error_kind () != framework_error_kind_t::actor_route_not_found)) {
         return local;
     }
     const auto spot_rid = runtime.actor_spot (actor_ref);
     if (!spot_rid) {
+        if (!actor_ref.node_rid ().empty ()
+            && actor_ref.node_rid ().value () != runtime.node_rid ().value ()) {
+            return send_remote (
+              spot_route_t{actor_ref.node_rid (), spot_rid_t{}, std::string {}},
+              spot_rid_t{});
+        }
         return local;
     }
     if (!route) {
         route = runtime.resolve_spot (*spot_rid);
     }
     if (!route || route->node_rid.empty ()) {
+        if (!actor_ref.node_rid ().empty ()
+            && actor_ref.node_rid ().value () != runtime.node_rid ().value ()) {
+            return send_remote (
+              spot_route_t{actor_ref.node_rid (), spot_rid_t{}, std::string {}},
+              spot_rid_t{});
+        }
         return local;
     }
     return send_remote (*route, *spot_rid);
@@ -501,6 +527,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           });
         actor_gateway.on_relay (
           [runtime = *runtime,
+           actor_gateway,
            route_client = _state->zlink.route_client (_state->serializers),
            route_channel_name = spot_node.registry_spot_route_channel,
            services = &_state->services,
@@ -509,11 +536,13 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             const stream_header_t &header, const zlink::message_t &payload) mutable {
               auto provider = services->build_provider ();
               return detail::relay_actor_packet_through_route (
-                runtime, route_client, route_channel_name, actor_ref, std::move (actor_context),
-                header, payload, provider, *serializers, detail::project_stream_metadata (header));
+                runtime, actor_gateway, route_client, route_channel_name, actor_ref,
+                std::move (actor_context), header, payload, provider, *serializers,
+                detail::project_stream_metadata (header));
           });
         runtime->on_actor_packet_relay (
           [runtime = *runtime,
+           actor_gateway,
            route_client = _state->zlink.route_client (_state->serializers),
            route_channel_name = spot_node.registry_spot_route_channel] (
             const actor_ref_t &actor_ref, actor_context_t actor_context,
@@ -526,8 +555,9 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                                       std::nullopt,
                                       std::string (packet_name));
               return detail::relay_actor_packet_through_route (
-                runtime, route_client, route_channel_name, actor_ref, std::move (actor_context),
-                header, payload, services, serializers, std::move (metadata));
+                runtime, actor_gateway, route_client, route_channel_name, actor_ref,
+                std::move (actor_context), header, payload, services, serializers,
+                std::move (metadata));
           });
     }
     if (!stream_snapshot.empty ()) {

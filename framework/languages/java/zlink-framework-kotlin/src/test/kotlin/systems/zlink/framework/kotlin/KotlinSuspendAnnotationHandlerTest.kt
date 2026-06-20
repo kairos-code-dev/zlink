@@ -19,11 +19,13 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.channels.ZLinkPublishContext
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkSendContext
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
+import systems.zlink.framework.actors.ZLinkActorFactory
 import systems.zlink.framework.errors.ZLinkConfigurationException
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkPacket
@@ -108,6 +110,23 @@ final class KotlinSuspendAnnotationHandlerTest {
         )
         assertTrue(ZLinkHandlerMethodInvoker.isKotlinSuspendMethod(requestMethod))
         assertTrue(ZLinkHandlerMethodInvoker.isKotlinSuspendMethod(timerMethod))
+    }
+
+    @Test
+    fun scannerKeepsMultipleKotlinSuspendingEntrySpotActorRequestHandlers() {
+        val catalog = ZLinkHandlerScanner.scan(setOf(KotlinSuspendHandlerMarker::class.java))
+
+        val requests = catalog.matching(
+            setOf("kotlin-interface-spot"),
+            ZLinkScannedHandlerSurface.SPOT,
+            ZLinkScannedHandlerKind.ACTOR_REQUEST,
+        )
+        val packetNames = requests.map { it.packetName() }.toSet()
+
+        assertTrue(packetNames.contains("InterfacePlayerCommand"))
+        assertTrue(packetNames.contains("SecondInterfacePlayerCommand"))
+        assertTrue(requests.any { it.replyType() == InterfacePlayerReply::class.java })
+        assertTrue(requests.any { it.replyType() == SecondInterfacePlayerReply::class.java })
     }
 
     @Test
@@ -311,6 +330,27 @@ final class KotlinSuspendAnnotationHandlerTest {
     }
 
     @Test
+    fun lifecycleAcceptsKotlinSuspendingSpotActorInterfaceHandlers() {
+        val options = DefaultZLinkFrameworkOptions()
+        options.addHandlersFromPackageOf(KotlinSuspendHandlerMarker::class.java)
+        options.addActorFactory("player", PlayerActorFactory::class.java)
+        val node = options.addSpotMesh("rooms").addNode("room-node")
+        node.enableRouter("inproc://rooms")
+        node.addSpotFactory(InterfaceSpot::class.java)
+
+        val lifecycle = ZLinkFrameworkLifecycle(
+            options,
+            FakeZLinkBackendAdapterFactory(),
+            ZLinkHandlerFactory.reflection(),
+        )
+        try {
+            lifecycle.start()
+        } finally {
+            lifecycle.stop()
+        }
+    }
+
+    @Test
     fun springLifecycleDiscoversKotlinSuspendAnnotationBeanType() {
         AnnotationConfigApplicationContext().use { context ->
             val backendFactory = FakeZLinkBackendAdapterFactory()
@@ -431,6 +471,45 @@ class JavaProfileRequestHandler : systems.zlink.framework.channels.ZLinkRequestH
     ) = ProfileReply(request.name)
 }
 
+class PlayerActorFactory : ZLinkActorFactory {
+    override fun create(
+        actorId: String,
+        context: ZLinkActorContext,
+    ): ZLinkActor =
+        PlayerActor(actorId)
+}
+
+@ZLinkHandlerGroup("kotlin-interface-spot")
+class KotlinSuspendingSpotActorInterfaceHandler :
+    ZLinkSuspendingSpotActorRequestHandler<InterfaceSpot, PlayerActor, InterfacePlayerCommand, InterfacePlayerReply> {
+    override suspend fun handle(
+        spot: InterfaceSpot,
+        actor: PlayerActor,
+        context: ZLinkSpotActorRequestContext,
+        request: InterfacePlayerCommand,
+        cancellationToken: CancellationToken,
+    ): InterfacePlayerReply =
+        InterfacePlayerReply("${actor.actorId()}:${request.value}")
+}
+
+@ZLinkHandlerGroup("kotlin-interface-spot")
+class SecondKotlinSuspendingSpotActorInterfaceHandler :
+    ZLinkSuspendingSpotActorRequestHandler<
+        InterfaceSpot,
+        PlayerActor,
+        SecondInterfacePlayerCommand,
+        SecondInterfacePlayerReply,
+        > {
+    override suspend fun handle(
+        spot: InterfaceSpot,
+        actor: PlayerActor,
+        context: ZLinkSpotActorRequestContext,
+        request: SecondInterfacePlayerCommand,
+        cancellationToken: CancellationToken,
+    ): SecondInterfacePlayerReply =
+        SecondInterfacePlayerReply("${actor.actorId()}:${request.value}")
+}
+
 @Configuration(proxyBeanMethods = false)
 open class SpringSuspendHandlerConfig {
     @Bean
@@ -500,6 +579,16 @@ data class PlayerCommand(val value: String)
 data class PlayerReply(val value: String)
 
 data class PlayerEvent(val value: String)
+
+@ZLinkPacket("InterfacePlayerCommand")
+data class InterfacePlayerCommand(val value: String)
+
+data class InterfacePlayerReply(val value: String)
+
+@ZLinkPacket("SecondInterfacePlayerCommand")
+data class SecondInterfacePlayerCommand(val value: String)
+
+data class SecondInterfacePlayerReply(val value: String)
 
 class InterfaceSpot(private val spotContext: ZLinkSpotContext) : ZLinkSpot<PlayerActor> {
     override fun context(): ZLinkSpotContext = spotContext

@@ -53,7 +53,6 @@ includeBuild("../../../../../../bindings/java") {
 }
 
 include("Client")
-include("Probe")
 include("Server:Api")
 include("Server:Configuration")
 include("Server:Play")

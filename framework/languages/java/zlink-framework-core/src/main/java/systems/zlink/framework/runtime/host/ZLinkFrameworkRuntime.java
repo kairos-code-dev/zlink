@@ -27,6 +27,7 @@ import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.ZlinkCloseException;
 
 public final class ZLinkFrameworkRuntime implements AutoCloseable {
     private final ZLinkChannelRuntime channels;
@@ -234,27 +235,34 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
             spots.beginClose();
         }
         try {
-            channels.close();
+            closeRuntimeComponent(channels::close);
         } finally {
             try {
                 if (streams != null) {
-                    streams.close();
+                    closeRuntimeComponent(streams::close);
                 }
             } finally {
                 try {
                     if (actors != null) {
-                        actors.close();
+                        closeRuntimeComponent(actors::close);
                     }
                 } finally {
                     try {
                         if (spots != null) {
-                            spots.close();
+                            closeRuntimeComponent(spots::close);
                         }
                     } finally {
                         closeHandlerExecutor();
                     }
                 }
             }
+        }
+    }
+
+    private static void closeRuntimeComponent(Runnable close) {
+        try {
+            close.run();
+        } catch (ZlinkCloseException ignored) {
         }
     }
 

@@ -6,16 +6,17 @@ import type { ZLinkRequestHandler } from '@zlink-systems/framework';
 import type { BingoRoomAllocator as BingoRoomAllocatorType } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import type {
   AllocateBingoRoomReq,
-  AllocateBingoRoomRes
+  AllocateBingoRoomRes,
+  PlayerIdentity
 } from '../../../../../Shared/Contracts/messages';
 
 @zlinkRequestHandler('play', PacketNames.allocateBingoRoom)
-class AllocateBingoRoomHandler implements ZLinkRequestHandler<AllocateBingoRoomReq, AllocateBingoRoomRes> {
+class AllocateBingoRoomHandler implements ZLinkRequestHandler<AllocateBingoRoomReq & PlayerIdentity, AllocateBingoRoomRes> {
   constructor(@Inject(BingoRoomAllocator) private readonly rooms: BingoRoomAllocatorType) {}
 
-  async handle(request: AllocateBingoRoomReq): Promise<AllocateBingoRoomRes> {
-    const roomId = await this.rooms.allocate(request.mode);
-    return allocateBingoRoomRes(roomId);
+  async handle(request: AllocateBingoRoomReq & PlayerIdentity): Promise<AllocateBingoRoomRes> {
+    const allocated = await this.rooms.allocate(request, request.mode);
+    return allocateBingoRoomRes(allocated.roomId, allocated.ownerPlayNodeRid);
   }
 }
 

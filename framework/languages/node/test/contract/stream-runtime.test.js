@@ -4,6 +4,7 @@ const test = require('node:test');
 const connector = require('../../packages/stream-connector/dist');
 const framework = require('../../packages/framework/dist/internal');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
+const zlink = require('@zlink-systems/zlink');
 
 test('stream runtime is exported from framework root surface', () => {
   assert.equal(typeof framework.ZLinkStreamBindingRuntime, 'function');
@@ -162,9 +163,14 @@ test('runtime host bound session uses local stream route before native ActorGate
 test('runtime host bound session falls back to native ActorGateway when no local route exists', async () => {
   const actorRef = { nodeRid: 'node-a', actorId: 'actor-native', generation: 7n };
   const nativeSends = [];
+  const routeCalls = [];
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
+  host.routeTransport.send = (routerChannelId, targetNodeRid, packetName, message, signal) => {
+    routeCalls.push({ routerChannelId, targetNodeRid, packetName, message, signal });
+    return Promise.resolve({ ok: true });
+  };
   host.spotNodeRuntime = {
     primaryNode: {
       sendActorBoundSession(actor, parts, flags) {
@@ -176,7 +182,9 @@ test('runtime host bound session falls back to native ActorGateway when no local
   };
   host.setActorManager({
     getState(actorId) {
-      return actorId === actorRef.actorId ? { nativeActorRef: actorRef } : undefined;
+      return actorId === actorRef.actorId
+        ? { nativeActorRef: actorRef }
+        : undefined;
     }
   });
 
@@ -189,11 +197,289 @@ test('runtime host bound session falls back to native ActorGateway when no local
   assert.equal(nativeSends.length, 0);
   await submit;
   assert.equal(nativeSends.length, 1);
-  assert.deepEqual(nativeSends[0].actor, actorRef);
+  assert.equal(routeCalls.length, 0);
+  assert.deepEqual(nativeSends[0].actor, { ...actorRef, generation: 0n });
   assert.equal(nativeSends[0].flags, 1);
   assert.equal(nativeSends[0].frame.header.kind, connector.ZlinkStreamMessageKind.Send);
   assert.equal(nativeSends[0].frame.header.name, 'Notify');
   assert.deepEqual(JSON.parse(new TextDecoder().decode(nativeSends[0].frame.payload)), { ok: true });
+});
+
+test('runtime host bound session uses routed Session target before native ActorGateway', async () => {
+  const actorRef = { nodeRid: 'node-a', actorId: 'actor-routed', generation: 7n };
+  const nativeSends = [];
+  const routeCalls = [];
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  host.routeTransport.send = (routerChannelId, targetNodeRid, packetName, message, signal) => {
+    routeCalls.push({ routerChannelId, targetNodeRid, packetName, message, signal });
+    return Promise.resolve();
+  };
+  host.spotNodeRuntime = {
+    primaryNode: {
+      sendActorBoundSession(actor, parts, flags) {
+        nativeSends.push({ actor, parts, flags });
+        return true;
+      },
+      async closeActorBoundSession() {}
+    }
+  };
+  host.setActorManager({
+    getState(actorId) {
+      return actorId === actorRef.actorId
+        ? {
+            nativeActorRef: actorRef,
+            remoteBoundSessionTarget: {
+              routerChannelId: 'room.route',
+              targetNodeRid: 'session-node',
+              spotRid: 'session-entry'
+            }
+          }
+        : undefined;
+    }
+  });
+
+  await host.createActorManagerOptions()
+    .boundSessionFactory(actorRef.actorId)
+    .send({ ok: true })
+    .packetName('Notify')
+    .submit();
+
+  assert.equal(nativeSends.length, 0);
+  assert.equal(routeCalls.length, 1);
+  assert.equal(routeCalls[0].routerChannelId, 'room.route');
+  assert.equal(routeCalls[0].targetNodeRid, 'session-node');
+  assert.equal(routeCalls[0].packetName, '__zlink.actor.bound_session.send');
+  assert.equal(routeCalls[0].message.boundPacketName, 'Notify');
+});
+
+test('runtime host native bound session retries while ActorGateway route is connecting', async () => {
+  const actorRef = { nodeRid: 'node-a', actorId: 'actor-native', generation: 7n };
+  const attempts = [];
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  host.streamBindingRuntime = new framework.ZLinkStreamBindingRuntime({ actorBindTimeoutMs: 100 });
+  host.spotNodeRuntime = {
+    primaryNode: {
+      sendActorBoundSession(actor, parts, flags) {
+        attempts.push({ actor, frame: decodeFrame(bytesOf(parts[0])), flags });
+        if (attempts.length === 1) {
+          throw new zlink.SubmitError(zlink.SubmitResult.NotConnected);
+        }
+        if (attempts.length === 2) {
+          return false;
+        }
+        return true;
+      },
+      async closeActorBoundSession() {}
+    }
+  };
+  host.setActorManager({
+    getState(actorId) {
+      return actorId === actorRef.actorId ? { nativeActorRef: actorRef } : undefined;
+    }
+  });
+
+  await host.createActorManagerOptions()
+    .boundSessionFactory(actorRef.actorId)
+    .send({ ok: true })
+    .packetName('Notify')
+    .submit();
+
+  assert.equal(attempts.length, 3);
+  assert.deepEqual(attempts.map((entry) => entry.actor), [
+    { ...actorRef, generation: 0n },
+    { ...actorRef, generation: 0n },
+    { ...actorRef, generation: 0n }
+  ]);
+  assert.deepEqual(attempts.map((entry) => entry.flags), [1, 1, 1]);
+  assert.equal(attempts[2].frame.header.name, 'Notify');
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(attempts[2].frame.payload)), { ok: true });
+});
+
+test('runtime host remote bound session send submits a routed Session command', async () => {
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  const routeCalls = [];
+  host.routeTransport.send = (routerChannelId, targetNodeRid, packetName, message, signal) => {
+    routeCalls.push({ routerChannelId, targetNodeRid, packetName, packet: message, signal });
+    return Promise.resolve();
+  };
+  host.setActorManager({
+    getState(actorId) {
+      assert.equal(actorId, 'actor-remote');
+      return {
+        remoteBoundSessionTarget: {
+          routerChannelId: 'room.route',
+          targetNodeRid: 'session-node',
+          spotRid: 'session-entry'
+        }
+      };
+    }
+  });
+
+  await host.createActorManagerOptions()
+    .boundSessionFactory('actor-remote')
+    .send({ hello: 'world' })
+    .packetName('Notify')
+    .submit();
+
+  assert.equal(routeCalls.length, 1);
+  assert.equal(routeCalls[0].routerChannelId, 'room.route');
+  assert.equal(routeCalls[0].targetNodeRid, 'session-node');
+  assert.equal(routeCalls[0].packetName, '__zlink.actor.bound_session.send');
+  assert.equal(routeCalls[0].packet.packetName, '__zlink.actor.bound_session.send');
+  assert.equal(routeCalls[0].packet.actorId, 'actor-remote');
+  assert.equal(routeCalls[0].packet.boundPacketName, 'Notify');
+});
+
+test('runtime host remote bound session receiver forwards through actor remote target', async () => {
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  const routeCalls = [];
+  host.routeTransport.send = (routerChannelId, targetNodeRid, packetName, message, signal) => {
+    routeCalls.push({ routerChannelId, targetNodeRid, packetName, packet: message, signal });
+    return Promise.resolve();
+  };
+  host.setActorManager({
+    getState(actorId) {
+      assert.equal(actorId, 'actor-hop');
+      return {
+        remoteBoundSessionTarget: {
+          routerChannelId: 'room.route',
+          targetNodeRid: 'session-node',
+          spotRid: 'session-entry'
+        }
+      };
+    }
+  });
+
+  await host.receiveRemoteBoundSessionSend({
+    packetName: '__zlink.actor.bound_session.send',
+    actorId: 'actor-hop',
+    message: { hello: 'world' },
+    boundPacketName: 'Notify',
+    metadata: { seq: '1' }
+  });
+
+  assert.equal(routeCalls.length, 1);
+  assert.equal(routeCalls[0].routerChannelId, 'room.route');
+  assert.equal(routeCalls[0].targetNodeRid, 'session-node');
+  assert.equal(routeCalls[0].packetName, '__zlink.actor.bound_session.send');
+  assert.equal(routeCalls[0].packet.actorId, 'actor-hop');
+  assert.equal(routeCalls[0].packet.boundPacketName, 'Notify');
+  assert.deepEqual(routeCalls[0].packet.message, { hello: 'world' });
+  assert.deepEqual(routeCalls[0].packet.metadata, { seq: '1' });
+});
+
+test('runtime host actor packet target prefers stored remote room target', () => {
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  host.spotNodeRuntime = {
+    primaryNode: {
+      routingId: 'local-node'
+    }
+  };
+  host.setActorManager({
+    getState(actorId) {
+      assert.equal(actorId, 'actor-remote-room');
+      return {
+        spotRid: 'room-spot',
+        nativeActorRef: {
+          nodeRid: 'actor-home-node',
+          actorId,
+          generation: 1n
+        },
+        remoteActorPacketTarget: {
+          routerChannelId: 'room.route',
+          targetNodeRid: 'room-owner-node',
+          spotRid: 'room-spot'
+        }
+      };
+    }
+  });
+
+  assert.deepEqual(host.actorPacketTargetForState('actor-remote-room'), {
+    routerChannelId: 'room.route',
+    targetNodeRid: 'room-owner-node',
+    spotRid: 'room-spot'
+  });
+});
+
+test('runtime host actor packet target lets local joined actors use native gateway', () => {
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  host.spotNodeRuntime = {
+    primaryNode: {
+      routingId: 'local-node'
+    }
+  };
+  host.setActorManager({
+    getState(actorId) {
+      assert.equal(actorId, 'actor-local-room');
+      return {
+        spotRid: 'room-spot',
+        nativeActorRef: {
+          nodeRid: 'local-node',
+          actorId,
+          generation: 1n
+        }
+      };
+    }
+  });
+
+  assert.equal(host.actorPacketTargetForState('actor-local-room'), undefined);
+});
+
+test('runtime host local spot join uses SpotManager for actors with native refs', async () => {
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  host.spotNodeRuntime = {
+    primaryNode: {
+      routingId: 'local-node'
+    }
+  };
+  const actor = { actorId: 'actor-local-room' };
+  const state = new framework.ZLinkActorRuntimeState(actor.actorId);
+  state.setNativeActorRef({
+    nodeRid: 'local-node',
+    actorId: actor.actorId,
+    generation: 4n
+  });
+  const admits = [];
+  host.setSpotManager({
+    hasActiveSpot(spotRid) {
+      return spotRid === 'room-1';
+    },
+    async admitActorJoin(spotRid, joinedActor, request, commit) {
+      admits.push({ spotRid, actorId: joinedActor.actorId, request: request.getString() });
+      await commit({ room: true });
+      return { accepted: true, reply: zlink.Message.from('joined') };
+    }
+  });
+
+  const request = zlink.Message.from('hello');
+  const result = await host.createActorManagerOptions()
+    .joinCoordinator
+    .joinSpot(actor, state, 'room-1', request, undefined, undefined);
+
+  assert.deepEqual(admits, [{ spotRid: 'room-1', actorId: 'actor-local-room', request: 'hello' }]);
+  assert.equal(state.spotRid, 'room-1');
+  assert.deepEqual(result.actor, {
+    nodeRid: 'local-node',
+    actorId: 'actor-local-room',
+    generation: 4n
+  });
+  assert.equal(result.reply.getString(), 'joined');
+  request.close();
+  result.reply.close();
 });
 
 test('session actor relay sends header and payload through managed stream ActorGateway route', async () => {
@@ -226,6 +512,67 @@ test('session actor relay sends header and payload through managed stream ActorG
   assert.equal(header.kind, connector.ZlinkStreamMessageKind.Send);
   assert.equal(header.name, 'Move');
   assert.equal(new TextDecoder().decode(socket.boundActorSends[0].parts[1].bytes), '{"x":1}');
+});
+
+test('runtime host relays bound remote actor request through route channel and completes local stream response', async () => {
+  const actorRef = { nodeRid: 'play-node', actorId: 'actor-remote', generation: 7n };
+  const routeRequests = [];
+  const stream = recordingStream('session-remote-actor', 'session-node');
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      routeChannels: [{ routerChannelId: 'room.route' }],
+      spotNodes: {
+        session: {
+          router: { bind: 'tcp://127.0.0.1:1', routingId: 'session-node' },
+          acceptedSpotRouteChannels: {
+            'room.route': {}
+          }
+        }
+      }
+    })
+  });
+  host.spotNodeRuntime = {
+    primaryNode: {
+      routingId: 'session-node'
+    }
+  };
+  host.routeTransport.request = async (routerChannelId, targetNodeRid, packetName, request, timeoutMs) => {
+    routeRequests.push({
+      routerChannelId,
+      targetNodeRid,
+      packetName,
+      timeoutMs,
+      request
+    });
+    return {
+      ok: true,
+      response: { matched: true }
+    };
+  };
+
+  const context = host.streamBindingRuntime.createSessionContext(stream);
+  const actor = await context.actors.bind(actorRef);
+  await actor.relay({
+    kind: connector.ZlinkStreamMessageKind.Request,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+    requestSeq: 2n,
+    name: 'MatchBingoReq',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  }, bindingMessage(JSON.stringify({ mode: 'classic' })));
+
+  assert.equal(routeRequests.length, 1);
+  assert.equal(routeRequests[0].routerChannelId, 'room.route');
+  assert.equal(routeRequests[0].targetNodeRid, 'play-node');
+  assert.equal(routeRequests[0].packetName, '__zlink.actor.packet.relay');
+  assert.equal(routeRequests[0].request.packetName, '__zlink.actor.packet.relay');
+  assert.equal(routeRequests[0].request.actorId, 'actor-remote');
+  assert.equal(stream.writes.length, 1);
+  const frame = decodeFrame(bytesOf(stream.writes[0]));
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
+  assert.equal(frame.header.name, 'MatchBingoReq');
+  assert.equal(frame.header.requestSeq, 2n);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { matched: true });
 });
 
 test('bound session send and disconnect use current binding token and stale tokens cannot remove newer binding', async () => {
@@ -644,6 +991,19 @@ function bytesOf(message) {
     return message.bytes;
   }
   throw new Error('Test message does not expose bytes.');
+}
+
+function bindingMessage(payload) {
+  const bytes = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
+  return {
+    data() {
+      return bytes;
+    },
+    toBytes() {
+      return bytes;
+    },
+    close() {}
+  };
 }
 
 function unpickleLz4(payload) {

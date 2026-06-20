@@ -91,6 +91,41 @@ test('backend adapter normalizes missing SpotNode actor lookup to undefined', as
   }
 });
 
+test('backend adapter submits SpotNode actor bound-session send operation', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const channel = factory.createChannelAdapter();
+  const spotAdapter = factory.createSpotAdapter();
+  const context = channel.createContext();
+  const spotNode = spotAdapter.createSpotNode(context, 3);
+  const frame = zlink.Message.from(Buffer.from('frame'));
+
+  try {
+    const actorRef = spotNode.createActor('unbound-actor');
+    assert.throws(
+      () => spotNode.sendActorBoundSession(actorRef, [frame], 1),
+      /actor bound session send failed|not found|No such file|ENOENT|NOT_FOUND/i
+    );
+  } finally {
+    frame.close();
+    await spotNode.dispose();
+    await context.dispose();
+  }
+});
+
+test('backend router recv normalizes transient route recv invalid handle to no message', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const channel = factory.createChannelAdapter();
+  const context = channel.createContext();
+  const router = channel.createRouterSocket(context);
+
+  try {
+    await router.dispose();
+    assert.equal(router.recv(1), undefined);
+  } finally {
+    await context.dispose();
+  }
+});
+
 test('backend socket wrapper treats missing route disconnect as idempotent cleanup', () => {
   const error = new zlink.ConfigError(zlink.ConfigResult.NotFound, 2);
 

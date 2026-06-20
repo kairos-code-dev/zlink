@@ -161,6 +161,7 @@ try {
     Start-Server "session" "dist/Server/Session/main.js"
     Wait-Port "session" $env:BINGO_SESSION_ENDPOINT
     Wait-DiscoveryReady $env:BINGO_REGISTRY_ROUTER_ENDPOINT
+    Start-Sleep -Milliseconds 500
 
     $clientLog = Join-Path $logDir "client.log"
     node (Join-Path $scriptDir "dist/Client/main.js") *> $clientLog
@@ -173,6 +174,7 @@ try {
     if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo .* name=.*Notify" -Quiet)) {
         throw "Bingo.Ts client did not write stream-inbound push marker."
     }
+    Write-Host "bingo=completed"
 }
 finally {
     for ($i = $processes.Count - 1; $i -ge 0; $i--) {

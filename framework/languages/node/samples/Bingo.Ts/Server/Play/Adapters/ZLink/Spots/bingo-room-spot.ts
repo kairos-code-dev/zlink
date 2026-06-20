@@ -1,22 +1,44 @@
 import { Injectable } from '@nestjs/common';
-import { BingoRoomStatus, numberDrawnNotify, playerJoinedNotify, stateEnvelope, submitBingoCardRes } from '../../../../../Shared/Contracts/messages';
+import { createProtobufMessageSerializer } from '@zlink-systems/framework-codec-protobuf';
+import {
+  BingoRewardItems,
+  BingoRoomStatus,
+  PacketNames,
+  bingoRewardAcquiredEvent,
+  bingoRewardAnnouncedNotify,
+  numberDrawnNotify,
+  playerJoinedNotify,
+  stateEnvelope,
+  submitBingoCardRes
+} from '../../../../../Shared/Contracts/messages';
 import { BingoRoomGame } from '../../../Domain/Bingo/bingo-room-game';
-import { createRoomSettings } from '../../../Domain/Bingo/bingo-room-models';
-import { BingoNotificationPublisher } from '../Notifications/bingo-notification-publisher';
+import { createRoomSettings, roomSettingsFromPayload } from '../../../Domain/Bingo/bingo-room-models';
+import { SampleNames } from '../../../../Configuration/sample-names';
+import { SubmitBingoCardHandler } from './Handlers/submit-bingo-card-handler';
+import { StopObservingBingoEventsHandler } from './Handlers/stop-observing-bingo-events-handler';
+import { BingoRoomTimerHandler } from './Handlers/bingo-room-timer-handler';
+import { BingoRewardAcquiredEventHandler } from './Handlers/bingo-reward-acquired-event-handler';
 import type {
+  Message,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
-  ZLinkSpotContext
+  ZLinkSpotContext,
+  ZLinkSpotCreateResponse,
+  ZLinkTimer
 } from '@zlink-systems/framework';
 import type { PlayerActor as PlayerActorType } from '../Actors/player-actor';
 import type {
-  BingoRoomSettings,
   BingoRoomGame as BingoRoomGameType,
   BingoRoomSnapshot
 } from '../../../Domain/Bingo/bingo-room-game';
+import type { BingoRoomSettings as BingoRoomRuntimeSettings } from '../../../Domain/Bingo/bingo-room-models';
 import type {
+  BingoRewardAcquiredEvent,
+  BingoRoomJoinReq,
+  BingoRoomJoinRes,
   SubmitBingoCardReq,
-  SubmitBingoCardRes
+  SubmitBingoCardRes,
+  StopObservingBingoEventsReq
 } from '../../../../../Shared/Contracts/messages';
 
 type BingoActor = {
@@ -24,52 +46,59 @@ type BingoActor = {
   displayName: string;
 };
 
-type BingoNotificationPublisherLike = Pick<
-  BingoNotificationPublisher,
-  'publish' | 'playerJoined' | 'gameStarted' | 'numberDrawn' | 'gameEnded'
->;
+const protobufSerializer = createProtobufMessageSerializer();
 
 @Injectable()
 class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
-  private static notifications: BingoNotificationPublisherLike | null = null;
   readonly context!: ZLinkSpotContext<PlayerActorType, BingoRoomSpot>;
   private roomId: string;
   private game: BingoRoomGameType;
+  private settings: BingoRoomRuntimeSettings;
+  private readonly observerActors = new Map<string, PlayerActorType>();
+  private drawTimer?: ZLinkTimer;
   private cleanupStarted = false;
 
   constructor() {
     this.roomId = 'bingo-room';
-    this.game = new BingoRoomGame(this.roomId, createRoomSettings(0));
+    this.settings = createRoomSettings(0);
+    this.game = new BingoRoomGame(this.roomId, this.settings);
   }
 
-  static useNotifications(notifications: BingoNotificationPublisherLike): void {
-    BingoRoomSpot.notifications = notifications;
+  configure(): void {
+    this.context.handlers.actorRequest(PacketNames.submitBingoCardReq, SubmitBingoCardHandler);
+    this.context.handlers.actorRequest(PacketNames.stopObservingBingoEventsReq, StopObservingBingoEventsHandler);
+    this.context.handlers.addSubscribe(BingoRewardAcquiredEventHandler, SampleNames.roomRewardTopic);
+  }
+
+  async onCreate(request: Message): Promise<ZLinkSpotCreateResponse> {
+    if (request.size() > 0) {
+      this.initializeRoom(roomSettingsFromPayload(
+        protobufSerializer.deserialize(request, Object as never)
+      ));
+    }
+    return { accepted: true };
   }
 
   async onInitialize(): Promise<void> {
     this.roomId = this.context.spotRid;
+    if (!this.isObserverRoom()) {
+      this.drawTimer = await this.context.addTimer('bingo-draw', 200, BingoRoomTimerHandler);
+    }
   }
 
-  async onActorJoin(actor: PlayerActorType): Promise<ZLinkSpotActorJoinResponse> {
+  async onClosing(): Promise<void> {
+    await this.drawTimer?.cancel();
+    this.drawTimer = undefined;
+  }
+
+  async onActorJoin(actor: PlayerActorType, request: Message): Promise<ZLinkSpotActorJoinResponse> {
     try {
-      const joined = this.game.join(actor);
-      const state = this.snapshot();
-      if (joined.joined) {
-        const playerJoinedEvents = this.game.players
-          .filter((entry) => entry.actor.actorId !== actor.actorId)
-          .map((entry) =>
-            this.requireNotifications().playerJoined(entry.actor, playerJoinedNotify(this.roomId, actor, joined.player.seat, joined.player.isHost, state))
-          );
-        if (playerJoinedEvents.length > 0) {
-          await this.requireNotifications().publish(playerJoinedEvents);
-        }
-      }
-      if (joined.started) {
-        await this.requireNotifications().publish(this.game.players.map((player) =>
-          this.requireNotifications().gameStarted(player.actor, stateEnvelope(this.snapshot()))
-        ));
-      }
-      return { accepted: true };
+      const joinRequest = protobufSerializer.deserialize<BingoRoomJoinReq>(request, Object as never);
+      const joined = await this.joinActor(actor, joinRequest);
+      return {
+        accepted: true,
+        reply: protobufSerializer.serialize(joined)
+      };
     } catch (error) {
       return {
         accepted: false
@@ -77,8 +106,45 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     }
   }
 
-  initializeRoom(settings: BingoRoomSettings): void {
+  async joinActor(actor: PlayerActorType, request: BingoRoomJoinReq): Promise<BingoRoomJoinRes> {
+    if (actor.actorId !== request.actorId) {
+      throw new Error('Join request actor id does not match bound actor.');
+    }
+    actor.displayName = request.displayName;
+    if (request.observeOnly) {
+      return this.joinObserver(actor, request);
+    }
+    if (this.isObserverRoom()) {
+      throw new Error('Player actor cannot join an observer BingoRoom.');
+    }
+    if (request.roomId !== this.roomId) {
+      throw new Error(`Join request room id '${request.roomId}' does not match '${this.roomId}'.`);
+    }
+    const joined = this.game.join(actor);
+      const state = this.snapshot();
+      if (joined.joined) {
+        await this.pushPlayers(
+          this.game.players
+            .map((entry) => entry.actor as PlayerActorType)
+            .filter((entry) => entry.actorId !== actor.actorId),
+          'PlayerJoinedNotify',
+          playerJoinedNotify(this.roomId, actor, joined.player.seat, joined.player.isHost, state)
+        );
+      }
+      if (joined.started) {
+        await this.pushPlayers(
+          this.playerActors(),
+          'BingoGameStartedNotify',
+          stateEnvelope(this.snapshot())
+        );
+      }
+    return { state };
+  }
+
+  initializeRoom(settings: BingoRoomRuntimeSettings): void {
+    this.settings = settings;
     this.game = new BingoRoomGame(this.roomId, settings);
+    this.cleanupStarted = false;
   }
 
   async onJoinedActor(actor: PlayerActorType): Promise<void> {
@@ -86,7 +152,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
   }
 
   async onLeaveActor(actor: PlayerActorType): Promise<void> {
-    void actor;
+    this.observerActors.delete(actor.actorId);
   }
 
   async onDisconnectActor(actor: PlayerActorType): Promise<void> {
@@ -104,16 +170,50 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
       return this.snapshot();
     }
     const state = this.snapshot();
-    await this.requireNotifications().publish(this.game.players.map((player) =>
-      this.requireNotifications().numberDrawn(player.actor, numberDrawnNotify(this.roomId, drawn.drawSeq, drawn.number, state))
-    ));
+    await this.pushPlayers(
+      this.playerActors(),
+      'BingoNumberDrawnNotify',
+      numberDrawnNotify(this.roomId, drawn.drawSeq, drawn.number, state)
+    );
     if (drawn.finished) {
-      await this.requireNotifications().publish(this.game.players.map((player) =>
-        this.requireNotifications().gameEnded(player.actor, stateEnvelope(state))
-      ));
+      await this.pushPlayers(
+        this.playerActors(),
+        'BingoGameEndedNotify',
+        stateEnvelope(state)
+      );
+      await this.publishReward(state);
       await this.leaveFinishedActors();
     }
     return state;
+  }
+
+  async announceReward(event: BingoRewardAcquiredEvent): Promise<void> {
+    if (
+      !this.isObserverRoom() ||
+      this.settings.observedRoomId !== event.roomId ||
+      this.observerActors.size === 0
+    ) {
+      return;
+    }
+    for (const observer of [...this.observerActors.values()]) {
+      await observer.push(
+        PacketNames.rewardAnnouncedNotify,
+        bingoRewardAnnouncedNotify(event, String(this.context.nodeRid))
+      );
+    }
+  }
+
+  async stopObserving(actor: PlayerActorType, request: StopObservingBingoEventsReq): Promise<boolean> {
+    if (
+      !this.isObserverRoom() ||
+      this.settings.observedRoomId !== request.roomId ||
+      !this.observerActors.has(actor.actorId)
+    ) {
+      return false;
+    }
+    this.observerActors.delete(actor.actorId);
+    await this.context.leaveActor(actor);
+    return true;
   }
 
   private async leaveFinishedActors(): Promise<void> {
@@ -132,11 +232,57 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     return this.game.snapshot();
   }
 
-  private requireNotifications(): BingoNotificationPublisherLike {
-    if (BingoRoomSpot.notifications === null) {
-      throw new Error('BingoRoomSpot notifications were not configured.');
+  private playerActors(): PlayerActorType[] {
+    return this.game.players.map((player) => player.actor as PlayerActorType);
+  }
+
+  private async pushPlayers(players: PlayerActorType[], packetName: string, payload: unknown): Promise<void> {
+    await Promise.all(players.map((player) => player.push(packetName, payload)));
+  }
+
+  private joinObserver(actor: PlayerActorType, request: BingoRoomJoinReq): BingoRoomJoinRes {
+    if (!this.isObserverRoom() || this.settings.observedRoomId !== request.roomId) {
+      throw new Error('Observe-only actor can join only its observer BingoRoom.');
     }
-    return BingoRoomSpot.notifications;
+    this.observerActors.set(actor.actorId, actor);
+    return {
+      state: {
+        roomId: request.roomId,
+        status: BingoRoomStatus.Running,
+        hostActorId: null,
+        canStart: false,
+        drawSeq: 0,
+        lastDrawnNumber: null,
+        drawnNumbers: [],
+        players: [],
+        winners: []
+      }
+    };
+  }
+
+  private async publishReward(state: BingoRoomSnapshot): Promise<void> {
+    const winner = state.winners[0];
+    if (winner === undefined) {
+      return;
+    }
+    await this.context.outbound
+      .publish(
+        SampleNames.roomRewardTopic,
+        bingoRewardAcquiredEvent({
+          roomId: state.roomId,
+          actorId: winner,
+          drawSeq: state.drawSeq,
+          itemId: BingoRewardItems.goldenDauberId,
+          itemName: BingoRewardItems.goldenDauberName,
+          rarity: BingoRewardItems.legendaryRarity
+        })
+      )
+      .packetName(PacketNames.bingoRewardAcquiredEvent)
+      .submit();
+  }
+
+  private isObserverRoom(): boolean {
+    return this.settings.purpose === 'Observer';
   }
 }
 

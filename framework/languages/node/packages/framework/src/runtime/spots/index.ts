@@ -103,7 +103,7 @@ import {
   ZLinkSpotActorDispatcher,
   ZLinkSpotActorHandlerRegistryRuntime
 } from '../actors';
-import type { ZLinkRemoteBoundSessionTarget } from '../actors';
+import type { ZLinkRemoteActorPacketTarget, ZLinkRemoteBoundSessionTarget } from '../actors';
 import {
   decodeStreamHeader,
   messageToBytes,
@@ -164,6 +164,11 @@ export interface ZLinkSpotManagerOptions {
     metadata: ReadonlyMap<string, string>,
     signal?: AbortSignal
   ) => Promise<void>;
+  readonly remoteActorPacketTargetReceiver?: (
+    actorId: string,
+    target: ZLinkRemoteBoundSessionTarget
+  ) => void;
+  readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
 }
 
 export interface ZLinkSpotNodeRuntimeManagerOptions {
@@ -180,6 +185,8 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
   readonly routedActorProvider?: ZLinkSpotManagerOptions['routedActorProvider'];
   readonly routedBoundSessionReceiver?: ZLinkSpotManagerOptions['routedBoundSessionReceiver'];
+  readonly remoteActorPacketTargetReceiver?: ZLinkSpotManagerOptions['remoteActorPacketTargetReceiver'];
+  readonly actorPacketTargetProvider?: ZLinkSpotManagerOptions['actorPacketTargetProvider'];
   readonly actorResponseSender?: ZLinkSpotManagerOptions['actorResponseSender'];
   readonly entryActorCommitter?: (actor: ZLinkActor) => void;
   readonly actorDestroyer?: (
@@ -210,6 +217,7 @@ interface ZLinkRemoteActorJoinRequest {
 export class ZLinkSpotNodeRuntimeManager {
   private readonly nodes = new Map<string, ZLinkBackendSpotNode>();
   private readonly entryActivations = new Map<string, ZLinkEntrySpotActivation>();
+  private readonly entryRouteDispatches: ZLinkSpotActorJoinDispatch[] = [];
   private readonly ownedObjects: ZLinkOwnedBackendObject[] = [];
   private readonly publisherBundles = new Map<string, ZLinkSpotPublisherBundle>();
   private readonly spotMeshDiscoveries = new Map<string, ZLinkBackendDiscovery>();
@@ -282,6 +290,7 @@ export class ZLinkSpotNodeRuntimeManager {
     const entryActivations = [...this.entryActivations.values()];
     this.nodes.clear();
     this.entryActivations.clear();
+    this.entryRouteDispatches.length = 0;
     this.spotMeshDiscoveries.clear();
     this.ownedObjects.length = 0;
     for (const bundle of this.publisherBundles.values()) {
@@ -305,6 +314,7 @@ export class ZLinkSpotNodeRuntimeManager {
     spotNode: ZLinkSpotNodeOptions
   ): Promise<void> {
     if (spotNode.entrySpotType === undefined) {
+      this.initializeInternalEntryRouteDispatch(node);
       return;
     }
     const nativeSpot = node.entrySpot();
@@ -327,6 +337,8 @@ export class ZLinkSpotNodeRuntimeManager {
       actorResolver: (actorId) => this.options.actorResolver?.(actorId),
       entryActorCommitter: this.options.entryActorCommitter,
       routedBoundSessionReceiver: this.options.routedBoundSessionReceiver,
+      remoteActorPacketTargetReceiver: this.options.remoteActorPacketTargetReceiver,
+      actorPacketTargetProvider: this.options.actorPacketTargetProvider,
       actorResponseSender: this.options.actorResponseSender,
       dispatchErrors: this.options.dispatchErrors,
       destroyActor: (nodeRid, actor, signal) => {
@@ -347,8 +359,43 @@ export class ZLinkSpotNodeRuntimeManager {
     this.entryActivations.set(spotNodeName, activation);
   }
 
+  private initializeInternalEntryRouteDispatch(node: ZLinkBackendSpotNode): void {
+    if (this.options.routedBoundSessionReceiver === undefined) {
+      return;
+    }
+    const dispatch = new ZLinkSpotActorJoinDispatch(
+      node.entrySpot(),
+      new ZLinkSpotSerialExecutor(),
+      (actorId) => this.options.actorResolver?.(actorId),
+      () => ({}),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      this.options.routedBoundSessionReceiver,
+      this.options.actorPacketTargetProvider,
+      this.options.providerResolver,
+      this.options.dispatchErrors
+    );
+    dispatch.attach();
+    this.entryRouteDispatches.push(dispatch);
+  }
+
   private primaryEntryActivation(): ZLinkEntrySpotActivation | undefined {
     return this.entryActivations.values().next().value;
+  }
+
+  dispatchEntryActorPacket(
+    actorId: string,
+    parts: readonly Message[],
+    returnResponse = false,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
+  ): Promise<unknown> {
+    const activation = this.primaryEntryActivation();
+    if (activation === undefined) {
+      throw new ZLinkConfigurationException('Entry Spot actor packet dispatch requires an Entry Spot.');
+    }
+    return activation.dispatchActorPacket(actorId, parts, returnResponse, remoteBoundSessionTarget);
   }
 
   publishSpot(
@@ -430,6 +477,8 @@ class ZLinkSpotNodeConnector {
     }
     if (spotNode.entrySpot?.routingId !== undefined) {
       node.entrySpot().setRoutingId(spotNode.entrySpot.routingId);
+    } else if (spotNode.router?.routingId !== undefined) {
+      node.entrySpot().setRoutingId(spotNode.router.routingId);
     }
     if (spotNode.router?.bind !== undefined) {
       node.setRouterBind(spotNode.router.bind);
@@ -502,6 +551,9 @@ class ZLinkSpotNodeConnector {
 	      if ((acceptance.manualConnections ?? []).length > 0 || (acceptance.manualPeerConnections ?? []).length > 0) {
 	        continue;
 	      }
+      if (this.options.registration.routeChannelOptions.get(channelName)?.bind !== undefined) {
+        continue;
+      }
       const discovery = this.createDiscovery(channelName, this.resolveSpotRouteAutoConnectType(channelName));
       node.attachSpotRouteChannelDiscovery(channelName, discovery);
     }
@@ -613,6 +665,8 @@ interface ZLinkEntrySpotActivationOptions {
   ) => Promise<void>;
   readonly routedBoundSessionReceiver?: ZLinkSpotManagerOptions['routedBoundSessionReceiver'];
   readonly actorResponseSender?: ZLinkSpotManagerOptions['actorResponseSender'];
+  readonly remoteActorPacketTargetReceiver?: ZLinkSpotManagerOptions['remoteActorPacketTargetReceiver'];
+  readonly actorPacketTargetProvider?: ZLinkSpotManagerOptions['actorPacketTargetProvider'];
 }
 
 /**
@@ -652,9 +706,11 @@ class ZLinkSpotActorJoinDispatch {
     private readonly actorPacketHandler?: (
       actorId: string,
       parts: readonly Message[],
-      returnResponse?: boolean
+      returnResponse?: boolean,
+      remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
     ) => Promise<unknown>,
     private readonly routedBoundSessionReceiver?: ZLinkSpotManagerOptions['routedBoundSessionReceiver'],
+    private readonly actorPacketTargetProvider?: ZLinkSpotManagerOptions['actorPacketTargetProvider'],
     private readonly providerResolver?: ZLinkProviderResolver,
     private readonly dispatchErrors?: ZLinkDispatchErrorReporter
   ) {}
@@ -901,7 +957,7 @@ class ZLinkSpotActorJoinDispatch {
     if (received.parts.length < 1) {
       return;
     }
-      const boundSessionSend = this.decodeRemoteBoundSessionSend(received.parts);
+    const boundSessionSend = this.decodeRemoteBoundSessionSend(received.parts);
     if (boundSessionSend !== undefined) {
       await this.routedBoundSessionReceiver?.(
         boundSessionSend.actorId,
@@ -925,21 +981,56 @@ class ZLinkSpotActorJoinDispatch {
     }
     const actorPacketRelay = this.decodeRemoteActorPacketRelay(received.parts);
     if (actorPacketRelay !== undefined && this.actorPacketHandler !== undefined) {
+      let remoteBoundSessionTarget: ZLinkRemoteBoundSessionTarget | undefined;
+      if (
+        actorPacketRelay.routerChannelId !== undefined &&
+        received.routingId !== null &&
+        received.routingId !== undefined
+      ) {
+        remoteBoundSessionTarget = {
+          routerChannelId: actorPacketRelay.routerChannelId,
+          targetNodeRid: String(received.routingId) as RoutingId,
+          spotRid: String(received.spotRid ?? received.routingId) as RoutingId
+        };
+      }
       const header = BindingMessage.from(Buffer.from(actorPacketRelay.header, 'base64'));
       const payload = BindingMessage.from(Buffer.from(actorPacketRelay.payload, 'base64'));
       try {
-        const response = await this.actorPacketHandler(actorPacketRelay.actorId, [header, payload], true);
-        received.reply()
-          .message(Buffer.from(JSON.stringify({ ok: true, response })))
-          .submit();
+        const response = await this.actorPacketHandler(
+          actorPacketRelay.actorId,
+          [header, payload],
+          true,
+          remoteBoundSessionTarget
+        );
+        const actorPacketTarget = this.actorPacketTargetProvider?.(actorPacketRelay.actorId);
+        if (actorPacketRelay.envelope === undefined) {
+          received.reply()
+            .message(Buffer.from(JSON.stringify({ ok: true, response, actorPacketTarget })))
+            .submit();
+        } else {
+          appendRouteReplyParts(
+            received.reply(),
+            encodeChannelReplyParts(actorPacketRelay.envelope.header, { ok: true, response, actorPacketTarget })
+          ).submit();
+        }
       } catch (error) {
         if (received.requestSeq !== null) {
-          received.reply()
-            .message(Buffer.from(JSON.stringify({
-              ok: false,
-              error: error instanceof Error ? error.message : String(error)
-            })))
-            .submit();
+          if (actorPacketRelay.envelope === undefined) {
+            received.reply()
+              .message(Buffer.from(JSON.stringify({
+                ok: false,
+                error: error instanceof Error ? error.message : String(error)
+              })))
+              .submit();
+          } else {
+            appendRouteReplyParts(
+              received.reply(),
+              encodeChannelReplyParts(actorPacketRelay.envelope.header, {
+                ok: false,
+                error: error instanceof Error ? error.message : String(error)
+              })
+            ).submit();
+          }
           return;
         }
         throw error;
@@ -1230,16 +1321,47 @@ class ZLinkSpotActorJoinDispatch {
 
   private decodeRemoteActorPacketRelay(parts: readonly BindingMessage[]): {
     readonly actorId: string;
+    readonly routerChannelId?: string;
     readonly header: string;
     readonly payload: string;
+    readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
   } | undefined {
     try {
+      if (parts.length >= 2 && parts[0].data().length > 0) {
+        const envelope = decodeChannelEnvelope(parts);
+        if (envelope.packetName !== ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET) {
+          return undefined;
+        }
+        const payload = decodeChannelPayload(envelope) as {
+          readonly packetName?: unknown;
+          readonly actorId?: unknown;
+          readonly routerChannelId?: unknown;
+          readonly header?: unknown;
+          readonly payload?: unknown;
+        };
+        if (
+          payload.packetName !== ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET ||
+          typeof payload.actorId !== 'string' ||
+          typeof payload.header !== 'string' ||
+          typeof payload.payload !== 'string'
+        ) {
+          return undefined;
+        }
+        return {
+          actorId: payload.actorId,
+          routerChannelId: typeof payload.routerChannelId === 'string' ? payload.routerChannelId : undefined,
+          header: payload.header,
+          payload: payload.payload,
+          envelope
+        };
+      }
       if (parts.length !== 1) {
         return undefined;
       }
       const payload = JSON.parse(parts[0].data().toString()) as {
         readonly packetName?: unknown;
         readonly actorId?: unknown;
+        readonly routerChannelId?: unknown;
         readonly header?: unknown;
         readonly payload?: unknown;
       };
@@ -1253,6 +1375,7 @@ class ZLinkSpotActorJoinDispatch {
       }
       return {
         actorId: payload.actorId,
+        routerChannelId: typeof payload.routerChannelId === 'string' ? payload.routerChannelId : undefined,
         header: payload.header,
         payload: payload.payload
       };
@@ -1302,8 +1425,10 @@ class ZLinkSpotActorJoinDispatch {
           actorRef: decodeRemoteActorRef(payload.actorNodeRid, payload.actorNodeRidHex, payload.actorId, payload.actorGeneration),
           remoteBoundSessionTarget: decodeRemoteBoundSessionTarget(
             payload.routerChannelId,
-            payload.actorNodeRid,
-            payload.actorNodeRidHex,
+            received.routingId === null || received.routingId === undefined
+              ? payload.actorNodeRid
+              : String(received.routingId),
+            undefined,
             payload.sourceSpotRid ?? received.spotRid ?? undefined,
             payload.sourceSpotRidHex
           ),
@@ -1342,8 +1467,10 @@ class ZLinkSpotActorJoinDispatch {
         ),
         remoteBoundSessionTarget: decodeRemoteBoundSessionTarget(
           (payload as { routerChannelId?: unknown }).routerChannelId,
-          (payload as { actorNodeRid?: unknown }).actorNodeRid,
-          (payload as { actorNodeRidHex?: unknown }).actorNodeRidHex,
+          received.routingId === null || received.routingId === undefined
+            ? (payload as { actorNodeRid?: unknown }).actorNodeRid
+            : String(received.routingId),
+          undefined,
           (payload as { sourceSpotRid?: unknown }).sourceSpotRid ?? received.spotRid ?? undefined,
           (payload as { sourceSpotRidHex?: unknown }).sourceSpotRidHex
         ),
@@ -1376,8 +1503,10 @@ class ZLinkSpotActorJoinDispatch {
           ),
           remoteBoundSessionTarget: decodeRemoteBoundSessionTarget(
             (header as { routerChannelId?: unknown }).routerChannelId,
-            (header as { actorNodeRid?: unknown }).actorNodeRid,
-            (header as { actorNodeRidHex?: unknown }).actorNodeRidHex,
+            received.routingId === null || received.routingId === undefined
+              ? (header as { actorNodeRid?: unknown }).actorNodeRid
+              : String(received.routingId),
+            undefined,
             (header as { sourceSpotRid?: unknown }).sourceSpotRid ?? received.spotRid ?? undefined,
             (header as { sourceSpotRidHex?: unknown }).sourceSpotRidHex
           ),
@@ -1614,8 +1743,10 @@ export class ZLinkEntrySpotActivation {
       true,
       undefined,
       this.options.entryActorCommitter,
-      (actorId, parts, returnResponse) => this.dispatchActorPacket(actorId, parts, returnResponse),
+      (actorId, parts, returnResponse, remoteBoundSessionTarget) =>
+        this.dispatchActorPacket(actorId, parts, returnResponse, remoteBoundSessionTarget),
       this.options.routedBoundSessionReceiver,
+      this.options.actorPacketTargetProvider,
       this.options.providerResolver,
       this.options.dispatchErrors
     );
@@ -1628,10 +1759,11 @@ export class ZLinkEntrySpotActivation {
     return this.serial.execute(() => this.entrySpot.onLeaveActor?.(actor, signal));
   }
 
-  private async dispatchActorPacket(
+  async dispatchActorPacket(
     actorId: string,
     parts: readonly Message[],
-    returnResponse = false
+    returnResponse = false,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
   ): Promise<unknown> {
     if (parts.length < 2) {
       this.options.dispatchErrors?.report({
@@ -1684,6 +1816,9 @@ export class ZLinkEntrySpotActivation {
         );
       }
       return undefined;
+    }
+    if (remoteBoundSessionTarget !== undefined) {
+      this.options.remoteActorPacketTargetReceiver?.(actorId, remoteBoundSessionTarget);
     }
     let payload: unknown;
     try {
@@ -1968,7 +2103,20 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     }
     const dispatcher = this.createActorDispatcher(activation);
     return dispatcher.admitActorJoin(actor, request, async () => {
-      await this.options.entrySpotCallbacks?.onLeaveActor(actor, signal);
+      const entryLeave = this.options.entrySpotCallbacks?.onLeaveActor(actor, signal);
+      if (entryLeave !== undefined) {
+        void entryLeave.catch((error) => {
+          this.options.dispatchErrors?.report({
+            surface: ZLinkDispatchErrorSurface.SpotActor,
+            messageKind: ZLinkDispatchMessageKind.ActorSend,
+            reason: ZLinkDispatchErrorReason.HandlerException,
+            action: ZLinkDispatchErrorAction.Drop,
+            spotRid: String(spotRid),
+            actorId: actor.actorId,
+            error
+          });
+        });
+      }
       await commit(activation.spot);
       activation.actors.set(actor.actorId, actor);
     });
@@ -2001,6 +2149,20 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     } finally {
       request.close();
     }
+  }
+
+  dispatchRoutedActorPacket(
+    spotRid: RoutingId,
+    actorId: string,
+    parts: readonly Message[],
+    returnResponse = false,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
+  ): Promise<unknown> {
+    const activation = this.activations.get(spotRid);
+    if (activation === undefined) {
+      throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
+    }
+    return this.dispatchActorPacket(activation, actorId, parts, returnResponse, remoteBoundSessionTarget);
   }
 
   private async createActivation<TSpot extends ZLinkSpot>(
@@ -2081,8 +2243,10 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
           this.options.routedActorCommitter?.(actor, spotRid, activation.spot);
           activation.actors.set(actor.actorId, actor);
         },
-        (actorId, parts, returnResponse) => this.dispatchActorPacket(activation, actorId, parts, returnResponse),
+        (actorId, parts, returnResponse, remoteBoundSessionTarget) =>
+          this.dispatchActorPacket(activation, actorId, parts, returnResponse, remoteBoundSessionTarget),
         this.options.routedBoundSessionReceiver,
+        this.options.actorPacketTargetProvider,
         this.options.providerResolver,
         this.options.dispatchErrors
       );
@@ -2197,7 +2361,8 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     activation: SpotActivation,
     actorId: string,
     parts: readonly Message[],
-    returnResponse = false
+    returnResponse = false,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
   ): Promise<unknown> {
     if (parts.length < 2) {
       this.options.dispatchErrors?.report({
@@ -2250,6 +2415,9 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
         );
       }
       return undefined;
+    }
+    if (remoteBoundSessionTarget !== undefined) {
+      this.options.remoteActorPacketTargetReceiver?.(actorId, remoteBoundSessionTarget);
     }
     let payload: unknown;
     try {

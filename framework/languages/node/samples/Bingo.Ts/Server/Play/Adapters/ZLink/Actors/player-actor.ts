@@ -1,4 +1,3 @@
-import type { BingoActorRef } from '../../../../../Shared/Contracts/messages';
 import type {
   ZLinkActor,
   ZLinkActorContext
@@ -6,17 +5,16 @@ import type {
 
 class PlayerActor implements ZLinkActor {
   readonly context!: ZLinkActorContext;
+  private nextSeq = 0;
 
   constructor(
     readonly actorId: string,
     public displayName: string,
-    readonly actorRef: BingoActorRef,
     public destroyAfterEntrySpotJoin = false,
     public disconnected = false
   ) {
     this.actorId = actorId;
     this.displayName = displayName;
-    this.actorRef = actorRef;
   }
 
   markForDestroyAfterRoomLeave(): void {
@@ -25,6 +23,18 @@ class PlayerActor implements ZLinkActor {
 
   markDisconnected(): void {
     this.disconnected = true;
+  }
+
+  async push(packetName: string, payload: unknown): Promise<void> {
+    this.nextSeq += 1;
+    if (process.env.BINGO_DEBUG_FLOW === '1') {
+      console.log(`play-actor-push actor=${this.actorId} packet=${packetName} seq=${this.nextSeq}`);
+    }
+    await this.context.boundSession
+      .send(payload)
+      .packetName(packetName)
+      .metadata('seq', String(this.nextSeq))
+      .submit();
   }
 }
 

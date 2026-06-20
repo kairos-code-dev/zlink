@@ -7,29 +7,51 @@ type BingoRoomSettings = {
   requiredPlayers: number;
   maxDrawNumber: number;
   drawDeck: number[];
+  purpose: 'Game' | 'Observer';
+  observedRoomId: string | null;
 };
 
-function createRoomSettings(roomSeq: number, mode: BingoMode = BingoModes.twoPlayer): BingoRoomSettings {
+function createRoomSettings(roomSeqOrMode: number | BingoMode = 0, mode: BingoMode = BingoModes.twoPlayer): BingoRoomSettings {
+  const roomSeq = typeof roomSeqOrMode === 'number' ? roomSeqOrMode : 0;
+  const resolvedMode = typeof roomSeqOrMode === 'number' ? mode : roomSeqOrMode;
   const maxDrawNumber = 15;
   return {
-    mode,
+    mode: resolvedMode,
     roomName: `Bingo Room ${String(roomSeq).padStart(3, '0')}`,
     requiredPlayers: 2,
     maxDrawNumber,
-    drawDeck: Array.from({ length: maxDrawNumber }, (_value, index) => index + 1)
+    drawDeck: Array.from({ length: maxDrawNumber }, (_value, index) => index + 1),
+    purpose: 'Game',
+    observedRoomId: null
+  };
+}
+
+function createObserverRoomSettings(observedRoomId: string, ownerNodeRid: string): BingoRoomSettings {
+  const maxDrawNumber = 15;
+  return {
+    mode: BingoModes.twoPlayer,
+    roomName: `Bingo Reward Observer ${ownerNodeRid}`,
+    requiredPlayers: 1,
+    maxDrawNumber,
+    drawDeck: Array.from({ length: maxDrawNumber }, (_value, index) => index + 1),
+    purpose: 'Observer',
+    observedRoomId
   };
 }
 
 function roomSettingsFromPayload(payload: Partial<BingoRoomSettingsPayload>): BingoRoomSettings {
   const maxDrawNumber = payload.maxDrawNumber ?? 15;
+  const purpose = payload.purpose === 'Observer' ? 'Observer' : 'Game';
   return {
     mode: payload.mode ?? BingoModes.twoPlayer,
     roomName: payload.roomName ?? 'Bingo Room 000',
     requiredPlayers: payload.requiredPlayers ?? 2,
     maxDrawNumber,
-    drawDeck: Array.from({ length: maxDrawNumber }, (_value, index) => index + 1)
+    drawDeck: Array.from({ length: maxDrawNumber }, (_value, index) => index + 1),
+    purpose,
+    observedRoomId: payload.observedRoomId ?? null
   };
 }
 
-export { createRoomSettings, roomSettingsFromPayload };
+export { createObserverRoomSettings, createRoomSettings, roomSettingsFromPayload };
 export type { BingoRoomSettings };

@@ -3,12 +3,21 @@ type BingoSampleConfig = {
   registryPubEndpoint: string;
   registryRouterEndpoint: string;
   sessionEndpoint: string;
+  sessionRouteEndpoint: string;
+  sessionSpotEndpoint: string;
+  sessionSpotNodeRid: string;
+  preferredPlayNodeRid: string;
   playEndpoint: string;
-  notificationEndpoint: string;
+  playRouteEndpoint: string;
+  playSpotEndpoint: string;
+  playSpotPubSubEndpoint: string;
+  playSpotNodeRid: string;
   apiEndpoint: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
 };
+
+const BINGO_SAMPLE_CONFIG = Symbol.for('BINGO_SAMPLE_CONFIG');
 
 function loadSampleConfig(): BingoSampleConfig {
   const configPath = process.env.ZLINK_SAMPLE_CONFIG;
@@ -19,8 +28,15 @@ function loadSampleConfig(): BingoSampleConfig {
     registryPubEndpoint: requireEnv('BINGO_REGISTRY_PUB_ENDPOINT'),
     registryRouterEndpoint: requireEnv('BINGO_REGISTRY_ROUTER_ENDPOINT'),
     sessionEndpoint: requireEnv('BINGO_SESSION_ENDPOINT'),
+    sessionRouteEndpoint: requireEnv('BINGO_SESSION_ROUTE_ENDPOINT'),
+    sessionSpotEndpoint: requireEnv('BINGO_SESSION_SPOT_ENDPOINT'),
+    sessionSpotNodeRid: process.env.BINGO_SESSION_SPOT_NODE_RID ?? 'bingo-session-node',
+    preferredPlayNodeRid: process.env.BINGO_PREFERRED_PLAY_NODE_RID ?? '',
     playEndpoint: requireEnv('BINGO_PLAY_ENDPOINT'),
-    notificationEndpoint: requireEnv('BINGO_NOTIFICATION_ENDPOINT'),
+    playRouteEndpoint: requireEnv('BINGO_PLAY_ROUTE_ENDPOINT'),
+    playSpotEndpoint: requireEnv('BINGO_PLAY_SPOT_ENDPOINT'),
+    playSpotPubSubEndpoint: requireEnv('BINGO_PLAY_SPOT_PUBSUB_ENDPOINT'),
+    playSpotNodeRid: process.env.BINGO_PLAY_SPOT_NODE_RID ?? 'bingo-play-node',
     apiEndpoint: requireEnv('BINGO_API_ENDPOINT'),
     redisEndpoint: requireEnv('BINGO_REDIS_ENDPOINT'),
     redisKeyPrefix: process.env.BINGO_REDIS_KEY_PREFIX ?? 'bingo:node:'
@@ -35,5 +51,5 @@ function requireEnv(name: string): string {
   return value;
 }
 
-export { loadSampleConfig };
+export { BINGO_SAMPLE_CONFIG, loadSampleConfig };
 export type { BingoSampleConfig };

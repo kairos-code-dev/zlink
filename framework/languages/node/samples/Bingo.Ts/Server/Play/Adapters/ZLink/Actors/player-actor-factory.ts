@@ -4,7 +4,6 @@ import type {
   ZLinkActorContext,
   ZLinkActorFactory
 } from '@zlink-systems/framework';
-import type { BingoActorRef } from '../../../../../Shared/Contracts/messages';
 
 class PlayerActorFactory implements ZLinkActorFactory {
   private readonly actors: Map<string, PlayerActorType>;
@@ -14,12 +13,16 @@ class PlayerActorFactory implements ZLinkActorFactory {
   }
 
   create(actorId: string, context: ZLinkActorContext): PlayerActorType {
-    const actorRef: BingoActorRef = {
-      nodeRid: context.spotRid ?? 'bingo.room.node',
-      actorId,
-      generation: this.actors.size + 1
-    };
-    const actor = new PlayerActor(actorId, actorId, actorRef);
+    const existing = this.actors.get(actorId);
+    if (existing !== undefined) {
+      Object.defineProperty(existing, 'context', {
+        configurable: true,
+        enumerable: false,
+        value: context
+      });
+      return existing;
+    }
+    const actor = new PlayerActor(actorId, actorId);
     Object.defineProperty(actor, 'context', {
       configurable: true,
       enumerable: false,
@@ -29,19 +32,7 @@ class PlayerActorFactory implements ZLinkActorFactory {
     return actor;
   }
 
-  async ensure(actorId: string, displayName: string): Promise<PlayerActorType> {
-    if (!this.actors.has(actorId)) {
-      const actorRef: BingoActorRef = {
-        nodeRid: 'bingo.room.node',
-        actorId,
-        generation: this.actors.size + 1
-      };
-      this.actors.set(actorId, new PlayerActor(
-        actorId,
-        displayName,
-        actorRef
-      ));
-    }
+  get(actorId: string): PlayerActorType {
     const actor = this.actors.get(actorId);
     if (actor === undefined) {
       throw new Error(`Actor '${actorId}' was not created.`);

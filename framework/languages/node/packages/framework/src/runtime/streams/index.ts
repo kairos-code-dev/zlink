@@ -19,7 +19,7 @@ import type {
   ZLinkSessionSendCall,
   ZLinkStream
 } from '../../contracts';
-import { Message as ZLinkBindingMessage } from '@zlink-systems/zlink';
+import { Message as ZLinkBindingMessage, SubmitError, SubmitResult } from '@zlink-systems/zlink';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
@@ -54,6 +54,7 @@ import {
 } from './protocol';
 
 const ZLINK_SEND_DONT_WAIT = 1 as ZLinkBackendSendFlags;
+const ZLINK_NATIVE_BOUND_SESSION_RETRY_DELAY_MS = 10;
 
 export interface ZLinkStreamBindingRuntimeOptions {
   readonly transport?: ZLinkBoundSessionTransport;
@@ -743,12 +744,7 @@ export class ZLinkStreamBindingRuntime {
       message
     );
     try {
-      if (!node.sendActorBoundSession(actorRef as unknown as ZLinkBackendActorRef, [frame], ZLINK_SEND_DONT_WAIT)) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorRouteNotFound,
-          `Actor '${actorRef.actorId}' bound session route is not ready.`
-        );
-      }
+      await this.sendNativeBoundSessionFrame(node, actorRef, frame, signal);
     } finally {
       frame.close();
     }
@@ -773,12 +769,7 @@ export class ZLinkStreamBindingRuntime {
       message
     );
     try {
-      if (!node.sendActorBoundSession(actorRef as unknown as ZLinkBackendActorRef, [frame], ZLINK_SEND_DONT_WAIT)) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorRouteNotFound,
-          `Actor '${actorRef.actorId}' bound session route is not ready.`
-        );
-      }
+      await this.sendNativeBoundSessionFrame(node, actorRef, frame, signal);
     } finally {
       frame.close();
     }
@@ -877,6 +868,39 @@ export class ZLinkStreamBindingRuntime {
       return;
     }
     await context.stream.bindActor(actorRef, this.options.actorBindTimeoutMs ?? 2000, signal);
+  }
+
+  private async sendNativeBoundSessionFrame(
+    node: ZLinkBackendSpotNode,
+    actorRef: ActorRef,
+    frame: Message,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const deadline = Date.now() + (this.options.actorBindTimeoutMs ?? 2000);
+    const backendActorRef = toBoundSessionSendActorRef(actorRef);
+    let lastError: unknown;
+    do {
+      throwIfAborted(signal);
+      try {
+        if (node.sendActorBoundSession(backendActorRef, [frame], ZLINK_SEND_DONT_WAIT)) {
+          return;
+        }
+        lastError = undefined;
+      } catch (error) {
+        if (!isNativeBoundSessionSendRetryable(error)) {
+          throw error;
+        }
+        lastError = error;
+      }
+      await delayNativeBoundSessionRetry(deadline, signal);
+    } while (Date.now() <= deadline);
+
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      `Actor '${actorRef.actorId}' bound session route is not ready.`,
+      false,
+      lastError
+    );
   }
 
   private requireTransport(): ZLinkBoundSessionTransport {
@@ -1523,6 +1547,14 @@ function toBackendActorRef(actor: ActorRef): ZLinkBackendActorRef {
   };
 }
 
+function toBoundSessionSendActorRef(actor: ActorRef): ZLinkBackendActorRef {
+  return {
+    nodeRid: actor.nodeRid,
+    actorId: actor.actorId,
+    generation: 0n
+  };
+}
+
 function copyMessage(message: Message): Message {
   const value = message as unknown as {
     copy?: () => Message;
@@ -1642,4 +1674,20 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted === true) {
     throw new Error('The operation was aborted.');
   }
+}
+
+async function delayNativeBoundSessionRetry(deadline: number, signal: AbortSignal | undefined): Promise<void> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) {
+    return;
+  }
+  await new Promise<void>((resolve) =>
+    setTimeout(resolve, Math.min(ZLINK_NATIVE_BOUND_SESSION_RETRY_DELAY_MS, remaining))
+  );
+  throwIfAborted(signal);
+}
+
+function isNativeBoundSessionSendRetryable(error: unknown): boolean {
+  return error instanceof SubmitError &&
+    (error.result === SubmitResult.Backpressured || error.result === SubmitResult.NotConnected);
 }

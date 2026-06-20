@@ -1,15 +1,21 @@
 import * as fs from 'node:fs';
 type BingoSampleConfig = {
-  sessionEndpoint: string;
+  sessionAEndpoint: string;
+  sessionBEndpoint: string;
 };
 
 function loadSampleConfig(): BingoSampleConfig {
   const configPath = process.env.ZLINK_SAMPLE_CONFIG;
   if (configPath !== undefined && configPath.length > 0) {
-    return JSON.parse(fs.readFileSync(configPath, 'utf8')).sample;
+    const sample = JSON.parse(fs.readFileSync(configPath, 'utf8')).sample;
+    return {
+      sessionAEndpoint: sample.sessionAEndpoint ?? sample.sessionEndpoint,
+      sessionBEndpoint: sample.sessionBEndpoint ?? sample.sessionEndpoint
+    };
   }
   return {
-    sessionEndpoint: requireEnv('BINGO_SESSION_ENDPOINT')
+    sessionAEndpoint: process.env.BINGO_SESSION_A_ENDPOINT ?? requireEnv('BINGO_SESSION_ENDPOINT'),
+    sessionBEndpoint: process.env.BINGO_SESSION_B_ENDPOINT ?? process.env.BINGO_SESSION_ENDPOINT ?? requireEnv('BINGO_SESSION_B_ENDPOINT')
   };
 }
 

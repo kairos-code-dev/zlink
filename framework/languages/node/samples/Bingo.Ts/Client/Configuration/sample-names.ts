@@ -1,5 +1,5 @@
 const SampleTimings = {
-  requestTimeout: 10000
+  requestTimeout: 20000
 };
 
 export { SampleTimings };

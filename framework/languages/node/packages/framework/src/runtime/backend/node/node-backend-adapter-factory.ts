@@ -289,6 +289,15 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
           return submitRequestOperation(operation, payload, callback, flags, timeoutMs);
         };
       }
+      if (property === 'sendActorBoundSession') {
+        return (actor: unknown, payload: unknown, flags: number) => {
+          const operation = (target as unknown as {
+            sendActorBoundSession(actor: unknown): unknown;
+          }).sendActorBoundSession(toNativeActorRef(actor));
+          submitSendOperation(operation, payload, flags);
+          return true;
+        };
+      }
       if (property === 'recvRoute') {
         return (received: unknown, flags: number) => {
           try {
@@ -296,7 +305,7 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
               recvRouted(received: unknown, flags: number): boolean;
             }).recvRouted(received, flags);
           } catch (error) {
-            if (isNonBlockingRecvEmpty(error)) {
+            if (isRouteRecvRetryable(error)) {
               return false;
             }
             throw error;
@@ -403,6 +412,13 @@ function isBindingNotFound(error: unknown): boolean {
 function isNonBlockingRecvEmpty(error: unknown): boolean {
   return error instanceof zlink.RecvError &&
     error.result === zlink.RecvResult.NoData;
+}
+
+function isRouteRecvRetryable(error: unknown): boolean {
+  return isNonBlockingRecvEmpty(error) ||
+    (error instanceof zlink.RecvError &&
+      (error.result === zlink.RecvResult.InternalError || error.result === zlink.RecvResult.InvalidHandle) &&
+      error.nativeErrno === 14);
 }
 
 function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBackendObject {
@@ -576,9 +592,18 @@ function resolveSocketMessagingProperty(
   if (property === 'recv') {
     return (flags?: number) => {
       const received = new zlink.Received();
-      const ok = (target as {
-        recv(result: unknown, flags?: number): boolean;
-      }).recv(received, flags);
+      let ok = false;
+      try {
+        ok = (target as {
+          recv(result: unknown, flags?: number): boolean;
+        }).recv(received, flags);
+      } catch (error) {
+        received.close();
+        if (isRouteRecvRetryable(error)) {
+          return undefined;
+        }
+        throw error;
+      }
       return ok ? received : undefined;
     };
   }
@@ -718,6 +743,9 @@ async function closeWithBusyRetry(target: { close(): void }): Promise<void> {
       target.close();
       return;
     } catch (error) {
+      if (isSuccessfulOrAlreadyShutdownCloseError(error)) {
+        return;
+      }
       if (!isBusyCloseError(error)) {
         throw error;
       }
@@ -731,6 +759,11 @@ async function closeWithBusyRetry(target: { close(): void }): Promise<void> {
 function isBusyCloseError(error: unknown): boolean {
   return error instanceof Error && 'code' in error &&
     ([401, 403, 404].includes((error as { code: number }).code));
+}
+
+function isSuccessfulOrAlreadyShutdownCloseError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error &&
+    ([0, 402].includes((error as { code: number }).code));
 }
 
 function disableSocketLinger(target: unknown): void {
@@ -862,4 +895,14 @@ function toNativeRoutingId(routingId: unknown): unknown {
     return zlink.RoutingId.from(routingId);
   }
   return routingId;
+}
+
+function toNativeActorRef(actor: unknown): unknown {
+  if (typeof actor !== 'object' || actor === null || !('nodeRid' in actor)) {
+    return actor;
+  }
+  return {
+    ...(actor as Record<string, unknown>),
+    nodeRid: toNativeRoutingId((actor as { nodeRid: unknown }).nodeRid)
+  };
 }

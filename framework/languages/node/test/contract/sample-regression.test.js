@@ -81,13 +81,13 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Play/Adapters/ZLink/Actors/player-actor.ts',
       'Server/Play/Adapters/ZLink/Actors/player-actor-factory.ts',
       'Server/Play/Adapters/ZLink/Handlers/allocate-bingo-room-handler.ts',
-      'Server/Play/Adapters/ZLink/Handlers/bingo-notifications-handler.ts',
       'Server/Play/Adapters/ZLink/Handlers/ensure-player-actor-handler.ts',
       'Server/Play/Adapters/ZLink/Handlers/match-bingo-channel-handler.ts',
       'Server/Play/Adapters/ZLink/Handlers/submit-bingo-card-channel-handler.ts',
-      'Server/Play/Adapters/ZLink/Notifications/bingo-notification-publisher.ts',
       'Server/Play/Adapters/ZLink/Spots/Handlers/bingo-room-timer-handler.ts',
       'Server/Play/Adapters/ZLink/Spots/Handlers/match-bingo-actor-handler.ts',
+      'Server/Play/Adapters/ZLink/Spots/Handlers/observe-bingo-events-handler.ts',
+      'Server/Play/Adapters/ZLink/Spots/Handlers/stop-observing-bingo-events-handler.ts',
       'Server/Play/Adapters/ZLink/Spots/Handlers/submit-bingo-card-handler.ts',
       'Server/Play/Adapters/ZLink/Spots/bingo-entry-spot.ts',
       'Server/Play/Adapters/ZLink/Spots/bingo-room-spot.ts',
@@ -205,10 +205,10 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
   for (const [name, content, text] of [
     ['Bingo module', files.bingoModule, '.addSpotFactory(BingoRoomSpot)'],
     ['Bingo allocator', files.bingoAllocator, 'ZLINK_SPOT_MANAGER'],
-    ['Bingo allocator', files.bingoAllocator, '.create(BingoRoomSpot'],
+    ['Bingo allocator', files.bingoAllocator, '.getOrCreate(BingoRoomSpot'],
     ['Bingo allocator', files.bingoAllocator, '.executeOnSpot<BingoRoomSpotType'],
     ['Bingo match', files.bingoMatch, 'ZLINK_ACTOR_MANAGER'],
-    ['Bingo entry', files.bingoEntry, 'actor.context.joinSpot(roomId'],
+    ['Bingo entry', files.bingoEntry, '.joinSpot(roomId'],
     ['Bingo entry', files.bingoEntry, 'onCreateActor'],
     ['Bingo entry', files.bingoEntry, 'onJoinedActor'],
     ['Bingo entry', files.bingoEntry, 'destroyActor(actor'],
@@ -244,6 +244,17 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
 
   assert.deepEqual(missing, []);
   assert.deepEqual(violations, []);
+});
+
+test('node Bingo stop observing request is owned by the observer room Spot', () => {
+  const entry = readSample('Bingo.Ts', 'Server/Play/Adapters/ZLink/Spots/bingo-entry-spot.ts');
+  const room = readSample('Bingo.Ts', 'Server/Play/Adapters/ZLink/Spots/bingo-room-spot.ts');
+  const handler = readSample('Bingo.Ts', 'Server/Play/Adapters/ZLink/Spots/Handlers/stop-observing-bingo-events-handler.ts');
+
+  assert.match(handler, /zlinkSpotActorRequestHandler/);
+  assert.match(handler, /spot:\s*\(\)\s*=>\s*BingoRoomSpot/);
+  assert.match(room, /actorRequest\(PacketNames\.stopObservingBingoEventsReq,\s*StopObservingBingoEventsHandler\)/);
+  assert.doesNotMatch(entry, /actorRequest\(PacketNames\.stopObservingBingoEventsReq/);
 });
 
 test('node client flow files use ClientScenario names', () => {
@@ -639,7 +650,7 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
     [tsconfig, '"Server/**/*.ts"'],
     [client, "from './bingo-client-scenario'"],
     [client, 'loadSampleConfig'],
-    [client, 'PASS Bingo.Ts'],
+    [client, 'bingo=completed'],
     [api, 'async function bootstrap'],
     [session, 'async function bootstrap'],
     [play, 'async function bootstrap'],
@@ -688,8 +699,7 @@ test('Bingo TypeScript sample uses registry discovery instead of direct server p
     [playModule, '.useDiscovery()'],
     [playModule, '.addRegistryEndpoint(config.registryRouterEndpoint)'],
     [sessionModule, '.useDiscovery()'],
-    [sessionModule, '.addRegistryEndpoint(endpoints.registryRouterEndpoint)'],
-    [sessionModule, '.addClientServerChannel(SampleNames.notificationChannel']
+    [sessionModule, '.addRegistryEndpoint(endpoints.registryRouterEndpoint)']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
@@ -726,9 +736,9 @@ test('Bingo TypeScript sample publishes drawn number before finished notify', ()
     'Spots',
     'bingo-room-spot.ts'
   ), 'utf8');
-  const drawIndex = roomSpot.indexOf('this.requireNotifications().numberDrawn');
+  const drawIndex = roomSpot.indexOf('numberDrawnNotify');
   const finishedBranchIndex = roomSpot.indexOf('if (drawn.finished)');
-  const endedIndex = roomSpot.indexOf('this.requireNotifications().gameEnded');
+  const endedIndex = roomSpot.indexOf('BingoGameEndedNotify');
 
   assert.equal(drawIndex > 0, true);
   assert.equal(finishedBranchIndex > drawIndex, true);
@@ -745,10 +755,12 @@ test('node topology samples run server roles as separate processes over TCP rout
     ['TicTacToe.Ts', 'Server/Play/main.ts', 'TICTACTOE_PLAY_B_SPOT_ENDPOINT'],
     ['TicTacToe.Ts', 'Server/Play/main.ts', 'TICTACTOE_PLAY_A_SPOT_PUBSUB_ENDPOINT'],
     ['TicTacToe.Ts', 'Server/Play/main.ts', 'TICTACTOE_PLAY_B_SPOT_PUBSUB_ENDPOINT'],
-    ['Bingo.Ts', 'Server/Api/main.ts', 'BINGO_API_ENDPOINT'],
-    ['Bingo.Ts', 'Server/Play/main.ts', 'BINGO_PLAY_ENDPOINT'],
-    ['Bingo.Ts', 'Server/Play/main.ts', 'BINGO_NOTIFICATION_ENDPOINT'],
-    ['Bingo.Ts', 'Server/Session/main.ts', 'BINGO_SESSION_ENDPOINT'],
+    ['Bingo.Ts', 'Server/Api/main.ts', 'BINGO_API_A_ENDPOINT'],
+    ['Bingo.Ts', 'Server/Api/main.ts', 'BINGO_API_B_ENDPOINT'],
+    ['Bingo.Ts', 'Server/Play/main.ts', 'BINGO_PLAY_A_ENDPOINT'],
+    ['Bingo.Ts', 'Server/Play/main.ts', 'BINGO_PLAY_B_ENDPOINT'],
+    ['Bingo.Ts', 'Server/Session/main.ts', 'BINGO_SESSION_A_ENDPOINT'],
+    ['Bingo.Ts', 'Server/Session/main.ts', 'BINGO_SESSION_B_ENDPOINT'],
     ['Bingo.Ts', 'Server/Registry/main.ts', 'BINGO_REGISTRY_PUB_ENDPOINT'],
     ['Bingo.Ts', 'Server/Registry/main.ts', 'BINGO_REGISTRY_ROUTER_ENDPOINT']
   ];
@@ -756,7 +768,8 @@ test('node topology samples run server roles as separate processes over TCP rout
     'TICTACTOE_PLAY_A_STREAM_ENDPOINT',
     'TICTACTOE_PLAY_B_STREAM_ENDPOINT',
     'TICTACTOE_API_HTTP_ENDPOINT',
-    'BINGO_SESSION_ENDPOINT'
+    'BINGO_SESSION_A_ENDPOINT',
+    'BINGO_SESSION_B_ENDPOINT'
   ]);
 
   for (const [sample, serverRelative, endpointEnv] of cases) {
@@ -792,7 +805,6 @@ test('node topology samples do not use stdin command protocol as messaging', () 
 test('node samples do not hide readiness with sleeps or pre-ready pings', () => {
   const violations = [];
   const allowedTimingFiles = new Set([
-    'samples/Bingo.Ts/Server/Play/notification-delivery-log.ts',
     'samples/Bingo.Ts/Server/runtime-support.ts',
     'samples/SupportChat.Ts/Client/supportchat-client-scenario.ts',
     'samples/SupportChat.Ts/Server/Support/notification-delivery-log.ts',
@@ -1262,6 +1274,32 @@ test('Bingo TypeScript sample separates room lifecycle from pure bingo game rule
   assert.deepEqual(violations, []);
 });
 
+test('Bingo TypeScript sample normalizes wire room settings before creating room state', () => {
+  const roomSpot = fs.readFileSync(path.join(
+    samplesRoot,
+    'Bingo.Ts',
+    'Server',
+    'Play',
+    'Adapters',
+    'ZLink',
+    'Spots',
+    'bingo-room-spot.ts'
+  ), 'utf8');
+  const roomModels = fs.readFileSync(path.join(
+    samplesRoot,
+    'Bingo.Ts',
+    'Server',
+    'Play',
+    'Domain',
+    'Bingo',
+    'bingo-room-models.ts'
+  ), 'utf8');
+
+  assert.match(roomModels, /function roomSettingsFromPayload/);
+  assert.match(roomSpot, /roomSettingsFromPayload\(\s*protobufSerializer\.deserialize/);
+  assert.doesNotMatch(roomSpot, /initializeRoom\(protobufSerializer\.deserialize<BingoRoomRuntimeSettings>/);
+});
+
 test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
   const playModule = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'bingo-play-module.ts'), 'utf8');
   const roomSpot = fs.readFileSync(path.join(
@@ -1319,7 +1357,7 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
     [frameworkSpotContract, 'interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor>'],
     [frameworkSpotContract, 'interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>'],
     [playModule, '.actorFactory(SampleNames.playerActorType, PlayerActorFactory)'],
-    [playModule, '.addSpotNode(SampleNames.roomSpotType'],
+    [playModule, '.addSpotNode(SampleNames.roomSpotNode'],
     [playModule, '.addEntrySpot(BingoEntrySpot)'],
     [playModule, '.addSpotFactory(BingoRoomSpot)'],
     [roomSpot, 'implements ZLinkSpot<PlayerActorType>'],

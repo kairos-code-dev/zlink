@@ -1,10 +1,24 @@
-import { BingoRoomStatus, BingoSamplePlayers, PacketNames, authenticateReq, deterministicCard, matchBingoReq, submitBingoCardReq } from '../Shared/Contracts/messages';
+import {
+  BingoRewardItems,
+  BingoRoomStatus,
+  BingoSamplePlayers,
+  PacketNames,
+  authenticateReq,
+  deterministicCard,
+  matchBingoReq,
+  observeBingoEventsReq,
+  stopObservingBingoEventsReq,
+  submitBingoCardReq
+} from '../Shared/Contracts/messages';
 import type {
   AuthenticateSessionRes,
+  BingoRewardAnnouncedNotify,
   MatchBingoRes,
   NumberDrawnNotify,
+  ObserveBingoEventsRes,
   PlayerJoinedNotify,
   StateEnvelope,
+  StopObservingBingoEventsRes,
   SubmitBingoCardRes
 } from '../Shared/Contracts/messages';
 import type { ZlinkStreamConnector, ZlinkStreamMessage } from '@zlink-systems/stream-connector';
@@ -13,6 +27,7 @@ type BingoRoomState = {
   roomId: string;
   status: BingoRoomStatus;
   hostActorId: string | null;
+  drawSeq: number;
   winners: string[];
   drawnNumbers: number[];
   players: Array<{
@@ -26,17 +41,24 @@ class BingoClientScenario {
   async run(
     client1: ZlinkStreamConnector,
     client2: ZlinkStreamConnector,
+    observer: ZlinkStreamConnector,
     signal?: AbortSignal
   ): Promise<void> {
-    // 1. Both clients connect to Session, authenticate, and verify their actor ids.
+    // 1. Clients connect only to Session streams, authenticate, and verify actor ids.
     await client1.connect(signal);
     await client2.connect(signal);
+    await observer.connect(signal);
 
     const client1Auth = await client1.request(authenticateReq(BingoSamplePlayers.player1)).submit<AuthenticateSessionRes>(signal);
     const client2Auth = await client2.request(authenticateReq(BingoSamplePlayers.player2)).submit<AuthenticateSessionRes>(signal);
+    const observerAuth = await observer.request(authenticateReq(BingoSamplePlayers.observer)).submit<AuthenticateSessionRes>(signal);
 
     ensure(() => client1Auth.actorId === BingoSamplePlayers.player1);
     ensure(() => client2Auth.actorId === BingoSamplePlayers.player2);
+    ensure(() => observerAuth.actorId === BingoSamplePlayers.observer);
+    ensure(() => client1Auth.actorNodeRid.length > 0);
+    ensure(() => client2Auth.actorNodeRid.length > 0);
+    ensure(() => observerAuth.actorNodeRid.length > 0);
     ensure(() => client2Auth.actorId !== client1Auth.actorId);
 
     // 2. player-1 matches first, gets a waiting room, and receives no self-join notify.
@@ -52,9 +74,22 @@ class BingoClientScenario {
     ensure(() => stateOf(client1MatchRes).roomId === client1MatchRes.roomId);
     ensure(() => stateOf(client1MatchRes).status === BingoRoomStatus.WaitingForPlayers);
     ensure(() => stateOf(client1MatchRes).hostActorId === client1Auth.actorId);
+    ensure(() => client1MatchRes.roomOwnerNodeRid === client1Auth.actorNodeRid);
     await client1SelfJoinNotify;
 
-    // 3-5. player-2 joins the same room; player-1 observes join and both clients observe start.
+    // 3. The third client observes rewards through a local BingoRoom on SessionB's Play node.
+    const observed = await observer
+      .request(observeBingoEventsReq(client1MatchRes.roomId))
+      .submit<ObserveBingoEventsRes>(signal);
+    ensure(() => observed.subscribed);
+    ensure(() => observed.observerNodeRid === observerAuth.actorNodeRid);
+    ensure(() => observed.observerNodeRid !== client1MatchRes.roomOwnerNodeRid);
+    const observerRewardTask = observer
+      .waitFor<BingoRewardAnnouncedNotify>(PacketNames.rewardAnnouncedNotify)
+      .where((message) => message.payload.roomId === client1MatchRes.roomId)
+      .submit(signal);
+
+    // 4-6. player-2 joins the same room; player-1 observes join and both clients observe start.
     const client1SawClient2Join = client1
       .waitFor<PlayerJoinedNotify>(PacketNames.playerJoinedNotify)
       .where((message) => message.payload.actorId === client2Auth.actorId)
@@ -71,6 +106,8 @@ class BingoClientScenario {
     const client2MatchRes = await client2.request(matchBingoReq()).submit<MatchBingoRes>(signal);
 
     ensure(() => client2MatchRes.roomId === client1MatchRes.roomId);
+    ensure(() => client2MatchRes.roomOwnerNodeRid === client1MatchRes.roomOwnerNodeRid);
+    ensure(() => client2Auth.actorNodeRid !== client2MatchRes.roomOwnerNodeRid);
     ensure(() => stateOf(client2MatchRes).roomId === client1MatchRes.roomId);
     ensure(() => stateOf(client2MatchRes).status === BingoRoomStatus.Running);
     await client2SelfJoinNotify;
@@ -89,7 +126,7 @@ class BingoClientScenario {
     ensure(() => stateOf(client2Started.payload).status === BingoRoomStatus.Running);
     ensure(() => stateOf(client2Started.payload).roomId === client1MatchRes.roomId);
 
-    // 6. Both clients submit deterministic cards and responses show both 3 x 3 cards.
+    // 7. Both clients submit deterministic cards and responses show both 3 x 3 cards.
     const client2Card = await client2
       .request(submitBingoCardReq(client2MatchRes.roomId, deterministicCard(client2Auth.actorId)))
       .submit<SubmitBingoCardRes>(signal);
@@ -97,18 +134,17 @@ class BingoClientScenario {
     ensure(() => stateOf(client2Card).status === BingoRoomStatus.Running);
     ensure(() => stateOf(client2Card).players.find((player) => player.actorId === client2Auth.actorId)?.card.length === 9);
 
-    const drawSeq1ForClient1 = client1
-      .waitFor<NumberDrawnNotify>(PacketNames.numberDrawnNotify)
-      .where((message) => message.payload.drawSeq === 1)
-      .submit(signal);
-    const drawSeq1ForClient2 = client2
-      .waitFor<NumberDrawnNotify>(PacketNames.numberDrawnNotify)
-      .where((message) => message.payload.drawSeq === 1)
-      .submit(signal);
-    const drawSeq2ForClient1 = waitForDraw(client1, 2);
-    const drawSeq2ForClient2 = waitForDraw(client2, 2);
-    const drawSeq3ForClient1 = waitForDraw(client1, 3);
-    const drawSeq3ForClient2 = waitForDraw(client2, 3);
+    const drawWaitController = new AbortController();
+    const abortDrawWaits = () => drawWaitController.abort();
+    signal?.addEventListener('abort', abortDrawWaits, { once: true });
+    const drawTasks = Array.from({ length: 15 }, (_, index) => {
+      const drawSeq = index + 1;
+      return {
+        drawSeq,
+        client1: waitForDraw(client1, drawSeq, drawWaitController.signal),
+        client2: waitForDraw(client2, drawSeq, drawWaitController.signal)
+      };
+    });
     const client1EndedTask = client1.waitFor<StateEnvelope>(PacketNames.gameEndedNotify).submit(signal);
     const client2EndedTask = client2.waitFor<StateEnvelope>(PacketNames.gameEndedNotify).submit(signal);
 
@@ -120,37 +156,30 @@ class BingoClientScenario {
     ensure(() => stateOf(client1Card).players.every((player) => player.card.length === 9));
     ensure(() => stateOf(client1Card).players.length === 2);
 
-    // 7. Number drawing is server-driven; clients only wait for draw notifications.
-    const [client1Draw1, client2Draw1] = await Promise.all([drawSeq1ForClient1, drawSeq1ForClient2]);
-    requireSameDraw(client1Draw1.payload, client2Draw1.payload, 1);
-    const drawnNumbers = [client1Draw1.payload];
-
-    if (stateOf(client1Draw1.payload).status !== BingoRoomStatus.Finished) {
-      const [client1Draw2, client2Draw2] = await Promise.all([drawSeq2ForClient1.promise, drawSeq2ForClient2.promise]);
-      requireDraw(client1Draw2, 2);
-      requireDraw(client2Draw2, 2);
-      requireSameDraw(client1Draw2.payload, client2Draw2.payload, 2);
-      drawnNumbers.push(client1Draw2.payload);
-    } else {
-      drawSeq2ForClient1.cancel();
-      drawSeq2ForClient2.cancel();
-    }
-
-    if (stateOf(drawnNumbers[drawnNumbers.length - 1]).status !== BingoRoomStatus.Finished) {
-      const [client1Draw3, client2Draw3] = await Promise.all([drawSeq3ForClient1.promise, drawSeq3ForClient2.promise]);
-      requireDraw(client1Draw3, 3);
-      requireDraw(client2Draw3, 3);
-      requireSameDraw(client1Draw3.payload, client2Draw3.payload, 3);
-      drawnNumbers.push(client1Draw3.payload);
-    } else {
-      drawSeq3ForClient1.cancel();
-      drawSeq3ForClient2.cancel();
+    // 8. Number drawing is server-driven; clients only wait for draw notifications.
+    const drawnNumbers: NumberDrawnNotify[] = [];
+    try {
+      for (const drawTask of drawTasks) {
+        const [client1Draw, client2Draw] = await Promise.all([
+          drawTask.client1,
+          drawTask.client2
+        ]);
+        requireSameDraw(client1Draw.payload, client2Draw.payload, drawTask.drawSeq);
+        drawnNumbers.push(client1Draw.payload);
+        if (stateOf(client1Draw.payload).status === BingoRoomStatus.Finished) {
+          break;
+        }
+      }
+    } finally {
+      drawWaitController.abort();
+      signal?.removeEventListener('abort', abortDrawWaits);
+      await Promise.allSettled(drawTasks.flatMap((drawTask) => [drawTask.client1, drawTask.client2]));
     }
 
     ensure(() => drawnNumbers.length > 0);
     ensure(() => stateOf(drawnNumbers[drawnNumbers.length - 1]).status === BingoRoomStatus.Finished);
 
-    // 8. Both clients receive the final finished state when the server detects bingo.
+    // 9. Both clients receive the final finished state when the server detects bingo.
     const [client1Ended, client2Ended] = await Promise.all([client1EndedTask, client2EndedTask]);
     ensure(() => stateOf(client1Ended.payload).status === BingoRoomStatus.Finished);
     ensure(() => stateOf(client2Ended.payload).status === BingoRoomStatus.Finished);
@@ -168,6 +197,23 @@ class BingoClientScenario {
     ensure(() => ended.winners.join(',') === client1Auth.actorId);
     ensure(() => ended.players.every((player) => player.card.length === 9));
     ensure(() => ended.players.every((player) => player.marks[4]));
+
+    // 10-11. Observer receives the reward through Spot pub/sub and then stops observing.
+    const reward = await observerRewardTask;
+    ensure(() => reward.payload.roomId === client1MatchRes.roomId);
+    ensure(() => reward.payload.actorId === client1Auth.actorId);
+    ensure(() => reward.payload.drawSeq === ended.drawSeq);
+    ensure(() => reward.payload.itemId === BingoRewardItems.goldenDauberId);
+    ensure(() => reward.payload.itemName === BingoRewardItems.goldenDauberName);
+    ensure(() => reward.payload.rarity === BingoRewardItems.legendaryRarity);
+    ensure(() => reward.payload.receivingSpotNodeRid === observed.observerNodeRid);
+    ensure(() => reward.payload.receivingSpotNodeRid !== client1MatchRes.roomOwnerNodeRid);
+
+    const stopped = await observer
+      .request(stopObservingBingoEventsReq(client1MatchRes.roomId))
+      .submit<StopObservingBingoEventsRes>(signal);
+    ensure(() => stopped.stopped);
+    ensure(() => stopped.observerNodeRid === observed.observerNodeRid);
   }
 }
 
@@ -183,32 +229,15 @@ function requireSameDraw(client1Draw: NumberDrawnNotify, client2Draw: NumberDraw
   ensure(() => stateOf(client2Draw).drawnNumbers.join(',') === stateOf(client1Draw).drawnNumbers.join(','));
 }
 
-function waitForDraw(client: ZlinkStreamConnector, drawSeq: number): {
-  promise: Promise<ZlinkStreamMessage<NumberDrawnNotify> | null>;
-  cancel(): void;
-} {
-  const controller = new AbortController();
-  return {
-    promise: client
-      .waitFor<NumberDrawnNotify>(PacketNames.numberDrawnNotify)
-      .where((message) => message.payload.drawSeq === drawSeq)
-      .submit(controller.signal)
-      .catch((error) => {
-        if (controller.signal.aborted) {
-          return null;
-        }
-        throw error;
-      }),
-    cancel: () => controller.abort()
-  };
-}
-
-function requireDraw(
-  draw: ZlinkStreamMessage<NumberDrawnNotify> | null,
-  expectedSeq: number
-): asserts draw is ZlinkStreamMessage<NumberDrawnNotify> {
-  ensure(() => draw !== null);
-  ensure(() => draw.payload.drawSeq === expectedSeq);
+function waitForDraw(
+  client: ZlinkStreamConnector,
+  drawSeq: number,
+  signal?: AbortSignal
+): Promise<ZlinkStreamMessage<NumberDrawnNotify>> {
+  return client
+    .waitFor<NumberDrawnNotify>(PacketNames.numberDrawnNotify)
+    .where((message) => message.payload.drawSeq === drawSeq)
+    .submit(signal);
 }
 
 async function expectNoMessage<TPayload>(

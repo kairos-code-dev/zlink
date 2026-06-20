@@ -7,18 +7,20 @@ import { loadSampleConfig } from './Configuration/sample-config';
 async function main(): Promise<void> {
   const config = loadSampleConfig();
 
-  const client1 = createClient(config.sessionEndpoint, 'player1');
-  const client2 = createClient(config.sessionEndpoint, 'player2');
+  const client1 = createClient(config.sessionAEndpoint, 'player1');
+  const client2 = createClient(config.sessionBEndpoint, 'player2');
+  const observer = createClient(config.sessionBEndpoint, 'observer');
   try {
-    await new BingoClientScenario().run(client1, client2);
+    await new BingoClientScenario().run(client1, client2, observer);
   } finally {
     await Promise.allSettled([
       client1.close(),
-      client2.close()
+      client2.close(),
+      observer.close()
     ]);
   }
 
-  console.log('PASS Bingo.Ts');
+  console.log('bingo=completed');
 }
 
 function createClient(sessionEndpoint: string, clientName: string): ZlinkStreamConnector {
@@ -27,6 +29,7 @@ function createClient(sessionEndpoint: string, clientName: string): ZlinkStreamC
     codec: bingoProtobuf,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
     requestTimeoutMs: SampleTimings.requestTimeout,
+    waitTimeoutMs: SampleTimings.requestTimeout,
     heartbeat: { enabled: false }
   });
   client.observeInbound((observation) => {

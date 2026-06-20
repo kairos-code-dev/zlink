@@ -637,7 +637,7 @@ test('ZLinkSpotSerialExecutor runs spot work in submission order', async () => {
   assert.deepEqual(events, ['first:start', 'first:end', 'second']);
 });
 
-test('spot manager local actor join completes after entry leave callback', async () => {
+test('spot manager local actor join does not wait for entry leave callback', async () => {
   const events = [];
   class StageSpot {
     async onActorJoin(actor, request) {
@@ -651,8 +651,9 @@ test('spot manager local actor join completes after entry leave callback', async
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
     entrySpotCallbacks: {
-      async onLeaveActor(actor) {
+      onLeaveActor(actor) {
         events.push(`entry-left:${actor.actorId}`);
+        return new Promise(() => {});
       }
     }
   });

@@ -262,16 +262,14 @@ Bingo/
           Handlers/
             AllocateBingoRoomHandler
             EnsurePlayerActorHandler
-          Notifications/
-            BingoNotificationPublisher
-            BingoRoomEvent
-            BingoRoomEventMapper
           Spots/
             BingoEntrySpot
             BingoRoom
             Handlers/
               ObserveBingoEventsHandler
               MatchBingoActorHandler
+              StopObservingBingoEventsHandler
+              BingoRewardAcquiredEventHandler
               SubmitBingoCardHandler
               BingoRoomDrawTimerHandler
 ```
@@ -294,7 +292,7 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 | `Server/Session/*` | stream gateway adapter | client stream, 인증, actor binding, bound session relay를 처리한다. |
 | `Server/Play/Domain/Bingo/*` | domain model | card, draw deck, room status, winner 판정 같은 게임 규칙을 framework 타입 없이 표현한다. |
 | `Server/Play/Application/RoomAllocation/*` | application use case | Redis match queue, waiting room 재사용, room Spot 생성을 조율한다. |
-| `Server/Play/Adapters/ZLink/*` | ZLink adapter | channel, actor, Spot callback, notification publish를 application/domain 호출로 변환한다. |
+| `Server/Play/Adapters/ZLink/*` | ZLink adapter | channel, actor, Spot callback, bound session push, Spot pub/sub publish/subscribe를 application/domain 호출로 변환한다. |
 
 의존 방향은 `Adapters -> Application -> Domain`이다. Domain은 ZLink framework, Registry,
 stream session, actor gateway, logger를 알지 않는다. Application은 room 배정 같은 use
@@ -302,10 +300,10 @@ case 조율만 맡고, server endpoint 발견, session binding, push 전송 같�
 adapter에 둔다. 이 규칙 덕분에 다른 언어로 옮겨도 gateway 구조와 게임 규칙의 위치가
 같게 유지된다.
 
-`Adapters/ZLink/Notifications`는 Spot 타입이 아니다. 이 위치의 코드는 domain event를
-stream push message로 바꾸는 adapter일 뿐이며, reward event를 수신하기 위한 별도
-notification Spot을 만들면 안 된다. Spot pub/sub event 수신은 `Spots/BingoRoom` 안에서만
-구현한다.
+알림 전송을 위해 별도 notification Spot이나 별도 notification publisher 계층을 만들지 않는다.
+player에게 가는 게임 진행 알림은 `PlayerActor`가 자기 bound session으로 보내고, 서버 간 보상
+fan-out은 `BingoRoom`이 Spot pub/sub topic으로 publish/subscribe한다. Spot pub/sub event
+수신도 `Spots/BingoRoom` 안에서 처리한다.
 
 ## 6. 언어별 구현 기준
 
@@ -403,16 +401,14 @@ Server/Play/
       Handlers/
         AllocateBingoRoomHandler
         EnsurePlayerActorHandler
-      Notifications/
-        BingoNotificationPublisher
-        BingoRoomEvent
-        BingoRoomEventMapper
       Spots/
         BingoEntrySpot
         BingoRoom
         Handlers/
           ObserveBingoEventsHandler
           MatchBingoActorHandler
+          StopObservingBingoEventsHandler
+          BingoRewardAcquiredEventHandler
           SubmitBingoCardHandler
           BingoRoomDrawTimerHandler
 ```
@@ -426,9 +422,9 @@ Server/Play/
 | `Domain/Bingo/BingoRoomGame` | player join, room status, card 제출 가능 여부, draw timer 시작/종료 신호, room event 생성을 소유한다. |
 | `Application/RoomAllocation/BingoRoomAllocator` | matching 요청을 받아 Redis match queue와 room Spot 생성을 조율한다. |
 | `Application/RoomAllocation/RedisBingoMatchQueue` | mode별 waiting room record와 actor reservation을 Redis에 atomic하게 저장한다. |
-| `Adapters/ZLink/Spots/BingoRoom` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, notification publish 연결을 맡는다. |
+| `Adapters/ZLink/Spots/BingoRoom` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, player bound session push, reward pub/sub publish/subscribe를 맡는다. |
 | `Adapters/ZLink/Spots/BingoRoom` | observer용 local room 인스턴스에서 reward topic subscribe callback을 받고 observer actor에게 push를 전달한다. |
-| `Adapters/ZLink/Notifications/*` | domain event를 bound session push message로 바꾸고 전송한다. |
+| `Adapters/ZLink/Actors/PlayerActor` | player별 bound session push를 감싼다. room Spot은 actor의 public method만 호출하고 stream frame을 직접 만들지 않는다. |
 | `Adapters/ZLink/Handlers/*` | channel request와 Spot actor request를 받아 application/domain adapter로 연결한다. |
 
 Domain 객체는 ZLink framework 타입을 직접 참조하지 않는다. `BingoRoom` Spot은 framework

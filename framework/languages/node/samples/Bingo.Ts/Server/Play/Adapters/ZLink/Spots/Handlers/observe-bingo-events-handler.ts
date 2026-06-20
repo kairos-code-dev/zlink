@@ -9,29 +9,26 @@ import type {
 import type { BingoEntrySpot as BingoEntrySpotType } from '../bingo-entry-spot';
 import type { PlayerActor as PlayerActorType } from '../../Actors/player-actor';
 import type {
-  MatchBingoReq,
-  MatchBingoRes
+  ObserveBingoEventsReq,
+  ObserveBingoEventsRes
 } from '../../../../../../Shared/Contracts/messages';
 
 @zlinkEntrySpotActorRequestHandler({
   actor: () => PlayerActor,
   entrySpot: () => BingoEntrySpot,
-  packetName: PacketNames.matchBingoReq
+  packetName: PacketNames.observeBingoEventsReq
 })
-class MatchBingoActorHandler
-  implements ZLinkEntrySpotActorRequestHandler<BingoEntrySpotType, PlayerActorType, MatchBingoReq, MatchBingoRes> {
+class ObserveBingoEventsHandler
+  implements ZLinkEntrySpotActorRequestHandler<BingoEntrySpotType, PlayerActorType, ObserveBingoEventsReq, ObserveBingoEventsRes> {
   async handle(
     entrySpot: BingoEntrySpotType,
     actor: PlayerActorType,
     context: ZLinkSpotActorRequestContext,
-    request: MatchBingoReq
-  ): Promise<MatchBingoRes> {
+    request: ObserveBingoEventsReq
+  ): Promise<ObserveBingoEventsRes> {
     void context;
-    if (process.env.BINGO_DEBUG_FLOW === '1') {
-      console.log(`play-match-handler start actor=${actor.actorId}`);
-    }
-    return await entrySpot.matchActor(actor, request);
+    return await entrySpot.observeEvents(actor, request);
   }
 }
 
-export { MatchBingoActorHandler };
+export { ObserveBingoEventsHandler };

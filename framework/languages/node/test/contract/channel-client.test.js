@@ -240,6 +240,232 @@ test('ZLinkChannelClient request/reply round-trips through public binding socket
   }
 });
 
+test('route raw SPOT requests through SpotNode router are serialized per route channel', async () => {
+  let active = 0;
+  let maxActive = 0;
+  const calls = [];
+  const releases = [];
+  const fakeSpot = {
+    requestToSpot(targetNodeRid, spotRid, request, callback) {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      calls.push({
+        targetNodeRid,
+        spotRid,
+        request: request.data().toString()
+      });
+      releases.push(() => {
+        active -= 1;
+        callback(0, [zlink.Message.from(Buffer.from(`reply-${calls.length}`))]);
+      });
+      return true;
+    }
+  };
+  const registration = framework.createFrameworkRegistration({
+    routeChannels: [{ routerChannelId: 'room.route' }],
+    spotNodes: {
+      play: {
+        router: { bind: 'inproc://play', routingId: 'play-node' },
+        acceptedSpotRouteChannels: {
+          'room.route': {}
+        }
+      }
+    }
+  });
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    registration,
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer() }),
+    fakeContext()
+  );
+  manager.setSpotNodes(new Map([
+    ['play', {
+      entrySpot() {
+        return fakeSpot;
+      }
+    }]
+  ]));
+  const remoteAddress = {
+    routerChannelId: 'room.route',
+    targetNodeRid: 'session-node',
+    spotRid: 'session-node',
+    spotKind: framework.ZLinkSpotKind.Entry
+  };
+
+  const first = manager.routeRequestRawToSpot(
+    remoteAddress,
+    zlink.Message.from(Buffer.from('first')),
+    1000
+  );
+  const second = manager.routeRequestRawToSpot(
+    remoteAddress,
+    zlink.Message.from(Buffer.from('second')),
+    1000
+  );
+
+  await waitUntil(() => calls.length === 1);
+  assert.equal(active, 1);
+  assert.equal(calls[0].request, 'first');
+  releases.shift()();
+  await waitUntil(() => calls.length === 2);
+  assert.equal(active, 1);
+  assert.equal(calls[1].request, 'second');
+  releases.shift()();
+
+  const [firstReply, secondReply] = await Promise.all([first, second]);
+  assert.equal(firstReply[0].data().toString(), 'reply-1');
+  assert.equal(secondReply[0].data().toString(), 'reply-2');
+  firstReply[0].close();
+  secondReply[0].close();
+  assert.equal(maxActive, 1);
+});
+
+test('route raw SPOT request through SpotNode router retries until route is ready', async () => {
+  let attempts = 0;
+  const fakeSpot = {
+    requestToSpot(_targetNodeRid, _spotRid, _request, callback) {
+      attempts += 1;
+      if (attempts === 1) {
+        return false;
+      }
+      callback(0, [zlink.Message.from(Buffer.from('ready-reply'))]);
+      return true;
+    }
+  };
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      requestTimeoutMs: 1000,
+      routeChannels: [{ routerChannelId: 'room.route' }],
+      spotNodes: {
+        play: {
+          router: { bind: 'inproc://play', routingId: 'play-node' },
+          acceptedSpotRouteChannels: {
+            'room.route': {}
+          }
+        }
+      }
+    }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer() }),
+    fakeContext()
+  );
+  manager.setSpotNodes(new Map([
+    ['play', {
+      entrySpot() {
+        return fakeSpot;
+      }
+    }]
+  ]));
+
+  const reply = await manager.routeRequestRawToSpot(
+    {
+      routerChannelId: 'room.route',
+      targetNodeRid: 'session-node',
+      spotRid: 'session-node',
+      spotKind: framework.ZLinkSpotKind.Entry
+    },
+    zlink.Message.from(Buffer.from('request')),
+    1000
+  );
+
+  assert.equal(attempts, 2);
+  assert.equal(reply[0].data().toString(), 'ready-reply');
+  reply[0].close();
+});
+
+test('route channel request rejects when native router does not accept submit', async () => {
+  const router = fakeRouteRouter();
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      routeChannels: [{
+        routerChannelId: 'room.route',
+        bind: 'inproc://session-route',
+        routingId: 'session-node'
+      }]
+    }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer(), router }),
+    fakeContext()
+  );
+
+  await assert.rejects(
+    () => manager.routeRequest('room.route', 'play-node', 'EnsurePlayerActorReq', { actorId: 'player-1' }, 100),
+    /Route channel 'room\.route' is not ready for request/
+  );
+  assert.equal(router.requestAttempts, 1);
+});
+
+test('route channel request uses call timeout after native router accepts submit', async () => {
+  const router = fakeRouteRouter({ acceptWithoutReply: true });
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      routeChannels: [{
+        routerChannelId: 'room.route',
+        bind: 'inproc://session-route',
+        routingId: 'session-node'
+      }]
+    }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer(), router }),
+    fakeContext()
+  );
+
+  const startedAt = Date.now();
+  await assert.rejects(
+    () => manager.routeRequest('room.route', 'play-node', 'EnsurePlayerActorReq', { actorId: 'player-1' }, 30),
+    /ZLink async submit timed out/
+  );
+  assert.equal(router.requestAttempts, 1);
+  assert.ok(Date.now() - startedAt < 1000);
+});
+
+test('route channel with SPOT acceptance starts one route receive loop for shared router frames', async () => {
+  const router = fakeRouteRouter();
+  const taskNames = [];
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      routeChannels: [{
+        routerChannelId: 'room.route',
+        bind: 'inproc://play-route',
+        routingId: 'play-node'
+      }],
+      spotNodes: {
+        play: {
+          router: { bind: 'inproc://play-spot', routingId: 'play-node' },
+          acceptedSpotRouteChannels: {
+            'room.route': {}
+          }
+        }
+      }
+    }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer(), router }),
+    fakeContext()
+  );
+  const spotNode = {
+    entrySpot() {
+      return {
+        requestToSpot() {
+          throw new Error('spot request not used');
+        }
+      };
+    },
+    processExternalRouter() {
+      throw new Error('shared route router must own external route frames');
+    },
+    tryProcessExternalRouterParts() {
+      return false;
+    }
+  };
+  manager.setSpotNodes(new Map([['play', spotNode]]));
+
+  manager.start({
+    errorSink: { reportRuntimeTaskException() {} },
+    run(name) {
+      taskNames.push(name);
+      return Promise.resolve();
+    }
+  });
+
+  assert.deepEqual(taskNames, ['route:room.route']);
+  await manager.dispose();
+});
+
 test('ZLinkChannelClient rejects malformed reply envelope json', async () => {
   const ctx = zlink.createContext();
   const dealer = zlink.createDealerSocket(ctx);
@@ -1466,7 +1692,18 @@ function fakeContext() {
   };
 }
 
-function fakeChannelAdapter({ dealer }) {
+async function waitUntil(predicate, timeoutMs = 1000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error('Timed out waiting for condition.');
+}
+
+function fakeChannelAdapter({ dealer, router }) {
   return {
     createDealerSocket() {
       return dealer;
@@ -1475,7 +1712,10 @@ function fakeChannelAdapter({ dealer }) {
       throw new Error('publisher not used');
     },
     createRouterSocket() {
-      throw new Error('router not used');
+      if (router === undefined) {
+        throw new Error('router not used');
+      }
+      return router;
     }
   };
 }
@@ -1516,6 +1756,41 @@ function fakeBackpressuredDealer() {
       }
       callback(0, this.replyParts);
       return true;
+    },
+    async dispose() {}
+  };
+}
+
+function fakeRouteRouter(options = {}) {
+  let readyHandler = () => undefined;
+  return {
+    nativeInstance: {},
+    writable: true,
+    requestAttempts: 0,
+    setChannelName(channelName) {
+      this.channelName = channelName;
+    },
+    setRoutingId(routingId) {
+      this.routingId = routingId;
+    },
+    bind(endpoint) {
+      this.endpoint = endpoint;
+    },
+    connect(endpoint) {
+      this.connectedEndpoint = endpoint;
+    },
+    attachDiscovery(discovery) {
+      this.discovery = discovery;
+    },
+    onSendReady(handler) {
+      readyHandler = handler;
+    },
+    ready() {
+      readyHandler();
+    },
+    request() {
+      this.requestAttempts++;
+      return options.acceptWithoutReply === true;
     },
     async dispose() {}
   };

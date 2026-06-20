@@ -127,7 +127,7 @@
   공개 키로 사용한다. session -> actor 방향은 actor create/dispatch helper로,
   actor -> client 방향은 `IZLinkSessionProxy`로 나눈다. actor 개념의 라이프사이클
   과 표면은 [actor-model.ko.md](actor-model.ko.md)에서, gateway use case의 사용성
-  결정은 [session-gateway-usability.ko.md](session-actor-dispatch.ko.md)에서
+  결정은 [session-actor-dispatch.ko.md](session-actor-dispatch.ko.md)에서
   본다.
 
 ### 2.3 transport 통합 축
@@ -136,7 +136,7 @@ framework가 직접 통합할 transport 축은 [overview.ko.md](overview.ko.md)�
 section 2에 정의되어 있다. 이 문서는 channel messaging, `PUB/SUB`, `STREAM`
 세 축을 중심으로 보되, 공통 API 원칙과 lifecycle 경계에 직접 영향을 주는
 `SPOT` 표면도 함께 다룬다. `SPOT`의 자세한 계약과 샘플은
-[../bindings/dotnet/aspnet-core-spot.ko.md](../../dotnet/spec/aspnet-core-spot.ko.md) 등 별도
+[.NET SPOT 문서](../../dotnet/spec/aspnet-core-spot.ko.md) 등 별도
 문서에서 따로 다룬다.
 
 핵심은 transport 축은 명확히 두되, 프레임워크 사용자가 보는 이름은 socket
@@ -418,8 +418,10 @@ request도 reply를 기다리는 async 호출로 설명한다. 다만 request pa
 - local spot 인스턴스는 등록 이름으로 만들고, lifecycle 안에서 packet, subscribe,
   timer를 등록한다.
 - spot timer 는 framework 가 만든 managed scheduler 를 사용한다. user Spot timer 는
-  같은 user Spot 실행 queue 에서 직렬화하고, Entry Spot timer 는 Entry Spot 전체
-  실행 줄에 묶지 않는다. 같은 timer instance 의 callback 은 겹쳐 실행하지 않는다.
+  같은 user Spot 실행 queue 에서 직렬화한다. Entry Spot timer 는 같은 timer instance 의
+  callback 이 겹치지 않는다는 점만 공통으로 고정한다. Entry Spot timer 를 Entry Spot
+  실행 줄에 묶을지는 언어별 runtime 정책에 맡기며, 언어별 feature map과 상세 문서에
+  기록한다.
 - timer handler 는 callback 번호, 예정 시각, 시작 시각, 지연, 건너뛴 tick 수를
   담은 metadata 를 받는다. 늦은 tick 은 skip, bounded catch-up, fixed-delay 중
   하나의 정책으로 처리한다. hard realtime 보장은 제공하지 않는다.
@@ -450,7 +452,7 @@ request도 reply를 기다리는 async 호출로 설명한다. 다만 request pa
   Entry Spot destroy 경로에서만 application이 명시적으로 선택한다.
 
 자세한 contract와 샘플은
-[../bindings/dotnet/aspnet-core-spot.ko.md](../../dotnet/spec/aspnet-core-spot.ko.md)
+[.NET SPOT 문서](../../dotnet/spec/aspnet-core-spot.ko.md)
 같은 binding 문서를 기준으로 본다.
 
 #### 3.3.1 Actor lifecycle — zlink 라이브러리 위임
@@ -492,12 +494,12 @@ framework는 이 두 이벤트를 아래와 같이 처리한다.
 
 user Spot 에서는 두 이벤트를 spot serial executor를 통해 직렬화된 실행 문맥 안에서
 처리하므로, actor join handler와 actor packet handler 사이에 동시성 경합이 없다.
-Entry Spot 은 같은 handler/callback 등록 표면을 제공하지만 공용 입구이므로 packet
-callback 을 Entry Spot 전체 실행 줄에 묶지 않는다. Entry Spot 에서 직렬화되는 것은
-초기화, 종료, lifecycle callback 처럼 Entry Spot 자체 상태를 다루는 callback 이다.
-Entry Spot timer callback 도 전체 실행 줄에 묶지 않는다. user Spot timer callback 은
-packet, subscription, channel reply, actor packet 과 같은 user Spot queue 에서
-처리한다.
+Entry Spot 도 같은 handler/callback 등록 표면을 제공하며, Entry Spot packet callback,
+actor packet callback, lifecycle callback, request continuation 을 Entry Spot 실행 줄에서
+직렬화한다. Entry Spot timer callback 은 같은 timer instance callback 이 겹치지 않는다는
+점만 공통으로 보장하고, Entry Spot 실행 줄에 묶을지는 언어별 runtime 정책에 맡긴다.
+user Spot timer callback 은 packet, subscription, channel reply, actor packet 과 같은
+user Spot queue 에서 처리한다.
 
 ##### framework가 직접 관리하지 않는 것
 

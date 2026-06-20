@@ -4,7 +4,7 @@
 
 [Framework 문서](../../README.ko.md)
 
-[개요](spec/overview.ko.md) | [use cases](use-cases/README.ko.md) | [상호작용 모델](spec/interaction-model.ko.md) | [메시지 모델](spec/message-model.ko.md) | [channel topology](spec/channel-topology.ko.md) | [framework API](spec/framework-api.ko.md) | [비동기 실행](spec/async-execution-policy.ko.md) | [Actor 모델](spec/actor-model.ko.md) | [Session Actor Dispatch 사용성](spec/session-actor-dispatch.ko.md) | [공통 샘플](sample/README.ko.md) | [검증](spec/usecase-validation.ko.md) | [.NET](../dotnet/README.ko.md) | [.NET Session Actor Dispatch](../dotnet/spec/session-actor-dispatch.ko.md) | [Java](../java/README.ko.md) | [Node.js](../node/README.ko.md) | [C++](../cpp/README.ko.md)
+[개요](spec/overview.ko.md) | [use cases](use-cases/README.ko.md) | [상호작용 모델](spec/interaction-model.ko.md) | [메시지 모델](spec/message-model.ko.md) | [channel topology](spec/channel-topology.ko.md) | [framework API](spec/framework-api.ko.md) | [비동기 실행](spec/async-execution-policy.ko.md) | [Actor 모델](spec/actor-model.ko.md) | [Session Actor Dispatch 사용성](spec/session-actor-dispatch.ko.md) | [공통 샘플](sample/README.ko.md) | [Scenario E2E](e2e/README.ko.md) | [검증](spec/usecase-validation.ko.md) | [.NET](../dotnet/README.ko.md) | [.NET Session Actor Dispatch](../dotnet/spec/session-actor-dispatch.ko.md) | [Java](../java/README.ko.md) | [Node.js](../node/README.ko.md) | [C++](../cpp/README.ko.md)
 
 # ZLink Framework 공통 스펙
 
@@ -47,19 +47,20 @@
 | 6 | [framework-api.ko.md](spec/framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `C++` standalone host 기준의 API 표면 방향. 각 환경에서 handler와 client가 어떤 모양으로 보이는지 다룬다. |
 | 7 | [비동기 실행과 coroutine 정책](spec/async-execution-policy.ko.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미를 정의한다. |
 | 8 | [actor-model.ko.md](spec/actor-model.ko.md) | actor 개념을 cross-binding 기준으로 정의한다. actor 라이프사이클 (Entry Spot / session bind / user Spot join), application 로직 vs framework 자동 처리, outbound actor 호출, session actor dispatch 패턴, 등록 표면을 다룬다. |
-| 9 | [Session Actor Dispatch](spec/session-actor-dispatch.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 cross-binding 사용성 결정 사항. typed handler 의미, route resolver 계약, helper 의미, `SessionProxy` 의미, error 매트릭스를 다룬다. 구체 .NET 시그니처와 등록 코드, sample은 [bindings/dotnet/session-actor-dispatch.ko.md](../dotnet/spec/session-actor-dispatch.ko.md)에 분리되어 있다. |
+| 9 | [Session Actor Dispatch](spec/session-actor-dispatch.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 cross-binding 사용성 결정 사항. typed handler 의미, route resolver 계약, helper 의미, `SessionProxy` 의미, error 매트릭스를 다룬다. 구체 .NET 시그니처와 등록 코드, sample은 [.NET Session Actor Dispatch](../dotnet/spec/session-actor-dispatch.ko.md)에 분리되어 있다. |
 | 10 | [공통 샘플 시나리오](sample/README.ko.md) | 정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall, GameQuest)의 언어 중립 샘플 기준. 서버 역할, 메시지 흐름, handler 등록 방식 차이를 정의한다. |
-| 11 | [.NET 문서](../dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 문서. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
-| 12 | [Java 문서](../java/README.ko.md) | `Java`와 `Spring Boot` 전용 문서 진입점. |
-| 13 | [Node.js 문서](../node/README.ko.md) | `Node.js`와 `NestJS` 전용 문서 진입점. |
-| 14 | [C++ 문서](../cpp/README.ko.md) | `C++` zlink framework host 전용 문서 진입점. |
-| 15 | [Use case 검증](spec/usecase-validation.ko.md) | 각 use case를 현재 스펙이 얼마나 설명하는지 점검하는 체크리스트. |
+| 11 | [Scenario E2E 테스트](e2e/README.ko.md) | 샘플에 넣기 어려운 scale-out, 실패 경로, lifecycle, 관측성 조합을 실제 multi-process 구조로 검증하는 테스트 시나리오 묶음. |
+| 12 | [.NET 문서](../dotnet/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 문서. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
+| 13 | [Java 문서](../java/README.ko.md) | `Java`와 `Spring Boot` 전용 문서 진입점. |
+| 14 | [Node.js 문서](../node/README.ko.md) | `Node.js`와 `NestJS` 전용 문서 진입점. |
+| 15 | [C++ 문서](../cpp/README.ko.md) | `C++` zlink framework host 전용 문서 진입점. |
+| 16 | [Use case 검증](spec/usecase-validation.ko.md) | 각 use case를 현재 스펙이 얼마나 설명하는지 점검하는 체크리스트. |
 
 개요(1)로 전체 그림을 잡고, use case(2)로 무엇을 해결하려는지 본 뒤,
 모델(3-4)로 설계 방향을 확인하고, topology(5)로 내부 매핑을 이해하고,
 API 표면(6)과 비동기 실행 정책(7)을 본 다음, actor 모델(8)과 그 use case 정책(9)을
-잡고, 공통 샘플(10)로 대표 흐름을 확인한다. 언어별 상세(11-14)로 내려간 뒤, 마지막으로
-검증(15)에서 빠진 부분을 확인하는 흐름이다.
+잡고, 공통 샘플(10)로 대표 흐름을 확인한다. Scenario E2E(11)로 실제 조합 검증 기준을
+본다. 언어별 상세(12-15)로 내려간 뒤, 마지막으로 검증(16)에서 빠진 부분을 확인하는 흐름이다.
 
 언어별 상세 문서를 새로 읽을 때는 아래 순서를 기본으로 본다.
 
@@ -78,7 +79,7 @@ API 표면(6)과 비동기 실행 정책(7)을 본 다음, actor 모델(8)과 �
 | 메시지 구조, header 필드, codec | message-model | 필요하면 message-model을 링크 |
 | channel grouping, Discovery, 내부 매핑 | channel-topology | 필요하면 channel-topology를 링크 |
 | 프레임워크별 API 표면, DI, handler 등록 | framework-api, dotnet/ | 필요하면 해당 문서를 링크 |
-| actor 개념, 라이프사이클, session bind, user Spot join, session actor dispatch | actor-model, session-gateway-usability | 필요하면 해당 문서를 링크 |
+| actor 개념, 라이프사이클, session bind, user Spot join, session actor dispatch | actor-model, session-actor-dispatch | 필요하면 해당 문서를 링크 |
 
 ## 4. 문서 작성 원칙
 
@@ -125,7 +126,7 @@ API 표면(6)과 비동기 실행 정책(7)을 본 다음, actor 모델(8)과 �
 ### 5.2.1 네이밍 규칙
 
 framework 문서의 public 이름 규칙은
-[doc/spec/bindings/README.md](/home/hep7/project/kairos/zlink/doc/spec/bindings/README.md)의
+[bindings/doc/spec/README.ko.md](../../../../bindings/doc/spec/README.ko.md)의
 `Naming Policy`를 그대로 따른다. 이 공통 문서와 언어별 상세 문서는 아래 규칙을
 같이 지켜야 한다.
 

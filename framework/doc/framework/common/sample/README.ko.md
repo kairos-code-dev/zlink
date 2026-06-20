@@ -8,8 +8,8 @@
 .NET, Java, Node, C++ 등에서 구현할 때 한 언어 문서가 다른 언어의 사실상 기준이
 되지 않게 하기 위해서다.
 
-정본 7종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall,
-ShoppingMall, GameQuest)은 `.NET` 샘플에서 검증된 흐름을 기준으로 삼되, 모든 framework 언어
+정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall,
+GameQuest)은 `.NET` 샘플에서 검증된 흐름을 기준으로 삼되, 모든 framework 언어
 (dotnet/java/kotlin/node/cpp)가 동일하게 코드와 문서로 구현한다. 언어별 framework를
 구현할 때 같은 역할 분리, 같은 request/response/notify 이름, 같은 상태 필드, 같은
 smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사용자가 샘플을 읽었을 때
@@ -23,9 +23,8 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 | [TicTacToe](tictactoe/README.ko.md) | 2개 API와 2개 Play로 수동 endpoint scale-out, Redis 기반 room route 조회, 실시간 게임 흐름을 보여 준다. | `Api` 2개, `Play` 2개, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | 수동 endpoint 연결 + Redis room route store | 선언형 등록 우선, 불가능하면 명시 등록 | JSON |
 | [SupportChat](supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support`, `Registry` 분리 | Registry/Discovery 자동 연결 | typed handler와 domain event publisher | JSON |
 | [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 fanout, 고객 stream push를 확인한다. | `DispatchApi`, `DispatchCenter`, `Courier`, `Tracking`, `Session`, `Registry` 분리 | Registry/Discovery 자동 연결 | channel handler, fanout subscriber, Spot actor join | JSON |
-| ShoppingMall | commerce API가 주문을 시작하고 order workflow가 상태 전이와 projection을 처리한다. | `CommerceApi`, `OrderWorkflow`, `Registry` 분리 | Registry/Discovery 자동 연결 | workflow handler와 projection adapter | JSON |
-| [ShoppingMall](event/shoppingmall.ko.md) | 단일 Commerce API 서버 타입에서 event-sourced 주문 workflow와 projection을 구성한다. | `CommerceApi`, `Registry`, `OrderEventStore`, `OrderReadModelStore`, `CommerceStateStore` 분리 | Registry/Discovery 자동 연결 | event-sourced OrderWorkflow Spot, projection adapter | JSON |
-| [GameQuest](event/gamequest.ko.md) | stateless Game API action event를 ZLink fanout으로 받아 event sourced quest aggregate와 projection을 갱신한다. | `GameApi`, `QuestMission`, `Registry`, `QuestEventStore`, `QuestReadModelStore`, `GameplayStateStore` 분리 | Registry/Discovery 자동 연결 | fanout subscriber, event-sourced PlayerQuest Spot, projection adapter | JSON |
+| [ShoppingMall](event/shoppingmall.ko.md) | 단일 Commerce API 서버 타입에서 event-sourced 주문 workflow와 projection을 구성한다. | `CommerceApi`, `OrderWorkflow`, `Registry` 분리 | Registry/Discovery 자동 연결 | event-sourced OrderWorkflow Spot, projection adapter | JSON |
+| [GameQuest](event/gamequest.ko.md) | stateless Game API action event를 ZLink fanout으로 받아 event sourced quest aggregate와 projection을 갱신한다. | `GameApi`, `QuestMission`, `Registry` 분리 | Registry/Discovery 자동 연결 | fanout subscriber, event-sourced PlayerQuest Spot, projection adapter | JSON |
 
 ## 샘플 포팅 기준
 
@@ -49,6 +48,32 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
 - C++ 샘플은 handler 자동 등록 예외다. C++ framework는 compile-time 타입과 명시 등록을
   기준으로 삼으므로, C++ 샘플은 같은 메시지·역할·JSON codec·연결 방식을 유지하되 handler
   등록은 해당 C++ public builder 표면에 맞게 명시한다.
+
+## Dispatch 오류 로그 기준
+
+모든 언어별 샘플은 framework message dispatch 오류를 샘플 로그에 남겨야 한다.
+등록되지 않은 request, payload decode 실패, handler 예외처럼 dispatch 단계에서
+처리할 수 없는 메시지는 샘플 실행 중 바로 확인할 수 있어야 하기 때문이다.
+
+샘플마다 자기 샘플 안에 observer 또는 handler를 둔다. Bingo, TicTacToe,
+SupportChat 같은 서로 다른 샘플이 같은 helper 파일을 공유하지 않는다. 샘플은 독립적으로
+읽고 옮길 수 있어야 하며, dispatch 오류 로그 코드가 다른 샘플의 디렉토리에 의존하면
+그 기준이 깨진다.
+
+로그 출력은 새 logging 체계를 만들지 않고 각 샘플이 이미 쓰는 logger를 따른다.
+파일 로그를 이미 직접 쓰는 샘플은 그 파일 logger에 기록하고, 실행 스크립트가
+stdout/stderr를 `logs/*.log`로 저장하는 샘플은 기존 console logger에 기록하면 된다.
+로그 한 줄에는 적어도 `surface`, `messageKind`, `reason`, `action`, `packetName`,
+`correlationId` 값을 포함한다. channel 경로에서는 `channelName`, Spot 경로에서는
+`spotRid`, actor 경로에서는 `actorId`처럼 surface에 맞는 식별자를 함께 남긴다. 운영자가
+메시지 등록 누락인지, payload decode 실패인지, handler 예외인지 빠르게 구분할 수 있어야
+하기 때문이다.
+
+.NET 샘플은 각 샘플의 `Server/Configuration` 아래에 샘플별
+`*DispatchErrorObserver`를 두고, 각 서버 프로세스의 `AddZLinkFramework(...)` 설정에서
+`ConfigureDispatch().SetMessageDispatchErrorObserver<...>()`로 등록한다. `run_sample.sh`
+와 `run_sample.ps1`은 프로세스 출력을 `logs/*.log`에 저장하므로, observer가 `ILogger`로
+남긴 `dispatch-error` 줄도 같은 샘플 로그 파일에서 확인한다.
 
 ## 공통 작성 원칙
 

@@ -527,6 +527,7 @@ public interface ZLinkStreamNodeBuilder {
 
 public interface ClientServerChannelBuilder {
     ClientServerChannelBuilder enableServer(String endpoint);
+    ClientServerChannelBuilder serverRoutingId(RoutingId routingId);
     ClientServerChannelBuilder enableClient();
     ClientServerChannelBuilder enableClient(String endpoint);
     ClientServerChannelBuilder addHandlerGroup(String groupName);

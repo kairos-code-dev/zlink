@@ -74,6 +74,7 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 | `AddDealerMeshChannel(name)` | `zlinkFramework().addDealerMeshChannel(name)` |
 | `AddRouteMeshChannel(name)` | `zlinkFramework().addRouteMeshChannel(name)` |
 | `channel.EnableServer(...)` | `.enableServer('...')` |
+| `channel.ConfigureServerRouting().RoutingId = rid` | `.routingId(rid)` |
 | `channel.EnableClient()` | `.enableClient()` |
 | `channel.EnableClient(...)` | `.enableClient('...')` 또는 `.enableClient([...])` |
 | `channel.EnablePublisher(...)` | `.enablePublisher('...')` |
@@ -102,6 +103,8 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 - `.enableServer(bind)` -- 이 channel 로 들어오는 request / send 를 local handler 가 받게
   한다. 서버 역할이므로 `bind` 로 자기 endpoint 를 함께 정한다.
   (dotnet `EnableServer(...)` 대응.)
+- `.routingId(rid)` -- client-server 서버 역할의 논리 routing id를 정한다. discovery가
+  같은 routing id와 다른 endpoint를 다시 받으면 새 endpoint가 이전 endpoint를 대체한다.
 - `.enableClient()` -- 이 channel 쪽으로 request / send 호출을 내보낸다.
   (dotnet `EnableClient()` 대응.)
 - `.enablePublisher(bind)` -- 이 channel 로 event 를 publish 한다. 마찬가지로 `bind` 로 자기

@@ -73,6 +73,12 @@ cpp framework 가 정본 샘플 전체를 제공한다([14장 §1](14-samples-ma
 | ShoppingMall | channel request, order workflow 상태 전이, event-sourcing/보상 | JSON |
 | GameQuest | stateless API scale-out, owner routing, fanout + event sourcing | JSON |
 
+공통 E2E 기준에서 C++는 channel routing id가 runtime ROUTER에 반영되는 계약 테스트와
+registry/discovery 샘플을 갖고 있다. 다만 `DSC-008` provider scale-out/scale-in과
+`DSC-009` 같은 routing id endpoint 교체를 한 테스트에서 실제 traffic으로 검증하는
+자동 E2E는 아직 별도 항목으로 남아 있다. C++가 공통 E2E 기준을 완전히 만족한다고
+표시하려면 해당 시나리오를 `ctest`에 추가해야 한다.
+
 ## 5. 더 보기
 
 - 핵심 개념: [3장 핵심 개념](03-concepts.ko.md)

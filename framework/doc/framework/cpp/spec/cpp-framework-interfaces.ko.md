@@ -636,6 +636,7 @@ class capability_builder_t {
 public:
     capability_builder_t &bind(std::string endpoint);
     capability_builder_t &connect(std::string endpoint);
+    capability_builder_t &set_routing_id(zlink::routing_id_t routing_id);
     capability_builder_t &use_discovery();
 };
 

@@ -159,6 +159,19 @@ client 역할은 사용자가 직접 적어 준 peer 목록만 보고 연결을 
 binding 하부 모델이 "이미 connect 된 DEALER 를 attach 한다" 는 방식이라, framework
 표면도 endpoint 집합만 다루는 편이 자연스럽기 때문이다.
 
+server 역할의 논리 routing id는 server 쪽에서 정한다. 같은 서비스를 재시작하면서 endpoint가
+바뀌더라도 논리 routing id가 같으면 Discovery topology에서는 같은 제공자의 새 endpoint로
+교체된다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    var channel = options.AddClientServerChannel("api");
+    channel.EnableServer("tcp://0.0.0.0:7101");
+    channel.ConfigureServerRouting().RoutingId = RoutingId.From("api-a");
+});
+```
+
 #### 두 방식을 한 앱에서 섞기
 
 한 앱 안에 두 방식을 함께 둘 수도 있다. 다만 그 의미를 정확히 짚어 두어야 한다.

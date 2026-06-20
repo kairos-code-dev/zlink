@@ -83,7 +83,7 @@ route mesh 핸들러는 `route_channel_builder_t::add_send_handler`/`add_request
 | `services()` | DI 등록 (`add_singleton/scoped/transient<T>`) | [4장](04-di-container.ko.md) |
 | `handlers()` | 핸들러 그룹 등록 (`add<T>("group")`) | [3 §6.1](03-concepts.ko.md) |
 | `codecs()` | `add_json` / `use(extension)` / `add_serializer<T>` | [7 §2](07-channel-messaging.ko.md) |
-| `add_client_server_channel(name)` | `enable_server(ep)` · `enable_client([ep])` · `use_handler_group(g)` · `enable_spot_route_egress(t)` | [7](07-channel-messaging.ko.md) |
+| `add_client_server_channel(name)` | `enable_server(ep)` · `server_routing_id(rid)` · `enable_client([ep])` · `use_handler_group(g)` · `enable_spot_route_egress(t)` | [7](07-channel-messaging.ko.md) |
 | `add_fanout_channel(name)` | `enable_publisher(ep)` · `enable_subscriber([ep])` · `use_handler_group(g)` | [7 §6](07-channel-messaging.ko.md) |
 | `add_dealer_mesh_channel(name)` | `enable_server(ep)` · `enable_client([ep])` · `use_handler_group(g)` (DEALER 공유) | [7 §5](07-channel-messaging.ko.md) |
 | `add_route_mesh_channel(name)` | `enable_server(ep)` · `set_routing_id(rid)` · `enable_client([ep])` · `enable_spot_route_egress(t)` (ROUTER 공유) | [7 §7](07-channel-messaging.ko.md) |

@@ -60,6 +60,12 @@ flowchart TD
 feature map의 모든 항목은 구현, 테스트, sample 중 하나 이상에서 실제 public API로
 확인되어야 한다. 특히 Stream Connector와 sample은 포팅 완료 범위에 포함된다.
 
+공통 E2E 기준에서는 Java core integration test가 Registry/Discovery의 provider
+scale-out과 같은 routing id endpoint 교체를 검증한다. Kotlin 모듈은 같은 Java runtime을
+사용하지만, Kotlin 전용 자동 E2E는 현재 coroutine channel 호출 경로만 검증한다. 따라서
+Kotlin이 공통 E2E 기준을 완전히 만족한다고 표시하려면 `DSC-008`, `DSC-009`에 대응하는
+Kotlin public API 시나리오를 별도로 추가해야 한다.
+
 ## 5. 더 보기
 
 - 표면 멘탈 모델: [03-concepts](03-concepts.ko.md)

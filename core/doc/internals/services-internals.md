@@ -16,21 +16,30 @@ node lifecycle and is not itself a TLS configuration surface.
 ### 2.1 Data Structures
 
 ```cpp
-struct service_entry_t {
-    std::string service_name;
-    std::string endpoint;
-    zlink_routing_id_t routing_id;
-    uint16_t service_role;
-    uint64_t registered_at;
-    uint64_t last_heartbeat;
-    uint32_t weight;
+struct service_key_t {
+    std::string channel_name;          // service key is channel_name only
 };
 
-struct registry_state_t {
-    uint32_t registry_id;
-    uint64_t list_seq;
-    std::map<std::string, std::vector<service_entry_t>> services;
+struct provider_entry_t {              // per-provider registration detail
+    uint16_t service_role;
+    std::string endpoint;
+    zlink_routing_id_t routing_id;
+    uint32_t weight;
+    int64_t value;
+    std::vector<unsigned char> metadata;
+    uint64_t registration_id;
+    uint64_t provider_update_seq;
+    uint64_t registered_at;
+    uint64_t last_heartbeat;
+    uint32_t source_registry;
 };
+
+struct service_entry_t {
+    uint16_t auto_connect_type;
+    provider_map_t providers;          // provider key → provider_entry_t
+};
+
+// service_map_t = std::map<service_key_t, service_entry_t>
 ```
 
 ### 2.2 Registry State Machine
@@ -72,9 +81,15 @@ stateDiagram-v2
 Discovery tracks providers with a (auto_connect_type, service_role) pair:
 
 ```cpp
-// Service types
-static const uint16_t auto_connect_type_spot_node = 2;
-static const uint16_t auto_connect_type_socket = 3;
+// Auto-connect types (zlink_auto_connect_type_t)
+enum {
+    ZLINK_AUTO_CONNECT_INVALID       = 0,
+    ZLINK_AUTO_CONNECT_ROUTE_MESH    = 1,
+    ZLINK_AUTO_CONNECT_CLIENT_SERVER = 2,
+    ZLINK_AUTO_CONNECT_DEALER_MESH   = 3,
+    ZLINK_AUTO_CONNECT_FANOUT        = 4,
+    ZLINK_AUTO_CONNECT_SPOT_MESH     = 5
+};
 
 // Service roles
 enum service_role_t {
@@ -102,24 +117,21 @@ convenience API:
 
 ```cpp
 namespace discovery_owned_service {
-    int register_endpoint(discovery_t *, uint16_t auto_connect_type,
-                          const char *endpoint, uint32_t weight,
+    int register_endpoint(discovery_t *, const char *endpoint,
                           std::string *resolved_endpoint_out,
                           const zlink_routing_id_t *routing_id = NULL,
-                          uint16_t service_role = 0);
-    int update_weight(discovery_t *, uint16_t auto_connect_type,
-                      const char *endpoint, uint32_t weight,
-                      uint16_t service_role = 0);
-    int unregister_endpoint(discovery_t *, uint16_t auto_connect_type,
-                            const char *endpoint,
+                          uint16_t service_role = 0, uint32_t weight = 100);
+    int update_attributes(discovery_t *, const char *endpoint,
+                          uint16_t service_role = 0, uint32_t weight = 100);
+    int unregister_endpoint(discovery_t *, const char *endpoint,
                             uint16_t service_role = 0);
 }
 ```
 
 Discovery internally maintains a `_registered_services` map keyed by
-`(auto_connect_type, service_role, service_name, endpoint)` and periodically
-refreshes heartbeats for all registered services via
-`refresh_registered_service_heartbeats()`.
+`(service_role, channel_name, endpoint)` (`auto_connect_type` is separate state on
+`discovery_t`) and periodically refreshes heartbeats for all registered services
+via `refresh_registered_service_heartbeats()`.
 
 ### 3.4 Socket Discovery Attachment
 
@@ -165,6 +177,10 @@ Frame 1~N: Payload (variable)
 | 0x000B | TOPOLOGY_QUERY | Client → Registry |
 | 0x000C | TOPOLOGY_REPLY | Registry → Client |
 | 0x000D | UNREGISTER_ACK | Registry → Service |
+| 0x000E | BIND_ROUTE | Service → Registry |
+| 0x000F | UNBIND_ROUTE | Service → Registry |
+| 0x0010 | RESOLVE_ROUTE | Client → Registry |
+| 0x0011 | RESOLVE_ROUTE_REPLY | Registry → Client |
 
 #### Registration and Heartbeat Flow
 
@@ -227,7 +243,7 @@ Frame 4~N: Service entries (repeated service_count times)
 
 ### 5.4.1 SpotNode HWM Boundaries
 - Unified `Spot` handle HWM and SpotNode admission HWM are different layers.
-- `Spot` handles do not accept common `SNDHWM` or `RCVHWM` options.
+- A registered `Spot` handle accepts common `SNDHWM`/`RCVHWM` options and stores them as pub/sub pending options.
 - `SpotNode` HWM is an admission budget, not a relay or delivery queue budget:
   - pubsub admission controls local publish input.
   - router admission controls local routed input.
@@ -235,8 +251,8 @@ Frame 4~N: Service entries (repeated service_count times)
   start at `16` unless a positive numeric override is set.
 - Setting an admission numeric option to `0` clears the override and returns to
   the selected profile.
-- Relay and delivery sockets use HWM `0`; removed queue hard-limit behavior no
-  longer disconnects delivery targets.
+- Relay and delivery sockets use HWM `0` — delivery targets are not disconnected
+  due to queue growth.
 - `peer_ctrl` is a control-plane socket and is not grouped into the SpotNode
   admission HWM family.
 

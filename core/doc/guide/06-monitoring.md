@@ -161,8 +161,8 @@ submits start failing with `ZLINK_SUBMIT_NOT_ADMITTED`.
 
 If you want the service-layer view of the same change, poll the
 `Discovery` view with `zlink_discovery_member_peers()` and compare the
-returned peer set over time. The public contract no longer exposes a
-separate service-event stream for Discovery.
+returned peer set over time. The current public contract has no separate
+service-event stream for Discovery.
 
 ## 5. Event Flow Diagrams
 

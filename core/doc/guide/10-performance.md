@@ -524,7 +524,7 @@ void on_pong(const zlink_routing_id_t *source_rid,
 
 ### Message Optimization
 
-- [ ] Leverage VSM for small messages (≤33B) (inline storage)
+- [ ] Leverage VSM for small messages (≤41B) (inline storage)
 - [ ] Use zero-copy (`zlink_msg_init_data`) for large messages
 - [ ] For constant/static payloads, use `zlink_msg_init_data(..., NULL, NULL)` carefully
 - [ ] Avoid unnecessary `zlink_msg_copy()` calls

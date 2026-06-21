@@ -77,7 +77,7 @@ Key roles per layer:
 
 | Design Principle | Description |
 |------------------|-------------|
-| **Zero-Copy** | VSM (33B or less) stored inline; large messages use reference counting |
+| **Zero-Copy** | VSM (41B or less) stored inline; large messages use reference counting |
 | **Lock-Free** | YPipe (CAS-based FIFO) used for inter-thread communication |
 | **True Async** | Asynchronous I/O based on the Proactor pattern |
 | **Protocol Agnostic** | Clear separation between Transport and Protocol |

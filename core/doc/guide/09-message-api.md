@@ -18,8 +18,8 @@ zlink messages are represented by the `zlink_msg_t` structure, which has a fixed
 
 | Type | Condition | Memory | When to Use |
 |------|-----------|--------|-------------|
-| VSM (Very Small Message) | ≤33B (64-bit) | Inline storage within msg_t | Small data, most frequent |
-| LMSG (Large Message) | >33B | malloc'd buffer, reference counted | Large data |
+| VSM (Very Small Message) | ≤41B (64-bit) | Inline storage within msg_t | Small data, most frequent |
+| LMSG (Large Message) | >41B | malloc'd buffer, reference counted | Large data |
 | CMSG (Constant Message) | Constant data | External pointer reference (no copy) | `zlink_msg_init_data(..., NULL, NULL)` |
 | ZCLMSG (Zero-copy Large) | zero-copy | External buffer + free callback | `zlink_msg_init_data()` |
 

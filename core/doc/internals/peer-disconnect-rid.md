@@ -29,9 +29,10 @@ ROUTER and STREAM have routing maps and use map lookup to find the target
 pipe. STREAM uses a local connection id as its 4-byte routing id, so the input
 rid length must be `sizeof(uint32_t)`.
 
-Other sockets scan the current attached-pipe snapshot for a matching source
-routing id. If more than one pipe has the same rid, the destructive target is
-ambiguous; the call returns `EADDRINUSE` and terminates no pipe.
+Other sockets scan the current attached-pipe snapshot for a pipe whose own
+routing id, or whose peer pipe's routing id, matches the target rid. If more
+than one pipe matches, the destructive target is ambiguous; the call returns
+`EADDRINUSE` and terminates no pipe.
 
 ## Duplicate RID Policy
 

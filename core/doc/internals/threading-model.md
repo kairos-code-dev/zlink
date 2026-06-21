@@ -69,12 +69,15 @@ flowchart TB
 The separation of application threads from I/O threads serves two goals:
 
 1. **Latency isolation**: application threads are never blocked waiting for
-   network I/O. A `zlink_send()` call writes to a lock-free pipe and returns;
-   the I/O thread picks up the data asynchronously.
-2. **Concurrency without per-socket locks**: because each socket is pinned to
-   exactly one I/O thread's event loop, socket internals do not need locks for
-   normal data-path operations. Synchronization is pushed to the
-   application-thread entry points via the admission gate.
+   network I/O completion. `zlink_send()` enqueues the message and returns. The
+   YPipe itself is SPSC, but the public send path goes through the
+   admission/`_out_sync` fast lock and may wait briefly when blocked by HWM
+   (blocking send). The actual network transmission is handled asynchronously by
+   the I/O thread.
+2. **Per-connection I/O thread isolation**: because each connection is handled on
+   one I/O thread's event loop, the transport/session event path rarely needs
+   locks inside a connection. Public API entry-point synchronization is handled
+   by the admission gate on the application thread.
 
 The Reaper thread avoids a class of use-after-free and double-free bugs:
 resources that the I/O thread cannot safely release while its event loop is
@@ -84,20 +87,27 @@ running are handed off to the Reaper, which runs outside any event loop.
 
 ## 3. I/O Thread Assignment
 
-### 3.1 Socket-to-thread pinning
+### 3.1 Connection-to-thread pinning
 
-When a socket is created it is assigned to one I/O thread. That assignment
-never changes for the socket's lifetime. All data-plane operations for the
-socket (send, recv, timers, callbacks) run on that single I/O thread.
+Creating a socket allocates the socket object and a mailbox but does not yet
+pick an I/O thread. The I/O thread is chosen per connection (connection/session)
+when `bind`/`connect` creates a transport endpoint or async dispatch starts. A
+socket with multiple connections may span multiple I/O threads, and once a
+connection's I/O thread is chosen it never changes for that connection's
+lifetime.
+
+Public `send`/`recv` enter the socket on the caller (application) thread and
+write to / read from the lock-free pipe. The actual transport send/receive,
+timers, and session events run on the connection's I/O thread.
 
 ### 3.2 Load balancing (least-load)
 
-The assignment uses a **least-load** policy: the I/O thread with the fewest
-currently assigned sockets receives the next socket. This spreads sockets
-evenly across threads.
+Connection assignment uses a **least-load** policy: the I/O thread with the
+fewest registered handles (connections) receives the next connection (STREAM
+defaults to round-robin, see io-thread).
 
 ```
-new_socket → argmin(socket_count[t] for t in io_threads)
+new_connection → argmin(handle_count[t] for t in io_threads)
 ```
 
 The scan uses a rotating start index (`_next_io_thread`) before picking the
@@ -206,7 +216,8 @@ process_reaped()       → --sockets; finish when terminating && sockets == 0
 
 Each `spot_node_t` runs one dedicated OS thread (`spot_runtime_t::data_plane_thread`)
 executing `spot_data_plane_loop_t::run_until_shutdown()`. This thread exclusively
-owns:
+owns key resources such as the following (also includes `ctrl`/`data_ctrl_back`,
+`pub_ingress_sub`, etc.):
 
 - `mesh-pub`, `fanout`, `external-router`, `mesh-xsub`, `peer_ctrl_pub`,
   `peer_ctrl_sub` sockets
@@ -362,8 +373,8 @@ calling it.
 
 | Property | Value |
 |----------|-------|
-| Socket pinning | One I/O thread per socket, fixed at creation |
-| Assignment policy | Least-load (fewest sockets) |
+| Connection pinning | I/O thread chosen per connection at bind/connect/dispatch, fixed thereafter |
+| Assignment policy | Least-load (fewest handles); STREAM defaults to round-robin |
 | Application→I/O data path | Lock-free YPipe (SPSC) |
 | Application→I/O control path | Mailbox (thread-safe, signaler-based) |
 | Deferred cleanup | Reaper thread (one global) |

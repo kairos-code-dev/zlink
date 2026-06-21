@@ -46,9 +46,9 @@ flowchart TB
 
 | Socket | Type | Endpoint | Purpose |
 |--------|------|----------|---------|
-| `_router_socket` | ROUTER | configured via `bind()` | Handle REGISTER, HEARTBEAT, BOOTSTRAP, TOPOLOGY requests |
-| `_pub_socket` | XPUB | configured via `bind()` | Broadcast SERVICE_LIST to all Discovery SUBs |
-| `_peer_sub_socket` | SUB | connects to peer PUBs | Receive SERVICE_LIST from peer Registries (cluster sync) |
+| `_runtime_socket_state.router_socket` | ROUTER | configured via `bind()` | Handle REGISTER, HEARTBEAT, BOOTSTRAP, TOPOLOGY requests |
+| `_runtime_socket_state.pub_socket` | XPUB | configured via `bind()` | Broadcast SERVICE_LIST to all Discovery SUBs |
+| `_runtime_socket_state.peer_sub_socket` | SUB | connects to peer PUBs | Receive SERVICE_LIST from peer Registries (cluster sync) |
 
 XPUB is used (not PUB) to detect subscription events and trigger
 immediate SERVICE_LIST broadcast to new subscribers.
@@ -57,16 +57,17 @@ immediate SERVICE_LIST broadcast to new subscribers.
 
 ```cpp
 struct service_key_t {
-    uint16_t auto_connect_type;       // spot_node(2), socket(3)
-    std::string service_name;
+    std::string channel_name;         // key is channel_name only
+                                      // (auto_connect_type lives in service_entry_t)
 };
 
 struct provider_entry_t {
     uint16_t service_role;       // spot(2), router(3), dealer(4), pub(5), sub(6)
     std::string endpoint;
     zlink_routing_id_t routing_id;
+    uint32_t weight;
     int64_t value;
-    std::vector<uint8_t> provider_blob;
+    std::vector<uint8_t> metadata;
     uint64_t registration_id;
     uint64_t provider_update_seq;
     uint64_t registered_at;
@@ -77,8 +78,8 @@ struct provider_entry_t {
 struct route_entry_t {
     route_key_t key;
     std::vector<uint8_t> value;
-    owner_identity_t owner;
-    zlink_routing_id_t owner_routing_id;
+    owner_identity_t owner;           // routing id restored from owner.routing_id_key
+    uint64_t updated_at_ms;
     uint32_t advertising_registry;
 };
 
@@ -113,11 +114,11 @@ sequenceDiagram
     participant Pub as Registry XPUB
     participant Subs as Discovery SUBs
 
-    Disc->>Router: REGISTER (0x0001)<br/>[auto_connect_type, name, role,<br/>endpoint, routing_id, value]
+    Disc->>Router: REGISTER (0x0001)<br/>[auto_connect_type, service_role, channel_name,<br/>endpoint, weight, value, metadata]
+    Note over Disc,Router: routing_id set on the transient DEALER (not a frame)
     Router->>Store: insert provider_entry
-    Router->>Disc: REGISTER_ACK<br/>[source_registry, registration_id]
     Router->>Router: increment list_seq
-    Router->>Disc: REGISTER_ACK (0x0002)<br/>[status=0, resolved_endpoint]
+    Router->>Disc: REGISTER_ACK (0x0002)<br/>[status, resolved_endpoint,<br/>source_registry, registration_id]
     Note over Pub: list_seq changed → broadcast
     Pub->>Subs: SERVICE_LIST (0x0005)<br/>[registry_id, list_seq, entries...]
 ```
@@ -281,7 +282,7 @@ Notes on the registry side:
 ```mermaid
 flowchart TD
     tick["control_task tick"] --> ensure["ensure XPUB + ROUTER<br/>sockets bound"]
-    ensure --> drain_router["drain ROUTER socket<br/>(all pending requests)"]
+    ensure --> drain_router["drain ROUTER socket<br/>(process pending requests, up to 64 per tick)"]
     drain_router --> drain_xpub["drain XPUB socket<br/>(subscription events)"]
     drain_xpub --> drain_peer["drain peer SUB socket<br/>(peer SERVICE_LISTs)"]
     drain_peer --> expire["remove_expired()<br/>(heartbeat timeout check)"]
@@ -298,9 +299,9 @@ sequenceDiagram
     participant Disc as Discovery DEALER
     participant Router as Registry ROUTER
 
-    Disc->>Router: BOOTSTRAP_REQ (0x0008)<br/>[routing_id]
-    Router->>Router: lookup bootstrap config
-    Router->>Disc: BOOTSTRAP_REP (0x0009)<br/>[registry_id,<br/>heartbeat_interval_ms,<br/>pub_endpoint,<br/>uplink_endpoint]
+    Disc->>Router: BOOTSTRAP_REQ (0x0008)<br/>[auto_connect_type, routing_id,<br/>channel_name]
+    Router->>Router: lookup bootstrap config + channel contract check
+    Router->>Disc: BOOTSTRAP_REP (0x0009)<br/>[heartbeat_interval_ms, registry_id,<br/>feature_flags, status_errno,<br/>pub_endpoint, uplink_endpoint]
 
     Note over Disc: Now knows where to:<br/>- subscribe (pub_endpoint)<br/>- send heartbeats (uplink_endpoint)
 ```

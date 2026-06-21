@@ -58,8 +58,10 @@ decode them on the dedicated receive path.
 | 3 | SUBSCRIBE | `0x08` | Subscription request |
 | 4 | CANCEL | `0x10` | Subscription cancel |
 
-The first part of request-reply and SPOT routed envelopes must have
-the `CONTROL` bit set.
+Request-reply and SPOT routed envelope parts are not ZMP `CONTROL` frames; they
+are ordinary multipart data frames (with the `MORE` flag). The ZMP `CONTROL` bit
+is used only for protocol control frames such as HELLO/READY/heartbeat, and the
+decoder rejects a frame that sets both `CONTROL` and `MORE`.
 
 ## 3. Handshake
 
@@ -68,11 +70,9 @@ sequenceDiagram
     participant C as Client
     participant S as Server
 
-    C->>S: HELLO (greeting)
-    S->>C: HELLO (greeting)
-    C->>S: READY (metadata)
-    S->>C: READY (metadata)
-    Note over C,S: Data exchange begins
+    C->>S: HELLO + READY (sent in one outbound buffer on connect)
+    S->>C: HELLO + READY (sent in one outbound buffer on connect)
+    Note over C,S: Data exchange begins after each side receives the peer HELLO/READY
 ```
 
 **HELLO frame**: control_type (1B) + socket_type (1B) + routing_id_len (1B) + routing_id (0-255B)

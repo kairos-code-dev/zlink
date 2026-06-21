@@ -522,7 +522,7 @@ void on_pong(const zlink_routing_id_t *source_rid,
 
 ### 메시지 최적화
 
-- [ ] 소형 메시지(≤33B)는 VSM 활용 (인라인 저장)
+- [ ] 소형 메시지(≤41B)는 VSM 활용 (인라인 저장)
 - [ ] 대용량 메시지는 제로카피 (`zlink_msg_init_data`) 활용
 - [ ] 상수/static payload는 `zlink_msg_init_data(..., NULL, NULL)` 신중히 사용
 - [ ] 불필요한 `zlink_msg_copy()` 회피

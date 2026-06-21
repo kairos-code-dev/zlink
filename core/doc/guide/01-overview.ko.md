@@ -78,7 +78,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 
 | 설계 원칙 | 설명 |
 |-----------|------|
-| **Zero-Copy** | VSM(Very Small Message, 33B 이하 메시지를 별도 힙 할당 없이 객체 안에 직접 저장)은 inline 저장, 대용량은 참조 카운팅 |
+| **Zero-Copy** | VSM(Very Small Message, 41B 이하 메시지를 별도 힙 할당 없이 객체 안에 직접 저장)은 inline 저장, 대용량은 참조 카운팅 |
 | **Lock-Free** | Thread 간 통신에 YPipe(락 없이 CAS(Compare-And-Swap) 연산으로 구현한 FIFO 큐) 사용 |
 | **True Async** | Proactor 패턴(I/O 완료 이벤트를 핸들러로 전달하는 비동기 설계) 기반 비동기 I/O |
 | **Protocol Agnostic** | Transport와 Protocol의 명확한 분리 |

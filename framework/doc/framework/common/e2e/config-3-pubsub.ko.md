@@ -1,0 +1,86 @@
+<!-- framework-adapter-nav:start -->
+[E2E 목차](README.ko.md) | [이전: Spot 서비스](config-2-spot-service.ko.md) | [다음: 등록·codec](config-4-registration-codec.ko.md)
+<!-- framework-adapter-nav:end -->
+
+# Config 3 — Pub/Sub 이벤트 배포
+
+이벤트 분배 형상(publisher가 이벤트를 내보내고 여러 subscriber가 받는 배포)을 한 번 띄우고,
+fanout과 topic 필터를 실 사용자처럼 검증한다.
+
+## 1. 목적과 범위
+
+- 다룬다: fanout 전달, topic 필터(application-level, publish context.Topic 기반), late subscriber 합류, subscriber 느린 handler, publish negative path.
+- 범위 밖: channel request/send(Config 1), spot publish(Config 2).
+
+## 2. 서버 구성 (한 번 구동, 공유)
+
+| 역할 | 수 | 구성 |
+|------|----|------|
+| registry | 1 | discovery server. |
+| publisher | 1 (`pub-a`) | publish channel server. `EventPublish(topic, value)` 발행. registry에 광고. `/evidence`·`/health`. |
+| subscriber | 3 (`sub-1`, `sub-2`, `sub-3`) | subscribe handler 보유. 받은 이벤트를 evidence로 기록. handler가 publish context.Topic으로 관심 topic만 처리. |
+| consumer | 시나리오별 | publish를 트리거하거나 직접 subscribe하는 client. |
+
+handler 동작(공유): subscriber는 `EventNotify`를 받아 publish context.Topic과 value를 evidence에
+쌓고, 자신의 관심 topic만 기록한다. handler 없는 message name으로 오는 publish는 subscriber
+dispatch에서 drop + observer marker.
+
+## 3. 실행 모델
+
+`run_e2e.sh`가 registry → publisher → subscriber 순으로 띄우고, late subscriber 시나리오는
+subscriber 하나를 늦게 띄운다. client 시나리오가 publish를 트리거하고 각 subscriber evidence를
+조회한다.
+
+## 4. 시나리오
+
+### Track A — fanout과 필터
+
+#### PS-A1 fanout basic delivery
+
+우선순위: `P0`
+
+- 절차: warm-up publish를 반복해 각 subscriber가 처음 수신할 때까지 기다린다(별도 "subscribe 완료" event는 없으므로 warm-up 수신을 구독 준비 barrier로 쓴다). 그 뒤 측정 구간에서 이벤트를 발행한다.
+- 검증: 측정 구간에서 모든 subscriber가 공유하는 하나의 연속 sequence가 존재한다(세 subscriber 모두 그 sequence를 순서대로 수신). `Publish(...).Async()`는 remote 수신을 보장하지 않으므로 "전량 N개 무손실"이 아니라 공통 sequence 도달로 fanout을 증명한다(기존 fanout E2E와 같은 oracle).
+- 세부 동작: warm-up barrier 후 공통 sequence fanout.
+
+#### PS-A2 topic filter
+
+우선순위: `P0`
+
+- 절차: 여러 topic으로 발행한다. (현재 .NET public API는 subscriber transport 단계의 topic 필터를 노출하지 않으므로) subscriber는 전량 수신하되 handler가 publish context의 topic을 보고 관심 topic만 처리한다.
+- 검증: 각 subscriber handler가 publish context.Topic으로 자신의 관심 topic만 evidence에 기록한다. 비관심 topic은 기록되지 않는다.
+- 세부 동작: publish context.Topic 기반 application-level 필터링. (transport-level subscriber topic 필터는 public API 미노출 — 추가 시 별도 시나리오. guide §4는 topic이 subscriber set을 고른다고 서술하나 .NET 코드엔 transport 필터가 없어, 이 spec이 현재 guide drift를 정정한다.)
+
+#### PS-A3 late subscriber
+
+우선순위: `P0`
+
+- 절차: 발행이 시작된 뒤 새 subscriber를 띄워 구독한다.
+- 검증: late subscriber는 구독 이후 발행분을 받는다. 구독 이전 발행분은 전달되지 않는다(replay 계약 없음). 이 late-subscriber 규칙은 public 계약이 아니라 관측된 기대(observed expectation)이며, 본 config가 그 동작을 evidence로 고정한다.
+- 세부 동작: 동적 구독 합류.
+
+### Track B — subscriber 동작
+
+#### PS-B1 subscriber 느린 handler
+
+우선순위: `P1`
+
+- 절차: 한 subscriber의 handler를 느리게 만들고 발행을 지속한다.
+- 검증: 느린 subscriber가 처리 지연 중에도 다른(빠른) subscriber는 계속 정상 수신한다(subscriber 간 격리)만 검증한다.
+- 세부 동작: fast subscriber 격리. (느린 subscriber의 catch-up 완전성·drop/backpressure 정책은 public 계약으로 정의되지 않아 단언하지 않는다.)
+
+### Track C — negatives
+
+#### PS-C1 publish 미등록 message name
+
+우선순위: `P0`
+
+- 절차: subscriber에 handler가 없는 **message name**으로 발행한다(publish dispatch는 topic이 아니라 message name으로 handler를 찾는다).
+- 검증: 해당 publish는 subscriber dispatch에서 drop되고, **subscriber** observer evidence에 reason `handlerMissing`/action `drop` marker가 남는다. publisher의 `Publish(...).Async()`는 transport submit만 하므로 publisher 측엔 dispatch marker가 없다. 다른 정상 message 전달은 영향 없음.
+- 세부 동작: publish negative path(message name 기준) + subscriber 관측.
+
+## 5. 완료 기준
+
+- Track A~C의 `P0` 시나리오가 모두 통과한다.
+- public contract만 직접 호출하고 `ensure`로 단언한다.
+- 실패 시 publisher/subscriber 로그와 evidence로 원인 레이어를 분리한다.

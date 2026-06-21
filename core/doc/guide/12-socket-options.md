@@ -209,7 +209,7 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
 | **Default** | `1000` ms |
 | **0** | Equivalent to non-blocking (immediate return) |
 | **-1** | Infinite wait when explicitly set |
-| **>0** | Wait up to specified time (ms), then return `ZLINK_SUBMIT_BACKPRESSURED` |
+| **>0** | Wait up to specified time (ms), then send returns `ZLINK_SUBMIT_BACKPRESSURED`, recv returns `ZLINK_RECV_NO_DATA` |
 
 **Service application:** Propagated to SPOT pub/sub internal sockets.
 
@@ -324,7 +324,7 @@ Only works on systems with `TCP_USER_TIMEOUT` kernel support (Linux 2.6.37+). Us
 | Option | What it does | Default |
 |--------|-------------|---------|
 | `HEARTBEAT_IVL` | PING message send interval (ms) | `0` (disabled) |
-| `HEARTBEAT_TTL` | TTL transmitted to remote peer (0.1s units) | `0` |
+| `HEARTBEAT_TTL` | TTL transmitted to remote peer (ms; stored internally in 0.1s units) | `0` |
 | `HEARTBEAT_TIMEOUT` | PONG response wait time (ms) | `-1` (uses IVL value) |
 
 **Applied at:** `asio_zmp_engine` — ZMP protocol-level PING/PONG exchange.
@@ -340,7 +340,7 @@ Only works on systems with `TCP_USER_TIMEOUT` kernel support (Linux 2.6.37+). Us
 /* PING every 5s, remote TTL 15s, local PONG timeout 10s */
 int hb_ivl = 5000;
 zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_IVL, &hb_ivl, sizeof(hb_ivl));
-int hb_ttl = 150;  /* 0.1s units → 15s */
+int hb_ttl = 15000;  /* ms → 15s */
 zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TTL, &hb_ttl, sizeof(hb_ttl));
 int hb_timeout = 10000;
 zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout));

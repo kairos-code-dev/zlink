@@ -65,8 +65,8 @@
 - outbound 호출의 payload 인자는 **업무 객체**다. codec 선택은 호출부가 아니라 runtime
   구성 단계에서 끝난다. framework가 요청·응답 객체 타입을 보고 serializer를 찾아 byte
   payload로 직렬화하고, reply도 업무 객체로 복원한다.
-- JSON은 framework 기본 codec이다. 사용자가 codec을 따로 등록하지 않으면 JSON serializer를
-  사용한다.
+- JSON은 framework 표준 codec이다. `codecs().add_json()`/`addJson()`으로 등록해서 쓴다
+  (등록 전에는 JSON serializer가 설치되지 않는다).
 - Protobuf와 MessagePack은 framework core의 기본 의존성이 아니다. 두 codec은 선택
   framework codec extension package로 제공한다. application은 필요한 package만 설치하고
   구성 단계에서 extension을 등록한다.

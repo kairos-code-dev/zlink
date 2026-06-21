@@ -13,7 +13,7 @@ This document records the rationale and alternative analyses for key design deci
 **Decision**: Auto-generated own routing_id for every socket is a 16B UUID (binary).
 
 **Rationale**:
-- 16B UUID guarantees global uniqueness across nodes/processes
+- A 16B random UUID makes collisions across nodes/processes effectively negligible
 - Provides sufficient entropy for socket identification in monitoring/debugging
 - Avoids cross-process collisions that short (4B / 5B) identifiers would risk
 
@@ -28,7 +28,7 @@ This document records the rationale and alternative analyses for key design deci
 
 ### 1.3 String Alias Retention
 
-**Decision**: `zlink_set_routing_id()` / `zlink_get_routing_id()` and `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (set via `zlink_set_router_option()`) retain variable-length strings.
+**Decision**: `zlink_set_routing_id()` / `zlink_get_routing_id()` and `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` (set via `zlink_set_router_option()`) retain variable-length byte routing ids/aliases (usable as strings).
 
 **Rationale**:
 - String alias-based debugging/logging patterns are widely used with ROUTER
@@ -41,7 +41,7 @@ This document records the rationale and alternative analyses for key design deci
 
 **Rationale**:
 - Core already has socket_id-based auto-generation behavior
-- Service utility (routing_id_utils.hpp) is used only for override purposes
+- Service utility (routing_id_utils.hpp) applies an override, or fills in a routing_id for service sockets when none is given
 - Prevents layer violation (no services → core dependency inversion)
 
 ---

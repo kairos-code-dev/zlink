@@ -87,7 +87,7 @@ sequenceDiagram
     Note over Disc: control_task tick
 
     Disc->>DEALER: ensure_bootstrap_dealer()
-    DEALER->>REG: BOOTSTRAP_REQ (0x0008)<br/>[routing_id]
+    DEALER->>REG: BOOTSTRAP_REQ (0x0008)<br/>[auto_connect_type, routing_id,<br/>channel_name]
     REG->>DEALER: BOOTSTRAP_REP (0x0009)<br/>[registry_id, heartbeat_interval,<br/>pub_endpoint, uplink_endpoint]
 
     Disc->>Disc: store registry config
@@ -108,7 +108,7 @@ sequenceDiagram
 
     Service->>Disc: register_endpoint(type, endpoint, weight)
     Disc->>Disc: store in _registered_services
-    Disc->>DEALER: REGISTER (0x0001)<br/>[auto_connect_type, channel_name,<br/>service_role, endpoint, routing_id]
+    Disc->>DEALER: REGISTER (0x0001)<br/>[auto_connect_type, service_role, channel_name,<br/>endpoint, weight, value, metadata]
     REG->>DEALER: REGISTER_ACK (0x0002)<br/>[status, resolved_endpoint]
 
     loop Every heartbeat_interval
@@ -158,7 +158,7 @@ Frame 4~N: Service entries (repeated):
       provider_update_seq (uint64_t)
       weight (uint16_t)
       value (int64_t)
-      provider_blob (variable)
+      metadata (variable)
 ```
 
 Registry peers also receive route binding snapshots as a separate
@@ -357,7 +357,7 @@ sequenceDiagram
     Disc->>Store: lookup key
     Store-->>Disc: topology_summary_t entry
     Note over Disc: entry.state == READY?<br/>endpoint non-empty?<br/>validated_service_seq == current_service_seq<br/>validated age ≤ 250ms?
-    Disc->>Prov: scan providers by (role=SPOT, endpoint)
+    Disc->>Prov: scan providers by (role=SPOT/ROUTER, endpoint)
     Prov-->>Disc: provider.routing_id
     Disc-->>API: 0, route_out filled
     API-->>App: ZLINK_CONFIG_OK
@@ -423,7 +423,7 @@ while still absorbing bursty lookups.
 
 The topology summary stores `endpoint` (transport URI), not the owner SpotNode's routing id directly. After a cache hit, Discovery calls `resolve_owner_node_from_endpoint_locked(endpoint, ...)` which:
 
-1. First checks local services registered by this Discovery instance for a `service_role == SPOT` row whose `endpoint` matches and whose `routing_id` is non-empty.
+1. First checks local services registered by this Discovery instance for a row whose `service_role` is `SPOT` or `ROUTER` and whose `endpoint` matches and whose `routing_id` is non-empty.
 2. If no local service matches, snapshots the current provider list from `_service_state` and applies the same role, endpoint, and routing id checks.
 3. Copies the matched routing id into `route_out->owner_node_rid`.
 
@@ -500,7 +500,9 @@ Key points:
 `zlink_discovery_resolve_actor()` resolves an actor id to its current route using
 `ZLINK_ROUTE_KIND_ACTOR` rows. The route value is a `zlink_actor_route_t` that the
 owner SpotNode published from the Actor's current location: the Actor ref (node
-rid + actor id + generation) plus the current Spot rid and kind.
+rid + actor id + generation) plus the current Spot rid and kind. If the Registry
+route lookup fails, it falls back to the local actor runtime's active route and
+returns it when that route matches the Actor's current location.
 
 These rows are a **published derivative** of the Actor table's current location.
 The owner SpotNode refreshes them when it commits a location change (Actor create,

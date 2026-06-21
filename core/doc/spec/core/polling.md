@@ -90,9 +90,9 @@ typedef struct zlink_poller_event_t
 | Field | Description |
 |-------|-------------|
 | `source_kind` | Which kind of source triggered the event |
-| `socket` | Zlink socket handle (valid when `source_kind` is `SOCKET`) |
-| `fd` | Native file descriptor (valid when `source_kind` is `FD`) |
-| `timer` | Timer handle (valid when `source_kind` is `TIMER`) |
+| `socket` | Zlink socket handle (valid when `source_kind` is `ZLINK_POLLER_SOURCE_SOCKET`) |
+| `fd` | Native file descriptor (valid when `source_kind` is `ZLINK_POLLER_SOURCE_FD`) |
+| `timer` | Timer handle (valid when `source_kind` is `ZLINK_POLLER_SOURCE_TIMER`) |
 | `user_data` | Opaque pointer supplied when the source was registered |
 | `events` | Bitmask of events that occurred |
 
@@ -121,11 +121,11 @@ typedef enum zlink_poller_event_flag_e
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `ZLINK_POLLIN` | 1 | Data is available for reading |
-| `ZLINK_POLLOUT` | 2 | Send recovery readiness. Signals that the handle has left backpressure and a send retry is worth attempting. This is not a bare "transport writable" signal, and does not guarantee the retry will succeed. Shares the same readiness axis as `zlink_send_ready_handler()`. After `ZLINK_SUBMIT_BACKPRESSURED`, observing this event means the caller can retry, but the retry itself may still fail with `BACKPRESSURED`. |
+| `ZLINK_POLLOUT` | 2 | Send recovery readiness. Signals that the handle has left backpressure and a send retry is worth attempting. This is not a bare "transport writable" signal, and does not guarantee the retry will succeed. Shares the same readiness axis as `zlink_send_ready_handler()`. After `ZLINK_SUBMIT_BACKPRESSURED`, observing this event means the caller can retry, but the retry itself may still fail with `ZLINK_SUBMIT_BACKPRESSURED`. |
 | `ZLINK_POLLERR` | 4 | An error occurred on the descriptor |
 | `ZLINK_POLLPRI` | 8 | Urgent / priority data available |
 | `ZLINK_POLLITEMS_DFLT` | 16 | Default poll-item array size |
-| `ZLINK_POLLCOMPLETION` | 32 | Request/reply completion readiness. Must be registered on its own (combining it with any other event flag fails with `EINVAL`), and only on request-capable sockets (`DEALER`/`ROUTER`). |
+| `ZLINK_POLLCOMPLETION` | 32 | Request/reply completion readiness. Must be registered on its own (combining it with any other event flag returns `ZLINK_CONFIG_INVALID_ARGUMENT`, with internal errno `EINVAL`), and only on request-capable sockets (`ZLINK_SOCKET_DEALER`/`ZLINK_SOCKET_ROUTER`). |
 | `ZLINK_HAVE_POLLER` | 1 | Library was compiled with poller support |
 
 ## Functions -- Array Poll

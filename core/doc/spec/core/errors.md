@@ -68,9 +68,9 @@ Compile-time version detection is available through the following macros
 defined in `<zlink.h>`:
 
 ```c
-#define ZLINK_VERSION_MAJOR 6
-#define ZLINK_VERSION_MINOR 0
-#define ZLINK_VERSION_PATCH 4
+#define ZLINK_VERSION_MAJOR 7
+#define ZLINK_VERSION_MINOR 1
+#define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch) \
     ((major) * 10000 + (minor) * 100 + (patch))
@@ -97,9 +97,9 @@ Return the errno value for the calling thread.
 int zlink_errno(void);
 ```
 
-Each thread maintains its own error number. After any zlink function returns a
-failure indicator (typically `-1` or `NULL`), call `zlink_errno()` to obtain
-the specific error code. The value is either a standard POSIX errno or one of
+Each thread maintains its own error number. After a zlink function indicates
+failure (the contract varies per function: `-1`, `NULL`, or a `zlink_*_result_t`
+failure value), call `zlink_errno()` to obtain the specific error code. The value is either a standard POSIX errno or one of
 the `ZLINK_HAUSNUMERO`-based extended codes listed above.
 
 **Returns:** The current thread-local errno value.

@@ -17,7 +17,7 @@ The STREAM socket supports RAW communication with external clients (web browsers
 | raw_decoder_t | src/runtime/protocol/raw_decoder.cpp | passthrough decoding (byte span -> msg_t) |
 | asio_raw_engine_t | src/runtime/engine/asio/asio_raw_engine.cpp | RAW I/O engine |
 | ws_transport_t | src/runtime/transports/ws/ | WebSocket transport |
-| wss_transport_t | src/runtime/transports/ws/ | WebSocket + TLS |
+| wss_transport_t | src/runtime/transports/tls/ | WebSocket + TLS |
 
 ### 2.2 Data Flow
 
@@ -45,8 +45,8 @@ sequenceDiagram
   intermediate copy).
 
 ### 3.3 Beast Write Buffer
-- 64KB write buffer, chosen to let multiple small messages batch into
-  a single Beast write.
+- The Beast write buffer default is 64KB. A WS write sends the given buffer as a
+  single binary frame (one `async_write`).
 
 ### 3.4 Frame Fragmentation
 - `auto_fragment(false)` — one logical message maps to one WebSocket
@@ -70,7 +70,7 @@ dominated by TLS encryption overhead.
 ## 5. Design Trade-offs
 
 - Speculative write not supported (WebSocket is frame-based)
-- Gather write supported for WS/WSS (Beast handles internal buffering)
+- Gather write not supported for WS/WSS (`supports_gather_write()` returns false)
 - TLS/WSS has encryption overhead
 
 ## 6. Packet Handler Receive Mode
@@ -109,26 +109,25 @@ Each logical packet is carried on the wire as:
 - Both sizes may be `0`. A packet with `header_size=0 && body_size=0`
   still yields a callback, with two empty but non-`NULL` `zlink_msg_t`
   instances.
-- Maximum sizes are bounded by internal limits. Advertising a size that
-  exceeds those limits is treated as malformed framing (see 6.4).
+- Size checks apply only when `maxmsgsize` is set to a positive value (the
+  default `-1` is unbounded). Advertising a size that exceeds the configured
+  limit is treated as malformed framing (see 6.4).
 
 ### 6.2 Per-connection accumulator
 
-Incoming bytes are fed through a per-connection decoder that is keyed
-by `source_rid` (the STREAM routing identity of the remote end).
+Incoming bytes are fed through each connection's packet state
+(`pipe_t::_stream_packet_state`); the handler accesses it via
+`pipe_->stream_packet_state()`.
 
 ```
   wire bytes (arbitrary fragmentation)
          |
          v
   +-------------------------+
-  | stream decoder (per rid)|
-  |   state: PARSE_HEADER_SIZE
-  |          PARSE_BODY_SIZE
-  |          ALLOC_MSGS
-  |          READ_HEADER
-  |          READ_BODY
-  |          DELIVER
+  | pipe packet state       |
+  |   stage: prefix_stage   |
+  |          header_stage   |
+  |          body_stage     |
   +-------------------------+
          |
          v

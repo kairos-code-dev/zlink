@@ -248,9 +248,10 @@ handler(subject, userdata);
 leave_callback_api();   // clears in-flight flag
 ```
 
-The `enter_callback_api` / `leave_callback_api` pair ensures that
-`close` sees the callback as an in-flight operation and returns `EBUSY`
-rather than tearing down the handle mid-callback.
+The `enter_callback_api` / `leave_callback_api` pair makes `close` see the
+callback as an in-flight operation. Depending on the callback kind, a `close`
+during the callback is either rejected with `EBUSY` (STREAM raw) or accepted and
+deferred to the epilogue (send-ready/monitor); see below.
 
 **STREAM raw callback constraint:**
 

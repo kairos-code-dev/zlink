@@ -530,9 +530,8 @@ zlink_spot_node_peers(node, NULL, NULL, &peer_count);
 
 `status.disconnected_sub_target_count` and
 `status.disconnected_routed_target_count` are **ABI compatibility fields** that
-always report `0`. They exist because an older API version disconnected
-delivery targets when an internal queue grew too large; the current SPOT
-delivery model no longer does this. Do not rely on these counters for
+always report `0`. The current SPOT delivery model does not disconnect delivery
+targets due to internal queue growth, so do not rely on these counters for
 diagnostics.
 
 **What to use instead for HWM diagnostics**: admission is enforced at the

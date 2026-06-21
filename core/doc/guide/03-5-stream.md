@@ -110,7 +110,8 @@ void on_message(const zlink_routing_id_t *source_rid,
     }
 }
 
-/* Attach callback dispatch (permanent, cannot be undone) */
+/* Attach callback dispatch (detachable outside the callback; detach/close from
+   inside the callback returns EBUSY) */
 zlink_recv_handler(stream, on_message, NULL);
 ```
 
@@ -120,7 +121,7 @@ zlink_recv_handler(stream, on_message, NULL);
 |---|---|
 | Attach API | `zlink_recv_handler()` |
 | Callback | `zlink_socket_msg_handler_fn` |
-| Lifetime | Permanent once attached (no detach) |
+| Lifetime | Detachable outside the callback; detach/close from inside the callback returns `EBUSY` |
 | Framing | Raw bytes as received from the transport |
 | Send | `zlink_send_rid()` |
 

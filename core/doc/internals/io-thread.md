@@ -52,7 +52,7 @@ The main loop in `poller_t::loop()` repeats the following cycle:
 │  2. io_context.poll()  — non-blocking       │
 │     Process all ready I/O events            │
 │  3. If no events ready:                     │
-│     io_context.run_for(100ms) — blocking    │
+│     io_context.run_for(≤100ms) — blocking   │
 │  4. Clean up retired poll entries            │
 │                                             │
 │  ← repeat ─────────────────────────────────→│
@@ -66,30 +66,37 @@ The main loop in `poller_t::loop()` repeats the following cycle:
 
 ## 4. Socket I/O Handling
 
-Sockets (TCP, IPC) are registered with the poller via
-`start_wait_read()` / `start_wait_write()`, which call Boost ASIO's
-`async_wait`. When a socket becomes readable or writable:
+Network I/O uses the Proactor model. The engine (`asio_engine_t`) issues
+`async_read_some()` / `async_write_some()` to the transport; the I/O thread's
+`io_context` waits for the OS async I/O to complete and then invokes the
+completion handler. The engine does not poll readiness — it only processes
+completion results.
 
-- **Read ready** → the engine's `in_event()` callback fires, which
-  reads data from the network, decodes protocol frames, and pushes
-  messages into the receive pipe.
-- **Write ready** → the engine's `out_event()` callback fires, which
-  pulls messages from the send pipe, encodes them, and writes to the
-  network.
+- **Read complete** → the received bytes are handed to the protocol decoder to
+  decode frames, messages are pushed into the receive pipe, and the next
+  `async_read_some()` is issued.
+- **Write complete** → a message pulled from the send pipe is encoded and sent;
+  if data remains, the next `async_write_some()` is issued.
 
-Callbacks re-register themselves automatically, so monitoring is
-continuous until the socket is retired.
+`asio_poller`'s `async_wait` readiness path is used only for mailbox command
+wakeup, not for network data.
 
 ## 5. Command Processing
 
-Each I/O thread has a **mailbox** — a lock-free queue
-(`ypipe_t<command_t>`) paired with a signaler for wake-up.
+Each I/O thread has a **mailbox** — a command pipe
+(`ypipe_t<command_t>`, send side protected by a mutex) paired with a signaler for wake-up.
 
 ```cpp
 // io_thread.cpp — process_mailbox()
-command_t cmd;
-while (_mailbox.recv(&cmd, 0) == 0)
-    cmd.destination->process_command(cmd);
+do {
+    command_t cmd;
+    int rc = _mailbox.recv(&cmd, 0);
+    while (rc == 0 || errno == EINTR) {      // EINTR retry
+        if (rc == 0)
+            cmd.destination->process_command(cmd);
+        rc = _mailbox.recv(&cmd, 0);
+    }
+} while (_mailbox.reschedule_if_needed());    // reschedule if more remain
 ```
 
 Commands arrive from application threads (via `ctx_t::send_command()`)
@@ -98,14 +105,15 @@ and include operations such as:
 | Command | Purpose |
 |---------|---------|
 | `plug` | Attach a new session/engine to this I/O thread |
-| `attach` | Associate a pipe with a session |
-| `bind` | Start listening on an endpoint |
+| `attach` | Attach an engine to a session |
+| `bind` | Establish pipe(s) between session and socket |
 | `activate_read` | Resume reading from a pipe |
 | `activate_write` | Resume writing to a pipe |
 | `stop` | Shut down the I/O thread |
 
-The mailbox handle is itself registered with the poller, so incoming
-commands wake the event loop from its blocking wait.
+The mailbox is connected to the I/O thread's `io_context` (`set_io_context()`);
+sending a command posts an ASIO handler that wakes the blocking event loop to
+process the command.
 
 ## 6. Thread Assignment
 
@@ -113,8 +121,9 @@ When a socket creates a new connection, it picks an I/O thread based
 on:
 
 1. **Affinity mask** — if set, restricts the candidate set
-2. **Least-load selection** — among candidates, the thread with the
-   fewest registered handles is chosen
+2. **Load distribution** — general connections pick the thread with the fewest
+   registered handles (least-load); STREAM connections default to round-robin
+   (`ZLINK_ASIO_STREAM_SESSION_SCHED=minload` switches to least-load)
 
 This distributes network connections across I/O threads for load
 balancing. The assignment is per-connection, not per-socket — a single

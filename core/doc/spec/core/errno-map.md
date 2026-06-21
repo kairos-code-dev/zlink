@@ -397,7 +397,7 @@ typedef enum zlink_connect_result_t
 
 | Category | Functions |
 |---|---|
-| Connect | `zlink_connect`, `zlink_spot_node_connect_peer`, `zlink_spot_node_connect_router_channel_peer`, `zlink_spot_node_connect_router_channel_peer_rid` |
+| Connect | `zlink_connect`, `zlink_spot_node_connect_peer`, `zlink_spot_node_connect_router_channel_peer`, `zlink_spot_node_connect_router_channel_peer_rid`, `zlink_discovery_connect_registry`, `zlink_registry_query_client_connect` |
 | Disconnect | `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid`, `zlink_spot_node_disconnect_router_channel_peer`, `zlink_spot_node_disconnect_router_channel_peer_rid` |
 | Unbind | `zlink_unbind` |
 
@@ -467,13 +467,13 @@ forever by default.
 |---|---|
 | Context | `zlink_ctx_set`, `zlink_ctx_set_data`, `zlink_ctx_auto_hwm_recalculate` |
 | Message lifecycle | `zlink_msg_init`, `zlink_msg_init_size`, `zlink_msg_init_data`, `zlink_msg_close`, `zlink_msg_move`, `zlink_msg_copy`, `zlink_msg_adopt` |
-| Socket option | `zlink_set_option`, `zlink_get_option`, `zlink_set_routing_id`, `zlink_get_routing_id`, `zlink_set_tls_server`, `zlink_set_tls_client`, `zlink_set_router_option`, `zlink_get_router_option`, `zlink_set_dealer_option`, `zlink_set_stream_option`, `zlink_get_stream_option`, `zlink_set_spot_option`, `zlink_get_spot_option`, `zlink_set_pub_option`, `zlink_get_pub_option`, `zlink_set_sub_option`, `zlink_get_sub_option`, `zlink_set_spot_node_option`, `zlink_get_spot_node_option`, `zlink_socket_set_channel_name`, `zlink_socket_get_channel_name` |
+| Socket option | `zlink_set_option`, `zlink_get_option`, `zlink_set_routing_id`, `zlink_get_routing_id`, `zlink_set_tls_server`, `zlink_set_tls_client`, `zlink_set_router_option`, `zlink_get_router_option`, `zlink_set_dealer_option`, `zlink_get_dealer_option`, `zlink_set_stream_option`, `zlink_get_stream_option`, `zlink_set_spot_option`, `zlink_get_spot_option`, `zlink_set_pub_option`, `zlink_get_pub_option`, `zlink_set_sub_option`, `zlink_get_sub_option`, `zlink_set_spot_node_option`, `zlink_get_spot_node_option`, `zlink_socket_set_channel_name`, `zlink_socket_get_channel_name` |
 | Subscription | `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at` |
-| Service attach | `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery`, `zlink_spot_node_attach_channel_dealer`, `zlink_spot_node_attach_channel_dealer_manual`, `zlink_spot_node_attach_pub_ingress` |
-| SpotNode lifecycle/lookup/bind | `zlink_spot_node_entry_spot`, `zlink_spot_node_spot_lookup`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup` |
+| Service attach | `zlink_socket_attach_discovery`, `zlink_spot_node_attach_discovery`, `zlink_spot_node_attach_channel_dealer`, `zlink_spot_node_attach_channel_dealer_manual`, `zlink_spot_node_attach_pub_ingress`, `zlink_stream_attach_actor_gateway`, `zlink_spot_node_attach_router_channel_discovery` |
+| SpotNode lifecycle/lookup/bind | `zlink_spot_node_entry_spot`, `zlink_spot_node_spot_lookup`, `zlink_spot_node_spot_get_or_new`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_lookup`, `zlink_spot_node_set_router_bind`, `zlink_spot_node_set_pub_bind` |
 | Registry config | `zlink_registry_set_id`, `zlink_registry_set`, `zlink_registry_add_peer`, `zlink_registry_set_heartbeat`, `zlink_registry_set_broadcast_interval` |
 | Discovery config | `zlink_discovery_resolve_spot`, `zlink_discovery_resolve_actor`, `zlink_discovery_set_value`, `zlink_discovery_get_value`, `zlink_discovery_member_peers`, `zlink_discovery_bind_route`, `zlink_discovery_unbind_route`, `zlink_discovery_resolve_route` |
-| Snapshot/query | `zlink_spot_node_status`, `zlink_spot_node_peers`, `zlink_spot_node_subjects`, `zlink_spot_node_internal_sockets`, `zlink_spot_node_spots`, `zlink_spot_node_actors`, `zlink_spot_actors`, `zlink_registry_status`, `zlink_registry_service_summary`, `zlink_registry_member_peers`, `zlink_registry_topology`, `zlink_registry_query_client_topology`, `zlink_monitor_status` |
+| Snapshot/query | `zlink_spot_node_status`, `zlink_spot_node_peers`, `zlink_spot_node_subjects`, `zlink_spot_node_internal_sockets`, `zlink_spot_node_spots`, `zlink_spot_node_actors`, `zlink_spot_actors`, `zlink_stream_bound_actors`, `zlink_registry_status`, `zlink_registry_service_summary`, `zlink_registry_member_peers`, `zlink_registry_topology`, `zlink_registry_query_client_topology`, `zlink_monitor_status` |
 | Poller config | `zlink_poller_add`, `zlink_poller_modify`, `zlink_poller_remove`, `zlink_poller_add_fd`, `zlink_poller_add_timer`, `zlink_poller_modify_fd`, `zlink_poller_remove_fd`, `zlink_poller_remove_timer` |
 | Proxy | `zlink_proxy`, `zlink_proxy_steerable` |
 | Timer config | `zlink_timer_start`, `zlink_timer_stop` |

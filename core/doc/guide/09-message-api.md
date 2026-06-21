@@ -296,13 +296,13 @@ void on_request(const zlink_routing_id_t *source_rid,
 ### Pattern 2: Topic + Data (PUB/SUB)
 
 ```c
-/* PUB: [topic][payload] as parts array */
-zlink_msg_t pub_parts[2];
-zlink_msg_init_size(&pub_parts[0], 7);
-memcpy(zlink_msg_data(&pub_parts[0]), "weather", 7);
-zlink_msg_init_size(&pub_parts[1], 5);
-memcpy(zlink_msg_data(&pub_parts[1]), "sunny", 5);
-zlink_send(pub, pub_parts, 2, 0);
+/* SPOT topic publish — a plain PUB send (zlink_send) returns ENOTSUP on PUB/SUB.
+   Use the topic publish API (topic_id = "weather"). */
+zlink_msg_t payload;
+zlink_msg_init_size(&payload, 5);
+memcpy(zlink_msg_data(&payload), "sunny", 5);
+zlink_spot_publish(spot, "weather", &payload, 1, 0);
+zlink_msg_close(&payload);
 
 /* SUB handler callback receives topic and payload separately */
 void on_spot(const zlink_routing_id_t *source_rid,

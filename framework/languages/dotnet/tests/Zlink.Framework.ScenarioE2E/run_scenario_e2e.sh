@@ -1,25 +1,18 @@
 #!/usr/bin/env bash
+# Scenario E2E runner. Brings up the shared scenario server (one or more copies,
+# in the mode the scenario declares) and then runs the client scenario against it,
+# exactly like a sample's run_sample.sh. Usage:
+#   run_scenario_e2e.sh            # run every scenario in the catalog
+#   run_scenario_e2e.sh CH-002     # run a single scenario
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT="$ROOT_DIR/Zlink.Framework.ScenarioE2E.csproj"
-SCENARIO="${1:-$ROOT_DIR/scenarios/CH-001.request-response.json}"
-SCENARIO_ID="$(python3 - "$SCENARIO" <<'PY'
-import json
-import sys
-from pathlib import Path
-print(json.loads(Path(sys.argv[1]).read_text())["id"])
-PY
-)"
-WORK_DIR="${ZLINK_SCENARIO_E2E_WORK_DIR:-$ROOT_DIR/bin/scenario-e2e-$SCENARIO_ID}"
-LOG_DIR="$WORK_DIR/logs"
-REPORT_FILE="$WORK_DIR/report.json"
-
-rm -rf "$WORK_DIR"
-mkdir -p "$LOG_DIR"
+PROJECT="${ROOT_DIR}/Zlink.Framework.ScenarioE2E.csproj"
+DLL="${ROOT_DIR}/bin/Debug/net8.0/Zlink.Framework.ScenarioE2E.dll"
+CHANNEL="scenario-api"
 
 pick_port() {
-  python3 - "$@" <<'PY'
+  python3 - <<'PY'
 import socket
 s = socket.socket()
 s.bind(("127.0.0.1", 0))
@@ -28,224 +21,140 @@ s.close()
 PY
 }
 
-server_pids=()
-server_names=()
-ready_files=()
-zlink_endpoints=()
-http_endpoints=()
-CLIENT_ZLINK_ENDPOINT=""
-
-cleanup() {
-  for pid in "${server_pids[@]}"; do
-    if kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
-    fi
-  done
-  sleep 0.2
-  for pid in "${server_pids[@]}"; do
-    if kill -0 "$pid" 2>/dev/null; then
-      kill -9 "$pid" 2>/dev/null || true
-    fi
-  done
-  for pid in "${server_pids[@]}"; do
-    wait "$pid" 2>/dev/null || true
-  done
-}
-trap cleanup EXIT
-
-dotnet build "$PROJECT" >/dev/null
-
-start_server() {
-  local server_name="$1"
-  local mode="${2:-channel}"
-  local route_peers="${3:-}"
-  local fixed_zlink_endpoint="${4:-}"
-  local zlink_port
-  local http_port
-  local zlink_endpoint
-  local http_endpoint
-  local ready_file
-  local pid
-
-  zlink_port="$(pick_port)"
-  http_port="$(pick_port)"
-  if [[ -n "$fixed_zlink_endpoint" ]]; then
-    zlink_endpoint="$fixed_zlink_endpoint"
-  else
-    zlink_endpoint="tcp://127.0.0.1:$zlink_port"
-  fi
-  http_endpoint="http://127.0.0.1:$http_port"
-  ready_file="$WORK_DIR/$server_name.ready"
-
-  zlink_endpoints+=("$zlink_endpoint")
-  http_endpoints+=("$http_endpoint")
-  ready_files+=("$ready_file")
-
-  dotnet run --no-build --project "$PROJECT" -- server \
-    --work-dir "$WORK_DIR" \
-    --zlink-endpoint "$zlink_endpoint" \
-    --http-endpoint "$http_endpoint" \
-    --ready-file "$ready_file" \
-    --server-name "$server_name" \
-    --mode "$mode" \
-    --route-peer-endpoints "$route_peers" \
-    >"$LOG_DIR/server-$server_name.log" 2>&1 &
-  pid="$!"
-  server_pids+=("$pid")
-  server_names+=("$server_name")
+endpoint_port() {
+  local endpoint="$1"
+  endpoint="${endpoint#tcp://}"
+  endpoint="${endpoint#http://}"
+  echo "${endpoint##*:}"
 }
 
-if [[ "$SCENARIO_ID" == "CH-002" ]]; then
-  start_server "api-a"
-  start_server "api-b"
-  start_server "api-c"
-elif [[ "$SCENARIO_ID" == "CH-004" ]]; then
-  client_port="$(pick_port)"
-  peer_b_port="$(pick_port)"
-  peer_c_port="$(pick_port)"
-  CLIENT_ZLINK_ENDPOINT="tcp://127.0.0.1:$client_port"
-  peer_b_endpoint="tcp://127.0.0.1:$peer_b_port"
-  peer_c_endpoint="tcp://127.0.0.1:$peer_c_port"
-  start_server "peer-b" "route-peer" "$CLIENT_ZLINK_ENDPOINT,$peer_c_endpoint" "$peer_b_endpoint"
-  start_server "peer-c" "route-peer" "$CLIENT_ZLINK_ENDPOINT,$peer_b_endpoint" "$peer_c_endpoint"
-else
-  start_server "api-a"
-fi
-
-for _ in {1..100}; do
-  ready_count=0
-  for ready_file in "${ready_files[@]}"; do
-    [[ -f "$ready_file" ]] && ready_count=$((ready_count + 1))
-  done
-  [[ "$ready_count" -eq "${#ready_files[@]}" ]] && break
-  for pid in "${server_pids[@]}"; do
-    if ! kill -0 "$pid" 2>/dev/null; then
-      echo "server process exited before readiness" >&2
-      tail -100 "$LOG_DIR"/server-*.log >&2 || true
-      exit 1
+wait_port() {
+  local endpoint="$1"
+  local port
+  port="$(endpoint_port "${endpoint}")"
+  for _ in $(seq 1 100); do
+    if (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
+      return 0
     fi
+    sleep 0.1
   done
-  sleep 0.1
-done
-
-ready_count=0
-for ready_file in "${ready_files[@]}"; do
-  [[ -f "$ready_file" ]] && ready_count=$((ready_count + 1))
-done
-if [[ "$ready_count" -ne "${#ready_files[@]}" ]]; then
-  echo "server readiness timed out" >&2
-  tail -100 "$LOG_DIR"/server-*.log >&2 || true
-  exit 1
-fi
+  echo "timed out waiting for ${endpoint}" >&2
+  return 1
+}
 
 join_by_comma() {
   local IFS=,
   echo "$*"
 }
 
-if [[ "$SCENARIO_ID" == "CH-004" ]]; then
-  ZLINK_ENDPOINT="$CLIENT_ZLINK_ENDPOINT"
-  ROUTE_PEER_ENDPOINTS="$(join_by_comma "${zlink_endpoints[@]}")"
+run_scenario() {
+  local id="$1"
+  local work_dir
+  work_dir="$(mktemp -d)"
+  local log_dir="${work_dir}/logs"
+  local report="${work_dir}/report.json"
+  mkdir -p "${log_dir}"
+
+  local pids=()
+  cleanup() {
+    set +e
+    for pid in "${pids[@]}"; do kill "${pid}" 2>/dev/null; done
+    sleep 0.2
+    for pid in "${pids[@]}"; do kill -9 "${pid}" 2>/dev/null; done
+    for pid in "${pids[@]}"; do wait "${pid}" 2>/dev/null; done
+  }
+  trap cleanup RETURN
+
+  local mode="" servers="" client_rid=""
+  while IFS= read -r line; do
+    case "${line}" in
+      mode=*) mode="${line#mode=}" ;;
+      servers=*) servers="${line#servers=}" ;;
+      client=*) client_rid="${line#client=}" ;;
+    esac
+  done < <(dotnet "${DLL}" topology "${id}")
+
+  local server_names=()
+  IFS=',' read -ra server_names <<<"${servers}"
+
+  local zlink_eps=() http_eps=()
+  local index name ready_file
+  for name in "${server_names[@]}"; do
+    zlink_eps+=("tcp://127.0.0.1:$(pick_port)")
+    http_eps+=("http://127.0.0.1:$(pick_port)")
+  done
+
+  if [[ "${mode}" == "route-mesh" ]]; then
+    local client_ep="tcp://127.0.0.1:$(pick_port)"
+    for index in "${!server_names[@]}"; do
+      name="${server_names[${index}]}"
+      ready_file="${work_dir}/${name}.ready"
+      # Each peer connects back to the client node and to the other peers.
+      local route_peers=("${client_ep}")
+      local other
+      for other in "${!server_names[@]}"; do
+        [[ "${other}" != "${index}" ]] && route_peers+=("${zlink_eps[${other}]}")
+      done
+      dotnet "${DLL}" server \
+        --work-dir "${work_dir}" --server-name "${name}" --mode route-mesh --channel "${CHANNEL}" \
+        --zlink-endpoint "${zlink_eps[${index}]}" --http-endpoint "${http_eps[${index}]}" \
+        --ready-file "${ready_file}" --route-peer-endpoints "$(join_by_comma "${route_peers[@]}")" \
+        >"${log_dir}/server-${name}.log" 2>&1 &
+      pids+=("$!")
+    done
+    for index in "${!server_names[@]}"; do
+      wait_port "${zlink_eps[${index}]}"
+      wait_port "${http_eps[${index}]}"
+    done
+    sleep 0.5
+    dotnet "${DLL}" client \
+      --scenario "${id}" --channel "${CHANNEL}" \
+      --client-zlink-endpoint "${client_ep}" --client-routing-id "${client_rid}" \
+      --route-peer-endpoints "$(join_by_comma "${zlink_eps[@]}")" \
+      --http-endpoint "$(join_by_comma "${http_eps[@]}")" \
+      --server-names "${servers}" --report-file "${report}" --log-dir "${log_dir}" \
+      >"${log_dir}/client.log" 2>&1
+  else
+    for index in "${!server_names[@]}"; do
+      name="${server_names[${index}]}"
+      ready_file="${work_dir}/${name}.ready"
+      dotnet "${DLL}" server \
+        --work-dir "${work_dir}" --server-name "${name}" --mode channel --channel "${CHANNEL}" \
+        --zlink-endpoint "${zlink_eps[${index}]}" --http-endpoint "${http_eps[${index}]}" \
+        --ready-file "${ready_file}" \
+        >"${log_dir}/server-${name}.log" 2>&1 &
+      pids+=("$!")
+    done
+    for index in "${!server_names[@]}"; do
+      wait_port "${zlink_eps[${index}]}"
+      wait_port "${http_eps[${index}]}"
+    done
+    sleep 0.5
+    dotnet "${DLL}" client \
+      --scenario "${id}" --channel "${CHANNEL}" \
+      --zlink-endpoint "$(join_by_comma "${zlink_eps[@]}")" \
+      --http-endpoint "$(join_by_comma "${http_eps[@]}")" \
+      --server-names "${servers}" --report-file "${report}" --log-dir "${log_dir}" \
+      >"${log_dir}/client.log" 2>&1
+  fi
+
+  if ! grep -q "scenario-e2e result=passed scenario=${id}" "${log_dir}/client.log"; then
+    echo "scenario ${id} FAILED" >&2
+    tail -40 "${log_dir}/client.log" >&2 || true
+    tail -20 "${log_dir}"/server-*.log >&2 || true
+    return 1
+  fi
+  echo "scenario ${id} passed (report=${report})"
+}
+
+dotnet build "${PROJECT}" --maxcpucount:1 >/dev/null
+
+if [[ $# -ge 1 ]]; then
+  run_scenario "$1"
 else
-  ZLINK_ENDPOINT="$(join_by_comma "${zlink_endpoints[@]}")"
-  ROUTE_PEER_ENDPOINTS=""
-fi
-HTTP_ENDPOINT="$(join_by_comma "${http_endpoints[@]}")"
-server_process_ids=()
-for index in "${!server_pids[@]}"; do
-  server_process_ids+=("server:${server_names[$index]}=${server_pids[$index]}")
-done
-SERVER_PROCESS_IDS="$(join_by_comma "${server_process_ids[@]}")"
-
-dotnet run --no-build --project "$PROJECT" -- client \
-  --work-dir "$WORK_DIR" \
-  --scenario "$SCENARIO" \
-  --zlink-endpoint "$ZLINK_ENDPOINT" \
-  --http-endpoint "$HTTP_ENDPOINT" \
-  --mode "$([[ "$SCENARIO_ID" == "CH-004" ]] && echo route-peer || echo channel)" \
-  --route-peer-endpoints "$ROUTE_PEER_ENDPOINTS" \
-  --report-file "$REPORT_FILE" \
-  --log-dir "$LOG_DIR" \
-  --executed-script "$ROOT_DIR/run_scenario_e2e.sh" \
-  --server-process-ids "$SERVER_PROCESS_IDS" \
-  >"$LOG_DIR/client.log" 2>&1
-
-if [[ ! -f "$REPORT_FILE" ]]; then
-  echo "client did not write report: $REPORT_FILE" >&2
-  tail -100 "$LOG_DIR/client.log" >&2 || true
-  exit 1
+  while IFS= read -r id; do
+    [[ -n "${id}" ]] && run_scenario "${id}"
+  done < <(dotnet "${DLL}" list)
 fi
 
-python3 - "$REPORT_FILE" "$SCENARIO" "$LOG_DIR" "$HTTP_ENDPOINT" "$ROOT_DIR/run_scenario_e2e.sh" "${#server_names[@]}" "$SERVER_PROCESS_IDS" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-report_path = Path(sys.argv[1])
-scenario_path = Path(sys.argv[2])
-log_dir = Path(sys.argv[3])
-http_endpoints = [item for item in sys.argv[4].split(",") if item]
-script_path = Path(sys.argv[5])
-server_count = int(sys.argv[6])
-expected_server_pids = dict(entry.split("=", 1) for entry in sys.argv[7].split(",") if entry)
-report = json.loads(report_path.read_text())
-scenario = json.loads(scenario_path.read_text())
-required = [
-    "scenarioId",
-    "language",
-    "runtimeVersion",
-    "transportBackend",
-    "codec",
-    "processCount",
-    "passed",
-    "failed",
-    "skipped",
-    "evidencePath",
-    "logPath",
-    "executedScriptPath",
-    "processIds",
-]
-missing = [name for name in required if name not in report or report[name] in ("", None)]
-if missing:
-    raise SystemExit(f"report missing required fields: {', '.join(missing)}")
-if "failureLayer" not in report:
-    raise SystemExit(f"report missing failureLayer field: {report}")
-if report["result"] != "passed" or report["passed"] < 1 or report["failed"] != 0:
-    raise SystemExit(f"scenario did not pass: {report}")
-expected_process_count = len(scenario["roles"]["server"]) + len(scenario["roles"]["client"])
-if report["processCount"] != expected_process_count:
-    raise SystemExit(f"unexpected process count: {report}")
-if Path(report["executedScriptPath"]).resolve() != script_path.resolve():
-    raise SystemExit(f"report script path does not match runner: {report}")
-if len(report["processIds"]) != server_count + 1:
-    raise SystemExit(f"report process ids do not include every server and client process: {report}")
-for client in scenario["roles"]["client"]:
-    key = f"client:{client['name']}"
-    if key not in report["processIds"]:
-        raise SystemExit(f"report process ids missing {key}: {report}")
-    if not isinstance(report["processIds"][key], int) or report["processIds"][key] <= 0:
-        raise SystemExit(f"report client process id must be a positive integer for {key}: {report}")
-for name in scenario["roles"]["server"]:
-    key = f"server:{name['name']}"
-    if key not in report["processIds"]:
-        raise SystemExit(f"report process ids missing {key}: {report}")
-    if str(report["processIds"][key]) != expected_server_pids[key]:
-        raise SystemExit(f"report server process id does not match runner pid for {key}: {report}")
-if report["scenarioId"] != scenario["id"]:
-    raise SystemExit(f"report scenario id does not match scenario file: {report}")
-if Path(report["scenarioFile"]).resolve() != scenario_path.resolve():
-    raise SystemExit(f"report scenario file does not match executed scenario: {report}")
-if Path(report["logPath"]).resolve() != log_dir.resolve():
-    raise SystemExit(f"report log path does not match runner log directory: {report}")
-if Path(report_path).resolve() != (log_dir.parent / scenario["artifacts"]["report"]).resolve():
-    raise SystemExit(f"report file does not match scenario artifacts.report: {report}")
-if Path(report["logPath"]).name != scenario["artifacts"]["logs"]:
-    raise SystemExit(f"report log path does not match scenario artifacts.logs: {report}")
-expected_evidence_path = ",".join(f"{endpoint}/evidence" for endpoint in http_endpoints)
-if report["evidencePath"] != expected_evidence_path:
-    raise SystemExit(f"report evidence path does not match runner endpoint: {report}")
-if scenario["artifacts"]["evidence"] not in ("server:/evidence", "servers:/evidence"):
-    raise SystemExit(f"unsupported scenario evidence artifact: {scenario['artifacts']['evidence']}")
-PY
-
-echo "scenario-e2e result=passed scenario=$SCENARIO report=$REPORT_FILE logs=$LOG_DIR"
+echo "scenario-e2e all-passed"

@@ -72,7 +72,7 @@ app.add_zlink_framework([](auto &options) {
 registry discovery를 쓰지 않는 topology에서는 attach별 manual endpoint를 명시한다.
 
 ```cpp
-options.spot_node("stage-spot-node")
+options.add_spot_mesh("game.stage").add_node("stage-spot-node")
   .enable_router("tcp://0.0.0.0:9000", zlink::routing_id_t::from("stage-router"))
   .connect_router("tcp://127.0.0.1:9001")
   .enable_pub_sub("tcp://0.0.0.0:9002")

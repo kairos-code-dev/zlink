@@ -313,7 +313,7 @@ Each layer has a single responsibility, and layers closer to the bottom are clos
 |   +---------------------------+    +---------------------------+        |
 |   |    ZMP v1.0 Protocol      |    |     RAW Protocol          |        |
 |   |    src/runtime/protocol/zmp_*     |    |     src/runtime/protocol/raw_*    |        |
-|   |    - 8-byte fixed header  |    |     - 4-byte length prefix|        |
+|   |    - 8-byte fixed header  |    |     - no framing          |        |
 |   |    - Handshake support    |    |     - No handshake        |        |
 |   +---------------------------+    +---------------------------+        |
 |                                                                         |
@@ -502,7 +502,7 @@ The Engine Layer handles asynchronous I/O processing based on Boost.Asio.
 | Engine                | Protocol  | Transports               | Features                           |
 |-----------------------|-----------|--------------------------|-------------------------------------|
 | `asio_zmp_engine_t`   | ZMP v1.0  | TCP, TLS, IPC, WS, WSS  | Handshake + 8-byte fixed header    |
-| `asio_raw_engine_t`   | RAW       | TCP, TLS, IPC, WS, WSS  | 4-byte length prefix, STREAM only  |
+| `asio_raw_engine_t`   | RAW       | TCP, TLS, IPC, WS, WSS  | no framing, STREAM only  |
 
 > WS/WSS also use `asio_zmp_engine_t` or `asio_raw_engine_t`;
 > WebSocket framing is handled by `ws_transport_t`/`wss_transport_t`.
@@ -616,18 +616,23 @@ The Engine Layer handles asynchronous I/O processing based on Boost.Asio.
 
 ### 6.5 RAW Protocol Frame Structure
 
-A simple protocol for STREAM sockets and external client integration.
+A protocol for STREAM sockets and external client integration. It adds no extra
+framing header — message bytes pass through as-is and message boundaries are
+defined by the application.
 
 ```
-+----------------------+-----------------------------+
-|  Length (4 Bytes)    |     Payload (N Bytes)       |
-|  (Big Endian)        |                             |
-+----------------------+-----------------------------+
++-------------------------------------------------+
+|              Payload (N Bytes, as-is)           |
++-------------------------------------------------+
 ```
 
 - No handshake (immediate data send/receive)
-- Simple implementation: `read(4)` -> `read(length)`
+- `raw_encoder_t` emits message bytes as-is and `raw_decoder_t` turns the received
+  byte span into a message (no extra framing)
 - Easy integration with external clients
+- Enabling packet handler mode via `zlink_stream_packet_handler()` parses a
+  length-prefixed packet framing of the form `header_size(2B) + body_size(4B)`
+  (see [RAW protocol details](protocol-raw.md))
 
 ### 6.6 ZMP Handshake Sequence
 
@@ -648,8 +653,8 @@ A simple protocol for STREAM sockets and external client integration.
        |                                   |
 ```
 
-- **HELLO**: Socket type (1B) + Identity length (1B) + Identity value (0-255B)
-- **READY**: Socket-Type property (always), Identity property (DEALER/ROUTER only)
+- **HELLO**: control frame type (1B) + Socket type (1B) + Identity length (1B) + Identity value (0-255B)
+- **READY**: when the `zmp_metadata` option is enabled, carries the `Socket-Type` property; DEALER/ROUTER additionally carry the `Routing-Id` property
 
 ### 6.7 Protocol-Transport-Engine Mapping
 
@@ -732,8 +737,8 @@ The engine is automatically selected based on the socket type:
 | TCP       | -          | -          | O                 | O            | Standard network communication|
 | IPC       | -          | -          | Optional          | O            | Local inter-process comms     |
 | TLS       | O          | O          | -                 | -            | Encrypted network communication|
-| WS        | O          | -          | -                 | O            | Web client integration        |
-| WSS       | O          | O          | -                 | O            | Encrypted web client          |
+| WS        | O          | -          | -                 | -            | Web client integration        |
+| WSS       | O          | O          | -                 | -            | Encrypted web client          |
 
 ---
 
@@ -761,7 +766,7 @@ It is designed to handle small messages without `malloc` calls.
 |  Type-specific data area (union):                               |
 |                                                                 |
 |  +-----------------------------------------------------------+  |
-|  |  type_vsm (<=33B on 64-bit)                                  |
+|  |  type_vsm (<=41B on 64-bit)                                  |
 |  |  Very Small Message: data stored directly in msg_t buffer    |
 |  |  - uint8_t data[max_vsm_size]                                |
 |  |  - uint8_t size                                              |
@@ -769,7 +774,7 @@ It is designed to handle small messages without `malloc` calls.
 |  +-----------------------------------------------------------+  |
 |                            OR                                   |
 |  +-----------------------------------------------------------+  |
-|  |  type_lmsg (>33B on 64-bit)                                  |
+|  |  type_lmsg (>41B on 64-bit)                                  |
 |  |  Large Message: pointer to separately allocated buffer       |
 |  |  - content_t* content                                        |
 |  |    +-- void* data          (data pointer)                    |
@@ -799,7 +804,7 @@ It is designed to handle small messages without `malloc` calls.
 
 | Type          | Value | Description                                     |
 |--------------|-------|-------------------------------------------------|
-| `type_vsm`    | 101  | Very Small Message (<=33B, no copy)             |
+| `type_vsm`    | 101  | Very Small Message (<=41B, no copy)             |
 | `type_lmsg`   | 102  | Large Message (malloc'd buffer)                 |
 | `type_cmsg`   | 104  | Constant Message (const data reference)         |
 | `type_zclmsg` | 105  | Zero-copy Large Message (direct user buffer)    |
@@ -1027,7 +1032,7 @@ Application Thread              I/O Thread
 |       v                                                           |
 |  (7) encoder: message -> byte stream                              |
 |       |  - ZMP: 8-byte header + payload                           |
-|       |  - RAW: 4-byte length + payload                           |
+|       |  - RAW: payload bytes as-is                               |
 |       v                                                           |
 |  (8) speculative_write() attempt                                  |
 |       |  - Success: synchronous write completes immediately       |
@@ -1055,7 +1060,7 @@ Application Thread              I/O Thread
 |       |                                                           |
 |       v                                                           |
 |  (3) decoder: byte stream -> message                              |
-|       |  - Parse header (ZMP 8B / RAW 4B)                         |
+|       |  - Parse header (ZMP 8B, RAW none)                        |
 |       |  - Verify payload size                                    |
 |       |  - Create msg_t                                           |
 |       v                                                           |
@@ -1202,7 +1207,7 @@ core/
 |   |   +-- zmp_encoder.cpp/hpp      # ZMP encoder
 |   |   +-- zmp_decoder.cpp/hpp      # ZMP decoder
 |   |   +-- zmp_metadata.hpp         # ZMP metadata
-|   |   +-- raw_encoder.cpp/hpp      # RAW (Length-Prefix) encoder
+|   |   +-- raw_encoder.cpp/hpp      # RAW encoder (no extra framing)
 |   |   +-- raw_decoder.cpp/hpp      # RAW decoder
 |   |   +-- encoder.hpp              # Encoder base template
 |   |   +-- decoder.hpp              # Decoder base template
@@ -1506,7 +1511,7 @@ i_engine
 | Speculative I/O    | Attempts synchronous I/O before async call to eliminate callback overhead |
 | Gather Write       | Sends header+body in a single system call via writev()             |
 | Zero-Copy Message  | Stores only user buffer pointer in msg_t, transmits without copy   |
-| VSM (Inline)       | Messages <=33 bytes stored directly in msg_t internal buffer (no malloc) |
+| VSM (Inline)       | Messages <=41 bytes stored directly in msg_t internal buffer (no malloc) |
 | Lock-free YPipe    | CAS operation-based inter-thread message exchange, no mutex        |
 | Cache Line Opt.    | YPipe nodes aligned to cache line size                             |
 | Backpressure       | Pauses reading when 10MB limit exceeded to prevent memory blowup   |

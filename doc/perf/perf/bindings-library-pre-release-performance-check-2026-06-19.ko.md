@@ -1,14 +1,14 @@
 # bindings 라이브러리 출시 전 최종 성능 확인표 (2026-06-19)
 
-> 이 문서는 bindings 라이브러리 7.1.0 배포 전 마지막 성능 확인을 위한
+> 이 문서는 bindings 라이브러리 7.2.0 배포 전 마지막 성능 확인을 위한
 > 실행표다. 성능 목표, 판정 기준, public API 원칙은
 > [`bindings-library-performance-improvement-plan.ko.md`](bindings-library-performance-improvement-plan.ko.md)를
-> 따른다. 이 문서는 기존 측정값을 이어받아 통과로 표시하지 않고, 7.1.0 기준으로
+> 따른다. 이 문서는 기존 측정값을 이어받아 통과로 표시하지 않고, 7.2.0 기준으로
 > 새로 확인한 결과만 기록한다.
 
 ## 1. 확인 목적
 
-이번 확인의 목적은 새 기능 개발이 아니라, 7.1.0 core runtime으로 갱신된 bindings
+이번 확인의 목적은 새 기능 개발이 아니라, 7.2.0 core runtime으로 갱신된 bindings
 라이브러리가 배포 전에 성능 목표를 계속 만족하는지 확인하는 것이다. 성능이 목표보다
 낮게 나오면 먼저 측정 조건이 C 기준과 같은지 확인하고, 조건이 맞는데도 낮으면 해당
 binding 라이브러리의 public API 내부 구현을 개선한다.
@@ -20,29 +20,29 @@ binding 라이브러리의 public API 내부 구현을 개선한다.
 
 | 항목 | 값 |
 |------|----|
-| 대상 core version | `7.1.0` |
-| 대상 tag | `core/v7.1.0` |
-| 대상 bindings version | `7.1.0` |
+| 대상 core version | `7.2.0` |
+| 대상 tag | `core/v7.2.0` |
+| 대상 bindings version | `7.2.0` |
 | C 기준 경로 | `bindings/c/perf/baseline/` |
 | 기준 정책 | `doc/perf/PERF_POLICY.md`, `doc/perf/PERF_SINGLE_TEST_POLICY.md`, `doc/perf/PERF_MULTI_TEST_POLICY.md` |
 | 실행 계획 | `doc/perf/perf/bindings-library-performance-improvement-plan.ko.md` |
 | 상태 값 | `미측정`, `통과(비율%)`, `미달(비율%)`, `보류(비율%)`, `해당 없음` |
 
-7.1.0 최종 확인에서는 6.x/7.0.0 시절 baseline이나 언어별 full 결과를 최종 통과
+7.2.0 최종 확인에서는 6.x/7.0.0/7.1.0 시절 baseline이나 언어별 full 결과를 최종 통과
 근거로 쓰지 않는다. 과거 결과는 병목 후보를 찾기 위한 참고 자료로만 사용한다.
 
 ## 3. 실행 전 체크리스트
 
 | 순서 | 확인 항목 | 상태 | 메모 |
 |------|-----------|------|------|
-| 1 | `VERSION`과 public header가 `7.1.0`인지 확인한다. | `완료` | `VERSION`, `core/include/zlink.h`, `core/include/zlink/common.h` 모두 `7.1.0` 확인. |
-| 2 | `cmake --build core/build`로 실제 `core/build` runtime을 최신 source 기준으로 다시 만든다. | `완료` | `core/build/lib/libzlink.so.7.1.0` 기준으로 다시 빌드했다. |
-| 3 | `bindings/update_zlink_libs.sh` 또는 release sync 결과로 각 binding native library가 `7.1.0`인지 확인한다. | `대기` | C 기준 재측정 뒤 binding native library를 다시 동기화한다. |
-| 4 | C single full baseline을 7.1.0 기준으로 확보한다. | `완료` | `perf_c_single_linux_20260619_131028_prerelease_7_1_0_fresh_c_single.txt`, `status=complete`, 결과 라인 `1020/1020`. |
-| 5 | C multi full baseline을 7.1.0 기준으로 확보한다. | `보강 완료` | full run은 `STREAM/tls` 4건 때문에 `partial`이었고, 실패 조합 재실행은 `complete`, 결과 라인 `20/20`이다. |
-| 6 | 각 언어 full run 전에 같은 runner 조건의 fail-fast smoke report를 남긴다. | `진행 중` | C++ single/multi smoke 완료. .NET single smoke 완료. 다른 항목은 미측정. |
-| 7 | report의 `Perf runtime libzlink: ...`가 의도한 runtime을 가리키는지 확인한다. | `진행 중` | 이후 report는 `core/build/lib/libzlink.so.7.1.0`을 기준으로 확인한다. |
-| 8 | `Effective Options`, auto-HWM `MsgUnit(B)`, routed payload borrow 조건을 C와 대조한다. | `진행 중` | C++ multi smoke는 `routed_echo_borrow_payload=tcp`, multi size set `64,256,1024,4096,65536,131072`로 실행했다. |
+| 1 | `VERSION`과 public header가 `7.2.0`인지 확인한다. | `완료` | `VERSION`, `core/include/zlink.h`, `core/include/zlink/common.h` 모두 `7.2.0` 확인. |
+| 2 | `cmake --build core/build`로 실제 `core/build` runtime을 최신 source 기준으로 다시 만든다. | `완료` | `core/build/lib/libzlink.so.7.2.0`이 source보다 최신이다. |
+| 3 | `bindings/update_zlink_libs.sh` 또는 release sync 결과로 각 binding native library가 `7.2.0`인지 확인한다. | `완료` | `bindings/update_zlink_libs.sh core/v7.2.0 --expect-version 7.2.0` 완료. python/node/dotnet/java/cpp/go/rust는 `7.2.0`, `libzlink_c` asset은 release에 없어 경고로 건너뜀. |
+| 4 | C single full baseline을 7.2.0 기준으로 확보한다. | `완료` | `perf_c_single_linux_20260621_133119_prerelease_7_2_0_fresh_c_single.txt`, `status=complete`, 결과 라인 `1020/1020`. |
+| 5 | C multi full baseline을 7.2.0 기준으로 확보한다. | `보강 완료` | full run은 STREAM tls/ws 6개 실패로 `partial`, 실패 조합 재실행은 `complete`. |
+| 6 | 각 언어 full run 전에 같은 runner 조건의 fail-fast smoke report를 남긴다. | `미측정` | 7.2.0 기준으로 다시 실행한다. |
+| 7 | report의 `Perf runtime libzlink: ...`가 의도한 runtime을 가리키는지 확인한다. | `미측정` | 이후 report는 `core/build/lib/libzlink.so.7.2.0`을 기준으로 확인한다. |
+| 8 | `Effective Options`, auto-HWM `MsgUnit(B)`, routed payload borrow 조건을 C와 대조한다. | `미측정` | 7.2.0 기준 C baseline 확보 뒤 언어별 report와 비교한다. |
 
 ## 4. 측정 범위
 
@@ -62,12 +62,14 @@ Single suite는 기존 기본 size set을 유지한다.
 
 | 항목 | 기준 파일 | 상태 | 메모 |
 |------|-----------|------|------|
-| C single 7.1.0 full | `bindings/c/perf/baseline/perf_c_single_linux_20260619_131028_prerelease_7_1_0_fresh_c_single.txt` | `완료` | `status=complete`, 결과 라인 `1020/1020`, runtime `core/build/lib/libzlink.so.7.1.0`. |
-| C multi 7.1.0 full | `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260619_133323_prerelease_7_1_0_fresh_c_multi.txt` | `보강 완료` | full run은 `status=partial`, `success=180`, `fail=4`, 결과 라인 `900/920`. 실패한 `MULTI_STREAM tls 64,256,1024,65536`은 `perf_c_multi_linux_20260619_140559_prerelease_7_1_0_fresh_c_multi_recheck_stream_tls.txt`에서 `status=complete`, 결과 라인 `20/20`으로 재실행 통과했다. |
-| C single 7.0.0 이전 full | `bindings/c/perf/baseline/perf_c_single_linux_20260619_081342_prerelease_7_0_0_final_c_single.txt` | `이전 측정` | `status=complete`, 결과 라인 `1020/1020`. 7.1.0 최종 통과 근거로 쓰지 않는다. |
-| C multi 7.0.0 이전 full | `bindings/c/perf/baseline/perf_c_multi_linux_20260619_062932.txt` | `이전 측정` | `status=complete`, 결과 라인 `960/960`. 7.1.0 최종 통과 근거로 쓰지 않는다. |
+| C single 7.2.0 full | `bindings/c/perf/baseline/perf_c_single_linux_20260621_133119_prerelease_7_2_0_fresh_c_single.txt` | `완료` | `status=complete`, 결과 라인 `1020/1020`, runtime `core/build/lib/libzlink.so.7.2.0`. |
+| C multi 7.2.0 full | `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260621_135215_prerelease_7_2_0_fresh_c_multi.txt` | `보강 완료` | full run은 `status=partial`, 결과 라인 `890/920`, STREAM tls/ws 실패 6개. 보강 파일 `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260621_142250_prerelease_7_2_0_fresh_c_multi_recheck_stream_tls_ws.txt`는 `status=complete`, 결과 라인 `40/40`. |
+| C single 7.1.0 이전 full | `bindings/c/perf/baseline/perf_c_single_linux_20260619_131028_prerelease_7_1_0_fresh_c_single.txt` | `이전 측정` | `status=complete`, 결과 라인 `1020/1020`. 7.2.0 최종 통과 근거로 쓰지 않는다. |
+| C multi 7.1.0 이전 full | `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260619_133323_prerelease_7_1_0_fresh_c_multi.txt` | `이전 측정` | full run은 `status=partial`, 보강 재실행 파일은 `complete`. 7.2.0 최종 통과 근거로 쓰지 않는다. |
+| C single 7.0.0 이전 full | `bindings/c/perf/baseline/perf_c_single_linux_20260619_081342_prerelease_7_0_0_final_c_single.txt` | `이전 측정` | `status=complete`, 결과 라인 `1020/1020`. 7.2.0 최종 통과 근거로 쓰지 않는다. |
+| C multi 7.0.0 이전 full | `bindings/c/perf/baseline/perf_c_multi_linux_20260619_062932.txt` | `이전 측정` | `status=complete`, 결과 라인 `960/960`. 7.2.0 최종 통과 근거로 쓰지 않는다. |
 | C single 제한 재측정 | `미측정` | `미측정` | C 기준 outlier 또는 측정 오차 의심 조합에만 사용한다. |
-| C multi 제한 재측정 | `미측정` | `미측정` | full baseline을 대체하지 않고 보강 근거로만 사용한다. |
+| C multi 제한 재측정 | `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260621_142250_prerelease_7_2_0_fresh_c_multi_recheck_stream_tls_ws.txt` | `완료` | full baseline을 대체하지 않고 STREAM tls/ws 실패 조합 보강 근거로만 사용한다. |
 
 ## 6. 언어별 최종 판정표
 
@@ -77,8 +79,8 @@ Single suite는 기존 기본 size set을 유지한다.
 
 | 순서 | 언어 | perf 경로 | Single smoke | Single full | Multi smoke | Multi full | 미달/보류 상세 | 출시 판단 |
 |------|------|-----------|--------------|-------------|-------------|------------|----------------|-----------|
-| 1 | C++ | `bindings/cpp/perf` | `완료` | `완료` | `완료` | `완료` | `제한 재측정 후 반복 미달 후보 7건, 해소 후보 5건, SPOT 1건 비교 불가` | `대기` |
-| 2 | .NET | `bindings/dotnet/perf` | `완료` | `미측정` | `미측정` | `미측정` | `single smoke complete, full/multi 미측정` | `대기` |
+| 1 | C++ | `bindings/cpp/perf` | `미측정` | `미측정` | `미측정` | `미측정` | `7.2.0 기준 재측정 필요` | `대기` |
+| 2 | .NET | `bindings/dotnet/perf` | `미측정` | `미측정` | `미측정` | `미측정` | `7.2.0 기준 재측정 필요` | `대기` |
 | 3 | Java | `bindings/java/perf` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `대기` |
 | 4 | Node | `bindings/node/perf` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `대기` |
 | 5 | Go | `bindings/go/perf` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `대기` |
@@ -146,6 +148,22 @@ Single suite는 기존 기본 size set을 유지한다.
 
 ## 7.3 C multi 실패 재확인 로그
 
+### 7.3.1 7.2.0 기준 재확인
+
+`bindings/c/perf/results/multi/report/perf_c_multi_linux_20260621_135215_prerelease_7_2_0_fresh_c_multi.txt`는
+`MULTI_STREAM tls`와 `MULTI_STREAM ws`에서 partial로 끝났다. 실패 조합만 분리 재실행해
+아래처럼 판정했다.
+
+| 대상 | 원본 실패 | 재실행 파일 | 재실행 상태 | 판정 |
+|------|-----------|-------------|-------------|------|
+| `MULTI_STREAM tls 64,256,1024,65536` | `non_zero_exit_2_size_64`로 4개 size 실패 | `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260621_142250_prerelease_7_2_0_fresh_c_multi_recheck_stream_tls_ws.txt` | `complete`, `20/20` | 단독 재실행에서 재현되지 않았다. full-run 중 일시적인 부하 또는 연결 준비 지연으로 본다. |
+| `MULTI_STREAM ws 1024,65536` | `non_zero_exit_2_size_1024`로 2개 size 실패 | `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260621_142250_prerelease_7_2_0_fresh_c_multi_recheck_stream_tls_ws.txt` | `complete`, `20/20` | 단독 재실행에서 재현되지 않았다. 같은 파일에서 ws 64/256/1024/65536 모두 결과 라인이 채워졌다. |
+
+이 재확인은 `core/build/lib/libzlink.so.7.2.0` runtime으로 수행됐다. full run의 성공한 조합은
+비교 기준으로 사용할 수 있고, 위 STREAM tls/ws 조합은 보강 파일을 함께 확인한다.
+
+### 7.3.2 이전 7.0.0 재확인
+
 `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260619_122446.txt`는
 `MULTI_DEALER_DEALER wss 65536/131072B`와 `MULTI_STREAM ws`에서 partial로 끝났다.
 실패 조합만 분리 재실행해 아래처럼 판정했다.
@@ -162,7 +180,7 @@ runtime은 `core/build/lib/libzlink.so.7.1.0`이다.
 
 ## 8. 언어별 상세 측정 상태표
 
-아래 표는 기존 성능 개선 계획 문서와 같은 형식으로 기록한다. 각 size 칸은 같은 조건의 C 기준 throughput 대비 binding throughput 비율이다. 목표를 만족하면 `통과(비율%)`, 목표보다 낮으면 `미달(비율%)`, 아직 같은 조건의 7.0.0 full 결과가 없으면 `미측정`으로 둔다.
+아래 표는 기존 성능 개선 계획 문서와 같은 형식으로 기록한다. 각 size 칸은 같은 조건의 C 기준 throughput 대비 binding throughput 비율이다. 목표를 만족하면 `통과(비율%)`, 목표보다 낮으면 `미달(비율%)`, 아직 같은 조건의 7.2.0 full 결과가 없으면 `미측정`으로 둔다.
 
 Single suite size는 `64`, `256`, `1024`, `65536`, `131072`, `262144`이다. Multi suite size는 `64`, `256`, `1024`, `4096`, `65536`, `131072`이며, `MULTI_STREAM`의 `4096`, `131072`은 기존 계획과 같이 `해당 없음`이다.
 
@@ -252,79 +270,79 @@ Single suite size는 `64`, `256`, `1024`, `65536`, `131072`, `262144`이다. Mul
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `inproc` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `inproc` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `inproc` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `inproc` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `inproc` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `inproc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ipc` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ipc` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ipc` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ipc` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ipc` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ipc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `inproc` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `inproc` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `inproc` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `inproc` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `inproc` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `inproc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ipc` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ipc` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ipc` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ipc` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ipc` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ipc` | `SPOT` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
 
 #### 8.2.2 Multi suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
 
 ### 8.3 Java
 
@@ -332,67 +350,67 @@ Single suite size는 `64`, `256`, `1024`, `65536`, `131072`, `262144`이다. Mul
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
 
 #### 8.3.2 Multi suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
 
 ### 8.4 Node
 
@@ -400,67 +418,67 @@ Single suite size는 `64`, `256`, `1024`, `65536`, `131072`, `262144`이다. Mul
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
 
 #### 8.4.2 Multi suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
 
 ### 8.5 Go
 
@@ -468,67 +486,67 @@ Single suite size는 `64`, `256`, `1024`, `65536`, `131072`, `262144`이다. Mul
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
 
 #### 8.5.2 Multi suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
 
 ### 8.6 Rust
 
@@ -536,67 +554,67 @@ Single suite size는 `64`, `256`, `1024`, `65536`, `131072`, `262144`이다. Mul
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
 
 #### 8.6.2 Multi suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
 
 ### 8.7 Python
 
@@ -604,67 +622,67 @@ Single suite size는 `64`, `256`, `1024`, `65536`, `131072`, `262144`이다. Mul
 
 | Transport | Pattern | 64 | 256 | 1024 | 65536 | 131072 | 262144 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
-| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tcp` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `ws` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `wss` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `PAIR` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
+| `tls` | `SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C single baseline과 비교한다. |
 
 #### 8.7.2 Multi suite
 
 | Transport | Pattern | 64 | 256 | 1024 | 4096 | 65536 | 131072 | 결과 파일 / 메모 |
 |---|---|---|---|---|---|---|---|---|
-| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
-| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.0.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tcp` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `ws` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `wss` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_DEALER_DEALER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_DEALER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_ROUTER_ROUTER` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_PUBSUB` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT_REQREP` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_SPOT_SENDSEND` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | `미측정` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
+| `tls` | `MULTI_STREAM` | `미측정` | `미측정` | `미측정` | `해당 없음` | `미측정` | `해당 없음` | 7.2.0 기준 full 결과 확보 뒤 C multi baseline과 비교한다. |
 
 ## 9. 언어별 평균 성능표
 
@@ -689,7 +707,7 @@ p10과 최저 10% 평균을 함께 본다.
 
 | 순서 | 작업 | 명령 / 기준 | 완료 조건 |
 |------|------|-------------|-----------|
-| 1 | core runtime rebuild | `cmake --build core/build` | `core/build` 아래 `libzlink`가 7.0.0이고 source보다 최신이다. |
+| 1 | core runtime rebuild | `cmake --build core/build` | `core/build` 아래 `libzlink`가 7.2.0이고 source보다 최신이다. |
 | 2 | C single baseline | `bindings/c/perf/run_benchmarks.sh` | `status=complete`, 결과 라인 `1020/1020`. |
 | 3 | C multi baseline | `bindings/c/perf/run_benchmarks_multi.sh --msg-sizes 64,256,1024,4096,65536,131072` | `status=complete`, 결과 라인 `960/960`. |
 | 4 | C++ smoke/full | `bindings/cpp/perf/run_benchmarks*.sh` | Single/Multi 상세표에 미달 또는 미측정이 없다. |
@@ -705,7 +723,7 @@ p10과 최저 10% 평균을 함께 본다.
 
 | 항목 | 상태 | 근거 |
 |------|------|------|
-| C 7.0.0 기준 확보 | `완료` | §5 |
+| C 7.2.0 기준 확보 | `완료` | §5 |
 | 모든 언어 smoke 통과 | `진행 중` | C++ smoke 완료, .NET single smoke 완료. .NET multi와 나머지 언어 미측정. |
 | 모든 언어 full complete | `미측정` | §6 |
 | 미달 조합 0건 | `미측정` | §7 |

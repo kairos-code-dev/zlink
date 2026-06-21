@@ -40,7 +40,7 @@ flowchart TB
         registry_access["registry_access_t"]
         registry_query_access["registry_query_access_t"]
         spot_node_access["spot_node_access_t"]
-        spot_subject_access["spot_subject_access_t"]
+        spot_subject_access["spot_subject_access"]
     end
 
     subgraph SvcRT ["Service Runtime"]
@@ -109,10 +109,10 @@ Service-local seam provided by each service. Prevents the API layer from knowing
 | Access Seam | Location | Role |
 |-------------|----------|------|
 | `discovery_access_t` | `services/discovery/discovery_access.hpp` | Discovery lifecycle, connect_registry, option, monitor |
-| `registry_access_t` | `services/discovery/registry_access.hpp` | Registry lifecycle, bind, config, snapshot/query |
-| `registry_query_access_t` | `services/discovery/registry_query_access.hpp` | Remote Registry topology query client |
+| `registry_access_t` | `services/registry/registry_access.hpp` | Registry lifecycle, bind, config, snapshot/query |
+| `registry_query_access_t` | `services/registry/registry_query_access.hpp` | Remote Registry topology query client |
 | `spot_node_access_t` | `services/spot/spot_node_access.hpp` | SpotNode lifecycle, bind, peer connect, discovery attach |
-| `spot_subject_access_t` | `services/spot/spot_subject_access.hpp` | Publish, subscribe, option, handler, monitor, type casting |
+| `spot_subject_access` (free function) | `services/spot/spot_subject_access.hpp` | Publish, subscribe, option, handler, monitor, type casting |
 
 `service_public_api_guard_t` is the common admission/close guard for all services. It tracks public-API entry and the close/busy state, and provides destroy lifecycle gates (`EBUSY`/`ESHUTDOWN`). Callback-mode tracking lives separately in `service_mode_state_t`.
 
@@ -274,19 +274,19 @@ Prohibited directions:
 
 ```
 core/src/
-  api/                107 files — C ABI facade (split by concern)
+  api/                120 files — C ABI facade (split by concern)
   runtime/
-    core/              77 files — runtime core, options dispatch, multipart send
-    engine/            14 files — Boost.Asio execution backbone
+    core/              76 files — runtime core, options dispatch, multipart send
+    engine/            15 files — Boost.Asio execution backbone
     protocol/          20 files — raw/zmp/metadata
-    sockets/           53 files — socket families + base runtime components
+    sockets/           55 files — socket families + base runtime components
     services/
       common/           8 files — service_runtime_base, service_public_api_guard
       control/          2 files — service control runtime
-      discovery/       26 files — discovery + registry access
-      registry/        13 files — registry runtime
-      spot/            70 files — node/pub/sub/data_plane/dispatch/runtime
-      actor/           11 files — actor relay multipart/packet/result/validation
+      discovery/       27 files — discovery runtime
+      registry/        16 files — registry runtime + registry access
+      spot/            86 files — node/pub/sub/data_plane/dispatch/runtime
+      actor/           15 files — actor relay multipart/packet/result/validation
     transports/        46 files — tcp/ipc/tls/ws/pgm
     utils/             44 files — domain-agnostic utilities
 ```

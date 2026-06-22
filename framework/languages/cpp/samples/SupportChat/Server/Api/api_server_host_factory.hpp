@@ -4,6 +4,7 @@
 #include "../Configuration/sample_configuration.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
+#include "../../Shared/Contracts/codecs.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
 #include "../sample_log_dir.hpp"
@@ -39,7 +40,7 @@ class api_server_host_factory_t
             options.handlers ()
               .add<authenticate_user_handler_t> ("api")
               .add<open_conversation_handler_t> ("api");
-            options.codecs ().add_json ();
+            options.codecs ().use (support_chat_json_codec ());
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_server (topology.api_channel_endpoint)

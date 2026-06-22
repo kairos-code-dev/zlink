@@ -4,6 +4,7 @@
 #include "../Configuration/sample_configuration.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
+#include "../../Shared/Contracts/codecs.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
 #include "../sample_log_dir.hpp"
@@ -19,17 +20,10 @@
 #include "Application/ConversationAssignment/agent_availability_directory.hpp"
 #include "Application/ConversationAssignment/support_conversation_allocator.hpp"
 
-#include <zlink/framework/extensions/remote_actor_packet_handler.hpp>
-
 #include <memory>
 
 namespace zlink::samples::supportchat
 {
-
-using remote_actor_packet_handler_t =
-  zlink::framework::extensions::remote_actor_packet_handler_t<support_user_actor_t,
-                                                              remote_actor_packet_req_t,
-                                                              remote_actor_packet_res_t>;
 
 class support_server_host_factory_t
 {
@@ -63,23 +57,35 @@ class support_server_host_factory_t
             options.handlers ()
               .add<ensure_support_user_actor_handler_t> ("support")
               .add<allocate_conversation_handler_t> ("support")
-              .add<assign_agent_handler_t> ("support")
-              .add<remote_actor_packet_handler_t> ("support");
-            options.codecs ().add_json ();
+              .add<assign_agent_handler_t> ("support");
+            options.codecs ().use (support_chat_json_codec ());
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::support_channel)
               .enable_server (topology.support_channel_endpoint)
               .use_handler_group ("support");
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_client ();
-            options.add_spot_mesh (sample_names_t::support_spot_discovery)
-              .add_node (sample_names_t::support_spot_node)
-              .enable_router (topology.support_router_endpoint, topology.support_entry_rid)
+            options.add_route_mesh_channel (sample_names_t::actor_session_route_channel)
+              .enable_server (topology.support_actor_route_endpoint)
+              .set_routing_id (zlink::routing_id_t::from (sample_names_t::support_spot_node))
+              .enable_client (topology.session_actor_route_endpoint)
+              .enable_spot_route_egress (sample_names_t::actor_session_route_channel);
+            auto mesh = options.add_spot_mesh (sample_names_t::support_spot_discovery);
+            mesh.use_registry_spot_resolver (sample_names_t::actor_session_route_channel);
+            mesh.add_node (sample_names_t::conversation_spot_node)
+              .enable_router (topology.conversation_spot_router_endpoint)
+              .enable_actor_gateway ()
+              .enable_pub_sub (topology.conversation_spot_endpoint)
+              .accept_routes_from_channel (sample_names_t::actor_session_route_channel)
+              .add_spot<conversation_spot_t> (sample_names_t::conversation_spot)
+              .add_actor_factory<support_user_actor_factory_t> (sample_names_t::support_actor_type);
+            mesh.add_node (sample_names_t::support_spot_node)
+              .enable_router (topology.support_router_endpoint,
+                              zlink::routing_id_t::from (sample_names_t::support_spot_node))
               .enable_actor_gateway ()
               .enable_pub_sub (topology.support_spot_endpoint)
-              .attach_channel_client (sample_names_t::api_channel)
+              .accept_routes_from_channel (sample_names_t::actor_session_route_channel)
               .add_entry_spot<support_entry_spot_t> ()
-              .add_spot<conversation_spot_t> (sample_names_t::conversation_spot)
               .add_actor_factory<support_user_actor_factory_t> (sample_names_t::support_actor_type);
         });
         return app;

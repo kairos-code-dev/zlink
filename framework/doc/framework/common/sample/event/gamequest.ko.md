@@ -228,7 +228,7 @@ domain module로 나누되, quest progress를 직접 갱신하지 않고 gamepla
 | `Domain` | quest definition, 조건 평가, quest별 `PlayerQuestAggregate` replay, domain event 생성 | 외부 framework와 저장소 구현을 모른다. |
 | `Application` | gameplay event 적용 use case, projection rebuild, snapshot 보정 조율 | domain과 port interface에 의존한다. |
 | `Ports` | event store, read model, notify, gameplay snapshot 조회를 interface로 정의 | 구현체를 모른다. |
-| `Adapters` | ZLink subscriber, Spot handler, repository, WebSocket publisher, snapshot client 구현 | application port를 호출하거나 구현한다. |
+| `Infrastructure` | ZLink subscriber, Spot handler, repository, WebSocket publisher, snapshot client 구현 | application port를 호출하거나 구현한다. |
 
 `GameApi` 서버는 아래 구조를 기준으로 둔다.
 
@@ -255,7 +255,7 @@ Server/GameApi/
       GameplayStateStorePort
       QuestReadModelPort
       QuestSubscriptionPort
-  Adapters/
+  Infrastructure/
     Http/
       KillMonsterHandler
       CollectItemHandler
@@ -305,7 +305,7 @@ Server/QuestMission/
       QuestReadModelPort
       QuestNotificationPort
       GameplaySnapshotPort
-  Adapters/
+  Infrastructure/
     ZLink/
       Events/
         GameplayEventSubscriber

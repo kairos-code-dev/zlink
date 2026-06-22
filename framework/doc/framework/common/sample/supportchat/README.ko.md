@@ -132,7 +132,7 @@ Server/Support/
       ConversationAllocator
       AgentAssignmentService
       AgentAvailabilityDirectory
-  Adapters/
+  Infrastructure/
     ZLink/
       Actors/
         SupportUserActor
@@ -168,9 +168,9 @@ Server/Support/
 | `Application/ConversationAssignment/ConversationAllocator` | 새 상담 티켓에 conversation id를 만들고 conversation Spot 생성을 요청한다. |
 | `Application/ConversationAssignment/AgentAvailabilityDirectory` | 상담 가능 상태로 등록된 agent actor id를 관리한다. |
 | `Application/ConversationAssignment/AgentAssignmentService` | 대기 중인 agent actor를 선택해 conversation에 배정한다. |
-| `Adapters/ZLink/Spots/ConversationSpot` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, notification publish 연결을 맡는다. |
-| `Adapters/ZLink/Notifications/*` | domain event를 bound session push message로 바꾸고 전송한다. |
-| `Adapters/ZLink/Handlers/*` | channel request와 Spot actor request를 application/domain adapter로 연결한다. |
+| `Infrastructure/ZLink/Spots/ConversationSpot` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, notification publish 연결을 맡는다. |
+| `Infrastructure/ZLink/Notifications/*` | domain event를 bound session push message로 바꾸고 전송한다. |
+| `Infrastructure/ZLink/Handlers/*` | channel request와 Spot actor request를 application/domain adapter로 연결한다. |
 
 Domain 객체는 ZLink framework 타입을 직접 참조하지 않는다.
 `ConversationSpot`은 framework callback을 받아 domain method를 호출하고, domain이
@@ -220,7 +220,7 @@ Application 계층은 domain 객체를 이용해 샘플 use case를 표현한다
 Application 계층은 domain use case를 표현하지만 ZLink packet codec, stream frame,
 handler decorator, socket endpoint 같은 transport 세부 구현에 기대면 안 된다. Spot 생성이나
 actor join처럼 framework adapter가 필요한 작업은 port interface로 요청하고, 실제 구현은
-Adapters 계층에 둔다.
+Infrastructure 계층에 둔다.
 
 ### 7.3 Ports and Adapters
 
@@ -235,7 +235,7 @@ SupportChat의 port는 domain/application이 외부에 기대는 최소 계약�
 | `Clock` 또는 time provider | outbound | timer handler가 현재 시각을 domain에 전달한다. |
 | `AuthenticationPort` | inbound API boundary | API handler가 token을 검증하고 actor identity를 반환한다. |
 
-Adapters 계층은 framework 객체, codec, logging, handler/decorator 등록, Registry/Discovery
+Infrastructure 계층은 framework 객체, codec, logging, handler/decorator 등록, Registry/Discovery
 설정, Spot lifecycle, actor/session binding을 맡는다. Adapter가 domain 규칙을 직접
 판정하면 안 된다. 예를 들어 `SendChatMessageHandler`는 text 길이, closed 상태, participant
 여부를 직접 검사하지 않고 `Conversation`에 요청한다. `ConversationIdleTimerHandler`는
@@ -246,11 +246,11 @@ timer tick을 domain에 전달할 뿐 idle 전이와 close 전이를 직접 계�
 의존 방향은 아래 순서를 따른다.
 
 ```text
-Adapters/ZLink  ->  Application  ->  Domain
+Infrastructure/ZLink  ->  Application  ->  Domain
 ```
 
 `Domain`은 다른 계층을 참조하지 않는다. `Application`은 domain과 port 계약만 알고,
-`Adapters/ZLink`는 framework와 port 구현을 소유한다. 이 방향이 깨지면 샘플이 framework
+`Infrastructure/ZLink`는 framework와 port 구현을 소유한다. 이 방향이 깨지면 샘플이 framework
 사용법보다 domain/application/framework 세부 구현이 뒤섞인 예제가 되므로 공통 sample
 기준을 만족하지 못한다.
 
@@ -817,6 +817,6 @@ session gateway 구조가 흐려진다.
 - 명시적 `CloseConversationReq`는 요청자에게 close response를 반환하고 상대방에게 `ConversationClosedNotify`를 보낸다.
 - reconnect 시 같은 actor와 conversation state가 유지된다.
 - close된 conversation에 대한 메시지, typing, close 요청은 오류 response를 반환한다.
-- Domain / Application / Adapters 책임 분리가 유지된다.
+- Domain / Application / Infrastructure 책임 분리가 유지된다.
 - smoke test는 customer 인증, agent 인증, 상담 시작, agent join, agent greeting, customer reply,
   typing, reconnect, idle close, 명시적 close, agent 미배정 대기, 오류 response까지 검증한다.

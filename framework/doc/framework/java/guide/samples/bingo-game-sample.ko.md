@@ -34,10 +34,10 @@ push를 한 흐름으로 보여 준다. payload codec은 cross-language schema�
 5. room Spot의 draw timer가 숫자를 뽑아 `BingoNumberDrawnNotify`를 push 하고,
    승패가 정해지면 `BingoGameEndedNotify`를 push 한다. client는 draw 요청을 보내지 않는다.
 
-## 4. 역할 분리 (Domain / Application / Adapters)
+## 4. 역할 분리 (Domain / Application / Infrastructure)
 
 `Play` 서버는 순수 도메인 규칙(`domain/bingo`: `BingoCard`, `BingoRoomGame`)과 framework
-adapter(`adapters/zlink`: actor·handler·spot·notification)를 분리한다. Entry Spot은 접속
+adapter(`infrastructure/zlink`: actor·handler·spot·notification)를 분리한다. Entry Spot은 접속
 actor를 가장 먼저 받아 room Spot으로 옮기기 전 진입 단계를 맡는다.
 
 ## 5. 상태 모델

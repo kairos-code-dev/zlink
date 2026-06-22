@@ -205,7 +205,7 @@ ZLink Spot handler, repository는 adapter로 둔다.
 | `Domain` | 주문 상태 전이, 재고/결제 결과 적용, 보상 규칙, domain event 생성 | 외부 framework와 저장소 구현을 모른다. |
 | `Application` | 주문 시작, workflow 실행, projection rebuild, 조회 use case | domain과 port interface에 의존한다. |
 | `Ports` | event store, read model, commerce state를 interface로 정의 | 구현체를 모른다. |
-| `Adapters` | HTTP handler, ZLink Spot, repository 구현 | application port를 호출하거나 구현한다. |
+| `Infrastructure` | HTTP handler, ZLink Spot, repository 구현 | application port를 호출하거나 구현한다. |
 
 `CommerceApi` 서버는 아래 구조를 기준으로 둔다.
 
@@ -219,7 +219,7 @@ Server/CommerceApi/
       OrderReadModelPort
       CommerceStateStorePort
       OrderWorkflowCommandPort
-  Adapters/
+  Infrastructure/
     Http/
       StartOrderHandler
       GetOrderStateHandler
@@ -258,7 +258,7 @@ Server/OrderWorkflow/
       OrderEventStorePort
       OrderReadModelPort
       CommerceStateStorePort
-  Adapters/
+  Infrastructure/
     ZLink/
       Spots/
         OrderWorkflowSpot

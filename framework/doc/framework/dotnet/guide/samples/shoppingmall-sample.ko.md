@@ -112,7 +112,7 @@ Server/OrderWorkflow/
     ShoppingMall/       # OrderAggregate, OrderState, OrderEvents, OrderPolicy
   Application/
     OrderWorkflow/      # Start/Continue/Rebuild use case, 보상 흐름
-  Adapters/
+  Infrastructure/
     ZLink/
       Spots/
         Handlers/       # StartOrderWorkflow, ContinueOrderWorkflow, RebuildOrderProjection

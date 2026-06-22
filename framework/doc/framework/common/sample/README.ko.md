@@ -97,14 +97,14 @@ observer, 기본 로그로 처리하게 둔다. 샘플 handler는 성공 경로�
   단위를 표현한다. Spot은 actor 참여를 받을 수 있지만 actor가 필수는 아니다. Spot은
   directed request를 처리하거나, event를 publish하거나, timer를 실행하거나, pub/sub event에
   반응할 수 있다.
-- 실시간 상태를 소유하는 서버는 `Domain`, `Application`, `Adapters` 책임을 나누어 구현한다.
+- 실시간 상태를 소유하는 서버는 `Domain`, `Application`, `Infrastructure` 책임을 나누어 구현한다.
   아래 이름은 권장 구조이며, 디렉토리 이름은 언어 관용과 기존 샘플 구조에 맞게 바꿀 수 있다.
   다만 같은 책임 분리와 의존 방향은 유지해야 한다.
   - `Domain`은 순수 도메인 규칙, 상태 전이, 결과 판정, 도메인 event 생성을 맡는다.
     framework 타입, socket, stream, handler, logger, DI container에 의존하지 않는다.
   - `Application`은 room 생성, room 배정처럼 domain을 사용하는 use case를 맡는다.
     framework adapter가 호출할 수 있는 작고 명확한 진입점을 제공한다.
-  - `Adapters`는 framework와 외부 연결을 맡는다. ZLink actor, session, Spot,
+  - `Infrastructure`는 framework와 외부 연결을 맡는다. ZLink actor, session, Spot,
     handler, notification publisher, channel request handler는 이 레이어에 둔다.
 - 언어별 샘플은 같은 역할과 메시지 이름을 사용한다. 언어 관용구 때문에 이름을
   바꿔야 하면 공통 문서에 차이를 먼저 기록한다.
@@ -187,7 +187,7 @@ Server/<StateOwner>/
   Application/
     <UseCase>/
       ... use case services ...
-  Adapters/
+  Infrastructure/
     ZLink/
       Actors/
       Handlers/
@@ -202,6 +202,6 @@ Server/<StateOwner>/
 push와 domain event 변환이 필요하면 `Notifications/`를 둔다.
 
 중요한 기준은 이름 자체가 아니라 의존 방향이다. `Domain`은 `Application`이나
-`Adapters`를 알면 안 된다. `Application`은 domain을 사용하지만 framework transport
-세부 구현에 기대지 않는다. `Adapters`는 framework 객체와 message codec, logging,
+`Infrastructure`를 알면 안 된다. `Application`은 domain을 사용하지만 framework transport
+세부 구현에 기대지 않는다. `Infrastructure`는 framework 객체와 message codec, logging,
 DI 등록을 다루며 domain state를 직접 조작하지 않고 domain 객체의 method를 호출한다.

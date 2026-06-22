@@ -201,7 +201,7 @@ TicTacToe보다 크기 때문에 DDD와 헥사고날 아키텍처의 경계를 �
 이 구조는 C++, Java, Kotlin, TypeScript, .NET 샘플을 작성할 때 함께 따라야 하는
 공통 기준이다. 언어별 빌드 도구, 파일 확장자, package/module 표현은 달라질 수 있지만,
 `Client`, `Shared`, `Server/Api`, `Server/Session`, `Server/Play/Domain`,
-`Server/Play/Application`, `Server/Play/Adapters`, `Server/Registry` 경계와 각 책임은
+`Server/Play/Application`, `Server/Play/Infrastructure`, `Server/Registry` 경계와 각 책임은
 유지해야 한다.
 
 ```text
@@ -254,7 +254,7 @@ Bingo/
         RoomAllocation/
           BingoMatchQueue
           BingoRoomAllocator
-      Adapters/
+      Infrastructure/
         ZLink/
           Actors/
             PlayerActor
@@ -293,10 +293,10 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 | `Server/Session/*` | stream gateway adapter | client stream, 인증, actor binding, bound session relay를 처리한다. |
 | `Server/Play/Domain/Bingo/*` | domain model | card, draw deck, room status, winner 판정 같은 게임 규칙을 framework 타입 없이 표현한다. |
 | `Server/Play/Application/RoomAllocation/*` | application use case | match queue 계약, waiting room 재사용 결정, room allocation 결과 생성을 조율한다. |
-| `Server/Play/Adapters/ZLink/*` | ZLink adapter | channel, actor, Spot callback, bound session push, Spot pub/sub publish/subscribe를 application/domain 호출로 변환한다. |
-| `Server/Play/Adapters/ZLink/Matchmaking/*` | external adapter | Redis를 사용해 mode별 waiting room record와 actor reservation을 atomic하게 저장한다. |
+| `Server/Play/Infrastructure/ZLink/*` | ZLink adapter | channel, actor, Spot callback, bound session push, Spot pub/sub publish/subscribe를 application/domain 호출로 변환한다. |
+| `Server/Play/Infrastructure/ZLink/Matchmaking/*` | external adapter | Redis를 사용해 mode별 waiting room record와 actor reservation을 atomic하게 저장한다. |
 
-의존 방향은 `Adapters -> Application -> Domain`이다. Domain은 ZLink framework, Registry,
+의존 방향은 `Infrastructure -> Application -> Domain`이다. Domain은 ZLink framework, Registry,
 stream session, actor gateway, logger를 알지 않는다. Application은 room 배정 같은 use
 case 조율만 맡고, server endpoint 발견, session binding, push 전송 같은 외부 입출력은
 adapter에 둔다. 이 규칙 덕분에 다른 언어로 옮겨도 gateway 구조와 게임 규칙의 위치가
@@ -370,7 +370,7 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   actor gateway, handler, logger, codec, endpoint 설정은 Domain으로 들어오면 안 된다.
 - Application은 room allocation use case를 조율한다. framework callback을 직접 받거나
   transport 세부 구현을 다루지 않는다.
-- Adapters는 Registry/Discovery, channel, stream session, actor, Spot, timer,
+- Infrastructure는 Registry/Discovery, channel, stream session, actor, Spot, timer,
   notification publish, codec 연결을 맡는다. handler나 Spot adapter가 card 판정, draw
   order, winner 판정을 직접 구현하면 안 된다.
 
@@ -395,7 +395,7 @@ Server/Play/
     RoomAllocation/
       BingoMatchQueue
       BingoRoomAllocator
-  Adapters/
+  Infrastructure/
     ZLink/
       Actors/
         PlayerActor
@@ -425,11 +425,11 @@ Server/Play/
 | `Domain/Bingo/BingoRoomGame` | player join, room status, card 제출 가능 여부, draw timer 시작/종료 신호, room event 생성을 소유한다. |
 | `Application/RoomAllocation/BingoMatchQueue` | room allocation use case가 필요로 하는 waiting room reservation 계약을 정의한다. |
 | `Application/RoomAllocation/BingoRoomAllocator` | matching 요청을 받아 match queue reservation과 room allocation 결과 생성을 조율한다. |
-| `Adapters/ZLink/Matchmaking/RedisBingoMatchQueue` | mode별 waiting room record와 actor reservation을 Redis에 atomic하게 저장한다. |
-| `Adapters/ZLink/Spots/BingoRoom` | ZLink Spot lifecycle, actor join callback, draw 진행, domain 호출, player actor push, reward pub/sub publish/subscribe를 맡는다. |
-| `Adapters/ZLink/Spots/BingoRoom` | observer용 local room 인스턴스에서 reward topic subscribe callback을 받고 observer actor에게 push를 전달한다. |
-| `Adapters/ZLink/Actors/PlayerActor` | player별 bound session push를 감싼다. room Spot은 actor의 public method만 호출하고 stream frame을 직접 만들지 않는다. |
-| `Adapters/ZLink/Handlers/*` | channel request와 Spot actor request를 받아 application/domain adapter로 연결한다. |
+| `Infrastructure/ZLink/Matchmaking/RedisBingoMatchQueue` | mode별 waiting room record와 actor reservation을 Redis에 atomic하게 저장한다. |
+| `Infrastructure/ZLink/Spots/BingoRoom` | ZLink Spot lifecycle, actor join callback, draw 진행, domain 호출, player actor push, reward pub/sub publish/subscribe를 맡는다. |
+| `Infrastructure/ZLink/Spots/BingoRoom` | observer용 local room 인스턴스에서 reward topic subscribe callback을 받고 observer actor에게 push를 전달한다. |
+| `Infrastructure/ZLink/Actors/PlayerActor` | player별 bound session push를 감싼다. room Spot은 actor의 public method만 호출하고 stream frame을 직접 만들지 않는다. |
+| `Infrastructure/ZLink/Handlers/*` | channel request와 Spot actor request를 받아 application/domain adapter로 연결한다. |
 
 Domain 객체는 ZLink framework 타입을 직접 참조하지 않는다. `BingoRoom` Spot은 framework
 callback을 받아 domain method를 호출하고, domain이 반환한 change와 event를 adapter가

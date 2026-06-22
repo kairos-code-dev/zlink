@@ -55,7 +55,7 @@ response인지 확인한다. push 대기는 stream connector의 public wait API�
 
 - 네 서버가 Registry/Discovery로 자동 발견된다.
 - JSON codec(`addJson`)을 쓴다.
-- Domain / Application / Adapters 책임 분리가 유지된다.
+- Domain / Application / Infrastructure 책임 분리가 유지된다.
 - Java/Kotlin 두 샘플이 같은 역할·메시지·검증 순서를 따른다.
 
 ---

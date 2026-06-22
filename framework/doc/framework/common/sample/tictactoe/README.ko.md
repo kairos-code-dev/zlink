@@ -134,7 +134,7 @@ TicTacToe 샘플은 작은 게임이지만 DDD와 헥사고날 아키텍처의 �
 이 구조는 C++, Java, Kotlin, TypeScript, .NET 샘플을 작성할 때 함께 따라야 하는
 공통 기준이다. 언어별 빌드 도구, 파일 확장자, package/module 표현은 달라질 수 있지만,
 `Client`, `Shared`, `Server/Api`, `Server/Play/Domain`, `Server/Play/Application`,
-`Server/Play/Adapters` 경계와 각 책임은 유지해야 한다.
+`Server/Play/Infrastructure` 경계와 각 책임은 유지해야 한다.
 
 `Client`는 외부 사용자가 수행하는 self-check 시나리오이고, `Shared`는 client와 server가
 공유하는 메시지 계약이다. `Server` 안에서는 HTTP API adapter와 Play runtime adapter가
@@ -175,7 +175,7 @@ TicTacToe/
       Application/
         GameCreation/
           TicTacToeGameCreator
-      Adapters/
+      Infrastructure/
         ZLink/
           Actors/
             PlayActor
@@ -211,7 +211,7 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 | `Server/Api/*` | inbound HTTP adapter, API channel adapter | client의 room 생성 요청과 Play 서버의 인증 요청을 처리한다. |
 | `Server/Play/Domain/TicTacToe/*` | domain model | board, player, turn, 승패 판정 같은 게임 규칙을 framework 타입 없이 표현한다. |
 | `Server/Play/Application/GameCreation/*` | application use case | room id 생성, Spot 생성 요청, Redis room route 기록을 조율한다. |
-| `Server/Play/Adapters/ZLink/*` | ZLink adapter | channel, stream session, actor, Spot callback을 application/domain 호출로 변환한다. |
+| `Server/Play/Infrastructure/ZLink/*` | ZLink adapter | channel, stream session, actor, Spot callback을 application/domain 호출로 변환한다. |
 
 observer milestone 알림 처리는 `PlayEntrySpot` 안의 observer handler와 private registry
 책임으로 둔다. 언어별 framework 제약 때문에 helper class나 private registry 객체를 둘 수는
@@ -219,7 +219,7 @@ observer milestone 알림 처리는 `PlayEntrySpot` 안의 observer handler와 p
 나란히 노출하지 않는다. 이 규칙은 C++, Node, Kotlin, Java 샘플을 같은 구조로 읽게 하기
 위한 것이다.
 
-의존 방향은 `Adapters -> Application -> Domain`이다. Domain은 ZLink framework, HTTP,
+의존 방향은 `Infrastructure -> Application -> Domain`이다. Domain은 ZLink framework, HTTP,
 stream connector, logger를 알지 않는다. Application은 use case 조율을 맡고, 외부 입출력
 세부 사항은 adapter에 둔다. 이 규칙 덕분에 샘플은 작아도 게임 규칙과 framework 배선이
 섞이지 않는다.
@@ -283,7 +283,7 @@ TicTacToe 샘플은 모든 framework 언어에서 같은 public framework 모델
   handler, logger, codec, endpoint 설정은 Domain으로 들어오면 안 된다.
 - Application은 room 생성 use case를 조율한다. framework callback을 직접 받거나
   transport 세부 구현을 다루지 않는다.
-- Adapters는 HTTP, channel, stream session, actor, Spot, timer, codec 연결을 맡는다.
+- Infrastructure는 HTTP, channel, stream session, actor, Spot, timer, codec 연결을 맡는다.
   handler나 Spot adapter가 board 판정, turn 판정, winner 판정을 직접 구현하면 안 된다.
 
 이 기준은 샘플의 모양을 통일하려는 목적만이 아니다. 같은 시나리오를 여러 언어에서
@@ -455,7 +455,7 @@ Server/Play/
   Application/
     GameCreation/
       TicTacToeGameCreator
-  Adapters/
+  Infrastructure/
     ZLink/
       Actors/
         PlayActor
@@ -482,11 +482,11 @@ Server/Play/
 | `Domain/TicTacToe/TicTacToeBoard` | 9칸 board, cell 범위 검증, 이미 사용한 cell 검증, 승리 라인 판정을 소유한다. |
 | `Domain/TicTacToe/TicTacToeMatch` | player join, X/O 배정, turn, timeout, win/draw 상태 전이, snapshot 생성을 소유한다. |
 | `Application/GameCreation/TicTacToeGameCreator` | 명시적인 `RoomId`를 만들고, 그 `RoomId` 문자열에서 room Spot routing id를 만든 뒤 room을 생성한다. |
-| `Adapters/ZLink/Sessions/PlaySession` | stream 연결, 첫 packet 인증, actor 생성, session binding, client packet dispatch를 맡는다. |
-| `Adapters/ZLink/Spots/PlayEntrySpot` | actor entry lifecycle, room join request dispatch, observer milestone subscription, actor destroy 진입점을 맡는다. |
-| `Adapters/ZLink/Spots/TicTacToeGame` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, room member push 전송을 맡는다. |
-| `Adapters/ZLink/Spots/Handlers/*` | actor request를 받아 entry Spot에서 room Spot으로 join시키거나 room domain operation을 호출한다. |
-| `Adapters/ZLink/Handlers/CreateGameHandler` | Play channel의 room 생성 request를 application use case로 연결한다. |
+| `Infrastructure/ZLink/Sessions/PlaySession` | stream 연결, 첫 packet 인증, actor 생성, session binding, client packet dispatch를 맡는다. |
+| `Infrastructure/ZLink/Spots/PlayEntrySpot` | actor entry lifecycle, room join request dispatch, observer milestone subscription, actor destroy 진입점을 맡는다. |
+| `Infrastructure/ZLink/Spots/TicTacToeGame` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, room member push 전송을 맡는다. |
+| `Infrastructure/ZLink/Spots/Handlers/*` | actor request를 받아 entry Spot에서 room Spot으로 join시키거나 room domain operation을 호출한다. |
+| `Infrastructure/ZLink/Handlers/CreateGameHandler` | Play channel의 room 생성 request를 application use case로 연결한다. |
 
 observer milestone 처리는 `PlayEntrySpot`의 local notification responsibility다. 언어별로
 private helper, nested class, closure, actor map 같은 구현 세부 표현은 달라도 외부에서 볼 수

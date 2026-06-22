@@ -59,4 +59,4 @@ response인지 확인한다. push 대기는 stream connector의 public wait API�
 - 인증 후 current stream session이 Support actor에 bind 된다.
 - 배정 가능한 agent가 없으면 conversation은 오류가 아니라 `WaitingForAgent`로 남는다.
 - high-level 호출이 업무 객체 기반이고 codec helper가 노출되지 않는다.
-- Domain / Application / Adapters 책임 분리가 유지된다.
+- Domain / Application / Infrastructure 책임 분리가 유지된다.

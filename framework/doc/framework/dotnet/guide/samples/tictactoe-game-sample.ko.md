@@ -121,7 +121,7 @@ Server/Play/
     TicTacToe/
   Application/
     GameCreation/
-  Adapters/
+  Infrastructure/
     ZLink/
       Actors/
       Handlers/
@@ -133,7 +133,7 @@ Server/Play/
 `Domain/TicTacToe` 는 board 검증, turn 검증, winner/draw 판정을 맡는다. ZLink
 framework 타입, stream session, actor context, logger 를 알면 안 된다.
 `Application/GameCreation` 은 명시적인 `RoomId` 를 만들고 room Spot 생성을 요청한다.
-`Adapters/ZLink` 는 channel handler, stream session, actor, Spot lifecycle, Spot
+`Infrastructure/ZLink` 는 channel handler, stream session, actor, Spot lifecycle, Spot
 handler 를 맡는다.
 
 ## 4. 완료 기준
@@ -144,7 +144,7 @@ handler 를 맡는다.
   public DTO 로 노출하지 않는다.
 - TicTacToe는 수동 endpoint 연결만 사용하고 Registry/Discovery 자동 연결을 쓰지 않는다.
 - TicTacToe 는 Api + Play 직접 연결 단일 구조를 따른다.
-- Play 서버는 Domain / Application / Adapters 구조를 유지한다.
+- Play 서버는 Domain / Application / Infrastructure 구조를 유지한다.
 - Entry Spot 과 game room Spot 의 actor packet handler 는
   `Context.Handlers.AddActorRequest<THandler, TActor>(...)` 로 등록하고, game room Spot 의
   join admission 은 `OnActorJoinAsync(...)` 로 선언한다.

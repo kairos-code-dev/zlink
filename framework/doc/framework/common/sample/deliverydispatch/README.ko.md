@@ -298,7 +298,7 @@ Server/DispatchCenter/
       DispatchWorker
       DispatchWorkQueue
       CourierSelectionPolicy
-  Adapters/
+  Infrastructure/
     ZLink/
       Handlers/
         AssignDeliveryHandler
@@ -311,7 +311,7 @@ Server/Tracking/
     DeliveryTracking/
       DeliveryStatusHistory
       DeliveryTrackingState
-  Adapters/
+  Infrastructure/
     ZLink/
       Actors/
         CustomerActor
@@ -327,7 +327,7 @@ Server/Tracking/
         DeliveryStatusPublisher
 
 Server/Session/
-  Adapters/
+  Infrastructure/
     ZLink/
       Sessions/
         CustomerSession

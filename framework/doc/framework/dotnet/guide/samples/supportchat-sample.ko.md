@@ -146,7 +146,7 @@ Server/Support/
     SupportChat/        # Conversation aggregate, 메시지 sequence, status 전이, policy
   Application/
     ConversationAssignment/   # SupportConversationAllocator, AgentAssignmentService 등
-  Adapters/
+  Infrastructure/
     ZLink/
       Actors/           # SupportUserActor (customer/agent)
       Spots/            # SupportEntrySpot, ConversationSpot
@@ -188,7 +188,7 @@ timer handler 파일이 아니라 `ConversationSpot` 의 idle check 와 domain `
 - reconnect 시 같은 actor 와 conversation 상태(`Subject` 포함)가 유지된다.
 - closed conversation 에 보낸 메시지·typing·close 요청은 오류 response 를 반환한다.
 - customer actor 의 `SetAgentAvailableReq` 는 오류 response 를 반환한다.
-- Domain / Application / Adapters 책임 분리가 유지된다.
+- Domain / Application / Infrastructure 책임 분리가 유지된다.
 
 ## 6. 회귀 테스트
 

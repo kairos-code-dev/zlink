@@ -131,7 +131,7 @@ quest event 의 `SourceEventId` 가 중복 적용과 reward 중복 지급을 막
 Server/QuestMission/
   Domain/              # quest aggregate, 조건 평가, domain event 생성
   Application/         # event 적용, projection, reconcile use case
-  Adapters/
+  Infrastructure/
     ZLink/
       Spots/           # PlayerQuestSpot
     Store/             # event store / read model / gameplay state adapter

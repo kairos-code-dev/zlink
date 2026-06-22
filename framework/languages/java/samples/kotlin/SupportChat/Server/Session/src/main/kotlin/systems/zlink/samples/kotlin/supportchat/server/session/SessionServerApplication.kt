@@ -33,7 +33,7 @@ class SessionServerApplication {
                 .enableClient()
             val route = options.addRouteMeshChannel(SampleNames.SupportRouteChannel)
             route.enableServer(SampleTopology.SessionRouteEndpoint)
-            route.enableClient(SampleTopology.SupportRouteEndpoint)
+            route.enableClient()
             route.setRoutingId(RoutingId.from(SampleTopology.SessionRouterRid))
             options.useRegistrySpotRemoteAddresses(SampleNames.SupportSpotDiscovery)
                 .setRouterChannelId(SampleNames.SupportRouteChannel)

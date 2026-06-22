@@ -92,25 +92,24 @@ PLAY_A_ROUTE_ENDPOINT="${TICTACTOE_PLAY_A_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORT
 PLAY_B_ROUTE_ENDPOINT="${TICTACTOE_PLAY_B_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
 PLAY_A_SPOT_PUBSUB_ENDPOINT="${TICTACTOE_PLAY_A_SPOT_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[12]}}"
 PLAY_B_SPOT_PUBSUB_ENDPOINT="${TICTACTOE_PLAY_B_SPOT_PUBSUB_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
-REDIS_ENDPOINT="${TICTACTOE_REDIS_ENDPOINT:-}"
-
 API_A_CONFIG="${RUN_DIR}/sample.api-a.json"
 API_B_CONFIG="${RUN_DIR}/sample.api-b.json"
 PLAY_A_CONFIG="${RUN_DIR}/sample.play-a.json"
 PLAY_B_CONFIG="${RUN_DIR}/sample.play-b.json"
 
-if [[ -z "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "TICTACTOE_REDIS_ENDPOINT is not set and docker is not available." >&2
-    exit 1
-  fi
-  REDIS_CONTAINER_ID="$(docker run -d --rm \
-    --name "zlink-tictactoe-ts-redis-${RANDOM}-$$" \
-    --label "systems.zlink.sample=tictactoe-ts" \
-    -p "127.0.0.1::6379" \
-    redis:7-alpine)"
-  REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+# The sample owns its Redis: always provision a dedicated, throwaway container
+# so room-route state stays isolated per run and never touches a developer's
+# local Redis. (REDIS_ENDPOINT is intentionally derived here, not read from env.)
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the TicTacToe sample (it provisions a dedicated Redis container)." >&2
+  exit 1
 fi
+REDIS_CONTAINER_ID="$(docker run -d --rm \
+  --name "zlink-tictactoe-ts-redis-${RANDOM}-$$" \
+  --label "systems.zlink.sample=tictactoe-ts" \
+  -p "127.0.0.1::6379" \
+  redis:7-alpine)"
+REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 
 python3 - "${API_A_CONFIG}" "${API_B_CONFIG}" "${PLAY_A_CONFIG}" "${PLAY_B_CONFIG}" <<PY
 import json

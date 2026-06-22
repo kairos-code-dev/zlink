@@ -30,7 +30,7 @@ object SampleTopology {
     val StreamEndpoint: String = property("streamEndpoint", "tcp://127.0.0.1:47114")
     val SessionAStreamEndpoint: String = property("sessionAStreamEndpoint", StreamEndpoint)
     val SessionBStreamEndpoint: String = property("sessionBStreamEndpoint", "tcp://127.0.0.1:47125")
-    val RedisEndpoint: String = property("redisEndpoint", "127.0.0.1:6379")
+    val RedisEndpoint: String = requiredProperty("redisEndpoint")
     val RedisKeyPrefix: String = property("redisKeyPrefix", "bingo:kotlin:")
     val ApiNode: String = property("apiNode", "a")
     val PlayNode: String = property("playNode", "a")
@@ -92,4 +92,16 @@ object SampleTopology {
 
     private fun property(name: String, defaultValue: String): String =
         System.getProperty("zlink.samples.bingo.$name", defaultValue)
+
+    // The sample owns its Redis via run_sample.sh/run_sample.ps1, which provisions
+    // an isolated container; require the endpoint so a stray direct run never
+    // silently falls back to a developer's local Redis.
+    private fun requiredProperty(name: String): String {
+        val value = System.getProperty("zlink.samples.bingo.$name")
+        require(!value.isNullOrBlank()) {
+            "System property 'zlink.samples.bingo.$name' is required; run the sample via " +
+                "run_sample.sh/run_sample.ps1, which provisions an isolated Redis container."
+        }
+        return value
+    }
 }

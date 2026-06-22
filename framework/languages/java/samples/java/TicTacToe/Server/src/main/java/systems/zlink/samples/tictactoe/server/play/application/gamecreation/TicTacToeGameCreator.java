@@ -1,7 +1,6 @@
 package systems.zlink.samples.tictactoe.server.play.application.gamecreation;
 
 import java.util.concurrent.atomic.AtomicInteger;
-import systems.zlink.samples.tictactoe.server.configuration.RedisRoomRouteStore;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
@@ -10,11 +9,11 @@ import systems.zlink.samples.tictactoe.shared.contracts.PlayNodeInfo;
 public final class TicTacToeGameCreator {
     private final AtomicInteger sequence = new AtomicInteger();
     private final SampleSettings settings;
-    private final RedisRoomRouteStore routes;
+    private final GameRoomRouteWriter routes;
 
     public TicTacToeGameCreator(
         SampleSettings settings,
-        RedisRoomRouteStore routes) {
+        GameRoomRouteWriter routes) {
         this.settings = settings;
         this.routes = routes;
     }
@@ -25,7 +24,7 @@ public final class TicTacToeGameCreator {
     }
 
     public CreateGameRes created(GameRoom room) {
-        routes.save(new RedisRoomRouteStore.RoomRoute(
+        routes.save(new GameRoomRoute(
             room.roomId(),
             settings.playEndpoint(),
             settings.spotEndpoint(),
@@ -47,5 +46,16 @@ public final class TicTacToeGameCreator {
     }
 
     public record GameRoom(String roomId, String gameName) {
+    }
+
+    public record GameRoomRoute(
+        String roomId,
+        String ownerPlayEndpoint,
+        String ownerSpotEndpoint,
+        String ownerSpotNodeRid) {
+    }
+
+    public interface GameRoomRouteWriter {
+        void save(GameRoomRoute route);
     }
 }

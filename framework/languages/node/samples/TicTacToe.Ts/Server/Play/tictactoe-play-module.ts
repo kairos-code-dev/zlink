@@ -2,17 +2,18 @@ import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { PacketNames } from '../../Shared/Contracts/messages';
 import { SampleNames } from '../Configuration/sample-settings';
-import { CreateGameHandler } from './Adapters/ZLink/Handlers/create-game-handler';
-import { PlayActorFactory } from './Adapters/ZLink/Actors/play-actor-factory';
-import { PlayActorJoinGameHandler } from './Adapters/ZLink/Spots/Handlers/play-actor-join-game-handler';
-import { PlayActorLeaveGameHandler } from './Adapters/ZLink/Spots/Handlers/play-actor-leave-game-handler';
-import { PlayActorPlaceMarkHandler } from './Adapters/ZLink/Spots/Handlers/play-actor-place-mark-handler';
-import { PlayerWinMilestoneEventHandler } from './Adapters/ZLink/Spots/Handlers/player-win-milestone-event-handler';
-import { TicTacToeGameTimerHandler } from './Adapters/ZLink/Spots/Handlers/tictactoe-game-timer-handler';
-import { MilestoneObserverRegistry, PlayEntrySpot } from './Adapters/ZLink/Spots/play-entry-spot';
-import { TicTacToeGameSpot } from './Adapters/ZLink/Spots/tictactoe-game-spot';
-import { TicTacToeGameCreator } from './Application/GameCreation/tictactoe-game-creator';
-import { PlaySessionFactory } from './Adapters/ZLink/Sessions/play-session-factory';
+import { CreateGameHandler } from './Infrastructure/ZLink/Handlers/create-game-handler';
+import { PlayActorFactory } from './Infrastructure/ZLink/Actors/play-actor-factory';
+import { PlayActorJoinGameHandler } from './Infrastructure/ZLink/Spots/Handlers/play-actor-join-game-handler';
+import { PlayActorLeaveGameHandler } from './Infrastructure/ZLink/Spots/Handlers/play-actor-leave-game-handler';
+import { PlayActorPlaceMarkHandler } from './Infrastructure/ZLink/Spots/Handlers/play-actor-place-mark-handler';
+import { PlayerWinMilestoneEventHandler } from './Infrastructure/ZLink/Spots/Handlers/player-win-milestone-event-handler';
+import { TicTacToeGameTimerHandler } from './Infrastructure/ZLink/Spots/Handlers/tictactoe-game-timer-handler';
+import { MilestoneObserverRegistry, PlayEntrySpot } from './Infrastructure/ZLink/Spots/play-entry-spot';
+import { TicTacToeGameSpot } from './Infrastructure/ZLink/Spots/tictactoe-game-spot';
+import { TICTACTOE_GAME_ROOM_PROVISIONER, TicTacToeGameCreator } from './Application/GameCreation/tictactoe-game-creator';
+import { ZLinkTicTacToeGameRoomProvisioner } from './Infrastructure/ZLink/tictactoe-game-room-provisioner';
+import { PlaySessionFactory } from './Infrastructure/ZLink/Sessions/play-session-factory';
 import { PLAY_STREAM_ENDPOINT } from './play-tokens';
 import {
   RedisRoomRouteStore,
@@ -70,6 +71,7 @@ function createTicTacToePlayModule(config: {
       { provide: PLAY_STREAM_ENDPOINT, useValue: config.playStreamEndpoint },
       RedisRoomRouteStore,
       RedisSpotRemoteAddressResolver,
+      { provide: TICTACTOE_GAME_ROOM_PROVISIONER, useClass: ZLinkTicTacToeGameRoomProvisioner },
       TicTacToeGameCreator,
       CreateGameHandler,
       PlayActorFactory,

@@ -450,6 +450,26 @@ bool wait_for_router_payload_local (void *router_, const char *expected_, int ti
     });
 }
 
+bool wait_for_router_rid_payload_local (void *sender_,
+                                        void *receiver_,
+                                        const zlink_routing_id_t &receiver_rid_,
+                                        const char *text_,
+                                        int timeout_ms_)
+{
+    return zlink_test_wait_until (timeout_ms_, [=, &receiver_rid_] {
+        zlink_msg_t outbound;
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&outbound, strlen (text_)));
+        memcpy (zlink_msg_data (&outbound), text_, strlen (text_));
+        const zlink_submit_result_t submit_rc =
+          zlink_send_rid (sender_, &receiver_rid_, &outbound, 1, ZLINK_DONTWAIT);
+        if (submit_rc != ZLINK_SUBMIT_OK)
+            zlink_msg_close (&outbound);
+        if (wait_for_router_payload_local (receiver_, text_, zlink_test_poll_step_ms))
+            return true;
+        return false;
+    });
+}
+
 bool wait_for_dealer_router_delivery_local (void *dealer_,
                                             void *router_,
                                             const char *text_,
@@ -795,6 +815,150 @@ void test_socket_discovery_router_router_uses_single_initiator ()
     TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_a, 3000));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_route_mesh_discovery_router_router_delivers_payload_both_directions ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_broadcast_interval (registry, 50));
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    char router_a_endpoint[MAX_SOCKET_STRING];
+    char router_b_endpoint[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (registry, 5988, registry_pub,
+                                                          sizeof (registry_pub), registry_router,
+                                                          sizeof (registry_router)));
+
+    void *discovery_a =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_ROUTE_MESH, "route-mesh-payload");
+    void *discovery_b =
+      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_ROUTE_MESH, "route-mesh-payload");
+    TEST_ASSERT_NOT_NULL (discovery_a);
+    TEST_ASSERT_NOT_NULL (discovery_b);
+    TEST_ASSERT_TRUE (
+      connect_discovery_registry_with_retry_local (discovery_a, registry_router, 3000));
+    TEST_ASSERT_TRUE (
+      connect_discovery_registry_with_retry_local (discovery_b, registry_router, 3000));
+
+    void *router_a = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *router_b = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (router_a);
+    TEST_ASSERT_NOT_NULL (router_b);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router_a, "route-pa", 8));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router_b, "route-pb", 8));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_discovery (router_a, discovery_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_discovery (router_b, discovery_b));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (router_a, 5989, router_a_endpoint,
+                                                       sizeof (router_a_endpoint)));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (router_b, 5991, router_b_endpoint,
+                                                       sizeof (router_b_endpoint)));
+
+    zlink_routing_id_t rid_a;
+    zlink_routing_id_t rid_b;
+    memset (&rid_a, 0, sizeof (rid_a));
+    memset (&rid_b, 0, sizeof (rid_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (router_a, &rid_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (router_b, &rid_b));
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      discovery_a, ZLINK_SERVICE_ROLE_ROUTER, 1, 10000));
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      discovery_b, ZLINK_SERVICE_ROLE_ROUTER, 1, 10000));
+
+    TEST_ASSERT_TRUE (
+      wait_for_router_rid_payload_local (router_a, router_b, rid_b, "route-a-to-b", 10000));
+    TEST_ASSERT_TRUE (
+      wait_for_router_rid_payload_local (router_b, router_a, rid_a, "route-b-to-a", 10000));
+
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_b, 3000));
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_a, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+void test_route_mesh_discovery_router_router_delivers_payload_across_contexts ()
+{
+    if (!zlink_has ("tcp")) {
+        TEST_IGNORE_MESSAGE ("TCP not available");
+        return;
+    }
+
+    void *registry_ctx = zlink_ctx_new ();
+    void *ctx_a = zlink_ctx_new ();
+    void *ctx_b = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (registry_ctx);
+    TEST_ASSERT_NOT_NULL (ctx_a);
+    TEST_ASSERT_NOT_NULL (ctx_b);
+
+    void *registry = zlink_registry_new (registry_ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_broadcast_interval (registry, 50));
+
+    char registry_pub[MAX_SOCKET_STRING];
+    char registry_router[MAX_SOCKET_STRING];
+    char router_a_endpoint[MAX_SOCKET_STRING];
+    char router_b_endpoint[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (bind_registry_test_endpoints_local (registry, 5999, registry_pub,
+                                                          sizeof (registry_pub), registry_router,
+                                                          sizeof (registry_router)));
+
+    void *discovery_a =
+      zlink_discovery_new (ctx_a, ZLINK_AUTO_CONNECT_ROUTE_MESH, "route-mesh-cross-ctx");
+    void *discovery_b =
+      zlink_discovery_new (ctx_b, ZLINK_AUTO_CONNECT_ROUTE_MESH, "route-mesh-cross-ctx");
+    TEST_ASSERT_NOT_NULL (discovery_a);
+    TEST_ASSERT_NOT_NULL (discovery_b);
+    TEST_ASSERT_TRUE (
+      connect_discovery_registry_with_retry_local (discovery_a, registry_router, 3000));
+    TEST_ASSERT_TRUE (
+      connect_discovery_registry_with_retry_local (discovery_b, registry_router, 3000));
+
+    void *router_a = zlink_socket (ctx_a, ZLINK_SOCKET_ROUTER);
+    void *router_b = zlink_socket (ctx_b, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (router_a);
+    TEST_ASSERT_NOT_NULL (router_b);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router_a, "route-ca", 8));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (router_b, "route-cb", 8));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_discovery (router_a, discovery_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_attach_discovery (router_b, discovery_b));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (router_a, 6003, router_a_endpoint,
+                                                       sizeof (router_a_endpoint)));
+    TEST_ASSERT_TRUE (bind_socket_test_endpoint_local (router_b, 6004, router_b_endpoint,
+                                                       sizeof (router_b_endpoint)));
+
+    zlink_routing_id_t rid_a;
+    zlink_routing_id_t rid_b;
+    memset (&rid_a, 0, sizeof (rid_a));
+    memset (&rid_b, 0, sizeof (rid_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (router_a, &rid_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (router_b, &rid_b));
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      discovery_a, ZLINK_SERVICE_ROLE_ROUTER, 1, 10000));
+    TEST_ASSERT_TRUE (wait_for_discovery_member_role_count_local (
+      discovery_b, ZLINK_SERVICE_ROLE_ROUTER, 1, 10000));
+
+    TEST_ASSERT_TRUE (
+      wait_for_router_rid_payload_local (router_a, router_b, rid_b, "cross-ctx-a-to-b", 10000));
+    TEST_ASSERT_TRUE (
+      wait_for_router_rid_payload_local (router_b, router_a, rid_a, "cross-ctx-b-to-a", 10000));
+
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_b, 3000));
+    TEST_ASSERT_TRUE (destroy_discovery_with_retry_local (&discovery_a, 3000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (registry_ctx));
 }
 
 void test_discovery_channel_contract_rejects_type_conflict_and_persists ()
@@ -1491,6 +1655,8 @@ int main ()
     RUN_TEST (test_socket_discovery_default_dealer_mode_ignores_dealer_peers);
     RUN_TEST (test_socket_discovery_explicit_dealer_mode_targets_dealer);
     RUN_TEST (test_socket_discovery_router_router_uses_single_initiator);
+    RUN_TEST (test_route_mesh_discovery_router_router_delivers_payload_both_directions);
+    RUN_TEST (test_route_mesh_discovery_router_router_delivers_payload_across_contexts);
     RUN_TEST (test_discovery_channel_contract_rejects_type_conflict_and_persists);
     RUN_TEST (test_client_server_dealer_connects_all_routers_and_registry_queries_use_channel);
     RUN_TEST (test_spot_attached_channel_dealer_uses_socket_discovery);

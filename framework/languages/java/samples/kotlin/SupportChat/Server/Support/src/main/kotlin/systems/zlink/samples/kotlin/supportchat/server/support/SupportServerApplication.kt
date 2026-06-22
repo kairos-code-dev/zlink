@@ -15,12 +15,13 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTopology
-import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.actors.SupportActorDirectory
-import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.actors.SupportUserActorFactory
-import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.notifications.ConversationNotificationPublisher
-import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.spots.ConversationSpot
-import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.spots.SupportEntrySpot
-import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.spots.handlers.ConversationSpotCreatedHandler
+import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors.SupportActorDirectory
+import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.actors.SupportUserActorFactory
+import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.notifications.ConversationNotificationPublisher
+import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.ZLinkConversationStarter
+import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.ConversationSpot
+import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.SupportEntrySpot
+import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.handlers.ConversationSpotCreatedHandler
 import systems.zlink.samples.kotlin.supportchat.server.support.application.assignment.AgentAssignmentService
 import systems.zlink.samples.kotlin.supportchat.server.support.application.assignment.AgentAvailabilityDirectory
 import systems.zlink.samples.kotlin.supportchat.server.support.application.assignment.SupportConversationAllocator
@@ -46,7 +47,7 @@ class SupportServerApplication {
                 .enableClient()
             val route = options.addRouteMeshChannel(SampleNames.SupportRouteChannel)
             route.enableServer(SampleTopology.SupportRouteEndpoint)
-            route.enableClient(SampleTopology.SessionRouteEndpoint)
+            route.enableClient()
             route.setRoutingId(RoutingId.from(SampleTopology.SupportRid))
             options.useRegistrySpotRemoteAddresses(SampleNames.SupportSpotDiscovery)
                 .setRouterChannelId(SampleNames.SupportRouteChannel)
@@ -67,7 +68,7 @@ class SupportServerApplication {
         spots: ObjectProvider<ZLinkSpotManager>,
         json: ObjectMapper,
     ): SupportConversationAllocator =
-        SupportConversationAllocator(spots.getObject(), json)
+        SupportConversationAllocator(ZLinkConversationStarter(spots.getObject(), json))
 
     @Bean
     fun conversationNotificationPublisher(): ConversationNotificationPublisher =

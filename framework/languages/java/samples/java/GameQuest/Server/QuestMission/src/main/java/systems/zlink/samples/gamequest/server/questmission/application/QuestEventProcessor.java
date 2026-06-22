@@ -1,22 +1,10 @@
 package systems.zlink.samples.gamequest.server.questmission.application;
 
-import static systems.zlink.framework.ZLinkAwait.await;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.springframework.stereotype.Component;
-import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.spots.ZLinkSpotManager;
-import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.server.questmission.QuestMissionOptions;
 import systems.zlink.samples.gamequest.server.questmission.domain.QuestDomain;
 import systems.zlink.samples.gamequest.server.questmission.domain.QuestDomain.QuestDefinition;
-import systems.zlink.samples.gamequest.server.questmission.spots.PlayerQuestSpot;
-import systems.zlink.samples.gamequest.server.questmission.store.QuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 /**
@@ -26,25 +14,25 @@ import systems.zlink.samples.gamequest.shared.contracts.Messages;
  */
 @Component
 public final class QuestEventProcessor {
-    private final QuestStore store;
-    private final ZLinkSpotManager spots;
+    private final QuestProgressStore store;
+    private final PlayerQuestOwnerProvisioner playerQuestOwners;
     private final QuestOwnerRouter ownerRouter;
-    private final ZLinkClient channels;
-    private final ObjectMapper json;
+    private final GameApiSnapshotClient snapshots;
+    private final QuestProgressNotifier notifications;
     private final String missionName;
 
     public QuestEventProcessor(
-        QuestStore store,
-        ZLinkSpotManager spots,
+        QuestProgressStore store,
+        PlayerQuestOwnerProvisioner playerQuestOwners,
         QuestOwnerRouter ownerRouter,
-        ZLinkClient channels,
-        ObjectMapper json,
+        GameApiSnapshotClient snapshots,
+        QuestProgressNotifier notifications,
         QuestMissionOptions options) {
         this.store = store;
-        this.spots = spots;
+        this.playerQuestOwners = playerQuestOwners;
         this.ownerRouter = ownerRouter;
-        this.channels = channels;
-        this.json = json;
+        this.snapshots = snapshots;
+        this.notifications = notifications;
         this.missionName = options.missionName();
     }
 
@@ -60,7 +48,7 @@ public final class QuestEventProcessor {
             return;
         }
 
-        ensurePlayerQuestSpot(gameplayEvent.playerId());
+        playerQuestOwners.ensure(gameplayEvent.playerId());
         Messages.QuestProgress before = store
             .readProgress(gameplayEvent.playerId(), definition.questId())
             .orElse(null);
@@ -80,7 +68,7 @@ public final class QuestEventProcessor {
         List<Messages.QuestProgress> projection = store.readProjection(gameplayEvent.playerId());
         boolean completed = questEvents.stream()
             .anyMatch(event -> "QuestCompletedEvent".equals(event.eventType()));
-        boolean notified = notifyBoundGameApi(
+        boolean notified = notifications.notify(
             gameplayEvent.sourceApi(),
             new Messages.NotifyQuestProgressReq(
                 gameplayEvent.playerId(),
@@ -98,12 +86,7 @@ public final class QuestEventProcessor {
             return new Messages.SyncQuestProgressRes(store.readProjection(request.playerId()));
         }
 
-        Messages.GetGameplaySnapshotRes snapshot = channels
-            .requestToChannel(
-                SampleNames.gameApiActionChannel("api-a"),
-                new Messages.GetGameplaySnapshotReq(request.playerId()))
-            .timeout(SampleNames.RequestTimeout)
-            .await(Messages.GetGameplaySnapshotRes.class);
+        Messages.GetGameplaySnapshotRes snapshot = snapshots.read("api-a", request.playerId());
         int killCount = snapshot.killCounts().stream()
             .mapToInt(Messages.KillCountSnapshot::count)
             .sum();
@@ -121,39 +104,25 @@ public final class QuestEventProcessor {
         return new Messages.SyncQuestProgressRes(store.readProjection(request.playerId()));
     }
 
-    private void ensurePlayerQuestSpot(String playerId) {
-        Message payload = Message.from(encode(new PlayerQuestSpot.PlayerQuestSpotCreateReq(playerId)));
-        try {
-            await(spots.getOrCreate(
-                PlayerQuestSpot.class,
-                RoutingId.from(("player:" + playerId).getBytes(StandardCharsets.UTF_8)),
-                payload));
-        } finally {
-            payload.close();
-        }
+    public interface QuestProgressStore {
+        java.util.Optional<Messages.QuestProgress> readProgress(String playerId, String questId);
+
+        List<Messages.QuestProgress> readProjection(String playerId);
+
+        boolean hasSourceEvent(String playerId, String questId, String sourceEventId);
+
+        boolean appendAndProject(Messages.QuestProgress progress, List<Messages.StoredQuestEvent> events);
     }
 
-    private boolean notifyBoundGameApi(String sourceApi, Messages.NotifyQuestProgressReq request) {
-        String apiName = "api-b".equals(sourceApi) ? "api-b" : "api-a";
-        try {
-            Messages.NotifyQuestProgressRes delivered = channels
-                .requestToChannel(SampleNames.gameApiActionChannel(apiName), request)
-                .timeout(SampleNames.RequestTimeout)
-                .await(Messages.NotifyQuestProgressRes.class);
-            return delivered != null && delivered.delivered();
-        } catch (RuntimeException error) {
-            System.err.printf(
-                "gamequest mission projection kept while stream notify failed. player=%s%n",
-                request.playerId());
-            return false;
-        }
+    public interface PlayerQuestOwnerProvisioner {
+        void ensure(String playerId);
     }
 
-    private byte[] encode(Object value) {
-        try {
-            return json.writeValueAsBytes(value);
-        } catch (JsonProcessingException ex) {
-            throw new IllegalStateException("Failed to encode PlayerQuestSpotCreateReq.", ex);
-        }
+    public interface GameApiSnapshotClient {
+        Messages.GetGameplaySnapshotRes read(String apiName, String playerId);
+    }
+
+    public interface QuestProgressNotifier {
+        boolean notify(String sourceApi, Messages.NotifyQuestProgressReq request);
     }
 }

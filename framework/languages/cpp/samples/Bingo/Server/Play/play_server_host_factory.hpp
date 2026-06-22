@@ -6,12 +6,12 @@
 #include "../Configuration/sample_topology.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
-#include "Adapters/ZLink/Handlers/allocate_bingo_room_handler.hpp"
-#include "Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
-#include "Adapters/ZLink/Matchmaking/redis_bingo_match_queue.hpp"
-#include "Adapters/ZLink/Actors/player_actor_factory.hpp"
-#include "Adapters/ZLink/Spots/bingo_entry_spot.hpp"
-#include "Adapters/ZLink/Spots/bingo_room_spot.hpp"
+#include "Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp"
+#include "Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
+#include "Infrastructure/ZLink/Matchmaking/redis_bingo_match_queue.hpp"
+#include "Infrastructure/ZLink/Actors/player_actor_factory.hpp"
+#include "Infrastructure/ZLink/Spots/bingo_entry_spot.hpp"
+#include "Infrastructure/ZLink/Spots/bingo_room_spot.hpp"
 #include "Application/RoomAllocation/bingo_room_allocator.hpp"
 
 #include <zlink/codecs/protobuf.hpp>
@@ -78,12 +78,10 @@ class play_server_host_factory_t
             options.add_route_mesh_channel (sample_names_t::play_route_channel)
               .enable_server (topology.selected_play_route_endpoint ())
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
-              .enable_client (topology.peer_play_route_endpoint ())
-              .enable_client (topology.session_a_route_endpoint)
-              .enable_client (topology.session_b_route_endpoint)
+              .enable_client ()
               .enable_spot_route_egress (sample_names_t::play_route_channel);
             options.add_client_server_channel (sample_names_t::api_channel)
-              .enable_client (topology.api_channel_endpoint);
+              .enable_client ();
             options.add_spot_mesh (sample_names_t::room_spot_discovery)
               .use_registry_spot_resolver (sample_names_t::play_route_channel)
               .add_node (topology.selected_play_node_rid ())

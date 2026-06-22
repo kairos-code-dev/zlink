@@ -1,7 +1,9 @@
 using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Net.WebSockets;
-using GameQuest.GameApi.Adapters.Store;
+using GameQuest.GameApi.Infrastructure.Http;
+using GameQuest.GameApi.Infrastructure.Store;
+using GameQuest.GameApi.Infrastructure.ZLink;
 using GameQuest.GameApi.Application;
 using GameQuest.GameApi.Session;
 using GameQuest.Shared;
@@ -21,6 +23,9 @@ internal static class Program
 
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<GameQuestStore>();
+        builder.Services.AddSingleton<IGameplayEventStore>(sp => sp.GetRequiredService<GameQuestStore>());
+        builder.Services.AddSingleton<IGameplayEventPublisher, GameplayEventPublisher>();
+        builder.Services.AddSingleton<IQuestProgressSynchronizer, HttpQuestProgressSynchronizer>();
         builder.Services.AddSingleton<GameQuestSessionRegistry>();
         builder.Services.AddScoped<GameplayActionService>();
         builder.Services.AddScoped<GameQuestSession>();
@@ -31,6 +36,7 @@ internal static class Program
         {
             options.ConfigureDispatch().SetMessageDispatchErrorObserver<GameQuestDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(Program));
+            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var channel = options.AddFanoutChannel(SampleNames.FanoutChannel);
                 channel.EnablePublisher(topology.FanoutPublisherEndpointForApi(apiName));

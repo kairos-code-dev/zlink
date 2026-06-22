@@ -1,39 +1,28 @@
 import { Inject } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { ZLINK_FRAMEWORK_RUNTIME, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import { createGameRes } from '../../../../Shared/Contracts/messages';
 import { SampleDefaults } from '../../../Configuration/sample-settings';
-import {
-  RedisRoomRouteStore,
-  TICTACTOE_SAMPLE_CONFIG
-} from '../../../Configuration/redis-room-route-store';
-import { TicTacToeGameSpot } from '../../Adapters/ZLink/Spots/tictactoe-game-spot';
-import type {
-  ZLinkSpotManager
-} from '@zlink-systems/framework';
+import { TICTACTOE_SAMPLE_CONFIG } from '../../../Configuration/redis-room-route-store';
 import type {
   CreateGameRes
 } from '../../../../Shared/Contracts/messages';
 import type { TicTacToeSampleConfig } from '../../../Configuration/sample-config';
 
+const TICTACTOE_GAME_ROOM_PROVISIONER = Symbol('TICTACTOE_GAME_ROOM_PROVISIONER');
+
+interface TicTacToeGameRoomProvisioner {
+  provision(roomId: string): Promise<void>;
+}
+
 class TicTacToeGameCreator {
   constructor(
-    @Inject(ZLINK_SPOT_MANAGER) private readonly spotManager: ZLinkSpotManager,
-    @Inject(ZLINK_FRAMEWORK_RUNTIME) private readonly runtime: {
-      spotNodeRuntime?: {
-        primaryNode?: {
-          subjects(): unknown[];
-          status(): unknown;
-        };
-      };
-    },
+    @Inject(TICTACTOE_GAME_ROOM_PROVISIONER) private readonly rooms: TicTacToeGameRoomProvisioner,
     @Inject(TICTACTOE_SAMPLE_CONFIG) private readonly config: TicTacToeSampleConfig,
-    private readonly routes: RedisRoomRouteStore
   ) {}
 
   async create(gameName: string): Promise<CreateGameRes> {
     const roomId = `room-${randomUUID().replaceAll('-', '')}`;
-    await this.spotManager.getOrCreate(TicTacToeGameSpot, roomId);
+    await this.rooms.provision(roomId);
     const playNodes = this.config.playEndpoints.map((endpoint, index) => ({
       streamEndpoint: endpoint,
       spotNodeRid: `play-node-${index + 1}`
@@ -42,12 +31,6 @@ class TicTacToeGameCreator {
     console.log(
       `game-created roomId=${roomId} ownerPlayEndpoint=${ownerPlayEndpoint} nodeRid=${this.config.playSpotNodeRid}`
     );
-    await this.routes.save({
-      roomId,
-      ownerPlayEndpoint,
-      ownerSpotEndpoint: this.config.playSpotEndpoint,
-      ownerSpotNodeRid: this.config.playSpotNodeRid
-    });
     return createGameRes(
       roomId,
       gameName,
@@ -59,4 +42,5 @@ class TicTacToeGameCreator {
   }
 }
 
-export { TicTacToeGameCreator };
+export { TICTACTOE_GAME_ROOM_PROVISIONER, TicTacToeGameCreator };
+export type { TicTacToeGameRoomProvisioner };

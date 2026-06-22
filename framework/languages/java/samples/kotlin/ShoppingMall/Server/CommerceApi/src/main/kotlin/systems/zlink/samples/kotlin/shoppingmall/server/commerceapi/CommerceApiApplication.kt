@@ -37,12 +37,12 @@ class CommerceApiApplication {
 
             val peer = CommerceApiInstanceOptions.peerInstance(options.instanceId)
             configurer.addClientServerChannel(SampleNames.commerceApiChannel(peer))
-                .enableClient(SampleTopology.commerceApiEndpoint(peer))
+                .enableClient()
 
             configurer.addClientServerChannel(SampleNames.workflowChannel(SampleNames.WorkflowInstanceA))
-                .enableClient(SampleTopology.workflowEndpoint(SampleNames.WorkflowInstanceA))
+                .enableClient()
             configurer.addClientServerChannel(SampleNames.workflowChannel(SampleNames.WorkflowInstanceB))
-                .enableClient(SampleTopology.workflowEndpoint(SampleNames.WorkflowInstanceB))
+                .enableClient()
         }
 
     companion object {

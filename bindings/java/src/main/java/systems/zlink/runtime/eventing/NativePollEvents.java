@@ -21,6 +21,11 @@ final class NativePollEvents {
             ValueLayout.ADDRESS.byteAlignment());
     }
 
+    static MemorySegment create(Arena arena, int capacity) {
+        return arena.allocate(POLLER_EVENT_SIZE * capacity,
+            ValueLayout.ADDRESS.byteAlignment());
+    }
+
     static int sourceKindValue(MemorySegment state, int index) {
         return state.get(ValueLayout.JAVA_INT,
             offset(index, EVENT_SOURCE_KIND_OFFSET));

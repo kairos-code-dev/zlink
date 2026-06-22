@@ -17,12 +17,13 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTopology;
-import systems.zlink.samples.supportchat.server.support.adapters.zlink.actors.SupportActorDirectory;
-import systems.zlink.samples.supportchat.server.support.adapters.zlink.actors.SupportUserActorFactory;
-import systems.zlink.samples.supportchat.server.support.adapters.zlink.notifications.ConversationNotificationPublisher;
-import systems.zlink.samples.supportchat.server.support.adapters.zlink.spots.ConversationSpot;
-import systems.zlink.samples.supportchat.server.support.adapters.zlink.spots.SupportEntrySpot;
-import systems.zlink.samples.supportchat.server.support.adapters.zlink.spots.handlers.ConversationSpotCreatedHandler;
+import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.actors.SupportActorDirectory;
+import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.actors.SupportUserActorFactory;
+import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.notifications.ConversationNotificationPublisher;
+import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.ZLinkConversationStarter;
+import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.spots.ConversationSpot;
+import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.spots.SupportEntrySpot;
+import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.spots.handlers.ConversationSpotCreatedHandler;
 import systems.zlink.samples.supportchat.server.support.application.assignment.AgentAssignmentService;
 import systems.zlink.samples.supportchat.server.support.application.assignment.AgentAvailabilityDirectory;
 import systems.zlink.samples.supportchat.server.support.application.assignment.SupportConversationAllocator;
@@ -57,7 +58,7 @@ public final class SupportServerApplication {
                 .enableClient();
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.SupportRouteChannel);
             route.enableServer(SampleTopology.SupportRouteEndpoint);
-            route.enableClient(SampleTopology.SessionRouteEndpoint);
+            route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.SupportRid));
             options.useRegistrySpotRemoteAddresses(SampleNames.SupportSpotDiscovery)
                 .setRouterChannelId(SampleNames.SupportRouteChannel);
@@ -78,7 +79,7 @@ public final class SupportServerApplication {
     SupportConversationAllocator supportConversationAllocator(
         ObjectProvider<ZLinkSpotManager> spots,
         ObjectMapper json) {
-        return new SupportConversationAllocator(spots.getObject(), json);
+        return new SupportConversationAllocator(new ZLinkConversationStarter(spots.getObject(), json));
     }
 
     @Bean

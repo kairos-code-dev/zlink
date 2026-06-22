@@ -149,12 +149,12 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                         ContractAccess.topicMessageAdoptFrom(result, fresh.get());
                         return true;
                     }
-                    RoutingId routingId = cachedSpotRoutingId(scratch,
+                    RoutingId routingId = decodeSpotRoutingId(
                       scratch.ridOut.get(ValueLayout.ADDRESS, 0));
                     int topicLength = normalizeTopicLength(scratch.topicOut,
                       TOPIC_CAPACITY,
                       scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                    String topicId = cachedSpotTopic(scratch, topicLength);
+                    String topicId = decodeSpotTopic(scratch, topicLength);
                     success = true;
                     InternalAccess.topicMessageAdoptSingle(result, routingId,
                       topicId, part);
@@ -180,34 +180,16 @@ final class SpotSubscriptionSupport implements AutoCloseable {
         }
     }
 
-    private String cachedSpotTopic(SpotRecvScratch scratch, int topicLength) {
+    private String decodeSpotTopic(SpotRecvScratch scratch, int topicLength) {
         if (topicLength == 0) {
             return "";
         }
-        byte[] cached = scratch.cachedTopicBytes;
-        if (cached != null && cached.length == topicLength) {
-            boolean same = true;
-            for (int i = 0; i < topicLength; i++) {
-                if (cached[i]
-                    != scratch.topicOut.get(ValueLayout.JAVA_BYTE, i)) {
-                    same = false;
-                    break;
-                }
-            }
-            if (same) {
-                return scratch.cachedTopicString;
-            }
-        }
         byte[] raw = scratch.topicOut.asSlice(0, topicLength)
           .toArray(ValueLayout.JAVA_BYTE);
-        String decoded = new String(raw, StandardCharsets.UTF_8);
-        scratch.cachedTopicBytes = raw;
-        scratch.cachedTopicString = decoded;
-        return decoded;
+        return new String(raw, StandardCharsets.UTF_8);
     }
 
-    private static RoutingId cachedSpotRoutingId(SpotRecvScratch scratch,
-                                                 MemorySegment nativeRidPtr) {
+    private static RoutingId decodeSpotRoutingId(MemorySegment nativeRidPtr) {
         if (nativeRidPtr == null || nativeRidPtr.address() == 0) {
             return null;
         }
@@ -218,37 +200,20 @@ final class SpotSubscriptionSupport implements AutoCloseable {
         if (size == 0) {
             return null;
         }
-        byte[] cached = scratch.cachedRoutingIdBytes;
-        if (cached != null && cached.length == size) {
-            boolean same = true;
-            for (int i = 0; i < size; i++) {
-                if (cached[i] != routingId.get(ValueLayout.JAVA_BYTE,
-                        NativeLayouts.ROUTING_ID_DATA_OFFSET + i)) {
-                    same = false;
-                    break;
-                }
-            }
-            if (same) {
-                return scratch.cachedRoutingId;
-            }
-        }
         byte[] value = new byte[size];
         MemorySegment.copy(routingId, NativeLayouts.ROUTING_ID_DATA_OFFSET,
           MemorySegment.ofArray(value), 0, size);
-        RoutingId decoded = InternalAccess.routingIdFromTrusted(value);
-        scratch.cachedRoutingIdBytes = value;
-        scratch.cachedRoutingId = decoded;
-        return decoded;
+        return InternalAccess.routingIdFromTrusted(value);
     }
 
     private Optional<TopicMessage> assembleRemainder(SpotRecvScratch scratch,
                                                      Message firstPart) {
-        RoutingId routingId = cachedSpotRoutingId(scratch,
+        RoutingId routingId = decodeSpotRoutingId(
           scratch.ridOut.get(ValueLayout.ADDRESS, 0));
         int topicLength = normalizeTopicLength(scratch.topicOut,
           TOPIC_CAPACITY,
           scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-        String topicId = cachedSpotTopic(scratch, topicLength);
+        String topicId = decodeSpotTopic(scratch, topicLength);
         java.util.ArrayList<Message> parts = new java.util.ArrayList<>();
         parts.add(firstPart);
         while (true) {
@@ -313,12 +278,12 @@ final class SpotSubscriptionSupport implements AutoCloseable {
                         InternalAccess.messageFinishReceive(part,
                           scratch.hasMoreOut.get(ValueLayout.JAVA_INT, 0) != 0);
                         if (partCount == 0) {
-                            routingId = cachedSpotRoutingId(scratch,
+                            routingId = decodeSpotRoutingId(
                               scratch.ridOut.get(ValueLayout.ADDRESS, 0));
                             int topicLength = normalizeTopicLength(
                               scratch.topicOut, TOPIC_CAPACITY,
                               scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                            topicId = cachedSpotTopic(scratch, topicLength);
+                            topicId = decodeSpotTopic(scratch, topicLength);
                         }
                         if (partCount == parts.length) {
                             parts = Arrays.copyOf(parts, partCount * 2);
@@ -379,7 +344,7 @@ final class SpotSubscriptionSupport implements AutoCloseable {
             if (rc == 0) {
                 int topicLength = normalizeTopicLength(scratch.topicOut,
                   TOPIC_CAPACITY, scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                String topicId = cachedSpotTopic(scratch, topicLength);
+                String topicId = decodeSpotTopic(scratch, topicLength);
                 return Optional.of(ContractAccess.subscriptionEvent(
                   Optional.ofNullable(NativeRoutingIds.read(
                     scratch.subscriptionRid)),
@@ -446,9 +411,5 @@ final class SpotSubscriptionSupport implements AutoCloseable {
         final MemorySegment subscriptionRid =
           arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
         final MemorySegment subscribedOut = arena.allocate(ValueLayout.JAVA_INT);
-        byte[] cachedTopicBytes;
-        String cachedTopicString = "";
-        byte[] cachedRoutingIdBytes;
-        RoutingId cachedRoutingId;
     }
 }

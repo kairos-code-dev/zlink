@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../Shared/Configuration/sample-names';
 
-function createGameQuestClientModule(config: { questEndpoint: string }) {
+function createGameQuestClientModule(config: { registryRouterEndpoint: string; questEndpoint: string }) {
   class GameQuestClientModule {}
 
   Module({
@@ -11,8 +11,10 @@ function createGameQuestClientModule(config: { questEndpoint: string }) {
         useFactory: () => zlinkFramework()
           .codecs()
             .addJson()
+          .useDiscovery()
+            .addRegistryEndpoint(config.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.questChannel)
-            .enableClient(config.questEndpoint)
+            .enableClient()
           .build()
       })
     ]

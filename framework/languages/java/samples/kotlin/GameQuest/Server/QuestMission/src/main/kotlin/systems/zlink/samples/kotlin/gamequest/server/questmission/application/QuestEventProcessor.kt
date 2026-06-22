@@ -1,23 +1,13 @@
 package systems.zlink.samples.kotlin.gamequest.server.questmission.application
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import java.nio.charset.StandardCharsets
 import org.springframework.stereotype.Component
-import systems.zlink.contracts.core.RoutingId
-import systems.zlink.contracts.messaging.Message
-import systems.zlink.framework.ZLinkAwait
-import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.spots.ZLinkSpotManager
-import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.gamequest.server.questmission.QuestMissionOptions
 import systems.zlink.samples.kotlin.gamequest.server.questmission.domain.QuestDomain
-import systems.zlink.samples.kotlin.gamequest.server.questmission.spots.PlayerQuestSpot
-import systems.zlink.samples.kotlin.gamequest.server.questmission.store.QuestStore
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameplayEventEnvelope
-import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetGameplaySnapshotReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GetGameplaySnapshotRes
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.NotifyQuestProgressReq
-import systems.zlink.samples.kotlin.gamequest.shared.contracts.NotifyQuestProgressRes
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgress
+import systems.zlink.samples.kotlin.gamequest.shared.contracts.StoredQuestEvent
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.SyncQuestProgressReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.SyncQuestProgressRes
 
@@ -28,11 +18,11 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.SyncQuestProgress
  */
 @Component
 class QuestEventProcessor(
-    private val store: QuestStore,
-    private val spots: ZLinkSpotManager,
+    private val store: QuestProgressStore,
+    private val playerQuestOwners: PlayerQuestOwnerProvisioner,
     private val ownerRouter: QuestOwnerRouter,
-    private val channels: ZLinkClient,
-    private val json: ObjectMapper,
+    private val snapshots: GameApiSnapshotClient,
+    private val notifications: QuestProgressNotifier,
     options: QuestMissionOptions,
 ) {
     private val missionName = options.missionName
@@ -48,7 +38,7 @@ class QuestEventProcessor(
             QuestDomain.match(gameplayEvent)
         } ?: return
 
-        ensurePlayerQuestSpot(gameplayEvent.playerId)
+        playerQuestOwners.ensure(gameplayEvent.playerId)
         val before = store.readProgress(gameplayEvent.playerId, definition.questId)
         if (store.hasSourceEvent(gameplayEvent.playerId, definition.questId, gameplayEvent.eventId)) {
             return
@@ -65,7 +55,7 @@ class QuestEventProcessor(
 
         val projection = store.readProjection(gameplayEvent.playerId)
         val completed = questEvents.any { it.eventType == "QuestCompletedEvent" }
-        val notified = notifyBoundGameApi(
+        val notified = notifications.notify(
             gameplayEvent.sourceApi,
             NotifyQuestProgressReq(
                 gameplayEvent.playerId,
@@ -86,13 +76,7 @@ class QuestEventProcessor(
             return SyncQuestProgressRes(store.readProjection(request.playerId))
         }
 
-        val snapshot: GetGameplaySnapshotRes = channels
-            .requestToChannel(
-                SampleNames.gameApiActionChannel("api-a"),
-                GetGameplaySnapshotReq(request.playerId),
-            )
-            .timeout(SampleNames.RequestTimeout)
-            .await(GetGameplaySnapshotRes::class.java)
+        val snapshot: GetGameplaySnapshotRes = snapshots.read("api-a", request.playerId)
         val killCount = snapshot.killCounts.sumOf { it.count }
         if (killCount > 0) {
             process(
@@ -111,37 +95,25 @@ class QuestEventProcessor(
         return SyncQuestProgressRes(store.readProjection(request.playerId))
     }
 
-    private fun ensurePlayerQuestSpot(playerId: String) {
-        val payload = Message.from(encode(PlayerQuestSpot.PlayerQuestSpotCreateReq(playerId)))
-        try {
-            ZLinkAwait.await(
-                spots.getOrCreate(
-                    PlayerQuestSpot::class.java,
-                    RoutingId.from("player:$playerId".toByteArray(StandardCharsets.UTF_8)),
-                    payload,
-                ),
-            )
-        } finally {
-            payload.close()
-        }
+    interface QuestProgressStore {
+        fun readProgress(playerId: String, questId: String): QuestProgress?
+
+        fun readProjection(playerId: String): List<QuestProgress>
+
+        fun hasSourceEvent(playerId: String, questId: String, sourceEventId: String): Boolean
+
+        fun appendAndProject(progress: QuestProgress, events: List<StoredQuestEvent>): Boolean
     }
 
-    private fun notifyBoundGameApi(sourceApi: String, request: NotifyQuestProgressReq): Boolean {
-        val apiName = if (sourceApi == "api-b") "api-b" else "api-a"
-        return try {
-            val delivered = channels
-                .requestToChannel(SampleNames.gameApiActionChannel(apiName), request)
-                .timeout(SampleNames.RequestTimeout)
-                .await(NotifyQuestProgressRes::class.java)
-            delivered != null && delivered.delivered
-        } catch (error: RuntimeException) {
-            System.err.printf(
-                "gamequest mission projection kept while stream notify failed. player=%s%n",
-                request.playerId,
-            )
-            false
-        }
+    interface PlayerQuestOwnerProvisioner {
+        fun ensure(playerId: String)
     }
 
-    private fun encode(value: Any): ByteArray = json.writeValueAsBytes(value)
+    interface GameApiSnapshotClient {
+        fun read(apiName: String, playerId: String): GetGameplaySnapshotRes
+    }
+
+    interface QuestProgressNotifier {
+        fun notify(sourceApi: String, request: NotifyQuestProgressReq): Boolean
+    }
 }

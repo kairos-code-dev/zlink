@@ -202,14 +202,15 @@ stream_a_port="${session_a_stream##*:}"
 stream_b_host="${session_b_stream%:*}"
 stream_b_port="${session_b_stream##*:}"
 bingo_redis_key_prefix="${BINGO_REDIS_KEY_PREFIX:-bingo:kotlin:${RANDOM}:$$:}"
-if [[ -z "${BINGO_REDIS_ENDPOINT:-}" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required when BINGO_REDIS_ENDPOINT is not set." >&2
-    exit 1
-  fi
-  redis_container_id="$(docker run -d --rm --name "bingo-kotlin-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
-  BINGO_REDIS_ENDPOINT="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+# The sample owns its Redis: always provision a dedicated, throwaway container
+# so room-allocation state stays isolated per run and never touches a developer's
+# local Redis. (BINGO_REDIS_ENDPOINT is intentionally derived here, not read.)
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)." >&2
+  exit 1
 fi
+redis_container_id="$(docker run -d --rm --name "bingo-kotlin-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+BINGO_REDIS_ENDPOINT="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 redis_host="${BINGO_REDIS_ENDPOINT%:*}"
 redis_port="${BINGO_REDIS_ENDPOINT##*:}"
 wait_port "${redis_host}" "${redis_port}"

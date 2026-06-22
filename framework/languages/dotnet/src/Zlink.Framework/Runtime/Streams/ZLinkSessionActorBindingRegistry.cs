@@ -42,7 +42,7 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
             binding.BindingToken);
 
         runtime.BindSessionActor(actorId, context, binding.BindingToken, actorRef);
-        runtime.BindActorSession(actorId, binding.SessionRid, binding.BindingToken);
+        runtime.BindActorSession(actorId, null, binding.SessionRid, binding.BindingToken);
 
         lock (_bindings)
         {

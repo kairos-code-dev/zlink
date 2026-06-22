@@ -18,6 +18,7 @@ builder.Services.AddZLinkFramework(options =>
     options.ConfigureDispatch().SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>();
     options.AddHandlersFromAssemblyOf(typeof(AssignDeliveryHandler));
     options.Codecs.AddJson();
+    options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
     {
         var channel = options.AddClientServerChannel(SampleNames.DispatchRouteChannel);
         channel.EnableServer(topology.DispatchCenterRouteEndpoint);
@@ -26,17 +27,17 @@ builder.Services.AddZLinkFramework(options =>
     }
     {
         var channel = options.AddClientServerChannel(SampleNames.CourierAChannel);
-                channel.EnableClient(topology.CourierAEndpoint);
+        channel.EnableClient();
 
     }
     {
         var channel = options.AddClientServerChannel(SampleNames.CourierBChannel);
-                channel.EnableClient(topology.CourierBEndpoint);
+        channel.EnableClient();
 
     }
     {
         var channel = options.AddClientServerChannel(SampleNames.TrackingRouteChannel);
-                channel.EnableClient(topology.TrackingRouteEndpoint);
+        channel.EnableClient();
 
     }
 });

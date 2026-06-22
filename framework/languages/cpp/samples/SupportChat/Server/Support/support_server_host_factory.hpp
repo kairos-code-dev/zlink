@@ -6,14 +6,14 @@
 #include "../Configuration/sample_topology.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
-#include "Adapters/ZLink/Actors/support_actor_directory.hpp"
-#include "Adapters/ZLink/Actors/support_user_actor_factory.hpp"
-#include "Adapters/ZLink/Handlers/allocate_conversation_handler.hpp"
-#include "Adapters/ZLink/Handlers/assign_agent_handler.hpp"
-#include "Adapters/ZLink/Handlers/ensure_support_user_actor_handler.hpp"
-#include "Adapters/ZLink/Notifications/conversation_notification_publisher.hpp"
-#include "Adapters/ZLink/Spots/conversation_spot.hpp"
-#include "Adapters/ZLink/Spots/support_entry_spot.hpp"
+#include "Infrastructure/ZLink/Actors/support_actor_directory.hpp"
+#include "Infrastructure/ZLink/Actors/support_user_actor_factory.hpp"
+#include "Infrastructure/ZLink/Handlers/allocate_conversation_handler.hpp"
+#include "Infrastructure/ZLink/Handlers/assign_agent_handler.hpp"
+#include "Infrastructure/ZLink/Handlers/ensure_support_user_actor_handler.hpp"
+#include "Infrastructure/ZLink/Notifications/conversation_notification_publisher.hpp"
+#include "Infrastructure/ZLink/Spots/conversation_spot.hpp"
+#include "Infrastructure/ZLink/Spots/support_entry_spot.hpp"
 #include "Application/ConversationAssignment/agent_assignment_service.hpp"
 #include "Application/ConversationAssignment/agent_availability_directory.hpp"
 #include "Application/ConversationAssignment/support_conversation_allocator.hpp"
@@ -66,7 +66,7 @@ class support_server_host_factory_t
               .enable_server (topology.support_channel_endpoint)
               .use_handler_group ("support");
             options.add_client_server_channel (sample_names_t::api_channel)
-              .enable_client (topology.api_channel_endpoint);
+              .enable_client ();
             options.add_spot_mesh (sample_names_t::support_spot_discovery)
               .add_node (sample_names_t::support_spot_node)
               .enable_router (topology.support_router_endpoint, topology.support_entry_rid)

@@ -26,23 +26,23 @@ try {
     $spotBEndpoint = if ($env:TICTACTOE_SPOT_B_ENDPOINT) { $env:TICTACTOE_SPOT_B_ENDPOINT } else { "tcp://127.0.0.1:$($ports[9])" }
     $spotAPubSubEndpoint = if ($env:TICTACTOE_SPOT_A_PUBSUB_ENDPOINT) { $env:TICTACTOE_SPOT_A_PUBSUB_ENDPOINT } else { "tcp://127.0.0.1:$($ports[10])" }
     $spotBPubSubEndpoint = if ($env:TICTACTOE_SPOT_B_PUBSUB_ENDPOINT) { $env:TICTACTOE_SPOT_B_PUBSUB_ENDPOINT } else { "tcp://127.0.0.1:$($ports[11])" }
-    $redisEndpoint = $env:TICTACTOE_REDIS_ENDPOINT
     $apiAConfigFile = Join-Path $RunDir "appsettings.api-a.json"
     $apiBConfigFile = Join-Path $RunDir "appsettings.api-b.json"
     $playAConfigFile = Join-Path $RunDir "appsettings.play-a.json"
     $playBConfigFile = Join-Path $RunDir "appsettings.play-b.json"
 
-    if (-not $env:TICTACTOE_REDIS_ENDPOINT) {
-        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-            throw "TICTACTOE_REDIS_ENDPOINT is not set and docker is not available."
-        }
-        $redisContainerId = (& docker run -d --rm --name "zlink-tictactoe-dotnet-redis-$PID-$([Guid]::NewGuid().ToString('N'))" -p "127.0.0.1::6379" redis:7-alpine).Trim()
-        if ($LASTEXITCODE -ne 0) {
-            throw "docker failed to start Redis."
-        }
-        $redisPort = (& docker port $redisContainerId "6379/tcp") -replace '^.*:', ''
-        $redisEndpoint = "127.0.0.1:$redisPort"
+    # The sample owns its Redis: always provision a dedicated, throwaway container
+    # so room-route state stays isolated per run and never touches a developer's
+    # local Redis. (TICTACTOE_REDIS_ENDPOINT is intentionally derived here, not read.)
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw "Docker is required to run the TicTacToe sample (it provisions a dedicated Redis container)."
     }
+    $redisContainerId = (& docker run -d --rm --name "zlink-tictactoe-dotnet-redis-$PID-$([Guid]::NewGuid().ToString('N'))" -p "127.0.0.1::6379" redis:7-alpine).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "docker failed to start Redis."
+    }
+    $redisPort = (& docker port $redisContainerId "6379/tcp") -replace '^.*:', ''
+    $redisEndpoint = "127.0.0.1:$redisPort"
 
     function New-TicTacToeSettings {
         param(

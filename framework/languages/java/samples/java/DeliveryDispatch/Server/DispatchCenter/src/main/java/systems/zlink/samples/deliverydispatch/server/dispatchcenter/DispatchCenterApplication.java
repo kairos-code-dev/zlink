@@ -39,11 +39,11 @@ public final class DispatchCenterApplication {
                 .enableServer(SampleTopology.DispatchChannelEndpoint)
                 .addHandlerGroup("dispatch");
             options.addClientServerChannel(SampleNames.CourierAChannel)
-                .enableClient(SampleTopology.CourierAEndpoint);
+                .enableClient();
             options.addClientServerChannel(SampleNames.CourierBChannel)
-                .enableClient(SampleTopology.CourierBEndpoint);
+                .enableClient();
             options.addClientServerChannel(SampleNames.TrackingChannel)
-                .enableClient(SampleTopology.TrackingChannelEndpoint);
+                .enableClient();
         };
     }
 }

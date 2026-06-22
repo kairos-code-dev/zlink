@@ -12,7 +12,9 @@ import systems.zlink.runtime.nativeapi.ContractAccess;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.errors.ZlinkException;
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -32,6 +34,10 @@ public final class NativePoller implements Poller {
     private final Map<Long, Integer> socketIndexes = new HashMap<>();
     private final Map<Long, Integer> spotIndexes = new HashMap<>();
     private MemorySegment handle;
+    private Arena waitArena;
+    private MemorySegment waitEvents = MemorySegment.NULL;
+    private MemorySegment waitErrorOut = MemorySegment.NULL;
+    private int waitEventsCapacity;
 
     public static Poller create() {
         return new NativePoller();
@@ -222,9 +228,9 @@ public final class NativePoller implements Poller {
             ContractAccess.pollEventsMarkReadyCount(events, 0);
             return 0;
         }
-        MemorySegment nativeEvents = NativePollEvents.create(events.capacity());
+        MemorySegment nativeEvents = waitEvents(events.capacity());
         int readyCount = Native.pollerWait(handle, nativeEvents, events.capacity(),
-            DurationConversions.toIntMillis(timeout, "timeout"));
+            DurationConversions.toIntMillis(timeout, "timeout"), waitErrorOut);
         if (readyCount < 0)
             throw ZlinkException.fromLastError("zlink_poller_wait");
         for (int i = 0; i < readyCount; i++) {
@@ -246,6 +252,35 @@ public final class NativePoller implements Poller {
         handle = MemorySegment.NULL;
         unregisterAllExternalProgress();
         items.clear();
+        closeWaitArena();
+    }
+
+    private MemorySegment waitEvents(int capacity) {
+        if (waitArena != null && waitEventsCapacity >= capacity)
+            return waitEvents;
+
+        closeWaitArena();
+        waitArena = Arena.ofShared();
+        // HOT PATH: Poller.wait can run once per receive/send loop iteration.
+        // Keep native event and error-out storage with the poller so public
+        // wait calls do not allocate a new Arena and MemorySegment each time.
+        waitEvents = NativePollEvents.create(waitArena, capacity);
+        waitErrorOut = waitArena.allocate(ValueLayout.JAVA_INT);
+        waitEventsCapacity = capacity;
+        return waitEvents;
+    }
+
+    private void closeWaitArena() {
+        if (waitArena == null)
+            return;
+        try {
+            waitArena.close();
+        } finally {
+            waitArena = null;
+            waitEvents = MemorySegment.NULL;
+            waitErrorOut = MemorySegment.NULL;
+            waitEventsCapacity = 0;
+        }
     }
 
     private void addSocket(Socket socket, int events, long slot) {

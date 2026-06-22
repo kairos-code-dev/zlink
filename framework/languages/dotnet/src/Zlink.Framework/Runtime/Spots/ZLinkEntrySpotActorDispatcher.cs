@@ -55,6 +55,7 @@ internal static class ZLinkEntrySpotActorDispatcher
                     activation,
                     actorState,
                     actor,
+                    frame.SourceNodeRid,
                     frame.SourceSessionRid,
                     frame.Header,
                     frame.Body,
@@ -68,6 +69,7 @@ internal static class ZLinkEntrySpotActorDispatcher
         ZLinkEntrySpotActivation? activation,
         ZLinkActorRuntimeState actorState,
         IZLinkActor actor,
+        RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         ZlinkStreamHeader header,
         Message body,
@@ -80,6 +82,7 @@ internal static class ZLinkEntrySpotActorDispatcher
                     activation,
                     actorState,
                     actor,
+                    sourceNodeRid,
                     sourceSessionRid,
                     header,
                     body,
@@ -97,6 +100,7 @@ internal static class ZLinkEntrySpotActorDispatcher
         ZLinkEntrySpotActivation? activation,
         ZLinkActorRuntimeState actorState,
         IZLinkActor actor,
+        RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         ZlinkStreamHeader header,
         Message body,
@@ -105,6 +109,7 @@ internal static class ZLinkEntrySpotActorDispatcher
         await using var boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actor.ActorId);
         runtime.BindActorSession(
             actor.ActorId,
+            sourceNodeRid,
             sourceSessionRid,
             BuildNativeBoundSessionToken(sourceSessionRid));
 

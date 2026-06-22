@@ -127,7 +127,7 @@ public sealed partial class TopicMessage
     internal void PopulateFromWritableTopicBuffer(RoutingId? routingId,
         int topicLength, MultipartMessageCollection parts)
     {
-        ResetForReuse();
+        ResetForReuse(resetTopic: false);
         _routingId = routingId;
         _routingIdSnapshot = default;
         SetTopicFromWritableBuffer(topicLength);
@@ -139,7 +139,7 @@ public sealed partial class TopicMessage
     {
         if (singlePart == null)
             throw new ArgumentNullException(nameof(singlePart));
-        ResetForReuse();
+        ResetForReuse(resetTopic: false);
         _routingId = routingId;
         _routingIdSnapshot = default;
         SetTopicFromWritableBuffer(topicLength);
@@ -150,7 +150,7 @@ public sealed partial class TopicMessage
         RoutingIdSnapshot routingId, int topicLength,
         MultipartMessageCollection parts)
     {
-        ResetForReuse();
+        ResetForReuse(resetTopic: false);
         _routingIdSnapshot = routingId;
         SetTopicFromWritableBuffer(topicLength);
         _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
@@ -161,13 +161,13 @@ public sealed partial class TopicMessage
     {
         if (singlePart == null)
             throw new ArgumentNullException(nameof(singlePart));
-        ResetForReuse();
+        ResetForReuse(resetTopic: false);
         _routingIdSnapshot = routingId;
         SetTopicFromWritableBuffer(topicLength);
         _singlePart = singlePart;
     }
 
-    private void ResetForReuse()
+    private void ResetForReuse(bool resetTopic = true)
     {
         if (_parts != null)
             _parts.Dispose();
@@ -177,8 +177,11 @@ public sealed partial class TopicMessage
         _singlePart = null;
         _routingId = null;
         _routingIdSnapshot = default;
-        _topic = string.Empty;
-        _topicLength = 0;
+        if (resetTopic)
+        {
+            _topic = string.Empty;
+            _topicLength = 0;
+        }
         _closed = 0;
     }
 
@@ -227,7 +230,9 @@ public sealed partial class TopicMessage
         }
 
         // HOT PATH: Spot.Subscribe(TopicMessage, ...) writes topic bytes into
-        // the reusable buffer supplied by this instance. Swap buffers instead
+        // the reusable buffer supplied by this instance. The reset step leaves
+        // topic state for this method to replace, avoiding a transient empty
+        // topic assignment before every subscribed message. Swap buffers instead
         // of copying, and keep UTF-8 decoding lazy so callers that only inspect
         // the payload do not pay for a string allocation.
         _topicWriteBuffer = _topicBytes;

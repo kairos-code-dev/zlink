@@ -73,7 +73,9 @@ public abstract partial class SpotTestSupport
     private protected static ZLinkBackendActorPart CreateEntryActorHeaderPart(
         ZLinkFrameworkRuntime runtime,
         IZLinkActor actor,
-        string packetName)
+        string packetName,
+        RoutingId? sourceNodeRid = null,
+        RoutingId? sourceSessionRid = null)
     {
         var actorRef = ResolveNativeActorRef(runtime, actor);
         var header = new ZlinkStreamHeader(
@@ -86,8 +88,8 @@ public abstract partial class SpotTestSupport
 
         return new ZLinkBackendActorPart(
             actorRef,
-            RoutingId.From("02"),
-            RoutingId.From("03"),
+            sourceNodeRid ?? RoutingId.From("02"),
+            sourceSessionRid ?? RoutingId.From("03"),
             Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
             More: true);
     }
@@ -95,12 +97,14 @@ public abstract partial class SpotTestSupport
     private protected static ZLinkBackendActorPart CreateEntryActorBodyPart(
         ZLinkFrameworkRuntime runtime,
         IZLinkActor actor,
-        string value)
+        string value,
+        RoutingId? sourceNodeRid = null,
+        RoutingId? sourceSessionRid = null)
     {
         return new ZLinkBackendActorPart(
             ResolveNativeActorRef(runtime, actor),
-            RoutingId.From("02"),
-            RoutingId.From("03"),
+            sourceNodeRid ?? RoutingId.From("02"),
+            sourceSessionRid ?? RoutingId.From("03"),
             Message.From(value),
             More: false);
     }

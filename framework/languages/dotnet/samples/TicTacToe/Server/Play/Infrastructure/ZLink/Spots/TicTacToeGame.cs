@@ -1,0 +1,292 @@
+using Systems.Zlink;
+using Zlink.Framework.Contracts.Codecs.Json;
+using System.Text;
+using TicTacToe.Server.Configuration;
+using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
+using TicTacToe.Server.Play.Domain.TicTacToe;
+using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.Handlers;
+using TicTacToe.Shared.Contracts;
+using Zlink.Framework.Contracts.Spots;
+using Zlink.Framework.Contracts.Timers;
+
+namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots;
+
+sealed class TicTacToeGame(
+    IZLinkSpotContext context,
+    ILogger<TicTacToeGame> logger) : IZLinkSpot<PlayActor>
+{
+    private static readonly TimeSpan GameTickPeriod = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan TurnTimeout = TimeSpan.FromSeconds(15);
+
+    private readonly Dictionary<string, PlayActor> _actors = new(StringComparer.Ordinal);
+    private readonly string _roomId = DecodeRoomId(context.SpotRid);
+    private readonly TicTacToeMatch _match = new(DecodeRoomId(context.SpotRid), TurnTimeout);
+    private IZLinkTimer? _gameTick;
+
+    public IZLinkSpotContext Context { get; } = context;
+
+    public void Configure()
+    {
+        Context.Handlers.AddActorRequest<PlayActorPlaceMarkHandler, PlayActor>(nameof(PlaceMarkReq));
+        Context.Handlers.AddActorSend<PlayActorLeaveGameHandler, PlayActor>(nameof(LeaveGameReq));
+    }
+
+    public ValueTask OnJoinedActorAsync(
+        PlayActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        logger.LogInformation(
+            "game spot: actor joined. actor={ActorId}, roomId={RoomId}",
+            actor.ActorId,
+            _roomId);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnLeaveActorAsync(
+        PlayActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        logger.LogInformation(
+            "game spot: actor left. actor={ActorId}, roomId={RoomId}",
+            actor.ActorId,
+            _roomId);
+        _actors.Remove(actor.ActorId);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask OnDisconnectActorAsync(
+        PlayActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        actor.MarkDisconnected();
+        logger.LogInformation(
+            "game spot: actor disconnected. actor={ActorId}, roomId={RoomId}",
+            actor.ActorId,
+            _roomId);
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        PlayActor player,
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        var joinRequest = request.Decode<TicTacToeGameJoinReq>();
+        var reply = await JoinPlayerAsync(player, joinRequest.RoomId, joinRequest.Player, cancellationToken);
+        logger.LogInformation(
+            "TicTacToeGame: actor join accepted. actor={ActorId}, roomId={RoomId}, mark={Mark}",
+            player.ActorId,
+            joinRequest.RoomId,
+            reply.State.XActorId == player.ActorId ? TicTacToeMarks.X : TicTacToeMarks.O);
+
+        return ZLinkSpotActorJoinResult.Accept(reply.ToJson());
+    }
+
+    public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+        Message request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        logger.LogInformation(
+            "game spot: created. roomId={RoomId}, createPayloadBytes={CreatePayloadBytes}",
+            _roomId,
+            request.Size);
+        return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
+    }
+
+    public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)
+    {
+        _gameTick = await Context.AddTimer<TicTacToeGameTimerHandler>(
+            "game-tick",
+            GameTickPeriod,
+            cancellationToken: cancellationToken);
+    }
+
+    public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        if (_gameTick is not null)
+        {
+            await _gameTick.CancelAsync();
+        }
+    }
+
+    public async ValueTask<TicTacToeGameJoinRes> JoinPlayerAsync(
+        PlayActor actor,
+        string roomId,
+        PlayerInfo player,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(roomId, _roomId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Actor requested join for a different room. roomId={roomId}");
+        }
+
+        if (!string.Equals(player.ActorId, actor.ActorId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Join player '{player.ActorId}' does not match actor '{actor.ActorId}'.");
+        }
+
+        if (player.Level < SampleDefaults.RequiredLevel)
+        {
+            throw new InvalidOperationException(
+                $"Player level {player.Level} is below required level {SampleDefaults.RequiredLevel}.");
+        }
+
+        actor.JoinRoom(roomId);
+        actor.ApplyPlayer(player);
+        _actors[actor.ActorId] = actor;
+
+        var change = _match.JoinPlayer(actor.ActorId, DateTimeOffset.UtcNow);
+        if (change.IsNewPlayer)
+        {
+            await NotifyPlayerJoinedAsync(actor, change.Mark, change.State, cancellationToken);
+        }
+
+        await BroadcastAsync(change.State, actor.ActorId, cancellationToken);
+        return new TicTacToeGameJoinRes(change.State);
+    }
+
+    public async ValueTask<PlaceMarkRes> PlaceMarkAsync(
+        PlayActor actor,
+        int cell,
+        CancellationToken cancellationToken)
+    {
+        var before = _match.Snapshot();
+        var change = _match.PlaceMark(actor.ActorId, cell, DateTimeOffset.UtcNow);
+        await BroadcastAsync(change.State, actor.ActorId, cancellationToken);
+        await PublishWinMilestoneAsync(actor, before, change.State, cancellationToken);
+        return new PlaceMarkRes(change.State);
+    }
+
+    internal async ValueTask TickAsync(CancellationToken cancellationToken)
+    {
+        var change = _match.Tick(DateTimeOffset.UtcNow);
+        if (!change.HasChanged)
+        {
+            return;
+        }
+
+        await BroadcastAsync(change.State, null, cancellationToken);
+    }
+
+    public async ValueTask LeaveGameAsync(
+        PlayActor actor,
+        string roomId,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(roomId, _roomId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"Actor requested leave for a different room. roomId={roomId}");
+        }
+
+        var state = _match.Snapshot();
+        if (!IsTerminal(state))
+        {
+            throw new InvalidOperationException($"Game is not finished. status={state.Status}");
+        }
+
+        if (!_actors.ContainsKey(actor.ActorId))
+        {
+            return;
+        }
+
+        actor.MarkForDestroyAfterRoomLeave();
+        await Context.leaveActor(actor, cancellationToken);
+    }
+
+    private ValueTask BroadcastAsync(
+        GameState state,
+        string? excludedActorId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var message = new GameStateNotify(state);
+        var recipients = _actors.Values
+            .Where(actor => !string.Equals(actor.ActorId, excludedActorId, StringComparison.Ordinal))
+            .ToArray();
+        return SendSessionPushAsync(
+            recipients,
+            actor => actor.Context.BoundSession.Send(message).Async(cancellationToken));
+    }
+
+    private ValueTask NotifyPlayerJoinedAsync(
+        PlayActor joinedActor,
+        string mark,
+        GameState state,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var player = joinedActor.RequirePlayer();
+        var message = new PlayerJoinedNotify(
+            state.RoomId,
+            joinedActor.ActorId,
+            player.DisplayName,
+            player.Level,
+            mark,
+            state);
+
+        var recipients = _actors.Values
+            .Where(actor => !string.Equals(actor.ActorId, joinedActor.ActorId, StringComparison.Ordinal))
+            .ToArray();
+        return SendSessionPushAsync(
+            recipients,
+            actor => actor.Context.BoundSession.Send(message).Async(cancellationToken));
+    }
+
+    private ValueTask PublishWinMilestoneAsync(
+        PlayActor actor,
+        GameState before,
+        GameState after,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(before.Status, TicTacToeGameStatuses.Won, StringComparison.Ordinal)
+            || !string.Equals(after.Status, TicTacToeGameStatuses.Won, StringComparison.Ordinal)
+            || !string.Equals(after.Winner, actor.ActorId, StringComparison.Ordinal))
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        var player = actor.RequirePlayer();
+        var wins = player.Wins + 1;
+        if (wins != 100)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        logger.LogInformation(
+            "game spot: publishing win milestone. actor={ActorId}, roomId={RoomId}, wins={Wins}",
+            player.ActorId,
+            after.RoomId,
+            wins);
+        return Context.Outbound.Publish(
+                SampleTopics.PlayerMilestone,
+                new PlayerWinMilestoneEvent(after.RoomId, player.ActorId, player.DisplayName, wins))
+            .PacketName(nameof(PlayerWinMilestoneEvent))
+            .Async(cancellationToken);
+    }
+
+    private static async ValueTask SendSessionPushAsync(
+        IReadOnlyList<PlayActor> recipients,
+        Func<PlayActor, ValueTask> sendAsync)
+    {
+        foreach (var recipient in recipients)
+        {
+            await sendAsync(recipient);
+        }
+    }
+
+    private static bool IsTerminal(GameState state) =>
+        string.Equals(state.Status, TicTacToeGameStatuses.Won, StringComparison.Ordinal)
+        || string.Equals(state.Status, TicTacToeGameStatuses.Draw, StringComparison.Ordinal)
+        || string.Equals(state.Status, TicTacToeGameStatuses.TurnTimedOut, StringComparison.Ordinal);
+
+    private static string DecodeRoomId(RoutingId spotRid)
+    {
+        return Encoding.UTF8.GetString(spotRid.ToBytes());
+    }
+}

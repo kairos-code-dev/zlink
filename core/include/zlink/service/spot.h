@@ -149,6 +149,12 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_forward_bound_session_p
   zlink_send_flags_t flags_,
   zlink_part_flag_t part_flag_);
 
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_bind_remote_session (
+  void *node_,
+  const zlink_actor_ref_t *actor_,
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink_routing_id_t *source_session_rid_);
+
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_recv_actor_lifecycle (
   void *spot_, zlink_spot_actor_lifecycle_event_t *event_out_, zlink_recv_flags_t flags_);
 

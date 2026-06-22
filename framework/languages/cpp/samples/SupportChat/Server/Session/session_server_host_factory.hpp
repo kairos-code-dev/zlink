@@ -32,9 +32,9 @@ class session_server_host_factory_t
             options.codecs ().add_json ();
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::api_channel)
-              .enable_client (topology.api_channel_endpoint);
+              .enable_client ();
             options.add_client_server_channel (sample_names_t::support_channel)
-              .enable_client (topology.support_channel_endpoint);
+              .enable_client ();
             options.add_spot_mesh (sample_names_t::support_spot_discovery)
               .add_node (sample_names_t::session_spot_node)
               .enable_router (topology.session_router_endpoint, topology.session_router_rid)

@@ -1,11 +1,6 @@
-using Zlink.Framework.Contracts.Codecs.Json;
-using SupportChat.Server.Support.Adapters.ZLink.Spots;
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Spots;
-
 namespace SupportChat.Server.Support.Application.ConversationAssignment;
 
-internal sealed class SupportConversationAllocator(IZLinkSpotManager spots)
+internal sealed class SupportConversationAllocator(IConversationStarter conversations)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private long _conversationSeq;
@@ -20,15 +15,13 @@ internal sealed class SupportConversationAllocator(IZLinkSpotManager spots)
         try
         {
             var conversationId = $"supportchat-conversation-{Interlocked.Increment(ref _conversationSeq)}";
-            using var create = new ConversationCreateRequest(
+            await conversations.StartAsync(
+                conversationId,
+                new ConversationStartRequest(
                     customerActorId,
                     customerDisplayName,
                     subject,
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
-                .ToJson();
-            await spots.GetOrCreateAsync<ConversationSpot>(
-                RoutingId.From(conversationId),
-                create,
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
                 cancellationToken);
 
             return conversationId;
@@ -38,4 +31,18 @@ internal sealed class SupportConversationAllocator(IZLinkSpotManager spots)
             _gate.Release();
         }
     }
+}
+
+internal sealed record ConversationStartRequest(
+    string CustomerActorId,
+    string CustomerDisplayName,
+    string Subject,
+    long CreatedAtUnixMs);
+
+internal interface IConversationStarter
+{
+    ValueTask StartAsync(
+        string conversationId,
+        ConversationStartRequest request,
+        CancellationToken cancellationToken);
 }

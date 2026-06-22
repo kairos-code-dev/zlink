@@ -21,6 +21,7 @@ builder.Services.AddZLinkFramework(options =>
     options.ConfigureDispatch().SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>();
     options.AddHandlersFromAssemblyOf(typeof(OfferDeliveryHandler));
     options.Codecs.AddJson();
+    options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
     {
         var channel = options.AddClientServerChannel(SampleNames.CourierChannel(courierId));
         channel.EnableServer(topology.CourierEndpoint(courierId));

@@ -51,17 +51,14 @@ class session_server_host_factory_t
                                                 bingo_reward_announced_notify_t> ());
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::api_channel)
-              .enable_client (topology.session_node == "b" ? topology.api_b_channel_endpoint
-                                                           : topology.api_a_channel_endpoint);
+              .enable_client ();
             options.add_client_server_channel (sample_names_t::play_channel)
-              .enable_client (topology.session_node == "b" ? topology.play_b_channel_endpoint
-                                                           : topology.play_a_channel_endpoint);
+              .enable_client ();
             options.add_route_mesh_channel (sample_names_t::play_route_channel)
               .enable_server (topology.selected_session_route_endpoint ())
               .set_routing_id (
                 zlink::routing_id_t::from (topology.selected_session_route_rid ()))
-              .enable_client (topology.session_node == "b" ? topology.play_b_route_endpoint
-                                                           : topology.play_a_route_endpoint);
+              .enable_client ();
             options.add_spot_mesh (sample_names_t::room_spot_discovery)
               .use_registry_spot_resolver (sample_names_t::play_route_channel)
               .add_node (sample_names_t::session_spot_node)

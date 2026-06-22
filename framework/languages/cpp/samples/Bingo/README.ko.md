@@ -2,7 +2,7 @@
 
 이 샘플은 공통 Bingo 시나리오의 Session, Api, Play, Registry 역할 구분을 C++ public
 API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Play 서버는
-`Domain`, `Application`, `Adapters/ZLink` 구조로 게임 규칙과 framework 연결 코드를
+`Domain`, `Application`, `Infrastructure/ZLink` 구조로 게임 규칙과 framework 연결 코드를
 나누어 둔다.
 
 포함 범위는 아래와 같다.
@@ -84,8 +84,9 @@ script 는 CTest sample parity와 actor lifecycle runtime gate를 먼저 실행�
 Registry, API, Play, Session 서버 실행 파일을 계속 실행 모드로 띄우고 public client
 실행 파일로 full client/server self-check 를 수행한다.
 
-`BINGO_REDIS_ENDPOINT`가 설정되어 있지 않으면 script 가 Redis Docker container를
-Docker가 배정한 loopback port로 띄우고, self-check 가 끝나면 정상/실패와 관계없이 그
-container를 정리한다. 외부 Redis를 쓰려면 `BINGO_REDIS_ENDPOINT`를 지정한다. script 는 실행마다
-고유한 `BINGO_REDIS_KEY_PREFIX`도 전달하므로 같은 Redis를 쓰는 다른 테스트의 match queue
+script 는 항상 전용 Redis Docker container를 Docker가 배정한 loopback port로 띄우고
+거기서 `BINGO_REDIS_ENDPOINT`를 유도하며, self-check 가 끝나면 정상/실패와 관계없이 그
+container를 정리한다. 따라서 각 실행의 room 할당 상태는 격리되어 개발자의 로컬 Redis를
+건드리지 않으며, 샘플 실행에는 Docker가 필수다. script 는 실행마다 고유한
+`BINGO_REDIS_KEY_PREFIX`도 전달하므로 같은 Redis를 쓰는 다른 테스트의 match queue
 key와 섞이지 않는다.

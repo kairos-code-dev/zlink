@@ -3,7 +3,7 @@ package systems.zlink.samples.gamequest.server.gameapi.handlers;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
-import systems.zlink.samples.gamequest.server.gameapi.store.GameQuestStore;
+import systems.zlink.samples.gamequest.server.gameapi.infrastructure.store.GameQuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 @ZLinkHandlerGroup("gameapi")

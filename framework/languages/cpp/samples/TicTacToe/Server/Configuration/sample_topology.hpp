@@ -4,6 +4,7 @@
 #include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/framework/contracts/configuration/configuration.hpp>
 
+#include <stdexcept>
 #include <string>
 
 namespace zlink::samples::tictactoe
@@ -62,7 +63,16 @@ struct sample_topology_t
         topology.play_node = section.get ("playNode").value_or (topology.play_node);
         topology.play_a_node_rid = section.get ("playANodeRid").value_or (topology.play_a_node_rid);
         topology.play_b_node_rid = section.get ("playBNodeRid").value_or (topology.play_b_node_rid);
-        topology.redis_endpoint = section.get ("redisEndpoint").value_or (topology.redis_endpoint);
+        // The sample owns its Redis via run_sample.sh/run_sample.ps1, which
+        // provisions an isolated container; require the endpoint so a stray
+        // direct run never silently falls back to a developer's local Redis.
+        if (auto value = section.get ("redisEndpoint")) {
+            topology.redis_endpoint = *value;
+        } else {
+            throw std::runtime_error (
+              "redisEndpoint is required; run the sample via run_sample.sh/run_sample.ps1, "
+              "which provisions an isolated Redis container.");
+        }
         topology.redis_key_prefix =
           section.get ("redisKeyPrefix").value_or (topology.redis_key_prefix);
         if (auto value = section.get ("sessionRid")) {
@@ -102,7 +112,7 @@ struct sample_topology_t
     std::string play_node = "a";
     std::string play_a_node_rid = "play-node-1";
     std::string play_b_node_rid = "play-node-2";
-    std::string redis_endpoint = "127.0.0.1:6379";
+    std::string redis_endpoint;
     std::string redis_key_prefix = "zlink:tictactoe-cpp:room:";
     zlink::routing_id_t session_rid = zlink::routing_id_t::from ("1101");
     zlink::routing_id_t play_rid = zlink::routing_id_t::from ("2202");

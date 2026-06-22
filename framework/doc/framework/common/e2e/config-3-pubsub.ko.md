@@ -39,7 +39,7 @@ evidence를 조회해 확인한다.
 
 우선순위: `P0`
 
-**한마디로:** 한 번 발행한 이벤트가 세 subscriber 모두에게 같은 순서로 퍼지는가(fanout이 도는가).
+**한마디로:** warm-up 뒤 측정 구간에서 세 subscriber가 같은 연속 sequence를 같은 순서로 받는가(fanout 증명 — 전량 무손실이 아니라 공통 sequence 도달로 본다).
 
 - 절차: warm-up publish를 반복해 각 subscriber가 처음 수신할 때까지 기다린다(별도 "subscribe 완료" event는 없으므로 warm-up 수신을 구독 준비 barrier로 쓴다). 그 뒤 측정 구간에서 이벤트를 발행한다.
 - 검증: 측정 구간에서 모든 subscriber가 공유하는 하나의 연속 sequence가 존재한다(세 subscriber 모두 그 sequence를 순서대로 수신). `Publish(...).Async()`는 remote 수신을 보장하지 않으므로 "전량 N개 무손실"이 아니라 공통 sequence 도달로 fanout을 증명한다(기존 fanout E2E와 같은 oracle).

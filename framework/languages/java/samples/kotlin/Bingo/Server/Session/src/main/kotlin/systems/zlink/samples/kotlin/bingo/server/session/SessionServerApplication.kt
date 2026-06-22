@@ -32,20 +32,12 @@ class SessionServerApplication {
                 .enableClient()
             val route = options.addRouteMeshChannel(SampleNames.PlayChannel)
             route.enableServer(SampleTopology.selectedSessionRouteEndpoint())
-            route.enableClient(
-                if (SampleTopology.SessionNode == "b") {
-                    SampleTopology.PlayBRouteEndpoint
-                } else {
-                    SampleTopology.PlayARouteEndpoint
-                },
-            )
+            route.enableClient()
             route.setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()))
             val node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
                 .addNode(SampleNames.SessionSpotNode)
             node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
                 .setRouterRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()))
-                .connectRouter(SampleTopology.PlayASpotRouterEndpoint)
-                .connectRouter(SampleTopology.PlayBSpotRouterEndpoint)
             options.addStreamNode(SampleNames.StreamNode)
                 .attachActorGateway(SampleNames.SessionSpotNode)
                 .bind(SampleTopology.selectedStreamEndpoint())

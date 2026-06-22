@@ -20,10 +20,11 @@ cd framework\languages\node\samples\Bingo.Ts
 .\run_sample.ps1
 ```
 
-`BINGO_REDIS_ENDPOINT`가 설정되어 있지 않으면 runner가 Redis Docker container를
-Docker가 배정한 loopback port로 띄우고, self-check가 끝나면 정상/실패와 관계없이
-container를 정리한다. 외부 Redis를 쓰려면 `BINGO_REDIS_ENDPOINT`를 지정한다. runner는 실행마다
-고유한 `BINGO_REDIS_KEY_PREFIX`도 전달하므로 같은 Redis를 쓰는 다른 테스트의 match queue
+runner는 항상 전용 Redis Docker container를 Docker가 배정한 loopback port로 띄우고
+거기서 `BINGO_REDIS_ENDPOINT`를 유도하며, self-check가 끝나면 정상/실패와 관계없이
+container를 정리한다. 따라서 각 실행의 room 할당 상태는 격리되어 개발자의 로컬 Redis를
+건드리지 않으며, 샘플 실행에는 Docker가 필수다. runner는 실행마다 고유한
+`BINGO_REDIS_KEY_PREFIX`도 전달하므로 같은 Redis를 쓰는 다른 테스트의 match queue
 key와 섞이지 않는다.
 
 ## Topology
@@ -41,8 +42,8 @@ key와 섞이지 않는다.
 - `Server/Play/Domain/Bingo/`: 3 x 3 card 검증, draw order, winner 판정을 맡는 순수 게임
   규칙을 둔다. ZLink framework 타입을 참조하지 않는다.
 - `Server/Play/Application/RoomAllocation/`: matching 요청을 room 배정 use case 로 처리한다.
-- `Server/Play/Adapters/ZLink/Matchmaking/`: Redis-backed match queue adapter를 둔다.
-- `Server/Play/Adapters/ZLink/`: actor, Entry Spot, room Spot, handler, bound session 연결을 맡는다.
+- `Server/Play/Infrastructure/ZLink/Matchmaking/`: Redis-backed match queue adapter를 둔다.
+- `Server/Play/Infrastructure/ZLink/`: actor, Entry Spot, room Spot, handler, bound session 연결을 맡는다.
 - `Server/Registry/`: 내장 ZLink Registry host 를 실행한다. Session 과 API 는 peer
   endpoint 를 직접 들고 있지 않고 Registry/Discovery 를 통해 연결 대상을 찾는다.
 - `Server/Configuration/`: 서버 role 의 channel 이름, 서비스 이름, timeout, 실행 endpoint 설정을 둔다.

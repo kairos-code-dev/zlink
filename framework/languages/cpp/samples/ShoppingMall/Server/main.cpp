@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -22,11 +23,35 @@ std::string workflow_endpoint ()
     return "tcp://127.0.0.1:32093";
 }
 
+std::string registry_pub_endpoint ()
+{
+    if (const char *value = std::getenv ("SHOPPINGMALL_REGISTRY_PUB_ENDPOINT");
+        value != nullptr && *value != '\0') {
+        return value;
+    }
+    return "tcp://127.0.0.1:32085";
+}
+
+std::string registry_router_endpoint ()
+{
+    if (const char *value = std::getenv ("SHOPPINGMALL_REGISTRY_ROUTER_ENDPOINT");
+        value != nullptr && *value != '\0') {
+        return value;
+    }
+    return "tcp://127.0.0.1:32086";
+}
+
 } // namespace
 
 int main (int argc, char **argv)
 {
     using namespace zlink::samples::shoppingmall;
+
+    auto registry_app = zlink::framework::app_t::create ();
+    registry_app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        options.enable_registry (registry_pub_endpoint (), registry_router_endpoint ());
+    });
+    std::thread registry_thread ([&] { (void) registry_app.run (argc, argv); });
 
     auto app = zlink::framework::app_t::create ();
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
@@ -55,9 +80,15 @@ int main (int argc, char **argv)
           .add_json<server_assertion_req_t> ()
           .add_json<server_assertion_res_t> ()
           .add_json<order_state_t> ();
+        options.use_discovery ().add_registry_endpoint (registry_router_endpoint ());
         options.add_client_server_channel ("shoppingmall.workflow")
           .enable_server (workflow_endpoint ())
           .use_handler_group ("workflow");
     });
-    return app.run (argc, argv);
+    const auto exit_code = app.run (argc, argv);
+    registry_app.stop ();
+    if (registry_thread.joinable ()) {
+        registry_thread.join ();
+    }
+    return exit_code;
 }

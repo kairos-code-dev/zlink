@@ -9,7 +9,11 @@ import { ServerAssertionHandler } from './Handlers/server-assertion-handler';
 import { SubscribeDeliveryHandler } from './Handlers/subscribe-delivery-handler';
 import { DeliveryStore } from './delivery-store';
 
-function createDeliveryDispatchModule(config: { dispatchEndpoint: string }) {
+function createDeliveryDispatchModule(config: {
+  registryPubEndpoint: string;
+  registryRouterEndpoint: string;
+  dispatchEndpoint: string;
+}) {
   class DeliveryDispatchModule {}
 
   Module({
@@ -18,6 +22,8 @@ function createDeliveryDispatchModule(config: { dispatchEndpoint: string }) {
         useFactory: () => zlinkFramework()
           .codecs()
             .addJson()
+          .useDiscovery()
+            .addRegistryEndpoint(config.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.dispatchChannel)
             .enableServer(config.dispatchEndpoint)
             .addRequestHandler(PacketNames.createDeliveryReq, CreateDeliveryHandler)

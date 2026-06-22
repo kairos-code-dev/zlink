@@ -2689,6 +2689,47 @@ zlink_spot_node_actor_forward_bound_session_part (
       actor_ref_->actor_id, actor_ref_->generation, message_, flags_, part_flag_);
 }
 
+extern "C" zlink_config_result_t
+zlink_spot_node_actor_bind_remote_session (
+  void *node_,
+  const zlink_actor_ref_t *actor_ref_,
+  const zlink_routing_id_t *source_node_rid_,
+  const zlink_routing_id_t *source_session_rid_)
+{
+    if (!node_) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    if (!actor_ref_ || !source_node_rid_ || !source_session_rid_
+        || !valid_actor_id (actor_ref_->actor_id) || !valid_routing_id (&actor_ref_->node_rid)
+        || actor_ref_->generation == 0 || !valid_routing_id (source_node_rid_)
+        || !valid_routing_id (source_session_rid_)) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    if (!is_registered_spot_node_handle (node_)) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+
+    zlink::spot_node_t *request_node = static_cast<zlink::spot_node_t *> (node_);
+    std::lock_guard<std::timed_mutex> lock (actor_runtime ().mutex);
+    const actor_resolution_t resolved =
+      resolve_actor_for_request_locked (request_node, actor_ref_, true);
+    if (resolved.result != ZLINK_REQUEST_OK) {
+        errno = resolved.result == ZLINK_REQUEST_NOT_CONNECTED ? ENOTCONN : ENOENT;
+        return zlink::config_result_internal::from_errno (errno);
+    }
+
+    actor_handle_t *actor = resolved.actor;
+    actor->bound_session_node = NULL;
+    actor->bound_session_node_rid = *source_node_rid_;
+    actor->bound_stream = NULL;
+    actor->bound_session_rid = *source_session_rid_;
+    actor->last_changed_ms = now_ms ();
+    return ZLINK_CONFIG_OK;
+}
+
 extern "C" zlink_recv_result_t zlink_spot_recv_actor_lifecycle (
   void *spot_, zlink_spot_actor_lifecycle_event_t *event_out_, zlink_recv_flags_t flags_)
 {

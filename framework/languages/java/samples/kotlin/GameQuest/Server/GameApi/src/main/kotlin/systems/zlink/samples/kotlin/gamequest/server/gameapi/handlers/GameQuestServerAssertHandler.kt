@@ -7,7 +7,7 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.gamequest.server.configuration.QuestIds
 import systems.zlink.samples.kotlin.gamequest.server.configuration.QuestStatuses
 import systems.zlink.samples.kotlin.gamequest.server.gameapi.contracts.GameQuestServerAssertReq
-import systems.zlink.samples.kotlin.gamequest.server.gameapi.store.GameQuestStore
+import systems.zlink.samples.kotlin.gamequest.server.gameapi.infrastructure.store.GameQuestStore
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.GameQuestServerAssertRes
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.QuestProgress
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.StoredQuestEvent

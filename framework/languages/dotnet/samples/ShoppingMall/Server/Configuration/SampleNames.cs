@@ -105,10 +105,21 @@ public sealed record SampleTopology(
 
     public WorkflowInstanceTopology ForOrderId(string orderId)
     {
-        var ownerIndex = Math.Abs(StringComparer.Ordinal.GetHashCode(orderId)) % 2;
+        var ownerIndex = StableOwnerIndex(orderId);
         return ownerIndex == 1
             ? ForWorkflowInstance("workflow-b")
             : ForWorkflowInstance("workflow-a");
+    }
+
+    private static int StableOwnerIndex(string orderId)
+    {
+        var sum = 0;
+        foreach (var c in orderId)
+        {
+            sum = (sum * 31 + c) & 0x7fffffff;
+        }
+
+        return sum % 2;
     }
 
     private static string Read(string name, string fallback)

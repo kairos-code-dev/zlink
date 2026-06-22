@@ -36,7 +36,7 @@ Session/Api/Support  ..discovery..> Registry
   idle/close 전이를 소유한다. framework 타입을 참조하지 않는다.
 - `Server/Support/Application/ConversationAssignment` — `SupportConversationAllocator`,
   `AgentAvailabilityDirectory`, `AgentAssignmentService` use case.
-- `Server/Support/Adapters/ZLink` — Spot lifecycle, actor/handler 등록, notification publish.
+- `Server/Support/Infrastructure/ZLink` — Spot lifecycle, actor/handler 등록, notification publish.
   `ConversationSpot`의 `onActorJoin`/`onLeaveActor`/`onDisconnectActor` lifecycle와
   `SupportEntrySpot`의 actor admission을 어댑터가 맡는다.
 

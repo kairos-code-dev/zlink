@@ -46,7 +46,7 @@ public final class ClientApplication {
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
             options.codecs().addJson();
             options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableClient(SampleTopology.ApiChannelEndpoint);
+                .enableClient();
         };
     }
 

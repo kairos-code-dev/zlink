@@ -40,7 +40,7 @@ public final class DispatchApiApplication {
                 .enableServer(SampleTopology.ApiChannelEndpoint)
                 .addHandlerGroup("api");
             options.addClientServerChannel(SampleNames.DispatchChannel)
-                .enableClient(SampleTopology.DispatchChannelEndpoint);
+                .enableClient();
         };
     }
 }

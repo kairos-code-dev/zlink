@@ -3,8 +3,10 @@ package systems.zlink.samples.tictactoe.server.configuration;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import java.util.Map;
+import systems.zlink.samples.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator.GameRoomRoute;
+import systems.zlink.samples.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator.GameRoomRouteWriter;
 
-public final class RedisRoomRouteStore implements AutoCloseable {
+public final class RedisRoomRouteStore implements GameRoomRouteWriter, AutoCloseable {
     private final RedisClient client;
     private final StatefulRedisConnection<String, String> connection;
     private final String keyPrefix;
@@ -20,6 +22,15 @@ public final class RedisRoomRouteStore implements AutoCloseable {
             "ownerPlayEndpoint", route.ownerPlayEndpoint(),
             "ownerSpotEndpoint", route.ownerSpotEndpoint(),
             "ownerSpotNodeRid", route.ownerSpotNodeRid()));
+    }
+
+    @Override
+    public void save(GameRoomRoute route) {
+        save(new RoomRoute(
+            route.roomId(),
+            route.ownerPlayEndpoint(),
+            route.ownerSpotEndpoint(),
+            route.ownerSpotNodeRid()));
     }
 
     public RoomRoute require(String roomId) {

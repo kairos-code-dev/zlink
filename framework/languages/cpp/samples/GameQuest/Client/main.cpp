@@ -12,13 +12,13 @@
 namespace
 {
 
-std::string quest_endpoint ()
+std::string registry_router_endpoint ()
 {
-    if (const char *value = std::getenv ("GAMEQUEST_QUEST_ENDPOINT");
+    if (const char *value = std::getenv ("GAMEQUEST_REGISTRY_ROUTER_ENDPOINT");
         value != nullptr && *value != '\0') {
         return value;
     }
-    return "tcp://127.0.0.1:32092";
+    return "tcp://127.0.0.1:32084";
 }
 
 class client_scenario_service_t final : public zlink::framework::hosted_service_t
@@ -70,7 +70,8 @@ int main (int argc, char **argv)
           .add_json<zlink::samples::gamequest::game_quest_server_assert_res_t> ()
           .add_json<zlink::samples::gamequest::event_res_t> ()
           .add_json<zlink::samples::gamequest::quest_progress_t> ();
-        options.add_client_server_channel ("gamequest.quest").enable_client (quest_endpoint ());
+        options.use_discovery ().add_registry_endpoint (registry_router_endpoint ());
+        options.add_client_server_channel ("gamequest.quest").enable_client ();
     });
     app.add_hosted_service (std::move (scenario));
     const auto exit_code = app.run (argc, argv);

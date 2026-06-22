@@ -7,7 +7,7 @@ import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
 import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.framework.streams.ZLinkStreamHeader
-import systems.zlink.samples.kotlin.gamequest.server.gameapi.store.GameQuestStore
+import systems.zlink.samples.kotlin.gamequest.server.gameapi.infrastructure.store.GameQuestStore
 
 /**
  * Stream session for a single connected player. Mirrors the .NET

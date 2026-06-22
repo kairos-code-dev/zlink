@@ -1,24 +1,13 @@
 package systems.zlink.samples.supportchat.server.support.application.assignment;
 
-import static systems.zlink.framework.ZLinkAwait.await;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.concurrent.atomic.AtomicInteger;
-import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.spots.ZLinkSpotManager;
-import systems.zlink.samples.supportchat.server.support.adapters.zlink.spots.ConversationSpot;
-import systems.zlink.samples.supportchat.server.support.domain.conversation.ConversationModels.ConversationCreateRequest;
 
 public final class SupportConversationAllocator {
-    private final ZLinkSpotManager spots;
-    private final ObjectMapper json;
+    private final ConversationStarter conversations;
     private final AtomicInteger conversationSeq = new AtomicInteger();
 
-    public SupportConversationAllocator(ZLinkSpotManager spots, ObjectMapper json) {
-        this.spots = spots;
-        this.json = json;
+    public SupportConversationAllocator(ConversationStarter conversations) {
+        this.conversations = conversations;
     }
 
     public String allocate(String customerActorId, String customerDisplayName, String subject) {
@@ -26,24 +15,24 @@ public final class SupportConversationAllocator {
             throw new IllegalStateException("customerActorId is required");
         }
         String conversationId = "conversation-%03d".formatted(conversationSeq.incrementAndGet());
-        Message createPart = serialize(new ConversationCreateRequest(
+        conversations.start(new ConversationStartRequest(
+            conversationId,
             customerActorId,
             customerDisplayName,
             subject,
             System.currentTimeMillis()));
-        try {
-            await(spots.getOrCreate(ConversationSpot.class, RoutingId.from(conversationId), createPart));
-            return conversationId;
-        } finally {
-            createPart.close();
-        }
+        return conversationId;
     }
 
-    private Message serialize(ConversationCreateRequest request) {
-        try {
-            return Message.from(json.writeValueAsBytes(request));
-        } catch (JsonProcessingException ex) {
-            throw new IllegalStateException("Failed to encode conversation create request.", ex);
-        }
+    public record ConversationStartRequest(
+        String conversationId,
+        String customerActorId,
+        String customerDisplayName,
+        String subject,
+        long createdAtUnixMs) {
+    }
+
+    public interface ConversationStarter {
+        void start(ConversationStartRequest request);
     }
 }

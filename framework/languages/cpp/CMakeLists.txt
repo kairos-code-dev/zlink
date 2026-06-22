@@ -930,6 +930,10 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Zlink.Framework.UnitTests/test_cpp_framework_execution.cpp
     "framework-unit;framework-regression;execution")
   add_zlink_framework_test(
+    test_cpp_framework_message_flow
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_message_flow.cpp
+    "framework-unit;framework-regression;framework-observability;diagnostics")
+  add_zlink_framework_test(
     test_cpp_framework_messaging
     tests/Zlink.Framework.UnitTests/test_cpp_framework_messaging.cpp
     "framework-unit;framework-regression;messaging")

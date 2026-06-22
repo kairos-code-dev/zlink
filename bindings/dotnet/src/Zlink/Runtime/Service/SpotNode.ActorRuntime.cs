@@ -92,6 +92,23 @@ internal sealed partial class SpotNode
         }
     }
 
+    public void BindRemoteActorBoundSession(
+        ActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid)
+    {
+        EnsureNotDisposed();
+        var nativeActor = ActorInterop.ToNative(actor);
+        var nativeSourceNode = sourceNodeRid.ToNative();
+        var nativeSourceSession = sourceSessionRid.ToNative();
+        var rc = NativeMethods.zlink_spot_node_actor_bind_remote_session(
+            _handle,
+            ref nativeActor,
+            ref nativeSourceNode,
+            ref nativeSourceSession);
+        ZlinkException.ThrowConfigIfError(rc);
+    }
+
     public void CloseActorBoundSession(ActorRef actor, TimeSpan timeout = default)
     {
         EnsureNotDisposed();

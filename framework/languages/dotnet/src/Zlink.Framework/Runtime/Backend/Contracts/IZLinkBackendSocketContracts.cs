@@ -76,6 +76,8 @@ internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, I
 
     void SetRoutingId(RoutingId routingId);
 
+    void SetMandatory(bool mandatory);
+
     Received? Recv(RecvFlags flags = RecvFlags.None);
 
     bool Send(

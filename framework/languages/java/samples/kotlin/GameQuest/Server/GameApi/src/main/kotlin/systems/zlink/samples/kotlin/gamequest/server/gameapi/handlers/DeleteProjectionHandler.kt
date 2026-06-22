@@ -5,7 +5,7 @@ import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.samples.kotlin.gamequest.server.gameapi.contracts.DeleteProjectionReq
 import systems.zlink.samples.kotlin.gamequest.server.gameapi.contracts.DeleteProjectionRes
-import systems.zlink.samples.kotlin.gamequest.server.gameapi.store.GameQuestStore
+import systems.zlink.samples.kotlin.gamequest.server.gameapi.infrastructure.store.GameQuestStore
 
 /** Self-check: deletes a single quest projection entry to test rebuild. */
 @ZLinkHandlerGroup("gameapi")

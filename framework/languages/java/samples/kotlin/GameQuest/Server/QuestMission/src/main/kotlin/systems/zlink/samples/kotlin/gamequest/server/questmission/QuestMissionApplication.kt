@@ -53,8 +53,8 @@ class QuestMissionApplication {
 
             // gameplay event fanout subscriber (both GameApi publishers)
             configurer.addFanoutChannel(SampleNames.FanoutChannel)
-                .enableSubscriber(SampleTopology.FanoutPublisherAEndpoint)
-                .enableSubscriber(SampleTopology.FanoutPublisherBEndpoint)
+                .enableSubscriber()
+                .enableSubscriber()
                 .addHandlerGroup("gamequest-gameplay")
 
             // mission action channel: GameApi sync calls land here
@@ -64,9 +64,9 @@ class QuestMissionApplication {
 
             // outbound: notify the bound GameApi and read its gameplay snapshot
             configurer.addClientServerChannel(SampleNames.gameApiActionChannel("api-a"))
-                .enableClient(SampleTopology.gameApiActionEndpoint("api-a"))
+                .enableClient()
             configurer.addClientServerChannel(SampleNames.gameApiActionChannel("api-b"))
-                .enableClient(SampleTopology.gameApiActionEndpoint("api-b"))
+                .enableClient()
 
             // per-player owner spot mesh
             val node = configurer.addSpotMesh(SampleNames.QuestSpotDiscovery)

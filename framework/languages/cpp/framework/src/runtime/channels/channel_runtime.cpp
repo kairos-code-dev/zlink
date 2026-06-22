@@ -13,6 +13,7 @@
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <cerrno>
+#include <exception>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -78,6 +79,25 @@ bool has_connection (const channel_capability_snapshot_t *capability)
     return capability != nullptr && capability->enabled
            && (capability->discovery || !capability->bind_endpoints.empty ()
                || !capability->connect_endpoints.empty ());
+}
+
+void connect_registry_with_retry (zlink::service::discovery_t &discovery,
+                                  const std::string &endpoint)
+{
+    std::exception_ptr last_error;
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        try {
+            discovery.connect_registry (endpoint);
+            return;
+        }
+        catch (...) {
+            last_error = std::current_exception ();
+            std::this_thread::sleep_for (std::chrono::milliseconds (10));
+        }
+    }
+    if (last_error) {
+        std::rethrow_exception (last_error);
+    }
 }
 
 framework_exception_t map_native_request_exception (const std::exception &error)
@@ -475,6 +495,11 @@ void channel_runtime_t::bind_serializers (serializer_registry_t &serializers) no
     _state->serializers = &serializers;
 }
 
+void channel_runtime_t::bind_discovery (discovery_snapshot_t discovery) noexcept
+{
+    _state->discovery = std::move (discovery);
+}
+
 dispatch_options_t channel_runtime_t::dispatch_options () const
 {
     return _state->dispatch;
@@ -771,7 +796,10 @@ message_bus_t::submit_request (std::string channel_name,
           reservation.error_kind (),
           reservation.error () ? reservation.error ()->what () : "channel request failed"));
     }
-    if (_state->serializers != nullptr && client != nullptr && !client->connect_endpoints.empty ()) {
+    const bool client_uses_discovery =
+      client != nullptr && client->discovery && !_state->discovery.registry_endpoints.empty ();
+    if (_state->serializers != nullptr && client != nullptr
+        && (client_uses_discovery || !client->connect_endpoints.empty ())) {
         try {
             runtime::messaging::client_call_codec_t codec;
             auto header = codec.create_envelope (runtime::messaging::message_kind_t::request,
@@ -791,10 +819,12 @@ message_bus_t::submit_request (std::string channel_name,
                 endpoints = bundle.manual_connections_from_next ();
             }
             if (endpoints.empty ()) {
-                (void) runtime.cancel_outbound_request (reservation.value ());
-                return erased_request_result_t (framework_exception_t (
-                  framework_error_kind_t::disconnected,
-                  "channel client has no manual endpoint"));
+                if (!client_uses_discovery) {
+                    (void) runtime.cancel_outbound_request (reservation.value ());
+                    return erased_request_result_t (framework_exception_t (
+                      framework_error_kind_t::disconnected,
+                      "channel client has no endpoint"));
+                }
             }
 
             std::optional<framework_exception_t> last_attempt_error;
@@ -813,7 +843,10 @@ message_bus_t::submit_request (std::string channel_name,
                 }
                 return std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
             };
-            for (const auto &endpoint : endpoints) {
+            const std::size_t attempt_count = client_uses_discovery && endpoints.empty ()
+                                                ? 1
+                                                : endpoints.size ();
+            for (std::size_t attempt = 0; attempt < attempt_count; ++attempt) {
                 try {
                     const auto connect_timeout = remaining_timeout ();
                     if (timeout > std::chrono::milliseconds::zero ()
@@ -831,7 +864,17 @@ message_bus_t::submit_request (std::string channel_name,
                     dealer.options ().immediate (true);
                     dealer.options ().connect_timeout (connect_timeout);
                     dealer.options ().request_timeout (connect_timeout);
-                    dealer.connect (endpoint);
+                    std::unique_ptr<zlink::service::discovery_t> discovery;
+                    if (client_uses_discovery && endpoints.empty ()) {
+                        discovery = std::make_unique<zlink::service::discovery_t> (
+                          context, zlink::auto_connect_type::client_server, channel_name);
+                        for (const auto &registry_endpoint : _state->discovery.registry_endpoints) {
+                            detail::connect_registry_with_retry (*discovery, registry_endpoint);
+                        }
+                        dealer.attach_discovery (*discovery);
+                    } else {
+                        dealer.connect (endpoints[attempt]);
+                    }
                     if (timeout > std::chrono::milliseconds::zero ()) {
                         const auto wait_for_connect =
                           std::min (std::chrono::milliseconds (200), remaining_timeout ());
@@ -965,7 +1008,10 @@ result_t<void> message_bus_t::submit_send (std::string channel_name,
         return result_t<void>::failure (framework_error_kind_t::disconnected,
                                         "channel client is not connected");
     }
-    if (_state->serializers != nullptr && client != nullptr && !client->connect_endpoints.empty ()) {
+    const bool client_uses_discovery =
+      client != nullptr && client->discovery && !_state->discovery.registry_endpoints.empty ();
+    if (_state->serializers != nullptr && client != nullptr
+        && (client_uses_discovery || !client->connect_endpoints.empty ())) {
         try {
             runtime::messaging::client_call_codec_t codec;
             auto header = codec.create_envelope (runtime::messaging::message_kind_t::command,
@@ -989,11 +1035,23 @@ result_t<void> message_bus_t::submit_send (std::string channel_name,
                 endpoints = bundle.manual_connections_from_next ();
             }
             if (endpoints.empty ()) {
-                return result_t<void>::failure (framework_error_kind_t::disconnected,
-                                                "channel client has no manual endpoint");
+                if (!client_uses_discovery) {
+                    return result_t<void>::failure (framework_error_kind_t::disconnected,
+                                                    "channel client has no endpoint");
+                }
             }
-            for (const auto &endpoint : endpoints) {
-                dealer.connect (endpoint);
+            std::unique_ptr<zlink::service::discovery_t> discovery;
+            if (client_uses_discovery && endpoints.empty ()) {
+                discovery = std::make_unique<zlink::service::discovery_t> (
+                  context, zlink::auto_connect_type::client_server, channel_name);
+                for (const auto &registry_endpoint : _state->discovery.registry_endpoints) {
+                    detail::connect_registry_with_retry (*discovery, registry_endpoint);
+                }
+                dealer.attach_discovery (*discovery);
+            } else {
+                for (const auto &endpoint : endpoints) {
+                    dealer.connect (endpoint);
+                }
             }
             std::this_thread::sleep_for (std::chrono::milliseconds (200));
 

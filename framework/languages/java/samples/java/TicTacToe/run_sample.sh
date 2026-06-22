@@ -192,20 +192,19 @@ PY
 
 read -r api_a_http_port api_b_http_port api_a_channel_port api_b_channel_port play_a_channel_port play_b_channel_port play_a_stream_port play_b_stream_port play_a_spot_port play_b_spot_port play_a_route_port play_b_route_port play_a_pub_port play_b_pub_port redis_port < <(reserve_ports)
 
-if [[ -z "${TICTACTOE_REDIS_ENDPOINT:-}" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "TICTACTOE_REDIS_ENDPOINT is not set and docker is not available." >&2
-    exit 1
-  fi
-  redis_container_id="$(docker run -d --rm \
-    --name "zlink-tictactoe-java-redis-${RANDOM}-$$" \
-    --label "systems.zlink.sample=tictactoe-java" \
-    -p "127.0.0.1::6379" \
-    redis:7-alpine)"
-  redis_endpoint="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
-else
-  redis_endpoint="${TICTACTOE_REDIS_ENDPOINT}"
+# The sample owns its Redis: always provision a dedicated, throwaway container
+# so room-route state stays isolated per run and never touches a developer's
+# local Redis. (redis_endpoint is intentionally derived here, not read from env.)
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the TicTacToe sample (it provisions a dedicated Redis container)." >&2
+  exit 1
 fi
+redis_container_id="$(docker run -d --rm \
+  --name "zlink-tictactoe-java-redis-${RANDOM}-$$" \
+  --label "systems.zlink.sample=tictactoe-java" \
+  -p "127.0.0.1::6379" \
+  redis:7-alpine)"
+redis_endpoint="$(docker port "${redis_container_id}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 
 api_a_config="${run_dir}/sample.api-a.properties"
 api_b_config="${run_dir}/sample.api-b.properties"

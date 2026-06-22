@@ -1,8 +1,8 @@
-using Bingo.Server.Play.Adapters.ZLink.Actors;
-using Bingo.Server.Play.Adapters.ZLink.Matchmaking;
-using Bingo.Server.Play.Adapters.ZLink.Notifications;
+using Bingo.Server.Play.Infrastructure.ZLink.Actors;
+using Bingo.Server.Play.Infrastructure.Redis;
+using Bingo.Server.Play.Infrastructure.ZLink.Notifications;
 using Bingo.Server.Play.Application.RoomAllocation;
-using Bingo.Server.Play.Adapters.ZLink.Spots;
+using Bingo.Server.Play.Infrastructure.ZLink.Spots;
 using Bingo.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

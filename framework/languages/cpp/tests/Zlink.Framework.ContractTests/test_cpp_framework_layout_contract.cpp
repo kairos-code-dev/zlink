@@ -2124,29 +2124,29 @@ int main ()
     ok &= require_exists (
       root / "samples/Bingo/Server/Play/Application/RoomAllocation/bingo_room_allocator.hpp");
     ok &=
-      require_exists (root / "samples/Bingo/Server/Play/Adapters/ZLink/Actors/player_actor.hpp");
+      require_exists (root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp");
     ok &= require_exists (
-      root / "samples/Bingo/Server/Play/Adapters/ZLink/Actors/player_actor_factory.hpp");
+      root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor_factory.hpp");
     ok &= require_absent (root
-                            / "samples/Bingo/Server/Play/Adapters/ZLink/Notifications/"
+                            / "samples/Bingo/Server/Play/Infrastructure/ZLink/Notifications/"
                               "bingo_notification_publisher.hpp",
                           "BingoRoom publishes reward events and PlayerActor owns session push");
     ok &=
-      require_exists (root / "samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp");
+      require_exists (root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_room_spot.hpp");
     ok &= require_absent (root
-                            / "samples/Bingo/Server/Play/Adapters/ZLink/Spots/Handlers/"
+                            / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/Handlers/"
                               "bingo_room_timer_handler.hpp",
                           "BingoRoom owns draw progression instead of delegating to a shallow handler");
     ok &=
-      require_exists (root / "samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_entry_spot.hpp");
+      require_exists (root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_entry_spot.hpp");
     ok &= require_absent (root
-                            / "samples/Bingo/Server/Play/Adapters/ZLink/Spots/Handlers/"
+                            / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/Handlers/"
                               "match_bingo_actor_handler.hpp",
                           "SPOT actor packets must be registered as spot member functions");
     ok &= require_exists (
-      root / "samples/Bingo/Server/Play/Adapters/ZLink/Handlers/allocate_bingo_room_handler.hpp");
+      root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp");
     ok &= require_exists (
-      root / "samples/Bingo/Server/Play/Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp");
+      root / "samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/play_server_host_factory.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Registry/registry_host_factory.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Session/main.cpp");
@@ -2195,38 +2195,38 @@ int main ()
     ok &= require_absent (root / "samples/TicTacToe/Server/Api/api_server_framework.hpp",
                           "TicTacToe API framework setup belongs in api_server_host_factory.hpp");
     ok &= require_absent (
-      root / "samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/Handlers/join_game_handler.hpp",
+      root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/Handlers/join_game_handler.hpp",
       "SPOT actor packets must be registered as spot member functions");
     ok &=
       require_exists (root / "samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp");
     ok &= require_exists (
       root / "samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp");
     ok &= require_exists (root
-                          / "samples/TicTacToe/Server/Play/Adapters/ZLink/Actors/player_actor.hpp");
+                          / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp");
     ok &= require_exists (root
-                          / "samples/TicTacToe/Server/Play/Adapters/ZLink/Notifications/"
+                          / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Notifications/"
                             "game_notification_publisher.hpp");
     ok &= require_exists (
       root
-      / "samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_contract_mapper.hpp");
+      / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_contract_mapper.hpp");
     ok &= require_exists (
-      root / "samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_models.hpp");
+      root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_models.hpp");
     ok &= require_exists (
-      root / "samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_spot.hpp");
+      root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_spot.hpp");
     ok &= require_absent (root
-                            / "samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/Handlers/"
+                            / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/Handlers/"
                               "tictactoe_game_join_handler.hpp",
                           "SPOT actor joins must be registered as spot member functions");
     ok &= require_absent (
-      root / "samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/Handlers/place_mark_handler.hpp",
+      root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/Handlers/place_mark_handler.hpp",
       "SPOT actor packets must be registered as spot member functions");
     ok &= require_exists (
       root
-      / "samples/TicTacToe/Server/Play/Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp");
+      / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp");
     ok &= require_exists (
-      root / "samples/TicTacToe/Server/Play/Adapters/ZLink/Sessions/play_session.hpp");
+      root / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/play_session.hpp");
     ok &= require_exists (root
-                          / "samples/TicTacToe/Server/Play/Adapters/ZLink/Sessions/Handlers/"
+                          / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/Handlers/"
                             "authenticate_play_session_handler.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Server/Play/play_server_host_factory.hpp");
     ok &= require_absent (root / "samples/TicTacToe/Server/Registry",

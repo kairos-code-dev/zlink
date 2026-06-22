@@ -40,6 +40,11 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         nativeSocket.SetRoutingId(routingId);
     }
 
+    public void SetMandatory(bool mandatory)
+    {
+        nativeSocket.Options.Mandatory = mandatory;
+    }
+
     public void SetPeerWeight(int weight)
     {
         nativeSocket.Options.PeerWeight = weight;

@@ -635,6 +635,9 @@ int main ()
       "local", "request", &local_handler_t::handle_request, {.packet_name = "request"});
     handlers.on_request<local_handler_t, request_t, reply_t> (
       "hosted", "request", &local_handler_t::handle_request, {.packet_name = "request"});
+    handlers.on_request<local_handler_t, request_t, reply_t> (
+      "hosted-discovery", "request", &local_handler_t::handle_request,
+      {.packet_name = "request"});
     handlers.on_request<throwing_handler_t, request_t, reply_t> (
       "local", "request", &throwing_handler_t::handle_request, {.packet_name = "throw"});
     handlers.on_send<local_handler_t, event_t> ("local", "send", &local_handler_t::handle_send,
@@ -1037,7 +1040,8 @@ int main ()
     zlink::framework::detail::channel_runtime_t::from (hosted_builder.message_bus ())
       .bind_serializers (serializers);
     zlink::framework::runtime::channel_host_service_t hosted_service (
-      hosted_builder.message_bus (), hosted_builder.channels (), handlers, serializers);
+      hosted_builder.message_bus (), hosted_builder.channels (), hosted_builder.discovery_options (),
+      handlers, serializers);
     hosted_service.start (provider);
     auto hosted_reply =
       hosted_builder.request_client ("hosted")
@@ -1113,6 +1117,63 @@ int main ()
     }
     hosted_service.stop ();
 
+    zlink::context_t discovery_context;
+    zlink::service::registry_t discovery_registry (discovery_context);
+    const auto discovery_registry_pub = unique_tcp_endpoint ();
+    const auto discovery_registry_router = unique_tcp_endpoint ();
+    const auto discovery_server_endpoint = unique_tcp_endpoint ();
+    discovery_registry.bind (discovery_registry_pub, discovery_registry_router);
+
+    zlink::framework::zlink_builder_t discovery_server_builder;
+    discovery_server_builder.discovery ().connect_registry (discovery_registry_router);
+    discovery_server_builder.channel ("hosted-discovery")
+      .enable_server ()
+      .bind (discovery_server_endpoint);
+    zlink::framework::detail::channel_runtime_t::from (
+      discovery_server_builder.message_bus ())
+      .bind_serializers (serializers);
+    zlink::framework::runtime::channel_host_service_t discovery_hosted_service (
+      discovery_server_builder.message_bus (), discovery_server_builder.channels (),
+      discovery_server_builder.discovery_options (), handlers, serializers);
+    discovery_hosted_service.start (provider);
+
+    zlink::framework::zlink_builder_t discovery_client_builder;
+    discovery_client_builder.discovery ().connect_registry (discovery_registry_router);
+    discovery_client_builder.channel ("hosted-discovery").enable_client ().use_discovery ();
+    auto discovery_client_runtime =
+      zlink::framework::detail::channel_runtime_t::from (
+        discovery_client_builder.message_bus ());
+    discovery_client_runtime.bind_serializers (serializers);
+    discovery_client_runtime.bind_discovery (discovery_client_builder.discovery_options ());
+
+    bool discovery_reply_completed = false;
+    reply_t discovery_reply_value;
+    const auto discovery_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (5);
+    while (std::chrono::steady_clock::now () < discovery_deadline
+           && !discovery_reply_completed) {
+        auto discovery_reply =
+          discovery_client_builder.request_client ("hosted-discovery")
+            .request (request_t{33})
+            .packet_name ("request")
+            .timeout (std::chrono::milliseconds (500))
+            .async<reply_t> ()
+            .result ();
+        if (discovery_reply) {
+            discovery_reply_value = discovery_reply.value ();
+            discovery_reply_completed = true;
+            break;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (25));
+    }
+    discovery_hosted_service.stop ();
+    discovery_registry.close ();
+    discovery_context.shutdown ();
+    discovery_context.term ();
+    if (!discovery_reply_completed || discovery_reply_value.value != 133) {
+        return 88;
+    }
+
     zlink::framework::zlink_builder_t nested_hosted_builder;
     const auto nested_hosted_endpoint = unique_tcp_endpoint ();
     auto nested_hosted_channel = nested_hosted_builder.channel ("hosted-nested");
@@ -1130,8 +1191,8 @@ int main ()
       "hosted-nested", "request", &nested_request_handler_t::handle_request,
       {.packet_name = "request"});
     zlink::framework::runtime::channel_host_service_t nested_hosted_service (
-      nested_hosted_builder.message_bus (), nested_hosted_builder.channels (), nested_handlers,
-      serializers);
+      nested_hosted_builder.message_bus (), nested_hosted_builder.channels (),
+      nested_hosted_builder.discovery_options (), nested_handlers, serializers);
     nested_hosted_service.start (nested_provider);
     auto nested_hosted_reply =
       nested_hosted_builder.request_client ("hosted-nested")
@@ -1161,8 +1222,8 @@ int main ()
       "hosted-scoped", "request", &scoped_channel_handler_t::handle_request,
       {.packet_name = "request"});
     zlink::framework::runtime::channel_host_service_t scoped_hosted_service (
-      scoped_hosted_builder.message_bus (), scoped_hosted_builder.channels (), scoped_handlers,
-      serializers);
+      scoped_hosted_builder.message_bus (), scoped_hosted_builder.channels (),
+      scoped_hosted_builder.discovery_options (), scoped_handlers, serializers);
     scoped_hosted_service.start (scoped_provider);
     auto scoped_hosted_reply =
       scoped_hosted_builder.request_client ("hosted-scoped")

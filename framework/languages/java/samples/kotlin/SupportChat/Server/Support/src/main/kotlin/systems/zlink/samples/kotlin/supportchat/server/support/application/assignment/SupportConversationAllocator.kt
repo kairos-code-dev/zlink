@@ -1,17 +1,9 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.application.assignment
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import java.util.concurrent.atomic.AtomicInteger
-import kotlinx.coroutines.future.await
-import systems.zlink.contracts.core.RoutingId
-import systems.zlink.contracts.messaging.Message
-import systems.zlink.framework.spots.ZLinkSpotManager
-import systems.zlink.samples.kotlin.supportchat.server.support.adapters.zlink.spots.ConversationSpot
-import systems.zlink.samples.kotlin.supportchat.server.support.domain.conversation.ConversationCreateRequest
 
 class SupportConversationAllocator(
-    private val spots: ZLinkSpotManager,
-    private val json: ObjectMapper,
+    private val conversations: ConversationStarter,
 ) {
     private val conversationSeq = AtomicInteger()
 
@@ -22,22 +14,27 @@ class SupportConversationAllocator(
     ): String {
         check(customerActorId.isNotBlank()) { "customerActorId is required" }
         val conversationId = "conversation-%03d".format(conversationSeq.incrementAndGet())
-        val createPart = Message.from(
-            json.writeValueAsBytes(
-                ConversationCreateRequest(
-                    customerActorId,
-                    customerDisplayName,
-                    subject,
-                    System.currentTimeMillis(),
-                ),
+        conversations.start(
+            ConversationStartRequest(
+                conversationId = conversationId,
+                customerActorId = customerActorId,
+                customerDisplayName = customerDisplayName,
+                subject = subject,
+                createdAtUnixMs = System.currentTimeMillis(),
             ),
         )
-        return try {
-            spots.getOrCreate(ConversationSpot::class.java, RoutingId.from(conversationId), createPart)
-                .await()
-            conversationId
-        } finally {
-            createPart.close()
-        }
+        return conversationId
+    }
+
+    data class ConversationStartRequest(
+        val conversationId: String,
+        val customerActorId: String,
+        val customerDisplayName: String,
+        val subject: String,
+        val createdAtUnixMs: Long,
+    )
+
+    interface ConversationStarter {
+        suspend fun start(request: ConversationStartRequest)
     }
 }

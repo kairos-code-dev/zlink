@@ -117,6 +117,13 @@ internal static partial class NativeMethods
         ZlinkPartFlag partFlag);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_node_actor_bind_remote_session(
+        IntPtr node,
+        ref ZlinkActorRef actor,
+        ref ZlinkRoutingId sourceNodeRid,
+        ref ZlinkRoutingId sourceSessionRid);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_actor_close_bound_session(
         IntPtr node,
         ref ZlinkActorRef actor,

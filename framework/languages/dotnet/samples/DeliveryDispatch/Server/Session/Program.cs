@@ -23,7 +23,7 @@ builder.Services.AddZLinkFramework(options =>
     }
     {
         var channel = options.AddFanoutChannel(SampleNames.StatusFanoutChannel);
-                channel.EnableSubscriber(topology.StatusFanoutEndpoint);
+        channel.EnableSubscriber();
         channel.AddPublishHandler<DeliveryStatusFanoutHandler, DeliveryStatusNotify>();
 
     }

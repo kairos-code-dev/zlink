@@ -1,8 +1,9 @@
 using TicTacToe.Server.Configuration;
-using TicTacToe.Server.Play.Adapters.ZLink.Actors;
-using TicTacToe.Server.Play.Adapters.ZLink.Handlers;
-using TicTacToe.Server.Play.Adapters.ZLink.Sessions;
-using TicTacToe.Server.Play.Adapters.ZLink.Spots;
+using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
+using TicTacToe.Server.Play.Infrastructure.ZLink.Handlers;
+using TicTacToe.Server.Play.Infrastructure.ZLink.Sessions;
+using TicTacToe.Server.Play.Infrastructure.ZLink.Spots;
+using TicTacToe.Server.Play.Infrastructure.ZLink;
 using TicTacToe.Server.Play.Application.GameCreation;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Codecs.Json;
@@ -19,6 +20,7 @@ internal sealed class PlayServer(SampleSettings settings)
 
         builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton<IRoomRouteStore, RedisRoomRouteStore>();
+        builder.Services.AddSingleton<ITicTacToeGameRoomProvisioner, TicTacToeGameRoomProvisioner>();
         builder.Services.AddSingleton<TicTacToeGameCreator>();
 
         builder.Services.AddZLinkFramework(options =>

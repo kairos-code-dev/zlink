@@ -96,9 +96,10 @@ static async ValueTask AssertTrackingChannelAsync(
     {
         options.ConfigureDispatch().SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>();
         options.Codecs.AddJson();
+        options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
         {
             var channel = options.AddClientServerChannel(SampleNames.TrackingRouteChannel);
-                        channel.EnableClient(topology.TrackingRouteEndpoint);
+            channel.EnableClient();
 
         }
     });

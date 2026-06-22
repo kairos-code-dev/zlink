@@ -191,19 +191,19 @@ try {
     $apiBEndpoint = Use-Default $env:BINGO_API_B_ENDPOINT "tcp://127.0.0.1:$($ports[17])"
     $redisKeyPrefix = Use-Default $env:BINGO_REDIS_KEY_PREFIX "bingo:node:${PID}:$([Guid]::NewGuid().ToString('N')):"
 
-    $redisEndpoint = $env:BINGO_REDIS_ENDPOINT
-    if ([string]::IsNullOrEmpty($redisEndpoint)) {
-        if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-            throw "Docker is required when BINGO_REDIS_ENDPOINT is not set."
-        }
-        $redisContainer = "bingo-node-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
-        & docker run -d --rm --name $redisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to start Redis Docker container."
-        }
-        $redisPort = (& docker port $redisContainer "6379/tcp") -replace '^.*:', ''
-        $redisEndpoint = "127.0.0.1:$redisPort"
+    # The sample owns its Redis: always provision a dedicated, throwaway container
+    # so room-allocation state stays isolated per run and never touches a developer's
+    # local Redis. (BINGO_REDIS_ENDPOINT is intentionally derived here, not read.)
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        throw "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)."
     }
+    $redisContainer = "bingo-node-redis-$PID-$([Guid]::NewGuid().ToString('N'))"
+    & docker run -d --rm --name $redisContainer -p "127.0.0.1::6379" redis:7.2-alpine | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to start Redis Docker container."
+    }
+    $redisPort = (& docker port $redisContainer "6379/tcp") -replace '^.*:', ''
+    $redisEndpoint = "127.0.0.1:$redisPort"
 
     $clientConfig = Join-Path $runDir "client.config.json"
     $registryConfig = Join-Path $runDir "registry.config.json"

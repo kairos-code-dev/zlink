@@ -12,13 +12,13 @@
 namespace
 {
 
-std::string dispatch_endpoint ()
+std::string registry_router_endpoint ()
 {
-    if (const char *value = std::getenv ("DELIVERYDISPATCH_DISPATCH_ENDPOINT");
+    if (const char *value = std::getenv ("DELIVERYDISPATCH_REGISTRY_ROUTER_ENDPOINT");
         value != nullptr && *value != '\0') {
         return value;
     }
-    return "tcp://127.0.0.1:32091";
+    return "tcp://127.0.0.1:32082";
 }
 
 class client_scenario_service_t final : public zlink::framework::hosted_service_t
@@ -61,8 +61,9 @@ int main (int argc, char **argv)
           .add_json<zlink::samples::deliverydispatch::delivery_state_t> ()
           .add_json<zlink::samples::deliverydispatch::server_assertion_req_t> ()
           .add_json<zlink::samples::deliverydispatch::server_assertion_res_t> ();
+        options.use_discovery ().add_registry_endpoint (registry_router_endpoint ());
         options.add_client_server_channel ("deliverydispatch.dispatch")
-          .enable_client (dispatch_endpoint ());
+          .enable_client ();
     });
     app.add_hosted_service (std::move (scenario));
     const auto exit_code = app.run (argc, argv);

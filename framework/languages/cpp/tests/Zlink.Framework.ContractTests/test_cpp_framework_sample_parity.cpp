@@ -3,24 +3,24 @@
 #include "../../samples/Bingo/Server/Configuration/sample_names.hpp"
 #include "../../samples/Bingo/Server/Configuration/sample_topology.hpp"
 #include "../../samples/Bingo/Shared/Contracts/messages.hpp"
-#include "../../samples/Bingo/Server/Play/Adapters/ZLink/Actors/player_actor_factory.hpp"
-#include "../../samples/Bingo/Server/Play/Adapters/ZLink/Handlers/allocate_bingo_room_handler.hpp"
-#include "../../samples/Bingo/Server/Play/Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
-#include "../../samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_entry_spot.hpp"
-#include "../../samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp"
+#include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor_factory.hpp"
+#include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp"
+#include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
+#include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_entry_spot.hpp"
+#include "../../samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_room_spot.hpp"
 #include "../../samples/Bingo/Server/Play/Application/RoomAllocation/bingo_room_allocator.hpp"
 #include "../../samples/Bingo/Server/Api/Handlers/authenticate_player_handler.hpp"
 #include "../../samples/TicTacToe/Server/Configuration/sample_names.hpp"
 #include "../../samples/TicTacToe/Server/Configuration/sample_topology.hpp"
 #include "../../samples/TicTacToe/Shared/Contracts/messages.hpp"
-#include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Notifications/game_notification_publisher.hpp"
-#include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_contract_mapper.hpp"
-#include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_spot.hpp"
+#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Notifications/game_notification_publisher.hpp"
+#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_contract_mapper.hpp"
+#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_spot.hpp"
 #include "../../samples/TicTacToe/Server/Api/Handlers/authenticate_player_handler.hpp"
 #include "../../samples/TicTacToe/Server/Api/Handlers/create_game_http_handler.hpp"
-#include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Handlers/create_game_handler.hpp"
-#include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
-#include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_entry_spot.hpp"
+#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Handlers/create_game_handler.hpp"
+#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
+#include "../../samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_entry_spot.hpp"
 #include "../../samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp"
 #include "../../samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp"
 #include "../../samples/SupportChat/Server/Configuration/sample_names.hpp"
@@ -29,13 +29,13 @@
 #include "../../samples/SupportChat/Server/Support/Application/ConversationAssignment/agent_assignment_service.hpp"
 #include "../../samples/SupportChat/Server/Support/Application/ConversationAssignment/agent_availability_directory.hpp"
 #include "../../samples/SupportChat/Server/Support/Application/ConversationAssignment/support_conversation_allocator.hpp"
-#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Actors/support_user_actor_factory.hpp"
-#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Handlers/allocate_conversation_handler.hpp"
-#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Handlers/assign_agent_handler.hpp"
-#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Handlers/ensure_support_user_actor_handler.hpp"
-#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Spots/conversation_spot.hpp"
-#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Spots/support_entry_spot.hpp"
-#include "../../samples/SupportChat/Server/Support/Adapters/ZLink/Spots/Handlers/conversation_idle_timer_handler.hpp"
+#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Actors/support_user_actor_factory.hpp"
+#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Handlers/allocate_conversation_handler.hpp"
+#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Handlers/assign_agent_handler.hpp"
+#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Handlers/ensure_support_user_actor_handler.hpp"
+#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/conversation_spot.hpp"
+#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/support_entry_spot.hpp"
+#include "../../samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/Handlers/conversation_idle_timer_handler.hpp"
 #include "../../samples/SupportChat/Server/Api/Handlers/authenticate_user_handler.hpp"
 #include "../../samples/DeliveryDispatch/Client/delivery_dispatch_client_scenario.hpp"
 #include "../../samples/DeliveryDispatch/Server/delivery_dispatch_server_role.hpp"
@@ -90,21 +90,21 @@ bool is_allowed_raw_codec_helper_file (const std::string &relative)
     const std::vector<std::string> allowed{
       "Bingo/Shared/Contracts/messages.hpp",
       "Bingo/Server/Session/Sessions/Handlers/authenticate_session_handler.hpp",
-      "Bingo/Server/Play/Adapters/ZLink/Spots/bingo_entry_spot.hpp",
-      "Bingo/Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp",
+      "Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_entry_spot.hpp",
+      "Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_room_spot.hpp",
       "TicTacToe/Shared/Contracts/messages.hpp",
-      "TicTacToe/Server/Play/Adapters/ZLink/Sessions/Handlers/"
+      "TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/Handlers/"
       "authenticate_play_session_handler.hpp",
-      "TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_entry_spot.hpp",
-      "TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_spot.hpp",
+      "TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_entry_spot.hpp",
+      "TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_spot.hpp",
       "DeliveryDispatch/Shared/Contracts/messages.hpp",
       "GameQuest/Shared/Contracts/messages.hpp",
       "ShoppingMall/Shared/Contracts/messages.hpp",
       "SupportChat/Shared/Contracts/messages.hpp",
       "SupportChat/Server/Session/Sessions/Handlers/authenticate_session_handler.hpp",
       "SupportChat/Server/Support/support_server_host_factory.hpp",
-      "SupportChat/Server/Support/Adapters/ZLink/Spots/conversation_spot.hpp",
-      "SupportChat/Server/Support/Adapters/ZLink/Spots/support_entry_spot.hpp",
+      "SupportChat/Server/Support/Infrastructure/ZLink/Spots/conversation_spot.hpp",
+      "SupportChat/Server/Support/Infrastructure/ZLink/Spots/support_entry_spot.hpp",
     };
     return std::find (allowed.begin (), allowed.end (), relative) != allowed.end ();
 }
@@ -426,7 +426,7 @@ TEST (CppFrameworkSampleParity, SupportChatEntrySpotUsesApiChannelOrchestration)
 {
     const auto support_entry = read_file (
       cpp_language_root ()
-      / "samples/SupportChat/Server/Support/Adapters/ZLink/Spots/support_entry_spot.hpp");
+      / "samples/SupportChat/Server/Support/Infrastructure/ZLink/Spots/support_entry_spot.hpp");
     const auto api_handler = read_file (
       cpp_language_root ()
       / "samples/SupportChat/Server/Api/Handlers/open_conversation_handler.hpp");
@@ -766,15 +766,15 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
         std::string runner_path;
     };
     const std::vector<sample_lifecycle_case_t> cases{
-      {"samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_entry_spot.hpp",
-       "samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp",
-       "samples/Bingo/Server/Play/Adapters/ZLink/Actors/player_actor.hpp",
+      {"samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_entry_spot.hpp",
+       "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/bingo_room_spot.hpp",
+       "samples/Bingo/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp",
        "samples/Bingo/Server/Session/Sessions/bingo_session.hpp", "samples/Bingo/README.ko.md",
        "samples/Bingo/run_sample.sh"},
-      {"samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_entry_spot.hpp",
-       "samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_spot.hpp",
-       "samples/TicTacToe/Server/Play/Adapters/ZLink/Actors/player_actor.hpp",
-       "samples/TicTacToe/Server/Play/Adapters/ZLink/Sessions/play_session.hpp",
+      {"samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_entry_spot.hpp",
+       "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/tictactoe_game_spot.hpp",
+       "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Actors/player_actor.hpp",
+       "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Sessions/play_session.hpp",
        "samples/TicTacToe/README.ko.md", "samples/TicTacToe/run_sample.sh"}};
 
     for (const auto &sample : cases) {

@@ -246,6 +246,17 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
             flags);
     }
 
+    public void BindRemoteActorBoundSession(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid)
+    {
+        nativeSpotNode.BindRemoteActorBoundSession(
+            actor.ToNative(),
+            sourceNodeRid,
+            sourceSessionRid);
+    }
+
     public ValueTask CloseActorBoundSessionAsync(
         ZLinkBackendActorRef actor,
         TimeSpan timeout,

@@ -1559,10 +1559,10 @@ class zlink_framework_options_t
         detail::apply_dispatch_options (*_zlink, _options->dispatch);
         _options->active_zlink = _zlink;
         try {
-            for (const auto &action : _options->deferred_zlink_actions) {
+            for (const auto &[_, action] : _options->keyed_zlink_actions) {
                 action (*_zlink);
             }
-            for (const auto &[_, action] : _options->keyed_zlink_actions) {
+            for (const auto &action : _options->deferred_zlink_actions) {
                 action (*_zlink);
             }
             for (const auto &[_, apply] : _options->spot_node_appliers) {

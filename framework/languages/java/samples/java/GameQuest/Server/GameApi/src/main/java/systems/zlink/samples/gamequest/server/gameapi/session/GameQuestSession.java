@@ -8,7 +8,7 @@ import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
-import systems.zlink.samples.gamequest.server.gameapi.store.GameQuestStore;
+import systems.zlink.samples.gamequest.server.gameapi.infrastructure.store.GameQuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 /**

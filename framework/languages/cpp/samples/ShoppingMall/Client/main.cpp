@@ -12,13 +12,13 @@
 namespace
 {
 
-std::string workflow_endpoint ()
+std::string registry_router_endpoint ()
 {
-    if (const char *value = std::getenv ("SHOPPINGMALL_WORKFLOW_ENDPOINT");
+    if (const char *value = std::getenv ("SHOPPINGMALL_REGISTRY_ROUTER_ENDPOINT");
         value != nullptr && *value != '\0') {
         return value;
     }
-    return "tcp://127.0.0.1:32093";
+    return "tcp://127.0.0.1:32086";
 }
 
 class client_scenario_service_t final : public zlink::framework::hosted_service_t
@@ -64,8 +64,9 @@ int main (int argc, char **argv)
           .add_json<zlink::samples::shoppingmall::server_assertion_req_t> ()
           .add_json<zlink::samples::shoppingmall::server_assertion_res_t> ()
           .add_json<zlink::samples::shoppingmall::order_state_t> ();
+        options.use_discovery ().add_registry_endpoint (registry_router_endpoint ());
         options.add_client_server_channel ("shoppingmall.workflow")
-          .enable_client (workflow_endpoint ());
+          .enable_client ();
     });
     app.add_hosted_service (std::move (scenario));
     const auto exit_code = app.run (argc, argv);

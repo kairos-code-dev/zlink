@@ -1,5 +1,7 @@
-using GameQuest.QuestMission.Adapters.ZLink.Spots;
-using GameQuest.QuestMission.Adapters.Store;
+using GameQuest.QuestMission.Infrastructure.ZLink.Spots;
+using GameQuest.QuestMission.Infrastructure.ZLink;
+using GameQuest.QuestMission.Infrastructure.Http;
+using GameQuest.QuestMission.Infrastructure.Store;
 using GameQuest.QuestMission.Application;
 using GameQuest.Shared;
 using GameQuest.Server.Configuration;
@@ -20,6 +22,10 @@ internal static class Program
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton(instance);
         builder.Services.AddSingleton<QuestStore>();
+        builder.Services.AddSingleton<IQuestStore>(sp => sp.GetRequiredService<QuestStore>());
+        builder.Services.AddSingleton<IPlayerQuestOwnerProvisioner, PlayerQuestOwnerProvisioner>();
+        builder.Services.AddSingleton<IGameApiSnapshotClient, HttpGameApiSnapshotClient>();
+        builder.Services.AddSingleton<IQuestProgressNotifier, HttpQuestProgressNotifier>();
         builder.Services.AddSingleton<QuestOwnerRouter>();
         builder.Services.AddScoped<QuestEventProcessor>();
         builder.Services.AddZLinkFramework(options =>
@@ -30,8 +36,8 @@ internal static class Program
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var channel = options.AddFanoutChannel(SampleNames.FanoutChannel);
-                channel.EnableSubscriber(topology.FanoutPublisherAEndpoint);
-                channel.EnableSubscriber(topology.FanoutPublisherBEndpoint);
+                channel.EnableSubscriber();
+                channel.EnableSubscriber();
                 channel.AddHandlerGroup("gamequest-gameplay");
 
             }

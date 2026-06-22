@@ -40,8 +40,8 @@ public final class ApiServerApplication {
                 .enableServer(SampleTopology.selectedApiChannelEndpoint())
                 .addHandlerGroup("api");
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
-            route.enableClient(SampleTopology.PlayARouteEndpoint);
-            route.enableClient(SampleTopology.PlayBRouteEndpoint);
+            route.enableClient();
+            route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.selectedApiRouteRid()));
         };
     }

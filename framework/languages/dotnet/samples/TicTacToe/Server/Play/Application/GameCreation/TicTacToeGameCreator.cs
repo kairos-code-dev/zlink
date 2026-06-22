@@ -1,14 +1,10 @@
 using TicTacToe.Server.Configuration;
-using TicTacToe.Server.Play.Adapters.ZLink.Spots;
 using TicTacToe.Shared.Contracts;
-using Systems.Zlink;
-using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Application.GameCreation;
 
 internal sealed class TicTacToeGameCreator(
-    IZLinkSpotManager spots,
-    IRoomRouteStore routes,
+    ITicTacToeGameRoomProvisioner rooms,
     SampleSettings settings)
 {
     public async ValueTask<CreateGameRes> CreateAsync(
@@ -16,18 +12,7 @@ internal sealed class TicTacToeGameCreator(
         CancellationToken cancellationToken)
     {
         var roomId = $"room-{Guid.NewGuid():N}";
-        await spots.GetOrCreateAsync<TicTacToeGame>(
-            RoutingId.From(roomId),
-            cancellationToken);
-
-        await routes.SaveAsync(
-            roomId,
-            new RoomRoute(
-                SampleNodes.PlaySpot,
-                settings.PlaySpotNodeRid,
-                roomId,
-                nameof(ZLinkSpotKind.User)),
-            cancellationToken);
+        await rooms.ProvisionAsync(roomId, cancellationToken);
 
         return new CreateGameRes(
             roomId,
@@ -37,4 +22,11 @@ internal sealed class TicTacToeGameCreator(
             gameName,
             SampleDefaults.RequiredLevel);
     }
+}
+
+internal interface ITicTacToeGameRoomProvisioner
+{
+    ValueTask ProvisionAsync(
+        string roomId,
+        CancellationToken cancellationToken);
 }

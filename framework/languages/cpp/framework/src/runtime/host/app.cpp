@@ -442,6 +442,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     const auto http_snapshot = options.http ().snapshot ();
     options.apply ();
+    detail::channel_runtime_t::from (_state->zlink.message_bus ())
+      .bind_discovery (_state->zlink.discovery_options ());
     const auto registry_snapshot = _state->zlink.registry_options ();
     if (!registry_snapshot.pub_endpoint.empty () && !registry_snapshot.router_endpoint.empty ()) {
         add_hosted_service (std::make_unique<detail::registry_host_service_t> (registry_snapshot));
@@ -451,7 +453,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
       .initialize_route_channels (_state->zlink);
     if (detail::has_server_channel (channel_snapshot)) {
         add_hosted_service (std::make_unique<runtime::channel_host_service_t> (
-          _state->zlink.message_bus (), channel_snapshot, _state->handlers, _state->serializers));
+          _state->zlink.message_bus (), channel_snapshot, _state->zlink.discovery_options (),
+          _state->handlers, _state->serializers));
     }
     const auto stream_snapshot = _state->zlink.streams ();
     const auto spot_node_snapshot = _state->zlink.spot_nodes ();

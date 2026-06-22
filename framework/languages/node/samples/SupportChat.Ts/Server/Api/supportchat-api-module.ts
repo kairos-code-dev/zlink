@@ -19,7 +19,7 @@ function createSupportChatApiModule(config: {
             .enableServer(config.apiEndpoint)
             .addHandlerGroup('api')
           .addClientServerChannel(SampleNames.supportChannel)
-            .enableClient(config.supportEndpoint)
+            .enableClient()
           .build()
       })
     ]

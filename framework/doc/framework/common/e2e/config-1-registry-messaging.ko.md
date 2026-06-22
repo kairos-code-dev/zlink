@@ -149,7 +149,7 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 
 우선순위: `P0`
 
-**한마디로:** provider 둘을 직접 붙여 두고 많이 보내면, 양쪽이 골고루 나눠 처리하고 합계가 보낸 수와 맞는가.
+**한마디로:** provider 둘을 직접 붙여 두고 많이 보내면, 양쪽 모두 충분히 처리하고(정확한 비율은 보장 안 함) 합계가 보낸 수와 맞는가.
 
 - 절차: consumer가 두 provider endpoint를 직접 `EnableClient`로 등록(수동 multi-endpoint)한 뒤, warm-up 후 충분한 수의 request(예: 90개)를 보낸다.
 - 검증: 두 provider가 모두 처리 대상이 되고, 각 provider evidence 합이 전체 request 수와 일치한다. 분산은 transport(dealer) fair-queuing으로 대체로 고르되, 정확한 비율(45/45)은 보장값이 아니므로 "양쪽 모두 충분히 처리 + 합계 일치"로 검증한다.

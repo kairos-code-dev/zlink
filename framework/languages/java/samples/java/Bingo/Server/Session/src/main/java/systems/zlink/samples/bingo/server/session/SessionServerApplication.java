@@ -43,16 +43,12 @@ public final class SessionServerApplication {
                 .enableClient();
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
             route.enableServer(SampleTopology.selectedSessionRouteEndpoint());
-            route.enableClient("b".equals(SampleTopology.SessionNode)
-                ? SampleTopology.PlayBRouteEndpoint
-                : SampleTopology.PlayARouteEndpoint);
+            route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()));
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
                 .addNode(SampleNames.SessionSpotNode);
             node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
-                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()))
-                .connectRouter(SampleTopology.PlayASpotRouterEndpoint)
-                .connectRouter(SampleTopology.PlayBSpotRouterEndpoint);
+                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()));
             options.addStreamNode(SampleNames.StreamNode)
                 .attachActorGateway(SampleNames.SessionSpotNode)
                 .bind(SampleTopology.selectedStreamEndpoint())

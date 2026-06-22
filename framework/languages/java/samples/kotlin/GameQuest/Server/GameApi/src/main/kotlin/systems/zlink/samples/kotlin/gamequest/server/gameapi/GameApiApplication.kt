@@ -42,9 +42,9 @@ class GameApiApplication {
 
             // outbound: this GameApi calls both QuestMission instances for sync
             configurer.addClientServerChannel(SampleNames.questMissionChannel("mission-a"))
-                .enableClient(SampleTopology.missionActionEndpoint("mission-a"))
+                .enableClient()
             configurer.addClientServerChannel(SampleNames.questMissionChannel("mission-b"))
-                .enableClient(SampleTopology.missionActionEndpoint("mission-b"))
+                .enableClient()
 
             // gameplay event fanout publisher
             configurer.addFanoutChannel(SampleNames.FanoutChannel)

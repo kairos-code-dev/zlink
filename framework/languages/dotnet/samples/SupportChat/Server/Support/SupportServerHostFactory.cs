@@ -1,7 +1,7 @@
-using SupportChat.Server.Support.Adapters.ZLink.Actors;
-using SupportChat.Server.Support.Adapters.ZLink.Notifications;
-using SupportChat.Server.Support.Adapters.ZLink.Spots;
-using SupportChat.Server.Support.Adapters.ZLink;
+using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
+using SupportChat.Server.Support.Infrastructure.ZLink.Notifications;
+using SupportChat.Server.Support.Infrastructure.ZLink.Spots;
+using SupportChat.Server.Support.Infrastructure.ZLink;
 using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +16,7 @@ public static class SupportServerHostFactory
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(topology);
+        builder.Services.AddSingleton<IConversationStarter, ConversationStarter>();
         builder.Services.AddSingleton<SupportConversationAllocator>();
         builder.Services.AddSingleton<AgentAvailabilityDirectory>();
         builder.Services.AddSingleton<AgentAssignmentService>();

@@ -2,8 +2,10 @@ package systems.zlink.samples.kotlin.tictactoe.server.configuration
 
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.StatefulRedisConnection
+import systems.zlink.samples.kotlin.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator.GameRoomRoute
+import systems.zlink.samples.kotlin.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator.GameRoomRouteWriter
 
-class RedisRoomRouteStore(settings: SampleSettings) : AutoCloseable {
+class RedisRoomRouteStore(settings: SampleSettings) : GameRoomRouteWriter, AutoCloseable {
     private val client: RedisClient = RedisClient.create(redisUri(settings.redisEndpoint))
     private val connection: StatefulRedisConnection<String, String> = client.connect()
     private val keyPrefix: String = settings.redisKeyPrefix
@@ -15,6 +17,17 @@ class RedisRoomRouteStore(settings: SampleSettings) : AutoCloseable {
                 "ownerPlayEndpoint" to route.ownerPlayEndpoint,
                 "ownerSpotEndpoint" to route.ownerSpotEndpoint,
                 "ownerSpotNodeRid" to route.ownerSpotNodeRid,
+            ),
+        )
+    }
+
+    override fun save(route: GameRoomRoute) {
+        save(
+            RoomRoute(
+                roomId = route.roomId,
+                ownerPlayEndpoint = route.ownerPlayEndpoint,
+                ownerSpotEndpoint = route.ownerSpotEndpoint,
+                ownerSpotNodeRid = route.ownerSpotNodeRid,
             ),
         )
     }

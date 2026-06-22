@@ -1,6 +1,6 @@
 using Zlink.Framework.Contracts.Codecs.Json;
-using ShoppingMall.Server.CommerceApi.Adapters.Http;
-using ShoppingMall.Server.CommerceApi.Adapters.ZLink;
+using ShoppingMall.Server.CommerceApi.Infrastructure.Http;
+using ShoppingMall.Server.CommerceApi.Infrastructure.ZLink;
 using ShoppingMall.Server.CommerceApi.Application.OrderWorkflow;
 using ShoppingMall.Server.CommerceApi.Ports.Outbound;
 using ShoppingMall.Server.Shared.Domain;

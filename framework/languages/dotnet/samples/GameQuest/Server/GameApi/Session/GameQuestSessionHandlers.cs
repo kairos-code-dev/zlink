@@ -1,4 +1,4 @@
-using GameQuest.GameApi.Adapters.Store;
+using GameQuest.GameApi.Infrastructure.Store;
 using GameQuest.GameApi.Application;
 using GameQuest.Shared;
 using Systems.Zlink;

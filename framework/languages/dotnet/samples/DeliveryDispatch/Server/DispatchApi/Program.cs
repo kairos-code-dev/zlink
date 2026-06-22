@@ -13,9 +13,10 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.ConfigureDispatch().SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>();
     options.Codecs.AddJson();
+    options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
     {
         var channel = options.AddClientServerChannel(SampleNames.DispatchRouteChannel);
-                channel.EnableClient(topology.DispatchCenterRouteEndpoint);
+        channel.EnableClient();
 
     }
 });

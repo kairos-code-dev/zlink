@@ -1,14 +1,8 @@
-using Zlink.Framework.Codecs.Protobuf;
-using Zlink.Framework.Contracts.Spots;
 using Bingo.Server.Play.Domain.Bingo;
-using Bingo.Server.Play.Adapters.ZLink.Spots;
-using Systems.Zlink;
 
 namespace Bingo.Server.Play.Application.RoomAllocation;
 
-internal sealed class BingoRoomAllocator(
-    IZLinkSpotManager spots,
-    IBingoMatchQueue matchQueue)
+internal sealed class BingoRoomAllocator(IBingoMatchQueue matchQueue)
 {
     private int _roomSeq;
 
@@ -30,7 +24,6 @@ internal sealed class BingoRoomAllocator(
 
         var settings = BingoRoomSettings.Create(mode, Interlocked.Increment(ref _roomSeq));
         var roomId = $"bingo-room-{Guid.NewGuid():N}";
-        var roomRid = RoutingId.From(roomId);
         var reservation = await matchQueue.ReserveAsync(
             mode,
             actorId,
@@ -42,8 +35,7 @@ internal sealed class BingoRoomAllocator(
         if (string.Equals(reservation.OwnerPlayNodeRid, preferredOwnerNodeRid, StringComparison.Ordinal)
             && string.Equals(reservation.RoomId, roomId, StringComparison.Ordinal))
         {
-            using var settingsPart = BingoRoomSettingsPayloadMapper.ToPayload(settings).ToProto();
-            await spots.GetOrCreateAsync<BingoRoom>(roomRid, settingsPart, cancellationToken);
+            return reservation with { LocalRoomSettings = settings };
         }
 
         return reservation;

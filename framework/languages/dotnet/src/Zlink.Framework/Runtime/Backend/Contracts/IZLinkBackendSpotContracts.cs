@@ -90,6 +90,11 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
         bool hasMore,
         SendFlags flags);
 
+    void BindRemoteActorBoundSession(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid);
+
     ValueTask CloseActorBoundSessionAsync(
         ZLinkBackendActorRef actor,
         TimeSpan timeout,

@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../Shared/Configuration/sample-names';
 
-function createDeliveryDispatchClientModule(config: { dispatchEndpoint: string }) {
+function createDeliveryDispatchClientModule(config: { registryRouterEndpoint: string; dispatchEndpoint: string }) {
   class DeliveryDispatchClientModule {}
 
   Module({
@@ -11,8 +11,10 @@ function createDeliveryDispatchClientModule(config: { dispatchEndpoint: string }
         useFactory: () => zlinkFramework()
           .codecs()
             .addJson()
+          .useDiscovery()
+            .addRegistryEndpoint(config.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.dispatchChannel)
-            .enableClient(config.dispatchEndpoint)
+            .enableClient()
           .build()
       })
     ]

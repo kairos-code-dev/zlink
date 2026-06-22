@@ -22,9 +22,9 @@ class ClientApplication {
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.codecs().addJson()
             options.addClientServerChannel(SampleNames.commerceApiChannel(SampleNames.ApiInstanceA))
-                .enableClient(SampleTopology.commerceApiEndpoint(SampleNames.ApiInstanceA))
+                .enableClient()
             options.addClientServerChannel(SampleNames.commerceApiChannel(SampleNames.ApiInstanceB))
-                .enableClient(SampleTopology.commerceApiEndpoint(SampleNames.ApiInstanceB))
+                .enableClient()
         }
 
     companion object {

@@ -31,9 +31,9 @@ class ClientApplication {
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             options.codecs().addJson()
             options.addClientServerChannel(SampleNames.gameApiActionChannel(SampleNames.ApiA))
-                .enableClient(SampleTopology.GameApiAActionEndpoint)
+                .enableClient()
             options.addClientServerChannel(SampleNames.gameApiActionChannel(SampleNames.ApiB))
-                .enableClient(SampleTopology.GameApiBActionEndpoint)
+                .enableClient()
         }
 
     companion object {

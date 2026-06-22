@@ -13,11 +13,11 @@ import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
-import systems.zlink.samples.bingo.server.play.adapters.zlink.actors.PlayerActorFactory;
-import systems.zlink.samples.bingo.server.play.adapters.zlink.matchmaking.RedisBingoMatchQueue;
-import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoRoomSpot;
-import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomSpotCreatedHandler;
-import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoEntrySpot;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActorFactory;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.matchmaking.RedisBingoMatchQueue;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.BingoRoomSpot;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.handlers.BingoRoomSpotCreatedHandler;
+import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.BingoEntrySpot;
 import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoMatchQueue;
 import systems.zlink.samples.bingo.server.play.application.roomallocation.BingoRoomAllocator;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
@@ -52,9 +52,7 @@ public final class PlayServerApplication {
                 .enableClient();
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.PlayChannel);
             route.enableServer(SampleTopology.selectedPlayRouteEndpoint());
-            route.enableClient(SampleTopology.peerPlayRouteEndpoint());
-            route.enableClient(SampleTopology.SessionAPlayRouteEndpoint);
-            route.enableClient(SampleTopology.SessionBPlayRouteEndpoint);
+            route.enableClient();
             route.addHandlerGroup("play-route");
             route.setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);
@@ -62,15 +60,11 @@ public final class PlayServerApplication {
                 .useRegistrySpotResolver()
                 .addNode(SampleTopology.selectedPlayNodeRid());
             node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
-                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
-                .connectRouter(SampleTopology.SessionARouterEndpoint)
-                .connectRouter(SampleTopology.SessionBRouterEndpoint);
+                .setRouterRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint())
                 .setPubSubRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             node.attachChannelClient(SampleNames.ApiChannel);
-            node.acceptSpotRoutesFromChannel(
-                SampleNames.PlayChannel,
-                SampleTopology.selectedPlayRouteEndpoint());
+            node.acceptSpotRoutesFromChannel(SampleNames.PlayChannel);
             node.addEntrySpot(BingoEntrySpot.class);
             node.addSpotFactory(BingoRoomSpot.class);
         };

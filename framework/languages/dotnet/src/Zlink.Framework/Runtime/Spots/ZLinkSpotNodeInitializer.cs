@@ -144,6 +144,11 @@ internal sealed class ZLinkSpotNodeInitializer(
                 continue;
             }
 
+            if (registration.RouteChannels.ContainsKey(acceptance.ChannelName))
+            {
+                continue;
+            }
+
             var discovery = ZLinkBackendDiscoveryFactory.Create(
                 channelAdapter,
                 state.Context,

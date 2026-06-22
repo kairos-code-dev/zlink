@@ -6,6 +6,7 @@
 
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
+#include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
 #include "runtime/execution/serial_execution_queue.hpp"
@@ -143,6 +144,34 @@ void report_spot_dispatch_error (
         std::nullopt,
         std::nullopt,
         nullptr});
+}
+
+void report_spot_dispatch_trace (
+  const std::shared_ptr<detail::spot_node_builder_state_t> &state,
+  message_flow_phase_t phase,
+  dispatch_error_surface_t surface,
+  dispatch_message_kind_t message_kind,
+  std::optional<std::string> packet_name = std::nullopt,
+  std::optional<std::string> topic = std::nullopt,
+  std::optional<std::string> spot_rid = std::nullopt,
+  std::optional<std::string> actor_id = std::nullopt)
+{
+    if (!state) {
+        return;
+    }
+    detail::message_flow_tracer_t (state->dispatch)
+      .trace (message_flow_event_t{
+        phase,
+        surface,
+        message_kind,
+        std::move (packet_name),
+        std::nullopt,
+        std::move (topic),
+        std::nullopt,
+        std::nullopt,
+        std::move (spot_rid),
+        std::move (actor_id),
+        std::nullopt});
 }
 
 } // namespace
@@ -1657,6 +1686,11 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
         return result_t<std::optional<zlink::message_t>>::failure (
           reply.error_kind (), error != nullptr ? error->what () : "actor packet relay failed");
     }
+    report_spot_dispatch_trace (_state, message_flow_phase_t::replied,
+                                dispatch_error_surface_t::spot_actor,
+                                dispatch_message_kind_t::actor_request, std::string (packet_name),
+                                std::nullopt, std::string (found_location->second.value ()),
+                                std::string (actor_ref.actor_id ()));
     return result_t<std::optional<zlink::message_t>>::success (std::move (reply.value ()));
 }
 
@@ -1993,6 +2027,10 @@ result_t<void> spot_node_runtime_t::dispatch_subscription (
         return result_t<void>::failure (framework_error_kind_t::spot_route_not_found,
                                         "spot context is not registered");
     }
+    report_spot_dispatch_trace (_state, message_flow_phase_t::received,
+                                dispatch_error_surface_t::spot_subscription,
+                                dispatch_message_kind_t::publish, std::nullopt, topic,
+                                std::string (context._state->spot_rid.value ()));
     std::optional<std::string> packet_name;
     for (const auto &descriptor : context._state->handlers) {
         if (descriptor.kind == spot_handler_kind_t::subscription && descriptor.topic == topic) {
@@ -2030,6 +2068,10 @@ result_t<void> spot_node_runtime_t::dispatch_subscription (
         return result_t<void>::failure (
           result.error_kind (), error != nullptr ? error->what () : "spot subscription failed");
     }
+    report_spot_dispatch_trace (_state, message_flow_phase_t::dispatched,
+                                dispatch_error_surface_t::spot_subscription,
+                                dispatch_message_kind_t::publish, *packet_name, topic,
+                                std::string (context._state->spot_rid.value ()));
     return result_t<void>::success ();
 }
 

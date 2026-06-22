@@ -138,6 +138,17 @@ public sealed class test_optimization_guard
     }
 
     [Fact]
+    public void topic_message_writable_buffer_receive_does_not_reset_topic_twice()
+    {
+        string source = ReadZlinkSource();
+
+        Assert.Contains("ResetForReuse(resetTopic: false)", source,
+            StringComparison.Ordinal);
+        Assert.Contains("avoiding a transient empty", source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void samples_and_perf_use_only_public_binding_contracts()
     {
         string source = ReadSampleAndPerfSource();

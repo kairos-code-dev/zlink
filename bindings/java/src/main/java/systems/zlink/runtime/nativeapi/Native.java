@@ -2459,10 +2459,20 @@ public final class Native {
 
     public static int pollerWait(MemorySegment poller, MemorySegment events,
                                  int count, int timeoutMs) {
-        if (events == null || events.address() == 0)
-            throw new NullPointerException("events");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
+            return pollerWait(poller, events, count, timeoutMs, errorOut);
+        }
+    }
+
+    public static int pollerWait(MemorySegment poller, MemorySegment events,
+                                 int count, int timeoutMs,
+                                 MemorySegment errorOut) {
+        if (events == null || events.address() == 0)
+            throw new NullPointerException("events");
+        if (errorOut == null || errorOut.address() == 0)
+            throw new NullPointerException("errorOut");
+        try {
             errorOut.set(ValueLayout.JAVA_INT, 0, 0);
             int rc = (int) MH_POLLER_WAIT.invokeExact(poller, events, count,
                 (long) timeoutMs, errorOut);

@@ -139,8 +139,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
         if (retryableFailure is ZlinkSubmitException
             {
-                Result: ZlinkSubmitException.ErrorCode.NotConnected
-                    or ZlinkSubmitException.ErrorCode.NotFound
+                Result: ZlinkSubmitException.ErrorCode.NotFound
                     or ZlinkSubmitException.ErrorCode.NotAdmitted
                     or ZlinkSubmitException.ErrorCode.InvalidState
                     or ZlinkSubmitException.ErrorCode.InvalidArgument
@@ -238,6 +237,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                             && retryableFailure is ZlinkSubmitException
                             {
                                 Result: not ZlinkSubmitException.ErrorCode.Backpressured
+                                    and not ZlinkSubmitException.ErrorCode.NotConnected
                             } requestSubmitError)
                         {
                             item.TryFail(ZLinkRequestFailureMapper.CreateSubmitException(

@@ -76,7 +76,19 @@ sealed record SampleSettings(
             section[nameof(RedisEndpoint)] ?? defaults.RedisEndpoint,
             section[nameof(LogDirectory)] ?? defaults.LogDirectory);
 
-        return ApplyArgs(configured, args);
+        var resolved = ApplyArgs(configured, args);
+
+        // The sample owns its Redis via run_sample.sh/run_sample.ps1, which provisions
+        // an isolated container; require the endpoint so a stray direct run never
+        // silently falls back to a developer's local Redis.
+        if (string.IsNullOrWhiteSpace(resolved.RedisEndpoint))
+        {
+            throw new InvalidOperationException(
+                "RedisEndpoint is required; run the sample via run_sample.sh/run_sample.ps1, "
+                + "which provisions an isolated Redis container.");
+        }
+
+        return resolved;
     }
 
     private static SampleSettings CreateDefault(string? mode)
@@ -109,7 +121,7 @@ sealed record SampleSettings(
             PlaySpotNodeRidAt(peerPlayIndex),
             At(spotEndpoints, peerPlayIndex),
             At(spotPubSubEndpoints, peerPlayIndex),
-            "127.0.0.1:6379",
+            string.Empty,
             Path.Combine("logs", "tictactoe"));
     }
 

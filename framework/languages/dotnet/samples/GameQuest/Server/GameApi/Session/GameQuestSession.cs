@@ -9,7 +9,7 @@ internal sealed class GameQuestSession(
     IZLinkSessionContext context,
     IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers,
     GameQuestSessionRegistry registry,
-    Adapters.Store.GameQuestStore store) : IZLinkSession
+    Infrastructure.Store.GameQuestStore store) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
 

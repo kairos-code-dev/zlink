@@ -92,7 +92,7 @@ int socket_discovery_attachment_t::attach (discovery_t *discovery_)
 
     report_topology (discovery_, local_role,
                      advertise_endpoint.empty () ? bound_endpoint : advertise_endpoint,
-                     ZLINK_TOPOLOGY_STATE_READY, 0, 0, 0, false);
+                     ZLINK_TOPOLOGY_STATE_READY, 0, 0, 0, true);
     refresh_peers (discovery_, local_role,
                    advertise_endpoint.empty () ? bound_endpoint : advertise_endpoint, false);
     return 0;
@@ -160,7 +160,7 @@ int socket_discovery_attachment_t::on_bind_success (const std::string &endpoint_
 
     report_topology (discovery, local_role,
                      resolved_endpoint.empty () ? endpoint_ : resolved_endpoint,
-                     ZLINK_TOPOLOGY_STATE_READY, 0, 0, 0, false);
+                     ZLINK_TOPOLOGY_STATE_READY, 0, 0, 0, true);
     refresh_peers (discovery, local_role,
                    resolved_endpoint.empty () ? endpoint_ : resolved_endpoint, false);
     return 0;

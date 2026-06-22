@@ -9,6 +9,8 @@ internal static class ZLinkRemoteActorJoinPackets
 internal sealed record ZLinkRemoteActorJoinRequest(
     string ActorId,
     string ActorType,
+    byte[]? BoundSessionNodeRid,
+    byte[]? BoundSessionRid,
     byte[] Request);
 
 internal sealed record ZLinkRemoteActorJoinReply(

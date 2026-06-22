@@ -44,9 +44,9 @@ public final class SampleTopology {
     /**
      * Deterministic, cross-language stable owner selection by {@code OrderId}.
      *
-     * <p>The .NET sample uses the runtime ordinal string hash; here a fixed
-     * character-sum keeps the same {@code OrderId} pinned to one workflow owner
-     * while distributing the sample order ids across both instances.
+     * <p>A fixed character-sum keeps the same {@code OrderId} pinned to one
+     * workflow owner while distributing the sample order ids across both
+     * instances.
      */
     public static String workflowInstanceForOrder(String orderId) {
         int sum = 0;

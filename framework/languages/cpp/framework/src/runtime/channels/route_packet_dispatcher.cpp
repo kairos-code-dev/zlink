@@ -4,6 +4,7 @@
 
 #include "runtime/channels/channel_reply_writer.hpp"
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
+#include "runtime/diagnostics/message_flow_tracer.hpp"
 
 #include <exception>
 #include <optional>
@@ -44,6 +45,12 @@ route_packet_dispatcher_t::dispatch (const route_received_packet_t &received) co
           header.error () ? header.error ()->what () : "route envelope header decode failed");
     }
 
+    trace_flow (message_flow_phase_t::received,
+                header.value ().kind == runtime::messaging::message_kind_t::request
+                  ? dispatch_message_kind_t::request
+                  : dispatch_message_kind_t::send,
+                received, header.value ());
+
     switch (header.value ().kind) {
         case runtime::messaging::message_kind_t::command:
             return dispatch_send (received, header.value ());
@@ -53,6 +60,26 @@ route_packet_dispatcher_t::dispatch (const route_received_packet_t &received) co
             return result_t<std::optional<route_dispatch_reply_t>>::failure (
               framework_error_kind_t::request_protocol_error, "unsupported route message kind");
     }
+}
+
+void route_packet_dispatcher_t::trace_flow (
+  message_flow_phase_t phase,
+  dispatch_message_kind_t kind,
+  const route_received_packet_t &received,
+  const runtime::messaging::envelope_header_t &header) const
+{
+    message_flow_tracer_t (_dispatch_options)
+      .trace (message_flow_event_t{phase,
+                                   dispatch_error_surface_t::route_mesh_channel,
+                                   kind,
+                                   header.message_name,
+                                   _router_channel_id,
+                                   header.topic,
+                                   header.correlation_id,
+                                   received.source_node_rid.to_string (),
+                                   std::nullopt,
+                                   std::nullopt,
+                                   std::nullopt});
 }
 
 result_t<std::optional<route_dispatch_reply_t>>
@@ -66,6 +93,8 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
               dispatched.error_kind (),
               dispatched.error () ? dispatched.error ()->what () : "route internal send failed");
         }
+        trace_flow (message_flow_phase_t::dispatched, dispatch_message_kind_t::send, received,
+                    header);
         return result_t<std::optional<route_dispatch_reply_t>>::success (std::nullopt);
     }
     if (_handlers == nullptr || _services == nullptr || _serializers == nullptr
@@ -135,6 +164,7 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
           dispatched.error_kind (),
           dispatched.error () ? dispatched.error ()->what () : "routed send handler failed");
     }
+    trace_flow (message_flow_phase_t::dispatched, dispatch_message_kind_t::send, received, header);
     return result_t<std::optional<route_dispatch_reply_t>>::success (std::nullopt);
 }
 
@@ -151,6 +181,8 @@ result_t<std::optional<route_dispatch_reply_t>> route_packet_dispatcher_t::dispa
                                                                 : "route internal request failed");
             return reply_error (received, header, error);
         }
+        trace_flow (message_flow_phase_t::replied, dispatch_message_kind_t::response, received,
+                    header);
         channel_reply_writer_t writer;
         return result_t<std::optional<route_dispatch_reply_t>>::success (route_dispatch_reply_t{
           received.source_node_rid, received.request_seq,
@@ -189,6 +221,7 @@ result_t<std::optional<route_dispatch_reply_t>> route_packet_dispatcher_t::dispa
                                                             : "routed request handler failed");
         return reply_error (received, header, error);
     }
+    trace_flow (message_flow_phase_t::replied, dispatch_message_kind_t::response, received, header);
     channel_reply_writer_t writer;
     return result_t<std::optional<route_dispatch_reply_t>>::success (route_dispatch_reply_t{
       received.source_node_rid, received.request_seq,

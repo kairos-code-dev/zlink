@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -24,11 +25,35 @@ std::string dispatch_endpoint ()
     return "tcp://127.0.0.1:32091";
 }
 
+std::string registry_pub_endpoint ()
+{
+    if (const char *value = std::getenv ("DELIVERYDISPATCH_REGISTRY_PUB_ENDPOINT");
+        value != nullptr && *value != '\0') {
+        return value;
+    }
+    return "tcp://127.0.0.1:32081";
+}
+
+std::string registry_router_endpoint ()
+{
+    if (const char *value = std::getenv ("DELIVERYDISPATCH_REGISTRY_ROUTER_ENDPOINT");
+        value != nullptr && *value != '\0') {
+        return value;
+    }
+    return "tcp://127.0.0.1:32082";
+}
+
 } // namespace
 
 int main (int argc, char **argv)
 {
     using namespace zlink::samples::deliverydispatch;
+
+    auto registry_app = zlink::framework::app_t::create ();
+    registry_app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        options.enable_registry (registry_pub_endpoint (), registry_router_endpoint ());
+    });
+    std::thread registry_thread ([&] { (void) registry_app.run (argc, argv); });
 
     auto app = zlink::framework::app_t::create ();
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
@@ -51,9 +76,15 @@ int main (int argc, char **argv)
           .add_json<delivery_state_t> ()
           .add_json<server_assertion_req_t> ()
           .add_json<server_assertion_res_t> ();
+        options.use_discovery ().add_registry_endpoint (registry_router_endpoint ());
         options.add_client_server_channel ("deliverydispatch.dispatch")
           .enable_server (dispatch_endpoint ())
           .use_handler_group ("dispatch");
     });
-    return app.run (argc, argv);
+    const auto exit_code = app.run (argc, argv);
+    registry_app.stop ();
+    if (registry_thread.joinable ()) {
+        registry_thread.join ();
+    }
+    return exit_code;
 }

@@ -148,6 +148,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                 await DispatchActorStreamPartAsync(
                         actor,
                         frame.Actor.ActorId,
+                        frame.SourceNodeRid,
                         frame.SourceSessionRid,
                         frame.Header,
                         frame.Body,
@@ -244,6 +245,8 @@ internal sealed class ZLinkSpotActivationDispatcher
                     joinRequest.ActorId,
                     joinRequest.ActorType,
                     nativeSpot.RoutingId,
+                    ToRoutingId(joinRequest.BoundSessionNodeRid),
+                    ToRoutingId(joinRequest.BoundSessionRid),
                     request,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -298,6 +301,11 @@ internal sealed class ZLinkSpotActivationDispatcher
         }
     }
 
+    private static RoutingId? ToRoutingId(byte[]? bytes)
+    {
+        return bytes is { Length: > 0 } ? RoutingId.From(bytes) : null;
+    }
+
     public async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)
     {
         await subscriptions
@@ -308,6 +316,7 @@ internal sealed class ZLinkSpotActivationDispatcher
     private async ValueTask DispatchActorStreamPartAsync(
         IZLinkActor actor,
         string actorId,
+        RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         ZlinkStreamHeader streamHeader,
         Message body,
@@ -317,6 +326,7 @@ internal sealed class ZLinkSpotActivationDispatcher
         await using var boundSessionScope = ZLinkBoundSessionDispatchScope.Enter(actorId);
         runtime.BindActorSession(
             actorId,
+            sourceNodeRid,
             sourceSessionRid,
             BuildNativeBoundSessionToken(sourceSessionRid));
         if (streamHeader.RequestSeq is { })

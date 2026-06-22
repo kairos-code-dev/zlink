@@ -16,13 +16,39 @@
 namespace zlink::framework::runtime
 {
 
+namespace
+{
+
+void connect_registry_with_retry (zlink::service::discovery_t &discovery,
+                                  const std::string &endpoint)
+{
+    std::exception_ptr last_error;
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        try {
+            discovery.connect_registry (endpoint);
+            return;
+        }
+        catch (...) {
+            last_error = std::current_exception ();
+            std::this_thread::sleep_for (std::chrono::milliseconds (10));
+        }
+    }
+    if (last_error) {
+        std::rethrow_exception (last_error);
+    }
+}
+
+} // namespace
+
 class channel_host_service_t::server_loop_t
 {
   public:
     server_loop_t (message_bus_t bus,
                    std::string channel_name,
+                   bool use_discovery,
                    std::vector<std::string> endpoints,
                    std::optional<zlink::routing_id_t> routing_id,
+                   discovery_snapshot_t discovery,
                    service_provider_t &services,
                    serializer_registry_t &serializers,
                    const handler_registry_t &handlers,
@@ -30,6 +56,7 @@ class channel_host_service_t::server_loop_t
         _runtime (detail::channel_runtime_t::from (bus)),
         _channel_name (std::move (channel_name)),
         _endpoints (std::move (endpoints)),
+        _discovery_snapshot (std::move (discovery)),
         _services (&services),
         _serializers (&serializers),
         _handlers (&handlers),
@@ -39,6 +66,22 @@ class channel_host_service_t::server_loop_t
     {
         if (routing_id) {
             _router->set_routing_id (*routing_id);
+        }
+        if (use_discovery && !_discovery_snapshot.registry_endpoints.empty ()) {
+            try {
+                _discovery = std::make_unique<zlink::service::discovery_t> (
+                  *_context, zlink::auto_connect_type::client_server, _channel_name);
+                for (const auto &endpoint : _discovery_snapshot.registry_endpoints) {
+                    connect_registry_with_retry (*_discovery, endpoint);
+                }
+                _router->attach_discovery (*_discovery);
+            }
+            catch (const std::exception &error) {
+                throw framework_exception_t (
+                  framework_error_kind_t::request_failed,
+                  "channel '" + _channel_name
+                    + "' discovery attach failed: " + error.what ());
+            }
         }
         for (const auto &endpoint : _endpoints) {
             _router->bind (endpoint);
@@ -68,6 +111,14 @@ class channel_host_service_t::server_loop_t
 
     void stop () noexcept
     {
+        if (_discovery) {
+            try {
+                _discovery->close ();
+            }
+            catch (...) {
+            }
+            _discovery.reset ();
+        }
         if (_router) {
             try {
                 _router->close ();
@@ -182,12 +233,14 @@ class channel_host_service_t::server_loop_t
     detail::channel_runtime_t _runtime;
     std::string _channel_name;
     std::vector<std::string> _endpoints;
+    discovery_snapshot_t _discovery_snapshot;
     service_provider_t *_services;
     serializer_registry_t *_serializers;
     const handler_registry_t *_handlers;
     std::atomic_bool *_stop;
     std::unique_ptr<zlink::context_t> _context;
     std::unique_ptr<zlink::router_socket_t> _router;
+    std::unique_ptr<zlink::service::discovery_t> _discovery;
     std::mutex _workers_mutex;
     std::vector<std::thread> _workers;
     std::mutex _replies_mutex;
@@ -196,10 +249,12 @@ class channel_host_service_t::server_loop_t
 
 channel_host_service_t::channel_host_service_t (message_bus_t bus,
                                                 std::vector<channel_snapshot_t> channels,
+                                                discovery_snapshot_t discovery,
                                                 handler_registry_t &handlers,
                                                 serializer_registry_t &serializers) :
     _bus (std::move (bus)),
     _channels (std::move (channels)),
+    _discovery (std::move (discovery)),
     _handlers (&handlers),
     _serializers (&serializers)
 {
@@ -215,9 +270,11 @@ void channel_host_service_t::start (service_provider_t &services)
         if (!channel.server.enabled || channel.server.bind_endpoints.empty ()) {
             continue;
         }
+        const bool publish_to_discovery = !_discovery.registry_endpoints.empty ();
         auto loop = std::make_unique<server_loop_t> (_bus, channel.name,
+                                                     publish_to_discovery,
                                                      channel.server.bind_endpoints,
-                                                     channel.server.routing_id, services,
+                                                     channel.server.routing_id, _discovery, services,
                                                      *_serializers, *_handlers, _stop);
         auto *raw = loop.get ();
         _loops.push_back (std::move (loop));

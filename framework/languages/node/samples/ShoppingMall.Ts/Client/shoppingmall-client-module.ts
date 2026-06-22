@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../Shared/Configuration/sample-names';
 
-function createShoppingMallClientModule(config: { workflowEndpoint: string }) {
+function createShoppingMallClientModule(config: { registryRouterEndpoint: string; workflowEndpoint: string }) {
   class ShoppingMallClientModule {}
 
   Module({
@@ -11,8 +11,10 @@ function createShoppingMallClientModule(config: { workflowEndpoint: string }) {
         useFactory: () => zlinkFramework()
           .codecs()
             .addJson()
+          .useDiscovery()
+            .addRegistryEndpoint(config.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.workflowChannel)
-            .enableClient(config.workflowEndpoint)
+            .enableClient()
           .build()
       })
     ]

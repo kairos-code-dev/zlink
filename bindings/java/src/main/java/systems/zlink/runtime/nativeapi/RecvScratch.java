@@ -16,12 +16,8 @@ public final class RecvScratch {
     public final MemorySegment subscribedOut = arena.allocate(ValueLayout.JAVA_INT);
     public final MemorySegment hasMoreOut = arena.allocate(ValueLayout.JAVA_INT);
 
-    // Subscribe hot path: persistent topic-out buffers (C uses a stack
-    // char[256] with zero per-message allocation) plus a last-topic cache so
-    // a steady stream on one constant topic does not re-decode a String per
-    // message.
+    // Subscribe hot path: keep the native topic-out buffer thread-local so
+    // public receive calls avoid allocating scratch storage per message.
     public final MemorySegment topicOut = arena.allocate(TOPIC_CAPACITY);
     public final MemorySegment topicLenOut = arena.allocate(ValueLayout.JAVA_LONG);
-    public byte[] cachedTopicBytes;
-    public String cachedTopicString = "";
 }

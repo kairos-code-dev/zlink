@@ -3,7 +3,7 @@ import { AgentAvailabilityDirectory } from './agent-availability-directory';
 import type { AgentAvailabilityDirectory as AgentAvailabilityDirectoryType, AvailableAgent } from './agent-availability-directory';
 
 // AgentAssignmentService selects a waiting agent for a conversation and returns the
-// assignment result. The actual Spot join is performed by the adapter layer.
+// assignment result. The actual conversation join is performed by the infrastructure layer.
 class AgentAssignmentService {
   constructor(private readonly availability: AgentAvailabilityDirectoryType) {}
 

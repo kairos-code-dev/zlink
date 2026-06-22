@@ -1,16 +1,12 @@
-using GameQuest.GameApi.Adapters.Store;
 using GameQuest.GameApi.Domain;
 using GameQuest.Shared;
-using GameQuest.Server.Configuration;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.HttpClient;
 
 namespace GameQuest.GameApi.Application;
 
 internal sealed class GameplayActionService(
-    GameQuestStore store,
-    IZLinkFanoutClient fanout,
-    GameQuestTopology topology,
+    IGameplayEventStore store,
+    IGameplayEventPublisher publisher,
+    IQuestProgressSynchronizer quests,
     ILogger<GameplayActionService> logger)
 {
     private readonly string _apiName = Environment.GetEnvironmentVariable("GAMEQUEST_API_NAME") ?? "api";
@@ -69,13 +65,7 @@ internal sealed class GameplayActionService(
         string playerId,
         CancellationToken cancellationToken)
     {
-        var missionBaseUrl = GameQuestRouting.OwnerIndex(playerId) == 1
-            ? topology.MissionBHttpBaseUrl
-            : topology.MissionAHttpBaseUrl;
-        using var mission = ZLinkHttpClient.Create(missionBaseUrl).Json().Build();
-        return (await mission.Post("/internal/sync")
-            .Body(new SyncQuestProgressReq(playerId))
-            .SubmitAsync<SyncQuestProgressRes>(cancellationToken)).Body;
+        return await quests.SyncAsync(playerId, cancellationToken);
     }
 
     private async ValueTask<GameplayEventEnvelope> StoreAndPublishAsync(
@@ -83,15 +73,35 @@ internal sealed class GameplayActionService(
         CancellationToken cancellationToken)
     {
         var stored = await store.GetOrAddGameplayEventAsync(candidate, cancellationToken);
-        await fanout.Publish(SampleNames.FanoutChannel, SampleNames.GameplayTopic, stored)
-            .Async(cancellationToken);
+        var publishedFrom = await publisher.PublishAsync(stored, cancellationToken);
             logger.LogInformation("gamequest api event published api={Api} player={PlayerId} event={EventId} type={EventType} fanout={Fanout}",
                 _apiName,
                 stored.PlayerId,
                 stored.EventId,
                 stored.EventType,
-                topology.FanoutPublisherEndpointForApi(_apiName));
+                publishedFrom);
         return stored;
     }
 
+}
+
+internal interface IGameplayEventStore
+{
+    ValueTask<GameplayEventEnvelope> GetOrAddGameplayEventAsync(
+        GameplayEventEnvelope candidate,
+        CancellationToken cancellationToken);
+}
+
+internal interface IGameplayEventPublisher
+{
+    ValueTask<string> PublishAsync(
+        GameplayEventEnvelope gameplayEvent,
+        CancellationToken cancellationToken);
+}
+
+internal interface IQuestProgressSynchronizer
+{
+    ValueTask<SyncQuestProgressRes> SyncAsync(
+        string playerId,
+        CancellationToken cancellationToken);
 }

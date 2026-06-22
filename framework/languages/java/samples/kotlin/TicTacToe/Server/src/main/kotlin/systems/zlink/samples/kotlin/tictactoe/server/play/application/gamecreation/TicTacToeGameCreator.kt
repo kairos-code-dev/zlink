@@ -1,14 +1,13 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.application.gamecreation
 
 import java.util.concurrent.atomic.AtomicInteger
-import systems.zlink.samples.kotlin.tictactoe.server.configuration.RedisRoomRouteStore
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayNodeInfo
 
 class TicTacToeGameCreator(
     private val settings: SampleSettings,
-    private val routes: RedisRoomRouteStore,
+    private val routes: GameRoomRouteWriter,
 ) {
     private val sequence = AtomicInteger()
 
@@ -20,7 +19,7 @@ class TicTacToeGameCreator(
         val ownerSpotEndpoint = settings.spotEndpoints[index]
         val ownerSpotNodeRid = "play-node-${index + 1}"
         routes.save(
-            RedisRoomRouteStore.RoomRoute(
+            GameRoomRoute(
                 roomId = roomId,
                 ownerPlayEndpoint = ownerPlayEndpoint,
                 ownerSpotEndpoint = ownerSpotEndpoint,
@@ -47,4 +46,15 @@ class TicTacToeGameCreator(
         val playNodes: List<PlayNodeInfo>,
         val requiredLevel: Int,
     )
+
+    data class GameRoomRoute(
+        val roomId: String,
+        val ownerPlayEndpoint: String,
+        val ownerSpotEndpoint: String,
+        val ownerSpotNodeRid: String,
+    )
+
+    interface GameRoomRouteWriter {
+        fun save(route: GameRoomRoute)
+    }
 }

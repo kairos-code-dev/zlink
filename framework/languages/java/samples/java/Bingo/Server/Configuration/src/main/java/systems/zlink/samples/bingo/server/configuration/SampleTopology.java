@@ -59,8 +59,7 @@ public final class SampleTopology {
         property("sessionAStreamEndpoint", StreamEndpoint);
     public static final String SessionBStreamEndpoint =
         property("sessionBStreamEndpoint", "tcp://127.0.0.1:47125");
-    public static final String RedisEndpoint =
-        property("redisEndpoint", "127.0.0.1:6379");
+    public static final String RedisEndpoint = requiredProperty("redisEndpoint");
     public static final String RedisKeyPrefix =
         property("redisKeyPrefix", "bingo:java:");
     public static final String ApiNode = property("apiNode", "a");
@@ -145,5 +144,18 @@ public final class SampleTopology {
 
     private static String property(String name, String defaultValue) {
         return System.getProperty("zlink.samples.bingo." + name, defaultValue);
+    }
+
+    // The sample owns its Redis via run_sample.sh/run_sample.ps1, which provisions
+    // an isolated container; require the endpoint so a stray direct run never
+    // silently falls back to a developer's local Redis.
+    private static String requiredProperty(String name) {
+        String value = System.getProperty("zlink.samples.bingo." + name);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException(
+                "System property 'zlink.samples.bingo." + name + "' is required; run the sample via "
+                    + "run_sample.sh/run_sample.ps1, which provisions an isolated Redis container.");
+        }
+        return value;
     }
 }

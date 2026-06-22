@@ -110,14 +110,15 @@ PLAY_B_CONFIG="${RUN_DIR}/play-b.config.json"
 SESSION_A_CONFIG="${RUN_DIR}/session-a.config.json"
 SESSION_B_CONFIG="${RUN_DIR}/session-b.config.json"
 
-if [[ -z "${BINGO_REDIS_ENDPOINT:-}" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "Docker is required when BINGO_REDIS_ENDPOINT is not set." >&2
-    exit 1
-  fi
-  REDIS_CONTAINER_ID="$(docker run -d --rm --name "bingo-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
-  export BINGO_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
+# The sample owns its Redis: always provision a dedicated, throwaway container
+# so room-allocation state stays isolated per run and never touches a developer's
+# local Redis. (BINGO_REDIS_ENDPOINT is intentionally derived here, not read.)
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run the Bingo sample (it provisions a dedicated Redis container)." >&2
+  exit 1
 fi
+REDIS_CONTAINER_ID="$(docker run -d --rm --name "bingo-node-redis-${RANDOM}-$$" -p "127.0.0.1::6379" redis:7.2-alpine)"
+export BINGO_REDIS_ENDPOINT="$(docker port "${REDIS_CONTAINER_ID}" 6379/tcp | sed -E 's/.*:([0-9]+)$/127.0.0.1:\1/')"
 
 python3 - \
   "${CLIENT_CONFIG}" \

@@ -11,7 +11,7 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.gamequest.server.configuration.QuestIds;
 import systems.zlink.samples.gamequest.server.configuration.QuestStatuses;
 import systems.zlink.samples.gamequest.server.gameapi.contracts.SelfCheckMessages;
-import systems.zlink.samples.gamequest.server.gameapi.store.GameQuestStore;
+import systems.zlink.samples.gamequest.server.gameapi.infrastructure.store.GameQuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 /**

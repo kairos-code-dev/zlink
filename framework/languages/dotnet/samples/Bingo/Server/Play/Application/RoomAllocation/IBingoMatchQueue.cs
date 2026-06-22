@@ -1,8 +1,11 @@
+using Bingo.Server.Play.Domain.Bingo;
+
 namespace Bingo.Server.Play.Application.RoomAllocation;
 
 internal sealed record BingoMatchReservation(
     string RoomId,
-    string OwnerPlayNodeRid);
+    string OwnerPlayNodeRid,
+    BingoRoomSettings? LocalRoomSettings);
 
 internal interface IBingoMatchQueue
 {

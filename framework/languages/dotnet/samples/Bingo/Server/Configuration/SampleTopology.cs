@@ -64,7 +64,7 @@ public sealed record SampleTopology(
                 RoutingId.From("1106"),
                 playB.NodeRid,
                 playB.PlayChannelEndpoint),
-            ReadEndpoint("BINGO_REDIS_ENDPOINT", "127.0.0.1:6379"),
+            ReadRequired("BINGO_REDIS_ENDPOINT"),
             ReadText("BINGO_REDIS_KEY_PREFIX", "bingo:"));
     }
 
@@ -93,6 +93,19 @@ public sealed record SampleTopology(
     {
         var value = Environment.GetEnvironmentVariable(name);
         return string.IsNullOrWhiteSpace(value) ? defaultValue : value;
+    }
+
+    private static string ReadRequired(string name)
+    {
+        var value = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new InvalidOperationException(
+                $"Environment variable '{name}' is required. Run the sample via run_sample.sh/run_sample.ps1, "
+                + "which provisions an isolated Redis container, or set it to an external Redis endpoint explicitly.");
+        }
+
+        return value;
     }
 }
 

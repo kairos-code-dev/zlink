@@ -18,7 +18,11 @@ import {
 } from './Handlers/query-and-self-check-handlers';
 import { QuestProgressStore } from './quest-progress-store';
 
-function createGameQuestModule(config: { questEndpoint: string }) {
+function createGameQuestModule(config: {
+  registryPubEndpoint: string;
+  registryRouterEndpoint: string;
+  questEndpoint: string;
+}) {
   class GameQuestModule {}
 
   Module({
@@ -27,6 +31,8 @@ function createGameQuestModule(config: { questEndpoint: string }) {
         useFactory: () => zlinkFramework()
           .codecs()
             .addJson()
+          .useDiscovery()
+            .addRegistryEndpoint(config.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.questChannel)
             .enableServer(config.questEndpoint)
             .addRequestHandler(PacketNames.enterAreaReq, EnterAreaHandler)

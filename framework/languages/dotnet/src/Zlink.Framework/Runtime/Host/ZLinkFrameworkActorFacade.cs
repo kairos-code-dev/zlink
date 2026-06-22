@@ -273,9 +273,12 @@ internal sealed class ZLinkFrameworkActorFacade(
             routerChannelId,
             ZLinkRemoteActorJoinPackets.RequestPacketName,
             registration.DefaultRequestTimeout);
+        actorState.TryGetBoundSession(out var boundSession);
         var payload = new ZLinkRemoteActorJoinRequest(
             actor.ActorId,
             actorState.ActorType,
+            boundSession.SessionNodeRid?.ToBytes().ToArray(),
+            boundSession.SessionRid.Size > 0 ? boundSession.SessionRid.ToBytes().ToArray() : null,
             request.ToArray());
         var parts = ZLinkEnvelopeCodec.EncodeParts(
             header,

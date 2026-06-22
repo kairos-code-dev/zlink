@@ -46,6 +46,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         string actorId,
         string actorType,
         RoutingId spotRid,
+        RoutingId? boundSessionNodeRid,
+        RoutingId? boundSessionRid,
         Message request,
         CancellationToken cancellationToken = default)
     {
@@ -55,13 +57,15 @@ internal sealed partial class ZLinkFrameworkRuntime
 
         var creation = await CreateLocalActorAsync(actorId, actorType, cancellationToken)
             .ConfigureAwait(false);
-        var result = await activation.JoinActorAsync(creation.Actor, request, cancellationToken)
-            .ConfigureAwait(false);
         var actorState = GetOrCreateActorState(actorId);
         var actorRef = actorState.NativeActorRef
             ?? throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor '{actorId}' does not have a native Actor ref.");
+        BindRemoteBoundSessionRoute(actorId, actorRef, boundSessionNodeRid, boundSessionRid);
+
+        var result = await activation.JoinActorAsync(creation.Actor, request, cancellationToken)
+            .ConfigureAwait(false);
 
         return new ZLinkRemoteActorJoinReply(
             result.Accepted,
@@ -69,6 +73,35 @@ internal sealed partial class ZLinkFrameworkRuntime
             actorRef.ActorId,
             actorRef.Generation,
             result.Reply?.ToArray() ?? Array.Empty<byte>());
+    }
+
+    private void BindRemoteBoundSessionRoute(
+        string actorId,
+        ZLinkBackendActorRef actorRef,
+        RoutingId? boundSessionNodeRid,
+        RoutingId? boundSessionRid)
+    {
+        if (boundSessionNodeRid is not { } sourceNodeRid
+            || boundSessionRid is not { } sourceSessionRid)
+        {
+            return;
+        }
+
+        BindActorSession(
+            actorId,
+            sourceNodeRid,
+            sourceSessionRid,
+            BuildNativeBoundSessionToken(sourceSessionRid));
+        var node = GetActorSpotNode()
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                "Remote actor session binding requires a router-capable SpotNode.");
+        node.BindRemoteActorBoundSession(actorRef, sourceNodeRid, sourceSessionRid);
+    }
+
+    private static string BuildNativeBoundSessionToken(RoutingId sourceSessionRid)
+    {
+        return $"native:{sourceSessionRid.ToHex()}";
     }
 
     internal async ValueTask JoinActorToSpotAsync(
@@ -204,10 +237,11 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal void BindActorSession(
         string actorId,
+        RoutingId? sessionNodeRid,
         RoutingId sessionRid,
         string bindingToken)
     {
-        GetOrCreateActorState(actorId).BindSession(sessionRid, bindingToken);
+        GetOrCreateActorState(actorId).BindSession(sessionNodeRid, sessionRid, bindingToken);
         ActorBoundSessions.Register(this, actorId, sessionRid, bindingToken);
     }
 

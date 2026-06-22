@@ -3,6 +3,7 @@
 
 #include <zlink/framework/contracts/configuration/logging.hpp>
 
+#include <cstddef>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -40,6 +41,18 @@ enum class message_flow_log_mode_t
     key_transitions,
     verbose,
     diagnostic
+};
+
+// A transition in a message's lifecycle on the success path. Errors are
+// reported separately via message_dispatch_error_event_t; these phases describe
+// healthy traffic so that "did the message arrive / get handled / get replied"
+// can be followed by correlation id without resorting to ad-hoc printf debugging.
+enum class message_flow_phase_t
+{
+    received,   // a well-formed envelope arrived at a dispatch surface
+    dispatched, // a fire-and-forget message was handed to its handler
+    replied,    // a request completed and a reply was produced
+    dropped     // a message was intentionally discarded (no handler, decode failed, ...)
 };
 
 struct unhandled_dispatch_options_t
@@ -120,6 +133,28 @@ class message_dispatch_error_observer_t
     virtual void on_dispatch_error (const message_dispatch_error_event_t &error) = 0;
 };
 
+struct message_flow_event_t
+{
+    message_flow_phase_t phase;
+    dispatch_error_surface_t surface;
+    dispatch_message_kind_t message_kind;
+    std::optional<std::string> packet_name;
+    std::optional<std::string> channel_name;
+    std::optional<std::string> topic;
+    std::optional<std::string> correlation_id;
+    std::optional<std::string> source_rid;
+    std::optional<std::string> spot_rid;
+    std::optional<std::string> actor_id;
+    std::optional<std::size_t> message_size;
+};
+
+class message_flow_observer_t
+{
+  public:
+    virtual ~message_flow_observer_t () = default;
+    virtual void on_message_flow (const message_flow_event_t &event) = 0;
+};
+
 struct dispatch_options_t
 {
     dispatch_mode_t spot_dispatch_mode = dispatch_mode_t::compiled;
@@ -128,6 +163,8 @@ struct dispatch_options_t
     dispatch_diagnostics_options_t diagnostics;
     std::shared_ptr<message_dispatch_error_observer_t> message_dispatch_error_observer;
     std::function<void (const message_dispatch_error_event_t &)> message_dispatch_error_callback;
+    std::shared_ptr<message_flow_observer_t> message_flow_observer;
+    std::function<void (const message_flow_event_t &)> message_flow_callback;
 
     dispatch_options_t &set_message_dispatch_error_observer (
       std::shared_ptr<message_dispatch_error_observer_t> observer)
@@ -142,6 +179,22 @@ struct dispatch_options_t
     {
         message_dispatch_error_callback = std::move (observer);
         message_dispatch_error_observer.reset ();
+        return *this;
+    }
+
+    dispatch_options_t &set_message_flow_observer (
+      std::shared_ptr<message_flow_observer_t> observer)
+    {
+        message_flow_observer = std::move (observer);
+        message_flow_callback = {};
+        return *this;
+    }
+
+    dispatch_options_t &set_message_flow_observer (
+      std::function<void (const message_flow_event_t &)> observer)
+    {
+        message_flow_callback = std::move (observer);
+        message_flow_observer.reset ();
         return *this;
     }
 };

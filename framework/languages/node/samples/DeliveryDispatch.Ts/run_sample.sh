@@ -19,14 +19,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-read -r DELIVERYDISPATCH_DISPATCH_ENDPOINT <<<"$(python3 - <<'PY'
+read -r DELIVERYDISPATCH_REGISTRY_PUB_ENDPOINT DELIVERYDISPATCH_REGISTRY_ROUTER_ENDPOINT DELIVERYDISPATCH_DISPATCH_ENDPOINT <<<"$(python3 - <<'PY'
 import socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.bind(("127.0.0.1", 0))
-print(f"tcp://127.0.0.1:{sock.getsockname()[1]}")
-sock.close()
+sockets = []
+for _ in range(3):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    sockets.append(sock)
+print(" ".join(f"tcp://127.0.0.1:{sock.getsockname()[1]}" for sock in sockets))
+for sock in sockets:
+    sock.close()
 PY
 )"
+export DELIVERYDISPATCH_REGISTRY_PUB_ENDPOINT
+export DELIVERYDISPATCH_REGISTRY_ROUTER_ENDPOINT
 export DELIVERYDISPATCH_DISPATCH_ENDPOINT
 export ZLINK_SAMPLE_CONFIG="${RUN_DIR}/sample.env"
 
@@ -45,6 +51,38 @@ wait_port() {
   return 1
 }
 
+wait_discovery_ready() {
+  node - "${DELIVERYDISPATCH_REGISTRY_ROUTER_ENDPOINT}" <<'NODE'
+const registryEndpoint = process.argv[2];
+const zlink = require('@zlink-systems/zlink');
+const pause = new Int32Array(new SharedArrayBuffer(4));
+const context = zlink.createContext();
+const client = zlink.createRegistryQueryClient(context);
+
+try {
+  client.connect(registryEndpoint);
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const ready = client
+      .topology()
+      .some((entry) =>
+        entry.channelName === 'deliverydispatch.dispatch' &&
+        entry.state === 3 &&
+        typeof entry.endpoint === 'string' &&
+        entry.endpoint.length > 0);
+    if (ready) {
+      process.exit(0);
+    }
+    Atomics.wait(pause, 0, 0, 100);
+  }
+  console.error('Timed out waiting for DeliveryDispatch discovery readiness.');
+  process.exit(1);
+} finally {
+  client.close();
+  context.close();
+}
+NODE
+}
+
 start_server() {
   node "${SCRIPT_DIR}/dist/Server/main.js" >"${RUN_DIR}/server.log" 2>&1 &
   PIDS+=("$!")
@@ -52,4 +90,6 @@ start_server() {
 
 start_server
 wait_port
+wait_discovery_ready
+sleep 1
 node "${SCRIPT_DIR}/dist/Client/main.js"

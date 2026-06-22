@@ -185,7 +185,7 @@ final class TopicPlane {
                                     RecvScratch.TOPIC_CAPACITY,
                                     scratch.topicLenOut.get(
                                         ValueLayout.JAVA_LONG, 0));
-                            topicId = cachedTopicString(scratch,
+                            topicId = decodeTopicString(
                                 scratch.topicOut, topicLength);
                         }
                         parts.add(part);
@@ -253,7 +253,7 @@ final class TopicPlane {
                     int topicLength = NativeSocketRuntime.normalizeTopicLength(
                         scratch.topicOut, RecvScratch.TOPIC_CAPACITY,
                         scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-                    String topicId = cachedTopicString(scratch,
+                    String topicId = decodeTopicString(
                         scratch.topicOut, topicLength);
                     success = true;
                     InternalAccess.topicMessageAdoptSingle(result, routingId,
@@ -281,31 +281,14 @@ final class TopicPlane {
         }
     }
 
-    private static String cachedTopicString(RecvScratch scratch,
-                                            MemorySegment topicOut,
+    private static String decodeTopicString(MemorySegment topicOut,
                                             int topicLength) {
         if (topicLength == 0) {
             return "";
         }
-        byte[] cached = scratch.cachedTopicBytes;
-        if (cached != null && cached.length == topicLength) {
-            boolean same = true;
-            for (int i = 0; i < topicLength; i++) {
-                if (cached[i] != topicOut.get(ValueLayout.JAVA_BYTE, i)) {
-                    same = false;
-                    break;
-                }
-            }
-            if (same) {
-                return scratch.cachedTopicString;
-            }
-        }
         byte[] raw = topicOut.asSlice(0, topicLength)
             .toArray(ValueLayout.JAVA_BYTE);
-        String decoded = new String(raw, StandardCharsets.UTF_8);
-        scratch.cachedTopicBytes = raw;
-        scratch.cachedTopicString = decoded;
-        return decoded;
+        return new String(raw, StandardCharsets.UTF_8);
     }
 
     private TopicMessage subscribeAssembleRemainder(RecvScratch scratch,
@@ -314,7 +297,7 @@ final class TopicPlane {
         int topicLength = NativeSocketRuntime.normalizeTopicLength(
             scratch.topicOut, RecvScratch.TOPIC_CAPACITY,
             scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-        String topicId = cachedTopicString(scratch, scratch.topicOut,
+        String topicId = decodeTopicString(scratch.topicOut,
             topicLength);
         ArrayList<Message> parts = new ArrayList<>();
         parts.add(firstPart);
@@ -419,7 +402,7 @@ final class TopicPlane {
         int topicLength = NativeSocketRuntime.normalizeTopicLength(
             scratch.topicOut, RecvScratch.TOPIC_CAPACITY,
             scratch.topicLenOut.get(ValueLayout.JAVA_LONG, 0));
-        String filter = cachedTopicString(scratch, scratch.topicOut,
+        String filter = decodeTopicString(scratch.topicOut,
             topicLength);
         return ContractAccess.subscriptionEvent(Optional.ofNullable(
             NativeRoutingIds.read(scratch.routingIdOut)),

@@ -7,11 +7,11 @@
 #include "../Configuration/sample_topology.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
-#include "Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
-#include "Adapters/ZLink/Handlers/create_game_handler.hpp"
-#include "Adapters/ZLink/Sessions/play_session.hpp"
-#include "Adapters/ZLink/Spots/tictactoe_entry_spot.hpp"
-#include "Adapters/ZLink/Spots/tictactoe_game_spot.hpp"
+#include "Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
+#include "Infrastructure/ZLink/Handlers/create_game_handler.hpp"
+#include "Infrastructure/ZLink/Sessions/play_session.hpp"
+#include "Infrastructure/ZLink/Spots/tictactoe_entry_spot.hpp"
+#include "Infrastructure/ZLink/Spots/tictactoe_game_spot.hpp"
 #include "Application/GameCreation/tictactoe_game_creator.hpp"
 
 #include <memory>

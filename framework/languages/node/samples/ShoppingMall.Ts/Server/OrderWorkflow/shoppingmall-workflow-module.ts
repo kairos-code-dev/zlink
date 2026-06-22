@@ -13,7 +13,11 @@ import {
 import { StartOrderHandler } from './Handlers/start-order-handler';
 import { OrderStore } from './order-store';
 
-function createShoppingMallModule(config: { workflowEndpoint: string }) {
+function createShoppingMallModule(config: {
+  registryPubEndpoint: string;
+  registryRouterEndpoint: string;
+  workflowEndpoint: string;
+}) {
   class ShoppingMallModule {}
 
   Module({
@@ -22,6 +26,8 @@ function createShoppingMallModule(config: { workflowEndpoint: string }) {
         useFactory: () => zlinkFramework()
           .codecs()
             .addJson()
+          .useDiscovery()
+            .addRegistryEndpoint(config.registryRouterEndpoint)
           .addClientServerChannel(SampleNames.workflowChannel)
             .enableServer(config.workflowEndpoint)
             .addRequestHandler(PacketNames.startOrderReq, StartOrderHandler)

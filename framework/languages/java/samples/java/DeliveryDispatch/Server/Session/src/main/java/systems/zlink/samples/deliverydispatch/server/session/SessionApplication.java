@@ -44,16 +44,16 @@ public final class SessionApplication {
             options.codecs().addJson();
             options.addHandlersFromPackageOf(SessionApplication.class);
             options.addClientServerChannel(SampleNames.TrackingChannel)
-                .enableClient(SampleTopology.TrackingChannelEndpoint);
+                .enableClient();
             options.addFanoutChannel(SampleNames.StatusFanoutChannel)
-                .enableSubscriber(SampleTopology.StatusFanoutEndpoint)
+                .enableSubscriber()
                 .addPublishHandler(
                     DeliveryStatusFanoutHandler.class,
                     Messages.DeliveryStatusNotify.class,
                     "DeliveryStatusNotify");
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.SpotRouteChannel);
             route.enableServer(SampleTopology.SessionSpotRouteEndpoint);
-            route.enableClient(SampleTopology.TrackingSpotRouteEndpoint);
+            route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.SessionSpotNodeRid));
             options.useRegistrySpotRemoteAddresses(SampleNames.DeliverySpotDiscovery)
                 .setRouterChannelId(SampleNames.SpotRouteChannel);

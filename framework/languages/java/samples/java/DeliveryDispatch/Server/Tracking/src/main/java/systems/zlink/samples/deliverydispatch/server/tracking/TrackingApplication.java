@@ -68,7 +68,7 @@ public final class TrackingApplication {
                 .enablePublisher(SampleTopology.StatusFanoutEndpoint);
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.SpotRouteChannel);
             route.enableServer(SampleTopology.TrackingSpotRouteEndpoint);
-            route.enableClient(SampleTopology.SessionSpotRouteEndpoint);
+            route.enableClient();
             route.setRoutingId(RoutingId.from(SampleTopology.TrackingSpotNodeRid));
             options.useRegistrySpotRemoteAddresses(SampleNames.DeliverySpotDiscovery)
                 .setRouterChannelId(SampleNames.SpotRouteChannel);

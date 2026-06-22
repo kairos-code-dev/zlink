@@ -20,6 +20,14 @@ C binding 라이브러리의 일반적인 성능이다. 기준으로 삼는 C �
 기준으로 쓰지 않는다. C 결과 자체가 비정상적으로 낮거나 높아 보이면 같은 조건으로
 재측정해 일반적인 범위를 먼저 확인한다.
 
+2026-06-19 C multi baseline
+`bindings/c/perf/baseline/perf_c_multi_linux_20260619_062932.txt`와 현재 C 기준이
+크게 다른 셀은 오래된 baseline으로 binding 미달 여부를 판단하지 않는다. 그 셀은
+같은 runtime의 C 결과를 다시 측정하거나, 이미 같은 조건 paired C report가 있으면 그
+report를 기준으로 쓴다. 이 규칙은 baseline 흔들림을 binding 병목으로 오판하지 않기
+위한 것이며, binding 코드에 perf-only cache나 입력 모양 의존 최적화를 넣는 근거로
+쓰지 않는다.
+
 | 순서 | 언어 | perf 경로 |
 |------|------|-----------|
 | 1 | C++ | `bindings/cpp/perf` |
@@ -957,6 +965,35 @@ SPOT reqrep/sendsend 계열에서 서로 다른 shutdown/bind-ready 실패를 �
   필요한 문자열 생성은 유지하면서, payload만 읽는 호출자가 topic string allocation을
   치르지 않게 하는 기존 내부 최적화다. 같은 topic 반복 cache나 새 public topic-compare
   helper는 실사용 분포 근거가 부족하므로 계속 제외한다.
+- **2026-06-22 .NET `TopicMessage` writable topic reset skip 채택**:
+  반복 topic cache는 제외한 상태에서, public `ISpot.Subscribe(TopicMessage, DontWait)`
+  재사용 경로의 일반 상태 전환만 다시 보았다. caller-provided `TopicMessage`가 writable
+  topic buffer를 native receive에 넘기는 경로는 `ResetForReuse()` 직후
+  `SetTopicFromWritableBuffer(...)`로 topic state를 새 값으로 바꾼다. 따라서 reset 단계에서
+  `_topic = string.Empty`, `_topicLength = 0`을 먼저 쓰는 것은 곧 덮어쓸 transient state다.
+  이 후보는 topic 값이 반복된다는 전제를 쓰지 않고, public `Topic` lazy decode 계약과
+  `ISpot.Subscribe(TopicMessage, ...)` 표면을 그대로 둔다. `ResetForReuse(resetTopic:
+  false)`를 writable-buffer populate 경로에만 사용하고, 코드 가까이에 `HOT PATH` 주석을
+  보강했다. guard test `topic_message_writable_buffer_receive_does_not_reset_topic_twice`가
+  이 경로를 고정한다.
+  검증은 `dotnet build bindings/dotnet/Zlink.sln -c Release --no-restore`와
+  `dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release --no-restore --filter "FullyQualifiedName~test_optimization_guard|FullyQualifiedName~test_spot_pubsub_basic"`가
+  통과했다. C baseline은 사용자가 지정한
+  `bindings/c/perf/baseline/perf_c_multi_linux_20260619_062932.txt`와 최신 C paired 값이
+  `MULTI_SPOT tcp 1024`에서 크게 달라, 이미 보강된
+  `perf_c_multi_linux_20260621_180339_prerelease_7_2_0_c_multi_recheck_dotnet_multispot_misses.txt`
+  를 기준으로 썼다. 후보 측정
+  `perf_dotnet_multi_linux_20260622_140511_prerelease_7_2_0_dotnet_multi_spot_tcp_64_1024_topic_reset_skip_probe.txt`는
+  `5525927.000/5052600.000 msg/s`, 반복
+  `perf_dotnet_multi_linux_20260622_140602_prerelease_7_2_0_dotnet_multi_spot_tcp_64_1024_topic_reset_skip_probe_repeat.txt`는
+  `5617140.000/4298700.000 msg/s`였다. 최신 C 대비 최저 비율도 `79.7%/78.7%`라
+  `MULTI_SPOT tcp 64/1024`는 해소로 본다.
+  같은 변경을 둔 상태에서 `tls/wss 256/1024/4096`도 제한 재측정했다.
+  `perf_dotnet_multi_linux_20260622_141114_prerelease_7_2_0_dotnet_multi_spot_tls_wss_256_1024_4096_topic_reset_skip_probe.txt`는
+  `status=complete`, 결과 라인 `90/90`이고, 최신 C 대비 비율은 `tls`
+  `75.5%/94.1%/64.9%`, `wss` `97.0%/80.2%/250.6%`다. 따라서 이 후보는
+  tcp에만 맞춘 특수 처리가 아니라 public `ISpot.Subscribe(TopicMessage, ...)`
+  재사용 receive 경로 전체의 일반 비용을 줄이는 변경으로 본다.
 - **2026-06-22 .NET SPOT hot path 주석/계약 검증**:
   SPOT subscribe/publish hot path 주석이 실제 public 계약과 맞는지 다시 확인했다.
   `ReceiveSpotSubscribedParts`는 public `Spot.Subscribe(TopicMessage, ...)`가 쓰는 경로에서
@@ -1518,6 +1555,24 @@ Go는 현재 표 기준으로 single/multi 전 대상이 `통과` 상태다. 아
   주석을 두어, 다음 리팩토링 때 `Message(...)`의 실패 보존 경로와 `MoveMessage(...)`의
   소비 경로가 섞이거나 single-part receive가 다시 `Received` envelope 생성으로 돌아가지
   않도록 명시했다.
+- 2026-06-22 Go `MULTI_PUBSUB tcp 64` current 후보 재검토:
+  이 셀은 여전히 반복 미달이지만, current perf는 이미 public
+  `SubscribePart(out, topicBuffer, DontWait)` caller-owned 수신과 public
+  `Publish("bench").MoveMessage(message).Flags(DontWait).Submit(nil)` 전송을 쓴다.
+  `Publish(topic)`에서 C 문자열을 cache하는 후보는 같은 topic 반복에 강하게 기대며,
+  operation 또는 socket에 새 상태와 수명 조건을 만든다. `Bytes(...)`로 perf 입력을 바꾸는
+  후보도 caller-owned byte slice 사용 패턴의 측정일 뿐 binding 내부 일반 비용을 줄이는
+  변경이 아니다. 따라서 둘 다 이번 라운드에서 제외하고, 남은 Go PUBSUB small-message
+  후보는 native submit/subscribe boundary와 poller 상호작용으로 좁힌다.
+- 2026-06-22 Go public send builder inline storage 후보 기각:
+  public `Publish(...).MoveMessage(...).Flags(...).Submit(...)` 표면은 유지한 채
+  `sendBuilder` 안에 첫 payload용 inline storage를 두어 단일 part append의 slice backing
+  array 생성을 줄이는 후보를 시험했다. 이 후보는 반복 topic cache가 아니라 public builder
+  공통 경로 후보였지만, `MULTI_PUBSUB tcp 64` 제한 재측정
+  `perf_go_multi_linux_20260622_143316_prerelease_7_2_0_go_multi_pubsub_tcp64_send_builder_inline_storage_probe.txt`가
+  `1221783.000/1256932.000/1299694.000 msg/s`로 기존 paired 재측정
+  `1334572.000 msg/s`보다 낮았다. 구조체 크기 증가와 escape 판단 변화 가능성만 남기고
+  실사용 일반 개선을 입증하지 못했으므로 코드는 원복했다.
 - 2026-06-22 Go `MULTI_DEALER_DEALER tls 131072` 짧은 재확인:
   `bindings/go/perf/results/multi/report/perf_go_multi_linux_20260622_132351_prerelease_7_2_0_go_multi_dd_tls_131072_hotpath_comment_recheck.txt`
   는 `core/build/lib/libzlink.so.7.2.0`로 실행했고 `status=complete`, throughput
@@ -2593,6 +2648,17 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   (`+13.5%/+9.0%/+9.8%`). C 7.2.0 full 대비 비율은 `32.8/25.6/19.1%`에서
   `37.2/27.9/21.0%`로 개선됐고, 64B는 Node 개선 라운드 SPOT 기준을 넘었다. 256/1024B는
   아직 목표 미달이라 다음 binding 내부 후보를 계속 본다.
+- **2026-06-22 Node `MULTI_SPOT tcp 256/1024/65536` C baseline 갱신**:
+  사용자가 지정한
+  `bindings/c/perf/baseline/perf_c_multi_linux_20260619_062932.txt`와 7.2.0 fresh C 기준을
+  대조하니 `MULTI_SPOT tcp 256/1024/65536` 중 특히 256B가 크게 달랐다. 같은 runtime
+  `core/build/lib/libzlink.so.7.2.0`으로 해당 C 셀을 다시 측정한
+  `perf_c_multi_linux_20260622_141845_prerelease_7_2_0_c_multi_spot_tcp_node_remaining_baseline_refresh.txt`는
+  `6007218.000/4474600.000/1609300.000 msg/s`, `status=complete`, 결과 라인 `15/15`다.
+  2026-06-19 C baseline 대비 차이는 `+21.4%/+13.2%/+4.7%`다. 따라서 Node SPOT tcp
+  남은 셀 판정은 이 갱신 C 기준을 사용하고, raw shape 적용 뒤 Node 비율은
+  `256/1024/65536`에서 `21.4%/17.2%/11.2%`다. 이는 Node binding 내부 개선 필요성이
+  baseline 오판이 아니라는 쪽으로 근거를 더 강하게 만든다.
 - **2026-06-22 Node SPOT subscribe raw shape large 재측정**:
   같은 변경을 `MULTI_SPOT tcp 65536B`에도 적용한 상태로 기본 `clients=100`을 다시 돌렸지만
   30GB와 45GB RSS guard 모두 결과 저장 전 중단했다. report
@@ -2606,6 +2672,16 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   깨지 않는 범위의 drain 비용 또는 backlog 원인으로 분리한다. `parts` 배열 자체를 재사용하는
   접근은 호출자가 이전 `TopicMessage.parts` 참조를 보관할 때 다음 receive에 의해 내용이
   바뀌므로 public envelope 계약을 깨는 얕은 최적화라 적용하지 않는다.
+- **2026-06-22 Node SPOT 추가 micro 후보 기각**:
+  SPOT small 미달을 더 줄이기 위해 close loop, runtime-owned direct release flag, stack
+  topic buffer 후보를 각각 검토했다. 모두 public `spot.subscribe(received,
+  RecvFlags.DontWait)` 표면은 유지했지만, 결과는 size마다 흔들렸다. close loop는
+  `2493.4/1300.5/1555.0`, `2404.1/1315.4/770.6`, `2353.8/1304.7/763.0 Kmsg/s`,
+  runtime-owned release는 `2527.3/1282.0/762.9`, `2452.6/1297.4/1643.4 Kmsg/s`,
+  stack topic buffer는 `2470.1/1299.9/764.6`, `2523.7/1307.2/766.6 Kmsg/s`였다.
+  1024B 일부 상승은 반복성이 약한 outlier로 보이고, 상태 플래그나 size별 buffer 분기를
+  늘릴 만큼 일반 비용이 줄었다는 근거가 없다. POSD 관점에서도 내부 상태와 예외 경로만
+  늘리는 얕은 변경이라 모두 원복했다.
 - **2026-06-22 Java `MULTI_DEALER_DEALER tcp 64/65536` current 재확인 및 perf-only 후보 보류**:
   같은 조건 paired 재측정에서 Java
   `perf_java_multi_linux_20260622_104155_prerelease_7_2_0_java_multi_dealer_dealer_tcp_64_65536_current_reprobe.txt`는
@@ -2840,6 +2916,67 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `1139712.000/15963.600 msg/s` 대비 64B는 오차권이고 65536B는 크게 하락했다. shared
   public send builder를 패턴별로 나누는 것은 POSD 관점에서도 얕은 분기와 중복을 늘리므로
   반영하지 않는다. 코드 변경은 원복했다.
+- **2026-06-22 Java current hot path 재확인 및 baseline refresh 제외**:
+  현재 Java binding에는 `PAIR`/`DEALER`/`ROUTER`/`PUB`의 single-message public send
+  builder 경로와 `Received` caller-provided storage hot path 주석이 남아 있다. 이 상태가
+  `MULTI_DEALER_DEALER tcp 64,65536`을 해소했는지 다시 확인했다.
+  사용자가 지정한 C baseline
+  `bindings/c/perf/baseline/perf_c_multi_linux_20260619_062932.txt`의 해당 값은
+  `2843638.800/161217.400 msg/s`이고, 최신 C paired 값
+  `perf_c_multi_linux_20260621_193019_prerelease_7_2_0_c_multi_recheck_java_dealer_dealer_misses.txt`는
+  `3071251.200/182651.600 msg/s`다. 차이는 약 `+8%/+13%`라 baseline refresh 대상으로
+  보지 않고 최신 paired C를 비교 기준으로 썼다. Java current 재측정
+  `perf_java_multi_linux_20260622_135930_prerelease_7_2_0_java_multi_dealer_dealer_tcp_64_65536_current_hotpath_recheck.txt`는
+  `1055038.000/15307.000 msg/s`, `status=complete`, 결과 라인 `30/30`이었다. 최신 C 대비
+  약 `34.4%/8.4%`라 반복 미달은 유지된다. 따라서 이 단계에서는 perf-only payload reuse,
+  helper 우회, 반복 입력 cache를 추가하지 않는다. 다음 Java 후보는 public contract를
+  그대로 둔 채 native downcall, message ownership, receive materialization의 일반 경로
+  비용을 더 좁히는 방향으로만 잡는다.
+- **2026-06-22 Java repeated value cache 제거**:
+  perf-only 후보 재검토 원칙에 맞춰 Java binding의 send/receive scratch에서 반복
+  topic/routing id cache를 제거했다. public `publish(topic)`, `subscribe(...)`,
+  routed `send(...)`, SPOT `subscribe(...)` 계약은 그대로이고, thread-local native
+  scratch buffer 재사용만 남겼다. 이 cache는 같은 topic이나 같은 peer routing id가
+  반복된다는 입력 분포에 기대며, 실사용 일반 hot path 비용을 줄인다는 profiler 근거가
+  부족했다. POSD 관점에서도 상태와 비교 루프를 여러 receive/send 경로에 흩뜨리는 얕은
+  복잡성이므로 성능 후보가 아니라 제거 대상으로 본다.
+  검증은 `./gradlew :compileJava :test --tests 'systems.zlink.contract.SocketContractTest' --tests 'systems.zlink.SendResultContractTest' --no-daemon`,
+  `./gradlew jar --no-daemon`으로 통과했다. 대표 영향 측정은
+  `perf_java_multi_linux_20260622_144530_prerelease_7_2_0_java_multi_pubsub_tcp64_remove_repeated_value_caches_probe.txt`
+  `MULTI_PUBSUB tcp 64` `1953365.667 msg/s`,
+  `perf_java_single_linux_20260622_144539_prerelease_7_2_0_java_single_dealer_router_inproc65536_remove_repeated_value_caches_probe.txt`
+  `DEALER_ROUTER inproc 65536` `37661.333 msg/s`다. 반복값 cache 제거는 목표 미달을
+  해소하는 개선으로 계산하지 않고, 이후 Java 후보는 cache가 아니라 native boundary,
+  message ownership, receive materialization의 일반 비용을 profiler로 분리한 뒤 고른다.
+- **2026-06-22 Python `ReceivedMessage` compact view 후보 기각**:
+  Python single simple small 미달은 public `recv_into(received)`와 native owner receive
+  bridge를 이미 사용한다. 남은 per-message 비용 후보로 매 수신 part마다 생성되는 public
+  `ReceivedMessage` view에 `__slots__`를 두는 실험을 했다. 이전 part view를 재사용하지
+  않았기 때문에 caller가 들고 있는 part lifetime 계약은 보존했고,
+  `python -m pytest bindings/python/tests/test_core_api_alignment.py bindings/python/tests/test_boundary_ownership_contract.py bindings/python/tests/test_optimization_guard.py`,
+  `python -m pytest bindings/python/tests/test_version.py`는 통과했다.
+  그러나 대표 측정
+  `perf_python_single_linux_20260622_145106_prerelease_7_2_0_python_single_pair_small_received_message_slots_probe.txt`는
+  `PAIR inproc 64/256` `256096.000/257576.000 msg/s`,
+  `PAIR tcp 64/256` `350808.333/347356.333 msg/s`였다. 기존 paired 보강 값
+  `278228.200/265697.000`, `358674.600/364927.200 msg/s`보다 4개 cell 모두 낮다.
+  성능 근거가 없으므로 코드 변경은 원복했다. 다음 Python 후보는 public part view 모양
+  변경이나 perf-only view 접근이 아니라 native bridge 호출 경계, owner materialization,
+  send-side payload preparation 비용을 profiler로 분리한 뒤 선택한다.
+- **2026-06-22 Python `NativeReceivedPartsOwner` single-part close 후보 기각**:
+  위 후보 원복 뒤, public `recv_into(received)`와 caller-provided `Received` storage 계약은
+  그대로 둔 채 native owner close loop에서 `part_count == 1`을 별도 처리하는 후보를 시험했다.
+  `python setup.py build_ext --inplace`로 확장을 다시 만들었고,
+  `python -m pytest bindings/python/tests/test_core_api_alignment.py bindings/python/tests/test_boundary_ownership_contract.py bindings/python/tests/test_optimization_guard.py bindings/python/tests/test_version.py`는
+  통과했다. 그러나 대표 측정
+  `perf_python_single_linux_20260622_145358_prerelease_7_2_0_python_single_pair_small_native_owner_single_close_probe.txt`는
+  `PAIR inproc 64/256` `247975.000/257682.000 msg/s`,
+  `PAIR tcp 64/256` `348488.667/343245.000 msg/s`였다. 기존 paired 보강 값
+  `278228.200/265697.000`, `358674.600/364927.200 msg/s`보다 네 cell 모두 낮고,
+  직전 compact view 후보보다도 대부분 낮다. single-part close 미세 분기는 native bridge와
+  materialization의 일반 비용을 줄이지 못하고 close loop 내부 조건만 늘리므로 원복했다.
+  다음 Python 후보는 close loop 미세 분기가 아니라 native bridge 호출 수, owner
+  materialization, send-side payload preparation 중 실제 profiler 상위 비용을 먼저 분리한다.
 - **2026-05-26 `MULTI_SPOT_SENDSEND` poll interest 문서 정정**:
   `doc/perf/PERF_MULTI_TEST_POLICY.md`는 송수신 양방향 spot workload를
   `POLLIN|POLLOUT`으로 등록해야 한다고 적고 있었지만, C active window는

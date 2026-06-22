@@ -43,7 +43,7 @@ public record SampleSettings(
             List.of("tcp://127.0.0.1:47206", "tcp://127.0.0.1:47216"),
             "tcp://127.0.0.1:47207",
             List.of("tcp://127.0.0.1:47207", "tcp://127.0.0.1:47217"),
-            "127.0.0.1:6379",
+            "",
             "zlink:tictactoe:room:",
             "play-node-1",
             "play-node-2",
@@ -56,7 +56,18 @@ public record SampleSettings(
     public static SampleSettings load(String[] args) {
         SampleSettings defaults = createDefault();
         SampleSettings configured = fromProperties(readOption(args, "--config", null), defaults);
-        return fromArgs(args, configured);
+        SampleSettings resolved = fromArgs(args, configured);
+
+        // The sample owns its Redis via run_sample.sh/run_sample.ps1, which provisions
+        // an isolated container; require the endpoint so a stray direct run never
+        // silently falls back to a developer's local Redis.
+        if (resolved.redisEndpoint() == null || resolved.redisEndpoint().isBlank()) {
+            throw new IllegalStateException(
+                "redisEndpoint is required; run the sample via run_sample.sh/run_sample.ps1, "
+                    + "which provisions an isolated Redis container.");
+        }
+
+        return resolved;
     }
 
     private static SampleSettings fromArgs(String[] args, SampleSettings defaults) {

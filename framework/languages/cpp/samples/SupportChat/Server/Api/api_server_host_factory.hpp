@@ -40,7 +40,7 @@ class api_server_host_factory_t
               .enable_server (topology.api_channel_endpoint)
               .use_handler_group ("api");
             options.add_client_server_channel (sample_names_t::support_channel)
-              .enable_client (topology.support_channel_endpoint);
+              .enable_client ();
         });
         return app;
     }

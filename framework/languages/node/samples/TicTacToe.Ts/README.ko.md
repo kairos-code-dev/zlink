@@ -34,7 +34,7 @@ cd framework\languages\node\samples\TicTacToe.Ts
 - `Server/Play/Domain/TicTacToe/`: `tictactoe-board.ts` 와 `tictactoe-match.ts` 에
   board cell 검증, turn 검증, winner/draw 판정을 맡는 순수 게임 규칙을 둔다.
 - `Server/Play/Application/GameCreation/`: 명시적인 `RoomId` 를 만들고 room 을 보관한다.
-- `Server/Play/Adapters/ZLink/`: actor, stream session, Entry Spot, room handler 를 연결한다.
+- `Server/Play/Infrastructure/ZLink/`: actor, stream session, Entry Spot, room handler 를 연결한다.
 - `Server/Configuration/`: 서버 role 의 channel 이름, timeout, 실행 endpoint 설정을 둔다.
 - `Client/Configuration/`: client self-check 실행 설정을 둔다.
 - `Client/tictactoe-client-scenario.ts`: HTTP 생성, 응답 Play endpoint로 stream connector

@@ -6,7 +6,7 @@ import systems.zlink.framework.streams.ZLinkSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkStreamHeader
 import systems.zlink.samples.kotlin.gamequest.server.gameapi.session.GameQuestSessionRegistry
 import systems.zlink.samples.kotlin.gamequest.server.gameapi.session.StreamPayloads
-import systems.zlink.samples.kotlin.gamequest.server.gameapi.store.GameQuestStore
+import systems.zlink.samples.kotlin.gamequest.server.gameapi.infrastructure.store.GameQuestStore
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.SubscribeQuestReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.SubscribeQuestRes
 

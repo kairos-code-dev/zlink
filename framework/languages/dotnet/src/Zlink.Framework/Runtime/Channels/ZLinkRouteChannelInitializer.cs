@@ -43,6 +43,7 @@ internal sealed class ZLinkRouteChannelInitializer(
         }
         // weight 는 bind/discovery 前에 적용해 default-weight 노출 창을 없앤다.
         router.SetPeerWeight(routedRegistration.SocketConfig.Weight);
+        router.SetMandatory(true);
         router.Bind(routedRegistration.BindEndpoint!);
         var discovery = AttachDiscoveryIfNeeded(state, adapter, routedRegistration, router);
         var handlers = new ZLinkRouteHandlerRegistry(CreateRouteHandlerDescriptors(routedRegistration));

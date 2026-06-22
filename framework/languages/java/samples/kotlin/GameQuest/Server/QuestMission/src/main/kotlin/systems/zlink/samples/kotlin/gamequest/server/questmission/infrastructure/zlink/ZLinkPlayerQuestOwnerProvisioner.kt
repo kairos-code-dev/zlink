@@ -1,0 +1,32 @@
+package systems.zlink.samples.kotlin.gamequest.server.questmission.infrastructure.zlink
+
+import com.fasterxml.jackson.databind.ObjectMapper
+import java.nio.charset.StandardCharsets
+import org.springframework.stereotype.Component
+import systems.zlink.contracts.core.RoutingId
+import systems.zlink.contracts.messaging.Message
+import systems.zlink.framework.ZLinkAwait
+import systems.zlink.framework.spots.ZLinkSpotManager
+import systems.zlink.samples.kotlin.gamequest.server.questmission.application.QuestEventProcessor
+import systems.zlink.samples.kotlin.gamequest.server.questmission.spots.PlayerQuestSpot
+
+@Component
+class ZLinkPlayerQuestOwnerProvisioner(
+    private val spots: ZLinkSpotManager,
+    private val json: ObjectMapper,
+) : QuestEventProcessor.PlayerQuestOwnerProvisioner {
+    override fun ensure(playerId: String) {
+        val payload = Message.from(json.writeValueAsBytes(PlayerQuestSpot.PlayerQuestSpotCreateReq(playerId)))
+        try {
+            ZLinkAwait.await(
+                spots.getOrCreate(
+                    PlayerQuestSpot::class.java,
+                    RoutingId.from("player:$playerId".toByteArray(StandardCharsets.UTF_8)),
+                    payload,
+                ),
+            )
+        } finally {
+            payload.close()
+        }
+    }
+}

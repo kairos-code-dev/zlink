@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -24,11 +25,35 @@ std::string quest_endpoint ()
     return "tcp://127.0.0.1:32092";
 }
 
+std::string registry_pub_endpoint ()
+{
+    if (const char *value = std::getenv ("GAMEQUEST_REGISTRY_PUB_ENDPOINT");
+        value != nullptr && *value != '\0') {
+        return value;
+    }
+    return "tcp://127.0.0.1:32083";
+}
+
+std::string registry_router_endpoint ()
+{
+    if (const char *value = std::getenv ("GAMEQUEST_REGISTRY_ROUTER_ENDPOINT");
+        value != nullptr && *value != '\0') {
+        return value;
+    }
+    return "tcp://127.0.0.1:32084";
+}
+
 } // namespace
 
 int main (int argc, char **argv)
 {
     using namespace zlink::samples::gamequest;
+
+    auto registry_app = zlink::framework::app_t::create ();
+    registry_app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        options.enable_registry (registry_pub_endpoint (), registry_router_endpoint ());
+    });
+    std::thread registry_thread ([&] { (void) registry_app.run (argc, argv); });
 
     auto app = zlink::framework::app_t::create ();
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
@@ -68,9 +93,15 @@ int main (int argc, char **argv)
           .add_json<game_quest_server_assert_res_t> ()
           .add_json<event_res_t> ()
           .add_json<quest_progress_t> ();
+        options.use_discovery ().add_registry_endpoint (registry_router_endpoint ());
         options.add_client_server_channel ("gamequest.quest")
           .enable_server (quest_endpoint ())
           .use_handler_group ("quest");
     });
-    return app.run (argc, argv);
+    const auto exit_code = app.run (argc, argv);
+    registry_app.stop ();
+    if (registry_thread.joinable ()) {
+        registry_thread.join ();
+    }
+    return exit_code;
 }

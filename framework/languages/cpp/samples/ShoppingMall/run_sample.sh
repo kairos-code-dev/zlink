@@ -17,14 +17,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-read -r SHOPPINGMALL_WORKFLOW_ENDPOINT <<<"$(python3 - <<'PY'
+read -r SHOPPINGMALL_REGISTRY_PUB_ENDPOINT SHOPPINGMALL_REGISTRY_ROUTER_ENDPOINT SHOPPINGMALL_WORKFLOW_ENDPOINT <<<"$(python3 - <<'PY'
 import socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.bind(("127.0.0.1", 0))
-print(f"tcp://127.0.0.1:{sock.getsockname()[1]}")
-sock.close()
+sockets = []
+for _ in range(3):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    sockets.append(sock)
+print(" ".join(f"tcp://127.0.0.1:{sock.getsockname()[1]}" for sock in sockets))
+for sock in sockets:
+    sock.close()
 PY
 )"
+export SHOPPINGMALL_REGISTRY_PUB_ENDPOINT
+export SHOPPINGMALL_REGISTRY_ROUTER_ENDPOINT
 export SHOPPINGMALL_WORKFLOW_ENDPOINT
 
 "${BIN_DIR}/sample_cpp_framework_shoppingmall_server" &
@@ -38,4 +44,5 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 
+sleep 1
 "${BIN_DIR}/sample_cpp_framework_shoppingmall_client"

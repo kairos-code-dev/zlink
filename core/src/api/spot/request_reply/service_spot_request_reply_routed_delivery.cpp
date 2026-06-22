@@ -16,6 +16,7 @@
 #include "api/spot/request_reply/service_spot_request_reply_utils_internal.hpp"
 #include "core/multipart_send_txn.hpp"
 #include "core/recv_internal.hpp"
+#include "services/actor/service_spot_actor_internal.hpp"
 #include "services/spot/common/spot_control_protocol.hpp"
 #include "services/spot/data_plane/spot_data_plane_internal.hpp"
 #include "services/spot/common/spot_message_parts_internal.hpp"
@@ -326,6 +327,11 @@ int process_routed_send_entry_on_data_plane (zlink::spot_runtime_t *runtime_,
 
     if (zlink::spot_reqrep_internal::should_process_spot_routed_locally (runtime_->owner,
                                                                          envelope)) {
+        if (envelope.destination_class == zlink::spot_routed_protocol::actor_gateway_endpoint_class) {
+            return zlink::spot_actor_internal::process_gateway_delivery (
+              runtime_->owner, &envelope.source_node_rid_value, envelope.payload_parts,
+              envelope.payload_part_count);
+        }
         return process_parsed_route_combined_for_local_delivery (combined_, envelope);
     }
 

@@ -1,13 +1,9 @@
 package systems.zlink.samples.kotlin.gamequest.server.gameapi.application
 
 import org.springframework.stereotype.Component
-import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.channels.ZLinkFanoutClient
 import systems.zlink.samples.kotlin.gamequest.server.configuration.GameQuestRouting
-import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.gamequest.server.gameapi.GameApiInstanceOptions
 import systems.zlink.samples.kotlin.gamequest.server.gameapi.domain.GameplayDomain
-import systems.zlink.samples.kotlin.gamequest.server.gameapi.store.GameQuestStore
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.CollectItemReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.CollectItemRes
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.CompleteMissionReq
@@ -24,15 +20,15 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.UnlockFeatureRes
 
 /**
  * Stateless gameplay action service. Each action stores an idempotent gameplay
- * event and publishes it over the ZLink fanout channel; the QuestMission server
+ * event and publishes it through the gameplay event publisher; the QuestMission server
  * subscribes and advances quest progress. Mirrors the .NET
  * `GameplayActionService`.
  */
 @Component
 class GameplayActionService(
-    private val store: GameQuestStore,
-    private val fanout: ZLinkFanoutClient,
-    private val channels: ZLinkClient,
+    private val store: GameplayEventStore,
+    private val events: GameplayEventPublisher,
+    private val quests: QuestProgressSynchronizer,
     options: GameApiInstanceOptions,
 ) {
     private val apiName = options.apiName
@@ -84,22 +80,28 @@ class GameplayActionService(
 
     fun sync(playerId: String): SyncQuestProgressRes {
         val missionName = if (GameQuestRouting.ownerIndex(playerId) == 1) "mission-b" else "mission-a"
-        return channels
-            .requestToChannel(
-                SampleNames.questMissionChannel(missionName),
-                SyncQuestProgressReq(playerId),
-            )
-            .timeout(SampleNames.RequestTimeout)
-            .await(SyncQuestProgressRes::class.java)
+        return quests.sync(missionName, playerId)
     }
 
     private fun storeAndPublish(candidate: GameplayEventEnvelope): GameplayEventEnvelope {
         val stored = store.getOrAddGameplayEvent(candidate)
-        fanout.publish(SampleNames.FanoutChannel, SampleNames.GameplayTopic, stored).await()
+        events.publish(stored)
         System.err.printf(
             "gamequest api event published api=%s player=%s event=%s type=%s%n",
             apiName, stored.playerId, stored.eventId, stored.eventType,
         )
         return stored
+    }
+
+    interface GameplayEventStore {
+        fun getOrAddGameplayEvent(candidate: GameplayEventEnvelope): GameplayEventEnvelope
+    }
+
+    interface GameplayEventPublisher {
+        fun publish(event: GameplayEventEnvelope)
+    }
+
+    interface QuestProgressSynchronizer {
+        fun sync(missionName: String, playerId: String): SyncQuestProgressRes
     }
 }

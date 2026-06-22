@@ -114,7 +114,7 @@ public sealed class ActorLifecycleTests : SpotTestSupport
         var stream = new TestStream("session-destroy");
         var sessionRid = RoutingId.From(Encoding.UTF8.GetBytes("session-destroy"));
         await actorRuntime.AttachActorAsync(roomActor, stream);
-        actorRuntime.BindActorSession(roomActor.ActorId, sessionRid, "native:destroy-test");
+        actorRuntime.BindActorSession(roomActor.ActorId, null, sessionRid, "native:destroy-test");
         Assert.True(actorRuntime.TryGetActorBoundSession(roomActor.ActorId, out _));
 
         _ = await actorRuntime.JoinActorAsync(

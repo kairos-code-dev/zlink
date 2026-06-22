@@ -5,7 +5,7 @@ import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.samples.gamequest.server.gameapi.session.StreamPayloads;
-import systems.zlink.samples.gamequest.server.gameapi.store.GameQuestStore;
+import systems.zlink.samples.gamequest.server.gameapi.infrastructure.store.GameQuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
 /** Replies with the current quest projection for the player over the stream. */

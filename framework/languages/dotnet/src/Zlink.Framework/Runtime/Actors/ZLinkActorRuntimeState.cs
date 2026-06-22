@@ -46,6 +46,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
     public bool IsJoined => LiveActivation is not null;
 
     public void BindSession(
+        RoutingId? sessionNodeRid,
         RoutingId sessionRid,
         string bindingToken)
     {
@@ -56,7 +57,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
         lock (_sessionGate)
         {
-            _boundSession = new ZLinkActorBoundSession(sessionRid, bindingToken);
+            _boundSession = new ZLinkActorBoundSession(sessionNodeRid, sessionRid, bindingToken);
         }
     }
 
@@ -382,6 +383,7 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 }
 
 internal readonly record struct ZLinkActorBoundSession(
+    RoutingId? SessionNodeRid,
     RoutingId SessionRid,
     string BindingToken);
 

@@ -43,7 +43,6 @@ public abstract partial class SpotTestSupport
         {
             _ = cancellationToken;
             recorder.Events.Enqueue($"joined:{actor.ActorId}:{Context.SpotRid.ToHex()}");
-            actor.AttachSpot(this);
             return ValueTask.CompletedTask;
         }
 
@@ -54,6 +53,37 @@ public abstract partial class SpotTestSupport
             _ = cancellationToken;
             recorder.Events.Enqueue($"left:{actor.ActorId}:{Context.SpotRid.ToHex()}");
             actor.DetachSpot(this);
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    public sealed class NotifyingRegistryStageSpot(
+        IZLinkSpotContext context,
+        EntrySpotActorRegistryRecorder recorder)
+        : IZLinkSpot<RegistryTestActor>
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+            RegistryTestActor actor,
+            Message request,
+            CancellationToken cancellationToken)
+        {
+            var joinRequest = request.FromJson<RegistryJoinRequest>();
+            actor.CurrentRoomId = joinRequest.RoomId;
+            await actor.Context.BoundSession
+                .Send(new RegistryJoinReply(joinRequest.RoomId))
+                .PacketName("join-notify")
+                .Async(cancellationToken);
+            return ZLinkSpotActorJoinResult.Accept(new RegistryJoinReply(joinRequest.RoomId).ToJson());
+        }
+
+        public ValueTask OnJoinedActorAsync(
+            RegistryTestActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.Events.Enqueue($"joined:{actor.ActorId}:{Context.SpotRid.ToHex()}");
             return ValueTask.CompletedTask;
         }
     }

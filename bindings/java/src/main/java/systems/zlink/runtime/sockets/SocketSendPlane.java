@@ -406,17 +406,7 @@ final class SocketSendPlane {
 
     private static MemorySegment nativeTopic(SendScratch scratch,
                                              String topicId) {
-        if (scratch.cachedTopicSegment != null
-            && (scratch.cachedTopicString == topicId
-                || (scratch.cachedTopicString != null
-                    && scratch.cachedTopicString.equals(topicId)))) {
-            return scratch.cachedTopicSegment;
-        }
-        MemorySegment encoded = scratch.arena.allocateFrom(topicId,
-            StandardCharsets.UTF_8);
-        scratch.cachedTopicString = topicId;
-        scratch.cachedTopicSegment = encoded;
-        return encoded;
+        return scratch.arena.allocateFrom(topicId, StandardCharsets.UTF_8);
     }
 
     private SendResult classifyNonBlockingSendErrno(String apiName) {
@@ -460,50 +450,14 @@ final class SocketSendPlane {
     private static MemorySegment nativeRoutingId(SendScratch scratch,
                                                  RoutingId routingId) {
         byte[] value = InternalAccess.routingIdTrustedBytes(routingId);
-        if (scratch.cachedRoutingIdBytes == value) {
-            return scratch.cachedRoutingIdSegment;
-        }
-        MemorySegment cachedRid = cachedNativeRoutingId(scratch, value);
-        if (cachedRid != null) {
-            scratch.cachedRoutingIdBytes = value;
-            scratch.cachedRoutingIdSegment = cachedRid;
-            return cachedRid;
-        }
         MemorySegment nativeRid = scratch.nativeRoutingId;
         writeNativeRoutingId(nativeRid, value);
-        scratch.cachedRoutingIdBytes = value;
-        scratch.cachedRoutingIdSegment = nativeRid;
         return nativeRid;
     }
 
     private static MemorySegment nativeRoutingId(SendScratch scratch,
                                                  byte[] value) {
         MemorySegment nativeRid = scratch.nativeRoutingId;
-        writeNativeRoutingId(nativeRid, value);
-        return nativeRid;
-    }
-
-    private static MemorySegment cachedNativeRoutingId(SendScratch scratch,
-                                                       byte[] value) {
-        byte[][] keys = scratch.cachedRoutingIdKeys;
-        MemorySegment[] segments = scratch.cachedRoutingIdSegments;
-        if (keys == null || segments == null) {
-            keys = new byte[SendScratch.ROUTING_ID_CACHE_CAPACITY][];
-            segments = new MemorySegment[SendScratch.ROUTING_ID_CACHE_CAPACITY];
-            scratch.cachedRoutingIdKeys = keys;
-            scratch.cachedRoutingIdSegments = segments;
-        }
-        int slot = System.identityHashCode(value)
-            & (SendScratch.ROUTING_ID_CACHE_CAPACITY - 1);
-        MemorySegment nativeRid = segments[slot];
-        if (keys[slot] == value && nativeRid != null) {
-            return nativeRid;
-        }
-        if (nativeRid == null) {
-            nativeRid = scratch.arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
-            segments[slot] = nativeRid;
-        }
-        keys[slot] = value;
         writeNativeRoutingId(nativeRid, value);
         return nativeRid;
     }

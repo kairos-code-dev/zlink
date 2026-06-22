@@ -47,7 +47,7 @@ data class SampleSettings(
                 routeEndpoints = listOf("tcp://127.0.0.1:47306", "tcp://127.0.0.1:47316"),
                 spotPubSubEndpoint = "tcp://127.0.0.1:47307",
                 spotPubSubEndpoints = listOf("tcp://127.0.0.1:47307", "tcp://127.0.0.1:47317"),
-                redisEndpoint = "127.0.0.1:6379",
+                redisEndpoint = "",
                 redisKeyPrefix = "zlink:tictactoe-kotlin:room:",
                 playSpotNodeRid = "play-node-1",
                 peerPlaySpotNodeRid = "play-node-2",
@@ -59,7 +59,17 @@ data class SampleSettings(
 
         fun load(args: Array<String>): SampleSettings {
             val defaults = fromProperties(readOption(args, "--config"), createDefault())
-            return fromArgs(args, defaults)
+            val resolved = fromArgs(args, defaults)
+
+            // The sample owns its Redis via run_sample.sh/run_sample.ps1, which provisions
+            // an isolated container; require the endpoint so a stray direct run never
+            // silently falls back to a developer's local Redis.
+            check(resolved.redisEndpoint.isNotBlank()) {
+                "redisEndpoint is required; run the sample via run_sample.sh/run_sample.ps1, " +
+                    "which provisions an isolated Redis container."
+            }
+
+            return resolved
         }
 
         private fun fromArgs(args: Array<String>, defaults: SampleSettings): SampleSettings {

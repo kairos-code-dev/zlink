@@ -154,6 +154,13 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
         bool hasMore,
         SendFlags flags = SendFlags.None);
     /// <summary>
+    /// Binds <paramref name="actor"/> to a session owned by a remote SPOT node.
+    /// </summary>
+    void BindRemoteActorBoundSession(
+        ActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid);
+    /// <summary>
     /// Closes the resource.
     /// </summary>
     void CloseActorBoundSession(ActorRef actor, TimeSpan timeout = default);

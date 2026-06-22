@@ -37,8 +37,7 @@ inline zlink::framework::app_t &add_bingo_api_server (zlink::framework::app_t &a
           .use_handler_group ("api");
 
         options.add_client_server_channel (sample_names_t::play_channel)
-          .enable_client (topology.api_node == "b" ? topology.play_b_channel_endpoint
-                                                   : topology.play_a_channel_endpoint);
+          .enable_client ();
     });
     return app;
 }

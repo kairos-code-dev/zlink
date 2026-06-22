@@ -180,7 +180,9 @@ function validateHeaderSemantics(header: ZlinkStreamHeader): void {
     throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Error packet must use the JSON codec.');
   }
   if (header.kind === ZlinkStreamMessageKind.Control) {
-    if (header.flags !== ZlinkStreamHeaderFlags.None || hasRequestSeq || hasMetadata || header.codec !== ZlinkStreamCodec.Raw) {
+    const hasCorrelation = (header.correlationId !== undefined && header.correlationId.length > 0)
+      || (header.flags & ZlinkStreamHeaderFlags.HasCorrelationId) !== 0;
+    if (header.flags !== ZlinkStreamHeaderFlags.None || hasRequestSeq || hasMetadata || hasCorrelation || header.codec !== ZlinkStreamCodec.Raw) {
       throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Control packet must use raw codec and must not contain flags.');
     }
   }

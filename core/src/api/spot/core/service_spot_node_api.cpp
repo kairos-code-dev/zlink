@@ -27,46 +27,46 @@
 
 namespace
 {
-int refresh_external_router_identity (zlink::spot_node_t *node)
+int refresh_routed_router_identity (zlink::spot_node_t *node)
 {
     if (!node) {
         errno = EFAULT;
         return -1;
     }
     zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (node);
-    if (!runtime || !runtime->external_router)
+    if (!runtime || !runtime->routed_router)
         return 0;
 
     zlink_routing_id_t node_rid;
     memset (&node_rid, 0, sizeof (node_rid));
     if (node->node_routing_id (&node_rid) != 0 || node_rid.size == 0)
         return -1;
-    return runtime->external_router->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, node_rid.data,
+    return runtime->routed_router->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, node_rid.data,
                                                  node_rid.size);
 }
 
-int ensure_external_router_ready (zlink::spot_node_t *node)
+int ensure_routed_router_ready (zlink::spot_node_t *node)
 {
     if (!node) {
         errno = EFAULT;
         return -1;
     }
     // setRoutingId can run before the routed runtime exists. When the runtime is
-    // created later, apply the public node routing id to the external router here
+    // created later, apply the public node routing id to the routed router here
     // so callers do not need to know the initialization order.
-    return refresh_external_router_identity (node);
+    return refresh_routed_router_identity (node);
 }
 
 }
 
-int zlink_service_spot_node_refresh_external_router_identity (void *node_handle_)
+int zlink_service_spot_node_refresh_routed_router_identity (void *node_handle_)
 {
     if (!node_handle_) {
         errno = EFAULT;
         return -1;
     }
     zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_handle_);
-    return refresh_external_router_identity (node);
+    return refresh_routed_router_identity (node);
 }
 
 namespace
@@ -138,7 +138,7 @@ static void *create_spot_facade (zlink::spot_node_t *node_,
             errno = err;
             return NULL;
         }
-        if (ensure_external_router_ready (node_) != 0) {
+        if (ensure_routed_router_ready (node_) != 0) {
             const int err = errno;
             zlink_spot_request_reply_cleanup_spot (spot);
             zlink::spot_node_access_t::unregister_spot_facade (node_, spot);

@@ -73,7 +73,7 @@ size_t fill_runtime_socket_slot_refs_impl (runtime_t *runtime_, slot_ref_t *out_
     out_[count++] = slot_ref_t{&runtime_->pub_ingress_sub, &runtime_->pub_ingress_endpoint, false};
     out_[count++] = slot_ref_t{&runtime_->peer_ctrl_pub, &runtime_->peer_ctrl_endpoint, false};
     out_[count++] = slot_ref_t{&runtime_->peer_ctrl_sub, NULL, false};
-    out_[count++] = slot_ref_t{&runtime_->external_router, NULL, false};
+    out_[count++] = slot_ref_t{&runtime_->routed_router, NULL, false};
     out_[count++] = slot_ref_t{&runtime_->local_fanout_xpub, &runtime_->sub_fanout_endpoint, false};
     return count;
 }
@@ -98,7 +98,7 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     pub_ingress_sub (NULL),
     peer_ctrl_pub (NULL),
     peer_ctrl_sub (NULL),
-    external_router (NULL),
+    routed_router (NULL),
     local_fanout_xpub (NULL),
     dispatch_workers (NULL),
     stop (0),
@@ -188,7 +188,7 @@ std::vector<std::string> spot_runtime_t::clear_external_route_ids ()
 
 bool spot_runtime_t::missing_external_routes_for_ready_peer () const
 {
-    if (!external_router || external_router_bind_endpoint.empty ())
+    if (!routed_router || routed_router_bind_endpoint.empty ())
         return false;
 
     const uint32_t ready_peer_count = connected_ready_peer_count (&execution.mesh_peer_state);

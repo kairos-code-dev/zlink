@@ -102,7 +102,7 @@ struct spot_runtime_t
     socket_base_t *pub_ingress_sub;
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
-    socket_base_t *external_router;
+    socket_base_t *routed_router;
     socket_base_t *local_fanout_xpub;
     thread_t data_plane_thread;
     spot_dispatch_worker_pool_t *dispatch_workers;
@@ -113,7 +113,7 @@ struct spot_runtime_t
     std::string pub_ingress_endpoint;
     std::string data_ctrl_endpoint;
     std::string peer_ctrl_endpoint;
-    std::string external_router_bind_endpoint;
+    std::string routed_router_bind_endpoint;
     spot_runtime_external_routes_t external_routes;
     bool faulted;
     int fault_errno;

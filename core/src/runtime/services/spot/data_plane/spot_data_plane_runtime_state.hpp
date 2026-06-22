@@ -151,7 +151,7 @@ struct spot_data_plane_runtime_state_t
         zlink_send_flags_t flags;
     };
 
-    struct external_router_ingress_entry_t
+    struct routed_router_ingress_entry_t
     {
         std::vector<zlink_msg_t> parts;
     };
@@ -178,12 +178,12 @@ struct spot_data_plane_runtime_state_t
         bool closed;
     };
 
-    struct external_router_ingress_queue_t
+    struct routed_router_ingress_queue_t
     {
-        external_router_ingress_queue_t () : signal_armed (false), closed (false) {}
+        routed_router_ingress_queue_t () : signal_armed (false), closed (false) {}
 
         std::mutex mutex;
-        std::deque<external_router_ingress_entry_t> messages;
+        std::deque<routed_router_ingress_entry_t> messages;
         signaler_t signaler;
         bool signal_armed;
         bool closed;
@@ -219,7 +219,7 @@ struct spot_data_plane_runtime_state_t
     mesh_peer_observer_state_t mesh_peer_observer;
     socket_base_t *peer_ctrl_pub;
     socket_base_t *peer_ctrl_sub;
-    socket_base_t *external_router;
+    socket_base_t *routed_router;
     socket_base_t *fanout;
     uint64_t next_pending_message_id;
     uint64_t last_attachment_version;
@@ -228,7 +228,7 @@ struct spot_data_plane_runtime_state_t
     poller_interest_state_t interest;
     publish_ingress_queue_t publish_ingress;
     routed_send_queue_t routed_send;
-    external_router_ingress_queue_t external_router_ingress;
+    routed_router_ingress_queue_t routed_router_ingress;
     local_fanout_state_t local_fanout;
     remote_mesh_state_t remote_mesh;
     staged_publish_state_t staged;

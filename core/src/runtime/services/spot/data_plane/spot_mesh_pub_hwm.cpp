@@ -104,7 +104,7 @@ int spot_mesh_pub_hwm_t::resolve_initial_bind_sndhwm (const spot_runtime_t *runt
 void spot_mesh_pub_hwm_t::refresh_live_sockets (spot_runtime_t *runtime_,
                                                 socket_base_t *mesh_pub_,
                                                 socket_base_t *mesh_xsub_,
-                                                socket_base_t *external_router_,
+                                                socket_base_t *routed_router_,
                                                 int *current_mesh_pub_hwm_,
                                                 uint64_t *last_hwm_version_,
                                                 std::string *last_bound_endpoint_)
@@ -164,18 +164,18 @@ void spot_mesh_pub_hwm_t::refresh_live_sockets (spot_runtime_t *runtime_,
         }
     }
 
-    if (external_router_) {
+    if (routed_router_) {
         if (router_hwm_override) {
             const int desired = spot_node_router_admission_hwm (hwm);
             if (desired > 0) {
-                (void) external_router_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &desired,
+                (void) routed_router_->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &desired,
                                                      sizeof (desired));
-                (void) external_router_->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &desired,
+                (void) routed_router_->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &desired,
                                                      sizeof (desired));
             }
         } else {
             apply_spot_internal_auto_hwm (
-              ctx, external_router_,
+              ctx, routed_router_,
               spot_internal_auto_hwm_policy_t{auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                                               connected_peer_count, active_peer_count, 0, 0, true,
                                               true, auto_hwm_scope_shared, 1, 0, true});

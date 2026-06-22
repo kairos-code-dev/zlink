@@ -25,7 +25,7 @@ int resolve_initial_bind_sndhwm (const spot_runtime_t *runtime_, const std::stri
 void refresh_live_sockets (spot_runtime_t *runtime_,
                            socket_base_t *mesh_pub_,
                            socket_base_t *mesh_xsub_,
-                           socket_base_t *external_router_,
+                           socket_base_t *routed_router_,
                            int *current_mesh_pub_hwm_,
                            uint64_t *last_hwm_version_,
                            std::string *last_bound_endpoint_);

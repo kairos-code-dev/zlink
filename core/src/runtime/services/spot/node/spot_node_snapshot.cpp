@@ -423,7 +423,7 @@ int spot_node_t::snapshot_internal_sockets (const zlink_spot_node_socket_filter_
                                            "spotnode", "peer_ctrl_sub", _runtime->peer_ctrl_sub)
                  != 0
             || append_socket_snapshot_row (out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
-                                           "spotnode", "external-router", _runtime->external_router)
+                                           "spotnode", "routed-router", _runtime->routed_router)
                  != 0
             || append_socket_snapshot_row (out_, filter_, ZLINK_SPOT_NODE_SOCKET_OWNER_NODE, 0,
                                            "spotnode", "local-pub", _runtime->local_fanout_xpub)

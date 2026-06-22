@@ -139,14 +139,14 @@ export class SpotNode extends NativeHandle {
       requireNative().spotNodeAttachPubIngress(this._native, getNativeHandle(pub));
     });
   }
-  processExternalRouter(): void {
-    configCall('spot node external router processing failed', () => {
-      requireNative().spotNodeProcessExternalRouter(this._native);
+  processRoutedRouter(): void {
+    configCall('spot node routed router processing failed', () => {
+      requireNative().spotNodeProcessRoutedRouter(this._native);
     });
   }
-  tryProcessExternalRouterParts(parts: MessageLike | readonly MessageLike[]): boolean {
+  tryProcessRoutedRouterParts(parts: MessageLike | readonly MessageLike[]): boolean {
     return configCall('spot node routed parts processing failed', () =>
-      requireNative().spotNodeTryProcessExternalRouterParts(this._native, normalizeOperationPayload(parts))
+      requireNative().spotNodeTryProcessRoutedRouterParts(this._native, normalizeOperationPayload(parts))
     ) as boolean;
   }
   createRouteBridge(): SpotRouteBridge {

@@ -246,8 +246,8 @@ export interface ServiceNativeBinding {
     flags: number
   ) => boolean;
   spotNodePublisherClose: (publisher: NativeHandle) => void;
-  spotNodeProcessExternalRouter: (node: NativeHandle) => void;
-  spotNodeTryProcessExternalRouterParts: (node: NativeHandle, parts: unknown) => boolean;
+  spotNodeProcessRoutedRouter: (node: NativeHandle) => void;
+  spotNodeTryProcessRoutedRouterParts: (node: NativeHandle, parts: unknown) => boolean;
   spotNodeAttachRouterChannelDiscovery: (
     node: NativeHandle,
     channelName: string,

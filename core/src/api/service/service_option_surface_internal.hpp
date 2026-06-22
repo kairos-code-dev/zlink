@@ -87,7 +87,7 @@ int zlink_service_spot_get_common_option_internal (
   void *handle_, zlink_option_t option_, int socket_option_, void *optval_, size_t *optvallen_);
 int zlink_service_spot_set_routing_id_internal (void *handle_, const void *data_, size_t size_);
 int zlink_service_spot_get_routing_id_internal (void *handle_, zlink_routing_id_t *out_);
-int zlink_service_spot_node_refresh_external_router_identity (void *node_handle_);
+int zlink_service_spot_node_refresh_routed_router_identity (void *node_handle_);
 int zlink_service_spot_set_tls_server_internal (void *handle_,
                                                 const char *cert_,
                                                 const char *key_,

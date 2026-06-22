@@ -13,8 +13,8 @@
 #include <vector>
 #include <errno.h>
 
-extern "C" int zlink_spot_drain_external_router_ingress (void *node_);
-extern "C" int zlink_spot_try_process_external_router_parts (void *node_,
+extern "C" int zlink_spot_drain_routed_router_ingress (void *node_);
+extern "C" int zlink_spot_try_process_routed_router_parts (void *node_,
                                                              zlink_msg_t *parts_,
                                                              size_t part_count_,
                                                              int *processed_out_);
@@ -2991,29 +2991,29 @@ napi_value spot_node_publisher_close (napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_node_process_external_router (napi_env env, napi_callback_info info)
+napi_value spot_node_process_routed_router (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *node = NULL;
     napi_get_value_external (env, argv[0], &node);
-    int rc = zlink_spot_drain_external_router_ingress (node);
+    int rc = zlink_spot_drain_routed_router_ingress (node);
     if (rc != 0)
-        return throw_last_error (env, "spotNodeProcessExternalRouter failed");
+        return throw_last_error (env, "spotNodeProcessRoutedRouter failed");
     napi_value ok;
     napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value spot_node_try_process_external_router_parts (napi_env env, napi_callback_info info)
+napi_value spot_node_try_process_routed_router_parts (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     if (argc < 2) {
         napi_throw_type_error (env, NULL,
-                               "spotNodeTryProcessExternalRouterParts requires (node, parts)");
+                               "spotNodeTryProcessRoutedRouterParts requires (node, parts)");
         return NULL;
     }
     void *node = NULL;
@@ -3022,11 +3022,11 @@ napi_value spot_node_try_process_external_router_parts (napi_env env, napi_callb
     if (!build_msg_vector_or_single (env, argv[1], &parts))
         return NULL;
     int processed = 0;
-    int rc = zlink_spot_try_process_external_router_parts (
+    int rc = zlink_spot_try_process_routed_router_parts (
       node, parts.data (), parts.size (), &processed);
     if (rc != 0) {
         close_msg_vector (parts);
-        return throw_last_error (env, "spotNodeTryProcessExternalRouterParts failed");
+        return throw_last_error (env, "spotNodeTryProcessRoutedRouterParts failed");
     }
     if (!processed)
         close_msg_vector (parts);

@@ -115,7 +115,7 @@ int process_route_combined_message (void *node_,
             (void) zlink::spot_reqrep_internal::resolve_spot_node_routing_id (
               static_cast<zlink::spot_node_t *> (node_), &local_node_rid);
             std::fprintf (stderr,
-                          "[spot-direct] drop non-local routed envelope on external router node=%s "
+                          "[spot-direct] drop non-local routed envelope on routed router node=%s "
                           "dest_node=%s dest_endpoint=%s\n",
                           local_node_rid.c_str (), spot_envelope.destination_node_rid.c_str (),
                           spot_envelope.destination_endpoint_rid.c_str ());
@@ -132,7 +132,7 @@ int process_route_combined_message (void *node_,
     return 1;
 }
 
-int recv_combined_external_router_message (zlink::socket_base_t *socket_,
+int recv_combined_routed_router_message (zlink::socket_base_t *socket_,
                                            std::vector<zlink_msg_t> *out_)
 {
     if (!socket_ || !out_) {
@@ -170,7 +170,7 @@ int recv_combined_external_router_message (zlink::socket_base_t *socket_,
 }
 }
 
-int zlink::spot_reqrep_internal::process_external_router_combined_for_data_plane (
+int zlink::spot_reqrep_internal::process_routed_router_combined_for_data_plane (
   zlink::spot_node_t *node_, std::vector<zlink_msg_t> *combined_)
 {
     if (!node_ || !combined_) {
@@ -182,7 +182,7 @@ int zlink::spot_reqrep_internal::process_external_router_combined_for_data_plane
     return processed < 0 ? -1 : 0;
 }
 
-extern "C" int zlink_spot_process_external_router (void *node_, void *socket_)
+extern "C" int zlink_spot_process_routed_router (void *node_, void *socket_)
 {
     zlink::socket_base_t *socket = static_cast<zlink::socket_base_t *> (socket_);
     if (!socket) {
@@ -192,17 +192,17 @@ extern "C" int zlink_spot_process_external_router (void *node_, void *socket_)
 
     while (true) {
         std::vector<zlink_msg_t> combined;
-        if (recv_combined_external_router_message (socket, &combined) != 0) {
+        if (recv_combined_routed_router_message (socket, &combined) != 0) {
             if (spot_direct_route_debug_enabled () && errno == EAGAIN) {
                 static std::atomic<int> g_external_eagain_logs (0);
                 if (g_external_eagain_logs.fetch_add (1, std::memory_order_acq_rel) < 64) {
-                    std::fprintf (stderr, "[spot-direct] external-router recv eagain socket=%d\n",
+                    std::fprintf (stderr, "[spot-direct] routed-router recv eagain socket=%d\n",
                                   socket->socket_id ());
                 }
             }
             if (spot_direct_route_debug_enabled () && errno != EAGAIN) {
                 std::fprintf (stderr,
-                              "[spot-direct] external-router recv failed errno=%d socket=%d\n",
+                              "[spot-direct] routed-router recv failed errno=%d socket=%d\n",
                               errno, socket->socket_id ());
             }
             if (errno == EAGAIN)
@@ -211,7 +211,7 @@ extern "C" int zlink_spot_process_external_router (void *node_, void *socket_)
         }
 
         if (spot_direct_route_debug_enabled ()) {
-            std::fprintf (stderr, "[spot-direct] external-router recv ok socket=%d parts=%zu\n",
+            std::fprintf (stderr, "[spot-direct] routed-router recv ok socket=%d parts=%zu\n",
                           socket->socket_id (), combined.size ());
         }
         if (process_route_combined_message (node_, socket, combined) < 0)
@@ -219,7 +219,7 @@ extern "C" int zlink_spot_process_external_router (void *node_, void *socket_)
     }
 }
 
-extern "C" int zlink_spot_drain_external_router_ingress (void *node_)
+extern "C" int zlink_spot_drain_routed_router_ingress (void *node_)
 {
     zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
     zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (node);
@@ -228,18 +228,18 @@ extern "C" int zlink_spot_drain_external_router_ingress (void *node_)
         return -1;
     }
     zlink::spot_data_plane_forwarder_t::pump_socket_commands (
-      runtime->execution.data_plane_state.external_router);
-    runtime->execution.data_plane_state.external_router->socket_msg_dispatch_drain_pending ();
-    if (zlink::spot_reqrep_internal::drain_runtime_external_router_ingress_queue (runtime) != 0) {
+      runtime->execution.data_plane_state.routed_router);
+    runtime->execution.data_plane_state.routed_router->socket_msg_dispatch_drain_pending ();
+    if (zlink::spot_reqrep_internal::drain_runtime_routed_router_ingress_queue (runtime) != 0) {
         return -1;
     }
-    if (runtime->execution.data_plane_state.external_router->socket_msg_dispatch_active ())
+    if (runtime->execution.data_plane_state.routed_router->socket_msg_dispatch_active ())
         return 0;
-    return zlink_spot_process_external_router (
-      node_, runtime->execution.data_plane_state.external_router);
+    return zlink_spot_process_routed_router (
+      node_, runtime->execution.data_plane_state.routed_router);
 }
 
-extern "C" int zlink_spot_try_process_external_router_parts (void *node_,
+extern "C" int zlink_spot_try_process_routed_router_parts (void *node_,
                                                              zlink_msg_t *parts_,
                                                              size_t part_count_,
                                                              int *processed_out_)
@@ -270,6 +270,6 @@ extern "C" int zlink_spot_try_process_external_router_parts (void *node_,
     }
 
     *processed_out_ = 1;
-    return zlink::spot_reqrep_internal::process_external_router_combined_for_data_plane (
+    return zlink::spot_reqrep_internal::process_routed_router_combined_for_data_plane (
       static_cast<zlink::spot_node_t *> (node_), &combined);
 }

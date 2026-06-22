@@ -49,7 +49,7 @@ void pump_data_plane_socket_commands (spot_data_plane_runtime_state_t *state_)
     spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_peer_observer.xsub_monitor);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_pub);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->peer_ctrl_sub);
-    spot_data_plane_forwarder_t::pump_socket_commands (state_->external_router);
+    spot_data_plane_forwarder_t::pump_socket_commands (state_->routed_router);
     spot_data_plane_forwarder_t::pump_socket_commands (state_->fanout);
 }
 
@@ -76,8 +76,8 @@ void apply_data_plane_socket_policy_once (spot_data_plane_runtime_state_t *state
             state_->peer_ctrl_pub->set_all_pipes_nodelay ();
         if (state_->peer_ctrl_sub)
             state_->peer_ctrl_sub->set_all_pipes_nodelay ();
-        if (state_->external_router)
-            state_->external_router->set_all_pipes_nodelay ();
+        if (state_->routed_router)
+            state_->routed_router->set_all_pipes_nodelay ();
         if (state_->fanout)
             state_->fanout->set_all_pipes_nodelay ();
         state_->runtime_sockets_nodelay_applied = true;
@@ -88,7 +88,7 @@ void refresh_data_plane_limits_and_hwm (spot_runtime_t *runtime_,
                                         spot_data_plane_runtime_state_t *state_)
 {
     spot_mesh_pub_hwm_t::refresh_live_sockets (
-      runtime_, state_->mesh_pub, state_->mesh_xsub, state_->external_router,
+      runtime_, state_->mesh_pub, state_->mesh_xsub, state_->routed_router,
       &state_->mesh_pub_hwm.current_sndhwm, &state_->mesh_pub_hwm.last_hwm_version,
       &state_->mesh_pub_hwm.last_bound_endpoint);
     spot_data_plane_forwarder_t::update_pending_queue_limits (runtime_, state_);
@@ -97,7 +97,7 @@ void refresh_data_plane_limits_and_hwm (spot_runtime_t *runtime_,
 void drain_data_plane_queued_ingress (spot_runtime_t *runtime_,
                                       spot_data_plane_runtime_state_t *state_)
 {
-    (void) spot_reqrep_internal::drain_runtime_external_router_ingress_queue (runtime_);
+    (void) spot_reqrep_internal::drain_runtime_routed_router_ingress_queue (runtime_);
     (void) spot_data_plane_forwarder_t::drain_pub_ingress_socket (runtime_, state_);
     (void) spot_data_plane_forwarder_t::drain_publish_ingress_queue (runtime_, state_);
     (void) spot_reqrep_internal::drain_runtime_routed_send_queue (runtime_);
@@ -144,8 +144,8 @@ int drain_peer_ctrl_messages (spot_node_t *node_,
 
 int drain_direct_route_messages (spot_node_t *node_, spot_data_plane_runtime_state_t *state_)
 {
-    if (state_->external_router && !state_->external_router->socket_msg_dispatch_active ()
-        && zlink_spot_process_external_router (node_, state_->external_router) != 0)
+    if (state_->routed_router && !state_->routed_router->socket_msg_dispatch_active ()
+        && zlink_spot_process_routed_router (node_, state_->routed_router) != 0)
         return -1;
 
     return 0;
@@ -154,7 +154,7 @@ int drain_direct_route_messages (spot_node_t *node_, spot_data_plane_runtime_sta
 bool is_ctrl_event (socket_base_t *socket_, const spot_data_plane_runtime_state_t &state_)
 {
     return socket_ == state_.ctrl || socket_ == state_.peer_ctrl_sub
-           || socket_ == state_.external_router || state_.mesh_peer_observer.owns (socket_);
+           || socket_ == state_.routed_router || state_.mesh_peer_observer.owns (socket_);
 }
 
 bool should_handle_pollin_event_in_pass (data_plane_dispatch_pass_t pass_,
@@ -198,9 +198,9 @@ bool handle_ctrl_event (socket_base_t *socket_,
         return true;
     }
 
-    if (socket_ == state_->external_router) {
+    if (socket_ == state_->routed_router) {
         if (!socket_->socket_msg_dispatch_active ()
-            && zlink_spot_process_external_router (node_, socket_) != 0) {
+            && zlink_spot_process_routed_router (node_, socket_) != 0) {
             *fatal_errno_out_ = errno;
             *running_out_ = false;
         }
@@ -335,11 +335,11 @@ int dispatch_ready_events (const socket_poller_t::event_t *events_,
                 continue;
             }
             if (!events_[i].socket
-                && events_[i].fd == state_->external_router_ingress.signaler.get_fd ()) {
-                (void) state_->external_router_ingress.signaler.recv_failable ();
+                && events_[i].fd == state_->routed_router_ingress.signaler.get_fd ()) {
+                (void) state_->routed_router_ingress.signaler.recv_failable ();
                 {
-                    std::lock_guard<std::mutex> lock (state_->external_router_ingress.mutex);
-                    state_->external_router_ingress.signal_armed = false;
+                    std::lock_guard<std::mutex> lock (state_->routed_router_ingress.mutex);
+                    state_->routed_router_ingress.signal_armed = false;
                 }
                 continue;
             }

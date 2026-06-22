@@ -334,7 +334,7 @@ int spot_subject_set_routing_id (void *handle_, const void *data_, size_t size_)
             return -1;
         if (node->set_node_routing_id (data_, size_) != 0)
             return -1;
-        (void) zlink_service_spot_node_refresh_external_router_identity (handle_);
+        (void) zlink_service_spot_node_refresh_routed_router_identity (handle_);
         return 0;
     }
     errno = EFAULT;

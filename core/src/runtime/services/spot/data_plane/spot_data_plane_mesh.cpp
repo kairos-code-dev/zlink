@@ -49,7 +49,7 @@ uint64_t default_bootstrap_broadcast_interval_ms (const spot_runtime_t *runtime_
     return 1000;
 }
 
-int connect_external_router_peer (spot_node_t *node_,
+int connect_routed_router_peer (spot_node_t *node_,
                                   spot_runtime_t *runtime_,
                                   const std::string &peer_data_endpoint_,
                                   const std::string &peer_route_endpoint_)
@@ -58,11 +58,11 @@ int connect_external_router_peer (spot_node_t *node_,
         errno = EFAULT;
         return -1;
     }
-    if (!runtime_->external_router)
+    if (!runtime_->routed_router)
         return 0;
 
-    if (!runtime_->external_router_bind_endpoint.empty ()
-        && peer_route_endpoint_ == runtime_->external_router_bind_endpoint)
+    if (!runtime_->routed_router_bind_endpoint.empty ()
+        && peer_route_endpoint_ == runtime_->routed_router_bind_endpoint)
         return 0;
 
     std::string route_id;
@@ -72,19 +72,19 @@ int connect_external_router_peer (spot_node_t *node_,
     if (runtime_->external_route_id_matches (peer_data_endpoint_, route_id, peer_route_endpoint_))
         return 0;
 
-    if (runtime_->external_router->setsockopt (ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID,
+    if (runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID,
                                                route_id.data (), route_id.size ())
           != 0
-        || runtime_->external_router->connect (peer_route_endpoint_.c_str ()) != 0) {
+        || runtime_->routed_router->connect (peer_route_endpoint_.c_str ()) != 0) {
         const int saved_errno = errno != 0 ? errno : EIO;
         if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
             std::fprintf (stderr,
-                          "[spot-direct] connect external router failed data=%s route=%s "
+                          "[spot-direct] connect routed router failed data=%s route=%s "
                           "endpoint=%s errno=%d\n",
                           peer_data_endpoint_.c_str (), route_id.c_str (),
                           peer_route_endpoint_.c_str (), saved_errno);
         }
-        (void) runtime_->external_router->term_endpoint (peer_route_endpoint_.c_str ());
+        (void) runtime_->routed_router->term_endpoint (peer_route_endpoint_.c_str ());
         errno = saved_errno;
         return -1;
     }
@@ -92,7 +92,7 @@ int connect_external_router_peer (spot_node_t *node_,
     runtime_->set_external_route_id (peer_data_endpoint_, route_id, peer_route_endpoint_);
     if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
         std::fprintf (
-          stderr, "[spot-direct] connect external router data=%s route=%s endpoint=%s\n",
+          stderr, "[spot-direct] connect routed router data=%s route=%s endpoint=%s\n",
           peer_data_endpoint_.c_str (), route_id.c_str (), peer_route_endpoint_.c_str ());
     }
     return 0;
@@ -120,13 +120,13 @@ int spot_data_plane_protocol_t::publish_bootstrap_descriptor (socket_base_t *mes
         || spot_io::send_ascii_frame (mesh_pub_, runtime_->peer_ctrl_endpoint, ZLINK_SNDMORE) != 0
         || spot_io::send_ascii_frame (mesh_pub_, source_node_id, ZLINK_SNDMORE) != 0
         || spot_io::send_ascii_frame (mesh_pub_, version, ZLINK_SNDMORE) != 0
-        || spot_io::send_ascii_frame (mesh_pub_, runtime_->external_router_bind_endpoint, 0) != 0) {
+        || spot_io::send_ascii_frame (mesh_pub_, runtime_->routed_router_bind_endpoint, 0) != 0) {
         return -1;
     }
 
     spot_ctrl_debugf ("broadcast bootstrap data=%s ctrl=%s route=%s", public_data_endpoint.c_str (),
                       runtime_->peer_ctrl_endpoint.c_str (),
-                      runtime_->external_router_bind_endpoint.c_str ());
+                      runtime_->routed_router_bind_endpoint.c_str ());
 
     return 0;
 }
@@ -297,7 +297,7 @@ int spot_data_plane_protocol_t::recv_and_dispatch_mesh_xsub (
         }
 
         if (!peer_route_endpoint.empty ()
-            && connect_external_router_peer (node_, runtime_, peer_data_endpoint,
+            && connect_routed_router_peer (node_, runtime_, peer_data_endpoint,
                                              peer_route_endpoint)
                  != 0) {
             spot_clear_msg_parts (&frames);

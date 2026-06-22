@@ -41,10 +41,10 @@ static void refresh_runtime_router_admission_hwm (spot_runtime_t *runtime_, int 
     if (!runtime_)
         return;
 
-    if (runtime_->external_router) {
-        (void) runtime_->external_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &hwm_,
+    if (runtime_->routed_router) {
+        (void) runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &hwm_,
                                                       sizeof (hwm_));
-        (void) runtime_->external_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &hwm_,
+        (void) runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &hwm_,
                                                       sizeof (hwm_));
     }
 }
@@ -60,7 +60,7 @@ refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_, const void *optval_
 
     socket_base_t *sockets[] = {runtime_->mesh_pub,      runtime_->local_fanout_xpub,
                                 runtime_->mesh_xsub,     runtime_->peer_ctrl_pub,
-                                runtime_->peer_ctrl_sub, runtime_->external_router};
+                                runtime_->peer_ctrl_sub, runtime_->routed_router};
 
     for (size_t i = 0; i != sizeof (sockets) / sizeof (sockets[0]); ++i) {
         socket_base_t *socket = sockets[i];
@@ -99,7 +99,7 @@ refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_, const void *optval_
                                       connected_peer_count, active_peer_count, 0, 0, false, true,
                                       auto_hwm_scope_shared, 1, msg_unit, true});
     apply_spot_internal_auto_hwm (
-      ctx, runtime_->external_router,
+      ctx, runtime_->routed_router,
       spot_internal_auto_hwm_policy_t{auto_hwm_role_routed, ZLINK_CORE_SOCKET_ROUTER,
                                       connected_peer_count, active_peer_count, 0, 0, true, true,
                                       auto_hwm_scope_shared, 1, msg_unit, true});
@@ -116,10 +116,10 @@ refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_, const void *optval_
     if (pubsub_hwm_override && runtime_->mesh_xsub)
         (void) runtime_->mesh_xsub->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &pubsub_hwm,
                                                 sizeof (pubsub_hwm));
-    if (router_hwm_override && runtime_->external_router) {
-        (void) runtime_->external_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &router_hwm,
+    if (router_hwm_override && runtime_->routed_router) {
+        (void) runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &router_hwm,
                                                       sizeof (router_hwm));
-        (void) runtime_->external_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &router_hwm,
+        (void) runtime_->routed_router->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &router_hwm,
                                                       sizeof (router_hwm));
     }
 }

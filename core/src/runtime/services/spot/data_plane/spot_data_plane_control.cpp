@@ -260,11 +260,11 @@ static int handle_bind_pub_command (const ctrl_command_context_t &ctx_, const st
             break;
         }
 
-        if (ctx_.runtime->external_router && !route_bind_endpoint.empty ()
-            && (spot_node_access_t::apply_tls_server (ctx_.node, ctx_.runtime->external_router,
+        if (ctx_.runtime->routed_router && !route_bind_endpoint.empty ()
+            && (spot_node_access_t::apply_tls_server (ctx_.node, ctx_.runtime->routed_router,
                                                       cert, key)
                   != 0
-                || ctx_.runtime->external_router->bind (route_bind_endpoint.c_str ()) != 0)) {
+                || ctx_.runtime->routed_router->bind (route_bind_endpoint.c_str ()) != 0)) {
             saved_errno = errno != 0 ? errno : EIO;
             (void) ctx_.peer_ctrl_sub->term_endpoint (ctrl_bind_endpoint.c_str ());
             if (ctx_.mesh_pub)
@@ -275,26 +275,26 @@ static int handle_bind_pub_command (const ctrl_command_context_t &ctx_, const st
         }
 
         ctx_.runtime->peer_ctrl_endpoint = ctrl_bind_endpoint;
-        ctx_.runtime->external_router_bind_endpoint.clear ();
-        if (ctx_.runtime->external_router && !route_bind_endpoint.empty ()) {
-            ctx_.runtime->external_router_bind_endpoint = route_bind_endpoint;
+        ctx_.runtime->routed_router_bind_endpoint.clear ();
+        if (ctx_.runtime->routed_router && !route_bind_endpoint.empty ()) {
+            ctx_.runtime->routed_router_bind_endpoint = route_bind_endpoint;
             char resolved_router[256] = {0};
             size_t resolved_router_size = sizeof (resolved_router);
-            if (ctx_.runtime->external_router->getsockopt (ZLINK_INTERNAL_OPT_LAST_ENDPOINT,
+            if (ctx_.runtime->routed_router->getsockopt (ZLINK_INTERNAL_OPT_LAST_ENDPOINT,
                                                            resolved_router, &resolved_router_size)
                 == 0) {
                 const size_t len =
                   resolved_router_size > 0 ? strnlen (resolved_router, resolved_router_size) : 0;
                 if (len > 0)
-                    ctx_.runtime->external_router_bind_endpoint.assign (resolved_router, len);
+                    ctx_.runtime->routed_router_bind_endpoint.assign (resolved_router, len);
             }
         }
         ctx_.runtime->bound_endpoint = resolved_endpoint;
         if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE")) {
             std::fprintf (
-              stderr, "[spot-direct] bind external router socket=%d endpoint=%s\n",
-              ctx_.runtime->external_router ? ctx_.runtime->external_router->socket_id () : -1,
-              ctx_.runtime->external_router_bind_endpoint.c_str ());
+              stderr, "[spot-direct] bind routed router socket=%d endpoint=%s\n",
+              ctx_.runtime->routed_router ? ctx_.runtime->routed_router->socket_id () : -1,
+              ctx_.runtime->routed_router_bind_endpoint.c_str ());
         }
         spot_node_access_t::mark_bound_endpoint_and_server_tls_locked (ctx_.node,
                                                                        resolved_endpoint);
@@ -330,8 +330,8 @@ static int handle_connect_peer_pub_command (const ctrl_command_context_t &ctx_,
         return send_ctrl_errno_reply (ctx_, saved_errno);
     }
 
-    if (ctx_.runtime->external_router
-        && spot_node_access_t::apply_tls_client (ctx_.node, ctx_.runtime->external_router, ca, host,
+    if (ctx_.runtime->routed_router
+        && spot_node_access_t::apply_tls_client (ctx_.node, ctx_.runtime->routed_router, ca, host,
                                                  trust)
              != 0) {
         const int saved_errno = errno != 0 ? errno : EIO;
@@ -430,15 +430,15 @@ static int handle_unbind_pub_command (const ctrl_command_context_t &ctx_, const 
     if (!ctx_.runtime->peer_ctrl_endpoint.empty ())
         (void) ctx_.peer_ctrl_sub->term_endpoint (ctx_.runtime->peer_ctrl_endpoint.c_str ());
     ctx_.runtime->peer_ctrl_endpoint.clear ();
-    if (ctx_.runtime->external_router && !ctx_.runtime->external_router_bind_endpoint.empty ())
-        (void) ctx_.runtime->external_router->term_endpoint (
-          ctx_.runtime->external_router_bind_endpoint.c_str ());
-    ctx_.runtime->external_router_bind_endpoint.clear ();
+    if (ctx_.runtime->routed_router && !ctx_.runtime->routed_router_bind_endpoint.empty ())
+        (void) ctx_.runtime->routed_router->term_endpoint (
+          ctx_.runtime->routed_router_bind_endpoint.c_str ());
+    ctx_.runtime->routed_router_bind_endpoint.clear ();
     std::vector<std::string> external_route_endpoints = ctx_.runtime->clear_external_route_ids ();
     for (std::vector<std::string>::const_iterator it = external_route_endpoints.begin ();
          it != external_route_endpoints.end (); ++it) {
-        if (ctx_.runtime->external_router)
-            (void) ctx_.runtime->external_router->term_endpoint (it->c_str ());
+        if (ctx_.runtime->routed_router)
+            (void) ctx_.runtime->routed_router->term_endpoint (it->c_str ());
     }
     ctx_.runtime->bound_endpoint.clear ();
     spot_mesh_pub_hwm_t::reset_runtime_state (ctx_.runtime);
@@ -477,8 +477,8 @@ static int handle_disconnect_peer_pub_command (const ctrl_command_context_t &ctx
         return send_ctrl_errno_reply (ctx_, errno);
 
     const std::string route_endpoint = ctx_.runtime->erase_external_route_id (arg_);
-    if (ctx_.runtime->external_router && !route_endpoint.empty ())
-        (void) ctx_.runtime->external_router->term_endpoint (route_endpoint.c_str ());
+    if (ctx_.runtime->routed_router && !route_endpoint.empty ())
+        (void) ctx_.runtime->routed_router->term_endpoint (route_endpoint.c_str ());
 
     spot_data_plane_forwarder_t::drop_remote_mesh_target (
       ctx_.runtime, &ctx_.runtime->execution.data_plane_state, arg_);

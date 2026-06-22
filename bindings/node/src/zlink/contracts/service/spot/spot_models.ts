@@ -86,7 +86,7 @@ export interface ActorJoinInfo {
   readonly sourceActor: ActorRef;
   readonly targetActor: ActorRef;
   readonly sourceNodeRid: RoutingId;
-  readonly sourceSpotRid: RoutingId;
+  readonly sourceSpotRid?: RoutingId;
   readonly targetNodeRid: RoutingId;
   readonly targetSpotRid: RoutingId;
   readonly joinEpoch: bigint;

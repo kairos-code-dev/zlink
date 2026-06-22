@@ -180,7 +180,7 @@ export function actorJoinInfoFromRaw(raw: ActorJoinInfoRaw): ActorJoinInfo {
     sourceActor,
     targetActor,
     sourceNodeRid: RoutingId.from(raw.sourceNodeRid),
-    sourceSpotRid: wrapRoutingId(raw.sourceSpotRid ?? null) as RoutingId,
+    sourceSpotRid: wrapRoutingId(raw.sourceSpotRid ?? null) ?? undefined,
     targetNodeRid: wrapRoutingId(raw.targetNodeRid ?? null) as RoutingId,
     targetSpotRid: wrapRoutingId(raw.targetSpotRid ?? null) as RoutingId,
     joinEpoch: BigInt(raw.joinEpoch ?? 0),
@@ -200,7 +200,9 @@ export function actorJoinInfoToRaw(info: ActorJoinInfo): Record<string, unknown>
     sourceActor: actorRefToRaw(info.sourceActor),
     targetActor: actorRefToRaw(info.targetActor),
     sourceNodeRid: normalizeRoutingId(info.sourceNodeRid, 'info.sourceNodeRid'),
-    sourceSpotRid: normalizeRoutingId(info.sourceSpotRid, 'info.sourceSpotRid'),
+    sourceSpotRid: info.sourceSpotRid === undefined
+      ? null
+      : normalizeRoutingId(info.sourceSpotRid, 'info.sourceSpotRid'),
     targetNodeRid: normalizeRoutingId(info.targetNodeRid, 'info.targetNodeRid'),
     targetSpotRid: normalizeRoutingId(info.targetSpotRid, 'info.targetSpotRid'),
     joinEpoch: BigInt(info.joinEpoch ?? 0),

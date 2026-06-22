@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
+const spotActorModels = require('../dist/zlink/runtime/service/spot/actor_models');
 
 const AUTO_CONNECT_SPOT_MESH = 5;
 const AUTO_CONNECT_CLIENT_SERVER = 2;
@@ -127,6 +128,38 @@ test('service objects expose aligned monitor and query surface', () => {
   ctx.close();
 });
 
+test('actor join info without source Spot RID round-trips for native join replies', () => {
+  const sourceNodeRid = zlink.RoutingId.from('source-node');
+  const targetNodeRid = zlink.RoutingId.from('target-node');
+  const targetSpotRid = zlink.RoutingId.from('target-spot');
+  const raw = {
+    sourceActor: {
+      nodeRid: sourceNodeRid.toBytes(),
+      actorId: 'player-1',
+      generation: 1n
+    },
+    targetActor: {
+      nodeRid: targetNodeRid.toBytes(),
+      actorId: 'player-1',
+      generation: 2n
+    },
+    sourceNodeRid: sourceNodeRid.toBytes(),
+    sourceSpotRid: null,
+    targetNodeRid: targetNodeRid.toBytes(),
+    targetSpotRid: targetSpotRid.toBytes(),
+    joinEpoch: 3n,
+    flags: 1,
+    requestHandle: 42n
+  };
+
+  const info = spotActorModels.actorJoinInfoFromRaw(raw);
+  assert.equal(info.sourceSpotRid, undefined);
+
+  const replyRaw = spotActorModels.actorJoinInfoToRaw(info);
+  assert.equal(replyRaw.sourceSpotRid, null);
+  assert.equal(replyRaw.requestHandle, 42n);
+});
+
 test('Spot must be created through SpotNode.createSpot()', () => {
   const ctx = zlink.createContext();
   const node = zlink.createSpotNode(ctx);
@@ -163,6 +196,7 @@ test('rid disconnect surface exists on sockets and spot nodes', () => {
   assert.equal(typeof pair.disconnectRid, 'function');
   assert.equal(typeof dealer.disconnectRid, 'function');
   assert.equal(typeof stream.disconnectRid, 'function');
+  assert.equal(typeof node.connectPeerRid, 'function');
   assert.equal(typeof node.disconnectPeerRid, 'function');
 
   node.close();

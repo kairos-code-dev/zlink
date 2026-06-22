@@ -54,6 +54,17 @@ export class SpotNode extends NativeHandle {
       requireNative().spotNodeConnectPeerPub(this._native, normalizedEndpoint);
     });
   }
+  connectPeerRid(targetNodeRid: RoutingId, endpoint: string): void {
+    const normalizedTargetNodeRid = normalizeRoutingId(targetNodeRid);
+    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
+    connectCall('spot node peer connect by routing id failed', () => {
+      requireNative().spotNodeConnectPeerRidPub(
+        this._native,
+        normalizedTargetNodeRid,
+        normalizedEndpoint
+      );
+    });
+  }
   disconnectPeer(endpoint: string): void {
     const normalizedEndpoint = validateCString(endpoint, 'endpoint');
     connectCall('spot node peer disconnect failed', () => {

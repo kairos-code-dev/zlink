@@ -254,6 +254,11 @@ export interface ServiceNativeBinding {
     discovery: NativeHandle
   ) => void;
   spotNodeConnectPeerPub: (node: NativeHandle, endpoint: string) => void;
+  spotNodeConnectPeerRidPub: (
+    node: NativeHandle,
+    targetNodeRid: Buffer,
+    endpoint: string
+  ) => void;
   spotNodeConnectRouterChannelPeer: (
     node: NativeHandle,
     channelName: string,

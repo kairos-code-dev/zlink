@@ -35,6 +35,8 @@ export interface SpotNode {
   setRouterBind(endpoint: string): void;
   /** Connect to a peer node at `endpoint`. */
   connectPeer(endpoint: string): void;
+  /** Connect to a peer node identified by `targetNodeRid` at `endpoint`. */
+  connectPeerRid(targetNodeRid: RoutingId, endpoint: string): void;
   /** Disconnect the peer previously connected at `endpoint`. */
   disconnectPeer(endpoint: string): void;
   /** Disconnect the peer identified by `targetNodeRid`. */

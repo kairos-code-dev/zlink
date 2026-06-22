@@ -19,6 +19,18 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
         CancellationToken cancellationToken)
     {
         using var dispatch = runtimeState.EnterDispatch(header);
+
+        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+        {
+            dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Received,
+                ZLinkDispatchErrorSurface.SpotActor,
+                ZLinkDispatchMessageKind.ActorSend,
+                PacketName: header.Name,
+                ActorId: actor.ActorId,
+                CorrelationId: header.RequestSeq?.ToString()));
+        }
+
         if (TryResolveActorPacketDescriptor(actor.GetType(), header, out var descriptor)
             && descriptor is not null)
         {
@@ -27,6 +39,17 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                 await handlerInvoker()
                     .InvokeActorPacketAsync(descriptor, actor, header, body, cancellationToken)
                     .ConfigureAwait(false);
+
+                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Dispatched))
+                {
+                    dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                        ZLinkMessageFlowPhase.Dispatched,
+                        ZLinkDispatchErrorSurface.SpotActor,
+                        ZLinkDispatchMessageKind.ActorSend,
+                        PacketName: header.Name,
+                        ActorId: actor.ActorId,
+                        CorrelationId: header.RequestSeq?.ToString()));
+                }
             }
             catch (Exception ex)
             {
@@ -80,14 +103,39 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
         CancellationToken cancellationToken)
     {
         using var dispatch = runtimeState.EnterDispatch(header);
+
+        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+        {
+            dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Received,
+                ZLinkDispatchErrorSurface.SpotActor,
+                ZLinkDispatchMessageKind.ActorRequest,
+                PacketName: header.Name,
+                ActorId: actor.ActorId,
+                CorrelationId: header.RequestSeq?.ToString()));
+        }
+
         if (TryResolveActorPacketDescriptor(actor.GetType(), header, out var descriptor)
             && descriptor is not null)
         {
             try
             {
-                return await handlerInvoker()
+                var reply = await handlerInvoker()
                     .InvokeActorPacketForReplyAsync(descriptor, actor, header, body, cancellationToken)
                     .ConfigureAwait(false);
+
+                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Replied))
+                {
+                    dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                        ZLinkMessageFlowPhase.Replied,
+                        ZLinkDispatchErrorSurface.SpotActor,
+                        ZLinkDispatchMessageKind.ActorRequest,
+                        PacketName: header.Name,
+                        ActorId: actor.ActorId,
+                        CorrelationId: header.RequestSeq?.ToString()));
+                }
+
+                return reply;
             }
             catch (Exception ex)
             {

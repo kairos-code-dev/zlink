@@ -27,6 +27,20 @@ internal sealed class ZLinkRoutePacketDispatcher(
         }
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+
+        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+        {
+            dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Received,
+                ZLinkDispatchErrorSurface.RouteMeshChannel,
+                header.Kind == ZLinkMessageKind.Request
+                    ? ZLinkDispatchMessageKind.Request
+                    : ZLinkDispatchMessageKind.Send,
+                PacketName: header.MessageName,
+                ChannelName: routerChannelId,
+                CorrelationId: header.CorrelationId));
+        }
+
         switch (header.Kind)
         {
             case ZLinkMessageKind.Command:

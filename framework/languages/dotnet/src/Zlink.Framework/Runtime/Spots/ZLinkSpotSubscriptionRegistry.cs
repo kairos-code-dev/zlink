@@ -142,6 +142,19 @@ internal sealed class ZLinkSpotSubscriptionRegistry
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(message.Parts);
         LastMessageName = header.MessageName;
+
+        if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+        {
+            dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Received,
+                ZLinkDispatchErrorSurface.SpotSubscription,
+                ZLinkDispatchMessageKind.Publish,
+                PacketName: header.MessageName,
+                Topic: message.Topic,
+                SourceRid: header.Source,
+                CorrelationId: header.CorrelationId));
+        }
+
         var dispatched = false;
         foreach (var descriptor in descriptors)
         {
@@ -154,6 +167,18 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             await dispatchAsync(descriptor, body, cancellationToken).ConfigureAwait(false);
             dispatched = true;
             Interlocked.Increment(ref _dispatchCount);
+        }
+
+        if (dispatched && dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Dispatched))
+        {
+            dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Dispatched,
+                ZLinkDispatchErrorSurface.SpotSubscription,
+                ZLinkDispatchMessageKind.Publish,
+                PacketName: header.MessageName,
+                Topic: message.Topic,
+                SourceRid: header.Source,
+                CorrelationId: header.CorrelationId));
         }
 
         if (!dispatched)

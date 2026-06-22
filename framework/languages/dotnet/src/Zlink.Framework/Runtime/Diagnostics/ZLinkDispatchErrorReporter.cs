@@ -12,6 +12,11 @@ internal sealed class ZLinkDispatchErrorReporter(
     private static long _reportedCount;
     private readonly ILogger _logger = logger ?? NullLogger.Instance;
 
+    // Success-path tracer companion: every surface already receives a reporter, so
+    // exposing the flow tracer here wires all dispatch sites without threading a new
+    // parameter. Shares the same options (live mode), services and logger.
+    public ZLinkMessageFlowTracer Flow { get; } = new(options, services, logger);
+
     public static long ReportedCount => Interlocked.Read(ref _reportedCount);
 
     public void Report(ZLinkMessageDispatchErrorEvent error)

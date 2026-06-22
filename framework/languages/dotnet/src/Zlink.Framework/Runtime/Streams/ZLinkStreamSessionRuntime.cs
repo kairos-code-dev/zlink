@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Streams;
 
@@ -11,6 +13,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private readonly ZLinkStreamSessionSerialExecutor _serial = new();
     private readonly IZLinkSession _handler;
     private readonly ZLinkSessionContext _context;
+    private readonly ZLinkMessageFlowTracer _flow;
     private int _connected;
     private int _disconnected;
     private int _disposed;
@@ -26,8 +29,13 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         _socket = socket;
         _removeSession = removeSession;
         Stream = new ZLinkManagedStream(socket, routingId);
+        var runtime = scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>();
+        _flow = new ZLinkMessageFlowTracer(
+            runtime.Registration.DispatchOptions,
+            scope.ServiceProvider,
+            scope.ServiceProvider.GetService<ILogger<ZLinkStreamSessionRuntime>>());
         _context = new ZLinkSessionContext(
-            scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>(),
+            runtime,
             Stream,
             CloseAsync,
             CloseByProxyAsync);
@@ -125,6 +133,18 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 return;
             }
 
+            if (_flow.Enabled(ZLinkMessageFlowPhase.Received))
+            {
+                _flow.Trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.Received,
+                    ZLinkDispatchErrorSurface.StreamSession,
+                    decoded.RequestSeq.HasValue
+                        ? ZLinkDispatchMessageKind.Request
+                        : ZLinkDispatchMessageKind.Send,
+                    PacketName: decoded.Name,
+                    CorrelationId: decoded.RequestSeq?.ToString()));
+            }
+
             _context.EnterDispatch(decoded);
             try
             {
@@ -132,6 +152,18 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                     decoded,
                     payload,
                     CancellationToken.None);
+
+                if (_flow.Enabled(ZLinkMessageFlowPhase.Dispatched))
+                {
+                    _flow.Trace(new ZLinkMessageFlowEvent(
+                        ZLinkMessageFlowPhase.Dispatched,
+                        ZLinkDispatchErrorSurface.StreamSession,
+                        decoded.RequestSeq.HasValue
+                            ? ZLinkDispatchMessageKind.Request
+                            : ZLinkDispatchMessageKind.Send,
+                        PacketName: decoded.Name,
+                        CorrelationId: decoded.RequestSeq?.ToString()));
+                }
             }
             catch (Exception ex)
             {

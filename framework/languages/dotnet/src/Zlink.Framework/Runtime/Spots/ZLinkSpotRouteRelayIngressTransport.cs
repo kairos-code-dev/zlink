@@ -57,7 +57,7 @@ internal sealed class ZLinkSpotRouteRelayIngressTransport(
             var targetSpotRid = RoutingId.From(metadata.TargetSpotRid);
             var timeout = header.Deadline is { } deadline
                 ? deadline - DateTimeOffset.UtcNow
-                : registration.DefaultTimeout;
+                : registration.DefaultRequestTimeout;
             if (timeout <= TimeSpan.Zero)
             {
                 timeout = TimeSpan.FromMilliseconds(1);

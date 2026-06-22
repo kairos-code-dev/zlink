@@ -75,7 +75,7 @@ internal sealed class ZLinkRequestCall<TMessage>(
     {
         var bundle = runtime.GetOrCreateClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
-        var timeout = _timeout ?? registration.DefaultTimeout;
+        var timeout = _timeout ?? registration.ResolveChannelRequestTimeout(channelName);
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             channelName,

@@ -28,8 +28,7 @@ public sealed class DiscoveryTests
         {
             options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
 
-            options.UseRegistrySpotRemoteAddresses("registry-spot-sync")
-                .SetRouterChannelId("play");
+            options.UseRegistrySpotRemoteAddresses("registry-spot-sync").RouterChannelId = "play";
             options.AddRouteMeshChannel("play").EnableServer(routeEndpoint);
             {
                 var mesh = options.AddSpotMesh(spotChannel);

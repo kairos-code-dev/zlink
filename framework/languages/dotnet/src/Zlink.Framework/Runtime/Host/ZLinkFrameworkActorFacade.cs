@@ -272,7 +272,7 @@ internal sealed class ZLinkFrameworkActorFacade(
             ZLinkMessageKind.Request,
             routerChannelId,
             ZLinkRemoteActorJoinPackets.RequestPacketName,
-            registration.DefaultTimeout);
+            registration.DefaultRequestTimeout);
         var payload = new ZLinkRemoteActorJoinRequest(
             actor.ActorId,
             actorState.ActorType,
@@ -286,7 +286,7 @@ internal sealed class ZLinkFrameworkActorFacade(
                 targetNodeRid,
                 targetSpotRid,
                 parts,
-                registration.DefaultTimeout,
+                registration.DefaultRequestTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
         var reply = ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorJoinReply>(
@@ -391,7 +391,7 @@ internal sealed class ZLinkFrameworkActorFacade(
             targetSpotRid,
             joinParts,
             (result, reply) => tcs.TrySetResult((result, reply)),
-            registration.DefaultTimeout);
+            registration.DefaultRequestTimeout);
         ZLinkMessageParts.DisposeAll(joinParts);
 
         if (!submitted)

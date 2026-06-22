@@ -70,11 +70,7 @@ public sealed class RouteAcceptanceTests : SpotTestSupport
             {
                 var routed = options.AddRouteMeshChannel("play");
                 routed.EnableServer(routeEndpoint);
-                {
-                    var routing = routed.ConfigureRouting();
-                    routing.RoutingId = RoutingId.From("aabbcc02");
-
-                }
+                routed.SetRoutingId(RoutingId.From("aabbcc02"));
 
             }
             {

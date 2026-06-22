@@ -55,7 +55,7 @@ public sealed class LocalProxyDisconnectTests : StreamTestSupport
                 {
                     var routed = options.AddRouteMeshChannel("gateway");
                     routed.EnableServer(routerEndpoint);
-                    routed.ConfigureRouting().RoutingId = localRid;
+                    routed.SetRoutingId(localRid);
                     routed.EnableClient(routerEndpoint);
 
                 }

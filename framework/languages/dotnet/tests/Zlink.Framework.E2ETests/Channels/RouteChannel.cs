@@ -31,7 +31,7 @@ public sealed class RouteChannelTests
             {
                 var routed = options.AddRouteMeshChannel("backend.discovery");
                 routed.EnableServer(leftEndpoint);
-                routed.ConfigureRouting().RoutingId = leftRid;
+                routed.SetRoutingId(leftRid);
 
             }
         });
@@ -43,7 +43,7 @@ public sealed class RouteChannelTests
             {
                 var routed = options.AddRouteMeshChannel("backend.discovery");
                 routed.EnableServer(rightEndpoint);
-                routed.ConfigureRouting().RoutingId = rightRid;
+                routed.SetRoutingId(rightRid);
                 routed.AddRequestHandler<SharedPacketRouteHandler, SharedPacketRequest, SharedPacketReply>(
                     "SharedPacket");
 
@@ -89,7 +89,7 @@ public sealed class RouteChannelTests
                 var routed = options.AddRouteMeshChannel("backend");
                 routed.EnableServer(leftEndpoint);
                 routed.ConfigureSocket().SendTimeout = TimeSpan.FromSeconds(10);
-                routed.ConfigureRouting().RoutingId = leftRid;
+                routed.SetRoutingId(leftRid);
                 routed.EnableClient(rightEndpoint);
 
             }
@@ -102,7 +102,7 @@ public sealed class RouteChannelTests
                 var routed = options.AddRouteMeshChannel("backend");
                 routed.EnableServer(rightEndpoint);
                 routed.ConfigureSocket().SendTimeout = TimeSpan.FromSeconds(10);
-                routed.ConfigureRouting().RoutingId = rightRid;
+                routed.SetRoutingId(rightRid);
                 routed.EnableClient(leftEndpoint);
                 routed.AddRequestHandler<SharedPacketRouteHandler, SharedPacketRequest, SharedPacketReply>(
                     "SharedPacket");
@@ -158,7 +158,7 @@ public sealed class RouteChannelTests
             {
                 var routed = options.AddRouteMeshChannel("backend.group");
                 routed.EnableServer(leftEndpoint);
-                routed.ConfigureRouting().RoutingId = leftRid;
+                routed.SetRoutingId(leftRid);
                 routed.EnableClient(rightEndpoint);
 
             }
@@ -171,7 +171,7 @@ public sealed class RouteChannelTests
             {
                 var routed = options.AddRouteMeshChannel("backend.group");
                 routed.EnableServer(rightEndpoint);
-                routed.ConfigureRouting().RoutingId = rightRid;
+                routed.SetRoutingId(rightRid);
                 routed.EnableClient(leftEndpoint);
                 routed.AddHandlerGroup("route-shared");
 

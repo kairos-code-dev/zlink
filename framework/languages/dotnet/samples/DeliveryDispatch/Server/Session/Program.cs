@@ -12,7 +12,6 @@ builder.Services.AddSingleton(topology);
 builder.Services.AddSingleton<CustomerSessionDirectory>();
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = SampleTimings.FrameworkTimeout;
     options.ConfigureDispatch().SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>();
     options.AddHandlersFromAssemblyOf(typeof(CustomerSession));
     options.Codecs.AddJson();

@@ -26,19 +26,15 @@ public static class SessionServerHostFactory
         builder.Services.AddSingleton(session);
         builder.Services.AddZLinkFramework(options =>
         {
-            options.SetDefaultTimeout(SampleTimings.RequestTimeout);
             options.ConfigureDispatch().SetMessageDispatchErrorObserver<BingoDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.ApiChannel)
-                .EnableClient(topology.ApiA.ChannelEndpoint)
-                .EnableClient(topology.ApiB.ChannelEndpoint)
-                .SetClientSendTimeout(TimeSpan.FromSeconds(1));
+                .EnableClient();
             options.AddRouteMeshChannel(SampleNames.PlayChannel)
                 .EnableServer(session.PlayRouteEndpoint)
-                .EnableClient(session.PreferredPlayChannelEndpoint)
-                .SetSendTimeout(TimeSpan.FromSeconds(1))
+                .EnableClient()
                 .SetRoutingId(session.PlayRouteRid);
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
                 .AddNode(SampleNames.SessionSpotNode)

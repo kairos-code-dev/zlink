@@ -86,7 +86,7 @@ internal sealed class ZLinkBoundSessionService(
                         new[] { frameMessage },
                         SendFlags.None);
                 },
-                runtime.Registration.DefaultTimeout,
+                runtime.Registration.DefaultRequestTimeout,
                 "Actor bound session send failed.",
                 cancellationToken)
             .ConfigureAwait(false);

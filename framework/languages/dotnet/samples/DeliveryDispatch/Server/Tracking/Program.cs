@@ -13,7 +13,6 @@ builder.Services.AddSingleton<EvidenceStore>();
 builder.Services.AddSingleton<DeliverySpotDirectory>();
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = SampleTimings.FrameworkTimeout;
     options.ConfigureDispatch().SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>();
     options.AddHandlersFromAssemblyOf(typeof(EnsureCustomerActorHandler));
     options.Codecs.AddJson();

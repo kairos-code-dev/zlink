@@ -183,7 +183,7 @@ public sealed class ActorBindingTests : StreamTestSupport
                 {
                     var routed = options.AddRouteMeshChannel("gateway");
                     routed.EnableServer(endpoint);
-                    routed.ConfigureRouting().RoutingId = RoutingId.From("1001");
+                    routed.SetRoutingId(RoutingId.From("1001"));
                     routed.EnableClient(endpoint);
 
                 }
@@ -239,7 +239,7 @@ public sealed class ActorBindingTests : StreamTestSupport
                 {
                     var routed = options.AddRouteMeshChannel("gateway");
                     routed.EnableServer(endpoint);
-                    routed.ConfigureRouting().RoutingId = RoutingId.From("1101");
+                    routed.SetRoutingId(RoutingId.From("1101"));
                     routed.EnableClient(endpoint);
 
                 }
@@ -305,7 +305,7 @@ public sealed class ActorBindingTests : StreamTestSupport
                 {
                     var routed = options.AddRouteMeshChannel("gateway");
                     routed.EnableServer(endpoint);
-                    routed.ConfigureRouting().RoutingId = localRid;
+                    routed.SetRoutingId(localRid);
                     routed.EnableClient(endpoint);
 
                 }

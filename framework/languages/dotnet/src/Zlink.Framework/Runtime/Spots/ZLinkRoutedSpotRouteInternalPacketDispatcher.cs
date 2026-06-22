@@ -81,7 +81,7 @@ internal sealed class ZLinkRoutedSpotRouteInternalPacketDispatcher(
     {
         if (header.Deadline is not { } deadline)
         {
-            return registration.DefaultTimeout;
+            return registration.DefaultRequestTimeout;
         }
 
         var remaining = deadline - DateTimeOffset.UtcNow;

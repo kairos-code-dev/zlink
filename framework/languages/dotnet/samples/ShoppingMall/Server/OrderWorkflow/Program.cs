@@ -32,14 +32,13 @@ internal static class Program
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.DefaultTimeout = SampleTimings.WorkflowTimeout;
             options.ConfigureDispatch().SetMessageDispatchErrorObserver<ShoppingMallDispatchErrorObserver>();
             options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {
                 var route = options.AddRouteMeshChannel(SampleNames.OrderWorkflowRouteChannel);
                 route.EnableServer(instance.RouteEndpoint);
-                route.ConfigureRouting().RoutingId = instance.RouteRid;
+                route.SetRoutingId(instance.RouteRid);
                 route.AddRequestHandler<StartOrderWorkflowRouteHandler, StartOrderWorkflowReq, StartOrderWorkflowRes>();
                 route.AddRequestHandler<ContinueOrderWorkflowRouteHandler, ContinueOrderWorkflowReq, ContinueOrderWorkflowRes>();
                 route.AddRequestHandler<RebuildOrderProjectionRouteHandler, RebuildOrderProjectionReq, RebuildOrderProjectionRes>();

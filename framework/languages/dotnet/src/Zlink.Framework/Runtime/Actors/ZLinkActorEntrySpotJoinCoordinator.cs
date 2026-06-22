@@ -31,7 +31,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 spotNodeRid,
                 request,
                 (result, reply) => tcs.TrySetResult((result, reply)),
-                registration.DefaultTimeout))
+                registration.DefaultRequestTimeout))
         {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
@@ -124,7 +124,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 spotNodeRid,
                 ZLinkActorEntrySpotRoutePackets.JoinEntrySpotPacketName,
                 request,
-                registration.DefaultTimeout,
+                registration.DefaultRequestTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
 

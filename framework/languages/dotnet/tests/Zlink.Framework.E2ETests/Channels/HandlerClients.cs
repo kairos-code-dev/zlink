@@ -36,7 +36,7 @@ public sealed class HandlerClientsTests
             {
                 var route = options.AddRouteMeshChannel("route");
                 route.EnableServer(routeLeftEndpoint);
-                route.ConfigureRouting().RoutingId = leftRid;
+                route.SetRoutingId(leftRid);
                 route.EnableClient(routeRightEndpoint);
 
             }
@@ -49,7 +49,7 @@ public sealed class HandlerClientsTests
             {
                 var route = options.AddRouteMeshChannel("route");
                 route.EnableServer(routeRightEndpoint);
-                route.ConfigureRouting().RoutingId = rightRid;
+                route.SetRoutingId(rightRid);
                 route.EnableClient(routeLeftEndpoint);
                 route.AddRequestHandler<RouteForwardProfileHandler, ForwardProfileRequest, ProfileReply>();
 

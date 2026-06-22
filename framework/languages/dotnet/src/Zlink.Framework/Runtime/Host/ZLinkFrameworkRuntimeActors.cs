@@ -305,7 +305,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
         await node.CloseActorBoundSessionAsync(
                 actorRef,
-                Registration.DefaultTimeout,
+                Registration.DefaultRequestTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
     }

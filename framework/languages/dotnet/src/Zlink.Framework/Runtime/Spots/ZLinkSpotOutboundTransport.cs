@@ -5,7 +5,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotOutboundTransport(
     IZLinkBackendSpot nativeSpot,
-    TimeSpan defaultTimeout,
+    TimeSpan defaultRequestTimeout,
     TimeSpan? sendTimeout,
     CancellationToken stopToken,
     Func<string, ZLinkAsyncSubmitter?>? channelSubmitter = null) : IAsyncDisposable
@@ -21,7 +21,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        var requestTimeout = timeout ?? defaultTimeout;
+        var requestTimeout = timeout ?? defaultRequestTimeout;
         return await ResolveSubmitter(channelName)
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 message,
@@ -46,7 +46,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        var requestTimeout = timeout ?? defaultTimeout;
+        var requestTimeout = timeout ?? defaultRequestTimeout;
         return await ResolveSubmitter(channelName)
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 parts,
@@ -94,7 +94,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        var requestTimeout = timeout ?? defaultTimeout;
+        var requestTimeout = timeout ?? defaultRequestTimeout;
         return await _submitter
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 message,
@@ -121,7 +121,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        var requestTimeout = timeout ?? defaultTimeout;
+        var requestTimeout = timeout ?? defaultRequestTimeout;
         return await _submitter
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 parts,

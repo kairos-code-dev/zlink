@@ -38,7 +38,7 @@ internal static class ScenarioClient
         {
             var routed = framework.AddRouteMeshChannel(ctx.Channel);
             routed.EnableServer(ctx.ClientZLinkEndpoint);
-            routed.ConfigureRouting().RoutingId = RoutingId.From(ctx.ClientRoutingId);
+            routed.SetRoutingId(RoutingId.From(ctx.ClientRoutingId));
             foreach (var peer in ctx.RoutePeerEndpoints)
             {
                 routed.EnableClient(peer);

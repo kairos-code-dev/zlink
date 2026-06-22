@@ -105,7 +105,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
                 targetNodeRid,
                 targetSpotRid,
                 parts,
-                timeout ?? activation.DefaultTimeout,
+                timeout ?? activation.DefaultRequestTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
     }

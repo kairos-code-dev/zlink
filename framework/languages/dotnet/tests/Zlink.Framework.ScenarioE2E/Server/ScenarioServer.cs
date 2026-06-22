@@ -34,7 +34,7 @@ internal static class ScenarioServer
             {
                 var routed = framework.AddRouteMeshChannel(options.Channel);
                 routed.EnableServer(options.ZLinkEndpoint);
-                routed.ConfigureRouting().RoutingId = RoutingId.From(options.ServerName);
+                routed.SetRoutingId(RoutingId.From(options.ServerName));
                 foreach (var peer in options.RoutePeerEndpoints)
                 {
                     routed.EnableClient(peer);

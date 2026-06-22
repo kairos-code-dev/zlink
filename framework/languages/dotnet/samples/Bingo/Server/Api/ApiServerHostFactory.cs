@@ -1,9 +1,6 @@
 using Bingo.Server.Configuration;
-using Bingo.Server.Api.Handlers;
-using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Codecs.Protobuf;
 
 namespace Bingo.Server.Api;
@@ -15,18 +12,16 @@ public static class ApiServerHostFactory
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.SetDefaultTimeout(SampleTimings.RequestTimeout);
             options.ConfigureDispatch().SetMessageDispatchErrorObserver<BingoDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
+            options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableServer(node.ChannelEndpoint)
                 .AddHandlerGroup("api");
             options.AddRouteMeshChannel(SampleNames.PlayChannel)
                 .EnableServer(node.PlayRouteEndpoint)
-                .EnableClient(topology.PlayA.PlayChannelEndpoint)
-                .EnableClient(topology.PlayB.PlayChannelEndpoint)
-                .SetSendTimeout(TimeSpan.FromSeconds(1))
+                .EnableClient()
                 .SetRoutingId(node.RouteRid);
         });
 

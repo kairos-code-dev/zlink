@@ -121,7 +121,7 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
 
     public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
-        var timeout = _timeout ?? runtime.Registration.DefaultTimeout;
+        var timeout = _timeout ?? runtime.Registration.ResolveRouteRequestTimeout(routerChannelId);
         return runtime.GetRouteChannel(routerChannelId).RequestAsync<TRequest, TReply>(
             targetNodeRid,
             _packetName ?? throw new InvalidOperationException("Packet name is required."),

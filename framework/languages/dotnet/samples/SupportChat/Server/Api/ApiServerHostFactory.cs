@@ -11,7 +11,6 @@ public static class ApiServerHostFactory
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.ConfigureDispatch().SetMessageDispatchErrorObserver<SupportChatDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.AddJson();

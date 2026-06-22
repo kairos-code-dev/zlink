@@ -82,7 +82,7 @@ internal sealed partial class ZLinkActorSessionManager
 
         await managedStream.BindActorAsync(
                 actorRef,
-                runtime.Registration.DefaultTimeout,
+                runtime.Registration.DefaultRequestTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -104,7 +104,7 @@ internal sealed partial class ZLinkActorSessionManager
         {
             await managedStream.UnbindActorAsync(
                     actorId,
-                    runtime.Registration.DefaultTimeout,
+                    runtime.Registration.DefaultRequestTimeout,
                     cancellationToken)
                 .ConfigureAwait(false);
         }

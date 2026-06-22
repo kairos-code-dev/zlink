@@ -15,7 +15,6 @@ builder.Services.AddSingleton<DispatchWorkQueue>();
 builder.Services.AddHostedService<DispatchWorker>();
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = SampleTimings.FrameworkTimeout;
     options.ConfigureDispatch().SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>();
     options.AddHandlersFromAssemblyOf(typeof(AssignDeliveryHandler));
     options.Codecs.AddJson();

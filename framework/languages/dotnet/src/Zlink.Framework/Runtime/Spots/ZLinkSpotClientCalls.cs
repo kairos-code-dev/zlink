@@ -105,7 +105,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
     public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         var remoteAddress = await ResolveRemoteAddressAsync(cancellationToken).ConfigureAwait(false);
-        var timeout = _timeout ?? activation.DefaultTimeout;
+        var timeout = _timeout ?? activation.DefaultRequestTimeout;
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             remoteAddress.RouterChannelId,
@@ -195,7 +195,7 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
 
     public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
-        var timeout = _timeout ?? activation.DefaultTimeout;
+        var timeout = _timeout ?? activation.DefaultRequestTimeout;
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             channelName,

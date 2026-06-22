@@ -93,7 +93,7 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
 
             services.AddZLinkFramework(options =>
             {
-                options.DefaultTimeout = TimeSpan.FromSeconds(5);
+                options.DefaultRequestTimeout = TimeSpan.FromSeconds(5);
                 options.Codecs.Use(ZLinkProtobufCodec.Default);
                 options.UseFilter<TestFilter>();
             options.AddSpotRemoteAddressResolver<TestSpotRemoteAddressResolver>();
@@ -157,7 +157,8 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         Assert.NotNull(filter);
         Assert.IsType<TestSpotRemoteAddressResolver>(
             provider.GetRequiredService<IZLinkSpotRemoteAddressResolver>());
-        Assert.Equal(TimeSpan.FromSeconds(5), registration.DefaultTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(5), registration.DefaultRequestTimeout);
+        Assert.Equal(TimeSpan.FromMilliseconds(1000), registration.DefaultSocketSendTimeout);
         Assert.Contains("application/x-protobuf", registration.Codecs.Serializers.Keys);
         Assert.Equal(ZLinkDispatchMode.Dynamic, registration.DispatchOptions.SpotDispatchMode);
         Assert.NotNull(registration.Discovery);
@@ -165,6 +166,32 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
         Assert.Contains("profile", registration.Channels.Keys);
         Assert.Contains("stream.node", registration.StreamNodes.Keys);
         Assert.Contains("stage-node", registration.SpotNodes.Keys);
+    }
+
+    [Fact]
+    public void ChannelDefaultRequestTimeoutOverridesGlobalDefault()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.DefaultRequestTimeout = TimeSpan.FromSeconds(30);
+            options.AddClientServerChannel("api")
+                .EnableClient("tcp://127.0.0.1:7101")
+                .SetDefaultRequestTimeout(TimeSpan.FromSeconds(2));
+            options.AddRouteMeshChannel("route")
+                .EnableServer("tcp://127.0.0.1:7201")
+                .EnableClient("tcp://127.0.0.1:7202")
+                .SetDefaultRequestTimeout(TimeSpan.FromSeconds(3));
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+
+        Assert.Equal(TimeSpan.FromSeconds(2), registration.ResolveChannelRequestTimeout("api"));
+        Assert.Equal(TimeSpan.FromSeconds(3), registration.ResolveRouteRequestTimeout("route"));
+        Assert.Equal(TimeSpan.FromSeconds(30), registration.ResolveChannelRequestTimeout("missing"));
+        Assert.Equal(TimeSpan.FromSeconds(30), registration.ResolveRouteRequestTimeout("missing"));
     }
 
     [Fact]

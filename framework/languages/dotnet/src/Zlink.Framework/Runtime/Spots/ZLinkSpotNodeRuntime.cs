@@ -319,9 +319,9 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             Node.RoutingId,
             _registration.SpotNodeName,
             _frameworkRegistration.SpotDiscovery?.ChannelName ?? _registration.SpotNodeName,
-            _frameworkRegistration.DefaultTimeout,
+            _frameworkRegistration.DefaultRequestTimeout,
             _registration.Router?.SocketConfig.SendTimeout
-                ?? TimeSpan.FromMilliseconds(1000),
+                ?? _frameworkRegistration.DefaultSocketSendTimeout,
             ResolveAttachedChannelSubmitter);
         foreach (var assembly in _frameworkRegistration.HandlerAssemblies)
         {

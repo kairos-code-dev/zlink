@@ -154,11 +154,7 @@ public abstract partial class SpotTestSupport
                 {
                     var route = options.AddRouteMeshChannel(routerChannelId);
                     route.EnableServer(channelEndpoint);
-                    {
-                        var routing = route.ConfigureRouting();
-                        routing.RoutingId = RoutingId.From("aabbcc11");
-
-                    }
+                    route.SetRoutingId(RoutingId.From("aabbcc11"));
 
                 }
                 break;

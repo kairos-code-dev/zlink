@@ -111,7 +111,7 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
         dealer.SetChannelName(attached.ChannelName);
         var bundle = new ZLinkSpotAttachedChannelBundle(
             dealer,
-            attached.SocketConfig.SendTimeout,
+            attached.SocketConfig.SendTimeout ?? frameworkRegistration.DefaultSocketSendTimeout,
             stopToken);
 
         if (attached.ManualConnections.Count > 0)
@@ -163,7 +163,7 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
             publisher,
             new ZLinkAsyncSubmitter(
                 publisher.OnSendReady,
-                attached.SocketConfig.SendTimeout,
+                attached.SocketConfig.SendTimeout ?? frameworkRegistration.DefaultSocketSendTimeout,
                 stopToken));
     }
 

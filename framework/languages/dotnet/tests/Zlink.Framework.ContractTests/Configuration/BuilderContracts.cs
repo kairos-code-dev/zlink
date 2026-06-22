@@ -15,7 +15,8 @@ public sealed class BuilderContracts
     {
         var options = new FrameworkOptions();
 
-        options.DefaultTimeout = TimeSpan.FromSeconds(5);
+        options.DefaultRequestTimeout = TimeSpan.FromSeconds(5);
+        options.DefaultSocketSendTimeout = TimeSpan.FromSeconds(1);
         options.Codecs.AddJson();
         options.AddHandlersFromAssemblyOf<BuilderContracts>();
         options.AddHandlersFromAssembly(typeof(BuilderContracts).Assembly);
@@ -30,27 +31,30 @@ public sealed class BuilderContracts
         Assert.Contains("trace-id", options.Metadata.ForwardedKeys);
         Assert.Contains("tcp://127.0.0.1:6000", options.Discovery.Endpoints);
         Assert.Equal("play-router", options.SpotRemoteAddresses.RouterChannelId);
+        Assert.Equal(TimeSpan.FromSeconds(1), options.DefaultSocketSendTimeout);
     }
 
     [Fact]
-    public void Fluent_builder_extensions_keep_configuration_chains()
+    public void Nested_configuration_objects_expose_socket_routing_and_registry_settings()
     {
         var options = new FrameworkOptions();
 
-        Assert.Same(options, options.SetDefaultTimeout(TimeSpan.FromSeconds(3)));
-        Assert.Equal(TimeSpan.FromSeconds(3), options.DefaultTimeout);
-        Assert.Same(
-            options.SpotRemoteAddresses,
-            options.UseRegistrySpotRemoteAddresses("rooms").SetRouterChannelId("room-node"));
+        options.DefaultRequestTimeout = TimeSpan.FromSeconds(3);
+        Assert.Equal(TimeSpan.FromSeconds(3), options.DefaultRequestTimeout);
+        options.UseRegistrySpotRemoteAddresses("rooms").RouterChannelId = "room-node";
         Assert.Equal("room-node", options.SpotRemoteAddresses.RouterChannelId);
 
         var clientServer = options.AddClientServerChannel("api");
-        Assert.Same(clientServer, clientServer.SetClientSendTimeout(TimeSpan.FromSeconds(1)));
+        clientServer.ConfigureClientSocket().SendTimeout = TimeSpan.FromSeconds(1);
+        Assert.Equal(TimeSpan.FromSeconds(1), clientServer.ConfigureClientSocket().SendTimeout);
 
         var routeMesh = options.AddRouteMeshChannel("play");
-        Assert.Same(routeMesh, routeMesh
-            .SetSendTimeout(TimeSpan.FromSeconds(1))
-            .SetRoutingId(RoutingId.From("play-a")));
+        Assert.Same(
+            routeMesh,
+            routeMesh
+                .SetRoutingId(RoutingId.From("play-a")));
+        routeMesh.ConfigureSocket().SendTimeout = TimeSpan.FromSeconds(1);
+        Assert.Equal(TimeSpan.FromSeconds(1), routeMesh.ConfigureSocket().SendTimeout);
 
         var spotMesh = options.AddSpotMesh("rooms");
         Assert.Same(spotMesh, spotMesh.UseRegistrySpotResolver());
@@ -195,7 +199,9 @@ public sealed class BuilderContracts
 
     private sealed class FrameworkOptions : IZLinkFrameworkOptions
     {
-        public TimeSpan DefaultTimeout { get; set; }
+        public TimeSpan DefaultRequestTimeout { get; set; }
+
+        public TimeSpan? DefaultSocketSendTimeout { get; set; }
 
         public CodecRegistryBuilder Codecs { get; } = new();
 
@@ -343,6 +349,11 @@ public sealed class BuilderContracts
 
     private sealed class ClientServerChannelBuilder : IZLinkClientServerChannelBuilder
     {
+        private readonly ConnectionAndConfigContracts.SocketConfig _serverSocket = new();
+        private readonly ConnectionAndConfigContracts.RouteConfig _serverRoute = new();
+        private readonly ConnectionAndConfigContracts.SocketConfig _clientSocket = new();
+        private readonly ConnectionAndConfigContracts.OutboundRouteConfig _clientRoute = new();
+
         public IZLinkClientServerChannelBuilder EnableServer(string endpoint)
         {
             return this;
@@ -360,23 +371,25 @@ public sealed class BuilderContracts
 
         public IZLinkSocketConfig ConfigureServerSocket()
         {
-            return new ConnectionAndConfigContracts.SocketConfig();
+            return _serverSocket;
         }
 
         public IZLinkRouteConfig ConfigureServerRouting()
         {
-            return new ConnectionAndConfigContracts.RouteConfig();
+            return _serverRoute;
         }
 
         public IZLinkSocketConfig ConfigureClientSocket()
         {
-            return new ConnectionAndConfigContracts.SocketConfig();
+            return _clientSocket;
         }
 
         public IZLinkOutboundRouteConfig ConfigureClientRouting()
         {
-            return new ConnectionAndConfigContracts.OutboundRouteConfig();
+            return _clientRoute;
         }
+
+        public IZLinkClientServerChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout) => this;
 
         public IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName) => this;
 
@@ -423,6 +436,8 @@ public sealed class BuilderContracts
 
     private sealed class DealerMeshChannelBuilder : IZLinkDealerMeshChannelBuilder
     {
+        private readonly ConnectionAndConfigContracts.SocketConfig _socket = new();
+
         public IZLinkDealerMeshChannelBuilder EnableServer(string endpoint)
         {
             return this;
@@ -437,6 +452,10 @@ public sealed class BuilderContracts
         {
             return this;
         }
+
+        public IZLinkDealerMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout) => this;
+
+        public IZLinkSocketConfig ConfigureSocket() => _socket;
 
         public IZLinkDealerMeshChannelBuilder AddHandlerGroup(string groupName) => this;
 
@@ -455,6 +474,8 @@ public sealed class BuilderContracts
 
     private sealed class RouteMeshChannelBuilder : IZLinkRouteMeshChannelBuilder
     {
+        private readonly ConnectionAndConfigContracts.SocketConfig _socket = new();
+
         public IZLinkRouteMeshChannelBuilder EnableServer(string endpoint)
         {
             return this;
@@ -472,13 +493,15 @@ public sealed class BuilderContracts
 
         public IZLinkSocketConfig ConfigureSocket()
         {
-            return new ConnectionAndConfigContracts.SocketConfig();
+            return _socket;
         }
 
-        public IZLinkRouteConfig ConfigureRouting()
+        public IZLinkRouteMeshChannelBuilder SetRoutingId(RoutingId routingId)
         {
-            return new ConnectionAndConfigContracts.RouteConfig();
+            return this;
         }
+
+        public IZLinkRouteMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout) => this;
 
         public IZLinkRouteMeshChannelBuilder AddHandlerGroup(string groupName) => this;
 

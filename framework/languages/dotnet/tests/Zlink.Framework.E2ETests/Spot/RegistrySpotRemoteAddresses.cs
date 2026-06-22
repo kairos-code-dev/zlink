@@ -48,17 +48,12 @@ public sealed class RegistrySpotRemoteAddressesTests : SpotTestSupport
             options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
             options.ConfigureDispatch().SetMessageDispatchErrorObserver<ChannelDispatchErrorObserver>();
 
-            options.UseRegistrySpotRemoteAddresses("spot-registry-request-send")
-                .SetRouterChannelId("play");
+            options.UseRegistrySpotRemoteAddresses("spot-registry-request-send").RouterChannelId = "play";
             {
                 var route = options.AddRouteMeshChannel("play");
                 route.EnableServer(routeChannelEndpoint);
-                {
-                    var routing = route.ConfigureRouting();
-                    routing.RoutingId = RoutingId.From(
-                        Encoding.UTF8.GetBytes("registry-play-route"));
-
-                }
+                route.SetRoutingId(RoutingId.From(
+                        Encoding.UTF8.GetBytes("registry-play-route")));
 
             }
             {

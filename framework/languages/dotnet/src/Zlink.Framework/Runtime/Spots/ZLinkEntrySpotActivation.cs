@@ -33,7 +33,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
     private readonly ZLinkSpotSubscriptionPump _subscriptionPump = new();
     private readonly IZLinkSpotHandlerRegistry _handlersSurface;
     private readonly IZLinkSpotOutbound _outboundSurface;
-    private readonly TimeSpan _defaultTimeout;
+    private readonly TimeSpan _defaultRequestTimeout;
     private bool _configurationOpen = true;
     private int _disposed;
 
@@ -45,7 +45,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         RoutingId nodeRid,
         string spotNodeName,
         string channelName,
-        TimeSpan defaultTimeout,
+        TimeSpan defaultRequestTimeout,
         TimeSpan? sendTimeout,
         Func<string, ZLinkAsyncSubmitter?>? channelSubmitter = null)
     {
@@ -54,7 +54,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         NodeRid = nodeRid;
         SpotNodeName = spotNodeName;
         ChannelName = channelName;
-        _defaultTimeout = defaultTimeout;
+        _defaultRequestTimeout = defaultRequestTimeout;
         var errorSink = new ZLinkRuntimeErrorSink();
         _serial = new ZLinkSerialExecutionQueue(
             new ZLinkRuntimeTaskRunner(errorSink, _stopSource.Token),
@@ -78,7 +78,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
             EntrySpot.GetType());
         _outbound = new ZLinkSpotOutboundTransport(
             nativeSpot,
-            defaultTimeout,
+            defaultRequestTimeout,
             sendTimeout,
             _stopSource.Token,
             channelSubmitter);
@@ -108,7 +108,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
 
     public string SpotNodeName { get; }
 
-    public TimeSpan DefaultTimeout => _defaultTimeout;
+    public TimeSpan DefaultRequestTimeout => _defaultRequestTimeout;
 
     public ZLinkCodecRegistryBuilder Codecs => _runtime.Registration.Codecs;
 

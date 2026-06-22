@@ -108,6 +108,8 @@ public sealed class ConnectionAndConfigContracts
 
         public TimeSpan? HandshakeInterval { get; set; }
 
+        public int Weight { get; set; }
+
         public bool IPv6 { get; set; }
 
         public bool TcpNoDelay { get; set; }

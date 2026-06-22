@@ -24,7 +24,6 @@ internal static class Program
         builder.Services.AddScoped<QuestEventProcessor>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.DefaultTimeout = SampleNames.RequestTimeout;
             options.ConfigureDispatch().SetMessageDispatchErrorObserver<GameQuestDispatchErrorObserver>();
             options.Codecs.AddJson();
             options.AddHandlersFromAssemblyOf(typeof(Program));

@@ -5,7 +5,7 @@ internal sealed class ZLinkSessionActorCoordinator(
     IZLinkStream stream)
 {
     private readonly ZLinkSessionActorBindingRegistry _bindings = new(runtime);
-    private readonly ZLinkBoundActorRelaySender _relaySender = new(runtime.Registration.DefaultTimeout);
+    private readonly ZLinkBoundActorRelaySender _relaySender = new(runtime.Registration.DefaultRequestTimeout);
 
     public IReadOnlyCollection<IZLinkSessionActor> BoundActors => _bindings.BoundActors;
 
@@ -184,7 +184,7 @@ internal sealed class ZLinkSessionActorCoordinator(
 
         await managedStream.BindActorAsync(
                 actorRef,
-                runtime.Registration.DefaultTimeout,
+                runtime.Registration.DefaultRequestTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
     }

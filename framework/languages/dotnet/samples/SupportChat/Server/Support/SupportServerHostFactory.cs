@@ -24,7 +24,6 @@ public static class SupportServerHostFactory
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.ConfigureDispatch().SetMessageDispatchErrorObserver<SupportChatDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
             options.Codecs.AddJson();

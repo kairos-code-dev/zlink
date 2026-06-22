@@ -16,7 +16,6 @@ public static class SessionServerHostFactory
         builder.Services.AddSingleton(topology);
         builder.Services.AddZLinkFramework(options =>
         {
-            options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.ConfigureDispatch().SetMessageDispatchErrorObserver<SupportChatDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.AddJson();

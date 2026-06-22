@@ -179,7 +179,7 @@ internal static class ZLinkEntrySpotActorDispatcher
         byte[] frame,
         CancellationToken cancellationToken)
     {
-        var timeout = runtime.Registration.DefaultTimeout;
+        var timeout = runtime.Registration.DefaultRequestTimeout;
         var retryDelay = TimeSpan.FromMilliseconds(25);
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
         Exception? lastError = null;

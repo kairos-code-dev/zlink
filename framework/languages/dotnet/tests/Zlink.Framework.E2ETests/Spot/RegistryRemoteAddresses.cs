@@ -41,8 +41,7 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
                 routed.EnableServer(routeChannelEndpoint);
 
             }
-            options.UseRegistrySpotRemoteAddresses("registry-route")
-                .SetRouterChannelId("play");
+            options.UseRegistrySpotRemoteAddresses("registry-route").RouterChannelId = "play";
             {
                 var mesh = options.AddSpotMesh(spotChannel);
                 mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
@@ -121,8 +120,7 @@ public sealed class RegistryRemoteAddressesTests : SpotTestSupport
                 routed.EnableServer(routeChannelEndpoint);
 
             }
-            options.UseRegistrySpotRemoteAddresses("registry-route-rid")
-                .SetRouterChannelId("play");
+            options.UseRegistrySpotRemoteAddresses("registry-route-rid").RouterChannelId = "play";
             {
                 var mesh = options.AddSpotMesh(spotChannel);
                 mesh.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);

@@ -11,10 +11,24 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         _registration = registration;
     }
 
-    public TimeSpan DefaultTimeout
+    public TimeSpan DefaultRequestTimeout
     {
-        get => _registration.DefaultTimeout;
-        set => _registration.DefaultTimeout = value;
+        get => _registration.DefaultRequestTimeout;
+        set
+        {
+            ZLinkRequestTimeoutValidation.Validate(value, nameof(DefaultRequestTimeout));
+            _registration.DefaultRequestTimeout = value;
+        }
+    }
+
+    public TimeSpan? DefaultSocketSendTimeout
+    {
+        get => _registration.DefaultSocketSendTimeout;
+        set
+        {
+            ZLinkSocketConfig.ValidateSendTimeout(value);
+            _registration.DefaultSocketSendTimeout = value;
+        }
     }
 
     public IZLinkCodecRegistryBuilder Codecs => _registration.Codecs;

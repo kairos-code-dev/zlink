@@ -4,7 +4,9 @@ namespace Zlink.Framework.Runtime.Configuration;
 
 internal sealed class ZLinkFrameworkRegistration
 {
-    public TimeSpan DefaultTimeout { get; set; } = TimeSpan.FromSeconds(30);
+    public TimeSpan DefaultRequestTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    public TimeSpan? DefaultSocketSendTimeout { get; set; } = TimeSpan.FromMilliseconds(1000);
 
     public ZLinkCodecRegistryBuilder Codecs { get; } = new();
 
@@ -35,6 +37,20 @@ internal sealed class ZLinkFrameworkRegistration
     public ZLinkDiscoveryRegistration? Discovery { get; set; }
 
     public ZLinkSpotDiscoveryRegistration? SpotDiscovery { get; set; }
+
+    public TimeSpan ResolveChannelRequestTimeout(string channelName)
+    {
+        return Channels.TryGetValue(channelName, out var channel)
+            ? channel.DefaultRequestTimeout ?? DefaultRequestTimeout
+            : DefaultRequestTimeout;
+    }
+
+    public TimeSpan ResolveRouteRequestTimeout(string routerChannelId)
+    {
+        return RouteChannels.TryGetValue(routerChannelId, out var channel)
+            ? channel.DefaultRequestTimeout ?? DefaultRequestTimeout
+            : DefaultRequestTimeout;
+    }
 }
 
 internal sealed class ZLinkRegistrySpotRemoteAddressesRegistration : IZLinkRegistrySpotRemoteAddressesOptions
@@ -62,6 +78,8 @@ internal sealed class ZLinkSpotDiscoveryRegistration : ZLinkDiscoveryRegistratio
 internal sealed class ZLinkChannelRegistration
 {
     public required string ChannelName { get; init; }
+
+    public TimeSpan? DefaultRequestTimeout { get; set; }
 
     public ZLinkAutoConnectType AutoConnectType { get; set; }
 
@@ -132,6 +150,8 @@ internal sealed class ZLinkStreamNodeRegistration
 internal sealed class ZLinkRouteChannelRegistration
 {
     public required string RouterChannelId { get; init; }
+
+    public TimeSpan? DefaultRequestTimeout { get; set; }
 
     public string? BindEndpoint { get; set; }
 

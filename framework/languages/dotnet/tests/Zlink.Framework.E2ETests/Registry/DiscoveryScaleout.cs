@@ -150,7 +150,7 @@ public sealed class DiscoveryScaleoutTests
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.SetDefaultTimeout(TimeSpan.FromSeconds(2));
+            options.DefaultRequestTimeout = TimeSpan.FromSeconds(2);
             options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
             options.AddClientServerChannel("scaleout-api").EnableClient();
         });

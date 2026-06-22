@@ -408,7 +408,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
                 var channel = options.AddRouteMeshChannel("route").EnableServer("tcp://0.0.0.0:5700");
-                channel.ConfigureRouting().RoutingId = RoutingId.From("route-node");
+                channel.SetRoutingId(RoutingId.From("route-node"));
                 channel.AddRequestHandler<TestRouteRequestHandler>();
 
             }
@@ -433,7 +433,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         {
             {
                 var channel = options.AddRouteMeshChannel("route").EnableServer("tcp://0.0.0.0:5700");
-                channel.ConfigureRouting().RoutingId = RoutingId.From("route-node");
+                channel.SetRoutingId(RoutingId.From("route-node"));
                 channel.EnableClient("tcp://10.0.0.2:5700");
                 channel.AddRequestHandler<TestRouteRequestHandler>();
 

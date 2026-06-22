@@ -15,7 +15,6 @@ internal sealed class ApiServer(SampleSettings settings)
         builder.Services.AddSingleton(settings);
         builder.Services.AddZLinkFramework(options =>
         {
-            options.DefaultTimeout = SampleTimeouts.Request;
             options.ConfigureDispatch().SetMessageDispatchErrorObserver<TicTacToeDispatchErrorObserver>();
             options.Codecs.AddJson();
 

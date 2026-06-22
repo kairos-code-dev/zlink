@@ -70,7 +70,7 @@ internal sealed partial class ZLinkActorSessionManager
 
             await node.DestroyActorAsync(
                     currentActorRef,
-                    runtime.Registration.DefaultTimeout,
+                    runtime.Registration.DefaultRequestTimeout,
                     cancellationToken)
                 .ConfigureAwait(false);
 

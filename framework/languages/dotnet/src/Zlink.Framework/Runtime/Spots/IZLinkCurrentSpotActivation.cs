@@ -4,7 +4,7 @@ internal interface IZLinkCurrentSpotActivation
 {
     string ChannelName { get; }
 
-    TimeSpan DefaultTimeout { get; }
+    TimeSpan DefaultRequestTimeout { get; }
 
     ZLinkCodecRegistryBuilder Codecs { get; }
 

@@ -29,7 +29,6 @@ internal static class Program
         builder.Services.AddScoped<SyncQuestProgressHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.DefaultTimeout = SampleNames.RequestTimeout;
             options.ConfigureDispatch().SetMessageDispatchErrorObserver<GameQuestDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(Program));
             {

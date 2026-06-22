@@ -38,9 +38,17 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
         return registration.SocketConfig;
     }
 
-    public IZLinkRouteConfig ConfigureRouting()
+    public IZLinkRouteMeshChannelBuilder SetRoutingId(RoutingId routingId)
     {
-        return registration.RoutingConfig;
+        registration.RoutingConfig.RoutingId = routingId;
+        return this;
+    }
+
+    public IZLinkRouteMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout)
+    {
+        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
+        registration.DefaultRequestTimeout = timeout;
+        return this;
     }
 
     public IZLinkRouteMeshChannelBuilder AddHandlerGroup(string groupName)
@@ -134,10 +142,6 @@ internal sealed class ZLinkRouteMeshChannelServerCapabilityBuilder(
         return registration.SocketConfig;
     }
 
-    public IZLinkRouteConfig ConfigureRouting()
-    {
-        return registration.RoutingConfig;
-    }
 }
 
 internal sealed class ZLinkRouteMeshOutboundRouteConfigAdapter(ZLinkRouteConfig routeConfig)

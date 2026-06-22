@@ -8,7 +8,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Codecs.Protobuf;
 
 namespace Bingo.Server.Play;
@@ -28,15 +27,13 @@ public static class PlayServerHostFactory
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.SetDefaultTimeout(SampleTimings.RequestTimeout);
             options.ConfigureDispatch().SetMessageDispatchErrorObserver<BingoDispatchErrorObserver>();
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             options.AddRouteMeshChannel(SampleNames.PlayChannel)
                 .EnableServer(node.PlayChannelEndpoint)
-                .EnableClient(node.PeerPlayChannelEndpoint)
-                .SetSendTimeout(TimeSpan.FromSeconds(1))
+                .EnableClient()
                 .SetRoutingId(node.NodeRid)
                 .AddHandlerGroup("play");
             options.AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType);
@@ -47,9 +44,8 @@ public static class PlayServerHostFactory
                 .SetRouterRoutingId(node.NodeRid)
                 .EnablePubSub(node.SpotPubEndpoint)
                 .SetPubSubRoutingId(node.NodeRid)
-                .AcceptSpotRoutesFromChannel(SampleNames.PlayChannel, node.PlayChannelEndpoint)
-                .AttachChannelClient(SampleNames.ApiChannel, topology.ApiA.ChannelEndpoint)
-                .AttachChannelClient(SampleNames.ApiChannel, topology.ApiB.ChannelEndpoint)
+                .AcceptSpotRoutesFromChannel(SampleNames.PlayChannel)
+                .AttachChannelClient(SampleNames.ApiChannel)
                 .AddEntrySpot<BingoEntrySpot>()
                 .AddSpotFactory<BingoRoom>();
         });

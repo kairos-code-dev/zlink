@@ -6,6 +6,7 @@ use crate::runtime_bridge::SpotNodePublicRuntime;
 // ---------------------------------------------------------------------------
 
 struct NativeSpotNode {
+    ctx_handle: *mut c_void,
     handle: *mut c_void,
 }
 
@@ -27,6 +28,14 @@ pub(crate) fn spot_node_handle(node: &SpotNode) -> *mut c_void {
         .downcast_ref::<NativeSpotNode>()
         .expect("zlink native spot node")
         .handle
+}
+
+pub(crate) fn spot_node_context_handle(node: &SpotNode) -> *mut c_void {
+    node.inner
+        .as_any()
+        .downcast_ref::<NativeSpotNode>()
+        .expect("zlink native spot node")
+        .ctx_handle
 }
 
 fn spot_node_handle_mut(node: &mut SpotNode) -> &mut *mut c_void {
@@ -72,8 +81,8 @@ fn get_spot_node_option_i32(
 
 impl SpotNodePublicRuntime for SpotNode {
     fn new(ctx: &crate::core_context::Context) -> Result<Self, ConfigError> {
-        let handle =
-            unsafe { ffi::zlink_spot_node_new(crate::ctx::context_handle(ctx), std::ptr::null()) };
+        let ctx_handle = crate::ctx::context_handle(ctx);
+        let handle = unsafe { ffi::zlink_spot_node_new(ctx_handle, std::ptr::null()) };
         if handle.is_null() {
             return Err(ConfigError::new(
                 crate::error::ConfigResult::InvalidHandle,
@@ -81,7 +90,7 @@ impl SpotNodePublicRuntime for SpotNode {
             ));
         }
         Ok(Self {
-            inner: Box::new(NativeSpotNode { handle }),
+            inner: Box::new(NativeSpotNode { ctx_handle, handle }),
         })
     }
 
@@ -92,9 +101,10 @@ impl SpotNodePublicRuntime for SpotNode {
         let raw_options = ffi::zlink_spot_node_options_t {
             mode: options.mode.unwrap_or(SpotNodeMode::All).to_raw(),
         };
+        let ctx_handle = crate::ctx::context_handle(ctx);
         let handle = unsafe {
             ffi::zlink_spot_node_new(
-                crate::ctx::context_handle(ctx),
+                ctx_handle,
                 (&raw_options as *const ffi::zlink_spot_node_options_t).cast(),
             )
         };
@@ -105,7 +115,7 @@ impl SpotNodePublicRuntime for SpotNode {
             ));
         }
         Ok(Self {
-            inner: Box::new(NativeSpotNode { handle }),
+            inner: Box::new(NativeSpotNode { ctx_handle, handle }),
         })
     }
 

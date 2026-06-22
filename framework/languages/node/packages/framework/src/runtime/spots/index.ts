@@ -78,6 +78,7 @@ import {
   ZLINK_BACKEND_SPOT_NODE_MODE_ALL,
   ZLINK_BACKEND_SPOT_NODE_MODE_PUBSUB,
   ZLINK_BACKEND_SPOT_NODE_MODE_ROUTED,
+  ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_ONLY,
   ZLinkBackendSpotDispatchEvent
 } from '../backend/contracts';
 
@@ -475,7 +476,6 @@ class ZLinkSpotNodeConnector {
   configure(node: ZLinkBackendSpotNode, spotNodeName: string, spotNode: ZLinkSpotNodeOptions): void {
     this.applySpotNodeOptions(node, spotNodeName, spotNode);
     this.attachChannelClients(node, spotNode);
-    this.attachSpotRouteChannels(node, spotNode);
     this.initializeSpotPublisherClients(node, spotNode);
   }
 
@@ -493,10 +493,10 @@ class ZLinkSpotNodeConnector {
       node.setRouterBind(spotNode.router.bind);
     }
     for (const endpoint of spotNode.router?.manualConnections ?? []) {
-      node.connectRouterChannelPeer(spotNodeName, endpoint);
+      node.connectPeer(endpoint);
     }
     for (const connection of spotNode.router?.manualPeerConnections ?? []) {
-      node.connectRouterChannelPeerRid(spotNodeName, connection.peerRid, connection.endpoint);
+      node.connectPeer(connection.endpoint);
     }
     if (spotNode.pubSub?.bind !== undefined) {
       node.setPubBind(spotNode.pubSub.bind);
@@ -535,36 +535,20 @@ class ZLinkSpotNodeConnector {
         for (const endpoint of attached.manualConnections ?? []) {
           dealer.connect(endpoint);
         }
-        node.attachChannelDealerManual(channelName, dealer);
+        const bridge = node.createRouteBridge();
+        bridge.attachDealerChannel(channelName, dealer, {
+          capabilities: ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_ONLY
+        });
+        this.options.ownedObjects.push(bridge);
         continue;
       }
       const discovery = this.createDiscovery(channelName, ZLinkAutoConnectType.ClientServer);
       dealer.attachDiscovery(discovery);
-      node.attachChannelDealer(discovery, dealer);
-    }
-  }
-
-  private attachSpotRouteChannels(
-    node: ZLinkBackendSpotNode,
-    spotNode: ZLinkSpotNodeOptions
-  ): void {
-    for (const [channelName, acceptance] of Object.entries(spotNode.acceptedSpotRouteChannels ?? {})) {
-	      if ((acceptance.manualConnections ?? []).length > 0) {
-	        for (const endpoint of acceptance.manualConnections ?? []) {
-	          node.connectRouterChannelPeer(channelName, endpoint);
-	        }
-	      }
-	      for (const connection of acceptance.manualPeerConnections ?? []) {
-	        node.connectRouterChannelPeerRid(channelName, connection.peerRid, connection.endpoint);
-	      }
-	      if ((acceptance.manualConnections ?? []).length > 0 || (acceptance.manualPeerConnections ?? []).length > 0) {
-	        continue;
-	      }
-      if (this.options.registration.routeChannelOptions.get(channelName)?.bind !== undefined) {
-        continue;
-      }
-      const discovery = this.createDiscovery(channelName, this.resolveSpotRouteAutoConnectType(channelName));
-      node.attachSpotRouteChannelDiscovery(channelName, discovery);
+      const bridge = node.createRouteBridge();
+      bridge.attachDealerChannel(channelName, dealer, {
+        capabilities: ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_ONLY
+      });
+      this.options.ownedObjects.push(bridge);
     }
   }
 
@@ -605,12 +589,6 @@ class ZLinkSpotNodeConnector {
     return false;
   }
 
-  private resolveSpotRouteAutoConnectType(channelName: string): ZLinkAutoConnectType {
-    if (this.options.registration.routeChannelOptions.has(channelName)) {
-      return ZLinkAutoConnectType.RouteMesh;
-    }
-    return ZLinkAutoConnectType.ClientServer;
-  }
 }
 
 function spotNodeMode(spotNode: ZLinkSpotNodeOptions): ZLinkBackendSpotNodeMode {

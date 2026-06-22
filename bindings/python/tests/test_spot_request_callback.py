@@ -40,57 +40,16 @@ class SpotRequestCallbackTests(unittest.TestCase):
         if hasattr(self, "ctx") and self.ctx is not None:
             self.ctx.close()
 
-    def test_request_to_spot_callback_completes_via_dispatch_receive(self):
-        pub_endpoint = _tcp_endpoint()
+    def test_legacy_router_channel_peer_returns_migration_error(self):
         router_endpoint = _tcp_endpoint()
-        requester_node = zlink.create_spot_node(self.ctx)
-        responder_node = zlink.create_spot_node(self.ctx)
-        requester = requester_node.create_spot()
-        responder = responder_node.create_spot()
-        handled = threading.Event()
+        node = zlink.create_spot_node(self.ctx)
 
         try:
-            def on_dispatch_event(spot, info):
-                if info.event != zlink.SpotDispatchEvent.ROUTED_READABLE:
-                    return
-                received = spot.recv_routed(flags=zlink.RecvFlags.DONT_WAIT)
-                if received is None:
-                    return
-                with received:
-                    self.assertEqual(received.to_bytes_list(), [b"spot-ping"])
-                    self.assertIsNotNone(received.routing_id)
-                    self.assertIsNotNone(received.spot_rid)
-                    self.assertGreater(received.request_seq, 0)
-                    received.reply().message(b"spot-pong").submit()
-                handled.set()
-
-            responder.on_dispatch_event(on_dispatch_event)
-            responder_node.set_router_bind(router_endpoint)
-            responder_node.set_pub_bind(pub_endpoint)
-            requester_node.connect_peer(pub_endpoint)
-            requester_node.connect_router_channel_peer("api", router_endpoint)
-            _wait_spot_peer_connected(requester_node)
-
-            reply_queue = queue.Queue()
-            requester.request_to_spot(
-                responder_node.routing_id,
-                responder.routing_id,
-            ).message(b"spot-ping").timeout(2.0).submit(
-                lambda result, parts: reply_queue.put((result, parts))
-            )
-            result, reply = reply_queue.get(timeout=2.0)
-            self.assertEqual(result, zlink.RequestResult.OK)
-            try:
-                self.assertEqual([part.to_bytes() for part in reply], [b"spot-pong"])
-            finally:
-                for part in reply:
-                    part.close()
-            self.assertTrue(handled.wait(2.0), "routed dispatch receive did not fire")
+            with self.assertRaises(zlink.ConnectError) as raised:
+                node.connect_router_channel_peer("api", router_endpoint)
+            self.assertEqual(raised.exception.result, zlink.ConnectResult.NOT_SUPPORTED)
         finally:
-            responder.close()
-            requester.close()
-            responder_node.close()
-            requester_node.close()
+            node.close()
 
 
 if __name__ == "__main__":

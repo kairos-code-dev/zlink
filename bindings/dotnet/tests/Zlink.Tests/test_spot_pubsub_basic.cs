@@ -98,7 +98,7 @@ public sealed class test_spot_pubsub_basic
     }
 
     [Fact]
-    public void spot_node_pub_ingress_forwards_to_local_subscriber()
+    public void spot_node_publisher_forwards_to_local_subscriber()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
@@ -106,16 +106,12 @@ public sealed class test_spot_pubsub_basic
         using var ctx = Zlink.CreateContext();
         using var node = ctx.CreateSpotNode();
         using var subscriber = node.CreateSpot();
-        using var ingress = ctx.CreatePubSocket();
+        using var publisher = node.CreatePublisher();
 
         const string topic = "spot:external";
         const string payload = "hello-external";
 
-        string endpoint = CoreTestSupport.NewEndpoint("tcp",
-            "spot-pub-ingress-local");
-        node.SetPubBind(endpoint);
         subscriber.SetSubscription(topic);
-        node.AttachPubIngress(ingress);
 
         Assert.True(CoreTestSupport.WaitUntil(
             () =>
@@ -134,7 +130,7 @@ public sealed class test_spot_pubsub_basic
             () =>
             {
                 using var message = Message.From(payload);
-                ingress.Publish(topic).Message(message).Submit();
+                publisher.Publish(topic, new[] { message });
 
                 try
                 {

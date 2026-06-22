@@ -37,36 +37,6 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         nativeSpotNode.DisconnectPeer(endpoint);
     }
 
-    public void ConnectRouterChannelPeer(string channelName, string endpoint)
-    {
-        nativeSpotNode.ConnectRouterChannelPeer(channelName, endpoint);
-    }
-
-    public void ConnectRouterChannelPeerRid(
-        string channelName,
-        RoutingId peerRid,
-        string endpoint)
-    {
-        nativeSpotNode.ConnectRouterChannelPeerRid(channelName, peerRid, endpoint);
-    }
-
-    public void DisconnectRouterChannelPeer(string channelName, string endpoint)
-    {
-        nativeSpotNode.DisconnectRouterChannelPeer(channelName, endpoint);
-    }
-
-    public void DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid)
-    {
-        nativeSpotNode.DisconnectRouterChannelPeerRid(channelName, peerRid);
-    }
-
-    public void AttachSpotRouteChannelDiscovery(string channelName, IZLinkBackendDiscovery discovery)
-    {
-        nativeSpotNode.AttachSpotRouteChannelDiscovery(
-            channelName,
-            discovery.RequireNative<IDiscovery>());
-    }
-
     public IZLinkBackendSpot CreateSpot()
     {
         return new ZLinkBackendSpotWrapper(nativeSpotNode.CreateSpot());
@@ -97,18 +67,9 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
             .ToArray();
     }
 
-    public void AttachChannelDealer(IZLinkBackendDiscovery discovery, IZLinkBackendDealerSocket dealer)
+    public IZLinkBackendSpotRouteBridge CreateRouteBridge()
     {
-        nativeSpotNode.AttachChannelDealer(
-            discovery.RequireNative<IDiscovery>(),
-            dealer.RequireNative<IDealerSocket>());
-    }
-
-    public void AttachChannelDealerManual(string channelName, IZLinkBackendDealerSocket dealer)
-    {
-        nativeSpotNode.AttachChannelDealerManual(
-            channelName,
-            dealer.RequireNative<IDealerSocket>());
+        return new ZLinkBackendSpotRouteBridgeWrapper(nativeSpotNode.CreateRouteBridge());
     }
 
     public IZLinkBackendSpot EntrySpot()

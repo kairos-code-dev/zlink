@@ -42,6 +42,14 @@ from .spot_operations import (
     SendOp,
 )
 from .spot_node import SpotNode
+from zlink._runtime.service.spot.spot_route_bridge import (
+    SpotNodePublisher,
+    SpotRouteBridge,
+    SpotRouteBridgeEndpointCapabilities,
+    SpotRouteBridgeEndpointOptions,
+    SpotRouteBridgeOptions,
+    SpotRouteBridgeSummary,
+)
 
 __all__ = [
     "Actor",
@@ -70,6 +78,12 @@ __all__ = [
     "SpotActorLifecycleInfo",
     "SpotDispatchInfo",
     "SpotNode",
+    "SpotNodePublisher",
+    "SpotRouteBridge",
+    "SpotRouteBridgeEndpointCapabilities",
+    "SpotRouteBridgeEndpointOptions",
+    "SpotRouteBridgeOptions",
+    "SpotRouteBridgeSummary",
     "SpotNodeActorEntry",
     "SpotNodePeerEntry",
     "SpotNodePeerFilter",

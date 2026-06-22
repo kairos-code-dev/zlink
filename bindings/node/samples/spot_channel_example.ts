@@ -15,17 +15,17 @@ async function main() {
   const room = roomNode.createSpot();
   const roomDealer = zlink.createDealerSocket(ctx);
   const apiRouter = zlink.createRouterSocket(ctx);
+  const bridge = roomNode.createRouteBridge();
 
   try {
     const channel = 'api';
     const endpoint = await tcpEndpoint();
     apiRouter.bind(endpoint);
     roomDealer.connect(endpoint);
-    // "api" 채널 호출을 이 DEALER로 내보내도록 노드에 등록한다.
-    roomNode.attachChannelDealerManual(channel, roomDealer);
+    bridge.attachDealerChannel(channel, roomDealer);
 
-    // 게임룸이 API 채널로 outgame 요청을 보낸다.
-    const replyPromise = room.requestToChannel(channel)
+    // 게임룸 노드의 route bridge가 API 채널로 outgame 요청을 보낸다.
+    const replyPromise = bridge.request(channel, room.routingId)
       .message(Buffer.from('get-profile'))
       .timeout(5000)
       .submit();
@@ -54,6 +54,7 @@ async function main() {
     const reply = await replyPromise;
     console.log(`[spot/channel] request "get-profile" -> reply "${reply[0].data().toString()}"`);
   } finally {
+    bridge.close();
     apiRouter.close();
     roomDealer.close();
     room.close();

@@ -132,66 +132,40 @@ public sealed class test_callback_delivery
     }
 
     [Fact]
-    public void spot_channel_reply_dispatch_runs_inline_and_callback_hops_to_registered_context()
+    public void spot_route_bridge_request_callback_hops_to_registered_context()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
         using var ctx = Zlink.CreateContext();
         using var node = ctx.CreateSpotNode();
-        using var spot = node.CreateSpot();
         using var dealer = ctx.CreateDealerSocket();
         using var router = ctx.CreateRouterSocket();
-        using var dispatchSignal = new ManualResetEventSlim(false);
+        using var bridge = node.CreateRouteBridge();
         using var callbackSignal = new ManualResetEventSlim(false);
         using var callbackContext = new SingleThreadSynchronizationContext();
 
         string endpoint = CoreTestSupport.NewEndpoint("inproc",
-            "callback-delivery-spot-channel");
+            "callback-delivery-spot-route-bridge");
+        dealer.SetRoutingId(CoreTestSupport.RoutingIdUtf8("bridge-req-dealer"));
         router.Bind(endpoint);
         dealer.Connect(endpoint);
-        Thread.Sleep(50);
-        node.AttachChannelDealerManual("svc", dealer);
+        Thread.Sleep(100);
+        bridge.AttachDealerChannel("svc", dealer);
 
-        int dispatchThreadId = -1;
         int callbackThreadId = -1;
-        int dispatchCount = 0;
         int callbackCount = 0;
         RequestResult observedResult = RequestResult.ProtocolError;
         string observedPayload = string.Empty;
-        bool observedChannelReply = false;
-        Exception? dispatchError = null;
         Exception? callbackError = null;
 
         callbackContext.Invoke(() =>
         {
-            spot.SetDispatchHandler(info =>
-            {
-                dispatchThreadId = Environment.CurrentManagedThreadId;
-                if (info.Event == SpotDispatchEvent.ChannelReplyReadable)
-                {
-                    observedChannelReply = true;
-                    dispatchCount++;
-                    try
-                    {
-                        info.DrainChannelReply();
-                    }
-                    catch (Exception ex)
-                    {
-                        dispatchError = ex;
-                    }
-                    finally
-                    {
-                        dispatchSignal.Set();
-                    }
-                }
-            });
-
             using Message request = Message.From("ping");
-            spot.RequestToChannel("svc")
-                .Message(request)
-                .Timeout(TimeSpan.FromSeconds(2))
-                .Submit((result, parts) =>
+            RoutingId targetSpotRid =
+                CoreTestSupport.RoutingIdUtf8("callback-target-spot");
+            Assert.True(bridge.Request("svc", targetSpotRid,
+                new[] { request }, (result, parts) =>
             {
                 callbackThreadId = Environment.CurrentManagedThreadId;
                 callbackCount++;
@@ -211,14 +185,19 @@ public sealed class test_callback_delivery
                 {
                     callbackSignal.Set();
                 }
-            });
+            }, timeout: TimeSpan.FromSeconds(2)));
         });
 
-        var received = Received.Create();
-        router.Recv(received);
+        using var received = Received.Create();
+        Assert.True(CoreTestSupport.WaitUntil(
+            () => router.Recv(received, RecvFlags.DontWait),
+            timeoutMs: 5000));
         try
         {
-            Assert.Equal("ping", received.Parts[0].GetString());
+            Assert.True(received.Parts.Count >= 3);
+            Assert.Equal("__zlink.routed_spot.egress.request",
+                Encoding.UTF8.GetString(received.Parts[0].AsReadOnlySpan()));
+            Assert.Equal("ping", received.Parts[2].GetString());
             Assert.True(received.RequestSeq.HasValue);
             using Message reply = Message.From("pong");
             router.Reply(
@@ -231,14 +210,9 @@ public sealed class test_callback_delivery
             foreach (Message part in received.Parts) part.Dispose();
         }
 
-        Assert.True(dispatchSignal.Wait(3000));
         Assert.True(callbackSignal.Wait(3000));
-        Assert.Null(dispatchError);
         Assert.Null(callbackError);
-        Assert.True(observedChannelReply);
-        Assert.NotEqual(callbackContext.ThreadId, dispatchThreadId);
         Assert.Equal(callbackContext.ThreadId, callbackThreadId);
-        Assert.True(dispatchCount >= 1);
         Assert.True(callbackCount >= 1);
         Assert.Equal(RequestResult.Ok, observedResult);
         Assert.Equal("pong", observedPayload);

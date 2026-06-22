@@ -31,6 +31,8 @@ export type ZLinkBackendSpotNodeMode = SpotNodeModeValue;
 export const ZLINK_BACKEND_SPOT_NODE_MODE_PUBSUB = 1 as ZLinkBackendSpotNodeMode;
 export const ZLINK_BACKEND_SPOT_NODE_MODE_ROUTED = 2 as ZLinkBackendSpotNodeMode;
 export const ZLINK_BACKEND_SPOT_NODE_MODE_ALL = 3 as ZLinkBackendSpotNodeMode;
+export const ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_ONLY = 0x00000001;
+export const ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_WITH_CHANNEL_INBOUND = 0x00000003;
 
 export enum ZLinkBackendSpotDispatchEvent {
   SubscribeReadable = 1,
@@ -179,6 +181,19 @@ export interface ZLinkBackendReplyOperation {
   flags(flags: ZLinkBackendSendFlags): { submit(): void };
 }
 
+export interface ZLinkBackendSendOperation {
+  message(message: MessageLike): ZLinkBackendSendOperation;
+  flags(flags: ZLinkBackendSendFlags): ZLinkBackendSendOperation;
+  submit(): boolean;
+}
+
+export interface ZLinkBackendRequestOperation {
+  message(message: MessageLike): ZLinkBackendRequestOperation;
+  timeout(timeoutMs: number): ZLinkBackendRequestOperation;
+  flags(flags: ZLinkBackendSendFlags): ZLinkBackendRequestOperation;
+  submit(callback: RequestCallback): boolean;
+}
+
 export interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket {
   attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   onSendReady(handler: () => void): void;
@@ -262,6 +277,29 @@ export interface ZLinkBackendSocketMonitor extends ZLinkBackendObject {
   dispose(): Promise<void>;
 }
 
+export interface ZLinkBackendSpotRouteBridge extends ZLinkBackendObject {
+  attachDealerChannel(
+    channelName: string,
+    dealer: ZLinkBackendDealerSocket,
+    options?: { readonly capabilities?: number }
+  ): void;
+  attachRouterChannel(
+    channelName: string,
+    router: ZLinkBackendRouterSocket,
+    options?: { readonly capabilities?: number }
+  ): void;
+  setTargetNode(channelName: string, targetNodeRid: RoutingId): void;
+  send(channelName: string, targetSpotRid: RoutingId): ZLinkBackendSendOperation;
+  request(channelName: string, targetSpotRid: RoutingId): ZLinkBackendRequestOperation;
+  handleRouterReceived(
+    channelName: string,
+    sourceNodeRid: RoutingId,
+    parts: readonly MessageLike[],
+    requestSeq?: bigint | number
+  ): boolean;
+  dispose(): Promise<void>;
+}
+
 export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   readonly routingId: RoutingId;
   setRoutingId(routingId: RoutingId): void;
@@ -270,20 +308,12 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   connectPeer(endpoint: string): void;
   disconnectPeer(endpoint: string): void;
-  connectRouterChannelPeer(channelName: string, endpoint: string): void;
-  connectRouterChannelPeerRid(channelName: string, peerRid: RoutingId, endpoint: string): void;
-  disconnectRouterChannelPeer(channelName: string, endpoint: string): void;
-  disconnectRouterChannelPeerRid(channelName: string, peerRid: RoutingId): void;
-  attachSpotRouteChannelDiscovery(channelName: string, discovery: ZLinkBackendDiscovery): void;
-  processExternalRouter(): void;
-  tryProcessExternalRouterParts(parts: readonly MessageLike[]): boolean;
   createSpot(): ZLinkBackendSpot;
   getOrCreateSpot(spotRid: RoutingId): { readonly spot: ZLinkBackendSpot; readonly created: boolean };
   status(): SpotNodeStatus;
   peers(): readonly SpotNodePeerEntry[];
   subjects(): readonly SpotNodeSubjectEntry[];
-  attachChannelDealer(discovery: ZLinkBackendDiscovery, dealer: ZLinkBackendDealerSocket): void;
-  attachChannelDealerManual(channelName: string, dealer: ZLinkBackendDealerSocket): void;
+  createRouteBridge(): ZLinkBackendSpotRouteBridge;
   entrySpot(): ZLinkBackendSpot;
   createActor(actorId: string): ZLinkBackendActorRef;
   actorLookup(actorId: string): ZLinkBackendActorRef | undefined;

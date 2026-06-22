@@ -2023,6 +2023,12 @@ void spot_node_runtime_t::detach_native_node ()
     }
 }
 
+std::shared_ptr<zlink::service::spot_node_t> spot_node_runtime_t::native_node () const
+{
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+    return _state->native_node.lock ();
+}
+
 std::vector<spot_context_t> spot_node_runtime_t::active_contexts () const
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);

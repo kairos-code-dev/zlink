@@ -21,53 +21,55 @@ fun main() {
             ctx.createDealerSocket().use { requesterDealer ->
                 ctx.createRouterSocket().use { requesterRouter ->
                     requesterNode.createSpot().use { requester ->
-                        requesterRouter.bind(endpoint)
-                        requesterDealer.connect(endpoint)
-                        requesterNode.attachChannelDealerManual(channelName, requesterDealer)
+                        requesterNode.createRouteBridge().use { bridge ->
+                            requesterRouter.bind(endpoint)
+                            requesterDealer.connect(endpoint)
+                            bridge.attachDealerChannel(channelName, requesterDealer)
 
-                        val responder = Thread({
-                            Received().use { received ->
-                                requesterRouter.recv(received, RecvFlags.NONE)
-                                check("spot-ping" == SampleSupport.singleUtf8(received)) {
-                                    "unexpected spot request"
+                            val responder = Thread({
+                                Received().use { received ->
+                                    requesterRouter.recv(received, RecvFlags.NONE)
+                                    check("spot-ping" == received.parts().last().toUtf8String()) {
+                                        "unexpected spot request"
+                                    }
+                                    Message.from("spot-pong").use { reply ->
+                                        received.reply().message(reply).submit()
+                                    }
                                 }
-                                Message.from("spot-pong").use { reply ->
-                                    received.reply().message(reply).submit()
-                                }
+                            }, "spot-request-async-responder")
+                            responder.start()
+
+                            val replyLatch = CountDownLatch(1)
+                            var replyHolder: List<Message> = emptyList()
+                            var resultHolder = RequestResult.TIMED_OUT
+                            Message.from("spot-ping").use { request ->
+                                bridge.request(channelName, requester.routingId)
+                                    .message(request)
+                                    .timeout(Duration.ofSeconds(5))
+                                    .submit { requestResult, replyParts ->
+                                        resultHolder = requestResult
+                                        replyHolder = replyParts
+                                        replyLatch.countDown()
+                                    }
                             }
-                        }, "spot-request-async-responder")
-                        responder.start()
-
-                        val replyLatch = CountDownLatch(1)
-                        var replyHolder: List<Message> = emptyList()
-                        var resultHolder = RequestResult.TIMED_OUT
-                        Message.from("spot-ping").use { request ->
-                            requester.requestToChannel(channelName)
-                                .message(request)
-                                .timeout(Duration.ofSeconds(5))
-                                .submit { requestResult, replyParts ->
-                                    resultHolder = requestResult
-                                    replyHolder = replyParts
-                                    replyLatch.countDown()
-                                }
-                        }
-                        check(replyLatch.await(5, TimeUnit.SECONDS)) {
-                            "spot request async callback timed out"
-                        }
-                        check(resultHolder == RequestResult.OK) {
-                            "unexpected request result $resultHolder"
-                        }
-                        val reply = replyHolder
-                        try {
-                            check(reply.size == 1 && "spot-pong" == reply[0].toUtf8String()) {
-                                "unexpected spot reply"
+                            check(replyLatch.await(5, TimeUnit.SECONDS)) {
+                                "spot request async callback timed out"
                             }
-                        } finally {
-                            reply.forEach(Message::close)
-                        }
+                            check(resultHolder == RequestResult.OK) {
+                                "unexpected request result $resultHolder"
+                            }
+                            val reply = replyHolder
+                            try {
+                                check(reply.size == 1 && "spot-pong" == reply[0].toUtf8String()) {
+                                    "unexpected spot reply"
+                                }
+                            } finally {
+                                reply.forEach(Message::close)
+                            }
 
-                        responder.join(TimeUnit.SECONDS.toMillis(5))
-                        println("[spot/request/async] request: \"spot-ping\" -> reply: \"spot-pong\"")
+                            responder.join(TimeUnit.SECONDS.toMillis(5))
+                            println("[spot/request/async] request: \"spot-ping\" -> reply: \"spot-pong\"")
+                        }
                     }
                 }
             }

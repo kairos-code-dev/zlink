@@ -85,18 +85,26 @@ test('entry spot setDispatchHandler permits multipart subscribe drain after peer
         });
         subscriberNode.connectPeer(endpoint);
         await waitFor(() => subscriberNode.status().connectedPeerCount > 0, 'entry spot peer connection');
+        const received = new zlink.TopicMessage();
+        let receivedReady = false;
         const publishDeadline = Date.now() + 5000;
-        while (readableEvents === 0 && Date.now() < publishDeadline) {
+        while (!receivedReady && Date.now() < publishDeadline) {
             publisher.publish('entry-dispatch-drain')
                 .message(Buffer.from('header'))
                 .message(Buffer.from('payload'))
                 .flags(zlink.SendFlags.DontWait)
                 .submit();
+            try {
+                receivedReady = subscriber.subscribe(received, zlink.RecvFlags.DontWait);
+            }
+            catch (error) {
+                if (!(error instanceof zlink.RecvError)) {
+                    throw error;
+                }
+            }
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
-        assert.notEqual(readableEvents, 0);
-        const received = new zlink.TopicMessage();
-        assert.equal(subscriber.subscribe(received, zlink.RecvFlags.DontWait), true);
+        assert.equal(receivedReady, true);
         try {
             assert.equal(received.topic, 'entry-dispatch-drain');
             assert.deepEqual(received.parts.map((part) => part.data().toString()), ['header', 'payload']);
@@ -113,54 +121,16 @@ test('entry spot setDispatchHandler permits multipart subscribe drain after peer
         ctx.close();
     }
 });
-test('spot setDispatchHandler carries routed request payload for async callback delivery', async () => {
+test('legacy router-channel peer dispatch path returns migration error', async () => {
     const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const ctx = zlink.createContext();
     const responderNode = zlink.createSpotNode(ctx);
     const requester = zlink.createRouterSocket(ctx);
-    const responder = responderNode.createSpot();
     try {
         requester.bind(endpoint);
-        responderNode.connectRouterChannelPeerRid('api', responderNode.routingId, endpoint);
-        await waitFor(() => responderNode.peers().some((peer) => peer.channelName === 'api'
-            && peer.kind === zlink.SpotPeerKind.RouterChannel), 'spot router channel peer connection');
-        const handled = new Promise((resolve, reject) => {
-            responder.setDispatchHandler((info) => {
-                if (info.event !== zlink.SpotDispatchEvent.RoutedReadable) {
-                    return;
-                }
-                try {
-                    assert.notEqual(info.routed, null);
-                    assert.ok(info.routed.routingId);
-                    assert.equal(info.routed.spotRid, null);
-                    assert.notEqual(info.routed.requestSeq, null);
-                    assert.equal(info.routed.parts.length, 1);
-                    assert.equal(info.routed.parts[0].data().toString(), 'dispatch-routed-body');
-                    info.routed.reply()
-                        .message(Buffer.from('dispatch-routed-reply-header'))
-                        .message(Buffer.from('dispatch-routed-reply-body'))
-                        .submit();
-                    resolve();
-                }
-                catch (error) {
-                    reject(error);
-                }
-                finally {
-                    info.routed?.close();
-                }
-            });
-        });
-        const reply = await requester.requestToSpot(responderNode.routingId, responder.routingId)
-            .message(Buffer.from('dispatch-routed-body'))
-            .timeout(2000)
-            .submit();
-        assert.equal(reply.length, 2);
-        assert.equal(reply[0].data().toString(), 'dispatch-routed-reply-header');
-        assert.equal(reply[1].data().toString(), 'dispatch-routed-reply-body');
-        await handled;
+        assert.throws(() => responderNode.connectRouterChannelPeerRid('api', responderNode.routingId, endpoint), /Operation not supported/);
     }
     finally {
-        responder.close();
         requester.close();
         responderNode.close();
         ctx.close();

@@ -41,6 +41,7 @@ internal sealed partial class Spot : ISpot
     private byte[]? _channelNameCacheUtf8;
 
     internal IntPtr Handle => _handle;
+    internal static IntPtr RoutedReplyHandlerPointer => RoutedReplyHandlerPtr;
     internal SpotOptions Options { get; }
 
     internal Spot(SpotNode node)

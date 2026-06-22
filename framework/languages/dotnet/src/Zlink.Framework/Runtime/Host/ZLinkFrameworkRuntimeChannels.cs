@@ -29,9 +29,37 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         var state = GetOrStartState();
+        if (TryResolveLocalAcceptedSpotNode(
+                state,
+                routerChannelId,
+                targetNodeRid,
+                out var localSpotNode))
+        {
+            var entrySpot = localSpotNode.Node.EntrySpot();
+            try
+            {
+                if (!entrySpot.SendToSpot(
+                        targetNodeRid,
+                        targetSpotRid,
+                        parts,
+                        SendFlags.None))
+                {
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        $"Local SPOT node for route channel '{routerChannelId}' is not ready for SPOT send.");
+                }
+            }
+            finally
+            {
+                ZLinkMessageParts.DisposeAll(parts);
+            }
+
+            return;
+        }
+
         if (state.RouteChannels.TryGetValue(routerChannelId, out var routeChannel))
         {
-            await routeChannel.SubmitSpotSendPartsAsync(
+            await routeChannel.SubmitSpotRouteSendPartsAsync(
                 targetNodeRid,
                 targetSpotRid,
                 parts,
@@ -44,8 +72,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             try
             {
-                if (!router.SendToSpot(
-                        targetNodeRid,
+                var bridge = serverBundle.SpotRouteBridge
+                    ?? throw new ZLinkConfigurationException(
+                        $"Router channel '{routerChannelId}' is not attached to a SPOT route bridge.");
+                bridge.SetTargetNode(routerChannelId, targetNodeRid);
+                if (!bridge.Send(
+                        routerChannelId,
                         targetSpotRid,
                         parts,
                         SendFlags.None))
@@ -194,17 +226,16 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         var bundle = GetOrCreateClientBundle(localEgressChannelName);
-        var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
-        var relayParts = ZLinkRoutedSpotRelayPackets.CreateRelayParts(
-            ZLinkMessageKind.Command,
-            targetSpotNodeChannelName,
-            targetSpotRid,
-            parts);
+        var bridge = GetOrCreateClientSpotRouteBridge(localEgressChannelName);
         await (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink routed SPOT egress submitter is not initialized."))
             .Async(
-                relayParts,
-                pending => dealer.Send(pending, SendFlags.DontWait),
+                parts,
+                pending => bridge.Send(
+                    localEgressChannelName,
+                    targetSpotRid,
+                    pending,
+                    SendFlags.DontWait),
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -218,18 +249,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         var bundle = GetOrCreateClientBundle(localEgressChannelName);
-        var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
-        var relayParts = ZLinkRoutedSpotRelayPackets.CreateRelayParts(
-            ZLinkMessageKind.Request,
-            targetSpotNodeChannelName,
-            targetSpotRid,
-            parts,
-            timeout);
+        var bridge = GetOrCreateClientSpotRouteBridge(localEgressChannelName);
         return await (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink routed SPOT egress submitter is not initialized."))
             .SubmitRequestAsync<IReadOnlyList<Message>>(
-                relayParts,
-                (pending, complete, fail) => dealer.Request(
+                parts,
+                (pending, complete, fail) => bridge.Request(
+                    localEgressChannelName,
+                    targetSpotRid,
                     pending,
                     (result, reply) => ZLinkRawReplyCompletion.Complete(
                         result,
@@ -243,6 +270,65 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
+    private IZLinkBackendSpotRouteBridge GetOrCreateClientSpotRouteBridge(
+        string localEgressChannelName)
+    {
+        var state = GetOrStartState();
+        var bundle = GetOrCreateClientBundle(localEgressChannelName);
+        if (bundle.SpotRouteBridge is { } existing)
+        {
+            return existing;
+        }
+
+        lock (state.SyncRoot)
+        {
+            if (bundle.SpotRouteBridge is { } lockedExisting)
+            {
+                return lockedExisting;
+            }
+
+            var owner = ResolveSpotRouteBridgeOwner(state);
+            var bridge = owner.Node.CreateRouteBridge();
+            try
+            {
+                bridge.AttachDealerChannel(
+                    localEgressChannelName,
+                    (IZLinkBackendDealerSocket)bundle.Socket,
+                    new SpotRouteBridgeEndpointOptions
+                    {
+                        Capabilities = SpotRouteBridgeEndpointCapabilities.RouteOnly
+                    });
+            }
+            catch
+            {
+                _ = bridge.DisposeAsync();
+                throw;
+            }
+
+            bundle.SpotRouteBridge = bridge;
+            return bridge;
+        }
+    }
+
+    private ZLinkSpotNodeRuntime ResolveSpotRouteBridgeOwner(ZLinkFrameworkRuntimeState state)
+    {
+        foreach (var registration in _registration.SpotNodes.Values)
+        {
+            if (registration.Router is null)
+            {
+                continue;
+            }
+
+            if (state.SpotNodes.TryGetValue(registration.SpotNodeName, out var runtime))
+            {
+                return runtime;
+            }
+        }
+
+        throw new ZLinkConfigurationException(
+            "Routed SPOT egress through a client/server channel requires a router-capable SPOT node in this process.");
+    }
+
     private async ValueTask SendToSpotViaRouteEgressChannelAsync(
         string localEgressChannelName,
         string targetSpotNodeChannelName,
@@ -254,17 +340,11 @@ internal sealed partial class ZLinkFrameworkRuntime
                 localEgressChannelName,
                 targetSpotNodeChannelName)
             .ConfigureAwait(false);
-        var relayHeader = ZLinkRoutedSpotRelayPackets.CreateRelayHeader(
-            ZLinkMessageKind.Command,
-            targetSpotNodeChannelName);
-        var relayPayload = ZLinkRoutedSpotRelayPackets.CreateRelayPayloadParts(
-            targetSpotRid,
-            parts);
         await GetRouteChannel(localEgressChannelName)
-            .SubmitSendPartsAsync(
+            .SubmitSpotRouteSendPartsAsync(
                 targetPeerRid,
-                relayHeader,
-                relayPayload,
+                targetSpotRid,
+                parts,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -281,22 +361,14 @@ internal sealed partial class ZLinkFrameworkRuntime
                 localEgressChannelName,
                 targetSpotNodeChannelName)
             .ConfigureAwait(false);
-        var relayHeader = ZLinkRoutedSpotRelayPackets.CreateRelayHeader(
-            ZLinkMessageKind.Request,
-            targetSpotNodeChannelName,
-            timeout);
-        var relayPayload = ZLinkRoutedSpotRelayPackets.CreateRelayPayloadParts(
-            targetSpotRid,
-            parts);
-        var reply = await GetRouteChannel(localEgressChannelName)
-            .RequestPartsAsync<ZLinkRoutedSpotRelayReply>(
+        return await GetRouteChannel(localEgressChannelName)
+            .RequestToSpotPartsAsync(
                 targetPeerRid,
-                relayHeader,
-                relayPayload,
+                targetSpotRid,
+                parts,
                 timeout,
                 cancellationToken)
             .ConfigureAwait(false);
-        return reply.ToMessages();
     }
 
     private ZLinkSpotRouteEgressResolver CreateSpotRouteEgressResolver()
@@ -317,6 +389,22 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         var state = GetOrStartState();
+        if (TryResolveLocalAcceptedSpotNode(
+                state,
+                routerChannelId,
+                targetNodeRid,
+                out var localSpotNode))
+        {
+            return await RequestToSpotViaSpotNodeRouterAsync(
+                routerChannelId,
+                localSpotNode.Node.EntrySpot(),
+                targetNodeRid,
+                targetSpotRid,
+                parts,
+                timeout,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         if (state.RouteChannels.TryGetValue(routerChannelId, out var routeChannel))
         {
             return await routeChannel.RequestToSpotPartsAsync(
@@ -332,7 +420,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             return await RequestToSpotViaServerRouterAsync(
                 routerChannelId,
-                router,
+                serverBundle.SpotRouteBridge
+                    ?? throw new ZLinkConfigurationException(
+                        $"Router channel '{routerChannelId}' is not attached to a SPOT route bridge."),
                 serverBundle.ReceiveGate,
                 targetNodeRid,
                 targetSpotRid,
@@ -355,6 +445,26 @@ internal sealed partial class ZLinkFrameworkRuntime
 
         throw new ZLinkConfigurationException(
             $"Router-capable channel '{routerChannelId}' is not registered in this process.");
+    }
+
+    private bool TryResolveLocalAcceptedSpotNode(
+        ZLinkFrameworkRuntimeState state,
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        out ZLinkSpotNodeRuntime spotNodeRuntime)
+    {
+        foreach (var candidate in state.SpotNodes.Values)
+        {
+            if (candidate.Node.RoutingId == targetNodeRid
+                && candidate.Registration.AcceptedSpotRouteChannels.ContainsKey(routerChannelId))
+            {
+                spotNodeRuntime = candidate;
+                return true;
+            }
+        }
+
+        spotNodeRuntime = null!;
+        return false;
     }
 
     private static async ValueTask<IReadOnlyList<Message>> RequestToSpotViaSpotNodeRouterAsync(
@@ -403,7 +513,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     private static async ValueTask<IReadOnlyList<Message>> RequestToSpotViaServerRouterAsync(
         string routerChannelId,
-        IZLinkBackendRouterSocket router,
+        IZLinkBackendSpotRouteBridge bridge,
         SemaphoreSlim receiveGate,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
@@ -419,8 +529,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             try
             {
-                if (!router.RequestToSpot(
-                        targetNodeRid,
+                bridge.SetTargetNode(routerChannelId, targetNodeRid);
+                if (!bridge.Request(
+                        routerChannelId,
                         targetSpotRid,
                         parts,
                         (result, reply) => ZLinkRawReplyCompletion.Complete(

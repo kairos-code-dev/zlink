@@ -58,6 +58,10 @@ public interface SpotNode extends AutoCloseable {
 
     void attachPubIngress(PubSocket pub);
 
+    SpotRouteBridge createRouteBridge();
+
+    SpotNodePublisher createPublisher();
+
     void setTlsServer(String certPem, String keyPem,
                                       boolean requireClientCert);
 

@@ -303,31 +303,6 @@ final class MonitoringEventsTest {
         }
 
         @Override
-        public void connectRouterChannelPeer(String channelName, String endpoint) {
-        }
-
-        @Override
-        public void connectRouterChannelPeerRid(
-            String channelName,
-            RoutingId peerRid,
-            String endpoint) {
-        }
-
-        @Override
-        public void attachSpotRouteChannelDiscovery(
-            String channelName,
-            ZLinkBackendDiscovery discovery) {
-        }
-
-        @Override
-        public void attachChannelDealer(ZLinkBackendDiscovery discovery, ZLinkBackendDealerSocket dealer) {
-        }
-
-        @Override
-        public void attachChannelDealerManual(String channelName, ZLinkBackendDealerSocket dealer) {
-        }
-
-        @Override
         public ZLinkBackendSpot createSpot() {
             return null;
         }

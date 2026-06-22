@@ -134,49 +134,63 @@ internal sealed class ZLinkSpotNodeInitializer(
     {
         foreach (var acceptance in spotNodeRegistration.AcceptedSpotRouteChannels.Values)
         {
-            if (acceptance.ManualConnections.Count > 0)
-            {
-                foreach (var endpoint in acceptance.ManualConnections)
-                {
-                    node.ConnectRouterChannelPeer(acceptance.ChannelName, endpoint);
-                }
-
-                continue;
-            }
-
             if (registration.RouteChannels.ContainsKey(acceptance.ChannelName))
             {
                 continue;
             }
 
-            var discovery = ZLinkBackendDiscoveryFactory.Create(
-                channelAdapter,
-                state.Context,
-                acceptance.ChannelName,
-                ResolveSpotRouteChannelAutoConnectType(acceptance.ChannelName),
-                registration.Discovery?.Endpoints ?? []);
-            node.AttachSpotRouteChannelDiscovery(acceptance.ChannelName, discovery);
-            state.SpotDiscoveries.Add(
-                $"{spotNodeRegistration.SpotNodeName}.route.{acceptance.ChannelName}.discovery",
-                discovery);
+            if (registration.Channels.ContainsKey(acceptance.ChannelName))
+            {
+                AttachAcceptedSpotRouteServerBundle(state, acceptance, node);
+                continue;
+            }
+
+            throw new ZLinkConfigurationException(
+                $"Accepted SPOT route channel '{acceptance.ChannelName}' is not registered.");
         }
     }
 
-    private ZLinkAutoConnectType ResolveSpotRouteChannelAutoConnectType(string channelName)
+    private static void AttachAcceptedSpotRouteServerBundle(
+        ZLinkFrameworkRuntimeState state,
+        ZLinkSpotRouteChannelAcceptanceRegistration acceptance,
+        IZLinkBackendSpotNode node)
     {
-        if (registration.RouteChannels.ContainsKey(channelName))
+        if (!state.ServerBundles.TryGetValue(acceptance.ChannelName, out var bundle)
+            || bundle.Socket is not IZLinkBackendRouterSocket router)
         {
-            return ZLinkAutoConnectType.RouteMesh;
+            throw new ZLinkConfigurationException(
+                $"Accepted SPOT route channel '{acceptance.ChannelName}' must have a server router socket in this process.");
         }
 
-        if (registration.Channels.TryGetValue(channelName, out var channel)
-            && channel.AutoConnectType == ZLinkAutoConnectType.ClientServer)
+        if (bundle.SpotRouteBridge is not null)
         {
-            return ZLinkAutoConnectType.ClientServer;
+            throw new ZLinkConfigurationException(
+                $"Accepted SPOT route channel '{acceptance.ChannelName}' is already attached to a SPOT route bridge.");
         }
 
-        throw new ZLinkConfigurationException(
-            $"Accepted SPOT route channel '{channelName}' is not router-capable.");
+        var bridge = node.CreateRouteBridge();
+        try
+        {
+            bridge.AttachRouterChannel(
+                acceptance.ChannelName,
+                router,
+                new SpotRouteBridgeEndpointOptions
+                {
+                    Capabilities = SpotRouteBridgeEndpointCapabilities.RouteWithChannelInbound
+                });
+        }
+        catch
+        {
+            _ = bridge.DisposeAsync();
+            throw;
+        }
+
+        bundle.SpotRouteBridge = bridge;
+
+        foreach (var endpoint in acceptance.ManualConnections)
+        {
+            router.Connect(endpoint);
+        }
     }
 
     private static void InitializePublisherBundles(

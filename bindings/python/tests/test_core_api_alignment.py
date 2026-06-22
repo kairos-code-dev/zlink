@@ -89,6 +89,13 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertTrue(hasattr(zlink.SpotNode, "attach_channel_dealer"))
         self.assertTrue(hasattr(zlink.SpotNode, "attach_channel_dealer_manual"))
         self.assertTrue(hasattr(zlink.SpotNode, "attach_pub_ingress"))
+        self.assertTrue(hasattr(zlink.SpotNode, "create_route_bridge"))
+        self.assertTrue(hasattr(zlink.SpotNode, "create_publisher"))
+        self.assertTrue(hasattr(zlink.SpotRouteBridge, "attach_dealer_channel"))
+        self.assertTrue(hasattr(zlink.SpotRouteBridge, "attach_router_channel"))
+        self.assertTrue(hasattr(zlink.SpotRouteBridge, "send"))
+        self.assertTrue(hasattr(zlink.SpotRouteBridge, "request"))
+        self.assertTrue(hasattr(zlink.SpotNodePublisher, "publish"))
         self.assertTrue(hasattr(zlink.SpotNode, "set_pub_bind"))
         self.assertTrue(hasattr(zlink.SpotNode, "set_router_bind"))
         self.assertTrue(hasattr(zlink.SpotNode, "connect_router_channel_peer"))
@@ -168,6 +175,41 @@ class CoreApiAlignmentTests(unittest.TestCase):
         remote = zlink.remote_actor_ref(zlink.RoutingId(b"node"), "actor")
         self.assertTrue(remote.is_unchecked())
         self.assertEqual(remote.generation, 0)
+
+    def test_spot_route_bridge_dealer_send_emits_relay_packet(self):
+        with zlink.create_context() as ctx, \
+             zlink.create_spot_node(ctx) as node, \
+             zlink.create_dealer_socket(ctx) as dealer, \
+             zlink.create_router_socket(ctx) as router:
+            with node.create_route_bridge() as bridge:
+                endpoint = f"inproc://python-spot-route-bridge-{time.time_ns()}"
+                router.bind(endpoint)
+                dealer.connect(endpoint)
+                time.sleep(0.05)
+                bridge.attach_dealer_channel("api", dealer)
+
+                self.assertTrue(
+                    bridge.send("api", b"target-spot")
+                    .message(b"hello-bridge")
+                    .submit()
+                )
+
+                received = zlink.create_received()
+                try:
+                    deadline = time.time() + 3
+                    while True:
+                        if router.recv_into(received, flags=zlink.RecvFlags.DONT_WAIT):
+                            break
+                        if time.time() > deadline:
+                            self.fail("timed out waiting for bridge relay packet")
+                        time.sleep(0.001)
+                    parts = received.to_bytes_list()
+                    self.assertGreaterEqual(len(parts), 3)
+                    self.assertEqual(parts[0], b"__zlink.routed_spot.egress.send")
+                    self.assertEqual(parts[1], b"target-spot")
+                    self.assertEqual(parts[2].rstrip(b"\0"), b"hello-bridge")
+                finally:
+                    received.close()
 
     def test_protocol_contracts_do_not_inject_runtime_stub_methods(self):
         with zlink.create_stopwatch() as watch:

@@ -28,9 +28,15 @@ internal sealed class ZLinkChannelMessagePump
         string channelName,
         IZLinkBackendRouterSocket router,
         SemaphoreSlim receiveGate,
+        Func<IZLinkBackendSpotRouteBridge?> spotRouteBridge,
         CancellationToken cancellationToken)
     {
-        return _receiveLoop.RunServerLoopAsync(channelName, router, receiveGate, cancellationToken);
+        return _receiveLoop.RunServerLoopAsync(
+            channelName,
+            router,
+            receiveGate,
+            spotRouteBridge,
+            cancellationToken);
     }
 
     public Task RunSubscriberLoopAsync(

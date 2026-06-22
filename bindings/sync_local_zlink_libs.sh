@@ -65,9 +65,12 @@ copy_headers() {
 
   mkdir -p "${dir}"
   mkdir -p "${dir}/zlink"
+  mkdir -p "${dir}/zlink/service"
   rm -f "${dir}"/zlink/*.h
+  rm -f "${dir}"/zlink/service/*.h
   cp -f "${ROOT_DIR}"/core/include/*.h "${dir}/"
   cp -f "${ROOT_DIR}"/core/include/zlink/*.h "${dir}/zlink/"
+  cp -f "${ROOT_DIR}"/core/include/zlink/service/*.h "${dir}/zlink/service/"
 }
 
 copy_headers "${ROOT_DIR}/bindings/c/include"

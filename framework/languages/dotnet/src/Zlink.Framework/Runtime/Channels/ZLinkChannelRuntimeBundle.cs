@@ -24,6 +24,8 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public IZLinkBackendDiscovery? Discovery { get; set; }
 
+    public IZLinkBackendSpotRouteBridge? SpotRouteBridge { get; set; }
+
     public bool TryAddManualConnection(string endpoint)
     {
         lock (_manualConnections)
@@ -66,6 +68,11 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
         if (Discovery is not null)
         {
             await Discovery.DisposeAsync();
+        }
+
+        if (SpotRouteBridge is not null)
+        {
+            await SpotRouteBridge.DisposeAsync();
         }
 
         await Socket.DisposeAsync();

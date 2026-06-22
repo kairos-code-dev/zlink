@@ -19,7 +19,6 @@ internal sealed class ZLinkChannelPacketDispatcher(
     ILogger<ZLinkChannelPacketDispatcher>? logger = null)
 {
     private static readonly IReadOnlySet<string> EmptyGroups = new HashSet<string>(StringComparer.Ordinal);
-    private readonly ZLinkSpotRouteRelayIngressTransport _spotRouteRelay = new(runtime, registration);
     private readonly ZLinkDispatchErrorReporter _dispatchErrors = new(
         registration.DispatchOptions,
         ResolveServices(runtime),
@@ -75,24 +74,10 @@ internal sealed class ZLinkChannelPacketDispatcher(
         switch (header.Kind)
         {
             case ZLinkMessageKind.Request:
-                if (header.MessageName == ZLinkRoutedSpotRelayPackets.RequestPacketName)
-                {
-                    await _spotRouteRelay.HandleRequestAsync(channelName, router, received, header, cancellationToken)
-                        .ConfigureAwait(false);
-                    return;
-                }
-
                 await HandleRequestAsync(channelName, router, received, header, cancellationToken)
                     .ConfigureAwait(false);
                 break;
             case ZLinkMessageKind.Command:
-                if (header.MessageName == ZLinkRoutedSpotRelayPackets.SendPacketName)
-                {
-                    await _spotRouteRelay.HandleSendAsync(channelName, router, received, cancellationToken)
-                        .ConfigureAwait(false);
-                    return;
-                }
-
                 await _commandPipeline.DispatchAsync(
                         channelName,
                         "Channel",

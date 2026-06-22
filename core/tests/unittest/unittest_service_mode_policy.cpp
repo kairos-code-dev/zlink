@@ -561,7 +561,7 @@ void test_spot_publish_part_final_keeps_single_message_contract ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_manual_service_attachment_allows_multiple_spot_facades ()
+void test_spot_node_legacy_dealer_attach_returns_migration_error_without_blocking_spot_facades ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -573,8 +573,10 @@ void test_spot_node_manual_service_attachment_allows_multiple_spot_facades ()
 
     void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (dealer);
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_OK, zlink_spot_node_attach_channel_dealer_manual (node, "chan-router", dealer));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_NOT_SUPPORTED,
+                           zlink_spot_node_attach_channel_dealer_manual (node, "chan-router",
+                                                                         dealer));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     void *second_spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (second_spot);
@@ -928,7 +930,7 @@ void test_spot_service_send_and_request_fail_for_missing_service ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_send_channel_rejects_inactive_dealer_attachment ()
+void test_spot_node_legacy_dealer_attach_does_not_create_channel_send_route ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -940,16 +942,18 @@ void test_spot_send_channel_rejects_inactive_dealer_attachment ()
 
     void *dealer = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (dealer);
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_OK, zlink_spot_node_attach_channel_dealer_manual (node, "svc-router", dealer));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_NOT_SUPPORTED,
+                           zlink_spot_node_attach_channel_dealer_manual (node, "svc-router",
+                                                                         dealer));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     zlink_msg_t part;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
     memcpy (zlink_msg_data (&part), "ping", 4);
 
-    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_NOT_CONNECTED,
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_NOT_FOUND,
                            zlink_spot_send_channel (spot, "svc-router", &part, 1, ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (ENOTCONN, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (ENOENT, zlink_errno ());
 
     zlink_msg_close (&part);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
@@ -958,26 +962,22 @@ void test_spot_send_channel_rejects_inactive_dealer_attachment ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_attach_channel_dealer_manual_rejects_duplicate_channel ()
+void test_spot_node_attach_channel_dealer_manual_returns_migration_error ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *node = zlink_spot_node_new (ctx, NULL);
     void *dealer_a = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
-    void *dealer_b = zlink_socket (ctx, ZLINK_SOCKET_DEALER);
     TEST_ASSERT_NOT_NULL (node);
     TEST_ASSERT_NOT_NULL (dealer_a);
-    TEST_ASSERT_NOT_NULL (dealer_b);
 
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_OK, zlink_spot_node_attach_channel_dealer_manual (node, "dup-chan", dealer_a));
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK, zlink_spot_node_attach_channel_dealer_manual (node, "dup-chan", dealer_b));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_NOT_SUPPORTED,
+                           zlink_spot_node_attach_channel_dealer_manual (node, "dup-chan",
+                                                                         dealer_a));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
-    close_zero_linger (dealer_b);
     close_zero_linger (dealer_a);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
@@ -1008,7 +1008,7 @@ void test_socket_channel_name_metadata_roundtrip ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_attach_channel_dealer_manual_rejects_channel_name_mismatch ()
+void test_spot_node_attach_channel_dealer_manual_valid_socket_returns_migration_error ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -1019,33 +1019,31 @@ void test_spot_node_attach_channel_dealer_manual_rejects_channel_name_mismatch (
     TEST_ASSERT_NOT_NULL (dealer);
 
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_socket_set_channel_name (dealer, "preset-chan"));
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK, zlink_spot_node_attach_channel_dealer_manual (node, "other-chan", dealer));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_NOT_SUPPORTED,
+                           zlink_spot_node_attach_channel_dealer_manual (node, "other-chan",
+                                                                         dealer));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     close_zero_linger (dealer);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_attach_pub_ingress_accepts_single_pub ()
+void test_spot_node_attach_pub_ingress_returns_migration_error ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *node = zlink_spot_node_new (ctx, NULL);
     void *pub_a = zlink_socket (ctx, ZLINK_SOCKET_PUB);
-    void *pub_b = zlink_socket (ctx, ZLINK_SOCKET_PUB);
     TEST_ASSERT_NOT_NULL (node);
     TEST_ASSERT_NOT_NULL (pub_a);
-    TEST_ASSERT_NOT_NULL (pub_b);
 
-    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_spot_node_attach_pub_ingress (node, pub_a));
-    TEST_ASSERT_NOT_EQUAL (ZLINK_CONFIG_OK, zlink_spot_node_attach_pub_ingress (node, pub_b));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_NOT_SUPPORTED,
+                           zlink_spot_node_attach_pub_ingress (node, pub_a));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
-    close_zero_linger (pub_b);
     close_zero_linger (pub_a);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
@@ -1066,13 +1064,14 @@ int main (void)
     RUN_TEST (test_spot_node_attach_discovery_rejects_duplicate_discovery);
     RUN_TEST (test_spot_publish_uses_bound_spot_topic);
     RUN_TEST (test_spot_publish_part_final_keeps_single_message_contract);
-    RUN_TEST (test_spot_node_manual_service_attachment_allows_multiple_spot_facades);
+    RUN_TEST (
+      test_spot_node_legacy_dealer_attach_returns_migration_error_without_blocking_spot_facades);
     RUN_TEST (test_spot_service_send_and_request_fail_for_missing_service);
-    RUN_TEST (test_spot_send_channel_rejects_inactive_dealer_attachment);
-    RUN_TEST (test_spot_node_attach_channel_dealer_manual_rejects_duplicate_channel);
+    RUN_TEST (test_spot_node_legacy_dealer_attach_does_not_create_channel_send_route);
+    RUN_TEST (test_spot_node_attach_channel_dealer_manual_returns_migration_error);
     RUN_TEST (test_socket_channel_name_metadata_roundtrip);
-    RUN_TEST (test_spot_node_attach_channel_dealer_manual_rejects_channel_name_mismatch);
-    RUN_TEST (test_spot_node_attach_pub_ingress_accepts_single_pub);
+    RUN_TEST (test_spot_node_attach_channel_dealer_manual_valid_socket_returns_migration_error);
+    RUN_TEST (test_spot_node_attach_pub_ingress_returns_migration_error);
     RUN_TEST (test_discovery_protocol_accepts_socket_family_and_roles);
     RUN_TEST (test_discovery_protocol_derives_socket_roles_and_matching);
     RUN_TEST (test_discovery_protocol_applies_socket_auto_connect_policy);

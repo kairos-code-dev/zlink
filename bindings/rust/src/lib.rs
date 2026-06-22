@@ -100,6 +100,8 @@ mod spot_node_resource;
 mod spot_operations;
 #[path = "contracts/service/spot/spot.rs"]
 mod spot_resource;
+#[path = "contracts/service/spot/spot_route_bridge.rs"]
+mod spot_route_bridge_resource;
 #[path = "contracts/sockets/stream_socket.rs"]
 mod stream_socket_contract;
 #[path = "contracts/messaging/topic_message.rs"]
@@ -164,6 +166,7 @@ pub use spot_operations::{
     ActorLookupOp, ActorUnbindOp, CallbackReady, Empty, Ready, ReplyOp, RequestOp, SendOp,
 };
 pub use spot_resource::Spot;
+pub use spot_route_bridge_resource::{SpotNodePublisher, SpotRouteBridge};
 pub use stream_socket_contract::StreamSocket;
 pub use topic_message_contract::TopicMessage;
 

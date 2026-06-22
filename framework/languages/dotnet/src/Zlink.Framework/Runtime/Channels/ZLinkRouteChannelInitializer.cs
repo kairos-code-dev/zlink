@@ -20,13 +20,37 @@ internal sealed class ZLinkRouteChannelInitializer(
         foreach (var routedRegistration in registration.RouteChannels.Values)
         {
             var runtime = CreateRuntime(state, adapter, routedRegistration);
-            foreach (var endpoint in routedRegistration.ManualConnections)
+            foreach (var endpoint in ResolveManualConnections(routedRegistration))
             {
                 runtime.Connect(endpoint);
             }
 
             runtime.Start();
             state.RouteChannels.Add(routedRegistration.RouterChannelId, runtime);
+        }
+    }
+
+    private IEnumerable<string> ResolveManualConnections(
+        ZLinkRouteChannelRegistration routedRegistration)
+    {
+        foreach (var endpoint in routedRegistration.ManualConnections)
+        {
+            yield return endpoint;
+        }
+
+        foreach (var spotNode in registration.SpotNodes.Values)
+        {
+            if (!spotNode.AcceptedSpotRouteChannels.TryGetValue(
+                    routedRegistration.RouterChannelId,
+                    out var acceptance))
+            {
+                continue;
+            }
+
+            foreach (var endpoint in acceptance.ManualConnections)
+            {
+                yield return endpoint;
+            }
         }
     }
 
@@ -47,20 +71,56 @@ internal sealed class ZLinkRouteChannelInitializer(
         router.Bind(routedRegistration.BindEndpoint!);
         var discovery = AttachDiscoveryIfNeeded(state, adapter, routedRegistration, router);
         var handlers = new ZLinkRouteHandlerRegistry(CreateRouteHandlerDescriptors(routedRegistration));
-        return new ZLinkRouteChannelRuntime(
+        var runtime = new ZLinkRouteChannelRuntime(
             services,
             registration,
             routedRegistration,
             router,
             discovery,
             handlers,
-            new ZLinkCompositeRouteInternalPacketDispatcher(
+                new ZLinkCompositeRouteInternalPacketDispatcher(
                 new ZLinkActorEntrySpotRouteInternalPacketDispatcher(
-                    services.GetRequiredService<ZLinkFrameworkRuntime>()),
-                new ZLinkRoutedSpotRouteInternalPacketDispatcher(
-                    services.GetRequiredService<ZLinkFrameworkRuntime>(),
-                    registration)),
+                    services.GetRequiredService<ZLinkFrameworkRuntime>())),
             state.StopTokenSource.Token);
+        AttachSpotRouteBridgeIfAccepted(state, routedRegistration, runtime);
+        return runtime;
+    }
+
+    private void AttachSpotRouteBridgeIfAccepted(
+        ZLinkFrameworkRuntimeState state,
+        ZLinkRouteChannelRegistration routedRegistration,
+        ZLinkRouteChannelRuntime runtime)
+    {
+        var owners = registration.SpotNodes.Values
+            .Where(spotNode => spotNode.AcceptedSpotRouteChannels.ContainsKey(routedRegistration.RouterChannelId))
+            .ToArray();
+        if (owners.Length == 0)
+        {
+            return;
+        }
+
+        if (owners.Length > 1)
+        {
+            throw new ZLinkConfigurationException(
+                $"Route channel '{routedRegistration.RouterChannelId}' is accepted by multiple SPOT nodes in this process.");
+        }
+
+        if (!state.SpotNodes.TryGetValue(owners[0].SpotNodeName, out var spotRuntime))
+        {
+            throw new ZLinkConfigurationException(
+                $"Route channel '{routedRegistration.RouterChannelId}' is accepted by SPOT node '{owners[0].SpotNodeName}', but that SPOT node is not started.");
+        }
+
+        var bridge = spotRuntime.Node.CreateRouteBridge();
+        try
+        {
+            runtime.AttachSpotRouteBridge(bridge);
+        }
+        catch
+        {
+            _ = bridge.DisposeAsync();
+            throw;
+        }
     }
 
     private IZLinkBackendDiscovery? AttachDiscoveryIfNeeded(

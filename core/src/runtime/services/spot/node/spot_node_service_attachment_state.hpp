@@ -18,16 +18,6 @@ namespace zlink
 class discovery_t;
 class socket_base_t;
 
-struct spot_node_router_channel_peer_state_t
-{
-    std::set<std::string> manual_endpoints;
-    std::set<std::string> active_endpoints;
-    std::map<std::string, zlink_routing_id_t> peer_rids_by_endpoint;
-    discovery_t *discovery;
-
-    spot_node_router_channel_peer_state_t () : discovery (NULL) {}
-};
-
 struct spot_node_attachment_monitor_handle_t
 {
     spot_node_attachment_monitor_handle_t () : handle (NULL), owner_socket (NULL) {}
@@ -66,12 +56,11 @@ struct spot_node_service_attachment_t
 {
     struct manual_state_t
     {
-        manual_state_t () : pub (NULL), sub (NULL), channel_dealer_discovery (NULL) {}
+        manual_state_t () : pub (NULL), sub (NULL) {}
 
         std::vector<socket_base_t *> routers;
         socket_base_t *pub;
         socket_base_t *sub;
-        discovery_t *channel_dealer_discovery;
     };
 
     struct discovered_state_t
@@ -153,17 +142,10 @@ struct spot_node_service_attachment_state_t
     std::map<const socket_base_t *, std::string> socket_index;
     std::deque<spot_node_attachment_monitor_handle_t> monitors;
     std::map<std::string, discovery_t *> discoveries;
-    std::map<std::string, discovery_t *> channel_dealer_discoveries;
-    std::map<std::string, spot_node_router_channel_peer_state_t> router_channel_peers;
-    std::set<std::string> pending_router_channel_refreshes;
-    socket_base_t *pub_ingress;
     std::set<std::string> pending_refresh_services;
     std::shared_ptr<service_sub_recv_cache_t> sub_recv_cache;
 
-    spot_node_service_attachment_state_t () :
-        pub_ingress (NULL), sub_recv_cache (new service_sub_recv_cache_t ())
-    {
-    }
+    spot_node_service_attachment_state_t () : sub_recv_cache (new service_sub_recv_cache_t ()) {}
 };
 
 class spot_node_service_attachments_t
@@ -182,27 +164,7 @@ class spot_node_service_attachments_t
                                            std::vector<socket_base_t *> *sockets_to_close_out_);
     void collect_pending_service_discoveries_locked (
       std::vector<std::pair<std::string, discovery_t *>> *out_);
-    void collect_pending_router_channel_discoveries_locked (
-      std::vector<std::pair<std::string, discovery_t *>> *out_);
-    int begin_manual_router_channel_connect_locked (const std::string &channel_name_,
-                                                    const std::string &endpoint_,
-                                                    bool *already_connected_out_);
-    void rollback_manual_router_channel_connect_locked (const std::string &channel_name_,
-                                                        const std::string &endpoint_);
-    void commit_manual_router_channel_connect_locked (const std::string &channel_name_,
-                                                      const std::string &endpoint_,
-                                                      const zlink_routing_id_t *peer_rid_);
-    int validate_manual_router_channel_disconnect_locked (const std::string &channel_name_,
-                                                          const std::string &endpoint_) const;
-    void remove_manual_router_channel_peer_locked (const std::string &channel_name_,
-                                                   const std::string &endpoint_);
-    int resolve_router_channel_peer_rid_locked (const std::string &channel_name_,
-                                                const zlink_routing_id_t *peer_rid_,
-                                                std::vector<std::string> *endpoints_out_) const;
-
   private:
-    void prune_router_channel_peer_locked (const std::string &channel_name_);
-
     spot_node_service_attachment_state_t _state;
 };
 }

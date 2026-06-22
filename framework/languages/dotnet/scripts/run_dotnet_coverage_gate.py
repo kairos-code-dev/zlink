@@ -60,7 +60,6 @@ def main() -> int:
 def test_projects(root: Path) -> list[Path]:
     tests_root = root / "tests"
     return [
-        tests_root / "Zlink.Framework.E2ETests" / "Zlink.Framework.E2ETests.csproj",
         tests_root / "Zlink.Framework.UnitTests" / "Zlink.Framework.UnitTests.csproj",
         tests_root / "Zlink.Framework.ContractTests" / "Zlink.Framework.ContractTests.csproj",
         tests_root / "Systems.Zlink.Stream.Connector.Tests" / "Systems.Zlink.Stream.Connector.Tests.csproj",

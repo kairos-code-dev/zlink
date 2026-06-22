@@ -978,6 +978,12 @@ void stream_release_slot (void *socket)
         (void) napi_release_threadsafe_function (tsfn, napi_tsfn_abort);
 }
 
+bool stream_slot_attached (void *socket)
+{
+    std::lock_guard<std::mutex> lock (g_stream_slots_mu);
+    return find_stream_slot_by_socket_unsafe (socket) != NULL;
+}
+
 void request_tsfn_finalize (napi_env env, void *finalize_data, void *finalize_hint)
 {
     (void) env;
@@ -1615,6 +1621,8 @@ napi_value socket_close (napi_env env, napi_callback_info info)
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
     napi_get_value_external (env, argv[0], &sock);
+    if (stream_slot_attached (sock))
+        (void) zlink_stream_detach (sock);
     stream_release_slot (sock);
     release_socket_send_ready_handler_slot (sock);
     int rc = zlink_close (sock);
@@ -2392,6 +2400,7 @@ napi_value socket_stream_attach (napi_env env, napi_callback_info info)
         napi_throw_error (env, NULL, "streamAttach failed to create callback queue");
         return NULL;
     }
+    (void) napi_unref_threadsafe_function (env, tsfn);
 
     {
         std::lock_guard<std::mutex> lock (g_stream_slots_mu);

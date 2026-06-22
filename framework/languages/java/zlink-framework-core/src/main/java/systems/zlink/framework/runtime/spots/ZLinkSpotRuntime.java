@@ -37,6 +37,8 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.service.registry.ServiceRole;
+import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointCapabilities;
+import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.CancellationToken;
@@ -114,7 +116,7 @@ import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
-public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRuntime.SpotRelayIngress, AutoCloseable {
+public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private static final String KOTLIN_SPOT_PACKET_HANDLER =
         "systems.zlink.framework.kotlin.ZLinkSuspendingSpotPacketHandler";
     private static final String KOTLIN_SPOT_REQUEST_HANDLER =
@@ -153,6 +155,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     private final List<ZLinkBackendSpotNode> nodes = new ArrayList<>();
     private final List<ZLinkBackendDealerSocket> attachedChannelDealers = new ArrayList<>();
     private final List<ZLinkBackendDiscovery> attachedChannelDiscoveries = new ArrayList<>();
+    private final List<ZLinkBackendSpotRouteBridge> attachedChannelBridges = new ArrayList<>();
     private final Map<String, ZLinkBackendSpotNode> nodesByName = new HashMap<>();
     private final Map<String, ZLinkBackendDiscovery> spotDiscoveriesByMesh = new HashMap<>();
     private final List<SpotDiscoveryBinding> spotDiscoveryBindings = new ArrayList<>();
@@ -287,16 +290,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 node);
             for (SpotNodeRegistration.RouterManualConnection connection
                     : nodeRegistration.routerManualConnections()) {
+                node.connectPeer(connection.endpoint());
                 if (hasRoutingId(connection.peerRoutingId())) {
-                    node.connectRouterChannelPeerRid(
-                        nodeRegistration.meshName(),
-                        connection.peerRoutingId(),
-                        connection.endpoint());
                     connectedRouterPeerRids.add(connection.peerRoutingId());
-                } else {
-                    node.connectRouterChannelPeer(
-                        nodeRegistration.meshName(),
-                        connection.endpoint());
                 }
             }
             for (String endpoint : nodeRegistration.pubSubManualConnections()) {
@@ -645,6 +641,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             dealer.close();
         }
         attachedChannelDealers.clear();
+        for (ZLinkBackendSpotRouteBridge bridge : attachedChannelBridges) {
+            bridge.close();
+        }
+        attachedChannelBridges.clear();
         for (ZLinkBackendDiscovery discovery : attachedChannelDiscoveries) {
             discovery.close();
         }
@@ -778,105 +778,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 .thenApply(ignored -> null))
             .thenCompose(ignored -> result);
     }
-    @Override
-    public RoutingId resolveAcceptedSpotRouteNodeRid(String channelName) {
-        SpotNodeRegistration nodeRegistration = acceptedRouteNodesByChannel.get(channelName);
-        if (nodeRegistration == null) {
-            throw new ZLinkConfigurationException(
-                "routed SPOT target channel is not accepted by a SpotNode: " + channelName);
-        }
-        ZLinkBackendSpotNode node = nodesByName.get(nodeRegistration.nodeName());
-        if (node == null) {
-            throw new ZLinkConfigurationException(
-                "accepted routed SPOT node is not active: " + nodeRegistration.nodeName());
-        }
-        return node.routingId();
-    }
-
-    @Override
-    public void handleSend(
-        String channelName,
-        ZLinkBackendRouterSocket router,
-        List<Message> relayParts) {
-        RoutingId targetNodeRid = resolveAcceptedSpotRouteNodeRid(channelName);
-        RoutingId targetSpotRid = ZLinkRoutedSpotRelayPackets.decodeTargetSpotRid(relayParts);
-        List<Message> spotParts = ZLinkRoutedSpotRelayPackets.copySpotPayloadParts(relayParts);
-        try {
-            EntrySpotActivation entryActivation = entrySpotActivationFor(targetSpotRid);
-            if (entryActivation != null
-                && !spotParts.isEmpty()
-                && ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(parsePacket(spotParts).packetName())) {
-                entryActivation.handleRoutedBoundSessionSendParts(spotParts);
-                return;
-            }
-            SpotActivation localActivation = spots.get(targetSpotRid);
-            if (localActivation != null
-                && !spotParts.isEmpty()
-                && ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(parsePacket(spotParts).packetName())) {
-                localActivation.handleRoutedActorPacketParts(spotParts);
-                return;
-            }
-            if (!router.sendToSpot(targetNodeRid, targetSpotRid, spotParts, SendFlags.NONE)) {
-                throw new ZLinkConfigurationException(
-                    "routed SPOT ingress channel is not ready for send: " + channelName);
-            }
-        } finally {
-            spotParts.forEach(Message::close);
-        }
-    }
-
-    @Override
-    public CompletionStage<List<Message>> handleRequest(
-        String channelName,
-        ZLinkBackendRouterSocket router,
-        RoutingId sourcePeerRid,
-        List<Message> relayParts,
-        Duration timeout) {
-        CompletableFuture<List<Message>> result = new CompletableFuture<>();
-        RoutingId targetNodeRid = resolveAcceptedSpotRouteNodeRid(channelName);
-        RoutingId targetSpotRid = ZLinkRoutedSpotRelayPackets.decodeTargetSpotRid(relayParts);
-        List<Message> spotParts = ZLinkRoutedSpotRelayPackets.copySpotPayloadParts(relayParts);
-        try {
-            EntrySpotActivation entryActivation = entrySpotActivationFor(targetSpotRid);
-            if (entryActivation != null
-                && !spotParts.isEmpty()
-                && ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(parsePacket(spotParts).packetName())) {
-                return entryActivation.handleRoutedBoundSessionSendRequestParts(spotParts);
-            }
-            SpotActivation localActivation = spots.get(targetSpotRid);
-            if (localActivation != null
-                && !spotParts.isEmpty()
-                && ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(parsePacket(spotParts).packetName())) {
-                return localActivation.handleRoutedActorJoinParts(channelName, sourcePeerRid, spotParts);
-            }
-            if (localActivation != null
-                && !spotParts.isEmpty()
-                && ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(parsePacket(spotParts).packetName())) {
-                return localActivation.handleRoutedActorPacketParts(spotParts)
-                    .thenApply(reply -> reply
-                        .map(List::of)
-                        .orElseGet(() -> List.of(Message.from(new byte[0]))));
-            }
-            if (!router.requestToSpot(targetNodeRid, targetSpotRid, spotParts, reply -> {
-                try {
-                    result.complete(ZLinkRoutedSpotRelayPackets.copyReplyParts(reply.parts()));
-                } catch (RuntimeException ex) {
-                    result.completeExceptionally(ex);
-                } finally {
-                    reply.parts().forEach(Message::close);
-                }
-            }, SendFlags.NONE, timeout)) {
-                result.completeExceptionally(new ZLinkConfigurationException(
-                    "routed SPOT ingress channel is not ready for request: " + channelName));
-            }
-        } catch (RuntimeException ex) {
-            result.completeExceptionally(ex);
-        } finally {
-            spotParts.forEach(Message::close);
-        }
-        return result;
-    }
-
     private void requireRegistered(Class<? extends ZLinkSpot<?>> spotType) {
         if (spotType == null) {
             throw new ZLinkConfigurationException("spot type is required");
@@ -1242,11 +1143,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         ZLinkBackendDealerSocket dealer = channelAdapter.createDealerSocket(context);
         dealer.setChannelName(attached.channelName());
         attachedChannelDealers.add(dealer);
+        ZLinkBackendSpotRouteBridge bridge = node.createRouteBridge();
+        attachedChannelBridges.add(bridge);
         if (!attached.manualConnections().isEmpty()) {
             for (String endpoint : attached.manualConnections()) {
                 dealer.connect(endpoint);
             }
-            node.attachChannelDealerManual(attached.channelName(), dealer);
+            bridge.attachDealerChannel(
+                attached.channelName(),
+                dealer,
+                new SpotRouteBridgeEndpointOptions()
+                    .capabilities(SpotRouteBridgeEndpointCapabilities.ROUTE_ONLY));
             return;
         }
 
@@ -1259,7 +1166,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
         attachedChannelDiscoveries.add(discovery);
         dealer.attachDiscovery(discovery);
-        node.attachChannelDealer(discovery, dealer);
+        bridge.attachDealerChannel(
+            attached.channelName(),
+            dealer,
+            new SpotRouteBridgeEndpointOptions()
+                .capabilities(SpotRouteBridgeEndpointCapabilities.ROUTE_ONLY));
     }
 
     private void attachSpotMeshDiscovery(
@@ -1471,14 +1382,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
         discoveredRouterPeerSightings.put(key, 1);
         try {
-            if (hasRoutingId(peerRoutingId)) {
-                binding.node().connectRouterChannelPeerRid(
-                    binding.meshName(),
-                    peerRoutingId,
-                    endpoint);
-            } else {
-                binding.node().connectRouterChannelPeer(binding.meshName(), endpoint);
-            }
+            binding.node().connectPeer(endpoint);
             if (hasRoutingId(peerRoutingId)) {
                 connectedRouterPeerRids.add(peerRoutingId);
             }
@@ -1513,35 +1417,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         ZLinkFrameworkRegistration frameworkRegistration,
         ZLinkBackendSpotNode node,
         SpotRouteChannelAcceptanceRegistration acceptance) {
-        if (!acceptance.manualConnections().isEmpty()) {
-            for (String endpoint : acceptance.manualConnections()) {
-                node.connectRouterChannelPeer(acceptance.channelName(), endpoint);
-            }
+        if (channels.attachSpotRouteBridgeToServer(acceptance.channelName(), node)) {
             return;
         }
 
-        ZLinkBackendDiscovery discovery = channelAdapter.createDiscovery(
-            context,
-            acceptedRouteAutoConnectType(frameworkRegistration, acceptance.channelName()),
-            acceptance.channelName());
-        for (String endpoint : frameworkRegistration.registryEndpoints()) {
-            discovery.connectRegistry(endpoint);
-        }
-        attachedChannelDiscoveries.add(discovery);
-        node.attachSpotRouteChannelDiscovery(acceptance.channelName(), discovery);
-    }
-
-    private static ZLinkBackendAutoConnectType acceptedRouteAutoConnectType(
-        ZLinkFrameworkRegistration frameworkRegistration,
-        String channelName) {
-        return frameworkRegistration.channels().stream()
-            .filter(channel -> channel.name().equals(channelName))
-            .findFirst()
-            .map(channel -> channel.kind() == ChannelKind.ROUTE_MESH
-                ? ZLinkBackendAutoConnectType.ROUTE_MESH
-                : ZLinkBackendAutoConnectType.CLIENT_SERVER)
-            .orElseThrow(() -> new ZLinkConfigurationException(
-                "accepted SPOT route channel is not registered: " + channelName));
+        throw new ZLinkConfigurationException(
+            "accepted SPOT route channel requires a configured channel server or route mesh socket: "
+                + acceptance.channelName());
     }
 
     private ZLinkSpot<?> tryCreateSpot(

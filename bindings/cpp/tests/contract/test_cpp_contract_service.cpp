@@ -2,6 +2,7 @@
 
 #include "support.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <optional>
@@ -157,6 +158,79 @@ template <typename NodeT> class has_attach_pub_ingress_t
 
   public:
     static const bool value = decltype (test<NodeT> (0))::value;
+};
+
+template <typename NodeT> class has_create_route_bridge_t
+{
+  private:
+    template <typename T>
+    static auto test (int)
+      -> decltype (std::declval<zlink::service::spot_route_bridge_t &> ()
+                     = std::declval<T &> ().create_route_bridge (),
+                   std::true_type ());
+
+    template <typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<NodeT> (0))::value;
+};
+
+template <typename NodeT> class has_create_publisher_t
+{
+  private:
+    template <typename T>
+    static auto test (int)
+      -> decltype (std::declval<zlink::service::spot_node_publisher_t &> ()
+                     = std::declval<T &> ().create_publisher (),
+                   std::true_type ());
+
+    template <typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<NodeT> (0))::value;
+};
+
+template <typename BridgeT> class has_spot_route_bridge_surface_t
+{
+  private:
+    template <typename T>
+    static auto test (int)
+      -> decltype (
+        std::declval<T &> ().attach_dealer_channel (std::declval<const std::string &> (),
+                                                    std::declval<zlink::dealer_socket_t &> ()),
+        std::declval<T &> ().attach_router_channel (std::declval<const std::string &> (),
+                                                    std::declval<zlink::router_socket_t &> ()),
+        std::declval<T &> ().set_target_node (std::declval<const std::string &> (),
+                                              std::declval<const zlink::routing_id_t &> ()),
+        std::declval<T &> ().send (std::declval<const std::string &> (),
+                                   std::declval<const zlink::routing_id_t &> (),
+                                   std::declval<std::vector<zlink::message_t> &> ()),
+        std::declval<T &> ().request (std::declval<const std::string &> (),
+                                      std::declval<const zlink::routing_id_t &> (),
+                                      std::declval<std::vector<zlink::message_t> &> (),
+                                      std::declval<std::chrono::milliseconds> ()),
+        std::declval<T &> ().close (), std::true_type ());
+
+    template <typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<BridgeT> (0))::value;
+};
+
+template <typename PublisherT> class has_spot_node_publisher_surface_t
+{
+  private:
+    template <typename T>
+    static auto test (int)
+      -> decltype (std::declval<T &> ().publish (
+                     std::declval<const std::string &> (),
+                     std::declval<std::vector<zlink::message_t> &> ()),
+                   std::declval<T &> ().close (), std::true_type ());
+
+    template <typename> static std::false_type test (...);
+
+  public:
+    static const bool value = decltype (test<PublisherT> (0))::value;
 };
 
 template <typename NodeT> class has_attach_router_t
@@ -363,6 +437,14 @@ static_assert (has_attach_channel_dealer_manual_t<zlink::service::spot_node_t>::
                "spot_node_t must expose attach_channel_dealer_manual");
 static_assert (has_attach_pub_ingress_t<zlink::service::spot_node_t>::value,
                "spot_node_t must expose attach_pub_ingress");
+static_assert (has_create_route_bridge_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must expose create_route_bridge");
+static_assert (has_create_publisher_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must expose create_publisher");
+static_assert (has_spot_route_bridge_surface_t<zlink::service::spot_route_bridge_t>::value,
+               "spot_route_bridge_t must expose bridge send/request surface");
+static_assert (has_spot_node_publisher_surface_t<zlink::service::spot_node_publisher_t>::value,
+               "spot_node_publisher_t must expose publish surface");
 static_assert (!has_attach_router_t<zlink::service::spot_node_t>::value,
                "spot_node_t must not expose attach_router");
 static_assert (!has_attach_pubsub_t<zlink::service::spot_node_t>::value,
@@ -576,31 +658,37 @@ void test_entry_spot_join_request_reply_contract ()
 
     std::promise<std::string> user_request;
     std::future<std::string> user_request_future = user_request.get_future ();
+    std::atomic_bool user_request_done{false};
     user_spot.set_dispatch_handler (
-      [&user_request] (zlink::service::spot_t &spot_,
-                       const zlink::spot_dispatch_info_t &info_) mutable {
+      [&user_request, &user_request_done] (zlink::service::spot_t &spot_,
+                                           const zlink::spot_dispatch_info_t &info_) mutable {
           if (info_.event != zlink::spot_dispatch_event_t::actor_join_readable)
               return;
           std::optional<zlink::actor_join_request_t> request =
             spot_.recv_actor_join (zlink::recv_flags_t::dontwait);
-          assert (request.has_value ());
-          user_request.set_value (request->message ().to_string ());
+          if (!request.has_value ())
+              return;
+          if (!user_request_done.exchange (true))
+              user_request.set_value (request->message ().to_string ());
           zlink::message_t reply = zlink_cpp_contract::make_message ("user-reply");
           std::move (spot_.reply_actor_join (*request, 0)).message (reply).submit ();
       });
 
     std::promise<std::string> entry_request;
     std::future<std::string> entry_request_future = entry_request.get_future ();
+    std::atomic_bool entry_request_done{false};
     bool reject_entry_join = false;
     entry_spot.set_dispatch_handler (
-      [&entry_request, &reject_entry_join] (zlink::service::spot_t &spot_,
-                                            const zlink::spot_dispatch_info_t &info_) mutable {
+      [&entry_request, &entry_request_done, &reject_entry_join] (
+        zlink::service::spot_t &spot_, const zlink::spot_dispatch_info_t &info_) mutable {
           if (info_.event != zlink::spot_dispatch_event_t::actor_join_readable)
               return;
           std::optional<zlink::actor_join_request_t> request =
             spot_.recv_actor_join (zlink::recv_flags_t::dontwait);
-          assert (request.has_value ());
-          entry_request.set_value (request->message ().to_string ());
+          if (!request.has_value ())
+              return;
+          if (!entry_request_done.exchange (true))
+              entry_request.set_value (request->message ().to_string ());
           zlink::message_t reply =
             zlink_cpp_contract::make_message (reject_entry_join ? "entry-rejected" : "entry-reply");
           std::move (spot_.reply_actor_join (*request, reject_entry_join ? 7 : 0))
@@ -630,6 +718,7 @@ void test_entry_spot_join_request_reply_contract ()
     std::promise<std::string> rejected_entry_request;
     entry_request_future = rejected_entry_request.get_future ();
     entry_request = std::move (rejected_entry_request);
+    entry_request_done.store (false);
     reject_entry_join = true;
 
     zlink::message_t return_to_user = zlink_cpp_contract::make_message ("return-to-user");

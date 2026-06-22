@@ -5,6 +5,8 @@
 #include <zlink/framework/contracts/configuration/module.hpp>
 #include <zlink/framework/contracts/registry/registry.hpp>
 
+#include "runtime/spots/spot_runtime.hpp"
+
 #include <atomic>
 #include <map>
 #include <memory>
@@ -23,11 +25,18 @@ namespace zlink::framework::runtime
 class route_channel_host_service_t final : public hosted_service_t
 {
   public:
+    struct spot_node_runtime_t
+    {
+        spot_node_snapshot_t snapshot;
+        detail::spot_node_runtime_t runtime;
+    };
+
     route_channel_host_service_t (
       message_bus_t bus,
       serializer_registry_t &serializers,
       registry_query_t registry,
       discovery_snapshot_t discovery,
+      std::vector<spot_node_runtime_t> spot_nodes,
       std::map<std::string, std::shared_ptr<detail::route_internal_packet_dispatcher_t>>
         internal_dispatchers = {});
     ~route_channel_host_service_t () override;
@@ -42,6 +51,7 @@ class route_channel_host_service_t final : public hosted_service_t
     serializer_registry_t *_serializers;
     registry_query_t _registry;
     discovery_snapshot_t _discovery;
+    std::vector<spot_node_runtime_t> _spot_nodes;
     std::map<std::string, std::shared_ptr<detail::route_internal_packet_dispatcher_t>>
       _internal_dispatchers;
     service_provider_t *_services = nullptr;

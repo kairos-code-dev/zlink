@@ -44,6 +44,8 @@ import systems.zlink.contracts.service.spot.SpotDispatchInfo;
 import systems.zlink.contracts.service.spot.SpotKind;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotNodeMode;
+import systems.zlink.contracts.service.spot.SpotRouteBridge;
+import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
@@ -95,6 +97,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeMode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRoute;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamPacketHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamErrorHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
@@ -279,12 +282,6 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             return submitRequest(socket.request(routingId), parts, callback, flags, timeout);
         }
         @Override public void reply(RoutingId routingId, long requestSeq, List<Message> parts) { submitReply(socket.reply(routingId, requestSeq), parts); }
-        @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, SendFlags flags) {
-            return submit(socket.sendToSpot(targetNodeRid, spotRid), parts, flags);
-        }
-        @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
-            return submitRequest(socket.requestToSpot(targetNodeRid, spotRid), parts, callback, flags, timeout);
-        }
         @Override public void close() { socket.close(); }
     }
 
@@ -489,11 +486,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setPubBind(String endpoint) { spotNode.setPubBind(endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { spotNode.attachDiscovery(((JavaDiscovery) discovery).nativeDiscovery()); }
         @Override public void connectPeer(String endpoint) { spotNode.connectPeer(endpoint); }
-        @Override public void connectRouterChannelPeer(String channelName, String endpoint) { spotNode.connectRouterChannelPeer(channelName, endpoint); }
-        @Override public void connectRouterChannelPeerRid(String channelName, RoutingId peerRid, String endpoint) { spotNode.connectRouterChannelPeerRid(channelName, peerRid, endpoint); }
-        @Override public void attachSpotRouteChannelDiscovery(String channelName, ZLinkBackendDiscovery discovery) { spotNode.attachSpotRouteChannelDiscovery(channelName, ((JavaDiscovery) discovery).nativeDiscovery()); }
-        @Override public void attachChannelDealer(ZLinkBackendDiscovery discovery, ZLinkBackendDealerSocket dealer) { spotNode.attachChannelDealer(((JavaDiscovery) discovery).nativeDiscovery(), ((JavaDealerSocket) dealer).socket()); }
-        @Override public void attachChannelDealerManual(String channelName, ZLinkBackendDealerSocket dealer) { spotNode.attachChannelDealerManual(channelName, ((JavaDealerSocket) dealer).socket()); }
+        @Override public ZLinkBackendSpotRouteBridge createRouteBridge() { return new JavaSpotRouteBridge(spotNode.createRouteBridge()); }
         @Override public ZLinkBackendSpot createSpot() { return new JavaSpot(spotNode.createSpot()); }
         @Override public ZLinkBackendSpot entrySpot() { return new JavaSpot(spotNode.entrySpot()); }
         @Override public ZLinkBackendActorRef createActor(String actorId) { return fromActorRef(spotNode.createActor(actorId).ref()); }
@@ -561,6 +554,29 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                 result.flags(),
                 completion.replyParts());
         }
+    }
+
+    private record JavaSpotRouteBridge(SpotRouteBridge bridge) implements ZLinkBackendSpotRouteBridge {
+        @Override public String name() { return "spotRouteBridge"; }
+        @Override public void attachDealerChannel(String channelName, ZLinkBackendDealerSocket dealer, SpotRouteBridgeEndpointOptions options) {
+            bridge.attachDealerChannel(channelName, ((JavaDealerSocket) dealer).socket(), options);
+        }
+        @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router, SpotRouteBridgeEndpointOptions options) {
+            bridge.attachRouterChannel(channelName, ((JavaRouterSocket) router).socket(), options);
+        }
+        @Override public void setTargetNode(String channelName, RoutingId targetNodeRid) {
+            bridge.setTargetNode(channelName, targetNodeRid);
+        }
+        @Override public boolean send(String channelName, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) {
+            return submit(bridge.send(channelName, targetSpotRid), parts, flags);
+        }
+        @Override public boolean request(String channelName, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            return submitRequest(bridge.request(channelName, targetSpotRid), parts, callback, flags, timeout);
+        }
+        @Override public boolean handleRouterReceived(String channelName, RoutingId sourceNodeRid, long requestSeq, List<Message> parts) {
+            return bridge.handleRouterReceived(channelName, sourceNodeRid, requestSeq, parts);
+        }
+        @Override public void close() { bridge.close(); }
     }
 
     private record JavaSpot(Spot spot) implements ZLinkBackendSpot {

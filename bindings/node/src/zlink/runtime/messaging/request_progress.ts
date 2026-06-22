@@ -36,7 +36,16 @@ export function startRequestProgress(handle: unknown): () => void {
       }
     }, 1)
   };
-  requireNative().pollerAdd(state.poller, handle, null, 32);
+  try {
+    requireNative().pollerAdd(state.poller, handle, null, 32);
+  } catch {
+    clearInterval(state.interval);
+    try {
+      requireNative().pollerDestroy(state.poller);
+    } catch {
+    }
+    return () => {};
+  }
   state.interval.unref();
   requestProgressByHandle.set(handle, state);
   return () => releaseRequestProgress(handle);

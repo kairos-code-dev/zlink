@@ -116,7 +116,9 @@ final class SpotRuntimeFakeBackendTest {
                 "close.context",
                 "close.spotNode",
                 "close.context"),
-            backendFactory.calls());
+            backendFactory.calls().stream()
+                .filter(call -> !call.startsWith("discovery.game.bindRoute."))
+                .toList());
     }
 
     @Test
@@ -463,8 +465,10 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
         }
 
-        assertTrue(backendFactory.calls().contains(
-            "dealer.send.__zlink.routed_spot.egress.send"));
+        assertTrue(
+            backendFactory.calls().contains(
+                "spotRouteBridge.bridge.send.egress.target-spot.Greeting"),
+            backendFactory.calls().toString());
     }
 
     @Test
@@ -500,7 +504,7 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         assertTrue(backendFactory.calls().contains(
-            "router.request.ingress-route.__zlink.routed_spot.egress.request"));
+            "spotRouteBridge.bridge.request.egress.target-spot.Ping"));
     }
 
     @Test
@@ -564,7 +568,7 @@ final class SpotRuntimeFakeBackendTest {
         assertTrue(backendFactory.calls().contains(
             "registryQueryClient.connect.tcp://127.0.0.1:17001"));
         assertTrue(backendFactory.calls().contains(
-            "router.send.registry-route-peer.__zlink.routed_spot.egress.send"));
+            "spotRouteBridge.bridge.send.egress.target-spot.Ping"));
     }
 
     @Test
@@ -596,7 +600,7 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         assertTrue(backendFactory.calls().contains(
-            "router.send.discovery-route-peer.__zlink.routed_spot.egress.send"));
+            "spotRouteBridge.bridge.send.egress-discovery.target-spot.Ping"));
     }
 
     @Test
@@ -711,7 +715,7 @@ final class SpotRuntimeFakeBackendTest {
                 "spotNode.setRoutingId",
                 "spotNode.setRouterBind.inproc://spot-router",
                 "spotNode.setPubBind.inproc://spot-pub",
-                "spotNode.connectRouterChannelPeer.game.inproc://spot-router-peer",
+                "spotNode.connectPeer.inproc://spot-router-peer",
                 "spotNode.connectPeer.inproc://spot-pub-peer",
                 "close.context",
                 "close.spotNode",
@@ -740,10 +744,13 @@ final class SpotRuntimeFakeBackendTest {
                 "create.spotNode",
                 "create.dealer",
                 "dealer.setChannelName.profile",
+                "spotNode.createRouteBridge",
+                "create.spotRouteBridge",
                 "dealer.connect.inproc://profile-server",
-                "spotNode.attachChannelDealerManual.profile",
+                "spotRouteBridge.bridge.attachDealerChannel.profile",
                 "close.context",
                 "close.dealer",
+                "spotRouteBridge.bridge.close",
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());
@@ -774,12 +781,15 @@ final class SpotRuntimeFakeBackendTest {
                 "spotNode.attachDiscovery.discovery.game",
                 "create.dealer",
                 "dealer.setChannelName.profile",
+                "spotNode.createRouteBridge",
+                "create.spotRouteBridge",
                 "create.discovery.profile",
                 "discovery.profile.connectRegistry.tcp://127.0.0.1:17001",
                 "dealer.attachDiscovery.discovery.profile",
-                "spotNode.attachChannelDealer",
+                "spotRouteBridge.bridge.attachDealerChannel.profile",
                 "close.context",
                 "close.dealer",
+                "spotRouteBridge.bridge.close",
                 "close.discovery.game",
                 "close.discovery.profile",
                 "close.spotNode",
@@ -814,8 +824,11 @@ final class SpotRuntimeFakeBackendTest {
                 "create.context",
                 "create.spotNode",
                 "spotNode.setRouterBind.inproc://spot-router",
-                "spotNode.connectRouterChannelPeer.api.inproc://api-router-peer",
+                "spotNode.createRouteBridge",
+                "create.spotRouteBridge",
+                "spotRouteBridge.bridge.attachRouterChannel.api",
                 "close.router",
+                "spotRouteBridge.bridge.close",
                 "close.context",
                 "close.spotNode",
                 "close.context"),
@@ -826,7 +839,7 @@ final class SpotRuntimeFakeBackendTest {
     void acceptedSpotRouteChannelDiscoveryAttachesRouteDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
-        { var channel = options.addClientServerChannel("api");  };
+        { var channel = options.addRouteMeshChannel("api").enableServer("inproc://api-route");  };
         { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://spot-router");
                 node.acceptSpotRoutesFromChannel("api"); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -842,6 +855,10 @@ final class SpotRuntimeFakeBackendTest {
                 "create.context",
                 "create.discovery.api",
                 "discovery.api.connectRegistry.tcp://127.0.0.1:17001",
+                "create.router",
+                "router.setChannelName.api",
+                "router.attachDiscovery.discovery.api",
+                "router.bind.inproc://api-route",
                 "factory.channel",
                 "factory.spot",
                 "create.context",
@@ -850,16 +867,18 @@ final class SpotRuntimeFakeBackendTest {
                 "create.discovery.game",
                 "discovery.game.connectRegistry.tcp://127.0.0.1:17001",
                 "spotNode.attachDiscovery.discovery.game",
-                "create.discovery.api",
-                "discovery.api.connectRegistry.tcp://127.0.0.1:17001",
-                "spotNode.attachSpotRouteChannelDiscovery.api.discovery.api",
+                "spotNode.createRouteBridge",
+                "create.spotRouteBridge",
+                "spotRouteBridge.bridge.attachRouterChannel.api",
                 "close.discovery.api",
+                "spotRouteBridge.bridge.close",
                 "close.context",
                 "close.discovery.game",
-                "close.discovery.api",
                 "close.spotNode",
                 "close.context"),
-            backendFactory.calls());
+            backendFactory.calls().stream()
+                .filter(call -> !call.startsWith("discovery.game.bindRoute."))
+                .toList());
     }
 
     @Test
@@ -873,13 +892,12 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime ignored =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             awaitCondition(() -> backendFactory.calls().contains(
-                "spotNode.connectRouterChannelPeerRid.rooms.rooms-node-2.inproc://rooms-router-peer"));
+                "spotNode.connectPeer.inproc://rooms-router-peer"));
         }
 
-        int channelPeerIndex = backendFactory.calls().indexOf(
-            "spotNode.connectRouterChannelPeerRid.rooms.rooms-node-2.inproc://rooms-router-peer");
-        assertFalse(backendFactory.calls().contains("spotNode.connectPeer.inproc://rooms-router-peer"));
-        assertTrue(channelPeerIndex >= 0);
+        int peerIndex = backendFactory.calls().indexOf(
+            "spotNode.connectPeer.inproc://rooms-router-peer");
+        assertTrue(peerIndex >= 0);
     }
 
     @Test

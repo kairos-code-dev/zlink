@@ -109,8 +109,10 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
     {
         var dealer = channelAdapter.CreateDealerSocket(context);
         dealer.SetChannelName(attached.ChannelName);
+        var bridge = node.CreateRouteBridge();
         var bundle = new ZLinkSpotAttachedChannelBundle(
             dealer,
+            bridge,
             attached.SocketConfig.SendTimeout ?? frameworkRegistration.DefaultSocketSendTimeout,
             stopToken);
 
@@ -136,7 +138,7 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
             _ = bundle.TryAddManualConnection(endpoint);
         }
 
-        node.AttachChannelDealerManual(attached.ChannelName, bundle.Socket);
+        bundle.Bridge.AttachDealerChannel(attached.ChannelName, bundle.Socket);
     }
 
     private void AttachDiscoveredChannelDealer(
@@ -151,7 +153,7 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
             frameworkRegistration.Discovery?.Endpoints ?? []);
 
         bundle.Socket.AttachDiscovery(discovery);
-        node.AttachChannelDealer(discovery, bundle.Socket);
+        bundle.Bridge.AttachDealerChannel(attached.ChannelName, bundle.Socket);
         bundle.Discovery = discovery;
     }
 

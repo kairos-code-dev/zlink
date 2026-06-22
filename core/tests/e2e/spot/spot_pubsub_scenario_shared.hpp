@@ -112,7 +112,7 @@ void test_spot_aggregate_subscription_refcount ();
 void test_spot_sub_handler_basic ();
 void test_spot_recv_callback_isolated_by_handle ();
 void test_spot_node_direct_local_and_child_interop ();
-void test_spot_node_pub_ingress_local_spot_subscribe_surface ();
+void test_spot_node_publisher_local_spot_subscribe_surface ();
 void test_spot_node_discovery_direct_and_child_interop ();
 
 #endif

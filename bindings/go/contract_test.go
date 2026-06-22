@@ -27,8 +27,8 @@ func TestDirectCommonHeaderVersionMatchesPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preprocess zlink/common.h: %v\n%s", err, output)
 	}
-	if got := lastNonEmptyLine(string(output)); got != "4" {
-		t.Fatalf("ZLINK_VERSION_PATCH from direct zlink/common.h include = %q, want 4", got)
+	if got := lastNonEmptyLine(string(output)); got != "0" {
+		t.Fatalf("ZLINK_VERSION_PATCH from direct zlink/common.h include = %q, want 0", got)
 	}
 }
 

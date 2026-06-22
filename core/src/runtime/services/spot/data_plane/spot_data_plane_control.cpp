@@ -4,7 +4,6 @@
 
 #include "services/spot/data_plane/spot_data_plane_internal.hpp"
 #include "services/spot/data_plane/spot_data_plane_message_io_internal.hpp"
-#include "services/spot/data_plane/spot_data_plane_router_channel_control_internal.hpp"
 #include "services/spot/data_plane/spot_mesh_pub_hwm.hpp"
 
 #include "services/spot/common/spot_control_protocol.hpp"
@@ -367,35 +366,6 @@ static int handle_connect_peer_pub_command (const ctrl_command_context_t &ctx_,
     return spot_data_plane_protocol_t::send_ok_reply (ctx_.ctrl);
 }
 
-static int handle_connect_router_channel_peer_command (const ctrl_command_context_t &ctx_,
-                                                       const std::string &arg_,
-                                                       bool has_route_id_)
-{
-    std::string channel_name;
-    std::string endpoint;
-    std::string route_id;
-    const bool parsed =
-      has_route_id_
-        ? spot_data_plane_router_channel_control::parse_peer_rid_arg (arg_, &channel_name,
-                                                                      &route_id, &endpoint)
-        : spot_data_plane_router_channel_control::parse_peer_arg (arg_, &channel_name, &endpoint);
-    if (!parsed)
-        return send_ctrl_errno_reply (ctx_, EINVAL);
-
-    if (spot_data_plane_router_channel_control::apply_client_tls (ctx_.node, ctx_.runtime) != 0)
-        return send_ctrl_errno_reply (ctx_, errno);
-
-    if (spot_data_plane_router_channel_control::connect_peer (
-          ctx_.node, ctx_.runtime, endpoint,
-          has_route_id_ ? &route_id : static_cast<const std::string *> (NULL))
-        != 0) {
-        return send_ctrl_errno_reply (ctx_, errno);
-    }
-    spot_node_access_t::mark_mesh_client_tls_locked (ctx_.node);
-    LIBZLINK_UNUSED (channel_name);
-    return spot_data_plane_protocol_t::send_ok_reply (ctx_.ctrl);
-}
-
 static int handle_subscription_state_command (const ctrl_command_context_t &ctx_)
 {
     if (sync_outbound_mesh_subscriptions (ctx_.mesh_xsub, ctx_.node, ctx_.state) != 0)
@@ -520,21 +490,6 @@ static int handle_disconnect_peer_pub_command (const ctrl_command_context_t &ctx
     return spot_data_plane_protocol_t::send_ok_reply (ctx_.ctrl);
 }
 
-static int handle_disconnect_router_channel_peer_command (const ctrl_command_context_t &ctx_,
-                                                          const std::string &arg_)
-{
-    std::string channel_name;
-    std::string endpoint;
-    if (!spot_data_plane_router_channel_control::parse_peer_arg (arg_, &channel_name, &endpoint))
-        return send_ctrl_errno_reply (ctx_, EINVAL);
-    if (ctx_.runtime->external_router
-        && ctx_.runtime->external_router->term_endpoint (endpoint.c_str ()) != 0)
-        return send_ctrl_errno_reply (ctx_, errno);
-    ctx_.runtime->erase_external_route_id (endpoint);
-    LIBZLINK_UNUSED (channel_name);
-    return spot_data_plane_protocol_t::send_ok_reply (ctx_.ctrl);
-}
-
 int spot_data_plane_protocol_t::handle_ctrl_command (socket_base_t *ctrl_,
                                                      spot_node_t *node_,
                                                      spot_runtime_t *runtime_,
@@ -567,14 +522,6 @@ int spot_data_plane_protocol_t::handle_ctrl_command (socket_base_t *ctrl_,
     if (spot_control_protocol::command_is (verb, spot_control_protocol::cmd_connect_peer_pub))
         return handle_connect_peer_pub_command (ctx, arg);
 
-    if (spot_control_protocol::command_is (verb,
-                                           spot_control_protocol::cmd_connect_router_channel_peer))
-        return handle_connect_router_channel_peer_command (ctx, arg, false);
-
-    if (spot_control_protocol::command_is (
-          verb, spot_control_protocol::cmd_connect_router_channel_peer_rid))
-        return handle_connect_router_channel_peer_command (ctx, arg, true);
-
     if (spot_control_protocol::command_is (
           verb, spot_control_protocol::cmd_replay_handle_state_subscriptions)
         || spot_control_protocol::command_is (
@@ -594,10 +541,6 @@ int spot_data_plane_protocol_t::handle_ctrl_command (socket_base_t *ctrl_,
 
     if (spot_control_protocol::command_is (verb, spot_control_protocol::cmd_disconnect_peer_pub))
         return handle_disconnect_peer_pub_command (ctx, arg);
-
-    if (spot_control_protocol::command_is (
-          verb, spot_control_protocol::cmd_disconnect_router_channel_peer))
-        return handle_disconnect_router_channel_peer_command (ctx, arg);
 
     if (send_errno_reply (ctrl_, EINVAL) != 0)
         return -1;

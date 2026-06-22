@@ -34,10 +34,12 @@ internal sealed class ZLinkSpotAttachedChannelBundle : IAsyncDisposable
 
     public ZLinkSpotAttachedChannelBundle(
         IZLinkBackendDealerSocket socket,
+        IZLinkBackendSpotRouteBridge bridge,
         TimeSpan? sendTimeout,
         CancellationToken stopToken)
     {
         Socket = socket;
+        Bridge = bridge;
         Submitter = new ZLinkAsyncSubmitter(
             socket.OnSendReady,
             sendTimeout,
@@ -45,6 +47,8 @@ internal sealed class ZLinkSpotAttachedChannelBundle : IAsyncDisposable
     }
 
     public IZLinkBackendDealerSocket Socket { get; }
+
+    public IZLinkBackendSpotRouteBridge Bridge { get; }
 
     public ZLinkAsyncSubmitter Submitter { get; }
 
@@ -77,6 +81,7 @@ internal sealed class ZLinkSpotAttachedChannelBundle : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await Submitter.DisposeAsync();
+        await Bridge.DisposeAsync();
 
         if (Discovery is not null)
         {

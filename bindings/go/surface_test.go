@@ -248,6 +248,27 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "AttachPubIngress") {
 		t.Fatalf("SpotNode should expose AttachPubIngress")
 	}
+	if !hasMethod((*zlink.SpotNode)(nil), "CreateRouteBridge") {
+		t.Fatalf("SpotNode should expose CreateRouteBridge")
+	}
+	if !hasMethod((*zlink.SpotNode)(nil), "CreatePublisher") {
+		t.Fatalf("SpotNode should expose CreatePublisher")
+	}
+	if !hasMethod((*zlink.SpotRouteBridge)(nil), "AttachDealerChannel") {
+		t.Fatalf("SpotRouteBridge should expose AttachDealerChannel")
+	}
+	if !hasMethod((*zlink.SpotRouteBridge)(nil), "AttachRouterChannel") {
+		t.Fatalf("SpotRouteBridge should expose AttachRouterChannel")
+	}
+	if !hasMethod((*zlink.SpotRouteBridge)(nil), "Send") {
+		t.Fatalf("SpotRouteBridge should expose Send")
+	}
+	if !hasMethod((*zlink.SpotRouteBridge)(nil), "Request") {
+		t.Fatalf("SpotRouteBridge should expose Request")
+	}
+	if !hasMethod((*zlink.SpotNodePublisher)(nil), "Publish") {
+		t.Fatalf("SpotNodePublisher should expose Publish")
+	}
 	if !hasMethod((*zlink.SpotNode)(nil), "SetRoutingID") {
 		t.Fatalf("SpotNode should expose SetRoutingID")
 	}

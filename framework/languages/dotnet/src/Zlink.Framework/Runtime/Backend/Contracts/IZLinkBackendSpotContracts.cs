@@ -16,19 +16,6 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 
     void DisconnectPeer(string endpoint);
 
-    void ConnectRouterChannelPeer(string channelName, string endpoint);
-
-    void ConnectRouterChannelPeerRid(
-        string channelName,
-        RoutingId peerRid,
-        string endpoint);
-
-    void DisconnectRouterChannelPeer(string channelName, string endpoint);
-
-    void DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid);
-
-    void AttachSpotRouteChannelDiscovery(string channelName, IZLinkBackendDiscovery discovery);
-
     IZLinkBackendSpot CreateSpot();
 
     IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created);
@@ -39,9 +26,7 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 
     IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects();
 
-    void AttachChannelDealer(IZLinkBackendDiscovery discovery, IZLinkBackendDealerSocket dealer);
-
-    void AttachChannelDealerManual(string channelName, IZLinkBackendDealerSocket dealer);
+    IZLinkBackendSpotRouteBridge CreateRouteBridge();
 
     IZLinkBackendSpot EntrySpot();
 
@@ -99,6 +84,49 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
         ZLinkBackendActorRef actor,
         TimeSpan timeout,
         CancellationToken cancellationToken);
+}
+
+internal interface IZLinkBackendSpotRouteBridge : IZLinkBackendObject, IAsyncDisposable
+{
+    void AttachDealerChannel(
+        string channelName,
+        IZLinkBackendDealerSocket dealer,
+        SpotRouteBridgeEndpointOptions? options = null);
+
+    void AttachRouterChannel(
+        string channelName,
+        IZLinkBackendRouterSocket router,
+        SpotRouteBridgeEndpointOptions? options = null);
+
+    void SetTargetNode(string channelName, RoutingId targetNodeRid);
+
+    bool Send(
+        string channelName,
+        RoutingId targetSpotRid,
+        IReadOnlyList<Message> parts,
+        SendFlags flags);
+
+    bool Request(
+        string channelName,
+        RoutingId targetSpotRid,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout);
+
+    bool HandleRouterReceived(
+        string channelName,
+        RoutingId sourceNodeRid,
+        ulong requestSeq,
+        IReadOnlyList<Message> parts);
+
+    bool HandleDealerReceived(
+        string channelName,
+        ReceivedMessageType messageType,
+        ulong requestSeq,
+        IReadOnlyList<Message> parts);
+
+    void Drain();
 }
 
 internal interface IZLinkBackendSpot : IZLinkBackendObject, IAsyncDisposable

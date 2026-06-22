@@ -134,6 +134,8 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof spotNode.attachChannelDealer, 'function');
   assert.equal(typeof spotNode.attachChannelDealerManual, 'function');
   assert.equal(typeof spotNode.attachPubIngress, 'function');
+  assert.equal(typeof spotNode.createRouteBridge, 'function');
+  assert.equal(typeof spotNode.createPublisher, 'function');
   assert.equal(typeof spotNode.createActor, 'function');
   assert.equal(typeof spotNode.actorLookup, 'function');
   assert.equal(zlink.SpotNode, undefined);
@@ -158,6 +160,16 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof actor.sendBoundSession, 'function');
   assert.equal(typeof actor.closeBoundSession, 'function');
   const spot = spotNode.createSpot();
+  const bridge = spotNode.createRouteBridge();
+  const publisher = spotNode.createPublisher();
+  assert.equal(typeof bridge.attachDealerChannel, 'function');
+  assert.equal(typeof bridge.attachRouterChannel, 'function');
+  assert.equal(typeof bridge.setTargetNode, 'function');
+  assert.equal(typeof bridge.send, 'function');
+  assert.equal(typeof bridge.request, 'function');
+  assert.equal(typeof bridge.close, 'function');
+  assert.equal(typeof publisher.publish, 'function');
+  assert.equal(typeof publisher.close, 'function');
   assert.equal(typeof spot.publish, 'function');
   assert.equal(spot.publishFrom, undefined);
   assert.equal(typeof spot.sendToChannel, 'function');
@@ -176,6 +188,8 @@ test('canonical socket classes expose only directionally valid methods', () => {
   assert.equal(typeof spot.replyActorJoin, 'function');
   assert.equal(typeof spot.actors, 'function');
   assert.equal(spot.onSubscribe, undefined);
+  publisher.close();
+  bridge.close();
   spot.close();
   actor.close();
   spotNode.close();
@@ -233,6 +247,13 @@ test('spot operation builders keep payload and single-submit validation centrali
   const rid = zlink.RoutingId.from(Buffer.from('builder-target'));
 
   assert.throws(() => spot.sendToChannel('svc').submit(), /requires at least one message/);
+  const bridge = node.createRouteBridge();
+  const publisher = node.createPublisher();
+  assert.throws(() => bridge.send('svc', rid).submit(), /requires at least one message/);
+  assert.throws(() => bridge.request('svc', rid).submit(), /requires at least one message/);
+  assert.throws(() => publisher.publish('topic').submit(), /requires at least one message/);
+  publisher.close();
+  bridge.close();
   assert.throws(() => spot.requestToChannel('svc').submit(), /requires at least one message/);
   assert.throws(() => spot.replyToRouter(rid, 1n).submit(), /requires at least one message/);
   assert.throws(() => node.joinActor(actorRef, rid, rid).submit(() => {}), /requires at least one message/);

@@ -210,4 +210,17 @@ internal sealed partial class SpotNode : ISpotNode
     {
         AttachPubIngress(SocketInterop.RequirePubSocket(pub, nameof(pub)));
     }
+
+    public ISpotRouteBridge CreateRouteBridge(
+        SpotRouteBridgeOptions? options = null)
+    {
+        EnsureNotDisposed();
+        return new SpotRouteBridge(this, options);
+    }
+
+    public ISpotNodePublisher CreatePublisher()
+    {
+        EnsureNotDisposed();
+        return new SpotNodePublisher(this);
+    }
 }

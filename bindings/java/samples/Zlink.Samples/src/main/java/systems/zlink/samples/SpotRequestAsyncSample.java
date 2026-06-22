@@ -9,6 +9,7 @@ import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.service.spot.SpotRouteBridge;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -24,15 +25,19 @@ public final class SpotRequestAsyncSample {
              SpotNode requesterNode = ctx.createSpotNode();
              DealerSocket requesterDealer = ctx.createDealerSocket();
              RouterSocket requesterRouter = ctx.createRouterSocket();
-             var requester = requesterNode.createSpot()) {
+             var requester = requesterNode.createSpot();
+             SpotRouteBridge bridge = requesterNode.createRouteBridge()) {
             requesterRouter.bind(endpoint);
             requesterDealer.connect(endpoint);
-            requesterNode.attachChannelDealerManual(channelName, requesterDealer);
+            bridge.attachDealerChannel(channelName, requesterDealer);
 
             Thread responder = new Thread(() -> {
                 try (systems.zlink.contracts.messaging.Received received = new systems.zlink.contracts.messaging.Received()) {
                     requesterRouter.recv(received, systems.zlink.contracts.sockets.RecvFlags.NONE);
-                    if (!"spot-ping".equals(SampleSupport.singleUtf8(received))) {
+                    String payload = received.parts()
+                        .get(received.parts().size() - 1)
+                        .toUtf8String();
+                    if (!"spot-ping".equals(payload)) {
                         throw new IllegalStateException("unexpected spot request");
                     }
                     try (Message reply = Message.from("spot-pong")) {
@@ -46,7 +51,7 @@ public final class SpotRequestAsyncSample {
             final List<Message>[] replyHolder = new List[] { List.of() };
             final RequestResult[] resultHolder = new RequestResult[] { RequestResult.TIMED_OUT };
             try (Message request = Message.from("spot-ping")) {
-                requester.requestToChannel(channelName)
+                bridge.request(channelName, requester.getRoutingId())
                     .message(request)
                     .timeout(Duration.ofSeconds(5))
                     .submit((requestResult, replyParts) -> {

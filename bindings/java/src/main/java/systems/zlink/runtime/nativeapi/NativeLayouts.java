@@ -26,6 +26,21 @@ public final class NativeLayouts {
             SOCKET_MONITOR_OPEN_OPTIONS_LAYOUT.byteOffset(
                     PathElement.groupElement("events"));
 
+    public static final MemoryLayout SPOT_ROUTE_BRIDGE_ENDPOINT_OPTIONS_LAYOUT =
+            MemoryLayout.structLayout(
+                    ValueLayout.JAVA_INT.withName("struct_size"),
+                    ValueLayout.JAVA_INT.withName("capabilities"),
+                    ValueLayout.JAVA_INT.withName("inbound_relay_policy"));
+    public static final long SPOT_ROUTE_BRIDGE_ENDPOINT_OPTIONS_STRUCT_SIZE_OFFSET =
+            SPOT_ROUTE_BRIDGE_ENDPOINT_OPTIONS_LAYOUT.byteOffset(
+                    PathElement.groupElement("struct_size"));
+    public static final long SPOT_ROUTE_BRIDGE_ENDPOINT_OPTIONS_CAPABILITIES_OFFSET =
+            SPOT_ROUTE_BRIDGE_ENDPOINT_OPTIONS_LAYOUT.byteOffset(
+                    PathElement.groupElement("capabilities"));
+    public static final long SPOT_ROUTE_BRIDGE_ENDPOINT_OPTIONS_INBOUND_RELAY_POLICY_OFFSET =
+            SPOT_ROUTE_BRIDGE_ENDPOINT_OPTIONS_LAYOUT.byteOffset(
+                    PathElement.groupElement("inbound_relay_policy"));
+
     public static final MemoryLayout MONITOR_SNAPSHOT_LAYOUT =
             MemoryLayout.structLayout(
                     ValueLayout.JAVA_INT.withName("source_kind"),

@@ -55,6 +55,14 @@ from .spot_models_runtime import (
     SpotNodeSubjectFilter,
     remote_actor_ref,
 )
+from .spot_route_bridge import (
+    SpotNodePublisher,
+    SpotRouteBridge,
+    SpotRouteBridgeEndpointCapabilities,
+    SpotRouteBridgeEndpointOptions,
+    SpotRouteBridgeOptions,
+    SpotRouteBridgeSummary,
+)
 
 __all__ = [
     "Actor",
@@ -85,6 +93,12 @@ __all__ = [
     "SpotActorLifecycleInfo",
     "SpotDispatchInfo",
     "SpotNode",
+    "SpotNodePublisher",
+    "SpotRouteBridge",
+    "SpotRouteBridgeEndpointCapabilities",
+    "SpotRouteBridgeEndpointOptions",
+    "SpotRouteBridgeOptions",
+    "SpotRouteBridgeSummary",
     "SpotNodeActorEntry",
     "SpotNodePeerEntry",
     "SpotNodePeerFilter",

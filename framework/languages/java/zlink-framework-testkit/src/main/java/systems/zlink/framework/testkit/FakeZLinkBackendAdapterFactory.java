@@ -22,6 +22,7 @@ import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodeState;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
+import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorBindOperation;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
@@ -66,6 +67,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeMode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRoute;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamErrorHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamPacketHandler;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
@@ -77,7 +79,6 @@ import systems.zlink.framework.runtime.backend.ZLinkRegistryBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
-import systems.zlink.framework.runtime.spots.ZLinkRoutedSpotRelayPackets;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
@@ -216,9 +217,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         if (routers.isEmpty()) {
             throw new IllegalStateException("no fake route socket is available");
         }
-        List<Message> relayParts =
-            ZLinkRoutedSpotRelayPackets.createRequestRelayParts(targetSpotRid, spotParts);
-        routers.get(0).enqueueReceived(sourceRid, Optional.of(requestSeq), relayParts);
+        routers.get(0).enqueueReceived(sourceRid, Optional.of(requestSeq), copyMessages(spotParts));
     }
 
     public void dispatchSpotSubscription(String topic, String packetName, String payload) {
@@ -590,8 +589,8 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             record("request." + routingId + "." + firstPart(parts));
             if (isRoutedActorJoinRequest(parts)) {
                 ZLinkActorSpotRoutePackets.JoinRequest request =
-                    ZLinkActorSpotRoutePackets.decodeJoinRequest(parts.get(3));
-                List<Message> relayReply;
+                    ZLinkActorSpotRoutePackets.decodeJoinRequest(parts.get(1));
+                List<Message> routeReply;
                 Message joinedPayload = Message.from("joined".getBytes(StandardCharsets.UTF_8));
                 Message rejectedPayload = Message.from(new byte[0]);
                 Message joinReply = null;
@@ -604,7 +603,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                             request.actorId(),
                             request.actorGeneration() + 1),
                         accepted ? joinedPayload : rejectedPayload);
-                    relayReply = ZLinkRoutedSpotRelayPackets.createReplyParts(List.of(joinReply));
+                    routeReply = List.of(Message.from(joinReply));
                 } finally {
                     if (joinReply != null) {
                         joinReply.close();
@@ -616,7 +615,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
-                    relayReply));
+                    routeReply));
                 return true;
             }
             if (isRoutedBoundSessionSendRequest(parts)) {
@@ -624,7 +623,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
-                    ZLinkRoutedSpotRelayPackets.createReplyParts(List.of())));
+                    List.of()));
                 return true;
             }
             Message reply = Message.from("reply".getBytes(StandardCharsets.UTF_8));
@@ -633,37 +632,21 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                     Optional.empty(),
                     Optional.empty(),
                     Optional.empty(),
-                    ZLinkRoutedSpotRelayPackets.createReplyParts(List.of(reply))));
+                    List.of(Message.from(reply))));
             } finally {
                 reply.close();
             }
             return true;
         }
         @Override public void reply(RoutingId routingId, long requestSeq, List<Message> parts) { record("reply"); }
-        @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, SendFlags flags) {
-            record("sendToSpot." + targetNodeRid + "." + spotRid + "." + firstPart(parts));
-            return true;
-        }
-        @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
-            record("requestToSpot." + targetNodeRid + "." + spotRid + "." + firstPart(parts));
-            callback.handle(new ZLinkBackendReceived(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                List.of(Message.from("reply".getBytes(StandardCharsets.UTF_8)))));
-            return true;
-        }
-
         private static boolean isRoutedActorJoinRequest(List<Message> parts) {
-            return parts.size() >= 4
-                && ZLinkRoutedSpotRelayPackets.REQUEST_PACKET_NAME.equals(firstPart(parts))
-                && ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(parts.get(2).toUtf8String());
+            return parts.size() >= 2
+                && ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(firstPart(parts));
         }
 
         private static boolean isRoutedBoundSessionSendRequest(List<Message> parts) {
-            return parts.size() >= 4
-                && ZLinkRoutedSpotRelayPackets.REQUEST_PACKET_NAME.equals(firstPart(parts))
-                && ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(parts.get(2).toUtf8String());
+            return parts.size() >= 1
+                && ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(firstPart(parts));
         }
     }
 
@@ -782,11 +765,10 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setPubBind(String endpoint) { record("setPubBind." + endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
         @Override public void connectPeer(String endpoint) { record("connectPeer." + endpoint); }
-        @Override public void connectRouterChannelPeer(String channelName, String endpoint) { record("connectRouterChannelPeer." + channelName + "." + endpoint); }
-        @Override public void connectRouterChannelPeerRid(String channelName, RoutingId peerRid, String endpoint) { record("connectRouterChannelPeerRid." + channelName + "." + peerRid + "." + endpoint); }
-        @Override public void attachSpotRouteChannelDiscovery(String channelName, ZLinkBackendDiscovery discovery) { record("attachSpotRouteChannelDiscovery." + channelName + "." + discovery.name()); }
-        @Override public void attachChannelDealer(ZLinkBackendDiscovery discovery, ZLinkBackendDealerSocket dealer) { record("attachChannelDealer"); }
-        @Override public void attachChannelDealerManual(String channelName, ZLinkBackendDealerSocket dealer) { record("attachChannelDealerManual." + channelName); }
+        @Override public ZLinkBackendSpotRouteBridge createRouteBridge() {
+            record("createRouteBridge");
+            return new FakeSpotRouteBridge(calls());
+        }
         @Override public ZLinkBackendSpot createSpot() {
             record("createSpot");
             FakeSpot spot = new FakeSpot(calls(), "spot." + nextSpotId++);
@@ -883,6 +865,98 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
         @Override public List<SpotNodePeerEntry> peers() { return List.of(); }
         @Override public List<SpotNodeSubjectEntry> subjects() { return List.of(); }
+    }
+
+    private static final class FakeSpotRouteBridge extends FakeBackendObject implements ZLinkBackendSpotRouteBridge {
+        private final java.util.Map<String, RoutingId> targetNodes = new java.util.HashMap<>();
+
+        FakeSpotRouteBridge(List<String> calls) {
+            super(calls, "spotRouteBridge");
+        }
+
+        @Override public void attachDealerChannel(String channelName, ZLinkBackendDealerSocket dealer, SpotRouteBridgeEndpointOptions options) {
+            record("bridge.attachDealerChannel." + channelName);
+        }
+
+        @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router, SpotRouteBridgeEndpointOptions options) {
+            record("bridge.attachRouterChannel." + channelName);
+        }
+
+        @Override public void setTargetNode(String channelName, RoutingId targetNodeRid) {
+            targetNodes.put(channelName, targetNodeRid);
+            record("bridge.setTargetNode." + channelName + "." + targetNodeRid);
+        }
+
+        @Override public boolean send(String channelName, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) {
+            record("bridge.send." + channelName + "." + targetSpotRid + "." + firstPart(parts));
+            return true;
+        }
+
+        @Override public boolean request(String channelName, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            record("bridge.request." + channelName + "." + targetSpotRid + "." + firstPart(parts));
+            if (isRoutedActorJoinRequest(parts)) {
+                ZLinkActorSpotRoutePackets.JoinRequest request =
+                    ZLinkActorSpotRoutePackets.decodeJoinRequest(parts.get(1));
+                Message joinedPayload = Message.from("joined".getBytes(StandardCharsets.UTF_8));
+                Message rejectedPayload = Message.from(new byte[0]);
+                Message joinReply = null;
+                try {
+                    boolean accepted = !request.actorId().contains("reject");
+                    joinReply = ZLinkActorSpotRoutePackets.encodeJoinReply(
+                        accepted,
+                        new ZLinkBackendActorRef(
+                            targetNodes.getOrDefault(channelName, RoutingId.from("remote-node")),
+                            request.actorId(),
+                            request.actorGeneration() + 1),
+                        accepted ? joinedPayload : rejectedPayload);
+                    callback.handle(new ZLinkBackendReceived(
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        List.of(Message.from(joinReply))));
+                    return true;
+                } finally {
+                    if (joinReply != null) {
+                        joinReply.close();
+                    }
+                    joinedPayload.close();
+                    rejectedPayload.close();
+                }
+            }
+            if (isRoutedBoundSessionSendRequest(parts)) {
+                callback.handle(new ZLinkBackendReceived(
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    List.of()));
+                return true;
+            }
+            callback.handle(new ZLinkBackendReceived(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(Message.from("reply".getBytes(StandardCharsets.UTF_8)))));
+            return true;
+        }
+
+        @Override public boolean handleRouterReceived(String channelName, RoutingId sourceNodeRid, long requestSeq, List<Message> parts) {
+            record("bridge.handleRouterReceived." + channelName + "." + firstPart(parts));
+            return false;
+        }
+
+        private static boolean isRoutedActorJoinRequest(List<Message> parts) {
+            return parts.size() >= 2
+                && ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(firstPart(parts));
+        }
+
+        private static boolean isRoutedBoundSessionSendRequest(List<Message> parts) {
+            return parts.size() >= 1
+                && ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(firstPart(parts));
+        }
+
+        @Override public void close() {
+            record("bridge.close");
+        }
     }
 
     private static final class FakeSpot extends FakeBackendObject implements ZLinkBackendSpot {
@@ -1142,5 +1216,11 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
 
     private static String firstPart(List<Message> parts) {
         return parts.isEmpty() ? "" : parts.get(0).toUtf8String();
+    }
+
+    private static List<Message> copyMessages(List<Message> parts) {
+        return parts.stream()
+            .map(Message::from)
+            .toList();
     }
 }

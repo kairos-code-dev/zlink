@@ -23,6 +23,53 @@ async function resolveFrameworkRegistration(module) {
   return container.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION);
 }
 
+function fakeSpotRouteBridge(calls, reply) {
+  return {
+    attachDealerChannel(channelName) {
+      calls.push(`bridge:attachDealer:${channelName}`);
+    },
+    attachRouterChannel(channelName) {
+      calls.push(`bridge:attachRouter:${channelName}`);
+    },
+    setTargetNode(channelName, targetNodeRid) {
+      calls.push(`bridge:setTargetNode:${channelName}:${targetNodeRid}`);
+    },
+    send() {
+      return { message() { return this; }, submit() { return true; } };
+    },
+    request(channelName, spotRid) {
+      calls.push(`bridge:request:${channelName}:${spotRid}`);
+      return {
+        message(part) {
+          if (part?.value !== undefined) {
+            calls.push(`bridge:message:${part.value}`);
+          }
+          return this;
+        },
+        timeout(timeoutMs) {
+          calls.push(`bridge:timeout:${timeoutMs}`);
+          return this;
+        },
+        submit(callback) {
+          if (reply !== undefined) {
+            callback(0, [reply]);
+          }
+          return true;
+        }
+      };
+    },
+    handleRouterReceived(channelName) {
+      if (!calls.includes(`bridge:handleRouter:${channelName}`)) {
+        calls.push(`bridge:handleRouter:${channelName}`);
+      }
+      return false;
+    },
+    async dispose() {
+      calls.push('bridge:dispose');
+    }
+  };
+}
+
 test('ZLinkModule.forRoot registers always-available providers for empty options', () => {
   const module = nestjs.ZLinkModule.forRoot();
   const tokens = providerTokens(module);
@@ -1670,11 +1717,6 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
     attachDiscovery() {},
     connectPeer() {},
     disconnectPeer() {},
-    connectRouterChannelPeer() {},
-    connectRouterChannelPeerRid() {},
-    disconnectRouterChannelPeer() {},
-    disconnectRouterChannelPeerRid() {},
-    attachSpotRouteChannelDiscovery() {},
     createSpot() {},
     getOrCreateSpot(spotRid) {
       calls.push(`spot:getOrCreateSpot:${spotRid}`);
@@ -1683,8 +1725,10 @@ test('framework runtime host attaches stream ActorGateway to registered SpotNode
     status() {},
     peers() { return []; },
     subjects() { return []; },
-    attachChannelDealer() {},
-    attachChannelDealerManual(channelName) { calls.push(`spot:attachChannelDealerManual:${channelName}`); },
+    createRouteBridge() {
+      calls.push('spot:createRouteBridge');
+      return fakeSpotRouteBridge(calls);
+    },
     entrySpot() {
       return {
         setRoutingId(routingId) {
@@ -1842,11 +1886,6 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     attachDiscovery() {},
     connectPeer(endpoint) { calls.push(`spot:connectPeer:${endpoint}`); },
     disconnectPeer() {},
-    connectRouterChannelPeer(channelName, endpoint) { calls.push(`spot:connectRouterChannelPeer:${channelName}:${endpoint}`); },
-    connectRouterChannelPeerRid() {},
-    disconnectRouterChannelPeer() {},
-    disconnectRouterChannelPeerRid() {},
-    attachSpotRouteChannelDiscovery() {},
     createSpot() {
       calls.push('spot:createPublisherSpot');
       return {
@@ -1877,8 +1916,10 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     status() {},
     peers() { return []; },
     subjects() { return []; },
-    attachChannelDealer() {},
-    attachChannelDealerManual(channelName) { calls.push(`spot:attachChannelDealerManual:${channelName}`); },
+    createRouteBridge() {
+      calls.push('spot:createRouteBridge');
+      return fakeSpotRouteBridge(calls);
+    },
     entrySpot() {
       return {
         setRoutingId(routingId) {
@@ -1988,18 +2029,19 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     'spot:setRoutingId:node-a',
     'entrySpot:setRoutingId:entry-node-a',
     'spot:setRouterBind:tcp://0.0.0.0:9301',
-    'spot:connectRouterChannelPeer:game:tcp://127.0.0.1:9302',
+    'spot:connectPeer:tcp://127.0.0.1:9302',
     'spot:setPubBind:tcp://0.0.0.0:9303',
     'spot:connectPeer:tcp://127.0.0.1:9304',
     'dealer:create',
     'dealer:setChannelName:api',
     'dealer:connect:tcp://127.0.0.1:9305',
-    'spot:attachChannelDealerManual:api',
-    'spot:connectRouterChannelPeer:api:tcp://127.0.0.1:9307',
+    'spot:createRouteBridge',
+    'bridge:attachDealer:api',
     'spot:createPublisherSpot',
     'spot:connectPeer:tcp://127.0.0.1:9306',
     'publisherSpot:publish:room.events:GameEvent:published',
     'publisherSpot:dispose',
+    'bridge:dispose',
     'dealer:dispose',
     'spot:dispose',
     'context:dispose'
@@ -2017,13 +2059,6 @@ test('framework runtime host lets route router own accepted Spot route channel f
     attachDiscovery() {},
     connectPeer() {},
     disconnectPeer() {},
-    connectRouterChannelPeer() {},
-    connectRouterChannelPeerRid() {},
-    disconnectRouterChannelPeer() {},
-    disconnectRouterChannelPeerRid() {},
-    attachSpotRouteChannelDiscovery() {
-      calls.push('spot:attachSpotRouteChannelDiscovery');
-    },
     createSpot() {},
     getOrCreateSpot(spotRid) {
       calls.push(`spot:getOrCreateSpot:${spotRid}`);
@@ -2032,8 +2067,6 @@ test('framework runtime host lets route router own accepted Spot route channel f
     status() {},
     peers() { return []; },
     subjects() { return []; },
-    attachChannelDealer() {},
-    attachChannelDealerManual() {},
     entrySpot() {
       return {
         setRoutingId(routingId) { calls.push(`entrySpot:setRoutingId:${routingId}`); },
@@ -2049,8 +2082,28 @@ test('framework runtime host lets route router own accepted Spot route channel f
     async destroyActor() {},
     sendActorBoundSession() { return true; },
     async closeActorBoundSession() {},
-    processExternalRouter() {
-      calls.push('spot:processExternalRouter');
+    createRouteBridge() {
+      calls.push('spot:createRouteBridge');
+      return {
+        ...fakeSpotRouteBridge(calls),
+        request(channelName, spotRid) {
+          calls.push(`bridge:request:${channelName}:${spotRid}`);
+          return {
+            message(part) {
+              calls.push(`bridge:message:${part.value}`);
+              return this;
+            },
+            timeout(timeoutMs) {
+              calls.push(`bridge:timeout:${timeoutMs}`);
+              return this;
+            },
+            submit(callback) {
+              callback(0, [reply]);
+              return true;
+            }
+          };
+        }
+      };
     },
     async dispose() {
       calls.push('spot:dispose');
@@ -2129,8 +2182,6 @@ test('framework runtime host lets route router own accepted Spot route channel f
   await waitForCondition(() => calls.includes('route:recv'), 'Spot route channel drain');
   await runtime.stop();
 
-  assert.equal(calls.includes('spot:attachSpotRouteChannelDiscovery'), false);
-  assert.equal(calls.includes('spot:processExternalRouter'), false);
   assert.deepEqual(calls.filter((call) => call !== 'route:recv'), [
     'spot:create:2',
     'spot:setRoutingId:room-node',
@@ -2140,7 +2191,10 @@ test('framework runtime host lets route router own accepted Spot route channel f
     'route:setChannelName:room.route',
     'route:setRoutingId:room-node',
     'route:bind:tcp://0.0.0.0:9410',
+    'spot:createRouteBridge',
+    'bridge:attachRouter:room.route',
     'spot:dispose',
+    'bridge:dispose',
     'route:dispose',
     'context:dispose'
   ]);
@@ -2157,18 +2211,11 @@ test('framework runtime host drains accepted Spot route channel without route ro
     attachDiscovery() {},
     connectPeer() {},
     disconnectPeer() {},
-    connectRouterChannelPeer() {},
-    connectRouterChannelPeerRid() {},
-    disconnectRouterChannelPeer() {},
-    disconnectRouterChannelPeerRid() {},
-    attachSpotRouteChannelDiscovery() {},
     createSpot() {},
     getOrCreateSpot() {},
     status() {},
     peers() { return []; },
     subjects() { return []; },
-    attachChannelDealer() {},
-    attachChannelDealerManual() {},
     entrySpot() {
       return {
         setRoutingId(routingId) { calls.push(`entrySpot:setRoutingId:${routingId}`); },
@@ -2184,10 +2231,28 @@ test('framework runtime host drains accepted Spot route channel without route ro
     async destroyActor() {},
     sendActorBoundSession() { return true; },
     async closeActorBoundSession() {},
-    processExternalRouter() {
-      if (!calls.includes('spot:processExternalRouter')) {
-        calls.push('spot:processExternalRouter');
-      }
+    createRouteBridge() {
+      calls.push('spot:createRouteBridge');
+      return {
+        ...fakeSpotRouteBridge(calls),
+        request(channelName, spotRid) {
+          calls.push(`bridge:request:${channelName}:${spotRid}`);
+          return {
+            message(part) {
+              calls.push(`bridge:message:${part.value}`);
+              return this;
+            },
+            timeout(timeoutMs) {
+              calls.push(`bridge:timeout:${timeoutMs}`);
+              return this;
+            },
+            submit(callback) {
+              callback(0, [reply]);
+              return true;
+            }
+          };
+        }
+      };
     },
     async dispose() {
       calls.push('spot:dispose');
@@ -2229,13 +2294,18 @@ test('framework runtime host drains accepted Spot route channel without route ro
             calls.push('route:createRouter');
             return {
               nativeInstance: {},
-              setChannelName() {},
+              setChannelName(channelName) { calls.push(`route:setChannelName:${channelName}`); },
               setRoutingId() {},
               bind() {},
               connect() {},
               disconnect() {},
               attachDiscovery() {},
-              recv() { return undefined; },
+              recv() {
+                if (!calls.includes('route:recv')) {
+                  calls.push('route:recv');
+                }
+                return undefined;
+              },
               reply() { return { message() { return this; }, submit() {} }; },
               async dispose() {
                 calls.push('route:dispose');
@@ -2256,18 +2326,21 @@ test('framework runtime host drains accepted Spot route channel without route ro
   });
 
   await runtime.start();
-  await waitForCondition(() => calls.includes('spot:processExternalRouter'), 'accepted Spot route channel drain without route router bind');
+  await waitForCondition(() => calls.includes('route:recv'), 'accepted Spot route channel drain without route router bind');
   await runtime.stop();
 
-  assert.equal(calls.includes('route:createRouter'), false);
-  assert.deepEqual(calls.filter((call) => call !== 'spot:processExternalRouter'), [
+  assert.deepEqual(calls.filter((call) => call !== 'route:recv'), [
     'spot:create:2',
     'spot:setRoutingId:session-node',
     'entrySpot:setRoutingId:session-node',
     'spot:setRouterBind:tcp://0.0.0.0:9412',
-    'discovery:create:room.route:1',
-    'discovery:dispose:room.route',
+    'route:createRouter',
+    'route:setChannelName:room.route',
+    'spot:createRouteBridge',
+    'bridge:attachRouter:room.route',
     'spot:dispose',
+    'bridge:dispose',
+    'route:dispose',
     'context:dispose'
   ]);
 });
@@ -2319,11 +2392,6 @@ test('framework route transport sends Spot request through accepted Spot route c
     attachDiscovery() {},
     connectPeer() {},
     disconnectPeer() {},
-    connectRouterChannelPeer() {},
-    connectRouterChannelPeerRid() {},
-    disconnectRouterChannelPeer() {},
-    disconnectRouterChannelPeerRid() {},
-    attachSpotRouteChannelDiscovery() {},
     createSpot() {},
     getOrCreateSpot(spotRid) {
       calls.push(`spot:getOrCreateSpot:${spotRid}`);
@@ -2332,8 +2400,6 @@ test('framework route transport sends Spot request through accepted Spot route c
     status() {},
     peers() { return []; },
     subjects() { return []; },
-    attachChannelDealer() {},
-    attachChannelDealerManual() {},
     entrySpot() {
       return entrySpot;
     },
@@ -2344,7 +2410,10 @@ test('framework route transport sends Spot request through accepted Spot route c
     async destroyActor() {},
     sendActorBoundSession() { return true; },
     async closeActorBoundSession() {},
-    processExternalRouter() {},
+    createRouteBridge() {
+      calls.push('spot:createRouteBridge');
+      return fakeSpotRouteBridge(calls, reply);
+    },
     async dispose() {
       calls.push('spot:dispose');
     }
@@ -2381,7 +2450,20 @@ test('framework route transport sends Spot request through accepted Spot route c
           },
           createRouterSocket() {
             calls.push('route:createRouter');
-            return {};
+            return {
+              nativeInstance: {},
+              setChannelName(channelName) { calls.push(`route:setChannelName:${channelName}`); },
+              setRoutingId() {},
+              bind() {},
+              connect() {},
+              disconnect() {},
+              attachDiscovery() {},
+              recv() { return undefined; },
+              reply() { return { message() { return this; }, submit() {} }; },
+              async dispose() {
+                calls.push('route:dispose');
+              }
+            };
           }
         };
       },
@@ -2405,17 +2487,23 @@ test('framework route transport sends Spot request through accepted Spot route c
   }, { value: 'request', close() {} }, { timeoutMs: 123 });
   await runtime.stop();
 
-  assert.equal(calls.includes('route:createRouter'), false);
   assert.deepEqual(replies, [reply]);
-  assert.deepEqual(calls.filter((call) => call !== 'spot:processExternalRouter'), [
+  assert.deepEqual(calls, [
     'spot:create:2',
     'spot:setRoutingId:session-node',
     'entry:setRoutingId:session-node',
     'spot:setRouterBind:tcp://0.0.0.0:9413',
-    'discovery:create:room.route:1',
-    'entry:requestToSpot:play-node:play-node:123:request',
-    'discovery:dispose:room.route',
+    'route:createRouter',
+    'route:setChannelName:room.route',
+    'spot:createRouteBridge',
+    'bridge:attachRouter:room.route',
+    'bridge:setTargetNode:room.route:play-node',
+    'bridge:request:room.route:play-node',
+    'bridge:message:request',
+    'bridge:timeout:123',
     'spot:dispose',
+    'bridge:dispose',
+    'route:dispose',
     'context:dispose'
   ]);
 });
@@ -2467,11 +2555,6 @@ test('framework route transport sends Spot request through accepted Spot route c
     attachDiscovery() {},
     connectPeer() {},
     disconnectPeer() {},
-    connectRouterChannelPeer() {},
-    connectRouterChannelPeerRid() {},
-    disconnectRouterChannelPeer() {},
-    disconnectRouterChannelPeerRid() {},
-    attachSpotRouteChannelDiscovery() {},
     createSpot() {},
     getOrCreateSpot(spotRid) {
       calls.push(`spot:getOrCreateSpot:${spotRid}`);
@@ -2480,8 +2563,6 @@ test('framework route transport sends Spot request through accepted Spot route c
     status() {},
     peers() { return []; },
     subjects() { return []; },
-    attachChannelDealer() {},
-    attachChannelDealerManual() {},
     entrySpot() {
       return entrySpot;
     },
@@ -2492,7 +2573,10 @@ test('framework route transport sends Spot request through accepted Spot route c
     async destroyActor() {},
     sendActorBoundSession() { return true; },
     async closeActorBoundSession() {},
-    processExternalRouter() {},
+    createRouteBridge() {
+      calls.push('spot:createRouteBridge');
+      return fakeSpotRouteBridge(calls, reply);
+    },
     async dispose() {
       calls.push('spot:dispose');
     }
@@ -2575,19 +2659,23 @@ test('framework route transport sends Spot request through accepted Spot route c
 
   assert.equal(calls.some((call) => call.startsWith('route:requestToSpot:')), false, calls.join('\n'));
   assert.deepEqual(replies, [reply]);
-  assert.deepEqual(calls.filter((call) => call !== 'spot:processExternalRouter'), [
+  assert.deepEqual(calls, [
     'spot:create:2',
     'spot:setRoutingId:session-node',
     'entry:setRoutingId:session-node',
     'spot:setRouterBind:tcp://0.0.0.0:9415',
-    'discovery:create:room.route:1',
     'route:createRouter',
     'route:setChannelName:room.route',
     'route:setRoutingId:session-node',
     'route:bind:tcp://0.0.0.0:9414',
-    'entry:requestToSpot:play-node:play-node:123:request',
-    'discovery:dispose:room.route',
+    'spot:createRouteBridge',
+    'bridge:attachRouter:room.route',
+    'bridge:setTargetNode:room.route:play-node',
+    'bridge:request:room.route:play-node',
+    'bridge:message:request',
+    'bridge:timeout:123',
     'spot:dispose',
+    'bridge:dispose',
     'route:dispose',
     'context:dispose'
   ]);
@@ -2604,11 +2692,6 @@ test('framework runtime host attaches Discovery for router-only ActorGateway Spo
     attachDiscovery(discovery) { calls.push(`spot:attachDiscovery:${discovery.channelName}:${discovery.autoConnectType}`); },
     connectPeer() {},
     disconnectPeer() {},
-    connectRouterChannelPeer() {},
-    connectRouterChannelPeerRid() {},
-    disconnectRouterChannelPeer() {},
-    disconnectRouterChannelPeerRid() {},
-    attachSpotRouteChannelDiscovery() {},
     createSpot() {},
     getOrCreateSpot(spotRid) {
       calls.push(`spot:getOrCreateSpot:${spotRid}`);
@@ -2617,8 +2700,6 @@ test('framework runtime host attaches Discovery for router-only ActorGateway Spo
     status() {},
     peers() { return []; },
     subjects() { return []; },
-    attachChannelDealer() {},
-    attachChannelDealerManual() {},
     entrySpot() {
       return {
         setRoutingId() {},
@@ -2717,18 +2798,11 @@ test('framework runtime host attaches Discovery for router and pubSub SpotNode a
     attachDiscovery(discovery) { calls.push(`spot:attachDiscovery:${discovery.channelName}:${discovery.autoConnectType}`); },
     connectPeer() {},
     disconnectPeer() {},
-    connectRouterChannelPeer() {},
-    connectRouterChannelPeerRid() {},
-    disconnectRouterChannelPeer() {},
-    disconnectRouterChannelPeerRid() {},
-    attachSpotRouteChannelDiscovery() {},
     createSpot() {},
     getOrCreateSpot() {},
     status() {},
     peers() { return []; },
     subjects() { return []; },
-    attachChannelDealer() {},
-    attachChannelDealerManual() {},
     entrySpot() {
       return {
         setRoutingId() {},
@@ -2821,77 +2895,6 @@ test('framework runtime host attaches Discovery for router and pubSub SpotNode a
   ]);
 });
 
-test('framework runtime host delivers attached Spot publisher events to peer Entry Spot subscriptions', async () => {
-  const endpointA = await reserveTcpEndpoint();
-  const endpointB = await reserveTcpEndpoint();
-  const received = [];
-
-  class SubscribeHandler {
-    async handle(_spot, event) {
-      received.push(event);
-    }
-  }
-
-  class EntrySpot {
-    constructor(context) {
-      this.context = context;
-    }
-
-    configure() {
-      this.context.handlers.addSubscribe(SubscribeHandler, 'entry.topic');
-    }
-  }
-
-  const runtimeA = new framework.ZLinkFrameworkRuntimeHost({
-    registration: framework.createFrameworkRegistration(nestjs.zlinkFramework()
-      .codecs()
-        .addJson()
-      .addSpotNode('game')
-        .enablePubSub(endpointA, 'node-a', endpointB)
-        .attachSpotPublisherClient('game.events', endpointA)
-      .build())
-  });
-  const runtimeB = new framework.ZLinkFrameworkRuntimeHost({
-    registration: framework.createFrameworkRegistration(nestjs.zlinkFramework()
-      .codecs()
-        .addJson()
-      .addSpotNode('game')
-        .enablePubSub(endpointB, 'node-b', endpointA)
-        .addEntrySpot(EntrySpot)
-      .build())
-  });
-
-  try {
-    await runtimeB.start();
-    await runtimeA.start();
-    await waitForCondition(() => runtimeA.context !== undefined && runtimeB.context !== undefined, 'framework runtimes');
-
-    await waitForCondition(() => {
-      const nodeA = runtimeA.spotNodeRuntime?.nodesByName?.get?.('game');
-      const nodeB = runtimeB.spotNodeRuntime?.nodesByName?.get?.('game');
-      return (nodeA?.status?.().connectedPeerCount ?? 0) > 0 &&
-        (nodeB?.status?.().connectedPeerCount ?? 0) > 0;
-    }, 'Spot pub/sub peers');
-    await waitForCondition(() => {
-      const nodeB = runtimeB.spotNodeRuntime?.nodesByName?.get?.('game');
-      return (nodeB?.status?.().readySubjectCount ?? 0) > 0;
-    }, 'Spot subscription readiness');
-
-    await runtimeA.spotPublisherTransport.publishSpot(
-      'game.events',
-      'entry.topic',
-      'EntryEvent',
-      { value: 'published' }
-    );
-
-    await waitForCondition(() => received.length === 1, 'Spot subscription event');
-    assert.deepEqual(received, [{ value: 'published' }]);
-  } finally {
-    await runtimeA.stop();
-    await runtimeB.stop();
-  }
-});
-
 test('framework runtime host initializes registered Entry Spot lifecycle and handlers', async () => {
   const calls = [];
   let registry;
@@ -2954,18 +2957,11 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
     attachDiscovery() {},
     connectPeer() {},
     disconnectPeer() {},
-    connectRouterChannelPeer() {},
-    connectRouterChannelPeerRid() {},
-    disconnectRouterChannelPeer() {},
-    disconnectRouterChannelPeerRid() {},
-    attachSpotRouteChannelDiscovery() {},
     createSpot() { throw new Error('not used'); },
     getOrCreateSpot() {},
     status() {},
     peers() { return []; },
     subjects() { return []; },
-    attachChannelDealer() {},
-    attachChannelDealerManual() {},
     entrySpot() {
       calls.push('spot:entrySpot');
       return entrySpotFacade;

@@ -25,6 +25,7 @@ import type {
 } from '../index';
 import type { Actor } from './actor';
 import type { Spot } from './spot';
+import type { SpotNodePublisher, SpotRouteBridge } from './spot_route_bridge';
 
 /** A spot node: hosts spots and actors, tunes their sockets, and exposes the node's peers, subjects, and topology. */
 export interface SpotNode {
@@ -52,6 +53,10 @@ export interface SpotNode {
   attachChannelDealerManual(channelName: string, dealer: DealerSocket): void;
   /** Attach a PUB socket as a publish ingress for the node. */
   attachPubIngress(pub: PubSocket): void;
+  /** Create a bridge for caller-owned channel sockets. */
+  createRouteBridge(): SpotRouteBridge;
+  /** Create a publisher handle for the local SPOT topic plane. */
+  createPublisher(): SpotNodePublisher;
   /** Attach a discovery service so the node auto-connects discovered peers. */
   attachDiscovery(discovery: Discovery): void;
   /** Attach a discovery service for the spot-route channel `channelName`. */

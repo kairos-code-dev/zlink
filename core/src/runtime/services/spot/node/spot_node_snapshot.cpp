@@ -243,8 +243,6 @@ int spot_node_t::snapshot_peers (const zlink_spot_node_peer_filter_t *filter_,
     std::set<std::string> connected;
     std::map<std::string, spot_peer_observation_t> observations;
     std::map<std::string, uint32_t> weight_by_endpoint;
-    std::map<std::string, spot_node_router_channel_peer_state_t> router_channel_peers;
-    uint64_t summary_last_changed_ms = 0;
     {
         scoped_lock_t lock (_sync);
         channel_name = _discovery_state.discovery_service;
@@ -257,18 +255,9 @@ int spot_node_t::snapshot_peers (const zlink_spot_node_peer_filter_t *filter_,
         connected = _peer_state.connected_endpoints;
         observations = _peer_state.observations;
         weight_by_endpoint = _peer_state.peer_weight_by_endpoint;
-        router_channel_peers = service_attachments ().router_channel_peers;
-        summary_last_changed_ms = _summary_state.summary_last_changed_ms;
     }
 
-    size_t router_channel_peer_count = 0;
-    for (std::map<std::string, spot_node_router_channel_peer_state_t>::const_iterator it =
-           router_channel_peers.begin ();
-         it != router_channel_peers.end (); ++it) {
-        router_channel_peer_count += it->second.manual_endpoints.size ();
-        router_channel_peer_count += it->second.active_endpoints.size ();
-    }
-    out_->reserve (manual.size () + discovery.size () + router_channel_peer_count);
+    out_->reserve (manual.size () + discovery.size ());
     for (std::set<std::string>::const_iterator it = manual.begin (); it != manual.end (); ++it) {
         zlink_spot_node_peer_entry_t entry;
         memset (&entry, 0, sizeof (entry));
@@ -339,33 +328,6 @@ int spot_node_t::snapshot_peers (const zlink_spot_node_peer_filter_t *filter_,
 
         if (spot_peer_filter_match_local (entry, filter_))
             out_->push_back (entry);
-    }
-
-    for (std::map<std::string, spot_node_router_channel_peer_state_t>::const_iterator channel_it =
-           router_channel_peers.begin ();
-         channel_it != router_channel_peers.end (); ++channel_it) {
-        std::set<std::string> endpoints = channel_it->second.manual_endpoints;
-        endpoints.insert (channel_it->second.active_endpoints.begin (),
-                          channel_it->second.active_endpoints.end ());
-        for (std::set<std::string>::const_iterator it = endpoints.begin (); it != endpoints.end ();
-             ++it) {
-            zlink_spot_node_peer_entry_t entry;
-            memset (&entry, 0, sizeof (entry));
-            copy_fixed_c_string_from_bytes (entry.channel_name, sizeof (entry.channel_name),
-                                            channel_it->first.data (), channel_it->first.size ());
-            copy_fixed_c_string_from_bytes (entry.peer_endpoint, sizeof (entry.peer_endpoint),
-                                            it->data (), it->size ());
-            entry.source = channel_it->second.discovery ? ZLINK_SPOT_PEER_SOURCE_DISCOVERY
-                                                        : ZLINK_SPOT_PEER_SOURCE_MANUAL;
-            entry.kind = ZLINK_SPOT_PEER_KIND_ROUTER_CHANNEL;
-            entry.state = channel_it->second.active_endpoints.count (*it) != 0
-                            ? ZLINK_SPOT_PEER_STATE_CONNECTING
-                            : ZLINK_SPOT_PEER_STATE_CONFIGURED;
-            entry.weight = 100;
-            entry.last_changed_ms = summary_last_changed_ms;
-            if (spot_peer_filter_match_local (entry, filter_))
-                out_->push_back (entry);
-        }
     }
 
     std::sort (out_->begin (), out_->end (), spot_peer_entry_less_local);

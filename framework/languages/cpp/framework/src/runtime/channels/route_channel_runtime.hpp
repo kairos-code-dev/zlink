@@ -34,9 +34,12 @@ class route_channel_runtime_t
 {
   public:
     using send_backend_t = std::function<result_t<void> (
-      const zlink::routing_id_t &, const runtime::messaging::message_parts_t &)>;
+      const zlink::routing_id_t &,
+      const std::optional<zlink::routing_id_t> &,
+      const runtime::messaging::message_parts_t &)>;
     using request_backend_t = std::function<result_t<runtime::messaging::message_parts_t> (
       const zlink::routing_id_t &,
+      const std::optional<zlink::routing_id_t> &,
       const runtime::messaging::message_parts_t &,
       std::chrono::milliseconds)>;
 
@@ -108,10 +111,10 @@ class route_channel_runtime_t
                                                    runtime::messaging::message_parts_t parts);
 
     result_t<runtime::messaging::message_parts_t>
-    request_reply_to_spot_parts (const zlink::routing_id_t &target_node_rid,
-                                 const zlink::routing_id_t &target_spot_rid,
-                                 runtime::messaging::message_parts_t parts,
-                                 std::chrono::milliseconds timeout);
+    request_reply_spot_parts (const zlink::routing_id_t &target_node_rid,
+                              const zlink::routing_id_t &target_spot_rid,
+                              runtime::messaging::message_parts_t parts,
+                              std::chrono::milliseconds timeout);
 
     result_t<void> complete_request (std::uint64_t request_seq);
     void set_send_backend (send_backend_t backend);

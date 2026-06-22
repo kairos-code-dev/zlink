@@ -23,17 +23,7 @@ public interface ZLinkBackendSpotNode extends ZLinkBackendObject {
 
     void connectPeer(String endpoint);
 
-    void connectRouterChannelPeer(String channelName, String endpoint);
-
-    void connectRouterChannelPeerRid(String channelName, RoutingId peerRid, String endpoint);
-
-    void attachSpotRouteChannelDiscovery(
-        String channelName,
-        ZLinkBackendDiscovery discovery);
-
-    void attachChannelDealer(ZLinkBackendDiscovery discovery, ZLinkBackendDealerSocket dealer);
-
-    void attachChannelDealerManual(String channelName, ZLinkBackendDealerSocket dealer);
+    ZLinkBackendSpotRouteBridge createRouteBridge();
 
     ZLinkBackendSpot createSpot();
 

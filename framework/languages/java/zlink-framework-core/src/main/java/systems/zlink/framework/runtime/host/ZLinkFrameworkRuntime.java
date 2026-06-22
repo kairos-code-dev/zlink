@@ -80,7 +80,7 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
             runtimeHandlers.add(ZLinkSpotManager.class, this.spots);
         }
         if (this.spots != null) {
-            this.channels.registerSpotRelayIngress(this.spots);
+            this.channels.registerSpotRouteBridgeOwner(this.spots::primaryNode);
         }
         this.actors = spots != null && !options.registration().actorFactories().isEmpty()
             ? new ZLinkActorRuntime(

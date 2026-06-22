@@ -6,8 +6,6 @@
 
 #include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_access.hpp"
-#include "services/discovery/discovery_owned_service.hpp"
-#include "services/discovery/discovery_protocol.hpp"
 #include "services/spot/common/spot_control_protocol.hpp"
 #include "services/spot/common/spot_debug.hpp"
 #include "services/spot/pubsub/spot_pub.hpp"
@@ -56,8 +54,6 @@ int spot_node_t::validate_destroyable_handles_locked () const
 void spot_node_t::begin_destroy_detach_phase (
   discovery_t **discovery_out_,
   std::map<std::string, discovery_t *> *service_discoveries_out_,
-  std::map<std::string, discovery_t *> *channel_dealer_discoveries_out_,
-  std::map<std::string, discovery_t *> *router_channel_discoveries_out_,
   std::vector<std::string> *active_peer_endpoints_out_,
   std::string *bound_endpoint_out_,
   std::string *router_bind_endpoint_out_)
@@ -72,10 +68,6 @@ void spot_node_t::begin_destroy_detach_phase (
         router_bind_endpoint_out_->clear ();
     if (service_discoveries_out_)
         service_discoveries_out_->clear ();
-    if (channel_dealer_discoveries_out_)
-        channel_dealer_discoveries_out_->clear ();
-    if (router_channel_discoveries_out_)
-        router_channel_discoveries_out_->clear ();
 
     scoped_lock_t lock (_sync);
     if (active_peer_endpoints_out_) {
@@ -88,14 +80,6 @@ void spot_node_t::begin_destroy_detach_phase (
         *router_bind_endpoint_out_ = _endpoint_state.router_bind_endpoint;
     if (discovery_out_)
         *discovery_out_ = _discovery_state.discovery;
-    if (router_channel_discoveries_out_) {
-        for (std::map<std::string, spot_node_router_channel_peer_state_t>::iterator it =
-               service_attachments ().router_channel_peers.begin ();
-             it != service_attachments ().router_channel_peers.end (); ++it) {
-            if (it->second.discovery)
-                (*router_channel_discoveries_out_)[it->first] = it->second.discovery;
-        }
-    }
 
     reset_spot_discovery_state_locked ();
     _peer_state.manual_endpoints.clear ();
@@ -103,11 +87,6 @@ void spot_node_t::begin_destroy_detach_phase (
     _endpoint_state.active_peer_count.store (0, std::memory_order_release);
     if (service_discoveries_out_)
         service_discoveries_out_->swap (service_attachments ().discoveries);
-    if (channel_dealer_discoveries_out_)
-        channel_dealer_discoveries_out_->swap (
-          service_attachments ().channel_dealer_discoveries);
-    service_attachments ().router_channel_peers.clear ();
-    service_attachments ().pending_router_channel_refreshes.clear ();
 }
 
 void spot_node_t::clear_service_attachment_runtime_locked (
@@ -117,12 +96,6 @@ void spot_node_t::clear_service_attachment_runtime_locked (
         return;
     monitors_out_->clear ();
     scoped_lock_t lock (_sync);
-    if (service_attachments ().pub_ingress && _runtime
-        && !_runtime->pub_ingress_endpoint.empty ()) {
-        (void) service_attachments ().pub_ingress->term_endpoint (
-          _runtime->pub_ingress_endpoint.c_str ());
-    }
-    service_attachments ().pub_ingress = NULL;
     monitors_out_->swap (service_attachments ().monitors);
     service_attachments ().attachments.clear ();
     service_attachments ().socket_index.clear ();
@@ -151,8 +124,6 @@ int spot_node_t::destroy ()
     _lifecycle.transition_to (service_state_stopping);
     discovery_t *discovery = NULL;
     std::map<std::string, discovery_t *> service_discoveries;
-    std::map<std::string, discovery_t *> channel_dealer_discoveries;
-    std::map<std::string, discovery_t *> router_channel_discoveries;
     std::vector<std::string> active_peer_endpoints;
     std::string bound_endpoint;
     std::string router_bind_endpoint;
@@ -167,8 +138,7 @@ int spot_node_t::destroy ()
       _lifecycle.owned_socket_count ());
     if (_discovery_state.discovery && _discovery_state.registered)
         (void) unregister_registered ();
-    begin_destroy_detach_phase (&discovery, &service_discoveries, &channel_dealer_discoveries,
-                                &router_channel_discoveries, &active_peer_endpoints,
+    begin_destroy_detach_phase (&discovery, &service_discoveries, &active_peer_endpoints,
                                 &bound_endpoint, &router_bind_endpoint);
     for (size_t i = 0; i < active_peer_endpoints.size (); ++i)
         (void) send_data_plane_command (spot_control_protocol::cmd_disconnect_peer_pub,
@@ -176,16 +146,6 @@ int spot_node_t::destroy ()
     if (!bound_endpoint.empty ())
         (void) send_data_plane_command (spot_control_protocol::cmd_unbind_pub,
                                         bound_endpoint.c_str ());
-    if (!router_bind_endpoint.empty ()) {
-        for (std::map<std::string, discovery_t *>::iterator it =
-               router_channel_discoveries.begin ();
-             it != router_channel_discoveries.end (); ++it) {
-            if (it->second)
-                (void) discovery_owned_service::unregister_endpoint (
-                  it->second, router_bind_endpoint.c_str (),
-                  discovery_protocol::service_role_router);
-        }
-    }
     spot_shutdown_logf_local (false, "step=peer_disconnect node=%p", static_cast<void *> (this));
     if (_runtime)
         _runtime->stop.set (1);
@@ -206,18 +166,6 @@ int spot_node_t::destroy ()
         preserve_first_error (discovery_access_t::remove_observer (discovery, this), &first_error);
     for (std::map<std::string, discovery_t *>::iterator it = service_discoveries.begin ();
          it != service_discoveries.end (); ++it) {
-        if (it->second)
-            preserve_first_error (discovery_access_t::remove_observer (it->second, this),
-                                  &first_error);
-    }
-    for (std::map<std::string, discovery_t *>::iterator it = channel_dealer_discoveries.begin ();
-         it != channel_dealer_discoveries.end (); ++it) {
-        if (it->second)
-            preserve_first_error (discovery_access_t::remove_observer (it->second, this),
-                                  &first_error);
-    }
-    for (std::map<std::string, discovery_t *>::iterator it = router_channel_discoveries.begin ();
-         it != router_channel_discoveries.end (); ++it) {
         if (it->second)
             preserve_first_error (discovery_access_t::remove_observer (it->second, this),
                                   &first_error);

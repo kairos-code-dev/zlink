@@ -25,6 +25,7 @@ namespace zlink::service
 
 struct spot_node_t::impl
 {
+    void *ctx_handle = nullptr;
     void *handle = nullptr;
 };
 
@@ -89,7 +90,8 @@ int spot_node_option (zlink::detail::spot_node_option_id option_) noexcept
 
 spot_node_t::spot_node_t (context_t &ctx_) : _impl (std::make_unique<impl> ()), _last_error (0)
 {
-    _impl->handle = zlink_spot_node_new (zlink::detail::native_handle (ctx_), nullptr);
+    _impl->ctx_handle = zlink::detail::native_handle (ctx_);
+    _impl->handle = zlink_spot_node_new (_impl->ctx_handle, nullptr);
     if (!_impl->handle)
         _last_error = errno != 0 ? errno : EFAULT;
 }
@@ -97,10 +99,11 @@ spot_node_t::spot_node_t (context_t &ctx_) : _impl (std::make_unique<impl> ()), 
 spot_node_t::spot_node_t (context_t &ctx_, spot_node_mode_t mode_, mode_ctor_tag_t) :
     _impl (std::make_unique<impl> ()), _last_error (0)
 {
+    _impl->ctx_handle = zlink::detail::native_handle (ctx_);
     zlink_spot_node_options_t options;
     std::memset (&options, 0, sizeof (options));
     options.mode = static_cast<zlink_spot_node_mode_t> (mode_);
-    _impl->handle = zlink_spot_node_new (zlink::detail::native_handle (ctx_), &options);
+    _impl->handle = zlink_spot_node_new (_impl->ctx_handle, &options);
     if (!_impl->handle)
         _last_error = errno != 0 ? errno : EFAULT;
 }
@@ -612,6 +615,16 @@ std::optional<spot_t> spot_node_t::spot_lookup (const routing_id_t &spot_rid_)
         return std::nullopt;
     detail::throw_if_failed<config_error_t> (rc);
     return std::optional<spot_t> (zlink::detail::spot_access_t::adopt_native_handle (handle));
+}
+
+spot_route_bridge_t spot_node_t::create_route_bridge ()
+{
+    return spot_route_bridge_t (_impl ? _impl->ctx_handle : nullptr, *this);
+}
+
+spot_node_publisher_t spot_node_t::create_publisher ()
+{
+    return spot_node_publisher_t (*this);
 }
 
 int spot_node_t::get_spot_node_option_int (int option_) const

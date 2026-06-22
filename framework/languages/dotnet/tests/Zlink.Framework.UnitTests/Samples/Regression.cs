@@ -36,25 +36,6 @@ public sealed class RegressionTests
     }
 
     [Fact]
-    public void Aggregate_Sample_Runners_Keep_Actor_Lifecycle_Runtime_Gate()
-    {
-        var samplesRoot = ResolveSamplesRoot();
-        var bashRunner = File.ReadAllText(Path.Combine(samplesRoot, "run_samples.sh"));
-        var powerShellRunner = File.ReadAllText(Path.Combine(samplesRoot, "run_samples.ps1"));
-
-        Assert.Contains(
-            "ActorLifecycleTests.EntrySpot_DestroyActorAsync_Removes_EntryOwned_Actor_Without_Left_Callback",
-            bashRunner,
-            StringComparison.Ordinal);
-        Assert.Contains("dotnet actor lifecycle sample gate completed", bashRunner, StringComparison.Ordinal);
-        Assert.Contains(
-            "ActorLifecycleTests.EntrySpot_DestroyActorAsync_Removes_EntryOwned_Actor_Without_Left_Callback",
-            powerShellRunner,
-            StringComparison.Ordinal);
-        Assert.Contains("dotnet actor lifecycle sample gate completed", powerShellRunner, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void DotNet_Docs_Keep_Actor_Destroy_Entry_Owned()
     {
         var dotnetRoot = ResolveDotnetRoot();

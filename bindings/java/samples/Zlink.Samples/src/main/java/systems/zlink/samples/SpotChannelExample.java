@@ -11,6 +11,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.service.spot.SpotRouteBridge;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RouterSocket;
@@ -26,16 +27,16 @@ public final class SpotChannelExample {
              SpotNode roomNode = ctx.createSpotNode();
              Spot room = roomNode.createSpot();
              DealerSocket roomDealer = ctx.createDealerSocket();
-             RouterSocket apiRouter = ctx.createRouterSocket()) {
+             RouterSocket apiRouter = ctx.createRouterSocket();
+             SpotRouteBridge bridge = roomNode.createRouteBridge()) {
             String channel = "api";
             String endpoint = uniqueTcp();
             apiRouter.bind(endpoint);
             roomDealer.connect(endpoint);
-            // "api" 채널 호출을 이 DEALER로 내보내도록 노드에 등록한다.
-            roomNode.attachChannelDealerManual(channel, roomDealer);
+            bridge.attachDealerChannel(channel, roomDealer);
 
-            // 게임룸이 API 채널로 outgame 요청을 보낸다.
-            var replyFuture = room.requestToChannel(channel)
+            // 게임룸 노드의 route bridge가 API 채널로 outgame 요청을 보낸다.
+            var replyFuture = bridge.request(channel, room.getRoutingId())
                 .message(Message.from("get-profile"))
                 .timeout(Duration.ofSeconds(5))
                 .submit();

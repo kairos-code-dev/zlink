@@ -1,6 +1,5 @@
 using System;
 using System.Text;
-using System.Threading;
 using Xunit;
 
 namespace Systems.Zlink.Tests;
@@ -8,195 +7,65 @@ namespace Systems.Zlink.Tests;
 public sealed class test_spot_router_channel_peer
 {
     [Fact]
-    public void spot_node_router_channel_peer_manual_send_delivers_to_spot()
+    public void legacy_router_channel_peer_apis_return_migration_error()
     {
         if (!CoreTestSupport.IsNativeAvailable())
             return;
 
         using var ctx = Zlink.CreateContext();
         using var node = ctx.CreateSpotNode();
-        using ISpot spot = node.CreateSpot();
         using var router = ctx.CreateRouterSocket();
 
-        RoutingId nodeRid = CoreTestSupport.RoutingIdUtf8("dotnet-node");
-        RoutingId spotRid = CoreTestSupport.RoutingIdUtf8("dotnet-spot");
-        RoutingId routerRid = CoreTestSupport.RoutingIdUtf8("dotnet-router");
-        const string bindEndpoint = "tcp://127.0.0.1:*";
-
-        node.SetRoutingId(nodeRid);
-        spot.SetRoutingId(spotRid);
-        router.SetChannelName("api");
-        router.SetRoutingId(routerRid);
-        router.Bind(bindEndpoint);
+        router.Bind(CoreTestSupport.NewEndpoint("inproc", "legacy-router-channel"));
         string endpoint = router.Options.LastEndpoint;
-        node.ConnectRouterChannelPeer("api", endpoint);
-        node.ConnectRouterChannelPeer("api", endpoint);
+        RoutingId rid = CoreTestSupport.RoutingIdUtf8("legacy-router");
 
-        Assert.True(CoreTestSupport.WaitUntil(
-            () => HasRouterChannelPeer(node, endpoint),
-            timeoutMs: 5000),
-            string.Join(Environment.NewLine,
-                Array.ConvertAll(node.Peers(),
-                    entry => entry.ToString())));
+#pragma warning disable CS0618
+        Assert.Throws<ZlinkConnectException>(() =>
+            node.ConnectRouterChannelPeer("api", endpoint));
+        Assert.Throws<ZlinkConnectException>(() =>
+            node.ConnectRouterChannelPeerRid("api", rid, endpoint));
+        Assert.Throws<ZlinkConnectException>(() =>
+            node.DisconnectRouterChannelPeer("api", endpoint));
+        Assert.Throws<ZlinkConnectException>(() =>
+            node.DisconnectRouterChannelPeerRid("api", rid));
+#pragma warning restore CS0618
+    }
+
+    [Fact]
+    public void spot_route_bridge_dealer_send_emits_relay_packet()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var node = ctx.CreateSpotNode();
+        using var dealer = ctx.CreateDealerSocket();
+        using var router = ctx.CreateRouterSocket();
+        using var bridge = node.CreateRouteBridge();
+
+        string endpoint = CoreTestSupport.NewEndpoint("inproc", "bridge-dealer-egress");
+        router.Bind(endpoint);
+        dealer.Connect(endpoint);
+        bridge.AttachDealerChannel("api", dealer);
+
+        RoutingId spotRid = CoreTestSupport.RoutingIdUtf8("target-spot");
+        using Message payload = Message.From("hello-bridge");
+        Assert.True(bridge.Send("api", spotRid, new[] { payload }));
+
         using var received = Received.Create();
         Assert.True(CoreTestSupport.WaitUntil(
-            () =>
-            {
-                using Message sent = Message.From("hello-spot-route");
-                _ = router.SendToSpot(nodeRid, spotRid).Message(sent).Submit();
-                return spot.RecvRouted(received, RecvFlags.DontWait);
-            },
+            () => router.Recv(received, RecvFlags.DontWait),
             timeoutMs: 5000));
 
-        Assert.Equal("hello-spot-route",
-            Encoding.UTF8.GetString(received.FirstPart().AsReadOnlySpan()).Trim('\0'));
-        Assert.Equal(routerRid, received.RoutingId);
-        Assert.Null(received.SpotRid);
-        Assert.Null(received.RequestSeq);
-    }
+        Assert.True(received.Parts.Count >= 3);
+        Assert.Equal("__zlink.routed_spot.egress.send",
+            Encoding.UTF8.GetString(received.Parts[0].AsReadOnlySpan()));
+        Assert.Equal(spotRid.ToBytes(), received.Parts[1].ToArray());
+        Assert.Equal("hello-bridge",
+            Encoding.UTF8.GetString(received.Parts[2].AsReadOnlySpan()).Trim('\0'));
 
-    [Fact]
-    public async Task spot_node_router_channel_peer_manual_request_replies_to_router()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-        using ISpot spot = node.CreateSpot();
-        using var router = ctx.CreateRouterSocket();
-
-        RoutingId nodeRid = CoreTestSupport.RoutingIdUtf8("dotnet-req-node");
-        RoutingId spotRid = CoreTestSupport.RoutingIdUtf8("dotnet-req-spot");
-        RoutingId routerRid = CoreTestSupport.RoutingIdUtf8("dotnet-req-router");
-
-        node.SetRoutingId(nodeRid);
-        spot.SetRoutingId(spotRid);
-        router.SetChannelName("api");
-        router.SetRoutingId(routerRid);
-        router.Bind("tcp://127.0.0.1:*");
-        string endpoint = router.Options.LastEndpoint;
-        node.ConnectRouterChannelPeer("api", endpoint);
-
-        spot.SetDispatchHandler(info =>
-        {
-            if (info.Event != SpotDispatchEvent.RoutedReadable)
-                return;
-
-            while (true)
-            {
-                using var received = Received.Create();
-                if (!spot.RecvRouted(received, RecvFlags.DontWait))
-                    return;
-                using Message reply = Message.From("reply-from-spot");
-                received.Reply().Message(reply).Submit();
-            }
-        });
-
-        Assert.True(CoreTestSupport.WaitUntil(
-            () => HasRouterChannelPeer(node, endpoint),
-            timeoutMs: 5000));
-        using Message request = Message.From("request-to-spot");
-
-        IReadOnlyList<Message> reply = await router
-            .RequestToSpot(nodeRid, spotRid)
-            .Message(request)
-            .Timeout(TimeSpan.FromSeconds(3))
-            .Async();
-        try
-        {
-            Message part = Assert.Single(reply);
-            Assert.Equal("reply-from-spot",
-                Encoding.UTF8.GetString(part.AsReadOnlySpan()).Trim('\0'));
-        }
-        finally
-        {
-            foreach (Message part in reply)
-            {
-                part.Dispose();
-            }
-        }
-    }
-
-    [Fact]
-    public async Task spot_node_router_channel_peer_dispatch_event_request_replies_to_router()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-        using ISpot spot = node.CreateSpot();
-        using var router = ctx.CreateRouterSocket();
-
-        RoutingId nodeRid = CoreTestSupport.RoutingIdUtf8("dotnet-dispatch-node");
-        RoutingId spotRid = CoreTestSupport.RoutingIdUtf8("dotnet-dispatch-spot");
-        RoutingId routerRid = CoreTestSupport.RoutingIdUtf8("dotnet-dispatch-router");
-
-        node.SetRoutingId(nodeRid);
-        spot.SetRoutingId(spotRid);
-        router.SetChannelName("api");
-        router.SetRoutingId(routerRid);
-        router.Bind("tcp://127.0.0.1:*");
-        string endpoint = router.Options.LastEndpoint;
-        node.ConnectRouterChannelPeer("api", endpoint);
-
-        spot.SetDispatchHandler(info =>
-        {
-            if (info.Event != SpotDispatchEvent.RoutedReadable)
-                return;
-
-            while (true)
-            {
-                using var received = Received.Create();
-                if (!spot.RecvRouted(received, RecvFlags.DontWait))
-                    return;
-                using Message reply = Message.From("dispatch-reply");
-                received.Reply().Message(reply).Submit();
-            }
-        });
-
-        Assert.True(CoreTestSupport.WaitUntil(
-            () => HasRouterChannelPeer(node, endpoint),
-            timeoutMs: 5000));
-        using Message requestHeader = Message.From("dispatch-header");
-        using Message requestBody = Message.From("dispatch-request");
-
-        IReadOnlyList<Message> reply = await router
-            .RequestToSpot(nodeRid, spotRid)
-            .Message(requestHeader)
-            .Message(requestBody)
-            .Timeout(TimeSpan.FromSeconds(3))
-            .Async();
-        try
-        {
-            Message part = Assert.Single(reply);
-            Assert.Equal("dispatch-reply",
-                Encoding.UTF8.GetString(part.AsReadOnlySpan()).Trim('\0'));
-        }
-        finally
-        {
-            foreach (Message part in reply)
-            {
-                part.Dispose();
-            }
-        }
-    }
-
-    private static bool HasRouterChannelPeer(ISpotNode node, string endpoint)
-    {
-        foreach (SpotNodePeerEntry entry in node.Peers())
-        {
-            if (entry.Kind == SpotPeerKind.RouterChannel
-                && entry.Source == SpotPeerSource.Manual
-                && entry.PeerEndpoint == endpoint
-                && (entry.State == SpotPeerState.Connected
-                    || entry.State == SpotPeerState.Connecting))
-            {
-                return true;
-            }
-        }
-        Thread.Sleep(10);
-        return false;
+        SpotRouteBridgeSummary summary = bridge.Summary();
+        Assert.Equal(1u, summary.AttachedChannelCount);
     }
 }

@@ -18,3 +18,7 @@ export {
 export {
   SpotNode as RuntimeSpotNode,
 } from './spot/spot_node';
+export {
+  SpotNodePublisher as RuntimeSpotNodePublisher,
+  SpotRouteBridge as RuntimeSpotRouteBridge,
+} from './spot/spot_route_bridge';

@@ -67,9 +67,9 @@ Examples of policy-enforced capability boundaries:
   `receive_subscription_event`
 - `StreamSocket` keeps routed send/receive but does not expose generic
   `connect` / `disconnect`
-- `SpotNode` owns SPOT topology and channel call attachments. It exposes
-  `attach_channel_dealer`, `attach_channel_dealer_manual`, and
-  `attach_pub_ingress` on top of discovery and topology management.
+- `SpotNode` owns SPOT topology. It exposes `create_route_bridge()` for
+  caller-owned channel sockets and `create_publisher()` for publishing into
+  the local topic plane without attaching a raw `PUB` socket.
 - `Spot` is a service-aware pub/sub and routed facade on top of `SpotNode`;
   it exposes `publish(channel_name, topic, ...)`, `send_to_channel`,
   `request_to_channel`, `subscribe_into`, `receive_subscription_event_into`,

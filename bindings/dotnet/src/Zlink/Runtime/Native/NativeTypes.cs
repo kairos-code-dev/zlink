@@ -71,6 +71,34 @@ internal struct ZlinkSpotDispatchInfoNative
     public IntPtr Subject;
 }
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkSpotRouteBridgeOptions
+{
+    public uint StructSize;
+    public int DefaultRequestTimeoutMs;
+    public int ErrorReplyPolicy;
+    public int ReceiveMode;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkSpotRouteBridgeEndpointOptions
+{
+    public uint StructSize;
+    public uint Capabilities;
+    public int InboundRelayPolicy;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkSpotRouteBridgeSummary
+{
+    public uint StructSize;
+    public uint AttachedChannelCount;
+    public ulong PendingRequestCount;
+    public ulong RejectedInboundCount;
+    public ulong MalformedInboundCount;
+    public ulong RoutedSendFailureCount;
+}
+
 internal static class NativeHelpers
 {
     public static unsafe string ReadString(byte* buffer, int maxLen)

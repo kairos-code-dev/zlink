@@ -508,17 +508,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     const auto stream_snapshot = _state->zlink.streams ();
     const auto spot_node_snapshot = _state->zlink.spot_nodes ();
-    if (!_state->zlink.route_channels ().empty ()) {
-        add_hosted_service (std::make_unique<runtime::route_channel_host_service_t> (
-          _state->zlink.message_bus (), _state->serializers, _state->zlink.registry_query (),
-          _state->zlink.discovery_options (),
-          detail::build_route_internal_dispatchers (
-            _state->zlink, spot_node_snapshot, _state->zlink.route_channels (),
-            _state->services.build_provider ().get_required<detail::actor_gateway_runtime_t> (),
-            _state->serializers)));
-    }
+    std::vector<runtime::spot_node_host_service_t::node_runtime_t> spot_node_runtimes;
     if (!spot_node_snapshot.empty ()) {
-        std::vector<runtime::spot_node_host_service_t::node_runtime_t> spot_node_runtimes;
         for (const auto &spot_node : spot_node_snapshot) {
             auto runtime = detail::spot_node_runtime_t::from (_state->zlink, spot_node.name);
             if (runtime) {
@@ -528,7 +519,24 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         }
         add_hosted_service (
           std::make_unique<runtime::spot_node_host_service_t> (
-            std::move (spot_node_runtimes), _state->zlink.discovery_options ()));
+            spot_node_runtimes, _state->zlink.discovery_options ()));
+    }
+    if (!_state->zlink.route_channels ().empty ()) {
+        std::vector<runtime::route_channel_host_service_t::spot_node_runtime_t>
+          route_spot_node_runtimes;
+        route_spot_node_runtimes.reserve (spot_node_runtimes.size ());
+        for (const auto &spot_node : spot_node_runtimes) {
+            route_spot_node_runtimes.push_back (
+              runtime::route_channel_host_service_t::spot_node_runtime_t{
+                spot_node.snapshot, spot_node.runtime});
+        }
+        add_hosted_service (std::make_unique<runtime::route_channel_host_service_t> (
+          _state->zlink.message_bus (), _state->serializers, _state->zlink.registry_query (),
+          _state->zlink.discovery_options (), std::move (route_spot_node_runtimes),
+          detail::build_route_internal_dispatchers (
+            _state->zlink, spot_node_snapshot, _state->zlink.route_channels (),
+            _state->services.build_provider ().get_required<detail::actor_gateway_runtime_t> (),
+            _state->serializers)));
     }
     for (const auto &spot_node : spot_node_snapshot) {
         if (!spot_node.actor_gateway_enabled) {

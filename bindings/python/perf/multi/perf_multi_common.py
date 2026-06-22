@@ -500,8 +500,9 @@ def wait_for_command_line(stream, *, deadline):
 
 def attach_spot_service_pair(ctx, node, channel_name):
     dealer = _require_zlink().create_dealer_socket(ctx)
-    node.attach_channel_dealer_manual(channel_name, dealer)
-    return dealer, None
+    bridge = node.create_route_bridge()
+    bridge.attach_dealer_channel(channel_name, dealer)
+    return dealer, bridge
 
 
 def benchmark_endpoint(transport, prefix):

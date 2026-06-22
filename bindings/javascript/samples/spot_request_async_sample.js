@@ -3,11 +3,22 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const net = require('node:net');
+const { once } = require('node:events');
 const zlink = require('@zlink-systems/zlink');
 
 const REQUEST_PAYLOAD = 'spot-ping';
 const REPLY_PAYLOAD = 'spot-pong';
 const CHANNEL_NAME = 'orders';
+
+async function reservePort() {
+  const server = net.createServer();
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const { port } = server.address();
+  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  return port;
+}
 
 async function recvRouterRequest(router, received, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
@@ -21,20 +32,21 @@ async function recvRouterRequest(router, received, timeoutMs) {
 }
 
 async function main() {
-  const endpoint = `inproc://spot-request-async-${process.pid}`;
+  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const ctx = zlink.createContext();
   const requesterNode = zlink.createSpotNode(ctx);
   const responderRouter = zlink.createRouterSocket(ctx);
   const requesterDealer = zlink.createDealerSocket(ctx);
+  const bridge = requesterNode.createRouteBridge();
   let requester = null;
 
   try {
     requester = requesterNode.createSpot();
     responderRouter.bind(endpoint);
     requesterDealer.connect(endpoint);
-    requesterNode.attachChannelDealerManual(CHANNEL_NAME, requesterDealer);
+    bridge.attachDealerChannel(CHANNEL_NAME, requesterDealer);
 
-    const pendingReply = requester.requestToChannel(CHANNEL_NAME)
+    const pendingReply = bridge.request(CHANNEL_NAME, requester.routingId)
       .message(Buffer.from(REQUEST_PAYLOAD))
       .timeout(2000)
       .submit();
@@ -43,8 +55,7 @@ async function main() {
     try {
       assert.ok(received.routingId);
       assert.notEqual(received.requestSeq, null);
-      assert.equal(received.parts.length, 1);
-      assert.equal(received.parts[0].data().toString(), REQUEST_PAYLOAD);
+      assert.equal(received.parts.at(-1).data().toString(), REQUEST_PAYLOAD);
       responderRouter.reply(received.routingId, received.requestSeq)
         .message(Buffer.from(REPLY_PAYLOAD))
         .submit();
@@ -65,6 +76,7 @@ async function main() {
     if (requester) {
       requester.close();
     }
+    bridge.close();
     requesterDealer.close();
     responderRouter.close();
     requesterNode.close();

@@ -87,11 +87,12 @@ internal sealed class ZLinkChannelRuntimeManager(
                 state.ServerBundles.Add(channelName, bundle);
                 state.ListenerTasks.Add(state.TaskRunner.Run(
                     $"channel-server:{channelName}",
-                    ct => new ValueTask(channelMessagePump.RunServerLoopAsync(
-                        channelName,
-                        (IZLinkBackendRouterSocket)bundle.Socket,
-                        bundle.ReceiveGate,
-                        ct))));
+                        ct => new ValueTask(channelMessagePump.RunServerLoopAsync(
+                            channelName,
+                            (IZLinkBackendRouterSocket)bundle.Socket,
+                            bundle.ReceiveGate,
+                            () => bundle.SpotRouteBridge,
+                            ct))));
             }
 
             if (channel.Subscriber is not null)

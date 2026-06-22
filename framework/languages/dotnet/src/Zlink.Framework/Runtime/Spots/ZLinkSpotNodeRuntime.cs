@@ -60,7 +60,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             _taskRunner,
             _stopSource.Token,
             ConnectDiscoveredPubSubPeers);
-        _peerConnector = new ZLinkSpotPeerConnector(node, _peerConnections, spotChannelName);
+        _peerConnector = new ZLinkSpotPeerConnector(node, _peerConnections);
         _bundles = new ZLinkSpotNodeBundleRegistry(
             registration.SpotNodeName,
             frameworkRegistration,
@@ -87,6 +87,8 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
     public IReadOnlySet<Type> SpotFactories => _registration.SpotFactories;
 
     public IZLinkBackendSpotNode Node { get; }
+
+    internal ZLinkSpotNodeRegistration Registration => _registration;
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Spots;
 

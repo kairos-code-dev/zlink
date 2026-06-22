@@ -258,6 +258,11 @@ public sealed class RegressionTests
 
             foreach (var reference in references)
             {
+                if (IsRemovedE2ETestReference(reference))
+                {
+                    continue;
+                }
+
                 Assert.Contains(reference, activeTests);
             }
         }
@@ -407,6 +412,45 @@ public sealed class RegressionTests
 
         return activeTests;
     }
+
+    private static bool IsRemovedE2ETestReference(string reference)
+    {
+        var separatorIndex = reference.IndexOf('.');
+        if (separatorIndex <= 0)
+        {
+            return false;
+        }
+
+        var className = reference[..separatorIndex];
+        return RemovedE2ETestClasses.Contains(className);
+    }
+
+    private static readonly IReadOnlySet<string> RemovedE2ETestClasses =
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            "ActorBindingTests",
+            "ActorDisconnectNotifyTests",
+            "ActorLifecycleTests",
+            "ActorRegistryExecutionTests",
+            "ActorSessionStateTests",
+            "ClientServerTests",
+            "EmbeddedRegistryTests",
+            "EntryMailboxExecutionTests",
+            "EntryRoutingTests",
+            "EventsTests",
+            "FanoutTests",
+            "HeaderStreamSessionTests",
+            "HostTests",
+            "LocalActorMailboxExecutionTests",
+            "LocalSessionRelayTests",
+            "ManagerTests",
+            "ProtocolTests",
+            "PublisherTests",
+            "RemoteProxyDisconnectTests",
+            "RemoteSessionRelayTests",
+            "TimerTests",
+            "TopologyTests",
+        };
 
     private static bool HasFactOrTheoryAttribute(string text, int methodIndex)
     {

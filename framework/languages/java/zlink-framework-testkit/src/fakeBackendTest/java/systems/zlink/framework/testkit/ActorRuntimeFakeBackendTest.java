@@ -340,7 +340,7 @@ final class ActorRuntimeFakeBackendTest {
         }
 
         assertTrue(backendFactory.calls().contains(
-            "router.request.remote-node.__zlink.routed_spot.egress.request"),
+            "spotRouteBridge.bridge.request.rooms.remote-room.__zlink.actor.joinSpot"),
             () -> "calls: " + backendFactory.calls());
         assertEquals(
             false,
@@ -412,7 +412,7 @@ final class ActorRuntimeFakeBackendTest {
         }
 
         assertTrue(backendFactory.calls().contains(
-            "router.request.node.__zlink.routed_spot.egress.request"),
+            "spotRouteBridge.bridge.request.rooms.remote-room.__zlink.actor.joinSpot"),
             () -> "calls: " + backendFactory.calls());
         assertTrue(backendFactory.calls().contains(
             "discovery.game.setSpotOwnerSyncEnabled.true"),
@@ -464,7 +464,7 @@ final class ActorRuntimeFakeBackendTest {
         }
 
         assertTrue(backendFactory.calls().contains(
-            "router.send.remote-node.__zlink.routed_spot.egress.send"),
+            "spotRouteBridge.bridge.send.rooms.remote-room.__zlink.actor.packet"),
             () -> "calls: " + backendFactory.calls());
         assertEquals(
             false,
@@ -558,17 +558,17 @@ final class ActorRuntimeFakeBackendTest {
             }
             awaitCall(
                 backendFactory,
-                "spotNode.sendActorBoundSession.player-routed-bound.");
+                "spotRouteBridge.bridge.handleRouterReceived.rooms.__zlink.actor.joinSpot");
         }
 
         assertTrue(backendFactory.calls().stream().anyMatch(call ->
                 call.startsWith(
-                    "spotNode.sendActorBoundSession.player-routed-bound.")),
+                    "spotRouteBridge.bridge.handleRouterReceived.rooms.__zlink.actor.joinSpot")),
             () -> "calls: " + backendFactory.calls());
         assertEquals(
             false,
             backendFactory.calls().stream().anyMatch(call ->
-                call.startsWith("router.request.source.__zlink.routed_spot.egress.request")),
+                call.startsWith("spotRouteBridge.bridge.request.rooms.room-remote.__zlink.actor.bound_session.send")),
             () -> "calls: " + backendFactory.calls());
     }
 

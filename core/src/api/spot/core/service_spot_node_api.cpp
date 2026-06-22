@@ -442,8 +442,12 @@ zlink_connect_result_t zlink_spot_node_connect_router_channel_peer (void *node_,
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
-    return zlink::connect_result_internal::from_rc (
-      zlink::spot_node_access_t::connect_router_channel_peer (node, channel_name_, endpoint_));
+    if (!channel_name_ || channel_name_[0] == '\0' || !endpoint_ || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return ZLINK_CONNECT_INVALID_ARGUMENT;
+    }
+    errno = ENOTSUP;
+    return zlink::connect_result_internal::from_rc (-1);
 }
 
 zlink_connect_result_t
@@ -457,9 +461,13 @@ zlink_spot_node_connect_router_channel_peer_rid (void *node_,
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
-    return zlink::connect_result_internal::from_rc (
-      zlink::spot_node_access_t::connect_router_channel_peer_rid (node, channel_name_, peer_rid_,
-                                                                  endpoint_));
+    if (!channel_name_ || channel_name_[0] == '\0' || !peer_rid_ || peer_rid_->size == 0
+        || peer_rid_->size > sizeof (peer_rid_->data) || !endpoint_ || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return ZLINK_CONNECT_INVALID_ARGUMENT;
+    }
+    errno = ENOTSUP;
+    return zlink::connect_result_internal::from_rc (-1);
 }
 
 zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer (void *node_,
@@ -471,8 +479,12 @@ zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer (void *nod
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
-    return zlink::connect_result_internal::from_rc (
-      zlink::spot_node_access_t::disconnect_router_channel_peer (node, channel_name_, endpoint_));
+    if (!channel_name_ || channel_name_[0] == '\0' || !endpoint_ || endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return ZLINK_CONNECT_INVALID_ARGUMENT;
+    }
+    errno = ENOTSUP;
+    return zlink::connect_result_internal::from_rc (-1);
 }
 
 zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer_rid (
@@ -483,9 +495,13 @@ zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer_rid (
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
-    return zlink::connect_result_internal::from_rc (
-      zlink::spot_node_access_t::disconnect_router_channel_peer_rid (node, channel_name_,
-                                                                     peer_rid_));
+    if (!channel_name_ || channel_name_[0] == '\0' || !peer_rid_ || peer_rid_->size == 0
+        || peer_rid_->size > sizeof (peer_rid_->data)) {
+        errno = EINVAL;
+        return ZLINK_CONNECT_INVALID_ARGUMENT;
+    }
+    errno = ENOTSUP;
+    return zlink::connect_result_internal::from_rc (-1);
 }
 
 zlink_config_result_t zlink_spot_node_status (void *node_, zlink_spot_node_status_t *out_)
@@ -568,8 +584,12 @@ zlink_config_result_t zlink_spot_node_attach_router_channel_discovery (void *nod
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
-    return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::attach_router_channel_discovery (node, channel_name_, discovery_));
+    if (!channel_name_ || channel_name_[0] == '\0' || !discovery_) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    errno = ENOTSUP;
+    return zlink::config_result_internal::from_rc (-1);
 }
 
 zlink_config_result_t
@@ -580,8 +600,12 @@ zlink_spot_node_attach_channel_dealer (void *node_, void *discovery_, void *deal
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
-    return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::attach_channel_dealer (node, discovery_, dealer_));
+    if (!discovery_ || !dealer_) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    errno = ENOTSUP;
+    return zlink::config_result_internal::from_rc (-1);
 }
 
 zlink_config_result_t
@@ -592,8 +616,12 @@ zlink_spot_node_attach_channel_dealer_manual (void *node_, const char *channel_n
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
-    return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::attach_channel_dealer_manual (node, channel_name_, dealer_));
+    if (!channel_name_ || channel_name_[0] == '\0' || !dealer_) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    errno = ENOTSUP;
+    return zlink::config_result_internal::from_rc (-1);
 }
 
 zlink_config_result_t zlink_spot_node_attach_pub_ingress (void *node_, void *pub_)
@@ -607,6 +635,6 @@ zlink_config_result_t zlink_spot_node_attach_pub_ingress (void *node_, void *pub
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
-    return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::attach_pub_ingress (node, pub_));
+    errno = ENOTSUP;
+    return zlink::config_result_internal::from_rc (-1);
 }

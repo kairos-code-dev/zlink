@@ -11,33 +11,48 @@ internal static class Program
         // --8<-- [start:doc]
         using var ctx = Zlink.CreateContext();
         using var roomNode = ctx.CreateSpotNode();
-        using var room = roomNode.CreateSpot();
         using var roomDealer = ctx.CreateDealerSocket();
         using var apiRouter = ctx.CreateRouterSocket();
+        using var bridge = roomNode.CreateRouteBridge();
 
         const string channel = "api";
         string endpoint = SampleSupport.NewEndpoint("tcp", "spot-channel");
+        roomDealer.SetRoutingId(RoutingId.From("room-channel-client"));
         apiRouter.Bind(endpoint);
         roomDealer.Connect(endpoint);
-        // "api" 채널 호출을 이 DEALER로 내보내도록 노드에 등록한다.
-        roomNode.AttachChannelDealerManual(channel, roomDealer);
+        bridge.AttachDealerChannel(channel, roomDealer);
 
         // API 서버(ROUTER)는 별도 스레드에서 요청을 받아 응답한다.
         var server = Task.Run(() =>
         {
-            var received = Received.Create();
+            using var received = Received.Create();
             if (apiRouter.Recv(received))
             {
+                string request = received.Parts[2].GetString();
+                SampleSupport.EnsureEqual("get-profile", request, "request");
                 using Message reply = Message.From("profile:level-7");
                 received.Reply().Message(reply).Submit();
             }
+            foreach (Message part in received.Parts)
+                part.Dispose();
         });
 
         // 게임룸이 API 채널로 outgame 요청을 보낸다.
-        IReadOnlyList<Message> reply = await room.RequestToChannel(channel)
-            .Message(Message.From("get-profile"))
-            .Timeout(TimeSpan.FromSeconds(5))
-            .Async();
+        var completion =
+            new TaskCompletionSource<IReadOnlyList<Message>>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        using Message requestMessage = Message.From("get-profile");
+        RoutingId targetSpot = RoutingId.From("room");
+        bridge.Request(channel, targetSpot, new[] { requestMessage },
+            (result, replyParts) =>
+            {
+                if (result == RequestResult.Ok)
+                    completion.SetResult(replyParts);
+                else
+                    completion.SetException(
+                        new InvalidOperationException($"request failed: {result}"));
+            }, timeout: TimeSpan.FromSeconds(5));
+        IReadOnlyList<Message> reply = await completion.Task;
         await server;
 
         Console.WriteLine($"[spot/channel] request \"get-profile\" -> reply \"{reply[0].GetString()}\"");

@@ -10,6 +10,7 @@
 
 #include <zlink.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <span>
 #include <thread>
@@ -120,6 +121,7 @@ class route_channel_host_service_t::route_loop_t
                   serializer_registry_t &serializers,
                   detail::registry_runtime_t registry,
                   discovery_snapshot_t discovery,
+                  std::vector<route_channel_host_service_t::spot_node_runtime_t> spot_nodes,
                   std::shared_ptr<detail::route_internal_packet_dispatcher_t> internal_packets,
                   std::atomic_bool &stop) :
         _manager (detail::channel_runtime_manager_t::from (bus)),
@@ -172,6 +174,7 @@ class route_channel_host_service_t::route_loop_t
             catch (...) {
             }
         }
+        attach_spot_route_bridge (spot_nodes);
         _runtime->attach_native_backend (*_backend);
     }
 
@@ -191,8 +194,15 @@ class route_channel_host_service_t::route_loop_t
                 continue;
             }
 
+            auto copied = clone_messages (received.parts ());
+            if (_backend->handle_router_received (*received.routing_id (), copied,
+                                                  received.request_seq ())) {
+                continue;
+            }
+
             auto dispatched = _dispatcher.dispatch (detail::route_received_packet_t{
-              *received.routing_id (), received.request_seq (), copy_parts (received.parts ())});
+              *received.routing_id (), received.request_seq (),
+              zlink::framework::runtime::messaging::message_parts_t (std::move (copied))});
             if (!dispatched || !dispatched.value ()) {
                 continue;
             }
@@ -220,9 +230,52 @@ class route_channel_host_service_t::route_loop_t
     }
 
   private:
+    void attach_spot_route_bridge (
+      const std::vector<route_channel_host_service_t::spot_node_runtime_t> &spot_nodes)
+    {
+        for (const auto &spot_node : spot_nodes) {
+            const bool accepts_channel =
+              std::any_of (spot_node.snapshot.accepted_route_channels.begin (),
+                           spot_node.snapshot.accepted_route_channels.end (),
+                           [this] (const accepted_spot_route_channel_t &accepted) {
+                               return accepted.channel_name == _route_channel_id;
+                           });
+            if (!accepts_channel) {
+                continue;
+            }
+            auto native_node = spot_node.runtime.native_node ();
+            if (!native_node) {
+                throw framework_exception_t (
+                  framework_error_kind_t::request_failed,
+                  "accepted SPOT route channel '" + _route_channel_id
+                    + "' requires an active native SpotNode");
+            }
+            auto bridge =
+              std::make_unique<zlink::service::spot_route_bridge_t> (
+                native_node->create_route_bridge ());
+            bridge->attach_router_channel (
+              _route_channel_id, *_router,
+              zlink::service::spot_route_bridge_t::endpoint_capabilities_t::
+                route_with_channel_inbound);
+            _backend->attach_spot_route_bridge (std::move (bridge), _route_channel_id);
+            return;
+        }
+    }
+
     static zlink::message_t clone (const zlink::message_t &message)
     {
         return zlink::message_t::from (message.to_string ());
+    }
+
+    static std::vector<zlink::message_t> clone_messages (
+      const std::vector<zlink::message_t> &parts)
+    {
+        std::vector<zlink::message_t> copied;
+        copied.reserve (parts.size ());
+        for (const auto &part : parts) {
+            copied.push_back (clone (part));
+        }
+        return copied;
     }
 
     static zlink::framework::runtime::messaging::message_parts_t
@@ -272,12 +325,14 @@ route_channel_host_service_t::route_channel_host_service_t (
   serializer_registry_t &serializers,
   registry_query_t registry,
   discovery_snapshot_t discovery,
+  std::vector<spot_node_runtime_t> spot_nodes,
   std::map<std::string, std::shared_ptr<detail::route_internal_packet_dispatcher_t>>
     internal_dispatchers) :
     _bus (std::move (bus)),
     _serializers (&serializers),
     _registry (std::move (registry)),
     _discovery (std::move (discovery)),
+    _spot_nodes (std::move (spot_nodes)),
     _internal_dispatchers (std::move (internal_dispatchers))
 {
 }
@@ -298,7 +353,7 @@ void route_channel_host_service_t::start (service_provider_t &services)
         auto loop = std::make_unique<route_loop_t> (_bus, route_channel_id, services,
                                                     *_serializers,
                                                     detail::registry_runtime_t::from (_registry),
-                                                    _discovery,
+                                                    _discovery, _spot_nodes,
                                                     std::move (internal_packets), _stop);
         auto *raw = loop.get ();
         _loops.push_back (std::move (loop));

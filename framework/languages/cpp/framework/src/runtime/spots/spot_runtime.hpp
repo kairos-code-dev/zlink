@@ -169,6 +169,7 @@ class spot_node_runtime_t
     const std::vector<std::string> &ordering_log (const spot_context_t &context) const;
     void attach_native_node (std::shared_ptr<service::spot_node_t> node);
     void detach_native_node ();
+    std::shared_ptr<service::spot_node_t> native_node () const;
     std::vector<spot_context_t> active_contexts () const;
     result_t<void> dispatch_subscription (const spot_context_t &context,
                                           std::string topic,

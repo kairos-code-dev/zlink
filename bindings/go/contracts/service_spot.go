@@ -19,6 +19,18 @@ type (
 	SpotNodeSocketEntry = impl.SpotNodeSocketEntry
 	// Spot is a multi-role messaging endpoint that can publish, subscribe, route, request, reply, and host actors.
 	Spot = impl.Spot
+	// SpotRouteBridge bridges caller-owned channel sockets to a local SpotNode route plane.
+	SpotRouteBridge = impl.SpotRouteBridge
+	// SpotRouteBridgeEndpointCapabilities selects bridge endpoint traffic allowed by policy.
+	SpotRouteBridgeEndpointCapabilities = impl.SpotRouteBridgeEndpointCapabilities
+	// SpotRouteBridgeOptions are options for creating a SpotRouteBridge.
+	SpotRouteBridgeOptions = impl.SpotRouteBridgeOptions
+	// SpotRouteBridgeEndpointOptions are options for one borrowed bridge endpoint.
+	SpotRouteBridgeEndpointOptions = impl.SpotRouteBridgeEndpointOptions
+	// SpotRouteBridgeSummary is a bridge counter snapshot.
+	SpotRouteBridgeSummary = impl.SpotRouteBridgeSummary
+	// SpotNodePublisher publishes into a local SpotNode topic plane without exposing a raw PUB socket.
+	SpotNodePublisher = impl.SpotNodePublisher
 	// ActorRef references an actor: the node hosting it, its id, and its generation.
 	ActorRef = impl.ActorRef
 	// ActorRoute is the resolved route to an actor: which spot it currently lives on.
@@ -98,6 +110,16 @@ const (
 	SpotNodeModeRouted = impl.SpotNodeModeRouted
 	// SpotNodeModeAll enables both pub/sub and routed messaging.
 	SpotNodeModeAll = impl.SpotNodeModeAll
+	// SpotRouteBridgeCapabilityNone allows no bridge traffic.
+	SpotRouteBridgeCapabilityNone = impl.SpotRouteBridgeCapabilityNone
+	// SpotRouteBridgeCapabilitySpotRoute allows SPOT route relay traffic.
+	SpotRouteBridgeCapabilitySpotRoute = impl.SpotRouteBridgeCapabilitySpotRoute
+	// SpotRouteBridgeCapabilityChannelInbound allows non-bridge channel inbound handoff.
+	SpotRouteBridgeCapabilityChannelInbound = impl.SpotRouteBridgeCapabilityChannelInbound
+	// SpotRouteBridgeRouteOnly allows only SPOT route relay traffic.
+	SpotRouteBridgeRouteOnly = impl.SpotRouteBridgeRouteOnly
+	// SpotRouteBridgeRouteWithChannelInbound allows route relay and channel inbound handoff.
+	SpotRouteBridgeRouteWithChannelInbound = impl.SpotRouteBridgeRouteWithChannelInbound
 	// SpotNodeSocketOwnerAny matches any owner (no filter).
 	SpotNodeSocketOwnerAny = impl.SpotNodeSocketOwnerAny
 	// SpotNodeSocketOwnerNode matches sockets owned by the node itself.

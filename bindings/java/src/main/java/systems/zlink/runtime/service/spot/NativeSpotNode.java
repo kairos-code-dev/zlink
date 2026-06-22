@@ -28,10 +28,12 @@ import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodePeerFilter;
 import systems.zlink.contracts.service.spot.SpotNodeSocketEntry;
 import systems.zlink.contracts.service.spot.SpotNodeSocketFilter;
+import systems.zlink.contracts.service.spot.SpotNodePublisher;
 import systems.zlink.contracts.service.spot.SpotNodeSpotEntry;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectFilter;
+import systems.zlink.contracts.service.spot.SpotRouteBridge;
 import systems.zlink.runtime.nativeapi.DurationConversions;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.EnumCodecs;
@@ -59,6 +61,7 @@ public final class NativeSpotNode implements SpotNode {
     private final Set<Spot> liveSpots =
       Collections.newSetFromMap(new IdentityHashMap<>());
     private final Map<Long, Spot> liveSpotsByHandle = new LinkedHashMap<>();
+    private final Context context;
     private MemorySegment handle;
     private final SpotNodeOptionsSupport optionsSupport =
       new SpotNodeOptionsSupport(this);
@@ -104,6 +107,7 @@ public final class NativeSpotNode implements SpotNode {
     /** Creates a spot node with an explicit creation mode. */
     NativeSpotNode(Context ctx, SpotNodeOptions options) {
         Objects.requireNonNull(ctx, "ctx");
+        this.context = ctx;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nativeOptions = MemorySegment.NULL;
             if (options != null) {
@@ -304,6 +308,16 @@ public final class NativeSpotNode implements SpotNode {
             throw InternalAccess.zlinkExceptionFromLastError(
               "zlink_spot_node_attach_pub_ingress");
         }
+    }
+
+    @Override
+    public SpotRouteBridge createRouteBridge() {
+        return new NativeSpotRouteBridge(context, this);
+    }
+
+    @Override
+    public SpotNodePublisher createPublisher() {
+        return new NativeSpotNodePublisher(this);
     }
 
     /** Configures server TLS credentials on the node transport surface. */

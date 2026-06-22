@@ -44,6 +44,13 @@ export type { ZlinkFactories } from './factories';
 export type { Actor } from './spot/actor';
 export type { Spot } from './spot/spot';
 export type { SpotNode } from './spot/spot_node';
+export {
+  SpotRouteBridgeEndpointCapabilities,
+  type SpotNodePublisher,
+  type SpotRouteBridge,
+  type SpotRouteBridgeEndpointCapabilitiesValue,
+  type SpotRouteBridgeEndpointOptions,
+} from './spot/spot_route_bridge';
 export type {
   SocketSendReadyHandler,
   StreamPacketHandler,

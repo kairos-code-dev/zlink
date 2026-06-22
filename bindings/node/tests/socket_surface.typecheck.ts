@@ -188,6 +188,20 @@ if (actorJoin) {
 }
 spot.actors();
 spotNode.attachPubIngress(pub);
+const routeBridge = spotNode.createRouteBridge();
+routeBridge.attachDealerChannel('svc', dealer);
+routeBridge.attachRouterChannel('mesh', router, {
+  capabilities: zlink.SpotRouteBridgeEndpointCapabilities.RouteWithChannelInbound
+});
+routeBridge.setTargetNode('svc', routingId);
+routeBridge.send('svc', routingId).message('payload').submit();
+routeBridge.request('svc', routingId).message('payload').timeout(1000).submit((_result, _parts) => {});
+const routeBridgeHandled: boolean = routeBridge.handleRouterReceived('mesh', routingId, [Buffer.from('payload')], 1n);
+void routeBridgeHandled;
+routeBridge.close();
+const spotPublisher = spotNode.createPublisher();
+spotPublisher.publish('topic').message('payload').submit();
+spotPublisher.close();
 
 const monitor = pub.monitorOpen();
 monitor.recv();

@@ -164,17 +164,18 @@ void test_docs_reflect_tiered_thread_safe_contract ()
     TEST_ASSERT_TRUE (TEST_REPO_ROOT[0] != '\0');
 
     const std::string socket_doc =
-      read_text_file ((std::string (TEST_REPO_ROOT) + "/doc/spec/core/socket/README.md").c_str ());
+      read_text_file (
+        (std::string (TEST_REPO_ROOT) + "/core/doc/spec/core/socket/README.md").c_str ());
     const std::string socket_doc_ko = read_text_file (
-      (std::string (TEST_REPO_ROOT) + "/doc/spec/core/socket/README.ko.md").c_str ());
+      (std::string (TEST_REPO_ROOT) + "/core/doc/spec/core/socket/README.ko.md").c_str ());
     const std::string discovery_doc = read_text_file (
-      (std::string (TEST_REPO_ROOT) + "/doc/spec/core/service/discovery.md").c_str ());
+      (std::string (TEST_REPO_ROOT) + "/core/doc/spec/core/service/discovery.md").c_str ());
     const std::string discovery_doc_ko = read_text_file (
-      (std::string (TEST_REPO_ROOT) + "/doc/spec/core/service/discovery.ko.md").c_str ());
+      (std::string (TEST_REPO_ROOT) + "/core/doc/spec/core/service/discovery.ko.md").c_str ());
     const std::string threading_doc = read_text_file (
-      (std::string (TEST_REPO_ROOT) + "/doc/internals/threading-model.md").c_str ());
+      (std::string (TEST_REPO_ROOT) + "/core/doc/internals/threading-model.md").c_str ());
     const std::string threading_doc_ko = read_text_file (
-      (std::string (TEST_REPO_ROOT) + "/doc/internals/threading-model.ko.md").c_str ());
+      (std::string (TEST_REPO_ROOT) + "/core/doc/internals/threading-model.ko.md").c_str ());
 
     assert_text_present (socket_doc, "tiered contract");
     assert_text_present (threading_doc, "`send`/`publish`/`send_rid`");

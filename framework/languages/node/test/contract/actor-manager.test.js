@@ -1399,18 +1399,11 @@ function createMockSpotNode(overrides) {
     attachDiscovery() {},
     connectPeer() {},
     disconnectPeer() {},
-    connectRouterChannelPeer() {},
-    connectRouterChannelPeerRid() {},
-    disconnectRouterChannelPeer() {},
-    disconnectRouterChannelPeerRid() {},
-    attachSpotRouteChannelDiscovery() {},
     createSpot() { throw new Error('not used'); },
     getOrCreateSpot() { throw new Error('not used'); },
     status() { throw new Error('not used'); },
     peers() { return []; },
     subjects() { return []; },
-    attachChannelDealer() {},
-    attachChannelDealerManual() {},
     entrySpot() { throw new Error('not used'); },
     createActor(actorId) {
       return { nodeRid: 'node-a', actorId, generation: 1n };

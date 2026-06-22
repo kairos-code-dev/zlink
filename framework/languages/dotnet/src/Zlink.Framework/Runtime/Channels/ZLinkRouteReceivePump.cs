@@ -10,6 +10,8 @@ namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkRouteReceivePump(
     IZLinkBackendRouterSocket router,
+    Func<IZLinkBackendSpotRouteBridge?> spotRouteBridge,
+    string routerChannelId,
     ZLinkRoutePacketDispatcher dispatcher)
 {
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -28,6 +30,11 @@ internal sealed class ZLinkRouteReceivePump(
                 }
 
                 backoff.Reset();
+                if (TryHandleSpotRouteBridgePacket(received))
+                {
+                    continue;
+                }
+
                 await dispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)
@@ -58,5 +65,19 @@ internal sealed class ZLinkRouteReceivePump(
                 received?.Dispose();
             }
         }
+    }
+
+    private bool TryHandleSpotRouteBridgePacket(Received received)
+    {
+        var bridge = spotRouteBridge();
+        if (bridge is null
+            || received.RoutingId is not { } sourceNodeRid)
+        {
+            return false;
+        }
+
+        return received.RequestSeq is { } requestSeq
+            ? bridge.HandleRouterReceived(routerChannelId, sourceNodeRid, requestSeq, received.Parts)
+            : bridge.HandleRouterReceived(routerChannelId, sourceNodeRid, 0, received.Parts);
     }
 }

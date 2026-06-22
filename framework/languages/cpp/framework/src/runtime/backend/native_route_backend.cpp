@@ -79,8 +79,17 @@ native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router) 
 {
 }
 
+void native_route_backend_t::attach_spot_route_bridge (
+  std::unique_ptr<zlink::service::spot_route_bridge_t> bridge,
+  std::string channel_name)
+{
+    _spot_route_bridge = std::move (bridge);
+    _spot_route_channel_name = std::move (channel_name);
+}
+
 result_t<void>
 native_route_backend_t::submit_send (const zlink::routing_id_t &target_node_rid,
+                                     const std::optional<zlink::routing_id_t> &target_spot_rid,
                                      const runtime::messaging::message_parts_t &parts)
 {
     if (_router == nullptr) {
@@ -93,6 +102,14 @@ native_route_backend_t::submit_send (const zlink::routing_id_t &target_node_rid,
                                         "native route send requires at least one message part");
     }
     try {
+        if (target_spot_rid && _spot_route_bridge) {
+            _spot_route_bridge->set_target_node (_spot_route_channel_name, target_node_rid);
+            if (!_spot_route_bridge->send (_spot_route_channel_name, *target_spot_rid, copied,
+                                           zlink::send_flags_t::none)) {
+                return submit_failure ("native route bridge send was not accepted");
+            }
+            return result_t<void>::success ();
+        }
         auto submit = std::move (_router->send (target_node_rid)).message (copied[0]);
         submit = append_remaining_parts (std::move (submit), copied);
         if (!std::move (submit).submit ()) {
@@ -108,6 +125,7 @@ native_route_backend_t::submit_send (const zlink::routing_id_t &target_node_rid,
 
 result_t<runtime::messaging::message_parts_t>
 native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_rid,
+                                        const std::optional<zlink::routing_id_t> &target_spot_rid,
                                         const runtime::messaging::message_parts_t &parts,
                                         std::chrono::milliseconds timeout)
 {
@@ -123,6 +141,15 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
           "native route request requires at least one message part");
     }
     try {
+        if (target_spot_rid && _spot_route_bridge) {
+            _spot_route_bridge->set_target_node (_spot_route_channel_name, target_node_rid);
+            auto reply =
+              _spot_route_bridge->request (_spot_route_channel_name, *target_spot_rid, copied,
+                                           timeout)
+                .get ();
+            return result_t<runtime::messaging::message_parts_t>::success (
+              runtime::messaging::message_parts_t (std::move (reply)));
+        }
         auto submit = std::move (_router->request (target_node_rid)).message (copied[0]);
         submit = append_remaining_parts (std::move (submit), copied);
         auto reply = std::move (submit).timeout (timeout).async().get ();
@@ -134,6 +161,18 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
         return result_t<runtime::messaging::message_parts_t>::failure (
           error.kind (), error.what (), error.is_retriable ());
     }
+}
+
+bool native_route_backend_t::handle_router_received (
+  const zlink::routing_id_t &source_node_rid,
+  std::vector<zlink::message_t> &parts,
+  std::optional<std::uint64_t> request_seq)
+{
+    if (!_spot_route_bridge) {
+        return false;
+    }
+    return _spot_route_bridge->handle_router_received (_spot_route_channel_name,
+                                                       source_node_rid, parts, request_seq);
 }
 
 } // namespace zlink::framework::detail::backend

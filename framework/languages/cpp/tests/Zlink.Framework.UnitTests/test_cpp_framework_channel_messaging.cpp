@@ -1458,8 +1458,9 @@ int main ()
     int spot_backend_requests = 0;
     spot_backend_runtime.set_send_backend (
       [&] (const zlink::routing_id_t &target,
+           const std::optional<zlink::routing_id_t> &spot,
            const zlink::framework::runtime::messaging::message_parts_t &parts) {
-          if (target != target_node || parts.size () == 0) {
+          if (target != target_node || spot != target_spot || parts.size () == 0) {
               return zlink::framework::result_t<void>::failure (
                 zlink::framework::framework_error_kind_t::request_failed,
                 "unexpected spot send backend input");
@@ -1469,9 +1470,10 @@ int main ()
       });
     spot_backend_runtime.set_request_backend (
       [&] (const zlink::routing_id_t &target,
+           const std::optional<zlink::routing_id_t> &spot,
            const zlink::framework::runtime::messaging::message_parts_t &parts,
            std::chrono::milliseconds timeout) {
-          if (target != target_node || parts.size () == 0
+          if (target != target_node || spot != target_spot || parts.size () == 0
               || (timeout != std::chrono::milliseconds (0)
                   && timeout != std::chrono::milliseconds (25))) {
               return zlink::framework::result_t<
@@ -1491,7 +1493,7 @@ int main ()
         || spot_backend_requests != 1 || spot_backend_runtime.pending_request_count () != 0) {
         return 381;
     }
-    auto spot_backend_reply = spot_backend_runtime.request_reply_to_spot_parts (
+    auto spot_backend_reply = spot_backend_runtime.request_reply_spot_parts (
       target_node, target_spot, request_parts, std::chrono::milliseconds (25));
     if (!spot_backend_reply || spot_backend_reply.value ().size () != request_parts.size ()
         || spot_backend_requests != 2 || spot_backend_runtime.pending_request_count () != 0) {
@@ -1836,12 +1838,13 @@ int main ()
     zlink::context_t native_route_context;
     zlink::router_socket_t native_router (native_route_context);
     zlink::framework::detail::backend::native_route_backend_t native_backend (native_router);
-    const auto native_empty_send =
-      native_backend.submit_send (zlink::routing_id_t::from (std::string ("target-node")),
-                                  zlink::framework::runtime::messaging::message_parts_t{});
-    const auto native_empty_request = native_backend.submit_request (
-      zlink::routing_id_t::from (std::string ("target-node")),
-      zlink::framework::runtime::messaging::message_parts_t{}, std::chrono::milliseconds (1));
+	    const auto native_empty_send =
+	      native_backend.submit_send (zlink::routing_id_t::from (std::string ("target-node")),
+	                                  std::nullopt,
+	                                  zlink::framework::runtime::messaging::message_parts_t{});
+	    const auto native_empty_request = native_backend.submit_request (
+	      zlink::routing_id_t::from (std::string ("target-node")), std::nullopt,
+	      zlink::framework::runtime::messaging::message_parts_t{}, std::chrono::milliseconds (1));
     if (native_empty_send
         || native_empty_send.error_kind ()
              != zlink::framework::framework_error_kind_t::request_protocol_error
@@ -1855,10 +1858,11 @@ int main ()
     public_route.set_send_backend (
       [&send_backend_seen,
        &envelope_codec] (const zlink::routing_id_t &target,
+                         const std::optional<zlink::routing_id_t> &spot,
                          const zlink::framework::runtime::messaging::message_parts_t &parts)
         -> zlink::framework::result_t<void> {
           auto header = envelope_codec.decode_header (parts);
-          if (target.to_string () != "target-node" || !header
+          if (target.to_string () != "target-node" || spot || !header
               || header.value ().message_name != "client.event"
               || header.value ().metadata.find ("trace-id") == header.value ().metadata.end ()
               || header.value ().metadata.at ("trace-id") != "trace-send") {
@@ -1931,10 +1935,12 @@ int main ()
     public_route.set_request_backend (
       [&envelope_codec,
        &serializers] (const zlink::routing_id_t &target,
+                      const std::optional<zlink::routing_id_t> &spot,
                       const zlink::framework::runtime::messaging::message_parts_t &parts,
                       std::chrono::milliseconds timeout)
         -> zlink::framework::result_t<zlink::framework::runtime::messaging::message_parts_t> {
-          if (target.to_string () != "target-node" || timeout != std::chrono::milliseconds (50)) {
+          if (target.to_string () != "target-node" || spot
+              || timeout != std::chrono::milliseconds (50)) {
               return zlink::framework::
                 result_t<zlink::framework::runtime::messaging::message_parts_t>::failure (
                   zlink::framework::framework_error_kind_t::request_failed,
@@ -1983,6 +1989,7 @@ int main ()
     public_route.set_request_backend (
       [&delayed_backend_entered, release_delayed_backend_future, &envelope_codec,
        &serializers] (const zlink::routing_id_t &,
+                      const std::optional<zlink::routing_id_t> &,
                       const zlink::framework::runtime::messaging::message_parts_t &,
                       std::chrono::milliseconds)
         -> zlink::framework::result_t<zlink::framework::runtime::messaging::message_parts_t> {

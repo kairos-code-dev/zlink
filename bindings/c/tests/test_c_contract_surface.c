@@ -22,9 +22,9 @@ static void entry_join_handler (const zlink_actor_join_entry_spot_result_t *resu
 int main (void)
 {
     CHECK (ZLINK_VERSION_MAJOR == 7);
-    CHECK (ZLINK_VERSION_MINOR == 0);
+    CHECK (ZLINK_VERSION_MINOR == 2);
     CHECK (ZLINK_VERSION_PATCH == 0);
-    CHECK (ZLINK_VERSION == ZLINK_MAKE_VERSION (7, 0, 0));
+    CHECK (ZLINK_VERSION == ZLINK_MAKE_VERSION (7, 2, 0));
 
     CHECK (ZLINK_SOCKET_PAIR == 0x1001);
     CHECK (ZLINK_SOCKET_STREAM == 0x1008);

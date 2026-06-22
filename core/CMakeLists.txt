@@ -889,6 +889,7 @@ set(api-registry-sources
 
 set(api-spot-sources
     src/api/spot/core/service_spot_node_api.cpp
+    src/api/spot/core/service_spot_route_bridge_api.cpp
     src/api/spot/core/service_spot_api.cpp
     src/api/spot/dispatch/service_spot_dispatch_context.cpp
     src/api/spot/request_reply/service_spot_request_reply_internal.cpp
@@ -1034,7 +1035,6 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/data_plane/spot_data_plane_runtime.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_pending.cpp
     src/runtime/services/spot/data_plane/spot_data_plane_protocol.cpp
-    src/runtime/services/spot/data_plane/spot_data_plane_router_channel_control.cpp
     src/runtime/services/spot/data_plane/spot_mesh_pub_hwm.cpp
     src/runtime/services/spot/request_reply/spot_request_reply_local_dispatch.cpp
     src/runtime/services/spot/pubsub/spot_subject_access.cpp
@@ -1056,7 +1056,6 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/node/spot_node_lifecycle.cpp
     src/runtime/services/spot/node/spot_node_peer.cpp
     src/runtime/services/spot/node/spot_node_pubsub_fanout.cpp
-    src/runtime/services/spot/node/spot_node_router_channel.cpp
     src/runtime/services/spot/node/spot_node_shutdown.cpp
     src/runtime/services/spot/node/spot_node_service_attachment.cpp
     src/runtime/services/spot/node/spot_node_service_attachment_cache.cpp

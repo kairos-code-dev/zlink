@@ -22,8 +22,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointCapabilities;
+import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.service.registry.ServiceRole;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.CancellationToken;
@@ -62,7 +65,6 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
-import systems.zlink.framework.runtime.spots.ZLinkRoutedSpotRelayPackets;
 
 public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient, AutoCloseable {
     private static final String FRAMEWORK_ERROR_REPLY_MARKER = "ZLinkFrameworkError";
@@ -70,6 +72,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     private final ZLinkBackendContext context;
     private final Map<String, ZLinkBackendDealerSocket> clients = new HashMap<>();
     private final Map<String, ZLinkBackendRouterSocket> servers = new HashMap<>();
+    private final Map<String, ZLinkBackendSpotRouteBridge> spotRouteBridges = new HashMap<>();
     private final Map<String, ZLinkBackendPublisherSocket> publishers = new HashMap<>();
     private final Map<String, ZLinkBackendSubscriberSocket> subscribers = new HashMap<>();
     private final Map<String, ZLinkBackendRouterSocket> routeRouters = new HashMap<>();
@@ -107,7 +110,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     private final ZLinkBackendAdapterOptions adapterOptions;
     private final List<String> registryEndpoints;
     private final ZLinkDispatchErrorReporter dispatchErrors;
-    private SpotRelayIngress spotRelayIngress;
+    private Supplier<ZLinkBackendSpotNode> spotRouteBridgeOwner;
     private final ExecutorService receiveExecutor = Executors.newCachedThreadPool(task -> {
         Thread thread = new Thread(task, "zlink-java-channel-runtime");
         thread.setDaemon(true);
@@ -345,8 +348,29 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             defaultRequestTimeout(channelName));
     }
 
-    public void registerSpotRelayIngress(SpotRelayIngress spotRelayIngress) {
-        this.spotRelayIngress = Objects.requireNonNull(spotRelayIngress, "spotRelayIngress");
+    public void registerSpotRouteBridgeOwner(
+        Supplier<ZLinkBackendSpotNode> owner) {
+        this.spotRouteBridgeOwner = Objects.requireNonNull(owner, "owner");
+    }
+
+    public boolean attachSpotRouteBridgeToServer(
+        String channelName,
+        ZLinkBackendSpotNode node) {
+        ZLinkBackendRouterSocket router = servers.get(channelName);
+        if (router == null) {
+            router = routeRouters.get(channelName);
+        }
+        if (router == null) {
+            return false;
+        }
+        ZLinkBackendSpotRouteBridge bridge = node.createRouteBridge();
+        bridge.attachRouterChannel(
+            channelName,
+            router,
+            new SpotRouteBridgeEndpointOptions()
+                .capabilities(SpotRouteBridgeEndpointCapabilities.ROUTE_WITH_CHANNEL_INBOUND));
+        spotRouteBridges.put(channelName, bridge);
+        return true;
     }
 
     private Duration defaultRequestTimeout(String channelName) {
@@ -397,91 +421,28 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         RoutingId targetSpotRid,
         List<Message> spotParts) {
         ChannelRegistration registration = requireSpotRouteEgress(localEgressChannelName);
-        List<Message> relayParts =
-            ZLinkRoutedSpotRelayPackets.createSendRelayParts(targetSpotRid, spotParts);
         try {
-            if (registration.kind() == ChannelKind.CLIENT_SERVER) {
-                return CompletableFuture.runAsync(() ->
-                    requireClient(localEgressChannelName).send(relayParts, SendFlags.NONE))
-                    .whenComplete((ignored, error) -> relayParts.forEach(Message::close));
-            }
-            CompletableFuture<Void> result = new CompletableFuture<>();
-            RoutingId targetPeerRid = targetNodeRid == null
-                ? resolveRouteEgressPeerRid(
-                    localEgressChannelName,
-                    registration.spotRouteEgressTarget())
-                : targetNodeRid;
-            submitRouteSendWithRetry(
-                requireRouteRouter(localEgressChannelName),
-                targetPeerRid,
-                relayParts,
-                defaultRequestTimeout,
-                registration.routeManualEndpoints(),
-                result);
-            return result;
+            ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(localEgressChannelName);
+            RoutingId targetPeerRid = resolveSpotRouteBridgeTargetNode(
+                registration,
+                localEgressChannelName,
+                targetNodeRid);
+            List<Message> bridgeParts = copyMessages(spotParts);
+            return CompletableFuture.runAsync(() -> {
+                try {
+                    if (targetPeerRid != null) {
+                        bridge.setTargetNode(localEgressChannelName, targetPeerRid);
+                    }
+                    bridge.send(localEgressChannelName, targetSpotRid, bridgeParts, SendFlags.NONE);
+                } finally {
+                    bridgeParts.forEach(Message::close);
+                }
+            });
         } catch (RuntimeException ex) {
             CompletableFuture<Void> result = new CompletableFuture<>();
             result.completeExceptionally(ex);
             return result;
-        } finally {
-            relayParts.forEach(Message::close);
         }
-    }
-
-    private void submitRouteSendWithRetry(
-        ZLinkBackendRouterSocket router,
-        RoutingId targetPeerRid,
-        List<Message> sendParts,
-        Duration timeout,
-        List<String> reconnectEndpoints,
-        CompletableFuture<Void> result) {
-        List<byte[]> sendPayloads = sendParts.stream()
-            .map(Message::toByteArray)
-            .toList();
-        long timeoutNanos = timeout == null || timeout.isZero()
-            ? defaultRequestTimeout.toNanos()
-            : timeout.toNanos();
-        long deadline = System.nanoTime() + timeoutNanos;
-        class Attempt implements Runnable {
-            private boolean reconnected;
-
-            @Override
-            public void run() {
-                if (result.isDone()) {
-                    return;
-                }
-                List<Message> attemptParts = sendPayloads.stream()
-                    .map(Message::from)
-                    .toList();
-                try {
-                    boolean submitted = router.send(
-                        targetPeerRid,
-                        attemptParts,
-                        SendFlags.DONT_WAIT);
-                    if (submitted) {
-                        result.complete(null);
-                        return;
-                    }
-                    if (!reconnected) {
-                        reconnected = true;
-                        for (String endpoint : reconnectEndpoints) {
-                            router.connect(endpoint);
-                        }
-                    }
-                    if (System.nanoTime() >= deadline) {
-                        result.completeExceptionally(new TimeoutException(
-                            "routed SPOT route mesh send was not ready before timeout"));
-                        return;
-                    }
-                    timeoutExecutor.schedule(this, 10, TimeUnit.MILLISECONDS);
-                } catch (RuntimeException ex) {
-                    result.completeExceptionally(ex);
-                } finally {
-                    attemptParts.forEach(Message::close);
-                }
-            }
-        }
-        new Attempt().run();
     }
 
     public CompletionStage<Void> sendToSpotViaRouterChannel(
@@ -494,23 +455,21 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             throw new ZLinkConfigurationException(
                 "route mesh channel is not configured: " + routerChannelId);
         }
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        List<Message> relayParts =
-            ZLinkRoutedSpotRelayPackets.createSendRelayParts(targetSpotRid, spotParts);
         try {
-            submitRouteSendWithRetry(
-                requireRouteRouter(routerChannelId),
-                targetNodeRid,
-                relayParts,
-                defaultRequestTimeout,
-                registration.routeManualEndpoints(),
-                result);
-            return result;
+            ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(routerChannelId);
+            List<Message> bridgeParts = copyMessages(spotParts);
+            return CompletableFuture.runAsync(() -> {
+                try {
+                    bridge.setTargetNode(routerChannelId, targetNodeRid);
+                    bridge.send(routerChannelId, targetSpotRid, bridgeParts, SendFlags.NONE);
+                } finally {
+                    bridgeParts.forEach(Message::close);
+                }
+            });
         } catch (RuntimeException ex) {
+            CompletableFuture<Void> result = new CompletableFuture<>();
             result.completeExceptionally(ex);
             return result;
-        } finally {
-            relayParts.forEach(Message::close);
         }
     }
 
@@ -536,45 +495,37 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ChannelRegistration registration = requireSpotRouteEgress(localEgressChannelName);
         CompletableFuture<List<Message>> result = new CompletableFuture<>();
         trackPendingRequest(result, timeout);
-        List<Message> relayParts =
-            ZLinkRoutedSpotRelayPackets.createRequestRelayParts(targetSpotRid, spotParts);
         try {
-            if (registration.kind() == ChannelKind.CLIENT_SERVER) {
-                requireClient(localEgressChannelName).request(relayParts, reply -> {
-                    try {
-                        result.complete(ZLinkRoutedSpotRelayPackets.decodeReplyParts(reply.parts()));
-                    } catch (RuntimeException ex) {
-                        result.completeExceptionally(ex);
-                    } finally {
-                        reply.parts().forEach(Message::close);
-                    }
-                }, SendFlags.NONE, timeout);
-                return result;
+            ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(localEgressChannelName);
+            RoutingId targetPeerRid = resolveSpotRouteBridgeTargetNode(
+                registration,
+                localEgressChannelName,
+                targetNodeRid);
+            List<Message> bridgeParts = copyMessages(spotParts);
+            if (targetPeerRid != null) {
+                bridge.setTargetNode(localEgressChannelName, targetPeerRid);
             }
-            RoutingId targetPeerRid = targetNodeRid == null
-                ? resolveRouteEgressPeerRid(
+            try {
+                bridge.request(
                     localEgressChannelName,
-                    registration.spotRouteEgressTarget())
-                : targetNodeRid;
-            submitRouteRequestWithRetry(
-                requireRouteRouter(localEgressChannelName),
-                targetPeerRid,
-                relayParts,
-                reply -> {
-                try {
-                    result.complete(ZLinkRoutedSpotRelayPackets.decodeReplyParts(reply.parts()));
-                } catch (RuntimeException ex) {
-                    result.completeExceptionally(ex);
-                } finally {
-                    reply.parts().forEach(Message::close);
-                }
-            }, timeout, registration.routeManualEndpoints(), result);
+                    targetSpotRid,
+                    bridgeParts,
+                    reply -> {
+                        try {
+                            result.complete(copyMessages(reply.parts()));
+                        } catch (RuntimeException ex) {
+                            result.completeExceptionally(ex);
+                        } finally {
+                            reply.parts().forEach(Message::close);
+                        }
+                    }, SendFlags.NONE, timeout);
+            } finally {
+                bridgeParts.forEach(Message::close);
+            }
             return result;
         } catch (RuntimeException ex) {
             result.completeExceptionally(ex);
             return result;
-        } finally {
-            relayParts.forEach(Message::close);
         }
     }
 
@@ -591,31 +542,33 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
         CompletableFuture<List<Message>> result = new CompletableFuture<>();
         trackPendingRequest(result, timeout);
-        List<Message> relayParts =
-            ZLinkRoutedSpotRelayPackets.createRequestRelayParts(targetSpotRid, spotParts);
         try {
-            submitRouteRequestWithRetry(
-                requireRouteRouter(routerChannelId),
-                targetNodeRid,
-                relayParts,
-                reply -> {
-                    try {
-                        result.complete(ZLinkRoutedSpotRelayPackets.decodeReplyParts(reply.parts()));
-                    } catch (RuntimeException ex) {
-                        result.completeExceptionally(ex);
-                    } finally {
-                        reply.parts().forEach(Message::close);
-                    }
-                },
-                timeout,
-                registration.routeManualEndpoints(),
-                result);
+            ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(routerChannelId);
+            List<Message> bridgeParts = copyMessages(spotParts);
+            bridge.setTargetNode(routerChannelId, targetNodeRid);
+            try {
+                bridge.request(
+                    routerChannelId,
+                    targetSpotRid,
+                    bridgeParts,
+                    reply -> {
+                        try {
+                            result.complete(copyMessages(reply.parts()));
+                        } catch (RuntimeException ex) {
+                            result.completeExceptionally(ex);
+                        } finally {
+                            reply.parts().forEach(Message::close);
+                        }
+                    },
+                    SendFlags.NONE,
+                    timeout);
+            } finally {
+                bridgeParts.forEach(Message::close);
+            }
             return result;
         } catch (RuntimeException ex) {
             result.completeExceptionally(ex);
             return result;
-        } finally {
-            relayParts.forEach(Message::close);
         }
     }
 
@@ -686,6 +639,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         manualPublishers.forEach(ZLinkBackendPublisherSocket::close);
         manualSubscribers.forEach(ZLinkBackendSubscriberSocket::close);
         manualRouteRouters.forEach(ZLinkBackendRouterSocket::close);
+        spotRouteBridges.values().forEach(ZLinkBackendSpotRouteBridge::close);
         for (CompletableFuture<?> pending : pendingRequests) {
             pending.completeExceptionally(new ZLinkConfigurationException("channel runtime is closed"));
         }
@@ -721,6 +675,35 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         return client;
     }
 
+    private ZLinkBackendSpotRouteBridge requireSpotRouteBridge(String channelName) {
+        ZLinkBackendSpotRouteBridge existing = spotRouteBridges.get(channelName);
+        if (existing != null) {
+            return existing;
+        }
+        if (spotRouteBridgeOwner == null) {
+            throw new ZLinkConfigurationException(
+                "routed SPOT egress requires a router-capable SPOT node");
+        }
+        ZLinkBackendSpotRouteBridge bridge =
+            spotRouteBridgeOwner.get().createRouteBridge();
+        ChannelRegistration registration = registrationsByName.get(channelName);
+        if (registration != null && registration.kind() == ChannelKind.ROUTE_MESH) {
+            bridge.attachRouterChannel(
+                channelName,
+                requireRouteRouter(channelName),
+                new SpotRouteBridgeEndpointOptions()
+                    .capabilities(SpotRouteBridgeEndpointCapabilities.ROUTE_WITH_CHANNEL_INBOUND));
+        } else {
+            bridge.attachDealerChannel(
+                channelName,
+                requireClient(channelName),
+                new SpotRouteBridgeEndpointOptions()
+                    .capabilities(SpotRouteBridgeEndpointCapabilities.ROUTE_ONLY));
+        }
+        spotRouteBridges.put(channelName, bridge);
+        return bridge;
+    }
+
     private ZLinkBackendPublisherSocket requirePublisher(String channelName) {
         ZLinkBackendPublisherSocket publisher = publishers.get(channelName);
         if (publisher == null) {
@@ -746,11 +729,31 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         return registration;
     }
 
-    private SpotRelayIngress requireSpotRelayIngress() {
-        if (spotRelayIngress == null) {
-            throw new ZLinkConfigurationException("routed SPOT relay ingress is not configured");
+    private static List<Message> copyMessages(List<Message> parts) {
+        List<Message> copy = new ArrayList<>(parts.size());
+        try {
+            for (Message part : parts) {
+                copy.add(Message.from(part));
+            }
+            return copy;
+        } catch (RuntimeException ex) {
+            copy.forEach(Message::close);
+            throw ex;
         }
-        return spotRelayIngress;
+    }
+
+    private RoutingId resolveSpotRouteBridgeTargetNode(
+        ChannelRegistration registration,
+        String localEgressChannelName,
+        RoutingId targetNodeRid) {
+        if (registration.kind() != ChannelKind.ROUTE_MESH) {
+            return null;
+        }
+        return targetNodeRid == null
+            ? resolveRouteEgressPeerRid(
+                localEgressChannelName,
+                registration.spotRouteEgressTarget())
+            : targetNodeRid;
     }
 
     private RoutingId resolveRouteEgressPeerRid(
@@ -871,7 +874,11 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             while (running) {
                 ZLinkBackendReceived received = router.recv(ZLinkBackendRecvMode.DONT_WAIT);
                 if (received != null) {
-                    dispatchRequest(channelName, router, received);
+                    if (dispatchSpotRouteBridgePacket(channelName, received)) {
+                        received.close();
+                    } else {
+                        dispatchRequest(channelName, router, received);
+                    }
                 } else {
                     Thread.onSpinWait();
                 }
@@ -885,9 +892,6 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ZLinkBackendReceived received) {
         try {
             ParsedPacket packet = parsePacket(received.parts());
-            if (dispatchSpotRelaySendOrRequest(channelName, router, received, packet)) {
-                return;
-            }
             ChannelRequestHandlerRegistration registration =
                 requestHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
             if (received.routingId().isEmpty()) {
@@ -950,6 +954,20 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
     }
 
+    private boolean dispatchSpotRouteBridgePacket(
+        String channelName,
+        ZLinkBackendReceived received) {
+        ZLinkBackendSpotRouteBridge bridge = spotRouteBridges.get(channelName);
+        if (bridge == null || received.routingId().isEmpty()) {
+            return false;
+        }
+        return bridge.handleRouterReceived(
+            channelName,
+            received.routingId().get(),
+            received.requestSeq().orElse(0L),
+            received.parts());
+    }
+
     private void startRouteLoop(String channelName, ZLinkBackendRouterSocket router) {
         receiveExecutor.submit(() -> {
             while (running) {
@@ -968,10 +986,10 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ZLinkBackendRouterSocket router,
         ZLinkBackendReceived received) {
         try {
-            ParsedPacket packet = parsePacket(received.parts());
-            if (dispatchSpotRelaySendOrRequest(channelName, router, received, packet)) {
+            if (dispatchSpotRouteBridgePacket(channelName, received)) {
                 return;
             }
+            ParsedPacket packet = parsePacket(received.parts());
             ChannelRouteRequestHandlerRegistration registration =
                 routeRequestHandlers.getOrDefault(channelName, Map.of()).get(packet.packetName());
             if (received.routingId().isEmpty()) {
@@ -1293,45 +1311,6 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             result.completeExceptionally(ex);
         }
         return result;
-    }
-
-    private boolean dispatchSpotRelaySendOrRequest(
-        String channelName,
-        ZLinkBackendRouterSocket router,
-        ZLinkBackendReceived received,
-        ParsedPacket packet) {
-        if (ZLinkRoutedSpotRelayPackets.SEND_PACKET_NAME.equals(packet.packetName())) {
-            requireSpotRelayIngress().handleSend(channelName, router, received.parts());
-            return true;
-        }
-        if (ZLinkRoutedSpotRelayPackets.REQUEST_PACKET_NAME.equals(packet.packetName())) {
-            if (received.routingId().isEmpty() || received.requestSeq().isEmpty()) {
-                return true;
-            }
-            requireSpotRelayIngress()
-                .handleRequest(
-                    channelName,
-                    router,
-                    received.routingId().get(),
-                    received.parts(),
-                    defaultRequestTimeout)
-                .whenComplete((reply, error) -> {
-                    if (error != null) {
-                        return;
-                    }
-                    try {
-                        replyRawAndClose(
-                            router,
-                            received.routingId().get(),
-                            received.requestSeq().get(),
-                            ZLinkRoutedSpotRelayPackets.createReplyParts(reply));
-                    } finally {
-                        reply.forEach(Message::close);
-                    }
-                });
-            return true;
-        }
-        return false;
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -2254,22 +2233,6 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             return List.of(payload);
         }
         return List.of(Message.from(packetName.get().getBytes(StandardCharsets.UTF_8)), payload);
-    }
-
-    public interface SpotRelayIngress {
-        RoutingId resolveAcceptedSpotRouteNodeRid(String channelName);
-
-        void handleSend(
-            String channelName,
-            ZLinkBackendRouterSocket router,
-            List<Message> relayParts);
-
-        CompletionStage<List<Message>> handleRequest(
-            String channelName,
-            ZLinkBackendRouterSocket router,
-            RoutingId sourcePeerRid,
-            List<Message> relayParts,
-            Duration timeout);
     }
 
     @FunctionalInterface

@@ -81,56 +81,6 @@ public sealed class CoverageCriticalRuntimeTests
     }
 
     [Fact]
-    public void RoutedSpotRelayPackets_CreateAndDecodeRelayParts()
-    {
-        using Message payloadA = Message.From("move");
-        using Message payloadB = Message.From("north");
-        var targetSpotRid = RoutingId.From("target-spot");
-
-        var parts = ZLinkRoutedSpotRelayPackets.CreateRelayParts(
-            ZLinkMessageKind.Request,
-            "play.route",
-            targetSpotRid,
-            [payloadA, payloadB],
-            TimeSpan.FromSeconds(5));
-
-        try
-        {
-            var header = ZLinkEnvelopeCodec.DecodeHeader(parts);
-            Assert.Equal(ZLinkMessageKind.Request, header.Kind);
-            Assert.Equal("play.route", header.ChannelName);
-            Assert.Equal(ZLinkRoutedSpotRelayPackets.RequestPacketName, header.MessageName);
-
-            var metadata = ZLinkEnvelopeCodec.DecodePart<ZLinkRoutedSpotRelayMetadata>(parts[1]);
-            Assert.Equal(targetSpotRid, RoutingId.From(metadata.TargetSpotRid));
-
-            var reply = ZLinkRoutedSpotRelayReply.FromMessages(parts.Skip(2).ToArray());
-            var copied = reply.ToMessages();
-            try
-            {
-                Assert.Equal(
-                    new[] { "move", "north" },
-                    copied.Select(static message => message.GetString()).ToArray());
-            }
-            finally
-            {
-                global::Systems.Zlink.Zlink.MultipartClose(copied);
-            }
-        }
-        finally
-        {
-            global::Systems.Zlink.Zlink.MultipartClose(parts);
-        }
-
-        var commandHeader = ZLinkRoutedSpotRelayPackets.CreateRelayHeader(
-            ZLinkMessageKind.Command,
-            "play.route");
-        Assert.Equal(ZLinkRoutedSpotRelayPackets.SendPacketName, commandHeader.MessageName);
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            ZLinkRoutedSpotRelayPackets.CreateRelayHeader(ZLinkMessageKind.Response, "play.route"));
-    }
-
-    [Fact]
     public void MonitoringEventMapper_MapsAndFiltersSocketEvents()
     {
         var source = new ZLinkSocketMonitoringRegistration

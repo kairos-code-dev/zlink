@@ -4,6 +4,7 @@
 
 const assert = require('node:assert/strict');
 const zlink = require('@zlink-systems/zlink');
+const { tcpEndpoint } = require('./sample_support');
 
 const REQUEST_PAYLOAD = 'spot-ping';
 const REPLY_PAYLOAD = 'spot-pong';
@@ -21,20 +22,21 @@ async function recvRouterRequest(router, received, timeoutMs) {
 }
 
 async function main() {
-  const endpoint = `inproc://spot-request-${process.pid}`;
+  const endpoint = await tcpEndpoint();
   const ctx = zlink.createContext();
   const requesterNode = zlink.createSpotNode(ctx);
   const responderRouter = zlink.createRouterSocket(ctx);
   const requesterDealer = zlink.createDealerSocket(ctx);
+  const bridge = requesterNode.createRouteBridge();
   let requester = null;
 
   try {
     requester = requesterNode.createSpot();
     responderRouter.bind(endpoint);
     requesterDealer.connect(endpoint);
-    requesterNode.attachChannelDealerManual(CHANNEL_NAME, requesterDealer);
+    bridge.attachDealerChannel(CHANNEL_NAME, requesterDealer);
 
-    const pendingReply = requester.requestToChannel(CHANNEL_NAME)
+    const pendingReply = bridge.request(CHANNEL_NAME, requester.routingId)
       .message(Buffer.from(REQUEST_PAYLOAD))
       .timeout(2000)
       .submit();
@@ -43,8 +45,7 @@ async function main() {
     try {
       assert.ok(received.routingId);
       assert.notEqual(received.requestSeq, null);
-      assert.equal(received.parts.length, 1);
-      assert.equal(received.parts[0].data().toString(), REQUEST_PAYLOAD);
+      assert.equal(received.parts.at(-1).data().toString(), REQUEST_PAYLOAD);
       responderRouter.reply(received.routingId, received.requestSeq)
         .message(Buffer.from(REPLY_PAYLOAD))
         .submit();
@@ -65,6 +66,7 @@ async function main() {
     if (requester) {
       requester.close();
     }
+    bridge.close();
     requesterDealer.close();
     responderRouter.close();
     requesterNode.close();

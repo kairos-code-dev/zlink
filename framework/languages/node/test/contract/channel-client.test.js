@@ -14,6 +14,18 @@ const frameworkProtobuf = require('../../packages/framework-codec-protobuf/dist'
 const nestjs = require('../../packages/nestjs/dist');
 const { resolveModuleProviders } = require('./helpers/nestjs-test-utils');
 
+function fakeSpotRouteBridge() {
+  return {
+    attachDealerChannel() {},
+    attachRouterChannel() {},
+    setTargetNode() {},
+    send() { return { message() { return this; }, submit() { return true; } }; },
+    request() { return { message() { return this; }, timeout() { return this; }, submit() { return true; } }; },
+    handleRouterReceived() { return false; },
+    async dispose() {}
+  };
+}
+
 test('ZLinkChannelClient rejects calls to channels without client capability', async () => {
   const client = new framework.DefaultZLinkChannelClient(framework.createFrameworkRegistration());
 
@@ -509,18 +521,15 @@ test('route channel with SPOT acceptance starts one route receive loop for share
     fakeContext()
   );
   const spotNode = {
+    createRouteBridge() {
+      return fakeSpotRouteBridge();
+    },
     entrySpot() {
       return {
         requestToSpot() {
           throw new Error('spot request not used');
         }
       };
-    },
-    processExternalRouter() {
-      throw new Error('shared route router must own external route frames');
-    },
-    tryProcessExternalRouterParts() {
-      return false;
     }
   };
   manager.setSpotNodes(new Map([['play', spotNode]]));

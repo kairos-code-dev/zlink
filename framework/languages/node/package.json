@@ -12,7 +12,6 @@
     "verify:p0": "node scripts/run_node_runtime_gate.js",
     "verify:coverage": "node scripts/run_node_coverage_gate.js",
     "verify:samples": "./samples/run_samples.sh",
-    "scenario:e2e": "./test/scenario-e2e/run_scenario_e2e.sh",
     "verify:runtime-matrix": "node scripts/verify_node_runtime_matrix.js",
     "verify:abi-matrix": "node scripts/verify_node_abi_matrix.js",
     "verify:cross-language": "./cross-language/run_cross_language_smoke.sh",

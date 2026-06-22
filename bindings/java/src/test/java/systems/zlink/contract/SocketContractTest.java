@@ -45,7 +45,10 @@ import systems.zlink.contracts.service.spot.SpotDispatchInfo;
 import systems.zlink.contracts.service.spot.SpotKind;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.service.spot.SpotNodeActorEntry;
+import systems.zlink.contracts.service.spot.SpotNodePublisher;
 import systems.zlink.contracts.service.spot.SpotNodeSocketFilter;
+import systems.zlink.contracts.service.spot.SpotRouteBridge;
+import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.sockets.StreamPacketHandler;
 import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.contracts.sockets.SubSocket;
@@ -520,6 +523,28 @@ public class SocketContractTest {
             String.class, RoutingId.class));
         assertTrue(hasPublicMethod(SpotNode.class,
             "attachSpotRouteChannelDiscovery", String.class, Discovery.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "createRouteBridge")
+            && SpotNode.class.getMethod("createRouteBridge").getReturnType()
+                == SpotRouteBridge.class);
+        assertTrue(hasPublicMethod(SpotNode.class, "createPublisher")
+            && SpotNode.class.getMethod("createPublisher").getReturnType()
+                == SpotNodePublisher.class);
+        assertTrue(hasPublicMethod(SpotRouteBridge.class, "attachDealerChannel",
+            String.class, DealerSocket.class));
+        assertTrue(hasPublicMethod(SpotRouteBridge.class, "attachDealerChannel",
+            String.class, DealerSocket.class, SpotRouteBridgeEndpointOptions.class));
+        assertTrue(hasPublicMethod(SpotRouteBridge.class, "attachRouterChannel",
+            String.class, RouterSocket.class));
+        assertTrue(hasPublicMethod(SpotRouteBridge.class, "attachRouterChannel",
+            String.class, RouterSocket.class, SpotRouteBridgeEndpointOptions.class));
+        assertTrue(hasPublicMethod(SpotRouteBridge.class, "setTargetNode",
+            String.class, RoutingId.class));
+        assertTrue(hasPublicMethod(SpotRouteBridge.class, "send",
+            String.class, RoutingId.class));
+        assertTrue(hasPublicMethod(SpotRouteBridge.class, "request",
+            String.class, RoutingId.class));
+        assertTrue(hasPublicMethod(SpotNodePublisher.class, "publish",
+            String.class));
         assertFalse(hasPublicMethod(SpotNode.class, "socketSnapshots"));
         assertFalse(hasPublicMethod(SpotNode.class, "socketSnapshots",
             systems.zlink.contracts.service.spot.SpotNodeSocketFilter.class));

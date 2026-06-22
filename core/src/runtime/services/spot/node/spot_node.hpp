@@ -68,18 +68,7 @@ class spot_node_t : public discovery_observer_t
     int connect_peer_pub (const char *peer_pub_endpoint_);
     int disconnect_peer_pub (const char *peer_pub_endpoint_);
     int disconnect_peer_pub_rid (const zlink_routing_id_t *target_node_rid_);
-    int connect_router_channel_peer (const char *channel_name_, const char *endpoint_);
-    int connect_router_channel_peer_rid (const char *channel_name_,
-                                         const zlink_routing_id_t *peer_rid_,
-                                         const char *endpoint_);
-    int disconnect_router_channel_peer (const char *channel_name_, const char *endpoint_);
-    int disconnect_router_channel_peer_rid (const char *channel_name_,
-                                            const zlink_routing_id_t *peer_rid_);
-    int attach_router_channel_discovery (const char *channel_name_, discovery_t *discovery_);
     int attach_discovery (discovery_t *discovery_);
-    int attach_channel_dealer (discovery_t *discovery_, socket_base_t *dealer_);
-    int attach_channel_dealer_manual (const char *channel_name_, socket_base_t *dealer_);
-    int attach_pub_ingress (socket_base_t *pub_);
     int try_register_spot_facade (spot_handle_t *spot_);
     void unregister_spot_facade (spot_handle_t *spot_);
     bool is_last_spot_facade_for_logical_state (spot_handle_t *spot_);
@@ -292,7 +281,6 @@ class spot_node_t : public discovery_observer_t
     int unregister_registered ();
     int apply_service_subscription_filters ();
     void refresh_service_discovery_attachments ();
-    void refresh_router_channel_discovery_peers ();
     void snapshot_service_discovery_topology (discovery_t *discovery_,
                                               const std::string &channel_name_,
                                               std::vector<provider_info_t> *provider_scratch_,
@@ -312,8 +300,6 @@ class spot_node_t : public discovery_observer_t
     void begin_destroy_detach_phase (
       discovery_t **discovery_out_,
       std::map<std::string, discovery_t *> *service_discoveries_out_,
-      std::map<std::string, discovery_t *> *channel_dealer_discoveries_out_,
-      std::map<std::string, discovery_t *> *router_channel_discoveries_out_,
       std::vector<std::string> *active_peer_endpoints_out_,
       std::string *bound_endpoint_out_,
       std::string *router_bind_endpoint_out_);

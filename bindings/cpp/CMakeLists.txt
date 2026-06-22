@@ -178,6 +178,7 @@ add_library(zlink_cpp STATIC
   src/Runtime/Service/spot_receive.cpp
   src/Runtime/Service/spot_send.cpp
   src/Runtime/Service/spot_node.cpp
+  src/Runtime/Service/spot_route_bridge.cpp
 )
 add_library(zlink::cpp ALIAS zlink_cpp)
 

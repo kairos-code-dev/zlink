@@ -13,12 +13,13 @@ internal static class Program
         using var requesterNode = ctx.CreateSpotNode();
         using var requesterDealer = ctx.CreateDealerSocket();
         using var responderRouter = ctx.CreateRouterSocket();
-        using var requester = requesterNode.CreateSpot();
+        using var bridge = requesterNode.CreateRouteBridge();
         string endpoint = SampleSupport.NewEndpoint("tcp", "spot-request-async");
         const string channelName = "orders";
+        requesterDealer.SetRoutingId(RoutingId.From("requester-channel-client"));
         responderRouter.Bind(endpoint);
         requesterDealer.Connect(endpoint);
-        requesterNode.AttachChannelDealerManual(channelName, requesterDealer);
+        bridge.AttachDealerChannel(channelName, requesterDealer);
 
         Task responderTask = Task.Run(() =>
         {
@@ -27,18 +28,29 @@ internal static class Program
                 throw new InvalidOperationException("recv failed");
             RoutingId routingId = received.RoutingId
                 ?? throw new InvalidOperationException("missing routing id");
-            string requestPayload = received.Parts[0].GetString();
+            string requestPayload = received.Parts[2].GetString();
             SampleSupport.EnsureEqual("spot-ping", requestPayload, "request");
             using var reply = Message.From("spot-pong");
             responderRouter.Reply(routingId, received.RequestSeq ?? 0UL)
                 .Message(reply).Submit();
+            foreach (Message part in received.Parts)
+                part.Dispose();
         });
 
         using var request = Message.From("spot-ping");
-        var replyParts = await requester.RequestToChannel(channelName)
-            .Message(request)
-            .Timeout(TimeSpan.FromSeconds(2))
-            .Async();
+        var completion =
+            new TaskCompletionSource<IReadOnlyList<Message>>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.Request(channelName, RoutingId.From("requester-spot"),
+            new[] { request }, (result, parts) =>
+            {
+                if (result == RequestResult.Ok)
+                    completion.SetResult(parts);
+                else
+                    completion.SetException(
+                        new InvalidOperationException($"request failed: {result}"));
+            }, timeout: TimeSpan.FromSeconds(2));
+        var replyParts = await completion.Task;
         using Message replyPart = replyParts[0];
         SampleSupport.EnsureEqual("spot-pong", replyPart.GetString(), "reply");
         for (int i = 1; i < replyParts.Count; i++)

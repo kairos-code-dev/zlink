@@ -5,8 +5,9 @@ use crate::spot_operations::{
 use crate::{
     Actor, ActorRef, AutoHwmProfile, CloseError, ConfigError, ConnectError, Discovery, Empty,
     Message, Ready, RoutingId, SendOp, Spot, SpotNodeActorEntry, SpotNodeOptions,
-    SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketEntry, SpotNodeSocketFilter,
-    SpotNodeSpotEntry, SpotNodeStatus, SpotNodeSubjectEntry, SpotNodeSubjectFilter,
+    SpotNodePeerEntry, SpotNodePeerFilter, SpotNodePublisher, SpotNodeSocketEntry,
+    SpotNodeSocketFilter, SpotNodeSpotEntry, SpotNodeStatus, SpotNodeSubjectEntry,
+    SpotNodeSubjectFilter, SpotRouteBridge,
 };
 
 /// A spot node: hosts spots and actors, tunes their sockets, and exposes the
@@ -141,6 +142,16 @@ impl SpotNode {
     /// Attaches a PUB socket as a publish ingress for the node.
     pub fn attach_pub_ingress(&self, pub_sock: &crate::PubSocket) -> Result<(), ConfigError> {
         <Self as SpotNodeContract>::attach_pub_ingress(self, pub_sock)
+    }
+
+    /// Creates a bridge from caller-owned channel sockets to this node's SPOT routed plane.
+    pub fn create_route_bridge(&self) -> Result<SpotRouteBridge, ConfigError> {
+        SpotRouteBridge::new(self)
+    }
+
+    /// Creates a publisher handle for this node's local topic plane.
+    pub fn create_publisher(&self) -> Result<SpotNodePublisher, ConfigError> {
+        SpotNodePublisher::new(self)
     }
 
     /// Returns the high-water mark applied to the node's router sockets.

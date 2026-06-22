@@ -15,6 +15,7 @@ import type {
   ZLinkBackendSocket,
   ZLinkBackendSocketMonitor,
   ZLinkBackendSpotNode,
+  ZLinkBackendSpotRouteBridge,
   ZLinkBackendStreamSocket,
   ZLinkBackendSubscriberSocket,
   ZLinkMonitoringBackendAdapter,
@@ -190,39 +191,42 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
           (target as unknown as { resolveSpot(spotRid: unknown): unknown })
             .resolveSpot(toNativeRoutingId(spotRid));
       }
-      if (property === 'attachChannelDealer') {
-        return (discovery: ZLinkBackendDiscovery, dealer: ZLinkBackendDealerSocket) =>
-          (target as unknown as { attachChannelDealer(discovery: unknown, dealer: unknown): void })
-            .attachChannelDealer(unwrapBackendObject(discovery), unwrapBackendObject(dealer));
+      if (property === 'createRouteBridge') {
+        return () => wrapBackendObject(
+          (target as unknown as { createRouteBridge(): { close(): void } }).createRouteBridge()
+        ) as unknown as ZLinkBackendSpotRouteBridge;
       }
-      if (property === 'attachSpotRouteChannelDiscovery') {
-        return (channelName: string, discovery: ZLinkBackendDiscovery) =>
-          (target as unknown as { attachSpotRouteChannelDiscovery(channelName: string, discovery: unknown): void })
-            .attachSpotRouteChannelDiscovery(channelName, unwrapBackendObject(discovery));
+      if (property === 'attachDealerChannel') {
+        return (channelName: string, dealer: ZLinkBackendDealerSocket, options?: { readonly capabilities?: number }) =>
+          (target as unknown as {
+            attachDealerChannel(channelName: string, dealer: unknown, options?: { readonly capabilities?: number }): void;
+          }).attachDealerChannel(channelName, unwrapBackendObject(dealer), options);
       }
-      if (property === 'processExternalRouter') {
-        return () =>
-          (target as unknown as { processExternalRouter(): void })
-            .processExternalRouter();
+      if (property === 'attachRouterChannel') {
+        return (channelName: string, router: ZLinkBackendRouterSocket, options?: { readonly capabilities?: number }) =>
+          (target as unknown as {
+            attachRouterChannel(channelName: string, router: unknown, options?: { readonly capabilities?: number }): void;
+          }).attachRouterChannel(channelName, unwrapBackendObject(router), options);
       }
-      if (property === 'tryProcessExternalRouterParts') {
-        return (parts: readonly unknown[]) =>
-          (target as unknown as { tryProcessExternalRouterParts(parts: readonly unknown[]): boolean })
-            .tryProcessExternalRouterParts(parts);
+      if (property === 'handleRouterReceived') {
+        return (
+          channelName: string,
+          sourceNodeRid: unknown,
+          parts: readonly unknown[],
+          requestSeq?: bigint | number
+        ) =>
+          (target as unknown as {
+            handleRouterReceived(
+              channelName: string,
+              sourceNodeRid: unknown,
+              parts: readonly unknown[],
+              requestSeq?: bigint | number
+            ): boolean;
+          }).handleRouterReceived(channelName, toNativeRoutingId(sourceNodeRid), parts, requestSeq);
       }
       if (property === 'setRoutingId') {
         return (routingId: unknown) =>
           (target as unknown as { setRoutingId(routingId: unknown): void }).setRoutingId(toNativeRoutingId(routingId));
-      }
-      if (property === 'connectRouterChannelPeerRid') {
-        return (channelName: string, peerRid: unknown, endpoint: string) =>
-          (target as unknown as { connectRouterChannelPeerRid(channelName: string, peerRid: unknown, endpoint: string): void })
-            .connectRouterChannelPeerRid(channelName, toNativeRoutingId(peerRid), endpoint);
-      }
-      if (property === 'disconnectRouterChannelPeerRid') {
-        return (channelName: string, peerRid: unknown) =>
-          (target as unknown as { disconnectRouterChannelPeerRid(channelName: string, peerRid: unknown): void })
-            .disconnectRouterChannelPeerRid(channelName, toNativeRoutingId(peerRid));
       }
       if (property === 'createSpot' || property === 'entrySpot') {
         return () => wrapBackendObject((target as unknown as { [key: string]: () => { close(): void } })[property]());

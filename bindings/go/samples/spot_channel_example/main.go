@@ -23,22 +23,22 @@ func main() {
 	roomNode, err := ctx.SpotNode()
 	samplecommon.Must(err)
 	defer roomNode.Close()
-	room, err := roomNode.Spot()
-	samplecommon.Must(err)
-	defer room.Close()
 	roomDealer, err := ctx.DealerSocket()
 	samplecommon.Must(err)
 	defer roomDealer.Close()
 	apiRouter, err := ctx.RouterSocket()
 	samplecommon.Must(err)
 	defer apiRouter.Close()
+	bridge, err := roomNode.CreateRouteBridge(nil)
+	samplecommon.Must(err)
+	defer bridge.Close()
 
 	const channel = "api"
 	endpoint := samplecommon.UniqueTCP("spot-channel")
 	samplecommon.Must(apiRouter.Bind(endpoint))
 	samplecommon.Must(roomDealer.Connect(endpoint))
-	// "api" 채널 호출을 이 DEALER로 내보내도록 노드에 등록한다.
-	samplecommon.Must(roomNode.AttachChannelDealerManual(channel, roomDealer))
+	// "api" 채널 호출을 이 DEALER로 내보내도록 bridge에 등록한다.
+	samplecommon.Must(bridge.AttachDealerChannel(channel, roomDealer, nil))
 
 	// API 서버: 요청을 받아 응답한다.
 	serverDone := make(chan error, 1)
@@ -49,21 +49,23 @@ func main() {
 			return
 		}
 		defer received.Close()
+		parts := received.Parts()
+		if len(parts) < 3 || string(parts[2].Data()) != "get-profile" {
+			serverDone <- fmt.Errorf("unexpected request frame")
+			return
+		}
 		serverDone <- apiRouter.Reply(received.RoutingID(), received.RequestSeq()).
 			Message(samplecommon.Message("profile:level-7")).Submit(nil)
 	}()
 
 	// 게임룸이 API 채널로 outgame 요청을 보낸다.
 	replyCh := make(chan string, 1)
-	_, reqErr := room.RequestToChannel(channel).
-		Message(samplecommon.Message("get-profile")).
-		Timeout(5*time.Second).
-		Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
-			if result == zlink.RequestOK && len(parts) > 0 {
-				replyCh <- string(parts[0].Data())
-			}
-			zlink.MultipartClose(parts)
-		})
+	_, reqErr := bridge.Request(channel, zlink.NewRoutingID([]byte("room")), zlink.SendFlagsNone, 5*time.Second, func(result zlink.RequestResult, parts []*zlink.Message) {
+		if result == zlink.RequestOK && len(parts) > 0 {
+			replyCh <- string(parts[0].Data())
+		}
+		zlink.MultipartClose(parts)
+	}, samplecommon.Message("get-profile"))
 	samplecommon.Must(reqErr)
 
 	reply := <-replyCh

@@ -2,6 +2,20 @@
 
 #include "spot_pubsub_scenario_shared.hpp"
 
+namespace
+{
+zlink_submit_result_t publisher_publish_adapter (void *publisher_,
+                                                 const char *topic_,
+                                                 zlink_msg_t *parts_,
+                                                 size_t part_count_,
+                                                 zlink_send_flags_t flags_)
+{
+    return zlink_spot_node_publisher_publish (publisher_, topic_, parts_, part_count_, flags_) == 0
+             ? ZLINK_SUBMIT_OK
+             : ZLINK_SUBMIT_INTERNAL_ERROR;
+}
+}
+
 void test_spot_node_direct_local_and_child_interop ()
 {
     void *ctx = zlink_ctx_new ();
@@ -54,7 +68,7 @@ void test_spot_node_direct_local_and_child_interop ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_pub_ingress_local_spot_subscribe_surface ()
+void test_spot_node_publisher_local_spot_subscribe_surface ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -63,20 +77,19 @@ void test_spot_node_pub_ingress_local_spot_subscribe_surface ()
     TEST_ASSERT_NOT_NULL (node);
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
-    void *pub = zlink_socket (ctx, ZLINK_SOCKET_PUB);
-    TEST_ASSERT_NOT_NULL (pub);
+    void *publisher = zlink_spot_node_publisher_new (node);
+    TEST_ASSERT_NOT_NULL (publisher);
 
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (node, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (spot, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (pub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (spot, "pub-ingress:topic"));
-    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_spot_node_attach_pub_ingress (node, pub));
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_publish, pub, "pub-ingress:topic", "via-raw-pub", 0));
+      publish_text (&publisher_publish_adapter, publisher, "pub-ingress:topic", "via-publisher",
+                    0));
     TEST_ASSERT_TRUE (
-      wait_for_spot_recv_message (spot, "pub-ingress:topic", "via-raw-pub", 11, 3000));
+      wait_for_spot_recv_message (spot, "pub-ingress:topic", "via-publisher", 13, 3000));
 
     void *peer_node = create_spot_node (ctx, "spot-node-pub-ingress-peer");
     TEST_ASSERT_NOT_NULL (peer_node);
@@ -97,14 +110,14 @@ void test_spot_node_pub_ingress_local_spot_subscribe_surface ()
                                                       ZLINK_MONITOR_STATE_READY, 1, 5000));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_publish, pub, "pub-ingress:remote", "via-peer", 0));
+      publish_text (&publisher_publish_adapter, publisher, "pub-ingress:remote", "via-peer", 0));
     TEST_ASSERT_TRUE (
       wait_for_spot_recv_message (peer_spot, "pub-ingress:remote", "via-peer", 8, 3000));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&peer_spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&peer_node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_publisher_close (publisher));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (pub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }

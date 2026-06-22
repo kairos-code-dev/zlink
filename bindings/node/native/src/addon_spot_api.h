@@ -20,6 +20,20 @@ napi_value spot_node_attach_router_channel_discovery (napi_env env, napi_callbac
 napi_value spot_node_attach_channel_dealer (napi_env env, napi_callback_info info);
 napi_value spot_node_attach_channel_dealer_manual (napi_env env, napi_callback_info info);
 napi_value spot_node_attach_pub_ingress (napi_env env, napi_callback_info info);
+napi_value spot_route_bridge_new (napi_env env, napi_callback_info info);
+napi_value spot_route_bridge_close (napi_env env, napi_callback_info info);
+napi_value spot_route_bridge_attach_dealer_channel (napi_env env, napi_callback_info info);
+napi_value spot_route_bridge_attach_router_channel (napi_env env, napi_callback_info info);
+napi_value spot_route_bridge_set_target_node (napi_env env, napi_callback_info info);
+napi_value spot_route_bridge_send (napi_env env, napi_callback_info info);
+napi_value spot_route_bridge_request (napi_env env, napi_callback_info info);
+napi_value spot_route_bridge_handle_router_received (napi_env env, napi_callback_info info);
+napi_value spot_route_bridge_handle_router_received_with_metadata (napi_env env,
+                                                                   napi_callback_info info);
+napi_value spot_route_bridge_drain (napi_env env, napi_callback_info info);
+napi_value spot_node_publisher_new (napi_env env, napi_callback_info info);
+napi_value spot_node_publisher_publish (napi_env env, napi_callback_info info);
+napi_value spot_node_publisher_close (napi_env env, napi_callback_info info);
 napi_value spot_node_process_external_router (napi_env env, napi_callback_info info);
 napi_value spot_node_try_process_external_router_parts (napi_env env, napi_callback_info info);
 napi_value spot_node_set_tls_server (napi_env env, napi_callback_info info);

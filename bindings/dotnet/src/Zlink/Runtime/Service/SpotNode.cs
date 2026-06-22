@@ -15,6 +15,7 @@ namespace Systems.Zlink;
 internal sealed partial class SpotNode : ISpotNode
 {
     private IntPtr _handle;
+    internal Context Context { get; }
     private readonly Dictionary<string, DealerSocket> _channelDealers =
         new(StringComparer.Ordinal);
     private readonly HashSet<Spot> _spots = new();
@@ -40,6 +41,7 @@ internal sealed partial class SpotNode : ISpotNode
     {
         if (context == null)
             throw new ArgumentNullException(nameof(context));
+        Context = context;
         Options = options ?? new SpotNodeOptions();
         if (options == null)
         {

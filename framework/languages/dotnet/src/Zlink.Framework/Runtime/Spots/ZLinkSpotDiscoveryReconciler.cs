@@ -129,16 +129,10 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
 
     private void ConnectRouterPeer(RoutingId peerRoutingId, string endpoint)
     {
+        _ = peerRoutingId;
         try
         {
-            if (peerRoutingId.Size > 0)
-            {
-                node.ConnectRouterChannelPeerRid(spotChannelName, peerRoutingId, endpoint);
-            }
-            else
-            {
-                node.ConnectRouterChannelPeer(spotChannelName, endpoint);
-            }
+            node.ConnectPeer(endpoint);
         }
         catch (ZlinkConnectException error)
             when (error.NativeErrno == 16)

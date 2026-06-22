@@ -107,6 +107,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_spot_dispatch_event
   ${INTEGRATION_TEST_ROOT}/test_spot_actor_dispatch
   ${INTEGRATION_TEST_ROOT}/test_spot_poller
+  ${INTEGRATION_TEST_ROOT}/test_spot_route_bridge_api
   ${INTEGRATION_TEST_ROOT}/test_spot_router_channel_peer
   ${INTEGRATION_TEST_ROOT}/test_spot_runtime_activation
   ${INTEGRATION_TEST_ROOT}/test_discovery_resolve_spot
@@ -641,6 +642,9 @@ endif()
 if(TARGET test_stream_socket)
   set_tests_properties(test_stream_socket PROPERTIES TIMEOUT 60)
 endif()
+if(TARGET test_spot_route_bridge_api)
+  set_tests_properties(test_spot_route_bridge_api PROPERTIES TIMEOUT 30)
+endif()
 if(TARGET test_stream_threadsafe)
   set_tests_properties(test_stream_threadsafe PROPERTIES TIMEOUT 30)
 endif()
@@ -809,7 +813,7 @@ set(SPOT_PUBSUB_LOCAL_TEST_SPECS
     ${SPOT_PUBSUB_LOCAL_SUFFIX_TEST_SPECS})
 
 set(SPOT_PUBSUB_UNSPLIT_CASES
-    test_spot_node_pub_ingress_local_spot_subscribe_surface)
+    test_spot_node_publisher_local_spot_subscribe_surface)
 extract_case_names_from_specs(
   SPOT_PUBSUB_PEER_CASES
   SPOT_PUBSUB_PEER_TEST_SPECS)

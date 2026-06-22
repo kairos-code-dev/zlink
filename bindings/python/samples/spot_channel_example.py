@@ -14,17 +14,18 @@ def main():
          zlink.create_spot_node(ctx) as room_node, \
          room_node.create_spot() as room, \
          zlink.create_dealer_socket(ctx) as room_dealer, \
-        zlink.create_router_socket(ctx) as api_router:
+         zlink.create_router_socket(ctx) as api_router, \
+         room_node.create_route_bridge() as bridge:
         channel = "api"
         _, endpoint = tcp_endpoint()
         api_router.bind(endpoint)
         room_dealer.connect(endpoint)
-        # "api" 채널 호출을 이 DEALER로 내보내도록 노드에 등록한다.
-        room_node.attach_channel_dealer_manual(channel, room_dealer)
+        # "api" 채널 호출을 이 DEALER로 내보내도록 bridge에 등록한다.
+        bridge.attach_dealer_channel(channel, room_dealer)
 
         # 게임룸이 API 채널로 outgame 요청을 보낸다.
         replies = []
-        room.request_to_channel(channel).message(b"get-profile").timeout(5).submit(
+        bridge.request(channel, room.routing_id).message(b"get-profile").timeout(5).submit(
             lambda result, parts: (replies.append([p.to_bytes() for p in parts]),
                                    [p.close() for p in parts]))
 
@@ -36,8 +37,7 @@ def main():
                 received = zlink.create_received()
                 try:
                     if api_router.recv_into(received, flags=zlink.RecvFlags.DONT_WAIT):
-                        api_router.reply(received.routing_id, received.request_seq).message(
-                            b"profile:level-7").submit()
+                        received.reply().message(b"profile:level-7").submit()
                         served = True
                 except zlink.RecvError:
                     pass

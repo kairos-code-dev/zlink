@@ -37,7 +37,7 @@ internal sealed partial class SpotNode : ISpotNode
         Destroy(throwOnError: false);
     }
 
-    private void EnsureNotDisposed()
+    internal void EnsureNotDisposed()
     {
         if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(SpotNode));

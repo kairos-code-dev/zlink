@@ -825,6 +825,66 @@ public final class Native {
             "zlink_spot_node_attach_pub_ingress",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_ROUTE_BRIDGE_NEW = downcall(
+            "zlink_spot_route_bridge_new",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_ROUTE_BRIDGE_ATTACH_DEALER_CHANNEL = downcall(
+            "zlink_spot_route_bridge_attach_dealer_channel",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_ROUTE_BRIDGE_ATTACH_ROUTER_CHANNEL = downcall(
+            "zlink_spot_route_bridge_attach_router_channel",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_ROUTE_BRIDGE_SET_TARGET_NODE = downcall(
+            "zlink_spot_route_bridge_set_target_node",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_ROUTE_BRIDGE_SEND = downcall(
+            "zlink_spot_route_bridge_send",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+                    ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_ROUTE_BRIDGE_REQUEST = downcall(
+            "zlink_spot_route_bridge_request",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_ROUTE_BRIDGE_HANDLE_ROUTER_RECEIVED = downcall(
+            "zlink_spot_route_bridge_handle_router_received",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+                    ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_ROUTE_BRIDGE_HANDLE_ROUTER_RECEIVED_WITH_METADATA = downcall(
+            "zlink_spot_route_bridge_handle_router_received_with_metadata",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_ROUTE_BRIDGE_DRAIN = downcall(
+            "zlink_spot_route_bridge_drain",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_ROUTE_BRIDGE_CLOSE = downcall(
+            "zlink_spot_route_bridge_close",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_PUBLISHER_NEW = downcall(
+            "zlink_spot_node_publisher_new",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_PUBLISHER_PUBLISH = downcall(
+            "zlink_spot_node_publisher_publish",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_NODE_PUBLISHER_CLOSE = downcall(
+            "zlink_spot_node_publisher_close",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_REG = downcall("zlink_spot_node_register",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_UNREG = downcall("zlink_spot_node_unregister",
@@ -3216,6 +3276,169 @@ public final class Native {
             return (int) MH_SPOT_NODE_ATTACH_PUB_INGRESS.invokeExact(node, pub);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_attach_pub_ingress failed",
+              t);
+        }
+    }
+
+    public static MemorySegment spotRouteBridgeNew(MemorySegment ctx,
+                                                   MemorySegment node,
+                                                   MemorySegment options) {
+        try {
+            return (MemorySegment) MH_SPOT_ROUTE_BRIDGE_NEW.invokeExact(ctx, node,
+              options);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_route_bridge_new failed", t);
+        }
+    }
+
+    public static int spotRouteBridgeAttachDealerChannel(MemorySegment bridge,
+                                                         MemorySegment channelName,
+                                                         MemorySegment dealer,
+                                                         MemorySegment options) {
+        try {
+            return (int) MH_SPOT_ROUTE_BRIDGE_ATTACH_DEALER_CHANNEL.invokeExact(
+              bridge, channelName, dealer, options);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_route_bridge_attach_dealer_channel failed", t);
+        }
+    }
+
+    public static int spotRouteBridgeAttachRouterChannel(MemorySegment bridge,
+                                                         MemorySegment channelName,
+                                                         MemorySegment router,
+                                                         MemorySegment options) {
+        try {
+            return (int) MH_SPOT_ROUTE_BRIDGE_ATTACH_ROUTER_CHANNEL.invokeExact(
+              bridge, channelName, router, options);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_route_bridge_attach_router_channel failed", t);
+        }
+    }
+
+    public static int spotRouteBridgeSetTargetNode(MemorySegment bridge,
+                                                   MemorySegment channelName,
+                                                   MemorySegment targetNodeRid) {
+        try {
+            return (int) MH_SPOT_ROUTE_BRIDGE_SET_TARGET_NODE.invokeExact(
+              bridge, channelName, targetNodeRid);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_route_bridge_set_target_node failed", t);
+        }
+    }
+
+    public static int spotRouteBridgeSend(MemorySegment bridge,
+                                          MemorySegment channelName,
+                                          MemorySegment targetSpotRid,
+                                          MemorySegment parts,
+                                          long partCount,
+                                          int flags) {
+        try {
+            return (int) MH_SPOT_ROUTE_BRIDGE_SEND.invokeExact(bridge,
+              channelName, targetSpotRid, parts, partCount, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_route_bridge_send failed", t);
+        }
+    }
+
+    public static int spotRouteBridgeRequest(MemorySegment bridge,
+                                             MemorySegment channelName,
+                                             MemorySegment targetSpotRid,
+                                             MemorySegment parts,
+                                             long partCount,
+                                             MemorySegment callback,
+                                             MemorySegment userData,
+                                             int flags,
+                                             int timeoutMs) {
+        try {
+            return (int) MH_SPOT_ROUTE_BRIDGE_REQUEST.invokeExact(bridge,
+              channelName, targetSpotRid, parts, partCount, callback, userData,
+              flags, timeoutMs);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_route_bridge_request failed",
+              t);
+        }
+    }
+
+    public static int spotRouteBridgeHandleRouterReceived(
+        MemorySegment bridge,
+        MemorySegment channelName,
+        MemorySegment sourceNodeRid,
+        MemorySegment parts,
+        long partCount,
+        MemorySegment handledOut) {
+        try {
+            return (int) MH_SPOT_ROUTE_BRIDGE_HANDLE_ROUTER_RECEIVED.invokeExact(
+              bridge, channelName, sourceNodeRid, parts, partCount, handledOut);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_route_bridge_handle_router_received failed", t);
+        }
+    }
+
+    public static int spotRouteBridgeHandleRouterReceivedWithMetadata(
+        MemorySegment bridge,
+        MemorySegment channelName,
+        MemorySegment sourceNodeRid,
+        long requestSeq,
+        MemorySegment parts,
+        long partCount,
+        MemorySegment handledOut) {
+        try {
+            return (int) MH_SPOT_ROUTE_BRIDGE_HANDLE_ROUTER_RECEIVED_WITH_METADATA.invokeExact(
+              bridge, channelName, sourceNodeRid, requestSeq, parts, partCount,
+              handledOut);
+        } catch (Throwable t) {
+            throw new RuntimeException(
+              "zlink_spot_route_bridge_handle_router_received_with_metadata failed", t);
+        }
+    }
+
+    public static int spotRouteBridgeDrain(MemorySegment bridge) {
+        try {
+            return (int) MH_SPOT_ROUTE_BRIDGE_DRAIN.invokeExact(bridge);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_route_bridge_drain failed", t);
+        }
+    }
+
+    public static int spotRouteBridgeClose(MemorySegment bridge) {
+        try {
+            return (int) MH_SPOT_ROUTE_BRIDGE_CLOSE.invokeExact(bridge);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_route_bridge_close failed", t);
+        }
+    }
+
+    public static MemorySegment spotNodePublisherNew(MemorySegment node) {
+        try {
+            return (MemorySegment) MH_SPOT_NODE_PUBLISHER_NEW.invokeExact(node);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_publisher_new failed", t);
+        }
+    }
+
+    public static int spotNodePublisherPublish(MemorySegment publisher,
+                                               MemorySegment topic,
+                                               MemorySegment parts,
+                                               long partCount,
+                                               int flags) {
+        try {
+            return (int) MH_SPOT_NODE_PUBLISHER_PUBLISH.invokeExact(publisher,
+              topic, parts, partCount, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_publisher_publish failed",
+              t);
+        }
+    }
+
+    public static int spotNodePublisherClose(MemorySegment publisher) {
+        try {
+            return (int) MH_SPOT_NODE_PUBLISHER_CLOSE.invokeExact(publisher);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_publisher_close failed",
               t);
         }
     }

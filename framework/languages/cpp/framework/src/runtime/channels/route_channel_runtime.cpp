@@ -119,6 +119,7 @@ route_channel_runtime_t::submit_send_parts (const zlink::routing_id_t &target_no
 {
     send_backend_t backend;
     std::optional<zlink::routing_id_t> backend_target;
+    std::optional<zlink::routing_id_t> backend_spot_target;
     runtime::messaging::message_parts_t backend_parts;
     {
         std::lock_guard lock (_mutex);
@@ -130,11 +131,12 @@ route_channel_runtime_t::submit_send_parts (const zlink::routing_id_t &target_no
         if (_send_backend) {
             backend = _send_backend;
             backend_target = _outbound_packets.back ().target_node_rid;
+            backend_spot_target = _outbound_packets.back ().target_spot_rid;
             backend_parts = _outbound_packets.back ().parts;
         }
     }
     if (backend) {
-        return backend (*backend_target, backend_parts);
+        return backend (*backend_target, backend_spot_target, backend_parts);
     }
     return result_t<void>::success ();
 }
@@ -181,7 +183,7 @@ route_channel_runtime_t::request_reply_parts (const zlink::routing_id_t &target_
         }
         backend = _request_backend;
     }
-    auto reply = backend (target_node_rid, parts, timeout);
+    auto reply = backend (target_node_rid, std::nullopt, parts, timeout);
     {
         std::lock_guard lock (_mutex);
         _pending_requests.remove (request_seq);
@@ -196,6 +198,7 @@ route_channel_runtime_t::submit_spot_send_parts (const zlink::routing_id_t &targ
 {
     send_backend_t backend;
     std::optional<zlink::routing_id_t> backend_target;
+    std::optional<zlink::routing_id_t> backend_spot_target;
     runtime::messaging::message_parts_t backend_parts;
     {
         std::lock_guard lock (_mutex);
@@ -207,11 +210,12 @@ route_channel_runtime_t::submit_spot_send_parts (const zlink::routing_id_t &targ
         if (_send_backend) {
             backend = _send_backend;
             backend_target = _outbound_packets.back ().target_node_rid;
+            backend_spot_target = _outbound_packets.back ().target_spot_rid;
             backend_parts = _outbound_packets.back ().parts;
         }
     }
     if (backend) {
-        return backend (*backend_target, backend_parts);
+        return backend (*backend_target, backend_spot_target, backend_parts);
     }
     return result_t<void>::success ();
 }
@@ -239,7 +243,8 @@ route_channel_runtime_t::request_to_spot_parts (const zlink::routing_id_t &targe
         }
     }
     if (backend) {
-        auto reply = backend (target_node_rid, parts, std::chrono::milliseconds (0));
+        auto reply = backend (target_node_rid, target_spot_rid, parts,
+                              std::chrono::milliseconds (0));
         std::lock_guard lock (_mutex);
         _pending_requests.remove (request_seq);
         if (!reply) {
@@ -252,10 +257,10 @@ route_channel_runtime_t::request_to_spot_parts (const zlink::routing_id_t &targe
 }
 
 result_t<runtime::messaging::message_parts_t>
-route_channel_runtime_t::request_reply_to_spot_parts (const zlink::routing_id_t &target_node_rid,
-                                                      const zlink::routing_id_t &target_spot_rid,
-                                                      runtime::messaging::message_parts_t parts,
-                                                      std::chrono::milliseconds timeout)
+route_channel_runtime_t::request_reply_spot_parts (const zlink::routing_id_t &target_node_rid,
+                                                   const zlink::routing_id_t &target_spot_rid,
+                                                   runtime::messaging::message_parts_t parts,
+                                                   std::chrono::milliseconds timeout)
 {
     request_backend_t backend;
     std::uint64_t request_seq = 0;
@@ -278,7 +283,7 @@ route_channel_runtime_t::request_reply_to_spot_parts (const zlink::routing_id_t 
         }
         backend = _request_backend;
     }
-    auto reply = backend (target_node_rid, parts, timeout);
+    auto reply = backend (target_node_rid, target_spot_rid, parts, timeout);
     {
         std::lock_guard lock (_mutex);
         _pending_requests.remove (request_seq);
@@ -311,13 +316,15 @@ void route_channel_runtime_t::set_request_backend (request_backend_t backend)
 void route_channel_runtime_t::attach_native_backend (backend::native_route_backend_t &backend)
 {
     set_send_backend ([&backend] (const zlink::routing_id_t &target_node_rid,
+                                  const std::optional<zlink::routing_id_t> &target_spot_rid,
                                   const runtime::messaging::message_parts_t &parts) {
-        return backend.submit_send (target_node_rid, parts);
+        return backend.submit_send (target_node_rid, target_spot_rid, parts);
     });
     set_request_backend ([&backend] (const zlink::routing_id_t &target_node_rid,
+                                     const std::optional<zlink::routing_id_t> &target_spot_rid,
                                      const runtime::messaging::message_parts_t &parts,
                                      std::chrono::milliseconds timeout) {
-        return backend.submit_request (target_node_rid, parts, timeout);
+        return backend.submit_request (target_node_rid, target_spot_rid, parts, timeout);
     });
 }
 

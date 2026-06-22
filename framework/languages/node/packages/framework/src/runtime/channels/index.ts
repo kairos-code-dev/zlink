@@ -14,6 +14,7 @@ import type {
   ZLinkSpotRemoteAddress,
   ZLinkSpotPublisherClient,
   Type,
+  RoutingId,
   ZLinkMessageDispatchErrorObserver,
   ZLinkMessageDispatchErrorEvent,
   ZLinkProviderResolver
@@ -47,8 +48,12 @@ import type {
   ZLinkBackendRouterSocket,
   ZLinkBackendSpot,
   ZLinkBackendSpotNode,
+  ZLinkBackendSpotRouteBridge,
   ZLinkBackendSubscriberSocket,
   ZLinkChannelBackendAdapter
+} from '../backend/contracts';
+import {
+  ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_WITH_CHANNEL_INBOUND
 } from '../backend/contracts';
 import type { ZLinkRuntimeErrorSink, ZLinkRuntimeTaskRunner } from '../execution';
 import { ZLinkAsyncSubmitter } from '../messaging';
@@ -327,6 +332,7 @@ export class ZLinkChannelRuntimeManager {
   private readonly channelReceiveLoops: ZLinkChannelReceiveLoop[] = [];
   private readonly subscriberReceiveLoops: ZLinkSubscriberReceiveLoop[] = [];
   private readonly routeReceiveLoops: Array<{ stop(): void }> = [];
+  private readonly spotRouteBridges = new Map<string, ZLinkBackendSpotRouteBridge>();
   private readonly spotNodeRouterQueues = new Map<string, Promise<void>>();
   private readonly sockets: ZLinkChannelSocketRegistry;
   private readonly codecs: ZLinkChannelEnvelopeCodecRegistry;
@@ -364,7 +370,8 @@ export class ZLinkChannelRuntimeManager {
         handlers: new Map(channel.requestHandlers?.map((handler) => [handler.packetName, handler.handler])),
         sendHandlers: new Map(channel.sendHandlers?.map((handler) => [handler.packetName, handler.handler]))
       });
-      const loop = new ZLinkChannelReceiveLoop(router, dispatcher);
+      const spotRouteBridge = this.createSpotRouteBridgeForRouter(channelName, router);
+      const loop = new ZLinkChannelReceiveLoop(channelName, router, dispatcher, spotRouteBridge);
       this.channelReceiveLoops.push(loop);
       tasks.push(taskRunner.run(`channel:${channelName}`, (signal) => loop.run(signal)));
     }
@@ -388,8 +395,9 @@ export class ZLinkChannelRuntimeManager {
     }
     for (const routeChannel of this.registration.routeChannelOptions.values()) {
       const spotRouteNode = this.spotRouteNode(routeChannel.routerChannelId);
-      if (routeChannel.bind !== undefined) {
+      if (routeChannel.bind !== undefined || spotRouteNode !== undefined) {
         const router = this.sockets.routeRouter(routeChannel.routerChannelId);
+        const spotRouteBridge = this.createSpotRouteBridgeForRouter(routeChannel.routerChannelId, router);
         const handlers = [
           ...collectRouteChannelHandlers(routeChannel),
           ...[...this.options.internalRouteSendHandlers?.entries() ?? []].map(([packetName, handler]): ZLinkRouteHandlerRegistration => ({
@@ -411,21 +419,30 @@ export class ZLinkChannelRuntimeManager {
           codecs: this.codecs,
           dispatchErrors: this.createDispatchErrorReporter(taskRunner.errorSink),
           handlers,
-          spotRouteNode
+          spotRouteBridge
         });
         const loop = new ZLinkRouteReceiveLoop(router, dispatcher);
         this.routeReceiveLoops.push(loop);
         tasks.push(taskRunner.run(`route:${routeChannel.routerChannelId}`, (signal) => loop.run(signal)));
-      } else if (spotRouteNode !== undefined) {
-        if (taskRunner === undefined) {
-          throw new ZLinkConfigurationException(`Spot route channel '${routeChannel.routerChannelId}' dispatch requires a runtime task runner.`);
-        }
-        const spotLoop = new ZLinkSpotRouteReceiveLoop(spotRouteNode);
-        this.routeReceiveLoops.push(spotLoop);
-        tasks.push(taskRunner.run(`route:${routeChannel.routerChannelId}:spot`, (signal) => spotLoop.run(signal)));
       }
     }
     return tasks;
+  }
+
+  private createSpotRouteBridgeForRouter(
+    channelName: string,
+    router: ZLinkBackendRouterSocket
+  ): ZLinkBackendSpotRouteBridge | undefined {
+    const spotRouteNode = this.spotRouteNode(channelName);
+    if (spotRouteNode === undefined) {
+      return undefined;
+    }
+    const bridge = spotRouteNode.createRouteBridge();
+    bridge.attachRouterChannel(channelName, router, {
+      capabilities: ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_WITH_CHANNEL_INBOUND
+    });
+    this.spotRouteBridges.set(channelName, bridge);
+    return bridge;
   }
 
   private createDispatchErrorReporter(errorSink: ZLinkRuntimeErrorSink): ZLinkDispatchErrorReporter {
@@ -563,6 +580,19 @@ export class ZLinkChannelRuntimeManager {
   ): Promise<void> {
     throwIfAborted(signal);
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, remoteAddress.routerChannelId, packetName, message, undefined, undefined, this.codecs) as readonly Message[];
+    const bridge = this.spotRouteBridges.get(remoteAddress.routerChannelId);
+    if (bridge !== undefined) {
+      try {
+        bridge.setTargetNode(remoteAddress.routerChannelId, remoteAddress.targetNodeRid);
+        await this.sockets.requireSubmitter(this.sockets.routeRouter(remoteAddress.routerChannelId)).submitCommand(
+          () => appendParts(bridge.send(remoteAddress.routerChannelId, remoteAddress.spotRid), parts).submit(),
+          signal
+        );
+        return;
+      } finally {
+        closeMessages(parts);
+      }
+    }
     if (this.hasBoundRouteRouter(remoteAddress.routerChannelId)) {
       const router = this.sockets.routeRouter(remoteAddress.routerChannelId);
       await this.sockets.requireSubmitter(router).submitCommand(
@@ -600,6 +630,39 @@ export class ZLinkChannelRuntimeManager {
   ): Promise<TReply> {
     throwIfAborted(signal);
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, remoteAddress.routerChannelId, packetName, request, timeoutMs, undefined, this.codecs) as readonly Message[];
+    const bridge = this.spotRouteBridges.get(remoteAddress.routerChannelId);
+    if (bridge !== undefined) {
+      return this.sockets.requireSubmitter(this.sockets.routeRouter(remoteAddress.routerChannelId)).submitRequest(
+        (resolve, reject) => {
+          bridge.setTargetNode(remoteAddress.routerChannelId, remoteAddress.targetNodeRid);
+          const submitted = appendParts(bridge.request(remoteAddress.routerChannelId, remoteAddress.spotRid), parts)
+            .timeout(timeoutMs ?? 0)
+            .submit((result, replyParts) => {
+              try {
+                if (result !== 0) {
+                  reject(new ZLinkConfigurationException(`Route channel '${remoteAddress.routerChannelId}' spot request failed with result ${result}.`));
+                  return;
+                }
+                resolve(decodeChannelReply<TReply>(replyParts as readonly Message[], this.codecs));
+              } catch (error) {
+                reject(error);
+              } finally {
+                closeMessages(replyParts as readonly Message[]);
+              }
+            });
+          if (!submitted) {
+            try {
+              closeMessages(parts);
+            } finally {
+              reject(new ZLinkConfigurationException(`Route channel '${remoteAddress.routerChannelId}' is not ready for SPOT request.`));
+            }
+          }
+          return submitted;
+        },
+        signal,
+        timeoutMs
+      );
+    }
     if (this.hasBoundRouteRouter(remoteAddress.routerChannelId)) {
       const router = this.sockets.routeRouter(remoteAddress.routerChannelId);
       return this.sockets.requireSubmitter(router).submitRequest(
@@ -786,6 +849,31 @@ export class ZLinkChannelRuntimeManager {
     signal?: AbortSignal
   ): Promise<readonly Message[]> {
     throwIfAborted(signal);
+    const bridge = this.spotRouteBridges.get(remoteAddress.routerChannelId);
+    if (bridge !== undefined) {
+      return this.sockets.requireSubmitter(this.sockets.routeRouter(remoteAddress.routerChannelId)).submitRequest(
+        (resolve, reject) => {
+          bridge.setTargetNode(remoteAddress.routerChannelId, remoteAddress.targetNodeRid);
+          const submitted = bridge.request(remoteAddress.routerChannelId, remoteAddress.spotRid)
+            .message(request)
+            .timeout(timeoutMs ?? 0)
+            .submit((result, replyParts) => {
+              if (result !== 0) {
+                closeMessages(replyParts as readonly Message[]);
+                reject(new ZLinkConfigurationException(`Route channel '${remoteAddress.routerChannelId}' spot request failed with result ${result}.`));
+                return;
+              }
+              resolve(replyParts as readonly Message[]);
+            });
+          if (!submitted) {
+            reject(new ZLinkConfigurationException(`Route channel '${remoteAddress.routerChannelId}' is not ready for SPOT request.`));
+          }
+          return submitted;
+        },
+        signal,
+        timeoutMs
+      );
+    }
     if (this.hasBoundRouteRouter(remoteAddress.routerChannelId)) {
       const router = this.sockets.routeRouter(remoteAddress.routerChannelId);
       return this.sockets.requireSubmitter(router).submitRequest(
@@ -945,9 +1033,11 @@ export class ZLinkChannelRuntimeManager {
     const channelLoops = [...this.channelReceiveLoops];
     const subscriberLoops = [...this.subscriberReceiveLoops];
     const loops = [...this.routeReceiveLoops];
+    const spotRouteBridges = [...this.spotRouteBridges.values()];
     this.channelReceiveLoops.length = 0;
     this.subscriberReceiveLoops.length = 0;
     this.routeReceiveLoops.length = 0;
+    this.spotRouteBridges.clear();
     for (const loop of channelLoops) {
       loop.stop();
     }
@@ -958,6 +1048,7 @@ export class ZLinkChannelRuntimeManager {
       loop.stop();
     }
     await new Promise<void>((resolve) => setImmediate(resolve));
+    await Promise.all(spotRouteBridges.map((bridge) => bridge.dispose()));
     await this.sockets.dispose();
   }
 }
@@ -1114,10 +1205,6 @@ class ZLinkChannelSocketRegistry {
     if (routeChannel === undefined) {
       throw new ZLinkConfigurationException(`Route channel '${routerChannelId}' is not registered.`);
     }
-    if (routeChannel.bind === undefined || routeChannel.bind.trim().length === 0) {
-      throw new ZLinkConfigurationException(`Route channel '${routerChannelId}' does not define a bind endpoint.`);
-    }
-
     const router = this.adapter.createRouterSocket(this.context);
     router.setChannelName(routerChannelId);
     this.trackSubmitter(router);
@@ -1133,7 +1220,9 @@ class ZLinkChannelSocketRegistry {
     if (routeChannel.routingId !== undefined && routeChannel.routingId.length > 0) {
       router.setRoutingId(routeChannel.routingId);
     }
-    router.bind(routeChannel.bind);
+    if (routeChannel.bind !== undefined && routeChannel.bind.trim().length > 0) {
+      router.bind(routeChannel.bind);
+    }
     if ((routeChannel.manualConnections ?? []).length > 0) {
       for (const endpoint of routeChannel.manualConnections ?? []) {
         router.connect(endpoint);
@@ -1427,10 +1516,12 @@ export class ZLinkChannelReceiveLoop {
   private stopped = false;
 
   constructor(
+    private readonly channelName: string,
     private readonly router: ZLinkBackendRouterSocket & {
       reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
     },
-    private readonly dispatcher: ZLinkChannelRequestDispatcher
+    private readonly dispatcher: ZLinkChannelRequestDispatcher,
+    private readonly spotRouteBridge?: ZLinkBackendSpotRouteBridge
   ) {}
 
   async run(signal?: AbortSignal): Promise<void> {
@@ -1450,6 +1541,14 @@ export class ZLinkChannelReceiveLoop {
 
   private async dispatchAndClose(received: { parts: readonly Message[]; routingId: unknown; requestSeq: bigint | null; close(): void }): Promise<void> {
     try {
+      if (this.spotRouteBridge?.handleRouterReceived(
+        this.channelName,
+        received.routingId as RoutingId,
+        received.parts,
+        received.requestSeq ?? undefined
+      ) === true) {
+        return;
+      }
       await this.dispatcher.dispatch(received, this.router);
     } finally {
       received.close();
@@ -1574,7 +1673,7 @@ export interface ZLinkRoutePacketDispatcherOptions {
   readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
   readonly dispatchErrors: ZLinkDispatchErrorReporter;
   readonly handlers: readonly ZLinkRouteHandlerRegistration[];
-  readonly spotRouteNode?: ZLinkBackendSpotNode;
+  readonly spotRouteBridge?: ZLinkBackendSpotRouteBridge;
 }
 
 function collectRouteChannelHandlers(routeChannel: ZLinkRouteChannelOptions): ZLinkRouteHandlerRegistration[] {
@@ -1603,7 +1702,7 @@ export class ZLinkRoutePacketDispatcher {
     this.routerChannelId = options.routerChannelId;
     this.codecs = options.codecs;
     this.dispatchErrors = options.dispatchErrors;
-    this.spotRouteNode = options.spotRouteNode;
+    this.spotRouteBridge = options.spotRouteBridge;
     for (const handler of options.handlers) {
       const target = handler.kind === 'send' ? this.sendHandlers : this.requestHandlers;
       if (target.has(handler.packetName)) {
@@ -1614,7 +1713,7 @@ export class ZLinkRoutePacketDispatcher {
   }
 
   private readonly routerChannelId: string;
-  private readonly spotRouteNode?: ZLinkBackendSpotNode;
+  private readonly spotRouteBridge?: ZLinkBackendSpotRouteBridge;
 
   async dispatch(received: {
     parts: readonly Message[];
@@ -1632,8 +1731,13 @@ export class ZLinkRoutePacketDispatcher {
       appendParts(received.send(), received.parts).submit();
       return;
     }
-    if (this.spotRouteNode !== undefined) {
-      const processed = this.spotRouteNode.tryProcessExternalRouterParts(received.parts);
+    if (this.spotRouteBridge !== undefined) {
+      const processed = this.spotRouteBridge.handleRouterReceived(
+        this.routerChannelId,
+        received.routingId as RoutingId,
+        received.parts,
+        received.requestSeq ?? undefined
+      );
       if (processed) {
         return;
       }
@@ -1792,30 +1896,6 @@ export class ZLinkRouteReceiveLoop {
       } finally {
         received.close();
       }
-    }
-  }
-
-  stop(): void {
-    this.stopped = true;
-  }
-}
-
-export class ZLinkSpotRouteReceiveLoop {
-  private stopped = false;
-  private started = false;
-
-  constructor(
-    private readonly spotNode: ZLinkBackendSpotNode
-  ) {}
-
-  async run(signal?: AbortSignal): Promise<void> {
-    if (!this.started && process.env.ZLINK_DEBUG_RUNTIME_TASKS === '1') {
-      this.started = true;
-      console.error('[zlink-runtime-task] spot route receive loop started');
-    }
-    while (!this.stopped && signal?.aborted !== true) {
-      this.spotNode.processExternalRouter();
-      await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }
 

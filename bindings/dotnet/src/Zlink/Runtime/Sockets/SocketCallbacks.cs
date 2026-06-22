@@ -79,6 +79,20 @@ internal static class SocketInterop
         return concrete;
     }
 
+    internal static RouterSocket RequireRouterSocket(IRouterSocket socket,
+        string paramName)
+    {
+        if (socket == null)
+            throw new ArgumentNullException(paramName);
+        if (socket is not RouterSocket concrete)
+        {
+            throw new ArgumentException(
+                "socket must be a concrete zlink router socket instance",
+                paramName);
+        }
+        return concrete;
+    }
+
     internal static PubSocket RequirePubSocket(IPubSocket socket,
         string paramName)
     {

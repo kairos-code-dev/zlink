@@ -7,6 +7,7 @@ import { normalizeOperationPayload } from '../../buffers/message_conversion';
 import { Discovery } from '../discovery/discovery';
 import { Actor } from './actor';
 import { Spot } from './spot';
+import { SpotNodePublisher, SpotRouteBridge } from './spot_route_bridge';
 import { getNativeHandle, NativeHandle } from '../../handles/native_handle';
 import { closeCall, configCall, connectCall } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
@@ -28,10 +29,11 @@ type SpotNodeActorEntryRaw = Parameters<typeof spotNodeActorEntryFromRaw>[0];
 
 export class SpotNode extends NativeHandle {
   private readonly _spots = new Set<Spot>();
-  private readonly _channelDealers = new Map<string, DealerSocket>();
+  private readonly _ctx: Context;
   private _nodeRoutingId: RoutingId;
   constructor(ctx: Context, mode: SpotNodeModeValue = SpotNodeMode.All) {
     super(requireNative().spotNodeNew(getNativeHandle(ctx), { mode: mode | 0 }));
+    this._ctx = ctx;
     this._nodeRoutingId = RoutingId.from(randomBytes(16));
   }
   setPubBind(endpoint: string): void {
@@ -131,7 +133,6 @@ export class SpotNode extends NativeHandle {
         getNativeHandle(dealer)
       );
     });
-    this._channelDealers.set(normalized, dealer);
   }
   attachPubIngress(pub: PubSocket): void {
     configCall('spot node pub ingress attachment failed', () => {
@@ -147,6 +148,12 @@ export class SpotNode extends NativeHandle {
     return configCall('spot node routed parts processing failed', () =>
       requireNative().spotNodeTryProcessExternalRouterParts(this._native, normalizeOperationPayload(parts))
     ) as boolean;
+  }
+  createRouteBridge(): SpotRouteBridge {
+    return new SpotRouteBridge(this._ctx, this);
+  }
+  createPublisher(): SpotNodePublisher {
+    return new SpotNodePublisher(this);
   }
   attachDiscovery(discovery: Discovery): void {
     configCall('spot node discovery attachment failed', () => {

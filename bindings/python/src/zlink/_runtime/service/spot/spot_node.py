@@ -37,6 +37,7 @@ from .spot_node_snapshot_runtime import SpotNodeSnapshotMixin
 
 class SpotNode(SpotNodeActorMixin, SpotNodeSnapshotMixin):
     def __init__(self, ctx, mode: int | SpotNodeMode | None = None):
+        self._ctx = ctx
         native_options = None
         options_ptr = None
         if mode is not None:
@@ -347,6 +348,14 @@ class SpotNode(SpotNodeActorMixin, SpotNodeSnapshotMixin):
         from .spot import Spot
         return Spot._wrap_handle(self, spot_handle.value), bool(created.value)
 
+    def create_route_bridge(self, options=None):
+        from .spot_route_bridge import SpotRouteBridge
+        return SpotRouteBridge(self, options)
+
+    def create_publisher(self):
+        from .spot_route_bridge import SpotNodePublisher
+        return SpotNodePublisher(self)
+
     def _register_spot(self, spot):
         self._spots.add(spot)
 
@@ -420,6 +429,7 @@ class SpotNode(SpotNodeActorMixin, SpotNodeSnapshotMixin):
         handle = ctypes.c_void_p(self._handle)
         rc = lib().zlink_spot_node_destroy(ctypes.byref(handle))
         self._handle = None
+        self._ctx = None
         self._spots.clear()
         self._actor_request_pending.clear()
         self._actor_join_pending.clear()

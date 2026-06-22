@@ -105,12 +105,12 @@ int main ()
 
     auto runtime = zlink::framework::detail::stream_runtime_t::from (zlink);
     zlink::framework::stream_metadata_t metadata;
-    metadata.with ("correlation_id", "abc")
-      .with ("trace", "42")
-      .with ("content_type", "application/json");
+    metadata.with ("trace", "42").with ("content_type", "application/json");
     zlink::framework::stream_header_t request_header (
       stream_message_kind_t::request, stream_codec_t::json, stream_header_flags_t::has_request_seq,
       77, "move", metadata);
+    // correlation_id is now a first-class stream-header field (not a metadata key).
+    request_header.with_correlation_id ("abc");
 
     const auto encoded = runtime.encode_header (request_header);
     if (!encoded) {

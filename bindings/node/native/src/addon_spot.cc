@@ -2660,6 +2660,337 @@ napi_value spot_node_attach_pub_ingress (napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value spot_route_bridge_new (napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *ctx = NULL;
+    void *node = NULL;
+    napi_get_value_external (env, argv[0], &ctx);
+    napi_get_value_external (env, argv[1], &node);
+    void *bridge = zlink_spot_route_bridge_new (ctx, node, NULL);
+    if (!bridge)
+        return throw_last_error (env, "spotRouteBridgeNew failed");
+    napi_value ext;
+    napi_create_external (env, bridge, NULL, NULL, &ext);
+    return ext;
+}
+
+napi_value spot_route_bridge_close (napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *bridge = NULL;
+    napi_get_value_external (env, argv[0], &bridge);
+    int rc = zlink_spot_route_bridge_close (bridge);
+    if (rc != 0)
+        return throw_last_error (env, "spotRouteBridgeClose failed");
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
+napi_value spot_route_bridge_attach_dealer_channel (napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *bridge = NULL;
+    void *dealer = NULL;
+    napi_get_value_external (env, argv[0], &bridge);
+    std::string channel_name = get_string (env, argv[1]);
+    napi_get_value_external (env, argv[2], &dealer);
+    zlink_spot_route_bridge_endpoint_options_t options {};
+    options.struct_size = sizeof (options);
+    options.capabilities = ZLINK_SPOT_ROUTE_BRIDGE_ROUTE_ONLY;
+    if (argc >= 4) {
+        uint32_t capabilities = 0;
+        napi_get_value_uint32 (env, argv[3], &capabilities);
+        options.capabilities = capabilities;
+    }
+    int rc = zlink_spot_route_bridge_attach_dealer_channel (bridge, channel_name.c_str (),
+                                                            dealer, &options);
+    if (rc != 0)
+        return throw_last_error (env, "spotRouteBridgeAttachDealerChannel failed");
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
+napi_value spot_route_bridge_attach_router_channel (napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *bridge = NULL;
+    void *router = NULL;
+    napi_get_value_external (env, argv[0], &bridge);
+    std::string channel_name = get_string (env, argv[1]);
+    napi_get_value_external (env, argv[2], &router);
+    zlink_spot_route_bridge_endpoint_options_t options {};
+    options.struct_size = sizeof (options);
+    options.capabilities = ZLINK_SPOT_ROUTE_BRIDGE_ROUTE_ONLY;
+    if (argc >= 4) {
+        uint32_t capabilities = 0;
+        napi_get_value_uint32 (env, argv[3], &capabilities);
+        options.capabilities = capabilities;
+    }
+    int rc = zlink_spot_route_bridge_attach_router_channel (bridge, channel_name.c_str (),
+                                                            router, &options);
+    if (rc != 0)
+        return throw_last_error (env, "spotRouteBridgeAttachRouterChannel failed");
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
+napi_value spot_route_bridge_set_target_node (napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *bridge = NULL;
+    napi_get_value_external (env, argv[0], &bridge);
+    std::string channel_name = get_string (env, argv[1]);
+    zlink_routing_id_t target;
+    if (!parse_routing_id_value (env, argv[2], &target))
+        return NULL;
+    int rc = zlink_spot_route_bridge_set_target_node (bridge, channel_name.c_str (), &target);
+    if (rc != 0)
+        return throw_last_error (env, "spotRouteBridgeSetTargetNode failed");
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
+napi_value spot_route_bridge_send (napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *bridge = NULL;
+    napi_get_value_external (env, argv[0], &bridge);
+    std::string channel_name = get_string (env, argv[1]);
+    zlink_routing_id_t target;
+    if (!parse_routing_id_value (env, argv[2], &target))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector_or_single (env, argv[3], &parts))
+        return NULL;
+    int32_t flags = 0;
+    napi_get_value_int32 (env, argv[4], &flags);
+    int rc = zlink_spot_route_bridge_send (bridge, channel_name.c_str (), &target,
+                                           parts.data (), parts.size (),
+                                           static_cast<zlink_send_flags_t> (flags));
+    if (rc != 0) {
+        close_msg_vector (parts);
+        return throw_last_error (env, "spotRouteBridgeSend failed");
+    }
+    napi_value ok;
+    napi_get_boolean (env, true, &ok);
+    return ok;
+}
+
+napi_value spot_route_bridge_request (napi_env env, napi_callback_info info)
+{
+    napi_value argv[7];
+    size_t argc = 7;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    if (argc < 7) {
+        napi_throw_type_error (
+          env, NULL,
+          "spotRouteBridgeRequest requires (bridge, channelName, targetSpotRid, parts, handler, "
+          "flags, timeoutMs)");
+        return NULL;
+    }
+    void *bridge = NULL;
+    napi_get_value_external (env, argv[0], &bridge);
+    std::string channel_name = get_string (env, argv[1]);
+    zlink_routing_id_t target;
+    if (!parse_routing_id_value (env, argv[2], &target))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector_or_single (env, argv[3], &parts))
+        return NULL;
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof (env, argv[4], &handler_type);
+    if (handler_type != napi_function) {
+        close_msg_vector (parts);
+        napi_throw_type_error (env, NULL, "spotRouteBridgeRequest handler must be a function");
+        return NULL;
+    }
+    int32_t flags = 0;
+    napi_get_value_int32 (env, argv[5], &flags);
+    int32_t timeout_ms = 0;
+    napi_get_value_int32 (env, argv[6], &timeout_ms);
+    request_js_state_t *state = create_request_js_state (env, argv[4]);
+    if (!state) {
+        close_msg_vector (parts);
+        return NULL;
+    }
+    int rc = zlink_spot_route_bridge_request (
+      bridge, channel_name.c_str (), &target, parts.data (), parts.size (),
+      request_reply_callback_trampoline, state, static_cast<zlink_send_flags_t> (flags),
+      static_cast<uint32_t> (timeout_ms));
+    if (rc != 0) {
+        if (state->tsfn) {
+            (void) napi_release_threadsafe_function (state->tsfn, napi_tsfn_abort);
+            state->tsfn = NULL;
+        }
+        return throw_last_error (env, "spotRouteBridgeRequest failed");
+    }
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
+napi_value spot_route_bridge_handle_router_received (napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    if (argc < 4) {
+        napi_throw_type_error (
+          env, NULL,
+          "spotRouteBridgeHandleRouterReceived requires (bridge, channelName, sourceNodeRid, "
+          "parts)");
+        return NULL;
+    }
+    void *bridge = NULL;
+    napi_get_value_external (env, argv[0], &bridge);
+    std::string channel_name = get_string (env, argv[1]);
+    zlink_routing_id_t source_node_rid;
+    if (!parse_routing_id_value (env, argv[2], &source_node_rid))
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector_or_single (env, argv[3], &parts))
+        return NULL;
+    bool handled = false;
+    int rc = zlink_spot_route_bridge_handle_router_received (
+      bridge, channel_name.c_str (), &source_node_rid, parts.data (), parts.size (), &handled);
+    if (rc != 0) {
+        close_msg_vector (parts);
+        return throw_last_error (env, "spotRouteBridgeHandleRouterReceived failed");
+    }
+    if (!handled)
+        close_msg_vector (parts);
+    napi_value out;
+    napi_get_boolean (env, handled, &out);
+    return out;
+}
+
+napi_value spot_route_bridge_handle_router_received_with_metadata (napi_env env,
+                                                                   napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    if (argc < 5) {
+        napi_throw_type_error (
+          env, NULL,
+          "spotRouteBridgeHandleRouterReceivedWithMetadata requires (bridge, channelName, "
+          "sourceNodeRid, requestSeq, parts)");
+        return NULL;
+    }
+    void *bridge = NULL;
+    napi_get_value_external (env, argv[0], &bridge);
+    std::string channel_name = get_string (env, argv[1]);
+    zlink_routing_id_t source_node_rid;
+    if (!parse_routing_id_value (env, argv[2], &source_node_rid))
+        return NULL;
+    uint64_t request_seq = 0;
+    if (napi_get_value_bigint_uint64 (env, argv[3], &request_seq, NULL) != napi_ok)
+        return NULL;
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector_or_single (env, argv[4], &parts))
+        return NULL;
+    bool handled = false;
+    int rc = zlink_spot_route_bridge_handle_router_received_with_metadata (
+      bridge, channel_name.c_str (), &source_node_rid, request_seq, parts.data (), parts.size (),
+      &handled);
+    if (rc != 0) {
+        close_msg_vector (parts);
+        return throw_last_error (env, "spotRouteBridgeHandleRouterReceivedWithMetadata failed");
+    }
+    if (!handled)
+        close_msg_vector (parts);
+    napi_value out;
+    napi_get_boolean (env, handled, &out);
+    return out;
+}
+
+napi_value spot_route_bridge_drain (napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *bridge = NULL;
+    napi_get_value_external (env, argv[0], &bridge);
+    int rc = zlink_spot_route_bridge_drain (bridge);
+    if (rc < 0)
+        return throw_last_error (env, "spotRouteBridgeDrain failed");
+    napi_value out;
+    napi_create_int32 (env, rc, &out);
+    return out;
+}
+
+napi_value spot_node_publisher_new (napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external (env, argv[0], &node);
+    void *publisher = zlink_spot_node_publisher_new (node);
+    if (!publisher)
+        return throw_last_error (env, "spotNodePublisherNew failed");
+    napi_value ext;
+    napi_create_external (env, publisher, NULL, NULL, &ext);
+    return ext;
+}
+
+napi_value spot_node_publisher_publish (napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *publisher = NULL;
+    napi_get_value_external (env, argv[0], &publisher);
+    std::string topic = get_string (env, argv[1]);
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector_or_single (env, argv[2], &parts))
+        return NULL;
+    int32_t flags = 0;
+    napi_get_value_int32 (env, argv[3], &flags);
+    int rc = zlink_spot_node_publisher_publish (publisher, topic.c_str (), parts.data (),
+                                                parts.size (),
+                                                static_cast<zlink_send_flags_t> (flags));
+    if (rc != 0) {
+        close_msg_vector (parts);
+        return throw_last_error (env, "spotNodePublisherPublish failed");
+    }
+    napi_value ok;
+    napi_get_boolean (env, true, &ok);
+    return ok;
+}
+
+napi_value spot_node_publisher_close (napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *publisher = NULL;
+    napi_get_value_external (env, argv[0], &publisher);
+    int rc = zlink_spot_node_publisher_close (publisher);
+    if (rc != 0)
+        return throw_last_error (env, "spotNodePublisherClose failed");
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
 napi_value spot_node_process_external_router (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];

@@ -189,6 +189,63 @@ export interface ServiceNativeBinding {
     dealer: NativeHandle
   ) => void;
   spotNodeAttachPubIngress: (node: NativeHandle, pub: NativeHandle) => void;
+  spotRouteBridgeNew: (ctx: NativeHandle, node: NativeHandle) => NativeHandle;
+  spotRouteBridgeClose: (bridge: NativeHandle) => void;
+  spotRouteBridgeAttachDealerChannel: (
+    bridge: NativeHandle,
+    channelName: string,
+    dealer: NativeHandle,
+    capabilities: number
+  ) => void;
+  spotRouteBridgeAttachRouterChannel: (
+    bridge: NativeHandle,
+    channelName: string,
+    router: NativeHandle,
+    capabilities: number
+  ) => void;
+  spotRouteBridgeSetTargetNode: (
+    bridge: NativeHandle,
+    channelName: string,
+    targetNodeRid: Buffer
+  ) => void;
+  spotRouteBridgeSend: (
+    bridge: NativeHandle,
+    channelName: string,
+    targetSpotRid: Buffer,
+    parts: unknown,
+    flags: number
+  ) => boolean;
+  spotRouteBridgeRequest: (
+    bridge: NativeHandle,
+    channelName: string,
+    targetSpotRid: Buffer,
+    parts: unknown,
+    callback: NativeRequestCallback,
+    flags: number,
+    timeoutMs: number
+  ) => void;
+  spotRouteBridgeHandleRouterReceived: (
+    bridge: NativeHandle,
+    channelName: string,
+    sourceNodeRid: Buffer,
+    parts: unknown
+  ) => boolean;
+  spotRouteBridgeHandleRouterReceivedWithMetadata: (
+    bridge: NativeHandle,
+    channelName: string,
+    sourceNodeRid: Buffer,
+    requestSeq: bigint,
+    parts: unknown
+  ) => boolean;
+  spotRouteBridgeDrain: (bridge: NativeHandle) => number;
+  spotNodePublisherNew: (node: NativeHandle) => NativeHandle;
+  spotNodePublisherPublish: (
+    publisher: NativeHandle,
+    topic: string,
+    parts: unknown,
+    flags: number
+  ) => boolean;
+  spotNodePublisherClose: (publisher: NativeHandle) => void;
   spotNodeProcessExternalRouter: (node: NativeHandle) => void;
   spotNodeTryProcessExternalRouterParts: (node: NativeHandle, parts: unknown) => boolean;
   spotNodeAttachRouterChannelDiscovery: (

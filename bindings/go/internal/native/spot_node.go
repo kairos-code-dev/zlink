@@ -16,6 +16,7 @@ import (
 
 type SpotNode struct {
 	handle         unsafe.Pointer
+	ctx            *Context
 	closed         bool
 	closing        bool
 	mu             sync.Mutex
@@ -104,6 +105,7 @@ func newSpotNodeWithOptions(ctx *Context, options *SpotNodeOptions) (*SpotNode, 
 	}
 	return &SpotNode{
 		handle: handle,
+		ctx:    ctx,
 		spots:  make(map[*spotCore]struct{}),
 	}, nil
 }

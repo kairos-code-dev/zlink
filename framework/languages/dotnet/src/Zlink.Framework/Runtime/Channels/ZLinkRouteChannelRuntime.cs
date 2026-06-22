@@ -16,6 +16,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     private readonly CancellationTokenSource _stopSource;
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private readonly IZLinkBackendDiscovery? _discovery;
+    private IZLinkBackendSpotRouteBridge? _spotRouteBridge;
     private Task? _receiveTask;
 
     public ZLinkRouteChannelRuntime(
@@ -40,6 +41,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _connections = new ZLinkRouteConnectionSet(router);
         _receivePump = new ZLinkRouteReceivePump(
             router,
+            () => _spotRouteBridge,
+            registration.RouterChannelId,
             new ZLinkRoutePacketDispatcher(
                 registration.RouterChannelId,
                 router,
@@ -59,6 +62,24 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     internal IZLinkBackendWeightedSocket ServingSocket => _router;
 
     public IZLinkBackendDiscovery? Discovery => _discovery;
+
+    public void AttachSpotRouteBridge(IZLinkBackendSpotRouteBridge bridge)
+    {
+        if (_spotRouteBridge is not null)
+        {
+            throw new ZLinkConfigurationException(
+                $"Route channel '{RouterChannelId}' is already attached to a SPOT route bridge.");
+        }
+
+        bridge.AttachRouterChannel(
+            RouterChannelId,
+            _router,
+            new SpotRouteBridgeEndpointOptions
+            {
+                Capabilities = SpotRouteBridgeEndpointCapabilities.RouteWithChannelInbound
+            });
+        _spotRouteBridge = bridge;
+    }
 
     public void Start()
     {
@@ -144,16 +165,23 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
-    public ValueTask SubmitSpotSendPartsAsync(
+    public ValueTask SubmitSpotRouteSendPartsAsync(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
+        if (_spotRouteBridge is null)
+        {
+            throw new ZLinkConfigurationException(
+                $"Route channel '{RouterChannelId}' is not attached to a SPOT route bridge.");
+        }
+
+        _spotRouteBridge.SetTargetNode(RouterChannelId, targetNodeRid);
         return _submitter.Async(
             parts,
-            pending => _router.SendToSpot(
-                targetNodeRid,
+            pending => _spotRouteBridge.Send(
+                RouterChannelId,
                 targetSpotRid,
                 pending,
                 SendFlags.None),
@@ -167,11 +195,18 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
+        if (_spotRouteBridge is null)
+        {
+            throw new ZLinkConfigurationException(
+                $"Route channel '{RouterChannelId}' is not attached to a SPOT route bridge.");
+        }
+
+        _spotRouteBridge.SetTargetNode(RouterChannelId, targetNodeRid);
         return await _submitter
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 parts,
-                (pending, complete, fail) => _router.RequestToSpot(
-                    targetNodeRid,
+                (pending, complete, fail) => _spotRouteBridge.Request(
+                    RouterChannelId,
                     targetSpotRid,
                     pending,
                     (result, reply) => ZLinkRawReplyCompletion.Complete(
@@ -257,6 +292,11 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         if (_discovery is not null)
         {
             await _discovery.DisposeAsync();
+        }
+
+        if (_spotRouteBridge is not null)
+        {
+            await _spotRouteBridge.DisposeAsync();
         }
 
         await _router.DisposeAsync();

@@ -133,7 +133,7 @@ internal sealed class ZLinkChannelRuntimeManager(
             if (entry.Value.Client is not null)
             {
                 var bundle = GetOrCreateClientBundle(state, entry.Key);
-                if (entry.Value.AutoConnectType == ZLinkAutoConnectType.DealerMesh)
+                if (ShouldStartDealerMeshReceiveLoop(entry.Value))
                 {
                     var channelName = entry.Key;
                     state.ListenerTasks.Add(state.TaskRunner.Run(
@@ -147,6 +147,14 @@ internal sealed class ZLinkChannelRuntimeManager(
                 }
             }
         }
+    }
+
+    internal static bool ShouldStartDealerMeshReceiveLoop(ZLinkChannelRegistration channel)
+    {
+        return channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh
+            && (channel.SendHandlers.Count > 0
+                || channel.RequestHandlers.Count > 0
+                || channel.HandlerGroups.Count > 0);
     }
 
     public void InitializeRouteChannels(

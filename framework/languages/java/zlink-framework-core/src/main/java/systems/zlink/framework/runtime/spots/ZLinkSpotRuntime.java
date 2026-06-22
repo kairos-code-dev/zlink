@@ -2084,6 +2084,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     continue;
                 }
                 ZLinkActor actor = localActor.get();
+                if (REMOTE_BOUND_SESSION_BIND_PACKET_NAME.equals(packetHeader.packetName())) {
+                    actorRuntime.bindNativeSession(
+                        actor,
+                        primaryNode,
+                        headerPart.actor(),
+                        headerPart.sourceNodeRid(),
+                        headerPart.sourceSessionRid());
+                    if (pendingHeader) {
+                        headerPart.close();
+                    }
+                    continue;
+                }
                 Object spotSurface = localActorSpotSurface(actor);
                 Optional<RoutingId> joinedSpotRid = actorRuntime.spotRid(actor);
                 if (joinedSpotRid.isPresent()
@@ -4319,6 +4331,21 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(packet.packetName())) {
                 return dispatchRoutedActorJoinAsync(received, packet);
             }
+            if (ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(packet.packetName())) {
+                CompletionStage<?> stage = received.requestSeq().isPresent()
+                    ? handleRoutedBoundSessionSendRequestParts(received.parts())
+                        .thenAccept(received::reply)
+                    : handleRoutedBoundSessionSendParts(received.parts());
+                return stage
+                    .thenApply(ignored -> (Void) null)
+                    .whenComplete((ignored, error) -> received.close());
+            }
+            if (ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(packet.packetName())) {
+                return handleRoutedActorPacketParts(received.parts())
+                    .thenAccept(reply -> reply.ifPresent(message -> received.reply(List.of(message))))
+                    .thenApply(ignored -> (Void) null)
+                    .whenComplete((ignored, error) -> received.close());
+            }
             SpotPacketHandlerRegistration handler =
                 context.packetHandler(packet.packetName());
             if (handler == null) {
@@ -4632,6 +4659,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     continue;
                 }
                 ZLinkActor actor = localActor.get();
+                if (REMOTE_BOUND_SESSION_BIND_PACKET_NAME.equals(packetHeader.packetName())) {
+                    actorRuntime.bindNativeSession(
+                        actor,
+                        primaryNode,
+                        headerPart.actor(),
+                        headerPart.sourceNodeRid(),
+                        headerPart.sourceSessionRid());
+                    if (pendingHeader) {
+                        headerPart.close();
+                    }
+                    continue;
+                }
                 SpotActorPacketHandlerRegistration handler =
                     resolveActorPacketHandler(
                         packetHeader.packetName(),
@@ -4966,6 +5005,31 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     }
                 })
                 .whenComplete((ignored, error) -> received.close());
+        }
+
+        private CompletionStage<Void> handleRoutedBoundSessionSendParts(List<Message> parts) {
+            ZLinkActorSpotRoutePackets.BoundSessionSend send =
+                ZLinkActorSpotRoutePackets.decodeBoundSessionSend(parts);
+            return sendActorBoundSessionWithRetry(
+                primaryNode(),
+                send.actorRef(),
+                send.actorRef().actorId(),
+                send.frame().toByteArray(),
+                "routed actor bound session send failed")
+                .whenComplete((ignored, error) -> send.close());
+        }
+
+        private CompletionStage<List<Message>> handleRoutedBoundSessionSendRequestParts(List<Message> parts) {
+            ZLinkActorSpotRoutePackets.BoundSessionSend send =
+                ZLinkActorSpotRoutePackets.decodeBoundSessionSend(parts);
+            return sendActorBoundSessionWithRetry(
+                primaryNode(),
+                send.actorRef(),
+                send.actorRef().actorId(),
+                send.frame().toByteArray(),
+                "routed actor bound session send failed")
+                .thenApply(ignored -> List.of(Message.from(new byte[0])))
+                .whenComplete((ignored, error) -> send.close());
         }
 
         @SuppressWarnings({"rawtypes", "unchecked"})

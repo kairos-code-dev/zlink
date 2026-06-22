@@ -157,7 +157,7 @@ public final class ZLinkFrameworkRuntime
             handlerFactory);
     }
 
-    private static ZLinkMessageSerializer serializerFor(DefaultZLinkFrameworkOptions options) {
+    static ZLinkMessageSerializer serializerFor(DefaultZLinkFrameworkOptions options) {
         java.util.Optional<ZLinkMessageSerializer> custom =
             options.registration().codecs().customSerializer();
         if (custom.isPresent()) {
@@ -165,6 +165,7 @@ public final class ZLinkFrameworkRuntime
         }
         ZLinkMessageSerializer fallback =
             options.registration().codecs().registeredCodecs().isEmpty()
+                && options.registration().codecs().serializers().isEmpty()
                 ? new ZLinkStringMessageSerializer()
                 : new ZLinkJsonMessageSerializer();
         return options.registration().codecs().serializerWithFallback(fallback);

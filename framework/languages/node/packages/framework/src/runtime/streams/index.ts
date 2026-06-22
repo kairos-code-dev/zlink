@@ -369,7 +369,7 @@ export class ZLinkStreamSessionRuntime {
       const streamKind = frameHeader?.kind === ZLinkStreamMessageKind.Request
         ? ZLinkDispatchMessageKind.Request
         : ZLinkDispatchMessageKind.Send;
-      const streamCorr = frameHeader?.requestSeq?.toString();
+      const streamCorr = frameHeader?.correlationId ?? frameHeader?.requestSeq?.toString();
       flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Received)?.trace({
         phase: ZLinkMessageFlowPhase.Received,
         surface: ZLinkDispatchErrorSurface.StreamSession,
@@ -400,7 +400,7 @@ export class ZLinkStreamSessionRuntime {
           : ZLinkDispatchErrorAction.ReplyError,
         packetName: frameHeader?.name,
         sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId),
-        correlationId: frameHeader?.requestSeq?.toString(),
+        correlationId: frameHeader?.correlationId ?? frameHeader?.requestSeq?.toString(),
         error
       });
       this.options.onError?.(error);

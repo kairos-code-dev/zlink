@@ -26,7 +26,8 @@ export enum ZLinkStreamHeaderFlags {
   None = 0,
   HasRequestSeq = 0x01,
   HasMetadata = 0x02,
-  PayloadCompressed = 0x04
+  PayloadCompressed = 0x04,
+  HasCorrelationId = 0x08
 }
 
 export interface ZLinkStreamFrameHeader {
@@ -36,6 +37,7 @@ export interface ZLinkStreamFrameHeader {
   readonly requestSeq?: bigint;
   readonly name: string;
   readonly metadata: ReadonlyMap<string, string>;
+  readonly correlationId?: string;
 }
 
 export function resolvePacketName(message: unknown, explicitPacketName: string | undefined): string {
@@ -73,12 +75,22 @@ export function encodeStreamHeader(header: ZLinkStreamFrameHeader): Uint8Array {
   const nameBytes = utf8Encode(header.name);
   const hasRequestSeq = header.requestSeq !== undefined;
   const hasMetadata = header.metadata.size > 0;
+  const correlationBytes = header.correlationId !== undefined && header.correlationId.length > 0
+    ? utf8Encode(header.correlationId)
+    : undefined;
+  if (correlationBytes !== undefined && correlationBytes.length > 0xff) {
+    throw new Error('Stream correlation id is too large.');
+  }
+  const hasCorrelation = correlationBytes !== undefined;
   let flags = header.flags;
   flags = hasRequestSeq ? flags | ZLinkStreamHeaderFlags.HasRequestSeq : flags & ~ZLinkStreamHeaderFlags.HasRequestSeq;
   flags = hasMetadata ? flags | ZLinkStreamHeaderFlags.HasMetadata : flags & ~ZLinkStreamHeaderFlags.HasMetadata;
+  flags = hasCorrelation ? flags | ZLinkStreamHeaderFlags.HasCorrelationId : flags & ~ZLinkStreamHeaderFlags.HasCorrelationId;
 
   const metadataBytes = hasMetadata ? encodeStreamMetadata(header.metadata) : new Uint8Array();
-  const size = 3 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.length + (hasMetadata ? 2 + metadataBytes.length : 0);
+  const size = 3 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.length
+    + (hasMetadata ? 2 + metadataBytes.length : 0)
+    + (hasCorrelation ? 1 + correlationBytes.length : 0);
   const buffer = new Uint8Array(size);
   let offset = 0;
   buffer[offset++] = header.kind;
@@ -99,6 +111,11 @@ export function encodeStreamHeader(header: ZLinkStreamFrameHeader): Uint8Array {
     offset += 2;
     buffer.set(metadataBytes, offset);
   }
+  if (hasCorrelation) {
+    buffer[offset++] = correlationBytes.length;
+    buffer.set(correlationBytes, offset);
+    offset += correlationBytes.length;
+  }
   return buffer;
 }
 
@@ -112,6 +129,7 @@ export function decodeStreamHeader(header: Uint8Array): ZLinkStreamFrameHeader {
   const flags = header[offset++] as ZLinkStreamHeaderFlags;
   const hasRequestSeq = (flags & ZLinkStreamHeaderFlags.HasRequestSeq) !== 0;
   const hasMetadata = (flags & ZLinkStreamHeaderFlags.HasMetadata) !== 0;
+  const hasCorrelation = (flags & ZLinkStreamHeaderFlags.HasCorrelationId) !== 0;
   let requestSeq: bigint | undefined;
   if (hasRequestSeq) {
     if (header.length - offset < 8) {
@@ -129,7 +147,20 @@ export function decodeStreamHeader(header: Uint8Array): ZLinkStreamFrameHeader {
   const decodedMetadata = hasMetadata
     ? decodeStreamMetadata(header, offset)
     : { metadata: new Map<string, string>(), offset };
-  if (decodedMetadata.offset !== header.length) {
+  offset = decodedMetadata.offset;
+  let correlationId: string | undefined;
+  if (hasCorrelation) {
+    if (header.length - offset < 1) {
+      throw new Error('Stream correlation id is incomplete.');
+    }
+    const correlationLength = header[offset++];
+    if (header.length - offset < correlationLength) {
+      throw new Error('Stream correlation id is incomplete.');
+    }
+    correlationId = utf8Decode(header.subarray(offset, offset + correlationLength));
+    offset += correlationLength;
+  }
+  if (offset !== header.length) {
     throw new Error('Stream header has trailing bytes.');
   }
   return {
@@ -138,7 +169,8 @@ export function decodeStreamHeader(header: Uint8Array): ZLinkStreamFrameHeader {
     flags,
     requestSeq,
     name,
-    metadata: decodedMetadata.metadata
+    metadata: decodedMetadata.metadata,
+    correlationId
   };
 }
 

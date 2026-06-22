@@ -247,6 +247,18 @@ internal sealed class ZLinkRoutePacketDispatcher(
         {
             using var reply = await dispatch(sourceRid, header, cancellationToken).ConfigureAwait(false);
             ReplyRaw(sourceRid, received.RequestSeq, header, reply);
+
+            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Replied))
+            {
+                dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.Replied,
+                    ZLinkDispatchErrorSurface.RouteMeshChannel,
+                    ZLinkDispatchMessageKind.Request,
+                    PacketName: header.MessageName,
+                    ChannelName: routerChannelId,
+                    CorrelationId: header.CorrelationId,
+                    SourceRid: sourceRid.ToString()));
+            }
         }
         catch (Exception ex)
         {

@@ -117,6 +117,20 @@ internal sealed class ZLinkChannelPacketDispatcher(
         }
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(topicMessage.Parts);
+
+        if (_dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+        {
+            _dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Received,
+                ZLinkDispatchErrorSurface.Channel,
+                ZLinkDispatchMessageKind.Publish,
+                PacketName: header.MessageName,
+                ChannelName: channelName,
+                Topic: topicMessage.Topic,
+                SourceRid: header.Source,
+                CorrelationId: header.CorrelationId));
+        }
+
         await _publishPipeline.DispatchAsync(
                 channelName,
                 topicMessage,

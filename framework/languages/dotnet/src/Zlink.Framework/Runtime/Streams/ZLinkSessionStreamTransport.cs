@@ -23,7 +23,8 @@ internal sealed class ZLinkSessionStreamTransport(
             ZlinkStreamHeaderFlags.None,
             null,
             packetName,
-            ZlinkStreamMetadata.Empty);
+            ZlinkStreamMetadata.Empty,
+            ZLinkStreamCorrelation.Next());
         WriteRawFrame(header, payload.Span, "Client stream send failed.");
         return ValueTask.CompletedTask;
     }
@@ -44,7 +45,8 @@ internal sealed class ZLinkSessionStreamTransport(
             ZlinkStreamHeaderFlags.HasRequestSeq,
             pending.RequestSeq,
             packetName,
-            ZlinkStreamMetadata.Empty);
+            ZlinkStreamMetadata.Empty,
+            ZLinkStreamCorrelation.Next());
         WriteRawFrame(header, payload.Span, "Client stream request send failed.");
 
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -76,7 +78,8 @@ internal sealed class ZLinkSessionStreamTransport(
             ZlinkStreamHeaderFlags.HasRequestSeq,
             requestSeq,
             requestHeader.Name,
-            ZlinkStreamMetadata.Empty);
+            ZlinkStreamMetadata.Empty,
+            requestHeader.CorrelationId);
         WriteRawFrame(header, payload.Span, "Client stream reply send failed.");
         return ValueTask.CompletedTask;
     }

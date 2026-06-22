@@ -57,12 +57,14 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetSpotPublisherBundle(channelName);
         var packetName = _messageName ?? throw new InvalidOperationException("Message name is required.");
+        var correlationId = Guid.NewGuid().ToString("N");
         var parts = ZLinkSpotPublishEnvelope.EncodeParts(
             channelName,
             packetName,
             topic,
             message,
-            runtime.Registration.Codecs);
+            runtime.Registration.Codecs,
+            correlationId);
 
         if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.Sent))
         {
@@ -72,7 +74,8 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
                 ZLinkDispatchMessageKind.Publish,
                 PacketName: packetName,
                 ChannelName: channelName,
-                Topic: topic));
+                Topic: topic,
+                CorrelationId: correlationId));
         }
 
         return (bundle.Submitter
@@ -91,14 +94,15 @@ internal static class ZLinkSpotPublishEnvelope
         string messageName,
         string topic,
         TEvent message,
-        ZLinkCodecRegistryBuilder? codecs = null)
+        ZLinkCodecRegistryBuilder? codecs = null,
+        string? correlationId = null)
     {
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Publish,
             channelName,
             messageName,
             ZLinkEnvelopeCodec.DefaultContentType,
-            null,
+            correlationId,
             null,
             topic,
             null,

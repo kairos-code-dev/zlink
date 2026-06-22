@@ -3,7 +3,8 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionStreamTransport(
     IZLinkStream stream,
-    ZLinkSessionRequestTracker requests)
+    ZLinkSessionRequestTracker requests,
+    Zlink.Framework.Runtime.Diagnostics.ZLinkMessageFlowTracer flow)
 {
     public bool Write(Message payload)
     {
@@ -17,6 +18,7 @@ internal sealed class ZLinkSessionStreamTransport(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var correlationId = ZLinkStreamCorrelation.Next();
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Send,
             codec,
@@ -24,8 +26,9 @@ internal sealed class ZLinkSessionStreamTransport(
             null,
             packetName,
             ZlinkStreamMetadata.Empty,
-            ZLinkStreamCorrelation.Next());
+            correlationId);
         WriteRawFrame(header, payload.Span, "Client stream send failed.");
+        TraceSent(packetName, ZLinkDispatchMessageKind.Send, correlationId);
         return ValueTask.CompletedTask;
     }
 
@@ -39,6 +42,7 @@ internal sealed class ZLinkSessionStreamTransport(
         cancellationToken.ThrowIfCancellationRequested();
         using var pending = requests.Start();
 
+        var correlationId = ZLinkStreamCorrelation.Next();
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Request,
             codec,
@@ -46,8 +50,9 @@ internal sealed class ZLinkSessionStreamTransport(
             pending.RequestSeq,
             packetName,
             ZlinkStreamMetadata.Empty,
-            ZLinkStreamCorrelation.Next());
+            correlationId);
         WriteRawFrame(header, payload.Span, "Client stream request send failed.");
+        TraceSent(packetName, ZLinkDispatchMessageKind.Request, correlationId);
 
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
@@ -133,6 +138,7 @@ internal sealed class ZLinkSessionStreamTransport(
         using var pending = requests.Start();
 
         ReadOnlyMemory<byte> payload = ZLinkEnvelopeCodec.EncodeJsonBytes(request);
+        var correlationId = ZLinkStreamCorrelation.Next();
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Request,
             ZlinkStreamCodec.Json,
@@ -140,8 +146,9 @@ internal sealed class ZLinkSessionStreamTransport(
             pending.RequestSeq,
             packetName,
             ZlinkStreamMetadata.Empty,
-            ZLinkStreamCorrelation.Next());
+            correlationId);
         ZLinkStreamFrameWriter.Write(stream, header, payload, "Client stream request send failed.");
+        TraceSent(packetName, ZLinkDispatchMessageKind.Request, correlationId);
 
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
@@ -173,6 +180,19 @@ internal sealed class ZLinkSessionStreamTransport(
         if (!stream.Write(message))
         {
             throw new InvalidOperationException(failureMessage);
+        }
+    }
+
+    private void TraceSent(string packetName, ZLinkDispatchMessageKind kind, string correlationId)
+    {
+        if (flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        {
+            flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Sent,
+                ZLinkDispatchErrorSurface.StreamSession,
+                kind,
+                PacketName: packetName,
+                CorrelationId: correlationId));
         }
     }
 }

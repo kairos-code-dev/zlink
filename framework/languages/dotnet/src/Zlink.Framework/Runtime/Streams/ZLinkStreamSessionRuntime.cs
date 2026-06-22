@@ -130,6 +130,16 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 
             if (_context.TryCompleteResponse(decoded, payload))
             {
+                if (_flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
+                {
+                    _flow.Trace(new ZLinkMessageFlowEvent(
+                        ZLinkMessageFlowPhase.ReplyReceived,
+                        ZLinkDispatchErrorSurface.StreamSession,
+                        ZLinkDispatchMessageKind.Response,
+                        PacketName: decoded.Name,
+                        CorrelationId: decoded.CorrelationId ?? decoded.RequestSeq?.ToString()));
+                }
+
                 return;
             }
 

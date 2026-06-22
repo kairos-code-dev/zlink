@@ -328,6 +328,22 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
 
         if (_flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
         {
+            // If tracing toggled on after Sent, recover corr from the reply (which
+            // echoes the request corr) so the lone reply line is still joinable.
+            if (correlationId is null && reply.Count > 0)
+            {
+                try
+                {
+                    var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
+                    correlationId = replyHeader.CorrelationId;
+                    packetName ??= replyHeader.MessageName;
+                }
+                catch
+                {
+                    // best-effort: trace without corr rather than fail the call.
+                }
+            }
+
             _flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowPhase.ReplyReceived,
                 ZLinkDispatchErrorSurface.SpotRoute,

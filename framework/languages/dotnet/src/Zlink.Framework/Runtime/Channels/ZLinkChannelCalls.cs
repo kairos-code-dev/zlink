@@ -40,6 +40,18 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
             _messageName ?? throw new InvalidOperationException("Message name is required."));
 
         var message = ZLinkEnvelopeCodec.EncodeParts(header, _message, _message?.GetType(), _registration.Codecs);
+
+        if (_runtime.Flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        {
+            _runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Sent,
+                ZLinkDispatchErrorSurface.Channel,
+                ZLinkDispatchMessageKind.Send,
+                PacketName: header.MessageName,
+                ChannelName: _channelName,
+                CorrelationId: header.CorrelationId));
+        }
+
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink send submitter is not initialized."))
             .Async(
@@ -82,35 +94,56 @@ internal sealed class ZLinkRequestCall<TMessage>(
             _messageName ?? throw new InvalidOperationException("Message name is required."),
             timeout);
         var message = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request, registration.Codecs);
-        if (registration.Channels.TryGetValue(channelName, out var channel)
-            && channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh)
+        var dealerMesh = registration.Channels.TryGetValue(channelName, out var channel)
+            && channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh;
+        var surface = dealerMesh
+            ? ZLinkDispatchErrorSurface.DealerMeshChannel
+            : ZLinkDispatchErrorSurface.Channel;
+
+        if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.Sent))
         {
-            return await SubmitDealerMeshRequestAsync<TReply>(
-                    bundle,
-                    dealer,
-                    message,
-                    timeout,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Sent,
+                surface,
+                ZLinkDispatchMessageKind.Request,
+                PacketName: header.MessageName,
+                ChannelName: channelName,
+                CorrelationId: header.CorrelationId));
         }
 
-        return await (bundle.Submitter
-            ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
-            .SubmitRequestAsync<TReply>(
-                message,
-                (pending, complete, fail) => dealer.Request(
-                    pending,
-                    (result, reply) => ZLinkEnvelopeReplyCompletion.Complete(
-                        result,
-                        reply,
-                        complete,
-                        fail,
-                        "ZLink request",
-                        registration.Codecs),
-                    SendFlags.DontWait,
-                    timeout),
-                cancellationToken)
-            .ConfigureAwait(false);
+        var reply = dealerMesh
+            ? await SubmitDealerMeshRequestAsync<TReply>(bundle, dealer, message, timeout, cancellationToken)
+                .ConfigureAwait(false)
+            : await (bundle.Submitter
+                ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
+                .SubmitRequestAsync<TReply>(
+                    message,
+                    (pending, complete, fail) => dealer.Request(
+                        pending,
+                        (result, replyMessage) => ZLinkEnvelopeReplyCompletion.Complete(
+                            result,
+                            replyMessage,
+                            complete,
+                            fail,
+                            "ZLink request",
+                            registration.Codecs),
+                        SendFlags.DontWait,
+                        timeout),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
+        {
+            runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.ReplyReceived,
+                surface,
+                ZLinkDispatchMessageKind.Response,
+                PacketName: header.MessageName,
+                ChannelName: channelName,
+                CorrelationId: header.CorrelationId));
+        }
+
+        return reply;
     }
 
     private async ValueTask<TReply> SubmitDealerMeshRequestAsync<TReply>(
@@ -168,6 +201,19 @@ internal sealed class ZLinkPublishCall(
             topic: topic,
             source: channelName);
         var envelopedMsg = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType(), registration.Codecs);
+
+        if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        {
+            runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Sent,
+                ZLinkDispatchErrorSurface.Channel,
+                ZLinkDispatchMessageKind.Publish,
+                PacketName: header.MessageName,
+                ChannelName: channelName,
+                Topic: topic,
+                CorrelationId: header.CorrelationId));
+        }
+
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink publish submitter is not initialized."))
             .Async(

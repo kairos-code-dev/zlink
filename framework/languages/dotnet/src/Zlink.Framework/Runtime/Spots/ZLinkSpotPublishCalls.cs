@@ -56,12 +56,25 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
     {
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetSpotPublisherBundle(channelName);
+        var packetName = _messageName ?? throw new InvalidOperationException("Message name is required.");
         var parts = ZLinkSpotPublishEnvelope.EncodeParts(
             channelName,
-            _messageName ?? throw new InvalidOperationException("Message name is required."),
+            packetName,
             topic,
             message,
             runtime.Registration.Codecs);
+
+        if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        {
+            runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Sent,
+                ZLinkDispatchErrorSurface.SpotSubscription,
+                ZLinkDispatchMessageKind.Publish,
+                PacketName: packetName,
+                ChannelName: channelName,
+                Topic: topic));
+        }
+
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("External SPOT publish submitter is not initialized."))
             .Async(

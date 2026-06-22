@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Host;
 
@@ -26,6 +28,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     private readonly object _workerPoolGate = new();
     private ZLinkWorkerPool? _workerPool;
     private ZLinkFrameworkRuntimeState? _state;
+    private ZLinkMessageFlowTracer? _flow;
 
     public ZLinkFrameworkRuntime(
         IServiceProvider services,
@@ -61,6 +64,13 @@ internal sealed partial class ZLinkFrameworkRuntime
     public IZLinkBackendContext? Context => _state?.Context;
 
     public ZLinkFrameworkRegistration Registration => _registration;
+
+    // Shared success-path tracer for outbound client calls (channel/route/spot/actor
+    // send/request/publish), built once. Inbound surfaces use the reporter's Flow.
+    internal ZLinkMessageFlowTracer Flow => _flow ??= new ZLinkMessageFlowTracer(
+        _registration.DispatchOptions,
+        _services,
+        _services.GetService<ILogger<ZLinkFrameworkRuntime>>());
 
     internal IServiceProvider Services => _services;
 

@@ -9,6 +9,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -45,6 +46,10 @@ public final class PlayServerApplication {
     ZLinkFrameworkConfigurer playFramework() {
         return options -> {
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            options.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile(System.getenv().getOrDefault("BINGO_LOG_DIR", "logs") + "/flow-play.log")
+                .traceNodeId("play");
             options.codecs().addJson();
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.addHandlersFromPackageOf(PlayServerApplication.class);

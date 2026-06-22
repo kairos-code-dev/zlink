@@ -29,12 +29,17 @@ import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.ZlinkCloseException;
 
-public final class ZLinkFrameworkRuntime implements AutoCloseable {
+public final class ZLinkFrameworkRuntime
+    implements AutoCloseable, systems.zlink.framework.configuration.ZLinkMessageFlowControl {
     private final ZLinkChannelRuntime channels;
     private final ZLinkSpotRuntime spots;
     private final ZLinkActorRuntime actors;
     private final ZLinkStreamRuntime streams;
     private final ZLinkFrameworkRegistration registration;
+    // Shared, runtime-mutable message-flow mode cell, installed into the diagnostics
+    // options so every surface observes setMessageFlowMode live.
+    private final java.util.concurrent.atomic.AtomicReference<
+        systems.zlink.framework.configuration.ZLinkMessageFlowLogMode> messageFlowMode;
 
     ZLinkFrameworkRuntime(
         DefaultZLinkFrameworkOptions options,
@@ -50,6 +55,10 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
         ZLinkHandlerFactory handlerFactory) {
         options.validate();
         this.registration = options.registration();
+        var diagnostics = this.registration.dispatchOptions().diagnostics();
+        this.messageFlowMode =
+            new java.util.concurrent.atomic.AtomicReference<>(diagnostics.messageFlow());
+        diagnostics.installLiveMode(this.messageFlowMode);
         ZLinkBackendAdapterOptions adapterOptions =
             new ZLinkBackendAdapterOptions(options.defaultRequestTimeout());
         ZLinkStreamCodec defaultStreamCodec = defaultStreamCodec(options);
@@ -163,6 +172,21 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
 
     public ZLinkClient client() {
         return channels;
+    }
+
+    // Runtime toggle (ZLinkMessageFlowControl): flip the shared live-mode cell so every
+    // surface starts/stops tracing without a restart. Thread-safe.
+    @Override
+    public void setMessageFlowMode(systems.zlink.framework.configuration.ZLinkMessageFlowLogMode mode) {
+        if (mode == null) {
+            throw new IllegalArgumentException("mode is required");
+        }
+        messageFlowMode.set(mode);
+    }
+
+    @Override
+    public systems.zlink.framework.configuration.ZLinkMessageFlowLogMode messageFlowMode() {
+        return registration.dispatchOptions().diagnostics().effectiveMessageFlow();
     }
 
     public ZLinkFanoutClient fanout() {

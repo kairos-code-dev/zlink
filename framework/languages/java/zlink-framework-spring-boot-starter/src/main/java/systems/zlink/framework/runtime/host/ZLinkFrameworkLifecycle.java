@@ -23,7 +23,8 @@ import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 
 public final class ZLinkFrameworkLifecycle
-    implements SmartLifecycle, ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient {
+    implements SmartLifecycle, ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient,
+        systems.zlink.framework.configuration.ZLinkMessageFlowControl {
     public static final int PHASE = 0;
 
     private final DefaultZLinkFrameworkOptions options;
@@ -89,6 +90,16 @@ public final class ZLinkFrameworkLifecycle
     @Override
     public int getPhase() {
         return PHASE;
+    }
+
+    @Override
+    public void setMessageFlowMode(systems.zlink.framework.configuration.ZLinkMessageFlowLogMode mode) {
+        requireRuntime().setMessageFlowMode(mode);
+    }
+
+    @Override
+    public systems.zlink.framework.configuration.ZLinkMessageFlowLogMode messageFlowMode() {
+        return requireRuntime().messageFlowMode();
     }
 
     @Override

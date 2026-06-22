@@ -275,8 +275,11 @@ final class ZLinkStreamWireProtocol {
         if (header.kind() == KIND_ERROR && header.codec() != CODEC_JSON) {
             throw new IllegalArgumentException("error packet must use the JSON codec");
         }
+        boolean hasCorrelationId =
+            header.correlationId() != null && !header.correlationId().isEmpty();
         if (header.kind() == KIND_CONTROL
-            && (header.flags() != 0 || hasRequestSeq || hasMetadata || header.codec() != CODEC_RAW)) {
+            && (header.flags() != 0 || hasRequestSeq || hasMetadata || hasCorrelationId
+                || header.codec() != CODEC_RAW)) {
             throw new IllegalArgumentException("control packet must use raw codec and must not contain flags");
         }
     }

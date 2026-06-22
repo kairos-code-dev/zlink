@@ -136,6 +136,10 @@ public final class ZLinkStreamHeaderCodec {
         boolean hasCorrelationId = correlationId != null
             && correlationId.isPresent()
             && !correlationId.get().isEmpty();
+        if (kind == KIND_CONTROL && hasCorrelationId) {
+            throw new IllegalArgumentException(
+                "STREAM control packet must not contain a correlation id");
+        }
         byte[] correlationBytes = hasCorrelationId
             ? correlationId.get().getBytes(StandardCharsets.UTF_8)
             : new byte[0];

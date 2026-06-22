@@ -1047,15 +1047,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 return;
             }
             long requestSeq = received.requestSeq().get();
-            String routePacketName = packet.packetName();
-            String routeSourceRid = routingId.toString();
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowPhase.RECEIVED,
                     ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                     ZLinkDispatchMessageKind.REQUEST,
-                    routePacketName, channelName, null,
-                    String.valueOf(requestSeq), routeSourceRid, null, null, null));
+                    packet.packetName(), channelName, null,
+                    String.valueOf(requestSeq), routingId.toString(), null, null, null));
             }
             Message payloadCopy = Message.from(packet.payload());
             routeRequestDispatchQueues.get(channelName).enqueue(() ->
@@ -1073,9 +1071,9 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                                 ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                                 ZLinkDispatchMessageKind.REQUEST,
                                 dispatchReasonFromError(error),
-                                routePacketName,
+                                packet.packetName(),
                                 channelName,
-                                routeSourceRid,
+                                routingId.toString(),
                                 error);
                         } else {
                             replyAndClose(router, routingId, requestSeq, reply);
@@ -1084,8 +1082,8 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                                     ZLinkMessageFlowPhase.REPLIED,
                                     ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                                     ZLinkDispatchMessageKind.REQUEST,
-                                    routePacketName, channelName, null,
-                                    String.valueOf(requestSeq), routeSourceRid, null, null, null));
+                                    packet.packetName(), channelName, null,
+                                    String.valueOf(requestSeq), routingId.toString(), null, null, null));
                             }
                         }
                     })
@@ -1252,13 +1250,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             return;
         }
         String routeSendPacketName = packet.packetName();
-        String routeSendSourceRid = sourceRoutingId.toString();
         if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
             dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowPhase.RECEIVED,
                 ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                 ZLinkDispatchMessageKind.SEND,
-                routeSendPacketName, channelName, null, null, routeSendSourceRid, null, null, null));
+                routeSendPacketName, channelName, null, null,
+                sourceRoutingId.toString(), null, null, null));
         }
         Message payloadCopy = Message.from(packet.payload());
         routeSendDispatchQueues.get(channelName).enqueue(() ->
@@ -1279,7 +1277,8 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                             ZLinkMessageFlowPhase.DISPATCHED,
                             ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                             ZLinkDispatchMessageKind.SEND,
-                            routeSendPacketName, channelName, null, null, routeSendSourceRid, null, null, null));
+                            routeSendPacketName, channelName, null, null,
+                            sourceRoutingId.toString(), null, null, null));
                     }
                 })
                 .whenComplete((ignored, error) -> payloadCopy.close()));

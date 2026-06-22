@@ -1858,6 +1858,16 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         .whenComplete((ignored, error) -> {
                             payloadCopy.close();
                             received.close();
+                            if (error == null
+                                && dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLIED)) {
+                                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                                    ZLinkMessageFlowPhase.REPLIED,
+                                    ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                                    ZLinkDispatchMessageKind.REQUEST,
+                                    packet.packetName(), null, null,
+                                    received.requestSeq().map(String::valueOf).orElse(null),
+                                    null, backendSpot.routingId().toString(), null, null));
+                            }
                         }));
                 return;
             }
@@ -1879,10 +1889,22 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     return;
                 }
                 Message payloadCopy = Message.from(packet.payload());
+                String sendPacketName = packet.packetName();
                 context.enqueueDispatch(() ->
                     withCurrentOutbound(context.outbound, () ->
                         invokeSpotPacketHandler(handler, entrySpot, payloadCopy))
-                        .whenComplete((ignored, error) -> payloadCopy.close()));
+                        .whenComplete((ignored, error) -> {
+                            payloadCopy.close();
+                            if (error == null
+                                && dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.DISPATCHED)) {
+                                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                                    ZLinkMessageFlowPhase.DISPATCHED,
+                                    ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                                    ZLinkDispatchMessageKind.SEND,
+                                    sendPacketName, null, null, null,
+                                    null, backendSpot.routingId().toString(), null, null));
+                            }
+                        }));
             }
         }
 
@@ -4635,6 +4657,16 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     .whenComplete((ignored, error) -> {
                         payloadCopy.close();
                         received.close();
+                        if (error == null
+                            && dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLIED)) {
+                            dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                                ZLinkMessageFlowPhase.REPLIED,
+                                ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                                ZLinkDispatchMessageKind.REQUEST,
+                                packet.packetName(), null, null,
+                                received.requestSeq().map(String::valueOf).orElse(null),
+                                null, backendSpot.routingId().toString(), null, null));
+                        }
                     });
             }
             if (handler.request()) {
@@ -4655,10 +4687,22 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 return CompletableFuture.completedFuture(null);
             }
             Message payloadCopy = Message.from(packet.payload());
+            String routeAsyncSendPacket = packet.packetName();
             received.close();
             return withCurrentOutbound(context.outbound, () ->
                 invokeSpotPacketHandler(handler, spot, payloadCopy))
-                .whenComplete((ignored, error) -> payloadCopy.close());
+                .whenComplete((ignored, error) -> {
+                    payloadCopy.close();
+                    if (error == null
+                        && dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.DISPATCHED)) {
+                        dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                            ZLinkMessageFlowPhase.DISPATCHED,
+                            ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                            ZLinkDispatchMessageKind.SEND,
+                            routeAsyncSendPacket, null, null, null,
+                            null, backendSpot.routingId().toString(), null, null));
+                    }
+                });
         }
 
         private CompletionStage<Void> drainSubscriptionsAsync() {

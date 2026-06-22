@@ -58,11 +58,12 @@ DEFAULT_PATTERNS = (
     "STREAM",
 )
 DEFAULT_MSG_SIZES = ("64", "256", "1024", "4096", "65536", "131072")
-DEFAULT_STREAM_MSG_SIZES = DEFAULT_MSG_SIZES
+DEFAULT_STREAM_MSG_SIZES = ("64", "256", "1024", "65536")
 SPOT_CONTROL_PATTERNS = {"SPOT", "SPOT_REQREP", "SPOT_SENDSEND"}
 SPOT_CONTROL_NON_TCP_TRANSPORTS = {"tls", "ws", "wss"}
-SPOT_CONTROL_CONNECT_READY_TIMEOUT_MS = "5000"
+SPOT_CONTROL_CONNECT_READY_TIMEOUT_MS = "30000"
 SPOT_CONTROL_SERVER_READY_TIMEOUT_MS = "30000"
+DEALER_DEALER_SERVER_SHUTDOWN_TIMEOUT_MS = "30000"
 RAW_TRANSPORTS = (
     ("tcp", "tls", "ws", "wss")
     if sys.platform.startswith("win")
@@ -227,6 +228,13 @@ def _ensure_core_runtime():
     print(f"Perf runtime libzlink: {RUNNER_LIB}", flush=True)
 
 
+def _runtime_libzlink():
+    try:
+        return str(RUNNER_LIB.resolve(strict=True))
+    except OSError:
+        return str(RUNNER_LIB)
+
+
 def _configure_core_runtime(env):
     _ensure_core_runtime()
     env["ZLINK_LIBRARY_PATH"] = str(RUNNER_LIB)
@@ -285,6 +293,23 @@ def _apply_spot_control_timeout_defaults(args, env, configs):
         and "PERF_SERVER_READY_TIMEOUT_MS" not in env
     ):
         env["PERF_MULTI_SERVER_READY_TIMEOUT_MS"] = SPOT_CONTROL_SERVER_READY_TIMEOUT_MS
+
+
+def _needs_dealer_dealer_shutdown_timeout_default(configs):
+    return any(pattern == "DEALER_DEALER" for pattern, _transport, _msg_size in configs)
+
+
+def _apply_dealer_dealer_shutdown_timeout_default(args, env, configs):
+    if not _needs_dealer_dealer_shutdown_timeout_default(configs):
+        return
+    if (
+        not args.server_shutdown_timeout_ms
+        and "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS" not in env
+        and "PERF_SERVER_SHUTDOWN_TIMEOUT_MS" not in env
+    ):
+        env["PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS"] = (
+            DEALER_DEALER_SERVER_SHUTDOWN_TIMEOUT_MS
+        )
 
 
 def _effective_role_io_threads(args, role):
@@ -471,8 +496,9 @@ def _parse_status_lines(output):
     return rows
 
 
-def _env_int(name, default):
-    value = os.environ.get(name)
+def _env_int(name, default, env_map=None):
+    source = os.environ if env_map is None else env_map
+    value = source.get(name)
     if value in (None, ""):
         return default
     try:
@@ -481,26 +507,27 @@ def _env_int(name, default):
         return default
 
 
-def _arg_or_env_int(cli_value, env_name, default):
+def _arg_or_env_int(cli_value, env_name, default, env_map=None):
     if cli_value not in (None, ""):
         try:
             return int(cli_value)
         except ValueError:
             raise SystemExit(f"{env_name} must be an integer")
-    return _env_int(env_name, default)
+    return _env_int(env_name, default, env_map)
 
 
-def _arg_or_env_pair_int(cli_value, primary_env, fallback_env, default):
+def _arg_or_env_pair_int(cli_value, primary_env, fallback_env, default, env_map=None):
     if cli_value not in (None, ""):
         try:
             return int(cli_value)
         except ValueError:
             raise SystemExit(f"{primary_env} must be an integer")
-    return _env_int(primary_env, _env_int(fallback_env, default))
+    return _env_int(primary_env, _env_int(fallback_env, default, env_map), env_map)
 
 
-def _env_pair_value(primary_env, fallback_env, default):
-    return os.environ.get(primary_env) or os.environ.get(fallback_env, default)
+def _env_pair_value(primary_env, fallback_env, default, env_map=None):
+    source = os.environ if env_map is None else env_map
+    return source.get(primary_env) or source.get(fallback_env, default)
 
 
 def _stream_completion_wait_ms():
@@ -734,17 +761,20 @@ def _run_pattern(args, env, pattern, transport, msg_size, clients):
         args.server_ready_timeout_ms,
         "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
         _env_int("PERF_SERVER_READY_TIMEOUT_MS", 10000),
+        env,
     ) / 1000.0
     shutdown_grace_s = _arg_or_env_int(
         args.server_shutdown_timeout_ms,
         "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
         _env_int("PERF_SERVER_SHUTDOWN_TIMEOUT_MS", 5000),
+        env,
     ) / 1000.0
     timeout_override = _arg_or_env_pair_int(
         "",
         "PERF_MULTI_TIMEOUT_SECONDS",
         "PERF_TIMEOUT_SECONDS",
         0,
+        env,
     )
     client_timeout_s = (
         timeout_override
@@ -1049,10 +1079,10 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients, env
     sndbuf = args.sndbuf or args.buf or "-1"
     rcvbuf = args.rcvbuf or args.buf or "-1"
     transport_transition_ms = args.transport_transition_ms or _env_pair_value(
-        "PERF_MULTI_TRANSPORT_TRANSITION_MS", "PERF_TRANSPORT_TRANSITION_MS", "3000"
+        "PERF_MULTI_TRANSPORT_TRANSITION_MS", "PERF_TRANSPORT_TRANSITION_MS", "3000", env
     )
     pattern_transition_ms = args.pattern_transition_ms or _env_pair_value(
-        "PERF_MULTI_PATTERN_TRANSITION_MS", "PERF_PATTERN_TRANSITION_MS", "3000"
+        "PERF_MULTI_PATTERN_TRANSITION_MS", "PERF_PATTERN_TRANSITION_MS", "3000", env
     )
     return {
         "lang": "python",
@@ -1098,7 +1128,7 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients, env
         or env.get("PERF_SERVER_READY_TIMEOUT_MS")
         or "10000",
         "server_shutdown_timeout_ms": args.server_shutdown_timeout_ms
-        or _env_pair_value("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", "PERF_SERVER_SHUTDOWN_TIMEOUT_MS", "5000"),
+        or _env_pair_value("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", "PERF_SERVER_SHUTDOWN_TIMEOUT_MS", "5000", env),
         "server_bind_port": args.server_bind_port or os.environ.get("PERF_MULTI_SERVER_BIND_PORT", "0"),
         "transport_transition_ms": transport_transition_ms,
         "pattern_transition_ms": pattern_transition_ms,
@@ -1141,6 +1171,7 @@ def _meta_lines(args, clients):
         f"META,load_avg,{load_avg}",
         f"META,runs,{args.runs}",
         f"META,clients,{clients}",
+        f"META,runtime_libzlink,{_runtime_libzlink()}",
     ]
 
 
@@ -1205,6 +1236,7 @@ def main(argv=None):
     if args.server_bind_port:
         env["PERF_MULTI_SERVER_BIND_PORT"] = args.server_bind_port
     _apply_spot_control_timeout_defaults(args, env, configs)
+    _apply_dealer_dealer_shutdown_timeout_default(args, env, configs)
     _configure_core_runtime(env)
 
     run_cooldown_ms = _env_int("PERF_MULTI_RUN_COOLDOWN_MS", _env_int("PERF_RUN_COOLDOWN_MS", 3000))

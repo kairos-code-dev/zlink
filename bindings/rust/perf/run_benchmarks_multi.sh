@@ -304,7 +304,7 @@ prepare_core_runtime() {
         exit 1
     fi
     echo "Perf core build dir: ${CORE_BUILD_DIR}"
-    echo "Perf runtime libzlink: ${CORE_LIB}"
+    echo "Perf runtime libzlink: ${resolved_lib}"
     export LD_LIBRARY_PATH="${CORE_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 }
 
@@ -441,7 +441,7 @@ default_msg_sizes_for_pattern() {
     fi
     case "${pattern}" in
         MULTI_STREAM)
-            printf '%s' "${PERF_MULTI_STREAM_MSG_SIZES:-${PERF_STREAM_MSG_SIZES:-64,256,1024,4096,65536,131072}}"
+            printf '%s' "${PERF_MULTI_STREAM_MSG_SIZES:-${PERF_STREAM_MSG_SIZES:-64,256,1024,65536}}"
             ;;
         *)
             printf '%s' "${MSG_SIZES}"
@@ -1083,13 +1083,28 @@ if [[ "${EXPLICIT_CLIENTS}" != "1" ]]; then
         REPORT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
     fi
 fi
+REPORT_MSG_SIZES="${MSG_SIZES}"
+if [[ "${EXPLICIT_MSG_SIZES}" != "1" ]]; then
+    has_stream=0
+    all_stream=1
+    for pat in "${PATTERNS[@]}"; do
+        if [[ "${pat}" == "MULTI_STREAM" ]]; then
+            has_stream=1
+        else
+            all_stream=0
+        fi
+    done
+    if [[ "${all_stream}" == "1" && "${has_stream}" == "1" ]]; then
+        REPORT_MSG_SIZES="$(default_msg_sizes_for_pattern "MULTI_STREAM")"
+    fi
+fi
 python3 "${PERF_REPORT_PY}" render-multi \
   --metrics "${TMP_METRICS}" \
   --cases "${TMP_CASES}" \
   --report "${RESULTS_FILE}" \
   --patterns "${PATTERN}" \
   --transports "${TRANSPORTS}" \
-  --msg-sizes "${MSG_SIZES}" \
+  --msg-sizes "${REPORT_MSG_SIZES}" \
   --clients "${REPORT_CLIENTS}" \
   --runs "${RUNS}" \
   --duration "${DURATION}" \

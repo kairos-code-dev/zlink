@@ -267,6 +267,9 @@ async function main() {
   for (const line of metaLines(metaItems)) {
     emit(line);
   }
+  if (process.env.ZLINK_PERF_RUNTIME_LIBZLINK) {
+    emit(`META,runtime_libzlink,${process.env.ZLINK_PERF_RUNTIME_LIBZLINK}`);
+  }
   const optionItems = buildMultiOptionItems({
     runs: options.runs,
     duration: options.duration,

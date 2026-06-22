@@ -152,6 +152,13 @@ def _ensure_core_runtime():
     print(f"Perf runtime libzlink: {CORE_LIB}", flush=True)
 
 
+def _runtime_libzlink():
+    try:
+        return str(CORE_LIB.resolve(strict=True))
+    except OSError:
+        return str(CORE_LIB)
+
+
 def _configure_core_runtime(env):
     _ensure_core_runtime()
     env["ZLINK_LIBRARY_PATH"] = str(CORE_LIB)
@@ -390,6 +397,8 @@ def main(argv=None):
     stop_early = False
     case_ordinal = 1
 
+    _append_line(sections, f"META,runtime_libzlink,{_runtime_libzlink()}")
+    _append_line(sections)
     _append_line(sections, render_effective_options(options))
 
     for pattern in patterns:

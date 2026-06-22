@@ -46,5 +46,7 @@ if find "$REPO_ROOT/core/include" "$REPO_ROOT/core/src" -type f -newer "$CORE_RU
 fi
 
 echo "Perf runtime libzlink: $(realpath "$CORE_RUNTIME")"
+export ZLINK_PERF_RUNTIME_LIBZLINK
+ZLINK_PERF_RUNTIME_LIBZLINK="$(realpath "$CORE_RUNTIME")"
 
 node dist-tools/perf/single/run_benchmarks.js "$@"

@@ -47,7 +47,7 @@ const POLICY_TRANSPORTS = {
 };
 function patternMsgSizes(patternName, requestedSizes) {
     const allowed = patternName === 'MULTI_STREAM'
-        ? [64, 256, 1024, 4096, 65536, 131072]
+        ? [64, 256, 1024, 65536]
         : [64, 256, 1024, 4096, 65536, 131072];
     return requestedSizes.filter((size) => allowed.includes(size));
 }

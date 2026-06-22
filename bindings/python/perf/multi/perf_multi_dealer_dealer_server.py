@@ -86,10 +86,13 @@ def main(argv=None):
                                 if latency is not None:
                                     latencies.append(latency)
 
-                    # C run_receive_window: poll(-1) POLLIN, count until the
-                    # measure deadline, then break.
                     while not stop_event.is_set():
-                        ready_count = safe_poll(poller, poll_events, -1)
+                        remaining_ms = int(
+                            (active_deadline - time.perf_counter()) * 1000
+                        )
+                        if remaining_ms <= 0:
+                            break
+                        ready_count = safe_poll(poller, poll_events, max(1, remaining_ms))
                         if ready_count:
                             for offset in range(ready_count):
                                 if poll_events.revents(offset) & int(

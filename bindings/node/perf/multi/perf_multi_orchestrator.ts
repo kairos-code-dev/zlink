@@ -6,6 +6,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 
 const { once } = require('node:events');
 const { spawn } = require('node:child_process');
+const fs = require('node:fs');
 const path = require('node:path');
 const { benchmarkEndpoint, reservePort } = require('./perf_multi_common');
 
@@ -170,6 +171,116 @@ function stderrText(processRef) {
 function startupBindRetryCount(args) {
   const value = Number(args.__startupBindRetry || 0);
   return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
+}
+
+function positiveIntegerEnv(...names) {
+  for (const name of names) {
+    const value = Number(process.env[name] || NaN);
+    if (Number.isFinite(value) && value > 0) {
+      return Math.trunc(value);
+    }
+  }
+  return null;
+}
+
+function processRssKb(pid) {
+  try {
+    const status = fs.readFileSync(`/proc/${pid}/status`, 'utf8');
+    const match = status.match(/^VmRSS:\s+(\d+)\s+kB$/m);
+    return match ? Number(match[1]) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function processGroupId(pid) {
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const end = stat.lastIndexOf(') ');
+    if (end === -1) {
+      return null;
+    }
+    const fields = stat.slice(end + 2).trim().split(/\s+/);
+    const groupId = Number(fields[2]);
+    return Number.isFinite(groupId) ? groupId : null;
+  } catch {
+    return null;
+  }
+}
+
+function processGroupRssKb(rootPid) {
+  if (process.platform !== 'linux') {
+    return processRssKb(rootPid);
+  }
+  let total = 0;
+  try {
+    for (const entry of fs.readdirSync('/proc')) {
+      if (!/^\d+$/.test(entry)) {
+        continue;
+      }
+      const pid = Number(entry);
+      if (processGroupId(pid) === rootPid) {
+        total += processRssKb(pid);
+      }
+    }
+  } catch {
+    return processRssKb(rootPid);
+  }
+  return total || processRssKb(rootPid);
+}
+
+function startRssGuard(processRefs, label) {
+  const limitKb = positiveIntegerEnv('PERF_MULTI_RSS_LIMIT_KB', 'PERF_RSS_LIMIT_KB');
+  if (!limitKb) {
+    return {
+      promise: new Promise(() => {}),
+      stop() {}
+    };
+  }
+
+  const pollMs = positiveIntegerEnv('PERF_MULTI_RSS_POLL_MS', 'PERF_RSS_POLL_MS') || 250;
+  let timer = null;
+  let stopped = false;
+  const promise = new Promise((_, reject) => {
+    timer = setInterval(() => {
+      if (stopped) {
+        return;
+      }
+      const samples = [];
+      let cellRssKb = 0;
+      for (const [name, processRef] of processRefs) {
+        if (!processRef || !processRef.pid) {
+          continue;
+        }
+        if (processRef.exitCode !== null || processRef.signalCode !== null) {
+          continue;
+        }
+        const rssKb = processGroupRssKb(processRef.pid);
+        samples.push(`${name}=${rssKb}KB`);
+        cellRssKb += rssKb;
+      }
+      if (cellRssKb > limitKb) {
+        stopped = true;
+        clearInterval(timer);
+        reject(new Error(
+          `rss guard exceeded for ${label}: cell=${cellRssKb}KB,limit=${limitKb}KB,${samples.join(',')}`
+        ));
+      }
+    }, pollMs);
+    if (timer.unref) {
+      timer.unref();
+    }
+  });
+
+  return {
+    promise,
+    stop() {
+      stopped = true;
+      if (timer) {
+        clearInterval(timer);
+      }
+    }
+  };
 }
 
 async function waitForExit(processRef) {
@@ -643,13 +754,18 @@ async function spawnMultiPair(serverScript, clientScript, args) {
   }
 
   const clientTimeoutMs = resolveMultiTimeoutSeconds(args) * 1000;
+  const rssGuard = startRssGuard(
+    [['server', server], ['client', client]],
+    `${args.pattern} ${args.transport} ${args.msgSize}B`
+  );
   let clientExitCode;
   try {
     clientExitCode = await Promise.race([
       waitForExit(client),
       new Promise((_, reject) => {
         setTimeout(() => reject(new Error(`client timeout after ${clientTimeoutMs}ms`)), clientTimeoutMs);
-      })
+      }),
+      rssGuard.promise
     ]);
   } catch (error) {
     await Promise.allSettled([terminateProcessTree(server, 1000), terminateProcessTree(client, 1000)]);
@@ -658,6 +774,8 @@ async function spawnMultiPair(serverScript, clientScript, args) {
       error.message = `${error.message}\n${stderr}`;
     }
     throw error;
+  } finally {
+    rssGuard.stop();
   }
   if (clientExitCode !== 0) {
     const stderr = stderrText(client);

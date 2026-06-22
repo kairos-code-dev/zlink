@@ -170,10 +170,12 @@ prepare_core_runtime() {
         echo "Build core/build before running Rust perf." >&2
         exit 1
     fi
+    local resolved_lib
+    resolved_lib="$(readlink -f "${CORE_LIB}" 2>/dev/null || echo "${CORE_LIB}")"
     local newer_source
     newer_source="$(
         find "${REPO_DIR}/core/src" "${REPO_DIR}/core/include" \
-            -type f -newer "${CORE_LIB}" -print -quit 2>/dev/null || true
+            -type f -newer "${resolved_lib}" -print -quit 2>/dev/null || true
     )"
     if [[ -n "${newer_source}" ]]; then
         echo "Error: stale core runtime detected for bindings/rust/perf." >&2
@@ -183,7 +185,7 @@ prepare_core_runtime() {
         exit 1
     fi
     echo "Perf core build dir: ${CORE_BUILD_DIR}"
-    echo "Perf runtime libzlink: ${CORE_LIB}"
+    echo "Perf runtime libzlink: ${resolved_lib}"
     export LD_LIBRARY_PATH="${CORE_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 }
 

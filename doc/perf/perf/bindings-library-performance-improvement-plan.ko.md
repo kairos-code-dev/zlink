@@ -81,15 +81,67 @@ binding 내부 병목인지 perf 측정 오류인지 먼저 구분한다.
 ## 2. 고정 원칙
 
 - 성능 개선 대상은 perf가 아니라 각 언어 binding 라이브러리다.
-- perf는 버그가 있거나 `doc/perf` 원칙을 위배했을 때만 수정한다.
+- 성능 개선도 POSD 원칙을 따른다. public API 호출자는 새 순서, 새 helper, 내부
+  transport/detail, perf 전용 예외를 알 필요가 없어야 한다. 비용은 public API 뒤쪽의
+  깊은 구현에서 흡수하고, 호출 표면이 얕아지거나 복잡해지는 변경은 성능 후보로
+  채택하지 않는다.
+- perf는 버그가 있거나 `doc/perf` 원칙을 위배했을 때만 수정한다. 측정 수치를 올리기
+  위한 perf hot path 우회, perf 전용 native helper 호출, deep runtime import는
+  성능 개선으로 인정하지 않는다.
 - binding perf는 `bindings/c/perf`와 같은 의미를 측정해야 한다.
 - C perf와 다른 의미를 만드는 실험은 하지 않는다. worker 수, client 수, transport,
   pattern, message size, duration, timeout, socket buffer, borrow/copy 정책은
   C와 대상 binding이 같은 조건일 때만 비교 근거로 사용한다. HWM 관련 확인은
   auto-HWM 활성 여부와 size별 `MsgUnit(B)` 일치 여부로 제한한다.
+- C perf가 public submit 결과를 재시도 가능한 상태로 다루면 binding perf도 같은 public
+  결과 의미를 유지한다. 예를 들어 SPOT_REQREP에서 `NOT_CONNECTED`는 라우팅과 admission
+  상태가 따라잡는 동안 나올 수 있는 public submit 결과이므로, C처럼 다음 poll loop에서
+  재시도한다. 이를 fatal로 처리하면 성능 미달이 아니라 측정 의미 불일치다.
 - binding perf hot path는 해당 언어의 public API를 사용해야 한다.
 - 내부 API, private API, native helper, C API 직접 호출로 수치를 만드는 방식은
   인정하지 않는다.
+- perf 수정 없이 목표를 맞출 수 없다고 보이면 먼저 binding 라이브러리 내부의
+  allocation, copy, dispatch, error handling, receive storage 재사용 경로를 검토한다.
+  perf 하니스는 측정 의미 오류가 확인된 경우에만 최소 범위로 수정한다.
+- perf 입력값이나 benchmark loop에만 맞는 개선은 채택하지 않는다. 예를 들어 같은
+  topic, 같은 routing id, 같은 payload 내용이 반복된다는 가정에 기대어 cache를 추가하는
+  변경은 실제 애플리케이션 분포를 대표하지 못하므로 성능 개선으로 인정하지 않는다.
+  후보가 특정 perf 데이터 모양에만 의미가 있으면 측정 전에 폐기하고, 이미 코드에
+  들어갔으면 같은 작업 안에서 제거한다.
+- 내부 최적화 후보를 리뷰할 때는 “일반 사용자가 같은 public API를 사용할 때도 비용이
+  줄어드는가”를 먼저 확인한다. 반복 문자열 비교, benchmark 전용 상태 cache, perf
+  message size만 겨냥한 branch, perf harness가 만든 고정 순서에 의존하는 shortcut은
+  코드만 복잡하게 만들 수 있으므로 채택하지 않는다. 이런 후보는 문서에 `폐기`로 남겨
+  이후 리팩토링 때 다시 들어오지 않게 한다.
+- perf 하니스에서만 의미 있는 비용을 줄이는 변경은 binding 개선으로 보지 않는다.
+  예를 들어 benchmark loop의 payload template 복사, 고정 topic 검증, 고정 순서 pending
+  배열 접근처럼 실제 애플리케이션 입력 분포와 직접 연결되지 않는 비용은 perf 코드를
+  빠르게 만들 뿐이다. 이런 항목은 public contract의 일반 사용 경로에서 같은 비용이
+  반복된다는 근거가 있을 때만 library 후보로 올린다.
+- 특정 perf 루프에서 호출 빈도가 높다는 이유만으로 public accessor나 builder에
+  inline attribute만 붙이는 변경도 채택하지 않는다. allocation, copy, ownership,
+  native boundary처럼 실제 구조 비용을 줄인 근거가 없으면 실사용 성능 개선으로 보지
+  않고 제거한다.
+- hot path로 판정한 binding 내부 코드는 리팩토링 중 일반 경로로 되돌아가지 않도록
+  코드 가까이에 짧은 주석을 남긴다. 주석은 “빠르다”가 아니라 어떤 비용을 막는지
+  구체적으로 적는다. 예를 들어 per-message allocation, payload copy, exception
+  construction, dynamic dispatch, routing lookup, external Buffer 생존 연장을 막는지
+  설명한다.
+- hot path 주석이 붙은 경로를 리팩토링할 때는 같은 public API 호출을 유지한 상태에서
+  before/after throughput을 재측정한다. public API를 바꾸거나 perf에서 내부 경로를
+  직접 호출해 얻은 수치는 채택 근거로 쓰지 않는다.
+- 채택한 내부 최적화는 어떤 public API 경로를 그대로 유지했는지 함께 남긴다. 예를 들어
+  Node `MULTI_PUBSUB` 개선은 perf가 계속 public `sub.subscribe(received, DontWait)`를
+  호출한 상태에서 binding 내부의 caller-provided storage release, SUB single-part raw
+  object, empty routing id 생성을 줄인 사례다. Node `MULTI_SPOT` 개선도 perf가 계속
+  public `spot.subscribe(received, DontWait)`를 호출한 상태에서 SPOT subscribe raw object의
+  single-part data 경로와 empty routing id 생성을 줄인 사례다. 이런 항목은 코드의 hot
+  path 주석과 pre-release check 문서의 before/after report가 서로 맞아야 한다.
+- 후보가 public API 뒤쪽의 내부 변경이어도 actor gateway, dispatch, ownership 같은
+  같은 모듈의 다른 public 계약까지 검증해야 한다. Node STREAM peer-index routing id
+  cache 후보처럼 한 hot path 비용을 줄일 수 있어도 actor-bound regression gate가 현재
+  실패하면 안전성을 증명할 수 없으므로 반영하지 않는다. 깊은 모듈은 같은 public surface의
+  다른 사용 방식까지 내부에서 함께 책임져야 한다.
 - 수치 달성만을 위해 perf 전용 public API나 zero-copy 우회 API를 추가하지 않는다.
 - public API 계약이 잘못 구현되었거나 C public API가 제공하는 필수 계약이 binding
   public API에 빠진 것이 확인되면, 해당 public API 추가나 수정을 금지하지 않는다.
@@ -784,6 +836,177 @@ SPOT reqrep/sendsend 계열에서 서로 다른 shutdown/bind-ready 실패를 �
 - C 기준: `perf_c_multi_linux_20260520_004453_codex_c_tcp_multi_for_dotnet_20260520.txt`, `perf_c_multi_linux_20260519_211916_codex_c_ws_multi_smoke_all_retry_20260519.txt`, `perf_c_multi_linux_20260519_221051_codex_c_wss_multi_smoke_all_20260519.txt`, `perf_c_multi_linux_20260519_233310_codex_c_tls_multi_smoke_all_20260519_current.txt`, `perf_c_multi_linux_20260519_234246_codex_c_tls_stream64_debug_recheck_20260519.txt`, `perf_c_multi_linux_20260519_235205_codex_c_tls_stream256_recheck_20260519.txt`, `perf_c_multi_linux_20260519_234152_codex_c_tls_stream1024_recheck_20260519.txt`, `perf_c_multi_linux_20260519_234308_codex_c_tls_stream65536_recheck_20260519.txt`, `perf_c_multi_linux_20260521_195558_codex_c_dotnet_spot_remaining_recheck_20260521.txt`
 - .NET 측정: `perf_dotnet_multi_linux_20260521_145328_codex_dotnet_tcp_multi_remeasure_20260521.txt`, `perf_dotnet_multi_linux_20260521_150044_codex_dotnet_tcp_spot_sendsend262144_recheck_20260521.txt`, `perf_dotnet_multi_linux_20260521_150054_codex_dotnet_ws_multi_remeasure_20260521.txt`, `perf_dotnet_multi_linux_20260521_150725_codex_dotnet_wss_multi_remeasure_20260521.txt`, `perf_dotnet_multi_linux_20260521_151429_codex_dotnet_tls_multi_remeasure_20260521.txt`, `perf_dotnet_multi_linux_20260521_170326_codex_dotnet_multi_spot_reqrep_pollcompletion_full2_20260521.txt`, `perf_dotnet_multi_linux_20260521_173705_codex_dotnet_ws_spot_reqrep64_no_managed_timer_20260521.txt`, `perf_dotnet_multi_linux_20260521_173735_codex_dotnet_spot_sendsend_small_probe_20260521.txt`, `perf_dotnet_multi_linux_20260521_174138_codex_dotnet_spot_sendsend_tls_small_recheck_20260521.txt`, `perf_dotnet_multi_linux_20260521_193257_codex_dotnet_spot_after_completion_poller_recheck_20260521.txt`, `perf_dotnet_multi_linux_20260521_195924_codex_dotnet_spot_remaining_recheck_20260521.txt`, `perf_dotnet_multi_linux_20260521_201737_codex_dotnet_spot_sendsend_copied_native_recheck_20260521.txt`, `perf_dotnet_multi_linux_20260521_204616_codex_dotnet_spot_sendsend_pollin_cstyle_recheck_20260521.txt`
 - .NET SPOT callback request는 native timeout과 `POLLCOMPLETION` poll loop가 완료를 책임지므로 binding 내부 per-request managed timer를 제거했다. public API는 바꾸지 않았다. `SendToSpot(Message)`는 public 원본 보존 계약을 유지한 채 내부 native copy submit 경로를 줄였다. `MULTI_SPOT_SENDSEND`는 C와 같이 active poller를 `POLLIN` 중심으로 두고 50ms 한도 poll 뒤 submit을 재시도하도록 맞춘 뒤 `wss 64B`, `tls 64B`, `tls 1024B` 미달을 해소했다. 통과로 바꾸기 위한 sleep/backoff나 HWM 숫자 튜닝은 적용하지 않았다.
+- **2026-06-22 .NET DEALER raw single-part 수신 hot path**:
+  `IDealerSocket.Recv(Received, ...)` public 계약은 그대로 두고, binding 내부
+  `DealerSocket.Recv`가 raw 단일 part를 받는 경우 caller-provided `Received`에 바로
+  채우도록 줄였다. 이 경로는 `DEALER_DEALER inproc`와 일반 단일 메시지 수신의 hot
+  path이므로 코드 가까이에 `HOT PATH` 주석을 두고 `List<Message>`, `Message[]`,
+  envelope metadata 생성을 막는 이유를 명시했다. request/reply 메시지는 기존 envelope
+  metadata 경로를 유지하므로 호출자는 새 순서나 helper를 알 필요가 없다. 이는 POSD의
+  깊은 모듈 원칙에 맞게 dealer frame 구분 책임을 binding 내부에 남기는 변경이다.
+  C 기준 `perf_c_single_linux_20260622_095841_prerelease_7_2_0_c_single_recheck_dotnet_dealer_inproc_singlepart_fastpath_probe.txt`
+  대비 .NET 반복 측정 `perf_dotnet_single_linux_20260622_100149_prerelease_7_2_0_dotnet_single_dealer_inproc_raw_singlepart_fastpath_probe.txt`,
+  `perf_dotnet_single_linux_20260622_100210_prerelease_7_2_0_dotnet_single_dealer_inproc_raw_singlepart_fastpath_probe_repeat.txt`에서
+  64B는 `73.4%`, `71.4%`, 1024B는 `69.6%`, `69.9%`로 단순 one-way
+  .NET 목표 범위에 들어왔다. 이후 perf-only 리뷰에서 `Received` accessor inline을
+  제거한 뒤에도
+  `perf_dotnet_single_linux_20260622_103227_prerelease_7_2_0_dotnet_single_dealer_inproc_after_received_inline_removed.txt`는
+  64B `1253438.333 msg/s`, 1024B `1021614.667 msg/s`로 같은 C 기준 대비 약
+  `74.0%`, `69.1%`를 유지했다.
+- **2026-06-22 .NET routed large current 재측정 및 send builder inline 후보 기각**:
+  `DEALER_ROUTER`/`ROUTER_ROUTER` large는 current HEAD에서도 반복 미달이다. 같은 조건
+  paired 재측정 C `perf_c_single_linux_20260622_100731_prerelease_7_2_0_c_single_recheck_dotnet_routed_large_current_after_dealer_fastpath.txt`
+  대비 .NET `perf_dotnet_single_linux_20260622_100603_prerelease_7_2_0_dotnet_single_routed_large_current_after_dealer_fastpath.txt`의
+  비율은 `DEALER_ROUTER ipc` 50.8/48.3/44.3%, `DEALER_ROUTER tcp` 54.8/46.6/45.7%,
+  `ROUTER_ROUTER ipc` 50.5/48.1/46.6%, `ROUTER_ROUTER tcp` 53.8/44.6/43.4%다.
+  perf는 public routed send builder와 caller-provided `Received`를 그대로 사용했다.
+  `RoutedSendOperation`와 `RoutedMessageSocketBase.Send(RoutingId)`에 inlining을 붙이는
+  후보도 시험했지만 `perf_dotnet_single_linux_20260622_100928_prerelease_7_2_0_dotnet_single_routed_tcp_large_send_builder_inline_probe.txt`의
+  tcp large 6개 cell은 직전 current와 같거나 낮았다. 얕은 dispatch 힌트는 이 병목을
+  움직이지 못하므로 코드에 반영하지 않는다. 다음 후보는 public builder 표면을 바꾸지
+  않으면서 native submit 경계, send/recv part lifecycle, routed receive materialization
+  중 실제 대형 payload 벽을 만드는 내부 비용을 더 직접적으로 줄이는 방향이어야 한다.
+- **2026-06-22 .NET `TopicMessage` repeated-topic cache 후보 폐기**:
+  `MULTI_SPOT tcp 64/1024` current baseline은
+  `perf_dotnet_multi_linux_20260622_101349_prerelease_7_2_0_dotnet_multi_spot_tcp_64_1024_current_before_topic_cache_probe.txt`에서
+  `4058373.333/3705041.000 msg/s`였다. 이후 `TopicMessage`가 같은 instance로 같은 topic
+  bytes를 반복 수신할 때 이전 decoded string을 재사용하는 후보를 작성했지만, 이는 perf의
+  고정 topic 입력에 강하게 기대는 변경이다. 실제 애플리케이션에서는 topic 분포가 고정
+  문자열 하나라고 볼 수 없고, 같은 public API의 일반 사용 비용을 구조적으로 줄이지도
+  않는다. 코드가 복잡해지는 데 비해 실사용 개선 근거가 약하므로 측정 완료 전에 폐기했고,
+  `TopicMessage` 변경은 코드에서 제거했다. 이후 SPOT 후보는 반복 입력값 cache가 아니라
+  public `ISpot.Subscribe(TopicMessage, ...)` 뒤쪽의 receive storage, native boundary,
+  part lifecycle 비용을 줄이는 방향만 검토한다.
+- **2026-06-22 .NET `TopicMessage` accessor inline 후보 기각**:
+  반복 입력값 cache를 제외한 뒤, public `TopicMessage.FirstPart()`와
+  `SinglePartOrThrow()`에 `AggressiveInlining`만 붙이는 얕은 후보를 별도로 시험했다.
+  public `ISpot.Subscribe(TopicMessage, ...)` 경로와 perf 조건은 유지했고
+  `dotnet build`, SPOT/socket surface 테스트는 통과했다. 그러나
+  `perf_dotnet_multi_linux_20260622_102147_prerelease_7_2_0_dotnet_multi_spot_tcp_64_1024_topicmessage_accessor_inline_probe.txt`는
+  `3843783.333/3626925.000 msg/s`로 current baseline
+  `4058373.333/3705041.000 msg/s`보다 낮았다. 단순 inline 힌트는 이 SPOT one-way
+  병목을 움직이지 못하고 코드 주석이나 attribute만 늘리므로 반영하지 않는다.
+- **2026-06-22 .NET `Spot.Subscribe` pointer-buffer 후보 기각**:
+  public `ISpot.Subscribe(TopicMessage, ...)` 경로는 유지한 채 내부
+  `ReceiveSpotSubscribedParts`가 `byte[]` P/Invoke 대신 이미 있는 pointer 기반
+  `zlink_spot_subscribe_part_buffer`를 호출하도록 시험했다. 이 후보는 perf 전용 API나
+  반복 topic cache는 아니지만, `perf_dotnet_multi_linux_20260622_103518_prerelease_7_2_0_dotnet_multi_spot_tcp_64_1024_spot_subscribe_pointer_buffer_probe.txt`에서
+  `MULTI_SPOT tcp 64/1024`가 `3552672.200/3254250.000 msg/s`로 current baseline
+  `4058373.333/3705041.000 msg/s`보다 낮았다. 단순 marshalling 경로 교체는 이 병목을
+  줄이지 못하므로 코드에서 원복했다. 다음 SPOT 후보는 topic buffer 호출 방식이 아니라
+  subscribe receive/backlog, native boundary 빈도, part lifecycle 중 profiler로 확인되는
+  비용을 대상으로 한다.
+- **2026-06-22 .NET `MULTI_SPOT tcp 64` 장기 단일 cell 재확인**:
+  코드 변경 없이 `MULTI_SPOT tcp 64`를 `duration=15`, `clients=100`으로 다시 실행한
+  `perf_dotnet_multi_linux_20260622_103902_prerelease_7_2_0_dotnet_multi_spot_tcp64_trace_target.txt`는
+  `3027755.533 msg/s`로 complete였다. client/server log의 auto-HWM은 `MsgUnit(B)=64`,
+  spot data slot `16384`로 정상이다. 이 실행에서 trace attach는 client 활성 구간을 놓쳐
+  유효 sample을 얻지 못했다. hot loop가 `received.Topic != Topic`을 수행하지만, 반복
+  topic cache는 perf 입력 모양에만 맞는 개선으로 이미 폐기했으므로 다시 후보로 보지
+  않는다. 다음 라운드는 attach 타이밍을 보강해 client active phase profiler를 먼저 확보한
+  뒤, 일반 public subscribe 경로의 비용으로 확인되는 항목만 수정한다.
+- **2026-06-22 .NET `MULTI_SPOT tcp 64` active-phase trace 확보 및 후보 제한**:
+  같은 public `spot.Publish(topic).Message(message).Flags(DontWait).Submit()`와
+  `spot.Subscribe(topicMessage, DontWait)` 경로로 `duration=45` 단일 cell을 실행했고,
+  `perf_dotnet_multi_linux_20260622_115822_prerelease_7_2_0_dotnet_multi_spot_tcp64_active_trace_capture.txt`는
+  `2709121.267 msg/s`로 complete였다. trace 파일은
+  `bindings/dotnet/perf/results/trace/dotnet_multi_spot_tcp64_client_active_trace_20260622.nettrace`,
+  `bindings/dotnet/perf/results/trace/dotnet_multi_spot_tcp64_server_active_trace_20260622.nettrace`다.
+  client inclusive topN은 `Spot.Subscribe(...)` `57.53%`,
+  `Spot.ReceiveSpotSubscribedParts(...)` exclusive `56.25%`였고, server는
+  `SpotSendOperation.Submit()` `29.33%`, `Spot.PublishNoWaitSingleCore(...)`
+  exclusive `25.9%`였다. 이 결과는 병목이 반복 topic 값 자체보다 public subscribe
+  materialization과 native single-part submit 경계에 있음을 가리킨다. 따라서 같은 topic,
+  같은 payload, perf loop 전용 builder 우회처럼 perf 입력에만 기대는 변경은 계속 제외한다.
+  코드에는 `ReceiveSpotSubscribedParts`와 `PublishNoWaitSingleCore`에 HOT PATH 주석을
+  추가해 single-part 수신 채택 경로와 single native submit 경로가 리팩토링 중 흔들리지
+  않게 고정했다. 다음 후보는 public API를 늘리지 않고 receive part lifecycle, native
+  submit boundary, `SpotSendOperation` 객체 생성의 실제 allocation 비중을 trace나
+  counters로 분리한 뒤 선택한다.
+- **2026-06-22 .NET `MULTI_SPOT tcp 64` runtime counters 보강**:
+  같은 public 경로로 `duration=40` 단일 cell을 실행한
+  `perf_dotnet_multi_linux_20260622_120416_prerelease_7_2_0_dotnet_multi_spot_tcp64_counters_capture.txt`는
+  `2739438.125 msg/s`로 complete였다. counters 파일은
+  `bindings/dotnet/perf/results/trace/dotnet_multi_spot_tcp64_client_runtime_counters_20260622.csv`,
+  `bindings/dotnet/perf/results/trace/dotnet_multi_spot_tcp64_server_runtime_counters_20260622.csv`다.
+  client는 allocation rate 평균 약 `87.3 MB/s`, Gen0 GC 평균 `0.24/s`, working set 평균
+  약 `1105.5 MB`였다. server는 allocation rate 평균 약 `108 KB/s`, Gen0/Gen1/Gen2 GC가
+  모두 `0/s`, working set 평균 약 `50.0 MB`였다. 따라서 현재 SPOT one-way tcp 64의
+  다음 우선순위는 server publish builder 객체가 아니라 client subscribe materialization,
+  native receive part lifecycle, topic/message 객체 생명주기다. 다만 `TopicMessage.Topic`
+  문자열은 public property를 읽을 때 필요한 계약 비용이므로, 같은 topic이 반복된다는
+  cache 후보는 여전히 제외한다.
+- **2026-06-22 .NET SPOT client allocation trace 확보와 반복 topic cache 재기각**:
+  client allocation event를 보기 위해 같은 public 경로로
+  `perf_dotnet_multi_linux_20260622_120832_prerelease_7_2_0_dotnet_multi_spot_tcp64_alloc_trace_capture.txt`
+  를 실행했고 `2661470.800 msg/s`로 complete였다. allocation trace 파일은
+  `bindings/dotnet/perf/results/trace/dotnet_multi_spot_tcp64_client_alloc_trace_20260622.nettrace`다.
+  이 trace는 provider keyword가 allocation tick을 잡지 못해 타입별 집계가 비어 있었다.
+  GC keyword로 다시 수집한
+  `perf_dotnet_multi_linux_20260622_121343_prerelease_7_2_0_dotnet_multi_spot_tcp64_gc_alloc_trace_capture.txt`는
+  `2769599.514 msg/s`로 complete였고, trace 파일은
+  `bindings/dotnet/perf/results/trace/dotnet_multi_spot_tcp64_client_gc_alloc_trace_20260622.nettrace`다.
+  TraceEvent 기반 임시 분석에서 allocation tick은 `9693`건, 약 `1033.3 MB`였고,
+  `System.String`이 `9688`건, 약 `1032.8 MB`로 거의 전부였다. 이는 perf loop가
+  `received.Topic != Topic`을 매 수신마다 수행하는 비용과 일치한다. 그러나 같은 topic이
+  반복된다는 전제는 perf 데이터 모양에 강하게 기대며, 실제 애플리케이션 topic 분포를
+  대표한다고 볼 근거가 없다. 따라서 decoded topic string 반복 cache, public
+  topic-compare helper, perf-only topic check 우회는 다시 기각한다.
+  코드에는 `TopicMessage.SetTopicFromWritableBuffer` HOT PATH 주석을 추가해 topic buffer
+  swap과 lazy UTF-8 decode 정책을 고정했다. 이는 public `Topic` property를 읽는 호출자에게
+  필요한 문자열 생성은 유지하면서, payload만 읽는 호출자가 topic string allocation을
+  치르지 않게 하는 기존 내부 최적화다. 같은 topic 반복 cache나 새 public topic-compare
+  helper는 실사용 분포 근거가 부족하므로 계속 제외한다.
+- **2026-06-22 .NET SPOT hot path 주석/계약 검증**:
+  SPOT subscribe/publish hot path 주석이 실제 public 계약과 맞는지 다시 확인했다.
+  `ReceiveSpotSubscribedParts`는 public `Spot.Subscribe(TopicMessage, ...)`가 쓰는 경로에서
+  single-part 메시지를 `Message.AdoptNativeFromPool`로 바로 채택하고, topic bytes는
+  caller-provided `TopicMessage`의 reusable buffer로 받은 뒤 buffer swap과 lazy decode를
+  유지한다. `PublishNoWaitSingleCore`는 public
+  `spot.Publish(topic).Message(message).Flags(DontWait).Submit()` 경로에서
+  `Message.MoveTo` 뒤 native submit 한 번으로 내려간다. 이 주석 보강 뒤
+  `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj`와
+  `dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj --filter "FullyQualifiedName~spot"`가
+  통과했다. 남은 `.NET MULTI_SPOT` 후보는 반복 topic cache나 perf-only topic compare가
+  아니라, public subscribe materialization, native receive part lifecycle, message 객체
+  생명주기 중 profiler로 일반 비용이 확인되는 항목으로 제한한다.
+- **2026-06-22 .NET `Received` accessor inline 리뷰 후 제거**:
+  `DEALER_DEALER inproc` 개선 diff를 다시 검토하면서 public
+  `Received.FirstPart()`와 `SinglePartOrThrow()`에 붙였던 `AggressiveInlining`도
+  제거했다. 채택한 개선은 `DealerSocket.Recv(Received, ...)` 내부에서 raw 단일 part를
+  caller-provided `Received`에 바로 채워 `List<Message>`와 `Message[]` 생성을 피하는
+  구조 변경이다. accessor inline은 perf 코드 호출 빈도가 높다는 점 외에 일반 public
+  경로의 allocation, copy, ownership 비용을 줄이는 근거가 없어서 코드에 남기지 않는다.
+  제거 뒤 제한 재측정도 `DEALER_DEALER inproc 64/1024`에서 통과권을 유지했다.
+- **2026-06-22 .NET routed large 내부 경로 재검토**:
+  `DEALER_ROUTER`/`ROUTER_ROUTER` single large는 public
+  `IRoutedMessageSocket.Send(routingId).Message(message).Flags(flags).Submit()`와
+  `Recv(Received, ...)`를 사용한다. 현재 binding 내부 송신은 `SocketKernel.SendSingleCore`
+  / `SendSingleResultCore(ref ZlinkRoutingId, ...)`에서 public `Message`를
+  `MoveTo(ref nativePart)`로 native part에 넘긴 뒤 `zlink_send_part_rid` 또는
+  `zlink_send_part_rid_nowait`를 호출한다. 수신은 `ReceiveRoutedParts`와
+  caller-provided `Received` 경로에서 native part를 `Message.AdoptNativeFromPool`로
+  채택한다. 따라서 large payload 본문을 한 번 더 복사하는 명백한 binding-side 후보는
+  현재 경로에서 확인되지 않았다. 남은 후보는 fluent builder 객체 생성, managed/native
+  call boundary, core routed transport 처리 쪽이다. public direct-send API나 perf 전용
+  helper를 추가해 builder 비용만 우회하는 방식은 public contract 유지 원칙에 맞지 않으므로
+  진행하지 않는다. 다음 routed large 작업은 profiler나 allocation trace로 builder 객체,
+  `ZlinkMsg` move/restore, native call boundary 중 실제 비중을 확인한 뒤 진행한다.
+- **2026-06-22 .NET routed large trace 보강**:
+  `dotnet-trace` thread-time으로 `DEALER_ROUTER tcp 65536`과 `ROUTER_ROUTER tcp 131072`
+  단일 실행을 확인했다. trace 파일은
+  `bindings/dotnet/perf/results/trace/dotnet_single_dealer_router_tcp_65536_thread_time_trace.nettrace`,
+  `bindings/dotnet/perf/results/trace/dotnet_single_router_router_tcp_131072_thread_time_trace.nettrace`다.
+  `DEALER_ROUTER tcp 65536` topN은 `SocketKernel.SendSingleCore(Message,int32)`가
+  exclusive `43.45%`, `ReceiveRouterParts`가 `8.5%`였다. `ROUTER_ROUTER tcp 131072`은
+  `ReceiveRouterParts` exclusive `47.95%`, routed `SendSingleCore(ref ZlinkRoutingId, ...)`
+  exclusive `44.02%`로 send/recv native boundary가 거의 반반이다. `dotnet-counters`
+  `System.Runtime` 5초 샘플
+  `bindings/dotnet/perf/results/trace/dotnet_single_router_router_tcp_131072_counters_5s.csv`에서는
+  allocation rate가 약 `4.1~6.2 MB/s`, GC count와 `% Time in GC`가 모두 0이었다.
+  따라서 현재 routed large 미달은 managed heap pressure가 아니라 routed send/recv native
+  boundary와 core routed transport 호출 비용 중심으로 봐야 한다. builder object만 우회하는
+  public API 추가나 perf-only helper는 이 trace 근거로도 채택하지 않는다.
 
 ### 6.4 Java 상태
 
@@ -1276,6 +1499,33 @@ Go는 현재 표 기준으로 single/multi 전 대상이 `통과` 상태다. 아
   같은 large size 붕괴가 재현되어 원복했다. 다음 후보는 전체 submit helper 변경이 아니라
   size별 선택 적용이나 server echo payload 생성 비용처럼 보류 셀에 직접 닿는 경로로
   더 좁혀야 한다.
+- 2026-06-22 재확인: Go `Send/Publish(...).Message(message).Submit(...)` 단일 part
+  helper에서 성공 경로 payload copy를 없애기 위해, caller `Message`를 native frame으로
+  먼저 move하고 submit 실패 때 다시 되돌리는 후보를 시험했다. 이 후보는 public API나 perf
+  호출부를 바꾸지 않는 binding 내부 최적화처럼 보였지만, `go test . -run
+  'TestSendConsumesMessageOwnership|TestBlockingSendFailurePreservesMessagePayload|TestPublishFailurePreservesMessagePayload|TestMoveMessageFailureConsumesMessagePayload'`
+  에서 `TestBlockingSendFailurePreservesMessagePayload`가 실패했다. native send 실패 뒤에는
+  원본 payload를 되돌릴 충분한 상태가 남는다고 보장할 수 없다. Go public `Message(...)`
+  경로는 실패 시 원본 메시지를 보존해야 하므로 이 후보는 원복했고, 코드에는 같은 hot path를
+  리팩토링할 때 copy를 제거하면 안 되는 이유를 주석으로 남겼다. `MoveMessage(...)`는 실패
+  때도 메시지를 소비하는 별도 public 계약이므로, 실제 호출자가 소유권 이전을 선택할 수 있는
+  경우에만 쓰는 방향을 유지한다.
+- 2026-06-22 Go hot path 주석 보강: `MoveMessage(...)`, `RecvPart(...)`,
+  `SubscribePart(...)`는 모두 public contract에 있는 경로다. perf가 private native helper로
+  우회하는 방식이 아니라, 호출자가 선택한 public ownership 또는 caller-provided storage
+  계약 뒤쪽에서 copy와 envelope allocation을 줄이는 경로로 고정한다. 코드에는
+  `submitSinglePartMoved`, `recvSubscribePartInto`, `adoptRecvPart` 가까이에 `HOT PATH`
+  주석을 두어, 다음 리팩토링 때 `Message(...)`의 실패 보존 경로와 `MoveMessage(...)`의
+  소비 경로가 섞이거나 single-part receive가 다시 `Received` envelope 생성으로 돌아가지
+  않도록 명시했다.
+- 2026-06-22 Go `MULTI_DEALER_DEALER tls 131072` 짧은 재확인:
+  `bindings/go/perf/results/multi/report/perf_go_multi_linux_20260622_132351_prerelease_7_2_0_go_multi_dd_tls_131072_hotpath_comment_recheck.txt`
+  는 `core/build/lib/libzlink.so.7.2.0`로 실행했고 `status=complete`, throughput
+  `23.665 Kmsg/s`였다. 같은 paired C 파일
+  `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260622_034222_prerelease_7_2_0_c_multi_recheck_go_dealer_dealer_tls_ws_131072_cells.txt`
+  의 `56.721 Kmsg/s` 대비 약 `41.7%`라 미달은 유지된다. 이번 hot path 주석 보강은 수치
+  개선 주장이나 perf-only 변경이 아니라, 다음 후보가 public `MoveMessage`/`RecvPart`
+  계약 뒤쪽의 실제 병목을 보도록 경계를 고정하는 조치다.
 - C `zlink_spot_recv_part`에 대응하는 Go `Spot.RecvRoutedPart(...)`는 public 계약 누락으로
   보고 회귀 테스트와 함께 추가했다. 다만 이를 `MULTI_SPOT_SENDSEND` 서버 echo 경로에
   적용한 측정은 성능을 크게 낮췄으므로 perf 경로에는 적용하지 않았다.
@@ -1793,6 +2043,22 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 - **single routed internal submit fast path 후보 기각**: `SendOp<Ready>::submit`에서 single-part `SocketSend`/`SocketSendTo`만 `prepare_send_parts`와 `submit_part_sequence`를 건너뛰고 direct FFI send로 보내는 내부 fast path를 시험했다. `cargo test --manifest-path bindings/rust/Cargo.toml --no-run`과 `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했지만, 공식 runner `perf_rust_single_linux_20260525_124151.txt`는 `DEALER_ROUTER tcp 262144B`에서 `binary_exit` partial로 끝났고 65536/131072B도 13.751/6.967Kmsg/s로 기존 보류권과 같았다. send builder 내부 dispatch 비용은 single routed large 병목의 주 원인이 아니므로 코드는 원복했다.
 - **single routed blocking-send 재확인 후보 기각**: 2026-05-25에 Rust single `DEALER_ROUTER`/`ROUTER_ROUTER` active send와 stop-token send에서 `DONT_WAIT`를 제거해 C single의 `ZLINK_SEND_FLAGS_NONE` 의미에 다시 맞춰 시험했다. `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했지만, 공식 runner `perf_rust_single_linux_20260525_124323.txt`가 `DEALER_ROUTER tcp 65536B`에서 바로 `binary_exit` partial로 끝났다. Rust single routed 경로에서는 blocking send가 completion 안정성을 깨므로 기존 `DONT_WAIT` retry를 유지한다.
 - **single routed `Received` 재사용 수신 후보 기각**: public API를 늘리지 않고 `RouterSocket::recv(&mut Received, ...)`가 임시 `Received`와 새 `Vec<Message>`를 만들지 않도록, 성공한 routed recv part를 caller-provided `Received`의 기존 `Vec`에 직접 채우는 후보를 시험했다. `cargo test --manifest-path bindings/rust/Cargo.toml --no-run`과 `cargo test --manifest-path bindings/rust/perf/single/Cargo.toml --no-run`은 통과했고 runner는 `core/build/lib/libzlink.so`를 사용했지만, 공식 runner `perf_rust_single_linux_20260525_125742.txt`가 `DEALER_ROUTER tcp 131072B`에서 `binary_exit` partial로 끝났다. complete된 65536B도 13.751Kmsg/s로 기존과 같아, routed recv wrapper의 `Vec` 재사용만으로는 single routed large 보류를 해소하지 못한다.
+- **2026-06-22 single routed `Received` 직접 채움 재확인 후보 기각**:
+  같은 아이디어를 public `RouterSocket::recv(&mut Received, ...)` 경로 내부에서 다시
+  시험했다. 후보는 `zlink_router_recv_part`로 받은 단일 part를 caller-provided
+  `Received`에 직접 채우고, multipart일 때만 기존 temporary `Received` 경로로
+  돌아가도록 했다. `cargo check --manifest-path bindings/rust/Cargo.toml --all-targets`,
+  `cargo test --manifest-path bindings/rust/Cargo.toml --test behavior_tests --test ownership_tests -- --nocapture`,
+  `cargo test --manifest-path bindings/rust/Cargo.toml --test contract_tests -- request_router_exposes_request_sequence router_reply_with_non_empty_flags_fails_explicitly --nocapture`는
+  통과했다. 그러나 공식 runner는
+  `perf_rust_single_linux_20260622_132830_prerelease_7_2_0_rust_single_dealer_router_tcp_65536_router_recv_into_fastpath_probe.txt`에서
+  `DEALER_ROUTER tcp 65536B` `13.743 Kmsg/s`였고, 같은 후보 전 재측정
+  `perf_rust_single_linux_20260622_041244_prerelease_7_2_0_rust_single_recheck_routed_ipc_tcp_large_cells.txt`의
+  `13.961 Kmsg/s`보다 낮았다. 이 후보는 perf 전용 public API를 만들지 않았지만,
+  효과 없는 internal branch와 context 재구성 코드를 늘려 POSD 관점의 깊은 모듈에도
+  도움이 되지 않는다. 코드는 원복했고, 다음 Rust routed large 후보는 반복 입력 모양에
+  기대는 cache가 아니라 native boundary, message ownership, sender/receiver phase 비용을
+  profiler로 분리한 뒤 선택한다.
 - **single routed send-part 직접 호출 후보 기각**: routed single send hot path를 더 좁혀 direct
   single-part send 후보를 시험했다. 후보 `perf_rust_single_linux_20260525_142357_single_routed_send_part_candidate.txt`는
   complete였지만 `DEALER_ROUTER` tcp 65536/131072/262144B가 13.69/6.85/3.52Kmsg/s,
@@ -1843,6 +2109,42 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
 - **MULTI_PUBSUB poll event-slot 후보 기각**: PUBSUB client poller에 subscriber index를 slot으로 넣고 C처럼 반환된 event socket만 drain하는 후보를 시험했다. `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했고, 공식 runner `perf_rust_multi_linux_20260524_232655.txt`에서 tcp 64/256/1024B는 26.3/16.9/15.5%로 기존 직접 stamp 기준과 같았다. `perf_rust_multi_linux_20260524_232744.txt`의 ws/wss/tls 256/1024B도 남은 small 보류를 해결하지 못했다. public 의미는 C에 더 가깝지만 측정상 개선이 없어 반영하지 않는다.
 - **MULTI_PUBSUB latency sampling 적용**: PUBSUB client가 모든 active 메시지에서 `now_ns()`와 latency vector push를 수행하던 비용을 줄이기 위해 throughput count는 전 메시지를 유지하고 latency 계산/샘플 저장만 기본 32개당 1개로 줄였다(`PERF_MULTI_PUBSUB_LATENCY_SAMPLE_STRIDE`). `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했다. 공식 wrapper 기준 tcp C `perf_c_multi_linux_20260525_105401.txt` 대비 Rust `perf_rust_multi_linux_20260525_105401.txt`에서 65536B가 50.2%로 올라 보류를 해소했고, ws/wss/tls 확인 C `perf_c_multi_linux_20260525_105449.txt` 대비 Rust `perf_rust_multi_linux_20260525_105449.txt`도 complete였다. tls 256B는 81.2%로 통과권에 올랐다. tcp 64/256/1024B, ws 1024B, wss 256/1024B, tls 1024B는 여전히 단순 one-way 기준 아래다.
 - **MULTI_PUBSUB server `POLLOUT` wait 제거 적용**: Rust PUBSUB server는 active publish가 backpressure를 만나면 `POLLOUT` poller wait로 쉬었다. C reference는 `ZLINK_DONTWAIT` publish가 `EAGAIN`이어도 active window 안에서 바로 다음 publish를 재시도하므로, Rust만 publish rate가 100Kmsg/s 단위로 낮게 묶였다. server hot path를 C처럼 continuous `DONT_WAIT` retry로 맞춘 뒤 `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했고, 공식 wrapper도 complete였다. Fresh C `perf_c_multi_linux_20260525_115827.txt` 대비 Rust `perf_rust_multi_linux_20260525_115826.txt`에서 tcp 64/256/1024/65536B는 91.8/98.2/116.8/90.9%, ws는 90.1/89.8/90.8/105.5%, wss는 93.6/94.1/94.2/65.8%, tls는 89.4/93.3/96.5/89.8%다. 이 변경으로 Rust `MULTI_PUBSUB` small 보류를 모두 제거한다.
+- **2026-06-22 Rust caller-provided recv single-part fill 후보 기각**:
+  Rust `PAIR/DEALER_DEALER inproc 1024` 반복 미달을 대상으로 public
+  `PairSocket.recv(&mut Received, ...)`와 `DealerSocket.recv(&mut Received, ...)`
+  표면은 유지한 채 binding 내부 `SocketInner::recv`가 single-part 수신에서 중간
+  `Vec<Message>`와 임시 `Received` envelope를 만들지 않고 caller-provided `Received`를
+  직접 채우는 후보를 시험했다. `cargo check`와
+  `cargo test --test ownership_tests -- --nocapture`는 통과했다. 다만
+  `cargo test --test contract_tests --test ownership_tests -- --nocapture`는
+  `direct_common_header_version_matches_package`에서 header patch version `0`과 test 기대값
+  `4`가 달라 실패했으며, 이 버전 동기화 문제는 recv 후보와 무관하다. 공식 wrapper
+  `perf_rust_single_linux_20260622_115121_prerelease_7_2_0_rust_single_inproc_1024_recv_into_fastpath.txt`는
+  `PAIR` `1001351.800 msg/s`, `DEALER_DEALER` `1002559.600 msg/s`로 complete였다.
+  기존 paired 재측정 `perf_rust_single_linux_20260622_040303_prerelease_7_2_0_rust_single_recheck_inproc_pair_dealer_1024_cells.txt`의
+  `1001533.000/1027250.000 msg/s`와 같거나 낮아졌고, C 기준
+  `1456367.600/1485393.000 msg/s` 대비 목표 미달도 유지한다. 이 후보는 일반 public
+  수신 경로 비용을 줄이려는 방향은 맞지만, 공통 recv loop를 복제해 복잡도를 늘리면서
+  측정상 개선이 없어 POSD 기준으로 코드 변경은 원복했다. 다음 Rust simple inproc 후보는
+  caller-provided recv storage가 아니라 public send builder 내부 allocation 또는 native
+  send/recv boundary 비중을 profiler로 확인한 뒤 선택한다.
+- **2026-06-22 Rust single-part send builder fast path 후보 기각**:
+  Rust `MULTI_DEALER_DEALER tcp/tls/ws/wss 64` 반복 미달을 대상으로 public
+  `socket.send().message(message).flags(DONT_WAIT).submit()` 표면은 유지한 채, binding 내부
+  `SendOp<Ready>::submit()`에서 single-part send가 `Vec<zlink_msg_t>`와 multipart loop를
+  만들지 않고 한 번의 native submit으로 바로 들어가도록 시험했다. Rust builder는 `Message`를
+  by-value로 받아 submit 성공과 실패 모두에서 메시지를 소비하는 계약이므로, Go와 달리 실패
+  시 원본 보존 문제는 없다. `cargo test --test ownership_tests --test send_failure_tests
+  -- --nocapture`와 `cargo check --all-targets`는 통과했다. 그러나 같은 조건 C
+  `perf_c_multi_linux_20260622_123026_c_multi_recheck_rust_dd64_single_part_send_fastpath_pair.txt`
+  대비 Rust 후보
+  `perf_rust_multi_linux_20260622_123026_rust_multi_dd64_single_part_send_fastpath.txt`는
+  tcp/tls/ws/wss 64B가 각각 `2168294.000/2257778.500/2248704.000/2317679.500 msg/s`이고
+  C는 `2935680.000/3104996.500/3048080.000/3213063.000 msg/s`라 비율이
+  `73.9%/72.7%/73.8%/72.1%`다. 기존 반복 미달 `72.3%/72.0%/73.2%/72.4%`와 사실상
+  같고, helper 분기가 send kind별 native call을 중복해 POSD 기준으로 깊은 모듈을 더럽힌다.
+  따라서 코드는 원복하고, Rust multi dealer small은 builder allocation보다 native send/recv
+  boundary 또는 core/poller 상호작용을 profiler로 분리한 뒤 다음 후보를 선택한다.
 - **MULTI_SPOT tcp 64B poller wait 후보 기각**: tcp 64B client에도 progress 없음 구간에서 public `Poller` `POLLIN` wait를 쓰도록 좁혀 시험했다. `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했고 공식 runner도 complete였지만, 같은 조건 C `perf_c_multi_linux_20260525_043251.txt` 대비 no-code Rust `perf_rust_multi_linux_20260525_043320.txt`는 2.990Mmsg/s였고 후보 `perf_rust_multi_linux_20260525_043348.txt`는 2.967Mmsg/s로 낮아졌다. tcp 64B 보류는 idle wait 방식만으로 해소되지 않는다.
 - **routed echo single-copy reply 후보 기각**: `MULTI_DEALER_ROUTER`/`MULTI_ROUTER_ROUTER` server가 받은 payload를 `to_vec()`으로 queue payload로 만든 뒤 `Message::copy_from(&reply_bytes)`로 다시 복사하므로, 성공 경로에서는 `Message::with_size()`에 한 번만 복사하고 backpressure일 때만 queue `Vec`을 만드는 후보를 시험했다. release hook 없는 borrowed wrap은 Rust binding policy상 금지되어 native-owned `Message`만 사용했다. `cargo test --manifest-path bindings/rust/perf/multi/Cargo.toml --no-run`은 통과했지만, 공식 runner 결과가 `MULTI_DEALER_ROUTER` 65536B 79.4K→67.2Kops/s(`perf_rust_multi_linux_20260524_195257.txt`), `MULTI_ROUTER_ROUTER` 65536B 78.0K→61.4Kops/s(`perf_rust_multi_linux_20260524_195316.txt`)로 떨어졌다. 기존 `Message::copy_from(&Vec)` 경로가 native send 준비와 더 잘 맞으므로 반영하지 않는다.
 - **single routed sender 직접 stamp 후보 기각**: `DEALER_ROUTER`/`ROUTER_ROUTER` large에서
@@ -2120,6 +2422,424 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `npm run build`와
   `PERF_FAIL_FAST=1 ./perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_SPOT_REQREP --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2`
   smoke가 `complete`로 통과했다.
+- **2026-06-22 Node `MULTI_SPOT_REQREP` `NotConnected` 재시도 정렬**:
+  기본 `clients=100`의 `65536/131072B` large 8개 cell이 `Host unreachable`로
+  `0/40`에 머물렀다. C client는 `ZLINK_SUBMIT_NOT_CONNECTED`를 fatal이 아니라 다음
+  poll loop에서 재시도하는 public submit 결과로 처리하므로, Node perf client도 public
+  `SubmitError.result === SubmitResult.NotConnected`를 `Backpressured`와 같이 재시도한다.
+  perf 전용 native helper나 deep runtime import는 추가하지 않았다. 해당 hot path에는
+  주석을 남겼고 `optimization_guard.test.ts`가 public 결과 재시도 정책을 고정한다.
+  보강 report
+  `bindings/node/perf/results/multi/report/perf_node_multi_linux_20260622_075045_prerelease_7_2_0_node_multi_spot_reqrep_large_not_connected_retry_probe.txt`는
+  `40/40`, `status=complete`이며 C 7.2.0 full 대비 large 비율은 `tcp 44.2%/63.7%`,
+  `tls 102.2%/101.5%`, `ws 65.9%/60.0%`, `wss 101.3%/111.2%`다.
+- **2026-06-22 Node request callback Message facade 후보 기각**:
+  사용자가 지정한 C baseline `bindings/c/perf/baseline/perf_c_multi_linux_20260619_062932.txt`와
+  최신 7.2.0 C full의 `MULTI_SPOT_REQREP tcp/ws 65536/131072` 값이 최대 약 26%
+  달라, 후보 판정 전에 C baseline을 다시 확보했다.
+  `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260622_135110_prerelease_7_2_0_c_multi_spot_reqrep_tcp_ws_large_request_callback_probe_baseline_refresh.txt`는
+  `status=complete`, 결과 라인 `20/20`이고, C 기준은 `53264.000/22674.000/32422.000/20972.000 msg/s`다.
+  그 위에서 native request callback이 이미 JS `Buffer[]`로 넘긴 reply part를
+  `messageFromSnapshot({data})` 대신 public `Message` facade로 바로 감싸는 후보를 시험했다.
+  이는 perf 전용 helper가 아니라 public `request`, `requestToSpot`, actor callback 경로의
+  binding 내부 최적화였지만, 공식 wrapper
+  `bindings/node/perf/results/multi/report/perf_node_multi_linux_20260622_135415_prerelease_7_2_0_node_multi_spot_reqrep_tcp_ws_large_request_callback_message_facade_probe.txt`가
+  `status=partial`이었다. `tcp 65536`은 `19579.000 msg/s`로 기존
+  `23891.000 msg/s`보다 낮았고, `tcp 131072`는 `client timeout after 90000ms`였다.
+  public 계약은 유지했지만 성능과 안정성 근거가 없어 코드와 guard 변경을 원복했다.
+- **2026-06-22 Node STREAM actor-bound gate 분리**:
+  `MULTI_STREAM` routing id hot path 후보 검토 중 `stream_send_regression`의
+  actor-bound session 케이스가 `requestToSpot failed`로 실패했다. 원인은 perf 후보가
+  아니라 `setRoutingId`가 routed runtime 생성 전에 호출된 뒤 external router identity가
+  runtime 생성 시점에 다시 적용되지 않는 core config 경로였다. `ensure_external_router_ready`
+  가 public node routing id를 external router에 적용하도록 고쳐 호출자가 초기화 순서를
+  알 필요 없게 했다. Node regression test는 actor-bound session flush 자체를 보도록
+  node routing id를 먼저 고정한 뒤 Actor를 만들게 정렬했다. 이 변경은 perf 전용 우회가
+  아니라 public contract gate 복구다.
+- **2026-06-22 Node STREAM routing id external Buffer 후보 기각**:
+  STREAM packet callback의 public `RoutingId` materialization은 유지하되 native TSFN에서
+  routing id bytes를 `napi_create_external_buffer`로 넘겨 한 번의 Buffer copy를 줄이는
+  후보를 시험했다. `optimization_guard.test.js`, `stream_send_regression`의 핵심 개별
+  테스트는 통과했지만 `MULTI_STREAM tcp 64,256,1024` 두 번의 공식 wrapper 측정이
+  `73.3/78.8/69.8 Kops/s`, `73.0/74.3/69.2 Kops/s`로 현재 기준
+  `77.2/70.7/72.6 Kops/s` 대비 혼재했다. 안정적인 개선으로 볼 수 없어 native 변경은
+  반영하지 않고, `StreamSocket.packetRoutingId`의 public facade cache hot path 주석만 남긴다.
+- **2026-06-22 Node STREAM send builder payload inline 후보 기각**:
+  public `stream.send(rid).message(frame).flags(DontWait).submit()` 표면은 유지하고
+  `RuntimeSendOperation` 내부에서 `OperationPayload` 객체 할당을 줄이는 후보를 시험했다.
+  `npm --prefix bindings/node run build`, `optimization_guard.test.js`, `socket_surface.test.js`,
+  actor-bound STREAM 개별 regression은 통과했지만 공식 wrapper 두 번의
+  `MULTI_STREAM tcp 64,256,1024` 측정이 `76.8/79.4/68.2 Kops/s`,
+  `73.1/71.6/74.1 Kops/s`로 현재 기준 `77.2/70.7/72.6 Kops/s` 대비 혼재했다.
+  builder 저장소를 얕게 줄이는 것만으로는 STREAM callback frame 조립과 native send copy
+  비용을 안정적으로 낮추지 못한다. 코드 변경은 원복했고, STREAM의 다음 후보는 public
+  packet handler 계약을 유지하면서 frame 조립/전송 copy 책임을 binding 내부에서 더 깊게
+  흡수할 수 있는지 별도 설계가 필요하다.
+- **2026-06-22 Node STREAM native callback Buffer direct `Message` facade 부분 채택**:
+  사용자가 지정한 C 기준 `bindings/c/perf/baseline/perf_c_multi_linux_20260619_062932.txt`와
+  7.2.0 C full 기준 사이에서 `MULTI_STREAM tcp 64/256/1024` 값이
+  `337.323/341.720/332.245 Kops/s` 대 `267.302/263.253/258.363 Kops/s`로 크게 달랐다.
+  따라서 같은 runtime `core/build/lib/libzlink.so.7.2.0`으로 해당 C 셀을 다시 측정했고,
+  `perf_c_multi_linux_20260622_134101_prerelease_7_2_0_c_multi_stream_tcp_small_node_probe_baseline_refresh.txt`는
+  `332.893/330.117/327.104 Kops/s`, `status=complete`였다. Node 판정은 이 갱신 C
+  기준을 사용한다.
+
+  Node 변경은 public `StreamSocket.setPacketHandler((sourceRid, header, body) => ...)`와
+  actor callback 계약을 그대로 유지한다. native callback은 이미 payload ownership을 JS
+  `Buffer`로 넘기므로, `messageFromNativeBuffer(...)`가 `messageFromSnapshot({ data })`로
+  intermediate snapshot 객체를 만들지 않고 `messageFromOwnedBuffer(...)`로 public
+  `Message` facade를 바로 만든다. 이는 perf 전용 helper가 아니라 STREAM/actor callback을
+  쓰는 일반 public 경로의 per-part allocation을 줄이는 binding 내부 변경이다. 코드 가까이에
+  `HOT PATH` 주석을 두고, `optimization_guard.test.js`에 이 경로가 snapshot allocation으로
+  되돌아가지 않는 guard를 추가했다.
+
+  검증은 `npm --prefix bindings/node run build`,
+  `node --test bindings/node/dist-tools/tests/optimization_guard.test.js`,
+  STREAM callback 개별 regression 3건, actor-bound 개별 regression으로 했다. full
+  `stream_send_regression.test.js`는 이 worktree에서 기존에도 timeout 기록이 있어 이번 후보
+  판정 근거로 쓰지 않는다. 공식 wrapper
+  `perf_node_multi_linux_20260622_133954_prerelease_7_2_0_node_multi_stream_tcp_small_message_from_owned_buffer_probe.txt`는
+  `98.257/101.044/90.131 Kops/s`로 complete였고, 이전 Node current
+  `77.165/70.692/72.644 Kops/s` 대비 `+27.3%/+42.9%/+24.1%`다. 다만 갱신 C 기준
+  비율은 `29.5%/30.6%/27.6%`라 256B만 목표선 위이고 64/1024B는 반복 미달로 남긴다.
+- **2026-06-22 Node PUBSUB publish topic validation cache 후보 기각**:
+  public `pub.publish(topic).message(payload).flags(SendFlags.DontWait).submit()` 호출 표면은
+  그대로 두고 `PublisherSocket` 내부에 마지막 검증 topic 문자열을 캐시하는 후보를 시험했다.
+  `npm --prefix bindings/node run build`, `optimization_guard.test.js`, `socket_surface.test.js`,
+  PUBSUB public subscribe 개별 테스트는 통과했지만 공식 wrapper
+  `bindings/node/perf/results/multi/report/perf_node_multi_linux_20260622_084009_prerelease_7_2_0_node_multi_pubsub_publish_topic_cache_probe.txt`는
+  직전 empty routing id 생략 probe 대비 `tcp 64B`만 `+2.4%`였고, `tls/ws/wss 64B`는
+  `-0.5%/-0.7%/-0.2%`, `tcp/tls/ws/wss 65536B`는 `-0.6%/-1.9%/-9.1%/+0.8%`였다.
+  공유 publish 경로에 mutable cache 상태를 더해도 현재 PUBSUB 미달의 주원인인
+  receive/backlog 비용을 줄이지 못했다. POSD 관점에서도 인터페이스는 그대로지만 모듈 내부
+  상태와 무효화 조건만 늘어나는 얕은 최적화라 유지할 근거가 부족하다. 코드 변경은 원복했고,
+  PUBSUB 다음 후보는 public `TopicMessage` 계약을 유지하면서 수신 drain과 backlog 보유 비용을
+  더 깊은 binding 내부 책임으로 흡수할 수 있는지에 맞춘다.
+- **2026-06-22 Node PUBSUB payload-only/topic 반복 우회 재검토 폐기**:
+  `MULTI_PUBSUB` client가 payload만 기록하더라도 public hot path는 계속
+  `sub.subscribe(received, RecvFlags.DontWait)`와 reusable `TopicMessage`다.
+  `socketTrySubscribePayload`로 perf client만 payload를 직접 받거나, native raw object에서
+  `topic` 생성을 생략하거나, 같은 topic/payload 반복에 기대는 cache를 붙이는 방식은
+  실제 public `TopicMessage.topic`, frozen `parts`, `singlePartOrThrow().data()` 비용을
+  줄이지 않는다. `TopicMessage.parts` 배열 재사용도 호출자가 이전 `parts` 참조를 보관할 때
+  다음 receive에 의해 관찰 동작이 바뀌므로 public 계약을 깨고, 기존 Node 테스트가 frozen
+  `parts` 계약을 확인한다. 따라서 이 후보들은 측정하지 않고 폐기한다. 코드 리뷰에서
+  미사용 `socketTrySubscribePayload` native export와 TypeScript native binding 타입도
+  제거했다. 이는 성능 수치 개선이 아니라 perf-only 우회 표면을 걷어내는 정리이며,
+  `optimization_guard.test.ts`가 해당 export가 다시 등록되지 않도록 고정한다.
+- **2026-06-22 Node receive envelope close indexed loop 후보 기각**:
+  caller-provided `Received`와 `TopicMessage` storage가 다음 payload를 채택하기 전에 이전
+  `Message` part를 닫는 루프를 `for...of`에서 indexed loop로 바꾸는 후보를 시험했다.
+  public envelope 계약, `parts` 배열 freeze, 이전 payload 즉시 release 의미는 그대로 유지했다.
+  `npm --prefix bindings/node run build`, `optimization_guard.test.js`, `socket_surface.test.js`,
+  PUBSUB public subscribe 개별 테스트는 통과했다. 그러나 `MULTI_SPOT tcp 64,256,1024` 세 번의
+  공식 wrapper 측정은 `2493.4/1300.5/1555.0 Kmsg/s`,
+  `2404.1/1315.4/770.6 Kmsg/s`, `2353.8/1304.7/763.0 Kmsg/s`로 직전 raw-shape 기준
+  `2453.4/1287.6/767.9 Kmsg/s` 대비 혼재했다. 1024B 첫 run은 outlier로 보이고,
+  64B는 반복 하락했다. `MULTI_PUBSUB tcp 64/65536` 대표 측정은 `646.8/37.1 Kmsg/s`로
+  64B만 약간 높고 65536B는 동일권이었다. 루프 형태만 바꾸는 얕은 구현 변경으로는 현재
+  SPOT/PUBSUB 미달 원인을 안정적으로 줄이지 못하므로 코드 변경은 원복했다.
+- **2026-06-22 Node runtime-owned Message direct release flag 후보 기각**:
+  runtime materializer가 만드는 native-owned `Message`에 내부 `_runtimeOwned` 플래그를 붙이고,
+  caller-provided `Received`/`TopicMessage` storage 교체 시 public `Message.close()`의
+  frozen-object 방어 경로를 우회하는 후보를 시험했다. public message가 사용자가 직접
+  `parts`에 들어간 경우에는 기존 `Message.close()`로 fallback해 공개 동작을 유지했다.
+  `npm --prefix bindings/node run build`, `optimization_guard.test.js`, `socket_surface.test.js`,
+  PUBSUB public subscribe 개별 테스트는 통과했다. 그러나 `MULTI_SPOT tcp 64,256,1024`
+  공식 wrapper 두 번의 측정은 `2527.3/1282.0/762.9 Kmsg/s`,
+  `2452.6/1297.4/1643.4 Kmsg/s`로 직전 raw-shape 기준 `2453.4/1287.6/767.9 Kmsg/s`
+  대비 혼재했다. 1024B repeat는 outlier로 보이고, 64/256B는 안정적인 개선이라고 보기
+  어렵다. 모든 runtime message 생성에 내부 상태를 하나 더 붙이는 복잡도에 비해 이득이
+  분명하지 않으므로 코드 변경은 원복했다.
+- **2026-06-22 Node `MULTI_DEALER_DEALER tcp 65536` 재확인 및 send builder inline 후보 기각**:
+  `MULTI_DEALER_DEALER tcp 65536`은 current HEAD에서 단일 cell로 다시 돌려도
+  `43428.800 msg/s`로 C 7.2.0 full `174370.200 msg/s` 대비 `24.9%`에 그쳤다.
+  같은 시간대 C 단일 cell도
+  `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260622_090625_prerelease_7_2_0_c_multi_dealer_dealer_tcp_65536_current_pair.txt`에서
+  `177150.800 msg/s`로 나와 현재 Node 비율은 `24.5%`다.
+  다만 caller-provided `Received` release 적용 뒤 `/usr/bin/time -v` 최대 RSS는 기존 split의
+  `57461864KB`에서 `14820680KB`로 낮아졌다. throughput 병목을 확인하기 위해 public
+  `socket.send().message(payload).flags(SendFlags.DontWait).submit()` 표면은 유지하고
+  `RuntimeSendOperation` 내부의 단일 payload 저장소를 inline하는 후보를 시험했다.
+  `npm --prefix bindings/node run build`, `optimization_guard.test.js`, `socket_surface.test.js`,
+  `pair.test.js`는 통과했지만 후보 측정은 `43678.600 msg/s`로 current 대비 `+0.6%`에
+  그쳤다. 같은 후보는 STREAM small에서도 혼재로 기각된 바 있어, shared send builder 내부
+  복잡도를 늘릴 근거가 부족하다. 코드 변경은 원복했고, 다음 후보는 builder 저장소보다
+  native send boundary 또는 receive-side decode/backlog 쪽으로 좁힌다.
+- **2026-06-22 Node plain `Received` single-part raw shape 후보 기각**:
+  SUB/SPOT에서 효과가 있었던 single-part raw `data` 형태를 plain `Received`에도 적용하는
+  후보를 시험했다. public `server.recv(received, RecvFlags.DontWait)` 표면은 유지했고,
+  TypeScript materializer가 raw `data`를 public `Message`로 감싸도록 했다. 첫 테스트에서
+  routed `Message.getProperty('Routing-Id')` 계약이 깨져 fast path를 routing id가 없는
+  plain receive로만 좁혔다. `npm --prefix bindings/node run rebuild-native`,
+  `npm --prefix bindings/node run build`, `optimization_guard.test.js`, `dealer_router.test.js`,
+  `pair.test.js`, `socket_surface.test.js`는 통과했다. 그러나
+  `MULTI_DEALER_DEALER tcp 65536` 후보 측정은 `42008.000 msg/s`로 current 재측정
+  `43428.800 msg/s`보다 낮았다. 일반 `Received` raw shape는 routed metadata 계약까지
+  신경 써야 하는데 throughput 근거가 없으므로 코드 변경은 원복했다.
+- **2026-06-22 Node SPOT subscribe single-part raw shape 적용**:
+  `MULTI_SPOT` client는 perf에서 계속 public `spot.subscribe(received, RecvFlags.DontWait)`와
+  caller-provided `TopicMessage` storage를 사용한다. binding native `spot_recv`와
+  `spot_try_recv`가 단일 payload에서도 매번 `parts[]`와 message snapshot object를 만들던
+  비용을 줄이기 위해, SPOT subscribe raw object도 SUB와 같은 single-part `data` 형태를
+  만들도록 바꿨다. TypeScript materializer가 이미 public `TopicMessage`로 이 raw shape를
+  흡수하므로 새 public API, perf 전용 helper, deep runtime import는 없다. unrouted traffic의
+  empty `routingId` property도 만들지 않는다. 이 경로에는 어떤 per-message allocation을
+  막는지 hot path 주석을 남겼고, `optimization_guard.test.ts`가 SPOT subscribe raw shape와
+  public materializer 경로를 고정한다. 공식 wrapper
+  `bindings/node/perf/results/multi/report/perf_node_multi_linux_20260622_082632_prerelease_7_2_0_node_multi_spot_tcp_small_spot_raw_probe.txt`는
+  `status=complete`다. 이전 small split 대비 처리량은 `tcp 64/256/1024B`에서
+  `2160.8/1180.8/699.5 Kmsg/s`에서 `2453.4/1287.6/767.9 Kmsg/s`로 올랐다
+  (`+13.5%/+9.0%/+9.8%`). C 7.2.0 full 대비 비율은 `32.8/25.6/19.1%`에서
+  `37.2/27.9/21.0%`로 개선됐고, 64B는 Node 개선 라운드 SPOT 기준을 넘었다. 256/1024B는
+  아직 목표 미달이라 다음 binding 내부 후보를 계속 본다.
+- **2026-06-22 Node SPOT subscribe raw shape large 재측정**:
+  같은 변경을 `MULTI_SPOT tcp 65536B`에도 적용한 상태로 기본 `clients=100`을 다시 돌렸지만
+  30GB와 45GB RSS guard 모두 결과 저장 전 중단했다. report
+  `perf_node_multi_linux_20260622_082935_prerelease_7_2_0_node_multi_spot_tcp_65536_spot_raw_probe.txt`는
+  cell RSS `30369600KB`, report
+  `perf_node_multi_linux_20260622_082959_prerelease_7_2_0_node_multi_spot_tcp_65536_spot_raw_probe_45gb.txt`는
+  cell RSS `46073072KB`에서 중단했다. 이전 성공 split의 최대 RSS `63571408KB`보다는 낮아
+  raw shape가 large payload의 객체 보유 비용도 줄였지만, 수신 drain이 송신 backlog를
+  따라잡을 만큼 충분하지 않아 완료 결과를 만들지 못했다. 따라서 `tcp 65536B`는 기존
+  성공 report의 throughput 미달 상태를 유지하고, 다음 후보는 public `TopicMessage` 계약을
+  깨지 않는 범위의 drain 비용 또는 backlog 원인으로 분리한다. `parts` 배열 자체를 재사용하는
+  접근은 호출자가 이전 `TopicMessage.parts` 참조를 보관할 때 다음 receive에 의해 내용이
+  바뀌므로 public envelope 계약을 깨는 얕은 최적화라 적용하지 않는다.
+- **2026-06-22 Java `MULTI_DEALER_DEALER tcp 64/65536` current 재확인 및 perf-only 후보 보류**:
+  같은 조건 paired 재측정에서 Java
+  `perf_java_multi_linux_20260622_104155_prerelease_7_2_0_java_multi_dealer_dealer_tcp_64_65536_current_reprobe.txt`는
+  `tcp 64` `1139712.000 msg/s`, `tcp 65536` `15963.600 msg/s`였고, C
+  `perf_c_multi_linux_20260622_104214_prerelease_7_2_0_c_multi_recheck_java_dealer_dealer_tcp_64_65536_current_pair.txt`는
+  `2976025.800/171946.200 msg/s`였다. 비율은 약 `38.3%`, `9.3%`로 반복 미달이다.
+  perf client hot loop는 계속 public
+  `socket.send().message(outbound).flags(SendFlags.DONT_WAIT).submit()`를 사용하고,
+  server는 public `DealerSocket.recv(received, RecvFlags.DONT_WAIT)`를 사용한다.
+  `Message.from(payload)` 복사를 피하도록 perf loop를 package-private move나 native
+  helper로 바꾸는 방법은 측정 입력 구성 비용만 줄이는 perf 전용 우회라 채택하지 않는다.
+  이미 binding 내부에는 single-part send invoker와 caller-provided receive storage
+  fast path가 있으므로 다음 Java 후보는 public send/recv 표면을 유지한 채 실제 binding
+  내부 비용인 message copy/ownership, Panama downcall, receive materialization을
+  profiler로 분리한 뒤 선택한다.
+- **2026-06-22 Java `MULTI_DEALER_DEALER tcp 64` JFR 및 caller-provided `Received` perf 후보 기각**:
+  Java Flight Recorder로 `MULTI_DEALER_DEALER tcp 64` 단일 cell을 `duration=25`로
+  실행했다. report
+  `perf_java_multi_linux_20260622_110133_prerelease_7_2_0_java_multi_dealer_dealer_tcp64_jfr_capture2.txt`는
+  `1221200.040 msg/s`로 complete였고, JFR 파일은 `/tmp/zlink-java-multidd-server-409163.jfr`,
+  `/tmp/zlink-java-multidd-client-409207.jfr`에 남겼다. server JFR의 allocation sample은
+  `Received`, `Message`, `Message[]`, `NativeMemorySegmentImpl`가 상위였고, hot methods에는
+  `ReceivePlane.prepareRecvLikeOperation()`, `PerfMultiDealerDealer.drainCounted(...)`,
+  `Arrays.copyOf(...)`, `moduleForNativeAccess()`가 보였다. client 쪽은
+  `sendOneActive(...)`와 foreign downcall LambdaForm이 상위였다.
+  이 근거로 perf helper가 매 receive마다 새 `Received`를 만드는 후보를 확인했지만, 이를
+  caller-provided `Received` 재사용으로 바꾸는 실험은
+  `perf_java_multi_linux_20260622_110328_prerelease_7_2_0_java_multi_dealer_dealer_tcp_64_65536_reusable_received_probe.txt`에서
+  `tcp 64` `1120827.800 msg/s`, `tcp 65536` `15967.800 msg/s`로 current
+  `1139712.000/15963.600 msg/s`와 같거나 낮았다. perf 코드만 바뀌고 목표 미달을
+  해소하지 못하므로 코드 변경은 원복했다. 다음 후보는 perf helper 재작성보다
+  `NativeMemorySegmentImpl`/Panama downcall, native message lifecycle, send-side public
+  builder allocation 중 JFR에서 반복 확인되는 binding 내부 비용을 줄이는 방향이어야 한다.
+- **2026-06-22 Java `MULTI_DEALER_DEALER tcp 65536` JFR 추가 확인**:
+  large cell도 같은 public send/recv 표면으로 따로 JFR을 남겼다. report
+  `perf_java_multi_linux_20260622_112720_prerelease_7_2_0_java_multi_dealer_dealer_tcp65536_jfr_capture.txt`는
+  `15278.880 msg/s`로 complete였고, JFR 파일은
+  `/tmp/zlink-java-multidd-large-server-432732.jfr`,
+  `/tmp/zlink-java-multidd-large-client-432782.jfr`이다. server 쪽 Java hot sample은
+  2개뿐이라 Java 메서드별 결론을 내리기 어렵지만, native method sample은 대부분
+  `Native.pollerWait(...) -> NativePoller.wait -> PerfSocketPollSet.poll -> runServer`
+  스택이었다. 이는 large server가 Java materialization만으로 계속 바쁜 상태라기보다
+  poll/send 경계와 상대 client 진행을 함께 봐야 함을 뜻한다. client 쪽 native sample은
+  `Unsafe.allocateMemory0 -> MessageSlotPool.Pool.acquire -> Message.from(Message) -> sendOneActive`
+  스택과 `pollWritable` 대기가 함께 보였다. 따라서 다음 large 후보는 perf loop에
+  package-private `Message.move()`나 native 전용 helper를 붙이는 방식이 아니라, public
+  `Message.from(...)`/fluent send 계약을 유지한 채 binding 내부의 native message slot
+  수명, Panama memory allocation, backpressure/poll 경계 비용을 줄이는 방향이어야 한다.
+- **2026-06-22 Java large send ownership 검토**:
+  `Message.from(Message)`는 public 계약상 원본 `Message`를 보존하기 위해 payload를 새
+  message-owned frame으로 복사한다. `Message.move()`는 package-private이고 send 성공 시
+  source message를 invalid 상태로 만들기 때문에, perf client가 template payload를 반복
+  전송하는 경우에만 유리한 우회다. 이를 public send hot path에 몰래 적용하면 호출자가
+  보낸 뒤에도 원본 `Message`를 읽을 수 있다는 현재 사용 모델을 깨뜨린다. reusable
+  `Message` reset 기능도 내부 `ContractAccess`로만 쓰이며, 새 public 재사용 API를 여는
+  것은 이번 작업의 “public surface 유지” 원칙과 맞지 않는다. 따라서 Java large의 다음
+  실험은 `Message.from(Message)`의 의미를 바꾸지 않고, native message slot 할당 경로,
+  Panama segment 생성, `sendPart*NoWaitCritical` downcall, poll/backpressure 경계를
+  profiler로 더 좁힌 뒤 선택한다.
+- **2026-06-22 Java receive `Message` object 재사용 후보 보류**:
+  `ReceivePlane.recvIntoNoWait`는 이미 public `DealerSocket.recv(received, DONT_WAIT)`
+  경로에서 caller-provided `Received`를 직접 채운다. `Received.populateRoutedSinglePart`도
+  기존 parts list를 비운 뒤 재사용하고, `Message`는 reusable native slot pool과
+  `resetForReuse()`를 갖고 있다. 남은 per-message 객체 비용을 더 줄이려면 이전 receive의
+  `Message` wrapper 자체를 다음 receive target으로 재사용해야 한다. 그러나 public
+  `Received.parts()`와 `FirstPart()`가 돌려준 `Message`는 호출자에게 소유권이 있는
+  객체이고, 다음 `recv(received, ...)`가 그 객체를 몰래 재초기화하면 호출자가 아직 들고
+  있는 `Message` view를 깨뜨릴 수 있다. 따라서 이 후보는 단순 내부 최적화가 아니라
+  ownership 의미를 바꾸는 위험이 있어 바로 구현하지 않는다. 다음 Java receive 후보는
+  JFR에서 `Message` wrapper allocation이 실제 지배 비용인지, 그리고 public `Received`
+  재사용 호출이 이전 `Message` 참조를 무효화하지 않는 별도 내부 holder로 바꿀 수 있는지
+  검증한 뒤에만 진행한다.
+- **2026-06-22 Java `MessageSlotPool` capacity 후보 기각**:
+  JFR에서 보인 `Unsafe.allocateMemory0 -> MessageSlotPool.Pool.acquire -> Message.from(Message)`
+  스택을 줄이기 위해 thread-local native message slot pool capacity를 `32`에서 `256`으로
+  늘리는 후보를 시험했다. public `socket.send().message(...).flags(...).submit()`와
+  `DealerSocket.recv(received, DONT_WAIT)` 표면은 유지했고, Java compile은 통과했다.
+  그러나 `perf_java_multi_linux_20260622_121824_prerelease_7_2_0_java_multi_dealer_dealer_tcp_64_65536_message_slot_pool_256_probe.txt`는
+  `tcp 64` `1129001.200 msg/s`, `tcp 65536` `16291.600 msg/s`였다. 기존 current
+  `1139712.000/15963.600 msg/s`와 비교하면 64B는 낮아지고 65536B는 소폭 개선에 그쳤다.
+  목표 미달을 해소하지 못하면서 thread-local native slot 보유량만 늘리므로 코드 변경은
+  원복했다. 다음 후보는 capacity 상수 조정이 아니라 allocation stack이 실제로 pool miss인지,
+  message copy ownership인지, Panama downcall/foreign segment 비용인지 더 좁힌 뒤 선택한다.
+- **2026-06-22 C++ routed receive hot path 검토와 perf-only 후보 폐기**:
+  C++ `DEALER_ROUTER` large 미달은 계속 남아 있지만, perf receiver는 이미 public
+  `router.recv(routing_id_t&, message_t&, ...)` 계약을 사용한다. binding 내부
+  `recv_single_part_routed_message`는 `received_t`와 `std::vector<message_t>` materialize를
+  거치지 않고 caller-provided `message_t`에 native single-part receive 결과를 채운다.
+  이 경로에는 실패 시 non-empty output message를 보존해야 하는 public 계약과 empty output
+  message에서 피하는 native init/close 비용을 `HOT PATH` 주석으로 명시했다.
+  남은 쉬운 후보인 같은 peer routing id cache는 benchmark의 반복 peer 모양에 기대는
+  개선이다. 실제 애플리케이션에서 같은 routing id가 반복된다는 보장이 없고, 일반 public
+  경로의 allocation/copy/native boundary 비용을 줄이는 근거도 약하므로 반영하지 않는다.
+  다음 C++ 후보는 perf cache가 아니라 native boundary와 core routed transport 쪽 wall-time
+  비중을 분리하는 방향으로만 잡는다.
+- **2026-06-22 Java PAIR single-part send/recv hot path 부분 채택**:
+  `PairSocket.send().message(...).flags(...).submit()` public 표면은 그대로 두고,
+  `NativePairSocket.send()`가 `DealerSocket`처럼 single-part invoker를 넘기도록 했다.
+  이로써 단일 메시지 PAIR send가 `List.of(singlePart)` 경로를 거치지 않고 바로
+  `super.send(part, ...)`로 들어간다. `PairSocket.recv(Received, ...)`도 fresh
+  `Received`를 만든 뒤 adopt하지 않고, `ReceivePlane.recvInto(...)`의 caller-provided
+  storage 경로를 직접 탄다. 코드 가까이에 `HOT PATH` 주석을 두어 리팩토링 때 per-message
+  `Received`와 immutable parts list allocation이 되살아나지 않게 했다.
+  `./gradlew :compileJava :perf-single:compileJava --no-daemon`과
+  `./gradlew :compileJava :test --tests 'systems.zlink.contract.SocketContractTest' --tests 'systems.zlink.SendResultContractTest' --no-daemon`
+  는 통과했다. PAIR inproc 1024 단일 cell은 Java
+  `perf_java_single_linux_20260622_113350_prerelease_7_2_0_java_single_pair_inproc_1024_pair_fastpath_probe.txt`에서
+  `674882.400 msg/s`, 같은 시간대 C
+  `perf_c_single_linux_20260622_113442_prerelease_7_2_0_c_single_pair_inproc_1024_pair_fastpath_pair.txt`에서
+  `1419163.000 msg/s`였다. 기존 Java 재측정 `635659.000 msg/s` 대비 약 `+6.2%`지만
+  C 대비 `47.6%`라 반복 미달은 유지한다. 이 변경은 perf-only helper가 아니라 일반
+  PAIR public send/recv 경로의 내부 allocation과 dispatch를 줄이는 변경이므로 부분
+  채택하고, 남은 미달은 `Message.from(Message)` copy와 native send/recv boundary를
+  별도 후보로 계속 본다.
+- **2026-06-22 Java DEALER_DEALER inproc 1024 current 재측정**:
+  PAIR fast path 적용 뒤 같은 simple one-way 계열인 `DEALER_DEALER inproc 1024`도
+  현재 상태로 다시 재측정했다. Java
+  `perf_java_single_linux_20260622_113806_prerelease_7_2_0_java_single_dealer_dealer_inproc_1024_current_after_pair_fastpath.txt`는
+  `690855.800 msg/s`, 같은 시간대 C
+  `perf_c_single_linux_20260622_113806_prerelease_7_2_0_c_single_dealer_dealer_inproc_1024_current_pair_after_pair_fastpath.txt`는
+  `1433043.800 msg/s`라 C 대비 약 `48.2%`다. `NativeDealerSocket`은 이미 single-part
+  send invoker와 caller-provided `recvInto` hot path를 쓰므로, 이 셀의 다음 후보는
+  perf helper의 `Received` 재사용이 아니라 public `Message.from(Message)` copy 의미와
+  native send/recv boundary 중 일반 사용 경로에서도 줄일 수 있는 비용을 profiler로
+  좁히는 방향이다.
+- **2026-06-22 Java DEALER_DEALER inproc 1024 JFR 및 multipart 빈 상태 정리**:
+  같은 셀을 JFR과 함께 실행한 report
+  `perf_java_single_linux_20260622_114304_prerelease_7_2_0_java_single_dealer_dealer_inproc_1024_jfr_probe.txt`는
+  `707749.800 msg/s`로 complete였고, JFR 파일은
+  `/tmp/zlink-java-single-dd-inproc1024.jfr`이다. hot methods는
+  `PerfMeasurement.nettyPooledPayloadTemplate(...)`, payload reset, metrics reservoir처럼
+  perf 입력 구성과 측정 코드 비중이 커서, 같은 payload를 반복한다는 가정에 기대는
+  perf-only cache나 perf loop 전용 재사용은 적용하지 않는다. allocation sample에는
+  `Received`, `Message`, `NativeMemorySegmentImpl`, `Message[]`가 보였고,
+  `ReceivePlane.prepareRecvLikeOperation()`이 매 recv-like 호출 앞에서
+  `MultipartReceiveState.closeRemaining()`을 부르는 경로가 확인됐다. 이 경로는 일반
+  public `DealerSocket.recv(Received, ...)` 수신에도 해당하므로, pending multipart frame이
+  없는 보통의 single-part receive에서 빈 `Message[]`를 새로 만들지 않도록
+  `MultipartReceiveState`의 empty state를 공유 배열로 바꿨다. 코드에는 `HOT PATH`
+  주석으로 no-pending single-part receive에서 피해야 하는 per-message empty array
+  allocation을 명시했다. `javap` 확인상 no-pending 분기에는 배열 생성 opcode가 없고,
+  `./gradlew :compileJava :perf-single:compileJava --no-daemon`,
+  `./gradlew :compileJava :test --tests 'systems.zlink.contract.SocketContractTest' --tests 'systems.zlink.SendResultContractTest' --no-daemon`
+  는 통과했다. 그러나 latest throughput 재측정
+  `perf_java_single_linux_20260622_114606_prerelease_7_2_0_java_single_dealer_dealer_inproc_1024_multipart_empty_state_fastpath.txt`는
+  `684216.800 msg/s`로, 같은 C 기준 대비 약 `47.7%`라 미달 해소로 계산하지 않는다.
+  후속 JFR report
+  `perf_java_single_linux_20260622_114646_prerelease_7_2_0_java_single_dealer_dealer_inproc_1024_jfr_after_multipart_empty_state.txt`도
+  profiling overhead 아래 `591444.700 msg/s`였고, 남은 상위 비용은 여전히 `Message`,
+  `Received`, `NativeMemorySegmentImpl`, send/recv downcall, perf payload 구성으로 나뉜다.
+  따라서 이 변경은 public 계약을 지킨 allocation hot path 정리로만 유지하고,
+  Java simple one-way throughput gap의 다음 후보는 native send/recv boundary와
+  receive materialization을 더 좁히는 쪽으로 둔다.
+- **2026-06-22 Java outbound message microbench 재확인**:
+  `./gradlew :perf-single:runMessageOutboundMicrobench --no-daemon`을 현재 상태에서 다시
+  실행했다. 64B는 `response_copy_of_bytes` `41.42 ns/op`,
+  `response_build_from_arrays` `42.30 ns/op`,
+  `response_build_from_messages` `43.14 ns/op`,
+  send-prepare 포함 `42.92~46.99 ns/op`이었다. 1024B는
+  `response_copy_of_bytes` `75.98 ns/op`, `response_build_from_arrays` `78.77 ns/op`,
+  `response_build_from_messages` `77.44 ns/op`, send-prepare 포함 `77.21~80.83 ns/op`이었다.
+  이 수치는 Java simple one-way가 C 대비 약 `47~48%`에 머무는 격차를 `Message.from`
+  미세 조정만으로 설명하기 어렵다는 근거다. public 원본 보존 계약을 깨는
+  `Message.move()` 우회나 perf helper 전용 재사용은 계속 제외하고, 다음 조사는 native
+  send/recv downcall, poll wakeup, receive materialization의 wall-time 비중을 직접
+  분리하는 방향으로 둔다.
+- **2026-06-22 Java single perf caller-provided `Received` 재사용 후보 기각**:
+  single `PAIR`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER` receiver loop가
+  `PerfUtil.recvNoWait(...)`로 매번 새 `Received`를 받는 것을 보고, public
+  `recv(received, DONT_WAIT)` 표면으로 caller-provided storage를 재사용하는 후보를 시험했다.
+  내부 API나 native helper는 쓰지 않았지만, 이 변경은 perf 하니스만 바꾸는 후보이므로
+  수치가 움직이는지 먼저 좁게 확인했다. `./gradlew :perf-single:compileJava --no-daemon`은
+  통과했다. 그러나
+  `perf_java_single_linux_20260622_124234_prerelease_7_2_0_java_single_inproc_simple_reusable_received_probe.txt`에서
+  `PAIR inproc 1024`는 `673850.500 msg/s`로 기존 PAIR fast path probe와 같은 수준이고,
+  `DEALER_DEALER inproc 1024`는 `635089.000 msg/s`로 최신 current `684216.800 msg/s`보다
+  낮았다. routed 대표 cell도
+  `perf_java_single_linux_20260622_124257_prerelease_7_2_0_java_single_routed_inproc_reusable_received_probe.txt`에서
+  `DEALER_ROUTER inproc 65536` `37113.000 msg/s`,
+  `ROUTER_ROUTER inproc 65536` `38165.000 msg/s`로 기존 반복 미달 수치를 개선하지 못했다.
+  public 표면은 맞지만 실제 병목을 줄이지 못하고 일부 cell을 악화하므로 코드 변경은
+  원복했다. 이 결과 때문에 single perf 하니스만 caller-provided storage로 바꾸는 접근은
+  더 진행하지 않고, Java 후보는 binding 내부 native boundary, message ownership,
+  receive materialization을 profiler로 좁히는 방향으로 유지한다.
+- **2026-06-22 Java routed send payload-copy 후보 제외**:
+  `DEALER_ROUTER`/`ROUTER_ROUTER` single perf sender는 public
+  `.send(route).message(outbound).flags(...).submit()` 경로를 사용하고, `outbound`는
+  `Message.from(active)`로 만든다. 이 복사는 benchmark payload template을 매 송신마다
+  새 public `Message`로 만드는 비용이지만, perf 하니스의 입력 구성 비용이다. 이를
+  package-private move, native helper, template-owned message reuse로 우회하면 public
+  send builder가 실제 사용자가 넘기는 `Message`를 처리하는 경로가 아니라 perf 전용
+  경로를 측정하게 된다. routed receive 쪽은 이미 public `recv(Received, DONT_WAIT)`와
+  `populateRoutedSinglePart` hot path를 사용하므로, 이번 라운드에서는 perf 코드를 바꾸지
+  않는다. 다음 Java routed 후보는 JFR/native sample로 send builder, Panama downcall,
+  receive materialization 중 일반 public 경로 비용을 분리한 뒤 선택한다.
+- **2026-06-22 Java routed inproc 65536 JFR active probe**:
+  `DEALER_ROUTER inproc 65536`을 public perf runner 그대로 실행하고 JFR을 붙였다.
+  `JAVA_TOOL_OPTIONS='-XX:StartFlightRecording=filename=/tmp/zlink-java-single-dealer-router-inproc65536-long.jfr,settings=profile,dumponexit=true,delay=3s'`
+  조건의
+  `perf_java_single_linux_20260622_125456_prerelease_7_2_0_java_single_dealer_router_inproc65536_jfr_active_probe.txt`는
+  `39830.850 msg/s`로 complete였다. `jfr view hot-methods`는
+  `PerfMeasurement.nettyPooledPayloadTemplate(int, int)`가 sample의 `98.20%`를 차지했고,
+  allocation-by-class는 `NativeMemorySegmentImpl 38.11%`, `Message 13.31%`,
+  `Received 11.22%`였다. 이는 Java routed active loop가 `resetAndWritePayload(...)`에서
+  매 송신마다 template `Message`를 닫고 다시 만드는 perf 하니스 비용을 강하게 포함한다는
+  뜻이다. C single routed sender는 `std::vector<char>` payload에 header를 stamp한 뒤
+  submit용 `zlink_msg_t`를 만든다. 따라서 Java routed 수치를 library 병목으로 해석하기
+  전에 이 perf 하니스 비용을 별도 측정 의미 이슈로 분리해야 한다. 사용자 지침상 perf-only
+  개선은 바로 넣지 않으므로, 이번 라운드에서는 perf 코드를 바꾸지 않고 문서에 오염 근거를
+  남긴다. 다음 library 후보는 이 template 재생성 비용을 제외하고도 남는 send/recv
+  downcall, `Received` materialization, native message lifecycle 비용에서 찾아야 한다.
+- **2026-06-22 Java Dealer send invoker cache 후보 기각**:
+  client JFR에서 `NativeDealerSocket`의 captured lambda allocation과
+  `MessageOperations.SendBuilder` allocation이 보였기 때문에, public
+  `dealer.send().message(...).flags(...).submit()` 표면은 유지하고 `NativeDealerSocket`이
+  single/multipart send invoker lambda를 socket instance field로 캐시하는 후보를 시험했다.
+  `./gradlew :compileJava :perf-multi:compileJava --no-daemon`은 통과했지만
+  `perf_java_multi_linux_20260622_110544_prerelease_7_2_0_java_multi_dealer_dealer_tcp_64_65536_dealer_send_invoker_cache_probe.txt`는
+  `tcp 64` `1173002.200 msg/s`, `tcp 65536` `15310.800 msg/s`였다. current
+  `1139712.000/15963.600 msg/s` 대비 64B는 오차권 개선이고 65536B는 하락했다.
+  shared dealer send path에 상태를 추가할 근거가 부족하고 large 미달을 악화시키므로 코드
+  변경은 원복했다. 다음 send-side 후보는 builder lambda보다 더 큰 비중인 message
+  ownership/native downcall 경계를 대상으로 해야 한다.
+- **2026-06-22 Java Dealer 전문 send builder 후보 기각**:
+  invoker lambda 경로보다 한 단계 더 줄이기 위해 `NativeDealerSocket.send()`가
+  `MessageOperations.SendBuilder` 대신 dealer 전용 `SendOperation` 구현을 반환하는 후보를
+  시험했다. public fluent 표면과 multipart ownership 의미는 유지했고,
+  `./gradlew :compileJava :test --tests 'systems.zlink.contract.SocketContractTest' --tests 'systems.zlink.SendResultContractTest' --no-daemon`
+  는 통과했다. 그러나
+  `perf_java_multi_linux_20260622_112537_prerelease_7_2_0_java_multi_dealer_dealer_tcp_64_65536_dealer_specialized_send_builder_probe.txt`는
+  `tcp 64` `1193065.000 msg/s`, `tcp 65536` `13582.000 msg/s`였다. current
+  `1139712.000/15963.600 msg/s` 대비 64B는 오차권이고 65536B는 크게 하락했다. shared
+  public send builder를 패턴별로 나누는 것은 POSD 관점에서도 얕은 분기와 중복을 늘리므로
+  반영하지 않는다. 코드 변경은 원복했다.
 - **2026-05-26 `MULTI_SPOT_SENDSEND` poll interest 문서 정정**:
   `doc/perf/PERF_MULTI_TEST_POLICY.md`는 송수신 양방향 spot workload를
   `POLLIN|POLLOUT`으로 등록해야 한다고 적고 있었지만, C active window는
@@ -2383,6 +3103,45 @@ Rust는 Go와 달리 native OS thread를 쓰므로 Go의 LockOSThread 병목은 
   `bindings/python/tests/run_tests.sh`는 통과했고, 공식 wrapper `PERF_FAIL_FAST=1 bindings/python/perf/run_benchmarks_multi.sh --transports tcp --pattern MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER --msg-sizes 64,65536,131072,262144 --duration 1 --runs 3`에서 `MULTI_DEALER_ROUTER` large가 43.2/57.0/63.2%로 올랐다(`perf_python_multi_linux_20260524_235408.txt`). `MULTI_ROUTER_ROUTER` 65536B/262144B는 단독 complete 재측정에서 33.1/57.3%로 확인했다(`perf_python_multi_linux_20260524_235704.txt`, `perf_python_multi_linux_20260524_235511.txt`). small size는 여전히 per-call FFI 벽 때문에 보류다.
   같은 fast path는 non-tcp routed echo에도 효과가 있었다. `ws MULTI_DEALER_ROUTER 65536B`는 32.6%→38.0%(`perf_python_multi_linux_20260525_000108.txt`), `tls MULTI_ROUTER_ROUTER 65536B`는 28.8%→46.2%(`perf_python_multi_linux_20260525_000403.txt`)로 보류에서 통과로 올라갔다. `wss` 65536B는 `MULTI_DEALER_ROUTER` 70.5%, `MULTI_ROUTER_ROUTER` 56.1%로 통과 여유가 커졌다(`perf_python_multi_linux_20260525_000301.txt`). `ws MULTI_ROUTER_ROUTER 65536B`는 28.8%로 개선됐지만 아직 보류다(`perf_python_multi_linux_20260525_000503.txt`).
   2026-05-25 같은 조건 제한 재측정에서는 `ws MULTI_ROUTER_ROUTER 131072B`가 43.3%로 통과권에 올라왔고, `ws 65536B`는 28.9%로 보류가 유지됐다(`perf_c_multi_linux_20260525_023817.txt`, `perf_python_multi_linux_20260525_024823.txt`). `wss MULTI_ROUTER_ROUTER 65536/131072B`는 54.5/69.6%로 통과를 재확인했다.
+- **2026-06-22 Python recv owner 경로 재검토**:
+  simple `_MessageSocket.recv_into`는 native extension에 `recv_owner`가 있으면 bytes tuple로
+  payload를 복사하지 않고 `NativeReceivedPartsOwner`를 바로 받는다. routed
+  `_RoutedMessageSocket.recv_into`도 `router_recv_owner`가 있으면 owner 경로를 먼저 쓴다.
+  따라서 남은 Python small receive 미달을 줄이기 위해 bytes tuple fallback을 건드리는 것은
+  현재 build의 hot path가 아니다. `Received.parts`의 `ReceivedMessage` tuple을 재사용하는
+  후보도 이전 parts view를 잡고 있는 사용자 코드를 깨뜨릴 수 있어 public contract 보존
+  원칙에 맞지 않는다. 이번 라운드에서는 성능 코드를 바꾸지 않고, Python public
+  `recv_into` 주석의 압축 영어 표현을 풀어 hot path 의도를 명확히 했다. 다음 Python
+  후보는 owner receive 이후의 per-call FFI 경계나 send native bridge 쪽에서 찾아야 한다.
+- **2026-06-22 Python `ReceivedMessage.data` zero-copy 후보 폐기**:
+  `NativeReceivedPartsOwner.data(index)`는 native message buffer를 직접 노출하지 않고
+  Python-owned bytes snapshot 위의 memoryview를 돌려준다. 이 비용을 없애면 perf loop의
+  마지막 part 접근은 빨라질 수 있지만, 사용자가 받은 view를 들고 있는 동안 received
+  part를 닫아도 view가 유효해야 한다는 현재 public lifetime 의미가 바뀐다. 이는
+  benchmark 데이터 접근만 빠르게 만드는 변경이고, binding의 일반 public contract를
+  지키는 최적화가 아니다. 따라서 zero-copy view로 바꾸지 않고, C extension의
+  `native_parts_owner_data` 가까이에 `HOT PATH` 주석으로 snapshot 계약과 금지 이유를
+  명시했다.
+- **2026-06-22 Python perf loop 데이터 접근 후보 제외**:
+  Python single perf는 이미 public `recv_into(storage, DONT_WAIT)`와 long-lived
+  `Received`/`TopicMessage` storage를 사용한다. `storage_data_part(...)`가 마지막 part만
+  `to_bytes()`로 읽도록 줄인 기존 perf 보강도 metric extraction 범위에 머문다. 남은
+  미달을 줄이기 위해 perf에서 `ReceivedMessage.data` view를 직접 읽거나 native helper로
+  latency/header만 빼는 변경은 실사용 public 경로의 allocation, copy, ownership 비용을
+  줄인 근거가 없으면 채택하지 않는다. 다음 Python 후보는 perf 코드가 아니라 binding
+  내부의 send native bridge, owner receive 이후 Python object materialization, FFI call
+  boundary 중 profiler로 확인되는 일반 비용만 대상으로 한다.
+- **2026-06-22 Python send native bridge move/borrow 후보 폐기**:
+  public `.send().message(...).flags(...).submit()`, routed send, publish send는 native
+  `SocketSendOp` 계열 객체를 먼저 사용한다. single payload fast path도 Python에서
+  submit 루프를 돌지 않고 C extension 안에서 `zlink_send_part`, `zlink_send_part_rid`,
+  `zlink_publish_part`를 호출한다. 남은 큰 비용은 caller buffer를 native message로 복사하는
+  부분이지만, 이 복사는 submit 실패 또는 `DONT_WAIT` backpressure에서 Python payload가
+  그대로 남아야 하는 public 계약을 지키기 위한 비용이다. bytearray/template payload를
+  move하거나 native message가 caller buffer를 빌리도록 바꾸는 후보는 perf의 반복 payload
+  모양에는 유리할 수 있어도 실사용 public 계약을 약하게 만든다. 따라서 코드는 바꾸지
+  않고 C extension의 socket/routed/publisher single-payload hot path 가까이에 복사를
+  유지해야 하는 이유를 주석으로 고정했다.
 - **multi routed echo latency sampling 후보 기각**: `MULTI_DEALER_ROUTER`/`MULTI_ROUTER_ROUTER`
   client reply hot path도 `MULTI_PUBSUB`처럼 count는 payload length로 유지하고 latency header
   decode만 32개당 1개로 줄이는 후보를 시험했다. `python3 -m py_compile

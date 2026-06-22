@@ -239,10 +239,13 @@ function defaultMultiMsgSizes(patternNames, explicitMsgSizes) {
   const onlyStream = patternNames.length > 0
     && patternNames.every((name) => name === 'MULTI_STREAM');
   if (onlyStream && envStreamSizes) {
-    return parseSizeList(envStreamSizes, MULTI_MSG_SIZES.slice());
+    return parseSizeList(envStreamSizes, STREAM_MSG_SIZES.slice());
   }
   if (envSizes) {
     return parseSizeList(envSizes, MULTI_MSG_SIZES.slice());
+  }
+  if (onlyStream) {
+    return STREAM_MSG_SIZES.slice();
   }
   return MULTI_MSG_SIZES.slice();
 }

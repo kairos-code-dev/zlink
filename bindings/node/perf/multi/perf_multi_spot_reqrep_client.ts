@@ -127,8 +127,14 @@ function tryRequestSpotReply(spot, payload, timeoutMs, onReply, onDone) {
       });
   } catch (error) {
     if (error instanceof zlink.SubmitError &&
-        error.result === zlink.SubmitResult.Backpressured) {
-      trace('request submit backpressured');
+        (error.result === zlink.SubmitResult.Backpressured ||
+         error.result === zlink.SubmitResult.NotConnected)) {
+      // Hot path: large public SPOT_REQREP runs can observe transient
+      // NOT_CONNECTED while admission and route state catch up. The C perf
+      // runner retries this public submit result instead of failing the cell.
+      trace(error.result === zlink.SubmitResult.NotConnected
+        ? 'request submit not connected'
+        : 'request submit backpressured');
       return false;
     }
     const text = String(error && error.message ? error.message : error);

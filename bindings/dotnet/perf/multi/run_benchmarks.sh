@@ -16,8 +16,9 @@ RESULTS_ROOT="${DOTNET_DIR}/perf/results"
 PATTERN="ALL"
 TRANSPORTS="${PERF_TRANSPORTS:-tcp,tls,ws,wss}"
 DEFAULT_MULTI_MSG_SIZES="64,256,1024,4096,65536,131072"
+DEFAULT_MULTI_STREAM_MSG_SIZES="64,256,1024,65536"
 MSG_SIZES="${PERF_MSG_SIZES:-}"
-STREAM_MSG_SIZES="${PERF_MULTI_STREAM_MSG_SIZES:-${PERF_STREAM_MSG_SIZES:-${DEFAULT_MULTI_MSG_SIZES}}}"
+STREAM_MSG_SIZES="${PERF_MULTI_STREAM_MSG_SIZES:-${PERF_STREAM_MSG_SIZES:-${DEFAULT_MULTI_STREAM_MSG_SIZES}}}"
 CLIENTS="${PERF_MULTI_CLIENTS:-}"
 EFFECTIVE_DEFAULT_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
 EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
@@ -386,7 +387,7 @@ effective_msg_sizes_display() {
     return
   fi
 
-  python3 - "${patterns_csv}" "${STREAM_MSG_SIZES:-64,256,1024,4096,65536,131072}" <<'PY'
+  python3 - "${patterns_csv}" "${STREAM_MSG_SIZES:-${DEFAULT_MULTI_STREAM_MSG_SIZES}}" <<'PY'
 import sys
 
 patterns = [item.strip() for item in sys.argv[1].split(",") if item.strip()]
@@ -427,7 +428,7 @@ PY
 default_msg_sizes_for_pattern() {
   local pattern="${1:-}"
   if [[ "${pattern}" == "MULTI_STREAM" ]]; then
-    printf '%s' "${STREAM_MSG_SIZES:-64,256,1024,4096,65536,131072}"
+    printf '%s' "${STREAM_MSG_SIZES:-${DEFAULT_MULTI_STREAM_MSG_SIZES}}"
   else
     printf '%s' "64,256,1024,4096,65536,131072"
   fi
@@ -445,7 +446,7 @@ msg_sizes_for_pattern() {
     return
   fi
 
-  python3 - "${configured_sizes}" "${STREAM_MSG_SIZES:-64,256,1024,4096,65536,131072}" <<'PY'
+  python3 - "${configured_sizes}" "${STREAM_MSG_SIZES:-${DEFAULT_MULTI_STREAM_MSG_SIZES}}" <<'PY'
 import sys
 
 allowed = {item.strip() for item in sys.argv[2].split(",") if item.strip()}

@@ -43,9 +43,13 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
 
         if (_runtime.Flow.Enabled(ZLinkMessageFlowPhase.Sent))
         {
+            var surface = _registration.Channels.TryGetValue(_channelName, out var channel)
+                && channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh
+                    ? ZLinkDispatchErrorSurface.DealerMeshChannel
+                    : ZLinkDispatchErrorSurface.Channel;
             _runtime.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowPhase.Sent,
-                ZLinkDispatchErrorSurface.Channel,
+                surface,
                 ZLinkDispatchMessageKind.Send,
                 PacketName: header.MessageName,
                 ChannelName: _channelName,

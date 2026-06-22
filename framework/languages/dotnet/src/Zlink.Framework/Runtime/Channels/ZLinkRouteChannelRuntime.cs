@@ -287,7 +287,28 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         }
 
         _spotRouteBridge.SetTargetNode(RouterChannelId, targetNodeRid);
-        return await _submitter
+
+        // corr lives inside the already-encoded header (parts[0]); decode only when
+        // tracing is on to keep the off path free.
+        string? correlationId = null;
+        string? packetName = null;
+        if (_flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        {
+            var header = ZLinkEnvelopeCodec.DecodeHeader(parts);
+            correlationId = header.CorrelationId;
+            packetName = header.MessageName;
+            _flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Sent,
+                ZLinkDispatchErrorSurface.SpotRoute,
+                ZLinkDispatchMessageKind.Request,
+                PacketName: packetName,
+                ChannelName: RouterChannelId,
+                CorrelationId: correlationId,
+                SourceRid: targetNodeRid.ToString(),
+                SpotRid: targetSpotRid.ToString()));
+        }
+
+        var reply = await _submitter
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 parts,
                 (pending, complete, fail) => _spotRouteBridge.Request(
@@ -304,6 +325,21 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                     timeout),
                 cancellationToken)
             .ConfigureAwait(false);
+
+        if (_flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
+        {
+            _flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.ReplyReceived,
+                ZLinkDispatchErrorSurface.SpotRoute,
+                ZLinkDispatchMessageKind.Response,
+                PacketName: packetName,
+                ChannelName: RouterChannelId,
+                CorrelationId: correlationId,
+                SourceRid: targetNodeRid.ToString(),
+                SpotRid: targetSpotRid.ToString()));
+        }
+
+        return reply;
     }
 
     private static IReadOnlyList<Message> PrependHeader(

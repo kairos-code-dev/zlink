@@ -19,7 +19,8 @@ internal sealed class ZLinkFrameworkActorFacade(
         spots,
         actorSessionManager,
         getState,
-        getActorSpotNode);
+        getActorSpotNode,
+        runtime.Flow);
 
     public async ValueTask<ZLinkActorJoinResult> JoinActorAsync(
         RoutingId spotRid,
@@ -373,12 +374,13 @@ internal sealed class ZLinkFrameworkActorFacade(
         Message request,
         CancellationToken cancellationToken)
     {
+        var correlationId = Guid.NewGuid().ToString("N");
         var joinHeader = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Request,
             channelName,
             typeof(Message).Name,
             ZLinkEnvelopeCodec.DefaultContentType,
-            null, null, null, null, null);
+            correlationId, null, null, null, null);
         var joinParts = ZLinkEnvelopeCodec.EncodeParts(joinHeader, request, typeof(Message));
 
         var tcs = new TaskCompletionSource<(ZLinkBackendActorJoinResult Result, IReadOnlyList<Message> Reply)>(
@@ -387,6 +389,20 @@ internal sealed class ZLinkFrameworkActorFacade(
         using var reg = cancellationToken.Register(
             static s => ((TaskCompletionSource<(ZLinkBackendActorJoinResult, IReadOnlyList<Message>)>)s!).TrySetCanceled(),
             tcs);
+
+        if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        {
+            runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Sent,
+                ZLinkDispatchErrorSurface.SpotActor,
+                ZLinkDispatchMessageKind.ActorRequest,
+                PacketName: "JoinSpot",
+                ChannelName: channelName,
+                CorrelationId: correlationId,
+                SourceRid: targetNodeRid.ToString(),
+                SpotRid: targetSpotRid.ToString(),
+                ActorId: actor.ActorId));
+        }
 
         var submitted = node.JoinActor(
             actorRef,
@@ -405,6 +421,20 @@ internal sealed class ZLinkFrameworkActorFacade(
         }
 
         var (joinResult, replyParts) = await tcs.Task.ConfigureAwait(false);
+
+        if (runtime.Flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
+        {
+            runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.ReplyReceived,
+                ZLinkDispatchErrorSurface.SpotActor,
+                ZLinkDispatchMessageKind.Response,
+                PacketName: "JoinSpot",
+                ChannelName: channelName,
+                CorrelationId: correlationId,
+                SourceRid: targetNodeRid.ToString(),
+                SpotRid: targetSpotRid.ToString(),
+                ActorId: actor.ActorId));
+        }
         var reply = DecodeNativeJoinReply(
             joinResult.Result,
             replyParts,

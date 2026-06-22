@@ -282,6 +282,17 @@ internal sealed class ZLinkChannelPacketDispatcher(
             return;
         }
 
+        if (_dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+        {
+            _dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Received,
+                ZLinkDispatchErrorSurface.DealerMeshChannel,
+                ZLinkDispatchMessageKind.Request,
+                PacketName: header.MessageName,
+                ChannelName: channelName,
+                CorrelationId: header.CorrelationId));
+        }
+
         await _requestPipeline.DispatchAsync(
                 channelName,
                 "DealerMeshChannel",

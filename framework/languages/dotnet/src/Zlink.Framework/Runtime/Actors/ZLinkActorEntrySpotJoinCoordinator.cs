@@ -5,7 +5,8 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
     ZLinkSpotRuntimeManager spots,
     ZLinkActorSessionManager actorSessionManager,
     Func<ZLinkFrameworkRuntimeState> getState,
-    Func<IZLinkBackendSpotNode?> getActorSpotNode)
+    Func<IZLinkBackendSpotNode?> getActorSpotNode,
+    Zlink.Framework.Runtime.Diagnostics.ZLinkMessageFlowTracer flow)
 {
     public async ValueTask<ZLinkActorJoinResult> JoinAsync(
         RoutingId spotNodeRid,
@@ -26,6 +27,19 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
             static s => ((TaskCompletionSource<(ZLinkBackendActorJoinEntrySpotResult, IReadOnlyList<Message>)>)s!).TrySetCanceled(),
             tcs);
 
+        var correlationId = Guid.NewGuid().ToString("N");
+        if (flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        {
+            flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Sent,
+                ZLinkDispatchErrorSurface.SpotActor,
+                ZLinkDispatchMessageKind.ActorRequest,
+                PacketName: "JoinEntrySpot",
+                CorrelationId: correlationId,
+                SourceRid: spotNodeRid.ToString(),
+                ActorId: actor.ActorId));
+        }
+
         if (!node.JoinActorEntrySpot(
                 actorRef,
                 spotNodeRid,
@@ -41,6 +55,8 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         var (result, replyParts) = await tcs.Task.ConfigureAwait(false);
         if (result.Result == RequestResult.NotConnected)
         {
+            // Not connected locally — the remote fallback below is traced by the
+            // route client; no reply_received here.
             return await JoinRemoteAsync(
                     getState(),
                     spotNodeRid,
@@ -51,6 +67,18 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                     request,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        if (flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
+        {
+            flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.ReplyReceived,
+                ZLinkDispatchErrorSurface.SpotActor,
+                ZLinkDispatchMessageKind.Response,
+                PacketName: "JoinEntrySpot",
+                CorrelationId: correlationId,
+                SourceRid: spotNodeRid.ToString(),
+                ActorId: actor.ActorId));
         }
 
         var reply = DecodeEntrySpotJoinReply(result.Result, replyParts, actor.ActorId, spotNodeRid);

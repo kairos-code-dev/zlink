@@ -64,7 +64,14 @@ class message_flow_tracer_t
         if (phase != message_flow_phase_t::dropped && !sample (_options->diagnostics.sample_rate ())) {
             return;
         }
-        emit (build_event ());
+        // build_event() builds the event (allocates strings); guard it so a throw
+        // (e.g. bad_alloc) never terminates this noexcept tracing call.
+        try {
+            emit (build_event ());
+        }
+        catch (...) {
+            observer_failure_count ().fetch_add (1, std::memory_order_relaxed);
+        }
     }
 
     // Eager form: prefer the lazy overload on hot paths. This still gates before

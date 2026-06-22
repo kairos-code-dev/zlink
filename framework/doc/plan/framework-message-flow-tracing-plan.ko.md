@@ -239,7 +239,18 @@ C++를 레퍼런스로 미러링한다. 각 언어는 이미 dispatch 에러 관
 6. **stream correlation_id**: 해당 언어의 stream 클라이언트가 C++ 세션과 통신하면 아래 "스트림
    correlation_id 헤더 필드"의 **와이어 레이아웃을 동일하게** 구현해야 상호운용된다(클라 생성·서버 echo).
 7. **테스트**: 모드 게이팅·샘플·`off` 침묵·correlation id 출력(정상·실패 양쪽)·인바운드/아웃바운드
-   전 surface·stream corr round-trip 회귀(MFLOW-001~009).
+   전 surface·stream corr round-trip 회귀(MFLOW-001~011).
+8. **codex 반복 리뷰 (언어별 필수, 이슈 0까지 반복)**: 그 언어 구현이 끝날 때마다 codex에 리뷰를
+   요청해 **누락·정확성·성능·레이어 경계 위반**을 점검한다. 리뷰가 지적을 내면 → 수정 → **다시 리뷰**를
+   돌려 **새 지적이 없을 때까지 반복**한다. 그 뒤에야 해당 언어를 "완료"로 표기한다.
+   - 리뷰에 줄 것: 이 문서 + 그 언어 구현 파일 목록 + C++ 레퍼런스 파일(대조용).
+   - 리뷰 체크포인트(매 회차): (a) 길목 표의 인바운드/아웃바운드 행이 **전부** 배선됐는가,
+     (b) off일 때 **제로코스트**(옵션 복사·이벤트 생성 없음)인가, (c) 런타임 토글이 모든 surface에
+     **live**로 반영되는가, (d) 구조화 필드+`node=`로 콜렉터 ingest 가능한가, (e) 빌더 체인 전용
+     (직접 필드 대입 불가)인가, (f) **OTel/span을 프레임워크에 하드 의존시키지 않았는가**(경계 위반),
+     (g) stream corr 와이어가 C++와 **바이트 동일**한가, (h) 수명/동시성 안전(참조 dangling, atomic 순서).
+   - 종료 조건: codex가 high/medium 지적을 더 내지 않음. 남기기로 한 보류 항목(메타데이터 와이어,
+     source_rid/target_rid)은 "의도된 보류"로 명시하고 리뷰 루프에서 제외한다.
 
 ### 적용 시 주의 (다른 언어에서 자주 막히는 지점)
 
@@ -264,6 +275,11 @@ C++를 레퍼런스로 미러링한다. 각 언어는 이미 dispatch 에러 관
 - correlation_id는 스트림 패킷 헤더의 1급 필드다(metadata 관례 폐기).
 - **보내는 클라이언트가 생성**하고, **서버(session)는 echo만** 한다(reply에 요청 corr 복사).
 - 자동 부여 시퀀스는 채널과 동일하게 client codec의 프로세스 전역 단조 카운터(hex).
+- corr은 **트레이싱 전용이 아니라 프로토콜 필드**라, 클라이언트가 **항상** 생성한다(트레이싱 off여도).
+  이유: 서버가 자기/클라 토글 상태와 무관하게 incoming stream을 corr로 추적할 수 있어야 하기 때문.
+  비용은 미미(카운터 hex는 보통 SSO=힙 할당 없음 + 와이어 ~1–17B). 진짜로 깎아야 하는 앱을 위해
+  connector opt-out(기본 on)을 후속 옵션으로 둘 수 있음. → "off 제로코스트"는 **dispatch 핫패스의
+  트레이서**에 대한 보장이지, 이 프로토콜 필드까지 0으로 만든다는 의미가 아니다.
 
 **와이어 레이아웃** (connector `header_codec`와 framework `stream_runtime` 양쪽 동일해야 함)
 - `header_flags_t`에 `has_correlation_id = 0x08` 추가.
@@ -323,3 +339,12 @@ C++ 구현/문서에 대한 codex 리뷰 결과와 처리 상태.
 - 구조화 필드 출력(D2): **프레임워크 채택 완료** — 위 경계 절 참고.
 - traceparent/span/OTel(D1/D3): **앱 레이어** — 프레임워크는 observer 훅만, OTel 의존 금지.
 - 샘플링 의미 명세(한 corr 생애주기 일괄 샘플 여부), 에러 시 링버퍼 flight-recorder는 선택적 후속.
+
+### codex 2차 리뷰 (델타 커밋 4989d64e9, 2026-06-22)
+
+1차 수정 3건(스트림 에러 corr echo / corr 생성 경량화 / spot 완전 lazy) **모두 verified**.
+1차 핵심설계(ref+lazy+atomic 게이트)도 통과. 신규 지적 2건:
+- 🟠→✅ **lazy `trace()`가 `noexcept`인데 람다가 할당** → 예외 시 terminate. **수정 완료**:
+  lazy trace의 `build_event()`+emit을 try/catch로 감쌈(실패 카운터 증가, 기존 log_default와 동일 정책).
+- 🟠→문서화 **stream connector가 off여도 corr 항상 생성**: 위 "스트림 correlation_id" 결정대로
+  **의도된 트레이드오프**(프로토콜 필드, SSO라 사실상 무할당). 필요 시 connector opt-out 후속.

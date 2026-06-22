@@ -126,25 +126,6 @@ export class SpotNode extends NativeHandle {
       );
     });
   }
-  attachChannelDealer(discovery: Discovery, dealer: DealerSocket): void {
-    configCall('spot node channel dealer attachment failed', () => {
-      requireNative().spotNodeAttachChannelDealer(
-        this._native,
-        getNativeHandle(discovery),
-        getNativeHandle(dealer)
-      );
-    });
-  }
-  attachChannelDealerManual(channelName: string, dealer: DealerSocket): void {
-    const normalized = validateCString(channelName, 'channelName');
-    configCall('spot node channel dealer attachment failed', () => {
-      requireNative().spotNodeAttachChannelDealerManual(
-        this._native,
-        normalized,
-        getNativeHandle(dealer)
-      );
-    });
-  }
   attachPubIngress(pub: PubSocket): void {
     configCall('spot node pub ingress attachment failed', () => {
       requireNative().spotNodeAttachPubIngress(this._native, getNativeHandle(pub));

@@ -111,16 +111,6 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     void AttachSpotRouteChannelDiscovery(string channelName,
         IDiscovery discovery);
     /// <summary>
-    /// Attaches a channel dealer socket.
-    /// </summary>
-    [Obsolete("Use CreateRouteBridge() and AttachDealerChannel() instead.")]
-    void AttachChannelDealer(IDiscovery discovery, IDealerSocket dealer);
-    /// <summary>
-    /// Attaches a manually named channel dealer socket.
-    /// </summary>
-    [Obsolete("Use CreateRouteBridge() and AttachDealerChannel() instead.")]
-    void AttachChannelDealerManual(string channelName, IDealerSocket dealer);
-    /// <summary>
     /// Attaches a publisher ingress socket.
     /// </summary>
     [Obsolete("Use CreatePublisher() for local SPOT topic publish.")]

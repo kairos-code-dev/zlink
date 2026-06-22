@@ -188,7 +188,7 @@ inline bool socket_auto_connect_target_matches (uint16_t auto_connect_type_,
             return local_role_ == service_role_router && remote_role_ == service_role_router
                    && compare_connect_keys (local_rid_, remote_rid_, local_endpoint_,
                                             remote_endpoint_)
-                        < 0;
+                        != 0;
         case ZLINK_AUTO_CONNECT_CLIENT_SERVER:
             return local_role_ == service_role_dealer && remote_role_ == service_role_router;
         case ZLINK_AUTO_CONNECT_DEALER_MESH:

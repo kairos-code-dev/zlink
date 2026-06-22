@@ -238,25 +238,6 @@ void spot_node_t::attach_spot_route_channel_discovery (const std::string &channe
       _impl->handle, channel_name_.c_str (), zlink::detail::native_handle (discovery_)));
 }
 
-void spot_node_t::attach_channel_dealer_impl (discovery_t &discovery_, zlink::socket_t &dealer_)
-{
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_attach_channel_dealer (_impl->handle,
-                                             zlink::detail::native_handle (discovery_),
-                                             zlink::detail::native_handle (dealer_))));
-}
-
-void spot_node_t::attach_channel_dealer_manual_impl (const std::string &channel_name_,
-                                                     zlink::socket_t &dealer_)
-{
-    zlink::detail::validate_bounded_c_string (channel_name_, 255u, "channel_name");
-    if (channel_name_.empty ())
-        throw config_error_t (config_result_t::invalid_argument, EINVAL);
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (zlink_spot_node_attach_channel_dealer_manual (
-        _impl->handle, channel_name_.c_str (), zlink::detail::native_handle (dealer_))));
-}
-
 void spot_node_t::attach_pub_ingress_impl (zlink::socket_t &pub_)
 {
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (

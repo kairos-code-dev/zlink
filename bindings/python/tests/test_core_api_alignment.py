@@ -86,8 +86,6 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertFalse(hasattr(zlink.RouterSocket, "request_to_spot_callback"))
         self.assertFalse(hasattr(zlink.Spot, "receive_subscription_event"))
         self.assertTrue(hasattr(zlink.Spot, "receive_subscription_event_into"))
-        self.assertTrue(hasattr(zlink.SpotNode, "attach_channel_dealer"))
-        self.assertTrue(hasattr(zlink.SpotNode, "attach_channel_dealer_manual"))
         self.assertTrue(hasattr(zlink.SpotNode, "attach_pub_ingress"))
         self.assertTrue(hasattr(zlink.SpotNode, "create_route_bridge"))
         self.assertTrue(hasattr(zlink.SpotNode, "create_publisher"))

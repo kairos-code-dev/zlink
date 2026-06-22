@@ -334,6 +334,7 @@ bool build_endpoint_source_rid (void *socket_,
 }
 
 int deliver_relay_to_local_spot (spot_route_bridge_t *bridge_,
+                                 const zlink_routing_id_t *source_node_rid_,
                                  zlink_msg_t *parts_,
                                  size_t part_count_,
                                  uint64_t request_seq_)
@@ -364,10 +365,12 @@ int deliver_relay_to_local_spot (spot_route_bridge_t *bridge_,
         return -1;
     }
 
-    zlink_routing_id_t source_node_rid;
-    memset (&source_node_rid, 0, sizeof (source_node_rid));
+    zlink_routing_id_t empty_source_node_rid;
+    memset (&empty_source_node_rid, 0, sizeof (empty_source_node_rid));
+    const zlink_routing_id_t *queued_source_node_rid =
+      has_valid_routing_id (source_node_rid_) ? source_node_rid_ : &empty_source_node_rid;
     const int rc = zlink::spot_reqrep_internal::queue_spot_message (
-      target_state.get (), &source_node_rid, &target_spot_rid, request_seq_, parts_ + 2,
+      target_state.get (), queued_source_node_rid, &target_spot_rid, request_seq_, parts_ + 2,
       part_count_ - 2);
     if (rc == 0) {
         zlink_msg_close (&parts_[0]);
@@ -648,7 +651,15 @@ int handle_received_common (spot_route_bridge_t *bridge_,
         return rc;
     }
 
-    const int rc = deliver_relay_to_local_spot (bridge_, parts_, part_count_, 0);
+    const zlink_routing_id_t *relay_source_node_rid = source_node_rid_;
+    zlink_routing_id_t dealer_source_node_rid;
+    if (endpoint.socket_type == ZLINK_CORE_SOCKET_DEALER
+        && !has_valid_routing_id (relay_source_node_rid)) {
+        dealer_source_node_rid = endpoint.bridge_source_rid;
+        relay_source_node_rid = &dealer_source_node_rid;
+    }
+    const int rc = deliver_relay_to_local_spot (bridge_, relay_source_node_rid, parts_,
+                                                part_count_, 0);
     if (rc != 0) {
         if (errno == EPROTO)
             ++bridge_->malformed_inbound_count;

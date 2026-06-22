@@ -50,10 +50,6 @@ int main (void)
     CHECK (zlink_spot_node_set_router_bind != NULL);
     CHECK (zlink_spot_node_set_pub_bind != NULL);
     CHECK (zlink_spot_node_spot_get_or_new != NULL);
-    CHECK (zlink_spot_node_connect_router_channel_peer != NULL);
-    CHECK (zlink_spot_node_disconnect_router_channel_peer != NULL);
-    CHECK (zlink_spot_node_disconnect_router_channel_peer_rid != NULL);
-    CHECK (zlink_spot_node_attach_router_channel_discovery != NULL);
     CHECK (zlink_spot_node_actor_join_entry_spot != NULL);
     CHECK (offsetof (zlink_actor_join_entry_spot_result_t, join_result_code)
            > offsetof (zlink_actor_join_entry_spot_result_t, result));

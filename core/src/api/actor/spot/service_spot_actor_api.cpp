@@ -1834,7 +1834,7 @@ int process_actor_gateway_entry_join_reply_locked (
 int zlink::spot_actor_internal::process_gateway_delivery (
   void *node_, const zlink_routing_id_t *source_node_rid_, zlink_msg_t *parts_, size_t part_count_)
 {
-    if (!node_ || !source_node_rid_ || !parts_ || part_count_ < 2) {
+    if (!node_ || !source_node_rid_ || !parts_ || part_count_ == 0) {
         errno = EINVAL;
         return -1;
     }
@@ -1876,7 +1876,8 @@ int zlink::spot_actor_internal::process_gateway_delivery (
               &join_notify_spot);
         } else if (frame.kind == zlink::spot_actor_gateway::packet_entry_join_reply) {
             rc = process_actor_gateway_entry_join_reply_locked (
-              node, source_node_rid_, frame, &parts_[1], part_count_ - 1, true, &completed_join,
+              node, source_node_rid_, frame, part_count_ > 1 ? &parts_[1] : NULL,
+              part_count_ > 1 ? part_count_ - 1 : 0, true, &completed_join,
               &source_actor_to_remove);
         } else if (frame.kind == zlink::spot_actor_gateway::packet_spot_join_request) {
             rc = enqueue_actor_gateway_entry_join_request_locked (
@@ -1884,7 +1885,8 @@ int zlink::spot_actor_internal::process_gateway_delivery (
               &join_notify_spot);
         } else if (frame.kind == zlink::spot_actor_gateway::packet_spot_join_reply) {
             rc = process_actor_gateway_entry_join_reply_locked (
-              node, source_node_rid_, frame, &parts_[1], part_count_ - 1, false, &completed_join,
+              node, source_node_rid_, frame, part_count_ > 1 ? &parts_[1] : NULL,
+              part_count_ > 1 ? part_count_ - 1 : 0, false, &completed_join,
               &source_actor_to_remove);
         } else {
             errno = EPROTO;

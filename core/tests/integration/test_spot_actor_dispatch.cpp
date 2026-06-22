@@ -2350,10 +2350,8 @@ void test_actor_join_spot_routes_to_remote_user_spot ()
     TEST_ASSERT_EQUAL_STRING ("remote-user-request", msg_text (&join_request).c_str ());
     zlink_msg_close (&join_request);
 
-    zlink_msg_t reply;
-    init_text_msg (&reply, "remote-user-reply");
     TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
-                       zlink_spot_actor_join_reply (target_spot, &join_info, 0, &reply));
+                       (zlink_spot_actor_join_reply) (target_spot, &join_info, 0, NULL, 0));
 
     zlink_actor_join_result_t result;
     {
@@ -2366,7 +2364,7 @@ void test_actor_join_spot_routes_to_remote_user_spot ()
     TEST_ASSERT_EQUAL_INT (0, result.join_result_code);
     assert_same_rid (target_rid, result.actor.node_rid);
     assert_same_rid (target_spot_rid, result.joined_spot_rid);
-    TEST_ASSERT_EQUAL_STRING ("remote-user-reply", wait.reply_payload.c_str ());
+    TEST_ASSERT_TRUE (wait.reply_payload.empty ());
 
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
                        wait_spot_node_actor_leave_spot (target_node, &result.actor,

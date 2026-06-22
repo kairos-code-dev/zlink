@@ -49,10 +49,6 @@ export interface SpotNode {
   disconnectRouterChannelPeer(channelName: string, endpoint: string): void;
   /** Disconnect a router-channel peer on `channelName` by `peerRid`. */
   disconnectRouterChannelPeerRid(channelName: string, peerRid: RoutingId): void;
-  /** Attach a DEALER socket as the channel dealer, discovered via `discovery`. */
-  attachChannelDealer(discovery: Discovery, dealer: DealerSocket): void;
-  /** Attach a DEALER socket as the channel dealer for `channelName` manually. */
-  attachChannelDealerManual(channelName: string, dealer: DealerSocket): void;
   /** Attach a PUB socket as a publish ingress for the node. */
   attachPubIngress(pub: PubSocket): void;
   /** Create a bridge for caller-owned channel sockets. */

@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "utils/err.hpp"
+#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "services/spot/pubsub/spot_subject_access.hpp"
 
 int zlink_service_spot_set_common_option_internal (
@@ -21,7 +22,10 @@ int zlink_service_spot_get_common_option_internal (
 
 int zlink_service_spot_set_routing_id_internal (void *handle_, const void *data_, size_t size_)
 {
-    return spot_subject_set_routing_id (handle_, data_, size_);
+    const int rc = spot_subject_set_routing_id (handle_, data_, size_);
+    if (rc == 0)
+        zlink::spot_reqrep_internal::refresh_spot_identity (handle_);
+    return rc;
 }
 
 int zlink_service_spot_get_routing_id_internal (void *handle_, zlink_routing_id_t *out_)

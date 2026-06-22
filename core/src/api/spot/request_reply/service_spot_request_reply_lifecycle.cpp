@@ -27,6 +27,7 @@ using zlink::spot_reqrep_internal::routing_pair_t;
 using zlink::spot_reqrep_internal::spot_request_reply_index_mutex;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
 using zlink::spot_reqrep_internal::spot_state_identity_index;
+using zlink::spot_reqrep_internal::spot_state_identity_index_t;
 
 typedef std::pair<int, void *> dispatch_key_t;
 
@@ -221,8 +222,46 @@ void refresh_spot_identity_index (spot_handle_t *spot_,
         return;
 
     std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex ());
+    for (spot_state_identity_index_t::iterator node_it = spot_state_identity_index ().begin ();
+         node_it != spot_state_identity_index ().end ();) {
+        for (std::unordered_map<std::string, std::weak_ptr<spot_request_reply_state_t>>::iterator
+               spot_it = node_it->second.begin ();
+             spot_it != node_it->second.end ();) {
+            std::shared_ptr<spot_request_reply_state_t> indexed = spot_it->second.lock ();
+            if (!indexed || indexed == state_)
+                spot_it = node_it->second.erase (spot_it);
+            else
+                ++spot_it;
+        }
+        if (node_it->second.empty ())
+            node_it = spot_state_identity_index ().erase (node_it);
+        else
+            ++node_it;
+    }
     spot_state_identity_index ()[identity.node_rid][identity.spot_rid] = state_;
 }
+}
+
+void zlink::spot_reqrep_internal::refresh_spot_identity (void *spot_)
+{
+    spot_handle_t *spot = as_spot_handle (spot_);
+    if (!spot)
+        return;
+
+    std::shared_ptr<spot_request_reply_state_t> state;
+    if (spot->logical_state)
+        state = spot->logical_state->request_reply_state;
+    {
+        std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex ());
+        std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t>>::iterator it =
+          spot_owner_states ().find (spot_);
+        if (!state && it != spot_owner_states ().end ())
+            state = it->second;
+    }
+    if (!state)
+        return;
+
+    refresh_spot_identity_index (spot, state);
 }
 
 std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>

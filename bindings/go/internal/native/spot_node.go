@@ -199,43 +199,6 @@ func (n *SpotNode) AttachSpotRouteChannelDiscovery(channelName string, discovery
 	})
 }
 
-func (n *SpotNode) AttachChannelDealer(discovery *Discovery, dealer *DealerSocket) error {
-	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
-	}
-	handle, err := n.handleOrError()
-	if err != nil {
-		return err
-	}
-	dealerHandle, err := socketHandle(dealer)
-	if err != nil {
-		return err
-	}
-	if err := configErrorFromResult(C.zlink_spot_node_attach_channel_dealer(handle, discovery.raw(), dealerHandle)); err != nil {
-		return err
-	}
-	n.dealerRegistry.Store(dealerHandle, dealer)
-	return nil
-}
-
-func (n *SpotNode) AttachChannelDealerManual(channelName string, dealer *DealerSocket) error {
-	handle, err := n.handleOrError()
-	if err != nil {
-		return err
-	}
-	dealerHandle, err := socketHandle(dealer)
-	if err != nil {
-		return err
-	}
-	if err := n.withCString(channelName, func(cstr *C.char) error {
-		return configErrorFromResult(C.zlink_spot_node_attach_channel_dealer_manual(handle, cstr, dealerHandle))
-	}); err != nil {
-		return err
-	}
-	n.dealerRegistry.Store(dealerHandle, dealer)
-	return nil
-}
-
 func (n *SpotNode) lookupDealer(handle unsafe.Pointer) *DealerSocket {
 	if v, ok := n.dealerRegistry.Load(handle); ok {
 		return v.(*DealerSocket)

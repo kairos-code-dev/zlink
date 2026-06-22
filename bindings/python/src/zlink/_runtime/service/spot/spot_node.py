@@ -158,27 +158,6 @@ class SpotNode(SpotNodeActorMixin, SpotNodeSnapshotMixin):
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
-    def attach_channel_dealer(self, discovery, dealer):
-        rc = lib().zlink_spot_node_attach_channel_dealer(
-            self._handle, discovery._handle, dealer._handle
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        self._channel_dealers[dealer._handle] = dealer
-
-    def attach_channel_dealer_manual(self, channel_name, dealer):
-        channel_bytes = _validated_c_string_value(
-            channel_name, field="channel_name", max_length=255
-        )
-        rc = lib().zlink_spot_node_attach_channel_dealer_manual(
-            self._handle,
-            channel_bytes,
-            dealer._handle,
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        self._channel_dealers[dealer._handle] = dealer
-
     def attach_pub_ingress(self, pub):
         rc = lib().zlink_spot_node_attach_pub_ingress(self._handle, pub._handle)
         if rc != 0:

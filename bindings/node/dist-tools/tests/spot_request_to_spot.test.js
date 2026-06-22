@@ -96,6 +96,139 @@ test('spot route bridge request resolves through channel router reply', async ()
         ctx.close();
     }
 });
+test('spot route bridge router request handles metadata and resolves through target spot reply', async () => {
+    const endpoint = `inproc://spot-route-bridge-router-${process.pid}-${Date.now()}`;
+    const ctx = zlink.createContext();
+    const sourceNode = zlink.createSpotNode(ctx);
+    const targetNode = zlink.createSpotNode(ctx);
+    const sourceRouter = zlink.createRouterSocket(ctx);
+    const targetRouter = zlink.createRouterSocket(ctx);
+    const sourceBridge = sourceNode.createRouteBridge();
+    const targetBridge = targetNode.createRouteBridge();
+    const targetSpot = targetNode.entrySpot();
+    try {
+        sourceNode.setRoutingId(textRoutingId('BRIDGE_SRC_NODE'));
+        targetNode.setRoutingId(textRoutingId('BRIDGE_DST_NODE'));
+        targetSpot.setRoutingId(textRoutingId('BRIDGE_DST_NODE'));
+        sourceRouter.setRoutingId(textRoutingId('BRIDGE_SRC_NODE'));
+        targetRouter.setRoutingId(textRoutingId('BRIDGE_DST_NODE'));
+        targetRouter.bind(endpoint);
+        sourceRouter.connect(endpoint);
+        sourceBridge.attachRouterChannel('mesh', sourceRouter, { capabilities: 3 });
+        targetBridge.attachRouterChannel('mesh', targetRouter, { capabilities: 3 });
+        sourceBridge.setTargetNode('mesh', targetNode.routingId);
+        const replyPromise = sourceBridge.request('mesh', targetSpot.routingId)
+            .message(Buffer.from('router-spot-ping'))
+            .timeout(2000)
+            .submit();
+        const channelReceived = new zlink.Received();
+        await waitFor(() => targetRouter.recv(channelReceived, zlink.RecvFlags.DontWait), 'target route router bridge request');
+        let channelReceivedConsumed = false;
+        try {
+            assert.ok(channelReceived.routingId);
+            assert.notEqual(channelReceived.requestSeq, null);
+            assert.equal(targetBridge.handleRouterReceived('mesh', channelReceived.routingId, channelReceived.parts, channelReceived.requestSeq), true);
+            channelReceivedConsumed = true;
+        }
+        finally {
+            if (!channelReceivedConsumed) {
+                channelReceived.close();
+            }
+        }
+        const spotReceived = new zlink.Received();
+        await waitFor(() => targetSpot.recvRouted(spotReceived, zlink.RecvFlags.DontWait), 'target entry spot bridge request');
+        try {
+            assert.equal(spotReceived.parts.length, 1);
+            assert.equal(spotReceived.parts[0].data().toString(), 'router-spot-ping');
+            spotReceived.reply().message(Buffer.from('router-spot-pong')).submit();
+        }
+        finally {
+            spotReceived.close();
+        }
+        let reply;
+        let replyError;
+        void replyPromise.then((value) => {
+            reply = value;
+        }, (error) => {
+            replyError = error;
+        });
+        await waitFor(() => {
+            const progress = new zlink.Received();
+            try {
+                targetRouter.recv(progress, zlink.RecvFlags.DontWait);
+            }
+            finally {
+                progress.close();
+            }
+            if (replyError !== undefined) {
+                throw replyError;
+            }
+            return reply !== undefined;
+        }, 'target route router bridge reply progress');
+        assert.ok(reply);
+        assert.equal(reply.length, 1);
+        assert.equal(reply[0].data().toString(), 'router-spot-pong');
+        reply[0].close();
+    }
+    finally {
+        targetBridge.close();
+        sourceBridge.close();
+        targetRouter.close();
+        sourceRouter.close();
+        targetNode.close();
+        sourceNode.close();
+        ctx.close();
+    }
+});
+test('router requestToSpot reaches peer router as SPOT-addressed request', async () => {
+    const endpoint = `inproc://router-request-to-spot-${process.pid}-${Date.now()}`;
+    const ctx = zlink.createContext();
+    const targetNode = zlink.createSpotNode(ctx);
+    const sourceRouter = zlink.createRouterSocket(ctx);
+    const targetRouter = zlink.createRouterSocket(ctx);
+    const targetSpot = targetNode.entrySpot();
+    try {
+        targetNode.setRoutingId(textRoutingId('ROUTER_SPOT_DST'));
+        targetSpot.setRoutingId(textRoutingId('ROUTER_SPOT_ENTRY'));
+        sourceRouter.setRoutingId(textRoutingId('ROUTER_SPOT_SRC'));
+        targetRouter.setRoutingId(textRoutingId('ROUTER_SPOT_DST'));
+        targetRouter.bind(endpoint);
+        sourceRouter.connect(endpoint);
+        const replyPromise = sourceRouter.requestToSpot(targetRouter.getRoutingId(), textRoutingId('ROUTER_SPOT_ENTRY')).message(Buffer.from('router-spot-direct-ping')).timeout(2000).submit();
+        const received = new zlink.Received();
+        await waitFor(() => targetRouter.recv(received, zlink.RecvFlags.DontWait), 'target router direct SPOT request');
+        try {
+            assert.ok(received.routingId);
+            assert.ok(received.spotRid);
+            assert.notEqual(received.requestSeq, null);
+            assert.equal(String(received.routingId), 'ROUTER_SPOT_SRC');
+            assert.equal(String(received.spotRid), 'ROUTER_SPOT_ENTRY');
+            assert.equal(received.parts.length, 1);
+            assert.equal(received.parts[0].data().toString(), 'router-spot-direct-ping');
+            targetSpot.replyToRouter(received.routingId, received.requestSeq)
+                .message(Buffer.from('router-spot-direct-pong'))
+                .submit();
+        }
+        finally {
+            received.close();
+        }
+        const reply = await replyPromise;
+        try {
+            assert.equal(reply.length, 1);
+            assert.equal(reply[0].data().toString(), 'router-spot-direct-pong');
+        }
+        finally {
+            reply.forEach((part) => part.close());
+        }
+    }
+    finally {
+        targetRouter.close();
+        sourceRouter.close();
+        targetSpot.close();
+        targetNode.close();
+        ctx.close();
+    }
+});
 test('spot requestToSpot promise resolves through peer spot routed reply', async () => {
     const serverPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const serverRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;

@@ -1435,6 +1435,114 @@ void test_router_to_spot_request_reply_basic ()
     teardown_connected_spot_case (&spot_case);
 }
 
+void test_router_to_spot_request_reaches_peer_router_over_transport ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *target_node = zlink_spot_node_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (target_node);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (target_node, "router-spot-dst", 15));
+    void *target_spot = NULL;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_spot_node_entry_spot (target_node, &target_spot));
+    TEST_ASSERT_NOT_NULL (target_spot);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (target_spot, "router-spot-entry", 17));
+
+    void *source_router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    void *target_router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (source_router);
+    TEST_ASSERT_NOT_NULL (target_router);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (source_router, "router-spot-src", 15));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (target_router, "router-spot-dst", 15));
+
+    const char *endpoint = "inproc://router-spot-direct-request";
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (target_router, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (source_router, endpoint));
+    msleep (SETTLE_TIME);
+
+    zlink_routing_id_t target_node_rid;
+    zlink_routing_id_t target_spot_rid;
+    memset (&target_node_rid, 0, sizeof (target_node_rid));
+    memset (&target_spot_rid, 0, sizeof (target_spot_rid));
+    memcpy (target_node_rid.data, "router-spot-dst", 15);
+    target_node_rid.size = 15;
+    memcpy (target_spot_rid.data, "router-spot-entry", 17);
+    target_spot_rid.size = 17;
+
+    zlink_msg_t request_part;
+    zlink_msg_init (&request_part);
+    init_string_part (&request_part, "router-spot-direct");
+
+    reply_probe_t reply_probe;
+    reply_probe.progress_handle = source_router;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_request_spot (
+      source_router, &target_node_rid, &target_spot_rid, &request_part, 1, &capture_reply,
+      &reply_probe, 0, 3000));
+
+    const zlink_routing_id_t *source_node_rid = NULL;
+    const zlink_routing_id_t *source_spot_rid = NULL;
+    uint64_t request_seq = 0;
+    zlink_msg_t *parts = NULL;
+    size_t part_count = 0;
+    zlink_recv_result_t recv_rc = ZLINK_RECV_NO_DATA;
+    for (int attempt = 0; attempt < 300; ++attempt) {
+        recv_rc = zlink_router_recv (target_router, &source_node_rid, &source_spot_rid,
+                                     &request_seq, &parts, &part_count, ZLINK_DONTWAIT);
+        if (recv_rc == ZLINK_RECV_OK)
+            break;
+        msleep (10);
+    }
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_OK, recv_rc);
+    TEST_ASSERT_NOT_NULL (source_node_rid);
+    TEST_ASSERT_NOT_NULL (source_spot_rid);
+
+    router_spot_request_handler_probe_t handler_probe;
+    handler_probe.invoked = true;
+    handler_probe.request_seq = request_seq;
+    handler_probe.source_node_rid_value = *source_node_rid;
+    handler_probe.source_spot_rid_value = *source_spot_rid;
+    handler_probe.source_node_rid.assign (reinterpret_cast<const char *> (source_node_rid->data),
+                                          source_node_rid->size);
+    handler_probe.source_spot_rid.assign (reinterpret_cast<const char *> (source_spot_rid->data),
+                                          source_spot_rid->size);
+    handler_probe.request_payload = part_count > 0 ? msg_to_string (&parts[0]) : std::string ();
+    zlink_multipart_close (parts, part_count);
+    {
+        std::lock_guard<std::mutex> lock (handler_probe.mutex);
+        TEST_ASSERT_TRUE (handler_probe.invoked);
+        TEST_ASSERT_EQUAL_STRING_LEN ("router-spot-src", handler_probe.source_node_rid.c_str (),
+                                      handler_probe.source_node_rid.size ());
+        TEST_ASSERT_EQUAL_STRING_LEN ("router-spot-entry", handler_probe.source_spot_rid.c_str (),
+                                      handler_probe.source_spot_rid.size ());
+        TEST_ASSERT_EQUAL_STRING_LEN ("router-spot-direct", handler_probe.request_payload.c_str (),
+                                      handler_probe.request_payload.size ());
+    }
+
+    zlink_msg_t reply_part;
+    zlink_msg_init (&reply_part);
+    init_string_part (&reply_part, "router-spot-direct-reply");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       (zlink_spot_reply_router) (target_spot,
+                                                  &handler_probe.source_node_rid_value,
+                                                  handler_probe.request_seq, &reply_part, 1));
+
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
+    {
+        std::lock_guard<std::mutex> lock (reply_probe.mutex);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, reply_probe.result);
+        TEST_ASSERT_EQUAL_STRING_LEN ("router-spot-direct-reply", reply_probe.payload.c_str (),
+                                      reply_probe.payload.size ());
+    }
+
+    msleep (SETTLE_TIME);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (source_router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (target_router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&target_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&target_node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_spot_to_spot_request_preserves_source_identity ()
 {
     void *ctx = zlink_ctx_new ();
@@ -1619,6 +1727,7 @@ int main ()
     RUN_TEST (test_router_request_rejects_non_router_target);
     RUN_TEST (test_dealer_request_uses_socket_default_timeout_when_reply_is_missing);
     RUN_TEST (test_router_to_spot_request_reply_basic);
+    RUN_TEST (test_router_to_spot_request_reaches_peer_router_over_transport);
     RUN_TEST (test_spot_to_spot_request_preserves_source_identity);
     RUN_TEST (test_spot_to_spot_request_reply_over_tls);
     RUN_TEST (test_router_to_missing_spot_completes_with_enoent);

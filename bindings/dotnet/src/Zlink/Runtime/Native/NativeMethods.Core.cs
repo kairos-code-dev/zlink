@@ -72,8 +72,6 @@ internal static partial class NativeMethods
         "zlink_spot_node_disconnect_router_channel_peer",
         "zlink_spot_node_disconnect_router_channel_peer_rid",
         "zlink_spot_node_attach_router_channel_discovery",
-        "zlink_spot_node_attach_channel_dealer",
-        "zlink_spot_node_attach_channel_dealer_manual",
         "zlink_spot_node_attach_pub_ingress",
         "zlink_spot_route_bridge_new",
         "zlink_spot_route_bridge_attach_dealer_channel",

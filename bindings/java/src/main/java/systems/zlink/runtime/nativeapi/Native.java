@@ -815,14 +815,6 @@ public final class Native {
             "zlink_spot_node_attach_router_channel_discovery",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_ATTACH_CHANNEL_DEALER = downcall(
-            "zlink_spot_node_attach_channel_dealer",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_ATTACH_CHANNEL_DEALER_MANUAL = downcall(
-            "zlink_spot_node_attach_channel_dealer_manual",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_ATTACH_PUB_INGRESS = downcall(
             "zlink_spot_node_attach_pub_ingress",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -3253,32 +3245,6 @@ public final class Native {
         } catch (Throwable t) {
             throw new RuntimeException(
               "zlink_spot_node_attach_router_channel_discovery failed", t);
-        }
-    }
-
-    public static int spotNodeAttachChannelDealer(MemorySegment node,
-                                                  MemorySegment discovery,
-                                                  MemorySegment dealer) {
-        try {
-            return (int) MH_SPOT_NODE_ATTACH_CHANNEL_DEALER.invokeExact(node,
-              discovery, dealer);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_attach_channel_dealer failed",
-              t);
-        }
-    }
-
-    public static int spotNodeAttachChannelDealerManual(MemorySegment node,
-                                                        MemorySegment channelName,
-                                                        MemorySegment dealer) {
-        try {
-            return (int) MH_SPOT_NODE_ATTACH_CHANNEL_DEALER_MANUAL.invokeExact(
-              node, channelName, dealer);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_attach_channel_dealer_manual failed",
-              t);
         }
     }
 

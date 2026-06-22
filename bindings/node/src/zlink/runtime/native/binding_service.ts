@@ -178,16 +178,6 @@ export interface ServiceNativeBinding {
     flags: number
   ) => void;
   spotNodeActors: (node: NativeHandle) => SpotNodeActorEntryRaw[];
-  spotNodeAttachChannelDealer: (
-    node: NativeHandle,
-    discovery: NativeHandle,
-    dealer: NativeHandle
-  ) => void;
-  spotNodeAttachChannelDealerManual: (
-    node: NativeHandle,
-    channelName: string,
-    dealer: NativeHandle
-  ) => void;
   spotNodeAttachPubIngress: (node: NativeHandle, pub: NativeHandle) => void;
   spotRouteBridgeNew: (ctx: NativeHandle, node: NativeHandle) => NativeHandle;
   spotRouteBridgeClose: (bridge: NativeHandle) => void;

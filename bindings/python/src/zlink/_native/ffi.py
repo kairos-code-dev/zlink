@@ -1307,16 +1307,6 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_attach_channel_dealer",
-            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_node_attach_channel_dealer_manual",
-            [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
             "zlink_spot_node_attach_pub_ingress",
             [ctypes.c_void_p, ctypes.c_void_p],
             ctypes.c_int,

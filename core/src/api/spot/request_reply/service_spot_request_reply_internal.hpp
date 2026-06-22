@@ -400,6 +400,7 @@ std::vector<std::shared_ptr<spot_request_reply_state_t>> snapshot_spot_states ()
 std::shared_ptr<router_spot_request_reply_state_t>
 find_router_state_by_rid (const std::string &router_rid_);
 void unregister_spot_identity (const std::shared_ptr<spot_request_reply_state_t> &state_);
+void refresh_spot_identity (void *spot_);
 zlink::spot_runtime_t *resolve_runtime_for_spot_destination (const std::string &node_rid_,
                                                              const std::string &spot_rid_);
 int ensure_spot_completion_queue_ready (const std::shared_ptr<spot_request_reply_state_t> &state_);

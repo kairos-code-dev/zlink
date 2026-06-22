@@ -270,35 +270,6 @@ impl SpotNodePublicRuntime for SpotNode {
         })
     }
 
-    fn attach_channel_dealer(
-        &self,
-        discovery: &Discovery,
-        dealer: &crate::DealerSocket,
-    ) -> Result<(), ConfigError> {
-        check_config_rc(unsafe {
-            ffi::zlink_spot_node_attach_channel_dealer(
-                spot_node_handle(self),
-                discovery.raw(),
-                crate::socket::dealer_inner(dealer).handle,
-            )
-        })
-    }
-
-    fn attach_channel_dealer_manual(
-        &self,
-        channel_name: &str,
-        dealer: &crate::DealerSocket,
-    ) -> Result<(), ConfigError> {
-        let c_channel_name = fixed_cstring_config(channel_name, "channel_name")?;
-        check_config_rc(unsafe {
-            ffi::zlink_spot_node_attach_channel_dealer_manual(
-                spot_node_handle(self),
-                c_channel_name.as_ptr(),
-                crate::socket::dealer_inner(dealer).handle,
-            )
-        })
-    }
-
     fn attach_pub_ingress(&self, pub_sock: &crate::PubSocket) -> Result<(), ConfigError> {
         check_config_rc(unsafe {
             ffi::zlink_spot_node_attach_pub_ingress(

@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import systems.zlink.contracts.errors.ZlinkRequestException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RequestResult;
@@ -27,6 +28,7 @@ import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeMessage;
+import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.nativeapi.RequestProgressPump;
 import systems.zlink.runtime.nativeapi.RequestReplySupport;
 
@@ -118,7 +120,13 @@ final class SpotRequestPlane {
     }
 
     private RuntimeException submitFailure(String apiName) {
-        return InternalAccess.zlinkExceptionFromLastError(apiName);
+        int errno = Native.errno();
+        ZlinkSubmitException submit =
+            NativeSubmitErrors.submitExceptionOrNull(errno);
+        if (submit != null) {
+            return submit;
+        }
+        return InternalAccess.zlinkExceptionFromErrno(apiName, errno);
     }
 
     private static CompletableFuture<Received> registerPending(long requestId,

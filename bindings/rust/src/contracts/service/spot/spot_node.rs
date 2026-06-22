@@ -121,24 +121,6 @@ impl SpotNode {
         )
     }
 
-    /// Attaches a DEALER socket as the channel dealer, discovered via `discovery`.
-    pub fn attach_channel_dealer(
-        &self,
-        discovery: &Discovery,
-        dealer: &crate::DealerSocket,
-    ) -> Result<(), ConfigError> {
-        <Self as SpotNodeContract>::attach_channel_dealer(self, discovery, dealer)
-    }
-
-    /// Attaches a DEALER socket as the channel dealer for `channel_name` manually.
-    pub fn attach_channel_dealer_manual(
-        &self,
-        channel_name: &str,
-        dealer: &crate::DealerSocket,
-    ) -> Result<(), ConfigError> {
-        <Self as SpotNodeContract>::attach_channel_dealer_manual(self, channel_name, dealer)
-    }
-
     /// Attaches a PUB socket as a publish ingress for the node.
     pub fn attach_pub_ingress(&self, pub_sock: &crate::PubSocket) -> Result<(), ConfigError> {
         <Self as SpotNodeContract>::attach_pub_ingress(self, pub_sock)

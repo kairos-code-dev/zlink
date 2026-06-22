@@ -188,8 +188,6 @@ void define_spot_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("spotNodeSetDiscovery", spot_node_set_discovery),
       ZLINK_METHOD ("spotNodeAttachRouterChannelDiscovery",
                     spot_node_attach_router_channel_discovery),
-      ZLINK_METHOD ("spotNodeAttachChannelDealer", spot_node_attach_channel_dealer),
-      ZLINK_METHOD ("spotNodeAttachChannelDealerManual", spot_node_attach_channel_dealer_manual),
       ZLINK_METHOD ("spotNodeAttachPubIngress", spot_node_attach_pub_ingress),
       ZLINK_METHOD ("spotRouteBridgeNew", spot_route_bridge_new),
       ZLINK_METHOD ("spotRouteBridgeClose", spot_route_bridge_close),

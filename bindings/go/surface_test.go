@@ -239,12 +239,6 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "AttachSpotRouteChannelDiscovery") {
 		t.Fatalf("SpotNode should expose AttachSpotRouteChannelDiscovery")
 	}
-	if !hasMethod((*zlink.SpotNode)(nil), "AttachChannelDealer") {
-		t.Fatalf("SpotNode should expose AttachChannelDealer")
-	}
-	if !hasMethod((*zlink.SpotNode)(nil), "AttachChannelDealerManual") {
-		t.Fatalf("SpotNode should expose AttachChannelDealerManual")
-	}
 	if !hasMethod((*zlink.SpotNode)(nil), "AttachPubIngress") {
 		t.Fatalf("SpotNode should expose AttachPubIngress")
 	}

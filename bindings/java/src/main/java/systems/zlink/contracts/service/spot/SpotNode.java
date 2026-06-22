@@ -52,12 +52,6 @@ public interface SpotNode extends AutoCloseable {
     void attachSpotRouteChannelDiscovery(String channelName,
                                                          Discovery discovery);
 
-    void attachChannelDealer(Discovery discovery,
-                                             DealerSocket dealer);
-
-    void attachChannelDealerManual(String channelName,
-                                                   DealerSocket dealer);
-
     void attachPubIngress(PubSocket pub);
 
     SpotRouteBridge createRouteBridge();

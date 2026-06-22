@@ -165,47 +165,6 @@ internal sealed partial class SpotNode : ISpotNode
             SocketInterop.RequireDiscovery(discovery, nameof(discovery)));
     }
 
-    public void AttachChannelDealer(Discovery discovery, DealerSocket dealer)
-    {
-        EnsureNotDisposed();
-        if (discovery == null)
-            throw new ArgumentNullException(nameof(discovery));
-        if (dealer == null)
-            throw new ArgumentNullException(nameof(dealer));
-        int rc = NativeMethods.zlink_spot_node_attach_channel_dealer(_handle,
-            discovery.Handle, dealer.Handle);
-        ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    void ISpotNode.AttachChannelDealer(IDiscovery discovery,
-        IDealerSocket dealer)
-    {
-        AttachChannelDealer(
-            SocketInterop.RequireDiscovery(discovery, nameof(discovery)),
-            SocketInterop.RequireDealerSocket(dealer, nameof(dealer)));
-    }
-
-    public void AttachChannelDealerManual(string channelName,
-        DealerSocket dealer)
-    {
-        EnsureNotDisposed();
-        if (dealer == null)
-            throw new ArgumentNullException(nameof(dealer));
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        int rc = NativeMethods.zlink_spot_node_attach_channel_dealer_manual(
-            _handle, channelName, dealer.Handle);
-        ZlinkException.ThrowConfigIfError(rc);
-        lock (_channelDealers)
-            _channelDealers[channelName] = dealer;
-    }
-
-    void ISpotNode.AttachChannelDealerManual(string channelName,
-        IDealerSocket dealer)
-    {
-        AttachChannelDealerManual(channelName,
-            SocketInterop.RequireDealerSocket(dealer, nameof(dealer)));
-    }
-
     public void AttachPubIngress(PubSocket pub)
     {
         EnsureNotDisposed();

@@ -119,18 +119,6 @@ class spot_node_t
     void attach_spot_route_channel_discovery (const std::string &channel_name_,
                                               discovery_t &discovery_);
 
-    template <typename DealerT>
-    void attach_channel_dealer (discovery_t &discovery_, DealerT &dealer_)
-    {
-        attach_channel_dealer_impl (discovery_, static_cast<zlink::socket_t &> (dealer_));
-    }
-
-    template <typename DealerT>
-    void attach_channel_dealer_manual (const std::string &channel_name_, DealerT &dealer_)
-    {
-        attach_channel_dealer_manual_impl (channel_name_, static_cast<zlink::socket_t &> (dealer_));
-    }
-
     template <typename PubT> void attach_pub_ingress (PubT &pub_)
     {
         attach_pub_ingress_impl (static_cast<zlink::socket_t &> (pub_));
@@ -241,9 +229,6 @@ class spot_node_t
     };
     spot_node_t (context_t &ctx_, spot_node_mode_t mode_, mode_ctor_tag_t);
 
-    void attach_channel_dealer_impl (discovery_t &discovery_, zlink::socket_t &dealer_);
-    void attach_channel_dealer_manual_impl (const std::string &channel_name_,
-                                            zlink::socket_t &dealer_);
     void attach_pub_ingress_impl (zlink::socket_t &pub_);
     int get_spot_node_option_int (int option_) const;
     void set_spot_node_option_int (int option_, int value_);

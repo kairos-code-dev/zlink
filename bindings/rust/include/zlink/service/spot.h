@@ -227,13 +227,6 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_discovery (void *node,
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_router_channel_discovery (
   void *node, const char *channel_name, void *discovery);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_channel_dealer (void *node_,
-                                                                          void *discovery_,
-                                                                          void *dealer_);
-
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual (
-  void *node_, const char *channel_name_, void *dealer_);
-
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_pub_ingress (void *node_, void *pub_);
 
 #define ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE 0x00000001u

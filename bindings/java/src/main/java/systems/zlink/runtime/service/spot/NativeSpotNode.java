@@ -285,34 +285,6 @@ public final class NativeSpotNode implements SpotNode {
         }
     }
 
-    /** Attaches one discovery-managed channel DEALER to the node. */
-    public void attachChannelDealer(Discovery discovery, DealerSocket dealer) {
-        Objects.requireNonNull(discovery, "discovery");
-        Objects.requireNonNull(dealer, "dealer");
-        int rc = Native.spotNodeAttachChannelDealer(handle,
-          InternalAccess.discoveryHandle(discovery),
-          InternalAccess.socketHandle(dealer));
-        if (rc != 0) {
-            throw InternalAccess.zlinkExceptionFromLastError(
-              "zlink_spot_node_attach_channel_dealer");
-        }
-    }
-
-    /** Attaches one manually connected channel DEALER to the node. */
-    public void attachChannelDealerManual(String channelName,
-                                          DealerSocket dealer) {
-        Objects.requireNonNull(dealer, "dealer");
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotNodeAttachChannelDealerManual(handle,
-              NativeHelpers.toCString(arena, requireChannelName(channelName)),
-              InternalAccess.socketHandle(dealer));
-            if (rc != 0) {
-                throw InternalAccess.zlinkExceptionFromLastError(
-                  "zlink_spot_node_attach_channel_dealer_manual");
-            }
-        }
-    }
-
     /** Attaches one dedicated publish ingress PUB socket to the node. */
     public void attachPubIngress(PubSocket pub) {
         Objects.requireNonNull(pub, "pub");

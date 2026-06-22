@@ -207,15 +207,6 @@ ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer (void *node,
 ZLINK_EXPORT zlink_connect_result_t
 zlink_spot_node_disconnect_peer_rid (void *node, const zlink_routing_id_t *target_node_rid);
 
-ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_router_channel_peer (
-  void *node, const char *channel_name, const char *endpoint);
-ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_router_channel_peer_rid (
-  void *node, const char *channel_name, const zlink_routing_id_t *peer_rid, const char *endpoint);
-ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer (
-  void *node, const char *channel_name, const char *endpoint);
-ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer_rid (
-  void *node, const char *channel_name, const zlink_routing_id_t *peer_rid);
-
 /**
  * @brief Attach a Discovery instance for discovery-owned SPOT peer connection.
  *
@@ -224,17 +215,6 @@ ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_router_channel_pe
  * participant shutdown.
  */
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_discovery (void *node, void *discovery);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_router_channel_discovery (
-  void *node, const char *channel_name, void *discovery);
-
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_channel_dealer (void *node_,
-                                                                          void *discovery_,
-                                                                          void *dealer_);
-
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual (
-  void *node_, const char *channel_name_, void *dealer_);
-
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_pub_ingress (void *node_, void *pub_);
 
 #define ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE 0x00000001u
 #define ZLINK_SPOT_ROUTE_BRIDGE_CAP_CHANNEL_INBOUND 0x00000002u

@@ -1566,16 +1566,6 @@ unsafe extern "C" {
         channel_name: *const c_char,
         discovery: *mut c_void,
     ) -> c_int;
-    pub fn zlink_spot_node_attach_channel_dealer(
-        node: *mut c_void,
-        discovery: *mut c_void,
-        dealer: *mut c_void,
-    ) -> c_int;
-    pub fn zlink_spot_node_attach_channel_dealer_manual(
-        node: *mut c_void,
-        channel_name: *const c_char,
-        dealer: *mut c_void,
-    ) -> c_int;
     pub fn zlink_spot_node_attach_pub_ingress(node: *mut c_void, pub_socket: *mut c_void) -> c_int;
     pub fn zlink_spot_route_bridge_new(
         ctx: *mut c_void,

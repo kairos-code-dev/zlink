@@ -336,12 +336,6 @@ public sealed class test_socket_surface
             nameof(ISpotNode.AttachSpotRouteChannelDiscovery), typeof(string),
             typeof(IDiscovery)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
-            nameof(ISpotNode.AttachChannelDealer), typeof(IDiscovery),
-            typeof(IDealerSocket)));
-        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
-            nameof(ISpotNode.AttachChannelDealerManual), typeof(string),
-            typeof(IDealerSocket)));
-        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
             nameof(ISpotNode.AttachPubIngress), typeof(IPubSocket)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
             nameof(ISpotNode.CreateRouteBridge),

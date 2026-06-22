@@ -522,16 +522,6 @@ pub(crate) trait SpotNodePublicRuntime {
         channel_name: &str,
         discovery: &Discovery,
     ) -> Result<(), ConfigError>;
-    fn attach_channel_dealer(
-        &self,
-        discovery: &Discovery,
-        dealer: &crate::DealerSocket,
-    ) -> Result<(), ConfigError>;
-    fn attach_channel_dealer_manual(
-        &self,
-        channel_name: &str,
-        dealer: &crate::DealerSocket,
-    ) -> Result<(), ConfigError>;
     fn attach_pub_ingress(&self, pub_sock: &crate::PubSocket) -> Result<(), ConfigError>;
     fn router_high_water_mark(&self) -> Result<i32, ConfigError>;
     fn set_router_high_water_mark(&self, value: i32) -> Result<(), ConfigError>;

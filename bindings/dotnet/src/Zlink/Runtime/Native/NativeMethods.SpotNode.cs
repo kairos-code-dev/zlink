@@ -63,15 +63,6 @@ internal static partial class NativeMethods
         ref ZlinkRoutingId peerRid);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_attach_channel_dealer(
-        IntPtr node, IntPtr discovery, IntPtr dealer);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_attach_channel_dealer_manual(
-        IntPtr node, [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        IntPtr dealer);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_attach_discovery(IntPtr node,
         IntPtr discovery);
 

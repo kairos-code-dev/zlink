@@ -2625,43 +2625,6 @@ napi_value spot_node_attach_router_channel_discovery (napi_env env, napi_callbac
     return ok;
 }
 
-napi_value spot_node_attach_channel_dealer (napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *node = NULL;
-    void *discovery = NULL;
-    void *dealer = NULL;
-    napi_get_value_external (env, argv[0], &node);
-    napi_get_value_external (env, argv[1], &discovery);
-    napi_get_value_external (env, argv[2], &dealer);
-    int rc = zlink_spot_node_attach_channel_dealer (node, discovery, dealer);
-    if (rc != 0)
-        return throw_last_error (env, "spotNodeAttachChannelDealer failed");
-    napi_value ok;
-    napi_get_undefined (env, &ok);
-    return ok;
-}
-
-napi_value spot_node_attach_channel_dealer_manual (napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *node = NULL;
-    void *dealer = NULL;
-    napi_get_value_external (env, argv[0], &node);
-    std::string channel_name = get_string (env, argv[1]);
-    napi_get_value_external (env, argv[2], &dealer);
-    int rc = zlink_spot_node_attach_channel_dealer_manual (node, channel_name.c_str (), dealer);
-    if (rc != 0)
-        return throw_last_error (env, "spotNodeAttachChannelDealerManual failed");
-    napi_value ok;
-    napi_get_undefined (env, &ok);
-    return ok;
-}
-
 napi_value spot_node_attach_pub_ingress (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -2920,7 +2883,9 @@ napi_value spot_route_bridge_handle_router_received_with_metadata (napi_env env,
     if (!parse_routing_id_value (env, argv[2], &source_node_rid))
         return NULL;
     uint64_t request_seq = 0;
-    if (napi_get_value_bigint_uint64 (env, argv[3], &request_seq, NULL) != napi_ok)
+    bool lossless = false;
+    if (napi_get_value_bigint_uint64 (env, argv[3], &request_seq, &lossless) != napi_ok
+        || !lossless)
         return NULL;
     std::vector<zlink_msg_t> parts;
     if (!build_msg_vector_or_single (env, argv[4], &parts))

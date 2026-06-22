@@ -4,6 +4,7 @@
 #include "../Configuration/sample_configuration.hpp"
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
+#include "../sample_log_dir.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
 #include "Infrastructure/ZLink/Handlers/allocate_bingo_room_handler.hpp"
@@ -38,7 +39,13 @@ class play_server_host_factory_t
         if (auto_stop) {
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
+        app.logging ()
+          .use_console ()
+          .use_file (flow_log_path ("play-" + topology.play_node))
+          .set_min_level (zlink::framework::log_level_t::info);
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+            options.configure_dispatch ().diagnostics.message_flow =
+              zlink::framework::message_flow_log_mode_t::key_transitions;
             options.services ()
               .add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology))
               .add_singleton<bingo_match_queue_t> (

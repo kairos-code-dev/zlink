@@ -26,6 +26,7 @@ export interface ZlinkStreamHeader {
   readonly requestSeq?: bigint;
   readonly name: string;
   readonly metadata: ZlinkStreamMetadata;
+  readonly correlationId?: string;
 }
 
 export interface ZlinkStreamError {

@@ -34,7 +34,8 @@ export enum ZlinkStreamHeaderFlags {
   None = 0,
   HasRequestSeq = 0x01,
   HasMetadata = 0x02,
-  PayloadCompressed = 0x04
+  PayloadCompressed = 0x04,
+  HasCorrelationId = 0x08
 }
 
 export enum ZlinkStreamErrorCode {

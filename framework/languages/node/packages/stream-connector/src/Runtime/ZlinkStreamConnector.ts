@@ -51,6 +51,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   private readonly stateHandlers = new Set<(change: ZlinkStreamConnectionStateChanged, signal?: AbortSignal) => Promise<void> | void>();
   private connection: ZlinkStreamConnection | undefined;
   private currentState = ZlinkStreamConnectionState.Created;
+  private correlationCounter = 0n;
   private readonly pendingRequests = new ZlinkStreamPendingRequests();
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private receiveLoopAbort: AbortController | undefined;
@@ -278,12 +279,22 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     metadata: ZlinkStreamMetadata,
     compress: boolean,
     requestSeq: bigint | undefined,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    correlationId?: string
   ): Promise<void> {
     throwIfAborted(signal);
     const payloadBytes = compress ? compressPayload(payload.payload, this.options.compression) : payload.payload;
-    const header = buildHeader(kind, name, payload.codec, metadata, compress, requestSeq);
+    const header = buildHeader(kind, name, payload.codec, metadata, compress, requestSeq, correlationId);
     await this.sendFrame(header, payloadBytes, signal);
+  }
+
+  /**
+   * Per-connector monotonic correlation id (hex). The client generates it on each request
+   * and the server echoes it back on the reply, so flows can be joined across the wire.
+   */
+  private nextCorrelationId(): string {
+    this.correlationCounter += 1n;
+    return this.correlationCounter.toString(16);
   }
 
   async requestEncoded(
@@ -296,7 +307,16 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   ): Promise<ZlinkStreamEncodedPayload> {
     const pending = this.pendingRequests.create(timeoutMs);
     try {
-      await this.sendEncoded(ZlinkStreamMessageKind.Request, name, payload, metadata, compress, pending.requestSeq, signal);
+      await this.sendEncoded(
+        ZlinkStreamMessageKind.Request,
+        name,
+        payload,
+        metadata,
+        compress,
+        pending.requestSeq,
+        signal,
+        this.nextCorrelationId()
+      );
       return await pending.promise;
     } catch (error) {
       this.pendingRequests.cancel(pending.requestSeq);

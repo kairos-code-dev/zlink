@@ -27,12 +27,22 @@ export class ZlinkStreamHeaderCodec {
     const nameBytes = utf8Encode(header.name);
     const hasRequestSeq = header.requestSeq !== undefined;
     const hasMetadata = header.metadata.count > 0;
+    const correlationBytes = header.correlationId !== undefined && header.correlationId.length > 0
+      ? utf8Encode(header.correlationId)
+      : undefined;
+    if (correlationBytes !== undefined && correlationBytes.length > 0xff) {
+      throw connectorError(ZlinkStreamErrorCode.ValidationFailed, 'Correlation id is too large.');
+    }
+    const hasCorrelation = correlationBytes !== undefined;
     let flags = header.flags;
     flags = hasRequestSeq ? flags | ZlinkStreamHeaderFlags.HasRequestSeq : flags & ~ZlinkStreamHeaderFlags.HasRequestSeq;
     flags = hasMetadata ? flags | ZlinkStreamHeaderFlags.HasMetadata : flags & ~ZlinkStreamHeaderFlags.HasMetadata;
+    flags = hasCorrelation ? flags | ZlinkStreamHeaderFlags.HasCorrelationId : flags & ~ZlinkStreamHeaderFlags.HasCorrelationId;
 
     const metadataSize = hasMetadata ? ZlinkStreamMetadataCodec.size(header.metadata) : 0;
-    const size = 3 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.length + (hasMetadata ? 2 + metadataSize : 0);
+    const size = 3 + (hasRequestSeq ? 8 : 0) + 1 + nameBytes.length
+      + (hasMetadata ? 2 + metadataSize : 0)
+      + (hasCorrelation ? 1 + correlationBytes.length : 0);
     const buffer = new Uint8Array(size);
     let offset = 0;
     buffer[offset++] = header.kind;
@@ -52,6 +62,12 @@ export class ZlinkStreamHeaderCodec {
       writeUInt16BE(buffer, offset, metadataSize);
       offset += 2;
       ZlinkStreamMetadataCodec.write(header.metadata, buffer.subarray(offset, offset + metadataSize));
+      offset += metadataSize;
+    }
+    if (hasCorrelation) {
+      buffer[offset++] = correlationBytes.length;
+      buffer.set(correlationBytes, offset);
+      offset += correlationBytes.length;
     }
     return buffer;
   }
@@ -101,11 +117,24 @@ export class ZlinkStreamHeaderCodec {
       metadata = ZlinkStreamMetadataCodec.decode(header.subarray(offset, offset + metadataLength));
       offset += metadataLength;
     }
+
+    let correlationId: string | undefined;
+    if ((flags & ZlinkStreamHeaderFlags.HasCorrelationId) !== 0) {
+      if (header.length - offset < 1) {
+        throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Helper header correlation id length is missing.');
+      }
+      const correlationLength = header[offset++];
+      if (header.length - offset < correlationLength) {
+        throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Helper header correlation id is incomplete.');
+      }
+      correlationId = utf8Decode(header.subarray(offset, offset + correlationLength));
+      offset += correlationLength;
+    }
     if (offset !== header.length) {
       throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Helper header contains trailing bytes.');
     }
 
-    const decoded = { kind, codec, flags, requestSeq, name, metadata };
+    const decoded = { kind, codec, flags, requestSeq, name, metadata, correlationId };
     validateName(name, kind === ZlinkStreamMessageKind.Control);
     validateHeaderSemantics(decoded);
     return decoded;
@@ -118,7 +147,8 @@ export function buildHeader(
   codec: ZlinkStreamCodec,
   metadata: ZlinkStreamMetadata,
   compress: boolean,
-  requestSeq: bigint | undefined
+  requestSeq: bigint | undefined,
+  correlationId?: string
 ): ZlinkStreamHeader {
   let flags = ZlinkStreamHeaderFlags.None;
   if (requestSeq !== undefined) {
@@ -130,7 +160,10 @@ export function buildHeader(
   if (compress) {
     flags |= ZlinkStreamHeaderFlags.PayloadCompressed;
   }
-  return { kind, codec, flags, requestSeq, name, metadata };
+  if (correlationId !== undefined && correlationId.length > 0) {
+    flags |= ZlinkStreamHeaderFlags.HasCorrelationId;
+  }
+  return { kind, codec, flags, requestSeq, name, metadata, correlationId };
 }
 
 function validateHeaderSemantics(header: ZlinkStreamHeader): void {
@@ -160,7 +193,10 @@ function validateEnum(kind: ZlinkStreamMessageKind, codec: ZlinkStreamCodec, fla
   if (![0, 1, 2, 3].includes(codec)) {
     throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Unknown stream codec.');
   }
-  const known = ZlinkStreamHeaderFlags.HasRequestSeq | ZlinkStreamHeaderFlags.HasMetadata | ZlinkStreamHeaderFlags.PayloadCompressed;
+  const known = ZlinkStreamHeaderFlags.HasRequestSeq
+    | ZlinkStreamHeaderFlags.HasMetadata
+    | ZlinkStreamHeaderFlags.PayloadCompressed
+    | ZlinkStreamHeaderFlags.HasCorrelationId;
   if ((flags & ~known) !== 0) {
     throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Unknown stream header flag.');
   }

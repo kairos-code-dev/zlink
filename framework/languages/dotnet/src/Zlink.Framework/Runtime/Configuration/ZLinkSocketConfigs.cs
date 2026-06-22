@@ -2,7 +2,8 @@ namespace Zlink.Framework.Runtime.Configuration;
 
 internal sealed class ZLinkSocketConfig : IZLinkSocketConfig
 {
-    private TimeSpan? _sendTimeout = TimeSpan.FromMilliseconds(1000);
+    private TimeSpan? _sendTimeout;
+    private int _weight = 100;
 
     public long MaxMessageSize { get; set; }
 
@@ -38,11 +39,29 @@ internal sealed class ZLinkSocketConfig : IZLinkSocketConfig
 
     public bool Immediate { get; set; }
 
+    public int Weight
+    {
+        get => _weight;
+        set
+        {
+            ValidatePeerWeight(value);
+            _weight = value;
+        }
+    }
+
     internal static void ValidateSendTimeout(TimeSpan? value)
     {
         if (value is { } timeout && timeout < TimeSpan.Zero)
         {
             throw new ZLinkConfigurationException("SendTimeout must be null, zero, or a positive duration.");
+        }
+    }
+
+    internal static void ValidatePeerWeight(int value)
+    {
+        if (value is < 0 or > 100)
+        {
+            throw new ZLinkConfigurationException("Weight must be between 0 and 100.");
         }
     }
 }
@@ -69,7 +88,7 @@ internal sealed class ZLinkOutboundRouteConfig : IZLinkOutboundRouteConfig
 
 internal sealed class ZLinkSpotPublisherConfig : IZLinkSpotPublisherConfig
 {
-    private TimeSpan? _sendTimeout = TimeSpan.FromMilliseconds(1000);
+    private TimeSpan? _sendTimeout;
 
     public int SendHighWaterMark { private get; set; }
 

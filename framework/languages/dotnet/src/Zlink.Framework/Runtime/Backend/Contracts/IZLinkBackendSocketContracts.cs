@@ -35,7 +35,15 @@ internal interface IZLinkBackendConnectableSocket : IZLinkBackendSocket
     void Disconnect(string endpoint);
 }
 
-internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket
+// ROUTER/DEALER serving socket 의 advertised peer weight 를 런타임에 읽고/쓴다(core PEER_WEIGHT).
+internal interface IZLinkBackendWeightedSocket : IZLinkBackendSocket
+{
+    void SetPeerWeight(int weight);
+
+    int GetPeerWeight();
+}
+
+internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket
 {
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 
@@ -60,7 +68,7 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket
     Received? Recv(RecvFlags flags = RecvFlags.None);
 }
 
-internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket
+internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket
 {
     void AttachDiscovery(IZLinkBackendDiscovery discovery);
 

@@ -35,7 +35,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _taskRunner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), _stopSource.Token);
         _submitter = new ZLinkAsyncSubmitter(
             router.OnSendReady,
-            registration.SocketConfig.SendTimeout,
+            registration.SocketConfig.SendTimeout ?? frameworkRegistration.DefaultSocketSendTimeout,
             _stopSource.Token);
         _connections = new ZLinkRouteConnectionSet(router);
         _receivePump = new ZLinkRouteReceivePump(
@@ -54,6 +54,9 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     }
 
     public string RouterChannelId => _registration.RouterChannelId;
+
+    // route mesh 의 serving socket(weight 적용 대상). server·client 가 공유하는 단일 ROUTER.
+    internal IZLinkBackendWeightedSocket ServingSocket => _router;
 
     public IZLinkBackendDiscovery? Discovery => _discovery;
 

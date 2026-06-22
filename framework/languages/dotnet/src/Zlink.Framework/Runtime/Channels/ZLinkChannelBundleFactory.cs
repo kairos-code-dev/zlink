@@ -20,7 +20,9 @@ internal sealed class ZLinkChannelBundleFactory(
         var adapter = backendAdapterFactory.CreateChannelAdapter();
         var dealer = adapter.CreateDealerSocket(state.Context);
         dealer.SetChannelName(channelName);
-        if (!string.IsNullOrWhiteSpace(channel.Client!.BindEndpoint))
+        // weight 는 bind/connect/discovery 前에 적용해 default-weight 노출 창을 없앤다.
+        dealer.SetPeerWeight(channel.Client!.SocketConfig.Weight);
+        if (!string.IsNullOrWhiteSpace(channel.Client.BindEndpoint))
         {
             dealer.Bind(channel.Client.BindEndpoint);
         }
@@ -29,7 +31,7 @@ internal sealed class ZLinkChannelBundleFactory(
             dealer,
             new ZLinkAsyncSubmitter(
                 dealer.OnSendReady,
-                channel.Client.SocketConfig.SendTimeout,
+                channel.Client.SocketConfig.SendTimeout ?? registration.DefaultSocketSendTimeout,
                 state.StopTokenSource.Token));
 
         try
@@ -71,6 +73,8 @@ internal sealed class ZLinkChannelBundleFactory(
         {
             router.SetRoutingId(channel.Server.RoutingConfig.RoutingId);
         }
+        // weight 는 bind 前에 적용해 default-weight 노출 창을 없앤다(peer 가 그 사이 연결할 수 있다).
+        router.SetPeerWeight(channel.Server.SocketConfig.Weight);
         router.Bind(channel.Server!.BindEndpoint!);
         var bundle = new ZLinkChannelRuntimeBundle(router);
 
@@ -133,7 +137,7 @@ internal sealed class ZLinkChannelBundleFactory(
             publisher,
             new ZLinkAsyncSubmitter(
                 publisher.OnSendReady,
-                channel.Publisher.SocketConfig.SendTimeout,
+                channel.Publisher.SocketConfig.SendTimeout ?? registration.DefaultSocketSendTimeout,
                 state.StopTokenSource.Token));
 
         if (registration.Discovery is not null)

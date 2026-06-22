@@ -40,6 +40,16 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         nativeSocket.SetRoutingId(routingId);
     }
 
+    public void SetPeerWeight(int weight)
+    {
+        nativeSocket.Options.PeerWeight = weight;
+    }
+
+    public int GetPeerWeight()
+    {
+        return nativeSocket.Options.PeerWeight;
+    }
+
     public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
         // Bridge to the canonical caller-provided-storage recv. The

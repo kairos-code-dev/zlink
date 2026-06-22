@@ -50,6 +50,13 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
         return registration.Client.RoutingConfig;
     }
 
+    public IZLinkClientServerChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout)
+    {
+        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
+        registration.DefaultRequestTimeout = timeout;
+        return this;
+    }
+
     public IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName)
     {
         ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
@@ -177,6 +184,20 @@ internal sealed class ZLinkDealerMeshChannelBuilder(ZLinkChannelRegistration reg
             registration.Client.ManualConnections,
             endpoint,
             "Dealer mesh channel client endpoint must not be empty.");
+        return this;
+    }
+
+    public IZLinkSocketConfig ConfigureSocket()
+    {
+        // dealer mesh 는 server·client 가 같은 DEALER 소켓을 공유한다(= Client registration).
+        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
+        return registration.Client.SocketConfig;
+    }
+
+    public IZLinkDealerMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout)
+    {
+        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
+        registration.DefaultRequestTimeout = timeout;
         return this;
     }
 
@@ -384,11 +405,6 @@ internal sealed class ZLinkChannelServerCapabilityBuilder(ZLinkChannelServerCapa
     {
         return registration.SocketConfig;
     }
-
-    public IZLinkRouteConfig ConfigureRouting()
-    {
-        return registration.RoutingConfig;
-    }
 }
 
 internal sealed class ZLinkDealerMeshChannelServerCapabilityBuilder(ZLinkChannelClientCapabilityRegistration registration)
@@ -406,14 +422,6 @@ internal sealed class ZLinkDealerMeshChannelServerCapabilityBuilder(ZLinkChannel
     public IZLinkSocketConfig ConfigureSocket()
     {
         return registration.SocketConfig;
-    }
-
-    public IZLinkRouteConfig ConfigureRouting()
-    {
-        // dealer mesh server 는 DEALER 소켓이라 inbound ROUTER routing 설정이 없다.
-        throw new ZLinkConfigurationException(
-            "Dealer mesh server capability does not support inbound routing configuration; "
-            + "dealer mesh uses a DEALER socket shared by server and client.");
     }
 }
 

@@ -47,6 +47,7 @@
     <Compile Include="Channels/FiltersAndHttp.cs" />
     <Compile Include="Channels/HandlerClients.cs" />
     <Compile Include="Channels/Registration.cs" />
+    <Compile Include="Channels/RuntimeOptions.cs" />
     <Compile Include="Channels/Support.cs" />
     <Compile Include="Channels/RouteChannel.cs" />
     <Compile Include="Lifecycle/Host.cs" />

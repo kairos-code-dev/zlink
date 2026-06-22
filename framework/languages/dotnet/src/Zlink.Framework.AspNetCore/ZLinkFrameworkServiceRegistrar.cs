@@ -122,6 +122,9 @@ internal static class ZLinkFrameworkServiceRegistrar
     {
         services.AddSingleton<ZLinkChannelClient>();
         services.AddSingleton<IZLinkChannelClient>(static provider => provider.GetRequiredService<ZLinkChannelClient>());
+        services.AddSingleton<Zlink.Framework.Contracts.Channels.IZLinkChannelRuntimeOptions>(
+            static provider => new Zlink.Framework.Runtime.Channels.ZLinkChannelRuntimeOptions(
+                provider.GetRequiredService<Zlink.Framework.Runtime.Host.ZLinkFrameworkRuntime>()));
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<IZLinkMultipartRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());

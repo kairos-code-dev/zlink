@@ -54,7 +54,7 @@ public final class SessionApplication {
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.SpotRouteChannel);
             route.enableServer(SampleTopology.SessionSpotRouteEndpoint);
             route.enableClient(SampleTopology.TrackingSpotRouteEndpoint);
-            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.SessionSpotNodeRid));
+            route.setRoutingId(RoutingId.from(SampleTopology.SessionSpotNodeRid));
             options.useRegistrySpotRemoteAddresses(SampleNames.DeliverySpotDiscovery)
                 .setRouterChannelId(SampleNames.SpotRouteChannel);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.DeliverySpotDiscovery)

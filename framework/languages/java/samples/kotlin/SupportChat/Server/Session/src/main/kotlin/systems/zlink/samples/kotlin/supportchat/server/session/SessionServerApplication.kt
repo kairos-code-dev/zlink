@@ -34,7 +34,7 @@ class SessionServerApplication {
             val route = options.addRouteMeshChannel(SampleNames.SupportRouteChannel)
             route.enableServer(SampleTopology.SessionRouteEndpoint)
             route.enableClient(SampleTopology.SupportRouteEndpoint)
-            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.SessionRouterRid))
+            route.setRoutingId(RoutingId.from(SampleTopology.SessionRouterRid))
             options.useRegistrySpotRemoteAddresses(SampleNames.SupportSpotDiscovery)
                 .setRouterChannelId(SampleNames.SupportRouteChannel)
             val node = options.addSpotMesh(SampleNames.SupportSpotDiscovery)

@@ -34,7 +34,6 @@ public final class PlayServer {
             route.enableServer(settings.routeEndpoint())
                 .enableClient(settings.peerRouteEndpoint())
                 .enableSpotRouteEgress(SampleNames.RouteChannel)
-                .configureRouting()
                 .setRoutingId(RoutingId.from(settings.playSpotNodeRid()));
             options.addSpotRemoteAddressResolver(RedisSpotRemoteAddressResolver.class);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SpotMesh)

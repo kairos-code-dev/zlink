@@ -37,7 +37,7 @@ public final class ZLinkRegistrySpotRemoteAddressResolver
     public CompletionStage<ZLinkSpotRemoteAddress> resolveSpotRemoteAddressAsync(
         RoutingId spotRid) {
         CompletableFuture<ZLinkSpotRemoteAddress> result = new CompletableFuture<>();
-        long deadline = System.nanoTime() + registration.defaultTimeout().toNanos();
+        long deadline = System.nanoTime() + registration.defaultRequestTimeout().toNanos();
         class Attempt implements Runnable {
             private RuntimeException lastError;
 

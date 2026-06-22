@@ -30,7 +30,6 @@ object PlayServer {
             route.enableServer(settings.routeEndpoint)
                 .enableClient(settings.peerRouteEndpoint)
                 .enableSpotRouteEgress(SampleNames.RouteChannel)
-                .configureRouting()
                 .setRoutingId(RoutingId.from(settings.playSpotNodeRid))
             options.addSpotRemoteAddressResolver(RedisSpotRemoteAddressResolver::class.java)
             val node = options.addSpotMesh(SampleNames.SpotMesh)

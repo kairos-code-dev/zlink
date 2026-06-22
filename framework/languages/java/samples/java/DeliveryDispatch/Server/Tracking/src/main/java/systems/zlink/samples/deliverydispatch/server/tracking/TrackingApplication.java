@@ -69,7 +69,7 @@ public final class TrackingApplication {
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.SpotRouteChannel);
             route.enableServer(SampleTopology.TrackingSpotRouteEndpoint);
             route.enableClient(SampleTopology.SessionSpotRouteEndpoint);
-            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.TrackingSpotNodeRid));
+            route.setRoutingId(RoutingId.from(SampleTopology.TrackingSpotNodeRid));
             options.useRegistrySpotRemoteAddresses(SampleNames.DeliverySpotDiscovery)
                 .setRouterChannelId(SampleNames.SpotRouteChannel);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.DeliverySpotDiscovery)

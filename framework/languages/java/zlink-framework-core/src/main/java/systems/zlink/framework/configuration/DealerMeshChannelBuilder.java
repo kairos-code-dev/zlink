@@ -5,5 +5,7 @@ public interface DealerMeshChannelBuilder {
 
     DealerMeshChannelBuilder enableClient(String endpoint);
 
+    DealerMeshChannelBuilder setDefaultRequestTimeout(java.time.Duration timeout);
+
     DealerMeshChannelBuilder addHandlerGroup(String groupName);
 }

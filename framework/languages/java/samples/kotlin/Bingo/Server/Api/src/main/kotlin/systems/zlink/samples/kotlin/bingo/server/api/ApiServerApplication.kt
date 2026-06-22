@@ -32,7 +32,7 @@ class ApiServerApplication {
             val route = options.addRouteMeshChannel(SampleNames.PlayChannel)
             route.enableClient(SampleTopology.PlayARouteEndpoint)
             route.enableClient(SampleTopology.PlayBRouteEndpoint)
-            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.selectedApiRouteRid()))
+            route.setRoutingId(RoutingId.from(SampleTopology.selectedApiRouteRid()))
         }
 
     companion object {

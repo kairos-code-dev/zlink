@@ -971,7 +971,7 @@ final class ChannelMessagingTest {
             channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo"); };
 
         DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
-        clientOptions.setDefaultTimeout(Duration.ofMillis(100));
+        clientOptions.setDefaultRequestTimeout(Duration.ofMillis(100));
         { var discovery = clientOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
         { var channel = clientOptions.addClientServerChannel("profile"); channel.enableClient(); };
 
@@ -997,7 +997,7 @@ final class ChannelMessagingTest {
         registryOptions.setRouterEndpoint(registryRouter);
 
         DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
-        clientOptions.setDefaultTimeout(Duration.ofMillis(100));
+        clientOptions.setDefaultRequestTimeout(Duration.ofMillis(100));
         { var discovery = clientOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
         { var channel = clientOptions.addClientServerChannel("profile"); channel.enableClient(); };
 
@@ -1108,12 +1108,12 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
         { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
-            { var route = channel.configureRouting(); route.setRoutingId(sourceRid); };
+            channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
-            { var route = channel.configureRouting(); route.setRoutingId(targetRid); };
+            channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
 
@@ -1137,13 +1137,13 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
         { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
-            { var route = channel.configureRouting(); route.setRoutingId(sourceRid); };
+            channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.addHandlersFromPackageOf(ChannelMessagingTest.class);
         { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
-            { var route = channel.configureRouting(); route.setRoutingId(targetRid); };
+            channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addHandlerGroup("route-shared"); };
 
@@ -1166,13 +1166,13 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
         { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
-            { var route = channel.configureRouting(); route.setRoutingId(sourceRid); };
+            channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.useFilter(ReplyDecoratingFilter.class);
         { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
-            { var route = channel.configureRouting(); route.setRoutingId(targetRid); };
+            channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "Echo"); };
 
@@ -1198,12 +1198,12 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
         { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
-            { var route = channel.configureRouting(); route.setRoutingId(sourceRid); };
+            channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
-            { var route = channel.configureRouting(); route.setRoutingId(targetRid); };
+            channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addRequestHandler(DelayedRouteEchoHandler.class, String.class, String.class, "SharedPacket"); };
 
@@ -1244,12 +1244,12 @@ final class ChannelMessagingTest {
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
         { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
-            { var route = channel.configureRouting(); route.setRoutingId(sourceRid); };
+            channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
-            { var route = channel.configureRouting(); route.setRoutingId(targetRid); };
+            channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addSendHandler(RouteNoticeHandler.class, String.class, "Notice"); };
 

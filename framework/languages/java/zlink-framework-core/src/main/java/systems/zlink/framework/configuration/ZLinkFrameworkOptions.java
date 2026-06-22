@@ -8,9 +8,9 @@ import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 
 public interface ZLinkFrameworkOptions {
-    Duration defaultTimeout();
+    Duration defaultRequestTimeout();
 
-    void setDefaultTimeout(Duration timeout);
+    void setDefaultRequestTimeout(Duration timeout);
 
     ZLinkCodecRegistryBuilder codecs();
 

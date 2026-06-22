@@ -473,7 +473,7 @@ final class SpotRuntimeFakeBackendTest {
         { var route = options.addRouteMeshChannel("egress"); route.enableServer("inproc://egress-route");
             route.enableClient("inproc://egress-peer");
             route.enableSpotRouteEgress("ingress"); };
-        { var route = options.addRouteMeshChannel("ingress"); { var routing = route.configureRouting(); routing.setRoutingId(RoutingId.from("ingress-route")); };
+        { var route = options.addRouteMeshChannel("ingress"); route.setRoutingId(RoutingId.from("ingress-route"));
             route.enableServer("inproc://ingress-route");
             route.enableClient("inproc://ingress-peer"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://play-router");

@@ -58,7 +58,7 @@ public final class SupportServerApplication {
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(SampleNames.SupportRouteChannel);
             route.enableServer(SampleTopology.SupportRouteEndpoint);
             route.enableClient(SampleTopology.SessionRouteEndpoint);
-            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.SupportRid));
+            route.setRoutingId(RoutingId.from(SampleTopology.SupportRid));
             options.useRegistrySpotRemoteAddresses(SampleNames.SupportSpotDiscovery)
                 .setRouterChannelId(SampleNames.SupportRouteChannel);
             options.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory.class);

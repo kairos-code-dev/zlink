@@ -886,7 +886,7 @@ final class KotlinFrameworkE2ETest {
 
     private fun clientOptions(registryRouter: String): DefaultZLinkFrameworkOptions =
         DefaultZLinkFrameworkOptions().also { options ->
-            options.setDefaultTimeout(Duration.ofMillis(150))
+            options.setDefaultRequestTimeout(Duration.ofMillis(150))
             options.useDiscovery().addRegistryEndpoint(registryRouter)
             options.addClientServerChannel("profile").enableClient()
         }

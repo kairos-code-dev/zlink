@@ -538,7 +538,7 @@ object ScenarioE2E {
                 if (currentOptions.mode == "route-peer") {
                     val routed = options.addRouteMeshChannel(currentOptions.channel)
                         .enableServer(currentOptions.zlinkEndpoint)
-                    routed.configureRouting().setRoutingId(RoutingId.from(currentOptions.serverName))
+                    routed.setRoutingId(RoutingId.from(currentOptions.serverName))
                     for (endpoint in currentOptions.routePeerEndpoints) {
                         routed.enableClient(endpoint)
                     }
@@ -569,7 +569,7 @@ object ScenarioE2E {
                 if (currentOptions.mode == "route-peer") {
                     val routed = options.addRouteMeshChannel(currentOptions.channel)
                         .enableServer(currentOptions.zlinkEndpoint)
-                    routed.configureRouting().setRoutingId(RoutingId.from(currentOptions.clientRoutingId))
+                    routed.setRoutingId(RoutingId.from(currentOptions.clientRoutingId))
                     for (endpoint in currentOptions.routePeerEndpoints) {
                         routed.enableClient(endpoint)
                     }

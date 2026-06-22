@@ -56,7 +56,7 @@ public final class PlayServerApplication {
             route.enableClient(SampleTopology.SessionAPlayRouteEndpoint);
             route.enableClient(SampleTopology.SessionBPlayRouteEndpoint);
             route.addHandlerGroup("play-route");
-            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
+            route.setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()));
             options.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
                 .useRegistrySpotResolver()

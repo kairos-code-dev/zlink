@@ -43,16 +43,16 @@ public final class ZLinkFrameworkRegistration {
     private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers = new ArrayList<>();
     private Executor handlerExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private boolean closeHandlerExecutor = true;
-    private Duration defaultTimeout = Duration.ofSeconds(30);
+    private Duration defaultRequestTimeout = Duration.ofSeconds(30);
     private Class<? extends ZLinkSpotRemoteAddressResolver> spotRemoteAddressResolverType;
     private ZLinkRegistrySpotRemoteAddressesRegistration registrySpotRemoteAddresses;
 
-    public Duration defaultTimeout() {
-        return defaultTimeout;
+    public Duration defaultRequestTimeout() {
+        return defaultRequestTimeout;
     }
 
-    void setDefaultTimeout(Duration defaultTimeout) {
-        this.defaultTimeout = defaultTimeout;
+    void setDefaultRequestTimeout(Duration defaultRequestTimeout) {
+        this.defaultRequestTimeout = defaultRequestTimeout;
     }
 
     public ZLinkCodecRegistration codecs() {

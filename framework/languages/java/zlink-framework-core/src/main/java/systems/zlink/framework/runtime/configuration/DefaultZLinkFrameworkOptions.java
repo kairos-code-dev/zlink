@@ -37,17 +37,14 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     private final Set<String> spotMeshNames = new HashSet<>();
     private final Set<Class<?>> spotFactoryTypes = new HashSet<>();
     private final Set<String> streamNodeNames = new HashSet<>();
-    private Duration defaultTimeout = Duration.ofSeconds(30);
-
     @Override
-    public Duration defaultTimeout() {
-        return registration.defaultTimeout();
+    public Duration defaultRequestTimeout() {
+        return registration.defaultRequestTimeout();
     }
 
     @Override
-    public void setDefaultTimeout(Duration timeout) {
-        defaultTimeout = requirePositive(timeout, "timeout");
-        registration.setDefaultTimeout(defaultTimeout);
+    public void setDefaultRequestTimeout(Duration timeout) {
+        registration.setDefaultRequestTimeout(requirePositive(timeout, "timeout"));
     }
 
     @Override

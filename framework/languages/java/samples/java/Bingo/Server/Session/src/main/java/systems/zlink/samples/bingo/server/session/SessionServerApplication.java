@@ -46,7 +46,7 @@ public final class SessionServerApplication {
             route.enableClient("b".equals(SampleTopology.SessionNode)
                 ? SampleTopology.PlayBRouteEndpoint
                 : SampleTopology.PlayARouteEndpoint);
-            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()));
+            route.setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()));
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
                 .addNode(SampleNames.SessionSpotNode);
             node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())

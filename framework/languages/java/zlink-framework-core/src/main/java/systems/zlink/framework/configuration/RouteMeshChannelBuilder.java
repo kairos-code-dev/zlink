@@ -1,9 +1,13 @@
 package systems.zlink.framework.configuration;
 
+import systems.zlink.contracts.core.RoutingId;
+
 public interface RouteMeshChannelBuilder {
     RouteMeshChannelBuilder enableServer(String endpoint);
 
-    ZLinkRouteConfigBuilder configureRouting();
+    RouteMeshChannelBuilder setRoutingId(RoutingId routingId);
+
+    RouteMeshChannelBuilder setDefaultRequestTimeout(java.time.Duration timeout);
 
     RouteMeshChannelBuilder enableClient();
 

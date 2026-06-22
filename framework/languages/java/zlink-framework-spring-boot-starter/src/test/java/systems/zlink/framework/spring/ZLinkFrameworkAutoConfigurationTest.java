@@ -439,7 +439,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 sourceContext.registerBean(
                     ZLinkFrameworkConfigurer.class,
                     () -> options -> { var channel = options.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
-                        { var route = channel.configureRouting(); route.setRoutingId(sourceRid); };
+                        channel.setRoutingId(sourceRid);
                         channel.enableClient(targetEndpoint); });
                 sourceContext.register(
                     SourceRouteMeshConfig.class,
@@ -896,7 +896,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkConfigurer routeMeshHandlerConfigurer(
             RouteMeshEndpoints endpoints) {
             return options -> { var channel = options.addRouteMeshChannel("route"); channel.enableServer(endpoints.targetEndpoint());
-                { var route = channel.configureRouting(); route.setRoutingId(endpoints.targetRid()); };
+                channel.setRoutingId(endpoints.targetRid());
                 channel.enableClient(endpoints.sourceEndpoint());
                 channel.addRequestHandler(
                     InjectedRouteRequestHandler.class,

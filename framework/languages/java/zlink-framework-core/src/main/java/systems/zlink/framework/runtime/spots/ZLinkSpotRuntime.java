@@ -173,7 +173,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
     private final ZLinkScannedHandlerCatalog handlerCatalog;
     private final Map<String, List<SpotActorPacketHandlerRegistration>> actorPacketHandlers;
-    private final Duration defaultTimeout;
+    private final Duration defaultRequestTimeout;
     private final ZLinkChannelRuntime channels;
     private ZLinkActorRuntime actorRuntime;
     private final Map<String, SpotNodeRegistration> acceptedRouteNodesByChannel = new HashMap<>();
@@ -254,7 +254,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         ZLinkSpotBackendAdapter spotAdapter =
             backendFactory.createSpotAdapter(adapterOptions);
         this.context = channelAdapter.createContext();
-        this.defaultTimeout = registration.defaultTimeout();
+        this.defaultRequestTimeout = registration.defaultRequestTimeout();
         for (SpotNodeRegistration nodeRegistration : registration.spotNodes()) {
             ZLinkBackendSpotNode node =
                 spotAdapter.createSpotNode(context, resolveSpotNodeMode(nodeRegistration));
@@ -3145,7 +3145,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     spotRid,
                     encoded.payload(),
                     Optional.of(encoded.packetName()),
-                    defaultTimeout);
+                    defaultRequestTimeout);
             }
             return new SpotToSpotRequestCall(
                 backendSpot,
@@ -3153,7 +3153,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 spotRid,
                 encoded.payload(),
                 Optional.of(encoded.packetName()),
-                defaultTimeout);
+                defaultRequestTimeout);
         }
 
         @Override
@@ -3187,7 +3187,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 channelName,
                 encoded.payload(),
                 Optional.of(encoded.packetName()),
-                defaultTimeout);
+                defaultRequestTimeout);
         }
     }
 
@@ -3652,7 +3652,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         ZLinkBackendRequestCallback callback,
         CompletableFuture<?> result) {
         long timeoutNanos = timeout == null || timeout.isZero()
-            ? defaultTimeout.toNanos()
+            ? defaultRequestTimeout.toNanos()
             : timeout.toNanos();
         long deadline = System.nanoTime() + timeoutNanos;
         class Attempt implements Runnable {
@@ -3706,7 +3706,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         byte[] frameBytes,
         String failureMessage) {
         CompletableFuture<Void> result = new CompletableFuture<>();
-        long deadline = System.nanoTime() + defaultTimeout.toNanos();
+        long deadline = System.nanoTime() + defaultRequestTimeout.toNanos();
         class Attempt implements Runnable {
             @Override
             public void run() {
@@ -5285,7 +5285,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     private void awaitClosing(CompletionStage<Void> closingStage) {
         try {
             closingStage.toCompletableFuture()
-                .get(defaultTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                .get(defaultRequestTimeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException ex) {
             throw new ZLinkConfigurationException(
                 "SPOT closing hook did not complete before timeout.",

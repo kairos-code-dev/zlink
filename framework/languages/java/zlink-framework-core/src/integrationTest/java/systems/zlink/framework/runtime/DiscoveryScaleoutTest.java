@@ -200,7 +200,7 @@ final class DiscoveryScaleoutTest {
 
     private static DefaultZLinkFrameworkOptions clientOptions(String registryRouter) {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.setDefaultTimeout(Duration.ofMillis(150));
+        options.setDefaultRequestTimeout(Duration.ofMillis(150));
         options.useDiscovery().addRegistryEndpoint(registryRouter);
         options.addClientServerChannel("profile").enableClient();
         return options;

@@ -567,7 +567,7 @@ public final class ScenarioE2E {
                 if ("route-peer".equals(currentOptions.mode())) {
                     var routed = options.addRouteMeshChannel(currentOptions.channel())
                         .enableServer(currentOptions.zlinkEndpoint());
-                    routed.configureRouting().setRoutingId(RoutingId.from(currentOptions.serverName()));
+                    routed.setRoutingId(RoutingId.from(currentOptions.serverName()));
                     for (String endpoint : currentOptions.routePeerEndpoints()) {
                         routed.enableClient(endpoint);
                     }
@@ -605,7 +605,7 @@ public final class ScenarioE2E {
                 if ("route-peer".equals(currentOptions.mode())) {
                     var routed = options.addRouteMeshChannel(currentOptions.channel())
                         .enableServer(currentOptions.zlinkEndpoint());
-                    routed.configureRouting().setRoutingId(RoutingId.from(currentOptions.clientRoutingId()));
+                    routed.setRoutingId(RoutingId.from(currentOptions.clientRoutingId()));
                     for (String endpoint : currentOptions.routePeerEndpoints()) {
                         routed.enableClient(endpoint);
                     }

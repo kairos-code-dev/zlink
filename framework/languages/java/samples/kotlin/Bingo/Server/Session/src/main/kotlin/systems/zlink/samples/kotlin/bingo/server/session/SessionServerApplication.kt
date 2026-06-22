@@ -39,7 +39,7 @@ class SessionServerApplication {
                     SampleTopology.PlayARouteEndpoint
                 },
             )
-            route.configureRouting().setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()))
+            route.setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouteRid()))
             val node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
                 .addNode(SampleNames.SessionSpotNode)
             node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())

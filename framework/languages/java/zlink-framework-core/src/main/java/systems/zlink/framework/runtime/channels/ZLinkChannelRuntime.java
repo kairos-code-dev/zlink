@@ -102,7 +102,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     private final Executor handlerExecutor;
     private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
     private final List<Class<? extends ZLinkHandlerFilter>> filterTypes;
-    private final Duration defaultTimeout;
+    private final Duration defaultRequestTimeout;
     private final ZLinkBackendAdapterFactory backendFactory;
     private final ZLinkBackendAdapterOptions adapterOptions;
     private final List<String> registryEndpoints;
@@ -148,7 +148,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         this.handlerExecutor = Objects.requireNonNull(registration.handlerExecutor(), "handlerExecutor");
         this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         this.filterTypes = List.copyOf(registration.filters());
-        this.defaultTimeout = registration.defaultTimeout();
+        this.defaultRequestTimeout = registration.defaultRequestTimeout();
         this.backendFactory = backendFactory;
         this.adapterOptions = adapterOptions;
         this.registryEndpoints = registration.registryEndpoints();
@@ -307,7 +307,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             requireClient(channelName),
             encoded.payload(),
             Optional.of(encoded.packetName()),
-            defaultTimeout);
+            defaultRequestTimeout(channelName));
     }
 
     @Override
@@ -342,11 +342,19 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             target,
             encoded.payload(),
             Optional.of(encoded.packetName()),
-            defaultTimeout);
+            defaultRequestTimeout(channelName));
     }
 
     public void registerSpotRelayIngress(SpotRelayIngress spotRelayIngress) {
         this.spotRelayIngress = Objects.requireNonNull(spotRelayIngress, "spotRelayIngress");
+    }
+
+    private Duration defaultRequestTimeout(String channelName) {
+        ChannelRegistration registration = registrationsByName.get(channelName);
+        if (registration != null && registration.defaultRequestTimeout() != null) {
+            return registration.defaultRequestTimeout();
+        }
+        return defaultRequestTimeout;
     }
 
     public Map<String, ZLinkBackendSocket> monitoringSocketSources() {
@@ -407,7 +415,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 requireRouteRouter(localEgressChannelName),
                 targetPeerRid,
                 relayParts,
-                defaultTimeout,
+                defaultRequestTimeout,
                 registration.routeManualEndpoints(),
                 result);
             return result;
@@ -431,7 +439,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             .map(Message::toByteArray)
             .toList();
         long timeoutNanos = timeout == null || timeout.isZero()
-            ? defaultTimeout.toNanos()
+            ? defaultRequestTimeout.toNanos()
             : timeout.toNanos();
         long deadline = System.nanoTime() + timeoutNanos;
         class Attempt implements Runnable {
@@ -494,7 +502,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 requireRouteRouter(routerChannelId),
                 targetNodeRid,
                 relayParts,
-                defaultTimeout,
+                defaultRequestTimeout,
                 registration.routeManualEndpoints(),
                 result);
             return result;
@@ -623,7 +631,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             .map(Message::toByteArray)
             .toList();
         long timeoutNanos = timeout == null || timeout.isZero()
-            ? defaultTimeout.toNanos()
+            ? defaultRequestTimeout.toNanos()
             : timeout.toNanos();
         long deadline = System.nanoTime() + timeoutNanos;
         class Attempt implements Runnable {
@@ -1306,7 +1314,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     router,
                     received.routingId().get(),
                     received.parts(),
-                    defaultTimeout)
+                    defaultRequestTimeout)
                 .whenComplete((reply, error) -> {
                     if (error != null) {
                         return;
@@ -2209,7 +2217,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ZLinkBackendRequestCallback callback,
         CompletableFuture<?> result) {
         long timeoutNanos = timeout == null || timeout.isZero()
-            ? defaultTimeout.toNanos()
+            ? defaultRequestTimeout.toNanos()
             : timeout.toNanos();
         long deadline = System.nanoTime() + timeoutNanos;
         class Attempt implements Runnable {

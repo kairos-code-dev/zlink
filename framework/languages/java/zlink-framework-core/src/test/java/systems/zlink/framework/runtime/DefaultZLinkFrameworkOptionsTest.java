@@ -68,12 +68,12 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void setDefaultTimeoutRejectsZero() {
+    void setDefaultRequestTimeoutRejectsZero() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         assertThrows(
             ZLinkConfigurationException.class,
-            () -> options.setDefaultTimeout(Duration.ZERO));
+            () -> options.setDefaultRequestTimeout(Duration.ZERO));
     }
 
     @Test

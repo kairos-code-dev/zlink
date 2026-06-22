@@ -39,7 +39,7 @@ import systems.zlink.framework.streams.ZLinkStreamCodec;
 public final class ZLinkActorRuntime implements ZLinkActorManager {
     private final ZLinkBackendSpotNode spotNode;
     private final Map<String, Class<? extends ZLinkActorFactory>> factories;
-    private final Duration defaultTimeout;
+    private final Duration defaultRequestTimeout;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkHandlerFactory handlerFactory;
     private final ZLinkStreamCodec defaultStreamCodec;
@@ -59,21 +59,21 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     public ZLinkActorRuntime(
         ZLinkBackendSpotNode spotNode,
         Map<String, Class<? extends ZLinkActorFactory>> factories,
-        Duration defaultTimeout,
+        Duration defaultRequestTimeout,
         ZLinkMessageSerializer serializer) {
-        this(spotNode, factories, defaultTimeout, serializer, ZLinkHandlerFactory.reflection());
+        this(spotNode, factories, defaultRequestTimeout, serializer, ZLinkHandlerFactory.reflection());
     }
 
     public ZLinkActorRuntime(
         ZLinkBackendSpotNode spotNode,
         Map<String, Class<? extends ZLinkActorFactory>> factories,
-        Duration defaultTimeout,
+        Duration defaultRequestTimeout,
         ZLinkMessageSerializer serializer,
         ZLinkHandlerFactory handlerFactory) {
         this(
             spotNode,
             factories,
-            defaultTimeout,
+            defaultRequestTimeout,
             serializer,
             handlerFactory,
             ZLinkStreamCodec.JSON);
@@ -82,7 +82,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     public ZLinkActorRuntime(
         ZLinkBackendSpotNode spotNode,
         Map<String, Class<? extends ZLinkActorFactory>> factories,
-        Duration defaultTimeout,
+        Duration defaultRequestTimeout,
         ZLinkMessageSerializer serializer,
         ZLinkHandlerFactory handlerFactory,
         ZLinkStreamCodec defaultStreamCodec) {
@@ -97,7 +97,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
         this.spotNode = spotNode;
         this.factories = Map.copyOf(factories);
-        this.defaultTimeout = defaultTimeout;
+        this.defaultRequestTimeout = defaultRequestTimeout;
         this.serializer = serializer;
         this.handlerFactory = handlerFactory;
         this.defaultStreamCodec =
@@ -280,7 +280,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                                 address.targetNodeRid(),
                                 address.spotRid(),
                                 parts,
-                                defaultTimeout)
+                                defaultRequestTimeout)
                             .thenApply(replyParts -> {
                                 try {
                                     return replyParts.isEmpty()
@@ -438,7 +438,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             serializer,
             this,
             actor,
-            defaultTimeout,
+            defaultRequestTimeout,
             defaultStreamCodec);
         long bindingToken = bindSession(actor, boundSession);
         boundSession.setBindingToken(bindingToken);
@@ -461,7 +461,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             serializer,
             this,
             actor,
-            defaultTimeout,
+            defaultRequestTimeout,
             defaultStreamCodec);
         long bindingToken = bindSession(actor, boundSession);
         boundSession.setBindingToken(bindingToken);
@@ -512,7 +512,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             }
         }
 
-        return spotNode.destroyActor(actorRef, defaultTimeout)
+        return spotNode.destroyActor(actorRef, defaultRequestTimeout)
             .thenCompose(ignored -> context.disconnectBoundSessionForDestroy())
             .thenRun(() -> {
                 synchronized (this) {
@@ -553,7 +553,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             }
 
             try {
-                spotNode.destroyActor(actorRef, defaultTimeout).toCompletableFuture().join();
+                spotNode.destroyActor(actorRef, defaultRequestTimeout).toCompletableFuture().join();
             } catch (RuntimeException ignored) {
                 // Actors outside the Entry Spot may reject destroy. Shutdown must still release maps.
             }
@@ -635,7 +635,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             }
             ZLinkPayloadEncoding.EncodedPayload encoded =
                 ZLinkPayloadEncoding.encode(serializer, request);
-            return new JoinEntrySpotCall(this, spotNodeRid, encoded.payload(), defaultTimeout);
+            return new JoinEntrySpotCall(this, spotNodeRid, encoded.payload(), defaultRequestTimeout);
         }
 
         @Override
@@ -648,7 +648,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             }
             ZLinkPayloadEncoding.EncodedPayload encoded =
                 ZLinkPayloadEncoding.encode(serializer, request);
-            return new JoinSpotCall(this, spotRid, encoded.payload(), defaultTimeout);
+            return new JoinSpotCall(this, spotRid, encoded.payload(), defaultRequestTimeout);
         }
 
         long setBoundSession(ZLinkBoundSession boundSession) {

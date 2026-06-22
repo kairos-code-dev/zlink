@@ -530,7 +530,7 @@ open class SpringSuspendFrameworkConfig {
 
     @Bean
     open fun frameworkConfigurer() = ZLinkFrameworkConfigurer { options ->
-        options.setDefaultTimeout(Duration.ofSeconds(1))
+        options.setDefaultRequestTimeout(Duration.ofSeconds(1))
         options.addHandlersFromPackageOf(KotlinSuspendHandlerMarker::class.java)
         val channel = options.addClientServerChannel("profile")
         channel.enableServer("inproc://kotlin-suspend")

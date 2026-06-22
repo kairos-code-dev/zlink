@@ -1,11 +1,11 @@
 package systems.zlink.framework.runtime.channels;
 
+import java.time.Duration;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.DealerMeshChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
-import systems.zlink.framework.configuration.ZLinkRouteConfigBuilder;
 
 public final class ChannelBuilders {
     private ChannelBuilders() {
@@ -51,6 +51,12 @@ public final class ChannelBuilders {
         public ClientServerChannelBuilder enableClient(String endpoint) {
             registration.enableClient();
             registration.addClientManualEndpoint(endpoint);
+            return this;
+        }
+
+        @Override
+        public ClientServerChannelBuilder setDefaultRequestTimeout(Duration timeout) {
+            registration.setDefaultRequestTimeout(timeout);
             return this;
         }
 
@@ -184,6 +190,12 @@ public final class ChannelBuilders {
         }
 
         @Override
+        public DealerMeshChannelBuilder setDefaultRequestTimeout(Duration timeout) {
+            registration.setDefaultRequestTimeout(timeout);
+            return this;
+        }
+
+        @Override
         public DealerMeshChannelBuilder addHandlerGroup(String groupName) {
             registration.addHandlerGroup(groupName);
             return this;
@@ -198,8 +210,15 @@ public final class ChannelBuilders {
         }
 
         @Override
-        public ZLinkRouteConfigBuilder configureRouting() {
-            return registration::setRouteRoutingId;
+        public RouteMeshChannelBuilder setRoutingId(RoutingId routingId) {
+            registration.setRouteRoutingId(routingId);
+            return this;
+        }
+
+        @Override
+        public RouteMeshChannelBuilder setDefaultRequestTimeout(Duration timeout) {
+            registration.setDefaultRequestTimeout(timeout);
+            return this;
         }
 
         @Override

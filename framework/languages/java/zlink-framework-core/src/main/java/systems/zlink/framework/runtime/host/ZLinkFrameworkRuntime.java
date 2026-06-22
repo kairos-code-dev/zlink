@@ -51,7 +51,7 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
         options.validate();
         this.registration = options.registration();
         ZLinkBackendAdapterOptions adapterOptions =
-            new ZLinkBackendAdapterOptions(options.defaultTimeout());
+            new ZLinkBackendAdapterOptions(options.defaultRequestTimeout());
         ZLinkStreamCodec defaultStreamCodec = defaultStreamCodec(options);
         ZLinkHandlerFactory.MutableServices runtimeHandlers =
             ZLinkHandlerFactory.services(handlerFactory);
@@ -86,7 +86,7 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
             ? new ZLinkActorRuntime(
                 spots.primaryNode(),
                 options.registration().actorFactories(),
-                options.registration().defaultTimeout(),
+                options.registration().defaultRequestTimeout(),
                 serializer,
                 runtimeHandlers,
                 defaultStreamCodec)

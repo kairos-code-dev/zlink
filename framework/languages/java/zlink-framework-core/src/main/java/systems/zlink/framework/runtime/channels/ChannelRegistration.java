@@ -1,5 +1,6 @@
 package systems.zlink.framework.runtime.channels;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -36,6 +37,7 @@ public final class ChannelRegistration {
     private boolean subscriberEnabled;
     private RoutingId serverRoutingId;
     private RoutingId routeRoutingId;
+    private Duration defaultRequestTimeout;
 
     public ChannelRegistration(String name, ChannelKind kind) {
         this.name = name;
@@ -128,6 +130,17 @@ public final class ChannelRegistration {
 
     public RoutingId serverRoutingId() {
         return serverRoutingId;
+    }
+
+    public Duration defaultRequestTimeout() {
+        return defaultRequestTimeout;
+    }
+
+    void setDefaultRequestTimeout(Duration timeout) {
+        if (timeout == null || timeout.isNegative() || timeout.isZero()) {
+            throw new ZLinkConfigurationException("request timeout must be greater than zero");
+        }
+        defaultRequestTimeout = timeout;
     }
 
     boolean clientEnabled() {

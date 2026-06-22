@@ -23,6 +23,10 @@ internal sealed class ZLinkChannelPacketDispatcher(
         registration.DispatchOptions,
         ResolveServices(runtime),
         logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
+    private readonly ZLinkMessageFlowTracer _flow = new(
+        registration.DispatchOptions,
+        ResolveServices(runtime),
+        logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance);
     private readonly ILogger<ZLinkChannelPacketDispatcher> _logger =
         logger ?? NullLogger<ZLinkChannelPacketDispatcher>.Instance;
     private readonly ZLinkChannelRequestDispatchPipeline _requestPipeline = new(
@@ -70,6 +74,19 @@ internal sealed class ZLinkChannelPacketDispatcher(
         }
 
         var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+
+        if (_flow.Enabled(ZLinkMessageFlowPhase.Received))
+        {
+            _flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Received,
+                ZLinkDispatchErrorSurface.Channel,
+                header.Kind == ZLinkMessageKind.Request
+                    ? ZLinkDispatchMessageKind.Request
+                    : ZLinkDispatchMessageKind.Send,
+                PacketName: header.MessageName,
+                ChannelName: channelName,
+                CorrelationId: header.CorrelationId));
+        }
 
         switch (header.Kind)
         {

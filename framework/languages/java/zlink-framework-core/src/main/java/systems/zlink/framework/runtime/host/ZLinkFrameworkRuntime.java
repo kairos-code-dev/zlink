@@ -102,6 +102,11 @@ public final class ZLinkFrameworkRuntime
             : null;
         if (this.actors != null) {
             runtimeHandlers.add(ZLinkActorManager.class, this.actors);
+            this.actors.setMessageFlowTracer(
+                new systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer(
+                    this.registration.dispatchOptions(),
+                    handlerFactory,
+                    this.registration.handlerExecutor()));
             this.actors.setRoutedTransport(
                 this.channels,
                 () -> this.spots.primaryNode().entrySpot().routingId());

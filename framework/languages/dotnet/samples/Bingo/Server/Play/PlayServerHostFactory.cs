@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.Protobuf;
+using Zlink.Framework.Contracts.Dispatch;
 
 namespace Bingo.Server.Play;
 
@@ -27,7 +28,11 @@ public static class PlayServerHostFactory
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.ConfigureDispatch().SetMessageDispatchErrorObserver<BingoDispatchErrorObserver>();
+            options.ConfigureDispatch()
+                .SetMessageDispatchErrorObserver<BingoDispatchErrorObserver>()
+                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .TraceLogFile(SampleFlowLog.Path("play"))
+                .TraceNodeId("play");
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);

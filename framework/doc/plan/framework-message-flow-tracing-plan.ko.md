@@ -206,7 +206,7 @@ phase 의미: `received`/`dispatched`/`replied`는 **인바운드**(이 노드�
 | stream correlation_id 전체 적용(타 언어 바인딩/엔진) | ⬜ 추후 검토 |
 | 구조화 필드 출력(`log_record.fields` key/value) + `node=` 식별자 for 콜렉터/집계 | ✅ 완료 (logger_t::log_with_fields, tracer/error reporter 구조화, `diagnostics.node_id`). Bingo 실측 |
 | observer를 통한 콜렉터/OTel 어댑터(앱 레이어) | ⬜ 앱 책임 — 프레임워크는 훅만 제공 |
-| `.NET` parity | 🔶 진행중 — ✅계약(phase/event/observer/IZLinkMessageFlowControl, 빌더체인+캡슐화 IZLinkDiagnosticsOptions read-only/LogFile/NodeId/EffectiveMessageFlow) ✅트레이서(ZLinkMessageFlowTracer: Enabled(phase) 호출부가드로 off 제로코스트, 샘플링, 구조화 ILogger+node, LogFile 분리, observer offload) ✅에러리포터(off게이팅+포맷통일+파일라우팅) ✅런타임토글(라이브셀 registrar 설치 + IZLinkMessageFlowControl). ⬜남음: 인바운드/아웃바운드 dispatch 배선(~15 사이트), stream corr 와이어, MFLOW 테스트, Bingo 샘플, codex 루프 |
+| `.NET` parity | ✅ 완료 — 계약(phase/event/observer/IZLinkMessageFlowControl, 빌더체인+캡슐화 read-only IZLinkDiagnosticsOptions/LogFile/NodeId/EffectiveMessageFlow) + 트레이서(ZLinkMessageFlowTracer: Enabled(phase) 호출부가드=off 제로코스트, 샘플링, 구조화 ILogger+node, LogFile 분리, observer offload) + 에러리포터(off게이팅+포맷통일+파일라우팅) + 런타임토글(라이브셀+IZLinkMessageFlowControl) + 전 surface 인/아웃 배선(channel/route/spot subscription/spot actor/spot route/stream + 채널·route·spot publish·actor join 아웃바운드·dealer-mesh) + stream corr 와이어(flag 0x08, connector+framework 바이트동일, 클라생성·서버echo) + MFLOW 테스트 + Bingo 샘플(분리파일+node). **codex 5라운드 반복 리뷰 이슈0 통과(체크포인트 a~h 전부 pass)** |
 | Java / Kotlin / Node parity | ⬜ 미착수 (C++ 미러링) |
 | 언어별 `guide/09-monitoring` 문서 반영 | ⬜ 미착수 |
 

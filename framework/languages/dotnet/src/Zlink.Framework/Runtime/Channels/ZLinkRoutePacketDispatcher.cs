@@ -101,6 +101,18 @@ internal sealed class ZLinkRoutePacketDispatcher(
                     received.Parts,
                     cancellationToken)
                 .ConfigureAwait(false);
+
+            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Dispatched))
+            {
+                dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.Dispatched,
+                    ZLinkDispatchErrorSurface.RouteMeshChannel,
+                    ZLinkDispatchMessageKind.Send,
+                    PacketName: header.MessageName,
+                    ChannelName: routerChannelId,
+                    CorrelationId: header.CorrelationId,
+                    SourceRid: sourceRid.ToString()));
+            }
         }
         catch (Exception ex)
         {
@@ -194,6 +206,18 @@ internal sealed class ZLinkRoutePacketDispatcher(
                     cancellationToken)
                 .ConfigureAwait(false);
             Reply(sourceRid, received.RequestSeq, header, reply.Message, reply.MessageType);
+
+            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Replied))
+            {
+                dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.Replied,
+                    ZLinkDispatchErrorSurface.RouteMeshChannel,
+                    ZLinkDispatchMessageKind.Request,
+                    PacketName: header.MessageName,
+                    ChannelName: routerChannelId,
+                    CorrelationId: header.CorrelationId,
+                    SourceRid: sourceRid.ToString()));
+            }
         }
         catch (Exception ex)
         {

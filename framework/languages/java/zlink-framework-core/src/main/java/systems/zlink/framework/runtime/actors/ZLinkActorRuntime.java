@@ -839,14 +839,13 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             if (replyType == null) {
                 throw new ZLinkConfigurationException("replyType is required");
             }
-            String joinActorId = context.actorRef.actorId();
-            String joinSpot = spotRid.toString();
             if (flow != null && flow.enabled(ZLinkMessageFlowPhase.SENT)) {
                 flow.trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowPhase.SENT,
                     ZLinkDispatchErrorSurface.SPOT_ACTOR,
                     ZLinkDispatchMessageKind.ACTOR_REQUEST,
-                    "JoinSpot", null, null, null, null, joinSpot, joinActorId, null));
+                    "JoinSpot", null, null, null, null,
+                    spotRid.toString(), context.actorRef.actorId(), null));
             }
             Message requestPart = Message.from(request);
             ZLinkSpot<?> localSpot = spotResolver.apply(spotRid);
@@ -855,7 +854,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                     .whenComplete((ignored, error) -> requestPart.close())
                     .thenCompose(result -> applyRemoteActorMigration(result)
                         .thenApply(ignored -> decodeJoinResult(result, replyType)))
-                    .whenComplete((r, e) -> traceJoinReplyReceived(e, joinSpot, joinActorId));
+                    .whenComplete((r, e) -> traceJoinReplyReceived(e));
             }
             CompletionStage<RoutingId> targetNode =
                 localSpot != null
@@ -880,16 +879,17 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 .thenCompose(stage -> stage)
                 .thenCompose(result -> applyRemoteActorMigration(result)
                     .thenApply(ignored -> decodeJoinResult(result, replyType)))
-                .whenComplete((r, e) -> traceJoinReplyReceived(e, joinSpot, joinActorId));
+                .whenComplete((r, e) -> traceJoinReplyReceived(e));
         }
 
-        private void traceJoinReplyReceived(Throwable error, String joinSpot, String joinActorId) {
+        private void traceJoinReplyReceived(Throwable error) {
             if (error == null && flow != null && flow.enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
                 flow.trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowPhase.REPLY_RECEIVED,
                     ZLinkDispatchErrorSurface.SPOT_ACTOR,
                     ZLinkDispatchMessageKind.RESPONSE,
-                    "JoinSpot", null, null, null, null, joinSpot, joinActorId, null));
+                    "JoinSpot", null, null, null, null,
+                    spotRid.toString(), context.actorRef.actorId(), null));
             }
         }
 

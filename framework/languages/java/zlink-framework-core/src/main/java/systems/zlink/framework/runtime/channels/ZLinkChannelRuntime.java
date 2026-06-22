@@ -2299,14 +2299,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             CompletableFuture<TReply> result = new CompletableFuture<>();
             trackPendingRequest(result, timeout);
             List<Message> requestParts = parts(packetName, payload);
-            String routeReqPacket = packetName.orElse(null);
-            String routeReqTarget = target.toString();
             if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
                 dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
                     ZLinkMessageFlowPhase.SENT,
                     ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                     ZLinkDispatchMessageKind.REQUEST,
-                    routeReqPacket, channelName, null, null, routeReqTarget, null, null, null));
+                    packetName.orElse(null), channelName, null, null,
+                    target.toString(), null, null, null));
             }
             try {
                 ChannelRegistration registration = registrationsByName.get(channelName);
@@ -2325,8 +2324,8 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                                     ZLinkMessageFlowPhase.REPLY_RECEIVED,
                                     ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                                     ZLinkDispatchMessageKind.RESPONSE,
-                                    routeReqPacket, channelName, null, null,
-                                    routeReqTarget, null, null, null));
+                                    packetName.orElse(null), channelName, null, null,
+                                    target.toString(), null, null, null));
                             }
                         } catch (RuntimeException ex) {
                             result.completeExceptionally(ex);

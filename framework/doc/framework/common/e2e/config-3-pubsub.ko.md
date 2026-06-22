@@ -75,8 +75,8 @@ evidence를 조회해 확인한다.
 **한마디로:** subscriber가 끊겼다 다시 붙어 재구독하면, 그때부터의 발행분을 다시 받고(끊긴 동안 것은 replay 없이 못 받고) 다른 subscriber엔 영향이 없는가.
 
 - 절차: subscriber 하나를 연결 해제했다가 재접속해 다시 구독한다. 그 사이에도 발행은 계속된다.
-- 검증: 재구독 후 그 시점 이후 발행분을 다시 받는다. 끊긴 동안 발행된 것은 전달되지 않는다(replay 계약 없음). 끊김·재구독 중에도 다른 subscriber의 수신은 영향받지 않는다.
-- 세부 동작: 동적 재구독(끊김 구간 비replay + subscriber 격리).
+- 검증: 재구독 후 그 시점 이후 발행분을 다시 받는다. 끊긴 동안 발행된 것은 전달되지 않는다(공개 replay 계약이 없는 관측된 동작으로 고정 — PS-A3과 동일 성격). 끊김·재구독 중에도 다른 subscriber의 수신은 영향받지 않는다. (재구독은 fanout builder에 별도 reconnect/unsubscribe API가 아니라 runtime/process lifecycle로 유도한다.)
+- 세부 동작: 동적 재구독(끊김 구간 비replay 관측 + subscriber 격리).
 
 ### Track B — subscriber 동작
 
@@ -97,8 +97,8 @@ evidence를 조회해 확인한다.
 **한마디로:** publisher가 죽었다 다시 떠도, 복구 후 발행이 기존 subscriber에게 다시 도달하는가(다운 구간 발행분 유실은 계약대로).
 
 - 절차: 발행 중 publisher 프로세스를 종료했다가 재기동한다(harness restart 전제). subscriber는 그대로 둔다.
-- 검증: publisher 재기동 후 새 발행이 다시 subscriber에 도달한다(subscriber 재구독이 필요한지 여부는 transport 동작에 따르며, 관측 결과로 고정한다). 다운 구간에 발행 시도분의 유실은 replay 없음 계약대로다. subscriber 측은 재기동에도 죽지 않는다.
-- 세부 동작: publisher 재기동 복구(다운 구간 비replay).
+- 검증: publisher 재기동 후 새 발행이 다시 subscriber에 도달한다(subscriber 재구독이 필요한지 여부는 transport 동작에 따르며, 관측 결과로 고정한다). 다운 구간 발행 시도분의 유실 여부도 공개 replay 계약이 없으므로 관측으로 고정한다(replay를 보장하지 않음). subscriber 측은 재기동에도 죽지 않는다. publisher 재기동은 runtime/process lifecycle(start/stop)로 유도한다.
+- 세부 동작: publisher 재기동 복구(다운 구간 비replay 관측).
 
 ### Track C — negatives
 

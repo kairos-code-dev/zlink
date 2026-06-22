@@ -250,9 +250,9 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 **한마디로:** 동시 다수 client가 request·send를 섞어 수 분간 계속 밀어 넣어도, 누락·붕괴·latency 악화·리소스 누수 없이 안정적으로 버티는가.
 
-- 절차: 동시 N client가 request와 send를 섞어 지속(예: 수 분) 보낸다. 그 사이 provider scale-out/in이나 가벼운 drain을 섞을 수도 있다.
-- 검증: 전 구간에서 누락·붕괴 없이 처리되고, 정상 reply 비율이 유지되며, latency가 시간에 따라 단조 악화(drift)하지 않는다. 종료 후 pending이 남지 않고 소켓·핸들·메모리 누수가 없다(RL-C1 정리와 연계).
-- 세부 동작: 지속 혼합 부하 안정성(단건 burst가 아닌 soak).
+- 절차: 동시 N client가 request와 send를 섞어 지속(예: 수 분) 보낸다(지속 부하 harness 필요 — 없으면 "미구현(하네스 대기)"). 그 사이 provider scale-out/in이나 가벼운 drain을 섞을 수도 있다.
+- 검증: 전 구간에서 붕괴 없이 처리되고 정상 reply 비율이 유지되는지, latency가 시간에 따라 단조 악화(drift)하지 않는지를 **관측으로 본다**(엄밀한 무손실·무누수 보장이 아니라 안정성 관측). 종료 후 pending이 남지 않고 리소스가 정리되는지는 RL-C1과 연계해 확인한다.
+- 세부 동작: 지속 혼합 부하 안정성 관측(단건 burst가 아닌 soak).
 
 ## 5. 완료 기준
 

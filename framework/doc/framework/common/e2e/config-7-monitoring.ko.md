@@ -134,7 +134,7 @@ spot 쪽 관찰은 `SubjectsChanged`/`PeersChanged`로 본다.
 **한마디로:** provider가 죽었다 살기를 반복하는 동안에도 monitoring이 계속 이벤트를 잡고, 그 전이가 실제 장애·복구를 반영하며, 관측이 runtime을 끌어내리지 않는가.
 
 - 절차: provider를 crash·재기동(필요 시 drain·restore 포함)으로 여러 번 흔드는 동안 socket·registry source가 계속 관찰하게 둔다(harness kill/restart 전제).
-- 검증: 장애 구간에도 monitoring task가 죽지 않고 이벤트 기록이 이어지며, 관측된 전이(연결/해제, `TopologyChanged`)가 실제 down/up 순서를 반영한다. 관측은 best-effort 계약 안에서 동작하고, monitoring이 messaging·runtime 경로를 막거나 종료시키지 않는다.
+- 검증: 장애 구간에도 monitoring task가 죽지 않고 이벤트 기록이 이어지며, 각 down/up에 해당하는 전이(연결/해제, `TopologyChanged`)가 관측된다. (이벤트는 detached task로 발행되므로 **엄밀한 전역 순서·무손실은 보장하지 않는다** — best-effort 관측. 따라서 "순서대로 반영"을 단언하지 않고 "해당 전이가 관측됨 + monitoring이 죽지 않음"으로 본다.) monitoring이 messaging·runtime 경로를 막거나 종료시키지 않는다.
 - 세부 동작: 장애·복구 반복 중 관측 연속성(best-effort).
 
 ## 5. 완료 기준

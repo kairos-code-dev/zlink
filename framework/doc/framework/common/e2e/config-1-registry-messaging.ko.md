@@ -214,6 +214,8 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 - 검증: 소형·대형·근접-max payload는 내용이 손상 없이 정확히 왕복한다(대형도 분할/재조립이 투명). `MaxMessageSize`를 넘는 payload는 정해진 public error로 거부되고, 그 뒤 정상 크기 request는 영향 없이 동작한다.
 - 세부 동작: payload 크기 경계(왕복 + 상한 거부).
 
+> 주의: 크기 다양성 **왕복**은 public typed client로 바로 유도된다. 다만 현재 framework channel runtime은 `ConfigureServerSocket().MaxMessageSize`를 live socket에 적용하지 않으므로(빌더 옵션은 있으나 미배선), **상한 초과 거부** 검증은 그 적용이 들어오거나 binding 레이어/harness로 유도해야 한다. 그 전에는 거부 부분을 "미구현(framework 미배선)"으로 둔다.
+
 #### RM-C9 backpressure / HWM 포화
 
 우선순위: `P2`
@@ -223,6 +225,8 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 - 절차: provider handler를 느리게 두고, client가 처리 속도보다 빠르게 다량 request/send를 보내 송신 큐를 HWM까지 채운다.
 - 검증: HWM 포화 시 정해진 흐름 제어(블록·timeout·정해진 public error) 중 계약된 동작이 일어나고, 연결이 깨지거나 다른 정상 트래픽이 오염되지 않는다. 적체가 풀리면 messaging이 정상화된다.
 - 세부 동작: 송신 HWM 포화 시 backpressure 계약.
+
+> 주의: 현재 framework channel runtime은 `SendHighWaterMark`/`ReceiveHighWaterMark`를 live socket에 적용하지 않고, async submitter가 backpressure를 내부 재시도로 흡수한다. 따라서 framework channel 레이어에서 HWM 포화는 현재 harness 의존 intent다(backpressure 표면 자체의 직접 검증은 binding 레이어가 더 적합). framework 적용이 들어오기 전에는 "미구현(framework 미배선)"으로 둔다.
 
 ## 5. 완료 기준
 

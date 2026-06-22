@@ -439,10 +439,13 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
   중이며(draft: `core/doc/spec/draft/spot-route-channel-bridge-plan.ko.md`), 아래 시나리오는 그
   사용자 관찰 동작을 고정한다.
 
-framework 공개 API만 쓴다 — 외부→spot inbound는 channel client(예: route client)로, spot→spot/
-channel egress는 `outbound.SendToSpot(...)`/`outbound.RequestToSpot(...)`로, channel이 spot route를
-받게 하는 설정은 `AcceptSpotRoutesFromChannel(...)` 계열로 표현한다. low-level relay packet을 직접
-조립하지 않는다.
+이 트랙은 bridge(draft)가 구현되면 검증할 **사용자 관찰 동작을 고정**하는 intent다. **현재 public
+API는 외부 channel client가 spot을 RoutingId로 직접 타깃하는 표면을 노출하지 않는다** —
+`SendToSpot(...)`/`RequestToSpot(...)`은 spot 간(`IZLinkSpotOutbound`) egress이고, channel이 spot
+route를 받게 하는 `AcceptSpotRoutesFromChannel(...)` builder는 이미 존재한다. 따라서 **SM-F3은 현재
+public API로 검증 가능**하고, **SM-F1·F2(외부 channel→특정 spot egress)와 SM-F4(그 에러 계약)는
+bridge 구현 후** 아래 의도대로 검증한다(그 전에는 "미구현(bridge 대기)"). 어느 경우에도 low-level
+relay packet을 직접 조립하지 않는다.
 
 > Track C(messaging 방향)와의 관계: Track C는 channel↔spot의 verb(send/request/publish)와 방향을
 > 본다. Track F는 그 아래에서 **channel 종류 무관 동등성, 한 socket의 app packet·spot relay 공존,
@@ -529,7 +532,7 @@ channel egress는 `outbound.SendToSpot(...)`/`outbound.RequestToSpot(...)`로, c
 
 - 절차: key→RoutingId·owner 매핑(§2)이 고정된 상태에서 노드를 추가(scale-out)하고, 앱이 일부 key의 owner를 새 노드로 재배치한다. 재배치 전후로 같은 key에 request를 보낸다.
 - 검증: 재배치 후 같은 key는 새 owner 노드에서 처리된다(이전 owner에는 더 가지 않음). 재배치 진행 중 요청은 성공하거나 정해진 public error로 끝나고 유실·중복으로 깨지지 않는다. 매핑이 다시 고정되면 owner도 다시 고정된다.
-- 세부 동작: scale-out 중 owner 재배치(SM-A4가 가리키는 이동 경로).
+- 세부 동작: scale-out 중 owner 재배치(SM-A4가 가리키는 이동 경로). (owner 재배치는 **앱이 정의한 key→RoutingId 매핑을 바꾸는 것**이다 — framework에는 자동 owner-rebalance 표면이 없다. 이 시나리오는 앱 주도 remap이 routing에 반영되는지를 본다.)
 
 #### SM-G3 동시 join/leave 경합
 
@@ -548,8 +551,8 @@ channel egress는 `outbound.SendToSpot(...)`/`outbound.RequestToSpot(...)`로, c
 **한마디로:** 많은 session이 bind된 상태에서 동시에 push가 쏟아져도, 각 push가 제 session으로만 가고 누락·오배달 없이 격리되는가.
 
 - 절차: 다수 actor에 다수 session을 bind한 뒤, 동시에 actor push를 대량으로 트리거한다.
-- 검증: 각 push가 해당 bound session으로만 relay되고(교차 오배달 없음), 부하 중에도 누락 없이 전달되며 session 간 격리가 유지된다.
-- 세부 동작: 대규모 bound session push 타깃팅.
+- 검증: 각 push가 해당 bound session으로만 relay되고(교차 오배달 없음), 부하 중에도 session 간 격리가 유지된다. (전량 무손실은 공개 계약이 아니므로 단언하지 않는다 — 오배달 없음과 격리 유지에 초점.)
+- 세부 동작: 대규모 bound session push 타깃팅(오배달 없음·격리).
 
 ## 5. 완료 기준
 

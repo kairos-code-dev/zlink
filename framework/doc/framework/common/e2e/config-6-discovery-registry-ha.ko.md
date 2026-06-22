@@ -87,11 +87,11 @@ view를 query한다(`TopologyAsync`는 로컬 report 전용).
 
 우선순위: `P2`
 
-**한마디로:** 같은 channel·rid가 서로 다른 endpoint로 서로 다른 registry에 광고됐을 때, 합산 view가 하나의 일관된 routing으로 수렴하고 consumer가 stale로 헤매지 않는가.
+**한마디로:** 같은 channel·rid가 서로 다른 endpoint로 서로 다른 registry에 광고됐을 때 합산 view가 그걸 어떻게 표현하는지, 그리고 consumer가 stale로 헤매지 않는지.
 
 - 절차: peer로 묶은 `reg-1`·`reg-2`에, 같은 rid의 provider를 `reg-1`에는 endpoint p1로, `reg-2`에는 p2로 (의도적으로 충돌하게) 광고한다. probe/consumer로 합산 view와 실제 messaging을 관찰한다.
-- 검증: 같은 rid에 대해 합산 view가 일관된 routing 결정으로 수렴하는지를 관측으로 고정한다(같은 rid의 중복 endpoint가 동시에 활성 후보로 남아 분열되지 않음). consumer는 살아 있는 endpoint로 messaging에 성공하고 stale endpoint로 반복 실패하지 않는다.
-- 세부 동작: rid 충돌 광고 시 합산 수렴(관측 고정).
+- 검증: 같은 rid·다른 endpoint가 합산 view에 어떻게 나타나는지를 관측으로 고정한다. **현재 peer 합산 merge는 endpoint 기준 keying이라 같은 rid의 두 endpoint가 독립 provider로 함께 남을 수 있다(자동 수렴·winner 규칙 없음)** — 따라서 "하나로 수렴"을 단언하지 않는다. 핵심 단언은 consumer가 살아 있는 endpoint로 messaging에 성공하고, stale endpoint로 무한 실패/대기하지 않는다는 것이다.
+- 세부 동작: rid 충돌 광고 시 합산 표현 관측(자동 수렴 규칙 없음).
 
 ### Track B — registry 증감 (late-start / 정지)
 
@@ -121,7 +121,7 @@ view를 query한다(`TopologyAsync`는 로컬 report 전용).
 
 **한마디로:** registry 사이 peer 연결이 짧은 간격으로 끊겼다 붙기를 반복해도, 합산 view가 진동에 깨지지 않고 결국 안정 상태로 수렴하는가.
 
-- 절차: peer cluster에서 두 registry 사이의 peer 연결을 짧은 간격으로 down/up 반복(flapping)시킨다(harness가 peer link를 끊었다 잇거나, 한 registry를 짧게 정지/복구). 그 사이 provider는 살아 있는 registry에 직접 광고된 상태로 둔다.
+- 절차: peer cluster에서 두 registry 사이의 peer 연결을 짧은 간격으로 down/up 반복(flapping)시킨다. **런타임 peer-link toggle public API는 없으므로**, harness가 peer registry 프로세스를 짧게 정지/복구하거나 link를 끊었다 잇는 방식으로 유도한다(그 harness가 없으면 "미구현(하네스 대기)"). 그 사이 provider는 살아 있는 registry에 직접 광고된 상태로 둔다.
 - 검증: flapping 중에도 합산 view(`MemberPeersAsync`)와 messaging이 붕괴하지 않고, 진동이 멎으면 `ConnectedPeerRegistryCount`가 기대값으로 안정 수렴한다. `ListSeq`가 진동마다 과도하게 튀어 liveness 오판을 부르지 않는다.
 - 세부 동작: peer link 진동 내성.
 

@@ -178,7 +178,6 @@ export class SetAgentAvailableReq {
 
 export interface SetAgentAvailableRes {
   isAvailable: boolean;
-  error?: string;
 }
 
 export class JoinConversationReq {
@@ -210,7 +209,6 @@ export class SendChatMessageReq {
 export interface SendChatMessageRes {
   message: ChatMessage;
   state: ConversationState;
-  error?: string;
 }
 
 export class SetTypingReq {
@@ -227,7 +225,6 @@ export class SetTypingReq {
 
 export interface SetTypingRes {
   state: ConversationState;
-  error?: string;
 }
 
 export class CloseConversationReq {
@@ -244,7 +241,6 @@ export class CloseConversationReq {
 
 export interface CloseConversationRes {
   state: ConversationState;
-  error?: string;
 }
 
 // --- server push messages ---

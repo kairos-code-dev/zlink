@@ -85,19 +85,10 @@ internal sealed class SubscribeDeliveryHandler(
             cancellationToken);
         Console.Error.WriteLine($"deliverydispatch session: bound customer actor={ensured.Actor.ActorId}");
 
-        CustomerDeliverySubscribed subscribed;
-        try
-        {
-            subscribed = await channels.RequestToChannel(
-                    SampleNames.TrackingRouteChannel,
-                    new SubscribeCustomerToDelivery(CustomerId, deliveryId))
-                .Async<CustomerDeliverySubscribed>(cancellationToken);
-        }
-        catch (Exception error)
-        {
-            Console.Error.WriteLine($"deliverydispatch session: subscribe failed delivery={deliveryId} error={error}");
-            throw;
-        }
+        var subscribed = await channels.RequestToChannel(
+                SampleNames.TrackingRouteChannel,
+                new SubscribeCustomerToDelivery(CustomerId, deliveryId))
+            .Async<CustomerDeliverySubscribed>(cancellationToken);
 
         sessions.Subscribe(context, subscribed.DeliveryId);
         await context.Client.Reply(new SubscribeDeliveryAccepted(subscribed.DeliveryId))

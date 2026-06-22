@@ -27,11 +27,7 @@ class CloseConversationHandler
     request: CloseConversationReq
   ): Promise<CloseConversationRes> {
     void context;
-    try {
-      return await spot.close(actor, request);
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : String(error) } as CloseConversationRes;
-    }
+    return await spot.close(actor, request);
   }
 }
 

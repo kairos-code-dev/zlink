@@ -55,25 +55,18 @@ class SessionAuthenticator {
     console.log(`session-auth ensure actor=${authenticated.actorId}`);
     const ensureRequest = ensurePlayerActorReq(authenticated.actorId, authenticated.displayName);
     const ensured = await retry(async () => {
-      try {
-        if (this.config.preferredPlayNodeRid.length > 0) {
-          return await this.routeClient
-            .request(SampleNames.roomRouteChannel, this.config.preferredPlayNodeRid, ensureRequest)
-            .packetName(PacketNames.ensurePlayerActorReq)
-            .timeout(500)
-            .submit<EnsurePlayerActorRes>(AbortSignal.timeout(500));
-        }
-        return await this.zlinkClient
-          .requestToChannel(SampleNames.playChannel, ensureRequest)
+      if (this.config.preferredPlayNodeRid.length > 0) {
+        return await this.routeClient
+          .request(SampleNames.roomRouteChannel, this.config.preferredPlayNodeRid, ensureRequest)
           .packetName(PacketNames.ensurePlayerActorReq)
           .timeout(500)
-          .submit<EnsurePlayerActorRes>();
-      } catch (error) {
-        if (process.env.BINGO_DEBUG_FLOW === '1') {
-          console.log(`session-auth ensure retry actor=${authenticated.actorId} error=${error instanceof Error ? error.message : String(error)}`);
-        }
-        throw error;
+          .submit<EnsurePlayerActorRes>(AbortSignal.timeout(500));
       }
+      return await this.zlinkClient
+        .requestToChannel(SampleNames.playChannel, ensureRequest)
+        .packetName(PacketNames.ensurePlayerActorReq)
+        .timeout(500)
+        .submit<EnsurePlayerActorRes>();
     }, { delayMs: 25, maxAttempts: 200 });
     console.log(`session-auth ensured actor=${ensured.actorId} node=${ensured.actor.nodeRid}`);
 

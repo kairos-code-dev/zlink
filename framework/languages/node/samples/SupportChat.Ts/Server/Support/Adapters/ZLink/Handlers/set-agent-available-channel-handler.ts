@@ -12,8 +12,6 @@ import type {
   UserIdentity
 } from '../../../../../Shared/Contracts/messages';
 
-// Relays SetAgentAvailableReq to the SupportEntrySpot. A customer actor that sends this
-// request triggers an error response because only agent actors can set availability.
 @zlinkRequestHandler('support', PacketNames.setAgentAvailableReq)
 class SetAgentAvailableChannelHandler implements ZLinkRequestHandler<SetAgentAvailableReq & UserIdentity, SetAgentAvailableRes> {
   constructor(
@@ -23,11 +21,7 @@ class SetAgentAvailableChannelHandler implements ZLinkRequestHandler<SetAgentAva
 
   async handle(request: SetAgentAvailableReq & UserIdentity): Promise<SetAgentAvailableRes> {
     const actor = await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType) as SupportUserActor;
-    try {
-      return this.entrySpot.setAgentAvailable(actor, request);
-    } catch (error) {
-      return { isAvailable: false, error: error instanceof Error ? error.message : String(error) };
-    }
+    return this.entrySpot.setAgentAvailable(actor, request);
   }
 }
 

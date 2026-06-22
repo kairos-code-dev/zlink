@@ -75,6 +75,14 @@ stdout/stderr를 `logs/*.log`로 저장하는 샘플은 기존 console logger에
 와 `run_sample.ps1`은 프로세스 출력을 `logs/*.log`에 저장하므로, observer가 `ILogger`로
 남긴 `dispatch-error` 줄도 같은 샘플 로그 파일에서 확인한다.
 
+샘플 handler는 framework가 처리하는 dispatch 오류를 handler 안에서 다시 잘게
+처리하지 않는다. request, actor request, session packet handler 안에서 예외를 잡아
+로그만 남긴 뒤 다시 던지거나, domain 예외를 임의의 `error` 필드 응답으로 바꾸지
+않는다. 그런 예외는 framework dispatch 경계가 error reply, drop, dispatch error
+observer, 기본 로그로 처리하게 둔다. 샘플 handler는 성공 경로와 도메인 동작을
+보여 주는 데 집중해야 하며, 실패를 정상 업무 응답으로 바꾸는 코드는 해당 메시지
+계약이 명시적으로 그런 실패 상태를 정의할 때만 둔다.
+
 ## 공통 작성 원칙
 
 - 샘플은 framework가 어떤 일을 대신해 주는지 보여 주어야 한다.

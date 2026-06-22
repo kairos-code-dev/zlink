@@ -27,11 +27,7 @@ class SendChatMessageHandler
     request: SendChatMessageReq
   ): Promise<SendChatMessageRes> {
     void context;
-    try {
-      return await spot.sendMessage(actor, request);
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : String(error) } as SendChatMessageRes;
-    }
+    return await spot.sendMessage(actor, request);
   }
 }
 

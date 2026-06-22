@@ -13,8 +13,6 @@ import type {
   SetAgentAvailableRes
 } from '../../../../../../Shared/Contracts/messages';
 
-// Only agent actors may register availability. A customer actor that sends this request
-// receives an error response (the entry spot rejects the wrong role).
 @zlinkEntrySpotActorRequestHandler({
   actor: () => SupportUserActor,
   entrySpot: () => SupportEntrySpot,
@@ -29,11 +27,7 @@ class SetAgentAvailableHandler
     request: SetAgentAvailableReq
   ): Promise<SetAgentAvailableRes> {
     void context;
-    try {
-      return entrySpot.setAgentAvailable(actor, request);
-    } catch (error) {
-      return { isAvailable: false, error: error instanceof Error ? error.message : String(error) };
-    }
+    return entrySpot.setAgentAvailable(actor, request);
   }
 }
 

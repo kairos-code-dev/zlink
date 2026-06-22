@@ -27,46 +27,35 @@ internal sealed class AuthenticatePlaySessionHandler(
     {
         _ = header;
 
-        try
+        var authenticate = payload.Decode<AuthenticateReq>();
+
+        logger.LogInformation(
+            "play stream: authenticate requested. sessionId={SessionId}",
+            context.SessionId);
+
+        var accessToken = authenticate.AccessToken.Trim();
+        if (string.IsNullOrWhiteSpace(accessToken))
         {
-            var authenticate = payload.Decode<AuthenticateReq>();
-
-            logger.LogInformation(
-                "play stream: authenticate requested. sessionId={SessionId}",
-                context.SessionId);
-
-            var accessToken = authenticate.AccessToken.Trim();
-            if (string.IsNullOrWhiteSpace(accessToken))
-            {
-                throw new InvalidOperationException("Authentication token is empty.");
-            }
-
-            var authenticated = await channels.RequestToChannel(
-                    SampleChannels.Api,
-                    new AuthenticatePlayerReq(accessToken))
-                .Async<AuthenticatePlayerRes>(cancellationToken);
-
-            logger.LogInformation(
-                "play stream: authenticate accepted. sessionId={SessionId}, player={ActorId}",
-                context.SessionId,
-                authenticated.Player.ActorId);
-
-            await EnsureActorBoundAsync(
-                context,
-                authenticated.Player,
-                cancellationToken);
-
-            await context.Client.Reply(new AuthenticateRes(authenticated.Player))
-                .Async();
+            throw new InvalidOperationException("Authentication token is empty.");
         }
-        catch (Exception ex)
-        {
-            logger.LogError(
-                ex,
-                "play stream: authenticate failed. sessionId={SessionId}",
-                context.SessionId);
-            throw;
-        }
+
+        var authenticated = await channels.RequestToChannel(
+                SampleChannels.Api,
+                new AuthenticatePlayerReq(accessToken))
+            .Async<AuthenticatePlayerRes>(cancellationToken);
+
+        logger.LogInformation(
+            "play stream: authenticate accepted. sessionId={SessionId}, player={ActorId}",
+            context.SessionId,
+            authenticated.Player.ActorId);
+
+        await EnsureActorBoundAsync(
+            context,
+            authenticated.Player,
+            cancellationToken);
+
+        await context.Client.Reply(new AuthenticateRes(authenticated.Player))
+            .Async();
     }
 
     private async ValueTask EnsureActorBoundAsync(

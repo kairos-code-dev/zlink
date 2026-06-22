@@ -31,19 +31,10 @@ internal sealed class MatchBingoActorHandler(
             ActorNodeRid = entrySpot.Context.NodeRid.ToString(),
             Mode = message.Mode,
         };
-        MatchBingoApiRes matched;
-        try
-        {
-            matched = await entrySpot.Context.Outbound
-                .RequestToChannel(SampleNames.ApiChannel, apiRequest)
-                .Timeout(TimeSpan.FromSeconds(5))
-                .Async<MatchBingoApiRes>(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "match: api allocation failed. actor={ActorId}", actor.ActorId);
-            throw;
-        }
+        var matched = await entrySpot.Context.Outbound
+            .RequestToChannel(SampleNames.ApiChannel, apiRequest)
+            .Timeout(TimeSpan.FromSeconds(5))
+            .Async<MatchBingoApiRes>(cancellationToken);
         logger.LogInformation("match: room allocated. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
 
         var roomRid = RoutingId.From(matched.RoomId);

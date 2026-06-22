@@ -21,11 +21,7 @@ class SendChatMessageChannelHandler implements ZLinkRequestHandler<SendChatMessa
 
   async handle(request: SendChatMessageReq & UserIdentity): Promise<SendChatMessageRes> {
     const actor = await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType) as SupportUserActor;
-    try {
-      return await this.conversations.executeInConversation(request.conversationId, (conversation) => conversation.sendMessage(actor, request));
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : String(error) } as SendChatMessageRes;
-    }
+    return await this.conversations.executeInConversation(request.conversationId, (conversation) => conversation.sendMessage(actor, request));
   }
 }
 

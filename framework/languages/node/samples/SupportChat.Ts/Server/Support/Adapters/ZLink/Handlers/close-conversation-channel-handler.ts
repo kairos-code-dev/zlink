@@ -21,11 +21,7 @@ class CloseConversationChannelHandler implements ZLinkRequestHandler<CloseConver
 
   async handle(request: CloseConversationReq & UserIdentity): Promise<CloseConversationRes> {
     const actor = await this.actorManager.getOrCreate(request.actorId, SampleNames.supportActorType) as SupportUserActor;
-    try {
-      return await this.conversations.executeInConversation(request.conversationId, (conversation) => conversation.close(actor, request));
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : String(error) } as CloseConversationRes;
-    }
+    return await this.conversations.executeInConversation(request.conversationId, (conversation) => conversation.close(actor, request));
   }
 }
 

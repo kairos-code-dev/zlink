@@ -8,7 +8,7 @@ import { ConversationSpot } from './Adapters/ZLink/Spots/conversation-spot';
 import { SupportConversationAllocator } from './Application/ConversationAssignment/support-conversation-allocator';
 import { AgentAvailabilityDirectory } from './Application/ConversationAssignment/agent-availability-directory';
 import { AgentAssignmentService } from './Application/ConversationAssignment/agent-assignment-service';
-import { SampleNames, SampleTimings } from '../Configuration/sample-names';
+import { SampleNames } from '../Configuration/sample-names';
 function createSupportChatSupportModule(config: {
   registryRouterEndpoint: string;
   notificationEndpoint: string;
@@ -21,7 +21,6 @@ function createSupportChatSupportModule(config: {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
-          .options({ requestTimeoutMs: SampleTimings.requestTimeout })
           .codecs()
             .addJson()
           .useDiscovery()

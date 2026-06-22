@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { PacketNames } from '../../Shared/Contracts/messages';
-import { SampleNames, SampleTimings } from '../Configuration/sample-settings';
+import { SampleNames } from '../Configuration/sample-settings';
 import { CreateGameHandler } from './Adapters/ZLink/Handlers/create-game-handler';
 import { PlayActorFactory } from './Adapters/ZLink/Actors/play-actor-factory';
 import { PlayActorJoinGameHandler } from './Adapters/ZLink/Spots/Handlers/play-actor-join-game-handler';
@@ -40,7 +40,6 @@ function createTicTacToePlayModule(config: {
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
           .options({
-            requestTimeoutMs: SampleTimings.requestTimeout,
             spotRemoteAddressResolver: RedisSpotRemoteAddressResolver
           })
           .codecs()

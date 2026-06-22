@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { PacketNames } from '../../Shared/Contracts/messages';
-import { SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
+import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { CollectItemHandler } from './Handlers/collect-item-handler';
 import { CompleteMissionHandler } from './Handlers/complete-mission-handler';
 import { EnterAreaHandler } from './Handlers/enter-area-handler';
@@ -25,7 +25,6 @@ function createGameQuestModule(config: { questEndpoint: string }) {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
-          .options({ requestTimeoutMs: SampleTimings.requestTimeout })
           .codecs()
             .addJson()
           .addClientServerChannel(SampleNames.questChannel)

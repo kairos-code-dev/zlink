@@ -1,5 +1,5 @@
 import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
-import { SampleNames, SampleTimings } from '../Configuration/sample-names';
+import { SampleNames } from '../Configuration/sample-names';
 function createSupportChatApiModule(config: {
   apiEndpoint: string;
   supportEndpoint: string;
@@ -11,7 +11,6 @@ function createSupportChatApiModule(config: {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
-          .options({ requestTimeoutMs: SampleTimings.requestTimeout })
           .codecs()
             .addJson()
           .useDiscovery()

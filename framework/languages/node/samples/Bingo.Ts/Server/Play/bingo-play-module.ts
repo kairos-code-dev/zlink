@@ -14,7 +14,7 @@ import { BingoRewardAcquiredEventHandler } from './Adapters/ZLink/Spots/Handlers
 import { RedisBingoMatchQueue } from './Adapters/ZLink/Matchmaking/redis-bingo-match-queue';
 import { BingoRoomAllocator } from './Application/RoomAllocation/bingo-room-allocator';
 import { BINGO_MATCH_QUEUE } from './Application/RoomAllocation/bingo-match-queue';
-import { SampleNames, SampleTimings } from '../Configuration/sample-names';
+import { SampleNames } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import { PacketNames } from '../../Shared/Contracts/messages';
 function createBingoPlayModule(config: {
@@ -34,7 +34,6 @@ function createBingoPlayModule(config: {
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
           .options({
-            requestTimeoutMs: SampleTimings.requestTimeout,
             registrySpotRemoteAddresses: {
               namespace: SampleNames.roomSpotNode,
               routerChannelId: SampleNames.roomRouteChannel

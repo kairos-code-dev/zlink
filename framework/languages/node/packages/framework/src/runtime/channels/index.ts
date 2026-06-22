@@ -903,7 +903,7 @@ export class ZLinkChannelRuntimeManager {
     submit: (resolve: (reply: T) => void, reject: (error: unknown) => void) => boolean,
     notReadyMessage: string
   ): Promise<T> {
-    const effectiveTimeoutMs = timeoutMs ?? this.registration.requestTimeoutMs ?? 10000;
+    const effectiveTimeoutMs = timeoutMs ?? this.registration.requestTimeoutMs ?? 30_000;
     const deadline = Date.now() + effectiveTimeoutMs;
     return new Promise<T>((resolve, reject) => {
       const attempt = () => {
@@ -1841,8 +1841,14 @@ export class DefaultZLinkChannelClient implements ZLinkChannelClient {
     return new DefaultZLinkRequestCall(
       () => this.requireClientChannel(channelName),
       (packetName, timeoutMs, signal) => this.requireTransport().request(channelName, packetName, request, timeoutMs, signal),
-      this.registration.requestTimeoutMs
+      this.defaultRequestTimeout(channelName)
     );
+  }
+
+  private defaultRequestTimeout(channelName: string): number {
+    return this.registration.channels.get(channelName)?.requestTimeoutMs
+      ?? this.registration.requestTimeoutMs
+      ?? 30_000;
   }
 
   private requireClientChannel(channelName: string): void {
@@ -1962,8 +1968,14 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
     return new DefaultZLinkRequestCall(
       () => this.requireRouteChannel(routerChannelId),
       (packetName, timeoutMs, signal) => this.requireTransport().request(routerChannelId, targetNodeRid, packetName, request, timeoutMs, signal),
-      this.registration.requestTimeoutMs
+      this.defaultRequestTimeout(routerChannelId)
     );
+  }
+
+  private defaultRequestTimeout(routerChannelId: string): number {
+    return this.registration.routeChannelOptions.get(routerChannelId)?.requestTimeoutMs
+      ?? this.registration.requestTimeoutMs
+      ?? 30_000;
   }
 
   private requireRouteChannel(routerChannelId: string): void {
@@ -2049,7 +2061,7 @@ class DefaultZLinkRequestCall implements ZLinkRequestCall {
       timeoutMs: number | undefined,
       signal?: AbortSignal
     ) => Promise<TReply>,
-    private readonly defaultTimeoutMs?: number
+    private readonly defaultRequestTimeoutMs?: number
   ) {}
 
   packetName(packetName: string): this {
@@ -2065,7 +2077,7 @@ class DefaultZLinkRequestCall implements ZLinkRequestCall {
   async submit<TReply>(signal?: AbortSignal): Promise<TReply> {
     throwIfAborted(signal);
     this.validate();
-    return this.submitter<TReply>(this.packet, this.timeoutMs ?? this.defaultTimeoutMs, signal);
+    return this.submitter<TReply>(this.packet, this.timeoutMs ?? this.defaultRequestTimeoutMs, signal);
   }
 }
 

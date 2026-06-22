@@ -3,7 +3,7 @@ import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf';
 import { SessionAuthenticator } from './Sessions/Handlers/authenticate-session-handler';
 import { BingoSessionFactory } from './Sessions/bingo-session';
-import { SampleNames, SampleTimings } from '../Configuration/sample-names';
+import { SampleNames } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import type { BingoSampleConfig } from '../Configuration/sample-config';
 function createBingoSessionModule(endpoints: {
@@ -20,7 +20,6 @@ function createBingoSessionModule(endpoints: {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
-          .options({ requestTimeoutMs: SampleTimings.requestTimeout })
           .codecs()
             .use(zlinkProtobufCodec())
           .useDiscovery()

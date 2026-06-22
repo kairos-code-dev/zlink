@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { PacketNames } from '../../Shared/Contracts/messages';
-import { SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
+import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { ContinueOrderWorkflowHandler } from './Handlers/continue-order-workflow-handler';
 import {
   DeleteOrderProjectionHandler,
@@ -20,7 +20,6 @@ function createShoppingMallModule(config: { workflowEndpoint: string }) {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
-          .options({ requestTimeoutMs: SampleTimings.requestTimeout })
           .codecs()
             .addJson()
           .addClientServerChannel(SampleNames.workflowChannel)

@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { PacketNames } from '../../Shared/Contracts/messages';
-import { SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
+import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { AdvanceDeliveryHandler } from './Handlers/advance-delivery-handler';
 import { AssignDeliveryHandler } from './Handlers/assign-delivery-handler';
 import { CreateDeliveryHandler } from './Handlers/create-delivery-handler';
@@ -16,7 +16,6 @@ function createDeliveryDispatchModule(config: { dispatchEndpoint: string }) {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
-          .options({ requestTimeoutMs: SampleTimings.requestTimeout })
           .codecs()
             .addJson()
           .addClientServerChannel(SampleNames.dispatchChannel)

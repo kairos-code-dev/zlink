@@ -28,7 +28,6 @@ function createClient(sessionEndpoint: string, clientName: string): ZlinkStreamC
     endpoint: sessionEndpoint,
     codec: bingoProtobuf,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
-    requestTimeoutMs: SampleTimings.requestTimeout,
     waitTimeoutMs: SampleTimings.requestTimeout,
     heartbeat: { enabled: false }
   });

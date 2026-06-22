@@ -79,6 +79,74 @@ test('ZLinkChannelClient applies registration request timeout when call timeout 
   ]);
 });
 
+test('ZLinkChannelClient applies channel request timeout before registration default', async () => {
+  const calls = [];
+  const registration = framework.createFrameworkRegistration({
+    requestTimeoutMs: 7000,
+    channels: {
+      api: {
+        requestTimeoutMs: 2000,
+        client: { manualConnections: ['inproc://api'] }
+      }
+    }
+  });
+  const client = new framework.DefaultZLinkChannelClient(registration, {
+    async send() {},
+    async publish() {},
+    async request(channelName, packetName, request, timeoutMs) {
+      calls.push({ channelName, packetName, request, timeoutMs });
+      return { ok: true };
+    }
+  });
+
+  const reply = await client
+    .requestToChannel('api', { id: 7 })
+    .packetName('GetProfile')
+    .submit();
+
+  assert.deepEqual(reply, { ok: true });
+  assert.deepEqual(calls, [
+    { channelName: 'api', packetName: 'GetProfile', request: { id: 7 }, timeoutMs: 2000 }
+  ]);
+});
+
+test('ZLinkRouteClient applies route channel request timeout before registration default', async () => {
+  const calls = [];
+  const registration = framework.createFrameworkRegistration({
+    requestTimeoutMs: 7000,
+    routeChannels: [
+      {
+        routerChannelId: 'route',
+        requestTimeoutMs: 3000,
+        manualConnections: ['inproc://route']
+      }
+    ]
+  });
+  const client = new framework.DefaultZLinkRouteClient(registration, {
+    async send() {},
+    async request(routerChannelId, targetNodeRid, packetName, request, timeoutMs) {
+      calls.push({ routerChannelId, targetNodeRid, packetName, request, timeoutMs });
+      return { ok: true };
+    }
+  });
+
+  const reply = await client
+    .request('route', 'target', { id: 7 })
+    .packetName('GetProfile')
+    .submit();
+
+  assert.deepEqual(reply, { ok: true });
+  assert.deepEqual(calls, [
+    {
+      routerChannelId: 'route',
+      targetNodeRid: 'target',
+      packetName: 'GetProfile',
+      request: { id: 7 },
+      timeoutMs: 3000
+    }
+  ]);
+});
+
 test('ZLinkChannelClient and fanout client reject pre-aborted submit before transport dispatch', async () => {
   const controller = new AbortController();
   controller.abort();

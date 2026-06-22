@@ -11,7 +11,6 @@ import {
 } from '../Shared/Contracts/messages';
 import { ZLinkHttpClient } from '@zlink-systems/http-client';
 import * as connector from '@zlink-systems/stream-connector';
-import { SampleTimings } from './Configuration/sample-settings';
 import type {
   AuthenticateRes,
   CreateGameHttpRes,
@@ -180,7 +179,6 @@ function createPlayerClient(endpoint: string, name: string): ZlinkStreamConnecto
   const client = connector.zlinkStreamConnectorFactory.create({
     endpoint,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
-    requestTimeoutMs: SampleTimings.requestTimeout,
     heartbeat: { enabled: false }
   });
   client.observeInbound((observation) => {

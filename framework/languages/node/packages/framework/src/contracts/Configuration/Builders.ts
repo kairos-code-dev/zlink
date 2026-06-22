@@ -39,6 +39,7 @@ export interface ZLinkClientServerChannelBuilder {
   routingId(routingId: string): this;
   enableClient(): this;
   enableClient(endpoint: string): this;
+  setDefaultRequestTimeout(timeoutMs: number): this;
 }
 
 export interface ZLinkFanoutChannelBuilder {
@@ -50,12 +51,14 @@ export interface ZLinkFanoutChannelBuilder {
 export interface ZLinkDealerMeshChannelBuilder {
   enableClient(): this;
   enableClient(endpoint: string): this;
+  setDefaultRequestTimeout(timeoutMs: number): this;
 }
 
 export interface ZLinkRouteChannelBuilder {
   enableServer(endpoint: string): this;
   enableClient(): this;
   enableClient(endpoint: string): this;
+  setDefaultRequestTimeout(timeoutMs: number): this;
 }
 
 export interface ZLinkRouteMeshChannelBuilder extends ZLinkRouteChannelBuilder {}

@@ -126,6 +126,7 @@ export interface ZLinkDiscoveryOptions {
 }
 
 export interface ZLinkChannelOptions {
+  readonly requestTimeoutMs?: number;
   readonly client?: ZLinkClientCapabilityOptions;
   readonly dealerMesh?: ZLinkDealerMeshChannelOptions;
   readonly publisher?: ZLinkPublisherCapabilityOptions;
@@ -154,6 +155,7 @@ export interface ZLinkPublisherCapabilityOptions {
 }
 
 export interface ZLinkRouteMeshChannelOptions {
+  readonly requestTimeoutMs?: number;
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
@@ -164,6 +166,7 @@ export interface ZLinkRouteMeshChannelOptions {
 
 export interface ZLinkRouteChannelOptions {
   readonly routerChannelId: string;
+  readonly requestTimeoutMs?: number;
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
@@ -520,6 +523,11 @@ class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuild
     }
     return this;
   }
+
+  setDefaultRequestTimeout(timeoutMs: number): this {
+    this.channel.requestTimeoutMs = normalizeOptionalPositiveInteger(timeoutMs, 'requestTimeoutMs');
+    return this;
+  }
 }
 
 class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
@@ -553,6 +561,11 @@ class DefaultDealerMeshChannelBuilder implements ZLinkDealerMeshChannelBuilder {
     }
     return this;
   }
+
+  setDefaultRequestTimeout(timeoutMs: number): this {
+    this.channel.requestTimeoutMs = normalizeOptionalPositiveInteger(timeoutMs, 'requestTimeoutMs');
+    return this;
+  }
 }
 
 class DefaultRouteChannelBuilder implements ZLinkRouteChannelBuilder {
@@ -570,6 +583,11 @@ class DefaultRouteChannelBuilder implements ZLinkRouteChannelBuilder {
     }
     return this;
   }
+
+  setDefaultRequestTimeout(timeoutMs: number): this {
+    this.routeChannel.requestTimeoutMs = normalizeOptionalPositiveInteger(timeoutMs, 'requestTimeoutMs');
+    return this;
+  }
 }
 
 class DefaultRouteMeshChannelBuilder implements ZLinkRouteMeshChannelBuilder {
@@ -585,6 +603,11 @@ class DefaultRouteMeshChannelBuilder implements ZLinkRouteMeshChannelBuilder {
     if (endpoint !== undefined) {
       this.routeMesh.manualConnections.push(endpoint);
     }
+    return this;
+  }
+
+  setDefaultRequestTimeout(timeoutMs: number): this {
+    this.routeMesh.requestTimeoutMs = normalizeOptionalPositiveInteger(timeoutMs, 'requestTimeoutMs');
     return this;
   }
 }
@@ -873,6 +896,7 @@ interface MutableDiscoveryOptions {
 }
 
 interface MutableChannelOptions {
+  requestTimeoutMs?: number;
   client?: MutableClientCapabilityOptions;
   dealerMesh?: MutableDealerMeshChannelOptions;
   publisher?: MutablePublisherCapabilityOptions;
@@ -901,6 +925,7 @@ interface MutablePublisherCapabilityOptions {
 }
 
 interface MutableRouteMeshChannelOptions {
+  requestTimeoutMs?: number;
   bind?: string;
   manualConnections?: string[];
   routingId?: string;
@@ -957,7 +982,10 @@ interface MutableSpotRouteChannelAcceptanceOptions {
 }
 
 function toChannelMap(channels: ZLinkFrameworkRegistrationOptions['channels']): Map<string, ZLinkChannelOptions> {
-  return new Map(Object.entries(channels ?? {}).map(([name, channel]) => [name, { ...channel }]));
+  return new Map(Object.entries(channels ?? {}).map(([name, channel]) => [name, {
+    ...channel,
+    requestTimeoutMs: normalizeOptionalPositiveInteger(channel.requestTimeoutMs, `${name}.requestTimeoutMs`)
+  }]));
 }
 
 function toStreamNodeMap(streamNodes: ZLinkFrameworkRegistrationOptions['streamNodes']): Map<string, ZLinkStreamNodeOptions> {
@@ -973,7 +1001,13 @@ function toRouteChannelOptions(
       routeOptions.set(routeChannel, { routerChannelId: routeChannel });
       continue;
     }
-    routeOptions.set(routeChannel.routerChannelId, { ...routeChannel });
+    routeOptions.set(routeChannel.routerChannelId, {
+      ...routeChannel,
+      requestTimeoutMs: normalizeOptionalPositiveInteger(
+        routeChannel.requestTimeoutMs,
+        `${routeChannel.routerChannelId}.requestTimeoutMs`
+      )
+    });
   }
   for (const [channelName, channel] of Object.entries(options.channels ?? {})) {
     if (channel.routeMesh === undefined) {
@@ -984,7 +1018,11 @@ function toRouteChannelOptions(
     }
     routeOptions.set(channelName, {
       routerChannelId: channelName,
-      ...channel.routeMesh
+      ...channel.routeMesh,
+      requestTimeoutMs: normalizeOptionalPositiveInteger(
+        channel.routeMesh.requestTimeoutMs,
+        `${channelName}.routeMesh.requestTimeoutMs`
+      )
     });
   }
   return routeOptions;

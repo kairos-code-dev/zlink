@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SupportChatSessionAuthenticator } from './Sessions/Handlers/authenticate-session-handler';
-import { SampleNames, SampleTimings } from '../Configuration/sample-names';
+import { SampleNames } from '../Configuration/sample-names';
 function createSupportChatSessionModule(endpoints: {
   registryRouterEndpoint: string;
 }) {
@@ -11,7 +11,6 @@ function createSupportChatSessionModule(endpoints: {
     imports: [
       ZLinkModule.forRootFactory({
         useFactory: () => zlinkFramework()
-          .options({ requestTimeoutMs: SampleTimings.requestTimeout })
           .codecs()
             .addJson()
           .useDiscovery()

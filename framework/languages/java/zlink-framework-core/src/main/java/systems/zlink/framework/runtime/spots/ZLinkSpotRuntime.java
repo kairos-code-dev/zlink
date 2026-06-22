@@ -3257,6 +3257,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         @Override
         public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
             List<Message> spotParts = parts(packetName, payload);
+            String egressPacket = packetName.orElse(null);
+            String egressSpot = spotRid.toString();
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                    ZLinkDispatchMessageKind.REQUEST,
+                    egressPacket, egressChannelName, null, null, null, egressSpot, null, null));
+            }
             try {
                 return channels.requestToSpotViaEgressChannel(
                     egressChannelName,
@@ -3264,6 +3273,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     spotParts,
                     timeout)
                     .thenApply(replyParts -> {
+                        if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
+                            dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                                ZLinkMessageFlowPhase.REPLY_RECEIVED,
+                                ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                                ZLinkDispatchMessageKind.RESPONSE,
+                                egressPacket, egressChannelName, null, null, null, egressSpot, null, null));
+                        }
                         Message emptyReply = null;
                         try {
                             Message firstReply = replyParts.isEmpty()
@@ -3499,8 +3515,25 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
             CompletableFuture<TReply> result = new CompletableFuture<>();
             List<Message> requestParts = parts(packetName, payload);
+            String s2sPacket = packetName.orElse(null);
+            String s2sSpot = spotRid.toString();
+            String s2sNode = targetNodeRid.toString();
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                    ZLinkDispatchMessageKind.REQUEST,
+                    s2sPacket, null, null, null, s2sNode, s2sSpot, null, null));
+            }
             try {
                 spot.requestToSpot(targetNodeRid, spotRid, requestParts, reply -> {
+                    if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
+                        dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                            ZLinkMessageFlowPhase.REPLY_RECEIVED,
+                            ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                            ZLinkDispatchMessageKind.RESPONSE,
+                            s2sPacket, null, null, null, s2sNode, s2sSpot, null, null));
+                    }
                     Message emptyReply = null;
                     try {
                         Message firstReply = reply.parts().isEmpty()

@@ -70,13 +70,13 @@ state에 손대지 않는다.
 
 | Config | 서버 구성 | 다루는 것 |
 |--------|-----------|-----------|
-| [Config 1 — Registry messaging](config-1-registry-messaging.ko.md) | registry + api 노드 2 + client-server/route channel | 자동/수동/custom resolve, connection control, scale-out/in, same-rid failover, dealer mesh·weighted·round-robin, request·send·timeout·decode·미등록 |
-| [Config 2 — Spot 서비스](config-2-spot-service.ko.md) | registry + entry/user spot + actor + session | spot↔channel·spot↔spot messaging, actor join(local/remote)·lifecycle callback·실행순서, session bind/relay(local/remote/다중)·재접속 이전성, owner routing, timer·idle close, stream(heartbeat/TLS) |
-| [Config 3 — Pub/Sub 이벤트](config-3-pubsub.ko.md) | registry + publisher + subscriber 3 | fanout, topic filter, late subscriber, subscriber 격리, publish negative |
-| [Config 4 — 등록·codec 변주](config-4-registration-codec.ko.md) | 단순 channel 구성 2 | 자동/선언/수동 등록, startup 검증, DI lifecycle, ordering, json/protobuf/msgpack codec, codec 격리 |
-| [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.ko.md) | 다중 노드 + registry | restart, reconnect, cancellation, in-flight crash, shutdown, partition 복구, flapping, wire 호환 |
-| [Config 6 — Discovery·Registry HA](config-6-discovery-registry-ha.ko.md) | registry 1~3 cluster + provider 2 | registry 다중화 동등성, registry scale-out/in, registry 장애 중 discovery, embedded/standalone 배포, topology 조회 |
-| [Config 7 — Monitoring](config-7-monitoring.ko.md) | registry + service 2 + monitor | socket/registry/spot 이벤트 runtime 관찰, 다중 source 격리 |
+| [Config 1 — Registry messaging](config-1-registry-messaging.ko.md) | registry + api 노드 2 + client-server/route channel | 자동/수동/custom resolve, connection control, scale-out/in, same-rid failover, dealer mesh·weighted·round-robin, request·send·timeout·decode·미등록, 메시지 크기·backpressure |
+| [Config 2 — Spot 서비스](config-2-spot-service.ko.md) | registry + entry/user spot + actor + session | spot↔channel·spot↔spot messaging, actor join(local/remote)·lifecycle callback·실행순서, session bind/relay(local/remote/다중)·재접속 이전성, owner routing, timer·idle close, stream(heartbeat/TLS), channel↔spot route bridge, stateful 장애·복구(노드 crash·owner 이동·경합) |
+| [Config 3 — Pub/Sub 이벤트](config-3-pubsub.ko.md) | registry + publisher + subscriber 3 | fanout, topic filter, late subscriber, subscriber 격리, publish negative, subscriber 재연결·publisher 재시작 |
+| [Config 4 — 등록·codec 변주](config-4-registration-codec.ko.md) | 단순 channel 구성 2 | 자동/선언/수동 등록, startup 검증, DI lifecycle, ordering, json/protobuf/msgpack codec, codec 격리, peer 간 codec 불일치 |
+| [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.ko.md) | 다중 노드 + registry | restart, reconnect, cancellation, in-flight crash, shutdown, 런타임 drain/restore, gray failure, partition 복구, flapping, 혼합 soak, wire 호환 |
+| [Config 6 — Discovery·Registry HA](config-6-discovery-registry-ha.ko.md) | registry 1~3 cluster + provider 2 | registry 다중화 동등성, registry scale-out/in, registry 장애 중 discovery, 충돌 광고·peer flapping, embedded/standalone 배포, topology 조회 |
+| [Config 7 — Monitoring](config-7-monitoring.ko.md) | registry + service 2 + monitor | socket/registry/spot 이벤트 runtime 관찰, 가용성 전이(failover/drain)·장애 중 관측, 다중 source 격리 |
 
 ## 4. 우선순위
 
@@ -101,7 +101,59 @@ state에 손대지 않는다.
   통과시키려고 C API나 bindings 버그를 framework에서 우회하지 않는다.
 - 같은 시나리오는 언어별 public API 모양만 달라지고, 의미와 marker는 같아야 한다.
 
-## 6. 시나리오 ID 규칙
+## 6. 로깅과 메시지 흐름 추적 (필수 공통)
+
+모든 e2e는 **파일 로깅과 메시지 흐름 추적을 반드시 켜고** 작성·디버깅한다. ad-hoc `printf`나
+콘솔 스크롤로 때우지 않는다. 트레이싱은 "메시지가 도착했나 / 핸들러로 갔나 / 응답이 나갔나"를
+표준 기능으로 찍어 주므로, 테스트를 만들면서 1차 디버깅 도구로 쓴다.
+(기능 근거: [`framework/doc/plan/framework-message-flow-tracing-plan.ko.md`](../../../plan/framework-message-flow-tracing-plan.ko.md))
+
+### 6.1 모든 로그를 파일로 (`log/` 폴더)
+
+- 각 서버/호스트·client 프로세스는 모든 framework 로그를 **실행별 `log/` 폴더 아래 파일**로
+  출력한다. 콘솔 출력만으로 끝내지 않는다.
+- 로그 디렉토리는 실행마다 격리하고(§5), VCS에서 제외한다(`.gitignore`). (C++ Bingo 예:
+  `samples/Bingo/logs/`, `run_sample.sh`가 `BINGO_LOG_DIR`를 export.)
+- 파일 sink는 부모 디렉토리를 자동 생성하는 API를 쓴다(C++ `app.logging().use_file(...)`/
+  `use_rotating_file(...)`; `.NET`/Java/Node도 동일 의미 옵션). 디렉토리가 없다고 조용히 실패하면
+  안 된다.
+- 프로세스마다 파일을 분리해(예: `registry.log`, `play-a.log`, `session-a.log`, `client.log`)
+  어느 노드 로그인지 바로 보이게 한다.
+
+### 6.2 메시지 흐름 추적 켜기 (디버깅 1차 도구)
+
+- e2e 실행 시 message flow 모드를 **최소 `key_transitions`**로 켠다. 그러면 한 메시지의
+  인바운드(`received`→`dispatched`/`replied`)와 아웃바운드(`sent`→`reply_received`)가 한 줄씩
+  찍힌다. 실패(`dropped`/error)는 같은 stream에 같은 `corr=`로 찍혀, 정상·실패가 하나의 흐름으로
+  읽힌다.
+- 로그 라인 토큰: `zlink flow: phase=… surface=… kind=… packet=… channel=… topic=… corr=…
+  src=… spot=… actor=… [size=]`.
+- **`corr=<id>`로 grep해 한 요청의 생애주기를 추적**한다. 노드 간에는 corr이 전파되는 경로
+  (channel request↔reply, stream request↔reply echo, route 전파)에서 이어진다. (주의: corr은
+  프로세스 전역 단조값이라 노드별 카운터가 독립이다 — 숫자만 같고 다른 메시지일 수 있으니, 노드 간
+  연결은 corr이 실제 전파되는 경로에서만 신뢰한다. spot 구독/actor/publish 경로는 corr 대신
+  spot/actor id로 키잉된다.)
+- 트레이싱 로그는 앱 로그와 한 파일로 통합하거나(앱 로거 sink) 전용 파일로 분리할 수 있다
+  (C++ `diagnostics.log_file`). 어느 쪽을 쓰든 §6.1대로 **파일로 남긴다**.
+- 런타임 토글이 가능하면(C++ `app.set_message_flow_mode(...)`, `.NET` `IZLinkMessageFlowControl`)
+  평소엔 `errors_only`로 두고 특정 시나리오 디버깅 때 올렸다 내릴 수 있다. 단 e2e 기본 캡처는 최소
+  `key_transitions`로 둔다.
+- 트레이싱은 **관측이지 제어가 아니다.** 켜도 기능 동작·성공 기준이 달라지면 안 되고, observer/trace
+  실패가 메시지 처리나 테스트 판정을 바꾸면 안 된다.
+
+### 6.3 실패 evidence에 포함
+
+- 시나리오 실패 시 §5의 stdout/stderr·client 정보에 더해 위 **파일 로그(흐름 추적 포함)**를
+  evidence로 남긴다. 원인 레이어 분리(`core-capi`/`bindings`/`framework`/`sample`/`harness`)도
+  `corr=` 흐름으로 먼저 좁힌다.
+
+### 6.4 언어별 적용 시점
+
+message flow tracing은 언어별로 들어오는 중이다(2026-06-22 기준 C++·`.NET` 완료, Java/Kotlin/Node
+미착수). 트레이싱이 아직 없는 언어에서도 **파일 로깅(§6.1)은 필수**이며, 트레이싱(§6.2)은 해당
+언어 지원이 들어오는 대로 적용한다.
+
+## 7. 시나리오 ID 규칙
 
 ID는 `config 접두사 - 트랙 - 번호`를 쓴다. 예: `RM-A1`(Registry messaging, Track A, 1번).
 
@@ -117,7 +169,7 @@ ID는 `config 접두사 - 트랙 - 번호`를 쓴다. 예: `RM-A1`(Registry mess
 
 테스트 이름은 언어 관례에 맞게 바꿔도 되지만, 리포트에는 config id와 시나리오 id가 드러나야 한다.
 
-## 7. 완료 기준
+## 8. 완료 기준
 
 - 각 config의 `P0` 시나리오는 모두 구현되어야 한다.
 - `P1`은 해당 기능을 지원한다고 문서화한 언어에서 구현되어야 한다.

@@ -43,6 +43,10 @@ spot 쪽 관찰은 `SubjectsChanged`/`PeersChanged`로 본다.
 `run_e2e.sh`가 registry → service 노드를 monitoring colocated로 띄우고, trigger client가 이벤트를
 유발한다. 각 host의 evidence를 조회해 관찰 결과를 확인한다.
 
+로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
+폴더에 파일로 남기고, message flow 추적을 `key_transitions` 이상으로 켜 `corr=`로 디버깅한다.
+(monitoring 관측 evidence와 별개로, 흐름 추적 파일 로그도 함께 남긴다.)
+
 ## 4. 시나리오
 
 ### Track A — 이벤트 관찰
@@ -77,6 +81,16 @@ spot 쪽 관찰은 `SubjectsChanged`/`PeersChanged`로 본다.
 - 검증: `SubjectsChanged`/`PeersChanged` 이벤트가 evidence에 기록되어 실제 subject/peer 변화를 반영한다. spot timer가 예외로 실패하면 `TimerHandlerFailed`도 관찰된다.
 - 세부 동작: spot source 관찰(subjects/peers/timer kind).
 
+#### MON-A4 가용성 전이 관측 (failover / drain)
+
+우선순위: `P1`
+
+**한마디로:** provider 교체(failover)나 런타임 drain으로 가용성이 바뀔 때, 그 전이가 monitoring 이벤트(연결/해제·admission 변경)와 registry `TopologyChanged`로 잡히는가.
+
+- 절차: (a) provider를 같은 rid 다른 endpoint로 교체(failover)하고, (b) 한 provider를 런타임 drain(`ConfigureServerSocket().Weight = 0`)했다가 restore한다. socket·registry source가 관찰한다.
+- 검증: failover 시 연결 전이가 socket 이벤트(`Disconnected`/`Connected`/`ConnectionReady`)로, topology 변화가 registry `TopologyChanged`/`ServiceSummaryChanged`로 관측된다. drain된 peer의 가용성 변화는 연결된 peer 쪽 socket 이벤트(`PeerAdmissionChanged`)로 나타난다. (weight 값 자체의 세밀한 관측은 monitoring kind가 아니라 channel 옵션의 `Weight` read로 보완한다 — socket 이벤트 kind는 §2의 고정 enum 범위다.)
+- 세부 동작: 가용성 전이(failover·drain) 관측(고정 enum + topology).
+
 ### Track B — 등록과 필터 검증
 
 #### MON-B1 event kind 필터
@@ -110,6 +124,18 @@ spot 쪽 관찰은 `SubjectsChanged`/`PeersChanged`로 본다.
 - 절차: 한 event handler가 예외를 던지게 하고 이벤트를 계속 유발한다.
 - 검증: event dispatch task의 실패가 framework runtime이나 messaging 경로를 종료시키지 않는다(관찰은 best-effort). 실패는 runtime error sink/debug event로 보고된다. (단, 같은 이벤트에 등록된 여러 handler를 순차 await하므로 "한 handler 실패가 같은 이벤트의 다음 handler 실행을 보장한다"고는 단언하지 않는다.)
 - 세부 동작: 관측 dispatch 실패가 runtime을 막지 않음.
+
+### Track D — 장애 중 관측 연속성
+
+#### MON-D1 장애·복구 반복 중 이벤트 연속성
+
+우선순위: `P1`
+
+**한마디로:** provider가 죽었다 살기를 반복하는 동안에도 monitoring이 계속 이벤트를 잡고, 그 전이가 실제 장애·복구를 반영하며, 관측이 runtime을 끌어내리지 않는가.
+
+- 절차: provider를 crash·재기동(필요 시 drain·restore 포함)으로 여러 번 흔드는 동안 socket·registry source가 계속 관찰하게 둔다(harness kill/restart 전제).
+- 검증: 장애 구간에도 monitoring task가 죽지 않고 이벤트 기록이 이어지며, 관측된 전이(연결/해제, `TopologyChanged`)가 실제 down/up 순서를 반영한다. 관측은 best-effort 계약 안에서 동작하고, monitoring이 messaging·runtime 경로를 막거나 종료시키지 않는다.
+- 세부 동작: 장애·복구 반복 중 관측 연속성(best-effort).
 
 ## 5. 완료 기준
 

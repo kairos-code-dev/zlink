@@ -46,6 +46,9 @@ endpoint는 미리 선언), provider를 광고시킨 뒤 client 시나리오를 
 미리 선언된 endpoint의 프로세스를 늦게 띄운다. probe는 각 registry의 `MemberPeersAsync` 합산
 view를 query한다(`TopologyAsync`는 로컬 report 전용).
 
+로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
+폴더에 파일로 남기고, message flow 추적을 `key_transitions` 이상으로 켜 `corr=`로 디버깅한다.
+
 ## 4. 시나리오
 
 ### Track A — peer 합산 view
@@ -80,6 +83,16 @@ view를 query한다(`TopologyAsync`는 로컬 report 전용).
 - 검증: 세 registry 모두 `MemberPeersAsync(channel)`로 A·B를 member로 보고하고, 각 registry만 보는 consumer가 각각 messaging에 성공한다. 각 registry의 `ConnectedPeerRegistryCount`가 기대값(=2)이다.
 - 세부 동작: 3-노드 peer 합산 일치(MemberPeers + messaging).
 
+#### DR-A4 충돌 광고 (같은 rid, 다른 endpoint)
+
+우선순위: `P2`
+
+**한마디로:** 같은 channel·rid가 서로 다른 endpoint로 서로 다른 registry에 광고됐을 때, 합산 view가 하나의 일관된 routing으로 수렴하고 consumer가 stale로 헤매지 않는가.
+
+- 절차: peer로 묶은 `reg-1`·`reg-2`에, 같은 rid의 provider를 `reg-1`에는 endpoint p1로, `reg-2`에는 p2로 (의도적으로 충돌하게) 광고한다. probe/consumer로 합산 view와 실제 messaging을 관찰한다.
+- 검증: 같은 rid에 대해 합산 view가 일관된 routing 결정으로 수렴하는지를 관측으로 고정한다(같은 rid의 중복 endpoint가 동시에 활성 후보로 남아 분열되지 않음). consumer는 살아 있는 endpoint로 messaging에 성공하고 stale endpoint로 반복 실패하지 않는다.
+- 세부 동작: rid 충돌 광고 시 합산 수렴(관측 고정).
+
 ### Track B — registry 증감 (late-start / 정지)
 
 #### DR-B1 late-start registry 합류 (선언된 peer가 늦게 기동)
@@ -101,6 +114,16 @@ view를 query한다(`TopologyAsync`는 로컬 report 전용).
 - 절차: `reg-1~2` cluster + consumer는 `reg-1`·`reg-2` 두 endpoint를 configured. provider는 `reg-1`·`reg-2` 모두에 직접 광고한다(peer-sourced provider는 peer timeout 후 제거되므로 살아 있는 registry에도 직접 등록). `reg-2`를 정지한다.
 - 검증: `reg-1`로 provider discovery·messaging이 bounded timeout 안에 정상 지속된다. (registry-tier HA: 살아 있는 registry로 유지. client가 죽은 endpoint를 자동 failover하는 정책 API는 없으므로 consumer는 살아 있는 endpoint가 configured에 포함된 상태에서만 검증한다.)
 - 세부 동작: 살아 있는 registry endpoint로 지속(직접 광고 전제).
+
+#### DR-B3 peer link flapping
+
+우선순위: `P2`
+
+**한마디로:** registry 사이 peer 연결이 짧은 간격으로 끊겼다 붙기를 반복해도, 합산 view가 진동에 깨지지 않고 결국 안정 상태로 수렴하는가.
+
+- 절차: peer cluster에서 두 registry 사이의 peer 연결을 짧은 간격으로 down/up 반복(flapping)시킨다(harness가 peer link를 끊었다 잇거나, 한 registry를 짧게 정지/복구). 그 사이 provider는 살아 있는 registry에 직접 광고된 상태로 둔다.
+- 검증: flapping 중에도 합산 view(`MemberPeersAsync`)와 messaging이 붕괴하지 않고, 진동이 멎으면 `ConnectedPeerRegistryCount`가 기대값으로 안정 수렴한다. `ListSeq`가 진동마다 과도하게 튀어 liveness 오판을 부르지 않는다.
+- 세부 동작: peer link 진동 내성.
 
 ### Track C — registry 장애와 복구
 

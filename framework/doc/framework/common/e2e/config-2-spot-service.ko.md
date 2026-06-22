@@ -56,6 +56,9 @@ handler 동작(공유):
 `run_e2e.sh`가 registry → spot 노드 → session 노드 순으로 띄우고 client 시나리오를 순차
 실행한다. stream 시나리오는 consumer가 stream client로 접속한다.
 
+로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
+폴더에 파일로 남기고, message flow 추적을 `key_transitions` 이상으로 켜 `corr=`로 디버깅한다.
+
 ## 4. 시나리오
 
 ### Track A — Spot 생성·상태·routing
@@ -98,7 +101,7 @@ handler 동작(공유):
 
 - 절차: 앱이 entity key(예: order id, player id)를 결정적 규칙으로 `RoutingId`에 매핑하고(§2의 고정 매핑 규칙), 그 RoutingId의 owner spot으로 request를 보낸다.
 - 검증: 같은 key는 항상 같은 RoutingId → 같은 owner spot/노드로 간다. cross-node spot lookup은 RoutingId로 resolve된다(key→RoutingId 매핑·노드 owner 규칙은 앱이 정의). 매핑이 고정인 한 owner도 고정이다.
-- 세부 동작: 결정적 key→RoutingId 매핑 기반 owner routing. (scale-out 중 owner 이동은 Config 5에서 다룬다.)
+- 세부 동작: 결정적 key→RoutingId 매핑 기반 owner routing. (scale-out 중 owner 이동은 Track G의 SM-G2에서 다룬다.)
 
 #### SM-A5 Stage wrapper
 
@@ -500,8 +503,56 @@ channel egress는 `outbound.SendToSpot(...)`/`outbound.RequestToSpot(...)`로, c
 - 검증: spot routing 중에도 일반 channel messaging이 정상이다. spot node 종료 뒤에도 channel socket은 살아 있어 일반 channel request가 계속 정상 동작한다(channel socket 소유권은 channel runtime에 있고, spot routing 사용/중단이 channel lifecycle을 좌우하지 않음).
 - 세부 동작: channel socket lifecycle이 spot route 사용과 독립.
 
+### Track G — 장애와 복구 (stateful 노드)
+
+여기서는 spot/actor/session 노드가 실제로 죽거나, scale 중 owner가 옮겨가거나, 동시 트래픽이
+경합할 때 stateful 경로가 어떻게 버티는지를 본다. Config 5(resilience)는 channel provider만
+다루므로, spot 배포(play/session 노드)를 쓰는 이 장애 시나리오는 Config 2에 둔다. 프로세스를
+실제로 죽이는 시나리오는 harness의 `kill`/`stop`/`restart` 연산을 전제한다(없으면 "미구현(하네스
+대기)").
+
+#### SM-G1 play 노드 crash와 복구
+
+우선순위: `P0`
+
+**한마디로:** actor·bound session이 붙어 있는 play 노드가 죽으면, 그 노드 것만 영향을 받고(다른 노드는 멀쩡), client가 재join·rebind로 복구할 수 있는가.
+
+- 절차: `play-a`에 actor join + session bind 상태를 만든 뒤 `play-a`를 SIGKILL한다. consumer는 그 actor로 messaging을 시도하다 실패를 관찰하고, 재시작된 `play-a`(또는 살아 있는 `play-b`)로 다시 join·rebind한다.
+- 검증: `play-a` crash로 그 노드의 actor/spot 상태는 소실되고, 그 노드로 가던 request·relay는 정해진 public error/`Disconnected`로 끝난다(무한 대기 없음). `play-b`의 actor·session은 영향받지 않는다. 재join·rebind 후 messaging이 정상 재개되고, 필요한 상태는 app replay/snapshot으로 복구된다(자동 이전 아님).
+- 세부 동작: stateful 노드 crash 격리 + 재join·rebind 복구.
+
+#### SM-G2 owner 이동 (scale-out 중 spot owner 재배치)
+
+우선순위: `P1`
+
+**한마디로:** scale-out으로 어떤 key의 owner 노드가 바뀌면, 같은 key의 후속 request가 새 owner로 가고 일관성이 유지되는가.
+
+- 절차: key→RoutingId·owner 매핑(§2)이 고정된 상태에서 노드를 추가(scale-out)하고, 앱이 일부 key의 owner를 새 노드로 재배치한다. 재배치 전후로 같은 key에 request를 보낸다.
+- 검증: 재배치 후 같은 key는 새 owner 노드에서 처리된다(이전 owner에는 더 가지 않음). 재배치 진행 중 요청은 성공하거나 정해진 public error로 끝나고 유실·중복으로 깨지지 않는다. 매핑이 다시 고정되면 owner도 다시 고정된다.
+- 세부 동작: scale-out 중 owner 재배치(SM-A4가 가리키는 이동 경로).
+
+#### SM-G3 동시 join/leave 경합
+
+우선순위: `P1`
+
+**한마디로:** 같은 spot/actor에 다수 client가 동시에 join·leave·request를 던져도, membership과 상태가 일관되고 lifecycle callback이 중복·누락 없이 도는가.
+
+- 절차: 같은 entry spot/actor 대상으로 다수 client가 동시에 join, leave, request를 섞어 보낸다.
+- 검증: 경합 상황에서도 actor membership과 spot 상태가 일관되게 유지되고, `Created`/`Joined`/`OnLeaveActorAsync` 등 lifecycle callback이 actor당 정해진 횟수만 발화한다(중복·누락 없음). 같은 spot의 처리는 직렬 순서가 보존된다.
+- 세부 동작: 동시 lifecycle 경합 일관성.
+
+#### SM-G4 다수 bound session push 부하
+
+우선순위: `P2`
+
+**한마디로:** 많은 session이 bind된 상태에서 동시에 push가 쏟아져도, 각 push가 제 session으로만 가고 누락·오배달 없이 격리되는가.
+
+- 절차: 다수 actor에 다수 session을 bind한 뒤, 동시에 actor push를 대량으로 트리거한다.
+- 검증: 각 push가 해당 bound session으로만 relay되고(교차 오배달 없음), 부하 중에도 누락 없이 전달되며 session 간 격리가 유지된다.
+- 세부 동작: 대규모 bound session push 타깃팅.
+
 ## 5. 완료 기준
 
-- Track A~F의 `P0` 시나리오가 모두 통과한다.
+- Track A~G의 `P0` 시나리오가 모두 통과한다.
 - public contract만 직접 호출하고 `ensure`로 단언한다(low-level relay packet 조립·내부 helper 금지).
 - 실패 시 registry/spot/session/consumer 로그와 evidence로 원인 레이어를 분리한다.

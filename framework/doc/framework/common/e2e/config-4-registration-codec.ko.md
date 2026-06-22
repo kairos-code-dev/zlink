@@ -38,6 +38,9 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 `run_e2e.sh`가 server를 띄우고, client 시나리오가 variant별 packet/DTO로 messaging을 실행해 결과가
 같은지와 content-type을 확인한다.
 
+로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
+폴더에 파일로 남기고, message flow 추적을 `key_transitions` 이상으로 켜 `corr=`로 디버깅한다.
+
 ## 4. 시나리오
 
 ### Track A — handler 등록
@@ -143,6 +146,16 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 - 절차: 한 host의 전역 codec registry에 JSON·Protobuf·MessagePack을 함께 등록하고, payload 타입이 다른 메시지(POCO / `IMessage` / `[MessagePackObject]`)를 같은 server로 보낸다.
 - 검증: 각 메시지가 payload 타입/content-type에 맞는 codec으로 처리되어 서로 간섭 없이 정확히 왕복한다(content-type별 분기). 미지원 타입은 JSON fallback이라는 정해진 규칙을 따른다.
 - 세부 동작: 전역 registry의 타입/content-type 기반 codec 선택. (channel별 codec 지정 API는 없음.)
+
+#### RC-B5 codec registry 불일치 (peer 간)
+
+우선순위: `P1`
+
+**한마디로:** 서로 codec 등록이 다른 두 서비스가 통신할 때(보낸 쪽 content-type을 받는 쪽이 모를 때), 정해진 규칙(fallback 또는 정해진 error)대로 처리되고 정상 codec 트래픽은 멀쩡한가.
+
+- 절차: server는 JSON만 등록하고, client는 MessagePack(또는 Protobuf) 전용 DTO로 같은 server에 request를 보낸다(=받는 쪽이 그 content-type codec을 안 가진 상황).
+- 검증: 받는 쪽이 정해진 규칙대로 처리한다 — 매칭 codec이 없으면 JSON fallback 또는 정해진 public decode error로 끝나며, 어느 쪽이든 결과가 관측으로 고정된다. 같은 server의 정상 JSON 트래픽은 영향받지 않는다.
+- 세부 동작: peer 간 codec registry 불일치 처리(fallback/정해진 error, 관측 고정).
 
 ## 5. 완료 기준
 

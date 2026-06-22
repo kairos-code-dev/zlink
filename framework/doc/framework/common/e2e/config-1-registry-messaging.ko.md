@@ -52,6 +52,9 @@ handler 동작(공유):
 weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다. client가
 `e2e result=passed`를 출력하면 통과로 본다.
 
+로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
+폴더에 파일로 남기고, message flow 추적을 `key_transitions` 이상으로 켜 `corr=`로 디버깅한다.
+
 ## 4. 시나리오
 
 ### Track A — 연결과 rid resolve
@@ -99,6 +102,8 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 - 절차: 같은 registry에 서로 다른 channel(예: `api`, `workflow`)의 provider를 광고하고, consumer가 각 channel을 resolve해 request를 보낸다.
 - 검증: 각 channel의 provider 집합이 섞이지 않는다. 같은 endpoint host라도 channel name이 다르면 독립 topology로 관리된다. 한 channel scale-in이 다른 channel routing에 영향을 주지 않는다.
 - 세부 동작: channel별 독립 discovery.
+
+> Track A의 번호 `A3`·`A5`는 비어 있다(이전 개정에서 빠진 번호 — A3 자리는 위 custom resolver 노트로 갈음). 신규 시나리오는 빈 번호를 재사용하지 않고 뒤에 이어 붙인다.
 
 ### Track B — scale
 
@@ -198,6 +203,26 @@ weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다
 > 분산 주체 주의. client-server channel에서 server는 ROUTER, client는 DEALER다. server(ROUTER)는 자기 weight를 연결된 client(DEALER) peer에게 advertise만 하고, 비율 분산은 **client(DEALER)의 load balancer**가 수행한다. ROUTER 자신은 weight를 비율 분산이 아니라 `0`=drain / non-`0`=허용의 이진 게이트로만 쓴다. 따라서 weighted 비율(`1..99`)은 **이미 연결된 peer의 LB 분배**에만 작용하고, weight `0`(drain)은 RM-C3/RM-C6 분산에서 그 노드를 후보에서 빼는 별개 동작이다(drain·복귀 검증은 Config 5 RL-B에서 다룬다).
 
 > payload decode 실패는 public typed client로 유도할 수 없다(typed client는 항상 정상 envelope로 직렬화). 실제 decode-failure는 raw frame 주입이 필요해 public-API-only인 이 config 범위 밖이며, raw-frame contract 테스트(E2ETests DispatchErrors)가 다룬다. decode 실패의 surface/reason 분류(channel=`PayloadDecodeFailed`, route mesh=`HandlerException`)도 거기서 검증한다.
+
+#### RM-C8 메시지 크기 다양성
+
+우선순위: `P1`
+
+**한마디로:** 작은 payload부터 큰 payload, 상한 근처까지 모두 정확히 왕복하고, 상한을 넘기면 정해진 error로 거부되는가.
+
+- 절차: 같은 request를 payload 크기만 바꿔(소형, 대형, `MaxMessageSize` 근접) 왕복시키고, 상한을 넘는 payload도 한 번 보낸다.
+- 검증: 소형·대형·근접-max payload는 내용이 손상 없이 정확히 왕복한다(대형도 분할/재조립이 투명). `MaxMessageSize`를 넘는 payload는 정해진 public error로 거부되고, 그 뒤 정상 크기 request는 영향 없이 동작한다.
+- 세부 동작: payload 크기 경계(왕복 + 상한 거부).
+
+#### RM-C9 backpressure / HWM 포화
+
+우선순위: `P2`
+
+**한마디로:** provider가 느려 송신 큐가 high-water mark까지 차오를 때, client가 정해진 backpressure(대기/timeout/정해진 error)대로 동작하고 연결이 깨지지 않는가.
+
+- 절차: provider handler를 느리게 두고, client가 처리 속도보다 빠르게 다량 request/send를 보내 송신 큐를 HWM까지 채운다.
+- 검증: HWM 포화 시 정해진 흐름 제어(블록·timeout·정해진 public error) 중 계약된 동작이 일어나고, 연결이 깨지거나 다른 정상 트래픽이 오염되지 않는다. 적체가 풀리면 messaging이 정상화된다.
+- 세부 동작: 송신 HWM 포화 시 backpressure 계약.
 
 ## 5. 완료 기준
 

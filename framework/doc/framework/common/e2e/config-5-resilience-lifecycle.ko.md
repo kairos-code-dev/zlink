@@ -40,6 +40,10 @@ client harness 동작인지도 구분한다. 복구는 "이후 follow-up request
 제거/추가 반영"처럼 **눈으로 확인 가능한 결과**로 판정한다(내부 pending dict는 public 표면이
 아니므로 직접 단언하지 않는다).
 
+로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
+폴더에 파일로 남기고, message flow 추적을 `key_transitions` 이상으로 켜 `corr=`로 디버깅한다. 특히
+crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는지 좁힌다.
+
 ## 4. 시나리오
 
 ### Track A — restart와 재연결
@@ -123,8 +127,38 @@ client harness 동작인지도 구분한다. 복구는 "이후 follow-up request
 **한마디로:** provider를 정상 종료하면 topology에서 빠지고 consumer가 그쪽으로 안 가며, 종료 직전 끝난 request의 reply는 정상 수신되는가.
 
 - 절차: provider에 정상 종료(`StopAsync`/lifetime stop)를 요청한다.
-- 검증: 종료 후 provider가 registry topology에서 빠지고 consumer가 그 endpoint로 더 가지 않는다(stale 회피). 종료 시점에 이미 완료된 request의 reply는 정상 수신된다. (현재 host 종료는 runtime stop token을 먼저 취소하므로 "진행 중 request를 끝까지 drain"하는 public admin/drain 모드는 가정하지 않는다 — drain 모드가 추가되면 별도 검증.)
+- 검증: 종료 후 provider가 registry topology에서 빠지고 consumer가 그 endpoint로 더 가지 않는다(stale 회피). 종료 시점에 이미 완료된 request의 reply는 정상 수신된다. (host 종료가 아니라 "진행 중 request를 끝까지 drain"하는 런타임 drain 모드는 RL-B5·RL-B6에서 별도로 다룬다.)
 - 세부 동작: 정상 종료 시 topology 이탈 + stale 회피.
+
+#### RL-B5 런타임 drain / restore (무중단 배포)
+
+우선순위: `P0`
+
+**한마디로:** 운영 중 provider를 런타임에 drain하면 새 request가 그 노드로 안 가고, restore하면 다시 받는가(노드를 죽이거나 registry에서 빼지 않고).
+
+- 절차: provider 2대로 분산 중, 한 노드의 admin 경로에서 `IZLinkChannelRuntimeOptions.ClientServerChannel(name).ConfigureServerSocket().Weight = 0`으로 drain한다. consumer는 계속 request를 보낸다. 잠시 뒤 같은 노드를 `Weight = 100`으로 restore한다.
+- 검증: drain 후 신규 request는 그 노드 evidence에 더 기록되지 않고 살아 있는 다른 노드가 받는다(후보가 그 노드뿐이면 정해진 public error). 노드는 죽지 않고 registry topology에도 남아 있다. restore 후 다시 routing 대상이 되어 request를 받는다. consumer 재시작 없음.
+- 세부 동작: peer weight 기반 런타임 graceful drain·restore(노드/소켓 종료 아님). (drain·weight 의미 상세는 `framework-channel-drain-peer-weight-plan.ko.md` 참조.)
+
+#### RL-B6 drain 중 in-flight 완료
+
+우선순위: `P0`
+
+**한마디로:** drain은 "새 요청만 차단"이라, drain 직전 도착해 처리 중이던 request는 끝까지 처리되고 reply가 정상으로 돌아오는가.
+
+- 절차: provider가 느린 handler(`value=="slow"`)로 request를 처리하는 도중 그 provider를 `Weight = 0`으로 drain한다. drain 직후 새 request도 보낸다.
+- 검증: drain 시점에 이미 처리 중이던 request는 끝까지 완료되어 reply가 정상 수신된다(drain이 진행 중 작업을 취소하지 않음). drain 이후의 신규 request만 그 노드로 가지 않는다. 완료 후 pending이 남지 않는다.
+- 세부 동작: drain = 새 수신 차단, in-flight·reply는 유지.
+
+#### RL-B7 부분 degradation (gray failure)
+
+우선순위: `P1`
+
+**한마디로:** provider가 죽는 게 아니라 "느려지거나 일부만 실패"할 때, 건강한 provider로 트래픽이 수렴하고 전체 성공률이 무너지지 않는가.
+
+- 절차: provider 2대 중 하나가 (a) 일부 request에 간헐적으로 error reply를 내거나, (b) 응답이 느려 짧은 timeout을 유발하도록 fault를 주입한다(harness fault-injection 또는 server 옵션 필요 — 없으면 "미구현(하네스 대기)"). consumer는 지속 request를 보낸다.
+- 검증: 느리거나 실패하는 provider가 섞여 있어도 건강한 provider로 충분한 트래픽이 처리되어 전체 성공률이 유지된다. client는 실패/timeout을 정해진 public error로 받고, 그 노드로 반복 timeout만 하지 않는다(가능하면 건강한 쪽 수렴). 정상 provider의 reply는 오염되지 않는다.
+- 세부 동작: gray failure 내성(부분 에러·부분 지연 시 건강 노드 수렴).
 
 ### Track C — 정리와 partition
 
@@ -209,6 +243,16 @@ client harness 동작인지도 구분한다. 복구는 "이후 follow-up request
 - 절차: 같은 버전 provider/consumer 사이에서 다양한 public error를 발생시켜 error reply를 주고받는다.
 - 검증: error reply는 wire header에 error code/message를 싣는다 — **raw wire 키는 Web JSON camelCase `errorCode`/`errorMessage`**, 디코드된 .NET 속성명은 `ErrorCode`/`ErrorMessage`다. normal client는 `errorMessage` 기반 예외만 던지고 code는 노출하지 않으므로, client-side는 message 예외만 단언한다. code round-trip은 raw envelope/header(키 `errorCode`) 검사 또는 server-side evidence로 확인한다. dispatch `Reason`/`Action`은 wire에 실리지 않으므로 server observer evidence에서 확인한다. (버전 간 호환은 old/new 빌드 아티팩트·버전 매트릭스가 필요해 별도 harness 도입 시 확장.)
 - 세부 동작: error reply `ErrorCode`/`ErrorMessage` round-trip(동일 버전).
+
+#### RL-D5 지속 혼합 워크로드 soak
+
+우선순위: `P2`
+
+**한마디로:** 동시 다수 client가 request·send를 섞어 수 분간 계속 밀어 넣어도, 누락·붕괴·latency 악화·리소스 누수 없이 안정적으로 버티는가.
+
+- 절차: 동시 N client가 request와 send를 섞어 지속(예: 수 분) 보낸다. 그 사이 provider scale-out/in이나 가벼운 drain을 섞을 수도 있다.
+- 검증: 전 구간에서 누락·붕괴 없이 처리되고, 정상 reply 비율이 유지되며, latency가 시간에 따라 단조 악화(drift)하지 않는다. 종료 후 pending이 남지 않고 소켓·핸들·메모리 누수가 없다(RL-C1 정리와 연계).
+- 세부 동작: 지속 혼합 부하 안정성(단건 burst가 아닌 soak).
 
 ## 5. 완료 기준
 

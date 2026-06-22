@@ -429,7 +429,8 @@ export class ZLinkStreamSessionRuntime {
         flags: ZLinkStreamHeaderFlags.HasRequestSeq,
         requestSeq: decoded.requestSeq,
         name: decoded.name,
-        metadata: new Map()
+        metadata: new Map(),
+        correlationId: decoded.correlationId
       },
       utf8Encode(JSON.stringify({
         code: error instanceof Error ? error.constructor.name : undefined,
@@ -891,9 +892,10 @@ export class ZLinkStreamBindingRuntime {
     metadata: ReadonlyMap<string, string>,
     compressed: boolean,
     requestSeq: bigint | undefined,
-    payload: unknown
+    payload: unknown,
+    correlationId?: string
   ): Message {
-    return this.frameMessages.createJsonFrameMessage(kind, packetName, metadata, compressed, requestSeq, payload);
+    return this.frameMessages.createJsonFrameMessage(kind, packetName, metadata, compressed, requestSeq, payload, correlationId);
   }
 
   private resolveActorRef(actor: ZLinkActor): ActorRef {
@@ -1060,7 +1062,8 @@ class ZLinkStreamFrameMessageFactory {
     metadata: ReadonlyMap<string, string>,
     compressed: boolean,
     requestSeq: bigint | undefined,
-    payload: unknown
+    payload: unknown,
+    correlationId?: string
   ): Message {
     const encoded = this.encodePayload(payload);
     let body = encoded.payload;
@@ -1075,7 +1078,8 @@ class ZLinkStreamFrameMessageFactory {
         flags,
         requestSeq,
         name: packetName,
-        metadata
+        metadata,
+        correlationId
       },
       body
     );
@@ -1162,7 +1166,8 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
     metadata: ReadonlyMap<string, string>,
     compressed: boolean,
     requestSeq: bigint | undefined,
-    payload: unknown
+    payload: unknown,
+    correlationId?: string
   ): Message {
     return this.runtime.createJsonFrameMessage(
       kind,
@@ -1170,7 +1175,8 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
       metadata,
       compressed,
       requestSeq,
-      payload
+      payload,
+      correlationId
     );
   }
 
@@ -1566,7 +1572,8 @@ class DefaultZLinkSessionReplyCall implements ZLinkSessionReplyCall {
       this.selectedMetadata,
       this.compressionEnabled,
       requestHeader.requestSeq,
-      this.message
+      this.message,
+      requestHeader.correlationId
     );
     try {
       if (!this.context.stream.write(message)) {

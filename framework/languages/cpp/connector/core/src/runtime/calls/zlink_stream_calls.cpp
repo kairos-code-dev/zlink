@@ -420,6 +420,10 @@ std::optional<pending_wait_t> take_matching_wait (connector_state_t &state, cons
     for (auto iter = state.pending_waits.begin (); iter != state.pending_waits.end (); ++iter) {
         if (packet_matches_wait (iter->second, packet)) {
             auto wait = std::move (iter->second);
+            if (wait.timeout_timer) {
+                boost::system::error_code ignored;
+                wait.timeout_timer->cancel (ignored);
+            }
             state.pending_waits.erase (iter);
             return wait;
         }
@@ -491,6 +495,10 @@ void complete_pending_request (std::shared_ptr<connector_state_t> state,
             return;
         }
         callback = std::move (found->second.callback);
+        if (found->second.timeout_timer) {
+            boost::system::error_code ignored;
+            found->second.timeout_timer->cancel (ignored);
+        }
         state->pending_requests.erase (found);
     }
     schedule_delivery (state,
@@ -650,6 +658,7 @@ void schedule_request_pump (std::shared_ptr<connector_state_t> state)
                 state->inbound_buffer.insert (state->inbound_buffer.end (), bytes.begin (),
                                               bytes.end ());
             }
+            state->state_changed.notify_all ();
         }
         process_inbound_buffer (state, std::move (transport_error));
     });
@@ -675,6 +684,7 @@ void finish_async_write (std::shared_ptr<connector_state_t> state,
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
         state->write_in_progress = false;
+        state->state_changed.notify_all ();
     }
     if (callback) {
         callback (std::move (result));
@@ -980,12 +990,22 @@ void submit_request_async (std::shared_ptr<void> state_handle,
                   written.error () ? written.error ()->message : "stream request write failed"));
               return;
           }
-          post_runtime_operation_after (timeout, [state, seq] {
+          auto timeout_timer = post_runtime_operation_after (timeout, [state, seq] {
               complete_pending_request (
                 state, seq,
                 result_t<zlink::message_t>::failure (error_code_t::request_timeout,
                                                      "stream connector request timed out"));
           });
+          {
+              std::lock_guard<std::mutex> lock (state->transport_mutex);
+              auto found = state->pending_requests.find (seq);
+              if (found != state->pending_requests.end ()) {
+                  found->second.timeout_timer = timeout_timer;
+              } else if (timeout_timer) {
+                  boost::system::error_code ignored;
+                  timeout_timer->cancel (ignored);
+              }
+          }
           schedule_request_pump (state);
       });
 }
@@ -1250,7 +1270,7 @@ void submit_wait_async (std::shared_ptr<void> state_handle,
         return;
     }
 
-    post_runtime_operation_after (timeout, [state, wait_id] {
+    auto timeout_timer = post_runtime_operation_after (timeout, [state, wait_id] {
         std::function<void (result_t<packet_t>)> callback;
         {
             std::lock_guard<std::mutex> lock (state->transport_mutex);
@@ -1268,6 +1288,16 @@ void submit_wait_async (std::shared_ptr<void> state_handle,
             }
         });
     });
+    {
+        std::lock_guard<std::mutex> lock (state->transport_mutex);
+        auto found = state->pending_waits.find (wait_id);
+        if (found != state->pending_waits.end ()) {
+            found->second.timeout_timer = timeout_timer;
+        } else if (timeout_timer) {
+            boost::system::error_code ignored;
+            timeout_timer->cancel (ignored);
+        }
+    }
 }
 
 } // namespace zlink::stream_connector::detail

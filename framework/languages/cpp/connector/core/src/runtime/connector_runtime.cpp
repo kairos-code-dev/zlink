@@ -83,7 +83,8 @@ class shared_operation_runner_t
         });
     }
 
-    void post_after (std::chrono::milliseconds delay, std::function<void ()> operation)
+    std::shared_ptr<boost::asio::steady_timer>
+    post_after (std::chrono::milliseconds delay, std::function<void ()> operation)
     {
         auto timer = std::make_shared<boost::asio::steady_timer> (_io_context);
         timer->expires_after (delay);
@@ -100,6 +101,7 @@ class shared_operation_runner_t
               catch (...) {
               }
           });
+        return timer;
     }
 
     boost::asio::io_context &io_context () noexcept
@@ -193,10 +195,11 @@ void post_runtime_operation (std::function<void ()> operation)
     shared_operation_runner ().post (std::move (operation));
 }
 
-void post_runtime_operation_after (std::chrono::milliseconds delay,
-                                   std::function<void ()> operation)
+std::shared_ptr<boost::asio::steady_timer>
+post_runtime_operation_after (std::chrono::milliseconds delay,
+                              std::function<void ()> operation)
 {
-    shared_operation_runner ().post_after (delay, std::move (operation));
+    return shared_operation_runner ().post_after (delay, std::move (operation));
 }
 
 void connector_runtime_t::receive_packet (packet_t packet)
@@ -819,6 +822,10 @@ result_t<void> close_state (std::shared_ptr<detail::connector_state_t> state)
             }
         }
         for (auto &[_, request] : state->pending_requests) {
+            if (request.timeout_timer) {
+                boost::system::error_code ignored;
+                request.timeout_timer->cancel (ignored);
+            }
             if (request.callback) {
                 closed_request_callbacks.push_back (
                   [callback = std::move (request.callback)] () mutable {
@@ -828,6 +835,10 @@ result_t<void> close_state (std::shared_ptr<detail::connector_state_t> state)
             }
         }
         for (auto &[_, wait] : state->pending_waits) {
+            if (wait.timeout_timer) {
+                boost::system::error_code ignored;
+                wait.timeout_timer->cancel (ignored);
+            }
             if (wait.callback) {
                 closed_wait_callbacks.push_back (
                   [callback = std::move (wait.callback)] () mutable {

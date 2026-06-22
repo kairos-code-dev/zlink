@@ -30,6 +30,17 @@ const std::optional<zlink::routing_id_t> &route_channel_runtime_t::routing_id ()
     return _routing_id;
 }
 
+void route_channel_runtime_t::default_request_timeout (std::chrono::milliseconds timeout)
+{
+    std::lock_guard lock (_mutex);
+    _default_request_timeout = timeout;
+}
+
+std::chrono::milliseconds route_channel_runtime_t::default_request_timeout () const noexcept
+{
+    return _default_request_timeout;
+}
+
 void route_channel_runtime_t::spot_route_egress_target (std::string target_spot_node_channel_name)
 {
     std::lock_guard lock (_mutex);

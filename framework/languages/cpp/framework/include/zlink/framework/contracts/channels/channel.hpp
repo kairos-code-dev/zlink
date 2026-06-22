@@ -56,6 +56,7 @@ struct channel_capability_snapshot_t
 struct channel_snapshot_t
 {
     std::string name;
+    std::optional<std::chrono::milliseconds> default_request_timeout;
     channel_capability_snapshot_t server;
     channel_capability_snapshot_t client;
     channel_capability_snapshot_t publisher;
@@ -138,6 +139,7 @@ class channel_builder_t
     capability_builder_t enable_client ();
     capability_builder_t enable_publisher ();
     capability_builder_t enable_subscriber ();
+    channel_builder_t &default_request_timeout (std::chrono::milliseconds timeout);
 
     channel_snapshot_t snapshot () const;
 
@@ -163,6 +165,7 @@ class route_channel_builder_t
     route_channel_builder_t &bind (std::string endpoint);
     route_channel_builder_t &set_routing_id (zlink::routing_id_t routing_id);
     route_channel_builder_t &connect (std::string endpoint);
+    route_channel_builder_t &default_request_timeout (std::chrono::milliseconds timeout);
     route_channel_builder_t &add_handler_group (std::string group_name);
     route_channel_builder_t &enable_spot_route_egress (std::string target_spot_node_channel_name);
 
@@ -260,10 +263,13 @@ class message_bus_t
           [state, channel_name = std::move (channel_name), request = std::move (request)] (
             const std::string &packet_name, std::chrono::milliseconds timeout,
             const channel_request_call_t::metadata_map_t &metadata) {
+              auto bus = message_bus_t (state);
+              const auto effective_timeout = timeout > std::chrono::milliseconds::zero ()
+                                               ? timeout
+                                               : bus.default_request_timeout (channel_name);
               return task_t<zlink::message_t> (
-                message_bus_t (state)
-                  .submit_request (channel_name, packet_name, std::type_index (typeid (TRequest)),
-                                   &request, timeout, metadata)
+                bus.submit_request (channel_name, packet_name, std::type_index (typeid (TRequest)),
+                                    &request, effective_timeout, metadata)
                   .message ());
           });
     }
@@ -299,6 +305,7 @@ class message_bus_t
 
     std::size_t pending_count () const noexcept;
     std::size_t pending_limit () const noexcept;
+    std::chrono::milliseconds default_request_timeout (const std::string &channel_name) const;
 
   private:
     friend class zlink_builder_t;

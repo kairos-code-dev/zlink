@@ -90,6 +90,7 @@ class channel_runtime_state_t
     std::map<std::string, channel_snapshot_t> channels;
     mutable std::mutex mutex;
     std::size_t max_pending = 1024;
+    std::chrono::milliseconds default_request_timeout{std::chrono::seconds (30)};
     std::size_t pending = 0;
     channel_pending_requests_t pending_requests;
     std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> server_bundles;

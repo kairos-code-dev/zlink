@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <concepts>
 #include <cstddef>
@@ -281,6 +282,19 @@ class client_server_channel_builder_t
         return *this;
     }
 
+    client_server_channel_builder_t &
+    set_default_request_timeout (std::chrono::milliseconds timeout)
+    {
+        if (timeout <= std::chrono::milliseconds::zero ()) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "client/server request timeout must be greater than zero");
+        }
+        _default_request_timeout = timeout;
+        _options->channel_default_request_timeouts[_channel_name] = timeout;
+        apply_channel ();
+        return *this;
+    }
+
     client_server_channel_builder_t &use_handler_group (std::string group_name)
     {
         detail::require_non_blank (group_name, "handler group name is required");
@@ -310,6 +324,7 @@ class client_server_channel_builder_t
         const auto client_enabled = _client_enabled;
         const auto client_endpoints = _client_endpoints;
         const auto client_uses_discovery = _client_uses_discovery;
+        const auto default_request_timeout = _default_request_timeout;
         const auto discovery_capability = "client_server_channel '" + channel_name + "' client";
         if (!server_endpoint.empty ()) {
             _options->client_server_channels_with_server.insert (channel_name);
@@ -329,8 +344,11 @@ class client_server_channel_builder_t
         _options->set_zlink_action (
           "client_server_channel:" + channel_name,
           [channel_name, server_endpoint, server_routing_id, client_enabled, client_endpoints,
-           client_uses_discovery] (zlink_builder_t &zlink) {
+           client_uses_discovery, default_request_timeout] (zlink_builder_t &zlink) {
               auto channel = zlink.channel (channel_name);
+              if (default_request_timeout) {
+                  channel.default_request_timeout (*default_request_timeout);
+              }
               if (!server_endpoint.empty ()) {
                   auto server = channel.enable_server ();
                   if (server_routing_id) {
@@ -356,6 +374,7 @@ class client_server_channel_builder_t
     std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
     std::string _server_endpoint;
     std::optional<zlink::routing_id_t> _server_routing_id;
+    std::optional<std::chrono::milliseconds> _default_request_timeout;
     std::vector<std::string> _client_endpoints;
     bool _client_enabled = false;
     bool _client_uses_discovery = false;
@@ -509,6 +528,18 @@ class dealer_mesh_channel_builder_t
         return *this;
     }
 
+    dealer_mesh_channel_builder_t &set_default_request_timeout (std::chrono::milliseconds timeout)
+    {
+        if (timeout <= std::chrono::milliseconds::zero ()) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "dealer mesh request timeout must be greater than zero");
+        }
+        _default_request_timeout = timeout;
+        _options->channel_default_request_timeouts[_channel_name] = timeout;
+        apply ();
+        return *this;
+    }
+
     dealer_mesh_channel_builder_t &use_handler_group (std::string group_name)
     {
         detail::require_non_blank (group_name, "handler group name is required");
@@ -526,6 +557,7 @@ class dealer_mesh_channel_builder_t
         const auto bind_endpoint = _bind_endpoint;
         const auto manual_connections = _manual_connections;
         const auto client_uses_discovery = _client_uses_discovery;
+        const auto default_request_timeout = _default_request_timeout;
         const auto discovery_capability = "dealer_mesh_channel '" + channel_name + "' client";
         if (client_uses_discovery) {
             _options->discovery_backed_capabilities.insert (discovery_capability);
@@ -535,8 +567,12 @@ class dealer_mesh_channel_builder_t
         _options->set_zlink_action (
           "dealer_mesh_channel:" + channel_name,
           [channel_name, bind_endpoint, manual_connections,
-           client_uses_discovery] (zlink_builder_t &zlink) {
-              auto client = zlink.channel (channel_name).enable_client ();
+           client_uses_discovery, default_request_timeout] (zlink_builder_t &zlink) {
+              auto channel = zlink.channel (channel_name);
+              if (default_request_timeout) {
+                  channel.default_request_timeout (*default_request_timeout);
+              }
+              auto client = channel.enable_client ();
               if (!bind_endpoint.empty ()) {
                   client.bind (bind_endpoint);
               }
@@ -553,6 +589,7 @@ class dealer_mesh_channel_builder_t
     std::shared_ptr<detail::framework_options_state_t> _options;
     std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
     std::string _bind_endpoint;
+    std::optional<std::chrono::milliseconds> _default_request_timeout;
     std::vector<std::string> _manual_connections;
     bool _client_uses_discovery = false;
 };
@@ -599,6 +636,18 @@ class route_mesh_channel_builder_t
     {
         detail::require_non_blank (endpoint, "route mesh client endpoint is required");
         _manual_connections.push_back (std::move (endpoint));
+        apply ();
+        return *this;
+    }
+
+    route_mesh_channel_builder_t &set_default_request_timeout (std::chrono::milliseconds timeout)
+    {
+        if (timeout <= std::chrono::milliseconds::zero ()) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "route mesh request timeout must be greater than zero");
+        }
+        _default_request_timeout = timeout;
+        _options->route_default_request_timeouts[_channel_name] = timeout;
         apply ();
         return *this;
     }
@@ -659,19 +708,23 @@ class route_mesh_channel_builder_t
         const auto bind_endpoint = _bind_endpoint;
         const auto routing_id = _routing_id;
         const auto manual_connections = _manual_connections;
+        const auto default_request_timeout = _default_request_timeout;
         const auto route_handler_groups = _route_handler_groups;
         const auto route_handlers = _route_handlers;
         const auto spot_route_egress_target = _spot_route_egress_target;
         _options->set_zlink_action (
           "route_mesh_channel:" + channel_name,
-          [channel_name, bind_endpoint, routing_id, manual_connections, route_handler_groups,
-           route_handlers, spot_route_egress_target] (zlink_builder_t &zlink) {
+          [channel_name, bind_endpoint, routing_id, manual_connections, default_request_timeout,
+           route_handler_groups, route_handlers, spot_route_egress_target] (zlink_builder_t &zlink) {
               auto channel = zlink.route_channel (channel_name);
               if (!bind_endpoint.empty ()) {
                   channel.bind (bind_endpoint);
               }
               if (routing_id) {
                   channel.set_routing_id (*routing_id);
+              }
+              if (default_request_timeout) {
+                  channel.default_request_timeout (*default_request_timeout);
               }
               for (const auto &endpoint : manual_connections) {
                   channel.connect (endpoint);
@@ -693,6 +746,7 @@ class route_mesh_channel_builder_t
     std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
     std::string _bind_endpoint;
     std::optional<zlink::routing_id_t> _routing_id;
+    std::optional<std::chrono::milliseconds> _default_request_timeout;
     std::vector<std::string> _manual_connections;
     std::vector<std::string> _route_handler_groups;
     std::vector<std::function<void (route_channel_builder_t &)>> _route_handlers;
@@ -1377,6 +1431,19 @@ class zlink_framework_options_t
     dispatch_options_t dispatch_options () const { return _options->dispatch; }
 
     discovery_options_builder_t use_discovery () { return discovery_options_builder_t (_options); }
+
+    zlink_framework_options_t &
+    set_default_request_timeout (std::chrono::milliseconds timeout)
+    {
+        if (timeout <= std::chrono::milliseconds::zero ()) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "request timeout must be greater than zero");
+        }
+        _options->set_zlink_action (
+          "default_request_timeout",
+          [timeout] (zlink_builder_t &zlink) { zlink.default_request_timeout (timeout); });
+        return *this;
+    }
 
     service_collection_t &services () noexcept { return *_services; }
 

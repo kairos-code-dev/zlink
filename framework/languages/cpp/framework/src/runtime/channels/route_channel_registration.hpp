@@ -6,6 +6,7 @@
 
 #include <zlink/Contracts/Core/routing_id.hpp>
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@ class route_channel_registration_t
     route_channel_registration_t &bind (std::string endpoint);
     route_channel_registration_t &set_routing_id (zlink::routing_id_t routing_id);
     route_channel_registration_t &connect (std::string endpoint);
+    route_channel_registration_t &default_request_timeout (std::chrono::milliseconds timeout);
     route_channel_registration_t &add_handler_group (std::string group_name);
     route_channel_registration_t &
     enable_spot_route_egress (std::string target_spot_node_channel_name);
@@ -58,6 +60,7 @@ class route_channel_registration_t
 
     const std::string &bind_endpoint () const noexcept;
     const std::optional<zlink::routing_id_t> &routing_id () const noexcept;
+    std::optional<std::chrono::milliseconds> default_request_timeout () const noexcept;
     const std::vector<std::string> &manual_connections () const noexcept;
     const std::vector<std::string> &handler_groups () const noexcept;
     const std::optional<std::string> &spot_route_egress_target () const noexcept;
@@ -71,6 +74,7 @@ class route_channel_registration_t
     std::string _router_channel_id;
     std::string _bind_endpoint;
     std::optional<zlink::routing_id_t> _routing_id;
+    std::optional<std::chrono::milliseconds> _default_request_timeout;
     std::vector<std::string> _manual_connections;
     std::vector<std::string> _handler_groups;
     std::optional<std::string> _spot_route_egress_target;

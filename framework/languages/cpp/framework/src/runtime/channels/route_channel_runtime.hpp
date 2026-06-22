@@ -45,6 +45,8 @@ class route_channel_runtime_t
     const std::string &router_channel_id () const noexcept;
     void routing_id (zlink::routing_id_t routing_id);
     const std::optional<zlink::routing_id_t> &routing_id () const noexcept;
+    void default_request_timeout (std::chrono::milliseconds timeout);
+    std::chrono::milliseconds default_request_timeout () const noexcept;
     void spot_route_egress_target (std::string target_spot_node_channel_name);
     const std::optional<std::string> &spot_route_egress_target () const noexcept;
     void start () noexcept;
@@ -125,6 +127,7 @@ class route_channel_runtime_t
     std::string _router_channel_id;
     mutable std::mutex _mutex;
     std::optional<zlink::routing_id_t> _routing_id;
+    std::chrono::milliseconds _default_request_timeout{std::chrono::seconds (30)};
     std::optional<std::string> _spot_route_egress_target;
     std::string _bind_endpoint;
     std::vector<std::string> _manual_connections;

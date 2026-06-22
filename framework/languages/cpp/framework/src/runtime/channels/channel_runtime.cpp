@@ -614,6 +614,19 @@ capability_builder_t channel_builder_t::enable_subscriber ()
       detail::select_capability (*_state, channel_capability_t::subscriber));
 }
 
+channel_builder_t &channel_builder_t::default_request_timeout (std::chrono::milliseconds timeout)
+{
+    if (timeout <= std::chrono::milliseconds::zero ()) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "channel request timeout must be greater than zero");
+    }
+    _state->snapshot.default_request_timeout = timeout;
+    if (_state->target != nullptr) {
+        _state->target->default_request_timeout = timeout;
+    }
+    return *this;
+}
+
 channel_snapshot_t channel_builder_t::snapshot () const
 {
     return _state->target == nullptr ? _state->snapshot : *_state->target;
@@ -651,6 +664,13 @@ route_channel_builder_t &route_channel_builder_t::set_routing_id (zlink::routing
 route_channel_builder_t &route_channel_builder_t::connect (std::string endpoint)
 {
     _state->registration.connect (std::move (endpoint));
+    return *this;
+}
+
+route_channel_builder_t &
+route_channel_builder_t::default_request_timeout (std::chrono::milliseconds timeout)
+{
+    _state->registration.default_request_timeout (timeout);
     return *this;
 }
 
@@ -711,6 +731,17 @@ std::size_t message_bus_t::pending_limit () const noexcept
 {
     std::lock_guard lock (_state->mutex);
     return _state->max_pending;
+}
+
+std::chrono::milliseconds
+message_bus_t::default_request_timeout (const std::string &channel_name) const
+{
+    std::lock_guard lock (_state->mutex);
+    const auto found = _state->channels.find (channel_name);
+    if (found != _state->channels.end () && found->second.default_request_timeout) {
+        return *found->second.default_request_timeout;
+    }
+    return _state->default_request_timeout;
 }
 
 serializer_registry_t *message_bus_t::serializers () const noexcept
@@ -1195,9 +1226,12 @@ route_client_t::submit_request_erased (const std::shared_ptr<detail::route_clien
     try {
         detail::channel_runtime_manager_t manager (state->runtime);
         auto &runtime = manager.get_route_channel (router_channel_id);
+        const auto effective_timeout = timeout > std::chrono::milliseconds::zero ()
+                                         ? timeout
+                                         : runtime.default_request_timeout ();
         runtime::messaging::client_call_codec_t codec;
         auto header = codec.create_envelope (runtime::messaging::message_kind_t::request,
-                                             router_channel_id, packet_name, timeout);
+                                             router_channel_id, packet_name, effective_timeout);
         header.metadata = metadata;
         runtime::messaging::envelope_codec_t envelope;
         parts = envelope.encode_parts (header, request_type, request, *state->serializers);
@@ -1236,12 +1270,16 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
           framework_error_kind_t::request_protocol_error, "route client is not configured"));
     }
     runtime::messaging::message_parts_t parts;
+    auto effective_timeout = timeout;
     try {
         detail::channel_runtime_manager_t manager (state->runtime);
         auto &runtime = manager.get_route_channel (router_channel_id);
+        effective_timeout = timeout > std::chrono::milliseconds::zero ()
+                              ? timeout
+                              : runtime.default_request_timeout ();
         runtime::messaging::client_call_codec_t codec;
         auto header = codec.create_envelope (runtime::messaging::message_kind_t::request,
-                                             router_channel_id, packet_name, timeout);
+                                             router_channel_id, packet_name, effective_timeout);
         header.metadata = std::move (metadata);
         runtime::messaging::envelope_codec_t envelope;
         parts = envelope.encode_parts (header, request_type, request, *state->serializers);
@@ -1253,12 +1291,13 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
     return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
       [state, router_channel_id = std::move (router_channel_id),
        target_node_rid = std::move (target_node_rid), parts = std::move (parts),
-       timeout] () mutable -> boost::asio::awaitable<result_t<zlink::message_t>> {
+       effective_timeout] () mutable -> boost::asio::awaitable<result_t<zlink::message_t>> {
           try {
               detail::channel_runtime_manager_t manager (state->runtime);
               auto &runtime = manager.get_route_channel (router_channel_id);
               runtime::messaging::envelope_codec_t envelope;
-              auto reply = runtime.request_reply_parts (target_node_rid, std::move (parts), timeout);
+              auto reply =
+                runtime.request_reply_parts (target_node_rid, std::move (parts), effective_timeout);
               if (!reply) {
                   co_return result_t<zlink::message_t>::failure (
                     reply.error_kind (),
@@ -1310,6 +1349,16 @@ zlink_builder_t &zlink_builder_t::add_node (std::string node_name)
 zlink_builder_t &zlink_builder_t::max_pending (std::size_t count)
 {
     _state->runtime->max_pending = count;
+    return *this;
+}
+
+zlink_builder_t &zlink_builder_t::default_request_timeout (std::chrono::milliseconds timeout)
+{
+    if (timeout <= std::chrono::milliseconds::zero ()) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "request timeout must be greater than zero");
+    }
+    _state->runtime->default_request_timeout = timeout;
     return *this;
 }
 

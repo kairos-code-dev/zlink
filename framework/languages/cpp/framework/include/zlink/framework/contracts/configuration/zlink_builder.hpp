@@ -7,6 +7,7 @@
 #include <zlink/framework/contracts/streams/stream.hpp>
 
 #include <cstddef>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <string>
@@ -39,6 +40,7 @@ class zlink_builder_t
 
     zlink_builder_t &add_node (std::string node_name);
     zlink_builder_t &max_pending (std::size_t count);
+    zlink_builder_t &default_request_timeout (std::chrono::milliseconds timeout);
     zlink_builder_t &on_retry (retry_hook_t hook);
     zlink_builder_t &on_dead_letter (dead_letter_hook_t hook);
     registry_builder_t enable_registry ();

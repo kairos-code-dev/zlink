@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <functional>
 #include <map>
 #include <memory>
@@ -285,6 +286,7 @@ struct framework_options_state_t
     std::vector<std::string> registry_discovery_endpoints;
     std::set<std::string> discovery_backed_capabilities;
     std::set<std::string> client_server_channels;
+    std::map<std::string, std::chrono::milliseconds> channel_default_request_timeouts;
     std::set<std::string> fanout_channels;
     std::set<std::string> client_server_channels_with_client;
     std::set<std::string> client_server_channels_with_server;
@@ -301,6 +303,7 @@ struct framework_options_state_t
     std::set<std::string> dealer_mesh_channels;
     std::set<std::string> dealer_mesh_channels_with_peer_path;
     std::set<std::string> route_mesh_channels;
+    std::map<std::string, std::chrono::milliseconds> route_default_request_timeouts;
     std::set<std::string> route_mesh_channels_with_bind;
     std::map<std::string, std::string> route_mesh_spot_route_egress_targets;
     std::map<std::string, stream_session_factory_t> stream_session_factories;

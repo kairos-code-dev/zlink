@@ -425,7 +425,11 @@ int main ()
 {
     zlink::framework::zlink_builder_t zlink;
     zlink.add_node ("outbound-node");
-    zlink.channel ("profile").enable_client ().connect ("tcp://127.0.0.1:7101");
+    zlink.default_request_timeout (std::chrono::milliseconds (10000));
+    zlink.channel ("profile")
+      .default_request_timeout (std::chrono::milliseconds (1500))
+      .enable_client ()
+      .connect ("tcp://127.0.0.1:7101");
     zlink.channel ("events").enable_publisher ().bind ("tcp://127.0.0.1:7201");
 
     const auto channels = zlink.channels ();
@@ -456,21 +460,35 @@ int main ()
         return 31;
     }
 
+    auto default_timeout_result =
+      client.request (request_t{10}).packet_name ("profile.default").async<reply_t> ().result ();
+    if (default_timeout_result
+        || default_timeout_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::timeout) {
+        return 35;
+    }
+    if (outbound_runtime.outbound_calls ().size () != 2
+        || outbound_runtime.outbound_calls ()[1].kind != "request"
+        || outbound_runtime.outbound_calls ()[1].packet_name != "profile.default"
+        || outbound_runtime.outbound_calls ()[1].timeout != std::chrono::milliseconds (1500)) {
+        return 36;
+    }
+
     auto bus = zlink.message_bus ();
     auto send_call = bus.send ("profile", request_t{2})
                        .packet_name ("profile.command")
                        .metadata ("trace-id", "send-trace");
-    if (outbound_runtime.outbound_calls ().size () != 1) {
+    if (outbound_runtime.outbound_calls ().size () != 2) {
         return 32;
     }
     auto send_result = send_call.async ().result ();
     if (!send_result) {
         return 3;
     }
-    if (outbound_runtime.outbound_calls ().size () != 2
-        || outbound_runtime.outbound_calls ()[1].kind != "send"
-        || outbound_runtime.outbound_calls ()[1].packet_name != "profile.command"
-        || outbound_runtime.outbound_calls ()[1].metadata.at ("trace-id") != "send-trace") {
+    if (outbound_runtime.outbound_calls ().size () != 3
+        || outbound_runtime.outbound_calls ()[2].kind != "send"
+        || outbound_runtime.outbound_calls ()[2].packet_name != "profile.command"
+        || outbound_runtime.outbound_calls ()[2].metadata.at ("trace-id") != "send-trace") {
         return 33;
     }
 
@@ -482,11 +500,11 @@ int main ()
     if (!publish_result) {
         return 4;
     }
-    if (outbound_runtime.outbound_calls ().size () != 3
-        || outbound_runtime.outbound_calls ()[2].kind != "publish"
-        || outbound_runtime.outbound_calls ()[2].topic != "profile.changed"
-        || outbound_runtime.outbound_calls ()[2].packet_name != "profile.changed.event"
-        || outbound_runtime.outbound_calls ()[2].metadata.at ("trace-id") != "publish-trace") {
+    if (outbound_runtime.outbound_calls ().size () != 4
+        || outbound_runtime.outbound_calls ()[3].kind != "publish"
+        || outbound_runtime.outbound_calls ()[3].topic != "profile.changed"
+        || outbound_runtime.outbound_calls ()[3].packet_name != "profile.changed.event"
+        || outbound_runtime.outbound_calls ()[3].metadata.at ("trace-id") != "publish-trace") {
         return 34;
     }
 

@@ -61,6 +61,17 @@ route_channel_registration_t &route_channel_registration_t::connect (std::string
 }
 
 route_channel_registration_t &
+route_channel_registration_t::default_request_timeout (std::chrono::milliseconds timeout)
+{
+    if (timeout <= std::chrono::milliseconds::zero ()) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "route channel request timeout must be greater than zero");
+    }
+    _default_request_timeout = timeout;
+    return *this;
+}
+
+route_channel_registration_t &
 route_channel_registration_t::add_handler_group (std::string group_name)
 {
     if (group_name.empty () || is_blank (group_name)) {
@@ -101,6 +112,12 @@ const std::string &route_channel_registration_t::bind_endpoint () const noexcept
 const std::optional<zlink::routing_id_t> &route_channel_registration_t::routing_id () const noexcept
 {
     return _routing_id;
+}
+
+std::optional<std::chrono::milliseconds>
+route_channel_registration_t::default_request_timeout () const noexcept
+{
+    return _default_request_timeout;
 }
 
 const std::vector<std::string> &route_channel_registration_t::manual_connections () const noexcept
@@ -151,6 +168,9 @@ route_channel_initializer_t::initialize (const route_channel_registration_t &reg
     }
     if (registration.routing_id ()) {
         runtime->routing_id (*registration.routing_id ());
+    }
+    if (registration.default_request_timeout ()) {
+        runtime->default_request_timeout (*registration.default_request_timeout ());
     }
     if (registration.spot_route_egress_target ()) {
         runtime->spot_route_egress_target (*registration.spot_route_egress_target ());

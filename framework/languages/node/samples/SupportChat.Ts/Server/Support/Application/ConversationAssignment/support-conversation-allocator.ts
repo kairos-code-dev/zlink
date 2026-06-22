@@ -1,6 +1,5 @@
 import { Inject } from '@nestjs/common';
 import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
-import { ZLinkSpotCreateState } from '@zlink-systems/framework';
 import { ConversationSpot } from '../../Adapters/ZLink/Spots/conversation-spot';
 import { SupportNotificationPublisher } from '../../Adapters/ZLink/Notifications/support-notification-publisher';
 import { conversationCreateRequest } from '../../Adapters/ZLink/Spots/conversation-create-request';
@@ -27,10 +26,7 @@ class SupportConversationAllocator {
     subject: string
   ): Promise<string> {
     const conversationId = `supportchat-conversation-${this.nextConversationId++}`;
-    const created = await this.spotManager.getOrCreate(ConversationSpot, conversationId);
-    if (created.state !== ZLinkSpotCreateState.Created) {
-      throw new Error('Support conversation creation was rejected.');
-    }
+    await this.spotManager.getOrCreate(ConversationSpot, conversationId);
     await this.executeInConversation(conversationId, (conversation) => {
       conversation.initializeConversation(
         conversationCreateRequest(customerActorId, customerDisplayName, subject, Date.now())

@@ -8,7 +8,6 @@ import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
-import systems.zlink.framework.spots.ZLinkSpotCreateState
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomSettings
@@ -72,10 +71,7 @@ class BingoEntrySpot(
         )
         val settingsPart = Message.from(json.writeValueAsBytes(settings))
         try {
-            val created = spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(observerRid), settingsPart).await()
-            check(created.state() != ZLinkSpotCreateState.REJECTED) {
-                "Observer BingoRoom creation was rejected."
-            }
+            spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(observerRid), settingsPart).await()
         } finally {
             settingsPart.close()
         }

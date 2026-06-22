@@ -9,7 +9,6 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
-import systems.zlink.framework.spots.ZLinkSpotCreateState;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoRoomSpot;
@@ -62,9 +61,6 @@ public final class AllocateBingoRoomHandler
         Message settingsPart = serialize(allocation.settings());
         try {
             var created = await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(allocation.roomId()), settingsPart));
-            if (created.state() == ZLinkSpotCreateState.REJECTED) {
-                throw new IllegalStateException("Bingo room creation was rejected. room=" + allocation.roomId());
-            }
             System.out.println(
                 "bingo room allocation: local owner. room=" + allocation.roomId()
                     + ", owner=" + allocation.ownerPlayNodeRid()

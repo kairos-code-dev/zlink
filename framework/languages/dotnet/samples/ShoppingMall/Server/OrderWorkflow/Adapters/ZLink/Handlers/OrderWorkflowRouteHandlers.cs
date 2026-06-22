@@ -42,10 +42,9 @@ internal sealed class StartOrderWorkflowRouteHandler(
         CancellationToken cancellationToken)
     {
         using var payload = new OrderWorkflowSpotCreateReq(orderId).ToJson();
-        ZLinkSpotCreateResult result;
         try
         {
-            result = await spots.GetOrCreateAsync<OrderWorkflowSpot>(
+            await spots.GetOrCreateAsync<OrderWorkflowSpot>(
                 RoutingId.From(orderId),
                 payload,
                 cancellationToken);
@@ -54,10 +53,6 @@ internal sealed class StartOrderWorkflowRouteHandler(
         {
             Console.Error.WriteLine($"shoppingmall workflow route: spot create failed order={orderId} error={error}");
             throw;
-        }
-        if (result.State == ZLinkSpotCreateState.Rejected)
-        {
-            throw new InvalidOperationException($"Order workflow spot '{orderId}' was rejected.");
         }
     }
 

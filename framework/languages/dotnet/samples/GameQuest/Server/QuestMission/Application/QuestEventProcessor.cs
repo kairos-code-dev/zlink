@@ -113,14 +113,10 @@ internal sealed class QuestEventProcessor(
         CancellationToken cancellationToken)
     {
         using var payload = new PlayerQuestSpotCreateReq(playerId).ToJson();
-        var result = await spots.GetOrCreateAsync<PlayerQuestSpot>(
+        await spots.GetOrCreateAsync<PlayerQuestSpot>(
             RoutingId.From(System.Text.Encoding.UTF8.GetBytes($"player:{playerId}")),
             payload,
             cancellationToken);
-        if (result.State == ZLinkSpotCreateState.Rejected)
-        {
-            throw new InvalidOperationException($"Player quest spot for '{playerId}' was rejected.");
-        }
     }
 
     private async ValueTask<bool> NotifyBoundGameApiAsync(

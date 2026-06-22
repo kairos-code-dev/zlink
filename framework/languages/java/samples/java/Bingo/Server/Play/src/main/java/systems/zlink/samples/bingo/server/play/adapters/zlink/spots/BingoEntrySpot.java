@@ -10,7 +10,6 @@ import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
-import systems.zlink.framework.spots.ZLinkSpotCreateState;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
@@ -88,10 +87,7 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
                 SampleTimings.DrawPeriod.toMillis());
         Message settingsPart = serialize(settings);
         try {
-            var created = await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(observerRid), settingsPart));
-            if (created.state() == ZLinkSpotCreateState.REJECTED) {
-                throw new IllegalStateException("Observer BingoRoom creation was rejected.");
-            }
+            await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(observerRid), settingsPart));
         } finally {
             settingsPart.close();
         }

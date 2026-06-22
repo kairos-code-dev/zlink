@@ -32,7 +32,7 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
         const auto display_name =
           actor.display_name.empty () ? actor.actor.actor_id : actor.display_name;
         const auto observer_rid = observer_room_rid (request.room_id, _context.node_rid ());
-        auto created = _context.manager ().get_or_create_spot (
+        _context.manager ().get_or_create_spot (
           sample_names_t::room_spot, observer_rid,
           to_stream_payload (bingo_room_settings_payload_t{
             "Bingo Observer " + std::string (_context.node_rid ().value ()),
@@ -41,9 +41,6 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
             75,
             "Observer",
             request.room_id}));
-        if (created.state == zlink::framework::spot_create_state_t::rejected) {
-            throw std::runtime_error ("observer BingoRoom creation was rejected");
-        }
         auto joined =
           co_await actor.context
             .join_spot (observer_rid,

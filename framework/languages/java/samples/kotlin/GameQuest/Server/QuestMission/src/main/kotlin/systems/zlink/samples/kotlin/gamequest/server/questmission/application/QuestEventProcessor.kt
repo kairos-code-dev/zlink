@@ -7,7 +7,6 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.ZLinkAwait
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.spots.ZLinkSpotCreateState
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.gamequest.server.questmission.QuestMissionOptions
@@ -115,16 +114,13 @@ class QuestEventProcessor(
     private fun ensurePlayerQuestSpot(playerId: String) {
         val payload = Message.from(encode(PlayerQuestSpot.PlayerQuestSpotCreateReq(playerId)))
         try {
-            val result = ZLinkAwait.await(
+            ZLinkAwait.await(
                 spots.getOrCreate(
                     PlayerQuestSpot::class.java,
                     RoutingId.from("player:$playerId".toByteArray(StandardCharsets.UTF_8)),
                     payload,
                 ),
             )
-            check(result.state() != ZLinkSpotCreateState.REJECTED) {
-                "Player quest spot for '$playerId' was rejected."
-            }
         } finally {
             payload.close()
         }

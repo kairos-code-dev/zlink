@@ -18,7 +18,6 @@ import type {
   ZLinkEntrySpotContext,
   ZLinkSpotManager
 } from '@zlink-systems/framework';
-import { ZLinkSpotCreateState } from '@zlink-systems/framework';
 import type { BingoRoomAllocator as BingoRoomAllocatorType } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import type {
   BingoRoomJoinRes,
@@ -51,10 +50,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     const allocated = await this.roomDirectory.allocate(actor, String(this.context.nodeRid), request.mode);
     const roomId = allocated.roomId;
     if (allocated.created) {
-      const created = await this.spots.getOrCreate(BingoRoomSpot, roomId);
-      if (created.state !== ZLinkSpotCreateState.Created) {
-        throw new Error('Bingo room creation was rejected.');
-      }
+      await this.spots.getOrCreate(BingoRoomSpot, roomId);
       await this.spots.executeOnSpot<BingoRoomSpot, void>(BingoRoomSpot, roomId, (room) => {
         room.initializeRoom(allocated.settings);
       });
@@ -82,14 +78,11 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
   async observeEvents(actor: PlayerActorType, request: ObserveBingoEventsReq): Promise<ObserveBingoEventsRes> {
     const observerRid = this.observerRoomRid(request.roomId);
     const settings = createObserverRoomSettings(request.roomId, String(this.context.nodeRid));
-    const created = await this.spots.getOrCreate(
+    await this.spots.getOrCreate(
       BingoRoomSpot,
       observerRid,
       protobufSerializer.serialize(bingoRoomSettingsPayload(settings))
     );
-    if (created.state === 'rejected') {
-      throw new Error('Observer BingoRoom creation was rejected.');
-    }
     const joined = await actor.context
       .joinSpot(observerRid, bingoRoomJoinReq(request.roomId, actor.actorId, actor.displayName, true))
       .submit<BingoRoomJoinRes>();

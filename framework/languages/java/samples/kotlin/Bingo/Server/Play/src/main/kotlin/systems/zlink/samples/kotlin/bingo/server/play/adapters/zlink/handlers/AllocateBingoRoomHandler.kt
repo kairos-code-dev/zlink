@@ -7,7 +7,6 @@ import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.channels.ZLinkRouteRequestContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkSuspendingRouteRequestHandler
-import systems.zlink.framework.spots.ZLinkSpotCreateState
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.BingoRoomSpot
@@ -49,9 +48,6 @@ class AllocateBingoRoomHandler(
         try {
             val created = spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(allocation.roomId), settingsPart)
                 .await()
-            check(created.state() != ZLinkSpotCreateState.REJECTED) {
-                "Bingo room creation was rejected. room=${allocation.roomId}"
-            }
             println(
                 "bingo room allocation: local owner. room=${allocation.roomId}, " +
                     "owner=${allocation.ownerPlayNodeRid}, local=${SampleTopology.selectedPlayNodeRid()}, " +

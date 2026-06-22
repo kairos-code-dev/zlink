@@ -16,13 +16,9 @@ internal sealed class TicTacToeGameCreator(
         CancellationToken cancellationToken)
     {
         var roomId = $"room-{Guid.NewGuid():N}";
-        var created = await spots.GetOrCreateAsync<TicTacToeGame>(
+        await spots.GetOrCreateAsync<TicTacToeGame>(
             RoutingId.From(roomId),
             cancellationToken);
-        if (created.State != ZLinkSpotCreateState.Created)
-        {
-            throw new InvalidOperationException("TicTacToe game spot creation was rejected.");
-        }
 
         await routes.SaveAsync(
             roomId,

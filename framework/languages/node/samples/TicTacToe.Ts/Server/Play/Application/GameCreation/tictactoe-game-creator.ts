@@ -11,7 +11,6 @@ import { TicTacToeGameSpot } from '../../Adapters/ZLink/Spots/tictactoe-game-spo
 import type {
   ZLinkSpotManager
 } from '@zlink-systems/framework';
-import { ZLinkSpotCreateState } from '@zlink-systems/framework';
 import type {
   CreateGameRes
 } from '../../../../Shared/Contracts/messages';
@@ -34,10 +33,7 @@ class TicTacToeGameCreator {
 
   async create(gameName: string): Promise<CreateGameRes> {
     const roomId = `room-${randomUUID().replaceAll('-', '')}`;
-    const created = await this.spotManager.getOrCreate(TicTacToeGameSpot, roomId);
-    if (created.state !== ZLinkSpotCreateState.Created) {
-      throw new Error('TicTacToe game spot creation was rejected.');
-    }
+    await this.spotManager.getOrCreate(TicTacToeGameSpot, roomId);
     const playNodes = this.config.playEndpoints.map((endpoint, index) => ({
       streamEndpoint: endpoint,
       spotNodeRid: `play-node-${index + 1}`

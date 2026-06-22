@@ -26,14 +26,10 @@ internal sealed class SupportConversationAllocator(IZLinkSpotManager spots)
                     subject,
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
                 .ToJson();
-            var conversation = await spots.GetOrCreateAsync<ConversationSpot>(
+            await spots.GetOrCreateAsync<ConversationSpot>(
                 RoutingId.From(conversationId),
                 create,
                 cancellationToken);
-            if (conversation.State != ZLinkSpotCreateState.Created)
-            {
-                throw new InvalidOperationException("Support conversation creation was rejected.");
-            }
 
             return conversationId;
         }

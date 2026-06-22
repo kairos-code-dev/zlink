@@ -43,11 +43,7 @@ internal sealed class BingoRoomAllocator(
             && string.Equals(reservation.RoomId, roomId, StringComparison.Ordinal))
         {
             using var settingsPart = BingoRoomSettingsPayloadMapper.ToPayload(settings).ToProto();
-            var room = await spots.GetOrCreateAsync<BingoRoom>(roomRid, settingsPart, cancellationToken);
-            if (room.State == ZLinkSpotCreateState.Rejected)
-            {
-                throw new InvalidOperationException("Bingo room creation was rejected.");
-            }
+            await spots.GetOrCreateAsync<BingoRoom>(roomRid, settingsPart, cancellationToken);
         }
 
         return reservation;

@@ -23,11 +23,7 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
         var observerRid = ObserverRoomRid(message.RoomId, entrySpot.Context.NodeRid);
         var settings = BingoRoomSettings.CreateObserver(message.RoomId, entrySpot.Context.NodeRid.ToString());
         using var settingsPart = BingoRoomSettingsPayloadMapper.ToPayload(settings).ToProto();
-        var created = await spots.GetOrCreateAsync<BingoRoom>(observerRid, settingsPart, cancellationToken);
-        if (created.State == ZLinkSpotCreateState.Rejected)
-        {
-            throw new InvalidOperationException("Observer BingoRoom creation was rejected.");
-        }
+        await spots.GetOrCreateAsync<BingoRoom>(observerRid, settingsPart, cancellationToken);
 
         var joined = await actor.Context.JoinSpot(
                 observerRid,

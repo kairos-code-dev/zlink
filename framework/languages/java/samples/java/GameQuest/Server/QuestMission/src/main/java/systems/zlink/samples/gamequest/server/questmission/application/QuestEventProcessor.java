@@ -10,8 +10,6 @@ import org.springframework.stereotype.Component;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.spots.ZLinkSpotCreateResult;
-import systems.zlink.framework.spots.ZLinkSpotCreateState;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.server.questmission.QuestMissionOptions;
@@ -126,13 +124,10 @@ public final class QuestEventProcessor {
     private void ensurePlayerQuestSpot(String playerId) {
         Message payload = Message.from(encode(new PlayerQuestSpot.PlayerQuestSpotCreateReq(playerId)));
         try {
-            ZLinkSpotCreateResult result = await(spots.getOrCreate(
+            await(spots.getOrCreate(
                 PlayerQuestSpot.class,
                 RoutingId.from(("player:" + playerId).getBytes(StandardCharsets.UTF_8)),
                 payload));
-            if (result.state() == ZLinkSpotCreateState.REJECTED) {
-                throw new IllegalStateException("Player quest spot for '" + playerId + "' was rejected.");
-            }
         } finally {
             payload.close();
         }

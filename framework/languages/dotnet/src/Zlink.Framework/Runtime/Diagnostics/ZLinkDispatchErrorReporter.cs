@@ -17,7 +17,13 @@ internal sealed class ZLinkDispatchErrorReporter(
     public void Report(ZLinkMessageDispatchErrorEvent error)
     {
         Interlocked.Increment(ref _reportedCount);
-        LogDefault(error);
+
+        // off silences the default error log; every other mode keeps reporting
+        // errors (errors_only is the default). A registered observer still fires.
+        if (options.Diagnostics.EffectiveMessageFlow != ZLinkMessageFlowLogMode.Off)
+        {
+            LogDefault(error);
+        }
 
         _ = Task.Run(async () =>
         {
@@ -58,6 +64,16 @@ internal sealed class ZLinkDispatchErrorReporter(
 
     private void LogDefault(ZLinkMessageDispatchErrorEvent error)
     {
+        var diagnostics = options.Diagnostics;
+
+        // Separated tracing file vs the shared app logger (same choice as the flow
+        // tracer), so success and failure read as one correlation-id-keyed stream.
+        if (diagnostics.LogFile is { } path)
+        {
+            ZLinkTraceFileWriter.Write(path, ZLinkTraceFormat.ErrorLine(error, diagnostics.NodeId));
+            return;
+        }
+
         var level = error.Action == ZLinkDispatchErrorAction.ReplyError
             ? LogLevel.Error
             : LogLevel.Warning;
@@ -66,16 +82,22 @@ internal sealed class ZLinkDispatchErrorReporter(
             return;
         }
 
+        // Format unified with the flow tracer: include corr/topic/src/actor/node so
+        // a single grep on corr follows a message whether it succeeded or failed.
         _logger.Log(
             level,
             error.Exception,
-            "ZLink message dispatch error {Surface} {Kind} {Reason} {Action} {PacketName} {ChannelName} {SpotRid} {ActorId}",
+            "ZLink message dispatch error {Surface} {Kind} {Reason} {Action} node={Node} {PacketName} {ChannelName} {Topic} corr={Corr} src={Src} {SpotRid} {ActorId}",
             error.Surface,
             error.MessageKind,
             error.Reason,
             error.Action,
+            diagnostics.NodeId,
             error.PacketName,
             error.ChannelName,
+            error.Topic,
+            error.CorrelationId,
+            error.SourceRid,
             error.SpotRid,
             error.ActorId);
     }

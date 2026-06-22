@@ -126,7 +126,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
             {
                 {
                     var dispatch = options.ConfigureDispatch();
-                    dispatch.Diagnostics.SampleRate = 1.1d;
+                    dispatch.TraceSampleRate(1.1d);
 
                 }
             }));

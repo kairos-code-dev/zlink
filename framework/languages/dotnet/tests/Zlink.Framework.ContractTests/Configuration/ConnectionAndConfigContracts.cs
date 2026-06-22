@@ -183,6 +183,21 @@ public sealed class ConnectionAndConfigContracts
         {
             return this;
         }
+
+        public IZLinkDispatchOptions SetMessageFlowObserver<TObserver>()
+            where TObserver : class, IZLinkMessageFlowObserver => this;
+
+        public IZLinkDispatchOptions SetMessageFlowObserver(IZLinkMessageFlowObserver observer) => this;
+
+        public IZLinkDispatchOptions MessageFlow(ZLinkMessageFlowLogMode mode) => this;
+
+        public IZLinkDispatchOptions TraceSampleRate(double rate) => this;
+
+        public IZLinkDispatchOptions IncludeMessageSizes(bool include) => this;
+
+        public IZLinkDispatchOptions TraceLogFile(string path) => this;
+
+        public IZLinkDispatchOptions TraceNodeId(string id) => this;
     }
 
     private sealed class UnhandledDispatchOptions : IZLinkUnhandledDispatchOptions
@@ -207,5 +222,11 @@ public sealed class ConnectionAndConfigContracts
         public bool IncludeMessageSizes { get; set; }
 
         public bool IncludeNativeDiagnostics { get; set; }
+
+        public string? LogFile { get; set; }
+
+        public string? NodeId { get; set; }
+
+        public ZLinkMessageFlowLogMode EffectiveMessageFlow => MessageFlow;
     }
 }

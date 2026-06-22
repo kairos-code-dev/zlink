@@ -16,6 +16,10 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
 
     public IZLinkMessageDispatchErrorObserver? MessageDispatchErrorObserver { get; private set; }
 
+    public Type? MessageFlowObserverType { get; private set; }
+
+    public IZLinkMessageFlowObserver? MessageFlowObserver { get; private set; }
+
     IZLinkUnhandledDispatchOptions IZLinkDispatchOptions.Unhandled => Unhandled;
 
     IZLinkDiagnosticsOptions IZLinkDispatchOptions.Diagnostics => Diagnostics;
@@ -36,6 +40,70 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
         MessageDispatchErrorObserverType = null;
         return this;
     }
+
+    public IZLinkDispatchOptions SetMessageFlowObserver<TObserver>()
+        where TObserver : class, IZLinkMessageFlowObserver
+    {
+        MessageFlowObserverType = typeof(TObserver);
+        MessageFlowObserver = null;
+        return this;
+    }
+
+    public IZLinkDispatchOptions SetMessageFlowObserver(IZLinkMessageFlowObserver observer)
+    {
+        ArgumentNullException.ThrowIfNull(observer);
+        MessageFlowObserver = observer;
+        MessageFlowObserverType = null;
+        return this;
+    }
+
+    public IZLinkDispatchOptions MessageFlow(ZLinkMessageFlowLogMode mode)
+    {
+        Diagnostics.MessageFlow = mode;
+        return this;
+    }
+
+    public IZLinkDispatchOptions TraceSampleRate(double rate)
+    {
+        Diagnostics.SampleRate = rate;
+        return this;
+    }
+
+    public IZLinkDispatchOptions IncludeMessageSizes(bool include)
+    {
+        Diagnostics.IncludeMessageSizes = include;
+        return this;
+    }
+
+    public IZLinkDispatchOptions TraceLogFile(string path)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        Diagnostics.LogFile = path;
+        return this;
+    }
+
+    public IZLinkDispatchOptions TraceNodeId(string id)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(id);
+        Diagnostics.NodeId = id;
+        return this;
+    }
+}
+
+// Shared, runtime-mutable message-flow mode (the C++ live_mode shared atomic). Held
+// by the diagnostics model and shared across surfaces, so set_message_flow_mode
+// flips it once and every surface observes it live.
+internal sealed class ZLinkMessageFlowModeCell
+{
+    private int _mode;
+
+    public ZLinkMessageFlowModeCell(ZLinkMessageFlowLogMode seed) => _mode = (int)seed;
+
+    public ZLinkMessageFlowLogMode Mode
+    {
+        get => (ZLinkMessageFlowLogMode)Volatile.Read(ref _mode);
+        set => Volatile.Write(ref _mode, (int)value);
+    }
 }
 
 internal sealed class ZLinkUnhandledDispatchOptionsModel : IZLinkUnhandledDispatchOptions
@@ -53,11 +121,22 @@ internal sealed class ZLinkUnhandledDispatchOptionsModel : IZLinkUnhandledDispat
 
 internal sealed class ZLinkDiagnosticsOptionsModel : IZLinkDiagnosticsOptions
 {
-    public ZLinkMessageFlowLogMode MessageFlow { get; set; } = ZLinkMessageFlowLogMode.ErrorsOnly;
+    public ZLinkMessageFlowLogMode MessageFlow { get; internal set; } = ZLinkMessageFlowLogMode.ErrorsOnly;
 
-    public double SampleRate { get; set; } = 1.0d;
+    public double SampleRate { get; internal set; } = 1.0d;
 
-    public bool IncludeMessageSizes { get; set; } = true;
+    public bool IncludeMessageSizes { get; internal set; } = true;
 
-    public bool IncludeNativeDiagnostics { get; set; }
+    public bool IncludeNativeDiagnostics { get; internal set; }
+
+    public string? LogFile { get; internal set; }
+
+    public string? NodeId { get; internal set; }
+
+    // Installed by the host at apply (ZLinkFrameworkServiceRegistrar). Shared across
+    // surfaces so SetMessageFlowMode flips it live. Null before apply.
+    public ZLinkMessageFlowModeCell? LiveMode { get; internal set; }
+
+    public ZLinkMessageFlowLogMode EffectiveMessageFlow =>
+        LiveMode is { } cell ? cell.Mode : MessageFlow;
 }

@@ -96,7 +96,8 @@ import {
   decodeChannelPayload,
   ZLinkChannelMessageKind,
   encodeChannelErrorReplyParts,
-  encodeChannelReplyParts
+  encodeChannelReplyParts,
+  type ZLinkChannelEnvelopeCodecRegistry
 } from '../channels/channel-envelope';
 import { ZLinkAsyncSubmitter } from '../messaging';
 import type { ZLinkWorkerCall } from '../../contracts';
@@ -196,6 +197,7 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
   readonly routedTransport?: ZLinkSpotRoutedTransport;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
+  readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
   readonly routedActorProvider?: ZLinkSpotManagerOptions['routedActorProvider'];
   readonly routedBoundSessionReceiver?: ZLinkSpotManagerOptions['routedBoundSessionReceiver'];
@@ -391,6 +393,7 @@ export class ZLinkSpotNodeRuntimeManager {
       undefined,
       this.options.routedBoundSessionReceiver,
       this.options.actorPacketTargetProvider,
+      this.options.messageSerializers,
       this.options.providerResolver,
       this.options.dispatchErrors
     );
@@ -706,9 +709,16 @@ class ZLinkSpotActorJoinDispatch {
     ) => Promise<unknown>,
     private readonly routedBoundSessionReceiver?: ZLinkSpotManagerOptions['routedBoundSessionReceiver'],
     private readonly actorPacketTargetProvider?: ZLinkSpotManagerOptions['actorPacketTargetProvider'],
+    private readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>,
     private readonly providerResolver?: ZLinkProviderResolver,
     private readonly dispatchErrors?: ZLinkDispatchErrorReporter
   ) {}
+
+  private channelCodecs(): ZLinkChannelEnvelopeCodecRegistry | undefined {
+    return this.messageSerializers === undefined
+      ? undefined
+      : { serializers: this.messageSerializers };
+  }
 
   configureSubscriptions(registrations: readonly ZLinkSpotHandlerRegistration[]): void {
     for (const registration of registrations) {
@@ -989,8 +999,14 @@ class ZLinkSpotActorJoinDispatch {
       ) {
         remoteBoundSessionTarget = {
           routerChannelId: actorPacketRelay.routerChannelId,
-          targetNodeRid: decodeWireRoutingId(String(received.routingId), undefined),
-          spotRid: decodeWireRoutingId(String(received.spotRid ?? received.routingId), undefined)
+          targetNodeRid: decodeWireRoutingId(
+            actorPacketRelay.boundSessionTargetNodeRid ?? String(received.routingId),
+            undefined
+          ),
+          spotRid: decodeWireRoutingId(
+            actorPacketRelay.boundSessionSpotRid ?? String(received.spotRid ?? received.routingId),
+            undefined
+          )
         };
       }
       const header = BindingMessage.from(Buffer.from(actorPacketRelay.header, 'base64'));
@@ -1002,7 +1018,9 @@ class ZLinkSpotActorJoinDispatch {
           true,
           remoteBoundSessionTarget
         );
-        const actorPacketTarget = this.actorPacketTargetProvider?.(actorPacketRelay.actorId);
+        const actorPacketTarget = encodeRemoteActorPacketTarget(
+          this.actorPacketTargetProvider?.(actorPacketRelay.actorId)
+        );
         if (actorPacketRelay.envelope === undefined) {
           received.reply()
             .message(Buffer.from(JSON.stringify({ ok: true, response, actorPacketTarget })))
@@ -1222,7 +1240,7 @@ class ZLinkSpotActorJoinDispatch {
       });
       return;
     }
-    const event = decodeChannelPayload(envelope);
+        const event = decodeChannelPayload(envelope, this.channelCodecs());
     const spot = this.getTarget() as ZLinkSpot;
     const subSource = message.routingId === null ? undefined : String(message.routingId);
     const subCorr = envelope.header.correlationId ?? undefined;
@@ -1316,7 +1334,7 @@ class ZLinkSpotActorJoinDispatch {
       if (envelope.packetName !== ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET) {
         return undefined;
       }
-      const payload = decodeChannelPayload(envelope) as {
+      const payload = decodeChannelPayload(envelope, this.channelCodecs()) as {
         readonly actorId?: unknown;
         readonly message?: unknown;
         readonly packetName?: unknown;
@@ -1345,6 +1363,8 @@ class ZLinkSpotActorJoinDispatch {
   private decodeRemoteActorPacketRelay(parts: readonly BindingMessage[]): {
     readonly actorId: string;
     readonly routerChannelId?: string;
+    readonly boundSessionTargetNodeRid?: string;
+    readonly boundSessionSpotRid?: string;
     readonly header: string;
     readonly payload: string;
     readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
@@ -1355,10 +1375,12 @@ class ZLinkSpotActorJoinDispatch {
         if (envelope.packetName !== ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET) {
           return undefined;
         }
-        const payload = decodeChannelPayload(envelope) as {
+        const payload = decodeChannelPayload(envelope, this.channelCodecs()) as {
           readonly packetName?: unknown;
           readonly actorId?: unknown;
           readonly routerChannelId?: unknown;
+          readonly boundSessionTargetNodeRid?: unknown;
+          readonly boundSessionSpotRid?: unknown;
           readonly header?: unknown;
           readonly payload?: unknown;
         };
@@ -1373,6 +1395,8 @@ class ZLinkSpotActorJoinDispatch {
         return {
           actorId: payload.actorId,
           routerChannelId: typeof payload.routerChannelId === 'string' ? payload.routerChannelId : undefined,
+          boundSessionTargetNodeRid: typeof payload.boundSessionTargetNodeRid === 'string' ? payload.boundSessionTargetNodeRid : undefined,
+          boundSessionSpotRid: typeof payload.boundSessionSpotRid === 'string' ? payload.boundSessionSpotRid : undefined,
           header: payload.header,
           payload: payload.payload,
           envelope
@@ -1385,6 +1409,8 @@ class ZLinkSpotActorJoinDispatch {
         readonly packetName?: unknown;
         readonly actorId?: unknown;
         readonly routerChannelId?: unknown;
+        readonly boundSessionTargetNodeRid?: unknown;
+        readonly boundSessionSpotRid?: unknown;
         readonly header?: unknown;
         readonly payload?: unknown;
       };
@@ -1399,6 +1425,8 @@ class ZLinkSpotActorJoinDispatch {
       return {
         actorId: payload.actorId,
         routerChannelId: typeof payload.routerChannelId === 'string' ? payload.routerChannelId : undefined,
+        boundSessionTargetNodeRid: typeof payload.boundSessionTargetNodeRid === 'string' ? payload.boundSessionTargetNodeRid : undefined,
+        boundSessionSpotRid: typeof payload.boundSessionSpotRid === 'string' ? payload.boundSessionSpotRid : undefined,
         header: payload.header,
         payload: payload.payload
       };
@@ -1473,7 +1501,7 @@ class ZLinkSpotActorJoinDispatch {
       if (envelope.packetName !== REMOTE_ACTOR_JOIN_PACKET) {
         return undefined;
       }
-      const payload = decodeChannelPayload(envelope);
+      const payload = decodeChannelPayload(envelope, this.channelCodecs());
       if (!isRemoteActorJoinPayload(payload)) {
         return undefined;
       }
@@ -1641,6 +1669,27 @@ function encodeRoutingIdHex(routingId: RoutingId): string | undefined {
   return typeof toHex === 'function' ? toHex.call(routingId) : undefined;
 }
 
+function encodeRemoteActorPacketTarget(target: ZLinkRemoteActorPacketTarget | undefined): {
+  readonly routerChannelId: string;
+  readonly targetNodeRid: string;
+  readonly targetNodeRidHex?: string;
+  readonly spotRid: string;
+  readonly spotRidHex?: string;
+  readonly spotKind: ZLinkSpotKind;
+} | undefined {
+  if (target === undefined) {
+    return undefined;
+  }
+  return {
+    routerChannelId: target.routerChannelId,
+    targetNodeRid: String(target.targetNodeRid),
+    targetNodeRidHex: encodeRoutingIdHex(target.targetNodeRid),
+    spotRid: String(target.spotRid),
+    spotRidHex: encodeRoutingIdHex(target.spotRid),
+    spotKind: target.spotKind ?? ZLinkSpotKind.User
+  };
+}
+
 function decodeWireRoutingId(text: string, hex: unknown): RoutingId {
   return typeof hex === 'string'
     ? BindingRoutingId.fromHex(hex) as unknown as RoutingId
@@ -1794,6 +1843,7 @@ export class ZLinkEntrySpotActivation {
         this.dispatchActorPacket(actorId, parts, returnResponse, remoteBoundSessionTarget),
       this.options.routedBoundSessionReceiver,
       this.options.actorPacketTargetProvider,
+      this.options.messageSerializers,
       this.options.providerResolver,
       this.options.dispatchErrors
     );
@@ -1851,7 +1901,7 @@ export class ZLinkEntrySpotActivation {
       packetName: header.name,
       spotRid: String(this.options.nativeSpot.routingId),
       actorId,
-      correlationId: header.requestSeq?.toString()
+      correlationId: header.correlationId ?? header.requestSeq?.toString()
     });
     const routed = await this.options.localActorPacketRouter?.(
       actorId,
@@ -1872,7 +1922,7 @@ export class ZLinkEntrySpotActivation {
         packetName: header.name,
         spotRid: String(this.options.nativeSpot.routingId),
         actorId,
-        correlationId: header.requestSeq?.toString()
+        correlationId: header.correlationId ?? header.requestSeq?.toString()
       });
       if (messageKind === ZLinkDispatchMessageKind.ActorRequest) {
         throw new ZLinkFrameworkException(
@@ -1897,7 +1947,7 @@ export class ZLinkEntrySpotActivation {
         packetName: header.name,
         spotRid: String(this.options.nativeSpot.routingId),
         actorId,
-        correlationId: header.requestSeq?.toString(),
+        correlationId: header.correlationId ?? header.requestSeq?.toString(),
         error
       });
       throw error;
@@ -1920,7 +1970,7 @@ export class ZLinkEntrySpotActivation {
           packetName: header.name,
           spotRid: String(this.options.nativeSpot.routingId),
           actorId,
-          correlationId: header.requestSeq?.toString()
+          correlationId: header.correlationId ?? header.requestSeq?.toString()
         });
         return undefined;
       }
@@ -1946,7 +1996,7 @@ export class ZLinkEntrySpotActivation {
         packetName: header.name,
         spotRid: String(this.options.nativeSpot.routingId),
         actorId,
-        correlationId: header.requestSeq.toString()
+        correlationId: header.correlationId ?? header.requestSeq.toString()
       });
       if (returnResponse || this.options.actorResponseSender === undefined) {
         return response;
@@ -1972,7 +2022,7 @@ export class ZLinkEntrySpotActivation {
         packetName: header.name,
         spotRid: String(this.options.nativeSpot.routingId),
         actorId,
-        correlationId: header.requestSeq?.toString(),
+        correlationId: header.correlationId ?? header.requestSeq?.toString(),
         error
       });
       throw error;
@@ -2342,6 +2392,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
           this.dispatchActorPacket(activation, actorId, parts, returnResponse, remoteBoundSessionTarget),
         this.options.routedBoundSessionReceiver,
         this.options.actorPacketTargetProvider,
+        this.options.messageSerializers,
         this.options.providerResolver,
         this.options.dispatchErrors
       );
@@ -2498,7 +2549,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       packetName: header.name,
       spotRid: String(activation.spotRid),
       actorId,
-      correlationId: header.requestSeq?.toString()
+      correlationId: header.correlationId ?? header.requestSeq?.toString()
     });
     const actor = activation.actors.get(actorId) ?? this.options.actorResolver?.(actorId);
     if (actor === undefined) {
@@ -2510,7 +2561,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
         packetName: header.name,
         spotRid: String(activation.spotRid),
         actorId,
-        correlationId: header.requestSeq?.toString()
+        correlationId: header.correlationId ?? header.requestSeq?.toString()
       });
       if (messageKind === ZLinkDispatchMessageKind.ActorRequest) {
         throw new ZLinkFrameworkException(
@@ -2535,7 +2586,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
         packetName: header.name,
         spotRid: String(activation.spotRid),
         actorId,
-        correlationId: header.requestSeq?.toString(),
+        correlationId: header.correlationId ?? header.requestSeq?.toString(),
         error
       });
       throw error;
@@ -2553,7 +2604,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
           packetName: header.name,
           spotRid: String(activation.spotRid),
           actorId,
-          correlationId: header.requestSeq?.toString()
+          correlationId: header.correlationId ?? header.requestSeq?.toString()
         });
         return undefined;
       }
@@ -2579,7 +2630,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
         packetName: header.name,
         spotRid: String(activation.spotRid),
         actorId,
-        correlationId: header.requestSeq.toString()
+        correlationId: header.correlationId ?? header.requestSeq.toString()
       });
       if (returnResponse || this.options.actorResponseSender === undefined) {
         return response;
@@ -2605,7 +2656,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
         packetName: header.name,
         spotRid: String(activation.spotRid),
         actorId,
-        correlationId: header.requestSeq?.toString(),
+        correlationId: header.correlationId ?? header.requestSeq?.toString(),
         error
       });
       throw error;

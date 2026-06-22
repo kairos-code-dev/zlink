@@ -130,6 +130,14 @@ stdout/stderr를 `logs/*.log`로 저장하는 샘플은 기존 console logger에
 - 식별자는 도메인 의미가 드러나게 이름 붙인다. 예를 들어 TicTacToe에서 client가 받는
   값은 임의의 core routing id hex 문자열이 아니라 명시적인 `RoomId`이며, room Spot
   routing id는 각 언어의 routing id 생성 API로 `RoomId` 문자열에서 만든다.
+- 모든 샘플의 routing id는 샘플 애플리케이션이 명시적으로 정한 문자열에서 만든다.
+  node, Spot, room, conversation, workflow instance처럼 메시지나 로그에 드러나는 식별자는
+  `play-node-1`, `bingo-room-...`, `supportchat-conversation-...`처럼 사람이 읽을 수 있는
+  샘플 ID를 그대로 사용한다. framework가 자동 배정한 Spot routing id나 core routing id의
+  hex 표현을 샘플 계약으로 노출하지 않는다. 따라서 샘플 코드는 hex로 직렬화한 값을
+  다시 `FromHex`/`fromHex`로 복원하는 흐름을 쓰지 않고, 각 언어의 일반 routing id 생성
+  API(`RoutingId.From(...)`, `RoutingId.from(...)`, 문자열 routing id 등)로 샘플 ID를
+  routing id로 만든다.
 
 ## Client self-check 기준
 

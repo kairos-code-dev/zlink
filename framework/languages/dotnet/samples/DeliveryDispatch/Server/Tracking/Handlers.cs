@@ -32,7 +32,7 @@ internal sealed class EnsureCustomerActorHandler(
         return new CustomerActorEnsured(
             request.CustomerId,
             new ActorRefSnapshot(
-                joined.Actor.NodeRid.ToHex(),
+                joined.Actor.NodeRid.ToString(),
                 joined.Actor.ActorId,
                 joined.Actor.Generation));
     }

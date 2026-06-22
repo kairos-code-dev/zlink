@@ -124,7 +124,6 @@ export interface BingoActorRef {
   nodeRid: string;
   actorId: string;
   generation: number;
-  nodeRidHex: string;
 }
 
 export interface EnsurePlayerActorRes {

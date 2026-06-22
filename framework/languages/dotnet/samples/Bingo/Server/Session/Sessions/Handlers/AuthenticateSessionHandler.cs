@@ -43,7 +43,7 @@ internal sealed class AuthenticateBingoSessionHandler(
                 {
                     ActorId = authenticated.ActorId,
                     DisplayName = authenticated.DisplayName,
-                    PreferredActorNodeRid = session.PreferredPlayNodeRid.ToHex(),
+                    PreferredActorNodeRid = session.PreferredPlayNodeRid.ToString(),
                 })
             .Async<EnsurePlayerActorRes>(cancellationToken) ;
 
@@ -63,7 +63,7 @@ internal sealed class AuthenticateBingoSessionHandler(
     private static ActorRef ToActorRef(ActorRefSnapshot snapshot)
     {
         return new ActorRef(
-            RoutingId.FromHex(snapshot.NodeRid),
+            RoutingId.From(snapshot.NodeRid),
             snapshot.ActorId,
             snapshot.Generation);
     }

@@ -21,7 +21,7 @@ internal sealed class BingoRoom(
 
     private readonly Dictionary<string, PlayerActor> _actors = new(StringComparer.Ordinal);
     private BingoRoomSettings _settings = DefaultSettings;
-    private BingoRoomGame? _game = new(context.SpotRid.ToHex(), DefaultSettings);
+    private BingoRoomGame? _game = new(context.SpotRid.ToString(), DefaultSettings);
     private PlayerActor? _observerActor;
     private bool _cleanupStarted;
 
@@ -45,7 +45,7 @@ internal sealed class BingoRoom(
         _ = cancellationToken;
         logger.LogInformation(
             "bingo room: actor joined. room={RoomId}, actor={ActorId}",
-            Context.SpotRid.ToHex(),
+            Context.SpotRid.ToString(),
             actor.ActorId);
         return ValueTask.CompletedTask;
     }
@@ -63,7 +63,7 @@ internal sealed class BingoRoom(
         }
         logger.LogInformation(
             "bingo room: actor left. room={RoomId}, actor={ActorId}",
-            Context.SpotRid.ToHex(),
+            Context.SpotRid.ToString(),
             actor.ActorId);
         return ValueTask.CompletedTask;
     }
@@ -76,7 +76,7 @@ internal sealed class BingoRoom(
         actor.MarkDisconnected();
         logger.LogInformation(
             "bingo room: actor disconnected. room={RoomId}, actor={ActorId}",
-            Context.SpotRid.ToHex(),
+            Context.SpotRid.ToString(),
             actor.ActorId);
         return ValueTask.CompletedTask;
     }
@@ -99,7 +99,7 @@ internal sealed class BingoRoom(
         ApplySettings(settings);
         logger.LogInformation(
             "bingo room: created. room={RoomId}, roomName={RoomName}, mode={Mode}, purpose={Purpose}, observedRoom={ObservedRoomId}, requiredPlayers={RequiredPlayers}, maxDrawNumber={MaxDrawNumber}",
-            Context.SpotRid.ToHex(),
+            Context.SpotRid.ToString(),
             settings.RoomName,
             settings.Mode,
             settings.Purpose,
@@ -148,7 +148,7 @@ internal sealed class BingoRoom(
                 change.State.RoomId,
                 change.State.Winners[0],
                 BingoRewardItems.GoldenDauberId,
-                Context.NodeRid.ToHex());
+                Context.NodeRid.ToString());
             await Context.Outbound.Publish(
                     SampleNames.RewardTopic,
                     new BingoRewardAcquiredEvent
@@ -166,7 +166,7 @@ internal sealed class BingoRoom(
                 change.State.RoomId,
                 change.State.Winners[0],
                 BingoRewardItems.GoldenDauberId,
-                Context.NodeRid.ToHex());
+                Context.NodeRid.ToString());
         }
     }
 
@@ -188,12 +188,12 @@ internal sealed class BingoRoom(
     public void ApplySettings(BingoRoomSettings settings)
     {
         _settings = settings;
-        _game = settings.IsObserver ? null : new BingoRoomGame(Context.SpotRid.ToHex(), settings);
+        _game = settings.IsObserver ? null : new BingoRoomGame(Context.SpotRid.ToString(), settings);
     }
 
     internal void EnsureRoomId(string roomId)
     {
-        if (!string.Equals(roomId, Context.SpotRid.ToHex(), StringComparison.Ordinal))
+        if (!string.Equals(roomId, Context.SpotRid.ToString(), StringComparison.Ordinal))
         {
             throw new InvalidOperationException($"Player is not submitting to this room. room={roomId}");
         }
@@ -213,7 +213,7 @@ internal sealed class BingoRoom(
                 _settings.IsObserver,
                 _observerActor is not null,
                 _settings.ObservedRoomId ?? "-",
-                Context.NodeRid.ToHex());
+                Context.NodeRid.ToString());
             return;
         }
 
@@ -223,7 +223,7 @@ internal sealed class BingoRoom(
             message.ActorId,
             message.ItemId,
             _observerActor.ActorId,
-            Context.NodeRid.ToHex());
+            Context.NodeRid.ToString());
         await _observerActor.Context.BoundSession
             .Send(
                 new BingoRewardAnnouncedNotify
@@ -234,7 +234,7 @@ internal sealed class BingoRoom(
                     ItemId = message.ItemId,
                     ItemName = message.ItemName,
                     Rarity = message.Rarity,
-                    ReceivingSpotNodeRid = Context.NodeRid.ToHex(),
+                    ReceivingSpotNodeRid = Context.NodeRid.ToString(),
                 })
             .Async(cancellationToken);
     }
@@ -284,7 +284,7 @@ internal sealed class BingoRoom(
             "bingo observer room: actor joined. observedRoom={ObservedRoomId}, observer={ActorId}, nodeRid={NodeRid}",
             _settings.ObservedRoomId,
             actor.ActorId,
-            Context.NodeRid.ToHex());
+            Context.NodeRid.ToString());
         return new BingoRoomJoinRes
         {
             State = new BingoRoomState

@@ -1,5 +1,4 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import { ZLINK_CHANNEL_CLIENT, ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
 import { BINGO_SAMPLE_CONFIG } from '../../../Configuration/sample-config';
 import { SampleNames } from '../../../Configuration/sample-names';
@@ -80,7 +79,7 @@ class SessionAuthenticator {
 
     await context.actors.bind({
       ...ensured.actor,
-      nodeRid: BindingRoutingId.fromHex(ensured.actor.nodeRidHex) as unknown as RoutingId,
+      nodeRid: ensured.actor.nodeRid as unknown as RoutingId,
       generation: BigInt(ensured.actor.generation)
     });
     context.actorId = ensured.actorId;

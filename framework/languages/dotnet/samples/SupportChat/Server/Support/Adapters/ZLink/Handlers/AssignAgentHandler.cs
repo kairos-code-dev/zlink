@@ -31,7 +31,7 @@ internal sealed class AssignAgentHandler(
         }
 
         var actor = actors.Get(assigned.ActorId);
-        var conversationRid = RoutingId.FromHex(request.ConversationId);
+        var conversationRid = RoutingId.From(request.ConversationId);
         var joined = await actor.Context.JoinSpot(
                 conversationRid,
                 new JoinConversationReq(request.ConversationId).Encode())

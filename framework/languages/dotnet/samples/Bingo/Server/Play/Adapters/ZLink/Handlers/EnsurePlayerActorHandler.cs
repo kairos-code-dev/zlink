@@ -35,7 +35,7 @@ internal sealed class EnsurePlayerActorHandler(
 
         using var entryJoinRequest = Message.From(ReadOnlySpan<byte>.Empty);
         var joined = await actor.Context.JoinEntrySpot(
-                RoutingId.FromHex(request.PreferredActorNodeRid),
+                RoutingId.From(request.PreferredActorNodeRid),
                 entryJoinRequest)
             .Async(cancellationToken)
             ;
@@ -45,7 +45,7 @@ internal sealed class EnsurePlayerActorHandler(
             ActorType = SampleNames.PlayerActorType,
             Actor = new ActorRefSnapshot
             {
-                NodeRid = joined.Actor.NodeRid.ToHex(),
+                NodeRid = joined.Actor.NodeRid.ToString(),
                 ActorId = joined.Actor.ActorId,
                 Generation = joined.Actor.Generation,
             },

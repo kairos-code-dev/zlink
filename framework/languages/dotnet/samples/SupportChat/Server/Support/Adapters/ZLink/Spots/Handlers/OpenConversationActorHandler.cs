@@ -31,7 +31,7 @@ internal sealed class OpenConversationActorHandler
                     actor.DisplayName,
                     message.Subject))
             .Async<OpenConversationApiRes>(cancellationToken);
-        var conversationRid = RoutingId.FromHex(opened.ConversationId);
+        var conversationRid = RoutingId.From(opened.ConversationId);
         var joined = await actor.Context.JoinSpot(
                 conversationRid,
                 new JoinConversationReq(opened.ConversationId).Encode())

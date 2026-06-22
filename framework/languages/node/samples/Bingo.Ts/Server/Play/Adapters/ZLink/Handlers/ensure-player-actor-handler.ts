@@ -21,16 +21,11 @@ class EnsurePlayerActorHandler implements ZLinkRequestHandler<EnsurePlayerActorR
     if (actorRef === undefined) {
       throw new Error(`Actor '${actor.actorId}' does not have a native actor ref.`);
     }
-    const nodeRidHex = (actorRef.nodeRid as unknown as { toHex?: () => string }).toHex?.();
-    if (nodeRidHex === undefined) {
-      throw new Error(`Actor '${actor.actorId}' node routing id cannot be encoded.`);
-    }
     console.log(`play-ensure-actor ready actor=${actor.actorId} node=${String(actorRef.nodeRid)}`);
     return ensurePlayerActorRes({
       nodeRid: String(actorRef.nodeRid),
       actorId: actorRef.actorId,
-      generation: Number(actorRef.generation),
-      nodeRidHex
+      generation: Number(actorRef.generation)
     });
   }
 }

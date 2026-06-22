@@ -35,7 +35,7 @@ internal sealed class ConversationSpot(
         CancellationToken cancellationToken)
     {
         var create = request.FromJson<ConversationCreateRequest>();
-        var conversationId = Context.SpotRid.ToHex();
+        var conversationId = Context.SpotRid.ToString();
         _conversation = new Conversation(
             conversationId,
             create.Subject,

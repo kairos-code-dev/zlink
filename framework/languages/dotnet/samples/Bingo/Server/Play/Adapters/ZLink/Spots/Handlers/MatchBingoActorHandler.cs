@@ -28,7 +28,7 @@ internal sealed class MatchBingoActorHandler(
         {
             ActorId = actor.ActorId,
             DisplayName = actor.DisplayName,
-            ActorNodeRid = entrySpot.Context.NodeRid.ToHex(),
+            ActorNodeRid = entrySpot.Context.NodeRid.ToString(),
             Mode = message.Mode,
         };
         MatchBingoApiRes matched;
@@ -46,7 +46,7 @@ internal sealed class MatchBingoActorHandler(
         }
         logger.LogInformation("match: room allocated. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
 
-        var roomRid = RoutingId.FromHex(matched.RoomId);
+        var roomRid = RoutingId.From(matched.RoomId);
         var joined = await actor.Context.JoinSpot(
                 roomRid,
                 new BingoRoomJoinReq

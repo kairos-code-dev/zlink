@@ -28,8 +28,8 @@ internal sealed class OrderWorkflowSpot(
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
             "shoppingmall order spot: ready. order={OrderId}, spot={SpotRid}",
-            Context.SpotRid.ToHex(),
-            Context.SpotRid.ToHex());
+            Context.SpotRid.ToString(),
+            Context.SpotRid.ToString());
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 

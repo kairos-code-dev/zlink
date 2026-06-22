@@ -79,7 +79,7 @@ internal sealed class SubscribeDeliveryHandler(
             .Async<CustomerActorEnsured>(cancellationToken);
         await context.Actors.BindAsync(
             new ActorRef(
-                RoutingId.FromHex(ensured.Actor.NodeRid),
+                RoutingId.From(ensured.Actor.NodeRid),
                 ensured.Actor.ActorId,
                 ensured.Actor.Generation),
             cancellationToken);

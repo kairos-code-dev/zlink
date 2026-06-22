@@ -27,8 +27,8 @@ internal sealed class PlayerQuestSpot(
         logger.LogInformation(
             "gamequest player quest spot ready player={PlayerId} spot={SpotRid}",
             PlayerId,
-            Context.SpotRid.ToHex());
-        Console.Error.WriteLine($"gamequest player quest spot ready player={PlayerId} spot={Context.SpotRid.ToHex()}");
+            Context.SpotRid.ToString());
+        Console.Error.WriteLine($"gamequest player quest spot ready player={PlayerId} spot={Context.SpotRid}");
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 

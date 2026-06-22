@@ -9,9 +9,11 @@ import type { ConversationSpot as ConversationSpotType } from '../../Adapters/ZL
 import type { SupportNotificationPublisher as SupportNotificationPublisherType } from '../../Adapters/ZLink/Notifications/support-notification-publisher';
 
 // SupportConversationAllocator turns a customer identity and subject into a ConversationId
-// by creating a ConversationSpot and initializing it with the create request. The Spot
-// routing id is derived by the framework Spot manager; the ConversationId is that routing id.
+// by assigning a sample-level id, creating that ConversationSpot, and initializing it with
+// the create request.
 class SupportConversationAllocator {
+  private nextConversationId = 1;
+
   constructor(
     private readonly notifications: SupportNotificationPublisherType,
     private readonly spotManager: ZLinkSpotManager
@@ -24,16 +26,17 @@ class SupportConversationAllocator {
     customerDisplayName: string,
     subject: string
   ): Promise<string> {
-    const created = await this.spotManager.create(ConversationSpot);
+    const conversationId = `supportchat-conversation-${this.nextConversationId++}`;
+    const created = await this.spotManager.getOrCreate(ConversationSpot, conversationId);
     if (created.state !== ZLinkSpotCreateState.Created) {
       throw new Error('Support conversation creation was rejected.');
     }
-    await this.executeInConversation(created.spotRid, (conversation) => {
+    await this.executeInConversation(conversationId, (conversation) => {
       conversation.initializeConversation(
         conversationCreateRequest(customerActorId, customerDisplayName, subject, Date.now())
       );
     });
-    return created.spotRid;
+    return conversationId;
   }
 
   async executeInConversation<TResult>(

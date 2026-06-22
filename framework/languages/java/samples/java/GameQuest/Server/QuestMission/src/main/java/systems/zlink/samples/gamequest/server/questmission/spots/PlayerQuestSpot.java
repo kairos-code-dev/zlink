@@ -37,7 +37,7 @@ public final class PlayerQuestSpot implements ZLinkSpot<ZLinkActor> {
         this.playerId = decode(request).playerId();
         System.err.printf(
             "gamequest player quest spot ready player=%s spot=%s%n",
-            playerId, context.spotRid().toHex());
+            playerId, context.spotRid());
         return ZLinkSpotCreateResponse.accept();
     }
 

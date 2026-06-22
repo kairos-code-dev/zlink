@@ -1,4 +1,3 @@
-using System.Text;
 using Bingo.Server.Play.Adapters.ZLink.Actors;
 using Bingo.Server.Play.Domain.Bingo;
 using Bingo.Shared.Contracts;
@@ -22,7 +21,7 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
     {
         _ = context;
         var observerRid = ObserverRoomRid(message.RoomId, entrySpot.Context.NodeRid);
-        var settings = BingoRoomSettings.CreateObserver(message.RoomId, entrySpot.Context.NodeRid.ToHex());
+        var settings = BingoRoomSettings.CreateObserver(message.RoomId, entrySpot.Context.NodeRid.ToString());
         using var settingsPart = BingoRoomSettingsPayloadMapper.ToPayload(settings).ToProto();
         var created = await spots.GetOrCreateAsync<BingoRoom>(observerRid, settingsPart, cancellationToken);
         if (created.State == ZLinkSpotCreateState.Rejected)
@@ -46,19 +45,19 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
             return new ObserveBingoEventsRes
             {
                 Subscribed = false,
-                ObserverNodeRid = entrySpot.Context.NodeRid.ToHex(),
+                ObserverNodeRid = entrySpot.Context.NodeRid.ToString(),
             };
         }
 
         return new ObserveBingoEventsRes
         {
             Subscribed = true,
-            ObserverNodeRid = entrySpot.Context.NodeRid.ToHex(),
+            ObserverNodeRid = entrySpot.Context.NodeRid.ToString(),
         };
     }
 
     private static RoutingId ObserverRoomRid(string roomId, RoutingId localNodeRid)
     {
-        return RoutingId.From(Encoding.UTF8.GetBytes($"observe:{roomId}:{localNodeRid.ToHex()}"));
+        return RoutingId.From($"observe:{roomId}:{localNodeRid}");
     }
 }

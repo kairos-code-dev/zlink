@@ -29,17 +29,18 @@ internal sealed class BingoRoomAllocator(
         }
 
         var settings = BingoRoomSettings.Create(mode, Interlocked.Increment(ref _roomSeq));
-        var roomRid = RoutingId.From($"bingo-room-{Guid.NewGuid():N}");
+        var roomId = $"bingo-room-{Guid.NewGuid():N}";
+        var roomRid = RoutingId.From(roomId);
         var reservation = await matchQueue.ReserveAsync(
             mode,
             actorId,
             preferredOwnerNodeRid,
-            roomRid.ToHex(),
+            roomId,
             settings.RequiredPlayers,
             cancellationToken);
 
         if (string.Equals(reservation.OwnerPlayNodeRid, preferredOwnerNodeRid, StringComparison.Ordinal)
-            && string.Equals(reservation.RoomId, roomRid.ToHex(), StringComparison.Ordinal))
+            && string.Equals(reservation.RoomId, roomId, StringComparison.Ordinal))
         {
             using var settingsPart = BingoRoomSettingsPayloadMapper.ToPayload(settings).ToProto();
             var room = await spots.GetOrCreateAsync<BingoRoom>(roomRid, settingsPart, cancellationToken);

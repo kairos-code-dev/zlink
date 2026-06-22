@@ -208,7 +208,8 @@ phase 의미: `received`/`dispatched`/`replied`는 **인바운드**(이 노드�
 | observer를 통한 콜렉터/OTel 어댑터(앱 레이어) | ⬜ 앱 책임 — 프레임워크는 훅만 제공 |
 | `.NET` parity | ✅ 완료 — 계약(phase/event/observer/IZLinkMessageFlowControl, 빌더체인+캡슐화 read-only IZLinkDiagnosticsOptions/LogFile/NodeId/EffectiveMessageFlow) + 트레이서(ZLinkMessageFlowTracer: Enabled(phase) 호출부가드=off 제로코스트, 샘플링, 구조화 ILogger+node, LogFile 분리, observer offload) + 에러리포터(off게이팅+포맷통일+파일라우팅) + 런타임토글(라이브셀+IZLinkMessageFlowControl) + 전 surface 인/아웃 배선(channel/route/spot subscription/spot actor/spot route/stream + 채널·route·spot publish·actor join 아웃바운드·dealer-mesh) + stream corr 와이어(flag 0x08, connector+framework 바이트동일, 클라생성·서버echo) + MFLOW 테스트 + Bingo 샘플(분리파일+node). **codex 5라운드 반복 리뷰 이슈0 통과(체크포인트 a~h 전부 pass)** |
 | `Java` parity | ✅ 완료 — 계약(ZLinkMessageFlowPhase/Event/Observer/Control + 빌더체인 fluent + read-only ZLinkDiagnosticsOptions/logFile/nodeId/effectiveMessageFlow, AtomicReference 라이브셀) + 트레이서(ZLinkMessageFlowTracer: enabled(phase) 호출부가드=off 제로코스트, 샘플링, key=value JUL/파일+node, observer offload) + 에러리포터(off게이팅+포맷통일+파일라우팅) + 런타임토글(라이브셀+ZLinkMessageFlowControl, spring Lifecycle 위임) + 전 surface 인/아웃 배선(channel/route/spot subscription/spot actor/spot route/stream, EntrySpotActivation+SpotActivation 양쪽, + 채널·route·spot publish/send·actor join 아웃바운드) + stream corr 와이어(flag 0x08, framework+connector 바이트동일, 클라생성·서버echo, control 거부) + MFLOW 테스트 + Bingo 샘플(분리파일+node). **codex 5라운드 반복 리뷰 이슈0 통과(체크포인트 a~h 전부 pass)** |
-| Kotlin / Node parity | ⬜ 미착수 (C++ 미러링) |
+| `Kotlin` parity | ✅ 완료 — Kotlin은 zlink-framework-core(Java) 런타임을 공유하므로 트레이싱을 **런타임 그대로 상속**(재구현 없음). 에르고노믹스만 추가: ZLinkDispatchOptionsExtensions.kt(`configureDispatch { }` DSL + `onMessageFlow { }` 람다 옵저버) + Kotlin Bingo 3앱 배선 + 에르고노믹스 테스트. Java 계약 변경(diagnostics read-only화)에 의한 Kotlin 컴파일 깨짐 없음. **codex LOOP CLEAN** |
+| Node parity | ⬜ 미착수 (C++ 미러링) |
 | 언어별 `guide/09-monitoring` 문서 반영 | ⬜ 미착수 |
 
 ## 4언어 parity 런북

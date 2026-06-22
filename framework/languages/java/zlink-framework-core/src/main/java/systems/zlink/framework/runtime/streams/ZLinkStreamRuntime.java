@@ -48,6 +48,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private final ZLinkActorRuntime actors;
     private final ZLinkHandlerFactory handlerFactory;
     private final Executor handlerExecutor;
+    private final systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer flow;
     private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
     private final ZLinkStreamCodec defaultCodec;
     private final Predicate<RoutingId> actorGatewayRouteReady;
@@ -96,6 +97,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         this.handlerExecutor = java.util.Objects.requireNonNull(
             registration.handlerExecutor(),
             "handlerExecutor");
+        this.flow = new systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer(
+            registration.dispatchOptions(), handlerFactory, this.handlerExecutor);
         this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         this.defaultCodec = defaultCodec(registration);
         this.actorGatewayRouteReady =
@@ -167,6 +170,17 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             ignored -> createSessionState(streamNode, stream, routingId));
         ZLinkStreamHeader streamHeader =
             ZLinkStreamHeaderCodec.decodeOrPlain(header.toByteArray());
+        if (flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowPhase.RECEIVED)) {
+            String corr = streamHeader.correlationId()
+                .orElseGet(() -> streamHeader.requestSequence().map(String::valueOf).orElse(null));
+            flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
+                systems.zlink.framework.configuration.ZLinkMessageFlowPhase.RECEIVED,
+                systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.STREAM_SESSION,
+                streamHeader.requestSequence().isPresent()
+                    ? systems.zlink.framework.configuration.ZLinkDispatchMessageKind.REQUEST
+                    : systems.zlink.framework.configuration.ZLinkDispatchMessageKind.SEND,
+                streamHeader.packetName(), null, null, corr, null, null, null, null));
+        }
         Message payloadCopy = Message.from(decodePayload(streamHeader, payload));
         state.queue().enqueue(() ->
             executeHandler(() -> state.context().dispatchStage(streamHeader, payloadCopy, state.session())));
@@ -487,7 +501,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 encoded.flags(),
                 Optional.empty(),
                 packetName,
-                metadata);
+                metadata,
+                Optional.of(ZLinkStreamCorrelation.next()));
             List<Message> parts = List.of(Message.from(encoded.payload()));
             try {
                 if (!stream.send(routingId, header, parts, SendFlags.DONT_WAIT)) {
@@ -540,7 +555,9 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     encoded.flags(),
                     current.requestSequence(),
                     packetName,
-                    metadata);
+                    metadata,
+                    // Echo the request's correlation id onto the reply.
+                    current.correlationId());
                 if (!stream.reply(
                     routingId,
                     replyHeader,

@@ -65,6 +65,18 @@ public final class ZLinkStreamHeaderCodec {
             metadata = decodeMetadata(bytes, offset, metadataLength);
             offset += metadataLength;
         }
+        Optional<String> correlationId = Optional.empty();
+        if ((flags & ZLinkStreamHeaderFlag.HAS_CORRELATION_ID.value()) != 0) {
+            if (bytes.length - offset < 1) {
+                throw new IllegalArgumentException("STREAM header correlation id length is missing");
+            }
+            int corrLength = Byte.toUnsignedInt(bytes[offset++]);
+            if (corrLength == 0 || bytes.length - offset < corrLength) {
+                throw new IllegalArgumentException("STREAM header correlation id is invalid");
+            }
+            correlationId = Optional.of(new String(bytes, offset, corrLength, StandardCharsets.UTF_8));
+            offset += corrLength;
+        }
         if (offset != bytes.length) {
             throw new IllegalArgumentException("STREAM header contains trailing bytes");
         }
@@ -74,7 +86,8 @@ public final class ZLinkStreamHeaderCodec {
             flagsFromValue(flags),
             requestSeq,
             packetName,
-            metadata);
+            metadata,
+            correlationId);
     }
 
     public static byte[] encode(ZLinkStreamHeader header) {
@@ -87,11 +100,12 @@ public final class ZLinkStreamHeaderCodec {
             flagsValue(header.flags()),
             header.packetName(),
             header.requestSequence(),
-            header.metadata());
+            header.metadata(),
+            header.correlationId());
     }
 
     static byte[] encode(int kind, String packetName, Optional<Long> requestSeq) {
-        return encode(kind, 0, 0, packetName, requestSeq, Map.of());
+        return encode(kind, 0, 0, packetName, requestSeq, Map.of(), Optional.empty());
     }
 
     private static byte[] encode(
@@ -100,25 +114,39 @@ public final class ZLinkStreamHeaderCodec {
         int initialFlags,
         String packetName,
         Optional<Long> requestSeq,
-        Map<String, String> metadata) {
+        Map<String, String> metadata,
+        Optional<String> correlationId) {
         if (packetName == null || packetName.isBlank()) {
             throw new IllegalArgumentException("packetName is required");
         }
         byte[] name = packetName.getBytes(StandardCharsets.UTF_8);
         byte[] metadataBytes = encodeMetadata(metadata);
         boolean hasMetadata = metadataBytes.length > 0;
+        boolean hasCorrelationId = correlationId != null
+            && correlationId.isPresent()
+            && !correlationId.get().isEmpty();
+        byte[] correlationBytes = hasCorrelationId
+            ? correlationId.get().getBytes(StandardCharsets.UTF_8)
+            : new byte[0];
+        if (correlationBytes.length > 255) {
+            throw new IllegalArgumentException("STREAM correlation id is too long");
+        }
         int flags = requestSeq.isPresent()
             ? initialFlags | FLAG_HAS_REQUEST_SEQ
             : initialFlags & ~FLAG_HAS_REQUEST_SEQ;
         flags = hasMetadata
             ? flags | ZLinkStreamHeaderFlag.HAS_METADATA.value()
             : flags & ~ZLinkStreamHeaderFlag.HAS_METADATA.value();
+        flags = hasCorrelationId
+            ? flags | ZLinkStreamHeaderFlag.HAS_CORRELATION_ID.value()
+            : flags & ~ZLinkStreamHeaderFlag.HAS_CORRELATION_ID.value();
         ByteBuffer buffer = ByteBuffer.allocate(
             3
                 + (requestSeq.isPresent() ? Long.BYTES : 0)
                 + 1
                 + name.length
-                + (hasMetadata ? 2 + metadataBytes.length : 0));
+                + (hasMetadata ? 2 + metadataBytes.length : 0)
+                + (hasCorrelationId ? 1 + correlationBytes.length : 0));
         buffer.put((byte) kind);
         buffer.put((byte) codec);
         buffer.put((byte) flags);
@@ -133,6 +161,10 @@ public final class ZLinkStreamHeaderCodec {
         if (hasMetadata) {
             buffer.putShort((short) metadataBytes.length);
             buffer.put(metadataBytes);
+        }
+        if (hasCorrelationId) {
+            buffer.put((byte) correlationBytes.length);
+            buffer.put(correlationBytes);
         }
         return buffer.array();
     }

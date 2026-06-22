@@ -48,6 +48,9 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     private final Map<String, AtomicInteger> receivedCounts = new ConcurrentHashMap<>();
     private final ZLinkStreamDispatchQueue dispatchQueue = new ZLinkStreamDispatchQueue();
     private final AtomicLong nextRequestSeq = new AtomicLong();
+    // Process-global monotonic correlation id (hex), stamped on every non-control
+    // outbound packet so the server can trace/echo it regardless of tracing mode.
+    private final AtomicLong correlationCounter = new AtomicLong();
     private final ZLinkStreamPendingRequests pendingRequests = new ZLinkStreamPendingRequests();
     private final ZLinkStreamInboundObserverDispatcher inboundObservers =
         new ZLinkStreamInboundObserverDispatcher(this::publishError);
@@ -312,7 +315,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                 | (compress ? ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED : 0),
             null,
             payload.packetName(),
-            payload.metadata());
+            payload.metadata(),
+            nextCorrelationId());
         return sendFrame(header, body);
     }
 
@@ -334,7 +338,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                 | (compress ? ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED : 0),
             requestSeq,
             payload.packetName(),
-            payload.metadata());
+            payload.metadata(),
+            nextCorrelationId());
 
         sendFrame(header, body).whenComplete((ignored, ex) -> {
             if (ex != null) {
@@ -843,6 +848,10 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                 return value;
             }
         }
+    }
+
+    private String nextCorrelationId() {
+        return Long.toHexString(correlationCounter.incrementAndGet());
     }
 
     private long nextRequestSeq() {

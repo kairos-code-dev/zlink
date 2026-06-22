@@ -22,9 +22,10 @@ final class ZLinkStreamWireProtocol {
     static final int FLAG_HAS_REQUEST_SEQ = 0x01;
     static final int FLAG_HAS_METADATA = 0x02;
     static final int FLAG_PAYLOAD_COMPRESSED = 0x04;
+    static final int FLAG_HAS_CORRELATION_ID = 0x08;
 
     private static final int KNOWN_FLAGS =
-        FLAG_HAS_REQUEST_SEQ | FLAG_HAS_METADATA | FLAG_PAYLOAD_COMPRESSED;
+        FLAG_HAS_REQUEST_SEQ | FLAG_HAS_METADATA | FLAG_PAYLOAD_COMPRESSED | FLAG_HAS_CORRELATION_ID;
     private static final int MAX_PACKET_NAME_BYTES = 255;
 
     private ZLinkStreamWireProtocol() {
@@ -36,6 +37,14 @@ final class ZLinkStreamWireProtocol {
         byte[] metadata = header.metadata().isEmpty()
             ? new byte[0]
             : encodeMetadata(header.metadata());
+        boolean hasCorrelationId =
+            header.correlationId() != null && !header.correlationId().isEmpty();
+        byte[] correlation = hasCorrelationId
+            ? header.correlationId().getBytes(StandardCharsets.UTF_8)
+            : new byte[0];
+        if (correlation.length > 255) {
+            throw new IllegalArgumentException("correlation id is too long");
+        }
         int flags = header.flags();
         flags = header.requestSeq() == null
             ? flags & ~FLAG_HAS_REQUEST_SEQ
@@ -43,12 +52,16 @@ final class ZLinkStreamWireProtocol {
         flags = header.metadata().isEmpty()
             ? flags & ~FLAG_HAS_METADATA
             : flags | FLAG_HAS_METADATA;
+        flags = hasCorrelationId
+            ? flags | FLAG_HAS_CORRELATION_ID
+            : flags & ~FLAG_HAS_CORRELATION_ID;
 
         int size = 3
             + (header.requestSeq() == null ? 0 : Long.BYTES)
             + 1
             + name.length
-            + (metadata.length == 0 ? 0 : 2 + metadata.length);
+            + (metadata.length == 0 ? 0 : 2 + metadata.length)
+            + (hasCorrelationId ? 1 + correlation.length : 0);
         ByteBuffer buffer = ByteBuffer.allocate(size);
         buffer.put((byte) header.kind());
         buffer.put((byte) header.codec());
@@ -61,6 +74,10 @@ final class ZLinkStreamWireProtocol {
         if (metadata.length > 0) {
             buffer.putShort((short) metadata.length);
             buffer.put(metadata);
+        }
+        if (hasCorrelationId) {
+            buffer.put((byte) correlation.length);
+            buffer.put(correlation);
         }
         return buffer.array();
     }
@@ -95,6 +112,18 @@ final class ZLinkStreamWireProtocol {
             buffer.get(metadataBytes);
             metadata = decodeMetadata(metadataBytes);
         }
+        String correlationId = null;
+        if ((flags & FLAG_HAS_CORRELATION_ID) != 0) {
+            requireRemaining(buffer, 1, "correlation id length");
+            int correlationLength = Byte.toUnsignedInt(buffer.get());
+            if (correlationLength == 0) {
+                throw new IllegalArgumentException("correlation id is invalid");
+            }
+            requireRemaining(buffer, correlationLength, "correlation id");
+            byte[] correlationBytes = new byte[correlationLength];
+            buffer.get(correlationBytes);
+            correlationId = new String(correlationBytes, StandardCharsets.UTF_8);
+        }
         if (buffer.hasRemaining()) {
             throw new IllegalArgumentException("stream header contains trailing bytes");
         }
@@ -104,7 +133,8 @@ final class ZLinkStreamWireProtocol {
             flags,
             requestSeq,
             new String(nameBytes, StandardCharsets.UTF_8),
-            metadata);
+            metadata,
+            correlationId);
         validateHeader(decoded);
         return decoded;
     }
@@ -275,9 +305,21 @@ final class ZLinkStreamWireProtocol {
         int flags,
         Long requestSeq,
         String name,
-        Map<String, String> metadata) {
+        Map<String, String> metadata,
+        String correlationId) {
         Header {
             metadata = Collections.unmodifiableMap(new LinkedHashMap<>(metadata));
+        }
+
+        // Back-compat 6-arg constructor (no correlation id).
+        Header(
+            int kind,
+            int codec,
+            int flags,
+            Long requestSeq,
+            String name,
+            Map<String, String> metadata) {
+            this(kind, codec, flags, requestSeq, name, metadata, null);
         }
     }
 

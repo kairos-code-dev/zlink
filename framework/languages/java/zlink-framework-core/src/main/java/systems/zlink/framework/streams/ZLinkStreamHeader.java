@@ -10,7 +10,10 @@ public record ZLinkStreamHeader(
     EnumSet<ZLinkStreamHeaderFlag> flags,
     Optional<Long> requestSequence,
     String name,
-    Map<String, String> metadata) {
+    Map<String, String> metadata,
+    // First-class correlation id (flag 0x08, wire layout: after metadata, u8 length +
+    // UTF-8 bytes). Client-generated, server-echoed. Empty = absent.
+    Optional<String> correlationId) {
     public ZLinkStreamHeader {
         if (kind == null) {
             throw new IllegalArgumentException("kind is required");
@@ -39,6 +42,24 @@ public record ZLinkStreamHeader(
         } else {
             flags.add(ZLinkStreamHeaderFlag.HAS_METADATA);
         }
+        correlationId = correlationId == null ? Optional.empty() : correlationId;
+        if (correlationId.isPresent() && !correlationId.get().isEmpty()) {
+            flags.add(ZLinkStreamHeaderFlag.HAS_CORRELATION_ID);
+        } else {
+            correlationId = Optional.empty();
+            flags.remove(ZLinkStreamHeaderFlag.HAS_CORRELATION_ID);
+        }
+    }
+
+    // Back-compat 6-arg constructor (no correlation id).
+    public ZLinkStreamHeader(
+        ZLinkStreamMessageKind kind,
+        ZLinkStreamCodec codec,
+        EnumSet<ZLinkStreamHeaderFlag> flags,
+        Optional<Long> requestSequence,
+        String name,
+        Map<String, String> metadata) {
+        this(kind, codec, flags, requestSequence, name, metadata, Optional.empty());
     }
 
     public ZLinkStreamHeader(
@@ -53,10 +74,19 @@ public record ZLinkStreamHeader(
             EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
             requestSequence,
             packetName,
-            metadata);
+            metadata,
+            Optional.empty());
     }
 
     public String packetName() {
         return name;
+    }
+
+    // Returns a copy of this header carrying the given correlation id (for echoing the
+    // request corr onto a reply, or stamping a generated corr on an outbound packet).
+    public ZLinkStreamHeader withCorrelationId(String correlationId) {
+        return new ZLinkStreamHeader(
+            kind, codec, flags, requestSequence, name, metadata,
+            correlationId == null ? Optional.empty() : Optional.of(correlationId));
     }
 }

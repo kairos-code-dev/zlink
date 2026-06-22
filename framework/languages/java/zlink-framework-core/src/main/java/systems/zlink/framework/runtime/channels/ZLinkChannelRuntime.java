@@ -48,6 +48,8 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
+import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
+import systems.zlink.framework.configuration.ZLinkMessageFlowPhase;
 import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorEvent;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
@@ -927,6 +929,15 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 return;
             }
             long requestSeq = received.requestSeq().get();
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.RECEIVED,
+                    ZLinkDispatchErrorSurface.CHANNEL,
+                    ZLinkDispatchMessageKind.REQUEST,
+                    packet.packetName(), channelName, null,
+                    String.valueOf(requestSeq), null, null, null, null));
+            }
+            String packetName = packet.packetName();
             Message payloadCopy = Message.from(packet.payload());
             requestDispatchQueues.get(channelName).enqueue(() ->
                 executeHandler(() -> invokeRequestHandler(channelName, registration, payloadCopy))
@@ -939,12 +950,20 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                                 ZLinkDispatchErrorSurface.CHANNEL,
                                 ZLinkDispatchMessageKind.REQUEST,
                                 dispatchReasonFromError(error),
-                                packet.packetName(),
+                                packetName,
                                 channelName,
                                 null,
                                 error);
                         } else {
                             replyAndClose(router, routingId, requestSeq, reply);
+                            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLIED)) {
+                                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                                    ZLinkMessageFlowPhase.REPLIED,
+                                    ZLinkDispatchErrorSurface.CHANNEL,
+                                    ZLinkDispatchMessageKind.REQUEST,
+                                    packetName, channelName, null,
+                                    String.valueOf(requestSeq), null, null, null, null));
+                            }
                         }
                     })
                     .whenComplete((ignored, error) -> payloadCopy.close())
@@ -1028,6 +1047,16 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 return;
             }
             long requestSeq = received.requestSeq().get();
+            String routePacketName = packet.packetName();
+            String routeSourceRid = routingId.toString();
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.RECEIVED,
+                    ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
+                    ZLinkDispatchMessageKind.REQUEST,
+                    routePacketName, channelName, null,
+                    String.valueOf(requestSeq), routeSourceRid, null, null, null));
+            }
             Message payloadCopy = Message.from(packet.payload());
             routeRequestDispatchQueues.get(channelName).enqueue(() ->
                 executeHandler(() -> invokeRouteRequestHandler(
@@ -1044,12 +1073,20 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                                 ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
                                 ZLinkDispatchMessageKind.REQUEST,
                                 dispatchReasonFromError(error),
-                                packet.packetName(),
+                                routePacketName,
                                 channelName,
-                                routingId.toString(),
+                                routeSourceRid,
                                 error);
                         } else {
                             replyAndClose(router, routingId, requestSeq, reply);
+                            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLIED)) {
+                                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                                    ZLinkMessageFlowPhase.REPLIED,
+                                    ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
+                                    ZLinkDispatchMessageKind.REQUEST,
+                                    routePacketName, channelName, null,
+                                    String.valueOf(requestSeq), routeSourceRid, null, null, null));
+                            }
                         }
                     })
                     .whenComplete((ignored, error) -> payloadCopy.close())
@@ -1108,6 +1145,16 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     null);
                 return;
             }
+            String publishPacketName = packet.packetName();
+            String publishTopic = received.topic();
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.RECEIVED,
+                    ZLinkDispatchErrorSurface.CHANNEL,
+                    ZLinkDispatchMessageKind.PUBLISH,
+                    publishPacketName, channelName, publishTopic,
+                    null, null, null, null, null));
+            }
             Message payloadCopy = Message.from(packet.payload());
             publishDispatchQueues.get(channelName).enqueue(() ->
                 executeHandler(() -> invokePublishHandler(channelName, registration, received.topic(), payloadCopy))
@@ -1118,11 +1165,18 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                                 ZLinkDispatchMessageKind.PUBLISH,
                                 dispatchReasonFromError(error),
                                 ZLinkDispatchErrorAction.DROP,
-                                packet.packetName(),
+                                publishPacketName,
                                 channelName,
-                                received.topic(),
+                                publishTopic,
                                 null,
                                 error);
+                        } else if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.DISPATCHED)) {
+                            dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                                ZLinkMessageFlowPhase.DISPATCHED,
+                                ZLinkDispatchErrorSurface.CHANNEL,
+                                ZLinkDispatchMessageKind.PUBLISH,
+                                publishPacketName, channelName, publishTopic,
+                                null, null, null, null, null));
                         }
                     })
                     .whenComplete((ignored, error) -> payloadCopy.close()));
@@ -1146,6 +1200,14 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 null);
             return;
         }
+        String sendPacketName = packet.packetName();
+        if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+            dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.RECEIVED,
+                ZLinkDispatchErrorSurface.CHANNEL,
+                ZLinkDispatchMessageKind.SEND,
+                sendPacketName, channelName, null, null, null, null, null, null));
+        }
         Message payloadCopy = Message.from(packet.payload());
         sendDispatchQueues.get(channelName).enqueue(() ->
             executeHandler(() -> invokeSendHandler(channelName, registration, payloadCopy))
@@ -1156,10 +1218,16 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                             ZLinkDispatchMessageKind.SEND,
                             dispatchReasonFromError(error),
                             ZLinkDispatchErrorAction.DROP,
-                            packet.packetName(),
+                            sendPacketName,
                             channelName,
                             null,
                             error);
+                    } else if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.DISPATCHED)) {
+                        dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                            ZLinkMessageFlowPhase.DISPATCHED,
+                            ZLinkDispatchErrorSurface.CHANNEL,
+                            ZLinkDispatchMessageKind.SEND,
+                            sendPacketName, channelName, null, null, null, null, null, null));
                     }
                 })
                 .whenComplete((ignored, error) -> payloadCopy.close()));
@@ -1183,6 +1251,15 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 null);
             return;
         }
+        String routeSendPacketName = packet.packetName();
+        String routeSendSourceRid = sourceRoutingId.toString();
+        if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+            dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.RECEIVED,
+                ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
+                ZLinkDispatchMessageKind.SEND,
+                routeSendPacketName, channelName, null, null, routeSendSourceRid, null, null, null));
+        }
         Message payloadCopy = Message.from(packet.payload());
         routeSendDispatchQueues.get(channelName).enqueue(() ->
             executeHandler(() -> invokeRouteSendHandler(channelName, registration, sourceRoutingId, payloadCopy))
@@ -1193,10 +1270,16 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                             ZLinkDispatchMessageKind.SEND,
                             dispatchReasonFromError(error),
                             ZLinkDispatchErrorAction.DROP,
-                            packet.packetName(),
+                            routeSendPacketName,
                             channelName,
                             null,
                             error);
+                    } else if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.DISPATCHED)) {
+                        dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                            ZLinkMessageFlowPhase.DISPATCHED,
+                            ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
+                            ZLinkDispatchMessageKind.SEND,
+                            routeSendPacketName, channelName, null, null, routeSendSourceRid, null, null, null));
                     }
                 })
                 .whenComplete((ignored, error) -> payloadCopy.close()));

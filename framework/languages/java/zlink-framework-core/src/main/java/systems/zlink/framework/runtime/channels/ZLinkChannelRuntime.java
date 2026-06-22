@@ -2109,6 +2109,14 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             trackPendingRequest(result, timeout);
             List<Message> requestParts = parts(packetName, payload);
             result.whenComplete((ignored, error) -> requestParts.forEach(Message::close));
+            String reqPacket = packetName.orElse(null);
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkDispatchErrorSurface.CHANNEL,
+                    ZLinkDispatchMessageKind.REQUEST,
+                    reqPacket, null, null, null, null, null, null, null));
+            }
             submitClientRequestWithRetry(
                 client,
                 requestParts,
@@ -2116,6 +2124,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 reply -> {
                     try {
                         completeRequestReply(reply, replyType, result);
+                        if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
+                            dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                                ZLinkMessageFlowPhase.REPLY_RECEIVED,
+                                ZLinkDispatchErrorSurface.CHANNEL,
+                                ZLinkDispatchMessageKind.RESPONSE,
+                                reqPacket, null, null, null, null, null, null, null));
+                        }
                     } catch (RuntimeException ex) {
                         result.completeExceptionally(ex);
                     } finally {
@@ -2232,6 +2247,15 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             CompletableFuture<TReply> result = new CompletableFuture<>();
             trackPendingRequest(result, timeout);
             List<Message> requestParts = parts(packetName, payload);
+            String routeReqPacket = packetName.orElse(null);
+            String routeReqTarget = target.toString();
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
+                    ZLinkDispatchMessageKind.REQUEST,
+                    routeReqPacket, channelName, null, null, routeReqTarget, null, null, null));
+            }
             try {
                 ChannelRegistration registration = registrationsByName.get(channelName);
                 List<String> reconnectEndpoints = registration == null
@@ -2244,6 +2268,14 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     reply -> {
                         try {
                             completeRequestReply(reply, replyType, result);
+                            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
+                                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                                    ZLinkMessageFlowPhase.REPLY_RECEIVED,
+                                    ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
+                                    ZLinkDispatchMessageKind.RESPONSE,
+                                    routeReqPacket, channelName, null, null,
+                                    routeReqTarget, null, null, null));
+                            }
                         } catch (RuntimeException ex) {
                             result.completeExceptionally(ex);
                         } finally {

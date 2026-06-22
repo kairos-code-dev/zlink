@@ -51,7 +51,10 @@ int ensure_external_router_ready (zlink::spot_node_t *node)
         errno = EFAULT;
         return -1;
     }
-    return 0;
+    // setRoutingId can run before the routed runtime exists. When the runtime is
+    // created later, apply the public node routing id to the external router here
+    // so callers do not need to know the initialization order.
+    return refresh_external_router_identity (node);
 }
 
 }

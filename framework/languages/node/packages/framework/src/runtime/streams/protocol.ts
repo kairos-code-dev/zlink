@@ -82,6 +82,9 @@ export function encodeStreamHeader(header: ZLinkStreamFrameHeader): Uint8Array {
     throw new Error('Stream correlation id is too large.');
   }
   const hasCorrelation = correlationBytes !== undefined;
+  if (header.kind === ZLinkStreamMessageKind.Control && (hasCorrelation || hasRequestSeq || hasMetadata)) {
+    throw new Error('Control packet must not contain a request sequence, metadata, or correlation id.');
+  }
   let flags = header.flags;
   flags = hasRequestSeq ? flags | ZLinkStreamHeaderFlags.HasRequestSeq : flags & ~ZLinkStreamHeaderFlags.HasRequestSeq;
   flags = hasMetadata ? flags | ZLinkStreamHeaderFlags.HasMetadata : flags & ~ZLinkStreamHeaderFlags.HasMetadata;
@@ -110,6 +113,7 @@ export function encodeStreamHeader(header: ZLinkStreamFrameHeader): Uint8Array {
     writeUInt16BE(buffer, offset, metadataBytes.length);
     offset += 2;
     buffer.set(metadataBytes, offset);
+    offset += metadataBytes.length;
   }
   if (hasCorrelation) {
     buffer[offset++] = correlationBytes.length;
@@ -163,6 +167,9 @@ export function decodeStreamHeader(header: Uint8Array): ZLinkStreamFrameHeader {
   if (offset !== header.length) {
     throw new Error('Stream header has trailing bytes.');
   }
+  if (kind === ZLinkStreamMessageKind.Control && (hasCorrelation || hasRequestSeq || hasMetadata)) {
+    throw new Error('Control packet must not contain a request sequence, metadata, or correlation id.');
+  }
   return {
     kind,
     codec,
@@ -185,6 +192,7 @@ export function tryGetStreamFrameHeader(header: ZlinkStreamHeader): ZLinkStreamF
     requestSeq?: unknown;
     name?: unknown;
     metadata?: { values?: ReadonlyMap<string, string> };
+    correlationId?: unknown;
   };
   if (
     typeof value.kind !== 'number'
@@ -200,7 +208,8 @@ export function tryGetStreamFrameHeader(header: ZlinkStreamHeader): ZLinkStreamF
     flags: value.flags as ZLinkStreamHeaderFlags,
     requestSeq: typeof value.requestSeq === 'bigint' ? value.requestSeq : undefined,
     name: value.name,
-    metadata: value.metadata?.values ?? new Map()
+    metadata: value.metadata?.values ?? new Map(),
+    correlationId: typeof value.correlationId === 'string' ? value.correlationId : undefined
   };
 }
 

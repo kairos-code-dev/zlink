@@ -160,6 +160,30 @@ test('MFLOW-010 stream correlation_id round-trips byte-identically across framew
   assert.notEqual((frameworkDecoded.flags & 0x08), 0, 'HasCorrelationId flag must be set');
 });
 
+test('MFLOW-010b correlation id survives alongside metadata (no offset overlap)', () => {
+  const correlationId = 'deadbeef';
+  const metadata = connector.ZlinkStreamMetadataMap.empty.withMany([['tenant', 'acme'], ['trace', 'on']]);
+
+  const bytes = connector.ZlinkStreamHeaderCodec.encode({
+    kind: connector.ZlinkStreamMessageKind.Request,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.None,
+    requestSeq: 9n,
+    name: 'WithMeta',
+    metadata,
+    correlationId
+  });
+  const roundTripped = connector.ZlinkStreamHeaderCodec.decode(bytes);
+  assert.equal(roundTripped.correlationId, correlationId);
+  assert.equal(roundTripped.metadata.get('tenant'), 'acme');
+  assert.equal(roundTripped.metadata.get('trace'), 'on');
+
+  // framework codec decodes the metadata-bearing corr frame without losing either field.
+  const frameworkDecoded = streamProtocol.decodeStreamHeader(bytes);
+  assert.equal(frameworkDecoded.correlationId, correlationId);
+  assert.equal(frameworkDecoded.metadata.get('tenant'), 'acme');
+});
+
 test('MFLOW-011 control packets reject a correlation id', () => {
   assert.throws(() => connector.ZlinkStreamHeaderCodec.encode({
     kind: connector.ZlinkStreamMessageKind.Control,

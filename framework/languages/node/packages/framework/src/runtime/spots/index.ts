@@ -1919,7 +1919,8 @@ export class ZLinkEntrySpotActivation {
           messageKind: ZLinkDispatchMessageKind.ActorSend,
           packetName: header.name,
           spotRid: String(this.options.nativeSpot.routingId),
-          actorId
+          actorId,
+          correlationId: header.requestSeq?.toString()
         });
         return undefined;
       }
@@ -2551,7 +2552,8 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
           messageKind: ZLinkDispatchMessageKind.ActorSend,
           packetName: header.name,
           spotRid: String(activation.spotRid),
-          actorId
+          actorId,
+          correlationId: header.requestSeq?.toString()
         });
         return undefined;
       }

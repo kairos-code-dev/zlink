@@ -177,6 +177,11 @@ int main ()
         if (!contains (out, "reason=handler_missing")) {
             return 13;
         }
+        // failure lines now carry the correlation id, so a single grep corr=<id>
+        // follows a message whether it succeeded or failed.
+        if (!contains (out, "corr=corr-123")) {
+            return 14;
+        }
     }
 
     return 0;

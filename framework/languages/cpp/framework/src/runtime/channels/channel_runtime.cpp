@@ -6,6 +6,7 @@
 #include <zlink.hpp>
 
 #include "runtime/channels/channel_runtime_manager.hpp"
+#include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
@@ -374,6 +375,7 @@ void apply_dispatch_options (zlink_builder_t &builder, const dispatch_options_t 
     for (auto &[_, spot_node] : builder._state->spot_nodes) {
         spot_node->dispatch = options;
     }
+    builder._state->stream_runtime->dispatch = options;
 }
 
 result_t<zlink::message_t>
@@ -807,6 +809,18 @@ message_bus_t::submit_request (std::string channel_name,
                                                  call_packet_name,
                                                  timeout);
             header.metadata = metadata;
+            detail::message_flow_tracer_t (runtime.dispatch_options ())
+              .trace (message_flow_event_t{message_flow_phase_t::sent,
+                                           dispatch_error_surface_t::channel,
+                                           dispatch_message_kind_t::request,
+                                           call_packet_name,
+                                           channel_name,
+                                           std::nullopt,
+                                           header.correlation_id,
+                                           std::nullopt,
+                                           std::nullopt,
+                                           std::nullopt,
+                                           std::nullopt});
             runtime::messaging::envelope_codec_t envelope;
             auto parts =
               envelope.encode_parts (header, request_type, request, *_state->serializers);
@@ -968,6 +982,18 @@ message_bus_t::submit_request (std::string channel_name,
                   body.error_kind (),
                   body.error () ? body.error ()->what () : "channel reply body decode failed"));
             }
+            detail::message_flow_tracer_t (runtime.dispatch_options ())
+              .trace (message_flow_event_t{message_flow_phase_t::reply_received,
+                                           dispatch_error_surface_t::channel,
+                                           dispatch_message_kind_t::response,
+                                           call_packet_name,
+                                           channel_name,
+                                           std::nullopt,
+                                           header.correlation_id,
+                                           std::nullopt,
+                                           std::nullopt,
+                                           std::nullopt,
+                                           std::nullopt});
             return erased_request_result_t (body.value (), *_state->serializers);
         }
         catch (const framework_exception_t &error) {
@@ -1019,6 +1045,18 @@ result_t<void> message_bus_t::submit_send (std::string channel_name,
                                                  call_packet_name,
                                                  timeout);
             header.metadata = metadata;
+            detail::message_flow_tracer_t (_state->dispatch)
+              .trace (message_flow_event_t{message_flow_phase_t::sent,
+                                           dispatch_error_surface_t::channel,
+                                           dispatch_message_kind_t::send,
+                                           call_packet_name,
+                                           channel_name,
+                                           std::nullopt,
+                                           header.correlation_id,
+                                           std::nullopt,
+                                           std::nullopt,
+                                           std::nullopt,
+                                           std::nullopt});
             runtime::messaging::envelope_codec_t envelope;
             auto parts = envelope.encode_parts (header, message_type, message, *_state->serializers);
 
@@ -1109,6 +1147,18 @@ result_t<void> message_bus_t::submit_publish (std::string channel_name,
                                                  call_packet_name,
                                                  timeout, topic);
             header.metadata = metadata;
+            detail::message_flow_tracer_t (_state->dispatch)
+              .trace (message_flow_event_t{message_flow_phase_t::sent,
+                                           dispatch_error_surface_t::channel,
+                                           dispatch_message_kind_t::publish,
+                                           call_packet_name,
+                                           channel_name,
+                                           topic,
+                                           header.correlation_id,
+                                           std::nullopt,
+                                           std::nullopt,
+                                           std::nullopt,
+                                           std::nullopt});
             runtime::messaging::envelope_codec_t envelope;
             auto parts = envelope.encode_parts (header, event_type, event, *_state->serializers);
             std::shared_ptr<detail::channel_native_publisher_t> native_publisher;

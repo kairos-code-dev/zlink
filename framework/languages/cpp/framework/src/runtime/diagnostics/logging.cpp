@@ -99,6 +99,15 @@ std::string format_record (const log_record_t &record)
     return output.str ();
 }
 
+void ensure_parent_directory (const std::string &path) noexcept
+{
+    std::error_code ignored;
+    const auto parent = std::filesystem::path (path).parent_path ();
+    if (!parent.empty ()) {
+        std::filesystem::create_directories (parent, ignored);
+    }
+}
+
 void rotate_if_needed (const std::string &path, const rotating_file_options_t &options)
 {
     if (options.max_file_size == 0 || options.max_files == 0 || !std::filesystem::exists (path)
@@ -209,6 +218,7 @@ logging_builder_t &logging_builder_t::use_console ()
 logging_builder_t &logging_builder_t::use_file (std::string path)
 {
     std::lock_guard lock (_state->mutex);
+    detail::ensure_parent_directory (path);
     _state->file_paths.push_back (std::move (path));
     _state->rotating_options.push_back ({});
     return *this;
@@ -218,6 +228,7 @@ logging_builder_t &logging_builder_t::use_rotating_file (std::string path,
                                                          rotating_file_options_t options)
 {
     std::lock_guard lock (_state->mutex);
+    detail::ensure_parent_directory (path);
     _state->file_paths.push_back (std::move (path));
     _state->rotating_options.push_back (options);
     return *this;

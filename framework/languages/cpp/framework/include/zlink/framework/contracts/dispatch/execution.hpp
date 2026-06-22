@@ -49,10 +49,12 @@ enum class message_flow_log_mode_t
 // can be followed by correlation id without resorting to ad-hoc printf debugging.
 enum class message_flow_phase_t
 {
-    received,   // a well-formed envelope arrived at a dispatch surface
-    dispatched, // a fire-and-forget message was handed to its handler
-    replied,    // a request completed and a reply was produced
-    dropped     // a message was intentionally discarded (no handler, decode failed, ...)
+    received,       // a well-formed envelope arrived at a dispatch surface (inbound)
+    dispatched,     // a fire-and-forget message was handed to its handler (inbound)
+    replied,        // a request completed and a reply was produced (inbound)
+    dropped,        // a message was intentionally discarded (no handler, decode failed, ...)
+    sent,           // a message left this node toward another channel/spot/node (outbound)
+    reply_received  // a reply came back for an outbound request (outbound)
 };
 
 struct unhandled_dispatch_options_t
@@ -165,6 +167,11 @@ struct dispatch_options_t
     std::function<void (const message_dispatch_error_event_t &)> message_dispatch_error_callback;
     std::shared_ptr<message_flow_observer_t> message_flow_observer;
     std::function<void (const message_flow_event_t &)> message_flow_callback;
+    // When set, message-flow transitions and dispatch errors are emitted through
+    // the framework logger (so app.logging().use_file(...) captures them) instead
+    // of the std::clog fallback. Wired by the host at apply() only if a logging
+    // output sink is configured; otherwise left empty to preserve clog behavior.
+    std::optional<logger_t<>> diagnostics_logger;
 
     dispatch_options_t &set_message_dispatch_error_observer (
       std::shared_ptr<message_dispatch_error_observer_t> observer)

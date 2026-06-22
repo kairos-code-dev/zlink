@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 
 #include <atomic>
@@ -41,6 +42,7 @@ class stream_runtime_state_t
   public:
     std::map<std::string, std::shared_ptr<stream_builder_state_t>> streams;
     std::uint64_t next_session_id = 1;
+    dispatch_options_t dispatch;
 };
 
 class stream_runtime_t

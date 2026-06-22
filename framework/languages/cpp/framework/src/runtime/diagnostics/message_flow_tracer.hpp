@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <utility>
 
 namespace zlink::framework::detail
@@ -114,35 +115,42 @@ class message_flow_tracer_t
     void log_default (const message_flow_event_t &event) const noexcept
     {
         try {
-            std::clog << "zlink flow: phase=" << enum_name (event.phase)
-                      << " surface=" << enum_name (event.surface)
-                      << " kind=" << enum_name (event.message_kind);
+            std::ostringstream body;
+            body << "phase=" << enum_name (event.phase) << " surface=" << enum_name (event.surface)
+                 << " kind=" << enum_name (event.message_kind);
             if (event.packet_name) {
-                std::clog << " packet=" << *event.packet_name;
+                body << " packet=" << *event.packet_name;
             }
             if (event.channel_name) {
-                std::clog << " channel=" << *event.channel_name;
+                body << " channel=" << *event.channel_name;
             }
             if (event.topic) {
-                std::clog << " topic=" << *event.topic;
+                body << " topic=" << *event.topic;
             }
             if (event.correlation_id) {
-                std::clog << " corr=" << *event.correlation_id;
+                body << " corr=" << *event.correlation_id;
             }
             if (event.source_rid) {
-                std::clog << " src=" << *event.source_rid;
+                body << " src=" << *event.source_rid;
             }
             if (event.spot_rid) {
-                std::clog << " spot=" << *event.spot_rid;
+                body << " spot=" << *event.spot_rid;
             }
             if (event.actor_id) {
-                std::clog << " actor=" << *event.actor_id;
+                body << " actor=" << *event.actor_id;
             }
             if (event.message_size && enabled (message_flow_log_mode_t::verbose)
                 && _options.diagnostics.include_message_sizes) {
-                std::clog << " size=" << *event.message_size;
+                body << " size=" << *event.message_size;
             }
-            std::clog << '\n';
+            // Prefer the framework logger (so app.logging().use_file(...) captures
+            // it); fall back to clog when no logger is wired (tests, no-app usage).
+            if (_options.diagnostics_logger) {
+                _options.diagnostics_logger->info (body.str ());
+            }
+            else {
+                std::clog << "zlink flow: " << body.str () << '\n';
+            }
         }
         catch (...) {
             observer_failure_count ().fetch_add (1, std::memory_order_relaxed);

@@ -83,8 +83,16 @@ replied(성공)만 추가한다. `dropped`는 에러 리포터가 이미 찍는 
 | C++ 공개 계약(phase/event/observer/setter) | ✅ 완료 |
 | C++ 트레이서 + enum_name 공유 헤더 | ✅ 완료 |
 | C++ 에러 리포터 `off` 모드 게이팅 | ✅ 완료 (기본 errors_only라 기존 동작 보존) |
+| C++ 에러 기본 로그에 `corr`/`topic`/`src`/`actor` 추가(정상·실패 줄 포맷 통일) | ✅ 완료 |
 | C++ channel / route / spot subscription / spot actor 배선 | ✅ 완료 |
 | C++ 단위 테스트 `test_cpp_framework_message_flow` | ✅ 그린 (모드 게이팅·샘플·size·off 침묵) |
+| C++ 트레이서/에러리포터를 프레임워크 로거(`logger_t`)로 라우팅 | ✅ 완료 (sink 설정 시; 미설정 시 std::clog 폴백). `app.logging().use_file(...)`로 파일 캡처 |
+| C++ `logging_builder_t::use_file/use_rotating_file` 부모 디렉토리 자동 생성 | ✅ 완료 (이전엔 디렉토리 없으면 조용히 실패) |
+| Bingo 샘플(api/play/session)에 파일 로깅 배선 + `.gitignore` | ✅ 완료 (`samples/Bingo/logs/`, run_sample.sh가 `BINGO_LOG_DIR` export) |
+| C++ 아웃바운드 트레이싱(핸들러→다른 channel: `sent`/`reply_received`) | ✅ 완료 (message_bus submit_request/send/publish). phase에 `sent`/`reply_received` 추가 |
+| C++ stream 인바운드(client→session `received`) | ✅ 완료 (stream_runtime dispatch_packet). dispatch 옵션을 stream_runtime_state로 plumbing |
+| C++ spot actor 인바운드 `received` 추가 | ✅ 완료 (기존 `replied`에 더해) |
+| C++ 아웃바운드 route client / 핸들러→spot(join/publish) 트레이싱 | ⬜ 미착수 |
 | `.NET` / Java / Kotlin / Node parity | ⬜ 미착수 (C++ 미러링) |
 | 언어별 `guide/09-monitoring` 문서 반영 | ⬜ 미착수 |
 
@@ -100,9 +108,13 @@ C++를 레퍼런스로 미러링한다. 각 언어는 이미 dispatch 에러 관
 2. **트레이서**: 모드 게이팅(off<errors_only<key_transitions<verbose<diagnostic) + 샘플링 +
    기본 로그(언어 표준 로거) + observer offload. 로그 라인은 `zlink flow: phase=… surface=…
    kind=… packet=… channel=… topic=… corr=… [size=]` 포맷을 4언어 동일 토큰으로.
-3. **에러 리포터 게이팅**: `off`일 때 기본 에러 로그 침묵, observer는 유지.
+3. **에러 리포터 게이팅 + 포맷 통일**: `off`일 때 기본 에러 로그 침묵(observer는 유지).
+   그리고 **에러 기본 로그에도 `corr`/`topic`/`src`/`actor`를 출력**해 정상 줄(`zlink flow:`)과
+   필드 토큰을 맞춘다. 이렇게 해야 성공이든 실패든 `grep corr=<id>` 한 번으로 한 메시지의
+   생애주기가 전부 잡힌다(correlation id는 에러 이벤트 객체엔 원래 있으나, 로그 텍스트에는
+   없던 것을 추가하는 것). 출력은 값이 있는 필드만.
 4. **배선**: 각 언어의 channel/route/spot dispatch 길목에 received + dispatched/replied.
-5. **테스트**: 모드 게이팅·샘플·`off` 침묵·correlation id 출력 회귀.
+5. **테스트**: 모드 게이팅·샘플·`off` 침묵·correlation id 출력(정상·실패 양쪽) 회귀.
 
 ## 회귀 테스트 매트릭스 (MFLOW)
 
@@ -115,3 +127,4 @@ C++를 레퍼런스로 미러링한다. 각 언어는 이미 dispatch 에러 관
 | MFLOW-005 | `sample_rate<1` → 정상 전이 thinning, `dropped`/에러는 항상 통과 |
 | MFLOW-006 | observer 등록 시 모드 무관 발화, observer 예외가 dispatch를 깨지 않음 |
 | MFLOW-007 | channel/route/spot 각 surface에서 한 요청이 received→replied로 이어짐 |
+| MFLOW-008 | 실패 줄에도 `corr=`가 출력되어 `grep corr=<id>`로 성공·실패 메시지가 모두 잡힘 |

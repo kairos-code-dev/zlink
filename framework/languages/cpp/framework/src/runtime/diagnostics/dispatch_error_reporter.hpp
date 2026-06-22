@@ -11,6 +11,7 @@
 #include <iostream>
 #include <cstdint>
 #include <memory>
+#include <sstream>
 #include <string_view>
 #include <utility>
 
@@ -72,23 +73,43 @@ class dispatch_error_reporter_t
     }
 
   private:
-    static void log_default (const message_dispatch_error_event_t &event) noexcept
+    void log_default (const message_dispatch_error_event_t &event) const noexcept
     {
         try {
-            std::clog << "zlink framework dispatch error: surface="
-                      << enum_name (event.surface) << " kind=" << enum_name (event.message_kind)
-                      << " reason=" << enum_name (event.reason)
-                      << " action=" << enum_name (event.action);
+            std::ostringstream body;
+            body << "surface=" << enum_name (event.surface)
+                 << " kind=" << enum_name (event.message_kind)
+                 << " reason=" << enum_name (event.reason)
+                 << " action=" << enum_name (event.action);
             if (event.packet_name) {
-                std::clog << " packet=" << *event.packet_name;
+                body << " packet=" << *event.packet_name;
             }
             if (event.channel_name) {
-                std::clog << " channel=" << *event.channel_name;
+                body << " channel=" << *event.channel_name;
+            }
+            if (event.topic) {
+                body << " topic=" << *event.topic;
+            }
+            if (event.correlation_id) {
+                body << " corr=" << *event.correlation_id;
+            }
+            if (event.source_rid) {
+                body << " src=" << *event.source_rid;
             }
             if (event.spot_rid) {
-                std::clog << " spot=" << *event.spot_rid;
+                body << " spot=" << *event.spot_rid;
             }
-            std::clog << '\n';
+            if (event.actor_id) {
+                body << " actor=" << *event.actor_id;
+            }
+            // Prefer the framework logger (so app.logging().use_file(...) captures
+            // it); fall back to clog when no logger is wired (tests, no-app usage).
+            if (_options.diagnostics_logger) {
+                _options.diagnostics_logger->error (body.str ());
+            }
+            else {
+                std::clog << "zlink framework dispatch error: " << body.str () << '\n';
+            }
         }
         catch (...) {
             observer_failure_count ().fetch_add (1, std::memory_order_relaxed);

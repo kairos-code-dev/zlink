@@ -1665,6 +1665,11 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
             + ", spot=" + std::string (found_location->second.value ()));
     }
 
+    report_spot_dispatch_trace (_state, message_flow_phase_t::received,
+                                dispatch_error_surface_t::spot_actor,
+                                dispatch_message_kind_t::actor_request, std::string (packet_name),
+                                std::nullopt, std::string (found_location->second.value ()),
+                                std::string (actor_ref.actor_id ()));
     auto reply =
       spot_handler_registry_t (context->_state)
         .invoke_erased (spot_handler_kind_t::actor_packet, packet_name, {},

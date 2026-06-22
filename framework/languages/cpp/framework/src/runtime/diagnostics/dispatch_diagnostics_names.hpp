@@ -94,6 +94,10 @@ inline std::string_view enum_name (message_flow_phase_t value) noexcept
             return "replied";
         case message_flow_phase_t::dropped:
             return "dropped";
+        case message_flow_phase_t::sent:
+            return "sent";
+        case message_flow_phase_t::reply_received:
+            return "reply_received";
     }
     return "unknown";
 }

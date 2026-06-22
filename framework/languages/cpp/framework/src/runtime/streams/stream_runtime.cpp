@@ -5,6 +5,7 @@
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 
 #include "runtime/channels/channel_runtime.hpp"
+#include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
 
 #include <algorithm>
@@ -704,6 +705,22 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
     if (auto valid = validate_header (header); !valid) {
         return valid;
     }
+    std::optional<std::string> correlation;
+    if (auto id = header.correlation_id ()) {
+        correlation = std::string (*id);
+    }
+    detail::message_flow_tracer_t (_state->dispatch)
+      .trace (message_flow_event_t{message_flow_phase_t::received,
+                                   dispatch_error_surface_t::stream_session,
+                                   dispatch_message_kind_t::request,
+                                   std::string (header.packet_name ()),
+                                   std::nullopt,
+                                   std::nullopt,
+                                   correlation,
+                                   std::nullopt,
+                                   std::nullopt,
+                                   std::nullopt,
+                                   std::nullopt});
     return dispatch_serial (stream, "packet:" + std::string (header.packet_name ()),
                             [&] { return session.on_packet (stream, header, payload); });
 }

@@ -440,6 +440,14 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     if (configure) {
         configure (options);
     }
+    // Route message-flow tracing and dispatch errors through the framework logger
+    // when an output sink is configured, so app.logging().use_file(...) captures
+    // them. Without a sink we leave it unset to keep the std::clog fallback (and
+    // avoid feeding high-volume traffic into the logger's in-memory record buffer).
+    if (_state->logging.console_enabled () || !_state->logging.file_paths ().empty ()) {
+        options.configure_dispatch ().diagnostics_logger =
+          _state->logging.factory ().create ("zlink.framework.dispatch");
+    }
     const auto http_snapshot = options.http ().snapshot ();
     options.apply ();
     detail::channel_runtime_t::from (_state->zlink.message_bus ())

@@ -44,6 +44,7 @@ import {
   ZLinkDispatchErrorReason,
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind,
+  ZLinkMessageFlowPhase,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkSpotCreateState,
@@ -71,6 +72,7 @@ import type {
   ZLinkBackendSpot,
   ZLinkBackendSpotNode,
   ZLinkBackendSpotNodeMode,
+  ZLinkBackendActorJoinInfo,
   ZLinkBackendActorJoinRequest,
   ZLinkBackendRecvFlags
 } from '../backend/contracts';
@@ -87,6 +89,7 @@ const ZLINK_RECV_DONT_WAIT = 1 as ZLinkBackendRecvFlags;
 const ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1;
 const ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3;
 import { ZLinkDispatchErrorReporter, type ZLinkSpotPublisherClientTransport } from '../channels';
+import { flowIfEnabled } from '../diagnostics';
 import { encodeChannelPublishEnvelopeParts } from '../channels/channel-envelope';
 import {
   decodeChannelEnvelope,
@@ -150,6 +153,9 @@ export interface ZLinkSpotManagerOptions {
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     signal?: AbortSignal
   ) => Promise<ZLinkRemoteActorJoinActor>;
+  readonly nativeJoinBoundSessionTargetResolver?: (
+    info: ZLinkBackendActorJoinInfo
+  ) => ZLinkRemoteBoundSessionTarget | undefined;
   readonly routedActorCommitter?: (actor: ZLinkActor, spotRid: RoutingId, spot: ZLinkSpot) => void;
   readonly actorResponseSender?: (
     actor: ZLinkActor,
@@ -379,6 +385,7 @@ export class ZLinkSpotNodeRuntimeManager {
       (actorId) => this.options.actorResolver?.(actorId),
       () => ({}),
       true,
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -689,6 +696,7 @@ class ZLinkSpotActorJoinDispatch {
     private readonly getTarget: () => ZLinkActorJoinAdmissionTarget,
     private readonly defaultAccept: boolean,
     private readonly routedActorProvider?: ZLinkSpotManagerOptions['routedActorProvider'],
+    private readonly nativeJoinBoundSessionTargetResolver?: ZLinkSpotManagerOptions['nativeJoinBoundSessionTargetResolver'],
     private readonly commitRoutedActor?: (actor: ZLinkActor) => Promise<void> | void,
     private readonly actorPacketHandler?: (
       actorId: string,
@@ -823,7 +831,13 @@ class ZLinkSpotActorJoinDispatch {
     try {
       let actor = this.resolveActor(actorId);
       if (actor === undefined && decoded !== undefined && this.routedActorProvider !== undefined) {
-        actor = (await this.routedActorProvider(actorId, decoded.actorType, decoded.actorRef, undefined)).actor;
+        const remoteBoundSessionTarget = this.nativeJoinBoundSessionTargetResolver?.(request.info);
+        actor = (await this.routedActorProvider(
+          actorId,
+          decoded.actorType,
+          request.info.targetActor,
+          remoteBoundSessionTarget
+        )).actor;
       }
       if (actor !== undefined) {
         const target = this.getTarget();
@@ -975,8 +989,8 @@ class ZLinkSpotActorJoinDispatch {
       ) {
         remoteBoundSessionTarget = {
           routerChannelId: actorPacketRelay.routerChannelId,
-          targetNodeRid: String(received.routingId) as RoutingId,
-          spotRid: String(received.spotRid ?? received.routingId) as RoutingId
+          targetNodeRid: decodeWireRoutingId(String(received.routingId), undefined),
+          spotRid: decodeWireRoutingId(String(received.spotRid ?? received.routingId), undefined)
         };
       }
       const header = BindingMessage.from(Buffer.from(actorPacketRelay.header, 'base64'));
@@ -1210,6 +1224,18 @@ class ZLinkSpotActorJoinDispatch {
     }
     const event = decodeChannelPayload(envelope);
     const spot = this.getTarget() as ZLinkSpot;
+    const subSource = message.routingId === null ? undefined : String(message.routingId);
+    const subCorr = envelope.header.correlationId ?? undefined;
+    flowIfEnabled(this.dispatchErrors?.flow, ZLinkMessageFlowPhase.Received)?.trace({
+      phase: ZLinkMessageFlowPhase.Received,
+      surface: ZLinkDispatchErrorSurface.SpotSubscription,
+      messageKind: ZLinkDispatchMessageKind.Publish,
+      packetName: envelope.packetName,
+      channelName: envelope.header.channelName,
+      topic: message.topic,
+      sourceRid: subSource,
+      correlationId: subCorr
+    });
     await this.serial.execute(async () => {
       for (const registration of registrations) {
         const handler = await createProviderInstance(
@@ -1222,7 +1248,17 @@ class ZLinkSpotActorJoinDispatch {
             contentType: envelope.header.contentType,
             packetName: envelope.packetName,
             topic: message.topic,
-            source: message.routingId === null ? undefined : String(message.routingId)
+            source: subSource
+          });
+          flowIfEnabled(this.dispatchErrors?.flow, ZLinkMessageFlowPhase.Dispatched)?.trace({
+            phase: ZLinkMessageFlowPhase.Dispatched,
+            surface: ZLinkDispatchErrorSurface.SpotSubscription,
+            messageKind: ZLinkDispatchMessageKind.Publish,
+            packetName: envelope.packetName,
+            channelName: envelope.header.channelName,
+            topic: message.topic,
+            sourceRid: subSource,
+            correlationId: subCorr
           });
         } catch (error) {
           this.dispatchErrors?.report({
@@ -1608,7 +1644,7 @@ function encodeRoutingIdHex(routingId: RoutingId): string | undefined {
 function decodeWireRoutingId(text: string, hex: unknown): RoutingId {
   return typeof hex === 'string'
     ? BindingRoutingId.fromHex(hex) as unknown as RoutingId
-    : text;
+    : BindingRoutingId.from(text) as unknown as RoutingId;
 }
 
 function isRouteRecvRetryable(error: unknown): boolean {
@@ -1752,6 +1788,7 @@ export class ZLinkEntrySpotActivation {
       () => this.entrySpot,
       true,
       undefined,
+      undefined,
       this.options.entryActorCommitter,
       (actorId, parts, returnResponse, remoteBoundSessionTarget) =>
         this.dispatchActorPacket(actorId, parts, returnResponse, remoteBoundSessionTarget),
@@ -1807,6 +1844,15 @@ export class ZLinkEntrySpotActivation {
     const action = messageKind === ZLinkDispatchMessageKind.ActorRequest
       ? ZLinkDispatchErrorAction.ReplyError
       : ZLinkDispatchErrorAction.Drop;
+    flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Received)?.trace({
+      phase: ZLinkMessageFlowPhase.Received,
+      surface: ZLinkDispatchErrorSurface.SpotActor,
+      messageKind,
+      packetName: header.name,
+      spotRid: String(this.options.nativeSpot.routingId),
+      actorId,
+      correlationId: header.requestSeq?.toString()
+    });
     const routed = await this.options.localActorPacketRouter?.(
       actorId,
       parts,
@@ -1867,6 +1913,14 @@ export class ZLinkEntrySpotActivation {
         await dispatcher.dispatchSend(actor, header.name, payload, {
           metadata: Object.fromEntries(header.metadata)
         });
+        flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Dispatched)?.trace({
+          phase: ZLinkMessageFlowPhase.Dispatched,
+          surface: ZLinkDispatchErrorSurface.SpotActor,
+          messageKind: ZLinkDispatchMessageKind.ActorSend,
+          packetName: header.name,
+          spotRid: String(this.options.nativeSpot.routingId),
+          actorId
+        });
         return undefined;
       }
       if (header.kind !== ZLinkStreamMessageKind.Request || header.requestSeq === undefined) {
@@ -1883,6 +1937,15 @@ export class ZLinkEntrySpotActivation {
       }
       const response = await dispatcher.dispatchRequest(actor, header.name, payload, {
         metadata: Object.fromEntries(header.metadata)
+      });
+      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Replied)?.trace({
+        phase: ZLinkMessageFlowPhase.Replied,
+        surface: ZLinkDispatchErrorSurface.SpotActor,
+        messageKind: ZLinkDispatchMessageKind.ActorRequest,
+        packetName: header.name,
+        spotRid: String(this.options.nativeSpot.routingId),
+        actorId,
+        correlationId: header.requestSeq.toString()
       });
       if (returnResponse || this.options.actorResponseSender === undefined) {
         return response;
@@ -2269,6 +2332,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
         () => activation.spot,
         false,
         this.options.routedActorProvider,
+        this.options.nativeJoinBoundSessionTargetResolver,
         (actor) => {
           this.options.routedActorCommitter?.(actor, spotRid, activation.spot);
           activation.actors.set(actor.actorId, actor);
@@ -2426,6 +2490,15 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     const action = messageKind === ZLinkDispatchMessageKind.ActorRequest
       ? ZLinkDispatchErrorAction.ReplyError
       : ZLinkDispatchErrorAction.Drop;
+    flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Received)?.trace({
+      phase: ZLinkMessageFlowPhase.Received,
+      surface: ZLinkDispatchErrorSurface.SpotActor,
+      messageKind,
+      packetName: header.name,
+      spotRid: String(activation.spotRid),
+      actorId,
+      correlationId: header.requestSeq?.toString()
+    });
     const actor = activation.actors.get(actorId) ?? this.options.actorResolver?.(actorId);
     if (actor === undefined) {
       this.options.dispatchErrors?.report({
@@ -2472,6 +2545,14 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
         await dispatcher.dispatchSend(actor, header.name, payload, {
           metadata: Object.fromEntries(header.metadata)
         });
+        flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Dispatched)?.trace({
+          phase: ZLinkMessageFlowPhase.Dispatched,
+          surface: ZLinkDispatchErrorSurface.SpotActor,
+          messageKind: ZLinkDispatchMessageKind.ActorSend,
+          packetName: header.name,
+          spotRid: String(activation.spotRid),
+          actorId
+        });
         return undefined;
       }
       if (header.kind !== ZLinkStreamMessageKind.Request || header.requestSeq === undefined) {
@@ -2488,6 +2569,15 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       }
       const response = await dispatcher.dispatchRequest(actor, header.name, payload, {
         metadata: Object.fromEntries(header.metadata)
+      });
+      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Replied)?.trace({
+        phase: ZLinkMessageFlowPhase.Replied,
+        surface: ZLinkDispatchErrorSurface.SpotActor,
+        messageKind: ZLinkDispatchMessageKind.ActorRequest,
+        packetName: header.name,
+        spotRid: String(activation.spotRid),
+        actorId,
+        correlationId: header.requestSeq.toString()
       });
       if (returnResponse || this.options.actorResponseSender === undefined) {
         return response;

@@ -73,6 +73,19 @@ function requiredMode(phase: ZLinkMessageFlowPhase): ZLinkMessageFlowLogMode {
 }
 
 /**
+ * Returns the tracer only when this phase is enabled, so call sites read as
+ * `flowIfEnabled(reporter?.flow, phase)?.trace({ ...event })`. Optional chaining
+ * short-circuits, so the event object literal is never built when tracing is off —
+ * keeping the disabled path allocation-free.
+ */
+export function flowIfEnabled(
+  flow: ZLinkMessageFlowTracer | undefined,
+  phase: ZLinkMessageFlowPhase
+): ZLinkMessageFlowTracer | undefined {
+  return flow !== undefined && flow.enabled(phase) ? flow : undefined;
+}
+
+/**
  * Success-path message-flow tracer — the twin of ZLinkDispatchErrorReporter for
  * received/dispatched/replied/sent/replyReceived transitions, keyed by correlation id.
  * Mirrors the C++/.NET/Java tracer. Build the event only after enabled(phase) so an

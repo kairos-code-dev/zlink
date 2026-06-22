@@ -164,6 +164,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private final Set<String> discoveredPubSubPeers = new HashSet<>();
     private final Set<String> discoveredRouterPeers = new HashSet<>();
     private final Map<String, Integer> discoveredRouterPeerSightings = new HashMap<>();
+    private final Map<String, Set<String>> discoveredRouterPeerRidKeys = new HashMap<>();
     private final Set<RoutingId> connectedRouterPeerRids = ConcurrentHashMap.newKeySet();
     private final Map<String, ZLinkBackendSpotNode> publisherNodesByChannel = new HashMap<>();
     private final Map<String, ZLinkBackendSpot> publisherSpotsByChannel = new HashMap<>();
@@ -1374,8 +1375,25 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         RoutingId peerRoutingId,
         String endpoint) {
         String key = binding.meshName() + "|router|" + endpoint;
+        String ridKey = hasRoutingId(peerRoutingId) ? peerRoutingId.toString() : null;
         if (!discoveredRouterPeers.add(key)) {
             int sightings = discoveredRouterPeerSightings.merge(key, 1, Integer::sum);
+            if (ridKey != null
+                && discoveredRouterPeerRidKeys
+                    .computeIfAbsent(key, ignored -> new HashSet<>())
+                    .add(ridKey)) {
+                try {
+                    binding.node().connectPeer(peerRoutingId, endpoint);
+                } catch (ZlinkConnectException ex) {
+                    if (!isIdempotentConnectFailure(ex)) {
+                        removeDiscoveredRouterPeerRidKey(key, ridKey);
+                        return;
+                    }
+                } catch (RuntimeException ex) {
+                    removeDiscoveredRouterPeerRidKey(key, ridKey);
+                    return;
+                }
+            }
             if (hasRoutingId(peerRoutingId)
                 && sightings >= ROUTER_PEER_CONVERGENCE_SNAPSHOTS) {
                 connectedRouterPeerRids.add(peerRoutingId);
@@ -1386,6 +1404,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         try {
             if (hasRoutingId(peerRoutingId)) {
                 binding.node().connectPeer(peerRoutingId, endpoint);
+                discoveredRouterPeerRidKeys
+                    .computeIfAbsent(key, ignored -> new HashSet<>())
+                    .add(ridKey);
             } else {
                 binding.node().connectPeer(endpoint);
             }
@@ -1403,9 +1424,22 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             }
             discoveredRouterPeers.remove(key);
             discoveredRouterPeerSightings.remove(key);
+            discoveredRouterPeerRidKeys.remove(key);
         } catch (RuntimeException ex) {
             discoveredRouterPeers.remove(key);
             discoveredRouterPeerSightings.remove(key);
+            discoveredRouterPeerRidKeys.remove(key);
+        }
+    }
+
+    private void removeDiscoveredRouterPeerRidKey(String key, String ridKey) {
+        Set<String> ridKeys = discoveredRouterPeerRidKeys.get(key);
+        if (ridKeys == null) {
+            return;
+        }
+        ridKeys.remove(ridKey);
+        if (ridKeys.isEmpty()) {
+            discoveredRouterPeerRidKeys.remove(key);
         }
     }
 
@@ -1729,6 +1763,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 return;
             }
             ParsedPacket packet = parsePacket(received.parts());
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.RECEIVED)) {
+                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.RECEIVED,
+                    ZLinkDispatchErrorSurface.SPOT_ROUTE,
+                    received.requestSeq().isPresent()
+                        ? ZLinkDispatchMessageKind.REQUEST
+                        : ZLinkDispatchMessageKind.SEND,
+                    packet.packetName(), null, null,
+                    received.requestSeq().map(String::valueOf).orElse(null),
+                    null, backendSpot.routingId().toString(), null, null));
+            }
             if (ZLinkActorSpotRoutePackets.BOUND_SESSION_SEND_PACKET_NAME.equals(packet.packetName())) {
                 if (received.requestSeq().isPresent()) {
                     handleRoutedBoundSessionSendRequestParts(received.parts())

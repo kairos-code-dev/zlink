@@ -240,7 +240,8 @@ test('runtime host reports joined Spot route before stale remote actor packet ta
   assert.deepEqual(runtime.actorPacketTargetForState('player-2'), {
     routerChannelId: 'bingo.room.route',
     targetNodeRid: 'play-node-1',
-    spotRid: 'bingo-room-1'
+    spotRid: 'bingo-room-1',
+    spotKind: 2
   });
 });
 

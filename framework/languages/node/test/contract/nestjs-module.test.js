@@ -1885,6 +1885,7 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     setPubBind(endpoint) { calls.push(`spot:setPubBind:${endpoint}`); },
     attachDiscovery() {},
     connectPeer(endpoint) { calls.push(`spot:connectPeer:${endpoint}`); },
+    connectPeerRid(peerRid, endpoint) { calls.push(`spot:connectPeerRid:${peerRid}:${endpoint}`); },
     disconnectPeer() {},
     createSpot() {
       calls.push('spot:createPublisherSpot');
@@ -1948,7 +1949,8 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
           router: {
             bind: 'tcp://0.0.0.0:9301',
             routingId: 'node-a',
-            manualConnections: ['tcp://127.0.0.1:9302']
+            manualConnections: ['tcp://127.0.0.1:9302'],
+            manualPeerConnections: [{ peerRid: 'node-b', endpoint: 'tcp://127.0.0.1:9309' }]
           },
           pubSub: {
             bind: 'tcp://0.0.0.0:9303',
@@ -2016,6 +2018,7 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
   });
 
   await runtime.start();
+  await new Promise((resolve) => setImmediate(resolve));
   await runtime.spotPublisherTransport.publishSpot(
     'game.events',
     'room.events',
@@ -2039,6 +2042,7 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     'bridge:attachDealer:api',
     'spot:createPublisherSpot',
     'spot:connectPeer:tcp://127.0.0.1:9306',
+    'spot:connectPeerRid:node-b:tcp://127.0.0.1:9309',
     'publisherSpot:publish:room.events:GameEvent:published',
     'publisherSpot:dispose',
     'bridge:dispose',

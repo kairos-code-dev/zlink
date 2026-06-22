@@ -307,6 +307,7 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   setPubBind(endpoint: string): void;
   attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   connectPeer(endpoint: string): void;
+  connectPeerRid(targetNodeRid: RoutingId, endpoint: string): void;
   disconnectPeer(endpoint: string): void;
   createSpot(): ZLinkBackendSpot;
   getOrCreateSpot(spotRid: RoutingId): { readonly spot: ZLinkBackendSpot; readonly created: boolean };

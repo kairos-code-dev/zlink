@@ -97,10 +97,12 @@ export interface ZLinkRemoteActorPacketTarget {
   readonly routerChannelId: string;
   readonly targetNodeRid: RoutingId;
   readonly spotRid: RoutingId;
+  readonly spotKind?: ZLinkSpotKind;
 }
 
 export interface ZLinkActorRoutedJoinTransport {
   canRouteChannel?(routerChannelId: string): boolean;
+  canRoutePacketChannel?(routerChannelId: string): boolean;
   send(
     routerChannelId: string,
     targetNodeRid: string,
@@ -157,8 +159,14 @@ interface ZLinkRemoteActorJoinRequest {
   readonly actorNodeRid: string;
   readonly actorNodeRidHex?: string;
   readonly actorGeneration: string;
+  readonly routerChannelId?: string;
   readonly sourceSpotRid?: string;
   readonly sourceSpotRidHex?: string;
+  readonly boundSessionRouterChannelId?: string;
+  readonly boundSessionTargetNodeRid?: string;
+  readonly boundSessionTargetNodeRidHex?: string;
+  readonly boundSessionSpotRid?: string;
+  readonly boundSessionSpotRidHex?: string;
 }
 
 interface ZLinkRemoteActorJoinReply {
@@ -554,7 +562,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       ? undefined
       : await this.options.remoteAddressResolver.resolve(spotRid, signal);
     const isRemoteJoin = remoteAddress !== undefined && String(remoteAddress.targetNodeRid) !== String(actorRef.nodeRid);
-    if (isRemoteJoin && remoteAddress !== undefined && this.canUseRoutedTransport(remoteAddress)) {
+    if (isRemoteJoin && this.canUseRoutedTransport(remoteAddress)) {
       return await this.joinRemoteSpot(actor, state, actorRef, remoteAddress, request, timeoutMs, signal);
     }
     const joinRequest = isRemoteJoin
@@ -657,16 +665,11 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
           `Actor '${actor.actorId}' remote route transport is not configured.`
         );
       }
-      if (routedTransport.requestRawToSpot === undefined) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorRouteNotFound,
-          `Actor '${actor.actorId}' remote route transport does not support raw SPOT requests.`
-        );
-      }
       const entrySpotRid = this.options.node.entrySpot().routingId;
-      const sourceSpotRid = String(entrySpotRid);
-      const sourceSpotRidHex = encodeRoutingIdHex(entrySpotRid);
-      const rawRequest = BindingMessage.from(Buffer.from(JSON.stringify({
+      const boundSessionTarget = state.remoteBoundSessionTarget;
+      const sourceSpotRid = String(boundSessionTarget?.spotRid ?? entrySpotRid);
+      const sourceSpotRidHex = encodeRoutingIdHex(boundSessionTarget?.spotRid ?? entrySpotRid);
+      const joinRequest = {
         packetName: REMOTE_ACTOR_JOIN_PACKET,
         spotRid: String(remoteAddress.spotRid),
         actorId: actor.actorId,
@@ -677,30 +680,21 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         sourceSpotRid,
         sourceSpotRidHex,
         routerChannelId: remoteAddress.routerChannelId,
+        boundSessionRouterChannelId: boundSessionTarget?.routerChannelId,
+        boundSessionTargetNodeRid: boundSessionTarget === undefined ? undefined : String(boundSessionTarget.targetNodeRid),
+        boundSessionTargetNodeRidHex: boundSessionTarget === undefined ? undefined : encodeRoutingIdHex(boundSessionTarget.targetNodeRid),
+        boundSessionSpotRid: boundSessionTarget === undefined ? undefined : String(boundSessionTarget.spotRid),
+        boundSessionSpotRidHex: boundSessionTarget === undefined ? undefined : encodeRoutingIdHex(boundSessionTarget.spotRid),
         request: request.data().toString('base64')
-      })));
-      let parts: readonly Message[];
-      try {
-        parts = await routedTransport.requestRawToSpot(
-          remoteAddress,
-          rawRequest,
-          { timeoutMs, signal }
-        );
-      } finally {
-        rawRequest.close();
-      }
-      if (parts === undefined || parts.length === 0) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorRouteNotFound,
-          `Remote actor join reply was empty for '${actor.actorId}'.`
-        );
-      }
-      let reply: ZLinkRemoteActorJoinReply & { readonly reply?: string };
-      try {
-        reply = this.decodeRemoteActorJoinReply(parts[0]);
-      } finally {
-        this.disposeParts(parts.slice(1));
-      }
+      };
+      const reply = await routedTransport.request<ZLinkRemoteActorJoinReply & { readonly reply?: string }>(
+        remoteAddress.routerChannelId,
+        remoteAddress.targetNodeRid,
+        REMOTE_ACTOR_JOIN_PACKET,
+        joinRequest,
+        timeoutMs,
+        signal
+      );
       const resultActor = {
         nodeRid: decodeWireRoutingId(reply.actorNodeRid, reply.actorNodeRidHex),
         actorId: reply.actorId,
@@ -712,7 +706,8 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         state.setRemoteActorPacketTarget({
           routerChannelId: remoteAddress.routerChannelId,
           targetNodeRid: remoteAddress.targetNodeRid,
-          spotRid: remoteAddress.spotRid
+          spotRid: remoteAddress.spotRid,
+          spotKind: remoteAddress.spotKind
         });
         await this.options.remoteActorBinder?.(resultActor, signal, true);
       }
@@ -722,15 +717,74 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         reply: reply.reply === undefined ? undefined : BindingMessage.from(Buffer.from(reply.reply, 'base64'))
       };
     }
-    const header = BindingMessage.from(Buffer.from(JSON.stringify({
+    const entrySpotRid = this.options.node.entrySpot().routingId;
+    const boundSessionTarget = state.remoteBoundSessionTarget;
+    const sourceSpotRid = boundSessionTarget?.spotRid ?? entrySpotRid;
+    const joinPayload = {
       packetName: REMOTE_ACTOR_JOIN_PACKET,
       actorId: actor.actorId,
       actorType,
       actorNodeRid: String(actorRef.nodeRid),
       actorNodeRidHex: encodeRoutingIdHex(actorRef.nodeRid),
       actorGeneration: actorRef.generation.toString(),
-      sourceSpotRid: String(this.options.node.entrySpot().routingId),
-      sourceSpotRidHex: encodeRoutingIdHex(this.options.node.entrySpot().routingId)
+      routerChannelId: remoteAddress.routerChannelId,
+      sourceSpotRid: String(sourceSpotRid),
+      sourceSpotRidHex: encodeRoutingIdHex(sourceSpotRid),
+      boundSessionRouterChannelId: boundSessionTarget?.routerChannelId,
+      boundSessionTargetNodeRid: boundSessionTarget === undefined ? undefined : String(boundSessionTarget.targetNodeRid),
+      boundSessionTargetNodeRidHex: boundSessionTarget === undefined ? undefined : encodeRoutingIdHex(boundSessionTarget.targetNodeRid),
+      boundSessionSpotRid: boundSessionTarget === undefined ? undefined : String(boundSessionTarget.spotRid),
+      boundSessionSpotRidHex: boundSessionTarget === undefined ? undefined : encodeRoutingIdHex(boundSessionTarget.spotRid),
+      request: request.data().toString('base64')
+    } satisfies ZLinkRemoteActorJoinRequest & { readonly request: string };
+    const transport = this.options.routedTransport;
+    if (transport?.requestRawToSpot !== undefined) {
+      const payload = BindingMessage.from(Buffer.from(JSON.stringify(joinPayload)));
+      try {
+        const parts = await transport.requestRawToSpot(remoteAddress, payload, { timeoutMs, signal });
+        try {
+          if (parts.length === 0) {
+            throw new ZLinkFrameworkException(
+              ZLinkFrameworkErrorKind.ActorRouteNotFound,
+              `Remote actor join reply was empty for '${actor.actorId}'.`
+            );
+          }
+          const reply = JSON.parse(parts[0].getString('utf8')) as ZLinkRemoteActorJoinReply;
+          const resultActor = {
+            nodeRid: decodeWireRoutingId(reply.actorNodeRid, reply.actorNodeRidHex),
+            actorId: reply.actorId,
+            generation: BigInt(reply.actorGeneration)
+          } as ActorRef;
+          if (reply.accepted) {
+            state.setNativeActorRef(resultActor as unknown as ZLinkBackendActorRef);
+            state.setJoinedSpot(remoteAddress.spotRid);
+            state.setRemoteActorPacketTarget({
+              routerChannelId: remoteAddress.routerChannelId,
+              targetNodeRid: remoteAddress.targetNodeRid,
+              spotRid: remoteAddress.spotRid,
+              spotKind: remoteAddress.spotKind
+            });
+            await this.options.remoteActorBinder?.(resultActor, signal, true);
+          }
+          return {
+            resultCode: reply.accepted ? 0 : 1,
+            actor: resultActor,
+            reply: parts[1]
+          };
+        } finally {
+          parts[0]?.close();
+          this.disposeParts(parts.slice(2));
+        }
+      } finally {
+        payload.close();
+      }
+    }
+    const {
+      request: _encodedRequest,
+      ...headerPayload
+    } = joinPayload;
+    const header = BindingMessage.from(Buffer.from(JSON.stringify({
+      ...headerPayload
     } satisfies ZLinkRemoteActorJoinRequest)));
     const outbound = this.options.node.getOrCreateSpot(`__zlink.actor.join.${String(actorRef.nodeRid)}`).spot;
     try {
@@ -782,7 +836,8 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
           state.setRemoteActorPacketTarget({
             routerChannelId: remoteAddress.routerChannelId,
             targetNodeRid: remoteAddress.targetNodeRid,
-            spotRid: remoteAddress.spotRid
+            spotRid: remoteAddress.spotRid,
+            spotKind: remoteAddress.spotKind
           });
           await this.options.remoteActorBinder?.(resultActor, signal, true);
         }
@@ -809,8 +864,14 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
   }
 
   private canUseRoutedTransport(remoteAddress: ZLinkSpotRemoteAddress): boolean {
-    return this.options.routedTransport !== undefined
-      && this.options.routedTransport.canRouteChannel?.(remoteAddress.routerChannelId) !== false;
+    const transport = this.options.routedTransport;
+    if (transport === undefined) {
+      return false;
+    }
+    if (transport.canRoutePacketChannel !== undefined) {
+      return transport.canRoutePacketChannel(remoteAddress.routerChannelId);
+    }
+    return transport.canRouteChannel?.(remoteAddress.routerChannelId) !== false;
   }
 
   async joinEntrySpot(
@@ -827,7 +888,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       ? undefined
       : await this.tryResolveRemoteEntry(nodeRid, signal);
     const isRemoteJoin = remoteEntry !== undefined && String(remoteEntry.targetNodeRid) !== String(actorRef.nodeRid);
-    if (isRemoteJoin && remoteEntry !== undefined && this.canUseRoutedTransport(remoteEntry)) {
+    if (isRemoteJoin && this.canUseRoutedTransport(remoteEntry)) {
       const result = await this.joinRemoteSpot(
         actor,
         state,

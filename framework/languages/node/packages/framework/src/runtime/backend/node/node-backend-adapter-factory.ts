@@ -228,6 +228,11 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
         return (routingId: unknown) =>
           (target as unknown as { setRoutingId(routingId: unknown): void }).setRoutingId(toNativeRoutingId(routingId));
       }
+      if (property === 'connectPeerRid') {
+        return (targetNodeRid: unknown, endpoint: string) =>
+          (target as unknown as { connectPeerRid(targetNodeRid: unknown, endpoint: string): void })
+            .connectPeerRid(toNativeRoutingId(targetNodeRid), endpoint);
+      }
       if (property === 'createSpot' || property === 'entrySpot') {
         return () => wrapBackendObject((target as unknown as { [key: string]: () => { close(): void } })[property]());
       }
@@ -578,22 +583,22 @@ function resolveSocketMessagingProperty(
     return (...args: unknown[]) => {
       if (args.length >= 5) {
         const [routingId, payload, callback, flags, timeoutMs] = args as [unknown, unknown, unknown, number, number | undefined];
-        void flags;
         peerRoutingIds.add(routingId);
         return submitBindingRequestCallback(
           (target as { request(routingId: unknown): ZLinkBindingRequestOperation }).request(toNativeRoutingId(routingId)),
           payload,
           callback,
+          flags,
           timeoutMs
         );
       }
       if (args.length >= 4) {
         const [payload, callback, flags, timeoutMs] = args as [unknown, unknown, number, number | undefined];
-        void flags;
         return submitBindingRequestCallback(
           (target as { request(): ZLinkBindingRequestOperation }).request(),
           payload,
           callback,
+          flags,
           timeoutMs
         );
       }
@@ -644,6 +649,26 @@ function resolveSocketMessagingProperty(
       return (Reflect.get(target as object, property, receiver) as (...values: unknown[]) => unknown)(...args);
     };
   }
+  if (property === 'sendToSpot') {
+    return (targetRid: unknown, spotRid: unknown, payload: unknown, flags: number) =>
+      submitBindingSend(
+        (target as { sendToSpot(targetRid: unknown, spotRid: unknown): ZLinkBindingSendOperation })
+          .sendToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid)),
+        payload,
+        flags
+      );
+  }
+  if (property === 'requestToSpot') {
+    return (targetRid: unknown, spotRid: unknown, payload: unknown, callback: unknown, flags: number, timeoutMs?: number) =>
+      submitBindingRequestCallback(
+        (target as { requestToSpot(targetRid: unknown, spotRid: unknown): ZLinkBindingRequestOperation })
+          .requestToSpot(toNativeRoutingId(targetRid), toNativeRoutingId(spotRid)),
+        payload,
+        callback,
+        flags,
+        timeoutMs
+      );
+  }
   return undefined;
 }
 
@@ -666,7 +691,7 @@ function resolveSocketActorGatewayProperty(target: unknown, property: string | s
         bindActor(sessionRid: unknown, actor: unknown): {
           timeout(timeoutMs: number): ZLinkBindingPromiseRequestSubmitOperation<Array<{ close(): void }>>;
         };
-      }).bindActor(sessionRid, actor);
+      }).bindActor(toNativeRoutingId(sessionRid), toNativeActorRef(actor));
       const replies = await submitBindingRequest(operation.timeout(timeoutMs));
       for (const reply of replies) {
         reply.close();
@@ -842,6 +867,7 @@ function submitBindingRequestCallback(
   operation: ZLinkBindingRequestOperation,
   payload: unknown,
   callback: unknown,
+  flags: number,
   timeoutMs: number | undefined
 ): boolean {
   let current: ZLinkBindingRequestSubmitOperation | undefined;
@@ -855,6 +881,9 @@ function submitBindingRequestCallback(
   current ??= operation.message(Buffer.alloc(0));
   if (timeoutMs !== undefined) {
     current = current.timeout(timeoutMs);
+  }
+  if (flags !== 0) {
+    return current.flags(flags).submit(callback);
   }
   return current.submit(callback);
 }

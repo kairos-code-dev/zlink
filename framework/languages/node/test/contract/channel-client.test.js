@@ -402,6 +402,32 @@ test('route raw SPOT requests through SpotNode router are serialized per route c
   assert.equal(maxActive, 1);
 });
 
+test('SpotNode router is not classified as packet route channel', () => {
+  const registration = framework.createFrameworkRegistration({
+    routeChannels: [{ routerChannelId: 'play-node' }],
+    spotNodes: {
+      'play-node': {
+        router: { bind: 'inproc://play-node', routingId: 'play-node' }
+      }
+    }
+  });
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    registration,
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer() }),
+    fakeContext()
+  );
+  manager.setSpotNodes(new Map([
+    ['play-node', {
+      entrySpot() {
+        return { routingId: 'play-node' };
+      }
+    }]
+  ]));
+
+  assert.equal(manager.canRouteChannel('play-node'), true);
+  assert.equal(manager.canRoutePacketChannel('play-node'), false);
+});
+
 test('route raw SPOT request through SpotNode router retries until route is ready', async () => {
   let attempts = 0;
   const fakeSpot = {

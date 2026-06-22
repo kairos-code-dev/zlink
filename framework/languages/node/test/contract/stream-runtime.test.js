@@ -235,8 +235,15 @@ test('runtime host bound session uses routed Session target before native ActorG
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
-  host.routeTransport.send = (routerChannelId, targetNodeRid, packetName, message, signal) => {
-    routeCalls.push({ routerChannelId, targetNodeRid, packetName, message, signal });
+  host.routeTransport.sendToSpot = (remoteAddress, message, options) => {
+    routeCalls.push({
+      routerChannelId: remoteAddress.routerChannelId,
+      targetNodeRid: remoteAddress.targetNodeRid,
+      spotRid: remoteAddress.spotRid,
+      packetName: options.packetName,
+      message,
+      signal: options.signal
+    });
     return Promise.resolve();
   };
   host.spotNodeRuntime = {
@@ -273,6 +280,7 @@ test('runtime host bound session uses routed Session target before native ActorG
   assert.equal(routeCalls.length, 1);
   assert.equal(routeCalls[0].routerChannelId, 'room.route');
   assert.equal(routeCalls[0].targetNodeRid, 'session-node');
+  assert.equal(routeCalls[0].spotRid, 'session-entry');
   assert.equal(routeCalls[0].packetName, '__zlink.actor.bound_session.send');
   assert.equal(routeCalls[0].message.boundPacketName, 'Notify');
 });
@@ -437,7 +445,8 @@ test('runtime host actor packet target prefers stored remote room target', () =>
         remoteActorPacketTarget: {
           routerChannelId: 'room.route',
           targetNodeRid: 'room-owner-node',
-          spotRid: 'room-spot'
+          spotRid: 'room-spot',
+          spotKind: framework.ZLinkSpotKind.User
         }
       };
     }
@@ -446,7 +455,8 @@ test('runtime host actor packet target prefers stored remote room target', () =>
   assert.deepEqual(host.actorPacketTargetForState('actor-remote-room'), {
     routerChannelId: 'room.route',
     targetNodeRid: 'room-owner-node',
-    spotRid: 'room-spot'
+    spotRid: 'room-spot',
+    spotKind: framework.ZLinkSpotKind.User
   });
 });
 
@@ -581,6 +591,7 @@ test('runtime host relays bound remote actor request through route channel and c
       routerChannelId: remoteAddress.routerChannelId,
       targetNodeRid: remoteAddress.targetNodeRid,
       spotRid: remoteAddress.spotRid,
+      spotKind: remoteAddress.spotKind,
       packetName: payload.packetName,
       timeoutMs: options.timeoutMs,
       request: payload
@@ -606,6 +617,7 @@ test('runtime host relays bound remote actor request through route channel and c
   assert.equal(routeRequests[0].routerChannelId, 'room.route');
   assert.equal(routeRequests[0].targetNodeRid, 'play-node');
   assert.equal(routeRequests[0].spotRid, 'play-node');
+  assert.equal(routeRequests[0].spotKind, framework.ZLinkSpotKind.Entry);
   assert.equal(routeRequests[0].packetName, '__zlink.actor.packet.relay');
   assert.equal(routeRequests[0].request.packetName, '__zlink.actor.packet.relay');
   assert.equal(routeRequests[0].request.actorId, 'actor-remote');

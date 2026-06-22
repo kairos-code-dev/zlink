@@ -99,7 +99,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
         accepted: true,
         reply: protobufSerializer.serialize(joined)
       };
-    } catch (error) {
+    } catch {
       return {
         accepted: false
       };
@@ -272,7 +272,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
   }
 
   private async publishReward(state: BingoRoomSnapshot): Promise<void> {
-    const winner = state.winners[0];
+    const winner = state.winners.at(0);
     if (winner === undefined) {
       return;
     }

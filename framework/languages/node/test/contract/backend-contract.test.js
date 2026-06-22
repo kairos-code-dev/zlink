@@ -71,6 +71,39 @@ test('backend adapter unwraps SpotNode when attaching stream ActorGateway', asyn
   }
 });
 
+test('backend stream bind converts public string actor node RID to native RoutingId', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const channel = factory.createChannelAdapter();
+  const spotAdapter = factory.createSpotAdapter();
+  const streamAdapter = factory.createStreamAdapter();
+  const context = channel.createContext();
+  const sessionNode = spotAdapter.createSpotNode(context, 3);
+  const playNode = spotAdapter.createSpotNode(context, 3);
+  const stream = streamAdapter.createStreamSocket(context);
+
+  try {
+    sessionNode.setRoutingId('backend-session-node');
+    playNode.setRoutingId('backend-play-node');
+    stream.attachActorGateway(sessionNode);
+    const actorRef = playNode.createActor('backend-player');
+
+    await stream.bindActor(
+      'backend-session',
+      {
+        nodeRid: String(actorRef.nodeRid),
+        actorId: actorRef.actorId,
+        generation: actorRef.generation
+      },
+      1000
+    );
+  } finally {
+    await stream.dispose();
+    await playNode.dispose();
+    await sessionNode.dispose();
+    await context.dispose();
+  }
+});
+
 test('backend adapter normalizes missing SpotNode actor lookup to undefined', async () => {
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const channel = factory.createChannelAdapter();

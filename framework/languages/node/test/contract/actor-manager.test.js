@@ -601,6 +601,10 @@ test('ZLinkActorNativeJoinCoordinator uses native spot-node join when remote add
       node,
       remoteAddressResolver,
       routedTransport: {
+        canRoutePacketChannel(routerChannelId) {
+          events.push(`canRoutePacket:${routerChannelId}`);
+          return false;
+        },
         canRouteChannel(routerChannelId) {
           events.push(`canRoute:${routerChannelId}`);
           return false;
@@ -622,7 +626,7 @@ test('ZLinkActorNativeJoinCoordinator uses native spot-node join when remote add
   assert.equal(result.reply, 'remote-reply');
   assert.deepEqual(events, [
     'resolve:room-1',
-    'canRoute:play-node',
+    'canRoutePacket:play-node',
     'joinActor:1:node-a:room-1:player:payload:undefined',
     'bind:node-a:alice:2'
   ]);
@@ -674,20 +678,23 @@ test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transpor
       node,
       remoteAddressResolver,
       routedTransport: {
+        canRoutePacketChannel(routerChannelId) {
+          events.push(`canRoutePacket:${routerChannelId}`);
+          return true;
+        },
         canRouteChannel(routerChannelId) {
           events.push(`canRoute:${routerChannelId}`);
           return true;
         },
-        async requestRawToSpot(remoteAddress, message) {
-          const payload = JSON.parse(message.data().toString());
-          events.push(`routeRawToSpot:${remoteAddress.routerChannelId}:${remoteAddress.targetNodeRid}:${remoteAddress.spotRid}:${payload.packetName}:${payload.actorId}:${payload.actorType}:${Buffer.from(payload.request, 'base64').toString()}`);
-          return [zlink.Message.from(JSON.stringify({
+        async request(routerChannelId, targetNodeRid, packetName, payload) {
+          events.push(`routeRequest:${routerChannelId}:${targetNodeRid}:${payload.spotRid}:${packetName}:${payload.actorId}:${payload.actorType}:${Buffer.from(payload.request, 'base64').toString()}`);
+          return {
             accepted: true,
             actorNodeRid: 'node-a',
             actorId: 'alice',
             actorGeneration: '2',
             reply: Buffer.from('routed-reply').toString('base64')
-          }))];
+          };
         }
       },
       async remoteActorBinder(actorRef) {
@@ -703,9 +710,9 @@ test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transpor
   assert.equal(result.reply, 'routed-reply');
   assert.deepEqual(events, [
     'resolve:room-1',
-    'canRoute:play-node',
-    'canRoute:play-node',
-    'routeRawToSpot:play-node:node-a:room-1:__zlink.actor.join_spot.request:alice:player:payload',
+    'canRoutePacket:play-node',
+    'canRoutePacket:play-node',
+    'routeRequest:play-node:node-a:room-1:__zlink.actor.join_spot.request:alice:player:payload',
     'bind:node-a:alice:2'
   ]);
   request.close();

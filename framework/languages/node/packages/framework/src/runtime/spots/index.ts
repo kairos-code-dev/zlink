@@ -496,7 +496,7 @@ class ZLinkSpotNodeConnector {
       node.connectPeer(endpoint);
     }
     for (const connection of spotNode.router?.manualPeerConnections ?? []) {
-      node.connectPeer(connection.endpoint);
+      setImmediate(() => node.connectPeerRid(connection.peerRid, connection.endpoint));
     }
     if (spotNode.pubSub?.bind !== undefined) {
       node.setPubBind(spotNode.pubSub.bind);
@@ -609,11 +609,10 @@ function resolveRegistrySpotRouterChannelId(registration: ZLinkFrameworkRegistra
   if (explicit !== undefined) {
     return explicit;
   }
-  const [single] = registration.routeChannels;
-  if (single === undefined) {
-    throw new ZLinkConfigurationException('Registry SPOT remote address resolver requires a route mesh channel.');
+  for (const single of registration.routeChannels) {
+    return single;
   }
-  return single;
+  throw new ZLinkConfigurationException('Registry SPOT remote address resolver requires a route mesh channel.');
 }
 
 interface ZLinkOwnedBackendObject {
@@ -786,7 +785,7 @@ class ZLinkSpotActorJoinDispatch {
           break;
         }
       }
-      if (actorId === undefined || this.actorPacketHandler === undefined) {
+      if (this.actorPacketHandler === undefined) {
         return;
       }
       await this.actorPacketHandler(actorId, parts);
@@ -972,8 +971,7 @@ class ZLinkSpotActorJoinDispatch {
       let remoteBoundSessionTarget: ZLinkRemoteBoundSessionTarget | undefined;
       if (
         actorPacketRelay.routerChannelId !== undefined &&
-        received.routingId !== null &&
-        received.routingId !== undefined
+        received.routingId !== null
       ) {
         remoteBoundSessionTarget = {
           routerChannelId: actorPacketRelay.routerChannelId,
@@ -1397,6 +1395,11 @@ class ZLinkSpotActorJoinDispatch {
           readonly sourceSpotRid?: unknown;
           readonly sourceSpotRidHex?: unknown;
           readonly routerChannelId?: unknown;
+          readonly boundSessionRouterChannelId?: unknown;
+          readonly boundSessionTargetNodeRid?: unknown;
+          readonly boundSessionTargetNodeRidHex?: unknown;
+          readonly boundSessionSpotRid?: unknown;
+          readonly boundSessionSpotRidHex?: unknown;
           readonly request?: unknown;
         };
         if (
@@ -1413,13 +1416,15 @@ class ZLinkSpotActorJoinDispatch {
           actorType: payload.actorType,
           actorRef: decodeRemoteActorRef(payload.actorNodeRid, payload.actorNodeRidHex, payload.actorId, payload.actorGeneration),
           remoteBoundSessionTarget: decodeRemoteBoundSessionTarget(
-            payload.routerChannelId,
-            received.routingId === null || received.routingId === undefined
-              ? payload.actorNodeRid
-              : String(received.routingId),
-            undefined,
-            payload.sourceSpotRid ?? received.spotRid ?? undefined,
-            payload.sourceSpotRidHex
+            payload.boundSessionRouterChannelId ?? payload.routerChannelId,
+            payload.boundSessionTargetNodeRid ?? (
+              received.routingId === null
+                ? payload.actorNodeRid
+                : String(received.routingId)
+            ),
+            payload.boundSessionTargetNodeRidHex,
+            payload.boundSessionSpotRid ?? payload.sourceSpotRid ?? received.spotRid ?? undefined,
+            payload.boundSessionSpotRidHex ?? payload.sourceSpotRidHex
           ),
           request: BindingMessage.from(Buffer.from(payload.request, 'base64'))
         };
@@ -1455,13 +1460,19 @@ class ZLinkSpotActorJoinDispatch {
           (payload as { actorGeneration?: unknown }).actorGeneration
         ),
         remoteBoundSessionTarget: decodeRemoteBoundSessionTarget(
-          (payload as { routerChannelId?: unknown }).routerChannelId,
-          received.routingId === null || received.routingId === undefined
-            ? (payload as { actorNodeRid?: unknown }).actorNodeRid
-            : String(received.routingId),
-          undefined,
-          (payload as { sourceSpotRid?: unknown }).sourceSpotRid ?? received.spotRid ?? undefined,
-          (payload as { sourceSpotRidHex?: unknown }).sourceSpotRidHex
+          (payload as { boundSessionRouterChannelId?: unknown }).boundSessionRouterChannelId
+            ?? (payload as { routerChannelId?: unknown }).routerChannelId,
+          (payload as { boundSessionTargetNodeRid?: unknown }).boundSessionTargetNodeRid
+            ?? (received.routingId === null
+              ? (payload as { actorNodeRid?: unknown }).actorNodeRid
+              : String(received.routingId)),
+          (payload as { boundSessionTargetNodeRidHex?: unknown }).boundSessionTargetNodeRidHex,
+          (payload as { boundSessionSpotRid?: unknown }).boundSessionSpotRid
+            ?? (payload as { sourceSpotRid?: unknown }).sourceSpotRid
+            ?? received.spotRid
+            ?? undefined,
+          (payload as { boundSessionSpotRidHex?: unknown }).boundSessionSpotRidHex
+            ?? (payload as { sourceSpotRidHex?: unknown }).sourceSpotRidHex
         ),
         request: BindingMessage.from(Buffer.from(payload.request, 'base64'))
       };
@@ -1491,13 +1502,19 @@ class ZLinkSpotActorJoinDispatch {
             (header as { actorGeneration?: unknown }).actorGeneration
           ),
           remoteBoundSessionTarget: decodeRemoteBoundSessionTarget(
-            (header as { routerChannelId?: unknown }).routerChannelId,
-            received.routingId === null || received.routingId === undefined
-              ? (header as { actorNodeRid?: unknown }).actorNodeRid
-              : String(received.routingId),
-            undefined,
-            (header as { sourceSpotRid?: unknown }).sourceSpotRid ?? received.spotRid ?? undefined,
-            (header as { sourceSpotRidHex?: unknown }).sourceSpotRidHex
+            (header as { boundSessionRouterChannelId?: unknown }).boundSessionRouterChannelId
+              ?? (header as { routerChannelId?: unknown }).routerChannelId,
+            (header as { boundSessionTargetNodeRid?: unknown }).boundSessionTargetNodeRid
+              ?? (received.routingId === null
+                ? (header as { actorNodeRid?: unknown }).actorNodeRid
+                : String(received.routingId)),
+            (header as { boundSessionTargetNodeRidHex?: unknown }).boundSessionTargetNodeRidHex,
+            (header as { boundSessionSpotRid?: unknown }).boundSessionSpotRid
+              ?? (header as { sourceSpotRid?: unknown }).sourceSpotRid
+              ?? received.spotRid
+              ?? undefined,
+            (header as { boundSessionSpotRidHex?: unknown }).boundSessionSpotRidHex
+              ?? (header as { sourceSpotRidHex?: unknown }).sourceSpotRidHex
           ),
           request: BindingMessage.from(Buffer.from(parts[1].data()))
         };
@@ -2475,7 +2492,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       if (returnResponse || this.options.actorResponseSender === undefined) {
         return response;
       }
-      await this.options.actorResponseSender?.(
+      await this.options.actorResponseSender(
         actor,
         header.name,
         header.requestSeq,

@@ -37,6 +37,32 @@ public sealed partial class StreamConnectorTests
         Assert.Equal("abc", decoded.Metadata.Get("traceId"));
     }
 
+    // MFLOW-009: correlation id is a first-class header trailer (flag 0x08), wire layout
+    // = after metadata, u8 length + UTF-8 bytes. Round-trips and is byte-exact.
+    [Fact]
+    public void HeaderProtocolRoundTripsCorrelationIdAfterMetadata()
+    {
+        var codec = ZlinkStreamDefaultCodecFactory.Header();
+        var source = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Request,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.HasRequestSeq,
+            new ZlinkStreamRequestSeq(7),
+            "order.place",
+            ZlinkStreamMetadata.Empty.With("k", "v"),
+            "a1b2");
+
+        var encoded = codec.Encode(source);
+        var decoded = codec.Decode(encoded);
+
+        Assert.Equal("a1b2", decoded.CorrelationId);
+        Assert.True(decoded.Flags.HasFlag(ZlinkStreamHeaderFlags.HasCorrelationId));
+
+        var span = encoded.Span;
+        Assert.Equal((byte)4, span[^5]);
+        Assert.Equal("a1b2", System.Text.Encoding.UTF8.GetString(span[^4..]));
+    }
+
     [Fact]
     public void HeaderProtocolRejectsUnknownFlag()
     {

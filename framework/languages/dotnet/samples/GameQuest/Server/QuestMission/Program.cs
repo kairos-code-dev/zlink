@@ -7,6 +7,7 @@ using GameQuest.Shared;
 using GameQuest.Server.Configuration;
 using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Dispatch;
 
 namespace GameQuest.QuestMission;
 
@@ -30,7 +31,11 @@ internal static class Program
         builder.Services.AddScoped<QuestEventProcessor>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.ConfigureDispatch().SetMessageDispatchErrorObserver<GameQuestDispatchErrorObserver>();
+            options.ConfigureDispatch()
+                .SetMessageDispatchErrorObserver<GameQuestDispatchErrorObserver>()
+                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .TraceLogFile(SampleFlowLog.Path(missionName))
+                .TraceNodeId(missionName);
             options.Codecs.AddJson();
             options.AddHandlersFromAssemblyOf(typeof(Program));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);

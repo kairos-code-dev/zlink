@@ -4,12 +4,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 export SHOPPINGMALL_LOG_DIR="${SHOPPINGMALL_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "$SHOPPINGMALL_LOG_DIR"
+rm -f "$SHOPPINGMALL_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_shoppingmall_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_shoppingmall_client" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
 fi
 PIDS=()
+RUN_DIR="$(mktemp -d)"
+LOG_DIR="$RUN_DIR/logs"
+mkdir -p "$LOG_DIR" "$SHOPPINGMALL_LOG_DIR"
 cleanup() {
   for pid in "${PIDS[@]}"; do
     kill "${pid}" >/dev/null 2>&1 || true
@@ -34,7 +39,7 @@ export SHOPPINGMALL_REGISTRY_PUB_ENDPOINT
 export SHOPPINGMALL_REGISTRY_ROUTER_ENDPOINT
 export SHOPPINGMALL_WORKFLOW_ENDPOINT
 
-"${BIN_DIR}/sample_cpp_framework_shoppingmall_server" &
+"${BIN_DIR}/sample_cpp_framework_shoppingmall_server" >"$LOG_DIR/server.log" 2>&1 &
 PIDS+=("$!")
 
 endpoint_port="${SHOPPINGMALL_WORKFLOW_ENDPOINT##*:}"
@@ -46,4 +51,9 @@ for _ in $(seq 1 100); do
 done
 
 sleep 1
-"${BIN_DIR}/sample_cpp_framework_shoppingmall_client"
+"${BIN_DIR}/sample_cpp_framework_shoppingmall_client" >"$LOG_DIR/client.log" 2>&1 || {
+  cat "$LOG_DIR/client.log" >&2
+  cat "$LOG_DIR/server.log" >&2
+  exit 1
+}
+grep -Rq "message flow" "$SHOPPINGMALL_LOG_DIR"

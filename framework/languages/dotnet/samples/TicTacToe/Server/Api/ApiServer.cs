@@ -1,6 +1,7 @@
 using TicTacToe.Server.Api.Handlers;
 using TicTacToe.Server.Configuration;
 using Zlink.Framework.Contracts.Codecs.Json;
+using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.AspNetCore;
 
 namespace TicTacToe.Server.Api;
@@ -15,7 +16,11 @@ internal sealed class ApiServer(SampleSettings settings)
         builder.Services.AddSingleton(settings);
         builder.Services.AddZLinkFramework(options =>
         {
-            options.ConfigureDispatch().SetMessageDispatchErrorObserver<TicTacToeDispatchErrorObserver>();
+            options.ConfigureDispatch()
+                .SetMessageDispatchErrorObserver<TicTacToeDispatchErrorObserver>()
+                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
+                .TraceNodeId(settings.InstanceName);
             options.Codecs.AddJson();
 
             options.AddClientServerChannel(SampleChannels.Api)

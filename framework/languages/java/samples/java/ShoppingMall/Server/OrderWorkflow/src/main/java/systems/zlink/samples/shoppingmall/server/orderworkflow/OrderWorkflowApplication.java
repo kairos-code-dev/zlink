@@ -5,6 +5,7 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.shoppingmall.server.configuration.CommerceStore;
@@ -40,6 +41,10 @@ public final class OrderWorkflowApplication {
     ZLinkFrameworkConfigurer orderWorkflowFramework(OrderWorkflowInstanceOptions options) {
         return configurer -> {
             configurer.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            configurer.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile(System.getenv().getOrDefault("SHOPPINGMALL_LOG_DIR", "logs") + "/flow-" + options.instanceId() + ".log")
+                .traceNodeId(options.instanceId());
             configurer.codecs().addJson();
             configurer.addHandlersFromPackageOf(OrderWorkflowApplication.class);
             configurer.addClientServerChannel(SampleNames.workflowChannel(options.instanceId()))

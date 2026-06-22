@@ -4,12 +4,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "$DELIVERYDISPATCH_LOG_DIR"
+rm -f "$DELIVERYDISPATCH_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_deliverydispatch_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_deliverydispatch_client" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
 fi
 PIDS=()
+RUN_DIR="$(mktemp -d)"
+LOG_DIR="$RUN_DIR/logs"
+mkdir -p "$LOG_DIR" "$DELIVERYDISPATCH_LOG_DIR"
 cleanup() {
   for pid in "${PIDS[@]}"; do
     kill "${pid}" >/dev/null 2>&1 || true
@@ -35,7 +40,7 @@ export DELIVERYDISPATCH_REGISTRY_ROUTER_ENDPOINT
 export DELIVERYDISPATCH_DISPATCH_ENDPOINT
 endpoint_port="${DELIVERYDISPATCH_DISPATCH_ENDPOINT##*:}"
 
-"${BIN_DIR}/sample_cpp_framework_deliverydispatch_server" &
+"${BIN_DIR}/sample_cpp_framework_deliverydispatch_server" >"$LOG_DIR/server.log" 2>&1 &
 PIDS+=("$!")
 
 for _ in $(seq 1 100); do
@@ -46,4 +51,9 @@ for _ in $(seq 1 100); do
 done
 
 sleep 1
-"${BIN_DIR}/sample_cpp_framework_deliverydispatch_client"
+"${BIN_DIR}/sample_cpp_framework_deliverydispatch_client" >"$LOG_DIR/client.log" 2>&1 || {
+  cat "$LOG_DIR/client.log" >&2
+  cat "$LOG_DIR/server.log" >&2
+  exit 1
+}
+grep -Rq "message flow" "$DELIVERYDISPATCH_LOG_DIR"

@@ -5,6 +5,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
@@ -28,6 +30,11 @@ class SessionApplication {
     fun sessionFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            options.configureDispatch {
+                messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                traceLogFile((System.getenv("DELIVERYDISPATCH_LOG_DIR") ?: "logs") + "/flow-session.log")
+                traceNodeId("session")
+            }
             options.codecs().addJson()
             options.addHandlersFromPackageOf(SessionApplication::class.java)
             options.addClientServerChannel(SampleNames.TrackingChannel)

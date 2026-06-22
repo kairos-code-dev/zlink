@@ -7,6 +7,7 @@ using TicTacToe.Server.Play.Infrastructure.ZLink;
 using TicTacToe.Server.Play.Application.GameCreation;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Codecs.Json;
+using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.AspNetCore;
 
 namespace TicTacToe.Server.Play;
@@ -25,7 +26,11 @@ internal sealed class PlayServer(SampleSettings settings)
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.ConfigureDispatch().SetMessageDispatchErrorObserver<TicTacToeDispatchErrorObserver>();
+            options.ConfigureDispatch()
+                .SetMessageDispatchErrorObserver<TicTacToeDispatchErrorObserver>()
+                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .TraceLogFile(SampleFlowLog.Path(settings.InstanceName))
+                .TraceNodeId(settings.InstanceName);
             options.AddHandlersFromAssemblyOf(typeof(PlayServer));
             options.Codecs.AddJson();
             options.AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor);

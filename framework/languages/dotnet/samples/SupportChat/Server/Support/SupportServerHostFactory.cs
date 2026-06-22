@@ -7,6 +7,7 @@ using SupportChat.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Dispatch;
 
 namespace SupportChat.Server.Support;
 
@@ -25,7 +26,11 @@ public static class SupportServerHostFactory
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.ConfigureDispatch().SetMessageDispatchErrorObserver<SupportChatDispatchErrorObserver>();
+            options.ConfigureDispatch()
+                .SetMessageDispatchErrorObserver<SupportChatDispatchErrorObserver>()
+                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .TraceLogFile(SampleFlowLog.Path("support"))
+                .TraceNodeId("support");
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
             options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
@@ -54,7 +59,6 @@ public static class SupportServerHostFactory
                         var pubsub = spot.EnablePubSub(topology.SupportEntrySpotEndpoint);
 
                     }
-                    spot.AttachChannelClient(SampleNames.ApiChannel);
                     spot.AddEntrySpot<SupportEntrySpot>();
 
                 }

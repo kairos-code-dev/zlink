@@ -4,7 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
-mkdir -p "${LOG_DIR}"
+export BINGO_LOG_DIR="${BINGO_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "${LOG_DIR}" "${BINGO_LOG_DIR}"
+rm -f "${BINGO_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER=""
@@ -203,7 +205,7 @@ wait_port session-b-router "${BINGO_SESSION_B_ROUTER_ENDPOINT}"
 wait_port session-b-stream "${BINGO_SESSION_B_STREAM_ENDPOINT}"
 wait_port session-b-play-route "${BINGO_SESSION_B_PLAY_ROUTE_ENDPOINT}"
 
-sleep "${BINGO_STARTUP_SETTLE_SECONDS:-2}"
+sleep "${BINGO_STARTUP_SETTLE_SECONDS:-5}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/Bingo.Client.csproj" -- \
   --stream-a-endpoint "${BINGO_SESSION_A_STREAM_ENDPOINT}" \
@@ -223,3 +225,4 @@ require_log_count 1 "entry spot: actor left\\. actor=player-2" "${LOG_DIR}/play-
 require_log_count 1 "entry spot: actor destroy completed\\. actor=player-1" "${LOG_DIR}/play-a.log"
 require_log_count 1 "entry spot: actor destroy completed\\. actor=player-2" "${LOG_DIR}/play-a.log"
 require_log_count 0 "entry spot: actor destroy completed\\. actor=observer" "${LOG_DIR}/play-b.log"
+grep -Rq "message flow" "${BINGO_LOG_DIR}"

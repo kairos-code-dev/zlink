@@ -4,7 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
-mkdir -p "${LOG_DIR}"
+export SUPPORTCHAT_LOG_DIR="${SUPPORTCHAT_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "${LOG_DIR}" "${SUPPORTCHAT_LOG_DIR}"
+rm -f "${SUPPORTCHAT_LOG_DIR}"/*.log
 
 PIDS=()
 
@@ -163,4 +165,5 @@ dotnet run --no-build --project "${SCRIPT_DIR}/Client/SupportChat.Client.csproj"
 
 grep -q "support conversation: created" "${LOG_DIR}/support.log"
 grep -q "support conversation: actor joined" "${LOG_DIR}/support.log"
+grep -Rq "message flow" "${SUPPORTCHAT_LOG_DIR}"
 echo "supportchat-server-evidence=completed"

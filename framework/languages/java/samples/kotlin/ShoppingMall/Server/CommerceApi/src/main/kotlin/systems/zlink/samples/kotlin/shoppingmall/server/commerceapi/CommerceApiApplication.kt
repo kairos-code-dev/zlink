@@ -5,6 +5,8 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore
@@ -28,6 +30,11 @@ class CommerceApiApplication {
     fun commerceApiFramework(options: CommerceApiInstanceOptions): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { configurer ->
             configurer.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            configurer.configureDispatch {
+                messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                traceLogFile((System.getenv("SHOPPINGMALL_LOG_DIR") ?: "logs") + "/flow-${options.instanceId}.log")
+                traceNodeId(options.instanceId)
+            }
             configurer.codecs().addJson()
             configurer.addHandlersFromPackageOf(CommerceApiApplication::class.java)
 

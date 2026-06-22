@@ -14,7 +14,9 @@ redis_key_prefix="zlink:tictactoe:${RANDOM}:$$:room:"
 role_pattern='systems\.zlink\.samples\.tictactoe\.server\.Program|systems\.zlink\.samples\.tictactoe\.client\.Program'
 run_dir="$(mktemp -d)"
 log_dir="${run_dir}/logs"
-mkdir -p "${log_dir}"
+export TICTACTOE_LOG_DIR="${TICTACTOE_LOG_DIR:-$(pwd)/logs}"
+mkdir -p "${log_dir}" "${TICTACTOE_LOG_DIR}"
+rm -f "${TICTACTOE_LOG_DIR}"/*.log
 
 print_logs() {
   local status="$1"
@@ -51,6 +53,7 @@ kill_role_processes_forcibly() {
 
 cleanup() {
   local status="$?"
+  set +e
   print_logs "${status}"
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     local pid="${pids[$i]}"
@@ -98,6 +101,7 @@ cleanup() {
   else
     rm -rf "${run_dir}"
   fi
+  return "${status}"
 }
 trap cleanup EXIT
 
@@ -171,7 +175,7 @@ ports = []
 try:
     chosen = set()
     while len(reserved) < 15:
-        port = random.randint(20000, 32767)
+        port = random.randint(48000, 60999)
         if port in chosen:
             continue
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -188,6 +192,16 @@ finally:
     for sock in reserved:
         sock.close()
 PY
+}
+
+gradle_run() {
+  ../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
+}
+
+app_bin() {
+  local project_path="$1"
+  local app_name="$2"
+  printf '%s/build/install/%s/bin/%s' "${project_path}" "${app_name}" "${app_name}"
 }
 
 read -r api_a_http_port api_b_http_port api_a_channel_port api_b_channel_port play_a_channel_port play_b_channel_port play_a_stream_port play_b_stream_port play_a_spot_port play_b_spot_port play_a_route_port play_b_route_port play_a_pub_port play_b_pub_port redis_port < <(reserve_ports)
@@ -278,25 +292,28 @@ cp "${api_b_config}" "${play_b_config}"
 
 wait_endpoint redis "${redis_endpoint}"
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="play --config ${play_a_config}" >"${log_dir}/play-a.log" 2>&1 &
+gradle_run :Server:installDist :Client:installDist
+
+"$(app_bin Server Server)" play --config "${play_a_config}" >"${log_dir}/play-a.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/play-a.log" "Started Program"
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="play --config ${play_b_config}" >"${log_dir}/play-b.log" 2>&1 &
+"$(app_bin Server Server)" play --config "${play_b_config}" >"${log_dir}/play-b.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/play-b.log" "Started Program"
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="api --config ${api_a_config}" >"${log_dir}/api-a.log" 2>&1 &
+"$(app_bin Server Server)" api --config "${api_a_config}" >"${log_dir}/api-a.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/api-a.log" "Started Program"
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="api --config ${api_b_config}" >"${log_dir}/api-b.log" 2>&1 &
+"$(app_bin Server Server)" api --config "${api_b_config}" >"${log_dir}/api-b.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/api-b.log" "Started Program"
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Client:run --quiet --args="--api-url http://127.0.0.1:${api_a_http_port}" >"${log_dir}/client.log" 2>&1
+"$(app_bin Client Client)" --api-url "http://127.0.0.1:${api_a_http_port}" >"${log_dir}/client.log" 2>&1
 
 rg -q "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${log_dir}/client.log"
 rg -q "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
 rg -q "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" "${log_dir}/client.log"
 rg -q "tictactoe completed" "${log_dir}/client.log"
+grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"

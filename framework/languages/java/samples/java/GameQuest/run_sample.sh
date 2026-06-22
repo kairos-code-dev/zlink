@@ -7,8 +7,10 @@ pids=()
 role_pattern='systems\.zlink\.samples\.gamequest\.(server\.(registry|gameapi|questmission)\.Program|client\.Program)'
 log_dir="build/sample-logs"
 store_dir="build/sample-store"
-mkdir -p "${log_dir}" "${store_dir}"
+export GAMEQUEST_LOG_DIR="${GAMEQUEST_LOG_DIR:-$(pwd)/logs}"
+mkdir -p "${log_dir}" "${store_dir}" "${GAMEQUEST_LOG_DIR}"
 rm -f "${log_dir}"/*.log
+rm -f "${GAMEQUEST_LOG_DIR}"/*.log
 rm -f "${store_dir}"/*
 
 print_logs() {
@@ -46,6 +48,7 @@ kill_role_processes_forcibly() {
 
 cleanup() {
   local status="$?"
+  set +e
   print_logs "${status}"
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     local pid="${pids[$i]}"
@@ -79,6 +82,7 @@ cleanup() {
   for pid in "${pids[@]}"; do
     wait "${pid}" 2>/dev/null || true
   done
+  return "${status}"
 }
 trap cleanup EXIT
 
@@ -106,7 +110,7 @@ try:
     chosen = set()
     while len(reserved) < 14:
         host = "127.0.0.1"
-        port = random.randint(20000, 32767)
+        port = random.randint(48000, 60999)
         if port in chosen:
             continue
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -126,6 +130,12 @@ PY
 
 gradle_run() {
   ../../gradlew --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
+}
+
+app_bin() {
+  local project="$1"
+  local script="$2"
+  echo "${project}/build/install/${script}/bin/${script}"
 }
 
 build_framework_jars() {
@@ -159,41 +169,46 @@ export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} \
 -D${prefix}.storeDirectory=${PWD}/${store_dir}"
 
 build_framework_jars
-gradle_run classes
+gradle_run \
+  :Server:Registry:installDist \
+  :Server:QuestMission:installDist \
+  :Server:GameApi:installDist \
+  :Client:installDist
 
-gradle_run :Server:Registry:run >"${log_dir}/registry.log" 2>&1 &
+"$(app_bin Server/Registry Registry)" >"${log_dir}/registry.log" 2>&1 &
 pids+=("$!")
 wait_port "${registry_pub}"
 wait_port "${registry_router}"
 
-gradle_run :Server:QuestMission:run --args="--mission mission-a" >"${log_dir}/mission-a.log" 2>&1 &
+"$(app_bin Server/QuestMission QuestMission)" --mission mission-a >"${log_dir}/mission-a.log" 2>&1 &
 pids+=("$!")
 wait_port "${mission_a}"
 wait_port "${spot_a}"
 wait_port "${spot_a_router}"
 
-gradle_run :Server:QuestMission:run --args="--mission mission-b" >"${log_dir}/mission-b.log" 2>&1 &
+"$(app_bin Server/QuestMission QuestMission)" --mission mission-b >"${log_dir}/mission-b.log" 2>&1 &
 pids+=("$!")
 wait_port "${mission_b}"
 wait_port "${spot_b}"
 wait_port "${spot_b_router}"
 
-gradle_run :Server:GameApi:run --args="--api api-a" >"${log_dir}/api-a.log" 2>&1 &
+"$(app_bin Server/GameApi GameApi)" --api api-a >"${log_dir}/api-a.log" 2>&1 &
 pids+=("$!")
 wait_port "${fanout_a}"
 wait_port "${api_a}"
 wait_port "${stream_a}"
 
-gradle_run :Server:GameApi:run --args="--api api-b" >"${log_dir}/api-b.log" 2>&1 &
+"$(app_bin Server/GameApi GameApi)" --api api-b >"${log_dir}/api-b.log" 2>&1 &
 pids+=("$!")
 wait_port "${fanout_b}"
 wait_port "${api_b}"
 wait_port "${stream_b}"
 
-gradle_run :Client:run >"${log_dir}/client.log" 2>&1
+"$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1
 
 grep -q "gamequest mission processed" "${log_dir}/mission-a.log"
 grep -q "gamequest mission processed" "${log_dir}/mission-b.log"
 grep -q "gamequest evidence: passed=true" "${log_dir}/api-a.log"
 grep -q "gamequest=completed" "${log_dir}/client.log"
+grep -Rq "message flow" "${GAMEQUEST_LOG_DIR}"
 echo "gamequest-server-evidence=completed"

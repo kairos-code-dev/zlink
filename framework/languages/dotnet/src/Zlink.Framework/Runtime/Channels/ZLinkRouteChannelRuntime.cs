@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Messaging;
 
@@ -17,6 +18,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private readonly IZLinkBackendDiscovery? _discovery;
     private readonly ZLinkMessageFlowTracer _flow;
+    private readonly ZLinkCodecRegistryBuilder _codecs;
     private IZLinkBackendSpotRouteBridge? _spotRouteBridge;
     private Task? _receiveTask;
 
@@ -33,6 +35,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _registration = registration;
         _router = router;
         _discovery = discovery;
+        _codecs = frameworkRegistration.Codecs;
         _flow = new ZLinkMessageFlowTracer(
             frameworkRegistration.DispatchOptions,
             services,
@@ -52,7 +55,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                 registration.RouterChannelId,
                 router,
                 handlers,
-                new ZLinkRouteHandlerInvoker(services),
+                new ZLinkRouteHandlerInvoker(services, _codecs),
+                _codecs,
                 internalPackets ?? ZLinkNoRouteInternalPacketDispatcher.Instance,
                 new ZLinkDispatchErrorReporter(
                     frameworkRegistration.DispatchOptions,
@@ -119,7 +123,11 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             RouterChannelId,
             packetName,
             null);
-        var parts = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType() ?? typeof(TMessage));
+        var parts = ZLinkEnvelopeCodec.EncodeParts(
+            header,
+            message,
+            message?.GetType() ?? typeof(TMessage),
+            _codecs);
 
         if (_flow.Enabled(ZLinkMessageFlowPhase.Sent))
         {
@@ -171,7 +179,11 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
             RouterChannelId,
             packetName,
             timeout);
-        var parts = ZLinkEnvelopeCodec.EncodeParts(header, request, request?.GetType() ?? typeof(TRequest));
+        var parts = ZLinkEnvelopeCodec.EncodeParts(
+            header,
+            request,
+            request?.GetType() ?? typeof(TRequest),
+            _codecs);
 
         if (_flow.Enabled(ZLinkMessageFlowPhase.Sent))
         {
@@ -400,7 +412,8 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                         reply,
                         complete,
                         fail,
-                        "ZLink routed request"),
+                        "ZLink routed request",
+                        _codecs),
                     SendFlags.DontWait,
                     timeout),
                 cancellationToken)

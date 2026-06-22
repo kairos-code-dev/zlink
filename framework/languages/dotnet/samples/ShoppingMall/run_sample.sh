@@ -5,7 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
 STORE_DIR="${RUN_DIR}/store"
-mkdir -p "${LOG_DIR}" "${STORE_DIR}"
+export SHOPPINGMALL_LOG_DIR="${SHOPPINGMALL_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "${LOG_DIR}" "${STORE_DIR}" "${SHOPPINGMALL_LOG_DIR}"
+rm -f "${SHOPPINGMALL_LOG_DIR}"/*.log
 
 PIDS=()
 
@@ -180,4 +182,5 @@ dotnet run --no-build --project "${SCRIPT_DIR}/Client/ShoppingMall.Client.csproj
 grep -q "shoppingmall order: started" "${LOG_DIR}/workflow-a.log"
 grep -q "shoppingmall order: started" "${LOG_DIR}/workflow-b.log"
 grep -q "shoppingmall evidence:" "${LOG_DIR}/api-a.log"
+grep -Rq "message flow" "${SHOPPINGMALL_LOG_DIR}"
 echo "shoppingmall-server-evidence=completed"

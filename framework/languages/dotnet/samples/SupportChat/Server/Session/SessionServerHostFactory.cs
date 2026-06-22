@@ -3,6 +3,7 @@ using SupportChat.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Dispatch;
 
 namespace SupportChat.Server.Session;
 
@@ -16,7 +17,11 @@ public static class SessionServerHostFactory
         builder.Services.AddSingleton(topology);
         builder.Services.AddZLinkFramework(options =>
         {
-            options.ConfigureDispatch().SetMessageDispatchErrorObserver<SupportChatDispatchErrorObserver>();
+            options.ConfigureDispatch()
+                .SetMessageDispatchErrorObserver<SupportChatDispatchErrorObserver>()
+                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .TraceLogFile(SampleFlowLog.Path("session"))
+                .TraceNodeId("session");
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);

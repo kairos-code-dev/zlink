@@ -3,6 +3,7 @@ using DeliveryDispatch.Shared.Contracts;
 using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Dispatch;
 
 var topology = SampleTopology.Create();
 var builder = WebApplication.CreateBuilder(args);
@@ -11,7 +12,11 @@ builder.Services.AddSingleton(topology);
 builder.Services.AddSingleton<EvidenceStore>();
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ConfigureDispatch().SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>();
+    options.ConfigureDispatch()
+        .SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>()
+        .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+        .TraceLogFile(SampleFlowLog.Path("dispatch-api"))
+        .TraceNodeId("dispatch-api");
     options.Codecs.AddJson();
     options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
     {

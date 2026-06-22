@@ -4,6 +4,7 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
@@ -33,6 +34,10 @@ public final class DispatchCenterApplication {
     ZLinkFrameworkConfigurer dispatchCenterFramework() {
         return options -> {
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            options.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile(System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") + "/flow-dispatch-center.log")
+                .traceNodeId("dispatch-center");
             options.codecs().addJson();
             options.addHandlersFromPackageOf(DispatchCenterApplication.class);
             options.addClientServerChannel(SampleNames.DispatchChannel)

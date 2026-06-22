@@ -5,7 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
 WORK_DIR="${RUN_DIR}/work"
-mkdir -p "${LOG_DIR}" "${WORK_DIR}"
+export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${DELIVERYDISPATCH_LOG_DIR}"
+rm -f "${DELIVERYDISPATCH_LOG_DIR}"/*.log
 
 PIDS=()
 
@@ -185,3 +187,4 @@ dotnet run --no-build --project "${SCRIPT_DIR}/Client/DeliveryDispatch.Client.cs
 
 grep -q "deliverydispatch tracking: status" "${LOG_DIR}/tracking.log"
 grep -q "deliverydispatch session: bound customer" "${LOG_DIR}/session.log"
+grep -Rq "message flow" "${DELIVERYDISPATCH_LOG_DIR}"

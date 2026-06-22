@@ -9,6 +9,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -38,6 +40,11 @@ class SupportServerApplication {
     fun supportFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            options.configureDispatch {
+                messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                traceLogFile((System.getenv("SUPPORTCHAT_LOG_DIR") ?: "logs") + "/flow-support.log")
+                traceNodeId("support")
+            }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.addHandlersFromPackageOf(SupportServerApplication::class.java)
             options.addClientServerChannel(SampleNames.SupportChannel)
@@ -57,7 +64,6 @@ class SupportServerApplication {
             node.enableRouter(SampleTopology.SupportSpotRouterEndpoint)
                 .setRouterRoutingId(RoutingId.from(SampleTopology.SupportRid))
             node.enablePubSub(SampleTopology.SupportSpotEndpoint)
-            node.attachChannelClient(SampleNames.ApiChannel)
             node.acceptSpotRoutesFromChannel(SampleNames.SupportRouteChannel)
             node.addEntrySpot(SupportEntrySpot::class.java)
             node.addSpotFactory(ConversationSpot::class.java)

@@ -4,7 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
-mkdir -p "${LOG_DIR}"
+export TICTACTOE_LOG_DIR="${TICTACTOE_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "${LOG_DIR}" "${TICTACTOE_LOG_DIR}"
+rm -f "${TICTACTOE_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER_ID=""
@@ -243,3 +245,4 @@ if grep -R -q "dispatch-error" "${LOG_DIR}"; then
   grep -R -n "dispatch-error" "${LOG_DIR}" >&2 || true
   exit 1
 fi
+grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"

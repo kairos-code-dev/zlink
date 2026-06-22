@@ -7,8 +7,10 @@ pids=()
 role_pattern='systems\.zlink\.samples\.kotlin\.shoppingmall\.(server\.(registry|commerceapi|orderworkflow)\.ProgramKt|client\.ProgramKt)'
 log_dir="build/sample-logs"
 store_dir="build/sample-store"
-mkdir -p "${log_dir}" "${store_dir}"
+export SHOPPINGMALL_LOG_DIR="${SHOPPINGMALL_LOG_DIR:-$(pwd)/logs}"
+mkdir -p "${log_dir}" "${store_dir}" "${SHOPPINGMALL_LOG_DIR}"
 rm -f "${log_dir}"/*.log
+rm -f "${SHOPPINGMALL_LOG_DIR}"/*.log
 rm -f "${store_dir}"/*
 
 print_logs() {
@@ -46,6 +48,7 @@ kill_role_processes_forcibly() {
 
 cleanup() {
   local status="$?"
+  set +e
   print_logs "${status}"
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     local pid="${pids[$i]}"
@@ -79,6 +82,7 @@ cleanup() {
   for pid in "${pids[@]}"; do
     wait "${pid}" 2>/dev/null || true
   done
+  return "${status}"
 }
 trap cleanup EXIT
 
@@ -105,7 +109,7 @@ try:
     chosen = set()
     while len(reserved) < 6:
         host = "127.0.0.1"
-        port = random.randint(20000, 32767)
+        port = random.randint(48000, 60999)
         key = (host, port)
         if key in chosen:
             continue
@@ -130,6 +134,12 @@ PY
 
 gradle_run() {
   ../../gradlew --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
+}
+
+app_bin() {
+  local project_path="$1"
+  local app_name="$2"
+  printf '%s/build/install/%s/bin/%s' "${project_path}" "${app_name}" "${app_name}"
 }
 
 build_framework_jars() {
@@ -162,32 +172,37 @@ export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} \
 -D${prefix}.storeDir=${PWD}/${store_dir}"
 
 build_framework_jars
-gradle_run classes
+gradle_run \
+  :Server:Registry:installDist \
+  :Server:OrderWorkflow:installDist \
+  :Server:CommerceApi:installDist \
+  :Client:installDist
 
-gradle_run :Server:Registry:run >"${log_dir}/registry.log" 2>&1 &
+"$(app_bin Server/Registry Registry)" >"${log_dir}/registry.log" 2>&1 &
 pids+=("$!")
 wait_port "${registry_pub_host}" "${registry_pub_port}"
 wait_port "${registry_router_host}" "${registry_router_port}"
 
-gradle_run :Server:OrderWorkflow:run --args="--instance workflow-a" >"${log_dir}/workflow-a.log" 2>&1 &
+"$(app_bin Server/OrderWorkflow OrderWorkflow)" --instance workflow-a >"${log_dir}/workflow-a.log" 2>&1 &
 pids+=("$!")
 wait_port "${workflow_a_host}" "${workflow_a_port}"
 
-gradle_run :Server:OrderWorkflow:run --args="--instance workflow-b" >"${log_dir}/workflow-b.log" 2>&1 &
+"$(app_bin Server/OrderWorkflow OrderWorkflow)" --instance workflow-b >"${log_dir}/workflow-b.log" 2>&1 &
 pids+=("$!")
 wait_port "${workflow_b_host}" "${workflow_b_port}"
 
-gradle_run :Server:CommerceApi:run --args="--instance api-a" >"${log_dir}/api-a.log" 2>&1 &
+"$(app_bin Server/CommerceApi CommerceApi)" --instance api-a >"${log_dir}/api-a.log" 2>&1 &
 pids+=("$!")
 wait_port "${commerce_a_host}" "${commerce_a_port}"
 
-gradle_run :Server:CommerceApi:run --args="--instance api-b" >"${log_dir}/api-b.log" 2>&1 &
+"$(app_bin Server/CommerceApi CommerceApi)" --instance api-b >"${log_dir}/api-b.log" 2>&1 &
 pids+=("$!")
 wait_port "${commerce_b_host}" "${commerce_b_port}"
 
-gradle_run :Client:run >"${log_dir}/client.log" 2>&1
+"$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1
 
 grep -q "shoppingmall order: started" "${log_dir}/workflow-a.log"
 grep -q "shoppingmall order: started" "${log_dir}/workflow-b.log"
 grep -q "shoppingmall evidence:" "${log_dir}/api-a.log"
+grep -Rq "message flow" "${SHOPPINGMALL_LOG_DIR}"
 echo "shoppingmall-server-evidence=completed"

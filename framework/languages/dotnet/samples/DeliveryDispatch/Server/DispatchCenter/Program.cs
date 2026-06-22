@@ -2,6 +2,7 @@ using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Server.DispatchCenter;
 using DeliveryDispatch.Shared.Contracts;
 using Zlink.Framework.Contracts.Codecs.Json;
+using Zlink.Framework.Contracts.Dispatch;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
@@ -15,7 +16,11 @@ builder.Services.AddSingleton<DispatchWorkQueue>();
 builder.Services.AddHostedService<DispatchWorker>();
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ConfigureDispatch().SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>();
+    options.ConfigureDispatch()
+        .SetMessageDispatchErrorObserver<DeliveryDispatchErrorObserver>()
+        .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+        .TraceLogFile(SampleFlowLog.Path("dispatch-center"))
+        .TraceNodeId("dispatch-center");
     options.AddHandlersFromAssemblyOf(typeof(AssignDeliveryHandler));
     options.Codecs.AddJson();
     options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);

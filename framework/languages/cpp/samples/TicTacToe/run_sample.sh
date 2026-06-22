@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export TICTACTOE_LOG_DIR="${TICTACTOE_LOG_DIR:-$SCRIPT_DIR/logs}"
+mkdir -p "$TICTACTOE_LOG_DIR"
+rm -f "$TICTACTOE_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
 
@@ -231,6 +233,7 @@ wait_grep "observer-win-milestone=verified actor=player-x wins=100 receivingSpot
 wait_grep "tictactoe completed" "$LOG_DIR/client.log"
 wait_grep "actor: LeaveGameReq completed. actor=player-x" "$LOG_DIR/play-a.log"
 wait_grep "actor: LeaveGameReq completed. actor=player-o" "$LOG_DIR/play-a.log"
+grep -Rq "message flow" "$TICTACTOE_LOG_DIR"
 
 cleanup
 trap - EXIT

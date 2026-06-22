@@ -6,8 +6,10 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 pids=()
 role_pattern='systems\.zlink\.samples\.kotlin\.supportchat\.(server\.(registry|api|support|session)\.Program|client\.Program|probe\.Program)'
 log_dir="build/sample-logs"
-mkdir -p "${log_dir}"
+export SUPPORTCHAT_LOG_DIR="${SUPPORTCHAT_LOG_DIR:-$(pwd)/logs}"
+mkdir -p "${log_dir}" "${SUPPORTCHAT_LOG_DIR}"
 rm -f "${log_dir}"/*.log
+rm -f "${SUPPORTCHAT_LOG_DIR}"/*.log
 
 print_logs() {
   local status="$1"
@@ -24,26 +26,27 @@ print_logs() {
 descendants() {
   local pid="$1"
   local child
-  pgrep -P "${pid}" 2>/dev/null | while read -r child; do
+  (pgrep -P "${pid}" 2>/dev/null || true) | while read -r child; do
     descendants "${child}"
     echo "${child}"
   done
 }
 
 kill_role_processes() {
-  pgrep -f "${role_pattern}" 2>/dev/null | while read -r pid; do
+  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
     kill "${pid}" >/dev/null 2>&1 || true
   done
 }
 
 kill_role_processes_forcibly() {
-  pgrep -f "${role_pattern}" 2>/dev/null | while read -r pid; do
+  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
     kill -9 "${pid}" >/dev/null 2>&1 || true
   done
 }
 
 cleanup() {
   local status="$?"
+  set +e
   print_logs "${status}"
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     local pid="${pids[$i]}"
@@ -83,6 +86,7 @@ cleanup() {
   for pid in "${pids[@]}"; do
     wait "${pid}" 2>/dev/null || true
   done
+  return "${status}"
 }
 trap cleanup EXIT
 
@@ -100,6 +104,20 @@ wait_port() {
   return 1
 }
 
+wait_log_contains() {
+  local log_file="$1"
+  local pattern="$2"
+  local deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
+    if [[ -f "${log_file}" ]] && grep -q "${pattern}" "${log_file}"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${log_file} to contain ${pattern}" >&2
+  return 1
+}
+
 reserve_ports() {
   python3 - <<'PY'
 import random
@@ -109,7 +127,7 @@ try:
     chosen = set()
     while len(reserved) < 11:
         host = "127.0.0.1"
-        port = random.randint(20000, 32767)
+        port = random.randint(48000, 60999)
         key = (host, port)
         if key in chosen:
             continue
@@ -134,6 +152,12 @@ PY
 
 gradle_run() {
   ../../gradlew --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
+}
+
+app_bin() {
+  local project_path="$1"
+  local app_name="$2"
+  printf '%s/build/install/%s/bin/%s' "${project_path}" "${app_name}" "${app_name}"
 }
 
 build_framework_jars() {
@@ -174,27 +198,39 @@ stream_port="${stream_endpoint##*:}"
 export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dzlink.samples.supportchat.registryPubEndpoint=tcp://${registry_pub_host}:${registry_pub_port} -Dzlink.samples.supportchat.registryRouterEndpoint=tcp://${registry_router_host}:${registry_router_port} -Dzlink.samples.supportchat.apiChannelEndpoint=tcp://${api_host}:${api_port} -Dzlink.samples.supportchat.supportChannelEndpoint=tcp://${support_channel_host}:${support_channel_port} -Dzlink.samples.supportchat.sessionSpotEndpoint=tcp://${session_spot_host}:${session_spot_port} -Dzlink.samples.supportchat.sessionRouterEndpoint=tcp://${session_router_host}:${session_router_port} -Dzlink.samples.supportchat.supportSpotEndpoint=tcp://${support_spot_host}:${support_spot_port} -Dzlink.samples.supportchat.supportSpotRouterEndpoint=tcp://${support_router_host}:${support_router_port} -Dzlink.samples.supportchat.sessionRouteEndpoint=tcp://${session_route_host}:${session_route_port} -Dzlink.samples.supportchat.supportRouteEndpoint=tcp://${support_route_host}:${support_route_port} -Dzlink.samples.supportchat.streamEndpoint=tcp://${stream_host}:${stream_port}"
 
 build_framework_jars
-gradle_run classes
+gradle_run \
+  :Server:Registry:installDist \
+  :Server:Session:installDist \
+  :Server:Api:installDist \
+  :Server:Support:installDist \
+  :Probe:installDist \
+  :Client:installDist
 
-gradle_run :Server:Registry:run >"${log_dir}/registry.log" 2>&1 &
+"$(app_bin Server/Registry Registry)" >"${log_dir}/registry.log" 2>&1 &
 pids+=("$!")
 wait_port "${registry_pub_host}" "${registry_pub_port}"
 wait_port "${registry_router_host}" "${registry_router_port}"
-gradle_run :Server:Session:run >"${log_dir}/session.log" 2>&1 &
+wait_log_contains "${log_dir}/registry.log" "Started Program"
+"$(app_bin Server/Session Session)" >"${log_dir}/session.log" 2>&1 &
 pids+=("$!")
 wait_port "${session_route_host}" "${session_route_port}"
 wait_port "${session_spot_host}" "${session_spot_port}"
 wait_port "${session_router_host}" "${session_router_port}"
 wait_port "${stream_host}" "${stream_port}"
-gradle_run :Server:Api:run >"${log_dir}/api.log" 2>&1 &
+wait_log_contains "${log_dir}/session.log" "Started Program"
+"$(app_bin Server/Api Api)" >"${log_dir}/api.log" 2>&1 &
 pids+=("$!")
 wait_port "${api_host}" "${api_port}"
-gradle_run :Server:Support:run >"${log_dir}/support.log" 2>&1 &
+wait_log_contains "${log_dir}/api.log" "Started Program"
+"$(app_bin Server/Support Support)" >"${log_dir}/support.log" 2>&1 &
 pids+=("$!")
 wait_port "${support_channel_host}" "${support_channel_port}"
 wait_port "${support_route_host}" "${support_route_port}"
 wait_port "${support_router_host}" "${support_router_port}"
 wait_port "${support_spot_host}" "${support_spot_port}"
+wait_log_contains "${log_dir}/support.log" "Started Program"
+sleep 2
 
-gradle_run :Probe:run >"${log_dir}/probe.log" 2>&1
-gradle_run :Client:run >"${log_dir}/client.log" 2>&1
+"$(app_bin Probe Probe)" >"${log_dir}/probe.log" 2>&1
+"$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1
+grep -Rq "message flow" "${SUPPORTCHAT_LOG_DIR}"

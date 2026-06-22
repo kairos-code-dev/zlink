@@ -5,6 +5,7 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
@@ -42,6 +43,10 @@ public final class GameApiApplication {
         String apiName = options.apiName();
         return configurer -> {
             configurer.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint);
+            configurer.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile(System.getenv().getOrDefault("GAMEQUEST_LOG_DIR", "logs") + "/flow-" + apiName + ".log")
+                .traceNodeId(apiName);
             configurer.codecs().addJson();
             configurer.addHandlersFromPackageOf(GameApiApplication.class);
 

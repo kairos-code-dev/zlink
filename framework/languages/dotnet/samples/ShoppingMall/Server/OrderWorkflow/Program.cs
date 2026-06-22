@@ -7,6 +7,7 @@ using ShoppingMall.Server.Shared.Store;
 using ShoppingMall.Server.Configuration;
 using ShoppingMall.Shared.Contracts;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Dispatch;
 
 namespace ShoppingMall.Server.OrderWorkflow;
 
@@ -32,7 +33,11 @@ internal static class Program
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.ConfigureDispatch().SetMessageDispatchErrorObserver<ShoppingMallDispatchErrorObserver>();
+            options.ConfigureDispatch()
+                .SetMessageDispatchErrorObserver<ShoppingMallDispatchErrorObserver>()
+                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .TraceLogFile(SampleFlowLog.Path(instance.InstanceId))
+                .TraceNodeId(instance.InstanceId);
             options.Codecs.AddJson();
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {

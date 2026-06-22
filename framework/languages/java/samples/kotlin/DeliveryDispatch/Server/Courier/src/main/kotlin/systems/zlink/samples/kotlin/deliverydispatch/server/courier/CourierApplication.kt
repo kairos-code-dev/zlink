@@ -5,6 +5,8 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
@@ -27,6 +29,11 @@ class CourierApplication {
     fun courierFramework(options: CourierOptions): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { configurer ->
             configurer.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            configurer.configureDispatch {
+                messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                traceLogFile((System.getenv("DELIVERYDISPATCH_LOG_DIR") ?: "logs") + "/flow-${options.courierId}.log")
+                traceNodeId(options.courierId)
+            }
             configurer.codecs().addJson()
             configurer.addClientServerChannel(SampleNames.courierChannel(options.courierId))
                 .enableServer(SampleTopology.courierEndpoint(options.courierId))

@@ -7,8 +7,10 @@ pids=()
 redis_container_id=""
 role_pattern='systems\.zlink\.samples\.kotlin\.bingo\.(server\.(registry|api|play|session)\.ProgramKt|client\.ProgramKt)'
 log_dir="build/sample-logs"
-mkdir -p "${log_dir}"
+export BINGO_LOG_DIR="${BINGO_LOG_DIR:-$(pwd)/logs}"
+mkdir -p "${log_dir}" "${BINGO_LOG_DIR}"
 rm -f "${log_dir}"/*.log
+rm -f "${BINGO_LOG_DIR}"/*.log
 
 print_logs() {
   local status="$1"
@@ -25,20 +27,20 @@ print_logs() {
 descendants() {
   local pid="$1"
   local child
-  pgrep -P "${pid}" 2>/dev/null | while read -r child; do
+  (pgrep -P "${pid}" 2>/dev/null || true) | while read -r child; do
     descendants "${child}"
     echo "${child}"
   done
 }
 
 kill_role_processes() {
-  pgrep -f "${role_pattern}" 2>/dev/null | while read -r pid; do
+  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
     kill "${pid}" >/dev/null 2>&1 || true
   done
 }
 
 kill_role_processes_forcibly() {
-  pgrep -f "${role_pattern}" 2>/dev/null | while read -r pid; do
+  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
     kill -9 "${pid}" >/dev/null 2>&1 || true
   done
 }
@@ -88,6 +90,7 @@ cleanup() {
   if [[ -n "${redis_container_id}" ]]; then
     docker rm -f "${redis_container_id}" >/dev/null 2>&1 || true
   fi
+  return "${status}"
 }
 trap cleanup EXIT
 
@@ -114,7 +117,7 @@ try:
     chosen = set()
     while len(reserved) < 21:
         host = "127.0.0.1"
-        port = random.randint(20000, 32767)
+        port = random.randint(48000, 60999)
         key = (host, port)
         if key in chosen:
             continue
@@ -260,3 +263,4 @@ JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Client Client)" >"${log_di
 
 grep -q "bingo=completed" "${log_dir}/client.log"
 grep -q "stream-inbound sample=Bingo" "${log_dir}/client.log"
+grep -Rq "message flow" "${BINGO_LOG_DIR}"

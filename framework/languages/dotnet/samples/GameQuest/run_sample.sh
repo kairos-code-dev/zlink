@@ -5,7 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
 STORE_DIR="${RUN_DIR}/store"
-mkdir -p "${LOG_DIR}" "${STORE_DIR}"
+export GAMEQUEST_LOG_DIR="${GAMEQUEST_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "${LOG_DIR}" "${STORE_DIR}" "${GAMEQUEST_LOG_DIR}"
+rm -f "${GAMEQUEST_LOG_DIR}"/*.log
 
 PIDS=()
 
@@ -189,4 +191,5 @@ grep -q "gamequest player quest spot ready" "${LOG_DIR}/mission-a.log"
 grep -q "gamequest player quest spot ready" "${LOG_DIR}/mission-b.log"
 grep -q "QuestProgressReconciledEvent" "${STORE_DIR}/quest-events.json"
 curl -fsS -X POST "${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}/self-check/assert" | grep -q '"passed":true'
+grep -Rq "message flow" "${GAMEQUEST_LOG_DIR}"
 echo "gamequest-server-evidence=completed"

@@ -2,6 +2,7 @@ package systems.zlink.samples.tictactoe.server.play;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
@@ -22,6 +23,10 @@ public final class PlayServer {
     public static ZLinkFrameworkConfigurer configure(SampleSettings settings) {
         return options -> {
             SampleLogging.configure(settings, "play");
+            options.configureDispatch()
+                .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                .traceLogFile(SampleLogging.flowLogPath(settings.playSpotNodeRid()))
+                .traceNodeId(settings.playSpotNodeRid());
             options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
             options.addHandlersFromPackageOf(PlayServer.class);
             options.addActorFactory(SampleNames.PlayActor, PlayActorFactory.class);

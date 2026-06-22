@@ -4,6 +4,8 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.RedisSpotRemoteAddressResolver
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLogging
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
@@ -18,6 +20,11 @@ object PlayServer {
     fun configure(settings: SampleSettings): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             SampleLogging.configure(settings, "play")
+            options.configureDispatch {
+                messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                traceLogFile(SampleLogging.flowLogPath(settings.playSpotNodeRid))
+                traceNodeId(settings.playSpotNodeRid)
+            }
             options.codecs().use(ZLinkMessagePackCodec.defaultCodec())
             options.addHandlersFromPackageOf(PlayServer::class.java)
             options.addActorFactory(SampleNames.PlayActor, PlayActorFactory::class.java)

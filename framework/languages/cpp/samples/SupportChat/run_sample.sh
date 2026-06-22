@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export SUPPORTCHAT_LOG_DIR="${SUPPORTCHAT_LOG_DIR:-$SCRIPT_DIR/logs}"
+mkdir -p "$SUPPORTCHAT_LOG_DIR"
+rm -f "$SUPPORTCHAT_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
 
@@ -27,7 +29,7 @@ done
 
 if [[ -n "${SUPPORTCHAT_CPP_BASE_PORT:-}" ]]; then
   PORTS=()
-  for offset in $(seq 1 11); do
+  for offset in $(seq 1 13); do
     PORTS+=("$((SUPPORTCHAT_CPP_BASE_PORT + offset))")
   done
 else
@@ -38,7 +40,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 11:
+    while len(sockets) < 13:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -64,11 +66,13 @@ API_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
 SUPPORT_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
 SESSION_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
 SESSION_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
-SUPPORT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
-SUPPORT_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
-CONVERSATION_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
-CONVERSATION_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
-STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
+SESSION_ACTOR_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+SUPPORT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
+SUPPORT_ACTOR_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
+SUPPORT_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
+CONVERSATION_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
+CONVERSATION_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
+STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[12]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -148,7 +152,9 @@ topology_args=(
   "--sample.topology.supportChannelEndpoint=$SUPPORT_CHANNEL_ENDPOINT"
   "--sample.topology.sessionSpotEndpoint=$SESSION_SPOT_ENDPOINT"
   "--sample.topology.sessionRouterEndpoint=$SESSION_ROUTER_ENDPOINT"
+  "--sample.topology.sessionActorRouteEndpoint=$SESSION_ACTOR_ROUTE_ENDPOINT"
   "--sample.topology.supportRouterEndpoint=$SUPPORT_ROUTER_ENDPOINT"
+  "--sample.topology.supportActorRouteEndpoint=$SUPPORT_ACTOR_ROUTE_ENDPOINT"
   "--sample.topology.supportSpotEndpoint=$SUPPORT_SPOT_ENDPOINT"
   "--sample.topology.conversationSpotRouterEndpoint=$CONVERSATION_SPOT_ROUTER_ENDPOINT"
   "--sample.topology.conversationSpotEndpoint=$CONVERSATION_SPOT_ENDPOINT"
@@ -169,6 +175,7 @@ wait_port registry-router "$REGISTRY_ROUTER_ENDPOINT"
 start_server support "$SUPPORT_BIN"
 wait_port support-channel "$SUPPORT_CHANNEL_ENDPOINT"
 wait_port support-router "$SUPPORT_ROUTER_ENDPOINT"
+wait_port support-actor-route "$SUPPORT_ACTOR_ROUTE_ENDPOINT"
 wait_port support-spot "$SUPPORT_SPOT_ENDPOINT"
 wait_port conversation-router "$CONVERSATION_SPOT_ROUTER_ENDPOINT"
 wait_port conversation-spot "$CONVERSATION_SPOT_ENDPOINT"
@@ -179,6 +186,7 @@ wait_port api-channel "$API_CHANNEL_ENDPOINT"
 start_server session "$SESSION_BIN"
 wait_port session-router "$SESSION_ROUTER_ENDPOINT"
 wait_port session-spot "$SESSION_SPOT_ENDPOINT"
+wait_port session-actor-route "$SESSION_ACTOR_ROUTE_ENDPOINT"
 wait_port session-stream "$STREAM_ENDPOINT"
 
 sleep "${SUPPORTCHAT_CPP_STARTUP_SETTLE_SECONDS:-1}"
@@ -193,7 +201,7 @@ sleep "${SUPPORTCHAT_CPP_STARTUP_SETTLE_SECONDS:-1}"
 }
 
 grep -q "supportchat=completed" "$LOG_DIR/client.log"
-grep -Rq "zlink flow:" "$SUPPORTCHAT_LOG_DIR"
+grep -Rq "message flow" "$SUPPORTCHAT_LOG_DIR"
 
 cleanup
 trap - EXIT

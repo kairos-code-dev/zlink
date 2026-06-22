@@ -4,12 +4,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 export GAMEQUEST_LOG_DIR="${GAMEQUEST_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "$GAMEQUEST_LOG_DIR"
+rm -f "$GAMEQUEST_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_gamequest_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_gamequest_client" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
 fi
 PIDS=()
+RUN_DIR="$(mktemp -d)"
+LOG_DIR="$RUN_DIR/logs"
+mkdir -p "$LOG_DIR" "$GAMEQUEST_LOG_DIR"
 cleanup() {
   for pid in "${PIDS[@]}"; do
     kill "${pid}" >/dev/null 2>&1 || true
@@ -35,7 +40,7 @@ export GAMEQUEST_REGISTRY_ROUTER_ENDPOINT
 export GAMEQUEST_QUEST_ENDPOINT
 endpoint_port="${GAMEQUEST_QUEST_ENDPOINT##*:}"
 
-"${BIN_DIR}/sample_cpp_framework_gamequest_server" &
+"${BIN_DIR}/sample_cpp_framework_gamequest_server" >"$LOG_DIR/server.log" 2>&1 &
 PIDS+=("$!")
 
 for _ in $(seq 1 100); do
@@ -46,4 +51,9 @@ for _ in $(seq 1 100); do
 done
 
 sleep 1
-"${BIN_DIR}/sample_cpp_framework_gamequest_client"
+"${BIN_DIR}/sample_cpp_framework_gamequest_client" >"$LOG_DIR/client.log" 2>&1 || {
+  cat "$LOG_DIR/client.log" >&2
+  cat "$LOG_DIR/server.log" >&2
+  exit 1
+}
+grep -Rq "message flow" "$GAMEQUEST_LOG_DIR"

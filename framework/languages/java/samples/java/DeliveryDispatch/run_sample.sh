@@ -7,8 +7,10 @@ pids=()
 role_pattern='systems\.zlink\.samples\.deliverydispatch\.(server\.(registry|dispatchapi|dispatchcenter|courier|tracking|session)\.Program|client\.Program|probe\.Program)'
 log_dir="build/sample-logs"
 work_dir="build/sample-state"
-mkdir -p "${log_dir}"
+export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-$(pwd)/logs}"
+mkdir -p "${log_dir}" "${DELIVERYDISPATCH_LOG_DIR}"
 rm -f "${log_dir}"/*.log
+rm -f "${DELIVERYDISPATCH_LOG_DIR}"/*.log
 rm -rf "${work_dir}"
 mkdir -p "${work_dir}"
 
@@ -27,26 +29,27 @@ print_logs() {
 descendants() {
   local pid="$1"
   local child
-  pgrep -P "${pid}" 2>/dev/null | while read -r child; do
+  (pgrep -P "${pid}" 2>/dev/null || true) | while read -r child; do
     descendants "${child}"
     echo "${child}"
   done
 }
 
 kill_role_processes() {
-  pgrep -f "${role_pattern}" 2>/dev/null | while read -r pid; do
+  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
     kill "${pid}" >/dev/null 2>&1 || true
   done
 }
 
 kill_role_processes_forcibly() {
-  pgrep -f "${role_pattern}" 2>/dev/null | while read -r pid; do
+  (pgrep -f "${role_pattern}" 2>/dev/null || true) | while read -r pid; do
     kill -9 "${pid}" >/dev/null 2>&1 || true
   done
 }
 
 cleanup() {
   local status="$?"
+  set +e
   print_logs "${status}"
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     local pid="${pids[$i]}"
@@ -86,6 +89,7 @@ cleanup() {
   for pid in "${pids[@]}"; do
     wait "${pid}" 2>/dev/null || true
   done
+  return "${status}"
 }
 trap cleanup EXIT
 
@@ -126,7 +130,7 @@ try:
     chosen = set()
     while len(reserved) < 15:
         host = "127.0.0.1"
-        port = random.randint(20000, 32767)
+        port = random.randint(48000, 60999)
         key = (host, port)
         if key in chosen:
             continue
@@ -151,6 +155,12 @@ PY
 
 gradle_run() {
   ../../gradlew --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
+}
+
+app_bin() {
+  local project="$1"
+  local script="$2"
+  echo "${project}/build/install/${script}/bin/${script}"
 }
 
 build_framework_jars() {
@@ -201,35 +211,44 @@ export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} \
 -D${prefix}.workDir=$(pwd)/${work_dir}"
 
 build_framework_jars
-gradle_run classes
+gradle_run \
+  :Server:Registry:installDist \
+  :Server:Tracking:installDist \
+  :Server:Session:installDist \
+  :Server:Courier:installDist \
+  :Server:DispatchCenter:installDist \
+  :Server:DispatchApi:installDist \
+  :Probe:installDist \
+  :Client:installDist
 
-gradle_run :Server:Registry:run >"${log_dir}/registry.log" 2>&1 &
+"$(app_bin Server/Registry Registry)" >"${log_dir}/registry.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/registry.log" "Started Program"
 
-gradle_run :Server:Tracking:run >"${log_dir}/tracking.log" 2>&1 &
+"$(app_bin Server/Tracking Tracking)" >"${log_dir}/tracking.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/tracking.log" "Started Program"
 
-gradle_run :Server:Session:run >"${log_dir}/session.log" 2>&1 &
+"$(app_bin Server/Session Session)" >"${log_dir}/session.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/session.log" "Started Program"
 
-gradle_run :Server:Courier:run --args="--courier courier-a --mode timeout-reassign" >"${log_dir}/courier-a.log" 2>&1 &
+"$(app_bin Server/Courier Courier)" --courier courier-a --mode timeout-reassign >"${log_dir}/courier-a.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/courier-a.log" "Started Program"
 
-gradle_run :Server:Courier:run --args="--courier courier-b --mode accept" >"${log_dir}/courier-b.log" 2>&1 &
+"$(app_bin Server/Courier Courier)" --courier courier-b --mode accept >"${log_dir}/courier-b.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/courier-b.log" "Started Program"
 
-gradle_run :Server:DispatchCenter:run >"${log_dir}/dispatch-center.log" 2>&1 &
+"$(app_bin Server/DispatchCenter DispatchCenter)" >"${log_dir}/dispatch-center.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/dispatch-center.log" "Started Program"
 
-gradle_run :Server:DispatchApi:run >"${log_dir}/dispatch-api.log" 2>&1 &
+"$(app_bin Server/DispatchApi DispatchApi)" >"${log_dir}/dispatch-api.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/dispatch-api.log" "Started Program"
 
-gradle_run :Probe:run >"${log_dir}/probe.log" 2>&1
-gradle_run :Client:run >"${log_dir}/client.log" 2>&1
+"$(app_bin Probe Probe)" >"${log_dir}/probe.log" 2>&1
+"$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1
+grep -Rq "message flow" "${DELIVERYDISPATCH_LOG_DIR}"

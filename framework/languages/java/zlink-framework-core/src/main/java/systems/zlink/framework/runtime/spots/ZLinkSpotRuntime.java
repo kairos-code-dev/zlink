@@ -37,8 +37,6 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.registry.AutoConnectType;
 import systems.zlink.contracts.service.registry.ServiceRole;
-import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointCapabilities;
-import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.CancellationToken;
@@ -155,9 +153,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
     private final ZLinkBackendContext context;
     private final List<ZLinkBackendSpotNode> nodes = new ArrayList<>();
-    private final List<ZLinkBackendDealerSocket> attachedChannelDealers = new ArrayList<>();
     private final List<ZLinkBackendDiscovery> attachedChannelDiscoveries = new ArrayList<>();
-    private final List<ZLinkBackendSpotRouteBridge> attachedChannelBridges = new ArrayList<>();
     private final Map<String, ZLinkBackendSpotNode> nodesByName = new HashMap<>();
     private final Map<String, ZLinkBackendDiscovery> spotDiscoveriesByMesh = new HashMap<>();
     private final List<SpotDiscoveryBinding> spotDiscoveryBindings = new ArrayList<>();
@@ -300,14 +296,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             }
             for (String endpoint : nodeRegistration.pubSubManualConnections()) {
                 node.connectPeer(endpoint);
-            }
-            for (SpotChannelClientRegistration attached :
-                nodeRegistration.attachedChannelClients().values()) {
-                attachChannelClient(
-                    channelAdapter,
-                    registration,
-                    node,
-                    attached);
             }
             for (SpotRouteChannelAcceptanceRegistration acceptance :
                 nodeRegistration.acceptedSpotRouteChannels().values()) {
@@ -520,6 +508,15 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     public CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid) {
+        Message message = new Message();
+        return createWithRoutingId(spotType, spotRid, message)
+            .whenComplete((ignored, error) -> message.close());
+    }
+
+    private CompletionStage<ZLinkSpotCreateResult> createWithRoutingId(
+        Class<? extends ZLinkSpot<?>> spotType,
+        RoutingId spotRid,
+        Message request) {
         requireRegistered(spotType);
         requireRoutingId(spotRid);
         if (spots.containsKey(spotRid) || pendingSpotCreates.containsKey(spotRid)) {
@@ -527,7 +524,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
         ZLinkBackendSpot spot = primaryNode.createSpot();
         spot.setRoutingId(spotRid);
-        CompletionStage<ZLinkSpotCreateResult> create = activateAsync(spotType, spot, new Message())
+        CompletionStage<ZLinkSpotCreateResult> create = activateAsync(spotType, spot, request)
             .thenApply(result -> {
                 if (!result.response().accepted()) {
                     return new ZLinkSpotCreateResult(
@@ -640,14 +637,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             publisherSpot.close();
         }
         publisherSpotsByChannel.clear();
-        for (ZLinkBackendDealerSocket dealer : attachedChannelDealers) {
-            dealer.close();
-        }
-        attachedChannelDealers.clear();
-        for (ZLinkBackendSpotRouteBridge bridge : attachedChannelBridges) {
-            bridge.close();
-        }
-        attachedChannelBridges.clear();
         for (ZLinkBackendDiscovery discovery : attachedChannelDiscoveries) {
             discovery.close();
         }
@@ -1136,44 +1125,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         return publisherSpotsByChannel.computeIfAbsent(
             channelName,
             ignored -> node.createSpot());
-    }
-
-    private void attachChannelClient(
-        ZLinkChannelBackendAdapter channelAdapter,
-        ZLinkFrameworkRegistration frameworkRegistration,
-        ZLinkBackendSpotNode node,
-        SpotChannelClientRegistration attached) {
-        ZLinkBackendDealerSocket dealer = channelAdapter.createDealerSocket(context);
-        dealer.setChannelName(attached.channelName());
-        attachedChannelDealers.add(dealer);
-        ZLinkBackendSpotRouteBridge bridge = node.createRouteBridge();
-        attachedChannelBridges.add(bridge);
-        if (!attached.manualConnections().isEmpty()) {
-            for (String endpoint : attached.manualConnections()) {
-                dealer.connect(endpoint);
-            }
-            bridge.attachDealerChannel(
-                attached.channelName(),
-                dealer,
-                new SpotRouteBridgeEndpointOptions()
-                    .capabilities(SpotRouteBridgeEndpointCapabilities.ROUTE_ONLY));
-            return;
-        }
-
-        ZLinkBackendDiscovery discovery = channelAdapter.createDiscovery(
-            context,
-            ZLinkBackendAutoConnectType.CLIENT_SERVER,
-            attached.channelName());
-        for (String endpoint : frameworkRegistration.registryEndpoints()) {
-            discovery.connectRegistry(endpoint);
-        }
-        attachedChannelDiscoveries.add(discovery);
-        dealer.attachDiscovery(discovery);
-        bridge.attachDealerChannel(
-            attached.channelName(),
-            dealer,
-            new SpotRouteBridgeEndpointOptions()
-                .capabilities(SpotRouteBridgeEndpointCapabilities.ROUTE_ONLY));
     }
 
     private void attachSpotMeshDiscovery(
@@ -2390,54 +2341,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         private ActorPacketHeader decodeStreamActorPacketHeader(
             byte[] bytes,
             Optional<Long> backendRequestSeq) {
-            if (bytes.length < 4) {
-                throw new IllegalArgumentException("actor STREAM header is too short");
-            }
-            ByteBuffer buffer = ByteBuffer.wrap(bytes);
-            int kind = Byte.toUnsignedInt(buffer.get());
-            int codec = Byte.toUnsignedInt(buffer.get());
-            int flags = Byte.toUnsignedInt(buffer.get());
-            Optional<Long> requestSeq = backendRequestSeq;
-            if ((flags & 0x01) != 0) {
-                if (buffer.remaining() < Long.BYTES) {
-                    throw new IllegalArgumentException("actor STREAM header missing request sequence");
-                }
-                long decodedRequestSeq = buffer.getLong();
-                if (decodedRequestSeq == 0) {
-                    throw new IllegalArgumentException("actor STREAM request sequence is zero");
-                }
-                requestSeq = Optional.of(decodedRequestSeq);
-            }
-            if (buffer.remaining() < 1) {
-                throw new IllegalArgumentException("actor STREAM header missing packet name");
-            }
-            int nameLength = Byte.toUnsignedInt(buffer.get());
-            if (buffer.remaining() < nameLength) {
-                throw new IllegalArgumentException("actor STREAM header packet name is truncated");
-            }
-            byte[] nameBytes = new byte[nameLength];
-            buffer.get(nameBytes);
-            if ((flags & 0x02) != 0) {
-                if (buffer.remaining() < 2) {
-                    throw new IllegalArgumentException("actor STREAM header metadata is truncated");
-                }
-                int metadataLength = Short.toUnsignedInt(buffer.getShort());
-                if (buffer.remaining() < metadataLength) {
-                    throw new IllegalArgumentException("actor STREAM header metadata is truncated");
-                }
-                buffer.position(buffer.position() + metadataLength);
-            }
-            if (buffer.hasRemaining()) {
-                throw new IllegalArgumentException("actor STREAM header has trailing bytes");
-            }
-            if (kind != 1 && kind != 2) {
+            ZLinkStreamHeader header = ZLinkStreamHeaderCodec.decodeOrPlain(bytes);
+            if (header.kind() != ZLinkStreamMessageKind.SEND
+                && header.kind() != ZLinkStreamMessageKind.REQUEST) {
                 throw new IllegalArgumentException("actor STREAM header is not dispatch kind");
             }
+            Optional<Long> requestSeq = header.requestSequence().isPresent()
+                ? header.requestSequence()
+                : backendRequestSeq;
             return new ActorPacketHeader(
-                new String(nameBytes, StandardCharsets.UTF_8),
+                header.packetName(),
                 requestSeq,
                 true,
-                codec);
+                header.codec().value());
         }
 
         private Message encodeActorReplyFrame(
@@ -3169,25 +3085,20 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
 
         @Override
         public ZLinkSendCall sendToChannel(String channelName, Object message) {
-            ZLinkPayloadEncoding.EncodedPayload encoded =
-                ZLinkPayloadEncoding.encode(serializer, message);
-            return new SpotChannelSendCall(
-                backendSpot,
-                channelName,
-                encoded.payload(),
-                Optional.of(encoded.packetName()));
+            if (channels == null) {
+                throw new ZLinkConfigurationException(
+                    "channel client is not configured: " + channelName);
+            }
+            return channels.sendToChannel(channelName, message);
         }
 
         @Override
         public ZLinkRequestCall requestToChannel(String channelName, Object request) {
-            ZLinkPayloadEncoding.EncodedPayload encoded =
-                ZLinkPayloadEncoding.encode(serializer, request);
-            return new SpotChannelRequestCall(
-                backendSpot,
-                channelName,
-                encoded.payload(),
-                Optional.of(encoded.packetName()),
-                defaultRequestTimeout);
+            if (channels == null) {
+                throw new ZLinkConfigurationException(
+                    "channel client is not configured: " + channelName);
+            }
+            return channels.requestToChannel(channelName, request);
         }
     }
 
@@ -3631,189 +3542,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             // continuations never run on the backend callback thread.
             return result.thenApplyAsync(reply -> reply, handlerExecutor);
         }
-    }
-
-    private final class SpotChannelSendCall implements ZLinkSendCall {
-        private final ZLinkBackendSpot spot;
-        private final String channelName;
-        private final Message payload;
-        private final Optional<String> packetName;
-
-        SpotChannelSendCall(
-            ZLinkBackendSpot spot,
-            String channelName,
-            Message payload,
-            Optional<String> packetName) {
-            this.spot = spot;
-            this.channelName = channelName;
-            this.payload = payload;
-            this.packetName = packetName;
-        }
-
-        @Override
-        public ZLinkSendCall packetName(String packetName) {
-            return new SpotChannelSendCall(spot, channelName, payload, Optional.of(packetName));
-        }
-
-        @Override
-        public ZLinkSendCall metadata(String key, String value) {
-            return this;
-        }
-
-        @Override
-        public CompletionStage<Void> submit() {
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
-                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
-                    ZLinkDispatchErrorSurface.CHANNEL,
-                    ZLinkDispatchMessageKind.SEND,
-                    packetName.orElse(null), channelName, null, null, null, null, null, null));
-            }
-            return CompletableFuture.runAsync(() -> {
-                List<Message> parts = parts(packetName, payload);
-                try {
-                    spot.sendToChannel(channelName, parts, SendFlags.NONE);
-                } finally {
-                    parts.forEach(Message::close);
-                }
-            });
-        }
-    }
-
-    private final class SpotChannelRequestCall implements ZLinkRequestCall {
-        private final ZLinkBackendSpot spot;
-        private final String channelName;
-        private final Message payload;
-        private final Optional<String> packetName;
-        private final Duration timeout;
-
-        private SpotChannelRequestCall(
-            ZLinkBackendSpot spot,
-            String channelName,
-            Message payload,
-            Optional<String> packetName,
-            Duration timeout) {
-            this.spot = spot;
-            this.channelName = channelName;
-            this.payload = payload;
-            this.packetName = packetName;
-            this.timeout = timeout;
-        }
-
-        @Override
-        public ZLinkRequestCall packetName(String packetName) {
-            return new SpotChannelRequestCall(spot, channelName, payload, Optional.of(packetName), timeout);
-        }
-
-        @Override
-        public ZLinkRequestCall metadata(String key, String value) {
-            return this;
-        }
-
-        @Override
-        public ZLinkRequestCall timeout(Duration timeout) {
-            return new SpotChannelRequestCall(spot, channelName, payload, packetName, timeout);
-        }
-
-        @Override
-        public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
-            CompletableFuture<TReply> result = new CompletableFuture<>();
-            List<Message> requestParts = parts(packetName, payload);
-            result.whenComplete((ignored, error) -> requestParts.forEach(Message::close));
-            String scPacket = packetName.orElse(null);
-            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
-                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                    ZLinkMessageFlowPhase.SENT,
-                    ZLinkDispatchErrorSurface.CHANNEL,
-                    ZLinkDispatchMessageKind.REQUEST,
-                    scPacket, channelName, null, null, null, null, null, null));
-            }
-            submitSpotChannelRequestWithRetry(
-                spot,
-                channelName,
-                requestParts,
-                timeout,
-                reply -> {
-                    if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.REPLY_RECEIVED)) {
-                        dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
-                            ZLinkMessageFlowPhase.REPLY_RECEIVED,
-                            ZLinkDispatchErrorSurface.CHANNEL,
-                            ZLinkDispatchMessageKind.RESPONSE,
-                            scPacket, channelName, null, null, null, null, null, null));
-                    }
-                    Message emptyReply = null;
-                    try {
-                        Message firstReply = reply.parts().isEmpty()
-                            ? (emptyReply = Message.from(new byte[0]))
-                            : reply.parts().get(0);
-                        result.complete(serializer.deserialize(firstReply, replyType));
-                    } catch (RuntimeException ex) {
-                        result.completeExceptionally(ex);
-                    } finally {
-                        if (emptyReply != null) {
-                            emptyReply.close();
-                        }
-                        reply.parts().forEach(Message::close);
-                    }
-                },
-                result);
-            return result;
-        }
-    }
-
-    private void submitSpotChannelRequestWithRetry(
-        ZLinkBackendSpot spot,
-        String channelName,
-        List<Message> requestParts,
-        Duration timeout,
-        ZLinkBackendRequestCallback callback,
-        CompletableFuture<?> result) {
-        long timeoutNanos = timeout == null || timeout.isZero()
-            ? defaultRequestTimeout.toNanos()
-            : timeout.toNanos();
-        long deadline = System.nanoTime() + timeoutNanos;
-        class Attempt implements Runnable {
-            @Override
-            public void run() {
-                if (result.isDone()) {
-                    return;
-                }
-                try {
-                    boolean submitted = spot.requestToChannel(
-                        channelName,
-                        requestParts,
-                        callback,
-                        SendFlags.DONT_WAIT,
-                        timeout);
-                    if (submitted) {
-                        return;
-                    }
-                    if (System.nanoTime() >= deadline) {
-                        result.completeExceptionally(new TimeoutException(
-                            "SPOT channel request was not ready before timeout: "
-                                + channelName));
-                        return;
-                    }
-                    timerExecutor.schedule(this, 10, TimeUnit.MILLISECONDS);
-                } catch (ZlinkSubmitException ex) {
-                    if (ex.getResult() != SubmitResult.NOT_CONNECTED
-                        && ex.getResult() != SubmitResult.BACKPRESSURED) {
-                        result.completeExceptionally(ex);
-                        return;
-                    }
-                    if (System.nanoTime() >= deadline) {
-                        result.completeExceptionally(new TimeoutException(
-                            "SPOT channel request was not ready before timeout: "
-                                + channelName));
-                        return;
-                    }
-                    timerExecutor.schedule(this, 10, TimeUnit.MILLISECONDS);
-                } catch (RuntimeException ex) {
-                    result.completeExceptionally(ex);
-                }
-            }
-        }
-        new Attempt().run();
     }
 
     private CompletionStage<Void> sendActorBoundSessionWithRetry(
@@ -5100,54 +4828,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         private ActorPacketHeader decodeStreamActorPacketHeader(
             byte[] bytes,
             Optional<Long> backendRequestSeq) {
-            if (bytes.length < 4) {
-                throw new IllegalArgumentException("actor STREAM header is too short");
-            }
-            ByteBuffer buffer = ByteBuffer.wrap(bytes);
-            int kind = Byte.toUnsignedInt(buffer.get());
-            int codec = Byte.toUnsignedInt(buffer.get());
-            int flags = Byte.toUnsignedInt(buffer.get());
-            Optional<Long> requestSeq = backendRequestSeq;
-            if ((flags & 0x01) != 0) {
-                if (buffer.remaining() < Long.BYTES) {
-                    throw new IllegalArgumentException("actor STREAM header missing request sequence");
-                }
-                long decodedRequestSeq = buffer.getLong();
-                if (decodedRequestSeq == 0) {
-                    throw new IllegalArgumentException("actor STREAM request sequence is zero");
-                }
-                requestSeq = Optional.of(decodedRequestSeq);
-            }
-            if (buffer.remaining() < 1) {
-                throw new IllegalArgumentException("actor STREAM header missing packet name");
-            }
-            int nameLength = Byte.toUnsignedInt(buffer.get());
-            if (buffer.remaining() < nameLength) {
-                throw new IllegalArgumentException("actor STREAM header packet name is truncated");
-            }
-            byte[] nameBytes = new byte[nameLength];
-            buffer.get(nameBytes);
-            if ((flags & 0x02) != 0) {
-                if (buffer.remaining() < 2) {
-                    throw new IllegalArgumentException("actor STREAM header metadata is truncated");
-                }
-                int metadataLength = Short.toUnsignedInt(buffer.getShort());
-                if (buffer.remaining() < metadataLength) {
-                    throw new IllegalArgumentException("actor STREAM header metadata is truncated");
-                }
-                buffer.position(buffer.position() + metadataLength);
-            }
-            if (buffer.hasRemaining()) {
-                throw new IllegalArgumentException("actor STREAM header has trailing bytes");
-            }
-            if (kind != 1 && kind != 2) {
+            ZLinkStreamHeader header = ZLinkStreamHeaderCodec.decodeOrPlain(bytes);
+            if (header.kind() != ZLinkStreamMessageKind.SEND
+                && header.kind() != ZLinkStreamMessageKind.REQUEST) {
                 throw new IllegalArgumentException("actor STREAM header is not dispatch kind");
             }
+            Optional<Long> requestSeq = header.requestSequence().isPresent()
+                ? header.requestSequence()
+                : backendRequestSeq;
             return new ActorPacketHeader(
-                new String(nameBytes, StandardCharsets.UTF_8),
+                header.packetName(),
                 requestSeq,
                 true,
-                codec);
+                header.codec().value());
         }
 
         private Message encodeActorReplyFrame(

@@ -10,6 +10,7 @@ using GameQuest.Shared;
 using GameQuest.Server.Configuration;
 using Microsoft.AspNetCore.Mvc;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Dispatch;
 
 namespace GameQuest.GameApi;
 
@@ -34,7 +35,11 @@ internal static class Program
         builder.Services.AddScoped<SyncQuestProgressHandler>();
         builder.Services.AddZLinkFramework(options =>
         {
-            options.ConfigureDispatch().SetMessageDispatchErrorObserver<GameQuestDispatchErrorObserver>();
+            options.ConfigureDispatch()
+                .SetMessageDispatchErrorObserver<GameQuestDispatchErrorObserver>()
+                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .TraceLogFile(SampleFlowLog.Path(apiName))
+                .TraceNodeId(apiName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
             {

@@ -9,7 +9,9 @@ redis_key_prefix="zlink:tictactoe-kotlin:${RANDOM}:$$:room:"
 role_pattern='systems\.zlink\.samples\.kotlin\.tictactoe\.server\.ProgramKt|systems\.zlink\.samples\.kotlin\.tictactoe\.client\.ProgramKt'
 run_dir="$(mktemp -d)"
 log_dir="${run_dir}/logs"
-mkdir -p "${log_dir}"
+export TICTACTOE_LOG_DIR="${TICTACTOE_LOG_DIR:-$(pwd)/logs}"
+mkdir -p "${log_dir}" "${TICTACTOE_LOG_DIR}"
+rm -f "${TICTACTOE_LOG_DIR}"/*.log
 
 print_logs() {
   local status="$1"
@@ -46,6 +48,7 @@ kill_role_processes_forcibly() {
 
 cleanup() {
   local status="$?"
+  set +e
   print_logs "${status}"
   for ((i=${#pids[@]}-1; i>=0; i--)); do
     local pid="${pids[$i]}"
@@ -150,7 +153,7 @@ ports = []
 try:
     chosen = set()
     while len(reserved) < 15:
-        port = random.randint(20000, 32767)
+        port = random.randint(48000, 60999)
         if port in chosen:
             continue
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -167,6 +170,16 @@ finally:
     for sock in reserved:
         sock.close()
 PY
+}
+
+gradle_run() {
+  ../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts --no-daemon "$@" --quiet
+}
+
+app_bin() {
+  local project_path="$1"
+  local app_name="$2"
+  printf '%s/build/install/%s/bin/%s' "${project_path}" "${app_name}" "${app_name}"
 }
 
 read -r api_a_http_port api_b_http_port api_a_channel_port api_b_channel_port play_a_channel_port play_b_channel_port play_a_stream_port play_b_stream_port play_a_spot_port play_b_spot_port play_a_route_port play_b_route_port play_a_pub_port play_b_pub_port redis_port < <(reserve_ports)
@@ -244,29 +257,31 @@ sed -i \
   -e "s#sample.peerSpotPubSubEndpoint=.*#sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}#" \
   "${play_b_config}"
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="play --config ${play_b_config}" >"${log_dir}/play-b.log" 2>&1 &
+gradle_run :Server:installDist :Client:installDist
+
+"$(app_bin Server Server)" play --config "${play_b_config}" >"${log_dir}/play-b.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/play-b.log" "Started Program"
 wait_endpoint play-b-stream "tcp://127.0.0.1:${play_b_stream_port}"
 wait_endpoint play-b-spot "tcp://127.0.0.1:${play_b_spot_port}"
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="play --config ${play_a_config}" >"${log_dir}/play-a.log" 2>&1 &
+"$(app_bin Server Server)" play --config "${play_a_config}" >"${log_dir}/play-a.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/play-a.log" "Started Program"
 wait_endpoint play-a-stream "tcp://127.0.0.1:${play_a_stream_port}"
 wait_endpoint play-a-spot "tcp://127.0.0.1:${play_a_spot_port}"
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="api --config ${api_a_config}" >"${log_dir}/api-a.log" 2>&1 &
+"$(app_bin Server Server)" api --config "${api_a_config}" >"${log_dir}/api-a.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/api-a.log" "Started Program"
 wait_endpoint api-a-http "http://127.0.0.1:${api_a_http_port}"
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Server:run --quiet --args="api --config ${api_b_config}" >"${log_dir}/api-b.log" 2>&1 &
+"$(app_bin Server Server)" api --config "${api_b_config}" >"${log_dir}/api-b.log" 2>&1 &
 pids+=("$!")
 wait_log_contains "${log_dir}/api-b.log" "Started Program"
 wait_endpoint api-b-http "http://127.0.0.1:${api_b_http_port}"
 
-../../gradlew -Pzlink.useLocalBindings=true --settings-file standalone.settings.gradle.kts :Client:run --quiet --args="--api-url http://127.0.0.1:${api_a_http_port}" >"${log_dir}/client.log" 2>&1
+"$(app_bin Client Client)" --api-url "http://127.0.0.1:${api_a_http_port}" >"${log_dir}/client.log" 2>&1
 
 rg -q "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${log_dir}/client.log"
 rg -q "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
@@ -274,4 +289,5 @@ rg -q "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNode
 rg -q "tictactoe completed" "${log_dir}/client.log"
 wait_grep "host leave marker" "actor: LeaveGameReq completed. actor=player-x" "${log_dir}"/play-*.log
 wait_grep "guest leave marker" "actor: LeaveGameReq completed. actor=player-o" "${log_dir}"/play-*.log
+grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"
 echo "PASS TicTacToe.Kotlin"

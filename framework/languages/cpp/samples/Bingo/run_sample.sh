@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Message-flow logs land in the sample's own logs/ folder (git-ignored).
 export BINGO_LOG_DIR="${BINGO_LOG_DIR:-$SCRIPT_DIR/logs}"
+mkdir -p "$BINGO_LOG_DIR"
+rm -f "$BINGO_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
 
@@ -224,8 +226,10 @@ wait_port registry-router "$REGISTRY_ROUTER_ENDPOINT"
 
 start_server api-a "$API_BIN" --sample.topology.apiNode=a
 wait_port api-a "$API_A_CHANNEL_ENDPOINT"
+wait_port api-a-play-route "$API_A_PLAY_ROUTE_ENDPOINT"
 start_server api-b "$API_BIN" --sample.topology.apiNode=b
 wait_port api-b "$API_B_CHANNEL_ENDPOINT"
+wait_port api-b-play-route "$API_B_PLAY_ROUTE_ENDPOINT"
 
 start_server session-a "$SESSION_BIN" \
   --sample.topology.sessionNode=a \
@@ -274,6 +278,7 @@ grep -q "bingo=completed" "$LOG_DIR/client.log"
 grep -q "stream-inbound sample=Bingo" "$LOG_DIR/client.log"
 grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "$LOG_DIR/client.log"
 grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "$LOG_DIR/client.log"
+grep -Rq "message flow" "$BINGO_LOG_DIR"
 
 cleanup
 trap - EXIT

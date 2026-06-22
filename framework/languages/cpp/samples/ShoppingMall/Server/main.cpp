@@ -3,6 +3,7 @@
 #include "Handlers/continue_order_workflow_handler.hpp"
 #include "Handlers/query_and_self_check_handlers.hpp"
 #include "Handlers/start_order_handler.hpp"
+#include "../sample_log_dir.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -49,12 +50,20 @@ int main (int argc, char **argv)
 
     auto registry_app = zlink::framework::app_t::create ();
     registry_app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        options.configure_dispatch ()
+          .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+          .trace_log_file (flow_log_path ("registry"))
+          .trace_node_id ("shoppingmall-registry");
         options.enable_registry (registry_pub_endpoint (), registry_router_endpoint ());
     });
     std::thread registry_thread ([&] { (void) registry_app.run (argc, argv); });
 
     auto app = zlink::framework::app_t::create ();
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        options.configure_dispatch ()
+          .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+          .trace_log_file (flow_log_path ("server"))
+          .trace_node_id ("shoppingmall-server");
         options.services ().add_singleton<shopping_mall_server_role_t> (
           std::make_unique<shopping_mall_server_role_t> ());
         options.handlers ()

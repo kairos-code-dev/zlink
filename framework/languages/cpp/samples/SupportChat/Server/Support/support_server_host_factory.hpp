@@ -6,6 +6,7 @@
 #include "../Configuration/sample_topology.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
+#include "../sample_log_dir.hpp"
 #include "Infrastructure/ZLink/Actors/support_actor_directory.hpp"
 #include "Infrastructure/ZLink/Actors/support_user_actor_factory.hpp"
 #include "Infrastructure/ZLink/Handlers/allocate_conversation_handler.hpp"
@@ -50,6 +51,10 @@ class support_server_host_factory_t
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+            options.configure_dispatch ()
+              .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+              .trace_log_file (flow_log_path ("support"))
+              .trace_node_id ("supportchat-support");
             options.services ()
               .add_singleton<support_conversation_allocator_t> ()
               .add_singleton<agent_availability_directory_t> ()

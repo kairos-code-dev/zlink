@@ -977,10 +977,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     target_link_libraries(${target_name} PRIVATE ${ARGN})
     target_include_directories(${target_name} PRIVATE
       ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-    add_test(NAME sample_smoke_${target_name} COMMAND ${target_name})
-    set_tests_properties(sample_smoke_${target_name} PROPERTIES
-      LABELS "${label};framework-sample-smoke"
-      TIMEOUT 30)
   endfunction()
 
   add_zlink_framework_sample(
@@ -1084,6 +1080,42 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     samples/SupportChat/Client/main.cpp)
   target_link_libraries(sample_cpp_framework_supportchat_client PRIVATE
     zlink::stream_e2e_client)
+
+  function(add_zlink_framework_sample_runner sample_name labels timeout_seconds)
+    add_test(
+      NAME sample_smoke_sample_cpp_framework_${sample_name}
+      COMMAND "${CMAKE_COMMAND}" -E env
+        "ZLINK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+        "${ZLINK_FRAMEWORK_CPP_DIR}/samples/${sample_name}/run_sample.sh")
+    set_tests_properties(sample_smoke_sample_cpp_framework_${sample_name} PROPERTIES
+      LABELS "${labels};framework-sample-smoke"
+      TIMEOUT ${timeout_seconds})
+  endfunction()
+
+  add_zlink_framework_sample_runner(
+    Bingo
+    "framework-sample-bingo;framework-sample-api;framework-sample-play;framework-sample-registry;framework-sample-session"
+    180)
+  add_zlink_framework_sample_runner(
+    TicTacToe
+    "framework-sample-tictactoe;framework-sample-api;framework-sample-play"
+    180)
+  add_zlink_framework_sample_runner(
+    DeliveryDispatch
+    "framework-sample-deliverydispatch;framework-sample-server;framework-sample-client"
+    90)
+  add_zlink_framework_sample_runner(
+    GameQuest
+    "framework-sample-gamequest;framework-sample-server;framework-sample-client"
+    90)
+  add_zlink_framework_sample_runner(
+    ShoppingMall
+    "framework-sample-shoppingmall;framework-sample-server;framework-sample-client"
+    90)
+  add_zlink_framework_sample_runner(
+    SupportChat
+    "framework-sample-supportchat;framework-sample-api;framework-sample-registry;framework-sample-session;framework-sample-support"
+    180)
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS AND ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE)

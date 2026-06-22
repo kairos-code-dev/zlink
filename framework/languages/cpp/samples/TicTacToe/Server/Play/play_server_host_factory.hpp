@@ -7,6 +7,7 @@
 #include "../Configuration/sample_topology.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
+#include "../sample_log_dir.hpp"
 #include "Infrastructure/ZLink/Handlers/ensure_player_actor_handler.hpp"
 #include "Infrastructure/ZLink/Handlers/create_game_handler.hpp"
 #include "Infrastructure/ZLink/Sessions/play_session.hpp"
@@ -38,6 +39,10 @@ class play_server_host_factory_t
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+            options.configure_dispatch ()
+              .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+              .trace_log_file (flow_log_path ("play-" + topology.selected_play_node_rid ()))
+              .trace_node_id ("tictactoe-play-" + topology.selected_play_node_rid ());
             options.services ()
               .add_singleton<redis_room_route_store_t, sample_topology_t> ()
               .add_singleton<tictactoe_game_creator_t, sample_topology_t, redis_room_route_store_t> ();

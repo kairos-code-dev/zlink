@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "delivery_dispatch_client_scenario.hpp"
+#include "../sample_log_dir.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -50,6 +51,10 @@ int main (int argc, char **argv)
     auto scenario = std::make_unique<client_scenario_service_t> (app);
     auto *scenario_result = scenario.get ();
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        options.configure_dispatch ()
+          .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+          .trace_log_file (zlink::samples::deliverydispatch::flow_log_path ("client"))
+          .trace_node_id ("deliverydispatch-client");
         options.codecs ()
           .add_json ()
           .add_json<zlink::samples::deliverydispatch::create_delivery_req_t> ()

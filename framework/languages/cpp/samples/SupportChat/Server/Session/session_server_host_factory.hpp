@@ -6,6 +6,7 @@
 #include "../Configuration/sample_topology.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
+#include "../sample_log_dir.hpp"
 #include "Sessions/support_chat_session.hpp"
 
 namespace zlink::samples::supportchat
@@ -29,6 +30,10 @@ class session_server_host_factory_t
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+            options.configure_dispatch ()
+              .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+              .trace_log_file (flow_log_path ("session"))
+              .trace_node_id ("supportchat-session");
             options.codecs ().add_json ();
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::api_channel)

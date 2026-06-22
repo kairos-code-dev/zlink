@@ -30,9 +30,16 @@ set(required_labels
   framework-sample-parity
   framework-sample-api
   framework-sample-bingo
+  framework-sample-client
+  framework-sample-deliverydispatch
+  framework-sample-gamequest
   framework-sample-play
   framework-sample-registry
+  framework-sample-server
   framework-sample-session
+  framework-sample-shoppingmall
+  framework-sample-support
+  framework-sample-supportchat
   framework-sample-tictactoe
   http-client-contract
   http-client-unit
@@ -60,11 +67,19 @@ set(required_labels
 set(known_labels
   ${required_labels}
   ActorGateway
+  CH-001
+  CH-006
+  DERR-001
+  DERR-002
+  DERR-006
+  DERR-007
+  DERR-009
   DI
   actor
   async
   backpressure
   channel
+  diagnostics
   execution
   gtest
   handler

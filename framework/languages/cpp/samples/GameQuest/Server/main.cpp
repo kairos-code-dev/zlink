@@ -5,6 +5,7 @@
 #include "Handlers/enter_area_handler.hpp"
 #include "Handlers/kill_monster_handler.hpp"
 #include "Handlers/query_and_self_check_handlers.hpp"
+#include "../sample_log_dir.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -51,12 +52,20 @@ int main (int argc, char **argv)
 
     auto registry_app = zlink::framework::app_t::create ();
     registry_app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        options.configure_dispatch ()
+          .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+          .trace_log_file (flow_log_path ("registry"))
+          .trace_node_id ("gamequest-registry");
         options.enable_registry (registry_pub_endpoint (), registry_router_endpoint ());
     });
     std::thread registry_thread ([&] { (void) registry_app.run (argc, argv); });
 
     auto app = zlink::framework::app_t::create ();
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        options.configure_dispatch ()
+          .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+          .trace_log_file (flow_log_path ("server"))
+          .trace_node_id ("gamequest-server");
         options.services ().add_singleton<game_quest_server_role_t> (
           std::make_unique<game_quest_server_role_t> ());
         options.handlers ()

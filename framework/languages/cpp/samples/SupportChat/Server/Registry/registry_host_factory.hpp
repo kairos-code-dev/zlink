@@ -4,6 +4,7 @@
 #include "../Configuration/sample_configuration.hpp"
 #include "../Configuration/sample_topology.hpp"
 #include "../host_support.hpp"
+#include "../sample_log_dir.hpp"
 
 namespace zlink::samples::supportchat
 {
@@ -26,6 +27,10 @@ class registry_host_factory_t
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+            options.configure_dispatch ()
+              .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+              .trace_log_file (flow_log_path ("registry"))
+              .trace_node_id ("supportchat-registry");
             options.enable_registry (topology.registry_pub_endpoint,
                                      topology.registry_router_endpoint);
         });

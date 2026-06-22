@@ -6,6 +6,7 @@
 #include "../Configuration/sample_topology.hpp"
 #include "../../Shared/Contracts/messages.hpp"
 #include "../host_support.hpp"
+#include "../sample_log_dir.hpp"
 #include "Handlers/authenticate_player_handler.hpp"
 #include "Handlers/create_game_http_handler.hpp"
 
@@ -30,8 +31,11 @@ class api_server_host_factory_t
                                                const sample_topology_t &topology,
                                                bool auto_stop = true)
     {
-        app.logging ().use_file (sample_log_file);
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+            options.configure_dispatch ()
+              .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+              .trace_log_file (flow_log_path ("api"))
+              .trace_node_id ("tictactoe-api");
             options.services ().add_singleton<sample_topology_t> (
               std::make_unique<sample_topology_t> (topology));
             options.handlers ().add<authenticate_player_handler_t> ("api");

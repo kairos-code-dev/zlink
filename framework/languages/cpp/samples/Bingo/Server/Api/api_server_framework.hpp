@@ -16,9 +16,6 @@ namespace zlink::samples::bingo
 inline zlink::framework::app_t &add_bingo_api_server (zlink::framework::app_t &app,
                                                       const sample_topology_t &topology)
 {
-    // Application logs go to the console; message-flow tracing goes to its own
-    // file (diagnostics.log_file) so the two never mix.
-    app.logging ().use_console ().set_min_level (zlink::framework::log_level_t::info);
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)

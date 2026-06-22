@@ -2009,11 +2009,23 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
     }
 
-    private record PublishCall(
-        ZLinkBackendPublisherSocket publisher,
-        String topic,
-        Message payload,
-        Optional<String> packetName) implements ZLinkPublishCall {
+    private final class PublishCall implements ZLinkPublishCall {
+        private final ZLinkBackendPublisherSocket publisher;
+        private final String topic;
+        private final Message payload;
+        private final Optional<String> packetName;
+
+        PublishCall(
+            ZLinkBackendPublisherSocket publisher,
+            String topic,
+            Message payload,
+            Optional<String> packetName) {
+            this.publisher = publisher;
+            this.topic = topic;
+            this.payload = payload;
+            this.packetName = packetName;
+        }
+
         PublishCall(ZLinkBackendPublisherSocket publisher, String topic, Message payload) {
             this(publisher, topic, payload, Optional.empty());
         }
@@ -2030,6 +2042,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
         @Override
         public CompletionStage<Void> submit() {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkDispatchErrorSurface.CHANNEL,
+                    ZLinkDispatchMessageKind.PUBLISH,
+                    packetName.orElse(null), null, topic, null, null, null, null, null));
+            }
             return CompletableFuture.runAsync(() -> {
                 List<Message> publishParts = parts(packetName, payload);
                 try {
@@ -2041,10 +2060,17 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
     }
 
-    private record SendCall(
-        ZLinkBackendDealerSocket client,
-        Message payload,
-        Optional<String> packetName) implements ZLinkSendCall {
+    private final class SendCall implements ZLinkSendCall {
+        private final ZLinkBackendDealerSocket client;
+        private final Message payload;
+        private final Optional<String> packetName;
+
+        SendCall(ZLinkBackendDealerSocket client, Message payload, Optional<String> packetName) {
+            this.client = client;
+            this.payload = payload;
+            this.packetName = packetName;
+        }
+
         SendCall(ZLinkBackendDealerSocket client, Message payload) {
             this(client, payload, Optional.empty());
         }
@@ -2061,6 +2087,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
         @Override
         public CompletionStage<Void> submit() {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkDispatchErrorSurface.CHANNEL,
+                    ZLinkDispatchMessageKind.SEND,
+                    packetName.orElse(null), null, null, null, null, null, null, null));
+            }
             return CompletableFuture.runAsync(() -> {
                 try {
                     client.send(parts(packetName, payload), SendFlags.NONE);
@@ -2166,11 +2199,23 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
     }
 
-    private record RouteSendCall(
-        ZLinkBackendRouterSocket router,
-        RoutingId target,
-        Message payload,
-        Optional<String> packetName) implements ZLinkSendCall {
+    private final class RouteSendCall implements ZLinkSendCall {
+        private final ZLinkBackendRouterSocket router;
+        private final RoutingId target;
+        private final Message payload;
+        private final Optional<String> packetName;
+
+        RouteSendCall(
+            ZLinkBackendRouterSocket router,
+            RoutingId target,
+            Message payload,
+            Optional<String> packetName) {
+            this.router = router;
+            this.target = target;
+            this.payload = payload;
+            this.packetName = packetName;
+        }
+
         RouteSendCall(ZLinkBackendRouterSocket router, RoutingId target, Message payload) {
             this(router, target, payload, Optional.empty());
         }
@@ -2187,6 +2232,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
 
         @Override
         public CompletionStage<Void> submit() {
+            if (dispatchErrors.flow().enabled(ZLinkMessageFlowPhase.SENT)) {
+                dispatchErrors.flow().trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.SENT,
+                    ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
+                    ZLinkDispatchMessageKind.SEND,
+                    packetName.orElse(null), null, null, null, target.toString(), null, null, null));
+            }
             return CompletableFuture.runAsync(() -> {
                 List<Message> sendParts = parts(packetName, payload);
                 try {

@@ -13,9 +13,7 @@
 #include <mutex>
 #include <set>
 #include <string.h>
-#include <sys/wait.h>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 namespace
@@ -31,50 +29,6 @@ std::map<std::string, void *> g_test_actor_nodes_by_ref;
 
 void init_text_msg (zlink_msg_t *msg_, const char *text_);
 std::string msg_text (zlink_msg_t *msg_);
-
-bool write_all_fd (int fd_, const void *data_, size_t size_)
-{
-    const char *data = static_cast<const char *> (data_);
-    size_t offset = 0;
-    while (offset < size_) {
-        const ssize_t written = write (fd_, data + offset, size_ - offset);
-        if (written <= 0)
-            return false;
-        offset += static_cast<size_t> (written);
-    }
-    return true;
-}
-
-bool read_all_fd (int fd_, void *data_, size_t size_)
-{
-    char *data = static_cast<char *> (data_);
-    size_t offset = 0;
-    while (offset < size_) {
-        const ssize_t read_size = read (fd_, data + offset, size_ - offset);
-        if (read_size <= 0)
-            return false;
-        offset += static_cast<size_t> (read_size);
-    }
-    return true;
-}
-
-bool write_text_fd (int fd_, const char *text_)
-{
-    const uint32_t size = static_cast<uint32_t> (strlen (text_));
-    return write_all_fd (fd_, &size, sizeof (size)) && write_all_fd (fd_, text_, size);
-}
-
-bool read_text_fd (int fd_, std::string *out_)
-{
-    uint32_t size = 0;
-    if (!read_all_fd (fd_, &size, sizeof (size)))
-        return false;
-    std::vector<char> data (size + 1u, 0);
-    if (size > 0 && !read_all_fd (fd_, &data[0], size))
-        return false;
-    *out_ = std::string (&data[0], size);
-    return true;
-}
 
 struct request_wait_t
 {
@@ -2188,7 +2142,7 @@ void test_actor_join_entry_spot_routes_after_connect_peer_rid_reconciles_existin
     assert_same_rid (target_rid, result.actor.node_rid);
     TEST_ASSERT_EQUAL_STRING ("remote-entry-ok", wait.reply_payload.c_str ());
 
-    msleep (SETTLE_TIME * 2);
+    msleep (1000);
 
     zlink_actor_ref_t second_source_ref;
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
@@ -2320,149 +2274,152 @@ void test_actor_gateway_spot_join_request_delivers_to_user_spot ()
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
-void test_actor_join_spot_routes_to_remote_process_user_spot ()
+void test_actor_join_spot_routes_to_remote_user_spot ()
 {
-    int endpoint_pipe[2];
-    int status_pipe[2];
-    TEST_ASSERT_EQUAL_INT (0, pipe (endpoint_pipe));
-    TEST_ASSERT_EQUAL_INT (0, pipe (status_pipe));
-
-    const pid_t child = fork ();
-    TEST_ASSERT_TRUE (child >= 0);
-    if (child == 0) {
-        close (endpoint_pipe[0]);
-        close (status_pipe[0]);
-
-        void *target_ctx = zlink_ctx_new ();
-        zlink_spot_node_options_t options;
-        options.mode = ZLINK_SPOT_NODE_MODE_ALL;
-        void *target_node = zlink_spot_node_new (target_ctx, &options);
-
-        zlink_routing_id_t target_rid;
-        zlink_routing_id_t target_spot_rid;
-        set_rid (&target_rid, "fork-target-node");
-        set_rid (&target_spot_rid, "fork-user-spot");
-        bool ok = target_ctx && target_node
-                  && zlink_set_routing_id (target_node, target_rid.data, target_rid.size)
-                       == ZLINK_CONFIG_OK;
-
-        char target_router_endpoint[MAX_SOCKET_STRING];
-        ok = ok && bind_spot_router_endpoint (target_node, target_router_endpoint,
-                                              sizeof (target_router_endpoint));
-        ok = ok && write_text_fd (endpoint_pipe[1], ok ? target_router_endpoint : "");
-
-        void *target_spot = NULL;
-        uint32_t created = 0;
-        ok = ok
-             && zlink_spot_node_spot_get_or_new (target_node, &target_spot_rid, &target_spot,
-                                                 &created)
-                  == ZLINK_CONFIG_OK
-             && target_spot != NULL;
-
-        zlink_actor_join_info_t join_info;
-        zlink_msg_t join_request;
-        if (ok) {
-            ok = zlink_test_wait_until (5000, [&] {
-                return zlink_spot_actor_join_recv (target_spot, &join_info, &join_request,
-                                                   ZLINK_RECV_FLAGS_DONTWAIT)
-                       == ZLINK_RECV_OK;
-            });
-        }
-        if (ok) {
-            ok = strcmp (msg_text (&join_request).c_str (), "fork-join-request") == 0;
-            zlink_msg_close (&join_request);
-        }
-        if (ok) {
-            zlink_msg_t reply;
-            init_text_msg (&reply, "fork-join-reply");
-            ok = zlink_spot_actor_join_reply (target_spot, &join_info, 0, &reply)
-                 == ZLINK_SUBMIT_OK;
-        }
-        if (ok) {
-            ok = wait_spot_node_actor_leave_spot (target_node, &join_info.target_actor,
-                                                  &target_spot_rid, 1000)
-                   == ZLINK_REQUEST_OK
-                 && wait_spot_node_actor_destroy (target_node, &join_info.target_actor, 1000)
-                      == ZLINK_REQUEST_OK;
-        }
-
-        (void) write_text_fd (status_pipe[1], ok ? "OK" : "FAIL");
-        if (target_spot)
-            (void) zlink_spot_destroy (&target_spot);
-        if (target_node)
-            (void) zlink_spot_node_destroy (&target_node);
-        if (target_ctx)
-            (void) zlink_ctx_term (target_ctx);
-        close (endpoint_pipe[1]);
-        close (status_pipe[1]);
-        _exit (ok ? 0 : 1);
-    }
-
-    close (endpoint_pipe[1]);
-    close (status_pipe[1]);
-    std::string target_router_endpoint;
-    TEST_ASSERT_TRUE (read_text_fd (endpoint_pipe[0], &target_router_endpoint));
-    TEST_ASSERT_FALSE (target_router_endpoint.empty ());
-
     void *source_ctx = zlink_ctx_new ();
+    void *target_ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (source_ctx);
+    TEST_ASSERT_NOT_NULL (target_ctx);
+
     zlink_spot_node_options_t options;
     options.mode = ZLINK_SPOT_NODE_MODE_ALL;
     void *source_node = zlink_spot_node_new (source_ctx, &options);
+    void *target_node = zlink_spot_node_new (target_ctx, &options);
     TEST_ASSERT_NOT_NULL (source_node);
+    TEST_ASSERT_NOT_NULL (target_node);
 
     zlink_routing_id_t source_rid;
     zlink_routing_id_t target_rid;
     zlink_routing_id_t target_spot_rid;
-    set_rid (&source_rid, "fork-source-node");
-    set_rid (&target_rid, "fork-target-node");
-    set_rid (&target_spot_rid, "fork-user-spot");
+    set_rid (&source_rid, "remote-user-source");
+    set_rid (&target_rid, "remote-user-target");
+    set_rid (&target_spot_rid, "remote-user-spot");
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
                        zlink_set_routing_id (source_node, source_rid.data, source_rid.size));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_set_routing_id (target_node, target_rid.data, target_rid.size));
+
     char source_router_endpoint[MAX_SOCKET_STRING];
+    char target_router_endpoint[MAX_SOCKET_STRING];
+    char target_pub_endpoint[MAX_SOCKET_STRING];
     TEST_ASSERT_TRUE (bind_spot_router_endpoint (source_node, source_router_endpoint,
                                                  sizeof (source_router_endpoint)));
+    TEST_ASSERT_TRUE (bind_spot_router_endpoint (target_node, target_router_endpoint,
+                                                 sizeof (target_router_endpoint)));
+    TEST_ASSERT_TRUE (bind_spot_endpoint (target_node, target_pub_endpoint,
+                                          sizeof (target_pub_endpoint)));
     TEST_ASSERT_EQUAL (ZLINK_CONNECT_OK,
                        zlink_spot_node_connect_peer_rid (source_node, &target_rid,
-                                                         target_router_endpoint.c_str ()));
-    msleep (SETTLE_TIME * 2);
+                                                         target_pub_endpoint));
+    msleep (SETTLE_TIME);
+
+    void *target_spot = NULL;
+    uint32_t created = 0;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_spot_node_spot_get_or_new (target_node, &target_spot_rid,
+                                                        &target_spot, &created));
+    TEST_ASSERT_NOT_NULL (target_spot);
+    TEST_ASSERT_EQUAL_UINT32 (1u, created);
 
     zlink_actor_ref_t source_ref;
     TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
-                       (zlink_spot_node_actor_new) (source_node, "fork-actor", &source_ref));
+                       (zlink_spot_node_actor_new) (source_node, "remote-user-actor",
+                                                    &source_ref));
+
     join_wait_t wait;
     zlink_msg_t request;
-    init_text_msg (&request, "fork-join-request");
+    init_text_msg (&request, "remote-user-request");
     TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
                        zlink_spot_node_actor_join_spot (
                          source_node, &source_ref, &target_rid, &target_spot_rid, &request, 1,
-                         join_wait_handler, &wait, ZLINK_DONTWAIT, 5000));
+                         join_wait_handler, &wait, ZLINK_DONTWAIT, 3000));
+
+    zlink_actor_join_info_t join_info;
+    zlink_msg_t join_request;
+    TEST_ASSERT_TRUE (zlink_test_wait_until (3000, [&] {
+        return zlink_spot_actor_join_recv (target_spot, &join_info, &join_request,
+                                           ZLINK_RECV_FLAGS_DONTWAIT)
+               == ZLINK_RECV_OK;
+    }));
+    TEST_ASSERT_EQUAL_STRING ("remote-user-actor", join_info.source_actor.actor_id);
+    TEST_ASSERT_EQUAL_STRING ("remote-user-actor", join_info.target_actor.actor_id);
+    assert_same_rid (source_rid, join_info.source_actor.node_rid);
+    assert_same_rid (target_rid, join_info.target_actor.node_rid);
+    assert_same_rid (target_spot_rid, join_info.target_spot_rid);
+    TEST_ASSERT_TRUE ((join_info.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE) != 0);
+    TEST_ASSERT_EQUAL_STRING ("remote-user-request", msg_text (&join_request).c_str ());
+    zlink_msg_close (&join_request);
+
+    zlink_msg_t reply;
+    init_text_msg (&reply, "remote-user-reply");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_spot_actor_join_reply (target_spot, &join_info, 0, &reply));
 
     zlink_actor_join_result_t result;
     {
         std::unique_lock<std::mutex> lock (wait.mutex);
         TEST_ASSERT_TRUE (
-          wait.cv.wait_for (lock, std::chrono::seconds (6), [&] { return wait.done; }));
+          wait.cv.wait_for (lock, std::chrono::seconds (4), [&] { return wait.done; }));
         result = wait.result;
     }
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, result.result);
     TEST_ASSERT_EQUAL_INT (0, result.join_result_code);
     assert_same_rid (target_rid, result.actor.node_rid);
     assert_same_rid (target_spot_rid, result.joined_spot_rid);
-    TEST_ASSERT_EQUAL_STRING ("fork-join-reply", wait.reply_payload.c_str ());
+    TEST_ASSERT_EQUAL_STRING ("remote-user-reply", wait.reply_payload.c_str ());
 
-    std::string child_status;
-    TEST_ASSERT_TRUE (read_text_fd (status_pipe[0], &child_status));
-    TEST_ASSERT_EQUAL_STRING ("OK", child_status.c_str ());
-    int child_exit = 0;
-    TEST_ASSERT_EQUAL (child, waitpid (child, &child_exit, 0));
-    TEST_ASSERT_TRUE (WIFEXITED (child_exit));
-    TEST_ASSERT_EQUAL_INT (0, WEXITSTATUS (child_exit));
-
-    close (endpoint_pipe[0]);
-    close (status_pipe[0]);
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       wait_spot_node_actor_leave_spot (target_node, &result.actor,
+                                                        &target_spot_rid, 1000));
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       wait_spot_node_actor_destroy (target_node, &result.actor, 1000));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&target_spot));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&target_node));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&source_node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (target_ctx));
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (source_ctx));
+}
+
+void test_actor_join_spot_unknown_remote_completes_without_local_spot ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    zlink_spot_node_options_t options;
+    options.mode = ZLINK_SPOT_NODE_MODE_ALL;
+    void *node = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (node);
+
+    zlink_routing_id_t source_rid;
+    zlink_routing_id_t target_rid;
+    zlink_routing_id_t target_spot_rid;
+    set_rid (&source_rid, "unknown-source-node");
+    set_rid (&target_rid, "unknown-target-node");
+    set_rid (&target_spot_rid, "unknown-user-spot");
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_set_routing_id (node, source_rid.data, source_rid.size));
+
+    zlink_actor_ref_t source_ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       (zlink_spot_node_actor_new) (node, "unknown-actor", &source_ref));
+    join_wait_t wait;
+    zlink_msg_t request;
+    init_text_msg (&request, "unknown-join-request");
+    TEST_ASSERT_EQUAL (ZLINK_SUBMIT_OK,
+                       zlink_spot_node_actor_join_spot (
+                         node, &source_ref, &target_rid, &target_spot_rid, &request, 1,
+                         join_wait_handler, &wait, ZLINK_DONTWAIT, 1000));
+
+    zlink_actor_join_result_t result;
+    {
+        std::unique_lock<std::mutex> lock (wait.mutex);
+        TEST_ASSERT_TRUE (
+          wait.cv.wait_for (lock, std::chrono::seconds (2), [&] { return wait.done; }));
+        result = wait.result;
+    }
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_NOT_CONNECTED, result.result);
+
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&node));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
 void test_actor_join_entry_spot_error_cases ()
@@ -3431,7 +3388,8 @@ int main ()
     RUN_TEST (test_actor_join_entry_spot_moves_actor_to_remote_node_entry);
     RUN_TEST (test_actor_join_entry_spot_routes_after_connect_peer_rid_reconciles_existing_endpoint);
     RUN_TEST (test_actor_gateway_spot_join_request_delivers_to_user_spot);
-    RUN_TEST (test_actor_join_spot_routes_to_remote_process_user_spot);
+    RUN_TEST (test_actor_join_spot_routes_to_remote_user_spot);
+    RUN_TEST (test_actor_join_spot_unknown_remote_completes_without_local_spot);
     RUN_TEST (test_actor_join_entry_spot_error_cases);
     RUN_TEST (test_actor_join_entry_spot_timeout_releases_request);
     RUN_TEST (test_actor_join_timeout_without_dispatch_handler);

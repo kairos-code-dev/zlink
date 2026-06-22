@@ -2364,7 +2364,7 @@ zlink_spot_node_actor_join_spot (void *node_,
         }
         if (immediate_result != ZLINK_REQUEST_OK)
             request = NULL;
-        else {
+        else if (!external_gateway_join) {
             request = new (std::nothrow) queued_join_request_t ();
             if (!request) {
                 errno = ENOMEM;

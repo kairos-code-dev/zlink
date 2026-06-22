@@ -39,6 +39,32 @@ final class ZLinkStreamWireProtocolTest {
         assertEquals("abc", decoded.metadata().get("trace"));
     }
 
+    // MFLOW-009: correlation id is a first-class header trailer (flag 0x08), wire layout
+    // = after metadata, u8 length + UTF-8 bytes. Round-trips and is byte-exact.
+    @Test
+    void headerProtocol_roundTripsCorrelationIdAfterMetadata() {
+        Map<String, String> metadata = new LinkedHashMap<>();
+        metadata.put("k", "v");
+        ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(
+            ZLinkStreamWireProtocol.KIND_REQUEST,
+            ZLinkStreamWireProtocol.CODEC_JSON,
+            ZLinkStreamWireProtocol.FLAG_HAS_REQUEST_SEQ
+                | ZLinkStreamWireProtocol.FLAG_HAS_METADATA,
+            7L,
+            "order.place",
+            metadata,
+            "a1b2");
+
+        byte[] encoded = ZLinkStreamWireProtocol.encodeHeader(header);
+        ZLinkStreamWireProtocol.Header decoded = ZLinkStreamWireProtocol.decodeHeader(encoded);
+
+        assertEquals("a1b2", decoded.correlationId());
+        assertEquals((byte) 4, encoded[encoded.length - 5]);
+        assertArrayEquals(
+            "a1b2".getBytes(StandardCharsets.UTF_8),
+            java.util.Arrays.copyOfRange(encoded, encoded.length - 4, encoded.length));
+    }
+
     @Test
     void frameProtocol_matchesDotnetAndNodePrefixLayout() {
         byte[] header = hex("01 00 00 05 52 65 61 64 79");

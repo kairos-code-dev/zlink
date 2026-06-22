@@ -10,7 +10,9 @@ import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder
+import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder
+import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActorFactory
@@ -37,6 +39,11 @@ class PlayServerApplication {
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(PlayServerApplication::class.java)
             options.useDiscovery().addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
+            options.configureDispatch {
+                messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+                traceLogFile((System.getenv("BINGO_LOG_DIR") ?: "logs") + "/flow-play.log")
+                traceNodeId("play")
+            }
             options.codecs().addJson()
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.addClientServerChannel(SampleNames.ApiChannel)

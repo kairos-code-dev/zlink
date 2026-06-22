@@ -3,6 +3,7 @@
 
 #include <zlink/framework/contracts/actors/actor.hpp>
 #include <zlink/framework/contracts/channels/channel.hpp>
+#include <zlink/framework/contracts/dispatch/execution.hpp>
 
 #include <functional>
 #include <map>
@@ -49,6 +50,7 @@ class actor_gateway_state_t
     join_spot_dispatcher_t join_spot_dispatcher;
     join_entry_spot_dispatcher_t join_entry_spot_dispatcher;
     relay_dispatcher_t relay_dispatcher;
+    dispatch_options_t dispatch;
 };
 
 class actor_gateway_runtime_t
@@ -81,6 +83,7 @@ class actor_gateway_runtime_t
     void on_join_spot (actor_gateway_state_t::join_spot_dispatcher_t dispatcher);
     void on_join_entry_spot (actor_gateway_state_t::join_entry_spot_dispatcher_t dispatcher);
     void on_relay (actor_gateway_state_t::relay_dispatcher_t dispatcher);
+    void set_dispatch (dispatch_options_t options);
 
   private:
     std::shared_ptr<actor_gateway_state_t> _state;

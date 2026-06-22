@@ -3,6 +3,7 @@
 
 #include <zlink/framework/contracts/configuration/logging.hpp>
 
+#include <atomic>
 #include <cstddef>
 #include <exception>
 #include <functional>
@@ -66,12 +67,48 @@ struct unhandled_dispatch_options_t
     log_level_t publish_log_level = log_level_t::debug;
 };
 
-struct dispatch_diagnostics_options_t
+// Diagnostics/tracing config. Fields are encapsulated: configure them only through
+// the fluent builder on dispatch_options_t (configure_dispatch().message_flow(...)
+// .trace_log_file(...).trace_node_id(...)...). Read access is via getters.
+class dispatch_diagnostics_options_t
 {
-    message_flow_log_mode_t message_flow = message_flow_log_mode_t::errors_only;
-    double sample_rate = 1.0;
-    bool include_message_sizes = true;
-    bool include_native_diagnostics = false;
+  public:
+    // Configured (static) mode. Prefer effective_message_flow() for runtime checks.
+    message_flow_log_mode_t message_flow () const noexcept { return _message_flow; }
+    double sample_rate () const noexcept { return _sample_rate; }
+    bool include_message_sizes () const noexcept { return _include_message_sizes; }
+    bool include_native_diagnostics () const noexcept { return _include_native_diagnostics; }
+    const std::optional<std::string> &log_file () const noexcept { return _log_file; }
+    const std::optional<std::string> &node_id () const noexcept { return _node_id; }
+    const std::shared_ptr<std::atomic<message_flow_log_mode_t>> &live_mode () const noexcept
+    {
+        return _live_mode;
+    }
+
+    // The mode actually in effect: the live (runtime-mutable) override if installed,
+    // else the configured mode. Read live on every dispatch (relaxed atomic load).
+    message_flow_log_mode_t effective_message_flow () const noexcept
+    {
+        return _live_mode ? _live_mode->load (std::memory_order_relaxed) : _message_flow;
+    }
+
+  private:
+    // Only the dispatch options builder writes these (enforces builder-only config).
+    friend struct dispatch_options_t;
+
+    message_flow_log_mode_t _message_flow = message_flow_log_mode_t::errors_only;
+    double _sample_rate = 1.0;
+    bool _include_message_sizes = true;
+    bool _include_native_diagnostics = false;
+    // When set, tracing/error logs go to this dedicated file (separated from app
+    // logs). Empty = shared app logger (or std::clog if no sink).
+    std::optional<std::string> _log_file;
+    // Node/runtime identity stamped on each trace line (`node=`) for cross-node
+    // aggregation of process-local correlation ids. App-provided; empty = omitted.
+    std::optional<std::string> _node_id;
+    // Shared, runtime-mutable mode override (installed by the host at apply); copying
+    // dispatch options shares the same atomic so every surface observes changes.
+    std::shared_ptr<std::atomic<message_flow_log_mode_t>> _live_mode;
 };
 
 enum class dispatch_error_surface_t
@@ -202,6 +239,50 @@ struct dispatch_options_t
     {
         message_flow_callback = std::move (observer);
         message_flow_observer.reset ();
+        return *this;
+    }
+
+    // Fluent diagnostics/tracing config (chains off configure_dispatch()). This is
+    // the only supported way to set diagnostics (the fields are encapsulated).
+    dispatch_options_t &message_flow (message_flow_log_mode_t mode)
+    {
+        diagnostics._message_flow = mode;
+        return *this;
+    }
+
+    dispatch_options_t &trace_sample_rate (double rate)
+    {
+        diagnostics._sample_rate = rate;
+        return *this;
+    }
+
+    dispatch_options_t &include_message_sizes (bool include)
+    {
+        diagnostics._include_message_sizes = include;
+        return *this;
+    }
+
+    // Send message-flow/error tracing to its own file (separated from app logs).
+    dispatch_options_t &trace_log_file (std::string path)
+    {
+        diagnostics._log_file = std::move (path);
+        return *this;
+    }
+
+    // Node/runtime identity stamped on every trace line (`node=`) for cross-node
+    // aggregation of process-local correlation ids.
+    dispatch_options_t &trace_node_id (std::string id)
+    {
+        diagnostics._node_id = std::move (id);
+        return *this;
+    }
+
+    // Install a shared, runtime-mutable mode cell (host wiring for runtime toggle;
+    // app_t::set_message_flow_mode flips it). Overrides the configured message_flow.
+    dispatch_options_t &message_flow_live (
+      std::shared_ptr<std::atomic<message_flow_log_mode_t>> live)
+    {
+        diagnostics._live_mode = std::move (live);
         return *this;
     }
 };

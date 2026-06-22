@@ -10,17 +10,38 @@
 #include "runtime/transport/stream_connection.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <optional>
+#include <sstream>
 
 namespace zlink::stream_connector::detail
 {
 
 namespace
 {
+
+// Process-wide monotonic correlation id for outbound stream packets, mirroring
+// the framework channel codec. The sending client generates it; the server only
+// echoes it back, so a request and its reply share one id end to end.
+std::string next_correlation_id ()
+{
+    static std::atomic_uint64_t next{1};
+    std::uint64_t value = next.fetch_add (1, std::memory_order_relaxed);
+    // Cheap uint->hex (no ostringstream): this runs per outbound packet, so it must
+    // stay light even when tracing is off.
+    char buffer[17];
+    int index = static_cast<int> (sizeof (buffer));
+    buffer[--index] = '\0';
+    do {
+        buffer[--index] = "0123456789abcdef"[value & 0xfu];
+        value >>= 4u;
+    } while (value != 0);
+    return std::string (buffer + index);
+}
 
 result_t<void> validate_packet_limits (const connector_state_t &state, const packet_t &packet)
 {
@@ -264,8 +285,12 @@ result_t<std::vector<std::uint8_t>> encode_packet_frame (connector_state_t &stat
         flags = flags | header_flags_t::payload_compressed;
     }
     header_codec_t header_codec;
-    auto header = header_codec.encode (
-      stream_header_t{kind, packet.codec, flags, request_seq, packet.name, packet.metadata});
+    stream_header_t header_data{kind,        packet.codec,     flags,
+                                request_seq, packet.name,      packet.metadata};
+    if (kind != message_kind_t::control) {
+        header_data.correlation_id = next_correlation_id ();
+    }
+    auto header = header_codec.encode (header_data);
     if (!header) {
         return result_t<std::vector<std::uint8_t>>::failure (header.error_code (),
                                                              header.error ()->message);

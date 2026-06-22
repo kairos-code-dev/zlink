@@ -47,7 +47,8 @@ enum class stream_header_flags_t : std::uint8_t
     none = 0,
     has_request_seq = 0x01,
     has_metadata = 0x02,
-    payload_compressed = 0x04
+    payload_compressed = 0x04,
+    has_correlation_id = 0x08
 };
 
 constexpr stream_header_flags_t operator| (stream_header_flags_t lhs,
@@ -123,6 +124,11 @@ class stream_header_t
     std::optional<std::string_view> correlation_id () const;
     std::optional<std::string_view> content_type () const;
 
+    // correlation_id is a first-class stream-header field (parity with the
+    // channel envelope). The sending client generates it; the server echoes it
+    // onto replies. Empty means "not set".
+    stream_header_t &with_correlation_id (std::string correlation_id);
+
   private:
     stream_message_kind_t _kind = stream_message_kind_t::send;
     stream_codec_t _codec = stream_codec_t::raw;
@@ -130,6 +136,7 @@ class stream_header_t
     std::optional<std::uint64_t> _request_seq;
     std::string _packet_name;
     stream_metadata_t _metadata;
+    std::string _correlation_id;
 };
 
 class stream_t

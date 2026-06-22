@@ -69,17 +69,19 @@ void route_packet_dispatcher_t::trace_flow (
   const runtime::messaging::envelope_header_t &header) const
 {
     message_flow_tracer_t (_dispatch_options)
-      .trace (message_flow_event_t{phase,
-                                   dispatch_error_surface_t::route_mesh_channel,
-                                   kind,
-                                   header.message_name,
-                                   _router_channel_id,
-                                   header.topic,
-                                   header.correlation_id,
-                                   received.source_node_rid.to_string (),
-                                   std::nullopt,
-                                   std::nullopt,
-                                   std::nullopt});
+      .trace (phase, [&] {
+          return message_flow_event_t{phase,
+                                      dispatch_error_surface_t::route_mesh_channel,
+                                      kind,
+                                      header.message_name,
+                                      _router_channel_id,
+                                      header.topic,
+                                      header.correlation_id,
+                                      received.source_node_rid.to_string (),
+                                      std::nullopt,
+                                      std::nullopt,
+                                      std::nullopt};
+      });
 }
 
 result_t<std::optional<route_dispatch_reply_t>>

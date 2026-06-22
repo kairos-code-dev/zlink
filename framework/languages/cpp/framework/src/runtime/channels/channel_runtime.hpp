@@ -161,6 +161,7 @@ class channel_runtime_t
     void bind_serializers (serializer_registry_t &serializers) noexcept;
     void bind_discovery (discovery_snapshot_t discovery) noexcept;
     dispatch_options_t dispatch_options () const;
+    const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }
     void drain () noexcept;
 
     static channel_runtime_t from (const message_bus_t &bus);

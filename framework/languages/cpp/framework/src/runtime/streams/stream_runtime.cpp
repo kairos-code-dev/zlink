@@ -272,7 +272,16 @@ const stream_metadata_t &stream_header_t::metadata () const noexcept
 
 std::optional<std::string_view> stream_header_t::correlation_id () const
 {
-    return metadata ("correlation_id");
+    if (_correlation_id.empty ()) {
+        return std::nullopt;
+    }
+    return _correlation_id;
+}
+
+stream_header_t &stream_header_t::with_correlation_id (std::string correlation_id)
+{
+    _correlation_id = std::move (correlation_id);
+    return *this;
 }
 
 std::optional<std::string_view> stream_header_t::content_type () const
@@ -337,6 +346,9 @@ stream_write_call_t stream_t::reply_packet (const stream_header_t &request_heade
                                   stream_header_flags_t::has_request_seq,
                                   request_header.request_seq (),
                                   std::string (request_header.packet_name ()), {});
+    if (auto correlation = request_header.correlation_id ()) {
+        reply_header.with_correlation_id (std::string (*correlation));
+    }
     return write_packet (reply_header, payload);
 }
 
@@ -496,7 +508,8 @@ result_t<void> stream_runtime_t::validate_header (const stream_header_t &header)
     constexpr auto known_flags =
       static_cast<std::uint8_t> (stream_header_flags_t::has_request_seq)
       | static_cast<std::uint8_t> (stream_header_flags_t::has_metadata)
-      | static_cast<std::uint8_t> (stream_header_flags_t::payload_compressed);
+      | static_cast<std::uint8_t> (stream_header_flags_t::payload_compressed)
+      | static_cast<std::uint8_t> (stream_header_flags_t::has_correlation_id);
     if ((raw_flags & ~known_flags) != 0) {
         return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                         "STREAM header contains unknown flags");
@@ -554,6 +567,14 @@ stream_runtime_t::encode_header (const stream_header_t &header) const
     if (!header.metadata ().empty ()) {
         flags = flags | stream_header_flags_t::has_metadata;
     }
+    const auto correlation = header.correlation_id ();
+    if (correlation) {
+        flags = flags | stream_header_flags_t::has_correlation_id;
+    }
+    if (correlation && correlation->size () > std::numeric_limits<std::uint8_t>::max ()) {
+        return result_t<std::vector<std::uint8_t>>::failure (
+          framework_error_kind_t::request_protocol_error, "STREAM correlation id is too large");
+    }
 
     std::vector<std::uint8_t> bytes;
     bytes.push_back (static_cast<std::uint8_t> (header.kind ()));
@@ -582,6 +603,10 @@ stream_runtime_t::encode_header (const stream_header_t &header) const
             bytes.push_back (static_cast<std::uint8_t> (value.size ()));
             bytes.insert (bytes.end (), value.begin (), value.end ());
         }
+    }
+    if (correlation) {
+        bytes.push_back (static_cast<std::uint8_t> (correlation->size ()));
+        bytes.insert (bytes.end (), correlation->begin (), correlation->end ());
     }
     return result_t<std::vector<std::uint8_t>>::success (std::move (bytes));
 }
@@ -658,6 +683,23 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
             metadata.with (std::move (key), std::move (value));
         }
     }
+    std::string correlation;
+    if (has_flag (flags, stream_header_flags_t::has_correlation_id)) {
+        if (offset >= bytes.size ()) {
+            return result_t<stream_header_t>::failure (
+              framework_error_kind_t::payload_decode_failed,
+              "STREAM correlation id length is missing");
+        }
+        const auto correlation_size = bytes[offset++];
+        if (correlation_size == 0 || bytes.size () - offset < correlation_size) {
+            return result_t<stream_header_t>::failure (
+              framework_error_kind_t::payload_decode_failed, "STREAM correlation id is incomplete");
+        }
+        correlation = std::string (
+          bytes.begin () + static_cast<std::ptrdiff_t> (offset),
+          bytes.begin () + static_cast<std::ptrdiff_t> (offset + correlation_size));
+        offset += correlation_size;
+    }
     if (offset != bytes.size ()) {
         return result_t<stream_header_t>::failure (framework_error_kind_t::payload_decode_failed,
                                                    "STREAM header has trailing bytes");
@@ -665,6 +707,9 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
 
     stream_header_t header (kind, codec, flags, request_seq, std::move (name),
                             std::move (metadata));
+    if (!correlation.empty ()) {
+        header.with_correlation_id (std::move (correlation));
+    }
     if (auto valid = validate_header (header); !valid) {
         return result_t<stream_header_t>::failure (framework_error_kind_t::payload_decode_failed,
                                                    valid.error ()->what ());
@@ -705,22 +750,24 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
     if (auto valid = validate_header (header); !valid) {
         return valid;
     }
-    std::optional<std::string> correlation;
-    if (auto id = header.correlation_id ()) {
-        correlation = std::string (*id);
-    }
     detail::message_flow_tracer_t (_state->dispatch)
-      .trace (message_flow_event_t{message_flow_phase_t::received,
-                                   dispatch_error_surface_t::stream_session,
-                                   dispatch_message_kind_t::request,
-                                   std::string (header.packet_name ()),
-                                   std::nullopt,
-                                   std::nullopt,
-                                   correlation,
-                                   std::nullopt,
-                                   std::nullopt,
-                                   std::nullopt,
-                                   std::nullopt});
+      .trace (message_flow_phase_t::received, [&] {
+          std::optional<std::string> correlation;
+          if (auto id = header.correlation_id ()) {
+              correlation = std::string (*id);
+          }
+          return message_flow_event_t{message_flow_phase_t::received,
+                                      dispatch_error_surface_t::stream_session,
+                                      dispatch_message_kind_t::request,
+                                      std::string (header.packet_name ()),
+                                      std::nullopt,
+                                      std::nullopt,
+                                      correlation,
+                                      std::nullopt,
+                                      std::nullopt,
+                                      std::nullopt,
+                                      std::nullopt};
+      });
     return dispatch_serial (stream, "packet:" + std::string (header.packet_name ()),
                             [&] { return session.on_packet (stream, header, payload); });
 }

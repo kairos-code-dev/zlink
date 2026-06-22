@@ -35,18 +35,20 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
     const auto inbound_kind = header.value ().kind == runtime::messaging::message_kind_t::request
                                 ? dispatch_message_kind_t::request
                                 : dispatch_message_kind_t::send;
-    message_flow_tracer_t flow (_runtime.dispatch_options ());
-    flow.trace (message_flow_event_t{message_flow_phase_t::received,
-                                     dispatch_error_surface_t::channel,
-                                     inbound_kind,
-                                     header.value ().message_name,
-                                     channel_name,
-                                     header.value ().topic,
-                                     header.value ().correlation_id,
-                                     std::nullopt,
-                                     std::nullopt,
-                                     std::nullopt,
-                                     std::nullopt});
+    message_flow_tracer_t flow (_runtime.dispatch_options_ref ());
+    flow.trace (message_flow_phase_t::received, [&] {
+        return message_flow_event_t{message_flow_phase_t::received,
+                                    dispatch_error_surface_t::channel,
+                                    inbound_kind,
+                                    header.value ().message_name,
+                                    channel_name,
+                                    header.value ().topic,
+                                    header.value ().correlation_id,
+                                    std::nullopt,
+                                    std::nullopt,
+                                    std::nullopt,
+                                    std::nullopt};
+    });
 
     auto body = codec.decode_body (parts);
     if (!body) {
@@ -111,17 +113,19 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
                 writer.create_error_header (std::move (channel_name), header.value (), error),
                 zlink::message_t::from ("")));
         }
-        flow.trace (message_flow_event_t{message_flow_phase_t::replied,
-                                         dispatch_error_surface_t::channel,
-                                         dispatch_message_kind_t::response,
-                                         header.value ().message_name,
-                                         channel_name,
-                                         header.value ().topic,
-                                         header.value ().correlation_id,
-                                         std::nullopt,
-                                         std::nullopt,
-                                         std::nullopt,
-                                         std::nullopt});
+        flow.trace (message_flow_phase_t::replied, [&] {
+            return message_flow_event_t{message_flow_phase_t::replied,
+                                        dispatch_error_surface_t::channel,
+                                        dispatch_message_kind_t::response,
+                                        header.value ().message_name,
+                                        channel_name,
+                                        header.value ().topic,
+                                        header.value ().correlation_id,
+                                        std::nullopt,
+                                        std::nullopt,
+                                        std::nullopt,
+                                        std::nullopt};
+        });
         return result_t<runtime::messaging::message_parts_t>::success (writer.reply_raw_envelope (
           writer.create_reply_header (runtime::messaging::message_kind_t::response,
                                       std::move (channel_name), header.value ()),
@@ -150,17 +154,19 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
             return result_t<runtime::messaging::message_parts_t>::success (
               runtime::messaging::message_parts_t{});
         }
-        flow.trace (message_flow_event_t{message_flow_phase_t::dispatched,
-                                         dispatch_error_surface_t::channel,
-                                         dispatch_message_kind_t::send,
-                                         header.value ().message_name,
-                                         channel_name,
-                                         header.value ().topic,
-                                         header.value ().correlation_id,
-                                         std::nullopt,
-                                         std::nullopt,
-                                         std::nullopt,
-                                         std::nullopt});
+        flow.trace (message_flow_phase_t::dispatched, [&] {
+            return message_flow_event_t{message_flow_phase_t::dispatched,
+                                        dispatch_error_surface_t::channel,
+                                        dispatch_message_kind_t::send,
+                                        header.value ().message_name,
+                                        channel_name,
+                                        header.value ().topic,
+                                        header.value ().correlation_id,
+                                        std::nullopt,
+                                        std::nullopt,
+                                        std::nullopt,
+                                        std::nullopt};
+        });
         return result_t<runtime::messaging::message_parts_t>::success (
           runtime::messaging::message_parts_t{});
     }

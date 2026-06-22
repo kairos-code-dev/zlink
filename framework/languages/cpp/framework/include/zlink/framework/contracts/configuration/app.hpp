@@ -59,6 +59,13 @@ class app_t
     health_builder_t &health () noexcept;
     app_advanced_t advanced () noexcept;
 
+    // Turn message-flow tracing on/off (or change verbosity) at runtime, after the
+    // app is built/running — for temporary diagnostics in production without a
+    // restart. Reads live on every dispatch via a shared atomic. No-op until the
+    // framework is applied. Thread-safe.
+    app_t &set_message_flow_mode (message_flow_log_mode_t mode) noexcept;
+    message_flow_log_mode_t message_flow_mode () const noexcept;
+
     app_t &add_module (module_t &module);
     app_t &add_zlink_framework (std::function<void (zlink_framework_options_t &)> configure);
     template <typename TModule, typename... TArgs>

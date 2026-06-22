@@ -9,7 +9,9 @@
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 
+#include <atomic>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -35,7 +37,7 @@ template <typename Fn> std::string capture_clog (Fn &&fn)
 dispatch_options_t options_with_mode (message_flow_log_mode_t mode)
 {
     dispatch_options_t options;
-    options.diagnostics.message_flow = mode;
+    options.message_flow (mode);
     return options;
 }
 
@@ -82,7 +84,8 @@ int main ()
     // off silences every success transition, including drops.
     {
         const auto out = capture_clog ([] {
-            message_flow_tracer_t tracer (options_with_mode (message_flow_log_mode_t::off));
+            const auto opts = options_with_mode (message_flow_log_mode_t::off);
+            message_flow_tracer_t tracer (opts);
             tracer.trace (flow_event (message_flow_phase_t::received));
             tracer.trace (flow_event (message_flow_phase_t::dropped));
         });
@@ -94,7 +97,8 @@ int main ()
     // errors_only emits the drop decision but not healthy transitions.
     {
         const auto out = capture_clog ([] {
-            message_flow_tracer_t tracer (options_with_mode (message_flow_log_mode_t::errors_only));
+            const auto opts = options_with_mode (message_flow_log_mode_t::errors_only);
+            message_flow_tracer_t tracer (opts);
             tracer.trace (flow_event (message_flow_phase_t::received));
             tracer.trace (flow_event (message_flow_phase_t::dropped));
         });
@@ -109,8 +113,8 @@ int main ()
     // key_transitions emits the lifecycle, keyed by correlation id; no sizes yet.
     {
         const auto out = capture_clog ([] {
-            message_flow_tracer_t tracer (
-              options_with_mode (message_flow_log_mode_t::key_transitions));
+            const auto opts = options_with_mode (message_flow_log_mode_t::key_transitions);
+            message_flow_tracer_t tracer (opts);
             tracer.trace (flow_event (message_flow_phase_t::received));
             tracer.trace (flow_event (message_flow_phase_t::replied));
         });
@@ -145,7 +149,7 @@ int main ()
     // ...unless include_message_sizes opts out.
     {
         auto options = options_with_mode (message_flow_log_mode_t::verbose);
-        options.diagnostics.include_message_sizes = false;
+        options.include_message_sizes (false);
         const auto out = capture_clog ([&] {
             message_flow_tracer_t (options).trace (flow_event (message_flow_phase_t::received));
         });
@@ -181,6 +185,41 @@ int main ()
         // follows a message whether it succeeded or failed.
         if (!contains (out, "corr=corr-123")) {
             return 14;
+        }
+    }
+
+    // live_mode (runtime toggle) overrides the static mode and is read live, so an
+    // operator can turn tracing on/off without restart.
+    {
+        auto options = options_with_mode (message_flow_log_mode_t::off);
+        auto live = std::make_shared<std::atomic<message_flow_log_mode_t>> (
+          message_flow_log_mode_t::off);
+        options.message_flow_live (live);
+
+        // Static says off, live says off -> nothing.
+        auto out = capture_clog ([&] {
+            message_flow_tracer_t (options).trace (flow_event (message_flow_phase_t::received));
+        });
+        if (!out.empty ()) {
+            return 15;
+        }
+
+        // Flip live to key_transitions at runtime -> now it traces, despite static off.
+        live->store (message_flow_log_mode_t::key_transitions);
+        out = capture_clog ([&] {
+            message_flow_tracer_t (options).trace (flow_event (message_flow_phase_t::received));
+        });
+        if (!contains (out, "phase=received")) {
+            return 16;
+        }
+
+        // Flip back to off -> silent again.
+        live->store (message_flow_log_mode_t::off);
+        out = capture_clog ([&] {
+            message_flow_tracer_t (options).trace (flow_event (message_flow_phase_t::received));
+        });
+        if (!out.empty ()) {
+            return 17;
         }
     }
 

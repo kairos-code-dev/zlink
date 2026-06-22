@@ -209,6 +209,11 @@ class stream_host_service_t::listener_t
                                       stream_header_flags_t::has_request_seq,
                                       request_header.request_seq (),
                                       std::string (request_header.packet_name ()), {});
+        // Echo the request correlation id so a stream request FAILURE is traceable
+        // by the same corr as its inbound `received`.
+        if (auto correlation = request_header.correlation_id ()) {
+            error_header.with_correlation_id (std::string (*correlation));
+        }
         write_frame (socket, error_header,
                      zlink::message_t::from (std::string ("{\"error\":\"") + message + "\"}"));
     }

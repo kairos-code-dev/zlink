@@ -2,6 +2,7 @@
 
 #include "actor_gateway_runtime.hpp"
 
+#include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
 
 #include <utility>
@@ -179,12 +180,38 @@ actor_context_t::join_spot_erased (spot_rid_t spot_rid, const zlink::message_t &
         }
         dispatcher = _state->join_spot_dispatcher;
     }
+    detail::message_flow_tracer_t (_state->dispatch).trace (message_flow_phase_t::sent, [&] {
+        return message_flow_event_t{message_flow_phase_t::sent,
+                                    dispatch_error_surface_t::spot_actor,
+                                    dispatch_message_kind_t::actor_request,
+                                    std::nullopt,
+                                    std::nullopt,
+                                    std::nullopt,
+                                    std::nullopt,
+                                    std::nullopt,
+                                    std::string (spot_rid.value ()),
+                                    std::string (_actor_ref.actor_id ()),
+                                    std::nullopt};
+    });
     auto joined = dispatcher (_actor_ref, spot_rid, request);
     if (!joined) {
         const auto *error = joined.error ();
         return result_t<detail::actor_join_reply_t>::failure (
           joined.error_kind (), error != nullptr ? error->what () : "actor join spot failed");
     }
+    detail::message_flow_tracer_t (_state->dispatch).trace (message_flow_phase_t::reply_received, [&] {
+        return message_flow_event_t{message_flow_phase_t::reply_received,
+                                    dispatch_error_surface_t::spot_actor,
+                                    dispatch_message_kind_t::actor_request,
+                                    std::nullopt,
+                                    std::nullopt,
+                                    std::nullopt,
+                                    std::nullopt,
+                                    std::nullopt,
+                                    std::string (spot_rid.value ()),
+                                    std::string (_actor_ref.actor_id ()),
+                                    std::nullopt};
+    });
 
     if (joined.value ().result_code == 0) {
         const std::lock_guard lock (_state->mutex);
@@ -750,6 +777,12 @@ void actor_gateway_runtime_t::on_relay (actor_gateway_state_t::relay_dispatcher_
 {
     const std::lock_guard lock (_state->mutex);
     _state->relay_dispatcher = std::move (dispatcher);
+}
+
+void actor_gateway_runtime_t::set_dispatch (dispatch_options_t options)
+{
+    const std::lock_guard lock (_state->mutex);
+    _state->dispatch = std::move (options);
 }
 
 } // namespace zlink::framework::detail

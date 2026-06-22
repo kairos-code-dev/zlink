@@ -22,8 +22,8 @@ inline void validate_dispatch_options (const dispatch_options_t &options)
           framework_error_kind_t::request_protocol_error,
           "unhandled publish dispatch cannot use reply_error because publish has no reply path");
     }
-    if (std::isnan (options.diagnostics.sample_rate) || options.diagnostics.sample_rate < 0.0
-        || options.diagnostics.sample_rate > 1.0) {
+    if (std::isnan (options.diagnostics.sample_rate ()) || options.diagnostics.sample_rate () < 0.0
+        || options.diagnostics.sample_rate () > 1.0) {
         throw framework_exception_t (
           framework_error_kind_t::request_protocol_error,
           "dispatch diagnostics sample rate must be between 0.0 and 1.0");

@@ -15,7 +15,8 @@ namespace
 constexpr std::uint8_t known_flags =
   static_cast<std::uint8_t> (header_flags_t::has_request_seq)
   | static_cast<std::uint8_t> (header_flags_t::has_metadata)
-  | static_cast<std::uint8_t> (header_flags_t::payload_compressed);
+  | static_cast<std::uint8_t> (header_flags_t::payload_compressed)
+  | static_cast<std::uint8_t> (header_flags_t::has_correlation_id);
 
 bool has_flag (header_flags_t flags, header_flags_t flag)
 {
@@ -150,6 +151,15 @@ result_t<std::vector<std::uint8_t>> header_codec_t::encode (const stream_header_
     } else {
         clear_flag (header.flags, header_flags_t::has_metadata);
     }
+    if (!header.correlation_id.empty ()) {
+        set_flag (header.flags, header_flags_t::has_correlation_id);
+    } else {
+        clear_flag (header.flags, header_flags_t::has_correlation_id);
+    }
+    if (header.correlation_id.size () > std::numeric_limits<std::uint8_t>::max ()) {
+        return result_t<std::vector<std::uint8_t>>::failure (
+          error_code_t::validation_failed, "Correlation id is too large.");
+    }
     if (auto validation = validate_header (header); !validation) {
         return result_t<std::vector<std::uint8_t>>::failure (validation.error_code (),
                                                              validation.error ()->message);
@@ -178,6 +188,10 @@ result_t<std::vector<std::uint8_t>> header_codec_t::encode (const stream_header_
     if (!metadata.value ().empty ()) {
         write_u16 (bytes, static_cast<std::uint16_t> (metadata.value ().size ()));
         bytes.insert (bytes.end (), metadata.value ().begin (), metadata.value ().end ());
+    }
+    if (!header.correlation_id.empty ()) {
+        bytes.push_back (static_cast<std::uint8_t> (header.correlation_id.size ()));
+        bytes.insert (bytes.end (), header.correlation_id.begin (), header.correlation_id.end ());
     }
     return result_t<std::vector<std::uint8_t>>::success (std::move (bytes));
 }
@@ -234,6 +248,21 @@ result_t<stream_header_t> header_codec_t::decode (const std::vector<std::uint8_t
                                                        decoded.error ()->message);
         }
         header.metadata = decoded.value ();
+    }
+    if (has_flag (header.flags, header_flags_t::has_correlation_id)) {
+        if (bytes.size () - offset < 1) {
+            return result_t<stream_header_t>::failure (
+              error_code_t::frame_decode_failed, "Helper header correlation id length is missing.");
+        }
+        const auto correlation_size = bytes[offset++];
+        if (correlation_size == 0 || bytes.size () - offset < correlation_size) {
+            return result_t<stream_header_t>::failure (
+              error_code_t::frame_decode_failed, "Helper header correlation id is invalid.");
+        }
+        header.correlation_id = std::string (
+          bytes.begin () + static_cast<std::ptrdiff_t> (offset),
+          bytes.begin () + static_cast<std::ptrdiff_t> (offset + correlation_size));
+        offset += correlation_size;
     }
     if (offset != bytes.size ()) {
         return result_t<stream_header_t>::failure (error_code_t::frame_decode_failed,

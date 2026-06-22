@@ -102,6 +102,16 @@ template <typename TCategory = void> class logger_t
                           std::vector<log_field_t> (fields));
     }
 
+    // Structured form for dynamic field sets (e.g. message-flow tracing). Lets sinks
+    // / collectors ingest key/value fields instead of parsing a formatted line.
+    void log_with_fields (log_level_t level,
+                          std::string message,
+                          std::vector<log_field_t> fields) const
+    {
+        detail::emit_log (_state, static_cast<int> (level), _category, std::move (message),
+                          std::move (fields));
+    }
+
     void trace (std::string message, std::initializer_list<log_field_t> fields = {}) const
     {
         log (log_level_t::trace, std::move (message), fields);
@@ -180,18 +190,33 @@ class logging_builder_t
     logging_builder_t &use_file (std::string path);
     logging_builder_t &use_rotating_file (std::string path, rotating_file_options_t options = {});
     logging_builder_t &use_callback_sink (sink_t sink);
+    // Register an application logging backend ("provider"), .NET/SLF4J style: the
+    // framework keeps its own logger facade and forwards every record (with
+    // structured fields) to this provider. With no use_console()/use_file() the
+    // framework emits nothing itself, so logs flow only to the app's backend.
+    // `name` is informational (introspection/diagnostics).
+    logging_builder_t &use_provider (std::string name, sink_t sink);
     logging_builder_t &use_async (logging_async_options_t options = {});
     logging_builder_t &use_backend (logging_backend_t backend);
+
+    // In-memory record buffer control (the buffer is a test/inspection aid). It is
+    // bounded by default; disable it in production when a sink/provider is used.
+    logging_builder_t &disable_record_capture ();
+    logging_builder_t &set_max_captured_records (std::size_t max);
 
     logging_builder_t &set_min_level (log_level_t level);
     logging_builder_t &set_level (std::string level);
 
     bool console_enabled () const noexcept;
+    // True if any output sink is configured (console, file, callback, or provider) —
+    // i.e. logs would actually go somewhere.
+    bool has_output_sink () const noexcept;
     bool async_enabled () const noexcept;
     logging_backend_t backend () const noexcept;
     log_level_t min_level () const noexcept;
     const std::string &level () const noexcept;
     const std::vector<std::string> &file_paths () const noexcept;
+    const std::vector<std::string> &provider_names () const noexcept;
     const std::vector<log_record_t> &captured_records () const noexcept;
 
     logger_factory_t factory () const;

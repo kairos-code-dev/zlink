@@ -287,6 +287,12 @@ class app_state_t
     std::vector<std::unique_ptr<hosted_service_t>> hosted_services;
     std::atomic_bool stop_requested = false;
     int exit_code = 0;
+    // Shared, runtime-mutable message-flow mode (set_message_flow_mode). Created
+    // once here (never reassigned) so concurrent set/apply only touch the atomic,
+    // not the shared_ptr. Installed into dispatch options at apply.
+    std::shared_ptr<std::atomic<message_flow_log_mode_t>> message_flow_mode =
+      std::make_shared<std::atomic<message_flow_log_mode_t>> (
+        message_flow_log_mode_t::errors_only);
 };
 
 } // namespace zlink::framework::detail
@@ -355,6 +361,19 @@ logging_builder_t &app_t::logging () noexcept
 monitoring_builder_t &app_t::monitoring () noexcept
 {
     return _state->monitoring;
+}
+
+app_t &app_t::set_message_flow_mode (message_flow_log_mode_t mode) noexcept
+{
+    // Note: before apply() this is overwritten by the configured mode (config seeds
+    // at apply); the intended use is runtime toggling after the app is running.
+    _state->message_flow_mode->store (mode, std::memory_order_relaxed);
+    return *this;
+}
+
+message_flow_log_mode_t app_t::message_flow_mode () const noexcept
+{
+    return _state->message_flow_mode->load (std::memory_order_relaxed);
 }
 
 metrics_builder_t &app_t::metrics () noexcept
@@ -440,16 +459,39 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     if (configure) {
         configure (options);
     }
-    // Route message-flow tracing and dispatch errors through the framework logger
-    // when an output sink is configured, so app.logging().use_file(...) captures
-    // them. Without a sink we leave it unset to keep the std::clog fallback (and
-    // avoid feeding high-volume traffic into the logger's in-memory record buffer).
-    if (_state->logging.console_enabled () || !_state->logging.file_paths ().empty ()) {
+    // Route message-flow tracing and dispatch errors to a logger. The user picks:
+    //  - diagnostics.log_file set  -> SEPARATED: a dedicated file logger, so tracing
+    //    never mixes with application logs. (Its logging state stays alive through
+    //    the logger_t copies carried in the propagated dispatch options.)
+    //  - otherwise, if an app logging sink is configured -> MERGED: the shared
+    //    application logger captures both app and tracing logs together.
+    //  - otherwise -> left unset, std::clog fallback (and no unbounded in-memory
+    //    record buffering for high-volume traffic).
+    // Install the shared, runtime-mutable message-flow mode so set_message_flow_mode
+    // can flip tracing on/off live. Seeded from the configured mode; shared across
+    // all surfaces because dispatch options copy the shared_ptr.
+    // Seed the (already-created) shared atomic from the configured mode and share it
+    // with every surface via dispatch options. The shared_ptr is never reassigned,
+    // so runtime set_message_flow_mode races only on the atomic (safe).
+    _state->message_flow_mode->store (options.configure_dispatch ().diagnostics.message_flow (),
+                                      std::memory_order_relaxed);
+    options.configure_dispatch ().message_flow_live (_state->message_flow_mode);
+    if (const auto &diagnostics_log_file = options.configure_dispatch ().diagnostics.log_file ();
+        diagnostics_log_file) {
+        logging_builder_t flow_logging;
+        flow_logging.use_file (*diagnostics_log_file);
+        options.configure_dispatch ().diagnostics_logger =
+          flow_logging.factory ().create ("zlink.framework.dispatch");
+    }
+    else if (_state->logging.has_output_sink ()) {
         options.configure_dispatch ().diagnostics_logger =
           _state->logging.factory ().create ("zlink.framework.dispatch");
     }
     const auto http_snapshot = options.http ().snapshot ();
     options.apply ();
+    _state->services.build_provider ()
+      .get_required<detail::actor_gateway_runtime_t> ()
+      .set_dispatch (options.configure_dispatch ());
     detail::channel_runtime_t::from (_state->zlink.message_bus ())
       .bind_discovery (_state->zlink.discovery_options ());
     const auto registry_snapshot = _state->zlink.registry_options ();

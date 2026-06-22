@@ -27,7 +27,12 @@ class logging_state_t
     std::vector<std::string> file_paths;
     std::vector<rotating_file_options_t> rotating_options;
     std::vector<logging_builder_t::sink_t> callback_sinks;
+    std::vector<std::string> provider_names;
     std::vector<log_record_t> captured_records;
+    // The in-memory record buffer is a test/inspection aid; bounded by default so it
+    // never grows without limit in production. capture_records=false disables it.
+    bool capture_records = true;
+    std::size_t max_captured_records = 4096;
     mutable std::mutex mutex;
 };
 
@@ -158,7 +163,19 @@ void emit_log (const std::shared_ptr<logging_state_t> &state,
     bool console = false;
     {
         std::lock_guard lock (state->mutex);
-        state->captured_records.push_back (record);
+        if (state->capture_records) {
+            // Bounded ring with amortized-O(1) bulk trim: keep the most recent half
+            // when the cap is reached so steady-state logging does not pay O(n) per
+            // record. Production typically disables capture entirely.
+            if (state->max_captured_records > 0
+                && state->captured_records.size () >= state->max_captured_records) {
+                const auto keep = state->max_captured_records / 2;
+                state->captured_records.erase (
+                  state->captured_records.begin (),
+                  state->captured_records.end () - static_cast<std::ptrdiff_t> (keep));
+            }
+            state->captured_records.push_back (record);
+        }
         callbacks = state->callback_sinks;
         files = state->file_paths;
         rotations = state->rotating_options;
@@ -241,6 +258,30 @@ logging_builder_t &logging_builder_t::use_callback_sink (sink_t sink)
     return *this;
 }
 
+logging_builder_t &logging_builder_t::use_provider (std::string name, sink_t sink)
+{
+    std::lock_guard lock (_state->mutex);
+    _state->provider_names.push_back (std::move (name));
+    _state->callback_sinks.push_back (std::move (sink));
+    return *this;
+}
+
+logging_builder_t &logging_builder_t::disable_record_capture ()
+{
+    std::lock_guard lock (_state->mutex);
+    _state->capture_records = false;
+    _state->captured_records.clear ();
+    _state->captured_records.shrink_to_fit ();
+    return *this;
+}
+
+logging_builder_t &logging_builder_t::set_max_captured_records (std::size_t max)
+{
+    std::lock_guard lock (_state->mutex);
+    _state->max_captured_records = max;
+    return *this;
+}
+
 logging_builder_t &logging_builder_t::use_async (logging_async_options_t options)
 {
     std::lock_guard lock (_state->mutex);
@@ -274,6 +315,13 @@ bool logging_builder_t::console_enabled () const noexcept
     return _state->console_enabled;
 }
 
+bool logging_builder_t::has_output_sink () const noexcept
+{
+    std::lock_guard lock (_state->mutex);
+    return _state->console_enabled || !_state->file_paths.empty ()
+           || !_state->callback_sinks.empty ();
+}
+
 bool logging_builder_t::async_enabled () const noexcept
 {
     return _state->async_enabled;
@@ -297,6 +345,11 @@ const std::string &logging_builder_t::level () const noexcept
 const std::vector<std::string> &logging_builder_t::file_paths () const noexcept
 {
     return _state->file_paths;
+}
+
+const std::vector<std::string> &logging_builder_t::provider_names () const noexcept
+{
+    return _state->provider_names;
 }
 
 const std::vector<log_record_t> &logging_builder_t::captured_records () const noexcept

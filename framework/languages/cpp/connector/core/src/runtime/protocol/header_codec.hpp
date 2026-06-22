@@ -20,6 +20,7 @@ struct stream_header_t
     std::optional<std::uint64_t> request_seq;
     std::string name;
     metadata_t metadata;
+    std::string correlation_id;
 };
 
 class header_codec_t

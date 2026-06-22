@@ -31,13 +31,12 @@ class session_server_host_factory_t
         if (auto_stop) {
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
-        app.logging ()
-          .use_console ()
-          .use_file (flow_log_path ("session-" + topology.session_node))
-          .set_min_level (zlink::framework::log_level_t::info);
+        app.logging ().use_console ().set_min_level (zlink::framework::log_level_t::info);
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
-            options.configure_dispatch ().diagnostics.message_flow =
-              zlink::framework::message_flow_log_mode_t::key_transitions;
+            options.configure_dispatch ()
+              .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+              .trace_log_file (flow_log_path ("session-" + topology.session_node))
+              .trace_node_id ("session-" + topology.session_node);
             options.services ().add_singleton<sample_topology_t> (
               std::make_unique<sample_topology_t> (topology));
             options.codecs ().use (

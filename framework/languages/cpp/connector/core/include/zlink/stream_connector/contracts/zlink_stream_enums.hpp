@@ -48,7 +48,8 @@ enum class header_flags_t : std::uint8_t
     none = 0,
     has_request_seq = 0x01,
     has_metadata = 0x02,
-    payload_compressed = 0x04
+    payload_compressed = 0x04,
+    has_correlation_id = 0x08
 };
 
 constexpr header_flags_t operator| (header_flags_t lhs, header_flags_t rhs) noexcept

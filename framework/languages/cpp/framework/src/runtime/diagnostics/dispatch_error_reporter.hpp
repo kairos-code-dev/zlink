@@ -12,8 +12,10 @@
 #include <cstdint>
 #include <memory>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace zlink::framework::detail
 {
@@ -29,7 +31,7 @@ class dispatch_error_reporter_t
         // off silences the default error log; every other mode keeps reporting
         // errors (errors_only is the default). A registered observer still fires
         // regardless of mode — it is an explicit, separate subscription.
-        if (_options.diagnostics.message_flow != message_flow_log_mode_t::off) {
+        if (_options.diagnostics.effective_message_flow () != message_flow_log_mode_t::off) {
             log_default (event);
         }
         auto observer = _options.message_dispatch_error_observer;
@@ -76,39 +78,52 @@ class dispatch_error_reporter_t
     void log_default (const message_dispatch_error_event_t &event) const noexcept
     {
         try {
-            std::ostringstream body;
-            body << "surface=" << enum_name (event.surface)
-                 << " kind=" << enum_name (event.message_kind)
-                 << " reason=" << enum_name (event.reason)
-                 << " action=" << enum_name (event.action);
+            std::vector<log_field_t> fields;
+            fields.reserve (11);
+            auto add = [&fields] (const char *key, std::string value) {
+                fields.push_back (log_field_t{key, std::move (value)});
+            };
+            add ("surface", std::string (enum_name (event.surface)));
+            add ("kind", std::string (enum_name (event.message_kind)));
+            add ("reason", std::string (enum_name (event.reason)));
+            add ("action", std::string (enum_name (event.action)));
+            if (_options.diagnostics.node_id ()) {
+                add ("node", *_options.diagnostics.node_id ());
+            }
             if (event.packet_name) {
-                body << " packet=" << *event.packet_name;
+                add ("packet", *event.packet_name);
             }
             if (event.channel_name) {
-                body << " channel=" << *event.channel_name;
+                add ("channel", *event.channel_name);
             }
             if (event.topic) {
-                body << " topic=" << *event.topic;
+                add ("topic", *event.topic);
             }
             if (event.correlation_id) {
-                body << " corr=" << *event.correlation_id;
+                add ("corr", *event.correlation_id);
             }
             if (event.source_rid) {
-                body << " src=" << *event.source_rid;
+                add ("src", *event.source_rid);
             }
             if (event.spot_rid) {
-                body << " spot=" << *event.spot_rid;
+                add ("spot", *event.spot_rid);
             }
             if (event.actor_id) {
-                body << " actor=" << *event.actor_id;
+                add ("actor", *event.actor_id);
             }
-            // Prefer the framework logger (so app.logging().use_file(...) captures
-            // it); fall back to clog when no logger is wired (tests, no-app usage).
+            // Structured fields through the framework logger (collector-friendly);
+            // flat clog line when no logger is wired (tests, no-app usage).
             if (_options.diagnostics_logger) {
-                _options.diagnostics_logger->error (body.str ());
+                _options.diagnostics_logger->log_with_fields (log_level_t::error, "dispatch error",
+                                                              std::move (fields));
             }
             else {
-                std::clog << "zlink framework dispatch error: " << body.str () << '\n';
+                std::ostringstream body;
+                body << "zlink framework dispatch error:";
+                for (const auto &field : fields) {
+                    body << ' ' << field.key << '=' << field.value;
+                }
+                std::clog << body.str () << '\n';
             }
         }
         catch (...) {

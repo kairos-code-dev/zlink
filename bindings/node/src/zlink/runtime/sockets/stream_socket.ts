@@ -20,6 +20,7 @@ import {
   materializeReceived,
   materializeReceivedInto,
 } from '../messaging/message_materializer';
+import { startRequestProgress } from '../messaging/request_progress';
 import { requireNative } from '../native/native';
 import { validateCString } from '../options/validation';
 import {
@@ -200,17 +201,35 @@ export class StreamSocket extends SocketBase {
     const handle = getNativeHandle(this);
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
     const actorRaw = actorRefToRaw(actor);
-    return new RuntimeActorBindOperation((callback, timeoutMs) =>
-      invokeStreamBindActor(handle, normalizedSessionRid, actorRaw, callback, timeoutMs),
-    );
+    return new RuntimeActorBindOperation((callback, timeoutMs) => {
+      const releaseProgress = startRequestProgress(handle);
+      try {
+        return invokeStreamBindActor(handle, normalizedSessionRid, actorRaw, (result, parts) => {
+          releaseProgress();
+          callback(result, parts);
+        }, timeoutMs);
+      } catch (error) {
+        releaseProgress();
+        throw error;
+      }
+    });
   }
   unbindActor(sessionRid: RoutingId, actorId: string): ActorUnbindOperation {
     const handle = getNativeHandle(this);
     const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
     const normalizedActorId = validateCString(actorId, 'actorId', 255);
-    return new RuntimeActorUnbindOperation((callback, timeoutMs) =>
-      invokeStreamUnbindActor(handle, normalizedSessionRid, normalizedActorId, callback, timeoutMs),
-    );
+    return new RuntimeActorUnbindOperation((callback, timeoutMs) => {
+      const releaseProgress = startRequestProgress(handle);
+      try {
+        return invokeStreamUnbindActor(handle, normalizedSessionRid, normalizedActorId, (result, parts) => {
+          releaseProgress();
+          callback(result, parts);
+        }, timeoutMs);
+      } catch (error) {
+        releaseProgress();
+        throw error;
+      }
+    });
   }
   sendBoundActor(sessionRid: RoutingId, actorId: string): SendOperation {
     const handle = getNativeHandle(this);

@@ -46,7 +46,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        return await outbound.RequestToChannelAsync(channelName, message, timeout, cancellationToken)
+        return await RequestToChannelThroughSharedClientAsync(channelName, [message], timeout, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -56,7 +56,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        return await outbound.RequestToChannelAsync(channelName, parts, timeout, cancellationToken)
+        return await RequestToChannelThroughSharedClientAsync(channelName, parts, timeout, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -65,7 +65,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         Message message,
         CancellationToken cancellationToken)
     {
-        return outbound.SendToChannelAsync(channelName, message, cancellationToken);
+        return SendToChannelThroughSharedClientAsync(channelName, [message], cancellationToken);
     }
 
     public ValueTask SendToChannelAsync(
@@ -73,7 +73,49 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return outbound.SendToChannelAsync(channelName, parts, cancellationToken);
+        return SendToChannelThroughSharedClientAsync(channelName, parts, cancellationToken);
+    }
+
+    private async ValueTask<IReadOnlyList<Message>> RequestToChannelThroughSharedClientAsync(
+        string channelName,
+        IReadOnlyList<Message> parts,
+        TimeSpan? timeout,
+        CancellationToken cancellationToken)
+    {
+        var bundle = runtime.GetOrCreateClientBundle(channelName);
+        var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
+        var requestTimeout = timeout ?? activation.DefaultRequestTimeout;
+        return await (bundle.Submitter
+                ?? throw new InvalidOperationException("ZLink request submitter is not initialized."))
+            .SubmitRequestAsync<IReadOnlyList<Message>>(
+                parts,
+                (pending, complete, fail) => dealer.Request(
+                    pending,
+                    (result, reply) => ZLinkRawReplyCompletion.Complete(
+                        result,
+                        reply,
+                        complete,
+                        fail,
+                        $"SPOT channel request failed with result '{result}'."),
+                    SendFlags.DontWait,
+                    requestTimeout),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private ValueTask SendToChannelThroughSharedClientAsync(
+        string channelName,
+        IReadOnlyList<Message> parts,
+        CancellationToken cancellationToken)
+    {
+        var bundle = runtime.GetOrCreateClientBundle(channelName);
+        var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
+        return (bundle.Submitter
+                ?? throw new InvalidOperationException("ZLink send submitter is not initialized."))
+            .Async(
+                parts,
+                pending => dealer.Send(pending, SendFlags.DontWait),
+                cancellationToken);
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(

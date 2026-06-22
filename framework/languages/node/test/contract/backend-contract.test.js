@@ -104,6 +104,30 @@ test('backend stream bind converts public string actor node RID to native Routin
   }
 });
 
+test('backend adapter converts public string route bridge target RIDs to native RoutingId', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const channel = factory.createChannelAdapter();
+  const spotAdapter = factory.createSpotAdapter();
+  const context = channel.createContext();
+  const spotNode = spotAdapter.createSpotNode(context, 3);
+  const router = channel.createRouterSocket(context);
+  const bridge = spotNode.createRouteBridge();
+
+  try {
+    router.setRoutingId('backend-bridge-source');
+    bridge.attachRouterChannel('mesh', router, { capabilities: 3 });
+
+    assert.doesNotThrow(() => bridge.setTargetNode('mesh', 'backend-bridge-target'));
+    assert.equal(typeof bridge.send('mesh', 'backend-bridge-target').message, 'function');
+    assert.equal(typeof bridge.request('mesh', 'backend-bridge-target').message, 'function');
+  } finally {
+    await bridge.dispose();
+    await router.dispose();
+    await spotNode.dispose();
+    await context.dispose();
+  }
+});
+
 test('backend adapter normalizes missing SpotNode actor lookup to undefined', async () => {
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const channel = factory.createChannelAdapter();

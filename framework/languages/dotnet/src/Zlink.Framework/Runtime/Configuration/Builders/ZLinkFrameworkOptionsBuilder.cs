@@ -286,18 +286,6 @@ internal sealed class ZLinkSpotMeshBuilder(
     public IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber()
         => DefaultNode().ConfigurePubSubSubscriber();
 
-    public IZLinkSpotNodeBuilder AttachChannelClient(string channelName)
-        => DefaultNode().AttachChannelClient(channelName);
-
-    public IZLinkSpotNodeBuilder AttachChannelClient(string channelName, string endpoint)
-        => DefaultNode().AttachChannelClient(channelName, endpoint);
-
-    public IZLinkSocketConfig ConfigureChannelClientSocket(string channelName)
-        => DefaultNode().ConfigureChannelClientSocket(channelName);
-
-    public IZLinkOutboundRouteConfig ConfigureChannelClientRouting(string channelName)
-        => DefaultNode().ConfigureChannelClientRouting(channelName);
-
     public IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName)
         => DefaultNode().AttachSpotPublisherClient(channelName);
 

@@ -12,6 +12,8 @@ namespace zlink::samples::supportchat
 class agent_assignment_service_t
 {
   public:
+    agent_assignment_service_t () : _availability (agent_availability_directory_t::shared ()) {}
+
     explicit agent_assignment_service_t (agent_availability_directory_t &availability) :
         _availability (availability)
     {

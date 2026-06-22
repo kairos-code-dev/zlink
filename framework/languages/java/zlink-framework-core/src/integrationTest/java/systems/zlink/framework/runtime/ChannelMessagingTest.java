@@ -47,10 +47,12 @@ import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorEvent;
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions;
 import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
+import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkPublishHandler;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
+import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkRouteSendContext;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 import systems.zlink.framework.channels.ZLinkRequestContext;
@@ -64,6 +66,8 @@ import systems.zlink.framework.handlers.ZLinkSend;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
+import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotContext;
 
 final class ChannelMessagingTest {
     private static final AtomicInteger NEXT_PORT =
@@ -1019,6 +1023,95 @@ final class ChannelMessagingTest {
     }
 
     @Test
+    void discoveryClientServerHandlerCanCallRouteMeshClient() {
+        String registryPub = tcpEndpoint();
+        String registryRouter = tcpEndpoint();
+        String apiEndpoint = tcpEndpoint();
+        String apiRouteEndpoint = tcpEndpoint();
+        String playRouteEndpoint = tcpEndpoint();
+        RoutingId apiRouteRid = RoutingId.from("nested-api-route");
+        RoutingId playRouteRid = RoutingId.from("nested-play-route");
+        ZLinkEmbeddedRegistryOptions registryOptions = new ZLinkEmbeddedRegistryOptions();
+        registryOptions.setPubEndpoint(registryPub);
+        registryOptions.setRouterEndpoint(registryRouter);
+
+        DefaultZLinkFrameworkOptions apiOptions = new DefaultZLinkFrameworkOptions();
+        apiOptions.setDefaultRequestTimeout(Duration.ofMillis(200));
+        { var discovery = apiOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
+        { var channel = apiOptions.addClientServerChannel("api").enableServer(apiEndpoint);
+            channel.addRequestHandler(NestedRouteApiHandler.class, String.class, String.class, "NestedApi"); };
+        { var route = apiOptions.addRouteMeshChannel("route");
+            route.enableServer(apiRouteEndpoint);
+            route.enableClient();
+            route.setRoutingId(apiRouteRid); };
+
+        DefaultZLinkFrameworkOptions playOptions = new DefaultZLinkFrameworkOptions();
+        playOptions.setDefaultRequestTimeout(Duration.ofMillis(200));
+        { var discovery = playOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
+        { var route = playOptions.addRouteMeshChannel("route");
+            route.enableServer(playRouteEndpoint);
+            route.enableClient();
+            route.setRoutingId(playRouteRid);
+            route.addRequestHandler(RouteEchoHandler.class, String.class, String.class, "NestedRoute"); };
+
+        DefaultZLinkFrameworkOptions clientOptions = new DefaultZLinkFrameworkOptions();
+        clientOptions.setDefaultRequestTimeout(Duration.ofMillis(200));
+        { var discovery = clientOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
+        { var channel = clientOptions.addClientServerChannel("api"); channel.enableClient(); };
+
+        try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
+                 registryOptions,
+                 new ZLinkJavaBackendAdapterFactory(),
+                 new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
+             ZLinkFrameworkRuntime ignoredApi =
+                 RuntimeTestSupport.startFramework(apiOptions, new ZLinkJavaBackendAdapterFactory());
+             ZLinkFrameworkRuntime ignoredPlay =
+                 RuntimeTestSupport.startFramework(playOptions, new ZLinkJavaBackendAdapterFactory());
+             ZLinkFrameworkRuntime client =
+                 RuntimeTestSupport.startFramework(clientOptions, new ZLinkJavaBackendAdapterFactory())) {
+            assertEquals("route:hello", awaitNestedApiReply(client));
+        }
+    }
+
+    @Test
+    void discoverySpotAttachedChannelClientRequestReplySucceeds() {
+        String registryPub = tcpEndpoint();
+        String registryRouter = tcpEndpoint();
+        String apiEndpoint = tcpEndpoint();
+        ZLinkEmbeddedRegistryOptions registryOptions = new ZLinkEmbeddedRegistryOptions();
+        registryOptions.setPubEndpoint(registryPub);
+        registryOptions.setRouterEndpoint(registryRouter);
+        OutboundChannelSpot.CONTEXT.set(null);
+
+        DefaultZLinkFrameworkOptions apiOptions = new DefaultZLinkFrameworkOptions();
+        apiOptions.setDefaultRequestTimeout(Duration.ofMillis(200));
+        { var discovery = apiOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
+        { var channel = apiOptions.addClientServerChannel("api").enableServer(apiEndpoint);
+            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "SpotApi"); };
+
+        DefaultZLinkFrameworkOptions playOptions = new DefaultZLinkFrameworkOptions();
+        playOptions.setDefaultRequestTimeout(Duration.ofMillis(200));
+        { var discovery = playOptions.useDiscovery(); discovery.addRegistryEndpoint(registryRouter); };
+        { var channel = playOptions.addClientServerChannel("api"); channel.enableClient(); };
+        { var mesh = playOptions.addSpotMesh("game");
+            { var node = mesh.addNode("play-node");
+                node.addSpotFactory(OutboundChannelSpot.class); }; };
+
+        try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
+                 registryOptions,
+                 new ZLinkJavaBackendAdapterFactory(),
+                 new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
+             ZLinkFrameworkRuntime ignoredApi =
+                 RuntimeTestSupport.startFramework(apiOptions, new ZLinkJavaBackendAdapterFactory());
+             ZLinkFrameworkRuntime play =
+                 RuntimeTestSupport.startFramework(playOptions, new ZLinkJavaBackendAdapterFactory())) {
+            assertEquals("hello", awaitSpotAttachedChannelReply(play));
+        } finally {
+            OutboundChannelSpot.CONTEXT.set(null);
+        }
+    }
+
+    @Test
     @DisplayName("PUB-001 fanout delivers the same sequence to three subscribers")
     void fanout_deliversSameSequenceToThreeSubscribers() {
         String endpoint = tcpEndpoint();
@@ -1291,6 +1384,67 @@ final class ChannelMessagingTest {
             }
         }
         throw new AssertionError("discovery request did not succeed", lastFailure);
+    }
+
+    private static String awaitNestedApiReply(ZLinkFrameworkRuntime client) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(4).toNanos();
+        RuntimeException lastFailure = null;
+        while (System.nanoTime() < deadline) {
+            try {
+                return client.client()
+                    .requestToChannel("api", message("hello"))
+                    .packetName("NestedApi")
+                    .timeout(Duration.ofMillis(200))
+                    .submit(String.class)
+                    .toCompletableFuture()
+                    .join();
+            } catch (RuntimeException ex) {
+                lastFailure = ex;
+                Thread.onSpinWait();
+            }
+        }
+        throw new AssertionError("nested api route request did not succeed", lastFailure);
+    }
+
+    private static String awaitSpotAttachedChannelReply(ZLinkFrameworkRuntime runtime) {
+        runtime.spotManager()
+            .create(OutboundChannelSpot.class, RoutingId.from("outbound-channel-spot"))
+            .toCompletableFuture()
+            .join();
+        ZLinkSpotContext context = Objects.requireNonNull(OutboundChannelSpot.CONTEXT.get());
+        long deadline = System.nanoTime() + Duration.ofSeconds(4).toNanos();
+        RuntimeException lastFailure = null;
+        while (System.nanoTime() < deadline) {
+            try {
+                return context.outbound()
+                    .requestToChannel("api", message("hello"))
+                    .packetName("SpotApi")
+                    .timeout(Duration.ofMillis(200))
+                    .submit(String.class)
+                    .toCompletableFuture()
+                    .join();
+            } catch (RuntimeException ex) {
+                lastFailure = new RuntimeException(describeZlinkFailure(ex), ex);
+                Thread.onSpinWait();
+            }
+        }
+        throw new AssertionError("SPOT attached channel request did not succeed", lastFailure);
+    }
+
+    private static String describeZlinkFailure(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof systems.zlink.contracts.errors.ZlinkRequestException request) {
+                return "request result=" + request.getResult()
+                    + ", errno=" + request.getNativeErrno();
+            }
+            if (current instanceof systems.zlink.contracts.errors.ZlinkSubmitException submit) {
+                return "submit result=" + submit.getResult()
+                    + ", errno=" + submit.getNativeErrno();
+            }
+            current = current.getCause();
+        }
+        return error.toString();
     }
 
     private static void publishUntilDelivered(ZLinkFrameworkRuntime publisher) {
@@ -1587,6 +1741,21 @@ final class ChannelMessagingTest {
         }
     }
 
+    public static final class OutboundChannelSpot implements ZLinkSpot<ZLinkActor> {
+        static final AtomicReference<ZLinkSpotContext> CONTEXT = new AtomicReference<>();
+        private final ZLinkSpotContext context;
+
+        public OutboundChannelSpot(ZLinkSpotContext context) {
+            this.context = context;
+            CONTEXT.set(context);
+        }
+
+        @Override
+        public ZLinkSpotContext context() {
+            return context;
+        }
+    }
+
     public static final class ThrowingRequestHandler implements ZLinkRequestHandler<String, String> {
         @Override
         public String handle(String request, ZLinkRequestContext context) {
@@ -1752,6 +1921,24 @@ final class ChannelMessagingTest {
         public String handle(String request, ZLinkRouteRequestContext context) {
             ROUTE_REQUEST_CHANNEL.set(context.channelName().orElse(""));
             return "route:" + request;
+        }
+    }
+
+    public static final class NestedRouteApiHandler implements ZLinkRequestHandler<String, String> {
+        private final ZLinkRouteClient routes;
+
+        public NestedRouteApiHandler(ZLinkRouteClient routes) {
+            this.routes = routes;
+        }
+
+        @Override
+        public String handle(String request, ZLinkRequestContext context) {
+            return routes.requestTo("route", RoutingId.from("nested-play-route"), message(request))
+                .packetName("NestedRoute")
+                .timeout(Duration.ofMillis(200))
+                .submit(String.class)
+                .toCompletableFuture()
+                .join();
         }
     }
 

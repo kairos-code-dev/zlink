@@ -67,7 +67,7 @@ class authenticate_session_handler_t
     zlink::framework::actor_ref_t to_actor_ref (const ensure_support_user_actor_res_t &ensured) const
     {
         return zlink::framework::actor_ref_t (
-          zlink::framework::node_rid_t::from_string (sample_names_t::conversation_spot_node),
+          zlink::framework::node_rid_t::from_string (ensured.actor.node_rid),
           ensured.actor_type, ensured.actor.actor_id, ensured.actor.generation);
     }
 

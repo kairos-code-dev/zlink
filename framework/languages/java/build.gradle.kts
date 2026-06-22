@@ -20,6 +20,15 @@ subprojects {
     group = rootProject.group
     version = rootProject.version
 
+    plugins.withId("org.jetbrains.kotlin.jvm") {
+        val localBindingsBuild = gradle.includedBuilds.find { it.name == "zlink-bindings-java" }
+        if (localBindingsBuild != null) {
+            tasks.matching { it.name == "compileKotlin" || it.name == "compileTestKotlin" }.configureEach {
+                dependsOn(localBindingsBuild.task(":jar"))
+            }
+        }
+    }
+
     plugins.withType<JavaPlugin> {
         extensions.configure<JavaPluginExtension> {
             toolchain {

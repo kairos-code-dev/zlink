@@ -3,13 +3,10 @@
 
 #include <zlink/Contracts/Messaging/message.hpp>
 
-#include <array>
 #include <cstdint>
-#include <map>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
-#include <vector>
 
 namespace zlink::samples::supportchat
 {
@@ -73,7 +70,7 @@ struct authenticate_user_res_t
 
 struct actor_ref_snapshot_t
 {
-    std::array<unsigned char, 16> node_rid{};
+    std::string node_rid;
     std::string actor_id;
     unsigned long long generation = 0;
 };
@@ -91,37 +88,6 @@ struct ensure_support_user_actor_res_t
     static constexpr const char *packet_name = "EnsureSupportUserActorRes";
     actor_ref_snapshot_t actor;
     std::string actor_type;
-};
-
-// --- session relay envelope (mirrors the Bingo gateway relay contract) ---
-
-struct remote_actor_packet_req_t
-{
-    static constexpr const char *packet_name = "RemoteActorPacketReq";
-    std::string actor_node_rid;
-    std::string actor_type;
-    std::string actor_id;
-    unsigned long long actor_generation = 0;
-    int header_kind = 0;
-    int header_codec = 0;
-    int header_flags = 0;
-    bool request_seq_present = false;
-    unsigned long long request_seq = 0;
-    std::string relayed_packet_name;
-    std::map<std::string, std::string> metadata;
-    std::vector<unsigned char> payload;
-};
-
-struct remote_actor_packet_res_t
-{
-    static constexpr const char *packet_name = "RemoteActorPacketRes";
-    bool actor_ref_present = false;
-    std::string actor_node_rid;
-    std::string actor_type;
-    std::string actor_id;
-    unsigned long long actor_generation = 0;
-    bool has_reply = false;
-    std::vector<unsigned char> reply_payload;
 };
 
 // --- API orchestration and Support allocation messages ---
@@ -396,7 +362,7 @@ inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
 
 inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
 {
-    value.node_rid = json.value ("nodeRid", std::array<unsigned char, 16>{});
+    value.node_rid = json.value ("nodeRid", "");
     value.actor_id = json.value ("actorId", "");
     value.generation = json.value ("generation", 0ULL);
 }
@@ -424,60 +390,6 @@ inline void from_json (const nlohmann::json &json, ensure_support_user_actor_res
 {
     value.actor = json.value ("actor", actor_ref_snapshot_t{});
     value.actor_type = json.value ("actorType", "");
-}
-
-inline void to_json (nlohmann::json &json, const remote_actor_packet_req_t &value)
-{
-    json = {{"actorNodeRid", value.actor_node_rid},
-            {"actorType", value.actor_type},
-            {"actorId", value.actor_id},
-            {"actorGeneration", value.actor_generation},
-            {"headerKind", value.header_kind},
-            {"headerCodec", value.header_codec},
-            {"headerFlags", value.header_flags},
-            {"requestSeqPresent", value.request_seq_present},
-            {"requestSeq", value.request_seq},
-            {"packetName", value.relayed_packet_name},
-            {"metadata", value.metadata},
-            {"payload", value.payload}};
-}
-
-inline void from_json (const nlohmann::json &json, remote_actor_packet_req_t &value)
-{
-    value.actor_node_rid = json.value ("actorNodeRid", "");
-    value.actor_type = json.value ("actorType", "");
-    value.actor_id = json.value ("actorId", "");
-    value.actor_generation = json.value ("actorGeneration", 0ULL);
-    value.header_kind = json.value ("headerKind", 0);
-    value.header_codec = json.value ("headerCodec", 0);
-    value.header_flags = json.value ("headerFlags", 0);
-    value.request_seq_present = json.value ("requestSeqPresent", false);
-    value.request_seq = json.value ("requestSeq", 0ULL);
-    value.relayed_packet_name = json.value ("packetName", "");
-    value.metadata = json.value ("metadata", std::map<std::string, std::string>{});
-    value.payload = json.value ("payload", std::vector<unsigned char>{});
-}
-
-inline void to_json (nlohmann::json &json, const remote_actor_packet_res_t &value)
-{
-    json = {{"actorRefPresent", value.actor_ref_present},
-            {"actorNodeRid", value.actor_node_rid},
-            {"actorType", value.actor_type},
-            {"actorId", value.actor_id},
-            {"actorGeneration", value.actor_generation},
-            {"hasReply", value.has_reply},
-            {"replyPayload", value.reply_payload}};
-}
-
-inline void from_json (const nlohmann::json &json, remote_actor_packet_res_t &value)
-{
-    value.actor_ref_present = json.value ("actorRefPresent", false);
-    value.actor_node_rid = json.value ("actorNodeRid", "");
-    value.actor_type = json.value ("actorType", "");
-    value.actor_id = json.value ("actorId", "");
-    value.actor_generation = json.value ("actorGeneration", 0ULL);
-    value.has_reply = json.value ("hasReply", false);
-    value.reply_payload = json.value ("replyPayload", std::vector<unsigned char>{});
 }
 
 inline void to_json (nlohmann::json &json, const open_conversation_api_req_t &value)

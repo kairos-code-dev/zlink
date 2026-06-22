@@ -143,8 +143,6 @@ public sealed class RegistryAndMonitoringTests : RegistrationValidationSupport
 
                 }
                 spot.AddSpotFactory<TestSpot>();
-                spot.AttachChannelClient("profile");
-
                 }
 
             }

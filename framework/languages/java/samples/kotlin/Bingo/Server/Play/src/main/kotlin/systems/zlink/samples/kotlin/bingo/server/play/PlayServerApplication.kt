@@ -61,7 +61,6 @@ class PlayServerApplication {
                 .setRouterRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
             node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint())
                 .setPubSubRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
-            node.attachChannelClient(SampleNames.ApiChannel)
             node.acceptSpotRoutesFromChannel(SampleNames.PlayChannel)
             node.addEntrySpot(BingoEntrySpot::class.java)
             node.addSpotFactory(BingoRoomSpot::class.java)

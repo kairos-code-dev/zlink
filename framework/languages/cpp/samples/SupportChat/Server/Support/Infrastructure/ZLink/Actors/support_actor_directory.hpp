@@ -15,6 +15,12 @@ namespace zlink::samples::supportchat
 class support_actor_directory_t
 {
   public:
+    static support_actor_directory_t &shared ()
+    {
+        static support_actor_directory_t directory;
+        return directory;
+    }
+
     void add_or_update (support_user_actor_t &actor) { _actors[actor.actor_id ()] = &actor; }
 
     support_user_actor_t &get (const std::string &actor_id)

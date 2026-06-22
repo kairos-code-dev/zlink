@@ -8,6 +8,7 @@ struct sample_names_t
 {
     static constexpr const char *api_channel = "supportchat.api";
     static constexpr const char *support_channel = "supportchat.support";
+    static constexpr const char *actor_session_route_channel = "supportchat.actor.session";
     static constexpr const char *support_actor_type = "supportchat.user";
     static constexpr const char *stream_node = "supportchat.client.stream";
     static constexpr const char *session_spot_node = "supportchat.session.node";

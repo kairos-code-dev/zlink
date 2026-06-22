@@ -19,23 +19,33 @@ struct available_agent_t
 class agent_availability_directory_t
 {
   public:
+    static agent_availability_directory_t &shared ()
+    {
+        static agent_availability_directory_t directory;
+        return directory;
+    }
+
     void set_available (const std::string &actor_id, std::string display_name, bool is_available)
     {
+        auto &actor_ids = shared_actor_ids ();
+        auto &available = shared_available ();
         if (!is_available) {
-            _actor_ids.erase (actor_id);
+            actor_ids.erase (actor_id);
             return;
         }
-        if (_actor_ids.insert (actor_id).second) {
-            _available.push_back (available_agent_t{actor_id, std::move (display_name)});
+        if (actor_ids.insert (actor_id).second) {
+            available.push_back (available_agent_t{actor_id, std::move (display_name)});
         }
     }
 
     std::optional<available_agent_t> take_next ()
     {
-        while (!_available.empty ()) {
-            auto candidate = _available.front ();
-            _available.pop_front ();
-            if (_actor_ids.erase (candidate.actor_id) > 0) {
+        auto &actor_ids = shared_actor_ids ();
+        auto &available = shared_available ();
+        while (!available.empty ()) {
+            auto candidate = available.front ();
+            available.pop_front ();
+            if (actor_ids.erase (candidate.actor_id) > 0) {
                 return candidate;
             }
         }
@@ -43,8 +53,17 @@ class agent_availability_directory_t
     }
 
   private:
-    std::deque<available_agent_t> _available;
-    std::set<std::string> _actor_ids;
+    static std::deque<available_agent_t> &shared_available ()
+    {
+        static std::deque<available_agent_t> values;
+        return values;
+    }
+
+    static std::set<std::string> &shared_actor_ids ()
+    {
+        static std::set<std::string> values;
+        return values;
+    }
 };
 
 } // namespace zlink::samples::supportchat

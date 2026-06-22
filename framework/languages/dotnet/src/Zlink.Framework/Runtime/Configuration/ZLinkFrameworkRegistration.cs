@@ -194,8 +194,6 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public ZLinkSpotPubSubCapabilityRegistration? PubSub { get; set; }
 
-    public Dictionary<string, ZLinkSpotChannelClientRegistration> AttachedChannelClients { get; } = new(StringComparer.Ordinal);
-
     public Dictionary<string, ZLinkSpotPublisherClientRegistration> AttachedSpotPublisherClients { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkSpotRouteChannelAcceptanceRegistration> AcceptedSpotRouteChannels { get; } = new(StringComparer.Ordinal);
@@ -243,17 +241,6 @@ internal sealed class ZLinkSpotPubSubCapabilityRegistration
     public ZLinkSpotPublisherConfig PublisherConfig { get; } = new();
 
     public ZLinkSpotSubscriberConfig SubscriberConfig { get; } = new();
-
-    public List<string> ManualConnections { get; } = [];
-}
-
-internal sealed class ZLinkSpotChannelClientRegistration
-{
-    public required string ChannelName { get; init; }
-
-    public ZLinkSocketConfig SocketConfig { get; } = new();
-
-    public ZLinkOutboundRouteConfig RoutingConfig { get; } = new();
 
     public List<string> ManualConnections { get; } = [];
 }

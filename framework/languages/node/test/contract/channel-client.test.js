@@ -572,6 +572,295 @@ test('route channel with SPOT acceptance starts one route receive loop for share
   await manager.dispose();
 });
 
+test('route bridge raw request completes when shared route receive loop observes raw reply', async () => {
+  const router = fakeRouteRouter();
+  const bridge = {
+    attachRouterChannel() {},
+    setTargetNode() {},
+    request() {
+      return {
+        message() {
+          return this;
+        },
+        timeout() {
+          return this;
+        },
+        submit() {
+          return true;
+        }
+      };
+    },
+    handleRouterReceived() {
+      return false;
+    },
+    async dispose() {}
+  };
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      routeChannels: [{
+        routerChannelId: 'room.route',
+        bind: 'inproc://play-route',
+        routingId: 'play-node'
+      }],
+      spotNodes: {
+        play: {
+          router: { bind: 'inproc://play-spot', routingId: 'play-node' },
+          acceptedSpotRouteChannels: {
+            'room.route': {}
+          }
+        }
+      }
+    }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer(), router }),
+    fakeContext()
+  );
+  manager.setSpotNodes(new Map([['play', {
+    createRouteBridge() {
+      return bridge;
+    },
+    entrySpot() {
+      return {
+        requestToSpot() {
+          throw new Error('spot request not used');
+        }
+      };
+    }
+  }]]));
+
+  let stopLoop = false;
+  manager.start({
+    errorSink: { reportRuntimeTaskException() {} },
+    run(_name, task) {
+      void task({
+        get aborted() {
+          return stopLoop;
+        }
+      });
+      return Promise.resolve();
+    }
+  });
+
+  const request = manager.routeRequestRawToSpot({
+    routerChannelId: 'room.route',
+    targetNodeRid: 'play-node',
+    spotRid: 'room-1'
+  }, zlink.Message.from(Buffer.from('request')), 100);
+  await new Promise((resolve) => setImmediate(resolve));
+  router.recvQueue.push({
+    parts: [zlink.Message.from(Buffer.from(JSON.stringify({ ok: true, response: { value: 'reply' } })))],
+    routingId: 'play-node',
+    spotRid: null,
+    requestSeq: null,
+    close() {
+      this.parts.forEach((part) => part.close());
+    }
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const reply = await request;
+  assert.deepEqual(JSON.parse(reply[0].data().toString()), { ok: true, response: { value: 'reply' } });
+  reply[0].close();
+  stopLoop = true;
+  await manager.dispose();
+});
+
+test('route bridge queued sends set target when each queued submit drains', async () => {
+  const router = fakeRouteRouter();
+  let bridgeWritable = false;
+  let currentTarget;
+  const submittedTargets = [];
+  const bridge = {
+    attachRouterChannel() {},
+    setTargetNode(_channelName, targetNodeRid) {
+      currentTarget = targetNodeRid;
+    },
+    send() {
+      return {
+        message() {
+          return this;
+        },
+        submit() {
+          if (!bridgeWritable) {
+            return false;
+          }
+          submittedTargets.push(String(currentTarget));
+          return true;
+        }
+      };
+    },
+    request() {
+      throw new Error('request not used');
+    },
+    handleRouterReceived() {
+      return false;
+    },
+    async dispose() {}
+  };
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      routeChannels: [{
+        routerChannelId: 'room.route',
+        bind: 'inproc://play-route',
+        routingId: 'play-node'
+      }],
+      spotNodes: {
+        play: {
+          router: { bind: 'inproc://play-spot', routingId: 'play-node' },
+          acceptedSpotRouteChannels: {
+            'room.route': {}
+          }
+        }
+      }
+    }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer(), router }),
+    fakeContext()
+  );
+  manager.setSpotNodes(new Map([['play', {
+    createRouteBridge() {
+      return bridge;
+    },
+    entrySpot() {
+      return {
+        requestToSpot() {
+          throw new Error('spot request not used');
+        }
+      };
+    }
+  }]]));
+
+  manager.start({
+    errorSink: { reportRuntimeTaskException() {} },
+    run() {
+      return Promise.resolve();
+    }
+  });
+
+  const first = manager.routeSendToSpot({
+    routerChannelId: 'room.route',
+    targetNodeRid: 'session-node-a',
+    spotRid: 'session-node-a'
+  }, 'Notify', { value: 1 });
+  const second = manager.routeSendToSpot({
+    routerChannelId: 'room.route',
+    targetNodeRid: 'session-node-b',
+    spotRid: 'session-node-b'
+  }, 'Notify', { value: 2 });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  bridgeWritable = true;
+  router.ready();
+  await Promise.all([first, second]);
+
+  assert.deepEqual(submittedTargets, ['session-node-a', 'session-node-b']);
+  await manager.dispose();
+});
+
+test('route raw SPOT request uses route bridge before SpotNode router fallback', async () => {
+  const router = fakeRouteRouter();
+  const bridgeCalls = [];
+  let spotNodeRouterUsed = false;
+  const bridge = {
+    attachRouterChannel(channelName, socket, options) {
+      bridgeCalls.push({ kind: 'attach', channelName, socket, options });
+    },
+    setTargetNode(channelName, targetNodeRid) {
+      bridgeCalls.push({ kind: 'target', channelName, targetNodeRid });
+    },
+    request(channelName, spotRid) {
+      const call = { kind: 'request', channelName, spotRid };
+      bridgeCalls.push(call);
+      return {
+        message(message) {
+          call.message = message.data().toString();
+          return this;
+        },
+        timeout(timeoutMs) {
+          call.timeoutMs = timeoutMs;
+          return this;
+        },
+        submit(callback) {
+          call.submitted = true;
+          callback(0, [zlink.Message.from(Buffer.from('bridge-reply'))]);
+          return true;
+        }
+      };
+    },
+    handleRouterReceived() {
+      return false;
+    },
+    async dispose() {}
+  };
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({
+      routeChannels: [{
+        routerChannelId: 'room.route',
+        bind: 'inproc://play-route',
+        routingId: 'play-node'
+      }],
+      spotNodes: {
+        play: {
+          router: { bind: 'inproc://play-spot', routingId: 'play-node' },
+          acceptedSpotRouteChannels: {
+            'room.route': {}
+          }
+        }
+      }
+    }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer(), router }),
+    fakeContext()
+  );
+  const spotNode = {
+    routingId: 'play-node',
+    createRouteBridge() {
+      return bridge;
+    },
+    entrySpot() {
+      return {
+        requestToSpot() {
+          spotNodeRouterUsed = true;
+          throw new Error('SpotNode router fallback must not be used when bridge is available');
+        }
+      };
+    }
+  };
+  manager.setSpotNodes(new Map([['play', spotNode]]));
+
+  manager.start({
+    errorSink: { reportRuntimeTaskException() {} },
+    run() {
+      return Promise.resolve();
+    }
+  });
+  const reply = await manager.routeRequestRawToSpot(
+    {
+      routerChannelId: 'room.route',
+      targetNodeRid: 'session-node',
+      spotRid: 'session-node',
+      spotKind: framework.ZLinkSpotKind.Entry
+    },
+    zlink.Message.from(Buffer.from('bridge-request')),
+    700
+  );
+
+  assert.equal(spotNodeRouterUsed, false);
+  assert.equal(router.requestAttempts, 0);
+  assert.equal(reply[0].data().toString(), 'bridge-reply');
+  reply[0].close();
+  assert.equal(bridgeCalls[0].kind, 'attach');
+  assert.equal(bridgeCalls[0].channelName, 'room.route');
+  assert.equal(bridgeCalls[1].kind, 'target');
+  assert.equal(bridgeCalls[1].targetNodeRid, 'session-node');
+  assert.deepEqual(bridgeCalls[2], {
+    kind: 'request',
+    channelName: 'room.route',
+    spotRid: 'session-node',
+    message: 'bridge-request',
+    timeoutMs: 700,
+    submitted: true
+  });
+  await manager.dispose();
+});
+
 test('ZLinkChannelClient rejects malformed reply envelope json', async () => {
   const ctx = zlink.createContext();
   const dealer = zlink.createDealerSocket(ctx);
@@ -1788,7 +2077,7 @@ test('ZLinkRoutePacketDispatcher forwards SPOT-addressed route frames to local S
     fakeMessagePart(Buffer.from('spot-body'))
   ];
 
-  await dispatcher.dispatch({
+  const consumed = await dispatcher.dispatch({
     parts,
     routingId: 'node-b',
     spotRid: 'room-1',
@@ -1805,6 +2094,53 @@ test('ZLinkRoutePacketDispatcher forwards SPOT-addressed route frames to local S
   assert.equal(forwarded.length, 2);
   assert.equal(forwarded[0].data().toString(), 'spot-header');
   assert.equal(forwarded[1].data().toString(), 'spot-body');
+  assert.equal(consumed, true);
+});
+
+test('ZLinkRoutePacketDispatcher lets route bridge handle SPOT-addressed bridge frames first', async () => {
+  const handled = [];
+  const dispatcher = new framework.ZLinkRoutePacketDispatcher({
+    routerChannelId: 'mesh',
+    dispatchErrors: noDispatchErrorReporter(),
+    handlers: [],
+    spotRouteBridge: {
+      handleRouterReceived(channelName, sourceNodeRid, parts, requestSeq) {
+        handled.push({
+          channelName,
+          sourceNodeRid,
+          requestSeq,
+          parts: parts.map((part) => part.data().toString())
+        });
+        return true;
+      }
+    }
+  });
+  const parts = [
+    fakeMessagePart(Buffer.from('__zlink.routed_spot.egress.request')),
+    fakeMessagePart(Buffer.from('room-1')),
+    fakeMessagePart(Buffer.from('payload'))
+  ];
+
+  await dispatcher.dispatch({
+    parts,
+    routingId: 'node-b',
+    spotRid: 'room-1',
+    requestSeq: 7n,
+    send() {
+      throw new Error('direct SPOT delivery must not run for bridge frames');
+    }
+  }, {
+    reply() {
+      throw new Error('reply path must not be used directly');
+    }
+  });
+
+  assert.deepEqual(handled, [{
+    channelName: 'mesh',
+    sourceNodeRid: 'node-b',
+    requestSeq: 7n,
+    parts: ['__zlink.routed_spot.egress.request', 'room-1', 'payload']
+  }]);
 });
 
 test('ZLinkModule route channel dispatches inbound routed handlers after bootstrap', async () => {
@@ -3072,6 +3408,8 @@ function fakeRouteRouter(options = {}) {
     nativeInstance: {},
     writable: true,
     requestAttempts: 0,
+    recvAttempts: 0,
+    recvQueue: [],
     setChannelName(channelName) {
       this.channelName = channelName;
     },
@@ -3096,6 +3434,10 @@ function fakeRouteRouter(options = {}) {
     request() {
       this.requestAttempts++;
       return options.acceptWithoutReply === true;
+    },
+    recv() {
+      this.recvAttempts++;
+      return this.recvQueue.shift();
     },
     async dispose() {}
   };

@@ -18,7 +18,6 @@ import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
-import systems.zlink.framework.runtime.spots.SpotChannelClientRegistration;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.runtime.spots.SpotRouteChannelAcceptanceRegistration;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
@@ -195,14 +194,6 @@ public final class ZLinkFrameworkRegistration {
         }
         for (SpotNodeRegistration spotNode : spotNodes) {
             spotNode.validate();
-            for (SpotChannelClientRegistration attached :
-                spotNode.attachedChannelClients().values()) {
-                if (!discoveryEnabled() && attached.manualConnections().isEmpty()) {
-                    throw new ZLinkConfigurationException(
-                        "attached channel client requires discovery or manual connections: "
-                            + attached.channelName());
-                }
-            }
             for (SpotRouteChannelAcceptanceRegistration acceptance :
                 spotNode.acceptedSpotRouteChannels().values()) {
                 validateAcceptedSpotRouteChannel(spotNode, acceptance);

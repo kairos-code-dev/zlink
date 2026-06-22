@@ -87,6 +87,8 @@ struct sample_topology_t
         }
         topology.play_a_node_rid = section.get ("playANodeRid").value_or (topology.play_a_node_rid);
         topology.play_b_node_rid = section.get ("playBNodeRid").value_or (topology.play_b_node_rid);
+        topology.api_a_route_rid = section.get ("apiAPlayRouteRid").value_or (topology.api_a_route_rid);
+        topology.api_b_route_rid = section.get ("apiBPlayRouteRid").value_or (topology.api_b_route_rid);
         topology.session_a_route_rid =
           section.get ("sessionAPlayRouteRid").value_or (topology.session_a_route_rid);
         topology.session_b_route_rid =
@@ -122,6 +124,8 @@ struct sample_topology_t
     std::string session_node = "a";
     std::string play_a_node_rid = "2201";
     std::string play_b_node_rid = "2202";
+    std::string api_a_route_rid = "3301";
+    std::string api_b_route_rid = "3302";
     std::string session_a_route_rid = "1201";
     std::string session_b_route_rid = "1202";
     std::string redis_endpoint;
@@ -145,14 +149,14 @@ struct sample_topology_t
         return play_node == "b" ? play_a_channel_endpoint : play_b_channel_endpoint;
     }
 
-    std::string selected_play_route_endpoint () const
+    std::string selected_api_play_route_endpoint () const
     {
-        return play_node == "b" ? play_b_route_endpoint : play_a_route_endpoint;
+        return api_node == "b" ? play_b_route_endpoint : play_a_route_endpoint;
     }
 
-    std::string peer_play_route_endpoint () const
+    std::string selected_api_route_rid () const
     {
-        return play_node == "b" ? play_a_route_endpoint : play_b_route_endpoint;
+        return api_node == "b" ? api_b_route_rid : api_a_route_rid;
     }
 
     std::string selected_session_route_endpoint () const

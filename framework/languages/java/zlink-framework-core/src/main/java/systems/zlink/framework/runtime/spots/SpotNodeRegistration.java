@@ -19,8 +19,6 @@ public final class SpotNodeRegistration {
     private final List<Class<? extends ZLinkEntrySpot<?>>> entrySpots = new ArrayList<>();
     private final Map<String, SpotPublisherClientRegistration> attachedSpotPublisherClients =
         new LinkedHashMap<>();
-    private final Map<String, SpotChannelClientRegistration> attachedChannelClients =
-        new LinkedHashMap<>();
     private final Map<String, SpotRouteChannelAcceptanceRegistration> acceptedSpotRouteChannels =
         new LinkedHashMap<>();
     private final List<RouterManualConnection> routerManualConnections = new ArrayList<>();
@@ -93,10 +91,6 @@ public final class SpotNodeRegistration {
         return Map.copyOf(attachedSpotPublisherClients);
     }
 
-    public Map<String, SpotChannelClientRegistration> attachedChannelClients() {
-        return Map.copyOf(attachedChannelClients);
-    }
-
     public Map<String, SpotRouteChannelAcceptanceRegistration> acceptedSpotRouteChannels() {
         return Map.copyOf(acceptedSpotRouteChannels);
     }
@@ -162,17 +156,6 @@ public final class SpotNodeRegistration {
         return attachedSpotPublisherClients.computeIfAbsent(
             channelName,
             SpotPublisherClientRegistration::new);
-    }
-
-    SpotChannelClientRegistration attachChannelClient(String channelName) {
-        if (channelName == null || channelName.isBlank()) {
-            throw new ZLinkConfigurationException(
-                "attached client/server channel name is required");
-        }
-        enableRouter();
-        return attachedChannelClients.computeIfAbsent(
-            channelName,
-            SpotChannelClientRegistration::new);
     }
 
     SpotRouteChannelAcceptanceRegistration acceptSpotRoutesFromChannel(String channelName) {

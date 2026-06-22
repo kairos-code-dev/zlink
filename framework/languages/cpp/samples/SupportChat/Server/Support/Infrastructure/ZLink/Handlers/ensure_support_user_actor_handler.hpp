@@ -3,6 +3,8 @@
 
 #include "../../../../Configuration/sample_names.hpp"
 #include "../../../../../Shared/Contracts/messages.hpp"
+#include "../Actors/support_actor_directory.hpp"
+#include "../Actors/support_user_actor_factory.hpp"
 
 namespace zlink::samples::supportchat
 {
@@ -19,12 +21,23 @@ class ensure_support_user_actor_handler_t
 
     ensure_support_user_actor_res_t handle (const ensure_support_user_actor_req_t &request)
     {
+        support_user_actor_factory_t::remember_identity (
+          request.actor_id, request.display_name, request.role);
+        if (support_actor_directory_t::shared ().contains (request.actor_id)) {
+            auto &actor = support_actor_directory_t::shared ().get (request.actor_id);
+            actor.set_identity (request.display_name, request.role);
+            return ensure_support_user_actor_res_t{
+              actor_ref_snapshot_t{actor.actor.node_rid, actor.actor.actor_id, actor.actor.generation},
+              sample_names_t::support_actor_type};
+        }
         auto &generation = generation_for (request.actor_id);
         if (generation == 0) {
             generation = ++_next_generation;
         }
         ensure_support_user_actor_res_t response;
-        response.actor = actor_ref_snapshot_t{{}, request.actor_id, generation};
+        response.actor = actor_ref_snapshot_t{sample_names_t::support_spot_node,
+                                              request.actor_id,
+                                              generation};
         response.actor_type = sample_names_t::support_actor_type;
         return response;
     }

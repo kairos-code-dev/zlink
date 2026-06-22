@@ -34,24 +34,21 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
         const auto observer_rid = observer_room_rid (request.room_id, _context.node_rid ());
         _context.manager ().get_or_create_spot (
           sample_names_t::room_spot, observer_rid,
-          to_stream_payload (bingo_room_settings_payload_t{
+          bingo_room_settings_payload_t{
             "Bingo Observer " + std::string (_context.node_rid ().value ()),
             bingo_sample_modes_t::two_player,
             0,
             75,
             "Observer",
-            request.room_id}));
+            request.room_id});
         auto joined =
           co_await actor.context
             .join_spot (observer_rid,
-                        to_stream_payload (
-                          bingo_room_join_req_t{request.room_id,
-                                                actor.actor.actor_id,
-                                                display_name,
-                                                true}))
-            .async ();
-        bingo_room_join_res_t ignored;
-        from_stream_payload (joined.reply, ignored);
+                        bingo_room_join_req_t{request.room_id,
+                                              actor.actor.actor_id,
+                                              display_name,
+                                              true})
+            .async<bingo_room_join_res_t> ();
         co_return observe_bingo_events_res_t{
           true, std::string (joined.actor.node_rid ().value ())};
     }
@@ -82,14 +79,12 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
         auto joined =
           co_await actor.context
             .join_spot (spot_rid,
-                        to_stream_payload (
-                          bingo_room_join_req_t{matched.room_id,
-                                                actor.actor.actor_id,
-                                                display_name}))
-            .async ();
-        bingo_room_join_res_t reply;
-        from_stream_payload (joined.reply, reply);
-        co_return match_bingo_res_t{matched.room_id, reply.state, matched.room_owner_node_rid};
+                        bingo_room_join_req_t{matched.room_id,
+                                              actor.actor.actor_id,
+                                              display_name})
+            .async<bingo_room_join_res_t> ();
+        co_return match_bingo_res_t{matched.room_id, joined.reply.state,
+                                    matched.room_owner_node_rid};
     }
 
     void onCreateActor (const player_actor_t &actor)

@@ -199,7 +199,6 @@ export interface ZLinkSpotNodeOptions {
   readonly spotTimerHandlers?: readonly ZLinkSpotTimerHandlerRegistration[];
   readonly spotActorSendHandlers?: readonly ZLinkSpotActorSendHandlerRegistration[];
   readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
-  readonly attachedChannelClients?: Readonly<Record<string, ZLinkSpotAttachedChannelClientOptions>>;
   readonly attachedSpotPublisherClients?: Readonly<Record<string, ZLinkSpotPublisherClientOptions>>;
   readonly acceptedSpotRouteChannels?: Readonly<Record<string, ZLinkSpotRouteChannelAcceptanceOptions>>;
 }
@@ -264,10 +263,6 @@ export interface ZLinkSpotPubSubCapabilityOptions {
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
-}
-
-export interface ZLinkSpotAttachedChannelClientOptions {
-  readonly manualConnections?: readonly string[];
 }
 
 export interface ZLinkSpotPublisherClientOptions {
@@ -772,13 +767,6 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     return this;
   }
 
-  attachChannelClient(channelName: string, endpoint?: string | readonly string[]): this {
-    this.spotNode.attachedChannelClients ??= {};
-    this.spotNode.attachedChannelClients[channelName] ??= { manualConnections: [] };
-    appendEndpoints(this.spotNode.attachedChannelClients[channelName], endpoint);
-    return this;
-  }
-
   attachSpotPublisherClient(channelName: string, endpoint?: string | readonly string[]): this {
     this.spotNode.attachedSpotPublisherClients ??= {};
     this.spotNode.attachedSpotPublisherClients[channelName] ??= { manualConnections: [] };
@@ -982,7 +970,6 @@ interface MutableSpotNodeOptions {
   entrySpot?: ZLinkEntrySpotOptions;
   entrySpotType?: Type<ZLinkEntrySpot>;
   spotFactories?: Type<ZLinkSpot>[];
-  attachedChannelClients?: Record<string, MutableSpotAttachedChannelClientOptions>;
   attachedSpotPublisherClients?: Record<string, MutableSpotPublisherClientOptions>;
   acceptedSpotRouteChannels?: Record<string, MutableSpotRouteChannelAcceptanceOptions>;
 }
@@ -998,10 +985,6 @@ interface MutableSpotPubSubCapabilityOptions {
   bind?: string;
   manualConnections?: string[];
   routingId?: string;
-}
-
-interface MutableSpotAttachedChannelClientOptions {
-  manualConnections?: string[];
 }
 
 interface MutableSpotPublisherClientOptions {
@@ -1276,7 +1259,6 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
     }
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' router`, spotNode.router);
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' pubSub`, spotNode.pubSub);
-    validateAttachedChannelClients(spotNodeName, spotNode, registration);
     validateAttachedSpotPublisherClients(spotNodeName, spotNode);
     validateAcceptedSpotRouteChannels(spotNodeName, spotNode, registration);
     validateEntrySpot(spotNodeName, spotNode);
@@ -1308,25 +1290,6 @@ function validateSpotNodeFactories(spotNodeName: string, spotNode: ZLinkSpotNode
       );
     }
     seen.add(factory);
-  }
-}
-
-function validateAttachedChannelClients(
-  spotNodeName: string,
-  spotNode: ZLinkSpotNodeOptions,
-  registration: ZLinkFrameworkRegistration
-): void {
-  for (const [channelName, attached] of Object.entries(spotNode.attachedChannelClients ?? {})) {
-    requireName(`SpotNode '${spotNodeName}' attached channel client name`, channelName);
-    if (registration.channels.get(channelName)?.server === undefined) {
-      throw new ZLinkConfigurationException(
-        `SpotNode '${spotNodeName}' attached channel client '${channelName}' must reference a client-server channel.`
-      );
-    }
-    validateManualConnections(
-      `SpotNode '${spotNodeName}' attached channel client '${channelName}'`,
-      attached.manualConnections
-    );
   }
 }
 

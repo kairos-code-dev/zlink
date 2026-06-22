@@ -3,6 +3,7 @@
 #include "support_chat_client_scenario.hpp"
 
 #include "Configuration/sample_configuration.hpp"
+#include "../Shared/Contracts/codecs.hpp"
 
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_e2e_client.hpp>
@@ -45,6 +46,12 @@ int main (int argc, char **argv)
       make_connector (options.stream_endpoint, options.connect_timeout, options.request_timeout);
     auto core_closing_agent =
       make_connector (options.stream_endpoint, options.connect_timeout, options.request_timeout);
+    core_customer.codecs ().use (support_chat_json_codec ());
+    core_agent.codecs ().use (support_chat_json_codec ());
+    core_reconnecting_customer.codecs ().use (support_chat_json_codec ());
+    core_waiting_customer.codecs ().use (support_chat_json_codec ());
+    core_closing_customer.codecs ().use (support_chat_json_codec ());
+    core_closing_agent.codecs ().use (support_chat_json_codec ());
 
     auto customer = zlink::stream_e2e_client::use (core_customer);
     auto agent = zlink::stream_e2e_client::use (core_agent);

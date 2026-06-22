@@ -71,8 +71,6 @@ internal static class FixtureSamples
 
                     }
                     {
-                        spot.AttachChannelClient("orders", "tcp://127.0.0.1:7201");
-
                     }
                     spot.AttachSpotPublisherClient("game.stage");
                     spot.AddSpotFactory<FixtureStageSpot>();

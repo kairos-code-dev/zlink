@@ -86,11 +86,8 @@ template <typename T> class task_t
       private:
         void set_result (result_t<T> value)
         {
-            {
-                std::lock_guard<std::mutex> lock (state->mutex);
-                state->result = std::move (value);
-            }
-            state->ready.notify_all ();
+            std::lock_guard<std::mutex> lock (state->mutex);
+            state->result = std::move (value);
         }
 
     };
@@ -303,11 +300,8 @@ template <> class task_t<void>
       private:
         void set_result (result_t<void> value)
         {
-            {
-                std::lock_guard<std::mutex> lock (state->mutex);
-                state->result = std::move (value);
-            }
-            state->ready.notify_all ();
+            std::lock_guard<std::mutex> lock (state->mutex);
+            state->result = std::move (value);
         }
 
     };

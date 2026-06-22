@@ -13,24 +13,13 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
     string nodeName,
     ZLinkFrameworkRegistration frameworkRegistration,
     ZLinkSpotNodeRegistration registration,
-    IZLinkBackendContext context,
-    IZLinkChannelBackendAdapter channelAdapter,
     IZLinkBackendSpotNode node,
     ZLinkSpotPeerConnectionSet peerConnections,
     CancellationToken stopToken,
     Action connectDiscoveredPubSubPeers) : IAsyncDisposable
 {
     private readonly object _gate = new();
-    private readonly Dictionary<string, ZLinkSpotAttachedChannelBundle> _channelBundles = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ZLinkSpotPublisherBundle> _publisherBundles = new(StringComparer.Ordinal);
-
-    public void AddChannelBundle(string channelName, ZLinkSpotAttachedChannelBundle bundle)
-    {
-        lock (_gate)
-        {
-            _channelBundles.Add(channelName, bundle);
-        }
-    }
 
     public void AddPublisherBundle(string channelName, ZLinkSpotPublisherBundle bundle)
     {
@@ -47,23 +36,6 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
         lock (_gate)
         {
             return _publisherBundles.TryGetValue(channelName, out bundle);
-        }
-    }
-
-    public ZLinkSpotAttachedChannelBundle GetOrCreateAttachedChannelBundle(string channelName)
-    {
-        lock (_gate)
-        {
-            if (_channelBundles.TryGetValue(channelName, out var existing))
-            {
-                return existing;
-            }
-
-            var attached = RequireAttachedChannelClient(channelName);
-            var bundle = CreateAttachedChannelBundle(attached);
-
-            _channelBundles.Add(channelName, bundle);
-            return bundle;
         }
     }
 
@@ -88,73 +60,12 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
         }
     }
 
-    private ZLinkSpotChannelClientRegistration RequireAttachedChannelClient(string channelName)
-    {
-        return registration.AttachedChannelClients.TryGetValue(channelName, out var attached)
-            ? attached
-            : throw new ZLinkConfigurationException(
-                $"SPOT node '{nodeName}' attached channel client '{channelName}' is not registered.");
-    }
-
     private ZLinkSpotPublisherClientRegistration RequireAttachedSpotPublisherClient(string channelName)
     {
         return registration.AttachedSpotPublisherClients.TryGetValue(channelName, out var attached)
             ? attached
             : throw new ZLinkConfigurationException(
                 $"SPOT node '{nodeName}' publisher client '{channelName}' is not registered.");
-    }
-
-    private ZLinkSpotAttachedChannelBundle CreateAttachedChannelBundle(
-        ZLinkSpotChannelClientRegistration attached)
-    {
-        var dealer = channelAdapter.CreateDealerSocket(context);
-        dealer.SetChannelName(attached.ChannelName);
-        var bridge = node.CreateRouteBridge();
-        var bundle = new ZLinkSpotAttachedChannelBundle(
-            dealer,
-            bridge,
-            attached.SocketConfig.SendTimeout ?? frameworkRegistration.DefaultSocketSendTimeout,
-            stopToken);
-
-        if (attached.ManualConnections.Count > 0)
-        {
-            AttachManualChannelDealer(attached, bundle);
-        }
-        else
-        {
-            AttachDiscoveredChannelDealer(attached, bundle);
-        }
-
-        return bundle;
-    }
-
-    private void AttachManualChannelDealer(
-        ZLinkSpotChannelClientRegistration attached,
-        ZLinkSpotAttachedChannelBundle bundle)
-    {
-        foreach (var endpoint in attached.ManualConnections)
-        {
-            bundle.Socket.Connect(endpoint);
-            _ = bundle.TryAddManualConnection(endpoint);
-        }
-
-        bundle.Bridge.AttachDealerChannel(attached.ChannelName, bundle.Socket);
-    }
-
-    private void AttachDiscoveredChannelDealer(
-        ZLinkSpotChannelClientRegistration attached,
-        ZLinkSpotAttachedChannelBundle bundle)
-    {
-        var discovery = ZLinkBackendDiscoveryFactory.Create(
-            channelAdapter,
-            context,
-            attached.ChannelName,
-            ZLinkAutoConnectType.ClientServer,
-            frameworkRegistration.Discovery?.Endpoints ?? []);
-
-        bundle.Socket.AttachDiscovery(discovery);
-        bundle.Bridge.AttachDealerChannel(attached.ChannelName, bundle.Socket);
-        bundle.Discovery = discovery;
     }
 
     private ZLinkSpotPublisherBundle CreatePublisherBundle(
@@ -183,13 +94,10 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
     public async ValueTask DisposeAsync()
     {
         ZLinkSpotPublisherBundle[] publishers;
-        ZLinkSpotAttachedChannelBundle[] channels;
         lock (_gate)
         {
             publishers = _publisherBundles.Values.ToArray();
-            channels = _channelBundles.Values.ToArray();
             _publisherBundles.Clear();
-            _channelBundles.Clear();
         }
 
         foreach (var publisher in publishers)
@@ -197,9 +105,5 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
             await publisher.DisposeAsync();
         }
 
-        foreach (var channel in channels)
-        {
-            await channel.DisposeAsync();
-        }
     }
 }

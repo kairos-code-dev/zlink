@@ -36,6 +36,8 @@ public static class PlayServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
+            options.AddClientServerChannel(SampleNames.ApiChannel)
+                .EnableClient();
             options.AddRouteMeshChannel(SampleNames.PlayChannel)
                 .EnableServer(node.PlayChannelEndpoint)
                 .EnableClient()
@@ -50,7 +52,6 @@ public static class PlayServerHostFactory
                 .EnablePubSub(node.SpotPubEndpoint)
                 .SetPubSubRoutingId(node.NodeRid)
                 .AcceptSpotRoutesFromChannel(SampleNames.PlayChannel)
-                .AttachChannelClient(SampleNames.ApiChannel)
                 .AddEntrySpot<BingoEntrySpot>()
                 .AddSpotFactory<BingoRoom>();
         });

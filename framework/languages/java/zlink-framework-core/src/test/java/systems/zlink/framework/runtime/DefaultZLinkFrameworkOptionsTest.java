@@ -511,42 +511,6 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void attachedSpotChannelClientWithManualConnectionIsAccepted() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.attachChannelClient("profile", "inproc://profile-server"); }; };
-
-        options.validate();
-        assertEquals(
-            List.of("inproc://profile-server"),
-            options.registration()
-                .spotNodes()
-                .get(0)
-                .attachedChannelClients()
-                .get("profile")
-                .manualConnections());
-    }
-
-    @Test
-    void attachedSpotChannelClientRequiresDiscoveryOrManualConnections() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.attachChannelClient("profile"); }; };
-
-        assertThrows(ZLinkConfigurationException.class, options::validate);
-    }
-
-    @Test
-    void attachedSpotChannelClientManualConnectionsOverrideGlobalDiscovery() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.attachChannelClient("profile", "inproc://profile-server"); }; };
-
-        assertDoesNotThrow(options::validate);
-    }
-
-    @Test
     void clientServerChannelClientManualConnectionsOverrideGlobalDiscovery() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 

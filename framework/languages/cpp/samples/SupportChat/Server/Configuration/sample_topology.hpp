@@ -29,8 +29,14 @@ struct sample_topology_t
           section.get ("sessionSpotEndpoint").value_or (topology.session_spot_endpoint);
         topology.session_router_endpoint =
           section.get ("sessionRouterEndpoint").value_or (topology.session_router_endpoint);
+        topology.session_actor_route_endpoint =
+          section.get ("sessionActorRouteEndpoint")
+            .value_or (topology.session_actor_route_endpoint);
         topology.support_router_endpoint =
           section.get ("supportRouterEndpoint").value_or (topology.support_router_endpoint);
+        topology.support_actor_route_endpoint =
+          section.get ("supportActorRouteEndpoint")
+            .value_or (topology.support_actor_route_endpoint);
         topology.support_spot_endpoint =
           section.get ("supportSpotEndpoint").value_or (topology.support_spot_endpoint);
         topology.conversation_spot_router_endpoint =
@@ -58,7 +64,9 @@ struct sample_topology_t
     std::string support_channel_endpoint = "tcp://127.0.0.1:47204";
     std::string session_spot_endpoint = "tcp://127.0.0.1:47205";
     std::string session_router_endpoint = "tcp://127.0.0.1:47206";
+    std::string session_actor_route_endpoint = "tcp://127.0.0.1:47213";
     std::string support_router_endpoint = "tcp://127.0.0.1:47207";
+    std::string support_actor_route_endpoint = "tcp://127.0.0.1:47214";
     std::string support_spot_endpoint = "tcp://127.0.0.1:47208";
     std::string conversation_spot_router_endpoint = "tcp://127.0.0.1:47210";
     std::string conversation_spot_endpoint = "tcp://127.0.0.1:47211";

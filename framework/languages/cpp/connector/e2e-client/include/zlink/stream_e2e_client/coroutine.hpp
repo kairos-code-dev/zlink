@@ -65,10 +65,12 @@ class coroutine_send_call_t
 
     task_t<void> async ()
     {
-        return task_t<void> (
+        auto task = task_t<void> (
           [inner = std::move (_inner)] (std::function<void (result_t<void>)> callback) mutable {
               inner.submit (std::move (callback));
           });
+        task.start ();
+        return task;
     }
 
   private:
@@ -128,10 +130,12 @@ class coroutine_request_call_t
 
     template <typename TReply> task_t<TReply> async ()
     {
-        return task_t<TReply> (
+        auto task = task_t<TReply> (
           [inner = std::move (_inner)] (std::function<void (result_t<TReply>)> callback) mutable {
               inner.template submit<TReply> (std::move (callback));
           });
+        task.start ();
+        return task;
     }
 
   private:
@@ -177,10 +181,12 @@ template <typename TMessage> class coroutine_wait_call_t
 
     task_t<TMessage> async ()
     {
-        return task_t<TMessage> (
+        auto task = task_t<TMessage> (
           [inner = std::move (_inner)] (std::function<void (result_t<TMessage>)> callback) mutable {
               inner.submit (std::move (callback));
           });
+        task.start ();
+        return task;
     }
 
   private:
@@ -224,10 +230,12 @@ class coroutine_connector_t
 
         task_t<void> async ()
         {
-            return task_t<void> (
+            auto task = task_t<void> (
               [operation = std::move (_operation)] (std::function<void (result_t<void>)> callback) mutable {
                   operation (std::move (callback));
               });
+            task.start ();
+            return task;
         }
 
       private:

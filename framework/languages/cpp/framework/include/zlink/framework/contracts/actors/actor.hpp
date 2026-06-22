@@ -14,6 +14,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace zlink::framework
@@ -58,6 +59,13 @@ struct actor_join_result_t
     zlink::message_t reply;
 };
 
+template <typename TReply> struct typed_actor_join_result_t
+{
+    int result_code = 0;
+    actor_ref_t actor;
+    TReply reply;
+};
+
 namespace detail
 {
 struct actor_join_reply_t
@@ -69,19 +77,57 @@ struct actor_join_reply_t
 } // namespace detail
 
 class actor_join_spot_call_t
-    : private detail::call_facade_t<actor_join_spot_call_t, actor_join_result_t>
 {
-  private:
-    using base_t = detail::call_facade_t<actor_join_spot_call_t, actor_join_result_t>;
-
   public:
     explicit actor_join_spot_call_t (result_t<actor_join_result_t> result) :
-        base_t (std::move (result))
+        _result (std::move (result))
     {
     }
 
-    using base_t::async;
-    using base_t::timeout;
+    actor_join_spot_call_t (result_t<actor_join_result_t> result,
+                            serializer_registry_t *serializers) :
+        _result (std::move (result)), _serializers (serializers)
+    {
+    }
+
+    actor_join_spot_call_t &timeout (std::chrono::milliseconds timeout)
+    {
+        _timeout = timeout;
+        return *this;
+    }
+
+    task_t<actor_join_result_t> async () { return task_t<actor_join_result_t> (_result); }
+
+    template <typename TReply> task_t<typed_actor_join_result_t<TReply>> async ()
+    {
+        (void) _timeout;
+        if (!_result) {
+            const auto *error = _result.error ();
+            co_return result_t<typed_actor_join_result_t<TReply>>::failure (
+              _result.error_kind (),
+              error != nullptr ? error->what () : "actor join spot failed");
+        }
+        if (_serializers == nullptr) {
+            co_return result_t<typed_actor_join_result_t<TReply>>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "actor join result has no serializer registry");
+        }
+        try {
+            const auto &joined = _result.value ();
+            co_return typed_actor_join_result_t<TReply>{
+              joined.result_code, joined.actor,
+              _serializers->get<TReply> ().deserialize (joined.reply)};
+        }
+        catch (const framework_exception_t &error) {
+            co_return result_t<typed_actor_join_result_t<TReply>>::failure (
+              error.kind (), error.what (), error.is_retriable ());
+        }
+    }
+
+  private:
+    result_t<actor_join_result_t> _result;
+    serializer_registry_t *_serializers = nullptr;
+    std::chrono::milliseconds _timeout{0};
 };
 
 class actor_join_entry_spot_call_t
@@ -142,14 +188,12 @@ class bound_session_t
     friend class detail::actor_gateway_runtime_t;
 
     explicit bound_session_t (std::shared_ptr<detail::actor_gateway_state_t> state,
-                              std::string actor_id,
-                              std::uint64_t generation);
+                              actor_ref_t actor_ref);
 
     send_call_t send_erased (std::string packet_name, const zlink::message_t &payload);
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
-    std::string _actor_id;
-    std::uint64_t _generation = 0;
+    actor_ref_t _actor_ref;
 };
 
 class actor_context_t
@@ -179,7 +223,9 @@ class actor_context_t
             }
             const auto &reply = erased.value ();
             return actor_join_spot_call_t (result_t<actor_join_result_t>::success (
-              actor_join_result_t{reply.result_code, reply.actor, reply.reply}));
+                                             actor_join_result_t{reply.result_code, reply.actor,
+                                                                 reply.reply}),
+                                           serializer_registry ());
         }
         catch (const framework_exception_t &error) {
             return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
@@ -189,6 +235,26 @@ class actor_context_t
             return actor_join_spot_call_t (
               result_t<actor_join_result_t>::failure (framework_error_kind_t::payload_decode_failed,
                                                       "actor join spot reply decode failed"));
+        }
+    }
+
+    template <typename TRequest>
+      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>)
+    actor_join_spot_call_t join_spot (spot_rid_t spot_rid, const TRequest &request)
+    {
+        auto *serializers = serializer_registry ();
+        if (serializers == nullptr) {
+            return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "actor join spot requires a serializer registry"));
+        }
+        try {
+            return join_spot (std::move (spot_rid),
+                              serializers->get<TRequest> ().serialize (request));
+        }
+        catch (const framework_exception_t &error) {
+            return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
+              error.kind (), error.what (), error.is_retriable ()));
         }
     }
 
@@ -207,6 +273,7 @@ class actor_context_t
 
     result_t<detail::actor_join_reply_t> join_spot_erased (spot_rid_t spot_rid,
                                                            const zlink::message_t &request);
+    serializer_registry_t *serializer_registry () const noexcept;
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
     actor_ref_t _actor_ref;

@@ -1,8 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Codecs;
 
 namespace Zlink.Framework.Runtime.Channels;
 
-internal sealed class ZLinkRouteHandlerInvoker(IServiceProvider services)
+internal sealed class ZLinkRouteHandlerInvoker(
+    IServiceProvider services,
+    ZLinkCodecRegistryBuilder codecs)
 {
     public async ValueTask InvokeSendAsync(
         ZLinkRouteHandlerDescriptor descriptor,
@@ -12,7 +15,7 @@ internal sealed class ZLinkRouteHandlerInvoker(IServiceProvider services)
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        var message = ZLinkEnvelopeCodec.DecodeBody(parts, descriptor.MessageType);
+        var message = ZLinkEnvelopeCodec.DecodeBody(parts, descriptor.MessageType, codecs);
 
         await using var scope = services.CreateAsyncScope();
         var context = new ZLinkRouteSendContext(
@@ -43,7 +46,7 @@ internal sealed class ZLinkRouteHandlerInvoker(IServiceProvider services)
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        var message = ZLinkEnvelopeCodec.DecodeBody(parts, descriptor.MessageType);
+        var message = ZLinkEnvelopeCodec.DecodeBody(parts, descriptor.MessageType, codecs);
 
         await using var scope = services.CreateAsyncScope();
         var context = new ZLinkRouteRequestContext(

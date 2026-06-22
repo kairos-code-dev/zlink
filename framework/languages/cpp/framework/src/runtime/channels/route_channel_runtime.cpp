@@ -244,7 +244,7 @@ route_channel_runtime_t::request_to_spot_parts (const zlink::routing_id_t &targe
     }
     if (backend) {
         auto reply = backend (target_node_rid, target_spot_rid, parts,
-                              std::chrono::milliseconds (0));
+                              default_request_timeout ());
         std::lock_guard lock (_mutex);
         _pending_requests.remove (request_seq);
         if (!reply) {
@@ -346,7 +346,7 @@ result_t<void> route_channel_runtime_t::ensure_connected () const
         return result_t<void>::failure (framework_error_kind_t::route_not_connected,
                                         "route channel runtime is not running");
     }
-    if (_connections.list ().empty ()) {
+    if (!_send_backend && !_request_backend && _connections.list ().empty ()) {
         return result_t<void>::failure (framework_error_kind_t::route_not_connected,
                                         "route channel has no connected endpoint");
     }

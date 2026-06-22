@@ -265,7 +265,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     @Override
     public ZLinkSpotBackendAdapter createSpotAdapter(ZLinkBackendAdapterOptions options) {
         calls.add("factory.spot");
-        return new FakeSpotBackendAdapter(calls, spots);
+        return new FakeSpotBackendAdapter(calls, spots, this);
     }
 
     @Override
@@ -406,15 +406,20 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     private static final class FakeSpotBackendAdapter implements ZLinkSpotBackendAdapter {
         private final List<String> calls;
         private final List<FakeSpot> spots;
+        private final FakeZLinkBackendAdapterFactory owner;
 
-        FakeSpotBackendAdapter(List<String> calls, List<FakeSpot> spots) {
+        FakeSpotBackendAdapter(
+            List<String> calls,
+            List<FakeSpot> spots,
+            FakeZLinkBackendAdapterFactory owner) {
             this.calls = calls;
             this.spots = spots;
+            this.owner = owner;
         }
 
         @Override
         public ZLinkBackendSpotNode createSpotNode(ZLinkBackendContext context, ZLinkBackendSpotNodeMode mode) {
-            return new FakeSpotNode(calls, spots);
+            return new FakeSpotNode(calls, spots, owner);
         }
     }
 
@@ -769,11 +774,16 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     private static final class FakeSpotNode extends FakeBackendObject implements ZLinkBackendSpotNode {
         private int nextSpotId = 1;
         private final List<FakeSpot> spots;
+        private final FakeZLinkBackendAdapterFactory owner;
         private RoutingId routingId = RoutingId.from("spot-node");
 
-        FakeSpotNode(List<String> calls, List<FakeSpot> spots) {
+        FakeSpotNode(
+            List<String> calls,
+            List<FakeSpot> spots,
+            FakeZLinkBackendAdapterFactory owner) {
             super(calls, "spotNode");
             this.spots = spots;
+            this.owner = owner;
         }
 
         @Override public RoutingId routingId() { return routingId; }
@@ -789,13 +799,13 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
         @Override public ZLinkBackendSpot createSpot() {
             record("createSpot");
-            FakeSpot spot = new FakeSpot(calls(), "spot." + nextSpotId++);
+            FakeSpot spot = new FakeSpot(calls(), "spot." + nextSpotId++, owner);
             spots.add(spot);
             return spot;
         }
         @Override public ZLinkBackendSpot entrySpot() {
             record("entrySpot");
-            FakeSpot spot = new FakeSpot(calls(), "entrySpot");
+            FakeSpot spot = new FakeSpot(calls(), "entrySpot", owner);
             spots.add(spot);
             return spot;
         }
@@ -978,6 +988,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     }
 
     private static final class FakeSpot extends FakeBackendObject implements ZLinkBackendSpot {
+        private final FakeZLinkBackendAdapterFactory owner;
         private final Deque<ZLinkBackendActorJoinRequest> actorJoins = new ArrayDeque<>();
         private final Deque<ZLinkBackendActorLifecycleEvent> actorLifecycles = new ArrayDeque<>();
         private final Deque<ZLinkBackendReceived> routes = new ArrayDeque<>();
@@ -985,8 +996,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         private final List<String> replies = new ArrayList<>();
         private ZLinkBackendSpotDispatchHandler dispatchHandler;
 
-        FakeSpot(List<String> calls, String name) {
+        FakeSpot(
+            List<String> calls,
+            String name,
+            FakeZLinkBackendAdapterFactory owner) {
             super(calls, name);
+            this.owner = owner;
         }
 
         void enqueueActorJoin(String actorId, String packetName, String payload) {
@@ -1136,8 +1151,6 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setSubscription(String topic) { record("setSubscription." + topic); }
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return subscriptions.pollFirst(); }
         @Override public ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode) { return routes.pollFirst(); }
-        @Override public boolean sendToChannel(String channelName, List<Message> parts, SendFlags flags) { record("sendToChannel." + channelName + "." + firstPart(parts)); return true; }
-        @Override public boolean requestToChannel(String channelName, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { record("requestToChannel." + channelName + "." + firstPart(parts)); return true; }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { record("publish." + topic + "." + firstPart(parts)); return true; }
         @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, SendFlags flags) { record("sendToSpot." + targetNodeRid + "." + spotRid + "." + firstPart(parts)); return true; }
         @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {

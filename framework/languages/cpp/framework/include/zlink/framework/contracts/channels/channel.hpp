@@ -201,6 +201,67 @@ class route_channel_builder_t
           }});
     }
 
+    template <typename TOwner, typename TMessage>
+    route_channel_builder_t &add_send_handler (std::string packet_name,
+                                               void (TOwner::*method) (const TMessage &))
+    {
+        const auto packet =
+          packet_name.empty () ? detail::message_name<TMessage> () : std::move (packet_name);
+        return add_handler (route_handler_registration_t{
+          route_handler_kind_t::send, packet, std::type_index (typeid (TOwner)),
+          std::type_index (typeid (TMessage)), std::type_index (typeid (void)),
+          [method] (service_provider_t &services, serializer_registry_t &serializers,
+                    const zlink::message_t &message,
+                    const route_handler_context_t &) -> task_t<zlink::message_t> {
+              try {
+                  auto &owner = services.get_required<TOwner> ();
+                  auto payload = serializers.get<TMessage> ().deserialize (message);
+                  (owner.*method) (payload);
+                  return task_t<zlink::message_t> (
+                    result_t<zlink::message_t>::success (zlink::message_t{}));
+              }
+              catch (const framework_exception_t &error) {
+                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+                    error.kind (), error.what (), error.is_retriable ()));
+              }
+              catch (...) {
+                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+                    framework_error_kind_t::request_failed,
+                    "routed send handler threw an exception"));
+              }
+          }});
+    }
+
+    template <typename TOwner, typename TMessage>
+    route_channel_builder_t &add_send_handler (std::string packet_name,
+                                               task_t<void> (TOwner::*method) (const TMessage &))
+    {
+        const auto packet =
+          packet_name.empty () ? detail::message_name<TMessage> () : std::move (packet_name);
+        return add_handler (route_handler_registration_t{
+          route_handler_kind_t::send, packet, std::type_index (typeid (TOwner)),
+          std::type_index (typeid (TMessage)), std::type_index (typeid (void)),
+          [method] (service_provider_t &services, serializer_registry_t &serializers,
+                    const zlink::message_t &message,
+                    const route_handler_context_t &) -> task_t<zlink::message_t> {
+              try {
+                  auto &owner = services.get_required<TOwner> ();
+                  auto payload = serializers.get<TMessage> ().deserialize (message);
+                  co_await (owner.*method) (payload);
+                  co_return result_t<zlink::message_t>::success (zlink::message_t{});
+              }
+              catch (const framework_exception_t &error) {
+                  co_return result_t<zlink::message_t>::failure (
+                    error.kind (), error.what (), error.is_retriable ());
+              }
+              catch (...) {
+                  co_return result_t<zlink::message_t>::failure (
+                    framework_error_kind_t::request_failed,
+                    "routed send handler threw an exception");
+              }
+          }});
+    }
+
     template <typename TOwner, typename TRequest, typename TReply>
     route_channel_builder_t &add_request_handler (
       std::string packet_name,
@@ -229,6 +290,69 @@ class route_channel_builder_t
                   return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
                     framework_error_kind_t::request_failed,
                     "routed request handler threw an exception"));
+              }
+          }});
+    }
+
+    template <typename TOwner, typename TRequest, typename TReply>
+    route_channel_builder_t &add_request_handler (std::string packet_name,
+                                                  TReply (TOwner::*method) (const TRequest &))
+    {
+        const auto packet =
+          packet_name.empty () ? detail::message_name<TRequest> () : std::move (packet_name);
+        return add_handler (route_handler_registration_t{
+          route_handler_kind_t::request, packet, std::type_index (typeid (TOwner)),
+          std::type_index (typeid (TRequest)), std::type_index (typeid (TReply)),
+          [method] (service_provider_t &services, serializer_registry_t &serializers,
+                    const zlink::message_t &message,
+                    const route_handler_context_t &) -> task_t<zlink::message_t> {
+              try {
+                  auto &owner = services.get_required<TOwner> ();
+                  auto request = serializers.get<TRequest> ().deserialize (message);
+                  auto reply = (owner.*method) (request);
+                  return task_t<zlink::message_t> (result_t<zlink::message_t>::success (
+                    serializers.get<TReply> ().serialize (reply)));
+              }
+              catch (const framework_exception_t &error) {
+                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+                    error.kind (), error.what (), error.is_retriable ()));
+              }
+              catch (...) {
+                  return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+                    framework_error_kind_t::request_failed,
+                    "routed request handler threw an exception"));
+              }
+          }});
+    }
+
+    template <typename TOwner, typename TRequest, typename TReply>
+    route_channel_builder_t &
+    add_request_handler (std::string packet_name,
+                         task_t<TReply> (TOwner::*method) (const TRequest &))
+    {
+        const auto packet =
+          packet_name.empty () ? detail::message_name<TRequest> () : std::move (packet_name);
+        return add_handler (route_handler_registration_t{
+          route_handler_kind_t::request, packet, std::type_index (typeid (TOwner)),
+          std::type_index (typeid (TRequest)), std::type_index (typeid (TReply)),
+          [method] (service_provider_t &services, serializer_registry_t &serializers,
+                    const zlink::message_t &message,
+                    const route_handler_context_t &) -> task_t<zlink::message_t> {
+              try {
+                  auto &owner = services.get_required<TOwner> ();
+                  auto request = serializers.get<TRequest> ().deserialize (message);
+                  auto reply = co_await (owner.*method) (request);
+                  co_return result_t<zlink::message_t>::success (
+                    serializers.get<TReply> ().serialize (reply));
+              }
+              catch (const framework_exception_t &error) {
+                  co_return result_t<zlink::message_t>::failure (
+                    error.kind (), error.what (), error.is_retriable ());
+              }
+              catch (...) {
+                  co_return result_t<zlink::message_t>::failure (
+                    framework_error_kind_t::request_failed,
+                    "routed request handler threw an exception");
               }
           }});
     }

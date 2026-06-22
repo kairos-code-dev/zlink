@@ -90,31 +90,6 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         return EnsurePubSub().SubscriberConfig;
     }
 
-    public IZLinkSpotNodeBuilder AttachChannelClient(string channelName)
-    {
-        EnsureChannelClient(channelName);
-        return this;
-    }
-
-    public IZLinkSpotNodeBuilder AttachChannelClient(string channelName, string endpoint)
-    {
-        ZLinkChannelEndpointBuilderSupport.AddManualConnection(
-            EnsureChannelClient(channelName).ManualConnections,
-            endpoint,
-            "Attached client/server channel endpoint must not be empty.");
-        return this;
-    }
-
-    public IZLinkSocketConfig ConfigureChannelClientSocket(string channelName)
-    {
-        return EnsureChannelClient(channelName).SocketConfig;
-    }
-
-    public IZLinkOutboundRouteConfig ConfigureChannelClientRouting(string channelName)
-    {
-        return EnsureChannelClient(channelName).RoutingConfig;
-    }
-
     public IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName)
     {
         EnsureSpotPublisherClient(channelName);
@@ -170,22 +145,6 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
     {
         registration.PubSub ??= new ZLinkSpotPubSubCapabilityRegistration();
         return registration.PubSub;
-    }
-
-    private ZLinkSpotChannelClientRegistration EnsureChannelClient(string channelName)
-    {
-        if (string.IsNullOrWhiteSpace(channelName))
-        {
-            throw new ZLinkConfigurationException("Attached client/server channel client name must not be empty.");
-        }
-
-        if (!registration.AttachedChannelClients.TryGetValue(channelName, out var attached))
-        {
-            attached = new ZLinkSpotChannelClientRegistration { ChannelName = channelName };
-            registration.AttachedChannelClients.Add(channelName, attached);
-        }
-
-        return attached;
     }
 
     private ZLinkSpotPublisherClientRegistration EnsureSpotPublisherClient(string channelName)

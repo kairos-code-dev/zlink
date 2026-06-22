@@ -343,7 +343,6 @@ export interface ZLinkNestSpotNodeBuilder extends ZLinkNestFrameworkOptionsBuild
   connectPeerPub(endpoint: string): this;
   connectPubSub(endpoint: string): this;
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
-  attachChannelClient(channelName: string, endpoint?: string | readonly string[]): this;
   attachSpotPublisherClient(channelName: string, endpoint?: string | readonly string[]): this;
   acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this;
   acceptSpotRoutesFromChannel(channelName: string, peerRid: string, endpoint: string): this;
@@ -991,14 +990,6 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestChildBuilder implements Z
 
   configureEntrySpot(options: ZLinkEntrySpotOptions): this {
     this.spotOptions.entrySpot = { ...options };
-    return this;
-  }
-
-  attachChannelClient(channelName: string, endpoint?: string | readonly string[]): this {
-    this.spotOptions.attachedChannelClients = {
-      ...(this.spotOptions.attachedChannelClients ?? {}),
-      [channelName]: endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) }
-    };
     return this;
   }
 

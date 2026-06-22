@@ -442,7 +442,6 @@ int main ()
       .connect_pub_sub ("tcp://127.0.0.1:9005")
       .enable_actor_gateway ()
       .use_discovery ("game.stage")
-      .attach_channel_client ("profile")
       .attach_publisher ("game.stage")
       .add_entry_spot<entry_spot_t> ()
       .add_actor_factory<player_actor_factory_t> ("player")
@@ -460,11 +459,7 @@ int main ()
         || snapshots[0].pub_sub_manual_connections[0] != "tcp://127.0.0.1:9005"
         || !snapshots[0].actor_gateway_enabled || !snapshots[0].discovery_channel_name
         || *snapshots[0].discovery_channel_name != "game.stage"
-        || snapshots[0].attached_channel_clients.size () != 1
         || snapshots[0].attached_publishers.size () != 1
-        || snapshots[0].attached_channel_client_details.size () != 1
-        || snapshots[0].attached_channel_client_details[0].channel_name != "profile"
-        || !snapshots[0].attached_channel_client_details[0].manual_connections.empty ()
         || snapshots[0].attached_publisher_details.size () != 1
         || snapshots[0].attached_publisher_details[0].channel_name != "game.stage"
         || !snapshots[0].attached_publisher_details[0].manual_connections.empty ()
@@ -1294,32 +1289,6 @@ int main ()
     if (peer_pub_alias.snapshot ().pub_sub_manual_connections.size () != 1
         || peer_pub_alias.snapshot ().pub_sub_manual_connections[0] != "tcp://127.0.0.1:9006") {
         return 410;
-    }
-
-    bool empty_attach_failed = false;
-    try {
-        zlink::framework::spot_node_builder_t invalid;
-        invalid.attach_channel_client (" ");
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        empty_attach_failed = error.kind () == framework_error_kind_t::request_protocol_error;
-    }
-    if (!empty_attach_failed) {
-        return 30;
-    }
-
-    bool empty_attach_endpoint_failed = false;
-    try {
-        zlink::framework::spot_node_builder_t invalid;
-        const std::vector<std::string> invalid_endpoints{" "};
-        invalid.attach_channel_client ("profile", invalid_endpoints);
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        empty_attach_endpoint_failed =
-          error.kind () == framework_error_kind_t::request_protocol_error;
-    }
-    if (!empty_attach_endpoint_failed) {
-        return 32;
     }
 
     bool empty_publisher_attach_failed = false;

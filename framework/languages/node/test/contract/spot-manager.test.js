@@ -677,6 +677,90 @@ test('spot manager local actor join does not wait for entry leave callback', asy
   result.reply.close();
 });
 
+test('spot manager passes native remote join source as actor bound-session target', async () => {
+  let dispatchHandler;
+  let capturedTarget;
+  const replies = [];
+  const nativeJoinMessage = zlink.Message.from(JSON.stringify({
+    packetName: '__zlink.actor.join_spot.request',
+    actorType: 'PlayerActor',
+    actorNodeRid: 'play-b',
+    actorGeneration: '4',
+    request: Buffer.from('join-room').toString('base64')
+  }));
+  let pendingNativeJoin = true;
+  const nativeSpot = {
+    routingId: 'room-1',
+    setDispatchHandler(handler) {
+      dispatchHandler = handler;
+    },
+    recvActorJoin() {
+      if (!pendingNativeJoin) {
+        return null;
+      }
+      pendingNativeJoin = false;
+      return {
+        info: {
+          sourceActor: { nodeRid: zlink.RoutingId.from('play-b'), actorId: 'player-2', generation: 4n },
+          targetActor: { nodeRid: zlink.RoutingId.from('play-a'), actorId: 'player-2', generation: 5n },
+          sourceNodeRid: zlink.RoutingId.from('play-b'),
+          sourceSpotRid: zlink.RoutingId.from('play-b-entry'),
+          targetNodeRid: zlink.RoutingId.from('play-a'),
+          targetSpotRid: zlink.RoutingId.from('room-1'),
+          joinEpoch: 9n,
+          flags: 1
+        },
+        message: nativeJoinMessage
+      };
+    },
+    replyActorJoin(_request, code) {
+      return {
+        message() { return this; },
+        submit() {
+          replies.push(code);
+        }
+      };
+    },
+    async dispose() {}
+  };
+  class RoomSpot {
+    async onActorJoin() {
+      return { accepted: true };
+    }
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [RoomSpot],
+    createNativeSpot() {
+      return nativeSpot;
+    },
+    routedActorProvider: async (_actorId, _actorType, _actorRef, remoteBoundSessionTarget) => {
+      capturedTarget = remoteBoundSessionTarget;
+      return {
+        actor: { actorId: 'player-2' },
+        actorRef: { nodeRid: zlink.RoutingId.from('play-a'), actorId: 'player-2', generation: 5n }
+      };
+    },
+    nativeJoinBoundSessionTargetResolver(info) {
+      return {
+        routerChannelId: 'bingo.room.route',
+        targetNodeRid: info.sourceActor.nodeRid,
+        spotRid: info.sourceSpotRid
+      };
+    }
+  });
+
+  await manager.getOrCreate(RoomSpot, 'room-1');
+  dispatchHandler({ event: 6 });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(capturedTarget.routerChannelId, 'bingo.room.route');
+  assert.equal(String(capturedTarget.targetNodeRid), 'play-b');
+  assert.equal(String(capturedTarget.spotRid), 'play-b-entry');
+  assert.equal(replies[0], 0);
+  await manager.close('room-1');
+  nativeJoinMessage.close();
+});
+
 test('spot outbound requestToChannel completion runs on the spot serial executor', async () => {
   const events = [];
   class StageSpot {}

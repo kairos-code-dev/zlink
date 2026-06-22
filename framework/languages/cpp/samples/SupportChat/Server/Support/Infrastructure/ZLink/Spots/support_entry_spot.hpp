@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../Actors/support_user_actor.hpp"
+#include "../Actors/support_actor_directory.hpp"
 #include "../../../../Configuration/sample_names.hpp"
 #include "../../../Application/ConversationAssignment/agent_availability_directory.hpp"
 
@@ -55,15 +56,18 @@ class support_entry_spot_t : public zlink::framework::entry_spot_t
         const auto spot_rid = zlink::framework::spot_rid_t::from_string (
           std::string (sample_names_t::conversation_spot_node) + ":"
           + opened.conversation_id);
-        const auto now = now_unix_ms ();
-        conversation_create_request_t create{actor.actor_id (), actor.display_name,
-                                             request.subject, now};
-        auto joined =
-          co_await actor.context.join_spot (spot_rid, to_stream_payload (create)).async ();
-        join_conversation_res_t reply;
-        from_stream_payload (joined.reply, reply);
+        auto joined = co_await actor.context
+                        .join_spot (spot_rid,
+                                    join_conversation_req_t{opened.conversation_id})
+                        .async<join_conversation_res_t> ();
+        if (joined.result_code != 0) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::request_failed,
+              "Conversation join was rejected.");
+        }
 
-        co_return open_conversation_res_t{reply.state.conversation_id, reply.state};
+        co_return open_conversation_res_t{joined.reply.state.conversation_id,
+                                          joined.reply.state};
     }
 
     set_agent_available_res_t
@@ -76,7 +80,9 @@ class support_entry_spot_t : public zlink::framework::entry_spot_t
               zlink::framework::framework_error_kind_t::request_failed,
               "Only agent actors can set availability.");
         }
-        availability.set_available (actor.actor_id (), actor.display_name, request.is_available);
+        support_actor_directory_t::shared ().add_or_update (const_cast<support_user_actor_t &> (actor));
+        agent_availability_directory_t::shared ().set_available (
+          actor.actor_id (), actor.display_name, request.is_available);
         return set_agent_available_res_t{request.is_available};
     }
 
@@ -104,7 +110,6 @@ class support_entry_spot_t : public zlink::framework::entry_spot_t
 
     void onDisconnectActor (const support_user_actor_t &actor) { actor.mark_disconnected (); }
 
-    agent_availability_directory_t availability;
     std::vector<std::string> created_actor_ids;
     std::vector<std::string> joined_actor_ids;
 
@@ -119,7 +124,7 @@ class support_entry_spot_t : public zlink::framework::entry_spot_t
     static zlink::framework::actor_ref_t actor_ref_for (const support_user_actor_t &actor)
     {
         return zlink::framework::actor_ref_t (
-          zlink::framework::node_rid_t::from_string (sample_names_t::conversation_spot_node),
+          zlink::framework::node_rid_t::from_string (sample_names_t::support_spot_node),
           sample_names_t::support_actor_type, actor.actor_id (), actor.actor.generation);
     }
 

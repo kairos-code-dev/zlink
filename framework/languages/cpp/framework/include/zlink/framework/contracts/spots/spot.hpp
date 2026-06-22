@@ -322,12 +322,6 @@ struct accepted_spot_route_channel_t
     std::vector<std::string> manual_connections;
 };
 
-struct attached_channel_client_t
-{
-    std::string channel_name;
-    std::vector<std::string> manual_connections;
-};
-
 struct attached_publisher_t
 {
     std::string channel_name;
@@ -369,9 +363,7 @@ struct spot_node_snapshot_t
     std::vector<std::string> pub_sub_manual_connections;
     bool actor_gateway_enabled = false;
     std::optional<std::string> discovery_channel_name;
-    std::vector<std::string> attached_channel_clients;
     std::vector<std::string> attached_publishers;
-    std::vector<attached_channel_client_t> attached_channel_client_details;
     std::vector<attached_publisher_t> attached_publisher_details;
     std::vector<std::string> spot_names;
     std::optional<std::string> entry_spot_name;
@@ -848,9 +840,27 @@ class spot_node_manager_t
 
     spot_create_result_t create_spot (std::string spot_name);
     spot_create_result_t create_spot (std::string spot_name, zlink::message_t request);
+    template <typename TRequest>
+      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>)
+    spot_create_result_t create_spot (std::string spot_name, const TRequest &request)
+    {
+        return create_spot (std::move (spot_name),
+                            serialize_request (std::type_index (typeid (TRequest)), &request));
+    }
+
     spot_create_result_t get_or_create_spot (std::string spot_name, spot_rid_t spot_rid);
     spot_create_result_t
     get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
+    template <typename TRequest>
+      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>)
+    spot_create_result_t
+    get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const TRequest &request)
+    {
+        return get_or_create_spot (
+          std::move (spot_name), std::move (spot_rid),
+          serialize_request (std::type_index (typeid (TRequest)), &request));
+    }
+
     std::optional<spot_info_t> find_spot (spot_rid_t spot_rid) const;
     std::vector<spot_info_t> list_spots () const;
     task_t<bool> close_spot (spot_rid_t spot_rid);
@@ -870,6 +880,8 @@ class spot_node_manager_t
     friend class spot_context_t;
     friend class detail::spot_node_runtime_t;
     explicit spot_node_manager_t (std::shared_ptr<detail::spot_node_builder_state_t> state);
+    zlink::message_t serialize_request (std::type_index request_type,
+                                        const void *request) const;
 
     std::shared_ptr<detail::spot_node_builder_state_t> _state;
 };
@@ -947,8 +959,6 @@ class spot_node_builder_t
     spot_node_builder_t &
     accept_routes_from_channel (std::string route_channel_name,
                                 std::vector<std::string> manual_connections = {});
-    spot_node_builder_t &attach_channel_client (std::string channel_name,
-                                                std::vector<std::string> manual_connections = {});
     spot_node_builder_t &attach_publisher (std::string channel_name,
                                            std::vector<std::string> manual_connections = {});
 

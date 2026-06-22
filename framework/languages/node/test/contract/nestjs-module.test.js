@@ -1143,7 +1143,6 @@ test('framework options builder maps dotnet-shaped registration flow into option
       .configureEntrySpot({ routingId: 'entry-stage' });
     spot.enableRouter('tcp://0.0.0.0:9405', 'stage-node', 'tcp://127.0.0.1:9406');
     spot.enablePubSub('tcp://0.0.0.0:9407', 'stage-node', 'tcp://127.0.0.1:9408');
-    spot.attachChannelClient('api', 'tcp://127.0.0.1:9401');
     spot.attachSpotPublisherClient('game.stage', 'tcp://127.0.0.1:9407');
     spot.acceptSpotRoutesFromChannel('route', 'tcp://127.0.0.1:9403');
   });
@@ -1172,7 +1171,6 @@ test('framework options builder maps dotnet-shaped registration flow into option
   assert.deepEqual(spotNode.router.manualConnections, ['tcp://127.0.0.1:9406']);
   assert.equal(spotNode.pubSub.bind, 'tcp://0.0.0.0:9407');
   assert.deepEqual(spotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9408']);
-  assert.deepEqual(spotNode.attachedChannelClients.api.manualConnections, ['tcp://127.0.0.1:9401']);
   assert.deepEqual(spotNode.attachedSpotPublisherClients['game.stage'].manualConnections, ['tcp://127.0.0.1:9407']);
   assert.deepEqual(spotNode.acceptedSpotRouteChannels.route.manualConnections, ['tcp://127.0.0.1:9403']);
 
@@ -1296,7 +1294,6 @@ test('zlinkFramework builder maps stream node registration without raw server co
       .addSpotNode('game.spot')
         .enableRouter('tcp://0.0.0.0:9110', 'game-node')
         .enablePubSub('tcp://0.0.0.0:9111', 'game-node', ['tcp://127.0.0.1:9112'])
-        .attachChannelClient('api', 'tcp://127.0.0.1:9113')
         .attachSpotPublisherClient('game.events', 'tcp://127.0.0.1:9114')
         .acceptSpotRoutesFromChannel('route', 'tcp://127.0.0.1:9115')
         .configureEntrySpot({ routingId: 'entry-node' })
@@ -1315,7 +1312,6 @@ test('zlinkFramework builder maps stream node registration without raw server co
   assert.equal(spotNode.router.routingId, 'game-node');
   assert.equal(spotNode.pubSub.bind, 'tcp://0.0.0.0:9111');
   assert.deepEqual(spotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9112']);
-  assert.deepEqual(spotNode.attachedChannelClients.api.manualConnections, ['tcp://127.0.0.1:9113']);
   assert.deepEqual(spotNode.attachedSpotPublisherClients['game.events'].manualConnections, ['tcp://127.0.0.1:9114']);
   assert.deepEqual(spotNode.acceptedSpotRouteChannels.route.manualConnections, ['tcp://127.0.0.1:9115']);
   assert.deepEqual(spotNode.entrySpot, { routingId: 'entry-node' });
@@ -1327,7 +1323,6 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
     .addSpotNode('game')
       .enableRouter('tcp://0.0.0.0:9201', 'node-a', 'tcp://127.0.0.1:9202')
       .enablePubSub('tcp://0.0.0.0:9203', 'node-a', 'tcp://127.0.0.1:9204')
-      .attachChannelClient('api', 'tcp://127.0.0.1:9205')
       .attachSpotPublisherClient('game.events', 'tcp://127.0.0.1:9206')
       .acceptSpotRoutesFromChannel('route', 'tcp://127.0.0.1:9207')
     .addClientServerChannel('api')
@@ -1343,7 +1338,6 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
   assert.deepEqual(spotNode.router.manualConnections, ['tcp://127.0.0.1:9202']);
   assert.equal(spotNode.pubSub.bind, 'tcp://0.0.0.0:9203');
   assert.deepEqual(spotNode.pubSub.manualConnections, ['tcp://127.0.0.1:9204']);
-  assert.deepEqual(spotNode.attachedChannelClients.api.manualConnections, ['tcp://127.0.0.1:9205']);
   assert.deepEqual(spotNode.attachedSpotPublisherClients['game.events'].manualConnections, ['tcp://127.0.0.1:9206']);
   assert.deepEqual(spotNode.acceptedSpotRouteChannels.route.manualConnections, ['tcp://127.0.0.1:9207']);
   assert.equal(registration.spotPublisherClients.has('game.events'), true);
@@ -1379,13 +1373,6 @@ test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capabili
 });
 
 test('ZLinkModule.forRoot validates SpotNode attachment targets', async () => {
-  await assert.rejects(
-    async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addSpotNode('game')
-        .attachChannelClient('missing')
-      .build())),
-    /attached channel client 'missing' must reference a client-server channel/
-  );
   await assert.rejects(
     async () => resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addSpotNode('game')
@@ -1958,9 +1945,6 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
             manualConnections: ['tcp://127.0.0.1:9304']
           },
           entrySpot: { routingId: 'entry-node-a' },
-          attachedChannelClients: {
-            api: { manualConnections: ['tcp://127.0.0.1:9305'] }
-          },
           attachedSpotPublisherClients: {
             'game.events': { manualConnections: ['tcp://127.0.0.1:9306'] }
           },
@@ -2035,18 +2019,11 @@ test('framework runtime host applies SpotNode router and pubSub capability optio
     'spot:connectPeer:tcp://127.0.0.1:9302',
     'spot:setPubBind:tcp://0.0.0.0:9303',
     'spot:connectPeer:tcp://127.0.0.1:9304',
-    'dealer:create',
-    'dealer:setChannelName:api',
-    'dealer:connect:tcp://127.0.0.1:9305',
-    'spot:createRouteBridge',
-    'bridge:attachDealer:api',
     'spot:createPublisherSpot',
     'spot:connectPeer:tcp://127.0.0.1:9306',
     'spot:connectPeerRid:node-b:tcp://127.0.0.1:9309',
     'publisherSpot:publish:room.events:GameEvent:published',
     'publisherSpot:dispose',
-    'bridge:dispose',
-    'dealer:dispose',
     'spot:dispose',
     'context:dispose'
   ]);

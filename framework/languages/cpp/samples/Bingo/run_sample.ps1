@@ -231,8 +231,10 @@ try {
 
     Start-Server "api-a" $ApiBin ($serverArgs + @("--sample.topology.apiNode=a"))
     Wait-Endpoint "api-a" $apiAChannelEndpoint
+    Wait-Endpoint "api-a-play-route" $apiAPlayRouteEndpoint
     Start-Server "api-b" $ApiBin ($serverArgs + @("--sample.topology.apiNode=b"))
     Wait-Endpoint "api-b" $apiBChannelEndpoint
+    Wait-Endpoint "api-b-play-route" $apiBPlayRouteEndpoint
 
     Start-Server "session-a" $SessionBin ($serverArgs + @(
         "--sample.topology.sessionNode=a",

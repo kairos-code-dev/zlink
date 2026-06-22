@@ -521,6 +521,10 @@ route_channel_builder_t zlink_builder_t::route_channel (std::string route_channe
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "route channel name is required");
     }
+    if (auto found = _state->route_channels.find (route_channel_name);
+        found != _state->route_channels.end ()) {
+        return route_channel_builder_t (found->second);
+    }
     auto state = std::make_shared<detail::route_channel_builder_state_t> (route_channel_name);
     _state->route_channels[route_channel_name] = state;
     auto &route_channels = _state->registry_runtime->route_channels;

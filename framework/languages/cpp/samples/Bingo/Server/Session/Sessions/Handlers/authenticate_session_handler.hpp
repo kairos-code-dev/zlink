@@ -14,11 +14,14 @@ class authenticate_session_handler_t
 {
   public:
     using dependency_types =
-      zlink::framework::dependency_list_t<zlink::framework::channel_client_t, sample_topology_t>;
+      zlink::framework::dependency_list_t<zlink::framework::channel_client_t,
+                                          zlink::framework::route_client_t,
+                                          sample_topology_t>;
 
     explicit authenticate_session_handler_t (zlink::framework::channel_client_t &client,
+                                             zlink::framework::route_client_t &routes,
                                              sample_topology_t &topology) :
-        _client (client), _topology (topology)
+        _client (client), _routes (routes), _topology (topology)
     {
     }
 
@@ -48,9 +51,10 @@ class authenticate_session_handler_t
                                             : authenticated.reason);
         }
 
-        auto ensured = co_await _client
+        auto ensured = co_await _routes
                          .request (
                            sample_names_t::play_channel,
+                           zlink::routing_id_t::from (_topology.preferred_play_node_rid ()),
                            ensure_player_actor_req_t{authenticated.actor_id,
                                                      authenticated.display_name,
                                                      _topology.preferred_play_node_rid ()})
@@ -77,6 +81,7 @@ class authenticate_session_handler_t
     }
 
     zlink::framework::channel_client_t &_client;
+    zlink::framework::route_client_t &_routes;
     sample_topology_t &_topology;
 };
 

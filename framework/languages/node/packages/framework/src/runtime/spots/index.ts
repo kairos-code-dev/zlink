@@ -485,7 +485,6 @@ class ZLinkSpotNodeConnector {
 
   configure(node: ZLinkBackendSpotNode, spotNodeName: string, spotNode: ZLinkSpotNodeOptions): void {
     this.applySpotNodeOptions(node, spotNodeName, spotNode);
-    this.attachChannelClients(node, spotNode);
     this.initializeSpotPublisherClients(node, spotNode);
   }
 
@@ -530,35 +529,6 @@ class ZLinkSpotNodeConnector {
       }
       node.attachDiscovery(discovery);
       this.options.spotMeshDiscoveries.set(spotNodeName, discovery);
-    }
-  }
-
-  private attachChannelClients(
-    node: ZLinkBackendSpotNode,
-    spotNode: ZLinkSpotNodeOptions
-  ): void {
-    for (const [channelName, attached] of Object.entries(spotNode.attachedChannelClients ?? {})) {
-      const dealer = this.options.channelAdapter.createDealerSocket(this.options.context);
-      dealer.setChannelName(channelName);
-      this.options.ownedObjects.push(dealer);
-      if ((attached.manualConnections ?? []).length > 0) {
-        for (const endpoint of attached.manualConnections ?? []) {
-          dealer.connect(endpoint);
-        }
-        const bridge = node.createRouteBridge();
-        bridge.attachDealerChannel(channelName, dealer, {
-          capabilities: ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_ONLY
-        });
-        this.options.ownedObjects.push(bridge);
-        continue;
-      }
-      const discovery = this.createDiscovery(channelName, ZLinkAutoConnectType.ClientServer);
-      dealer.attachDiscovery(discovery);
-      const bridge = node.createRouteBridge();
-      bridge.attachDealerChannel(channelName, dealer, {
-        capabilities: ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_ONLY
-      });
-      this.options.ownedObjects.push(bridge);
     }
   }
 

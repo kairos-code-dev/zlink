@@ -105,6 +105,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   readonly streamBindingRuntime: ZLinkStreamBindingRuntime;
   readonly boundSessionFactory: DefaultZLinkBoundSessionFactory;
   private readonly sessionActorPacketTargets = new WeakMap<ZLinkSessionActor, ZLinkRemoteActorPacketTarget>();
+  private readonly sessionActorPacketTargetsByActor = new Map<string, ZLinkRemoteActorPacketTarget>();
 
   constructor(readonly options: ZLinkFrameworkRuntimeHostOptions, internalOptions?: unknown) {
     this.backendAdapterFactory = resolveBackendAdapterFactory(internalOptions);
@@ -209,6 +210,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         spotPublisherClient: new DefaultZLinkSpotPublisherClient(this.options.registration, this.spotPublisherTransport),
         providerResolver: this.options.providerResolver,
         dispatchErrors,
+        messageSerializers: this.options.registration.messageSerializers,
         actorResolver: (actorId) => this.actorManager?.getState(actorId)?.actor,
         entryActorCommitter: (actor) => {
           const state = this.actorManager?.getState(actor.actorId);
@@ -228,7 +230,6 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
           this.receiveRoutedBoundSession(actorId, message, packetName, metadata),
         remoteActorPacketTargetReceiver: (actorId, target) => {
           const state = this.actorManager?.getState(actorId);
-          state?.setRemoteActorPacketTarget(target);
           state?.setRemoteBoundSessionTarget(target);
         },
         actorPacketTargetProvider: (actorId) => this.actorPacketTargetForState(actorId),
@@ -445,7 +446,6 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       },
       remoteActorPacketTargetReceiver: (actorId: string, target: ZLinkRemoteBoundSessionTarget) => {
         const state = this.actorManager?.getState(actorId);
-        state?.setRemoteActorPacketTarget(target);
         state?.setRemoteBoundSessionTarget(target);
       },
       actorPacketTargetProvider: (actorId: string) => this.actorPacketTargetForState(actorId),
@@ -512,9 +512,21 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     metadata: ReadonlyMap<string, string>
   ): Promise<void> {
     const sent = this.streamBindingRuntime.sendLocalBoundSession(actorId, message, packetName, metadata);
-    if (!sent) {
-      throw new Error(`Actor '${actorId}' local bound session route is not ready.`);
+    if (sent) {
+      return;
     }
+    const boundSessionFactory = this.createActorManagerOptions().boundSessionFactory;
+    if (boundSessionFactory === undefined) {
+      throw new Error('Bound session factory is not configured.');
+    }
+    const call = boundSessionFactory(actorId).send(message);
+    if (packetName !== undefined) {
+      call.packetName(packetName);
+    }
+    for (const [key, value] of metadata) {
+      call.metadata(key, value);
+    }
+    await call.submit();
   }
 
   private async receiveRemoteBoundSessionSend(payload: unknown): Promise<{ readonly ok: boolean }> {
@@ -665,7 +677,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       return {
         ok: true,
         response,
-        actorPacketTarget: this.actorPacketTargetForState(relay.actorId)
+        actorPacketTarget: encodeRemoteActorPacketTarget(this.actorPacketTargetForState(relay.actorId))
       };
     } catch (error) {
       return {
@@ -686,6 +698,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   ): Promise<boolean> {
     const remoteTarget = this.actorManager?.getState(actor.actorId)?.remoteActorPacketTarget
       ?? this.sessionActorPacketTargets.get(actor)
+      ?? this.sessionActorPacketTargetsByActor.get(sessionActorPacketTargetKey(actor))
       ?? this.remoteActorPacketTargetForBoundActor(actor.ref);
     if (remoteTarget === undefined) {
       return false;
@@ -707,14 +720,43 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         readonly error?: unknown;
         readonly response?: unknown;
         readonly actorPacketTarget?: unknown;
-      } = await this.routeTransport.request(
-        remoteTarget.routerChannelId,
-        remoteTarget.targetNodeRid,
-        ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
-        request,
-        this.options.registration.requestTimeoutMs,
-        signal
-      );
+      };
+      if (this.routeTransport.requestRawToSpot !== undefined) {
+        const payload = BindingMessage.from(Buffer.from(JSON.stringify(request)));
+        try {
+          const parts = await this.routeTransport.requestRawToSpot({
+            ...remoteTarget,
+            spotKind: remoteTarget.spotKind ?? ZLinkSpotKind.User
+          }, payload, {
+            timeoutMs: this.options.registration.requestTimeoutMs,
+            signal
+          });
+          try {
+            if (parts.length === 0) {
+              throw new Error(`Remote actor packet relay reply was empty for '${actor.actorId}'.`);
+            }
+            reply = JSON.parse(parts[0].getString('utf8')) as {
+              readonly ok?: boolean;
+              readonly error?: unknown;
+              readonly response?: unknown;
+              readonly actorPacketTarget?: unknown;
+            };
+          } finally {
+            parts.forEach((part) => part.close());
+          }
+        } finally {
+          payload.close();
+        }
+      } else {
+        reply = await this.routeTransport.request(
+          remoteTarget.routerChannelId,
+          remoteTarget.targetNodeRid,
+          ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
+          request,
+          this.options.registration.requestTimeoutMs,
+          signal
+        );
+      }
       if (frameHeader.requestSeq !== undefined) {
           if (reply.ok === false) {
             const sent = this.streamBindingRuntime.sendLocalBoundSessionError(
@@ -736,6 +778,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
           ) {
             this.actorManager?.getState(actor.actorId)?.setRemoteActorPacketTarget(actorPacketTarget);
             this.sessionActorPacketTargets.set(actor, actorPacketTarget);
+            this.sessionActorPacketTargetsByActor.set(sessionActorPacketTargetKey(actor), actorPacketTarget);
           }
           const sent = this.streamBindingRuntime.sendLocalBoundSessionResponse(
             actor.actorId,
@@ -763,6 +806,14 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       return state.remoteActorPacketTarget;
     }
     const spotRid = state?.spotRid;
+    if (spotRid !== undefined && state?.remoteActorPacketTarget !== undefined) {
+      return {
+        routerChannelId: state.remoteActorPacketTarget.routerChannelId,
+        targetNodeRid: state.remoteActorPacketTarget.targetNodeRid,
+        spotRid: normalizeRuntimeRoutingId(spotRid),
+        spotKind: ZLinkSpotKind.User
+      };
+    }
     const actorRef = state?.nativeActorRef as ActorRef | undefined;
     const targetNodeRid = actorRef?.nodeRid as RoutingId | undefined
       ?? this.spotNodeRuntime?.primaryNode?.routingId as RoutingId | undefined;
@@ -825,8 +876,14 @@ function decodeRemoteActorPacketTarget(value: unknown): ZLinkRemoteActorPacketTa
   }
   return {
     routerChannelId: (value as { routerChannelId: string }).routerChannelId,
-    targetNodeRid: normalizeRuntimeRoutingId((value as { targetNodeRid: string }).targetNodeRid),
-    spotRid: normalizeRuntimeRoutingId((value as { spotRid: string }).spotRid),
+    targetNodeRid: decodeWireRoutingId(
+      (value as { targetNodeRid: string }).targetNodeRid,
+      (value as { targetNodeRidHex?: unknown }).targetNodeRidHex
+    ),
+    spotRid: decodeWireRoutingId(
+      (value as { spotRid: string }).spotRid,
+      (value as { spotRidHex?: unknown }).spotRidHex
+    ),
     spotKind: (value as { spotKind?: unknown }).spotKind === ZLinkSpotKind.Entry
       ? ZLinkSpotKind.Entry
       : ZLinkSpotKind.User
@@ -838,6 +895,42 @@ function normalizeRuntimeRoutingId(value: RoutingId | string): RoutingId {
   return raw instanceof BindingRoutingId
     ? raw as unknown as RoutingId
     : BindingRoutingId.from(String(value)) as unknown as RoutingId;
+}
+
+function encodeRoutingIdHex(routingId: RoutingId): string | undefined {
+  const toHex = (routingId as unknown as { toHex?: () => string }).toHex;
+  return typeof toHex === 'function' ? toHex.call(routingId) : undefined;
+}
+
+function decodeWireRoutingId(text: string, hex: unknown): RoutingId {
+  return typeof hex === 'string'
+    ? BindingRoutingId.fromHex(hex) as unknown as RoutingId
+    : normalizeRuntimeRoutingId(text);
+}
+
+function encodeRemoteActorPacketTarget(target: ZLinkRemoteActorPacketTarget | undefined): {
+  readonly routerChannelId: string;
+  readonly targetNodeRid: string;
+  readonly targetNodeRidHex?: string;
+  readonly spotRid: string;
+  readonly spotRidHex?: string;
+  readonly spotKind: ZLinkSpotKind;
+} | undefined {
+  if (target === undefined) {
+    return undefined;
+  }
+  return {
+    routerChannelId: target.routerChannelId,
+    targetNodeRid: String(target.targetNodeRid),
+    targetNodeRidHex: encodeRoutingIdHex(target.targetNodeRid),
+    spotRid: String(target.spotRid),
+    spotRidHex: encodeRoutingIdHex(target.spotRid),
+    spotKind: target.spotKind ?? ZLinkSpotKind.User
+  };
+}
+
+function sessionActorPacketTargetKey(actor: ZLinkSessionActor): string {
+  return `${String(actor.ref.nodeRid)}:${actor.actorId}:${String(actor.ref.generation)}`;
 }
 
 function decodeRemoteActorPacketRelayPayload(payload: unknown): {

@@ -211,6 +211,27 @@ zlink::stream_e2e_client::task_t<int> await_delayed_coroutine_child ()
     co_return value + 1;
 }
 
+zlink::stream_e2e_client::task_t<bool>
+result_waits_for_coroutine_frame_cleanup (std::atomic_bool &cleaned)
+{
+    co_await zlink::stream_e2e_client::task_t<void> (
+      [] (std::function<void (zlink::stream_connector::result_t<void>)> callback) {
+          std::thread ([callback = std::move (callback)] () mutable {
+              callback (zlink::stream_connector::result_t<void>::success ());
+          }).detach ();
+      });
+    struct cleanup_marker_t
+    {
+        std::atomic_bool *cleaned;
+        ~cleanup_marker_t ()
+        {
+            std::this_thread::sleep_for (std::chrono::milliseconds (20));
+            cleaned->store (true);
+        }
+    } cleanup_marker{&cleaned};
+    co_return true;
+}
+
 struct server_frame_t
 {
     zlink::stream_connector::detail::stream_header_t header;
@@ -302,6 +323,14 @@ int main ()
         auto nested = await_delayed_coroutine_child ().result ();
         if (!nested || nested.value () != 42) {
             return 76;
+        }
+    }
+    {
+        std::atomic_bool coroutine_frame_cleaned{false};
+        auto cleanup_result =
+          result_waits_for_coroutine_frame_cleanup (coroutine_frame_cleaned).result ();
+        if (!cleanup_result || !cleanup_result.value () || !coroutine_frame_cleaned.load ()) {
+            return 108;
         }
     }
 

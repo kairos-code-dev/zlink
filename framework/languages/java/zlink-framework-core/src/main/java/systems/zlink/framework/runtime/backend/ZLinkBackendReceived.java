@@ -7,18 +7,23 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 
 public record ZLinkBackendReceived(
+    ZLinkBackendRequestResult result,
     Optional<RoutingId> routingId,
     Optional<RoutingId> spotRid,
     Optional<Long> requestSeq,
     List<Message> parts,
     Consumer<List<Message>> reply,
     Runnable closeAction) implements AutoCloseable {
+    public ZLinkBackendReceived {
+        result = result == null ? ZLinkBackendRequestResult.OK : result;
+    }
+
     public ZLinkBackendReceived(
         Optional<RoutingId> routingId,
         Optional<RoutingId> spotRid,
         Optional<Long> requestSeq,
         List<Message> parts) {
-        this(routingId, spotRid, requestSeq, parts, null, () -> { });
+        this(ZLinkBackendRequestResult.OK, routingId, spotRid, requestSeq, parts, null, () -> { });
     }
 
     public ZLinkBackendReceived(
@@ -27,7 +32,26 @@ public record ZLinkBackendReceived(
         Optional<Long> requestSeq,
         List<Message> parts,
         Consumer<List<Message>> reply) {
-        this(routingId, spotRid, requestSeq, parts, reply, () -> { });
+        this(ZLinkBackendRequestResult.OK, routingId, spotRid, requestSeq, parts, reply, () -> { });
+    }
+
+    public ZLinkBackendReceived(
+        Optional<RoutingId> routingId,
+        Optional<RoutingId> spotRid,
+        Optional<Long> requestSeq,
+        List<Message> parts,
+        Consumer<List<Message>> reply,
+        Runnable closeAction) {
+        this(ZLinkBackendRequestResult.OK, routingId, spotRid, requestSeq, parts, reply, closeAction);
+    }
+
+    public ZLinkBackendReceived(
+        ZLinkBackendRequestResult result,
+        Optional<RoutingId> routingId,
+        Optional<RoutingId> spotRid,
+        Optional<Long> requestSeq,
+        List<Message> parts) {
+        this(result, routingId, spotRid, requestSeq, parts, null, () -> { });
     }
 
     public void reply(List<Message> replyParts) {

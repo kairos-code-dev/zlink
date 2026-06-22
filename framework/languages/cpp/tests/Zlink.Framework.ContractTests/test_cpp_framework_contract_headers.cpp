@@ -690,11 +690,6 @@ static_assert (
                  zlink::framework::spot_mesh_builder_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
-                             .attach_channel_client ("api", "tcp://127.0.0.1:5505")),
-                 zlink::framework::spot_node_options_builder_t &>);
-
-static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().attach_publisher (
       "events", "tcp://127.0.0.1:5506")),

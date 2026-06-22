@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Channels;
@@ -10,6 +11,7 @@ internal sealed class ZLinkRoutePacketDispatcher(
     IZLinkBackendRouterSocket router,
     ZLinkRouteHandlerRegistry handlers,
     ZLinkRouteHandlerInvoker handlerInvoker,
+    ZLinkCodecRegistryBuilder codecs,
     IZLinkRouteInternalPacketDispatcher internalPackets,
     ZLinkDispatchErrorReporter dispatchErrors,
     ILogger<ZLinkRoutePacketDispatcher>? logger = null)
@@ -292,7 +294,8 @@ internal sealed class ZLinkRoutePacketDispatcher(
                 routerChannelId,
                 requestHeader),
             reply,
-            replyType);
+            replyType,
+            codecs);
     }
 
     private static RoutingId RequireSourceRoutingId(

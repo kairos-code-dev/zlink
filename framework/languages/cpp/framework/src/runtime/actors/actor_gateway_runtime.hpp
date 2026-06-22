@@ -50,6 +50,7 @@ class actor_gateway_state_t
     join_spot_dispatcher_t join_spot_dispatcher;
     join_entry_spot_dispatcher_t join_entry_spot_dispatcher;
     relay_dispatcher_t relay_dispatcher;
+    serializer_registry_t *serializers = nullptr;
     dispatch_options_t dispatch;
 };
 
@@ -83,6 +84,7 @@ class actor_gateway_runtime_t
     void on_join_spot (actor_gateway_state_t::join_spot_dispatcher_t dispatcher);
     void on_join_entry_spot (actor_gateway_state_t::join_entry_spot_dispatcher_t dispatcher);
     void on_relay (actor_gateway_state_t::relay_dispatcher_t dispatcher);
+    void bind_serializers (serializer_registry_t &serializers);
     void set_dispatch (dispatch_options_t options);
 
   private:

@@ -347,7 +347,7 @@ TEST (CppFrameworkSampleParity, SupportChatUsesDotNetSamplePacketSurface)
     agent_availability_directory_t empty_availability;
     agent_assignment_service_t empty_assignment (empty_availability);
     assign_agent_handler_t assign_handler (empty_assignment);
-    const auto unassigned = assign_handler.handle ({allocated.conversation_id, ""});
+    const auto unassigned = assign_handler.handle ({allocated.conversation_id, ""}).result ().value ();
     EXPECT_EQ (unassigned.status, std::string (conversation_statuses_t::waiting_for_agent))
       << "no available agent must stay in WaitingForAgent, not error";
     EXPECT_TRUE (unassigned.agent_actor_id.empty ());
@@ -939,7 +939,6 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_NE (session_factory.find (".enable_router"), std::string::npos);
     EXPECT_NE (play_factory.find (".enable_pub_sub"), std::string::npos);
     EXPECT_NE (session_factory.find (".enable_pub_sub"), std::string::npos);
-    EXPECT_NE (play_factory.find (".attach_channel_client"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<bingo_entry_spot_t> ()"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_spot<bingo_room_spot_t> (sample_names_t::room_spot)"),
                std::string::npos);

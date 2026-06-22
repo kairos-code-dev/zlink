@@ -4,6 +4,7 @@
 #include "../../../Application/ConversationAssignment/agent_assignment_service.hpp"
 #include "../../../../Configuration/sample_names.hpp"
 #include "../../../../../Shared/Contracts/messages.hpp"
+#include "../Actors/support_actor_directory.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -26,15 +27,23 @@ class assign_agent_handler_t
     {
     }
 
-    assign_agent_res_t handle (const assign_agent_req_t &request)
+    zlink::framework::task_t<assign_agent_res_t> handle (const assign_agent_req_t &request)
     {
         auto candidate = _assignment.assign_next_agent ();
         if (!candidate) {
-            return assign_agent_res_t{request.conversation_id,
-                                      conversation_statuses_t::waiting_for_agent, ""};
+            co_return assign_agent_res_t{request.conversation_id,
+                                         conversation_statuses_t::waiting_for_agent, ""};
         }
-        return assign_agent_res_t{request.conversation_id, conversation_statuses_t::active,
-                                  candidate->actor_id};
+        auto &actor = support_actor_directory_t::shared ().get (candidate->actor_id);
+        const auto spot_rid = zlink::framework::spot_rid_t::from_string (
+          std::string (sample_names_t::conversation_spot_node) + ":"
+          + request.conversation_id);
+        auto joined = co_await actor.context
+                        .join_spot (spot_rid,
+                                    join_conversation_req_t{request.conversation_id})
+                        .async<join_conversation_res_t> ();
+        co_return assign_agent_res_t{request.conversation_id, joined.reply.state.status,
+                                     candidate->actor_id};
     }
 
   private:

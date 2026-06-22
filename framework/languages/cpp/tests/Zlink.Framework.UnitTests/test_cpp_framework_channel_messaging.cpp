@@ -10,6 +10,7 @@
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_bundle.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
+#include "runtime/channels/route_channel_host_service.hpp"
 #include "runtime/channels/route_channel_runtime.hpp"
 #include "runtime/channels/route_channel_registration.hpp"
 #include "runtime/channels/route_connection_set.hpp"
@@ -40,6 +41,11 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 namespace
 {
@@ -101,6 +107,78 @@ class throwing_handler_t
           zlink::framework::framework_error_kind_t::request_failed,
           "DERR-007 handler exception");
     }
+};
+
+class route_orchestrating_handler_t
+{
+  public:
+    explicit route_orchestrating_handler_t (zlink::framework::route_client_t routes) :
+        _routes (std::move (routes))
+    {
+    }
+
+    zlink::framework::task_t<reply_t> handle_request (const request_t &request)
+    {
+        co_return co_await _routes
+                          .request ("bingo.play",
+                                    zlink::routing_id_t::from (std::string ("2201")), request)
+                          .packet_name ("request")
+                          .timeout (std::chrono::milliseconds (500))
+                          .async<reply_t> ();
+    }
+
+  private:
+    zlink::framework::route_client_t _routes;
+};
+
+class reentrant_play_route_handler_t
+{
+  public:
+    explicit reentrant_play_route_handler_t (zlink::framework::route_client_t routes) :
+        _routes (std::move (routes))
+    {
+    }
+
+    zlink::framework::task_t<reply_t> handle_outer (const request_t &request)
+    {
+        auto api_reply =
+          co_await _routes
+            .request ("bingo.play", zlink::routing_id_t::from (std::string ("3302")),
+                      request_t{request.value + 1})
+            .packet_name ("api-hop")
+            .timeout (std::chrono::milliseconds (500))
+            .async<reply_t> ();
+        co_return reply_t{api_reply.value + 1};
+    }
+
+    reply_t handle_inner (const request_t &request) { return {request.value + 200}; }
+
+  private:
+    zlink::framework::route_client_t _routes;
+};
+
+class reentrant_api_route_handler_t
+{
+  public:
+    explicit reentrant_api_route_handler_t (zlink::framework::route_client_t routes) :
+        _routes (std::move (routes))
+    {
+    }
+
+    zlink::framework::task_t<reply_t> handle_api_hop (const request_t &request)
+    {
+        auto play_reply =
+          co_await _routes
+            .request ("bingo.play", zlink::routing_id_t::from (std::string ("2201")),
+                      request_t{request.value + 1})
+            .packet_name ("inner")
+            .timeout (std::chrono::milliseconds (500))
+            .async<reply_t> ();
+        co_return reply_t{play_reply.value + 1};
+    }
+
+  private:
+    zlink::framework::route_client_t _routes;
 };
 
 class dispatch_observer_spot_t final : public zlink::framework::spot_t
@@ -378,9 +456,27 @@ std::string unique_inproc_endpoint (const char *base)
 
 std::string unique_tcp_endpoint ()
 {
-    static std::atomic<unsigned> counter{0};
+    const int fd = ::socket (AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        throw std::runtime_error ("failed to create TCP probe socket");
+    }
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+    address.sin_port = 0;
+    if (::bind (fd, reinterpret_cast<sockaddr *> (&address), sizeof (address)) != 0) {
+        ::close (fd);
+        throw std::runtime_error ("failed to bind TCP probe socket");
+    }
+    socklen_t length = sizeof (address);
+    if (::getsockname (fd, reinterpret_cast<sockaddr *> (&address), &length) != 0) {
+        ::close (fd);
+        throw std::runtime_error ("failed to read TCP probe socket port");
+    }
+    const auto port = ntohs (address.sin_port);
+    ::close (fd);
     std::ostringstream stream;
-    stream << "tcp://127.0.0.1:" << 27500u + counter.fetch_add (1, std::memory_order_relaxed);
+    stream << "tcp://127.0.0.1:" << port;
     return stream.str ();
 }
 
@@ -1474,7 +1570,7 @@ int main ()
            const zlink::framework::runtime::messaging::message_parts_t &parts,
            std::chrono::milliseconds timeout) {
           if (target != target_node || spot != target_spot || parts.size () == 0
-              || (timeout != std::chrono::milliseconds (0)
+              || (timeout != std::chrono::seconds (30)
                   && timeout != std::chrono::milliseconds (25))) {
               return zlink::framework::result_t<
                 zlink::framework::runtime::messaging::message_parts_t>::failure (
@@ -1499,6 +1595,316 @@ int main ()
         || spot_backend_requests != 2 || spot_backend_runtime.pending_request_count () != 0) {
         return 382;
     }
+    zlink::framework::detail::route_channel_runtime_t auto_backend_runtime ("auto.route");
+    auto_backend_runtime.start ();
+    int auto_backend_requests = 0;
+    auto_backend_runtime.set_request_backend (
+      [&] (const zlink::routing_id_t &target,
+           const std::optional<zlink::routing_id_t> &spot,
+           const zlink::framework::runtime::messaging::message_parts_t &parts,
+           std::chrono::milliseconds timeout) {
+          if (target != target_node || spot || parts.size () == 0
+              || timeout != std::chrono::milliseconds (25)) {
+              return zlink::framework::result_t<
+                zlink::framework::runtime::messaging::message_parts_t>::failure (
+                zlink::framework::framework_error_kind_t::request_failed,
+                "unexpected auto route backend input");
+          }
+          ++auto_backend_requests;
+          return zlink::framework::result_t<
+            zlink::framework::runtime::messaging::message_parts_t>::success (parts);
+      });
+    auto auto_backend_reply = auto_backend_runtime.request_reply_parts (
+      target_node, request_parts, std::chrono::milliseconds (25));
+    if (!auto_backend_reply || auto_backend_reply.value ().size () != request_parts.size ()
+        || auto_backend_requests != 1 || auto_backend_runtime.list_connections ().size () != 0) {
+        return 383;
+    }
+
+    zlink::context_t route_discovery_context;
+    zlink::service::registry_t route_discovery_registry (route_discovery_context);
+    const auto route_registry_pub = unique_tcp_endpoint ();
+    const auto route_registry_router = unique_tcp_endpoint ();
+    const auto session_route_endpoint = unique_tcp_endpoint ();
+    const auto play_a_route_endpoint = unique_tcp_endpoint ();
+    const auto play_b_route_endpoint = unique_tcp_endpoint ();
+    const auto api_a_route_endpoint = unique_tcp_endpoint ();
+    const auto api_b_route_endpoint = unique_tcp_endpoint ();
+    route_discovery_registry.bind (route_registry_pub, route_registry_router);
+
+    zlink::framework::zlink_builder_t session_route_builder;
+    zlink::framework::zlink_builder_t play_a_route_builder;
+    zlink::framework::zlink_builder_t play_b_route_builder;
+    zlink::framework::zlink_builder_t api_a_route_builder;
+    zlink::framework::zlink_builder_t api_b_route_builder;
+    session_route_builder.discovery ().connect_registry (route_registry_router);
+    play_a_route_builder.discovery ().connect_registry (route_registry_router);
+    play_b_route_builder.discovery ().connect_registry (route_registry_router);
+    api_a_route_builder.discovery ().connect_registry (route_registry_router);
+    api_b_route_builder.discovery ().connect_registry (route_registry_router);
+    session_route_builder.route_channel ("bingo.play")
+      .bind (session_route_endpoint)
+      .set_routing_id (zlink::routing_id_t::from (std::string ("1201")));
+    play_a_route_builder.route_channel ("bingo.play")
+      .bind (play_a_route_endpoint)
+      .set_routing_id (zlink::routing_id_t::from (std::string ("2201")))
+      .add_request_handler<local_handler_t, request_t, reply_t> (
+        "request", &local_handler_t::handle_route_request);
+    play_b_route_builder.route_channel ("bingo.play")
+      .bind (play_b_route_endpoint)
+      .set_routing_id (zlink::routing_id_t::from (std::string ("2202")))
+      .add_request_handler<local_handler_t, request_t, reply_t> (
+        "request", &local_handler_t::handle_route_request);
+    api_a_route_builder.route_channel ("bingo.play")
+      .bind (api_a_route_endpoint)
+      .set_routing_id (zlink::routing_id_t::from (std::string ("3301")));
+    api_b_route_builder.route_channel ("bingo.play")
+      .bind (api_b_route_endpoint)
+      .set_routing_id (zlink::routing_id_t::from (std::string ("3302")));
+    zlink::framework::detail::channel_runtime_manager_t::from (
+      session_route_builder.message_bus ())
+      .initialize_route_channels (session_route_builder);
+    zlink::framework::detail::channel_runtime_manager_t::from (
+      play_a_route_builder.message_bus ())
+      .initialize_route_channels (play_a_route_builder);
+    zlink::framework::detail::channel_runtime_manager_t::from (
+      play_b_route_builder.message_bus ())
+      .initialize_route_channels (play_b_route_builder);
+    zlink::framework::detail::channel_runtime_manager_t::from (
+      api_a_route_builder.message_bus ())
+      .initialize_route_channels (api_a_route_builder);
+    zlink::framework::detail::channel_runtime_manager_t::from (
+      api_b_route_builder.message_bus ())
+      .initialize_route_channels (api_b_route_builder);
+
+    zlink::framework::runtime::route_channel_host_service_t session_route_service (
+      session_route_builder.message_bus (), serializers, session_route_builder.registry_query (),
+      session_route_builder.discovery_options (), {}, {});
+    zlink::framework::runtime::route_channel_host_service_t play_a_route_service (
+      play_a_route_builder.message_bus (), serializers, play_a_route_builder.registry_query (),
+      play_a_route_builder.discovery_options (), {}, {});
+    zlink::framework::runtime::route_channel_host_service_t play_b_route_service (
+      play_b_route_builder.message_bus (), serializers, play_b_route_builder.registry_query (),
+      play_b_route_builder.discovery_options (), {}, {});
+    zlink::framework::runtime::route_channel_host_service_t api_a_route_service (
+      api_a_route_builder.message_bus (), serializers, api_a_route_builder.registry_query (),
+      api_a_route_builder.discovery_options (), {}, {});
+    zlink::framework::runtime::route_channel_host_service_t api_b_route_service (
+      api_b_route_builder.message_bus (), serializers, api_b_route_builder.registry_query (),
+      api_b_route_builder.discovery_options (), {}, {});
+    api_a_route_service.start (provider);
+    api_b_route_service.start (provider);
+    session_route_service.start (provider);
+    play_a_route_service.start (provider);
+    play_b_route_service.start (provider);
+
+    auto wait_route_reply = [&] (zlink::framework::zlink_builder_t &builder, int value) {
+        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (6);
+        while (std::chrono::steady_clock::now () < deadline) {
+            auto reply =
+              builder.route_client (serializers)
+                .request ("bingo.play", zlink::routing_id_t::from (std::string ("2201")),
+                          request_t{value})
+                .packet_name ("request")
+                .timeout (std::chrono::milliseconds (500))
+                .async<reply_t> ()
+                .result ();
+            if (reply) {
+                return reply.value ().value;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (25));
+        }
+        return -1;
+    };
+
+    const auto session_route_reply = wait_route_reply (session_route_builder, 41);
+    const auto api_a_route_reply = wait_route_reply (api_a_route_builder, 42);
+    const auto api_b_route_reply = wait_route_reply (api_b_route_builder, 43);
+    session_route_service.stop ();
+    play_a_route_service.stop ();
+    play_b_route_service.stop ();
+    api_a_route_service.stop ();
+    api_b_route_service.stop ();
+    route_discovery_registry.close ();
+    route_discovery_context.shutdown ();
+    route_discovery_context.term ();
+    if (session_route_reply != 241) {
+        return 384;
+    }
+    if (api_a_route_reply != 242) {
+        return 385;
+    }
+    if (api_b_route_reply != 243) {
+        return 386;
+    }
+
+    zlink::context_t reentrant_route_context;
+    zlink::service::registry_t reentrant_route_registry (reentrant_route_context);
+    const auto reentrant_registry_pub = unique_tcp_endpoint ();
+    const auto reentrant_registry_router = unique_tcp_endpoint ();
+    const auto reentrant_play_route_endpoint = unique_tcp_endpoint ();
+    const auto reentrant_api_route_endpoint = unique_tcp_endpoint ();
+    reentrant_route_registry.bind (reentrant_registry_pub, reentrant_registry_router);
+
+    zlink::framework::zlink_builder_t reentrant_play_builder;
+    zlink::framework::zlink_builder_t reentrant_api_builder;
+    reentrant_play_builder.discovery ().connect_registry (reentrant_registry_router);
+    reentrant_api_builder.discovery ().connect_registry (reentrant_registry_router);
+    reentrant_play_builder.route_channel ("bingo.play")
+      .bind (reentrant_play_route_endpoint)
+      .set_routing_id (zlink::routing_id_t::from (std::string ("2201")))
+      .add_request_handler<reentrant_play_route_handler_t, request_t, reply_t> (
+        "outer", &reentrant_play_route_handler_t::handle_outer)
+      .add_request_handler<reentrant_play_route_handler_t, request_t, reply_t> (
+        "inner", &reentrant_play_route_handler_t::handle_inner);
+    reentrant_api_builder.route_channel ("bingo.play")
+      .bind (reentrant_api_route_endpoint)
+      .set_routing_id (zlink::routing_id_t::from (std::string ("3302")))
+      .add_request_handler<reentrant_api_route_handler_t, request_t, reply_t> (
+        "api-hop", &reentrant_api_route_handler_t::handle_api_hop);
+
+    zlink::framework::service_collection_t reentrant_services;
+    reentrant_services.add_factory<reentrant_play_route_handler_t> (
+      [routes = reentrant_play_builder.route_client (serializers)] (
+        zlink::framework::service_provider_t &) mutable {
+          return std::make_unique<reentrant_play_route_handler_t> (routes);
+      },
+      zlink::framework::service_lifetime_t::singleton);
+    reentrant_services.add_factory<reentrant_api_route_handler_t> (
+      [routes = reentrant_api_builder.route_client (serializers)] (
+        zlink::framework::service_provider_t &) mutable {
+          return std::make_unique<reentrant_api_route_handler_t> (routes);
+      },
+      zlink::framework::service_lifetime_t::singleton);
+    auto reentrant_provider = reentrant_services.build_provider ();
+
+    zlink::framework::detail::channel_runtime_manager_t::from (
+      reentrant_play_builder.message_bus ())
+      .initialize_route_channels (reentrant_play_builder);
+    zlink::framework::detail::channel_runtime_manager_t::from (
+      reentrant_api_builder.message_bus ())
+      .initialize_route_channels (reentrant_api_builder);
+    zlink::framework::runtime::route_channel_host_service_t reentrant_play_route_service (
+      reentrant_play_builder.message_bus (), serializers, reentrant_play_builder.registry_query (),
+      reentrant_play_builder.discovery_options (), {}, {});
+    zlink::framework::runtime::route_channel_host_service_t reentrant_api_route_service (
+      reentrant_api_builder.message_bus (), serializers, reentrant_api_builder.registry_query (),
+      reentrant_api_builder.discovery_options (), {}, {});
+    reentrant_play_route_service.start (reentrant_provider);
+    reentrant_api_route_service.start (reentrant_provider);
+
+    int reentrant_reply = -1;
+    const auto reentrant_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (6);
+    while (std::chrono::steady_clock::now () < reentrant_deadline) {
+        auto reply =
+          reentrant_api_builder.route_client (serializers)
+            .request ("bingo.play", zlink::routing_id_t::from (std::string ("2201")),
+                      request_t{45})
+            .packet_name ("outer")
+            .timeout (std::chrono::milliseconds (500))
+            .async<reply_t> ()
+            .result ();
+        if (reply) {
+            reentrant_reply = reply.value ().value;
+            break;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (25));
+    }
+    reentrant_api_route_service.stop ();
+    reentrant_play_route_service.stop ();
+    reentrant_route_registry.close ();
+    reentrant_route_context.shutdown ();
+    reentrant_route_context.term ();
+    if (reentrant_reply != 249) {
+        return 388;
+    }
+
+    zlink::context_t orchestrated_context;
+    zlink::service::registry_t orchestrated_registry (orchestrated_context);
+    const auto orchestrated_registry_pub = unique_tcp_endpoint ();
+    const auto orchestrated_registry_router = unique_tcp_endpoint ();
+    const auto orchestrated_api_endpoint = unique_tcp_endpoint ();
+    const auto orchestrated_api_route_endpoint = unique_tcp_endpoint ();
+    const auto orchestrated_play_route_endpoint = unique_tcp_endpoint ();
+    orchestrated_registry.bind (orchestrated_registry_pub, orchestrated_registry_router);
+
+    zlink::framework::zlink_builder_t orchestrated_api_builder;
+    zlink::framework::zlink_builder_t orchestrated_play_builder;
+    orchestrated_api_builder.discovery ().connect_registry (orchestrated_registry_router);
+    orchestrated_play_builder.discovery ().connect_registry (orchestrated_registry_router);
+    orchestrated_api_builder.channel ("bingo.api")
+      .enable_server ()
+      .bind (orchestrated_api_endpoint);
+    orchestrated_api_builder.route_channel ("bingo.play")
+      .bind (orchestrated_api_route_endpoint)
+      .set_routing_id (zlink::routing_id_t::from (std::string ("3301")));
+    orchestrated_play_builder.route_channel ("bingo.play")
+      .bind (orchestrated_play_route_endpoint)
+      .set_routing_id (zlink::routing_id_t::from (std::string ("2201")))
+      .add_request_handler<local_handler_t, request_t, reply_t> (
+        "request", &local_handler_t::handle_route_request);
+    zlink::framework::detail::channel_runtime_t::from (
+      orchestrated_api_builder.message_bus ())
+      .bind_serializers (serializers);
+    zlink::framework::detail::channel_runtime_manager_t::from (
+      orchestrated_api_builder.message_bus ())
+      .initialize_route_channels (orchestrated_api_builder);
+    zlink::framework::detail::channel_runtime_manager_t::from (
+      orchestrated_play_builder.message_bus ())
+      .initialize_route_channels (orchestrated_play_builder);
+
+    zlink::framework::service_collection_t orchestrated_services;
+    orchestrated_services.add_singleton<local_handler_t> ();
+    auto orchestrated_route_client = orchestrated_api_builder.route_client (serializers);
+    orchestrated_services.add_factory<route_orchestrating_handler_t> (
+      [routes = orchestrated_route_client] (zlink::framework::service_provider_t &) mutable {
+          return std::make_unique<route_orchestrating_handler_t> (routes);
+      },
+      zlink::framework::service_lifetime_t::singleton);
+    auto orchestrated_provider = orchestrated_services.build_provider ();
+    zlink::framework::handler_registry_t orchestrated_handlers;
+    orchestrated_handlers.on_request<route_orchestrating_handler_t, request_t, reply_t> (
+      "bingo.api", "request", &route_orchestrating_handler_t::handle_request,
+      {.packet_name = "request"});
+
+    zlink::framework::runtime::channel_host_service_t orchestrated_api_channel_service (
+      orchestrated_api_builder.message_bus (), orchestrated_api_builder.channels (),
+      orchestrated_api_builder.discovery_options (), orchestrated_handlers, serializers);
+    zlink::framework::runtime::route_channel_host_service_t orchestrated_api_route_service (
+      orchestrated_api_builder.message_bus (), serializers,
+      orchestrated_api_builder.registry_query (), orchestrated_api_builder.discovery_options (),
+      {}, {});
+    zlink::framework::runtime::route_channel_host_service_t orchestrated_play_route_service (
+      orchestrated_play_builder.message_bus (), serializers,
+      orchestrated_play_builder.registry_query (), orchestrated_play_builder.discovery_options (),
+      {}, {});
+    orchestrated_api_channel_service.start (orchestrated_provider);
+    orchestrated_api_route_service.start (orchestrated_provider);
+    orchestrated_play_route_service.start (orchestrated_provider);
+
+    zlink::framework::zlink_builder_t orchestrated_client_builder;
+    orchestrated_client_builder.channel ("bingo.api").enable_client ().connect (
+      orchestrated_api_endpoint);
+    zlink::framework::detail::channel_runtime_t::from (
+      orchestrated_client_builder.message_bus ())
+      .bind_serializers (serializers);
+    auto orchestrated_reply =
+      orchestrated_client_builder.request_client ("bingo.api")
+        .request (request_t{44})
+        .packet_name ("request")
+        .timeout (std::chrono::milliseconds (3000))
+        .async<reply_t> ()
+        .result ();
+    orchestrated_api_channel_service.stop ();
+    orchestrated_api_route_service.stop ();
+    orchestrated_play_route_service.stop ();
+    orchestrated_registry.close ();
+    orchestrated_context.shutdown ();
+    orchestrated_context.term ();
+    if (!orchestrated_reply || orchestrated_reply.value ().value != 244) {
+        return 387;
+    }
+
     if (!route_runtime.complete_request (route_request.value ())
         || route_runtime.pending_request_count () != 1) {
         return 39;

@@ -24,10 +24,6 @@ public interface ZLinkSpotNodeBuilder {
 
     ZLinkSpotNodeBuilder setPubSubRoutingId(RoutingId routingId);
 
-    ZLinkSpotNodeBuilder attachChannelClient(String channelName);
-
-    ZLinkSpotNodeBuilder attachChannelClient(String channelName, String endpoint);
-
     ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName);
 
     ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName, String endpoint);

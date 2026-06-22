@@ -1053,26 +1053,6 @@ spot_node_builder_t::accept_routes_from_channel (std::string route_channel_name,
 }
 
 spot_node_builder_t &
-spot_node_builder_t::attach_channel_client (std::string channel_name,
-                                            std::vector<std::string> manual_connections)
-{
-    if (channel_name.empty () || is_blank (channel_name)) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "attached client/server channel client name is required");
-    }
-    for (const auto &endpoint : manual_connections) {
-        if (endpoint.empty () || is_blank (endpoint)) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "attached channel client manual endpoint is required");
-        }
-    }
-    _state->snapshot.attached_channel_client_details.push_back (
-      attached_channel_client_t{channel_name, std::move (manual_connections)});
-    _state->snapshot.attached_channel_clients.push_back (std::move (channel_name));
-    return *this;
-}
-
-spot_node_builder_t &
 spot_node_builder_t::attach_publisher (std::string channel_name,
                                        std::vector<std::string> manual_connections)
 {
@@ -1293,6 +1273,16 @@ spot_create_result_t spot_node_manager_t::get_or_create_spot (std::string spot_n
       std::move (spot_name), std::move (spot_rid), std::move (request));
 }
 
+zlink::message_t spot_node_manager_t::serialize_request (std::type_index request_type,
+                                                         const void *request) const
+{
+    if (!_state || !_state->channel_runtime || !_state->channel_runtime->serializers) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "spot request requires a serializer registry");
+    }
+    return _state->channel_runtime->serializers->serialize (request_type, request);
+}
+
 std::optional<spot_info_t> spot_node_manager_t::find_spot (spot_rid_t spot_rid) const
 {
     return detail::spot_node_runtime_t (_state).find_spot (std::move (spot_rid));
@@ -1509,7 +1499,12 @@ spot_node_runtime_t::join_remote_actor_to_spot_erased (const actor_ref_t &actor_
               framework_error_kind_t::actor_route_not_found, "actor factory returned null");
         }
     }
-    actor_factory->second.configure_instance (actor_instance.get (), actor_ref, &actor_context);
+    auto &target_state = *context->_state;
+    auto committed = actor_ref_t (
+      node_rid_t::from_string (_state->snapshot.name), std::string (actor_ref.actor_type ()),
+      std::string (actor_ref.actor_id ()), actor_ref.generation ());
+    auto committed_context = actor_context_t (actor_context._state, committed);
+    actor_factory->second.configure_instance (actor_instance.get (), committed, &committed_context);
 
     const auto admission =
       context->_state->actor_admissions.find (actor_factory->second.actor_type);
@@ -1531,6 +1526,7 @@ spot_node_runtime_t::join_remote_actor_to_spot_erased (const actor_ref_t &actor_
     const auto response = admission->second.join (
       context->_state->spot_instance.get (), actor_instance.get (), request);
     if (!response.accepted) {
+        actor_factory->second.configure_instance (actor_instance.get (), actor_ref, &actor_context);
         return result_t<actor_join_reply_t>::success (
           actor_join_reply_t{1, actor_ref, response.reply.value_or (zlink::message_t{})});
     }
@@ -1555,7 +1551,6 @@ spot_node_runtime_t::join_remote_actor_to_spot_erased (const actor_ref_t &actor_
         _state->actor_generations.erase (key);
     }
 
-    auto &target_state = *context->_state;
     _state->actor_spot_rids[key] = target_state.spot_rid;
     _state->actor_routes[key] =
       spot_route_t{node_rid_t::from_string (_state->snapshot.name), target_state.spot_rid,

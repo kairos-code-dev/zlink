@@ -2,6 +2,8 @@
 
 #include <zlink/framework.hpp>
 
+#include "runtime/channels/channel_runtime_manager.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <limits>
@@ -556,7 +558,8 @@ int main ()
     options.add_route_mesh_channel ("route-channel")
       .enable_server ("tcp://127.0.0.1:9112")
       .set_routing_id (zlink::routing_id_t::from ("route-node"))
-      .enable_client ();
+      .enable_client ()
+      .use_handler_group ("api");
     options.add_stream_node ("options.stream")
       .bind ("tcp://127.0.0.1:9111")
       .register_session<options_stream_session_t> ();
@@ -570,6 +573,25 @@ int main ()
     }
 
     auto provider = services.build_provider ();
+    auto route_manager = zlink::framework::detail::channel_runtime_manager_t::from (zlink);
+    route_manager.initialize_route_channels (zlink);
+    auto &route_runtime = route_manager.get_route_channel ("route-channel");
+    if (route_runtime.bind_endpoint () != "tcp://127.0.0.1:9112"
+        || !route_runtime.routing_id ()
+        || route_runtime.routing_id ()->to_string () != "route-node") {
+        return 64;
+    }
+    const auto &route_handlers = route_manager.get_route_handlers ("route-channel");
+    if (route_handlers.find (
+          "route-channel", zlink::framework::runtime::messaging::message_kind_t::request,
+          options_request_t::packet_name)
+          == nullptr
+        || route_handlers.find (
+             "route-channel", zlink::framework::runtime::messaging::message_kind_t::request,
+             context_options_request_t::packet_name)
+             != nullptr) {
+        return 65;
+    }
     const auto streams = zlink.streams ();
     if (streams.size () != 1 || streams[0].name != "options.stream"
         || streams[0].packet_session_name != "options.session") {
@@ -1251,41 +1273,6 @@ int main ()
         return 47;
     }
 
-    bool attach_channel_client_manual_succeeded = true;
-    try {
-        zlink::framework::service_collection_t valid_services;
-        zlink::framework::handler_registry_t valid_handlers;
-        zlink::framework::serializer_registry_t valid_serializers;
-        zlink::framework::zlink_builder_t valid_zlink;
-        zlink::framework::monitoring_builder_t valid_monitoring;
-        zlink::framework::zlink_framework_options_t valid_options (
-          valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
-        valid_options.handlers ().add_send<options_send_handler_t> ("api");
-        valid_options.add_client_server_channel ("manual-api")
-          .enable_server ("tcp://127.0.0.1:9345")
-          .use_handler_group ("api");
-        valid_options.add_spot_mesh ("spots")
-          .add_node ("spot-node")
-          .enable_router ("tcp://127.0.0.1:9346")
-          .attach_channel_client ("manual-api", "tcp://127.0.0.1:9345");
-        valid_options.apply ();
-        const auto snapshots = valid_zlink.spot_nodes ();
-        attach_channel_client_manual_succeeded =
-          snapshots.size () == 1 && snapshots[0].attached_channel_clients.size () == 1
-          && snapshots[0].attached_channel_clients[0] == "manual-api"
-          && snapshots[0].attached_channel_client_details.size () == 1
-          && snapshots[0].attached_channel_client_details[0].channel_name == "manual-api"
-          && snapshots[0].attached_channel_client_details[0].manual_connections.size () == 1
-          && snapshots[0].attached_channel_client_details[0].manual_connections[0]
-               == "tcp://127.0.0.1:9345";
-    }
-    catch (const zlink::framework::framework_exception_t &) {
-        attach_channel_client_manual_succeeded = false;
-    }
-    if (!attach_channel_client_manual_succeeded) {
-        return 61;
-    }
-
     bool attach_publisher_manual_succeeded = true;
     try {
         zlink::framework::service_collection_t valid_services;
@@ -1317,62 +1304,6 @@ int main ()
     }
     if (!attach_publisher_manual_succeeded) {
         return 62;
-    }
-
-    if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9322");
-              invalid_options.add_spot_mesh ("spots")
-                .add_node ("spot-node")
-                .enable_router ("tcp://127.0.0.1:9323")
-                .attach_channel_client ("missing");
-          },
-          "attached channel client 'missing' is not registered")) {
-        return 48;
-    }
-
-    bool attach_channel_client_server_with_discovery_succeeded = true;
-    try {
-        zlink::framework::service_collection_t valid_services;
-        zlink::framework::handler_registry_t valid_handlers;
-        zlink::framework::serializer_registry_t valid_serializers;
-        zlink::framework::zlink_builder_t valid_zlink;
-        zlink::framework::monitoring_builder_t valid_monitoring;
-        zlink::framework::zlink_framework_options_t valid_options (
-          valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
-        valid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9324");
-        valid_options.handlers ().add_send<options_send_handler_t> ("api");
-        valid_options.add_client_server_channel ("api")
-          .enable_server ("tcp://127.0.0.1:9325")
-          .use_handler_group ("api");
-        valid_options.add_spot_mesh ("spots")
-          .add_node ("spot-node")
-          .enable_router ("tcp://127.0.0.1:9326")
-          .attach_channel_client ("api");
-        valid_options.apply ();
-        const auto snapshots = valid_zlink.spot_nodes ();
-        attach_channel_client_server_with_discovery_succeeded =
-          snapshots.size () == 1 && snapshots[0].attached_channel_clients.size () == 1
-          && snapshots[0].attached_channel_clients[0] == "api";
-    }
-    catch (const zlink::framework::framework_exception_t &) {
-        attach_channel_client_server_with_discovery_succeeded = false;
-    }
-    if (!attach_channel_client_server_with_discovery_succeeded) {
-        return 49;
-    }
-
-    if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.add_client_server_channel ("api").enable_server (
-                "tcp://127.0.0.1:9327");
-              invalid_options.add_spot_mesh ("spots")
-                .add_node ("spot-node")
-                .enable_router ("tcp://127.0.0.1:9328")
-                .attach_channel_client ("api");
-          },
-          "requires registry discovery or manual connections")) {
-        return 50;
     }
 
     if (!options_failure_contains (

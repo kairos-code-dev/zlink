@@ -5,6 +5,7 @@ import systems.zlink.framework.runtime.backend.*;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -97,6 +98,8 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     private final Map<String, Map<String, ChannelRouteSendHandlerRegistration>> routeSendHandlers =
         new HashMap<>();
     private final Map<String, RouteInternalRequestHandler> routeInternalRequestHandlers = new HashMap<>();
+    private final Map<String, ArrayDeque<CompletableFuture<List<Message>>>> pendingRawSpotRouteBridgeReplies =
+        new HashMap<>();
     private final Map<String, ZLinkAsyncSerialQueue> sendDispatchQueues = new HashMap<>();
     private final Map<String, ZLinkAsyncSerialQueue> requestDispatchQueues = new HashMap<>();
     private final Map<String, ZLinkAsyncSerialQueue> publishDispatchQueues = new HashMap<>();
@@ -548,8 +551,9 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(routerChannelId);
             List<Message> bridgeParts = copyMessages(spotParts);
             bridge.setTargetNode(routerChannelId, targetNodeRid);
+            enqueueRawSpotRouteBridgeReply(routerChannelId, result);
             try {
-                bridge.request(
+                boolean submitted = bridge.request(
                     routerChannelId,
                     targetSpotRid,
                     bridgeParts,
@@ -564,11 +568,16 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     },
                     SendFlags.NONE,
                     timeout);
+                if (!submitted) {
+                    result.completeExceptionally(new ZLinkConfigurationException(
+                        "route mesh channel is not ready for SPOT request: " + routerChannelId));
+                }
             } finally {
                 bridgeParts.forEach(Message::close);
             }
             return result;
         } catch (RuntimeException ex) {
+            removeRawSpotRouteBridgeReply(routerChannelId, result);
             result.completeExceptionally(ex);
             return result;
         }
@@ -987,6 +996,65 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             received.parts());
     }
 
+    private void enqueueRawSpotRouteBridgeReply(
+        String channelName,
+        CompletableFuture<List<Message>> pending) {
+        synchronized (pendingRawSpotRouteBridgeReplies) {
+            pendingRawSpotRouteBridgeReplies
+                .computeIfAbsent(channelName, ignored -> new ArrayDeque<>())
+                .addLast(pending);
+        }
+        pending.whenComplete((ignored, error) ->
+            removeRawSpotRouteBridgeReply(channelName, pending));
+    }
+
+    private void removeRawSpotRouteBridgeReply(
+        String channelName,
+        CompletableFuture<List<Message>> pending) {
+        synchronized (pendingRawSpotRouteBridgeReplies) {
+            ArrayDeque<CompletableFuture<List<Message>>> queue =
+                pendingRawSpotRouteBridgeReplies.get(channelName);
+            if (queue == null) {
+                return;
+            }
+            queue.remove(pending);
+            if (queue.isEmpty()) {
+                pendingRawSpotRouteBridgeReplies.remove(channelName);
+            }
+        }
+    }
+
+    private boolean tryCompleteRawSpotRouteBridgeReply(
+        String channelName,
+        ZLinkBackendReceived received) {
+        if (!looksLikeRawSpotRouteBridgeReply(received.parts())) {
+            return false;
+        }
+        CompletableFuture<List<Message>> pending;
+        synchronized (pendingRawSpotRouteBridgeReplies) {
+            ArrayDeque<CompletableFuture<List<Message>>> queue =
+                pendingRawSpotRouteBridgeReplies.get(channelName);
+            if (queue == null || queue.isEmpty()) {
+                return false;
+            }
+            pending = queue.peekFirst();
+        }
+        return pending.complete(copyMessages(received.parts()));
+    }
+
+    private static boolean looksLikeRawSpotRouteBridgeReply(List<Message> parts) {
+        if (parts.isEmpty()) {
+            return false;
+        }
+        String text = parts.get(0).toUtf8String().trim();
+        return text.startsWith("{")
+            && text.endsWith("}")
+            && (text.contains("\"ok\"")
+                || text.contains("\"response\"")
+                || text.contains("\"error\"")
+                || text.contains("\"actorPacketTarget\""));
+    }
+
     private void startRouteLoop(String channelName, ZLinkBackendRouterSocket router) {
         receiveExecutor.submit(() -> {
             while (running) {
@@ -1006,6 +1074,9 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ZLinkBackendReceived received) {
         try {
             if (dispatchSpotRouteBridgePacket(channelName, received)) {
+                return;
+            }
+            if (tryCompleteRawSpotRouteBridgeReply(channelName, received)) {
                 return;
             }
             ParsedPacket packet = parsePacket(received.parts());
@@ -2178,6 +2249,11 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ZLinkBackendReceived reply,
         Class<TReply> replyType,
         CompletableFuture<TReply> result) {
+        if (reply.result() != ZLinkBackendRequestResult.OK) {
+            result.completeExceptionally(new ZLinkFrameworkException(
+                "channel request failed: " + reply.result()));
+            return;
+        }
         if (reply.parts().size() >= 2
             && FRAMEWORK_ERROR_REPLY_MARKER.equals(reply.parts().get(0).toUtf8String())) {
             String message = reply.parts().get(1).toUtf8String();

@@ -150,8 +150,10 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     @Test
-    void spotOutboundChannelCallsUseBackendSpot() {
+    void spotOutboundChannelCallsUseSharedChannelClient() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var channel = options.addClientServerChannel("play-events"); channel.enableClient("inproc://play-events"); };
+        { var channel = options.addClientServerChannel("play-rpc"); channel.enableClient("inproc://play-rpc"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.addSpotFactory(OutboundSpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -172,28 +174,15 @@ final class SpotRuntimeFakeBackendTest {
             OutboundSpot.context.outbound()
                 .requestToChannel("play-rpc", message("ping", "Ping"))
                 .packetName("Ping")
-                .submit(String.class);
+                .submit(String.class)
+                .toCompletableFuture()
+                .join();
         }
 
-        assertEquals(
-            List.of(
-                "factory.channel",
-                "create.context",
-                "factory.channel",
-                "factory.spot",
-                "create.context",
-                "create.spotNode",
-                "spotNode.createSpot",
-                "create.spot.1",
-                "spot.1.setRoutingId",
-                "spot.1.onDispatchEvent",
-                "spot.1.sendToChannel.play-events.Greeting",
-                "spot.1.requestToChannel.play-rpc.Ping",
-                "close.context",
-                "close.spot.1",
-                "close.spotNode",
-                "close.context"),
-            backendFactory.calls());
+        assertTrue(backendFactory.calls().contains("dealer.send.Greeting"));
+        assertTrue(backendFactory.calls().contains("dealer.request.Ping"));
+        assertFalse(backendFactory.calls().contains("spot.1.sendToChannel.play-events.Greeting"));
+        assertFalse(backendFactory.calls().contains("spot.1.requestToChannel.play-rpc.Ping"));
     }
 
     @Test
@@ -718,80 +707,6 @@ final class SpotRuntimeFakeBackendTest {
                 "spotNode.connectPeer.inproc://spot-router-peer",
                 "spotNode.connectPeer.inproc://spot-pub-peer",
                 "close.context",
-                "close.spotNode",
-                "close.context"),
-            backendFactory.calls());
-    }
-
-    @Test
-    void attachedSpotChannelClientManualConnectionAttachesDealerToBackendNode() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.attachChannelClient("profile", "inproc://profile-server"); }; };
-        FakeZLinkBackendAdapterFactory backendFactory =
-            new FakeZLinkBackendAdapterFactory();
-
-        try (ZLinkFrameworkRuntime ignored =
-                 RuntimeTestSupport.startFramework(options, backendFactory)) {
-        }
-
-        assertEquals(
-            List.of(
-                "factory.channel",
-                "create.context",
-                "factory.channel",
-                "factory.spot",
-                "create.context",
-                "create.spotNode",
-                "create.dealer",
-                "dealer.setChannelName.profile",
-                "spotNode.createRouteBridge",
-                "create.spotRouteBridge",
-                "dealer.connect.inproc://profile-server",
-                "spotRouteBridge.bridge.attachDealerChannel.profile",
-                "close.context",
-                "close.dealer",
-                "spotRouteBridge.bridge.close",
-                "close.spotNode",
-                "close.context"),
-            backendFactory.calls());
-    }
-
-    @Test
-    void attachedSpotChannelClientDiscoveryAttachesDealerToBackendNode() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
-        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.attachChannelClient("profile"); }; };
-        FakeZLinkBackendAdapterFactory backendFactory =
-            new FakeZLinkBackendAdapterFactory();
-
-        try (ZLinkFrameworkRuntime ignored =
-                 RuntimeTestSupport.startFramework(options, backendFactory)) {
-        }
-
-        assertEquals(
-            List.of(
-                "factory.channel",
-                "create.context",
-                "factory.channel",
-                "factory.spot",
-                "create.context",
-                "create.spotNode",
-                "create.discovery.game",
-                "discovery.game.connectRegistry.tcp://127.0.0.1:17001",
-                "spotNode.attachDiscovery.discovery.game",
-                "create.dealer",
-                "dealer.setChannelName.profile",
-                "spotNode.createRouteBridge",
-                "create.spotRouteBridge",
-                "create.discovery.profile",
-                "discovery.profile.connectRegistry.tcp://127.0.0.1:17001",
-                "dealer.attachDiscovery.discovery.profile",
-                "spotRouteBridge.bridge.attachDealerChannel.profile",
-                "close.context",
-                "close.dealer",
-                "spotRouteBridge.bridge.close",
-                "close.discovery.game",
-                "close.discovery.profile",
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());

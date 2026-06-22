@@ -17,15 +17,6 @@ public interface ZLinkBackendSpot extends ZLinkBackendObject {
 
     ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode);
 
-    boolean sendToChannel(String channelName, List<Message> parts, SendFlags flags);
-
-    boolean requestToChannel(
-        String channelName,
-        List<Message> parts,
-        ZLinkBackendRequestCallback callback,
-        SendFlags flags,
-        Duration timeout);
-
     boolean publish(String topic, List<Message> parts, SendFlags flags);
 
     boolean sendToSpot(

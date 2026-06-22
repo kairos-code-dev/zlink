@@ -600,8 +600,6 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             result.close();
             return null;
         }
-        @Override public boolean sendToChannel(String channelName, List<Message> parts, SendFlags flags) { return submit(spot.sendToChannel(channelName), parts, flags); }
-        @Override public boolean requestToChannel(String channelName, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { return submitRequest(spot.requestToChannel(channelName), parts, callback, flags, timeout); }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { return submit(spot.publish(topic), parts, flags); }
         @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, SendFlags flags) { return submit(spot.sendToSpot(targetNodeRid, spotRid), parts, flags); }
         @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { return submitRequest(spot.requestToSpot(targetNodeRid, spotRid), parts, callback, flags, timeout); }
@@ -864,6 +862,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         }
         try {
             return submit.submit((result, replyParts) -> callback.handle(new ZLinkBackendReceived(
+                ZLinkBackendRequestResult.valueOf(result.name()),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),

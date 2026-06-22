@@ -14,7 +14,6 @@ export interface ZLinkSpotNodeBuilder {
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
-  attachChannelClient(channelName: string, endpoint?: string | readonly string[]): this;
   attachSpotPublisherClient(channelName: string, endpoint?: string | readonly string[]): this;
   acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this;
   acceptSpotRoutesFromChannel(channelName: string, peerRid: RoutingId, endpoint: string): this;

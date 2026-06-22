@@ -9,7 +9,6 @@ internal sealed class ZLinkSpotNodeCatalog(
     ZLinkSpotNodeRegistration registration,
     IZLinkBackendSpotNode node,
     string spotChannelName,
-    Func<string, ZLinkSpotAttachedChannelBundle> getOrCreateAttachedChannelBundle,
     Action connectDiscoveredPubSubPeers) : IAsyncDisposable
 {
     private readonly object _gate = new();
@@ -22,9 +21,6 @@ internal sealed class ZLinkSpotNodeCatalog(
         registration,
         node,
         spotChannelName,
-        channelName => registration.AttachedChannelClients.ContainsKey(channelName)
-            ? getOrCreateAttachedChannelBundle(channelName)
-            : null,
         connectDiscoveredPubSubPeers);
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => SnapshotActivations();
@@ -40,8 +36,6 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             EnsureSpotTypeRegisteredLocked(spotType);
         }
-
-        EnsureAttachedChannelBundles();
 
         var nativeSpot = node.CreateSpot();
         ZLinkSpotActivation? activation = null;
@@ -126,8 +120,6 @@ internal sealed class ZLinkSpotNodeCatalog(
                 ? result with { State = ZLinkSpotCreateState.Existing }
                 : result;
         }
-
-        EnsureAttachedChannelBundles();
 
         IZLinkBackendSpot? nativeSpot = null;
         ZLinkSpotActivation? activation = null;
@@ -342,14 +334,6 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             throw new ZLinkConfigurationException(
                 $"SPOT factory '{spotType}' is not registered on node '{registration.SpotNodeName}'.");
-        }
-    }
-
-    private void EnsureAttachedChannelBundles()
-    {
-        foreach (var channelName in registration.AttachedChannelClients.Keys)
-        {
-            getOrCreateAttachedChannelBundle(channelName);
         }
     }
 

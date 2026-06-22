@@ -224,6 +224,24 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
             ): boolean;
           }).handleRouterReceived(channelName, toNativeRoutingId(sourceNodeRid), parts, requestSeq);
       }
+      if (isSpotRouteBridgeTarget(target) && property === 'setTargetNode') {
+        return (channelName: string, targetNodeRid: unknown) =>
+          (target as unknown as {
+            setTargetNode(channelName: string, targetNodeRid: unknown): void;
+          }).setTargetNode(channelName, toNativeRoutingId(targetNodeRid));
+      }
+      if (isSpotRouteBridgeTarget(target) && property === 'send') {
+        return (channelName: string, targetSpotRid: unknown) =>
+          (target as unknown as {
+            send(channelName: string, targetSpotRid: unknown): unknown;
+          }).send(channelName, toNativeRoutingId(targetSpotRid));
+      }
+      if (isSpotRouteBridgeTarget(target) && property === 'request') {
+        return (channelName: string, targetSpotRid: unknown) =>
+          (target as unknown as {
+            request(channelName: string, targetSpotRid: unknown): unknown;
+          }).request(channelName, toNativeRoutingId(targetSpotRid));
+      }
       if (property === 'setRoutingId') {
         return (routingId: unknown) =>
           (target as unknown as { setRoutingId(routingId: unknown): void }).setRoutingId(toNativeRoutingId(routingId));
@@ -364,6 +382,14 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
 }
 
 type ZLinkBindingOperation = { [key: string]: (...args: unknown[]) => unknown };
+
+function isSpotRouteBridgeTarget(target: unknown): boolean {
+  return target !== null &&
+    typeof target === 'object' &&
+    'attachRouterChannel' in target &&
+    'setTargetNode' in target &&
+    'handleRouterReceived' in target;
+}
 
 function submitSendOperation(operation: unknown, payload: unknown, flags: number): void {
   let current = appendOperationParts(operation, payload);

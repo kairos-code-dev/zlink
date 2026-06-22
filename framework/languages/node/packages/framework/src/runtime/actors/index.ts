@@ -214,6 +214,18 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     return result.actor;
   }
 
+  async getOrCreateWithNativeRef(
+    actorId: string,
+    actorType: string,
+    actorRef: ZLinkBackendActorRef,
+    signal?: AbortSignal
+  ): Promise<ZLinkActor> {
+    const state = this.getOrCreateState(actorId);
+    state.setNativeActorRef(actorRef);
+    const result = await this.createOrGet(actorId, actorType, false, signal);
+    return result.actor;
+  }
+
   getState(actorId: string): ZLinkActorRuntimeState | undefined {
     return this.states.get(actorId);
   }
@@ -1449,7 +1461,10 @@ function toBackendRoutingId(routingId: RoutingId): ZLinkBackendActorRef['nodeRid
 }
 
 function toFrameworkRoutingId(routingId: ZLinkBackendActorRef['nodeRid']): RoutingId {
-  return routingId as unknown as RoutingId;
+  const value = routingId as unknown;
+  return value instanceof BindingRoutingId
+    ? value as unknown as RoutingId
+    : BindingRoutingId.from(String(routingId)) as unknown as RoutingId;
 }
 
 function encodeRoutingIdHex(routingId: RoutingId): string | undefined {
@@ -1468,7 +1483,7 @@ function routingIdsEqual(left: RoutingId, right: RoutingId): boolean {
 
 function decodeWireRoutingId(text: string, hex: string | undefined): RoutingId {
   return hex === undefined
-    ? text
+    ? BindingRoutingId.from(text) as unknown as RoutingId
     : BindingRoutingId.fromHex(hex) as unknown as RoutingId;
 }
 

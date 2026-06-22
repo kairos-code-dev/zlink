@@ -37,14 +37,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 $"SPOT node '{spotNode.SpotNodeName}' attaches SPOT publisher clients but does not enable pub/sub capability.");
         }
 
-        foreach (var attachedChannelClient in spotNode.AttachedChannelClients.Values)
-        {
-            ZLinkPeerAcquisitionPolicy.RequirePeerSource(
-                $"SPOT node '{spotNode.SpotNodeName}' attached channel client '{attachedChannelClient.ChannelName}'",
-                registration.Discovery is not null,
-                attachedChannelClient.ManualConnections);
-        }
-
         foreach (var acceptance in spotNode.AcceptedSpotRouteChannels.Values)
         {
             ValidateAcceptedSpotRouteChannel(spotNode, acceptance, registration);
@@ -57,7 +49,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     private static void ValidateSpotNodeWithoutMesh(ZLinkSpotNodeRegistration spotNode)
     {
         if (spotNode.PubSub is null
-            && spotNode.AttachedChannelClients.Count == 0
             && spotNode.AttachedSpotPublisherClients.Count == 0
             && spotNode.AcceptedSpotRouteChannels.Count == 0)
         {

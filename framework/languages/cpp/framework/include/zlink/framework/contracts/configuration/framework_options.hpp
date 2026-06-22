@@ -60,6 +60,7 @@ class handler_options_builder_t
         auto *handlers = _handlers;
         add_serializers<request_type> ();
         add_serializers<reply_type> ();
+        auto route_group_name = group_name;
         _state->add_installer (
           std::move (group_name), detail::handler_group_kind_t::request,
           [handlers] (const std::string &channel_name) {
@@ -67,6 +68,57 @@ class handler_options_builder_t
                 channel_name, detail::handler_topic_name<THandler, request_type> (),
                 &THandler::handle, {.execution = handler_execution_t::offload});
           });
+        if constexpr (requires {
+                          static_cast<reply_type (THandler::*) (const request_type &)>(
+                            &THandler::handle);
+                      }) {
+            _state->add_route_installer (
+              std::move (route_group_name), detail::handler_group_kind_t::request,
+              [] (route_channel_builder_t &channel) {
+                  channel.add_request_handler<THandler, request_type, reply_type> (
+                    detail::message_name<request_type> (),
+                    static_cast<reply_type (THandler::*) (const request_type &)>(
+                      &THandler::handle));
+              });
+        } else if constexpr (requires {
+                                 static_cast<task_t<reply_type> (THandler::*) (
+                                   const request_type &)>(&THandler::handle);
+                             }) {
+            _state->add_route_installer (
+              std::move (route_group_name), detail::handler_group_kind_t::request,
+              [] (route_channel_builder_t &channel) {
+                  channel.add_request_handler<THandler, request_type, reply_type> (
+                    detail::message_name<request_type> (),
+                    static_cast<task_t<reply_type> (THandler::*) (const request_type &)>(
+                      &THandler::handle));
+              });
+        } else if constexpr (requires {
+                                 static_cast<reply_type (THandler::*) (
+                                   const request_type &, const route_handler_context_t &)>(
+                                   &THandler::handle);
+                             }) {
+            _state->add_route_installer (
+              std::move (route_group_name), detail::handler_group_kind_t::request,
+              [] (route_channel_builder_t &channel) {
+                  channel.add_request_handler<THandler, request_type, reply_type> (
+                    detail::message_name<request_type> (),
+                    static_cast<reply_type (THandler::*) (
+                      const request_type &, const route_handler_context_t &)>(&THandler::handle));
+              });
+        } else if constexpr (requires {
+                                 static_cast<task_t<reply_type> (THandler::*) (
+                                   const request_type &, const route_handler_context_t &)>(
+                                   &THandler::handle);
+                             }) {
+            _state->add_route_installer (
+              std::move (route_group_name), detail::handler_group_kind_t::request,
+              [] (route_channel_builder_t &channel) {
+                  channel.add_request_handler<THandler, request_type, reply_type> (
+                    detail::message_name<request_type> (),
+                    static_cast<task_t<reply_type> (THandler::*) (
+                      const request_type &, const route_handler_context_t &)>(&THandler::handle));
+              });
+        }
         return *this;
     }
 
@@ -81,6 +133,7 @@ class handler_options_builder_t
 
         auto *handlers = _handlers;
         add_serializers<message_type> ();
+        auto route_group_name = group_name;
         _state->add_installer (
           std::move (group_name), detail::handler_group_kind_t::send,
           [handlers] (const std::string &channel_name) {
@@ -88,6 +141,56 @@ class handler_options_builder_t
                 channel_name, detail::handler_topic_name<THandler, message_type> (),
                 &THandler::handle, {.execution = handler_execution_t::offload});
           });
+        if constexpr (requires {
+                          static_cast<void (THandler::*) (const message_type &)>(
+                            &THandler::handle);
+                      }) {
+            _state->add_route_installer (
+              std::move (route_group_name), detail::handler_group_kind_t::send,
+              [] (route_channel_builder_t &channel) {
+                  channel.add_send_handler<THandler, message_type> (
+                    detail::message_name<message_type> (),
+                    static_cast<void (THandler::*) (const message_type &)>(&THandler::handle));
+              });
+        } else if constexpr (requires {
+                                 static_cast<task_t<void> (THandler::*) (
+                                   const message_type &)>(&THandler::handle);
+                             }) {
+            _state->add_route_installer (
+              std::move (route_group_name), detail::handler_group_kind_t::send,
+              [] (route_channel_builder_t &channel) {
+                  channel.add_send_handler<THandler, message_type> (
+                    detail::message_name<message_type> (),
+                    static_cast<task_t<void> (THandler::*) (const message_type &)>(
+                      &THandler::handle));
+              });
+        } else if constexpr (requires {
+                                 static_cast<void (THandler::*) (
+                                   const message_type &, const route_handler_context_t &)>(
+                                   &THandler::handle);
+                             }) {
+            _state->add_route_installer (
+              std::move (route_group_name), detail::handler_group_kind_t::send,
+              [] (route_channel_builder_t &channel) {
+                  channel.add_send_handler<THandler, message_type> (
+                    detail::message_name<message_type> (),
+                    static_cast<void (THandler::*) (
+                      const message_type &, const route_handler_context_t &)>(&THandler::handle));
+              });
+        } else if constexpr (requires {
+                                 static_cast<task_t<void> (THandler::*) (
+                                   const message_type &, const route_handler_context_t &)>(
+                                   &THandler::handle);
+                             }) {
+            _state->add_route_installer (
+              std::move (route_group_name), detail::handler_group_kind_t::send,
+              [] (route_channel_builder_t &channel) {
+                  channel.add_send_handler<THandler, message_type> (
+                    detail::message_name<message_type> (),
+                    static_cast<task_t<void> (THandler::*) (
+                      const message_type &, const route_handler_context_t &)>(&THandler::handle));
+              });
+        }
         return *this;
     }
 
@@ -772,25 +875,6 @@ class accepted_spot_route_channel_builder_t
     std::vector<std::string> *_manual_connections;
 };
 
-class attached_channel_client_builder_t
-{
-  public:
-    explicit attached_channel_client_builder_t (std::vector<std::string> &manual_connections) :
-        _manual_connections (&manual_connections)
-    {
-    }
-
-    attached_channel_client_builder_t &connect (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "attached channel client manual endpoint is required");
-        _manual_connections->push_back (std::move (endpoint));
-        return *this;
-    }
-
-  private:
-    std::vector<std::string> *_manual_connections;
-};
-
 class attached_publisher_builder_t
 {
   public:
@@ -1024,32 +1108,6 @@ class spot_node_options_builder_t
         return *this;
     }
 
-    spot_node_options_builder_t &attach_channel_client (std::string channel_name)
-    {
-        detail::require_non_blank (channel_name,
-                                   "attached client/server channel client name is required");
-        _options->attached_channel_clients_by_node[_spot_node_name].insert (
-          std::move (channel_name));
-        apply ();
-        return *this;
-    }
-
-    spot_node_options_builder_t &
-    attach_channel_client (std::string channel_name, std::string endpoint)
-    {
-        detail::require_non_blank (channel_name,
-                                   "attached client/server channel client name is required");
-        detail::require_non_blank (endpoint, "attached channel client manual endpoint is required");
-        const auto channel_key = channel_name;
-        _options->attached_channel_clients_by_node[_spot_node_name].insert (channel_key);
-        auto &manual_connections =
-          _options
-            ->attached_channel_client_manual_connections_by_node[_spot_node_name][channel_key];
-        manual_connections.push_back (std::move (endpoint));
-        apply ();
-        return *this;
-    }
-
     spot_node_options_builder_t &attach_publisher (std::string channel_name)
     {
         detail::require_non_blank (channel_name,
@@ -1197,16 +1255,6 @@ class spot_node_options_builder_t
                   accepted_route_channel);
                 spot_node.accept_routes_from_channel (accepted_route_channel,
                                                       std::move (manual_connections));
-            }
-            const auto attached_clients =
-              options->attached_channel_clients_by_node.find (spot_node_name);
-            if (attached_clients != options->attached_channel_clients_by_node.end ()) {
-                for (const auto &channel_name : attached_clients->second) {
-                    auto manual_connections = detail::manual_connections_for (
-                      options->attached_channel_client_manual_connections_by_node, spot_node_name,
-                      channel_name);
-                    spot_node.attach_channel_client (channel_name, std::move (manual_connections));
-                }
             }
             const auto attached_publishers =
               options->attached_publishers_by_node.find (spot_node_name);
@@ -1562,6 +1610,7 @@ class zlink_framework_options_t
             for (const auto &[_, action] : _options->keyed_zlink_actions) {
                 action (*_zlink);
             }
+            _handler_groups->install_route_handlers (*_zlink);
             for (const auto &action : _options->deferred_zlink_actions) {
                 action (*_zlink);
             }

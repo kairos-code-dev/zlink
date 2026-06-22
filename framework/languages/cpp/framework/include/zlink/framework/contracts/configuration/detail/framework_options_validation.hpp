@@ -89,25 +89,6 @@ inline void validate_framework_options (const framework_options_state_t &options
                                            + "' must enable router or pub/sub capability");
         }
     }
-    for (const auto &[spot_node_name, channel_names] : options.attached_channel_clients_by_node) {
-        for (const auto &channel_name : channel_names) {
-            if (!options.client_server_channels.contains (channel_name)) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "SPOT node '" + spot_node_name
-                                               + "' attached channel client '" + channel_name
-                                               + "' is not registered");
-            }
-            if (options.registry_discovery_endpoints.empty ()
-                && !has_manual_connections (
-                  options.attached_channel_client_manual_connections_by_node, spot_node_name,
-                  channel_name)) {
-                throw framework_exception_t (
-                  framework_error_kind_t::request_protocol_error,
-                  "SPOT node '" + spot_node_name + "' attached channel client '" + channel_name
-                    + "' requires registry discovery or manual connections");
-            }
-        }
-    }
     std::set<std::string> attached_publisher_channels;
     for (const auto &[spot_node_name, channel_names] : options.attached_publishers_by_node) {
         if (!options.spot_nodes_with_pub_sub.contains (spot_node_name)) {

@@ -99,18 +99,6 @@ public final class SpotBuilders {
         }
 
         @Override
-        public ZLinkSpotNodeBuilder attachChannelClient(String channelName) {
-            registration.attachChannelClient(channelName);
-            return this;
-        }
-
-        @Override
-        public ZLinkSpotNodeBuilder attachChannelClient(String channelName, String endpoint) {
-            registration.attachChannelClient(channelName).addManualConnection(endpoint);
-            return this;
-        }
-
-        @Override
         public ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName) {
             registration.attachSpotPublisherClient(channelName);
             return this;

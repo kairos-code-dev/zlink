@@ -40,8 +40,7 @@ internal sealed partial class ZLinkSpotActivation :
         string spotNodeName,
         string channelName,
         TimeSpan defaultRequestTimeout,
-        TimeSpan? sendTimeout,
-        Func<string, ZLinkSpotAttachedChannelBundle?>? channelClient = null)
+        TimeSpan? sendTimeout)
     {
         _runtime = runtime;
         _scope = scope;
@@ -54,8 +53,7 @@ internal sealed partial class ZLinkSpotActivation :
             nativeSpot,
             defaultRequestTimeout,
             sendTimeout,
-            _stopSource.Token,
-            channelClient);
+            _stopSource.Token);
         _outboundEndpoint = new ZLinkSpotOutboundEndpoint(
             this,
             _scope.ServiceProvider,

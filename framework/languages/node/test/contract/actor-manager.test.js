@@ -614,6 +614,7 @@ test('ZLinkActorNativeJoinCoordinator uses native spot-node join when remote add
         }
       },
       async remoteActorBinder(actorRef) {
+        assert.equal(actorRef.nodeRid instanceof zlink.RoutingId, true);
         events.push(`bind:${actorRef.nodeRid}:${actorRef.actorId}:${actorRef.generation}`);
       }
     })
@@ -833,6 +834,44 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
     'cleanup:alice',
     'createNative:alice'
   ]);
+});
+
+test('DefaultZLinkActorManager adopts native actor ref before creating routed actor instance', async () => {
+  const events = [];
+  const targetRef = { nodeRid: 'node-a', actorId: 'alice', generation: 9n };
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      events.push(`createApp:${actorId}`);
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const node = createMockSpotNode({
+    actorLookup(actorId) {
+      events.push(`lookupNative:${actorId}`);
+      return undefined;
+    },
+    createActor(actorId) {
+      events.push(`createNative:${actorId}`);
+      throw new Error('native actor must already be owned by core join admission');
+    }
+  });
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    nativeActorNodeProvider: () => node
+  });
+
+  const actor = await manager.getOrCreateWithNativeRef('alice', 'player', targetRef);
+  const again = await manager.getOrCreate('alice', 'player');
+
+  assert.equal(again, actor);
+  assert.deepEqual(manager.getState('alice').nativeActorRef, targetRef);
+  assert.deepEqual(events, ['createApp:alice']);
 });
 
 test('DefaultZLinkActorManager runs destroy cleanup for local actors without native refs', async () => {

@@ -183,10 +183,6 @@ public sealed class BuilderContracts
         spot.ConfigurePubSubPublisher().NoDrop = true;
         spot.ConfigurePubSubSubscriber().ReceiveHighWaterMark = 64;
 
-        spot.AttachChannelClient("api", "tcp://127.0.0.1:5000");
-        spot.ConfigureChannelClientSocket("api").Immediate = true;
-        spot.ConfigureChannelClientRouting("api").RoutingId = RoutingId.From("spot-api-client");
-        spot.AttachChannelClient("api");
         spot.AttachSpotPublisherClient("events", "tcp://127.0.0.1:5100");
         spot.AttachSpotPublisherClient("mesh-events");
         spot.AcceptSpotRoutesFromChannel("play-router", "tcp://127.0.0.1:5300");
@@ -594,20 +590,6 @@ public sealed class BuilderContracts
         public IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber()
         {
             return new ConnectionAndConfigContracts.SpotSubscriberConfig();
-        }
-
-        public IZLinkSpotNodeBuilder AttachChannelClient(string channelName) => this;
-
-        public IZLinkSpotNodeBuilder AttachChannelClient(string channelName, string endpoint) => this;
-
-        public IZLinkSocketConfig ConfigureChannelClientSocket(string channelName)
-        {
-            return new ConnectionAndConfigContracts.SocketConfig();
-        }
-
-        public IZLinkOutboundRouteConfig ConfigureChannelClientRouting(string channelName)
-        {
-            return new ConnectionAndConfigContracts.OutboundRouteConfig();
         }
 
         public IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName) => this;

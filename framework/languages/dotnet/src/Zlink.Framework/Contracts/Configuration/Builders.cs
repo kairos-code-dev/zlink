@@ -173,14 +173,6 @@ public interface IZLinkSpotNodeBuilder
 
     IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber();
 
-    IZLinkSpotNodeBuilder AttachChannelClient(string channelName);
-
-    IZLinkSpotNodeBuilder AttachChannelClient(string channelName, string endpoint);
-
-    IZLinkSocketConfig ConfigureChannelClientSocket(string channelName);
-
-    IZLinkOutboundRouteConfig ConfigureChannelClientRouting(string channelName);
-
     IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName);
 
     IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName, string endpoint);

@@ -65,8 +65,6 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             registration.SpotNodeName,
             frameworkRegistration,
             registration,
-            context,
-            channelAdapter,
             node,
             _peerConnections,
             _stopSource.Token,
@@ -78,7 +76,6 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             registration,
             node,
             spotChannelName,
-            GetOrCreateAttachedChannelBundle,
             ConnectDiscoveredPubSubPeers);
     }
 
@@ -123,7 +120,6 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             return;
         }
 
-        EnsureAttachedChannelBundles();
         _entrySpot ??= Node.EntrySpot();
         var entrySpot = _entrySpot;
 
@@ -153,34 +149,9 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
         return _monitoringSnapshots.MonitorStatus();
     }
 
-    public void AddChannelBundle(string channelName, ZLinkSpotAttachedChannelBundle bundle)
-    {
-        _bundles.AddChannelBundle(channelName, bundle);
-    }
-
     public void AddPublisherBundle(string channelName, ZLinkSpotPublisherBundle bundle)
     {
         _bundles.AddPublisherBundle(channelName, bundle);
-    }
-
-    public ZLinkSpotAttachedChannelBundle GetOrCreateAttachedChannelBundle(string channelName)
-    {
-        return _bundles.GetOrCreateAttachedChannelBundle(channelName);
-    }
-
-    private void EnsureAttachedChannelBundles()
-    {
-        foreach (var channelName in _registration.AttachedChannelClients.Keys)
-        {
-            _bundles.GetOrCreateAttachedChannelBundle(channelName);
-        }
-    }
-
-    private ZLinkSpotAttachedChannelBundle? ResolveAttachedChannelClient(string channelName)
-    {
-        return _registration.AttachedChannelClients.ContainsKey(channelName)
-            ? _bundles.GetOrCreateAttachedChannelBundle(channelName)
-            : null;
     }
 
     public ZLinkSpotPublisherBundle GetOrCreatePublisherBundle(string channelName)
@@ -323,8 +294,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             _frameworkRegistration.SpotDiscovery?.ChannelName ?? _registration.SpotNodeName,
             _frameworkRegistration.DefaultRequestTimeout,
             _registration.Router?.SocketConfig.SendTimeout
-                ?? _frameworkRegistration.DefaultSocketSendTimeout,
-            ResolveAttachedChannelClient);
+                ?? _frameworkRegistration.DefaultSocketSendTimeout);
         foreach (var assembly in _frameworkRegistration.HandlerAssemblies)
         {
             foreach (var handler in ZLinkScannedSpotHandlerScanner.Scan(assembly))

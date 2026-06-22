@@ -12,6 +12,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <deque>
+#include <iostream>
+#include <mutex>
 #include <span>
 #include <thread>
 #include <utility>
@@ -36,6 +39,11 @@ class native_spot_route_discovery_bridge_t final
     }
 
     zlink::service::discovery_t &discovery () noexcept { return *_discovery; }
+
+    void connect_registries ()
+    {
+        ensure_connected ();
+    }
 
     result_t<void> bind_spot_route (const spot_route_t &route) override
     {
@@ -140,22 +148,6 @@ class route_channel_host_service_t::route_loop_t
         if (_runtime->routing_id ()) {
             _router->set_routing_id (*_runtime->routing_id ());
         }
-        const bool use_spot_route_discovery =
-          !discovery.registry_endpoints.empty () && _runtime->spot_route_egress_target ();
-        if (use_spot_route_discovery) {
-            try {
-                _spot_route_discovery = std::make_shared<native_spot_route_discovery_bridge_t> (
-                  *_context, _route_channel_id, discovery);
-                _router->attach_discovery (_spot_route_discovery->discovery ());
-                registry.attach_spot_route_discovery (_route_channel_id, _spot_route_discovery);
-            }
-            catch (const std::exception &error) {
-                throw framework_exception_t (
-                  framework_error_kind_t::request_failed,
-                  "route channel '" + _route_channel_id
-                    + "' discovery attach failed: " + error.what ());
-            }
-        }
         if (!_runtime->bind_endpoint ().empty ()) {
             try {
                 _router->bind (_runtime->bind_endpoint ());
@@ -165,6 +157,25 @@ class route_channel_host_service_t::route_loop_t
                   framework_error_kind_t::request_failed,
                   "route channel '" + _route_channel_id + "' bind failed at "
                     + _runtime->bind_endpoint () + ": " + error.what ());
+            }
+        }
+        const bool use_route_discovery = !discovery.registry_endpoints.empty ();
+        if (use_route_discovery) {
+            try {
+                _spot_route_discovery = std::make_shared<native_spot_route_discovery_bridge_t> (
+                  *_context, _route_channel_id, discovery);
+                _spot_route_discovery->connect_registries ();
+                _router->attach_discovery (_spot_route_discovery->discovery ());
+                if (_runtime->spot_route_egress_target ()) {
+                    registry.attach_spot_route_discovery (_route_channel_id,
+                                                          _spot_route_discovery);
+                }
+            }
+            catch (const std::exception &error) {
+                throw framework_exception_t (
+                  framework_error_kind_t::request_failed,
+                  "route channel '" + _route_channel_id
+                    + "' discovery attach failed: " + error.what ());
             }
         }
         for (const auto &endpoint : _runtime->manual_connections ()) {
@@ -178,11 +189,16 @@ class route_channel_host_service_t::route_loop_t
         _runtime->attach_native_backend (*_backend);
     }
 
-    ~route_loop_t () { stop (); }
+    ~route_loop_t ()
+    {
+        stop ();
+        term ();
+    }
 
     void run ()
     {
         while (!_stop->load (std::memory_order_acquire)) {
+            flush_replies ();
             zlink::received_t received;
             const int rc = _router->recv (received, zlink::recv_flags_t::dontwait);
             if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
@@ -200,14 +216,9 @@ class route_channel_host_service_t::route_loop_t
                 continue;
             }
 
-            auto dispatched = _dispatcher.dispatch (detail::route_received_packet_t{
-              *received.routing_id (), received.request_seq (),
-              zlink::framework::runtime::messaging::message_parts_t (std::move (copied))});
-            if (!dispatched || !dispatched.value ()) {
-                continue;
-            }
-            reply (received, dispatched.value ()->parts);
+            dispatch_async (std::move (received), std::move (copied));
         }
+        flush_replies ();
     }
 
     void stop () noexcept
@@ -222,6 +233,20 @@ class route_channel_host_service_t::route_loop_t
         if (_context) {
             try {
                 _context->shutdown ();
+            }
+            catch (...) {
+            }
+        }
+        join_workers ();
+    }
+
+    void term () noexcept
+    {
+        _backend.reset ();
+        _router.reset ();
+        _spot_route_discovery.reset ();
+        if (_context) {
+            try {
                 _context->term ();
             }
             catch (...) {
@@ -230,6 +255,12 @@ class route_channel_host_service_t::route_loop_t
     }
 
   private:
+    struct completed_reply_t
+    {
+        zlink::received_t received;
+        zlink::framework::runtime::messaging::message_parts_t parts;
+    };
+
     void attach_spot_route_bridge (
       const std::vector<route_channel_host_service_t::spot_node_runtime_t> &spot_nodes)
     {
@@ -307,6 +338,59 @@ class route_channel_host_service_t::route_loop_t
         std::move (operation).submit ();
     }
 
+    void dispatch_async (zlink::received_t received, std::vector<zlink::message_t> copied)
+    {
+        std::lock_guard<std::mutex> lock (_workers_mutex);
+        _workers.emplace_back (
+          [this, received = std::move (received), copied = std::move (copied)] () mutable {
+              auto dispatched = _dispatcher.dispatch (detail::route_received_packet_t{
+                *received.routing_id (), received.request_seq (),
+                zlink::framework::runtime::messaging::message_parts_t (std::move (copied))});
+              if (!dispatched || !dispatched.value ()) {
+                  return;
+              }
+              std::lock_guard<std::mutex> reply_lock (_replies_mutex);
+              _replies.push_back (
+                completed_reply_t{std::move (received), std::move (dispatched.value ()->parts)});
+          });
+    }
+
+    void flush_replies ()
+    {
+        for (;;) {
+            completed_reply_t completed;
+            {
+                std::lock_guard<std::mutex> lock (_replies_mutex);
+                if (_replies.empty ()) {
+                    return;
+                }
+                completed = std::move (_replies.front ());
+                _replies.pop_front ();
+            }
+            try {
+                reply (completed.received, completed.parts);
+            }
+            catch (const std::exception &error) {
+                std::cerr << "zlink framework route late reply ignored: " << error.what ()
+                          << '\n';
+            }
+            catch (...) {
+                std::cerr << "zlink framework route late reply ignored\n";
+            }
+        }
+    }
+
+    void join_workers () noexcept
+    {
+        std::lock_guard<std::mutex> lock (_workers_mutex);
+        for (auto &worker : _workers) {
+            if (worker.joinable ()) {
+                worker.join ();
+            }
+        }
+        _workers.clear ();
+    }
+
     detail::channel_runtime_manager_t _manager;
     detail::route_channel_runtime_t *_runtime;
     std::string _route_channel_id;
@@ -318,6 +402,10 @@ class route_channel_host_service_t::route_loop_t
     std::unique_ptr<zlink::router_socket_t> _router;
     std::unique_ptr<detail::backend::native_route_backend_t> _backend;
     std::shared_ptr<native_spot_route_discovery_bridge_t> _spot_route_discovery;
+    std::mutex _workers_mutex;
+    std::vector<std::thread> _workers;
+    std::mutex _replies_mutex;
+    std::deque<completed_reply_t> _replies;
 };
 
 route_channel_host_service_t::route_channel_host_service_t (
@@ -371,6 +459,9 @@ void route_channel_host_service_t::stop () noexcept
         if (thread.joinable ()) {
             thread.join ();
         }
+    }
+    for (auto &loop : _loops) {
+        loop->term ();
     }
     _threads.clear ();
     _loops.clear ();

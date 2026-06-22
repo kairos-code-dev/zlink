@@ -145,6 +145,7 @@ struct injected_stream_session_registrar_t<TSession, dependency_list_t<TDependen
 struct handler_group_options_state_t
 {
     using installer_t = std::function<void (const std::string &)>;
+    using route_installer_t = std::function<void (route_channel_builder_t &)>;
     using serializer_installer_t = std::function<void ()>;
 
     struct channel_binding_t
@@ -160,8 +161,15 @@ struct handler_group_options_state_t
         installer_t installer;
     };
 
+    struct route_installer_binding_t
+    {
+        handler_group_kind_t kind;
+        route_installer_t installer;
+    };
+
     std::map<std::string, std::vector<channel_binding_t>> channels_by_group;
     std::map<std::string, std::vector<installer_binding_t>> installers_by_group;
+    std::map<std::string, std::vector<route_installer_binding_t>> route_installers_by_group;
     std::map<std::string, std::set<std::pair<handler_group_kind_t, std::string>>>
       handler_packets_by_group;
     std::vector<serializer_installer_t> json_serializer_installers;
@@ -210,6 +218,42 @@ struct handler_group_options_state_t
         }
         for (const auto &channel : found->second) {
             installer (channel.channel_name);
+        }
+    }
+
+    void add_route_installer (std::string group_name,
+                              handler_group_kind_t kind,
+                              route_installer_t installer)
+    {
+        require_non_blank (group_name, "handler group name is required");
+        auto found = channels_by_group.find (group_name);
+        if (found != channels_by_group.end ()) {
+            for (const auto &channel : found->second) {
+                validate_compatible (group_name, channel, kind);
+            }
+        }
+
+        auto &installers = route_installers_by_group[group_name];
+        installers.push_back (route_installer_binding_t{kind, std::move (installer)});
+    }
+
+    void install_route_handlers (zlink_builder_t &zlink) const
+    {
+        for (const auto &[group_name, channels] : channels_by_group) {
+            const auto installers = route_installers_by_group.find (group_name);
+            if (installers == route_installers_by_group.end ()) {
+                continue;
+            }
+            for (const auto &channel : channels) {
+                if (channel.surface_name != "route mesh channel") {
+                    continue;
+                }
+                auto route_channel = zlink.route_channel (channel.channel_name);
+                for (const auto &installer : installers->second) {
+                    validate_compatible (group_name, channel, installer.kind);
+                    installer.installer (route_channel);
+                }
+            }
         }
     }
 
@@ -293,9 +337,7 @@ struct framework_options_state_t
     std::map<std::string, std::string> client_server_spot_route_egress_targets;
     std::set<std::string> fanout_channels_with_publisher;
     std::set<std::string> fanout_channels_with_subscriber;
-    std::map<std::string, std::set<std::string>> attached_channel_clients_by_node;
     std::map<std::string, std::set<std::string>> attached_publishers_by_node;
-    manual_connection_map_t attached_channel_client_manual_connections_by_node;
     manual_connection_map_t attached_publisher_manual_connections_by_node;
     std::set<std::string> accepted_spot_route_channels;
     std::map<std::string, std::set<std::string>> accepted_spot_route_channels_by_node;

@@ -24,6 +24,7 @@ struct support_user_actor_t
 
     void set_actor_ref (const zlink::framework::actor_ref_t &actor_ref) const
     {
+        actor.node_rid = std::string (actor_ref.node_rid ().value ());
         actor.actor_id = std::string (actor_ref.actor_id ());
         actor.generation = actor_ref.generation ();
     }

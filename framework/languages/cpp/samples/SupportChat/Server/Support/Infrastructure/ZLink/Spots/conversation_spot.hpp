@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../Actors/support_user_actor.hpp"
+#include "../Actors/support_actor_directory.hpp"
 #include "../../../../Configuration/sample_names.hpp"
 #include "../Notifications/conversation_notification_publisher.hpp"
 #include "../../../Domain/SupportChat/conversation.hpp"
@@ -9,11 +10,15 @@
 #include <zlink/framework.hpp>
 
 #include <chrono>
+#include <condition_variable>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace zlink::samples::supportchat
 {
@@ -27,6 +32,8 @@ class conversation_spot_t : public zlink::framework::spot_t
 {
   public:
     conversation_spot_t () : _publisher (notification_publisher_or_default ()) {}
+
+    ~conversation_spot_t () { stop_idle_checks (); }
 
     static void
     use_notification_publisher (std::shared_ptr<conversation_notification_publisher_t> publisher)
@@ -46,7 +53,11 @@ class conversation_spot_t : public zlink::framework::spot_t
     {
         conversation_create_request_t create;
         from_stream_payload (request, create);
-        const auto conversation_id = std::string (_context.spot_rid ().value ());
+        auto conversation_id = std::string (_context.spot_rid ().value ());
+        if (const auto separator = conversation_id.rfind (':');
+            separator != std::string::npos && separator + 1 < conversation_id.size ()) {
+            conversation_id = conversation_id.substr (separator + 1);
+        }
         _conversation = std::make_unique<conversation_t> (
           conversation_id, create.subject, create.customer_actor_id, create.customer_display_name,
           create.created_at_unix_ms);
@@ -76,6 +87,8 @@ class conversation_spot_t : public zlink::framework::spot_t
 
         actor.join_conversation (join.conversation_id);
         _actors[actor.actor_id ()] = const_cast<support_user_actor_t *> (&actor);
+        support_actor_directory_t::shared ().add_or_update (
+          const_cast<support_user_actor_t &> (actor));
         if (actor.actor_id () == conversation.customer_actor_id ()) {
             _publisher->publish_joined_agent_to_customer (actor, conversation.snapshot ());
         }
@@ -89,6 +102,8 @@ class conversation_spot_t : public zlink::framework::spot_t
         auto change = conversation.join_agent (agent.actor_id (), agent.display_name, now_unix_ms ());
         agent.join_conversation (conversation.conversation_id ());
         _actors[agent.actor_id ()] = const_cast<support_user_actor_t *> (&agent);
+        support_actor_directory_t::shared ().add_or_update (
+          const_cast<support_user_actor_t &> (agent));
         _publisher->publish (change.events, _actors);
         return change.state;
     }
@@ -105,6 +120,7 @@ class conversation_spot_t : public zlink::framework::spot_t
         auto change = require_conversation ().send_message (actor.actor_id (), request.text,
                                                             now_unix_ms ());
         _publisher->publish (change.events, _actors);
+        schedule_idle_check ();
         chat_message_t appended;
         for (const auto &event : change.events) {
             if (event.kind == conversation_event_kind_t::message_appended && event.message) {
@@ -156,6 +172,8 @@ class conversation_spot_t : public zlink::framework::spot_t
 
     void onDisconnectActor (const support_user_actor_t &actor) { actor.mark_disconnected (); }
 
+    void on_closing () { stop_idle_checks (); }
+
     const conversation_t &conversation () const { return require_conversation_const (); }
 
   private:
@@ -206,10 +224,58 @@ class conversation_spot_t : public zlink::framework::spot_t
           .count ();
     }
 
+    void schedule_idle_check ()
+    {
+        std::lock_guard lock (_idle_mutex);
+        if (_closing) {
+            return;
+        }
+        _idle_threads.emplace_back ([this] {
+            {
+                std::unique_lock wait_lock (_idle_mutex);
+                if (_idle_cv.wait_for (wait_lock, std::chrono::milliseconds (3200),
+                                       [this] { return _closing; })) {
+                    return;
+                }
+            }
+            try {
+                check_idle (now_unix_ms ());
+            }
+            catch (...) {
+            }
+        });
+    }
+
+    void stop_idle_checks ()
+    {
+        std::vector<std::thread> threads;
+        {
+            std::lock_guard lock (_idle_mutex);
+            _closing = true;
+            _idle_cv.notify_all ();
+            threads.swap (_idle_threads);
+        }
+        const auto current = std::this_thread::get_id ();
+        for (auto &thread : threads) {
+            if (!thread.joinable ()) {
+                continue;
+            }
+            if (thread.get_id () == current) {
+                thread.detach ();
+                continue;
+            }
+            thread.join ();
+        }
+    }
+
     zlink::framework::spot_context_t _context;
     std::shared_ptr<conversation_notification_publisher_t> _publisher;
     std::map<std::string, support_user_actor_t *> _actors;
     std::unique_ptr<conversation_t> _conversation;
+    std::mutex _idle_mutex;
+    std::condition_variable _idle_cv;
+    std::vector<std::thread> _idle_threads;
+    bool _closing = false;
 };
 
 } // namespace zlink::samples::supportchat

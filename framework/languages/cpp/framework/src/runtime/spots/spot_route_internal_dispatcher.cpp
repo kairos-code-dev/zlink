@@ -72,7 +72,13 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                   relayed.error_kind (),
                   relayed.error () ? relayed.error ()->what () : "remote actor packet failed");
             }
-            auto current_actor_ref = runtime.current_actor_ref (actor_ref).value_or (actor_ref);
+            auto current_actor_ref = actor_ref;
+            if (auto current_actor =
+                  actor_gateway.manager ().find (std::string (actor_ref.actor_id ()))) {
+                current_actor_ref = current_actor->ref ();
+            } else {
+                current_actor_ref = runtime.current_actor_ref (actor_ref).value_or (actor_ref);
+            }
             auto reply = spot_actor_packet_route_reply_t{
               .actor_ref_present = true,
               .actor_node_rid = std::string (current_actor_ref.node_rid ().value ()),

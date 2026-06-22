@@ -8,7 +8,6 @@ struct sample_names_t
 {
     static constexpr const char *api_channel = "bingo.api";
     static constexpr const char *play_channel = "bingo.play";
-    static constexpr const char *play_route_channel = "bingo.play.route";
     static constexpr const char *router_channel = "bingo.gateway";
     static constexpr const char *stream_node = "bingo.client.stream";
     static constexpr const char *session_spot_node = "bingo.session.node";

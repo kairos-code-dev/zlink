@@ -52,7 +52,12 @@ class remote_actor_packet_handler_t
               reply.error () ? reply.error ()->what () : "remote actor relay failed");
         }
 
-        auto current_actor_ref = _spots.current_actor_ref (actor_ref).value_or (actor_ref);
+        auto current_actor_ref = actor_ref;
+        if (auto current_actor = _gateway.manager ().find (std::string (actor_ref.actor_id ()))) {
+            current_actor_ref = current_actor->ref ();
+        } else {
+            current_actor_ref = _spots.current_actor_ref (actor_ref).value_or (actor_ref);
+        }
         bind_routed_session_if_present (request, current_actor_ref);
 
         TReply response;
@@ -86,9 +91,17 @@ class remote_actor_packet_handler_t
                 _gateway.bind_session_route (
                   actor_ref, _route_client, request.bound_session_route_channel,
                   zlink::routing_id_t::from (request.bound_session_node_rid),
-                  stream_codec_t::protobuf);
+                  session_codec (request));
             }
         }
+    }
+
+    static stream_codec_t session_codec (const TRequest &request)
+    {
+        if constexpr (requires { request.header_codec; }) {
+            return static_cast<stream_codec_t> (request.header_codec);
+        }
+        return stream_codec_t::message_pack;
     }
 };
 

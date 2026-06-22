@@ -35,4 +35,26 @@ final class ZLinkStreamHeaderCodecTest {
         assertTrue(decoded.flags().contains(ZLinkStreamHeaderFlag.HAS_METADATA));
         assertTrue(decoded.flags().contains(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED));
     }
+
+    @Test
+    void encodeDecodePreservesCorrelationId() {
+        ZLinkStreamHeader header = new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.SEND,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.empty(),
+            "MatchBingoReq",
+            Map.of(),
+            Optional.of("corr-java-bingo"));
+
+        ZLinkStreamHeader decoded =
+            ZLinkStreamHeaderCodec.decodeOrPlain(ZLinkStreamHeaderCodec.encode(header));
+
+        assertEquals(ZLinkStreamMessageKind.SEND, decoded.kind());
+        assertEquals(ZLinkStreamCodec.JSON, decoded.codec());
+        assertEquals(Optional.empty(), decoded.requestSequence());
+        assertEquals("MatchBingoReq", decoded.packetName());
+        assertEquals(Optional.of("corr-java-bingo"), decoded.correlationId());
+        assertTrue(decoded.flags().contains(ZLinkStreamHeaderFlag.HAS_CORRELATION_ID));
+    }
 }

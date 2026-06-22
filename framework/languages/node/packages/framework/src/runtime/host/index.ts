@@ -267,7 +267,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         context,
         bindingRuntime: this.streamBindingRuntime,
         spotNodes: spotNodeRuntime.nodesByName,
-        providerResolver: this.options.providerResolver
+        providerResolver: this.options.providerResolver,
+        dispatchErrors
       });
       streamRuntime.start();
       this.streamRuntime = streamRuntime;

@@ -21,10 +21,17 @@ import type {
 } from '../../contracts';
 import { Message as ZLinkBindingMessage, SubmitError, SubmitResult } from '@zlink-systems/zlink';
 import {
+  ZLinkDispatchErrorAction,
+  ZLinkDispatchErrorReason,
+  ZLinkDispatchErrorSurface,
+  ZLinkDispatchMessageKind,
   ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
+  ZLinkFrameworkException,
+  ZLinkMessageFlowPhase
 } from '../../contracts';
 import { ZLinkConfigurationException, type ZLinkFrameworkRegistration } from '../configuration';
+import { ZLinkDispatchErrorReporter } from '../channels';
+import { flowIfEnabled } from '../diagnostics';
 import type {
   ZLinkBackendActorRef,
   ZLinkBackendAdapterFactory,
@@ -108,6 +115,7 @@ export interface ZLinkStreamSessionRuntimeOptions {
   readonly bindingRuntime?: ZLinkStreamBindingRuntime;
   readonly headerDecoder?: (header: Message) => ZlinkStreamHeader;
   readonly onError?: (error: unknown) => void;
+  readonly dispatchErrors?: ZLinkDispatchErrorReporter;
 }
 
 export interface ZLinkStreamSessionNodeRuntimeOptions extends ZLinkStreamSessionRuntimeOptions {
@@ -121,6 +129,7 @@ export interface ZLinkStreamRuntimeManagerOptions {
   readonly bindingRuntime: ZLinkStreamBindingRuntime;
   readonly spotNodes?: ReadonlyMap<string, ZLinkBackendSpotNode>;
   readonly providerResolver?: ZLinkProviderResolver;
+  readonly dispatchErrors?: ZLinkDispatchErrorReporter;
 }
 
 interface ZLinkStartedStreamNode {
@@ -155,6 +164,7 @@ export class ZLinkStreamRuntimeManager {
         nodeName,
         socket,
         bindingRuntime: this.options.bindingRuntime,
+        dispatchErrors: this.options.dispatchErrors,
         headerDecoder: (header) => decodeStreamHeader(messageToBytes(header)),
         sessionFactory: (context) => createStreamSessionInstance(
           sessionType as Type<ZLinkSession> | Type<ZLinkSessionFactory>,
@@ -257,7 +267,7 @@ export class ZLinkStreamSessionRuntime {
 
   constructor(
     private readonly options: ZLinkStreamSessionRuntimeOptions,
-    routingId: unknown,
+    private readonly routingId: unknown,
     private readonly removeSession: (sessionId: string) => void = () => {}
   ) {
     const bindingRuntime = options.bindingRuntime ?? new ZLinkStreamBindingRuntime();
@@ -355,8 +365,44 @@ export class ZLinkStreamSessionRuntime {
       }
       this.context.enterDispatch(decodedHeader);
       const session = await this.requireSession();
+      const frameHeader = tryGetStreamFrameHeader(decodedHeader);
+      const streamKind = frameHeader?.kind === ZLinkStreamMessageKind.Request
+        ? ZLinkDispatchMessageKind.Request
+        : ZLinkDispatchMessageKind.Send;
+      const streamCorr = frameHeader?.requestSeq?.toString();
+      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Received)?.trace({
+        phase: ZLinkMessageFlowPhase.Received,
+        surface: ZLinkDispatchErrorSurface.StreamSession,
+        messageKind: streamKind,
+        packetName: frameHeader?.name,
+        correlationId: streamCorr,
+        sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId)
+      });
       await session.onDispatch?.(decodedHeader, dispatchPayload);
+      flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Dispatched)?.trace({
+        phase: ZLinkMessageFlowPhase.Dispatched,
+        surface: ZLinkDispatchErrorSurface.StreamSession,
+        messageKind: streamKind,
+        packetName: frameHeader?.name,
+        correlationId: streamCorr,
+        sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId)
+      });
     } catch (error) {
+      const frameHeader = tryGetStreamFrameHeader(decodedHeader);
+      this.options.dispatchErrors?.report({
+        surface: ZLinkDispatchErrorSurface.StreamSession,
+        messageKind: frameHeader?.kind === ZLinkStreamMessageKind.Request
+          ? ZLinkDispatchMessageKind.Request
+          : ZLinkDispatchMessageKind.Send,
+        reason: ZLinkDispatchErrorReason.HandlerException,
+        action: frameHeader?.requestSeq === undefined
+          ? ZLinkDispatchErrorAction.Drop
+          : ZLinkDispatchErrorAction.ReplyError,
+        packetName: frameHeader?.name,
+        sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId),
+        correlationId: frameHeader?.requestSeq?.toString(),
+        error
+      });
       this.options.onError?.(error);
       await this.replyDispatchError(decodedHeader, error);
     } finally {

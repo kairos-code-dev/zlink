@@ -392,7 +392,30 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             return stage.whenComplete((ignored, error) -> {
                 currentDispatchHeader = null;
                 payload.close();
+                if (error == null
+                    && header.requestSequence().isEmpty()
+                    && flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowPhase.DISPATCHED)) {
+                    flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
+                        systems.zlink.framework.configuration.ZLinkMessageFlowPhase.DISPATCHED,
+                        systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.STREAM_SESSION,
+                        systems.zlink.framework.configuration.ZLinkDispatchMessageKind.SEND,
+                        header.packetName(), null, null,
+                        header.correlationId().orElse(null), null, null, null, null));
+                }
             });
+        }
+
+        void traceStreamReplied(ZLinkStreamHeader requestHeader) {
+            if (flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowPhase.REPLIED)) {
+                flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
+                    systems.zlink.framework.configuration.ZLinkMessageFlowPhase.REPLIED,
+                    systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.STREAM_SESSION,
+                    systems.zlink.framework.configuration.ZLinkDispatchMessageKind.REQUEST,
+                    requestHeader.packetName(), null, null,
+                    requestHeader.correlationId()
+                        .orElseGet(() -> requestHeader.requestSequence().map(String::valueOf).orElse(null)),
+                    null, null, null, null));
+            }
         }
 
         Optional<ZLinkStreamHeader> currentDispatchHeader() {
@@ -566,6 +589,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                         "session reply failed: " + routingId));
                 }
+                context.traceStreamReplied(current);
                 return CompletableFuture.completedFuture(null);
             } finally {
                 parts.forEach(Message::close);

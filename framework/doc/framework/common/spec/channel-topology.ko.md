@@ -99,7 +99,7 @@ view를 소유하는 모델"로 읽는 편이 맞다. 즉:
 - 같은 channel의 다른 `SpotNode`와만 router / pub/sub mesh를 만든다.
 - 다른 channel 호출은 attach된 `DEALER(client)` 경로로 푼다.
 - local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish할 때는
-  attach된 spot publisher client 경로를 따로 둔다.
+  SpotNode publisher handle 경로를 따로 둔다.
 - spot 타입 등록은 `AddSpotFactory<TSpot>()`처럼 타입 기반으로 두고,
   생성은 `CreateAsync<TSpot>(...)`처럼 그 타입으로 고른다.
 
@@ -187,10 +187,10 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 
 - `router` manual 연결도 endpoint 집합만 관리한다. 이 문서에서는 `connect()`
   호출 시 remote router id를 별도 파라미터로 받지 않는다.
-- attach된 channel client manual 연결은 endpoint 집합만 관리한다.
+- route bridge channel socket manual 연결은 endpoint 집합만 관리한다.
 - `pub/sub` manual 연결에서 등록하는 주소는 peer `SpotNode`의 mesh publish bind
   주소다. local `SUB/XSUB` 쪽이 그 주소로 붙는다.
-- attach된 spot publisher client manual 연결도 endpoint 집합만 관리한다.
+- SpotNode publisher handle manual 연결도 endpoint 집합만 관리한다.
   다만 이 주소는 peer mesh 주소가 아니라 외부 publish ingress 주소다.
 
 예를 들면 아래처럼 읽는 편이 맞다.

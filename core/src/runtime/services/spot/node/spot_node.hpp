@@ -66,6 +66,8 @@ class spot_node_t : public discovery_observer_t
     int set_pub_bind (const char *endpoint_);
     int set_router_bind (const char *endpoint_);
     int connect_peer_pub (const char *peer_pub_endpoint_);
+    int connect_peer_pub_rid (const zlink_routing_id_t *target_node_rid_,
+                              const char *peer_pub_endpoint_);
     int disconnect_peer_pub (const char *peer_pub_endpoint_);
     int disconnect_peer_pub_rid (const zlink_routing_id_t *target_node_rid_);
     int attach_discovery (discovery_t *discovery_);
@@ -238,6 +240,8 @@ class spot_node_t : public discovery_observer_t
     void stop_data_plane_sockets ();
     int start_data_plane ();
     int send_data_plane_command (const char *verb_, const char *arg_ = NULL) const;
+    int send_data_plane_command (const char *verb_,
+                                 const std::vector<std::string> &args_) const;
     int wait_facade_peer (socket_base_t *socket_) const;
     int wait_owned_socket_removals (int timeout_ms_);
     spot_pub_t *create_spot_pub_with_defaults (const pub_defaults_t &defaults_,

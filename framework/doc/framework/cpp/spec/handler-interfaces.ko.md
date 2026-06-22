@@ -195,7 +195,7 @@ app.add_zlink_framework([](auto &options) {
 current Spot 밖에서 target Spot을 직접 호출하는 별도 public client는 기본 표면에 두지
 않는다.
 
-attached channel client는 registry discovery 또는 attach별 manual endpoint로 peer를 얻는다.
+route bridge channel socket은 registry discovery 또는 attach별 manual endpoint로 peer를 얻는다.
 manual endpoint가 필요한 경우 `attach_channel_client(name, endpoint)`처럼 attach
 설정 안에서 지정한다.
 

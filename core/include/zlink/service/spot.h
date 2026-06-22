@@ -186,11 +186,16 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_pub_bind (void *node, con
 
 /**
  * @brief Connect to a peer SPOT node endpoint (mesh topology).
- *
- * Returns EBUSY if discovery is already attached.
  */
 ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_peer (void *node,
                                                                   const char *peer_endpoint);
+/**
+ * @brief Connect to a peer SPOT node endpoint and associate it with a target node RID.
+ */
+ZLINK_EXPORT zlink_connect_result_t
+zlink_spot_node_connect_peer_rid (void *node,
+                                  const zlink_routing_id_t *target_node_rid,
+                                  const char *peer_endpoint);
 
 /**
  * @brief Disconnect from a peer SPOT node endpoint.

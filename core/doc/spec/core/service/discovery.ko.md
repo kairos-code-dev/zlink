@@ -118,21 +118,17 @@ view를 제공합니다.
 - attach된 Discovery를 제거하면 그 view가 공급하던 automatic peer set도
   함께 빠집니다.
 
-### SpotNode channel dealer attach
+### SpotNode channel access migration (deprecated)
 
-`SpotNode`에서 다른 channel을 호출하려면 호출자가
-`zlink_spot_node_attach_channel_dealer()`로 `DEALER`를 attach합니다. 이 함수는
-`ZLINK_AUTO_CONNECT_CLIENT_SERVER` Discovery와 `DEALER` socket을 함께 받습니다.
-Discovery가 해당 channel의 peer set을 관리합니다.
+`zlink_spot_node_attach_channel_dealer()`와
+`zlink_spot_node_attach_channel_dealer_manual()`은 deprecated compatibility 표면이다.
+현재 구현은 인자 검증 뒤 `ENOTSUP`으로 실패하며, `SpotNode` 내부에 channel
+`DEALER` socket 상태를 만들지 않는다.
 
-- Discovery 하나는 하나의 고정 `channel_name`(channel) view를 가집니다.
-- 같은 `channel_name`에는 자동 attach와 수동 attach를 합쳐서 `DEALER`
-  하나만 등록할 수 있습니다. 중복은 `EBUSY`로 실패합니다.
-- 같은 Discovery handle을 둘 이상의 owner에 attach할 수 없습니다.
-- attach된 `DEALER`는 `SpotNode` 전용 자원으로 취급합니다. 소유권은 호출자가
-  유지하지만, 다른 곳에서 같은 socket을 일반 용도로 함께 써서는 안 됩니다.
-- Discovery 없이 수동으로 channel dealer를 직접 등록하려면
-  `zlink_spot_node_attach_channel_dealer_manual()`을 사용합니다.
+다른 channel을 통해 target `Spot`으로 send/request를 보내야 하면 channel runtime이
+소유한 `DEALER` 또는 `ROUTER` socket을 `zlink_spot_route_bridge_*` API로 bridge에
+연결한다. Discovery는 channel runtime이 peer set을 얻는 데 사용하고, `SpotNode`가
+channel socket을 직접 소유하지 않는다.
 
 ### SPOT Node
 

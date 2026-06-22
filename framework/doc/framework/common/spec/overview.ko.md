@@ -48,7 +48,7 @@ raw socket과 low-level discovery를 프레임워크 사용자가 직접 다루�
 - 서버 간 `request`
 - pub/sub
 - `SPOT` named instance 생성/조회와 현재 channel 안의 publish/subscribe
-- attach된 channel client를 통한 cross-channel send/request
+- route bridge channel socket을 통한 cross-channel send/request
 - local spot 인스턴스가 없는 외부 노드용 SPOT channel publish client
 - stream session
 - socket/discovery/registry/spot runtime event

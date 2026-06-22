@@ -24,7 +24,7 @@
 | `core/include/zlink/service/actor.h` | Actor 값 타입과 Actor result 구조체 |
 | `core/include/zlink/socket/api.h` | socket 생성, option, TLS, bind/connect, send/recv part substrate, request/reply, pub/sub, stream, dispatch event handler, socket callback type |
 | `core/include/zlink/eventing/api.h` | socket monitor, monitor snapshot, poll/poller, timer |
-| `core/include/zlink/service/spot.h` | SPOT handle, SPOT node, Actor operation, SPOT node attachment API |
+| `core/include/zlink/service/spot.h` | SPOT handle, SPOT node, Actor operation, route bridge, publisher handle |
 | `core/include/zlink/service_common.h` | service 계층 공통 조회 타입 |
 | `core/include/zlink/service/registry.h` | registry 생성, 구성, topology, query client, registry snapshot |
 | `core/include/zlink/service/discovery.h` | discovery 생성, registry 연결, SPOT/Actor resolve, discovery peer snapshot |
@@ -48,7 +48,7 @@ translation unit이 함께 include하더라도 내부 구현 계약이며 public
 | [service/README.ko.md](service/README.ko.md) | 서비스 계층 공통 개념과 문서 책임 분리 |
 | [service/registry.ko.md](service/registry.ko.md) | 서비스 레지스트리 생성, 구성, 클러스터링 |
 | [service/discovery.ko.md](service/discovery.ko.md) | 서비스 디스커버리, 구독, 피어 조회 |
-| [service/spot.ko.md](service/spot.ko.md) | SPOT 토픽 기반 PUB/SUB, routed 메시징 |
+| [service/spot.ko.md](service/spot.ko.md) | SPOT 토픽 기반 PUB/SUB, route bridge, routed 메시징 |
 | [polling.ko.md](polling.ko.md) | 프록시 헬퍼 및 기능 조회 |
 | [utilities.ko.md](utilities.ko.md) | 타이머, 스레드, 스톱워치, 아토믹 |
 

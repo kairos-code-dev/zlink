@@ -8,6 +8,14 @@
 
 # ZLink Framework ASP.NET Core Channel Messaging
 
+## 현재 구현 기준
+
+SPOT route를 받는 channel은 local `ROUTER` receive loop 안에서 core
+`ISpotRouteBridge` handoff를 함께 사용한다. 일반 channel packet은 기존 channel
+dispatcher가 처리하고, SPOT relay packet만 bridge가 소비한다. outbound `DEALER`나
+route mesh `ROUTER` socket은 channel runtime 소유이며, `SpotNode`에 직접 attach하지
+않는다.
+
 ## 1. 목표
 
 이 절에서는 사용자가 channel messaging 표면에서 어떤 경험을 갖길 바라는지, 그리고 그
@@ -1029,7 +1037,6 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 | `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath` | client 역할에 Discovery나 수동 연결이 없으면 시작 전에 실패한다. |
 | `ClientServerTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 client가 request와 send를 모두 처리한다. |
 | `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | Discovery 기반 client가 request와 send를 모두 처리한다. |
-| `FiltersAndHttpTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkChannelClient` | HTTP handler가 같은 DI container에서 `IZLinkChannelClient`를 받아 호출한다. |
 | `ZLinkAsyncSubmitterTests.Async_DrainsPendingItemFromReadyCallback` | async submitter가 ready callback에서 pending item을 비우고 중복 전송하지 않는다. |
 
 ---

@@ -416,7 +416,7 @@ channel 설정도 없을 때 전역 기본값을 사용한다.
 - active SPOT channel view는 `AddSpotMesh(channelName).UseDiscovery()`가
   정한다. `UseSpotDiscovery(...)`와 `AddSpotNode(...)`를 분리하는 방식은 호환 경로로만
   남기고, 새 샘플은 mesh 등록을 기준으로 작성한다.
-- `SpotNode`는 router, pub/sub, attach된 외부 호출 역할을 가진다.
+- `SpotNode`는 router, pub/sub, route bridge 기반 외부 호출 역할을 가진다.
 - local spot 인스턴스는 등록 이름으로 만들고, lifecycle 안에서 packet, subscribe,
   timer를 등록한다.
 - spot timer 는 framework 가 만든 managed scheduler 를 사용한다. user Spot timer 는
@@ -438,7 +438,7 @@ channel 설정도 없을 때 전역 기본값을 사용한다.
 - actor 코드는 `IZLinkClient`나 `IZLinkSpotClient`를 직접 고르지 않고,
   actor context를 통해 channel request/send와 client stream reply/send를 수행한다.
   context는 join 전에는 일반 channel client 경로를, join 후에는 현재 `Spot`에
-  attach된 channel client 경로를 선택한다.
+  route bridge channel socket 경로를 선택한다.
 - actor context는 stream 객체를 직접 노출하지 않고, client로 보내는 `Send(...)`와
   request에 응답하는 `Reply(...)` 같은 의도 중심 API를 제공한다.
 - actor를 완전히 제거하는 public API는 Entry Spot context에만 둔다. user Spot

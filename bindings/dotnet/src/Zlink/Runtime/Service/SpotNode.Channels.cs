@@ -50,6 +50,16 @@ internal sealed partial class SpotNode : ISpotNode
         ZlinkException.ThrowConnectIfError(rc);
     }
 
+    public void ConnectPeerRid(RoutingId targetNodeRid, string peerEndpoint)
+    {
+        BoundaryValidation.ValidateFixedUtf8(peerEndpoint, nameof(peerEndpoint));
+        EnsureNotDisposed();
+        ZlinkRoutingId nativeRid = targetNodeRid.ToNative();
+        int rc = NativeMethods.zlink_spot_node_connect_peer_rid(_handle,
+            ref nativeRid, peerEndpoint);
+        ZlinkException.ThrowConnectIfError(rc);
+    }
+
     public void DisconnectPeer(string peerEndpoint)
     {
         BoundaryValidation.ValidateFixedUtf8(peerEndpoint, nameof(peerEndpoint));

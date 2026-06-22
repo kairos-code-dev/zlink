@@ -28,6 +28,8 @@ public interface SpotNode extends AutoCloseable {
 
     void connectPeer(String peerEndpoint);
 
+    void connectPeerRid(RoutingId targetNodeRid, String peerEndpoint);
+
     void disconnectPeer(String peerEndpoint);
 
     void disconnectPeerRid(RoutingId targetNodeRid);

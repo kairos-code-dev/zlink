@@ -32,6 +32,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         nativeSpotNode.ConnectPeer(endpoint);
     }
 
+    public void ConnectPeer(RoutingId peerRid, string endpoint)
+    {
+        nativeSpotNode.ConnectPeerRid(peerRid, endpoint);
+    }
+
     public void DisconnectPeer(string endpoint)
     {
         nativeSpotNode.DisconnectPeer(endpoint);

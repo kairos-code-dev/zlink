@@ -188,7 +188,7 @@ automatic HWM calculation and is safe to change while the context is live.
 The profile selects the per-connection unit budget and size cap used by the
 automatic HWM planner. `SNDBUF` / `RCVBUF` default to `-1`, and auto-HWM
 profiles do not change these values automatically.
-For SPOT mesh internal sockets, `mesh-pub`, `mesh-xsub`, and `external-router`
+For SPOT mesh internal sockets, `mesh-pub`, `mesh-xsub`, and `routed-router`
 may further reduce the profile HWM through connection-count buckets when many
 peers are connected. That adjustment is a data-plane socket queue bound; it
 does not change the automatic HWM calculation for ordinary sockets. Bucket

@@ -6,6 +6,8 @@ public sealed class EventingContracts
 {
     [Fact]
     [ContractExample(
+        typeof(IZLinkMessageFlowControl),
+        typeof(IZLinkMessageFlowObserver),
         typeof(IZLinkMonitoringOptions),
         typeof(IZLinkRuntimeEvent),
         typeof(IZLinkRuntimeEventHandler<>),

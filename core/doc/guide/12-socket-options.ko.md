@@ -88,7 +88,7 @@ scaled_hwm = ceil(basis_hwm * basis_message_unit / effective_message_unit)
 
 자동 HWM의 최소값은 `1`이고 결과는 profile별 메시지 수 cap으로 제한된다.
 
-SPOT mesh 내부 소켓 중 `mesh-pub`, `mesh-xsub`, `external-router`는 연결 수가 많을 때 별도의
+SPOT mesh 내부 소켓 중 `mesh-pub`, `mesh-xsub`, `routed-router`는 연결 수가 많을 때 별도의
 connection bucket을 먼저 적용한다. bucket 값은 `4 KiB` 메시지 기준 HWM이며, 최종 HWM은 다음
 순서로 계산한다.
 

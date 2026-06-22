@@ -176,6 +176,13 @@ bool spot_runtime_t::external_route_id_matches (const std::string &peer_endpoint
     return external_routes.matches (peer_endpoint_, route_id_, route_endpoint_);
 }
 
+bool spot_runtime_t::external_route_id_for_endpoint (const std::string &peer_endpoint_,
+                                                     const std::string &route_endpoint_,
+                                                     std::string *out_) const
+{
+    return external_routes.route_id_for (peer_endpoint_, route_endpoint_, out_);
+}
+
 std::string spot_runtime_t::erase_external_route_id (const std::string &peer_endpoint_)
 {
     return external_routes.erase (peer_endpoint_);
@@ -327,16 +334,27 @@ int spot_runtime_t::ensure_healthy () const
 
 int spot_runtime_t::send_command (const char *verb_, const char *arg_) const
 {
+    std::vector<std::string> args;
+    if (arg_)
+        args.push_back (arg_);
+    return send_command (verb_, args);
+}
+
+int spot_runtime_t::send_command (const char *verb_, const std::vector<std::string> &args_) const
+{
     if (!data_ctrl_front) {
         errno = EFAULT;
         return -1;
     }
 
     scoped_lock_t lock (ctrl_sync);
-    if (send_ascii_frame (data_ctrl_front, verb_, arg_ ? ZLINK_SNDMORE : 0) != 0)
+    if (send_ascii_frame (data_ctrl_front, verb_, args_.empty () ? 0 : ZLINK_SNDMORE) != 0)
         return -1;
-    if (arg_ && send_ascii_frame (data_ctrl_front, arg_, 0) != 0)
-        return -1;
+    for (size_t i = 0; i < args_.size (); ++i) {
+        const int flags = i + 1 < args_.size () ? ZLINK_SNDMORE : 0;
+        if (send_ascii_frame (data_ctrl_front, args_[i], flags) != 0)
+            return -1;
+    }
 
     int reply_errno = 0;
     if (!spot_node_access_t::recv_ctrl_reply (data_ctrl_front, &reply_errno)) {

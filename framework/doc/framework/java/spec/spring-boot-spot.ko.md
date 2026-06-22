@@ -8,6 +8,15 @@
 
 # ZLink Framework Spring Boot SPOT
 
+## 현재 구현 기준
+
+`acceptSpotRoutesFromChannel(...)`과 Spot egress runtime은 core legacy
+`SpotNode` attach/connect API를 호출하지 않는다. Java framework runtime은
+`bindings/java`의 public `createRouteBridge()` / `SpotRouteBridge` 표면으로
+channel socket을 bridge에 연결한다. channel socket은 channel runtime이 계속
+소유하며, bridge는 SPOT relay packet만 분류한다. local `SpotNode` topic plane으로
+외부 publish가 필요하면 raw `PUB` attach가 아니라 public publisher handle을 사용한다.
+
 ## 1. 방향
 
 `SPOT`은 별도 raw runtime으로 노출하기보다, `Spring Boot` bean lifecycle 안에서
@@ -15,7 +24,7 @@
 
 - `addSpotMesh(...).useDiscovery(...addRegistryEndpoint...)` 기준의 discovery 등록
 - spot node 설정 등록과, 그에 따른 `ZLinkSpotManager`/`ZLinkSpotOutbound` 등 capability bean 조건부 노출
-- current channel publish/subscribe와 attach된 channel client 경로
+- current channel publish/subscribe와 route bridge channel socket 경로
 - local spot 인스턴스가 없는 외부 노드용 publisher client 경로
 - Entry Spot과 user Spot factory
 - accepted route channel과 Spot route egress
@@ -25,7 +34,7 @@
 
 - `SpotNode`는 channel 이름을 직접 소유하지 않고, attach된 discovery view가 active
   channel 범위를 정한다.
-- 역할은 `router`, `pub/sub`, attach된 channel client, attach된 spot
+- 역할은 `router`, `pub/sub`, route bridge channel socket, attach된 spot
   publisher client로 나눠서 설명한다.
 - spot factory는 Spot type 기준으로 등록하고, 같은 Spot type 재등록은 덮어쓰지 않고
   예외로 본다.
@@ -66,7 +75,7 @@ public class SpotConfig implements ZLinkFrameworkConfigurer {
 - `ZLinkEntrySpot`
 - `ZLinkSpotActor*Handler`
 - current channel publish/subscribe
-- attach된 channel client를 통한 다른 channel send/request
+- route bridge channel socket을 통한 다른 channel send/request
 - local spot 인스턴스가 없는 외부 노드용 `ZLinkSpotPublisherClient`
 - 필요할 때만 `spot-to-spot` routed send/request
 

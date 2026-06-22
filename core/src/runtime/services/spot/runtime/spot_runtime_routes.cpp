@@ -45,6 +45,31 @@ bool spot_runtime_external_routes_t::matches (const std::string &peer_endpoint_,
            && endpoint_it->second == expected_endpoint;
 }
 
+bool spot_runtime_external_routes_t::route_id_for (const std::string &peer_endpoint_,
+                                                   const std::string &route_endpoint_,
+                                                   std::string *out_) const
+{
+    if (peer_endpoint_.empty () || !out_)
+        return false;
+
+    scoped_lock_t lock (sync);
+    std::map<std::string, std::string>::const_iterator route_it =
+      route_ids_by_endpoint.find (peer_endpoint_);
+    if (route_it == route_ids_by_endpoint.end () || route_it->second.empty ())
+        return false;
+
+    const std::string expected_endpoint =
+      route_endpoint_.empty () ? peer_endpoint_ : route_endpoint_;
+    std::map<std::string, std::string>::const_iterator endpoint_it =
+      route_endpoints_by_endpoint.find (peer_endpoint_);
+    if (endpoint_it == route_endpoints_by_endpoint.end ()
+        || endpoint_it->second != expected_endpoint)
+        return false;
+
+    *out_ = route_it->second;
+    return true;
+}
+
 std::string spot_runtime_external_routes_t::erase (const std::string &peer_endpoint_)
 {
     scoped_lock_t lock (sync);

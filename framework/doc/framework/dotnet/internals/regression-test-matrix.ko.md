@@ -102,8 +102,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 |----|------|-------------|-----------|
 | DERR-001, DERR-007, DERR-011, DERR-014 | `unit` | `Zlink.Framework.UnitTests/Runtime/UnhandledDispatchPolicyTests.cs` | channel request handler 없음은 error reply와 observer event, channel send handler 없음은 drop과 observer event, observer 예외는 원래 dispatch 결과를 깨지 않음 |
 | DERR-002, DERR-008 | `unit` | `Zlink.Framework.UnitTests/Runtime/UnhandledDispatchPolicyTests.cs` | route request handler 없음은 error reply, route send handler 없음은 drop으로 끝나며 observer event가 남음 |
-| DERR-003, DERR-004, DERR-009, DERR-010, DERR-016 | `unit`, `integration-single-process` | `Zlink.Framework.UnitTests/Runtime/UnhandledDispatchPolicyTests.cs`, `Zlink.Framework.E2ETests/Spot` | SPOT route, subscription, actor dispatch 실패가 request면 error reply 또는 caller-visible error, one-way면 drop과 observer event로 끝남 |
-| DERR-005, DERR-006, DERR-013, DERR-015 | `unit`, `integration-single-process` | `Zlink.Framework.UnitTests/Runtime/UnhandledDispatchPolicyTests.cs`, `Zlink.Framework.E2ETests/Channels` | decode 실패와 handler 예외는 error reply 또는 관측 가능한 drop으로 끝나며, observer 미등록 시에도 기본 로그와 metric이 남음 |
+| DERR-003, DERR-004, DERR-009, DERR-010, DERR-016 | `unit` | `Zlink.Framework.UnitTests/Runtime/UnhandledDispatchPolicyTests.cs` | SPOT route, subscription, actor dispatch 실패가 request면 error reply 또는 caller-visible error, one-way면 drop과 observer event로 끝남 |
+| DERR-005, DERR-006, DERR-013, DERR-015 | `unit` | `Zlink.Framework.UnitTests/Runtime/UnhandledDispatchPolicyTests.cs` | decode 실패와 handler 예외는 error reply 또는 관측 가능한 drop으로 끝나며, observer 미등록 시에도 기본 로그와 metric이 남음 |
 
 ## 4.2 DI Capability Regression 항목
 
@@ -157,9 +157,9 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | SPOT timer cancel | `integration-single-process` | `CancelAsync()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다 |
 | outbound 전용 외부 publish client | `integration-multi-process` | target SPOT[^spot] channel에 publish가 성공한다 |
 | Spot route channel acceptance | `unit` | fanout/dealer mesh/ambiguous/missing router/missing peer source 구성을 startup validation에서 거부한다 |
-| Spot route channel manual connect | `integration-single-process` | `AcceptSpotRoutesFromChannel` 수동 endpoint가 binding public API를 통해 router channel peer로 적용된다 |
-| Spot route channel transport | `integration-single-process` | caller가 명시한 local egress channel이 channel type에 맞는 ROUTER 또는 DEALER socket으로 egress 설정의 target SpotNode ingress channel을 통해 target Spot으로 routed send/request를 보낸다 |
-| route mesh Spot egress target peer 선택 | `integration-single-process` | source process가 target route channel 을 local registration 으로 갖지 않아도, 수동 연결과 registry metadata 의 target SpotNode ingress channel / ROUTER `RoutingId`로 route mesh egress target peer 를 선택한다 |
+| Spot route channel manual connect | `unit` | `AcceptSpotRoutesFromChannel` 수동 endpoint가 core legacy router-channel peer API가 아니라 public route bridge 설정으로 적용된다 |
+| Spot route channel transport | `unit` | caller가 명시한 local egress channel이 channel type에 맞는 ROUTER 또는 DEALER socket을 bridge endpoint로 사용해 target Spot으로 routed send/request를 보낸다 |
+| route mesh Spot egress target peer 선택 | `unit` | source process가 target route channel 을 local registration 으로 갖지 않아도, 수동 연결과 registry metadata 의 target SpotNode ingress channel / ROUTER `RoutingId`로 route mesh egress target peer 를 선택한다 |
 | Spot route egress 역할 validation | `unit` | routed Spot egress 는 client-server client 역할 또는 route mesh transport 에서만 켤 수 있고 fanout/dealer mesh 에서는 startup validation 오류다 |
 | spot 종료 후 scope 정리 | `integration-single-process` | 이후 callback이 발생하지 않고 dispose도 정상 완료된다 |
 | actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddHandler(...)`로 등록한 actor handler가 join된 `Spot` 실행 문맥에서 실행된다 |
@@ -196,7 +196,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync()`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |
-| spot context channel request 경로 | `integration-single-process` | `Spot.Context.Outbound.RequestToChannel(...)`이 현재 Spot 에 attach 된 channel client 경로를 사용한다 |
+| spot context channel request 경로 | `unit` | `Spot.Context.Outbound.RequestToChannel(...)`이 현재 Spot 에 설정된 channel egress bridge 경로를 사용한다 |
 | spot context routed send/request 표면 | `contract`, `integration-single-process` | `IZLinkSpotOutbound`가 `SendToSpot`, `RequestToSpot`, `Publish`, `SendToChannel`, `RequestToChannel`을 모두 노출하고, `Spot.Context.Outbound.SendToSpot(...)` / `RequestToSpot(...)`이 route transport를 사용한다 |
 | actor bound session send API | `integration-single-process` | actor는 `Context.BoundSession.Send(...)`로 client stream에 push하고, `IZLinkStream`을 직접 노출받지 않는다 |
 | actor request handler reply | `unit` | actor request packet은 actor request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |

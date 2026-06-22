@@ -8,6 +8,14 @@
 
 # ZLink Framework Spring Boot Channel Messaging
 
+## 현재 구현 기준
+
+SPOT route를 받는 channel은 local `ROUTER` receive loop 안에서 core
+`SpotRouteBridge` handoff를 함께 사용한다. 일반 channel packet은 기존 channel
+dispatcher가 처리하고, SPOT relay packet만 bridge가 소비한다. outbound `DEALER`나
+route mesh `ROUTER` socket은 channel runtime 소유이며, `SpotNode`에 직접 attach하지
+않는다.
+
 ## 1. 목표
 
 `Spring Boot` 애플리케이션 안에서 아래 경험을 제공하는 것이 목표다.

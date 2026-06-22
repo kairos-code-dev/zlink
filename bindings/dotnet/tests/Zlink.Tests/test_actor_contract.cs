@@ -241,6 +241,67 @@ public sealed class test_actor_contract
     }
 
     [Fact]
+    public async Task connect_peer_rid_routes_entry_spot_join_to_target_node_rid()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var sourceContext = Zlink.CreateContext();
+        using var targetContext = Zlink.CreateContext();
+        using var sourceNode = sourceContext.CreateSpotNode(SpotNodeMode.Routed);
+        using var targetNode = targetContext.CreateSpotNode(SpotNodeMode.Routed);
+        using var entry = targetNode.EntrySpot();
+
+        RoutingId sourceRid = CoreTestSupport.RoutingIdUtf8("source-rid-peer");
+        RoutingId targetRid = CoreTestSupport.RoutingIdUtf8("target-rid-peer");
+        string sourceEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "connect-peer-rid-source");
+        string targetEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "connect-peer-rid-target");
+
+        sourceNode.SetRoutingId(sourceRid);
+        targetNode.SetRoutingId(targetRid);
+        sourceNode.SetRouterBind(sourceEndpoint);
+        targetNode.SetRouterBind(targetEndpoint);
+        sourceNode.ConnectPeerRid(targetRid, targetEndpoint);
+        Thread.Sleep(300);
+
+        IActor actor = sourceNode.CreateActor($"actor-{Guid.NewGuid():N}");
+        using Message request = Message.From("join:remote-entry");
+        Task<(ActorJoinEntrySpotResult Result, IReadOnlyList<Message> Parts)>
+            joinTask = sourceNode.JoinActorEntrySpot(actor.Ref, targetRid, request)
+                .Timeout(TimeSpan.FromSeconds(5))
+                .Async();
+
+        ActorJoinRequest? joinRequest = null;
+        Assert.True(CoreTestSupport.WaitUntil(() =>
+        {
+            joinRequest = entry.RecvActorJoin(RecvFlags.DontWait);
+            return joinRequest != null;
+        }, 5000));
+
+        Assert.Equal(actor.Ref.ActorId, joinRequest!.Info.TargetActor.ActorId);
+        joinRequest.Message.Dispose();
+        using Message reply = Message.From("remote-entry-ok");
+        entry.ReplyActorJoin(joinRequest, joinResultCode: 0)
+            .Message(reply)
+            .Submit();
+
+        (ActorJoinEntrySpotResult result, IReadOnlyList<Message> parts) =
+            await joinTask.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(RequestResult.Ok, result.Result);
+        Assert.Equal(targetRid, result.TargetNodeRid);
+        Assert.Single(parts);
+        Assert.Equal("remote-entry-ok", parts[0].GetString());
+        foreach (Message part in parts)
+            part.Dispose();
+        await targetNode.DestroyActor(result.Actor)
+            .Timeout(TimeSpan.FromSeconds(5))
+            .Async();
+    }
+
+    [Fact]
     public void remote_actor_ref_generation_zero_is_not_invalid()
     {
         RoutingId nodeRid = CoreTestSupport.RoutingIdUtf8("remote-node");

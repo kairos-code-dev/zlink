@@ -20,6 +20,9 @@ class spot_runtime_external_routes_t
     bool matches (const std::string &peer_endpoint_,
                   const std::string &route_id_,
                   const std::string &route_endpoint_) const;
+    bool route_id_for (const std::string &peer_endpoint_,
+                       const std::string &route_endpoint_,
+                       std::string *out_) const;
     std::string erase (const std::string &peer_endpoint_);
     std::vector<std::string> clear ();
     size_t size () const;

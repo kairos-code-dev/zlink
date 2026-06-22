@@ -13,8 +13,8 @@ how a caller can start from only `spot_rid` and obtain the destination
 
 ## Document Roles
 
-- [spot.md](spot.md): SPOT publish/subscribe, channel send/request, and routed
-  send/request/reply function contracts
+- [spot.md](spot.md): SPOT publish/subscribe, route bridge, publisher handle,
+  and routed send/request/reply function contracts
 - [registry.md](registry.md): the final rule for which `SpotNode` currently owns
   a `spot_rid`, plus register/unregister, overwrite, and expiration rules
 - [discovery.md](discovery.md): how cached lookup works close to the caller,
@@ -50,10 +50,10 @@ also the **service scope** used by managed auto-connect and logical lookup.
 SPOT messaging offers two ways to specify a destination.
 
 - channel call mode:
-  the caller specifies only a `channel_name` and the attached `DEALER` sends
-  the request to one of that channel's `ROUTER(server)` set.
-  Uses `zlink_spot_send_channel()` / `zlink_spot_request_channel()` on the
-  `Spot` facade.
+  the caller specifies a `channel_name` and target `Spot`, and the
+  `Spot route bridge` sends through a caller-owned channel `DEALER` or
+  `ROUTER` socket. Uses `zlink_spot_route_bridge_send()` /
+  `zlink_spot_route_bridge_request()`.
 - direct SPOT addressing:
   the caller knows both `dest_node_rid` and `dest_spot_rid` and passes them to
   the direct-addressing functions. These exist on both the `Spot` facade

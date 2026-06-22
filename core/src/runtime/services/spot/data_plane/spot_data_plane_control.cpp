@@ -305,13 +305,20 @@ static int handle_bind_pub_command (const ctrl_command_context_t &ctx_, const st
 }
 
 static int handle_connect_peer_pub_command (const ctrl_command_context_t &ctx_,
-                                            const std::string &arg_)
+                                            const std::vector<std::string> &args_)
 {
+    if (args_.size () < 2 || args_[1].empty ())
+        return send_ctrl_errno_reply (ctx_, EINVAL);
+
+    const std::string &arg_ = args_[1];
+    const std::string peer_rid = args_.size () > 2 ? args_[2] : std::string ();
+    const bool existing_peer = ctx_.state->peer_ctrl_endpoints.find (arg_)
+                               != ctx_.state->peer_ctrl_endpoints.end ();
     std::string ca;
     std::string host;
     int trust = 0;
     spot_node_access_t::snapshot_tls_client_config (ctx_.node, &ca, &host, &trust);
-    if ((ctx_.mesh_xsub
+    if ((!existing_peer && ctx_.mesh_xsub
          && (spot_node_access_t::apply_tls_client (ctx_.node, ctx_.mesh_xsub, ca, host, trust) != 0
              || ctx_.mesh_xsub->connect (arg_.c_str ()) != 0))
         || spot_node_access_t::apply_tls_client (ctx_.node, ctx_.peer_ctrl_pub, ca, host, trust)
@@ -321,7 +328,7 @@ static int handle_connect_peer_pub_command (const ctrl_command_context_t &ctx_,
         return send_ctrl_errno_reply (ctx_, errno);
     }
 
-    if (ctx_.mesh_xsub
+    if (!existing_peer && ctx_.mesh_xsub
         && spot_data_plane_protocol_t::send_subscription_update (
              ctx_.mesh_xsub, spot_control_protocol::bootstrap_ctrl_descriptor_topic, true)
              != 0) {
@@ -338,6 +345,22 @@ static int handle_connect_peer_pub_command (const ctrl_command_context_t &ctx_,
         if (ctx_.mesh_xsub)
             (void) ctx_.mesh_xsub->term_endpoint (arg_.c_str ());
         return send_ctrl_errno_reply (ctx_, saved_errno);
+    }
+
+    if (ctx_.runtime->routed_router && !peer_rid.empty ()) {
+        if (!ctx_.runtime->external_route_id_matches (arg_, peer_rid, arg_)) {
+            if (ctx_.runtime->routed_router->setsockopt (ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID,
+                                                         peer_rid.data (), peer_rid.size ())
+                  != 0
+                || ctx_.runtime->routed_router->connect (arg_.c_str ()) != 0) {
+                const int saved_errno = errno != 0 ? errno : EIO;
+                if (!existing_peer && ctx_.mesh_xsub)
+                    (void) ctx_.mesh_xsub->term_endpoint (arg_.c_str ());
+                (void) ctx_.runtime->routed_router->term_endpoint (arg_.c_str ());
+                return send_ctrl_errno_reply (ctx_, saved_errno);
+            }
+        }
+        ctx_.runtime->set_external_route_id (arg_, peer_rid, arg_);
     }
 
     std::string peer_ctrl_endpoint;
@@ -520,7 +543,7 @@ int spot_data_plane_protocol_t::handle_ctrl_command (socket_base_t *ctrl_,
         return handle_bind_pub_command (ctx, arg);
 
     if (spot_control_protocol::command_is (verb, spot_control_protocol::cmd_connect_peer_pub))
-        return handle_connect_peer_pub_command (ctx, arg);
+        return handle_connect_peer_pub_command (ctx, frames_);
 
     if (spot_control_protocol::command_is (
           verb, spot_control_protocol::cmd_replay_handle_state_subscriptions)

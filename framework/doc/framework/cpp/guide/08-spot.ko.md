@@ -2,6 +2,14 @@
 
 # 8. SPOT
 
+## 현재 구현 기준
+
+외부 channel에서 특정 Spot으로 send/request를 보낼 때는 framework가 core
+`spot_route_bridge_t`를 내부에서 사용한다. 사용자는 `accept_routes_from_channel(...)`과
+egress 설정 이름을 맞추면 되고, raw `DEALER`, `ROUTER`, `PUB` socket을 `SpotNode`에
+attach하지 않는다. Spot에서 외부 pub/sub channel로 publish할 때는 일반 channel
+publisher client를 주입해서 사용한다.
+
 ## 1. SPOT이 하는 일
 
 SPOT은 room·stage·zone처럼 **"장소" 하나의 상태와 참가자를 묶는 실행 단위**다.

@@ -25,7 +25,9 @@ struct queued_join_request_t
         indexed (false)
     {
         memset (&target_node_rid, 0, sizeof (target_node_rid));
+        memset (&source_node_rid, 0, sizeof (source_node_rid));
         memset (&source_spot_rid, 0, sizeof (source_spot_rid));
+        memset (&source_actor_ref, 0, sizeof (source_actor_ref));
         memset (&target_actor_ref, 0, sizeof (target_actor_ref));
     }
 
@@ -41,7 +43,9 @@ struct queued_join_request_t
     zlink::spot_node_t *target_node;
     bool remote;
     zlink_routing_id_t target_node_rid;
+    zlink_routing_id_t source_node_rid;
     zlink_routing_id_t source_spot_rid;
+    zlink_actor_ref_t source_actor_ref;
     zlink_actor_ref_t target_actor_ref;
     zlink_actor_join_spot_handler_fn handler;
     zlink_actor_join_entry_spot_handler_fn entry_handler;

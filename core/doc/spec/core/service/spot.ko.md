@@ -292,8 +292,8 @@ zlink_config_result_t zlink_spot_node_internal_sockets(
   `snapshot.auto_hwm_unit_budget_bytes`, `snapshot.auto_hwm_size_cap`,
   `snapshot.auto_hwm_socket_message_slots`는 진단용 자동 HWM planner 결과다.
 - 현재 SPOT topology의 주요 node socket 이름은 `mesh-pub`, `mesh-xsub`,
-  `external-router`다. `publish_ingress_queue`, `routed_send_queue`,
-  `external_router_ingress_queue`는 socket 없이 런타임 큐로 동작하며 snapshot에
+  `routed-router`다. `publish_ingress_queue`, `routed_send_queue`,
+  `routed_router_ingress_queue`는 socket 없이 런타임 큐로 동작하며 snapshot에
   포함되지 않는다.
 - `PUBSUB` mode에서는 routed socket이 생성되지 않고, `ROUTED` mode에서는 topic
   socket이 생성되지 않는다. snapshot 호출은 꺼진 plane을 활성화하지 않는다.
@@ -309,6 +309,10 @@ zlink_config_result_t zlink_spot_node_set_pub_bind(
   const char *endpoint);
 zlink_connect_result_t zlink_spot_node_connect_peer(void *node,
                                                     const char *peer_endpoint);
+zlink_connect_result_t zlink_spot_node_connect_peer_rid(
+  void *node,
+  const zlink_routing_id_t *target_node_rid,
+  const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
                                                        const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(
@@ -330,18 +334,22 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
   `ZLINK_CONFIG_INVALID_STATE`와 `EBUSY`로 실패한다.
 - `zlink_spot_node_connect_peer()`와 `zlink_spot_node_disconnect_peer()`는
   endpoint를 알고 있는 수동 mesh 연결에 쓴다.
+- `zlink_spot_node_connect_peer_rid()`는 endpoint로 peer node에 연결하면서
+  그 endpoint 뒤의 target node routing id를 함께 등록한다. 이 정보는 routed
+  delivery가 어느 node RID로 보낼지 결정할 때 사용한다.
 - `zlink_spot_node_disconnect_peer_rid()`는 target node routing id를 기준으로
   peer node 연결을 종료한다. target node 아래의 개별 spot routing id는 이
   API의 대상이 아니다.
-- discovery가 이미 attach된 node에서 `connect_peer()` 또는
-  `disconnect_peer()`를 호출하면 `EBUSY`로 실패한다.
+- discovery가 attach된 node에서도 discovery reconciler는 같은 peer 연결 API를
+  사용할 수 있다. 호출자는 discovery가 관리하는 endpoint를 직접 추가하거나
+  제거하지 않고 registry/discovery 설정으로 연결 상태를 바꾼다.
 - `Spot` facade에는 별도 peer rid disconnect 함수가 없다. peer 연결은
   `SpotNode` runtime이 소유하기 때문이다.
 - `zlink_spot_node_attach_discovery()`는 SPOT channel view를 제공하는
   discovery만 받는다.
 - node에는 한 번에 하나의 active SPOT discovery view만 둘 수 있다.
 
-### Router channel peer 연결
+### Router channel peer 연결 (deprecated)
 
 ```c
 zlink_connect_result_t zlink_spot_node_connect_router_channel_peer(
@@ -371,38 +379,23 @@ zlink_config_result_t zlink_spot_node_attach_router_channel_discovery(
   void *discovery);
 ```
 
-이 API들은 `SpotNode`의 routed router를 router 역할이 있는 channel의
-`ROUTER` peer에 연결한다. 연결된 router channel은
-`zlink_router_send_spot_part()` 또는 `zlink_router_request_spot_part()`로
-target node routing id와 target spot routing id를 지정해 local `Spot`으로
-메시지를 보낼 수 있다.
+이 API들은 이전 설계에서 `SpotNode`가 router 역할이 있는 channel의 `ROUTER`
+peer에 직접 연결되도록 하던 표면이다. 현재 공개 심볼은 deprecated 기간 동안
+남지만, 구현은 channel socket을 `SpotNode` 내부 상태로 등록하지 않는다.
+유효한 인자를 넘겨도 `ENOTSUP`으로 실패한다. target `Spot`으로 channel을 통해
+메시지를 보내야 하면 `zlink_spot_route_bridge_*` API를 사용한다.
 
 - `channel_name`은 router channel peer 집합을 구분하는 이름이다. `NULL`이나
   빈 문자열은 `EINVAL`이다.
 - `endpoint`는 router channel의 공개 `ROUTER` endpoint다. 호출자는 내부 endpoint
   파생 규칙을 알 필요가 없고, 파생 endpoint를 넘겨서는 안 된다.
-- routed mode가 없는 node에서는 `ENOTSUP`으로 실패한다.
-- 같은 `(channel_name, endpoint)` 수동 connect는 성공 no-op이다.
-- discovery가 붙은 같은 channel에 수동 peer를 추가하려 하면 `EBUSY`다.
-- 없는 수동 endpoint를 disconnect하면 `ENOENT`다.
-- `zlink_spot_node_attach_router_channel_discovery()`는 route mesh 또는
-  client/server router channel view를 제공하는 discovery만 받는다. channel 이름이
-  discovery의 channel view와 다르면 `EINVAL`이다.
-- 같은 channel에서 수동 peer와 discovery peer source는 섞을 수 없다.
-- `zlink_spot_node_connect_router_channel_peer_rid()`는 routing id를 명시적으로
-  지정해 연결하는 형태다. 결과 peer entry가 알려진 routing id에 즉시 묶이므로
-  첫 reply가 관측되기 전이라도 snapshot 조회와 rid 기반 disconnect가
-  매끄럽게 동작한다.
-- `zlink_spot_node_disconnect_router_channel_peer_rid()`는 router channel peer의
-  routing id로 연결을 끊는다. SPOT mesh peer와 router channel peer는 별도 peer
-  종류로 조회된다.
+- 인자 검증은 유지한다. handle, channel name, endpoint, routing id가 잘못되면
+  기존 invalid argument 오류가 먼저 나온다.
+- 인자가 유효하면 `ENOTSUP`으로 실패한다.
+- 이 API들은 socket을 생성하거나 connect/disconnect하지 않는다.
+- 이 API들은 `SpotNode` 내부에 외부 channel peer 상태를 만들지 않는다.
 
-이 계약은 target SpotNode 쪽 ingress 연결만 정의한다. framework 의 handler group,
-DI client, local egress channel 선택은 core 서비스 계약이 아니다. 상위 계층이
-egress client 를 제공하더라도, core에는 router channel peer와 routed Spot
-send/request 오류 의미만 반영한다.
-
-### Channel 호출용 socket 등록
+### Channel 호출용 socket 등록 (deprecated)
 
 ```c
 zlink_config_result_t zlink_spot_node_attach_channel_dealer(
@@ -420,19 +413,188 @@ zlink_config_result_t zlink_spot_node_attach_pub_ingress(
   void *pub);
 ```
 
-- `attach_channel_dealer()`는 discovery 기반 channel 대상 집합에 붙어 있는
-  `DEALER`를 node에 등록한다.
-- `attach_channel_dealer_manual()`은 호출자가 직접 connect를 끝낸 `DEALER`를
-  지정한 `channel_name` 아래에 등록한다.
-- 같은 channel 이름에는 자동 attach와 수동 attach를 합쳐서 `DEALER` 하나만
-  등록할 수 있다. 중복 등록은 `EBUSY`다.
-- attach 함수는 socket 생성이나 connect를 대신하지 않는다.
-- attach된 `DEALER`는 `SpotNode` 전용 자원이다. 소유권은 호출자가 유지하지만,
-  attach 뒤에는 다른 owner가 같은 socket을 일반 용도로 함께 써서는 안 된다.
-- `zlink_spot_node_attach_pub_ingress()`는 외부 일반 `PUB`를 `Spot` 입력 경로에
-  연결한다.
-- ingress `PUB`는 node당 하나만 등록할 수 있다. 두 번째 등록은 `EBUSY`다.
-- ingress `PUB`도 `SpotNode` 전용 자원으로 취급한다.
+- 이 API들은 이전 설계에서 외부 `DEALER` 또는 `PUB` socket을 `SpotNode`에
+  직접 넘기던 표면이다.
+- 현재 구현은 인자 검증 뒤 `ENOTSUP`으로 실패한다.
+- `SpotNode`는 외부 channel `DEALER`, route mesh `ROUTER`, 또는 raw `PUB`
+  socket을 내부 소유 상태로 보관하지 않는다.
+- target `Spot`으로 client/server 또는 route mesh channel을 통해 send/request를
+  보내려면 `zlink_spot_route_bridge_*` API를 사용한다.
+- local `SpotNode` topic plane으로 publish하려면 `zlink_spot_node_publisher_*`
+  API를 사용한다.
+
+### SPOT route channel bridge
+
+```c
+typedef struct zlink_spot_route_bridge_options_t {
+  uint32_t struct_size;
+  int default_request_timeout_ms;
+  int error_reply_policy;
+  int receive_mode;
+} zlink_spot_route_bridge_options_t;
+
+typedef struct zlink_spot_route_bridge_endpoint_options_t {
+  uint32_t struct_size;
+  uint32_t capabilities;
+  int inbound_relay_policy;
+} zlink_spot_route_bridge_endpoint_options_t;
+
+typedef struct zlink_spot_route_bridge_summary_t {
+  uint32_t struct_size;
+  uint32_t attached_channel_count;
+  uint64_t pending_request_count;
+  uint64_t rejected_inbound_count;
+  uint64_t malformed_inbound_count;
+  uint64_t routed_send_failure_count;
+} zlink_spot_route_bridge_summary_t;
+
+void *zlink_spot_route_bridge_new(
+  void *ctx,
+  void *spot_node,
+  const zlink_spot_route_bridge_options_t *options);
+
+int zlink_spot_route_bridge_attach_dealer_channel(
+  void *bridge,
+  const char *channel_name,
+  void *dealer_socket,
+  const zlink_spot_route_bridge_endpoint_options_t *options);
+
+int zlink_spot_route_bridge_attach_router_channel(
+  void *bridge,
+  const char *channel_name,
+  void *router_socket,
+  const zlink_spot_route_bridge_endpoint_options_t *options);
+
+int zlink_spot_route_bridge_set_target_node(
+  void *bridge,
+  const char *channel_name,
+  const zlink_routing_id_t *target_node_rid);
+
+int zlink_spot_route_bridge_send(
+  void *bridge,
+  const char *channel_name,
+  const zlink_routing_id_t *target_spot_rid,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_send_flags_t flags);
+
+int zlink_spot_route_bridge_request(
+  void *bridge,
+  const char *channel_name,
+  const zlink_routing_id_t *target_spot_rid,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_reply_handler_fn callback,
+  void *user_data,
+  zlink_send_flags_t flags,
+  uint32_t timeout_ms);
+```
+
+bridge는 caller가 소유한 channel socket과 `SpotNode`의 routed plane 사이를
+연결하는 handle이다. bridge는 자기 상태만 소유하며, attach된 `DEALER` 또는
+`ROUTER` socket을 닫지 않는다.
+
+- `zlink_spot_route_bridge_new()`는 `ctx`와 `spot_node`가 유효하지 않으면
+  `EFAULT`로 실패한다.
+- `default_request_timeout_ms`는 `request()` 호출의 `timeout_ms`가 `0`일 때
+  쓰는 기본 timeout이다.
+- `attach_dealer_channel()`은 `DEALER` socket만 받는다.
+- `attach_router_channel()`은 `ROUTER` socket만 받는다.
+- 같은 `channel_name`을 두 번 attach하면 `EBUSY`다.
+- endpoint option의 `capabilities`가 `0`이면 `ZLINK_SPOT_ROUTE_BRIDGE_ROUTE_ONLY`
+  로 해석한다.
+- `ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE`는 SPOT relay packet의 egress와
+  SPOT relay ingress를 허용한다.
+- `ZLINK_SPOT_ROUTE_BRIDGE_CAP_CHANNEL_INBOUND`는 같은 endpoint가 일반 channel
+  inbound packet도 받을 수 있음을 표시한다. bridge는 일반 channel packet을
+  처리하지 않고 `handled=false`로 호출자에게 돌려준다.
+- `send()`와 `request()`는 `target_spot_rid`와 channel 이름으로 target `Spot`을
+  지정한다. `ROUTER` endpoint는 먼저 `set_target_node()`로 target node routing
+  id를 지정해야 한다.
+- `request()`는 callback을 통해 reply를 전달한다. 명시적 `timeout_ms`가 `0`이면
+  bridge 기본 timeout을 사용한다.
+
+수신 handoff API는 channel runtime이 socket에서 이미 받은 frame을 bridge에 넘길 때
+사용한다.
+
+```c
+int zlink_spot_route_bridge_handle_router_received(
+  void *bridge,
+  const char *channel_name,
+  const zlink_routing_id_t *source_node_rid,
+  zlink_msg_t *parts,
+  size_t part_count,
+  bool *handled);
+
+int zlink_spot_route_bridge_handle_router_received_with_metadata(
+  void *bridge,
+  const char *channel_name,
+  const zlink_routing_id_t *source_node_rid,
+  uint64_t request_seq,
+  zlink_msg_t *parts,
+  size_t part_count,
+  bool *handled);
+
+int zlink_spot_route_bridge_handle_dealer_received(
+  void *bridge,
+  const char *channel_name,
+  zlink_msg_t *parts,
+  size_t part_count,
+  bool *handled);
+
+int zlink_spot_route_bridge_handle_dealer_received_with_metadata(
+  void *bridge,
+  const char *channel_name,
+  uint8_t message_type,
+  uint64_t request_seq,
+  zlink_msg_t *parts,
+  size_t part_count,
+  bool *handled);
+```
+
+- `handled`는 bridge가 SPOT relay packet을 소비했는지 알려준다.
+- `handled=false`이면 호출자는 packet 소유권을 유지한다.
+- `handled=true`이면 bridge가 packet 소유권을 가져가며, 호출자는 같은
+  `zlink_msg_t`를 다시 close하지 않는다.
+- SPOT relay packet이 아니고 `CHANNEL_INBOUND` capability가 허용된 endpoint이면
+  `handled=false`로 반환한다.
+- 허용되지 않은 inbound SPOT relay packet은 error reply를 보낼 수 있는 경우
+  error reply를 보내고, summary의 reject counter에 반영한다.
+
+```c
+int zlink_spot_route_bridge_drain(void *bridge);
+int zlink_spot_route_bridge_summary(
+  void *bridge,
+  zlink_spot_route_bridge_summary_t *out);
+int zlink_spot_route_bridge_close(void *bridge);
+```
+
+- `drain()`은 bridge가 관리하는 pending reply와 receive handoff 진행을 처리한다.
+- `summary()`는 현재 attached channel 수와 error counter를 복사한다.
+- `close()`는 bridge handle을 닫는다. attach된 channel socket은 닫지 않는다.
+
+### SpotNode publisher handle
+
+```c
+void *zlink_spot_node_publisher_new(void *spot_node);
+
+int zlink_spot_node_publisher_publish(
+  void *publisher,
+  const char *topic,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_send_flags_t flags);
+
+int zlink_spot_node_publisher_close(void *publisher);
+```
+
+publisher handle은 외부 코드가 raw `PUB` socket을 `SpotNode`에 attach하지 않고
+local topic plane으로 publish하기 위한 handle이다.
+
+- publisher는 `SpotNode` topic plane으로 publish한다.
+- publisher handle은 raw socket을 노출하지 않는다.
+- `publish()`는 topic과 multipart payload를 받는다.
+- `close()`는 publisher handle만 닫고 `SpotNode`는 닫지 않는다.
 
 ## Socket Channel Name Metadata
 
@@ -494,23 +656,23 @@ zlink_submit_result_t zlink_spot_request_channel(
   uint32_t timeout_ms);
 ```
 
-- channel 호출은 attach된 `DEALER` 경로로만 나간다.
+- channel 호출은 legacy `DEALER` attach 경로에 의존하므로 새 코드에서 사용하지
+  않는다. 새 channel egress는 `zlink_spot_route_bridge_send()` 또는
+  `zlink_spot_route_bridge_request()`를 사용한다.
 - lookup 키는 `channel_name`이다.
-- 같은 `channel_name`에 attach된 `DEALER`가 없으면 send/request는 실패한다.
+- 같은 `channel_name`에 사용할 bridge endpoint가 없으면 send/request는 실패한다.
 - `Spot`에서는 direct `rid`로 `ROUTER`를 지정해 ordinary one-way send를 하지 않는다.
   direct routed request 시작은 아래 별도 섹션을 참조한다.
 
 channel request의 transport owner와 delivery owner는 다르다.
 
-- **transport owner**: 실제 request를 내보내고 network reply를 받는 attached `DEALER`
+- **transport owner**: 실제 request를 내보내고 network reply를 받는 bridge endpoint
 - **delivery owner**: 최종 user callback을 실행하는 `Spot` dispatch stream
 
-즉 network reply는 선택된 `DEALER` 경로로 돌아오지만, 최종 callback 실행은 request를
+즉 network reply는 선택된 endpoint 경로로 돌아오지만, 최종 callback 실행은 request를
 시작한 `Spot`의 dispatch stream이 맡는다. reply는
 `zlink_spot_request_channel_part()` 호출 시 등록한 `zlink_reply_handler_fn`을
-통해 전달된다. `CHANNEL_REPLY_READABLE` dispatch event는 attached dealer에
-진행이 발생했음을 알리는 readiness 신호이며, 실제 완료 전달은 core가 내부적으로
-수행한다. 사용자가 별도로 public drain API를 호출할 필요는 없다.
+통해 전달된다.
 
 ### Topic publish/subscribe
 
@@ -542,8 +704,8 @@ zlink_recv_result_t zlink_spot_subscription_event(
 
 - 토픽 평면은 `topic_id` 하나로만 식별하며, 토픽 함수에 별도의
   `service_name` 인자는 없다.
-- `zlink_spot_node_attach_pub_ingress()`로 연결한 외부 `PUB`는 이 토픽 입력
-  경로로 합류한다.
+- 외부 코드가 local `SpotNode` topic plane으로 publish해야 하면
+  `zlink_spot_node_publisher_*` handle을 사용한다.
 
 ### Routed recv/reply
 
@@ -630,7 +792,7 @@ typedef void (*zlink_spot_dispatch_event_handler_fn)(
 | `SUBSCRIBE_READABLE` | `SPOT` | `spot_` (또는 NULL) | `zlink_spot_subscribe()` |
 | `ROUTED_READABLE` | `SPOT` | `spot_` (또는 NULL) | `zlink_spot_recv()` |
 | `TIMER_READABLE` | `TIMER` | timer handle | `zlink_timer_recv()` |
-| `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | attached dealer handle | 없음 — 요청 시 등록한 `zlink_reply_handler_fn`이 자동으로 호출됨 |
+| `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | legacy attached dealer handle | 없음 — 요청 시 등록한 `zlink_reply_handler_fn`이 자동으로 호출됨 |
 | `ACTOR_READABLE` | `ACTOR` | callback lifetime의 `const zlink_actor_ref_t *` | `zlink_spot_node_actor_recv_part()` |
 | `ACTOR_JOIN_READABLE` | `SPOT` | `spot_` | `zlink_spot_actor_join_recv()` |
 | `ACTOR_LIFECYCLE_READABLE` | `SPOT` | `NULL` | `zlink_spot_recv_actor_lifecycle()` |
@@ -644,9 +806,8 @@ dispatch 우선순위는 아래 순서로 고정한다.
 5. `ACTOR_JOIN_READABLE`
 6. `ACTOR_READABLE`
 
-`CHANNEL_REPLY_READABLE` 이벤트가 뜻하는 것은 "해당 attached dealer를 통해 시작한
-channel request 중 user callback을 실행할 준비가 끝난 completion이 하나 이상 있다"는
-것이다. raw dealer frame 수신 여부가 아니라, request completion 준비 상태를 알린다.
+`CHANNEL_REPLY_READABLE` 이벤트는 deprecated attached dealer 경로의 compatibility
+event다. raw dealer frame 수신 여부가 아니라, request completion 준비 상태를 알린다.
 
 `SUBSCRIBE_READABLE`과 `ROUTED_READABLE`은 메시지 개수 이벤트가 아니라
 readiness 이벤트다.
@@ -665,12 +826,12 @@ readiness 이벤트다.
 
 #### Channel reply 진행
 
-- `CHANNEL_REPLY_READABLE`은 attached dealer에 진행이 발생했음을 알리는
+- `CHANNEL_REPLY_READABLE`은 legacy attached dealer에 진행이 발생했음을 알리는
   readiness 이벤트일 뿐, 별도 public drain API는 없다.
 - 실제 reply 전달은 `zlink_spot_request_channel_part()` 호출 시 등록한
   `zlink_reply_handler_fn`을 통해 자동으로 이뤄지며, core 내부의 completion
   driver가 이를 수행한다.
-- callback의 `subject`(dealer handle)는 어떤 attached dealer에서 진행이
+- callback의 `subject`(dealer handle)는 어떤 legacy attached dealer에서 진행이
   발생했는지 알려주는 진단 정보이며, 호출자가 직접 recv해야 한다는 뜻은
   아니다.
 
@@ -1604,15 +1765,16 @@ zlink_config_result_t zlink_spot_actors(
 
 - `SpotNode` mesh peer 자동 연결 대상은 SPOT discovery peer뿐이다.
 - 일반 socket service provider는 `SpotNode` mesh peer로 섞이지 않는다.
-- channel 호출은 attach된 `DEALER`로만 처리한다.
+- 새 channel 호출은 `zlink_spot_route_bridge_*`가 처리한다. legacy channel
+  호출 API는 deprecated attach 경로에 의존하므로 새 코드에서 쓰지 않는다.
 - `SpotNode.router`를 channel 호출 경로로 우회해서 쓰지 않는다.
 - discovery attach와 수동 peer connect를 같은 peer 관계에 동시에 섞지 않는다.
-- attach 함수는 socket 생성과 connect를 대신하지 않는다.
-- attach된 `DEALER`를 app이 raw `zlink_recv()`로 직접 읽거나 별도 poller에
-  등록하면 `Spot` progress와 경합할 수 있다. attach 이후 그 socket은 SpotNode
-  runtime 전용으로 취급한다.
-- channel request의 transport owner는 attach된 `DEALER`지만, callback delivery
-  owner는 request를 시작한 `Spot`의 dispatch stream이다.
+- deprecated attach 함수는 인자 검증 뒤 `ENOTSUP`으로 실패하며 socket 생성과
+  connect를 수행하지 않는다.
+- bridge에 attach된 channel socket은 계속 호출자 또는 channel runtime 소유다.
+  bridge close는 해당 socket을 닫지 않는다.
+- channel request의 transport owner는 bridge endpoint socket이고, callback
+  delivery owner는 request를 시작한 `Spot`의 dispatch stream이다.
 - `CHANNEL_REPLY_READABLE` callback에서 `subject`를 일반 dealer처럼 raw recv하지
   않는다. 별도 public drain API는 없으며, reply는
   `zlink_spot_request_channel_part()`에 등록한 `zlink_reply_handler_fn`을 통해

@@ -12,6 +12,15 @@
 > `C++` host/runtime에서 `SPOT`을 어떤 표면으로 통합할지
 > 정리한다.
 
+## 현재 구현 기준
+
+`accept_routes_from_channel(...)`과 Spot egress runtime은 core legacy `SpotNode`
+attach/connect API를 호출하지 않는다. C++ framework runtime은 C++ binding의 public
+`spot_node_t::create_route_bridge()` / `spot_route_bridge_t` 표면으로 channel socket을
+bridge에 연결한다. channel socket은 channel runtime이 계속 소유하며, bridge는 SPOT
+relay packet만 분류한다. local `SpotNode` topic plane으로 외부 publish가 필요하면 raw
+`PUB` attach가 아니라 public publisher handle을 사용한다.
+
 ## 인터페이스 경계
 
 SPOT public contract는 `contracts/spots/*`가 소유한다. public 표면에는
@@ -83,7 +92,7 @@ options.add_spot_mesh("game.stage").add_node("stage-spot-node")
 `connect_router(...)`와 `connect_pub_sub(...)`의 manual endpoint는
 SPOT 역할 자체의 peer다. `attach_channel_client(...)`,
 `attach_publisher(...)`, `accept_routes_from_channel(...)`에 주는 manual endpoint는 각각
-attached channel client, publisher client, accepted route ingress의 peer이므로 같은 값으로
+route bridge channel socket, publisher client, accepted route ingress의 peer이므로 같은 값으로
 섞어 표현하지 않는다.
 
 ## 3. Spot context

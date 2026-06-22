@@ -138,9 +138,9 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-이 문서에서 channel client 수동 연결은, remote `RoutingId`[^rid] 를 받지 않는다. 이유는
-다음과 같다. 하부 모델이 이미 connect 된 `DEALER` 를 attach 하는 방식이라, framework
-표면도 endpoint 집합만 다루는 편이 자연스럽기 때문이다.
+이 문서에서 channel client 수동 연결은, remote `RoutingId`[^rid] 를 받지 않는다.
+framework가 channel runtime과 route bridge를 소유하고, 사용자는 연결할 endpoint
+집합만 선언하기 때문이다.
 
 이 예시의 구성은 다음과 같다.
 
@@ -517,7 +517,8 @@ public sealed class UserCacheRefreshedEvent
 - local handler 를 등록한 경우에만, 이 앱은 `api` channel 에서 server 역할을 한다.
 - runtime 은 channel 마다 선언한 역할에 맞는 runtime 만 만든다.
 - `account`, `profile` 처럼 client 역할을 둔 channel 은, 그 channel 전용의
-  `Discovery` 와 outbound `DEALER(client)` socket 을 가진다.
+  `Discovery` 와 outbound `DEALER(client)` socket 을 가진다. 이 socket은 channel
+  runtime 소유이며 `SpotNode`에 직접 attach하지 않는다.
 - dealer mesh channel 도 request/send 호출 표면은 `IZLinkChannelClient`를 그대로 쓴다. 차이는
   channel 등록이 `AddDealerMeshChannel`이고, runtime 이 그 channel 의 mesh DEALER 를
   선택한다는 점이다.
@@ -779,7 +780,6 @@ app.MapPost("/profiles/get", async (
 | `ClientServerTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 샘플의 request / send 흐름이 동작한다. |
 | `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | 자동 연결 샘플의 request / send 흐름이 동작한다. |
 | `FanoutTests.Publisher_And_Subscriber_Work_Across_Hosts` | publish / subscribe 샘플 흐름이 동작한다. |
-| `FiltersAndHttpTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkChannelClient` | HTTP handler에서 outbound client를 사용하는 샘플 흐름이 동작한다. |
 
 ---
 

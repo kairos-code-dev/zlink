@@ -288,8 +288,7 @@ public interface IZLinkDispatchOptions
 
 ### 3.1 등록 코드
 
-이 등록 코드는 `SpotNode` 와 그 안의 역할(`router`, `pub/sub`, attach 된
-channel client, attach 된 spot publisher client)를 한 번에 묶어 둔 모양이다.
+이 등록 코드는 `SpotNode` 와 그 안의 역할(`router`, `pub/sub`, route bridge channel socket, SpotNode publisher handle)를 한 번에 묶어 둔 모양이다.
 
 ```csharp
 using Microsoft.AspNetCore.Builder;
@@ -459,7 +458,7 @@ builder.Services.AddZLinkFramework(options =>
 
 이 코드에서 꼭 짚어야 할 규칙은 다음과 같다.
 
-- `router`, `pub/sub`, attach 된 channel client, attach 된 spot publisher
+- `router`, `pub/sub`, route bridge channel socket, SpotNode publisher handle
   client 는 서로 별개의 연결 집합을 다룬다.
 - 같은 역할 안에서는 `Discovery`[^discovery] 와 `Manual` 방식을 섞지
   않는다.
@@ -491,7 +490,7 @@ builder.Services.AddZLinkFramework(options =>
   - 실제 low-level 바인딩의 `SpotNode.PublisherOptions`,
     `SpotNode.SubscriberOptions` 에 대응한다.
 - 역할 별 socket 기본값
-  - `router`, attach 된 channel client, attach 된 spot publisher client 가 각각
+  - `router`, route bridge channel socket, SpotNode publisher handle 가 각각
     가지고 있는 `CommonSocketOptions` 계열 기본값이다.
 
 아래 코드는 확정된 계약은 아니다. 다만 `.NET` 표면에서 이런 식으로 보이는
@@ -639,7 +638,7 @@ local `SpotNode` 나 local spot runtime 을 띄우지 않고, 다른 channel 이
 spot 으로 outbound 호출만 하는 앱도 있을 수 있다. 이런 경우 기본 outbound
 표면은 `IZLinkChannelClient` 다.
 
-local `SpotNode` 가 없으면 attach 된 channel client 경로도 존재할 수 없다.
+local `SpotNode` 가 없으면 route bridge channel socket 경로도 존재할 수 없다.
 따라서 `spot.Context.Outbound.RequestToChannel(...)` 같은 표면을 바로 사용하는
 모델로 설명하면 안 된다.
 
@@ -1704,7 +1703,7 @@ server tick 수를 계산할 수 있다.
   등록한다.
 - `Context.AddTimer<THandler>(...)` 는 spot lifecycle[^lifecycle] 안에서 timer
   를 등록한다.
-- 다른 channel 로의 호출은 attach 된 channel client 를 통해 전송한다.
+- 다른 channel 로의 호출은 route bridge channel socket을 통해 전송한다.
 - **`RequestToChannel(...).Async<TReply>(...)` 는 같은 spot execution context 안에서
   완료된다.** 임의의 thread 에서 promise 를 직접 resolve 하지 않는다. 따라서
   continuation 도 spot state 에 별도의 lock 없이 접근할 수 있다.
@@ -1887,7 +1886,7 @@ runtime 이 reflection 을 어디까지 허용하느냐보다, hot path 에서 �
   draft 공용 계약이 room wrapper에 어떻게 매핑되는지를 보여 주는 상세 샘플이다.
 - packet dispatch의 기준은 header의 `msgId`다.
 - `IZLinkSpotManager`는 spot 생성과 조회 기능을 함께 제공한다.
-- attach된 channel client와 SPOT publish 설정은 역할별 builder에서
+- route bridge channel socket과 SPOT publish 설정은 역할별 builder에서
   노출한다.
 
 ## 10. 회귀 테스트

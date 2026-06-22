@@ -31,7 +31,7 @@ zlink C library.
 | [service/README.md](core/service/README.md) | Shared service-layer concepts and document split |
 | [registry.md](core/service/registry.md) | Service registry creation, configuration, and clustering |
 | [discovery.md](core/service/discovery.md) | Service discovery, subscription, and peer lookup |
-| [spot.md](core/service/spot.md) | SPOT topic-based PUB/SUB and routed messaging |
+| [spot.md](core/service/spot.md) | SPOT topic-based PUB/SUB, route bridge, and routed messaging |
 | [polling.md](core/polling.md) | Proxy helpers and capability query |
 | [utilities.md](core/utilities.md) | Timers, threads, stopwatch, and atomics |
 

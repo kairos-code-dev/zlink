@@ -83,10 +83,9 @@ internal sealed class ZLinkSpotPeerConnector(
 
     private void ConnectRouterPeer(RoutingId peerRid, string endpoint)
     {
-        _ = peerRid;
         try
         {
-            node.ConnectPeer(endpoint);
+            node.ConnectPeer(peerRid, endpoint);
         }
         catch (ZlinkConnectException error)
             when (error.Result == ZlinkConnectException.ErrorCode.Busy)

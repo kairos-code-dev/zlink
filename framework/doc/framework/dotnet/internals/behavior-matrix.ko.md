@@ -80,8 +80,8 @@
 | 같은 `SpotNode`에 같은 `spotRid` factory 중복 등록 | 비허용 | startup validation 오류 |
 | 같은 `SpotNode`에 Entry Spot[^entry-spot] registry 중복 등록 | 비허용 | startup validation 오류 |
 | `router` 역할만 등록 | 허용 | inbound routed call만 받는다 |
-| attach된 channel client 역할 등록 + channel discovery/manual 경로 있음 | 허용 | spot 내부에서 outbound channel 호출이 가능하다 |
-| attach된 channel client 역할 등록 + channel peer acquisition 경로 없음 | 비허용 | startup validation 오류 |
+| route bridge channel socket 역할 등록 + channel discovery/manual 경로 있음 | 허용 | spot 내부에서 outbound channel 호출이 가능하다 |
+| route bridge channel socket 역할 등록 + channel peer acquisition 경로 없음 | 비허용 | startup validation 오류 |
 | local spot factory 없는 외부 publish node는 `IZLinkSpotPublisherClient` 사용 | 허용 | Spot publisher client 역할만 둔 `SpotNode` 로 특정 SPOT channel publish만 수행한다 |
 
 ## 5. Stream Node Matrix
@@ -174,7 +174,7 @@ runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ChannelsTests.AddZLinkFramework_Throws_WhenRouteChannelMixesDiscoveryAndManualConnections` | 같은 routed 역할에서 Discovery와 manual 연결을 섞으면 실패한다. |
+| `ChannelsTests.AddZLinkFramework_AllowsRouteChannelManualConnections_WhenDiscoveryIsConfigured` | route mesh channel은 Discovery metadata가 있어도 명시한 manual peer로도 연결할 수 있다. |
 | `HandlerExposureTests.AddZLinkFramework_Throws_WhenServerHasNoBindEndpoint` | server 역할에 bind endpoint가 없으면 실패한다. |
 | `RegistryAndMonitoringTests.AddZLinkFramework_Throws_WhenPublisherHasNoBindEndpoint` | publisher 역할에 bind endpoint가 없으면 실패한다. |
 | `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode` | Discovery mesh 없이 local-only SpotNode를 단독으로 시작할 수 있다. |

@@ -304,16 +304,26 @@ through `zlink_errno()` for diagnostics.
 
 `zlink_router_send_spot_part()` and `zlink_router_request_spot_part()` send
 routed messages from a router channel `ROUTER` to a target `Spot`. The target
-node must be connected as a router channel peer through
-`zlink_spot_node_connect_router_channel_peer()` or
-`zlink_spot_node_attach_router_channel_discovery()`.
+node is no longer connected by attaching the router channel to `SpotNode`.
+The caller or channel runtime continues to own the router channel `ROUTER`
+socket, lends it to a bridge with
+`zlink_spot_route_bridge_attach_router_channel()`, and sets the target node
+routing id with `zlink_spot_route_bridge_set_target_node()`.
 
 Callers must provide both the target node routing id and target spot routing
 id. Sending to a target without a router channel peer, or before the route is
 ready, follows the normal ROUTER not-connected behavior and may fail or not be
 delivered. A higher-level framework must therefore use the resolver's channel
 id to select the actual router-capable channel `ROUTER` socket, not only store
-the channel id as metadata.
+the channel id as metadata, and then pass that socket to the bridge.
+
+The bridge does not own the `ROUTER` socket. The caller or channel runtime
+continues to own the socket, and closing the bridge does not close it. Because
+a `ROUTER` socket can physically receive inbound traffic, inbound admission is
+controlled by bridge endpoint capabilities and the handoff result, not by the
+socket type alone. If the bridge returns `handled=false`, the caller keeps
+packet ownership and may process it as an ordinary channel packet. If it
+returns `handled=true`, the bridge has consumed the SPOT relay packet.
 
 #### Sending through a Spot route resolved from an Actor id
 

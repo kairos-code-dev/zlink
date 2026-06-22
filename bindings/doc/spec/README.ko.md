@@ -1135,12 +1135,13 @@ streamSocket.bindActor(sessionRid, actorRef)
   분리해야 한다.
 - SPOT 은 channel-aware 모델이다. 바인딩은
   `attach_discovery(...)`,
-  `attach_channel_dealer(...)`,
-  `attach_channel_dealer_manual(...)`,
-  `attach_pub_ingress(...)`,
+  `create_route_bridge(...)` 또는 동등한 typed bridge,
+  `create_publisher(...)` 또는 동등한 publisher handle,
   `send_to_channel`, `send_to_spot`, `request_to_channel`,
-  channel-aware send/request operation builder 시작점과 SPOT topic
-  publish / subscribe 표면을 제공해야 한다.
+  channel-aware send/request operation builder 시작점과 SPOT topic publish /
+  subscribe 표면을 제공해야 한다. 기존 `attach_channel_dealer(...)`,
+  `attach_channel_dealer_manual(...)`, `attach_pub_ingress(...)`는 deprecated
+  compatibility 표면으로만 유지한다.
 - SPOT subscribe 결과는 topic / parts 를 노출한다. channel 이름은 메시지
   결과 필드로 반복하지 않는다.
 - `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer/actor
@@ -1183,7 +1184,7 @@ streamSocket.bindActor(sessionRid, actorRef)
 - SPOT binding이 internal socket snapshot 이름을 노출하거나 문서화할 때는
   core가 반환하는 public snapshot 이름을 그대로 사용한다. 현재 이름은
   `mesh-pub`, `mesh-xsub`, `peer_ctrl_pub`, `peer_ctrl_sub`,
-  `external-router`, `local-pub`, `internal_receiver` 이다.
+  `routed-router`, `local-pub`, `internal_receiver` 이다.
   `local-pub`는 같은 node 안 subscriber로 보내는 local fanout socket이다.
   (`ingress-sub`, `pub-ingress-tx`, `internal-router`, `internal-router-tx`는
   제거되었으며 snapshot에 포함되지 않는다.)
@@ -2729,9 +2730,11 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | SpotNode | `bind` | endpoint 바인드 |
 | SpotNode | `connectPeer` | raw peer 연결 |
 | SpotNode | `disconnectPeer` | raw peer 연결 해제 |
-| SpotNode | `attachChannelDealer` | Discovery 기반 channel DEALER attach |
-| SpotNode | `attachChannelDealerManual` | 수동 channel DEALER attach |
-| SpotNode | `attachPubIngress` | 외부 PUB ingress attach |
+| SpotNode | `createRouteBridge` | caller/channel runtime 소유 socket을 SPOT route bridge에 등록 |
+| SpotNode | `createPublisher` | SpotNode의 topic publish ingress에 쓰는 publisher handle 생성 |
+| SpotNode | `attachChannelDealer` | deprecated compatibility 표면. 정상 인자는 `ENOTSUP`로 실패 |
+| SpotNode | `attachChannelDealerManual` | deprecated compatibility 표면. 정상 인자는 `ENOTSUP`로 실패 |
+| SpotNode | `attachPubIngress` | deprecated compatibility 표면. 정상 인자는 `ENOTSUP`로 실패 |
 | SpotNode | `attachDiscovery` | Discovery 연결 |
 | SpotNode | `setTlsServer` | TLS 서버 설정 |
 | SpotNode | `setTlsClient` | TLS 클라이언트 설정 |
@@ -2808,8 +2811,10 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - Spot dispatch event callback 호출 확인
 - Spot setSendReadyHandler callback 호출 확인
 - Spot receiveSubscriptionEvent 경로 확인
-- SpotNode attachChannelDealer / attachChannelDealerManual 경로 동작 확인
-- SpotNode attachPubIngress 경로 동작 확인
+- SpotRouteBridge attach/send/request/handleReceived 경로 동작 확인
+- SpotNode publisher handle publish 경로 동작 확인
+- deprecated SpotNode attachChannelDealer / attachChannelDealerManual /
+  attachPubIngress가 정상 인자에서 `ENOTSUP`로 실패하는지 확인
 - Discovery connectRegistry → 서비스 등록 경로 성공
 - Discovery setValue/getValue round-trip 확인
 - Discovery resolveSpot/resolveActor 경로 확인
@@ -3193,7 +3198,7 @@ zlink_submit_result_t zlink_router_send_spot_part(void *router,
   callback은 builder 단계로 표현한다.
 - routed recv 는 아래 Event Dispatcher 의 handler/recv surface 를 사용한다.
 
-#### SPOT Lifecycle / Attachment
+#### SPOT Lifecycle / Bridge / Deprecated Attachment
 
 ```c
 void *zlink_spot_new(void *node);          /* create SPOT facade */
@@ -3218,6 +3223,69 @@ zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual(void *node,
     const char *channel_name, void *dealer);
 zlink_config_result_t zlink_spot_node_attach_pub_ingress(void *node,
     void *pub);
+
+void *zlink_spot_route_bridge_new(
+    void *ctx,
+    void *spot_node,
+    const zlink_spot_route_bridge_options_t *options);
+int zlink_spot_route_bridge_attach_dealer_channel(
+    void *bridge,
+    const char *channel_name,
+    void *dealer,
+    const zlink_spot_route_bridge_endpoint_options_t *options);
+int zlink_spot_route_bridge_attach_router_channel(
+    void *bridge,
+    const char *channel_name,
+    void *router,
+    const zlink_spot_route_bridge_endpoint_options_t *options);
+int zlink_spot_route_bridge_set_target_node(
+    void *bridge,
+    const char *channel_name,
+    const zlink_routing_id_t *target_node_rid);
+int zlink_spot_route_bridge_send(
+    void *bridge,
+    const char *channel_name,
+    const zlink_routing_id_t *target_spot_rid,
+    zlink_msg_t *parts,
+    size_t part_count,
+    zlink_send_flags_t flags);
+int zlink_spot_route_bridge_request(
+    void *bridge,
+    const char *channel_name,
+    const zlink_routing_id_t *target_spot_rid,
+    zlink_msg_t *parts,
+    size_t part_count,
+    zlink_reply_handler_fn reply_handler,
+    void *userdata,
+    zlink_send_flags_t flags,
+    uint32_t timeout_ms);
+int zlink_spot_route_bridge_handle_router_received(
+    void *bridge,
+    const char *channel_name,
+    const zlink_routing_id_t *source_node_rid,
+    zlink_msg_t *parts,
+    size_t part_count,
+    bool *handled_out);
+int zlink_spot_route_bridge_handle_dealer_received(
+    void *bridge,
+    const char *channel_name,
+    zlink_msg_t *parts,
+    size_t part_count,
+    bool *handled_out);
+int zlink_spot_route_bridge_drain(void *bridge);
+int zlink_spot_route_bridge_summary(
+    void *bridge,
+    zlink_spot_route_bridge_summary_t *out);
+int zlink_spot_route_bridge_close(void *bridge);
+
+void *zlink_spot_node_publisher_new(void *node);
+int zlink_spot_node_publisher_publish(
+    void *publisher,
+    const char *topic,
+    zlink_msg_t *parts,
+    size_t part_count,
+    zlink_send_flags_t flags);
+int zlink_spot_node_publisher_close(void *publisher);
 
 zlink_config_result_t zlink_socket_set_channel_name(void *socket,
     const char *channel_name);
@@ -3253,21 +3321,24 @@ typed option/property로 이 두 값을 노출하고, raw option bag을 canonica
 바인딩 규칙:
 - `SpotNode` 와 `Spot` 은 별도 typed handle 로 노출한다.
 - `Spot` 은 `SpotNode` 위에 올라가는 facade 다. `SpotNode` 해제 시 `Spot` 도 무효가 된다.
-- SPOT channel view는 `attach_discovery()`로 닫고, 다른 channel 호출은
-  `attach_channel_dealer()` 또는 `attach_channel_dealer_manual()`로 붙인다.
+- SPOT channel view는 `attach_discovery()`로 닫는다.
+- Spot에서 다른 channel로 보내거나 다른 channel에서 Spot relay packet을 받을 때는
+  `SpotRouteBridge`를 사용한다. bridge에 등록되는 `DEALER`/`ROUTER` socket은
+  caller 또는 channel runtime이 계속 소유한다.
 - `zlink_socket_set_channel_name()` / `zlink_socket_get_channel_name()` 은
-  channel-attached `DEALER`의 logical channel metadata를 다루는 typed API다.
+  channel socket의 logical channel metadata를 다루는 typed API다.
   바인딩은 이를 socket의 명시적 property/method로 노출한다.
-- `attach_channel_dealer()`와 `attach_channel_dealer_manual()`은 attached
-  `DEALER`에 channel name metadata를 채우거나 이미 설정된 metadata와 일치하는지
-  확인한다. attach가 끝난 뒤에는 같은 socket의 channel name을 바꿀 수 없다.
-- SPOT dispatch event의 subject kind가 `CHANNEL_DEALER`이면 callback이 받은
-  subject socket에서 channel name metadata를 조회해 어느 channel reply를
-  drain할지 구분한다.
-- `attach_pub_ingress()`는 일반 `PUB -> Spot` 입력 경로를 여는 전용 표면이다.
+- `attach_channel_dealer()`, `attach_channel_dealer_manual()`,
+  `attach_pub_ingress()`는 deprecated compatibility 표면이다. NULL 같은 인자 오류는
+  기존 오류를 유지하고, 정상 인자는 `ENOTSUP`로 실패한다.
+- bridge의 `handle_router_received()`와 `handle_dealer_received()`는 channel runtime의
+  receive loop에서 호출한다. `handled == true`이면 payload 소유권은 bridge가 가져가며,
+  caller는 같은 received object를 다시 처리하지 않는다.
+- `SpotNodePublisher`는 외부 코드가 raw `PUB` socket을 `SpotNode`에 attach하지 않고
+  SpotNode의 topic publish ingress로 publish하기 위한 handle이다.
 - `Spot.publish(topic).message(...).submit()`은 `SpotNode` 자신의 topic publish
   ingress queue로 들어가는 channel-aware topic plane이다. 외부 channel 호출은
-  `send_to_channel()` / `request_to_channel()`과 attached `DEALER` 경로로 설명한다.
+  `SpotRouteBridge`와 channel runtime 소유 socket 경로로 설명한다.
 - `connect_peer` / `disconnect_peer` 는 raw peer topology 전용 control
   path 다. channel-aware public surface 의 중심 API 로 설명하면 안 된다.
 
@@ -3370,8 +3441,7 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(void *spot,
 - `CHANNEL_REPLY_READABLE` 은 readiness 신호일 뿐이며 별도 public drain API 는
   없다. reply 는 `zlink_spot_request_channel_part()` 호출 시 등록한
   `zlink_reply_handler_fn` 을 통해 core 가 자동으로 전달한다. `info->subject`
-  dealer handle 은 어느 attached dealer 에서 진행이 발생했는지 알리는 진단
-  정보다.
+  dealer handle 은 deprecated dealer attach 경로에서만 의미가 있는 진단 정보다.
 - `ACTOR_READABLE` 이면 `info->subject` 로 전달된 Actor subject를 기준으로
   `zlink_spot_node_actor_recv_part()` 를 drain 한다. public API는 raw subject
   pointer나 part loop를 노출하지 않고 `ActorReceived` 또는 동등한 aggregate
@@ -5153,18 +5223,29 @@ typed option을 노출한다. 기존의 이름 있는 setter는 해당 언어 RE
 alias를 명시적으로 유지하기로 한 바인딩에서만 남길 수 있고, 그렇지 않으면 정렬
 작업에서 제거한다.
 
-## SpotNode Router Channel Peer API
+## Spot Route Bridge API
 
-바인딩은 router channel peer 배선을 위한 공개 `SpotNode` API를 노출해야 한다:
-channel 이름과 endpoint로 연결, channel 이름과 endpoint로 연결 해제, routing-id
-disconnect helper를 노출하는 언어에서는 channel 이름과 peer routing id로 연결
-해제, 그리고 channel 이름으로 router channel discovery view를 attach.
+바인딩은 `SpotNode`가 channel socket을 소유하지 않도록 `SpotRouteBridge` 또는 같은
+의미의 typed handle을 노출해야 한다. bridge는 caller/channel runtime이 소유한
+`DEALER` 또는 `ROUTER` socket을 참조하고, Spot route packet을 보내거나 channel
+receive loop에서 받은 SPOT relay packet을 SpotNode로 넘긴다. bridge를 닫아도 등록된
+channel socket은 닫히지 않는다.
 
-이 API는 `zlink_spot_node_connect_router_channel_peer()`,
-`zlink_spot_node_disconnect_router_channel_peer()`,
-`zlink_spot_node_disconnect_router_channel_peer_rid()`,
-`zlink_spot_node_attach_router_channel_discovery()` 에 매핑한다. 바인딩은 빈 channel
-이름과 endpoint를 core 오류 매핑 전후로 거부해야 한다. 같은 channel에서 수동
-peer와 discovery peer를 섞으면 안 된다. framework adapter는 이 공개 API를 직접
-호출해야 하며, reflection, private 멤버, friend visibility로 바인딩 internal에
-접근해서는 안 된다.
+언어별 API는 다음 의미를 빠뜨리지 않아야 한다.
+
+- `createRouteBridge(options)` 또는 동등한 생성자
+- `attachDealerChannel(channelName, dealerSocket)`
+- `attachRouterChannel(channelName, routerSocket)`
+- `sendToSpot(address, parts)`
+- `requestToSpot(address, parts, replyHandler, timeout)`
+- `handleRouterReceived(channelName, received)` / `handleDealerReceived(channelName, received)`
+- `close` 또는 `dispose`
+
+`timeout == 0`은 bridge 기본 timeout을 사용한다. `handle*Received`가 handled 결과를
+반환하면 바인딩은 payload 소유권이 bridge로 넘어갔음을 호출자에게 분명히 표현해야
+한다.
+
+`zlink_spot_node_connect_router_channel_peer*()`와
+`zlink_spot_node_attach_router_channel_discovery()`는 deprecated compatibility 표면이다.
+바인딩은 기존 public API를 남기더라도 정상 인자에서 `ENOTSUP`로 실패하는 migration
+동작을 문서화해야 하며, framework adapter는 이 API를 새 구현 경로로 사용하면 안 된다.

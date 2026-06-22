@@ -23,7 +23,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         node,
         spotChannelName,
         channelName => registration.AttachedChannelClients.ContainsKey(channelName)
-            ? getOrCreateAttachedChannelBundle(channelName).Submitter
+            ? getOrCreateAttachedChannelBundle(channelName)
             : null,
         connectDiscoveredPubSubPeers);
 

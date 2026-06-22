@@ -4,6 +4,10 @@
 
 # Config 2 — Spot 기반 서비스 배포
 
+> 현재 framework 언어별 E2E 테스트 소스는 재작성 예정이라 제거된 상태다. 이 문서는
+> 새 E2E를 다시 만들 때 유지해야 할 검증 의도와 marker 기준을 설명한다. 현재 runtime
+> 검증은 언어별 unit/contract test와 sample smoke test가 담당한다.
+
 상태를 들고 있는 서비스 형상을 띄운다. entry spot이 user spot으로 라우팅하고, 거기에 actor와
 bound session이 붙는 배포다. 이걸 한 번 띄워 두고 spot messaging과 session push가 실제
 사용자처럼 도는지 본다. 구조는 정본 샘플 Bingo·TicTacToe를 그대로 닮되, 검증에 필요한 흐름으로만
@@ -11,7 +15,7 @@ bound session이 붙는 배포다. 이걸 한 번 띄워 두고 spot messaging�
 
 ## 1. 목적과 범위
 
-- 다룬다: channel↔spot, spot↔spot messaging(send/request/publish), entry/user spot 생성과 상태, actor join과 remote actor, bound session push, stream session.
+- 다룬다: channel↔spot, spot↔spot messaging(send/request/publish), entry/user spot 생성과 상태, actor join과 remote actor, bound session push, stream session, 외부 channel→특정 spot route bridge(채널 종류 무관 egress·혼재 트래픽·에러 계약·소유권 독립).
 - 여기서 다루지 않는 것(다른 config로): codec 변주, registry scale/failover(Config 1), resilience(Config 5).
 
 ## 2. 서버 구성 (한 번 구동, 공유)
@@ -415,8 +419,89 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
 - 검증: idle 초과 시 spot이 `CloseAsync`로 닫히고 `OnClosingAsync` 콜백이 evidence에 기록된다. joined actor가 남아 있으면 close가 거부된다(먼저 actor leave 필요). 활동 중엔 닫히지 않는다.
 - 세부 동작: 애플리케이션 idle timer + 명시적 `CloseAsync` + `OnClosingAsync` (자동 actor callback 아님).
 
+### Track F — Channel↔Spot route bridge (외부 channel → 특정 spot)
+
+외부 channel을 통해 특정 `Spot`으로 메시지를 보내는 경로를 본다. channel은 두 종류 모두 쓸 수
+있다 — client/server channel(내부적으로 `DEALER`)과 route mesh channel(내부적으로 `ROUTER`).
+어느 쪽을 쓰든 "외부 channel client가 target `Spot`(RoutingId)으로 send/request를 보내고 reply를
+받는다"는 의미는 같아야 한다.
+
+핵심 전제 두 가지:
+
+- channel socket의 소유권은 channel runtime(또는 그 socket을 만든 일반 사용자)에 남는다.
+  `SpotNode`가 channel socket을 직접 들고 있지 않다. spot routing을 얹어도 그 channel의 일반
+  messaging은 그대로 동작한다.
+- 외부 channel과 spot 사이의 relay packet 의미(frame 순서·request/reply·error·policy)는 한 곳에서
+  정의되고 모든 언어가 같은 의미로 투영한다. 이 core 계약은 **SPOT route channel bridge**로 정리
+  중이며(draft: `core/doc/spec/draft/spot-route-channel-bridge-plan.ko.md`), 아래 시나리오는 그
+  사용자 관찰 동작을 고정한다.
+
+framework 공개 API만 쓴다 — 외부→spot inbound는 channel client(예: route client)로, spot→spot/
+channel egress는 `outbound.SendToSpot(...)`/`outbound.RequestToSpot(...)`로, channel이 spot route를
+받게 하는 설정은 `AcceptSpotRoutesFromChannel(...)` 계열로 표현한다. low-level relay packet을 직접
+조립하지 않는다.
+
+> Track C(messaging 방향)와의 관계: Track C는 channel↔spot의 verb(send/request/publish)와 방향을
+> 본다. Track F는 그 아래에서 **channel 종류 무관 동등성, 한 socket의 app packet·spot relay 공존,
+> route 없음·거부·malformed 에러 계약, channel socket 소유권 독립**처럼 bridge가 새로 보장하는
+> 부분을 콕 집어 고정한다.
+
+#### SM-F1 client/server channel → target spot (DEALER egress)
+
+우선순위: `P0`
+
+**한마디로:** 외부 client/server channel client가 특정 spot의 RoutingId를 찍어 send/request를 보내면, 그 spot에서 처리되고 request는 reply가 돌아오는가.
+
+- 절차: consumer가 client/server channel client로 target spot의 RoutingId를 지정해 request와 send(one-way)를 보낸다.
+- 검증: request는 지정한 spot에서 처리되어 정확한 reply가 온다. send는 reply 없이 그 spot evidence에 command로 기록된다. 지정하지 않은 다른 spot에는 도달하지 않는다.
+- 세부 동작: client/server(DEALER) channel을 통한 target spot egress.
+
+#### SM-F2 route mesh channel → target spot (ROUTER egress, target node 지정)
+
+우선순위: `P0`
+
+**한마디로:** route mesh channel로 target SpotNode(peer routing id)를 지정해 그 노드의 특정 spot으로 보내면, 노드 경계를 넘어 그 spot에서 처리되고 reply가 돌아오는가.
+
+- 절차: consumer가 route mesh channel에서 target node의 peer routing id를 지정하고, 그 노드(`play-b`)의 target spot RoutingId로 request와 send를 보낸다.
+- 검증: request가 target node로 relay되어 그 노드의 spot에서 처리되고 reply가 돌아온다. send는 그 노드 spot evidence에 기록된다. 지정하지 않은 노드에는 도달하지 않는다.
+- 세부 동작: route mesh(ROUTER) channel을 통한 cross-node target spot egress. (SM-F1과 같은 spot routing 의미를 channel 종류만 바꿔 확인 — 동등성.)
+
+#### SM-F3 한 channel에 일반 packet과 spot route packet 혼재
+
+우선순위: `P1`
+
+**한마디로:** 같은 channel이 일반 application channel packet과 spot route packet을 함께 받아도, 각각 제 dispatcher(channel handler / 해당 spot)로 정확히 갈리는가.
+
+- 절차: `AcceptSpotRoutesFromChannel`로 spot route ingress를 등록한 channel에, (a) 일반 channel request와 (b) target spot으로 가는 spot route request를 섞어 보낸다.
+- 검증: 일반 channel packet은 channel handler가, spot route packet은 target spot이 처리한다. 서로 오배달·간섭이 없고 두 종류 모두 각자 정상 reply를 받는다.
+- 세부 동작: 한 socket에서 application channel packet과 spot relay packet 공존 분기(channel inbound 허용 설정).
+
+#### SM-F4 spot route negative — route 없음 / 거부 / malformed
+
+우선순위: `P0`
+
+**한마디로:** target spot route가 없거나 ingress가 거부하거나 packet이 malformed면, request는 error reply로 명확히 실패하고 command는 drop + counter로 끝나며, malformed는 application handler로 새지 않는가.
+
+- 절차: (a) 존재하지 않는 target spot RoutingId로 request와 send를 보낸다. (b) spot route ingress를 받지 않도록 설정한 channel로 spot route request와 send를 보낸다. (c) malformed spot route packet을 유입시킨다.
+- 검증:
+  - (a) target spot route 없음: request는 error reply로 실패(client는 예외로 받음), send(command)는 reply 없이 drop되고 failure counter가 오른다.
+  - (b) ingress 거부: request는 error reply, command는 drop + counter.
+  - (c) malformed relay packet: application route handler로 넘어가지 않고 error/drop으로 처리되어 observer에만 남는다.
+  - 세 경우 모두 observer evidence(`ZLinkMessageDispatchErrorEvent`: `Surface`=`SpotRoute`, `Reason`/`Action`)에 분류가 남고, 같은 channel의 다른 정상 spot routing은 영향받지 않는다.
+- 세부 동작: spot route bridge 에러 계약(route 없음·ingress 거부·malformed) + 관측.
+
+#### SM-F5 channel socket 소유권 독립 (spot routing이 channel을 흔들지 않음)
+
+우선순위: `P2`
+
+**한마디로:** 같은 channel로 spot routing을 하면서도 그 channel의 일반 messaging이 그대로 돌고, spot node가 내려가도 channel 연결 자체는 살아 있는가.
+
+- 절차: spot route ingress를 등록한 channel로 일반 channel request와 spot route request를 모두 보낸 뒤, 그 spot node를 종료한다. 이후 같은 channel로 일반 channel request를 다시 보낸다.
+- 검증: spot routing 중에도 일반 channel messaging이 정상이다. spot node 종료 뒤에도 channel socket은 살아 있어 일반 channel request가 계속 정상 동작한다(channel socket 소유권은 channel runtime에 있고, spot routing 사용/중단이 channel lifecycle을 좌우하지 않음).
+- 세부 동작: channel socket lifecycle이 spot route 사용과 독립.
+
 ## 5. 완료 기준
 
-- Track A~E의 `P0` 시나리오가 모두 통과한다.
-- public contract만 직접 호출하고 `ensure`로 단언한다.
+- Track A~F의 `P0` 시나리오가 모두 통과한다.
+- public contract만 직접 호출하고 `ensure`로 단언한다(low-level relay packet 조립·내부 helper 금지).
 - 실패 시 registry/spot/session/consumer 로그와 evidence로 원인 레이어를 분리한다.

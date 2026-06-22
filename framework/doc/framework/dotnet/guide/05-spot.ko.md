@@ -11,6 +11,14 @@
 > 🔰 SPOT·actor·Entry Spot 등 용어가 낯설면 [03-concepts §0](03-concepts.ko.md)의
 > 한 줄 풀이를 먼저 본다.
 
+## 현재 구현 기준
+
+외부 channel에서 특정 Spot으로 send/request를 보낼 때는 framework가 core
+`ISpotRouteBridge`를 내부에서 사용한다. 사용자는 `AcceptSpotRoutesFromChannel(...)`과
+egress 설정 이름을 맞추면 되고, raw `DEALER`, `ROUTER`, `PUB` socket을 `SpotNode`에
+attach하지 않는다. Spot에서 외부 pub/sub channel로 publish할 때는 일반 channel
+publisher client를 주입해서 사용한다.
+
 ## 1. SPOT 이란
 
 `SPOT` 은 동적으로 생성·소멸되는 **주소 가능한 논리 인스턴스**다. 게임 room,
@@ -32,7 +40,7 @@ SPOT 은 pub/sub helper 가 아니다. publish/subscribe 는 spot **안에서** 
 
 - `Spot` 은 특정 service 가 아니라 `SpotNode` 에 종속된다.
 - `SpotNode` 의 router 와 pub/sub mesh 는 **같은 channel 의 다른 SpotNode 와만**
-  연결된다. 다른 channel 로 나가는 호출은 attach 된 channel client 를 쓴다.
+  연결된다. 다른 channel 로 나가는 호출은 route bridge channel socket을 쓴다.
 - 한 `SpotNode` 에는 active SPOT channel view 가 정확히 하나다.
 
 ## 2. SpotNode 등록
@@ -420,7 +428,7 @@ public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotPublisherC
   `spotRid` 가 다른 타입으로 있으면 `SpotTypeMismatch` 오류로 **예외를 던진다**
   (`ZLinkSpotCreateState` 가 아니라 `ZLinkFrameworkErrorKind`).
 - 반환된 `ZLinkSpotCreateResult` 는 long-lived handle 이 아니다. `SpotRid`/
-  `State`/`Reply` 만 들고 다니고, 이후 메시징은 publish 나 attach 된 channel client
+  `State`/`Reply` 만 들고 다니고, 이후 메시징은 publish 나 route bridge channel socket
   로 한다.
 
 ## 5. SPOT 메시징

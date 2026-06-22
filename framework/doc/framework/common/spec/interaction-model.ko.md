@@ -66,7 +66,7 @@
 - `ROUTER -> DEALER` 임의 push는 현재 channel messaging 공용 계약에 넣지 않는다.
 - 다만 같은 SPOT mesh 안의 `spot-to-spot` send는
   `ROUTER <-> ROUTER` routed 경로로 설명한다.
-- SPOT 쪽은 routed 호출보다 attach된 channel client를 통한
+- SPOT 쪽은 routed 호출보다 route bridge channel socket을 통한
   `SendChannel(...).Submit(...)` 같은 표면이 먼저 보이는 편이 더 자연스럽다.
 - caller가 `targetRid`와 `spotId`를 이미 알고 있더라도, 기본 application public
   surface에서는 direct target send를 먼저 보여 주지 않는다. 위치값은 resolver 구현체와
@@ -136,7 +136,7 @@ actor 코드는 framework outbound client를 직접 고르지 않는다. actor�
 주입한 actor context만 사용하고, context가 현재 actor 상태에 맞는 channel request
 경로를 선택한다. actor가 아직 `Spot`에 join되지 않았으면 context의 channel
 request는 일반 framework channel client 경로로 나간다. actor가 `Spot`에 join된
-뒤에는 같은 호출이 현재 `Spot`에 attach된 channel client 경로로 나간다. 이 규칙은
+뒤에는 같은 호출이 현재 `Spot`에 route bridge channel socket 경로로 나간다. 이 규칙은
 사용자가 join 전후에 `IZLinkClient`와 `IZLinkSpotClient` 중 무엇을 써야 하는지
 판단하지 않게 하려는 것이다.
 

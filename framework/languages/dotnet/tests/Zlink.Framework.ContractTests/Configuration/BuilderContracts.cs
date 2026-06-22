@@ -63,8 +63,12 @@ public sealed class BuilderContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkClientServerChannelBuilder),
+        typeof(IZLinkClientServerChannelOptions),
         typeof(IZLinkFanoutChannelBuilder),
         typeof(IZLinkDealerMeshChannelBuilder),
+        typeof(IZLinkDealerMeshChannelOptions),
+        typeof(IZLinkChannelRuntimeOptions),
+        typeof(IZLinkRouteMeshChannelOptions),
         typeof(IZLinkRouteMeshChannelBuilder))]
     public void Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel()
     {

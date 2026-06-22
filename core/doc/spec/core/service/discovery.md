@@ -121,21 +121,18 @@ SPOT channel view that determines the node's mesh auto-connect scope.
 - Destroying the attached Discovery removes the automatic peer set it
   supplied.
 
-### SpotNode channel dealer attach
+### SpotNode channel access migration (deprecated)
 
-To call another channel from a `SpotNode`, the caller attaches a `DEALER`
-via `zlink_spot_node_attach_channel_dealer()`. This function takes a
-`ZLINK_AUTO_CONNECT_CLIENT_SERVER` Discovery together with the `DEALER` socket.
-The Discovery manages the peer set for that channel.
+`zlink_spot_node_attach_channel_dealer()` and
+`zlink_spot_node_attach_channel_dealer_manual()` are deprecated compatibility
+surfaces. The current implementation validates arguments and then fails with
+`ENOTSUP`; it does not create channel `DEALER` socket state inside `SpotNode`.
 
-- A Discovery has exactly one fixed `channel_name` (channel) view.
-- The same `channel_name` may have at most one `DEALER` (automatic and
-  manual attach combined). Duplicates fail with `EBUSY`.
-- The same Discovery handle must not be attached to more than one owner.
-- Attached dealers are dedicated to the `SpotNode`. The caller keeps
-  ownership, but the socket must not be reused elsewhere.
-- For manual channel dealer attach without Discovery, use
-  `zlink_spot_node_attach_channel_dealer_manual()`.
+To send/request to a target `Spot` through another channel, the channel runtime
+keeps ownership of its `DEALER` or `ROUTER` socket and lends that socket to a
+bridge through the `zlink_spot_route_bridge_*` APIs. Discovery may still be
+used by the channel runtime to obtain the peer set, but `SpotNode` does not
+own the channel socket.
 
 ### SPOT Node
 

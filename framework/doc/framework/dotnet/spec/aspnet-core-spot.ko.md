@@ -8,6 +8,15 @@
 
 # ZLink Framework ASP.NET Core SPOT Integration
 
+## 현재 구현 기준
+
+`AcceptSpotRoutesFromChannel(...)`과 SPOT egress builder는 core의 deprecated
+`SpotNode` attach/connect API를 호출하지 않는다. .NET framework runtime은
+`bindings/dotnet`의 public `CreateRouteBridge(...)` / `ISpotRouteBridge` 표면으로
+channel socket을 bridge에 연결한다. channel socket의 lifecycle은 channel runtime이
+소유하고, bridge는 SPOT relay packet만 분류한다. local `SpotNode` topic plane으로
+외부 publish가 필요하면 raw `PUB` attach가 아니라 public publisher handle을 사용한다.
+
 ## 1. 목표
 
 이 절은 `ZLink Framework` 가 `SPOT` 을 `ASP.NET Core` 안에서 어떻게 다루려고
@@ -40,7 +49,7 @@
 - `SpotNode`
 - `Spot`
 - `Spot` publish / subscribe
-- channel client attach 기반 channel send / request
+- channel route bridge 기반 channel send / request
 
 이 문서의 핵심은 `SPOT` 기능 자체를 새로 만드는 일이 아니다. 이미 존재하는
 binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 정리하는 것이
@@ -80,15 +89,15 @@ binding 기능을 `ASP.NET Core` 안에 자연스럽게 녹여 넣는 방법을 
 - 같은 `SpotNode`에는 active SPOT channel view를 하나만 둔다.
 - `SpotNode.router`와 pub/sub mesh[^mesh]는 같은 channel에 속한 다른
   `SpotNode`와만 연결된다.
-- 다른 channel 호출은 `SpotNode.router`가 아니라 attach된 channel client 경로로
-  처리한다.
+- 다른 channel 호출은 `SpotNode.router`가 아니라 channel runtime socket을 참조하는
+  route bridge 경로로 처리한다.
 - 따라서 `spotRid`는 service에서 부여되는 값이 아니라, `SpotNode`가 spot
   인스턴스를 생성할 때 발급하는 식별자다.
 
 이 관점에서 특히 중요한 점은 다음과 같다.
 
 - 현재 SPOT channel 안에서는 topic publish/subscribe를 사용한다.
-- 다른 channel 호출은 attach된 channel client를 통해 보낸다.
+- 다른 channel 호출은 route bridge가 참조하는 channel runtime socket을 통해 보낸다.
 - `SpotNode.router`는 peer topology[^topology]와 내부 routed[^routed] delivery를
   위해 남겨 두되, framework core의 public high-level API에서는
   `targetRid + spotRid`를 직접 받는 direct routed 호출 표면을 두지 않는다.
@@ -453,10 +462,10 @@ placement 코드가 먼저 spot rid 를 결정해 두어야 한다.
 - `node.ConfigurePubSubSubscriber()`
   - 실제 `SpotNode.SubscriberOptions`에 들어가는 mesh subscribe 기본값을 정한다.
 - `node.ConfigureChannelClientSocket(channelName)`, `node.ConfigureChannelClientRouting(channelName)`
-  - attach된 channel client의 공통 socket 설정과 routed outbound 설정을 나눠
+  - route bridge channel socket의 공통 socket 설정과 routed outbound 설정을 나눠
     구성한다.
 - `node.ConfigureSpotPublisherClientSocket(channelName)`
-  - attach된 spot publisher client의 publish ingress 기본값을 정한다.
+  - SpotNode publisher handle의 publish ingress 기본값을 정한다.
 
 예시를 풀어 보면 다음처럼 읽힌다.
 
@@ -546,7 +555,7 @@ builder.Services.AddZLinkFramework(options =>
   아니라 **spot execution context 안에서** complete된다.
 - request completion callback이 같은 spot executor에서 실행되므로,
   continuation도 spot state에 별도 lock 없이 접근할 수 있다.
-- binding이 attached dealer마다 별도 progress pump를 돌리지 않아도 된다.
+- binding이 channel socket마다 별도 progress pump를 돌리지 않아도 된다.
   `Spot` progress loop 하나로 channel reply completion까지 처리된다.
 - actor가 `Spot`에 join된 뒤에는 `IZLinkSpotContext.Handlers.AddHandler(...)`로
   등록한 actor packet handler 역시 같은 spot execution context에서 실행된다.
@@ -599,7 +608,7 @@ request, publish, subscribe 를 처리할 뿐이다.
 여기서 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle 이
 아니라는 사실이다. 생성 결과는 `spotRid`, `Existing`/`Created`/`Rejected` 상태,
 create callback이 돌려준 선택적 reply `Message`면 충분하다. 이후 메시징은
-현재 channel publish 또는 attach 된 channel client 를 통한 send / request 로 푸는
+현재 channel publish 또는 route bridge channel socket을 통한 send / request 로 푸는
 쪽이, 지금의 topology 초안과 더 잘 맞는다.
 
 생성 요청의 payload는 단일 `Message`로 전달한다. framework는 JSON, Protobuf,
@@ -678,12 +687,12 @@ reply `Message`로 호출자에게 전달한다.
 현재 방향에서는 다음 세 종류를 구분하는 편이 더 자연스럽다.
 
 - 현재 SPOT channel 안의 topic publish
-- attach 된 다른 channel client 를 통한 channel send / request
+- route bridge가 참조하는 다른 channel runtime socket을 통한 channel send / request
 - spot rid 기반 routed spot send / request
 
 각 표면이 맡는 역할은 다음과 같다.
 
-- `SendToChannel(...)` / `RequestToChannel(...)` 는 attach 된 channel client 를
+- `SendToChannel(...)` / `RequestToChannel(...)` 는 route bridge channel socket을
   사용한다.
 - `SendToSpot(...)` / `RequestToSpot(...)` 는 spot remote address resolver 가 찾은 target
   route 를 이용한다.
@@ -768,7 +777,7 @@ SPOT channel publish 를 본다.
 먼저 보여 준다.
 
 - 같은 channel 안의 publish / subscribe
-- attach 된 다른 channel client 를 통한 send / request
+- route bridge가 참조하는 다른 channel runtime socket을 통한 send / request
 - spot rid 기반 routed send / request
 
 이때 channel send / request, spot send / request, topic publish 는 일반
@@ -958,12 +967,12 @@ room 의 핫패스에 비해 편의 기능을 조금 더 허용할 여지가 있
 - `channelName` 기반 일반 channel messaging
 - `SPOT` 기반 current channel publish / subscribe 와 channel send / request
 
-또한 현재 하부 topology 는 `SpotNode.router` peer 경로와 attach 된 channel
-client 경로를 함께 가진다. framework 문서에서는 다음 두 종류를 구분해서 설명
-한다.
+또한 현재 하부 topology 는 `SpotNode.router` peer 경로와 channel runtime socket을
+참조하는 route bridge 경로를 함께 가진다. framework 문서에서는 다음 두 종류를
+구분해서 설명한다.
 
 - 같은 channel 안의 topic publish / subscribe
-- attach 된 다른 channel client 를 통한 send / request
+- route bridge가 참조하는 다른 channel runtime socket을 통한 send / request
 
 이 점은 `playhouse` 시나리오에서 특히 중요하다.
 
@@ -1003,7 +1012,7 @@ ActorGateway 는 별도 node builder 가 아니라, stream 이 router 역할을
 
 ## 10. 결정된 기준
 
-- attach된 channel client와 spot publisher client 설정은 역할별 builder 하나로
+- route bridge channel socket과 spot publisher client 설정은 역할별 builder 하나로
   묶는다. socket option과 manual connection처럼 runtime이 소유하는 설정만
   노출하고, 그보다 더 세밀한 하위 builder 트리는 기본 표면으로 확장하지 않는다.
 - spot rid 는 별도 wrapper 없이 `RoutingId` 로 노출한다. framework 문서에서는

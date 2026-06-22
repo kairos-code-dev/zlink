@@ -160,6 +160,20 @@ public final class NativeSpotNode implements SpotNode {
         }
     }
 
+    /** Connects one peer spot node endpoint and associates it with a target node routing id. */
+    public void connectPeerRid(RoutingId targetNodeRid, String peerEndpoint) {
+        Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeRid = nativeRoutingId(arena, targetNodeRid);
+            int rc = Native.spotNodeConnectPeerRid(handle, nativeRid,
+              NativeHelpers.toCString(arena, peerEndpoint));
+            if (rc != 0) {
+                throw InternalAccess.zlinkExceptionFromLastError(
+                  "zlink_spot_node_connect_peer_rid");
+            }
+        }
+    }
+
     /** Disconnects one peer spot node endpoint. */
     public void disconnectPeer(String peerEndpoint) {
         try (Arena arena = Arena.ofConfined()) {

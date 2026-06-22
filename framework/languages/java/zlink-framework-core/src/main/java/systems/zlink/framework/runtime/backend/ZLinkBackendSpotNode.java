@@ -23,6 +23,8 @@ public interface ZLinkBackendSpotNode extends ZLinkBackendObject {
 
     void connectPeer(String endpoint);
 
+    void connectPeer(RoutingId peerRid, String endpoint);
+
     ZLinkBackendSpotRouteBridge createRouteBridge();
 
     ZLinkBackendSpot createSpot();

@@ -486,6 +486,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setPubBind(String endpoint) { spotNode.setPubBind(endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { spotNode.attachDiscovery(((JavaDiscovery) discovery).nativeDiscovery()); }
         @Override public void connectPeer(String endpoint) { spotNode.connectPeer(endpoint); }
+        @Override public void connectPeer(RoutingId peerRid, String endpoint) { spotNode.connectPeerRid(peerRid, endpoint); }
         @Override public ZLinkBackendSpotRouteBridge createRouteBridge() { return new JavaSpotRouteBridge(spotNode.createRouteBridge()); }
         @Override public ZLinkBackendSpot createSpot() { return new JavaSpot(spotNode.createSpot()); }
         @Override public ZLinkBackendSpot entrySpot() { return new JavaSpot(spotNode.entrySpot()); }

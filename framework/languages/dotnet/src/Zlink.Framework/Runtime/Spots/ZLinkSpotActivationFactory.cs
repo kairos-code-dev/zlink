@@ -10,7 +10,7 @@ internal sealed class ZLinkSpotActivationFactory(
     ZLinkSpotNodeRegistration registration,
     IZLinkBackendSpotNode node,
     string spotChannelName,
-    Func<string, ZLinkAsyncSubmitter?> channelSubmitter,
+    Func<string, ZLinkSpotAttachedChannelBundle?> channelClient,
     Action connectDiscoveredPubSubPeers)
 {
     public async ValueTask<ZLinkSpotActivationCreateResult> CreateAsync(
@@ -34,7 +34,7 @@ internal sealed class ZLinkSpotActivationFactory(
                 frameworkRegistration.DefaultRequestTimeout,
                 registration.Router?.SocketConfig.SendTimeout
                     ?? frameworkRegistration.DefaultSocketSendTimeout,
-                channelSubmitter);
+                channelClient);
 
             var spot = (IZLinkSpot)ActivatorUtilities.CreateInstance(
                 spotScope.ServiceProvider,

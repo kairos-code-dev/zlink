@@ -262,6 +262,12 @@ struct dispatch_options_t
         return *this;
     }
 
+    dispatch_options_t &include_native_diagnostics (bool include)
+    {
+        diagnostics._include_native_diagnostics = include;
+        return *this;
+    }
+
     // Send message-flow/error tracing to its own file (separated from app logs).
     dispatch_options_t &trace_log_file (std::string path)
     {

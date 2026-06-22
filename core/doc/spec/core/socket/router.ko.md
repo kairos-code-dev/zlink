@@ -300,15 +300,23 @@ routing id를 가리킵니다.
 
 `zlink_router_send_spot_part()`와 `zlink_router_request_spot_part()`는
 router channel의 `ROUTER`에서 target `Spot`으로 routed 메시지를 보낸다.
-target node가 해당 router channel peer로 연결되어 있어야 하며, 이 연결은
-`zlink_spot_node_connect_router_channel_peer()` 또는
-`zlink_spot_node_attach_router_channel_discovery()`로 만든다.
+새 코드에서는 router channel socket을 `SpotNode`에 직접 연결하지 않는다.
+호출자는 router channel의 `ROUTER` socket을 계속 소유하고,
+`zlink_spot_route_bridge_attach_router_channel()`로 bridge에 빌려준다.
+target node routing id는 `zlink_spot_route_bridge_set_target_node()`로 지정한다.
 
 호출자는 target node routing id와 target spot routing id를 모두 제공해야 한다.
 router channel peer가 없거나 아직 route가 준비되지 않은 target으로 보내면 일반
 ROUTER not-connected 계열 오류와 같은 방식으로 실패하거나 전송되지 않을 수 있다.
 따라서 상위 framework는 channel id를 resolver metadata로만 보관하지 말고 실제
-router-capable channel의 `ROUTER` socket을 transport로 선택해야 한다.
+router-capable channel의 `ROUTER` socket을 transport로 선택한 뒤 bridge에 넘겨야 한다.
+
+bridge는 `ROUTER` socket을 소유하지 않는다. `ROUTER` socket은 호출자 또는
+channel runtime이 계속 소유하며, bridge close가 socket을 닫지 않는다. `ROUTER`
+socket은 물리적으로 inbound를 받을 수 있으므로, inbound 허용 여부는 socket 종류가
+아니라 bridge endpoint capability와 handoff 결과로 판단한다. bridge가
+`handled=false`를 반환하면 호출자가 packet 소유권을 유지하고 일반 channel packet으로
+처리할 수 있다. `handled=true`이면 bridge가 SPOT relay packet을 소비한다.
 
 #### Actor id로 조회한 Spot route로 보내기
 

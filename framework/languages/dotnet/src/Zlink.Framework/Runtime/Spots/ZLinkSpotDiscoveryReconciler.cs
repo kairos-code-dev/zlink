@@ -44,7 +44,7 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
                 out var peerRoutingId);
             if (string.IsNullOrWhiteSpace(routerEndpoint)
                 || string.Equals(routerEndpoint, localEndpoint, StringComparison.Ordinal)
-                || !peerConnections.TryAddRouterDiscovered(routerEndpoint))
+                || !peerConnections.TryAddRouterDiscovered(routerEndpoint, peerRoutingId))
             {
                 Debug(
                     $"skip peer={peer.Endpoint} rid={peer.RoutingId?.ToHex() ?? "-"} routerEndpoint={routerEndpoint}");
@@ -129,9 +129,14 @@ internal sealed class ZLinkSpotDiscoveryReconciler(
 
     private void ConnectRouterPeer(RoutingId peerRoutingId, string endpoint)
     {
-        _ = peerRoutingId;
         try
         {
+            if (peerRoutingId.Size > 0)
+            {
+                node.ConnectPeer(peerRoutingId, endpoint);
+                return;
+            }
+
             node.ConnectPeer(endpoint);
         }
         catch (ZlinkConnectException error)

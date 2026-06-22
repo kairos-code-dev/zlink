@@ -29,10 +29,6 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
     bool had_active_peers = false;
     {
         scoped_lock_t lock (_sync);
-        if (_discovery_state.discovery) {
-            errno = EBUSY;
-            return -1;
-        }
         had_active_peers = !_peer_state.active_endpoints.empty ();
         if (_peer_state.manual_endpoints.count (peer_pub_endpoint_) != 0)
             return 0;
@@ -65,6 +61,74 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
         if (!had_active_peers)
             refresh_sub_peer_summaries (true, false);
     }
+    lock_entry_spot_rid ();
+    return 0;
+}
+
+int spot_node_t::connect_peer_pub_rid (const zlink_routing_id_t *target_node_rid_,
+                                       const char *peer_pub_endpoint_)
+{
+    service_public_api_scope_t admission (_public_api);
+    if (!admission.acquired ())
+        return -1;
+
+    if (!valid_routing_id (target_node_rid_) || !peer_pub_endpoint_ || peer_pub_endpoint_[0] == '\0') {
+        errno = EINVAL;
+        return -1;
+    }
+    if (ensure_healthy () != 0)
+        return -1;
+
+    const std::string rid_key = zlink::routing_id_key (target_node_rid_);
+    bool need_connect = false;
+    bool had_active_peers = false;
+    bool endpoint_was_manual = false;
+    bool inserted_rid_endpoint = false;
+    {
+        scoped_lock_t lock (_sync);
+        had_active_peers = !_peer_state.active_endpoints.empty ();
+        endpoint_was_manual = _peer_state.manual_endpoints.count (peer_pub_endpoint_) != 0;
+        if (!endpoint_was_manual)
+            _peer_state.manual_endpoints.insert (peer_pub_endpoint_);
+        _peer_state.peer_weight_by_rid[rid_key] = 100;
+        inserted_rid_endpoint =
+          _peer_state.peer_endpoints_by_rid[rid_key].insert (peer_pub_endpoint_).second;
+        _peer_state.observations[peer_pub_endpoint_].last_changed_ms = zlink::clock_t ().now_ms ();
+        _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
+        if (_peer_state.active_endpoints.count (peer_pub_endpoint_) == 0 || inserted_rid_endpoint)
+            need_connect = true;
+    }
+
+    std::vector<std::string> args;
+    args.push_back (peer_pub_endpoint_);
+    args.push_back (rid_key);
+    if (need_connect
+        && send_data_plane_command (spot_control_protocol::cmd_connect_peer_pub, args) != 0) {
+        scoped_lock_t lock (_sync);
+        if (!endpoint_was_manual)
+            _peer_state.manual_endpoints.erase (peer_pub_endpoint_);
+        if (inserted_rid_endpoint) {
+            _peer_state.peer_endpoints_by_rid[rid_key].erase (peer_pub_endpoint_);
+            if (_peer_state.peer_endpoints_by_rid[rid_key].empty ()) {
+                _peer_state.peer_endpoints_by_rid.erase (rid_key);
+                _peer_state.peer_weight_by_rid.erase (rid_key);
+            }
+        }
+        return -1;
+    }
+
+    bool has_active_peers = false;
+    {
+        scoped_lock_t lock (_sync);
+        _tls_state.mesh_client_tls_locked = true;
+        if (_peer_state.active_endpoints.insert (peer_pub_endpoint_).second)
+            _endpoint_state.active_peer_count.fetch_add (1, std::memory_order_acq_rel);
+        _peer_state.observations[peer_pub_endpoint_].last_changed_ms = zlink::clock_t ().now_ms ();
+        _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
+        has_active_peers = !_peer_state.active_endpoints.empty ();
+    }
+    if (has_active_peers && !had_active_peers)
+        refresh_sub_peer_summaries (true, false);
     lock_entry_spot_rid ();
     return 0;
 }

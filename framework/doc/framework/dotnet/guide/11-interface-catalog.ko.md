@@ -318,7 +318,7 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkStreamNodeBuilder` | stream node(`Bind`, `AttachActorGateway`, `RegisterSession<TSession>`) |
-| `IZLinkSpotNodeBuilder` | spot node 등록 표면(`EnableRouter`, `EnablePubSub`, channel attach, route 수용, entry/spot factory) |
+| `IZLinkSpotNodeBuilder` | spot node 등록 표면(`EnableRouter`, `EnablePubSub`, channel route bridge, route 수용, entry/spot factory) |
 | `IZLinkSpotMeshNodeBuilder` | spot mesh 안의 노드 빌더(`IZLinkSpotNodeBuilder` 와 같은 표면, mesh 컨텍스트) |
 | `IZLinkSpotMeshBuilder` | discovery 기반 spot mesh(`UseDiscovery`, `AddNode`) |
 

@@ -87,9 +87,14 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     private final List<FakeStreamSocket> streams = new ArrayList<>();
     private final List<FakeSpot> spots = new ArrayList<>();
     private final List<FakeRouterSocket> routers = new ArrayList<>();
+    private boolean roomsDiscoveryDelaysRoutingId;
 
     public List<String> calls() {
         return List.copyOf(calls);
+    }
+
+    public void delayRoomsDiscoveryRoutingIdUntilSecondSnapshot() {
+        roomsDiscoveryDelaysRoutingId = true;
     }
 
     public void dispatchStreamPacket(String packetName, String payload) {
@@ -248,7 +253,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     @Override
     public ZLinkChannelBackendAdapter createChannelAdapter(ZLinkBackendAdapterOptions options) {
         calls.add("factory.channel");
-        return new FakeChannelBackendAdapter(calls, routers);
+        return new FakeChannelBackendAdapter(calls, routers, this);
     }
 
     @Override
@@ -333,10 +338,15 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     private static final class FakeChannelBackendAdapter implements ZLinkChannelBackendAdapter {
         private final List<String> calls;
         private final List<FakeRouterSocket> routers;
+        private final FakeZLinkBackendAdapterFactory owner;
 
-        FakeChannelBackendAdapter(List<String> calls, List<FakeRouterSocket> routers) {
+        FakeChannelBackendAdapter(
+            List<String> calls,
+            List<FakeRouterSocket> routers,
+            FakeZLinkBackendAdapterFactory owner) {
             this.calls = calls;
             this.routers = routers;
+            this.owner = owner;
         }
 
         @Override
@@ -349,7 +359,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             ZLinkBackendContext context,
             ZLinkBackendAutoConnectType autoConnectType,
             String channelName) {
-            return new FakeDiscovery(calls, "discovery." + channelName);
+            return new FakeDiscovery(calls, "discovery." + channelName, owner);
         }
 
         @Override
@@ -451,8 +461,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     }
 
     private static final class FakeDiscovery extends FakeBackendObject implements ZLinkBackendDiscovery {
-        FakeDiscovery(List<String> calls, String name) {
+        private final FakeZLinkBackendAdapterFactory owner;
+        private int memberPeerSnapshots;
+
+        FakeDiscovery(List<String> calls, String name, FakeZLinkBackendAdapterFactory owner) {
             super(calls, name);
+            this.owner = owner;
         }
 
         @Override
@@ -501,12 +515,15 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                     1));
             }
             if ("discovery.rooms".equals(name())) {
+                memberPeerSnapshots++;
                 return List.of(new ZLinkBackendRegistryMemberPeerEntry(
                     AutoConnectType.SPOT_MESH,
                     ServiceRole.ROUTER,
                     "rooms",
                     "inproc://rooms-router-peer",
-                    RoutingId.from("rooms-node-2"),
+                    owner.roomsDiscoveryDelaysRoutingId && memberPeerSnapshots == 1
+                        ? RoutingId.from(new byte[0])
+                        : RoutingId.from("rooms-node-2"),
                     1,
                     1));
             }
@@ -765,6 +782,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setPubBind(String endpoint) { record("setPubBind." + endpoint); }
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
         @Override public void connectPeer(String endpoint) { record("connectPeer." + endpoint); }
+        @Override public void connectPeer(RoutingId peerRid, String endpoint) { record("connectPeer." + peerRid + "." + endpoint); }
         @Override public ZLinkBackendSpotRouteBridge createRouteBridge() {
             record("createRouteBridge");
             return new FakeSpotRouteBridge(calls());

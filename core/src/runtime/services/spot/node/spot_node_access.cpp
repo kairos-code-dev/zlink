@@ -187,6 +187,13 @@ int spot_node_access_t::connect_peer (spot_node_t *node_, const char *peer_endpo
     return node_ ? node_->connect_peer_pub (peer_endpoint_) : -1;
 }
 
+int spot_node_access_t::connect_peer_rid (spot_node_t *node_,
+                                          const zlink_routing_id_t *target_node_rid_,
+                                          const char *peer_endpoint_)
+{
+    return node_ ? node_->connect_peer_pub_rid (target_node_rid_, peer_endpoint_) : -1;
+}
+
 int spot_node_access_t::disconnect_peer (spot_node_t *node_, const char *peer_endpoint_)
 {
     return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;

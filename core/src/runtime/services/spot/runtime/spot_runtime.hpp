@@ -50,6 +50,7 @@ struct spot_runtime_t
     int close_runtime_socket (socket_base_t *&socket_, int timeout_ms_);
     int close_runtime_socket_async (socket_base_t *&socket_, int timeout_ms_);
     int send_command (const char *verb_, const char *arg_) const;
+    int send_command (const char *verb_, const std::vector<std::string> &args_) const;
     void mark_fault (int err_);
     void begin_shutdown ();
     void advance_shutdown_phase (spot_shutdown_phase_t phase_);
@@ -84,6 +85,9 @@ struct spot_runtime_t
     bool external_route_id_matches (const std::string &peer_endpoint_,
                                     const std::string &route_id_,
                                     const std::string &route_endpoint_) const;
+    bool external_route_id_for_endpoint (const std::string &peer_endpoint_,
+                                         const std::string &route_endpoint_,
+                                         std::string *out_) const;
     std::string erase_external_route_id (const std::string &peer_endpoint_);
     std::vector<std::string> clear_external_route_ids ();
     bool missing_external_routes_for_ready_peer () const;

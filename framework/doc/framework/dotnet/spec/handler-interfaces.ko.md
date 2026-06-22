@@ -943,7 +943,7 @@ public sealed class Spot : IDisposable, IAsyncDisposable
 
     public Received RecvRoute(RecvFlags flags = RecvFlags.None);
 
-    // channel 이름 기반 호출 (attach된 dealer 경유)
+    // channel 이름 기반 호출 (framework route bridge 경유)
     public void SendToChannel(string channelName, ReadOnlyMemory<byte> payload);
 
     public Task<Received> RequestToChannelAsync(
@@ -2028,7 +2028,7 @@ await client
 현재 다루는 축은 세 가지다.
 
 - 현재 SPOT channel 안에서의 publish/subscribe
-- attach 된 channel client 를 거치는 다른 channel 의 send/request
+- channel egress bridge를 거치는 다른 channel 의 send/request
 - spot rid 기반의 routed spot send/request
 
 spot rid 기반 호출의 흐름은 다음과 같다. `IZLinkSpotRemoteAddressResolver`
@@ -2073,8 +2073,8 @@ client 를 주입하지 않고 `Context.Outbound.SendToSpot(...)`, `Context.Outb
 - `Publish(topic, ...)` 가 포함된다. SPOT 쪽은 현재 channel 안에서 topic
   publish 를 함께 사용하는 경우가 많기 때문에, 같은 interface 에 둔다.
 - `SendToSpot(...)` / `RequestToSpot(...)` 은 spot remote address resolver 를 사용한다.
-- `SendToChannel(...)` / `RequestToChannel(...)` 은 attach 된 channel client
-  를 통해 해소한다.
+- `SendToChannel(...)` / `RequestToChannel(...)` 은 channel egress bridge를
+  통해 해소한다.
 - 따라서 local `SpotNode` 나 local spot runtime 이 없는 앱이라면, 기본
   outbound 표면은 `IZLinkChannelClient` 다. 그런 앱에서 외부 SPOT channel
   publish 만 필요한 경우에는, `IZLinkSpotPublisherClient` 를 별도로
@@ -2090,7 +2090,7 @@ client 를 주입하지 않고 `Context.Outbound.SendToSpot(...)`, `Context.Outb
 framework 초안에서 말하는 "spot 용 함수" 와 "channelName 으로 호출하는
 함수" 는 서로 별개의 경로다. 두 경로는 다음과 같이 갈라진다.
 
-- channel 이름 기준 호출은 attach 된 channel client 를 사용한다.
+- channel 이름 기준 호출은 channel egress bridge를 사용한다.
 - spot rid 기반 호출은 `IZLinkSpotRemoteAddressResolver` 가 해소한 위치값을,
   framework 내부 transport 가 사용한다.
 
@@ -2962,7 +2962,7 @@ public interface IZLinkEntrySpotOptions
 - `EnablePubSub(...)`
   - 현재 SPOT channel 안의 publish/subscribe 역할을 켠다.
 - `AttachChannelClient(...)`
-  - 다른 channel로 send/request 할 outbound `DEALER(client)` 경로를 붙인다.
+  - 다른 channel로 send/request 할 outbound channel egress bridge 경로를 붙인다.
 - `AttachSpotPublisherClient(...)`
   - local spot 인스턴스가 없는 외부 노드가 특정 SPOT channel로 publish할
     outbound publisher client를 붙인다.
@@ -3025,7 +3025,7 @@ ActorGateway 도 같은 원칙을 따른다. 별도 `AddActorGatewayNode(...)` �
 
 - local routed router 역할 활성화
 - local SPOT pub/sub 역할 활성화
-- 외부 channel 호출용 client attach
+- 외부 channel 호출용 egress bridge
 - 외부 SPOT publish client attach
 
 ## 7. Timer 인터페이스
@@ -3823,7 +3823,6 @@ interface 설명을 변경하면, 아래 테스트도 함께 조정한다.
 | `ScaffoldSmokeTests.PublicSurface_DoesNotExpose_BackendConcreteTypes` | framework public API가 허용된 값 타입 외의 backend concrete type을 직접 노출하지 않는다. |
 | `ScaffoldSmokeTests.PublicSurface_Removes_DirectRouteContracts_And_Exposes_ActorContracts` | direct route 계약은 빠지고 actor/session 계약은 public surface에 남아 있다. |
 | `RegistryAndMonitoringTests.AddZLinkFramework_RegistersValidatedConfigurationAndFilterTypes` | options, codec, filter, channel, stream, spot 등록 표면이 DI 등록 결과에 반영된다. |
-| `FiltersAndHttpTests.Filters_Run_In_Registration_Order_Around_Handler_Dispatch` | handler filter 인터페이스가 등록 순서대로 dispatch 앞뒤를 감싼다. |
 | `HandlerResultAwaiterTests.AwaitAsync_Returns_ValueTaskOfT_Result` | `ValueTask<T>` handler 결과를 값 타입 boxing 여부와 무관하게 기다리고 실제 reply 값을 반환한다. |
 | `ProtocolTests.SpotActorRegistry_DoesNot_Resolve_Request_To_Send_Handler` | Entry Spot/user Spot actor request packet 이 send handler 로 fallback dispatch 되지 않고, send/request 밖 stream kind 도 actor packet 으로 처리되지 않는다. |
 | `LocalSessionRelayTests.LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |

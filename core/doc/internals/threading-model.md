@@ -16,7 +16,7 @@ scheduled. The public API safety contract lives in
 | Application thread | Calls `zlink_send()`, `zlink_recv()`, `bind()`, `connect()`, etc. | User-defined |
 | I/O thread | Runs a Boost.Asio `io_context`; performs async network I/O, frame encoding/decoding, and socket event dispatch | Configurable (default: 4) |
 | Reaper thread | Deferred destruction of terminated sockets and sessions | 1 (global) |
-| SpotNode data-plane thread | Exclusively owns `mesh-pub`, `fanout`, `external-router` sockets; drains ingress queues; handles local fanout and peer mesh forwarding | 1 per SpotNode |
+| SpotNode data-plane thread | Exclusively owns `mesh-pub`, `fanout`, `routed-router` sockets; drains ingress queues; handles local fanout and peer mesh forwarding | 1 per SpotNode |
 | Dispatch worker thread | Executes Spot dispatch callbacks; per-Spot serialization and coalescing | N per SpotNode (default: `min(2, cpu_count)` – `max(1, cpu_count)`) |
 
 Set the I/O thread count at context creation time:
@@ -50,7 +50,7 @@ flowchart TB
         R1["Deferred socket/session cleanup"]
     end
     subgraph SPOT_DATA["SpotNode Data-plane Thread (1 per SpotNode)"]
-        DP["mesh-pub / fanout / external-router sockets\ningress queue drain · local fanout · peer mesh forwarding"]
+        DP["mesh-pub / fanout / routed-router sockets\ningress queue drain · local fanout · peer mesh forwarding"]
     end
     subgraph SPOT_WORKERS["Dispatch Worker Threads (N per SpotNode)"]
         W1["Execute Spot dispatch callbacks"]
@@ -219,7 +219,7 @@ executing `spot_data_plane_loop_t::run_until_shutdown()`. This thread exclusivel
 owns key resources such as the following (also includes `ctrl`/`data_ctrl_back`,
 `pub_ingress_sub`, etc.):
 
-- `mesh-pub`, `fanout`, `external-router`, `mesh-xsub`, `peer_ctrl_pub`,
+- `mesh-pub`, `fanout`, `routed-router`, `mesh-xsub`, `peer_ctrl_pub`,
   `peer_ctrl_sub` sockets
 - drain of `publish_ingress_queue`, `routed_send_queue`,
   `external_router_ingress_queue`
@@ -231,7 +231,7 @@ the public call path.
 
 ```
 Invariants:
-  Public threads must not send/recv on mesh-pub, fanout, or external-router directly.
+  Public threads must not send/recv on mesh-pub, fanout, or routed-router directly.
   The data-plane thread must not invoke application dispatch callbacks directly.
 ```
 
@@ -285,7 +285,7 @@ Why the data-plane thread does not call callbacks directly:
 
 1. Application callbacks may call SPOT send/recv APIs — reentrance into
    data-plane locks or socket ownership.
-2. Slow callbacks stall `mesh-pub` and `external-router` flushes.
+2. Slow callbacks stall `mesh-pub` and `routed-router` flushes.
 3. `ZLINK_POLLOUT` and send-ready callbacks are in the dispatch axis — mixing
    them with the forwarding loop corrupts readiness/forwarding ordering.
 
@@ -381,7 +381,7 @@ calling it.
 | Concurrent sends | Safe via admission gate |
 | Concurrent close + send | Safe; close returns `BUSY` until hot-path callers exit |
 | Callback thread | Per callback: socket message → I/O thread; monitor → service-control thread; send-ready → caller's send thread; SPOT dispatch → dispatch worker |
-| SpotNode data-plane thread | 1 per SpotNode; exclusively owns mesh-pub/fanout/external-router |
+| SpotNode data-plane thread | 1 per SpotNode; exclusively owns mesh-pub/fanout/routed-router |
 | Application→data-plane path | publish_ingress_queue / routed_send_queue (signaler-based wakeup) |
 | Dispatch worker thread | N per SpotNode; per-Spot serialization and coalescing; default min(2,cpu)–max(1,cpu) |
 | Dispatch worker idle timeout | 1000 ms (internal constant) |

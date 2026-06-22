@@ -10,7 +10,7 @@ public sealed class RegressionTests
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
         AssertSampleUsesRegistryDiscovery(sampleRoot);
-        AssertSessionServerUsesActorGateway(sampleRoot, allowRouteMeshChannel: false);
+        AssertSessionServerUsesActorGateway(sampleRoot, allowRouteMeshChannel: true);
         AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
         AssertEnsureActorHandlersReturnActorGatewayRemoteAddresses(sampleRoot);
         AssertNoSampleSessionRelayJson(sampleRoot);
@@ -23,16 +23,16 @@ public sealed class RegressionTests
     {
         AssertActorLifecycleSpec(
             ResolveSampleRoot("Bingo"),
-            "Server/Play/Adapters/ZLink/Spots/BingoEntrySpot.cs",
-            "Server/Play/Adapters/ZLink/Spots/BingoRoom.cs",
-            "Server/Play/Adapters/ZLink/Actors/PlayerActor.cs",
+            "Server/Play/Infrastructure/ZLink/Spots/BingoEntrySpot.cs",
+            "Server/Play/Infrastructure/ZLink/Spots/BingoRoom.cs",
+            "Server/Play/Infrastructure/ZLink/Actors/PlayerActor.cs",
             "Server/Session/Sessions/BingoSession.cs");
         AssertActorLifecycleSpec(
             ResolveSampleRoot("TicTacToe"),
-            "Server/Play/Adapters/ZLink/Spots/PlayEntrySpot.cs",
-            "Server/Play/Adapters/ZLink/Spots/TicTacToeGame.cs",
-            "Server/Play/Adapters/ZLink/Actors/PlayActor.cs",
-            "Server/Play/Adapters/ZLink/Sessions/PlaySession.cs");
+            "Server/Play/Infrastructure/ZLink/Spots/PlayEntrySpot.cs",
+            "Server/Play/Infrastructure/ZLink/Spots/TicTacToeGame.cs",
+            "Server/Play/Infrastructure/ZLink/Actors/PlayActor.cs",
+            "Server/Play/Infrastructure/ZLink/Sessions/PlaySession.cs");
     }
 
     [Fact]
@@ -226,10 +226,17 @@ public sealed class RegressionTests
         {
             ("Bingo", "Server/Session/Sessions/Handlers/AuthenticateSessionHandler.cs") => true,
             ("Bingo", "Server/Play/Application/RoomAllocation/BingoRoomAllocator.cs") => true,
+            ("Bingo", "Server/Play/Infrastructure/ZLink/Handlers/AllocateBingoRoomHandler.cs") => true,
             ("Bingo", "Server/Play/Adapters/ZLink/Spots/BingoRoom.cs") => true,
             ("Bingo", "Server/Play/Adapters/ZLink/Spots/Handlers/MatchBingoActorHandler.cs") => true,
+            ("Bingo", "Server/Play/Infrastructure/ZLink/Spots/BingoRoom.cs") => true,
+            ("Bingo", "Server/Play/Infrastructure/ZLink/Spots/BingoRoomSettingsPayloadMapper.cs") => true,
+            ("Bingo", "Server/Play/Infrastructure/ZLink/Spots/Handlers/MatchBingoActorHandler.cs") => true,
+            ("Bingo", "Server/Play/Infrastructure/ZLink/Spots/Handlers/ObserveBingoEventsHandler.cs") => true,
             ("TicTacToe", "Server/Play/Adapters/ZLink/Spots/TicTacToeGame.cs") => true,
             ("TicTacToe", "Server/Play/Adapters/ZLink/Spots/Handlers/PlayActorJoinGameHandler.cs") => true,
+            ("TicTacToe", "Server/Play/Infrastructure/ZLink/Spots/TicTacToeGame.cs") => true,
+            ("TicTacToe", "Server/Play/Infrastructure/ZLink/Spots/Handlers/PlayActorJoinGameHandler.cs") => true,
             _ => false
         };
     }
@@ -482,6 +489,18 @@ public sealed class RegressionTests
         if (Directory.Exists(adapterSessionsRoot))
         {
             yield return adapterSessionsRoot;
+        }
+
+        var infrastructureSessionsRoot = Path.Combine(
+            sampleRoot,
+            "Server",
+            "Play",
+            "Infrastructure",
+            "ZLink",
+            "Sessions");
+        if (Directory.Exists(infrastructureSessionsRoot))
+        {
+            yield return infrastructureSessionsRoot;
         }
     }
 

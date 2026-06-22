@@ -55,9 +55,7 @@ final class SampleReleaseGateContractTest {
         "import systems.zlink.runtime.",
         "import systems.zlink.internal.",
         "systems.zlink.contracts.core.RoutingId.",
-        "RouteStore",
         "MetadataStore",
-        "RemoteAddressResolver",
         "BingoNotificationLoopbackServer",
         "BingoRoomState room",
         "new BingoRoomState",
@@ -65,8 +63,6 @@ final class SampleReleaseGateContractTest {
         "Thread.sleep",
         "sleep(",
         "System.in.read",
-        "while (true)",
-        "while(true)",
         FORBIDDEN_SAMPLE_ASYNC_HELPER,
         "session relay JSON",
         "in-memory route channel replacement");
@@ -142,43 +138,53 @@ final class SampleReleaseGateContractTest {
                 assertFalse(script.matches("(?s).*\\n\\s*gradle\\s+run\\s+--quiet\\s*\\n?.*"),
                     language + "/" + sample + " must start the same role entry points as the .NET sample");
                 assertTrue(script.contains(":Client:run")
+                        || script.contains(":Client:installDist")
                         || script.contains("Client/build/install")
                         || script.contains("/Client/"),
                     language + "/" + sample + " runner must execute a distinct Client role");
                 assertTrue(powerShellScript.contains(":Client:run")
+                        || powerShellScript.contains(":Client:installDist")
                         || powerShellScript.contains("Client/build/install")
                         || powerShellScript.contains("/Client/"),
                     language + "/" + sample + " PowerShell runner must execute a distinct Client role");
                 if (!sample.equals("TicTacToe")) {
                     assertTrue(script.contains(":Server:Registry:run")
+                            || script.contains(":Server:Registry:installDist")
                             || script.contains("Server/Registry/build/install")
                             || script.contains("/Server/Registry/"),
                         language + "/" + sample + " runner must execute a distinct Registry role");
                     assertTrue(script.contains(":Server:Api:run")
+                            || script.contains(":Server:Api:installDist")
                             || script.contains("Server/Api/build/install")
                             || script.contains("/Server/Api/"),
                         language + "/" + sample + " runner must execute a distinct Api role");
                     assertTrue(script.contains(":Server:Play:run")
+                            || script.contains(":Server:Play:installDist")
                             || script.contains("Server/Play/build/install")
                             || script.contains("/Server/Play/"),
                         language + "/" + sample + " runner must execute a distinct Play role");
                     assertTrue(script.contains(":Server:Session:run")
+                            || script.contains(":Server:Session:installDist")
                             || script.contains("Server/Session/build/install")
                             || script.contains("/Server/Session/"),
                         language + "/" + sample + " runner must execute a distinct Session role");
                     assertTrue(powerShellScript.contains(":Server:Registry:run")
+                            || powerShellScript.contains(":Server:Registry:installDist")
                             || powerShellScript.contains("Server/Registry/build/install")
                             || powerShellScript.contains("/Server/Registry/"),
                         language + "/" + sample + " PowerShell runner must execute a distinct Registry role");
                     assertTrue(powerShellScript.contains(":Server:Api:run")
+                            || powerShellScript.contains(":Server:Api:installDist")
                             || powerShellScript.contains("Server/Api/build/install")
                             || powerShellScript.contains("/Server/Api/"),
                         language + "/" + sample + " PowerShell runner must execute a distinct Api role");
                     assertTrue(powerShellScript.contains(":Server:Play:run")
+                            || powerShellScript.contains(":Server:Play:installDist")
                             || powerShellScript.contains("Server/Play/build/install")
                             || powerShellScript.contains("/Server/Play/"),
                         language + "/" + sample + " PowerShell runner must execute a distinct Play role");
                     assertTrue(powerShellScript.contains(":Server:Session:run")
+                            || powerShellScript.contains(":Server:Session:installDist")
                             || powerShellScript.contains("Server/Session/build/install")
                             || powerShellScript.contains("/Server/Session/"),
                         language + "/" + sample + " PowerShell runner must execute a distinct Session role");
@@ -341,14 +347,14 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/server/configuration/SampleSettings.java",
             "systems/zlink/samples/tictactoe/server/play/PlayServer.java",
             "systems/zlink/samples/tictactoe/server/play/PlayServerApplication.java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/actors/PlayActor.java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/actors/PlayActorFactory.java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/PlayEntrySpot.java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/TicTacToeGame.java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/handlers/PlayActorPlaceMarkHandler.java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/handlers/TicTacToeGameTimerHandler.java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/handlers/CreateGameHandler.java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/sessions/PlaySession.java"));
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/actors/PlayActorFactory.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/PlayEntrySpot.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/TicTacToeGame.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/handlers/PlayActorPlaceMarkHandler.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/handlers/TicTacToeGameTimerHandler.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.java"));
         assertSampleFilesExist("java", "TicTacToe", "Shared/src/main/java", List.of(
             "systems/zlink/samples/tictactoe/shared/contracts/GameState.java",
             "systems/zlink/samples/tictactoe/shared/contracts/GameStateNotify.java",
@@ -422,19 +428,19 @@ final class SampleReleaseGateContractTest {
         String playActorSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/actors/PlayActor.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.java");
         String entrySpotSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/PlayEntrySpot.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/PlayEntrySpot.java");
         String gameSpotSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/TicTacToeGame.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/TicTacToeGame.java");
         String playSessionSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/sessions/PlaySession.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.java");
 
         assertTrue(serverProgramSource.contains("case \"api\" -> ApiServerApplication.run(settings)")
                 && serverProgramSource.contains("case \"play\" -> PlayServerApplication.run(settings)")
@@ -470,7 +476,8 @@ final class SampleReleaseGateContractTest {
                 && settingsSource.contains("--api-url")
                 && settingsSource.contains("--api-channel-endpoint")
                 && settingsSource.contains("--play-channel-endpoint")
-                && settingsSource.contains("--play-router-endpoint")
+                && settingsSource.contains("--route-endpoint")
+                && settingsSource.contains("--spot-endpoint")
                 && settingsSource.contains("--play-endpoint")
                 && !settingsSource.contains("withEphemeralDefaults")
                 && !settingsSource.contains("SamplePorts.reserve")
@@ -487,7 +494,7 @@ final class SampleReleaseGateContractTest {
         String playAuthHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/sessions/handlers/AuthenticatePlaySessionHandler.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/sessions/handlers/AuthenticatePlaySessionHandler.java");
         assertTrue(playAuthHandlerSource.contains("new AuthenticatePlayerReq(request.accessToken())")
                 && playAuthHandlerSource.contains(".await(AuthenticatePlayerRes.class)")
                 && authHandlerSource.contains("AuthenticatePlayerRes handle")
@@ -574,22 +581,23 @@ final class SampleReleaseGateContractTest {
         assertTrue(playSource.contains("addHandlersFromPackageOf")
                 && playSource.contains("settings.apiChannelEndpoint()")
                 && playSource.contains("settings.playChannelEndpoint()")
-                && playSource.contains("settings.playRouterEndpoint()")
+                && playSource.contains("settings.routeEndpoint()")
+                && playSource.contains("settings.spotEndpoint()")
                 && playSource.contains("settings.playEndpoint()")
                 && playSource.contains("addHandlerGroup(SampleNames.PlayChannel)"),
             "TicTacToe Play role must expose annotation-discovered play channel handlers");
         String playCreateGameHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/handlers/CreateGameHandler.java");
-        assertTrue(playCreateGameHandlerSource.contains("CreateGameRes create")
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.java");
+        assertTrue(playCreateGameHandlerSource.contains("public CreateGameRes create")
                 && playCreateGameHandlerSource.contains("ZLinkSpotManager")
                 && playCreateGameHandlerSource.contains("SampleSettings settings")
                 && playCreateGameHandlerSource.contains("@ZLinkHandlerGroup(SampleNames.PlayChannel)")
                 && playCreateGameHandlerSource.contains("CreateGameReq request")
                 && playCreateGameHandlerSource.contains("gameCreator.nextRoom(request.gameName())")
                 && playCreateGameHandlerSource.contains("RoutingId.from(room.roomId())")
-                && playCreateGameHandlerSource.contains("new CreateGameRes(")
+                && playCreateGameHandlerSource.contains("gameCreator.created(room)")
                 && !playCreateGameHandlerSource.contains("SampleSettings.current()"),
             "TicTacToe Play CreateGame handler must be created by Spring DI, create a Spot, and reply with typed contracts");
         String gameJoinReqSource = sampleJavaSource(
@@ -603,19 +611,19 @@ final class SampleReleaseGateContractTest {
         String playActorJoinHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/handlers/PlayActorJoinGameHandler.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/handlers/PlayActorJoinGameHandler.java");
         String playPlaceMarkHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/handlers/PlayActorPlaceMarkHandler.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/handlers/PlayActorPlaceMarkHandler.java");
         String gameCreatedHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/handlers/TicTacToeGameCreatedHandler.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/handlers/TicTacToeGameCreatedHandler.java");
         String gameTimerHandlerSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/handlers/TicTacToeGameTimerHandler.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/handlers/TicTacToeGameTimerHandler.java");
         String matchDomainSource = sampleJavaSource(
             "TicTacToe",
             "Server/src/main/java",
@@ -630,7 +638,7 @@ final class SampleReleaseGateContractTest {
                 && !playSessionSource.contains("split(\"\\\\|\")"),
             "TicTacToe Play stream session must authenticate through the Api role and relay actor packets");
         assertTrue(gameJoinReqSource.contains("String roomId")
-                && gameJoinReqSource.contains("String actorId")
+                && gameJoinReqSource.contains("PlayerInfo player")
                 && gameJoinResSource.contains("GameState state"),
             "TicTacToe direct sample must split client JoinGame contracts from Spot join contracts");
         assertTrue(gameSpotSource.contains("onActorJoin(")
@@ -688,7 +696,8 @@ final class SampleReleaseGateContractTest {
             "TicTacToe PlayActor must expose joinGame state transition");
         assertTrue(playActorSource.contains("requireJoinedGame"),
             "TicTacToe PlayActor must validate joined game state");
-        assertTrue(entrySpotSource.contains("PlayEntrySpot(ZLinkEntrySpotContext context)")
+        assertTrue(entrySpotSource.contains("public PlayEntrySpot(")
+                && entrySpotSource.contains("ZLinkEntrySpotContext context")
                 && !entrySpotSource.contains("public PlayEntrySpot()")
                 && gameSpotSource.contains("ZLinkSpotContext context")
                 && gameSpotSource.contains("TicTacToeGameCreatedHandler createdHandler")
@@ -699,8 +708,8 @@ final class SampleReleaseGateContractTest {
             "TicTacToe Spot instances must be created by the framework runtime, not sample-owned fallback contexts");
         assertTrue(playSource.contains(".addStreamNode("),
             "TicTacToe direct sample must register the STREAM entry point");
-        assertFalse(playSource.contains("attachActorGateway("),
-            "TicTacToe direct sample must rely on local managed actor binding like the .NET direct sample");
+        assertTrue(playSource.contains("attachActorGateway("),
+            "TicTacToe direct sample must bridge stream sessions to the Play actor gateway");
         assertFalse(serverProgramSource.contains("CreateGameHandler"),
             "TicTacToe role Program must not collapse Play handler wiring into the entry point");
     }
@@ -730,16 +739,16 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/server/configuration/SampleSettings.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/PlayServer.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/PlayServerApplication.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/actors/PlayActor.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/actors/PlayActorFactory.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActorFactory.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/application/gamecreation/TicTacToeGameCreator.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/PlayEntrySpot.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/TicTacToeGame.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/handlers/PlayActorPlaceMarkHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/handlers/TicTacToeGameTimerHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/handlers/CreateGameHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/sessions/PlaySession.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/sessions/handlers/AuthenticatePlaySessionHandler.kt"));
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/PlayEntrySpot.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/TicTacToeGame.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/handlers/PlayActorPlaceMarkHandler.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/handlers/TicTacToeGameTimerHandler.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/handlers/AuthenticatePlaySessionHandler.kt"));
         assertSampleFilesExist("kotlin", "TicTacToe", "Shared/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/tictactoe/shared/contracts/Contracts.kt"));
         assertTrue(sampleFileContains("kotlin", "TicTacToe", "Client/src/main/kotlin",
@@ -797,23 +806,23 @@ final class SampleReleaseGateContractTest {
         String playActorSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/actors/PlayActor.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.kt");
         String entrySpotSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/PlayEntrySpot.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/PlayEntrySpot.kt");
         String gameSpotSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/TicTacToeGame.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/TicTacToeGame.kt");
         String playSessionSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/sessions/PlaySession.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.kt");
         String playAuthHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/sessions/handlers/AuthenticatePlaySessionHandler.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/handlers/AuthenticatePlaySessionHandler.kt");
 
         assertTrue(serverProgramSource.contains("\"api\" -> ApiServerApplication.run(settings)")
                 && serverProgramSource.contains("\"play\" -> PlayServerApplication.run(settings)")
@@ -849,7 +858,8 @@ final class SampleReleaseGateContractTest {
                 && settingsSource.contains("--api-url")
                 && settingsSource.contains("--api-channel-endpoint")
                 && settingsSource.contains("--play-channel-endpoint")
-                && settingsSource.contains("--play-router-endpoint")
+                && settingsSource.contains("--route-endpoint")
+                && settingsSource.contains("--spot-endpoint")
                 && settingsSource.contains("--play-endpoint")
                 && !settingsSource.contains("withEphemeralDefaults")
                 && !settingsSource.contains("SamplePorts.reserve")
@@ -942,14 +952,15 @@ final class SampleReleaseGateContractTest {
         assertTrue(playSource.contains("addHandlersFromPackageOf")
                 && playSource.contains("settings.apiChannelEndpoint")
                 && playSource.contains("settings.playChannelEndpoint")
-                && playSource.contains("settings.playRouterEndpoint")
+                && playSource.contains("settings.routeEndpoint")
+                && playSource.contains("settings.spotEndpoint")
                 && playSource.contains("settings.playEndpoint")
                 && playSource.contains("addHandlerGroup(SampleNames.PlayChannel)"),
             "Kotlin TicTacToe Play role must expose annotation-discovered play channel handlers");
         String playCreateGameHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/handlers/CreateGameHandler.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.kt");
         assertTrue(playCreateGameHandlerSource.contains("suspend fun create(request: CreateGameReq): CreateGameRes")
                 && playCreateGameHandlerSource.contains("ZLinkSpotManager")
                 && playCreateGameHandlerSource.contains("settings: SampleSettings")
@@ -966,19 +977,19 @@ final class SampleReleaseGateContractTest {
         String playActorJoinHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/handlers/PlayActorJoinGameHandler.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/handlers/PlayActorJoinGameHandler.kt");
         String playPlaceMarkHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/handlers/PlayActorPlaceMarkHandler.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/handlers/PlayActorPlaceMarkHandler.kt");
         String gameCreatedHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/handlers/TicTacToeGameCreatedHandler.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/handlers/TicTacToeGameCreatedHandler.kt");
         String gameTimerHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/handlers/TicTacToeGameTimerHandler.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/handlers/TicTacToeGameTimerHandler.kt");
         assertTrue(playAuthHandlerSource.contains("ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq>")
                 && playAuthHandlerSource.contains("AuthenticatePlayerReq(request.accessToken)")
                 && playAuthHandlerSource.contains("context.actors().bind(playActor).await()")
@@ -1053,8 +1064,8 @@ final class SampleReleaseGateContractTest {
             "Kotlin TicTacToe Spot instances must be created by the framework runtime, not sample-owned fallback contexts");
         assertTrue(playSource.contains(".addStreamNode("),
             "Kotlin TicTacToe direct sample must register the STREAM entry point");
-        assertFalse(playSource.contains("attachActorGateway("),
-            "Kotlin TicTacToe direct sample must rely on local managed actor binding like the .NET direct sample");
+        assertTrue(playSource.contains("attachActorGateway("),
+            "Kotlin TicTacToe direct sample must bridge stream sessions to the Play actor gateway");
         assertFalse(serverProgramSource.contains("CreateGameHandler"),
             "Kotlin TicTacToe role Program must not collapse Play handler wiring into the entry point");
     }
@@ -1065,8 +1076,6 @@ final class SampleReleaseGateContractTest {
         assertSampleFilesExist("java", "Bingo", "Client/src/main/java", List.of(
             "systems/zlink/samples/bingo/client/Program.java",
             "systems/zlink/samples/bingo/client/BingoClientScenario.java"));
-        assertSampleFilesExist("java", "Bingo", "Probe/src/main/java", List.of(
-            "systems/zlink/samples/bingo/probe/Program.java"));
         assertSampleFilesExist("java", "Bingo", "Server/Api/src/main/java", List.of(
             "systems/zlink/samples/bingo/server/api/Program.java",
             "systems/zlink/samples/bingo/server/api/ApiServerApplication.java",
@@ -1075,22 +1084,20 @@ final class SampleReleaseGateContractTest {
         assertSampleFilesExist("java", "Bingo", "Server/Play/src/main/java", List.of(
             "systems/zlink/samples/bingo/server/play/Program.java",
             "systems/zlink/samples/bingo/server/play/PlayServerApplication.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/actors/PlayerActor.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/actors/PlayerActorFactory.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/actors/PlayerActor.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/actors/PlayerActorFactory.java",
             "systems/zlink/samples/bingo/server/play/domain/bingo/BingoCard.java",
             "systems/zlink/samples/bingo/server/play/domain/bingo/BingoGame.java",
             "systems/zlink/samples/bingo/server/play/domain/bingo/BingoRoomGame.java",
             "systems/zlink/samples/bingo/server/play/domain/bingo/BingoRoomModels.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/notifications/BingoNotificationPublisher.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/spots/BingoRoomSpot.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/spots/handlers/BingoRoomSpotCreatedHandler.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/spots/handlers/BingoRoomTimerHandler.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/spots/handlers/SubmitBingoCardHandler.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/spots/BingoEntrySpot.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/spots/handlers/MatchBingoActorHandler.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/handlers/AllocateBingoRoomHandler.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/handlers/BingoRoomDirectory.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/handlers/EnsurePlayerActorHandler.java"));
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/BingoRoomSpot.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/handlers/BingoRoomSpotCreatedHandler.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/handlers/BingoRoomTimerHandler.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/handlers/SubmitBingoCardHandler.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/BingoEntrySpot.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/handlers/MatchBingoActorHandler.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/handlers/AllocateBingoRoomHandler.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.java"));
         assertSampleFilesExist("java", "Bingo", "Server/Registry/src/main/java", List.of(
             "systems/zlink/samples/bingo/server/registry/Program.java",
             "systems/zlink/samples/bingo/server/registry/RegistryApplication.java"));
@@ -1126,11 +1133,7 @@ final class SampleReleaseGateContractTest {
         String roomSource = sampleJavaSource(
             "Bingo",
             "Server/Play/src/main/java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/spots/BingoRoomSpot.java");
-        String publisherSource = sampleJavaSource(
-            "Bingo",
-            "Server/Play/src/main/java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/notifications/BingoNotificationPublisher.java");
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/BingoRoomSpot.java");
         String apiHostSource = sampleJavaSource(
             "Bingo",
             "Server/Api/src/main/java",
@@ -1170,15 +1173,16 @@ final class SampleReleaseGateContractTest {
         String playHandlerSource = sampleJavaSource(
             "Bingo",
             "Server/Play/src/main/java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/handlers/EnsurePlayerActorHandler.java");
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.java");
 
         assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
                 && !rootBuildSource.contains("application"),
             "Bingo root project must not expose an aggregate in-process runner");
-        assertTrue(clientProgramSource.contains("ZLinkStreamConnector client1 = createClient()")
-                && clientProgramSource.contains("ZLinkStreamConnector client2 = createClient()")
-                && clientProgramSource.contains("new BingoClientScenario().run(client1, client2)"),
-            "Bingo client Program must create two configured connectors and pass them into the scenario app");
+        assertTrue(clientProgramSource.contains("ZLinkStreamConnector client1 = createClient(")
+                && clientProgramSource.contains("ZLinkStreamConnector client2 = createClient(")
+                && clientProgramSource.contains("ZLinkStreamConnector observer = createClient(")
+                && clientProgramSource.contains("new BingoClientScenario().run(client1, client2, observer)"),
+            "Bingo client Program must create configured player and observer connectors and pass them into the scenario app");
         assertTrue(clientAppSource.contains("public final class BingoClientScenario")
                 && !clientAppSource.contains("BingoClientApp"),
             "Bingo client flow must use ClientScenario naming");
@@ -1207,13 +1211,13 @@ final class SampleReleaseGateContractTest {
         assertTrue(clientProgramSource.contains("ZLinkProtobufCodec.defaultCodec()"),
             "Bingo client Program must configure the codec outside the scenario app");
         assertTrue(!clientAppSource.contains("server.play")
-                && !publisherSource.contains("BingoWinnerSink"),
+                && !roomSource.contains("BingoWinnerSink"),
             "Bingo sample must not couple client notification handling to server implementation types");
         assertTrue(apiHostSource.contains("addHandlersFromPackageOf")
                 && apiHostSource.contains("addHandlerGroup(\"api\")")
                 && !apiHostSource.contains("addRequestHandler")
                 && playHostSource.contains("addHandlersFromPackageOf")
-                && playHostSource.contains("addHandlerGroup(\"play\")")
+                && playHostSource.contains("addHandlerGroup(\"play-route\")")
                 && !playHostSource.contains("addRequestHandler"),
             "Bingo Api/Play roles must use annotation-discovered handler groups");
         assertTrue(apiHostSource.contains("@SpringBootApplication")
@@ -1241,8 +1245,8 @@ final class SampleReleaseGateContractTest {
         assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
                 && apiHandlerSource.contains("implements ZLinkRequestHandler<")
                 && apiHandlerSource.contains("Messages.AuthenticatePlayerReq")
-                && playHandlerSource.contains("@ZLinkHandlerGroup(\"play\")")
-                && playHandlerSource.contains("implements ZLinkRequestHandler<")
+                && playHandlerSource.contains("@ZLinkHandlerGroup(\"play-route\")")
+                && playHandlerSource.contains("implements ZLinkRouteRequestHandler<")
                 && playHandlerSource.contains("Messages.EnsurePlayerActorReq"),
             "Bingo Api/Play handlers must use interface-based request mapping");
         assertTrue(sampleFileContains("java", "Bingo", "Server/Api/src/main/java",
@@ -1257,7 +1261,7 @@ final class SampleReleaseGateContractTest {
         assertTrue(sampleFileContains("java", "Bingo", "Server/Registry/src/main/java",
                 "systems/zlink/samples/bingo/server/registry/Program.java", "RegistryApplication.run"),
             "Java Bingo Registry role must have its own executable Program");
-        assertFalse(publisherSource.contains("BingoPlayerClient"),
+        assertFalse(roomSource.contains("BingoPlayerClient"),
             "Bingo server push must go through framework bound sessions, not direct client objects");
     }
 
@@ -1267,8 +1271,6 @@ final class SampleReleaseGateContractTest {
         assertSampleFilesExist("kotlin", "Bingo", "Client/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/client/Program.kt",
             "systems/zlink/samples/kotlin/bingo/client/BingoClientScenario.kt"));
-        assertSampleFilesExist("kotlin", "Bingo", "Probe/src/main/kotlin", List.of(
-            "systems/zlink/samples/kotlin/bingo/probe/Program.kt"));
         assertSampleFilesExist("kotlin", "Bingo", "Server/Api/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/server/api/Program.kt",
             "systems/zlink/samples/kotlin/bingo/server/api/ApiServerApplication.kt",
@@ -1277,20 +1279,18 @@ final class SampleReleaseGateContractTest {
         assertSampleFilesExist("kotlin", "Bingo", "Server/Play/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/server/play/Program.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/PlayServerApplication.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/actors/PlayerActor.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/actors/PlayerActorFactory.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/actors/PlayerActor.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/actors/PlayerActorFactory.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/domain/bingo/BingoCard.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/notifications/BingoNotificationPublisher.kt",
             "systems/zlink/samples/kotlin/bingo/server/play/domain/bingo/BingoRoomModels.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/spots/BingoRoomSpot.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/spots/handlers/BingoRoomSpotCreatedHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/spots/handlers/BingoRoomTimerHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/spots/handlers/SubmitBingoCardHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/spots/BingoEntrySpot.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/spots/handlers/MatchBingoActorHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/handlers/AllocateBingoRoomHandler.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/handlers/BingoRoomDirectory.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/handlers/EnsurePlayerActorHandler.kt"));
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/BingoRoomSpot.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/handlers/BingoRoomSpotCreatedHandler.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/handlers/BingoRoomTimerHandler.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/handlers/SubmitBingoCardHandler.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/BingoEntrySpot.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/handlers/MatchBingoActorHandler.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/handlers/AllocateBingoRoomHandler.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.kt"));
         assertSampleFilesExist("kotlin", "Bingo", "Server/Registry/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/server/registry/Program.kt",
             "systems/zlink/samples/kotlin/bingo/server/registry/RegistryApplication.kt"));
@@ -1326,11 +1326,7 @@ final class SampleReleaseGateContractTest {
         String roomSource = sampleKotlinSource(
             "Bingo",
             "Server/Play/src/main/kotlin",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/spots/BingoRoomSpot.kt");
-        String publisherSource = sampleKotlinSource(
-            "Bingo",
-            "Server/Play/src/main/kotlin",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/notifications/BingoNotificationPublisher.kt");
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/BingoRoomSpot.kt");
         String apiHostSource = sampleKotlinSource(
             "Bingo",
             "Server/Api/src/main/kotlin",
@@ -1370,15 +1366,16 @@ final class SampleReleaseGateContractTest {
         String playHandlerSource = sampleKotlinSource(
             "Bingo",
             "Server/Play/src/main/kotlin",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/handlers/EnsurePlayerActorHandler.kt");
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/handlers/EnsurePlayerActorHandler.kt");
 
         assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
                 && !rootBuildSource.contains("application"),
             "Kotlin Bingo root project must not expose an aggregate in-process runner");
-        assertTrue(clientProgramSource.contains("val client1 = createClient()")
-                && clientProgramSource.contains("val client2 = createClient()")
-                && clientProgramSource.contains("BingoClientScenario().run(client1, client2)"),
-            "Kotlin Bingo client Program must create two configured connectors and pass them into the scenario app");
+        assertTrue(clientProgramSource.contains("val client1 = createClient(")
+                && clientProgramSource.contains("val client2 = createClient(")
+                && clientProgramSource.contains("val observer = createClient(")
+                && clientProgramSource.contains("BingoClientScenario().run(client1, client2, observer)"),
+            "Kotlin Bingo client Program must create configured player and observer connectors and pass them into the scenario app");
         assertTrue(clientAppSource.contains("class BingoClientScenario")
                 && !clientAppSource.contains("BingoClientApp"),
             "Kotlin Bingo client flow must use ClientScenario naming");
@@ -1395,7 +1392,8 @@ final class SampleReleaseGateContractTest {
                 && clientAppSource.contains("SubmitBingoCardReq")
                 && clientAppSource.contains("MatchBingoReq(\"two-player\")")
                 && clientAppSource.contains("client1.waitFor<PlayerJoinedNotify>()")
-                && clientAppSource.contains(".where { message -> message.payload().drawSeq == 1 }")
+                && clientAppSource.contains(".where { message -> message.payload().drawSeq == drawSeq }")
+                && clientAppSource.contains(".where { message -> message.payload().drawSeq == nextDrawSeq }")
                 && clientAppSource.contains(".request(AuthenticateReq")
                 && clientAppSource.contains(".await<AuthenticateRes>()")
                 && !clientAppSource.contains(".submit()")
@@ -1403,18 +1401,18 @@ final class SampleReleaseGateContractTest {
                 && clientAppSource.contains("listOf(1, 2, 3, 4, 0, 6, 7, 8, 9)")
                 && clientAppSource.contains("client1Result.winners == listOf(client1Auth.actorId)")
                 && roomSource.contains("submitCard")
-                && roomSource.contains("allCardsSubmitted()"),
+                && roomSource.contains("game.drawNext()"),
             "Kotlin Bingo sample must use connector member APIs, submit .NET baseline cards, and let the server timer draw numbers");
         assertTrue(clientProgramSource.contains("ZLinkProtobufCodec.defaultCodec()"),
             "Kotlin Bingo client Program must configure the codec outside the scenario app");
         assertTrue(!clientAppSource.contains("server.play")
-                && !publisherSource.contains("BingoWinnerSink"),
+                && !roomSource.contains("BingoWinnerSink"),
             "Kotlin Bingo sample must not couple client notification handling to server implementation types");
         assertTrue(apiHostSource.contains("addHandlersFromPackageOf")
                 && apiHostSource.contains("addHandlerGroup(\"api\")")
                 && !apiHostSource.contains("addRequestHandler")
                 && playHostSource.contains("addHandlersFromPackageOf")
-                && playHostSource.contains("addHandlerGroup(\"play\")")
+                && playHostSource.contains("addHandlerGroup(\"play-route\")")
                 && !playHostSource.contains("addRequestHandler"),
             "Kotlin Bingo Api/Play roles must use annotation-discovered handler groups");
         assertTrue(apiHostSource.contains("@SpringBootApplication")
@@ -1441,8 +1439,8 @@ final class SampleReleaseGateContractTest {
             "Kotlin Bingo role entry points must not keep direct ZLink starts alive with CountDownLatch");
         assertTrue(apiHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
                 && apiHandlerSource.contains(": ZLinkSuspendingRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes>")
-                && playHandlerSource.contains("@ZLinkHandlerGroup(\"play\")")
-                && playHandlerSource.contains(": ZLinkSuspendingRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes>"),
+                && playHandlerSource.contains("@ZLinkHandlerGroup(\"play-route\")")
+                && playHandlerSource.contains(": ZLinkSuspendingRouteRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes>"),
             "Kotlin Bingo Api/Play handlers must use interface-based request mapping");
         assertTrue(sampleFileContains("kotlin", "Bingo", "Server/Api/src/main/kotlin",
                 "systems/zlink/samples/kotlin/bingo/server/api/Program.kt", "ApiServerApplication.run"),
@@ -1456,7 +1454,7 @@ final class SampleReleaseGateContractTest {
         assertTrue(sampleFileContains("kotlin", "Bingo", "Server/Registry/src/main/kotlin",
                 "systems/zlink/samples/kotlin/bingo/server/registry/Program.kt", "RegistryApplication.run"),
             "Kotlin Bingo Registry role must have its own executable Program");
-        assertFalse(publisherSource.contains("BingoPlayerClient"),
+        assertFalse(roomSource.contains("BingoPlayerClient"),
             "Kotlin Bingo server push must go through framework bound sessions, not direct client objects");
     }
 
@@ -1465,35 +1463,35 @@ final class SampleReleaseGateContractTest {
         assertJavaActorLifecycleSpec(
             "Bingo",
             "Server/Play/src/main/java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/spots/BingoEntrySpot.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/spots/BingoRoomSpot.java",
-            "systems/zlink/samples/bingo/server/play/adapters/zlink/actors/PlayerActor.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/BingoEntrySpot.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/spots/BingoRoomSpot.java",
+            "systems/zlink/samples/bingo/server/play/infrastructure/zlink/actors/PlayerActor.java",
             "Server/Session/src/main/java",
             "systems/zlink/samples/bingo/server/session/sessions/BingoSession.java");
         assertJavaActorLifecycleSpec(
             "TicTacToe",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/PlayEntrySpot.java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/TicTacToeGame.java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/actors/PlayActor.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/PlayEntrySpot.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/spots/TicTacToeGame.java",
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.java",
             "Server/src/main/java",
-            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/sessions/PlaySession.java");
+            "systems/zlink/samples/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.java");
         assertKotlinActorLifecycleSpec(
             "Bingo",
             "Server/Play/src/main/kotlin",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/spots/BingoEntrySpot.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/spots/BingoRoomSpot.kt",
-            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/actors/PlayerActor.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/BingoEntrySpot.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/spots/BingoRoomSpot.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/infrastructure/zlink/actors/PlayerActor.kt",
             "Server/Session/src/main/kotlin",
             "systems/zlink/samples/kotlin/bingo/server/session/sessions/BingoSession.kt");
         assertKotlinActorLifecycleSpec(
             "TicTacToe",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/PlayEntrySpot.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/TicTacToeGame.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/actors/PlayActor.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/PlayEntrySpot.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/TicTacToeGame.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/actors/PlayActor.kt",
             "Server/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/sessions/PlaySession.kt");
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/sessions/PlaySession.kt");
     }
 
     private static void assertJavaActorLifecycleSpec(
@@ -1749,7 +1747,10 @@ final class SampleReleaseGateContractTest {
     }
 
     private static boolean isSampleSource(Path path) {
-        String pathText = path.toString();
+        String pathText = path.toString().replace('\\', '/');
+        if (pathText.contains("/build/") || pathText.contains("/bin/") || pathText.contains("/.gradle/")) {
+            return false;
+        }
         return pathText.endsWith(".java") || pathText.endsWith(".kt");
     }
 

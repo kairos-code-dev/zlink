@@ -49,6 +49,16 @@ uint64_t default_bootstrap_broadcast_interval_ms (const spot_runtime_t *runtime_
     return 1000;
 }
 
+bool is_transport_endpoint (const std::string &endpoint_)
+{
+    return spot_control_protocol::starts_with (endpoint_, "inproc://")
+           || spot_control_protocol::starts_with (endpoint_, "ipc://")
+           || spot_control_protocol::starts_with (endpoint_, "tcp://")
+           || spot_control_protocol::starts_with (endpoint_, "tls://")
+           || spot_control_protocol::starts_with (endpoint_, "ws://")
+           || spot_control_protocol::starts_with (endpoint_, "wss://");
+}
+
 int connect_routed_router_peer (spot_node_t *node_,
                                   spot_runtime_t *runtime_,
                                   const std::string &peer_data_endpoint_,
@@ -58,6 +68,9 @@ int connect_routed_router_peer (spot_node_t *node_,
         errno = EFAULT;
         return -1;
     }
+    if (!is_transport_endpoint (peer_data_endpoint_)
+        || !is_transport_endpoint (peer_route_endpoint_))
+        return 0;
     if (!runtime_->routed_router)
         return 0;
 
@@ -66,7 +79,10 @@ int connect_routed_router_peer (spot_node_t *node_,
         return 0;
 
     std::string route_id;
-    if (!node_->external_route_id_for_peer_endpoint (peer_data_endpoint_, &route_id))
+    if (!node_->external_route_id_for_peer_endpoint (peer_data_endpoint_, &route_id)
+        && !node_->external_route_id_for_peer_endpoint (peer_route_endpoint_, &route_id)
+        && !runtime_->external_route_id_for_endpoint (peer_data_endpoint_, peer_route_endpoint_,
+                                                      &route_id))
         route_id = peer_route_endpoint_;
 
     if (runtime_->external_route_id_matches (peer_data_endpoint_, route_id, peer_route_endpoint_))

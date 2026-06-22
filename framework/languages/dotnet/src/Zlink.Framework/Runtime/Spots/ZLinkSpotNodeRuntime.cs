@@ -176,10 +176,10 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
         }
     }
 
-    private ZLinkAsyncSubmitter? ResolveAttachedChannelSubmitter(string channelName)
+    private ZLinkSpotAttachedChannelBundle? ResolveAttachedChannelClient(string channelName)
     {
         return _registration.AttachedChannelClients.ContainsKey(channelName)
-            ? _bundles.GetOrCreateAttachedChannelBundle(channelName).Submitter
+            ? _bundles.GetOrCreateAttachedChannelBundle(channelName)
             : null;
     }
 
@@ -324,7 +324,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             _frameworkRegistration.DefaultRequestTimeout,
             _registration.Router?.SocketConfig.SendTimeout
                 ?? _frameworkRegistration.DefaultSocketSendTimeout,
-            ResolveAttachedChannelSubmitter);
+            ResolveAttachedChannelClient);
         foreach (var assembly in _frameworkRegistration.HandlerAssemblies)
         {
             foreach (var handler in ZLinkScannedSpotHandlerScanner.Scan(assembly))

@@ -12,8 +12,8 @@ Registry, Discovery는 각각 다른 공개 API를 가지지만, 세 문서는 �
 
 ## 문서별 역할
 
-- [spot.ko.md](spot.ko.md): SPOT publish/subscribe, channel send/request, routed
-  send/request/reply 함수 계약
+- [spot.ko.md](spot.ko.md): SPOT publish/subscribe, route bridge, publisher
+  handle, routed send/request/reply 함수 계약
 - [registry.ko.md](registry.ko.md): 어떤 `SpotNode`가 어떤 `spot_rid`를 현재 맡고
   있는지에 대한 최종 기준, 등록/해제, 덮어쓰기, 만료 규칙
 - [discovery.ko.md](discovery.ko.md): Registry 기준 정보를 가까운 곳에 저장해 두고
@@ -50,9 +50,10 @@ Registry, Discovery는 각각 다른 공개 API를 가지지만, 세 문서는 �
 SPOT 메시징에서 목적지를 정하는 방식은 크게 두 가지입니다.
 
 - channel 호출 방식:
-  호출자가 `channel_name`만 지정하면, attach된 `DEALER`가 해당 channel의
-  `ROUTER(server)` 집합 중 하나에 요청을 보냅니다. `Spot` facade의
-  `zlink_spot_send_channel()` / `zlink_spot_request_channel()`을 사용합니다.
+  호출자가 `channel_name`과 target `Spot`을 지정하면, `Spot route bridge`가
+  caller-owned channel `DEALER` 또는 `ROUTER` socket을 통해 요청을 보냅니다.
+  `zlink_spot_route_bridge_send()` /
+  `zlink_spot_route_bridge_request()`를 사용합니다.
 - direct SPOT 주소 지정:
   호출자가 `dest_node_rid + dest_spot_rid`를 모두 알고 있을 때 사용합니다. 이
   함수들은 `Spot` facade(`zlink_spot_send_spot()` / `zlink_spot_request_spot()`)와

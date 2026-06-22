@@ -569,7 +569,7 @@ delivery target을 끊지 않으므로 이 카운터는 진단에 사용하지 �
 **HWM 진단**: 입장 허용(admission, 큐 수용 여부 판단)은 `publish_ingress_queue`와
 `routed_send_queue` 큐 한도로 적용된다.
 `zlink_spot_node_internal_sockets()`으로 반환되는 `mesh-pub`,
-`mesh-xsub`, `external-router`의 `monitor_status` 필드는 transport 소켓 HWM을 보여준다.
+`mesh-xsub`, `routed-router`의 `monitor_status` 필드는 transport 소켓 HWM을 보여준다.
 relay 및 delivery 소켓은 HWM `0`을 보고하며 이는 정상이다.
 큐 입장 허용 한도는 HWM 프로필 옵션으로 제어하며 프로필별 메시지 수 기준은
 BALANCED 256 (기본), COMPACT 64, LOW_LATENCY 128, THROUGHPUT 512다.

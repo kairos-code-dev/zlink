@@ -515,6 +515,8 @@ public class SocketContractTest {
             RoutingId.class));
         assertTrue(hasPublicMethod(SpotNode.class, "getOrCreateSpot",
             RoutingId.class));
+        assertTrue(hasPublicMethod(SpotNode.class, "connectPeerRid",
+            RoutingId.class, String.class));
         assertTrue(hasPublicMethod(SpotNode.class, "connectRouterChannelPeer",
             String.class, String.class));
         assertTrue(hasPublicMethod(SpotNode.class, "disconnectRouterChannelPeer",

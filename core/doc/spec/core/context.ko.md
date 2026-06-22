@@ -185,7 +185,7 @@ zlink_config_result_t zlink_ctx_set(void *context_, zlink_ctx_option_t option_, 
 바꾸며, runtime 중에도 안전하게 조정할 수 있습니다. profile은 자동 HWM
 planner가 쓰는 연결당 단위 예산과 size cap을 고릅니다. `SNDBUF` / `RCVBUF`
 기본값은 `-1`이며, auto-HWM profile은 이 값을 자동으로 바꾸지 않습니다.
-SPOT mesh의 `mesh-pub`, `mesh-xsub`, `external-router` 내부 socket은 연결 수가
+SPOT mesh의 `mesh-pub`, `mesh-xsub`, `routed-router` 내부 socket은 연결 수가
 많아질 때 profile HWM을 connection bucket으로 더 줄일 수 있습니다. 이 조정은
 SPOT data-plane 내부 queue의 보조 상한이며, 일반 socket의 자동 HWM 계산에는
 적용되지 않습니다. bucket 경계에서는 hysteresis를 적용합니다. 예를 들어 현재

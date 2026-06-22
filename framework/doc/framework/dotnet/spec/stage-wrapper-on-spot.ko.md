@@ -17,7 +17,7 @@
 - `SpotNode`[^spot-node] 등록
 - `spotRid` 생성과 삭제
 - current channel publish/subscribe
-- attach된 channel client 기반 send/request
+- route bridge channel socket 기반 send/request
 - topic publish/subscribe
 
 이 정도면 `SPOT` 자체를 설명하기에는 충분한 출발점이다. 하지만 `playhouse` 의
@@ -45,7 +45,7 @@
 
 - `Spot`은 특정 service가 아니라 `SpotNode`에 종속된다는 점
 - attach된 SPOT `Discovery`가 `SpotNode`의 active channel view를 정한다는 점
-- 다른 channel 호출을 attach된 channel client 경로로 풀어준다는 점
+- 다른 channel 호출을 route bridge channel socket 경로로 풀어준다는 점
 - `spotRid`와 topic publish를 구분해서 설명하는 점
 - `IZLinkSpotManager`로 spot 생성 lifecycle을 따로 분리해 둔 점
 
@@ -61,7 +61,7 @@
 - `SpotNode` 등록과 lifecycle[^lifecycle]
 - `spotRid` 생성과 삭제
 - current channel publish/subscribe
-- attach된 channel client 기반 send/request
+- route bridge channel socket 기반 send/request
 - publish/subscribe
 - timer 등록과 취소
 - DI[^di], handler, filter, context

@@ -530,10 +530,10 @@ int main ()
     dispatch.unhandled.request = zlink::framework::unhandled_dispatch_action_t::reply_error;
     dispatch.unhandled.send = zlink::framework::unhandled_dispatch_action_t::log_and_drop;
     dispatch.unhandled.publish = zlink::framework::unhandled_dispatch_action_t::drop;
-    dispatch.diagnostics.message_flow = zlink::framework::message_flow_log_mode_t::key_transitions;
-    dispatch.diagnostics.sample_rate = 0.5;
-    dispatch.diagnostics.include_message_sizes = true;
-    dispatch.diagnostics.include_native_diagnostics = true;
+    dispatch.message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+      .trace_sample_rate (0.5)
+      .include_message_sizes (true)
+      .include_native_diagnostics (true);
     options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9102");
     options.add_client_server_channel ("api-channel")
       .enable_server ("tcp://127.0.0.1:9103")
@@ -640,11 +640,11 @@ int main ()
     if (options_dispatch.spot_dispatch_mode != zlink::framework::dispatch_mode_t::compiled
         || options_dispatch.stream_dispatch_mode != zlink::framework::dispatch_mode_t::dynamic
         || options_dispatch.unhandled.publish != zlink::framework::unhandled_dispatch_action_t::drop
-        || options_dispatch.diagnostics.message_flow
+        || options_dispatch.diagnostics.message_flow ()
              != zlink::framework::message_flow_log_mode_t::key_transitions
-        || options_dispatch.diagnostics.sample_rate != 0.5
-        || !options_dispatch.diagnostics.include_message_sizes
-        || !options_dispatch.diagnostics.include_native_diagnostics) {
+        || options_dispatch.diagnostics.sample_rate () != 0.5
+        || !options_dispatch.diagnostics.include_message_sizes ()
+        || !options_dispatch.diagnostics.include_native_diagnostics ()) {
         return 21;
     }
     bool invalid_dispatch_failed = false;
@@ -657,7 +657,7 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
-        invalid_options.configure_dispatch ().diagnostics.sample_rate = 1.5;
+        invalid_options.configure_dispatch ().trace_sample_rate (1.5);
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
@@ -724,8 +724,8 @@ int main ()
         zlink::framework::zlink_framework_options_t invalid_options (
           invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
           invalid_monitoring);
-        invalid_options.configure_dispatch ().diagnostics.sample_rate =
-          std::numeric_limits<double>::quiet_NaN ();
+        invalid_options.configure_dispatch ().trace_sample_rate (
+          std::numeric_limits<double>::quiet_NaN ());
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {

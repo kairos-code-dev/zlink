@@ -892,12 +892,30 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime ignored =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             awaitCondition(() -> backendFactory.calls().contains(
-                "spotNode.connectPeer.inproc://rooms-router-peer"));
+                "spotNode.connectPeer.rooms-node-2.inproc://rooms-router-peer"));
         }
 
         int peerIndex = backendFactory.calls().indexOf(
-            "spotNode.connectPeer.inproc://rooms-router-peer");
+            "spotNode.connectPeer.rooms-node-2.inproc://rooms-router-peer");
         assertTrue(peerIndex >= 0);
+    }
+
+    @Test
+    void discoveredSpotMeshRouterPeerAddsRidAssociationForExistingEndpoint() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var discovery = options.useDiscovery(); discovery.addRegistryEndpoint("tcp://127.0.0.1:17001"); };
+        { var mesh = options.addSpotMesh("rooms"); { var node = mesh.addNode("play"); node.enableRouter("inproc://rooms-router"); }; };
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        backendFactory.delayRoomsDiscoveryRoutingIdUntilSecondSnapshot();
+
+        try (ZLinkFrameworkRuntime ignored =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            awaitCondition(() -> backendFactory.calls().contains(
+                "spotNode.connectPeer.inproc://rooms-router-peer"));
+            awaitCondition(() -> backendFactory.calls().contains(
+                "spotNode.connectPeer.rooms-node-2.inproc://rooms-router-peer"));
+        }
     }
 
     @Test

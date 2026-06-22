@@ -14,6 +14,8 @@ internal interface IZLinkBackendSpotNode : IZLinkBackendObject, IAsyncDisposable
 
     void ConnectPeer(string endpoint);
 
+    void ConnectPeer(RoutingId peerRid, string endpoint);
+
     void DisconnectPeer(string endpoint);
 
     IZLinkBackendSpot CreateSpot();

@@ -17,12 +17,17 @@ namespace spot_actor_gateway
 namespace
 {
 const unsigned char actor_gateway_magic[4] = {'Z', 'A', 'G', '1'};
-const size_t control_header_size = 18u;
+const size_t control_header_size = 30u;
 }
 
 const char endpoint_name[] = "__zlink.actor-gateway";
 
-frame_t::frame_t () : kind (0), part_flag (ZLINK_PART_FINAL), generation (0)
+frame_t::frame_t () :
+    kind (0),
+    part_flag (ZLINK_PART_FINAL),
+    generation (0),
+    request_id (0),
+    join_result_code (0)
 {
     memset (&session_rid, 0, sizeof (session_rid));
     memset (actor_id, 0, sizeof (actor_id));
@@ -33,7 +38,9 @@ bool init_control_msg (uint8_t kind_,
                        const char *actor_id_,
                        uint64_t generation_,
                        zlink_part_flag_t part_flag_,
-                       zlink_msg_t *out_)
+                       zlink_msg_t *out_,
+                       uint64_t request_id_,
+                       int32_t join_result_code_)
 {
     if (!out_ || !spot_actor_internal::valid_routing_id (&session_rid_)
         || !spot_actor_internal::valid_actor_id (actor_id_)) {
@@ -60,6 +67,8 @@ bool init_control_msg (uint8_t kind_,
     data[7] = 0;
     zlink::put_uint64 (data + 8, generation_);
     zlink::put_uint16 (data + 16, static_cast<uint16_t> (actor_id_len));
+    zlink::put_uint64 (data + 18, request_id_);
+    zlink::put_uint32 (data + 26, static_cast<uint32_t> (join_result_code_));
     if (session_rid_.size > 0)
         memcpy (data + control_header_size, session_rid_.data, session_rid_.size);
     if (actor_id_len > 0)
@@ -96,6 +105,8 @@ bool parse_control_msg (zlink_msg_t *msg_, frame_t *out_)
     frame.session_rid.size = session_size;
     memcpy (frame.session_rid.data, data + control_header_size, session_size);
     frame.generation = zlink::get_uint64 (data + 8);
+    frame.request_id = zlink::get_uint64 (data + 18);
+    frame.join_result_code = static_cast<int32_t> (zlink::get_uint32 (data + 26));
     memcpy (frame.actor_id, data + control_header_size + session_size, actor_id_len);
     frame.actor_id[actor_id_len] = '\0';
     if (!spot_actor_internal::valid_routing_id (&frame.session_rid)

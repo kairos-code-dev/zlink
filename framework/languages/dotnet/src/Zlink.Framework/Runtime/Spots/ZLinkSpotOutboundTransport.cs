@@ -8,7 +8,7 @@ internal sealed class ZLinkSpotOutboundTransport(
     TimeSpan defaultRequestTimeout,
     TimeSpan? sendTimeout,
     CancellationToken stopToken,
-    Func<string, ZLinkAsyncSubmitter?>? channelSubmitter = null) : IAsyncDisposable
+    Func<string, ZLinkSpotAttachedChannelBundle?>? channelClient = null) : IAsyncDisposable
 {
     private readonly ZLinkAsyncSubmitter _submitter = new(
         nativeSpot.OnSendReady,
@@ -22,7 +22,27 @@ internal sealed class ZLinkSpotOutboundTransport(
         CancellationToken cancellationToken)
     {
         var requestTimeout = timeout ?? defaultRequestTimeout;
-        return await ResolveSubmitter(channelName)
+        var attached = channelClient?.Invoke(channelName);
+        if (attached is not null)
+        {
+            return await attached.Submitter
+                .SubmitRequestAsync<IReadOnlyList<Message>>(
+                    message,
+                    (pending, complete, fail) => attached.Socket.Request(
+                        pending,
+                        (result, reply) => ZLinkRawReplyCompletion.Complete(
+                            result,
+                            reply,
+                            complete,
+                            fail,
+                            $"SPOT attached channel request failed with result '{result}'."),
+                        SendFlags.DontWait,
+                        requestTimeout),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return await _submitter
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 message,
                 (pending, complete, fail) => nativeSpot.RequestToChannel(
@@ -47,7 +67,27 @@ internal sealed class ZLinkSpotOutboundTransport(
         CancellationToken cancellationToken)
     {
         var requestTimeout = timeout ?? defaultRequestTimeout;
-        return await ResolveSubmitter(channelName)
+        var attached = channelClient?.Invoke(channelName);
+        if (attached is not null)
+        {
+            return await attached.Submitter
+                .SubmitRequestAsync<IReadOnlyList<Message>>(
+                    parts,
+                    (pending, complete, fail) => attached.Socket.Request(
+                        pending,
+                        (result, reply) => ZLinkRawReplyCompletion.Complete(
+                            result,
+                            reply,
+                            complete,
+                            fail,
+                            $"SPOT attached channel request failed with result '{result}'."),
+                        SendFlags.DontWait,
+                        requestTimeout),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return await _submitter
             .SubmitRequestAsync<IReadOnlyList<Message>>(
                 parts,
                 (pending, complete, fail) => nativeSpot.RequestToChannel(
@@ -70,10 +110,16 @@ internal sealed class ZLinkSpotOutboundTransport(
         Message message,
         CancellationToken cancellationToken)
     {
-        return ResolveSubmitter(channelName).Async(
-            message,
-            pending => nativeSpot.SendToChannel(channelName, pending, SendFlags.DontWait),
-            cancellationToken);
+        var attached = channelClient?.Invoke(channelName);
+        return attached is not null
+            ? attached.Submitter.Async(
+                message,
+                pending => attached.Socket.Send(pending, SendFlags.DontWait),
+                cancellationToken)
+            : _submitter.Async(
+                message,
+                pending => nativeSpot.SendToChannel(channelName, pending, SendFlags.DontWait),
+                cancellationToken);
     }
 
     public ValueTask SendToChannelAsync(
@@ -81,10 +127,16 @@ internal sealed class ZLinkSpotOutboundTransport(
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return ResolveSubmitter(channelName).Async(
-            parts,
-            pending => nativeSpot.SendToChannel(channelName, pending, SendFlags.DontWait),
-            cancellationToken);
+        var attached = channelClient?.Invoke(channelName);
+        return attached is not null
+            ? attached.Submitter.Async(
+                parts,
+                pending => attached.Socket.Send(pending, SendFlags.DontWait),
+                cancellationToken)
+            : _submitter.Async(
+                parts,
+                pending => nativeSpot.SendToChannel(channelName, pending, SendFlags.DontWait),
+                cancellationToken);
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
@@ -185,10 +237,4 @@ internal sealed class ZLinkSpotOutboundTransport(
     {
         return _submitter.DisposeAsync();
     }
-
-    private ZLinkAsyncSubmitter ResolveSubmitter(string channelName)
-    {
-        return channelSubmitter?.Invoke(channelName) ?? _submitter;
-    }
-
 }

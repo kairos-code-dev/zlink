@@ -22,6 +22,7 @@ import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
 import systems.zlink.contracts.service.spot.SpotNodeState;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
+import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.service.spot.SpotRole;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
@@ -303,6 +304,15 @@ final class MonitoringEventsTest {
         }
 
         @Override
+        public void connectPeer(RoutingId peerRid, String endpoint) {
+        }
+
+        @Override
+        public ZLinkBackendSpotRouteBridge createRouteBridge() {
+            return new FakeSpotRouteBridge();
+        }
+
+        @Override
         public ZLinkBackendSpot createSpot() {
             return null;
         }
@@ -410,6 +420,71 @@ final class MonitoringEventsTest {
 
         @Override
         public void close() {
+        }
+    }
+
+    private static final class FakeSpotRouteBridge implements ZLinkBackendSpotRouteBridge {
+        @Override
+        public void attachDealerChannel(
+            String channelName,
+            ZLinkBackendDealerSocket dealer,
+            SpotRouteBridgeEndpointOptions options) {
+            throw unused();
+        }
+
+        @Override
+        public void attachRouterChannel(
+            String channelName,
+            ZLinkBackendRouterSocket router,
+            SpotRouteBridgeEndpointOptions options) {
+            throw unused();
+        }
+
+        @Override
+        public void setTargetNode(String channelName, RoutingId targetNodeRid) {
+            throw unused();
+        }
+
+        @Override
+        public boolean send(
+            String channelName,
+            RoutingId targetSpotRid,
+            List<Message> parts,
+            SendFlags flags) {
+            throw unused();
+        }
+
+        @Override
+        public boolean request(
+            String channelName,
+            RoutingId targetSpotRid,
+            List<Message> parts,
+            ZLinkBackendRequestCallback callback,
+            SendFlags flags,
+            java.time.Duration timeout) {
+            throw unused();
+        }
+
+        @Override
+        public boolean handleRouterReceived(
+            String channelName,
+            RoutingId sourceNodeRid,
+            long requestSeq,
+            List<Message> parts) {
+            throw unused();
+        }
+
+        @Override
+        public String name() {
+            return "spot-route-bridge";
+        }
+
+        @Override
+        public void close() {
+        }
+
+        private static UnsupportedOperationException unused() {
+            return new UnsupportedOperationException("spot route bridge is not used by this test");
         }
     }
 }

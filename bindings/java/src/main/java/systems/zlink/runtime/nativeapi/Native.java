@@ -721,6 +721,8 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_CONN_PEER = downcall("zlink_spot_node_connect_peer",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_CONN_PEER_RID = downcall("zlink_spot_node_connect_peer_rid",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_DISC_PEER = downcall("zlink_spot_node_disconnect_peer",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_DISC_PEER_RID = downcall("zlink_spot_node_disconnect_peer_rid",
@@ -2927,6 +2929,16 @@ public final class Native {
             return (int) MH_SPOT_NODE_CONN_PEER.invokeExact(node, ep);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_connect_peer failed", t);
+        }
+    }
+
+    public static int spotNodeConnectPeerRid(MemorySegment node,
+                                             MemorySegment rid,
+                                             MemorySegment ep) {
+        try {
+            return (int) MH_SPOT_NODE_CONN_PEER_RID.invokeExact(node, rid, ep);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_connect_peer_rid failed", t);
         }
     }
 

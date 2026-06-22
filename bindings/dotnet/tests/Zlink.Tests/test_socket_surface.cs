@@ -320,6 +320,8 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode), "PeersQuery",
             typeof(SpotNodePeerFilter)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
+            nameof(ISpotNode.ConnectPeerRid), typeof(RoutingId), typeof(string)));
+        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
             nameof(ISpotNode.DisconnectPeerRid), typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
             nameof(ISpotNode.ConnectRouterChannelPeer), typeof(string),

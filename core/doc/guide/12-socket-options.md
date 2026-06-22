@@ -92,7 +92,7 @@ scaled_hwm = ceil(basis_hwm * basis_message_unit / effective_message_unit)
 The minimum automatic HWM is `1`, and the result is capped by the profile's
 message-count cap.
 
-SPOT mesh internal sockets `mesh-pub`, `mesh-xsub`, and `external-router` first
+SPOT mesh internal sockets `mesh-pub`, `mesh-xsub`, and `routed-router` first
 apply a connection-count bucket when many peers are connected. Bucket values
 are HWM counts normalized to 4 KiB messages, and the final HWM is calculated as:
 

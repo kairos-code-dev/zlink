@@ -408,6 +408,20 @@ zlink_connect_result_t zlink_spot_node_connect_peer (void *node_, const char *pe
       zlink::spot_node_access_t::connect_peer (node, peer_endpoint_));
 }
 
+zlink_connect_result_t
+zlink_spot_node_connect_peer_rid (void *node_,
+                                  const zlink_routing_id_t *target_node_rid_,
+                                  const char *peer_endpoint_)
+{
+    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
+    if (!node) {
+        errno = EFAULT;
+        return ZLINK_CONNECT_INVALID_ARGUMENT;
+    }
+    return zlink::connect_result_internal::from_rc (
+      zlink::spot_node_access_t::connect_peer_rid (node, target_node_rid_, peer_endpoint_));
+}
+
 zlink_connect_result_t zlink_spot_node_disconnect_peer (void *node_, const char *peer_endpoint_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);

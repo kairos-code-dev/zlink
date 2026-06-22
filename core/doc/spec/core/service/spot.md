@@ -300,9 +300,9 @@ zlink_config_result_t zlink_spot_node_internal_sockets(
   `snapshot.auto_hwm_socket_message_slots` expose the active automatic HWM
   planner result for diagnostics.
 - The current SPOT topology exposes these main node socket names:
-  `mesh-pub`, `mesh-xsub`, and `external-router`. The
+  `mesh-pub`, `mesh-xsub`, and `routed-router`. The
   `publish_ingress_queue`, `routed_send_queue`, and
-  `external_router_ingress_queue` operate as runtime queues with no
+  `routed_router_ingress_queue` operate as runtime queues with no
   corresponding socket and do not appear in snapshot output.
 - `PUBSUB` mode does not create routed sockets, and `ROUTED` mode does not
   create topic sockets. Snapshot calls do not activate disabled planes.
@@ -318,6 +318,10 @@ zlink_config_result_t zlink_spot_node_set_pub_bind(
   const char *endpoint);
 zlink_connect_result_t zlink_spot_node_connect_peer(void *node,
                                                     const char *peer_endpoint);
+zlink_connect_result_t zlink_spot_node_connect_peer_rid(
+  void *node,
+  const zlink_routing_id_t *target_node_rid,
+  const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_disconnect_peer(void *node,
                                                        const char *peer_endpoint);
 zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(
@@ -339,17 +343,22 @@ zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
   plane fails with `ZLINK_CONFIG_INVALID_STATE` and `EBUSY`.
 - `zlink_spot_node_connect_peer()` and `disconnect_peer()` are for manual SPOT
   mesh wiring when the endpoint is known.
+- `zlink_spot_node_connect_peer_rid()` connects to a peer endpoint and records
+  the target node routing id behind that endpoint. Routed delivery uses that
+  node RID to choose the peer.
 - `zlink_spot_node_disconnect_peer_rid()` disconnects a peer node by target
   node routing id. It does not target an individual spot routing id under that
   node.
-- They fail with `EBUSY` when a discovery is already attached.
+- When discovery is attached, the discovery reconciler may use the same peer
+  connection APIs. Callers should change registry/discovery configuration
+  instead of directly adding or removing endpoints managed by discovery.
 - The `Spot` facade has no separate peer-rid disconnect function because peer
   connections are owned by the `SpotNode` runtime.
 - `zlink_spot_node_attach_discovery()` requires a discovery handle that exposes
   a SPOT channel view.
 - A node may have only one active SPOT discovery view at a time.
 
-### Router channel peer wiring
+### Router channel peer wiring (deprecated)
 
 ```c
 zlink_connect_result_t zlink_spot_node_connect_router_channel_peer(
@@ -379,34 +388,25 @@ zlink_config_result_t zlink_spot_node_attach_router_channel_discovery(
   void *discovery);
 ```
 
-These APIs connect the `SpotNode` routed router to a router-capable channel's
-`ROUTER` peer. Once connected, that router channel can target a local `Spot`
-with `zlink_router_send_spot_part()` or `zlink_router_request_spot_part()` by
-using the target node routing id and target spot routing id.
+These APIs belonged to the older design where a `SpotNode` connected directly
+to a router-capable channel's `ROUTER` peer. The public symbols remain during
+the deprecation window, but the implementation no longer stores channel socket
+state inside `SpotNode`. Valid calls fail with `ENOTSUP`. Use the
+`zlink_spot_route_bridge_*` APIs when channel traffic must target a `Spot`.
 
 - `channel_name` names the router channel peer set. `NULL` and empty strings
   fail with `EINVAL`.
 - `endpoint` is the public `ROUTER` endpoint of the router channel. Callers do
   not need internal endpoint derivation rules and must not pass derived
   endpoints.
-- Nodes without routed mode fail with `ENOTSUP`.
-- Repeating the same manual `(channel_name, endpoint)` connect is a successful
-  no-op.
-- Adding a manual peer to a discovery-owned channel fails with `EBUSY`.
-- Disconnecting an unknown manual endpoint fails with `ENOENT`.
-- `zlink_spot_node_attach_router_channel_discovery()` accepts only discovery
-  views for route mesh or client/server router channels. A channel name that
-  does not match the discovery view fails with `EINVAL`.
-- Manual peers and discovery peers cannot be mixed in the same channel.
-- `zlink_spot_node_connect_router_channel_peer_rid()` is the explicit
-  rid-anchored connect form. It binds the resulting peer entry to a known
-  routing id so future snapshot lookups and disconnect-by-rid calls match
-  cleanly even before the first reply is observed.
-- `zlink_spot_node_disconnect_router_channel_peer_rid()` disconnects by router
-  channel peer routing id. SPOT mesh peers and router channel peers are exposed
-  as distinct peer kinds in snapshots.
+- Argument validation is preserved. Invalid handles, channel names, endpoints,
+  and routing ids fail before migration handling.
+- Calls with valid arguments fail with `ENOTSUP`.
+- These APIs do not create sockets and do not call `connect()` or
+  `disconnect()`.
+- These APIs do not create channel peer state inside `SpotNode`.
 
-### Channel-call socket registration
+### Channel-call socket registration (deprecated)
 
 ```c
 zlink_config_result_t zlink_spot_node_attach_channel_dealer(
@@ -424,17 +424,188 @@ zlink_config_result_t zlink_spot_node_attach_pub_ingress(
   void *pub);
 ```
 
-- `attach_channel_dealer()` registers a discovery-managed `DEALER`.
-- `attach_channel_dealer_manual()` registers a caller-connected `DEALER` under
-  the given `channel_name`.
-- Automatic and manual attach share the same channel namespace. A second dealer
-  for the same channel fails with `EBUSY`.
-- Attach functions do not create sockets and do not call `connect()` for you.
-- Attached dealers are dedicated to the `SpotNode`. The caller keeps ownership,
-  but the socket must not be reused as a generic client elsewhere.
-- `zlink_spot_node_attach_pub_ingress()` registers one external `PUB` as the
-  node's publish ingress source.
-- Only one ingress `PUB` may be attached to a node.
+- These APIs belonged to the older design where a caller passed an external
+  `DEALER` or `PUB` socket directly to `SpotNode`.
+- The current implementation validates arguments and then fails with
+  `ENOTSUP`.
+- `SpotNode` does not store an external channel `DEALER`, route mesh `ROUTER`,
+  or raw `PUB` socket as owned runtime state.
+- Use `zlink_spot_route_bridge_*` for channel send/request to a target `Spot`.
+- Use `zlink_spot_node_publisher_*` when external code needs to publish into
+  the local `SpotNode` topic plane.
+
+### SPOT route channel bridge
+
+```c
+typedef struct zlink_spot_route_bridge_options_t {
+  uint32_t struct_size;
+  int default_request_timeout_ms;
+  int error_reply_policy;
+  int receive_mode;
+} zlink_spot_route_bridge_options_t;
+
+typedef struct zlink_spot_route_bridge_endpoint_options_t {
+  uint32_t struct_size;
+  uint32_t capabilities;
+  int inbound_relay_policy;
+} zlink_spot_route_bridge_endpoint_options_t;
+
+typedef struct zlink_spot_route_bridge_summary_t {
+  uint32_t struct_size;
+  uint32_t attached_channel_count;
+  uint64_t pending_request_count;
+  uint64_t rejected_inbound_count;
+  uint64_t malformed_inbound_count;
+  uint64_t routed_send_failure_count;
+} zlink_spot_route_bridge_summary_t;
+
+void *zlink_spot_route_bridge_new(
+  void *ctx,
+  void *spot_node,
+  const zlink_spot_route_bridge_options_t *options);
+
+int zlink_spot_route_bridge_attach_dealer_channel(
+  void *bridge,
+  const char *channel_name,
+  void *dealer_socket,
+  const zlink_spot_route_bridge_endpoint_options_t *options);
+
+int zlink_spot_route_bridge_attach_router_channel(
+  void *bridge,
+  const char *channel_name,
+  void *router_socket,
+  const zlink_spot_route_bridge_endpoint_options_t *options);
+
+int zlink_spot_route_bridge_set_target_node(
+  void *bridge,
+  const char *channel_name,
+  const zlink_routing_id_t *target_node_rid);
+
+int zlink_spot_route_bridge_send(
+  void *bridge,
+  const char *channel_name,
+  const zlink_routing_id_t *target_spot_rid,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_send_flags_t flags);
+
+int zlink_spot_route_bridge_request(
+  void *bridge,
+  const char *channel_name,
+  const zlink_routing_id_t *target_spot_rid,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_reply_handler_fn callback,
+  void *user_data,
+  zlink_send_flags_t flags,
+  uint32_t timeout_ms);
+```
+
+A bridge connects caller-owned channel sockets to a `SpotNode` routed plane.
+The bridge owns only its own state. It does not close attached `DEALER` or
+`ROUTER` sockets.
+
+- `zlink_spot_route_bridge_new()` fails with `EFAULT` when `ctx` or
+  `spot_node` is invalid.
+- `default_request_timeout_ms` is used when `request()` receives
+  `timeout_ms == 0`.
+- `attach_dealer_channel()` accepts only `DEALER` sockets.
+- `attach_router_channel()` accepts only `ROUTER` sockets.
+- Attaching the same `channel_name` twice fails with `EBUSY`.
+- Endpoint `capabilities == 0` is interpreted as
+  `ZLINK_SPOT_ROUTE_BRIDGE_ROUTE_ONLY`.
+- `ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE` allows SPOT relay egress and SPOT
+  relay ingress.
+- `ZLINK_SPOT_ROUTE_BRIDGE_CAP_CHANNEL_INBOUND` marks that the same endpoint
+  may also receive ordinary channel packets. The bridge does not process those
+  packets and returns `handled=false`.
+- `send()` and `request()` target a `Spot` by `channel_name` and
+  `target_spot_rid`. A `ROUTER` endpoint must first receive a target node
+  routing id through `set_target_node()`.
+- `request()` delivers replies through the callback. A `timeout_ms` value of
+  `0` uses the bridge default timeout.
+
+Receive handoff APIs are used when the channel runtime has already received
+frames from the socket and needs the bridge to classify them.
+
+```c
+int zlink_spot_route_bridge_handle_router_received(
+  void *bridge,
+  const char *channel_name,
+  const zlink_routing_id_t *source_node_rid,
+  zlink_msg_t *parts,
+  size_t part_count,
+  bool *handled);
+
+int zlink_spot_route_bridge_handle_router_received_with_metadata(
+  void *bridge,
+  const char *channel_name,
+  const zlink_routing_id_t *source_node_rid,
+  uint64_t request_seq,
+  zlink_msg_t *parts,
+  size_t part_count,
+  bool *handled);
+
+int zlink_spot_route_bridge_handle_dealer_received(
+  void *bridge,
+  const char *channel_name,
+  zlink_msg_t *parts,
+  size_t part_count,
+  bool *handled);
+
+int zlink_spot_route_bridge_handle_dealer_received_with_metadata(
+  void *bridge,
+  const char *channel_name,
+  uint8_t message_type,
+  uint64_t request_seq,
+  zlink_msg_t *parts,
+  size_t part_count,
+  bool *handled);
+```
+
+- `handled` tells the caller whether the bridge consumed a SPOT relay packet.
+- When `handled=false`, the caller keeps message ownership.
+- When `handled=true`, the bridge takes message ownership and the caller must
+  not close the same `zlink_msg_t` values again.
+- Non-SPOT channel packets on an endpoint with `CHANNEL_INBOUND` capability
+  return `handled=false`.
+- Disallowed inbound SPOT relay packets produce an error reply when possible
+  and increment the rejected inbound counter.
+
+```c
+int zlink_spot_route_bridge_drain(void *bridge);
+int zlink_spot_route_bridge_summary(
+  void *bridge,
+  zlink_spot_route_bridge_summary_t *out);
+int zlink_spot_route_bridge_close(void *bridge);
+```
+
+- `drain()` processes bridge-owned pending reply and handoff progress.
+- `summary()` copies the attached channel count and error counters.
+- `close()` closes the bridge handle, not the attached channel sockets.
+
+### SpotNode publisher handle
+
+```c
+void *zlink_spot_node_publisher_new(void *spot_node);
+
+int zlink_spot_node_publisher_publish(
+  void *publisher,
+  const char *topic,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_send_flags_t flags);
+
+int zlink_spot_node_publisher_close(void *publisher);
+```
+
+The publisher handle lets external code publish into the local topic plane
+without attaching a raw `PUB` socket to `SpotNode`.
+
+- The publisher sends to the `SpotNode` topic plane.
+- It does not expose a raw socket.
+- `publish()` accepts a topic and multipart payload.
+- `close()` closes only the publisher handle, not the `SpotNode`.
 
 ## Spot data-plane contract
 
@@ -459,21 +630,23 @@ zlink_submit_result_t zlink_spot_request_channel(
   uint32_t timeout_ms);
 ```
 
-- Channel calls always use an attached `DEALER`.
+- Channel calls depend on the legacy attached `DEALER` path and should not be
+  used by new code. New channel egress uses
+  `zlink_spot_route_bridge_send()` or `zlink_spot_route_bridge_request()`.
 - Lookup is keyed by `channel_name`.
-- The request reply is bound to the specific dealer selected for that request.
+- The request reply is bound to the specific bridge endpoint selected for that
+  request.
 - Channel request reply has separate owners:
-  transport owner is the selected attached `DEALER`, while delivery owner is
+  transport owner is the selected bridge endpoint, while delivery owner is
   the originating `Spot` dispatch stream.
 - A matched channel reply is delivered through the
   `zlink_reply_handler_fn` registered with
   `zlink_spot_request_channel_part()`. The
-  `ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE` dispatch event signals
-  that the attached dealer made progress; the core drives completion
-  delivery internally and no public drain call is required from the user.
-- Attached channel dealer metadata may be queried with
-  `zlink_socket_get_channel_name()`. Manual setups may pre-set the same fixed
-  metadata with `zlink_socket_set_channel_name()`.
+  core drives completion delivery internally and no public drain call is
+  required from the user.
+- Legacy attached channel dealer metadata may be queried with
+  `zlink_socket_get_channel_name()`. Deprecated manual setups may pre-set the
+  same fixed metadata with `zlink_socket_set_channel_name()`.
 - `Spot` does not expose ordinary one-way send targeting a `ROUTER` by direct `rid`.
   For direct routed request initiation see the dedicated section below.
 
@@ -508,7 +681,8 @@ zlink_recv_result_t zlink_spot_subscription_event(
 The topic plane is keyed solely by `topic_id`; there is no separate
 `service_name` parameter on the topic functions.
 
-- `zlink_spot_node_attach_pub_ingress()` joins this same topic ingress path.
+- External code that needs to publish into the local `SpotNode` topic plane
+  uses a `zlink_spot_node_publisher_*` handle.
 
 ### Routed recv/reply
 
@@ -606,7 +780,7 @@ Drain rules by dispatch subject:
 | `SUBSCRIBE_READABLE` | `SPOT` | `spot_` (or NULL) | `zlink_spot_subscribe()` |
 | `ROUTED_READABLE` | `SPOT` | `spot_` (or NULL) | `zlink_spot_recv()` |
 | `TIMER_READABLE` | `TIMER` | timer handle | `zlink_timer_recv()` |
-| `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | attached dealer handle | none — completion fires via the `zlink_reply_handler_fn` registered at request time |
+| `CHANNEL_REPLY_READABLE` | `CHANNEL_DEALER` | legacy attached dealer handle | none — completion fires via the `zlink_reply_handler_fn` registered at request time |
 | `ACTOR_READABLE` | `ACTOR` | callback-lifetime `const zlink_actor_ref_t *` | `zlink_spot_node_actor_recv_part()` |
 | `ACTOR_JOIN_READABLE` | `SPOT` | `spot_` | `zlink_spot_actor_join_recv()` |
 | `ACTOR_LIFECYCLE_READABLE` | `SPOT` | `NULL` | `zlink_spot_recv_actor_lifecycle()` |
@@ -648,11 +822,12 @@ They are consumed through dispatch readiness followed by an explicit drain call.
 
 After `SUBSCRIBE_READABLE` or `ROUTED_READABLE`, callers must drain until the
 corresponding pull API returns `ZLINK_RECV_NO_DATA` / `EAGAIN`.
-`CHANNEL_REPLY_READABLE` is a readiness notification only — the matching
+`CHANNEL_REPLY_READABLE` is a compatibility readiness notification for the
+deprecated attached dealer path. The matching
 `zlink_reply_handler_fn` from the originating
 `zlink_spot_request_channel_part()` call is invoked by the core's internal
-completion driver. The dispatch `subject` field carries the attached dealer
-handle for diagnostic and ordering purposes.
+completion driver. The dispatch `subject` field carries the legacy attached
+dealer handle for diagnostic and ordering purposes.
 
 ## Spot routed request initiation
 
@@ -1634,6 +1809,8 @@ Registry.
 
 - SPOT mesh auto-connect applies only to SPOT discovery peers.
 - Generic socket providers do not become SPOT mesh peers.
-- Channel calls always go through attached `DEALER` sockets.
+- New channel calls go through `zlink_spot_route_bridge_*`. Legacy channel
+  calls depend on the deprecated attached `DEALER` path.
 - `SpotNode` routed topology is not a substitute for channel calls.
-- Attach functions never create sockets or perform `connect()` for the caller.
+- Deprecated attach functions validate arguments and then fail with `ENOTSUP`;
+  they never create sockets or perform `connect()` for the caller.

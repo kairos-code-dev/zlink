@@ -336,6 +336,16 @@ int spot_node_t::send_data_plane_command (const char *verb_, const char *arg_) c
     return _runtime->send_command (verb_, arg_);
 }
 
+int spot_node_t::send_data_plane_command (const char *verb_,
+                                          const std::vector<std::string> &args_) const
+{
+    if (!_runtime) {
+        errno = EFAULT;
+        return -1;
+    }
+    return _runtime->send_command (verb_, args_);
+}
+
 int spot_node_t::wait_facade_peer (socket_base_t *socket_) const
 {
     const uint64_t deadline_ms = clock_t ().now_ms () + 1000;

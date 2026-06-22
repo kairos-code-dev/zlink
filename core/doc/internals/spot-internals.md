@@ -18,7 +18,7 @@ dispatch in a single unified runtime.
 |------|-----------------------|
 | **No per-Spot physical sockets** | All transport sockets are owned by `SpotNode`. A `Spot` facade owns only a logical queue and dispatch context. |
 | **Explicit admission boundary** | Public publish and routed send enqueue into `SpotNode`-owned send-side queues (`publish_ingress_queue`, `routed_send_queue`). Socket HWM computation and admission decision are separated, so internal socket wiring cannot contaminate the error semantics of public API calls. `fanout` uses HWM `0`; remote mesh sockets use auto-HWM and reduce only the per-peer pipe budget through connection buckets. Public API backpressure is still decided by the node-owned send queues. |
-| **Data-plane-thread-exclusive sockets** | `mesh-pub`, `fanout`, and `external-router` are accessed only by the `SpotNode`-dedicated data-plane thread. Public threads cannot directly touch these sockets, preventing ownership diffusion. |
+| **Data-plane-thread-exclusive sockets** | `mesh-pub`, `fanout`, and `routed-router` are accessed only by the `SpotNode`-dedicated data-plane thread. Public threads cannot directly touch these sockets, preventing ownership diffusion. |
 | **Aggregate subscription** | Remote mesh subscriptions are reference-counted at the node level, not per-Spot. This prevents duplicate remote subscriptions when multiple local Spots subscribe to the same topic. |
 | **Actor-to-Spot decoupling** | Actors do not own sockets or inproc endpoints. Parts are relayed through the SpotNode Actor table and dispatched into a Spot's logical queue, allowing Actors to move between Spots (join) without tearing down transport connections. |
 | **Deterministic teardown** | Destroying a `Spot` facade does not destroy the backing `SpotNode`. Entry Spot lifetime is tied to the `SpotNode`, not to any facade. |
@@ -34,7 +34,7 @@ dispatch in a single unified runtime.
 - **Actor**: a routing target managed by the `SpotNode` Actor table. Identified by
   `zlink_actor_ref_t` (node rid + actor id + generation). No socket ownership.
 - **data-plane thread**: one dedicated OS thread per `SpotNode`. Exclusively owns
-  `mesh-pub`, `fanout`, and `external-router` sockets; drains send-side queues; and
+  `mesh-pub`, `fanout`, and `routed-router` sockets; drains send-side queues; and
   performs local fanout and remote routing.
 - **dispatch worker pool**: one pool per `SpotNode`. Workers pull readable events
   posted by the data-plane thread and execute application dispatch callbacks while
@@ -159,7 +159,7 @@ flowchart LR
         fanout["fanout<br/>PUB (local)"]
         mesh_pub["mesh-pub<br/>PUB"]
         mesh_xsub["mesh-xsub<br/>XSUB"]
-        external_router["external-router<br/>ROUTER"]
+        external_router["routed-router<br/>ROUTER"]
     end
 
     subgraph ControlPlane["Peer Control"]
@@ -169,7 +169,7 @@ flowchart LR
 
     subgraph RemoteNode["Remote SpotNode"]
         remote_mesh["mesh-xsub"]
-        remote_router["external-router"]
+        remote_router["routed-router"]
     end
 
     pub_api --> piq
@@ -190,7 +190,7 @@ flowchart LR
 | `fanout` | `PUB` | fans out to local subscribers | SNDHWM 0 |
 | `mesh-pub` | `PUB` | forwards topic publish to remote nodes | pubsub admission SNDHWM (auto-HWM or override) |
 | `mesh-xsub` | `XSUB` | receives topic publish from remote nodes | pubsub admission RCVHWM |
-| `external-router` | `ROUTER` | exchanges routed frames with peer nodes | router admission HWM (auto-HWM or override) |
+| `routed-router` | `ROUTER` | exchanges routed frames with peer nodes | router admission HWM (auto-HWM or override) |
 | `peer_ctrl_pub` | `PUB` | sends peer control messages | control defaults |
 | `peer_ctrl_sub` | `SUB` | receives peer control messages | control defaults |
 
@@ -203,7 +203,7 @@ rows for those four sockets. The perf `Auto-HWM spotnode` table is updated accor
 
 A router channel peer is a different connection kind from a SPOT mesh peer. A
 SPOT mesh peer is the normal node-to-node mesh path for topic and routed SPOT
-traffic. A router channel peer gives an external router-capable channel's
+traffic. A router channel peer gives an routed router-capable channel's
 `ROUTER` an ingress path to a specific `Spot`.
 
 ```mermaid
@@ -295,7 +295,7 @@ The routed plane has a single router axis.
 
 | router | scope | role |
 |--------|-------|------|
-| `external-router` | between nodes | exchanges routed frames with peer `external-router` sockets |
+| `routed-router` | between nodes | exchanges routed frames with peer `routed-router` sockets |
 
 `internal-router` has been removed. Local routed delivery goes through
 `routed_send_queue`; the data-plane thread delivers frames directly to the target
@@ -314,7 +314,7 @@ sequenceDiagram
     participant Q as routed_send_queue
     participant DP as data-plane thread
     participant RecvQ as target Spot routed recv queue
-    participant External as external-router
+    participant External as routed-router
     participant Peer as Remote SpotNode
 
     App->>Spot: routed send API
@@ -332,7 +332,7 @@ sequenceDiagram
 
 ### 4.2 Inbound routed traffic (external_router_ingress_queue)
 
-Inbound routed frames from peers arrive through the `external-router` socket msg
+Inbound routed frames from peers arrive through the `routed-router` socket msg
 dispatch callback into `external_router_ingress_queue`. The data-plane thread drains
 this queue and delivers to the target `Spot` routed recv queue. Inbound traffic does
 not pass through `routed_send_queue`.
@@ -340,7 +340,7 @@ not pass through `routed_send_queue`.
 ```mermaid
 sequenceDiagram
     participant Peer as Remote SpotNode
-    participant External as external-router
+    participant External as routed-router
     participant EIQ as external_router_ingress_queue
     participant DP as data-plane thread
     participant RecvQ as target Spot routed recv queue
@@ -373,11 +373,11 @@ Three queues live inside `spot_data_plane_runtime_state_t`.
 |-------|-------|-----------|------|
 | `publish_ingress_queue` | `spot_data_plane_runtime_state_t` | outbound | public publish → data-plane forwarding |
 | `routed_send_queue` | `spot_data_plane_runtime_state_t` | outbound | public routed send → data-plane forwarding |
-| `external_router_ingress_queue` | `spot_data_plane_runtime_state_t` | inbound | peer `external-router` recv → routed delivery |
+| `external_router_ingress_queue` | `spot_data_plane_runtime_state_t` | inbound | peer `routed-router` recv → routed delivery |
 
 `publish_ingress_queue` and `routed_send_queue` are MPSC: public threads write,
 the data-plane thread reads. `external_router_ingress_queue` is written by the
-`external-router` socket msg dispatch callback and read by the data-plane thread.
+`routed-router` socket msg dispatch callback and read by the data-plane thread.
 
 ### 5.2 Backpressure and hysteresis
 
@@ -426,7 +426,7 @@ is no separate public option.
 | byte limit | `admission_slots * message_unit_bytes` (memory protection only) |
 
 When queue full is frequent, do not increase the queue limit first. Check whether
-the data-plane thread drains promptly, whether local fanout / `mesh-pub` / `external-router`
+the data-plane thread drains promptly, whether local fanout / `mesh-pub` / `routed-router`
 are returning `EAGAIN`, and whether pending queues are building up.
 
 ## 6. Admission HWM
@@ -452,7 +452,7 @@ payloads do not raise it to `1024` by themselves. Peer control sockets stay
 outside this admission group.
 
 The `fanout` relay socket uses HWM `0`. `mesh-pub` for outbound remote mesh
-publish, `mesh-xsub` for inbound remote mesh publish, and `external-router` for
+publish, `mesh-xsub` for inbound remote mesh publish, and `routed-router` for
 routed mesh traffic use auto-HWM. Without a numeric override, these three sockets
 apply connection buckets to reduce the per-peer pipe budget. This HWM bounds
 internal transport pipe memory; public `publish` and routed `send` backpressure is
@@ -465,7 +465,7 @@ fewer. Profile or message-unit changes discard the retained bucket and recalcula
 from the new settings.
 
 The perf `Auto-HWM spotnode` detail shows mesh transport HWM on `mesh-pub`,
-`mesh-xsub`, and `external-router`. In the default balanced path with
+`mesh-xsub`, and `routed-router`. In the default balanced path with
 `MsgUnit(B)=4096`, the profile value before connection buckets is `256`; the HWM
 after bucket application can be smaller depending on remote peer count. Rows for
 `pub-ingress-tx`, `ingress-sub`, `internal-router`, and `internal-router-tx` no
@@ -492,7 +492,7 @@ Each `SpotNode` runs one dedicated OS thread (`spot_runtime_t::data_plane_thread
 executing `spot_data_plane_loop_t::run_until_shutdown()`. This thread exclusively
 owns:
 
-- `mesh-pub`, `fanout`, `external-router`, `mesh-xsub`, `peer_ctrl_pub`,
+- `mesh-pub`, `fanout`, `routed-router`, `mesh-xsub`, `peer_ctrl_pub`,
   `peer_ctrl_sub` sockets
 - drain of `publish_ingress_queue`, `routed_send_queue`, `external_router_ingress_queue`
 - local fanout delivery, remote mesh publish, inbound/outbound routed forwarding
@@ -502,7 +502,7 @@ socket ownership, poller interest, and shutdown ordering into the public call pa
 
 ```
 Invariants:
-  Public thread does not send/recv mesh-pub, fanout, or external-router directly.
+  Public thread does not send/recv mesh-pub, fanout, or routed-router directly.
   Data-plane thread does not invoke application dispatch callbacks directly.
 ```
 
@@ -553,7 +553,7 @@ Why the data-plane thread does not call callbacks directly:
 
 1. Application callbacks may call SPOT send/recv APIs — reentrancy into data-plane
    lock or socket ownership.
-2. Slow callbacks stall `mesh-pub`, `external-router` flushes.
+2. Slow callbacks stall `mesh-pub`, `routed-router` flushes.
 3. `ZLINK_POLLOUT` and send-ready callbacks are in the dispatch axis — mixing them
    with the forwarding loop corrupts readiness/forwarding ordering.
 

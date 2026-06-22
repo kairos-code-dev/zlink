@@ -66,6 +66,10 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     void ConnectPeer(string peerEndpoint);
     /// <summary>
+    /// Connects to the endpoint and uses the supplied node routing id for routed SPOT traffic.
+    /// </summary>
+    void ConnectPeerRid(RoutingId targetNodeRid, string peerEndpoint);
+    /// <summary>
     /// Disconnects from the endpoint.
     /// </summary>
     void DisconnectPeer(string peerEndpoint);

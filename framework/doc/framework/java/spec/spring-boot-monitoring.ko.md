@@ -14,7 +14,7 @@
 
 - event kind는 enum으로 둔다.
 - 실제 callback payload는 record로 둔다.
-- socket는 하부 monitor를 감싼다.
+- socket은 하부 monitor를 감싼다.
 - registry/spot는 snapshot diff 기반으로 다시 올린다.
 - stream session lifecycle로 매핑 가능한 transport 오류만 `ZLinkStreamError`로
   session callback에 올린다.

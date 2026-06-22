@@ -315,23 +315,20 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenRouteChannelMixesDiscoveryAndManualConnections()
+    public void AddZLinkFramework_AllowsRouteChannelManualConnections_WhenDiscoveryIsConfigured()
     {
         var services = new ServiceCollection();
 
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
+        services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
             {
-                options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
-                {
-                    var routed = options.AddRouteMeshChannel("backend");
-                    routed.EnableServer("tcp://127.0.0.1:7201");
-                    routed.EnableClient("tcp://127.0.0.1:7202");
+                var routed = options.AddRouteMeshChannel("backend");
+                routed.EnableServer("tcp://127.0.0.1:7201");
+                routed.EnableClient("tcp://127.0.0.1:7202");
 
-                }
-            }));
-
-        Assert.Contains("cannot mix discovery and manual connections", exception.Message, StringComparison.Ordinal);
+            }
+        });
     }
 
     [Fact]

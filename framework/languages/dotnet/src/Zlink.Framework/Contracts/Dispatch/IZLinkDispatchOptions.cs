@@ -52,6 +52,16 @@ public interface IZLinkMessageFlowObserver
         CancellationToken cancellationToken);
 }
 
+// Resolve from DI to turn message-flow tracing on/off (or change verbosity) at
+// runtime — for temporary diagnostics in production without a restart. The change
+// is read live by every dispatch surface. Thread-safe.
+public interface IZLinkMessageFlowControl
+{
+    void SetMessageFlowMode(ZLinkMessageFlowLogMode mode);
+
+    ZLinkMessageFlowLogMode MessageFlowMode { get; }
+}
+
 // A success-path transition in a message's lifecycle. Errors are reported
 // separately via ZLinkMessageDispatchErrorEvent. received/dispatched/replied are
 // inbound (this node receives); sent/reply_received are outbound (this node sends).

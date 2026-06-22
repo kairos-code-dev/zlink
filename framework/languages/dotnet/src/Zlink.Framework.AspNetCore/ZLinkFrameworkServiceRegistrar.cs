@@ -1,6 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Diagnostics;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.AspNetCore;
 
@@ -91,9 +94,25 @@ internal static class ZLinkFrameworkServiceRegistrar
     {
         services.AddSingleton(registration);
         services.TryAddSingleton<IZLinkBackendAdapterFactory, ZLinkDotNetBackendAdapterFactory>();
+
+        // Install the shared, runtime-mutable message-flow mode cell (seeded from the
+        // configured mode) so SetMessageFlowMode can flip tracing on/off live and
+        // every surface that reads EffectiveMessageFlow observes it.
+        registration.DispatchOptions.Diagnostics.LiveMode ??=
+            new ZLinkMessageFlowModeCell(registration.DispatchOptions.Diagnostics.MessageFlow);
+
+        // Public runtime toggle (resolve IZLinkMessageFlowControl to flip tracing live).
+        services.AddSingleton<IZLinkMessageFlowControl>(
+            new ZLinkMessageFlowControl(registration.DispatchOptions.Diagnostics));
+
         if (registration.DispatchOptions.MessageDispatchErrorObserverType is { } observerType)
         {
             services.TryAddTransient(observerType);
+        }
+
+        if (registration.DispatchOptions.MessageFlowObserverType is { } flowObserverType)
+        {
+            services.TryAddTransient(flowObserverType);
         }
 
         services.TryAddSingleton(static provider =>

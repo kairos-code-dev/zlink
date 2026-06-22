@@ -143,6 +143,19 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var parts = PrependHeader(header, payloadParts);
+
+        if (_flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        {
+            _flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Sent,
+                ZLinkDispatchErrorSurface.RouteMeshChannel,
+                ZLinkDispatchMessageKind.Send,
+                PacketName: header.MessageName,
+                ChannelName: RouterChannelId,
+                CorrelationId: header.CorrelationId,
+                SourceRid: targetNodeRid.ToString()));
+        }
+
         return SubmitRouteSendPartsAsync(targetNodeRid, parts, cancellationToken);
     }
 
@@ -202,12 +215,39 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var parts = PrependHeader(header, payloadParts);
-        return await SubmitRouteRequestPartsAsync<TReply>(
+
+        if (_flow.Enabled(ZLinkMessageFlowPhase.Sent))
+        {
+            _flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.Sent,
+                ZLinkDispatchErrorSurface.RouteMeshChannel,
+                ZLinkDispatchMessageKind.Request,
+                PacketName: header.MessageName,
+                ChannelName: RouterChannelId,
+                CorrelationId: header.CorrelationId,
+                SourceRid: targetNodeRid.ToString()));
+        }
+
+        var reply = await SubmitRouteRequestPartsAsync<TReply>(
                 targetNodeRid,
                 parts,
                 timeout,
                 cancellationToken)
             .ConfigureAwait(false);
+
+        if (_flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
+        {
+            _flow.Trace(new ZLinkMessageFlowEvent(
+                ZLinkMessageFlowPhase.ReplyReceived,
+                ZLinkDispatchErrorSurface.RouteMeshChannel,
+                ZLinkDispatchMessageKind.Response,
+                PacketName: header.MessageName,
+                ChannelName: RouterChannelId,
+                CorrelationId: header.CorrelationId,
+                SourceRid: targetNodeRid.ToString()));
+        }
+
+        return reply;
     }
 
     public ValueTask SubmitSpotRouteSendPartsAsync(

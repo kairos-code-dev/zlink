@@ -139,7 +139,8 @@ internal sealed class ZLinkSessionStreamTransport(
             ZlinkStreamHeaderFlags.HasRequestSeq,
             pending.RequestSeq,
             packetName,
-            ZlinkStreamMetadata.Empty);
+            ZlinkStreamMetadata.Empty,
+            ZLinkStreamCorrelation.Next());
         ZLinkStreamFrameWriter.Write(stream, header, payload, "Client stream request send failed.");
 
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

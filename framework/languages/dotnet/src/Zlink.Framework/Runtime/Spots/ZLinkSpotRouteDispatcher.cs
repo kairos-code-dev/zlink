@@ -29,6 +29,21 @@ internal sealed class ZLinkSpotRouteDispatcher(
             }
 
             var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+
+            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Received))
+            {
+                dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.Received,
+                    ZLinkDispatchErrorSurface.SpotRoute,
+                    header.Kind == ZLinkMessageKind.Request
+                        ? ZLinkDispatchMessageKind.Request
+                        : ZLinkDispatchMessageKind.Send,
+                    PacketName: header.MessageName,
+                    ChannelName: channelName,
+                    SpotRid: received.SpotRid?.ToString() ?? spotRid,
+                    CorrelationId: header.CorrelationId));
+            }
+
             if (internalPackets is not null
                 && await internalPackets(received, header, cancellationToken).ConfigureAwait(false))
             {
@@ -136,6 +151,18 @@ internal sealed class ZLinkSpotRouteDispatcher(
                     await handlerInvoker()
                         .InvokePacketAsync(descriptor, message, cancellationToken)
                         .ConfigureAwait(false);
+
+                    if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Dispatched))
+                    {
+                        dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                            ZLinkMessageFlowPhase.Dispatched,
+                            ZLinkDispatchErrorSurface.SpotRoute,
+                            ZLinkDispatchMessageKind.Send,
+                            PacketName: header.MessageName,
+                            ChannelName: channelName,
+                            SpotRid: spotRid,
+                            CorrelationId: header.CorrelationId));
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -174,6 +201,18 @@ internal sealed class ZLinkSpotRouteDispatcher(
                     reply,
                     descriptor.ReplyType,
                     codecs);
+
+                if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Replied))
+                {
+                    dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                        ZLinkMessageFlowPhase.Replied,
+                        ZLinkDispatchErrorSurface.SpotRoute,
+                        ZLinkDispatchMessageKind.Request,
+                        PacketName: header.MessageName,
+                        ChannelName: channelName,
+                        SpotRid: spotRid,
+                        CorrelationId: header.CorrelationId));
+                }
             }
             catch (Exception ex)
             {

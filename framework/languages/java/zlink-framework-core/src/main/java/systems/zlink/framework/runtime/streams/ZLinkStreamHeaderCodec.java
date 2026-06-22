@@ -15,6 +15,8 @@ public final class ZLinkStreamHeaderCodec {
     static final int KIND_SEND = 1;
     static final int KIND_REQUEST = 2;
     static final int KIND_RESPONSE = 3;
+    static final int KIND_CONTROL = 5;
+    private static final int CODEC_RAW = 0;
     private static final int FLAG_HAS_REQUEST_SEQ = 0x01;
 
     private ZLinkStreamHeaderCodec() {
@@ -79,6 +81,15 @@ public final class ZLinkStreamHeaderCodec {
         }
         if (offset != bytes.length) {
             throw new IllegalArgumentException("STREAM header contains trailing bytes");
+        }
+        if (kind == KIND_CONTROL
+            && (flags != 0
+                || codec != CODEC_RAW
+                || requestSeq.isPresent()
+                || !metadata.isEmpty()
+                || correlationId.isPresent())) {
+            throw new IllegalArgumentException(
+                "STREAM control packet must use raw codec and must not contain flags");
         }
         return new ZLinkStreamHeader(
             ZLinkStreamMessageKind.fromValue(kind),

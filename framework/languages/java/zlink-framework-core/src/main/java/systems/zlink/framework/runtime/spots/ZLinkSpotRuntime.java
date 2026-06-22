@@ -2259,7 +2259,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 headerPart.sourceNodeRid(),
                 headerPart.sourceSessionRid());
             boolean actorIsRequest = handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST;
-            String actorCorr = packetHeader.requestSeq().map(String::valueOf).orElse(null);
             String actorPacketName = packetHeader.packetName();
             String actorId = actor.actorId();
             ZLinkDispatchMessageKind actorKind = actorIsRequest
@@ -2270,7 +2269,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     ZLinkMessageFlowPhase.RECEIVED,
                     ZLinkDispatchErrorSurface.SPOT_ACTOR,
                     actorKind,
-                    actorPacketName, null, null, actorCorr, null, null, actorId, null));
+                    actorPacketName, null, null,
+                    packetHeader.requestSeq().map(String::valueOf).orElse(null),
+                    null, null, actorId, null));
             }
             CompletionStage<Optional<Message>> stage = withCurrentOutbound(
                 context.outbound,
@@ -2318,7 +2319,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                                 phase,
                                 ZLinkDispatchErrorSurface.SPOT_ACTOR,
                                 actorKind,
-                                actorPacketName, null, null, actorCorr, null, null, actorId, null));
+                                actorPacketName, null, null,
+                                packetHeader.requestSeq().map(String::valueOf).orElse(null),
+                                null, null, actorId, null));
                         }
                     }
                 });

@@ -308,6 +308,11 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
     parts: readonly Message[],
     flags: ZLinkBackendSendFlags
   ): boolean;
+  bindRemoteActorSession(
+    actor: ZLinkBackendActorRef,
+    sourceNodeRid: RoutingId,
+    sourceSessionRid: RoutingId
+  ): void;
   closeActorBoundSession(actor: ZLinkBackendActorRef, timeoutMs: number, signal?: AbortSignal): Promise<void>;
   dispose(): Promise<void>;
 }

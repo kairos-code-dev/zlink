@@ -180,6 +180,20 @@ wait_port() {
   return 1
 }
 
+wait_log_contains() {
+  local description="$1"
+  local pattern="$2"
+  shift 2
+  for _ in $(seq 1 100); do
+    if grep -Eq "${pattern}" "$@" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for log marker: ${description}" >&2
+  return 1
+}
+
 start_server() {
   local name="$1"
   local mode="$2"
@@ -216,11 +230,16 @@ wait_port api-b-channel "${API_B_CHANNEL_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/TicTacToe.Client.csproj" -- \
   --api-url "${API_A_PUBLIC_URL}" >"${LOG_DIR}/client.log" 2>&1
-grep -q "stream-inbound sample=TicTacToe" "${LOG_DIR}/client.log"
-grep -Eq "stream-inbound sample=TicTacToe .* seq=[0-9]" "${LOG_DIR}/client.log"
-grep -Eq "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.log"
-grep -q "observer-win-milestone=verified" "${LOG_DIR}/client.log"
-grep -q "actor: LeaveGameReq completed. actor=player-x" "${LOG_DIR}"/play-*.log
-grep -q "actor: LeaveGameReq completed. actor=player-o" "${LOG_DIR}"/play-*.log
-grep -q "entry spot: actor destroy completed. actor=player-x" "${LOG_DIR}"/play-*.log
-grep -q "entry spot: actor destroy completed. actor=player-o" "${LOG_DIR}"/play-*.log
+wait_log_contains "stream inbound evidence" "stream-inbound sample=TicTacToe" "${LOG_DIR}/client.log"
+wait_log_contains "stream inbound sequenced packet" "stream-inbound sample=TicTacToe .* seq=[0-9]" "${LOG_DIR}/client.log"
+wait_log_contains "stream inbound notify packet" "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.log"
+wait_log_contains "observer milestone verification" "observer-win-milestone=verified" "${LOG_DIR}/client.log"
+wait_log_contains "player-x leave completion" "actor: LeaveGameReq completed. actor=player-x" "${LOG_DIR}"/play-*.log
+wait_log_contains "player-o leave completion" "actor: LeaveGameReq completed. actor=player-o" "${LOG_DIR}"/play-*.log
+wait_log_contains "player-x actor destroy completion" "entry spot: actor destroy completed. actor=player-x" "${LOG_DIR}"/play-*.log
+wait_log_contains "player-o actor destroy completion" "entry spot: actor destroy completed. actor=player-o" "${LOG_DIR}"/play-*.log
+if grep -R -q "dispatch-error" "${LOG_DIR}"; then
+  echo "Unexpected dispatch-error in TicTacToe sample logs." >&2
+  grep -R -n "dispatch-error" "${LOG_DIR}" >&2 || true
+  exit 1
+fi

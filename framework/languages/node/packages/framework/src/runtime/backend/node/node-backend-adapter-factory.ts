@@ -308,6 +308,16 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
           return true;
         };
       }
+      if (property === 'bindRemoteActorSession') {
+        return (actor: unknown, sourceNodeRid: unknown, sourceSessionRid: unknown) =>
+          (target as unknown as {
+            bindRemoteActorSession(actor: unknown, sourceNodeRid: unknown, sourceSessionRid: unknown): void;
+          }).bindRemoteActorSession(
+            toNativeActorRef(actor),
+            toNativeRoutingId(sourceNodeRid),
+            toNativeRoutingId(sourceSessionRid)
+          );
+      }
       if (property === 'recvRoute') {
         return (received: unknown, flags: number) => {
           try {

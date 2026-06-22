@@ -100,6 +100,7 @@ export interface ZLinkRemoteActorPacketTarget {
 }
 
 export interface ZLinkActorRoutedJoinTransport {
+  canRouteChannel?(routerChannelId: string): boolean;
   send(
     routerChannelId: string,
     targetNodeRid: string,
@@ -553,7 +554,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       ? undefined
       : await this.options.remoteAddressResolver.resolve(spotRid, signal);
     const isRemoteJoin = remoteAddress !== undefined && String(remoteAddress.targetNodeRid) !== String(actorRef.nodeRid);
-    if (isRemoteJoin && remoteAddress !== undefined && this.options.routedTransport !== undefined) {
+    if (isRemoteJoin && remoteAddress !== undefined && this.canUseRoutedTransport(remoteAddress)) {
       return await this.joinRemoteSpot(actor, state, actorRef, remoteAddress, request, timeoutMs, signal);
     }
     const joinRequest = isRemoteJoin
@@ -648,11 +649,18 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         `Actor '${actor.actorId}' does not have an actor type for remote SPOT join.`
       );
     }
-    if (this.options.routedTransport !== undefined) {
+    if (this.canUseRoutedTransport(remoteAddress)) {
+      const routedTransport = this.options.routedTransport;
+      if (routedTransport === undefined) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.ActorRouteNotFound,
+          `Actor '${actor.actorId}' remote route transport is not configured.`
+        );
+      }
       const entrySpotRid = this.options.node.entrySpot().routingId;
       const sourceSpotRid = String(entrySpotRid);
       const sourceSpotRidHex = encodeRoutingIdHex(entrySpotRid);
-      const reply = await this.options.routedTransport.request<ZLinkRemoteActorJoinReply & { readonly reply?: string }>(
+      const reply = await routedTransport.request<ZLinkRemoteActorJoinReply & { readonly reply?: string }>(
         remoteAddress.routerChannelId,
         String(remoteAddress.targetNodeRid),
         REMOTE_ACTOR_JOIN_PACKET,
@@ -779,6 +787,11 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     }
   }
 
+  private canUseRoutedTransport(remoteAddress: ZLinkSpotRemoteAddress): boolean {
+    return this.options.routedTransport !== undefined
+      && this.options.routedTransport.canRouteChannel?.(remoteAddress.routerChannelId) !== false;
+  }
+
   async joinEntrySpot(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
@@ -793,7 +806,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       ? undefined
       : await this.options.remoteAddressResolver.resolve(nodeRid, signal);
     const isRemoteJoin = remoteEntry !== undefined && String(remoteEntry.targetNodeRid) !== String(actorRef.nodeRid);
-    if (isRemoteJoin && remoteEntry !== undefined && this.options.routedTransport !== undefined) {
+    if (isRemoteJoin && remoteEntry !== undefined && this.canUseRoutedTransport(remoteEntry)) {
       const result = await this.joinRemoteSpot(
         actor,
         state,

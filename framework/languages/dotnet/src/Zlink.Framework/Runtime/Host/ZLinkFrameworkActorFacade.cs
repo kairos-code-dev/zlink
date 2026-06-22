@@ -447,26 +447,13 @@ internal sealed class ZLinkFrameworkActorFacade(
             return;
         }
 
-        var rebound = await context.ActorCoordinator.BindActorAsync(
+        await context.ActorCoordinator.BindActorAsync(
                 context,
                 ToActorRef(targetActorRef),
                 cancellationToken)
             .ConfigureAwait(false);
         runtime.UnbindSessionActor(actorState.ActorId, context, session.BindingToken);
         runtime.UnbindActorSession(actorState.ActorId, session.BindingToken);
-
-        using var bindPayload = Message.From(ReadOnlySpan<byte>.Empty);
-        await rebound.RelayAsync(
-                new ZlinkStreamHeader(
-                    ZlinkStreamMessageKind.Send,
-                    ZlinkStreamCodec.Raw,
-                    ZlinkStreamHeaderFlags.None,
-                    null,
-                    ZLinkRemoteActorJoinPackets.BoundSessionBindPacketName,
-                    ZlinkStreamMetadata.Empty),
-                bindPayload,
-                cancellationToken)
-            .ConfigureAwait(false);
     }
 
     private static ActorRef ToActorRef(ZLinkActorRuntimeState actorState)

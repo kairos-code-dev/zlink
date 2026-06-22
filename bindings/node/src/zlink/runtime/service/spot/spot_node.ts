@@ -19,7 +19,7 @@ import type { AutoHwmProfileValue } from '../../../contracts/core';
 import { SpotNodeMode, type ActorDestroyOperation, type ActorJoinEntrySpotOperation, type ActorJoinOperation, type ActorLeaveOperation, type ActorLookupOperation, type ActorRef, type SendOperation, type SpotNodeActorEntry, type SpotNodeModeValue, type SpotNodePeerEntry, type SpotNodePeerFilter, type SpotNodeSocketEntry, type SpotNodeSocketFilter, type SpotNodeSpotEntry, type SpotNodeStatus, type SpotNodeSubjectEntry, type SpotNodeSubjectFilter } from '../../../contracts/service';
 import { SpotNodeOption } from './spot_options';
 import { actorRefFromRaw, actorRefToRaw, spotNodeActorEntryFromRaw, spotNodeSpotEntryFromRaw } from './actor_models';
-import { invokeActorDestroy, invokeActorJoin, invokeActorJoinEntrySpot, invokeActorLeave, invokeActorSendBoundSession, invokeRemoteActorGetRef } from './actor_invokers';
+import { invokeActorBindRemoteSession, invokeActorDestroy, invokeActorJoin, invokeActorJoinEntrySpot, invokeActorLeave, invokeActorSendBoundSession, invokeRemoteActorGetRef } from './actor_invokers';
 import { RuntimeActorDestroyOperation, RuntimeActorJoinEntrySpotOperation, RuntimeActorJoinOperation, RuntimeActorLeaveOperation, RuntimeActorLookupOperation } from './actor_operations';
 import { mapSpotNodePeerEntry, mapSpotNodeSocketEntry, mapSpotNodeStatus, mapSpotNodeSubjectEntry, type ActorRefRaw, type SpotNodePeerEntryRaw, type SpotNodeSocketEntryRaw, type SpotNodeSpotGetOrNewRaw, type SpotNodeStatusRaw, type SpotNodeSubjectEntryRaw } from './spot_raw_models';
 
@@ -312,6 +312,9 @@ export class SpotNode extends NativeHandle {
   sendActorBoundSession(actor: ActorRef): SendOperation {
     const node = this._native;
     return new RuntimeSendOperation((parts, flags) => invokeActorSendBoundSession(node, actor, parts, flags));
+  }
+  bindRemoteActorSession(actor: ActorRef, sourceNodeRid: RoutingId, sourceSessionRid: RoutingId): void {
+    invokeActorBindRemoteSession(this._native, actor, sourceNodeRid, sourceSessionRid);
   }
   /** @internal */
   unregisterSpot(spot: Spot): void {

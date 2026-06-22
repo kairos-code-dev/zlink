@@ -100,6 +100,8 @@ export interface SpotNode {
   leaveActor(actor: ActorRef, targetSpotRid: RoutingId): ActorLeaveOperation;
   /** Begin a send to `actor`'s bound session; parts are consumed on a successful submit. */
   sendActorBoundSession(actor: ActorRef): SendOperation;
+  /** Bind a remote actor to a session owned by another node. */
+  bindRemoteActorSession(actor: ActorRef, sourceNodeRid: RoutingId, sourceSessionRid: RoutingId): void;
   /** Return a snapshot of the node's status. */
   status(): SpotNodeStatus;
   /** Return the node's peers, optionally filtered. */

@@ -75,6 +75,29 @@ test('managed stream actor bind calls native ActorGateway before local binding i
   assert.equal(runtime.find('actor-a'), actor);
 });
 
+test('managed stream remote actor bind records remote session on the local spot node', async () => {
+  const socket = new FakeStreamSocket();
+  const node = new FakeSpotNode('node-local');
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    actorBindTimeoutMs: 1234,
+    nativeActorNodeProvider: () => node
+  });
+  const context = runtime.createSessionContext(new framework.ZLinkManagedStream(socket, 'backend-rid', 'public-session'));
+  const actorRef = { nodeRid: 'node-remote', actorId: 'actor-a', generation: 1n };
+
+  const actor = await context.actors.bind(actorRef);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(actor.actorId, 'actor-a');
+  assert.equal(socket.boundActors.length, 0);
+  assert.deepEqual(node.remoteSessionBinds, [{
+    actor: actorRef,
+    sourceNodeRid: 'node-local',
+    sourceSessionRid: 'backend-rid'
+  }]);
+  assert.equal(context.actors.find('actor-a'), actor);
+});
+
 test('managed stream actor rebind is idempotent for the same actor ref', async () => {
   const socket = new FakeStreamSocket();
   const runtime = new framework.ZLinkStreamBindingRuntime({ actorBindTimeoutMs: 1234 });
@@ -1044,4 +1067,15 @@ class FakeStreamSocket {
   onFramedPacket() {}
   attachActorGateway() {}
   async dispose() {}
+}
+
+class FakeSpotNode {
+  constructor(routingId) {
+    this.routingId = routingId;
+    this.remoteSessionBinds = [];
+  }
+
+  bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid) {
+    this.remoteSessionBinds.push({ actor, sourceNodeRid, sourceSessionRid });
+  }
 }

@@ -5,6 +5,22 @@ import { ConversationEventMapper } from './Infrastructure/ZLink/Notifications/co
 import { SupportNotificationPublisher } from './Infrastructure/ZLink/Notifications/support-notification-publisher';
 import { SupportEntrySpot } from './Infrastructure/ZLink/Spots/support-entry-spot';
 import { ConversationSpot } from './Infrastructure/ZLink/Spots/conversation-spot';
+import { AllocateConversationHandler } from './Infrastructure/ZLink/Handlers/allocate-conversation-handler';
+import { AssignAgentHandler } from './Infrastructure/ZLink/Handlers/assign-agent-handler';
+import { CloseConversationChannelHandler } from './Infrastructure/ZLink/Handlers/close-conversation-channel-handler';
+import { EnsureSupportUserActorHandler } from './Infrastructure/ZLink/Handlers/ensure-support-user-actor-handler';
+import { JoinConversationChannelHandler } from './Infrastructure/ZLink/Handlers/join-conversation-channel-handler';
+import { OpenConversationChannelHandler } from './Infrastructure/ZLink/Handlers/open-conversation-channel-handler';
+import { SendChatMessageChannelHandler } from './Infrastructure/ZLink/Handlers/send-chat-message-channel-handler';
+import { SetAgentAvailableChannelHandler } from './Infrastructure/ZLink/Handlers/set-agent-available-channel-handler';
+import { SetTypingChannelHandler } from './Infrastructure/ZLink/Handlers/set-typing-channel-handler';
+import { SupportChatNotificationsHandler } from './Infrastructure/ZLink/Handlers/supportchat-notifications-handler';
+import { CloseConversationHandler } from './Infrastructure/ZLink/Spots/Handlers/close-conversation-handler';
+import { ConversationIdleTimerHandler } from './Infrastructure/ZLink/Spots/Handlers/conversation-idle-timer-handler';
+import { OpenConversationActorHandler } from './Infrastructure/ZLink/Spots/Handlers/open-conversation-actor-handler';
+import { SendChatMessageHandler } from './Infrastructure/ZLink/Spots/Handlers/send-chat-message-handler';
+import { SetAgentAvailableHandler } from './Infrastructure/ZLink/Spots/Handlers/set-agent-available-handler';
+import { SetTypingHandler } from './Infrastructure/ZLink/Spots/Handlers/set-typing-handler';
 import {
   CONVERSATION_EXECUTOR,
   CONVERSATION_STARTER,
@@ -56,7 +72,23 @@ function createSupportChatSupportModule(config: {
       SupportConversationAllocator,
       AgentAvailabilityDirectory,
       AgentAssignmentService,
-      SupportEntrySpot
+      SupportEntrySpot,
+      AllocateConversationHandler,
+      AssignAgentHandler,
+      CloseConversationChannelHandler,
+      EnsureSupportUserActorHandler,
+      JoinConversationChannelHandler,
+      OpenConversationChannelHandler,
+      SendChatMessageChannelHandler,
+      SetAgentAvailableChannelHandler,
+      SetTypingChannelHandler,
+      SupportChatNotificationsHandler,
+      CloseConversationHandler,
+      ConversationIdleTimerHandler,
+      OpenConversationActorHandler,
+      SendChatMessageHandler,
+      SetAgentAvailableHandler,
+      SetTypingHandler
     ]
   })(SupportChatSupportModule);
 

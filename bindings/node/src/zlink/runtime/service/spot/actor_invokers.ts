@@ -175,6 +175,24 @@ export function invokeActorSendBoundSession(
   return true;
 }
 
+export function invokeActorBindRemoteSession(
+  nodeHandle: unknown,
+  actor: ActorRef,
+  sourceNodeRid: RoutingId,
+  sourceSessionRid: RoutingId,
+): void {
+  try {
+    requireNative().spotNodeActorBindRemoteSession(
+      nodeHandle,
+      actorRefToRaw(actor),
+      normalizeRoutingId(sourceNodeRid, 'sourceNodeRid'),
+      normalizeRoutingId(sourceSessionRid, 'sourceSessionRid'),
+    );
+  } catch (error) {
+    throw submitNativeError(error, SendFlags.None, 'actor remote session bind failed');
+  }
+}
+
 export function invokeStreamBindActor(
   streamHandle: unknown,
   sessionRid: Buffer,

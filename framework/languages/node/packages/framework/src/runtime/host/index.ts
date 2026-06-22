@@ -86,7 +86,10 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   private spotManager?: DefaultZLinkSpotManager;
   private readonly preStartErrorSink = new ZLinkRuntimeErrorSink();
   readonly channelTransport = new ZLinkRuntimeChannelTransport(() => this.channelRuntime);
-  readonly routeTransport = new ZLinkRuntimeRouteTransport(() => this.channelRuntime);
+  readonly routeTransport = new ZLinkRuntimeRouteTransport(
+    () => this.channelRuntime,
+    (routerChannelId) => this.options.registration.routeChannels.has(routerChannelId)
+  );
   readonly spotPublisherTransport = new ZLinkRuntimeSpotPublisherTransport(() => this.spotNodeRuntime);
   readonly streamBindingRuntime: ZLinkStreamBindingRuntime;
   readonly boundSessionFactory: DefaultZLinkBoundSessionFactory;
@@ -97,6 +100,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
     this.lifecycleSink = options.lifecycleSink;
     this.streamBindingRuntime = new ZLinkStreamBindingRuntime({
       streamPayloadCodec: resolveStreamPayloadCodec(options.registration),
+      nativeActorNodeProvider: () => this.spotNodeRuntime?.primaryNode,
       relay: (actor, header, payload, signal) =>
         this.relayRemoteActorPacket(actor, header, payload, signal)
     });

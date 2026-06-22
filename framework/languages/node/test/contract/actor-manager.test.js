@@ -548,7 +548,7 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
   request.close();
 });
 
-test('ZLinkActorNativeJoinCoordinator uses remote address resolver target node for user spot joins', async () => {
+test('ZLinkActorNativeJoinCoordinator uses native spot-node join when remote address is not a route channel', async () => {
   const events = [];
   const createdRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
   class PlayerActor {
@@ -569,24 +569,19 @@ test('ZLinkActorNativeJoinCoordinator uses remote address resolver target node f
     createActor() {
       return createdRef;
     },
-    entrySpot() {
-      return {
-        requestToSpot(targetNodeRid, targetSpotRid, payload, callback) {
-          const [header, body] = payload;
-          const decoded = JSON.parse(header.data().toString());
-          events.push(`routeJoin:${targetNodeRid}:${targetSpotRid}:${decoded.actorId}:${decoded.actorType}:${body.data().toString()}`);
-          callback(0, [
-            zlink.Message.from(JSON.stringify({
-              accepted: true,
-              actorNodeRid: 'node-a',
-              actorId: 'alice',
-              actorGeneration: '2'
-            })),
-            zlink.Message.from('remote-reply')
-          ]);
-          return true;
-        },
-      };
+    joinActor(actorRef, targetNodeRid, targetSpotRid, request, callback, timeoutMs) {
+      const decoded = JSON.parse(request.data().toString());
+      events.push(`joinActor:${actorRef.generation}:${targetNodeRid}:${targetSpotRid}:${decoded.actorType}:${Buffer.from(decoded.request, 'base64').toString()}:${timeoutMs}`);
+      callback({
+        result: 0,
+        joinResultCode: 0,
+        actor: { nodeRid: 'node-a', actorId: 'alice', generation: 2n },
+        targetNodeRid,
+        joinedSpotRid: targetSpotRid,
+        joinEpoch: 3n,
+        flags: 0
+      }, [zlink.Message.from('remote-reply')]);
+      return true;
     }
   });
   const remoteAddressResolver = {
@@ -606,18 +601,12 @@ test('ZLinkActorNativeJoinCoordinator uses remote address resolver target node f
       node,
       remoteAddressResolver,
       routedTransport: {
-        async requestRawToSpot(remoteAddress, rawRequest) {
-          const decoded = JSON.parse(rawRequest.data().toString());
-          events.push(`routeJoin:${remoteAddress.targetNodeRid}:${remoteAddress.spotRid}:${decoded.actorId}:${decoded.actorType}:${Buffer.from(decoded.request, 'base64').toString()}`);
-          return [
-            zlink.Message.from(JSON.stringify({
-              accepted: true,
-              actorNodeRid: 'node-a',
-              actorId: 'alice',
-              actorGeneration: '2',
-              reply: Buffer.from('remote-reply').toString('base64')
-            }))
-          ];
+        canRouteChannel(routerChannelId) {
+          events.push(`canRoute:${routerChannelId}`);
+          return false;
+        },
+        async request() {
+          throw new Error('route channel request must not be used for spot-node mesh joins');
         }
       },
       async remoteActorBinder(actorRef) {
@@ -633,7 +622,8 @@ test('ZLinkActorNativeJoinCoordinator uses remote address resolver target node f
   assert.equal(result.reply, 'remote-reply');
   assert.deepEqual(events, [
     'resolve:room-1',
-    'routeJoin:node-a:room-1:alice:player:payload',
+    'canRoute:play-node',
+    'joinActor:1:node-a:room-1:player:payload:undefined',
     'bind:node-a:alice:2'
   ]);
   request.close();

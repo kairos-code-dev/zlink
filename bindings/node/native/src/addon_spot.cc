@@ -3493,6 +3493,31 @@ napi_value spot_node_actor_send_bound_session_msg (napi_env env, napi_callback_i
     return ok;
 }
 
+napi_value spot_node_actor_bind_remote_session (napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external (env, argv[0], &node);
+    zlink_actor_ref_t ref;
+    zlink_routing_id_t source_node_rid;
+    zlink_routing_id_t source_session_rid;
+    if (!parse_actor_ref_value (env, argv[1], &ref))
+        return NULL;
+    if (!parse_routing_id_value (env, argv[2], &source_node_rid))
+        return NULL;
+    if (!parse_routing_id_value (env, argv[3], &source_session_rid))
+        return NULL;
+    int rc =
+      zlink_spot_node_actor_bind_remote_session (node, &ref, &source_node_rid, &source_session_rid);
+    if (rc != ZLINK_CONFIG_OK)
+        return throw_last_error (env, "spotNodeActorBindRemoteSession failed");
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
 napi_value spot_node_actor_close_bound_session (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];

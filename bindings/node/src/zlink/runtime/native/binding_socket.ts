@@ -160,6 +160,12 @@ export interface SocketNativeBinding {
   socketUnbind: (socket: NativeHandle, endpoint: string) => void;
   socketUnsetSubscription: (socket: NativeHandle, topic: string) => void;
   streamAttachActorGateway: (socket: NativeHandle, node: NativeHandle) => void;
+  spotNodeActorBindRemoteSession: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    sourceNodeRid: Buffer,
+    sourceSessionRid: Buffer
+  ) => void;
   streamBindActor: (
     stream: NativeHandle,
     sessionRid: Buffer,

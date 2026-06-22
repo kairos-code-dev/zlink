@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.E2ETests.Channels;
+using Zlink.Framework.Runtime.Actors;
 
 namespace Zlink.Framework.E2ETests;
 
@@ -452,13 +454,16 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
         using var registryHost = registryBuilder.Build();
         await registryHost.StartAsync();
 
+        var sourceDispatchErrors = new ChannelDispatchErrorEvidence();
         var sourceBuilder = Host.CreateApplicationBuilder();
+        sourceBuilder.Services.AddSingleton(sourceDispatchErrors);
         sourceBuilder.Services.AddSingleton<EntrySpotActorRegistryRecorder>();
         sourceBuilder.Services.AddScoped<RegistryEntrySpot>();
         sourceBuilder.Services.AddScoped<RegistryStageSpot>();
         sourceBuilder.Services.AddScoped<RegistryEntryJoinHandler>();
         sourceBuilder.Services.AddZLinkFramework(options =>
         {
+            options.ConfigureDispatch().SetMessageDispatchErrorObserver<ChannelDispatchErrorObserver>();
             options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
             options.AddActorFactory<RegistryTestActorFactory>("registry");
             {
@@ -477,12 +482,15 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
         using var sourceHost = sourceBuilder.Build();
         await sourceHost.StartAsync();
 
+        var targetDispatchErrors = new ChannelDispatchErrorEvidence();
         var targetBuilder = Host.CreateApplicationBuilder();
+        targetBuilder.Services.AddSingleton(targetDispatchErrors);
         targetBuilder.Services.AddSingleton<EntrySpotActorRegistryRecorder>();
         targetBuilder.Services.AddScoped<RegistryEntrySpot>();
         targetBuilder.Services.AddScoped<NotifyingRegistryStageSpot>();
         targetBuilder.Services.AddZLinkFramework(options =>
         {
+            options.ConfigureDispatch().SetMessageDispatchErrorObserver<ChannelDispatchErrorObserver>();
             options.UseDiscovery().AddRegistryEndpoint(registryRouterEndpoint);
             options.AddActorFactory<RegistryTestActorFactory>("registry");
             {
@@ -552,6 +560,12 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
             Assert.Contains(
                 $"joined:join-user-bound-discovery-actor:{targetStage.SpotRid.ToHex()}",
                 targetRecorder.Events);
+            await Task.Delay(200);
+            Assert.Empty(sourceDispatchErrors.Events);
+            Assert.DoesNotContain(
+                targetDispatchErrors.Events,
+                error => error.PacketName == ZLinkRemoteActorJoinPackets.BoundSessionBindPacketName);
+            Assert.Empty(targetDispatchErrors.Events);
         }
         finally
         {

@@ -127,6 +127,21 @@ wait_port() {
   return 1
 }
 
+wait_ready() {
+  local name="$1"
+  local log_file="$2"
+  local deadline
+  deadline=$((SECONDS + 10))
+  while (( SECONDS < deadline )); do
+    if grep -q '"event":"ready"' "${log_file}" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${name} ready event" >&2
+  return 1
+}
+
 wait_discovery_ready() {
   node - "${SUPPORTCHAT_REGISTRY_ROUTER_ENDPOINT}" <<'NODE'
 const registryEndpoint = process.argv[2];
@@ -153,6 +168,11 @@ try {
     Atomics.wait(pause, 0, 0, 100);
   }
   console.error('Timed out waiting for registry discovery readiness.');
+  console.error(JSON.stringify(
+    client.topology(),
+    (_key, value) => typeof value === 'bigint' ? value.toString() : value,
+    2
+  ));
   process.exit(1);
 } finally {
   client.close();
@@ -175,13 +195,13 @@ wait_port registry-pub "${SUPPORTCHAT_REGISTRY_PUB_ENDPOINT}"
 wait_port registry-router "${SUPPORTCHAT_REGISTRY_ROUTER_ENDPOINT}"
 
 start_server support dist/Server/Support/main.js
-wait_port support "${SUPPORTCHAT_SUPPORT_ENDPOINT}"
-wait_port notifications "${SUPPORTCHAT_NOTIFICATION_ENDPOINT}"
+wait_ready support "${LOG_DIR}/support.log"
 
 start_server api dist/Server/Api/main.js
-wait_port api "${SUPPORTCHAT_API_ENDPOINT}"
+wait_ready api "${LOG_DIR}/api.log"
 
 start_server session dist/Server/Session/main.js
+wait_ready session "${LOG_DIR}/session.log"
 wait_port session "${SUPPORTCHAT_SESSION_ENDPOINT}"
 wait_discovery_ready
 

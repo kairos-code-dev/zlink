@@ -130,7 +130,14 @@ export class ZLinkRuntimeChannelTransport implements ZLinkChannelClientTransport
 }
 
 export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
-  constructor(private readonly manager: () => ZLinkChannelRuntimeManager | undefined) {}
+  constructor(
+    private readonly manager: () => ZLinkChannelRuntimeManager | undefined,
+    private readonly routeChannelPredicate: ((routerChannelId: string) => boolean) | undefined = undefined
+  ) {}
+
+  canRouteChannel(routerChannelId: string): boolean {
+    return this.routeChannelPredicate?.(routerChannelId) ?? true;
+  }
 
   async send(
     routerChannelId: string,

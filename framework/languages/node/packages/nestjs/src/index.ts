@@ -20,6 +20,8 @@ import type {
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
   ZLinkMessageDispatchErrorObserver,
+  ZLinkMessageFlowLogMode,
+  ZLinkMessageFlowObserver,
   ZLinkMessageSerializer,
   ZLinkNamedCodec,
   ZLinkProviderResolver,
@@ -726,6 +728,36 @@ class DefaultZLinkNestDispatchOptionsBuilder implements ZLinkDispatchOptionsBuil
 
   setMessageDispatchErrorObserver(observerType: Type<ZLinkMessageDispatchErrorObserver>): this {
     this.dispatch.messageDispatchErrorObserverType = observerType;
+    return this;
+  }
+
+  setMessageFlowObserver(observerType: Type<ZLinkMessageFlowObserver>): this {
+    this.dispatch.messageFlowObserverType = observerType;
+    return this;
+  }
+
+  messageFlow(mode: ZLinkMessageFlowLogMode): this {
+    (this.dispatch.diagnostics ??= {}).messageFlowLogMode = mode;
+    return this;
+  }
+
+  traceSampleRate(rate: number): this {
+    (this.dispatch.diagnostics ??= {}).sampleRate = rate;
+    return this;
+  }
+
+  includeMessageSizes(include: boolean): this {
+    (this.dispatch.diagnostics ??= {}).includeMessageSizes = include;
+    return this;
+  }
+
+  traceLogFile(path: string): this {
+    (this.dispatch.diagnostics ??= {}).logFile = path;
+    return this;
+  }
+
+  traceNodeId(id: string): this {
+    (this.dispatch.diagnostics ??= {}).nodeId = id;
     return this;
   }
 }

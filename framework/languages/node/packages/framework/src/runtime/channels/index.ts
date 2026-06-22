@@ -19,12 +19,24 @@ import type {
   ZLinkMessageDispatchErrorEvent,
   ZLinkProviderResolver
 } from '../../contracts';
+import type { ZLinkDiagnosticsContext, ZLinkMessageFlowModeCell } from '../diagnostics';
+import {
+  ZLinkMessageFlowTracer,
+  createDiagnosticsContext,
+  createMessageFlowModeCell,
+  effectiveMessageFlow,
+  errorLine,
+  writeTraceFile
+} from '../diagnostics';
 import {
   ZLinkAutoConnectType,
   ZLinkDispatchErrorAction,
   ZLinkDispatchErrorReason,
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind,
+  ZLinkMessageFlowLogMode,
+  ZLinkMessageFlowPhase,
+  ZLinkMessageFlowEvent,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
@@ -257,30 +269,56 @@ export interface ZLinkDispatchErrorSink {
 export class ZLinkDispatchErrorReporter {
   private reportedEvents = 0;
   private observerFailures = 0;
+  private readonly observerType: Type<ZLinkMessageDispatchErrorObserver> | undefined;
+  private readonly providerResolver: ZLinkProviderResolver | undefined;
+  private readonly ctx: ZLinkDiagnosticsContext | undefined;
+  /**
+   * Success-path tracer companion: every surface already receives a reporter, so
+   * exposing the flow tracer here wires all dispatch sites without threading a new
+   * parameter. Shares the same diagnostics context (live mode) and error sink.
+   */
+  readonly flow: ZLinkMessageFlowTracer;
 
   constructor(
-    private readonly observerType: Type<ZLinkMessageDispatchErrorObserver> | undefined,
-    private readonly providerResolver: ZLinkProviderResolver | undefined,
-    private readonly errorSink: ZLinkDispatchErrorSink
-  ) {}
+    observerType: Type<ZLinkMessageDispatchErrorObserver> | undefined,
+    providerResolver: ZLinkProviderResolver | undefined,
+    private readonly errorSink: ZLinkDispatchErrorSink,
+    ctx?: ZLinkDiagnosticsContext
+  ) {
+    this.ctx = ctx;
+    this.observerType = ctx?.messageDispatchErrorObserverType ?? observerType;
+    this.providerResolver = ctx?.providerResolver ?? providerResolver;
+    const flowCtx: ZLinkDiagnosticsContext = ctx ?? {
+      diagnostics: {},
+      liveMode: { mode: ZLinkMessageFlowLogMode.ErrorsOnly },
+      providerResolver
+    };
+    this.flow = new ZLinkMessageFlowTracer(flowCtx, errorSink);
+  }
 
   report(event: ZLinkMessageDispatchErrorEvent): void {
     this.reportedEvents += 1;
-    const reportedError = new Error(`ZLink message dispatch error: ${formatDispatchErrorEvent(event)}`) as Error & {
-      cause?: unknown;
-    };
-    if (event.error !== undefined) {
-      reportedError.cause = event.error;
+    // off silences the default error log; every other mode keeps reporting errors
+    // (errorsOnly is the default). A registered observer still fires.
+    const mode = this.ctx !== undefined ? effectiveMessageFlow(this.ctx) : ZLinkMessageFlowLogMode.ErrorsOnly;
+    if (mode !== ZLinkMessageFlowLogMode.Off) {
+      const line = errorLine(event, this.ctx?.diagnostics.nodeId);
+      if (this.ctx?.diagnostics.logFile !== undefined) {
+        writeTraceFile(this.ctx.diagnostics.logFile, line);
+      } else {
+        const reportedError = new Error(line) as Error & { cause?: unknown };
+        if (event.error !== undefined) {
+          reportedError.cause = event.error;
+        }
+        this.errorSink.reportRuntimeTaskException('dispatch-error', reportedError);
+      }
     }
-    this.errorSink.reportRuntimeTaskException(
-      'dispatch-error',
-      reportedError
-    );
-    if (this.observerType === undefined) {
+    const observerType = this.observerType;
+    if (observerType === undefined) {
       return;
     }
     queueMicrotask(() => {
-      void this.resolveObserver()
+      void this.resolveObserver(observerType)
         .then((observer) => observer.onDispatchError(event))
         .catch((error) => {
           this.observerFailures += 1;
@@ -297,11 +335,9 @@ export class ZLinkDispatchErrorReporter {
     return this.observerFailures;
   }
 
-  private async resolveObserver(): Promise<ZLinkMessageDispatchErrorObserver> {
-    const observerType = this.observerType;
-    if (observerType === undefined) {
-      throw new Error('Dispatch error observer is not configured.');
-    }
+  private async resolveObserver(
+    observerType: Type<ZLinkMessageDispatchErrorObserver>
+  ): Promise<ZLinkMessageDispatchErrorObserver> {
     const existing = this.providerResolver?.get?.(observerType);
     if (existing !== undefined) {
       return existing;
@@ -452,10 +488,12 @@ export class ZLinkChannelRuntimeManager {
   }
 
   private createDispatchErrorReporter(errorSink: ZLinkRuntimeErrorSink): ZLinkDispatchErrorReporter {
+    const cell = this.options.messageFlowModeCell ?? createMessageFlowModeCell(this.registration.dispatch);
     return new ZLinkDispatchErrorReporter(
-      this.registration.dispatch?.messageDispatchErrorObserverType,
-      this.providerResolver,
-      errorSink
+      undefined,
+      undefined,
+      errorSink,
+      createDiagnosticsContext(this.registration.dispatch, this.providerResolver, cell)
     );
   }
 
@@ -1354,6 +1392,7 @@ export interface ZLinkRouteRuntimeRequestHandler {
 export interface ZLinkChannelRuntimeManagerOptions {
   readonly internalRouteSendHandlers?: ReadonlyMap<string, ZLinkRouteRuntimeSendHandler>;
   readonly internalRouteRequestHandlers?: ReadonlyMap<string, ZLinkRouteRuntimeRequestHandler>;
+  readonly messageFlowModeCell?: ZLinkMessageFlowModeCell;
 }
 
 export class ZLinkChannelRequestDispatcher {

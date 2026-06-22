@@ -839,8 +839,8 @@ test('DERR-001 ZLinkFrameworkRuntimeHost replies error and reports observer for 
     assert.equal(runtimeFailures[0].taskName, 'dispatch-error');
     assert.match(runtimeFailures[0].error.message, /reason=handlerMissing/);
     assert.match(runtimeFailures[0].error.message, /action=replyError/);
-    assert.match(runtimeFailures[0].error.message, /packetName=UnknownReq/);
-    assert.match(runtimeFailures[0].error.message, /channelName=play/);
+    assert.match(runtimeFailures[0].error.message, /packet=UnknownReq/);
+    assert.match(runtimeFailures[0].error.message, /channel=play/);
 
     const knownAfter = await client
       .requestToChannel('play', { value: 'after' })
@@ -914,8 +914,8 @@ test('DERR-002 ZLinkFrameworkRuntimeHost reports observer for missing channel se
     assert.equal(runtimeFailures[0].taskName, 'dispatch-error');
     assert.match(runtimeFailures[0].error.message, /reason=handlerMissing/);
     assert.match(runtimeFailures[0].error.message, /action=drop/);
-    assert.match(runtimeFailures[0].error.message, /packetName=UnknownCommand/);
-    assert.match(runtimeFailures[0].error.message, /channelName=play/);
+    assert.match(runtimeFailures[0].error.message, /packet=UnknownCommand/);
+    assert.match(runtimeFailures[0].error.message, /channel=play/);
 
     const knownAfter = await client
       .requestToChannel('play', { value: 'after-send-error' })
@@ -1184,8 +1184,8 @@ test('DERR-007 ZLinkFrameworkRuntimeHost replies error and reports observer for 
     assert.equal(runtimeFailures[0].taskName, 'dispatch-error');
     assert.match(runtimeFailures[0].error.message, /reason=handlerException/);
     assert.match(runtimeFailures[0].error.message, /action=replyError/);
-    assert.match(runtimeFailures[0].error.message, /packetName=ThrowReq/);
-    assert.match(runtimeFailures[0].error.message, /channelName=play/);
+    assert.match(runtimeFailures[0].error.message, /packet=ThrowReq/);
+    assert.match(runtimeFailures[0].error.message, /channel=play/);
 
     const knownAfter = await client
       .requestToChannel('play', { value: 'after-handler-error' })
@@ -2294,7 +2294,7 @@ test('DERR-006 ZLinkChannelRequestDispatcher replies error and reports observer 
   assert.equal(runtimeFailures[0].taskName, 'dispatch-error');
   assert.match(runtimeFailures[0].error.message, /reason=payloadDecodeFailed/);
   assert.match(runtimeFailures[0].error.message, /action=replyError/);
-  assert.match(runtimeFailures[0].error.message, /packetName=BrokenReq/);
+  assert.match(runtimeFailures[0].error.message, /packet=BrokenReq/);
 
   replies.length = 0;
   await dispatcher.dispatch({

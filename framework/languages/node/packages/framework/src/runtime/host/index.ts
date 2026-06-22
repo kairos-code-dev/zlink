@@ -22,7 +22,8 @@ import type {
   ZLinkSpotRemoteAddressResolver,
   ZlinkStreamHeader
 } from '../../contracts';
-import { ZLinkSpotKind } from '../../contracts';
+import { ZLinkMessageFlowLogMode, ZLinkSpotKind } from '../../contracts';
+import type { ZLinkMessageFlowControl } from '../../contracts';
 import {
   DefaultZLinkChannelClient,
   DefaultZLinkFanoutClient,
@@ -33,6 +34,10 @@ import {
   ZLinkRuntimeRouteTransport
 } from '../channels';
 import { ZLinkFrameworkRuntimeState, ZLinkRuntimeErrorSink } from '../execution';
+import {
+  createDiagnosticsContext,
+  type ZLinkMessageFlowModeCell
+} from '../diagnostics';
 import { DefaultZLinkSpotManager, ZLinkRuntimeSpotPublisherTransport, ZLinkSpotNodeRuntimeManager } from '../spots';
 import type {
   DefaultZLinkActorManager,
@@ -55,7 +60,7 @@ import {
   ZLinkStreamBindingRuntime,
   ZLinkStreamRuntimeManager
 } from '../streams';
-import { Message as BindingMessage } from '@zlink-systems/zlink';
+import { Message as BindingMessage, RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import {
   decodeStreamHeader,
   encodeStreamHeader,
@@ -76,7 +81,7 @@ export interface ZLinkFrameworkRuntimeHostOptions {
   readonly providerResolver?: ZLinkProviderResolver;
 }
 
-export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
+export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMessageFlowControl {
   private readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   private readonly lifecycleSink?: string[];
   private state?: ZLinkFrameworkRuntimeState;
@@ -85,6 +90,11 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   private streamRuntime?: ZLinkStreamRuntimeManager;
   private actorManager?: DefaultZLinkActorManager;
   private spotManager?: DefaultZLinkSpotManager;
+  // Shared, runtime-mutable message-flow mode cell — installed once so
+  // setMessageFlowMode flips every surface live. Seeded from config at start().
+  private readonly messageFlowModeCell: ZLinkMessageFlowModeCell = {
+    mode: ZLinkMessageFlowLogMode.ErrorsOnly
+  };
   private readonly preStartErrorSink = new ZLinkRuntimeErrorSink();
   readonly channelTransport = new ZLinkRuntimeChannelTransport(() => this.channelRuntime);
   readonly routeTransport = new ZLinkRuntimeRouteTransport(
@@ -112,6 +122,18 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
     return this.state !== undefined;
   }
 
+  /**
+   * Runtime toggle (ZLinkMessageFlowControl): flip the shared live-mode cell so every
+   * surface starts/stops tracing without a restart.
+   */
+  setMessageFlowMode(mode: ZLinkMessageFlowLogMode): void {
+    this.messageFlowModeCell.mode = mode;
+  }
+
+  messageFlowMode(): ZLinkMessageFlowLogMode {
+    return this.messageFlowModeCell.mode;
+  }
+
   get context(): ZLinkBackendContext | undefined {
     return this.state?.context as ZLinkBackendContext | undefined;
   }
@@ -137,10 +159,19 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
     let streamRuntime: ZLinkStreamRuntimeManager | undefined;
     try {
       this.state = new ZLinkFrameworkRuntimeState(context);
+      // Seed the shared live-mode cell from the configured mode (default errorsOnly).
+      this.messageFlowModeCell.mode =
+        this.options.registration.dispatch?.diagnostics?.messageFlowLogMode ??
+        ZLinkMessageFlowLogMode.ErrorsOnly;
       const dispatchErrors = new ZLinkDispatchErrorReporter(
-        this.options.registration.dispatch?.messageDispatchErrorObserverType,
-        this.options.providerResolver,
-        this.state.errorSink
+        undefined,
+        undefined,
+        this.state.errorSink,
+        createDiagnosticsContext(
+          this.options.registration.dispatch,
+          this.options.providerResolver,
+          this.messageFlowModeCell
+        )
       );
       channelRuntime = new ZLinkChannelRuntimeManager(
         this.options.registration,
@@ -148,6 +179,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
         context,
         this.options.providerResolver,
         {
+          messageFlowModeCell: this.messageFlowModeCell,
           internalRouteSendHandlers: new Map([
             [ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET, {
               handle: async (payload) => {
@@ -367,7 +399,14 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
         if (this.actorManager === undefined) {
           throw new Error('Routed actor join requires ZLINK_ACTOR_MANAGER.');
         }
-        const actor = await this.actorManager.getOrCreate(actorId, actorType, signal);
+        const actor = actorRef === undefined
+          ? await this.actorManager.getOrCreate(actorId, actorType, signal)
+          : await this.actorManager.getOrCreateWithNativeRef(
+              actorId,
+              actorType,
+              actorRef as unknown as ZLinkBackendActorRef,
+              signal
+            );
         const state = this.actorManager.getState(actorId);
         if (state === undefined) {
           throw new Error(`Actor '${actorId}' state was not created.`);
@@ -377,9 +416,20 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
           state.setRemoteBoundSessionTarget(remoteBoundSessionTarget);
           return { actor, actorRef: actorRef as unknown as ZLinkBackendActorRef };
         }
-        state.setRemoteBoundSessionTarget(undefined);
         const localActorRef = state.ensureNativeActorRef(this.requirePrimarySpotNode());
         return { actor, actorRef: localActorRef };
+      },
+      nativeJoinBoundSessionTargetResolver: (info: { sourceActor: ActorRef; sourceSpotRid?: RoutingId }) => {
+        const routerChannelId = this.options.registration.registrySpotRemoteAddresses?.routerChannelId
+          ?? this.firstAcceptedSpotRouteChannel();
+        if (routerChannelId === undefined) {
+          return undefined;
+        }
+        return {
+          routerChannelId,
+          targetNodeRid: normalizeRuntimeRoutingId(info.sourceActor.nodeRid),
+          spotRid: normalizeRuntimeRoutingId(info.sourceSpotRid ?? info.sourceActor.nodeRid)
+        };
       },
       routedActorCommitter: (actor: ZLinkActor, spotRid: RoutingId, spot: ZLinkSpot) => {
         this.actorManager?.getState(actor.actorId)?.setJoinedSpot(spotRid, spot);
@@ -407,12 +457,17 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
         signal?: AbortSignal
       ) => this.sendActorResponse(actor, packetName, requestSeq, response, metadata, signal),
       dispatchErrors: new ZLinkDispatchErrorReporter(
-        this.options.registration.dispatch?.messageDispatchErrorObserverType,
-        this.options.providerResolver,
+        undefined,
+        undefined,
         {
-          reportRuntimeTaskException: (taskName, error) =>
+          reportRuntimeTaskException: (taskName: string, error: unknown) =>
             (this.errorSink ?? this.preStartErrorSink).reportRuntimeTaskException(taskName, error)
-        }
+        },
+        createDiagnosticsContext(
+          this.options.registration.dispatch,
+          this.options.providerResolver,
+          this.messageFlowModeCell
+        )
       )
     };
   }
@@ -463,6 +518,15 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
 
   private async receiveRemoteBoundSessionSend(payload: unknown): Promise<{ readonly ok: boolean }> {
     const send = decodeRemoteBoundSessionSendPayload(payload);
+    const metadata = new Map(Object.entries(send.metadata ?? {}));
+    if (this.streamBindingRuntime.sendLocalBoundSession(
+      send.actorId,
+      send.message,
+      send.boundPacketName,
+      metadata
+    )) {
+      return { ok: true };
+    }
     const boundSessionFactory = this.createActorManagerOptions().boundSessionFactory;
     if (boundSessionFactory === undefined) {
       throw new Error('Bound session factory is not configured.');
@@ -471,7 +535,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
     if (send.boundPacketName !== undefined) {
       call.packetName(send.boundPacketName);
     }
-    for (const [key, value] of Object.entries(send.metadata ?? {})) {
+    for (const [key, value] of metadata) {
       call.metadata(key, value);
     }
     await call.submit();
@@ -497,15 +561,15 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
       throw new Error(`Actor '${join.actorId}' state was not created.`);
     }
     const actorRef = {
-      nodeRid: join.actorNodeRid as unknown as RoutingId,
+      nodeRid: normalizeRuntimeRoutingId(join.actorNodeRid),
       actorId: join.actorId,
       generation: BigInt(join.actorGeneration)
     };
     state.setNativeActorRef(actorRef as unknown as ZLinkBackendActorRef);
     state.setRemoteBoundSessionTarget({
       routerChannelId: join.boundSessionRouterChannelId ?? join.routerChannelId ?? routeContext.channelName ?? '',
-      targetNodeRid: (join.boundSessionTargetNodeRid ?? routeContext.sourceNodeRid) as RoutingId,
-      spotRid: (join.boundSessionSpotRid ?? join.sourceSpotRid ?? routeContext.sourceNodeRid) as RoutingId
+      targetNodeRid: normalizeRuntimeRoutingId(join.boundSessionTargetNodeRid ?? routeContext.sourceNodeRid),
+      spotRid: normalizeRuntimeRoutingId(join.boundSessionSpotRid ?? join.sourceSpotRid ?? routeContext.sourceNodeRid)
     });
     const request = BindingMessage.from(Buffer.from(join.request, 'base64'));
     try {
@@ -576,8 +640,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
         ? undefined
         : {
             routerChannelId: relay.routerChannelId,
-            targetNodeRid: (relay.boundSessionTargetNodeRid ?? routeContext.sourceNodeRid) as RoutingId,
-            spotRid: (relay.boundSessionSpotRid ?? routeContext.sourceNodeRid) as RoutingId
+            targetNodeRid: normalizeRuntimeRoutingId(relay.boundSessionTargetNodeRid ?? routeContext.sourceNodeRid),
+            spotRid: normalizeRuntimeRoutingId(relay.boundSessionSpotRid ?? routeContext.sourceNodeRid)
           };
     const header = BindingMessage.from(Buffer.from(relay.header, 'base64'));
     const body = BindingMessage.from(Buffer.from(relay.payload, 'base64'));
@@ -712,8 +776,8 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
     }
     return {
       routerChannelId,
-      targetNodeRid: String(targetNodeRid) as RoutingId,
-      spotRid: String(spotRid) as RoutingId,
+      targetNodeRid: normalizeRuntimeRoutingId(targetNodeRid),
+      spotRid: normalizeRuntimeRoutingId(spotRid),
       spotKind: ZLinkSpotKind.User
     };
   }
@@ -760,12 +824,19 @@ function decodeRemoteActorPacketTarget(value: unknown): ZLinkRemoteActorPacketTa
   }
   return {
     routerChannelId: (value as { routerChannelId: string }).routerChannelId,
-    targetNodeRid: (value as { targetNodeRid: string }).targetNodeRid as RoutingId,
-    spotRid: (value as { spotRid: string }).spotRid as RoutingId,
+    targetNodeRid: normalizeRuntimeRoutingId((value as { targetNodeRid: string }).targetNodeRid),
+    spotRid: normalizeRuntimeRoutingId((value as { spotRid: string }).spotRid),
     spotKind: (value as { spotKind?: unknown }).spotKind === ZLinkSpotKind.Entry
       ? ZLinkSpotKind.Entry
       : ZLinkSpotKind.User
   };
+}
+
+function normalizeRuntimeRoutingId(value: RoutingId | string): RoutingId {
+  const raw = value as unknown;
+  return raw instanceof BindingRoutingId
+    ? raw as unknown as RoutingId
+    : BindingRoutingId.from(String(value)) as unknown as RoutingId;
 }
 
 function decodeRemoteActorPacketRelayPayload(payload: unknown): {
@@ -967,14 +1038,6 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
       throw new Error('Bound session send already submitted.');
     }
     this.executed = true;
-    if (this.runtime.sendLocalBoundSession(
-      this.actorId,
-      this.message,
-      this.selectedPacketName,
-      this.selectedMetadata
-    )) {
-      return;
-    }
     const remoteTarget = this.remoteBoundSessionTargetProvider();
     if (remoteTarget !== undefined) {
       const payload = {
@@ -984,26 +1047,24 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         boundPacketName: this.selectedPacketName,
         metadata: Object.fromEntries(this.selectedMetadata)
       };
-      if (this.routedTransport.canRoutePacketChannel?.(remoteTarget.routerChannelId) === true) {
-        await this.routedTransport.send(
-          remoteTarget.routerChannelId,
-          remoteTarget.targetNodeRid,
-          ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,
-          payload,
-          signal
-        );
-      } else {
-        await this.routedTransport.sendToSpot(
-          {
-            routerChannelId: remoteTarget.routerChannelId,
-            targetNodeRid: remoteTarget.targetNodeRid,
-            spotRid: remoteTarget.spotRid,
-            spotKind: ZLinkSpotKind.Entry
-          },
-          payload,
-          { packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET, signal }
-        );
-      }
+      await this.routedTransport.sendToSpot(
+        {
+          routerChannelId: remoteTarget.routerChannelId,
+          targetNodeRid: remoteTarget.targetNodeRid,
+          spotRid: remoteTarget.spotRid,
+          spotKind: ZLinkSpotKind.Entry
+        },
+        payload,
+        { packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET, signal }
+      );
+      return;
+    }
+    if (this.runtime.sendLocalBoundSession(
+      this.actorId,
+      this.message,
+      this.selectedPacketName,
+      this.selectedMetadata
+    )) {
       return;
     }
     const actorRef = this.actorRefProvider();

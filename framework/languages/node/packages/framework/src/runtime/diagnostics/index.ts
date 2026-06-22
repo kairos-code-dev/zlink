@@ -258,3 +258,4 @@ function validatePollingInterval(sourceKind: string, intervalMs: number): void {
     throw new Error(`${sourceKind} monitoring intervalMs must be greater than zero.`);
   }
 }
+export * from './message-flow';

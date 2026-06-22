@@ -32,7 +32,12 @@ internal sealed class ZlinkStreamFrameSender(
             flags |= ZlinkStreamHeaderFlags.PayloadCompressed;
         }
 
-        var header = new ZlinkStreamHeader(kind, payload.Codec, flags, requestSeq, name, metadata);
+        // Client always stamps a correlation id on non-control packets so the server
+        // can trace/echo it regardless of either side's tracing mode.
+        var correlationId = kind == ZlinkStreamMessageKind.Control
+            ? null
+            : ZlinkStreamCorrelation.Next();
+        var header = new ZlinkStreamHeader(kind, payload.Codec, flags, requestSeq, name, metadata, correlationId);
         return new ZlinkStreamOutboundFrame(header, EncodeHeaderForSend(header), payloadBytes);
     }
 

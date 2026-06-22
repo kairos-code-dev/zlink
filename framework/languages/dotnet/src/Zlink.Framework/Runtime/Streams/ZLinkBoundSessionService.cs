@@ -121,7 +121,8 @@ internal sealed class ZLinkBoundSessionService(
             MetadataFlags(metadata),
             null,
             packetName ?? throw new InvalidOperationException("Packet name is required."),
-            ToStreamMetadata(metadata));
+            ToStreamMetadata(metadata),
+            ZLinkStreamCorrelation.Next());
         return ZLinkStreamFrameCodec.Encode(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span, encoded.Payload.Span);
     }
 

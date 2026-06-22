@@ -23,7 +23,10 @@ public sealed record ZlinkStreamHeader(
     ZlinkStreamHeaderFlags Flags,
     ZlinkStreamRequestSeq? RequestSeq,
     string Name,
-    ZlinkStreamMetadata Metadata);
+    ZlinkStreamMetadata Metadata,
+    // First-class correlation id (flag 0x08, wire layout: after metadata, u8 length +
+    // UTF-8 bytes). Client-generated, server-echoed. Null = absent.
+    string? CorrelationId = null);
 
 public sealed record ZlinkStreamError(
     ZlinkStreamErrorCode Code,

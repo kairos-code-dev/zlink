@@ -80,7 +80,8 @@ internal sealed class ZLinkSessionSendCall<TMessage>(
             flags,
             null,
             messageName,
-            metadata);
+            metadata,
+            ZLinkStreamCorrelation.Next());
     }
 }
 
@@ -118,6 +119,8 @@ internal sealed class ZLinkSessionReplyCall<TMessage>(
             flags | ZlinkStreamHeaderFlags.HasRequestSeq,
             requestSeq,
             currentDispatchHeader.Name,
-            metadata);
+            metadata,
+            // Echo the request's correlation id onto the reply.
+            currentDispatchHeader.CorrelationId);
     }
 }

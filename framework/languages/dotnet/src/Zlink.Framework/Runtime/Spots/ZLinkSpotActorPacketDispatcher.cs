@@ -28,7 +28,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                 ZLinkDispatchMessageKind.ActorSend,
                 PacketName: header.Name,
                 ActorId: actor.ActorId,
-                CorrelationId: header.RequestSeq?.ToString()));
+                CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
         }
 
         if (TryResolveActorPacketDescriptor(actor.GetType(), header, out var descriptor)
@@ -48,7 +48,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                         ZLinkDispatchMessageKind.ActorSend,
                         PacketName: header.Name,
                         ActorId: actor.ActorId,
-                        CorrelationId: header.RequestSeq?.ToString()));
+                        CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
                 }
             }
             catch (Exception ex)
@@ -70,7 +70,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     ZLinkDispatchErrorAction.Drop,
                     header.Name,
                     ActorId: actor.ActorId,
-                    CorrelationId: header.RequestSeq?.ToString(),
+                    CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
                     Exception: ex));
             }
             return;
@@ -92,7 +92,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
             ZLinkDispatchErrorAction.Drop,
             header.Name,
             ActorId: actor.ActorId,
-            CorrelationId: header.RequestSeq?.ToString()));
+            CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
     }
 
     public async ValueTask<ZLinkActorReply?> DispatchForReplyAsync(
@@ -112,7 +112,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                 ZLinkDispatchMessageKind.ActorRequest,
                 PacketName: header.Name,
                 ActorId: actor.ActorId,
-                CorrelationId: header.RequestSeq?.ToString()));
+                CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
         }
 
         if (TryResolveActorPacketDescriptor(actor.GetType(), header, out var descriptor)
@@ -132,7 +132,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                         ZLinkDispatchMessageKind.ActorRequest,
                         PacketName: header.Name,
                         ActorId: actor.ActorId,
-                        CorrelationId: header.RequestSeq?.ToString()));
+                        CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString()));
                 }
 
                 return reply;
@@ -156,7 +156,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
                     ZLinkDispatchErrorAction.ReplyError,
                     header.Name,
                     ActorId: actor.ActorId,
-                    CorrelationId: header.RequestSeq?.ToString(),
+                    CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
                     Exception: ex));
                 throw;
             }
@@ -179,7 +179,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
             ZLinkDispatchErrorAction.ReplyError,
             header.Name,
             ActorId: actor.ActorId,
-            CorrelationId: header.RequestSeq?.ToString(),
+            CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
             Exception: new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound,
                 $"No Spot actor request handler is registered for '{header.Name}'.")));

@@ -109,7 +109,9 @@ internal sealed class ZLinkSessionStreamTransport(
             ZlinkStreamHeaderFlags.HasRequestSeq,
             requestSeq,
             requestHeader.Name,
-            ZlinkStreamMetadata.Empty);
+            ZlinkStreamMetadata.Empty,
+            // Echo the request's correlation id onto the error reply.
+            requestHeader.CorrelationId);
         var payload = ZLinkEnvelopeCodec.EncodeJsonBytes(
             new ZLinkStreamWireError(
                 exception.GetType().Name,

@@ -8,7 +8,8 @@ internal static class ZLinkStreamHeaderCodec
     private const ZlinkStreamHeaderFlags KnownFlags =
         ZlinkStreamHeaderFlags.HasRequestSeq |
         ZlinkStreamHeaderFlags.HasMetadata |
-        ZlinkStreamHeaderFlags.PayloadCompressed;
+        ZlinkStreamHeaderFlags.PayloadCompressed |
+        ZlinkStreamHeaderFlags.HasCorrelationId;
 
     public static ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header)
     {
@@ -18,8 +19,17 @@ internal static class ZLinkStreamHeaderCodec
         var nameBytes = Encoding.UTF8.GetBytes(header.Name);
         var hasRequestSeq = header.RequestSeq is not null;
         var hasMetadata = header.Metadata.Count > 0;
+        var hasCorrelationId = !string.IsNullOrEmpty(header.CorrelationId);
+        var correlationBytes = hasCorrelationId
+            ? Encoding.UTF8.GetBytes(header.CorrelationId!)
+            : Array.Empty<byte>();
+        if (correlationBytes.Length > byte.MaxValue)
+        {
+            throw Error(ZlinkStreamErrorCode.ValidationFailed, "Correlation id is too long.");
+        }
+
         var flags = header.Flags;
-        ValidateHeaderSemantics(header.Kind, header.Codec, flags, hasRequestSeq, hasMetadata);
+        ValidateHeaderSemantics(header.Kind, header.Codec, flags, hasRequestSeq, hasMetadata, hasCorrelationId);
 
         flags = hasRequestSeq
             ? flags | ZlinkStreamHeaderFlags.HasRequestSeq
@@ -27,6 +37,9 @@ internal static class ZLinkStreamHeaderCodec
         flags = hasMetadata
             ? flags | ZlinkStreamHeaderFlags.HasMetadata
             : flags & ~ZlinkStreamHeaderFlags.HasMetadata;
+        flags = hasCorrelationId
+            ? flags | ZlinkStreamHeaderFlags.HasCorrelationId
+            : flags & ~ZlinkStreamHeaderFlags.HasCorrelationId;
 
         var metadataSize = hasMetadata
             ? ZLinkStreamMetadataCodec.GetPayloadSize(header.Metadata)
@@ -34,7 +47,8 @@ internal static class ZLinkStreamHeaderCodec
         var size = 3
             + (hasRequestSeq ? sizeof(ulong) : 0)
             + 1 + nameBytes.Length
-            + (hasMetadata ? sizeof(ushort) + metadataSize : 0);
+            + (hasMetadata ? sizeof(ushort) + metadataSize : 0)
+            + (hasCorrelationId ? 1 + correlationBytes.Length : 0);
         var buffer = new byte[size];
         var offset = 0;
         buffer[offset++] = (byte)header.Kind;
@@ -67,6 +81,14 @@ internal static class ZLinkStreamHeaderCodec
             ZLinkStreamMetadataCodec.Write(
                 header.Metadata,
                 buffer.AsSpan(offset, metadataSize));
+            offset += metadataSize;
+        }
+
+        if (hasCorrelationId)
+        {
+            buffer[offset++] = (byte)correlationBytes.Length;
+            correlationBytes.CopyTo(buffer.AsSpan(offset));
+            offset += correlationBytes.Length;
         }
 
         return buffer;
@@ -139,14 +161,32 @@ internal static class ZLinkStreamHeaderCodec
             offset += metadataLength;
         }
 
+        string? correlationId = null;
+        if (flags.HasFlag(ZlinkStreamHeaderFlags.HasCorrelationId))
+        {
+            if (span.Length - offset < 1)
+            {
+                throw Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Helper header correlation id length is missing.");
+            }
+
+            var correlationLength = span[offset++];
+            if (correlationLength == 0 || span.Length - offset < correlationLength)
+            {
+                throw Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Helper header correlation id is invalid.");
+            }
+
+            correlationId = Encoding.UTF8.GetString(span.Slice(offset, correlationLength));
+            offset += correlationLength;
+        }
+
         if (offset != span.Length)
         {
             throw Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Helper header contains trailing bytes.");
         }
 
         ValidateName(name, allowReserved: kind == ZlinkStreamMessageKind.Control);
-        ValidateHeaderSemantics(kind, codec, flags, requestSeq is not null, metadata.Count > 0);
-        return new ZlinkStreamHeader(kind, codec, flags, requestSeq, name, metadata);
+        ValidateHeaderSemantics(kind, codec, flags, requestSeq is not null, metadata.Count > 0, correlationId is not null);
+        return new ZlinkStreamHeader(kind, codec, flags, requestSeq, name, metadata, correlationId);
     }
 
     private static void ValidateEnum(
@@ -175,7 +215,8 @@ internal static class ZLinkStreamHeaderCodec
         ZlinkStreamCodec codec,
         ZlinkStreamHeaderFlags flags,
         bool hasRequestSeq,
-        bool hasMetadata)
+        bool hasMetadata,
+        bool hasCorrelationId)
     {
         if (kind == ZlinkStreamMessageKind.Send && hasRequestSeq)
         {
@@ -212,6 +253,11 @@ internal static class ZLinkStreamHeaderCodec
             if (hasMetadata)
             {
                 throw Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Control packet must not contain metadata.");
+            }
+
+            if (hasCorrelationId)
+            {
+                throw Error(ZlinkStreamErrorCode.FrameDecodeFailed, "Control packet must not contain a correlation id.");
             }
         }
     }

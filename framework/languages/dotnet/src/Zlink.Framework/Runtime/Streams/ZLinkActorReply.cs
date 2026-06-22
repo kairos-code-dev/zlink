@@ -57,7 +57,9 @@ internal sealed class ZLinkActorReply(
             Flags | ZlinkStreamHeaderFlags.HasRequestSeq,
             requestSeq,
             requestHeader.Name,
-            Metadata);
+            Metadata,
+            // Echo the request's correlation id so a request/reply pair shares one corr.
+            requestHeader.CorrelationId);
         return ZLinkStreamFrameCodec.Encode(
             ZLinkStreamProtocolDefaults.EncodeHeader(responseHeader).Span,
             Payload);

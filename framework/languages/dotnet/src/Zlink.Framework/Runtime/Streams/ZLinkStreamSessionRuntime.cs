@@ -142,7 +142,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                         ? ZLinkDispatchMessageKind.Request
                         : ZLinkDispatchMessageKind.Send,
                     PacketName: decoded.Name,
-                    CorrelationId: decoded.RequestSeq?.ToString()));
+                    CorrelationId: decoded.CorrelationId ?? decoded.RequestSeq?.ToString()));
             }
 
             _context.EnterDispatch(decoded);
@@ -162,7 +162,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                             ? ZLinkDispatchMessageKind.Request
                             : ZLinkDispatchMessageKind.Send,
                         PacketName: decoded.Name,
-                        CorrelationId: decoded.RequestSeq?.ToString()));
+                        CorrelationId: decoded.CorrelationId ?? decoded.RequestSeq?.ToString()));
                 }
             }
             catch (Exception ex)

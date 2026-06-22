@@ -29,11 +29,11 @@ class recv_part_out_guard_t
     explicit recv_part_out_guard_t (message_t &part_) noexcept :
         _part (part_), _has_saved (false), _committed (false)
     {
-        // Only save+restore when the caller passes a msg that already carries
-        // a payload. A freshly-inited empty msg has no state worth preserving
-        // and the perf-critical recv loops construct an empty msg each
-        // iteration, so skipping the save eliminates an init/close pair per
-        // recv call without weakening the public contract for non-empty msgs.
+        // HOT PATH: caller-provided single-part recv must preserve a non-empty
+        // output message when the native receive fails, but an empty output
+        // message has no payload to restore. Skipping save/restore for the
+        // empty case avoids one native message init/close pair per receive
+        // while keeping the public failure contract for non-empty messages.
         if (_part.valid () && zlink_msg_size (native_handle (_part)) > 0) {
             move_to_native (_part, &_saved);
             _has_saved = true;

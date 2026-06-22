@@ -9,6 +9,7 @@ import {
 } from '../../contracts';
 import { routingIdFromOwnedBuffer } from '../core/routing_id';
 import {
+  messageFromOwnedBuffer,
   messageFromSnapshot,
   type MessageSnapshot
 } from './message_snapshot';
@@ -34,7 +35,8 @@ export interface NativeReceivedRaw {
 
 export interface NativeTopicMessageRaw {
   topic: string;
-  parts: MessageSnapshot[];
+  parts?: MessageSnapshot[];
+  data?: Buffer;
   routingId?: Buffer | null;
 }
 
@@ -54,6 +56,16 @@ function materializeParts(parts: MessageSnapshot[]): Message[] {
     messages[i] = messageFromSnapshot(parts[i]);
   }
   return messages;
+}
+
+function materializeTopicParts(raw: NativeTopicMessageRaw): Message[] {
+  if (raw.data) {
+    // Hot path: core SUB messages are normally single-part. The native layer
+    // passes the owned payload Buffer directly so public TopicMessage adoption
+    // avoids a per-message native parts array and snapshot object.
+    return [messageFromOwnedBuffer(raw.data)];
+  }
+  return materializeParts(raw.parts ?? []);
 }
 
 function hasReplyableRequestSeq(requestSeq: bigint | null): requestSeq is bigint {
@@ -135,7 +147,7 @@ export function materializeReceivedInto(
 export function materializeTopicMessage(raw: NativeTopicMessageRaw): TopicMessage {
   return createTopicMessage(
     raw.topic,
-    materializeParts(raw.parts),
+    materializeTopicParts(raw),
     wrapNativeRoutingId(raw.routingId ?? null)
   );
 }
@@ -144,7 +156,7 @@ export function adoptTopicMessage(result: TopicMessage, raw: NativeTopicMessageR
   replaceTopicMessage(
     result,
     raw.topic,
-    materializeParts(raw.parts),
+    materializeTopicParts(raw),
     wrapNativeRoutingId(raw.routingId ?? null)
   );
 }

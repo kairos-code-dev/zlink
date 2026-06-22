@@ -303,12 +303,13 @@ test('actor bound session send from spot-to-spot dispatch flushes final frame wi
   const requesterNode = zlink.createSpotNode(ctx);
   const responder = responderNode.entrySpot();
   const requester = requesterNode.entrySpot();
-  const actor = responderNode.createActor('bound-target');
+  let actor;
   const client = new net.Socket();
 
   try {
     responderNode.setRoutingId(zlink.RoutingId.from(Buffer.from('bound-responder-node')));
     requesterNode.setRoutingId(zlink.RoutingId.from(Buffer.from('bound-requester-node')));
+    actor = responderNode.createActor('bound-target');
     stream.bind(streamEndpoint);
     stream.attachActorGateway(responderNode);
     responderNode.setRouterBind(responderRouterEndpoint);
@@ -376,7 +377,7 @@ test('actor bound session send from spot-to-spot dispatch flushes final frame wi
     ]);
   } finally {
     client.destroy();
-    actor.close(0);
+    actor?.close(0);
     requester.close();
     responder.close();
     requesterNode.close();

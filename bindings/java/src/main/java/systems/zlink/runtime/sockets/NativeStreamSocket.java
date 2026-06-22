@@ -65,7 +65,7 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
             NativeStreamSocket.super.send(rid, parts,
                 SendFlag.fromValue(flags.value())));
     }
-    /** Canonical caller-provided storage recv. See doc/spec/bindings/README.md. */
+    /** Receives into caller-provided storage. */
     public boolean recv(Received result, RecvFlags flags) {
         Objects.requireNonNull(result, "result");
         Objects.requireNonNull(flags, "flags");

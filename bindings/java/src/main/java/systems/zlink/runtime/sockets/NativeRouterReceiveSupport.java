@@ -165,11 +165,12 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
     }
 
     /**
-     * Canonical caller-provided storage recv. Populates {@code target}
-     * directly when the routed recv yields a single-part non-request-seq
-     * message (the routed-echo hot path); for multipart or request-seq
-     * results falls through to the allocation fallback path so the
-     * surface keeps the same observable semantics across recv shapes.
+     * Receives into caller-provided {@link Received} storage.
+     *
+     * <p>HOT PATH: single-part routed messages without request metadata fill
+     * {@code target} directly and avoid a fresh {@link Received} allocation.
+     * Multipart and request/reply messages use the fallback path so observable
+     * recv semantics stay identical across message shapes.
      * Returns {@code true} on data, {@code false} on EAGAIN with
      * {@link RecvFlags#DONT_WAIT}.
      */
@@ -272,12 +273,12 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
     }
 
     /**
-     * Variant of {@link #recvDirectOnceImpl} that, when the result is a
-     * single-part non-request-seq routed message (no spot, no request
-     * sequence — the routed echo hot path), populates {@code target} in
-     * place via {@link Received#populateRoutedSinglePart}, avoiding the
-     * fresh {@link Received} allocation used by the fallback path.
-     * Other paths fall back to the existing impl + {@link Received#adoptFrom}.
+     * Variant of {@link #recvDirectOnceImpl} for caller-provided storage.
+     *
+     * <p>HOT PATH: single-part routed messages without spot/request metadata
+     * populate {@code target} via {@link Received#populateRoutedSinglePart},
+     * avoiding the fresh {@link Received} allocation used by the fallback path.
+     * Other paths use the existing receive-and-adopt flow.
      */
     private boolean recvDirectOnceIntoImpl(Received target, RecvFlags flags,
                                            boolean nullOnNoData) {

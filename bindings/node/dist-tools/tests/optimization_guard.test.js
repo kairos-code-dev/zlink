@@ -141,6 +141,40 @@ test('node multi dealer-dealer receiver uses caller-provided Received storage', 
     assert.doesNotMatch(body, /\brecvNoWaitInto\b/);
     assert.doesNotMatch(body, /\brecvNoWait\b/);
 });
+test('node Received raw materialization does not create unused hasMore field', () => {
+    const nativeBody = fs.readFileSync(path.join(NATIVE_SRC, 'addon_core.cc'), 'utf8');
+    const materializerBody = fs.readFileSync(path.join(TS_SRC, 'zlink', 'runtime', 'messaging', 'message_materializer.ts'), 'utf8');
+    assert.doesNotMatch(nativeBody, /"hasMore"/);
+    assert.doesNotMatch(materializerBody, /\bhasMore\b/);
+    assert.match(nativeBody, /if \(routing_id\.size > 0\)[\s\S]*napi_set_named_property \(env, obj, "routingId", rid\)/);
+});
+test('node SUB single-part materialization keeps the allocation-light raw shape', () => {
+    const nativeBody = fs.readFileSync(path.join(NATIVE_SRC, 'addon_core.cc'), 'utf8');
+    const materializerBody = fs.readFileSync(path.join(TS_SRC, 'zlink', 'runtime', 'messaging', 'message_materializer.ts'), 'utf8');
+    const snapshotBody = fs.readFileSync(path.join(TS_SRC, 'zlink', 'runtime', 'messaging', 'message_snapshot.ts'), 'utf8');
+    assert.match(nativeBody, /Hot path: SUB receive usually carries one payload part/);
+    assert.match(nativeBody, /if \(part_count == 1\)[\s\S]*napi_set_named_property \(env, obj, "data", data\)/);
+    assert.match(nativeBody, /Hot path: plain SUB messages normally have no source routing id/);
+    assert.match(nativeBody, /if \(routing_id\.size > 0\)[\s\S]*napi_set_named_property \(env, obj, "routingId", rid\)/);
+    assert.match(materializerBody, /Hot path: core SUB messages are normally single-part/);
+    assert.match(materializerBody, /messageFromOwnedBuffer\(raw\.data\)/);
+    assert.match(snapshotBody, /export function messageFromOwnedBuffer/);
+});
+test('node SPOT subscribe single-part materialization keeps the allocation-light raw shape', () => {
+    const nativeBody = fs.readFileSync(path.join(NATIVE_SRC, 'addon_spot.cc'), 'utf8');
+    const materializerBody = fs.readFileSync(path.join(TS_SRC, 'zlink', 'runtime', 'messaging', 'message_materializer.ts'), 'utf8');
+    assert.match(nativeBody, /Hot path: SPOT subscribe receive normally carries one payload part/);
+    assert.match(nativeBody, /if \(part_count == 1\)[\s\S]*napi_set_named_property \(env, obj, "data", data\)/);
+    assert.match(nativeBody, /Hot path: unrouted SPOT subscribe traffic has no source routing id/);
+    assert.match(nativeBody, /if \(routing_id\.size > 0\)[\s\S]*napi_set_named_property \(env, obj, "routingId", rid\)/);
+    assert.match(materializerBody, /messageFromOwnedBuffer\(raw\.data\)/);
+});
+test('node native callback buffers become Message facades without snapshot allocation', () => {
+    const conversionBody = fs.readFileSync(path.join(TS_SRC, 'zlink', 'runtime', 'buffers', 'message_conversion.ts'), 'utf8');
+    assert.match(conversionBody, /HOT PATH: native callbacks already transfer payload ownership/);
+    assert.match(conversionBody, /messageFromOwnedBuffer\(buffer \?\? Buffer\.alloc\(0\)\)/);
+    assert.doesNotMatch(conversionBody, /return messageFromSnapshot\(\{ data: buffer/);
+});
 test('node samples and perf stay on public binding contract', () => {
     const files = [
         ...sourceFiles(path.join(ROOT, 'samples'), ['.ts']),
@@ -217,6 +251,17 @@ test('node multi publish helper stays on public publish operation', () => {
     assert.doesNotMatch(helper.groups.body, /publishDirect/);
     assert.doesNotMatch(helper.groups.body, /requireNative\(\)/);
 });
+test('node multi spot reqrep retries public transient submit results', () => {
+    const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_spot_reqrep_client.ts');
+    const body = fs.readFileSync(file, 'utf8');
+    const helper = body.match(/function tryRequestSpotReply\(spot, payload, timeoutMs, onReply, onDone\) \{(?<body>[\s\S]*?)\n\}\n\nfunction receiveControlStart/);
+    assert.ok(helper?.groups?.body, 'missing tryRequestSpotReply helper');
+    assert.match(helper.groups.body, /zlink\.SubmitResult\.Backpressured/);
+    assert.match(helper.groups.body, /zlink\.SubmitResult\.NotConnected/);
+    assert.match(helper.groups.body, /large public SPOT_REQREP runs can observe transient/);
+    assert.doesNotMatch(helper.groups.body, /requireNative\(\)/);
+    assert.doesNotMatch(helper.groups.body, /nativeHandle\(\)/);
+});
 test('node multi router-router client uses public routed send path', () => {
     const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_router_router_client.ts');
     const body = fs.readFileSync(file, 'utf8');
@@ -244,6 +289,7 @@ test('native addon registration stays limited to runtime-owned methods', () => {
         'socketSendFrom',
         'socketRecvHandler',
         'socketSubscribePayloadInto',
+        'socketTrySubscribePayload',
         'socketSubscribeHandler',
         'socketRecvInto',
         'socketRecvMsgInto',

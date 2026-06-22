@@ -101,9 +101,8 @@ internal abstract class MessageSocketBase : ConnectableSocketBase, IMessageSocke
 
     /// <summary>
     /// Receive a message into <paramref name="result"/>. Caller-provided
-    /// storage is the canonical recv shape; reuse the same Received
-    /// instance across calls to avoid per-recv allocation. See
-    /// doc/spec/bindings/README.md "Canonical Recv: Caller-Provided Storage".
+    /// storage lets the binding refill the same Received instance across
+    /// calls and avoid per-receive allocation.
     /// </summary>
     /// <param name="result">Long-lived Received storage. Internal state is
     /// reset and refilled on each successful call.</param>

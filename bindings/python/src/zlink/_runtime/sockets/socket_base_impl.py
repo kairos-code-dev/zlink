@@ -525,12 +525,12 @@ class RouterSocket(
         )
 
     def recv_into(self, received, *, flags=0):
-        """Canonical caller-provided storage routed recv.
+        """Receives a routed message into a caller-provided ``Received`` object.
 
         Pass a long-lived :py:class:`Received` as the first positional
         argument and the binding refills its internal state in place each
-        successful call. See ``bindings/doc/spec/README.md`` "Canonical
-        Recv: Caller-Provided Storage".
+        successful call. The public receive contract is the caller-provided
+        storage contract described in ``bindings/doc/spec/README.md``.
 
         :param received: Caller-provided :py:class:`Received` storage.
         :returns: ``True`` on success or ``False`` when DONTWAIT finds no data.

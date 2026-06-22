@@ -549,6 +549,9 @@ napi_value create_recv_message_value (napi_env env,
     napi_value obj;
     napi_create_object (env, &obj);
 
+    // Hot path: this is an internal raw shape consumed by the TypeScript
+    // materializer, not a public Received object. Do not add unused per-
+    // message fields here; each property set is paid on every recv().
     napi_value parts_array;
     napi_create_array_with_length (env, part_count, &parts_array);
     for (size_t i = 0; i < part_count; ++i) {
@@ -556,13 +559,11 @@ napi_value create_recv_message_value (napi_env env,
         napi_set_element (env, parts_array, static_cast<uint32_t> (i), part);
     }
 
-    napi_value rid = create_routing_id_value (env, routing_id);
-    napi_value has_more;
-    napi_get_boolean (env, false, &has_more);
-
     napi_set_named_property (env, obj, "parts", parts_array);
-    napi_set_named_property (env, obj, "routingId", rid);
-    napi_set_named_property (env, obj, "hasMore", has_more);
+    if (routing_id.size > 0) {
+        napi_value rid = create_routing_id_value (env, routing_id);
+        napi_set_named_property (env, obj, "routingId", rid);
+    }
     return obj;
 }
 
@@ -645,20 +646,37 @@ napi_value create_subscribed_value (napi_env env,
     napi_value obj;
     napi_create_object (env, &obj);
 
-    napi_value parts_array;
-    napi_create_array_with_length (env, part_count, &parts_array);
-    for (size_t i = 0; i < part_count; ++i) {
-        napi_value part = create_message_snapshot_value (env, &routing_id, &parts[i]);
-        napi_set_element (env, parts_array, static_cast<uint32_t> (i), part);
+    if (part_count == 1) {
+        // Hot path: SUB receive usually carries one payload part. Return the
+        // owned Buffer directly so the public TopicMessage facade can still be
+        // materialized without allocating a native parts array and snapshot
+        // object for every message.
+        napi_value data = create_message_data_buffer (env, &parts[0]);
+        if (!data)
+            return NULL;
+        napi_set_named_property (env, obj, "data", data);
+    } else {
+        napi_value parts_array;
+        napi_create_array_with_length (env, part_count, &parts_array);
+        for (size_t i = 0; i < part_count; ++i) {
+            napi_value part = create_message_snapshot_value (env, &routing_id, &parts[i]);
+            napi_set_element (env, parts_array, static_cast<uint32_t> (i), part);
+        }
+        napi_set_named_property (env, obj, "parts", parts_array);
     }
 
-    napi_value rid = create_routing_id_value (env, routing_id);
     napi_value topic_value;
     napi_create_string_utf8 (env, topic ? topic : "", topic ? topic_len : 0, &topic_value);
 
-    napi_set_named_property (env, obj, "routingId", rid);
+    if (routing_id.size > 0) {
+        // Hot path: plain SUB messages normally have no source routing id.
+        // Leaving the internal raw field absent preserves the public null
+        // routing id after TypeScript materialization and avoids creating a
+        // per-message JS null property on the common receive path.
+        napi_value rid = create_routing_id_value (env, routing_id);
+        napi_set_named_property (env, obj, "routingId", rid);
+    }
     napi_set_named_property (env, obj, "topic", topic_value);
-    napi_set_named_property (env, obj, "parts", parts_array);
     return obj;
 }
 
@@ -2181,52 +2199,6 @@ napi_value socket_try_subscribe_message (napi_env env, napi_callback_info info)
         }
         if (err != EMSGSIZE)
             return throw_last_error (env, "subscribeNoWait failed");
-        topic.assign (topic_len > 0 ? topic_len : 1, '\0');
-    }
-}
-
-napi_value socket_try_subscribe_payload (napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *sock = NULL;
-    napi_get_value_external (env, argv[0], &sock);
-
-    std::vector<char> topic (256, '\0');
-    size_t topic_len = topic.size ();
-
-    for (;;) {
-        const zlink_routing_id_t *source_rid = NULL;
-        zlink_msg_t first_part;
-        if (zlink_msg_init (&first_part) != 0)
-            return throw_last_error (env, "trySubscribePayload failed");
-        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-        int rc = zlink_subscribe_part (sock, &source_rid, topic.data (), topic.size (), &topic_len,
-                                       &first_part, &has_more, ZLINK_RECV_FLAGS_DONTWAIT);
-        (void) source_rid;
-        if (rc == ZLINK_RECV_OK) {
-            if (has_more == ZLINK_PART_FINAL) {
-                return create_message_data_buffer (env, &first_part);
-            }
-
-            std::vector<zlink_msg_t> parts;
-            rc = collect_recv_parts (sock, &first_part, has_more, &parts);
-            close_msg_vector (parts);
-            if (rc != ZLINK_RECV_OK)
-                return throw_last_error (env, "trySubscribePayload failed");
-            napi_throw_error (env, NULL, "trySubscribePayload requires single-part messages");
-            return NULL;
-        }
-        const int err = zlink_errno ();
-        zlink_msg_close (&first_part);
-        if (err == EAGAIN) {
-            napi_value none;
-            napi_get_null (env, &none);
-            return none;
-        }
-        if (err != EMSGSIZE)
-            return throw_last_error (env, "trySubscribePayload failed");
         topic.assign (topic_len > 0 ? topic_len : 1, '\0');
     }
 }

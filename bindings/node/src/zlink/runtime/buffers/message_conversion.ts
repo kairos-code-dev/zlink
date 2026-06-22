@@ -5,6 +5,7 @@ import {
   type MessageLike
 } from '../../contracts';
 import {
+  messageFromOwnedBuffer,
   messageFromSnapshot,
   messageToSnapshot,
   type MessageSnapshot
@@ -49,5 +50,8 @@ export function normalizeOperationPayload(parts: MessageLike | readonly MessageL
 }
 
 export function messageFromNativeBuffer(buffer: Buffer | null | undefined): Message {
-  return messageFromSnapshot({ data: buffer ?? Buffer.alloc(0) });
+  // HOT PATH: native callbacks already transfer payload ownership to a JS
+  // Buffer. Build the public Message facade directly so STREAM/actor callbacks
+  // do not allocate an intermediate snapshot object for every received part.
+  return messageFromOwnedBuffer(buffer ?? Buffer.alloc(0));
 }

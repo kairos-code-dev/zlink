@@ -126,10 +126,9 @@ export class PublisherSocket extends ConnectableSocket {
 
 export class MessageSocket extends SendSocket {
   /**
-   * Canonical caller-provided storage recv. Pass a long-lived {@link Received}
+   * Receives into caller-provided storage. Pass a long-lived {@link Received}
    * and the binding refills its internal state in place each successful call.
-   * Returns true on success, false when DontWait finds no data. See
-   * doc/spec/bindings/README.md "Canonical Recv: Caller-Provided Storage".
+   * Returns true on success and false when DontWait finds no data.
    */
   recv(result: Received, flags: RecvFlags = RecvFlags.None): boolean {
     let raw;
@@ -241,7 +240,7 @@ export class RoutedMessageSocket extends ConnectableSocket {
   }
 
   /**
-   * Canonical caller-provided storage recv. See {@link MessageSocket.recv}.
+   * Receives into caller-provided storage. See {@link MessageSocket.recv}.
    */
   recv(result: Received, flags: RecvFlags = RecvFlags.None): boolean {
     let raw;

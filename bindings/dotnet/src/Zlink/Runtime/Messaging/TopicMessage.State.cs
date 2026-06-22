@@ -226,6 +226,10 @@ public sealed partial class TopicMessage
             throw new ArgumentOutOfRangeException(nameof(topicLength));
         }
 
+        // HOT PATH: Spot.Subscribe(TopicMessage, ...) writes topic bytes into
+        // the reusable buffer supplied by this instance. Swap buffers instead
+        // of copying, and keep UTF-8 decoding lazy so callers that only inspect
+        // the payload do not pay for a string allocation.
         _topicWriteBuffer = _topicBytes;
         _topicBytes = topicWriteBuffer;
         _topicLength = topicLength;

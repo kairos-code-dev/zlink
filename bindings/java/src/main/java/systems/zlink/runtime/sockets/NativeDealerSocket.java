@@ -36,9 +36,11 @@ final class NativeDealerSocket extends NativeSocketBase implements DealerSocket 
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }
     SendResult sendNoWaitResult(List<Message> parts) { return super.sendNoWaitResult(parts); }
     /**
-     * Canonical caller-provided storage recv. Pass a long-lived
-     * {@link Received} and the binding refills its internal state in place
-     * each successful call.
+     * Receives into caller-provided {@link Received} storage.
+     *
+     * <p>HOT PATH: the DONT_WAIT single-part path fills {@code result} in
+     * place and avoids allocating a fresh {@link Received}, {@code Message[]},
+     * or immutable parts list for each message.
      *
      * @return {@code true} on success, {@code false} when
      * {@link RecvFlags#DONT_WAIT} finds no data.

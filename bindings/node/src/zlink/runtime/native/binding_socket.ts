@@ -153,7 +153,6 @@ export interface SocketNativeBinding {
     topic: string,
     payload: unknown
   ) => number;
-  socketTrySubscribePayload: (socket: NativeHandle) => Buffer | null;
   socketTrySubscribeMessage: (socket: NativeHandle) => NativeTopicMessageRaw | null;
   socketTrySubscriptionEvent: (
     socket: NativeHandle

@@ -63,6 +63,9 @@ func recvSubscribePartInto(
 		_ = configErrorFromResult(C.zlink_msg_close(&part))
 		return SubscribePartResult{}, err
 	}
+	// HOT PATH: public SubscribePart receives one payload frame into caller-owned
+	// storage. Adopt the native frame directly so repeated receives do not build a
+	// TopicMessage or allocate a parts slice only to read a single message.
 	_ = out.Close()
 	if err := configErrorFromResult(C.zlink_msg_adopt(&out.msg, &part)); err != nil {
 		_ = configErrorFromResult(C.zlink_msg_close(&part))
@@ -77,6 +80,9 @@ func recvSubscribePartInto(
 }
 
 func adoptRecvPart(out *Message, part *C.zlink_msg_t) error {
+	// HOT PATH: public RecvPart reuses the caller's Message object. Replacing the
+	// native frame here avoids allocating an intermediate Received envelope for
+	// single-part receive loops.
 	_ = out.Close()
 	if err := configErrorFromResult(C.zlink_msg_adopt(&out.msg, part)); err != nil {
 		_ = configErrorFromResult(C.zlink_msg_close(part))

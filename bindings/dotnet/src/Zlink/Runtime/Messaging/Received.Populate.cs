@@ -58,6 +58,17 @@ public sealed partial class Received : IDisposable
             replyHandler);
     }
 
+    internal void PopulateMessageEnvelopeSingle(Message singlePart,
+        ReceivedMessageType messageType, ulong? requestSeq,
+        ReceivedReplyHandler? replyHandler = null)
+    {
+        ResetForReuse();
+        _singlePart = singlePart;
+        MessageType = messageType;
+        _metadata = ReceivedMetadata.Create(default(RoutingId?), requestSeq,
+            replyHandler);
+    }
+
     internal void PopulateRoutedSinglePart(Message singlePart,
         RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
         ulong? requestSeq, ReceivedReplyHandler? replyHandler,

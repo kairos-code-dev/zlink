@@ -44,7 +44,7 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
     private boolean sendInternal(RoutingId rid, List<Message> parts, SendFlags flags) {
         return super.send(rid, parts, SendFlag.fromValue(flags.value()));
     }
-    /** Canonical caller-provided storage recv. See doc/spec/bindings/README.md. */
+    /** Receives into caller-provided storage. */
     public boolean recv(Received result, RecvFlags flags) {
         java.util.Objects.requireNonNull(result, "result");
         java.util.Objects.requireNonNull(flags, "flags");

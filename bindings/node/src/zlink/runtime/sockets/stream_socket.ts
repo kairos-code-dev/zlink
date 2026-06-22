@@ -150,6 +150,9 @@ export class StreamSocket extends SocketBase {
     if (!routingId || routingId.length === 0) {
       return null;
     }
+    // Hot path: STREAM callbacks receive the same peer routing ids repeatedly.
+    // Cache the public RoutingId facade so packet dispatch does not allocate a
+    // new wrapper for every frame while keeping the public handler contract.
     const key = routingId.toString('latin1');
     const cached = this._packetRoutingIdCache.get(key);
     if (cached) {

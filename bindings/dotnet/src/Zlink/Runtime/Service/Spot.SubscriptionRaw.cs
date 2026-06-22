@@ -88,6 +88,10 @@ internal sealed partial class Spot : ISpot
         out int topicLength, out Message? singlePart,
         out MultipartMessageCollection? parts, bool allowNoData = false)
     {
+        // HOT PATH: public Spot.Subscribe(TopicMessage, ...) reaches this method
+        // for each subscribed message. Keep the single-part case on the direct
+        // Message.AdoptNativeFromPool path; routing/topic decode and multipart
+        // collection allocation belong only to the cases that actually need them.
         ZlinkMsg[] nativeParts = Array.Empty<ZlinkMsg>();
         int nativePartCount = 0;
         routingId = default;

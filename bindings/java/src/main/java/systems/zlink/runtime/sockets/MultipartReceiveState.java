@@ -5,7 +5,9 @@ package systems.zlink.runtime.sockets;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 final class MultipartReceiveState {
-    private Message[] frames = new Message[0];
+    private static final Message[] NO_FRAMES = new Message[0];
+
+    private Message[] frames = NO_FRAMES;
     private int index;
 
     boolean hasPending() {
@@ -20,7 +22,7 @@ final class MultipartReceiveState {
         Message frame = frames[index++];
         InternalAccess.messageSetMore(frame, index < frames.length);
         if (!hasPending()) {
-            frames = new Message[0];
+            frames = NO_FRAMES;
             index = 0;
         }
         return frame;
@@ -33,6 +35,14 @@ final class MultipartReceiveState {
     }
 
     void closeRemaining() {
+        // HOT PATH: prepareRecvLikeOperation calls this before each recv-like
+        // operation. The no-pending case must not allocate an empty Message[]
+        // on every single-part receive.
+        if (!hasPending()) {
+            frames = NO_FRAMES;
+            index = 0;
+            return;
+        }
         for (int i = index; i < frames.length; i++) {
             if (frames[i] != null) {
                 try {
@@ -41,7 +51,7 @@ final class MultipartReceiveState {
                 }
             }
         }
-        frames = new Message[0];
+        frames = NO_FRAMES;
         index = 0;
     }
 }

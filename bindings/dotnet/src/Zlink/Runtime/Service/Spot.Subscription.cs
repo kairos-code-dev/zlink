@@ -168,6 +168,11 @@ internal sealed partial class Spot
     private unsafe SendResult PublishNoWaitSingleCore(byte[] topicUtf8,
         Message message)
     {
+        // HOT PATH: public spot.Publish(topic).Message(message)
+        // .Flags(DontWait).Submit() reaches this method for every single-part
+        // publish. Keep the path as one native submit after Message.MoveTo; do
+        // not add benchmark-only caches that depend on repeated topic or payload
+        // values.
         ZlinkMsg nativePart = default;
         bool submitted = false;
         try

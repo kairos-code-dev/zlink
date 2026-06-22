@@ -61,11 +61,9 @@ internal sealed partial class SocketKernel
             : CreateRoutedReceived(parts!, routingId, spotRid, requestSeq);
     }
 
-    // Canonical ref-out recv: caller provides Received storage and the
-    // kernel rewrites its internal state on each successful receive. Avoids
-    // the per-call Received allocation that the legacy Recv() returning
-    // Received? incurs. See doc/spec/bindings/README.md
-    // "Canonical Recv: Caller-Provided Storage".
+    // HOT PATH: caller-provided Received storage lets the kernel rewrite
+    // internal state on each successful receive without allocating a new
+    // Received value per call.
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool ReceiveInto(Received result, int flags)

@@ -18,6 +18,15 @@ function freezeOwnedMessageParts(parts: Message[]): Message[] {
   return Object.freeze(parts) as Message[];
 }
 
+function closeMessageParts(parts: readonly Message[] | undefined): void {
+  if (!parts) {
+    return;
+  }
+  for (const part of parts) {
+    part.close();
+  }
+}
+
 export function createTopicMessage(
   topic: string,
   parts: readonly Message[],
@@ -35,6 +44,13 @@ export function replaceTopicMessage(
   routingId: RoutingId | null = null
 ): void {
   const state = target as unknown as TopicMessageState;
+  // Caller-provided receive storage is a hot path. Replacing the envelope
+  // must release the previously owned payload immediately; otherwise reused
+  // TopicMessage instances retain external Buffer storage until GC and PUBSUB
+  // subscriber benchmarks regress in both RSS and throughput.
+  if (state.parts !== parts) {
+    closeMessageParts(state.parts);
+  }
   state.parts = Object.isFrozen(parts) ? parts : freezeOwnedMessageParts(parts);
   state.routingId = routingId;
   state.topic = topic;

@@ -52,8 +52,7 @@ func (r *Received) Parts() []*Message {
 // Any messages currently owned by r are closed first; source is left in
 // an empty (already-detached) state after the call. Used by Socket.RecvInto
 // and equivalents to refill caller-provided Received storage without
-// allocating a new value per call. See doc/spec/bindings/README.md
-// "Canonical Recv: Caller-Provided Storage".
+// allocating a new value per call.
 func (r *Received) AdoptFrom(source *Received) {
 	if r == nil || source == nil || r == source {
 		return

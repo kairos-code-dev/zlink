@@ -30,6 +30,15 @@ function freezeOwnedMessageParts(parts: Message[]): Message[] {
   return Object.freeze(parts) as Message[];
 }
 
+function closeMessageParts(parts: readonly Message[] | undefined): void {
+  if (!parts) {
+    return;
+  }
+  for (const part of parts) {
+    part.close();
+  }
+}
+
 export function createReceived(
   parts: readonly Message[],
   routingId: RoutingId | null = null,
@@ -61,6 +70,12 @@ export function replaceReceived(
   sendContext: SendContext | null = null
 ): void {
   const state = target as unknown as ReceivedState;
+  // Caller-provided receive storage is reused in perf and long-running
+  // consumers. Release the previous payload before adopting the replacement
+  // so native-backed external Buffers do not wait for GC to drop RSS.
+  if (state.parts !== parts) {
+    closeMessageParts(state.parts);
+  }
   state.parts = Object.isFrozen(parts) ? parts : freezeOwnedMessageParts(parts);
   state.routingId = routingId;
   state.spotRid = spotRid;

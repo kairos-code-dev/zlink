@@ -8,6 +8,7 @@ export const METADATA_KEY_USER_MIN = 0x0100;
 export const METADATA_VALUE_MAX = 65535;
 
 const EMPTY_PROPERTIES: Readonly<Record<string, string>> = Object.freeze({});
+const EMPTY_BUFFER = Buffer.alloc(0);
 
 function normalizeMessageProperties(
   properties?: Readonly<Record<string, string>>
@@ -170,7 +171,14 @@ export class Message {
   }
 
   /** Release the payload storage owned by this message. */
-  close(): void {}
+  close(): void {
+    if (Object.isFrozen(this)) {
+      return;
+    }
+    this._buffer = EMPTY_BUFFER;
+    this._refCount = 0;
+    this._properties = EMPTY_PROPERTIES;
+  }
 
   /** Return the payload decoded as a UTF-8 string. */
   toString(): string {

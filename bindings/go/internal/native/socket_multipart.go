@@ -172,6 +172,11 @@ func submitSinglePartFromCopy(part *Message, submit multipartSubmitFunc) error {
 	if err := configErrorFromResult(C.zlink_msg_init(&native)); err != nil {
 		return err
 	}
+	// HOT PATH: public Send/Publish(...).Message(message).Submit(...) reaches
+	// this helper for every single-part send. Keep the copy before native submit:
+	// Go promises that Message(...) preserves the caller message when submit
+	// fails, and the native send call may not leave enough payload state to move
+	// the frame back after a failure.
 	if err := configErrorFromResult(C.zlink_msg_copy(&native, &part.msg)); err != nil {
 		_ = configErrorFromResult(C.zlink_msg_close(&native))
 		return err
@@ -197,6 +202,9 @@ func submitSinglePartMoved(part *Message, submit multipartSubmitFunc) error {
 	if err := configErrorFromResult(C.zlink_msg_init(&native)); err != nil {
 		return err
 	}
+	// HOT PATH: public MoveMessage(...) explicitly transfers ownership at submit
+	// time. Keep this as the no-copy path, separate from Message(...), whose
+	// failure contract requires preserving the caller's message.
 	if err := configErrorFromResult(C.zlink_msg_move(&native, &part.msg)); err != nil {
 		_ = configErrorFromResult(C.zlink_msg_close(&native))
 		return err

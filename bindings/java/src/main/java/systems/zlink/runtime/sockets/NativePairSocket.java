@@ -2,8 +2,6 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.runtime.nativeapi.ContractAccess;
-
 import systems.zlink.contracts.sockets.*;
 
 import systems.zlink.contracts.core.Context;
@@ -18,20 +16,24 @@ final class NativePairSocket extends NativeSocketBase implements PairSocket {
     }
 
     public SendOperation send() {
-        return MessageOperations.send((parts, flags) ->
-            super.send(parts, SendFlag.fromValue(flags.value())));
+        return MessageOperations.send(
+            (part, flags) -> super.send(part, SendFlag.fromValue(flags.value())),
+            (parts, flags) -> super.send(parts, SendFlag.fromValue(flags.value())));
     }
     SendResult sendNoWaitResult(Message part) { return super.sendNoWaitResult(part); }
     SendResult sendNoWaitResult(List<Message> parts) { return super.sendNoWaitResult(parts); }
     Received recv(RecvFlags flags) { return super.recv(ReceiveFlag.fromValue(flags.value())); }
-    /** Canonical caller-provided storage recv. See doc/spec/bindings/README.md. */
+    /**
+     * Receives into caller-provided {@link Received} storage.
+     *
+     * <p>HOT PATH: PAIR single-part recv fills {@code result} in place and
+     * avoids allocating a fresh {@link Received} plus immutable parts list for
+     * each message.
+     */
     public boolean recv(Received result, RecvFlags flags) {
         java.util.Objects.requireNonNull(result, "result");
         java.util.Objects.requireNonNull(flags, "flags");
-        Received fresh = super.recv(ReceiveFlag.fromValue(flags.value()));
-        if (fresh == null) return false;
-        ContractAccess.receivedAdoptFrom(result, fresh);
-        return true;
+        return super.recvInto(result, ReceiveFlag.fromValue(flags.value()));
     }
     public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
 }

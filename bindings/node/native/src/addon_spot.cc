@@ -60,6 +60,52 @@ static napi_value create_spot_message_snapshot_value (napi_env env,
     return create_message_snapshot_value (env, routing_id, msg);
 }
 
+static napi_value create_spot_topic_message_value (napi_env env,
+                                                   const zlink_routing_id_t &routing_id,
+                                                   const char *topic,
+                                                   size_t topic_len,
+                                                   zlink_msg_t *parts,
+                                                   size_t part_count)
+{
+    napi_value obj;
+    napi_create_object (env, &obj);
+
+    if (part_count == 1) {
+        // Hot path: SPOT subscribe receive normally carries one payload part.
+        // Return the owned Buffer directly so the public TopicMessage facade
+        // can be materialized without allocating a native parts array and
+        // snapshot object for every message.
+        napi_value data = create_message_data_buffer (env, &parts[0]);
+        if (!data)
+            return NULL;
+        napi_set_named_property (env, obj, "data", data);
+    } else {
+        napi_value parts_array;
+        napi_create_array_with_length (env, part_count, &parts_array);
+        for (size_t i = 0; i < part_count; ++i) {
+            napi_value part = create_spot_message_snapshot_value (env, &routing_id, &parts[i]);
+            if (!part)
+                return NULL;
+            napi_set_element (env, parts_array, static_cast<uint32_t> (i), part);
+        }
+        napi_set_named_property (env, obj, "parts", parts_array);
+    }
+
+    napi_value topic_value;
+    napi_create_string_utf8 (env, topic ? topic : "", topic ? topic_len : 0, &topic_value);
+    napi_set_named_property (env, obj, "topic", topic_value);
+
+    if (routing_id.size > 0) {
+        // Hot path: unrouted SPOT subscribe traffic has no source routing id.
+        // Leaving the raw field absent preserves the public null routing id
+        // after TypeScript materialization and avoids a per-message property.
+        napi_value rid = create_routing_id_value (env, routing_id);
+        napi_set_named_property (env, obj, "routingId", rid);
+    }
+
+    return obj;
+}
+
 static bool parse_routing_id_value (napi_env env, napi_value value, zlink_routing_id_t *routing_id)
 {
     void *data = NULL;
@@ -4028,22 +4074,12 @@ napi_value spot_recv (napi_env env, napi_callback_info info)
           spot_subscribe_recv_parts (spot, &routing_id, topic.data (), topic.size (), &topic_len,
                                      &parts, static_cast<zlink_recv_flags_t> (flags));
         if (rc == ZLINK_RECV_OK) {
-            napi_value arr;
-            napi_create_array_with_length (env, parts.size (), &arr);
-            for (size_t i = 0; i < parts.size (); ++i) {
-                napi_value part = create_spot_message_snapshot_value (env, &routing_id, &parts[i]);
-                napi_set_element (env, arr, static_cast<uint32_t> (i), part);
-            }
+            napi_value obj = create_spot_topic_message_value (env, routing_id, topic.data (),
+                                                              topic_len, parts.data (),
+                                                              parts.size ());
             close_msg_vector (parts);
-
-            napi_value obj;
-            napi_create_object (env, &obj);
-            napi_value topic_value;
-            napi_create_string_utf8 (env, topic.data (), topic_len, &topic_value);
-            napi_set_named_property (env, obj, "topic", topic_value);
-            napi_set_named_property (env, obj, "parts", arr);
-            napi_value rid = create_routing_id_value (env, routing_id);
-            napi_set_named_property (env, obj, "routingId", rid);
+            if (!obj)
+                return NULL;
             return obj;
         }
         if (zlink_errno () != EMSGSIZE)
@@ -4070,22 +4106,12 @@ napi_value spot_try_recv (napi_env env, napi_callback_info info)
         int rc = spot_subscribe_recv_parts (spot, &routing_id, topic.data (), topic.size (),
                                             &topic_len, &parts, ZLINK_RECV_FLAGS_DONTWAIT);
         if (rc == ZLINK_RECV_OK) {
-            napi_value arr;
-            napi_create_array_with_length (env, parts.size (), &arr);
-            for (size_t i = 0; i < parts.size (); ++i) {
-                napi_value part = create_spot_message_snapshot_value (env, &routing_id, &parts[i]);
-                napi_set_element (env, arr, static_cast<uint32_t> (i), part);
-            }
+            napi_value obj = create_spot_topic_message_value (env, routing_id, topic.data (),
+                                                              topic_len, parts.data (),
+                                                              parts.size ());
             close_msg_vector (parts);
-
-            napi_value obj;
-            napi_create_object (env, &obj);
-            napi_value topic_value;
-            napi_create_string_utf8 (env, topic.data (), topic_len, &topic_value);
-            napi_set_named_property (env, obj, "topic", topic_value);
-            napi_set_named_property (env, obj, "parts", arr);
-            napi_value rid = create_routing_id_value (env, routing_id);
-            napi_set_named_property (env, obj, "routingId", rid);
+            if (!obj)
+                return NULL;
             return obj;
         }
         const int err = zlink_errno ();

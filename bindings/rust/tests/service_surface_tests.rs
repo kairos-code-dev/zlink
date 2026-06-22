@@ -1,10 +1,10 @@
 //! Service surface tests - verify channel/query/introspection APIs exist.
 
 use zlink::{
-    ActorReceived, AutoConnectType, Context, Discovery, Message, PairSocket, PollEvent,
-    PollSourceKind, Poller, Received, RecvFlags, Registry, RegistryQueryClient, RouteKind,
-    RoutingId, SendFlags, SocketMonitor, Spot, SpotDispatchInfo, SpotNode, SubscriptionEvent,
-    Timer, POLLIN, POLLOUT,
+    ActorReceived, AutoConnectType, Context, Discovery, Message, POLLIN, POLLOUT, PairSocket,
+    PollEvent, PollSourceKind, Poller, Received, RecvFlags, Registry, RegistryQueryClient,
+    RouteKind, RoutingId, SendFlags, SocketMonitor, Spot, SpotDispatchInfo, SpotNode,
+    SubscriptionEvent, Timer,
 };
 
 fn reserve_tcp_port() -> u16 {

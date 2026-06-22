@@ -513,6 +513,9 @@ static PyObject *native_parts_owner_data (native_parts_owner_t *owner, PyObject 
         return NULL;
     data = zlink_msg_data (&owner->parts[index]);
     size = (Py_ssize_t) zlink_msg_size (&owner->parts[index]);
+    /* HOT PATH: return a Python-owned snapshot so a memoryview remains valid
+     * after the received part is closed; do not replace this with a native
+     * zero-copy view unless the public lifetime contract changes. */
     if (!data || size <= 0)
         snapshot = PyBytes_FromStringAndSize ("", 0);
     else
@@ -745,6 +748,9 @@ static PyObject *socket_send_op_submit (socket_send_op_t *op, PyObject *Py_UNUSE
             payload_size = view.len;
             has_view = 1;
         }
+        /* HOT PATH: copy the caller buffer into a native message so a failed
+         * send leaves the Python payload unchanged. Do not replace this with
+         * a move/borrow shortcut for perf-only loops. */
         if (zlink_msg_init_size (&part, (size_t) payload_size) != ZLINK_CONFIG_OK) {
             err = zlink_errno ();
             if (has_view)
@@ -935,6 +941,9 @@ static PyObject *routed_send_op_submit (routed_send_op_t *op, PyObject *Py_UNUSE
             payload_size = view.len;
             has_view = 1;
         }
+        /* HOT PATH: copy the caller buffer into a native message so a failed
+         * routed send leaves the Python payload unchanged. Do not replace
+         * this with a move/borrow shortcut for perf-only loops. */
         if (zlink_msg_init_size (&part, (size_t) payload_size) != ZLINK_CONFIG_OK) {
             err = zlink_errno ();
             if (has_view)
@@ -1167,6 +1176,9 @@ static PyObject *publisher_send_op_submit (publisher_send_op_t *op, PyObject *Py
             payload_size = view.len;
             has_view = 1;
         }
+        /* HOT PATH: copy the caller buffer into a native message so a failed
+         * publish leaves the Python payload unchanged. Do not replace this
+         * with a move/borrow shortcut for perf-only loops. */
         if (zlink_msg_init_size (&part, (size_t) payload_size) != ZLINK_CONFIG_OK) {
             err = zlink_errno ();
             if (has_view)

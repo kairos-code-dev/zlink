@@ -203,10 +203,9 @@ class ReceivedMultipart(_BaseReceived):
         send_sender=None,
         router_socket=None,
     ):
-        # Caller-provided storage path: ReceivedMultipart() / Received()
-        # constructs an empty placeholder for reuse across recv_into calls.
-        # See bindings/doc/spec/README.md "Canonical Recv: Caller-Provided
-        # Storage". Populated state is installed via _adopt_from().
+        # HOT PATH: ReceivedMultipart() and Received() create empty storage
+        # objects that recv_into refills in place through the public
+        # caller-provided receive contract.
         if owner is None:
             self._owner = None
             self.parts = ()

@@ -24,6 +24,21 @@ export function messageFromSnapshot(snapshot: MessageSnapshot): Message {
   return message;
 }
 
+export function messageFromOwnedBuffer(data: Buffer): Message {
+  const message = Object.create(Message.prototype) as Message;
+  const state = message as unknown as {
+    _buffer: Buffer;
+    _refCount: number;
+    _properties: Readonly<Record<string, string>>;
+    _metadata: Readonly<Map<number, Buffer>>;
+  };
+  state._buffer = data;
+  state._refCount = 1;
+  state._properties = EMPTY_PROPERTIES;
+  state._metadata = EMPTY_METADATA;
+  return message;
+}
+
 export function messageToSnapshot(message: Message): MessageSnapshot {
   const state = message as unknown as {
     _buffer: Buffer;

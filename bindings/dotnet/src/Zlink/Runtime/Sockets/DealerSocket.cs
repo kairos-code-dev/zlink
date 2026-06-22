@@ -64,7 +64,7 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
         if (result == null)
             throw new ArgumentNullException(nameof(result));
 
-        List<Message> parts = new();
+        List<Message>? parts = null;
         ReceivedMessageType messageType = ReceivedMessageType.Raw;
         ulong requestSeq = 0;
         bool firstPart = true;
@@ -104,6 +104,40 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
 
                     messageType = (ReceivedMessageType)nativeMessageType;
                     requestSeq = nativeRequestSeq;
+
+                    if (hasMore == NativeMethods.ZlinkPartFlag.Final
+                        && firstPart)
+                    {
+                        // HOT PATH: single-part DEALER receive backs the
+                        // inproc DEALER_DEALER benchmark and ordinary
+                        // message traffic. Keep this on caller-provided
+                        // Received storage and avoid List<Message> /
+                        // Message[] materialization; request/reply metadata
+                        // still stays inside the binding contract.
+                        Message singlePart = Message.AdoptNativeFromPool(
+                            ref nativePart);
+                        ownsNativePart = false;
+                        if (messageType == ReceivedMessageType.Raw
+                            && requestSeq == 0)
+                        {
+                            result.PopulateSinglePart(singlePart);
+                            transferred = true;
+                            return true;
+                        }
+
+                        ReceivedReplyHandler? singleReplyHandler =
+                            messageType == ReceivedMessageType.Request
+                            && requestSeq != 0
+                                ? CreateReplyHandler(requestSeq)
+                                : null;
+                        result.PopulateMessageEnvelopeSingle(singlePart,
+                            messageType, requestSeq == 0 ? null : requestSeq,
+                            singleReplyHandler);
+                        transferred = true;
+                        return true;
+                    }
+
+                    parts ??= new List<Message>();
                     parts.Add(Message.AdoptNative(ref nativePart));
                     ownsNativePart = false;
                     firstPart = false;
@@ -122,7 +156,7 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
                 messageType == ReceivedMessageType.Request && requestSeq != 0
                     ? CreateReplyHandler(requestSeq)
                     : null;
-            result.PopulateMessageEnvelope(parts.ToArray(), messageType,
+            result.PopulateMessageEnvelope(parts!.ToArray(), messageType,
                 requestSeq == 0 ? null : requestSeq, replyHandler);
             transferred = true;
             return true;
@@ -130,7 +164,10 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
         catch
         {
             if (!transferred)
-                RequestReplySupport.DisposeParts(parts);
+            {
+                if (parts != null)
+                    RequestReplySupport.DisposeParts(parts);
+            }
             throw;
         }
     }

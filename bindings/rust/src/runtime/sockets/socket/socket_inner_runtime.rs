@@ -118,13 +118,13 @@ impl SocketInner {
 
     // -- Recv (direct) -----------------------------------------------------
 
-    /// Canonical caller-provided storage recv. Pass a long-lived
-    /// [`Received`] and the binding refills its internal state in place
-    /// each successful call.
+    /// Receives a message into the [`Received`] object supplied by the caller.
+    /// Passing the same [`Received`] repeatedly lets the binding refill its
+    /// internal state in place after each successful call.
     ///
     /// Returns `Ok(true)` on success, `Ok(false)` when [`RecvFlags::DONT_WAIT`]
-    /// finds no data, `Err(_)` on hard error. See
-    /// `doc/spec/bindings/README.md` "Canonical Recv: Caller-Provided Storage".
+    /// finds no data, and `Err(_)` on hard error. See
+    /// `doc/spec/bindings/README.md` for the caller-provided receive shape.
     pub(crate) fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError> {
         match recv_basic_parts(self.handle, flags.bits())? {
             Some((routing_id, parts)) => {

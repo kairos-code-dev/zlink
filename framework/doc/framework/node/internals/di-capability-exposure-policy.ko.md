@@ -119,7 +119,7 @@ application 코드는 actor 생성 또는 Entry Spot join 같은 도메인 흐�
 |----------------|-----------|-----------|------------------|
 | `ZLINK_SPOT_MANAGER` | `ZLinkSpotManager` | 최소 1개 이상의 `SpotNode` | DI resolve 실패 (`UnknownDependenciesException`) |
 | `ZLINK_SPOT_OUTBOUND` | `ZLinkSpotOutbound` | 최소 1개 이상의 `SpotNode` | DI resolve 실패 |
-| `ZLINK_SPOT_PUBLISHER_CLIENT` | `ZLinkSpotPublisherClient` | 최소 1개 이상의 Spot publisher client 역할(attached spot publisher client) | DI resolve 실패 |
+| `ZLINK_SPOT_PUBLISHER_CLIENT` | `ZLinkSpotPublisherClient` | 최소 1개 이상의 Spot publisher client 역할(SpotNode publisher handle) | DI resolve 실패 |
 | `ZLINK_ACTOR_MANAGER` | `ZLinkActorManager` | 최소 1개 이상의 `SpotNode` **와** 최소 1개 이상의 actor factory | DI resolve 실패 |
 
 이 정책은 사용자가 잘못된 기능을 생성자에서 바로 요구했을 때, 해당 token 이

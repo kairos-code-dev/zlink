@@ -1,5 +1,13 @@
 # SPOT — 상태를 가진 실행 단위
 
+## 현재 구현 기준
+
+외부 channel에서 특정 Spot으로 send/request를 보낼 때는 framework가 core
+`SpotRouteBridge`를 내부에서 사용한다. 사용자는 `.acceptSpotRoutesFromChannel(...)`과
+egress 설정 이름을 맞추면 되고, raw `DEALER`, `ROUTER`, `PUB` socket을 `SpotNode`에
+attach하지 않는다. Spot에서 외부 pub/sub channel로 publish할 때는 일반 channel
+publisher client를 주입해서 사용한다.
+
 Spot 은 room, match, stage 처럼 상태가 있는 단위를 표현한다. Spot 의 핵심은 같은
 Spot 안의 작업을 하나의 실행 문맥에서 순서대로 처리한다는 점이다.
 

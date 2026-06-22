@@ -246,7 +246,7 @@ DI 단계에서 확정되기 전에는 어떤 역할이 필요한지 알 수 없
 |------|------|------|------|
 | `ZLINK_SPOT_MANAGER` | `ZLinkSpotManager` | `SpotNode` 1개 이상(`HasSpotNode`) | DI resolve 실패(`UnknownDependenciesException`) |
 | `ZLINK_SPOT_OUTBOUND` | `ZLinkSpotOutbound` | `SpotNode` 1개 이상 | DI resolve 실패 |
-| `ZLINK_SPOT_PUBLISHER_CLIENT` | `ZLinkSpotPublisherClient` | attached spot publisher client 1개 이상(`HasSpotPublisherClient`) | DI resolve 실패 |
+| `ZLINK_SPOT_PUBLISHER_CLIENT` | `ZLinkSpotPublisherClient` | SpotNode publisher handle 1개 이상(`HasSpotPublisherClient`) | DI resolve 실패 |
 | `ZLINK_ACTOR_MANAGER` | `ZLinkActorManager` | `SpotNode` 1개 이상 **그리고** actor factory 1개 이상 | DI resolve 실패 |
 | `ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER` | `ZLinkSpotRemoteAddressResolver` | `spot.remoteAddressResolver` 또는 registry remote address 구성 | 조건 미충족 시 미등록 |
 

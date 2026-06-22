@@ -206,7 +206,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | SPOT timer cancel | `integration-single-process` | `cancel()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다 |
 | outbound 전용 외부 publish client | `integration-multi-process` | target SPOT[^spot] channel에 publish가 성공한다 |
 | Spot route channel acceptance | `unit` | fanout/dealer mesh/ambiguous/missing router/missing peer source 구성을 startup validation에서 거부한다 |
-| Spot route channel manual connect | `integration-single-process` | `acceptSpotRoutesFromChannel(...)` 수동 endpoint가 binding public API를 통해 router channel peer로 적용된다 |
+| Spot route channel manual connect | `integration-single-process` | `acceptSpotRoutesFromChannel(...)` 수동 endpoint가 route bridge의 router channel endpoint로 적용된다 |
 | Spot route channel transport | `integration-single-process` | caller가 명시한 local egress channel이 channel type에 맞는 ROUTER 또는 DEALER socket으로 egress 설정의 target SpotNode ingress channel을 통해 target Spot으로 routed send/request를 보낸다 |
 | route mesh Spot egress target peer 선택 | `integration-single-process` | source process가 target route channel 을 local registration 으로 갖지 않아도, 수동 연결과 registry metadata 의 target SpotNode ingress channel / ROUTER `routingId`로 route mesh egress target peer 를 선택한다 |
 | Spot route egress 역할 validation | `unit` | routed Spot egress 는 client-server client 역할 또는 route mesh transport 에서만 켤 수 있고 fanout/dealer mesh 에서는 startup validation 오류다 |
@@ -244,7 +244,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | session context close | `integration-single-process` | `ZLinkSessionContext.close(...)`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |
-| spot context channel request 경로 | `integration-single-process` | `spot.context.outbound.requestToChannel(...)`이 현재 Spot 에 attach 된 channel client 경로를 사용한다 |
+| spot context channel request 경로 | `integration-single-process` | `spot.context.outbound.requestToChannel(...)`이 route bridge가 참조하는 channel runtime socket 경로를 사용한다 |
 | spot context routed send/request 표면 | `contract`, `integration-single-process` | `ZLinkSpotOutbound`가 `sendToSpot`, `requestToSpot`, `publish`, `sendToChannel`, `requestToChannel`을 모두 노출하고, `spot.context.outbound.sendToSpot(...)` / `requestToSpot(...)`이 route transport를 사용한다 |
 | actor bound session send API | `integration-single-process` | actor는 `context.boundSession.send(...)`로 client stream에 push하고, `ZLinkStream`을 직접 노출받지 않는다 |
 | actor request handler reply | `unit` | actor request packet은 actor request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |

@@ -684,7 +684,7 @@ export class MatchSpot implements ZLinkSpot {
   route channel 은 `ZLinkSpotRemoteAddressResolver` 가 해소한다.
 - `context.outbound.publish(topic, ...)` 는 현재 SPOT 이 속한 active SPOT channel 로
   publish 한다.
-- `context.outbound.sendToChannel(...)` / `requestToChannel(...)` 은 attach 된 channel client 를 호출한다.
+- `context.outbound.sendToChannel(...)` / `requestToChannel(...)` 은 route bridge channel socket을 호출한다.
 
 #### timer 실행 문맥
 
@@ -1231,7 +1231,7 @@ lifecycle callback / handler 안에서는 별도 client 주입 없이 `context.o
 
 - `publish(topic, ...)` 가 포함된다(SPOT 은 현재 channel 안 topic publish 를 함께 쓰는 경우가 많다).
 - `sendToSpot` / `requestToSpot` 은 spot remote address resolver 를 쓴다.
-- `sendToChannel` / `requestToChannel` 은 attach 된 channel client 를 통해 해소한다.
+- `sendToChannel` / `requestToChannel` 은 route bridge channel socket을 통해 해소한다.
 - local `SpotNode` 가 없는 앱의 기본 outbound 는 `ZLinkChannelClient` 다. 외부 SPOT channel
   publish 만 필요하면 `ZLinkSpotPublisherClient` 를 별도로 쓴다.
 

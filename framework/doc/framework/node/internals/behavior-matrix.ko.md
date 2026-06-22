@@ -80,8 +80,8 @@
 | 같은 `SpotNode`에 같은 `spotRid` factory 중복 등록 | 비허용 | startup validation 오류 |
 | 같은 `SpotNode`에 Entry Spot[^entry-spot] registry 중복 등록 | 비허용 | startup validation 오류 |
 | `router` 역할만 등록 | 허용 | inbound routed call만 받는다 |
-| attach된 channel client 역할 등록 + channel discovery/manual 경로 있음 | 허용 | spot 내부에서 outbound channel 호출이 가능하다 |
-| attach된 channel client 역할 등록 + channel peer acquisition 경로 없음 | 비허용 | startup validation 오류 |
+| route bridge channel socket 역할 등록 + channel discovery/manual 경로 있음 | 허용 | spot 내부에서 outbound channel 호출이 가능하다 |
+| route bridge channel socket 역할 등록 + channel peer acquisition 경로 없음 | 비허용 | startup validation 오류 |
 | local spot factory 없는 외부 publish node는 `ZLinkSpotPublisherClient` 사용 | 허용 | Spot publisher client 역할만 둔 `SpotNode` 로 특정 SPOT channel publish만 수행한다 |
 
 ## 5. Stream Node Matrix

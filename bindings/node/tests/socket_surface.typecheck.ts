@@ -187,7 +187,6 @@ if (actorJoin) {
   spot.replyActorJoin(actorJoin, 0).message('ok').submit();
 }
 spot.actors();
-spotNode.attachPubIngress(pub);
 const routeBridge = spotNode.createRouteBridge();
 routeBridge.attachDealerChannel('svc', dealer);
 routeBridge.attachRouterChannel('mesh', router, {

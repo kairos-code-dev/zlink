@@ -356,9 +356,10 @@ builder.Services.AddZLinkFramework(options =>
 
             }
 
-            node.AttachChannelClient("orders");
+            var orders = options.AddClientServerChannel("orders");
+            orders.EnableClient();
             {
-                var socket = node.ConfigureChannelClientSocket("orders");
+                var socket = orders.ConfigureClientSocket();
                 socket.ConnectTimeout = TimeSpan.FromSeconds(3);
                 socket.HandshakeInterval = TimeSpan.FromSeconds(3);
                 socket.SendHighWaterMark = 5_000;
@@ -368,7 +369,7 @@ builder.Services.AddZLinkFramework(options =>
             }
 
             {
-                var routing = node.ConfigureChannelClientRouting("orders");
+                var routing = orders.ConfigureClientRouting();
                 routing.ProbeRouterOnConnect = true;
 
             }
@@ -395,9 +396,9 @@ app.Run();
 이 코드에서 역할[^capability] 와 attach 함수가 각각 다른 역할을 맡는다.
 역할을 항목별로 짚어 보면 다음과 같다.
 
-- `AttachChannelClient("orders")`
-  - stage spot이 `orders` channel로 send / request를 보낼 때 사용할 outbound
-    client를 붙인다.
+- `AddClientServerChannel("orders").EnableClient(...)`
+  - stage spot이 `orders` channel로 send / request를 보낼 때 사용할 channel
+    client 역할을 켠다.
 - `EnableRouter(endpoint)`
   - 같은 SPOT channel에 속한 다른 `SpotNode`와 routed packet을 주고받기 위한
     local router를 켜고 routed ingress endpoint를 명시한다.
@@ -449,7 +450,7 @@ builder.Services.AddZLinkFramework(options =>
     node.EnablePubSub("tcp://0.0.0.0:9000");
     node.ConnectPeerPub("tcp://10.0.0.20:9100");
 
-    node.AttachChannelClient("orders", "tcp://10.0.0.30:9200");
+    options.AddClientServerChannel("orders").EnableClient("tcp://10.0.0.30:9200");
     node.AttachSpotPublisherClient("game.stage", "tcp://10.0.0.40:9300");
 
     node.AddSpotFactory<SampleSpot>();
@@ -548,9 +549,10 @@ builder.Services.AddZLinkFramework(options =>
 
             }
 
-            node.AttachChannelClient("orders");
+            var orders = options.AddClientServerChannel("orders");
+            orders.EnableClient();
             {
-                var socket = node.ConfigureChannelClientSocket("orders");
+                var socket = orders.ConfigureClientSocket();
                 socket.ConnectTimeout = TimeSpan.FromSeconds(3);
                 socket.HandshakeInterval = TimeSpan.FromSeconds(3);
                 socket.SendHighWaterMark = 5_000;
@@ -560,7 +562,7 @@ builder.Services.AddZLinkFramework(options =>
             }
 
             {
-                var routing = node.ConfigureChannelClientRouting("orders");
+                var routing = orders.ConfigureClientRouting();
                 routing.ProbeRouterOnConnect = true;
 
             }

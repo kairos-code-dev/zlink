@@ -1191,9 +1191,9 @@ streamSocket.bindActor(sessionRid, actorRef)
   `create_publisher(...)` or an equivalent publisher handle,
   `send_to_channel`, `send_to_spot`, `request_to_channel`,
   channel-aware send/request operation builder 시작점과 SPOT topic publish /
-  subscribe 표면을 제공해야 한다. Existing `attach_channel_dealer(...)`,
-  `attach_channel_dealer_manual(...)`, and `attach_pub_ingress(...)` remain only
-  as deprecated compatibility surfaces.
+  subscribe 표면을 제공해야 한다. Legacy surfaces that attach an external
+  channel `DEALER`, route mesh `ROUTER`, or raw `PUB` socket directly to a
+  `SpotNode` are not part of the public contract.
 - SPOT subscribe 결과는 topic / parts 를 노출한다. channel 이름은 메시지
   결과 필드로 반복하지 않는다.
 - `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer/actor
@@ -2396,8 +2396,8 @@ Discovery
 SpotNode
   |-- bind
   |-- raw mesh: connectPeer, disconnectPeer
-  |-- channel attach: attachDiscovery, attachChannelDealer,
-  |   attachChannelDealerManual, attachPubIngress
+  |-- channel access: attachDiscovery, createRouteBridge,
+  |   createPublisher
   |-- actor: create, lookup, remote create, join, leave
   |-- introspection: status, peers, peers(filter),
   |   subjects, spots, actors
@@ -2573,9 +2573,6 @@ plane readiness다. 바인딩은 `Spot.recvActorJoin` 또는 동등한 public �
 | `createSpot` | Y |
 | `entrySpot` | Y |
 | `spotLookup` | Y |
-| `attachChannelDealer` | Y |
-| `attachChannelDealerManual` | Y |
-| `attachPubIngress` | Y |
 | `attachDiscovery` | Y |
 | `setTlsServer` | Y |
 | `setTlsClient` | Y |
@@ -2596,9 +2593,8 @@ plane readiness다. 바인딩은 `Spot.recvActorJoin` 또는 동등한 public �
   `entrySpot` 은 `zlink_spot_node_entry_spot()` 을 언어별 typed `Spot`
   factory로 감싼다. `spotLookup` 은 `zlink_spot_node_spot_lookup()` 을
   언어별 typed `Spot` 조회 표면으로 감싼다.
-- channel-aware public 설명에서는 `attachDiscovery` /
-  `attachChannelDealer` / `attachChannelDealerManual` /
-  `attachPubIngress` 를 중심으로 다룬다.
+- channel-aware public 설명에서는 `attachDiscovery`, `createRouteBridge`,
+  `createPublisher`를 중심으로 다룬다.
 
 ### Actor Capability Matrix
 
@@ -2784,9 +2780,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | SpotNode | `disconnectPeer` | raw peer 연결 해제 |
 | SpotNode | `createRouteBridge` | create a SPOT route bridge for caller/channel-runtime owned sockets |
 | SpotNode | `createPublisher` | create a publisher handle for the SpotNode topic ingress |
-| SpotNode | `attachChannelDealer` | deprecated compatibility surface. Valid arguments fail with `ENOTSUP` |
-| SpotNode | `attachChannelDealerManual` | deprecated compatibility surface. Valid arguments fail with `ENOTSUP` |
-| SpotNode | `attachPubIngress` | deprecated compatibility surface. Valid arguments fail with `ENOTSUP` |
 | SpotNode | `attachDiscovery` | Discovery 연결 |
 | SpotNode | `setTlsServer` | TLS 서버 설정 |
 | SpotNode | `setTlsClient` | TLS 클라이언트 설정 |
@@ -2865,8 +2858,6 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - Spot receiveSubscriptionEvent 경로 확인
 - SpotRouteBridge attach/send/request/handleReceived path 확인
 - SpotNode publisher handle publish path 확인
-- deprecated SpotNode attachChannelDealer / attachChannelDealerManual /
-  attachPubIngress fail with `ENOTSUP` for otherwise valid arguments
 - Discovery connectRegistry → 서비스 등록 경로 성공
 - Discovery setValue/getValue round-trip 확인
 - Discovery resolveSpot/resolveActor 경로 확인
@@ -3269,12 +3260,6 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer_rid(void *node,
     const zlink_routing_id_t *peer_rid);
 zlink_config_result_t zlink_spot_node_attach_discovery(void *node,
     void *discovery);
-zlink_config_result_t zlink_spot_node_attach_channel_dealer(void *node,
-    void *discovery, void *dealer);
-zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual(void *node,
-    const char *channel_name, void *dealer);
-zlink_config_result_t zlink_spot_node_attach_pub_ingress(void *node,
-    void *pub);
 
 void *zlink_spot_route_bridge_new(
     void *ctx,
@@ -3380,10 +3365,6 @@ typed option/property로 이 두 값을 노출하고, raw option bag을 canonica
 - `zlink_socket_set_channel_name()` / `zlink_socket_get_channel_name()` 은
   logical channel metadata for a channel socket.
   바인딩은 이를 socket의 명시적 property/method로 노출한다.
-- `attach_channel_dealer()`, `attach_channel_dealer_manual()`, and
-  `attach_pub_ingress()` are deprecated compatibility surfaces. Argument errors
-  such as NULL keep their existing mapping; otherwise valid calls fail with
-  `ENOTSUP`.
 - The channel runtime calls `handle_router_received()` or
   `handle_dealer_received()` from its receive loop. When `handled == true`, the
   bridge has taken ownership of the payload and the caller must not process the
@@ -5305,8 +5286,6 @@ Language APIs must preserve these meanings:
 a handled result, the binding must make it clear that payload ownership moved to
 the bridge.
 
-`zlink_spot_node_connect_router_channel_peer*()` and
-`zlink_spot_node_attach_router_channel_discovery()` are deprecated compatibility
-surfaces. Bindings may keep existing public APIs, but they must document that
-otherwise valid calls fail with `ENOTSUP`. Framework adapters must not use these
-APIs for the new implementation path.
+The old C APIs that attached router channel peers directly to `SpotNode` are
+not public contract APIs. Framework adapters must not use that route for the new
+implementation path.

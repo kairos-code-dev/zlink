@@ -324,20 +324,6 @@ public sealed class test_socket_surface
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
             nameof(ISpotNode.DisconnectPeerRid), typeof(RoutingId)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
-            nameof(ISpotNode.ConnectRouterChannelPeer), typeof(string),
-            typeof(string)));
-        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
-            nameof(ISpotNode.DisconnectRouterChannelPeer), typeof(string),
-            typeof(string)));
-        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
-            nameof(ISpotNode.DisconnectRouterChannelPeerRid), typeof(string),
-            typeof(RoutingId)));
-        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
-            nameof(ISpotNode.AttachSpotRouteChannelDiscovery), typeof(string),
-            typeof(IDiscovery)));
-        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
-            nameof(ISpotNode.AttachPubIngress), typeof(IPubSocket)));
-        Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),
             nameof(ISpotNode.CreateRouteBridge),
             typeof(SpotRouteBridgeOptions)));
         Assert.True(HasPublicInstanceMethod(typeof(ISpotNode),

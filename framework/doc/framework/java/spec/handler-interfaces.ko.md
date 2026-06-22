@@ -500,8 +500,6 @@ public interface ZLinkSpotNodeBuilder {
     ZLinkSpotNodeBuilder connectPubSub(String endpoint); // compatibility alias
     ZLinkSpotNodeBuilder setPubSubRoutingId(RoutingId routingId);
 
-    ZLinkSpotNodeBuilder attachChannelClient(String channelName);
-    ZLinkSpotNodeBuilder attachChannelClient(String channelName, String endpoint);
     ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName);
     ZLinkSpotNodeBuilder attachSpotPublisherClient(String channelName, String endpoint);
     ZLinkSpotNodeBuilder acceptSpotRoutesFromChannel(String channelName);
@@ -963,6 +961,11 @@ public record ZLinkTimerTick(
     long skippedTicks) {
 }
 ```
+
+SPOT handler가 다른 client/server channel로 `sendToChannel` 또는
+`requestToChannel`을 보내려면 `addClientServerChannel(...).enableClient(...)`로
+그 channel의 client 역할을 켠다. SPOT node builder는 별도 channel client socket을
+부착하지 않는다.
 
 `destroyActor(actor)`는 Entry Spot context 전용 API이다. user Spot context에는
 actor destroy API가 없다. actor가 user Spot에 있으면 먼저 `leaveActor(...)` 또는

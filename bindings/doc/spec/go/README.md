@@ -474,15 +474,3 @@ uses the core values `RouteKindInvalid = 0`, `RouteKindActor = 1`,
 `RouteKindSpotName = 2`, and `RouteKindActorSession = 3`.
 `ResolveRoute(...)` returns a `DiscoveryRoute` containing the owner routing ID
 and the route value as a `Message`.
-
-## SpotNode Router Channel Peers
-
-Go exposes router channel peer wiring as public `SpotNode` methods:
-`ConnectRouterChannelPeer(channelName string, endpoint string) error`,
-`ConnectRouterChannelPeerRID(channelName string, peerRID RoutingID, endpoint string) error`,
-`DisconnectRouterChannelPeer(channelName string, endpoint string) error`,
-`DisconnectRouterChannelPeerRID(channelName string, peerRID RoutingID) error`,
-and `AttachSpotRouteChannelDiscovery(channelName string, discovery *Discovery)
-error`.
-These methods call the matching core C APIs and use the established Go error
-mapping.

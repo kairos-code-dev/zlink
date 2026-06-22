@@ -34,25 +34,7 @@ public interface SpotNode extends AutoCloseable {
 
     void disconnectPeerRid(RoutingId targetNodeRid);
 
-    void connectRouterChannelPeer(String channelName,
-                                                  String endpoint);
-
-    void connectRouterChannelPeerRid(String channelName,
-                                     RoutingId peerRid,
-                                     String endpoint);
-
-    void disconnectRouterChannelPeer(String channelName,
-                                                     String endpoint);
-
-    void disconnectRouterChannelPeerRid(String channelName,
-                                                        RoutingId peerRid);
-
     void attachDiscovery(Discovery discovery);
-
-    void attachSpotRouteChannelDiscovery(String channelName,
-                                                         Discovery discovery);
-
-    void attachPubIngress(PubSocket pub);
 
     SpotRouteBridge createRouteBridge();
 

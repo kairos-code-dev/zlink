@@ -116,20 +116,6 @@ template <typename SpotT> class has_receive_subscription_event_t
     static const bool value = decltype (test<SpotT> (0))::value;
 };
 
-template <typename NodeT> class has_attach_pub_ingress_t
-{
-  private:
-    template <typename T>
-    static auto test (int)
-      -> decltype (std::declval<T &> ().attach_pub_ingress (std::declval<zlink::pub_socket_t &> ()),
-                   std::true_type ());
-
-    template <typename> static std::false_type test (...);
-
-  public:
-    static const bool value = decltype (test<NodeT> (0))::value;
-};
-
 template <typename NodeT> class has_create_route_bridge_t
 {
   private:
@@ -401,8 +387,6 @@ static_assert (!has_monitor_open_t<zlink::service::spot_t>::value,
                "spot_t must not expose monitor_open");
 static_assert (!has_monitor_open_t<zlink::service::spot_node_t>::value,
                "spot_node_t must not expose monitor_open");
-static_assert (has_attach_pub_ingress_t<zlink::service::spot_node_t>::value,
-               "spot_node_t must expose attach_pub_ingress");
 static_assert (has_create_route_bridge_t<zlink::service::spot_node_t>::value,
                "spot_node_t must expose create_route_bridge");
 static_assert (has_create_publisher_t<zlink::service::spot_node_t>::value,
@@ -510,23 +494,6 @@ void test_spot_node_snapshot_contract ()
     assert (
       node.routing_id ().to_bytes ()
       == std::vector<uint8_t> ({'s', 'p', 'o', 't', '-', 'n', 'o', 'd', 'e', '-', 'r', 'i', 'd'}));
-
-    bool rejected_empty_channel = false;
-    try {
-        node.connect_router_channel_peer ("", "tcp://127.0.0.1:1");
-    }
-    catch (const zlink::connect_error_t &err) {
-        rejected_empty_channel = err.result () == zlink::connect_result_t::invalid_argument;
-    }
-    assert (rejected_empty_channel);
-    auto connect_rid_surface = static_cast<void (zlink::service::spot_node_t::*) (
-      const std::string &, const zlink::routing_id_t &, const std::string &)> (
-      &zlink::service::spot_node_t::connect_router_channel_peer_rid);
-    auto disconnect_rid_surface = static_cast<void (zlink::service::spot_node_t::*) (
-      const std::string &, const zlink::routing_id_t &)> (
-      &zlink::service::spot_node_t::disconnect_router_channel_peer_rid);
-    (void) connect_rid_surface;
-    (void) disconnect_rid_surface;
 
     node.router_admission_hwm (zlink::message_count_t::value (2));
     node.pubsub_admission_hwm (zlink::message_count_t::value (3));

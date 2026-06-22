@@ -770,19 +770,6 @@ Java는 `SpotNode.getOrCreateSpot(RoutingId)`를 노출한다.
 concrete result를 반환한다. `created`는 해당 logical spot을 생성한 호출에 한해서
 `true`다.
 
-## SpotNode Router Channel Peers
-
-Java는 public `SpotNode` contract에 router channel peer 와이어링을 노출한다:
-
-- `connectRouterChannelPeer(channelName, endpoint)`
-- `connectRouterChannelPeerRid(channelName, peerRid, endpoint)`
-- `disconnectRouterChannelPeer(channelName, endpoint)`
-- `disconnectRouterChannelPeerRid(channelName, peerRid)`
-- `attachSpotRouteChannelDiscovery(channelName, discovery)`
-
-Runtime은 이 메서드들을 대응하는 native core API로 매핑하고 정해진 Java
-exception 매핑을 사용한다.
-
 ## Performance Policy
 
 핫 패스는 reflection, dynamic method lookup, classpath scanning, 회피 가능한

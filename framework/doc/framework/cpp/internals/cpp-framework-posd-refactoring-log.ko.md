@@ -2776,9 +2776,8 @@ git diff --check -- framework/languages/cpp
   address resolver 기본값을 framework options에서 켤 수 있게 했다.
 - `zlink_framework_options_t::add_spot_mesh(name).add_node(nodeName)`을 추가해 Spot node discovery
   channel과 node 설정을 한 곳에서 표현하게 했다.
-- `spot_node_options_builder_t`에 `accept_routes_from_channel(...)`과
-  `attach_channel_client(...)`를 추가해 `.NET` sample의 `AcceptSpotRoutesFromChannel`과
-  `AttachChannelClient` 의미를 C++ native style로 표현했다.
+- `spot_node_options_builder_t`에 route 수신 설정과 예전 channel client attach 설정을 추가해
+  `.NET` sample의 route 수신과 channel client attach 의미를 C++ native style로 표현했다.
 - `spot_node_options_builder_t::enable_router(...)`와 `enable_pub_sub(...)`를 추가해
   `.NET` sample의 `EnableRouter(...)`, `EnablePubSub(...)` 역할 구분을 C++ host factory에도
   드러나게 했다.
@@ -9414,7 +9413,7 @@ runtime socket 오류보다 먼저 사용자 설정 오류로 닫는 편이 호�
 
 - `.NET` registration validation은 SPOT node가 attach한 channel client와 publisher client가
   실제 등록된 역할인지 startup 단계에서 검증한다.
-- C++ high-level `attach_channel_client(...)`는 이름만 low-level snapshot으로 넘겼고,
+- C++ high-level channel client attach는 이름만 low-level snapshot으로 넘겼고,
   `attach_publisher(...)`는 low-level builder에는 있지만 high-level fluent options 표면에는 없었다.
 - attach 대상 channel이 없거나 역할이 맞지 않는 오류가 runtime 내부까지 흘러가면,
   호출자는 SPOT node 설정 오류와 channel 연결 오류를 구분해야 한다.
@@ -9580,7 +9579,7 @@ resolver와 같은 필드에 섞지 않는다. peer source는 discovery 또는 r
 
 ### 발견한 위험 신호
 
-- `.NET`은 `AttachChannelClient(...)`와 `AttachSpotPublisherClient(...)`에 configure callback을
+- `.NET`은 channel client attach와 publisher attach에 configure callback을
   제공하고, attached channel client는 discovery 또는 manual connection으로 peer를 얻을 수 있다.
 - C++ high-level attach 표면은 channel 이름만 받았고 attached channel client에 registry discovery를
   항상 요구했다.
@@ -9604,9 +9603,9 @@ resolver와 같은 필드에 섞지 않는다. peer source는 discovery 또는 r
 ### 적용한 리팩토링
 
 - `attached_channel_client_t`, `attached_publisher_t` snapshot을 추가하고 기존 이름 목록은 유지했다.
-- low-level `spot_node_builder_t::attach_channel_client(...)`와 `attach_publisher(...)`가 manual
+- low-level spot node builder의 channel client attach와 `attach_publisher(...)`가 manual
   endpoint 목록을 받을 수 있게 했다.
-- high-level `attach_channel_client(name, configure)`와 `attach_publisher(name, configure)` overload를
+- high-level channel client attach와 `attach_publisher(name, configure)` overload를
   추가했다.
 - attach 호출은 action list가 아니라 options state에 기록하고, `apply()`에서 한 번 low-level snapshot으로
   materialize하도록 정리했다.

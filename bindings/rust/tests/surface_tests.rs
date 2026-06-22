@@ -248,10 +248,6 @@ fn rid_disconnect_surface_exists() {
     let _ = router.disconnect_rid(&rid);
     let _ = node.set_router_bind("inproc://surface-router");
     let _ = node.disconnect_peer_rid(&rid);
-    let _ = node.connect_router_channel_peer("", "");
-    let _ = node.connect_router_channel_peer_rid("", &rid, "");
-    let _ = node.disconnect_router_channel_peer("", "");
-    let _ = node.disconnect_router_channel_peer_rid("", &rid);
 }
 
 // ---------------------------------------------------------------------------

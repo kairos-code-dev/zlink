@@ -517,14 +517,6 @@ public class SocketContractTest {
             RoutingId.class));
         assertTrue(hasPublicMethod(SpotNode.class, "connectPeerRid",
             RoutingId.class, String.class));
-        assertTrue(hasPublicMethod(SpotNode.class, "connectRouterChannelPeer",
-            String.class, String.class));
-        assertTrue(hasPublicMethod(SpotNode.class, "disconnectRouterChannelPeer",
-            String.class, String.class));
-        assertTrue(hasPublicMethod(SpotNode.class, "disconnectRouterChannelPeerRid",
-            String.class, RoutingId.class));
-        assertTrue(hasPublicMethod(SpotNode.class,
-            "attachSpotRouteChannelDiscovery", String.class, Discovery.class));
         assertTrue(hasPublicMethod(SpotNode.class, "createRouteBridge")
             && SpotNode.class.getMethod("createRouteBridge").getReturnType()
                 == SpotRouteBridge.class);

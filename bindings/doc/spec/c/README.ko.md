@@ -205,12 +205,3 @@ C 바인딩은 코어 route 결과 struct를 그대로 공개 ABI로 노출한�
 C 바인딩은 `zlink_router_send_actor`, `zlink_router_request_actor`,
 또는 Actor-to-ROUTER request 헬퍼를 추가하지 않는다. Actor 지정 전달은
 route 조회 뒤 기존 Spot routed send/request로 처리한다.
-
-## SpotNode Router Channel Peers
-
-C 바인딩은 코어 router channel peer 함수를 이름 변경 없이 노출한다:
-`zlink_spot_node_connect_router_channel_peer()`,
-`zlink_spot_node_disconnect_router_channel_peer()`,
-`zlink_spot_node_disconnect_router_channel_peer_rid()`,
-`zlink_spot_node_attach_router_channel_discovery()`. result와 errno 매핑은
-코어 계약을 따른다. 이 함수들은 토폴로지 API이며 perf 전용 헬퍼가 아니다.

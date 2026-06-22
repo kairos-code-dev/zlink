@@ -727,23 +727,6 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_DISC_PEER_RID = downcall("zlink_spot_node_disconnect_peer_rid",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_CONN_ROUTER_CHANNEL_PEER = downcall(
-            "zlink_spot_node_connect_router_channel_peer",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_CONN_ROUTER_CHANNEL_PEER_RID = downcall(
-            "zlink_spot_node_connect_router_channel_peer_rid",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_DISC_ROUTER_CHANNEL_PEER = downcall(
-            "zlink_spot_node_disconnect_router_channel_peer",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_DISC_ROUTER_CHANNEL_PEER_RID = downcall(
-            "zlink_spot_node_disconnect_router_channel_peer_rid",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_ACTOR_NEW = downcall(
             "zlink_spot_node_actor_new",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -809,14 +792,6 @@ public final class Native {
                     ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_NODE_ATTACH_DISCOVERY = downcall(
             "zlink_spot_node_attach_discovery",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_ATTACH_ROUTER_CHANNEL_DISCOVERY = downcall(
-            "zlink_spot_node_attach_router_channel_discovery",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_NODE_ATTACH_PUB_INGRESS = downcall(
-            "zlink_spot_node_attach_pub_ingress",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_ROUTE_BRIDGE_NEW = downcall(
@@ -2951,55 +2926,6 @@ public final class Native {
         }
     }
 
-    public static int spotNodeConnectRouterChannelPeer(MemorySegment node,
-                                                       MemorySegment channelName,
-                                                       MemorySegment endpoint) {
-        try {
-            return (int) MH_SPOT_NODE_CONN_ROUTER_CHANNEL_PEER.invokeExact(
-              node, channelName, endpoint);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_connect_router_channel_peer failed", t);
-        }
-    }
-
-    public static int spotNodeConnectRouterChannelPeerRid(MemorySegment node,
-                                                          MemorySegment channelName,
-                                                          MemorySegment rid,
-                                                          MemorySegment endpoint) {
-        try {
-            return (int) MH_SPOT_NODE_CONN_ROUTER_CHANNEL_PEER_RID.invokeExact(
-              node, channelName, rid, endpoint);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_connect_router_channel_peer_rid failed", t);
-        }
-    }
-
-    public static int spotNodeDisconnectRouterChannelPeer(MemorySegment node,
-                                                          MemorySegment channelName,
-                                                          MemorySegment endpoint) {
-        try {
-            return (int) MH_SPOT_NODE_DISC_ROUTER_CHANNEL_PEER.invokeExact(
-              node, channelName, endpoint);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_disconnect_router_channel_peer failed", t);
-        }
-    }
-
-    public static int spotNodeDisconnectRouterChannelPeerRid(MemorySegment node,
-                                                             MemorySegment channelName,
-                                                             MemorySegment rid) {
-        try {
-            return (int) MH_SPOT_NODE_DISC_ROUTER_CHANNEL_PEER_RID.invokeExact(
-              node, channelName, rid);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_disconnect_router_channel_peer_rid failed", t);
-        }
-    }
-
     public static int spotNodeActorNew(MemorySegment node,
                                        MemorySegment actorId,
                                        MemorySegment out) {
@@ -3232,28 +3158,6 @@ public final class Native {
               discovery);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_attach_discovery failed",
-              t);
-        }
-    }
-
-    public static int spotNodeAttachRouterChannelDiscovery(MemorySegment node,
-                                                           MemorySegment channelName,
-                                                           MemorySegment discovery) {
-        try {
-            return (int) MH_SPOT_NODE_ATTACH_ROUTER_CHANNEL_DISCOVERY.invokeExact(
-              node, channelName, discovery);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_spot_node_attach_router_channel_discovery failed", t);
-        }
-    }
-
-    public static int spotNodeAttachPubIngress(MemorySegment node,
-                                               MemorySegment pub) {
-        try {
-            return (int) MH_SPOT_NODE_ATTACH_PUB_INGRESS.invokeExact(node, pub);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_node_attach_pub_ingress failed",
               t);
         }
     }

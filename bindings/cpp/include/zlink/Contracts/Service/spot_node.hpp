@@ -101,28 +101,7 @@ class spot_node_t
 
     void disconnect_peer_rid (const routing_id_t &target_node_rid_);
 
-    void connect_router_channel_peer (const std::string &channel_name_,
-                                      const std::string &endpoint_);
-
-    void connect_router_channel_peer_rid (const std::string &channel_name_,
-                                          const routing_id_t &peer_rid_,
-                                          const std::string &endpoint_);
-
-    void disconnect_router_channel_peer (const std::string &channel_name_,
-                                         const std::string &endpoint_);
-
-    void disconnect_router_channel_peer_rid (const std::string &channel_name_,
-                                             const routing_id_t &peer_rid_);
-
     void attach_discovery (discovery_t &discovery_);
-
-    void attach_spot_route_channel_discovery (const std::string &channel_name_,
-                                              discovery_t &discovery_);
-
-    template <typename PubT> void attach_pub_ingress (PubT &pub_)
-    {
-        attach_pub_ingress_impl (static_cast<zlink::socket_t &> (pub_));
-    }
 
     void set_routing_id (const routing_id_t &routing_id_);
 
@@ -229,7 +208,6 @@ class spot_node_t
     };
     spot_node_t (context_t &ctx_, spot_node_mode_t mode_, mode_ctor_tag_t);
 
-    void attach_pub_ingress_impl (zlink::socket_t &pub_);
     int get_spot_node_option_int (int option_) const;
     void set_spot_node_option_int (int option_, int value_);
 

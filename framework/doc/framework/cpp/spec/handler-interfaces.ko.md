@@ -182,7 +182,6 @@ app.add_zlink_framework([](auto &options) {
       .add_node("stage-spot-node")
       .enable_pub_sub("tcp://0.0.0.0:9000")
       .enable_actor_gateway()
-      .attach_channel_client("profile")
       .attach_publisher("game.stage")
       .add_entry_spot<player_entry_spot_t>()
       .add_actor_factory<player_actor_factory_t>("player")
@@ -195,9 +194,8 @@ app.add_zlink_framework([](auto &options) {
 current Spot 밖에서 target Spot을 직접 호출하는 별도 public client는 기본 표면에 두지
 않는다.
 
-route bridge channel socket은 registry discovery 또는 attach별 manual endpoint로 peer를 얻는다.
-manual endpoint가 필요한 경우 `attach_channel_client(name, endpoint)`처럼 attach
-설정 안에서 지정한다.
+SPOT handler가 client/server channel로 send/request 하려면 해당 channel에서
+`enable_client(...)`를 설정한다.
 
 SPOT timer는 CAPI timer 등록을 감싼 framework timer handle과 `timer_tick_t` metadata로
 설명한다. user Spot timer는 CAPI SPOT dispatch event 후 recv 경계에서 순서 정책을 따르고,

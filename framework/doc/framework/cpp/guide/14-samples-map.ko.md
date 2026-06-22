@@ -81,7 +81,7 @@ flowchart LR
 | 위치 | 보여주는 것 | 장 |
 |------|-------------|-----|
 | `Server/Registry/registry_host_factory.hpp` | `enable_registry(pub, router)` 한 줄 registry 서버 | [11 §2](11-registry.ko.md#2-registry-서버-띄우기) |
-| `Server/Play/play_server_host_factory.hpp` | `use_discovery().add_registry_endpoint`, `enable_client(endpoint)`, fanout publisher endpoint, protobuf codec, spot mesh + `attach_channel_client` | [7](07-channel-messaging.ko.md)·[8](08-spot.ko.md)·[11](11-registry.ko.md) |
+| `Server/Play/play_server_host_factory.hpp` | `use_discovery().add_registry_endpoint`, `enable_client(endpoint)`, fanout publisher endpoint, protobuf codec, spot mesh | [7](07-channel-messaging.ko.md)·[8](08-spot.ko.md)·[11](11-registry.ko.md) |
 | `Server/Play/Adapters/ZLink/Spots/bingo_entry_spot.hpp` | entry spot — 매칭/룸 배정 | [8 §4](08-spot.ko.md#4-entry-spot-매칭과-룸-배정) |
 | `Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp` | room spot — `add_actor_packet`, join 수락, 도메인 결합 | [8 §3](08-spot.ko.md#3-room-spot-작성) |
 | `Server/Session/` | 세션 전담 서버 분리 — 인증과 actor 바인딩 | [9](09-actor-session.ko.md) |

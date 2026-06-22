@@ -61,69 +61,9 @@ impl SpotNode {
         <Self as SpotNodeContract>::disconnect_peer_rid(self, target_node_rid)
     }
 
-    /// Connects to a router-channel peer on `channel_name` at `endpoint`.
-    pub fn connect_router_channel_peer(
-        &self,
-        channel_name: &str,
-        endpoint: &str,
-    ) -> Result<(), ConnectError> {
-        <Self as SpotNodeContract>::connect_router_channel_peer(self, channel_name, endpoint)
-    }
-
-    /// Connects to a router-channel peer on `channel_name` by `peer_rid` at `endpoint`.
-    pub fn connect_router_channel_peer_rid(
-        &self,
-        channel_name: &str,
-        peer_rid: &RoutingId,
-        endpoint: &str,
-    ) -> Result<(), ConnectError> {
-        <Self as SpotNodeContract>::connect_router_channel_peer_rid(
-            self,
-            channel_name,
-            peer_rid,
-            endpoint,
-        )
-    }
-
-    /// Disconnects a router-channel peer on `channel_name` at `endpoint`.
-    pub fn disconnect_router_channel_peer(
-        &self,
-        channel_name: &str,
-        endpoint: &str,
-    ) -> Result<(), ConnectError> {
-        <Self as SpotNodeContract>::disconnect_router_channel_peer(self, channel_name, endpoint)
-    }
-
-    /// Disconnects a router-channel peer on `channel_name` by `peer_rid`.
-    pub fn disconnect_router_channel_peer_rid(
-        &self,
-        channel_name: &str,
-        peer_rid: &RoutingId,
-    ) -> Result<(), ConnectError> {
-        <Self as SpotNodeContract>::disconnect_router_channel_peer_rid(self, channel_name, peer_rid)
-    }
-
     /// Attaches a discovery service so the node auto-connects discovered peers.
     pub fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError> {
         <Self as SpotNodeContract>::attach_discovery(self, discovery)
-    }
-
-    /// Attaches a discovery service for the spot-route channel `channel_name`.
-    pub fn attach_spot_route_channel_discovery(
-        &self,
-        channel_name: &str,
-        discovery: &Discovery,
-    ) -> Result<(), ConfigError> {
-        <Self as SpotNodeContract>::attach_spot_route_channel_discovery(
-            self,
-            channel_name,
-            discovery,
-        )
-    }
-
-    /// Attaches a PUB socket as a publish ingress for the node.
-    pub fn attach_pub_ingress(&self, pub_sock: &crate::PubSocket) -> Result<(), ConfigError> {
-        <Self as SpotNodeContract>::attach_pub_ingress(self, pub_sock)
     }
 
     /// Creates a bridge from caller-owned channel sockets to this node's SPOT routed plane.

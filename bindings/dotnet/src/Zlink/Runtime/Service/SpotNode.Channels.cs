@@ -78,51 +78,6 @@ internal sealed partial class SpotNode : ISpotNode
         ZlinkException.ThrowConnectIfError(rc);
     }
 
-    public void ConnectRouterChannelPeer(string channelName, string endpoint)
-    {
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_connect_router_channel_peer(
-            _handle, channelName, endpoint);
-        ZlinkException.ThrowConnectIfError(rc);
-    }
-
-    public void ConnectRouterChannelPeerRid(
-        string channelName,
-        RoutingId peerRid,
-        string endpoint)
-    {
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
-        EnsureNotDisposed();
-        ZlinkRoutingId nativeRid = peerRid.ToNative();
-        int rc = NativeMethods.zlink_spot_node_connect_router_channel_peer_rid(
-            _handle, channelName, ref nativeRid, endpoint);
-        ZlinkException.ThrowConnectIfError(rc);
-    }
-
-    public void DisconnectRouterChannelPeer(string channelName, string endpoint)
-    {
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_node_disconnect_router_channel_peer(
-            _handle, channelName, endpoint);
-        ZlinkException.ThrowConnectIfError(rc);
-    }
-
-    public void DisconnectRouterChannelPeerRid(string channelName,
-        RoutingId peerRid)
-    {
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        EnsureNotDisposed();
-        ZlinkRoutingId nativeRid = peerRid.ToNative();
-        int rc = NativeMethods.zlink_spot_node_disconnect_router_channel_peer_rid(
-            _handle, channelName, ref nativeRid);
-        ZlinkException.ThrowConnectIfError(rc);
-    }
-
     /// <summary>
     /// Attaches this SPOT node to a discovery-owned service lifecycle.
     /// </summary>
@@ -144,40 +99,6 @@ internal sealed partial class SpotNode : ISpotNode
     {
         AttachDiscovery(SocketInterop.RequireDiscovery(discovery,
             nameof(discovery)));
-    }
-
-    public void AttachSpotRouteChannelDiscovery(string channelName,
-        Discovery discovery)
-    {
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        EnsureNotDisposed();
-        if (discovery == null)
-            throw new ArgumentNullException(nameof(discovery));
-        int rc = NativeMethods.zlink_spot_node_attach_router_channel_discovery(
-            _handle, channelName, discovery.Handle);
-        ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    void ISpotNode.AttachSpotRouteChannelDiscovery(string channelName,
-        IDiscovery discovery)
-    {
-        AttachSpotRouteChannelDiscovery(channelName,
-            SocketInterop.RequireDiscovery(discovery, nameof(discovery)));
-    }
-
-    public void AttachPubIngress(PubSocket pub)
-    {
-        EnsureNotDisposed();
-        if (pub == null)
-            throw new ArgumentNullException(nameof(pub));
-        int rc = NativeMethods.zlink_spot_node_attach_pub_ingress(_handle,
-            pub.Handle);
-        ZlinkException.ThrowConfigIfError(rc);
-    }
-
-    void ISpotNode.AttachPubIngress(IPubSocket pub)
-    {
-        AttachPubIngress(SocketInterop.RequirePubSocket(pub, nameof(pub)));
     }
 
     public ISpotRouteBridge CreateRouteBridge(

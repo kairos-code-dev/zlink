@@ -80,57 +80,6 @@ export class SpotNode extends NativeHandle {
       );
     });
   }
-  connectRouterChannelPeer(channelName: string, endpoint: string): void {
-    const normalizedChannelName = validateCString(channelName, 'channelName');
-    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
-    connectCall('spot node router channel peer connect failed', () => {
-      requireNative().spotNodeConnectRouterChannelPeer(
-        this._native,
-        normalizedChannelName,
-        normalizedEndpoint
-      );
-    });
-  }
-  connectRouterChannelPeerRid(channelName: string, peerRid: RoutingId, endpoint: string): void {
-    const normalizedChannelName = validateCString(channelName, 'channelName');
-    const normalizedPeerRid = normalizeRoutingId(peerRid);
-    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
-    connectCall('spot node router channel peer connect by routing id failed', () => {
-      requireNative().spotNodeConnectRouterChannelPeerRid(
-        this._native,
-        normalizedChannelName,
-        normalizedPeerRid,
-        normalizedEndpoint
-      );
-    });
-  }
-  disconnectRouterChannelPeer(channelName: string, endpoint: string): void {
-    const normalizedChannelName = validateCString(channelName, 'channelName');
-    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
-    connectCall('spot node router channel peer disconnect failed', () => {
-      requireNative().spotNodeDisconnectRouterChannelPeer(
-        this._native,
-        normalizedChannelName,
-        normalizedEndpoint
-      );
-    });
-  }
-  disconnectRouterChannelPeerRid(channelName: string, peerRid: RoutingId): void {
-    const normalizedChannelName = validateCString(channelName, 'channelName');
-    const normalizedPeerRid = normalizeRoutingId(peerRid);
-    connectCall('spot node router channel peer disconnect by routing id failed', () => {
-      requireNative().spotNodeDisconnectRouterChannelPeerRid(
-        this._native,
-        normalizedChannelName,
-        normalizedPeerRid
-      );
-    });
-  }
-  attachPubIngress(pub: PubSocket): void {
-    configCall('spot node pub ingress attachment failed', () => {
-      requireNative().spotNodeAttachPubIngress(this._native, getNativeHandle(pub));
-    });
-  }
   processRoutedRouter(): void {
     configCall('spot node routed router processing failed', () => {
       requireNative().spotNodeProcessRoutedRouter(this._native);
@@ -150,16 +99,6 @@ export class SpotNode extends NativeHandle {
   attachDiscovery(discovery: Discovery): void {
     configCall('spot node discovery attachment failed', () => {
       requireNative().spotNodeSetDiscovery(this._native, getNativeHandle(discovery));
-    });
-  }
-  attachSpotRouteChannelDiscovery(channelName: string, discovery: Discovery): void {
-    const normalizedChannelName = validateCString(channelName, 'channelName');
-    configCall('spot node router channel discovery attachment failed', () => {
-      requireNative().spotNodeAttachRouterChannelDiscovery(
-        this._native,
-        normalizedChannelName,
-        getNativeHandle(discovery)
-      );
     });
   }
   setRoutingId(routingId: RoutingId): void {

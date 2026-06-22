@@ -1539,34 +1539,7 @@ unsafe extern "C" {
         node: *mut c_void,
         target_node_rid: *const zlink_routing_id_t,
     ) -> c_int;
-    pub fn zlink_spot_node_connect_router_channel_peer(
-        node: *mut c_void,
-        channel_name: *const c_char,
-        endpoint: *const c_char,
-    ) -> c_int;
-    pub fn zlink_spot_node_connect_router_channel_peer_rid(
-        node: *mut c_void,
-        channel_name: *const c_char,
-        peer_rid: *const zlink_routing_id_t,
-        endpoint: *const c_char,
-    ) -> c_int;
-    pub fn zlink_spot_node_disconnect_router_channel_peer(
-        node: *mut c_void,
-        channel_name: *const c_char,
-        endpoint: *const c_char,
-    ) -> c_int;
-    pub fn zlink_spot_node_disconnect_router_channel_peer_rid(
-        node: *mut c_void,
-        channel_name: *const c_char,
-        peer_rid: *const zlink_routing_id_t,
-    ) -> c_int;
     pub fn zlink_spot_node_attach_discovery(node: *mut c_void, discovery: *mut c_void) -> c_int;
-    pub fn zlink_spot_node_attach_router_channel_discovery(
-        node: *mut c_void,
-        channel_name: *const c_char,
-        discovery: *mut c_void,
-    ) -> c_int;
-    pub fn zlink_spot_node_attach_pub_ingress(node: *mut c_void, pub_socket: *mut c_void) -> c_int;
     pub fn zlink_spot_route_bridge_new(
         ctx: *mut c_void,
         spot_node: *mut c_void,

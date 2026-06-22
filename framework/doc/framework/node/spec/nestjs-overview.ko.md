@@ -595,18 +595,12 @@ interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   attachDiscovery(discovery: ZLinkBackendDiscovery): void;
   connectPeer(endpoint: string): void;
   disconnectPeer(endpoint: string): void;
-  connectRouterChannelPeer(channelName: string, endpoint: string): void;
-  connectRouterChannelPeerRid(channelName: string, peerRid: RoutingId, endpoint: string): void;
-  disconnectRouterChannelPeer(channelName: string, endpoint: string): void;
-  disconnectRouterChannelPeerRid(channelName: string, peerRid: RoutingId): void;
-  attachSpotRouteChannelDiscovery(channelName: string, discovery: ZLinkBackendDiscovery): void;
+  createRouteBridge(options?: ZLinkSpotRouteBridgeOptions): ZLinkBackendSpotRouteBridge;
   createSpot(): ZLinkBackendSpot;
   getOrCreateSpot(spotRid: RoutingId): { spot: ZLinkBackendSpot; created: boolean }; // out bool → 반환 객체
   status(): ZLinkSpotNodeStatus;
   peers(): readonly ZLinkSpotNodePeerEntry[];
   subjects(): readonly ZLinkSpotNodeSubjectEntry[];
-  attachChannelDealer(discovery: ZLinkBackendDiscovery, dealer: ZLinkBackendDealerSocket): void;
-  attachChannelDealerManual(channelName: string, dealer: ZLinkBackendDealerSocket): void;
   entrySpot(): ZLinkBackendSpot;
   createActor(actorId: string): ZLinkBackendActorRef;
   actorLookup(actorId: string): ZLinkBackendActorRef | undefined;

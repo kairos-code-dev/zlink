@@ -455,8 +455,9 @@ The user-facing rule is simple.
 
 When using the framework, configure this with
 `AcceptSpotRoutesFromChannel(...)`. When using the raw core API directly,
-connect the `SpotNode` to the router channel peer with
-`zlink_spot_node_connect_router_channel_peer()` or the discovery attach API.
+create a route bridge and attach the router channel socket to the bridge.
+`SpotNode` no longer owns external router channel peers directly as public
+usage.
 
 > For the full contract, see
 > [Peer weight](../spec/core/socket/router.md#peer-weight),

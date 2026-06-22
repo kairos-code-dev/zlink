@@ -39,21 +39,6 @@ async function waitForSpotPeer(node) {
 function textRoutingId(text) {
     return zlink.RoutingId.from(Buffer.from(text, 'ascii'));
 }
-test('legacy router channel peer connect returns migration error', async () => {
-    const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const ctx = zlink.createContext();
-    const node = zlink.createSpotNode(ctx);
-    const router = zlink.createRouterSocket(ctx);
-    try {
-        router.bind(endpoint);
-        assert.throws(() => node.connectRouterChannelPeer('api', endpoint), /Operation not supported/);
-    }
-    finally {
-        router.close();
-        node.close();
-        ctx.close();
-    }
-});
 test('spot route bridge request resolves through channel router reply', async () => {
     const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const ctx = zlink.createContext();
@@ -458,7 +443,7 @@ test('spot requestToSpot resolves across child processes', async () => {
     const serverRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const clientPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
     const clientRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const fixturesDir = path.join(__dirname, '..', '..', 'tests', 'fixtures');
+    const fixturesDir = path.join(__dirname, 'fixtures');
     const packageRoot = path.join(__dirname, '..', '..');
     const serverPath = path.join(fixturesDir, 'spot_reqrep_child_server.js');
     const clientPath = path.join(fixturesDir, 'spot_reqrep_child_client.js');

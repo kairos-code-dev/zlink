@@ -186,62 +186,10 @@ void spot_node_t::disconnect_peer_rid (const routing_id_t &target_node_rid_)
       static_cast<connect_result_t> (zlink_spot_node_disconnect_peer_rid (_impl->handle, &native)));
 }
 
-void spot_node_t::connect_router_channel_peer (const std::string &channel_name_,
-                                               const std::string &endpoint_)
-{
-    validate_channel_name_for_connect (channel_name_);
-    validate_endpoint (endpoint_);
-    throw_connect_result (zlink_spot_node_connect_router_channel_peer (
-      _impl->handle, channel_name_.c_str (), endpoint_.c_str ()));
-}
-
-void spot_node_t::connect_router_channel_peer_rid (const std::string &channel_name_,
-                                                   const routing_id_t &peer_rid_,
-                                                   const std::string &endpoint_)
-{
-    validate_channel_name_for_connect (channel_name_);
-    validate_endpoint (endpoint_);
-    const zlink_routing_id_t native = *zlink::detail::routing_id_native (peer_rid_);
-    throw_connect_result (zlink_spot_node_connect_router_channel_peer_rid (
-      _impl->handle, channel_name_.c_str (), &native, endpoint_.c_str ()));
-}
-
-void spot_node_t::disconnect_router_channel_peer (const std::string &channel_name_,
-                                                  const std::string &endpoint_)
-{
-    validate_channel_name_for_connect (channel_name_);
-    validate_endpoint (endpoint_);
-    throw_connect_result (zlink_spot_node_disconnect_router_channel_peer (
-      _impl->handle, channel_name_.c_str (), endpoint_.c_str ()));
-}
-
-void spot_node_t::disconnect_router_channel_peer_rid (const std::string &channel_name_,
-                                                      const routing_id_t &peer_rid_)
-{
-    validate_channel_name_for_connect (channel_name_);
-    const zlink_routing_id_t native = *zlink::detail::routing_id_native (peer_rid_);
-    throw_connect_result (zlink_spot_node_disconnect_router_channel_peer_rid (
-      _impl->handle, channel_name_.c_str (), &native));
-}
-
 void spot_node_t::attach_discovery (discovery_t &discovery_)
 {
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
       zlink_spot_node_attach_discovery (_impl->handle, zlink::detail::native_handle (discovery_))));
-}
-
-void spot_node_t::attach_spot_route_channel_discovery (const std::string &channel_name_,
-                                                       discovery_t &discovery_)
-{
-    validate_channel_name (channel_name_, config_result_t::invalid_argument);
-    throw_config_result (zlink_spot_node_attach_router_channel_discovery (
-      _impl->handle, channel_name_.c_str (), zlink::detail::native_handle (discovery_)));
-}
-
-void spot_node_t::attach_pub_ingress_impl (zlink::socket_t &pub_)
-{
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_node_attach_pub_ingress (_impl->handle, zlink::detail::native_handle (pub_))));
 }
 
 void spot_node_t::set_routing_id (const routing_id_t &routing_id_)

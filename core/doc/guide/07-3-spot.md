@@ -258,7 +258,8 @@ zlink_discovery_connect_registry(orders_discovery, "tcp://127.0.0.1:5551");
 void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_socket_attach_discovery(dealer, orders_discovery);
 
-zlink_spot_node_attach_channel_dealer(node, orders_discovery, dealer);
+void *bridge = zlink_spot_route_bridge_new(ctx, node, NULL);
+zlink_spot_route_bridge_attach_dealer_channel(bridge, "orders", dealer, NULL);
 ```
 
 ### 5.2 Manual path
@@ -268,7 +269,8 @@ void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_connect(dealer, "tcp://127.0.0.1:7201");
 zlink_connect(dealer, "tcp://127.0.0.1:7202");
 
-zlink_spot_node_attach_channel_dealer_manual(node, "orders", dealer);
+void *bridge = zlink_spot_route_bridge_new(ctx, node, NULL);
+zlink_spot_route_bridge_attach_dealer_channel(bridge, "orders", dealer, NULL);
 ```
 
 ### 5.3 Channel send/request
@@ -506,15 +508,15 @@ zlink_router_request_spot(
 
 ## 12. Feeding SPOT from a generic PUB
 
-If a generic external `PUB` should feed the SPOT topic plane, attach it as
-publish ingress.
+If external code should feed the SPOT topic plane, create a publisher handle
+from the node and publish through that handle.
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
-zlink_spot_node_attach_pub_ingress(node, pub);
+void *publisher = zlink_spot_node_publisher_new(node);
+zlink_spot_node_publisher_publish(publisher, "orders", parts, part_count, 0);
 ```
 
-Treat that `PUB` as a dedicated ingress source for the node.
+Close the publisher handle when the external publisher is done.
 
 ## 13. Observability
 
@@ -579,11 +581,9 @@ covers a client/server channel's server `ROUTER` and a route mesh channel's
 `ROUTER`. Fanout channels and dealer mesh channels do not have the router
 capability needed for this path.
 
-When using the core API directly, connect a manual endpoint with
-`zlink_spot_node_connect_router_channel_peer()` or attach a router channel
-discovery view with `zlink_spot_node_attach_router_channel_discovery()`.
-Applications do not need to know internal routed endpoints or port derivation
-rules.
+When using the core API directly, register the caller-owned channel socket on a
+`zlink_spot_route_bridge_*` handle. Applications do not need to know internal
+routed endpoints or port derivation rules.
 
 ## 15. Actor C samples
 

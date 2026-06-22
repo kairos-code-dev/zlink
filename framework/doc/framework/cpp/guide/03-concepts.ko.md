@@ -212,7 +212,7 @@ endpoint 를 직접 지정하는 **수동 연결**도 가능하다(endpoint over
 | 공유 상태 | 핸들러에 두지 않음 | 큐 안에서 안전 | 락 없이 안전 |
 | 역할 | 요청 처리·위임 | 배정·매칭·할당 | 도메인 상태 소유·처리 |
 | 계약 | `request_type`/`reply_type`/`topic_name` | `configure()` + `add_actor_packet` | `configure()` + `add_actor_packet` |
-| DI | `dependency_types` + 생성자 주입 | `attach_channel_client` 로 채널 연결 | `attach_channel_client` 로 채널 연결 |
+| DI | `dependency_types` + 생성자 주입 | channel `enable_client(...)` 로 채널 연결 | channel `enable_client(...)` 로 채널 연결 |
 
 **실행 모델 비교** — 같은 3개 요청이 두 핸들러에서 어떻게 도는가:
 

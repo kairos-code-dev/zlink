@@ -22,11 +22,12 @@ public class SpotConfig implements ZLinkFrameworkConfigurer {
         ZLinkSpotNodeBuilder spot = mesh.addNode("stage-node");
         spot.enableRouter("tcp://0.0.0.0:9000");
         spot.enablePubSub("tcp://0.0.0.0:9001");
-        spot.attachChannelClient("profile");
         spot.attachSpotPublisherClient("game.stage");
         spot.addEntrySpot(GameEntrySpot.class);
         spot.addSpotFactory(StageSpot.class);
         spot.addSpotFactory(RoomSpot.class);
+
+        options.addClientServerChannel("profile").enableClient();
     }
 }
 ```

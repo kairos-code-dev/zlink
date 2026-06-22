@@ -297,8 +297,9 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
         spot.ConnectPeerPub("tcp://127.0.0.1:5500");
         spot.ConfigurePubSubPublisher().NoDrop = true;
 
-        spot.AttachChannelClient("api", "tcp://127.0.0.1:5300");
-        spot.ConfigureChannelClientSocket("api").Immediate = true;
+        var api = options.AddClientServerChannel("api");
+        api.EnableClient("tcp://127.0.0.1:5300");
+        api.ConfigureClientSocket().Immediate = true;
         spot.AttachSpotPublisherClient("events");
         spot.AttachSpotPublisherClient("mesh-events");
         spot.AcceptSpotRoutesFromChannel("play-router", "tcp://127.0.0.1:5300");

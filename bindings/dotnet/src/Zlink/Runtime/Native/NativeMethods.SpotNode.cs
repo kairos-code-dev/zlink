@@ -42,38 +42,8 @@ internal static partial class NativeMethods
         ref ZlinkRoutingId targetNodeRid);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_connect_router_channel_peer(
-        IntPtr node, [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_connect_router_channel_peer_rid(
-        IntPtr node, [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        ref ZlinkRoutingId peerRid,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_disconnect_router_channel_peer(
-        IntPtr node, [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string endpoint);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_disconnect_router_channel_peer_rid(
-        IntPtr node, [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        ref ZlinkRoutingId peerRid);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_node_attach_discovery(IntPtr node,
         IntPtr discovery);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_attach_router_channel_discovery(
-        IntPtr node, [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
-        IntPtr discovery);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_attach_pub_ingress(
-        IntPtr node, IntPtr pub);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_set_spot_node_option(IntPtr node,

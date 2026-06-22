@@ -526,9 +526,7 @@ but use TypeScript spelling.
   `send`, `request`, `reply`, `publish`, `subscribe`, `unsubscribe`,
   `recv`, `recvRouted`, `receiveSubscriptionEvent`, `setSendReadyHandler`,
   `setPacketHandler`, `setDispatchHandler`, `getOrCreateSpot`,
-  `sendToChannel`, `requestToChannel`, `sendToSpot`, `requestToSpot`,
-  `connectRouterChannelPeer`, `connectRouterChannelPeerRid`,
-  `disconnectRouterChannelPeer`, and `disconnectRouterChannelPeerRid`.
+  `sendToChannel`, `requestToChannel`, `sendToSpot`, and `requestToSpot`.
 - Do not keep old aliases only for compatibility. If a pre-refactor name
   conflicts with the canonical meaning, remove it and expose the canonical
   TypeScript name.
@@ -727,14 +725,3 @@ Node exposes the discovery route table through `Discovery.bindRoute(...)`,
 `SpotName = 2`, and `ActorSession = 3`. `resolveRoute(...)` returns a
 `DiscoveryRoute` containing the owner routing id and the route value as a
 `Message`.
-
-## SpotNode Router Channel Peers
-
-Node exposes router channel peer wiring on the public `SpotNode` object:
-`connectRouterChannelPeer(channelName, endpoint)`,
-`connectRouterChannelPeerRid(channelName, peerRid, endpoint)`,
-`disconnectRouterChannelPeer(channelName, endpoint)`,
-`disconnectRouterChannelPeerRid(channelName, peerRid)`, and
-`attachSpotRouteChannelDiscovery(channelName, discovery)`. These methods call
-the matching core C APIs through the native addon and use the existing Node
-error mapping.

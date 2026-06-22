@@ -443,13 +443,3 @@ Go는 discovery route table을 `Discovery.BindRoute(...)`,
 `RouteKind` 값은 코어와 같이 `RouteKindInvalid = 0`, `RouteKindActor = 1`,
 `RouteKindSpotName = 2`, `RouteKindActorSession = 3`이다. `ResolveRoute(...)`는
 owner routing ID와 route 값을 `Message`로 담은 `DiscoveryRoute`를 반환한다.
-
-## SpotNode Router Channel Peer
-
-Go는 router channel peer 연결을 공개 `SpotNode` 메서드로 노출한다:
-`ConnectRouterChannelPeer(channelName string, endpoint string) error`,
-`ConnectRouterChannelPeerRID(channelName string, peerRID RoutingID, endpoint string) error`,
-`DisconnectRouterChannelPeer(channelName string, endpoint string) error`,
-`DisconnectRouterChannelPeerRID(channelName string, peerRID RoutingID) error`,
-`AttachSpotRouteChannelDiscovery(channelName string, discovery *Discovery) error`.
-이 메서드들은 대응하는 core C API를 호출하고 확립된 Go 에러 매핑을 사용한다.

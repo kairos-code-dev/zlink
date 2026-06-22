@@ -1277,37 +1277,7 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
-            "zlink_spot_node_connect_router_channel_peer",
-            [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_node_connect_router_channel_peer_rid",
-            [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ZlinkRoutingId), ctypes.c_char_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_node_disconnect_router_channel_peer",
-            [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_node_disconnect_router_channel_peer_rid",
-            [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ZlinkRoutingId)],
-            ctypes.c_int,
-        )
-        self._require(
             "zlink_spot_node_attach_discovery",
-            [ctypes.c_void_p, ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_node_attach_router_channel_discovery",
-            [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p],
-            ctypes.c_int,
-        )
-        self._require(
-            "zlink_spot_node_attach_pub_ingress",
             [ctypes.c_void_p, ctypes.c_void_p],
             ctypes.c_int,
         )

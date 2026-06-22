@@ -491,9 +491,7 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`,
   `send`, `request`, `reply`, `publish`, `subscribe`, `unsubscribe`,
   `recv`, `recvRouted`, `receiveSubscriptionEvent`, `setSendReadyHandler`,
   `setPacketHandler`, `setDispatchHandler`, `getOrCreateSpot`,
-  `sendToChannel`, `requestToChannel`, `sendToSpot`, `requestToSpot`,
-  `connectRouterChannelPeer`, `connectRouterChannelPeerRid`,
-  `disconnectRouterChannelPeer`, `disconnectRouterChannelPeerRid`.
+  `sendToChannel`, `requestToChannel`, `sendToSpot`, `requestToSpot`.
 - 호환성만을 위해 옛 alias를 유지하지 않는다. 리팩터링 이전 이름이 정식 의미와
   충돌하면 제거하고 정식 TypeScript 이름을 노출한다.
 - 핸들러 등록에 `on...` 이름을 사용하지 않는다. API가 현재 핸들러를 저장하거나
@@ -670,14 +668,3 @@ Node는 discovery route table을 `Discovery.bindRoute(...)`,
 `DiscoveryRouteKind` 값은 코어와 같이 `Invalid = 0`, `Actor = 1`,
 `SpotName = 2`, `ActorSession = 3`이다. `resolveRoute(...)`는 owner routing id와
 route 값을 `Message`로 담은 `DiscoveryRoute`를 반환한다.
-
-## SpotNode 라우터 채널 피어
-
-Node는 공개 `SpotNode` 객체에 라우터 채널 피어 와이어링을 노출한다.
-`connectRouterChannelPeer(channelName, endpoint)`,
-`connectRouterChannelPeerRid(channelName, peerRid, endpoint)`,
-`disconnectRouterChannelPeer(channelName, endpoint)`,
-`disconnectRouterChannelPeerRid(channelName, peerRid)`,
-`attachSpotRouteChannelDiscovery(channelName, discovery)`이다. 이 메서드들은
-네이티브 addon을 통해 대응하는 core C API를 호출하고 기존 Node 에러 매핑을
-사용한다.

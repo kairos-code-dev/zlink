@@ -121,19 +121,6 @@ SPOT channel view that determines the node's mesh auto-connect scope.
 - Destroying the attached Discovery removes the automatic peer set it
   supplied.
 
-### SpotNode channel access migration (deprecated)
-
-`zlink_spot_node_attach_channel_dealer()` and
-`zlink_spot_node_attach_channel_dealer_manual()` are deprecated compatibility
-surfaces. The current implementation validates arguments and then fails with
-`ENOTSUP`; it does not create channel `DEALER` socket state inside `SpotNode`.
-
-To send/request to a target `Spot` through another channel, the channel runtime
-keeps ownership of its `DEALER` or `ROUTER` socket and lends that socket to a
-bridge through the `zlink_spot_route_bridge_*` APIs. Discovery may still be
-used by the channel runtime to obtain the peer set, but `SpotNode` does not
-own the channel socket.
-
 ### SPOT Node
 
 SPOT Node may automatically discover and connect to other SPOT Node endpoints

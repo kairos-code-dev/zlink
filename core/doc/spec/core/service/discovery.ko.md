@@ -118,18 +118,6 @@ view를 제공합니다.
 - attach된 Discovery를 제거하면 그 view가 공급하던 automatic peer set도
   함께 빠집니다.
 
-### SpotNode channel access migration (deprecated)
-
-`zlink_spot_node_attach_channel_dealer()`와
-`zlink_spot_node_attach_channel_dealer_manual()`은 deprecated compatibility 표면이다.
-현재 구현은 인자 검증 뒤 `ENOTSUP`으로 실패하며, `SpotNode` 내부에 channel
-`DEALER` socket 상태를 만들지 않는다.
-
-다른 channel을 통해 target `Spot`으로 send/request를 보내야 하면 channel runtime이
-소유한 `DEALER` 또는 `ROUTER` socket을 `zlink_spot_route_bridge_*` API로 bridge에
-연결한다. Discovery는 channel runtime이 peer set을 얻는 데 사용하고, `SpotNode`가
-channel socket을 직접 소유하지 않는다.
-
 ### SPOT Node
 
 SPOT Node는 같은 `channel_name`에 속한 다른 SPOT Node endpoint를 자동으로

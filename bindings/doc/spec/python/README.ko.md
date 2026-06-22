@@ -577,13 +577,3 @@ Python은 discovery route table을 `Discovery.bind_route(...)`,
 kind 정수 값은 코어와 같이 invalid `0`, actor `1`, spot name `2`, actor session
 `3`이다. `resolve_route(...)`는 owner routing id와 route 값을 `Message`로 담은
 `DiscoveryRoute`를 반환한다.
-
-## SpotNode Router Channel Peers
-
-Python은 공개 `SpotNode` 객체에서 router 채널 피어 와이어링을 노출한다.
-`connect_router_channel_peer(channel_name, endpoint)`,
-`connect_router_channel_peer_rid(channel_name, peer_rid, endpoint)`,
-`disconnect_router_channel_peer(channel_name, endpoint)`,
-`disconnect_router_channel_peer_rid(channel_name, peer_rid)`,
-`attach_spot_route_channel_discovery(channel_name, discovery)`. 이 메서드들은
-대응하는 코어 C API를 호출하며 기존 Python 에러 매핑을 사용한다.

@@ -551,13 +551,3 @@ Rust exposes the discovery route table through `Discovery::bind_route(...)`,
 `RouteKind` uses the core values `Invalid = 0`, `Actor = 1`, `SpotName = 2`,
 and `ActorSession = 3`. `resolve_route(...)` returns a `DiscoveryRoute`
 containing the owner routing id and the route value as a `Message`.
-
-## SpotNode Router Channel Peers
-
-Rust exposes router channel peer wiring as public `SpotNode` methods:
-`connect_router_channel_peer(channel_name, endpoint)`,
-`connect_router_channel_peer_rid(channel_name, peer_rid, endpoint)`,
-`disconnect_router_channel_peer(channel_name, endpoint)`,
-`disconnect_router_channel_peer_rid(channel_name, peer_rid)`, and
-`attach_spot_route_channel_discovery(channel_name, discovery)`. These methods
-call the matching core C APIs and use the established Rust error mapping.

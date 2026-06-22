@@ -539,13 +539,3 @@ C++는 discovery route table을 `discovery_t::bind_route(...)`,
 `route_kind` 값은 코어와 같이 `invalid = 0`, `actor = 1`, `spot_name = 2`,
 `actor_session = 3`이다. `resolve_route(...)`는 owner routing id와 route 값을
 `message_t`로 담은 `discovery_route_t`를 반환한다.
-
-## SpotNode 라우터 채널 peer
-
-C++는 라우터 채널 peer 배선을 공개 `spot_node_t` 메서드로 노출한다.
-`connect_router_channel_peer(channel_name, endpoint)`,
-`connect_router_channel_peer_rid(channel_name, peer_rid, endpoint)`,
-`disconnect_router_channel_peer(channel_name, endpoint)`,
-`disconnect_router_channel_peer_rid(channel_name, peer_rid)`,
-`attach_spot_route_channel_discovery(channel_name, discovery)`가 그것이다. 이 메서드들은
-대응하는 코어 C API에 직접 매핑되고 코어 오류 카테고리를 보존한다.

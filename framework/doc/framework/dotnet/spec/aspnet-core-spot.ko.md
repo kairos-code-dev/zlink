@@ -135,7 +135,6 @@ builder.Services.AddZLinkFramework(options =>
             var node =         mesh.AddNode("stage-node");
             node.EnableRouter("tcp://0.0.0.0:9001");
             node.EnablePubSub("tcp://0.0.0.0:9000");
-            node.AttachChannelClient("orders");
             node.AttachSpotPublisherClient("game.stage");
             node.AddEntrySpot<StageEntrySpot>();
             node.AddSpotFactory<StageSpot>();
@@ -187,9 +186,9 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
 - `EnablePubSub(endpoint)`
   - 현재 SPOT channel 안의 publish/subscribe 축을 켠다. local spot 안에서
     `spot.Context.Outbound.Publish(...)`를 사용하려면 이 역할이 필요하다.
-- `AttachChannelClient("orders")`
+- `AddClientServerChannel("orders").EnableClient(...)`
   - `orders` channel로 outbound[^outbound] send/request를 보낼
-    `DEALER(client)`[^dealer-router] 경로를 붙인다.
+    channel client 역할을 켠다.
 - `AttachSpotPublisherClient("game.stage")`
   - local spot 인스턴스를 갖지 않는 외부 노드가 `game.stage` SPOT channel로
     publish할 수 있도록 별도의 publisher client를 붙인다.
@@ -387,7 +386,6 @@ builder.Services.AddZLinkFramework(options =>
     node.EnablePubSub("tcp://0.0.0.0:9000");
     node.ConnectPeerPub("tcp://10.0.0.20:9100");
 
-    node.AttachChannelClient("orders", "tcp://10.0.0.30:9200");
     node.AttachSpotPublisherClient("game.stage", "tcp://10.0.0.40:9300");
 
     node.AddEntrySpot<StageEntrySpot>();
@@ -461,7 +459,7 @@ placement 코드가 먼저 spot rid 를 결정해 두어야 한다.
   - 실제 `SpotNode.PublisherOptions`에 들어가는 mesh publish 기본값을 정한다.
 - `node.ConfigurePubSubSubscriber()`
   - 실제 `SpotNode.SubscriberOptions`에 들어가는 mesh subscribe 기본값을 정한다.
-- `node.ConfigureChannelClientSocket(channelName)`, `node.ConfigureChannelClientRouting(channelName)`
+- `channel.ConfigureClientSocket()`, `channel.ConfigureClientRouting()`
   - route bridge channel socket의 공통 socket 설정과 routed outbound 설정을 나눠
     구성한다.
 - `node.ConfigureSpotPublisherClientSocket(channelName)`
@@ -500,15 +498,14 @@ builder.Services.AddZLinkFramework(options =>
     subscriber.ReceiveTimeout = TimeSpan.FromMilliseconds(50);
     subscriber.Linger = TimeSpan.Zero;
 
-    node.AttachChannelClient("orders");
-    var channelSocket = node.ConfigureChannelClientSocket("orders");
-    channelSocket.ConnectTimeout = TimeSpan.FromSeconds(3);
-    channelSocket.HandshakeInterval = TimeSpan.FromSeconds(3);
+    var orders = options.AddClientServerChannel("orders");
+    orders.EnableClient();
+    var channelSocket = orders.ConfigureClientSocket();
     channelSocket.SendHighWaterMark = 5_000;
     channelSocket.ReceiveHighWaterMark = 5_000;
     channelSocket.Immediate = true;
 
-    var channelRouting = node.ConfigureChannelClientRouting("orders");
+    var channelRouting = orders.ConfigureClientRouting();
     channelRouting.ProbeRouterOnConnect = true;
 
     node.AttachSpotPublisherClient("game.stage");

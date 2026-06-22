@@ -147,33 +147,6 @@ func (n *SpotNode) ConnectPeer(endpoint string) error {
 	})
 }
 
-func (n *SpotNode) ConnectRouterChannelPeer(channelName string, endpoint string) error {
-	return n.withChannelEndpointCStrings(channelName, endpoint, func(channel *C.char, ep *C.char) error {
-		handle, err := n.handleOrError()
-		if err != nil {
-			return err
-		}
-		return connectErrorFromResult(C.zlink_spot_node_connect_router_channel_peer(handle, channel, ep))
-	})
-}
-
-func (n *SpotNode) ConnectRouterChannelPeerRID(channelName string, peerRID RoutingID, endpoint string) error {
-	return n.withChannelEndpointCStrings(channelName, endpoint, func(channel *C.char, ep *C.char) error {
-		handle, err := n.handleOrError()
-		if err != nil {
-			return err
-		}
-		rid := peerRID.toC()
-		return connectErrorFromResult(
-			C.zlink_spot_node_connect_router_channel_peer_rid(
-				handle,
-				channel,
-				(*C.zlink_routing_id_t)(unsafe.Pointer(&rid)),
-				ep,
-			))
-	})
-}
-
 func (n *SpotNode) AttachDiscovery(discovery *Discovery) error {
 	if discovery == nil || discovery.closed {
 		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
@@ -185,37 +158,11 @@ func (n *SpotNode) AttachDiscovery(discovery *Discovery) error {
 	return configErrorFromResult(C.zlink_spot_node_attach_discovery(handle, discovery.raw()))
 }
 
-func (n *SpotNode) AttachSpotRouteChannelDiscovery(channelName string, discovery *Discovery) error {
-	if discovery == nil || discovery.closed {
-		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
-	}
-	return n.withChannelCString(channelName, func(channel *C.char) error {
-		handle, err := n.handleOrError()
-		if err != nil {
-			return err
-		}
-		return configErrorFromResult(
-			C.zlink_spot_node_attach_router_channel_discovery(handle, channel, discovery.raw()))
-	})
-}
-
 func (n *SpotNode) lookupDealer(handle unsafe.Pointer) *DealerSocket {
 	if v, ok := n.dealerRegistry.Load(handle); ok {
 		return v.(*DealerSocket)
 	}
 	return nil
-}
-
-func (n *SpotNode) AttachPubIngress(pub *PubSocket) error {
-	handle, err := n.handleOrError()
-	if err != nil {
-		return err
-	}
-	pubHandle, err := socketHandle(pub)
-	if err != nil {
-		return err
-	}
-	return configErrorFromResult(C.zlink_spot_node_attach_pub_ingress(handle, pubHandle))
 }
 
 func (n *SpotNode) SetRoutingID(id RoutingID) error {
@@ -245,16 +192,6 @@ func (n *SpotNode) DisconnectPeer(endpoint string) error {
 	})
 }
 
-func (n *SpotNode) DisconnectRouterChannelPeer(channelName string, endpoint string) error {
-	return n.withChannelEndpointCStrings(channelName, endpoint, func(channel *C.char, ep *C.char) error {
-		handle, err := n.handleOrError()
-		if err != nil {
-			return err
-		}
-		return connectErrorFromResult(C.zlink_spot_node_disconnect_router_channel_peer(handle, channel, ep))
-	})
-}
-
 func (n *SpotNode) DisconnectPeerRID(targetNodeRID RoutingID) error {
 	handle, err := n.handleOrError()
 	if err != nil {
@@ -266,22 +203,6 @@ func (n *SpotNode) DisconnectPeerRID(targetNodeRID RoutingID) error {
 			handle,
 			(*C.zlink_routing_id_t)(unsafe.Pointer(&rid)),
 		))
-}
-
-func (n *SpotNode) DisconnectRouterChannelPeerRID(channelName string, peerRID RoutingID) error {
-	return n.withChannelCString(channelName, func(channel *C.char) error {
-		handle, err := n.handleOrError()
-		if err != nil {
-			return err
-		}
-		rid := peerRID.toC()
-		return connectErrorFromResult(
-			C.zlink_spot_node_disconnect_router_channel_peer_rid(
-				handle,
-				channel,
-				(*C.zlink_routing_id_t)(unsafe.Pointer(&rid)),
-			))
-	})
 }
 
 func (n *SpotNode) SetTLSServer(certPath string, keyPath string, requireClientCert bool) error {

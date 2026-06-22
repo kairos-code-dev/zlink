@@ -1226,7 +1226,6 @@ public:
     spot_node_builder_t &connect_pub_sub(std::string endpoint);
     spot_node_builder_t &use_discovery(std::string channel_name);
     spot_node_builder_t &enable_actor_gateway();
-    spot_node_builder_t &attach_channel_client(std::string channel_name);
     spot_node_builder_t &attach_publisher(std::string channel_name);
 
     template <typename TEntrySpot>
@@ -1687,10 +1686,8 @@ fluent options에서 channel 이름, handler group 이름, endpoint, SPOT node �
 이름처럼 식별자나 연결 주소로 쓰이는 값은 빈 문자열이나 공백 문자열을 허용하지 않는다.
 잘못된 값은 low-level socket/runtime까지 전달하지 않고 builder 호출 또는 options 적용 시점의
 framework error로 닫는다.
-`attach_channel_client(...)`는 등록된 client/server channel을 SPOT node의 outbound client로
-연결한다. attached client peer는 registry discovery 또는 attach별 manual endpoint로 얻는다.
-manual endpoint를 쓰려면
-`attach_channel_client(name, endpoint)`처럼 명시한다.
+SPOT code가 client/server channel로 send/request 하려면 해당 channel에서
+`enable_client(...)`를 설정한다. Spot node builder는 별도 channel client를 부착하지 않는다.
 SPOT router와 pub/sub 역할도 registry discovery 없이 고정 peer를 붙일 수 있다. 이때는
 `enable_router(endpoint).connect_router(peer)` 또는
 `enable_pub_sub(endpoint).connect_pub_sub(peer)`처럼 역할별 manual endpoint를 기록한다.

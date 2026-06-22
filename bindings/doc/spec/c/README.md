@@ -213,13 +213,3 @@ The C binding exposes the core route result structs exactly as public ABI.
 The C binding must not add `zlink_router_send_actor`,
 `zlink_router_request_actor`, or Actor-to-ROUTER request helpers. Actor-directed
 delivery remains a route lookup followed by existing Spot routed send/request.
-
-## SpotNode Router Channel Peers
-
-The C binding exposes the core router channel peer functions without renaming:
-`zlink_spot_node_connect_router_channel_peer()`,
-`zlink_spot_node_disconnect_router_channel_peer()`,
-`zlink_spot_node_disconnect_router_channel_peer_rid()`, and
-`zlink_spot_node_attach_router_channel_discovery()`. The result and errno
-mapping is the core contract. These functions are topology APIs, not perf-only
-helpers.

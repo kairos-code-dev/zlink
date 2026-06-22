@@ -1099,13 +1099,3 @@ C++ exposes the discovery route table through `discovery_t::bind_route(...)`,
 `spot_name = 2`, and `actor_session = 3`. `resolve_route(...)` returns a
 `discovery_route_t` containing the owner routing id and the route value as a
 `message_t`.
-
-## SpotNode Router Channel Peers
-
-C++ exposes router channel peer wiring as public `spot_node_t` methods:
-`connect_router_channel_peer(channel_name, endpoint)`,
-`connect_router_channel_peer_rid(channel_name, peer_rid, endpoint)`,
-`disconnect_router_channel_peer(channel_name, endpoint)`,
-`disconnect_router_channel_peer_rid(channel_name, peer_rid)`, and
-`attach_spot_route_channel_discovery(channel_name, discovery)`. The methods map
-directly to the matching core C APIs and preserve the core error categories.

@@ -1618,7 +1618,6 @@ export interface ZLinkSpotNodeBuilder {
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
-  attachChannelClient(channelName: string, endpoint?: string | readonly string[]): this;
   attachSpotPublisherClient(channelName: string, endpoint?: string | readonly string[]): this;
   acceptSpotRoutesFromChannel(channelName: string, endpoint?: string | readonly string[]): this;
 }
@@ -1650,7 +1649,9 @@ builder 함수 의미:
 - `addEntrySpot(...)`: 이 SpotNode 의 Entry Spot 타입을 등록한다. 같은 node 에 두 번
   등록하면 설정 예외다.
 - `addSpotFactory(...)`: 이 SpotNode 가 생성할 수 있는 user Spot factory 타입을 등록한다.
-- `attachChannelClient(...)`: 다른 channel 로 send/request 할 outbound DEALER(client) 부착.
+- 다른 channel 로 send/request 하려면 해당 client/server channel 에서
+  `enableClient(...)`를 설정한다. Spot node builder는 별도 channel client를
+  부착하지 않는다.
 - `attachSpotPublisherClient(...)`: 외부 노드가 특정 SPOT channel 로 publish 할 outbound publisher client 부착.
 - `acceptSpotRoutesFromChannel(...)`: 지정 channel 에서 들어오는 spot route 수락.
 - `addSpotFactory(spotType)`: root 수준에서 이 runtime 이 생성/소유할 spot factory 를 타입

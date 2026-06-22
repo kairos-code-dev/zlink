@@ -264,7 +264,8 @@ zlink_discovery_connect_registry(orders_discovery, "tcp://127.0.0.1:5551");
 
 void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 
-zlink_spot_node_attach_channel_dealer(node, orders_discovery, dealer);
+void *bridge = zlink_spot_route_bridge_new(ctx, node, NULL);
+zlink_spot_route_bridge_attach_dealer_channel(bridge, "orders", dealer, NULL);
 ```
 
 여기서 `SpotNode` 자신이 속한 SPOT 채널은 `"alpha"`이고
@@ -281,7 +282,8 @@ void *dealer = zlink_socket(ctx, ZLINK_SOCKET_DEALER);
 zlink_connect(dealer, "tcp://127.0.0.1:7201");
 zlink_connect(dealer, "tcp://127.0.0.1:7202");
 
-zlink_spot_node_attach_channel_dealer_manual(node, "orders", dealer);
+void *bridge = zlink_spot_route_bridge_new(ctx, node, NULL);
+zlink_spot_route_bridge_attach_dealer_channel(bridge, "orders", dealer, NULL);
 ```
 
 ### 5.3 channel 호출
@@ -538,16 +540,15 @@ zlink_router_request_spot(
 
 ## 12. 일반 PUB에서 SPOT으로 publish 넣기
 
-외부 일반 `PUB`에서 SPOT 토픽 평면으로 발행을 넣고 싶다면 ingress용 `PUB`를
-등록한다.
+외부 코드에서 SPOT 토픽 평면으로 발행을 넣고 싶다면 node에서 publisher handle을
+만들어 publish한다.
 
 ```c
-void *pub = zlink_socket(ctx, ZLINK_SOCKET_PUB);
-zlink_spot_node_attach_pub_ingress(node, pub);
+void *publisher = zlink_spot_node_publisher_new(node);
+zlink_spot_node_publisher_publish(publisher, "orders", parts, part_count, 0);
 ```
 
-이 `PUB`는 `SpotNode` 전용 유입 소스(ingress source)로 취급한다. 노드당 하나만 붙일 수 있고
-연결 후에는 다른 용도로 사용하지 않는 편이 맞다.
+외부 publisher가 끝나면 publisher handle을 닫는다.
 
 ## 13. 상태 확인
 
@@ -611,10 +612,9 @@ Spot rid 만으로 어떤 connection 을 사용할지 항상 알 수 없기 때�
 문서는 이 구분을 public API 로 드러내야 하며, local egress channel 이름과 target
 SpotNode ingress channel 이름을 같은 값이라고 가정하면 안 된다.
 
-core API를 직접 사용할 때는 `zlink_spot_node_connect_router_channel_peer()`로
-수동 endpoint에 연결하거나, router channel discovery view를
-`zlink_spot_node_attach_router_channel_discovery()`로 붙인다. 내부 routed endpoint나
-포트 파생 규칙은 application이 알 필요가 없다.
+core API를 직접 사용할 때는 caller가 소유한 channel socket을
+`zlink_spot_route_bridge_*` handle에 등록한다. 내부 routed endpoint나 포트 파생 규칙은
+application이 알 필요가 없다.
 
 ## 15. Actor C sample
 

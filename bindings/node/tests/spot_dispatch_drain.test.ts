@@ -139,25 +139,6 @@ test('entry spot setDispatchHandler permits multipart subscribe drain after peer
   }
 });
 
-test('legacy router-channel peer dispatch path returns migration error', async () => {
-  const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
-  const ctx = zlink.createContext();
-  const responderNode = zlink.createSpotNode(ctx);
-  const requester = zlink.createRouterSocket(ctx);
-
-  try {
-    requester.bind(endpoint);
-    assert.throws(
-      () => responderNode.connectRouterChannelPeerRid('api', responderNode.routingId, endpoint),
-      /Operation not supported/
-    );
-  } finally {
-    requester.close();
-    responderNode.close();
-    ctx.close();
-  }
-});
-
 test('spot setDispatchHandler replies to routed spot request origin', async () => {
   const responderPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const responderRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;

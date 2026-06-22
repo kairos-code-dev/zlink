@@ -41,24 +41,12 @@ export interface SpotNode {
   disconnectPeer(endpoint: string): void;
   /** Disconnect the peer identified by `targetNodeRid`. */
   disconnectPeerRid(targetNodeRid: RoutingId): void;
-  /** Connect to a router-channel peer on `channelName` at `endpoint`. */
-  connectRouterChannelPeer(channelName: string, endpoint: string): void;
-  /** Connect to a router-channel peer on `channelName` by `peerRid` at `endpoint`. */
-  connectRouterChannelPeerRid(channelName: string, peerRid: RoutingId, endpoint: string): void;
-  /** Disconnect a router-channel peer on `channelName` at `endpoint`. */
-  disconnectRouterChannelPeer(channelName: string, endpoint: string): void;
-  /** Disconnect a router-channel peer on `channelName` by `peerRid`. */
-  disconnectRouterChannelPeerRid(channelName: string, peerRid: RoutingId): void;
-  /** Attach a PUB socket as a publish ingress for the node. */
-  attachPubIngress(pub: PubSocket): void;
   /** Create a bridge for caller-owned channel sockets. */
   createRouteBridge(): SpotRouteBridge;
   /** Create a publisher handle for the local SPOT topic plane. */
   createPublisher(): SpotNodePublisher;
   /** Attach a discovery service so the node auto-connects discovered peers. */
   attachDiscovery(discovery: Discovery): void;
-  /** Attach a discovery service for the spot-route channel `channelName`. */
-  attachSpotRouteChannelDiscovery(channelName: string, discovery: Discovery): void;
   /** Set the node's routing id. */
   setRoutingId(routingId: RoutingId): void;
   /** The node's routing id. */

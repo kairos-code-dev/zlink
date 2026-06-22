@@ -630,13 +630,3 @@ kind integer uses the core values `0` for invalid, `1` for actor, `2` for spot
 name, and `3` for actor session. `resolve_route(...)` returns a
 `DiscoveryRoute` containing the owner routing id and the route value as a
 `Message`.
-
-## SpotNode Router Channel Peers
-
-Python exposes router channel peer wiring on the public `SpotNode` object:
-`connect_router_channel_peer(channel_name, endpoint)`,
-`connect_router_channel_peer_rid(channel_name, peer_rid, endpoint)`,
-`disconnect_router_channel_peer(channel_name, endpoint)`,
-`disconnect_router_channel_peer_rid(channel_name, peer_rid)`, and
-`attach_spot_route_channel_discovery(channel_name, discovery)`. These methods
-call the matching core C APIs and use the existing Python error mapping.

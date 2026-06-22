@@ -293,8 +293,8 @@
   기본적으로 프로세스 1개를 사용하고, 스레드는 1개 또는 2개를 사용할 수 있다.
   이 샘플의 목적은 spot 표면에서 publish 후 subscribe 결과를 확인하는 흐름을
   짧게 보여 주는 것이다.
-  바인딩이 `attach_pub_ingress()` 를 공개하면 전용 `PUB` source를 붙여도 되고,
-  그렇지 않으면 같은 `Spot` 표면의 `publish()` 를 직접 사용해도 된다.
+  외부 publisher가 필요하면 publisher handle을 만들고, 그렇지 않으면 같은
+  `Spot` 표면의 `publish()` 를 직접 사용한다.
   `dispatch_event` callback은 필요할 때 activation signal로 사용할 수 있지만,
   모든 바인딩에 강제하지 않는다.
 - `spot_request_async_sample` 도 기본적으로 프로세스 1개와 스레드 2개를
@@ -502,8 +502,8 @@
 - topology:
   - 프로세스 1개
   - 기본 흐름은 local `spot publish -> spot subscribe`
-  - 바인딩이 `attach_pub_ingress()` 를 공개하면 `pub ingress -> spot subscribe`
-    형태를 사용할 수 있다.
+  - 외부 publisher가 필요하면 publisher handle에서 publish하고 Spot subscribe로
+    수신을 확인할 수 있다.
 - roles:
   - 하나의 `Spot` 이 publish 와 subscribe 양쪽을 담당한다.
   - 전용 ingress `PUB` 를 붙이는 경우에도 수신 확인은 `Spot` 표면에서만 한다.

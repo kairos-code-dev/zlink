@@ -103,63 +103,10 @@ class SpotNode(SpotNodeActorMixin, SpotNodeSnapshotMixin):
         if rc != 0:
             _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
 
-    def connect_router_channel_peer(self, channel_name: str, endpoint: str):
-        rc = lib().zlink_spot_node_connect_router_channel_peer(
-            self._handle,
-            _validated_c_string_text(channel_name, field="channel_name", max_length=255),
-            _validated_c_string_text(endpoint, field="endpoint", max_length=255),
-        )
-        if rc != 0:
-            _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
-
-    def connect_router_channel_peer_rid(self, channel_name: str, peer_rid, endpoint: str):
-        native = _copy_routing_id(peer_rid)
-        rc = lib().zlink_spot_node_connect_router_channel_peer_rid(
-            self._handle,
-            _validated_c_string_text(channel_name, field="channel_name", max_length=255),
-            ctypes.byref(native),
-            _validated_c_string_text(endpoint, field="endpoint", max_length=255),
-        )
-        if rc != 0:
-            _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
-
-    def disconnect_router_channel_peer(self, channel_name: str, endpoint: str):
-        rc = lib().zlink_spot_node_disconnect_router_channel_peer(
-            self._handle,
-            _validated_c_string_text(channel_name, field="channel_name", max_length=255),
-            _validated_c_string_text(endpoint, field="endpoint", max_length=255),
-        )
-        if rc != 0:
-            _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
-
-    def disconnect_router_channel_peer_rid(self, channel_name: str, peer_rid):
-        native = _copy_routing_id(peer_rid)
-        rc = lib().zlink_spot_node_disconnect_router_channel_peer_rid(
-            self._handle,
-            _validated_c_string_text(channel_name, field="channel_name", max_length=255),
-            ctypes.byref(native),
-        )
-        if rc != 0:
-            _raise_result_error(ConnectError, ConnectResult, rc, lib().zlink_errno())
-
     def attach_discovery(self, discovery):
         rc = lib().zlink_spot_node_attach_discovery(
             self._handle, discovery._handle
         )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
-    def attach_spot_route_channel_discovery(self, channel_name: str, discovery):
-        rc = lib().zlink_spot_node_attach_router_channel_discovery(
-            self._handle,
-            _validated_c_string_text(channel_name, field="channel_name", max_length=255),
-            discovery._handle,
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
-    def attach_pub_ingress(self, pub):
-        rc = lib().zlink_spot_node_attach_pub_ingress(self._handle, pub._handle)
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 

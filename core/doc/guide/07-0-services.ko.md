@@ -122,19 +122,18 @@ Registry 클러스터 기반의 서비스 등록·발견 시스템이다. 서비
 ### 3.2 SPOT — channel 기반 routed + PUB/SUB 허브
 
 `SpotNode`는 SPOT 토폴로지의 핵심 런타임이다. 하나의 SPOT channel Discovery
-view를 연결해 같은 channel의 다른 `SpotNode`와 mesh를 구성하고, 다른
-channel을 호출해야 할 때는 `DEALER`를 별도로 등록한다. 그 위에 공개
-`Spot` facade 하나가 올라가 channel send/request, 피어 라우팅 통신,
+view를 연결해 같은 channel의 다른 `SpotNode`와 mesh를 구성한다. 다른 channel을
+호출할 때는 channel runtime이 소유한 socket을 route bridge가 빌려 쓴다. 외부에서
+local topic plane으로 publish할 때는 node에서 만든 publisher handle을 쓴다. 그 위에
+공개 `Spot` facade 하나가 올라가 channel send/request, 피어 라우팅 통신,
 publish/subscribe를 함께 수행한다.
 
 - SPOT mesh: `zlink_spot_node_attach_discovery()` — SPOT channel view를
   가진 Discovery 하나를 연결하면 같은 channel의 다른 `SpotNode`와 자동 연결된다
-- channel 호출용 DEALER:
-  `zlink_spot_node_attach_channel_dealer()` (자동 연결) /
-  `zlink_spot_node_attach_channel_dealer_manual()` (수동 연결) —
-  다른 channel의 `ROUTER(server)` 집합에 요청을 보내는 `DEALER` 등록
-- 외부 publish ingress: `zlink_spot_node_attach_pub_ingress()` —
-  일반 `PUB`에서 SPOT topic plane으로 publish를 넣는 전용 입력 경로
+- channel send/request: `zlink_spot_route_bridge_*` — channel이 소유한
+  `DEALER` 또는 `ROUTER` socket을 bridge에 등록한다
+- 외부 publish ingress: `zlink_spot_node_publisher_*` — local SPOT topic
+  plane으로 publish하는 publisher handle
 - data plane:
   `zlink_spot_send_channel()` / `zlink_spot_request_channel()` /
   `zlink_spot_publish()` / `zlink_spot_subscribe()` /

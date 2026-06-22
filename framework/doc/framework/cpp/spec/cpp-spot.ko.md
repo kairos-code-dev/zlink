@@ -66,7 +66,6 @@ app.add_zlink_framework([](auto &options) {
       .add_node("stage-spot-node")
       .enable_pub_sub("tcp://0.0.0.0:9000")
       .enable_actor_gateway()
-      .attach_channel_client("profile")
       .attach_publisher("game.stage")
       .add_entry_spot<player_entry_spot_t>()
       .add_actor_factory<player_actor_factory_t>("player")
@@ -85,15 +84,14 @@ options.add_spot_mesh("game.stage").add_node("stage-spot-node")
   .enable_router("tcp://0.0.0.0:9000", zlink::routing_id_t::from("stage-router"))
   .connect_router("tcp://127.0.0.1:9001")
   .enable_pub_sub("tcp://0.0.0.0:9002")
-  .connect_pub_sub("tcp://127.0.0.1:9003")
-  .attach_channel_client("profile", "tcp://127.0.0.1:7001");
+  .connect_pub_sub("tcp://127.0.0.1:9003");
 ```
 
 `connect_router(...)`와 `connect_pub_sub(...)`의 manual endpoint는
-SPOT 역할 자체의 peer다. `attach_channel_client(...)`,
-`attach_publisher(...)`, `accept_routes_from_channel(...)`에 주는 manual endpoint는 각각
-route bridge channel socket, publisher client, accepted route ingress의 peer이므로 같은 값으로
-섞어 표현하지 않는다.
+SPOT 역할 자체의 peer다. client/server channel의 client endpoint는 channel builder의
+`enable_client(...)`에서 설정한다. `attach_publisher(...)`,
+`accept_routes_from_channel(...)`에 주는 manual endpoint는 각각 publisher client와
+accepted route ingress의 peer이므로 같은 값으로 섞어 표현하지 않는다.
 
 ## 3. Spot context
 

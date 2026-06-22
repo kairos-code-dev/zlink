@@ -154,7 +154,6 @@ registry 에 필요한 handler 를 연결한다. Spot 이 어떤 메시지를 �
         .addSpotNode('stage-node')
           .enableRouter('tcp://0.0.0.0:9001')
           .enablePubSub('tcp://0.0.0.0:9000')
-          .attachChannelClient('orders')
           .attachSpotPublisherClient('game.stage')
           .addEntrySpot(StageEntrySpot)
           .addSpotFactory(StageSpot)
@@ -200,9 +199,8 @@ export class AppModule {}
 - `.enablePubSub(endpoint)` (dotnet `EnablePubSub(endpoint)`)
   - 현재 SPOT channel 안의 publish / subscribe 축을 켠다. local spot 안에서
     `context.outbound.publish(...)` 를 쓰려면 이 역할이 필요하다.
-- `.attachChannelClient("orders")` (dotnet `AttachChannelClient("orders")`)
-  - `orders` channel 로 outbound send / request 를 보낼 `DEALER(client)` 경로를
-    붙인다.
+- `orders` channel 로 outbound send / request 를 보내려면 top-level
+  `addClientServerChannel("orders").enableClient(...)`에서 client 역할을 켠다.
 - `.attachSpotPublisherClient("game.stage")` (dotnet
   `AttachSpotPublisherClient("game.stage")`)
   - local spot 인스턴스를 갖지 않는 외부 노드가 `game.stage` SPOT channel 로
@@ -423,7 +421,6 @@ ZLinkModule.forRoot(
     .addSpotNode('stage-node')
       .enableRouter(undefined, undefined, 'tcp://10.0.0.10:9000')
       .enablePubSub('tcp://0.0.0.0:9000', undefined, 'tcp://10.0.0.20:9100')
-      .attachChannelClient('orders', 'tcp://10.0.0.30:9200')
       .attachSpotPublisherClient('game.stage', 'tcp://10.0.0.40:9300')
       .addEntrySpot(StageEntrySpot)
       .addSpotFactory(StageSpot)
@@ -477,7 +474,6 @@ ZLinkModule.forRoot(
     .addSpotNode('stage-node')
       .enableRouter('tcp://0.0.0.0:9001')
       .enablePubSub('tcp://0.0.0.0:9000')
-      .attachChannelClient('orders')
       .attachSpotPublisherClient('game.stage')
       .addSpotFactory(StageSpot)
     .build()

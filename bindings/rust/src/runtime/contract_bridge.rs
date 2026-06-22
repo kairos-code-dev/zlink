@@ -495,34 +495,7 @@ pub(crate) trait SpotNodePublicRuntime {
     fn connect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError>;
     fn disconnect_peer(&self, peer_endpoint: &str) -> Result<(), ConnectError>;
     fn disconnect_peer_rid(&self, target_node_rid: &RoutingId) -> Result<(), ConnectError>;
-    fn connect_router_channel_peer(
-        &self,
-        channel_name: &str,
-        endpoint: &str,
-    ) -> Result<(), ConnectError>;
-    fn connect_router_channel_peer_rid(
-        &self,
-        channel_name: &str,
-        peer_rid: &RoutingId,
-        endpoint: &str,
-    ) -> Result<(), ConnectError>;
-    fn disconnect_router_channel_peer(
-        &self,
-        channel_name: &str,
-        endpoint: &str,
-    ) -> Result<(), ConnectError>;
-    fn disconnect_router_channel_peer_rid(
-        &self,
-        channel_name: &str,
-        peer_rid: &RoutingId,
-    ) -> Result<(), ConnectError>;
     fn attach_discovery(&self, discovery: &Discovery) -> Result<(), ConfigError>;
-    fn attach_spot_route_channel_discovery(
-        &self,
-        channel_name: &str,
-        discovery: &Discovery,
-    ) -> Result<(), ConfigError>;
-    fn attach_pub_ingress(&self, pub_sock: &crate::PubSocket) -> Result<(), ConfigError>;
     fn router_high_water_mark(&self) -> Result<i32, ConfigError>;
     fn set_router_high_water_mark(&self, value: i32) -> Result<(), ConfigError>;
     fn pubsub_high_water_mark(&self) -> Result<i32, ConfigError>;

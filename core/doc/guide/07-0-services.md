@@ -76,18 +76,18 @@ See the [Service Discovery Guide](07-1-discovery.md) and the [Registry Guide](07
 
 A `SpotNode` is the core runtime of the SPOT topology. It attaches one SPOT
 channel Discovery view to form a mesh with other `SpotNode` peers in the same
-channel, and attaches `DEALER` sockets separately when it needs to call other
-channels. A single public `Spot` facade sits on top of the node and drives
-channel send/request, peer routed communication, and publish/subscribe.
+channel. Channel send/request uses a route bridge that borrows sockets owned by
+the channel runtime. External publishing into the local topic plane uses a
+publisher handle created from the node. A single public `Spot` facade sits on
+top of the node and drives channel send/request, peer routed communication, and
+publish/subscribe.
 
 - SPOT mesh: `zlink_spot_node_attach_discovery()` attaches one Discovery
   with a SPOT channel view; peers in the same channel auto-connect.
-- Channel-call dealers:
-  `zlink_spot_node_attach_channel_dealer()` (automatic) /
-  `zlink_spot_node_attach_channel_dealer_manual()` (manual) register a
-  `DEALER` that sends requests to a channel's `ROUTER(server)` set.
-- External publish ingress: `zlink_spot_node_attach_pub_ingress()` feeds
-  an external `PUB` into the SPOT topic plane.
+- Channel send/request: `zlink_spot_route_bridge_*` borrows a channel-owned
+  `DEALER` or `ROUTER` socket.
+- External publish ingress: `zlink_spot_node_publisher_*` publishes into the
+  local SPOT topic plane.
 - Data plane:
   `zlink_spot_send_channel()` / `zlink_spot_request_channel()` /
   `zlink_spot_publish()` / `zlink_spot_subscribe()` /

@@ -2649,7 +2649,7 @@ core socket 기본 send timeout과 같은 1000ms다. 채널별 기본 request ti
     mesh builder는 자체 `UseDiscovery().AddRegistryEndpoint(...)`와 `AddNode(spotNodeName)`를
     노출한다.
     mesh node builder는 `EnableRouter`, `EnablePubSub`,
-    `AttachChannelClient`, `AttachSpotPublisherClient`,
+    `AttachSpotPublisherClient`,
     `AddSpotFactory<TSpot>(...)`, `AddEntrySpot<TEntrySpot>()`를 노출한다.
     ActorGateway 는 별도 node builder 를 갖지 않고, stream 이 router 역할
     를 켠 SpotNode 를 `AttachActorGateway(...)` 로 참조한다.
@@ -2911,14 +2911,6 @@ public interface IZLinkSpotNodeBuilder
 
     IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber();
 
-    IZLinkSpotNodeBuilder AttachChannelClient(string channelName);
-
-    IZLinkSpotNodeBuilder AttachChannelClient(string channelName, string endpoint);
-
-    IZLinkSocketConfig ConfigureChannelClientSocket(string channelName);
-
-    IZLinkOutboundRouteConfig ConfigureChannelClientRouting(string channelName);
-
     IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName);
 
     IZLinkSpotNodeBuilder AttachSpotPublisherClient(string channelName, string endpoint);
@@ -2961,8 +2953,9 @@ public interface IZLinkEntrySpotOptions
   - spot-to-spot routed packet을 처리할 local router 역할을 켠다.
 - `EnablePubSub(...)`
   - 현재 SPOT channel 안의 publish/subscribe 역할을 켠다.
-- `AttachChannelClient(...)`
-  - 다른 channel로 send/request 할 outbound channel egress bridge 경로를 붙인다.
+- 다른 channel로 send/request 하려면 해당 client/server channel에서
+  `EnableClient(...)`를 설정한다. Spot node builder는 별도 channel client를
+  부착하지 않는다.
 - `AttachSpotPublisherClient(...)`
   - local spot 인스턴스가 없는 외부 노드가 특정 SPOT channel로 publish할
     outbound publisher client를 붙인다.

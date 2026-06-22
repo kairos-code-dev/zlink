@@ -794,19 +794,6 @@ The method returns a concrete result containing the caller-owned `Spot`
 contract and a `created` boolean. `created` is `true` only for the call that
 created the logical spot.
 
-## SpotNode Router Channel Peers
-
-Java exposes router channel peer wiring on the public `SpotNode` contract:
-
-- `connectRouterChannelPeer(channelName, endpoint)`
-- `connectRouterChannelPeerRid(channelName, peerRid, endpoint)`
-- `disconnectRouterChannelPeer(channelName, endpoint)`
-- `disconnectRouterChannelPeerRid(channelName, peerRid)`
-- `attachSpotRouteChannelDiscovery(channelName, discovery)`
-
-The runtime maps these methods to the matching native core APIs and uses the
-established Java exception mapping.
-
 ## Performance Policy
 
 Hot paths must not use reflection, dynamic method lookup, classpath scanning,

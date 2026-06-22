@@ -22,7 +22,7 @@ ZLinkModule.forRoot(
     .addSpotNode('game.node')
       .enableRouter('tcp://0.0.0.0:7401', 'game-node')
       .enablePubSub('tcp://0.0.0.0:7402', 'game-pub')
-      .attachChannelClient('price')
+      .attachSpotPublisherClient('price')
       .attachSpotPublisherClient('game.stage')
       .acceptSpotRoutesFromChannel('game.route', ['tcp://10.0.0.21:7501'])
       .configureEntrySpot({ routingId: 'entry' })
@@ -39,7 +39,7 @@ dotnet builder 메서드와 node builder 메서드의 대응은 다음과 같다
 |------|------|------|
 | `EnableRouter(...)` | `enableRouter(endpoint, routingId?)` | spot router 역할 |
 | `EnablePubSub(...)` | `enablePubSub(endpoint, routingId?)` | spot pub/sub 역할 |
-| `AttachChannelClient(name)` | `attachChannelClient(name, endpoint?)` | client/server channel client 부착 |
+| client/server channel client | `addClientServerChannel(...).enableClient(...)` | SPOT handler의 channel send/request가 공유하는 channel client 설정 |
 | `AttachSpotPublisherClient(name)` | `attachSpotPublisherClient(name, endpoint?)` | spot publisher client 부착 |
 | `AcceptSpotRoutesFromChannel(name)` | `acceptSpotRoutesFromChannel(name, endpoint?)` | router channel route 수신 |
 | `ConfigureEntrySpot()` | `configureEntrySpot(...)` | Entry Spot facade 설정 |

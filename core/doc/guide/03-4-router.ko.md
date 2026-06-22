@@ -739,9 +739,9 @@ SPOT route를 받겠다고 선언해야 한다.
 - PUB/SUB fanout channel과 DEALER mesh channel은 SPOT routed send의 anchor가 아니다.
 
 framework를 사용할 때는 `AcceptSpotRoutesFromChannel(...)`로 이 수신 관계를
-설정한다. raw core API를 직접 사용할 때는
-`zlink_spot_node_connect_router_channel_peer()` 또는 discovery 기반 attach API로
-`SpotNode`를 router channel peer에 연결한다.
+설정한다. raw core API를 직접 사용할 때는 route bridge를 만들고 router channel
+socket을 bridge에 등록한다. `SpotNode`가 외부 router channel peer를 직접
+소유하는 방식은 더 이상 공개 사용법이 아니다.
 
 > 상세 규약은 ROUTER spec
 > [router.ko.md](../spec/core/socket/router.ko.md)의 "피어 가중치",

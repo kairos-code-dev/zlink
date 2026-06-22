@@ -56,8 +56,9 @@ builder.Services.AddZLinkFramework(options =>
     var node = mesh.AddNode("stage-node");
     node.EnableRouter("tcp://0.0.0.0:9001");   // routed packet 수신
     node.EnablePubSub("tcp://0.0.0.0:9000");   // 현재 channel publish/subscribe
-    node.AttachChannelClient("orders");        // 다른 channel 로 send/request
     node.AddSpotFactory<StageSpot>();          // 이 노드가 만들 타입
+
+    options.AddClientServerChannel("orders").EnableClient();
 });
 ```
 
@@ -67,7 +68,7 @@ node 역할은 서로 독립이다.
 |-----------|------|
 | `EnableRouter(endpoint)` | 다른 SpotNode/채널에서 오는 routed packet 수신 |
 | `EnablePubSub(endpoint)` | 현재 SPOT channel 의 publish/subscribe (없으면 `Publish` 불가) |
-| `AttachChannelClient(name)` | 일반 channel 로 send/request 하는 client 부착 |
+| `AddClientServerChannel(name).EnableClient()` | 일반 channel 로 send/request 하는 client 역할 활성화 |
 | `AddSpotFactory<TSpot>()` | 이 노드가 만들 spot 타입 등록. 타입 중복은 시작 예외 |
 | `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../spec/aspnet-core-actor.ko.md)) |
 
@@ -470,7 +471,7 @@ flowchart LR
 | topic | `Publish(topic, …)` | `IZLinkSpotPublisherClient.PublishSpot(ch, topic, …)` | `AddSubscribe<T>(topic)` → `IZLinkSpotSubscriptionHandler` | `AttachSpotPublisherClient(ch)` ↔ `EnablePubSub` |
 | spot packet | `SendToSpot / RequestToSpot(spotRid, …)` | `IZLinkRouteClient.Send / Request(ch, spotRid, …)` | `AddPacket<T>` → `IZLinkSpotPacketHandler` · `IZLinkSpotRequestHandler` | spot↔spot: 양쪽 `EnableRouter` + discovery(자동)<br>외부→spot: `EnableSpotRouteEgress(ingress)` ↔ `AcceptSpotRoutesFromChannel(ingress)` |
 | actor packet | — | session `actorRef.RelayAsync(…)` | `AddActorPacket<T, TActor>` → `IZLinkSpotActorSendHandler` · `IZLinkSpotActorRequestHandler` | STREAM `AttachActorGateway(node)` ↔ `EnableRouter` + `AddEntrySpot` + `AddActorFactory` |
-| 일반 channel | `SendToChannel / RequestToChannel(name, …)` | (그 channel 의 handler, [04](04-channel-messaging.ko.md)) | 그 channel 의 handler | `AttachChannelClient(name)` ↔ 그 channel server |
+| 일반 channel | `SendToChannel / RequestToChannel(name, …)` | (그 channel 의 handler, [04](04-channel-messaging.ko.md)) | 그 channel 의 handler | `AddClientServerChannel(name).EnableClient()` ↔ 그 channel server |
 
 spot **안**에서 내보내는 코드는 한 handler 에서 세 종류를 이렇게 부른다.
 
@@ -653,8 +654,8 @@ await actorRef.RelayAsync(header, payload, ct);
 ### 일반 channel — spot 이 다른 channel 호출
 
 spot 이 비-spot channel service(예: `orders`)를 호출하는 경우다. spot **안**에서
-`SendToChannel/RequestToChannel` 을 쓰고(위 "한눈에 보기" 의 handler 예시), 노드에
-`AttachChannelClient("orders")` 가 있어야 한다. 받는 쪽은 그 channel 의 일반 handler 이고
+`SendToChannel/RequestToChannel` 을 쓰고(위 "한눈에 보기" 의 handler 예시), 해당
+client/server channel에 `EnableClient()`가 있어야 한다. 받는 쪽은 그 channel 의 일반 handler 이고
 ([04-channel-messaging](04-channel-messaging.ko.md) §3) spot handler 가 아니다. 반대
 방향(channel → spot)은 위 "spot packet" 의 외부→spot 경로를 쓴다.
 

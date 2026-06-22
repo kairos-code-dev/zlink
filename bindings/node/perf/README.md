@@ -46,9 +46,8 @@ Current alignment notes:
   stream client fanout at `1000` by default. Override it with
   `PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX` or `PERF_STREAM_NON_TCP_CLIENTS_MAX`
   when a run intentionally needs higher non-TCP concurrency.
-- SPOT benchmarks attach a dedicated ingress `PUB` with
-  `attachPubIngress()` before `createSpot()`, then publish with an explicit
-  channel name
+- SPOT benchmarks use `createPublisher()` when external code publishes into
+  the local SPOT topic plane.
 - result files are written under the shared `perf/results/{single,multi}/report`
   layout required by policy
 - benchmark code is split by pattern file, and the entry scripts select the

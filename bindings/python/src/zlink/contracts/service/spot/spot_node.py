@@ -29,26 +29,8 @@ class SpotNode(Protocol):
     def disconnect_peer_rid(self, target_node_rid):
         """Disconnect the peer identified by ``target_node_rid``."""
         ...
-    def connect_router_channel_peer(self, channel_name: str, endpoint: str):
-        """Connect to a router-channel peer on ``channel_name`` at ``endpoint``."""
-        ...
-    def connect_router_channel_peer_rid(self, channel_name: str, peer_rid, endpoint: str):
-        """Connect to a router-channel peer on ``channel_name`` by ``peer_rid`` at ``endpoint``."""
-        ...
-    def disconnect_router_channel_peer(self, channel_name: str, endpoint: str):
-        """Disconnect a router-channel peer on ``channel_name`` at ``endpoint``."""
-        ...
-    def disconnect_router_channel_peer_rid(self, channel_name: str, peer_rid):
-        """Disconnect a router-channel peer on ``channel_name`` by ``peer_rid``."""
-        ...
     def attach_discovery(self, discovery):
         """Attach a discovery service so the node auto-connects discovered peers."""
-        ...
-    def attach_spot_route_channel_discovery(self, channel_name: str, discovery):
-        """Attach a discovery service for the spot-route channel ``channel_name``."""
-        ...
-    def attach_pub_ingress(self, pub):
-        """Attach a PUB socket as a publish ingress for the node."""
         ...
     def create_route_bridge(self, options=None):
         """Create a bridge that uses caller-owned channel sockets for SPOT routing."""

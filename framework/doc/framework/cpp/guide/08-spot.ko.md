@@ -113,7 +113,6 @@ options.add_spot_mesh ("bingo.room.discovery")
   .add_node ("bingo.room.node")
   .enable_router (topology.play_spot_router_endpoint, topology.play_rid)
   .enable_pub_sub (topology.play_spot_endpoint)
-  .attach_channel_client ("bingo.api")
   .add_entry_spot<bingo_entry_spot_t> ()
   .add_spot<bingo_room_spot_t> ("bingo.room");
 ```
@@ -125,7 +124,7 @@ options.add_spot_mesh ("bingo.room.discovery")
 | `enable_pub_sub(endpoint)` | spot 토픽 pub/sub endpoint |
 | `use_discovery(channel)` | registry 기반 노드 발견 ([11장](11-registry.ko.md)) — `add_spot_mesh().add_node()` 패턴에서는 자동 적용됨 |
 | `accept_routes_from_channel(channel, endpoint)` | route mesh 채널에서 라우트 수신 ([7장 §7](07-channel-messaging.ko.md)) |
-| `attach_channel_client(name)` / `attach_publisher(name)` | spot 코드에서 쓸 채널 client/publisher 연결 |
+| channel `enable_client(...)` / `attach_publisher(name)` | spot 코드에서 쓸 채널 client/publisher 연결 |
 | `add_entry_spot<T>()` | 입장 spot 등록 (노드당 1개) |
 | `add_spot<T>(name)` | spot 타입 등록 |
 | `add_actor_factory<F>(type)` | actor factory 등록 ([9장](09-actor-session.ko.md)) |
@@ -185,7 +184,8 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
 
 노드 핸들러(채널·HTTP)와의 핵심 차이 — spot_t 메서드에는
 `request_type`/`reply_type`/`topic_name`이 없고 `dependency_types` DI도 없다.
-필요한 채널 client나 publisher는 노드 선언(`attach_channel_client`)으로 연결한다([§6](#6-spot에서-바깥으로-보내기)).
+필요한 채널 client는 channel 선언의 `enable_client(...)`로 켜고, publisher는 노드 선언의
+`attach_publisher(...)`로 연결한다([§6](#6-spot에서-바깥으로-보내기)).
 
 ## 4. entry spot: 매칭과 룸 배정
 
@@ -259,7 +259,7 @@ void configure (zlink::framework::spot_context_t &context)
 
 ## 6. spot에서 바깥으로 보내기
 
-- 노드에 `attach_channel_client("bingo.api")`를 걸어 두면 spot 코드에서 그
+- client/server channel에 `enable_client(...)`를 설정하면 spot 코드에서 그
   채널로 request/send를 보낼 수 있다.
 - `attach_publisher(channel)`로 fanout publish 경로를 연결한다.
 - 토픽 구독자(클라이언트)에게 가는 알림은 `enable_pub_sub` endpoint를 통해

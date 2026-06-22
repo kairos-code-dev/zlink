@@ -453,8 +453,6 @@ SPOT은 서비스 계층 API이며, raw socket의 누출이 아니다.
   `RequestToChannel(...)`을 사용해 목적지를 가진 send/request 이름이
   `SendToSpot(...)`, `RequestToSpot(...)`, `RequestToRouter(...)`와 정렬되도록
   한다.
-- `AttachPubIngress(IPubSocket)`는 외부 raw `PUB`을 ingress로 등록한다. 이는
-  `Spot.Publish(...)`와는 분리된다.
 - Actor location과 stream session binding은 서로 독립적이다. actor가 사용자
   Spot에 join하기 위해 bound stream session이 반드시 필요하지는 않다.
 
@@ -541,15 +539,3 @@ Actor 또는 Spot route를 resolve한 뒤, 기존 Spot routed send/request API�
 `DiscoveryRouteKind` 값은 코어와 같이 `Invalid = 0`, `Actor = 1`,
 `SpotName = 2`, `ActorSession = 3`이다. `ResolveRoute(...)`는 `OwnerRoutingId`와
 route `Value`를 `Message`로 담은 `DiscoveryRoute`를 반환한다.
-
-## SpotNode Router Channel Peers
-
-`.NET`은 router channel peer 연결을 공개 `ISpotNode` 계약 표면에
-노출한다: `ConnectRouterChannelPeer(string channelName, string endpoint)`,
-`ConnectRouterChannelPeerRid(string channelName, RoutingId peerRid, string endpoint)`,
-`DisconnectRouterChannelPeer(string channelName, string endpoint)`,
-`DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid)`,
-`AttachSpotRouteChannelDiscovery(string channelName, IDiscovery discovery)`.
-런타임 구현은 이 메서드들을 코어 C API로 직접 사상한다. 프레임워크 코드는
-이 공개 메서드만 호출한다. 이 통합에 대해 reflection, `NonPublic` 조회,
-추가적인 `InternalsVisibleTo` 접근은 허용하지 않는다.

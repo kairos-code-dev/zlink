@@ -78,43 +78,9 @@ public interface ISpotNode : IDisposable, IAsyncDisposable
     /// </summary>
     void DisconnectPeerRid(RoutingId targetNodeRid);
     /// <summary>
-    /// Connects to the endpoint.
-    /// </summary>
-    [Obsolete("Use CreateRouteBridge() and AttachRouterChannel() instead.")]
-    void ConnectRouterChannelPeer(string channelName, string endpoint);
-    /// <summary>
-    /// Connects to the endpoint.
-    /// </summary>
-    [Obsolete("Use CreateRouteBridge(), AttachRouterChannel(), and SetTargetNode() instead.")]
-    void ConnectRouterChannelPeerRid(
-        string channelName,
-        RoutingId peerRid,
-        string endpoint);
-    /// <summary>
-    /// Disconnects from the endpoint.
-    /// </summary>
-    [Obsolete("Use the caller-owned route channel socket lifecycle instead.")]
-    void DisconnectRouterChannelPeer(string channelName, string endpoint);
-    /// <summary>
-    /// Disconnects from the endpoint.
-    /// </summary>
-    [Obsolete("Use the caller-owned route channel socket lifecycle instead.")]
-    void DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid);
-    /// <summary>
     /// Attaches a discovery service.
     /// </summary>
     void AttachDiscovery(IDiscovery discovery);
-    /// <summary>
-    /// Attaches discovery for a spot route channel.
-    /// </summary>
-    [Obsolete("Use CreateRouteBridge() and AttachRouterChannel() instead.")]
-    void AttachSpotRouteChannelDiscovery(string channelName,
-        IDiscovery discovery);
-    /// <summary>
-    /// Attaches a publisher ingress socket.
-    /// </summary>
-    [Obsolete("Use CreatePublisher() for local SPOT topic publish.")]
-    void AttachPubIngress(IPubSocket pub);
     /// <summary>
     /// Creates a route bridge that borrows channel sockets owned by the caller.
     /// </summary>

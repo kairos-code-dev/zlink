@@ -87,9 +87,8 @@ existing owner is closed and its slot is released.
 - `new SpotNode(ctx)`
 - `new Spot(node)`
 
-`SpotNode` also exposes `attachChannelDealer(discovery, dealer)`,
-`attachChannelDealerManual(channelName, dealer)`,
-`attachPubIngress(pub)`.
+`SpotNode` exposes `createRouteBridge()` for caller-owned channel sockets and
+`createPublisher()` for publishing into the local SPOT topic plane.
 
 `Spot` is service-aware and uses explicit service names on the data plane:
 `publish(serviceName, topic, ...)`, `sendChannel(channelName, ...)`,

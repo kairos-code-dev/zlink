@@ -504,13 +504,3 @@ Rust는 discovery route table을 `Discovery::bind_route(...)`,
 `RouteKind` 값은 코어와 같이 `Invalid = 0`, `Actor = 1`, `SpotName = 2`,
 `ActorSession = 3`이다. `resolve_route(...)`는 owner routing id와 route 값을
 `Message`로 담은 `DiscoveryRoute`를 반환한다.
-
-## SpotNode Router Channel Peer
-
-Rust는 router channel peer 연결을 공개 `SpotNode` 메서드로 노출한다.
-`connect_router_channel_peer(channel_name, endpoint)`,
-`connect_router_channel_peer_rid(channel_name, peer_rid, endpoint)`,
-`disconnect_router_channel_peer(channel_name, endpoint)`,
-`disconnect_router_channel_peer_rid(channel_name, peer_rid)`,
-`attach_spot_route_channel_discovery(channel_name, discovery)`. 이 메서드들은
-매칭되는 core C API를 호출하고, 확립된 Rust 에러 매핑을 사용한다.

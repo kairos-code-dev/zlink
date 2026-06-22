@@ -472,8 +472,6 @@ SPOT is a service-layer API, not a raw socket leak.
 - Channel-targeted SPOT operations use `SendToChannel(...)` and
   `RequestToChannel(...)` so destination-bearing send/request names align with
   `SendToSpot(...)`, `RequestToSpot(...)`, and `RequestToRouter(...)`.
-- `AttachPubIngress(IPubSocket)` registers an external raw `PUB` as ingress;
-  it is separate from `Spot.Publish(...)`.
 - Actor location and stream session binding are independent. A bound stream
   session is not required for an actor to join a user Spot.
 
@@ -564,16 +562,3 @@ routed send/request APIs.
 `SpotName = 2`, and `ActorSession = 3`. `ResolveRoute(...)` returns a
 `DiscoveryRoute` containing `OwnerRoutingId` and the route `Value` as a
 `Message`.
-
-## SpotNode Router Channel Peers
-
-`.NET` exposes router channel peer wiring on the public `ISpotNode` contract
-surface: `ConnectRouterChannelPeer(string channelName, string endpoint)`,
-`ConnectRouterChannelPeerRid(string channelName, RoutingId peerRid, string endpoint)`,
-`DisconnectRouterChannelPeer(string channelName, string endpoint)`,
-`DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid)`, and
-`AttachSpotRouteChannelDiscovery(string channelName, IDiscovery discovery)`.
-The runtime implementation maps these methods directly to the core C APIs.
-Framework code must call these public methods only; reflection, `NonPublic`
-lookup, and extra `InternalsVisibleTo` access are not allowed for this
-integration.

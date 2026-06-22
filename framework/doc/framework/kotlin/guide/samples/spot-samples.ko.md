@@ -22,11 +22,12 @@ class SpotConfig {
             val spot = mesh.addNode("stage-node")
             spot.enableRouter("tcp://0.0.0.0:9000")
             spot.enablePubSub("tcp://0.0.0.0:9001")
-            spot.attachChannelClient("profile")
             spot.attachSpotPublisherClient("game.stage")
             spot.addEntrySpot(GameEntrySpot::class.java)
             spot.addSpotFactory(StageSpot::class.java)
             spot.addSpotFactory(RoomSpot::class.java)
+
+            options.addClientServerChannel("profile").enableClient()
         }
 }
 ```

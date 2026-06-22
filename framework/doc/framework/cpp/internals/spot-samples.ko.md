@@ -26,7 +26,6 @@ app.add_zlink_framework([](auto &options) {
       .add_node("stage-spot-node")
       .enable_pub_sub("tcp://0.0.0.0:9000")
       .enable_actor_gateway()
-      .attach_channel_client("profile")
       .attach_publisher("game.stage")
       .add_entry_spot<player_entry_spot_t>()
       .add_actor_factory<player_actor_factory_t>("player")
@@ -42,13 +41,12 @@ options.spot_node("stage-spot-node")
   .enable_router("tcp://0.0.0.0:9000")
   .connect_router("tcp://127.0.0.1:9001")
   .enable_pub_sub("tcp://0.0.0.0:9002")
-  .connect_pub_sub("tcp://127.0.0.1:9003")
-  .attach_channel_client("profile", "tcp://127.0.0.1:7001");
+  .connect_pub_sub("tcp://127.0.0.1:9003");
 ```
 
-router/pub-sub manual endpoint는 SPOT node 역할의 peer이고, attached channel manual
-endpoint는 channel client peer다. sample에서는 둘을 분리해 적어야 실제 topology 의도가
-흐려지지 않는다.
+router/pub-sub manual endpoint는 SPOT node 역할의 peer이고, channel client endpoint는
+channel 선언의 `enable_client(...)`에서 다룬다. sample에서는 둘을 분리해 적어야 실제
+topology 의도가 흐려지지 않는다.
 
 ## 2. spot 객체와 publish
 

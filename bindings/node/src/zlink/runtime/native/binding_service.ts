@@ -178,7 +178,6 @@ export interface ServiceNativeBinding {
     flags: number
   ) => void;
   spotNodeActors: (node: NativeHandle) => SpotNodeActorEntryRaw[];
-  spotNodeAttachPubIngress: (node: NativeHandle, pub: NativeHandle) => void;
   spotRouteBridgeNew: (ctx: NativeHandle, node: NativeHandle) => NativeHandle;
   spotRouteBridgeClose: (bridge: NativeHandle) => void;
   spotRouteBridgeAttachDealerChannel: (
@@ -238,41 +237,15 @@ export interface ServiceNativeBinding {
   spotNodePublisherClose: (publisher: NativeHandle) => void;
   spotNodeProcessRoutedRouter: (node: NativeHandle) => void;
   spotNodeTryProcessRoutedRouterParts: (node: NativeHandle, parts: unknown) => boolean;
-  spotNodeAttachRouterChannelDiscovery: (
-    node: NativeHandle,
-    channelName: string,
-    discovery: NativeHandle
-  ) => void;
   spotNodeConnectPeerPub: (node: NativeHandle, endpoint: string) => void;
   spotNodeConnectPeerRidPub: (
     node: NativeHandle,
     targetNodeRid: Buffer,
     endpoint: string
   ) => void;
-  spotNodeConnectRouterChannelPeer: (
-    node: NativeHandle,
-    channelName: string,
-    endpoint: string
-  ) => void;
-  spotNodeConnectRouterChannelPeerRid: (
-    node: NativeHandle,
-    channelName: string,
-    peerRid: Buffer,
-    endpoint: string
-  ) => void;
   spotNodeDestroy: (node: NativeHandle) => void;
   spotNodeDisconnectPeerPub: (node: NativeHandle, endpoint: string) => void;
   spotNodeDisconnectPeerRidPub: (node: NativeHandle, targetNodeRid: Buffer) => void;
-  spotNodeDisconnectRouterChannelPeer: (
-    node: NativeHandle,
-    channelName: string,
-    endpoint: string
-  ) => void;
-  spotNodeDisconnectRouterChannelPeerRid: (
-    node: NativeHandle,
-    channelName: string,
-    peerRid: Buffer
-  ) => void;
   spotNodeEntrySpot: (node: NativeHandle) => NativeHandle;
   spotNodeGetOption: (node: NativeHandle, option: number) => Buffer;
   spotNodeInternalSockets: (node: NativeHandle, filter?: unknown) => SpotNodeSocketEntryRaw[];

@@ -50,6 +50,7 @@
     <Compile Include="Runtime/CustomSerializerEnvelopeTests.cs" />
     <Compile Include="Runtime/EnvelopeCodecTests.cs" />
     <Compile Include="Runtime/HandlerResultAwaiterTests.cs" />
+    <Compile Include="Runtime/MessageFlowTracerTests.cs" />
     <Compile Include="Runtime/SerialExecutorTests.cs" />
     <Compile Include="Runtime/SpotActorHandlerRegistryTests.cs" />
     <Compile Include="Runtime/SpotHandlerInvokerTests.cs" />

@@ -278,8 +278,8 @@ local handler 없이 `ZLinkChannelClient` 만 쓰는 앱도 똑같이 가능하�
 ZLinkModule.forRoot(
   zlinkFramework()
     .options({
-      // 예제용 짧은 값. requestTimeoutMs의 실제 기본은 30000(30초)다.
-      requestTimeoutMs: 1000,
+      // 기본 30000(30초)와 다르게 두고 싶을 때만 지정한다.
+      requestTimeoutMs: 5_000,
     })
     .codecs()
       .use(zlinkProtobufCodec())
@@ -298,8 +298,8 @@ ZLinkModule.forRoot(
 ZLinkModule.forRoot(
   zlinkFramework()
     .options({
-      // 예제용 짧은 값. requestTimeoutMs의 실제 기본은 30000(30초)다.
-      requestTimeoutMs: 1000,
+      // 기본 30000(30초)와 다르게 두고 싶을 때만 지정한다.
+      requestTimeoutMs: 5_000,
     })
     .codecs()
       .use(zlinkProtobufCodec())

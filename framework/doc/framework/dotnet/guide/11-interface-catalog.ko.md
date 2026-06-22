@@ -215,7 +215,6 @@ await events
 `AddZLinkFramework(options => ...)` 의 `options` 가 구현하는 표면이다.
 
 ```csharp
-options.DefaultTimeout = TimeSpan.FromSeconds(5);
 options.Codecs.AddJson();
 options.AddHandlersFromAssemblyOf<Program>();
 options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");

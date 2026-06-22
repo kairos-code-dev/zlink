@@ -530,6 +530,7 @@ public interface ClientServerChannelBuilder {
     ClientServerChannelBuilder serverRoutingId(RoutingId routingId);
     ClientServerChannelBuilder enableClient();
     ClientServerChannelBuilder enableClient(String endpoint);
+    ClientServerChannelBuilder setDefaultRequestTimeout(Duration timeout);
     ClientServerChannelBuilder addHandlerGroup(String groupName);
     <THandler extends ZLinkSendHandler<TMessage>, TMessage> void addSendHandler(
         Class<THandler> handlerType,
@@ -559,14 +560,16 @@ public interface FanoutChannelBuilder {
 public interface DealerMeshChannelBuilder {
     DealerMeshChannelBuilder enableClient();
     DealerMeshChannelBuilder enableClient(String endpoint);
+    DealerMeshChannelBuilder setDefaultRequestTimeout(Duration timeout);
     DealerMeshChannelBuilder addHandlerGroup(String groupName);
 }
 
 public interface RouteMeshChannelBuilder {
     RouteMeshChannelBuilder enableServer(String endpoint);
-    ZLinkRouteConfigBuilder configureRouting();
+    RouteMeshChannelBuilder setRoutingId(RoutingId routingId);
     RouteMeshChannelBuilder enableClient();
     RouteMeshChannelBuilder enableClient(String endpoint);
+    RouteMeshChannelBuilder setDefaultRequestTimeout(Duration timeout);
     RouteMeshChannelBuilder addHandlerGroup(String groupName);
     <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage> void addSendHandler(
         Class<THandler> handlerType,
@@ -581,13 +584,9 @@ public interface RouteMeshChannelBuilder {
     RouteMeshChannelBuilder enableSpotRouteEgress(String targetSpotNodeChannelName);
 }
 
-public interface ZLinkRouteConfigBuilder {
-    void setRoutingId(RoutingId routingId);
-}
-
 public interface ZLinkFrameworkOptions {
-    Duration defaultTimeout();
-    void setDefaultTimeout(Duration timeout);
+    Duration defaultRequestTimeout();
+    void setDefaultRequestTimeout(Duration timeout);
     ZLinkCodecRegistryBuilder codecs();
     void addHandlersFromPackageOf(Class<?> markerType);
     ZLinkMetadataPolicyBuilder configureMetadata();
@@ -1106,6 +1105,9 @@ send/publish는 기본 async submit이다. async submit과 backpressure의 공�
 [framework 공통 정책](../../common/spec/async-execution-policy.ko.md)을 따른다.
 request도 request packet을 보내는 단계에서는 같은 async submit 경로를 사용하고,
 reply 대기는 request timeout이 따로 정한다.
+호출별 `timeout(...)`이 가장 먼저 적용되고, 그 다음 채널별
+`setDefaultRequestTimeout(...)`, 마지막으로 framework 전역
+`setDefaultRequestTimeout(...)` 값이 적용된다. 전역 기본값은 30초다.
 
 packet key 해석 규칙은 아래 순서를 기본으로 본다.
 

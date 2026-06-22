@@ -18,8 +18,10 @@ await client
   .submit();
 ```
 
-`timeout(...)` 은 reply 대기 시간을 뜻한다. submit 지연과 reply timeout 은 별도
-정책으로 다룬다.
+`timeout(...)` 은 reply 대기 시간을 뜻한다. 호출별 timeout이 있으면 그 값을 쓰고,
+없으면 channel builder의 `setDefaultRequestTimeout(...)`, 마지막으로 framework 전역
+`requestTimeoutMs` 값을 사용한다. 전역 기본값은 30000ms(30초)다. submit 지연과
+reply timeout 은 별도 정책으로 다룬다.
 
 ## 2. send
 
@@ -97,7 +99,37 @@ zlinkFramework()
     .addRequestHandler('ActorLookup', ActorLookupRouteHandler);
 ```
 
-## 5. 커스텀 codec (Avro 예시)
+## 5. Route mesh 호출
+
+route mesh 는 target node `RoutingId` 를 application 이 직접 알고 있을 때만 쓴다.
+`ZLinkRouteClient` 는 특정 channel 하나에 묶인 client 가 아니며, 호출할 때 route
+channel 이름과 target `RoutingId` 를 함께 받는다. route mesh channel 이 여러 개 있어도
+호출 인자의 channel 이름으로 어느 경로를 쓸지 분명하게 정한다.
+
+```ts
+const target = 'play-node-1';
+
+const allocated = await routeClient
+  .request('play.route', target, new AllocateRoom('alice'))
+  .submit();
+```
+
+같은 route channel 로 반복 호출하면 application 코드에서 작은 wrapper 를 만들어도 된다.
+이 wrapper 는 framework API 가 아니라 application 이 정한 이름이다. 그래서 업무 코드는
+매번 channel 문자열을 반복하지 않고, wrapper 내부에서 어떤 route channel 로 나가는지만
+한 곳에 둔다.
+
+```ts
+class PlayRoutes {
+  constructor(private readonly routes: ZLinkRouteClient) {}
+
+  request(request: AllocateRoom, targetNodeRid: RoutingId): ZLinkRequestCall {
+    return this.routes.request('play.route', targetNodeRid, request);
+  }
+}
+```
+
+## 6. 커스텀 codec (Avro 예시)
 
 기본 제공 codec(JSON/Protobuf/MessagePack) 외의 직렬화 포맷이 필요하면 codec registry에
 custom serializer를 등록한다. serializer는 업무 객체 ↔ `Message`(byte payload) 변환만

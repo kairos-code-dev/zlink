@@ -463,7 +463,6 @@ placement 코드가 먼저 spot rid 를 결정해 두어야 한다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = TimeSpan.FromSeconds(1);
 
     var mesh = options.AddSpotMesh("game.stage");
     mesh.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
@@ -473,7 +472,6 @@ builder.Services.AddZLinkFramework(options =>
 
     var routerSocket = node.ConfigureRouterSocket();
     routerSocket.MaxMessageSize = 1024 * 1024;
-    routerSocket.SendTimeout = TimeSpan.FromMilliseconds(200);
     routerSocket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
     routerSocket.SendHighWaterMark = 10_000;
     routerSocket.ReceiveHighWaterMark = 10_000;
@@ -486,7 +484,6 @@ builder.Services.AddZLinkFramework(options =>
     node.EnablePubSub("tcp://0.0.0.0:9000");
     var publisher = node.ConfigurePubSubPublisher();
     publisher.SendHighWaterMark = 50_000;
-    publisher.SendTimeout = TimeSpan.FromMilliseconds(100);
     publisher.NoDrop = true;
 
     var subscriber = node.ConfigurePubSubSubscriber();
@@ -508,7 +505,6 @@ builder.Services.AddZLinkFramework(options =>
     node.AttachSpotPublisherClient("game.stage");
     var publishSocket = node.ConfigureSpotPublisherClientSocket("game.stage");
     publishSocket.SendHighWaterMark = 20_000;
-    publishSocket.SendTimeout = TimeSpan.FromMilliseconds(100);
     publishSocket.Immediate = true;
 
     node.AddSpotFactory<StageSpot>();

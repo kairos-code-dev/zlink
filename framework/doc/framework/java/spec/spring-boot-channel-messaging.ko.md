@@ -154,7 +154,7 @@ binding은 framework 내부 dispatch를 사용하고, remote actor binding은 st
 ```java
 RouteMeshChannelBuilder route = framework.addRouteMeshChannel("play-route")
     .enableServer("tcp://0.0.0.0:7300");
-route.configureRouting().setRoutingId(RoutingId.from("play-node"));
+route.setRoutingId(RoutingId.from("play-node"));
 route.enableSpotRouteEgress("game.stage");
 ```
 

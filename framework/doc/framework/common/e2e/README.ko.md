@@ -4,35 +4,40 @@
 
 # Framework Scenario E2E 테스트
 
-이 문서는 ZLink Framework의 언어별 구현을 **실제 배포처럼 생긴 서버 구성** 위에서
-검증하는 e2e 테스트를 정의한다. 여기서 말하는 e2e는 contract 테스트나 샘플과 다르다.
-contract 테스트는 개별 API 계약을 in-process로 빠르게 고정하고, 샘플은 사용자가 따라 할
-정상 흐름을 보여 준다. e2e는 **실 registry, 실 resolve, 다중 provider, 실제 프로세스
-경계**가 모두 붙은 배포 형상에서 기능이 의도대로 도는지를 본다.
+이 문서는 ZLink Framework의 언어별 구현이 **실제 배포와 똑같이 생긴 서버 위에서도 제대로
+도는지**를 확인하는 e2e 테스트를 정리한 것이다.
+
+같은 검증이라도 e2e는 contract 테스트나 샘플과 결이 다르다.
+
+- contract 테스트는 API 하나하나의 약속을 in-process로 빠르게 못 박는다.
+- 샘플은 사용자가 그대로 따라 할 수 있는 정상 흐름을 보여 준다.
+- e2e는 거기서 한발 더 나아간다. 실제 registry를 띄우고, 주소를 실제로 resolve하고, provider를
+  여러 개 두고, 프로세스 경계까지 진짜로 나눈 상태 — 즉 **배포 현장과 같은 조건**에서 기능이
+  의도대로 도는지를 본다.
 
 ## 1. 분류 원칙 — config 중심
 
-e2e는 기능을 평면 나열하지 않는다. **realistic한 서버 구성(config)을 단위로** 두고, 그 위에서
-세부 동작을 실 사용자처럼 검증한다. 각 config는 sample 프로젝트처럼 독립 실행 앱이며,
-서버 구성을 한 번 띄우고 여러 client 시나리오를 그 위에서 실행한다.
+e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 생긴 서버 구성(config)을 하나의
+단위로** 두고, 그 위에서 세부 동작을 실 사용자처럼 검증한다. 각 config는 sample 프로젝트처럼
+독립 실행 앱이고, 서버 구성을 한 번 띄운 뒤 여러 client 시나리오를 그 위에서 돌린다.
 
 ### 선정 기준
 
-시나리오는 "기존 테스트와 겹치지 않는가"로 고르지 않는다. **realistic한 배포 구성에서
-실 사용자가 하는 흐름인가**로 고른다.
+시나리오는 "기존 테스트와 안 겹치는가"로 고르지 않는다. **현실적인 배포 구성에서 실 사용자가
+하는 흐름인가**로 고른다.
 
-- 기존 unit/contract/in-process 테스트와 단언이 겹쳐도 된다. 차별점은 단언의 새로움이
-  아니라 현실적인 배포 컨텍스트와 sample 수준 public API 사용이다.
-- 같은 기능이라도 실 registry·실 resolve·다중 노드·프로세스 경계가 끼면 다르게 동작할 수
-  있고, 그 지점을 본다.
+- 기존 unit/contract/in-process 테스트와 단언이 겹쳐도 된다. 차별점은 단언의 새로움이 아니라
+  현실적인 배포 컨텍스트와 sample 수준 public API 사용이다.
+- 같은 기능이라도 실 registry·실 resolve·다중 노드·프로세스 경계가 끼면 다르게 동작할 수 있다.
+  바로 그 지점을 본다.
 
 ### 코드 작성 규칙
 
-- 각 client 시나리오는 helper 뒤로 messaging을 숨기지 않는다. **public contract 함수를
-  직접 호출**해서 실제 API 사용이 한눈에 들어오게 작성한다.
+- 각 client 시나리오는 messaging을 helper 뒤로 숨기지 않는다. **public contract 함수를 직접
+  호출**해서 실제 API 사용이 한눈에 들어오게 쓴다.
 - 검증은 샘플처럼 `ensure` 구문으로 직접 표현한다.
-- 연결 부트스트랩(host 구성)은 샘플의 `HostFactory`/`CreateClient`처럼 얇게 분리할 수
-  있지만, request/send/publish/resolve 같은 framework 호출은 시나리오 안에 직접 둔다.
+- 연결 부트스트랩(host 구성)은 샘플의 `HostFactory`/`CreateClient`처럼 얇게 분리해도 되지만,
+  request/send/publish/resolve 같은 framework 호출은 시나리오 안에 직접 둔다.
 
 ## 2. 표준 프로젝트 구조
 
@@ -49,19 +54,19 @@ framework/languages/dotnet/e2e/RegistryMessaging/
 `-- SCENARIOS 문서는 framework/doc/framework/common/e2e/config-*.ko.md
 ```
 
-실행은 sample smoke와 비슷하다. test framework가 같은 프로세스 안에서 host를 직접 만드는
-방식이 아니라, `run_e2e.*`가 서버 프로세스를 순서대로 띄우고 포트 readiness를 확인한 뒤
-client 시나리오를 실행한다. scale·failover 같은 시나리오는 같은 스크립트가 추가 프로세스를
-띄우거나 종료한다.
+실행 방식은 sample smoke와 비슷하다. test framework가 같은 프로세스 안에서 host를 직접 만드는
+게 아니라, `run_e2e.*`가 서버 프로세스를 순서대로 띄우고 포트 readiness를 확인한 뒤 client
+시나리오를 실행한다. scale·failover 같은 시나리오는 같은 스크립트가 프로세스를 추가로 띄우거나
+종료한다.
 
-client는 framework public client(channel/route), `zlink-http client`, public DI/container
-API만 사용한다. 테스트를 쉽게 만들려고 framework 내부 helper, private API, reflection,
-server/test-only state에 직접 접근하지 않는다.
+client는 framework public client(channel/route), `zlink-http client`, public DI/container API만
+쓴다. 테스트를 쉽게 만들겠다고 framework 내부 helper, private API, reflection, server/test-only
+state에 손대지 않는다.
 
 ## 3. config 목록
 
-각 config는 realistic한 서버 구성 하나를 단위로, 그 위에서 messaging·연결·spot·codec 등
-세부 동작을 검증한다.
+각 config는 현실적인 서버 구성 하나를 단위로, 그 위에서 messaging·연결·spot·codec 등 세부
+동작을 검증한다.
 
 | Config | 서버 구성 | 다루는 것 |
 |--------|-----------|-----------|
@@ -77,24 +82,24 @@ server/test-only state에 직접 접근하지 않는다.
 
 | 우선순위 | 의미 | 구현 기준 |
 |----------|------|-----------|
-| `P0` | config의 핵심 기능을 주장하려면 반드시 필요한 검증 | 모든 언어에서 구현한다 |
+| `P0` | config의 핵심 기능을 주장하려면 반드시 있어야 하는 검증 | 모든 언어에서 구현한다 |
 | `P1` | 특정 기능을 지원한다고 문서화한 언어가 통과해야 하는 검증 | 지원 언어에서 구현한다 |
 | `P2` | 운영 규모·rolling update처럼 비용이 큰 검증 | release gate에 선택 적용, 미구현 이유를 남긴다 |
 
 ## 5. 공통 실행 원칙
 
-- 테스트는 독립된 임시 작업 디렉토리와 로그 디렉토리를 사용한다.
-- 서버 프로세스는 config가 선언한 역할대로 띄운다. registry가 필요한 config는 registry도
-  별도 프로세스로 띄운다.
+- 테스트는 독립된 임시 작업 디렉토리와 로그 디렉토리를 쓴다.
+- 서버 프로세스는 config가 선언한 역할대로 띄운다. registry가 필요한 config는 registry도 별도
+  프로세스로 띄운다.
 - port, routing id, Redis key prefix, store path는 실행마다 격리한다.
-- 서버 준비는 sleep만으로 판단하지 않고 포트 readiness 또는 readiness marker로 확인한다.
-- 성공 기준은 client 반환값, server evidence endpoint, 로그 marker를 조합한다. registry를
-  쓰는 config는 topology도 성공 기준에 포함한다.
-- 실패 시 각 프로세스의 stdout/stderr, framework 로그, client 마지막 요청 정보를 남긴다.
-- 실패하면 먼저 원인 레이어를 분리한다. `core-capi`, `bindings`, `framework`, `sample`,
-  `harness` 중 어디인지 evidence로 판정하고, 수정한 레이어에 회귀 테스트를 둔다. framework
-  테스트를 통과시키려고 C API나 bindings 버그를 framework에서 우회하지 않는다.
-- 같은 시나리오는 언어별 public API 모양만 달라지고 의미와 marker는 같아야 한다.
+- 서버 준비 여부는 sleep만으로 판단하지 않고, 포트 readiness 또는 readiness marker로 확인한다.
+- 성공 기준은 client 반환값, server evidence endpoint, 로그 marker를 조합한다. registry를 쓰는
+  config는 topology도 성공 기준에 넣는다.
+- 실패하면 각 프로세스의 stdout/stderr, framework 로그, client 마지막 요청 정보를 남긴다.
+- 실패 시 먼저 원인 레이어를 분리한다. `core-capi`, `bindings`, `framework`, `sample`,
+  `harness` 중 어디인지 evidence로 판정하고, 고친 레이어에 회귀 테스트를 둔다. framework 테스트를
+  통과시키려고 C API나 bindings 버그를 framework에서 우회하지 않는다.
+- 같은 시나리오는 언어별 public API 모양만 달라지고, 의미와 marker는 같아야 한다.
 
 ## 6. 시나리오 ID 규칙
 
@@ -110,8 +115,7 @@ ID는 `config 접두사 - 트랙 - 번호`를 쓴다. 예: `RM-A1`(Registry mess
 | `DR` | Discovery·Registry HA |
 | `MON` | Monitoring |
 
-테스트 이름은 언어 관례에 맞게 바꿀 수 있지만, 리포트에는 config id와 시나리오 id가
-드러나야 한다.
+테스트 이름은 언어 관례에 맞게 바꿔도 되지만, 리포트에는 config id와 시나리오 id가 드러나야 한다.
 
 ## 7. 완료 기준
 

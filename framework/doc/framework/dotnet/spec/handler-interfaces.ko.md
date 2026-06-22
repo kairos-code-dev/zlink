@@ -1960,15 +1960,13 @@ timeout 은 request 와 send 간에 다르게 다룬다.
 - `Publish(...).Async(...)` 도 동일한 의미다. subscriber 의 handler
   완료나 subscriber 수신을 기다리지 않는다. local publish transport 에
   submit 되는 시점까지만 대기한다.
-- send backpressure 의 대기 한계는 builder 가 아니라, channel 또는
+- send backpressure 의 대기 한계는 builder 가 아니라, framework 기본값 또는
   socket 의 `SendTimeout` 옵션을 따른다.
-- framework channel/socket option 의 `SendTimeout` 기본값은
-  `TimeSpan.FromMilliseconds(1000)` 이며, core socket 기본값(1000ms)과
-  동일하다. async submit runtime 은 core socket 의 기본값을 직접
-  사용하지 않고, framework 가 socket/channel option 에 설정한 resolved
-  `SendTimeout` 값을 읽는다. 사용자가
-  `SendTimeout = null` 로 명시한 경우에 한해, core `-1` 과 같은 무한 대기
-  로 본다.
+- framework 의 기본 send backpressure 한계는 core socket 기본값과 같은
+  1000ms 이다. 개별 socket 의 `SendTimeout` 이 설정되어 있으면 그 값을
+  우선 사용하고, 없으면 framework 의 `DefaultSocketSendTimeout` 을 사용한다.
+  사용자가 `DefaultSocketSendTimeout = null` 로 명시한 경우에 한해 무한
+  대기로 본다.
 - `RequestToChannel(...).Async<TReply>(...)` 도 마찬가지다. request packet 을
   내보내는 단계에서는, `SendToChannel(...).Async(...)` 와 동일한 nonblocking
   submit 경로를 사용한다.
@@ -2495,6 +2493,16 @@ public interface IZLinkClientServerChannelBuilder
 
     IZLinkClientServerChannelBuilder EnableClient(string endpoint);
 
+    IZLinkSocketConfig ConfigureServerSocket();
+
+    IZLinkRouteConfig ConfigureServerRouting();
+
+    IZLinkSocketConfig ConfigureClientSocket();
+
+    IZLinkOutboundRouteConfig ConfigureClientRouting();
+
+    IZLinkClientServerChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout);
+
     IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName);
 
     IZLinkClientServerChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
@@ -2537,6 +2545,8 @@ public interface IZLinkDealerMeshChannelBuilder
 
     IZLinkDealerMeshChannelBuilder EnableClient(string endpoint);
 
+    IZLinkDealerMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout);
+
 }
 
 public interface IZLinkRouteMeshChannelBuilder
@@ -2549,7 +2559,9 @@ public interface IZLinkRouteMeshChannelBuilder
 
     IZLinkSocketConfig ConfigureSocket();
 
-    IZLinkRouteConfig ConfigureRouting();
+    IZLinkRouteMeshChannelBuilder SetRoutingId(RoutingId routingId);
+
+    IZLinkRouteMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout);
 
     IZLinkRouteMeshChannelBuilder AddHandlerGroup(string groupName);
 
@@ -2571,7 +2583,9 @@ public interface IZLinkRouteMeshChannelBuilder
 
 public interface IZLinkFrameworkOptions
 {
-    TimeSpan DefaultTimeout { get; set; }
+    TimeSpan DefaultRequestTimeout { get; set; }
+
+    TimeSpan? DefaultSocketSendTimeout { get; set; }
 
     IZLinkCodecRegistryBuilder Codecs { get; }
 
@@ -2586,12 +2600,19 @@ public interface IZLinkFrameworkOptions
 }
 ```
 
-`DefaultTimeout`의 기본값은 30초다.
+`DefaultRequestTimeout`의 기본값은 30초다. `DefaultSocketSendTimeout`의 기본값은
+core socket 기본 send timeout과 같은 1000ms다. 채널별 기본 request timeout은
+`SetDefaultRequestTimeout(...)`으로 지정할 수 있다.
 
 각 함수의 의미는 다음과 같다.
 
-- `DefaultTimeout`
+- `DefaultRequestTimeout`
   - request 호출이 별도 timeout을 지정하지 않았을 때 쓰는 framework 기본값이다.
+    호출별 `Timeout(...)`이 가장 먼저 적용되고, 그 다음 채널별
+    `SetDefaultRequestTimeout(...)`, 마지막으로 이 전역 기본값이 적용된다.
+- `DefaultSocketSendTimeout`
+  - socket 이 바로 보낼 수 없을 때 async submit 이 기다릴 기본 backpressure
+    한계다. request reply 대기 시간과는 다르다.
 - `Codecs`
   - protobuf/json/messagepack 같은 codec provider를 framework registry에 등록하는
     진입점이다.

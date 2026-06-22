@@ -4,45 +4,53 @@
 
 # Config 1 — Registry 기반 messaging 배포
 
-이 문서는 첫 e2e config의 시나리오를 정의한다. config는 실제 배포처럼 생긴 서버 구성을
-한 번 띄우고, 그 위에서 messaging과 연결·rid resolve를 실 사용자처럼 검증하는 단위다.
+첫 e2e config다. 실제 배포와 똑같이 생긴 서버를 한 번 띄워 두고, 그 위에서 messaging과
+연결·rid resolve가 실제 사용자가 쓰듯 잘 도는지를 확인한다.
 
 ## 1. 목적과 범위
 
-실 배포 형상(실 registry, 실 resolve, 다중 provider, 실제 프로세스 경계) 위에서
-messaging과 연결·rid resolve를 검증한다. 기존 unit/contract 테스트와 단언이 겹쳐도 된다 —
-차별점은 단언의 새로움이 아니라 현실적인 배포 컨텍스트와 sample 수준 public API 사용이다.
-각 시나리오는 helper 없이 public contract를 직접 호출하고 `ensure`로 단언해, 실 사용 흐름이
-한눈에 들어오게 작성한다.
+확인하려는 것은 단순하다. 실 registry를 띄우고, 주소를 실제로 resolve하고, provider를 여러 개
+두고, 프로세스 경계까지 진짜로 나눈 상태 — 즉 **배포 현장과 같은 조건**에서 messaging과
+연결·rid resolve가 의도대로 도는가.
 
-범위 밖(다른 config로): codec, stream, spot/actor, resilience 세부. 이 config는 messaging
-+ 연결/resolve에 집중한다.
+기존 unit/contract 테스트와 단언이 겹쳐도 괜찮다. 차별점은 "새로운 단언"이 아니라 "현실적인
+배포 컨텍스트 + 샘플 수준의 public API 사용"이다. 그래서 각 시나리오는 helper 없이 public
+contract를 직접 호출하고 `ensure`로 단언해서, 실제 사용 흐름이 한눈에 보이게 쓴다.
+
+여기서 다루지 않는 것(다른 config로): codec, stream, spot/actor, resilience 세부. 이 config는
+messaging + 연결/resolve에만 집중한다.
 
 ## 2. 서버 구성 (한 번 구동, 공유)
 
-스크립트가 아래를 한 번 띄우고 모든 client 시나리오가 공유한다. scale·failover 시나리오만
-provider 프로세스를 추가로 띄우거나 종료한다.
+스크립트가 아래 구성을 한 번 띄우고 모든 client 시나리오가 함께 쓴다. scale·failover
+시나리오만 provider 프로세스를 추가로 띄우거나 종료하고, weighted 시나리오(RM-C7)는 build-time
+weight를 다르게 준 provider를 따로 띄운다(공유 provider는 기본 weight `100`).
 
 | 역할 | 수 | 구성 |
 |------|----|------|
 | registry | 1 | discovery server. pub endpoint + router endpoint. |
 | provider (api 노드) | 2 (`api-a`, `api-b`) | 세 channel 종류를 함께 노출한다: ① registry-discovered **client-server channel**(`AddClientServerChannel`) — request handler(`ProfileRequest`)·send handler(`ProfileCommand`); ② peer-wired **route mesh channel**(`AddRouteMeshChannel`) — route request handler(`ScenarioRoutePing`), routing id `api-a`/`api-b`; ③ peer-wired **dealer mesh channel**(`AddDealerMeshChannel`) — `ProfileRequest`. dispatch-error observer로 evidence 기록. 테스트용 `/evidence`·`/health` HTTP endpoint. |
-| consumer | 시나리오별 | client-server는 Discovery client(endpoint 모름, registry resolve). route mesh는 자신이 route node가 되어, `EnableServer(clientEndpoint)`로 자기 endpoint를 bind하고 `ConfigureRouting().RoutingId`로 자기 routing id를 설정하며 peer를 `EnableClient(peerEndpoint)`로 붙는다(세 호출 순서는 무관 — 최종 registration으로 적용. route channel은 bind endpoint 없으면 startup 거부). dealer mesh는 peer endpoint로 `EnableClient`만 한다. |
+| consumer | 시나리오별 | client-server는 Discovery client(endpoint 모름, registry resolve). route mesh는 자신이 route node가 되어, `EnableServer(clientEndpoint)`로 자기 endpoint를 bind하고 `SetRoutingId(...)`로 자기 routing id를 설정하며 peer를 `EnableClient(peerEndpoint)`로 붙는다(세 호출 순서는 무관 — 최종 registration으로 적용. route channel은 bind endpoint 없으면 startup 거부). dealer mesh는 peer endpoint로 `EnableClient`만 한다. |
 
-client-server channel provider는 자신의 logical routing id(`api-a`, `api-b`)와 channel
-endpoint를 registry에 광고한다. consumer는 channel 이름만 알고 endpoint는 registry가 알려준다.
-route/dealer mesh는 registry discovery가 아니라 peer endpoint로 직접 묶는다.
+client-server channel provider는 자기 logical routing id(`api-a`, `api-b`)와 channel endpoint를
+registry에 광고한다. 그래서 consumer는 channel 이름만 알면 되고, 실제 endpoint는 registry가
+알려준다. route/dealer mesh는 registry discovery를 쓰지 않고 peer endpoint로 직접 묶는다.
 
-handler 동작(공유): `ProfileRequest(value)` → `profile:{value}` reply + 처리한 provider의
-routing id 포함. `ScenarioRoutePing(value)` → `route:{value}` + target/source routing id 포함.
-`value=="slow"`면 1s 지연(timeout 유도). 미등록 packet 이름은 handler 없음 → request면 error
-reply, send면 drop. 모두 observer evidence에 marker로 남긴다.
+handler 동작(공유):
+
+- `ProfileRequest(value)` → `profile:{value}` reply + 처리한 provider의 routing id 포함.
+- `ScenarioRoutePing(value)` → `route:{value}` + target/source routing id 포함.
+- `value=="slow"`면 1s 지연(timeout 유도용).
+- 미등록 packet 이름은 handler가 없으니 → request면 error reply, send면 drop.
+
+이 동작들은 모두 observer evidence에 marker로 남는다.
 
 ## 3. 실행 모델
 
-`run_e2e.sh`가 registry → provider 순으로 띄우고(포트 readiness 확인) 그다음 client
-시나리오를 하나씩 실행한다. scale·failover 시나리오는 같은 스크립트가 추가 provider를
-띄우거나 종료한다. client가 `e2e result=passed`를 출력하면 통과로 본다.
+`run_e2e.sh`가 registry → provider 순으로 띄우고(포트 readiness 확인) 그다음 client 시나리오를
+하나씩 실행한다. scale·failover 시나리오는 같은 스크립트가 추가 provider를 띄우거나 종료하고,
+weighted 시나리오(RM-C7)는 weight를 차등 설정한 provider를 띄운다. client가
+`e2e result=passed`를 출력하면 통과로 본다.
 
 ## 4. 시나리오
 
@@ -52,6 +60,8 @@ reply, send면 drop. 모두 observer evidence에 marker로 남긴다.
 
 우선순위: `P0`
 
+**한마디로:** endpoint를 코드에 한 줄도 안 적고, registry만 보고 알아서 provider를 찾아 메시지를 보낼 수 있는가.
+
 - 절차: consumer가 endpoint 없이 channel만 등록하고 Discovery로 연결한 뒤 `ProfileRequest`를 보낸다.
 - 검증: request가 `api-a`/`api-b` 중 하나에서 처리됨(reply의 provider rid로 확인). consumer는 endpoint를 코드에 적지 않았다. 두 provider 모두 `Ready`로 topology에 보인다.
 - 세부 동작: registry 광고 → topology 수렴 → endpoint 없는 messaging.
@@ -59,6 +69,8 @@ reply, send면 drop. 모두 observer evidence에 marker로 남긴다.
 #### RM-A2 수동 endpoint 연결 (대조군)
 
 우선순위: `P0`
+
+**한마디로:** registry 없이 endpoint를 직접 적어 붙였을 때도, 자동 연결과 똑같은 결과가 나오는가.
 
 - 절차: consumer가 registry 없이 provider endpoint를 직접 `EnableClient`로 등록하고 request를 보낸다.
 - 검증: 지정한 provider에서 처리. 자동 resolve 경로와 같은 reply 의미.
@@ -70,6 +82,8 @@ reply, send면 drop. 모두 observer evidence에 marker로 남긴다.
 
 우선순위: `P0`
 
+**한마디로:** 같은 rid의 provider가 죽고 다른 endpoint로 새로 떠도, consumer가 알아서 새 곳으로 갈아타는가(죽은 주소로 계속 안 가는가).
+
 - 절차: provider v1을 rid `api-a`/endpoint p1로 시작 → request로 v1 evidence 확인 → v1 종료 → provider v2를 같은 rid `api-a`/endpoint p2로 시작 → topology가 endpoint를 p2로 갱신할 때까지 대기 → consumer 재시작 없이 다시 request.
 - 검증: topology에 rid `api-a`는 하나만(중복 provider 없음). 교체 뒤 신규 request는 p2 evidence에 기록. consumer가 p1 stale endpoint로 반복 timeout 하지 않음. 이후 연속 20개 request 모두 성공.
 - 세부 동작: rid 기준 최신 endpoint 덮어쓰기 + stale 회피.
@@ -79,6 +93,8 @@ reply, send면 drop. 모두 observer evidence에 marker로 남긴다.
 #### RM-A6 cross-channel discovery
 
 우선순위: `P1`
+
+**한마디로:** 한 registry에 여러 channel(`api`, `workflow` 등)이 섞여 있어도, 각 channel의 provider가 서로 섞이지 않고 독립적으로 관리되는가.
 
 - 절차: 같은 registry에 서로 다른 channel(예: `api`, `workflow`)의 provider를 광고하고, consumer가 각 channel을 resolve해 request를 보낸다.
 - 검증: 각 channel의 provider 집합이 섞이지 않는다. 같은 endpoint host라도 channel name이 다르면 독립 topology로 관리된다. 한 channel scale-in이 다른 channel routing에 영향을 주지 않는다.
@@ -90,6 +106,8 @@ reply, send면 drop. 모두 observer evidence에 marker로 남긴다.
 
 우선순위: `P0`
 
+**한마디로:** 트래픽이 흐르는 도중에 provider를 한 대 더 붙여도, consumer 재시작 없이 새 provider가 routing 대상에 들어오는가.
+
 - 절차: provider A만으로 request를 보낸다 → provider B를 추가로 시작 → topology가 2개 반영될 때까지 대기 → request를 여러 개 보낸다.
 - 검증: B 추가 전엔 A만 처리. 반영 완료 뒤 검증 구간에선 A·B 모두 routing 대상. consumer 재시작 없음.
 - 세부 동작: 무중단 provider 증설 반영.
@@ -98,23 +116,30 @@ reply, send면 drop. 모두 observer evidence에 marker로 남긴다.
 
 우선순위: `P0`
 
+**한마디로:** provider 한 대를 정상 종료해 빼도, consumer가 죽은 곳으로 안 가고 남은 provider로만 깔끔하게 흘러가는가.
+
 - 절차: A·B로 분산을 확인 → B를 정상 종료 → topology에서 B가 빠질 때까지 대기 → 다시 request.
 - 검증: B 종료 뒤 request는 A로만. consumer가 죽은 endpoint로 timeout을 반복하지 않음. 지속 request 중 scale-in이 나도 완료된 요청은 정상 reply 또는 정해진 public error로 끝나고 pending이 남지 않음.
 - 세부 동작: 무중단 provider 감축 + stale 정리.
 
 ### Track C — resolve된 연결 위의 messaging 세부 동작
 
-아래는 RM-A1의 registry-resolved 연결을 재사용해 messaging verb와 negative path를 검증한다.
+아래는 RM-A1에서 만든 registry-resolved 연결을 그대로 재사용해, messaging verb와 negative path를
+하나씩 점검한다.
 
 #### RM-C1 request / send happy path
 
 우선순위: `P0`
+
+**한마디로:** request는 reply가 정확히 오고, send(단방향)는 reply 없이 server에 기록만 남는가.
 
 - 검증: `request`는 정확한 reply. `send`(one-way)는 reply 없이 provider send-handler evidence에 command id 기록.
 
 #### RM-C2 targeted request by rid
 
 우선순위: `P0`
+
+**한마디로:** rid를 콕 집어 보낸 request가 정확히 그 provider에만 가고, 없는 rid로 보내면 깔끔하게 실패하는가.
 
 - 절차: route mesh로 특정 rid(`api-b`)에 request. 그리고 미존재 rid로 request.
 - 검증: 지정 rid provider에만 도달(다른 provider evidence엔 없음). 미존재 rid는 public error로 실패.
@@ -124,6 +149,8 @@ reply, send면 drop. 모두 observer evidence에 marker로 남긴다.
 
 우선순위: `P0`
 
+**한마디로:** provider 둘을 직접 붙여 두고 많이 보내면, 양쪽이 골고루 나눠 처리하고 합계가 보낸 수와 맞는가.
+
 - 절차: consumer가 두 provider endpoint를 직접 `EnableClient`로 등록(수동 multi-endpoint)한 뒤, warm-up 후 충분한 수의 request(예: 90개)를 보낸다.
 - 검증: 두 provider가 모두 처리 대상이 되고, 각 provider evidence 합이 전체 request 수와 일치한다. 분산은 transport(dealer) fair-queuing으로 대체로 고르되, 정확한 비율(45/45)은 보장값이 아니므로 "양쪽 모두 충분히 처리 + 합계 일치"로 검증한다.
 - 세부 동작: 다중 provider 부하 분산(수동 multi-endpoint).
@@ -131,6 +158,8 @@ reply, send면 drop. 모두 observer evidence에 marker로 남긴다.
 #### RM-C4 timeout과 late reply 비오염
 
 우선순위: `P0`
+
+**한마디로:** 느린 요청이 timeout으로 끝난 뒤, 뒤늦게 도착한 reply가 다음 정상 요청을 오염시키지 않는가.
 
 - 절차: `value=="slow"` request를 짧은 timeout으로 보내 client timeout을 유도 → 곧바로 정상 request → 잠시 뒤 또 정상 request.
 - 검증: 첫 request는 timeout 예외. 이후 request는 정상 reply. late reply가 뒤 요청을 오염시키지 않음. 느린 handler도 결국 server에선 완료로 기록.
@@ -140,6 +169,8 @@ reply, send면 drop. 모두 observer evidence에 marker로 남긴다.
 
 우선순위: `P0`
 
+**한마디로:** handler가 없는 packet을 보냈을 때, request는 error로 명확히 실패하고 send는 조용히 drop되며, 그 이유가 observer에 정확히 남는가.
+
 - 절차: handler 없는 packet 이름으로 request, 그리고 send.
 - 검증: request는 **error reply로 실패**하고(client는 예외로 받음), observer evidence의 reason/action은 `HandlerMissing`/`ReplyError`다. send는 reply 없이 drop되고 observer reason/action은 `HandlerMissing`/`Drop`이다. 다른 정상 request는 영향 없음.
 - 세부 동작: negative path(client-visible error + observer) 구분.
@@ -148,11 +179,23 @@ reply, send면 drop. 모두 observer evidence에 marker로 남긴다.
 
 우선순위: `P0`
 
+**한마디로:** dealer mesh peer 둘을 등록해 두고 보내면, 특정 peer를 지정하지 않아도 mesh가 알아서 분배하는가.
+
 - 절차: client가 시작 전에 dealer mesh의 두 peer endpoint를 모두 `EnableClient(endpoint)`로 등록하고(런타임 연결 추가 handle은 없음 — startup 설정), 충분한 수의 request를 보낸다.
 - 검증: request가 등록된 dealer mesh peer들에 분산되어 처리된다(특정 peer 지정 없이 mesh가 분배). 각 peer evidence 합이 전체 request 수와 일치한다.
 - 세부 동작: dealer mesh 분산 messaging(정적 peer 등록).
 
-> weighted routing은 weight를 설정하는 public channel builder API가 없다(registry model에 `Weight` 조회 필드만 존재). 현재 public API로 검증 불가하여 제외한다.
+#### RM-C7 weighted 분산 (server쪽 weight 차등)
+
+우선순위: `P1`
+
+**한마디로:** server 두 대에 weight를 다르게(예: 75 vs 25) 주면, client의 분산도 그 비율을 따라 한쪽으로 더 쏠리는가.
+
+- 절차: client-server channel의 두 provider를 서로 다른 build-time weight로 띄운다 — `api-a`는 `ConfigureServerSocket().Weight = 75`, `api-b`는 `ConfigureServerSocket().Weight = 25`(둘 다 `1..99`라 후보에서 빠지지 않음). consumer는 RM-C3처럼 두 provider endpoint를 직접 `EnableClient`로 등록(수동 multi-endpoint)하고, warm-up 후 충분한 수의 request(예: 200개)를 보낸다.
+- 검증: 두 provider 모두 처리 대상이 되고(어느 쪽도 0이 아님), 각 provider evidence 합이 전체 request 수와 일치한다. 분산은 weight 비율을 따라 `api-a`가 `api-b`보다 **뚜렷이 많이** 처리한다(정확한 75/25는 보장값이 아니므로 "고weight가 저weight보다 분명히 많음 + 양쪽 모두 처리 + 합계 일치"로 검증한다).
+- 세부 동작: server쪽 advertised weight에 따른 client측 부하 분산.
+
+> 분산 주체 주의. client-server channel에서 server는 ROUTER, client는 DEALER다. server(ROUTER)는 자기 weight를 연결된 client(DEALER) peer에게 advertise만 하고, 비율 분산은 **client(DEALER)의 load balancer**가 수행한다. ROUTER 자신은 weight를 비율 분산이 아니라 `0`=drain / non-`0`=허용의 이진 게이트로만 쓴다. 따라서 weighted 비율(`1..99`)은 **이미 연결된 peer의 LB 분배**에만 작용하고, weight `0`(drain)은 RM-C3/RM-C6 분산에서 그 노드를 후보에서 빼는 별개 동작이다(drain·복귀 검증은 Config 5 RL-B에서 다룬다).
 
 > payload decode 실패는 public typed client로 유도할 수 없다(typed client는 항상 정상 envelope로 직렬화). 실제 decode-failure는 raw frame 주입이 필요해 public-API-only인 이 config 범위 밖이며, raw-frame contract 테스트(E2ETests DispatchErrors)가 다룬다. decode 실패의 surface/reason 분류(channel=`PayloadDecodeFailed`, route mesh=`HandlerException`)도 거기서 검증한다.
 

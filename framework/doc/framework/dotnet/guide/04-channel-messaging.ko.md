@@ -307,11 +307,12 @@ public sealed class PriceService(IZLinkChannelClient client)
 
 - reply 타입은 메시지가 아니라 **`.Async<TReply>(...)`** 에서 지정한다.
 - **`PacketName(...)` 과 `Timeout(...)` 은 override 종결자다.** packet name 은 기본적으로
-  payload 타입 이름으로 정해지고, reply 대기는 전역 `options.DefaultTimeout`(미설정 시
-  기본 **30초**)을 따른다. 실제 packet 이름이 기본과 다를 때만 `PacketName(...)` 을, 이
-  호출의 reply 대기를 전역값과 다르게 둘 때만 `Timeout(...)` 을 붙인다. 둘 다 기본값으로
+  payload 타입 이름으로 정해진다. reply 대기는 호출별 `Timeout(...)`, channel builder의
+  `SetDefaultRequestTimeout(...)`, 전역 `options.DefaultRequestTimeout` 순서로 정해진다.
+  전역 기본값은 **30초**다. 실제 packet 이름이 기본과 다를 때만 `PacketName(...)` 을,
+  이 호출의 reply 대기를 기본값과 다르게 둘 때만 `Timeout(...)` 을 붙인다. 둘 다 기본값으로
   충분하면 붙이지 않는다(샘플 메시징 호출은 모두 기본값을 쓴다). `Send`/`Publish` 는 응답을
-  기다리지 않으므로 `Timeout(...)` 이 없다.
+  기다리지 않으므로 request timeout을 쓰지 않는다.
 - socket 은 호출마다 만드는 게 아니라 **startup 에 선언한 역할만큼만** 미리 만들어
   둔다. 그래서 호출한 channel 에 client 역할이 등록돼 있지 않으면, 그 channel 용
   socket 이 애초에 없으므로 `ZLinkConfigurationException` 으로 실패한다
@@ -493,15 +494,18 @@ SPOT 라우팅 백본이 필요할 때 이 channel 종류를 쓴다([05-spot](05
 {
     var routed = options.AddRouteMeshChannel("tictactoe.router")
         .EnableServer(playRouterEndpoint)  // 이 노드가 받을 endpoint
-        .EnableClient(peerRouterEndpoint); // 다른 노드로 나가는 연결
-    routed.ConfigureRouting().RoutingId = RoutingId.From(playRouterId);  // 이 노드의 주소
+        .EnableClient(peerRouterEndpoint)  // 다른 노드로 나가는 연결
+        .SetRoutingId(RoutingId.From(playRouterId));
     routed.AddRequestHandler<AllocateRoomRouteHandler, AllocateRoom, RoomAllocated>(
         "room.allocate");
 }
 ```
 
 route mesh 로 직접 호출할 때는 일반 `IZLinkChannelClient` 가 아니라
-`IZLinkRouteClient` 를 주입받고, 호출마다 대상 `RoutingId` 를 지정한다.
+`IZLinkRouteClient` 를 주입받고, 호출마다 route channel 이름과 대상 `RoutingId` 를
+지정한다. `IZLinkRouteClient` 는 특정 channel 하나에 묶인 client 가 아니므로,
+route mesh channel 이 여러 개 있어도 호출 인자의 channel 이름으로 어느 경로를 쓸지
+분명하게 정한다.
 
 ```csharp
 var target = RoutingId.From("play-node-1");
@@ -521,6 +525,28 @@ public sealed class AllocateRoomRouteHandler
 }
 ```
 
+같은 route channel 로 반복 호출하면 application 코드에서 작은 wrapper 를 만들어 DI 에
+등록해도 된다. 이 wrapper 는 framework API 가 아니라 application 이 정한 이름이다. 그래서
+업무 코드는 매번 channel 문자열을 반복하지 않고, wrapper 내부에서 어떤 route channel 로
+나가는지만 한 곳에 둔다.
+
+```csharp
+public interface IPlayRoutes
+{
+    IZLinkRequestCall Request<TRequest>(RoutingId targetNodeRid, TRequest request);
+}
+
+public sealed class PlayRoutes(IZLinkRouteClient routes) : IPlayRoutes
+{
+    public IZLinkRequestCall Request<TRequest>(
+        RoutingId targetNodeRid,
+        TRequest request)
+        => routes.Request("tictactoe.router", targetNodeRid, request);
+}
+
+builder.Services.AddSingleton<IPlayRoutes, PlayRoutes>();
+```
+
 ```mermaid
 graph LR
     C["caller"] -->|"target routing id = A"| A["node A"]
@@ -536,8 +562,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
+        options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     // 들어오는 요청을 받는 서버 channel
     {

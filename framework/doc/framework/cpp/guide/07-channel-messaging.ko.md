@@ -141,10 +141,10 @@ auto reply = co_await _client
                .async<create_game_res_t> ();
 ```
 
-`.timeout(...)`을 생략해도 **무기한 대기하지 않는다.** framework 호출 객체의
-기본 timeout 값인 0ms가 native request-reply 경로로 전달되고, native 기본
-timeout(현재 **5초**)이 적용된다. 이 호출만 더 짧게/길게 두고 싶을 때 위처럼
-호출 단위로 지정한다.
+`.timeout(...)`을 생략해도 **무기한 대기하지 않는다.** 호출별 timeout이 있으면
+그 값을 쓰고, 없으면 channel builder의 `set_default_request_timeout(...)`, 마지막으로
+framework 전역 `set_default_request_timeout(...)` 값을 사용한다. 전역 기본값은
+**30초**다. 이 호출만 더 짧게/길게 두고 싶을 때 호출 단위로 지정한다.
 
 request 한 번의 전체 흐름 — 디코딩/인코딩과 핸들러 호출은 런타임이 처리하고,
 양쪽 application 코드는 typed DTO만 본다.
@@ -329,6 +329,65 @@ options.add_route_mesh_channel ("tictactoe.router")
   .enable_server (topology.play_router_endpoint)   // 이 ROUTER bind(제공)
   .set_routing_id (topology.play_rid)              // 이 router 의 주소
   .enable_spot_route_egress ("tictactoe.game.discovery");
+```
+
+route mesh 로 직접 호출할 때는 `route_client_t`를 주입받고, 호출마다 route channel
+이름과 대상 `routing_id_t`를 지정한다. `route_client_t`는 특정 channel 하나에 묶인
+client 가 아니므로, route mesh channel 이 여러 개 있어도 호출 인자의 channel 이름으로
+어느 경로를 쓸지 분명하게 정한다.
+
+```cpp
+class match_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::route_client_t>;
+
+    explicit match_handler_t (zlink::framework::route_client_t &routes) :
+        _routes (routes) {}
+
+    zlink::framework::task_t<allocate_room_res_t>
+    handle (const allocate_room_req_t &request)
+    {
+        auto target = zlink::routing_id_t::from ("play-node-1");
+        co_return co_await _routes
+          .request ("tictactoe.router", target, request)
+          .async<allocate_room_res_t> ();
+    }
+
+  private:
+    zlink::framework::route_client_t &_routes;
+};
+```
+
+같은 route channel 로 반복 호출하면 application 코드에서 작은 wrapper 를 만들어 DI 에
+등록해도 된다. 이 wrapper 는 framework API 가 아니라 application 이 정한 이름이다. 그래서
+업무 코드는 매번 channel 문자열을 반복하지 않고, wrapper 내부에서 어떤 route channel 로
+나가는지만 한 곳에 둔다.
+
+```cpp
+class play_routes_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::route_client_t>;
+
+    explicit play_routes_t (zlink::framework::route_client_t &routes) :
+        _routes (routes) {}
+
+    zlink::framework::route_request_call_t
+    request (zlink::routing_id_t target, allocate_room_req_t request)
+    {
+        return _routes.request ("tictactoe.router", std::move (target),
+                                std::move (request));
+    }
+
+  private:
+    zlink::framework::route_client_t &_routes;
+};
+
+options.services ()
+  .add_singleton<play_routes_t, zlink::framework::route_client_t> ();
 ```
 
 SPOT과의 결합은 [8장](08-spot.ko.md)의 `accept_routes_from_channel`에서

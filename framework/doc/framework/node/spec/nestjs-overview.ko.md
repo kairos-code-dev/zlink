@@ -70,7 +70,7 @@ class GetQuoteHandler {}
   imports: [
     ZLinkModule.forRoot(
       zlinkFramework()
-        .options({ defaultTimeoutMs: 30_000 })
+        .options({ requestTimeoutMs: 5_000 })
         .addClientServerChannel('pricing.quote')
           .enableServer('tcp://0.0.0.0:7301')
           .addHandlerGroup('pricing')
@@ -88,7 +88,6 @@ export class PricingModule {}
 // dotnet 대응 — AddZLinkFramework
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = TimeSpan.FromSeconds(30);
     options.AddClientServerChannel("pricing.quote")
         .EnableServer("tcp://0.0.0.0:7301")
         .AddRequestHandler<GetQuoteHandler>();

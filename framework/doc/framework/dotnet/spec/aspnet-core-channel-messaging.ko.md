@@ -251,9 +251,7 @@ local handler 없이 `IZLinkChannelClient` 만 쓰는 앱도 똑같이 가능하
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    // 예제용 짧은 값. options.DefaultTimeout의 실제 기본은 30초다.
-    options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
+        options.Codecs.Use(ZLinkProtobufCodec.Default);
     {
         var channel =     options.AddClientServerChannel("profile");
         channel.EnableClient();
@@ -270,9 +268,7 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    // 예제용 짧은 값. options.DefaultTimeout의 실제 기본은 30초다.
-    options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
+        options.Codecs.Use(ZLinkProtobufCodec.Default);
 });
 ```
 

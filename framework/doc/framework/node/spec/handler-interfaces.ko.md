@@ -1182,8 +1182,8 @@ timeout 규칙:
 - `sendToChannel(...)` / `publish(...)` 는 응답을 기다리지 않으므로 timeout 을 두지 않는다.
 - `submit()` 은 handler 완료 대기가 아니라, framework 가 transport 에 위임할 수 있을 때까지
   기다리는 비동기 submit 이다.
-- send backpressure 한계는 builder 가 아니라 channel/socket 의 `sendTimeout` 옵션을 따른다.
-  framework 기본값은 core socket 과 동일한 1000ms 이며, `sendTimeout = null` 명시 시 무한 대기로 본다.
+- send backpressure 한계는 builder 가 아니라 framework 내부 submitter 의 기본값을 따른다.
+  framework 기본값은 core socket 과 동일한 1000ms 이다.
 - public no-wait 옵션은 제공하지 않는다. temporary backpressure 는 내부 queue + ready
   notification 으로 처리한다.
 
@@ -1295,7 +1295,7 @@ local publish transport 에 submit 되는 시점까지의 대기다.
 
 실패 처리: temporary backpressure 는 내부 queue + ready notification, 그 외 submit 실패
 (route-not-ready 등)는 예외다. subscriber 마다 task/직렬화를 새로 만들지 않고 topic/payload
-frame 을 한 번만 만든다. `NoDrop` 정책이 켜져 있으면 drop 대신 `sendTimeout` 까지 기다린다.
+frame 을 한 번만 만든다. backpressure 대기 한계는 framework submitter 기본값을 따른다.
 
 ### 5.5 actor route resolver / route transport helper
 
@@ -1442,7 +1442,6 @@ export interface ZLinkMetadataPolicyBuilder {
     ZLinkModule.forRoot(
       zlinkFramework()
         .options({
-          defaultTimeoutMs: 30_000,
           filters: [LoggingZLinkFilter, ValidationZLinkFilter],
           dispatch: { spotDispatchMode: 'compiled', streamDispatchMode: 'compiled' },
         })
@@ -1669,45 +1668,27 @@ ActorGateway 는 별도 node builder 를 두지 않는다. `addNode(...)` 로 �
 
 ```ts
 export interface ZLinkSocketConfig {
-  maxMessageSize: number;
-  sendHighWaterMark: number;
-  receiveHighWaterMark: number;
-  sendBufferSize: number;
-  receiveBufferSize: number;
-  linger?: number;          // ms (C# TimeSpan?)
-  receiveTimeout?: number;  // ms
-  sendTimeout?: number;     // ms
-  connectTimeout?: number;  // ms
-  handshakeInterval?: number; // ms
-  ipv6: boolean;
-  tcpNoDelay: boolean;
-  immediate: boolean;
+  bind?: string;
+  connect?: string;
+  channelName?: string;
 }
 
 export interface ZLinkRouteConfig {
-  routingId: RoutingId;
-  requireKnownPeer: boolean;
-  allowPeerHandover: boolean;
-  enablePeerProbe: boolean;
-  connectRoutingId: RoutingId;
+  channelName: string;
+  endpoint: string;
 }
 
 export interface ZLinkOutboundRouteConfig {
-  routingId: RoutingId;
-  probeRouterOnConnect: boolean;
+  targetNodeRid: RoutingId;
+  endpoint: string;
 }
 
 export interface ZLinkSpotPublisherConfig {
-  sendHighWaterMark: number; // write-only (C# set;)
-  sendTimeout?: number;      // ms
-  linger?: number;           // ms
-  noDrop: boolean;
+  topic: string;
 }
 
 export interface ZLinkSpotSubscriberConfig {
-  receiveHighWaterMark: number; // write-only
-  receiveTimeout?: number;      // ms
-  linger?: number;              // ms
+  topic: string;
 }
 
 export interface ZLinkEntrySpotOptions {
@@ -1715,10 +1696,9 @@ export interface ZLinkEntrySpotOptions {
 }
 ```
 
-> 코드 기준: dotnet 의 이름은 `IZLinkSocketConfig` / `IZLinkRouteConfig` /
-> `IZLinkOutboundRouteConfig` / `IZLinkSpotPublisherConfig` / `IZLinkSpotSubscriberConfig` 다
-> (스펙 문서의 `IZLinkCommonSocketOptions` 등과 이름이 다름). `ZLinkRouteConfig` 는 `RoutingId`,
-> `ConnectRoutingId` 까지 포함한다. `TimeSpan?` 필드는 모두 `number`(ms)로 옮긴다.
+> 코드 기준: TypeScript 계약은 endpoint와 topic 같은 연결 선언만 config에 둔다.
+> socket high water mark, linger, send timeout 같은 low-level socket option은 현재
+> Node framework public config 표면에 없다.
 
 - `timeout(...)`(call 단위): request 한 번에만 적용. 역할 runtime 기본값을 바꾸지 않음.
 - `configureRouting(...)`: 역할이 routed peer 와 맺는 연결 규칙. public 표면에서 remote

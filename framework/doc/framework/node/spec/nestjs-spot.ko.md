@@ -463,7 +463,7 @@ ZLinkModule.forRoot(
 ```ts
 ZLinkModule.forRoot(
   zlinkFramework()
-    .options({ defaultTimeoutMs: 1000 })
+    .options({ requestTimeoutMs: 5_000 })
     .useDiscovery()
       .addRegistryEndpoint('tcp://registry1:5551')
     .addSpotNode('stage-node')

@@ -386,18 +386,20 @@ public sealed class ProfileHandlers
 또한 send는 기본 async submit으로 둔다. 구현은 blocking send를 task로 감싸지
 않고, 먼저 nonblocking send를 시도한 뒤 temporary backpressure가 발생하면 pending
 send queue와 ready notification으로 이어서 처리한다. send 대기 한계는 call
-builder가 아니라 channel 또는 socket의 `SendTimeout` 옵션을 따른다.
-framework는 core socket 기본값을 직접 사용하지 않고, channel/socket option에
-resolved된 `SendTimeout` 값을 async pending deadline으로 사용한다. `200ms` 기본값은
-**.NET 바인딩에 한정한 framework 기본값**이며, cross-binding 정책은 "각 binding이 자기
-idiom에 맞는 기본값을 정한다"로 둔다. 사용자가 `.NET` option에서 `SendTimeout = null`을
-명시한 경우에만 core `-1`과 같은 무한 대기로 본다.
+builder가 아니라 framework 기본값 또는 socket의 `SendTimeout` 옵션을 따른다.
+framework 기본값은 core socket 기본 send timeout과 같은 1000ms로 맞춘다.
+각 binding은 개별 socket option이 있으면 그 값을 우선 사용하고, 없으면
+framework 기본값을 async pending deadline으로 사용한다. framework 기본 send
+timeout을 명시적으로 비우는 언어에서는 무한 대기로 본다.
 publish도 send와 같은 submit 규칙을 따른다. subscriber 처리 완료를 기다리지 않고,
 local publish transport에 메시지를 맡길 수 있을 때까지 비동기로 기다린다.
 
 request도 reply를 기다리는 async 호출로 설명한다. 다만 request packet을 보내는
 단계는 send와 같은 async submit 경로를 사용해야 한다. `Timeout(...)`은 reply
 대기 시간만 정하고, 전송 backpressure는 `SendTimeout` 정책이 처리한다.
+request/reply 기본 대기 시간은 framework 전역 기본값 30초다. 호출별 timeout이
+있으면 가장 먼저 적용하고, 없으면 channel별 기본 request timeout을 적용하며,
+channel 설정도 없을 때 전역 기본값을 사용한다.
 
 고성능 구현에서는 immediate send/publish 성공 path가 allocation 없이 완료되어야
 한다. backpressure path는 bounded pending queue를 사용하고, ready notification마다

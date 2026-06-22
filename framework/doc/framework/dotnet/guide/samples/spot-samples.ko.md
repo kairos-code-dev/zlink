@@ -300,8 +300,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
+        options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     {
         var channel = options.AddClientServerChannel("play");
@@ -323,7 +322,6 @@ builder.Services.AddZLinkFramework(options =>
                     socket.MaxMessageSize = 1024 * 1024;
                     socket.SendHighWaterMark = 10_000;
                     socket.ReceiveHighWaterMark = 10_000;
-                    socket.SendTimeout = TimeSpan.FromMilliseconds(200);
                     socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
                     socket.Immediate = true;
 
@@ -345,7 +343,6 @@ builder.Services.AddZLinkFramework(options =>
                 {
                     var pubOpt = node.ConfigurePubSubPublisher();
                     pubOpt.SendHighWaterMark = 50_000;
-                    pubOpt.SendTimeout = TimeSpan.FromMilliseconds(100);
                     pubOpt.NoDrop = true;
 
                 }
@@ -381,7 +378,6 @@ builder.Services.AddZLinkFramework(options =>
             {
                 var socket = node.ConfigureSpotPublisherClientSocket("game.stage");
                 socket.SendHighWaterMark = 20_000;
-                socket.SendTimeout = TimeSpan.FromMilliseconds(100);
                 socket.Immediate = true;
 
             }
@@ -520,7 +516,6 @@ builder.Services.AddZLinkFramework(options =>
                     socket.MaxMessageSize = 1024 * 1024;
                     socket.SendHighWaterMark = 10_000;
                     socket.ReceiveHighWaterMark = 10_000;
-                    socket.SendTimeout = TimeSpan.FromMilliseconds(200);
                     socket.ReceiveTimeout = TimeSpan.FromMilliseconds(200);
                     socket.Immediate = true;
 
@@ -540,7 +535,6 @@ builder.Services.AddZLinkFramework(options =>
                 {
                     var pubOpt = node.ConfigurePubSubPublisher();
                     pubOpt.SendHighWaterMark = 50_000;
-                    pubOpt.SendTimeout = TimeSpan.FromMilliseconds(100);
                     pubOpt.NoDrop = true;
 
                 }
@@ -576,7 +570,6 @@ builder.Services.AddZLinkFramework(options =>
             {
                 var socket = node.ConfigureSpotPublisherClientSocket("game.stage");
                 socket.SendHighWaterMark = 20_000;
-                socket.SendTimeout = TimeSpan.FromMilliseconds(100);
                 socket.Immediate = true;
 
             }
@@ -663,8 +656,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
+        options.Codecs.Use(ZLinkProtobufCodec.Default);
 
         options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
@@ -702,8 +694,8 @@ app.Run();
 send / publish builder 는 기본적으로 async submit 이다. 일시적인
 backpressure[^backpressure] 는 별도의 public no-wait 옵션을 호출자에게
 노출하지 않는다. 그 대신 framework 내부에서 nonblocking send, pending queue,
-ready notification 을 조합해 처리한다. send 대기 한계는 channel 또는 socket
-의 `SendTimeout` 옵션을 따른다.
+ready notification 을 조합해 처리한다. send 대기 한계는 builder가 아니라
+framework 기본값 또는 socket 의 `SendTimeout` 옵션을 따른다.
 
 ### 3.1.4 외부 노드에서 SPOT channel publish
 

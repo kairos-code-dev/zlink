@@ -22,6 +22,10 @@ val reply: GetProfileReply = client
     .await()
 ```
 
+호출별 `timeout(...)`이 있으면 그 값을 쓰고, 없으면 channel builder의
+`setDefaultRequestTimeout(...)`, 마지막으로 framework 전역
+`setDefaultRequestTimeout(...)` 값을 사용한다. 전역 기본값은 30초다.
+
 timeout이나 metadata가 필요하면 builder를 직접 쓴다.
 
 ```kotlin
@@ -81,8 +85,42 @@ one-way send는 `client.sendToChannel("audit", AuditEvent(...)).submit().await()
 
 route mesh는 target node `RoutingId`를 application이 직접 알고 있을 때만 쓴다.
 `ZLinkRouteClient`의 `requestTo(channel, target, request).submit(TReply::class.java).await()` /
-`sendTo(channel, target, message).submit().await()`로 호출한다. session actor relay는 route mesh를 흉내 내지 않고
-ActorGateway를 사용한다([06-actor-session](06-actor-session.ko.md)).
+`sendTo(channel, target, message).submit().await()`로 호출한다. `ZLinkRouteClient`는 특정
+channel 하나에 묶인 client가 아니며, 호출할 때 route channel 이름과 target `RoutingId`를
+함께 받는다. route mesh channel이 여러 개 있어도 호출 인자의 channel 이름으로 어느 경로를
+쓸지 분명하게 정한다.
+
+```kotlin
+val target = RoutingId.from("play-node-1")
+
+val reply: AllocateRoomReply = routeClient
+    .requestTo("play.route", target, AllocateRoomRequest("alice"))
+    .submit(AllocateRoomReply::class.java)
+    .await()
+```
+
+같은 route channel로 반복 호출하면 application 코드에서 작은 wrapper를 만들어 Spring bean으로
+등록해도 된다. 이 wrapper는 framework API가 아니라 application이 정한 이름이다. 그래서 업무
+코드는 매번 channel 문자열을 반복하지 않고, wrapper 내부에서 어떤 route channel로 나가는지만
+한 곳에 둔다.
+
+```kotlin
+interface PlayRoutes {
+    fun request(targetNodeRid: RoutingId, request: AllocateRoomRequest): ZLinkRequestCall
+}
+
+@Component
+class DefaultPlayRoutes(
+    private val routes: ZLinkRouteClient,
+) : PlayRoutes {
+    override fun request(
+        targetNodeRid: RoutingId,
+        request: AllocateRoomRequest,
+    ): ZLinkRequestCall = routes.requestTo("play.route", targetNodeRid, request)
+}
+```
+
+session actor relay는 route mesh를 흉내 내지 않고 ActorGateway를 사용한다([06-actor-session](06-actor-session.ko.md)).
 
 ## 5. 커스텀 codec (Avro 예시)
 

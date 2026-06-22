@@ -132,8 +132,8 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | dealer mesh channel client | `integration-single-process` | `ZLinkChannelClient.sendToChannel(...)`와 `requestToChannel(...)`가 `registerDealerMeshChannel(...)` 등록의 DEALER socket 을 통해 동작한다 |
 | channel handler에서 fanout publish | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `ZLinkFanoutClient`로 fanout event 를 publish 하고 subscriber handler가 수신한다 |
 | send async submit backpressure[^backpressure] | `integration-single-process` | HWM[^hwm]에 도달해도 caller 실행 흐름을 block하지 않고(`Promise` 미해결 유지), ready 이후에 resolve된다 |
-| publish async submit backpressure | `integration-single-process` | `NoDrop` 또는 HWM 조건에서 흐름을 block하지 않고 `sendTimeout` 정책에 따라 resolve 또는 reject |
-| request submit/reply timeout 분리 | `integration-single-process` | request packet의 submit 지연은 `sendTimeout`으로, reply 대기는 `timeout(...)`으로 판정 |
+| publish async submit backpressure | `integration-single-process` | HWM 조건에서 흐름을 block하지 않고 submitter timeout 정책에 따라 resolve 또는 reject |
+| request submit/reply timeout 분리 | `integration-single-process` | request packet의 submit 지연은 submitter timeout 정책으로, reply 대기는 `timeout(...)`으로 판정 |
 | pending request 정리 | `unit` | submit 실패, timeout, cancellation(`AbortSignal`), runtime stop이 일어날 때 request sequence가 pending map에서 제거된다 |
 | ready callback batch drain | `integration-single-process` | socket이 ready된 뒤 pending send/publish를 batch로 처리하고, 같은 frame을 중복 전송하지 않는다 |
 | channel wire multipart[^wire-multipart] | `integration-single-process` | 서버 간 channel send/request/reply가 `header`와 `payload`를 별도 message part로 보내고, handler dispatch는 header part만 보고 packet을 고른다 |

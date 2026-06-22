@@ -46,8 +46,7 @@ framework 는 channel 마다 역할을 선언하게 되어 있다. request clien
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
+        options.Codecs.Use(ZLinkProtobufCodec.Default);
     {
         var channel =     options.AddClientServerChannel("api");
         channel.EnableServer("tcp://0.0.0.0:7101");
@@ -87,8 +86,7 @@ runtime 만 생긴다. 이 outbound `DEALER(client)` 는, framework 입장에서
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
+        options.Codecs.Use(ZLinkProtobufCodec.Default);
     {
         var channel =     options.AddClientServerChannel("api");
         channel.EnableServer("tcp://0.0.0.0:7101");
@@ -191,8 +189,7 @@ subscriber 역할을 수동으로 운영한다면 어떻게 되는가. 그쪽은
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
+        options.Codecs.Use(ZLinkProtobufCodec.Default);
 
     options.AddClientServerChannel("api")
         .EnableServer("tcp://0.0.0.0:7101")
@@ -225,8 +222,7 @@ local handler 를 전혀 붙이지 않고, 내부 서비스 호출만 하는 앱
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
+        options.Codecs.Use(ZLinkProtobufCodec.Default);
     {
         var channel =     options.AddClientServerChannel("profile");
         channel.EnableClient();
@@ -248,8 +244,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
+        options.Codecs.Use(ZLinkProtobufCodec.Default);
     {
         var channel =     options.AddClientServerChannel("profile");
         channel.EnableClient();
@@ -304,8 +299,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.DefaultTimeout = TimeSpan.FromSeconds(1);
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
+        options.Codecs.Use(ZLinkProtobufCodec.Default);
     {
         var channel =     options.AddClientServerChannel("api");
         channel.EnableServer("tcp://0.0.0.0:7101");

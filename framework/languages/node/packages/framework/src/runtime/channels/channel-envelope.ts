@@ -43,6 +43,10 @@ export interface ZLinkChannelEnvelopeCodecRegistry {
   readonly serializers: ReadonlyMap<string, ZLinkMessageSerializer>;
 }
 
+export function newChannelCorrelationId(): string {
+  return randomUUID().replaceAll('-', '');
+}
+
 export function encodeChannelEnvelopeParts(
   kind: ZLinkChannelMessageKind,
   channelName: string,
@@ -50,7 +54,8 @@ export function encodeChannelEnvelopeParts(
   payload: unknown,
   timeoutMs?: number,
   topic?: string,
-  codecs?: ZLinkChannelEnvelopeCodecRegistry
+  codecs?: ZLinkChannelEnvelopeCodecRegistry,
+  correlationId?: string
 ): readonly MessageLike[] {
   const encoded = encodePayload(payload, codecs);
   const header: ZLinkChannelEnvelopeHeader = {
@@ -58,7 +63,7 @@ export function encodeChannelEnvelopeParts(
     channelName,
     messageName: resolveFrameworkPacketName(payload, packetName, 'Channel'),
     contentType: encoded.contentType,
-    correlationId: randomUUID().replaceAll('-', ''),
+    correlationId: correlationId ?? newChannelCorrelationId(),
     deadline: timeoutMs === undefined ? null : new Date(Date.now() + timeoutMs).toISOString(),
     topic: topic ?? null,
     errorCode: null,

@@ -1,4 +1,5 @@
 import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
+import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf';
 import { PlayerActorFactory } from './Infrastructure/ZLink/Actors/player-actor-factory';
 import { BingoEntrySpot } from './Infrastructure/ZLink/Spots/bingo-entry-spot';
@@ -32,7 +33,13 @@ function createBingoPlayModule(config: {
   zlinkModule(__dirname, {
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
+        useFactory: () => {
+          const builder = zlinkFramework();
+          builder.configureDispatch()
+            .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-play.log`)
+            .traceNodeId('play');
+          return builder
           .options({
             registrySpotRemoteAddresses: {
               namespace: SampleNames.roomSpotNode,
@@ -58,7 +65,8 @@ function createBingoPlayModule(config: {
             .acceptSpotRoutesFromChannel(SampleNames.roomRouteChannel)
             .addEntrySpot(BingoEntrySpot)
             .addSpotFactory(BingoRoomSpot)
-          .build()
+          .build();
+        }
       })
     ],
     providers: [

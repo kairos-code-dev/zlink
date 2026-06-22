@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { zlinkProtobufCodec } from '@zlink-systems/framework-codec-protobuf';
 import { SessionAuthenticator } from './Sessions/Handlers/authenticate-session-handler';
 import { BingoSessionFactory } from './Sessions/bingo-session';
@@ -19,7 +20,13 @@ function createBingoSessionModule(endpoints: {
   Module({
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
+        useFactory: () => {
+          const builder = zlinkFramework();
+          builder.configureDispatch()
+            .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            .traceLogFile(`${process.env.BINGO_LOG_DIR ?? 'logs'}/flow-session.log`)
+            .traceNodeId('session');
+          return builder
           .codecs()
             .use(zlinkProtobufCodec())
           .useDiscovery()
@@ -38,7 +45,8 @@ function createBingoSessionModule(endpoints: {
             .bind(endpoints.sessionEndpoint)
             .attachActorGateway(SampleNames.roomSpotNode)
             .registerSession(BingoSessionFactory)
-          .build()
+          .build();
+        }
       })
     ],
     providers: [

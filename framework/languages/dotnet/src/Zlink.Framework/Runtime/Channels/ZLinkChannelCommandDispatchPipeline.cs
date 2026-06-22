@@ -83,6 +83,17 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
         {
             await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)
                 .ConfigureAwait(false);
+
+            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Dispatched))
+            {
+                dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.Dispatched,
+                    ResolveSurface(transportName),
+                    ZLinkDispatchMessageKind.Send,
+                    PacketName: header.MessageName,
+                    ChannelName: channelName,
+                    CorrelationId: header.CorrelationId));
+            }
         }
         catch (Exception ex)
         {

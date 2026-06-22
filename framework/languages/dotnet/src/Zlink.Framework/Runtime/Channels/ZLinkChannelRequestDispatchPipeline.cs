@@ -101,6 +101,17 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
                 ZLinkChannelReplyWriter.CreateReplyHeader(ZLinkMessageKind.Response, channelName, header),
                 response,
                 endpoint.ReplyType);
+
+            if (dispatchErrors.Flow.Enabled(ZLinkMessageFlowPhase.Replied))
+            {
+                dispatchErrors.Flow.Trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowPhase.Replied,
+                    ResolveSurface(transportName),
+                    ZLinkDispatchMessageKind.Request,
+                    PacketName: header.MessageName,
+                    ChannelName: channelName,
+                    CorrelationId: header.CorrelationId));
+            }
         }
         catch (Exception ex)
         {

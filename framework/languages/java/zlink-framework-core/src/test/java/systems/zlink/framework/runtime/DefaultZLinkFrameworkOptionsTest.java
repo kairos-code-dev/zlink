@@ -85,7 +85,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         { var metadata = options.configureMetadata(); metadata.addForwardedMetadataKey("trace-id"); };
         options.useFilter(TestFilter.class);
         { var dispatch = options.configureDispatch(); dispatch.setSpotDispatchMode(ZLinkDispatchMode.DYNAMIC);
-            dispatch.diagnostics().setSampleRate(0.25d); };
+            dispatch.traceSampleRate(0.25d); };
         options.addSpotRemoteAddressResolver(TestSpotRemoteAddressResolver.class);
         { var registry = options.useRegistrySpotRemoteAddresses("game"); registry.setRouterChannelId("spot-router"); };
 
@@ -135,7 +135,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     @Test
     void configureDispatchRejectsInvalidDiagnosticsSampleRate() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var dispatch = options.configureDispatch(); dispatch.diagnostics().setSampleRate(1.1d); };
+        { var dispatch = options.configureDispatch(); dispatch.traceSampleRate(1.1d); };
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
     }

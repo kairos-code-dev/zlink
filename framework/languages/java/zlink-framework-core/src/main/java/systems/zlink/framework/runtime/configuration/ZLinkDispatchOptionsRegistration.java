@@ -6,6 +6,7 @@ import systems.zlink.framework.configuration.ZLinkDispatchOptions;
 import systems.zlink.framework.configuration.ZLinkLogLevel;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMessageDispatchErrorObserver;
+import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction;
 import systems.zlink.framework.configuration.ZLinkUnhandledDispatchOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -17,6 +18,8 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
     private ZLinkDispatchMode streamDispatchMode = ZLinkDispatchMode.COMPILED;
     private Class<? extends ZLinkMessageDispatchErrorObserver> messageDispatchErrorObserverType;
     private ZLinkMessageDispatchErrorObserver messageDispatchErrorObserver;
+    private Class<? extends ZLinkMessageFlowObserver> messageFlowObserverType;
+    private ZLinkMessageFlowObserver messageFlowObserver;
 
     @Override
     public ZLinkDispatchMode spotDispatchMode() {
@@ -56,6 +59,14 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
         return messageDispatchErrorObserver;
     }
 
+    public Class<? extends ZLinkMessageFlowObserver> messageFlowObserverType() {
+        return messageFlowObserverType;
+    }
+
+    public ZLinkMessageFlowObserver messageFlowObserver() {
+        return messageFlowObserver;
+    }
+
     @Override
     public ZLinkDispatchOptions setMessageDispatchErrorObserver(
         Class<? extends ZLinkMessageDispatchErrorObserver> observerType) {
@@ -69,6 +80,51 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
         ZLinkMessageDispatchErrorObserver observer) {
         messageDispatchErrorObserver = requireNonNull(observer, "messageDispatchErrorObserver");
         messageDispatchErrorObserverType = null;
+        return this;
+    }
+
+    @Override
+    public ZLinkDispatchOptions setMessageFlowObserver(
+        Class<? extends ZLinkMessageFlowObserver> observerType) {
+        messageFlowObserverType = requireNonNull(observerType, "messageFlowObserverType");
+        messageFlowObserver = null;
+        return this;
+    }
+
+    @Override
+    public ZLinkDispatchOptions setMessageFlowObserver(ZLinkMessageFlowObserver observer) {
+        messageFlowObserver = requireNonNull(observer, "messageFlowObserver");
+        messageFlowObserverType = null;
+        return this;
+    }
+
+    @Override
+    public ZLinkDispatchOptions messageFlow(ZLinkMessageFlowLogMode mode) {
+        diagnostics.setMessageFlow(mode);
+        return this;
+    }
+
+    @Override
+    public ZLinkDispatchOptions traceSampleRate(double rate) {
+        diagnostics.setSampleRate(rate);
+        return this;
+    }
+
+    @Override
+    public ZLinkDispatchOptions includeMessageSizes(boolean include) {
+        diagnostics.setIncludeMessageSizes(include);
+        return this;
+    }
+
+    @Override
+    public ZLinkDispatchOptions traceLogFile(String path) {
+        diagnostics.setLogFile(path);
+        return this;
+    }
+
+    @Override
+    public ZLinkDispatchOptions traceNodeId(String id) {
+        diagnostics.setNodeId(id);
         return this;
     }
 
@@ -153,6 +209,8 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
         private double sampleRate = 1.0d;
         private boolean includeMessageSizes = true;
         private boolean includeNativeDiagnostics;
+        private String logFile;
+        private String nodeId;
 
         public ZLinkMessageFlowLogMode messageFlow() {
             return messageFlow;
@@ -170,24 +228,40 @@ public final class ZLinkDispatchOptionsRegistration implements ZLinkDispatchOpti
             return includeNativeDiagnostics;
         }
 
-        @Override
+        public String logFile() {
+            return logFile;
+        }
+
+        public String nodeId() {
+            return nodeId;
+        }
+
+        public ZLinkMessageFlowLogMode effectiveMessageFlow() {
+            return messageFlow;
+        }
+
         public void setMessageFlow(ZLinkMessageFlowLogMode mode) {
             messageFlow = requireNonNull(mode, "messageFlow");
         }
 
-        @Override
         public void setSampleRate(double sampleRate) {
             this.sampleRate = sampleRate;
         }
 
-        @Override
         public void setIncludeMessageSizes(boolean enabled) {
             includeMessageSizes = enabled;
         }
 
-        @Override
         public void setIncludeNativeDiagnostics(boolean enabled) {
             includeNativeDiagnostics = enabled;
+        }
+
+        public void setLogFile(String path) {
+            logFile = path == null || path.isBlank() ? null : path;
+        }
+
+        public void setNodeId(String id) {
+            nodeId = id == null || id.isBlank() ? null : id;
         }
     }
 }

@@ -657,29 +657,50 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
           `Actor '${actor.actorId}' remote route transport is not configured.`
         );
       }
+      if (routedTransport.requestRawToSpot === undefined) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.ActorRouteNotFound,
+          `Actor '${actor.actorId}' remote route transport does not support raw SPOT requests.`
+        );
+      }
       const entrySpotRid = this.options.node.entrySpot().routingId;
       const sourceSpotRid = String(entrySpotRid);
       const sourceSpotRidHex = encodeRoutingIdHex(entrySpotRid);
-      const reply = await routedTransport.request<ZLinkRemoteActorJoinReply & { readonly reply?: string }>(
-        remoteAddress.routerChannelId,
-        String(remoteAddress.targetNodeRid),
-        REMOTE_ACTOR_JOIN_PACKET,
-        {
-          packetName: REMOTE_ACTOR_JOIN_PACKET,
-          spotRid: String(remoteAddress.spotRid),
-          actorId: actor.actorId,
-          actorType,
-          actorNodeRid: String(actorRef.nodeRid),
-          actorNodeRidHex: encodeRoutingIdHex(actorRef.nodeRid),
-          actorGeneration: actorRef.generation.toString(),
-          sourceSpotRid,
-          sourceSpotRidHex,
-          routerChannelId: remoteAddress.routerChannelId,
-          request: request.data().toString('base64')
-        },
-        timeoutMs,
-        signal
-      );
+      const rawRequest = BindingMessage.from(Buffer.from(JSON.stringify({
+        packetName: REMOTE_ACTOR_JOIN_PACKET,
+        spotRid: String(remoteAddress.spotRid),
+        actorId: actor.actorId,
+        actorType,
+        actorNodeRid: String(actorRef.nodeRid),
+        actorNodeRidHex: encodeRoutingIdHex(actorRef.nodeRid),
+        actorGeneration: actorRef.generation.toString(),
+        sourceSpotRid,
+        sourceSpotRidHex,
+        routerChannelId: remoteAddress.routerChannelId,
+        request: request.data().toString('base64')
+      })));
+      let parts: readonly Message[];
+      try {
+        parts = await routedTransport.requestRawToSpot(
+          remoteAddress,
+          rawRequest,
+          { timeoutMs, signal }
+        );
+      } finally {
+        rawRequest.close();
+      }
+      if (parts === undefined || parts.length === 0) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.ActorRouteNotFound,
+          `Remote actor join reply was empty for '${actor.actorId}'.`
+        );
+      }
+      let reply: ZLinkRemoteActorJoinReply & { readonly reply?: string };
+      try {
+        reply = this.decodeRemoteActorJoinReply(parts[0]);
+      } finally {
+        this.disposeParts(parts.slice(1));
+      }
       const resultActor = {
         nodeRid: decodeWireRoutingId(reply.actorNodeRid, reply.actorNodeRidHex),
         actorId: reply.actorId,
@@ -802,9 +823,9 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
   ): Promise<ZLinkActorJoinResult<Message>> {
     throwIfAborted(signal);
     const actorRef = state.ensureNativeActorRef(this.options.node);
-    const remoteEntry = this.options.remoteAddressResolver === undefined
+    const remoteEntry = String(nodeRid) === String(actorRef.nodeRid)
       ? undefined
-      : await this.options.remoteAddressResolver.resolve(nodeRid, signal);
+      : await this.tryResolveRemoteEntry(nodeRid, signal);
     const isRemoteJoin = remoteEntry !== undefined && String(remoteEntry.targetNodeRid) !== String(actorRef.nodeRid);
     if (isRemoteJoin && remoteEntry !== undefined && this.canUseRoutedTransport(remoteEntry)) {
       const result = await this.joinRemoteSpot(
@@ -874,6 +895,20 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
   private disposeParts(parts: readonly Message[]): void {
     for (const part of parts) {
       part.close();
+    }
+  }
+
+  private async tryResolveRemoteEntry(
+    nodeRid: RoutingId,
+    signal: AbortSignal | undefined
+  ): Promise<ZLinkSpotRemoteAddress | undefined> {
+    if (this.options.remoteAddressResolver === undefined) {
+      return undefined;
+    }
+    try {
+      return await this.options.remoteAddressResolver.resolve(nodeRid, signal);
+    } catch {
+      return undefined;
     }
   }
 }

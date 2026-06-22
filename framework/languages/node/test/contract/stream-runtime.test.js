@@ -75,7 +75,7 @@ test('managed stream actor bind calls native ActorGateway before local binding i
   assert.equal(runtime.find('actor-a'), actor);
 });
 
-test('managed stream remote actor bind records remote session on the local spot node', async () => {
+test('managed stream remote actor bind records the remote actor ref on the stream', async () => {
   const socket = new FakeStreamSocket();
   const node = new FakeSpotNode('node-local');
   const runtime = new framework.ZLinkStreamBindingRuntime({
@@ -86,15 +86,15 @@ test('managed stream remote actor bind records remote session on the local spot 
   const actorRef = { nodeRid: 'node-remote', actorId: 'actor-a', generation: 1n };
 
   const actor = await context.actors.bind(actorRef);
-  await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(actor.actorId, 'actor-a');
-  assert.equal(socket.boundActors.length, 0);
-  assert.deepEqual(node.remoteSessionBinds, [{
+  assert.equal(socket.boundActors.length, 1);
+  assert.deepEqual(socket.boundActors[0], {
+    sessionRid: 'backend-rid',
     actor: actorRef,
-    sourceNodeRid: 'node-local',
-    sourceSessionRid: 'backend-rid'
-  }]);
+    timeoutMs: 1234
+  });
+  assert.deepEqual(node.remoteSessionBinds, []);
   assert.equal(context.actors.find('actor-a'), actor);
 });
 
@@ -327,8 +327,15 @@ test('runtime host remote bound session send submits a routed Session command', 
     registration: framework.createFrameworkRegistration()
   });
   const routeCalls = [];
-  host.routeTransport.send = (routerChannelId, targetNodeRid, packetName, message, signal) => {
-    routeCalls.push({ routerChannelId, targetNodeRid, packetName, packet: message, signal });
+  host.routeTransport.sendToSpot = (remoteAddress, message, options) => {
+    routeCalls.push({
+      routerChannelId: remoteAddress.routerChannelId,
+      targetNodeRid: remoteAddress.targetNodeRid,
+      spotRid: remoteAddress.spotRid,
+      packetName: options.packetName,
+      packet: message,
+      signal: options.signal
+    });
     return Promise.resolve();
   };
   host.setActorManager({
@@ -353,6 +360,7 @@ test('runtime host remote bound session send submits a routed Session command', 
   assert.equal(routeCalls.length, 1);
   assert.equal(routeCalls[0].routerChannelId, 'room.route');
   assert.equal(routeCalls[0].targetNodeRid, 'session-node');
+  assert.equal(routeCalls[0].spotRid, 'session-entry');
   assert.equal(routeCalls[0].packetName, '__zlink.actor.bound_session.send');
   assert.equal(routeCalls[0].packet.packetName, '__zlink.actor.bound_session.send');
   assert.equal(routeCalls[0].packet.actorId, 'actor-remote');
@@ -364,8 +372,15 @@ test('runtime host remote bound session receiver forwards through actor remote t
     registration: framework.createFrameworkRegistration()
   });
   const routeCalls = [];
-  host.routeTransport.send = (routerChannelId, targetNodeRid, packetName, message, signal) => {
-    routeCalls.push({ routerChannelId, targetNodeRid, packetName, packet: message, signal });
+  host.routeTransport.sendToSpot = (remoteAddress, message, options) => {
+    routeCalls.push({
+      routerChannelId: remoteAddress.routerChannelId,
+      targetNodeRid: remoteAddress.targetNodeRid,
+      spotRid: remoteAddress.spotRid,
+      packetName: options.packetName,
+      packet: message,
+      signal: options.signal
+    });
     return Promise.resolve();
   };
   host.setActorManager({
@@ -392,6 +407,7 @@ test('runtime host remote bound session receiver forwards through actor remote t
   assert.equal(routeCalls.length, 1);
   assert.equal(routeCalls[0].routerChannelId, 'room.route');
   assert.equal(routeCalls[0].targetNodeRid, 'session-node');
+  assert.equal(routeCalls[0].spotRid, 'session-entry');
   assert.equal(routeCalls[0].packetName, '__zlink.actor.bound_session.send');
   assert.equal(routeCalls[0].packet.actorId, 'actor-hop');
   assert.equal(routeCalls[0].packet.boundPacketName, 'Notify');
@@ -559,18 +575,20 @@ test('runtime host relays bound remote actor request through route channel and c
       routingId: 'session-node'
     }
   };
-  host.routeTransport.request = async (routerChannelId, targetNodeRid, packetName, request, timeoutMs) => {
+  host.routeTransport.requestRawToSpot = async (remoteAddress, request, options) => {
+    const payload = JSON.parse(request.data().toString());
     routeRequests.push({
-      routerChannelId,
-      targetNodeRid,
-      packetName,
-      timeoutMs,
-      request
+      routerChannelId: remoteAddress.routerChannelId,
+      targetNodeRid: remoteAddress.targetNodeRid,
+      spotRid: remoteAddress.spotRid,
+      packetName: payload.packetName,
+      timeoutMs: options.timeoutMs,
+      request: payload
     });
-    return {
+    return [zlink.Message.from(JSON.stringify({
       ok: true,
       response: { matched: true }
-    };
+    }))];
   };
 
   const context = host.streamBindingRuntime.createSessionContext(stream);
@@ -587,6 +605,7 @@ test('runtime host relays bound remote actor request through route channel and c
   assert.equal(routeRequests.length, 1);
   assert.equal(routeRequests[0].routerChannelId, 'room.route');
   assert.equal(routeRequests[0].targetNodeRid, 'play-node');
+  assert.equal(routeRequests[0].spotRid, 'play-node');
   assert.equal(routeRequests[0].packetName, '__zlink.actor.packet.relay');
   assert.equal(routeRequests[0].request.packetName, '__zlink.actor.packet.relay');
   assert.equal(routeRequests[0].request.actorId, 'actor-remote');

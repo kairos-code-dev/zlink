@@ -136,7 +136,11 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
   ) {}
 
   canRouteChannel(routerChannelId: string): boolean {
-    return this.routeChannelPredicate?.(routerChannelId) ?? true;
+    const manager = this.manager();
+    if (manager !== undefined) {
+      return manager.canRouteChannel(routerChannelId);
+    }
+    return this.routeChannelPredicate?.(routerChannelId) ?? false;
   }
 
   async send(
@@ -867,6 +871,11 @@ export class ZLinkChannelRuntimeManager {
   private spotNodeRouter(routerChannelId: string): ZLinkBackendSpot | undefined {
     return this.spotRouteNode(routerChannelId)?.entrySpot()
       ?? this.spotNodes?.get(routerChannelId)?.entrySpot();
+  }
+
+  canRouteChannel(routerChannelId: string): boolean {
+    return this.registration.routeChannels.has(routerChannelId)
+      || this.spotNodeRouter(routerChannelId) !== undefined;
   }
 
   private spotRouteNode(routerChannelId: string): ZLinkBackendSpotNode | undefined {

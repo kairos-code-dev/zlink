@@ -629,6 +629,88 @@ test('ZLinkActorNativeJoinCoordinator uses native spot-node join when remote add
   request.close();
 });
 
+test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transport owns the router channel', async () => {
+  const events = [];
+  const createdRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const node = createMockSpotNode({
+    actorLookup() {
+      return undefined;
+    },
+    createActor() {
+      return createdRef;
+    },
+    entrySpot() {
+      return { routingId: 'node-b-entry' };
+    },
+    joinActor() {
+      throw new Error('native join must not be used when the route transport can route the SPOT node channel');
+    }
+  });
+  const remoteAddressResolver = {
+    async resolve(spotRid) {
+      events.push(`resolve:${spotRid}`);
+      return {
+        routerChannelId: 'play-node',
+        targetNodeRid: 'node-a',
+        spotRid,
+        spotKind: framework.ZLinkSpotKind.User
+      };
+    }
+  };
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
+      node,
+      remoteAddressResolver,
+      routedTransport: {
+        canRouteChannel(routerChannelId) {
+          events.push(`canRoute:${routerChannelId}`);
+          return true;
+        },
+        async requestRawToSpot(remoteAddress, message) {
+          const payload = JSON.parse(message.data().toString());
+          events.push(`routeRawToSpot:${remoteAddress.routerChannelId}:${remoteAddress.targetNodeRid}:${remoteAddress.spotRid}:${payload.packetName}:${payload.actorId}:${payload.actorType}:${Buffer.from(payload.request, 'base64').toString()}`);
+          return [zlink.Message.from(JSON.stringify({
+            accepted: true,
+            actorNodeRid: 'node-a',
+            actorId: 'alice',
+            actorGeneration: '2',
+            reply: Buffer.from('routed-reply').toString('base64')
+          }))];
+        }
+      },
+      async remoteActorBinder(actorRef) {
+        events.push(`bind:${actorRef.nodeRid}:${actorRef.actorId}:${actorRef.generation}`);
+      }
+    })
+  });
+  const actor = await manager.create('alice', 'player');
+  const request = zlink.Message.from('payload');
+  const result = await actor.context.joinSpot('room-1', request).submit();
+
+  assert.equal(result.resultCode, 0);
+  assert.equal(result.reply, 'routed-reply');
+  assert.deepEqual(events, [
+    'resolve:room-1',
+    'canRoute:play-node',
+    'canRoute:play-node',
+    'routeRawToSpot:play-node:node-a:room-1:__zlink.actor.join_spot.request:alice:player:payload',
+    'bind:node-a:alice:2'
+  ]);
+  request.close();
+});
+
 test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot state', async () => {
   const events = [];
   const createdRef = { nodeRid: 'node-a', actorId: 'alice', generation: 1n };

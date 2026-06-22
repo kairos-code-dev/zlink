@@ -22,6 +22,7 @@ import type {
   ZLinkSpotRemoteAddressResolver,
   ZlinkStreamHeader
 } from '../../contracts';
+import { ZLinkSpotKind } from '../../contracts';
 import {
   DefaultZLinkChannelClient,
   DefaultZLinkFanoutClient,
@@ -198,6 +199,22 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
           state?.setRemoteBoundSessionTarget(target);
         },
         actorPacketTargetProvider: (actorId) => this.actorPacketTargetForState(actorId),
+        localActorPacketRouter: async (actorId, parts, returnResponse, remoteBoundSessionTarget) => {
+          const spotRid = this.actorManager?.getState(actorId)?.spotRid;
+          if (spotRid === undefined || this.spotManager === undefined) {
+            return { handled: false };
+          }
+          return {
+            handled: true,
+            response: await this.spotManager.dispatchRoutedActorPacket(
+              spotRid,
+              actorId,
+              parts,
+              returnResponse,
+              remoteBoundSessionTarget
+            )
+          };
+        },
         actorResponseSender: (actor, packetName, requestSeq, response, metadata, signal) =>
           this.sendActorResponse(actor, packetName, requestSeq, response, metadata, signal),
         actorDestroyer: (node, entryNodeRid, actor, signal) => {
@@ -615,19 +632,42 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
       payload: Buffer.from(messageToBytes(payload)).toString('base64')
     };
     try {
-      const reply = await this.routeTransport.request<{
+      if (this.routeTransport.requestRawToSpot === undefined) {
+        return false;
+      }
+      const rawRequest = BindingMessage.from(Buffer.from(JSON.stringify(request)));
+      let replyParts: readonly Message[];
+      try {
+        replyParts = await this.routeTransport.requestRawToSpot(
+          {
+            ...remoteTarget,
+            spotKind: ZLinkSpotKind.User
+          },
+          rawRequest,
+          {
+            timeoutMs: this.options.registration.requestTimeoutMs,
+            signal
+          }
+        );
+      } finally {
+        rawRequest.close();
+      }
+      if (replyParts.length === 0) {
+        throw new Error('Remote actor packet relay reply was empty.');
+      }
+      let reply: {
         readonly ok?: boolean;
         readonly error?: unknown;
         readonly response?: unknown;
         readonly actorPacketTarget?: unknown;
-      }>(
-        remoteTarget.routerChannelId,
-        remoteTarget.targetNodeRid,
-        ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
-        request,
-        this.options.registration.requestTimeoutMs,
-        signal
-      );
+      };
+      try {
+        reply = JSON.parse(replyParts[0].data().toString()) as typeof reply;
+      } finally {
+        for (const part of replyParts) {
+          part.close();
+        }
+      }
       if (frameHeader.requestSeq !== undefined) {
           if (reply.ok === false) {
             const sent = this.streamBindingRuntime.sendLocalBoundSessionError(
@@ -643,7 +683,11 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
             return true;
           }
           const actorPacketTarget = decodeRemoteActorPacketTarget(reply.actorPacketTarget);
-          if (actorPacketTarget !== undefined) {
+          const localNodeRid = this.spotNodeRuntime?.primaryNode?.routingId as RoutingId | undefined;
+          if (
+            actorPacketTarget !== undefined &&
+            (localNodeRid === undefined || !routingIdsEqual(actorPacketTarget.targetNodeRid, localNodeRid))
+          ) {
             this.actorManager?.getState(actor.actorId)?.setRemoteActorPacketTarget(actorPacketTarget);
             this.sessionActorPacketTargets.set(actor, actorPacketTarget);
           }
@@ -933,10 +977,11 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         packetName: this.selectedPacketName,
         metadata: Object.fromEntries(this.selectedMetadata)
       };
-      await this.routedTransport.send(
-        remoteTarget.routerChannelId,
-        String(remoteTarget.targetNodeRid),
-        ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,
+      await this.routedTransport.sendToSpot(
+        {
+          ...remoteTarget,
+          spotKind: ZLinkSpotKind.User
+        },
         {
           packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,
           actorId: envelope.actorId,
@@ -944,7 +989,10 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
           boundPacketName: envelope.packetName,
           metadata: envelope.metadata
         },
-        signal
+        {
+          packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,
+          signal
+        }
       );
       return;
     }

@@ -879,17 +879,6 @@ export class ZLinkStreamBindingRuntime {
         'Actor session binding requires a stream routing id.'
       );
     }
-    const node = this.options.nativeActorNodeProvider?.();
-    if (node !== undefined && String(node.routingId) !== String(actorRef.nodeRid)) {
-      scheduleRemoteSessionBind(
-        node,
-        actorRef as unknown as ZLinkBackendActorRef,
-        node.routingId,
-        context.stream.actorBindingRoutingId,
-        this.options.actorBindTimeoutMs ?? 2000
-      );
-      return;
-    }
     await context.stream.bindActor(actorRef, this.options.actorBindTimeoutMs ?? 2000, signal);
   }
 
@@ -1560,48 +1549,6 @@ function sameActorRef(left: ActorRef, right: ActorRef): boolean {
   return String(left.nodeRid) === String(right.nodeRid)
     && left.actorId === right.actorId
     && BigInt(left.generation) === BigInt(right.generation);
-}
-
-function scheduleRemoteSessionBind(
-  node: ZLinkBackendSpotNode,
-  actorRef: ZLinkBackendActorRef,
-  sourceNodeRid: RoutingId,
-  sourceSessionRid: RoutingId,
-  timeoutMs: number
-): void {
-  setImmediate(() => {
-    void retryRemoteSessionBind(node, actorRef, sourceNodeRid, sourceSessionRid, timeoutMs)
-      .catch((error) => console.error(error));
-  });
-}
-
-async function retryRemoteSessionBind(
-  node: ZLinkBackendSpotNode,
-  actorRef: ZLinkBackendActorRef,
-  sourceNodeRid: RoutingId,
-  sourceSessionRid: RoutingId,
-  timeoutMs: number
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  let lastError: unknown;
-  do {
-    try {
-      node.bindRemoteActorSession(actorRef, sourceNodeRid, sourceSessionRid);
-      return;
-    } catch (error) {
-      lastError = error;
-      await delayRemoteSessionBindRetry(deadline);
-    }
-  } while (Date.now() < deadline);
-  if (lastError instanceof Error) {
-    throw lastError;
-  }
-  throw new Error('Remote actor session bind failed.');
-}
-
-function delayRemoteSessionBindRetry(deadline: number): Promise<void> {
-  const delayMs = Math.min(ZLINK_NATIVE_BOUND_SESSION_RETRY_DELAY_MS, Math.max(0, deadline - Date.now()));
-  return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
 function toBackendActorRef(actor: ActorRef): ZLinkBackendActorRef {

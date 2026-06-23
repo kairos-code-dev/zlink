@@ -138,12 +138,10 @@ class channel_native_publisher_t
   private:
     void drain_subscription_events ()
     {
-        const auto deadline =
-          std::chrono::steady_clock::now () + std::chrono::milliseconds (200);
+        const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (200);
         while (std::chrono::steady_clock::now () < deadline) {
             zlink::subscription_event_t subscription;
-            (void) _socket.receive_subscription_event (subscription,
-                                                       zlink::recv_flags_t::dontwait);
+            (void) _socket.receive_subscription_event (subscription, zlink::recv_flags_t::dontwait);
             std::this_thread::sleep_for (std::chrono::milliseconds (5));
         }
     }
@@ -159,13 +157,13 @@ channel_outbound_exchange_t::channel_outbound_exchange_t (
 {
 }
 
-message_bus_t::erased_request_result_t channel_outbound_exchange_t::submit_request (
-  std::string channel_name,
-  std::string packet_name,
-  std::type_index request_type,
-  const void *request,
-  std::chrono::milliseconds timeout,
-  const channel_request_call_t::metadata_map_t &metadata)
+message_bus_t::erased_request_result_t
+channel_outbound_exchange_t::submit_request (std::string channel_name,
+                                             std::string packet_name,
+                                             std::type_index request_type,
+                                             const void *request,
+                                             std::chrono::milliseconds timeout,
+                                             const channel_request_call_t::metadata_map_t &metadata)
 {
     channel_runtime_t runtime (_state);
     const auto *client = client_capability (*_state, channel_name);
@@ -188,9 +186,7 @@ message_bus_t::erased_request_result_t channel_outbound_exchange_t::submit_reque
         try {
             runtime::messaging::client_call_codec_t codec;
             auto header = codec.create_envelope (runtime::messaging::message_kind_t::request,
-                                                 channel_name,
-                                                 call_packet_name,
-                                                 timeout);
+                                                 channel_name, call_packet_name, timeout);
             header.metadata = metadata;
             detail::message_flow_tracer_t (_state->dispatch)
               .trace (message_flow_phase_t::sent, [&] {
@@ -221,8 +217,7 @@ message_bus_t::erased_request_result_t channel_outbound_exchange_t::submit_reque
                 if (!client_uses_discovery) {
                     (void) runtime.cancel_outbound_request (reservation.value ());
                     return message_bus_t::erased_request_result_t (framework_exception_t (
-                      framework_error_kind_t::disconnected,
-                      "channel client has no endpoint"));
+                      framework_error_kind_t::disconnected, "channel client has no endpoint"));
                 }
             }
 
@@ -242,9 +237,8 @@ message_bus_t::erased_request_result_t channel_outbound_exchange_t::submit_reque
                 }
                 return std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
             };
-            const std::size_t attempt_count = client_uses_discovery && endpoints.empty ()
-                                                ? 1
-                                                : endpoints.size ();
+            const std::size_t attempt_count =
+              client_uses_discovery && endpoints.empty () ? 1 : endpoints.size ();
             for (std::size_t attempt = 0; attempt < attempt_count; ++attempt) {
                 try {
                     const auto connect_timeout = remaining_timeout ();
@@ -255,8 +249,7 @@ message_bus_t::erased_request_result_t channel_outbound_exchange_t::submit_reque
                     }
                     zlink::message_t request_header =
                       zlink::message_t::from (parts[0].to_string ());
-                    zlink::message_t request_body =
-                      zlink::message_t::from (parts[1].to_string ());
+                    zlink::message_t request_body = zlink::message_t::from (parts[1].to_string ());
                     zlink::context_t context;
                     zlink::dealer_socket_t dealer (context);
                     dealer.channel_name (channel_name);
@@ -289,12 +282,11 @@ message_bus_t::erased_request_result_t channel_outbound_exchange_t::submit_reque
                         throw framework_exception_t (framework_error_kind_t::timeout,
                                                      "channel request timed out");
                     }
-                    auto pending_reply =
-                      dealer.request ()
-                        .message (request_header)
-                        .message (request_body)
-                        .timeout (request_timeout)
-                        .async ();
+                    auto pending_reply = dealer.request ()
+                                           .message (request_header)
+                                           .message (request_body)
+                                           .timeout (request_timeout)
+                                           .async ();
                     auto native_reply = pending_reply.get ();
                     if (timeout > std::chrono::milliseconds::zero ()
                         && std::chrono::steady_clock::now () >= deadline) {
@@ -310,10 +302,10 @@ message_bus_t::erased_request_result_t channel_outbound_exchange_t::submit_reque
                       runtime::messaging::message_parts_t (std::move (native_reply));
                     auto validation = validate_channel_native_reply (candidate_reply_parts);
                     if (!validation) {
-                        throw framework_exception_t (
-                          validation.error_kind (),
-                          validation.error () ? validation.error ()->what ()
-                                               : "channel reply decode failed");
+                        throw framework_exception_t (validation.error_kind (),
+                                                     validation.error ()
+                                                       ? validation.error ()->what ()
+                                                       : "channel reply decode failed");
                     }
                     reply_parts = std::move (candidate_reply_parts);
                     received_reply = true;
@@ -348,9 +340,9 @@ message_bus_t::erased_request_result_t channel_outbound_exchange_t::submit_reque
             auto reply_header = envelope.decode_header (reply_parts);
             if (!reply_header) {
                 return message_bus_t::erased_request_result_t (framework_exception_t (
-                  reply_header.error_kind (),
-                  reply_header.error () ? reply_header.error ()->what ()
-                                        : "channel reply header decode failed"));
+                  reply_header.error_kind (), reply_header.error ()
+                                                ? reply_header.error ()->what ()
+                                                : "channel reply header decode failed"));
             }
             if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
                 runtime::messaging::request_failure_mapper_t failure_mapper;
@@ -397,18 +389,17 @@ message_bus_t::erased_request_result_t channel_outbound_exchange_t::submit_reque
         }
     }
     (void) runtime.cancel_outbound_request (reservation.value ());
-    return message_bus_t::erased_request_result_t (
-      framework_exception_t (framework_error_kind_t::timeout,
-                             "request reply was not completed by the local test runtime"));
+    return message_bus_t::erased_request_result_t (framework_exception_t (
+      framework_error_kind_t::timeout, "channel request reply was not completed by a backend"));
 }
 
-result_t<void> channel_outbound_exchange_t::submit_send (
-  std::string channel_name,
-  std::string packet_name,
-  std::type_index message_type,
-  const void *message,
-  std::chrono::milliseconds timeout,
-  const send_call_t::metadata_map_t &metadata)
+result_t<void>
+channel_outbound_exchange_t::submit_send (std::string channel_name,
+                                          std::string packet_name,
+                                          std::type_index message_type,
+                                          const void *message,
+                                          std::chrono::milliseconds timeout,
+                                          const send_call_t::metadata_map_t &metadata)
 {
     const auto call_packet_name = std::move (packet_name);
     {
@@ -428,9 +419,7 @@ result_t<void> channel_outbound_exchange_t::submit_send (
         try {
             runtime::messaging::client_call_codec_t codec;
             auto header = codec.create_envelope (runtime::messaging::message_kind_t::command,
-                                                 channel_name,
-                                                 call_packet_name,
-                                                 timeout);
+                                                 channel_name, call_packet_name, timeout);
             header.metadata = metadata;
             detail::message_flow_tracer_t (_state->dispatch)
               .trace (message_flow_phase_t::sent, [&] {
@@ -447,7 +436,8 @@ result_t<void> channel_outbound_exchange_t::submit_send (
                                               std::nullopt};
               });
             runtime::messaging::envelope_codec_t envelope;
-            auto parts = envelope.encode_parts (header, message_type, message, *_state->serializers);
+            auto parts =
+              envelope.encode_parts (header, message_type, message, *_state->serializers);
 
             zlink::context_t context;
             zlink::dealer_socket_t dealer (context);
@@ -484,10 +474,7 @@ result_t<void> channel_outbound_exchange_t::submit_send (
 
             zlink::message_t send_header = zlink::message_t::from (parts[0].to_string ());
             zlink::message_t send_body = zlink::message_t::from (parts[1].to_string ());
-            const bool sent = dealer.send ()
-                                .message (send_header)
-                                .message (send_body)
-                                .submit ();
+            const bool sent = dealer.send ().message (send_header).message (send_body).submit ();
             if (!sent) {
                 return result_t<void>::failure (framework_error_kind_t::request_failed,
                                                 "channel native send failed");
@@ -497,8 +484,7 @@ result_t<void> channel_outbound_exchange_t::submit_send (
             return result_t<void>::failure (error.kind (), error.what ());
         }
         catch (const std::exception &error) {
-            return result_t<void>::failure (framework_error_kind_t::request_failed,
-                                            error.what ());
+            return result_t<void>::failure (framework_error_kind_t::request_failed, error.what ());
         }
         catch (...) {
             return result_t<void>::failure (framework_error_kind_t::request_failed,
@@ -508,14 +494,14 @@ result_t<void> channel_outbound_exchange_t::submit_send (
     return result_t<void>::success ();
 }
 
-result_t<void> channel_outbound_exchange_t::submit_publish (
-  std::string channel_name,
-  std::string topic,
-  std::string packet_name,
-  std::type_index event_type,
-  const void *event,
-  std::chrono::milliseconds timeout,
-  const send_call_t::metadata_map_t &metadata)
+result_t<void>
+channel_outbound_exchange_t::submit_publish (std::string channel_name,
+                                             std::string topic,
+                                             std::string packet_name,
+                                             std::type_index event_type,
+                                             const void *event,
+                                             std::chrono::milliseconds timeout,
+                                             const send_call_t::metadata_map_t &metadata)
 {
     const auto call_packet_name = std::move (packet_name);
     {
@@ -533,9 +519,7 @@ result_t<void> channel_outbound_exchange_t::submit_publish (
         try {
             runtime::messaging::client_call_codec_t codec;
             auto header = codec.create_envelope (runtime::messaging::message_kind_t::publish,
-                                                 channel_name,
-                                                 call_packet_name,
-                                                 timeout, topic);
+                                                 channel_name, call_packet_name, timeout, topic);
             header.metadata = metadata;
             detail::message_flow_tracer_t (_state->dispatch)
               .trace (message_flow_phase_t::sent, [&] {
@@ -571,8 +555,7 @@ result_t<void> channel_outbound_exchange_t::submit_publish (
             return result_t<void>::failure (error.kind (), error.what ());
         }
         catch (const std::exception &error) {
-            return result_t<void>::failure (framework_error_kind_t::request_failed,
-                                            error.what ());
+            return result_t<void>::failure (framework_error_kind_t::request_failed, error.what ());
         }
         catch (...) {
             return result_t<void>::failure (framework_error_kind_t::request_failed,

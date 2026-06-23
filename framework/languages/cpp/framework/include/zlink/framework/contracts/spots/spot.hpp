@@ -399,9 +399,9 @@ class spot_context_t
     {
         auto *serializers = serializer_registry ();
         if (serializers == nullptr) {
-            return send_call_t (result_t<void>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "spot publish requires a serializer registry"));
+            return send_call_t (
+              result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                       "spot publish requires a serializer registry"));
         }
         try {
             auto payload = serializers->get<TEvent> ().serialize (event);
@@ -417,16 +417,42 @@ class spot_context_t
     template <typename TReply, typename TRequest>
     request_call_t<TReply> request_to (node_rid_t node_rid, spot_rid_t spot_rid, TRequest request)
     {
-        (void) request;
-        return request_to_erased (std::move (node_rid), std::move (spot_rid))
-          .template as<TReply> ();
+        auto *serializers = serializer_registry ();
+        if (serializers == nullptr) {
+            return request_call_t<TReply> (
+              result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                         "spot request_to requires a serializer registry"));
+        }
+        try {
+            auto payload = serializers->get<TRequest> ().serialize (request);
+            return request_to_erased (std::move (node_rid), std::move (spot_rid),
+                                      detail::message_name<TRequest> (), std::move (payload))
+              .template as<TReply> ();
+        }
+        catch (const framework_exception_t &error) {
+            return request_call_t<TReply> (
+              result_t<TReply>::failure (error.kind (), error.what (), error.is_retriable ()));
+        }
     }
 
     template <typename TMessage>
     send_call_t send_to (node_rid_t node_rid, spot_rid_t spot_rid, TMessage message)
     {
-        (void) message;
-        return send_to_erased (std::move (node_rid), std::move (spot_rid));
+        auto *serializers = serializer_registry ();
+        if (serializers == nullptr) {
+            return send_call_t (
+              result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                       "spot send_to requires a serializer registry"));
+        }
+        try {
+            auto payload = serializers->get<TMessage> ().serialize (message);
+            return send_to_erased (std::move (node_rid), std::move (spot_rid),
+                                   detail::message_name<TMessage> (), std::move (payload));
+        }
+        catch (const framework_exception_t &error) {
+            return send_call_t (
+              result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+        }
     }
 
     template <typename TPayload> spot_context_t &register_packet (std::string packet_name)
@@ -467,15 +493,15 @@ class spot_context_t
                       }
                   }).detach ();
               }
-              const auto scheduled =
-                scheduler->try_schedule ([scheduler, shared_work, completion, completed] () mutable {
-                    auto result = detail::run_worker_body<result_type> (*shared_work);
-                    if (!completed->exchange (true)) {
-                        scheduler->post_owner ([completion, result = std::move (result)] () mutable {
-                            completion.complete (std::move (result));
-                        });
-                    }
-                });
+              const auto scheduled = scheduler->try_schedule ([scheduler, shared_work, completion,
+                                                               completed] () mutable {
+                  auto result = detail::run_worker_body<result_type> (*shared_work);
+                  if (!completed->exchange (true)) {
+                      scheduler->post_owner ([completion, result = std::move (result)] () mutable {
+                          completion.complete (std::move (result));
+                      });
+                  }
+              });
               if (!scheduled) {
                   completed->store (true);
                   scheduler->post_owner ([completion] () mutable {
@@ -520,25 +546,71 @@ class spot_context_t
     {
       public:
         explicit erased_request_call_t (framework_exception_t error);
+        erased_request_call_t (std::string packet_name,
+                               serializer_registry_t *serializers,
+                               std::function<task_t<zlink::message_t> (
+                                 const std::string &,
+                                 std::chrono::milliseconds,
+                                 const request_call_t<zlink::message_t>::metadata_map_t &)> submit);
 
         template <typename TReply> request_call_t<TReply> as () const
         {
+            if (_error) {
+                return request_call_t<TReply> (result_t<TReply>::failure (
+                  _error->kind (), _error->what (), _error->is_retriable ()));
+            }
+            auto serializers = _serializers;
+            auto submit = _submit;
             return request_call_t<TReply> (
-              result_t<TReply>::failure (_error.kind (), _error.what (), _error.is_retriable ()));
+              _packet_name,
+              [serializers,
+               submit] (const std::string &packet_name, std::chrono::milliseconds timeout,
+                        const request_call_t<TReply>::metadata_map_t &metadata) -> task_t<TReply> {
+                  if (!submit) {
+                      co_return result_t<TReply>::failure (
+                        framework_error_kind_t::request_protocol_error,
+                        "spot request is not bound to a route channel");
+                  }
+                  if (serializers == nullptr) {
+                      co_return result_t<TReply>::failure (
+                        framework_error_kind_t::request_protocol_error,
+                        "spot request has no serializer registry");
+                  }
+                  try {
+                      auto reply = co_await submit (packet_name, timeout, metadata);
+                      co_return serializers->get<TReply> ().deserialize (reply);
+                  }
+                  catch (const framework_exception_t &error) {
+                      co_return result_t<TReply>::failure (error.kind (), error.what (),
+                                                           error.is_retriable ());
+                  }
+              });
         }
 
       private:
-        framework_exception_t _error;
+        std::optional<framework_exception_t> _error;
+        std::string _packet_name;
+        serializer_registry_t *_serializers = nullptr;
+        std::function<task_t<zlink::message_t> (
+          const std::string &,
+          std::chrono::milliseconds,
+          const request_call_t<zlink::message_t>::metadata_map_t &)>
+          _submit;
     };
 
     explicit spot_context_t (std::shared_ptr<detail::spot_context_state_t> state);
 
-    send_call_t publish_erased (std::string topic,
+    send_call_t
+    publish_erased (std::string topic, std::string packet_name, zlink::message_t payload);
+    serializer_registry_t *serializer_registry () const noexcept;
+    send_call_t send_to_erased (node_rid_t node_rid,
+                                spot_rid_t spot_rid,
                                 std::string packet_name,
                                 zlink::message_t payload);
-    serializer_registry_t *serializer_registry () const noexcept;
-    send_call_t send_to_erased (node_rid_t node_rid, spot_rid_t spot_rid);
-    erased_request_call_t request_to_erased (node_rid_t node_rid, spot_rid_t spot_rid);
+    erased_request_call_t request_to_erased (node_rid_t node_rid,
+                                             spot_rid_t spot_rid,
+                                             std::string packet_name,
+                                             zlink::message_t payload);
     spot_context_t &register_packet_erased (std::string packet_name, std::type_index payload_type);
     task_t<actor_ref_t>
     leaveActor_erased (const actor_ref_t &actor_ref,
@@ -754,9 +826,7 @@ class spot_handler_registry_t
         callbacks.join = [] (void *spot, void *actor, const zlink::message_t &request) {
             auto &typed_spot = *static_cast<TSpot *> (spot);
             auto &typed_actor = *static_cast<TActor *> (actor);
-            if constexpr (requires {
-                              typed_spot.on_actor_join (typed_actor, request);
-                          }) {
+            if constexpr (requires { typed_spot.on_actor_join (typed_actor, request); }) {
                 return typed_spot.on_actor_join (typed_actor, request);
             } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot>) {
                 return spot_actor_join_response_t::accept ();
@@ -773,11 +843,10 @@ class spot_handler_registry_t
             }
         };
         callbacks.onCreateActor = [] (void *spot, void *actor) {
-            if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
-                          && requires {
-                                 static_cast<TSpot *> (spot)->onCreateActor (
-                                   *static_cast<TActor *> (actor));
-                             }) {
+            if constexpr (std::is_base_of_v<entry_spot_t, TSpot> && requires {
+                              static_cast<TSpot *> (spot)->onCreateActor (
+                                *static_cast<TActor *> (actor));
+                          }) {
                 static_cast<TSpot *> (spot)->onCreateActor (*static_cast<TActor *> (actor));
             }
         };
@@ -797,8 +866,7 @@ class spot_handler_registry_t
                 static_cast<TSpot *> (spot)->onDisconnectActor (*static_cast<TActor *> (actor));
             }
         };
-        register_actor_admission_erased (std::type_index (typeid (TActor)),
-                                         std::move (callbacks));
+        register_actor_admission_erased (std::type_index (typeid (TActor)), std::move (callbacks));
     }
 
     spot_handler_registry_t &add_handler_erased (spot_handler_kind_t kind,
@@ -841,8 +909,8 @@ class spot_node_manager_t
     spot_create_result_t create_spot (std::string spot_name);
     spot_create_result_t create_spot (std::string spot_name, zlink::message_t request);
     template <typename TRequest>
-      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>)
-    spot_create_result_t create_spot (std::string spot_name, const TRequest &request)
+    requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>) spot_create_result_t
+      create_spot (std::string spot_name, const TRequest &request)
     {
         return create_spot (std::move (spot_name),
                             serialize_request (std::type_index (typeid (TRequest)), &request));
@@ -852,9 +920,8 @@ class spot_node_manager_t
     spot_create_result_t
     get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
     template <typename TRequest>
-      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>)
-    spot_create_result_t
-    get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const TRequest &request)
+    requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>) spot_create_result_t
+      get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const TRequest &request)
     {
         return get_or_create_spot (
           std::move (spot_name), std::move (spot_rid),
@@ -880,8 +947,7 @@ class spot_node_manager_t
     friend class spot_context_t;
     friend class detail::spot_node_runtime_t;
     explicit spot_node_manager_t (std::shared_ptr<detail::spot_node_builder_state_t> state);
-    zlink::message_t serialize_request (std::type_index request_type,
-                                        const void *request) const;
+    zlink::message_t serialize_request (std::type_index request_type, const void *request) const;
 
     std::shared_ptr<detail::spot_node_builder_state_t> _state;
 };

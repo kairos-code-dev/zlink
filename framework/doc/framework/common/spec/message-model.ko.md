@@ -22,8 +22,10 @@ byte payload와 packet name을 확정해 `Message`로 변환한다. request/repl
 저수준 표면도 함께 있다.)
 
 payload object를 byte payload로 바꾸고 packet name을 확정하는 책임은 등록된
-serializer/codec registry에 둔다. `Message`를 직접 만들어 넘길 때는 `Message.from(...)`,
-`Message.From(...)`, `message_t::from(...)` 같은 언어별 factory를 쓴다. 수신 payload는
+serializer/codec registry에 둔다. application의 기본 업무 API는 `Message`를 직접 만들지
+않고 typed payload object를 넘긴다. `Message.from(...)`, `Message.From(...)`,
+`message_t::from(...)` 같은 언어별 factory는 명시 raw API, transport harness, codec
+serializer 구현처럼 byte payload 경계를 직접 다루는 곳에서만 사용한다. 수신 payload는
 등록된 handler metadata로 typed handler 인자로 decode한다.
 
 ## 2. 기본 구조 초안

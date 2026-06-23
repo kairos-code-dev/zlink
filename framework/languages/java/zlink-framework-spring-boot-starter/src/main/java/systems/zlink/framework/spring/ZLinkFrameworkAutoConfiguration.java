@@ -84,8 +84,13 @@ public class ZLinkFrameworkAutoConfiguration {
     public ZLinkFrameworkLifecycle zlinkFrameworkLifecycle(
         DefaultZLinkFrameworkOptions options,
         ZLinkBackendAdapterFactory backendAdapterFactory,
-        ZLinkHandlerFactory handlerFactory) {
-        return new ZLinkFrameworkLifecycle(options, backendAdapterFactory, handlerFactory);
+        ZLinkHandlerFactory handlerFactory,
+        ZLinkRuntimeEventDispatcher dispatcher) {
+        return new ZLinkFrameworkLifecycle(
+            options,
+            backendAdapterFactory,
+            handlerFactory,
+            dispatcher);
     }
 
     @Bean

@@ -9,6 +9,7 @@ import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
@@ -54,6 +55,15 @@ public final class ZLinkFrameworkRuntime
         ZLinkBackendAdapterFactory backendFactory,
         ZLinkMessageSerializer serializer,
         ZLinkHandlerFactory handlerFactory) {
+        this(options, backendFactory, serializer, handlerFactory, null);
+    }
+
+    ZLinkFrameworkRuntime(
+        DefaultZLinkFrameworkOptions options,
+        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerFactory handlerFactory,
+        ZLinkRuntimeEventDispatcher eventDispatcher) {
         options.validate();
         this.registration = options.registration();
         var diagnostics = this.registration.dispatchOptions().diagnostics();
@@ -85,7 +95,8 @@ public final class ZLinkFrameworkRuntime
                 options.registration(),
                 channels,
                 serializer,
-                runtimeHandlers);
+                runtimeHandlers,
+                eventDispatcher);
         if (this.spots != null) {
             runtimeHandlers.add(ZLinkSpotManager.class, this.spots);
         }
@@ -151,11 +162,20 @@ public final class ZLinkFrameworkRuntime
         DefaultZLinkFrameworkOptions options,
         ZLinkBackendAdapterFactory backendFactory,
         ZLinkHandlerFactory handlerFactory) {
+        return start(options, backendFactory, handlerFactory, null);
+    }
+
+    public static ZLinkFrameworkRuntime start(
+        DefaultZLinkFrameworkOptions options,
+        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkHandlerFactory handlerFactory,
+        ZLinkRuntimeEventDispatcher eventDispatcher) {
         return new ZLinkFrameworkRuntime(
             options,
             backendFactory,
             serializerFor(options),
-            handlerFactory);
+            handlerFactory,
+            eventDispatcher);
     }
 
     static ZLinkMessageSerializer serializerFor(DefaultZLinkFrameworkOptions options) {

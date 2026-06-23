@@ -59,6 +59,9 @@ import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.monitoring.ZLinkSpotEvent;
+import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
@@ -152,9 +155,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private final Map<RoutingId, SpotActivation> spots = new HashMap<>();
     private final List<EntrySpotActivation> entrySpots = new ArrayList<>();
     private final ZLinkBackendSpotNode primaryNode;
+    private final String primaryNodeSourceName;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkHandlerFactory handlerFactory;
     private final ZLinkDispatchErrorReporter dispatchErrors;
+    private final ZLinkRuntimeEventDispatcher eventDispatcher;
     private final Executor handlerExecutor;
     private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
     private final ZLinkScannedHandlerCatalog handlerCatalog;
@@ -213,12 +218,31 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         ZLinkChannelRuntime channels,
         ZLinkMessageSerializer serializer,
         ZLinkHandlerFactory handlerFactory) {
+        this(
+            backendFactory,
+            adapterOptions,
+            registration,
+            channels,
+            serializer,
+            handlerFactory,
+            null);
+    }
+
+    public ZLinkSpotRuntime(
+        ZLinkBackendAdapterFactory backendFactory,
+        ZLinkBackendAdapterOptions adapterOptions,
+        ZLinkFrameworkRegistration registration,
+        ZLinkChannelRuntime channels,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerFactory handlerFactory,
+        ZLinkRuntimeEventDispatcher eventDispatcher) {
         if (registration.spotNodes().isEmpty()) {
             throw new ZLinkConfigurationException("at least one SpotNode is required");
         }
         this.channels = channels;
         this.serializer = java.util.Objects.requireNonNull(serializer, "serializer");
         this.handlerFactory = handlerFactory;
+        this.eventDispatcher = eventDispatcher;
         this.handlerExecutor = java.util.Objects.requireNonNull(
             registration.handlerExecutor(),
             "handlerExecutor");
@@ -314,6 +338,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             }
         }
         this.primaryNode = nodes.get(0);
+        this.primaryNodeSourceName = registration.spotNodes().get(0).nodeName();
         spotDiscoveryReconciler.start(timerExecutor);
     }
 
@@ -2368,7 +2393,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (period == null || period.isNegative() || period.isZero()) {
                 throw new ZLinkConfigurationException("timer period must be positive");
             }
-            ManagedTimer timer = new ManagedTimer(name, period, handlerType);
+            ManagedTimer timer = new ManagedTimer(name, period, handlerType, options);
             timers.add(timer);
             timer.start();
             return CompletableFuture.completedFuture(timer);
@@ -2448,15 +2473,21 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             private final String name;
             private final Duration period;
             private final Class<?> handlerType;
+            private final ZLinkTimerOptions options;
             private final Instant startedAt = Instant.now();
             private long tickIndex;
             private volatile boolean disposed;
             private ScheduledFuture<?> future;
 
-            ManagedTimer(String name, Duration period, Class<?> handlerType) {
+            ManagedTimer(
+                String name,
+                Duration period,
+                Class<?> handlerType,
+                ZLinkTimerOptions options) {
                 this.name = name;
                 this.period = period;
                 this.handlerType = handlerType;
+                this.options = options == null ? new ZLinkTimerOptions() : options;
             }
 
             void start() {
@@ -2488,7 +2519,22 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     disposed
                         ? CompletableFuture.completedFuture(null)
                         : withCurrentOutbound(DefaultSpotContext.this.outbound, () ->
-                            invokeTimerHandler(handlerType, spot, tick)));
+                            invokeTimerHandler(handlerType, spot, tick)))
+                    .whenComplete((ignored, error) -> {
+                        if (error == null) {
+                            return;
+                        }
+                        boolean stopped = this.options.stopOnUnhandledException();
+                        if (stopped) {
+                            close();
+                        }
+                        publishTimerFailureEvent(
+                            DefaultSpotContext.this,
+                            this,
+                            tick,
+                            error,
+                            stopped);
+                    });
             }
 
             @Override
@@ -2524,6 +2570,52 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 "failed to create timer handler: " + handlerType.getName(),
                 ex));
         }
+    }
+
+    private void publishTimerFailureEvent(
+        DefaultSpotContext context,
+        DefaultSpotContext.ManagedTimer timer,
+        ZLinkTimerTick tick,
+        Throwable error,
+        boolean stopped) {
+        if (eventDispatcher == null) {
+            return;
+        }
+        Throwable failure = unwrap(error);
+        eventDispatcher.publish(new ZLinkSpotEvent(
+            primaryNodeSourceName,
+            Instant.now(),
+            stopped
+                ? ZLinkSpotEventKind.TIMER_STOPPED_AFTER_UNHANDLED_EXCEPTION
+                : ZLinkSpotEventKind.TIMER_HANDLER_FAILED,
+            Optional.empty(),
+            List.of(),
+            List.of(),
+            Optional.of(timerDiagnostic(context, timer, tick, failure))));
+    }
+
+    private String timerDiagnostic(
+        DefaultSpotContext context,
+        DefaultSpotContext.ManagedTimer timer,
+        ZLinkTimerTick tick,
+        Throwable error) {
+        return "spotRid=" + context.backendSpot.routingId()
+            + "|timer=" + timer.name
+            + "|handler=" + timer.handlerType.getName()
+            + "|deliveryIndex=" + tick.deliveryIndex()
+            + "|scheduledIndex=" + tick.scheduledIndex()
+            + "|exception=" + error.getClass().getName()
+            + "|message=" + String.valueOf(error.getMessage());
+    }
+
+    private static Throwable unwrap(Throwable error) {
+        Throwable current = error;
+        while ((current instanceof CompletionException
+            || current instanceof InvocationTargetException)
+            && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
     }
 
     private CompletionStage<Void> invokeVoidMethodHandler(

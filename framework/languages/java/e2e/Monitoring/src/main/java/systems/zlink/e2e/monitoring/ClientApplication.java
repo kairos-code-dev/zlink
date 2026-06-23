@@ -91,10 +91,15 @@ public final class ClientApplication {
                 "STATUS_CHANGED",
                 "TOPOLOGY_CHANGED",
                 "SERVICE_SUMMARY_CHANGED"));
+            waitForAnyEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "socket", Set.of(
+                "CONNECTED",
+                "CONNECTION_READY"));
             waitForEvent(Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP"), "spot", Set.of(
                 "STATUS_CHANGED",
                 "PEERS_CHANGED",
-                "SUBJECTS_CHANGED"));
+                "SUBJECTS_CHANGED",
+                "TIMER_HANDLER_FAILED"));
+            System.out.println("scenario MON-A1 passed");
             System.out.println("scenario MON-A2 passed");
             System.out.println("scenario MON-A3 passed");
         }
@@ -111,6 +116,21 @@ public final class ClientApplication {
             Set<String> observed = events(baseUrl, surface);
             throw new IllegalStateException(
                 "missing " + surface + " events " + expected + " at " + baseUrl
+                    + "; observed=" + observed + "; evidence=" + get(baseUrl + "/evidence"));
+        }
+
+        private void waitForAnyEvent(String baseUrl, String surface, Set<String> expected) {
+            long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
+            while (System.nanoTime() < deadline) {
+                Set<String> observed = events(baseUrl, surface);
+                if (expected.stream().anyMatch(observed::contains)) {
+                    return;
+                }
+                sleep(200);
+            }
+            Set<String> observed = events(baseUrl, surface);
+            throw new IllegalStateException(
+                "missing any " + surface + " event " + expected + " at " + baseUrl
                     + "; observed=" + observed + "; evidence=" + get(baseUrl + "/evidence"));
         }
 

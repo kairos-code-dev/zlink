@@ -67,7 +67,7 @@ test('ZLinkActorManager create notifies Entry Spot after native actor creation',
 
   const actor = await manager.create('alice', 'player');
   assert.equal(await manager.getOrCreate('alice', 'player'), actor);
-  assert.deepEqual(actor.context.actorRef, { nodeRid: zlink.RoutingId.from('node-a'), actorId: 'alice', generation: 1n });
+  assert.deepEqual(actor.context.actorRef, { nodeRid: 'node-a', actorId: 'alice', generation: 1n });
 
   assert.deepEqual(events, [
     'create:alice',
@@ -102,7 +102,7 @@ test('ZLinkActorManager resolves native actor node lazily at actor creation', as
 
   const actor = await manager.create('lazy', 'player');
 
-  assert.deepEqual(actor.context.actorRef, { nodeRid: zlink.RoutingId.from('node-lazy'), actorId: 'lazy', generation: 3n });
+  assert.deepEqual(actor.context.actorRef, { nodeRid: 'node-lazy', actorId: 'lazy', generation: 3n });
 });
 
 test('ZLinkActorManager clears failed create state when Entry Spot create callback fails', async () => {
@@ -535,10 +535,10 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
   const result = await actor.context.joinSpot('stage-1', request).timeout(25).submit();
 
   assert.equal(result.resultCode, 7);
-  assert.deepEqual(result.actor, { ...joinedRef, nodeRid: zlink.RoutingId.from('node-a') });
+  assert.deepEqual(result.actor, joinedRef);
   assert.equal(result.reply, 'native-reply');
   assert.equal(actor.context.isJoined, true);
-  assert.deepEqual(actor.context.spotRid, zlink.RoutingId.from('stage-1'));
+  assert.equal(actor.context.spotRid, 'stage-1');
   assert.equal(manager.getState('alice').nativeActorRef, joinedRef);
   assert.deepEqual(events, [
     'lookup:alice',
@@ -766,7 +766,7 @@ test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot stat
   const result = await actor.context.joinEntrySpot('node-b', entryRequest).timeout(50).submit();
   entryRequest.close();
 
-  assert.deepEqual(result.actor, { ...entryRef, nodeRid: zlink.RoutingId.from('node-b') });
+  assert.deepEqual(result.actor, entryRef);
   assert.equal(actor.context.isJoined, false);
   assert.equal(actor.context.spotRid, undefined);
   assert.equal(manager.getState('alice').nativeActorRef, entryRef);
@@ -808,14 +808,14 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
   manager.getState('alice').setJoinedSpot('stage-1');
 
   await assert.rejects(
-    () => manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor),
+    () => manager.destroyActor(node, 'node-a', actor),
     { kind: framework.ZLinkFrameworkErrorKind.ActorRouteNotFound }
   );
   assert.equal(await manager.find('alice'), actor);
 
   manager.getState('alice').clearJoinedSpot();
-  await manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor);
-  await manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor);
+  await manager.destroyActor(node, 'node-a', actor);
+  await manager.destroyActor(node, 'node-a', actor);
   assert.equal(await manager.find('alice'), undefined);
   const router = new framework.ZLinkActorDispatchRouter(manager);
   await assert.rejects(
@@ -825,7 +825,7 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
 
   const recreated = await manager.create('alice', 'player');
   manager.getState('alice').ensureNativeActorRef(node);
-  await manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor);
+  await manager.destroyActor(node, 'node-a', actor);
   assert.equal(await manager.find('alice'), recreated);
 
   assert.deepEqual(events, [
@@ -900,7 +900,7 @@ test('DefaultZLinkActorManager runs destroy cleanup for local actors without nat
   });
 
   const actor = await manager.create('local-alice', 'player');
-  await manager.destroyActor(node, zlink.RoutingId.from('node-a'), actor);
+  await manager.destroyActor(node, 'node-a', actor);
 
   assert.equal(await manager.find('local-alice'), undefined);
   assert.deepEqual(events, ['cleanup:local-alice']);

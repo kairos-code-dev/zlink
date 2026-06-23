@@ -1010,7 +1010,11 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
     const actorRef = this.state.nativeActorRef;
     return actorRef === undefined
       ? undefined
-      : toFrameworkActorRef(actorRef);
+      : {
+        nodeRid: actorRef.nodeRid,
+        actorId: actorRef.actorId,
+        generation: actorRef.generation
+      };
   }
 
   getSpot<TSpot extends ZLinkSpot>(spotType?: Type<TSpot>): ZLinkSpot | TSpot {

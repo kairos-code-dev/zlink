@@ -380,105 +380,12 @@ interface ZLinkPendingRawSpotRouteBridgeRequest {
   reject(error: unknown): void;
 }
 
-/**
- * Owns the per-route-channel queue of in-flight raw SPOT route-bridge requests:
- * timeout/abort wiring, dequeue-on-completion, and matching arriving raw bridge
- * replies (FIFO) to the oldest pending request. Extracted from the channel
- * runtime manager so the raw-reply state machine evolves independently of
- * channel lifecycle and route dispatch.
- */
-class ZLinkSpotRouteBridgeRawReplyRegistry {
-  private readonly pending = new Map<string, ZLinkPendingRawSpotRouteBridgeRequest[]>();
-
-  enqueue(
-    routerChannelId: string,
-    resolve: (reply: readonly Message[]) => void,
-    reject: (error: unknown) => void,
-    timeoutMs: number | undefined,
-    defaultTimeoutMs: number | undefined,
-    signal: AbortSignal | undefined
-  ): ZLinkPendingRawSpotRouteBridgeRequest {
-    const pending: ZLinkPendingRawSpotRouteBridgeRequest = {
-      completed: false,
-      timeout: undefined,
-      abortHandler: undefined,
-      resolve: (reply) => {
-        if (pending.completed) {
-          closeMessages(reply);
-          return;
-        }
-        pending.completed = true;
-        this.remove(routerChannelId, pending);
-        if (pending.timeout !== undefined) {
-          clearTimeout(pending.timeout);
-        }
-        if (pending.abortHandler !== undefined) {
-          signal?.removeEventListener('abort', pending.abortHandler);
-        }
-        resolve(reply);
-      },
-      reject: (error) => {
-        if (pending.completed) {
-          return;
-        }
-        pending.completed = true;
-        this.remove(routerChannelId, pending);
-        if (pending.timeout !== undefined) {
-          clearTimeout(pending.timeout);
-        }
-        if (pending.abortHandler !== undefined) {
-          signal?.removeEventListener('abort', pending.abortHandler);
-        }
-        reject(error);
-      }
-    };
-    const queue = this.pending.get(routerChannelId) ?? [];
-    queue.push(pending);
-    this.pending.set(routerChannelId, queue);
-    const effectiveTimeoutMs = timeoutMs ?? defaultTimeoutMs;
-    if (effectiveTimeoutMs !== undefined) {
-      pending.timeout = setTimeout(
-        () => pending.reject(new ZLinkConfigurationException(`Route channel '${routerChannelId}' spot request timed out.`)),
-        effectiveTimeoutMs
-      );
-    }
-    if (signal !== undefined) {
-      pending.abortHandler = () => pending.reject(new Error('The operation was aborted.'));
-      signal.addEventListener('abort', pending.abortHandler, { once: true });
-    }
-    return pending;
-  }
-
-  remove(routerChannelId: string, pending: ZLinkPendingRawSpotRouteBridgeRequest): void {
-    const queue = this.pending.get(routerChannelId);
-    if (queue === undefined) {
-      return;
-    }
-    const index = queue.indexOf(pending);
-    if (index >= 0) {
-      queue.splice(index, 1);
-    }
-    if (queue.length === 0) {
-      this.pending.delete(routerChannelId);
-    }
-  }
-
-  tryComplete(routerChannelId: string, received: { readonly parts: readonly Message[] }): boolean {
-    const queue = this.pending.get(routerChannelId);
-    if (queue === undefined || queue.length === 0 || !looksLikeRawSpotRouteBridgeReply(received.parts)) {
-      return false;
-    }
-    queue[0].resolve(received.parts);
-    return true;
-  }
-}
-
 export class ZLinkChannelRuntimeManager {
   private readonly channelReceiveLoops: ZLinkChannelReceiveLoop[] = [];
   private readonly subscriberReceiveLoops: ZLinkSubscriberReceiveLoop[] = [];
   private readonly routeReceiveLoops: Array<{ stop(): void }> = [];
   private readonly spotRouteBridges = new Map<string, ZLinkBackendSpotRouteBridge>();
-  private readonly spotRouteBridgeRawReplies = new ZLinkSpotRouteBridgeRawReplyRegistry();
+  private readonly spotRouteBridgeRawReplies = new Map<string, ZLinkPendingRawSpotRouteBridgeRequest[]>();
   private readonly spotNodeRouterQueues = new Map<string, Promise<void>>();
   private readonly sockets: ZLinkChannelSocketRegistry;
   private readonly codecs: ZLinkChannelEnvelopeCodecRegistry;
@@ -567,7 +474,7 @@ export class ZLinkChannelRuntimeManager {
           handlers,
           spotRouteBridge,
           rawBridgeReplyHandler: (received) =>
-            this.spotRouteBridgeRawReplies.tryComplete(routeChannel.routerChannelId, received)
+            this.tryCompleteSpotRouteBridgeRawReply(routeChannel.routerChannelId, received)
         });
         const loop = new ZLinkRouteReceiveLoop(router, dispatcher);
         this.routeReceiveLoops.push(loop);
@@ -1053,12 +960,11 @@ export class ZLinkChannelRuntimeManager {
     const bridge = this.spotRouteBridges.get(remoteAddress.routerChannelId);
     if (bridge !== undefined) {
       return new Promise<readonly Message[]>((resolve, reject) => {
-        const pending = this.spotRouteBridgeRawReplies.enqueue(
+        const pending = this.enqueueSpotRouteBridgeRawReply(
           remoteAddress.routerChannelId,
           resolve,
           reject,
           timeoutMs,
-          this.registration.requestTimeoutMs,
           signal
         );
         this.sockets.requireSubmitter(this.sockets.routeRouter(remoteAddress.routerChannelId)).submitCommand(
@@ -1138,6 +1044,93 @@ export class ZLinkChannelRuntimeManager {
     );
   }
 
+  private enqueueSpotRouteBridgeRawReply(
+    routerChannelId: string,
+    resolve: (reply: readonly Message[]) => void,
+    reject: (error: unknown) => void,
+    timeoutMs: number | undefined,
+    signal: AbortSignal | undefined
+  ): ZLinkPendingRawSpotRouteBridgeRequest {
+    const pending: ZLinkPendingRawSpotRouteBridgeRequest = {
+      completed: false,
+      timeout: undefined,
+      abortHandler: undefined,
+      resolve: (reply) => {
+        if (pending.completed) {
+          closeMessages(reply);
+          return;
+        }
+        pending.completed = true;
+        this.removeSpotRouteBridgeRawReply(routerChannelId, pending);
+        if (pending.timeout !== undefined) {
+          clearTimeout(pending.timeout);
+        }
+        if (pending.abortHandler !== undefined) {
+          signal?.removeEventListener('abort', pending.abortHandler);
+        }
+        resolve(reply);
+      },
+      reject: (error) => {
+        if (pending.completed) {
+          return;
+        }
+        pending.completed = true;
+        this.removeSpotRouteBridgeRawReply(routerChannelId, pending);
+        if (pending.timeout !== undefined) {
+          clearTimeout(pending.timeout);
+        }
+        if (pending.abortHandler !== undefined) {
+          signal?.removeEventListener('abort', pending.abortHandler);
+        }
+        reject(error);
+      }
+    };
+    const queue = this.spotRouteBridgeRawReplies.get(routerChannelId) ?? [];
+    queue.push(pending);
+    this.spotRouteBridgeRawReplies.set(routerChannelId, queue);
+    const effectiveTimeoutMs = timeoutMs ?? this.registration.requestTimeoutMs;
+    if (effectiveTimeoutMs !== undefined) {
+      pending.timeout = setTimeout(
+        () => pending.reject(new ZLinkConfigurationException(`Route channel '${routerChannelId}' spot request timed out.`)),
+        effectiveTimeoutMs
+      );
+    }
+    if (signal !== undefined) {
+      pending.abortHandler = () => pending.reject(new Error('The operation was aborted.'));
+      signal.addEventListener('abort', pending.abortHandler, { once: true });
+    }
+    return pending;
+  }
+
+  private removeSpotRouteBridgeRawReply(
+    routerChannelId: string,
+    pending: ZLinkPendingRawSpotRouteBridgeRequest
+  ): void {
+    const queue = this.spotRouteBridgeRawReplies.get(routerChannelId);
+    if (queue === undefined) {
+      return;
+    }
+    const index = queue.indexOf(pending);
+    if (index >= 0) {
+      queue.splice(index, 1);
+    }
+    if (queue.length === 0) {
+      this.spotRouteBridgeRawReplies.delete(routerChannelId);
+    }
+  }
+
+  private tryCompleteSpotRouteBridgeRawReply(
+    routerChannelId: string,
+    received: { readonly parts: readonly Message[] }
+  ): boolean {
+    const queue = this.spotRouteBridgeRawReplies.get(routerChannelId);
+    if (queue === undefined || queue.length === 0 || !looksLikeRawSpotRouteBridgeReply(received.parts)) {
+      return false;
+    }
+    queue[0].resolve(received.parts);
+    return true;
+  }
+
   private spotNodeRouter(routerChannelId: string): ZLinkBackendSpot | undefined {
     return this.spotRouteNode(routerChannelId)?.entrySpot()
       ?? this.spotNodes?.get(routerChannelId)?.entrySpot();
@@ -1149,7 +1142,7 @@ export class ZLinkChannelRuntimeManager {
   }
 
   canRoutePacketChannel(routerChannelId: string): boolean {
-    if ((this.spotNodes?.has(routerChannelId) ?? false) || this.spotRouteNode(routerChannelId) !== undefined) {
+    if (this.spotNodes?.has(routerChannelId) || this.spotRouteNode(routerChannelId) !== undefined) {
       return false;
     }
     return this.registration.routeChannels.has(routerChannelId);

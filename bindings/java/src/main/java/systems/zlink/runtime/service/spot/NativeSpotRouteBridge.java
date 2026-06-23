@@ -194,6 +194,16 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
     }
 
     @Override
+    public int drain() {
+        int rc = Native.spotRouteBridgeDrain(handle());
+        if (rc < 0) {
+            throw InternalAccess.zlinkExceptionFromLastError(
+                "zlink_spot_route_bridge_drain");
+        }
+        return rc;
+    }
+
+    @Override
     public void close() {
         MemorySegment current = handle;
         if (current == null || current.address() == 0) {

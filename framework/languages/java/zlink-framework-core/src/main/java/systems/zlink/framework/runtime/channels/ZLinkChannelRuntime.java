@@ -925,6 +925,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                         dispatchRequest(channelName, router, received);
                     }
                 } else {
+                    drainSpotRouteBridge(channelName);
                     Thread.onSpinWait();
                 }
             }
@@ -1030,6 +1031,13 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             received.parts());
     }
 
+    private void drainSpotRouteBridge(String channelName) {
+        ZLinkBackendSpotRouteBridge bridge = spotRouteBridges.get(channelName);
+        if (bridge != null) {
+            bridge.drain();
+        }
+    }
+
     private void enqueueRawSpotRouteBridgeReply(
         String channelName,
         CompletableFuture<List<Message>> pending) {
@@ -1096,6 +1104,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                 if (received != null) {
                     dispatchRouteRequest(channelName, router, received);
                 } else {
+                    drainSpotRouteBridge(channelName);
                     Thread.onSpinWait();
                 }
             }

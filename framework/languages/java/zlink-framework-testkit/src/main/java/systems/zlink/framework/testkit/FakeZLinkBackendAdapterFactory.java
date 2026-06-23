@@ -1015,6 +1015,11 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             return false;
         }
 
+        @Override public int drain() {
+            record("bridge.drain");
+            return 0;
+        }
+
         @Override public void close() {
             record("bridge.close");
         }

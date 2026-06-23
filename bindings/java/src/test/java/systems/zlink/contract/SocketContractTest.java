@@ -537,6 +537,7 @@ public class SocketContractTest {
             String.class, RoutingId.class));
         assertTrue(hasPublicMethod(SpotRouteBridge.class, "request",
             String.class, RoutingId.class));
+        assertTrue(hasPublicMethod(SpotRouteBridge.class, "drain"));
         assertTrue(hasPublicMethod(SpotNodePublisher.class, "publish",
             String.class));
         assertFalse(hasPublicMethod(SpotNode.class, "socketSnapshots"));

@@ -67,7 +67,6 @@ using zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_deliv
 using zlink::spot_reqrep_internal::process_route_combined_for_local_delivery;
 using zlink::spot_reqrep_internal::queue_spot_message;
 using zlink::spot_reqrep_internal::queue_spot_subscribe_message;
-using zlink::spot_reqrep_internal::recv_combined_router_message;
 using zlink::spot_reqrep_internal::recv_internal_spot_queue;
 using zlink::spot_reqrep_internal::recv_internal_spot_subscribe_queue;
 using zlink::spot_reqrep_internal::register_router_spot_pending_request;
@@ -97,8 +96,6 @@ using zlink::spot_reqrep_internal::try_find_spot_state;
 using zlink::spot_reqrep_internal::validate_request_parts;
 
 const size_t spot_routed_control_part_count = 8;
-
-int recv_combined_plain_message (zlink::socket_base_t *socket_, std::vector<zlink_msg_t> *out_);
 
 void notify_spot_dispatch_info (void *spot_,
                                 zlink_spot_dispatch_event_t event_,
@@ -166,40 +163,6 @@ int dispatch_router_spot_message (router_spot_request_reply_state_t *state_,
         != 0) {
         zlink::request_reply::close_request_reply_parts (parts_, part_count_);
         return -1;
-    }
-
-    return 0;
-}
-
-int recv_combined_plain_message (zlink::socket_base_t *socket_, std::vector<zlink_msg_t> *out_)
-{
-    if (!socket_ || !out_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    out_->clear ();
-
-    zlink_msg_t first;
-    zlink_msg_init (&first);
-    if (zlink::recv_msg_internal (socket_, &first, ZLINK_DONTWAIT) != 0) {
-        zlink_msg_close (&first);
-        return -1;
-    }
-
-    out_->push_back (first);
-    while (zlink::msg_frame_has_more (out_->back ())) {
-        zlink_msg_t next;
-        zlink_msg_init (&next);
-        if (zlink::internal_pair_queue::recv_followup_with_retry (socket_, &next, ZLINK_DONTWAIT)
-            != 0) {
-            const int saved_errno = errno;
-            zlink::request_reply::close_built_parts (out_);
-            out_->clear ();
-            errno = saved_errno;
-            return -1;
-        }
-        out_->push_back (next);
     }
 
     return 0;

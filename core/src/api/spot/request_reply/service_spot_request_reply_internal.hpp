@@ -307,7 +307,6 @@ int register_router_spot_pending_request (
   void *userdata_);
 void erase_spot_pending_request (const std::shared_ptr<spot_request_reply_state_t> &state_,
                                  const pending_spot_key_t &key_);
-int recv_combined_router_message (zlink::socket_base_t *socket_, std::vector<zlink_msg_t> *out_);
 int send_combined_parts_on_socket (zlink::socket_base_t *socket_,
                                    std::vector<zlink_msg_t> *parts_,
                                    zlink_send_flags_t flags_);

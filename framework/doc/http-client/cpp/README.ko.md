@@ -10,8 +10,8 @@ zlink 스타일 fluent builder로 사용하며 public header는 Boost.Beast/Asio
 auto game = zlink::http_client::client_t::create ("https://game-api.example.internal")
               .json ()
               .post ("/games")
-              .body (create_game_req_t{.name = "ranked-match-0611"})
-              .fetch<create_game_res_t> ();
+              .body (create_game_http_req_t{.game_name = "ranked-match-0611"})
+              .fetch<create_game_http_res_t> ();
 ```
 
 ## 목차

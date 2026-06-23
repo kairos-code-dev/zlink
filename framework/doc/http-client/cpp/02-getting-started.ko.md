@@ -89,8 +89,8 @@ auto profile = client.get ("/players/7281").fetch<player_profile_t> ();
 auto created = zlink::http_client::client_t::create (options.api_http_endpoint)
                  .json ()
                  .post ("/games")
-                 .body (create_game_req_t{.name = "ranked-match-0611"})
-                 .fetch<create_game_res_t> ();
+                 .body (create_game_http_req_t{.game_name = "ranked-match-0611"})
+                 .fetch<create_game_http_res_t> ();
 ```
 
 단, 같은 서버에 여러 번 요청한다면 `build()`로 client를 만들어 재사용해야

@@ -2,7 +2,6 @@
 #pragma once
 
 #include "../../Configuration/sample_names.hpp"
-#include "../../Configuration/sample_topology.hpp"
 
 #include <zlink/framework.hpp>
 
@@ -16,15 +15,13 @@ class create_game_http_handler_t
     using reply_type = create_game_http_res_t;
     using dependency_types =
       zlink::framework::dependency_list_t<zlink::framework::channel_client_t,
-                                          sample_topology_t,
                                           zlink::framework::logger_t<create_game_http_handler_t>>;
     static constexpr const char *topic_name = "CreateGame";
 
     explicit create_game_http_handler_t (
       zlink::framework::channel_client_t &client,
-      sample_topology_t &topology,
       zlink::framework::logger_t<create_game_http_handler_t> &logger) :
-        _client (client), _topology (topology), _logger (logger)
+        _client (client), _logger (logger)
     {
     }
 
@@ -48,7 +45,6 @@ class create_game_http_handler_t
 
   private:
     zlink::framework::channel_client_t &_client;
-    sample_topology_t &_topology;
     zlink::framework::logger_t<create_game_http_handler_t> _logger;
 };
 

@@ -71,16 +71,24 @@ switch (raw.value ().status) {
 디코딩한다. 디코딩 실패는 `payload_decode_failed`로 보고된다.
 
 ```cpp
-struct create_game_res_t
+struct create_game_http_res_t
 {
-    std::string game_id;
-    std::string play_endpoint;
+    std::string room_id;
+    std::string game_name;
+    std::string owner_play_endpoint;
+    std::vector<std::string> play_endpoints;
+    std::vector<play_node_info_t> play_nodes;
+    int required_level = 0;
 };
 
-void from_json (const nlohmann::json &json, create_game_res_t &value)
+void from_json (const nlohmann::json &json, create_game_http_res_t &value)
 {
-    value.game_id = json.at ("gameId").get<std::string> ();
-    value.play_endpoint = json.at ("playEndpoint").get<std::string> ();
+    value.room_id = json.at ("roomId").get<std::string> ();
+    value.game_name = json.at ("gameName").get<std::string> ();
+    value.owner_play_endpoint = json.at ("ownerPlayEndpoint").get<std::string> ();
+    value.play_endpoints = json.at ("playEndpoints").get<std::vector<std::string>> ();
+    value.play_nodes = json.at ("playNodes").get<std::vector<play_node_info_t>> ();
+    value.required_level = json.at ("requiredLevel").get<int> ();
 }
 ```
 
@@ -92,9 +100,9 @@ void from_json (const nlohmann::json &json, create_game_res_t &value)
 
 ```cpp
 auto created = client.post ("/games")
-                 .body (create_game_req_t{.name = "ranked-match-0611"})
-                 .fetch<create_game_res_t> ();
-join_game (created.game_id, created.play_endpoint);
+                 .body (create_game_http_req_t{.game_name = "ranked-match-0611"})
+                 .fetch<create_game_http_res_t> ();
+join_game (created.room_id, created.owner_play_endpoint);
 ```
 
 [다음: 비동기와 코루틴 →](07-async-coroutines.ko.md)

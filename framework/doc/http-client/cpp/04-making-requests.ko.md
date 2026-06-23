@@ -57,8 +57,8 @@ auto client = zlink::http_client::client_t::create ("https://game-api.example.in
 
 client.post ("/games")
   .header ("x-idempotency-key", "9f2c1a77-58be-4d10-8d7e-3b1f0a44c2e9")
-  .body (create_game_req_t{.name = "ranked-match-0611"})
-  .submit<create_game_res_t> ();
+  .body (create_game_http_req_t{.game_name = "ranked-match-0611"})
+  .submit<create_game_http_res_t> ();
 ```
 
 ## Request 단위 timeout

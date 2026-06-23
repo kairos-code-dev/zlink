@@ -67,8 +67,8 @@ POST처럼 멱등이 아닌 요청에 retry를 켤 때는 서버가 idempotency 
 ```cpp
 client.post ("/games")
   .header ("x-idempotency-key", request_id)
-  .body (create_game_req_t{.name = "ranked-match-0611"})
-  .submit<create_game_res_t> ();
+  .body (create_game_http_req_t{.game_name = "ranked-match-0611"})
+  .submit<create_game_http_res_t> ();
 ```
 
 ## Cookie jar

@@ -37,7 +37,8 @@ channel_client_t.request(play_channel, ...).async<create_game_res_t>()
       v
 HTTP JSON response
   create_game_http_res_t {
-    room_id, game_name, owner_play_endpoint, play_endpoints
+    room_id, game_name, owner_play_endpoint,
+    play_endpoints, play_nodes, required_level
   }
 ```
 
@@ -118,12 +119,10 @@ public:
     using dependency_types =
       zlink::framework::dependency_list_t<
         zlink::framework::channel_client_t,
-        sample_topology_t,
         zlink::framework::logger_t<create_game_http_handler_t>>;
 
     explicit create_game_http_handler_t(
       zlink::framework::channel_client_t &client,
-      sample_topology_t &topology,
       zlink::framework::logger_t<create_game_http_handler_t> &logger);
 
     task_t<create_game_http_res_t> handle(const create_game_http_req_t &request);
@@ -596,9 +595,10 @@ C++ TicTacToe sample은 `.NET` TicTacToe와 같은 HTTP 시작 흐름을 가져�
 - `Server/Api` role은 zlink API channel server와 HTTP endpoint를 함께 구성한다.
 - `CreateGameHttpReq`, `CreateGameHttpRes` DTO를 C++ shared contracts에 둔다.
 - `create_game_http_handler_t`는 HTTP request를 받아 play 채널로 게임 룸을 만들고
-  `room_id`, `game_name`, `owner_play_endpoint`, `play_endpoints`를 반환한다.
+  `room_id`, `game_name`, `owner_play_endpoint`, `play_endpoints`, `play_nodes`,
+  `required_level`을 반환한다.
 - client는 `zlink::http_client`로 먼저 `POST /games`를 호출해 `room_id`,
-  `game_name`, `owner_play_endpoint`, `play_endpoints`를 받는다.
+  `game_name`, `owner_play_endpoint`, `play_endpoints`, `play_nodes`, `required_level`을 받는다.
 - `api_http_endpoint`가 `https://`이면 client는 `zlink::http_client`의 TLS verification
   option을 명시해 같은 흐름을 검증한다.
 - 이후 stream connector는 HTTP 응답의 `owner_play_endpoint`로 owner connector를 연결하고,

@@ -89,8 +89,8 @@ client에서는 HTTP 완료 뒤 resume scheduler가 정한 위치에서 typed de
 
 ```cpp
 client.post ("/games")
-  .body (create_game_req_t{.name = "ranked-match-0611"})
-  .submit<create_game_res_t> ([] (const auto &result) {
+  .body (create_game_http_req_t{.game_name = "ranked-match-0611"})
+  .submit<create_game_http_res_t> ([] (const auto &result) {
       if (!result) {
           log_error (result.error ()->what ());
           return;

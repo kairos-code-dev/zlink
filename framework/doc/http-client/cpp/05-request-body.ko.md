@@ -19,20 +19,19 @@ DTO에 nlohmann ADL 함수(`to_json`)를 정의해 두면 `body(dto)`가 JSON으
 직렬화한다. application 코드가 `nlohmann::json`을 직접 조립하지 않는 것이 규약이다.
 
 ```cpp
-struct create_game_req_t
+struct create_game_http_req_t
 {
-    std::string name;
-    int max_players = 0;
+    std::string game_name;
 };
 
-void to_json (nlohmann::json &json, const create_game_req_t &value)
+void to_json (nlohmann::json &json, const create_game_http_req_t &value)
 {
-    json = nlohmann::json{{"name", value.name}, {"maxPlayers", value.max_players}};
+    json = nlohmann::json{{"gameName", value.game_name}};
 }
 
 auto created = client.post ("/games")
-                 .body (create_game_req_t{.name = "ranked-match-0611", .max_players = 4})
-                 .fetch<create_game_res_t> ();
+                 .body (create_game_http_req_t{.game_name = "ranked-match-0611"})
+                 .fetch<create_game_http_res_t> ();
 ```
 
 ## raw body

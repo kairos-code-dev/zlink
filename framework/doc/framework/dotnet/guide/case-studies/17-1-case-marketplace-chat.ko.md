@@ -165,7 +165,7 @@ public sealed class MarketplaceChatSession(IZLinkSessionContext context, IZLinkA
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken ct)
     {
         if (header.Name == "auth")

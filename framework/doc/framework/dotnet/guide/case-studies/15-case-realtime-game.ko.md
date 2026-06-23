@@ -93,7 +93,7 @@ public sealed class GameSession(IZLinkSessionContext context, IZLinkActorManager
     private IZLinkSessionActor? _actor;
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header, Message payload, CancellationToken ct)
+        ZlinkStreamHeader header, ZLinkMessage payload, CancellationToken ct)
     {
         if (header.Name == "auth")
         {

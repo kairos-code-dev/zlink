@@ -84,7 +84,7 @@ public sealed class DriverSession(
     public IZLinkSessionContext Context { get; } = context;
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header, Message payload, CancellationToken ct)
+        ZlinkStreamHeader header, ZLinkMessage payload, CancellationToken ct)
     {
         var loc = payload.Decode<DriverLocation>();
         await geo.UpdateAsync(loc, ct);                                   // Redis GEO — 유지

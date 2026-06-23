@@ -170,7 +170,7 @@ public sealed class LiveChatSession(IZLinkSessionContext context, IZLinkActorMan
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken ct)
     {
         if (header.Name == "auth")

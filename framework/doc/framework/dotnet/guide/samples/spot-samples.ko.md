@@ -60,7 +60,7 @@ public interface IZLinkSpot
     }
 
     ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
@@ -219,7 +219,7 @@ public sealed class Timer : IZlinkTimer
 public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
     ZLinkSpotCreateState State,
-    Message? Reply);
+    ZLinkMessage? Reply);
 
 public readonly record struct ZLinkSpotInfo(
     RoutingId SpotRid);
@@ -784,12 +784,12 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleAct
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         SampleActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var join = request.Decode<SampleJoinRoomRequest>();
-        var reply = new SampleJoinRoomReply(join.RoomId).Encode();
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(reply));
+        return ValueTask.FromResult(
+            ZLinkSpotActorJoinResult.Accept(new SampleJoinRoomReply(join.RoomId)));
     }
 
     public int ActorCount { get; private set; } = 10;
@@ -1015,12 +1015,12 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleAct
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         SampleActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var join = request.Decode<SampleJoinRoomRequest>();
-        var reply = new SampleJoinRoomReply(join.RoomId).Encode();
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(reply));
+        return ValueTask.FromResult(
+            ZLinkSpotActorJoinResult.Accept(new SampleJoinRoomReply(join.RoomId)));
     }
 
     public async ValueTask OnInitializeAsync(
@@ -1226,7 +1226,7 @@ public sealed class SampleActor : IZLinkActor
         CancellationToken cancellationToken)
     {
         var result = await _context
-            .JoinSpot(room.Context.SpotRid, request.Encode())
+            .JoinSpot(room.Context.SpotRid, request)
             .Async(cancellationToken);
         return result.Reply.Decode<SampleJoinRoomReply>();
     }
@@ -1396,14 +1396,14 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot<SampleAct
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         SampleActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         _ = actor;
         _ = cancellationToken;
         var join = request.Decode<SampleJoinRoomRequest>();
         return ValueTask.FromResult(
-            ZLinkSpotActorJoinResult.Accept(new SampleJoinRoomReply(join.RoomId).Encode()));
+            ZLinkSpotActorJoinResult.Accept(new SampleJoinRoomReply(join.RoomId)));
     }
 }
 

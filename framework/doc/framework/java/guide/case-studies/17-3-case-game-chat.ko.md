@@ -178,7 +178,7 @@ public final class GameChatSession implements ZLinkSession {
     @Override public void onError(ZLinkStreamError error) {}
 
     @Override
-    public void onDispatch(ZLinkStreamHeader header, Message payload) {
+    public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
         if ("auth".equals(header.name())) {
             AuthPlayerReq req = StreamPayloads.decode(header, payload, AuthPlayerReq.class);
             player = actors.getOrCreate(req.playerId(), "player")

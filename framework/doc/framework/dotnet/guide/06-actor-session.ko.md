@@ -127,12 +127,12 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActo
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         PlayerActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var join = request.Decode<JoinMatchReq>();
-        var reply = new JoinMatchSpotResult(join.MatchId).Encode();
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(reply));
+        return ValueTask.FromResult(
+            ZLinkSpotActorJoinResult.Accept(new JoinMatchSpotResult(join.MatchId)));
     }
 }
 ```
@@ -158,7 +158,7 @@ public sealed class JoinMatchHandler
         // application registry가 user Spot RoutingId로 변환하거나 조회한다.
         var matchSpotRid = RoutingId.From(request.MatchId);
         var joined = await actor.Context
-            .JoinSpot(matchSpotRid, request.Encode())
+            .JoinSpot(matchSpotRid, request)
             .Async(ct);
         if (!joined.Accepted)
         {

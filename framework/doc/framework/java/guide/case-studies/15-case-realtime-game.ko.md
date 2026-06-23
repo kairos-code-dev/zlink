@@ -118,7 +118,7 @@ public final class GameSession implements ZLinkSession {
     public ZLinkSessionContext context() { return context; }
 
     @Override
-    public void onDispatch(ZLinkStreamHeader header, Message payload) {
+    public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
         if ("auth".equals(header.name())) {
             AuthReq req = StreamPayloads.decode(header, payload, AuthReq.class);
             actor = actors.getOrCreate(req.playerId(), "player")

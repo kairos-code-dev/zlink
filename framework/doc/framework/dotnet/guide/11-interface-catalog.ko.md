@@ -390,12 +390,12 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         PlayerActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken ct)
     {
         var join = request.Decode<JoinRoom>();
         return ValueTask.FromResult(
-            ZLinkSpotActorJoinResult.Accept(new JoinedRoom(join.RoomId).Encode()));
+            ZLinkSpotActorJoinResult.Accept(new JoinedRoom(join.RoomId)));
     }
 
     public ValueTask OnJoinedActorAsync(
@@ -509,7 +509,7 @@ public sealed class RoomRequestHandler
 ```csharp
 var actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLinkActorManager
 var joinReply = await actor.Context
-    .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1").Encode()) // IZLinkActorContext
+    .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1")) // IZLinkActorContext
     .Async();
 if (!joinReply.Accepted)
 {

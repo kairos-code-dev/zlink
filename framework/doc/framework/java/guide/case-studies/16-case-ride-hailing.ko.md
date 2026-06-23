@@ -77,7 +77,7 @@ public final class DriverSession implements ZLinkSession {
     private final ZLinkFanoutClient feed;
     private final GeoIndex geo;
     @Override public ZLinkSessionContext context() { return context; }
-    @Override public void onDispatch(ZLinkStreamHeader header, Message payload) {
+    @Override public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
         DriverLocation loc = StreamPayloads.decode(header, payload, DriverLocation.class);
         geo.update(loc);
         feed.publish("loc.events", "driver.location", loc).submit().toCompletableFuture().join();
@@ -112,7 +112,7 @@ public final class DriverSession implements ZLinkSession {
     private final ZLinkFanoutClient feed;
     private final GeoIndex geo;
     @Override public ZLinkSessionContext context() { return context; }
-    @Override public void onDispatch(ZLinkStreamHeader header, Message payload) {
+    @Override public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
         DriverLocation loc = StreamPayloads.decode(header, payload, DriverLocation.class);
         geo.update(loc);
         feed.publish("loc.events", "driver.location", loc).submit().toCompletableFuture().join();

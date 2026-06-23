@@ -73,7 +73,7 @@ public sealed class ChatSession(IZLinkSessionContext context, IZLinkActorManager
     private IZLinkSessionActor? _user;
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header, Message payload, CancellationToken ct)
+        ZlinkStreamHeader header, ZLinkMessage payload, CancellationToken ct)
     {
         if (header.Name == "auth")
         {

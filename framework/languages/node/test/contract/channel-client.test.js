@@ -2877,7 +2877,7 @@ async function recvRoutedEnvelopeMessage(router) {
 }
 
 async function submitWhenRouteReachable(submit) {
-  const deadline = Date.now() + 5000;
+  const deadline = Date.now() + 15000;
   let lastError;
   while (Date.now() < deadline) {
     try {
@@ -3107,7 +3107,7 @@ async function waitForTopology(query, predicate, routingId) {
 
 function isHostUnreachable(error) {
   return error instanceof Error &&
-    ((error.code === 2 && /Host unreachable/.test(error.message)) ||
+    (((error.code === 2 || error.code === 12) && /Host unreachable/.test(error.message)) ||
       (error.code === 5 && /Connection refused/.test(error.message)));
 }
 

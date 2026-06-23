@@ -300,6 +300,9 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     this.spotNodeRuntime = undefined;
     this.streamRuntime = undefined;
     this.lifecycleSink?.push('framework:stop');
+    state.abortController.abort();
+    await Promise.allSettled(state.listenerTasks);
+    await new Promise<void>((resolve) => setImmediate(resolve));
     await streamRuntime?.dispose();
     await spotNodeRuntime?.dispose();
     await channelRuntime?.dispose();

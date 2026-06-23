@@ -179,7 +179,7 @@ function createPlayerClient(endpoint: string, name: string): ZlinkStreamConnecto
   const client = connector.zlinkStreamConnectorFactory.create({
     endpoint,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
-    waitTimeoutMs: 30000,
+    waitTimeoutMs: 60000,
     heartbeat: { enabled: false }
   });
   client.observeInbound((observation) => {

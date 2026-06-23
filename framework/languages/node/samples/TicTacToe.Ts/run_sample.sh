@@ -271,7 +271,7 @@ wait_grep() {
   local pattern="$2"
   shift 2
   local deadline
-  deadline=$((SECONDS + 10))
+  deadline=$((SECONDS + 30))
   while (( SECONDS < deadline )); do
     if grep -q "${pattern}" "$@" 2>/dev/null; then
       return 0

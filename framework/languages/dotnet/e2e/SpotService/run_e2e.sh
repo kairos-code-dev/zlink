@@ -207,6 +207,7 @@ dotnet run --project "$CLIENT_PROJECT" -- \
   --session-b-stream-endpoint "$SESSION_B_STREAM" \
   --registry-router-endpoint "$REGISTRY_ROUTER" \
   --play-a-evidence-url "$PLAY_A_HTTP/evidence" \
+  --play-b-evidence-url "$PLAY_B_HTTP/evidence" \
   --session-a-evidence-url "$SESSION_A_HTTP/evidence" \
   --play-a-rid play-a \
   --play-b-rid play-b \

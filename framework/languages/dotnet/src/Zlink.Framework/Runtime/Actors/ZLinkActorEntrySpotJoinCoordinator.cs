@@ -256,11 +256,6 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         RoutingId targetNodeRid,
         CancellationToken cancellationToken)
     {
-        if (previousActivation is null)
-        {
-            return;
-        }
-
         await NotifyManagedUserSpotLeftForEntrySpotJoinAsync(
                 actor,
                 previousActivation,

@@ -41,6 +41,19 @@ public sealed record ActorPushReq(string Value);
 
 public sealed record ActorPushNotify(string ActorId, string Value, int Seen);
 
+public sealed record ComplexActorReq(
+    string DisplayName,
+    int Level,
+    string[] Tags,
+    Dictionary<string, string> Attributes);
+
+public sealed record ComplexActorReply(
+    string ActorId,
+    string DisplayName,
+    int Level,
+    string[] Tags,
+    Dictionary<string, string> Attributes);
+
 public sealed record AuthReq(string ActorId, string DisplayName, string NodeRid);
 
 public sealed record AuthReply(string ActorId, string NodeRid);

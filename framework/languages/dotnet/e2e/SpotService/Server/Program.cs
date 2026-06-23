@@ -442,6 +442,34 @@ internal sealed class ActorPushHandler
     }
 }
 
+[ZLinkSpotActorRequestHandler("ComplexActorReq")]
+internal sealed class ComplexActorHandler(EvidenceStore evidence)
+    : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ComplexActorReq, ComplexActorReply>
+{
+    public ValueTask<ComplexActorReply> HandleAsync(
+        ScenarioEntrySpot entrySpot,
+        ScenarioActor actor,
+        ZLinkSpotActorRequestContext context,
+        ComplexActorReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = entrySpot;
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        actor.DisplayName = request.DisplayName;
+        evidence.Add(
+            $"actor-complex|rid={evidence.Rid}|actor={actor.ActorId}|name={request.DisplayName}"
+            + $"|level={request.Level}|tags={string.Join(",", request.Tags)}"
+            + $"|attrs={string.Join(",", request.Attributes.OrderBy(static pair => pair.Key).Select(static pair => $"{pair.Key}:{pair.Value}"))}");
+        return ValueTask.FromResult(new ComplexActorReply(
+            actor.ActorId,
+            request.DisplayName,
+            request.Level,
+            request.Tags,
+            request.Attributes));
+    }
+}
+
 internal sealed class ScenarioSession(
     IZLinkSessionContext context,
     IZLinkSessionPacketDispatcher<IZLinkSessionContext> handlers,

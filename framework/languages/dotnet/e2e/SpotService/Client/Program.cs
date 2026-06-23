@@ -14,12 +14,83 @@ await RunAsync(options);
 
 static async Task RunAsync(ClientOptions options)
 {
+    await RunSmB1B2B3B5Async(options);
     await RunSmD7Async(options);
     await RunSmD1AndD6Async(options);
     await RunSmD4Async(options);
     await RunSmD5Async(options);
-    await RunSmF1F2Async(options);
+    await RunSmE1AndF4Async(options);
+    await RunSmA1A2A4F1F2Async(options);
     Console.WriteLine("spot-service e2e result=passed");
+}
+
+static async Task RunSmB1B2B3B5Async(ClientOptions options)
+{
+    var playABefore = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    var playBBefore = await ReadEvidenceAsync(options.PlayBEvidenceUrl);
+    await using var local = CreateClient(options.SessionAStreamEndpoint);
+    await using var remote = CreateClient(options.SessionAStreamEndpoint);
+    await local.Connect.Async();
+    await remote.Connect.Async();
+
+    await local.Request(new AuthReq("actor-sm-b1-local", "local actor", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    var localReply = await local.Request(new ActorPingReq("b1"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    Ensure(localReply.ActorId == "actor-sm-b1-local", "SM-B1 actor reply mismatch.");
+    Ensure(localReply.NodeRid == options.PlayARid, "SM-B1 local node mismatch.");
+
+    await remote.Request(new AuthReq("actor-sm-b2-remote", "remote actor", options.PlayBRid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    var remoteReply = await remote.Request(new ActorPingReq("b2"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    Ensure(remoteReply.ActorId == "actor-sm-b2-remote", "SM-B2 actor reply mismatch.");
+    Ensure(remoteReply.NodeRid == options.PlayBRid, "SM-B2 remote node mismatch.");
+
+    var complex = await local.Request(new ComplexActorReq(
+            "Ada Lovelace",
+            42,
+            ["alpha", "beta", "gamma"],
+            new Dictionary<string, string>
+            {
+                ["role"] = "analyst",
+                ["region"] = "west"
+            }))
+        .PacketName("ComplexActorReq")
+        .Async<ComplexActorReply>();
+    Ensure(complex.ActorId == "actor-sm-b1-local", "SM-B3 actor id mismatch.");
+    Ensure(complex.DisplayName == "Ada Lovelace" && complex.Level == 42, "SM-B3 scalar payload mismatch.");
+    Ensure(complex.Tags.SequenceEqual(["alpha", "beta", "gamma"]), "SM-B3 tag payload mismatch.");
+    Ensure(complex.Attributes["role"] == "analyst" && complex.Attributes["region"] == "west",
+        "SM-B3 attribute payload mismatch.");
+
+    await ExpectFailureAsync(
+        local.Request(new ActorPingReq("missing-handler"))
+            .PacketName("MissingActorReq")
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async<ActorPingReply>().AsTask(),
+        "SM-B5 expected missing actor handler request to fail.");
+
+    await WaitUntilAsync(async () =>
+    {
+        var playAAfter = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        var playBAfter = await ReadEvidenceAsync(options.PlayBEvidenceUrl);
+        return CountNew(playAAfter, playABefore, "entry-created|rid=play-a|actor=actor-sm-b1-local") == 1
+            && CountNew(playAAfter, playABefore, "entry-joined|rid=play-a|actor=actor-sm-b1-local") == 1
+            && CountNew(playBAfter, playBBefore, "entry-created|rid=play-b|actor=actor-sm-b2-remote") == 1
+            && CountNew(playBAfter, playBBefore, "entry-joined|rid=play-b|actor=actor-sm-b2-remote") == 1
+            && CountNew(playAAfter, playABefore, "actor-complex|rid=play-a|actor=actor-sm-b1-local") == 1
+            && CountNew(playAAfter, playABefore, "dispatch-error|surface=SpotActor|reason=HandlerMissing|action=ReplyError|packet=MissingActorReq") >= 1;
+    }, "SM-B expected lifecycle, complex payload, and missing handler evidence.");
+
+    Console.WriteLine("scenario SM-B1 passed");
+    Console.WriteLine("scenario SM-B2 passed");
+    Console.WriteLine("scenario SM-B3 passed");
+    Console.WriteLine("scenario SM-B5 passed");
 }
 
 static async Task RunSmD7Async(ClientOptions options)
@@ -113,9 +184,67 @@ static async Task RunSmD5Async(ClientOptions options)
     Console.WriteLine("scenario SM-D5 passed");
 }
 
-static async Task RunSmF1F2Async(ClientOptions options)
+static async Task RunSmE1AndF4Async(ClientOptions options)
 {
-    var spotRid = $"spot-sm-f-{Guid.NewGuid():N}";
+    using var host = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: true,
+        traceName: "client-framework-negative-flow.log");
+    await host.StartAsync();
+    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+    var spotRid = $"spot-sm-e1-{Guid.NewGuid():N}";
+
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CreateSpotReq(spotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+
+    var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    await ExpectFailureAsync(
+        routes.Request(
+                SpotServiceNames.ExternalClientServerChannel,
+                RoutingId.From(spotRid),
+                new StateReq("noop", 0))
+            .PacketName("MissingSpotReq")
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async<StateReply>().AsTask(),
+        "SM-E1 expected missing spot route handler request to fail.");
+    await routes.Send(
+            SpotServiceNames.ExternalClientServerChannel,
+            RoutingId.From(spotRid),
+            new StateCommand("missing-command"))
+        .PacketName("MissingSpotCommand")
+        .Async();
+    await ExpectFailureAsync(
+        routes.Request(
+                SpotServiceNames.ExternalClientServerChannel,
+                RoutingId.From($"missing-{spotRid}"),
+                new StateReq("noop", 0))
+            .PacketName("StateReq")
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async<StateReply>().AsTask(),
+        "SM-F4 expected missing target spot request to fail.");
+
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, before, "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=ReplyError|packet=MissingSpotReq") >= 1
+            && CountNew(after, before, "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=Drop|packet=MissingSpotCommand") >= 1;
+    }, "SM-E1/F4 expected spot route negative observer evidence.");
+
+    await host.StopAsync();
+    Console.WriteLine("scenario SM-E1 passed");
+    Console.WriteLine("scenario SM-F4 passed");
+}
+
+static async Task RunSmA1A2A4F1F2Async(ClientOptions options)
+{
+    var key = $"order-sm-a4-{Guid.NewGuid():N}";
+    var spotRid = $"spot-owner-{key}";
 
     using var clientServerHost = CreateRouteEgressHost(
         options,
@@ -133,6 +262,7 @@ static async Task RunSmF1F2Async(ClientOptions options)
         .PacketName("CreateSpotReq")
         .Async<CreateSpotReply>();
     Ensure(created.SpotRid == spotRid, "SM-F setup created spot mismatch.");
+    Ensure(created.NodeRid == options.PlayARid, "SM-A1 owner node mismatch.");
 
     var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
     var viaClientServer = await clientServerRoutes.Request(
@@ -144,6 +274,7 @@ static async Task RunSmF1F2Async(ClientOptions options)
     Ensure(viaClientServer.SpotRid == spotRid, "SM-F1 target spot mismatch.");
     Ensure(viaClientServer.NodeRid == options.PlayARid, "SM-F1 target node mismatch.");
     Ensure(viaClientServer.Value == 7, "SM-F1 state value mismatch.");
+    Ensure(viaClientServer.NodeRid == options.PlayARid, "SM-A4 owner routing mismatch.");
 
     await clientServerRoutes.Send(
             SpotServiceNames.ExternalClientServerChannel,
@@ -168,6 +299,7 @@ static async Task RunSmF1F2Async(ClientOptions options)
     Ensure(viaRouteMesh.SpotRid == spotRid, "SM-F2 target spot mismatch.");
     Ensure(viaRouteMesh.NodeRid == options.PlayARid, "SM-F2 target node mismatch.");
     Ensure(viaRouteMesh.Value == 12, "SM-F2 state value mismatch.");
+    Ensure(viaRouteMesh.Value == 12, "SM-A2 state mutation did not preserve order.");
 
     await clientServerRoutes.Send(
             SpotServiceNames.ExternalSpotChannel,
@@ -183,6 +315,9 @@ static async Task RunSmF1F2Async(ClientOptions options)
     }, "SM-F2 expected spot route command evidence.");
 
     await clientServerHost.StopAsync();
+    Console.WriteLine("scenario SM-A1 passed");
+    Console.WriteLine("scenario SM-A2 passed");
+    Console.WriteLine("scenario SM-A4 passed");
     Console.WriteLine("scenario SM-F2 passed");
 }
 
@@ -307,6 +442,7 @@ internal sealed record ClientOptions(
     string SessionBStreamEndpoint,
     string RegistryRouterEndpoint,
     string PlayAEvidenceUrl,
+    string PlayBEvidenceUrl,
     string SessionAEvidenceUrl,
     string PlayARid,
     string PlayBRid,
@@ -344,6 +480,7 @@ internal sealed record ClientOptions(
             Required("session-b-stream-endpoint"),
             Required("registry-router-endpoint"),
             Required("play-a-evidence-url"),
+            Required("play-b-evidence-url"),
             Required("session-a-evidence-url"),
             Required("play-a-rid"),
             Required("play-b-rid"),

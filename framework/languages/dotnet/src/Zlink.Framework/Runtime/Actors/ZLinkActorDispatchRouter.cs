@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Actors;
@@ -7,6 +10,14 @@ internal sealed class ZLinkActorDispatchRouter(
     ZLinkActorSessionRegistry actorSessions,
     Func<IZLinkActor, ZLinkActorRuntimeState, ZLinkActorContext> ensureActorContext)
 {
+    private readonly ILogger _logger =
+        runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkActorDispatchRouter>()
+        ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ZLinkActorDispatchRouter>.Instance;
+    private readonly ZLinkDispatchErrorReporter _dispatchErrors = new(
+        runtime.Registration.DispatchOptions,
+        runtime.Services,
+        runtime.Services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkActorDispatchRouter>());
+
     public async ValueTask SubmitByIdAsync(
         string actorId,
         ZlinkStreamHeader header,
@@ -109,13 +120,21 @@ internal sealed class ZLinkActorDispatchRouter(
 
         if (placement.Activation is null)
         {
-            await runtime.TrySubmitEntrySpotActorAsync(
+            var handled = await runtime.TrySubmitEntrySpotActorAsync(
                     actor,
                     state,
                     header,
                     payload,
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (!handled)
+            {
+                ReportMissingHandler(
+                    actor,
+                    header,
+                    ZLinkDispatchMessageKind.ActorSend,
+                    ZLinkDispatchErrorAction.Drop);
+            }
             return placement.Prune;
         }
 
@@ -160,9 +179,16 @@ internal sealed class ZLinkActorDispatchRouter(
                     $"Entry Spot actor request handler for '{header.Name}' returned no reply.");
         }
 
-        throw new ZLinkFrameworkException(
+        var error = new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound,
             $"No Spot actor request handler is registered for '{header.Name}'.");
+        ReportMissingHandler(
+            actor,
+            header,
+            ZLinkDispatchMessageKind.ActorRequest,
+            ZLinkDispatchErrorAction.ReplyError,
+            error);
+        throw error;
     }
 
     private async ValueTask NotifyDisconnectedByCurrentLocationAsync(
@@ -186,6 +212,44 @@ internal sealed class ZLinkActorDispatchRouter(
                 targetNodeRid: null,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private void ReportMissingHandler(
+        IZLinkActor actor,
+        ZlinkStreamHeader header,
+        ZLinkDispatchMessageKind kind,
+        ZLinkDispatchErrorAction action,
+        Exception? exception = null)
+    {
+        var actionText = action == ZLinkDispatchErrorAction.ReplyError
+            ? "reply-error"
+            : "drop";
+        var level = action == ZLinkDispatchErrorAction.ReplyError
+            ? LogLevel.Error
+            : LogLevel.Warning;
+        var kindText = kind == ZLinkDispatchMessageKind.ActorRequest
+            ? "ActorRequest"
+            : "ActorSend";
+
+        ZLinkMessageFlowLogger.HandlerMissing(
+            _logger,
+            level,
+            "SpotActor",
+            kindText,
+            header.Name,
+            actionText,
+            "no-handler",
+            actorId: actor.ActorId,
+            actorType: actor.GetType().FullName);
+        _dispatchErrors.Report(new ZLinkMessageDispatchErrorEvent(
+            ZLinkDispatchErrorSurface.SpotActor,
+            kind,
+            ZLinkDispatchErrorReason.HandlerMissing,
+            action,
+            header.Name,
+            ActorId: actor.ActorId,
+            CorrelationId: header.CorrelationId ?? header.RequestSeq?.ToString(),
+            Exception: exception));
     }
 
 }

@@ -53,6 +53,7 @@ using namespace zlink::spot_actor_api_internal;
 namespace
 {
 
+const size_t stack_spot_actor_routed_part_capacity = 8;
 
 actor_runtime_t &actor_runtime ()
 {
@@ -535,25 +536,32 @@ send_actor_gateway_packet_from_source (zlink::spot_node_t *origin_node_,
     }
 
     zlink_msg_t packet_parts[2] = {control, payload_copy};
-    std::vector<zlink_msg_t> combined;
     const std::string source_node = routing_id_key (source_node_rid_);
     const std::string target_node = routing_id_key (target_node_rid_);
-    if (zlink::spot_reqrep_internal::build_spot_routed_message (
+    const size_t combined_count = zlink::spot_reqrep_internal::spot_routed_message_part_count (2);
+    zlink_msg_t stack_combined[stack_spot_actor_routed_part_capacity];
+    std::vector<zlink_msg_t> heap_combined;
+    zlink_msg_t *combined =
+      combined_count <= stack_spot_actor_routed_part_capacity ? stack_combined : NULL;
+    if (!combined) {
+        heap_combined.resize (combined_count);
+        combined = &heap_combined[0];
+    }
+    if (zlink::spot_reqrep_internal::build_spot_routed_message_into (
           zlink::spot_routed_protocol::actor_gateway_endpoint_class, source_node,
           zlink::spot_actor_gateway::endpoint_name,
           zlink::spot_routed_protocol::actor_gateway_endpoint_class, target_node,
-          zlink::spot_actor_gateway::endpoint_name, packet_parts, 2, &combined)
+          zlink::spot_actor_gateway::endpoint_name, packet_parts, 2, combined, combined_count)
         != 0) {
         const int saved_errno = errno;
         errno = saved_errno;
         return errno_to_submit_result (errno);
     }
 
-    const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
-      origin_node_, zlink::spot_reqrep_internal::routed_spot_delivery_direct, false,
-      zlink::spot_actor_gateway::endpoint_name, flags_, 0, &combined);
+    const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery_direct (
+      origin_node_, flags_, combined, combined_count);
     const int saved_errno = errno;
-    zlink::request_reply::close_built_parts (&combined);
+    zlink::request_reply::close_built_parts (combined, combined_count);
     errno = saved_errno;
     if (rc != 0)
         return zlink::submit_result_internal::from_errno (errno);
@@ -610,24 +618,32 @@ send_actor_gateway_multipart_from_source (zlink::spot_node_t *origin_node_,
         }
     }
 
-    std::vector<zlink_msg_t> combined;
     const std::string source_node = routing_id_key (source_node_rid_);
     const std::string target_node = routing_id_key (target_node_rid_);
-    if (zlink::spot_reqrep_internal::build_spot_routed_message (
+    const size_t combined_count =
+      zlink::spot_reqrep_internal::spot_routed_message_part_count (gateway_parts.size ());
+    zlink_msg_t stack_combined[stack_spot_actor_routed_part_capacity];
+    std::vector<zlink_msg_t> heap_combined;
+    zlink_msg_t *combined =
+      combined_count <= stack_spot_actor_routed_part_capacity ? stack_combined : NULL;
+    if (!combined) {
+        heap_combined.resize (combined_count);
+        combined = &heap_combined[0];
+    }
+    if (zlink::spot_reqrep_internal::build_spot_routed_message_into (
           zlink::spot_routed_protocol::actor_gateway_endpoint_class, source_node,
           zlink::spot_actor_gateway::endpoint_name,
           zlink::spot_routed_protocol::actor_gateway_endpoint_class, target_node,
           zlink::spot_actor_gateway::endpoint_name, gateway_parts.data (), gateway_parts.size (),
-          &combined)
+          combined, combined_count)
         != 0) {
         return errno_to_submit_result (errno);
     }
 
-    const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
-      origin_node_, zlink::spot_reqrep_internal::routed_spot_delivery_direct, false,
-      zlink::spot_actor_gateway::endpoint_name, flags_, 0, &combined);
+    const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery_direct (
+      origin_node_, flags_, combined, combined_count);
     const int saved_errno = errno;
-    zlink::request_reply::close_built_parts (&combined);
+    zlink::request_reply::close_built_parts (combined, combined_count);
     errno = saved_errno;
     return rc == 0 ? ZLINK_SUBMIT_OK : zlink::submit_result_internal::from_errno (errno);
 }

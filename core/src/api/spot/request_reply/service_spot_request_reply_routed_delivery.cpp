@@ -117,10 +117,11 @@ bool combined_starts_with_peer_pub_route (const std::vector<zlink_msg_t> &combin
 
 int send_routed_router_once (zlink::spot_runtime_t *runtime_,
                                const zlink_routing_id_t *route_id_,
-                               std::vector<zlink_msg_t> *combined_,
+                               zlink_msg_t *combined_,
+                               size_t combined_count_,
                                zlink_send_flags_t flags_)
 {
-    if (!runtime_ || !runtime_->routed_router || !route_id_ || !combined_) {
+    if (!runtime_ || !runtime_->routed_router || !route_id_ || !combined_ || combined_count_ == 0) {
         errno = EFAULT;
         return -1;
     }
@@ -146,14 +147,41 @@ int send_routed_router_once (zlink::spot_runtime_t *runtime_,
     }
 
     const int rc = zlink::logical_multipart_send_routed (
-      runtime_->routed_router, route_id_, &(*combined_)[0], combined_->size (), flags_);
+      runtime_->routed_router, route_id_, combined_, combined_count_, flags_);
     if (spot_direct_route_debug_enabled ()) {
         const std::string route_id = routing_id_debug_string (*route_id_);
         std::fprintf (stderr,
                       "[spot-direct] routed-router send rc=%d errno=%d route=%s parts=%zu\n", rc,
-                      errno, route_id.c_str (), combined_->size ());
+                      errno, route_id.c_str (), combined_count_);
     }
     return rc;
+}
+
+int send_routed_router_once (zlink::spot_runtime_t *runtime_,
+                               const zlink_routing_id_t *route_id_,
+                               std::vector<zlink_msg_t> *combined_,
+                               zlink_send_flags_t flags_)
+{
+    if (!combined_ || combined_->empty ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return send_routed_router_once (runtime_, route_id_, &(*combined_)[0], combined_->size (),
+                                    flags_);
+}
+
+int send_routed_router_once (zlink::spot_runtime_t *runtime_,
+                               const std::string &route_id_,
+                               zlink_msg_t *combined_,
+                               size_t combined_count_,
+                               zlink_send_flags_t flags_)
+{
+    zlink_routing_id_t route_id;
+    if (!routing_id_from_key (route_id_, &route_id)) {
+        errno = EINVAL;
+        return -1;
+    }
+    return send_routed_router_once (runtime_, &route_id, combined_, combined_count_, flags_);
 }
 
 int send_routed_router_once (zlink::spot_runtime_t *runtime_,
@@ -171,10 +199,11 @@ int send_routed_router_once (zlink::spot_runtime_t *runtime_,
 
 int dispatch_routed_router_delivery_with_envelope (zlink::spot_node_t *origin_node_,
                                                      zlink_send_flags_t flags_,
-                                                     std::vector<zlink_msg_t> *combined_,
+                                                     zlink_msg_t *combined_,
+                                                     size_t combined_count_,
                                                      const parsed_spot_envelope_t &envelope_)
 {
-    if (!origin_node_ || !combined_ || combined_->empty ()) {
+    if (!origin_node_ || !combined_ || combined_count_ == 0) {
         errno = EFAULT;
         return -1;
     }
@@ -187,13 +216,13 @@ int dispatch_routed_router_delivery_with_envelope (zlink::spot_node_t *origin_no
 
     if (envelope_.destination_node_rid_value.size > 0) {
         return send_routed_router_once (runtime, &envelope_.destination_node_rid_value, combined_,
-                                          flags_);
+                                        combined_count_, flags_);
     }
 
     if (envelope_.destination_class == routed_protocol::router_endpoint_class
         && envelope_.destination_endpoint_rid_value.size > 0) {
         return send_routed_router_once (runtime, &envelope_.destination_endpoint_rid_value,
-                                          combined_, flags_);
+                                        combined_, combined_count_, flags_);
     }
 
     const std::vector<std::string> candidate_route_ids =
@@ -207,7 +236,49 @@ int dispatch_routed_router_delivery_with_envelope (zlink::spot_node_t *origin_no
         return -1;
     }
 
-    return send_routed_router_once (runtime, candidate_route_ids.front (), combined_, flags_);
+    return send_routed_router_once (runtime, candidate_route_ids.front (), combined_,
+                                    combined_count_, flags_);
+}
+
+int dispatch_routed_router_delivery_with_envelope (zlink::spot_node_t *origin_node_,
+                                                     zlink_send_flags_t flags_,
+                                                     std::vector<zlink_msg_t> *combined_,
+                                                     const parsed_spot_envelope_t &envelope_)
+{
+    if (!combined_ || combined_->empty ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return dispatch_routed_router_delivery_with_envelope (
+      origin_node_, flags_, &(*combined_)[0], combined_->size (), envelope_);
+}
+
+int dispatch_routed_router_delivery (zlink::spot_node_t *origin_node_,
+                                       zlink_send_flags_t flags_,
+                                       zlink_msg_t *combined_,
+                                       size_t combined_count_)
+{
+    if (!combined_ || combined_count_ == 0) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink_routing_id_t destination_node_rid;
+    if (zlink::spot_reqrep_internal::peek_spot_routed_destination_node_rid (
+          combined_, combined_count_, &destination_node_rid)) {
+        return send_routed_router_once (zlink::spot_node_access_t::runtime (origin_node_),
+                                        &destination_node_rid, combined_, combined_count_, flags_);
+    }
+
+    parsed_spot_envelope_t envelope;
+    if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (combined_, combined_count_,
+                                                                  &envelope)) {
+        errno = EPROTO;
+        return -1;
+    }
+
+    return dispatch_routed_router_delivery_with_envelope (origin_node_, flags_, combined_,
+                                                          combined_count_, envelope);
 }
 
 int dispatch_routed_router_delivery (zlink::spot_node_t *origin_node_,
@@ -218,23 +289,8 @@ int dispatch_routed_router_delivery (zlink::spot_node_t *origin_node_,
         errno = EFAULT;
         return -1;
     }
-
-    zlink_routing_id_t destination_node_rid;
-    if (zlink::spot_reqrep_internal::peek_spot_routed_destination_node_rid (
-          &(*combined_)[0], combined_->size (), &destination_node_rid)) {
-        return send_routed_router_once (zlink::spot_node_access_t::runtime (origin_node_),
-                                          &destination_node_rid, combined_, flags_);
-    }
-
-    parsed_spot_envelope_t envelope;
-    if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (&(*combined_)[0],
-                                                                  combined_->size (), &envelope)) {
-        errno = EPROTO;
-        return -1;
-    }
-
-    return dispatch_routed_router_delivery_with_envelope (origin_node_, flags_, combined_,
-                                                            envelope);
+    return dispatch_routed_router_delivery (origin_node_, flags_, &(*combined_)[0],
+                                            combined_->size ());
 }
 
 bool has_local_spot_route_target (uint8_t destination_class_,
@@ -440,6 +496,15 @@ int zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
         rc = dispatch_local_spot_routed_delivery (kind_, destination_endpoint_rid_, combined_);
     }
     return rc;
+}
+
+int zlink::spot_reqrep_internal::dispatch_spot_routed_delivery_direct (
+  zlink::spot_node_t *origin_node_,
+  zlink_send_flags_t flags_,
+  zlink_msg_t *combined_,
+  size_t combined_count_)
+{
+    return dispatch_routed_router_delivery (origin_node_, flags_, combined_, combined_count_);
 }
 
 int zlink::spot_reqrep_internal::dispatch_router_spot_delivery (

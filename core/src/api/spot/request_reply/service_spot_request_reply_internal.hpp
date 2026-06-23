@@ -320,6 +320,20 @@ int enqueue_runtime_routed_router_ingress (zlink::spot_runtime_t *runtime_,
 int drain_runtime_routed_router_ingress_queue (zlink::spot_runtime_t *runtime_);
 int process_routed_router_combined_for_data_plane (zlink::spot_node_t *node_,
                                                      std::vector<zlink_msg_t> *combined_);
+size_t spot_request_reply_message_part_count (size_t payload_part_count_);
+size_t spot_routed_message_part_count (size_t payload_part_count_);
+int build_spot_request_reply_message_into (uint8_t source_class_,
+                                           const std::string &source_node_rid_,
+                                           const std::string &source_endpoint_rid_,
+                                           uint8_t destination_class_,
+                                           const std::string &destination_node_rid_,
+                                           const std::string &destination_endpoint_rid_,
+                                           uint8_t message_type_,
+                                           uint64_t request_seq_,
+                                           zlink_msg_t *parts_,
+                                           size_t part_count_,
+                                           zlink_msg_t *out_,
+                                           size_t out_count_);
 int build_spot_request_reply_message (uint8_t source_class_,
                                       const std::string &source_node_rid_,
                                       const std::string &source_endpoint_rid_,
@@ -331,6 +345,16 @@ int build_spot_request_reply_message (uint8_t source_class_,
                                       zlink_msg_t *parts_,
                                       size_t part_count_,
                                       std::vector<zlink_msg_t> *out_);
+int build_spot_routed_message_into (uint8_t source_class_,
+                                    const std::string &source_node_rid_,
+                                    const std::string &source_endpoint_rid_,
+                                    uint8_t destination_class_,
+                                    const std::string &destination_node_rid_,
+                                    const std::string &destination_endpoint_rid_,
+                                    zlink_msg_t *parts_,
+                                    size_t part_count_,
+                                    zlink_msg_t *out_,
+                                    size_t out_count_);
 int build_spot_routed_message (uint8_t source_class_,
                                const std::string &source_node_rid_,
                                const std::string &source_endpoint_rid_,
@@ -340,6 +364,10 @@ int build_spot_routed_message (uint8_t source_class_,
                                zlink_msg_t *parts_,
                                size_t part_count_,
                                std::vector<zlink_msg_t> *out_);
+int dispatch_spot_routed_delivery_direct (zlink::spot_node_t *origin_node_,
+                                          zlink_send_flags_t flags_,
+                                          zlink_msg_t *combined_,
+                                          size_t combined_count_);
 bool parse_spot_routed_envelope (zlink_msg_t *parts_,
                                  size_t part_count_,
                                  parsed_spot_envelope_t *out_);

@@ -30,6 +30,8 @@ namespace
 {
 namespace routed_protocol = zlink::spot_routed_protocol;
 
+const size_t stack_spot_routed_part_capacity = 8;
+
 using zlink::spot_reqrep_internal::bind_router_state_rid;
 using zlink::spot_reqrep_internal::build_spot_request_reply_message;
 using zlink::spot_reqrep_internal::build_spot_routed_message;
@@ -135,6 +137,42 @@ int start_spot_request_common (void *spot_,
         return -1;
     }
 
+    const bool local_target = has_local_spot_route_target (
+      destination_class_, destination_node_rid_, destination_endpoint_rid_);
+    if (!local_target) {
+        const size_t combined_count =
+          zlink::spot_reqrep_internal::spot_request_reply_message_part_count (part_count_);
+        zlink_msg_t stack_combined[stack_spot_routed_part_capacity];
+        std::vector<zlink_msg_t> heap_combined;
+        zlink_msg_t *combined =
+          combined_count <= stack_spot_routed_part_capacity ? stack_combined : NULL;
+        if (!combined) {
+            heap_combined.resize (combined_count);
+            combined = &heap_combined[0];
+        }
+        if (zlink::spot_reqrep_internal::build_spot_request_reply_message_into (
+              routed_protocol::spot_endpoint_class, source_identity.node_rid,
+              source_identity.spot_rid, destination_class_, destination_node_rid_,
+              destination_endpoint_rid_, zlink::request_reply::request_type, key.request_seq,
+              parts_, part_count_, combined, combined_count)
+            != 0) {
+            erase_spot_pending_request (state, key);
+            return -1;
+        }
+
+        const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery_direct (
+          spot ? spot->node : NULL, flags_, combined, combined_count);
+        const int saved_errno = errno;
+        zlink::request_reply::close_built_parts (combined, combined_count);
+        if (rc != 0) {
+            erase_spot_pending_request (state, key);
+            errno = saved_errno;
+            return -1;
+        }
+        errno = saved_errno;
+        return 0;
+    }
+
     std::vector<zlink_msg_t> combined;
     if (build_spot_request_reply_message (
           routed_protocol::spot_endpoint_class, source_identity.node_rid, source_identity.spot_rid,
@@ -145,8 +183,6 @@ int start_spot_request_common (void *spot_,
         return -1;
     }
 
-    const bool local_target = has_local_spot_route_target (
-      destination_class_, destination_node_rid_, destination_endpoint_rid_);
     const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
       spot ? spot->node : NULL, routed_spot_delivery_request, local_target,
       destination_class_ == routed_protocol::router_endpoint_class ? destination_endpoint_rid_
@@ -459,6 +495,35 @@ zlink_submit_result_t spot_reply_spot_impl (void *spot_,
     spot_handle_t *spot = as_spot_handle (spot_);
     const std::string destination_node_rid = routing_id_key (dest_node_rid_);
     const std::string destination_spot_rid = routing_id_key (dest_spot_rid_);
+    const bool local_target = has_local_spot_route_target (
+      routed_protocol::spot_endpoint_class, destination_node_rid, destination_spot_rid);
+    if (!local_target) {
+        const size_t combined_count =
+          zlink::spot_reqrep_internal::spot_request_reply_message_part_count (part_count_);
+        zlink_msg_t stack_combined[stack_spot_routed_part_capacity];
+        std::vector<zlink_msg_t> heap_combined;
+        zlink_msg_t *combined =
+          combined_count <= stack_spot_routed_part_capacity ? stack_combined : NULL;
+        if (!combined) {
+            heap_combined.resize (combined_count);
+            combined = &heap_combined[0];
+        }
+        if (zlink::spot_reqrep_internal::build_spot_request_reply_message_into (
+              routed_protocol::spot_endpoint_class, source_identity.node_rid,
+              source_identity.spot_rid, routed_protocol::spot_endpoint_class,
+              destination_node_rid, destination_spot_rid, zlink::request_reply::reply_type,
+              request_seq_, parts_, part_count_, combined, combined_count)
+            != 0) {
+            return zlink::submit_result_internal::from_errno (errno);
+        }
+        const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery_direct (
+          spot ? spot->node : NULL, ZLINK_DONTWAIT, combined, combined_count);
+        const int saved_errno = errno;
+        zlink::request_reply::close_built_parts (combined, combined_count);
+        errno = saved_errno;
+        return zlink::submit_result_internal::from_rc (rc);
+    }
+
     std::vector<zlink_msg_t> combined;
     if (build_spot_request_reply_message (
           routed_protocol::spot_endpoint_class, source_identity.node_rid, source_identity.spot_rid,
@@ -467,8 +532,6 @@ zlink_submit_result_t spot_reply_spot_impl (void *spot_,
         != 0) {
         return zlink::submit_result_internal::from_errno (errno);
     }
-    const bool local_target = has_local_spot_route_target (
-      routed_protocol::spot_endpoint_class, destination_node_rid, destination_spot_rid);
     const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
       spot ? spot->node : NULL, routed_spot_delivery_reply, local_target, std::string (),
       ZLINK_DONTWAIT, 0, &combined);
@@ -503,6 +566,34 @@ zlink_submit_result_t spot_send_spot_impl (void *spot_,
     spot_handle_t *spot = as_spot_handle (spot_);
     const std::string destination_node_rid = routing_id_key (dest_node_rid_);
     const std::string destination_spot_rid = routing_id_key (dest_spot_rid_);
+    const bool local_target = has_local_spot_route_target (
+      routed_protocol::spot_endpoint_class, destination_node_rid, destination_spot_rid);
+    if (!local_target) {
+        const size_t combined_count =
+          zlink::spot_reqrep_internal::spot_routed_message_part_count (part_count_);
+        zlink_msg_t stack_combined[stack_spot_routed_part_capacity];
+        std::vector<zlink_msg_t> heap_combined;
+        zlink_msg_t *combined =
+          combined_count <= stack_spot_routed_part_capacity ? stack_combined : NULL;
+        if (!combined) {
+            heap_combined.resize (combined_count);
+            combined = &heap_combined[0];
+        }
+        if (zlink::spot_reqrep_internal::build_spot_routed_message_into (
+              routed_protocol::spot_endpoint_class, source_identity.node_rid,
+              source_identity.spot_rid, routed_protocol::spot_endpoint_class,
+              destination_node_rid, destination_spot_rid, parts_, part_count_, combined,
+              combined_count)
+            != 0) {
+            return zlink::submit_result_internal::from_errno (errno);
+        }
+        const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery_direct (
+          spot ? spot->node : NULL, flags_, combined, combined_count);
+        const int saved_errno = errno;
+        zlink::request_reply::close_built_parts (combined, combined_count);
+        errno = saved_errno;
+        return zlink::submit_result_internal::from_rc (rc);
+    }
 
     std::vector<zlink_msg_t> combined;
     if (build_spot_routed_message (routed_protocol::spot_endpoint_class, source_identity.node_rid,
@@ -513,8 +604,6 @@ zlink_submit_result_t spot_send_spot_impl (void *spot_,
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    const bool local_target = has_local_spot_route_target (
-      routed_protocol::spot_endpoint_class, destination_node_rid, destination_spot_rid);
     const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
       spot ? spot->node : NULL, routed_spot_delivery_direct, local_target, destination_spot_rid,
       flags_, resolve_spot_send_timeout_ms (spot), &combined);
@@ -545,6 +634,35 @@ zlink_submit_result_t spot_reply_router_impl (void *spot_,
 
     spot_handle_t *spot = as_spot_handle (spot_);
     const std::string peer_rid = routing_id_key (peer_rid_);
+    const bool local_target = has_local_spot_route_target (routed_protocol::router_endpoint_class,
+                                                           std::string (), peer_rid);
+    if (!local_target) {
+        const size_t combined_count =
+          zlink::spot_reqrep_internal::spot_request_reply_message_part_count (part_count_);
+        zlink_msg_t stack_combined[stack_spot_routed_part_capacity];
+        std::vector<zlink_msg_t> heap_combined;
+        zlink_msg_t *combined =
+          combined_count <= stack_spot_routed_part_capacity ? stack_combined : NULL;
+        if (!combined) {
+            heap_combined.resize (combined_count);
+            combined = &heap_combined[0];
+        }
+        if (zlink::spot_reqrep_internal::build_spot_request_reply_message_into (
+              routed_protocol::spot_endpoint_class, source_identity.node_rid,
+              source_identity.spot_rid, routed_protocol::router_endpoint_class, std::string (),
+              peer_rid, zlink::request_reply::reply_type, request_seq_, parts_, part_count_,
+              combined, combined_count)
+            != 0) {
+            return zlink::submit_result_internal::from_errno (errno);
+        }
+        const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery_direct (
+          spot ? spot->node : NULL, ZLINK_DONTWAIT, combined, combined_count);
+        const int saved_errno = errno;
+        zlink::request_reply::close_built_parts (combined, combined_count);
+        errno = saved_errno;
+        return zlink::submit_result_internal::from_rc (rc);
+    }
+
     std::vector<zlink_msg_t> combined;
     if (build_spot_request_reply_message (
           routed_protocol::spot_endpoint_class, source_identity.node_rid, source_identity.spot_rid,
@@ -553,8 +671,6 @@ zlink_submit_result_t spot_reply_router_impl (void *spot_,
         != 0) {
         return zlink::submit_result_internal::from_errno (errno);
     }
-    const bool local_target = has_local_spot_route_target (routed_protocol::router_endpoint_class,
-                                                           std::string (), peer_rid);
     const int rc = zlink::spot_reqrep_internal::dispatch_spot_routed_delivery (
       spot ? spot->node : NULL, routed_spot_delivery_reply, local_target, peer_rid, ZLINK_DONTWAIT,
       0, &combined);

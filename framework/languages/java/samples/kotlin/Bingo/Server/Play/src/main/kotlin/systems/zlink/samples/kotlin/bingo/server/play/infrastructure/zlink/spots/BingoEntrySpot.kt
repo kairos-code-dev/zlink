@@ -3,8 +3,8 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spot
 import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -33,10 +33,10 @@ class BingoEntrySpot(
 
     override fun onActorJoin(
         actor: PlayerActor,
-        request: Message,
+        request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse =
-        ZLinkSpotActorJoinResponse.accept(Message.from(ByteArray(0)))
+        ZLinkSpotActorJoinResponse.accept()
 
     override fun onJoinedActor(
         actor: PlayerActor,
@@ -69,12 +69,7 @@ class BingoEntrySpot(
             context.nodeRid().toString(),
             SampleTimings.DrawPeriod.toMillis(),
         )
-        val settingsPart = Message.from(json.writeValueAsBytes(settings))
-        try {
-            spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(observerRid), settingsPart).await()
-        } finally {
-            settingsPart.close()
-        }
+        spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(observerRid), settings).await()
         val joined = actor.context()
             .joinSpot(
                 RoutingId.from(observerRid),

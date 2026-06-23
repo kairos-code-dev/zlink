@@ -2,9 +2,9 @@ package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.z
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -42,35 +42,31 @@ class ConversationSpot(
 
     override fun configure() = Unit
 
-    override suspend fun onCreateSuspending(request: Message): ZLinkSpotCreateResponse {
+    override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         createdHandler.handle(this, request)
         return ZLinkSpotCreateResponse.accept()
     }
 
     override suspend fun onActorJoinSuspending(
         actor: SupportUserActor,
-        request: Message,
+        request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
-        val join = json.readValue(request.toByteArray(), JoinConversationReq::class.java)
+        val join = request.decode(JoinConversationReq::class.java)
         val current = requireConversation()
         if (join.conversationId != current.conversationId()) {
             return ZLinkSpotActorJoinResponse.reject()
         }
         if (Roles.Agent == actor.role) {
             val agentState = joinAgent(actor)
-            return ZLinkSpotActorJoinResponse.accept(
-                Message.from(json.writeValueAsBytes(JoinConversationRes(agentState))),
-            )
+            return ZLinkSpotActorJoinResponse.accept(JoinConversationRes(agentState))
         }
         actor.joinConversation(join.conversationId)
         actors[actor.actorId()] = actor
         if (actor.actorId() == current.customerActorId) {
             notifications.publishJoinedAgentToCustomer(actor, current.snapshot())
         }
-        return ZLinkSpotActorJoinResponse.accept(
-            Message.from(json.writeValueAsBytes(JoinConversationRes(current.snapshot()))),
-        )
+        return ZLinkSpotActorJoinResponse.accept(JoinConversationRes(current.snapshot()))
     }
 
     override fun onJoinedActor(actor: SupportUserActor, cancellationToken: CancellationToken) {

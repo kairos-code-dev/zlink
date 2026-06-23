@@ -9,6 +9,7 @@ import java.lang.annotation.Repeatable;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
+import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkHandlerGroups;
@@ -23,6 +24,9 @@ import systems.zlink.framework.handlers.ZLinkSpotTimer;
 import systems.zlink.framework.handlers.ZLinkStreamPacket;
 import systems.zlink.framework.handlers.ZLinkStreamRaw;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.actors.ZLinkActorContext;
+import systems.zlink.framework.actors.ZLinkActorJoinEntrySpotCall;
+import systems.zlink.framework.actors.ZLinkActorJoinSpotCall;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotHandlerRegistry;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
@@ -36,6 +40,7 @@ import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 import systems.zlink.framework.streams.ZLinkSession;
+import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
@@ -180,6 +185,23 @@ final class HandlerContractTest {
             ZLinkSessionContext.class,
             ZLinkStreamHeader.class,
             ZLinkMessage.class);
+        ZLinkSessionActor.class.getMethod("relay", ZLinkStreamHeader.class, ZLinkMessage.class);
+    }
+
+    @Test
+    void actorJoinContractsSupportDtoAndNoReplyJoins() throws NoSuchMethodException {
+        ZLinkActorContext.class.getMethod("joinSpot", RoutingId.class);
+        ZLinkActorContext.class.getMethod("joinSpot", RoutingId.class, Object.class);
+        ZLinkActorContext.class.getMethod("joinEntrySpot", RoutingId.class);
+        ZLinkActorContext.class.getMethod("joinEntrySpot", RoutingId.class, Object.class);
+        ZLinkActorJoinSpotCall.class.getMethod("submit");
+        ZLinkActorJoinSpotCall.class.getMethod("await");
+        ZLinkActorJoinSpotCall.class.getMethod("submit", Class.class);
+        ZLinkActorJoinSpotCall.class.getMethod("await", Class.class);
+        ZLinkActorJoinEntrySpotCall.class.getMethod("submit");
+        ZLinkActorJoinEntrySpotCall.class.getMethod("await");
+        ZLinkActorJoinEntrySpotCall.class.getMethod("submit", Class.class);
+        ZLinkActorJoinEntrySpotCall.class.getMethod("await", Class.class);
     }
 
     @Test

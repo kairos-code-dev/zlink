@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots
 
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -18,10 +18,10 @@ class SupportEntrySpot(
 
     override fun onActorJoin(
         actor: SupportUserActor,
-        request: Message,
+        request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse =
-        ZLinkSpotActorJoinResponse.accept(Message.from(ByteArray(0)))
+        ZLinkSpotActorJoinResponse.accept()
 
     override fun onJoinedActor(actor: SupportUserActor, cancellationToken: CancellationToken) = Unit
 

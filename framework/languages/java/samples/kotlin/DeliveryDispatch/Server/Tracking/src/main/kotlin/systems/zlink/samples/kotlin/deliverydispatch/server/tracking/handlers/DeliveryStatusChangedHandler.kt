@@ -3,7 +3,6 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.tracking.handlers
 import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.channels.ZLinkFanoutClient
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
@@ -30,16 +29,11 @@ class DeliveryStatusChangedHandler(
         request: DeliveryStatusChanged,
         context: ZLinkRequestContext,
     ) = run {
-        val createPart = Message.from(json.writeValueAsBytes(DeliverySpotCreate(request.deliveryId)))
-        try {
-            spots.getOrCreate(
-                DeliveryTrackingSpot::class.java,
-                RoutingId.from(request.deliveryId),
-                createPart,
-            ).await()
-        } finally {
-            createPart.close()
-        }
+        spots.getOrCreate(
+            DeliveryTrackingSpot::class.java,
+            RoutingId.from(request.deliveryId),
+            DeliverySpotCreate(request.deliveryId),
+        ).await()
         evidence.append(request)
         directory.require(request.deliveryId).record(request)
         fanout.publish(

@@ -2,7 +2,6 @@ package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.z
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkRequestContext
@@ -34,9 +33,9 @@ class EnsureSupportUserActorHandler(
         supportActor.setIdentity(request.displayName, request.role)
         directory.addOrUpdate(supportActor)
         val joined = actor.context()
-            .joinEntrySpot(RoutingId.from(SampleTopology.SupportRid), Message.from(ByteArray(0)))
+            .joinEntrySpot(RoutingId.from(SampleTopology.SupportRid))
             .timeout(SampleTimings.RequestTimeout)
-            .submit(Message::class.java)
+            .submit()
             .await()
         if (supportActor.conversationId.isNotBlank()) {
             actor.context()

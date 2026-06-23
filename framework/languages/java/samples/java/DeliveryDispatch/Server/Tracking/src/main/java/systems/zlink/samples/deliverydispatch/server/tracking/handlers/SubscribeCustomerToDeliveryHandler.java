@@ -1,9 +1,7 @@
 package systems.zlink.samples.deliverydispatch.server.tracking.handlers;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorManager;
@@ -38,15 +36,10 @@ public final class SubscribeCustomerToDeliveryHandler
     public Messages.CustomerDeliverySubscribed handle(
         Messages.SubscribeCustomerToDelivery request,
         ZLinkRequestContext context) {
-        Message createPart = serialize(new Messages.DeliverySpotCreate(request.deliveryId()));
-        try {
-            ZLinkAwait.await(spots.getOrCreate(
-                DeliveryTrackingSpot.class,
-                RoutingId.from(request.deliveryId()),
-                createPart));
-        } finally {
-            createPart.close();
-        }
+        ZLinkAwait.await(spots.getOrCreate(
+            DeliveryTrackingSpot.class,
+            RoutingId.from(request.deliveryId()),
+            new Messages.DeliverySpotCreate(request.deliveryId())));
         ZLinkActor actor = ZLinkAwait.await(
             actors.getOrCreate(request.customerId(), SampleNames.CustomerActorType));
         actor.context()
@@ -58,11 +51,4 @@ public final class SubscribeCustomerToDeliveryHandler
         return new Messages.CustomerDeliverySubscribed(request.customerId(), request.deliveryId());
     }
 
-    private Message serialize(Object value) {
-        try {
-            return Message.from(json.writeValueAsBytes(value));
-        } catch (JsonProcessingException ex) {
-            throw new IllegalStateException("Failed to encode delivery spot create request.", ex);
-        }
-    }
 }

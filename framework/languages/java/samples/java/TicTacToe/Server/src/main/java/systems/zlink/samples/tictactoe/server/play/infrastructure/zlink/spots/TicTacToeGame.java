@@ -2,13 +2,12 @@ package systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots;
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -63,21 +62,21 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
     }
 
     @Override
-    public ZLinkSpotCreateResponse onCreate(Message request) {
+    public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
         return createdHandler.handle(this, request);
     }
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
         PlayActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken) {
-        TicTacToeGameJoinReq joinRequest = decode(request, TicTacToeGameJoinReq.class);
+        TicTacToeGameJoinReq joinRequest = request.decode(TicTacToeGameJoinReq.class);
         if (!actor.actorId().equals(joinRequest.player().actorId())) {
             throw new IllegalStateException("join request actor id does not match bound actor");
         }
         TicTacToeGameJoinRes reply = join(actor, joinRequest.roomId(), joinRequest.player());
-        return ZLinkSpotActorJoinResponse.accept(encode(reply));
+        return ZLinkSpotActorJoinResponse.accept(reply);
     }
 
     @Override
@@ -116,7 +115,7 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
         }
     }
 
-    public void markCreated(Message request) {
+    public void markCreated(ZLinkMessage request) {
         if (!request.isEmpty()) {
             throw new IllegalArgumentException("tic-tac-toe game creation does not accept payload");
         }
@@ -185,22 +184,6 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
     private void ensureCreated() {
         if (!created) {
             throw new IllegalStateException("tic-tac-toe game has not completed creation");
-        }
-    }
-
-    private <T> T decode(Message request, Class<T> type) {
-        try {
-            return json.readValue(request.toByteArray(), type);
-        } catch (java.io.IOException ex) {
-            throw new IllegalArgumentException("failed to decode " + type.getSimpleName(), ex);
-        }
-    }
-
-    private Message encode(Object reply) {
-        try {
-            return Message.from(json.writeValueAsBytes(reply));
-        } catch (JsonProcessingException ex) {
-            throw new IllegalArgumentException("failed to encode tic-tac-toe join reply", ex);
         }
     }
 

@@ -3,9 +3,9 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spot
 import com.fasterxml.jackson.databind.ObjectMapper
 import java.time.Duration
 import kotlinx.coroutines.future.await
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -54,7 +54,7 @@ class BingoRoomSpot(
 
     override fun context(): ZLinkSpotContext = context
 
-    override suspend fun onCreateSuspending(request: Message): ZLinkSpotCreateResponse {
+    override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         createdHandler.handle(this, request)
         return ZLinkSpotCreateResponse.accept()
     }
@@ -68,12 +68,12 @@ class BingoRoomSpot(
 
     override suspend fun onActorJoinSuspending(
         actor: PlayerActor,
-        request: Message,
+        request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
-        val joinRequest = json.readValue(request.toByteArray(), BingoRoomJoinReq::class.java)
+        val joinRequest = request.decode(BingoRoomJoinReq::class.java)
         val reply = join(actor, joinRequest)
-        return ZLinkSpotActorJoinResponse.accept(Message.from(json.writeValueAsBytes(reply)))
+        return ZLinkSpotActorJoinResponse.accept(reply)
     }
 
     override fun onJoinedActor(

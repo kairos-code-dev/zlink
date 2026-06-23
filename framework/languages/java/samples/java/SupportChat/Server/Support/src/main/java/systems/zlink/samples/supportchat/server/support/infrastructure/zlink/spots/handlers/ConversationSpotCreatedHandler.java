@@ -1,8 +1,7 @@
 package systems.zlink.samples.supportchat.server.support.infrastructure.zlink.spots.handlers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.samples.supportchat.server.support.infrastructure.zlink.spots.ConversationSpot;
 import systems.zlink.samples.supportchat.server.support.domain.conversation.ConversationModels.ConversationCreateRequest;
@@ -14,19 +13,15 @@ public final class ConversationSpotCreatedHandler {
         this.json = json;
     }
 
-    public ZLinkSpotCreateResponse handle(ConversationSpot spot, Message request) {
+    public ZLinkSpotCreateResponse handle(ConversationSpot spot, ZLinkMessage request) {
         spot.applyCreate(decode(request));
         return ZLinkSpotCreateResponse.accept();
     }
 
-    private ConversationCreateRequest decode(Message request) {
+    private ConversationCreateRequest decode(ZLinkMessage request) {
         if (request.isEmpty()) {
             throw new IllegalStateException("Conversation create request payload is required.");
         }
-        try {
-            return json.readValue(request.toByteArray(), ConversationCreateRequest.class);
-        } catch (IOException ex) {
-            throw new IllegalStateException("Failed to decode conversation create request.", ex);
-        }
+        return request.decode(ConversationCreateRequest.class);
     }
 }

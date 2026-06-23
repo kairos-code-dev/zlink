@@ -1,8 +1,8 @@
 package systems.zlink.samples.kotlin.bingo.server.session.sessions
 
 import kotlinx.coroutines.future.await
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.kotlin.ZLinkSuspendingSession
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
@@ -21,7 +21,7 @@ class BingoSession(
 
     override suspend fun onDispatchSuspending(
         header: ZLinkStreamHeader,
-        payload: Message,
+        payload: ZLinkMessage,
     ) {
         val handled = handlers.tryHandleAsync(context, header, payload).await()
         if (handled) {

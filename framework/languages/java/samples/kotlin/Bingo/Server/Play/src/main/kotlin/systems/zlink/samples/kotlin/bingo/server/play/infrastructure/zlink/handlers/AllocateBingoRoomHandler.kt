@@ -3,7 +3,6 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.hand
 import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.channels.ZLinkRouteRequestContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkSuspendingRouteRequestHandler
@@ -40,15 +39,7 @@ class AllocateBingoRoomHandler(
             return
         }
 
-        val settingsPart = serialize(allocation.settings)
-        try {
-            spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(allocation.roomId), settingsPart)
-                .await()
-        } finally {
-            settingsPart.close()
-        }
+        spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(allocation.roomId), allocation.settings)
+            .await()
     }
-
-    private fun serialize(settings: BingoRoomSettings): Message =
-        Message.from(json.writeValueAsBytes(settings))
 }

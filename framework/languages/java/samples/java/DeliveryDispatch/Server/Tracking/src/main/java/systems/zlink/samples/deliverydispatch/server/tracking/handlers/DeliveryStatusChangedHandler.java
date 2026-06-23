@@ -1,9 +1,7 @@
 package systems.zlink.samples.deliverydispatch.server.tracking.handlers;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRequestContext;
@@ -42,15 +40,10 @@ public final class DeliveryStatusChangedHandler
     public Messages.DeliveryStatusAck handle(
         Messages.DeliveryStatusChanged request,
         ZLinkRequestContext context) {
-        Message createPart = serialize(new Messages.DeliverySpotCreate(request.deliveryId()));
-        try {
-            ZLinkAwait.await(spots.getOrCreate(
-                DeliveryTrackingSpot.class,
-                RoutingId.from(request.deliveryId()),
-                createPart));
-        } finally {
-            createPart.close();
-        }
+        ZLinkAwait.await(spots.getOrCreate(
+            DeliveryTrackingSpot.class,
+            RoutingId.from(request.deliveryId()),
+            new Messages.DeliverySpotCreate(request.deliveryId())));
         evidence.append(request);
         directory.require(request.deliveryId()).record(request);
         fanout.publish(
@@ -70,11 +63,4 @@ public final class DeliveryStatusChangedHandler
         return new Messages.DeliveryStatusAck(request.deliveryId(), request.status());
     }
 
-    private Message serialize(Object value) {
-        try {
-            return Message.from(json.writeValueAsBytes(value));
-        } catch (JsonProcessingException ex) {
-            throw new IllegalStateException("Failed to encode delivery spot create request.", ex);
-        }
-    }
 }

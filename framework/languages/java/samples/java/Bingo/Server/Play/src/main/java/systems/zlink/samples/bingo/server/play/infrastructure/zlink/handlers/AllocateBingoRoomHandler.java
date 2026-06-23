@@ -2,10 +2,8 @@ package systems.zlink.samples.bingo.server.play.infrastructure.zlink.handlers;
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -54,19 +52,9 @@ public final class AllocateBingoRoomHandler
             return;
         }
 
-        Message settingsPart = serialize(allocation.settings());
-        try {
-            await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(allocation.roomId()), settingsPart));
-        } finally {
-            settingsPart.close();
-        }
-    }
-
-    private Message serialize(BingoRoomModels.BingoRoomSettings settings) {
-        try {
-            return Message.from(json.writeValueAsBytes(settings));
-        } catch (JsonProcessingException ex) {
-            throw new IllegalStateException("Failed to encode bingo room settings.", ex);
-        }
+        await(spots.getOrCreate(
+            BingoRoomSpot.class,
+            RoutingId.from(allocation.roomId()),
+            allocation.settings()));
     }
 }

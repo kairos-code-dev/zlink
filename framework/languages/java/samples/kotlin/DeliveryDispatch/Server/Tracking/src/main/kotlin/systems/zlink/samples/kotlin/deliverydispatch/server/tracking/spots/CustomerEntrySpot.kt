@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots
 
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -17,8 +17,8 @@ class CustomerEntrySpot(
 
     override fun onActorJoin(
         actor: CustomerActor,
-        request: Message,
+        request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse =
-        ZLinkSpotActorJoinResponse.accept(Message.from(ByteArray(0)))
+        ZLinkSpotActorJoinResponse.accept()
 }

@@ -2,13 +2,12 @@ package systems.zlink.samples.supportchat.server.support.infrastructure.zlink.sp
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -53,32 +52,30 @@ public final class ConversationSpot implements ZLinkSpot<SupportUserActor> {
     }
 
     @Override
-    public ZLinkSpotCreateResponse onCreate(Message request) {
+    public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
         return createdHandler.handle(this, request);
     }
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
         SupportUserActor user,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken) {
-        Messages.JoinConversationReq join = decode(request, Messages.JoinConversationReq.class);
+        Messages.JoinConversationReq join = request.decode(Messages.JoinConversationReq.class);
         Conversation current = requireConversation();
         if (!join.conversationId().equals(current.conversationId())) {
             return ZLinkSpotActorJoinResponse.reject();
         }
         if (Roles.Agent.equals(user.role())) {
             Messages.ConversationState agentState = joinAgent(user);
-            return ZLinkSpotActorJoinResponse.accept(
-                encode(new Messages.JoinConversationRes(agentState)));
+            return ZLinkSpotActorJoinResponse.accept(new Messages.JoinConversationRes(agentState));
         }
         user.joinConversation(join.conversationId());
         actors.put(user.actorId(), user);
         if (user.actorId().equals(current.customerActorId())) {
             notifications.publishJoinedAgentToCustomer(user, current.snapshot());
         }
-        return ZLinkSpotActorJoinResponse.accept(
-            encode(new Messages.JoinConversationRes(current.snapshot())));
+        return ZLinkSpotActorJoinResponse.accept(new Messages.JoinConversationRes(current.snapshot()));
     }
 
     @Override
@@ -193,19 +190,4 @@ public final class ConversationSpot implements ZLinkSpot<SupportUserActor> {
         return conversation;
     }
 
-    private <T> T decode(Message request, Class<T> type) {
-        try {
-            return json.readValue(request.toByteArray(), type);
-        } catch (java.io.IOException ex) {
-            throw new IllegalArgumentException("Failed to decode " + type.getSimpleName() + ".", ex);
-        }
-    }
-
-    private Message encode(Object reply) {
-        try {
-            return Message.from(json.writeValueAsBytes(reply));
-        } catch (JsonProcessingException ex) {
-            throw new IllegalArgumentException("Failed to encode conversation join reply.", ex);
-        }
-    }
 }

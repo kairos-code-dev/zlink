@@ -2,14 +2,13 @@ package systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots;
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -62,18 +61,17 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     }
 
     @Override
-    public ZLinkSpotCreateResponse onCreate(Message request) {
+    public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
         return createdHandler.handle(this, request);
     }
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
         PlayerActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken) {
-        Messages.BingoRoomJoinReq joinRequest = decode(request, Messages.BingoRoomJoinReq.class);
-        Message reply = encode(join(actor, joinRequest));
-        return ZLinkSpotActorJoinResponse.accept(reply);
+        Messages.BingoRoomJoinReq joinRequest = request.decode(Messages.BingoRoomJoinReq.class);
+        return ZLinkSpotActorJoinResponse.accept(join(actor, joinRequest));
     }
 
     @Override
@@ -291,19 +289,4 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             List.of()));
     }
 
-    private <T> T decode(Message request, Class<T> type) {
-        try {
-            return json.readValue(request.toByteArray(), type);
-        } catch (java.io.IOException ex) {
-            throw new IllegalArgumentException("Failed to decode " + type.getSimpleName() + ".", ex);
-        }
-    }
-
-    private Message encode(Object reply) {
-        try {
-            return Message.from(json.writeValueAsBytes(reply));
-        } catch (JsonProcessingException ex) {
-            throw new IllegalArgumentException("Failed to encode bingo room join reply.", ex);
-        }
-    }
 }

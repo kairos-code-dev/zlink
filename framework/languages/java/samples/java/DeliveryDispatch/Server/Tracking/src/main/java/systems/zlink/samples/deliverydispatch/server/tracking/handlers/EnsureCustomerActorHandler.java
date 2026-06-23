@@ -1,7 +1,6 @@
 package systems.zlink.samples.deliverydispatch.server.tracking.handlers;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorManager;
@@ -29,11 +28,9 @@ public final class EnsureCustomerActorHandler
         ZLinkActor actor = ZLinkAwait.await(
             actors.getOrCreate(request.customerId(), SampleNames.CustomerActorType));
         var joined = actor.context()
-            .joinEntrySpot(
-                RoutingId.from(SampleTopology.TrackingSpotNodeRid),
-                Message.from(new byte[0]))
+            .joinEntrySpot(RoutingId.from(SampleTopology.TrackingSpotNodeRid))
             .timeout(SampleTimings.RequestTimeout)
-            .await(Message.class);
+            .await();
         return new Messages.CustomerActorEnsured(
             request.customerId(),
             new Messages.ActorRefSnapshot(

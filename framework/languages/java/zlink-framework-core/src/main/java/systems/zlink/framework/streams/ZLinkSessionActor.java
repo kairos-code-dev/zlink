@@ -1,15 +1,15 @@
 package systems.zlink.framework.streams;
 
 import java.util.concurrent.CompletionStage;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.messaging.ZLinkMessage;
 
 public interface ZLinkSessionActor {
     String actorId();
 
     ZLinkActorRef ref();
 
-    CompletionStage<Void> relay(ZLinkStreamHeader header, Message payload);
+    CompletionStage<Void> relay(ZLinkStreamHeader header, ZLinkMessage payload);
 
     CompletionStage<Void> notifyDisconnected();
 }

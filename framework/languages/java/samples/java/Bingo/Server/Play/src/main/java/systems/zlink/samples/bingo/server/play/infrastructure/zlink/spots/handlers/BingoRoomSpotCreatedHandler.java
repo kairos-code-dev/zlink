@@ -1,8 +1,7 @@
 package systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.handlers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.BingoRoomSpot;
@@ -17,24 +16,18 @@ public final class BingoRoomSpotCreatedHandler {
 
     public ZLinkSpotCreateResponse handle(
         BingoRoomSpot spot,
-        Message request) {
+        ZLinkMessage request) {
         spot.applySettings(decodeSettings(request));
         return ZLinkSpotCreateResponse.accept();
     }
 
-    private BingoRoomModels.BingoRoomSettings decodeSettings(Message request) {
+    private BingoRoomModels.BingoRoomSettings decodeSettings(ZLinkMessage request) {
         if (request.isEmpty()) {
             return BingoRoomModels.BingoRoomSettings.create(
                 "two-player",
                 0,
                 SampleTimings.DrawPeriod.toMillis());
         }
-        try {
-            return json.readValue(
-                request.toByteArray(),
-                BingoRoomModels.BingoRoomSettings.class);
-        } catch (IOException ex) {
-            throw new IllegalStateException("Failed to decode bingo room settings.", ex);
-        }
+        return request.decode(BingoRoomModels.BingoRoomSettings.class);
     }
 }

@@ -1,9 +1,8 @@
 package systems.zlink.samples.gamequest.server.questmission.spots;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
@@ -33,24 +32,15 @@ public final class PlayerQuestSpot implements ZLinkSpot<ZLinkActor> {
     }
 
     @Override
-    public ZLinkSpotCreateResponse onCreate(Message request) {
-        this.playerId = decode(request).playerId();
+    public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+        PlayerQuestSpotCreateReq create = request.isEmpty()
+            ? new PlayerQuestSpotCreateReq("")
+            : request.decode(PlayerQuestSpotCreateReq.class);
+        this.playerId = create.playerId();
         System.err.printf(
             "gamequest player quest spot ready player=%s spot=%s%n",
             playerId, context.spotRid());
         return ZLinkSpotCreateResponse.accept();
-    }
-
-    private PlayerQuestSpotCreateReq decode(Message request) {
-        byte[] bytes = request.toByteArray();
-        if (bytes.length == 0) {
-            return new PlayerQuestSpotCreateReq("");
-        }
-        try {
-            return json.readValue(bytes, PlayerQuestSpotCreateReq.class);
-        } catch (IOException ex) {
-            throw new IllegalArgumentException("Failed to decode PlayerQuestSpotCreateReq.", ex);
-        }
     }
 
     public record PlayerQuestSpotCreateReq(String playerId) {

@@ -2,7 +2,6 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.tracking.handlers
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
@@ -24,9 +23,9 @@ class EnsureCustomerActorHandler(
     ) = run {
         val actor = actors.getOrCreate(request.customerId, SampleNames.CustomerActorType).await()
         val joined = actor.context()
-            .joinEntrySpot(RoutingId.from(SampleTopology.TrackingSpotNodeRid), Message.from(ByteArray(0)))
+            .joinEntrySpot(RoutingId.from(SampleTopology.TrackingSpotNodeRid))
             .timeout(SampleTimings.RequestTimeout)
-            .submit(Message::class.java)
+            .submit()
             .await()
         CustomerActorEnsured(
             request.customerId,

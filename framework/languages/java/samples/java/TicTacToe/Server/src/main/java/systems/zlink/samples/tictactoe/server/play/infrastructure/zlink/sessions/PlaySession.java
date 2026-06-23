@@ -2,7 +2,7 @@ package systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.session
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
@@ -41,7 +41,7 @@ public final class PlaySession implements ZLinkSession {
     }
 
     @Override
-    public void onDispatch(ZLinkStreamHeader header, Message payload) {
+    public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
         boolean handled = await(handlers.tryHandleAsync(context, header, payload));
         if (!handled) {
             await(requireActor(header.packetName()).relay(header, payload));

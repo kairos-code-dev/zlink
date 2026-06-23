@@ -2,11 +2,10 @@ package systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots;
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
@@ -49,9 +48,9 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
         PlayerActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken) {
-        return ZLinkSpotActorJoinResponse.accept(Message.from(new byte[0]));
+        return ZLinkSpotActorJoinResponse.accept();
     }
 
     @Override
@@ -85,12 +84,7 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
                 request.roomId(),
                 context.nodeRid().toString(),
                 SampleTimings.DrawPeriod.toMillis());
-        Message settingsPart = serialize(settings);
-        try {
-            await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(observerRid), settingsPart));
-        } finally {
-            settingsPart.close();
-        }
+        await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(observerRid), settings));
         var joined = actor.context()
             .joinSpot(
                 RoutingId.from(observerRid),
@@ -105,11 +99,4 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
             joined.actor().nodeRid().toString());
     }
 
-    private Message serialize(BingoRoomModels.BingoRoomSettings settings) {
-        try {
-            return Message.from(json.writeValueAsBytes(settings));
-        } catch (JsonProcessingException ex) {
-            throw new IllegalStateException("Failed to encode observer room settings.", ex);
-        }
-    }
 }

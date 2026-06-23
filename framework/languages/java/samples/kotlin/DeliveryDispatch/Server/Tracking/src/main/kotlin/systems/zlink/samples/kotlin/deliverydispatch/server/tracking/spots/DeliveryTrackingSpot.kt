@@ -1,9 +1,9 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.tracking.spots
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -24,21 +24,19 @@ class DeliveryTrackingSpot(
 
     override fun context(): ZLinkSpotContext = context
 
-    override suspend fun onCreateSuspending(request: Message): ZLinkSpotCreateResponse {
-        val create = json.readValue(request.toByteArray(), DeliverySpotCreate::class.java)
+    override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
+        val create = request.decode(DeliverySpotCreate::class.java)
         deliveryId = create.deliveryId
         directory.add(deliveryId, this)
-        return ZLinkSpotCreateResponse.accept(
-            Message.from(json.writeValueAsBytes(DeliverySpotCreated(deliveryId))),
-        )
+        return ZLinkSpotCreateResponse.accept(DeliverySpotCreated(deliveryId))
     }
 
     override suspend fun onActorJoinSuspending(
         actor: CustomerActor,
-        request: Message,
+        request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
-        val join = json.readValue(request.toByteArray(), DeliverySpotJoin::class.java)
+        val join = request.decode(DeliverySpotJoin::class.java)
         if (join.deliveryId != deliveryId) {
             return ZLinkSpotActorJoinResponse.reject()
         }
@@ -46,9 +44,7 @@ class DeliveryTrackingSpot(
         System.err.println(
             "deliverydispatch tracking spot: joined delivery=${join.deliveryId} customer=${actor.actorId()}",
         )
-        return ZLinkSpotActorJoinResponse.accept(
-            Message.from(json.writeValueAsBytes(DeliverySpotJoined(join.deliveryId, actor.actorId()))),
-        )
+        return ZLinkSpotActorJoinResponse.accept(DeliverySpotJoined(join.deliveryId, actor.actorId()))
     }
 
     override fun onLeaveActor(actor: CustomerActor, cancellationToken: CancellationToken) {

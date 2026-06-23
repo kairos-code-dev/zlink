@@ -1,7 +1,7 @@
 package systems.zlink.samples.supportchat.server.support.infrastructure.zlink.spots;
 
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
@@ -30,9 +30,9 @@ public final class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActor> 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
         SupportUserActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken) {
-        return ZLinkSpotActorJoinResponse.accept(Message.from(new byte[0]));
+        return ZLinkSpotActorJoinResponse.accept();
     }
 
     @Override

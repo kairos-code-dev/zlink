@@ -1,14 +1,12 @@
 package systems.zlink.samples.deliverydispatch.server.tracking.spots;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -39,19 +37,19 @@ public final class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
     }
 
     @Override
-    public ZLinkSpotCreateResponse onCreate(Message request) {
-        Messages.DeliverySpotCreate create = decode(request, Messages.DeliverySpotCreate.class);
+    public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+        Messages.DeliverySpotCreate create = request.decode(Messages.DeliverySpotCreate.class);
         this.deliveryId = create.deliveryId();
         directory.add(deliveryId, this);
-        return ZLinkSpotCreateResponse.accept(encode(new Messages.DeliverySpotCreated(deliveryId)));
+        return ZLinkSpotCreateResponse.accept(new Messages.DeliverySpotCreated(deliveryId));
     }
 
     @Override
     public ZLinkSpotActorJoinResponse onActorJoin(
         CustomerActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken) {
-        Messages.DeliverySpotJoin join = decode(request, Messages.DeliverySpotJoin.class);
+        Messages.DeliverySpotJoin join = request.decode(Messages.DeliverySpotJoin.class);
         if (!join.deliveryId().equals(deliveryId)) {
             return ZLinkSpotActorJoinResponse.reject();
         }
@@ -61,7 +59,7 @@ public final class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
             join.deliveryId(),
             actor.actorId());
         return ZLinkSpotActorJoinResponse.accept(
-            encode(new Messages.DeliverySpotJoined(join.deliveryId(), actor.actorId())));
+            new Messages.DeliverySpotJoined(join.deliveryId(), actor.actorId()));
     }
 
     @Override
@@ -73,19 +71,4 @@ public final class DeliveryTrackingSpot implements ZLinkSpot<CustomerActor> {
         history.add(status);
     }
 
-    private <T> T decode(Message request, Class<T> type) {
-        try {
-            return json.readValue(request.toByteArray(), type);
-        } catch (IOException ex) {
-            throw new IllegalArgumentException("Failed to decode " + type.getSimpleName() + ".", ex);
-        }
-    }
-
-    private Message encode(Object reply) {
-        try {
-            return Message.from(json.writeValueAsBytes(reply));
-        } catch (JsonProcessingException ex) {
-            throw new IllegalArgumentException("Failed to encode delivery spot reply.", ex);
-        }
-    }
 }

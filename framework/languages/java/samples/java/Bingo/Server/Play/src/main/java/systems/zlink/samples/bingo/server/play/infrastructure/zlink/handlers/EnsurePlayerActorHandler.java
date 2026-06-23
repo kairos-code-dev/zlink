@@ -3,7 +3,6 @@ package systems.zlink.samples.bingo.server.play.infrastructure.zlink.handlers;
 import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
@@ -40,9 +39,9 @@ public final class EnsurePlayerActorHandler
             player.setDisplayName(request.displayName());
         }
         var joined = actor.context()
-            .joinEntrySpot(RoutingId.from(SampleTopology.selectedPlayNodeRid()), Message.from(new byte[0]))
+            .joinEntrySpot(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
             .timeout(SampleTimings.RequestTimeout)
-            .await(Message.class);
+            .await();
         return new Messages.EnsurePlayerActorRes(
             request.actorId(),
             SampleNames.PlayerActorType,

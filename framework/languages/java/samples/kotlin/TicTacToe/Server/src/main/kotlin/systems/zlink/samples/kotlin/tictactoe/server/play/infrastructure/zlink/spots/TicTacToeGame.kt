@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.future.await
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.ZLinkAwait
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -47,22 +47,22 @@ class TicTacToeGame(
 
     override fun context(): ZLinkSpotContext = context
 
-    override suspend fun onCreateSuspending(request: Message): ZLinkSpotCreateResponse {
+    override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         createdHandler.handle(this, request)
         return ZLinkSpotCreateResponse.accept()
     }
 
     override suspend fun onActorJoinSuspending(
         actor: PlayActor,
-        request: Message,
+        request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse {
-        val joinRequest = json.readValue(request.toByteArray(), TicTacToeGameJoinReq::class.java)
+        val joinRequest = request.decode(TicTacToeGameJoinReq::class.java)
         require(joinRequest.player.actorId == actor.actorId) {
             "join request actor id does not match bound actor"
         }
         val reply = join(actor, joinRequest.roomId, joinRequest.player)
-        return ZLinkSpotActorJoinResponse.accept(Message.from(json.writeValueAsBytes(reply)))
+        return ZLinkSpotActorJoinResponse.accept(reply)
     }
 
     override fun onJoinedActor(
@@ -98,7 +98,7 @@ class TicTacToeGame(
         gameTick?.cancelAsync()?.await()
     }
 
-    fun markCreated(request: Message) {
+    fun markCreated(request: ZLinkMessage) {
         require(request.isEmpty()) { "tic-tac-toe game creation does not accept payload parts" }
         created = true
     }

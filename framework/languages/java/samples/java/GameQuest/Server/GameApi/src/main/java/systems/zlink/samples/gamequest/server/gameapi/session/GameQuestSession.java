@@ -2,7 +2,7 @@ package systems.zlink.samples.gamequest.server.gameapi.session;
 
 import static systems.zlink.framework.ZLinkAwait.await;
 
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
@@ -56,7 +56,7 @@ public final class GameQuestSession implements ZLinkSession {
     }
 
     @Override
-    public void onDispatch(ZLinkStreamHeader header, Message payload) {
+    public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
         System.err.printf(
             "gamequest session dispatch session=%s packet=%s codec=%s%n",
             context.sessionId(), header.packetName(), header.codec());

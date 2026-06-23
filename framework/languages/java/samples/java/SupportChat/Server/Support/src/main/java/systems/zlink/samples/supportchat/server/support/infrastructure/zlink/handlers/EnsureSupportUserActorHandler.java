@@ -3,7 +3,6 @@ package systems.zlink.samples.supportchat.server.support.infrastructure.zlink.ha
 import static systems.zlink.framework.ZLinkAwait.await;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkRequestContext;
@@ -42,9 +41,9 @@ public final class EnsureSupportUserActorHandler
         supportActor.setIdentity(request.displayName(), request.role());
         directory.addOrUpdate(supportActor);
         var joined = actor.context()
-            .joinEntrySpot(RoutingId.from(SampleTopology.SupportRid), Message.from(new byte[0]))
+            .joinEntrySpot(RoutingId.from(SampleTopology.SupportRid))
             .timeout(SampleTimings.RequestTimeout)
-            .await(Message.class);
+            .await();
         if (!supportActor.conversationId().isBlank()) {
             actor.context()
                 .joinSpot(

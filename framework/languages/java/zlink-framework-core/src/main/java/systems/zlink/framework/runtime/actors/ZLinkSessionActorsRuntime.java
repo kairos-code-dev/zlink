@@ -26,6 +26,7 @@ import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionActors;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
@@ -150,6 +151,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     ref,
                     Optional.empty(),
                     actors,
+                    serializer,
                     0,
                     routeReady,
                     null,
@@ -189,6 +191,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     ref,
                     Optional.of(actor),
                     actors,
+                    serializer,
                     bindingToken,
                     routeReady,
                     localActorDispatcher,
@@ -231,6 +234,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         private final ZLinkBackendActorRef ref;
         private final Optional<ZLinkActor> managedActor;
         private final ZLinkActorRuntime actors;
+        private final ZLinkMessageSerializer serializer;
         private final long bindingToken;
         private final Predicate<RoutingId> routeReady;
         private final LocalActorDispatcher localActorDispatcher;
@@ -242,6 +246,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             ZLinkBackendActorRef ref,
             Optional<ZLinkActor> managedActor,
             ZLinkActorRuntime actors,
+            ZLinkMessageSerializer serializer,
             long bindingToken,
             Predicate<RoutingId> routeReady,
             LocalActorDispatcher localActorDispatcher,
@@ -251,6 +256,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             this.ref = ref;
             this.managedActor = managedActor;
             this.actors = actors;
+            this.serializer = java.util.Objects.requireNonNull(serializer, "serializer");
             this.bindingToken = bindingToken;
             this.routeReady = routeReady == null ? ignored -> true : routeReady;
             this.localActorDispatcher = localActorDispatcher;
@@ -270,7 +276,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         @Override
         public CompletionStage<Void> relay(
             ZLinkStreamHeader header,
-            Message payload) {
+            ZLinkMessage payload) {
             if (header == null) {
                 return CompletableFuture.failedFuture(new IllegalArgumentException(
                     "header is required"));
@@ -279,7 +285,9 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 return CompletableFuture.failedFuture(new IllegalArgumentException(
                     "payload is required"));
             }
-            byte[] payloadBytes = payload.toByteArray();
+            Message message = payload.toMessage(serializer);
+            byte[] payloadBytes = message.toByteArray();
+            message.close();
             if (managedActor.isPresent() && localActorDispatcher != null) {
                 return relayLocal(header, payloadBytes);
             }

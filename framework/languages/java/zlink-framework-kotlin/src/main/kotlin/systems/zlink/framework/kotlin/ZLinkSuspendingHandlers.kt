@@ -1,6 +1,5 @@
 package systems.zlink.framework.kotlin
 
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
@@ -10,6 +9,7 @@ import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkRouteRequestContext
 import systems.zlink.framework.channels.ZLinkRouteSendContext
 import systems.zlink.framework.channels.ZLinkSendContext
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -142,7 +142,7 @@ abstract class ZLinkSuspendingActorFactory : ZLinkActorFactory {
 abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
     abstract override fun context(): ZLinkSpotContext
 
-    final override fun onCreate(request: Message): ZLinkSpotCreateResponse =
+    final override fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse =
         blocking {
             onCreateSuspending(request)
         }
@@ -161,14 +161,14 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
 
     final override fun onActorJoin(
         actor: TActor,
-        request: Message,
+        request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse =
         blocking {
             onActorJoinSuspending(actor, request, cancellationToken)
         }
 
-    protected open suspend fun onCreateSuspending(request: Message): ZLinkSpotCreateResponse =
+    protected open suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse =
         ZLinkSpotCreateResponse.accept()
 
     protected open suspend fun onInitializeSuspending() {
@@ -179,7 +179,7 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
 
     protected open suspend fun onActorJoinSuspending(
         actor: TActor,
-        request: Message,
+        request: ZLinkMessage,
         cancellationToken: CancellationToken,
     ): ZLinkSpotActorJoinResponse =
         ZLinkSpotActorJoinResponse.reject()
@@ -206,7 +206,7 @@ abstract class ZLinkSuspendingSession : ZLinkSession {
         }
     }
 
-    final override fun onDispatch(header: ZLinkStreamHeader, payload: Message) {
+    final override fun onDispatch(header: ZLinkStreamHeader, payload: ZLinkMessage) {
         blocking {
             onDispatchSuspending(header, payload)
         }
@@ -221,7 +221,7 @@ abstract class ZLinkSuspendingSession : ZLinkSession {
     protected open suspend fun onErrorSuspending(error: ZLinkStreamError) {
     }
 
-    protected open suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: Message) {
+    protected open suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: ZLinkMessage) {
     }
 }
 

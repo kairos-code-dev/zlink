@@ -1,8 +1,8 @@
 package systems.zlink.samples.kotlin.gamequest.server.questmission.spots
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActor
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
@@ -21,7 +21,7 @@ class PlayerQuestSpot(
 
     override fun context(): ZLinkSpotContext = context
 
-    override fun onCreate(request: Message): ZLinkSpotCreateResponse {
+    override fun onCreate(request: ZLinkMessage): ZLinkSpotCreateResponse {
         playerId = decode(request).playerId
         System.err.printf(
             "gamequest player quest spot ready player=%s spot=%s%n",
@@ -30,12 +30,11 @@ class PlayerQuestSpot(
         return ZLinkSpotCreateResponse.accept()
     }
 
-    private fun decode(request: Message): PlayerQuestSpotCreateReq {
-        val bytes = request.toByteArray()
-        if (bytes.isEmpty()) {
+    private fun decode(request: ZLinkMessage): PlayerQuestSpotCreateReq {
+        if (request.isEmpty()) {
             return PlayerQuestSpotCreateReq("")
         }
-        return json.readValue(bytes, PlayerQuestSpotCreateReq::class.java)
+        return request.decode(PlayerQuestSpotCreateReq::class.java)
     }
 
     data class PlayerQuestSpotCreateReq(val playerId: String)

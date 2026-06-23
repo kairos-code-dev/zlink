@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.gamequest.server.gameapi.session
 
-import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.ZLinkAwait
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSession
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
@@ -36,7 +36,7 @@ class GameQuestSession(
         System.err.printf("gamequest session error session=%s error=%s%n", context.sessionId(), error)
     }
 
-    override fun onDispatch(header: ZLinkStreamHeader, payload: Message) {
+    override fun onDispatch(header: ZLinkStreamHeader, payload: ZLinkMessage) {
         System.err.printf(
             "gamequest session dispatch session=%s packet=%s codec=%s%n",
             context.sessionId(), header.packetName(), header.codec(),

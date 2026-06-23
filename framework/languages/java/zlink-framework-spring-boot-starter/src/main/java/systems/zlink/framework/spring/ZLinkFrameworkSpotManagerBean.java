@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotInfo;
@@ -28,7 +28,7 @@ final class ZLinkFrameworkSpotManagerBean implements ZLinkSpotManager {
     @Override
     public CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot<?>> spotType,
-        Message request) {
+        ZLinkMessage request) {
         return lifecycle.spotManager().create(spotType, request);
     }
 
@@ -50,7 +50,7 @@ final class ZLinkFrameworkSpotManagerBean implements ZLinkSpotManager {
     public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
         Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid,
-        Message request) {
+        ZLinkMessage request) {
         return lifecycle.spotManager().getOrCreate(spotType, spotRid, request);
     }
 

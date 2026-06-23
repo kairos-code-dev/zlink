@@ -1,11 +1,10 @@
 package systems.zlink.samples.gamequest.server.gameapi.session.handlers;
 
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.samples.gamequest.server.gameapi.session.GameQuestSessionRegistry;
-import systems.zlink.samples.gamequest.server.gameapi.session.StreamPayloads;
 import systems.zlink.samples.gamequest.server.gameapi.infrastructure.store.GameQuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
@@ -25,9 +24,9 @@ public final class SubscribeQuestHandler implements ZLinkSessionPacketHandler<ZL
     }
 
     @Override
-    public void handle(ZLinkSessionContext context, ZLinkStreamHeader header, Message payload) {
+    public void handle(ZLinkSessionContext context, ZLinkStreamHeader header, ZLinkMessage payload) {
         Messages.SubscribeQuestReq request =
-            StreamPayloads.decode(header, payload, Messages.SubscribeQuestReq.class);
+            payload.decode(Messages.SubscribeQuestReq.class);
         System.err.printf(
             "gamequest session subscribe session=%s player=%s%n",
             context.sessionId(), request.playerId());

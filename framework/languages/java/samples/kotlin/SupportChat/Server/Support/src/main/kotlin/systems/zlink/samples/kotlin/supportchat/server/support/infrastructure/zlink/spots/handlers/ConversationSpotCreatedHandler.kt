@@ -1,7 +1,7 @@
 package systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.handlers
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import systems.zlink.contracts.messaging.Message
+import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.samples.kotlin.supportchat.server.support.infrastructure.zlink.spots.ConversationSpot
 import systems.zlink.samples.kotlin.supportchat.server.support.domain.conversation.ConversationCreateRequest
 
@@ -10,13 +10,13 @@ class ConversationSpotCreatedHandler(
 ) {
     fun handle(
         spot: ConversationSpot,
-        request: Message,
+        request: ZLinkMessage,
     ) {
         spot.applyCreate(decode(request))
     }
 
-    private fun decode(request: Message): ConversationCreateRequest {
+    private fun decode(request: ZLinkMessage): ConversationCreateRequest {
         check(!request.isEmpty()) { "Conversation create request payload is required." }
-        return json.readValue(request.toByteArray(), ConversationCreateRequest::class.java)
+        return request.decode(ConversationCreateRequest::class.java)
     }
 }

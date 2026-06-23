@@ -22,8 +22,8 @@ import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.handlers.ZLinkSpotTimer;
 import systems.zlink.framework.handlers.ZLinkStreamPacket;
 import systems.zlink.framework.handlers.ZLinkStreamRaw;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpotHandlerRegistry;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
@@ -35,6 +35,12 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
+import systems.zlink.framework.streams.ZLinkSession;
+import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
+import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
+import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 final class HandlerContractTest {
     @Test
@@ -118,11 +124,11 @@ final class HandlerContractTest {
 
     @Test
     void spotLifecycleCallbacksAreMemberContracts() throws NoSuchMethodException {
-        ZLinkSpot.class.getMethod("onCreate", Message.class);
+        ZLinkSpot.class.getMethod("onCreate", ZLinkMessage.class);
         ZLinkSpot.class.getMethod(
             "onActorJoin",
             ZLinkActor.class,
-            Message.class,
+            ZLinkMessage.class,
             CancellationToken.class);
         ZLinkSpot.class.getMethod(
             "onJoinedActor",
@@ -139,7 +145,7 @@ final class HandlerContractTest {
         ZLinkEntrySpot.class.getMethod(
             "onActorJoin",
             ZLinkActor.class,
-            Message.class,
+            ZLinkMessage.class,
             CancellationToken.class);
         ZLinkEntrySpot.class.getMethod(
             "onJoinedActor",
@@ -154,6 +160,26 @@ final class HandlerContractTest {
             ZLinkActor.class,
             CancellationToken.class);
         assertTrue(ZLinkSpotActorJoinResponse.accept().accepted());
+    }
+
+    @Test
+    void sessionDispatchContractsUseFrameworkMessages() throws NoSuchMethodException {
+        ZLinkSession.class.getMethod("onDispatch", ZLinkStreamHeader.class, ZLinkMessage.class);
+        ZLinkSessionPacketHandler.class.getMethod(
+            "handle",
+            ZLinkSessionContext.class,
+            ZLinkStreamHeader.class,
+            ZLinkMessage.class);
+        ZLinkTypedSessionPacketHandler.class.getMethod(
+            "handle",
+            ZLinkSessionContext.class,
+            ZLinkStreamHeader.class,
+            ZLinkMessage.class);
+        ZLinkSessionPacketDispatcher.class.getMethod(
+            "tryHandleAsync",
+            ZLinkSessionContext.class,
+            ZLinkStreamHeader.class,
+            ZLinkMessage.class);
     }
 
     @Test

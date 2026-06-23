@@ -6,9 +6,9 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
@@ -42,7 +42,7 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
     public CompletionStage<Boolean> tryHandleAsync(
         TSessionContext context,
         ZLinkStreamHeader header,
-        Message payload) {
+        ZLinkMessage payload) {
         Object handler =
             handlers.get(header.packetName());
         if (handler == null) {
@@ -54,7 +54,7 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
         }
         Class<?> messageType = messageType(handler);
         if (messageType != null) {
-            Object decoded = serializer.deserialize(payload, messageType);
+            Object decoded = payload.decode(messageType);
             return executeHandler(() -> ZLinkHandlerMethodInvoker
                 .invokeHandler(handler, "handle", new Object[] {context, header, decoded}, suspendHandlerInvokers)
                 .thenApply(ignored -> null))
@@ -72,10 +72,10 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
         ZLinkTypedSessionPacketHandler<?, ?> handler,
         TSessionContext context,
         ZLinkStreamHeader header,
-        Message payload) {
+        ZLinkMessage payload) {
         ZLinkTypedSessionPacketHandler<TSessionContext, Object> typed =
             (ZLinkTypedSessionPacketHandler<TSessionContext, Object>) handler;
-        Object decoded = serializer.deserialize(payload, typed.messageType());
+        Object decoded = payload.decode(typed.messageType());
         return ZLinkHandlerMethodInvoker
             .invokeHandler(typed, "handle", new Object[] {context, header, decoded}, suspendHandlerInvokers)
             .thenApply(ignored -> null);

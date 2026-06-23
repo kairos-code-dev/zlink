@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.messaging.ZLinkMessage;
 
 public interface ZLinkSpotManager {
     CompletionStage<ZLinkSpotCreateResult> create(
@@ -12,7 +12,13 @@ public interface ZLinkSpotManager {
 
     CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot<?>> spotType,
-        Message request);
+        ZLinkMessage request);
+
+    default CompletionStage<ZLinkSpotCreateResult> create(
+        Class<? extends ZLinkSpot<?>> spotType,
+        Object request) {
+        return create(spotType, ZLinkMessage.of(request));
+    }
 
     CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot<?>> spotType,
@@ -25,7 +31,14 @@ public interface ZLinkSpotManager {
     CompletionStage<ZLinkSpotCreateResult> getOrCreate(
         Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid,
-        Message request);
+        ZLinkMessage request);
+
+    default CompletionStage<ZLinkSpotCreateResult> getOrCreate(
+        Class<? extends ZLinkSpot<?>> spotType,
+        RoutingId spotRid,
+        Object request) {
+        return getOrCreate(spotType, spotRid, ZLinkMessage.of(request));
+    }
 
     CompletionStage<Optional<ZLinkSpotInfo>> find(RoutingId spotRid);
 

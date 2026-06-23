@@ -1,6 +1,6 @@
 package systems.zlink.framework.streams;
 
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.messaging.ZLinkMessage;
 
 public interface ZLinkSession {
     ZLinkSessionContext context();
@@ -13,6 +13,6 @@ public interface ZLinkSession {
 
     default void onDispatch(
         ZLinkStreamHeader header,
-        Message payload) {
+        ZLinkMessage payload) {
     }
 }

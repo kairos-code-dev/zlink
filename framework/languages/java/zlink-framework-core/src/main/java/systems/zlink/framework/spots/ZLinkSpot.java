@@ -2,7 +2,7 @@ package systems.zlink.framework.spots;
 
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.messaging.ZLinkMessage;
 
 public interface ZLinkSpot<TActor extends ZLinkActor> {
     ZLinkSpotContext context();
@@ -10,7 +10,7 @@ public interface ZLinkSpot<TActor extends ZLinkActor> {
     default void configure() {
     }
 
-    default ZLinkSpotCreateResponse onCreate(Message request) {
+    default ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
         return ZLinkSpotCreateResponse.accept();
     }
 
@@ -22,7 +22,7 @@ public interface ZLinkSpot<TActor extends ZLinkActor> {
 
     default ZLinkSpotActorJoinResponse onActorJoin(
         TActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.reject();
     }

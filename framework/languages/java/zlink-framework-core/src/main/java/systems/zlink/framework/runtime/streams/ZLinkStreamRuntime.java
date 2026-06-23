@@ -19,6 +19,7 @@ import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
@@ -182,8 +183,10 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 streamHeader.packetName(), null, null, corr, null, null, null, null));
         }
         Message payloadCopy = Message.from(decodePayload(streamHeader, payload));
+        ZLinkMessage sessionPayload = ZLinkMessage.fromMessage(payloadCopy, serializer);
+        payloadCopy.close();
         state.queue().enqueue(() ->
-            executeHandler(() -> state.context().dispatchStage(streamHeader, payloadCopy, state.session())));
+            executeHandler(() -> state.context().dispatchStage(streamHeader, sessionPayload, state.session())));
     }
 
     private void dispatchStreamNotification(
@@ -378,7 +381,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
 
         CompletionStage<Void> dispatchStage(
             ZLinkStreamHeader header,
-            Message payload,
+            ZLinkMessage payload,
             ZLinkSession session) {
             currentDispatchHeader = header;
             CompletionStage<Void> stage;
@@ -386,12 +389,10 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 stage = ZLinkHandlerStages.fromRunnable(() -> session.onDispatch(header, payload));
             } catch (RuntimeException ex) {
                 currentDispatchHeader = null;
-                payload.close();
                 return CompletableFuture.failedFuture(ex);
             }
             return stage.whenComplete((ignored, error) -> {
                 currentDispatchHeader = null;
-                payload.close();
                 if (error == null
                     && header.requestSequence().isEmpty()
                     && flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowPhase.DISPATCHED)) {

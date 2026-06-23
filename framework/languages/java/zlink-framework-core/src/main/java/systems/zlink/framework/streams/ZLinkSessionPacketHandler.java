@@ -1,6 +1,6 @@
 package systems.zlink.framework.streams;
 
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.messaging.ZLinkMessage;
 
 public interface ZLinkSessionPacketHandler<TSessionContext extends ZLinkSessionContext> {
     String packetName();
@@ -8,5 +8,5 @@ public interface ZLinkSessionPacketHandler<TSessionContext extends ZLinkSessionC
     void handle(
         TSessionContext context,
         ZLinkStreamHeader header,
-        Message payload);
+        ZLinkMessage payload);
 }

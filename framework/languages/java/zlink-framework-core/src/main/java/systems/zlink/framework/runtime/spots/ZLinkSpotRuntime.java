@@ -58,6 +58,7 @@ import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
@@ -453,13 +454,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     @Override
     public CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot<?>> spotType) {
-        return create(spotType, new Message());
+        return create(spotType, ZLinkMessage.empty());
     }
 
     @Override
     public CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot<?>> spotType,
-        Message request) {
+        ZLinkMessage request) {
         requireRegistered(spotType);
         ZLinkBackendSpot spot = primaryNode.createSpot();
         RoutingId spotRid = spot.routingId();
@@ -488,15 +489,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     public CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid) {
-        Message message = new Message();
-        return createWithRoutingId(spotType, spotRid, message)
-            .whenComplete((ignored, error) -> message.close());
+        return createWithRoutingId(spotType, spotRid, ZLinkMessage.empty());
     }
 
     private CompletionStage<ZLinkSpotCreateResult> createWithRoutingId(
         Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid,
-        Message request) {
+        ZLinkMessage request) {
         requireRegistered(spotType);
         requireRoutingId(spotRid);
         if (spots.containsKey(spotRid) || pendingSpotCreates.containsKey(spotRid)) {
@@ -528,14 +527,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
         Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid) {
-        return getOrCreate(spotType, spotRid, new Message());
+        return getOrCreate(spotType, spotRid, ZLinkMessage.empty());
     }
 
     @Override
     public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
         Class<? extends ZLinkSpot<?>> spotType,
         RoutingId spotRid,
-        Message request) {
+        ZLinkMessage request) {
         requireRegistered(spotType);
         requireRoutingId(spotRid);
         if (spots.containsKey(spotRid)) {
@@ -769,8 +768,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private CompletionStage<SpotActivationCreateResult> activateAsync(
         Class<? extends ZLinkSpot<?>> spotType,
         ZLinkBackendSpot backendSpot,
-        Message request) {
-        Message effectiveRequest = request == null ? new Message() : request;
+        ZLinkMessage request) {
+        ZLinkMessage effectiveRequest = request == null ? ZLinkMessage.empty() : request;
         DefaultSpotContext spotContext =
             new DefaultSpotContext(primaryNode.routingId(), backendSpot);
         ZLinkSpot<?> spot = tryCreateSpot(spotType, spotContext);
@@ -2173,7 +2172,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                                     response == null ? ZLinkSpotActorJoinResponse.reject() : response;
                                 Message reply = effective.reply() == null
                                     ? Message.from(new byte[0])
-                                    : Message.from(effective.reply().toByteArray());
+                                    : effective.reply().toMessage(serializer);
                                 backendSpot.replyActorJoin(request, effective.accepted() ? 0 : 1, List.of(reply));
                                 reply.close();
                             } finally {
@@ -2206,11 +2205,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     CompletableFuture<ZLinkSpotActorJoinResponse> admission =
                         new CompletableFuture<>();
                     context.enqueueDispatch(() ->
-                            ZLinkHandlerStages.fromSupplier(() ->
-                                    ((ZLinkEntrySpot) entrySpot).onActorJoin(
-                                        actor.get(),
-                                        payload,
-                                        NONE_CANCELLATION))
+                                    ZLinkHandlerStages.fromSupplier(() ->
+                                            ((ZLinkEntrySpot) entrySpot).onActorJoin(
+                                                actor.get(),
+                                                ZLinkMessage.fromMessage(payload, serializer),
+                                                NONE_CANCELLATION))
                                 .thenAccept(admission::complete))
                         .whenComplete((ignored, error) -> {
                             if (error != null) {
@@ -4471,7 +4470,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         response == null ? ZLinkSpotActorJoinResponse.reject() : response;
                     Message reply = effective.reply() == null
                         ? Message.from(new byte[0])
-                        : Message.from(effective.reply().toByteArray());
+                        : effective.reply().toMessage(serializer);
                     try {
                         backendSpot.replyActorJoin(
                             request,
@@ -4583,7 +4582,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                             joinRequest.actorRef());
                     }
                     return ZLinkHandlerStages
-                        .fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(actor, joinPayload, NONE_CANCELLATION))
+                        .fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(
+                            actor,
+                            ZLinkMessage.fromMessage(joinPayload, serializer),
+                            NONE_CANCELLATION))
                         .thenCompose(response -> {
                             ZLinkSpotActorJoinResponse effective =
                                 response == null ? ZLinkSpotActorJoinResponse.reject() : response;
@@ -4617,10 +4619,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         .thenApply(response -> {
                             ZLinkSpotActorJoinResponse effective =
                                 response == null ? ZLinkSpotActorJoinResponse.reject() : response;
-                            return ZLinkActorSpotRoutePackets.encodeJoinReply(
-                                effective.accepted(),
-                                localActorRef,
-                                effective.reply());
+                            Message reply = effective.reply() == null
+                                ? Message.from(new byte[0])
+                                : effective.reply().toMessage(serializer);
+                            try {
+                                return ZLinkActorSpotRoutePackets.encodeJoinReply(
+                                    effective.accepted(),
+                                    localActorRef,
+                                    reply);
+                            } finally {
+                                reply.close();
+                            }
                         });
                 })
                 .handle((reply, error) -> {
@@ -4657,7 +4666,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                                 + request.targetActor().actorId()));
                     }
                     return ZLinkHandlerStages
-                        .fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(actor.get(), payload, NONE_CANCELLATION))
+                        .fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(
+                            actor.get(),
+                            ZLinkMessage.fromMessage(payload, serializer),
+                            NONE_CANCELLATION))
                         .thenCompose(response -> {
                             ZLinkSpotActorJoinResponse effective =
                                 response == null ? ZLinkSpotActorJoinResponse.reject() : response;

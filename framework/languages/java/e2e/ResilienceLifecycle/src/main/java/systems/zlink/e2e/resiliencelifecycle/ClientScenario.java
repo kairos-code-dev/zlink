@@ -1,0 +1,241 @@
+package systems.zlink.e2e.resiliencelifecycle;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
+import systems.zlink.contracts.service.registry.ServiceRole;
+import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.registry.ZLinkRegistryQueryClient;
+
+public final class ClientScenario {
+    private final ZLinkClient client;
+    private final ZLinkRegistryQueryClient registry;
+    private final ObjectMapper json;
+    private final HttpClient http = HttpClient.newHttpClient();
+
+    public ClientScenario(
+        ZLinkClient client,
+        ZLinkRegistryQueryClient registry,
+        ObjectMapper json) {
+        this.client = client;
+        this.registry = registry;
+        this.json = json;
+    }
+
+    public void run() {
+        runDrainRestore();
+        runDrainInFlight();
+    }
+
+    private void runDrainRestore() {
+        waitForTopology(2);
+        Set<String> warm = collectProviders("b4-warm", 80, 2);
+        ensure(warm.contains("api-a") && warm.contains("api-b"),
+            "RL-B4 warmup did not reach both providers: " + warm);
+
+        post(adminA() + "/admin/drain");
+        waitForWeight(adminA(), 0);
+        Set<String> drained = collectStableProvidersWithout("b4-drained", "api-a", "api-b");
+        ensure(get(adminA() + "/health").contains("ok"), "RL-B4 drained provider health failed");
+        waitForTopology(2);
+
+        post(adminA() + "/admin/restore");
+        waitForWeight(adminA(), 100);
+        Set<String> restored = collectProviders("b4-restored", 120, 2);
+        ensure(restored.contains("api-a"), "RL-B4 restored provider did not receive traffic");
+        System.out.println("scenario RL-B4 passed");
+    }
+
+    private void runDrainInFlight() {
+        post(adminB() + "/admin/drain");
+        waitForWeight(adminB(), 0);
+        sleep(1500);
+
+        CompletionStage<Contracts.WorkReply> slow = client.requestToChannel(
+                Contracts.CHANNEL,
+                new Contracts.WorkRequest("slow"))
+            .timeout(Duration.ofSeconds(15))
+            .submit(Contracts.WorkReply.class);
+        waitForEvidence(adminA(), "SlowStarted");
+
+        post(adminA() + "/admin/drain");
+        waitForWeight(adminA(), 0);
+        post(adminB() + "/admin/restore");
+        waitForWeight(adminB(), 100);
+        collectStableProvidersWithout("b5-after-drain", "api-a", "api-b");
+
+        post(adminA() + "/admin/release-slow");
+        Contracts.WorkReply slowReply;
+        try {
+            slowReply = slow.toCompletableFuture().get(20, TimeUnit.SECONDS);
+        } catch (Exception error) {
+            throw new IllegalStateException("RL-B5 slow request did not complete", error);
+        }
+        ensure("api-a".equals(slowReply.providerRid()),
+            "RL-B5 slow request was not served by api-a: " + slowReply.providerRid());
+        ensure("work:slow".equals(slowReply.value()), "RL-B5 slow reply payload mismatch");
+
+        post(adminA() + "/admin/restore");
+        waitForWeight(adminA(), 100);
+        System.out.println("scenario RL-B5 passed");
+    }
+
+    private Set<String> collectProviders(String prefix, int attempts, int expectedCount) {
+        Set<String> providers = new HashSet<>();
+        for (int index = 0; index < attempts && providers.size() < expectedCount; index++) {
+            Contracts.WorkReply reply = client.requestToChannel(
+                    Contracts.CHANNEL,
+                    new Contracts.WorkRequest(prefix + "-" + index))
+                .timeout(Duration.ofSeconds(3))
+                .await(Contracts.WorkReply.class);
+            ensure(reply.value().equals("work:" + prefix + "-" + index),
+                "reply payload mismatch for " + prefix + "-" + index);
+            providers.add(reply.providerRid());
+        }
+        return providers;
+    }
+
+    private Set<String> collectStableProvidersWithout(
+        String prefix,
+        String forbidden,
+        String required) {
+        for (int window = 0; window < 30; window++) {
+            Set<String> providers = collectProviders(prefix + "-window-" + window, 5, 1);
+            if (!providers.contains(forbidden) && providers.contains(required)) {
+                return providers;
+            }
+            sleep(300);
+        }
+        throw new IllegalStateException(
+            prefix + " did not converge away from " + forbidden + " to " + required);
+    }
+
+    private void waitForTopology(int expectedRouters) {
+        if (registry == null) {
+            return;
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            try {
+                long count = registry.topology().toCompletableFuture()
+                    .get(3, TimeUnit.SECONDS)
+                    .stream()
+                    .filter(entry -> Contracts.CHANNEL.equals(entry.channelName()))
+                    .filter(entry -> entry.serviceRole() == ServiceRole.ROUTER)
+                    .count();
+                if (count >= expectedRouters) {
+                    return;
+                }
+            } catch (Exception ignored) {
+            }
+            sleep(200);
+        }
+        throw new IllegalStateException("registry topology did not report " + expectedRouters
+            + " routers for " + Contracts.CHANNEL);
+    }
+
+    private void waitForWeight(String baseUrl, int expected) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            try {
+                JsonNode node = json.readTree(get(baseUrl + "/admin/weight"));
+                if (node.path("weight").asInt(-1) == expected) {
+                    return;
+                }
+            } catch (Exception ignored) {
+            }
+            sleep(100);
+        }
+        throw new IllegalStateException("weight did not become " + expected + " for " + baseUrl);
+    }
+
+    private void waitForEvidence(String baseUrl, String marker) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            try {
+                JsonNode entries = json.readTree(get(baseUrl + "/evidence")).path("entries");
+                if (entries.isArray()) {
+                    for (JsonNode entry : entries) {
+                        if (marker.equals(entry.path("marker").asText())) {
+                            return;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            sleep(100);
+        }
+        throw new IllegalStateException("marker " + marker + " was not observed at " + baseUrl);
+    }
+
+    private String adminA() {
+        return Env.get("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT");
+    }
+
+    private String adminB() {
+        return Env.get("ZLINK_JAVA_E2E_HTTP_B_ENDPOINT");
+    }
+
+    private String get(String url) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(5))
+                .GET()
+                .build();
+            HttpResponse<String> response = http.send(
+                request,
+                HttpResponse.BodyHandlers.ofString());
+            ensure(response.statusCode() >= 200 && response.statusCode() < 300,
+                "GET " + url + " returned " + response.statusCode());
+            return response.body();
+        } catch (IOException error) {
+            throw new IllegalStateException("GET failed: " + url, error);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("GET interrupted: " + url, error);
+        }
+    }
+
+    private void post(String url) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(5))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+            HttpResponse<String> response = http.send(
+                request,
+                HttpResponse.BodyHandlers.ofString());
+            ensure(response.statusCode() >= 200 && response.statusCode() < 300,
+                "POST " + url + " returned " + response.statusCode());
+        } catch (IOException error) {
+            throw new IllegalStateException("POST failed: " + url, error);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("POST interrupted: " + url, error);
+        }
+    }
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted", error);
+        }
+    }
+
+    private static void ensure(boolean condition, String message) {
+        if (!condition) {
+            throw new IllegalStateException(message);
+        }
+    }
+}

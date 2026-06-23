@@ -35,6 +35,7 @@ import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
@@ -91,11 +92,14 @@ final class ZLinkFrameworkAutoConfigurationTest {
             ZLinkFrameworkLifecycle lifecycle =
                 context.getBean(ZLinkFrameworkLifecycle.class);
             ZLinkClient client = context.getBean(ZLinkClient.class);
+            ZLinkChannelRuntimeOptions runtimeOptions =
+                context.getBean(ZLinkChannelRuntimeOptions.class);
             ZLinkFanoutClient fanout = context.getBean(ZLinkFanoutClient.class);
             ZLinkRouteClient route = context.getBean(ZLinkRouteClient.class);
 
             assertTrue(lifecycle.isRunning());
             assertInstanceOf(ZLinkFrameworkLifecycle.class, client);
+            assertInstanceOf(ZLinkFrameworkLifecycle.class, runtimeOptions);
             assertInstanceOf(ZLinkFrameworkLifecycle.class, fanout);
             assertInstanceOf(ZLinkFrameworkLifecycle.class, route);
         }

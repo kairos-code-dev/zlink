@@ -23,6 +23,7 @@ import systems.zlink.contracts.service.spot.SpotRouteBridgeEndpointOptions;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.backend.*;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
@@ -102,6 +103,47 @@ final class ZLinkChannelRuntimeTest {
                 ExecutionException.class,
                 () -> request.toCompletableFuture().get(1, TimeUnit.SECONDS));
             assertInstanceOf(ZLinkFrameworkException.class, error.getCause());
+        }
+    }
+
+    @Test
+    void clientServerRuntimeOptionsReadAndWriteServerWeight() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addClientServerChannel("api")
+            .enableServer("inproc://api");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            var socket = runtime.clientServerChannel("api").configureServerSocket();
+
+            assertEquals(100, socket.weight());
+            socket.weight(0);
+            assertEquals(0, socket.weight());
+            socket.weight(100);
+            assertEquals(100, socket.weight());
+        }
+    }
+
+    @Test
+    void clientServerRuntimeOptionsRejectInvalidServerWeight() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addClientServerChannel("api")
+            .enableServer("inproc://api");
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer())) {
+            var socket = runtime.clientServerChannel("api").configureServerSocket();
+
+            org.junit.jupiter.api.Assertions.assertThrows(
+                ZLinkConfigurationException.class,
+                () -> socket.weight(-1));
+            org.junit.jupiter.api.Assertions.assertThrows(
+                ZLinkConfigurationException.class,
+                () -> socket.weight(101));
         }
     }
 
@@ -218,10 +260,13 @@ final class ZLinkChannelRuntimeTest {
 
     private static final class FakeRouterSocket implements ZLinkBackendRouterSocket {
         final ArrayDeque<ZLinkBackendReceived> inbound = new ArrayDeque<>();
+        int peerWeight = 100;
 
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { }
         @Override public void setChannelName(String channelName) { }
         @Override public void setRoutingId(RoutingId routingId) { }
+        @Override public int peerWeight() { return peerWeight; }
+        @Override public void setPeerWeight(int weight) { peerWeight = weight; }
         @Override public void bind(String endpoint) { }
         @Override public void connect(String endpoint) { }
         @Override public void disconnect(String endpoint) { }

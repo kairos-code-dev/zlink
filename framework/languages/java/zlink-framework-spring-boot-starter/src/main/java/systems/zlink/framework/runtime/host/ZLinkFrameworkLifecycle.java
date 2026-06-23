@@ -5,6 +5,7 @@ import java.util.Objects;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
@@ -24,6 +25,7 @@ import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 
 public final class ZLinkFrameworkLifecycle
     implements SmartLifecycle, ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient,
+        ZLinkChannelRuntimeOptions,
         systems.zlink.framework.configuration.ZLinkMessageFlowControl {
     public static final int PHASE = 0;
 
@@ -160,6 +162,12 @@ public final class ZLinkFrameworkLifecycle
 
     public ZLinkActorManager actorManager() {
         return requireRuntime().actorManager();
+    }
+
+    @Override
+    public systems.zlink.framework.channels.ZLinkClientServerChannelRuntimeOptions clientServerChannel(
+        String channelName) {
+        return requireRuntime().channelRuntimeOptions().clientServerChannel(channelName);
     }
 
     public Map<String, ZLinkBackendSocket> monitoringSocketSources() {

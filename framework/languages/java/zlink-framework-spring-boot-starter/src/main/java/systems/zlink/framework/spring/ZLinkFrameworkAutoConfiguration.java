@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
@@ -152,6 +153,14 @@ public class ZLinkFrameworkAutoConfiguration {
     @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
     @ConditionalOnMissingBean
     public ZLinkClient zlinkClient(ZLinkFrameworkLifecycle lifecycle) {
+        return lifecycle;
+    }
+
+    @Bean
+    @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
+    @ConditionalOnMissingBean
+    public ZLinkChannelRuntimeOptions zlinkChannelRuntimeOptions(
+        ZLinkFrameworkLifecycle lifecycle) {
         return lifecycle;
     }
 

@@ -5,6 +5,7 @@ import systems.zlink.framework.runtime.backend.*;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -177,6 +178,10 @@ public final class ZLinkFrameworkRuntime
     }
 
     public ZLinkClient client() {
+        return channels;
+    }
+
+    public ZLinkChannelRuntimeOptions channelRuntimeOptions() {
         return channels;
     }
 

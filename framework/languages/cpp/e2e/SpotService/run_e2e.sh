@@ -167,6 +167,7 @@ assert has(play_a, "SpotOutbound", "alice-2")
 assert has(play_a, "MeshEventReceived")
 assert has(play_b, "ActorEnsured", "bob")
 assert has(play_b, "EntryJoin", "bob")
+assert has(play_b, "StateMutated", "bob")
 print("spot-service evidence result=passed")
 PY
 

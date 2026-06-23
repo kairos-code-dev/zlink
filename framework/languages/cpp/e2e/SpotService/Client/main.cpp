@@ -148,13 +148,22 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                                   const std::string &actor_id,
                                                   const std::string &display_name)
     {
-        auto ensured = routes
-                         .request (e2e::route_channel, zlink::routing_id_t::from (target_node),
-                                   e2e::ensure_actor_req_t{actor_id, display_name})
-                         .packet_name ("EnsureActor")
-                         .timeout (std::chrono::milliseconds (3000))
-                         .async<e2e::ensure_actor_res_t> ()
-                         .result ();
+        zlink::framework::result_t<e2e::ensure_actor_res_t> ensured =
+          zlink::framework::result_t<e2e::ensure_actor_res_t>::failure (
+            zlink::framework::framework_error_kind_t::timeout, "EnsureActor not attempted");
+        for (int attempt = 0; attempt < 20; ++attempt) {
+            ensured = routes
+                        .request (e2e::route_channel, zlink::routing_id_t::from (target_node),
+                                  e2e::ensure_actor_req_t{actor_id, display_name})
+                        .packet_name ("EnsureActor")
+                        .timeout (std::chrono::milliseconds (3000))
+                        .async<e2e::ensure_actor_res_t> ()
+                        .result ();
+            if (ensured.has_value ()) {
+                break;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        }
         ensure (ensured.has_value (),
                 "EnsureActor failed for " + actor_id + ": "
                   + (ensured.error () ? ensured.error ()->what () : "unknown"));
@@ -255,8 +264,13 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (remote_join.owner_node_rid == "play-b", "SM-B2 owner mismatch");
         ensure (remote_join.spot_rid == "user:play-b:b-room", "SM-A4 remote spot rid mismatch");
         remote = refresh_actor ("bob");
+        auto remote_state =
+          relay_request<e2e::state_res_t> (remote, "StateReq", e2e::state_req_t{"add", 11});
+        ensure (remote_state.owner_node_rid == "play-b" && remote_state.value == 11,
+                "SM-B4 remote actor request mismatch");
         std::cout << "scenario SM-A4 passed\n";
         std::cout << "scenario SM-B2 passed\n";
+        std::cout << "scenario SM-B4 passed\n";
 
         auto left =
           relay_request<e2e::leave_res_t> (local, "LeaveReq", e2e::leave_req_t{"client-left"});

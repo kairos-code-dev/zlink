@@ -12,6 +12,9 @@
   lifecycle evidence를 검증한다.
 - `SM-A7`: 같은 spot rid를 다른 spot 타입으로 다시 `get_or_create_spot`할 때
   `spot_type_mismatch`로 거부되고 기존 user spot 상태가 유지되는지 검증한다.
+- `SM-A8`: actor handler가 public `run_worker`로 무거운 작업을 spot 직렬 루프 밖에
+  offload하고, 같은 spot의 다른 request가 worker 완료 전에 처리되며 worker 결과가 다시 spot
+  상태에 반영되는지 검증한다.
 - `SM-B1`: `play-a` local actor join과 user spot dispatch를 검증한다.
 - `SM-B2`: `play-b` remote actor join과 cross-node dispatch를 검증한다.
 - `SM-B3`: join request의 문자열, 숫자, 배열 payload가 reply에 그대로 반영되는지 검증한다.
@@ -54,7 +57,6 @@
 
 ## 남은 구현 후보
 
-- `SM-A8`: `spot_context_t::run_worker` 공개 API가 있어 worker offload 검증으로 확장할 수 있다.
 - `SM-D5`, `SM-D6`, `SM-D7`, `SM-D12`: 실제 stream session client와 gateway 노드를 더
   확장해야 한다.
 - `SM-G1`: harness가 play node를 kill/restart하고 재join/rebind를 검증해야 한다.

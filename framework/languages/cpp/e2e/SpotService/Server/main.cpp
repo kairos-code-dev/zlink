@@ -67,7 +67,10 @@ struct scenario_actor_t
         actor_id = std::string (value.actor_id ());
     }
 
-    void set_actor_context (zlink::framework::actor_context_t value) { context = std::move (value); }
+    void set_actor_context (zlink::framework::actor_context_t value)
+    {
+        context = std::move (value);
+    }
 
     std::string actor_id;
     std::string display_name;
@@ -87,8 +90,8 @@ struct scenario_actor_factory_t
 zlink::framework::actor_ref_t to_actor_ref (const e2e::actor_ref_dto_t &actor)
 {
     return zlink::framework::actor_ref_t (
-      zlink::framework::node_rid_t::from_string (actor.node_rid), actor.actor_type,
-      actor.actor_id, actor.generation);
+      zlink::framework::node_rid_t::from_string (actor.node_rid), actor.actor_type, actor.actor_id,
+      actor.generation);
 }
 
 e2e::actor_ref_dto_t from_actor_ref (const zlink::framework::actor_ref_t &actor)
@@ -124,6 +127,7 @@ class user_spot_t : public zlink::framework::spot_t
         context.handlers ().add_actor_packet<&user_spot_t::leave> ("LeaveReq");
         context.handlers ().add_actor_packet<&user_spot_t::disconnect> ("DisconnectReq");
         context.handlers ().add_actor_packet<&user_spot_t::outbound> ("OutboundReq");
+        context.handlers ().add_actor_packet<&user_spot_t::run_worker> ("WorkerReq");
         context.handlers ().add_actor_packet<&user_spot_t::spot_to_spot> ("SpotToSpotReq");
         context.handlers ().add_actor_packet<&user_spot_t::type_mismatch> ("TypeMismatchReq");
         context.handlers ().add_actor_packet<&user_spot_t::push_to_session> ("PushReq");
@@ -151,13 +155,9 @@ class user_spot_t : public zlink::framework::spot_t
         actor.level = request.level;
         _state.record ("ActorJoined", actor.actor_id, std::string (_context.spot_rid ().value ()),
                        request.key);
-        return zlink::framework::spot_actor_join_response_t::accept (
-          e2e::join_res_t{std::string (_context.spot_rid ().value ()),
-                          std::string (_context.node_rid ().value ()),
-                          actor.actor_id,
-                          actor.display_name,
-                          actor.level,
-                          request.tags});
+        return zlink::framework::spot_actor_join_response_t::accept (e2e::join_res_t{
+          std::string (_context.spot_rid ().value ()), std::string (_context.node_rid ().value ()),
+          actor.actor_id, actor.display_name, actor.level, request.tags});
     }
 
     void on_actor_joined (const scenario_actor_t &actor)
@@ -230,12 +230,35 @@ class user_spot_t : public zlink::framework::spot_t
           .send (e2e::api_channel,
                  e2e::channel_command_t{"cmd-" + actor.actor_id + "-" + request.value})
           .async ();
-        co_await _context.publish (e2e::mesh_topic,
-                                   e2e::mesh_event_t{"evt-" + actor.actor_id, request.value})
+        co_await _context
+          .publish (e2e::mesh_topic, e2e::mesh_event_t{"evt-" + actor.actor_id, request.value})
           .async ();
-        _state.record ("SpotOutbound", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()), reply.value);
+        _state.record ("SpotOutbound", actor.actor_id, std::string (_context.spot_rid ().value ()),
+                       reply.value);
         co_return e2e::outbound_res_t{reply.value, true, true};
+    }
+
+    zlink::framework::task_t<e2e::worker_res_t>
+    run_worker (const scenario_actor_t &actor,
+                zlink::framework::spot_actor_request_context_t &,
+                const e2e::worker_req_t &request)
+    {
+        const auto snapshot = _value;
+        _state.record ("WorkerStarted", actor.actor_id, std::string (_context.spot_rid ().value ()),
+                       std::to_string (snapshot));
+        auto worker_result =
+          co_await _context
+            .run_worker ([snapshot, request] {
+                std::this_thread::sleep_for (std::chrono::milliseconds (request.delay_ms));
+                return snapshot + request.delta;
+            })
+            .timeout (std::chrono::milliseconds (3000))
+            .async ();
+        _value += request.delta;
+        ++_sequence;
+        _state.record ("WorkerCompleted", actor.actor_id,
+                       std::string (_context.spot_rid ().value ()), std::to_string (_value));
+        co_return e2e::worker_res_t{snapshot, worker_result, _value, _sequence};
     }
 
     e2e::direct_spot_res_t direct_request (const e2e::direct_spot_req_t &request)
@@ -271,21 +294,21 @@ class user_spot_t : public zlink::framework::spot_t
         const auto target_node =
           zlink::framework::node_rid_t::from_string (owner_for_key (request.target_key));
         const auto target_spot = user_spot_rid (request.target_key);
-        auto reply = co_await _context
-                       .request_to<e2e::direct_spot_res_t> (
-                         target_node, target_spot,
-                         e2e::direct_spot_req_t{actor.actor_id, request.value})
-                       .packet_name ("DirectSpotReq")
-                       .timeout (std::chrono::milliseconds (3000))
-                       .async ();
+        auto reply =
+          co_await _context
+            .request_to<e2e::direct_spot_res_t> (
+              target_node, target_spot, e2e::direct_spot_req_t{actor.actor_id, request.value})
+            .packet_name ("DirectSpotReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async ();
         co_await _context
           .send_to (target_node, target_spot,
                     e2e::direct_spot_command_t{actor.actor_id, request.value + ":command"})
           .packet_name ("DirectSpotCommand")
           .async ();
-        co_await _context.publish (
-          e2e::mesh_topic,
-          e2e::mesh_event_t{"evt-spot-to-spot", actor.actor_id + ":" + request.value})
+        co_await _context
+          .publish (e2e::mesh_topic,
+                    e2e::mesh_event_t{"evt-spot-to-spot", actor.actor_id + ":" + request.value})
           .async ();
         auto missing = _context
                          .request_to<e2e::direct_spot_res_t> (
@@ -295,18 +318,15 @@ class user_spot_t : public zlink::framework::spot_t
                          .async ()
                          .result ();
         auto timed_out = _context
-                           .request_to<e2e::direct_spot_res_t> (
-                             target_node, target_spot, e2e::slow_spot_req_t{request.value})
+                           .request_to<e2e::direct_spot_res_t> (target_node, target_spot,
+                                                                e2e::slow_spot_req_t{request.value})
                            .packet_name ("SlowSpotReq")
                            .timeout (std::chrono::milliseconds (50))
                            .async ()
                            .result ();
         _state.record ("SpotToSpotOutbound", actor.actor_id,
                        std::string (_context.spot_rid ().value ()), reply.value);
-        co_return e2e::spot_to_spot_res_t{reply.value,
-                                          true,
-                                          true,
-                                          !missing.has_value (),
+        co_return e2e::spot_to_spot_res_t{reply.value, true, true, !missing.has_value (),
                                           !timed_out.has_value ()};
     }
 
@@ -435,8 +455,7 @@ class spot_lifecycle_handler_t
 
     spot_lifecycle_handler_t (scenario_state_t &state,
                               zlink::framework::spot_node_manager_t &spots) :
-        _state (state),
-        _spots (spots)
+        _state (state), _spots (spots)
     {
     }
 
@@ -514,10 +533,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                       zlink::framework::route_client_t &routes,
                       zlink::framework::session_actor_manager_t &actors,
                       zlink::framework::actor_gateway_t &gateway) :
-        _state (state),
-        _routes (routes),
-        _actors (actors),
-        _gateway (gateway)
+        _state (state), _routes (routes), _actors (actors), _gateway (gateway)
     {
     }
 
@@ -554,8 +570,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             auto bound = co_await _actors.bind (to_actor_ref (request.actor)).async ();
             const auto actor_id = std::string (bound.actor_id ());
             _bound_actors[actor_id] = request.target_node_rid;
-            _gateway.bind_session_stream (actor_id, stream,
-                                          zlink::framework::stream_codec_t::json);
+            _gateway.bind_session_stream (actor_id, stream, zlink::framework::stream_codec_t::json);
             _state.record ("StreamBound", actor_id, {},
                            request.target_node_rid + ":" + stream.session_id ());
             if (header.kind () == zlink::framework::stream_message_kind_t::request) {
@@ -645,6 +660,8 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::mesh_event_t> ()
       .add_json<e2e::outbound_req_t> ()
       .add_json<e2e::outbound_res_t> ()
+      .add_json<e2e::worker_req_t> ()
+      .add_json<e2e::worker_res_t> ()
       .add_json<e2e::direct_spot_req_t> ()
       .add_json<e2e::direct_spot_res_t> ()
       .add_json<e2e::direct_spot_command_t> ()
@@ -676,8 +693,9 @@ int main (int argc, char **argv)
     if (role == "registry") {
         const auto pub = env_or ("ZLINK_CPP_E2E_REGISTRY_PUB");
         const auto router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
-        app.logging ().use_file (log_dir + "/registry.log").set_min_level (
-          zlink::framework::log_level_t::debug);
+        app.logging ()
+          .use_file (log_dir + "/registry.log")
+          .set_min_level (zlink::framework::log_level_t::debug);
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
             options.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
@@ -699,8 +717,9 @@ int main (int argc, char **argv)
     const auto route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT");
     const auto stream_endpoint = env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT");
 
-    app.logging ().use_file (log_dir + "/" + node_rid + ".log").set_min_level (
-      zlink::framework::log_level_t::debug);
+    app.logging ()
+      .use_file (log_dir + "/" + node_rid + ".log")
+      .set_min_level (zlink::framework::log_level_t::debug);
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         auto state = std::make_unique<scenario_state_t> (node_rid);
         auto *state_ptr = state.get ();
@@ -711,17 +730,16 @@ int main (int argc, char **argv)
         options.services ()
           .add_singleton<scenario_state_t> (std::move (state))
           .add_transient<ensure_actor_handler_t, scenario_state_t> ()
-          .add_transient<spot_lifecycle_handler_t,
-                         scenario_state_t,
+          .add_transient<spot_lifecycle_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ();
         configure_codecs (options.codecs ());
         options.use_discovery ().add_registry_endpoint (registry_router);
 
         if (role == "session") {
             auto route = options.add_route_mesh_channel (e2e::route_channel)
-              .enable_server (route_endpoint)
-              .set_routing_id (zlink::routing_id_t::from (node_rid))
-              .enable_client ();
+                           .enable_server (route_endpoint)
+                           .set_routing_id (zlink::routing_id_t::from (node_rid))
+                           .enable_client ();
             if (!route_a_endpoint.empty ()) {
                 route.enable_client (route_a_endpoint);
             }
@@ -738,25 +756,24 @@ int main (int argc, char **argv)
               .bind (stream_endpoint)
               .register_session<stream_session_t> ()
               .attach_actor_gateway (node_rid);
-            options.http ().listen (http_endpoint)
+            options.http ()
+              .listen (http_endpoint)
               .map_health ("/health")
               .map_get<evidence_handler_t> ("/evidence");
             return;
         }
 
         auto play_route = options.add_route_mesh_channel (e2e::route_channel)
-          .enable_server (route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (node_rid))
-          .enable_client ()
-          .add_request_handler<ensure_actor_handler_t,
-                               e2e::ensure_actor_req_t,
-                               e2e::ensure_actor_res_t> ("EnsureActor",
-                                                         &ensure_actor_handler_t::handle)
-          .add_request_handler<spot_lifecycle_handler_t,
-                               e2e::lifecycle_req_t,
-                               e2e::lifecycle_res_t> ("LifecycleReq",
-                                                       &spot_lifecycle_handler_t::handle)
-          .enable_spot_route_egress (e2e::route_channel);
+                            .enable_server (route_endpoint)
+                            .set_routing_id (zlink::routing_id_t::from (node_rid))
+                            .enable_client ()
+                            .add_request_handler<ensure_actor_handler_t, e2e::ensure_actor_req_t,
+                                                 e2e::ensure_actor_res_t> (
+                              "EnsureActor", &ensure_actor_handler_t::handle)
+                            .add_request_handler<spot_lifecycle_handler_t, e2e::lifecycle_req_t,
+                                                 e2e::lifecycle_res_t> (
+                              "LifecycleReq", &spot_lifecycle_handler_t::handle)
+                            .enable_spot_route_egress (e2e::route_channel);
         if (!route_a_endpoint.empty ()) {
             play_route.enable_client (route_a_endpoint);
         }
@@ -780,8 +797,10 @@ int main (int argc, char **argv)
             e2e::user_spot, [state_ptr] { return std::make_shared<user_spot_t> (*state_ptr); })
           .add_spot<alternate_user_spot_t> (e2e::alternate_spot)
           .add_actor_factory<scenario_actor_factory_t> (e2e::actor_type);
-        options.http ().listen (http_endpoint).map_health ("/health").map_get<evidence_handler_t> (
-          "/evidence");
+        options.http ()
+          .listen (http_endpoint)
+          .map_health ("/health")
+          .map_get<evidence_handler_t> ("/evidence");
     });
     return app.run (argc, argv);
 }

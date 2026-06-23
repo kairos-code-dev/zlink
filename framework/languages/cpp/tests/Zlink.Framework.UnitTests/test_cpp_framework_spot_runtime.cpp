@@ -16,8 +16,10 @@
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
+#include <future>
 #include <mutex>
 #include <optional>
+#include <queue>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -35,6 +37,60 @@ class test_spot_context_t : public zlink::framework::spot_context_t
         zlink::framework::spot_context_t (std::move (state))
     {
     }
+};
+
+class controlled_worker_scheduler_t final : public zlink::framework::detail::worker_scheduler_t
+{
+  public:
+    bool try_schedule (std::function<void ()> work) override
+    {
+        std::lock_guard lock (mutex);
+        worker_jobs.push (std::move (work));
+        changed.notify_all ();
+        return true;
+    }
+
+    void post_owner (std::function<void ()> work) override
+    {
+        std::lock_guard lock (mutex);
+        owner_jobs.push (std::move (work));
+        changed.notify_all ();
+    }
+
+    bool wait_worker_job_count (std::size_t expected)
+    {
+        std::unique_lock lock (mutex);
+        return changed.wait_for (lock, std::chrono::milliseconds (500),
+                                 [&] { return worker_jobs.size () == expected; });
+    }
+
+    void run_worker_job ()
+    {
+        std::function<void ()> job;
+        {
+            std::lock_guard lock (mutex);
+            job = std::move (worker_jobs.front ());
+            worker_jobs.pop ();
+        }
+        job ();
+    }
+
+    void run_owner_job ()
+    {
+        std::function<void ()> job;
+        {
+            std::lock_guard lock (mutex);
+            job = std::move (owner_jobs.front ());
+            owner_jobs.pop ();
+        }
+        job ();
+    }
+
+  private:
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::queue<std::function<void ()>> worker_jobs;
+    std::queue<std::function<void ()>> owner_jobs;
 };
 
 struct player_actor_factory_t
@@ -313,6 +369,67 @@ struct serial_probe_spot_t : public zlink::framework::spot_t
     int starts = 0;
 };
 
+struct async_probe_spot_t : public zlink::framework::spot_t
+{
+    void configure (zlink::framework::spot_context_t &context)
+    {
+        _context = context;
+        context.handlers ()
+          .add_actor_packet<&async_probe_spot_t::slow> ("async.slow")
+          .add_actor_packet<&async_probe_spot_t::quick> ("async.quick");
+    }
+
+    zlink::framework::task_t<move_reply_t>
+    slow (player_actor_factory_t &,
+          zlink::framework::spot_actor_request_context_t &context,
+          const move_request_t &request)
+    {
+        {
+            std::lock_guard lock (mutex);
+            slow_started = true;
+            changed.notify_all ();
+        }
+        const auto value = co_await _context.run_worker ([] { return 77; }).async ();
+        {
+            std::lock_guard lock (mutex);
+            slow_completed = true;
+            changed.notify_all ();
+        }
+        co_return move_reply_t{value + request.value
+                               + (context.packet_name == "async.slow" ? 0 : 1000)};
+    }
+
+    move_reply_t quick (player_actor_factory_t &,
+                        zlink::framework::spot_actor_request_context_t &,
+                        const move_request_t &request)
+    {
+        std::lock_guard lock (mutex);
+        ++quick_count;
+        changed.notify_all ();
+        return move_reply_t{request.value + 1};
+    }
+
+    bool wait_slow_started ()
+    {
+        std::unique_lock lock (mutex);
+        return changed.wait_for (lock, std::chrono::milliseconds (500),
+                                 [this] { return slow_started; });
+    }
+
+    int quick_seen () const
+    {
+        std::lock_guard lock (mutex);
+        return quick_count;
+    }
+
+    mutable std::mutex mutex;
+    std::condition_variable changed;
+    zlink::framework::spot_context_t _context;
+    bool slow_started = false;
+    bool slow_completed = false;
+    int quick_count = 0;
+};
+
 struct stage_wrapper_t
 {
     stage_wrapper_t (zlink::framework::node_rid_t node,
@@ -348,7 +465,8 @@ struct factory_spot_t : public zlink::framework::spot_t
     {
         ++create_count;
         last_request = request.to_string ();
-        return zlink::framework::spot_create_response_t::accept_raw (zlink::message_t::from (value));
+        return zlink::framework::spot_create_response_t::accept_raw (
+          zlink::message_t::from (value));
     }
 
     void on_initialize () { ++initialize_count; }
@@ -605,15 +723,16 @@ int main ()
         spot_type_mismatch_failed =
           error.kind () == zlink::framework::framework_error_kind_t::spot_type_mismatch;
     }
-    if (!spot_type_mismatch_failed
-        || builder.find_spot (requested_rid)->spot_name != "stage") {
+    if (!spot_type_mismatch_failed || builder.find_spot (requested_rid)->spot_name != "stage") {
         return 53;
     }
     stage_spot_t::reject_create = true;
-    auto rejected_create = builder.create_spot_raw ("stage", zlink::message_t::from ("reject-request"));
+    auto rejected_create =
+      builder.create_spot_raw ("stage", zlink::message_t::from ("reject-request"));
     stage_spot_t::reject_create = false;
     if (rejected_create.state != zlink::framework::spot_create_state_t::rejected
-        || !rejected_create.reply || rejected_create.reply->to_raw ().to_string () != "create-rejected"
+        || !rejected_create.reply
+        || rejected_create.reply->to_raw ().to_string () != "create-rejected"
         || builder.find_spot (rejected_create.spot_rid)) {
         return 54;
     }
@@ -621,7 +740,8 @@ int main ()
     auto factory_created =
       builder.create_spot_raw ("factory", zlink::message_t::from ("factory-request"));
     if (factory_created.state != zlink::framework::spot_create_state_t::created
-        || !factory_created.reply || factory_created.reply->to_raw ().to_string () != "factory-reply"
+        || !factory_created.reply
+        || factory_created.reply->to_raw ().to_string () != "factory-reply"
         || factory_spot_t::create_count != 1 || factory_spot_t::initialize_count != 1
         || factory_spot_t::last_request != "factory-request"
         || factory_spot_t::configured_spot_rid != std::string (factory_created.spot_rid.value ())) {
@@ -1494,6 +1614,53 @@ int main ()
     if (!first_result || !*first_result || !second_result || !*second_result
         || serial_spot.max_running != 1 || serial_spot.starts_seen () != 2) {
         return 51;
+    }
+
+    auto async_scheduler = std::make_shared<controlled_worker_scheduler_t> ();
+    auto async_state = std::make_shared<zlink::framework::detail::spot_context_state_t> ();
+    async_state->serial_executor =
+      std::make_shared<zlink::framework::runtime::offload_executor_t> (1);
+    async_state->serial_queue =
+      std::make_shared<zlink::framework::runtime::serial_execution_queue_t> (
+        *async_state->serial_executor);
+    async_state->worker_scheduler = async_scheduler;
+    auto async_context = test_spot_context_t (async_state);
+    async_probe_spot_t async_spot;
+    async_spot.configure (async_context);
+    player_actor_factory_t async_actor;
+    auto invoke_async = [&] (std::string_view packet_name, int value) {
+        return async_context.handlers ().invoke_actor_packet (
+          packet_name, async_spot, async_actor, spot_provider, spot_serializers,
+          zlink::message_t::from (std::to_string (value)));
+    };
+    auto slow_future =
+      std::async (std::launch::async, [&] { return invoke_async ("async.slow", 1); });
+    if (!async_spot.wait_slow_started () || !async_scheduler->wait_worker_job_count (1)) {
+        return 52;
+    }
+    auto quick_future =
+      std::async (std::launch::async, [&] { return invoke_async ("async.quick", 9); });
+    if (quick_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
+        return 53;
+    }
+    const auto quick_result = quick_future.get ();
+    if (!quick_result
+        || spot_serializers.get<move_reply_t> ().deserialize (quick_result.value ()).value != 10
+        || async_spot.quick_seen () != 1) {
+        return 54;
+    }
+    if (slow_future.wait_for (std::chrono::milliseconds (50)) == std::future_status::ready) {
+        return 55;
+    }
+    async_scheduler->run_worker_job ();
+    async_scheduler->run_owner_job ();
+    if (slow_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
+        return 56;
+    }
+    const auto slow_result = slow_future.get ();
+    if (!slow_result
+        || spot_serializers.get<move_reply_t> ().deserialize (slow_result.value ()).value != 78) {
+        return 57;
     }
 
     stage_spot.onLeaveActor (actor);

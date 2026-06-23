@@ -68,9 +68,10 @@ struct spot_actor_join_response_t
     }
 
     template <typename TReply>
-      requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
-                && !std::is_same_v<std::remove_cvref_t<TReply>, zlink::message_t>)
-    static spot_actor_join_response_t accept (TReply reply)
+    requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
+              && !std::is_same_v<std::remove_cvref_t<TReply>,
+                                 zlink::message_t>) static spot_actor_join_response_t
+      accept (TReply reply)
     {
         return accept (message_t::from (std::move (reply)));
     }
@@ -86,9 +87,10 @@ struct spot_actor_join_response_t
     }
 
     template <typename TReply>
-      requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
-                && !std::is_same_v<std::remove_cvref_t<TReply>, zlink::message_t>)
-    static spot_actor_join_response_t reject (TReply reply)
+    requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
+              && !std::is_same_v<std::remove_cvref_t<TReply>,
+                                 zlink::message_t>) static spot_actor_join_response_t
+      reject (TReply reply)
     {
         return reject (message_t::from (std::move (reply)));
     }
@@ -117,9 +119,10 @@ struct spot_create_response_t
     }
 
     template <typename TReply>
-      requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
-                && !std::is_same_v<std::remove_cvref_t<TReply>, zlink::message_t>)
-    static spot_create_response_t accept (TReply reply)
+    requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
+              && !std::is_same_v<std::remove_cvref_t<TReply>,
+                                 zlink::message_t>) static spot_create_response_t
+      accept (TReply reply)
     {
         return accept (message_t::from (std::move (reply)));
     }
@@ -135,9 +138,10 @@ struct spot_create_response_t
     }
 
     template <typename TReply>
-      requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
-                && !std::is_same_v<std::remove_cvref_t<TReply>, zlink::message_t>)
-    static spot_create_response_t reject (TReply reply)
+    requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
+              && !std::is_same_v<std::remove_cvref_t<TReply>,
+                                 zlink::message_t>) static spot_create_response_t
+      reject (TReply reply)
     {
         return reject (message_t::from (std::move (reply)));
     }
@@ -246,8 +250,8 @@ class spot_node_runtime_t;
 
 struct spot_actor_admission_callbacks_t
 {
-    std::function<spot_actor_join_response_t (void *, void *, const zlink::message_t &,
-                                              serializer_registry_t &)>
+    std::function<spot_actor_join_response_t (
+      void *, void *, const zlink::message_t &, serializer_registry_t &)>
       join;
     std::function<void (void *, void *)> on_actor_joined;
     std::function<void (void *, void *)> onCreateActor;
@@ -327,6 +331,16 @@ task_t<zlink::message_t> invoke_spot_member (TCall &&call, serializer_registry_t
     catch (...) {
         co_return current_exception_to_message_result ("spot handler threw an exception");
     }
+}
+
+template <typename TCall, typename... TKeepAlive>
+task_t<zlink::message_t> invoke_spot_member_keepalive (TCall call,
+                                                       serializer_registry_t &serializers,
+                                                       TKeepAlive... keep_alive)
+{
+    (void) sizeof...(keep_alive);
+    auto handler_task = invoke_spot_member (call, serializers);
+    co_return co_await handler_task;
 }
 } // namespace detail
 
@@ -754,9 +768,11 @@ class spot_handler_registry_t
           [] (void *spot, void *, service_provider_t &, serializer_registry_t &serializers,
               const zlink::message_t &message, const spot_actor_message_metadata_t &) {
               auto &typed_spot = *static_cast<spot_type *> (spot);
-              auto payload = serializers.get<message_type> ().deserialize (message);
-              return detail::invoke_spot_member ([&] { return (typed_spot.*Method) (payload); },
-                                                 serializers);
+              auto payload = std::make_shared<message_type> (
+                serializers.get<message_type> ().deserialize (message));
+              return detail::invoke_spot_member_keepalive (
+                [&typed_spot, payload] { return (typed_spot.*Method) (*payload); }, serializers,
+                payload);
           });
     }
 
@@ -774,9 +790,11 @@ class spot_handler_registry_t
           [] (void *spot, void *, service_provider_t &, serializer_registry_t &serializers,
               const zlink::message_t &message, const spot_actor_message_metadata_t &) {
               auto &typed_spot = *static_cast<spot_type *> (spot);
-              auto payload = serializers.get<event_type> ().deserialize (message);
-              return detail::invoke_spot_member ([&] { return (typed_spot.*Method) (payload); },
-                                                 serializers);
+              auto payload =
+                std::make_shared<event_type> (serializers.get<event_type> ().deserialize (message));
+              return detail::invoke_spot_member_keepalive (
+                [&typed_spot, payload] { return (typed_spot.*Method) (*payload); }, serializers,
+                payload);
           });
     }
 
@@ -807,19 +825,25 @@ class spot_handler_registry_t
             const zlink::message_t &message, const spot_actor_message_metadata_t &metadata) {
               auto &typed_spot = *static_cast<spot_type *> (spot);
               auto &typed_actor = *static_cast<actor_type *> (actor);
-              auto payload = serializers.get<message_type> ().deserialize (message);
-              spot_actor_send_context_t send_context{registered_packet_name, "application/json",
-                                                     metadata};
-              spot_actor_request_context_t request_context{
-                registered_packet_name, "application/json", metadata, {}};
+              auto payload = std::make_shared<message_type> (
+                serializers.get<message_type> ().deserialize (message));
+              auto send_context = std::make_shared<spot_actor_send_context_t> (
+                spot_actor_send_context_t{registered_packet_name, "application/json", metadata});
+              auto request_context =
+                std::make_shared<spot_actor_request_context_t> (spot_actor_request_context_t{
+                  registered_packet_name, "application/json", metadata, {}});
               if constexpr (std::is_same_v<context_type, spot_actor_request_context_t>) {
-                  return detail::invoke_spot_member (
-                    [&] { return (typed_spot.*Method) (typed_actor, request_context, payload); },
-                    serializers);
+                  return detail::invoke_spot_member_keepalive (
+                    [&typed_spot, &typed_actor, request_context, payload] {
+                        return (typed_spot.*Method) (typed_actor, *request_context, *payload);
+                    },
+                    serializers, request_context, payload);
               } else {
-                  return detail::invoke_spot_member (
-                    [&] { return (typed_spot.*Method) (typed_actor, send_context, payload); },
-                    serializers);
+                  return detail::invoke_spot_member_keepalive (
+                    [&typed_spot, &typed_actor, send_context, payload] {
+                        return (typed_spot.*Method) (typed_actor, *send_context, *payload);
+                    },
+                    serializers, send_context, payload);
               }
           });
         registry.template register_actor_admission<spot_type, actor_type> ();
@@ -879,10 +903,8 @@ class spot_handler_registry_t
     {
         detail::spot_actor_admission_callbacks_t callbacks;
         callbacks.entry_spot = std::is_base_of_v<entry_spot_t, TSpot>;
-        callbacks.join = [] (void *spot,
-                              void *actor,
-                              const zlink::message_t &request,
-                              serializer_registry_t &serializers) {
+        callbacks.join = [] (void *spot, void *actor, const zlink::message_t &request,
+                             serializer_registry_t &serializers) {
             auto &typed_spot = *static_cast<TSpot *> (spot);
             auto &typed_actor = *static_cast<TActor *> (actor);
             if constexpr (requires { typed_spot.on_actor_join (typed_actor, message_t{}); }) {
@@ -1049,8 +1071,8 @@ struct spot_lifecycle_callbacks_t
     std::function<std::shared_ptr<void> ()> create_instance;
     std::function<void (void *, spot_context_t &)> configure;
     std::function<void (void *, entry_spot_context_t &)> configure_entry;
-    std::function<spot_create_response_t (void *, const zlink::message_t &,
-                                          serializer_registry_t &)>
+    std::function<spot_create_response_t (
+      void *, const zlink::message_t &, serializer_registry_t &)>
       on_create;
     std::function<void (void *)> on_initialize;
     std::function<void (void *)> on_closing;
@@ -1300,15 +1322,13 @@ class spot_node_builder_t
                 };
             }
             if constexpr (detail::has_framework_create_callback<TSpot>) {
-                callbacks.on_create = [] (void *spot,
-                                          const zlink::message_t &request,
+                callbacks.on_create = [] (void *spot, const zlink::message_t &request,
                                           serializer_registry_t &serializers) {
                     return static_cast<TSpot *> (spot)->on_create (
                       message_t::from_encoded (request, &serializers));
                 };
             } else if constexpr (detail::has_raw_create_callback<TSpot>) {
-                callbacks.on_create = [] (void *spot,
-                                          const zlink::message_t &request,
+                callbacks.on_create = [] (void *spot, const zlink::message_t &request,
                                           serializer_registry_t &) {
                     return static_cast<TSpot *> (spot)->on_create_raw (request);
                 };

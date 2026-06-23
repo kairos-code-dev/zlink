@@ -140,6 +140,20 @@ struct outbound_res_t
     bool published = false;
 };
 
+struct worker_req_t
+{
+    int delta = 0;
+    int delay_ms = 0;
+};
+
+struct worker_res_t
+{
+    int snapshot = 0;
+    int worker_result = 0;
+    int final_value = 0;
+    int sequence = 0;
+};
+
 struct direct_spot_req_t
 {
     std::string source_actor_id;
@@ -312,12 +326,9 @@ inline void from_json (const nlohmann::json &json, join_req_t &value)
 
 inline void to_json (nlohmann::json &json, const join_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
-                          {"owner_node_rid", value.owner_node_rid},
-                          {"actor_id", value.actor_id},
-                          {"display_name", value.display_name},
-                          {"level", value.level},
-                          {"tags", value.tags}};
+    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"owner_node_rid", value.owner_node_rid},
+                          {"actor_id", value.actor_id}, {"display_name", value.display_name},
+                          {"level", value.level},       {"tags", value.tags}};
 }
 
 inline void from_json (const nlohmann::json &json, join_res_t &value)
@@ -486,6 +497,33 @@ inline void from_json (const nlohmann::json &json, outbound_res_t &value)
     json.at ("published").get_to (value.published);
 }
 
+inline void to_json (nlohmann::json &json, const worker_req_t &value)
+{
+    json = nlohmann::json{{"delta", value.delta}, {"delay_ms", value.delay_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, worker_req_t &value)
+{
+    json.at ("delta").get_to (value.delta);
+    json.at ("delay_ms").get_to (value.delay_ms);
+}
+
+inline void to_json (nlohmann::json &json, const worker_res_t &value)
+{
+    json = nlohmann::json{{"snapshot", value.snapshot},
+                          {"worker_result", value.worker_result},
+                          {"final_value", value.final_value},
+                          {"sequence", value.sequence}};
+}
+
+inline void from_json (const nlohmann::json &json, worker_res_t &value)
+{
+    json.at ("snapshot").get_to (value.snapshot);
+    json.at ("worker_result").get_to (value.worker_result);
+    json.at ("final_value").get_to (value.final_value);
+    json.at ("sequence").get_to (value.sequence);
+}
+
 inline void to_json (nlohmann::json &json, const direct_spot_req_t &value)
 {
     json = nlohmann::json{{"source_actor_id", value.source_actor_id}, {"value", value.value}};
@@ -609,9 +647,8 @@ inline void from_json (const nlohmann::json &json, lifecycle_req_t &value)
 
 inline void to_json (nlohmann::json &json, const lifecycle_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
-                          {"created", value.created},
-                          {"closed", value.closed}};
+    json = nlohmann::json{
+      {"spot_rid", value.spot_rid}, {"created", value.created}, {"closed", value.closed}};
 }
 
 inline void from_json (const nlohmann::json &json, lifecycle_res_t &value)

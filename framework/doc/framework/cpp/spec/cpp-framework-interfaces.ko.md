@@ -807,7 +807,6 @@ public:
 
 class stream_write_call_t {
 public:
-    stream_write_call_t &timeout(std::chrono::milliseconds timeout);
     stream_write_call_t &metadata(std::string key, std::string value);
     stream_write_call_t &packet_name(std::string packet_name);
     stream_write_call_t &compress();

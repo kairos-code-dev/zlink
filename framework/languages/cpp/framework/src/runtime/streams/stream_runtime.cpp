@@ -30,8 +30,6 @@ class stream_write_call_state_t
     {
     }
 
-    void timeout (std::chrono::milliseconds timeout) { _timeout = timeout; }
-
     void metadata (std::string key, std::string value)
     {
         _metadata[std::move (key)] = std::move (value);
@@ -73,7 +71,6 @@ class stream_write_call_state_t
     std::optional<stream_header_t> _header;
     std::optional<zlink::message_t> _payload;
     stream_write_call_t::submit_fn_t _submit;
-    std::chrono::milliseconds _timeout{0};
     stream_write_call_t::metadata_map_t _metadata;
     std::string _packet_name;
     bool _compressed = false;
@@ -136,12 +133,6 @@ stream_write_call_t::stream_write_call_t (stream_header_t header,
 stream_write_call_t::~stream_write_call_t () = default;
 stream_write_call_t::stream_write_call_t (stream_write_call_t &&) noexcept = default;
 stream_write_call_t &stream_write_call_t::operator= (stream_write_call_t &&) noexcept = default;
-
-stream_write_call_t &stream_write_call_t::timeout (std::chrono::milliseconds timeout)
-{
-    _state->timeout (timeout);
-    return *this;
-}
 
 stream_write_call_t &stream_write_call_t::metadata (std::string key, std::string value)
 {

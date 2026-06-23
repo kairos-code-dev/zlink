@@ -108,7 +108,7 @@ runtime 구현인지에 대한 경계는 바꾸지 않는다.
 | `Runtime/Actors` | `src/runtime/actors` | actor instance, mailbox, relay dispatch 구현 |
 | `Runtime/Backend` | `src/runtime/backend` | zlink binding substrate 연결 구현 |
 | `Runtime/Backend/Contracts` | `src/runtime/backend/contracts` | public이 아닌 backend 내부 계약 |
-| `Runtime/Channels` | `src/runtime/channels` | runtime bundle, receive loop, message pump, correlation, send-ready 구현 |
+| `Runtime/Channels` | `src/runtime/channels` | runtime bundle, receive gate, packet dispatcher, correlation, send-ready 구현 |
 | `Runtime/Codecs` | `src/runtime/codecs` | type-erased serializer map과 codec wiring |
 | `Runtime/Configuration` | `src/runtime/configuration` | service registry, option materialization 구현 |
 | `Runtime/Diagnostics` | `src/runtime/diagnostics` | logging, monitoring source, health 구현 |

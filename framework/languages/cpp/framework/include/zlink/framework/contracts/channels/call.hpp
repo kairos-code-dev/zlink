@@ -226,7 +226,6 @@ class stream_write_call_t
     stream_write_call_t (const stream_write_call_t &) = delete;
     stream_write_call_t &operator= (const stream_write_call_t &) = delete;
 
-    stream_write_call_t &timeout (std::chrono::milliseconds timeout);
     stream_write_call_t &metadata (std::string key, std::string value);
     stream_write_call_t &packet_name (std::string packet_name);
     stream_write_call_t &compress ();

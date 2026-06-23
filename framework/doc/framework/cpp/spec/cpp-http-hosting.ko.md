@@ -585,11 +585,11 @@ framework host가 소유한 별도 ingress이고, zlink messaging으로 들어�
 | `HttpClient.PostAsJsonAsync(...)` | `zlink::http_client`가 JSON POST 수행 |
 | `ReadFromJsonAsync<T>()` | `zlink::http_client`가 `message_t::parse_json<T>()` 사용 |
 
-## 10. TicTacToe Sample 반영
+## 10. TicTacToe Sample 반영 상태
 
-C++ TicTacToe sample은 `.NET` TicTacToe와 같은 HTTP 시작 흐름을 가져야 한다.
+C++ TicTacToe sample은 `.NET` TicTacToe와 같은 HTTP 시작 흐름을 현재 반영한다.
 
-필수 변경은 아래와 같다.
+현재 sample에서 확인할 수 있는 반영 내용은 아래와 같다.
 
 - `sample_topology_t`에 `api_http_endpoint`를 추가한다.
 - `Server/Api` role은 zlink API channel server와 HTTP endpoint를 함께 구성한다.

@@ -76,8 +76,14 @@ internal sealed class ZLinkRouteReceivePump(
             return false;
         }
 
-        return received.RequestSeq is { } requestSeq
+        var handled = received.RequestSeq is { } requestSeq
             ? bridge.HandleRouterReceived(routerChannelId, sourceNodeRid, requestSeq, received.Parts)
             : bridge.HandleRouterReceived(routerChannelId, sourceNodeRid, 0, received.Parts);
+        if (handled)
+        {
+            bridge.Drain();
+        }
+
+        return handled;
     }
 }

@@ -115,6 +115,7 @@ internal sealed class ZLinkRouteChannelInitializer(
         try
         {
             runtime.AttachSpotRouteBridge(bridge);
+            state.SpotRouteBridges.Add(bridge);
         }
         catch
         {

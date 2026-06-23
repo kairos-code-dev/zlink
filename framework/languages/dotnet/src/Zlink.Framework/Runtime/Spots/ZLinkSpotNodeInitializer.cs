@@ -187,6 +187,7 @@ internal sealed class ZLinkSpotNodeInitializer(
         }
 
         bundle.SpotRouteBridge = bridge;
+        state.SpotRouteBridges.Add(bridge);
 
         foreach (var endpoint in acceptance.ManualConnections)
         {

@@ -86,7 +86,14 @@ internal sealed class ZLinkSpotNodeBundleRegistry(
         {
             if (peerConnections.TryAddPubSubManual(endpoint))
             {
-                node.ConnectPeer(endpoint);
+                try
+                {
+                    node.ConnectPeer(endpoint);
+                }
+                catch (ZlinkConnectException error)
+                    when (error.Result == ZlinkConnectException.ErrorCode.Busy)
+                {
+                }
             }
         }
     }

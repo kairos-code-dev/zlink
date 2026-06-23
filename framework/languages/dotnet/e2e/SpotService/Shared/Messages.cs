@@ -12,6 +12,7 @@ public static class SpotServiceNames
     public const string PlaySpotNode = "play-node";
     public const string SessionSpotNode = "session-node";
     public const string EdgeSpotNode = "edge-node";
+    public const string EdgePublisherNode = "edge-publisher-node";
     public const string ActorType = "scenario-player";
     public const string ActorIdMetadata = "actor-id";
 }
@@ -90,3 +91,17 @@ public sealed record SnapshotReply(string ActorId, int Seen);
 public sealed record ControlPingReq(string Value);
 
 public sealed record ControlPingReply(string Value, string NodeRid);
+
+public sealed record SpotTypeMismatchReq(string SpotRid);
+
+public sealed record SpotTypeMismatchReply(string SpotRid, bool Failed, string ErrorKind, string State);
+
+public sealed record WorkerStartReq(string Marker, int DelayMs);
+
+public sealed record WorkerStartReply(string SpotRid, string NodeRid, string Marker);
+
+public sealed record DestroyActorReq(string ActorId);
+
+public sealed record DestroyActorReply(string ActorId, bool Destroyed);
+
+public sealed record OverrunStartCommand(string Name, string Policy, int PeriodMs);

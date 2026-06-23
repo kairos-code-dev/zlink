@@ -19,6 +19,7 @@ static async Task RunAsync(ClientOptions options)
 {
     await RunSmB1B2B3B5Async(options);
     await RunSmB6Async(options);
+    await RunSmB8Async(options);
     await RunSmD7Async(options);
     await RunSmD1AndD6Async(options);
     await RunSmD4Async(options);
@@ -26,6 +27,7 @@ static async Task RunAsync(ClientOptions options)
     await RunSmD12Async(options);
     await RunSmC1C2Async(options);
     await RunSmE1AndF4Async(options);
+    await RunSmA7A8C4E4Async(options);
     await RunSmA1A2A4F1F2Async(options);
     Console.WriteLine("spot-service e2e result=passed");
 }
@@ -114,6 +116,10 @@ static async Task RunSmB6Async(ClientOptions options)
         traceName: "client-framework-actor-lifecycle-flow.log");
     await host.StartAsync();
     var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+    await WaitForControlRouteAsync(
+        routes,
+        options.PlayARid,
+        "SM-B6 expected control route to become ready.");
 
     await routes.Request(
             SpotServiceNames.ControlChannel,
@@ -164,6 +170,35 @@ static async Task RunSmB6Async(ClientOptions options)
 
     await host.StopAsync();
     Console.WriteLine("scenario SM-B6 passed");
+}
+
+static async Task RunSmB8Async(ClientOptions options)
+{
+    const string actorId = "actor-sm-b8-destroy";
+    var before = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    await using var client = CreateClient(options.SessionAStreamEndpoint);
+    await client.Connect.Async();
+    await client.Request(new AuthReq(actorId, "destroy", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    var destroyed = await client.Request(new DestroyActorReq(actorId))
+        .PacketName("DestroyActorReq")
+        .Async<DestroyActorReply>();
+    Ensure(destroyed.Destroyed && destroyed.ActorId == actorId, "SM-B8 destroy reply mismatch.");
+
+    await ExpectFailureAsync(
+        client.Request(new SnapshotReq(actorId))
+            .PacketName("SnapshotReq")
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async<SnapshotReply>().AsTask(),
+        "SM-B8 expected request to destroyed actor to fail.");
+
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, before, $"actor-destroyed|rid={options.PlayARid}|actor={actorId}") == 1;
+    }, "SM-B8 expected actor destroy evidence.");
+    Console.WriteLine("scenario SM-B8 passed");
 }
 
 static async Task RunSmD7Async(ClientOptions options)
@@ -477,6 +512,140 @@ static async Task RunSmE1AndF4Async(ClientOptions options)
     Console.WriteLine("scenario SM-F4 passed");
 }
 
+static async Task RunSmA7A8C4E4Async(ClientOptions options)
+{
+    using var host = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: false,
+        includeExternalChannelServer: false,
+        traceName: "client-framework-spot-coverage-flow.log");
+    await host.StartAsync();
+    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+    var publisher = host.Services.GetRequiredService<IZLinkSpotPublisherClient>();
+    await WaitForControlRouteAsync(
+        routes,
+        options.PlayARid,
+        "SM-A7/A8/C4/E4 expected control route to become ready.");
+
+    var mismatchSpotRid = $"spot-sm-a7-{Guid.NewGuid():N}";
+    var mismatch = await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new SpotTypeMismatchReq(mismatchSpotRid))
+        .PacketName("SpotTypeMismatchReq")
+        .Async<SpotTypeMismatchReply>();
+    Ensure(mismatch.Failed, "SM-A7 expected SpotTypeMismatch.");
+    Ensure(mismatch.ErrorKind == "SpotTypeMismatch", "SM-A7 error kind mismatch.");
+
+    var workerSpotRid = $"spot-sm-a8-{Guid.NewGuid():N}";
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CreateSpotReq(workerSpotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+    var playABeforeWorker = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    var worker = await routes.Request(
+            SpotServiceNames.ExternalSpotChannel,
+            RoutingId.From(workerSpotRid),
+            new WorkerStartReq("sm-a8-worker", 300))
+        .PacketName("WorkerStartReq")
+        .Async<WorkerStartReply>();
+    Ensure(worker.SpotRid == workerSpotRid, "SM-A8 worker start target mismatch.");
+    var duringWorker = await routes.Request(
+            SpotServiceNames.ExternalSpotChannel,
+            RoutingId.From(workerSpotRid),
+            new StateReq("add", 1))
+        .PacketName("StateReq")
+        .Async<StateReply>();
+    Ensure(duringWorker.Value == 1, "SM-A8 concurrent spot request did not run before worker completion.");
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, playABeforeWorker, $"worker-complete|rid={options.PlayARid}|spot={workerSpotRid}|marker=sm-a8-worker") == 1;
+    }, "SM-A8 expected worker completion evidence.");
+    var playAAfterWorker = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    var workerStartIndex = FindIndex(playAAfterWorker, $"worker-start|rid={options.PlayARid}|spot={workerSpotRid}|marker=sm-a8-worker");
+    var stateIndex = FindIndex(playAAfterWorker, $"spot-state-request|rid={options.PlayARid}|spot={workerSpotRid}|value=1");
+    var workerCompleteIndex = FindIndex(playAAfterWorker, $"worker-complete|rid={options.PlayARid}|spot={workerSpotRid}|marker=sm-a8-worker");
+    Ensure(workerStartIndex >= 0 && stateIndex > workerStartIndex && workerCompleteIndex > stateIndex,
+        "SM-A8 expected spot request evidence between worker start and completion.");
+
+    var publishSpotRid = $"spot-sm-c4-{Guid.NewGuid():N}";
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CreateSpotReq(publishSpotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+    var playABeforePublish = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    await WaitUntilAsync(async () =>
+    {
+        await publisher.PublishSpot(
+                SpotServiceNames.SpotChannel,
+                SpotServiceNames.SpotEventTopic,
+                new SpotEvent("sm-c4-publish"))
+            .PacketName("SpotEvent")
+            .Async();
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, playABeforePublish, $"spot-event|rid={options.PlayARid}|spot={publishSpotRid}|marker=sm-c4-publish") >= 1;
+    }, "SM-C4 expected publish-only node event evidence.");
+
+    var policySpots = new Dictionary<string, string>
+    {
+        ["SkipLateTicks"] = $"spot-sm-e4-skip-{Guid.NewGuid():N}",
+        ["CatchUpBounded"] = $"spot-sm-e4-catch-{Guid.NewGuid():N}",
+        ["DelayNextTick"] = $"spot-sm-e4-delay-{Guid.NewGuid():N}",
+    };
+    foreach (var spot in policySpots.Values)
+    {
+        await routes.Request(
+                SpotServiceNames.ControlChannel,
+                RoutingId.From(options.PlayARid),
+                new CreateSpotReq(spot))
+            .PacketName("CreateSpotReq")
+            .Async<CreateSpotReply>();
+    }
+
+    var playABeforeTimers = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    foreach (var (policy, spot) in policySpots)
+    {
+        await routes.Send(
+                SpotServiceNames.ExternalSpotChannel,
+                RoutingId.From(spot),
+                new OverrunStartCommand($"sm-e4-{policy}", policy, 25))
+            .PacketName("OverrunStartCommand")
+            .Async();
+    }
+
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return policySpots.All(pair =>
+            CountNew(after, playABeforeTimers, $"timer-overrun|rid={options.PlayARid}|spot={pair.Value}|name=sm-e4-{pair.Key}") >= 3);
+    }, "SM-E4 expected timer overrun evidence for all policies.");
+    var timerLines = (await ReadEvidenceAsync(options.PlayAEvidenceUrl))
+        .Where(line => line.Contains("timer-overrun|", StringComparison.Ordinal))
+        .ToArray();
+    Ensure(timerLines.Where(line => line.Contains("name=sm-e4-SkipLateTicks", StringComparison.Ordinal))
+        .Any(line => ExtractUInt64(line, "skipped") > 0), "SM-E4 SkipLateTicks did not skip late ticks.");
+    Ensure(timerLines.Where(line => line.Contains("name=sm-e4-CatchUpBounded", StringComparison.Ordinal))
+        .Any(line => ExtractUInt64(line, "skipped") > 0), "SM-E4 CatchUpBounded did not show bounded catch-up evidence.");
+    Ensure(timerLines.Where(line => line.Contains("name=sm-e4-DelayNextTick", StringComparison.Ordinal))
+        .Take(3)
+        .All(line => ExtractUInt64(line, "skipped") == 0
+            && ExtractUInt64(line, "delivery") == ExtractUInt64(line, "scheduled")),
+        "SM-E4 DelayNextTick did not delay instead of skipping.");
+
+    await host.StopAsync();
+    Console.WriteLine("scenario SM-A7 passed");
+    Console.WriteLine("scenario SM-A8 passed");
+    Console.WriteLine("scenario SM-C4 passed");
+    Console.WriteLine("scenario SM-E4 passed");
+}
+
 static async Task RunSmA1A2A4F1F2Async(ClientOptions options)
 {
     var key = $"order-sm-a4-{Guid.NewGuid():N}";
@@ -583,12 +752,17 @@ static IHost CreateRouteEgressHost(
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, traceName))
             .TraceNodeId("client-framework");
-        framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-            .UseRegistrySpotResolver()
-            .AddNode(SpotServiceNames.EdgeSpotNode)
+        var spotMesh = framework.AddSpotMesh(SpotServiceNames.SpotChannel)
+            .UseRegistrySpotResolver();
+        spotMesh.AddNode(SpotServiceNames.EdgeSpotNode)
             .EnableRouter(options.ClientSpotRouterEndpoint)
-            .SetRouterRoutingId(RoutingId.From("client-edge"))
-            .AttachSpotPublisherClient(SpotServiceNames.SpotChannel);
+            .SetRouterRoutingId(RoutingId.From("client-edge"));
+        spotMesh.AddNode(SpotServiceNames.EdgePublisherNode)
+            .EnablePubSub(options.ClientSpotPubEndpoint)
+            .SetPubSubRoutingId(RoutingId.From("client-edge-publisher"))
+            .AttachSpotPublisherClient(
+                SpotServiceNames.SpotChannel,
+                options.PlayASpotPubEndpoint);
         if (includeControlChannel)
         {
             framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
@@ -642,6 +816,26 @@ static int CountNew(string[] after, string[] before, string pattern)
     var beforeCount = before.Count(line => line.Contains(pattern, StringComparison.Ordinal));
     var afterCount = after.Count(line => line.Contains(pattern, StringComparison.Ordinal));
     return afterCount - beforeCount;
+}
+
+static int FindIndex(string[] lines, string pattern)
+{
+    return Array.FindIndex(lines, line => line.Contains(pattern, StringComparison.Ordinal));
+}
+
+static ulong ExtractUInt64(string line, string key)
+{
+    var prefix = key + "=";
+    var start = line.IndexOf(prefix, StringComparison.Ordinal);
+    if (start < 0)
+    {
+        throw new InvalidOperationException($"Missing field '{key}' in evidence line: {line}");
+    }
+
+    start += prefix.Length;
+    var end = line.IndexOf('|', start);
+    var value = end < 0 ? line[start..] : line[start..end];
+    return ulong.Parse(value);
 }
 
 static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessage)
@@ -756,10 +950,12 @@ internal sealed record ClientOptions(
     string PlayBRid,
     string SessionARid,
     string PlayAExternalSpotEndpoint,
+    string PlayASpotPubEndpoint,
     string ClientControlEndpoint,
     string ClientExternalRouteEndpoint,
     string ClientExternalChannelEndpoint,
     string ClientSpotRouterEndpoint,
+    string ClientSpotPubEndpoint,
     string LogDir)
 {
     public static ClientOptions Parse(string[] args)
@@ -795,10 +991,12 @@ internal sealed record ClientOptions(
             Required("play-b-rid"),
             Required("session-a-rid"),
             Required("play-a-external-spot-endpoint"),
+            Required("play-a-spot-pub-endpoint"),
             Required("client-control-endpoint"),
             Required("client-external-route-endpoint"),
             Required("client-external-channel-endpoint"),
             Required("client-spot-router-endpoint"),
+            Required("client-spot-pub-endpoint"),
             values.GetValueOrDefault("log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-spot-e2e")));
     }
 }

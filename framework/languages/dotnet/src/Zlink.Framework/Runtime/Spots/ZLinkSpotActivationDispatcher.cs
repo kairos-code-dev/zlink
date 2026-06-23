@@ -202,6 +202,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             }
 
             await _routeDispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
+            runtime.DrainSpotRouteBridges();
         }
     }
 
@@ -210,6 +211,7 @@ internal sealed class ZLinkSpotActivationDispatcher
         CancellationToken cancellationToken)
     {
         await _routeDispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
+        runtime.DrainSpotRouteBridges();
     }
 
     private async ValueTask<bool> DispatchInternalRoutePacketAsync(

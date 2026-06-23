@@ -46,7 +46,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 24:
+    while len(sockets) < 25:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -89,6 +89,7 @@ CLIENT_CONTROL="tcp://127.0.0.1:${PORTS[20]}"
 CLIENT_EXTERNAL_ROUTE="tcp://127.0.0.1:${PORTS[21]}"
 CLIENT_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[22]}"
 CLIENT_EXTERNAL_CHANNEL="tcp://127.0.0.1:${PORTS[23]}"
+CLIENT_SPOT_PUB="tcp://127.0.0.1:${PORTS[24]}"
 
 endpoint_port() {
   local endpoint="$1"
@@ -151,6 +152,7 @@ start_server play-a \
   --control-endpoint "$PLAY_A_CONTROL" \
   --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
   --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
+  --client-spot-pub-endpoint "$CLIENT_SPOT_PUB" \
   --external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
   --external-client-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
   --evidence-file "$LOG_DIR/play-a.evidence.log" \
@@ -217,10 +219,12 @@ dotnet "$CLIENT_DLL" \
   --play-b-rid play-b \
   --session-a-rid session-a \
   --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
+  --play-a-spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
   --client-control-endpoint "$CLIENT_CONTROL" \
   --client-external-route-endpoint "$CLIENT_EXTERNAL_ROUTE" \
   --client-external-channel-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
   --client-spot-router-endpoint "$CLIENT_SPOT_ROUTER" \
+  --client-spot-pub-endpoint "$CLIENT_SPOT_PUB" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 

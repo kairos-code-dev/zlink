@@ -13,9 +13,12 @@ using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
+using Zlink.Framework.Contracts.Timers;
 
 var options = ServerOptions.Parse(args);
 Directory.CreateDirectory(options.LogDir);
@@ -79,10 +82,15 @@ else if (options.Role == "play")
             .SetPubSubRoutingId(RoutingId.From(options.Rid))
             .AcceptSpotRoutesFromChannel(SpotServiceNames.ControlChannel)
             .AddEntrySpot<ScenarioEntrySpot>()
-            .AddSpotFactory<ScenarioUserSpot>();
+            .AddSpotFactory<ScenarioUserSpot>()
+            .AddSpotFactory<ScenarioAlternateSpot>();
         if (!string.IsNullOrWhiteSpace(options.ExternalSpotEndpoint))
         {
             spot.AcceptSpotRoutesFromChannel(SpotServiceNames.ExternalSpotChannel);
+        }
+        if (!string.IsNullOrWhiteSpace(options.ClientSpotPubEndpoint))
+        {
+            spot.ConnectPubSub(options.ClientSpotPubEndpoint);
         }
     });
 }
@@ -201,6 +209,34 @@ internal sealed class CreateSpotHandler(
             cancellationToken);
         evidence.Add($"create-spot|rid={node.Rid}|spot={result.SpotRid}|state={result.State}");
         return new CreateSpotReply(result.SpotRid.ToString(), node.Rid, result.State.ToString());
+    }
+}
+
+[ZLinkHandlerGroup("play")]
+internal sealed class SpotTypeMismatchHandler(
+    IZLinkSpotManager spots,
+    EvidenceStore evidence)
+    : IZLinkRouteRequestHandler<SpotTypeMismatchReq, SpotTypeMismatchReply>
+{
+    public async ValueTask<SpotTypeMismatchReply> HandleAsync(
+        SpotTypeMismatchReq request,
+        ZLinkRouteRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        var rid = RoutingId.From(request.SpotRid);
+        var first = await spots.GetOrCreateAsync<ScenarioUserSpot>(rid, cancellationToken);
+        try
+        {
+            await spots.GetOrCreateAsync<ScenarioAlternateSpot>(rid, cancellationToken);
+        }
+        catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.SpotTypeMismatch)
+        {
+            evidence.Add($"spot-type-mismatch|rid={evidence.Rid}|spot={request.SpotRid}|kind={ex.Kind}");
+            return new SpotTypeMismatchReply(request.SpotRid, true, ex.Kind.ToString(), first.State.ToString());
+        }
+
+        throw new InvalidOperationException("Expected SpotTypeMismatch for reused spot rid.");
     }
 }
 
@@ -375,6 +411,12 @@ internal sealed class ScenarioUserSpot(
     }
 }
 
+internal sealed class ScenarioAlternateSpot(
+    IZLinkSpotContext context) : IZLinkSpot
+{
+    public IZLinkSpotContext Context { get; } = context;
+}
+
 [ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotEventTopic)]
 internal sealed class SpotEventHandler(EvidenceStore evidence)
     : IZLinkSpotSubscriptionHandler<ScenarioUserSpot, SpotEvent>
@@ -422,6 +464,76 @@ internal sealed class StateCommandHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"spot-state-command|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={message.Marker}");
         return ValueTask.CompletedTask;
+    }
+}
+
+[ZLinkSpotRequestHandler("WorkerStartReq")]
+internal sealed class WorkerStartHandler(EvidenceStore evidence)
+    : IZLinkSpotRequestHandler<ScenarioUserSpot, WorkerStartReq, WorkerStartReply>
+{
+    public ValueTask<WorkerStartReply> HandleAsync(
+        ScenarioUserSpot spot,
+        WorkerStartReq request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"worker-start|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={request.Marker}");
+        spot.Context.RunWorker(ct =>
+            {
+                ct.ThrowIfCancellationRequested();
+                Thread.Sleep(TimeSpan.FromMilliseconds(request.DelayMs));
+                return request.Marker;
+            })
+            .Submit(
+                (marker, ct) =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    spot.Add(100);
+                    evidence.Add($"worker-complete|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={marker}");
+                    return ValueTask.CompletedTask;
+                },
+                cancellationToken: cancellationToken);
+        return ValueTask.FromResult(new WorkerStartReply(
+            spot.Context.SpotRid.ToString(),
+            spot.Context.NodeRid.ToString(),
+            request.Marker));
+    }
+}
+
+[ZLinkSpotPacketHandler("OverrunStartCommand")]
+internal sealed class OverrunStartHandler
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, OverrunStartCommand>
+{
+    public async ValueTask HandleAsync(
+        ScenarioUserSpot spot,
+        OverrunStartCommand request,
+        CancellationToken cancellationToken)
+    {
+        var policy = Enum.Parse<ZLinkTimerOverrunPolicy>(request.Policy, ignoreCase: false);
+        await spot.Context.AddTimer<OverrunTimerHandler>(
+            request.Name,
+            TimeSpan.FromMilliseconds(request.PeriodMs),
+            new ZLinkTimerOptions
+            {
+                OverrunPolicy = policy,
+                MaxCatchUpTicks = 2,
+            },
+            cancellationToken);
+    }
+}
+
+internal sealed class OverrunTimerHandler(EvidenceStore evidence)
+    : IZLinkSpotTimerHandler<ScenarioUserSpot>
+{
+    public async ValueTask HandleAsync(
+        ScenarioUserSpot spot,
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
+    {
+        evidence.Add(
+            $"timer-overrun|rid={evidence.Rid}|spot={spot.Context.SpotRid}|name={tick.Name}"
+            + $"|delivery={tick.DeliveryIndex}|scheduled={tick.ScheduledIndex}|skipped={tick.SkippedTicks}");
+        await Task.Delay(TimeSpan.FromMilliseconds(90), cancellationToken);
     }
 }
 
@@ -584,6 +696,40 @@ internal sealed class EntryActorSnapshotHandler
         }
 
         return ValueTask.FromResult(new SnapshotReply(actor.ActorId, actor.Seen));
+    }
+}
+
+[ZLinkSpotActorRequestHandler("DestroyActorReq")]
+internal sealed class EntryActorDestroyHandler(EvidenceStore evidence)
+    : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, DestroyActorReq, DestroyActorReply>
+{
+    public ValueTask<DestroyActorReply> HandleAsync(
+        ScenarioEntrySpot entrySpot,
+        ScenarioActor actor,
+        ZLinkSpotActorRequestContext context,
+        DestroyActorReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Destroy request actor does not match dispatched actor.");
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await entrySpot.Context.DestroyActorAsync(actor);
+                evidence.Add($"actor-destroyed|rid={evidence.Rid}|actor={actor.ActorId}");
+            }
+            catch (Exception ex)
+            {
+                evidence.Add(
+                    $"actor-destroy-failed|rid={evidence.Rid}|actor={actor.ActorId}|error={ex.GetType().Name}");
+            }
+        });
+        return ValueTask.FromResult(new DestroyActorReply(actor.ActorId, true));
     }
 }
 
@@ -856,6 +1002,7 @@ internal sealed record ServerOptions(
     string? SpotPubEndpoint,
     string? ExternalClientEndpoint,
     string? ExternalSpotEndpoint,
+    string? ClientSpotPubEndpoint,
     string? StreamEndpoint)
 {
     public static ServerOptions Parse(string[] args)
@@ -894,6 +1041,7 @@ internal sealed record ServerOptions(
             values.GetValueOrDefault("spot-pub-endpoint"),
             values.GetValueOrDefault("external-client-endpoint"),
             values.GetValueOrDefault("external-spot-endpoint"),
+            values.GetValueOrDefault("client-spot-pub-endpoint"),
             values.GetValueOrDefault("stream-endpoint"));
     }
 }

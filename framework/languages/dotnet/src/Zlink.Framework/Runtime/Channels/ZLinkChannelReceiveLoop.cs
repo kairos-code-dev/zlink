@@ -74,9 +74,15 @@ internal sealed class ZLinkChannelReceiveLoop(ZLinkChannelPacketDispatcher dispa
             return false;
         }
 
-        return received.RequestSeq is { } requestSeq
+        var handled = received.RequestSeq is { } requestSeq
             ? bridge.HandleRouterReceived(channelName, sourceNodeRid, requestSeq, received.Parts)
             : bridge.HandleRouterReceived(channelName, sourceNodeRid, 0, received.Parts);
+        if (handled)
+        {
+            bridge.Drain();
+        }
+
+        return handled;
     }
 
     public async Task RunSubscriberLoopAsync(

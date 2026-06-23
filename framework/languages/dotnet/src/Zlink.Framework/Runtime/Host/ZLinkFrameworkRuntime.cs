@@ -100,6 +100,35 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal IZLinkRouteClient RouteClient => _services.GetRequiredService<IZLinkRouteClient>();
 
+    internal void DrainSpotRouteBridges()
+    {
+        var state = _state;
+        if (state is null)
+        {
+            return;
+        }
+
+        IZLinkBackendSpotRouteBridge[] bridges;
+        lock (state.SyncRoot)
+        {
+            bridges = state.SpotRouteBridges.ToArray();
+        }
+
+        foreach (var bridge in bridges)
+        {
+            try
+            {
+                bridge.Drain();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (ZlinkCloseException)
+            {
+            }
+        }
+    }
+
     internal ValueTask<ZLinkFrameworkRuntimeState> GetStartedStateForRoutingAsync(
         CancellationToken cancellationToken)
     {
@@ -135,10 +164,22 @@ internal sealed partial class ZLinkFrameworkRuntime
             }
 
             _state = await _stateFactory.CreateAsync().ConfigureAwait(false);
+            _state.ListenerTasks.Add(_state.TaskRunner.Run(
+                "spot-route-bridge-drain",
+                RunSpotRouteBridgeDrainLoopAsync));
         }
         finally
         {
             _gate.Release();
+        }
+    }
+
+    private async ValueTask RunSpotRouteBridgeDrainLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            DrainSpotRouteBridges();
+            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken).ConfigureAwait(false);
         }
     }
 

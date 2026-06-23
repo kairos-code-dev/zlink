@@ -34,6 +34,7 @@ internal sealed class ZLinkSpotRouteBridgeProvider(
                     {
                         Capabilities = SpotRouteBridgeEndpointCapabilities.RouteOnly
                     });
+                state.SpotRouteBridges.Add(bridge);
             }
             catch
             {
@@ -67,6 +68,7 @@ internal sealed class ZLinkSpotRouteBridgeProvider(
             try
             {
                 routeChannel.AttachSpotRouteBridge(bridge);
+                state.SpotRouteBridges.Add(bridge);
             }
             catch
             {

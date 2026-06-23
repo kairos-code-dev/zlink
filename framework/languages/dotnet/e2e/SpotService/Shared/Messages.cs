@@ -3,6 +3,7 @@ namespace SpotService.Shared;
 public static class SpotServiceNames
 {
     public const string SpotChannel = "spot.service";
+    public const string SpotEventTopic = "spot.service.events";
     public const string ControlChannel = "spot.control";
     public const string ExternalSpotChannel = "spot.external.play-a";
     public const string ExternalClientChannel = "spot.external.client";
@@ -28,6 +29,18 @@ public sealed record StateReq(string Operation, int Delta);
 public sealed record StateReply(string SpotRid, string NodeRid, int Value);
 
 public sealed record StateCommand(string Marker);
+
+public sealed record SpotEvent(string Marker);
+
+public sealed record SpotOutboundReq(string Marker);
+
+public sealed record SpotOutboundNegativeReq(string Marker);
+
+public sealed record ChannelEchoReq(string Value);
+
+public sealed record ChannelEchoReply(string Value);
+
+public sealed record ChannelNotify(string Marker);
 
 public sealed record CreateSpotReq(string SpotRid);
 

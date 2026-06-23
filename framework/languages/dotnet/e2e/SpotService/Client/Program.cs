@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -8,6 +9,8 @@ using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Spots;
 
 var options = ClientOptions.Parse(args);
 await RunAsync(options);
@@ -19,6 +22,7 @@ static async Task RunAsync(ClientOptions options)
     await RunSmD1AndD6Async(options);
     await RunSmD4Async(options);
     await RunSmD5Async(options);
+    await RunSmC1C2Async(options);
     await RunSmE1AndF4Async(options);
     await RunSmA1A2A4F1F2Async(options);
     Console.WriteLine("spot-service e2e result=passed");
@@ -184,6 +188,110 @@ static async Task RunSmD5Async(ClientOptions options)
     Console.WriteLine("scenario SM-D5 passed");
 }
 
+static async Task RunSmC1C2Async(ClientOptions options)
+{
+    using var host = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: true,
+        includeExternalChannelServer: false,
+        traceName: "client-framework-channel-spot-flow.log");
+    await host.StartAsync();
+    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+    var spotRid = $"spot-sm-c-{Guid.NewGuid():N}";
+
+    await WaitUntilAsync(async () =>
+    {
+        try
+        {
+            var ping = await routes.Request(
+                    SpotServiceNames.ControlChannel,
+                    RoutingId.From(options.PlayARid),
+                    new ControlPingReq("sm-c-ready"))
+                .PacketName("ControlPingReq")
+                .Timeout(TimeSpan.FromSeconds(1))
+                .Async<ControlPingReply>();
+            return ping.NodeRid == options.PlayARid;
+        }
+        catch
+        {
+            return false;
+        }
+    }, "SM-C expected control route to become ready.");
+
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CreateSpotReq(spotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+
+    var playABefore = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    var viaChannel = await RequestSpotStateWithRetryAsync(
+        routes,
+        SpotServiceNames.ExternalSpotChannel,
+        spotRid,
+        new StateReq("noop", 0),
+        "SM-C1 channel to spot request timed out.");
+    Ensure(viaChannel.SpotRid == spotRid, "SM-C1 channel to spot request target mismatch.");
+    await routes.Send(
+            SpotServiceNames.ExternalSpotChannel,
+            RoutingId.From(spotRid),
+            new StateCommand("sm-c1-send"))
+        .PacketName("StateCommand")
+        .Async();
+    await WaitUntilAsync(async () =>
+    {
+        var playAAfter = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(playAAfter, playABefore, $"spot-state-command|rid=play-a|spot={spotRid}|marker=sm-c1-send") >= 1;
+    }, "SM-C1 expected channel to spot evidence.");
+    await host.StopAsync();
+    Console.WriteLine("scenario SM-C1 passed");
+
+    using var outboundHost = CreateRouteEgressHost(
+        options,
+        includeControlChannel: false,
+        includeRouteMeshEgress: true,
+        includeClientServerEgress: false,
+        includeExternalChannelServer: true,
+        traceName: "client-framework-spot-channel-flow.log");
+    await outboundHost.StartAsync();
+    var outboundRoutes = outboundHost.Services.GetRequiredService<IZLinkRouteClient>();
+    var clientEvidence = outboundHost.Services.GetRequiredService<ClientEvidenceStore>();
+    var playABeforeOutbound = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+
+    await outboundRoutes.Send(
+            SpotServiceNames.ExternalSpotChannel,
+            RoutingId.From(spotRid),
+            new SpotOutboundReq("sm-c2"))
+        .PacketName("SpotOutboundReq")
+        .Async();
+
+    await outboundRoutes.Send(
+            SpotServiceNames.ExternalSpotChannel,
+            RoutingId.From(spotRid),
+            new SpotOutboundNegativeReq("sm-c2-missing"))
+        .PacketName("SpotOutboundNegativeReq")
+        .Async();
+
+    await WaitUntilAsync(async () =>
+    {
+        var playAAfter = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        var clientAfter = clientEvidence.Snapshot();
+        return CountNew(playAAfter, playABeforeOutbound, $"spot-outbound|rid=play-a|spot={spotRid}|echo=echo-sm-c2|notify=notify-sm-c2") >= 1
+            && CountNew(playAAfter, playABeforeOutbound, $"spot-event|rid=play-a|spot={spotRid}|marker=sm-c2-publish") >= 1
+            && CountNew(playAAfter, playABeforeOutbound, $"spot-outbound-negative|rid=play-a|spot={spotRid}|requestFailed=True") >= 1
+            && clientAfter.Any(line => line.Contains("channel-echo|value=sm-c2", StringComparison.Ordinal))
+            && clientAfter.Any(line => line.Contains("channel-notify|marker=notify-sm-c2", StringComparison.Ordinal))
+            && clientAfter.Any(line => line.Contains("dispatch-error|surface=Channel|reason=HandlerMissing|action=ReplyError|packet=MissingChannelReq", StringComparison.Ordinal))
+            && clientAfter.Any(line => line.Contains("dispatch-error|surface=Channel|reason=HandlerMissing|action=Drop|packet=MissingChannelSend", StringComparison.Ordinal));
+    }, "SM-C2 expected spot to channel evidence.");
+
+    await outboundHost.StopAsync();
+    Console.WriteLine("scenario SM-C2 passed");
+}
+
 static async Task RunSmE1AndF4Async(ClientOptions options)
 {
     using var host = CreateRouteEgressHost(
@@ -191,6 +299,7 @@ static async Task RunSmE1AndF4Async(ClientOptions options)
         includeControlChannel: true,
         includeRouteMeshEgress: true,
         includeClientServerEgress: true,
+        includeExternalChannelServer: false,
         traceName: "client-framework-negative-flow.log");
     await host.StartAsync();
     var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
@@ -251,6 +360,7 @@ static async Task RunSmA1A2A4F1F2Async(ClientOptions options)
         includeControlChannel: true,
         includeRouteMeshEgress: true,
         includeClientServerEgress: true,
+        includeExternalChannelServer: false,
         traceName: "client-framework-flow.log");
     await clientServerHost.StartAsync();
     var clientServerRoutes = clientServerHost.Services.GetRequiredService<IZLinkRouteClient>();
@@ -326,13 +436,18 @@ static IHost CreateRouteEgressHost(
     bool includeControlChannel,
     bool includeRouteMeshEgress,
     bool includeClientServerEgress,
+    bool includeExternalChannelServer,
     string traceName)
 {
     var builder = Host.CreateApplicationBuilder();
+    builder.Services.AddSingleton<ClientEvidenceStore>();
+    builder.Services.AddSingleton<IZLinkMessageDispatchErrorObserver, ClientEvidenceDispatchErrorObserver>();
     builder.Services.AddZLinkFramework(framework =>
     {
+        framework.AddHandlersFromAssemblyOf(typeof(Program));
         framework.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
         framework.ConfigureDispatch()
+            .SetMessageDispatchErrorObserver<ClientEvidenceDispatchErrorObserver>()
             .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .TraceLogFile(Path.Combine(options.LogDir, traceName))
             .TraceNodeId("client-framework");
@@ -362,6 +477,12 @@ static IHost CreateRouteEgressHost(
             framework.AddClientServerChannel(SpotServiceNames.ExternalClientServerChannel)
                 .EnableClient(options.PlayAExternalSpotEndpoint)
                 .EnableSpotRouteEgress(SpotServiceNames.ExternalSpotChannel);
+        }
+        if (includeExternalChannelServer)
+        {
+            framework.AddClientServerChannel(SpotServiceNames.ExternalClientChannel)
+                .EnableServer(options.ClientExternalChannelEndpoint)
+                .AddHandlerGroup("client");
         }
     });
     return builder.Build();
@@ -429,6 +550,36 @@ static async Task ExpectFailureAsync(Task task, string message)
     throw new InvalidOperationException(message);
 }
 
+static async Task<StateReply> RequestSpotStateWithRetryAsync(
+    IZLinkRouteClient routes,
+    string channelName,
+    string spotRid,
+    StateReq request,
+    string failureMessage)
+{
+    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+    TimeoutException? last = null;
+    while (DateTimeOffset.UtcNow < deadline)
+    {
+        try
+        {
+            return await routes.Request(
+                    channelName,
+                    RoutingId.From(spotRid),
+                    request)
+                .PacketName("StateReq")
+                .Timeout(TimeSpan.FromSeconds(2))
+                .Async<StateReply>();
+        }
+        catch (TimeoutException ex)
+        {
+            last = ex;
+        }
+    }
+
+    throw new TimeoutException(failureMessage, last);
+}
+
 static void Ensure(bool condition, string message)
 {
     if (!condition)
@@ -450,6 +601,7 @@ internal sealed record ClientOptions(
     string PlayAExternalSpotEndpoint,
     string ClientControlEndpoint,
     string ClientExternalRouteEndpoint,
+    string ClientExternalChannelEndpoint,
     string ClientSpotRouterEndpoint,
     string LogDir)
 {
@@ -488,7 +640,67 @@ internal sealed record ClientOptions(
             Required("play-a-external-spot-endpoint"),
             Required("client-control-endpoint"),
             Required("client-external-route-endpoint"),
+            Required("client-external-channel-endpoint"),
             Required("client-spot-router-endpoint"),
             values.GetValueOrDefault("log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-spot-e2e")));
     }
+}
+
+[ZLinkHandlerGroup("client")]
+internal sealed class ChannelEchoHandler(ClientEvidenceStore evidence)
+    : IZLinkRequestHandler<ChannelEchoReq, ChannelEchoReply>
+{
+    public ValueTask<ChannelEchoReply> HandleAsync(
+        ChannelEchoReq request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"channel-echo|value={request.Value}");
+        return ValueTask.FromResult(new ChannelEchoReply($"echo-{request.Value}"));
+    }
+}
+
+[ZLinkHandlerGroup("client")]
+internal sealed class ChannelNotifyHandler(ClientEvidenceStore evidence)
+    : IZLinkSendHandler<ChannelNotify>
+{
+    public ValueTask HandleAsync(
+        ChannelNotify message,
+        ZLinkSendContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"channel-notify|marker={message.Marker}");
+        return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class ClientEvidenceDispatchErrorObserver(ClientEvidenceStore evidence)
+    : IZLinkMessageDispatchErrorObserver
+{
+    public ValueTask OnDispatchErrorAsync(
+        ZLinkMessageDispatchErrorEvent error,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            "dispatch-error"
+            + $"|surface={error.Surface}"
+            + $"|reason={error.Reason}"
+            + $"|action={error.Action}"
+            + $"|packet={error.PacketName ?? "<null>"}");
+        return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class ClientEvidenceStore
+{
+    private readonly ConcurrentQueue<string> _entries = new();
+
+    public void Add(string entry) => _entries.Enqueue(entry);
+
+    public string[] Snapshot() => _entries.ToArray();
 }

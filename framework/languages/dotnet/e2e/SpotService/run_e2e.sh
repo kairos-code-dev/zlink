@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_PROJECT="$SCRIPT_DIR/Server/SpotService.Server.csproj"
 CLIENT_PROJECT="$SCRIPT_DIR/Client/SpotService.Client.csproj"
+SERVER_DLL="$SCRIPT_DIR/Server/bin/Debug/net8.0/SpotService.Server.dll"
+CLIENT_DLL="$SCRIPT_DIR/Client/bin/Debug/net8.0/SpotService.Client.dll"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
 mkdir -p "$LOG_DIR"
@@ -44,7 +46,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 23:
+    while len(sockets) < 24:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -86,6 +88,7 @@ SESSION_B_CONTROL="tcp://127.0.0.1:${PORTS[18]}"
 CLIENT_CONTROL="tcp://127.0.0.1:${PORTS[20]}"
 CLIENT_EXTERNAL_ROUTE="tcp://127.0.0.1:${PORTS[21]}"
 CLIENT_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[22]}"
+CLIENT_EXTERNAL_CHANNEL="tcp://127.0.0.1:${PORTS[23]}"
 
 endpoint_port() {
   local endpoint="$1"
@@ -108,7 +111,7 @@ wait_port() {
   local port
   host="$(endpoint_host "$endpoint")"
   port="$(endpoint_port "$endpoint")"
-  for _ in $(seq 1 200); do
+  for _ in $(seq 1 400); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -121,7 +124,7 @@ wait_port() {
 start_server() {
   local name="$1"
   shift
-  dotnet run --project "$SERVER_PROJECT" -- "$@" \
+  dotnet "$SERVER_DLL" "$@" \
     >"$LOG_DIR/${name}.stdout.log" 2>"$LOG_DIR/${name}.stderr.log" &
   PIDS+=("$!")
 }
@@ -149,6 +152,7 @@ start_server play-a \
   --spot-router-endpoint "$PLAY_A_SPOT_ROUTER" \
   --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
   --external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
+  --external-client-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
   --evidence-file "$LOG_DIR/play-a.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_port play-a "$PLAY_A_HTTP"
@@ -202,7 +206,7 @@ wait_port session-b-stream "$SESSION_B_STREAM"
 
 sleep 2
 
-dotnet run --project "$CLIENT_PROJECT" -- \
+dotnet "$CLIENT_DLL" \
   --session-a-stream-endpoint "$SESSION_A_STREAM" \
   --session-b-stream-endpoint "$SESSION_B_STREAM" \
   --registry-router-endpoint "$REGISTRY_ROUTER" \
@@ -215,6 +219,7 @@ dotnet run --project "$CLIENT_PROJECT" -- \
   --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
   --client-control-endpoint "$CLIENT_CONTROL" \
   --client-external-route-endpoint "$CLIENT_EXTERNAL_ROUTE" \
+  --client-external-channel-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
   --client-spot-router-endpoint "$CLIENT_SPOT_ROUTER" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"

@@ -64,6 +64,11 @@ else if (options.Role == "play")
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
         }
+        if (!string.IsNullOrWhiteSpace(options.ExternalClientEndpoint))
+        {
+            framework.AddClientServerChannel(SpotServiceNames.ExternalClientChannel)
+                .EnableClient(options.ExternalClientEndpoint);
+        }
 
         var spot = framework.AddSpotMesh(SpotServiceNames.SpotChannel)
             .UseRegistrySpotResolver()
@@ -283,6 +288,11 @@ internal sealed class ScenarioUserSpot(
 
     public IZLinkSpotContext Context { get; } = context;
 
+    public void Configure()
+    {
+        Context.Handlers.AddSubscribe<SpotEventHandler>(SpotServiceNames.SpotEventTopic);
+    }
+
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
         Message request,
         CancellationToken cancellationToken)
@@ -337,6 +347,21 @@ internal sealed class ScenarioUserSpot(
     }
 }
 
+[ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotEventTopic)]
+internal sealed class SpotEventHandler(EvidenceStore evidence)
+    : IZLinkSpotSubscriptionHandler<ScenarioUserSpot, SpotEvent>
+{
+    public ValueTask HandleAsync(
+        ScenarioUserSpot spot,
+        SpotEvent message,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"spot-event|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={message.Marker}");
+        return ValueTask.CompletedTask;
+    }
+}
+
 [ZLinkSpotRequestHandler("StateReq")]
 internal sealed class StateReqHandler(EvidenceStore evidence)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, StateReq, StateReply>
@@ -369,6 +394,77 @@ internal sealed class StateCommandHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"spot-state-command|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={message.Marker}");
         return ValueTask.CompletedTask;
+    }
+}
+
+[ZLinkSpotPacketHandler("SpotOutboundReq")]
+internal sealed class SpotOutboundHandler(EvidenceStore evidence)
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, SpotOutboundReq>
+{
+    public async ValueTask HandleAsync(
+        ScenarioUserSpot spot,
+        SpotOutboundReq request,
+        CancellationToken cancellationToken)
+    {
+        var echo = await spot.Context.Outbound
+            .RequestToChannel(
+                SpotServiceNames.ExternalClientChannel,
+                new ChannelEchoReq(request.Marker))
+            .PacketName("ChannelEchoReq")
+            .Async<ChannelEchoReply>(cancellationToken);
+        var notifyMarker = $"notify-{request.Marker}";
+        await spot.Context.Outbound
+            .SendToChannel(
+                SpotServiceNames.ExternalClientChannel,
+                new ChannelNotify(notifyMarker))
+            .PacketName("ChannelNotify")
+            .Async(cancellationToken);
+        await spot.Context.Outbound
+            .Publish(
+                SpotServiceNames.SpotEventTopic,
+                new SpotEvent("sm-c2-publish"))
+            .PacketName("SpotEvent")
+            .Async(cancellationToken);
+        evidence.Add(
+            $"spot-outbound|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|echo={echo.Value}|notify={notifyMarker}");
+    }
+}
+
+[ZLinkSpotPacketHandler("SpotOutboundNegativeReq")]
+internal sealed class SpotOutboundNegativeHandler(EvidenceStore evidence)
+    : IZLinkSpotPacketHandler<ScenarioUserSpot, SpotOutboundNegativeReq>
+{
+    public async ValueTask HandleAsync(
+        ScenarioUserSpot spot,
+        SpotOutboundNegativeReq request,
+        CancellationToken cancellationToken)
+    {
+        var requestFailed = false;
+        try
+        {
+            await spot.Context.Outbound
+                .RequestToChannel(
+                    SpotServiceNames.ExternalClientChannel,
+                    new ChannelEchoReq(request.Marker))
+                .PacketName("MissingChannelReq")
+                .Timeout(TimeSpan.FromSeconds(2))
+                .Async<ChannelEchoReply>(cancellationToken);
+        }
+        catch
+        {
+            requestFailed = true;
+        }
+
+        await spot.Context.Outbound
+            .SendToChannel(
+                SpotServiceNames.ExternalClientChannel,
+                new ChannelNotify($"missing-{request.Marker}"))
+            .PacketName("MissingChannelSend")
+            .Async(cancellationToken);
+        evidence.Add(
+            $"spot-outbound-negative|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|requestFailed={requestFailed}");
     }
 }
 
@@ -686,6 +782,7 @@ internal sealed record ServerOptions(
     string? ControlEndpoint,
     string? SpotRouterEndpoint,
     string? SpotPubEndpoint,
+    string? ExternalClientEndpoint,
     string? ExternalSpotEndpoint,
     string? StreamEndpoint)
 {
@@ -723,6 +820,7 @@ internal sealed record ServerOptions(
             values.GetValueOrDefault("control-endpoint"),
             values.GetValueOrDefault("spot-router-endpoint"),
             values.GetValueOrDefault("spot-pub-endpoint"),
+            values.GetValueOrDefault("external-client-endpoint"),
             values.GetValueOrDefault("external-spot-endpoint"),
             values.GetValueOrDefault("stream-endpoint"));
     }

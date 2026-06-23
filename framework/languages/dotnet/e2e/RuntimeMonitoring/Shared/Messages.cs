@@ -1,0 +1,13 @@
+namespace RuntimeMonitoring.Shared;
+
+public static class RuntimeMonitoringNames
+{
+    public const string Channel = "monitor.profile";
+    public const string ChannelServerSource = "monitor.profile.server";
+    public const string SpotChannel = "monitor.spot";
+    public const string SpotNode = "monitor.spot.node";
+}
+
+public sealed record ProfileRequest(string Value, string Marker);
+
+public sealed record ProfileReply(string Value, string ProviderRid, string Marker);

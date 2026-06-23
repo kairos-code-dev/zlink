@@ -34,11 +34,11 @@ class sample_session_t final : public zlink::framework::packet_stream_session_t
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &stream,
                                               const zlink::framework::stream_header_t &header,
-                                              const zlink::message_t &payload) override
+                                              const zlink::framework::message_t &payload) override
     {
         events.push_back ("packet:" + std::string (header.packet_name ()) + ":"
-                          + payload.to_string ());
-        auto write = stream.reply_packet (header, payload).async ().result ();
+                          + payload.to_raw ().to_string ());
+        auto write = stream.reply_packet (header, payload.to_raw ()).async ().result ();
         if (!write) {
             return zlink::framework::task_t<void> (write);
         }
@@ -70,7 +70,7 @@ class throwing_packet_session_t final : public zlink::framework::packet_stream_s
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &,
                                               const zlink::framework::stream_header_t &,
-                                              const zlink::message_t &) override
+                                              const zlink::framework::message_t &) override
     {
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::failure (
           zlink::framework::framework_error_kind_t::request_failed, "application packet failure"));

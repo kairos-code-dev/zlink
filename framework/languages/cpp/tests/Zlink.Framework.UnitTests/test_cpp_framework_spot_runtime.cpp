@@ -164,7 +164,7 @@ struct stage_spot_t : public zlink::framework::spot_t
         throw std::runtime_error ("spot failure");
     }
 
-    zlink::framework::spot_create_response_t on_create (const zlink::message_t &request)
+    zlink::framework::spot_create_response_t on_create_raw (const zlink::message_t &request)
     {
         ++create_count;
         last_create_request = request.to_string ();
@@ -340,7 +340,7 @@ struct factory_spot_t : public zlink::framework::spot_t
         configured_spot_rid = std::string (context.spot_rid ().value ());
     }
 
-    zlink::framework::spot_create_response_t on_create (const zlink::message_t &request)
+    zlink::framework::spot_create_response_t on_create_raw (const zlink::message_t &request)
     {
         ++create_count;
         last_request = request.to_string ();

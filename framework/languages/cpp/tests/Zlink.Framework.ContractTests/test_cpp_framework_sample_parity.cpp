@@ -166,12 +166,12 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
 
     bingo_room_spot_t room_spot (allocated.room_id);
     const auto joined = room_spot.on_actor_join (
-      player_actor, to_stream_payload (bingo_room_join_req_t{
-                      allocated.room_id, authenticated.actor_id, authenticated.display_name}));
+      player_actor,
+      zlink::framework::message_t::from (bingo_room_join_req_t{
+        allocated.room_id, authenticated.actor_id, authenticated.display_name}));
     ASSERT_TRUE (joined.accepted);
     ASSERT_TRUE (joined.reply);
-    bingo_room_join_res_t join_reply;
-    from_stream_payload (*joined.reply, join_reply);
+    const auto join_reply = joined.reply->decode<bingo_room_join_res_t> ();
     EXPECT_EQ (join_reply.state.players.size (), 1U);
 
     zlink::framework::spot_context_t room_context;
@@ -190,8 +190,8 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
 
     auto second_actor = actor_factory.create (actor_ref_snapshot_t{{}, "player-2", 1}, "Player 2");
     const auto second_joined = room_spot.on_actor_join (
-      second_actor,
-      to_stream_payload (bingo_room_join_req_t{allocated.room_id, "player-2", "Player 2"}));
+      second_actor, zlink::framework::message_t::from (
+                      bingo_room_join_req_t{allocated.room_id, "player-2", "Player 2"}));
     ASSERT_TRUE (second_joined.accepted);
     const auto submitted =
       room_spot.submit_card (player_actor,
@@ -245,15 +245,15 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 
     entry_spot_t entry_spot;
     tictactoe_game_spot_t game_spot;
-    ASSERT_TRUE (game_spot.on_create (zlink::message_t::from (created.room_id)).accepted);
+    static_cast<tictactoe_match_t &> (game_spot) = tictactoe_match_t (created.room_id);
     const auto x_join =
       game_spot.on_actor_join (player_actor_t{sample_names_t::x_actor_id},
-                               to_stream_payload (tictactoe_game_join_req_t{
-                                 created.room_id, authenticated.player}));
+                               zlink::framework::message_t::from (
+                                 tictactoe_game_join_req_t{created.room_id, authenticated.player}));
     ASSERT_TRUE (x_join.accepted);
     const auto game_join =
       game_spot.on_actor_join (player_actor_t{sample_names_t::o_actor_id},
-                               to_stream_payload (tictactoe_game_join_req_t{
+                               zlink::framework::message_t::from (tictactoe_game_join_req_t{
                                  created.room_id,
                                  {sample_names_t::o_actor_id, sample_names_t::o_actor_id,
                                   sample_names_t::required_level, 0}}));
@@ -959,8 +959,8 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_NE (session_factory.find (".enable_actor_gateway ()"), std::string::npos);
     EXPECT_NE (session_factory.find (".attach_actor_gateway (sample_names_t::session_spot_node)"),
                std::string::npos);
-    EXPECT_NE (session.find (".relay_request (header, payload)"), std::string::npos);
-    EXPECT_NE (session.find (".relay (header, payload)"), std::string::npos);
+    EXPECT_NE (session.find (".relay_request (header, payload.to_raw ())"), std::string::npos);
+    EXPECT_NE (session.find (".relay (header, payload.to_raw ())"), std::string::npos);
     EXPECT_EQ (session.find ("RemoteActorPacket"), std::string::npos);
     EXPECT_EQ (play_factory.find ("remote_actor_packet_handler"), std::string::npos);
     EXPECT_EQ (contracts.find ("RemoteActorPacket"), std::string::npos);

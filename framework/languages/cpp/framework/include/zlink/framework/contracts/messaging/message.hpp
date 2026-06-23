@@ -56,6 +56,9 @@ class message_t
 
     zlink::message_t to_raw () const
     {
+        if (_encoded) {
+            return *_encoded;
+        }
         return to_raw (require_serializers ());
     }
 

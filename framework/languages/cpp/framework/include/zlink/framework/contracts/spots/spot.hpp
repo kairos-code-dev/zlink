@@ -1053,10 +1053,10 @@ concept has_framework_create_callback = requires (TSpot & spot, const message_t 
 };
 
 template <typename TSpot>
-concept has_create_callback = requires (TSpot & spot, const zlink::message_t &request)
+concept has_raw_create_callback = requires (TSpot & spot, const zlink::message_t &request)
 {
     {
-        spot.on_create (request)
+        spot.on_create_raw (request)
     } -> std::same_as<spot_create_response_t>;
 };
 
@@ -1282,11 +1282,11 @@ class spot_node_builder_t
                     return static_cast<TSpot *> (spot)->on_create (
                       message_t::from_encoded (request, &serializers));
                 };
-            } else if constexpr (detail::has_create_callback<TSpot>) {
+            } else if constexpr (detail::has_raw_create_callback<TSpot>) {
                 callbacks.on_create = [] (void *spot,
                                           const zlink::message_t &request,
                                           serializer_registry_t &) {
-                    return static_cast<TSpot *> (spot)->on_create (request);
+                    return static_cast<TSpot *> (spot)->on_create_raw (request);
                 };
             }
             if constexpr (detail::has_initialize_callback<TSpot>) {

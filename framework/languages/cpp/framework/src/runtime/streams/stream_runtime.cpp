@@ -764,10 +764,6 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
                                       std::nullopt,
                                       std::nullopt};
       });
-    if (_state->serializers == nullptr) {
-        return dispatch_serial (stream, "packet:" + std::string (header.packet_name ()),
-                                [&] { return session.on_packet (stream, header, payload); });
-    }
     return dispatch_serial (stream, "packet:" + std::string (header.packet_name ()), [&] {
         return session.on_packet (stream, header,
                                   message_t::from_encoded (payload, _state->serializers));

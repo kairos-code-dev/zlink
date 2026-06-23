@@ -176,11 +176,11 @@ class packet_stream_session_t
                                     const stream_header_t &header,
                                     const message_t &payload)
     {
-        return on_packet (stream, header, payload.to_raw ());
+        return on_raw_packet (stream, header, payload.to_raw ());
     }
-    virtual task_t<void> on_packet (stream_t &stream,
-                                    const stream_header_t &header,
-                                    const zlink::message_t &payload)
+    virtual task_t<void> on_raw_packet (stream_t &stream,
+                                        const stream_header_t &header,
+                                        const zlink::message_t &payload)
     {
         (void) stream;
         (void) header;

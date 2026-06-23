@@ -5,6 +5,7 @@ import systems.zlink.framework.runtime.registry.ZLinkRegistryLifecycle;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -61,6 +62,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -526,6 +528,24 @@ final class ZLinkFrameworkAutoConfigurationTest {
         List<String> calls = backendFactory.calls();
         assertTrue(calls.indexOf("close.socketMonitor") < calls.indexOf("close.router"));
         assertTrue(calls.indexOf("close.socketMonitor") < calls.indexOf("close.context"));
+    }
+
+    @Test
+    void monitoringOptionsBeanExistsWithoutCustomizerAndDoesNotOpenBackend() {
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(ZLinkBackendAdapterFactory.class, () -> backendFactory);
+            context.register(TestConfig.class, ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
+
+            assertTrue(context.getBean(ZLinkMonitoringLifecycle.class).isRunning());
+            assertTrue(context.getBean(DefaultZLinkMonitoringOptions.class)
+                .socketSourceNames()
+                .isEmpty());
+            assertFalse(backendFactory.calls().contains("factory.monitoring"));
+        }
     }
 
     @Test

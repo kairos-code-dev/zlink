@@ -61,7 +61,6 @@ public class ZLinkFrameworkAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(ZLinkMonitoringOptionsCustomizer.class)
     @ConditionalOnMissingBean
     public DefaultZLinkMonitoringOptions zlinkMonitoringOptions(
         List<ZLinkMonitoringOptionsCustomizer> customizers) {

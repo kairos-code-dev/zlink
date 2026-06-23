@@ -308,6 +308,7 @@ class http_host_service_t::listener_t
         beast::ssl_stream<beast::tcp_stream> stream (std::move (socket), *_tls_context);
         connection_registration_t registration (*this, stream.next_layer ().socket ());
         beast::error_code ec;
+        set_request_timeout (stream, _options->server.request_headers_timeout);
         stream.handshake (asio::ssl::stream_base::server, ec);
         if (ec) {
             return;

@@ -345,8 +345,7 @@ stream_write_call_t stream_t::reply_packet_raw (const stream_header_t &request_h
     }
     stream_header_t reply_header (stream_message_kind_t::response, request_header.codec (),
                                   stream_header_flags_t::has_request_seq,
-                                  request_header.request_seq (),
-                                  std::string (request_header.packet_name ()), {});
+                                  request_header.request_seq (), "reply", {});
     if (auto correlation = request_header.correlation_id ()) {
         reply_header.with_correlation_id (std::string (*correlation));
     }
@@ -503,6 +502,19 @@ void append_u64 (std::vector<std::uint8_t> &bytes, std::uint64_t value)
     }
 }
 
+void append_u16 (std::vector<std::uint8_t> &bytes, std::uint16_t value)
+{
+    bytes.push_back (static_cast<std::uint8_t> ((value >> 8) & 0xff));
+    bytes.push_back (static_cast<std::uint8_t> (value & 0xff));
+}
+
+std::uint16_t read_u16 (const std::vector<std::uint8_t> &bytes, std::size_t &offset)
+{
+    const auto value = static_cast<std::uint16_t> ((bytes[offset] << 8) | bytes[offset + 1]);
+    offset += 2;
+    return value;
+}
+
 std::uint64_t read_u64 (const std::vector<std::uint8_t> &bytes, std::size_t &offset)
 {
     std::uint64_t value = 0;
@@ -608,18 +620,27 @@ stream_runtime_t::encode_header (const stream_header_t &header) const
               framework_error_kind_t::request_protocol_error,
               "STREAM metadata item count is too large");
         }
-        bytes.push_back (static_cast<std::uint8_t> (header.metadata ().values ().size ()));
+        std::vector<std::uint8_t> metadata_bytes;
+        metadata_bytes.push_back (
+          static_cast<std::uint8_t> (header.metadata ().values ().size ()));
         for (const auto &[key, value] : header.metadata ().values ()) {
-            if (key.size () > 255 || value.size () > 255) {
+            if (key.empty () || key.size () > std::numeric_limits<std::uint8_t>::max ()
+                || value.size () > std::numeric_limits<std::uint16_t>::max ()) {
                 return result_t<std::vector<std::uint8_t>>::failure (
                   framework_error_kind_t::request_protocol_error,
                   "STREAM metadata key or value is too large");
             }
-            bytes.push_back (static_cast<std::uint8_t> (key.size ()));
-            bytes.insert (bytes.end (), key.begin (), key.end ());
-            bytes.push_back (static_cast<std::uint8_t> (value.size ()));
-            bytes.insert (bytes.end (), value.begin (), value.end ());
+            metadata_bytes.push_back (static_cast<std::uint8_t> (key.size ()));
+            metadata_bytes.insert (metadata_bytes.end (), key.begin (), key.end ());
+            append_u16 (metadata_bytes, static_cast<std::uint16_t> (value.size ()));
+            metadata_bytes.insert (metadata_bytes.end (), value.begin (), value.end ());
         }
+        if (metadata_bytes.size () > std::numeric_limits<std::uint16_t>::max ()) {
+            return result_t<std::vector<std::uint8_t>>::failure (
+              framework_error_kind_t::request_protocol_error, "STREAM metadata is too large");
+        }
+        append_u16 (bytes, static_cast<std::uint16_t> (metadata_bytes.size ()));
+        bytes.insert (bytes.end (), metadata_bytes.begin (), metadata_bytes.end ());
     }
     if (correlation) {
         bytes.push_back (static_cast<std::uint8_t> (correlation->size ()));
@@ -663,19 +684,29 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
 
     stream_metadata_t metadata;
     if (has_flag (flags, stream_header_flags_t::has_metadata)) {
-        if (offset >= bytes.size ()) {
+        if (bytes.size () - offset < 2) {
+            return result_t<stream_header_t>::failure (
+              framework_error_kind_t::payload_decode_failed, "STREAM metadata length is missing");
+        }
+        const auto metadata_size = read_u16 (bytes, offset);
+        if (bytes.size () - offset < metadata_size) {
+            return result_t<stream_header_t>::failure (
+              framework_error_kind_t::payload_decode_failed, "STREAM metadata is incomplete");
+        }
+        const auto metadata_end = offset + metadata_size;
+        if (offset >= metadata_end) {
             return result_t<stream_header_t>::failure (
               framework_error_kind_t::payload_decode_failed, "STREAM metadata count is missing");
         }
         const auto count = bytes[offset++];
         for (std::uint8_t i = 0; i < count; ++i) {
-            if (offset >= bytes.size ()) {
+            if (offset >= metadata_end) {
                 return result_t<stream_header_t>::failure (
                   framework_error_kind_t::payload_decode_failed,
                   "STREAM metadata key length is missing");
             }
             const auto key_size = bytes[offset++];
-            if (bytes.size () - offset < key_size) {
+            if (key_size == 0 || metadata_end - offset < key_size) {
                 return result_t<stream_header_t>::failure (
                   framework_error_kind_t::payload_decode_failed,
                   "STREAM metadata key is incomplete");
@@ -683,13 +714,13 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
             std::string key (bytes.begin () + static_cast<std::ptrdiff_t> (offset),
                              bytes.begin () + static_cast<std::ptrdiff_t> (offset + key_size));
             offset += key_size;
-            if (offset >= bytes.size ()) {
+            if (metadata_end - offset < 2) {
                 return result_t<stream_header_t>::failure (
                   framework_error_kind_t::payload_decode_failed,
                   "STREAM metadata value length is missing");
             }
-            const auto value_size = bytes[offset++];
-            if (bytes.size () - offset < value_size) {
+            const auto value_size = read_u16 (bytes, offset);
+            if (metadata_end - offset < value_size) {
                 return result_t<stream_header_t>::failure (
                   framework_error_kind_t::payload_decode_failed,
                   "STREAM metadata value is incomplete");
@@ -698,6 +729,10 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
                                bytes.begin () + static_cast<std::ptrdiff_t> (offset + value_size));
             offset += value_size;
             metadata.with (std::move (key), std::move (value));
+        }
+        if (offset != metadata_end) {
+            return result_t<stream_header_t>::failure (
+              framework_error_kind_t::payload_decode_failed, "STREAM metadata has trailing bytes");
         }
     }
     std::string correlation;

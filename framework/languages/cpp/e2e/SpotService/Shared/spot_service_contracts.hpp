@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include <zlink/Contracts/Messaging/message.hpp>
+
 #include <nlohmann/json.hpp>
 
 #include <string>
@@ -541,6 +543,18 @@ inline void from_json (const nlohmann::json &json, actor_push_res_t &value)
 inline void to_json (nlohmann::json &json, const actor_push_notify_t &value)
 {
     json = nlohmann::json{{"actor_id", value.actor_id}, {"value", value.value}};
+}
+
+inline std::string to_stream_payload (const actor_push_notify_t &value)
+{
+    return nlohmann::json (value).dump ();
+}
+
+inline void from_stream_payload (const zlink::message_t &payload, actor_push_notify_t &value)
+{
+    const auto json = nlohmann::json::parse (payload.to_string ());
+    json.at ("actor_id").get_to (value.actor_id);
+    json.at ("value").get_to (value.value);
 }
 
 inline void from_json (const nlohmann::json &json, actor_push_notify_t &value)

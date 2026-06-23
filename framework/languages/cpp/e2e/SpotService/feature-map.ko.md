@@ -30,6 +30,8 @@
   actor가 bound session으로 보낸 push를 client 수신과 play/session evidence로 검증한다.
 - `SM-D2`: `session-a` gateway에 붙은 상태에서 preferred가 아닌 `play-b` actor로 remote stream
   relay를 보내고, remote actor push가 session gateway route를 거쳐 돌아오는지 검증한다.
+- `SM-D4`: 한 stream session에 두 actor를 bind하고 `actor-id` metadata로 각각 다른 actor에
+  relay/push가 전달되며, metadata 없는 request가 실패하는지 검증한다.
 
 ## 공개 API 대기
 
@@ -53,8 +55,6 @@
 - `SM-A8`: `spot_context_t::run_worker` 공개 API가 있어 worker offload 검증으로 확장할 수 있다.
 - `SM-C3`: `spot_context_t::request_to`와 `send_to` 공개 API가 있어 spot-to-spot messaging으로
   확장할 수 있다.
-- `SM-D4`, `SM-D5`, `SM-D6`, `SM-D7`, `SM-D12`: 실제 stream session client와 gateway 노드를 더
-  확장해야 한다. 현재 C++ stream connector pending request는 framework stream response를 완료하지
-  못하는 제한이 있어, `SM-D1`/`SM-D2`는 send relay와 bound-session push 수신/evidence 조합으로
-  검증한다.
+- `SM-D5`, `SM-D6`, `SM-D7`, `SM-D12`: 실제 stream session client와 gateway 노드를 더
+  확장해야 한다.
 - `SM-G1`: harness가 play node를 kill/restart하고 재join/rebind를 검증해야 한다.

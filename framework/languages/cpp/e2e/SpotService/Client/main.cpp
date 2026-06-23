@@ -215,6 +215,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                          "stream-local-push");
             run_stream_session_scenario (routes, "SM-D2", "play-b", "stream-remote", "b-stream-room",
                                          "stream-remote-push");
+            run_multi_stream_session_scenario (routes);
             return;
         }
 
@@ -374,14 +375,22 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                            const std::string &actor_id,
                                            const std::string &display_name)
     {
-        auto ensured =
-          routes
-            .request (e2e::route_channel, zlink::routing_id_t::from (target_node),
-                      e2e::ensure_actor_req_t{actor_id, display_name})
-            .packet_name ("EnsureActor")
-            .timeout (std::chrono::milliseconds (5000))
-            .async<e2e::ensure_actor_res_t> ()
-            .result ();
+        zlink::framework::result_t<e2e::ensure_actor_res_t> ensured =
+          zlink::framework::result_t<e2e::ensure_actor_res_t>::failure (
+            zlink::framework::framework_error_kind_t::timeout, "EnsureActor not attempted");
+        for (int attempt = 0; attempt < 20; ++attempt) {
+            ensured = routes
+                        .request (e2e::route_channel, zlink::routing_id_t::from (target_node),
+                                  e2e::ensure_actor_req_t{actor_id, display_name})
+                        .packet_name ("EnsureActor")
+                        .timeout (std::chrono::milliseconds (5000))
+                        .async<e2e::ensure_actor_res_t> ()
+                        .result ();
+            if (ensured.has_value ()) {
+                break;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        }
         ensure (ensured.has_value (),
                 "stream EnsureActor failed for " + actor_id + ": "
                   + (ensured.error () ? ensured.error ()->what () : "unknown"));
@@ -451,6 +460,154 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         (void) stream.close ().submit ();
         std::cout << "scenario " << scenario_id << " passed\n";
+    }
+
+    void run_multi_stream_session_scenario (zlink::framework::route_client_t &routes)
+    {
+        const auto first_actor_id = std::string ("stream-multi-a");
+        const auto second_actor_id = std::string ("stream-multi-b");
+        auto first_actor =
+          ensure_actor_ref (routes, "play-a", first_actor_id, first_actor_id + "-display");
+        auto second_actor =
+          ensure_actor_ref (routes, "play-b", second_actor_id, second_actor_id + "-display");
+
+        auto core = make_stream_connector ();
+        core.codecs ().add_json ();
+        auto stream = zlink::stream_e2e_client::use (core);
+
+        auto connected = stream.connect ().submit ();
+        ensure (static_cast<bool> (connected), "SM-D4 stream connect failed");
+
+        auto auth_first =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::stream_auth_req_t{"play-a", first_actor_id,
+                                           first_actor_id + "-display", first_actor})
+            .packet_name ("StreamAuthReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::stream_auth_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (auth_first),
+                "SM-D4 first stream auth failed: " + stream_error_text (auth_first));
+        std::this_thread::sleep_for (std::chrono::milliseconds (200));
+
+        auto auth_second =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::stream_auth_req_t{"play-b", second_actor_id,
+                                           second_actor_id + "-display", second_actor})
+            .packet_name ("StreamAuthReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::stream_auth_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (auth_second),
+                "SM-D4 second stream auth failed: " + stream_error_text (auth_second));
+        std::this_thread::sleep_for (std::chrono::milliseconds (200));
+
+        auto join_first =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::join_req_t{.key = "a-stream-multi",
+                                    .actor_id = first_actor_id,
+                                    .display_name = first_actor_id + "-display",
+                                    .level = 51,
+                                    .tags = {"stream", "SM-D4", "first"}})
+            .packet_name ("JoinReq")
+            .metadata ("actor-id", first_actor_id)
+            .timeout (std::chrono::milliseconds (5000))
+            .async<e2e::join_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (join_first),
+                "SM-D4 first stream join failed: " + stream_error_text (join_first));
+
+        auto join_second =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::join_req_t{.key = "b-stream-multi",
+                                    .actor_id = second_actor_id,
+                                    .display_name = second_actor_id + "-display",
+                                    .level = 61,
+                                    .tags = {"stream", "SM-D4", "second"}})
+            .packet_name ("JoinReq")
+            .metadata ("actor-id", second_actor_id)
+            .timeout (std::chrono::milliseconds (5000))
+            .async<e2e::join_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (join_second),
+                "SM-D4 second stream join failed: " + stream_error_text (join_second));
+
+        auto state_first =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::state_req_t{.op = "add", .amount = 23})
+            .packet_name ("StateReq")
+            .metadata ("actor-id", first_actor_id)
+            .timeout (std::chrono::milliseconds (5000))
+            .async<e2e::state_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (state_first),
+                "SM-D4 first state send failed: " + stream_error_text (state_first));
+
+        auto state_second =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::state_req_t{.op = "add", .amount = 29})
+            .packet_name ("StateReq")
+            .metadata ("actor-id", second_actor_id)
+            .timeout (std::chrono::milliseconds (5000))
+            .async<e2e::state_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (state_second),
+                "SM-D4 second state send failed: " + stream_error_text (state_second));
+
+        auto first_push_wait =
+          stream
+            .wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
+            .async ();
+        auto first_pushed =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::actor_push_req_t{"stream-multi-a-push"})
+            .packet_name ("PushReq")
+            .metadata ("actor-id", first_actor_id)
+            .timeout (std::chrono::milliseconds (5000))
+            .async<e2e::actor_push_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (first_pushed),
+                "SM-D4 first push trigger failed: " + stream_error_text (first_pushed));
+        auto first_push = first_push_wait.result ();
+        ensure (static_cast<bool> (first_push), "SM-D4 first push notify missing");
+        ensure (first_push.value ().actor_id == first_actor_id
+                  && first_push.value ().value == "stream-multi-a-push",
+                "SM-D4 first push routed to wrong actor: " + first_push.value ().actor_id + "/"
+                  + first_push.value ().value);
+
+        auto second_push_wait =
+          stream
+            .wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
+            .async ();
+        auto second_pushed =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::actor_push_req_t{"stream-multi-b-push"})
+            .packet_name ("PushReq")
+            .metadata ("actor-id", second_actor_id)
+            .timeout (std::chrono::milliseconds (5000))
+            .async<e2e::actor_push_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (second_pushed),
+                "SM-D4 second push trigger failed: " + stream_error_text (second_pushed));
+        auto second_push = second_push_wait.result ();
+        ensure (static_cast<bool> (second_push), "SM-D4 second push notify missing");
+        ensure (second_push.value ().actor_id == second_actor_id
+                  && second_push.value ().value == "stream-multi-b-push",
+                "SM-D4 second push routed to wrong actor: " + second_push.value ().actor_id + "/"
+                  + second_push.value ().value);
+
+        auto missing_actor_id =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::state_req_t{.op = "add", .amount = 1})
+            .packet_name ("StateReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::state_res_t> ()
+            .result ();
+        ensure (!static_cast<bool> (missing_actor_id),
+                "SM-D4 request without actor-id unexpectedly succeeded");
+
+        (void) stream.close ().submit ();
+        std::cout << "scenario SM-D4 passed\n";
     }
 
     zlink::framework::app_t &_app;

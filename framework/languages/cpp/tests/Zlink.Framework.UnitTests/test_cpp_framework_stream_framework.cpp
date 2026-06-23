@@ -170,7 +170,7 @@ int main ()
         return 20;
     }
     zlink::framework::stream_metadata_t large_metadata;
-    large_metadata.with ("trace", std::string (256, 'x'));
+    large_metadata.with ("trace", std::string (65536, 'x'));
     zlink::framework::stream_header_t too_large_metadata (
       stream_message_kind_t::send, stream_codec_t::json, stream_header_flags_t::none, std::nullopt,
       "large", large_metadata);
@@ -241,7 +241,8 @@ int main ()
         return 11;
     }
     if (runtime.written_headers (stream)[0].kind () != stream_message_kind_t::response
-        || runtime.written_headers (stream)[0].request_seq () != 77) {
+        || runtime.written_headers (stream)[0].request_seq () != 77
+        || runtime.written_headers (stream)[0].packet_name () != "reply") {
         return 15;
     }
 

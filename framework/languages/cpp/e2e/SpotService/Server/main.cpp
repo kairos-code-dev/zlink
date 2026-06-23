@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -451,12 +452,12 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
 
     zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
     {
-        if (!_bound_actor_id.empty ()) {
-            _gateway.unbind_session_stream (_bound_actor_id);
-            _actors.unbind_session (_bound_actor_id);
-            _state.record ("StreamUnbound", _bound_actor_id);
-            _bound_actor_id.clear ();
+        for (const auto &[actor_id, _] : _bound_actors) {
+            _gateway.unbind_session_stream (actor_id);
+            _actors.unbind_session (actor_id);
+            _state.record ("StreamUnbound", actor_id);
         }
+        _bound_actors.clear ();
         co_return;
     }
 
@@ -474,10 +475,11 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
         if (header.packet_name () == "StreamAuthReq") {
             auto request = payload.decode<e2e::stream_auth_req_t> ();
             auto bound = co_await _actors.bind (to_actor_ref (request.actor)).async ();
-            _bound_actor_id = std::string (bound.actor_id ());
-            _gateway.bind_session_stream (_bound_actor_id, stream,
+            const auto actor_id = std::string (bound.actor_id ());
+            _bound_actors[actor_id] = request.target_node_rid;
+            _gateway.bind_session_stream (actor_id, stream,
                                           zlink::framework::stream_codec_t::json);
-            _state.record ("StreamBound", _bound_actor_id, {},
+            _state.record ("StreamBound", actor_id, {},
                            request.target_node_rid + ":" + stream.session_id ());
             if (header.kind () == zlink::framework::stream_message_kind_t::request) {
                 co_await stream
@@ -487,9 +489,11 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             co_return;
         }
 
-        auto actor = require_bound_actor (std::string (header.packet_name ()));
+        auto actor = require_bound_actor (header, std::string (header.packet_name ()));
         if (!actor) {
-            co_return;
+            throw zlink::framework::framework_exception_t (
+              actor.error_kind (),
+              actor.error () ? actor.error ()->what () : "bound actor route is not found");
         }
         if (header.kind () == zlink::framework::stream_message_kind_t::request) {
             auto reply = co_await actor.value ().relay_request (header, payload).async ();
@@ -502,14 +506,30 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
 
   private:
     zlink::framework::result_t<zlink::framework::session_actor_t>
-    require_bound_actor (const std::string &packet_name) const
+    require_bound_actor (const zlink::framework::stream_header_t &header,
+                         const std::string &packet_name) const
     {
-        if (_bound_actor_id.empty ()) {
+        if (_bound_actors.empty ()) {
             return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
               zlink::framework::framework_error_kind_t::actor_session_not_bound,
               "stream session is not bound before " + packet_name);
         }
-        auto actor = _actors.find (_bound_actor_id);
+        std::string actor_id;
+        if (auto selected = header.metadata ("actor-id")) {
+            actor_id = std::string (*selected);
+        } else if (_bound_actors.size () == 1) {
+            actor_id = _bound_actors.begin ()->first;
+        } else {
+            return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
+              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              "actor-id metadata is required when multiple actors are bound for " + packet_name);
+        }
+        if (!_bound_actors.contains (actor_id)) {
+            return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
+              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              "bound actor route is not found for " + actor_id + " / " + packet_name);
+        }
+        auto actor = _actors.find (actor_id);
         if (!actor) {
             return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
               zlink::framework::framework_error_kind_t::actor_route_not_found,
@@ -523,7 +543,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
     zlink::framework::route_client_t &_routes;
     zlink::framework::session_actor_manager_t &_actors;
     zlink::framework::actor_gateway_t &_gateway;
-    std::string _bound_actor_id;
+    std::map<std::string, std::string> _bound_actors;
 };
 
 void configure_codecs (zlink::framework::codec_options_builder_t codecs)

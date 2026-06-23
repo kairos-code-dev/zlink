@@ -151,6 +151,37 @@ struct lifecycle_res_t
     bool closed = false;
 };
 
+struct stream_auth_req_t
+{
+    std::string target_node_rid;
+    std::string actor_id;
+    std::string display_name;
+    actor_ref_dto_t actor;
+};
+
+struct stream_auth_res_t
+{
+    actor_ref_dto_t actor;
+    std::string session_node_rid;
+};
+
+struct actor_push_req_t
+{
+    std::string value;
+};
+
+struct actor_push_res_t
+{
+    bool pushed = false;
+    std::string actor_id;
+};
+
+struct actor_push_notify_t
+{
+    std::string actor_id;
+    std::string value;
+};
+
 struct evidence_entry_t
 {
     std::string marker;
@@ -424,6 +455,65 @@ inline void from_json (const nlohmann::json &json, lifecycle_res_t &value)
     json.at ("spot_rid").get_to (value.spot_rid);
     json.at ("created").get_to (value.created);
     json.at ("closed").get_to (value.closed);
+}
+
+inline void to_json (nlohmann::json &json, const stream_auth_req_t &value)
+{
+    json = nlohmann::json{{"target_node_rid", value.target_node_rid},
+                          {"actor_id", value.actor_id},
+                          {"display_name", value.display_name},
+                          {"actor", value.actor}};
+}
+
+inline void from_json (const nlohmann::json &json, stream_auth_req_t &value)
+{
+    json.at ("target_node_rid").get_to (value.target_node_rid);
+    json.at ("actor_id").get_to (value.actor_id);
+    json.at ("display_name").get_to (value.display_name);
+    json.at ("actor").get_to (value.actor);
+}
+
+inline void to_json (nlohmann::json &json, const stream_auth_res_t &value)
+{
+    json = nlohmann::json{{"actor", value.actor}, {"session_node_rid", value.session_node_rid}};
+}
+
+inline void from_json (const nlohmann::json &json, stream_auth_res_t &value)
+{
+    json.at ("actor").get_to (value.actor);
+    json.at ("session_node_rid").get_to (value.session_node_rid);
+}
+
+inline void to_json (nlohmann::json &json, const actor_push_req_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, actor_push_req_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const actor_push_res_t &value)
+{
+    json = nlohmann::json{{"pushed", value.pushed}, {"actor_id", value.actor_id}};
+}
+
+inline void from_json (const nlohmann::json &json, actor_push_res_t &value)
+{
+    json.at ("pushed").get_to (value.pushed);
+    json.at ("actor_id").get_to (value.actor_id);
+}
+
+inline void to_json (nlohmann::json &json, const actor_push_notify_t &value)
+{
+    json = nlohmann::json{{"actor_id", value.actor_id}, {"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, actor_push_notify_t &value)
+{
+    json.at ("actor_id").get_to (value.actor_id);
+    json.at ("value").get_to (value.value);
 }
 
 inline void to_json (nlohmann::json &json, const evidence_entry_t &value)

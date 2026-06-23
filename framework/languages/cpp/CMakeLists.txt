@@ -996,7 +996,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   add_executable(zlink_cpp_e2e_spot_service_client
     e2e/SpotService/Client/main.cpp)
   target_link_libraries(zlink_cpp_e2e_spot_service_client PRIVATE
-    zlink::framework)
+    zlink::framework
+    zlink::stream_e2e_client)
   target_include_directories(zlink_cpp_e2e_spot_service_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 endif()

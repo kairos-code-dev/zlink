@@ -3,6 +3,9 @@
 #include "../Shared/spot_service_contracts.hpp"
 
 #include <zlink/framework.hpp>
+#include <zlink/stream_connector.hpp>
+#include <zlink/stream_e2e_client.hpp>
+#include <zlink/stream_e2e_client/codecs/auto_codec.hpp>
 
 #include <chrono>
 #include <cstdlib>
@@ -50,6 +53,14 @@ zlink::framework::stream_header_t request_header (std::string packet_name)
     return zlink::framework::stream_header_t (
       zlink::framework::stream_message_kind_t::request, zlink::framework::stream_codec_t::json,
       zlink::framework::stream_header_flags_t::none, std::nullopt, std::move (packet_name));
+}
+
+template <typename TResult> std::string stream_error_text (const TResult &result)
+{
+    if (result.error ()) {
+        return result.error ()->message;
+    }
+    return "unknown stream error";
 }
 
 class client_channel_state_t
@@ -116,7 +127,14 @@ class channel_command_handler_t
 class scenario_service_t final : public zlink::framework::hosted_service_t
 {
   public:
-    explicit scenario_service_t (zlink::framework::app_t &app) : _app (app) {}
+    scenario_service_t (zlink::framework::app_t &app,
+                        std::string stream_endpoint,
+                        std::string scenario_mode) :
+        _app (app),
+        _stream_endpoint (std::move (stream_endpoint)),
+        _scenario_mode (std::move (scenario_mode))
+    {
+    }
 
     void start (zlink::framework::service_provider_t &services) override
     {
@@ -190,6 +208,14 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
               zlink::framework::session_actor_manager_t &actors,
               client_channel_state_t &channel_state)
     {
+        if (_scenario_mode == "stream") {
+            run_stream_session_scenario (routes, "SM-D1", "play-a", "stream-local", "a-stream-room",
+                                         "stream-local-push");
+            run_stream_session_scenario (routes, "SM-D2", "play-b", "stream-remote", "b-stream-room",
+                                         "stream-remote-push");
+            return;
+        }
+
         auto refresh_actor = [&actors] (const std::string &actor_id) {
             auto refreshed = actors.find (actor_id);
             ensure (refreshed.has_value (), "actor was not found after join: " + actor_id);
@@ -300,9 +326,112 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (channel_state.has ("ChannelCommand", "cmd-alice-2-from-spot"),
                 "SM-C2 channel send evidence missing");
         std::cout << "scenario SM-C2 passed\n";
+
+        if (_scenario_mode != "base") {
+            run_stream_session_scenario (routes, "SM-D1", "play-a", "stream-local", "a-stream-room",
+                                         "stream-local-push");
+            run_stream_session_scenario (routes, "SM-D2", "play-b", "stream-remote", "b-stream-room",
+                                         "stream-remote-push");
+        }
+    }
+
+    zlink::stream_connector::connector_t make_stream_connector () const
+    {
+        zlink::stream_connector::connector_options_t options;
+        options.endpoint = _stream_endpoint;
+        options.connect_timeout = std::chrono::milliseconds (5000);
+        options.request_timeout = std::chrono::milliseconds (5000);
+        options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
+        return zlink::stream_connector::connector_factory_t::create (options);
+    }
+
+    e2e::actor_ref_dto_t ensure_actor_ref (zlink::framework::route_client_t &routes,
+                                           const std::string &target_node,
+                                           const std::string &actor_id,
+                                           const std::string &display_name)
+    {
+        auto ensured =
+          routes
+            .request (e2e::route_channel, zlink::routing_id_t::from (target_node),
+                      e2e::ensure_actor_req_t{actor_id, display_name})
+            .packet_name ("EnsureActor")
+            .timeout (std::chrono::milliseconds (5000))
+            .async<e2e::ensure_actor_res_t> ()
+            .result ();
+        ensure (ensured.has_value (),
+                "stream EnsureActor failed for " + actor_id + ": "
+                  + (ensured.error () ? ensured.error ()->what () : "unknown"));
+        return ensured.value ().actor;
+    }
+
+    void run_stream_session_scenario (zlink::framework::route_client_t &routes,
+                                      const std::string &scenario_id,
+                                      const std::string &target_node,
+                                      const std::string &actor_id,
+                                      const std::string &key,
+                                      const std::string &push_value)
+    {
+        const auto display_name = actor_id + "-display";
+        auto actor = ensure_actor_ref (routes, target_node, actor_id, display_name);
+        auto core = make_stream_connector ();
+        core.codecs ().add_json ();
+        auto stream = zlink::stream_e2e_client::use (core);
+
+        auto connected = stream.connect ().submit ();
+        ensure (static_cast<bool> (connected), scenario_id + " stream connect failed");
+
+        auto auth =
+          zlink::stream_e2e_client::codecs::send (
+            stream, e2e::stream_auth_req_t{target_node, actor_id, display_name, actor})
+            .packet_name ("StreamAuthReq")
+            .submit ();
+        ensure (static_cast<bool> (auth),
+                scenario_id + " stream auth failed: " + stream_error_text (auth));
+        std::this_thread::sleep_for (std::chrono::milliseconds (200));
+
+        auto joined =
+          zlink::stream_e2e_client::codecs::send (
+            stream,
+            e2e::join_req_t{.key = key,
+                            .actor_id = actor_id,
+                            .display_name = actor_id + "-display",
+                            .level = target_node == "play-a" ? 31 : 41,
+                            .tags = {"stream", scenario_id}})
+            .packet_name ("JoinReq")
+            .submit ();
+        ensure (static_cast<bool> (joined),
+                scenario_id + " stream join send failed: " + stream_error_text (joined));
+        std::this_thread::sleep_for (std::chrono::milliseconds (200));
+
+        auto state =
+          zlink::stream_e2e_client::codecs::send (
+            stream, e2e::state_req_t{.op = "add", .amount = target_node == "play-a" ? 13 : 17})
+            .packet_name ("StateReq")
+            .submit ();
+        ensure (static_cast<bool> (state),
+                scenario_id + " stream state send failed: " + stream_error_text (state));
+
+        auto push_wait =
+          stream
+            .wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (5000))
+            .async ();
+        auto pushed =
+          zlink::stream_e2e_client::codecs::send (
+            stream, e2e::actor_push_req_t{push_value})
+            .packet_name ("PushReq")
+            .submit ();
+        ensure (static_cast<bool> (pushed),
+                scenario_id + " push trigger failed: " + stream_error_text (pushed));
+        auto push = push_wait.result ();
+        ensure (static_cast<bool> (push), scenario_id + " push notify missing");
+
+        (void) stream.close ().submit ();
+        std::cout << "scenario " << scenario_id << " passed\n";
     }
 
     zlink::framework::app_t &_app;
+    std::string _stream_endpoint;
+    std::string _scenario_mode;
 };
 
 void configure_codecs (zlink::framework::codec_options_builder_t codecs)
@@ -328,7 +457,12 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::type_mismatch_req_t> ()
       .add_json<e2e::type_mismatch_res_t> ()
       .add_json<e2e::lifecycle_req_t> ()
-      .add_json<e2e::lifecycle_res_t> ();
+      .add_json<e2e::lifecycle_res_t> ()
+      .add_json<e2e::stream_auth_req_t> ()
+      .add_json<e2e::stream_auth_res_t> ()
+      .add_json<e2e::actor_push_req_t> ()
+      .add_json<e2e::actor_push_res_t> ()
+      .add_json<e2e::actor_push_notify_t> ();
 }
 
 } // namespace
@@ -342,10 +476,12 @@ int main (int argc, char **argv)
     const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
     const auto pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT");
     const auto api_endpoint = env_or ("ZLINK_CPP_E2E_API_ENDPOINT");
+    const auto stream_endpoint = env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT");
+    const auto scenario_mode = env_or ("ZLINK_CPP_E2E_SCENARIO_MODE");
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
 
     auto app = zlink::framework::app_t::create ();
-    auto scenario = std::make_unique<scenario_service_t> (app);
+    auto scenario = std::make_unique<scenario_service_t> (app, stream_endpoint, scenario_mode);
     auto *scenario_result = scenario.get ();
     app.logging ().use_file (log_dir + "/client.log").set_min_level (
       zlink::framework::log_level_t::debug);
@@ -367,7 +503,7 @@ int main (int argc, char **argv)
           .use_handler_group (e2e::handler_group);
         auto route = options.add_route_mesh_channel (e2e::route_channel)
           .enable_server (route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (std::string ("session-a")))
+          .set_routing_id (zlink::routing_id_t::from (std::string ("client-session")))
           .enable_client ()
           .enable_spot_route_egress (e2e::route_channel);
         if (!route_a_endpoint.empty ()) {
@@ -378,10 +514,12 @@ int main (int argc, char **argv)
         }
         options.add_spot_mesh (e2e::spot_mesh)
           .use_registry_spot_resolver (e2e::route_channel)
-          .add_node ("session-a")
-          .enable_router (spot_router_endpoint, zlink::routing_id_t::from (std::string ("session-a")))
+          .add_node ("client-session")
+          .enable_router (spot_router_endpoint,
+                          zlink::routing_id_t::from (std::string ("client-session")))
           .enable_actor_gateway ()
-          .enable_pub_sub (pubsub_endpoint, zlink::routing_id_t::from (std::string ("session-a")));
+          .enable_pub_sub (pubsub_endpoint,
+                           zlink::routing_id_t::from (std::string ("client-session")));
     });
     app.add_hosted_service (std::move (scenario));
     const auto code = app.run (argc, argv);

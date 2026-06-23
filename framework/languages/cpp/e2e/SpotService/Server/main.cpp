@@ -123,6 +123,7 @@ class user_spot_t : public zlink::framework::spot_t
         context.handlers ().add_actor_packet<&user_spot_t::disconnect> ("DisconnectReq");
         context.handlers ().add_actor_packet<&user_spot_t::outbound> ("OutboundReq");
         context.handlers ().add_actor_packet<&user_spot_t::type_mismatch> ("TypeMismatchReq");
+        context.handlers ().add_actor_packet<&user_spot_t::push_to_session> ("PushReq");
         context.handlers ().add_subscribe<&user_spot_t::on_mesh_event> (e2e::mesh_topic);
     }
 
@@ -256,6 +257,19 @@ class user_spot_t : public zlink::framework::spot_t
                 .error_kind = "none",
                 .spot_name = _context.manager ().spot_name_for (_context.spot_rid ()).value_or (""),
                 .value = _value};
+    }
+
+    zlink::framework::task_t<e2e::actor_push_res_t>
+    push_to_session (scenario_actor_t &actor,
+                     zlink::framework::spot_actor_request_context_t &,
+                     const e2e::actor_push_req_t &request)
+    {
+        co_await actor.context.bound_session ()
+          .send (e2e::actor_push_notify_t{actor.actor_id, request.value})
+          .async ();
+        _state.record ("ActorPushedSession", actor.actor_id,
+                       std::string (_context.spot_rid ().value ()), request.value);
+        co_return e2e::actor_push_res_t{true, actor.actor_id};
     }
 
     void on_mesh_event (const e2e::mesh_event_t &event)
@@ -397,6 +411,109 @@ class evidence_handler_t
     scenario_state_t &_state;
 };
 
+class stream_session_t final : public zlink::framework::packet_stream_session_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<scenario_state_t,
+                                          zlink::framework::route_client_t,
+                                          zlink::framework::session_actor_manager_t,
+                                          zlink::framework::actor_gateway_t>;
+
+    stream_session_t (scenario_state_t &state,
+                      zlink::framework::route_client_t &routes,
+                      zlink::framework::session_actor_manager_t &actors,
+                      zlink::framework::actor_gateway_t &gateway) :
+        _state (state),
+        _routes (routes),
+        _actors (actors),
+        _gateway (gateway)
+    {
+    }
+
+    zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &stream) override
+    {
+        _state.record ("StreamConnected", {}, {}, stream.session_id ());
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
+    {
+        if (!_bound_actor_id.empty ()) {
+            _gateway.unbind_session_stream (_bound_actor_id);
+            _actors.unbind_session (_bound_actor_id);
+            _state.record ("StreamUnbound", _bound_actor_id);
+            _bound_actor_id.clear ();
+        }
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_error (zlink::framework::stream_t &,
+                                             const zlink::framework::stream_error_t &error) override
+    {
+        _state.record ("StreamError", {}, {}, std::string (error.message ()));
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &stream,
+                                              const zlink::framework::stream_header_t &header,
+                                              const zlink::framework::message_t &payload) override
+    {
+        if (header.packet_name () == "StreamAuthReq") {
+            auto request = payload.decode<e2e::stream_auth_req_t> ();
+            auto bound = co_await _actors.bind (to_actor_ref (request.actor)).async ();
+            _bound_actor_id = std::string (bound.actor_id ());
+            _gateway.bind_session_stream (_bound_actor_id, stream,
+                                          zlink::framework::stream_codec_t::json);
+            _state.record ("StreamBound", _bound_actor_id, {},
+                           request.target_node_rid + ":" + stream.session_id ());
+            if (header.kind () == zlink::framework::stream_message_kind_t::request) {
+                co_await stream
+                  .reply_packet (header, e2e::stream_auth_res_t{request.actor, _state.node_rid})
+                  .async ();
+            }
+            co_return;
+        }
+
+        auto actor = require_bound_actor (std::string (header.packet_name ()));
+        if (!actor) {
+            co_return;
+        }
+        if (header.kind () == zlink::framework::stream_message_kind_t::request) {
+            auto reply = co_await actor.value ().relay_request (header, payload).async ();
+            co_await stream.reply_packet (header, reply).async ();
+            co_return;
+        }
+        co_await actor.value ().relay (header, payload).async ();
+        co_return;
+    }
+
+  private:
+    zlink::framework::result_t<zlink::framework::session_actor_t>
+    require_bound_actor (const std::string &packet_name) const
+    {
+        if (_bound_actor_id.empty ()) {
+            return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
+              zlink::framework::framework_error_kind_t::actor_session_not_bound,
+              "stream session is not bound before " + packet_name);
+        }
+        auto actor = _actors.find (_bound_actor_id);
+        if (!actor) {
+            return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
+              zlink::framework::framework_error_kind_t::actor_route_not_found,
+              "bound actor route is not found for " + packet_name);
+        }
+        return zlink::framework::result_t<zlink::framework::session_actor_t>::success (
+          std::move (*actor));
+    }
+
+    scenario_state_t &_state;
+    zlink::framework::route_client_t &_routes;
+    zlink::framework::session_actor_manager_t &_actors;
+    zlink::framework::actor_gateway_t &_gateway;
+    std::string _bound_actor_id;
+};
+
 void configure_codecs (zlink::framework::codec_options_builder_t codecs)
 {
     codecs.add_json ()
@@ -421,6 +538,11 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::type_mismatch_res_t> ()
       .add_json<e2e::lifecycle_req_t> ()
       .add_json<e2e::lifecycle_res_t> ()
+      .add_json<e2e::stream_auth_req_t> ()
+      .add_json<e2e::stream_auth_res_t> ()
+      .add_json<e2e::actor_push_req_t> ()
+      .add_json<e2e::actor_push_res_t> ()
+      .add_json<e2e::actor_push_notify_t> ()
       .add_json<e2e::evidence_entry_t> ()
       .add_json<e2e::evidence_snapshot_t> ();
 }
@@ -455,6 +577,9 @@ int main (int argc, char **argv)
     const auto api_peer_endpoint = env_or ("ZLINK_CPP_E2E_API_PEER_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
+    const auto route_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_A_ENDPOINT");
+    const auto route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT");
+    const auto stream_endpoint = env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT");
 
     app.logging ().use_file (log_dir + "/" + node_rid + ".log").set_min_level (
       zlink::framework::log_level_t::debug);
@@ -473,6 +598,34 @@ int main (int argc, char **argv)
                          zlink::framework::spot_node_manager_t> ();
         configure_codecs (options.codecs ());
         options.use_discovery ().add_registry_endpoint (registry_router);
+
+        if (role == "session") {
+            auto route = options.add_route_mesh_channel (e2e::route_channel)
+              .enable_server (route_endpoint)
+              .set_routing_id (zlink::routing_id_t::from (node_rid))
+              .enable_client ();
+            if (!route_a_endpoint.empty ()) {
+                route.enable_client (route_a_endpoint);
+            }
+            if (!route_b_endpoint.empty ()) {
+                route.enable_client (route_b_endpoint);
+            }
+            options.add_spot_mesh (e2e::spot_mesh)
+              .use_registry_spot_resolver (e2e::route_channel)
+              .add_node (node_rid)
+              .enable_router (spot_router_endpoint, zlink::routing_id_t::from (node_rid))
+              .enable_actor_gateway ()
+              .enable_pub_sub (pubsub_endpoint, zlink::routing_id_t::from (node_rid));
+            options.add_stream_node ("spot-service-stream")
+              .bind (stream_endpoint)
+              .register_session<stream_session_t> ()
+              .attach_actor_gateway (node_rid);
+            options.http ().listen (http_endpoint)
+              .map_health ("/health")
+              .map_get<evidence_handler_t> ("/evidence");
+            return;
+        }
+
         options.add_route_mesh_channel (e2e::route_channel)
           .enable_server (route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (node_rid))

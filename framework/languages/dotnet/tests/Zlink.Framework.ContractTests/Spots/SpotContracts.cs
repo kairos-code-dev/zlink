@@ -270,10 +270,6 @@ public sealed class SpotContracts
         Assert.Equal(expected.Order(StringComparer.Ordinal).ToArray(), actual);
     }
 
-    private static Message Encode<T>(T value) => value.ToJson();
-
-    private static T Decode<T>(Message message) => message.FromJson<T>();
-
     private static ZLinkTimerTick TimerTick() =>
         new(
             "heartbeat",

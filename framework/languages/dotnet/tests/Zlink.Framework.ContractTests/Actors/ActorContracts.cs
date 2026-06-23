@@ -1,4 +1,3 @@
-using Zlink.Framework.Contracts.Codecs.Json;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.ContractTests.Support;
 
@@ -43,10 +42,6 @@ public sealed class ActorContracts
     private sealed record JoinRoom(string RoomId);
 
     private sealed record JoinedRoom(string RoomId);
-
-    private static Message Encode<T>(T value) => value.ToJson();
-
-    private static T Decode<T>(Message message) => message.FromJson<T>();
 
     private sealed class ActorFactory : IZLinkActorFactory
     {

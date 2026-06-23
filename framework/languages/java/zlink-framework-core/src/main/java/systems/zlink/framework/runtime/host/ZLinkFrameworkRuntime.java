@@ -165,7 +165,7 @@ public final class ZLinkFrameworkRuntime
         return start(options, backendFactory, handlerFactory, null);
     }
 
-    public static ZLinkFrameworkRuntime start(
+    static ZLinkFrameworkRuntime start(
         DefaultZLinkFrameworkOptions options,
         ZLinkBackendAdapterFactory backendFactory,
         ZLinkHandlerFactory handlerFactory,

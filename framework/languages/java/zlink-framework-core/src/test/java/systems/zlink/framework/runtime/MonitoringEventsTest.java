@@ -517,6 +517,11 @@ final class MonitoringEventsTest {
         }
 
         @Override
+        public int drain() {
+            throw unused();
+        }
+
+        @Override
         public String name() {
             return "spot-route-bridge";
         }

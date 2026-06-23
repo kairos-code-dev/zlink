@@ -41,5 +41,7 @@ public interface SpotRouteBridge extends AutoCloseable {
         long requestSeq,
         List<Message> parts);
 
+    int drain();
+
     void close();
 }

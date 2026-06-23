@@ -54,6 +54,7 @@ final class ZLinkChannelRuntimeTest {
             .enableServer("inproc://play-route")
             .enableSpotRouteEgress("play");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.bridge.completeRequests = false;
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
@@ -309,6 +310,7 @@ final class ZLinkChannelRuntimeTest {
     private static final class FakeSpotRouteBridge implements ZLinkBackendSpotRouteBridge {
         boolean nativeCallbackInvoked;
         int drains;
+        boolean completeRequests = true;
         ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
 
         @Override public void attachDealerChannel(String channelName, ZLinkBackendDealerSocket dealer, SpotRouteBridgeEndpointOptions options) { }
@@ -316,6 +318,9 @@ final class ZLinkChannelRuntimeTest {
         @Override public void setTargetNode(String channelName, RoutingId targetNodeRid) { }
         @Override public boolean send(String channelName, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) { return true; }
         @Override public boolean request(String channelName, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            if (!completeRequests) {
+                return true;
+            }
             callback.handle(new ZLinkBackendReceived(
                 requestResult,
                 Optional.empty(),

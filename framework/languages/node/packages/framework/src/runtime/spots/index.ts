@@ -791,7 +791,7 @@ class ZLinkSpotActorJoinDispatch {
           break;
         }
       }
-      if (actorRef !== undefined && sourceNodeRid !== undefined && sourceSessionRid !== undefined) {
+      if (sourceNodeRid !== undefined && sourceSessionRid !== undefined) {
         this.bindRemoteActorSession?.(actorRef, sourceNodeRid, sourceSessionRid);
       }
       if (this.consumeRemoteBoundSessionBind(actorRef, sourceNodeRid, sourceSessionRid, parts)) {

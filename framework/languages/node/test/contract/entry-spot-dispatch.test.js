@@ -341,7 +341,7 @@ test('runtime host reports joined Spot route before stale remote actor packet ta
   assert.deepEqual(runtime.actorPacketTargetForState('player-2'), {
     routerChannelId: 'bingo.room.route',
     targetNodeRid: 'play-node-1',
-    spotRid: 'bingo-room-1',
+    spotRid: zlink.RoutingId.from('bingo-room-1'),
     spotKind: 2
   });
 });
@@ -411,9 +411,9 @@ test('runtime host remembers routed packet target for stream-bound actors withou
       }
     })
   });
-  runtime.routeTransport.request = async (routerChannelId, targetNodeRid) => {
-    routedTargets.push(`${routerChannelId}:${targetNodeRid}`);
-    return {
+  runtime.routeTransport.requestRawToSpot = async (remoteAddress) => {
+    routedTargets.push(`${remoteAddress.routerChannelId}:${remoteAddress.targetNodeRid}`);
+    return [zlink.Message.from(Buffer.from(JSON.stringify({
       ok: true,
       response: { accepted: true },
       actorPacketTarget: {
@@ -421,7 +421,7 @@ test('runtime host remembers routed packet target for stream-bound actors withou
         targetNodeRid: 'play-node-1',
         spotRid: 'bingo-room-1'
       }
-    };
+    })))];
   };
   runtime.streamBindingRuntime.sendLocalBoundSessionResponse = () => true;
 

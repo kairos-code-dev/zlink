@@ -18,11 +18,9 @@ public interface IZLinkSession
     /// Handles a framework-owned inbound stream payload.
     /// </summary>
     /// <remarks>
-    /// The payload is borrowed for the duration of this callback. Session code
-    /// may read it or pass it to framework APIs such as
-    /// <see cref="IZLinkSessionActor.RelayAsync"/>, but
-    /// must not dispose it or move ownership unless it intentionally keeps a
-    /// separate copy past the callback lifetime.
+    /// The payload is a framework <see cref="ZLinkMessage"/>. Session code may
+    /// decode it or pass it to framework APIs such as
+    /// <see cref="IZLinkSessionActor.RelayAsync"/>.
     /// </remarks>
     ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,

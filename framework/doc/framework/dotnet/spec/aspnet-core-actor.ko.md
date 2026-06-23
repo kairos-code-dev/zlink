@@ -614,9 +614,8 @@ dispatch 되지 않는다.
 session 이 actor 로 packet 을 relay 할 때는 `IZLinkSession.OnDispatchAsync(...)`
 에서 actor handle 을 만들거나 찾은 뒤 `IZLinkSessionActor.RelayAsync(...)` 를 호출한다.
 application 이 actor runtime 을 직접 호출하는 별도 public client 는 두지 않는다.
-이때 session callback 으로 받은 payload 는 framework runtime 이 callback 동안
-빌려준 값이다. session 은 이를 직접 해제하거나 `Move()` 로 소비하지 않고,
-`IZLinkSessionActor.RelayAsync(...)` 에 그대로 넘긴다. remote ActorGateway 로 보내기 위해
+이때 session callback 으로 받은 payload 는 framework `ZLinkMessage` 다. session 은 이를
+decode 하거나 `IZLinkSessionActor.RelayAsync(...)` 에 그대로 넘긴다. remote ActorGateway 로 보내기 위해
 필요한 내부 frame 은 framework 가 별도로 만든다.
 
 remote actor 위치 해석은 public resolver 가 아니라 core ActorGateway 경로가 맡는다.

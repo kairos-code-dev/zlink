@@ -224,8 +224,7 @@ application 에 직접 노출하지 않는다. framework runtime 이 binding 의
 
 `OnDispatchAsync(...)` 로 전달된 `payload` 는 framework `ZLinkMessage` 다. session 은
 `payload.Decode<T>()` 로 DTO를 읽거나 `IZLinkSessionActor.RelayAsync(...)` 같은 framework
-API 에 그대로 전달한다. handler 는 bindings `Message` 소유권을 직접 다루지 않으므로
-binding payload 를 해제하거나 이동하거나 복사하는 코드를 작성하지 않는다.
+API 에 그대로 전달한다.
 
 반대로 application 이 직접 만든 `Message` 를 `IZLinkStream.Write(...)` 같은
 raw write API 에 넘길 때는 framework 가 그 `Message` 의 소유권을 가져가지
@@ -242,8 +241,7 @@ actor 로 relay 할지, 오류로 거절할지, 로그만 남길지는 session �
 framework 는 이 단계에서 자동 relay 나 자동 무시 정책을 적용하지 않는다.
 
 handler 가 받는 `payload` 도 `OnDispatchAsync(...)` 와 같은 framework `ZLinkMessage` 다.
-handler 는 binding payload 를 해제하거나 이동하는 코드를 작성하지 않는다. handler 구현은
-DI 를 사용할 수 있으며, framework 등록 과정은 session 이 주입받는 dispatcher 의
+handler 구현은 DI 를 사용할 수 있으며, framework 등록 과정은 session 이 주입받는 dispatcher 의
 context 타입에 맞는 handler 구현을 service 로 자동 등록한다.
 
 여기서 기대하는 동작은 다음과 같다.

@@ -85,8 +85,8 @@ user Spot handler 에서 받은 spot context 로 호출한다.
 |---------------------------|------|
 | `SpotRid?`, `IsJoined` | 현재 Spot join 상태 조회 |
 | `BoundSession` | 자기 client 로 push (§4) |
-| `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join. `.Async(ct)` 로 종결하며 `Accepted`와 reply `Message`를 받는다 |
-| `JoinEntrySpot(spotNodeRid, requestMessage)` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청도 빈 `Message`로 명시하며 `.Async(ct)` 로 종결한다 |
+| `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join. `.Async(ct)` 로 종결하며 `Accepted`와 reply `ZLinkMessage`를 받는다 |
+| `JoinEntrySpot(spotNodeRid, requestMessage)` | target SpotNode 의 Entry Spot 으로 이동. 빈 요청도 빈 `ZLinkMessage`로 명시하며 `.Async(ct)` 로 종결한다 |
 
 `JoinSpot`/`JoinEntrySpot` 도 `Request` 처럼 reply 대기 `Timeout(...)` override 를 받는다.
 생략하면 기본 timeout 을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은 기본값).
@@ -233,12 +233,9 @@ sequenceDiagram
 
 ### Session 서버: 인증과 relay
 
-session 콜백에서 인증 후 `BindAsync(...)` 로 actor handle 을 잡고,
-이후 packet 은 `IZLinkSessionActor.RelayAsync(...)` 로 actor 에 넘긴다.
-이때 `payload` 는 framework runtime 이 callback 동안 빌려준 값이다.
-session 은 이 값을 해제하거나 `Move()` 로 소비하지 않는다.
-`IZLinkSessionActor.RelayAsync(...)` 는 caller payload 를 소비하지 않으므로 그대로 넘긴다.
-callback 뒤에도 payload 를 보관해야 할 때만 별도 `Copy()` 또는 `Move()` 를 쓴다.
+session 콜백은 인증을 먼저 처리하고, 인증된 actor handle 을 session 에 묶은 다음,
+이후 들어오는 packet 을 그 actor 로 넘긴다(어떤 API 가 무엇을 하는지는 아래 코드 주석 참고).
+이때 `payload` 는 framework `ZLinkMessage` 이며, relay API 에 그대로 넘기면 된다.
 인증처럼 session 에서 직접 처리할 packet 이 여러 개라면
 `IZLinkSessionPacketDispatcher<TSessionContext>` 를 주입받아 등록된 packet 만
 handler 로 보낼 수 있다. dispatcher 가 `false` 를 반환한 뒤 actor 로 relay 할지,

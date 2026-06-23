@@ -599,7 +599,7 @@ request, publish, subscribe 를 처리할 뿐이다.
 이 표면은 다음 상황을 함께 설명한다.
 
 - `TSpot`으로 factory를 고르고 runtime이 새 `spotRid`를 발급하는 생성
-- 생성 요청이 넘긴 단일 `Message`를 `OnCreateAsync(...)`로 전달하는 경우
+- 생성 요청이 넘긴 단일 `ZLinkMessage`를 `OnCreateAsync(...)`로 전달하는 경우
 - 이미 존재하는 `spotRid`라면 그대로 얻어 오는 `get-or-create` 성격의 동작
 
 여기서 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle 이
@@ -674,7 +674,7 @@ var spotInfo = await spotManager.FindAsync(stage.SpotRid, cancellationToken);
 factory resolve, activation, `OnCreateAsync(...)`, `OnInitializeAsync(...)` 예외는
 `SpotCreateFailed` 계열로 분류한다. `OnCreateAsync(...)`가 reject를 반환하는 것은
 예외가 아니라 application admission 결과이며, manager 결과의 `State = Rejected`와
-reply `Message`로 호출자에게 전달한다.
+reply `ZLinkMessage`로 호출자에게 전달한다.
 
 ## 5. SPOT outbound 모델 초안
 

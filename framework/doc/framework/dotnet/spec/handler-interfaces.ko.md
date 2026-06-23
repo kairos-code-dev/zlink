@@ -570,10 +570,10 @@ public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot
 
 public readonly record struct ZLinkSpotActorJoinResult(
     bool Accepted,
-    Message? Reply)
+    ZLinkMessage? Reply)
 {
-    public static ZLinkSpotActorJoinResult Accept(Message? reply = null);
-    public static ZLinkSpotActorJoinResult Reject(Message? reply = null);
+    public static ZLinkSpotActorJoinResult Accept(ZLinkMessage? reply = null);
+    public static ZLinkSpotActorJoinResult Reject(ZLinkMessage? reply = null);
 }
 ```
 
@@ -1318,8 +1318,7 @@ optional detail 로 본다.
   - `OnDispatchAsync(...)`로 framework가 decode 한 `ZlinkStreamHeader`와
     `ZLinkMessage` payload를 받는다.
   - callback 안에서 payload 를 바로 읽거나 `IZLinkSessionActor.RelayAsync(...)` 로 넘길
-    수 있다. framework runtime 이 bindings `Message` 수신과 해제를 담당하므로 session
-    handler 는 binding payload 를 해제하거나 이동하거나 복사하는 코드를 작성하지 않는다.
+    수 있다.
   - application 이 직접 만든 `Message` 를 raw `IZLinkStream.Write(...)` 에
     넘길 때는 framework 가 caller payload 를 소비하지 않는다. 호출자가 그
     `Message` 의 수명을 계속 책임진다.
@@ -1546,7 +1545,7 @@ public interface IZLinkActorJoinSpotCall
 public sealed record ZLinkActorJoinResult(
     bool Accepted,
     ActorRef Actor,
-    Message Reply);
+    ZLinkMessage Reply);
 
 public interface IZLinkActorFactory
 {
@@ -2497,7 +2496,7 @@ public interface IZLinkSessionPacketDispatcher<TSessionContext>
 session packet dispatcher 는 등록된 packet handler 호출만 담당한다. 미등록 packet 을
 actor 로 relay 할지, 무시할지, 오류로 처리할지는 session 구현체의 정책이다.
 handler 로 전달되는 payload 는 `OnDispatchAsync(...)` 의 payload 와 같은 framework
-`ZLinkMessage` 이므로 handler 는 binding payload 를 해제하거나 이동하는 코드를 작성하지 않는다.
+`ZLinkMessage` 이다.
 
 public interface IZLinkClientServerChannelBuilder
 {
@@ -2719,11 +2718,11 @@ discovery 모드인 역할은 peer 집합의 소유권이 discovery 에 있다. 
 ```csharp
 public readonly record struct ZLinkSpotCreateResponse(
     bool Accepted,
-    Message? Reply)
+    ZLinkMessage? Reply)
 {
-    public static ZLinkSpotCreateResponse Accept(Message? reply = null);
+    public static ZLinkSpotCreateResponse Accept(ZLinkMessage? reply = null);
 
-    public static ZLinkSpotCreateResponse Reject(Message? reply = null);
+    public static ZLinkSpotCreateResponse Reject(ZLinkMessage? reply = null);
 }
 
 public enum ZLinkSpotCreateState
@@ -2736,7 +2735,7 @@ public enum ZLinkSpotCreateState
 public readonly record struct ZLinkSpotCreateResult(
     RoutingId SpotRid,
     ZLinkSpotCreateState State,
-    Message? Reply);
+    ZLinkMessage? Reply);
 
 public readonly record struct ZLinkSpotInfo(
     RoutingId SpotRid);
@@ -2801,7 +2800,7 @@ public interface IZLinkSpotManager
     `request`는 전달하지 않는다.
 
 반환값은 세 가지를 묶어서 돌려준다. `spotRid`, 생성 상태, 그리고 create callback이
-돌려준 선택적 reply `Message`다. `State`는 이미 있던 spot을 반환한 경우
+돌려준 선택적 reply `ZLinkMessage`다. `State`는 이미 있던 spot을 반환한 경우
 `Existing`, 이번 요청으로 새 spot을 만든 경우 `Created`, create callback이 거부한
 경우 `Rejected`다. `Existing`에서는 create callback을 호출하지 않으므로 새 reply는
 없다.

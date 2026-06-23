@@ -5,9 +5,9 @@ public interface IZLinkSessionPacketHandler<in TSessionContext>
     string PacketName { get; }
 
     /// <remarks>
-    /// The payload follows the same borrowed lifetime as
-    /// <see cref="IZLinkSession.OnDispatchAsync"/>. Handlers may read it or
-    /// pass it to framework APIs, but must not dispose it or move ownership.
+    /// The payload is the same framework <see cref="ZLinkMessage"/> shape used
+    /// by <see cref="IZLinkSession.OnDispatchAsync"/>. Handlers may decode it
+    /// or pass it to framework APIs.
     /// </remarks>
     ValueTask HandleAsync(
         TSessionContext context,

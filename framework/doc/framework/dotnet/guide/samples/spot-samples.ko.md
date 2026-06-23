@@ -1446,9 +1446,8 @@ public sealed record SampleAuthenticationResult(
     string ActorType);
 ```
 
-`OnDispatchAsync(...)` 로 받은 `payload` 는 framework runtime 이 callback 동안
-빌려준 값이다. session 은 payload 를 직접 해제하거나 `Move()` 로 소비하지 않고,
-읽거나 `IZLinkSessionActor.RelayAsync(...)` 같은 framework API 에 그대로 넘긴다.
+`OnDispatchAsync(...)` 로 받은 `payload` 는 framework `ZLinkMessage` 다. session 은
+payload 를 decode 하거나 `IZLinkSessionActor.RelayAsync(...)` 같은 framework API 에 그대로 넘긴다.
 
 여기서 `ISampleActorFactoryRegistry` 는 `actorType -> factory` 매핑을 잡아
 두는 샘플용 registry 로 보면 된다. 인증 결과에 따라 `SampleWarriorActor`,

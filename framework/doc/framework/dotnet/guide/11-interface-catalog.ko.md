@@ -126,9 +126,8 @@ public sealed class AuditingFilter : IZLinkHandlerFilter
 }
 ```
 
-`OnDispatchAsync(...)` 의 `payload` 는 framework runtime 이 callback 동안 빌려준
-값이다. session 은 `Dispose()` 나 `Move()` 를 기본 사용법으로 쓰지 않고,
-`IZLinkSessionActor.RelayAsync(...)` 에도 그대로 넘긴다. raw `IZLinkStream.Write(...)` 에
+`OnDispatchAsync(...)` 의 `payload` 는 framework `ZLinkMessage` 다. session 은 이를
+decode 하거나 `IZLinkSessionActor.RelayAsync(...)` 에 그대로 넘긴다. raw `IZLinkStream.Write(...)` 에
 application 이 직접 만든 `Message` 를 넘길 때만 caller 가 그 `Message` 수명을
 계속 책임진다.
 
@@ -523,8 +522,8 @@ actor.Configure();
 |------------|------|
 | `IZLinkActor` | ID 로 식별되는 상태 보유 actor. `ActorId`, `Context` |
 | `IZLinkActorContext` | actor 의 상태/동작 표면. `SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinEntrySpot`, `GetSpot<T>` |
-| `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`). 결과는 `Accepted`, `ActorRef`, reply `Message` |
-| `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(..., request)` 종결자(`Timeout` → `Async`). 결과는 `Accepted`, `ActorRef`, reply `Message` |
+| `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` |
+| `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(..., request)` 종결자(`Timeout` → `Async`). 결과는 `Accepted`, `ActorRef`, reply `ZLinkMessage` |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
 | `IZLinkActorManager` | actor 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |
 
@@ -595,11 +594,8 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
 }
 ```
 
-`OnDispatchAsync(...)` 로 받은 `payload` 는 callback 동안만 빌린 값이다.
-session 은 이 값을 직접 해제하거나 `Move()` 로 소비하지 않는다.
-`IZLinkSessionActor.RelayAsync(...)` 는 caller payload 를 소비하지 않으므로 받은 값을 그대로
-넘기면 된다. callback 뒤에도 보관해야 할 때만 별도 `Copy()` 또는 명시적인
-소유권 이전을 선택한다.
+`OnDispatchAsync(...)` 로 받은 `payload` 는 framework `ZLinkMessage` 다.
+session 은 이 값을 decode 하거나 `IZLinkSessionActor.RelayAsync(...)` 에 그대로 넘긴다.
 
 session 전용 packet handler 를 나누고 싶을 때는
 `IZLinkSessionPacketDispatcher<TSessionContext>` 를 session 생성자에 주입한다.
@@ -614,7 +610,7 @@ actor 로 relay 할지, 거절할지, 로그만 남길지는 application session
 | `IZLinkSessionClient` | client 로의 push(`Send(msg)`) / 요청 응답(`Reply(msg)`) |
 | `IZLinkSessionActors` | actor binding/lookup(`Bound`, `BindAsync`, `BindAsync(ActorRef, ...)`, `Find`) |
 | `IZLinkSessionActor` | session-bound actor handle. `RelayAsync`, `NotifyDisconnectedAsync` 로 대상 actor 에게 명시 동작을 보냄 |
-| `IZLinkSessionPacketHandler<TSessionContext>` | session 이 직접 처리할 packet handler. payload 는 session callback 과 같은 borrowed lifetime |
+| `IZLinkSessionPacketHandler<TSessionContext>` | session 이 직접 처리할 packet handler. payload 는 session callback 과 같은 framework `ZLinkMessage` |
 | `IZLinkSessionPacketDispatcher<TSessionContext>` | 등록된 session packet handler 만 호출하고 미등록 packet 은 `false` 반환 |
 | `IZLinkSessionSendCall` | session push 종결자(`Metadata`/`PacketName`/`Compress` → `Async()`) |
 | `IZLinkSessionReplyCall` | session reply 종결자(`Metadata`/`Compress` → `Async()`) |

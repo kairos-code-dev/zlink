@@ -32,6 +32,9 @@ if(NOT TARGET test_scenario_stream_zlink)
         test_scenario_stream_zlink
         ${ZLINK_C_CORE_TARGET}
         Threads::Threads)
+    target_include_directories(
+        test_scenario_stream_zlink PRIVATE
+        "${ZLINK_CORE_DIR}/include")
     set_target_properties(test_scenario_stream_zlink PROPERTIES
         BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}"
         INSTALL_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")
@@ -47,6 +50,9 @@ if(NOT TARGET test_scenario_stream_zlink_packet)
         test_scenario_stream_zlink_packet
         ${ZLINK_C_CORE_TARGET}
         Threads::Threads)
+    target_include_directories(
+        test_scenario_stream_zlink_packet PRIVATE
+        "${ZLINK_CORE_DIR}/include")
     set_target_properties(test_scenario_stream_zlink_packet PROPERTIES
         BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}"
         INSTALL_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")

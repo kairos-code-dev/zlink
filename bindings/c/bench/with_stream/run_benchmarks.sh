@@ -233,11 +233,12 @@ SUMMARY_JSON="${RESULT_DIR}/summary.json"
 REPORT_MD="${RESULT_DIR}/comparison.md"
 SKIP_CSV="${RESULT_DIR}/skipped_stacks.csv"
 
-CLIENT_BIN="${BUILD_DIR}/bin/bench_streamcompare_client"
-ASIO_BIN="${BUILD_DIR}/bin/test_scenario_stream_asio"
-ZLINK_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink"
-ZMQ_BIN="${BUILD_DIR}/bin/test_scenario_stream_zmq"
-ZLINK_PACKET_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink_packet"
+STREAMCOMPARE_BIN_DIR="${BUILD_DIR}/bench/with_stream"
+CLIENT_BIN="${STREAMCOMPARE_BIN_DIR}/bench_streamcompare_client"
+ASIO_BIN="${STREAMCOMPARE_BIN_DIR}/test_scenario_stream_asio"
+ZLINK_BIN="${STREAMCOMPARE_BIN_DIR}/test_scenario_stream_zlink"
+ZMQ_BIN="${STREAMCOMPARE_BIN_DIR}/test_scenario_stream_zmq"
+ZLINK_PACKET_BIN="${STREAMCOMPARE_BIN_DIR}/test_scenario_stream_zlink_packet"
 
 STACKS_ROOT_DIR="${STACKS_ROOT_DIR:-${ROOT_DIR}/bindings/c/bench/with_stream/stacks}"
 if [[ ! -d "${STACKS_ROOT_DIR}" ]]; then
@@ -1028,22 +1029,10 @@ ensure_cppserver_build_dir()
     fi
 }
 
-build_core_tests_helper_target()
-{
-    local helper="$1"
-    gmake -C "${BUILD_DIR}" \
-        -f "core/tests/CMakeFiles/${helper}.dir/build.make" \
-        "core/tests/CMakeFiles/${helper}.dir/build" >/dev/null
-}
-
 build_core_tests_stream_target()
 {
     local target="$1"
-    build_core_tests_helper_target "unity" || return 1
-    build_core_tests_helper_target "testutil" || return 1
-    gmake -C "${BUILD_DIR}" \
-        -f "core/tests/CMakeFiles/${target}.dir/build.make" \
-        "core/tests/CMakeFiles/${target}.dir/build" >/dev/null
+    cmake --build "${BUILD_DIR}" --target "${target}" -j"$(nproc)" >/dev/null
 }
 
 try_build_stack()

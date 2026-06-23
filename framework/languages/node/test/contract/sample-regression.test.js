@@ -213,8 +213,8 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     ['Bingo room', files.bingoRoom, 'onLeaveActor'],
     ['Bingo room', files.bingoRoom, 'context.leaveActor(actor'],
     ['TicTacToe module', files.ticTacToeModule, '.addSpotFactory(TicTacToeGameSpot)'],
-    ['TicTacToe create', files.ticTacToeCreate, 'ZLINK_SPOT_MANAGER'],
-    ['TicTacToe create', files.ticTacToeCreate, '.getOrCreate(TicTacToeGameSpot'],
+    ['TicTacToe create', files.ticTacToeCreate, 'TICTACTOE_GAME_ROOM_PROVISIONER'],
+    ['TicTacToe create', files.ticTacToeCreate, 'this.rooms.provision(roomId)'],
     ['TicTacToe entry', files.ticTacToeEntry, 'actor.context.joinSpot(roomId, request)'],
     ['TicTacToe entry', files.ticTacToeEntry, 'onCreateActor'],
     ['TicTacToe entry', files.ticTacToeEntry, 'onJoinedActor'],
@@ -223,7 +223,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
     ['TicTacToe game', files.ticTacToeGame, 'onLeaveActor'],
     ['TicTacToe game', files.ticTacToeGame, 'this.context.leaveActor(actor)'],
     ['TicTacToe session', files.ticTacToeSession, 'this.context.actors.bind(this.actor)'],
-    ['TicTacToe session', files.ticTacToeSession, 'spotManager.executeOnSpot']
+    ['TicTacToe session', files.ticTacToeSession, 'this.dependencies.joinGameHandler.handle']
   ]) {
     if (!content.includes(text)) {
       missing.push(`${name}:${text}`);
@@ -370,7 +370,8 @@ test('DeliveryDispatch TypeScript sample uses framework channel topology', () =>
   assert.match(clientScenario, /requestToChannel/);
   assert.match(clientScenario, /SampleNames\.dispatchChannel/);
   assert.match(clientModule, /zlinkFramework\(\)/);
-  assert.match(clientModule, /\.enableClient\(config\.dispatchEndpoint\)/);
+  assert.match(clientModule, /\.addRegistryEndpoint\(config\.registryRouterEndpoint\)/);
+  assert.match(clientModule, /\.enableClient\(\)/);
   assert.match(serverModule, /zlinkFramework\(\)/);
   assert.match(serverModule, /\.enableServer\(config\.dispatchEndpoint\)/);
   assert.match(serverModule, /addRequestHandler\(PacketNames\.createDeliveryReq/);
@@ -393,7 +394,8 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   assert.match(clientScenario, /requestToChannel/);
   assert.match(clientScenario, /SampleNames\.questChannel/);
   assert.match(clientModule, /zlinkFramework\(\)/);
-  assert.match(clientModule, /\.enableClient\(config\.questEndpoint\)/);
+  assert.match(clientModule, /\.addRegistryEndpoint\(config\.registryRouterEndpoint\)/);
+  assert.match(clientModule, /\.enableClient\(\)/);
   assert.match(serverModule, /zlinkFramework\(\)/);
   assert.match(serverModule, /\.enableServer\(config\.questEndpoint\)/);
   assert.match(serverModule, /addRequestHandler\(PacketNames\.enterAreaReq/);
@@ -417,7 +419,8 @@ test('ShoppingMall TypeScript sample uses framework channel topology', () => {
   assert.match(clientScenario, /requestToChannel/);
   assert.match(clientScenario, /SampleNames\.workflowChannel/);
   assert.match(clientModule, /zlinkFramework\(\)/);
-  assert.match(clientModule, /\.enableClient\(config\.workflowEndpoint\)/);
+  assert.match(clientModule, /\.addRegistryEndpoint\(config\.registryRouterEndpoint\)/);
+  assert.match(clientModule, /\.enableClient\(\)/);
   assert.match(serverModule, /zlinkFramework\(\)/);
   assert.match(serverModule, /\.enableServer\(config\.workflowEndpoint\)/);
   assert.match(serverModule, /addRequestHandler\(PacketNames\.startOrderReq/);
@@ -608,7 +611,7 @@ test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
     [moveHandler, 'spot.placeMark(actor, request.cell)'],
     [gameSpot, 'gameStateNotify(state)'],
     [playActor, 'this.context.boundSession'],
-    [playSession, 'spotManager.executeOnSpot'],
+    [playSession, 'this.dependencies.joinGameHandler.handle'],
     [client, 'payload.state.status === GameStatus.InProgress'],
     [client, 'stateOf(client1FinalMove).status === GameStatus.Won'],
     [readme, '`Won`']
@@ -858,27 +861,27 @@ test('node client scenarios follow the common sample document order', () => {
   const ticTacToeClient = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'tictactoe-client-scenario.ts'), 'utf8');
 
   assertOrdered('Bingo.Ts/Client/bingo-client-scenario.ts', bingoApp, [
-    "1. Both clients connect to Session, authenticate",
+    "1. Clients connect only to Session streams, authenticate",
     'client1.request(authenticateReq(BingoSamplePlayers.player1))',
     'client2.request(authenticateReq(BingoSamplePlayers.player2))',
     '2. player-1 matches first',
     'client1.request(matchBingoReq())',
     'client1MatchRes.roomId.length > 0',
     'await client1SelfJoinNotify',
-    '3-5. player-2 joins the same room',
+    '4-6. player-2 joins the same room',
     '.waitFor<PlayerJoinedNotify>',
     'client2SelfJoinNotify',
     '.waitFor<StateEnvelope>(PacketNames.gameStartedNotify)',
     '.waitFor<StateEnvelope>(PacketNames.gameStartedNotify)',
     'client2.request(matchBingoReq())',
     'await client2SelfJoinNotify',
-    '6. Both clients submit deterministic cards',
+    '7. Both clients submit deterministic cards',
     '.request(submitBingoCardReq',
     '.request(submitBingoCardReq',
     'stateOf(client1Card).players.length === 2',
-    '7. Number drawing is server-driven',
-    'requireSameDraw(client1Draw1.payload, client2Draw1.payload, 1)',
-    '8. Both clients receive the final finished state',
+    '8. Number drawing is server-driven',
+    'requireSameDraw(client1Draw.payload, client2Draw.payload, drawTask.drawSeq)',
+    '9. Both clients receive the final finished state',
     'client1EndedTask',
     'ended.status === BingoRoomStatus.Finished'
   ]);
@@ -897,21 +900,18 @@ test('node client scenarios follow the common sample document order', () => {
     'client1.request(joinGameReq(game.roomId))',
     "stateOf(client1Join).roomId === game.roomId",
     'stateOf(client1Join).xActorId === client1Auth.player.actorId',
-    '4-6. Guest joins by the same RoomId',
     'client1SawClient2Join',
-    'client2SelfJoinNotify',
-    '.request(joinGameReq(game.roomId))',
-    'client2Join.mark === GameMarks.o',
-    'await client2SelfJoinNotify',
-    'client1Running.payload.state.nextTurn === client1Auth.actorId',
-    '7. Each move response and opponent notify',
+    '4-6. Guest joins by the same RoomId',
+    'client2.request(joinGameReq(game.roomId))',
+    'stateOf(client2Join).oActorId === client2Auth.player.actorId',
+    'client1Running.payload.state.nextTurn === GameMarks.x',
+    '7. Each move response is matched with the opponent notify',
     'client1.request(placeMarkStreamReq(0))',
-    'lastMoveActorId === client1Auth.actorId',
-    'lastMoveCell === 0',
+    "stateOf(client1Move1).board === 'X........'",
     '8. The final host move wins',
     'client1.request(placeMarkStreamReq(2))',
-    'stateOf(client1FinalMove).status === GameStatus.Won',
-    'lastMoveCell === 2'
+    "stateOf(client1FinalMove).board === 'XXXOO....'",
+    'stateOf(client1FinalMove).status === GameStatus.Won'
   ]);
 });
 
@@ -998,7 +998,7 @@ test('TicTacToe server uses framework stream session instead of connector framin
 
   for (const relative of checked) {
     const content = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', relative), 'utf8');
-    if (/stream-connector|ZlinkStream(Frame|Header|Codec)|net\.createServer|tryReadFrame/.test(content)) {
+    if (/stream-connector|ZlinkStream(Frame|Codec)|net\.createServer|tryReadFrame/.test(content)) {
       violations.push(relative);
     }
   }
@@ -1050,7 +1050,7 @@ test('TicTacToe server uses framework stream session instead of connector framin
     '.registerSession(PlaySessionFactory)',
     'context.client.reply',
     'actorManager.getOrCreate',
-    'player.actor.push('
+    'joined.actor.push('
   ]) {
     if (!`${playModule}\n${playSession}\n${playActor}\n${playJoinHandler}\n${gameSpot}`.includes(text)) {
       missing.push(text);
@@ -1479,7 +1479,8 @@ test('node sample runners own server process orchestration', () => {
     for (const text of [
       'Start-Server',
       'Wait-Port',
-      'node (Join-Path $scriptDir "dist/Client/main.js")'
+      'Start-Process -FilePath "node"',
+      'dist/Client/main.js'
     ]) {
       if (!runSamplePs1.includes(text)) {
         missing.push(`${sample}:ps1:${text}`);

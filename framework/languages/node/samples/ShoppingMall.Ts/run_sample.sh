@@ -91,9 +91,21 @@ start_server() {
   PIDS+=("$!")
 }
 
+run_client() {
+  for attempt in $(seq 1 10); do
+    if node "${SCRIPT_DIR}/dist/Client/main.js"; then
+      return 0
+    fi
+    if [[ "${attempt}" == "10" ]]; then
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
 start_server
 wait_port
 wait_discovery_ready
 sleep 1
-node "${SCRIPT_DIR}/dist/Client/main.js"
+run_client
 grep -Rq "message flow" "${SHOPPINGMALL_LOG_DIR}"

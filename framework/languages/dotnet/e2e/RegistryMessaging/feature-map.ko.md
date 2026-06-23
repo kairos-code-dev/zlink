@@ -16,6 +16,6 @@
 | RM-C4 | 구현 | timeout 뒤 late reply 비오염 marker가 있다. |
 | RM-C5 | 구현 | 미등록 packet 처리 marker가 있다. |
 | RM-C6 | 구현 | dealer mesh peer request marker가 있다. |
-| RM-C7 | 미구현 | weighted 분산 marker가 없다. |
-| RM-C8 | 미구현 | 메시지 크기 다양성 marker가 없다. |
-| RM-C9 | 미구현 | backpressure / HWM 포화 marker가 없다. |
+| RM-C7 | 구현 | build-time weight 75/25 provider를 직접 연결하고 high-weight provider가 더 많이 처리하는 marker가 있다. |
+| RM-C8 | 구현 | 1B, 4KiB, 256KiB, 1MiB payload 왕복 hash/length marker가 있다. MaxMessageSize 초과 거부는 framework channel runtime 미배선으로 별도 한계다. |
+| RM-C9 | public API/harness 대기 | framework channel runtime이 HWM 옵션을 live socket에 적용하지 않아 public E2E에서 포화 backpressure를 직접 만들 수 없다. |

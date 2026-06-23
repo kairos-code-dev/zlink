@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -57,6 +59,7 @@ else if (options.Role == "provider")
             clientServer.ConfigureServerRouting().RoutingId = RoutingId.From(options.Rid);
             clientServer.ConfigureServerSocket().Weight = options.Weight;
             clientServer.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
+            clientServer.AddRequestHandler<PayloadRequestHandler, PayloadRequest, PayloadReply>("PayloadRequest");
             clientServer.AddSendHandler<ProfileCommandHandler, ProfileCommand>("ProfileCommand");
         }
 
@@ -145,6 +148,23 @@ internal sealed class ProfileCommandHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"profile-command|rid={evidence.Rid}|command={command.CommandId}|packet={context.PacketName}");
         return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class PayloadRequestHandler(EvidenceStore evidence)
+    : IZLinkRequestHandler<PayloadRequest, PayloadReply>
+{
+    public ValueTask<PayloadReply> HandleAsync(
+        PayloadRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.Payload)));
+        evidence.Add(
+            $"payload-request|rid={evidence.Rid}|marker={request.Marker}"
+            + $"|length={request.Payload.Length}|sha256={hash}|packet={context.PacketName}");
+        return ValueTask.FromResult(new PayloadReply(request.Marker, request.Payload.Length, hash));
     }
 }
 

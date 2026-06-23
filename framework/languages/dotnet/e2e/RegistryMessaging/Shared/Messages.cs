@@ -6,6 +6,10 @@ public sealed record ProfileReply(string Value, string ProviderRid);
 
 public sealed record ProfileCommand(string CommandId);
 
+public sealed record PayloadRequest(string Marker, string Payload);
+
+public sealed record PayloadReply(string Marker, int Length, string Sha256);
+
 public sealed record WorkflowRequest(string Value);
 
 public sealed record WorkflowReply(string Value, string ProviderRid);

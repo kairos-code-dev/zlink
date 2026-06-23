@@ -2,6 +2,8 @@ using System.Net.Http.Json;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -83,6 +85,9 @@ static async Task RunAsync(ClientOptions options)
     await dealerMeshHost.StartAsync();
     await RunRmC6Async(options, dealerMeshHost.Services.GetRequiredService<IZLinkChannelClient>());
     await dealerMeshHost.StopAsync();
+
+    await RunRmC7Async(options);
+    await RunRmC8Async(options);
 
     if (!string.IsNullOrWhiteSpace(options.ServerProject))
     {
@@ -353,6 +358,86 @@ static async Task RunRmC6Async(ClientOptions options, IZLinkChannelClient client
         },
         "RM-C6 expected both dealer mesh providers to handle the request set.");
     Console.WriteLine("scenario RM-C6 passed");
+}
+
+static async Task RunRmC7Async(ClientOptions options)
+{
+    await using var cluster = await DynamicCluster.StartAsync(options, "rm-c7");
+    await using var providerA = await cluster.StartProviderAsync("api-a-weighted", "api-a", weight: 75);
+    await using var providerB = await cluster.StartProviderAsync("api-b-weighted", "api-b", weight: 25);
+
+    using var host = CreateChannelClientHost(
+        options,
+        client =>
+        {
+            client.AddClientServerChannel("profile")
+                .EnableClient(providerA.ChannelEndpoint)
+                .EnableClient(providerB.ChannelEndpoint);
+        });
+
+    await host.StartAsync();
+    var client = host.Services.GetRequiredService<IZLinkChannelClient>();
+    var marker = $"rm-c7-{Guid.NewGuid():N}";
+    for (var i = 0; i < 240; i++)
+    {
+        var reply = await client.RequestToChannel("profile", new ProfileRequest($"{marker}-{i}"))
+            .PacketName("ProfileRequest")
+            .Timeout(TimeSpan.FromSeconds(5))
+            .Async<ProfileReply>();
+        Ensure(reply.ProviderRid is "api-a" or "api-b", "RM-C7 reply provider mismatch.");
+    }
+
+    await WaitUntilAsync(
+        async () =>
+        {
+            var evidenceA = await ReadEvidenceFileAsync(providerA.EvidencePath);
+            var evidenceB = await ReadEvidenceFileAsync(providerB.EvidencePath);
+            var a = evidenceA.Count(line => line.Contains("profile-request|rid=api-a", StringComparison.Ordinal)
+                && line.Contains(marker, StringComparison.Ordinal));
+            var b = evidenceB.Count(line => line.Contains("profile-request|rid=api-b", StringComparison.Ordinal)
+                && line.Contains(marker, StringComparison.Ordinal));
+            return a > 0 && b > 0 && a + b == 240 && a > b * 2;
+        },
+        "RM-C7 expected high-weight provider to handle distinctly more requests.",
+        TimeSpan.FromSeconds(20));
+
+    await host.StopAsync();
+    Console.WriteLine("scenario RM-C7 passed");
+}
+
+static async Task RunRmC8Async(ClientOptions options)
+{
+    using var host = CreateChannelClientHost(
+        options,
+        client =>
+        {
+            client.AddClientServerChannel("profile")
+                .EnableClient(options.ProviderAEndpoint);
+        });
+
+    await host.StartAsync();
+    var client = host.Services.GetRequiredService<IZLinkChannelClient>();
+    foreach (var size in new[] { 1, 4096, 256 * 1024, 1024 * 1024 })
+    {
+        var marker = $"rm-c8-{size}-{Guid.NewGuid():N}";
+        var payload = BuildPayload(size);
+        var expectedHash = HashPayload(payload);
+        var reply = await client.RequestToChannel("profile", new PayloadRequest(marker, payload))
+            .PacketName("PayloadRequest")
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Async<PayloadReply>();
+        Ensure(reply.Marker == marker, "RM-C8 marker mismatch.");
+        Ensure(reply.Length == payload.Length, "RM-C8 payload length mismatch.");
+        Ensure(reply.Sha256 == expectedHash, "RM-C8 payload hash mismatch.");
+    }
+
+    var followUp = await client.RequestToChannel("profile", new ProfileRequest("rm-c8-after"))
+        .PacketName("ProfileRequest")
+        .Timeout(TimeSpan.FromSeconds(5))
+        .Async<ProfileReply>();
+    Ensure(followUp.Value == "profile:rm-c8-after", "RM-C8 follow-up request failed.");
+    await host.StopAsync();
+    Console.WriteLine("scenario RM-C8 passed");
 }
 
 static async Task RunDynamicProviderScenariosAsync(ClientOptions options)
@@ -704,6 +789,22 @@ static int CountNew(string[] after, string[] before, string prefix, string marke
     return newCount - oldCount;
 }
 
+static string BuildPayload(int size)
+{
+    var builder = new StringBuilder(size);
+    for (var i = 0; i < size; i++)
+    {
+        builder.Append((char)('a' + (i % 26)));
+    }
+
+    return builder.ToString();
+}
+
+static string HashPayload(string payload)
+{
+    return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
+}
+
 internal sealed record ClientOptions(
     string RegistryRouterEndpoint,
     string ProviderAEndpoint,
@@ -802,7 +903,7 @@ internal sealed class DynamicCluster : IAsyncDisposable
         return cluster;
     }
 
-    public async Task<DynamicProcess> StartProviderAsync(string name, string rid)
+    public async Task<DynamicProcess> StartProviderAsync(string name, string rid, int weight = 100)
     {
         var httpUrl = PickHttpUrl();
         var channelEndpoint = PickEndpoint();
@@ -817,6 +918,7 @@ internal sealed class DynamicCluster : IAsyncDisposable
                 "--channel-endpoint", channelEndpoint,
                 "--route-endpoint", PickEndpoint(),
                 "--dealer-endpoint", PickEndpoint(),
+                "--weight", weight.ToString(),
                 "--evidence-file", evidencePath,
                 "--log-dir", _options.LogDir,
             ],

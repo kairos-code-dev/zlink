@@ -86,6 +86,29 @@ public sealed class CustomSerializerEnvelopeTests
     }
 
     [Fact]
+    public void SpotCreate_Json_RoundTrips_Request_And_Reply_Through_Framework_Message()
+    {
+        AssertEnvelopeRequestAndReplyRoundTrip(
+            new ZLinkCodecRegistryBuilder(),
+            new Probe("create-request"),
+            new Probe("create-reply"),
+            "application/json");
+    }
+
+    [Fact]
+    public void SpotCreate_Protobuf_RoundTrips_Request_And_Reply_Through_Framework_Message()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.Use(ZLinkProtobufCodec.Default);
+
+        AssertEnvelopeRequestAndReplyRoundTrip(
+            codecs,
+            new StringValue { Value = "create-request" },
+            new StringValue { Value = "create-reply" },
+            "application/x-protobuf");
+    }
+
+    [Fact]
     public void SpotCreate_MessagePack_Extension_RoundTrips_Through_Framework_Message()
     {
         var codecs = new ZLinkCodecRegistryBuilder();
@@ -97,6 +120,79 @@ public sealed class CustomSerializerEnvelopeTests
 
         Assert.Equal("application/x-msgpack", received.ContentType);
         Assert.Equal(new PackedProbe("create"), received.Decode<PackedProbe>());
+    }
+
+    [Fact]
+    public void SpotCreate_CustomSerializer_RoundTrips_Request_And_Reply_Through_Framework_Message()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.AddSerializer("application/avro", new MarkerSerializer());
+
+        AssertEnvelopeRequestAndReplyRoundTrip(
+            codecs,
+            new Probe("create-request"),
+            new Probe("create-reply"),
+            "application/avro");
+    }
+
+    [Fact]
+    public void Session_Json_RoundTrips_Through_Framework_Message()
+    {
+        AssertStreamRoundTrip(
+            new ZLinkCodecRegistryBuilder(),
+            new Probe("session"),
+            ZlinkStreamCodec.Json,
+            "application/json");
+    }
+
+    [Fact]
+    public void Session_Protobuf_RoundTrips_Through_Framework_Message()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.Use(ZLinkProtobufCodec.Default);
+
+        AssertStreamRoundTrip(
+            codecs,
+            new StringValue { Value = "session" },
+            ZlinkStreamCodec.Protobuf,
+            "application/x-protobuf");
+    }
+
+    [Fact]
+    public void Session_MessagePack_RoundTrips_Through_Framework_Message()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.Use(ZLinkMessagePackCodec.Default);
+
+        AssertStreamRoundTrip(
+            codecs,
+            new PackedProbe("session"),
+            ZlinkStreamCodec.MessagePack,
+            "application/x-msgpack");
+    }
+
+    [Fact]
+    public void Session_CustomSerializer_RoundTrips_Through_Framework_Message()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.AddSerializer("application/avro", new MarkerSerializer());
+        codecs.AddStreamCodec("application/avro", ZlinkStreamCodec.Protobuf);
+
+        AssertStreamRoundTrip(
+            codecs,
+            new Probe("session"),
+            ZlinkStreamCodec.Protobuf,
+            "application/avro");
+    }
+
+    [Fact]
+    public void ActorJoin_Json_RoundTrips_Request_And_Reply_Through_Framework_Message()
+    {
+        AssertEnvelopeRequestAndReplyRoundTrip(
+            new ZLinkCodecRegistryBuilder(),
+            new Probe("join-request"),
+            new Probe("join-reply"),
+            "application/json");
     }
 
     [Fact]
@@ -114,6 +210,19 @@ public sealed class CustomSerializerEnvelopeTests
     }
 
     [Fact]
+    public void ActorJoin_MessagePack_RoundTrips_Request_And_Reply_Through_Framework_Message()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.Use(ZLinkMessagePackCodec.Default);
+
+        AssertEnvelopeRequestAndReplyRoundTrip(
+            codecs,
+            new PackedProbe("join-request"),
+            new PackedProbe("join-reply"),
+            "application/x-msgpack");
+    }
+
+    [Fact]
     public void ActorJoin_CustomSerializer_RoundTrips_Reply_Through_Framework_Message()
     {
         var codecs = new ZLinkCodecRegistryBuilder();
@@ -125,6 +234,19 @@ public sealed class CustomSerializerEnvelopeTests
 
         Assert.Equal("application/avro", received.ContentType);
         Assert.Equal(new Probe("accepted"), received.Decode<Probe>());
+    }
+
+    [Fact]
+    public void ActorJoin_CustomSerializer_RoundTrips_Request_And_Reply_Through_Framework_Message()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.AddSerializer("application/avro", new MarkerSerializer());
+
+        AssertEnvelopeRequestAndReplyRoundTrip(
+            codecs,
+            new Probe("join-request"),
+            new Probe("join-reply"),
+            "application/avro");
     }
 
     [Fact]
@@ -239,6 +361,74 @@ public sealed class CustomSerializerEnvelopeTests
             null,
             null,
             null);
+    }
+
+    private static void AssertEnvelopeRequestAndReplyRoundTrip<TRequest, TReply>(
+        ZLinkCodecRegistryBuilder codecs,
+        TRequest request,
+        TReply reply,
+        string expectedContentType)
+    {
+        var receivedRequest = EnvelopeRoundTrip(codecs, request, expectedContentType);
+        AssertDecodedEquals(request, receivedRequest.Decode<TRequest>());
+
+        var receivedReply = EnvelopeRoundTrip(codecs, reply, expectedContentType);
+        AssertDecodedEquals(reply, receivedReply.Decode<TReply>());
+    }
+
+    private static ZLinkMessage EnvelopeRoundTrip<T>(
+        ZLinkCodecRegistryBuilder codecs,
+        T value,
+        string expectedContentType)
+    {
+        var encoded = ZLinkMessage.From(value).Encode(codecs);
+        try
+        {
+            var received = ZLinkMessage.FromEnvelopePayload(encoded.ContentType, encoded.Message, codecs);
+            Assert.Equal(expectedContentType, received.ContentType);
+            return received;
+        }
+        finally
+        {
+            encoded.Message.Dispose();
+        }
+    }
+
+    private static void AssertStreamRoundTrip<T>(
+        ZLinkCodecRegistryBuilder codecs,
+        T value,
+        ZlinkStreamCodec expectedCodec,
+        string expectedContentType)
+    {
+        var encoded = ZLinkStreamPacketPayloadCodec.Encode(value, typeof(T), codecs);
+
+        Assert.Equal(expectedCodec, encoded.Codec);
+
+        using var payload = Message.From(encoded.Payload.Span);
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            encoded.Codec,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "orders.created",
+            ZlinkStreamMetadata.Empty);
+
+        var message = ZLinkStreamPacketPayloadCodec.DecodeMessage(header, payload, codecs);
+
+        Assert.Equal(expectedContentType, message.ContentType);
+        Assert.Equal(expectedCodec, message.StreamCodec);
+        AssertDecodedEquals(value, message.Decode<T>());
+    }
+
+    private static void AssertDecodedEquals<T>(T expected, T actual)
+    {
+        if (expected is StringValue expectedString && actual is StringValue actualString)
+        {
+            Assert.Equal(expectedString.Value, actualString.Value);
+            return;
+        }
+
+        Assert.Equal(expected, actual);
     }
 
     private sealed class MarkerSerializer : IZLinkMessageSerializer

@@ -15,8 +15,15 @@ final class KotlinMessageCodecBoundaryTest {
 
         encoded.use {
             val message = ZLinkMessage.fromMessage(it, serializer)
-            assertEquals(KotlinBoundaryPayload("custom"), message.decode(KotlinBoundaryPayload::class.java))
+            assertEquals(KotlinBoundaryPayload("custom"), message.decode<KotlinBoundaryPayload>())
         }
+    }
+
+    @Test
+    fun kotlinMessageOfKeepsTypedValueForFrameworkMessageDecode() {
+        val message = messageOf(KotlinBoundaryPayload("typed"))
+
+        assertEquals(KotlinBoundaryPayload("typed"), message.decode<KotlinBoundaryPayload>())
     }
 }
 

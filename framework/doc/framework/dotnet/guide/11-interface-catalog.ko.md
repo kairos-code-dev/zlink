@@ -483,7 +483,7 @@ public sealed class RoomRequestHandler
 | `IZLinkSpotRequestHandler<TSpot, TRequest, TReply>` | spot 요청 handler. 반환값이 응답 |
 | `IZLinkSpotSubscriptionHandler<TSpot, TMessage>` | spot 구독 topic 수신 handler |
 | `IZLinkSpotTimerHandler<TSpot>` | spot timer tick handler(`ZLinkTimerTick`) |
-| `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user spot join 요청 callback. 기본 계약은 `(TActor, Message)` |
+| `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user spot join 요청 callback. 기본 계약은 `(TActor, ZLinkMessage)`이며 codec decode는 framework registry를 사용한다 |
 | `IZLinkEntrySpot<TActor>.OnActorJoinAsync(...)` | Entry Spot join 요청 callback. user Spot에서 Entry Spot으로 돌아오는 명시적 join을 accept/reject한다 |
 | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | user spot actor 단방향 handler. context 뒤에 payload |
 | `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user spot actor 요청 handler. context 뒤에 request |

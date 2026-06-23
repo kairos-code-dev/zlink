@@ -39,6 +39,90 @@ DTO handler, 같은 actor join 코드, 같은 session callback 코드를 사용�
 `JsonMessageExtensions`, raw `Buffer`, `zlink_msg_t` 같은 타입과 helper가 업무 코드에 남아 있다면
 이 계획을 끝낸 것으로 보지 않는다.
 
+### 이 문서에서 말하는 기존 방식
+
+이 문서에서 “기존 방식”이라고만 쓰면 의미가 모호하다. 구현자와 리뷰어는 항상 아래 두 문장으로
+구분해서 읽는다.
+
+- **기존 codec 등록 방식은 유지한다.** 사용자는 기존처럼 options, builder, application startup에서
+  JSON, Protobuf, MessagePack, custom codec extension을 등록한다. 이 등록 위치, extension 작성 계약,
+  dependency 추가 방식은 이 계획의 변경 대상이 아니다.
+- **기존 raw 업무 API 방식은 제거한다.** SPOT create, session dispatch, actor join의 handler와 sample
+  업무 코드에서 bindings raw `Message`, `Buffer`, `zlink_msg_t`, `Message.from(...)`, codec별
+  `encode` / `decode` helper를 직접 쓰던 방식은 최종 상태에 남기지 않는다.
+
+따라서 “기존 방식 유지”라는 표현은 codec extension 등록에만 적용한다. raw payload를 직접 만들거나
+해석하는 업무 API까지 유지한다는 뜻으로 해석하면 안 된다.
+
+변경 전과 변경 후를 비교할 때 핵심은 아래 한 줄이다.
+
+```text
+codec extension registration stays the same; business payload handling changes.
+```
+
+한국어로 풀면, codec을 추가하는 위치와 방법은 그대로 두고, handler와 sample에서 payload를 직접
+인코딩하거나 디코딩하던 코드를 DTO 또는 framework `ZLinkMessage` 경로로 옮긴다는 뜻이다.
+
+간단한 예시는 아래와 같다.
+
+```csharp
+// 유지: custom codec은 기존처럼 startup/options에 등록한다.
+builder.AddZLinkFramework(options =>
+{
+    options.Codecs.Use(new MyCustomCodecExtension(...));
+});
+
+// 제거: 업무 코드가 raw Message와 codec helper를 직접 조합한다.
+var request = Message.From(JsonSerializer.SerializeToUtf8Bytes(new JoinRoom("room-1")));
+await actor.Context.JoinSpot(roomRid, request).Async();
+
+// 변경 후: 같은 custom codec 등록을 사용하면서 업무 코드는 DTO 또는 ZLinkMessage만 넘긴다.
+await actor.Context.JoinSpot(roomRid, ZLinkMessage.From(new JoinRoom("room-1"))).Async();
+```
+
+```java
+// 유지: custom codec은 기존처럼 builder/options에 등록한다.
+ZLinkFramework.configure(options -> options
+    .codecs(codecs -> codecs.use(new MyCustomCodecExtension(...))));
+
+// 제거: 업무 코드가 raw Message와 codec helper를 직접 조합한다.
+Message request = Message.from(JsonMessage.encode(new JoinRoom("room-1")));
+actor.context().joinSpot(roomRid, request).submit().join();
+
+// 변경 후: 같은 custom codec 등록을 사용하면서 업무 코드는 DTO와 typed reply를 사용한다.
+actor.context().joinSpot(roomRid, new JoinRoom("room-1"))
+    .submit(JoinedRoom.class)
+    .join();
+```
+
+```ts
+// 유지: custom codec은 기존처럼 framework 구성에 등록한다.
+zlinkFramework()
+  .codecs((codecs) => codecs.use(new MyCustomCodecExtension(...)));
+
+// 제거: 업무 코드가 Buffer 또는 binding message를 직접 만든다.
+const request = Message.from(JSON.stringify({ roomId: "room-1" }));
+await actor.context.joinSpot(roomRid, request).submit();
+
+// 변경 후: 같은 custom codec 등록을 사용하면서 업무 코드는 plain object와 typed submit을 사용한다.
+await actor.context.joinSpot(roomRid, { roomId: "room-1" }).submit<JoinedRoom>();
+```
+
+```cpp
+// 유지: custom codec은 기존처럼 framework options에 등록한다.
+options.codecs().use(my_custom_codec_extension{});
+
+// 제거: sample 또는 handler가 raw zlink message를 직접 만든다.
+auto request = zlink::message_t::from_string(json_payload);
+co_await actor.context().join_spot(room_rid, std::move(request));
+
+// 변경 후: 같은 custom codec 등록을 사용하면서 업무 코드는 DTO 또는 framework message를 사용한다.
+co_await actor.context().join_spot(room_rid, join_room_t{.room_id = "room-1"});
+```
+
+위 예시에서 codec 등록 코드는 변경 전과 변경 후가 같다. 바뀌는 것은 raw payload helper를 호출하던
+업무 코드뿐이다. 이 기준은 framework sample에도 그대로 적용한다.
+
 ## 구현 전 기준 상태
 
 이 절은 2026-06-23 구현 착수 전 checkout 기준으로 확인한 baseline 이다. 이 표는 문제를

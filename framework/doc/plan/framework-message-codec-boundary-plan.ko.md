@@ -129,6 +129,18 @@ registry 계약을 사용한다. 이 plan은 extension 등록 이름, options �
 계약을 바꾸지 않는다. sample 차이도 dependency와 `Codecs.Use(...)` 또는 언어별 동등 호출에만 남아야
 한다.
 
+이 절은 구현 중 반드시 보존해야 하는 공개 사용법이다. 아래 항목을 바꾸면 이 plan을 잘못 적용한
+것으로 본다.
+
+- custom codec extension을 작성하는 interface, trait, class, function의 의미를 바꾸지 않는다.
+- custom codec extension을 등록하는 options, builder, application startup 위치를 옮기지 않는다.
+- handler, actor, session callback, SPOT create hook에 codec extension 인자를 새로 요구하지 않는다.
+- sample에서 codec을 바꿀 때 handler 코드를 고치게 만들지 않는다. dependency와 startup 등록 코드만
+  바뀌어야 한다.
+
+즉 “codec extension을 기존처럼 등록한다”는 사용법은 유지 대상이다. 제거 대상은 codec 등록 방식이
+아니라, 업무 코드가 raw payload를 직접 만들거나 해석하던 방식이다.
+
 ### 기존 방식과 변경 후 방식 구분
 
 이 계획에서 “기존 방식”이라는 말은 두 가지를 반드시 구분해서 읽어야 한다.
@@ -179,6 +191,8 @@ codec을 framework runtime이 SPOT create, session dispatch, actor join 경로�
 |------|----|
 | custom codec extension을 options에 등록하는 기존 코드는 바뀌는가? | 바뀌지 않는다. 기존 등록 코드는 계속 유효해야 한다. |
 | custom codec extension 작성 계약이 바뀌는가? | 바뀌지 않는다. 선행 codec extension 계획의 registry 계약을 그대로 쓴다. |
+| custom codec을 쓰려면 handler에 codec parameter를 넘겨야 하는가? | 아니다. codec은 startup/options/builder에 등록하고, handler는 DTO 또는 `ZLinkMessage`만 다룬다. |
+| custom codec으로 바꾸면 sample 업무 코드를 고쳐야 하는가? | 아니다. dependency와 extension 등록 코드만 바뀌어야 한다. |
 | handler에서 `Message.from(...)`으로 직접 인코딩해도 되는가? | 안 된다. handler는 DTO 또는 `ZLinkMessage`를 사용한다. |
 | session dispatch에서 raw `Message` / `Buffer`를 기본 payload로 받아도 되는가? | 안 된다. typed handler 또는 `ZLinkMessage`를 사용한다. |
 | wire payload를 그대로 보존해야 하는 relay나 harness는 어떻게 하는가? | 명시 raw API로만 남긴다. 일반 업무 API와 sample의 기본 경로에서는 쓰지 않는다. |
@@ -210,6 +224,21 @@ options.codecs().use(my_custom_codec_extension{});
 위 코드는 변경 후에도 그대로 유효해야 한다. custom codec을 추가하려면 application startup 또는
 builder/options에서 extension을 등록한다. handler, actor, session, SPOT create 코드는 codec 종류를
 직접 알 필요가 없어야 한다.
+
+Kotlin도 Java framework 설정 위에 같은 규칙을 따른다. Kotlin DSL을 제공하는 언어라면 아래처럼
+startup 구성에만 codec 등록이 나타나야 한다.
+
+```kotlin
+zlinkFramework {
+    codecs {
+        use(MyCustomCodecExtension(...))
+    }
+}
+```
+
+이 Kotlin 예시는 등록 위치를 보여주기 위한 것이다. 실제 DSL 이름은 해당 언어의 기존 framework
+configuration API를 그대로 따른다. 이 plan을 적용하면서 custom codec 등록 DSL을 새로 만들거나 이름을
+바꾸지 않는다.
 
 반대로 아래처럼 codec 등록 코드가 아니라 payload를 직접 만드는 코드는 제거 대상이다.
 

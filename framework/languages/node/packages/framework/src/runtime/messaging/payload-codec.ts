@@ -20,10 +20,14 @@ export function encodeFrameworkPayloadMessage(
     return payload.toMessage(registry);
   }
   if (isMessage(payload)) {
-    return payload;
+    throw new ZLinkConfigurationException(
+      'Raw binding Message is not accepted by the default framework payload API. Use ZLinkMessage.fromEncoded(...) for explicit raw forwarding.'
+    );
   }
   if (Buffer.isBuffer(payload) || payload instanceof Uint8Array) {
-    return BindingMessage.from(payload);
+    throw new ZLinkConfigurationException(
+      'Raw Buffer payload is not accepted by the default framework payload API. Wrap a DTO with ZLinkMessage.from(...) or use ZLinkMessage.fromEncoded(...) for explicit raw forwarding.'
+    );
   }
 
   const serializer = selectDefaultSerializer(registry);

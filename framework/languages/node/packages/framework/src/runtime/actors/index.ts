@@ -28,7 +28,7 @@ import {
   ZLinkSpotKind
 } from '../../contracts';
 import { Message as BindingMessage, RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
-import { ZLinkMessage, type ZLinkMessageSerializer } from '../../contracts';
+import { isZLinkMessage, ZLinkMessage, type ZLinkMessageSerializer } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import type {
   ZLinkBackendActorJoinEntrySpotResult,
@@ -1353,7 +1353,7 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
     const requestMessage = this.request === undefined
       ? BindingMessage.from(Buffer.alloc(0))
       : encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
-    const ownsRequest = this.request === undefined || !isMessage(this.request);
+    const ownsRequest = ownsFrameworkPayloadMessage(this.request);
     try {
       const result = await this.coordinator.joinSpot(
         this.actor,
@@ -1396,7 +1396,7 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
 
   async submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
     const requestMessage = encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
-    const ownsRequest = !isMessage(this.request);
+    const ownsRequest = ownsFrameworkPayloadMessage(this.request);
     try {
       const result = await this.coordinator.joinEntrySpot(
         this.actor,
@@ -1494,6 +1494,10 @@ function isMessage(value: unknown): value is Message {
   return typeof value === 'object'
     && value !== null
     && typeof (value as { data?: unknown }).data === 'function';
+}
+
+function ownsFrameworkPayloadMessage(value: unknown): boolean {
+  return value === undefined || !(isMessage(value) || (isZLinkMessage(value) && value.isEncoded()));
 }
 
 function actorDispatchHandlerNotFound(message: string): ZLinkFrameworkException {

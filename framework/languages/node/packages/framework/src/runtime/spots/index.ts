@@ -18,7 +18,6 @@ import type {
   ZLinkRequestCall,
   ZLinkSendCall,
   ZLinkSpot,
-  ZLinkMessage,
   ZLinkSpotTimerHandlerRegistration,
   ZLinkSpotActorSendHandlerRegistration,
   ZLinkSpotActorJoinResponse,
@@ -48,6 +47,8 @@ import {
   ZLinkMessageFlowPhase,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
+  ZLinkMessage,
+  isZLinkMessage,
   ZLinkSpotCreateState,
   ZLinkSpotKind,
   ZLinkTimerOverrunPolicy
@@ -2209,7 +2210,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     try {
       return await this.createActivation(spotType, spotRid, ownedRequest, signal);
     } finally {
-      if (request === undefined || !isMessage(request)) {
+      if (ownsFrameworkPayloadMessage(request)) {
         ownedRequest.close();
       }
     }
@@ -2249,7 +2250,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       return await ready;
     } finally {
       this.pending.delete(spotRid);
-      if (request === undefined || !isMessage(request)) {
+      if (ownsFrameworkPayloadMessage(request)) {
         ownedRequest.close();
       }
     }
@@ -2376,7 +2377,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     }
     const request = BindingMessage.from(Buffer.alloc(0));
     try {
-      await actor.context.joinEntrySpot(entryNodeRid, request).submit(signal);
+      await actor.context.joinEntrySpot(entryNodeRid, ZLinkMessage.fromEncoded(request)).submit(signal);
     } finally {
       request.close();
     }
@@ -2523,13 +2524,35 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       });
       if (createResponse?.accepted === false) {
         await activation.timers.dispose();
-        return { spotRid, state: ZLinkSpotCreateState.Rejected, reply: createResponse.reply };
+        return {
+          spotRid,
+          state: ZLinkSpotCreateState.Rejected,
+          reply: this.decodeCreateReply(createResponse.reply)
+        };
       }
       this.activations.set(spotRid, activation);
-      return { spotRid, state: ZLinkSpotCreateState.Created, reply: createResponse?.reply };
+      return {
+        spotRid,
+        state: ZLinkSpotCreateState.Created,
+        reply: this.decodeCreateReply(createResponse?.reply)
+      };
     } catch (error) {
       await this.closeActivation(activation, signal);
       throw error;
+    }
+  }
+
+  private decodeCreateReply(reply: unknown): unknown {
+    if (reply === undefined) {
+      return undefined;
+    }
+    const message = encodeFrameworkPayloadMessage(reply, this.options.messageSerializers);
+    try {
+      return decodeFrameworkPayloadMessage(message, this.options.messageSerializers);
+    } finally {
+      if (ownsFrameworkPayloadMessage(reply)) {
+        message.close();
+      }
     }
   }
 
@@ -3344,4 +3367,8 @@ function isMessage(value: unknown): value is Message {
   return typeof value === 'object'
     && value !== null
     && typeof (value as { data?: unknown }).data === 'function';
+}
+
+function ownsFrameworkPayloadMessage(value: unknown): boolean {
+  return value === undefined || !(isMessage(value) || (isZLinkMessage(value) && value.isEncoded()));
 }

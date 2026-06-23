@@ -575,7 +575,7 @@ interface ZLinkSpotManager {
 interface ZLinkSpotCreateResult {
   spotRid: string;
   state: ZLinkSpotCreateState;
-  reply?: ZLinkMessage;
+  reply?: unknown;
 }
 interface ZLinkSpotInfo { spotRid: string; }
 ```
@@ -586,7 +586,7 @@ interface ZLinkSpotInfo { spotRid: string; }
 
 여기서 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle 이
 아니라는 사실이다. 생성 결과는 `spotRid`, `Existing` / `Created` / `Rejected`
-상태와 선택적 reply `ZLinkMessage` 를 담는다. 이후 메시징은
+상태와 선택적 reply DTO 를 담는다. 이후 메시징은
 현재 channel publish 또는 route bridge channel socket을 통한 send / request 로 푼다.
 
 생성 요청 payload 는 DTO 로 넘기거나 `ZLinkMessage` 로 감싸서 넘긴다. framework 는

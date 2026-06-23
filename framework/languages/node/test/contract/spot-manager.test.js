@@ -40,22 +40,17 @@ test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order
     }
   }
 
-  const createPart = zlink.Message.from('open');
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
-  try {
-    const created = await manager.create(StageSpot, createPart);
-    assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
-    assert.equal(typeof created.spotRid, 'string');
-    assert.deepEqual(events, ['configure', 'onCreate:open', 'onInitialize']);
-    assert.deepEqual(await manager.find(created.spotRid), { spotRid: created.spotRid });
-    assert.deepEqual(await manager.list(), [{ spotRid: created.spotRid }]);
-    assert.equal(await manager.close(created.spotRid), true);
-    assert.equal(await manager.close(created.spotRid), false);
-    assert.equal(await manager.find(created.spotRid), null);
-    assert.deepEqual(events, ['configure', 'onCreate:open', 'onInitialize', 'onClosing']);
-  } finally {
-    createPart.close();
-  }
+  const created = await manager.create(StageSpot, 'open');
+  assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
+  assert.equal(typeof created.spotRid, 'string');
+  assert.deepEqual(events, ['configure', 'onCreate:open', 'onInitialize']);
+  assert.deepEqual(await manager.find(created.spotRid), { spotRid: created.spotRid });
+  assert.deepEqual(await manager.list(), [{ spotRid: created.spotRid }]);
+  assert.equal(await manager.close(created.spotRid), true);
+  assert.equal(await manager.close(created.spotRid), false);
+  assert.equal(await manager.find(created.spotRid), null);
+  assert.deepEqual(events, ['configure', 'onCreate:open', 'onInitialize', 'onClosing']);
 });
 
 test('ZLinkSpotManager passes dotnet-shaped context into spot constructor', async () => {
@@ -481,33 +476,26 @@ test('ZLinkSpotManager concurrent getOrCreate initializes once with the first cr
     }
   }
 
-  const firstA = zlink.Message.from('first-a');
-  const second = zlink.Message.from('second');
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
 
-  try {
-    const first = manager.getOrCreate(StageSpot, 'payload-room', firstA);
-    await entered.promise;
-    let secondSettled = false;
-    const secondResult = manager.getOrCreate(StageSpot, 'payload-room', second).finally(() => {
-      secondSettled = true;
-    });
-    await Promise.resolve();
+  const first = manager.getOrCreate(StageSpot, 'payload-room', 'first-a');
+  await entered.promise;
+  let secondSettled = false;
+  const secondResult = manager.getOrCreate(StageSpot, 'payload-room', 'second').finally(() => {
+    secondSettled = true;
+  });
+  await Promise.resolve();
 
-    assert.equal(secondSettled, false);
+  assert.equal(secondSettled, false);
 
-    release.resolve();
+  release.resolve();
 
-    const results = await Promise.all([first, secondResult]);
+  const results = await Promise.all([first, secondResult]);
 
-    assert.equal(results.filter((result) => result.state === framework.ZLinkSpotCreateState.Created).length, 1);
-    assert.equal(results.filter((result) => result.state === framework.ZLinkSpotCreateState.Existing).length, 1);
-    assert.deepEqual(results.map((result) => result.spotRid), ['payload-room', 'payload-room']);
-    assert.deepEqual(payloads, ['first-a']);
-  } finally {
-    firstA.close();
-    second.close();
-  }
+  assert.equal(results.filter((result) => result.state === framework.ZLinkSpotCreateState.Created).length, 1);
+  assert.equal(results.filter((result) => result.state === framework.ZLinkSpotCreateState.Existing).length, 1);
+  assert.deepEqual(results.map((result) => result.spotRid), ['payload-room', 'payload-room']);
+  assert.deepEqual(payloads, ['first-a']);
 });
 
 test('ZLinkSpotManager concurrent getOrCreate returns rejected to waiters with independent replies', async () => {
@@ -523,28 +511,21 @@ test('ZLinkSpotManager concurrent getOrCreate returns rejected to waiters with i
     }
   }
 
-  const firstRequest = zlink.Message.from('first');
-  const secondRequest = zlink.Message.from('second');
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [RejectingConcurrentSpot] });
 
-  try {
-    const first = manager.getOrCreate(RejectingConcurrentSpot, 'reject-room', firstRequest);
-    await entered.promise;
-    const second = manager.getOrCreate(RejectingConcurrentSpot, 'reject-room', secondRequest);
-    release.resolve();
+  const first = manager.getOrCreate(RejectingConcurrentSpot, 'reject-room', 'first');
+  await entered.promise;
+  const second = manager.getOrCreate(RejectingConcurrentSpot, 'reject-room', 'second');
+  release.resolve();
 
-    const [firstResult, secondResult] = await Promise.all([first, second]);
+  const [firstResult, secondResult] = await Promise.all([first, second]);
 
-    assert.equal(firstResult.state, framework.ZLinkSpotCreateState.Rejected);
-    assert.equal(secondResult.state, framework.ZLinkSpotCreateState.Rejected);
-    assert.equal(firstResult.reply, 'reject:first');
-    assert.equal(secondResult.reply, 'reject:first');
-    assert.deepEqual(payloads, ['first']);
-    assert.equal(await manager.find('reject-room'), null);
-  } finally {
-    firstRequest.close();
-    secondRequest.close();
-  }
+  assert.equal(firstResult.state, framework.ZLinkSpotCreateState.Rejected);
+  assert.equal(secondResult.state, framework.ZLinkSpotCreateState.Rejected);
+  assert.equal(firstResult.reply, 'reject:first');
+  assert.equal(secondResult.reply, 'reject:first');
+  assert.deepEqual(payloads, ['first']);
+  assert.equal(await manager.find('reject-room'), null);
 });
 
 test('ZLinkSpotManager create reject returns rejected state reply and does not register spot', async () => {
@@ -554,18 +535,13 @@ test('ZLinkSpotManager create reject returns rejected state reply and does not r
     }
   }
 
-  const request = zlink.Message.from('closed');
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [RejectingSpot] });
-  try {
-    const rejected = await manager.create(RejectingSpot, request);
+  const rejected = await manager.create(RejectingSpot, 'closed');
 
-    assert.equal(rejected.state, framework.ZLinkSpotCreateState.Rejected);
-    assert.equal(rejected.reply, 'reject:closed');
-    assert.equal(await manager.find(rejected.spotRid), null);
-    assert.deepEqual(await manager.list(), []);
-  } finally {
-    request.close();
-  }
+  assert.equal(rejected.state, framework.ZLinkSpotCreateState.Rejected);
+  assert.equal(rejected.reply, 'reject:closed');
+  assert.equal(await manager.find(rejected.spotRid), null);
+  assert.deepEqual(await manager.list(), []);
 });
 
 test('ZLinkSpotManager getOrCreate can retry same spotRid after create rejection', async () => {
@@ -581,24 +557,17 @@ test('ZLinkSpotManager getOrCreate can retry same spotRid after create rejection
   }
 
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [RetryCreateSpot] });
-  const rejectedRequest = zlink.Message.from('first');
-  const acceptedRequest = zlink.Message.from('second');
-  try {
-    const rejected = await manager.getOrCreate(RetryCreateSpot, 'retry-room', rejectedRequest);
-    assert.equal(rejected.state, framework.ZLinkSpotCreateState.Rejected);
-    assert.equal(rejected.reply, 'try-again');
-    assert.equal(await manager.find('retry-room'), null);
-    assert.deepEqual(await manager.list(), []);
+  const rejected = await manager.getOrCreate(RetryCreateSpot, 'retry-room', 'first');
+  assert.equal(rejected.state, framework.ZLinkSpotCreateState.Rejected);
+  assert.equal(rejected.reply, 'try-again');
+  assert.equal(await manager.find('retry-room'), null);
+  assert.deepEqual(await manager.list(), []);
 
-    accepted = true;
-    const created = await manager.getOrCreate(RetryCreateSpot, 'retry-room', acceptedRequest);
-    assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
-    assert.deepEqual(await manager.find('retry-room'), { spotRid: 'retry-room' });
-    assert.deepEqual(payloads, ['first', 'second']);
-  } finally {
-    rejectedRequest.close();
-    acceptedRequest.close();
-  }
+  accepted = true;
+  const created = await manager.getOrCreate(RetryCreateSpot, 'retry-room', 'second');
+  assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
+  assert.deepEqual(await manager.find('retry-room'), { spotRid: 'retry-room' });
+  assert.deepEqual(payloads, ['first', 'second']);
 });
 
 test('ZLinkSpotManager getOrCreate can retry same spotRid after create lifecycle failure', async () => {

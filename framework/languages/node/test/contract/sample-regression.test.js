@@ -942,7 +942,7 @@ test('node samples use the codecs required by the common specs', () => {
     .filter(([content, text]) => !content.includes(text))
     .map(([, text]) => text);
   const violations = [];
-  for (const sample of ['Bingo.Ts', 'TicTacToe.Ts']) {
+  for (const sample of ['Bingo.Ts', 'TicTacToe.Ts', 'SupportChat.Ts']) {
     for (const file of sampleSourceFiles(path.join(samplesRoot, sample))) {
       if (!file.endsWith('.ts')) {
         continue;
@@ -958,9 +958,8 @@ test('node samples use the codecs required by the common specs', () => {
       if (/bingoChannelHandlerOptions|decodeBingoChannelReply|submit<Buffer>|\.then\(decode/.test(content)) {
         violations.push(relative);
       }
-      if (sample === 'Bingo.Ts'
-          && /createProtobufMessageSerializer|protobufSerializer|ZlinkStreamCodec\.Protobuf|payload\.getString\(|Message\.from\(/.test(content)
-          && !isAllowedBingoCodecConfigurationFile(relative)) {
+      if (/payload\.getString\(|Message\.from\(|Buffer\.from\(/.test(content)
+          && !isAllowedSampleRawBoundaryFile(relative)) {
         violations.push(`${relative}:raw-codec-helper`);
       }
       if (/writeVarint|readVarint|schemaTable|manualSchema|wireType/.test(content)) {
@@ -1758,6 +1757,17 @@ function isAllowedBingoRawSessionCodecFile(relative) {
     'Bingo.Ts/Shared/Contracts/messages.ts',
     'Bingo.Ts/Shared/Contracts/protobuf-codec.ts',
     'Bingo.Ts/Server/Session/main.ts'
+  ].includes(relative);
+}
+
+function isAllowedSampleRawBoundaryFile(relative) {
+  return [
+    'Bingo.Ts/Shared/Contracts/protobuf-codec.ts',
+    'Bingo.Ts/Server/Api/bingo-api-module.ts',
+    'Bingo.Ts/Server/Play/bingo-play-module.ts',
+    'Bingo.Ts/Server/Session/bingo-session-module.ts',
+    'Bingo.Ts/Server/Play/Infrastructure/ZLink/Matchmaking/redis-bingo-match-queue.ts',
+    'TicTacToe.Ts/Server/Configuration/redis-room-route-store.ts'
   ].includes(relative);
 }
 

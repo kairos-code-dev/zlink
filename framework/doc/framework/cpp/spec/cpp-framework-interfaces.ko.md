@@ -173,10 +173,10 @@ publisher 초기화, route channel lookup, monitoring source parsing을 담당�
 dealer-mesh pending request owner를 역할 내부 상태로 묶고 public contract에는
 노출하지 않는다.
 
-`src/runtime/channels/channel_message_pump.*`와
-`src/runtime/channels/channel_receive_loop.*`는 `.NET`의 `ZLinkChannelMessagePump`,
-`ZLinkChannelReceiveLoop`에 대응한다. receive loop는 수신 queue를 drain하고 재진입을
-막으며, message pump는 envelope dispatch를 `channel_packet_dispatcher_t`로 보낸다.
+server ingress dispatch는 channel host service가 수신한 envelope parts를
+`src/runtime/channels/channel_packet_dispatcher.*`로 바로 넘긴다. C++ runtime은 별도
+message pump 타입을 production 모듈로 두지 않고, receive gate와 connection 상태를
+`src/runtime/channels/channel_runtime_bundle.*` 안에 둔다.
 
 `src/runtime/channels/route_connection_set.*`는 `.NET`의 `ZLinkRouteConnectionSet`에
 대응한다. route channel의 manual connection 목록과 중복 제거, 정렬 snapshot을 담당한다.
@@ -209,9 +209,8 @@ route runtime backend seam을 통해 검증되고,
 route lookup을 회귀 테스트로 고정한다. router socket lifecycle을 더 자동화해야 하는 경우에도
 public route client 표면을 늘리지 않고 이 backend seam 아래에서 처리한다.
 
-`src/runtime/channels/route_packet_dispatcher.*`와
-`src/runtime/channels/route_receive_pump.*`는 `.NET`의 `ZLinkRoutePacketDispatcher`,
-`ZLinkRouteReceivePump`에 대응한다. route receive pump는 routed packet queue를 drain하고,
+`src/runtime/channels/route_packet_dispatcher.*`는 `.NET`의 `ZLinkRoutePacketDispatcher`에
+대응한다. route channel host service가 routed packet 수신과 worker 실행을 맡고,
 dispatcher는 envelope header를 해석한다. command는 routed handler나 internal dispatcher로
 보내고, request는 handler reply 또는 error envelope를 만든다.
 

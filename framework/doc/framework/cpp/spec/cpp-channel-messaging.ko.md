@@ -126,11 +126,10 @@ handler 안에서 blocking wait를 쓰지 않는다.
   `channel_runtime_manager_t`가 맡는다. manager는 `.NET`처럼 client/publisher bundle을
   lazy creation으로 만들고 inbound, client, publisher, route channel 초기화를 runtime
   state 안에서 정리한다.
-- server receive pump는 `channel_receive_loop_t`와 `channel_message_pump_t`가 맡는다.
-  receive loop는 수신 queue를 drain하고 receive gate로 재진입을 막으며, message pump는
-  packet dispatcher에 envelope dispatch를 위임한다. 이 구조는 `.NET`의
-  `ZLinkChannelRuntimeBundle`, `ZLinkChannelReceiveLoop`,
-  `ZLinkChannelMessagePump`와 같은 책임 분리다.
+- server ingress는 channel host service가 수신한 envelope parts를
+  `channel_packet_dispatcher_t`로 넘겨 처리한다. receive gate와 connection 상태는
+  `channel_runtime_bundle_t`가 소유하고, 별도 pump 타입을 public 또는 production runtime
+  구조로 노출하지 않는다.
 - route channel은 `route_channel_runtime_t`와 `route_connection_set_t`가 맡는다.
   route channel id, manual connection snapshot, target node/Spot routing id, outbound
   envelope parts, request sequence correlation을 runtime 내부에 둔다. public API는 route
@@ -155,11 +154,12 @@ handler 안에서 blocking wait를 쓰지 않는다.
 - client/server channel은 server 또는 client 역할 중 하나 이상이 필요하고, fanout
   channel은 publisher 또는 subscriber 역할 중 하나 이상이 필요하다. 아무 역할도 없는
   channel 선언은 framework options 적용 시점에 실패한다.
-- route receive path는 `route_receive_pump_t`와 `route_packet_dispatcher_t`가 맡는다.
-  route handler가 있으면 `route_handler_registry_t`와 `route_handler_invoker_t`를 통해
-  typed payload를 호출하고, handler가 없으면 request에 `route_handler_not_found` error
-  envelope를 반환한다. framework 내부 routed packet은
-  `route_internal_packet_dispatcher_t`와 composite dispatcher가 먼저 처리한다.
+- route receive path는 route channel host service가 받은 routed packet을
+  `route_packet_dispatcher_t`로 넘겨 처리한다. route handler가 있으면
+  `route_handler_registry_t`와 `route_handler_invoker_t`를 통해 typed payload를 호출하고,
+  handler가 없으면 request에 `route_handler_not_found` error envelope를 반환한다.
+  framework 내부 routed packet은 `route_internal_packet_dispatcher_t`와 composite
+  dispatcher가 먼저 처리한다.
 - 같은 역할에서 Discovery와 manual 연결을 같이 섞지 않는다. endpoint 인자 없는
   `enable_client()` 또는 `enable_subscriber()`는 discovery mode를 뜻하고, endpoint를 받는 overload는
   manual endpoint를 추가한다.

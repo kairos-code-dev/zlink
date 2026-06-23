@@ -676,7 +676,7 @@ int main ()
     });
     auto lifecycle_join =
       lifecycle_actor_context
-        .join_spot (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("41")))
+        .join_spot_raw (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("41")))
         .async ()
         .result ();
     if (!lifecycle_join || lifecycle_join.value ().result_code != 0
@@ -712,7 +712,7 @@ int main ()
     auto rejected_context = rejected_actor.context ();
     auto rejected_runtime_join =
       rejected_context
-        .join_spot (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("50")))
+        .join_spot_raw (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("50")))
         .async ()
         .result ();
     lifecycle_stage_spot->accept_join = true;
@@ -734,8 +734,8 @@ int main ()
     });
     auto lifecycle_entry_join =
       lifecycle_actor_context
-        .join_entry_spot (zlink::framework::node_rid_t::from_string ("lifecycle-stage"),
-                          zlink::message_t{})
+        .join_entry_spot_raw (zlink::framework::node_rid_t::from_string ("lifecycle-stage"),
+                              zlink::message_t{})
         .async ()
         .result ();
     if (!lifecycle_entry_join || lifecycle_stage_spot->left_count != 1
@@ -755,7 +755,7 @@ int main ()
     auto destroy_context = destroyActor.context ();
     auto destroy_stage_join =
       destroy_context
-        .join_spot (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("43")))
+        .join_spot_raw (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("43")))
         .async ()
         .result ();
     if (!destroy_stage_join || lifecycle_stage_spot->joined_count != 2) {
@@ -770,8 +770,8 @@ int main ()
     }
     auto destroy_entry_join =
       destroy_context
-        .join_entry_spot (zlink::framework::node_rid_t::from_string ("lifecycle-stage"),
-                          zlink::message_t{})
+        .join_entry_spot_raw (zlink::framework::node_rid_t::from_string ("lifecycle-stage"),
+                              zlink::message_t{})
         .async ()
         .result ();
     if (!destroy_entry_join || lifecycle_stage_spot->left_count != 2
@@ -802,7 +802,7 @@ int main ()
     player_actor_factory_t leaveActor_state;
     auto leave_stage_join =
       leave_context
-        .join_spot (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("44")))
+        .join_spot_raw (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("44")))
         .async ()
         .result ();
     if (!leave_stage_join || lifecycle_stage_spot->joined_count != 3) {
@@ -867,8 +867,8 @@ int main ()
     auto auto_destroy_context = auto_destroy_actor.context ();
     auto auto_destroy_initial_entry_join =
       auto_destroy_context
-        .join_entry_spot (zlink::framework::node_rid_t::from_string ("auto-destroy-stage"),
-                          zlink::message_t{})
+        .join_entry_spot_raw (zlink::framework::node_rid_t::from_string ("auto-destroy-stage"),
+                              zlink::message_t{})
         .async ()
         .result ();
     if (!auto_destroy_initial_entry_join
@@ -877,8 +877,8 @@ int main ()
         return 95;
     }
     auto auto_destroy_stage_join = auto_destroy_context
-                                     .join_spot (auto_destroy_stage_created.spot_rid,
-                                                 zlink::message_t::from (std::string ("46")))
+                                     .join_spot_raw (auto_destroy_stage_created.spot_rid,
+                                                     zlink::message_t::from (std::string ("46")))
                                      .async ()
                                      .result ();
     if (!auto_destroy_stage_join || auto_destroy_stage_join.value ().result_code != 0
@@ -937,8 +937,8 @@ int main ()
       packet_leave_gateway.manager ().create ("player", "packet-leave-player").value ();
     auto packet_leave_initial_join =
       packet_leave_actor.context ()
-        .join_entry_spot (zlink::framework::node_rid_t::from_string ("packet-leave-stage"),
-                          zlink::message_t{})
+        .join_entry_spot_raw (zlink::framework::node_rid_t::from_string ("packet-leave-stage"),
+                              zlink::message_t{})
         .async ()
         .result ();
     auto packet_leave_stage_join =

@@ -207,8 +207,8 @@ int main ()
     });
     auto actor_context = rebound.value ().context ();
     const auto join_spot = actor_context
-                             .join_spot (zlink::framework::spot_rid_t::from_string ("match-1"),
-                                         zlink::message_t::from_json (join_request_t{"match-1"}))
+                             .join_spot_raw (zlink::framework::spot_rid_t::from_string ("match-1"),
+                                             zlink::message_t::from_json (join_request_t{"match-1"}))
                              .async ()
                              .result ();
     if (!join_spot || !join_spot_seen || join_spot.value ().result_code != 0
@@ -242,8 +242,8 @@ int main ()
       });
     const auto entry_join =
       actor_context
-        .join_entry_spot (zlink::framework::node_rid_t::from_string ("entry-node"),
-                          zlink::message_t::from (std::string ("entry")))
+        .join_entry_spot_raw (zlink::framework::node_rid_t::from_string ("entry-node"),
+                              zlink::message_t::from (std::string ("entry")))
         .async ()
         .result ();
     if (!entry_join || !entry_join_seen || entry_join.value ().actor.generation () != 9

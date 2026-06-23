@@ -235,8 +235,8 @@ actor_context_t::join_spot_erased (spot_rid_t spot_rid, const zlink::message_t &
     return joined;
 }
 
-actor_join_entry_spot_call_t actor_context_t::join_entry_spot (node_rid_t spot_node_rid,
-                                                               const zlink::message_t &request)
+actor_join_entry_spot_call_t actor_context_t::join_entry_spot_raw (node_rid_t spot_node_rid,
+                                                                   const zlink::message_t &request)
 {
     detail::actor_gateway_state_t::join_entry_spot_dispatcher_t dispatcher;
     {

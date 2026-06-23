@@ -209,7 +209,7 @@ class actor_context_t
     bool is_joined () const noexcept;
     bound_session_t bound_session () const;
 
-    actor_join_spot_call_t join_spot (spot_rid_t spot_rid, const zlink::message_t &request)
+    actor_join_spot_call_t join_spot_raw (spot_rid_t spot_rid, const zlink::message_t &request)
     {
         try {
             const auto erased = join_spot_erased (std::move (spot_rid), request);
@@ -236,8 +236,26 @@ class actor_context_t
         }
     }
 
+    actor_join_spot_call_t join_spot (spot_rid_t spot_rid, const message_t &request)
+    {
+        auto *serializers = serializer_registry ();
+        if (serializers == nullptr) {
+            return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "actor join spot requires a serializer registry"));
+        }
+        try {
+            return join_spot_raw (std::move (spot_rid), request.to_raw (*serializers));
+        }
+        catch (const framework_exception_t &error) {
+            return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
+              error.kind (), error.what (), error.is_retriable ()));
+        }
+    }
+
     template <typename TRequest>
-      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>)
+      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>
+                && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>)
     actor_join_spot_call_t join_spot (spot_rid_t spot_rid, const TRequest &request)
     {
         auto *serializers = serializer_registry ();
@@ -247,8 +265,8 @@ class actor_context_t
               "actor join spot requires a serializer registry"));
         }
         try {
-            return join_spot (std::move (spot_rid),
-                              serializers->get<TRequest> ().serialize (request));
+            return join_spot_raw (std::move (spot_rid),
+                                  serializers->get<TRequest> ().serialize (request));
         }
         catch (const framework_exception_t &error) {
             return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
@@ -256,8 +274,48 @@ class actor_context_t
         }
     }
 
+    actor_join_entry_spot_call_t join_entry_spot_raw (node_rid_t spot_node_rid,
+                                                      const zlink::message_t &request);
+
     actor_join_entry_spot_call_t join_entry_spot (node_rid_t spot_node_rid,
-                                                  const zlink::message_t &request);
+                                                  const message_t &request)
+    {
+        auto *serializers = serializer_registry ();
+        if (serializers == nullptr) {
+            return actor_join_entry_spot_call_t (result_t<actor_join_result_t>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "actor join entry spot requires a serializer registry"));
+        }
+        try {
+            return join_entry_spot_raw (std::move (spot_node_rid), request.to_raw (*serializers));
+        }
+        catch (const framework_exception_t &error) {
+            return actor_join_entry_spot_call_t (result_t<actor_join_result_t>::failure (
+              error.kind (), error.what (), error.is_retriable ()));
+        }
+    }
+
+    template <typename TRequest>
+      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>
+                && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>)
+    actor_join_entry_spot_call_t join_entry_spot (node_rid_t spot_node_rid,
+                                                  const TRequest &request)
+    {
+        auto *serializers = serializer_registry ();
+        if (serializers == nullptr) {
+            return actor_join_entry_spot_call_t (result_t<actor_join_result_t>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "actor join entry spot requires a serializer registry"));
+        }
+        try {
+            return join_entry_spot_raw (std::move (spot_node_rid),
+                                        serializers->get<TRequest> ().serialize (request));
+        }
+        catch (const framework_exception_t &error) {
+            return actor_join_entry_spot_call_t (result_t<actor_join_result_t>::failure (
+              error.kind (), error.what (), error.is_retriable ()));
+        }
+    }
 
   private:
     friend class spot_node_builder_t;

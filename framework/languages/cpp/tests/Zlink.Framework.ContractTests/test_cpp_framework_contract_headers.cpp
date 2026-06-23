@@ -636,7 +636,11 @@ static_assert (
     zlink::framework::spot_create_result_t>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_context_t &> ()
                                           .join_spot (std::declval<zlink::framework::spot_rid_t> (),
-                                                      std::declval<const zlink::message_t &> ())),
+                                                      std::declval<const zlink::framework::message_t &> ())),
+                              zlink::framework::actor_join_spot_call_t>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_context_t &> ()
+                                          .join_spot_raw (std::declval<zlink::framework::spot_rid_t> (),
+                                                         std::declval<const zlink::message_t &> ())),
                               zlink::framework::actor_join_spot_call_t>);
 
 static_assert (

@@ -44,6 +44,9 @@ const size_t ws_gather_threshold = zlink::asio_stream_fastpath_policy::gather_th
 // Keep the STREAM-specific gather path enabled by default so 64 KiB echo
 // traffic can write ZMP header + body without first copying the body through
 // the encoder batch buffer. Plain WS users still need ZLINK_ASIO_GATHER_WRITE.
+// Treat this as a STREAM hot path contract: future refactors must preserve the
+// header/body gather route unless replacement perf numbers prove the copy path
+// is no slower for WS/WSS 64 KiB echo traffic.
 const bool ws_stream_gather_on = zlink::asio_stream_fastpath_policy::stream_gather_enabled ();
 
 const size_t ws_stream_gather_threshold =

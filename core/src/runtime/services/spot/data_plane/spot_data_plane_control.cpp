@@ -496,12 +496,13 @@ static int handle_disconnect_peer_pub_command (const ctrl_command_context_t &ctx
         (void) ctx_.peer_ctrl_pub->term_endpoint (it->second.c_str ());
         ctx_.state->peer_ctrl_endpoints.erase (it);
     }
-    if (ctx_.mesh_xsub && ctx_.mesh_xsub->term_endpoint (arg_.c_str ()) != 0)
-        return send_ctrl_errno_reply (ctx_, errno);
-
     const std::string route_endpoint = ctx_.runtime->erase_external_route_id (arg_);
     if (ctx_.runtime->routed_router && !route_endpoint.empty ())
         (void) ctx_.runtime->routed_router->term_endpoint (route_endpoint.c_str ());
+
+    if (ctx_.mesh_xsub && ctx_.mesh_xsub->term_endpoint (arg_.c_str ()) != 0
+        && route_endpoint.empty ())
+        return send_ctrl_errno_reply (ctx_, errno);
 
     spot_data_plane_forwarder_t::drop_remote_mesh_target (
       ctx_.runtime, &ctx_.runtime->execution.data_plane_state, arg_);

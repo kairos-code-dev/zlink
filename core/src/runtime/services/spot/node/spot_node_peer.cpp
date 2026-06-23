@@ -87,16 +87,14 @@ int spot_node_t::connect_peer_pub_rid (const zlink_routing_id_t *target_node_rid
     bool need_connect = false;
     bool had_active_peers = false;
     bool endpoint_was_manual = false;
+    bool discovery_managed = false;
     bool inserted_rid_endpoint = false;
     {
         scoped_lock_t lock (_sync);
-        if (_discovery_state.discovery) {
-            errno = EBUSY;
-            return -1;
-        }
+        discovery_managed = _discovery_state.discovery != NULL;
         had_active_peers = !_peer_state.active_endpoints.empty ();
         endpoint_was_manual = _peer_state.manual_endpoints.count (peer_pub_endpoint_) != 0;
-        if (!endpoint_was_manual)
+        if (!endpoint_was_manual && !discovery_managed)
             _peer_state.manual_endpoints.insert (peer_pub_endpoint_);
         _peer_state.peer_weight_by_rid[rid_key] = 100;
         inserted_rid_endpoint =
@@ -113,7 +111,7 @@ int spot_node_t::connect_peer_pub_rid (const zlink_routing_id_t *target_node_rid
     if (need_connect
         && send_data_plane_command (spot_control_protocol::cmd_connect_peer_pub, args) != 0) {
         scoped_lock_t lock (_sync);
-        if (!endpoint_was_manual)
+        if (!endpoint_was_manual && !discovery_managed)
             _peer_state.manual_endpoints.erase (peer_pub_endpoint_);
         if (inserted_rid_endpoint) {
             _peer_state.peer_endpoints_by_rid[rid_key].erase (peer_pub_endpoint_);
@@ -234,12 +232,10 @@ int spot_node_t::disconnect_peer_pub_rid (const zlink_routing_id_t *target_node_
     const std::string rid_key = zlink::routing_id_key (target_node_rid_);
 
     std::vector<std::string> endpoints;
+    bool discovery_managed = false;
     {
         scoped_lock_t lock (_sync);
-        if (_discovery_state.discovery) {
-            errno = EBUSY;
-            return -1;
-        }
+        discovery_managed = _discovery_state.discovery != NULL;
         std::map<std::string, std::set<std::string>>::const_iterator it =
           _peer_state.peer_endpoints_by_rid.find (rid_key);
         if (it != _peer_state.peer_endpoints_by_rid.end ())
@@ -258,14 +254,17 @@ int spot_node_t::disconnect_peer_pub_rid (const zlink_routing_id_t *target_node_
             == 0) {
             any_disconnected = true;
             scoped_lock_t lock (_sync);
-            if (_peer_state.active_endpoints.erase (endpoints[i]) != 0)
-                _endpoint_state.active_peer_count.fetch_sub (1, std::memory_order_acq_rel);
-            _peer_state.manual_endpoints.erase (endpoints[i]);
-            _peer_state.discovery_endpoints.erase (endpoints[i]);
-            _peer_state.peer_weight_by_endpoint.erase (endpoints[i]);
-            _peer_state.observations[endpoints[i]].last_changed_ms = zlink::clock_t ().now_ms ();
-            _peer_state.observations[endpoints[i]].connected_since_ms = 0;
-            _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
+            if (!discovery_managed) {
+                if (_peer_state.active_endpoints.erase (endpoints[i]) != 0)
+                    _endpoint_state.active_peer_count.fetch_sub (1, std::memory_order_acq_rel);
+                _peer_state.manual_endpoints.erase (endpoints[i]);
+                _peer_state.discovery_endpoints.erase (endpoints[i]);
+                _peer_state.peer_weight_by_endpoint.erase (endpoints[i]);
+                _peer_state.observations[endpoints[i]].last_changed_ms =
+                  zlink::clock_t ().now_ms ();
+                _peer_state.observations[endpoints[i]].connected_since_ms = 0;
+                _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
+            }
         }
     }
 
@@ -274,6 +273,9 @@ int spot_node_t::disconnect_peer_pub_rid (const zlink_routing_id_t *target_node_
         _peer_state.peer_weight_by_rid.erase (rid_key);
         _peer_state.peer_endpoints_by_rid.erase (rid_key);
     }
+
+    if (discovery_managed)
+        any_disconnected = true;
 
     if (!any_disconnected) {
         errno = ENOENT;

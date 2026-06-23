@@ -125,6 +125,22 @@ void spot_node_t::refresh_discovery_peers ()
     size_t new_active_count = 0;
     {
         scoped_lock_t lock (_sync);
+        for (std::map<std::string, std::set<std::string>>::const_iterator rid_it =
+               _peer_state.peer_endpoints_by_rid.begin ();
+             rid_it != _peer_state.peer_endpoints_by_rid.end (); ++rid_it) {
+            for (std::set<std::string>::const_iterator endpoint_it = rid_it->second.begin ();
+                 endpoint_it != rid_it->second.end (); ++endpoint_it) {
+                if (_peer_state.discovery_endpoints.count (*endpoint_it) == 0
+                    && new_endpoints.count (*endpoint_it) == 0) {
+                    new_endpoints_by_rid[rid_it->first].insert (*endpoint_it);
+                    std::map<std::string, uint32_t>::const_iterator weight_it =
+                      _peer_state.peer_weight_by_rid.find (rid_it->first);
+                    new_weight_by_rid[rid_it->first] =
+                      weight_it == _peer_state.peer_weight_by_rid.end () ? 100
+                                                                         : weight_it->second;
+                }
+            }
+        }
         _peer_state.discovery_endpoints.swap (new_endpoints);
         _peer_state.peer_weight_by_endpoint.swap (new_weight_by_endpoint);
         _peer_state.peer_weight_by_rid.swap (new_weight_by_rid);

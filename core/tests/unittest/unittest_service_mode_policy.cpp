@@ -498,7 +498,7 @@ void test_spot_node_attach_discovery_rejects_duplicate_discovery ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
-void test_spot_node_attach_discovery_gates_manual_peer_apis ()
+void test_spot_node_attach_discovery_gates_manual_peer_apis_but_allows_rid_aliases ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -519,16 +519,14 @@ void test_spot_node_attach_discovery_gates_manual_peer_apis ()
     TEST_ASSERT_NOT_EQUAL (ZLINK_CONNECT_OK,
                            zlink_spot_node_connect_peer (node, "tcp://127.0.0.1:39011"));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_NOT_EQUAL (ZLINK_CONNECT_OK,
-                           zlink_spot_node_connect_peer_rid (node,
-                                                             &rid,
-                                                             "tcp://127.0.0.1:39012"));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL (ZLINK_CONNECT_OK,
+                       zlink_spot_node_connect_peer_rid (node,
+                                                         &rid,
+                                                         "tcp://127.0.0.1:39012"));
     TEST_ASSERT_NOT_EQUAL (ZLINK_CONNECT_OK,
                            zlink_spot_node_disconnect_peer (node, "tcp://127.0.0.1:39011"));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
-    TEST_ASSERT_NOT_EQUAL (ZLINK_CONNECT_OK, zlink_spot_node_disconnect_peer_rid (node, &rid));
-    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+    TEST_ASSERT_EQUAL (ZLINK_CONNECT_OK, zlink_spot_node_disconnect_peer_rid (node, &rid));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
@@ -980,7 +978,7 @@ int main (void)
     RUN_TEST (test_spot_node_discovery_attach_allows_multiple_spot_facades);
     RUN_TEST (test_spot_node_attach_discovery_allows_preexisting_multiple_facades);
     RUN_TEST (test_spot_node_attach_discovery_rejects_duplicate_discovery);
-    RUN_TEST (test_spot_node_attach_discovery_gates_manual_peer_apis);
+    RUN_TEST (test_spot_node_attach_discovery_gates_manual_peer_apis_but_allows_rid_aliases);
     RUN_TEST (test_spot_publish_uses_bound_spot_topic);
     RUN_TEST (test_spot_publish_part_final_keeps_single_message_contract);
     RUN_TEST (test_spot_service_send_and_request_fail_for_missing_service);

@@ -773,7 +773,7 @@ TLS context, executor tuning은 runtime option이나 내부 구현으로 숨긴�
 | route mapping | `map_get/post/put/delete`가 올바른 handler를 호출 |
 | not found | 없는 path는 `404` |
 | method not allowed | path는 있으나 method가 다르면 `405` |
-| unsupported media type | JSON route에 잘못된 content type이면 `415` |
+| unsupported media type | JSON route에 잘못된 content type이면 `400` |
 | malformed body | JSON decode 실패는 `400` |
 | body limit | limit 초과는 `413` |
 | typed handler shape | DTO, DTO+context, DTO+request, response 반환 sync/async shape 모두 호출 |

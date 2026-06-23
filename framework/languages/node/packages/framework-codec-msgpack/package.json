@@ -14,6 +14,6 @@
     "@msgpack/msgpack": "^3.1.3",
     "@zlink-systems/framework": "0.1.0-SNAPSHOT",
     "@zlink-systems/stream-connector": "0.1.0-SNAPSHOT",
-    "@zlink-systems/zlink": "6.0.4"
+    "@zlink-systems/zlink": "file:../../../../../bindings/node"
   }
 }

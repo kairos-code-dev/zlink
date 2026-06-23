@@ -231,6 +231,20 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-A7 original spot changed after type mismatch");
         std::cout << "scenario SM-A7 passed\n";
 
+        auto lifecycle = routes
+                           .request (e2e::route_channel,
+                                     zlink::routing_id_t::from (std::string ("play-a")),
+                                     e2e::lifecycle_req_t{"lifecycle-room"})
+                           .packet_name ("LifecycleReq")
+                           .timeout (std::chrono::milliseconds (3000))
+                           .async<e2e::lifecycle_res_t> ()
+                           .result ();
+        ensure (lifecycle.has_value (), "SM-A6 lifecycle request failed");
+        ensure (lifecycle.value ().spot_rid == "user:play-a:lifecycle-room"
+                  && lifecycle.value ().created && lifecycle.value ().closed,
+                "SM-A6 lifecycle reply mismatch");
+        std::cout << "scenario SM-A6 passed\n";
+
         auto missing_actor_packet =
           local
             .relay_request_raw (request_header ("MissingActorPacket"),
@@ -312,7 +326,9 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::outbound_req_t> ()
       .add_json<e2e::outbound_res_t> ()
       .add_json<e2e::type_mismatch_req_t> ()
-      .add_json<e2e::type_mismatch_res_t> ();
+      .add_json<e2e::type_mismatch_res_t> ()
+      .add_json<e2e::lifecycle_req_t> ()
+      .add_json<e2e::lifecycle_res_t> ();
 }
 
 } // namespace

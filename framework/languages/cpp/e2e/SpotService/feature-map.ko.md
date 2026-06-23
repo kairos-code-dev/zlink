@@ -8,6 +8,8 @@
 - `SM-A1`: entry spot join으로 user spot 생성과 reply spot id를 검증한다.
 - `SM-A2`: 같은 user spot에 연속 상태 변경 request를 보내 누적 상태와 순서를 검증한다.
 - `SM-A4`: 같은 key가 같은 owner node와 같은 spot rid로 매핑되는지 검증한다.
+- `SM-A6`: actor 없는 user spot을 생성한 뒤 public `close_spot`으로 닫아 initialize/closing
+  lifecycle evidence를 검증한다.
 - `SM-A7`: 같은 spot rid를 다른 spot 타입으로 다시 `get_or_create_spot`할 때
   `spot_type_mismatch`로 거부되고 기존 user spot 상태가 유지되는지 검증한다.
 - `SM-B1`: `play-a` local actor join과 user spot dispatch를 검증한다.

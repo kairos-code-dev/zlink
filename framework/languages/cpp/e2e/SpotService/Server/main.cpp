@@ -321,6 +321,39 @@ class alternate_user_spot_t : public zlink::framework::spot_t
 {
 };
 
+class spot_lifecycle_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<scenario_state_t, zlink::framework::spot_node_manager_t>;
+    using request_type = e2e::lifecycle_req_t;
+    using reply_type = e2e::lifecycle_res_t;
+
+    spot_lifecycle_handler_t (scenario_state_t &state,
+                              zlink::framework::spot_node_manager_t &spots) :
+        _state (state),
+        _spots (spots)
+    {
+    }
+
+    e2e::lifecycle_res_t handle (const e2e::lifecycle_req_t &request,
+                                 const zlink::framework::route_handler_context_t &)
+    {
+        const auto rid = user_spot_rid (request.key);
+        const auto created = _spots.get_or_create_spot (e2e::user_spot, rid, request);
+        const auto closed = _spots.close_spot (rid).result ();
+        _state.record ("SpotLifecycleClosed", {}, std::string (rid.value ()),
+                       closed && closed.value () ? "closed" : "not-closed");
+        return {.spot_rid = std::string (created.spot_rid.value ()),
+                .created = created.state == zlink::framework::spot_create_state_t::created,
+                .closed = closed && closed.value ()};
+    }
+
+  private:
+    scenario_state_t &_state;
+    zlink::framework::spot_node_manager_t &_spots;
+};
+
 class ensure_actor_handler_t
 {
   public:
@@ -386,6 +419,8 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::outbound_res_t> ()
       .add_json<e2e::type_mismatch_req_t> ()
       .add_json<e2e::type_mismatch_res_t> ()
+      .add_json<e2e::lifecycle_req_t> ()
+      .add_json<e2e::lifecycle_res_t> ()
       .add_json<e2e::evidence_entry_t> ()
       .add_json<e2e::evidence_snapshot_t> ();
 }
@@ -432,7 +467,10 @@ int main (int argc, char **argv)
           .trace_node_id ("cpp-sm-" + node_rid);
         options.services ()
           .add_singleton<scenario_state_t> (std::move (state))
-          .add_transient<ensure_actor_handler_t, scenario_state_t> ();
+          .add_transient<ensure_actor_handler_t, scenario_state_t> ()
+          .add_transient<spot_lifecycle_handler_t,
+                         scenario_state_t,
+                         zlink::framework::spot_node_manager_t> ();
         configure_codecs (options.codecs ());
         options.use_discovery ().add_registry_endpoint (registry_router);
         options.add_route_mesh_channel (e2e::route_channel)
@@ -443,6 +481,10 @@ int main (int argc, char **argv)
                                e2e::ensure_actor_req_t,
                                e2e::ensure_actor_res_t> ("EnsureActor",
                                                          &ensure_actor_handler_t::handle)
+          .add_request_handler<spot_lifecycle_handler_t,
+                               e2e::lifecycle_req_t,
+                               e2e::lifecycle_res_t> ("LifecycleReq",
+                                                       &spot_lifecycle_handler_t::handle)
           .enable_spot_route_egress (e2e::route_channel);
         auto api = options.add_client_server_channel (e2e::api_channel).enable_client ();
         if (!api_peer_endpoint.empty ()) {

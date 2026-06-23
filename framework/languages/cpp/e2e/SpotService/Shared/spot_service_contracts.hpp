@@ -139,6 +139,18 @@ struct type_mismatch_res_t
     int value = 0;
 };
 
+struct lifecycle_req_t
+{
+    std::string key;
+};
+
+struct lifecycle_res_t
+{
+    std::string spot_rid;
+    bool created = false;
+    bool closed = false;
+};
+
 struct evidence_entry_t
 {
     std::string marker;
@@ -388,6 +400,30 @@ inline void from_json (const nlohmann::json &json, type_mismatch_res_t &value)
     json.at ("error_kind").get_to (value.error_kind);
     json.at ("spot_name").get_to (value.spot_name);
     json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const lifecycle_req_t &value)
+{
+    json = nlohmann::json{{"key", value.key}};
+}
+
+inline void from_json (const nlohmann::json &json, lifecycle_req_t &value)
+{
+    json.at ("key").get_to (value.key);
+}
+
+inline void to_json (nlohmann::json &json, const lifecycle_res_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"created", value.created},
+                          {"closed", value.closed}};
+}
+
+inline void from_json (const nlohmann::json &json, lifecycle_res_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("created").get_to (value.created);
+    json.at ("closed").get_to (value.closed);
 }
 
 inline void to_json (nlohmann::json &json, const evidence_entry_t &value)

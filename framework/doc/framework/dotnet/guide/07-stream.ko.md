@@ -134,10 +134,10 @@ public sealed class ClientHeaderSession(
 - `IZLinkStream.Write(Message payload, ...)` 는 backpressure 를 `false` 반환으로
   표현하며 caller payload 를 소비하지 않는다. 보통은 `Send`/`Reply`/`BoundSession`
   를 쓴다.
-- payload 디코드는 transport core 에 섞지 않고 codec helper 에 맡긴다. JSON payload 는
-  `Message.Decode<T>()`(= `FromJson<T>`), protobuf payload 는 `Message.FromProto<T>()` 로
-  타입을 푼다. 핫패스에서는 `Message.AsReadOnlySpan()` 기반 helper 를 쓰고 `ToArray()`
-  복사를 피한다.
+- session dispatch payload 는 `ZLinkMessage` 로 들어온다. 응용 코드는
+  `payload.Decode<T>()` 로 DTO를 얻고, framework runtime 이 등록된 codec registry 로
+  JSON, MessagePack, Protobuf, custom codec 을 고른다. codec 을 바꿔도 session handler
+  코드는 바꾸지 않는다.
 
 ## 2. client 측 — Stream Connector
 

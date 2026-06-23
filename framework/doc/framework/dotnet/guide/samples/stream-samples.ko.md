@@ -295,52 +295,20 @@ public sealed class ClientHeaderSession(
 
 이 방식은 `playhouse` 의 다음 흐름과 같은 감각이다.
 
-- `RouteHeader` 를 먼저 읽는다.
-- `RouteHeader.MsgId` 를 dispatch 기준으로 사용한다.
-- `Message payload` 를 각 protobuf 타입으로 parse 한다.
+- `ZlinkStreamHeader.Name` 을 dispatch 기준으로 사용한다.
+- handler 는 `ZLinkMessage payload` 를 받고 `payload.Decode<T>()` 로 DTO를 얻는다.
+- codec 선택은 handler 가 아니라 `options.Codecs.Use(...)` 등록에서 결정된다.
 
-framework 가 주는 payload decode helper 는 codec 별로 따로다 — JSON 은
-`Message.Decode<T>()`(= `FromJson<T>`), protobuf 는 `Message.FromProto<T>()` 다. 한 helper
-가 자동으로 codec 을 고르지는 않는다. 아래 `SessionPayloadCodecs.Decode<T>` 는 그 둘을
-target type 기준으로 골라 주는 **응용 쪽 dispatcher** 예시다. 실제 payload bytes 에
-직접 접근하는 부분은 helper 내부 구현에 숨겨 둔다.
-
-```csharp
-public static class SessionPayloadCodecs
-{
-    public static T Decode<T>(Message payload)
-    {
-        if (IsGeneratedProtoMessage(typeof(T)))
-            return DecodeGeneratedProto<T>(payload);
-
-        return DecodeJson<T>(payload);
-    }
-
-    private static bool IsGeneratedProtoMessage(Type type)
-    {
-        return type.GetInterfaces().Any(iface =>
-            iface.IsGenericType
-            && iface.GetGenericTypeDefinition() == typeof(IMessage<>)
-            && iface.GenericTypeArguments[0] == type);
-    }
-
-    private static T DecodeGeneratedProto<T>(Message payload) => throw new NotImplementedException();
-
-    private static T DecodeJson<T>(Message payload) => throw new NotImplementedException();
-}
-```
+framework 가 주는 payload decode 표면은 codec 별 helper가 아니라 `ZLinkMessage.Decode<T>()` 다.
+JSON, Protobuf, MessagePack, custom codec 은 같은 handler 코드를 통과하고, runtime 이
+등록된 codec registry 를 보고 payload 를 복원한다. 따라서 sample handler 안에
+`Message.From(...)`, `FromJson(...)`, `FromProto(...)` 같은 helper를 두지 않는다.
 
 정리하면 이 샘플은 다음 규칙을 전제로 깔고 있다.
 
-- protobuf generated 타입이라면 payload decode helper 가 protobuf parser 를
-  선택한다.
-- 일반 POCO class 라면 payload decode helper 가 json parser 를 선택한다.
-- application 은 serializer 이름보다 "이 payload 를 어떤 타입으로 읽을 것인가"
-  에 집중하면 된다.
-
-이후 같은 타입을 여러 serializer 로 처리해야 할 필요가 생길 수도 있다. 그 시점
-에는 `ParseProto<T>()`, `ParseJson<T>()` 같은 명시형 helper 나 context 기반
-parse 함수를 별도로 두는 편이 더 안전한 방향이다.
+- codec extension 은 startup/options 에서 등록한다.
+- session handler 는 packet 이름과 DTO 타입만 다룬다.
+- codec 을 바꿔도 handler, actor join, SPOT create 코드는 그대로 둔다.
 
 ## 4. header session 샘플
 

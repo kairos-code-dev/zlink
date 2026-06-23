@@ -98,7 +98,7 @@ export interface ZLinkStream {
   readonly remoteAddr: string | undefined;
 
   /**
-   * payload 의 소유권을 가져가지 않고 raw stream frame 을 보낸다.
+   * 명시 raw stream frame 을 보낸다.
    * 송신 성공 여부를 boolean 으로 반환한다.
    */
   write(payload: Message, flags?: SendFlags): boolean;
@@ -234,20 +234,17 @@ export interface ZLinkSessionContext {
 session 구현체는 이 값을 읽기 전용 property 로 그대로 노출해야 하며, runtime 은
 생성 직후 같은 context 인스턴스인지 검증한다.
 
-low-level zlink binding 을 직접 사용할 때는 recv 또는 callback 으로 받은
-`Message` 를 application 이 해제한다. framework 에서는 이 binding 표면을
-application 에 직접 노출하지 않는다. framework runtime 이 binding 의 수신자가
-되며, 수신한 `Message` 의 해제 책임도 framework runtime 이 가진다.
+framework 에서는 low-level zlink binding 수신 표면을 application 에 직접 노출하지
+않는다. framework runtime 이 binding 의 수신자가 되고, session callback 에는
+framework `ZLinkMessage` 를 전달한다.
 
 `onDispatch(...)` 로 전달된 `payload` 는 framework `ZLinkMessage` 다. session 은
 `payload.decode<T>()` 로 DTO를 읽거나 `ZLinkSessionActor.relay(...)` 같은 framework
 API 에 그대로 전달한다.
 
-반대로 application 이 직접 만든 `Message` 를 `ZLinkStream.write(...)` 같은
-raw write API 에 넘길 때는 framework 가 그 `Message` 의 소유권을 가져가지
-않는다. write 호출자는 자신이 만든 `Message` 의 수명을 계속 책임진다. 보통의
-session 응답은 `context.client.send(...)`, `context.client.reply(...)` 같은 typed
-builder 를 사용하므로 raw `Message` 수명을 직접 다룰 일이 적다.
+application 이 raw frame 을 직접 보내야 할 때만 `Message` 를 `ZLinkStream.write(...)`
+에 넘긴다. 보통의 session 응답은 `context.client.send(...)`,
+`context.client.reply(...)` 같은 typed builder 를 사용한다.
 
 `context.client.send(...)` 와 `ZLinkBoundSession.send(...)` 의 packet name
 해석은 channel client 와 같은 규칙을 따른다. class instance 처럼 런타임 생성자
@@ -313,8 +310,8 @@ context 타입에 맞는 handler 구현을 provider 로 자동 등록한다.
 - application 은 packet name 을 보고 각 packet 타입으로 decode 한다.
 - session packet dispatcher 는 등록된 packet handler 호출만 돕고, 미등록 packet
   처리 정책은 application 에 남긴다.
-- 이 decode 과정은 가능하면 payload 의 `Message.asReadOnly()` 기반 zero-copy
-  view(`.data`/`Buffer` slice) 를 사용한다. 추가 복사를 피하기 위해서다.
+- decode 과정은 `ZLinkMessage` 가 등록된 codec registry를 통해 처리한다. application
+  은 binding `Message` view를 직접 만들지 않는다.
 - `ZLinkStream` 의 `sessionId`, `routingId`, `localAddr`, `remoteAddr` 로 peer
   와 연결 metadata 를 읽는다.
 - session 은 framework 의 dispatch 경로 위에서 동작한다. 따라서 application 은
@@ -421,10 +418,10 @@ framework 의 기본 표면은 다음 정도까지만 유지한다.
 - `ZLinkSession`
 - `ZLinkSessionContext`
 - `ZLinkStream`
-- `Message`
+- `ZLinkMessage`
 
-객체 변환은 binding core 의 `Message` 자체가 아니라, 그 위에 얹는 별도
-확장 패키지나 serializer provider 가 맡는다. 패키지 분리는
+객체 변환은 binding core 의 `Message` 자체가 아니라, framework `ZLinkMessage` 와
+codec extension / serializer provider 가 맡는다. 패키지 분리는
 [표면 매핑 §2](../internals/dotnet-to-node-surface-mapping.ko.md) 의
 `@zlink-systems/stream-connector-{json,msgpack,protobuf}` 구성을 따른다.
 
@@ -440,8 +437,8 @@ const request = payload.decode<ChatRequest>();
 - protobuf / json / messagepack 의존성을 transport core 에 고정하지 않아도
   된다.
 - serializer 를 별도 패키지로 분리하기 쉽다.
-- payload 의 `Buffer`/`.data` 기반 zero-copy view 를 써서 불필요한 복사를
-  줄이기 쉽다.
+- application 코드는 `payload.decode<T>()` 를 사용하므로 binding buffer 구조를
+  직접 알 필요가 없다.
 - `playhouse/extensions` 와 비슷한 사용 경험을 만들 수 있다.
 
 ## 6. recv 방식은 왜 기본에서 빼는가
@@ -466,9 +463,8 @@ application 표면으로는 올리지 않는다** 는 뜻으로 본다.
 - stream session 등록은 decorator 기반으로 열지 않는다.
   `streams[name].session = T`(dotnet `AddStreamNode(...).RegisterSession<T>()`)
   같은 명시 등록만 기본 표면으로 둔다.
-- packet decode helper 와 encode helper 는 framework 본체가 아니라 serializer
-  확장 패키지가 맡는다. framework core 는 `Message`, zero-copy view,
-  session contract 까지만 책임진다.
+- packet decode 와 encode 는 framework `ZLinkMessage` 가 등록된 serializer provider를
+  통해 수행한다. framework core 는 session contract 와 codec registry 연결을 책임진다.
 - protobuf / json / messagepack serializer 는 확장 패키지로 분리한다. transport
   core 나 framework 기본 runtime 에 codec[^codec] 구현을 직접 섞지 않는다.
 - `onError(...)` 는 session 에 귀속되는 transport 오류만 받는다.
@@ -476,7 +472,7 @@ application 표면으로는 올리지 않는다** 는 뜻으로 본다.
   즉 session callback 에 올리지 않는다(`HandshakeFailed` 는 enum 에 존재하지만
   `onError` 로 전달되지 않는다).
 - raw chunk 직접 처리 표면은 현재 공개 계약에 넣지 않는다. 지금 단계의 session
-  은 framework 가 decode 한 `ZlinkStreamHeader` 와 `Message` payload 를 받는
+  은 framework 가 decode 한 `ZlinkStreamHeader` 와 `ZLinkMessage` payload 를 받는
   계약으로 둔다. 초기 드래프트의 `onRaw`/`writePacket` 은 채택하지 않으며,
   raw 표면은 `ZLinkStream.write(...)` 한 개로만 노출한다.
 - `ZLinkStream.write(...)` 는 즉시 송신 시도 후 boolean 을 반환한다(dotnet

@@ -76,7 +76,7 @@ public:
 
     zlink::framework::task_t<void> on_packet(zlink::framework::stream_t &stream,
       const zlink::framework::stream_header_t &header,
-      const zlink::message_t &payload) override
+      const zlink::framework::message_t &payload) override
     {
         if (is_login(header)) {
             actor_ = co_await actors_
@@ -96,10 +96,9 @@ private:
 };
 ```
 
-`payload`는 session callback 동안 framework runtime이 빌려준 값이다. caller는 이 값을
-해제하거나 move로 소비하지 않는다. `relay(...)`는 remote ActorGateway로 넘겨야 하는
-내부 frame을 framework가 별도로 만들어야 한다. callback 뒤에도 payload를 보관해야 할
-때만 명시적인 copy 또는 move 정책을 사용한다.
+`payload`는 framework `message_t`다. session은 이 값을 decode 하거나 `relay(...)` 같은
+framework API에 그대로 넘긴다. raw bindings `zlink::message_t`가 필요한 경우에는
+명시 raw 표면인 `on_raw_packet(...)`과 `relay_raw(...)`를 사용한다.
 
 ## 4. Actor 표면
 

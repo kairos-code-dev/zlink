@@ -1028,6 +1028,20 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     zlink::framework)
   target_include_directories(zlink_cpp_e2e_registration_codec_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_discovery_registry_ha_registry
+    e2e/DiscoveryRegistryHa/Registry/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_registry PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_registry PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_discovery_registry_ha_client
+    e2e/DiscoveryRegistryHa/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_discovery_registry_ha_client PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_discovery_registry_ha_client PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)

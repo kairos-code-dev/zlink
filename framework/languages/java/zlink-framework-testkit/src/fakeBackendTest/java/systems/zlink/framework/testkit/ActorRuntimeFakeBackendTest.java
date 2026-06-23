@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicReference;
+import com.google.protobuf.StringValue;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.contracts.core.RoutingId;
@@ -22,14 +23,18 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorJoinResult;
+import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
+import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
+import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -204,6 +209,84 @@ final class ActorRuntimeFakeBackendTest {
             assertEquals(0, joined.resultCode());
             assertEquals("custom", serializer.lastJoinRequest.get());
             assertEquals("joined", joined.reply().value());
+        }
+    }
+
+    @Test
+    void protobufActorContextJoinEncodesRequestAndDecodesReplyThroughRegistry() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.codecs().use(ZLinkProtobufCodec.defaultCodec());
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.addSpotFactory(ProtobufJoinSpot.class); }; };
+        options.addActorFactory("player", PlayerActorFactory.class);
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        ZLinkMessageSerializer serializer = serializerWith(ZLinkProtobufCodec.defaultCodec());
+        RoutingId spotRid = RoutingId.from("protobuf-codec-room");
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            Message reply = serializer.serialize(StringValue.of("reply:proto"));
+            try {
+                backendFactory.nextActorJoinReply(reply);
+            } finally {
+                reply.close();
+            }
+            runtime.spotManager()
+                .create(ProtobufJoinSpot.class, spotRid)
+                .toCompletableFuture()
+                .join();
+            ZLinkActor actor = runtime.actorManager()
+                .create("player-protobuf", "player")
+                .toCompletableFuture()
+                .join();
+
+            ZLinkActorJoinResult<StringValue> joined = actor.context()
+                .joinSpot(spotRid, StringValue.of("proto"))
+                .submit(StringValue.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals(0, joined.resultCode());
+            assertEquals("reply:proto", joined.reply().getValue());
+        }
+    }
+
+    @Test
+    void messagePackActorContextJoinEncodesRequestAndDecodesReplyThroughRegistry() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.addSpotFactory(MessagePackJoinSpot.class); }; };
+        options.addActorFactory("player", PlayerActorFactory.class);
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        ZLinkMessageSerializer serializer = serializerWith(ZLinkMessagePackCodec.defaultCodec());
+        RoutingId spotRid = RoutingId.from("messagepack-codec-room");
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            Message reply = serializer.serialize(new PackedJoinReply("reply:msgpack"));
+            try {
+                backendFactory.nextActorJoinReply(reply);
+            } finally {
+                reply.close();
+            }
+            runtime.spotManager()
+                .create(MessagePackJoinSpot.class, spotRid)
+                .toCompletableFuture()
+                .join();
+            ZLinkActor actor = runtime.actorManager()
+                .create("player-messagepack", "player")
+                .toCompletableFuture()
+                .join();
+
+            ZLinkActorJoinResult<PackedJoinReply> joined = actor.context()
+                .joinSpot(spotRid, new PackedJoinRequest("msgpack"))
+                .submit(PackedJoinReply.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals(0, joined.resultCode());
+            assertEquals("reply:msgpack", joined.reply().value());
         }
     }
 
@@ -757,6 +840,50 @@ final class ActorRuntimeFakeBackendTest {
         }
     }
 
+    public static final class ProtobufJoinSpot implements ZLinkSpot<ZLinkActor> {
+        static final AtomicReference<String> lastJoin = new AtomicReference<>();
+
+        @Override
+        public ZLinkSpotContext context() {
+            return null;
+        }
+
+        @Override
+        public ZLinkSpotActorJoinResponse onActorJoin(
+            ZLinkActor actor,
+            ZLinkMessage request,
+            CancellationToken cancellationToken) {
+            StringValue decoded = request.decode(StringValue.class);
+            lastJoin.set(actor.actorId() + ":" + decoded.getValue());
+            return ZLinkSpotActorJoinResponse.accept(StringValue.of("reply:" + decoded.getValue()));
+        }
+    }
+
+    public static final class MessagePackJoinSpot implements ZLinkSpot<ZLinkActor> {
+        static final AtomicReference<String> lastJoin = new AtomicReference<>();
+
+        @Override
+        public ZLinkSpotContext context() {
+            return null;
+        }
+
+        @Override
+        public ZLinkSpotActorJoinResponse onActorJoin(
+            ZLinkActor actor,
+            ZLinkMessage request,
+            CancellationToken cancellationToken) {
+            PackedJoinRequest decoded = request.decode(PackedJoinRequest.class);
+            lastJoin.set(actor.actorId() + ":" + decoded.value());
+            return ZLinkSpotActorJoinResponse.accept(new PackedJoinReply("reply:" + decoded.value()));
+        }
+    }
+
+    public record PackedJoinRequest(String value) {
+    }
+
+    public record PackedJoinReply(String value) {
+    }
+
     public record CustomJoinRequest(String value) {
     }
 
@@ -804,6 +931,13 @@ final class ActorRuntimeFakeBackendTest {
             }
             throw new IllegalArgumentException("unsupported message type: " + type.getName());
         }
+    }
+
+    private static ZLinkMessageSerializer serializerWith(
+        systems.zlink.framework.configuration.ZLinkCodecExtension extension) {
+        ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
+        registration.use(extension);
+        return registration.serializerWithFallback(new ZLinkJsonMessageSerializer());
     }
 
     public static final class NotifyingJoinSpot implements ZLinkSpot<ZLinkActor> {

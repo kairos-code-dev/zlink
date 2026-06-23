@@ -93,10 +93,18 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     private final List<FakeStreamSocket> streams = new ArrayList<>();
     private final List<FakeSpot> spots = new ArrayList<>();
     private final List<FakeRouterSocket> routers = new ArrayList<>();
+    private Message nextActorJoinReply;
     private boolean roomsDiscoveryDelaysRoutingId;
 
     public List<String> calls() {
         return List.copyOf(calls);
+    }
+
+    public void nextActorJoinReply(Message reply) {
+        if (nextActorJoinReply != null) {
+            nextActorJoinReply.close();
+        }
+        nextActorJoinReply = Message.from(reply);
     }
 
     public void delayRoomsDiscoveryRoutingIdUntilSecondSnapshot() {
@@ -855,6 +863,13 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             RoutingId joinedNodeRid = targetSpotRid.toString().contains("native-remote")
                 ? RoutingId.from("native-remote-node")
                 : targetNodeRid;
+            Message reply = owner.nextActorJoinReply == null
+                ? Message.from("joined".getBytes(StandardCharsets.UTF_8))
+                : Message.from(owner.nextActorJoinReply);
+            if (owner.nextActorJoinReply != null) {
+                owner.nextActorJoinReply.close();
+                owner.nextActorJoinReply = null;
+            }
             return CompletableFuture.completedFuture(new ZLinkBackendActorJoinResult(
                 ZLinkBackendRequestResult.OK,
                 0,
@@ -862,7 +877,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 targetSpotRid,
                 1,
                 0,
-                List.of(Message.from("joined".getBytes(StandardCharsets.UTF_8)))));
+                List.of(reply)));
         }
         @Override public CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(ZLinkBackendActorRef actor, RoutingId targetNodeRid, Message request, Duration timeout) {
             record("joinActorEntrySpot." + actor.actorId() + "." + targetNodeRid);

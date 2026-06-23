@@ -87,6 +87,14 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal IZLinkRouteClient RouteClient => _services.GetRequiredService<IZLinkRouteClient>();
 
+    internal bool IsSpotRouteEgressChannel(string channelName)
+    {
+        return _registration.Channels.TryGetValue(channelName, out var channel)
+                && channel.SpotRouteEgress is not null
+            || _registration.RouteChannels.TryGetValue(channelName, out var routeChannel)
+                && routeChannel.SpotRouteEgress is not null;
+    }
+
     internal ValueTask<ZLinkFrameworkRuntimeState> GetStartedStateForRoutingAsync(
         CancellationToken cancellationToken)
     {

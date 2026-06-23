@@ -1239,7 +1239,7 @@ export class TicTacToeEntrySpot implements ZLinkEntrySpot {
 export class TicTacToeGame implements ZLinkSpot {
   readonly context!: ZLinkSpotContext;
 
-  async onActorJoin(actor: ZLinkActor, request: Message): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actor: ZLinkActor, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };
   }
 

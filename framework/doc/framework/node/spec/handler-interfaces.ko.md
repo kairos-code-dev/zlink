@@ -1599,10 +1599,11 @@ export interface ZLinkSpotManager {
 - `close(...)`: 정상 종료(이때 `onClosing()` 호출). actor 가 남은 user Spot 은 종료하지 않고
   `false` 를 반환한다.
 
-`onCreate(request)` 는 caller 가 넘긴 단일 `Message` 를 그대로 전달한다. JSON,
-MessagePack, Protobuf payload 는 Node framework 의 기존 codec helper 로 `Message` bytes 를
-decode 해서 사용한다. 같은 spotRid 에 대해 다른 `TSpot` 으로 `getOrCreate(...)` 하면 `SpotTypeMismatch`
-로 실패한다.
+`onCreate(request)` 는 caller 가 넘긴 payload 를 `ZLinkMessage` 로 전달한다. 기본 사용자는
+DTO 를 넘기고 `request.decode<T>()` 로 읽는다. MessagePack, Protobuf, custom codec 은
+기존처럼 module options 의 codec registry 에 등록하며, handler 에서 `Message` bytes 나
+codec helper 를 직접 다루지 않는다. 같은 spotRid 에 대해 다른 `TSpot` 으로
+`getOrCreate(...)` 하면 `SpotTypeMismatch` 로 실패한다.
 
 #### SpotNode / mesh builder
 

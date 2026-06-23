@@ -170,7 +170,7 @@ public final class MarketplaceChatSession implements ZLinkSession {
     @Override
     public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
         if ("auth".equals(header.name())) {
-            AuthReq req = StreamPayloads.decode(header, payload, AuthReq.class);
+            AuthReq req = payload.decode(AuthReq.class);
             user = actors.getOrCreate(req.userId(), "chat-user")
                 .thenCompose(actor -> context.actors().bind(actor))
                 .thenCompose(bound -> context.client().reply(new AuthOk()).submit().thenApply(ignored -> bound))

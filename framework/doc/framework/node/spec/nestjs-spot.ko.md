@@ -314,8 +314,8 @@ export class StageSpot implements ZLinkSpot {
     this.context.handlers.addHandler(ReportStageStateHandler);
   }
 
-  async onActorJoin(actor: StageActor, request: Message): Promise<ZLinkSpotActorJoinResponse> {
-    const admission = await this.decodeAdmission(request);
+  async onActorJoin(actor: StageActor, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+    const admission = await this.decodeAdmission(request.decode<StageAdmissionReq>());
     return admission.allowed
       ? { accepted: true, reply: admission.reply }
       : { accepted: false, reply: admission.reply };

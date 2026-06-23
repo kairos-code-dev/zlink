@@ -54,7 +54,6 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.contracts.sockets.SubSocket;
-import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorBindOperation;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
@@ -109,6 +108,7 @@ import systems.zlink.framework.runtime.backend.ZLinkRegistryBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
+import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 
@@ -781,7 +781,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         List<Message> parts,
         SendFlags flags) {
         StreamPayload payload = streamPayload(packetName, parts);
-        Message frame = Message.from(encodeStreamFrame(
+        Message frame = Message.from(ZLinkStreamFrameCodec.encode(
             encodeStreamHeader(kind, 0, payload.packetName(), requestSeq),
             payload.body()));
         try {
@@ -799,7 +799,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         if (parts == null || parts.size() != 1) {
             throw new IllegalArgumentException("stream frame requires exactly one payload part");
         }
-        Message frame = Message.from(encodeStreamFrame(
+        Message frame = Message.from(ZLinkStreamFrameCodec.encode(
             ZLinkStreamHeaderCodec.encode(header),
             parts.get(0).toByteArray()));
         try {
@@ -820,18 +820,6 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
             return new StreamPayload("", parts.get(0).toByteArray());
         }
         return new StreamPayload(parts.get(0).toUtf8String(), parts.get(1).toByteArray());
-    }
-
-    private static byte[] encodeStreamFrame(byte[] header, byte[] body) {
-        if (header.length > 0xFFFF) {
-            throw new IllegalArgumentException("stream header exceeds u16 header size");
-        }
-        ByteBuffer buffer = ByteBuffer.allocate(6 + header.length + body.length);
-        buffer.putShort((short) header.length);
-        buffer.putInt(body.length);
-        buffer.put(header);
-        buffer.put(body);
-        return buffer.array();
     }
 
     private record StreamPayload(String packetName, byte[] body) { }

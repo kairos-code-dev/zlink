@@ -2,7 +2,6 @@ package systems.zlink.framework.runtime.actors;
 
 import systems.zlink.framework.runtime.backend.*;
 
-import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -23,7 +22,7 @@ import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
-import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
+import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
@@ -144,7 +143,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
                     Optional.empty(),
                     packetName.orElse(defaultPacketName),
                     metadata);
-                frameBytes = encodeStreamFrame(header, payload.toByteArray());
+                frameBytes = ZLinkStreamFrameCodec.encode(header, payload.toByteArray());
             } finally {
                 payload.close();
             }
@@ -194,16 +193,6 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         }
         new Attempt().run();
         return result;
-    }
-
-    private static byte[] encodeStreamFrame(ZLinkStreamHeader header, byte[] body) {
-        byte[] headerBytes = ZLinkStreamHeaderCodec.encode(header);
-        ByteBuffer frame = ByteBuffer.allocate(6 + headerBytes.length + body.length);
-        frame.putShort((short) headerBytes.length);
-        frame.putInt(body.length);
-        frame.put(headerBytes);
-        frame.put(body);
-        return frame.array();
     }
 
 }

@@ -1,5 +1,19 @@
 package systems.zlink.framework.runtime.handlers;
 
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_ENTRY_SPOT_ACTOR_REQUEST_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_ENTRY_SPOT_ACTOR_SEND_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_PUBLISH_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_REQUEST_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_ROUTE_REQUEST_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_ROUTE_SEND_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SEND_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SPOT_ACTOR_REQUEST_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SPOT_ACTOR_SEND_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SPOT_PACKET_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SPOT_REQUEST_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SPOT_SUBSCRIPTION_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SPOT_TIMER_HANDLER;
+
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -49,33 +63,6 @@ import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 
 public final class ZLinkHandlerScanner {
-    private static final String KOTLIN_REQUEST_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler";
-    private static final String KOTLIN_SEND_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSendHandler";
-    private static final String KOTLIN_PUBLISH_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingPublishHandler";
-    private static final String KOTLIN_ROUTE_REQUEST_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingRouteRequestHandler";
-    private static final String KOTLIN_ROUTE_SEND_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingRouteSendHandler";
-    private static final String KOTLIN_SPOT_PACKET_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotPacketHandler";
-    private static final String KOTLIN_SPOT_REQUEST_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotRequestHandler";
-    private static final String KOTLIN_SPOT_SUBSCRIPTION_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotSubscriptionHandler";
-    private static final String KOTLIN_SPOT_TIMER_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotTimerHandler";
-    private static final String KOTLIN_ENTRY_SPOT_ACTOR_SEND_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorSendHandler";
-    private static final String KOTLIN_ENTRY_SPOT_ACTOR_REQUEST_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler";
-    private static final String KOTLIN_SPOT_ACTOR_SEND_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorSendHandler";
-    private static final String KOTLIN_SPOT_ACTOR_REQUEST_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorRequestHandler";
-
     private ZLinkHandlerScanner() {
     }
 

@@ -1,6 +1,5 @@
 package systems.zlink.framework.runtime.actors;
 
-import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -18,7 +17,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
-import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
+import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
@@ -157,7 +156,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                     Optional.empty(),
                     packetName.orElse(defaultPacketName),
                     metadata);
-                frameBytes = encodeStreamFrame(header, payload.toByteArray());
+                frameBytes = ZLinkStreamFrameCodec.encode(header, payload.toByteArray());
             } finally {
                 payload.close();
             }
@@ -165,21 +164,12 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             List<Message> parts = ZLinkActorSpotRoutePackets.createBoundSessionSendParts(actorRef, frame);
             try {
                 if (routedTransport != null && routeChannelName != null && !routeChannelName.isBlank()) {
-                    System.out.println("zlink routed bound session via channel: actor="
-                        + actorRef.actorId()
-                        + " channel=" + routeChannelName
-                        + " targetNode=" + targetNodeRid
-                        + " targetSpot=" + targetEntrySpotRid);
                     return routedTransport.sendToSpotViaRouterChannel(
                         routeChannelName,
                         targetNodeRid,
                         targetEntrySpotRid,
                         parts);
                 }
-                System.out.println("zlink routed bound session direct fallback: actor="
-                    + actorRef.actorId()
-                    + " targetNode=" + targetNodeRid
-                    + " targetSpot=" + targetEntrySpotRid);
                 boolean submitted = sourceEntrySpot.sendToSpot(
                         targetNodeRid,
                         targetEntrySpotRid,
@@ -198,13 +188,4 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         }
     }
 
-    private static byte[] encodeStreamFrame(ZLinkStreamHeader header, byte[] body) {
-        byte[] headerBytes = ZLinkStreamHeaderCodec.encode(header);
-        ByteBuffer frame = ByteBuffer.allocate(6 + headerBytes.length + body.length);
-        frame.putShort((short) headerBytes.length);
-        frame.putInt(body.length);
-        frame.put(headerBytes);
-        frame.put(body);
-        return frame.array();
-    }
 }

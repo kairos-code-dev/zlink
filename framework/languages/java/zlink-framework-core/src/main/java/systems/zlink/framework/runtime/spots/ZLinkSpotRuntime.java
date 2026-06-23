@@ -1,5 +1,14 @@
 package systems.zlink.framework.runtime.spots;
 
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_ENTRY_SPOT_ACTOR_REQUEST_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_ENTRY_SPOT_ACTOR_SEND_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SPOT_ACTOR_REQUEST_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SPOT_ACTOR_SEND_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SPOT_PACKET_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SPOT_REQUEST_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SPOT_SUBSCRIPTION_HANDLER;
+import static systems.zlink.framework.runtime.handlers.ZLinkHandlerInterfaceNames.KOTLIN_SPOT_TIMER_HANDLER;
+
 import systems.zlink.framework.runtime.backend.*;
 
 import java.lang.reflect.Method;
@@ -31,12 +40,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.errors.ConnectResult;
-import systems.zlink.contracts.errors.ZlinkConnectException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.registry.AutoConnectType;
-import systems.zlink.contracts.service.registry.ServiceRole;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.CancellationToken;
@@ -111,33 +116,16 @@ import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.framework.spots.ZLinkTimerTick;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
+import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
-    private static final String KOTLIN_SPOT_PACKET_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotPacketHandler";
-    private static final String KOTLIN_SPOT_REQUEST_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotRequestHandler";
-    private static final String KOTLIN_SPOT_SUBSCRIPTION_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotSubscriptionHandler";
-    private static final String KOTLIN_SPOT_TIMER_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotTimerHandler";
-    private static final String KOTLIN_ENTRY_SPOT_ACTOR_SEND_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorSendHandler";
-    private static final String KOTLIN_ENTRY_SPOT_ACTOR_REQUEST_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler";
-    private static final String KOTLIN_SPOT_ACTOR_SEND_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorSendHandler";
-    private static final String KOTLIN_SPOT_ACTOR_REQUEST_HANDLER =
-        "systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorRequestHandler";
     private static final String REMOTE_BOUND_SESSION_BIND_PACKET_NAME =
         "zlink.framework.actor.bound_session.bind";
 
-    private static final long ROUTER_ENDPOINT_ROUTE_KIND = 0x5a4c5245L;
-    private static final int ROUTER_PEER_CONVERGENCE_SNAPSHOTS = 10;
     private static final CancellationToken NONE_CANCELLATION = () -> false;
     private static final ScheduledThreadPoolExecutor ACTOR_SESSION_REPLY_RETRY_EXECUTOR =
         new ScheduledThreadPoolExecutor(1, task -> {
@@ -156,12 +144,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     private final List<ZLinkBackendDiscovery> attachedChannelDiscoveries = new ArrayList<>();
     private final Map<String, ZLinkBackendSpotNode> nodesByName = new HashMap<>();
     private final Map<String, ZLinkBackendDiscovery> spotDiscoveriesByMesh = new HashMap<>();
-    private final List<SpotDiscoveryBinding> spotDiscoveryBindings = new ArrayList<>();
-    private final Set<String> discoveredPubSubPeers = new HashSet<>();
-    private final Set<String> discoveredRouterPeers = new HashSet<>();
-    private final Map<String, Integer> discoveredRouterPeerSightings = new HashMap<>();
-    private final Map<String, Set<String>> discoveredRouterPeerRidKeys = new HashMap<>();
-    private final Set<RoutingId> connectedRouterPeerRids = ConcurrentHashMap.newKeySet();
+    private final SpotDiscoveryReconciler spotDiscoveryReconciler = new SpotDiscoveryReconciler();
     private final Map<String, ZLinkBackendSpotNode> publisherNodesByChannel = new HashMap<>();
     private final Map<String, ZLinkBackendSpot> publisherSpotsByChannel = new HashMap<>();
     private final Set<Class<? extends ZLinkSpot<?>>> registeredSpotTypes = new HashSet<>();
@@ -290,9 +273,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             for (SpotNodeRegistration.RouterManualConnection connection
                     : nodeRegistration.routerManualConnections()) {
                 node.connectPeer(connection.endpoint());
-                if (hasRoutingId(connection.peerRoutingId())) {
-                    connectedRouterPeerRids.add(connection.peerRoutingId());
-                }
+                spotDiscoveryReconciler.markRouterPeerReady(connection.peerRoutingId());
             }
             for (String endpoint : nodeRegistration.pubSubManualConnections()) {
                 node.connectPeer(endpoint);
@@ -332,7 +313,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             }
         }
         this.primaryNode = nodes.get(0);
-        startSpotDiscoveryReconciliation();
+        spotDiscoveryReconciler.start(timerExecutor);
     }
 
     private static ZLinkBackendSpotNodeMode resolveSpotNodeMode(
@@ -669,7 +650,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     }
 
     public boolean isActorGatewayRouteReady(RoutingId nodeRid) {
-        if (!hasRoutingId(nodeRid)) {
+        if (!SpotDiscoveryReconciler.hasRoutingId(nodeRid)) {
             return true;
         }
         for (ZLinkBackendSpotNode node : nodes) {
@@ -677,7 +658,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 return true;
             }
         }
-        return connectedRouterPeerRids.contains(nodeRid);
+        return spotDiscoveryReconciler.isRouterPeerReady(nodeRid);
     }
 
     public ZLinkSpotOutbound outbound() {
@@ -1149,258 +1130,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         node.attachDiscovery(discovery);
         attachedChannelDiscoveries.add(discovery);
         spotDiscoveriesByMesh.putIfAbsent(nodeRegistration.meshName(), discovery);
-        spotDiscoveryBindings.add(new SpotDiscoveryBinding(
+        spotDiscoveryReconciler.addBinding(
             nodeRegistration.meshName(),
             node,
             discovery,
             nodeRegistration.routerEnabled(),
             nodeRegistration.pubSubEnabled(),
             nodeRegistration.routerBind(),
-            nodeRegistration.pubBind()));
-    }
-
-    private void startSpotDiscoveryReconciliation() {
-        if (spotDiscoveryBindings.isEmpty()) {
-            return;
-        }
-        timerExecutor.scheduleWithFixedDelay(
-            this::reconcileSpotDiscoveryPeers,
-            0,
-            100,
-            TimeUnit.MILLISECONDS);
-    }
-
-    private void reconcileSpotDiscoveryPeers() {
-        for (SpotDiscoveryBinding binding : spotDiscoveryBindings) {
-            try {
-                reconcileSpotDiscoveryPeer(binding);
-            } catch (RuntimeException ignored) {
-                // Discovery can be temporarily unavailable while registry peers are starting.
-                // Keep the reconciler alive so the next tick can converge.
-            }
-        }
-    }
-
-    private void reconcileSpotDiscoveryPeer(SpotDiscoveryBinding binding) {
-            bindLocalRouterEndpoint(binding);
-            List<ZLinkBackendRegistryMemberPeerEntry> peers = binding.discovery().memberPeers();
-            Map<RoutingId, String> routerEndpointsByRid =
-                routerEndpointsByRid(peers, binding.meshName());
-            for (ZLinkBackendRegistryMemberPeerEntry peer : peers) {
-                if (peer.autoConnectType() != AutoConnectType.SPOT_MESH
-                    || !binding.meshName().equals(peer.channelName())
-                    || peer.endpoint() == null
-                    || peer.endpoint().isBlank()
-                    || peer.endpoint().equals(binding.routerBind())
-                    || peer.endpoint().equals(binding.pubBind())) {
-                    continue;
-                }
-                if (peer.serviceRole() == ServiceRole.ROUTER) {
-                    if (binding.routerEnabled() && !binding.pubSubEnabled()) {
-                        connectDiscoveredRouterPeer(
-                            binding,
-                            peer.routingId(),
-                            peer.endpoint());
-                    }
-                    continue;
-                }
-                if (peer.serviceRole() != ServiceRole.SPOT) {
-                    continue;
-                }
-                if (binding.pubSubEnabled()) {
-                    connectDiscoveredPubSubPeer(binding, peer.endpoint());
-                }
-                if (!binding.routerEnabled()) {
-                    continue;
-                }
-                RoutingId peerRoutingId = peer.routingId();
-                String routerEndpoint = resolveRouterEndpoint(
-                    binding,
-                    peerRoutingId,
-                    peer.endpoint(),
-                    routerEndpointsByRid,
-                    binding.discovery());
-                if (routerEndpoint == null
-                    || routerEndpoint.isBlank()
-                    || routerEndpoint.equals(binding.routerBind())
-                    || routerEndpoint.equals(binding.pubBind())) {
-                    continue;
-                }
-                connectDiscoveredRouterPeer(binding, peerRoutingId, routerEndpoint);
-            }
-    }
-
-    private static Map<RoutingId, String> routerEndpointsByRid(
-        List<ZLinkBackendRegistryMemberPeerEntry> peers,
-        String meshName) {
-        Map<RoutingId, String> endpoints = new HashMap<>();
-        for (ZLinkBackendRegistryMemberPeerEntry peer : peers) {
-            if (peer.autoConnectType() == AutoConnectType.SPOT_MESH
-                && peer.serviceRole() == ServiceRole.ROUTER
-                && meshName.equals(peer.channelName())
-                && peer.endpoint() != null
-                && !peer.endpoint().isBlank()
-                && hasRoutingId(peer.routingId())) {
-                endpoints.put(peer.routingId(), peer.endpoint());
-            }
-        }
-        return endpoints;
-    }
-
-    private static String resolveRouterEndpoint(
-        SpotDiscoveryBinding binding,
-        RoutingId peerRoutingId,
-        String peerEndpoint,
-        Map<RoutingId, String> routerEndpointsByRid,
-        ZLinkBackendDiscovery discovery) {
-        if (!hasRoutingId(peerRoutingId)) {
-            return binding.pubSubEnabled() ? null : peerEndpoint;
-        }
-        String discoveredEndpoint = routerEndpointsByRid.get(peerRoutingId);
-        if (discoveredEndpoint != null) {
-            return discoveredEndpoint;
-        }
-        String routeEndpoint = resolveRouterEndpointRoute(discovery, peerRoutingId);
-        if (routeEndpoint != null && !routeEndpoint.isBlank()) {
-            return routeEndpoint;
-        }
-        return binding.pubSubEnabled() ? null : peerEndpoint;
-    }
-
-    private static void bindLocalRouterEndpoint(SpotDiscoveryBinding binding) {
-        if (!binding.routerEnabled()
-            || binding.routerBind() == null
-            || binding.routerBind().isBlank()
-            || !hasRoutingId(binding.node().routingId())) {
-            return;
-        }
-        try {
-            binding.discovery().bindRoute(
-                ROUTER_ENDPOINT_ROUTE_KIND,
-                binding.node().routingId().toBytes(),
-                binding.routerBind().getBytes(StandardCharsets.UTF_8));
-        } catch (RuntimeException ignored) {
-            // Route publication converges through the next discovery tick.
-        }
-    }
-
-    private static String resolveRouterEndpointRoute(
-        ZLinkBackendDiscovery discovery,
-        RoutingId peerRoutingId) {
-        try {
-            return discovery.resolveRoute(
-                    ROUTER_ENDPOINT_ROUTE_KIND,
-                    peerRoutingId.toBytes())
-                .endpoint()
-                .orElse(null);
-        } catch (RuntimeException ex) {
-            return null;
-        }
-    }
-
-    private static boolean hasRoutingId(RoutingId routingId) {
-        return routingId != null && routingId.size() > 0;
-    }
-
-    private void connectDiscoveredPubSubPeer(
-        SpotDiscoveryBinding binding,
-        String endpoint) {
-        String key = binding.meshName() + "|pubsub|" + endpoint;
-        if (!discoveredPubSubPeers.add(key)) {
-            return;
-        }
-        try {
-            binding.node().connectPeer(endpoint);
-        } catch (ZlinkConnectException ex) {
-            if (isIdempotentConnectFailure(ex)) {
-                return;
-            }
-            discoveredPubSubPeers.remove(key);
-        } catch (RuntimeException ex) {
-            discoveredPubSubPeers.remove(key);
-        }
-    }
-
-    private void connectDiscoveredRouterPeer(
-        SpotDiscoveryBinding binding,
-        RoutingId peerRoutingId,
-        String endpoint) {
-        String key = binding.meshName() + "|router|" + endpoint;
-        String ridKey = hasRoutingId(peerRoutingId) ? peerRoutingId.toString() : null;
-        if (!discoveredRouterPeers.add(key)) {
-            int sightings = discoveredRouterPeerSightings.merge(key, 1, Integer::sum);
-            if (ridKey != null
-                && discoveredRouterPeerRidKeys
-                    .computeIfAbsent(key, ignored -> new HashSet<>())
-                    .add(ridKey)) {
-                try {
-                    binding.node().connectPeer(peerRoutingId, endpoint);
-                } catch (ZlinkConnectException ex) {
-                    if (!isIdempotentConnectFailure(ex)) {
-                        removeDiscoveredRouterPeerRidKey(key, ridKey);
-                        return;
-                    }
-                } catch (RuntimeException ex) {
-                    removeDiscoveredRouterPeerRidKey(key, ridKey);
-                    return;
-                }
-            }
-            if (hasRoutingId(peerRoutingId)
-                && sightings >= ROUTER_PEER_CONVERGENCE_SNAPSHOTS) {
-                connectedRouterPeerRids.add(peerRoutingId);
-            }
-            return;
-        }
-        discoveredRouterPeerSightings.put(key, 1);
-        try {
-            if (hasRoutingId(peerRoutingId)) {
-                binding.node().connectPeer(peerRoutingId, endpoint);
-                discoveredRouterPeerRidKeys
-                    .computeIfAbsent(key, ignored -> new HashSet<>())
-                    .add(ridKey);
-            } else {
-                binding.node().connectPeer(endpoint);
-            }
-            if (hasRoutingId(peerRoutingId)) {
-                connectedRouterPeerRids.add(peerRoutingId);
-            }
-        } catch (ZlinkConnectException ex) {
-            if (isIdempotentConnectFailure(ex)) {
-                int sightings = discoveredRouterPeerSightings.merge(key, 1, Integer::sum);
-                if (hasRoutingId(peerRoutingId)
-                    && sightings >= ROUTER_PEER_CONVERGENCE_SNAPSHOTS) {
-                    connectedRouterPeerRids.add(peerRoutingId);
-                }
-                return;
-            }
-            discoveredRouterPeers.remove(key);
-            discoveredRouterPeerSightings.remove(key);
-            discoveredRouterPeerRidKeys.remove(key);
-        } catch (RuntimeException ex) {
-            discoveredRouterPeers.remove(key);
-            discoveredRouterPeerSightings.remove(key);
-            discoveredRouterPeerRidKeys.remove(key);
-        }
-    }
-
-    private void removeDiscoveredRouterPeerRidKey(String key, String ridKey) {
-        Set<String> ridKeys = discoveredRouterPeerRidKeys.get(key);
-        if (ridKeys == null) {
-            return;
-        }
-        ridKeys.remove(ridKey);
-        if (ridKeys.isEmpty()) {
-            discoveredRouterPeerRidKeys.remove(key);
-        }
-    }
-
-    private static boolean isIdempotentConnectFailure(ZlinkConnectException ex) {
-        int errno = ex.getNativeErrno();
-        return ex.getResult() == ConnectResult.BUSY
-            || errno == 16
-            || errno == 106
-            || errno == 114
-            || errno == 115;
+            nodeRegistration.pubBind());
     }
 
     private void attachAcceptedSpotRouteChannel(
@@ -2375,22 +2112,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
                 return Message.from(payload);
             }
-            byte[] name = packetHeader.packetName().getBytes(StandardCharsets.UTF_8);
-            ByteBuffer header = ByteBuffer.allocate(3 + Long.BYTES + 1 + name.length);
-            header.put((byte) 3);
-            header.put((byte) packetHeader.codec());
-            header.put((byte) 0x01);
-            header.putLong(packetHeader.requestSeq().get());
-            header.put((byte) name.length);
-            header.put(name);
-            byte[] headerBytes = header.array();
-            byte[] body = payload.toByteArray();
-            ByteBuffer frame = ByteBuffer.allocate(6 + headerBytes.length + body.length);
-            frame.putShort((short) headerBytes.length);
-            frame.putInt(body.length);
-            frame.put(headerBytes);
-            frame.put(body);
-            return Message.from(frame.array());
+            return Message.from(ZLinkStreamFrameCodec.encode(
+                ZLinkStreamMessageKind.RESPONSE,
+                ZLinkStreamCodec.fromValue(packetHeader.codec()),
+                packetHeader.requestSeq(),
+                packetHeader.packetName(),
+                payload.toByteArray()));
         }
 
         private Message encodeActorErrorFrame(
@@ -2400,21 +2127,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
                 return Message.from(body);
             }
-            byte[] name = packetHeader.packetName().getBytes(StandardCharsets.UTF_8);
-            ByteBuffer header = ByteBuffer.allocate(3 + Long.BYTES + 1 + name.length);
-            header.put((byte) 4);
-            header.put((byte) 1);
-            header.put((byte) 0x01);
-            header.putLong(packetHeader.requestSeq().get());
-            header.put((byte) name.length);
-            header.put(name);
-            byte[] headerBytes = header.array();
-            ByteBuffer frame = ByteBuffer.allocate(6 + headerBytes.length + body.length);
-            frame.putShort((short) headerBytes.length);
-            frame.putInt(body.length);
-            frame.put(headerBytes);
-            frame.put(body);
-            return Message.from(frame.array());
+            return Message.from(ZLinkStreamFrameCodec.encode(
+                ZLinkStreamMessageKind.ERROR,
+                ZLinkStreamCodec.JSON,
+                packetHeader.requestSeq(),
+                packetHeader.packetName(),
+                body));
         }
 
         private record ActorPacketHeader(
@@ -3598,16 +3316,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
         ACTOR_SESSION_REPLY_RETRY_EXECUTOR.execute(new Attempt());
         return result;
-    }
-
-    private record SpotDiscoveryBinding(
-        String meshName,
-        ZLinkBackendSpotNode node,
-        ZLinkBackendDiscovery discovery,
-        boolean routerEnabled,
-        boolean pubSubEnabled,
-        String routerBind,
-        String pubBind) {
     }
 
     private record ActorDispatchReply(Message message, boolean streamFrame) {
@@ -4889,22 +4597,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
                 return Message.from(payload);
             }
-            byte[] name = packetHeader.packetName().getBytes(StandardCharsets.UTF_8);
-            ByteBuffer header = ByteBuffer.allocate(3 + Long.BYTES + 1 + name.length);
-            header.put((byte) 3);
-            header.put((byte) packetHeader.codec());
-            header.put((byte) 0x01);
-            header.putLong(packetHeader.requestSeq().get());
-            header.put((byte) name.length);
-            header.put(name);
-            byte[] headerBytes = header.array();
-            byte[] body = payload.toByteArray();
-            ByteBuffer frame = ByteBuffer.allocate(6 + headerBytes.length + body.length);
-            frame.putShort((short) headerBytes.length);
-            frame.putInt(body.length);
-            frame.put(headerBytes);
-            frame.put(body);
-            return Message.from(frame.array());
+            return Message.from(ZLinkStreamFrameCodec.encode(
+                ZLinkStreamMessageKind.RESPONSE,
+                ZLinkStreamCodec.fromValue(packetHeader.codec()),
+                packetHeader.requestSeq(),
+                packetHeader.packetName(),
+                payload.toByteArray()));
         }
 
         private Message encodeActorErrorFrame(
@@ -4914,21 +4612,12 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
                 return Message.from(body);
             }
-            byte[] name = packetHeader.packetName().getBytes(StandardCharsets.UTF_8);
-            ByteBuffer header = ByteBuffer.allocate(3 + Long.BYTES + 1 + name.length);
-            header.put((byte) 4);
-            header.put((byte) 1);
-            header.put((byte) 0x01);
-            header.putLong(packetHeader.requestSeq().get());
-            header.put((byte) name.length);
-            header.put(name);
-            byte[] headerBytes = header.array();
-            ByteBuffer frame = ByteBuffer.allocate(6 + headerBytes.length + body.length);
-            frame.putShort((short) headerBytes.length);
-            frame.putInt(body.length);
-            frame.put(headerBytes);
-            frame.put(body);
-            return Message.from(frame.array());
+            return Message.from(ZLinkStreamFrameCodec.encode(
+                ZLinkStreamMessageKind.ERROR,
+                ZLinkStreamCodec.JSON,
+                packetHeader.requestSeq(),
+                packetHeader.packetName(),
+                body));
         }
 
         private record ActorPacketHeader(

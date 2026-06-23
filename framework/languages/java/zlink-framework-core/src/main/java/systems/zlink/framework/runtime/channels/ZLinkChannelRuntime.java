@@ -170,95 +170,128 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         for (ChannelRegistration channel : registration.channels()) {
             registrationsByName.put(channel.name(), channel);
             ZLinkBackendDiscovery discovery = discoveryFor(backend, registration, channel);
-            if (channel.kind() == ChannelKind.CLIENT_SERVER && channel.clientEnabled()) {
-                ZLinkBackendDealerSocket dealer = backend.createDealerSocket(context);
-                dealer.setChannelName(channel.name());
-                if (discovery == null) {
-                    for (String endpoint : channel.clientManualEndpoints()) {
-                        dealer.connect(endpoint);
-                    }
-                    manualClients.add(dealer);
-                } else {
-                    dealer.attachDiscovery(discovery);
-                }
-                clients.put(channel.name(), dealer);
-            }
-            if (channel.kind() == ChannelKind.CLIENT_SERVER && !channel.serverBinds().isEmpty()) {
-                ZLinkBackendRouterSocket router = backend.createRouterSocket(context);
-                router.setChannelName(channel.name());
-                if (channel.serverRoutingId() != null) {
-                    router.setRoutingId(channel.serverRoutingId());
-                }
-                if (discovery != null) {
-                    router.attachDiscovery(discovery);
-                } else {
-                    manualServers.add(router);
-                }
-                for (String endpoint : channel.serverBinds()) {
-                    router.bind(endpoint);
-                }
-                servers.put(channel.name(), router);
-                sendHandlers.put(channel.name(), sendHandlersByPacket(channel, handlerCatalog));
-                requestHandlers.put(channel.name(), handlersByPacket(channel, handlerCatalog));
-                sendDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
-                requestDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
-                startRequestLoop(channel.name(), router);
-            }
-            if (channel.kind() == ChannelKind.FANOUT && channel.publisherEnabled()) {
-                ZLinkBackendPublisherSocket publisher = backend.createPublisherSocket(context);
-                publisher.setChannelName(channel.name());
-                if (discovery != null) {
-                    publisher.attachDiscovery(discovery);
-                } else {
-                    manualPublishers.add(publisher);
-                }
-                for (String endpoint : channel.publisherBinds()) {
-                    publisher.bind(endpoint);
-                }
-                publishers.put(channel.name(), publisher);
-            }
-            if (channel.kind() == ChannelKind.FANOUT && channel.subscriberEnabled()) {
-                ZLinkBackendSubscriberSocket subscriber = backend.createSubscriberSocket(context);
-                subscriber.setChannelName(channel.name());
-                if (discovery != null) {
-                    subscriber.attachDiscovery(discovery);
-                } else {
-                    for (String endpoint : channel.subscriberManualEndpoints()) {
-                        subscriber.connect(endpoint);
-                    }
-                    manualSubscribers.add(subscriber);
-                }
-                subscriber.setSubscription("");
-                subscribers.put(channel.name(), subscriber);
-                publishHandlers.put(channel.name(), publishHandlersByPacket(channel, handlerCatalog));
-                publishDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
-                startSubscribeLoop(channel.name(), subscriber);
-            }
-            if (channel.kind() == ChannelKind.ROUTE_MESH) {
-                ZLinkBackendRouterSocket router = backend.createRouterSocket(context);
-                router.setChannelName(channel.name());
-                if (channel.routeRoutingId() != null) {
-                    router.setRoutingId(channel.routeRoutingId());
-                }
-                if (discovery != null) {
-                    router.attachDiscovery(discovery);
-                } else {
-                    for (String endpoint : channel.routeManualEndpoints()) {
-                        router.connect(endpoint);
-                    }
-                    manualRouteRouters.add(router);
-                }
-                for (String endpoint : channel.routeBinds()) {
-                    router.bind(endpoint);
-                }
-                routeRouters.put(channel.name(), router);
-                routeSendHandlers.put(channel.name(), routeSendHandlersByPacket(channel, handlerCatalog));
-                routeRequestHandlers.put(channel.name(), routeHandlersByPacket(channel, handlerCatalog));
-                routeSendDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
-                routeRequestDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
-                startRouteLoop(channel.name(), router);
-            }
+            configureClientServerChannel(backend, channel, discovery, handlerCatalog);
+            configureFanoutChannel(backend, channel, discovery, handlerCatalog);
+            configureRouteMeshChannel(backend, channel, discovery, handlerCatalog);
         }
+    }
+
+    private void configureClientServerChannel(
+        ZLinkChannelBackendAdapter backend,
+        ChannelRegistration channel,
+        ZLinkBackendDiscovery discovery,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
+        if (channel.kind() != ChannelKind.CLIENT_SERVER) {
+            return;
+        }
+        if (channel.clientEnabled()) {
+            ZLinkBackendDealerSocket dealer = backend.createDealerSocket(context);
+            dealer.setChannelName(channel.name());
+            if (discovery == null) {
+                for (String endpoint : channel.clientManualEndpoints()) {
+                    dealer.connect(endpoint);
+                }
+                manualClients.add(dealer);
+            } else {
+                dealer.attachDiscovery(discovery);
+            }
+            clients.put(channel.name(), dealer);
+        }
+        if (channel.serverBinds().isEmpty()) {
+            return;
+        }
+        ZLinkBackendRouterSocket router = backend.createRouterSocket(context);
+        router.setChannelName(channel.name());
+        if (channel.serverRoutingId() != null) {
+            router.setRoutingId(channel.serverRoutingId());
+        }
+        if (discovery != null) {
+            router.attachDiscovery(discovery);
+        } else {
+            manualServers.add(router);
+        }
+        for (String endpoint : channel.serverBinds()) {
+            router.bind(endpoint);
+        }
+        servers.put(channel.name(), router);
+        sendHandlers.put(channel.name(), sendHandlersByPacket(channel, handlerCatalog));
+        requestHandlers.put(channel.name(), handlersByPacket(channel, handlerCatalog));
+        sendDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
+        requestDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
+        startRequestLoop(channel.name(), router);
+    }
+
+    private void configureFanoutChannel(
+        ZLinkChannelBackendAdapter backend,
+        ChannelRegistration channel,
+        ZLinkBackendDiscovery discovery,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
+        if (channel.kind() != ChannelKind.FANOUT) {
+            return;
+        }
+        if (channel.publisherEnabled()) {
+            ZLinkBackendPublisherSocket publisher = backend.createPublisherSocket(context);
+            publisher.setChannelName(channel.name());
+            if (discovery != null) {
+                publisher.attachDiscovery(discovery);
+            } else {
+                manualPublishers.add(publisher);
+            }
+            for (String endpoint : channel.publisherBinds()) {
+                publisher.bind(endpoint);
+            }
+            publishers.put(channel.name(), publisher);
+        }
+        if (!channel.subscriberEnabled()) {
+            return;
+        }
+        ZLinkBackendSubscriberSocket subscriber = backend.createSubscriberSocket(context);
+        subscriber.setChannelName(channel.name());
+        if (discovery != null) {
+            subscriber.attachDiscovery(discovery);
+        } else {
+            for (String endpoint : channel.subscriberManualEndpoints()) {
+                subscriber.connect(endpoint);
+            }
+            manualSubscribers.add(subscriber);
+        }
+        subscriber.setSubscription("");
+        subscribers.put(channel.name(), subscriber);
+        publishHandlers.put(channel.name(), publishHandlersByPacket(channel, handlerCatalog));
+        publishDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
+        startSubscribeLoop(channel.name(), subscriber);
+    }
+
+    private void configureRouteMeshChannel(
+        ZLinkChannelBackendAdapter backend,
+        ChannelRegistration channel,
+        ZLinkBackendDiscovery discovery,
+        ZLinkScannedHandlerCatalog handlerCatalog) {
+        if (channel.kind() != ChannelKind.ROUTE_MESH) {
+            return;
+        }
+        ZLinkBackendRouterSocket router = backend.createRouterSocket(context);
+        router.setChannelName(channel.name());
+        if (channel.routeRoutingId() != null) {
+            router.setRoutingId(channel.routeRoutingId());
+        }
+        if (discovery != null) {
+            router.attachDiscovery(discovery);
+        } else {
+            for (String endpoint : channel.routeManualEndpoints()) {
+                router.connect(endpoint);
+            }
+            manualRouteRouters.add(router);
+        }
+        for (String endpoint : channel.routeBinds()) {
+            router.bind(endpoint);
+        }
+        routeRouters.put(channel.name(), router);
+        routeSendHandlers.put(channel.name(), routeSendHandlersByPacket(channel, handlerCatalog));
+        routeRequestHandlers.put(channel.name(), routeHandlersByPacket(channel, handlerCatalog));
+        routeSendDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
+        routeRequestDispatchQueues.put(channel.name(), new ZLinkAsyncSerialQueue());
+        startRouteLoop(channel.name(), router);
     }
 
     private ZLinkBackendDiscovery discoveryFor(

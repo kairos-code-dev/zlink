@@ -392,9 +392,9 @@ ctest --test-dir framework/languages/cpp/build -L connector-protocol --output-on
 ### 적용한 리팩토링
 
 - TicTacToe API role이 `topology.api_http_endpoint`를 listen하고
-  `map_post<create_match_handler_t>("/games")`를 등록하는지 고정했다.
+  `map_post<create_game_http_handler_t>("/games")`를 등록하는지 고정했다.
 - TicTacToe client가 `zlink::http_client`를 include하고, API HTTP endpoint를 base URL로 둔 뒤
-  `POST /games`를 `create_match_res_t`로 받는지 고정했다.
+  `POST /games`를 `create_game_http_res_t`로 받는지 고정했다.
 - client 결과의 `http_game_created`가 HTTP readiness 결과로 채워지는지도 검증했다.
 
 ### 수정 후 점검
@@ -5851,11 +5851,11 @@ include 경계를 지키고, 실제 HTTP client 테스트는 동작 계약을 �
 
 - Goal 21과 HTTP hosting draft는 TicTacToe client가 HTTP `POST /games`로 시작하고
   `Server/Api` role의 handler 흐름을 지나야 한다고 적는다. 그러나 client e2e는 client 파일
-  안에 둔 임시 HTTP handler를 route에 직접 붙여 `Server/Api/Handlers/create_match_handler_t`
+  안에 둔 임시 HTTP handler를 route에 직접 붙여 `Server/Api/Handlers/create_game_http_handler_t`
   경계를 우회하고 있었다.
 - 임시 handler는 고정된 `"tictactoe-game"` 응답만 만들었다. 이 상태에서는 sample API role의
-  DI handler 구성과 create-match handler가 깨져도 client e2e가 통과할 수 있다.
-- STREAM mock server가 HTTP 응답으로 받은 match id를 보존하지 않고 thread 시작 시점의 기본
+  DI handler 구성과 create-game HTTP handler가 깨져도 client e2e가 통과할 수 있다.
+- STREAM mock server가 HTTP 응답으로 받은 room id를 보존하지 않고 thread 시작 시점의 기본
   `"tictactoe-game"`을 reply state에 넣었다. 또한 모든 request에 `place_mark_res_t` 형태로
   답해 typed reply 계약이 약하게 검증됐다.
 - HTTP hosting draft는 `POST /games` 응답의 `play_endpoint`로 stream connector가 연결한다고
@@ -5871,7 +5871,7 @@ include 경계를 지키고, 실제 HTTP client 테스트는 동작 계약을 �
 |------|------|------|
 | 임시 handler 유지 | e2e 구성이 단순하다 | 문서의 `Server/Api` handler 흐름을 검증하지 않는다 |
 | 실제 Api server executable을 별도 process로 띄움 | role 분리가 가장 명확하다 | registry/play server까지 orchestration해야 해서 이번 보정 범위를 크게 넘는다 |
-| client e2e의 HTTP app에 `create_match_handler_t`를 연결 | HTTP route가 실제 API handler와 DI 구성을 검증한다 | process 분리는 후속 샘플 orchestration 과제로 남는다 |
+| client e2e의 HTTP app에 `create_game_http_handler_t`를 연결 | HTTP route가 실제 API handler와 DI 구성을 검증한다 | process 분리는 후속 샘플 orchestration 과제로 남는다 |
 
 선택은 client e2e HTTP app에 실제 API handler를 연결하는 것이다. 이렇게 하면 HTTP client,
 HTTP hosting, API handler DI 경계가 한 테스트에서 검증되고, process orchestration은 별도
@@ -5880,14 +5880,14 @@ HTTP hosting, API handler DI 경계가 한 테스트에서 검증되고, process
 ### 적용한 리팩토링
 
 - TicTacToe client e2e에서 임시 `sample_create_game_http_handler_t`를 제거했다.
-- HTTP route는 `create_match_handler_t`를 사용하고, 그 의존성인 `create_match_room_handler_t`를
-  sample app service로 등록한다.
-- STREAM mock server는 `AuthenticateReq`, `JoinMatchReq`, `PlaceMarkReq` payload를 읽고 각
+- HTTP route는 `create_game_http_handler_t`를 사용하고, 그 의존성인 `channel_client_t`와
+  sample topology를 sample app service로 등록한다.
+- STREAM mock server는 `AuthenticateReq`, `JoinGameReq`, `PlaceMarkReq` payload를 읽고 각
   요청에 맞는 reply DTO를 반환한다.
-- `JoinMatchReq`와 `PlaceMarkReq`의 `match_id`를 reply/push state에 반영해 HTTP `POST /games`
-  결과로 받은 match id가 stream 흐름까지 이어지게 했다.
-- `CreateMatchRes`에 `play_endpoint`를 추가하고, API handler가 sample topology의
-  `stream_endpoint`를 응답에 담도록 했다.
+- `JoinGameReq`와 `PlaceMarkReq`의 room id를 reply/push state에 반영해 HTTP `POST /games`
+  결과로 받은 room id가 stream 흐름까지 이어지게 했다.
+- `CreateGameHttpRes`에 Play stream endpoint 목록을 담고, API handler가 Play channel의
+  `CreateGameRes` 결과를 HTTP 응답으로 변환하도록 했다.
 - TicTacToe client는 HTTP create-game 응답의 `play_endpoint`로 stream connector를 연결한다.
 - TicTacToe client executable은 HTTP create-game 결과가 `match-1`이고 play endpoint가 loopback
   stream endpoint인지 확인한다.
@@ -5896,8 +5896,8 @@ HTTP hosting, API handler DI 경계가 한 테스트에서 검증되고, process
 
 ### 수정 후 점검
 
-- TicTacToe client e2e의 `POST /games`는 `Server/Api/Handlers/create_match_handler_t`를 통과한다.
-- Stream connector request는 요청별 reply DTO와 HTTP create-match 결과의 match id를 함께
+- TicTacToe client e2e의 `POST /games`는 `Server/Api/Handlers/create_game_http_handler_t`를 통과한다.
+- Stream connector request는 요청별 reply DTO와 HTTP create-game 결과의 room id를 함께
   검증한다.
 - Stream connector endpoint는 샘플의 초기 옵션값이 아니라 HTTP `POST /games` 응답의
   `play_endpoint`에서 온다.
@@ -5949,46 +5949,45 @@ transport, typed 흐름을 함께 지나므로, 라벨을 추가하는 편이 �
 - `connector-unreal-contract` label은 Unreal connector compile/smoke 테스트를 선택해야 한다.
 - 이번 보정 뒤 connector label taxonomy에서 남은 즉시 수정 이슈는 0개다.
 
-## 추가 리뷰. TicTacToe HTTP 문서 예시와 구현 계약 정렬
+## 추가 리뷰. TicTacToe HTTP 문서 예시와 현재 구현 계약 정렬
 
 ### 발견한 위험 신호
 
 - HTTP hosting, HTTP client, application framework, interface draft 일부가 C++ TicTacToe
-  HTTP 시작 예시를 `CreateGameHttpReq/Res`, `game_id`, `game_name`으로 설명했다.
-- 현재 C++ TicTacToe sample의 shared contract와 handler는 `CreateMatchReq/Res`,
-  `match_id`, `owner_actor_id`, `play_endpoint`를 사용한다. 문서와 코드가 서로 다른 DTO
+  HTTP 시작 예시를 과거 `CreateMatchReq/Res` 흐름으로 설명했다.
+- 현재 C++ TicTacToe sample의 shared contract와 handler는 `CreateGameHttpReq/Res`,
+  `room_id`, `game_name`, Play stream endpoint 목록을 사용한다. 문서와 코드가 서로 다른 DTO
   이름을 갖고 있으면 사용자는 어떤 요청을 보내야 하는지 알기 어렵다.
-- 일부 설명은 API handler가 Play channel로 `CreateGameReq`를 보낸다고 단정했지만, 현재
-  C++ sample의 검증된 HTTP path는 `create_match_handler_t`가 DI로 match room allocator와
-  topology를 받아 `CreateMatchRes`를 반환하는 흐름이다.
+- 현재 C++ sample의 검증된 HTTP path는 `create_game_http_handler_t`가 Play channel로
+  `CreateGameReq`를 보내고 `CreateGameHttpRes`를 반환하는 흐름이다.
 
 ### 비교한 대안
 
 | 대안 | 장점 | 단점 |
 |------|------|------|
-| 문서의 `CreateGameHttp*` 흐름을 유지 | `.NET` TicTacToe 일반 sample과 이름이 가깝다 | 현재 C++ sample과 테스트가 검증하는 계약을 설명하지 못한다 |
-| C++ sample을 `CreateGameHttp*`로 전면 rename | `.NET` 일반 sample과 이름을 맞춘다 | SessionGateway 기반 match contract와 기존 회귀 테스트를 크게 흔든다 |
-| draft 예시를 현재 C++ `CreateMatch*` 계약으로 정렬 | 구현과 테스트 증거가 같은 계약을 가리킨다 | `.NET` 일반 sample과 C++ match 용어 차이를 문서에 명시해야 한다 |
+| 문서의 과거 `CreateMatch*` 흐름을 유지 | 변경이 작다 | 현재 C++ sample과 테스트가 검증하는 계약을 설명하지 못한다 |
+| C++ sample을 다시 `CreateMatch*`로 rename | 과거 로그와 이름이 맞는다 | 현재 Play channel과 HTTP DTO 경계를 되돌리는 큰 변경이다 |
+| 문서 예시를 현재 C++ `CreateGameHttp*` 계약으로 정렬 | 구현과 테스트 증거가 같은 계약을 가리킨다 | 과거 로그의 결론을 현재 기준으로 보정해야 한다 |
 
-선택은 draft 예시를 현재 C++ `CreateMatch*` 계약으로 정렬하는 것이다. 이 문서들은 정식 spec이
-아니라 현재 C++ framework 구현 범위를 추적하는 draft이므로, 검증 가능한 구현 계약을 우선한다.
+선택은 문서 예시를 현재 C++ `CreateGameHttp*` 계약으로 정렬하는 것이다. 현재 C++ framework
+구현 범위를 추적하는 문서는 검증 가능한 구현 계약을 우선한다.
 
 ### 적용한 리팩토링
 
-- `cpp-http-client.ko.md`의 `/games` POST 예시를 `create_match_req_t`와
-  `create_match_res_t`로 바꿨다.
+- `cpp-http-client.ko.md`의 `/games` POST 예시를 `create_game_http_req_t`와
+  `create_game_http_res_t`로 바꿨다.
 - `cpp-http-hosting.ko.md`의 기준 흐름, handler shape, TicTacToe 반영 항목을
-  `create_match_handler_t`, `CreateMatchReq/Res`, `match_id`, `owner_actor_id`,
-  `play_endpoint` 기준으로 바꿨다.
+  `create_game_http_handler_t`, `CreateGameHttpReq/Res`, `room_id`, `game_name`,
+  Play stream endpoint 기준으로 바꿨다.
 - `cpp-application-framework.ko.md`, `cpp-framework-interfaces.ko.md`,
   `cpp-framework-policy.ko.md`의 TicTacToe HTTP 예시도 같은 계약으로 맞췄다.
 
 ### 수정 후 점검
 
-- C++ draft 문서의 TicTacToe HTTP sample 설명은 `CreateMatchReq/Res`와
-  `play_endpoint`를 중심으로 읽혀야 한다.
-- 남아 있는 `create_game_http_handler_t` 이름은 HTTP hosting unit test fixture에 한정되어야
-  하며, TicTacToe sample 계약 설명에는 남기지 않는다.
+- C++ 문서의 TicTacToe HTTP sample 설명은 `CreateGameHttpReq/Res`와 Play stream endpoint를
+  중심으로 읽혀야 한다.
+- 남아 있는 `CreateMatch*` 이름은 과거 로그나 별도 game-domain 용어가 필요한 위치에만 남기고,
+  현재 HTTP 시작 계약 설명에는 남기지 않는다.
 - 이번 보정 뒤 TicTacToe HTTP 문서 예시와 현재 구현 계약 사이의 즉시 수정 이슈는 0개다.
 
 ## 추가 리뷰. HTTP route/query/body binding 우선순위 회귀 보강
@@ -6315,7 +6314,7 @@ server file log에서 stream request와 함께 검증하는 것이 plan의 완�
 ### 적용한 리팩토링
 
 - TicTacToe 공유 sample log header에 sample log file 이름, reset, append helper를 모았다.
-- `create_match_handler_t`가 HTTP `POST /games`, `recv CreateMatchReq`, `reply CreateMatchReq`를
+- `create_game_http_handler_t`가 HTTP `POST /games`, `recv CreateGameHttpReq`, `reply CreateGameHttpRes`를
   sample log에 남기게 했다.
 - TicTacToe sample e2e CTest expected와 최소 request/reply count를 HTTP 시작 흐름까지
   포함하도록 올렸다.
@@ -6626,7 +6625,7 @@ public header에 노출하지 않는 것이지, private 구현에서 기본 conn
 - Goal 21은 `Client` 샘플이 서버 handler를 직접 호출하지 않고 HTTP client와 connector를
   사용해야 한다고 적는다.
 - layout contract는 `Client/main.cpp`만 검사했기 때문에 `TicTacToe/Client/tictactoe_client.hpp`가
-  `Server/Api/Handlers/create_match_handler.hpp`를 include해도 잡지 못했다.
+  `Server/Api/Handlers/create_game_http_handler.hpp`를 include해도 잡지 못했다.
 - client e2e가 HTTP handler 구현 타입을 직접 알면 HTTP 경계 검증과 server handler 소유권이
   같은 파일에 섞인다.
 

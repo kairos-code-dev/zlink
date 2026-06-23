@@ -1354,7 +1354,7 @@ CPU-bound handler offload를 검토한다. packet 이름과 handler 흐름은 `.
 
 `TicTacToe`는 HTTP 시작 요청, STREAM, ActorGateway 기반 actor/session relay 샘플이다.
 `.NET` TicTacToe처럼 client가 먼저 HTTP `POST /games`를 호출하고, C++ sample의
-`CreateMatchReq` API handler 응답에 담긴 STREAM endpoint에 connector가 연결된다.
+`CreateGameHttpReq` API handler 응답에 담긴 Play stream endpoint에 connector가 연결된다.
 이 샘플은 HTTP hosting, STREAM endpoint, ActorGateway attach, Entry Spot, actor factory,
 session actor bind, relay, bound session push, actor join/move, disconnect cleanup을
 검토한다.
@@ -1412,26 +1412,24 @@ framework/languages/cpp/samples/
 |   |   +-- session_actor_notification_inbox.hpp
 |   |   +-- main.cpp
 |   +-- Server/
-|       +-- Registry/
-|       |   +-- main.cpp
 |       +-- Api/
 |       |   +-- Handlers/
-|       |   |   +-- authenticate_actor_handler.hpp
-|       |   |   +-- create_match_handler.hpp
+|       |   |   +-- authenticate_player_handler.hpp
+|       |   |   +-- create_game_http_handler.hpp
 |       |   +-- main.cpp
 |       +-- Play/
-|       |   +-- EntrySpot/
-|       |   |   +-- join_match_handler.hpp
-|       |   |   +-- tictactoe_entry_spot.hpp
-|       |   +-- GameSpots/
-|       |   |   +-- place_mark_handler.hpp
-|       |   |   +-- tictactoe_match_room.hpp
-|       |   +-- Handlers/
-|       |   |   +-- create_match_room_handler.hpp
-|       |   |   +-- ensure_player_actor_handler.hpp
+|       |   +-- Application/
+|       |   |   +-- GameCreation/
+|       |   |       +-- tictactoe_game_creator.hpp
+|       |   +-- Infrastructure/
+|       |       +-- ZLink/
+|       |           +-- Handlers/
+|       |           |   +-- create_game_handler.hpp
+|       |           |   +-- ensure_player_actor_handler.hpp
+|       |           +-- Spots/
+|       |               +-- tictactoe_entry_spot.hpp
+|       |               +-- tictactoe_game_spot.hpp
 |       |   +-- main.cpp
-|       +-- Session/
-|           +-- main.cpp
 ```
 
 CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` label로 묶고,

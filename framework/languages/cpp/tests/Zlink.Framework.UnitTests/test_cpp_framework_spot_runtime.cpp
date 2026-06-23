@@ -581,10 +581,10 @@ int main ()
     const auto requested_rid =
       zlink::framework::spot_rid_t::from_string ("manual-stage:stage:requested");
     const auto get_or_create_count_before = stage_spot_t::create_count;
-    auto created_once = builder.get_or_create_spot ("stage", requested_rid,
-                                                    zlink::message_t::from ("create-request"));
+    auto created_once = builder.get_or_create_spot_raw ("stage", requested_rid,
+                                                        zlink::message_t::from ("create-request"));
     auto existing_once =
-      builder.get_or_create_spot ("stage", requested_rid, zlink::message_t::from ("ignored"));
+      builder.get_or_create_spot_raw ("stage", requested_rid, zlink::message_t::from ("ignored"));
     if (created_once.state != zlink::framework::spot_create_state_t::created
         || existing_once.state != zlink::framework::spot_create_state_t::existing
         || existing_once.spot_rid.value () != requested_rid.value ()
@@ -593,7 +593,7 @@ int main ()
         return 52;
     }
     stage_spot_t::reject_create = true;
-    auto rejected_create = builder.create_spot ("stage", zlink::message_t::from ("reject-request"));
+    auto rejected_create = builder.create_spot_raw ("stage", zlink::message_t::from ("reject-request"));
     stage_spot_t::reject_create = false;
     if (rejected_create.state != zlink::framework::spot_create_state_t::rejected
         || !rejected_create.reply || rejected_create.reply->to_string () != "create-rejected"
@@ -602,7 +602,7 @@ int main ()
     }
 
     auto factory_created =
-      builder.create_spot ("factory", zlink::message_t::from ("factory-request"));
+      builder.create_spot_raw ("factory", zlink::message_t::from ("factory-request"));
     if (factory_created.state != zlink::framework::spot_create_state_t::created
         || !factory_created.reply || factory_created.reply->to_string () != "factory-reply"
         || factory_spot_t::create_count != 1 || factory_spot_t::initialize_count != 1

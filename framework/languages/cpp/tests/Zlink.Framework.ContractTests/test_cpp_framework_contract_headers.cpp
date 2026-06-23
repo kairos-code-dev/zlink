@@ -622,8 +622,12 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::entry_spo
                               zlink::framework::task_t<void>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().create_spot (
+                   "stage", std::declval<const zlink::framework::message_t &> ())),
+                  zlink::framework::spot_create_result_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().create_spot_raw (
                    "stage", std::declval<zlink::message_t> ())),
-                 zlink::framework::spot_create_result_t>);
+                  zlink::framework::spot_create_result_t>);
 static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::spot_node_builder_t &> ().add_spot<contract_spot_t> (
@@ -632,6 +636,12 @@ static_assert (
 static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::spot_node_builder_t &> ().get_or_create_spot (
+      "stage", std::declval<zlink::framework::spot_rid_t> (),
+      std::declval<const zlink::framework::message_t &> ())),
+    zlink::framework::spot_create_result_t>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::spot_node_builder_t &> ().get_or_create_spot_raw (
       "stage", std::declval<zlink::framework::spot_rid_t> (), std::declval<zlink::message_t> ())),
     zlink::framework::spot_create_result_t>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_context_t &> ()

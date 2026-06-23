@@ -968,23 +968,28 @@ class spot_node_manager_t
     spot_node_manager_t &operator= (const spot_node_manager_t &) = default;
 
     spot_create_result_t create_spot (std::string spot_name);
-    spot_create_result_t create_spot (std::string spot_name, zlink::message_t request);
+    spot_create_result_t create_spot_raw (std::string spot_name, zlink::message_t request);
+    spot_create_result_t create_spot (std::string spot_name, const message_t &request);
     template <typename TRequest>
-    requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>) spot_create_result_t
+    requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>
+              && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>) spot_create_result_t
       create_spot (std::string spot_name, const TRequest &request)
     {
-        return create_spot (std::move (spot_name),
-                            serialize_request (std::type_index (typeid (TRequest)), &request));
+        return create_spot_raw (std::move (spot_name),
+                                serialize_request (std::type_index (typeid (TRequest)), &request));
     }
 
     spot_create_result_t get_or_create_spot (std::string spot_name, spot_rid_t spot_rid);
     spot_create_result_t
-    get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
+    get_or_create_spot_raw (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
+    spot_create_result_t
+    get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const message_t &request);
     template <typename TRequest>
-    requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>) spot_create_result_t
+    requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>
+              && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>) spot_create_result_t
       get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const TRequest &request)
     {
-        return get_or_create_spot (
+        return get_or_create_spot_raw (
           std::move (spot_name), std::move (spot_rid),
           serialize_request (std::type_index (typeid (TRequest)), &request));
     }
@@ -1219,10 +1224,13 @@ class spot_node_builder_t
 
     spot_node_snapshot_t snapshot () const;
     spot_create_result_t create_spot (std::string spot_name);
-    spot_create_result_t create_spot (std::string spot_name, zlink::message_t request);
+    spot_create_result_t create_spot_raw (std::string spot_name, zlink::message_t request);
+    spot_create_result_t create_spot (std::string spot_name, const message_t &request);
     spot_create_result_t get_or_create_spot (std::string spot_name, spot_rid_t spot_rid);
     spot_create_result_t
-    get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
+    get_or_create_spot_raw (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
+    spot_create_result_t
+    get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const message_t &request);
     std::optional<spot_info_t> find_spot (spot_rid_t spot_rid) const;
     std::vector<spot_info_t> list_spots () const;
     task_t<bool> close_spot (spot_rid_t spot_rid);

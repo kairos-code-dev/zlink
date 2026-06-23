@@ -123,6 +123,26 @@ handler 동작(공유):
 - 검증: 생성 시 `OnInitializeAsync`, close 시 `OnClosingAsync`가 직렬화된 close 경로로 1회씩 발화해 evidence에 기록된다. joined actor가 있으면 `CloseAsync`가 거부된다.
 - 세부 동작: spot 생성·종료 lifecycle 콜백.
 
+#### SM-A7 spot 타입 불일치 (SpotTypeMismatch)
+
+우선순위: `P1`
+
+**한마디로:** 이미 만든 spotRid를 다른 spot 타입으로 다시 `GetOrCreate`하면, `SpotTypeMismatch`로 명확히 거부되는가.
+
+- 절차: `GetOrCreateAsync<TSpotA>(rid)`로 spot을 만든 뒤, 같은 `rid`를 `GetOrCreateAsync<TSpotB>(rid)`(다른 타입)로 다시 요청한다.
+- 검증: 두 번째 요청은 `SpotTypeMismatch` public error로 실패한다(`ZLinkFrameworkException`). 처음 만든 spot과 그 상태는 영향받지 않는다.
+- 세부 동작: 같은 rid 재사용 시 타입 일치 강제.
+
+#### SM-A8 worker offload (`Context.RunWorker`)
+
+우선순위: `P2`
+
+**한마디로:** 무거운 작업을 `RunWorker`로 spot 직렬 루프 밖에서 돌려도, 그 사이 spot이 막히지 않고 결과는 spot 컨텍스트로 안전히 돌아와 반영되는가.
+
+- 절차: spot handler가 무거운 작업을 `Context.RunWorker(...)`로 offload하고, 결과를 받아 spot 상태에 반영한다. 같은 시간대에 그 spot/노드로 다른 request도 보낸다.
+- 검증: worker가 spot 직렬 루프 밖에서 실행되어, 그 동안 같은 spot의 다른 처리가 블록되지 않는다. worker 결과는 spot 직렬 컨텍스트로 돌아와 상태에 안전히 반영된다(경합 없음).
+- 세부 동작: spot 직렬성 유지 + 무거운 작업 offload.
+
 ### Track B — actor join과 lifecycle
 
 actor join은 actor가 어느 노드의 mailbox에서 실행되느냐에 따라 local과 remote로 나뉜다. 두
@@ -200,6 +220,16 @@ actor join은 actor가 어느 노드의 mailbox에서 실행되느냐에 따라 
 - 검증: lifecycle callback과 packet handler가 문서가 정한 순서(예: `Created` → `Joined` → packet dispatch)대로 실행되고, 같은 actor의 packet은 직렬로 순서 보존되어 처리된다. evidence에 실행 순서가 남는다.
 - 세부 동작: actor handler 실행 순서 보장.
 
+#### SM-B8 actor 명시 파괴 (`DestroyActorAsync`)
+
+우선순위: `P1`
+
+**한마디로:** join한 actor를 `DestroyActorAsync`로 명시 파괴하면 mailbox에서 정리되고, 이후 그 actor로의 request는 정해진 error로 끝나는가.
+
+- 절차: actor를 join한 뒤(예: entry spot 복귀 흐름에서) 그 actor를 `DestroyActorAsync(actorId)`로 파괴한다.
+- 검증: actor가 mailbox에서 제거되고, 파괴 후 그 actor로의 request는 정해진 public error로 끝난다. 파괴 lifecycle callback이 정해진 순서로 1회 발화해 evidence에 남고, 다른 actor는 영향받지 않는다.
+- 세부 동작: actor 명시 파괴 + 정리.
+
 ### Track C — messaging 방향
 
 여기서는 메시지가 흐르는 방향(channel→spot, spot→channel, spot→spot)별로, 한 시나리오 안에서
@@ -244,6 +274,16 @@ send·request·publish verb와 timeout·미등록 negative를 모두 본다(같�
 - timeout: 느린 대상 spot에 timeout → 소스 spot 정상 유지.
 - 미등록: 대상 spot에 handler 없음 → error/drop + observer marker.
 - 세부 동작: spot 간 직접 messaging 전체 verb + negative.
+
+#### SM-C4 spot publisher client (local spot 없는 노드의 publish)
+
+우선순위: `P1`
+
+**한마디로:** local spot을 하나도 호스팅하지 않는 노드도 `AttachSpotPublisherClient`로 SPOT mesh에 publish할 수 있고, 그 mesh의 구독 spot이 받는가.
+
+- 절차: local spot이 없는 노드가 `AttachSpotPublisherClient("mesh")`로 SPOT mesh publisher를 붙이고 topic으로 publish한다.
+- 검증: 그 SPOT mesh의 구독 spot 전원이 이벤트를 받는다(publish-only 노드 — local spot 호스팅 불필요). 미구독 spot은 받지 않는다.
+- 세부 동작: spot 호스팅 없는 publish-only 노드의 SPOT mesh publish. (SM-C2의 spot→mesh publish와 달리, publisher가 spot이 아닌 일반 노드.)
 
 ### Track D — session bind·relay·push와 stream
 
@@ -421,6 +461,16 @@ actor가 사는 spot 종류(entry/user), 한 session에 bind된 actor 수(단일
 - 절차: user spot이 `AddTimer<THandler>`로 주기 timer를 돌리며 마지막 활동 시각을 기록한다. idle 임계를 넘으면 timer handler가 (joined actor가 모두 떠난 뒤) `CloseAsync`를 호출한다. 활동이 오면 마지막 활동 시각을 갱신한다.
 - 검증: idle 초과 시 spot이 `CloseAsync`로 닫히고 `OnClosingAsync` 콜백이 evidence에 기록된다. joined actor가 남아 있으면 close가 거부된다(먼저 actor leave 필요). 활동 중엔 닫히지 않는다.
 - 세부 동작: 애플리케이션 idle timer + 명시적 `CloseAsync` + `OnClosingAsync` (자동 actor callback 아님).
+
+#### SM-E4 spot timer overrun 정책
+
+우선순위: `P1`
+
+**한마디로:** timer handler가 주기보다 느려 tick이 밀릴 때, 설정한 `OverrunPolicy`(SkipLateTicks / CatchUpBounded / DelayNextTick)대로 동작하는가.
+
+- 절차: 주기보다 처리가 느린 timer handler를 각 `ZLinkTimerOverrunPolicy`로 설정해 돌린다.
+- 검증: 정책별로 관측이 일치한다 — `SkipLateTicks`는 밀린 tick을 건너뛰고, `CatchUpBounded`는 정해진 한도까지만 따라잡으며, `DelayNextTick`은 다음 tick을 미룬다. evidence의 발화 패턴이 정책과 맞는다.
+- 세부 동작: timer overrun 정책별 tick 처리.
 
 ### Track F — Channel↔Spot route bridge (외부 channel → 특정 spot)
 

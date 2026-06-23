@@ -91,6 +91,16 @@ spot 쪽 관찰은 `SubjectsChanged`/`PeersChanged`로 본다.
 - 검증: failover 시 연결 전이가 socket 이벤트(`Disconnected`/`Connected`/`ConnectionReady`)로, topology 변화가 registry `TopologyChanged`/`ServiceSummaryChanged`로 관측된다. drain된 peer의 가용성 변화는 연결된 peer 쪽 socket 이벤트(`PeerAdmissionChanged`)로 나타난다. (weight 값 자체의 세밀한 관측은 monitoring kind가 아니라 channel 옵션의 `Weight` read로 보완한다 — socket 이벤트 kind는 §2의 고정 enum 범위다.)
 - 세부 동작: 가용성 전이(failover·drain) 관측(고정 enum + topology).
 
+#### MON-A5 나머지 고정 kind 관찰 (handshake·status·timer-stopped)
+
+우선순위: `P1`
+
+**한마디로:** A1~A4에서 안 본 나머지 고정 kind — socket `HandshakeFailed`, registry/spot `StatusChanged`, spot `TimerStoppedAfterUnhandledException` — 도 실제 발생 시 관찰되는가.
+
+- 절차: (a) 잘못된 연결/TLS 등으로 handshake 실패를 유발하고, (b) registry/spot의 status 전이를 유발하며, (c) spot timer가 unhandled 예외로 중단되게 한다.
+- 검증: 각각 `HandshakeFailed`(socket) / `StatusChanged`(registry·spot) / `TimerStoppedAfterUnhandledException`(spot) 이벤트가 evidence에 기록되고, kind가 §2의 고정 enum에 속한다. (`TimerHandlerFailed`가 한 번 실패를, `TimerStoppedAfterUnhandledException`이 누적 실패로 timer가 멈춘 시점을 구분해 보인다.)
+- 세부 동작: 나머지 고정 monitoring kind 관찰.
+
 ### Track B — 등록과 필터 검증
 
 #### MON-B1 event kind 필터

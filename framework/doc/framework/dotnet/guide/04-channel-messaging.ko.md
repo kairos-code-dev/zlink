@@ -385,11 +385,47 @@ options.AddClientServerChannel("profile")
 ```
 
 endpoint 인자는 startup 설정이다. host 시작 뒤 실행 중인 socket 을 직접 제어하는
-handle 이 아니다.
+handle 이 아니다. **단 하나, 가용성(drain/restore)은 런타임에 바꿀 수 있다 — 아래 참조.**
 
 Discovery 모드는 peer 소유권이 Discovery 에 있다. 실행 중 endpoint 변경이 필요한
 운영 환경에서는 discovery 쪽 등록 정보를 갱신하거나, 애플리케이션을 재시작해
 수동 연결 설정을 다시 적용하는 방식으로 처리한다.
+
+### 운영 drain / restore (런타임)
+
+유지보수·rolling 재시작·scale-in 직전에, 노드를 죽이거나 registry 에서 빼지 않고
+**새 요청 수신만 멈추고 싶을 때** 가 있다. 이걸 위해 `IZLinkChannelRuntimeOptions`
+(DI singleton) 을 주입받아 channel 의 serving 역할을 런타임에 drain 한다.
+
+```csharp
+// 운영 admin 엔드포인트 (DI 주입). "orders" 는 이 앱이 등록한 client-server channel.
+app.MapPost("/admin/channels/orders/drain",
+    (IZLinkChannelRuntimeOptions options) =>
+    {
+        options.ClientServerChannel("orders").ConfigureServerSocket().Weight = 0;   // drain
+        return Results.Ok();
+    });
+
+app.MapPost("/admin/channels/orders/restore",
+    (IZLinkChannelRuntimeOptions options) =>
+    {
+        options.ClientServerChannel("orders").ConfigureServerSocket().Weight = 100;  // 정상 복귀
+        return Results.Ok();
+    });
+```
+
+- `Weight = 0`(drain) 은 serving socket 을 **닫지 않는다**. 이미 들어온 in-flight 요청은
+  끝까지 처리·reply 하고, 그 시점 이후 peer 들이 그 노드를 새 요청 대상에서 뺀다.
+  registry 에서 빠지지도 않는다(graceful drain).
+- `Weight = 100` 으로 정상 복귀한다. `1..99` 로 두면 연결된 peer 의 분배 비율을 낮춘다(weighted).
+- 같은 `Weight` 속성을 **build-time 초기값**으로도 쓴다:
+  `builder.AddClientServerChannel("orders").ConfigureServerSocket().Weight = 30;`
+- route mesh / dealer mesh serving 역할도 같은 접근자로:
+  `options.RouteMeshChannel(name).ConfigureSocket()` / `options.DealerMeshChannel(name).ConfigureSocket()`.
+- drain 신호 전파는 best-effort eventual 이다 — "drain 신호를 보냈다" 까지 보장하고, peer 가
+  실제로 후보에서 뺀 시점은 모니터링(`PeerAdmissionChanged` 이벤트, [09-monitoring](09-monitoring.ko.md))
+  으로 확인한다. `drain`/`restore` 라는 운영 어휘는 위처럼 앱 admin 레이어가 `Weight = 0`/`= 100`
+  에 이름을 붙여 노출하면 된다.
 
 ## 7. 직렬화 codec
 
@@ -638,6 +674,10 @@ public sealed class UserCacheRefreshedEventHandler
 - **시작 시 예외** → channel 이름 중복, 같은 channel `kind + packet 이름` 중복,
   client 에 연결 경로 없음. fail-fast 다([03-concepts](03-concepts.ko.md) §4).
 - **`ZLink` vs `Zlink`** → 서버 framework 타입은 전부 `ZLink`(대문자 L)다.
+- **handler 없는 packet 으로 보냈을 때(런타임)** → 시작 단계 검증과 별개로, 실행 중 등록되지
+  않은 packet 이름이 도착하면 **request 는 error reply 로 실패**(client 는 예외로 받음),
+  **send 는 조용히 drop** 된다. 그 이유/동작은 dispatch error observer 에 marker
+  (`HandlerMissing` / `ReplyError`·`Drop`)로 남는다([09-monitoring](09-monitoring.ko.md)).
 
 ## 12. 더 보기
 

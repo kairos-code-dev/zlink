@@ -53,7 +53,7 @@ handler에서 받은 spot context로 호출한다.
 | `spotRid()`, `isJoined()` | 현재 Spot join 상태 조회 |
 | `boundSession()` | 자기 client로 push (§4) |
 | `joinSpot(spotRid, request)` | user Spot으로 join. `.submit(...).await()`로 종결 |
-| `joinEntrySpot(spotNodeRid, request)` | target SpotNode의 Entry Spot으로 이동. 빈 요청도 `Message.from(ByteArray(0))`처럼 명시해서 넘긴다 |
+| `joinEntrySpot(spotNodeRid, request)` | target SpotNode의 Entry Spot으로 이동. request는 DTO 또는 `ZLinkMessage`로 넘긴다 |
 | `destroyActor(actor)` (Entry Spot context의 suspend 확장) | Entry Spot에 있는 actor를 종료 |
 
 `joinSpot(...).submit(replyType).await()`는 actor join 요청을 제출하고, join reply를

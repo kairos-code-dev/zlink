@@ -11,6 +11,8 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <future>
 #include <iostream>
 #include <mutex>
@@ -133,11 +135,17 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     scenario_service_t (zlink::framework::app_t &app,
                         std::string stream_endpoint,
                         std::string alternate_stream_endpoint,
-                        std::string scenario_mode) :
+                        std::string scenario_mode,
+                        std::string crash_ready_file,
+                        std::string crash_go_file,
+                        std::string crash_observed_file) :
         _app (app),
         _stream_endpoint (std::move (stream_endpoint)),
         _alternate_stream_endpoint (std::move (alternate_stream_endpoint)),
-        _scenario_mode (std::move (scenario_mode))
+        _scenario_mode (std::move (scenario_mode)),
+        _crash_ready_file (std::move (crash_ready_file)),
+        _crash_go_file (std::move (crash_go_file)),
+        _crash_observed_file (std::move (crash_observed_file))
     {
     }
 
@@ -226,6 +234,14 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                          "b-stream-room", "stream-remote-push");
             run_multi_stream_session_scenario (routes);
             run_stream_reconnect_migration_scenario (routes);
+            return;
+        }
+        if (_scenario_mode == "crash-setup") {
+            run_play_node_crash_observation_scenario (routes);
+            return;
+        }
+        if (_scenario_mode == "crash-recover") {
+            run_play_node_crash_recovery_scenario (routes);
             return;
         }
 
@@ -398,6 +414,12 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                                         e2e::mesh_event_t{"evt-publisher-client", "publish-only"})
                               .result ();
         ensure (publish_only.has_value (), "SM-C4 publisher client publish failed");
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        auto publish_retry = publisher
+                               .publish (e2e::publisher_channel, e2e::mesh_topic,
+                                         e2e::mesh_event_t{"evt-publisher-client", "publish-only"})
+                               .result ();
+        ensure (publish_retry.has_value (), "SM-C4 publisher client retry publish failed");
         std::cout << "scenario SM-C4 passed\n";
 
         if (_scenario_mode != "base") {
@@ -443,6 +465,26 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "stream EnsureActor failed for " + actor_id + ": "
                   + (ensured.error () ? ensured.error ()->what () : "unknown"));
         return ensured.value ().actor;
+    }
+
+    static void write_signal_file (const std::string &path)
+    {
+        ensure (!path.empty (), "crash scenario signal path is empty");
+        std::ofstream file (path);
+        file << "ready\n";
+    }
+
+    static void wait_signal_file (const std::string &path, const std::string &label)
+    {
+        ensure (!path.empty (), "crash scenario " + label + " signal path is empty");
+        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
+        while (std::chrono::steady_clock::now () < deadline) {
+            if (std::filesystem::exists (path)) {
+                return;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        }
+        throw std::runtime_error ("SM-G1 timed out waiting for " + label);
     }
 
     void run_stream_session_scenario (zlink::framework::route_client_t &routes,
@@ -841,6 +883,175 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::cout << "scenario SM-D12 passed\n";
     }
 
+    void run_play_node_crash_observation_scenario (zlink::framework::route_client_t &routes)
+    {
+        const auto play_a_actor_id = std::string ("crash-g1-play-a");
+        const auto play_b_actor_id = std::string ("crash-g1-play-b");
+        auto play_a_actor =
+          ensure_actor_ref (routes, "play-a", play_a_actor_id, play_a_actor_id + "-display");
+        auto play_b_actor =
+          ensure_actor_ref (routes, "play-b", play_b_actor_id, play_b_actor_id + "-display");
+
+        auto play_a_core = make_stream_connector ();
+        play_a_core.codecs ().add_json ();
+        auto play_a_stream = zlink::stream_e2e_client::use (play_a_core);
+        auto play_a_connected = play_a_stream.connect ().submit ();
+        ensure (static_cast<bool> (play_a_connected), "SM-G1 play-a stream connect failed");
+
+        auto play_a_auth =
+          zlink::stream_e2e_client::codecs::request (
+            play_a_stream, e2e::stream_auth_req_t{"play-a", play_a_actor_id,
+                                                  play_a_actor_id + "-display", play_a_actor})
+            .packet_name ("StreamAuthReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::stream_auth_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (play_a_auth),
+                "SM-G1 play-a auth failed: " + stream_error_text (play_a_auth));
+
+        bool play_a_joined = false;
+        std::string play_a_join_error = "play-a join not attempted";
+        for (int attempt = 0; attempt < 10; ++attempt) {
+            auto play_a_join =
+              zlink::stream_e2e_client::codecs::request (
+                play_a_stream, e2e::join_req_t{.key = "a-crash-g1",
+                                               .actor_id = play_a_actor_id,
+                                               .display_name = play_a_actor_id + "-display",
+                                               .level = 301,
+                                               .tags = {"stream", "SM-G1", "play-a"}})
+                .packet_name ("JoinReq")
+                .timeout (std::chrono::milliseconds (5000))
+                .async<e2e::join_res_t> ()
+                .result ();
+            if (play_a_join) {
+                play_a_joined = true;
+                break;
+            }
+            play_a_join_error = stream_error_text (play_a_join);
+            std::this_thread::sleep_for (std::chrono::milliseconds (300));
+        }
+        ensure (play_a_joined, "SM-G1 play-a join failed: " + play_a_join_error);
+
+        auto play_a_state = zlink::stream_e2e_client::codecs::request (
+                              play_a_stream, e2e::state_req_t{.op = "add", .amount = 31})
+                              .packet_name ("StateReq")
+                              .timeout (std::chrono::milliseconds (5000))
+                              .async<e2e::state_res_t> ()
+                              .result ();
+        ensure (static_cast<bool> (play_a_state) && play_a_state.value ().value == 31,
+                "SM-G1 play-a initial state mismatch");
+
+        auto play_b_auth =
+          zlink::stream_e2e_client::codecs::request (
+            play_a_stream, e2e::stream_auth_req_t{"play-b", play_b_actor_id,
+                                                  play_b_actor_id + "-display", play_b_actor})
+            .packet_name ("StreamAuthReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::stream_auth_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (play_b_auth),
+                "SM-G1 play-b auth failed: " + stream_error_text (play_b_auth));
+
+        bool play_b_joined = false;
+        std::string play_b_join_error = "play-b join not attempted";
+        for (int attempt = 0; attempt < 10; ++attempt) {
+            auto play_b_join =
+              zlink::stream_e2e_client::codecs::request (
+                play_a_stream, e2e::join_req_t{.key = "b-crash-g1",
+                                               .actor_id = play_b_actor_id,
+                                               .display_name = play_b_actor_id + "-display",
+                                               .level = 302,
+                                               .tags = {"stream", "SM-G1", "play-b"}})
+                .packet_name ("JoinReq")
+                .metadata ("actor-id", play_b_actor_id)
+                .timeout (std::chrono::milliseconds (5000))
+                .async<e2e::join_res_t> ()
+                .result ();
+            if (play_b_join) {
+                play_b_joined = true;
+                break;
+            }
+            play_b_join_error = stream_error_text (play_b_join);
+            std::this_thread::sleep_for (std::chrono::milliseconds (300));
+        }
+        ensure (play_b_joined, "SM-G1 play-b join failed: " + play_b_join_error);
+
+        auto play_b_state = zlink::stream_e2e_client::codecs::request (
+                              play_a_stream, e2e::state_req_t{.op = "add", .amount = 41})
+                              .packet_name ("StateReq")
+                              .metadata ("actor-id", play_b_actor_id)
+                              .timeout (std::chrono::milliseconds (5000))
+                              .async<e2e::state_res_t> ()
+                              .result ();
+        ensure (static_cast<bool> (play_b_state) && play_b_state.value ().value == 41,
+                "SM-G1 play-b initial state mismatch");
+
+        write_signal_file (_crash_ready_file);
+        wait_signal_file (_crash_go_file, "play-a crash");
+
+        auto play_b_after_crash = zlink::stream_e2e_client::codecs::request (
+                                    play_a_stream, e2e::state_req_t{.op = "add", .amount = 1})
+                                    .packet_name ("StateReq")
+                                    .metadata ("actor-id", play_b_actor_id)
+                                    .timeout (std::chrono::milliseconds (5000))
+                                    .async<e2e::state_res_t> ()
+                                    .result ();
+        ensure (static_cast<bool> (play_b_after_crash) && play_b_after_crash.value ().value == 42,
+                "SM-G1 play-b state did not survive play-a crash");
+
+        auto failed_after_crash = zlink::stream_e2e_client::codecs::request (
+                                    play_a_stream, e2e::state_req_t{.op = "add", .amount = 1})
+                                    .packet_name ("StateReq")
+                                    .metadata ("actor-id", play_a_actor_id)
+                                    .timeout (std::chrono::milliseconds (3000))
+                                    .async<e2e::state_res_t> ()
+                                    .result ();
+        ensure (!static_cast<bool> (failed_after_crash),
+                "SM-G1 play-a request unexpectedly succeeded after crash");
+
+        write_signal_file (_crash_observed_file);
+
+        (void) play_a_stream.close ().submit ();
+        std::cout << "scenario SM-G1 crash observed passed\n";
+    }
+
+    void run_play_node_crash_recovery_scenario (zlink::framework::route_client_t &routes)
+    {
+        const auto recovered_actor_id = std::string ("crash-g1-play-b");
+
+        auto recovered_actor =
+          ensure_actor_ref (routes, "play-b", recovered_actor_id, recovered_actor_id + "-display");
+        auto recovered_core = make_stream_connector ();
+        recovered_core.codecs ().add_json ();
+        auto recovered_stream = zlink::stream_e2e_client::use (recovered_core);
+        auto recovered_connected = recovered_stream.connect ().submit ();
+        ensure (static_cast<bool> (recovered_connected), "SM-G1 recovered stream connect failed");
+
+        auto recovered_auth =
+          zlink::stream_e2e_client::codecs::request (
+            recovered_stream,
+            e2e::stream_auth_req_t{"play-b", recovered_actor_id, recovered_actor_id + "-display",
+                                   recovered_actor})
+            .packet_name ("StreamAuthReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::stream_auth_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (recovered_auth),
+                "SM-G1 recovered auth failed: " + stream_error_text (recovered_auth));
+
+        auto recovered_state = zlink::stream_e2e_client::codecs::request (
+                                 recovered_stream, e2e::state_req_t{.op = "add", .amount = 7})
+                                 .packet_name ("StateReq")
+                                 .timeout (std::chrono::milliseconds (5000))
+                                 .async<e2e::state_res_t> ()
+                                 .result ();
+        ensure (static_cast<bool> (recovered_state) && recovered_state.value ().value == 49,
+                "SM-G1 recovered state mismatch");
+
+        (void) recovered_stream.close ().submit ();
+        std::cout << "scenario SM-G1 passed\n";
+    }
+
     void run_multi_stream_session_scenario (zlink::framework::route_client_t &routes)
     {
         const auto first_actor_id = std::string ("stream-multi-a");
@@ -982,6 +1193,9 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     std::string _stream_endpoint;
     std::string _alternate_stream_endpoint;
     std::string _scenario_mode;
+    std::string _crash_ready_file;
+    std::string _crash_go_file;
+    std::string _crash_observed_file;
 };
 
 void configure_codecs (zlink::framework::codec_options_builder_t codecs)
@@ -1042,10 +1256,14 @@ int main (int argc, char **argv)
     const auto alternate_stream_endpoint = env_or ("ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT");
     const auto scenario_mode = env_or ("ZLINK_CPP_E2E_SCENARIO_MODE");
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
+    const auto crash_ready_file = env_or ("ZLINK_CPP_E2E_CRASH_READY_FILE");
+    const auto crash_go_file = env_or ("ZLINK_CPP_E2E_CRASH_GO_FILE");
+    const auto crash_observed_file = env_or ("ZLINK_CPP_E2E_CRASH_OBSERVED_FILE");
 
     auto app = zlink::framework::app_t::create ();
-    auto scenario = std::make_unique<scenario_service_t> (app, stream_endpoint,
-                                                          alternate_stream_endpoint, scenario_mode);
+    auto scenario = std::make_unique<scenario_service_t> (
+      app, stream_endpoint, alternate_stream_endpoint, scenario_mode, crash_ready_file,
+      crash_go_file, crash_observed_file);
     auto *scenario_result = scenario.get ();
     app.logging ()
       .use_file (log_dir + "/client.log")

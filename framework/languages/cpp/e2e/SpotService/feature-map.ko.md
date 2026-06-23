@@ -45,6 +45,9 @@
   끝나며, auth 성공 후 request dispatch가 정상 동작하는지 검증한다.
 - `SM-D12`: `session-a`에서 join/state/push를 수행한 actor가 연결을 끊은 뒤 `session-b`로
   다시 auth/rebind해 play 노드의 기존 state snapshot과 후속 push를 이어받는지 검증한다.
+- `SM-G1`: actor와 stream session이 붙은 `play-a`를 실제 SIGKILL하고, 같은 gateway에 bind된
+  `play-b` actor/session은 계속 동작하는지 확인한 뒤 살아 있는 `play-b`에 재auth/rebind해
+  상태를 복구한다.
 
 ## 공개 API 대기
 
@@ -65,4 +68,4 @@
 
 ## 남은 구현 후보
 
-- `SM-G1`: harness가 play node를 kill/restart하고 재join/rebind를 검증해야 한다.
+- 없음.

@@ -35,6 +35,8 @@ cmake --build "$BUILD_DIR" --target \
 SERVER="$BUILD_DIR/zlink_cpp_e2e_spot_service_server"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_spot_service_client"
 PIDS=()
+PLAY_A_PID=""
+SESSION_A_PID=""
 
 cleanup() {
   local code=$?
@@ -76,6 +78,19 @@ wait_port() {
   return 1
 }
 
+wait_file() {
+  local name="$1"
+  local path="$2"
+  for _ in $(seq 1 900); do
+    if [[ -f "$path" ]]; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for $name file: $path" >&2
+  return 1
+}
+
 start_registry() {
   ZLINK_CPP_E2E_ROLE=registry \
   ZLINK_CPP_E2E_REGISTRY_PUB="$REGISTRY_PUB" \
@@ -104,7 +119,11 @@ start_play() {
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
-  PIDS+=("$!")
+  local pid="$!"
+  PIDS+=("$pid")
+  if [[ "$rid" == "play-a" ]]; then
+    PLAY_A_PID="$pid"
+  fi
   wait_port "$rid-route" "$route"
   wait_port "$rid-spot" "$spot"
   wait_port "$rid-http" "$http"
@@ -129,7 +148,11 @@ start_session() {
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
     "$SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
-  PIDS+=("$!")
+  local pid="$!"
+  PIDS+=("$pid")
+  if [[ "$rid" == "session-a" ]]; then
+    SESSION_A_PID="$pid"
+  fi
   wait_port "$rid-route" "$route"
   wait_port "$rid-spot" "$spot"
   wait_port "$rid-stream" "$stream"
@@ -152,7 +175,7 @@ PY
 start_registry
 start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
 start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-sleep 6
+sleep 20
 
 ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
 ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
@@ -170,7 +193,7 @@ cat "$LOG_DIR/client.stdout.log"
 
 start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
 start_session session-b "$ROUTE_SESSION_B" "$SPOT_SESSION_B" "$PUB_SESSION_B" "$STREAM_B" "$HTTP_SESSION_B"
-sleep 6
+sleep 20
 
 ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
 ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
@@ -187,6 +210,7 @@ ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$CLIENT" >"$LOG_DIR/stream-client.stdout.log" 2>"$LOG_DIR/stream-client.stderr.log"
 
 cat "$LOG_DIR/stream-client.stdout.log"
+sleep 1
 fetch_evidence play-a "$HTTP_A"
 fetch_evidence play-b "$HTTP_B"
 fetch_evidence session-a "$HTTP_SESSION_A"
@@ -281,6 +305,86 @@ assert has(session_a, "StreamDisconnectNotified", "stream-disconnect-d5-notified
 assert has(session_a, "StreamBound", "stream-reconnect-d12")
 assert has(session_b, "StreamBound", "stream-reconnect-d12")
 print("spot-service evidence result=passed")
+PY
+
+if [[ -n "$PLAY_A_PID" ]] && kill -0 "$PLAY_A_PID" >/dev/null 2>&1; then
+  kill -9 "$PLAY_A_PID" >/dev/null 2>&1 || true
+  wait "$PLAY_A_PID" >/dev/null 2>&1 || true
+fi
+if [[ -n "$SESSION_A_PID" ]] && kill -0 "$SESSION_A_PID" >/dev/null 2>&1; then
+  kill -9 "$SESSION_A_PID" >/dev/null 2>&1 || true
+  wait "$SESSION_A_PID" >/dev/null 2>&1 || true
+fi
+start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
+start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
+sleep 20
+
+CRASH_READY="$LOG_DIR/sm-g1-ready"
+CRASH_GO="$LOG_DIR/sm-g1-go"
+CRASH_OBSERVED="$LOG_DIR/sm-g1-observed"
+
+ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
+ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
+ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
+ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
+ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
+ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
+ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
+ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
+ZLINK_CPP_E2E_SCENARIO_MODE=crash-setup \
+ZLINK_CPP_E2E_CRASH_READY_FILE="$CRASH_READY" \
+ZLINK_CPP_E2E_CRASH_GO_FILE="$CRASH_GO" \
+ZLINK_CPP_E2E_CRASH_OBSERVED_FILE="$CRASH_OBSERVED" \
+ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+  "$CLIENT" >"$LOG_DIR/crash-client.stdout.log" 2>"$LOG_DIR/crash-client.stderr.log" &
+CRASH_CLIENT_PID="$!"
+PIDS+=("$CRASH_CLIENT_PID")
+
+wait_file "SM-G1 ready" "$CRASH_READY"
+kill -9 "$PLAY_A_PID" >/dev/null 2>&1 || true
+touch "$CRASH_GO"
+wait_file "SM-G1 crash observed" "$CRASH_OBSERVED"
+wait "$CRASH_CLIENT_PID"
+cat "$LOG_DIR/crash-client.stdout.log"
+
+ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
+ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
+ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
+ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
+ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
+ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
+ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
+ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
+ZLINK_CPP_E2E_SCENARIO_MODE=crash-recover \
+ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+  "$CLIENT" >"$LOG_DIR/crash-recover-client.stdout.log" 2>"$LOG_DIR/crash-recover-client.stderr.log"
+cat "$LOG_DIR/crash-recover-client.stdout.log"
+
+fetch_evidence play-b-crash "$HTTP_B"
+fetch_evidence session-a-crash "$HTTP_SESSION_A"
+
+python3 - "$LOG_DIR/play-b-crash-evidence.json" "$LOG_DIR/session-a-crash-evidence.json" <<'PY'
+import json
+import sys
+
+play_b = json.load(open(sys.argv[1], encoding="utf-8"))
+session_a = json.load(open(sys.argv[2], encoding="utf-8"))
+
+def has(snapshot, marker, actor=None):
+    return any(entry["marker"] == marker and (actor is None or entry["actor_id"] == actor)
+               for entry in snapshot["entries"])
+
+def has_value(snapshot, marker, actor, value):
+    return any(entry["marker"] == marker and entry["actor_id"] == actor and entry["value"] == value
+               for entry in snapshot["entries"])
+
+assert has_value(play_b, "StateMutated", "crash-g1-play-b", "42")
+assert has_value(play_b, "StateMutated", "crash-g1-play-b", "49")
+assert has(session_a, "StreamBound", "crash-g1-play-a")
+assert has(session_a, "StreamBound", "crash-g1-play-b")
+print("spot-service crash evidence result=passed")
 PY
 
 echo "spot-service e2e result=passed"

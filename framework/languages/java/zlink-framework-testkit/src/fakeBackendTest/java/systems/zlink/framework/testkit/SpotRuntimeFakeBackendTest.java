@@ -19,6 +19,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import com.google.protobuf.StringValue;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
@@ -27,6 +28,8 @@ import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
+import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
@@ -36,9 +39,11 @@ import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
+import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.runtime.registry.ZLinkRegistrySpotRemoteAddressResolver;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
@@ -164,12 +169,83 @@ final class SpotRuntimeFakeBackendTest {
                  new FakeZLinkBackendAdapterFactory(),
                  serializer,
                  ZLinkHandlerFactory.reflection())) {
-            assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
+            var created = runtime.spotManager()
                 .getOrCreate(PayloadSpot.class, rid, ZLinkMessage.fromMessage(encoded, serializer))
                 .toCompletableFuture()
-                .join()
-                .state());
+                .join();
+            assertEquals(ZLinkSpotCreateState.CREATED, created.state());
             assertEquals("custom", PayloadSpot.lastCreatePayload.get());
+            Message reply = created.reply().toMessage(serializer);
+            try {
+                CreatePayload decoded = ZLinkMessage.fromMessage(reply, serializer).decode(CreatePayload.class);
+                assertEquals("reply:custom", decoded.value());
+            } finally {
+                reply.close();
+            }
+        }
+    }
+
+    @Test
+    void protobufSpotCreateDecodesRequestAndReplyThroughFrameworkMessage() {
+        ProtobufCreateSpot.lastCreatePayload.set(null);
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.codecs().use(ZLinkProtobufCodec.defaultCodec());
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://payload-protobuf-router");
+                node.addSpotFactory(ProtobufCreateSpot.class); }; };
+        RoutingId rid = RoutingId.from("payload-protobuf-spot");
+        ZLinkMessageSerializer serializer = serializerWith(ZLinkProtobufCodec.defaultCodec());
+        Message encoded = serializer.serialize(StringValue.of("proto-create"));
+
+        try (encoded;
+             ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(
+                 options,
+                 new FakeZLinkBackendAdapterFactory())) {
+            var created = runtime.spotManager()
+                .getOrCreate(ProtobufCreateSpot.class, rid, ZLinkMessage.fromMessage(encoded, serializer))
+                .toCompletableFuture()
+                .join();
+            assertEquals(ZLinkSpotCreateState.CREATED, created.state());
+            assertEquals("proto-create", ProtobufCreateSpot.lastCreatePayload.get());
+
+            Message reply = created.reply().toMessage(serializer);
+            try {
+                StringValue decoded = ZLinkMessage.fromMessage(reply, serializer).decode(StringValue.class);
+                assertEquals("reply:proto-create", decoded.getValue());
+            } finally {
+                reply.close();
+            }
+        }
+    }
+
+    @Test
+    void messagePackSpotCreateDecodesRequestAndReplyThroughFrameworkMessage() {
+        MessagePackCreateSpot.lastCreatePayload.set(null);
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://payload-messagepack-router");
+                node.addSpotFactory(MessagePackCreateSpot.class); }; };
+        RoutingId rid = RoutingId.from("payload-messagepack-spot");
+        ZLinkMessageSerializer serializer = serializerWith(ZLinkMessagePackCodec.defaultCodec());
+        Message encoded = serializer.serialize(new PackedCreatePayload("msgpack-create"));
+
+        try (encoded;
+             ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(
+                 options,
+                 new FakeZLinkBackendAdapterFactory())) {
+            var created = runtime.spotManager()
+                .getOrCreate(MessagePackCreateSpot.class, rid, ZLinkMessage.fromMessage(encoded, serializer))
+                .toCompletableFuture()
+                .join();
+            assertEquals(ZLinkSpotCreateState.CREATED, created.state());
+            assertEquals("msgpack-create", MessagePackCreateSpot.lastCreatePayload.get());
+
+            Message reply = created.reply().toMessage(serializer);
+            try {
+                PackedCreatePayload decoded = ZLinkMessage.fromMessage(reply, serializer).decode(PackedCreatePayload.class);
+                assertEquals("reply:msgpack-create", decoded.value());
+            } finally {
+                reply.close();
+            }
         }
     }
 
@@ -1260,12 +1336,48 @@ final class SpotRuntimeFakeBackendTest {
 
         @Override
         public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
-            lastCreatePayload.set(request.decode(String.class));
-            return ZLinkSpotCreateResponse.accept();
+            String decoded = request.decode(String.class);
+            lastCreatePayload.set(decoded);
+            return ZLinkSpotCreateResponse.accept(new CreatePayload("reply:" + decoded));
         }
     }
 
     public record CreatePayload(String value) {
+    }
+
+    public static final class ProtobufCreateSpot implements ZLinkSpot<ZLinkActor> {
+        static final AtomicReference<String> lastCreatePayload = new AtomicReference<>();
+
+        @Override
+        public ZLinkSpotContext context() {
+            return null;
+        }
+
+        @Override
+        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+            StringValue decoded = request.decode(StringValue.class);
+            lastCreatePayload.set(decoded.getValue());
+            return ZLinkSpotCreateResponse.accept(StringValue.of("reply:" + decoded.getValue()));
+        }
+    }
+
+    public static final class MessagePackCreateSpot implements ZLinkSpot<ZLinkActor> {
+        static final AtomicReference<String> lastCreatePayload = new AtomicReference<>();
+
+        @Override
+        public ZLinkSpotContext context() {
+            return null;
+        }
+
+        @Override
+        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+            PackedCreatePayload decoded = request.decode(PackedCreatePayload.class);
+            lastCreatePayload.set(decoded.value());
+            return ZLinkSpotCreateResponse.accept(new PackedCreatePayload("reply:" + decoded.value()));
+        }
+    }
+
+    public record PackedCreatePayload(String value) {
     }
 
     public static final class CreatePayloadSerializer implements ZLinkMessageSerializer {
@@ -1291,6 +1403,13 @@ final class SpotRuntimeFakeBackendTest {
             }
             throw new IllegalArgumentException("unsupported message type: " + type.getName());
         }
+    }
+
+    private static ZLinkMessageSerializer serializerWith(
+        systems.zlink.framework.configuration.ZLinkCodecExtension extension) {
+        ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
+        registration.use(extension);
+        return registration.serializerWithFallback(new ZLinkJsonMessageSerializer());
     }
 
     private static void awaitCall(

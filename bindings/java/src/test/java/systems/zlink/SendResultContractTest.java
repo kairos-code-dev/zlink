@@ -88,7 +88,8 @@ public class SendResultContractTest {
     }
 
     @Test
-    public void spotRouteBridgeRequestUsesCallerOwnedDealerSocket() {
+    public void spotRouteBridgeRequestUsesCallerOwnedDealerSocket()
+        throws Exception {
         TestSupport.assumeNative();
 
         try (Context ctx = Zlink.createContext();
@@ -102,27 +103,32 @@ public class SendResultContractTest {
             dealer.connect(endpoint);
             bridge.attachDealerChannel("api", dealer);
 
-            CompletionStage<List<Message>> replyFuture =
-                bridge.request("api", spot.getRoutingId())
-                    .message(Message.from("spot-ping"))
-                    .timeout(Duration.ofSeconds(2))
-                    .submit();
+            for (int i = 0; i < 2; i++) {
+                String requestText = "spot-ping-" + i;
+                String replyText = "spot-pong-" + i;
+                CompletionStage<List<Message>> replyFuture =
+                    bridge.request("api", spot.getRoutingId())
+                        .message(Message.from(requestText))
+                        .timeout(Duration.ofSeconds(2))
+                        .submit();
 
-            try (Received received = new Received()) {
-                TestSupport.awaitCondition(() ->
-                    router.recv(received, RecvFlags.DONT_WAIT));
-                assertEquals("spot-ping",
-                    received.parts().get(received.parts().size() - 1)
-                        .toUtf8String());
-                received.reply().message(Message.from("spot-pong")).submit();
-            }
+                try (Received received = new Received()) {
+                    TestSupport.awaitCondition(() ->
+                        router.recv(received, RecvFlags.DONT_WAIT));
+                    assertEquals(requestText,
+                        received.parts().get(received.parts().size() - 1)
+                            .toUtf8String());
+                    received.reply().message(Message.from(replyText)).submit();
+                }
 
-            List<Message> reply = replyFuture.toCompletableFuture().join();
-            try {
-                assertEquals(1, reply.size());
-                assertEquals("spot-pong", reply.get(0).toUtf8String());
-            } finally {
-                reply.forEach(Message::close);
+                List<Message> reply = replyFuture.toCompletableFuture()
+                    .get(3, TimeUnit.SECONDS);
+                try {
+                    assertEquals(1, reply.size());
+                    assertEquals(replyText, reply.get(0).toUtf8String());
+                } finally {
+                    reply.forEach(Message::close);
+                }
             }
         }
     }
@@ -153,47 +159,51 @@ public class SendResultContractTest {
                 Thread.sleep(50);
                 sourceBridge.attachDealerChannel("api", sourceDealer);
 
-                CompletionStage<List<Message>> replyStage =
-                    sourceBridge.request("api", targetSpot.getRoutingId())
-                        .message(Message.from("bridge-ping"))
-                        .timeout(Duration.ofSeconds(2))
-                        .submit();
-
-                TestSupport.awaitCondition(() -> {
-                    try (Received inbound = new Received()) {
-                        if (!targetRouter.recv(inbound, RecvFlags.DONT_WAIT)) {
-                            return false;
-                        }
-                        return targetBridge.handleRouterReceived(
-                            "api",
-                            inbound.getRoutingId().orElseThrow(),
-                            inbound.requestSeq().orElseThrow(),
-                            inbound.parts());
-                    }
-                });
-
-                TestSupport.awaitCondition(() -> {
-                    try (Received routed = new Received()) {
-                        if (!targetSpot.recvRouted(routed, RecvFlags.DONT_WAIT)) {
-                            return false;
-                        }
-                        assertEquals("bridge-ping",
-                            routed.parts().get(0).toUtf8String());
-                        routed.reply()
-                            .message(Message.from("bridge-pong"))
+                for (int i = 0; i < 2; i++) {
+                    String requestText = "bridge-ping-" + i;
+                    String replyText = "bridge-pong-" + i;
+                    CompletionStage<List<Message>> replyStage =
+                        sourceBridge.request("api", targetSpot.getRoutingId())
+                            .message(Message.from(requestText))
+                            .timeout(Duration.ofSeconds(2))
                             .submit();
-                        return true;
-                    }
-                });
 
-                TestSupport.awaitCondition(() -> targetBridge.drain() >= 0);
-                List<Message> reply = replyStage.toCompletableFuture()
-                    .get(3, TimeUnit.SECONDS);
-                try {
-                    assertEquals(1, reply.size());
-                    assertEquals("bridge-pong", reply.get(0).toUtf8String());
-                } finally {
-                    reply.forEach(Message::close);
+                    TestSupport.awaitCondition(() -> {
+                        try (Received inbound = new Received()) {
+                            if (!targetRouter.recv(inbound, RecvFlags.DONT_WAIT)) {
+                                return false;
+                            }
+                            return targetBridge.handleRouterReceived(
+                                "api",
+                                inbound.getRoutingId().orElseThrow(),
+                                inbound.requestSeq().orElseThrow(),
+                                inbound.parts());
+                        }
+                    });
+
+                    TestSupport.awaitCondition(() -> {
+                        try (Received routed = new Received()) {
+                            if (!targetSpot.recvRouted(routed, RecvFlags.DONT_WAIT)) {
+                                return false;
+                            }
+                            assertEquals(requestText,
+                                routed.parts().get(0).toUtf8String());
+                            routed.reply()
+                                .message(Message.from(replyText))
+                                .submit();
+                            return true;
+                        }
+                    });
+
+                    TestSupport.awaitCondition(() -> targetBridge.drain() > 0);
+                    List<Message> reply = replyStage.toCompletableFuture()
+                        .get(3, TimeUnit.SECONDS);
+                    try {
+                        assertEquals(1, reply.size());
+                        assertEquals(replyText, reply.get(0).toUtf8String());
+                    } finally {
+                        reply.forEach(Message::close);
+                    }
                 }
             }
         }

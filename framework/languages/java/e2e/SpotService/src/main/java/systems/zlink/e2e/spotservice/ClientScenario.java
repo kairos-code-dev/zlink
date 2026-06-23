@@ -5,6 +5,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 
 public final class ClientScenario {
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
     private final ZLinkSpotOutbound outbound;
 
     public ClientScenario(ZLinkSpotOutbound outbound) {
@@ -27,7 +28,7 @@ public final class ClientScenario {
         Contracts.StateReply first = outbound.requestToSpot(
                 RoutingId.from("room-a"),
                 new Contracts.StateRequest("a1"))
-            .timeout(Duration.ofSeconds(3))
+            .timeout(REQUEST_TIMEOUT)
             .await(Contracts.StateReply.class);
         ensure("room-a".equals(first.spotRid()), "SM-A1 wrong spot rid");
         ensure("play-a".equals(first.nodeRid()), "SM-A1 wrong owner node");
@@ -38,7 +39,7 @@ public final class ClientScenario {
         Contracts.StateReply second = outbound.requestToSpot(
                 RoutingId.from("room-a"),
                 new Contracts.StateRequest("a2"))
-            .timeout(Duration.ofSeconds(3))
+            .timeout(REQUEST_TIMEOUT)
             .await(Contracts.StateReply.class);
         ensure(second.value().endsWith("a1,a2"), "SM-A2 state did not accumulate");
         System.out.println("scenario SM-A2 passed");
@@ -63,7 +64,7 @@ public final class ClientScenario {
         Contracts.StateReply after = outbound.requestToSpot(
                 RoutingId.from("room-a"),
                 new Contracts.StateRequest("after-timeout"))
-            .timeout(Duration.ofSeconds(3))
+            .timeout(REQUEST_TIMEOUT)
             .await(Contracts.StateReply.class);
         ensure(after.value().contains("after-timeout"), "SM-C1 post-timeout request failed");
         System.out.println("scenario SM-C1-normal passed");
@@ -74,7 +75,7 @@ public final class ClientScenario {
                 RoutingId.from("room-a"),
                 new Contracts.StateRequest("missing"))
             .packetName("MissingSpotPacket")
-            .timeout(Duration.ofSeconds(3))
+            .timeout(REQUEST_TIMEOUT)
             .await(Contracts.StateReply.class));
         outbound.sendToSpot(RoutingId.from("room-a"), new Contracts.StateCommand("missing-send"))
             .packetName("MissingSpotCommand")

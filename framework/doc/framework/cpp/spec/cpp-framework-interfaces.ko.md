@@ -880,6 +880,9 @@ class session_actor_t {
 public:
     relay_call_t relay(
       const stream_header_t &header,
+      const message_t &payload);
+    relay_call_t relay_raw(
+      const stream_header_t &header,
       const zlink::message_t &payload);
 };
 
@@ -897,7 +900,11 @@ public:
     virtual task_t<void> on_packet(
       stream_t &stream,
       const stream_header_t &header,
-      const zlink::message_t &payload) = 0;
+      const message_t &payload) = 0;
+    virtual task_t<void> on_raw_packet(
+      stream_t &stream,
+      const stream_header_t &header,
+      const zlink::message_t &payload);
 };
 
 struct handler_invocation_context_t {

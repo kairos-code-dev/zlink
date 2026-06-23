@@ -58,7 +58,7 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
                                              const zlink::framework::stream_error_t &) override;
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &stream,
                                               const zlink::framework::stream_header_t &header,
-                                              const zlink::message_t &payload) override;
+                                              const zlink::framework::message_t &payload) override;
 };
 ```
 

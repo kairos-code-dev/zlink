@@ -120,7 +120,7 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &stream,
                                               const zlink::framework::stream_header_t &header,
-                                              const zlink::message_t &payload) override
+                                              const zlink::framework::message_t &payload) override
     {
         if (_authenticate.can_handle (header)) {
             auto authenticated = co_await _authenticate.handle (_actors, stream, header, payload);

@@ -643,15 +643,15 @@ class entry_spot_context_t : public spot_context_t
     template <typename TActor>
     task_t<void> destroyActor (const actor_ref_t &actor_ref, TActor &actor)
     {
-        return destroyActor_erased (actor_ref, std::type_index (typeid (TActor)), &actor);
+        (void) actor;
+        return destroyActor_erased (actor_ref);
     }
 
   private:
     friend class detail::spot_node_runtime_t;
     explicit entry_spot_context_t (std::shared_ptr<detail::spot_context_state_t> state);
 
-    task_t<void>
-    destroyActor_erased (const actor_ref_t &actor_ref, std::type_index actor_type, void *actor);
+    task_t<void> destroyActor_erased (const actor_ref_t &actor_ref);
 };
 
 struct spot_create_result_t

@@ -400,6 +400,19 @@ class spot_node_runtime_t
         return found->second;
     }
 
+    static void record_actor_context_route (spot_node_builder_state_t &node_state,
+                                            const std::string &key,
+                                            const std::string &node_rid,
+                                            spot_context_state_t &context_state,
+                                            std::uint64_t generation)
+    {
+        node_state.actor_spot_rids[key] = context_state.spot_rid;
+        node_state.actor_routes[key] = spot_route_t{
+          node_rid_t::from_string (node_rid), context_state.spot_rid, context_state.spot_name};
+        node_state.actor_generations[key] = generation;
+        context_state.actor_count++;
+    }
+
     template <typename TSpot, typename TActor>
     actor_ref_t
     commit_actor_to_context (const actor_ref_t &actor_ref, TActor &actor, spot_context_t &context)
@@ -407,11 +420,8 @@ class spot_node_runtime_t
         commit_actor_left<TActor> (actor_ref, actor);
         auto &context_state = *context._state;
         const auto key = actor_key (actor_ref);
-        _state->actor_spot_rids[key] = context_state.spot_rid;
-        _state->actor_routes[key] = spot_route_t{node_rid_t::from_string (_state->snapshot.name),
-                                                 context_state.spot_rid, context_state.spot_name};
-        _state->actor_generations[key] = actor_ref.generation () + 1;
-        context_state.actor_count++;
+        record_actor_context_route (*_state, key, _state->snapshot.name, context_state,
+                                    actor_ref.generation () + 1);
         context_state.on_actor_joined_callbacks[std::type_index (typeid (TActor))] =
           [] (void *spot, void *actor) {
               if constexpr (has_on_actor_joined_callback<TSpot, TActor>) {
@@ -531,9 +541,23 @@ class spot_node_runtime_t
                                                        zlink::message_t request);
     result_t<spot_context_t> actor_join_context_unlocked (spot_rid_t spot_rid,
                                                           const zlink::message_t &request);
+    result_t<std::reference_wrapper<spot_node_builder_state_t::actor_factory_registration_t>>
+    actor_factory_unlocked (const actor_ref_t &actor_ref);
+    result_t<std::reference_wrapper<spot_actor_admission_callbacks_t>>
+    actor_admission_unlocked (spot_context_t &context,
+                              std::type_index actor_type,
+                              spot_rid_t spot_rid,
+                              const actor_ref_t &actor_ref);
     void leave_previous_actor_route_unlocked (const std::string &key,
                                               std::type_index actor_type,
                                               void *actor);
+    void commit_accepted_actor_join_unlocked (const std::string &key,
+                                              spot_context_t &context,
+                                              const actor_ref_t &committed,
+                                              std::type_index actor_type,
+                                              void *actor,
+                                              const spot_actor_admission_callbacks_t &admission,
+                                              bool create_entry_actor);
 
     std::shared_ptr<spot_node_builder_state_t> _state;
 };

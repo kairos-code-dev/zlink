@@ -640,12 +640,8 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
     }
 }
 
-task_t<void> entry_spot_context_t::destroyActor_erased (const actor_ref_t &actor,
-                                                        std::type_index actor_type,
-                                                        void *actor_instance)
+task_t<void> entry_spot_context_t::destroyActor_erased (const actor_ref_t &actor)
 {
-    (void) actor_type;
-    (void) actor_instance;
     if (!_state || !_state->node || actor.empty ()) {
         return task_t<void> (result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
                                                       "actor ref is empty"));
@@ -1541,6 +1537,40 @@ spot_node_runtime_t::actor_join_context_unlocked (spot_rid_t spot_rid,
     return result_t<spot_context_t>::success (std::move (*context));
 }
 
+result_t<std::reference_wrapper<spot_node_builder_state_t::actor_factory_registration_t>>
+spot_node_runtime_t::actor_factory_unlocked (const actor_ref_t &actor_ref)
+{
+    const auto found = _state->actor_factories.find (std::string (actor_ref.actor_type ()));
+    if (found == _state->actor_factories.end ()) {
+        return result_t<
+          std::reference_wrapper<spot_node_builder_state_t::actor_factory_registration_t>>::
+          failure (framework_error_kind_t::actor_route_not_found,
+                   "actor factory is not registered");
+    }
+    return result_t<std::reference_wrapper<
+      spot_node_builder_state_t::actor_factory_registration_t>>::success (found->second);
+}
+
+result_t<std::reference_wrapper<spot_actor_admission_callbacks_t>>
+spot_node_runtime_t::actor_admission_unlocked (spot_context_t &context,
+                                               std::type_index actor_type,
+                                               spot_rid_t spot_rid,
+                                               const actor_ref_t &actor_ref)
+{
+    const auto admission = context._state->actor_admissions.find (actor_type);
+    if (admission == context._state->actor_admissions.end () || !admission->second.join) {
+        report_spot_dispatch_error (
+          _state, dispatch_error_surface_t::spot_actor, dispatch_message_kind_t::actor_request,
+          dispatch_error_reason_t::handler_missing, dispatch_error_action_t::reply_error,
+          "actor.join", std::nullopt, std::string (spot_rid.value ()),
+          std::string (actor_ref.actor_id ()));
+        return result_t<std::reference_wrapper<spot_actor_admission_callbacks_t>>::failure (
+          framework_error_kind_t::handler_not_found, "spot actor join callback is not registered");
+    }
+    return result_t<std::reference_wrapper<spot_actor_admission_callbacks_t>>::success (
+      admission->second);
+}
+
 void spot_node_runtime_t::leave_previous_actor_route_unlocked (const std::string &key,
                                                                std::type_index actor_type,
                                                                void *actor)
@@ -1561,6 +1591,28 @@ void spot_node_runtime_t::leave_previous_actor_route_unlocked (const std::string
     erase_actor_route_unlocked (*_state, key);
 }
 
+void spot_node_runtime_t::commit_accepted_actor_join_unlocked (
+  const std::string &key,
+  spot_context_t &context,
+  const actor_ref_t &committed,
+  std::type_index actor_type,
+  void *actor,
+  const spot_actor_admission_callbacks_t &admission,
+  bool create_entry_actor)
+{
+    leave_previous_actor_route_unlocked (key, actor_type, actor);
+    auto &target_state = *context._state;
+    record_actor_context_route_unlocked (*_state, key, _state->snapshot.name, target_state,
+                                         committed.generation ());
+    if (create_entry_actor && admission.entry_spot && _state->actor_created_keys.insert (key).second
+        && admission.onCreateActor) {
+        admission.onCreateActor (target_state.spot_instance.get (), actor);
+    }
+    if (admission.on_actor_joined) {
+        admission.on_actor_joined (target_state.spot_instance.get (), actor);
+    }
+}
+
 result_t<actor_join_reply_t> spot_node_runtime_t::join_actor_to_spot_erased (
   const actor_ref_t &actor_ref, spot_rid_t spot_rid, const zlink::message_t &request)
 {
@@ -1574,53 +1626,40 @@ result_t<actor_join_reply_t> spot_node_runtime_t::join_actor_to_spot_erased (
           context.error_kind (),
           context.error () ? context.error ()->what () : "target spot is not registered");
     }
-    const auto actor_factory = _state->actor_factories.find (std::string (actor_ref.actor_type ()));
-    if (actor_factory == _state->actor_factories.end ()) {
-        return result_t<actor_join_reply_t>::failure (framework_error_kind_t::actor_route_not_found,
-                                                      "actor factory is not registered");
+    auto actor_factory = actor_factory_unlocked (actor_ref);
+    if (!actor_factory) {
+        return result_t<actor_join_reply_t>::failure (
+          actor_factory.error_kind (),
+          actor_factory.error () ? actor_factory.error ()->what () : "actor factory failed");
     }
     const auto actor = _state->actor_instances.find (actor_key (actor_ref));
     if (actor == _state->actor_instances.end () || !actor->second) {
         return result_t<actor_join_reply_t>::failure (framework_error_kind_t::actor_route_not_found,
                                                       "actor instance is not registered");
     }
-    const auto admission =
-      context.value ()._state->actor_admissions.find (actor_factory->second.actor_type);
-    if (admission == context.value ()._state->actor_admissions.end () || !admission->second.join) {
-        report_spot_dispatch_error (
-          _state, dispatch_error_surface_t::spot_actor, dispatch_message_kind_t::actor_request,
-          dispatch_error_reason_t::handler_missing, dispatch_error_action_t::reply_error,
-          "actor.join", std::nullopt, std::string (spot_rid.value ()),
-          std::string (actor_ref.actor_id ()));
-        return result_t<actor_join_reply_t>::failure (framework_error_kind_t::handler_not_found,
-                                                      "spot actor join callback is not registered");
+    auto admission = actor_admission_unlocked (
+      context.value (), actor_factory.value ().get ().actor_type, spot_rid, actor_ref);
+    if (!admission) {
+        return result_t<actor_join_reply_t>::failure (
+          admission.error_kind (),
+          admission.error () ? admission.error ()->what () : "actor admission failed");
     }
 
-    const auto response = admission->second.join (context.value ()._state->spot_instance.get (),
-                                                  actor->second.get (), request);
+    const auto response = admission.value ().get ().join (
+      context.value ()._state->spot_instance.get (), actor->second.get (), request);
     if (!response.accepted) {
         return result_t<actor_join_reply_t>::success (
           actor_join_reply_t{1, actor_ref, response.reply.value_or (zlink::message_t{})});
     }
 
     const auto key = actor_key (actor_ref);
-    leave_previous_actor_route_unlocked (key, actor_factory->second.actor_type,
-                                         actor->second.get ());
-
-    auto &target_state = *context.value ()._state;
-    record_actor_context_route_unlocked (*_state, key, _state->snapshot.name, target_state,
-                                         actor_ref.generation () + 1);
     auto committed = actor_ref_t (node_rid_t::from_string (_state->snapshot.name),
                                   std::string (actor_ref.actor_type ()),
                                   std::string (actor_ref.actor_id ()), actor_ref.generation () + 1);
-    actor_factory->second.configure_instance (actor->second.get (), committed, nullptr);
-    if (admission->second.entry_spot && _state->actor_created_keys.insert (key).second
-        && admission->second.onCreateActor) {
-        admission->second.onCreateActor (target_state.spot_instance.get (), actor->second.get ());
-    }
-    if (admission->second.on_actor_joined) {
-        admission->second.on_actor_joined (target_state.spot_instance.get (), actor->second.get ());
-    }
+    actor_factory.value ().get ().configure_instance (actor->second.get (), committed, nullptr);
+    commit_accepted_actor_join_unlocked (key, context.value (), committed,
+                                         actor_factory.value ().get ().actor_type,
+                                         actor->second.get (), admission.value ().get (), true);
     return result_t<actor_join_reply_t>::success (
       actor_join_reply_t{0, committed, response.reply.value_or (zlink::message_t{})});
 }
@@ -1642,58 +1681,50 @@ spot_node_runtime_t::join_remote_actor_to_spot_erased (const actor_ref_t &actor_
           context.error () ? context.error ()->what () : "target spot is not registered");
     }
 
-    const auto actor_factory = _state->actor_factories.find (std::string (actor_ref.actor_type ()));
-    if (actor_factory == _state->actor_factories.end ()) {
-        return result_t<actor_join_reply_t>::failure (framework_error_kind_t::actor_route_not_found,
-                                                      "actor factory is not registered");
+    auto actor_factory = actor_factory_unlocked (actor_ref);
+    if (!actor_factory) {
+        return result_t<actor_join_reply_t>::failure (
+          actor_factory.error_kind (),
+          actor_factory.error () ? actor_factory.error ()->what () : "actor factory failed");
     }
 
     const auto key = actor_key (actor_ref);
     auto &actor_instance = _state->actor_instances[key];
     if (!actor_instance) {
         actor_instance =
-          actor_factory->second.create_instance (std::string (actor_ref.actor_id ()));
+          actor_factory.value ().get ().create_instance (std::string (actor_ref.actor_id ()));
         if (!actor_instance) {
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::actor_route_not_found, "actor factory returned null");
         }
     }
-    auto &target_state = *context.value ()._state;
     auto committed = actor_ref_t (node_rid_t::from_string (_state->snapshot.name),
                                   std::string (actor_ref.actor_type ()),
                                   std::string (actor_ref.actor_id ()), actor_ref.generation ());
     auto committed_context = actor_context_t (actor_context._state, committed);
-    actor_factory->second.configure_instance (actor_instance.get (), committed, &committed_context);
+    actor_factory.value ().get ().configure_instance (actor_instance.get (), committed,
+                                                      &committed_context);
 
-    const auto admission =
-      context.value ()._state->actor_admissions.find (actor_factory->second.actor_type);
-    if (admission == context.value ()._state->actor_admissions.end () || !admission->second.join) {
-        report_spot_dispatch_error (
-          _state, dispatch_error_surface_t::spot_actor, dispatch_message_kind_t::actor_request,
-          dispatch_error_reason_t::handler_missing, dispatch_error_action_t::reply_error,
-          "actor.join", std::nullopt, std::string (spot_rid.value ()),
-          std::string (actor_ref.actor_id ()));
-        return result_t<actor_join_reply_t>::failure (framework_error_kind_t::handler_not_found,
-                                                      "spot actor join callback is not registered");
+    auto admission = actor_admission_unlocked (
+      context.value (), actor_factory.value ().get ().actor_type, spot_rid, actor_ref);
+    if (!admission) {
+        return result_t<actor_join_reply_t>::failure (
+          admission.error_kind (),
+          admission.error () ? admission.error ()->what () : "actor admission failed");
     }
 
-    const auto response = admission->second.join (context.value ()._state->spot_instance.get (),
-                                                  actor_instance.get (), request);
+    const auto response = admission.value ().get ().join (
+      context.value ()._state->spot_instance.get (), actor_instance.get (), request);
     if (!response.accepted) {
-        actor_factory->second.configure_instance (actor_instance.get (), actor_ref, &actor_context);
+        actor_factory.value ().get ().configure_instance (actor_instance.get (), actor_ref,
+                                                          &actor_context);
         return result_t<actor_join_reply_t>::success (
           actor_join_reply_t{1, actor_ref, response.reply.value_or (zlink::message_t{})});
     }
 
-    leave_previous_actor_route_unlocked (key, actor_factory->second.actor_type,
-                                         actor_instance.get ());
-
-    record_actor_context_route_unlocked (*_state, key, _state->snapshot.name, target_state,
-                                         actor_ref.generation ());
-    if (admission->second.on_actor_joined) {
-        admission->second.on_actor_joined (target_state.spot_instance.get (),
-                                           actor_instance.get ());
-    }
+    commit_accepted_actor_join_unlocked (key, context.value (), committed,
+                                         actor_factory.value ().get ().actor_type,
+                                         actor_instance.get (), admission.value ().get (), false);
     return result_t<actor_join_reply_t>::success (
       actor_join_reply_t{0, actor_ref, response.reply.value_or (zlink::message_t{})});
 }

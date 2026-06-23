@@ -36,6 +36,7 @@
 #include <zlink/framework/contracts/timers/timer.hpp>
 #include <zlink/framework/contracts/workers/worker.hpp>
 #include <zlink/framework/codecs/json.hpp>
+#include <zlink/framework/codecs/json_extension.hpp>
 #include <zlink/framework/codecs/json_stream_connector.hpp>
 #include <zlink/framework/codecs/json_stream_e2e_client.hpp>
 #include <zlink/framework/extensions.hpp>

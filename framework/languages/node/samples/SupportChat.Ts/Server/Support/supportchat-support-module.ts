@@ -1,4 +1,5 @@
 import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
+import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { SupportNotificationDeliveryLog } from './notification-delivery-log';
 import { SupportUserActorFactory } from './Infrastructure/ZLink/Actors/support-user-actor-factory';
 import { ConversationEventMapper } from './Infrastructure/ZLink/Notifications/conversation-event-mapper';
@@ -41,7 +42,13 @@ function createSupportChatSupportModule(config: {
   zlinkModule(__dirname, {
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
+        useFactory: () => {
+          const builder = zlinkFramework();
+          builder.configureDispatch()
+            .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            .traceLogFile(`${process.env.SUPPORTCHAT_LOG_DIR ?? 'logs'}/flow-support.log`)
+            .traceNodeId('support');
+          return builder
           .codecs()
             .addJson()
           .useDiscovery()
@@ -58,7 +65,8 @@ function createSupportChatSupportModule(config: {
           .addSpotNode(SampleNames.conversationSpotType)
             .addEntrySpot(SupportEntrySpot)
             .addSpotFactory(ConversationSpot)
-          .build()
+          .build();
+        }
       })
     ],
     providers: [

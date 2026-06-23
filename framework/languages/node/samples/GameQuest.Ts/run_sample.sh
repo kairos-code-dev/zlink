@@ -6,6 +6,9 @@ cd "${SCRIPT_DIR}"
 npm run build >/dev/null
 
 RUN_DIR="$(mktemp -d)"
+export GAMEQUEST_LOG_DIR="${GAMEQUEST_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "${GAMEQUEST_LOG_DIR}"
+rm -f "${GAMEQUEST_LOG_DIR}"/*.log
 PIDS=()
 
 cleanup() {
@@ -93,3 +96,4 @@ wait_port
 wait_discovery_ready
 sleep 1
 node "${SCRIPT_DIR}/dist/Client/main.js"
+grep -Rq "message flow" "${GAMEQUEST_LOG_DIR}"

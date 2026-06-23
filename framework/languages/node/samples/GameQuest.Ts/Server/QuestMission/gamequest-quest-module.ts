@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { PacketNames } from '../../Shared/Contracts/messages';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { CollectItemHandler } from './Handlers/collect-item-handler';
@@ -28,7 +29,13 @@ function createGameQuestModule(config: {
   Module({
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
+        useFactory: () => {
+          const builder = zlinkFramework();
+          builder.configureDispatch()
+            .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            .traceLogFile(`${process.env.GAMEQUEST_LOG_DIR ?? 'logs'}/flow-quest.log`)
+            .traceNodeId('quest');
+          return builder
           .codecs()
             .addJson()
           .useDiscovery()
@@ -47,7 +54,8 @@ function createGameQuestModule(config: {
             .addRequestHandler(PacketNames.deleteQuestProjectionReq, DeleteQuestProjectionHandler)
             .addRequestHandler(PacketNames.rebuildQuestProjectionReq, RebuildQuestProjectionHandler)
             .addRequestHandler(PacketNames.gameQuestServerAssertReq, GameQuestServerAssertHandler)
-          .build()
+          .build();
+        }
       })
     ],
     providers: [

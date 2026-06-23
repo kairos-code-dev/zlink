@@ -6,6 +6,9 @@ cd "${SCRIPT_DIR}"
 npm run build >/dev/null
 
 RUN_DIR="$(mktemp -d)"
+export DELIVERYDISPATCH_LOG_DIR="${DELIVERYDISPATCH_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "${DELIVERYDISPATCH_LOG_DIR}"
+rm -f "${DELIVERYDISPATCH_LOG_DIR}"/*.log
 PIDS=()
 
 cleanup() {
@@ -93,3 +96,4 @@ wait_port
 wait_discovery_ready
 sleep 1
 node "${SCRIPT_DIR}/dist/Client/main.js"
+grep -Rq "message flow" "${DELIVERYDISPATCH_LOG_DIR}"

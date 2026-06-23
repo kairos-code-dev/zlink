@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { AuthenticatePlayerHandler } from './Handlers/authenticate-player-handler';
 import { CreateGameEndpoint } from './Handlers/create-game-http-handler';
 import { PacketNames } from '../../Shared/Contracts/messages';
@@ -14,7 +15,13 @@ function createTicTacToeApiModule(config: {
   Module({
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
+        useFactory: () => {
+          const builder = zlinkFramework();
+          builder.configureDispatch()
+            .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            .traceLogFile(`${process.env.TICTACTOE_LOG_DIR ?? 'logs'}/flow-api-${config.apiIndex}.log`)
+            .traceNodeId(`api-${config.apiIndex}`);
+          return builder
           .codecs()
             .addJson()
           .addClientServerChannel(SampleNames.apiChannel)
@@ -22,7 +29,8 @@ function createTicTacToeApiModule(config: {
             .addRequestHandler(PacketNames.authenticatePlayerReq, AuthenticatePlayerHandler)
           .addClientServerChannel(SampleNames.playChannel)
             .enableClient(config.playChannelEndpoints)
-          .build()
+          .build();
+        }
       })
     ],
     providers: [

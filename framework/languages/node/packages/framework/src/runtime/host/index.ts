@@ -390,6 +390,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       spotPublisherClient: new DefaultZLinkSpotPublisherClient(this.options.registration, this.spotPublisherTransport),
       messageSerializers: this.options.registration.messageSerializers,
       createNativeSpot: (spotRid: RoutingId) => this.spotNodeRuntime?.primaryNode?.getOrCreateSpot(spotRid).spot,
+      nativeSpotNodeProvider: () => this.spotNodeRuntime?.primaryNode,
       actorResolver: (actorId: string) => this.actorManager?.getState(actorId)?.actor,
       routedActorProvider: async (
         actorId: string,

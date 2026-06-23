@@ -2,9 +2,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
-mkdir -p "${LOG_DIR}"
+export SUPPORTCHAT_LOG_DIR="${SUPPORTCHAT_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "${LOG_DIR}" "${SUPPORTCHAT_LOG_DIR}"
+rm -f "${SUPPORTCHAT_LOG_DIR}"/*.log
 
 PIDS=()
 
@@ -209,4 +212,5 @@ node "${SCRIPT_DIR}/dist/Client/main.js" >"${LOG_DIR}/client.log" 2>&1
 grep -q "stream-inbound sample=SupportChat" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=SupportChat .* seq=[0-9]" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=SupportChat .* name=.*Notify" "${LOG_DIR}/client.log"
+grep -Rq "message flow" "${SUPPORTCHAT_LOG_DIR}"
 echo "PASS SupportChat.Ts"

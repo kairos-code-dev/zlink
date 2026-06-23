@@ -62,6 +62,7 @@ import {
 
 const ZLINK_SEND_DONT_WAIT = 1 as ZLinkBackendSendFlags;
 const ZLINK_NATIVE_BOUND_SESSION_RETRY_DELAY_MS = 10;
+const REMOTE_BOUND_SESSION_BIND_PACKET = 'zlink.framework.actor.bound_session.bind';
 
 export interface ZLinkStreamBindingRuntimeOptions {
   readonly transport?: ZLinkBoundSessionTransport;
@@ -632,6 +633,7 @@ export class ZLinkStreamBindingRuntime {
       return;
     }
     await this.bindNativeActor(route.context, actorRef, signal);
+    this.relayRemoteBoundSessionBind(route.context, actorRef);
   }
 
   async refreshActor(actorRef: ActorRef, signal?: AbortSignal): Promise<void> {
@@ -641,6 +643,7 @@ export class ZLinkStreamBindingRuntime {
       return;
     }
     await this.bindNativeActor(route.context, actorRef, signal);
+    this.relayRemoteBoundSessionBind(route.context, actorRef);
   }
 
   unbind(actorId: string, context: DefaultZLinkSessionContext, bindingToken: string): void {
@@ -928,6 +931,34 @@ export class ZLinkStreamBindingRuntime {
       );
     }
     await context.stream.bindActor(actorRef, this.options.actorBindTimeoutMs ?? 2000, signal);
+  }
+
+  private relayRemoteBoundSessionBind(
+    context: DefaultZLinkSessionContext,
+    actorRef: ActorRef
+  ): void {
+    if (!(context.stream instanceof ZLinkManagedStream)) {
+      return;
+    }
+    const header = ZLinkBindingMessage.from(Buffer.from(encodeStreamHeader({
+      kind: ZLinkStreamMessageKind.Send,
+      codec: ZLinkStreamCodec.Raw,
+      flags: ZLinkStreamHeaderFlags.None,
+      name: REMOTE_BOUND_SESSION_BIND_PACKET,
+      metadata: new Map()
+    })));
+    const body = ZLinkBindingMessage.from(Buffer.alloc(0));
+    try {
+      if (!context.stream.sendBoundActor(actorRef.actorId, [header, body], 0)) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.ActorRouteNotFound,
+          `Actor '${actorRef.actorId}' remote bound session bind relay failed.`
+        );
+      }
+    } finally {
+      header.close();
+      body.close();
+    }
   }
 
   private async sendNativeBoundSessionFrame(

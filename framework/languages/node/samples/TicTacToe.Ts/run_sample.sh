@@ -4,14 +4,29 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
-mkdir -p "${LOG_DIR}"
+export TICTACTOE_LOG_DIR="${TICTACTOE_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "${LOG_DIR}" "${TICTACTOE_LOG_DIR}"
+rm -f "${TICTACTOE_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER_ID=""
 REDIS_KEY_PREFIX="tictactoe:${RANDOM}:$$:room:"
 
+print_logs() {
+  local status="$1"
+  if [[ "${status}" == "0" ]]; then
+    return
+  fi
+  for file in "${LOG_DIR}"/*.log; do
+    [[ -f "${file}" ]] || continue
+    echo "===== ${file} =====" >&2
+    cat "${file}" >&2
+  done
+}
+
 cleanup() {
   local status="$?"
+  print_logs "${status}"
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     if kill -0 "${pid}" 2>/dev/null; then
@@ -307,4 +322,5 @@ grep -Eq "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.l
 grep -q "observer-win-milestone=verified" "${LOG_DIR}/client.log"
 wait_grep "host leave marker" "actor: LeaveGameReq completed. actor=player-x" "${LOG_DIR}"/play-*.log
 wait_grep "guest leave marker" "actor: LeaveGameReq completed. actor=player-o" "${LOG_DIR}"/play-*.log
+grep -Rq "message flow" "${TICTACTOE_LOG_DIR}"
 echo "PASS TicTacToe.Ts"

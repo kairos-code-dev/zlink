@@ -130,6 +130,15 @@ test('managed stream actor refresh rebinds native gateway for the same actor ref
     actor: actorRef,
     timeoutMs: 1234
   });
+  assert.equal(socket.boundActorSends.length, 1);
+  assert.equal(socket.boundActorSends[0].sessionRid, 'backend-rid');
+  assert.equal(socket.boundActorSends[0].actorId, 'actor-a');
+  assert.equal(socket.boundActorSends[0].flags, 0);
+  const bindHeader = streamProtocol.decodeStreamHeader(bytesOf(socket.boundActorSends[0].parts[0]));
+  assert.equal(bindHeader.name, 'zlink.framework.actor.bound_session.bind');
+  assert.equal(bindHeader.kind, streamProtocol.ZLinkStreamMessageKind.Send);
+  assert.equal(bindHeader.codec, streamProtocol.ZLinkStreamCodec.Raw);
+  assert.equal(bytesOf(socket.boundActorSends[0].parts[1]).length, 0);
 });
 
 test('managed stream actor bind failure does not create stale local binding', async () => {

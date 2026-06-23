@@ -1,4 +1,5 @@
 import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
+import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { SampleNames } from '../Configuration/sample-names';
 function createSupportChatApiModule(config: {
   apiEndpoint: string;
@@ -10,7 +11,13 @@ function createSupportChatApiModule(config: {
   zlinkModule(__dirname, {
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
+        useFactory: () => {
+          const builder = zlinkFramework();
+          builder.configureDispatch()
+            .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            .traceLogFile(`${process.env.SUPPORTCHAT_LOG_DIR ?? 'logs'}/flow-api.log`)
+            .traceNodeId('api');
+          return builder
           .codecs()
             .addJson()
           .useDiscovery()
@@ -20,7 +27,8 @@ function createSupportChatApiModule(config: {
             .addHandlerGroup('api')
           .addClientServerChannel(SampleNames.supportChannel)
             .enableClient()
-          .build()
+          .build();
+        }
       })
     ]
   })(SupportChatApiModule);

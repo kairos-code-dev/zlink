@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { PacketNames } from '../../Shared/Contracts/messages';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { ContinueOrderWorkflowHandler } from './Handlers/continue-order-workflow-handler';
@@ -23,7 +24,13 @@ function createShoppingMallModule(config: {
   Module({
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
+        useFactory: () => {
+          const builder = zlinkFramework();
+          builder.configureDispatch()
+            .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            .traceLogFile(`${process.env.SHOPPINGMALL_LOG_DIR ?? 'logs'}/flow-workflow.log`)
+            .traceNodeId('workflow');
+          return builder
           .codecs()
             .addJson()
           .useDiscovery()
@@ -37,7 +44,8 @@ function createShoppingMallModule(config: {
             .addRequestHandler(PacketNames.rebuildOrderProjectionReq, RebuildOrderProjectionHandler)
             .addRequestHandler(PacketNames.seedPendingIdempotencyReq, SeedPendingIdempotencyHandler)
             .addRequestHandler(PacketNames.serverAssertionReq, ServerAssertionHandler)
-          .build()
+          .build();
+        }
       })
     ],
     providers: [

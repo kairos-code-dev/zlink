@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { PacketNames } from '../../Shared/Contracts/messages';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { AdvanceDeliveryHandler } from './Handlers/advance-delivery-handler';
@@ -19,7 +20,13 @@ function createDeliveryDispatchModule(config: {
   Module({
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
+        useFactory: () => {
+          const builder = zlinkFramework();
+          builder.configureDispatch()
+            .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            .traceLogFile(`${process.env.DELIVERYDISPATCH_LOG_DIR ?? 'logs'}/flow-dispatch.log`)
+            .traceNodeId('dispatch');
+          return builder
           .codecs()
             .addJson()
           .useDiscovery()
@@ -31,7 +38,8 @@ function createDeliveryDispatchModule(config: {
             .addRequestHandler(PacketNames.assignDeliveryReq, AssignDeliveryHandler)
             .addRequestHandler(PacketNames.advanceDeliveryReq, AdvanceDeliveryHandler)
             .addRequestHandler(PacketNames.serverAssertionReq, ServerAssertionHandler)
-          .build()
+          .build();
+        }
       })
     ],
     providers: [

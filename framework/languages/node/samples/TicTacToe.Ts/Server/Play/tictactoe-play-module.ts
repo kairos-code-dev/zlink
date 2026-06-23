@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { PacketNames } from '../../Shared/Contracts/messages';
 import { SampleNames } from '../Configuration/sample-settings';
 import { CreateGameHandler } from './Infrastructure/ZLink/Handlers/create-game-handler';
@@ -39,7 +40,13 @@ function createTicTacToePlayModule(config: {
   Module({
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
+        useFactory: () => {
+          const builder = zlinkFramework();
+          builder.configureDispatch()
+            .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            .traceLogFile(`${process.env.TICTACTOE_LOG_DIR ?? 'logs'}/flow-play-${config.playSpotNodeRid}.log`)
+            .traceNodeId(config.playSpotNodeRid);
+          return builder
           .options({
             spotRemoteAddressResolver: RedisSpotRemoteAddressResolver
           })
@@ -63,7 +70,8 @@ function createTicTacToePlayModule(config: {
               .attachSpotPublisherClient(SampleNames.playerMilestoneChannel, config.playSpotPubSubEndpoint)
               .addEntrySpot(PlayEntrySpot)
             .addSpotFactory(TicTacToeGameSpot)
-          .build()
+          .build();
+        }
       })
     ],
     providers: [

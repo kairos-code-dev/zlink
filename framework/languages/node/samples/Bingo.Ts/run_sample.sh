@@ -2,9 +2,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
-mkdir -p "${LOG_DIR}"
+export BINGO_LOG_DIR="${BINGO_LOG_DIR:-${SCRIPT_DIR}/logs}"
+mkdir -p "${LOG_DIR}" "${BINGO_LOG_DIR}"
+rm -f "${BINGO_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER_ID=""
@@ -333,4 +336,5 @@ grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "${LOG_DIR}/client.log"
 grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "${LOG_DIR}/client.log"
 grep -q "client=observer" "${LOG_DIR}/client.log"
 grep -q "name=BingoRewardAnnouncedNotify" "${LOG_DIR}/client.log"
+grep -Rq "message flow" "${BINGO_LOG_DIR}"
 echo "bingo=completed"

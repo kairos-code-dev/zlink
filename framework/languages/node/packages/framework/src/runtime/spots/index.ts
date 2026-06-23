@@ -146,6 +146,7 @@ export interface ZLinkSpotManagerOptions {
   // routing by rid) so actor-join admission uses the same recv/reply round-trip
   // as the Entry Spot and .NET, for local and remote callers alike.
   readonly createNativeSpot?: (spotRid: RoutingId) => ZLinkBackendSpot | undefined;
+  readonly nativeSpotNodeProvider?: () => ZLinkBackendSpotNode | undefined;
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
   readonly routedActorProvider?: (
     actorId: string,
@@ -215,6 +216,7 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
 }
 
 const REMOTE_ACTOR_JOIN_PACKET = '__zlink.actor.join_spot.request';
+const REMOTE_BOUND_SESSION_BIND_PACKET = 'zlink.framework.actor.bound_session.bind';
 
 interface ZLinkRemoteActorJoinActor {
   readonly actor: ZLinkActor;
@@ -338,6 +340,7 @@ export class ZLinkSpotNodeRuntimeManager {
     const activation = new ZLinkEntrySpotActivation({
       entrySpotType: spotNode.entrySpotType,
       nativeSpot,
+      nativeNode: node,
       nodeRid: node.routingId,
       spotNodeName,
       providerResolver: this.options.providerResolver,
@@ -393,6 +396,7 @@ export class ZLinkSpotNodeRuntimeManager {
       undefined,
       this.options.routedBoundSessionReceiver,
       this.options.actorPacketTargetProvider,
+      undefined,
       this.options.messageSerializers,
       this.options.providerResolver,
       this.options.dispatchErrors
@@ -611,6 +615,7 @@ interface ZLinkEntrySpotActivationOptions {
   readonly actorSendHandlers?: readonly ZLinkEntrySpotActorSendHandlerRegistration[];
   readonly actorRequestHandlers?: readonly ZLinkEntrySpotActorRequestHandlerRegistration[];
   readonly nativeSpot: ZLinkBackendSpot;
+  readonly nativeNode: ZLinkBackendSpotNode;
   readonly nodeRid: RoutingId;
   readonly spotNodeName: string;
   readonly channelClient?: ZLinkChannelClient;
@@ -651,6 +656,8 @@ interface ZLinkActorJoinAdmissionTarget {
 interface ZLinkActorDispatchPart {
   readonly info: {
     readonly actor: ZLinkBackendActorRef;
+    readonly sourceNodeRid?: RoutingId;
+    readonly sourceSessionRid?: RoutingId;
   };
   readonly message: Message;
   readonly more: boolean;
@@ -679,6 +686,11 @@ class ZLinkSpotActorJoinDispatch {
     ) => Promise<unknown>,
     private readonly routedBoundSessionReceiver?: ZLinkSpotManagerOptions['routedBoundSessionReceiver'],
     private readonly actorPacketTargetProvider?: ZLinkSpotManagerOptions['actorPacketTargetProvider'],
+    private readonly bindRemoteActorSession?: (
+      actor: ZLinkBackendActorRef,
+      sourceNodeRid: RoutingId,
+      sourceSessionRid: RoutingId
+    ) => void,
     private readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>,
     private readonly providerResolver?: ZLinkProviderResolver,
     private readonly dispatchErrors?: ZLinkDispatchErrorReporter
@@ -761,6 +773,9 @@ class ZLinkSpotActorJoinDispatch {
   }): Promise<void> {
     const parts: Message[] = [];
     let actorId: string | undefined;
+    let actorRef: ZLinkBackendActorRef | undefined;
+    let sourceNodeRid: RoutingId | undefined;
+    let sourceSessionRid: RoutingId | undefined;
     try {
       for (;;) {
         const part = info.recvActorPart(ZLINK_RECV_DONT_WAIT);
@@ -768,10 +783,19 @@ class ZLinkSpotActorJoinDispatch {
           return;
         }
         actorId ??= part.info.actor.actorId;
+        actorRef ??= part.info.actor;
+        sourceNodeRid ??= part.info.sourceNodeRid;
+        sourceSessionRid ??= part.info.sourceSessionRid;
         parts.push(part.message);
         if (!part.more) {
           break;
         }
+      }
+      if (actorRef !== undefined && sourceNodeRid !== undefined && sourceSessionRid !== undefined) {
+        this.bindRemoteActorSession?.(actorRef, sourceNodeRid, sourceSessionRid);
+      }
+      if (this.consumeRemoteBoundSessionBind(actorRef, sourceNodeRid, sourceSessionRid, parts)) {
+        return;
       }
       if (this.actorPacketHandler === undefined) {
         return;
@@ -782,6 +806,30 @@ class ZLinkSpotActorJoinDispatch {
         part.close();
       }
     }
+  }
+
+  private consumeRemoteBoundSessionBind(
+    actor: ZLinkBackendActorRef | undefined,
+    sourceNodeRid: RoutingId | undefined,
+    sourceSessionRid: RoutingId | undefined,
+    parts: readonly Message[]
+  ): boolean {
+    if (parts.length < 1) {
+      return false;
+    }
+    let header: ReturnType<typeof decodeStreamHeader>;
+    try {
+      header = decodeStreamHeader(messageToBytes(parts[0]));
+    } catch {
+      return false;
+    }
+    if (header.name !== REMOTE_BOUND_SESSION_BIND_PACKET) {
+      return false;
+    }
+    if (actor !== undefined && sourceNodeRid !== undefined && sourceSessionRid !== undefined) {
+      this.bindRemoteActorSession?.(actor, sourceNodeRid, sourceSessionRid);
+    }
+    return true;
   }
 
   private async drain(): Promise<void> {
@@ -1813,6 +1861,10 @@ export class ZLinkEntrySpotActivation {
         this.dispatchActorPacket(actorId, parts, returnResponse, remoteBoundSessionTarget),
       this.options.routedBoundSessionReceiver,
       this.options.actorPacketTargetProvider,
+      (actor, sourceNodeRid, sourceSessionRid) =>
+        String(sourceNodeRid) === String(this.options.nativeNode.routingId)
+          ? undefined
+          : this.options.nativeNode.bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid),
       this.options.messageSerializers,
       this.options.providerResolver,
       this.options.dispatchErrors
@@ -2362,6 +2414,13 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
           this.dispatchActorPacket(activation, actorId, parts, returnResponse, remoteBoundSessionTarget),
         this.options.routedBoundSessionReceiver,
         this.options.actorPacketTargetProvider,
+        (actor, sourceNodeRid, sourceSessionRid) => {
+          const node = this.options.nativeSpotNodeProvider?.();
+          if (node === undefined || String(sourceNodeRid) === String(node.routingId)) {
+            return;
+          }
+          node.bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid);
+        },
         this.options.messageSerializers,
         this.options.providerResolver,
         this.options.dispatchErrors

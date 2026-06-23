@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { SupportChatSessionAuthenticator } from './Sessions/Handlers/authenticate-session-handler';
 import { SampleNames } from '../Configuration/sample-names';
 function createSupportChatSessionModule(endpoints: {
@@ -10,7 +11,13 @@ function createSupportChatSessionModule(endpoints: {
   Module({
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
+        useFactory: () => {
+          const builder = zlinkFramework();
+          builder.configureDispatch()
+            .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            .traceLogFile(`${process.env.SUPPORTCHAT_LOG_DIR ?? 'logs'}/flow-session.log`)
+            .traceNodeId('session');
+          return builder
           .codecs()
             .addJson()
           .useDiscovery()
@@ -21,7 +28,8 @@ function createSupportChatSessionModule(endpoints: {
             .enableClient()
           .addClientServerChannel(SampleNames.notificationChannel)
             .enableClient()
-          .build()
+          .build();
+        }
       })
     ],
     providers: [

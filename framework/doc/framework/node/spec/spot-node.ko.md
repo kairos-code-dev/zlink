@@ -129,7 +129,7 @@ dotnet `readonly record struct` 는 불변 객체(interface / type)로 옮긴다
 interface ZLinkSpotCreateResult {
   readonly spotRid: string;   // RoutingId
   readonly state: ZLinkSpotCreateState;
-  readonly reply?: ZLinkMessage;
+  readonly reply?: unknown;
 }
 
 interface ZLinkSpotInfo {

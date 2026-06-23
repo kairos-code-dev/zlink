@@ -169,6 +169,32 @@ bool is_spot_route_miss (framework_error_kind_t kind)
            || kind == framework_error_kind_t::actor_route_not_found;
 }
 
+template <typename Relay>
+result_t<std::optional<zlink::message_t>>
+relay_actor_with_local_binding_first (std::vector<actor_gateway_spot_node_binding_t> &bindings,
+                                      const actor_ref_t &actor_ref,
+                                      actor_context_t actor_context,
+                                      Relay relay)
+{
+    for (auto &binding : bindings) {
+        if (actor_ref.node_rid ().value () != binding.local_spot_node_rid) {
+            continue;
+        }
+        return relay (binding, std::move (actor_context));
+    }
+
+    auto last = result_t<std::optional<zlink::message_t>>::failure (
+      framework_error_kind_t::actor_route_not_found, "actor route not found");
+    for (auto &binding : bindings) {
+        auto candidate = relay (binding, actor_context);
+        if (candidate || !is_spot_route_miss (candidate.error_kind ())) {
+            return candidate;
+        }
+        last = std::move (candidate);
+    }
+    return last;
+}
+
 bool rid_targets_node (std::string_view rid, std::string_view node_rid)
 {
     return rid.size () > node_rid.size () && rid.substr (0, node_rid.size ()) == node_rid
@@ -339,22 +365,8 @@ void configure_actor_gateway_spot_bridge (
                 binding.route_channel_name, actor_ref, std::move (context), header,
                 payload, provider, *serializers, project_stream_metadata (header));
           };
-          for (auto &binding : bindings) {
-              if (actor_ref.node_rid ().value () != binding.local_spot_node_rid) {
-                  continue;
-              }
-              return relay_with (binding, std::move (actor_context));
-          }
-          auto last = result_t<std::optional<zlink::message_t>>::failure (
-            framework_error_kind_t::actor_route_not_found, "actor route not found");
-          for (auto &binding : bindings) {
-              auto candidate = relay_with (binding, actor_context);
-              if (candidate || !is_spot_route_miss (candidate.error_kind ())) {
-                  return candidate;
-              }
-              last = std::move (candidate);
-          }
-          return last;
+          return relay_actor_with_local_binding_first (bindings, actor_ref,
+                                                       std::move (actor_context), relay_with);
       });
     for (auto &node_binding : actor_gateway_spot_nodes) {
         node_binding.runtime.on_actor_packet_relay (
@@ -376,22 +388,12 @@ void configure_actor_gateway_spot_bridge (
                     binding.route_channel_name, actor_ref, std::move (context), header,
                     payload, services, serializers, std::move (relay_metadata));
               };
-              for (auto &binding : bindings) {
-                  if (actor_ref.node_rid ().value () != binding.local_spot_node_rid) {
-                      continue;
-                  }
-                  return relay_with (binding, std::move (actor_context), std::move (metadata));
-              }
-              auto last = result_t<std::optional<zlink::message_t>>::failure (
-                framework_error_kind_t::actor_route_not_found, "actor route not found");
-              for (auto &binding : bindings) {
-                  auto candidate = relay_with (binding, actor_context, metadata);
-                  if (candidate || !is_spot_route_miss (candidate.error_kind ())) {
-                      return candidate;
-                  }
-                  last = std::move (candidate);
-              }
-              return last;
+              auto relay = [&] (actor_gateway_spot_node_binding_t &binding,
+                                actor_context_t context) {
+                  return relay_with (binding, std::move (context), metadata);
+              };
+              return relay_actor_with_local_binding_first (bindings, actor_ref,
+                                                           std::move (actor_context), relay);
           });
     }
 }

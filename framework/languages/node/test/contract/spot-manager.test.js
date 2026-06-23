@@ -16,7 +16,7 @@ test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order
       events.push('configure');
     }
     async onCreate(request) {
-      events.push(`onCreate:${request.data().toString()}`);
+      events.push(`onCreate:${request.decode()}`);
       return { accepted: true };
     }
     async onInitialize() {
@@ -89,11 +89,11 @@ test('ZLinkSpotManager resolves context nodeRid lazily from provider', async () 
   assert.equal(capturedContext.nodeRid, 'node-after-start');
 });
 
-test('ZLinkSpotManager passes empty Message to onCreate without payload', async () => {
+test('ZLinkSpotManager passes empty framework message to onCreate without payload', async () => {
   const requests = [];
   class StageSpot {
     async onCreate(request) {
-      requests.push(request);
+      requests.push(request.decode());
       return { accepted: true };
     }
   }
@@ -103,41 +103,33 @@ test('ZLinkSpotManager passes empty Message to onCreate without payload', async 
 
   assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
   assert.equal(requests.length, 1);
-  assert.equal(requests[0].isEmpty(), true);
+  assert.equal(requests[0], undefined);
 });
 
-test('ZLinkSpotManager create request Message can be decoded with framework codec helpers', async () => {
-  const protoType = createLengthPrefixedJsonType();
-  const encoded = [
-    ['json', json.toJson({ kind: 'json', ready: true }), (payload) => json.fromJson(payload)],
-    ['messagepack', msgpack.toMsgPack({ kind: 'messagepack', ready: true }), (payload) => msgpack.fromMsgPack(payload)],
-    ['protobuf', protobuf.toProto({ kind: 'protobuf', ready: true }, protoType), (payload) => protobuf.fromProto(payload, protoType)]
+test('ZLinkSpotManager create request DTOs can be decoded with framework messages', async () => {
+  const payloads = [
+    { kind: 'json', ready: true },
+    { kind: 'messagepack', ready: true },
+    { kind: 'protobuf', ready: true }
   ];
   const decoded = [];
   class CodecSpot {
     async onCreate(request) {
-      const [name, original, decode] = encoded[decoded.length];
-      const payload = { codec: original.codec, payload: request.toBytes() };
-      decoded.push([name, decode(payload)]);
+      decoded.push(request.decode());
       return { accepted: true };
     }
   }
 
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [CodecSpot] });
-  for (const [_name, payload] of encoded) {
-    const message = zlink.Message.from(Buffer.from(payload.payload));
-    try {
-      const created = await manager.create(CodecSpot, message);
-      assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
-    } finally {
-      message.close();
-    }
+  for (const payload of payloads) {
+    const created = await manager.create(CodecSpot, payload);
+    assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
   }
 
   assert.deepEqual(decoded, [
-    ['json', { kind: 'json', ready: true }],
-    ['messagepack', { kind: 'messagepack', ready: true }],
-    ['protobuf', { kind: 'protobuf', ready: true }]
+    { kind: 'json', ready: true },
+    { kind: 'messagepack', ready: true },
+    { kind: 'protobuf', ready: true }
   ]);
   assert.equal(connector.ZlinkStreamCodec.Json, json.toJson({}).codec);
 });
@@ -420,7 +412,7 @@ test('ZLinkSpotManager concurrent getOrCreate initializes once with the first cr
   const release = createDeferred();
   class StageSpot {
     async onCreate(request) {
-      payloads.push(request.data().toString());
+      payloads.push(request.decode());
       entered.resolve();
       await release.promise;
       return { accepted: true };
@@ -462,10 +454,10 @@ test('ZLinkSpotManager concurrent getOrCreate returns rejected to waiters with i
   const release = createDeferred();
   class RejectingConcurrentSpot {
     async onCreate(request) {
-      payloads.push(request.data().toString());
+      payloads.push(request.decode());
       entered.resolve();
       await release.promise;
-      return { accepted: false, reply: zlink.Message.from('reject:first') };
+      return { accepted: false, reply: 'reject:first' };
     }
   }
 
@@ -483,13 +475,10 @@ test('ZLinkSpotManager concurrent getOrCreate returns rejected to waiters with i
 
     assert.equal(firstResult.state, framework.ZLinkSpotCreateState.Rejected);
     assert.equal(secondResult.state, framework.ZLinkSpotCreateState.Rejected);
-    assert.equal(firstResult.reply.data().toString(), 'reject:first');
-    assert.equal(secondResult.reply.data().toString(), 'reject:first');
-    assert.notEqual(firstResult.reply, secondResult.reply);
+    assert.equal(firstResult.reply, 'reject:first');
+    assert.equal(secondResult.reply, 'reject:first');
     assert.deepEqual(payloads, ['first']);
     assert.equal(await manager.find('reject-room'), null);
-    firstResult.reply.close();
-    secondResult.reply.close();
   } finally {
     firstRequest.close();
     secondRequest.close();
@@ -499,7 +488,7 @@ test('ZLinkSpotManager concurrent getOrCreate returns rejected to waiters with i
 test('ZLinkSpotManager create reject returns rejected state reply and does not register spot', async () => {
   class RejectingSpot {
     async onCreate(request) {
-      return { accepted: false, reply: zlink.Message.from(`reject:${request.data().toString()}`) };
+      return { accepted: false, reply: `reject:${request.decode()}` };
     }
   }
 
@@ -509,10 +498,9 @@ test('ZLinkSpotManager create reject returns rejected state reply and does not r
     const rejected = await manager.create(RejectingSpot, request);
 
     assert.equal(rejected.state, framework.ZLinkSpotCreateState.Rejected);
-    assert.equal(rejected.reply.data().toString(), 'reject:closed');
+    assert.equal(rejected.reply, 'reject:closed');
     assert.equal(await manager.find(rejected.spotRid), null);
     assert.deepEqual(await manager.list(), []);
-    rejected.reply.close();
   } finally {
     request.close();
   }
@@ -523,10 +511,10 @@ test('ZLinkSpotManager getOrCreate can retry same spotRid after create rejection
   const payloads = [];
   class RetryCreateSpot {
     async onCreate(request) {
-      payloads.push(request.data().toString());
+      payloads.push(request.decode());
       return accepted
         ? { accepted: true }
-        : { accepted: false, reply: zlink.Message.from('try-again') };
+        : { accepted: false, reply: 'try-again' };
     }
   }
 
@@ -536,10 +524,9 @@ test('ZLinkSpotManager getOrCreate can retry same spotRid after create rejection
   try {
     const rejected = await manager.getOrCreate(RetryCreateSpot, 'retry-room', rejectedRequest);
     assert.equal(rejected.state, framework.ZLinkSpotCreateState.Rejected);
-    assert.equal(rejected.reply.data().toString(), 'try-again');
+    assert.equal(rejected.reply, 'try-again');
     assert.equal(await manager.find('retry-room'), null);
     assert.deepEqual(await manager.list(), []);
-    rejected.reply.close();
 
     accepted = true;
     const created = await manager.getOrCreate(RetryCreateSpot, 'retry-room', acceptedRequest);
@@ -641,8 +628,8 @@ test('spot manager local actor join does not wait for entry leave callback', asy
   const events = [];
   class StageSpot {
     async onActorJoin(actor, request) {
-      events.push(`join:${actor.actorId}:${request.getString()}`);
-      return { accepted: true, reply: zlink.Message.from('joined') };
+      events.push(`join:${actor.actorId}:${request.decode()}`);
+      return { accepted: true, reply: 'joined' };
     }
     async onJoinedActor(actor) {
       events.push(`joined:${actor.actorId}`);
@@ -666,7 +653,7 @@ test('spot manager local actor join does not wait for entry leave callback', asy
   ]);
 
   assert.equal(result.accepted, true);
-  assert.equal(result.reply.getString(), 'joined');
+  assert.equal(JSON.parse(result.reply.getString()), 'joined');
   assert.deepEqual(events, [
     'join:alice:hello',
     'entry-left:alice',

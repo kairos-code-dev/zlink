@@ -1,6 +1,5 @@
 import { Inject } from '@nestjs/common';
 import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
-import { createProtobufMessageSerializer } from '@zlink-systems/framework-codec-protobuf';
 import {
   bingoRoomJoinReq,
   bingoRoomSettingsPayload,
@@ -27,8 +26,6 @@ import type {
   ObserveBingoEventsRes
 } from '../../../../../Shared/Contracts/messages';
 import type { PlayerActor as PlayerActorType } from '../Actors/player-actor';
-
-const protobufSerializer = createProtobufMessageSerializer();
 
 class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
   readonly context!: ZLinkEntrySpotContext;
@@ -81,7 +78,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     await this.spots.getOrCreate(
       BingoRoomSpot,
       observerRid,
-      protobufSerializer.serialize(bingoRoomSettingsPayload(settings))
+      bingoRoomSettingsPayload(settings)
     );
     const joined = await actor.context
       .joinSpot(observerRid, bingoRoomJoinReq(request.roomId, actor.actorId, actor.displayName, true))

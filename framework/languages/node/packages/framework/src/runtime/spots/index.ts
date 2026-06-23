@@ -18,6 +18,7 @@ import type {
   ZLinkRequestCall,
   ZLinkSendCall,
   ZLinkSpot,
+  ZLinkMessage,
   ZLinkSpotTimerHandlerRegistration,
   ZLinkSpotActorSendHandlerRegistration,
   ZLinkSpotActorJoinResponse,
@@ -116,7 +117,11 @@ import {
   tryGetStreamFrameHeader,
   ZLinkStreamMessageKind
 } from '../streams/protocol';
-import { decodeFrameworkPayloadMessage } from '../messaging/payload-codec';
+import {
+  decodeFrameworkPayloadMessage,
+  encodeFrameworkPayloadMessage,
+  wrapFrameworkPayloadMessage
+} from '../messaging/payload-codec';
 
 export interface ZLinkSpotManagerOptions {
   readonly spotFactories: readonly Type<ZLinkSpot>[];
@@ -649,7 +654,7 @@ interface ZLinkEntrySpotActivationOptions {
  * Spots use this same path — they differ only in actor create/destroy ownership.
  */
 interface ZLinkActorJoinAdmissionTarget {
-  onActorJoin?(actor: ZLinkActor, request: Message, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actor: ZLinkActor, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 
@@ -1021,13 +1026,16 @@ class ZLinkSpotActorJoinDispatch {
       if (actor !== undefined) {
         const target = this.getTarget();
         const joinRequest = decoded?.request ?? request.message;
+        const joinPayload = wrapFrameworkPayloadMessage(joinRequest, this.messageSerializers);
         const response: ZLinkSpotActorJoinResponse = await this.serial.execute(async () =>
           target.onActorJoin === undefined
             ? { accepted: this.defaultAccept }
-            : target.onActorJoin(actor, joinRequest)
+            : target.onActorJoin(actor, joinPayload)
         );
         accepted = response.accepted;
-        reply = response.reply;
+        reply = response.reply === undefined
+          ? undefined
+          : encodeFrameworkPayloadMessage(response.reply, this.messageSerializers);
         if (accepted) {
           this.commitRoutedActor?.(actor);
           joinedActor = actor;
@@ -1246,11 +1254,15 @@ class ZLinkSpotActorJoinDispatch {
         decoded.remoteBoundSessionTarget
       );
       const target = this.getTarget();
+      const joinPayload = wrapFrameworkPayloadMessage(decoded.request, this.messageSerializers);
       const response: ZLinkSpotActorJoinResponse = await this.serial.execute(async () =>
         target.onActorJoin === undefined
           ? { accepted: this.defaultAccept }
-          : target.onActorJoin(actor, decoded.request)
+          : target.onActorJoin(actor, joinPayload)
       );
+      const reply = response.reply === undefined
+        ? undefined
+        : encodeFrameworkPayloadMessage(response.reply, this.messageSerializers);
       if (response.accepted) {
         await this.commitRoutedActor?.(actor);
         await this.serial.execute(() => target.onJoinedActor?.(actor));
@@ -1261,7 +1273,7 @@ class ZLinkSpotActorJoinDispatch {
         actorNodeRidHex: encodeRoutingIdHex(actorRef.nodeRid),
         actorId: actorRef.actorId,
         actorGeneration: actorRef.generation.toString(),
-        reply: response.reply?.data().toString('base64')
+        reply: reply?.data().toString('base64')
       };
       try {
         if (decoded.raw) {
@@ -1319,12 +1331,16 @@ class ZLinkSpotActorJoinDispatch {
     let response: ZLinkSpotActorJoinResponse = { accepted: false };
     if (actor !== undefined) {
       const target = this.getTarget();
+      const joinPayload = wrapFrameworkPayloadMessage(decoded.request, this.messageSerializers);
       response = await this.serial.execute(async () =>
         target.onActorJoin === undefined
           ? { accepted: this.defaultAccept }
-          : target.onActorJoin(actor, decoded.request)
+          : target.onActorJoin(actor, joinPayload)
       );
     }
+    const reply = response.reply === undefined
+      ? undefined
+      : encodeFrameworkPayloadMessage(response.reply, this.messageSerializers);
     const actorRef = decoded.actorRef;
     const replyPayload = {
       accepted: response.accepted,
@@ -1332,7 +1348,7 @@ class ZLinkSpotActorJoinDispatch {
       actorNodeRidHex: actorRef?.nodeRid === undefined ? undefined : encodeRoutingIdHex(actorRef.nodeRid),
       actorId: decoded.actorId,
       actorGeneration: (actorRef?.generation ?? 0n).toString(),
-      reply: response.reply?.data().toString('base64')
+      reply: reply?.data().toString('base64')
     };
     try {
       if (decoded.raw) {
@@ -2183,15 +2199,17 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
 
   async create<TSpot extends ZLinkSpot>(
     spotType: Type<TSpot>,
-    request?: Message,
+    request?: unknown,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
     const spotRid = this.allocateSpotRid();
-    const ownedRequest = request ?? BindingMessage.from(Buffer.alloc(0));
+    const ownedRequest = request === undefined
+      ? BindingMessage.from(Buffer.alloc(0))
+      : encodeFrameworkPayloadMessage(request, this.options.messageSerializers);
     try {
       return await this.createActivation(spotType, spotRid, ownedRequest, signal);
     } finally {
-      if (request === undefined) {
+      if (request === undefined || !isMessage(request)) {
         ownedRequest.close();
       }
     }
@@ -2200,7 +2218,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   async getOrCreate<TSpot extends ZLinkSpot>(
     spotType: Type<TSpot>,
     spotRid: RoutingId,
-    request?: Message,
+    request?: unknown,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
     const existing = this.activations.get(spotRid);
@@ -2219,17 +2237,19 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       const result = await pending.ready;
       return result.state === ZLinkSpotCreateState.Created
         ? { spotRid, state: ZLinkSpotCreateState.Existing }
-        : { spotRid, state: result.state, reply: result.reply?.copy() };
+        : { spotRid, state: result.state, reply: result.reply };
     }
 
-    const ownedRequest = request ?? BindingMessage.from(Buffer.alloc(0));
+    const ownedRequest = request === undefined
+      ? BindingMessage.from(Buffer.alloc(0))
+      : encodeFrameworkPayloadMessage(request, this.options.messageSerializers);
     const ready = Promise.resolve().then(() => this.createActivation(spotType, spotRid, ownedRequest, signal));
     this.pending.set(spotRid, { spotType, ready });
     try {
       return await ready;
     } finally {
       this.pending.delete(spotRid);
-      if (request === undefined) {
+      if (request === undefined || !isMessage(request)) {
         ownedRequest.close();
       }
     }
@@ -2296,7 +2316,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
     }
     const dispatcher = this.createActorDispatcher(activation);
-    return dispatcher.admitActorJoin(actor, request, async () => {
+    const response = await dispatcher.admitActorJoin(actor, request, async () => {
       const entryLeave = this.options.entrySpotCallbacks?.onLeaveActor(actor, signal);
       if (entryLeave !== undefined) {
         void entryLeave.catch((error) => {
@@ -2314,6 +2334,12 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       await commit(activation.spot);
       activation.actors.set(actor.actorId, actor);
     });
+    return {
+      accepted: response.accepted,
+      reply: response.reply === undefined
+        ? undefined
+        : encodeFrameworkPayloadMessage(response.reply, this.options.messageSerializers)
+    };
   }
 
   async leaveActor(
@@ -2486,7 +2512,10 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       }
       let createResponse: ZLinkSpotCreateResponse | undefined;
       await serial.execute(async () => {
-        createResponse = await spot.onCreate?.(request, signal);
+        createResponse = await spot.onCreate?.(
+          wrapFrameworkPayloadMessage(request, this.options.messageSerializers),
+          signal
+        );
         if (createResponse?.accepted === false) {
           return;
         }
@@ -2567,7 +2596,8 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       registry: activation.actorHandlers,
       spot: activation.spot,
       providerResolver: this.options.providerResolver,
-      serial: activation.serial
+      serial: activation.serial,
+      messageSerializers: this.options.messageSerializers
     });
   }
 
@@ -3308,4 +3338,10 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted === true) {
     throw new Error('The operation was aborted.');
   }
+}
+
+function isMessage(value: unknown): value is Message {
+  return typeof value === 'object'
+    && value !== null
+    && typeof (value as { data?: unknown }).data === 'function';
 }

@@ -2,9 +2,9 @@ import 'reflect-metadata';
 import { PacketNames, authenticatePlayerReq, authenticateRes } from '../../../../../Shared/Contracts/messages';
 import { SampleNames } from '../../../../Configuration/sample-settings';
 import type {
-  Message,
   ZLinkActor,
   ZLinkChannelClient,
+  ZLinkMessage,
   ZLinkSession,
   ZLinkSessionActor,
   ZLinkSessionContext,
@@ -60,13 +60,13 @@ class PlaySession implements ZLinkSession {
     this.sessionActor = null;
   }
 
-  async onDispatch(header: unknown, payload: Message, signal?: AbortSignal): Promise<void> {
+  async onDispatch(header: unknown, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     const playHeader = requirePlaySessionHeader(header);
     if (shouldRelayToActor(playHeader.name)) {
       await this.relayToActor(header, payload, signal);
       return;
     }
-    await this.dispatch(playHeader, JSON.parse(payload.getString()));
+    await this.dispatch(playHeader, payload.decode());
   }
 
   async onDisconnected(context: ZLinkSessionContext): Promise<void> {
@@ -137,7 +137,7 @@ class PlaySession implements ZLinkSession {
     console.log(`actor: ObserveMilestoneReq completed. actor=${this.actor.actorId}`);
   }
 
-  private async relayToActor(header: unknown, payload: Message, signal?: AbortSignal): Promise<void> {
+  private async relayToActor(header: unknown, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     const playHeader = requirePlaySessionHeader(header);
     if (this.actor === null) {
       throw new Error('AuthenticateReq is required before actor packets.');

@@ -1,4 +1,3 @@
-import { Message as BindingMessage } from '@zlink-systems/zlink';
 import { PlayActorLeaveGameHandler } from './Handlers/play-actor-leave-game-handler';
 import { PlayActorPlaceMarkHandler } from './Handlers/play-actor-place-mark-handler';
 import { TicTacToeGameTimerHandler } from './Handlers/tictactoe-game-timer-handler';
@@ -14,8 +13,8 @@ import {
 } from '../../../../../Shared/Contracts/messages';
 import { SampleDefaults, SampleNames } from '../../../../Configuration/sample-settings';
 import type {
-  Message,
   ZLinkActor,
+  ZLinkMessage,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
   ZLinkSpotContext,
@@ -60,17 +59,17 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
     this.gameTick = undefined;
   }
 
-  async onActorJoin(actor: PlaySpotActor, requestMessage: Message): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actor: PlaySpotActor, requestMessage: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     try {
       console.log(`game spot: onActorJoin received. actor=${actor.actorId} roomId=${this.roomId}`);
-      const request = JSON.parse(requestMessage.getString()) as TicTacToeGameJoinReq;
+      const request = requestMessage.decode<TicTacToeGameJoinReq>();
       const response = await this.join(actor, request);
       console.log(`game spot: onActorJoin completed. actor=${actor.actorId} roomId=${this.roomId}`);
-      return { accepted: true, reply: createJsonMessage(response) };
+      return { accepted: true, reply: response };
     } catch (error) {
       return {
         accepted: false,
-        reply: createJsonMessage({ error: error instanceof Error ? error.message : String(error) })
+        reply: { error: error instanceof Error ? error.message : String(error) }
       };
     }
   }
@@ -199,10 +198,6 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
   private requireMatch(): TicTacToeMatchType<PlaySpotActor> {
     return this.match;
   }
-}
-
-function createJsonMessage(value: unknown): Message {
-  return BindingMessage.from(Buffer.from(JSON.stringify(value ?? null), 'utf8')) as Message;
 }
 
 function isTerminal(status: GameStatus): boolean {

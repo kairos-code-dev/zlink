@@ -1,5 +1,11 @@
 import { Message as BindingMessage } from '@zlink-systems/zlink';
-import type { Message, Type, ZLinkMessageSerializer } from '../../contracts';
+import {
+  isZLinkMessage,
+  ZLinkMessage,
+  type Message,
+  type Type,
+  type ZLinkMessageSerializer
+} from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 
 export interface ZLinkSerializerRegistryLike {
@@ -10,6 +16,9 @@ export function encodeFrameworkPayloadMessage(
   payload: unknown,
   registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
 ): Message {
+  if (isZLinkMessage(payload)) {
+    return payload.toMessage(registry);
+  }
   if (isMessage(payload)) {
     return payload;
   }
@@ -45,6 +54,13 @@ export function decodeFrameworkPayloadMessage<T>(
   } catch {
     return text as T;
   }
+}
+
+export function wrapFrameworkPayloadMessage(
+  message: Message,
+  registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
+): ZLinkMessage {
+  return ZLinkMessage.fromEncoded(message, registry);
 }
 
 export function selectDefaultSerializer(

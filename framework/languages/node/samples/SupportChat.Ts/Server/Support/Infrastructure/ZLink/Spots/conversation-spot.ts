@@ -1,10 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Message as BindingMessage } from '@zlink-systems/zlink';
 import { Conversation } from '../../../Domain/SupportChat/conversation';
 import { SupportNotificationPublisher } from '../Notifications/support-notification-publisher';
 import { SupportChatRoles, joinConversationRes } from '../../../../../Shared/Contracts/messages';
 import type {
-  Message,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
   ZLinkSpotContext
@@ -64,7 +62,7 @@ class ConversationSpot implements ZLinkSpot<SupportUserActorType> {
       const conversation = this.requireConversation();
       if (actor.role === SupportChatRoles.agent) {
         const state = await this.joinAgent(actor);
-        return { accepted: true, reply: createJsonMessage(joinConversationRes(state)) };
+        return { accepted: true, reply: joinConversationRes(state) };
       }
 
       actor.joinConversation(conversation.conversationId);
@@ -76,11 +74,11 @@ class ConversationSpot implements ZLinkSpot<SupportUserActorType> {
       if (snapshot.agentActorId !== null) {
         await this.requireNotifications().publishJoinedAgentToCustomer(actor.actorId, snapshot);
       }
-      return { accepted: true, reply: createJsonMessage(joinConversationRes(snapshot)) };
+      return { accepted: true, reply: joinConversationRes(snapshot) };
     } catch (error) {
       return {
         accepted: false,
-        reply: createJsonMessage({ error: error instanceof Error ? error.message : String(error) })
+        reply: { error: error instanceof Error ? error.message : String(error) }
       };
     }
   }
@@ -173,10 +171,6 @@ class ConversationSpot implements ZLinkSpot<SupportUserActorType> {
     }
     return ConversationSpot.notifications;
   }
-}
-
-function createJsonMessage(value: unknown): Message {
-  return BindingMessage.from(Buffer.from(JSON.stringify(value ?? null), 'utf8')) as Message;
 }
 
 export { ConversationSpot };

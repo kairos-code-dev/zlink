@@ -920,7 +920,9 @@ test('node samples use the codecs required by the common specs', () => {
   const ticTacToePlay = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'tictactoe-play-module.ts'), 'utf8');
   const ticTacToeContracts = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Shared', 'Contracts', 'messages.ts'), 'utf8');
   const bingoClient = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Client', 'main.ts'), 'utf8');
-  const bingoSession = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'main.ts'), 'utf8');
+  const bingoSessionModule = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'bingo-session-module.ts'), 'utf8');
+  const bingoSession = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'Sessions', 'bingo-session.ts'), 'utf8');
+  const bingoRoomSpot = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'Infrastructure', 'ZLink', 'Spots', 'bingo-room-spot.ts'), 'utf8');
   const bingoContracts = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'messages.ts'), 'utf8');
   const bingoCodec = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'protobuf-codec.ts'), 'utf8');
   const bingoProto = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'bingo_messages.proto'), 'utf8');
@@ -928,7 +930,10 @@ test('node samples use the codecs required by the common specs', () => {
     [ticTacToeClient, 'zlinkStreamConnectorFactory.create'],
     [ticTacToePlay, '.addStreamNode(SampleNames.playStream'],
     [bingoClient, 'bingoProtobuf'],
-    [bingoSession, 'ZlinkStreamCodec.Protobuf'],
+    [bingoSessionModule, 'zlinkProtobufCodec'],
+    [bingoSessionModule, '.codecs()'],
+    [bingoSession, 'payload.decode<AuthenticateReq>'],
+    [bingoRoomSpot, 'request.decode<BingoRoomJoinReq>'],
     [bingoProto, 'message AuthenticateReq'],
     [bingoProto, 'message BingoRoomState'],
     [bingoProto, 'message BingoNumberDrawnNotify']
@@ -952,6 +957,11 @@ test('node samples use the codecs required by the common specs', () => {
       }
       if (/bingoChannelHandlerOptions|decodeBingoChannelReply|submit<Buffer>|\.then\(decode/.test(content)) {
         violations.push(relative);
+      }
+      if (sample === 'Bingo.Ts'
+          && /createProtobufMessageSerializer|protobufSerializer|ZlinkStreamCodec\.Protobuf|payload\.getString\(|Message\.from\(/.test(content)
+          && !isAllowedBingoCodecConfigurationFile(relative)) {
+        violations.push(`${relative}:raw-codec-helper`);
       }
       if (/writeVarint|readVarint|schemaTable|manualSchema|wireType/.test(content)) {
         violations.push(relative);
@@ -1294,8 +1304,9 @@ test('Bingo TypeScript sample normalizes wire room settings before creating room
   ), 'utf8');
 
   assert.match(roomModels, /function roomSettingsFromPayload/);
-  assert.match(roomSpot, /roomSettingsFromPayload\(\s*protobufSerializer\.deserialize/);
-  assert.doesNotMatch(roomSpot, /initializeRoom\(protobufSerializer\.deserialize<BingoRoomRuntimeSettings>/);
+  assert.match(roomSpot, /const settings = request\.decode<unknown>/);
+  assert.match(roomSpot, /roomSettingsFromPayload\(settings\)/);
+  assert.doesNotMatch(roomSpot, /protobufSerializer\.deserialize/);
 });
 
 test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
@@ -1747,6 +1758,14 @@ function isAllowedBingoRawSessionCodecFile(relative) {
     'Bingo.Ts/Shared/Contracts/messages.ts',
     'Bingo.Ts/Shared/Contracts/protobuf-codec.ts',
     'Bingo.Ts/Server/Session/main.ts'
+  ].includes(relative);
+}
+
+function isAllowedBingoCodecConfigurationFile(relative) {
+  return [
+    'Bingo.Ts/Server/Api/bingo-api-module.ts',
+    'Bingo.Ts/Server/Play/bingo-play-module.ts',
+    'Bingo.Ts/Server/Session/bingo-session-module.ts'
   ].includes(relative);
 }
 

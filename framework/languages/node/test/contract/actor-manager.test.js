@@ -998,15 +998,13 @@ function createEntryJoinHarness() {
 
 test('ZLinkEntrySpotActivation runs onActorJoin admission on the native dispatch round-trip', async () => {
   const events = [];
-  const acceptReply = zlink.Message.from('entry-accept-reply');
-  const rejectReply = zlink.Message.from('entry-reject-reply');
   class EntrySpot {
     async onActorJoin(actor, request) {
-      const reason = request.data().toString();
+      const reason = request.decode();
       events.push(`entryJoin:${actor.actorId}:${reason}`);
       return reason === 'blocked'
-        ? { accepted: false, reply: rejectReply }
-        : { accepted: true, reply: acceptReply };
+        ? { accepted: false, reply: 'entry-reject-reply' }
+        : { accepted: true, reply: 'entry-accept-reply' };
     }
     async onJoinedActor(actor) {
       events.push(`entryJoined:${actor.actorId}`);
@@ -1030,10 +1028,12 @@ test('ZLinkEntrySpotActivation runs onActorJoin admission on the native dispatch
   harness.enqueue('bob', rejectRequest);
   await harness.run();
 
-  assert.deepEqual(harness.replies, [
-    { actorId: 'alice', code: 0, reply: acceptReply },
-    { actorId: 'bob', code: 1, reply: rejectReply }
-  ]);
+  assert.equal(harness.replies[0].actorId, 'alice');
+  assert.equal(harness.replies[0].code, 0);
+  assert.equal(JSON.parse(harness.replies[0].reply.getString()), 'entry-accept-reply');
+  assert.equal(harness.replies[1].actorId, 'bob');
+  assert.equal(harness.replies[1].code, 1);
+  assert.equal(JSON.parse(harness.replies[1].reply.getString()), 'entry-reject-reply');
   assert.deepEqual(events, [
     'entryJoin:alice:return-to-entry',
     'entryJoined:alice',
@@ -1041,8 +1041,6 @@ test('ZLinkEntrySpotActivation runs onActorJoin admission on the native dispatch
   ]);
   acceptRequest.close();
   rejectRequest.close();
-  acceptReply.close();
-  rejectReply.close();
 });
 
 test('ZLinkEntrySpotActivation auto-accepts dispatched entry join when onActorJoin is absent', async () => {
@@ -1243,8 +1241,6 @@ test('ZLinkSpotActorHandlerRegistryRuntime resolves actor packets registered wit
 
 test('ZLinkSpotActorDispatcher commits actor join only when onActorJoin accepts', async () => {
   const events = [];
-  const acceptReply = zlink.Message.from('accept-reply');
-  const rejectReply = zlink.Message.from('reject-reply');
   class PlayerActor {
     constructor(actorId, context) {
       this.actorId = actorId;
@@ -1257,10 +1253,10 @@ test('ZLinkSpotActorDispatcher commits actor join only when onActorJoin accepts'
     registry: new framework.ZLinkSpotActorHandlerRegistryRuntime(),
     spot: {
       async onActorJoin(joinedActor, request) {
-        events.push(`join:${joinedActor.actorId}:${request.data().toString()}`);
+        events.push(`join:${joinedActor.actorId}:${request.decode()}`);
         return accept
-          ? { accepted: true, reply: acceptReply }
-          : { accepted: false, reply: rejectReply };
+          ? { accepted: true, reply: 'accept-reply' }
+          : { accepted: false, reply: 'reject-reply' };
       },
       async onJoinedActor(joinedActor) {
         events.push(`post:${joinedActor.actorId}`);
@@ -1279,9 +1275,9 @@ test('ZLinkSpotActorDispatcher commits actor join only when onActorJoin accepts'
   });
 
   assert.equal(accepted.accepted, true);
-  assert.equal(accepted.reply.data().toString(), 'accept-reply');
+  assert.equal(accepted.reply, 'accept-reply');
   assert.equal(rejected.accepted, false);
-  assert.equal(rejected.reply.data().toString(), 'reject-reply');
+  assert.equal(rejected.reply, 'reject-reply');
   assert.deepEqual(events, [
     'join:alice:accept',
     'commit:accept',
@@ -1290,8 +1286,6 @@ test('ZLinkSpotActorDispatcher commits actor join only when onActorJoin accepts'
   ]);
   acceptedRequest.close();
   rejectedRequest.close();
-  acceptReply.close();
-  rejectReply.close();
 });
 
 test('ZLinkSpotActorDispatcher rejects actor join by default when onActorJoin is absent', async () => {

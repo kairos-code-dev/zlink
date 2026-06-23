@@ -1,10 +1,8 @@
 import { Inject } from '@nestjs/common';
-import { ZlinkStreamCodec } from '@zlink-systems/stream-connector';
 import { SessionAuthenticator } from './Handlers/authenticate-session-handler';
 import { PacketNames } from '../../../Shared/Contracts/messages';
-import { decodeBingoPayload } from '../../../Shared/Contracts/protobuf-codec';
 import type {
-  Message,
+  ZLinkMessage,
   ZLinkSession,
   ZLinkSessionActor,
   ZLinkSessionContext,
@@ -27,7 +25,7 @@ class BingoSession implements ZLinkSession {
     readonly context: ZLinkSessionContext
   ) {}
 
-  async onDispatch(header: unknown, payload: Message, signal?: AbortSignal): Promise<void> {
+  async onDispatch(header: unknown, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     const bingoHeader = requireBingoSessionHeader(header);
     console.log(`session-dispatch packet=${bingoHeader.name}`);
     if (bingoHeader.name === PacketNames.authenticateReq) {
@@ -37,7 +35,7 @@ class BingoSession implements ZLinkSession {
         displayName: this.displayName
       };
       const response = await this.authenticator.handle(
-        decodeBingoPayload<AuthenticateReq>({ codec: ZlinkStreamCodec.Protobuf, payload: payload.toBytes() }),
+        payload.decode<AuthenticateReq>(Object as never),
         authContext
       );
       this.actorId = authContext.actorId;

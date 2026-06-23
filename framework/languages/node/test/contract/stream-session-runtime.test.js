@@ -11,6 +11,11 @@ const backend = require('../../packages/framework/dist/runtime/backend');
 test('stream session node runtime dispatches framed packets through one session context', async () => {
   const socket = new FakeStreamSocket();
   const events = [];
+  let dispatchCount = 0;
+  let dispatchesDone;
+  const dispatchesDonePromise = new Promise((resolve) => {
+    dispatchesDone = resolve;
+  });
   const runtime = new framework.ZLinkStreamSessionNodeRuntime({
     socket,
     headerDecoder: (header) => ({ name: header.getString() }),
@@ -21,7 +26,11 @@ test('stream session node runtime dispatches framed packets through one session 
           events.push(['connected', ctx.sessionId, ctx.localAddr, ctx.remoteAddr]);
         },
         async onDispatch(header, payload) {
-          events.push(['dispatch', header.name, payload.getString()]);
+          events.push(['dispatch', header.name, payload.decode()]);
+          dispatchCount += 1;
+          if (dispatchCount === 2) {
+            dispatchesDone();
+          }
         },
         async onDisconnected(ctx) {
           events.push(['disconnected', ctx.sessionId]);
@@ -34,6 +43,7 @@ test('stream session node runtime dispatches framed packets through one session 
   runtime.markConnected('session-a', 'tcp://local', 'tcp://remote');
   socket.emitPacket('session-a', fakeMessage('Ready'), fakeMessage('one'));
   socket.emitPacket('session-a', fakeMessage('Move'), fakeMessage('two'));
+  await dispatchesDonePromise;
   await runtime.dispose();
 
   assert.deepEqual(events, [
@@ -62,7 +72,7 @@ test('stream session node runtime serializes dispatch and disconnect callbacks p
       return {
         context,
         async onDispatch(header, payload) {
-          events.push(['dispatch:start', header.name, payload.getString()]);
+          events.push(['dispatch:start', header.name, payload.decode()]);
           if (header.name === 'First') {
             firstStarted();
             await firstCanFinish;
@@ -105,7 +115,7 @@ test('stream session node runtime does not invoke user callbacks inside transpor
       return {
         context,
         async onDispatch(header, payload) {
-          events.push(['dispatch', header.name, payload.getString()]);
+          events.push(['dispatch', header.name, payload.decode()]);
         }
       };
     }
@@ -231,7 +241,7 @@ test('stream session runtime completes pending responses before session dispatch
       return {
         context,
         async onDispatch(header, payload) {
-          events.push(['dispatch', header.name, payload.getString()]);
+          events.push(['dispatch', header.name, payload.decode()]);
         }
       };
     }
@@ -287,7 +297,7 @@ test('stream session runtime decompresses dispatch payloads before session handl
       return {
         context,
         async onDispatch(header, payload) {
-          events.push(['dispatch', header.name, payload.getString()]);
+          events.push(['dispatch', header.name, payload.decode()]);
         }
       };
     }
@@ -318,7 +328,7 @@ test('stream session runtime rejects compressed dispatch payloads above receive 
       return {
         context,
         async onDispatch(header, payload) {
-          events.push(['dispatch', header.name, payload.getString()]);
+          events.push(['dispatch', header.name, payload.decode()]);
         }
       };
     }
@@ -374,7 +384,7 @@ test('stream session runtime dispatches unmatched response frames to the session
       return {
         context,
         async onDispatch(header, payload) {
-          events.push(['dispatch', header.name, payload.getString()]);
+          events.push(['dispatch', header.name, payload.decode()]);
         }
       };
     }
@@ -423,7 +433,7 @@ test('stream session node runtime receives framed packets from public binding st
               sessionId: sessionContext.sessionId,
               routingId: sessionContext.routingId,
               header: header.name,
-              payload: payload.getString()
+              payload: payload.decode()
             });
             await sessionContext.client.reply('NativeReply').submit();
           }
@@ -453,7 +463,7 @@ test('stream session node runtime receives framed packets from public binding st
 
     const received = await withTimeout(dispatched, 1000, 'native stream session dispatch');
     assert.equal(received.header, 'NativeHeader');
-    assert.equal(received.payload, '"NativePayload"');
+    assert.equal(received.payload, 'NativePayload');
     assert.equal(typeof received.sessionId, 'string');
     assert.equal(received.sessionId.length > 0, true);
     assert.equal(received.routingId, received.sessionId);
@@ -504,8 +514,15 @@ class FakeStreamSocket {
 }
 
 function fakeMessage(text) {
+  const payload = Buffer.from(text);
   return {
     closed: false,
+    data() {
+      return payload;
+    },
+    toBytes() {
+      return new Uint8Array(payload);
+    },
     getString() {
       return text;
     },

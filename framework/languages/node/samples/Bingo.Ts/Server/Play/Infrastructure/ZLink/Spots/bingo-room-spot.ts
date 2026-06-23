@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { createProtobufMessageSerializer } from '@zlink-systems/framework-codec-protobuf';
 import {
   BingoRewardItems,
   PacketNames,
@@ -19,7 +18,7 @@ import { StopObservingBingoEventsHandler } from './Handlers/stop-observing-bingo
 import { BingoRoomTimerHandler } from './Handlers/bingo-room-timer-handler';
 import { BingoRewardAcquiredEventHandler } from './Handlers/bingo-reward-acquired-event-handler';
 import type {
-  Message,
+  ZLinkMessage,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
   ZLinkSpotContext,
@@ -46,8 +45,6 @@ type BingoActor = {
   displayName: string;
 };
 
-const protobufSerializer = createProtobufMessageSerializer();
-
 @Injectable()
 class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
   readonly context!: ZLinkSpotContext<PlayerActorType, BingoRoomSpot>;
@@ -70,11 +67,10 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     this.context.handlers.addSubscribe(BingoRewardAcquiredEventHandler, SampleNames.roomRewardTopic);
   }
 
-  async onCreate(request: Message): Promise<ZLinkSpotCreateResponse> {
-    if (request.size() > 0) {
-      this.initializeRoom(roomSettingsFromPayload(
-        protobufSerializer.deserialize(request, Object as never)
-      ));
+  async onCreate(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse> {
+    const settings = request.decode<unknown>(Object as never);
+    if (settings !== undefined) {
+      this.initializeRoom(roomSettingsFromPayload(settings));
     }
     return { accepted: true };
   }
@@ -91,13 +87,13 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     this.drawTimer = undefined;
   }
 
-  async onActorJoin(actor: PlayerActorType, request: Message): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actor: PlayerActorType, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     try {
-      const joinRequest = protobufSerializer.deserialize<BingoRoomJoinReq>(request, Object as never);
+      const joinRequest = request.decode<BingoRoomJoinReq>(Object as never);
       const joined = await this.joinActor(actor, joinRequest);
       return {
         accepted: true,
-        reply: protobufSerializer.serialize(joined)
+        reply: joined
       };
     } catch {
       return {

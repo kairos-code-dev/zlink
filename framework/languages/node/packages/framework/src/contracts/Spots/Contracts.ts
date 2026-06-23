@@ -1,6 +1,6 @@
 import type { ZLinkActor } from '../Actors';
 import type { ZLinkPublishCall, ZLinkRequestCall, ZLinkSendCall } from '../Channels';
-import type { Message, RoutingId, Type } from '../Common';
+import type { RoutingId, Type } from '../Common';
 import type { ZLinkSpotTimerHandler } from '../Handlers';
 import type { ZLinkTimer, ZLinkTimerOptions } from '../Timers';
 import type { ZLinkEntrySpot, ZLinkSpot } from './ZLinkSpot';
@@ -136,7 +136,7 @@ export enum ZLinkSpotCreateState {
 export interface ZLinkSpotCreateResult {
   readonly spotRid: RoutingId;
   readonly state: ZLinkSpotCreateState;
-  readonly reply?: Message;
+  readonly reply?: unknown;
 }
 
 export interface ZLinkSpotInfo {
@@ -146,13 +146,13 @@ export interface ZLinkSpotInfo {
 export interface ZLinkSpotManager {
   create<TSpot extends ZLinkSpot>(
     spotType: Type<TSpot>,
-    request?: Message,
+    request?: unknown,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   getOrCreate<TSpot extends ZLinkSpot>(
     spotType: Type<TSpot>,
     spotRid: RoutingId,
-    request?: Message,
+    request?: unknown,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   executeOnSpot<TSpot extends ZLinkSpot, TResult>(

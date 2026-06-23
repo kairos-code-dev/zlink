@@ -112,6 +112,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     this.lifecycleSink = options.lifecycleSink;
     this.streamBindingRuntime = new ZLinkStreamBindingRuntime({
       streamPayloadCodec: resolveStreamPayloadCodec(options.registration),
+      messageSerializers: options.registration.messageSerializers,
       nativeActorNodeProvider: () => this.spotNodeRuntime?.primaryNode,
       relay: (actor, header, payload, signal) =>
         this.relayRemoteActorPacket(actor, header, payload, signal)
@@ -593,13 +594,14 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
         request,
         (spot) => state.setJoinedSpot(join.spotRid as RoutingId, spot)
       );
+      const reply = response.reply as Message | undefined;
       return {
         accepted: response.accepted,
         actorNodeRid: join.actorNodeRid,
         actorNodeRidHex: join.actorNodeRidHex,
         actorId: join.actorId,
         actorGeneration: join.actorGeneration,
-        reply: response.reply?.data().toString('base64')
+        reply: reply?.data().toString('base64')
       };
     } finally {
       request.close();
@@ -1219,7 +1221,7 @@ class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordinator {
             actorId: nativeActorRef.actorId,
             generation: nativeActorRef.generation
           } as ActorRef,
-      reply: result.reply
+      reply: result.reply as Message | undefined
     };
   }
 

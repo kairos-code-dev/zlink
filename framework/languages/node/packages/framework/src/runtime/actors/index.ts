@@ -28,7 +28,7 @@ import {
   ZLinkSpotKind
 } from '../../contracts';
 import { Message as BindingMessage, RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
-import type { ZLinkMessageSerializer } from '../../contracts';
+import { ZLinkMessage, type ZLinkMessageSerializer } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import type {
   ZLinkBackendActorJoinEntrySpotResult,
@@ -39,7 +39,8 @@ import type {
 } from '../backend/contracts';
 import {
   decodeFrameworkPayloadMessage,
-  encodeFrameworkPayloadMessage
+  encodeFrameworkPayloadMessage,
+  wrapFrameworkPayloadMessage
 } from '../messaging/payload-codec';
 
 export interface ZLinkActorManagerOptions {
@@ -1185,6 +1186,7 @@ export interface ZLinkSpotActorDispatcherOptions {
   readonly handlerFactory?: (handlerType: Type) => unknown;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly serial?: { execute<T>(operation: () => Promise<T> | T): Promise<T> };
+  readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
 }
 
 export class DefaultZLinkSpotActorReplyOptions implements ZLinkSpotActorReplyOptions {
@@ -1249,7 +1251,8 @@ export class ZLinkSpotActorDispatcher {
     commit: () => Promise<void> | void
   ): Promise<ZLinkSpotActorJoinResponse> {
     return this.execute(async () => {
-      const result = await this.options.spot.onActorJoin?.(actor, request) ?? { accepted: false };
+      const payload = wrapFrameworkPayloadMessage(request, this.options.messageSerializers);
+      const result = await this.options.spot.onActorJoin?.(actor, payload) ?? { accepted: false };
       if (!result.accepted) {
         return result;
       }
@@ -1485,6 +1488,9 @@ function packetKey(kind: ZLinkActorPacketKind, actorType: Type<ZLinkActor>, pack
 }
 
 function isMessage(value: unknown): value is Message {
+  if (value instanceof ZLinkMessage) {
+    return false;
+  }
   return typeof value === 'object'
     && value !== null
     && typeof (value as { data?: unknown }).data === 'function';

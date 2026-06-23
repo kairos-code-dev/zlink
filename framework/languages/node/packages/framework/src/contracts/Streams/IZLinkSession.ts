@@ -1,4 +1,4 @@
-import type { Message, RoutingId, ZlinkStreamHeader } from '../Common';
+import type { RoutingId, ZLinkMessage, ZlinkStreamHeader } from '../Common';
 import type { ZLinkSessionActors } from './IZLinkSessionActor';
 import type { ZLinkStream } from './IZLinkStream';
 import type { ZLinkStreamError } from './ZLinkStreamError';
@@ -8,7 +8,7 @@ export interface ZLinkSession {
   onConnected?(context: ZLinkSessionContext): Promise<void>;
   onDisconnected?(context: ZLinkSessionContext): Promise<void>;
   onError?(context: ZLinkSessionContext, error: ZLinkStreamError): Promise<void>;
-  onDispatch?(header: ZlinkStreamHeader, payload: Message, signal?: AbortSignal): Promise<void>;
+  onDispatch?(header: ZlinkStreamHeader, payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkSessionFactory<TSession extends ZLinkSession = ZLinkSession> {

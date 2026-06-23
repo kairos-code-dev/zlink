@@ -573,7 +573,7 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
 {
     public IZLinkSessionContext Context { get; } = context;
 
-    public async ValueTask OnDispatchAsync(ZlinkStreamHeader header, Message payload, CancellationToken ct)
+    public async ValueTask OnDispatchAsync(ZlinkStreamHeader header, ZLinkMessage payload, CancellationToken ct)
     {
         IZLinkActor actor = await actors.GetOrCreateAsync("player-1", "player", ct);
         var actorRef = await context.Actors.BindAsync(actor, ct); // ActorDispatch

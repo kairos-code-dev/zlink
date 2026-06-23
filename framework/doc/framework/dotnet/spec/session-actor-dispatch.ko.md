@@ -536,7 +536,7 @@ internal sealed class ZLinkStreamSessionRuntime
 
     public async ValueTask OnTransportFrameAsync(
         ZLinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         await _sessionQueue.PostAsync(
@@ -650,7 +650,7 @@ internal sealed class ZLinkActorDispatchRuntime
         IZLinkSessionActor actorRef,
         ZLinkActorBoundSession binding,
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         var item = CreateActorWorkItem<object?>(
@@ -670,7 +670,7 @@ internal sealed class ZLinkActorDispatchRuntime
         IZLinkSessionActor actorRef,
         ZLinkActorBoundSession binding,
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         var item = CreateActorWorkItem<TReply>(

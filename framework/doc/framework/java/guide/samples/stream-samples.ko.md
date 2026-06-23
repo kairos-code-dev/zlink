@@ -27,7 +27,7 @@ public final class RouteSession implements ZLinkSession {
     @Override
     public void onDispatch(
         ZLinkStreamHeader header,
-        Message payload) {
+        ZLinkMessage payload) {
         return context.client()
             .reply(new Pong())
             .submit();
@@ -58,7 +58,7 @@ public final class ActorRelaySession implements ZLinkSession {
     @Override
     public void onDispatch(
         ZLinkStreamHeader header,
-        Message payload) {
+        ZLinkMessage payload) {
         return actorManager.getOrCreate("player-42", "player")
             .thenCompose(actor -> context.actors().bind(actor))
             .thenCompose(bound -> bound.relay(header, payload));

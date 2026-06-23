@@ -252,7 +252,7 @@ public sealed class TicTacToeSession(
     public IZLinkSessionContext Context { get; } = context;
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header, Message payload, CancellationToken ct)
+        ZlinkStreamHeader header, ZLinkMessage payload, CancellationToken ct)
     {
         if (await handlers.TryHandleAsync(context, header, payload, ct))
         {
@@ -290,7 +290,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken ct)
     {
         _ = header;

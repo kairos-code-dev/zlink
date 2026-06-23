@@ -85,7 +85,7 @@ public interface IZLinkSession
 
     ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken);
 }
 
@@ -129,7 +129,7 @@ public interface IZLinkSessionActor
 
     ValueTask RelayAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 
     ValueTask NotifyDisconnectedAsync(
@@ -223,7 +223,7 @@ public sealed class ClientHeaderSession(
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         switch (header.Name)
@@ -354,7 +354,7 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
 
     public ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         return context

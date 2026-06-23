@@ -1307,7 +1307,7 @@ public sealed class SampleSession
 
     public async ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         if (Actor is null)

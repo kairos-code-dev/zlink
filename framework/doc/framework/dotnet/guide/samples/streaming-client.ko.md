@@ -24,7 +24,7 @@
 서버와 client 의 역할은 다음과 같이 나뉜다.
 
 - 서버 framework 의 callback 이 받는 값은 `ZlinkStreamHeader header` 와
-  `Message payload` 이다.
+  `ZLinkMessage payload` 이다.
 - connector 의 typed API 와 fluent API 는, client 쪽에서 wire 의 header / payload 를 만들어
   주는 helper 계층이다.
 

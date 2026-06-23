@@ -36,7 +36,9 @@ channel_client_t.request(play_channel, ...).async<create_game_res_t>()
       |
       v
 HTTP JSON response
-  create_game_http_res_t { room_id, play_endpoint, game_name }
+  create_game_http_res_t {
+    room_id, game_name, owner_play_endpoint, play_endpoints
+  }
 ```
 
 C++ framework는 이 흐름을 아래 의미로 맞춘다.
@@ -102,8 +104,11 @@ struct create_game_http_req_t {
 struct create_game_http_res_t {
     static constexpr const char *packet_name = "CreateGameHttpRes";
     std::string room_id;
-    std::string play_endpoint;
     std::string game_name;
+    std::string owner_play_endpoint;
+    std::vector<std::string> play_endpoints;
+    std::vector<play_node_info_t> play_nodes;
+    int required_level = 0;
 };
 
 class create_game_http_handler_t {
@@ -135,7 +140,12 @@ create_game_http_handler_t::handle(const create_game_http_req_t &request)
     auto room = co_await _client
       .request (sample_names_t::play_channel, create_game_req_t{request.game_name})
       .async<create_game_res_t> ();
-    co_return create_game_http_res_t {room.room_id, room.play_endpoint, room.game_name};
+    co_return create_game_http_res_t {room.room_id,
+                                      room.game_name,
+                                      room.owner_play_endpoint,
+                                      room.play_endpoints,
+                                      room.play_nodes,
+                                      room.required_level};
 }
 ```
 
@@ -586,12 +596,13 @@ C++ TicTacToe sample은 `.NET` TicTacToe와 같은 HTTP 시작 흐름을 가져�
 - `Server/Api` role은 zlink API channel server와 HTTP endpoint를 함께 구성한다.
 - `CreateGameHttpReq`, `CreateGameHttpRes` DTO를 C++ shared contracts에 둔다.
 - `create_game_http_handler_t`는 HTTP request를 받아 play 채널로 게임 룸을 만들고
-  `room_id`, `play_endpoint`, `game_name`을 반환한다.
+  `room_id`, `game_name`, `owner_play_endpoint`, `play_endpoints`를 반환한다.
 - client는 `zlink::http_client`로 먼저 `POST /games`를 호출해 `room_id`,
-  `play_endpoint`, `game_name`을 받는다.
+  `game_name`, `owner_play_endpoint`, `play_endpoints`를 받는다.
 - `api_http_endpoint`가 `https://`이면 client는 `zlink::http_client`의 TLS verification
   option을 명시해 같은 흐름을 검증한다.
-- 이후 stream connector는 HTTP 응답의 `play_endpoint`로 연결한다.
+- 이후 stream connector는 HTTP 응답의 `owner_play_endpoint`로 owner connector를 연결하고,
+  `play_endpoints`에서 observer endpoint를 고른다.
 - client smoke/e2e log는 HTTP request, API handler request, stream connector request가
   모두 발생했는지 확인한다.
 

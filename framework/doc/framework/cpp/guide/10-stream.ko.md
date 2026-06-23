@@ -111,7 +111,7 @@ co_await stream.reply_packet (request_header, payload).async ();  // 요청에 �
 
 ```cpp
 // TicTacToe 클라이언트 시나리오의 실제 흐름 (요약)
-auto client = /* stream connector 생성, room.play_endpoint로 접속 */;
+auto client = /* stream connector 생성, room.owner_play_endpoint로 접속 */;
 auto auth = co_await client.request (authenticate_req_t{token}).async<authenticate_res_t> ();
 auto notify = co_await client.wait_for<game_state_notify_t> ().async ();   // 서버 알림 수신
 ```

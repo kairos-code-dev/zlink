@@ -62,8 +62,11 @@ struct create_game_http_res_t
 {
     static constexpr const char *packet_name = "CreateGameHttpRes";
     std::string room_id;
-    std::string play_endpoint;
     std::string game_name;
+    std::string owner_play_endpoint;
+    std::vector<std::string> play_endpoints;
+    std::vector<play_node_info_t> play_nodes;
+    int required_level = 0;
 };
 
 struct create_game_req_t
@@ -76,8 +79,11 @@ struct create_game_res_t
 {
     static constexpr const char *packet_name = "CreateGameRes";
     std::string room_id;
-    std::string play_endpoint;
     std::string game_name;
+    std::string owner_play_endpoint;
+    std::vector<std::string> play_endpoints;
+    std::vector<play_node_info_t> play_nodes;
+    int required_level = 0;
 };
 ```
 
@@ -122,7 +128,12 @@ class create_game_http_handler_t
                       .request (sample_names_t::play_channel,
                                 create_game_req_t{request.game_name})
                       .async<create_game_res_t> ();
-        co_return create_game_http_res_t{room.room_id, room.play_endpoint, room.game_name};
+        co_return create_game_http_res_t{room.room_id,
+                                         room.game_name,
+                                         room.owner_play_endpoint,
+                                         room.play_endpoints,
+                                         room.play_nodes,
+                                         room.required_level};
     }
 
   private:
@@ -148,8 +159,9 @@ options.add_client_server_channel (sample_names_t::play_channel)
   .use_handler_group ("play");
 ```
 
-`create_game_handler_t`는 `CreateGameReq`를 받아 room id와 stream endpoint를 돌려준다.
-실제 구현은 room SPOT을 만들기 때문에 [8장 SPOT](08-spot.ko.md)에서 다시 이어진다.
+`create_game_handler_t`는 `CreateGameReq`를 받아 room id, owner Play stream endpoint,
+참가 가능한 Play stream endpoint 목록을 돌려준다. 실제 구현은 room SPOT을 만들기 때문에
+[8장 SPOT](08-spot.ko.md)에서 다시 이어진다.
 
 ```cpp
 class create_game_handler_t

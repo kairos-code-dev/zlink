@@ -462,6 +462,25 @@ int zlink_poll (zlink_pollitem_t *items_,
         }
     }
 
+    if (nitems_ == 1) {
+        zlink::socket_poller_t::event_t event;
+        const int rc = poller.wait (&event, 1, timeout_);
+        if (rc < 0) {
+            if (error_out_)
+                *error_out_ = zlink::config_result_internal::from_errno (errno);
+            return rc;
+        }
+        if (rc == 0) {
+            if (error_out_)
+                *error_out_ = ZLINK_CONFIG_OK;
+            return 0;
+        }
+        items_[0].revents = event.events;
+        if (error_out_)
+            *error_out_ = ZLINK_CONFIG_OK;
+        return rc;
+    }
+
     std::vector<zlink::socket_poller_t::event_t> events (static_cast<size_t> (nitems_));
     const int rc = poller.wait (events.data (), nitems_, timeout_);
     if (rc < 0) {
@@ -474,13 +493,6 @@ int zlink_poll (zlink_pollitem_t *items_,
             *error_out_ = ZLINK_CONFIG_OK;
         return 0;
     }
-    if (nitems_ == 1) {
-        items_[0].revents = events[0].events;
-        if (error_out_)
-            *error_out_ = ZLINK_CONFIG_OK;
-        return rc;
-    }
-
     for (int i = 0; i < rc; ++i) {
         size_t index = 0;
         if (poller_index_from_user_data (events[i].user_data, static_cast<size_t> (nitems_),

@@ -54,6 +54,7 @@ int process_route_combined_message (void *node_,
             zlink::msg_t *topic_msg = reinterpret_cast<zlink::msg_t *> (&combined[1]);
             std::string topic (static_cast<const char *> (topic_msg->data ()), topic_msg->size ());
             zlink::spot_owned_msg_parts_t payload;
+            payload.reserve (combined.size () - 2);
             for (size_t i = 2; i < combined.size (); ++i) {
                 payload.push_back (zlink_msg_t ());
                 zlink_msg_init (&payload.back ());
@@ -141,6 +142,8 @@ int recv_combined_routed_router_message (zlink::socket_base_t *socket_,
     }
 
     out_->clear ();
+    if (out_->capacity () == 0)
+        out_->reserve (4);
 
     zlink_msg_t first;
     zlink_msg_init (&first);
@@ -190,8 +193,8 @@ extern "C" int zlink_spot_process_routed_router (void *node_, void *socket_)
         return -1;
     }
 
+    std::vector<zlink_msg_t> combined;
     while (true) {
-        std::vector<zlink_msg_t> combined;
         if (recv_combined_routed_router_message (socket, &combined) != 0) {
             if (spot_direct_route_debug_enabled () && errno == EAGAIN) {
                 static std::atomic<int> g_external_eagain_logs (0);

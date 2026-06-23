@@ -10,14 +10,13 @@
 #include "sockets/common/socket_base.hpp"
 #include "utils/err.hpp"
 
-#include <deque>
 #include <string>
 #include <string.h>
 #include <vector>
 
 namespace zlink
 {
-typedef std::deque<zlink_msg_t> spot_owned_msg_parts_t;
+typedef std::vector<zlink_msg_t> spot_owned_msg_parts_t;
 
 inline bool spot_msg_frame_valid (const zlink_msg_t &frame_)
 {

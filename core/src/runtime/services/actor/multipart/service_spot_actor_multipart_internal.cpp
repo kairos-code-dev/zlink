@@ -47,6 +47,7 @@ adopt_multipart_payload (spot_owned_msg_parts_t *out_, zlink_msg_t *parts_, size
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
 
     spot_clear_msg_parts (out_);
+    out_->reserve (part_count_);
     for (size_t i = 0; i < part_count_; ++i) {
         out_->push_back (zlink_msg_t ());
         spot_init_msg_frame (&out_->back ());

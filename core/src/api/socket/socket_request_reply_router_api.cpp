@@ -22,6 +22,8 @@ extern "C" int zlink_router_enable_spot_receive (void *router_);
 
 namespace
 {
+const size_t stack_request_reply_part_capacity = 8;
+
 struct router_recv_part_metadata_tls_t
 {
     zlink_routing_id_t source_node_rid;
@@ -369,6 +371,7 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
             return zlink::recv_result_internal::from_errno (errno);
 
         std::vector<zlink_msg_t> raw_parts;
+        raw_parts.reserve (stack_request_reply_part_capacity);
         while (true) {
             raw_parts.push_back (zlink_msg_t ());
             zlink_msg_init (&raw_parts.back ());

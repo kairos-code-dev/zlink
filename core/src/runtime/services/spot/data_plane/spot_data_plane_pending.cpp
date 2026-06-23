@@ -46,6 +46,7 @@ int spot_data_plane_pending_t::copy_msg_parts_to_owned (const spot_owned_msg_par
     }
 
     spot_clear_msg_parts (dst_);
+    dst_->reserve (src_.size ());
     for (spot_owned_msg_parts_t::const_iterator it = src_.begin (); it != src_.end (); ++it) {
         zlink_msg_t frame;
         memset (&frame, 0, sizeof (frame));

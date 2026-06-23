@@ -5,7 +5,6 @@
 
 #include <zlink.h>
 
-#include <deque>
 #include <map>
 #include <set>
 #include <string>
@@ -15,7 +14,7 @@ namespace zlink
 {
 class socket_base_t;
 class spot_node_t;
-typedef std::deque<zlink_msg_t> spot_owned_msg_parts_t;
+typedef std::vector<zlink_msg_t> spot_owned_msg_parts_t;
 
 namespace spot_data_plane_message_io
 {

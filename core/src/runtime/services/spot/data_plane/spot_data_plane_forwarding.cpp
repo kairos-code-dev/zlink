@@ -412,6 +412,7 @@ int copy_raw_parts_to_owned (zlink_msg_t *parts_, size_t part_count_, spot_owned
         return -1;
     }
     spot_clear_msg_parts (out_);
+    out_->reserve (part_count_ == 0 ? 1 : part_count_);
     if (part_count_ == 0) {
         zlink_msg_t empty;
         memset (&empty, 0, sizeof (empty));

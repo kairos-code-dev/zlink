@@ -210,6 +210,9 @@ int zlink::spot_data_plane_message_io::recv_remaining_frames_to_vector (
         return -1;
     }
 
+    if (out_->capacity () == 0)
+        out_->reserve (4);
+
     while (out_->empty ()
            || (reinterpret_cast<msg_t *> (&out_->back ())->flags () & msg_t::more) != 0) {
         msg_t frame;
@@ -253,6 +256,7 @@ int zlink::spot_data_plane_message_io::recv_remaining_frames_to_parts (
     }
 
     spot_clear_msg_parts (parts_out_);
+    parts_out_->reserve (4);
     while (parts_out_->empty ()
            || (reinterpret_cast<msg_t *> (&parts_out_->back ())->flags () & msg_t::more) != 0) {
         msg_t frame;

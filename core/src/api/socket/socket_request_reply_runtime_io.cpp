@@ -473,6 +473,7 @@ int recv_router_message_direct (socket_handle_t handle_,
     }
 
     std::vector<zlink_msg_t> raw_parts;
+    raw_parts.reserve (stack_request_reply_part_capacity);
     while (true) {
         raw_parts.push_back (zlink_msg_t ());
         zlink_msg_init (&raw_parts.back ());

@@ -175,6 +175,45 @@ void report_spot_dispatch_trace (
     });
 }
 
+void decrement_actor_count_unlocked (detail::spot_context_state_t &state)
+{
+    if (state.actor_count > 0) {
+        state.actor_count--;
+    }
+}
+
+void erase_actor_route_unlocked (detail::spot_node_builder_state_t &state,
+                                 const std::string &key)
+{
+    state.actor_spot_rids.erase (key);
+    state.actor_routes.erase (key);
+    state.actor_generations.erase (key);
+}
+
+void record_actor_route_unlocked (detail::spot_node_builder_state_t &state,
+                                  const std::string &key,
+                                  spot_route_t route,
+                                  std::uint64_t generation)
+{
+    state.actor_spot_rids[key] = route.spot_rid;
+    state.actor_routes[key] = std::move (route);
+    state.actor_generations[key] = generation;
+}
+
+void record_actor_context_route_unlocked (detail::spot_node_builder_state_t &state,
+                                          const std::string &key,
+                                          const std::string &node_rid,
+                                          detail::spot_context_state_t &context_state,
+                                          std::uint64_t generation)
+{
+    record_actor_route_unlocked (
+      state, key,
+      spot_route_t{node_rid_t::from_string (node_rid), context_state.spot_rid,
+                   context_state.spot_name},
+      generation);
+    context_state.actor_count++;
+}
+
 } // namespace
 
 namespace detail
@@ -441,11 +480,8 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
     if (_state->node_rid.empty () || actor_ref.node_rid ().value () != _state->node_rid.value ()) {
         try {
             auto &source_state = *_state;
-            source_state.actor_count =
-              source_state.actor_count == 0 ? 0 : source_state.actor_count - 1;
-            _state->node->actor_spot_rids.erase (found_location);
-            _state->node->actor_routes.erase (key);
-            _state->node->actor_generations.erase (key);
+            decrement_actor_count_unlocked (source_state);
+            erase_actor_route_unlocked (*_state->node, key);
             const auto source_admission = source_state.actor_admissions.find (actor_type);
             if (source_admission != source_state.actor_admissions.end ()
                 && source_admission->second.onLeaveActor && source_state.spot_instance) {
@@ -496,10 +532,8 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
 
     try {
         auto &source_state = *_state;
-        source_state.actor_count = source_state.actor_count == 0 ? 0 : source_state.actor_count - 1;
-        _state->node->actor_spot_rids.erase (found_location);
-        _state->node->actor_routes.erase (key);
-        _state->node->actor_generations.erase (key);
+        decrement_actor_count_unlocked (source_state);
+        erase_actor_route_unlocked (*_state->node, key);
         const auto source_left = source_state.onLeaveActor_callbacks.find (actor_type);
         if (source_left != source_state.onLeaveActor_callbacks.end ()
             && source_state.spot_instance) {
@@ -518,12 +552,9 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
           actor_ref_t (node_rid_t::from_string (std::string (_state->node_rid.value ())),
                        std::string (actor_ref.actor_type ()), std::string (actor_ref.actor_id ()),
                        actor_ref.generation () + 1);
-        _state->node->actor_spot_rids[key] = entry_state.spot_rid;
-        _state->node->actor_routes[key] =
-          spot_route_t{node_rid_t::from_string (std::string (_state->node_rid.value ())),
-                       entry_state.spot_rid, entry_state.spot_name};
-        _state->node->actor_generations[key] = committed.generation ();
-        entry_state.actor_count++;
+        record_actor_context_route_unlocked (*_state->node, key,
+                                             std::string (_state->node_rid.value ()),
+                                             entry_state, committed.generation ());
         if (update_actor_ref) {
             update_actor_ref (actor, committed);
         }
@@ -600,14 +631,10 @@ task_t<void> entry_spot_context_t::destroyActor_erased (const actor_ref_t &actor
 
     if (found_location != _state->node->actor_spot_rids.end ()) {
         _state->node->destroying_actors.insert (key);
-        _state->node->actor_spot_rids.erase (found_location);
-        _state->node->actor_routes.erase (key);
-        _state->node->actor_generations.erase (key);
+        erase_actor_route_unlocked (*_state->node, key);
         _state->node->actor_created_keys.erase (key);
         _state->node->actor_instances.erase (key);
-        if (_state->actor_count > 0) {
-            _state->actor_count--;
-        }
+        decrement_actor_count_unlocked (*_state);
         if (_state->node->destroy_actor_registry) {
             auto cleanup = _state->node->destroy_actor_registry (actor);
             _state->node->destroying_actors.erase (key);
@@ -1412,9 +1439,7 @@ spot_node_runtime_t::join_actor_to_spot_erased (const actor_ref_t &actor_ref,
         previous != _state->actor_spot_rids.end ()) {
         if (auto previous_context = find_context (previous->second)) {
             auto &previous_state = *previous_context->_state;
-            if (previous_state.actor_count > 0) {
-                previous_state.actor_count--;
-            }
+            decrement_actor_count_unlocked (previous_state);
             if (const auto previous_admission =
                   previous_state.actor_admissions.find (actor_factory->second.actor_type);
                 previous_admission != previous_state.actor_admissions.end ()
@@ -1423,18 +1448,12 @@ spot_node_runtime_t::join_actor_to_spot_erased (const actor_ref_t &actor_ref,
                                                          actor->second.get ());
             }
         }
-        _state->actor_spot_rids.erase (previous);
-        _state->actor_routes.erase (key);
-        _state->actor_generations.erase (key);
+        erase_actor_route_unlocked (*_state, key);
     }
 
     auto &target_state = *context->_state;
-    _state->actor_spot_rids[key] = target_state.spot_rid;
-    _state->actor_routes[key] =
-      spot_route_t{node_rid_t::from_string (_state->snapshot.name), target_state.spot_rid,
-                   target_state.spot_name};
-    _state->actor_generations[key] = actor_ref.generation () + 1;
-    target_state.actor_count++;
+    record_actor_context_route_unlocked (*_state, key, _state->snapshot.name, target_state,
+                                         actor_ref.generation () + 1);
     auto committed = actor_ref_t (
       node_rid_t::from_string (_state->snapshot.name), std::string (actor_ref.actor_type ()),
       std::string (actor_ref.actor_id ()), actor_ref.generation () + 1);
@@ -1535,9 +1554,7 @@ spot_node_runtime_t::join_remote_actor_to_spot_erased (const actor_ref_t &actor_
         previous != _state->actor_spot_rids.end ()) {
         if (auto previous_context = find_context (previous->second)) {
             auto &previous_state = *previous_context->_state;
-            if (previous_state.actor_count > 0) {
-                previous_state.actor_count--;
-            }
+            decrement_actor_count_unlocked (previous_state);
             if (const auto previous_admission =
                   previous_state.actor_admissions.find (actor_factory->second.actor_type);
                 previous_admission != previous_state.actor_admissions.end ()
@@ -1546,17 +1563,11 @@ spot_node_runtime_t::join_remote_actor_to_spot_erased (const actor_ref_t &actor_
                                                          actor_instance.get ());
             }
         }
-        _state->actor_spot_rids.erase (previous);
-        _state->actor_routes.erase (key);
-        _state->actor_generations.erase (key);
+        erase_actor_route_unlocked (*_state, key);
     }
 
-    _state->actor_spot_rids[key] = target_state.spot_rid;
-    _state->actor_routes[key] =
-      spot_route_t{node_rid_t::from_string (_state->snapshot.name), target_state.spot_rid,
-                   target_state.spot_name};
-    _state->actor_generations[key] = actor_ref.generation ();
-    target_state.actor_count++;
+    record_actor_context_route_unlocked (*_state, key, _state->snapshot.name, target_state,
+                                         actor_ref.generation ());
     if (admission->second.on_actor_joined) {
         admission->second.on_actor_joined (target_state.spot_instance.get (),
                                            actor_instance.get ());
@@ -1955,11 +1966,11 @@ void spot_node_runtime_t::record_actor_spot (const actor_ref_t &actor_ref, spot_
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     const auto key = actor_key (actor_ref);
     auto name = spot_name_for (spot_rid).value_or ("");
-    _state->actor_spot_rids[key] = spot_rid;
-    _state->actor_routes[key] =
+    record_actor_route_unlocked (
+      *_state, key,
       spot_route_t{node_rid_t::from_string (_state->snapshot.name), std::move (spot_rid),
-                   std::move (name)};
-    _state->actor_generations[key] = actor_ref.generation ();
+                   std::move (name)},
+      actor_ref.generation ());
 }
 
 std::optional<spot_route_t> spot_node_runtime_t::actor_route (const actor_ref_t &actor_ref) const
@@ -1976,9 +1987,7 @@ void spot_node_runtime_t::record_actor_route (const actor_ref_t &actor_ref, spot
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     const auto key = actor_key (actor_ref);
-    _state->actor_spot_rids[key] = route.spot_rid;
-    _state->actor_routes[key] = std::move (route);
-    _state->actor_generations[key] = actor_ref.generation ();
+    record_actor_route_unlocked (*_state, key, std::move (route), actor_ref.generation ());
 }
 
 std::optional<actor_ref_t>

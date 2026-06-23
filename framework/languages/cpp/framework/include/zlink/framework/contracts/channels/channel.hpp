@@ -29,6 +29,7 @@ class capability_builder_state_t;
 class channel_builder_state_t;
 class channel_runtime_state_t;
 class channel_runtime_t;
+class channel_outbound_exchange_t;
 class channel_runtime_manager_t;
 class route_client_state_t;
 class route_channel_builder_state_t;
@@ -436,6 +437,7 @@ class message_bus_t
     friend class request_client_t;
     friend class publisher_t;
     friend class spot_context_t;
+    friend class detail::channel_outbound_exchange_t;
     friend class detail::channel_runtime_t;
     friend class detail::channel_runtime_manager_t;
 

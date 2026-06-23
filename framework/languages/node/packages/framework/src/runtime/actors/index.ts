@@ -707,27 +707,13 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
         timeoutMs,
         signal
       );
-      const resultActor = {
-        nodeRid: decodeWireRoutingId(reply.actorNodeRid, reply.actorNodeRidHex),
-        actorId: reply.actorId,
-        generation: BigInt(reply.actorGeneration)
-      } as ActorRef;
-      if (reply.accepted) {
-        state.setNativeActorRef(resultActor as unknown as ZLinkBackendActorRef);
-        state.setJoinedSpot(remoteAddress.spotRid);
-        state.setRemoteActorPacketTarget({
-          routerChannelId: remoteAddress.routerChannelId,
-          targetNodeRid: remoteAddress.targetNodeRid,
-          spotRid: remoteAddress.spotRid,
-          spotKind: remoteAddress.spotKind
-        });
-        await this.options.remoteActorBinder?.(resultActor, signal, true);
-      }
-      return {
-        resultCode: reply.accepted ? 0 : 1,
-        actor: resultActor,
-        reply: reply.reply === undefined ? undefined : BindingMessage.from(Buffer.from(reply.reply, 'base64'))
-      };
+      return await this.applyRemoteJoinResult(
+        state,
+        reply,
+        remoteAddress,
+        reply.reply === undefined ? undefined : BindingMessage.from(Buffer.from(reply.reply, 'base64')),
+        signal
+      );
     }
     const entrySpotRid = this.options.node.entrySpot().routingId;
     const boundSessionTarget = state.remoteBoundSessionTarget;
@@ -762,27 +748,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
             );
           }
           const reply = JSON.parse(parts[0].getString('utf8')) as ZLinkRemoteActorJoinReply;
-          const resultActor = {
-            nodeRid: decodeWireRoutingId(reply.actorNodeRid, reply.actorNodeRidHex),
-            actorId: reply.actorId,
-            generation: BigInt(reply.actorGeneration)
-          } as ActorRef;
-          if (reply.accepted) {
-            state.setNativeActorRef(resultActor as unknown as ZLinkBackendActorRef);
-            state.setJoinedSpot(remoteAddress.spotRid);
-            state.setRemoteActorPacketTarget({
-              routerChannelId: remoteAddress.routerChannelId,
-              targetNodeRid: remoteAddress.targetNodeRid,
-              spotRid: remoteAddress.spotRid,
-              spotKind: remoteAddress.spotKind
-            });
-            await this.options.remoteActorBinder?.(resultActor, signal, true);
-          }
-          return {
-            resultCode: reply.accepted ? 0 : 1,
-            actor: resultActor,
-            reply: parts[1]
-          };
+          return await this.applyRemoteJoinResult(state, reply, remoteAddress, parts[1], signal);
         } finally {
           parts[0]?.close();
           this.disposeParts(parts.slice(2));
@@ -837,27 +803,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
           );
         }
         const reply = JSON.parse(parts[0].getString('utf8')) as ZLinkRemoteActorJoinReply;
-        const resultActor = {
-          nodeRid: decodeWireRoutingId(reply.actorNodeRid, reply.actorNodeRidHex),
-          actorId: reply.actorId,
-          generation: BigInt(reply.actorGeneration)
-        } as ActorRef;
-        if (reply.accepted) {
-          state.setNativeActorRef(resultActor as unknown as ZLinkBackendActorRef);
-          state.setJoinedSpot(remoteAddress.spotRid);
-          state.setRemoteActorPacketTarget({
-            routerChannelId: remoteAddress.routerChannelId,
-            targetNodeRid: remoteAddress.targetNodeRid,
-            spotRid: remoteAddress.spotRid,
-            spotKind: remoteAddress.spotKind
-          });
-          await this.options.remoteActorBinder?.(resultActor, signal, true);
-        }
-        return {
-          resultCode: reply.accepted ? 0 : 1,
-          actor: resultActor,
-          reply: parts[1]
-        };
+        return await this.applyRemoteJoinResult(state, reply, remoteAddress, parts[1], signal);
       } finally {
         parts[0]?.close();
         this.disposeParts(parts.slice(2));
@@ -865,6 +811,43 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     } finally {
       header.close();
     }
+  }
+
+  /**
+   * Decode a remote-actor-join reply into a framework ActorRef, apply the
+   * accepted-join side effects to runtime state (native ref, joined spot,
+   * remote packet target, remote binder), and build the join result. Shared by
+   * all three remote-join transports (routed request, raw-to-spot, fallback
+   * spot) so the accept/decode semantics stay identical across them.
+   */
+  private async applyRemoteJoinResult(
+    state: ZLinkActorRuntimeState,
+    reply: ZLinkRemoteActorJoinReply,
+    remoteAddress: ZLinkSpotRemoteAddress,
+    replyMessage: Message | undefined,
+    signal: AbortSignal | undefined
+  ): Promise<ZLinkActorJoinResult<Message>> {
+    const resultActor = {
+      nodeRid: decodeWireRoutingId(reply.actorNodeRid, reply.actorNodeRidHex),
+      actorId: reply.actorId,
+      generation: BigInt(reply.actorGeneration)
+    } as ActorRef;
+    if (reply.accepted) {
+      state.setNativeActorRef(resultActor as unknown as ZLinkBackendActorRef);
+      state.setJoinedSpot(remoteAddress.spotRid);
+      state.setRemoteActorPacketTarget({
+        routerChannelId: remoteAddress.routerChannelId,
+        targetNodeRid: remoteAddress.targetNodeRid,
+        spotRid: remoteAddress.spotRid,
+        spotKind: remoteAddress.spotKind
+      });
+      await this.options.remoteActorBinder?.(resultActor, signal, true);
+    }
+    return {
+      resultCode: reply.accepted ? 0 : 1,
+      actor: resultActor,
+      reply: replyMessage
+    };
   }
 
   private decodeRemoteActorJoinReply(message: Message): ZLinkRemoteActorJoinReply & { readonly reply?: string } {

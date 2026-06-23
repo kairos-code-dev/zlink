@@ -38,7 +38,7 @@ surface를 새 framework 정책으로 옮길 때 지켜야 할 기준을 정리�
 | channel client 직접 주입 | `message_bus_t`, `request_client_t`, `publisher_t` DI 주입 |
 | event publisher 전용 타입 | `publisher_t::publish(channel, topic, event)` |
 | channel 전체 연결 설정 | 역할 builder의 `bind`, `connect`, `use_discovery` |
-| spot 전용 publisher client | `spot_context_t` 또는 `publisher_t`의 channel/topic 표면 |
+| spot 전용 publisher client | `spot_context_t` 또는 `spot_publisher_client_t::publish(channel, topic, event)` |
 | target Spot 직접 호출 public client | actor 생성 또는 Entry Spot join 뒤 actor/session handle 사용 |
 | session actor relay용 route mesh channel | `stream.attach_actor_gateway(...)`와 `session_actor_t::relay(...)` |
 | raw timer callback | `spot_context_t::add_timer(...)`와 `timer_tick_t` metadata |

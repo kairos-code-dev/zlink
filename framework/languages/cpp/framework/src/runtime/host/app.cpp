@@ -17,6 +17,7 @@
 
 #include <zlink/Contracts/Service/registry.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <csignal>
 #include <chrono>
@@ -251,6 +252,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     _state->services.add_singleton<channel_client_t> (
       std::make_unique<channel_client_t> (_state->zlink.message_bus ()));
+    _state->services.add_singleton<publisher_t> (
+      std::make_unique<publisher_t> (_state->zlink.publisher ()));
     _state->services.add_factory<route_client_t> (
       [this] (service_provider_t &) {
           return std::make_unique<route_client_t> (
@@ -353,6 +356,21 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     detail::configure_actor_gateway_spot_bridge (
       _state->zlink, _state->services, _state->serializers, spot_node_snapshot);
+    const bool has_spot_publisher_client =
+      std::any_of (spot_node_snapshot.begin (), spot_node_snapshot.end (),
+                   [] (const spot_node_snapshot_t &spot_node) {
+                       return !spot_node.attached_publishers.empty ();
+                   });
+    if (has_spot_publisher_client
+        && !_state->services.contains (std::type_index (typeid (spot_publisher_client_t)))) {
+        _state->services.add_factory<spot_publisher_client_t> (
+          [] (service_provider_t &provider) {
+              return std::make_unique<spot_publisher_client_t> (
+                provider.get_required<spot_node_manager_t> (),
+                provider.get_required<serializer_registry_t> ());
+          },
+          service_lifetime_t::singleton);
+    }
     if (!stream_snapshot.empty ()) {
         add_hosted_service (std::make_unique<runtime::stream_host_service_t> (
           detail::stream_runtime_t::from (_state->zlink), stream_snapshot,

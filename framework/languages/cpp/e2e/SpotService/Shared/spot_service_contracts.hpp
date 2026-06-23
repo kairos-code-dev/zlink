@@ -12,6 +12,7 @@ namespace zlink::framework::e2e::spot_service
 inline constexpr const char *route_channel = "spot.service.play";
 inline constexpr const char *api_channel = "spot.service.api";
 inline constexpr const char *spot_mesh = "spot.service.mesh";
+inline constexpr const char *publisher_channel = "spot.service.publisher";
 inline constexpr const char *handler_group = "spot-service";
 inline constexpr const char *actor_type = "scenario-player";
 inline constexpr const char *user_spot = "user";

@@ -1516,6 +1516,71 @@ spot_node_manager_t::relay_actor_packet (const actor_ref_t &actor_ref,
       std::move (metadata));
 }
 
+spot_publisher_client_t::spot_publisher_client_t (spot_node_manager_t manager,
+                                                  serializer_registry_t &serializers) :
+    _manager (std::move (manager)),
+    _serializers (&serializers)
+{
+}
+
+task_t<void> spot_publisher_client_t::publish_erased (std::string channel_name,
+                                                      std::string topic,
+                                                      std::type_index event_type,
+                                                      const void *event) const
+{
+    if (!_serializers) {
+        return task_t<void> (result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "spot publisher client has no serializer registry"));
+    }
+    if (channel_name.empty () || is_blank (channel_name)) {
+        return task_t<void> (result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "attached SPOT publisher channel name is required"));
+    }
+    if (topic.empty ()) {
+        return task_t<void> (result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error, "spot publish topic is required"));
+    }
+
+    std::shared_ptr<zlink::service::spot_node_t> native_node;
+    {
+        std::lock_guard<std::recursive_mutex> node_lock (_manager._state->mutex);
+        const auto &attached = _manager._state->snapshot.attached_publishers;
+        if (std::find (attached.begin (), attached.end (), channel_name) == attached.end ()) {
+            return task_t<void> (result_t<void>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "SPOT publisher client channel is not attached"));
+        }
+        native_node = _manager._state->native_node.lock ();
+    }
+    if (!native_node) {
+        return task_t<void> (result_t<void>::failure (
+          framework_error_kind_t::disconnected, "SPOT publisher client node is not running"));
+    }
+
+    try {
+        std::vector<zlink::message_t> parts{
+          _serializers->serialize (event_type, event),
+        };
+        auto publisher = native_node->create_publisher ();
+        if (!publisher.valid ()) {
+            return task_t<void> (result_t<void>::failure (
+              framework_error_kind_t::disconnected, "SPOT publisher client is not available"));
+        }
+        (void) publisher.publish (topic, parts);
+        return task_t<void> (result_t<void>::success ());
+    }
+    catch (const framework_exception_t &error) {
+        return task_t<void> (
+          result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+    }
+    catch (const std::exception &error) {
+        return task_t<void> (
+          result_t<void>::failure (framework_error_kind_t::request_failed, error.what ()));
+    }
+}
+
 } // namespace zlink::framework
 
 namespace zlink::framework::detail

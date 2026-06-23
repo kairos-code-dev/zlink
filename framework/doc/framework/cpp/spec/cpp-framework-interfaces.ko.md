@@ -409,6 +409,7 @@ class stream_builder_t;
 class message_bus_t;
 class publisher_t;
 class request_client_t;
+class spot_publisher_client_t;
 class spot_context_t;
 class stream_header_t;
 class stream_error_t;
@@ -1087,6 +1088,13 @@ public:
       send_options_t options = {});
 };
 
+class spot_publisher_client_t {
+public:
+    template <typename TEvent>
+    task_t<void> publish(std::string channel_name, std::string topic,
+                         const TEvent &event) const;
+};
+
 class request_client_t {
 public:
     template <typename TCommand>
@@ -1148,6 +1156,7 @@ framework는 아래 서비스를 기본 등록한다. 사용자는 직접 생성
 
 - `message_bus_t`
 - `publisher_t`
+- `spot_publisher_client_t` (SPOT node가 `attach_publisher(...)`를 설정한 경우)
 - `request_client_t`
 - `route_client_t`
 - `serializer_registry_t`

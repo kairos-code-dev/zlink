@@ -263,6 +263,8 @@ void configure (zlink::framework::spot_context_t &context)
 - client/server channel에 `enable_client(...)`를 설정하면 spot 코드에서 그
   채널로 request/send를 보낼 수 있다.
 - `attach_publisher(channel)`로 fanout publish 경로를 연결한다.
+- local spot을 만들지 않는 노드에서 SPOT mesh로 publish하려면
+  `spot_publisher_client_t`를 주입받아 `publish(channel, topic, event)`를 호출한다.
 - 토픽 구독자(클라이언트)에게 가는 알림은 `enable_pub_sub` endpoint를 통해
   spot 토픽으로 발행된다.
 

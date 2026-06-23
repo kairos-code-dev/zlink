@@ -24,6 +24,8 @@
   post-destroy request 실패를 검증한다.
 - `SM-C2`: spot handler가 외부 channel로 request/send를 내보내고, SPOT mesh publish를 수행하는
   흐름을 검증한다.
+- `SM-C4`: local spot을 등록하지 않은 client node가 attached publisher client로 SPOT mesh에
+  publish하고, play 노드의 구독 spot들이 이벤트를 받는지 검증한다.
 - `SM-D1`: 실제 `session-a` stream gateway에 붙어 `play-a` actor로 local stream relay를 보내고,
   actor가 bound session으로 보낸 push를 client 수신과 play/session evidence로 검증한다.
 - `SM-D2`: `session-a` gateway에 붙은 상태에서 preferred가 아닌 `play-b` actor로 remote stream

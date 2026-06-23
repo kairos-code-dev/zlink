@@ -37,6 +37,7 @@ namespace zlink::framework
 
 class actor_context_t;
 class actor_ref_t;
+class spot_publisher_client_t;
 class spot_node_manager_t;
 
 class spot_t
@@ -1011,11 +1012,34 @@ class spot_node_manager_t
 
   private:
     friend class spot_context_t;
+    friend class spot_publisher_client_t;
     friend class detail::spot_node_runtime_t;
     explicit spot_node_manager_t (std::shared_ptr<detail::spot_node_builder_state_t> state);
     zlink::message_t serialize_request (std::type_index request_type, const void *request) const;
 
     std::shared_ptr<detail::spot_node_builder_state_t> _state;
+};
+
+class spot_publisher_client_t
+{
+  public:
+    spot_publisher_client_t (spot_node_manager_t manager, serializer_registry_t &serializers);
+
+    template <typename TEvent>
+    task_t<void> publish (std::string channel_name, std::string topic, const TEvent &event) const
+    {
+        return publish_erased (std::move (channel_name), std::move (topic),
+                               std::type_index (typeid (TEvent)), &event);
+    }
+
+  private:
+    task_t<void> publish_erased (std::string channel_name,
+                                 std::string topic,
+                                 std::type_index event_type,
+                                 const void *event) const;
+
+    spot_node_manager_t _manager;
+    serializer_registry_t *_serializers = nullptr;
 };
 
 namespace detail

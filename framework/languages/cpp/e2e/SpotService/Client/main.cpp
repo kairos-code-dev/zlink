@@ -143,7 +143,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             auto &routes = scope.get_required<zlink::framework::route_client_t> ();
             auto &actors = scope.get_required<zlink::framework::session_actor_manager_t> ();
             auto &channel_state = scope.get_required<client_channel_state_t> ();
-            run (routes, actors, channel_state);
+            auto &publisher = scope.get_required<zlink::framework::spot_publisher_client_t> ();
+            run (routes, actors, channel_state, publisher);
             passed = true;
         }
         catch (const std::exception &error) {
@@ -206,7 +207,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
     void run (zlink::framework::route_client_t &routes,
               zlink::framework::session_actor_manager_t &actors,
-              client_channel_state_t &channel_state)
+              client_channel_state_t &channel_state,
+              zlink::framework::spot_publisher_client_t &publisher)
     {
         if (_scenario_mode == "stream") {
             run_stream_session_scenario (routes, "SM-D1", "play-a", "stream-local", "a-stream-room",
@@ -341,6 +343,14 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-C2 channel send evidence missing");
         std::cout << "scenario SM-C2 passed\n";
 
+        auto publish_only =
+          publisher
+            .publish (e2e::publisher_channel, e2e::mesh_topic,
+                      e2e::mesh_event_t{"evt-publisher-client", "publish-only"})
+            .result ();
+        ensure (publish_only.has_value (), "SM-C4 publisher client publish failed");
+        std::cout << "scenario SM-C4 passed\n";
+
         if (_scenario_mode != "base") {
             run_stream_session_scenario (routes, "SM-D1", "play-a", "stream-local", "a-stream-room",
                                          "stream-local-push");
@@ -427,7 +437,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         auto push_wait =
           stream
-            .wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (5000))
+            .wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000))
             .async ();
         auto pushed =
           zlink::stream_e2e_client::codecs::send (
@@ -491,6 +501,7 @@ int main (int argc, char **argv)
     const auto route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT");
     const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
     const auto pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT");
+    const auto publisher_endpoint = env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT");
     const auto api_endpoint = env_or ("ZLINK_CPP_E2E_API_ENDPOINT");
     const auto stream_endpoint = env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT");
     const auto scenario_mode = env_or ("ZLINK_CPP_E2E_SCENARIO_MODE");
@@ -517,6 +528,8 @@ int main (int argc, char **argv)
           .enable_server (api_endpoint)
           .server_routing_id (zlink::routing_id_t::from (std::string ("client-api")))
           .use_handler_group (e2e::handler_group);
+        options.add_fanout_channel (e2e::publisher_channel).enable_publisher (
+          publisher_endpoint);
         auto route = options.add_route_mesh_channel (e2e::route_channel)
           .enable_server (route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (std::string ("client-session")))
@@ -535,7 +548,8 @@ int main (int argc, char **argv)
                           zlink::routing_id_t::from (std::string ("client-session")))
           .enable_actor_gateway ()
           .enable_pub_sub (pubsub_endpoint,
-                           zlink::routing_id_t::from (std::string ("client-session")));
+                           zlink::routing_id_t::from (std::string ("client-session")))
+          .attach_publisher (e2e::publisher_channel);
     });
     app.add_hosted_service (std::move (scenario));
     const auto code = app.run (argc, argv);

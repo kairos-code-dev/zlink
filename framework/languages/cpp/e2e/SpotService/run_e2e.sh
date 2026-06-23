@@ -5,18 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 
-read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_SESSION_A ROUTE_SESSION_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_SESSION_A SPOT_SESSION_B SPOT_CLIENT PUB_A PUB_B PUB_SESSION_A PUB_SESSION_B PUB_CLIENT API_CLIENT STREAM_A STREAM_B HTTP_A HTTP_B HTTP_SESSION_A HTTP_SESSION_B <<<"$(python3 - <<'PY'
+read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_SESSION_A ROUTE_SESSION_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_SESSION_A SPOT_SESSION_B SPOT_CLIENT PUB_A PUB_B PUB_SESSION_A PUB_SESSION_B PUB_CLIENT PUBLISHER_CLIENT API_CLIENT STREAM_A STREAM_B HTTP_A HTTP_B HTTP_SESSION_A HTTP_SESSION_B <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(24):
+for _ in range(25):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
-print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:20]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[20:]))
+print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:21]), end=" ")
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[21:]))
 for s in sockets:
     s.close()
 PY
@@ -150,13 +150,14 @@ PY
 start_registry
 start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
 start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-sleep 3
+sleep 6
 
 ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
 ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
 ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
 ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
 ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
+ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
 ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
 ZLINK_CPP_E2E_SCENARIO_MODE=base \
 ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
@@ -167,13 +168,14 @@ cat "$LOG_DIR/client.stdout.log"
 
 start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
 start_session session-b "$ROUTE_SESSION_B" "$SPOT_SESSION_B" "$PUB_SESSION_B" "$STREAM_B" "$HTTP_SESSION_B"
-sleep 3
+sleep 6
 
 ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
 ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
 ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
 ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
 ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
+ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
 ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
 ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
 ZLINK_CPP_E2E_SCENARIO_MODE=stream \
@@ -212,6 +214,12 @@ def has_value(snapshot, marker, actor, value):
             return True
     return False
 
+def has_marker_value(snapshot, marker, value):
+    for entry in snapshot["entries"]:
+        if entry["marker"] == marker and entry["value"] == value:
+            return True
+    return False
+
 assert has(play_a, "ActorEnsured", "alice")
 assert has(play_a, "EntryJoin", "alice")
 assert has(play_a, "StateMutated", "alice")
@@ -222,6 +230,8 @@ assert has(play_a, "ActorLeaveRequested", "alice")
 assert has(play_a, "ActorDestroyed", "alice")
 assert has(play_a, "SpotOutbound", "alice-2")
 assert has(play_a, "MeshEventReceived")
+assert has_marker_value(play_a, "MeshEventReceived", "evt-publisher-client:publish-only")
+assert has_marker_value(play_b, "MeshEventReceived", "evt-publisher-client:publish-only")
 assert has_value(play_a, "ActorPushedSession", "stream-local", "stream-local-push")
 assert has(play_b, "ActorEnsured", "bob")
 assert has(play_b, "EntryJoin", "bob")

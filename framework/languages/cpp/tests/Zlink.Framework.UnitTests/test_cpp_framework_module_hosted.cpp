@@ -422,6 +422,23 @@ class failing_start_hosted_service_t final : public zlink::framework::hosted_ser
     std::vector<std::string> &_events;
 };
 
+class publisher_resolving_hosted_service_t final : public zlink::framework::hosted_service_t
+{
+  public:
+    explicit publisher_resolving_hosted_service_t (bool &resolved) : _resolved (resolved) {}
+
+    void start (zlink::framework::service_provider_t &services) override
+    {
+        (void) services.get_required<zlink::framework::publisher_t> ();
+        _resolved = true;
+    }
+
+    void stop () noexcept override {}
+
+  private:
+    bool &_resolved;
+};
+
 } // namespace
 
 int main ()
@@ -505,6 +522,24 @@ int main ()
     if (options_module_counters_t::services != 1 || options_module_counters_t::zlink != 1
         || options_module_counters_t::handlers != 1 || options_module_counters_t::monitoring != 1) {
         return 6;
+    }
+
+    zlink::framework::app_t publisher_app = zlink::framework::app_t::create ();
+    publisher_app.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &) {});
+    bool publisher_service_resolved = false;
+    publisher_app.add_hosted_service (
+      std::make_unique<publisher_resolving_hosted_service_t> (publisher_service_resolved));
+    std::thread publisher_stopper ([&publisher_app] {
+        std::this_thread::sleep_for (std::chrono::milliseconds (5));
+        publisher_app.stop ();
+    });
+    if (publisher_app.run (argc, argv) != 0) {
+        publisher_stopper.join ();
+        return 67;
+    }
+    publisher_stopper.join ();
+    if (!publisher_service_resolved) {
+        return 68;
     }
 
     zlink::framework::service_collection_t services;

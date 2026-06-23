@@ -4,6 +4,7 @@ public static class RuntimeMonitoringNames
 {
     public const string Channel = "monitor.profile";
     public const string ChannelServerSource = "monitor.profile.server";
+    public const string ChannelClientSource = "monitor.profile.client";
     public const string SpotChannel = "monitor.spot";
     public const string SpotNode = "monitor.spot.node";
 }

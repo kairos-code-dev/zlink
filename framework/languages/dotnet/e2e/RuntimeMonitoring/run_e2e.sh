@@ -21,17 +21,25 @@ PY
 
 REG_HTTP_PORT="$(pick_port)"
 SVC_HTTP_PORT="$(pick_port)"
+SVC_B_HTTP_PORT="$(pick_port)"
+THROW_HTTP_PORT="$(pick_port)"
 REG_PUB_PORT="$(pick_port)"
 REG_ROUTER_PORT="$(pick_port)"
 CHANNEL_PORT="$(pick_port)"
+CHANNEL_B_PORT="$(pick_port)"
+THROW_CHANNEL_PORT="$(pick_port)"
 SPOT_ROUTER_PORT="$(pick_port)"
 SPOT_PUB_PORT="$(pick_port)"
 
 REG_URL="http://127.0.0.1:$REG_HTTP_PORT"
 SVC_URL="http://127.0.0.1:$SVC_HTTP_PORT"
+SVC_B_URL="http://127.0.0.1:$SVC_B_HTTP_PORT"
+THROW_URL="http://127.0.0.1:$THROW_HTTP_PORT"
 REG_PUB="tcp://127.0.0.1:$REG_PUB_PORT"
 REG_ROUTER="tcp://127.0.0.1:$REG_ROUTER_PORT"
 CHANNEL_ENDPOINT="tcp://127.0.0.1:$CHANNEL_PORT"
+CHANNEL_B_ENDPOINT="tcp://127.0.0.1:$CHANNEL_B_PORT"
+THROW_CHANNEL_ENDPOINT="tcp://127.0.0.1:$THROW_CHANNEL_PORT"
 SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:$SPOT_ROUTER_PORT"
 SPOT_PUB_ENDPOINT="tcp://127.0.0.1:$SPOT_PUB_PORT"
 
@@ -91,10 +99,42 @@ ZLINK_E2E_RID="svc-a" dotnet run --project "$SERVER_PROJECT" -- \
 pids+=("$!")
 wait_health "$SVC_URL" svc-a
 
+ZLINK_E2E_RID="svc-b" dotnet run --project "$SERVER_PROJECT" -- \
+  --role service \
+  --rid svc-b \
+  --http-url "$SVC_B_URL" \
+  --registry-router-endpoint "$REG_ROUTER" \
+  --channel-endpoint "$CHANNEL_B_ENDPOINT" \
+  --monitor-mode socket-filter \
+  --evidence-file "$LOG_DIR/svc-b.evidence.log" \
+  --log-dir "$LOG_DIR" \
+  >"$LOG_DIR/svc-b.stdout.log" 2>"$LOG_DIR/svc-b.stderr.log" &
+pids+=("$!")
+wait_health "$SVC_B_URL" svc-b
+
+ZLINK_E2E_RID="svc-throw" ZLINK_DEBUG_FRAMEWORK_TASKS=1 dotnet run --project "$SERVER_PROJECT" -- \
+  --role service \
+  --rid svc-throw \
+  --http-url "$THROW_URL" \
+  --registry-router-endpoint "$REG_ROUTER" \
+  --channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
+  --monitor-mode throwing \
+  --evidence-file "$LOG_DIR/svc-throw.evidence.log" \
+  --log-dir "$LOG_DIR" \
+  >"$LOG_DIR/svc-throw.stdout.log" 2>"$LOG_DIR/svc-throw.stderr.log" &
+pids+=("$!")
+wait_health "$THROW_URL" svc-throw
+
 dotnet run --project "$CLIENT_PROJECT" -- \
   --registry-router-endpoint "$REG_ROUTER" \
   --registry-url "$REG_URL" \
   --service-url "$SVC_URL" \
+  --service-channel-endpoint "$CHANNEL_ENDPOINT" \
+  --service-b-url "$SVC_B_URL" \
+  --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
+  --throw-service-url "$THROW_URL" \
+  --throw-channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
+  --server-project "$SERVER_PROJECT" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 

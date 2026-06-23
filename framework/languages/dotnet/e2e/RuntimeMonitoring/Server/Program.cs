@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -29,6 +30,10 @@ builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile));
 builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEventRecorder>();
 builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkRegistryEvent>, RegistryEventRecorder>();
 builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSpotEvent>, SpotEventRecorder>();
+if (options.MonitorMode == "throwing")
+{
+    builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, ThrowingSocketEventRecorder>();
+}
 
 if (options.Role == "registry")
 {
@@ -58,19 +63,35 @@ else if (options.Role == "service")
         channel.ConfigureServerRouting().RoutingId = RoutingId.From(options.Rid);
         channel.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
 
-        var spotMesh = framework.AddSpotMesh(RuntimeMonitoringNames.SpotChannel);
-        spotMesh.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
-        spotMesh.AddNode(RuntimeMonitoringNames.SpotNode)
-            .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
-            .SetRouterRoutingId(RoutingId.From(options.Rid))
-            .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
-            .SetPubSubRoutingId(RoutingId.From(options.Rid))
-            .AddEntrySpot<MonitoringEntrySpot>();
+        if (options.MonitorMode == "all")
+        {
+            var spotMesh = framework.AddSpotMesh(RuntimeMonitoringNames.SpotChannel);
+            spotMesh.UseDiscovery().AddRegistryEndpoint(Require(options.RegistryRouterEndpoint, "--registry-router-endpoint"));
+            spotMesh.AddNode(RuntimeMonitoringNames.SpotNode)
+                .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
+                .SetRouterRoutingId(RoutingId.From(options.Rid))
+                .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
+                .SetPubSubRoutingId(RoutingId.From(options.Rid))
+                .AddEntrySpot<MonitoringEntrySpot>();
+        }
     });
     builder.Services.AddZLinkMonitoring(monitor =>
     {
-        monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelServerSource);
-        monitor.AddSpotEvents(RuntimeMonitoringNames.SpotNode, TimeSpan.FromMilliseconds(100));
+        if (options.MonitorMode == "socket-filter")
+        {
+            monitor.AddSocketEvents(
+                RuntimeMonitoringNames.ChannelServerSource,
+                ZLinkSocketEventKind.ConnectionReady);
+        }
+        else
+        {
+            monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelServerSource);
+        }
+
+        if (options.MonitorMode == "all")
+        {
+            monitor.AddSpotEvents(RuntimeMonitoringNames.SpotNode, TimeSpan.FromMilliseconds(100));
+        }
     });
 }
 else
@@ -85,6 +106,22 @@ app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
 {
     lifetime.StopApplication();
     return Results.Ok(new { status = "stopping" });
+});
+app.MapPost("/admin/drain", (
+    [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
+    [FromServices] EvidenceStore evidence) =>
+{
+    runtimeOptions.ClientServerChannel(RuntimeMonitoringNames.Channel).ConfigureServerSocket().Weight = 0;
+    evidence.Add($"admin|rid={evidence.Rid}|action=drain|weight=0");
+    return Results.Ok(new { status = "drained", weight = 0 });
+});
+app.MapPost("/admin/restore", (
+    [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
+    [FromServices] EvidenceStore evidence) =>
+{
+    runtimeOptions.ClientServerChannel(RuntimeMonitoringNames.Channel).ConfigureServerSocket().Weight = 100;
+    evidence.Add($"admin|rid={evidence.Rid}|action=restore|weight=100");
+    return Results.Ok(new { status = "restored", weight = 100 });
 });
 await app.RunAsync();
 
@@ -120,6 +157,11 @@ internal sealed class MonitoringEntrySpot(IZLinkEntrySpotContext context) : IZLi
             TimeSpan.FromMilliseconds(50),
             new ZLinkTimerOptions { StopOnUnhandledException = false },
             cancellationToken);
+        await Context.AddTimer<FailingTimerHandler>(
+            "stopping",
+            TimeSpan.FromMilliseconds(50),
+            new ZLinkTimerOptions { StopOnUnhandledException = true },
+            cancellationToken);
     }
 }
 
@@ -144,6 +186,16 @@ internal sealed class SocketEventRecorder(EvidenceStore evidence) : IZLinkRuntim
             $"monitor-socket|source={@event.SourceName}|kind={@event.Event}"
             + $"|remote={@event.RemoteAddr}|routing={@event.RoutingId}");
         return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class ThrowingSocketEventRecorder(EvidenceStore evidence) : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
+{
+    public ValueTask HandleAsync(ZLinkSocketEvent @event, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"monitor-throw|source={@event.SourceName}|kind={@event.Event}");
+        throw new InvalidOperationException("monitoring dispatch failure for e2e");
     }
 }
 
@@ -218,7 +270,8 @@ internal sealed record ServerOptions(
     string? RegistryRouterEndpoint,
     string? ChannelEndpoint,
     string? SpotRouterEndpoint,
-    string? SpotPubEndpoint)
+    string? SpotPubEndpoint,
+    string MonitorMode)
 {
     public static ServerOptions Parse(string[] args)
     {
@@ -253,6 +306,7 @@ internal sealed record ServerOptions(
             RegistryRouterEndpoint: Get("--registry-router-endpoint"),
             ChannelEndpoint: Get("--channel-endpoint"),
             SpotRouterEndpoint: Get("--spot-router-endpoint"),
-            SpotPubEndpoint: Get("--spot-pub-endpoint"));
+            SpotPubEndpoint: Get("--spot-pub-endpoint"),
+            MonitorMode: Get("--monitor-mode", "all"));
     }
 }

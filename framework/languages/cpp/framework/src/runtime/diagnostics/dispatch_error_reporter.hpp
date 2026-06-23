@@ -4,14 +4,11 @@
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/errors/error.hpp>
 
+#include "runtime/diagnostics/diagnostic_event_sink.hpp"
 #include "runtime/diagnostics/dispatch_diagnostics_names.hpp"
-#include "runtime/dispatch/offload_executor.hpp"
 
 #include <atomic>
-#include <iostream>
 #include <cstdint>
-#include <memory>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -34,29 +31,15 @@ class dispatch_error_reporter_t
         if (_options.diagnostics.effective_message_flow () != message_flow_log_mode_t::off) {
             log_default (event);
         }
-        auto observer = _options.message_dispatch_error_observer;
-        auto callback = _options.message_dispatch_error_callback;
-        if (!observer && !callback) {
-            return;
-        }
-        if (!observer_executor ().try_submit (
-              [observer = std::move (observer), callback = std::move (callback),
-               event = std::move (event)] () mutable {
-                  try {
-                      if (observer) {
-                          observer->on_dispatch_error (event);
-                          return;
-                      }
-                      if (callback) {
-                          callback (event);
-                      }
-                  }
-                  catch (...) {
-                      observer_failure_count ().fetch_add (1, std::memory_order_relaxed);
-                  }
-              })) {
-            observer_dropped_count ().fetch_add (1, std::memory_order_relaxed);
-        }
+        diagnostic_event_sink_t::deliver_observer (
+          _options.message_dispatch_error_observer, _options.message_dispatch_error_callback,
+          std::move (event),
+          [] (message_dispatch_error_observer_t &observer,
+              const message_dispatch_error_event_t &event) { observer.on_dispatch_error (event); },
+          [] (const std::function<void (const message_dispatch_error_event_t &)> &callback,
+              const message_dispatch_error_event_t &event) { callback (event); },
+          [] { observer_failure_count ().fetch_add (1, std::memory_order_relaxed); },
+          [] { observer_dropped_count ().fetch_add (1, std::memory_order_relaxed); });
     }
 
     static std::uint64_t reported () noexcept
@@ -81,7 +64,7 @@ class dispatch_error_reporter_t
             std::vector<log_field_t> fields;
             fields.reserve (11);
             auto add = [&fields] (const char *key, std::string value) {
-                fields.push_back (log_field_t{key, std::move (value)});
+                diagnostic_event_sink_t::append_field (fields, key, std::move (value));
             };
             add ("surface", std::string (enum_name (event.surface)));
             add ("kind", std::string (enum_name (event.message_kind)));
@@ -113,28 +96,13 @@ class dispatch_error_reporter_t
             }
             // Structured fields through the framework logger (collector-friendly);
             // flat clog line when no logger is wired (tests, no-app usage).
-            if (_options.diagnostics_logger) {
-                _options.diagnostics_logger->log_with_fields (log_level_t::error, "dispatch error",
-                                                              std::move (fields));
-            }
-            else {
-                std::ostringstream body;
-                body << "zlink framework dispatch error:";
-                for (const auto &field : fields) {
-                    body << ' ' << field.key << '=' << field.value;
-                }
-                std::clog << body.str () << '\n';
-            }
+            diagnostic_event_sink_t::log_or_clog (
+              _options.diagnostics_logger, log_level_t::error, "dispatch error",
+              "zlink framework dispatch error:", std::move (fields));
         }
         catch (...) {
             observer_failure_count ().fetch_add (1, std::memory_order_relaxed);
         }
-    }
-
-    static runtime::offload_executor_t &observer_executor ()
-    {
-        static auto executor = std::make_unique<runtime::offload_executor_t> (1, 1024);
-        return *executor;
     }
 
     static std::atomic<std::uint64_t> &reported_count () noexcept

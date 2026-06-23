@@ -3,14 +3,11 @@
 
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 
+#include "runtime/diagnostics/diagnostic_event_sink.hpp"
 #include "runtime/diagnostics/dispatch_diagnostics_names.hpp"
-#include "runtime/dispatch/offload_executor.hpp"
 
 #include <atomic>
 #include <cstdint>
-#include <iostream>
-#include <memory>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -94,29 +91,15 @@ class message_flow_tracer_t
         traced_count ().fetch_add (1, std::memory_order_relaxed);
         log_default (event);
 
-        auto observer = _options->message_flow_observer;
-        auto callback = _options->message_flow_callback;
-        if (!observer && !callback) {
-            return;
-        }
-        if (!observer_executor ().try_submit (
-              [observer = std::move (observer), callback = std::move (callback),
-               event = std::move (event)] () mutable {
-                  try {
-                      if (observer) {
-                          observer->on_message_flow (event);
-                          return;
-                      }
-                      if (callback) {
-                          callback (event);
-                      }
-                  }
-                  catch (...) {
-                      observer_failure_count ().fetch_add (1, std::memory_order_relaxed);
-                  }
-              })) {
-            observer_dropped_count ().fetch_add (1, std::memory_order_relaxed);
-        }
+        diagnostic_event_sink_t::deliver_observer (
+          _options->message_flow_observer, _options->message_flow_callback, std::move (event),
+          [] (message_flow_observer_t &observer, const message_flow_event_t &event) {
+              observer.on_message_flow (event);
+          },
+          [] (const std::function<void (const message_flow_event_t &)> &callback,
+              const message_flow_event_t &event) { callback (event); },
+          [] { observer_failure_count ().fetch_add (1, std::memory_order_relaxed); },
+          [] { observer_dropped_count ().fetch_add (1, std::memory_order_relaxed); });
     }
 
   public:
@@ -162,7 +145,7 @@ class message_flow_tracer_t
             std::vector<log_field_t> fields;
             fields.reserve (12);
             auto add = [&fields] (const char *key, std::string value) {
-                fields.push_back (log_field_t{key, std::move (value)});
+                diagnostic_event_sink_t::append_field (fields, key, std::move (value));
             };
             add ("phase", std::string (enum_name (event.phase)));
             add ("surface", std::string (enum_name (event.surface)));
@@ -198,28 +181,13 @@ class message_flow_tracer_t
             // Prefer the framework logger with structured fields (so a file/console
             // sink renders them and a collector callback gets record.fields); fall
             // back to a flat clog line when no logger is wired (tests, no-app usage).
-            if (_options->diagnostics_logger) {
-                _options->diagnostics_logger->log_with_fields (log_level_t::info, "message flow",
-                                                               std::move (fields));
-            }
-            else {
-                std::ostringstream body;
-                body << "zlink flow:";
-                for (const auto &field : fields) {
-                    body << ' ' << field.key << '=' << field.value;
-                }
-                std::clog << body.str () << '\n';
-            }
+            diagnostic_event_sink_t::log_or_clog (_options->diagnostics_logger, log_level_t::info,
+                                                  "message flow", "zlink flow:",
+                                                  std::move (fields));
         }
         catch (...) {
             observer_failure_count ().fetch_add (1, std::memory_order_relaxed);
         }
-    }
-
-    static runtime::offload_executor_t &observer_executor ()
-    {
-        static auto executor = std::make_unique<runtime::offload_executor_t> (1, 1024);
-        return *executor;
     }
 
     static std::atomic<std::uint64_t> &sample_counter () noexcept

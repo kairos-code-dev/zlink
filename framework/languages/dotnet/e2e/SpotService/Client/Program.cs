@@ -18,6 +18,7 @@ await RunAsync(options);
 static async Task RunAsync(ClientOptions options)
 {
     await RunSmB1B2B3B5Async(options);
+    await RunSmB6Async(options);
     await RunSmD7Async(options);
     await RunSmD1AndD6Async(options);
     await RunSmD4Async(options);
@@ -95,6 +96,73 @@ static async Task RunSmB1B2B3B5Async(ClientOptions options)
     Console.WriteLine("scenario SM-B2 passed");
     Console.WriteLine("scenario SM-B3 passed");
     Console.WriteLine("scenario SM-B5 passed");
+}
+
+static async Task RunSmB6Async(ClientOptions options)
+{
+    var spotRid = $"spot-sm-b6-{Guid.NewGuid():N}";
+    var leaveActorId = "actor-sm-b6-left";
+    var disconnectActorId = "actor-sm-b6-disconnected";
+
+    using var host = CreateRouteEgressHost(
+        options,
+        includeControlChannel: true,
+        includeRouteMeshEgress: false,
+        includeClientServerEgress: false,
+        includeExternalChannelServer: false,
+        traceName: "client-framework-actor-lifecycle-flow.log");
+    await host.StartAsync();
+    var routes = host.Services.GetRequiredService<IZLinkRouteClient>();
+
+    await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new CreateSpotReq(spotRid))
+        .PacketName("CreateSpotReq")
+        .Async<CreateSpotReply>();
+
+    await using var leaveClient = CreateClient(options.SessionAStreamEndpoint);
+    await leaveClient.Connect.Async();
+    await leaveClient.Request(new AuthReq(leaveActorId, "leave", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    var joined = await routes.Request(
+            SpotServiceNames.ControlChannel,
+            RoutingId.From(options.PlayARid),
+            new JoinUserSpotActorReq(spotRid, leaveActorId))
+        .PacketName("JoinUserSpotActorReq")
+        .Async<JoinUserSpotActorReply>();
+    Ensure(joined.Accepted && joined.ActorId == leaveActorId, "SM-B6 user spot actor join failed.");
+
+    var playABeforeLeave = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+    var left = await leaveClient.Request(new LeaveReq(leaveActorId))
+        .PacketName("LeaveReq")
+        .Async<LeaveReply>();
+    Ensure(left.Accepted && left.ActorId == leaveActorId, "SM-B6 leave reply mismatch.");
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
+        return CountNew(after, playABeforeLeave, $"spot-actor-left|rid={options.PlayARid}|spot={spotRid}|actor={leaveActorId}") == 1
+            && CountNew(after, playABeforeLeave, $"spot-actor-disconnected|rid={options.PlayARid}|spot={spotRid}|actor={leaveActorId}") == 0;
+    }, "SM-B6 expected explicit leave evidence without disconnect evidence.");
+
+    var sessionBeforeDisconnect = await ReadEvidenceAsync(options.SessionAEvidenceUrl);
+    await using var disconnectClient = CreateClient(options.SessionAStreamEndpoint);
+    await disconnectClient.Connect.Async();
+    await disconnectClient.Request(new AuthReq(disconnectActorId, "disconnect", options.SessionARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    await disconnectClient.Close.Async();
+
+    await WaitUntilAsync(async () =>
+    {
+        var after = await ReadEvidenceAsync(options.SessionAEvidenceUrl);
+        return CountNew(after, sessionBeforeDisconnect, $"entry-disconnected|rid={options.SessionARid}|actor={disconnectActorId}") == 1
+            && CountNew(after, sessionBeforeDisconnect, $"entry-left|rid={options.SessionARid}|actor={disconnectActorId}") == 0;
+    }, "SM-B6 expected disconnect evidence without leave evidence.");
+
+    await host.StopAsync();
+    Console.WriteLine("scenario SM-B6 passed");
 }
 
 static async Task RunSmD7Async(ClientOptions options)

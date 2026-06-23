@@ -46,6 +46,10 @@ public sealed record CreateSpotReq(string SpotRid);
 
 public sealed record CreateSpotReply(string SpotRid, string NodeRid, string State);
 
+public sealed record JoinUserSpotActorReq(string SpotRid, string ActorId);
+
+public sealed record JoinUserSpotActorReply(string SpotRid, string ActorId, bool Accepted);
+
 public sealed record ActorPingReq(string Value);
 
 public sealed record ActorPingReply(string ActorId, string NodeRid, string SpotRid, string Value, int Seen);

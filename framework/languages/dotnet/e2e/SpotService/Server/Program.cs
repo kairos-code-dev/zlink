@@ -204,6 +204,35 @@ internal sealed class CreateSpotHandler(
     }
 }
 
+[ZLinkHandlerGroup("play")]
+internal sealed class JoinUserSpotActorHandler(
+    IZLinkActorManager actors,
+    EvidenceStore evidence)
+    : IZLinkRouteRequestHandler<JoinUserSpotActorReq, JoinUserSpotActorReply>
+{
+    public async ValueTask<JoinUserSpotActorReply> HandleAsync(
+        JoinUserSpotActorReq request,
+        ZLinkRouteRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        var actor = await actors.GetOrCreateAsync(
+            request.ActorId,
+            SpotServiceNames.ActorType,
+            cancellationToken);
+        using var joinRequest = Message.From(ReadOnlySpan<byte>.Empty);
+        var joined = await actor.Context.JoinSpot(RoutingId.From(request.SpotRid), joinRequest)
+            .Async(cancellationToken);
+        evidence.Add(
+            $"join-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"
+            + $"|actor={request.ActorId}|accepted={joined.Accepted}");
+        return new JoinUserSpotActorReply(
+            request.SpotRid,
+            joined.Actor.ActorId,
+            joined.Accepted);
+    }
+}
+
 internal sealed class ScenarioActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
@@ -511,6 +540,28 @@ internal sealed class UserActorPingHandler
             spot.Context.SpotRid.ToString(),
             request.Value,
             actor.Seen));
+    }
+}
+
+[ZLinkSpotActorRequestHandler("LeaveReq")]
+internal sealed class UserActorLeaveHandler
+    : IZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, LeaveReq, LeaveReply>
+{
+    public async ValueTask<LeaveReply> HandleAsync(
+        ScenarioUserSpot spot,
+        ScenarioActor actor,
+        ZLinkSpotActorRequestContext context,
+        LeaveReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Leave request actor does not match dispatched actor.");
+        }
+
+        await spot.Context.leaveActor(actor, cancellationToken);
+        return new LeaveReply(actor.ActorId, true);
     }
 }
 

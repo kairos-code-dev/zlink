@@ -713,7 +713,7 @@ struct spot_create_result_t
 {
     spot_rid_t spot_rid;
     spot_create_state_t state = spot_create_state_t::created;
-    std::optional<zlink::message_t> reply;
+    std::optional<message_t> reply;
     spot_context_t context;
 };
 

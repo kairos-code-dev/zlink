@@ -91,15 +91,6 @@ zlink::message_t framework_reply_or_empty (const std::optional<message_t> &reply
     return reply ? reply->to_raw (serializers) : zlink::message_t{};
 }
 
-std::optional<zlink::message_t>
-framework_reply_or_null (const std::optional<message_t> &reply, serializer_registry_t &serializers)
-{
-    if (!reply) {
-        return std::nullopt;
-    }
-    return reply->to_raw (serializers);
-}
-
 void attach_native_spot_locked (const std::shared_ptr<detail::spot_context_state_t> &state)
 {
     if (!state || !state->node) {
@@ -1939,7 +1930,7 @@ spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (std::str
     configure_spot_execution (context_state);
     spot_context_t context (context_state);
     entry_spot_context_t entry_context (context_state);
-    std::optional<zlink::message_t> create_reply;
+    std::optional<message_t> create_reply;
 
     if (lifecycle.create_instance) {
         context_state->spot_instance = lifecycle.create_instance ();
@@ -1959,11 +1950,9 @@ spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (std::str
                                 : spot_create_response_t::accept ();
         if (!response.accepted) {
             return spot_create_result_t{
-              spot_rid, spot_create_state_t::rejected,
-              framework_reply_or_null (response.reply, serializers),
-              context};
+              spot_rid, spot_create_state_t::rejected, response.reply, context};
         }
-        create_reply = framework_reply_or_null (response.reply, serializers);
+        create_reply = response.reply;
         if (lifecycle.on_initialize) {
             lifecycle.on_initialize (context_state->spot_instance.get ());
         }

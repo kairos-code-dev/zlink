@@ -222,12 +222,10 @@ low-level zlink binding 을 직접 사용할 때는 recv 또는 callback 으로 
 application 에 직접 노출하지 않는다. framework runtime 이 binding 의 수신자가
 되며, 수신한 `Message` 의 해제 책임도 framework runtime 이 가진다.
 
-`OnDispatchAsync(...)` 로 전달된 `payload` 는 callback 실행 동안 session 이
-그대로 사용할 수 있는 borrowed payload 다. session 은 `Dispose()`, `await using`,
-`Move()` 를 기본 사용법으로 쓰지 않는다. `IZLinkSessionActor.RelayAsync(...)` 같은 framework
-API 에 바로 전달할 때도 `Move()` 를 호출하지 않는다. callback 이 끝난 뒤에도
-payload 를 보관해야 하는 경우에만 `Copy()` 또는 `Move()` 로 소유권을 명확히
-가져간다.
+`OnDispatchAsync(...)` 로 전달된 `payload` 는 framework `ZLinkMessage` 다. session 은
+`payload.Decode<T>()` 로 DTO를 읽거나 `IZLinkSessionActor.RelayAsync(...)` 같은 framework
+API 에 그대로 전달한다. handler 는 bindings `Message` 소유권을 직접 다루지 않으므로
+binding payload 를 해제하거나 이동하거나 복사하는 코드를 작성하지 않는다.
 
 반대로 application 이 직접 만든 `Message` 를 `IZLinkStream.Write(...)` 같은
 raw write API 에 넘길 때는 framework 가 그 `Message` 의 소유권을 가져가지
@@ -243,8 +241,8 @@ session 이 일부 packet 만 직접 처리하고 나머지 정책을 스스로 
 actor 로 relay 할지, 오류로 거절할지, 로그만 남길지는 session 구현체가 정한다.
 framework 는 이 단계에서 자동 relay 나 자동 무시 정책을 적용하지 않는다.
 
-handler 가 받는 `payload` 도 `OnDispatchAsync(...)` 와 같은 borrowed payload 다.
-handler 는 payload 를 직접 해제하거나 `Move()` 로 소비하지 않는다. handler 구현은
+handler 가 받는 `payload` 도 `OnDispatchAsync(...)` 와 같은 framework `ZLinkMessage` 다.
+handler 는 binding payload 를 해제하거나 이동하는 코드를 작성하지 않는다. handler 구현은
 DI 를 사용할 수 있으며, framework 등록 과정은 session 이 주입받는 dispatcher 의
 context 타입에 맞는 handler 구현을 service 로 자동 등록한다.
 
@@ -388,7 +386,7 @@ application 표면으로는 올리지 않는다** 는 뜻으로 본다.
   handshake 실패와 socket / node 단위 오류는 runtime monitoring 에서 다룬다.
   즉 session callback 에 올리지 않는다.
 - raw chunk 직접 처리 표면은 현재 공개 계약에 넣지 않는다. 지금 단계의 session
-  은 framework 가 decode 한 `ZlinkStreamHeader` 와 `Message` payload 를 받는
+  은 framework 가 decode 한 `ZlinkStreamHeader` 와 `ZLinkMessage` payload 를 받는
   계약으로 둔다.
 
 ## 8. 회귀 테스트

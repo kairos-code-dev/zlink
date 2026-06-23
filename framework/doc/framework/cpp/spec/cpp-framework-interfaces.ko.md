@@ -1263,7 +1263,7 @@ public:
 
 struct spot_actor_join_response_t {
     bool accepted;
-    std::optional<zlink::message_t> reply;
+    std::optional<zlink::framework::message_t> reply;
 };
 
 enum class spot_create_state_t {
@@ -1274,13 +1274,13 @@ enum class spot_create_state_t {
 
 struct spot_create_response_t {
     bool accepted;
-    std::optional<zlink::message_t> reply;
+    std::optional<zlink::framework::message_t> reply;
 };
 
 struct spot_create_result_t {
     spot_rid_t spot_rid;
     spot_create_state_t state;
-    std::optional<zlink::message_t> reply;
+    std::optional<zlink::framework::message_t> reply;
     spot_context_t context;
 };
 

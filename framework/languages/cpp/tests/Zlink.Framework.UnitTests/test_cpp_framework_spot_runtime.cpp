@@ -596,7 +596,7 @@ int main ()
     auto rejected_create = builder.create_spot_raw ("stage", zlink::message_t::from ("reject-request"));
     stage_spot_t::reject_create = false;
     if (rejected_create.state != zlink::framework::spot_create_state_t::rejected
-        || !rejected_create.reply || rejected_create.reply->to_string () != "create-rejected"
+        || !rejected_create.reply || rejected_create.reply->to_raw ().to_string () != "create-rejected"
         || builder.find_spot (rejected_create.spot_rid)) {
         return 54;
     }
@@ -604,7 +604,7 @@ int main ()
     auto factory_created =
       builder.create_spot_raw ("factory", zlink::message_t::from ("factory-request"));
     if (factory_created.state != zlink::framework::spot_create_state_t::created
-        || !factory_created.reply || factory_created.reply->to_string () != "factory-reply"
+        || !factory_created.reply || factory_created.reply->to_raw ().to_string () != "factory-reply"
         || factory_spot_t::create_count != 1 || factory_spot_t::initialize_count != 1
         || factory_spot_t::last_request != "factory-request"
         || factory_spot_t::configured_spot_rid != std::string (factory_created.spot_rid.value ())) {
@@ -680,7 +680,7 @@ int main ()
         .async ()
         .result ();
     if (!lifecycle_join || lifecycle_join.value ().result_code != 0
-        || lifecycle_join.value ().reply.to_string () != "42"
+        || lifecycle_join.value ().reply.to_raw ().to_string () != "42"
         || lifecycle_stage_spot->join_seen != 41 || lifecycle_stage_spot->joined_count != 1
         || lifecycle_actor_state.joined_value != 141) {
         return 59;
@@ -717,7 +717,7 @@ int main ()
         .result ();
     lifecycle_stage_spot->accept_join = true;
     if (!rejected_runtime_join || rejected_runtime_join.value ().result_code == 0
-        || rejected_runtime_join.value ().reply.to_string () != "rejected"
+        || rejected_runtime_join.value ().reply.to_raw ().to_string () != "rejected"
         || lifecycle_stage_spot->joined_count != 1
         || rejected_context.actor_ref ().node_rid ().value () != "local") {
         return 61;

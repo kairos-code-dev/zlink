@@ -29,6 +29,16 @@ options 또는 builder에서 codec extension을 추가하면 같은 registry를 
 codec 등록 표면이 아니라, SPOT create, session dispatch, actor join 업무 코드가 raw `Message`나
 codec별 helper를 직접 쓰지 않게 되는 부분이다.
 
+이 문서를 구현 지시로 사용할 때는 “기존 방식”이라는 표현을 항상 아래처럼 나누어 판단한다.
+
+- 유지할 기존 방식: codec extension을 options, builder, application startup에 등록하는 방식
+- 제거할 기존 방식: handler, actor, session, SPOT create 코드에서 raw payload를 직접 만들거나 해석하는 방식
+
+즉 custom codec을 추가하는 사용법은 기존과 같아야 한다. 사용자는 codec extension을 등록한 뒤 같은
+DTO handler, 같은 actor join 코드, 같은 session callback 코드를 사용한다. `Message.from(...)`,
+`JsonMessageExtensions`, raw `Buffer`, `zlink_msg_t` 같은 타입과 helper가 업무 코드에 남아 있다면
+이 계획을 끝낸 것으로 보지 않는다.
+
 ## 현재 상태
 
 이 절은 2026-06-23 checkout 기준으로 확인한 기준 상태다. 이후 구현 중 checkout이 바뀌면 먼저 이
@@ -178,6 +188,18 @@ options.codecs().use(my_custom_codec_extension{});
 builder/options에서 extension을 등록한다. handler, actor, session, SPOT create 코드는 codec 종류를
 직접 알 필요가 없어야 한다.
 
+구현자는 아래 기준으로 코드를 판정한다.
+
+| 코드 위치 | 기존 codec 등록 코드 허용 여부 | raw payload 코드 허용 여부 |
+|-----------|-------------------------------|----------------------------|
+| application startup / builder / options | 허용한다. 이 계획에서 바꾸지 않는다. | raw payload를 만들 필요가 없어야 한다. |
+| framework runtime 내부 | 허용한다. registry 조회와 encode/decode를 담당한다. | 허용한다. 단 public 업무 API로 새면 안 된다. |
+| SPOT create hook | codec 등록 코드를 두지 않는다. | 허용하지 않는다. request/reply는 DTO 또는 `ZLinkMessage`다. |
+| session dispatch callback | codec 등록 코드를 두지 않는다. | 허용하지 않는다. typed payload 또는 `ZLinkMessage`를 받는다. |
+| actor join caller / join handler | codec 등록 코드를 두지 않는다. | 허용하지 않는다. request/reply는 DTO 또는 `ZLinkMessage`다. |
+| sample 업무 코드 | codec 종류별 helper를 두지 않는다. | 허용하지 않는다. 사용자가 따라 할 기본 예시이기 때문이다. |
+| raw relay / frame harness | 보통 필요 없다. | 허용한다. 이름과 문서에서 raw 경계임을 드러낸다. |
+
 제거되는 기존 방식은 아래처럼 업무 코드에서 raw payload를 직접 만들거나 해석하는 코드다. 이 코드는
 “기존 codec 등록 방식”이 아니라 “기존 raw 업무 API 방식”이다. 최종 상태에서는 guide, sample, 일반
 contract test에 남기지 않는다.
@@ -247,6 +269,17 @@ spot.onCreate((request, context) -> {
 위 예시는 codec 선택과 payload 변환을 호출자 업무 코드로 밀어낸다. 이 방식은 JSON일 때만 자연스럽고,
 Protobuf, MessagePack, custom codec으로 바꾸면 handler와 sample까지 같이 바뀐다. 따라서 최종 상태의
 guide와 sample에는 이 방식을 남기지 않는다.
+
+제거 대상은 예시와 같은 JSON 코드에만 한정하지 않는다. Protobuf, MessagePack, custom codec helper도
+업무 코드에서 직접 호출하면 같은 문제다. 아래 형태는 모두 제거 대상이다.
+
+- handler 안에서 `Message.from(...)`, `Buffer.from(...)`, `zlink_msg_t`를 직접 만드는 코드
+- handler 안에서 `JsonSerializer`, `ObjectMapper`, `JSON.parse`, `JSON.stringify`로 wire payload를 직접
+  변환하는 코드
+- sample 업무 코드에서 Protobuf serializer, MessagePack serializer, custom serializer를 직접 찾아
+  `encode` 또는 `decode` 하는 코드
+- actor join reply를 raw message로 받은 뒤 sample이나 handler에서 직접 bytes를 읽는 코드
+- session dispatch payload를 raw bytes로 받은 뒤 업무 코드에서 packet DTO로 바꾸는 코드
 
 변경 후 업무 코드는 아래처럼 DTO 또는 `ZLinkMessage`만 다룬다. codec이 JSON인지 Protobuf인지
 MessagePack인지 custom codec인지는 application startup의 extension 등록으로만 결정된다.

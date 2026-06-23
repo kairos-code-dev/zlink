@@ -152,6 +152,7 @@ class spot_node_t : public discovery_observer_t
     bool external_route_id_for_peer_endpoint (const std::string &peer_endpoint_,
                                               std::string *out_) const;
     bool peer_has_positive_weight (const zlink_routing_id_t *peer_rid_) const;
+    bool peer_has_positive_weight_key (const std::string &peer_rid_key_) const;
     socket_base_t *select_service_router (const std::string &channel_name_);
     socket_base_t *service_pub_socket (const std::string &channel_name_) const;
     int service_subscribe_recv (zlink_routing_id_t *source_rid_out_,

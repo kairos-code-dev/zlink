@@ -155,9 +155,17 @@ bool spot_node_t::peer_has_positive_weight (const zlink_routing_id_t *peer_rid_)
     if (!peer_rid_ || peer_rid_->size == 0)
         return true;
 
-    const std::string key = zlink::routing_id_key (peer_rid_);
+    return peer_has_positive_weight_key (zlink::routing_id_key (peer_rid_));
+}
+
+bool spot_node_t::peer_has_positive_weight_key (const std::string &peer_rid_key_) const
+{
+    if (peer_rid_key_.empty ())
+        return true;
+
     scoped_lock_t lock (_sync);
-    std::map<std::string, uint32_t>::const_iterator it = _peer_state.peer_weight_by_rid.find (key);
+    std::map<std::string, uint32_t>::const_iterator it =
+      _peer_state.peer_weight_by_rid.find (peer_rid_key_);
     return it == _peer_state.peer_weight_by_rid.end () || it->second > 0;
 }
 

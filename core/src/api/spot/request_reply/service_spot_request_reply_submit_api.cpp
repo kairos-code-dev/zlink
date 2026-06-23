@@ -83,18 +83,22 @@ int validate_request_send_flags (zlink_send_flags_t flags_)
 
 bool has_local_spot_route_target (uint8_t destination_class_,
                                   const std::string &destination_node_rid_,
-                                  const std::string &destination_endpoint_rid_)
+                                  const std::string &destination_endpoint_rid_,
+                                  const std::string &local_node_rid_)
 {
-    return destination_class_ == 0x01
-             ? static_cast<bool> (
-                 find_spot_state_by_identity (destination_node_rid_, destination_endpoint_rid_))
-             : static_cast<bool> (find_router_state_by_rid (destination_endpoint_rid_));
+    if (destination_class_ == routed_protocol::spot_endpoint_class) {
+        if (!local_node_rid_.empty () && destination_node_rid_ != local_node_rid_)
+            return false;
+        return static_cast<bool> (
+          find_spot_state_by_identity (destination_node_rid_, destination_endpoint_rid_));
+    }
+    return static_cast<bool> (find_router_state_by_rid (destination_endpoint_rid_));
 }
 
-bool spot_destination_has_positive_weight (void *spot_, const zlink_routing_id_t *dest_node_rid_)
+bool spot_destination_has_positive_weight (void *spot_, const std::string &dest_node_rid_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);
-    return !spot || !spot->node || spot->node->peer_has_positive_weight (dest_node_rid_);
+    return !spot || !spot->node || spot->node->peer_has_positive_weight_key (dest_node_rid_);
 }
 
 int start_spot_request_common (void *spot_,
@@ -137,8 +141,9 @@ int start_spot_request_common (void *spot_,
         return -1;
     }
 
-    const bool local_target = has_local_spot_route_target (
-      destination_class_, destination_node_rid_, destination_endpoint_rid_);
+    const bool local_target =
+      has_local_spot_route_target (destination_class_, destination_node_rid_,
+                                   destination_endpoint_rid_, source_identity.node_rid);
     if (!local_target) {
         const size_t combined_count =
           zlink::spot_reqrep_internal::spot_request_reply_message_part_count (part_count_);
@@ -215,12 +220,12 @@ int start_spot_request_to_spot (void *spot_,
         errno = EINVAL;
         return -1;
     }
-    if (!spot_destination_has_positive_weight (spot_, dest_node_rid_)) {
+    const std::string destination_node_rid = routing_id_key (dest_node_rid_);
+    if (!spot_destination_has_positive_weight (spot_, destination_node_rid)) {
         errno = ECONNREFUSED;
         return -1;
     }
 
-    const std::string destination_node_rid = routing_id_key (dest_node_rid_);
     const std::string destination_spot_rid = routing_id_key (dest_spot_rid_);
     return start_spot_request_common (
       spot_, routed_protocol::spot_endpoint_class, destination_node_rid, destination_spot_rid,
@@ -495,8 +500,9 @@ zlink_submit_result_t spot_reply_spot_impl (void *spot_,
     spot_handle_t *spot = as_spot_handle (spot_);
     const std::string destination_node_rid = routing_id_key (dest_node_rid_);
     const std::string destination_spot_rid = routing_id_key (dest_spot_rid_);
-    const bool local_target = has_local_spot_route_target (
-      routed_protocol::spot_endpoint_class, destination_node_rid, destination_spot_rid);
+    const bool local_target =
+      has_local_spot_route_target (routed_protocol::spot_endpoint_class, destination_node_rid,
+                                   destination_spot_rid, source_identity.node_rid);
     if (!local_target) {
         const size_t combined_count =
           zlink::spot_reqrep_internal::spot_request_reply_message_part_count (part_count_);
@@ -566,8 +572,9 @@ zlink_submit_result_t spot_send_spot_impl (void *spot_,
     spot_handle_t *spot = as_spot_handle (spot_);
     const std::string destination_node_rid = routing_id_key (dest_node_rid_);
     const std::string destination_spot_rid = routing_id_key (dest_spot_rid_);
-    const bool local_target = has_local_spot_route_target (
-      routed_protocol::spot_endpoint_class, destination_node_rid, destination_spot_rid);
+    const bool local_target =
+      has_local_spot_route_target (routed_protocol::spot_endpoint_class, destination_node_rid,
+                                   destination_spot_rid, source_identity.node_rid);
     if (!local_target) {
         const size_t combined_count =
           zlink::spot_reqrep_internal::spot_routed_message_part_count (part_count_);
@@ -634,8 +641,9 @@ zlink_submit_result_t spot_reply_router_impl (void *spot_,
 
     spot_handle_t *spot = as_spot_handle (spot_);
     const std::string peer_rid = routing_id_key (peer_rid_);
-    const bool local_target = has_local_spot_route_target (routed_protocol::router_endpoint_class,
-                                                           std::string (), peer_rid);
+    const bool local_target =
+      has_local_spot_route_target (routed_protocol::router_endpoint_class, std::string (),
+                                   peer_rid, source_identity.node_rid);
     if (!local_target) {
         const size_t combined_count =
           zlink::spot_reqrep_internal::spot_request_reply_message_part_count (part_count_);

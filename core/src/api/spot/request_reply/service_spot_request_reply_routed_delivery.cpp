@@ -130,8 +130,6 @@ int send_routed_router_once (zlink::spot_runtime_t *runtime_,
         return -1;
     }
 
-    zlink::spot_data_plane_forwarder_t::pump_socket_commands (runtime_->routed_router);
-    runtime_->routed_router->set_all_pipes_nodelay ();
     if ((flags_ & ZLINK_DONTWAIT) == 0) {
         if (zlink::wait_socket_events_internal (runtime_->routed_router, ZLINK_POLLOUT, 100)
             <= 0) {

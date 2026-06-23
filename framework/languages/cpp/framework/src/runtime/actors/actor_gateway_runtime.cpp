@@ -243,16 +243,21 @@ actor_join_entry_spot_call_t actor_context_t::join_entry_spot_raw (node_rid_t sp
         const std::lock_guard lock (_state->mutex);
         if (_actor_ref.empty ()) {
             return actor_join_entry_spot_call_t (result_t<actor_join_result_t>::failure (
-              framework_error_kind_t::actor_route_not_found, "actor ref is empty"));
+                                                framework_error_kind_t::actor_route_not_found,
+                                                "actor ref is empty"),
+                                                serializer_registry ());
         }
         if (spot_node_rid.empty ()) {
             return actor_join_entry_spot_call_t (result_t<actor_join_result_t>::failure (
-              framework_error_kind_t::spot_route_not_found, "spot node rid is empty"));
+                                                framework_error_kind_t::spot_route_not_found,
+                                                "spot node rid is empty"),
+                                                serializer_registry ());
         }
         if (!_state->join_entry_spot_dispatcher) {
             return actor_join_entry_spot_call_t (result_t<actor_join_result_t>::failure (
-              framework_error_kind_t::actor_dispatch_handler_not_found,
-              "actor join entry spot dispatcher is not configured"));
+                                                framework_error_kind_t::actor_dispatch_handler_not_found,
+                                                "actor join entry spot dispatcher is not configured"),
+                                                serializer_registry ());
         }
         dispatcher = _state->join_entry_spot_dispatcher;
     }
@@ -260,9 +265,10 @@ actor_join_entry_spot_call_t actor_context_t::join_entry_spot_raw (node_rid_t sp
     auto joined = dispatcher (_actor_ref, spot_node_rid, request);
     if (!joined) {
         const auto *error = joined.error ();
-        return actor_join_entry_spot_call_t (result_t<actor_join_result_t>::failure (
-          joined.error_kind (),
-          error != nullptr ? error->what () : "actor join entry spot failed"));
+        return actor_join_entry_spot_call_t (
+          result_t<actor_join_result_t>::failure (
+            joined.error_kind (), error != nullptr ? error->what () : "actor join entry spot failed"),
+          serializer_registry ());
     }
 
     if (joined.value ().result_code == 0) {
@@ -274,8 +280,11 @@ actor_join_entry_spot_call_t actor_context_t::join_entry_spot_raw (node_rid_t sp
         }
     }
     const auto &reply = joined.value ();
-    return actor_join_entry_spot_call_t (result_t<actor_join_result_t>::success (
-      actor_join_result_t{reply.result_code, reply.actor, reply.reply}));
+    return actor_join_entry_spot_call_t (
+      result_t<actor_join_result_t>::success (
+        actor_join_result_t{
+          reply.result_code, reply.actor, message_t::from_encoded (reply.reply, serializer_registry ())}),
+      serializer_registry ());
 }
 
 session_actor_t::session_actor_t () : _state (std::make_shared<detail::actor_gateway_state_t> ())
@@ -312,7 +321,8 @@ bound_session_t session_actor_t::bound_session () const
     return bound_session_t (_state, _ref);
 }
 
-relay_call_t session_actor_t::relay (const stream_header_t &header, const zlink::message_t &payload)
+relay_call_t session_actor_t::relay_raw (const stream_header_t &header,
+                                         const zlink::message_t &payload)
 {
     detail::actor_gateway_state_t::relay_dispatcher_t dispatcher;
     {
@@ -354,36 +364,36 @@ relay_call_t session_actor_t::relay (const stream_header_t &header, const zlink:
     return relay_call_t (result_t<void>::success ());
 }
 
-relay_request_call_t session_actor_t::relay_request (const stream_header_t &header,
-                                                     const zlink::message_t &payload)
+relay_request_call_t session_actor_t::relay_request_raw (const stream_header_t &header,
+                                                         const zlink::message_t &payload)
 {
     detail::actor_gateway_state_t::relay_dispatcher_t dispatcher;
     {
         const std::lock_guard lock (_state->mutex);
         if (_ref.empty ()) {
-            return relay_request_call_t (result_t<zlink::message_t>::failure (
+            return relay_request_call_t (result_t<message_t>::failure (
               framework_error_kind_t::actor_route_not_found, "session actor is not bound"));
         }
         const auto found = _state->actors_by_id.find (std::string (_ref.actor_id ()));
         if (found != _state->actors_by_id.end () && found->second.disconnected) {
-            return relay_request_call_t (result_t<zlink::message_t>::failure (
+            return relay_request_call_t (result_t<message_t>::failure (
               framework_error_kind_t::disconnected, "actor session is disconnected"));
         }
         if (found == _state->actors_by_id.end ()) {
-            return relay_request_call_t (result_t<zlink::message_t>::failure (
+            return relay_request_call_t (result_t<message_t>::failure (
               framework_error_kind_t::actor_route_not_found, "actor route is not found"));
         }
         if (!found->second.bound) {
-            return relay_request_call_t (result_t<zlink::message_t>::failure (
+            return relay_request_call_t (result_t<message_t>::failure (
               framework_error_kind_t::actor_session_not_bound, "actor session is not bound"));
         }
         if (found->second.ref.generation () != _ref.generation ()) {
-            return relay_request_call_t (result_t<zlink::message_t>::failure (
+            return relay_request_call_t (result_t<message_t>::failure (
               framework_error_kind_t::actor_stale_generation, "actor generation is stale"));
         }
         if (!_state->relay_dispatcher) {
             _state->relayed_frames.push_back (detail::relayed_frame_t{_ref, header, payload});
-            return relay_request_call_t (result_t<zlink::message_t>::failure (
+            return relay_request_call_t (result_t<message_t>::failure (
               framework_error_kind_t::actor_dispatch_handler_not_found,
               "actor relay dispatcher is not configured"));
         }
@@ -391,16 +401,49 @@ relay_request_call_t session_actor_t::relay_request (const stream_header_t &head
     }
     auto dispatched = dispatcher (_ref, context (), header, payload);
     if (!dispatched) {
-        return relay_request_call_t (result_t<zlink::message_t>::failure (
+        return relay_request_call_t (result_t<message_t>::failure (
           dispatched.error_kind (),
           dispatched.error () ? dispatched.error ()->what () : "actor relay failed"));
     }
     if (!dispatched.value ()) {
-        return relay_request_call_t (result_t<zlink::message_t>::failure (
+        return relay_request_call_t (result_t<message_t>::failure (
           framework_error_kind_t::request_protocol_error, "actor relay request has no reply"));
     }
-    return relay_request_call_t (
-      result_t<zlink::message_t>::success (std::move (*dispatched.value ())));
+    return relay_request_call_t (result_t<message_t>::success (
+      message_t::from_encoded (std::move (*dispatched.value ()), _state->serializers)));
+}
+
+relay_call_t session_actor_t::relay (const stream_header_t &header, const message_t &payload)
+{
+    if (_state->serializers == nullptr) {
+        return relay_call_t (result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "actor relay requires a serializer registry"));
+    }
+    try {
+        return relay_raw (header, payload.to_raw (*_state->serializers));
+    }
+    catch (const framework_exception_t &error) {
+        return relay_call_t (result_t<void>::failure (
+          error.kind (), error.what (), error.is_retriable ()));
+    }
+}
+
+relay_request_call_t session_actor_t::relay_request (const stream_header_t &header,
+                                                     const message_t &payload)
+{
+    if (_state->serializers == nullptr) {
+        return relay_request_call_t (result_t<message_t>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "actor relay request requires a serializer registry"));
+    }
+    try {
+        return relay_request_raw (header, payload.to_raw (*_state->serializers));
+    }
+    catch (const framework_exception_t &error) {
+        return relay_request_call_t (result_t<message_t>::failure (
+          error.kind (), error.what (), error.is_retriable ()));
+    }
 }
 
 relay_call_t session_actor_t::notify_disconnected ()

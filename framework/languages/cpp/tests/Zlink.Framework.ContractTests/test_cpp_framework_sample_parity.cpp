@@ -935,8 +935,9 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_NE (session_factory.find (".enable_actor_gateway ()"), std::string::npos);
     EXPECT_NE (session_factory.find (".attach_actor_gateway (sample_names_t::session_spot_node)"),
                std::string::npos);
-    EXPECT_NE (session.find (".relay_request (header, payload.to_raw ())"), std::string::npos);
-    EXPECT_NE (session.find (".relay (header, payload.to_raw ())"), std::string::npos);
+    EXPECT_NE (session.find (".relay_request (header, payload)"), std::string::npos);
+    EXPECT_NE (session.find (".relay (header, payload)"), std::string::npos);
+    EXPECT_EQ (session.find ("payload.to_raw ()"), std::string::npos);
     EXPECT_EQ (session.find ("RemoteActorPacket"), std::string::npos);
     EXPECT_EQ (play_factory.find ("remote_actor_packet_handler"), std::string::npos);
     EXPECT_EQ (contracts.find ("RemoteActorPacket"), std::string::npos);

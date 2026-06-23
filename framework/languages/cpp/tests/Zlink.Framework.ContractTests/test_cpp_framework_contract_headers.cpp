@@ -125,7 +125,8 @@ static_assert (!has_callback_async<zlink::framework::send_call_t, void>);
 static_assert (!has_blocking_submit<zlink::framework::relay_call_t>);
 static_assert (!has_callback_async<zlink::framework::relay_call_t, void>);
 static_assert (!has_blocking_submit<zlink::framework::relay_request_call_t>);
-static_assert (!has_callback_async<zlink::framework::relay_request_call_t, zlink::message_t>);
+static_assert (!has_callback_async<zlink::framework::relay_request_call_t,
+                                   zlink::framework::message_t>);
 static_assert (!has_blocking_submit<zlink::framework::stream_write_call_t>);
 static_assert (!has_callback_async<zlink::framework::stream_write_call_t, void>);
 static_assert (!has_blocking_submit<zlink::framework::route_send_call_t>);
@@ -658,10 +659,32 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_con
                                           .join_spot (std::declval<zlink::framework::spot_rid_t> (),
                                                       std::declval<const zlink::framework::message_t &> ())),
                               zlink::framework::actor_join_spot_call_t>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_join_result_t> ().reply),
+                              zlink::framework::message_t>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_context_t &> ()
                                           .join_spot_raw (std::declval<zlink::framework::spot_rid_t> (),
                                                          std::declval<const zlink::message_t &> ())),
                               zlink::framework::actor_join_spot_call_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::session_actor_t &> ().relay (
+                   std::declval<const zlink::framework::stream_header_t &> (),
+                   std::declval<const zlink::framework::message_t &> ())),
+                 zlink::framework::relay_call_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::session_actor_t &> ().relay_raw (
+                   std::declval<const zlink::framework::stream_header_t &> (),
+                   std::declval<const zlink::message_t &> ())),
+                 zlink::framework::relay_call_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::session_actor_t &> ().relay_request (
+                   std::declval<const zlink::framework::stream_header_t &> (),
+                   std::declval<const zlink::framework::message_t &> ())),
+                 zlink::framework::relay_request_call_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::session_actor_t &> ().relay_request_raw (
+                   std::declval<const zlink::framework::stream_header_t &> (),
+                   std::declval<const zlink::message_t &> ())),
+                 zlink::framework::relay_request_call_t>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_router_capability_builder_t &> ()

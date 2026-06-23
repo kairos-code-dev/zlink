@@ -68,11 +68,11 @@ class support_chat_session_t final : public zlink::framework::packet_stream_sess
             co_return;
         }
         if (header.kind () == zlink::framework::stream_message_kind_t::request) {
-            auto reply = co_await actor.value ().relay_request (header, payload.to_raw ()).async ();
+            auto reply = co_await actor.value ().relay_request (header, payload).async ();
             co_await stream.reply_packet (header, reply).async ();
             co_return;
         }
-        co_await actor.value ().relay (header, payload.to_raw ()).async ();
+        co_await actor.value ().relay (header, payload).async ();
         co_return;
     }
 

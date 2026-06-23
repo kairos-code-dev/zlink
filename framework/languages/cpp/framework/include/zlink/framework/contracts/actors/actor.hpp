@@ -6,6 +6,7 @@
 #include <zlink/framework/contracts/detail/message_payload.hpp>
 #include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
+#include <zlink/framework/contracts/messaging/message.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 
@@ -56,7 +57,7 @@ struct actor_join_result_t
 {
     int result_code = 0;
     actor_ref_t actor;
-    zlink::message_t reply;
+    message_t reply;
 };
 
 template <typename TReply> struct typed_actor_join_result_t
@@ -114,8 +115,7 @@ class actor_join_spot_call_t
         try {
             const auto &joined = _result.value ();
             co_return typed_actor_join_result_t<TReply>{
-              joined.result_code, joined.actor,
-              _serializers->get<TReply> ().deserialize (joined.reply)};
+              joined.result_code, joined.actor, joined.reply.template decode<TReply> (*_serializers)};
         }
         catch (const framework_exception_t &error) {
             co_return result_t<typed_actor_join_result_t<TReply>>::failure (
@@ -129,28 +129,63 @@ class actor_join_spot_call_t
 };
 
 class actor_join_entry_spot_call_t
-    : private detail::call_facade_t<actor_join_entry_spot_call_t, actor_join_result_t>
 {
-  private:
-    using base_t = detail::call_facade_t<actor_join_entry_spot_call_t, actor_join_result_t>;
-
   public:
     explicit actor_join_entry_spot_call_t (result_t<actor_join_result_t> result) :
-        base_t (std::move (result))
+        _result (std::move (result))
     {
     }
 
-    using base_t::async;
-    using base_t::timeout;
+    actor_join_entry_spot_call_t (result_t<actor_join_result_t> result,
+                                  serializer_registry_t *serializers) :
+        _result (std::move (result)), _serializers (serializers)
+    {
+    }
+
+    actor_join_entry_spot_call_t &timeout (std::chrono::milliseconds timeout)
+    {
+        (void) timeout;
+        return *this;
+    }
+
+    task_t<actor_join_result_t> async () { return task_t<actor_join_result_t> (_result); }
+
+    template <typename TReply> task_t<typed_actor_join_result_t<TReply>> async ()
+    {
+        if (!_result) {
+            const auto *error = _result.error ();
+            co_return result_t<typed_actor_join_result_t<TReply>>::failure (
+              _result.error_kind (),
+              error != nullptr ? error->what () : "actor join entry spot failed");
+        }
+        if (_serializers == nullptr) {
+            co_return result_t<typed_actor_join_result_t<TReply>>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "actor join entry spot result has no serializer registry");
+        }
+        try {
+            const auto &joined = _result.value ();
+            co_return typed_actor_join_result_t<TReply>{
+              joined.result_code, joined.actor, joined.reply.template decode<TReply> (*_serializers)};
+        }
+        catch (const framework_exception_t &error) {
+            co_return result_t<typed_actor_join_result_t<TReply>>::failure (
+              error.kind (), error.what (), error.is_retriable ());
+        }
+    }
+
+  private:
+    result_t<actor_join_result_t> _result;
+    serializer_registry_t *_serializers = nullptr;
 };
 
-class relay_request_call_t : private detail::call_facade_t<relay_request_call_t, zlink::message_t>
+class relay_request_call_t : private detail::call_facade_t<relay_request_call_t, message_t>
 {
   private:
-    using base_t = detail::call_facade_t<relay_request_call_t, zlink::message_t>;
+    using base_t = detail::call_facade_t<relay_request_call_t, message_t>;
 
   public:
-    explicit relay_request_call_t (result_t<zlink::message_t> result) : base_t (std::move (result))
+    explicit relay_request_call_t (result_t<message_t> result) : base_t (std::move (result))
     {
     }
 
@@ -222,7 +257,8 @@ class actor_context_t
             const auto &reply = erased.value ();
             return actor_join_spot_call_t (result_t<actor_join_result_t>::success (
                                              actor_join_result_t{reply.result_code, reply.actor,
-                                                                 reply.reply}),
+                                                                 message_t::from_encoded (
+                                                                   reply.reply, serializer_registry ())}),
                                            serializer_registry ());
         }
         catch (const framework_exception_t &error) {
@@ -350,9 +386,12 @@ class session_actor_t
     std::string_view actor_id () const noexcept;
     actor_context_t context () const;
     bound_session_t bound_session () const;
-    relay_call_t relay (const stream_header_t &header, const zlink::message_t &payload);
+    relay_call_t relay_raw (const stream_header_t &header, const zlink::message_t &payload);
+    relay_request_call_t relay_request_raw (const stream_header_t &header,
+                                            const zlink::message_t &payload);
+    relay_call_t relay (const stream_header_t &header, const message_t &payload);
     relay_request_call_t relay_request (const stream_header_t &header,
-                                        const zlink::message_t &payload);
+                                        const message_t &payload);
     relay_call_t notify_disconnected ();
 
   private:

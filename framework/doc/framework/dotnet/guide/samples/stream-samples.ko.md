@@ -157,14 +157,14 @@ context 와 같은 인스턴스인지 확인한다.
 더 이상 packet[^packet] 을 받지 않으려는 상황을 생각할 수 있다. 그럴 때 session
 handler[^handler] 가 이 함수를 호출하면 된다.
 
-이 문서에서는 stream packet 을 다룰 때 발생하는 불필요한 메모리 복사를 줄이는
-데 무게를 둔다. 그래서 `Message.ToArray()` 를 기본 경로로 두지 않는다. 대신
-`Message` 가 노출하는 `AsReadOnlySpan()` 위에서 decode helper 가 동작하는
-방향을 더 자연스럽다고 본다.
+이 문서에서는 stream packet 을 다룰 때 session handler 가 raw `Message`를 직접
+해석하지 않는 흐름을 기준으로 둔다. framework 는 callback 에 `ZLinkMessage`를
+전달하고, handler 는 `payload.Decode<T>()` 로 업무 DTO를 얻는다.
 
-또한 객체 직렬화 계층은 `playhouse/extensions` 처럼 transport[^transport] 본체와
-분리하는 쪽을 기본으로 본다. 즉 header session 은 `Message` 만 다루고,
-protobuf / json 같은 객체 변환은 extension helper 가 맡는 구조다.
+객체 직렬화 계층은 `playhouse/extensions` 처럼 transport[^transport] 본체와
+분리하지만, handler 가 codec별 helper를 직접 고르지는 않는다. JSON, Protobuf,
+MessagePack, custom codec 은 startup/options 에 등록하고, runtime 이 등록된
+codec registry 를 사용해 `ZLinkMessage`를 encode/decode 한다.
 
 `OnErrorAsync(...)` 로 들어오는 값 역시 raw monitor event 를 그대로 노출하지는
 않는다. 샘플 기준으로는 다음과 같이 둔다. 먼저 `ZLinkStreamError` 가 거친 수준의
@@ -285,13 +285,11 @@ public sealed class ClientHeaderSession(
 - 다른 서버로의 outbound 호출은 session 이 생성자에서 함께 받은
   `IZLinkChannelClient` 로 `SendToChannel(...)` 또는 `RequestToChannel(...)` 를 호출해 처리한다.
   이 호출은 stream 연결이 아니라 channel client socket 을 사용한다.
-- packet decode 는 payload 의 serializer helper 를 거쳐 수행한다.
-- 타입이 protobuf generated 타입(`IMessage<T>` 계열) 이면 protobuf 로 읽는다.
-- 그 외의 일반 class 는 json 으로 읽는 것을 샘플 기본 규칙으로 둔다.
-- 이 helper 는 내부에서 `Message.AsReadOnlySpan()` 을 활용한다. 즉 추가 복사를
-  가급적 피하는 방향을 기본으로 본다.
-- 정리하면, stream 핫패스에서는 불필요한 배열 복사와 추가 메모리 할당을 가능한
-  한 걷어 내야 한다.
+- packet decode 는 `ZLinkMessage.Decode<T>()` 로 수행한다.
+- JSON, Protobuf, MessagePack, custom codec 중 무엇을 쓸지는 handler 가 아니라
+  startup/options 의 codec extension 등록에서 결정한다.
+- handler 안에서는 `Message.From(...)`, `FromJson(...)`, `FromProto(...)` 같은
+  codec별 helper를 호출하지 않는다.
 
 이 방식은 `playhouse` 의 다음 흐름과 같은 감각이다.
 
@@ -406,11 +404,11 @@ raw chunk 를 직접 다루는 표면은 MVP 범위에 포함하지 않는다.
 - `OnConnectedAsync(...)` 는 `ConnectionReady` 시점을 기준으로 본다.
 - `OnErrorAsync(...)` 는 session 단위로 짝지을 수 있는 transport 오류만 받는다.
   handshake 실패나 socket / node 단위의 오류는 monitoring 쪽으로 분리한다.
-- packet 의 decode 와 encode helper 는 framework 본체가 아니라 serializer 확장
-  패키지가 맡는다.
-- `Message.AsReadOnlySpan()` 기반 helper 를 기본으로 두어, 불필요한 복사를
-  줄인다.
-- protobuf / json / messagepack serializer 는 확장 패키지로 분리한다.
+- packet payload 의 업무 표면은 `ZLinkMessage.Decode<T>()` 와 DTO reply 다.
+- codec extension 은 startup/options 에 등록하고, handler 는 codec 종류를 직접
+  고르지 않는다.
+- protobuf / json / messagepack serializer 는 확장 패키지로 분리하지만, sample
+  handler 에 codec별 helper 호출을 두지 않는다.
 
 ## 8. 회귀 테스트
 

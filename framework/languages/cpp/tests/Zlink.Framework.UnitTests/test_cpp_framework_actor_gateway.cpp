@@ -110,7 +110,7 @@ int main ()
       zlink::framework::stream_message_kind_t::send, zlink::framework::stream_codec_t::json,
       zlink::framework::stream_header_flags_t::has_metadata, std::nullopt, "move", metadata);
     const auto payload = zlink::message_t::from (std::string ("payload"));
-    auto relay = bound.value ().relay (header, payload).async ().result ();
+    auto relay = bound.value ().relay_raw (header, payload).async ().result ();
     if (!relay || gateway.relayed_frames ().size () != 1
         || gateway.relayed_frames ()[0].payload.to_string () != "payload"
         || payload.to_string () != "payload") {
@@ -127,17 +127,17 @@ int main ()
         return zlink::framework::result_t<std::optional<zlink::message_t>>::success (
           zlink::message_t::from (std::string ("relay-reply")));
     });
-    auto dispatched_relay = bound.value ().relay (header, payload).async ().result ();
+    auto dispatched_relay = bound.value ().relay_raw (header, payload).async ().result ();
     if (!dispatched_relay || !relay_dispatch_seen || gateway.relayed_frames ().size () != 1) {
         return 22;
     }
-    auto relay_request = bound.value ().relay_request (header, payload).async ().result ();
-    if (!relay_request || relay_request.value ().to_string () != "relay-reply") {
+    auto relay_request = bound.value ().relay_request_raw (header, payload).async ().result ();
+    if (!relay_request || relay_request.value ().to_raw ().to_string () != "relay-reply") {
         return 23;
     }
 
     zlink::framework::session_actor_t unbound;
-    auto missing_relay = unbound.relay (header, payload).async ().result ();
+    auto missing_relay = unbound.relay_raw (header, payload).async ().result ();
     if (missing_relay
         || missing_relay.error_kind () != framework_error_kind_t::actor_route_not_found) {
         return 8;
@@ -170,7 +170,7 @@ int main ()
         || disconnected_push.error_kind () != framework_error_kind_t::disconnected) {
         return 16;
     }
-    auto disconnected_relay = bound.value ().relay (header, payload).async ().result ();
+    auto disconnected_relay = bound.value ().relay_raw (header, payload).async ().result ();
     if (disconnected_relay
         || disconnected_relay.error_kind () != framework_error_kind_t::disconnected
         || payload.to_string () != "payload") {
@@ -213,10 +213,10 @@ int main ()
                              .result ();
     if (!join_spot || !join_spot_seen || join_spot.value ().result_code != 0
         || join_spot.value ().actor.generation () != 8
-        || join_spot.value ().reply.parse_json<join_reply_t> ().mark != "O") {
+        || join_spot.value ().reply.to_raw ().parse_json<join_reply_t> ().mark != "O") {
         return 14;
     }
-    const auto stale_relay = rebound.value ().relay (header, payload).async ().result ();
+    const auto stale_relay = rebound.value ().relay_raw (header, payload).async ().result ();
     if (stale_relay || stale_relay.error_kind () != framework_error_kind_t::actor_stale_generation
         || payload.to_string () != "payload") {
         return 20;
@@ -247,7 +247,7 @@ int main ()
         .async ()
         .result ();
     if (!entry_join || !entry_join_seen || entry_join.value ().actor.generation () != 9
-        || entry_join.value ().reply.to_string () != "joined") {
+        || entry_join.value ().reply.to_raw ().to_string () != "joined") {
         return 15;
     }
     manager.unbind_session ("bob");
@@ -268,7 +268,8 @@ int main ()
         || post_destroy_push.error_kind () != framework_error_kind_t::actor_session_not_bound) {
         return 26;
     }
-    const auto post_destroy_relay = rebound_after_entry.value ().relay (header, payload).async ().result ();
+    const auto post_destroy_relay =
+      rebound_after_entry.value ().relay_raw (header, payload).async ().result ();
     if (post_destroy_relay
         || post_destroy_relay.error_kind () != framework_error_kind_t::actor_route_not_found) {
         return 27;

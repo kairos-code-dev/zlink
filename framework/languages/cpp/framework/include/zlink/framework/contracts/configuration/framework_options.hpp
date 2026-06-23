@@ -393,7 +393,6 @@ class client_server_channel_builder_t
                                          "client/server request timeout must be greater than zero");
         }
         _default_request_timeout = timeout;
-        _options->channel_default_request_timeouts[_channel_name] = timeout;
         apply_channel ();
         return *this;
     }
@@ -638,7 +637,6 @@ class dealer_mesh_channel_builder_t
                                          "dealer mesh request timeout must be greater than zero");
         }
         _default_request_timeout = timeout;
-        _options->channel_default_request_timeouts[_channel_name] = timeout;
         apply ();
         return *this;
     }
@@ -750,7 +748,6 @@ class route_mesh_channel_builder_t
                                          "route mesh request timeout must be greater than zero");
         }
         _default_request_timeout = timeout;
-        _options->route_default_request_timeouts[_channel_name] = timeout;
         apply ();
         return *this;
     }

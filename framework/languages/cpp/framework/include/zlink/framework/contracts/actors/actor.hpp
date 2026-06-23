@@ -92,7 +92,7 @@ class actor_join_spot_call_t
 
     actor_join_spot_call_t &timeout (std::chrono::milliseconds timeout)
     {
-        _timeout = timeout;
+        (void) timeout;
         return *this;
     }
 
@@ -100,7 +100,6 @@ class actor_join_spot_call_t
 
     template <typename TReply> task_t<typed_actor_join_result_t<TReply>> async ()
     {
-        (void) _timeout;
         if (!_result) {
             const auto *error = _result.error ();
             co_return result_t<typed_actor_join_result_t<TReply>>::failure (
@@ -127,7 +126,6 @@ class actor_join_spot_call_t
   private:
     result_t<actor_join_result_t> _result;
     serializer_registry_t *_serializers = nullptr;
-    std::chrono::milliseconds _timeout{0};
 };
 
 class actor_join_entry_spot_call_t

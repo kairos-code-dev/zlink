@@ -14,13 +14,12 @@ template <typename T> class immediate_call_state_t
   public:
     explicit immediate_call_state_t (result_t<T> result) : _result (std::move (result)) {}
 
-    void set_timeout (std::chrono::milliseconds timeout) { _timeout = timeout; }
+    void set_timeout (std::chrono::milliseconds) {}
 
     task_t<T> async () { return task_t<T> (_result); }
 
   private:
     result_t<T> _result;
-    std::chrono::milliseconds _timeout{0};
 };
 
 template <> class immediate_call_state_t<void>
@@ -28,13 +27,12 @@ template <> class immediate_call_state_t<void>
   public:
     explicit immediate_call_state_t (result_t<void> result) : _result (std::move (result)) {}
 
-    void set_timeout (std::chrono::milliseconds timeout) { _timeout = timeout; }
+    void set_timeout (std::chrono::milliseconds) {}
 
     task_t<void> async () { return task_t<void> (_result); }
 
   private:
     result_t<void> _result;
-    std::chrono::milliseconds _timeout{0};
 };
 
 template <typename TDerived, typename TResult> class call_facade_t

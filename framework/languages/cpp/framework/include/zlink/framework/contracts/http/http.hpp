@@ -3,6 +3,7 @@
 
 #include <zlink/framework/contracts/configuration/services.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>
+#include <zlink/framework/contracts/detail/handler_invocation.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/error.hpp>
 
@@ -392,20 +393,6 @@ class http_options_builder_t
         _serializers = &serializers;
     }
 
-    template <typename T> struct task_value_type_t
-    {
-    };
-
-    template <typename T> struct task_value_type_t<task_t<T>>
-    {
-        using type = T;
-    };
-
-    template <typename T> static constexpr bool is_task_v = requires
-    {
-        typename task_value_type_t<T>::type;
-    };
-
     template <typename T> static constexpr bool has_request_type_v = requires
     {
         typename T::request_type;
@@ -558,8 +545,8 @@ class http_options_builder_t
                                                              const http_context_t &context)
     {
         using result_type = std::remove_cvref_t<TResult>;
-        if constexpr (is_task_v<result_type>) {
-            using value_type = typename task_value_type_t<result_type>::type;
+        if constexpr (detail::is_task_v<result_type>) {
+            using value_type = typename detail::task_value_type_t<result_type>::type;
             static_assert (std::is_same_v<value_type, TReply>
                              || std::is_same_v<value_type, http_response_t>,
                            "HTTP handler task_t<T> must return reply_type or http_response_t");

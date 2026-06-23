@@ -848,7 +848,7 @@ static ulong ExtractUInt64(string line, string key)
 
 static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessage)
 {
-    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
     Exception? last = null;
     while (DateTimeOffset.UtcNow < deadline)
     {

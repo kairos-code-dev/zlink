@@ -23,16 +23,6 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
         return this;
     }
 
-    private void Bind(string endpoint)
-    {
-        if (string.IsNullOrWhiteSpace(endpoint))
-        {
-            throw new ZLinkConfigurationException("Route channel bind endpoint must not be empty.");
-        }
-
-        registration.BindEndpoint = endpoint;
-    }
-
     public IZLinkSocketConfig ConfigureSocket()
     {
         return registration.SocketConfig;
@@ -142,20 +132,4 @@ internal sealed class ZLinkRouteMeshChannelServerCapabilityBuilder(
         return registration.SocketConfig;
     }
 
-}
-
-internal sealed class ZLinkRouteMeshOutboundRouteConfigAdapter(ZLinkRouteConfig routeConfig)
-    : IZLinkOutboundRouteConfig
-{
-    public RoutingId RoutingId
-    {
-        get => routeConfig.RoutingId;
-        set => routeConfig.RoutingId = value;
-    }
-
-    public bool ProbeRouterOnConnect
-    {
-        get => routeConfig.EnablePeerProbe;
-        set => routeConfig.EnablePeerProbe = value;
-    }
 }

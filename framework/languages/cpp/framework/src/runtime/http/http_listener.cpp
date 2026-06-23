@@ -43,6 +43,7 @@ class http_host_service_t::listener_t
         _services (&services),
         _stop (&stop),
         _active_connections (0),
+        _active_requests (0),
         _io_workers (std::max<std::size_t> (2, std::thread::hardware_concurrency ())),
         _acceptor (_io)
     {
@@ -113,6 +114,7 @@ class http_host_service_t::listener_t
         }
         beast::error_code ignored;
         _acceptor.close (ignored);
+        (void) wait_for_active_requests (_options->server.graceful_shutdown_timeout);
         close_open_connections ();
         wait_for_workers ();
     }
@@ -146,6 +148,19 @@ class http_host_service_t::listener_t
             return;
         }
         _io_workers.join ();
+    }
+
+    bool wait_for_active_requests (std::chrono::milliseconds timeout) const noexcept
+    {
+        if (timeout <= std::chrono::milliseconds::zero ()) {
+            return _active_requests.load (std::memory_order_acquire) == 0;
+        }
+        const auto deadline = std::chrono::steady_clock::now () + timeout;
+        while (_active_requests.load (std::memory_order_acquire) != 0
+               && std::chrono::steady_clock::now () < deadline) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+        }
+        return _active_requests.load (std::memory_order_acquire) == 0;
     }
 
     // Keep-alive clients hold connections open between requests, and the
@@ -219,7 +234,8 @@ class http_host_service_t::listener_t
             parser.body_limit (_options->server.max_request_body_size);
             parser.header_limit (_options->server.max_header_size);
             beast::error_code ec;
-            set_request_timeout (stream, _options->server.request_headers_timeout);
+            set_request_timeout (stream, served == 0 ? _options->server.request_headers_timeout
+                                                     : _options->server.keep_alive_timeout);
             http::read_header (stream, buffer, parser, ec);
             if (ec == http::error::end_of_stream) {
                 return true;
@@ -245,7 +261,14 @@ class http_host_service_t::listener_t
                 return false;
             }
             auto request = parser.release ();
+            _active_requests.fetch_add (1, std::memory_order_acq_rel);
+            auto request_guard = std::unique_ptr<void, void (*) (void *)> (
+              this, [] (void *listener) {
+                  static_cast<listener_t *> (listener)->_active_requests.fetch_sub (
+                    1, std::memory_order_acq_rel);
+              });
             auto response = handle_http_request (*_options, *_services, *_health, request);
+            request_guard.reset ();
             response.keep_alive (request.keep_alive ()
                                  && served + 1 < _options->server.max_keep_alive_requests
                                  && !_stop->load (std::memory_order_acquire));
@@ -294,6 +317,7 @@ class http_host_service_t::listener_t
     service_provider_t *_services;
     std::atomic_bool *_stop;
     std::atomic_size_t _active_connections;
+    std::atomic_size_t _active_requests;
     std::atomic_bool _workers_stopped{false};
     std::mutex _sockets_mutex;
     std::unordered_set<tcp::socket *> _sockets;

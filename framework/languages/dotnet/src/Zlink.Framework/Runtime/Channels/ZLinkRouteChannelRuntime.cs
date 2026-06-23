@@ -2,8 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Codecs;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.Runtime.Channels;
 
@@ -17,8 +15,9 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     private readonly CancellationTokenSource _stopSource;
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private readonly IZLinkBackendDiscovery? _discovery;
-    private readonly ZLinkMessageFlowTracer _flow;
     private readonly ZLinkCodecRegistryBuilder _codecs;
+    private readonly ZLinkRouteChannelCalls _calls;
+    private readonly ZLinkRouteSpotChannelCalls _spotRouteCalls;
     private IZLinkBackendSpotRouteBridge? _spotRouteBridge;
     private Task? _receiveTask;
 
@@ -36,16 +35,24 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _router = router;
         _discovery = discovery;
         _codecs = frameworkRegistration.Codecs;
-        _flow = new ZLinkMessageFlowTracer(
-            frameworkRegistration.DispatchOptions,
-            services,
-            services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkRouteChannelRuntime>());
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(stopToken);
         _taskRunner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), _stopSource.Token);
         _submitter = new ZLinkAsyncSubmitter(
             router.OnSendReady,
             registration.SocketConfig.SendTimeout ?? frameworkRegistration.DefaultSocketSendTimeout,
             _stopSource.Token);
+        _calls = new ZLinkRouteChannelCalls(
+            services,
+            frameworkRegistration,
+            registration.RouterChannelId,
+            router,
+            _submitter);
+        _spotRouteCalls = new ZLinkRouteSpotChannelCalls(
+            services,
+            frameworkRegistration,
+            registration.RouterChannelId,
+            _submitter,
+            () => _spotRouteBridge);
         _connections = new ZLinkRouteConnectionSet(router);
         _receivePump = new ZLinkRouteReceivePump(
             router,
@@ -120,30 +127,11 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         TMessage message,
         CancellationToken cancellationToken)
     {
-        var header = ZLinkClientCallCodec.CreateEnvelope(
-            ZLinkMessageKind.Command,
-            RouterChannelId,
+        return _calls.SubmitSendAsync(
+            targetNodeRid,
             packetName,
-            null);
-        var parts = ZLinkEnvelopeCodec.EncodeParts(
-            header,
             message,
-            message?.GetType() ?? typeof(TMessage),
-            _codecs);
-
-        if (_flow.Enabled(ZLinkMessageFlowPhase.Sent))
-        {
-            _flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Sent,
-                ZLinkDispatchErrorSurface.RouteMeshChannel,
-                ZLinkDispatchMessageKind.Send,
-                PacketName: packetName,
-                ChannelName: RouterChannelId,
-                CorrelationId: header.CorrelationId,
-                SourceRid: targetNodeRid.ToString()));
-        }
-
-        return SubmitRouteSendPartsAsync(targetNodeRid, parts, cancellationToken);
+            cancellationToken);
     }
 
     public ValueTask SubmitSendPartsAsync(
@@ -152,21 +140,11 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         IReadOnlyList<Message> payloadParts,
         CancellationToken cancellationToken)
     {
-        var parts = PrependHeader(header, payloadParts);
-
-        if (_flow.Enabled(ZLinkMessageFlowPhase.Sent))
-        {
-            _flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Sent,
-                ZLinkDispatchErrorSurface.RouteMeshChannel,
-                ZLinkDispatchMessageKind.Send,
-                PacketName: header.MessageName,
-                ChannelName: RouterChannelId,
-                CorrelationId: header.CorrelationId,
-                SourceRid: targetNodeRid.ToString()));
-        }
-
-        return SubmitRouteSendPartsAsync(targetNodeRid, parts, cancellationToken);
+        return _calls.SubmitSendPartsAsync(
+            targetNodeRid,
+            header,
+            payloadParts,
+            cancellationToken);
     }
 
     public async ValueTask<TReply> RequestAsync<TRequest, TReply>(
@@ -176,49 +154,13 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var header = ZLinkClientCallCodec.CreateEnvelope(
-            ZLinkMessageKind.Request,
-            RouterChannelId,
-            packetName,
-            timeout);
-        var parts = ZLinkEnvelopeCodec.EncodeParts(
-            header,
-            request,
-            request?.GetType() ?? typeof(TRequest),
-            _codecs);
-
-        if (_flow.Enabled(ZLinkMessageFlowPhase.Sent))
-        {
-            _flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Sent,
-                ZLinkDispatchErrorSurface.RouteMeshChannel,
-                ZLinkDispatchMessageKind.Request,
-                PacketName: packetName,
-                ChannelName: RouterChannelId,
-                CorrelationId: header.CorrelationId,
-                SourceRid: targetNodeRid.ToString()));
-        }
-
-        var reply = await SubmitRouteRequestPartsAsync<TReply>(
+        return await _calls.RequestAsync<TRequest, TReply>(
                 targetNodeRid,
-                parts,
+                packetName,
+                request,
                 timeout,
                 cancellationToken)
             .ConfigureAwait(false);
-
-        if (_flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
-        {
-            _flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.ReplyReceived,
-                ZLinkDispatchErrorSurface.RouteMeshChannel,
-                ZLinkDispatchMessageKind.Response,
-                PacketName: packetName,
-                ChannelName: RouterChannelId,
-                CorrelationId: header.CorrelationId,
-                SourceRid: targetNodeRid.ToString()));
-        }
-
-        return reply;
     }
 
     public async ValueTask<TReply> RequestPartsAsync<TReply>(
@@ -228,40 +170,13 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var parts = PrependHeader(header, payloadParts);
-
-        if (_flow.Enabled(ZLinkMessageFlowPhase.Sent))
-        {
-            _flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Sent,
-                ZLinkDispatchErrorSurface.RouteMeshChannel,
-                ZLinkDispatchMessageKind.Request,
-                PacketName: header.MessageName,
-                ChannelName: RouterChannelId,
-                CorrelationId: header.CorrelationId,
-                SourceRid: targetNodeRid.ToString()));
-        }
-
-        var reply = await SubmitRouteRequestPartsAsync<TReply>(
+        return await _calls.RequestPartsAsync<TReply>(
                 targetNodeRid,
-                parts,
+                header,
+                payloadParts,
                 timeout,
                 cancellationToken)
             .ConfigureAwait(false);
-
-        if (_flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
-        {
-            _flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.ReplyReceived,
-                ZLinkDispatchErrorSurface.RouteMeshChannel,
-                ZLinkDispatchMessageKind.Response,
-                PacketName: header.MessageName,
-                ChannelName: RouterChannelId,
-                CorrelationId: header.CorrelationId,
-                SourceRid: targetNodeRid.ToString()));
-        }
-
-        return reply;
     }
 
     public ValueTask SubmitSpotRouteSendPartsAsync(
@@ -270,20 +185,10 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        if (_spotRouteBridge is null)
-        {
-            throw new ZLinkConfigurationException(
-                $"Route channel '{RouterChannelId}' is not attached to a SPOT route bridge.");
-        }
-
-        _spotRouteBridge.SetTargetNode(RouterChannelId, targetNodeRid);
-        return _submitter.Async(
+        return _spotRouteCalls.SubmitSendPartsAsync(
+            targetNodeRid,
+            targetSpotRid,
             parts,
-            pending => _spotRouteBridge.Send(
-                RouterChannelId,
-                targetSpotRid,
-                pending,
-                SendFlags.None),
             cancellationToken);
     }
 
@@ -294,130 +199,11 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        if (_spotRouteBridge is null)
-        {
-            throw new ZLinkConfigurationException(
-                $"Route channel '{RouterChannelId}' is not attached to a SPOT route bridge.");
-        }
-
-        _spotRouteBridge.SetTargetNode(RouterChannelId, targetNodeRid);
-
-        // corr lives inside the already-encoded header (parts[0]); decode only when
-        // tracing is on to keep the off path free.
-        string? correlationId = null;
-        string? packetName = null;
-        if (_flow.Enabled(ZLinkMessageFlowPhase.Sent))
-        {
-            var header = ZLinkEnvelopeCodec.DecodeHeader(parts);
-            correlationId = header.CorrelationId;
-            packetName = header.MessageName;
-            _flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.Sent,
-                ZLinkDispatchErrorSurface.SpotRoute,
-                ZLinkDispatchMessageKind.Request,
-                PacketName: packetName,
-                ChannelName: RouterChannelId,
-                CorrelationId: correlationId,
-                SourceRid: targetNodeRid.ToString(),
-                SpotRid: targetSpotRid.ToString()));
-        }
-
-        var reply = await _submitter
-            .SubmitRequestAsync<IReadOnlyList<Message>>(
+        return await _spotRouteCalls.RequestPartsAsync(
+                targetNodeRid,
+                targetSpotRid,
                 parts,
-                (pending, complete, fail) => _spotRouteBridge.Request(
-                    RouterChannelId,
-                    targetSpotRid,
-                    pending,
-                    (result, reply) => ZLinkRawReplyCompletion.Complete(
-                        result,
-                        reply,
-                        complete,
-                        fail,
-                        $"SPOT routed request failed with result '{result}'."),
-                    SendFlags.None,
-                    timeout),
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        if (_flow.Enabled(ZLinkMessageFlowPhase.ReplyReceived))
-        {
-            // If tracing toggled on after Sent, recover corr from the reply (which
-            // echoes the request corr) so the lone reply line is still joinable.
-            if (correlationId is null && reply.Count > 0)
-            {
-                try
-                {
-                    var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
-                    correlationId = replyHeader.CorrelationId;
-                    packetName ??= replyHeader.MessageName;
-                }
-                catch
-                {
-                    // best-effort: trace without corr rather than fail the call.
-                }
-            }
-
-            _flow.Trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowPhase.ReplyReceived,
-                ZLinkDispatchErrorSurface.SpotRoute,
-                ZLinkDispatchMessageKind.Response,
-                PacketName: packetName,
-                ChannelName: RouterChannelId,
-                CorrelationId: correlationId,
-                SourceRid: targetNodeRid.ToString(),
-                SpotRid: targetSpotRid.ToString()));
-        }
-
-        return reply;
-    }
-
-    private static IReadOnlyList<Message> PrependHeader(
-        ZLinkEnvelopeHeader header,
-        IReadOnlyList<Message> payloadParts)
-    {
-        var parts = new Message[payloadParts.Count + 1];
-        parts[0] = ZLinkEnvelopeCodec.EncodeHeader(header);
-        for (int index = 0; index < payloadParts.Count; index++)
-        {
-            parts[index + 1] = payloadParts[index];
-        }
-
-        return parts;
-    }
-
-    private ValueTask SubmitRouteSendPartsAsync(
-        RoutingId targetNodeRid,
-        IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
-    {
-        return _submitter.Async(
-            parts,
-            pending => _router.Send(targetNodeRid, pending, SendFlags.DontWait),
-            cancellationToken);
-    }
-
-    private async ValueTask<TReply> SubmitRouteRequestPartsAsync<TReply>(
-        RoutingId targetNodeRid,
-        IReadOnlyList<Message> parts,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        return await _submitter
-            .SubmitRequestAsync<TReply>(
-                parts,
-                (pending, complete, fail) => _router.Request(
-                    targetNodeRid,
-                    pending,
-                    (result, reply) => ZLinkEnvelopeReplyCompletion.Complete(
-                        result,
-                        reply,
-                        complete,
-                        fail,
-                        "ZLink routed request",
-                        _codecs),
-                    SendFlags.DontWait,
-                    timeout),
+                timeout,
                 cancellationToken)
             .ConfigureAwait(false);
     }

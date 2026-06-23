@@ -105,9 +105,10 @@ options.http ().configure_server ([] (zlink::framework::http_server_options_buil
 | `set_request_headers_timeout(ms)` / `set_request_body_timeout(ms)` | 수신 단계별 timeout | 5000ms / 5000ms |
 | `set_write_timeout(ms)` | 응답 쓰기 timeout | 5000ms |
 | `set_keep_alive_timeout(ms)` / `set_max_keep_alive_requests(n)` | keep-alive 연결 유지 정책 | 5000ms / 100 |
-| `set_graceful_shutdown_timeout(ms)` | (현재 stop()은 open socket 즉시 종료 — 값 미사용) | 5000ms |
+| `set_graceful_shutdown_timeout(ms)` | 종료 시 진행 중인 request가 끝나기를 기다리는 시간 | 5000ms |
 
-종료 시 서버는 열린 연결을 정리하고 내려간다 — keep-alive로 붙어 있는
-클라이언트가 있어도 `stop()`이 매달리지 않는다.
+종료 시 서버는 새 연결을 먼저 막고 진행 중인 request가 끝나기를 기다린다.
+timeout 안에 끝나지 않은 연결이나 keep-alive로 대기 중인 연결은 정리하므로
+`stop()`이 매달리지 않는다.
 
 [다음: 채널 메시징 →](07-channel-messaging.ko.md)

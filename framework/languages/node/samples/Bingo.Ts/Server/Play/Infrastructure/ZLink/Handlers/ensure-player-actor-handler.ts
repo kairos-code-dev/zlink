@@ -23,7 +23,7 @@ class EnsurePlayerActorHandler implements ZLinkRequestHandler<EnsurePlayerActorR
     const actor = await this.actorManager.getOrCreate(request.actorId, SampleNames.playerActorType) as PlayerActor;
     actor.displayName = request.displayName;
     const joined = await actor.context
-      .joinEntrySpot(this.config.playSpotNodeRid, Buffer.alloc(0))
+      .joinEntrySpot(this.config.playSpotNodeRid, {})
       .submit();
     const actorRef = joined.actor;
     console.log(`play-ensure-actor ready actor=${actor.actorId} node=${String(actorRef.nodeRid)}`);

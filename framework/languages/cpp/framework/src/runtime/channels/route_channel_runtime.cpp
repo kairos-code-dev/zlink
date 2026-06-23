@@ -126,13 +126,13 @@ route_channel_runtime_t::submit_send_parts (const zlink::routing_id_t &target_no
         if (auto connected = ensure_connected (); !connected) {
             return connected;
         }
-        _outbound_packets.push_back (
-          route_outbound_packet_t{target_node_rid, std::nullopt, std::move (parts), std::nullopt});
+        auto &packet = append_outbound_unlocked (target_node_rid, std::nullopt, std::move (parts),
+                                                 std::nullopt);
         if (_send_backend) {
             backend = _send_backend;
-            backend_target = _outbound_packets.back ().target_node_rid;
-            backend_spot_target = _outbound_packets.back ().target_spot_rid;
-            backend_parts = _outbound_packets.back ().parts;
+            backend_target = packet.target_node_rid;
+            backend_spot_target = packet.target_spot_rid;
+            backend_parts = packet.parts;
         }
     }
     if (backend) {
@@ -151,11 +151,7 @@ route_channel_runtime_t::submit_request_parts (const zlink::routing_id_t &target
           connected.error_kind (),
           connected.error () ? connected.error ()->what () : "route channel is not connected");
     }
-    const auto request_seq = _pending_requests.next_request_seq ();
-    _pending_requests.register_request (request_seq, _router_channel_id);
-    _outbound_packets.push_back (
-      route_outbound_packet_t{target_node_rid, std::nullopt, std::move (parts), request_seq});
-    return result_t<std::uint64_t>::success (request_seq);
+    return register_request_unlocked (target_node_rid, std::nullopt, std::move (parts));
 }
 
 result_t<runtime::messaging::message_parts_t>
@@ -172,10 +168,8 @@ route_channel_runtime_t::request_reply_parts (const zlink::routing_id_t &target_
               connected.error_kind (),
               connected.error () ? connected.error ()->what () : "route channel is not connected");
         }
-        request_seq = _pending_requests.next_request_seq ();
-        _pending_requests.register_request (request_seq, _router_channel_id);
-        _outbound_packets.push_back (
-          route_outbound_packet_t{target_node_rid, std::nullopt, parts, request_seq});
+        auto registered = register_request_unlocked (target_node_rid, std::nullopt, parts);
+        request_seq = registered.value ();
         if (!_request_backend) {
             _pending_requests.remove (request_seq);
             return result_t<runtime::messaging::message_parts_t>::failure (
@@ -205,13 +199,13 @@ route_channel_runtime_t::submit_spot_send_parts (const zlink::routing_id_t &targ
         if (auto connected = ensure_connected (); !connected) {
             return connected;
         }
-        _outbound_packets.push_back (
-          route_outbound_packet_t{target_node_rid, target_spot_rid, std::move (parts), std::nullopt});
+        auto &packet = append_outbound_unlocked (target_node_rid, target_spot_rid, std::move (parts),
+                                                 std::nullopt);
         if (_send_backend) {
             backend = _send_backend;
-            backend_target = _outbound_packets.back ().target_node_rid;
-            backend_spot_target = _outbound_packets.back ().target_spot_rid;
-            backend_parts = _outbound_packets.back ().parts;
+            backend_target = packet.target_node_rid;
+            backend_spot_target = packet.target_spot_rid;
+            backend_parts = packet.parts;
         }
     }
     if (backend) {
@@ -234,10 +228,8 @@ route_channel_runtime_t::request_to_spot_parts (const zlink::routing_id_t &targe
               connected.error_kind (),
               connected.error () ? connected.error ()->what () : "route channel is not connected");
         }
-        request_seq = _pending_requests.next_request_seq ();
-        _pending_requests.register_request (request_seq, _router_channel_id);
-        _outbound_packets.push_back (
-          route_outbound_packet_t{target_node_rid, target_spot_rid, parts, request_seq});
+        auto registered = register_request_unlocked (target_node_rid, target_spot_rid, parts);
+        request_seq = registered.value ();
         if (_request_backend) {
             backend = _request_backend;
         }
@@ -271,10 +263,8 @@ route_channel_runtime_t::request_reply_spot_parts (const zlink::routing_id_t &ta
               connected.error_kind (),
               connected.error () ? connected.error ()->what () : "route channel is not connected");
         }
-        request_seq = _pending_requests.next_request_seq ();
-        _pending_requests.register_request (request_seq, _router_channel_id);
-        _outbound_packets.push_back (
-          route_outbound_packet_t{target_node_rid, target_spot_rid, parts, request_seq});
+        auto registered = register_request_unlocked (target_node_rid, target_spot_rid, parts);
+        request_seq = registered.value ();
         if (!_request_backend) {
             _pending_requests.remove (request_seq);
             return result_t<runtime::messaging::message_parts_t>::failure (
@@ -338,6 +328,29 @@ std::size_t route_channel_runtime_t::pending_request_count () const noexcept
 {
     std::lock_guard lock (_mutex);
     return _pending_requests.count ();
+}
+
+route_outbound_packet_t &route_channel_runtime_t::append_outbound_unlocked (
+  const zlink::routing_id_t &target_node_rid,
+  std::optional<zlink::routing_id_t> target_spot_rid,
+  runtime::messaging::message_parts_t parts,
+  std::optional<std::uint64_t> request_seq)
+{
+    _outbound_packets.push_back (route_outbound_packet_t{
+      target_node_rid, std::move (target_spot_rid), std::move (parts), request_seq});
+    return _outbound_packets.back ();
+}
+
+result_t<std::uint64_t> route_channel_runtime_t::register_request_unlocked (
+  const zlink::routing_id_t &target_node_rid,
+  std::optional<zlink::routing_id_t> target_spot_rid,
+  runtime::messaging::message_parts_t parts)
+{
+    const auto request_seq = _pending_requests.next_request_seq ();
+    _pending_requests.register_request (request_seq, _router_channel_id);
+    append_outbound_unlocked (target_node_rid, std::move (target_spot_rid), std::move (parts),
+                              request_seq);
+    return result_t<std::uint64_t>::success (request_seq);
 }
 
 result_t<void> route_channel_runtime_t::ensure_connected () const

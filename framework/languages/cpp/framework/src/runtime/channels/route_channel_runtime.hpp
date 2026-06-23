@@ -125,6 +125,15 @@ class route_channel_runtime_t
     std::size_t pending_request_count () const noexcept;
 
   private:
+    route_outbound_packet_t &append_outbound_unlocked (
+      const zlink::routing_id_t &target_node_rid,
+      std::optional<zlink::routing_id_t> target_spot_rid,
+      runtime::messaging::message_parts_t parts,
+      std::optional<std::uint64_t> request_seq);
+    result_t<std::uint64_t> register_request_unlocked (
+      const zlink::routing_id_t &target_node_rid,
+      std::optional<zlink::routing_id_t> target_spot_rid,
+      runtime::messaging::message_parts_t parts);
     result_t<void> ensure_connected () const;
 
     std::string _router_channel_id;

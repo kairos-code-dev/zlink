@@ -60,8 +60,8 @@ function isWindowsSystemDll(name) {
 function validateLinux(dir, arch) {
   const addon = path.join(dir, 'zlink.node');
   const dynamic = readElfDynamic(addon);
-  if (!dynamic.includes('Shared library: [libzlink.so.7]')) {
-    fail(`${addon} must depend on libzlink.so.7`);
+  if (!dynamic.includes('Shared library: [libzlink.so.8]')) {
+    fail(`${addon} must depend on libzlink.so.8`);
   }
   if (dynamic.includes('Shared library: [libzlink.so.6]') || dynamic.includes('Shared library: [libzlink.so.5]')) {
     fail(`${addon} still depends on a stale libzlink SONAME`);

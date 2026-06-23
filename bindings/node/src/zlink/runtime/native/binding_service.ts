@@ -250,6 +250,8 @@ export interface ServiceNativeBinding {
   spotNodeNew: (ctx: NativeHandle, options: { mode: number }) => NativeHandle;
   spotNodePeers: (node: NativeHandle) => SpotNodePeerEntryRaw[];
   spotNodePeersQuery: (node: NativeHandle, filter?: unknown) => SpotNodePeerEntryRaw[];
+  spotNodeProcessRoutedRouter: (node: NativeHandle) => void;
+  spotNodeTryProcessRoutedRouterParts: (node: NativeHandle, parts: unknown) => boolean;
   spotNodeSetDiscovery: (node: NativeHandle, discovery: NativeHandle) => void;
   spotNodeSetOption: (node: NativeHandle, option: number, value: Buffer) => void;
   spotNodeSetPubBind: (node: NativeHandle, endpoint: string) => void;

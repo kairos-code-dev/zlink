@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zlink"
-version = "7.2.0"
+version = "8.1.0"
 description = "zlink Python bindings — high-performance async messaging library"
 license = {text = "MPL-2.0"}
 authors = [{name = "Zlink Systems"}]

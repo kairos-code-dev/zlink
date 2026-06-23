@@ -276,6 +276,7 @@ node_version_test = repo_root / "bindings/node/tests/version.test.js"
 python_pyproject = repo_root / "bindings/python/pyproject.toml"
 python_pkg_info = repo_root / "bindings/python/src/zlink.egg-info/PKG-INFO"
 python_version_test = repo_root / "bindings/python/tests/test_version.py"
+native_manifest = repo_root / "bindings/native-artifacts.txt"
 
 def pick_existing(paths):
     for p in paths:
@@ -392,6 +393,18 @@ if len({python_major_updated, python_minor_updated, python_patch_updated}) > 1:
 elif not python_major_updated and not python_minor_updated and not python_patch_updated:
     # Newer python tests may read expected version directly from core/include/zlink.h.
     pass
+
+go_native = repo_root / "bindings/go/native"
+if go_native.exists():
+    native_artifacts = sorted(
+        str(path.relative_to(go_native))
+        for path in go_native.rglob("*")
+        if path.is_file() or path.is_symlink()
+    )
+    manifest_text = "\n".join(native_artifacts) + "\n"
+    if native_manifest.read_text(encoding="utf-8") != manifest_text:
+        native_manifest.write_text(manifest_text, encoding="utf-8")
+        updated.append(str(native_manifest.relative_to(repo_root)))
 
 if errors:
     print("Error: failed to update some version markers:", file=sys.stderr)

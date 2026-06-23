@@ -5,6 +5,8 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.service.discovery.Discovery;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.errors.ZlinkBindException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RecvFlags;
@@ -12,6 +14,7 @@ import systems.zlink.contracts.service.registry.Registry;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotDispatchEvent;
 import systems.zlink.contracts.service.spot.SpotDispatchSubjectKind;
@@ -85,7 +88,7 @@ public class CallbackModeContractTest {
             registry.bind(registryPub, registryRouter);
             discovery.connectRegistry(registryRouter);
             publisherNode.attachDiscovery(discovery);
-            publisherNode.setPubBind(TestSupport.tcpEndpoint());
+            bindPubWithRetry(publisherNode);
             String endpoint = publisherNode.status().localEndpoint();
             subscriberNode.connectPeer(endpoint);
             subscriber.setSubscription("alpha");
@@ -134,7 +137,7 @@ public class CallbackModeContractTest {
             registry.bind(registryPub, registryRouter);
             discovery.connectRegistry(registryRouter);
             publisherNode.attachDiscovery(discovery);
-            publisherNode.setPubBind(TestSupport.tcpEndpoint());
+            bindPubWithRetry(publisherNode);
             subscriberNode.connectPeer(publisherNode.status()
                 .localEndpoint());
             subscriber.setSubscription("close-race");
@@ -173,7 +176,7 @@ public class CallbackModeContractTest {
              SpotNode subscriberNode = ctx.createSpotNode();
              Spot publisher = publisherNode.createSpot();
              Spot subscriber = subscriberNode.createSpot()) {
-            publisherNode.setPubBind(TestSupport.tcpEndpoint());
+            bindPubWithRetry(publisherNode);
             subscriberNode.connectPeer(publisherNode.status()
                 .localEndpoint());
             subscriber.setSubscription("drain");
@@ -228,28 +231,42 @@ public class CallbackModeContractTest {
             replier.setRoutingId(serverSpotRid);
             replier.setDispatchHandler(info -> {
             });
-            serverNode.setPubBind(TestSupport.tcpEndpoint());
+            bindRouterWithRetry(serverNode);
+            bindRouterWithRetry(clientNode);
+            bindPubWithRetry(serverNode);
             clientNode.connectPeer(serverNode.status()
                 .localEndpoint());
             awaitCondition(() -> clientNode.status()
                 .connectedPeerCount() > 0, "spot request peer connection");
 
-            try (Message request = Message.from("timeout-request")) {
-                requester.requestToSpot(serverNodeRid, serverSpotRid)
-                    .message(request)
-                    .timeout(Duration.ofMillis(50))
-                    .flags(SendFlags.DONT_WAIT)
-                    .submit((result, parts) -> {
-                        try {
-                            resultRef.set(result);
-                        } catch (Throwable error) {
-                            callbackError.set(error);
-                        } finally {
-                            Message.closeAll(parts);
-                            completed.countDown();
-                        }
-                    });
+            long submitDeadline = System.nanoTime()
+              + TimeUnit.MILLISECONDS.toNanos(TestSupport.DEFAULT_TIMEOUT_MS);
+            boolean submitted = false;
+            while (!submitted && System.nanoTime() < submitDeadline) {
+                try (Message request = Message.from("timeout-request")) {
+                    requester.requestToSpot(serverNodeRid, serverSpotRid)
+                        .message(request)
+                        .timeout(Duration.ofMillis(50))
+                        .flags(SendFlags.DONT_WAIT)
+                        .submit((result, parts) -> {
+                            try {
+                                resultRef.set(result);
+                            } catch (Throwable error) {
+                                callbackError.set(error);
+                            } finally {
+                                Message.closeAll(parts);
+                                completed.countDown();
+                            }
+                        });
+                    submitted = true;
+                } catch (ZlinkSubmitException ex) {
+                    if (!isTransientSubmit(ex.getResult())) {
+                        throw ex;
+                    }
+                    TimeUnit.MILLISECONDS.sleep(10);
+                }
             }
+            assertTrue(submitted, "spot request submit did not become ready");
 
             assertTrue(completed.await(TestSupport.DEFAULT_TIMEOUT_MS,
                 TimeUnit.MILLISECONDS), "spot request callback timed out");
@@ -257,6 +274,38 @@ public class CallbackModeContractTest {
                 "callback raised: " + callbackError.get());
             assertEquals(RequestResult.TIMED_OUT, resultRef.get());
         }
+    }
+
+    private static boolean isTransientSubmit(SubmitResult result) {
+        return result == SubmitResult.BACKPRESSURED
+          || result == SubmitResult.NOT_CONNECTED
+          || result == SubmitResult.NOT_FOUND;
+    }
+
+    private static void bindPubWithRetry(SpotNode node) {
+        bindWithRetry(endpoint -> node.setPubBind(endpoint));
+    }
+
+    private static void bindRouterWithRetry(SpotNode node) {
+        bindWithRetry(endpoint -> node.setRouterBind(endpoint));
+    }
+
+    private static void bindWithRetry(BindAction action) {
+        ZlinkBindException last = null;
+        for (int i = 0; i < 16; i++) {
+            try {
+                action.bind(TestSupport.tcpEndpoint());
+                return;
+            } catch (ZlinkBindException ex) {
+                last = ex;
+            }
+        }
+        throw last;
+    }
+
+    @FunctionalInterface
+    private interface BindAction {
+        void bind(String endpoint);
     }
 
     @Test

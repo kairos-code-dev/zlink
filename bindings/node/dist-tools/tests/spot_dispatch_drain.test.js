@@ -203,6 +203,7 @@ test('entry spot setDispatchHandler replies to routed spot request origin', asyn
     try {
         responderNode.setRoutingId(zlink.RoutingId.from(Buffer.from('dispatch-entry-responder-node')));
         requesterNode.setRoutingId(zlink.RoutingId.from(Buffer.from('dispatch-entry-requester-node')));
+        responder.setRoutingId(zlink.RoutingId.from(Buffer.from('dispatch-entry-responder-spot')));
         requester.setRoutingId(zlink.RoutingId.from(Buffer.from('dispatch-entry-requester-spot')));
         responderNode.setRouterBind(responderRouterEndpoint);
         responderNode.setPubBind(responderPeerEndpoint);

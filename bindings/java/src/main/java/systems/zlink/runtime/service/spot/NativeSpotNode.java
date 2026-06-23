@@ -4,6 +4,7 @@ package systems.zlink.runtime.service.spot;
 
 import systems.zlink.contracts.sockets.AutoHwmProfile;
 import systems.zlink.contracts.errors.ZlinkConfigException;
+import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.sockets.DealerSocket;
@@ -590,10 +591,7 @@ public final class NativeSpotNode implements SpotNode {
             if (isClosed())
                 return;
             ownedSpots = List.copyOf(liveSpotsByHandle.values());
-            liveSpots.clear();
-            liveSpotsByHandle.clear();
             nodeHandle = handle;
-            handle = MemorySegment.NULL;
         }
         RuntimeException closeFailure = null;
         for (Spot spot : ownedSpots) {
@@ -605,9 +603,19 @@ public final class NativeSpotNode implements SpotNode {
                 }
             }
         }
-        Native.spotNodeDestroy(nodeHandle);
         if (closeFailure != null) {
             throw closeFailure;
+        }
+        int rc = Native.spotNodeDestroy(nodeHandle);
+        if (rc != 0) {
+            throw ZlinkException.fromLastError("zlink_spot_node_destroy");
+        }
+        synchronized (lifecycleLock) {
+            if (handle != null && handle.address() == nodeHandle.address()) {
+                liveSpots.clear();
+                liveSpotsByHandle.clear();
+                handle = MemorySegment.NULL;
+            }
         }
     }
 

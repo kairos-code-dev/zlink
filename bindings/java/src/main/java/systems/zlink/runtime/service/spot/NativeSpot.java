@@ -7,6 +7,7 @@ import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.errors.ZlinkRecvException;
+import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RequestCallback;
@@ -689,8 +690,11 @@ public final class NativeSpot implements Spot {
         if (currentHandle == null || currentHandle.address() == 0) {
             return;
         }
+        int rc = Native.spotDestroy(currentHandle);
+        if (rc != 0) {
+            throw ZlinkException.fromLastError("zlink_spot_destroy");
+        }
         handle = MemorySegment.NULL;
-        Native.spotDestroy(currentHandle);
         sendPlane.close();
         routedSupport.close();
         subscriptionSupport.close();

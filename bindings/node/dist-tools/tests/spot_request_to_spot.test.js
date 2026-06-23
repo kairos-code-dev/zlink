@@ -304,6 +304,7 @@ test('spot requestToSpot promise resolves through peer entry spot routed reply',
     try {
         serverNode.setRoutingId(textRoutingId('REQREP_ENTRY_SERVER_NODE'));
         clientNode.setRoutingId(textRoutingId('REQREP_ENTRY_CLIENT_NODE'));
+        serverEntrySpot.setRoutingId(textRoutingId('REQREP_ENTRY_SERVER_SPOT'));
         clientSpot.setRoutingId(textRoutingId('REQREP_ENTRY_CLIENT_SPOT'));
         serverNode.setRouterBind(serverRouterEndpoint);
         serverNode.setPubBind(serverPeerEndpoint);
@@ -378,6 +379,7 @@ test('spot requestToSpot from spot created after peer connect resolves through p
     try {
         serverNode.setRoutingId(textRoutingId('REQREP_LATE_ENTRY_SERVER_NODE'));
         clientNode.setRoutingId(textRoutingId('REQREP_LATE_ENTRY_CLIENT_NODE'));
+        serverEntrySpot.setRoutingId(textRoutingId('REQREP_LATE_ENTRY_SERVER_SPOT'));
         serverNode.setRouterBind(serverRouterEndpoint);
         serverNode.setPubBind(serverPeerEndpoint);
         clientNode.setRouterBind(clientRouterEndpoint);

@@ -127,6 +127,8 @@ test('stream routed send from spot-to-spot dispatch delivers repeated frames to 
     try {
         responderNode.setRoutingId(zlink.RoutingId.from(Buffer.from('stream-responder-node')));
         requesterNode.setRoutingId(zlink.RoutingId.from(Buffer.from('stream-requester-node')));
+        responder.setRoutingId(zlink.RoutingId.from(Buffer.from('stream-responder-spot')));
+        requester.setRoutingId(zlink.RoutingId.from(Buffer.from('stream-requester-spot')));
         stream.bind(streamEndpoint);
         responderNode.setRouterBind(responderRouterEndpoint);
         responderNode.setPubBind(responderPeerEndpoint);
@@ -214,6 +216,8 @@ test('actor bound session send from spot-to-spot dispatch flushes final frame wi
     try {
         responderNode.setRoutingId(zlink.RoutingId.from(Buffer.from('bound-responder-node')));
         requesterNode.setRoutingId(zlink.RoutingId.from(Buffer.from('bound-requester-node')));
+        responder.setRoutingId(zlink.RoutingId.from(Buffer.from('bound-responder-spot')));
+        requester.setRoutingId(zlink.RoutingId.from(Buffer.from('bound-requester-spot')));
         actor = responderNode.createActor('bound-target');
         stream.bind(streamEndpoint);
         stream.attachActorGateway(responderNode);

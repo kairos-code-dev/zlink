@@ -10,7 +10,7 @@ namespace Systems.Zlink.Runtime.Native;
 internal static class NativeLibraryLoader
 {
     private const string LinuxUnversionedName = "libzlink.so";
-    private const string LinuxSoname = "libzlink.so.7";
+    private const string LinuxSoname = "libzlink.so.8";
 
     private static readonly object Sync = new();
     private static IntPtr _handle = IntPtr.Zero;

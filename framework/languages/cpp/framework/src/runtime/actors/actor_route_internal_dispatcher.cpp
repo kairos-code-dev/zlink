@@ -27,18 +27,22 @@ bool actor_route_internal_dispatcher_t::can_handle_request (std::string_view pac
 }
 
 result_t<void>
-actor_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &received) const
+actor_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &received,
+                                                  service_provider_t &services) const
 {
     (void) received;
+    (void) services;
     return result_t<void>::failure (framework_error_kind_t::route_handler_not_found,
                                     "actor route internal send is not supported");
 }
 
 result_t<zlink::message_t> actor_route_internal_dispatcher_t::dispatch_request (
   const route_received_packet_t &received,
-  const runtime::messaging::envelope_header_t &header) const
+  const runtime::messaging::envelope_header_t &header,
+  service_provider_t &services) const
 {
     (void) header;
+    (void) services;
     auto body = runtime::messaging::envelope_codec_t{}.decode_body (received.parts);
     if (!body) {
         return result_t<zlink::message_t>::failure (

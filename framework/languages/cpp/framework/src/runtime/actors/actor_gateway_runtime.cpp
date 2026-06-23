@@ -718,7 +718,6 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
                                    make_actor_bound_session_route_request (
                                      current_actor_ref, packet_name, payload))
                          .packet_name (actor_bound_session_route_request_t::packet_name)
-                         .timeout (std::chrono::milliseconds (5000))
                          .async<actor_bound_session_route_reply_t> ()
                          .result ();
           if (!reply) {

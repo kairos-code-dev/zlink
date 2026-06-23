@@ -33,9 +33,11 @@ bool spot_route_internal_dispatcher_t::can_handle_request (std::string_view pack
 }
 
 result_t<void>
-spot_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &received) const
+spot_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &received,
+                                                 service_provider_t &services) const
 {
     (void) received;
+    (void) services;
     return result_t<void>::failure (framework_error_kind_t::route_handler_not_found,
                                     "SPOT route internal send is not supported");
 }
@@ -53,7 +55,8 @@ actor_gateway_runtime_t spot_route_internal_dispatcher_t::bind_actor_route (
 
 result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
   const route_received_packet_t &received,
-  const runtime::messaging::envelope_header_t &header) const
+  const runtime::messaging::envelope_header_t &header,
+  service_provider_t &services) const
 {
     (void) header;
     auto body = runtime::messaging::envelope_codec_t{}.decode_body (received.parts);
@@ -72,11 +75,9 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             auto actor_gateway = bind_actor_route (actor_ref, header, received);
             spot_actor_message_metadata_t metadata;
             metadata.values = request.metadata;
-            service_collection_t services;
-            auto provider = services.build_provider ();
             auto relayed = runtime.manager ().relay_actor_packet (
               actor_ref, _actor_gateway.actor_context (actor_ref), request.packet_name_value,
-              zlink::message_t::from (request.payload), provider, *_serializers,
+              zlink::message_t::from (request.payload), services, *_serializers,
               std::move (metadata));
             if (!relayed) {
                 return result_t<zlink::message_t>::failure (

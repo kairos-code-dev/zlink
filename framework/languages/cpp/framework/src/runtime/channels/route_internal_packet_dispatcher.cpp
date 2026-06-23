@@ -20,19 +20,23 @@ bool no_route_internal_packet_dispatcher_t::can_handle_request (std::string_view
 }
 
 result_t<void>
-no_route_internal_packet_dispatcher_t::dispatch_send (const route_received_packet_t &received) const
+no_route_internal_packet_dispatcher_t::dispatch_send (const route_received_packet_t &received,
+                                                      service_provider_t &services) const
 {
     (void) received;
+    (void) services;
     return result_t<void>::failure (framework_error_kind_t::route_handler_not_found,
                                     "no routed internal send dispatcher is configured");
 }
 
 result_t<zlink::message_t> no_route_internal_packet_dispatcher_t::dispatch_request (
   const route_received_packet_t &received,
-  const runtime::messaging::envelope_header_t &header) const
+  const runtime::messaging::envelope_header_t &header,
+  service_provider_t &services) const
 {
     (void) received;
     (void) header;
+    (void) services;
     return result_t<zlink::message_t>::failure (
       framework_error_kind_t::route_handler_not_found,
       "no routed internal request dispatcher is configured");
@@ -67,7 +71,8 @@ bool composite_route_internal_packet_dispatcher_t::can_handle_request (
 }
 
 result_t<void> composite_route_internal_packet_dispatcher_t::dispatch_send (
-  const route_received_packet_t &received) const
+  const route_received_packet_t &received,
+  service_provider_t &services) const
 {
     auto header = runtime::messaging::envelope_codec_t{}.decode_header (received.parts);
     if (!header) {
@@ -80,12 +85,13 @@ result_t<void> composite_route_internal_packet_dispatcher_t::dispatch_send (
         return result_t<void>::failure (framework_error_kind_t::route_handler_not_found,
                                         "routed internal send packet is not supported");
     }
-    return dispatcher->dispatch_send (received);
+    return dispatcher->dispatch_send (received, services);
 }
 
 result_t<zlink::message_t> composite_route_internal_packet_dispatcher_t::dispatch_request (
   const route_received_packet_t &received,
-  const runtime::messaging::envelope_header_t &header) const
+  const runtime::messaging::envelope_header_t &header,
+  service_provider_t &services) const
 {
     const auto *dispatcher = resolve_request (header.message_name);
     if (dispatcher == nullptr) {
@@ -93,7 +99,7 @@ result_t<zlink::message_t> composite_route_internal_packet_dispatcher_t::dispatc
           framework_error_kind_t::route_handler_not_found,
           "routed internal request packet is not supported");
     }
-    return dispatcher->dispatch_request (received, header);
+    return dispatcher->dispatch_request (received, header, services);
 }
 
 const route_internal_packet_dispatcher_t *

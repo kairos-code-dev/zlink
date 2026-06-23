@@ -89,7 +89,7 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
                                           const runtime::messaging::envelope_header_t &header) const
 {
     if (_internal_packets != nullptr && _internal_packets->can_handle_send (header.message_name)) {
-        auto dispatched = _internal_packets->dispatch_send (received);
+        auto dispatched = _internal_packets->dispatch_send (received, *_services);
         if (!dispatched) {
             return result_t<std::optional<route_dispatch_reply_t>>::failure (
               dispatched.error_kind (),
@@ -176,7 +176,7 @@ result_t<std::optional<route_dispatch_reply_t>> route_packet_dispatcher_t::dispa
 {
     if (_internal_packets != nullptr
         && _internal_packets->can_handle_request (header.message_name)) {
-        auto reply = _internal_packets->dispatch_request (received, header);
+        auto reply = _internal_packets->dispatch_request (received, header, *_services);
         if (!reply) {
             framework_exception_t error (reply.error_kind (), reply.error ()
                                                                 ? reply.error ()->what ()

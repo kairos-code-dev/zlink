@@ -206,6 +206,7 @@ class local_handler_t
     int last_event = 0;
     int last_route_request = 0;
     int last_route_event = 0;
+    int internal_dispatch_provider_seen = 0;
     std::string last_route_source;
 };
 
@@ -525,18 +526,22 @@ class local_internal_dispatcher_t final
     }
 
     zlink::framework::result_t<void>
-    dispatch_send (const zlink::framework::detail::route_received_packet_t &received) const override
+    dispatch_send (const zlink::framework::detail::route_received_packet_t &received,
+                   zlink::framework::service_provider_t &services) const override
     {
         (void) received;
+        services.get_required<local_handler_t> ().internal_dispatch_provider_seen = 1;
         ++send_count;
         return zlink::framework::result_t<void>::success ();
     }
 
     zlink::framework::result_t<zlink::message_t> dispatch_request (
       const zlink::framework::detail::route_received_packet_t &received,
-      const zlink::framework::runtime::messaging::envelope_header_t &header) const override
+      const zlink::framework::runtime::messaging::envelope_header_t &header,
+      zlink::framework::service_provider_t &services) const override
     {
         (void) received;
+        services.get_required<local_handler_t> ().internal_dispatch_provider_seen = 2;
         if (header.message_name != "internal.request") {
             return zlink::framework::result_t<zlink::message_t>::failure (
               zlink::framework::framework_error_kind_t::route_handler_not_found,
@@ -2215,13 +2220,17 @@ int main ()
     if (!internal_reply_body || internal_reply_body.value ().to_string () != "88") {
         return 52;
     }
+    if (provider.get_required<local_handler_t> ().internal_dispatch_provider_seen != 2) {
+        return 64;
+    }
     if (no_internal.can_handle_send ("internal.send")
         || no_internal.can_handle_request ("internal.request")) {
         return 65;
     }
     const auto no_internal_send =
       no_internal.dispatch_send (zlink::framework::detail::route_received_packet_t{
-        zlink::routing_id_t::from (std::string ("source-node")), std::nullopt, internal_parts});
+        zlink::routing_id_t::from (std::string ("source-node")), std::nullopt, internal_parts},
+        provider);
     if (no_internal_send
         || no_internal_send.error_kind ()
              != zlink::framework::framework_error_kind_t::route_handler_not_found) {
@@ -2230,7 +2239,7 @@ int main ()
     const auto no_internal_request = no_internal.dispatch_request (
       zlink::framework::detail::route_received_packet_t{
         zlink::routing_id_t::from (std::string ("source-node")), 81, internal_parts},
-      internal_header);
+      internal_header, provider);
     if (no_internal_request
         || no_internal_request.error_kind ()
              != zlink::framework::framework_error_kind_t::route_handler_not_found) {
@@ -2245,8 +2254,10 @@ int main ()
     if (!composite_internal.can_handle_send ("internal.send")
         || !composite_internal.dispatch_send (zlink::framework::detail::route_received_packet_t{
           zlink::routing_id_t::from (std::string ("source-node")), std::nullopt,
-          internal_send_parts})
-        || internal_a.send_count != 1) {
+          internal_send_parts},
+          provider)
+        || internal_a.send_count != 1
+        || provider.get_required<local_handler_t> ().internal_dispatch_provider_seen != 1) {
         return 68;
     }
     zlink::framework::runtime::messaging::envelope_header_t unsupported_internal_header;
@@ -2259,7 +2270,8 @@ int main ()
     const auto unsupported_internal_send =
       composite_internal.dispatch_send (zlink::framework::detail::route_received_packet_t{
         zlink::routing_id_t::from (std::string ("source-node")), std::nullopt,
-        unsupported_internal_parts});
+        unsupported_internal_parts},
+        provider);
     if (unsupported_internal_send
         || unsupported_internal_send.error_kind ()
              != zlink::framework::framework_error_kind_t::route_handler_not_found) {
@@ -2270,7 +2282,7 @@ int main ()
     const auto unsupported_internal_request = composite_internal.dispatch_request (
       zlink::framework::detail::route_received_packet_t{
         zlink::routing_id_t::from (std::string ("source-node")), 82, unsupported_internal_parts},
-      unsupported_internal_header);
+      unsupported_internal_header, provider);
     if (unsupported_internal_request
         || unsupported_internal_request.error_kind ()
              != zlink::framework::framework_error_kind_t::route_handler_not_found) {
@@ -2280,7 +2292,8 @@ int main ()
       composite_internal.dispatch_send (zlink::framework::detail::route_received_packet_t{
         zlink::routing_id_t::from (std::string ("source-node")), std::nullopt,
         zlink::framework::runtime::messaging::message_parts_t (
-          std::vector<zlink::message_t>{zlink::message_t::from (std::string ("not-json"))})});
+          std::vector<zlink::message_t>{zlink::message_t::from (std::string ("not-json"))})},
+        provider);
     if (invalid_internal_send
         || invalid_internal_send.error_kind ()
              != zlink::framework::framework_error_kind_t::request_protocol_error) {
@@ -2581,7 +2594,7 @@ int main ()
         zlink::routing_id_t::from (std::string ("play-node")),
         99,
         std::move (bound_parts)},
-      bound_header);
+      bound_header, provider);
     const auto routed_headers = stream_runtime.written_headers (stream);
     if (!bound_reply || routed_headers.size () != 1) {
         return 67;

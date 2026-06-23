@@ -13,13 +13,10 @@ namespace zlink::framework::detail
 namespace
 {
 
-spot_actor_message_metadata_t project_stream_metadata (const stream_header_t &header)
+spot_actor_message_metadata_t project_stream_metadata (const stream_header_t &header,
+                                                       const message_metadata_policy_t &policy)
 {
-    spot_actor_message_metadata_t metadata;
-    for (const auto &[key, value] : header.metadata ().values ()) {
-        metadata.values.emplace (key, value);
-    }
-    return metadata;
+    return policy.project (header.metadata ().values ());
 }
 
 result_t<actor_join_reply_t> join_actor_to_spot_through_route (
@@ -49,7 +46,6 @@ result_t<actor_join_reply_t> join_actor_to_spot_through_route (
                                std::string (route->node_rid.value ())),
                              std::move (request))
                    .packet_name (spot_actor_join_route_request_t::packet_name)
-                   .timeout (std::chrono::milliseconds (5000))
                    .template async<spot_actor_join_route_reply_t> ()
                    .result ();
     if (!reply) {
@@ -91,7 +87,6 @@ result_t<std::optional<zlink::message_t>> relay_actor_packet_through_route (
                                  make_spot_actor_packet_route_request (
                                    actor_ref, spot_rid, header.packet_name (), payload, metadata))
                        .packet_name (spot_actor_packet_route_request_t::packet_name)
-                       .timeout (std::chrono::milliseconds (5000))
                        .template async<spot_actor_packet_route_reply_t> ()
                        .result ();
         if (!reply) {
@@ -380,10 +375,12 @@ void configure_actor_gateway_spot_bridge (
           auto relay_with = [&] (actor_gateway_spot_node_binding_t &binding,
                                  actor_context_t context) {
               auto provider = services->build_provider ();
+              auto &metadata_policy = provider.get_required<message_metadata_policy_t> ();
               return relay_actor_packet_through_route (
                 binding.runtime, actor_gateway, binding.route_client,
                 binding.route_channel_name, actor_ref, std::move (context), header,
-                payload, provider, *serializers, project_stream_metadata (header));
+                payload, provider, *serializers,
+                project_stream_metadata (header, metadata_policy));
           };
           return relay_actor_with_local_binding_first (bindings, actor_ref,
                                                        std::move (actor_context), relay_with);

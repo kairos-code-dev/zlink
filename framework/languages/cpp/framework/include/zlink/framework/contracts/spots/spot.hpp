@@ -8,6 +8,7 @@
 #include <zlink/framework/contracts/configuration/services.hpp>
 #include <zlink/framework/contracts/detail/handler_invocation.hpp>
 #include <zlink/framework/contracts/detail/message_name.hpp>
+#include <zlink/framework/contracts/messaging/message.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
@@ -53,16 +54,42 @@ class entry_spot_t : public spot_t
 struct spot_actor_join_response_t
 {
     bool accepted = false;
-    std::optional<zlink::message_t> reply;
+    std::optional<message_t> reply;
 
-    static spot_actor_join_response_t accept (std::optional<zlink::message_t> reply = std::nullopt)
+    static spot_actor_join_response_t accept (std::optional<message_t> reply = std::nullopt)
     {
         return spot_actor_join_response_t{true, std::move (reply)};
     }
 
-    static spot_actor_join_response_t reject (std::optional<zlink::message_t> reply = std::nullopt)
+    static spot_actor_join_response_t accept (zlink::message_t reply)
+    {
+        return accept (message_t::from_encoded (std::move (reply)));
+    }
+
+    template <typename TReply>
+      requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
+                && !std::is_same_v<std::remove_cvref_t<TReply>, zlink::message_t>)
+    static spot_actor_join_response_t accept (TReply reply)
+    {
+        return accept (message_t::from (std::move (reply)));
+    }
+
+    static spot_actor_join_response_t reject (std::optional<message_t> reply = std::nullopt)
     {
         return spot_actor_join_response_t{false, std::move (reply)};
+    }
+
+    static spot_actor_join_response_t reject (zlink::message_t reply)
+    {
+        return reject (message_t::from_encoded (std::move (reply)));
+    }
+
+    template <typename TReply>
+      requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
+                && !std::is_same_v<std::remove_cvref_t<TReply>, zlink::message_t>)
+    static spot_actor_join_response_t reject (TReply reply)
+    {
+        return reject (message_t::from (std::move (reply)));
     }
 };
 
@@ -76,16 +103,42 @@ enum class spot_create_state_t
 struct spot_create_response_t
 {
     bool accepted = true;
-    std::optional<zlink::message_t> reply;
+    std::optional<message_t> reply;
 
-    static spot_create_response_t accept (std::optional<zlink::message_t> reply = std::nullopt)
+    static spot_create_response_t accept (std::optional<message_t> reply = std::nullopt)
     {
         return spot_create_response_t{true, std::move (reply)};
     }
 
-    static spot_create_response_t reject (std::optional<zlink::message_t> reply = std::nullopt)
+    static spot_create_response_t accept (zlink::message_t reply)
+    {
+        return accept (message_t::from_encoded (std::move (reply)));
+    }
+
+    template <typename TReply>
+      requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
+                && !std::is_same_v<std::remove_cvref_t<TReply>, zlink::message_t>)
+    static spot_create_response_t accept (TReply reply)
+    {
+        return accept (message_t::from (std::move (reply)));
+    }
+
+    static spot_create_response_t reject (std::optional<message_t> reply = std::nullopt)
     {
         return spot_create_response_t{false, std::move (reply)};
+    }
+
+    static spot_create_response_t reject (zlink::message_t reply)
+    {
+        return reject (message_t::from_encoded (std::move (reply)));
+    }
+
+    template <typename TReply>
+      requires (!std::is_same_v<std::remove_cvref_t<TReply>, message_t>
+                && !std::is_same_v<std::remove_cvref_t<TReply>, zlink::message_t>)
+    static spot_create_response_t reject (TReply reply)
+    {
+        return reject (message_t::from (std::move (reply)));
     }
 };
 
@@ -192,7 +245,9 @@ class spot_node_runtime_t;
 
 struct spot_actor_admission_callbacks_t
 {
-    std::function<spot_actor_join_response_t (void *, void *, const zlink::message_t &)> join;
+    std::function<spot_actor_join_response_t (void *, void *, const zlink::message_t &,
+                                              serializer_registry_t &)>
+      join;
     std::function<void (void *, void *)> on_actor_joined;
     std::function<void (void *, void *)> onCreateActor;
     std::function<void (void *, void *)> onLeaveActor;
@@ -823,10 +878,16 @@ class spot_handler_registry_t
     {
         detail::spot_actor_admission_callbacks_t callbacks;
         callbacks.entry_spot = std::is_base_of_v<entry_spot_t, TSpot>;
-        callbacks.join = [] (void *spot, void *actor, const zlink::message_t &request) {
+        callbacks.join = [] (void *spot,
+                              void *actor,
+                              const zlink::message_t &request,
+                              serializer_registry_t &serializers) {
             auto &typed_spot = *static_cast<TSpot *> (spot);
             auto &typed_actor = *static_cast<TActor *> (actor);
-            if constexpr (requires { typed_spot.on_actor_join (typed_actor, request); }) {
+            if constexpr (requires { typed_spot.on_actor_join (typed_actor, message_t{}); }) {
+                return typed_spot.on_actor_join (typed_actor,
+                                                 message_t::from_encoded (request, &serializers));
+            } else if constexpr (requires { typed_spot.on_actor_join (typed_actor, request); }) {
                 return typed_spot.on_actor_join (typed_actor, request);
             } else if constexpr (std::is_base_of_v<entry_spot_t, TSpot>) {
                 return spot_actor_join_response_t::accept ();
@@ -959,7 +1020,9 @@ struct spot_lifecycle_callbacks_t
     std::function<std::shared_ptr<void> ()> create_instance;
     std::function<void (void *, spot_context_t &)> configure;
     std::function<void (void *, entry_spot_context_t &)> configure_entry;
-    std::function<spot_create_response_t (void *, const zlink::message_t &)> on_create;
+    std::function<spot_create_response_t (void *, const zlink::message_t &,
+                                          serializer_registry_t &)>
+      on_create;
     std::function<void (void *)> on_initialize;
     std::function<void (void *)> on_closing;
 };
@@ -974,6 +1037,14 @@ template <typename TSpot>
 concept has_entry_configure_callback = requires (TSpot & spot, entry_spot_context_t &context)
 {
     spot.configure (context);
+};
+
+template <typename TSpot>
+concept has_framework_create_callback = requires (TSpot & spot, const message_t &request)
+{
+    {
+        spot.on_create (request)
+    } -> std::same_as<spot_create_response_t>;
 };
 
 template <typename TSpot>
@@ -1196,8 +1267,17 @@ class spot_node_builder_t
                     static_cast<TSpot *> (spot)->configure (context);
                 };
             }
-            if constexpr (detail::has_create_callback<TSpot>) {
-                callbacks.on_create = [] (void *spot, const zlink::message_t &request) {
+            if constexpr (detail::has_framework_create_callback<TSpot>) {
+                callbacks.on_create = [] (void *spot,
+                                          const zlink::message_t &request,
+                                          serializer_registry_t &serializers) {
+                    return static_cast<TSpot *> (spot)->on_create (
+                      message_t::from_encoded (request, &serializers));
+                };
+            } else if constexpr (detail::has_create_callback<TSpot>) {
+                callbacks.on_create = [] (void *spot,
+                                          const zlink::message_t &request,
+                                          serializer_registry_t &) {
                     return static_cast<TSpot *> (spot)->on_create (request);
                 };
             }

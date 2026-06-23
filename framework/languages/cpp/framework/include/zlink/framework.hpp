@@ -26,6 +26,7 @@
 #include <zlink/framework/contracts/eventing/health.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
+#include <zlink/framework/contracts/messaging/message.hpp>
 #include <zlink/framework/contracts/registry/registry.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>

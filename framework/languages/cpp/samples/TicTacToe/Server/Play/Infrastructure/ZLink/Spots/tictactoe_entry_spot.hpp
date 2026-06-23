@@ -44,11 +44,8 @@ class entry_spot_t : public zlink::framework::entry_spot_t
         if (payload.player.actor_id.empty ()) {
             payload.player = {actor.actor_id, actor.actor_id, sample_names_t::required_level, 0};
         }
-        auto joined =
-          co_await actor.context.join_spot (spot_rid, to_stream_payload (payload)).async ();
-        join_game_res_t reply;
-        from_stream_payload (joined.reply, reply);
-        co_return reply;
+        auto joined = co_await actor.context.join_spot (spot_rid, payload).async<join_game_res_t> ();
+        co_return joined.reply;
     }
 
     observe_milestone_res_t observe_milestone (

@@ -85,6 +85,21 @@ void configure_spot_execution (const std::shared_ptr<detail::spot_context_state_
     state->worker_scheduler = make_spot_worker_scheduler (state);
 }
 
+zlink::message_t framework_reply_or_empty (const std::optional<message_t> &reply,
+                                           serializer_registry_t &serializers)
+{
+    return reply ? reply->to_raw (serializers) : zlink::message_t{};
+}
+
+std::optional<zlink::message_t>
+framework_reply_or_null (const std::optional<message_t> &reply, serializer_registry_t &serializers)
+{
+    if (!reply) {
+        return std::nullopt;
+    }
+    return reply->to_raw (serializers);
+}
+
 void attach_native_spot_locked (const std::shared_ptr<detail::spot_context_state_t> &state)
 {
     if (!state || !state->node) {
@@ -1612,11 +1627,12 @@ result_t<actor_join_reply_t> spot_node_runtime_t::join_actor_to_spot_erased (
           admission.error () ? admission.error ()->what () : "actor admission failed");
     }
 
+    auto &serializers = *context.value ()._state->channel_runtime->serializers;
     const auto response = admission.value ().get ().join (
-      context.value ()._state->spot_instance.get (), actor->second.get (), request);
+      context.value ()._state->spot_instance.get (), actor->second.get (), request, serializers);
     if (!response.accepted) {
         return result_t<actor_join_reply_t>::success (
-          actor_join_reply_t{1, actor_ref, response.reply.value_or (zlink::message_t{})});
+          actor_join_reply_t{1, actor_ref, framework_reply_or_empty (response.reply, serializers)});
     }
 
     const auto key = actor_key (actor_ref);
@@ -1628,7 +1644,7 @@ result_t<actor_join_reply_t> spot_node_runtime_t::join_actor_to_spot_erased (
                                          actor_factory.value ().get ().actor_type,
                                          actor->second.get (), admission.value ().get (), true);
     return result_t<actor_join_reply_t>::success (
-      actor_join_reply_t{0, committed, response.reply.value_or (zlink::message_t{})});
+      actor_join_reply_t{0, committed, framework_reply_or_empty (response.reply, serializers)});
 }
 
 result_t<actor_join_reply_t>
@@ -1680,20 +1696,21 @@ spot_node_runtime_t::join_remote_actor_to_spot_erased (const actor_ref_t &actor_
           admission.error () ? admission.error ()->what () : "actor admission failed");
     }
 
+    auto &serializers = *context.value ()._state->channel_runtime->serializers;
     const auto response = admission.value ().get ().join (
-      context.value ()._state->spot_instance.get (), actor_instance.get (), request);
+      context.value ()._state->spot_instance.get (), actor_instance.get (), request, serializers);
     if (!response.accepted) {
         actor_factory.value ().get ().configure_instance (actor_instance.get (), actor_ref,
                                                           &actor_context);
         return result_t<actor_join_reply_t>::success (
-          actor_join_reply_t{1, actor_ref, response.reply.value_or (zlink::message_t{})});
+          actor_join_reply_t{1, actor_ref, framework_reply_or_empty (response.reply, serializers)});
     }
 
     commit_accepted_actor_join_unlocked (key, context.value (), committed,
                                          actor_factory.value ().get ().actor_type,
                                          actor_instance.get (), admission.value ().get (), false);
     return result_t<actor_join_reply_t>::success (
-      actor_join_reply_t{0, actor_ref, response.reply.value_or (zlink::message_t{})});
+      actor_join_reply_t{0, actor_ref, framework_reply_or_empty (response.reply, serializers)});
 }
 
 result_t<actor_join_reply_t> spot_node_runtime_t::join_actor_to_entry_spot_erased (
@@ -1889,14 +1906,18 @@ spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (std::str
         } else if (lifecycle.configure) {
             lifecycle.configure (context_state->spot_instance.get (), context);
         }
+        auto &serializers = *context_state->channel_runtime->serializers;
         const auto response = lifecycle.on_create
-                                ? lifecycle.on_create (context_state->spot_instance.get (), request)
+                                ? lifecycle.on_create (context_state->spot_instance.get (),
+                                                       request, serializers)
                                 : spot_create_response_t::accept ();
         if (!response.accepted) {
-            return spot_create_result_t{spot_rid, spot_create_state_t::rejected, response.reply,
-                                        context};
+            return spot_create_result_t{
+              spot_rid, spot_create_state_t::rejected,
+              framework_reply_or_null (response.reply, serializers),
+              context};
         }
-        create_reply = response.reply;
+        create_reply = framework_reply_or_null (response.reply, serializers);
         if (lifecycle.on_initialize) {
             lifecycle.on_initialize (context_state->spot_instance.get ());
         }

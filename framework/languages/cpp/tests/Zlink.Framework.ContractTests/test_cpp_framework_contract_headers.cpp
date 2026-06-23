@@ -214,7 +214,7 @@ struct contract_actor_t
 struct contract_spot_t : public zlink::framework::spot_t
 {
     zlink::framework::spot_actor_join_response_t on_actor_join (contract_actor_t &,
-                                                                const zlink::message_t &)
+                                                                const zlink::framework::message_t &)
     {
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
@@ -577,7 +577,8 @@ static_assert (std::has_virtual_destructor_v<zlink::framework::entry_spot_t>);
 static_assert (std::is_base_of_v<zlink::framework::spot_t, zlink::framework::entry_spot_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<contract_spot_t &> ().on_actor_join (
-                   std::declval<contract_actor_t &> (), std::declval<const zlink::message_t &> ())),
+                   std::declval<contract_actor_t &> (),
+                   std::declval<const zlink::framework::message_t &> ())),
                  zlink::framework::spot_actor_join_response_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().close ()),

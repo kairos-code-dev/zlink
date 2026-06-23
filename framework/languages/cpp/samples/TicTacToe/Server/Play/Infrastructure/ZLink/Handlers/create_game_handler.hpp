@@ -34,8 +34,7 @@ class create_game_handler_t
         auto response = _creator.create (request.game_name);
         const auto spot_rid = zlink::framework::spot_rid_t::from_string (
           std::string (sample_names_t::spot_node) + ":" + response.room_id);
-        _spots.get_or_create_spot (sample_names_t::match_spot, spot_rid,
-                                   zlink::message_t::from (response.room_id));
+        _spots.get_or_create_spot (sample_names_t::match_spot, spot_rid);
         return response;
     }
 

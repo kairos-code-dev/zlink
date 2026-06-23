@@ -35,11 +35,10 @@ class bingo_room_spot_t : public zlink::framework::spot_t
           sample_names_t::reward_topic);
     }
 
-    zlink::framework::spot_create_response_t on_create (const zlink::message_t &request)
+    zlink::framework::spot_create_response_t on_create (const zlink::framework::message_t &request)
     {
-        if (request.valid () && request.size () > 0) {
-            bingo_room_settings_payload_t settings;
-            from_stream_payload (request, settings);
+        if (!request.empty ()) {
+            auto settings = request.decode<bingo_room_settings_payload_t> ();
             _is_observer = settings.purpose == "Observer";
             _observed_room_id = settings.observed_room_id;
         }
@@ -47,10 +46,9 @@ class bingo_room_spot_t : public zlink::framework::spot_t
     }
 
     zlink::framework::spot_actor_join_response_t
-    on_actor_join (const player_actor_t &actor, const zlink::message_t &request_message)
+    on_actor_join (const player_actor_t &actor, const zlink::framework::message_t &request_message)
     {
-        bingo_room_join_req_t request;
-        from_stream_payload (request_message, request);
+        auto request = request_message.decode<bingo_room_join_req_t> ();
         const auto actor_id =
           actor.actor.actor_id.empty () ? request.actor_id : actor.actor.actor_id;
         const auto display_name =
@@ -65,8 +63,8 @@ class bingo_room_spot_t : public zlink::framework::spot_t
                       << ", observer=" << actor_id
                       << ", nodeRid=" << _context.node_rid ().value () << '\n';
             return zlink::framework::spot_actor_join_response_t::accept (
-              to_stream_payload (bingo_room_join_res_t{
-                bingo_room_state_t{request.room_id, bingo_room_status_t::running}}));
+              bingo_room_join_res_t{bingo_room_state_t{request.room_id,
+                                                       bingo_room_status_t::running}});
         }
         if (_is_observer) {
             throw std::runtime_error ("player actor cannot join an observer room");
@@ -79,7 +77,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t
                   << ", status=" << snapshot ().status
                   << ", nodeRid=" << _context.node_rid ().value () << '\n';
         return zlink::framework::spot_actor_join_response_t::accept (
-          to_stream_payload (bingo_room_join_res_t{snapshot ()}));
+          bingo_room_join_res_t{snapshot ()});
     }
 
     observe_bingo_events_res_t observe_events (

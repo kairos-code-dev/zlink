@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "runtime/channels/channel_runtime.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
 #include "runtime/execution/serial_execution_queue.hpp"
 #include "runtime/registry/registry_runtime.hpp"
@@ -274,16 +275,17 @@ class spot_node_runtime_t
               framework_error_kind_t::handler_not_found,
               "spot actor join callback is not registered");
         } else {
-            const auto response = spot.on_actor_join (actor, request);
+            const auto response = invoke_actor_join_callback (spot, actor, request);
+            auto &serializers = *context->_state->channel_runtime->serializers;
             if (!response.accepted) {
                 return result_t<actor_join_reply_t>::success (
-                  actor_join_reply_t{1, actor_ref, response.reply.value_or (zlink::message_t{})});
+                  actor_join_reply_t{1, actor_ref, actor_join_reply (response, serializers)});
             }
 
             const auto committed =
               commit_actor_to_context<TSpot, TActor> (actor_ref, actor, *context);
             return result_t<actor_join_reply_t>::success (
-              actor_join_reply_t{0, committed, response.reply.value_or (zlink::message_t{})});
+              actor_join_reply_t{0, committed, actor_join_reply (response, serializers)});
         }
     }
 
@@ -319,16 +321,17 @@ class spot_node_runtime_t
 
         auto &spot = *static_cast<TEntrySpot *> (context->_state->spot_instance.get ());
         if constexpr (has_actor_join_callback<TEntrySpot, TActor>) {
-            const auto response = spot.on_actor_join (actor, request);
+            const auto response = invoke_actor_join_callback (spot, actor, request);
+            auto &serializers = *context->_state->channel_runtime->serializers;
             if (!response.accepted) {
                 return result_t<actor_join_reply_t>::success (
-                  actor_join_reply_t{1, actor_ref, response.reply.value_or (zlink::message_t{})});
+                  actor_join_reply_t{1, actor_ref, actor_join_reply (response, serializers)});
             }
 
             const auto committed =
               commit_actor_to_context<TEntrySpot, TActor> (actor_ref, actor, *context);
             return result_t<actor_join_reply_t>::success (
-              actor_join_reply_t{0, committed, response.reply.value_or (zlink::message_t{})});
+              actor_join_reply_t{0, committed, actor_join_reply (response, serializers)});
         }
 
         const auto committed =
@@ -387,13 +390,45 @@ class spot_node_runtime_t
 
   private:
     template <typename TSpot, typename TActor>
-    static constexpr bool has_actor_join_callback =
+    static constexpr bool has_framework_actor_join_callback =
+      requires (TSpot & spot, TActor &actor, const message_t &request)
+    {
+        {
+            spot.on_actor_join (actor, request)
+        } -> std::same_as<spot_actor_join_response_t>;
+    };
+
+    template <typename TSpot, typename TActor>
+    static constexpr bool has_raw_actor_join_callback =
       requires (TSpot & spot, TActor &actor, const zlink::message_t &request)
     {
         {
             spot.on_actor_join (actor, request)
         } -> std::same_as<spot_actor_join_response_t>;
     };
+
+    template <typename TSpot, typename TActor>
+    static constexpr bool has_actor_join_callback =
+      has_framework_actor_join_callback<TSpot, TActor>
+      || has_raw_actor_join_callback<TSpot, TActor>;
+
+    template <typename TSpot, typename TActor>
+    spot_actor_join_response_t invoke_actor_join_callback (TSpot &spot,
+                                                           TActor &actor,
+                                                           const zlink::message_t &request)
+    {
+        if constexpr (has_framework_actor_join_callback<TSpot, TActor>) {
+            return spot.on_actor_join (actor, message_t::from_encoded (request, _state->channel_runtime->serializers));
+        } else {
+            return spot.on_actor_join (actor, request);
+        }
+    }
+
+    static zlink::message_t actor_join_reply (const spot_actor_join_response_t &response,
+                                              serializer_registry_t &serializers)
+    {
+        return response.reply ? response.reply->to_raw (serializers) : zlink::message_t{};
+    }
 
     template <typename TSpot, typename TActor>
     static constexpr bool has_on_actor_joined_callback = requires (TSpot & spot, TActor &actor)

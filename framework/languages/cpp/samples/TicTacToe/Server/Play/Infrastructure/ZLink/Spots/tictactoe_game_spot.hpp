@@ -28,24 +28,28 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
         context.handlers ().add_actor_packet<&tictactoe_game_spot_t::leave_game> ();
     }
 
-    zlink::framework::spot_create_response_t on_create (const zlink::message_t &request)
+    zlink::framework::spot_create_response_t on_create (const zlink::framework::message_t &)
     {
-        static_cast<tictactoe_match_t &> (*this) = tictactoe_match_t (request.to_string ());
+        auto room_id = std::string (_context.spot_rid ().value ());
+        if (const auto separator = room_id.rfind (':');
+            separator != std::string::npos && separator + 1 < room_id.size ()) {
+            room_id = room_id.substr (separator + 1);
+        }
+        static_cast<tictactoe_match_t &> (*this) = tictactoe_match_t (room_id);
         return zlink::framework::spot_create_response_t::accept ();
     }
 
     zlink::framework::spot_actor_join_response_t
-    on_actor_join (const player_actor_t &actor, const zlink::message_t &request_message)
+    on_actor_join (const player_actor_t &actor, const zlink::framework::message_t &request_message)
     {
-        tictactoe_game_join_req_t request;
-        from_stream_payload (request_message, request);
+        auto request = request_message.decode<tictactoe_game_join_req_t> ();
         if (request.player.actor_id.empty () || request.player.level < sample_names_t::required_level) {
             return zlink::framework::spot_actor_join_response_t::reject ();
         }
         players[actor.actor_id] = request.player;
         actor.apply_player (request.player);
         return zlink::framework::spot_actor_join_response_t::accept (
-          to_stream_payload (join (actor.actor_id, join_game_req_t{request.room_id, request.player})));
+          join (actor.actor_id, join_game_req_t{request.room_id, request.player}));
     }
 
     place_mark_res_t place_mark (const player_actor_t &actor,

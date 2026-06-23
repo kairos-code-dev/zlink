@@ -49,10 +49,9 @@ class conversation_spot_t : public zlink::framework::spot_t
         context.handlers ().add_actor_packet<&conversation_spot_t::close> ();
     }
 
-    zlink::framework::spot_create_response_t on_create (const zlink::message_t &request)
+    zlink::framework::spot_create_response_t on_create (const zlink::framework::message_t &request)
     {
-        conversation_create_request_t create;
-        from_stream_payload (request, create);
+        auto create = request.decode<conversation_create_request_t> ();
         auto conversation_id = std::string (_context.spot_rid ().value ());
         if (const auto separator = conversation_id.rfind (':');
             separator != std::string::npos && separator + 1 < conversation_id.size ()) {
@@ -65,11 +64,12 @@ class conversation_spot_t : public zlink::framework::spot_t
     }
 
     zlink::framework::spot_actor_join_response_t
-    on_actor_join (const support_user_actor_t &actor, const zlink::message_t &request_message)
+    on_actor_join (const support_user_actor_t &actor,
+                   const zlink::framework::message_t &request_message)
     {
         join_conversation_req_t join;
         try {
-            from_stream_payload (request_message, join);
+            join = request_message.decode<join_conversation_req_t> ();
         }
         catch (...) {
             join.conversation_id = std::string (_context.spot_rid ().value ());
@@ -82,7 +82,7 @@ class conversation_spot_t : public zlink::framework::spot_t
         if (actor.role == support_chat_roles_t::agent) {
             const auto agent_state = join_agent (actor);
             return zlink::framework::spot_actor_join_response_t::accept (
-              to_stream_payload (join_conversation_res_t{agent_state}));
+              join_conversation_res_t{agent_state});
         }
 
         actor.join_conversation (join.conversation_id);
@@ -93,7 +93,7 @@ class conversation_spot_t : public zlink::framework::spot_t
             _publisher->publish_joined_agent_to_customer (actor, conversation.snapshot ());
         }
         return zlink::framework::spot_actor_join_response_t::accept (
-          to_stream_payload (join_conversation_res_t{conversation.snapshot ()}));
+          join_conversation_res_t{conversation.snapshot ()});
     }
 
     conversation_state_t join_agent (const support_user_actor_t &agent)

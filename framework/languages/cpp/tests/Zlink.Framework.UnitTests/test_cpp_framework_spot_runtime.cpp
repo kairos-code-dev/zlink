@@ -1374,7 +1374,8 @@ int main ()
 
     const auto join_dispatch =
       stage_spot.on_actor_join (actor, zlink::message_t::from (std::string ("41")));
-    if (!join_dispatch.accepted || !join_dispatch.reply || join_dispatch.reply->to_string () != "42"
+    if (!join_dispatch.accepted || !join_dispatch.reply
+        || join_dispatch.reply->to_raw (spot_serializers).to_string () != "42"
         || actor.joined_value != 41 || stage_spot.join_seen != 41) {
         return 23;
     }
@@ -1386,7 +1387,7 @@ int main ()
     const auto rejected_join =
       stage_spot.on_actor_join (actor, zlink::message_t::from (std::string ("50")));
     if (rejected_join.accepted || !rejected_join.reply
-        || rejected_join.reply->to_string () != "rejected") {
+        || rejected_join.reply->to_raw (spot_serializers).to_string () != "rejected") {
         return 47;
     }
     if (stage_spot.joined_count != 1) {

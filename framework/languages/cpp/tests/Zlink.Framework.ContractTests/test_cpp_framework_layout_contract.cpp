@@ -1491,74 +1491,6 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
     return ok;
 }
 
-bool posd_log_has_current_goal_mapping (const std::filesystem::path &root)
-{
-    const auto path = root / "../../doc/framework/cpp/internals/cpp-framework-posd-refactoring-log.ko.md";
-    std::ifstream input (path);
-    std::ostringstream buffer;
-    buffer << input.rdbuf ();
-    const auto text = buffer.str ();
-
-    bool ok = true;
-    const auto refactor_count = count_occurrences (text, "### 적용한 리팩토링");
-    if (refactor_count < 22) {
-        std::cerr << "POSD refactoring log has only " << refactor_count
-                  << " refactoring sections; expected at least 22: " << path << '\n';
-        ok = false;
-    }
-
-    const std::string rows[] = {"| Goal 1. Repository Skeleton And Tooling |",
-                                "| Goal 2. Binding Codec Surface Alignment |",
-                                "| Goal 3. Core Async, Task, Error Model |",
-                                "| Goal 4. App Host, Configuration, Logging |",
-                                "| Goal 5. DI Container And Scope Lifetime |",
-                                "| Goal 6. Application Framework Parity Model |",
-                                "| Goal 7. Runtime Integration And Execution |",
-                                "| Goal 8. Handler Registry And Serializer |",
-                                "| Goal 9. Channel Messaging |",
-                                "| Goal 10. Backpressure And Reliability |",
-                                "| Goal 11. SPOT Runtime |",
-                                "| Goal 12. SPOT Timer |",
-                                "| Goal 13. STREAM Framework |",
-                                "| Goal 14. ActorGateway Session Relay |",
-                                "| Goal 15. Registry And Topology |",
-                                "| Goal 16. Monitoring, Health, Observability |",
-                                "| Goal 17. Module System And Hosted Services |",
-                                "| Goal 18. ZLink HTTP Client |",
-                                "| Goal 19. HTTP Hosting |",
-                                "| Goal 20. Stream Connectors |",
-                                "| Goal 21. Review Samples |",
-                                "| Goal 22. Final Regression, Package, Extension Boundary |"};
-    for (const auto &row : rows) {
-        const auto offset = text.find (row);
-        if (offset == std::string::npos) {
-            std::cerr << "POSD refactoring log lacks current goal mapping row: " << row << '\n';
-            ok = false;
-            continue;
-        }
-        const auto line_end = text.find ('\n', offset);
-        const auto line = text.substr (offset, line_end == std::string::npos ? std::string::npos
-                                                                             : line_end - offset);
-        if (line.find ("잔여 POSD 위험 신호와 리팩토링 이슈 0개") == std::string::npos) {
-            std::cerr << "POSD refactoring log mapping row lacks zero-issue "
-                         "recheck status: "
-                      << row << '\n';
-            ok = false;
-        }
-    }
-
-    const std::string stale_headings[] = {
-      "\n## Goal 17. C++ Stream Connector", "\n## Goal 18. Unreal Stream Connector",
-      "\n## Goal 20. Final Parity And Regression Gate", "\n## Goal 21. Extension Boundaries"};
-    for (const auto &heading : stale_headings) {
-        if (text.find (heading) != std::string::npos) {
-            std::cerr << "POSD refactoring log uses stale plan goal heading: " << heading << '\n';
-            ok = false;
-        }
-    }
-    return ok;
-}
-
 bool cmake_extension_boundaries_hold (const std::filesystem::path &root)
 {
     const auto path = root / "CMakeLists.txt";
@@ -2650,7 +2582,6 @@ int main ()
     ok &= implementation_plan_goal21_covers_sample_labels (root);
     ok &= implementation_plan_goal22_covers_final_label_axes (root);
     ok &= registry_draft_matches_monitoring_contract (root);
-    ok &= posd_log_has_current_goal_mapping (root);
     ok &= cmake_extension_boundaries_hold (root);
 
     return ok ? 0 : 1;

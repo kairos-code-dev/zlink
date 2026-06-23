@@ -23,6 +23,7 @@ builder.Logging.AddSimpleConsole(console =>
 });
 builder.WebHost.UseUrls(options.HttpUrl);
 builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile));
+builder.Services.AddSingleton(new HandlerDelayOptions(options.HandlerDelayMs));
 
 if (options.Role == "registry")
 {
@@ -121,15 +122,23 @@ static string Require(string? value, string name)
         : value;
 }
 
-internal sealed class EventNotifyHandler(EvidenceStore evidence)
+internal sealed class EventNotifyHandler(EvidenceStore evidence, HandlerDelayOptions delayOptions)
     : IZLinkPublishHandler<EventNotify>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         EventNotify message,
         ZLinkPublishContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (delayOptions.DelayMs > 0 && message.Value.StartsWith("slow-", StringComparison.Ordinal))
+        {
+            evidence.Add(
+                $"delay-start|rid={evidence.Rid}|run={message.RunId}|topic={context.Topic}"
+                + $"|seq={message.Sequence}|value={message.Value}");
+            await Task.Delay(delayOptions.DelayMs, cancellationToken);
+        }
+
         if (context.Topic == PubSubNames.MainTopic)
         {
             evidence.Add(
@@ -142,10 +151,10 @@ internal sealed class EventNotifyHandler(EvidenceStore evidence)
                 $"ignored|rid={evidence.Rid}|run={message.RunId}|topic={context.Topic}"
                 + $"|seq={message.Sequence}|value={message.Value}|packet={context.PacketName}");
         }
-
-        return ValueTask.CompletedTask;
     }
 }
+
+internal sealed record HandlerDelayOptions(int DelayMs);
 
 internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
     : IZLinkMessageDispatchErrorObserver
@@ -227,7 +236,8 @@ internal sealed record ServerOptions(
     string? RegistryPubEndpoint,
     string? RegistryRouterEndpoint,
     string? PublisherEndpoint,
-    string? EvidenceFile)
+    string? EvidenceFile,
+    int HandlerDelayMs)
 {
     public static ServerOptions Parse(string[] args)
     {
@@ -264,6 +274,7 @@ internal sealed record ServerOptions(
             RegistryPubEndpoint: Get("--registry-pub-endpoint"),
             RegistryRouterEndpoint: Get("--registry-router-endpoint"),
             PublisherEndpoint: Get("--publisher-endpoint"),
-            EvidenceFile: Get("--evidence-file"));
+            EvidenceFile: Get("--evidence-file"),
+            HandlerDelayMs: int.TryParse(Get("--handler-delay-ms"), out var delayMs) ? delayMs : 0);
     }
 }

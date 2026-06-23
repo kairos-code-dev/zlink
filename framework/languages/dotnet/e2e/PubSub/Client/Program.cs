@@ -8,6 +8,7 @@ using Zlink.Framework.Contracts.Dispatch;
 
 var options = ClientOptions.Parse(args);
 Directory.CreateDirectory(options.LogDir);
+Process? restartedPublisher = null;
 
 using var host = Host.CreateDefaultBuilder(args)
     .ConfigureServices(services =>
@@ -77,7 +78,11 @@ for (var i = 1; i <= 5; i++)
     await PublishEvent(http, options.PublisherUrl, PubSubNames.MainTopic, beforeLateRun, i, $"before-late-{i}");
 }
 
-using var lateSubscriber = StartLateSubscriber(options);
+using var lateSubscriber = StartSubscriber(
+    options,
+    name: "sub-late",
+    httpUrl: options.LateSubscriberUrl,
+    evidenceFile: "sub-late.evidence.log");
 try
 {
     await WaitUntilAsync(async () => await IsHealthy(http, options.LateSubscriberUrl),
@@ -108,6 +113,129 @@ finally
     }
 }
 
+var reconnectRun = Guid.NewGuid().ToString("N");
+using (var reconnectSubscriber = StartSubscriber(
+    options,
+    name: "sub-reconnect",
+    httpUrl: options.LateSubscriberUrl,
+    evidenceFile: "sub-reconnect.evidence.log"))
+{
+    await WaitUntilAsync(async () => await IsHealthy(http, options.LateSubscriberUrl),
+        "PS-A4 expected reconnect subscriber to become healthy before disconnect.");
+    await PublishEvent(http, options.PublisherUrl, PubSubNames.MainTopic, reconnectRun, 1, "before-disconnect");
+    await WaitUntilAsync(async () =>
+    {
+        var evidence = await ReadEvidence(http, options.LateSubscriberUrl);
+        return evidence.Any(line => IsEvent(line, reconnectRun, PubSubNames.MainTopic));
+    }, "PS-A4 expected subscriber to receive before disconnect.");
+
+    reconnectSubscriber.Kill(entireProcessTree: true);
+    await reconnectSubscriber.WaitForExitAsync();
+}
+
+await WaitUntilAsync(async () => !await IsHealthy(http, options.LateSubscriberUrl),
+    "PS-A4 expected reconnect subscriber to leave before gap publish.");
+for (var i = 2; i <= 4; i++)
+{
+    await PublishEvent(http, options.PublisherUrl, PubSubNames.MainTopic, reconnectRun, i, $"gap-{i}");
+}
+
+await WaitUntilAsync(async () =>
+{
+    var fastSnapshots = await ReadFastSubscribers(http, options);
+    return fastSnapshots.All(lines => lines.Any(line => IsEvent(line, reconnectRun, PubSubNames.MainTopic)));
+}, "PS-A4 expected other subscribers to keep receiving while one subscriber is disconnected.");
+
+using (var restartedSubscriber = StartSubscriber(
+    options,
+    name: "sub-reconnect",
+    httpUrl: options.LateSubscriberUrl,
+    evidenceFile: "sub-reconnect.evidence.log"))
+{
+    await WaitUntilAsync(async () => await IsHealthy(http, options.LateSubscriberUrl),
+        "PS-A4 expected reconnect subscriber to become healthy after reconnect.");
+    for (var i = 5; i <= 8; i++)
+    {
+        await PublishEvent(http, options.PublisherUrl, PubSubNames.MainTopic, reconnectRun, i, $"after-reconnect-{i}");
+    }
+
+    await WaitUntilAsync(async () =>
+    {
+        var evidence = await ReadEvidence(http, options.LateSubscriberUrl);
+        return evidence.Any(line => IsEvent(line, reconnectRun, PubSubNames.MainTopic));
+    }, "PS-A4 expected reconnected subscriber to receive post-reconnect events.");
+    var reconnectEvidence = await ReadEvidence(http, options.LateSubscriberUrl);
+    Ensure(reconnectEvidence.All(line =>
+        !line.Contains($"run={reconnectRun}", StringComparison.Ordinal)
+        || !line.Contains("value=gap-", StringComparison.Ordinal)),
+        "PS-A4 reconnected subscriber replayed disconnect-gap events.");
+    Console.WriteLine("scenario PS-A4 passed");
+
+    restartedSubscriber.Kill(entireProcessTree: true);
+    await restartedSubscriber.WaitForExitAsync();
+}
+
+var slowRun = Guid.NewGuid().ToString("N");
+for (var i = 1; i <= 8; i++)
+{
+    var value = i == 1 ? "slow-first" : $"fast-after-slow-{i}";
+    await PublishEvent(http, options.PublisherUrl, PubSubNames.MainTopic, slowRun, i, value);
+}
+
+await WaitUntilAsync(async () =>
+{
+    var fastSnapshots = await ReadFastSubscribers(http, options);
+    return fastSnapshots.All(lines => lines.Any(line => IsEvent(line, slowRun, PubSubNames.MainTopic)
+        && line.Contains("seq=8", StringComparison.Ordinal)));
+}, "PS-B1 expected fast subscribers to keep receiving while another handler is slow.", timeout: TimeSpan.FromSeconds(2));
+var slowEvidence = await ReadEvidence(http, options.SubscriberUrls[^1]);
+Ensure(slowEvidence.Any(line => line.Contains("delay-start|", StringComparison.Ordinal)
+    && line.Contains($"run={slowRun}", StringComparison.Ordinal)),
+    "PS-B1 expected slow subscriber delay evidence.");
+Console.WriteLine("scenario PS-B1 passed");
+
+var publisherRestartRun = Guid.NewGuid().ToString("N");
+await PublishEvent(http, options.PublisherUrl, PubSubNames.MainTopic, publisherRestartRun, 1, "before-publisher-restart");
+await WaitUntilAsync(async () =>
+{
+    var snapshots = await ReadSubscribers(http, options);
+    return snapshots.All(lines => lines.Any(line => IsEvent(line, publisherRestartRun, PubSubNames.MainTopic)));
+}, "PS-B2 expected baseline publish before publisher restart.");
+
+using (var shutdownResponse = await http.PostAsync($"{options.PublisherUrl}/shutdown", content: null))
+{
+    shutdownResponse.EnsureSuccessStatusCode();
+}
+
+await WaitUntilAsync(async () => !await IsHealthy(http, options.PublisherUrl),
+    "PS-B2 expected publisher to stop before restart.");
+try
+{
+    await PublishEvent(http, options.PublisherUrl, PubSubNames.MainTopic, publisherRestartRun, 2, "during-publisher-down");
+    throw new InvalidOperationException("PS-B2 expected publish attempt to fail while publisher is down.");
+}
+catch (HttpRequestException)
+{
+}
+
+restartedPublisher = StartPublisher(options);
+await WaitUntilAsync(async () => await IsHealthy(http, options.PublisherUrl),
+    "PS-B2 expected restarted publisher to become healthy.");
+await Task.Delay(500);
+for (var i = 3; i <= 42; i++)
+{
+    await PublishEvent(http, options.PublisherUrl, PubSubNames.MainTopic, publisherRestartRun, i, $"after-publisher-restart-{i}");
+    await Task.Delay(100);
+}
+
+await WaitUntilAsync(async () =>
+{
+    var snapshots = await ReadSubscribers(http, options);
+    return snapshots.All(lines => lines.Any(line => IsEvent(line, publisherRestartRun, PubSubNames.MainTopic)
+        && ExtractInt(line, "seq") >= 20));
+}, "PS-B2 expected publish delivery after publisher restart.");
+Console.WriteLine("scenario PS-B2 passed");
+
 var negativeRun = Guid.NewGuid().ToString("N");
 await PublishMissing(http, options.PublisherUrl, PubSubNames.MainTopic, negativeRun, 1, "missing");
 await WaitUntilAsync(async () =>
@@ -125,6 +253,13 @@ await WaitUntilAsync(async () =>
     return snapshots.All(lines => lines.Any(line => IsEvent(line, negativeRun, PubSubNames.MainTopic)));
 }, "PS-C1 expected normal publish after missing handler to keep working.");
 Console.WriteLine("scenario PS-C1 passed");
+
+if (restartedPublisher is { HasExited: false })
+{
+    using var shutdownResponse = await http.PostAsync($"{options.PublisherUrl}/shutdown", content: null);
+    shutdownResponse.EnsureSuccessStatusCode();
+    await restartedPublisher.WaitForExitAsync();
+}
 
 Console.WriteLine("pubsub e2e result=passed");
 await host.StopAsync();
@@ -161,16 +296,21 @@ static async Task PublishMissing(
     response.EnsureSuccessStatusCode();
 }
 
-static Process StartLateSubscriber(ClientOptions options)
+static Process StartSubscriber(
+    ClientOptions options,
+    string name,
+    string httpUrl,
+    string evidenceFile)
 {
-    var stdout = Path.Combine(options.LogDir, "sub-late.stdout.log");
-    var stderr = Path.Combine(options.LogDir, "sub-late.stderr.log");
+    var stdout = Path.Combine(options.LogDir, $"{name}.stdout.log");
+    var stderr = Path.Combine(options.LogDir, $"{name}.stderr.log");
     var startInfo = new ProcessStartInfo("dotnet")
     {
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         UseShellExecute = false,
     };
+    startInfo.Environment["ZLINK_E2E_RID"] = name;
     startInfo.ArgumentList.Add("run");
     startInfo.ArgumentList.Add("--project");
     startInfo.ArgumentList.Add(options.ServerProject);
@@ -178,20 +318,57 @@ static Process StartLateSubscriber(ClientOptions options)
     startInfo.ArgumentList.Add("--role");
     startInfo.ArgumentList.Add("subscriber");
     startInfo.ArgumentList.Add("--rid");
-    startInfo.ArgumentList.Add("sub-late");
+    startInfo.ArgumentList.Add(name);
     startInfo.ArgumentList.Add("--http-url");
-    startInfo.ArgumentList.Add(options.LateSubscriberUrl);
+    startInfo.ArgumentList.Add(httpUrl);
     startInfo.ArgumentList.Add("--registry-router-endpoint");
     startInfo.ArgumentList.Add(options.RegistryRouterEndpoint);
     startInfo.ArgumentList.Add("--publisher-endpoint");
     startInfo.ArgumentList.Add(options.PublisherEndpoint);
     startInfo.ArgumentList.Add("--evidence-file");
-    startInfo.ArgumentList.Add(Path.Combine(options.LogDir, "sub-late.evidence.log"));
+    startInfo.ArgumentList.Add(Path.Combine(options.LogDir, evidenceFile));
     startInfo.ArgumentList.Add("--log-dir");
     startInfo.ArgumentList.Add(options.LogDir);
 
     var process = Process.Start(startInfo)
-        ?? throw new InvalidOperationException("Failed to start late subscriber.");
+        ?? throw new InvalidOperationException($"Failed to start {name}.");
+    _ = Task.Run(async () => await File.WriteAllTextAsync(stdout, await process.StandardOutput.ReadToEndAsync()));
+    _ = Task.Run(async () => await File.WriteAllTextAsync(stderr, await process.StandardError.ReadToEndAsync()));
+    return process;
+}
+
+static Process StartPublisher(ClientOptions options)
+{
+    var stdout = Path.Combine(options.LogDir, "pub-restart.stdout.log");
+    var stderr = Path.Combine(options.LogDir, "pub-restart.stderr.log");
+    var startInfo = new ProcessStartInfo("dotnet")
+    {
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+    };
+    startInfo.Environment["ZLINK_E2E_RID"] = "pub-a";
+    startInfo.ArgumentList.Add("run");
+    startInfo.ArgumentList.Add("--project");
+    startInfo.ArgumentList.Add(options.ServerProject);
+    startInfo.ArgumentList.Add("--");
+    startInfo.ArgumentList.Add("--role");
+    startInfo.ArgumentList.Add("publisher");
+    startInfo.ArgumentList.Add("--rid");
+    startInfo.ArgumentList.Add("pub-a");
+    startInfo.ArgumentList.Add("--http-url");
+    startInfo.ArgumentList.Add(options.PublisherUrl);
+    startInfo.ArgumentList.Add("--registry-router-endpoint");
+    startInfo.ArgumentList.Add(options.RegistryRouterEndpoint);
+    startInfo.ArgumentList.Add("--publisher-endpoint");
+    startInfo.ArgumentList.Add(options.PublisherEndpoint);
+    startInfo.ArgumentList.Add("--evidence-file");
+    startInfo.ArgumentList.Add(Path.Combine(options.LogDir, "pub-restart.evidence.log"));
+    startInfo.ArgumentList.Add("--log-dir");
+    startInfo.ArgumentList.Add(options.LogDir);
+
+    var process = Process.Start(startInfo)
+        ?? throw new InvalidOperationException("Failed to start restarted publisher.");
     _ = Task.Run(async () => await File.WriteAllTextAsync(stdout, await process.StandardOutput.ReadToEndAsync()));
     _ = Task.Run(async () => await File.WriteAllTextAsync(stderr, await process.StandardError.ReadToEndAsync()));
     return process;
@@ -201,6 +378,17 @@ static async Task<string[][]> ReadSubscribers(HttpClient http, ClientOptions opt
 {
     var results = new List<string[]>();
     foreach (var url in options.SubscriberUrls)
+    {
+        results.Add(await ReadEvidence(http, url));
+    }
+
+    return results.ToArray();
+}
+
+static async Task<string[][]> ReadFastSubscribers(HttpClient http, ClientOptions options)
+{
+    var results = new List<string[]>();
+    foreach (var url in options.SubscriberUrls.Take(2))
     {
         results.Add(await ReadEvidence(http, url));
     }
@@ -301,17 +489,20 @@ static int ExtractInt(string line, string key)
     return int.Parse(value);
 }
 
-static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessage)
+static async Task WaitUntilAsync(
+    Func<Task<bool>> condition,
+    string failureMessage,
+    TimeSpan? timeout = null)
 {
-    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-    while (!timeout.IsCancellationRequested)
+    using var timeoutSource = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(20));
+    while (!timeoutSource.IsCancellationRequested)
     {
         if (await condition())
         {
             return;
         }
 
-        await Task.Delay(100, timeout.Token).ContinueWith(_ => { });
+        await Task.Delay(100, timeoutSource.Token).ContinueWith(_ => { });
     }
 
     throw new InvalidOperationException(failureMessage);

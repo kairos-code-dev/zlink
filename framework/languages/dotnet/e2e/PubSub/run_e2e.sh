@@ -97,6 +97,10 @@ wait_health "$PUB_URL" pub-a
 
 for sub in 1 2 3; do
   url_var="SUB_${sub}_URL"
+  extra_args=()
+  if [[ "$sub" == "3" ]]; then
+    extra_args+=(--handler-delay-ms 3000)
+  fi
   start_server "sub-$sub" \
     --role subscriber \
     --rid "sub-$sub" \
@@ -104,7 +108,8 @@ for sub in 1 2 3; do
     --registry-router-endpoint "$REG_ROUTER" \
     --publisher-endpoint "$PUB_ENDPOINT" \
     --evidence-file "$LOG_DIR/sub-$sub.evidence.log" \
-    --log-dir "$LOG_DIR"
+    --log-dir "$LOG_DIR" \
+    "${extra_args[@]}"
   wait_health "${!url_var}" "sub-$sub"
 done
 

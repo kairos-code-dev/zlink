@@ -12,6 +12,21 @@
 > 현재 공개 계약이 아니며, C++ framework 구현 goal마다 수행한 POSD 기반 리팩토링을
 > 기록한다.
 
+## 현재 기준 정정. 이전 로그 항목의 stale 경로
+
+이 문서는 시간순 실행 기록이므로 과거 항목에는 현재 구조와 맞지 않는 파일명이 남아 있을 수 있다.
+현재 구조를 확인할 때는 아래 기준을 우선한다.
+
+- C++ framework draft/spec 추적 contract는 더 이상 `doc/draft/*.ko.md`와
+  `## 6. Draft 추적표`를 기준으로 삼지 않는다. 현재 contract는
+  `framework/doc/framework/cpp/spec`와 `framework/doc/framework/cpp/internals` 아래 문서를
+  `cpp-framework-implementation-plan.ko.md`의 `## 6. 참고 문서 추적표`와 대조한다.
+- `route_receive_pump.*`, `channel_message_pump.*`, `channel_receive_loop.*`는 이후 정리에서
+  production runtime에서 제거됐다. 현재 production route/channel 수신 책임은
+  `route_packet_dispatcher.*`, `route_channel_runtime.*`, `channel_runtime_bundle.*`,
+  `channel_runtime_manager.*`가 맡고, 테스트에서 필요한 queued drain helper만
+  `test_cpp_framework_channel_messaging.cpp` 안에 남아 있다.
+
 ## 반복 POSD 재리뷰. Final tooling configure smoke 보강
 
 ### 발견한 위험 신호

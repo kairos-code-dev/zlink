@@ -60,20 +60,3 @@ internal sealed class ZLinkSpotActorJoinDescriptor
 
     public bool PassSpotArgument { get; init; } = true;
 }
-
-internal sealed class ZLinkActorPacketDescriptor
-{
-    public required Type HandlerType { get; init; }
-
-    public required Type ActorType { get; init; }
-
-    public required Type MessageType { get; init; }
-
-    public Type? ReplyType { get; init; }
-
-    public required ZLinkMessageKind Kind { get; init; }
-
-    public required ZLinkHandlerMethodInvoker Invoker { get; init; }
-
-    public required string MessageName { get; init; }
-}

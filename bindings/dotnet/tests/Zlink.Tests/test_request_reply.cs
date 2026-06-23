@@ -136,6 +136,570 @@ public sealed class test_request_reply
     }
 
     [Fact]
+    public async Task dealer_received_reply_routes_when_request_uses_dontwait_callback()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreateDealerSocket();
+        using var client = ctx.CreateDealerSocket();
+
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "dealer-dontwait-directed-reply");
+        server.Bind(endpoint);
+        client.Connect(endpoint);
+        Thread.Sleep(50);
+
+        using Message request = Message.From("from-client");
+        var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        bool accepted = client.Request()
+            .Message(request)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Flags(SendFlags.DontWait)
+            .Submit((result, parts) =>
+            {
+                if (result != RequestResult.Ok)
+                {
+                    completion.TrySetException(
+                        new InvalidOperationException($"request failed: {result}"));
+                    return;
+                }
+
+                completion.TrySetResult(parts);
+            });
+
+        Assert.True(accepted);
+
+        using Received received = RecvWithRetry(server);
+        Assert.Equal(ReceivedMessageType.Request, received.MessageType);
+        Assert.True(received.RequestSeq.HasValue);
+        Assert.Equal("from-client", received.Parts[0].GetString());
+
+        using Message reply = Message.From("reply");
+        received.Reply().Message(reply).Submit();
+
+        IReadOnlyList<Message> clientReply = await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("reply", clientReply[0].GetString());
+        Zlink.MultipartClose(clientReply);
+    }
+
+    [Fact]
+    public async Task dealer_received_reply_routes_over_tcp_when_request_uses_dontwait_callback()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreateDealerSocket();
+        using var client = ctx.CreateDealerSocket();
+
+        string endpoint = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-dontwait-tcp-directed-reply");
+        server.Bind(endpoint);
+        client.Connect(endpoint);
+        Thread.Sleep(100);
+
+        using Message request = Message.From("from-client");
+        var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        bool accepted = client.Request()
+            .Message(request)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Flags(SendFlags.DontWait)
+            .Submit((result, parts) =>
+            {
+                if (result != RequestResult.Ok)
+                {
+                    completion.TrySetException(
+                        new InvalidOperationException($"request failed: {result}"));
+                    return;
+                }
+
+                completion.TrySetResult(parts);
+            });
+
+        Assert.True(accepted);
+
+        using Received received = RecvWithRetry(server);
+        Assert.Equal(ReceivedMessageType.Request, received.MessageType);
+        Assert.True(received.RequestSeq.HasValue);
+        Assert.Equal("from-client", received.Parts[0].GetString());
+
+        using Message reply = Message.From("reply");
+        received.Reply().Message(reply).Submit();
+
+        IReadOnlyList<Message> clientReply = await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("reply", clientReply[0].GetString());
+        Zlink.MultipartClose(clientReply);
+    }
+
+    [Fact]
+    public async Task dealer_received_multipart_reply_routes_over_tcp_when_request_uses_dontwait_callback()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreateDealerSocket();
+        using var client = ctx.CreateDealerSocket();
+
+        string endpoint = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-dontwait-tcp-multipart-reply");
+        server.Bind(endpoint);
+        client.Connect(endpoint);
+        Thread.Sleep(100);
+
+        using Message requestHeader = Message.From("request-header");
+        using Message requestBody = Message.From("request-body");
+        var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        bool accepted = client.Request()
+            .Messages([requestHeader, requestBody])
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Flags(SendFlags.DontWait)
+            .Submit((result, parts) =>
+            {
+                if (result != RequestResult.Ok)
+                {
+                    completion.TrySetException(
+                        new InvalidOperationException($"request failed: {result}"));
+                    return;
+                }
+
+                completion.TrySetResult(parts);
+            });
+
+        Assert.True(accepted);
+
+        using Received received = RecvWithRetry(server);
+        Assert.Equal(ReceivedMessageType.Request, received.MessageType);
+        Assert.True(received.RequestSeq.HasValue);
+        Assert.Equal("request-header", received.Parts[0].GetString());
+        Assert.Equal("request-body", received.Parts[1].GetString());
+
+        using Message replyHeader = Message.From("reply-header");
+        using Message replyBody = Message.From("reply-body");
+        received.Reply().Messages([replyHeader, replyBody]).Submit();
+
+        IReadOnlyList<Message> clientReply = await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("reply-header", clientReply[0].GetString());
+        Assert.Equal("reply-body", clientReply[1].GetString());
+        Zlink.MultipartClose(clientReply);
+    }
+
+    [Fact]
+    public async Task dealer_received_large_first_part_multipart_reply_routes_over_tcp()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var server = ctx.CreateDealerSocket();
+        using var client = ctx.CreateDealerSocket();
+
+        string endpoint = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-large-first-part-reply");
+        server.Bind(endpoint);
+        client.Connect(endpoint);
+        Thread.Sleep(100);
+
+        using Message requestHeader = Message.From("request-header");
+        using Message requestBody = Message.From("request-body");
+        var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        bool accepted = client.Request()
+            .Messages([requestHeader, requestBody])
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Flags(SendFlags.DontWait)
+            .Submit((result, parts) =>
+            {
+                if (result != RequestResult.Ok)
+                {
+                    completion.TrySetException(
+                        new InvalidOperationException($"request failed: {result}"));
+                    return;
+                }
+
+                completion.TrySetResult(parts);
+            });
+
+        Assert.True(accepted);
+
+        using Received received = RecvWithRetry(server);
+        Assert.Equal(ReceivedMessageType.Request, received.MessageType);
+        Assert.True(received.RequestSeq.HasValue);
+
+        var replyHeaderText =
+            """{"kind":2,"channelName":"profile.mesh","messageName":"ProfileRequest","contentType":"application/json","correlationId":"reply","deadline":null,"topic":null,"errorCode":null,"errorMessage":null,"source":null}""";
+        using Message replyHeader = Message.From(replyHeaderText);
+        using Message replyBody = Message.From("""{"value":"reply","providerRid":"api-a"}""");
+        received.Reply().Messages([replyHeader, replyBody]).Submit();
+
+        IReadOnlyList<Message> clientReply = await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(replyHeaderText, clientReply[0].GetString());
+        Assert.Equal("""{"value":"reply","providerRid":"api-a"}""", clientReply[1].GetString());
+        Zlink.MultipartClose(clientReply);
+    }
+
+    [Fact]
+    public async Task dealer_received_reply_routes_from_one_of_two_bound_tcp_peers_when_request_uses_dontwait_callback()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var serverAContext = Zlink.CreateContext();
+        using var serverBContext = Zlink.CreateContext();
+        using var clientContext = Zlink.CreateContext();
+        using var serverA = serverAContext.CreateDealerSocket();
+        using var serverB = serverBContext.CreateDealerSocket();
+        using var client = clientContext.CreateDealerSocket();
+
+        string endpointA = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-dontwait-two-peers-a");
+        string endpointB = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-dontwait-two-peers-b");
+        serverA.Bind(endpointA);
+        serverB.Bind(endpointB);
+        client.Connect(endpointA);
+        client.Connect(endpointB);
+        Thread.Sleep(100);
+
+        using Message requestHeader = Message.From("request-header");
+        using Message requestBody = Message.From("request-body");
+        var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        bool accepted = client.Request()
+            .Messages([requestHeader, requestBody])
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Flags(SendFlags.DontWait)
+            .Submit((result, parts) =>
+            {
+                if (result != RequestResult.Ok)
+                {
+                    completion.TrySetException(
+                        new InvalidOperationException($"request failed: {result}"));
+                    return;
+                }
+
+                completion.TrySetResult(parts);
+            });
+
+        Assert.True(accepted);
+
+        Received received = RecvWithRetry(serverA, serverB);
+        Assert.Equal(ReceivedMessageType.Request, received.MessageType);
+        Assert.True(received.RequestSeq.HasValue);
+        Assert.Equal("request-header", received.Parts[0].GetString());
+        Assert.Equal("request-body", received.Parts[1].GetString());
+
+        using Message replyHeader = Message.From("reply-header");
+        using Message replyBody = Message.From("reply-body");
+        received.Reply().Messages([replyHeader, replyBody]).Submit();
+        received.Dispose();
+
+        IReadOnlyList<Message> clientReply = await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("reply-header", clientReply[0].GetString());
+        Assert.Equal("reply-body", clientReply[1].GetString());
+        Zlink.MultipartClose(clientReply);
+    }
+
+    [Fact]
+    public async Task dealer_received_reply_routes_with_framework_dealer_mesh_options()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var serverA = ctx.CreateDealerSocket();
+        using var serverB = ctx.CreateDealerSocket();
+        using var client = ctx.CreateDealerSocket();
+
+        serverA.SetChannelName("profile.mesh");
+        serverB.SetChannelName("profile.mesh");
+        client.SetChannelName("profile.mesh");
+        serverA.Options.PeerWeight = 100;
+        serverB.Options.PeerWeight = 100;
+        client.Options.PeerWeight = 100;
+        serverA.OnSendReady(() => { });
+        serverB.OnSendReady(() => { });
+        client.OnSendReady(() => { });
+
+        string endpointA = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-framework-options-a");
+        string endpointB = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-framework-options-b");
+        serverA.Bind(endpointA);
+        serverB.Bind(endpointB);
+        client.Connect(endpointA);
+        client.Connect(endpointB);
+        Thread.Sleep(100);
+
+        using Message requestHeader = Message.From("request-header");
+        using Message requestBody = Message.From("request-body");
+        var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        bool accepted = client.Request()
+            .Messages([requestHeader, requestBody])
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Flags(SendFlags.DontWait)
+            .Submit((result, parts) =>
+            {
+                if (result != RequestResult.Ok)
+                {
+                    completion.TrySetException(
+                        new InvalidOperationException($"request failed: {result}"));
+                    return;
+                }
+
+                completion.TrySetResult(parts);
+            });
+
+        Assert.True(accepted);
+
+        using Received received = RecvWithRetry(serverA, serverB);
+        Assert.Equal(ReceivedMessageType.Request, received.MessageType);
+        Assert.True(received.RequestSeq.HasValue);
+        Assert.Equal("request-header", received.Parts[0].GetString());
+        Assert.Equal("request-body", received.Parts[1].GetString());
+
+        using Message replyHeader = Message.From("reply-header");
+        using Message replyBody = Message.From("reply-body");
+        received.Reply().Messages([replyHeader, replyBody]).Submit();
+
+        IReadOnlyList<Message> clientReply = await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("reply-header", clientReply[0].GetString());
+        Assert.Equal("reply-body", clientReply[1].GetString());
+        Zlink.MultipartClose(clientReply);
+    }
+
+    [Fact]
+    public async Task dealer_received_reply_routes_when_submitted_from_another_thread()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var serverContext = Zlink.CreateContext();
+        using var clientContext = Zlink.CreateContext();
+        using var server = serverContext.CreateDealerSocket();
+        using var client = clientContext.CreateDealerSocket();
+
+        string endpoint = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-reply-from-another-thread");
+        server.Bind(endpoint);
+        client.Connect(endpoint);
+        Thread.Sleep(100);
+
+        using Message request = Message.From("request");
+        var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(client.Request()
+            .Message(request)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Flags(SendFlags.DontWait)
+            .Submit((result, parts) =>
+            {
+                if (result != RequestResult.Ok)
+                {
+                    completion.TrySetException(
+                        new InvalidOperationException($"request failed: {result}"));
+                    return;
+                }
+
+                completion.TrySetResult(parts);
+            }));
+
+        Received received = RecvWithRetry(server);
+        await Task.Run(() =>
+        {
+            using Message reply = Message.From("reply");
+            received.Reply().Message(reply).Submit();
+            received.Dispose();
+        });
+
+        IReadOnlyList<Message> clientReply = await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("reply", clientReply[0].GetString());
+        Zlink.MultipartClose(clientReply);
+    }
+
+    [Fact]
+    public async Task dealer_received_reply_routes_when_provider_has_dealer_mesh_discovery()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var registryContext = Zlink.CreateContext();
+        using var serverContext = Zlink.CreateContext();
+        using var clientContext = Zlink.CreateContext();
+        using var registry = registryContext.CreateRegistry();
+        using var serverDiscovery = serverContext.CreateDiscovery(
+            AutoConnectType.DealerMesh,
+            "profile.mesh");
+        using var routerDiscovery = serverContext.CreateDiscovery(
+            AutoConnectType.ClientServer,
+            "profile");
+        using var server = serverContext.CreateDealerSocket();
+        using var router = serverContext.CreateRouterSocket();
+        using var client = clientContext.CreateDealerSocket();
+
+        string registryPub = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-discovery-registry-pub");
+        string registryRouter = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-discovery-registry-router");
+        string endpoint = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-discovery-provider");
+        string routerEndpoint = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-discovery-provider-router");
+
+        registry.Bind(registryPub, registryRouter);
+        registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
+        router.SetChannelName("profile");
+        router.Bind(routerEndpoint);
+        routerDiscovery.ConnectRegistry(registryRouter);
+        router.AttachDiscovery(routerDiscovery);
+        server.SetChannelName("profile.mesh");
+        server.Options.PeerWeight = 100;
+        server.Options.Linger = TimeSpan.Zero;
+        server.OnSendReady(() => { });
+        server.Bind(endpoint);
+        serverDiscovery.ConnectRegistry(registryRouter);
+        server.AttachDiscovery(serverDiscovery);
+        client.Connect(endpoint);
+        Thread.Sleep(100);
+
+        using Message request = Message.From("request");
+        var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(client.Request()
+            .Message(request)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Flags(SendFlags.DontWait)
+            .Submit((result, parts) =>
+            {
+                if (result != RequestResult.Ok)
+                {
+                    completion.TrySetException(
+                        new InvalidOperationException($"request failed: {result}"));
+                    return;
+                }
+
+                completion.TrySetResult(parts);
+            }));
+
+        Received received = RecvWithRetry(server);
+        Assert.Equal(ReceivedMessageType.Request, received.MessageType);
+        Assert.True(received.RequestSeq.HasValue);
+        Assert.Equal("request", received.Parts[0].GetString());
+
+        using Message reply = Message.From("reply");
+        received.Reply().Message(reply).Submit();
+        received.Dispose();
+
+        IReadOnlyList<Message> clientReply = await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("reply", clientReply[0].GetString());
+        Zlink.MultipartClose(clientReply);
+    }
+
+    [Fact]
+    public async Task dealer_received_reply_routes_when_two_providers_have_dealer_mesh_discovery()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var registryContext = Zlink.CreateContext();
+        using var serverAContext = Zlink.CreateContext();
+        using var serverBContext = Zlink.CreateContext();
+        using var clientContext = Zlink.CreateContext();
+        using var registry = registryContext.CreateRegistry();
+        using var serverADiscovery = serverAContext.CreateDiscovery(
+            AutoConnectType.DealerMesh,
+            "profile.mesh");
+        using var serverBDiscovery = serverBContext.CreateDiscovery(
+            AutoConnectType.DealerMesh,
+            "profile.mesh");
+        using var serverA = serverAContext.CreateDealerSocket();
+        using var serverB = serverBContext.CreateDealerSocket();
+        using var client = clientContext.CreateDealerSocket();
+
+        string registryPub = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-discovery-two-registry-pub");
+        string registryRouter = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-discovery-two-registry-router");
+        string endpointA = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-discovery-provider-a");
+        string endpointB = CoreTestSupport.NewEndpoint("tcp",
+            "dealer-discovery-provider-b");
+
+        registry.Bind(registryPub, registryRouter);
+        registry.SetBroadcastInterval(TimeSpan.FromMilliseconds(50));
+        ConfigureDiscoveredProvider(serverA, serverADiscovery, endpointA, registryRouter);
+        ConfigureDiscoveredProvider(serverB, serverBDiscovery, endpointB, registryRouter);
+        client.SetChannelName("profile.mesh");
+        client.Connect(endpointA);
+        client.Connect(endpointB);
+
+        Assert.True(CoreTestSupport.WaitUntil(
+            () => registry.MemberPeers("profile.mesh").Length >= 2,
+            3000));
+
+        using Message request = Message.From("request");
+        var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Assert.True(client.Request()
+            .Message(request)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Flags(SendFlags.DontWait)
+            .Submit((result, parts) =>
+            {
+                if (result != RequestResult.Ok)
+                {
+                    completion.TrySetException(
+                        new InvalidOperationException($"request failed: {result}"));
+                    return;
+                }
+
+                completion.TrySetResult(parts);
+            }));
+
+        using Received received = RecvWithRetry(serverA, serverB);
+        Assert.Equal(ReceivedMessageType.Request, received.MessageType);
+        Assert.True(received.RequestSeq.HasValue);
+        Assert.Equal("request", received.Parts[0].GetString());
+
+        using Message reply = Message.From("reply");
+        received.Reply().Message(reply).Submit();
+
+        IReadOnlyList<Message> clientReply = await completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("reply", clientReply[0].GetString());
+        Zlink.MultipartClose(clientReply);
+    }
+
+    private static void ConfigureDiscoveredProvider(
+        IDealerSocket server,
+        IDiscovery discovery,
+        string endpoint,
+        string registryRouter)
+    {
+        server.SetChannelName("profile.mesh");
+        server.Options.PeerWeight = 100;
+        server.Options.Linger = TimeSpan.Zero;
+        server.OnSendReady(() => { });
+        server.Bind(endpoint);
+        discovery.ConnectRegistry(registryRouter);
+        server.AttachDiscovery(discovery);
+    }
+
+    [Fact]
     public void request_router_preserves_data_receive_surface()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -239,6 +803,26 @@ public sealed class test_request_reply
                 return received;
 
             received.Dispose();
+            Thread.Sleep(1);
+        }
+
+        throw new TimeoutException("Timed out waiting for dealer message.");
+    }
+
+    private static Received RecvWithRetry(params IDealerSocket[] sockets)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            foreach (var socket in sockets)
+            {
+                var received = Received.Create();
+                if (socket.Recv(received, RecvFlags.DontWait))
+                    return received;
+
+                received.Dispose();
+            }
+
             Thread.Sleep(1);
         }
 

@@ -1239,6 +1239,68 @@ void test_dealer_to_dealer_reply_routes_to_source_peer_and_closes ()
     test_context_socket_close (server_dealer);
 }
 
+void test_dealer_to_dealer_multipart_reply_preserves_large_first_part ()
+{
+    void *server_dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    void *client_dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (server_dealer);
+    TEST_ASSERT_NOT_NULL (client_dealer);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (server_dealer, "inproc://zmp-dealer-large-first-reply"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (client_dealer, "inproc://zmp-dealer-large-first-reply"));
+    msleep (SETTLE_TIME);
+
+    zlink_msg_t request_part;
+    zlink_msg_init (&request_part);
+    init_string_part (&request_part, "request");
+
+    reply_probe_t reply_probe;
+    reply_probe.progress_handle = client_dealer;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_dealer_request (client_dealer, &request_part, 1, &capture_reply, &reply_probe, 0,
+                            3000));
+
+    uint8_t message_type = 0;
+    uint64_t request_seq = 0;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+    zlink_msg_t received;
+    zlink_msg_init (&received);
+    TEST_ASSERT_SUCCESS_ERRNO (recv_dealer_part_with_retry (
+      server_dealer, &message_type, &request_seq, &received, &has_more));
+    TEST_ASSERT_EQUAL_UINT8 (ZLINK_DEALER_MESSAGE_REQUEST, message_type);
+    TEST_ASSERT_TRUE (request_seq != 0);
+    TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, has_more);
+    TEST_ASSERT_EQUAL_STRING ("request", part_to_string_and_close (&received).c_str ());
+
+    const std::string large_first = std::string (320, 'x');
+    zlink_msg_t reply_first;
+    zlink_msg_t reply_second;
+    zlink_msg_init (&reply_first);
+    zlink_msg_init (&reply_second);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&reply_first, large_first.size ()));
+    memcpy (zlink_msg_data (&reply_first), large_first.data (), large_first.size ());
+    init_string_part (&reply_second, "reply-body");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_dealer_reply_part (server_dealer, request_seq, &reply_first, ZLINK_PART_MORE));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_dealer_reply_part (server_dealer, request_seq, &reply_second, ZLINK_PART_FINAL));
+
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
+    {
+        std::lock_guard<std::mutex> lock (reply_probe.mutex);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, reply_probe.result);
+        TEST_ASSERT_EQUAL_UINT64 (2, reply_probe.part_count);
+        TEST_ASSERT_EQUAL_STRING_LEN (large_first.c_str (), reply_probe.payload.c_str (),
+                                      large_first.size ());
+    }
+
+    msleep (SETTLE_TIME);
+    test_context_socket_close (client_dealer);
+    test_context_socket_close (server_dealer);
+}
+
 void test_dealer_request_receive_without_reply_closes_cleanly ()
 {
     void *server_dealer = test_context_socket (ZLINK_SOCKET_DEALER);
@@ -1723,6 +1785,7 @@ int main ()
     RUN_TEST (test_out_of_order_replies_match_original_request);
     RUN_TEST (test_extra_reply_is_dropped_after_first_completion);
     RUN_TEST (test_dealer_to_dealer_reply_routes_to_source_peer_and_closes);
+    RUN_TEST (test_dealer_to_dealer_multipart_reply_preserves_large_first_part);
     RUN_TEST (test_dealer_request_receive_without_reply_closes_cleanly);
     RUN_TEST (test_router_request_rejects_non_router_target);
     RUN_TEST (test_dealer_request_uses_socket_default_timeout_when_reply_is_missing);

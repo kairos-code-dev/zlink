@@ -102,6 +102,12 @@ int send_dealer_reply_to_target (const reqrep::dealer_reply_target_t &target_,
             errno = saved_errno;
             return -1;
         }
+
+        // pipe_t::write copies msg_t into the pipe and transfers the content
+        // ownership to that queued copy. Match socket xsend paths by clearing
+        // the caller-side slot before the cleanup pass reaches it.
+        const int rc = zlink_msg_init (&combined[i]);
+        errno_assert (rc == 0);
     }
 
     zlink::request_reply::close_built_parts (combined, total_part_count);

@@ -66,6 +66,18 @@ static async Task RunAsync(ClientOptions options)
     await RunRmC2Async(options, routeHost.Services.GetRequiredService<IZLinkRouteClient>());
     await routeHost.StopAsync();
 
+    using var dealerMeshHost = CreateChannelClientHost(
+        options,
+        client =>
+        {
+            client.AddDealerMeshChannel("profile.mesh")
+                .EnableClient(options.ProviderADealerEndpoint)
+                .EnableClient(options.ProviderBDealerEndpoint);
+        });
+
+    await dealerMeshHost.StartAsync();
+    await RunRmC6Async(options, dealerMeshHost.Services.GetRequiredService<IZLinkChannelClient>());
+    await dealerMeshHost.StopAsync();
 }
 
 static async Task RunRmA1Async(ClientOptions options, IZLinkChannelClient client)
@@ -263,6 +275,34 @@ static async Task RunRmC3Async(ClientOptions options, IZLinkChannelClient client
         },
         "RM-C3 expected both providers to handle the direct multi-endpoint request set.");
     Console.WriteLine("scenario RM-C3 passed");
+}
+
+static async Task RunRmC6Async(ClientOptions options, IZLinkChannelClient client)
+{
+    var beforeA = await ReadEvidenceAsync(options.ProviderAEvidenceUrl);
+    var beforeB = await ReadEvidenceAsync(options.ProviderBEvidenceUrl);
+    var marker = $"rm-c6-{Guid.NewGuid():N}";
+
+    for (var i = 0; i < 30; i++)
+    {
+        var reply = await client.RequestToChannel("profile.mesh", new ProfileRequest($"{marker}-{i}"))
+            .PacketName("ProfileRequest")
+            .Timeout(TimeSpan.FromSeconds(5))
+            .Async<ProfileReply>();
+        Ensure(reply.Value == $"profile:{marker}-{i}", "RM-C6 reply value mismatch.");
+    }
+
+    await WaitUntilAsync(
+        async () =>
+        {
+            var afterA = await ReadEvidenceAsync(options.ProviderAEvidenceUrl);
+            var afterB = await ReadEvidenceAsync(options.ProviderBEvidenceUrl);
+            var a = CountNew(afterA, beforeA, "profile-request|rid=api-a", marker);
+            var b = CountNew(afterB, beforeB, "profile-request|rid=api-b", marker);
+            return a > 0 && b > 0 && a + b == 30;
+        },
+        "RM-C6 expected both dealer mesh providers to handle the request set.");
+    Console.WriteLine("scenario RM-C6 passed");
 }
 
 static IHost CreateChannelClientHost(

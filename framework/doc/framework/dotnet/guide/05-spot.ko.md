@@ -422,7 +422,7 @@ public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotPublisherC
 }
 ```
 
-- `CreateAsync<TSpot>()` 는 빈 `Message` 로 생성하고 `OnCreateAsync`가 허용하면
+- `CreateAsync<TSpot>()` 는 빈 `ZLinkMessage` 로 생성하고 `OnCreateAsync`가 허용하면
   `OnInitializeAsync` 가 한 번 실행된다.
 - `GetOrCreateAsync<TSpot>(spotRid, ...)` 는 이미 있으면 `State == Existing` 으로
   재사용하고(새로 만들면 `Created`, `OnCreateAsync` 가 거부하면 `Rejected`), 같은

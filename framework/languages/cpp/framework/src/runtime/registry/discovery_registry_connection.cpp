@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "runtime/channels/discovery_registry_connection.hpp"
+#include "runtime/registry/discovery_registry_connection.hpp"
 
 #include <zlink.hpp>
 

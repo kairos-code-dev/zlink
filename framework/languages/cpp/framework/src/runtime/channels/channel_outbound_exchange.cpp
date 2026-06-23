@@ -3,11 +3,11 @@
 #include "runtime/channels/channel_outbound_exchange.hpp"
 
 #include "runtime/channels/channel_runtime_manager.hpp"
-#include "runtime/channels/discovery_registry_connection.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
+#include "runtime/registry/discovery_registry_connection.hpp"
 
 #include <zlink.hpp>
 

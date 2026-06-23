@@ -4,7 +4,7 @@
 
 #include "runtime/channels/channel_packet_dispatcher.hpp"
 #include "runtime/channels/channel_runtime.hpp"
-#include "runtime/channels/discovery_registry_connection.hpp"
+#include "runtime/registry/discovery_registry_connection.hpp"
 
 #include <zlink.hpp>
 

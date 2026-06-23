@@ -4,10 +4,9 @@
 
 #include <zlink.hpp>
 
+#include "runtime/registry/discovery_registry_connection.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
-#include <chrono>
-#include <exception>
 #include <utility>
 
 namespace zlink::framework::runtime
@@ -66,21 +65,7 @@ void spot_node_host_service_t::start (service_provider_t &services)
               native->context, zlink::auto_connect_type::spot_mesh,
               *snapshot.discovery_channel_name);
             for (const auto &endpoint : _discovery.registry_endpoints) {
-                std::exception_ptr last_error;
-                for (int attempt = 0; attempt < 100; ++attempt) {
-                    try {
-                        native->discovery->connect_registry (endpoint);
-                        last_error = nullptr;
-                        break;
-                    }
-                    catch (...) {
-                        last_error = std::current_exception ();
-                        std::this_thread::sleep_for (std::chrono::milliseconds (10));
-                    }
-                }
-                if (last_error) {
-                    std::rethrow_exception (last_error);
-                }
+                detail::connect_registry_with_retry (*native->discovery, endpoint);
             }
             native->node->attach_discovery (*native->discovery);
         }

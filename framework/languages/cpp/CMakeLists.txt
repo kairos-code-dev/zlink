@@ -64,7 +64,6 @@ add_library(zlink_framework STATIC
   framework/src/runtime/channels/channel_pending_requests.cpp
   framework/src/runtime/channels/channel_reply_writer.cpp
   framework/src/runtime/channels/channel_outbound_exchange.cpp
-  framework/src/runtime/channels/discovery_registry_connection.cpp
   framework/src/runtime/channels/channel_runtime_bundle.cpp
   framework/src/runtime/channels/channel_runtime_manager.cpp
   framework/src/runtime/channels/channel_runtime.cpp
@@ -102,6 +101,7 @@ add_library(zlink_framework STATIC
   framework/src/runtime/messaging/request_failure_mapper.cpp
   framework/src/runtime/messaging/submit_queue.cpp
   framework/src/runtime/registry/registry_runtime.cpp
+  framework/src/runtime/registry/discovery_registry_connection.cpp
   framework/src/runtime/spots/spot_node_host_service.cpp
   framework/src/runtime/spots/spot_route_internal_dispatcher.cpp
   framework/src/runtime/spots/spot_route_packets.cpp

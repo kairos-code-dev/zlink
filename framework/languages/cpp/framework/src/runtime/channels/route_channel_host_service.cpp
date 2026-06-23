@@ -4,9 +4,9 @@
 
 #include "runtime/backend/native_route_backend.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
-#include "runtime/channels/discovery_registry_connection.hpp"
 #include "runtime/channels/route_internal_packet_dispatcher.hpp"
 #include "runtime/channels/route_packet_dispatcher.hpp"
+#include "runtime/registry/discovery_registry_connection.hpp"
 #include "runtime/registry/registry_runtime.hpp"
 
 #include <zlink.hpp>

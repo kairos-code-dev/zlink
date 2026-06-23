@@ -50,35 +50,50 @@ else if (options.Role == "provider")
             .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
             .TraceNodeId(options.Rid);
 
-        var clientServer = framework.AddClientServerChannel("profile")
-            .EnableServer(options.ChannelEndpoint
-                ?? throw new InvalidOperationException("--channel-endpoint is required."));
-        clientServer.ConfigureServerRouting().RoutingId = RoutingId.From(options.Rid);
-        clientServer.ConfigureServerSocket().Weight = options.Weight;
-        clientServer.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
-        clientServer.AddSendHandler<ProfileCommandHandler, ProfileCommand>("ProfileCommand");
-
-        var route = framework.AddRouteMeshChannel("profile.route")
-            .EnableServer(options.RouteEndpoint
-                ?? throw new InvalidOperationException("--route-endpoint is required."))
-            .SetRoutingId(RoutingId.From(options.Rid));
-        foreach (var peer in options.RoutePeers)
+        if (!string.IsNullOrWhiteSpace(options.ChannelEndpoint))
         {
-            route.EnableClient(peer);
+            var clientServer = framework.AddClientServerChannel("profile")
+                .EnableServer(options.ChannelEndpoint);
+            clientServer.ConfigureServerRouting().RoutingId = RoutingId.From(options.Rid);
+            clientServer.ConfigureServerSocket().Weight = options.Weight;
+            clientServer.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
+            clientServer.AddSendHandler<ProfileCommandHandler, ProfileCommand>("ProfileCommand");
         }
 
-        route.AddRequestHandler<RoutePingHandler, ScenarioRoutePing, ScenarioRoutePong>("ScenarioRoutePing");
-
-        var dealer = framework.AddDealerMeshChannel("profile.mesh")
-            .EnableServer(options.DealerEndpoint
-                ?? throw new InvalidOperationException("--dealer-endpoint is required."));
-        dealer.ConfigureSocket().Weight = options.Weight;
-        foreach (var peer in options.DealerPeers)
+        if (!string.IsNullOrWhiteSpace(options.WorkflowEndpoint))
         {
-            dealer.EnableClient(peer);
+            var workflow = framework.AddClientServerChannel("workflow")
+                .EnableServer(options.WorkflowEndpoint);
+            workflow.ConfigureServerRouting().RoutingId = RoutingId.From(options.Rid);
+            workflow.ConfigureServerSocket().Weight = options.Weight;
+            workflow.AddRequestHandler<WorkflowRequestHandler, WorkflowRequest, WorkflowReply>("WorkflowRequest");
         }
 
-        dealer.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
+        if (!string.IsNullOrWhiteSpace(options.RouteEndpoint))
+        {
+            var route = framework.AddRouteMeshChannel("profile.route")
+                .EnableServer(options.RouteEndpoint)
+                .SetRoutingId(RoutingId.From(options.Rid));
+            foreach (var peer in options.RoutePeers)
+            {
+                route.EnableClient(peer);
+            }
+
+            route.AddRequestHandler<RoutePingHandler, ScenarioRoutePing, ScenarioRoutePong>("ScenarioRoutePing");
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.DealerEndpoint))
+        {
+            var dealer = framework.AddDealerMeshChannel("profile.mesh")
+                .EnableServer(options.DealerEndpoint);
+            dealer.ConfigureSocket().Weight = options.Weight;
+            foreach (var peer in options.DealerPeers)
+            {
+                dealer.EnableClient(peer);
+            }
+
+            dealer.AddRequestHandler<ProfileRequestHandler, ProfileRequest, ProfileReply>("ProfileRequest");
+        }
     });
 }
 else
@@ -130,6 +145,20 @@ internal sealed class ProfileCommandHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"profile-command|rid={evidence.Rid}|command={command.CommandId}|packet={context.PacketName}");
         return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class WorkflowRequestHandler(EvidenceStore evidence)
+    : IZLinkRequestHandler<WorkflowRequest, WorkflowReply>
+{
+    public ValueTask<WorkflowReply> HandleAsync(
+        WorkflowRequest request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"workflow-request|rid={evidence.Rid}|value={request.Value}|packet={context.PacketName}");
+        return ValueTask.FromResult(new WorkflowReply($"workflow:{request.Value}", evidence.Rid));
     }
 }
 
@@ -228,6 +257,7 @@ internal sealed record ServerOptions(
     string? RegistryPubEndpoint,
     string? RegistryRouterEndpoint,
     string? ChannelEndpoint,
+    string? WorkflowEndpoint,
     string? RouteEndpoint,
     string? DealerEndpoint,
     int Weight,
@@ -279,6 +309,7 @@ internal sealed record ServerOptions(
             values.GetValueOrDefault("registry-pub-endpoint"),
             values.GetValueOrDefault("registry-router-endpoint"),
             values.GetValueOrDefault("channel-endpoint"),
+            values.GetValueOrDefault("workflow-endpoint"),
             values.GetValueOrDefault("route-endpoint"),
             values.GetValueOrDefault("dealer-endpoint"),
             int.TryParse(values.GetValueOrDefault("weight"), out var weight) ? weight : 100,

@@ -6,6 +6,10 @@ public sealed record ProfileReply(string Value, string ProviderRid);
 
 public sealed record ProfileCommand(string CommandId);
 
+public sealed record WorkflowRequest(string Value);
+
+public sealed record WorkflowReply(string Value, string ProviderRid);
+
 public sealed record ScenarioRoutePing(string Value);
 
 public sealed record ScenarioRoutePong(

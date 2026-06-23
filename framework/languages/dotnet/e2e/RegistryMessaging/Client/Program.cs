@@ -27,6 +27,7 @@ static async Task RunAsync(ClientOptions options)
         {
             client.UseDiscovery().AddRegistryEndpoint(options.RegistryRouterEndpoint);
             client.AddClientServerChannel("profile").EnableClient();
+            client.AddClientServerChannel("workflow").EnableClient();
         });
 
     await discoveryHost.StartAsync();
@@ -37,6 +38,7 @@ static async Task RunAsync(ClientOptions options)
     await RunRmC1Async(options, discoveryClient);
     await RunRmC4Async(discoveryClient);
     await RunRmC5Async(options, discoveryClient);
+    await RunRmA6Async(options, discoveryClient);
     await discoveryHost.StopAsync();
 
     using var manualHost = CreateChannelClientHost(
@@ -215,6 +217,46 @@ static async Task RunRmC5Async(ClientOptions options, IZLinkChannelClient client
         .Async<ProfileReply>();
     Ensure(reply.Value == "profile:rm-c5-after", "RM-C5 normal request after negative path failed.");
     Console.WriteLine("scenario RM-C5 passed");
+}
+
+static async Task RunRmA6Async(ClientOptions options, IZLinkChannelClient client)
+{
+    var profileMarker = $"rm-a6-profile-{Guid.NewGuid():N}";
+    var workflowMarker = $"rm-a6-workflow-{Guid.NewGuid():N}";
+    var beforeProfileA = await ReadEvidenceAsync(options.ProviderAEvidenceUrl);
+    var beforeProfileB = await ReadEvidenceAsync(options.ProviderBEvidenceUrl);
+    var beforeWorkflow = await ReadEvidenceAsync(options.WorkflowEvidenceUrl);
+
+    var profileReply = await client.RequestToChannel("profile", new ProfileRequest(profileMarker))
+        .PacketName("ProfileRequest")
+        .Timeout(TimeSpan.FromSeconds(5))
+        .Async<ProfileReply>();
+    Ensure(profileReply.Value == $"profile:{profileMarker}", "RM-A6 profile reply value mismatch.");
+    Ensure(profileReply.ProviderRid is "api-a" or "api-b", "RM-A6 profile request reached an unexpected provider.");
+
+    var workflowReply = await client.RequestToChannel("workflow", new WorkflowRequest(workflowMarker))
+        .PacketName("WorkflowRequest")
+        .Timeout(TimeSpan.FromSeconds(5))
+        .Async<WorkflowReply>();
+    Ensure(workflowReply.Value == $"workflow:{workflowMarker}", "RM-A6 workflow reply value mismatch.");
+    Ensure(workflowReply.ProviderRid == "workflow-a", "RM-A6 workflow request should reach workflow-a.");
+
+    await WaitUntilAsync(
+        async () =>
+        {
+            var afterProfileA = await ReadEvidenceAsync(options.ProviderAEvidenceUrl);
+            var afterProfileB = await ReadEvidenceAsync(options.ProviderBEvidenceUrl);
+            var afterWorkflow = await ReadEvidenceAsync(options.WorkflowEvidenceUrl);
+            var profileHits = CountNew(afterProfileA, beforeProfileA, "profile-request|", profileMarker)
+                + CountNew(afterProfileB, beforeProfileB, "profile-request|", profileMarker);
+            var workflowHits = CountNew(afterWorkflow, beforeWorkflow, "workflow-request|rid=workflow-a", workflowMarker);
+            var misplacedWorkflow = CountNew(afterProfileA, beforeProfileA, "workflow-request|", workflowMarker)
+                + CountNew(afterProfileB, beforeProfileB, "workflow-request|", workflowMarker);
+            return profileHits == 1 && workflowHits == 1 && misplacedWorkflow == 0;
+        },
+        "RM-A6 channel evidence showed mixed or missing profile/workflow routing.");
+
+    Console.WriteLine("scenario RM-A6 passed");
 }
 
 static async Task RunRmC2Async(ClientOptions options, IZLinkRouteClient client)
@@ -673,6 +715,7 @@ internal sealed record ClientOptions(
     string ClientRouteEndpoint,
     string ProviderAEvidenceUrl,
     string ProviderBEvidenceUrl,
+    string WorkflowEvidenceUrl,
     string LogDir,
     string? ServerProject)
 {
@@ -710,6 +753,7 @@ internal sealed record ClientOptions(
             Require("client-route-endpoint"),
             Require("provider-a-evidence-url"),
             Require("provider-b-evidence-url"),
+            Require("workflow-evidence-url"),
             values.GetValueOrDefault("log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-e2e-log")),
             values.GetValueOrDefault("server-project"));
     }

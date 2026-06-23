@@ -22,10 +22,12 @@ PY
 REG_HTTP_PORT="$(pick_port)"
 PROVIDER_A_HTTP_PORT="$(pick_port)"
 PROVIDER_B_HTTP_PORT="$(pick_port)"
+WORKFLOW_HTTP_PORT="$(pick_port)"
 REG_PUB_PORT="$(pick_port)"
 REG_ROUTER_PORT="$(pick_port)"
 API_A_PORT="$(pick_port)"
 API_B_PORT="$(pick_port)"
+WORKFLOW_PORT="$(pick_port)"
 ROUTE_A_PORT="$(pick_port)"
 ROUTE_B_PORT="$(pick_port)"
 DEALER_A_PORT="$(pick_port)"
@@ -36,6 +38,7 @@ REG_PUB="tcp://127.0.0.1:$REG_PUB_PORT"
 REG_ROUTER="tcp://127.0.0.1:$REG_ROUTER_PORT"
 API_A="tcp://127.0.0.1:$API_A_PORT"
 API_B="tcp://127.0.0.1:$API_B_PORT"
+WORKFLOW="tcp://127.0.0.1:$WORKFLOW_PORT"
 ROUTE_A="tcp://127.0.0.1:$ROUTE_A_PORT"
 ROUTE_B="tcp://127.0.0.1:$ROUTE_B_PORT"
 DEALER_A="tcp://127.0.0.1:$DEALER_A_PORT"
@@ -115,6 +118,16 @@ start_server api-b \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" api-b
 
+start_server workflow-a \
+  --role provider \
+  --rid workflow-a \
+  --http-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT" \
+  --registry-router-endpoint "$REG_ROUTER" \
+  --workflow-endpoint "$WORKFLOW" \
+  --evidence-file "$LOG_DIR/workflow-a.evidence.log" \
+  --log-dir "$LOG_DIR"
+wait_health "http://127.0.0.1:$WORKFLOW_HTTP_PORT" workflow-a
+
 dotnet run --project "$CLIENT_PROJECT" -- \
   --registry-router-endpoint "$REG_ROUTER" \
   --provider-a-endpoint "$API_A" \
@@ -126,6 +139,7 @@ dotnet run --project "$CLIENT_PROJECT" -- \
   --client-route-endpoint "$CLIENT_ROUTE" \
   --provider-a-evidence-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT/evidence" \
   --provider-b-evidence-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT/evidence" \
+  --workflow-evidence-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT/evidence" \
   --server-project "$SERVER_PROJECT" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"

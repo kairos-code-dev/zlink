@@ -11,6 +11,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <utility>
@@ -546,11 +547,18 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
     zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
     {
         for (const auto &[actor_id, _] : _bound_actors) {
+            if (_notify_on_disconnect.contains (actor_id)) {
+                if (auto actor = _actors.find (actor_id)) {
+                    co_await actor->notify_disconnected ().async ();
+                    _state.record ("StreamDisconnectNotified", actor_id);
+                }
+            }
             _gateway.unbind_session_stream (actor_id);
             _actors.unbind_session (actor_id);
             _state.record ("StreamUnbound", actor_id);
         }
         _bound_actors.clear ();
+        _notify_on_disconnect.clear ();
         co_return;
     }
 
@@ -577,6 +585,9 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             auto bound = co_await _actors.bind (to_actor_ref (request.actor)).async ();
             const auto actor_id = std::string (bound.actor_id ());
             _bound_actors[actor_id] = request.target_node_rid;
+            if (actor_id.find ("disconnect-d5-notified") != std::string::npos) {
+                _notify_on_disconnect.insert (actor_id);
+            }
             _gateway.bind_session_stream (actor_id, stream, zlink::framework::stream_codec_t::json);
             _state.record ("StreamBound", actor_id, {},
                            request.target_node_rid + ":" + stream.session_id ());
@@ -643,6 +654,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
     zlink::framework::session_actor_manager_t &_actors;
     zlink::framework::actor_gateway_t &_gateway;
     std::map<std::string, std::string> _bound_actors;
+    std::set<std::string> _notify_on_disconnect;
 };
 
 void configure_codecs (zlink::framework::codec_options_builder_t codecs)

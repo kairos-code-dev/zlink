@@ -297,6 +297,30 @@ struct stage_spot_t : public zlink::framework::spot_t
     static inline std::string last_create_request;
 };
 
+struct erased_disconnect_spot_t : public zlink::framework::spot_t
+{
+    void configure (zlink::framework::spot_context_t &context)
+    {
+        context.handlers ().add_actor_packet<&erased_disconnect_spot_t::on_move> ("move");
+    }
+
+    zlink::framework::spot_actor_join_response_t on_actor_join (player_actor_factory_t &,
+                                                                const zlink::message_t &)
+    {
+        return zlink::framework::spot_actor_join_response_t::accept ();
+    }
+
+    void on_move (player_actor_factory_t &,
+                  const zlink::framework::spot_actor_send_context_t &,
+                  const move_request_t &)
+    {
+    }
+
+    void onDisconnectActor (player_actor_factory_t &) { ++disconnected_count; }
+
+    int disconnected_count{};
+};
+
 struct subscription_spot_t : public zlink::framework::spot_t
 {
     void configure (zlink::framework::spot_context_t &context)
@@ -833,6 +857,29 @@ int main ()
       lifecycle_actor_context.actor_ref (), lifecycle_actor_state);
     if (!current_disconnect || lifecycle_stage_spot->disconnected_count != 1) {
         return 68;
+    }
+    auto erased_disconnect_spot = std::make_shared<erased_disconnect_spot_t> ();
+    zlink::framework::zlink_builder_t erased_disconnect_host;
+    auto erased_disconnect_builder = erased_disconnect_host.add_spot_node ("erased-stage");
+    erased_disconnect_builder.add_actor_factory<player_actor_factory_t> ("player")
+      .add_spot<erased_disconnect_spot_t> (
+        "stage", [erased_disconnect_spot] { return erased_disconnect_spot; });
+    auto erased_disconnect_stage = erased_disconnect_builder.create_spot ("stage");
+    auto erased_disconnect_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (erased_disconnect_builder);
+    auto erased_actor_ref = zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string ("remote-session"), "player", "erased-player", 3);
+    auto erased_join = erased_disconnect_runtime.join_remote_actor_to_spot_erased (
+      erased_actor_ref, erased_disconnect_stage.spot_rid,
+      zlink::message_t::from (std::string ("44")));
+    if (!erased_join || erased_join.value ().result_code != 0
+        || erased_disconnect_spot->disconnected_count != 0) {
+        return 104;
+    }
+    auto erased_disconnect =
+      erased_disconnect_runtime.notify_actor_disconnected_erased (erased_join.value ().actor);
+    if (!erased_disconnect || erased_disconnect_spot->disconnected_count != 1) {
+        return 105;
     }
     if (!lifecycle_gateway.manager ().find ("joined-player")) {
         return 85;

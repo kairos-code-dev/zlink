@@ -213,6 +213,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         if (_scenario_mode == "stream") {
             run_stream_auth_dispatch_scenario (routes);
             run_bound_session_push_targeting_scenario (routes);
+            run_stream_disconnect_notification_scenario (routes);
             run_stream_session_scenario (routes, "SM-D1", "play-a", "stream-local", "a-stream-room",
                                          "stream-local-push");
             run_stream_session_scenario (routes, "SM-D2", "play-b", "stream-remote",
@@ -643,6 +644,78 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         (void) bound.close ().submit ();
         (void) unbound.close ().submit ();
         std::cout << "scenario SM-D6 passed\n";
+    }
+
+    void run_stream_disconnect_notification_scenario (zlink::framework::route_client_t &routes)
+    {
+        const auto notified_actor_id = std::string ("stream-disconnect-d5-notified");
+        const auto muted_actor_id = std::string ("stream-disconnect-d5-muted");
+        auto notified_actor =
+          ensure_actor_ref (routes, "play-a", notified_actor_id, notified_actor_id + "-display");
+        auto muted_actor =
+          ensure_actor_ref (routes, "play-a", muted_actor_id, muted_actor_id + "-display");
+
+        auto core = make_stream_connector ();
+        core.codecs ().add_json ();
+        auto stream = zlink::stream_e2e_client::use (core);
+
+        auto connected = stream.connect ().submit ();
+        ensure (static_cast<bool> (connected), "SM-D5 stream connect failed");
+
+        auto notified_auth =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::stream_auth_req_t{"play-a", notified_actor_id,
+                                           notified_actor_id + "-display", notified_actor})
+            .packet_name ("StreamAuthReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::stream_auth_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (notified_auth),
+                "SM-D5 notified actor auth failed: " + stream_error_text (notified_auth));
+
+        auto muted_auth =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::stream_auth_req_t{"play-a", muted_actor_id, muted_actor_id + "-display",
+                                           muted_actor})
+            .packet_name ("StreamAuthReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::stream_auth_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (muted_auth),
+                "SM-D5 muted actor auth failed: " + stream_error_text (muted_auth));
+
+        auto notified_join =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::join_req_t{.key = "a-stream-disconnect-notified",
+                                    .actor_id = notified_actor_id,
+                                    .display_name = notified_actor_id + "-display",
+                                    .level = 91,
+                                    .tags = {"stream", "SM-D5", "notified"}})
+            .packet_name ("JoinReq")
+            .metadata ("actor-id", notified_actor_id)
+            .timeout (std::chrono::milliseconds (5000))
+            .async<e2e::join_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (notified_join),
+                "SM-D5 notified actor join failed: " + stream_error_text (notified_join));
+
+        auto muted_join = zlink::stream_e2e_client::codecs::request (
+                            stream, e2e::join_req_t{.key = "a-stream-disconnect-muted",
+                                                    .actor_id = muted_actor_id,
+                                                    .display_name = muted_actor_id + "-display",
+                                                    .level = 92,
+                                                    .tags = {"stream", "SM-D5", "muted"}})
+                            .packet_name ("JoinReq")
+                            .metadata ("actor-id", muted_actor_id)
+                            .timeout (std::chrono::milliseconds (5000))
+                            .async<e2e::join_res_t> ()
+                            .result ();
+        ensure (static_cast<bool> (muted_join),
+                "SM-D5 muted actor join failed: " + stream_error_text (muted_join));
+
+        (void) stream.close ().submit ();
+        std::this_thread::sleep_for (std::chrono::milliseconds (300));
+        std::cout << "scenario SM-D5 passed\n";
     }
 
     void run_multi_stream_session_scenario (zlink::framework::route_client_t &routes)

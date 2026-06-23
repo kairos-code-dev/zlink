@@ -222,6 +222,16 @@ def has_marker_value(snapshot, marker, value):
             return True
     return False
 
+def count(snapshot, marker, actor=None):
+    total = 0
+    for entry in snapshot["entries"]:
+        if entry["marker"] != marker:
+            continue
+        if actor is not None and entry["actor_id"] != actor:
+            continue
+        total += 1
+    return total
+
 assert has(play_a, "ActorEnsured", "alice")
 assert has(play_a, "EntryJoin", "alice")
 assert has(play_a, "StateMutated", "alice")
@@ -246,6 +256,8 @@ assert has_value(play_a, "ActorPushedSession", "stream-multi-a", "stream-multi-a
 assert has_value(play_a, "ActorPushedSession", "stream-push-d6", "stream-push-d6-value")
 assert has(play_a, "EntryJoin", "stream-auth-d7")
 assert has_value(play_a, "StateMutated", "stream-auth-d7", "7")
+assert has(play_a, "ActorDisconnected", "stream-disconnect-d5-notified")
+assert count(play_a, "ActorDisconnected", "stream-disconnect-d5-muted") == 0
 assert has(play_b, "ActorEnsured", "bob")
 assert has(play_b, "EntryJoin", "bob")
 assert has(play_b, "StateMutated", "bob")
@@ -258,6 +270,9 @@ assert has(session_a, "StreamBound", "stream-multi-b")
 assert has(session_a, "StreamBound", "stream-push-d6")
 assert has(session_a, "StreamBound", "stream-auth-d7")
 assert has(session_a, "StreamAuthFailed", "stream-auth-d7")
+assert has(session_a, "StreamBound", "stream-disconnect-d5-notified")
+assert has(session_a, "StreamBound", "stream-disconnect-d5-muted")
+assert has(session_a, "StreamDisconnectNotified", "stream-disconnect-d5-notified")
 print("spot-service evidence result=passed")
 PY
 

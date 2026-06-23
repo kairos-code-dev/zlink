@@ -61,9 +61,7 @@ int main ()
     using zlink::framework::framework_error_kind_t;
 
     zlink::framework::zlink_builder_t zlink;
-    zlink.add_spot_node ("session-actors")
-      .bind ("tcp://0.0.0.0:7101")
-      .enable_actor_gateway ();
+    zlink.add_spot_node ("session-actors").bind ("tcp://0.0.0.0:7101").enable_actor_gateway ();
     zlink.stream ("client-stream")
       .bind ("tcp://0.0.0.0:9200")
       .register_session ("client")
@@ -194,6 +192,21 @@ int main ()
         return 19;
     }
 
+    bool disconnect_dispatch_seen = false;
+    gateway.on_disconnect ([&] (const zlink::framework::actor_ref_t &actor) {
+        disconnect_dispatch_seen = actor.actor_id () == "bob" && actor.generation () == 7;
+        return zlink::framework::result_t<void>::success ();
+    });
+    auto dispatched_disconnect = rebound.value ().notify_disconnected ().async ().result ();
+    if (!dispatched_disconnect || !disconnect_dispatch_seen || gateway.actor_bound ("bob")
+        || !gateway.actor_disconnected ("bob")) {
+        return 33;
+    }
+    rebound = manager.bind (remote_ref).async ().result ();
+    if (!rebound || !gateway.actor_bound ("bob")) {
+        return 34;
+    }
+
     bool typed_join_seen = false;
     gateway.on_join_spot ([&] (const zlink::framework::actor_ref_t &actor,
                                zlink::framework::spot_rid_t spot_rid,
@@ -232,11 +245,12 @@ int main ()
                                            "player", "bob", 8),
             zlink::message_t::from_json (join_reply_t{"match-1", "O"})});
     });
-    const auto join_spot = actor_context
-                             .join_spot_raw (zlink::framework::spot_rid_t::from_string ("match-1"),
-                                             zlink::message_t::from_json (join_request_t{"match-1"}))
-                             .async ()
-                             .result ();
+    const auto join_spot =
+      actor_context
+        .join_spot_raw (zlink::framework::spot_rid_t::from_string ("match-1"),
+                        zlink::message_t::from_json (join_request_t{"match-1"}))
+        .async ()
+        .result ();
     if (!join_spot || !join_spot_seen || join_spot.value ().result_code != 0
         || join_spot.value ().actor.generation () != 8
         || join_spot.value ().reply.to_raw ().parse_json<join_reply_t> ().mark != "O") {
@@ -253,19 +267,18 @@ int main ()
     }
 
     bool entry_join_seen = false;
-    gateway.on_join_entry_spot (
-      [&] (const zlink::framework::actor_ref_t &actor,
-           zlink::framework::node_rid_t node_rid,
-           const zlink::message_t &request) {
-          entry_join_seen = actor.actor_id () == "bob" && node_rid.value () == "entry-node"
-                            && request.to_string () == "entry";
-          return zlink::framework::result_t<zlink::framework::detail::actor_join_reply_t>::success (
-            zlink::framework::detail::actor_join_reply_t{
-              0,
-              zlink::framework::actor_ref_t (
-                zlink::framework::node_rid_t::from_string ("entry-node"), "player", "bob", 9),
-              zlink::message_t::from (std::string ("joined"))});
-      });
+    gateway.on_join_entry_spot ([&] (const zlink::framework::actor_ref_t &actor,
+                                     zlink::framework::node_rid_t node_rid,
+                                     const zlink::message_t &request) {
+        entry_join_seen = actor.actor_id () == "bob" && node_rid.value () == "entry-node"
+                          && request.to_string () == "entry";
+        return zlink::framework::result_t<zlink::framework::detail::actor_join_reply_t>::success (
+          zlink::framework::detail::actor_join_reply_t{
+            0,
+            zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("entry-node"),
+                                           "player", "bob", 9),
+            zlink::message_t::from (std::string ("joined"))});
+    });
     const auto entry_join =
       actor_context
         .join_entry_spot_raw (zlink::framework::node_rid_t::from_string ("entry-node"),
@@ -281,7 +294,8 @@ int main ()
         return 12;
     }
     auto rebound_after_entry = manager.bind (entry_join.value ().actor).async ().result ();
-    if (!rebound_after_entry || !gateway.actor_bound ("bob") || gateway.actor_disconnected ("bob")) {
+    if (!rebound_after_entry || !gateway.actor_bound ("bob")
+        || gateway.actor_disconnected ("bob")) {
         return 24;
     }
     const auto destroy_bound = gateway.destroy_actor (entry_join.value ().actor);

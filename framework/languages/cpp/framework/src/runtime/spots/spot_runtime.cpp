@@ -1631,7 +1631,7 @@ spot_node_runtime_t::actor_join_context_unlocked (spot_rid_t spot_rid,
 }
 
 result_t<std::reference_wrapper<spot_node_builder_state_t::actor_factory_registration_t>>
-spot_node_runtime_t::actor_factory_unlocked (const actor_ref_t &actor_ref)
+spot_node_runtime_t::actor_factory_unlocked (const actor_ref_t &actor_ref) const
 {
     const auto found = _state->actor_factories.find (std::string (actor_ref.actor_type ()));
     if (found == _state->actor_factories.end ()) {
@@ -1958,6 +1958,72 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
                                 dispatch_message_kind_t::actor_request, packet_name, {},
                                 found_location->second.value (), actor_ref.actor_id ());
     return result_t<std::optional<zlink::message_t>>::success (std::move (reply.value ()));
+}
+
+result_t<void>
+spot_node_runtime_t::notify_actor_disconnected_erased (const actor_ref_t &actor_ref) const
+{
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+    if (actor_ref.empty ()) {
+        return result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
+                                        "actor ref is empty");
+    }
+
+    const auto key = actor_key (actor_ref);
+    const auto found_generation = _state->actor_generations.find (key);
+    if (found_generation != _state->actor_generations.end ()
+        && found_generation->second != actor_ref.generation ()) {
+        return result_t<void>::failure (framework_error_kind_t::actor_stale_generation,
+                                        "actor generation is stale");
+    }
+
+    const auto found_location = _state->actor_spot_rids.find (key);
+    if (found_location == _state->actor_spot_rids.end ()) {
+        return result_t<void>::success ();
+    }
+    auto context = find_context (found_location->second);
+    if (!context || !context->_state->spot_instance) {
+        return result_t<void>::success ();
+    }
+
+    const auto actor_factory = actor_factory_unlocked (actor_ref);
+    if (!actor_factory) {
+        return result_t<void>::failure (actor_factory.error_kind (),
+                                        actor_factory.error () ? actor_factory.error ()->what ()
+                                                               : "actor factory failed");
+    }
+    const auto actor = _state->actor_instances.find (key);
+    if (actor == _state->actor_instances.end () || !actor->second) {
+        return result_t<void>::success ();
+    }
+
+    const auto admission =
+      context->_state->actor_admissions.find (actor_factory.value ().get ().actor_type);
+    if (admission == context->_state->actor_admissions.end ()
+        || !admission->second.onDisconnectActor) {
+        return result_t<void>::success ();
+    }
+
+    try {
+        if (!context->_state->run_serial_sync ("spot-lifecycle-disconnect", [&] {
+                admission->second.onDisconnectActor (context->_state->spot_instance.get (),
+                                                     actor->second.get ());
+            })) {
+            return result_t<void>::failure (framework_error_kind_t::request_rejected,
+                                            "spot serial queue is full");
+        }
+        return result_t<void>::success ();
+    }
+    catch (const framework_exception_t &error) {
+        return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+    }
+    catch (const std::exception &error) {
+        return result_t<void>::failure (framework_error_kind_t::request_failed, error.what ());
+    }
+    catch (...) {
+        return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                        "spot actor disconnected callback failed");
+    }
 }
 
 spot_node_runtime_t spot_node_runtime_t::from (const spot_node_builder_t &builder)

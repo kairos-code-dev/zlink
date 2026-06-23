@@ -37,6 +37,8 @@
   relay를 보내고, remote actor push가 session gateway route를 거쳐 돌아오는지 검증한다.
 - `SM-D4`: 한 stream session에 두 actor를 bind하고 `actor-id` metadata로 각각 다른 actor에
   relay/push가 전달되며, metadata 없는 request가 실패하는지 검증한다.
+- `SM-D5`: stream session 종료 시 session handler가 선택한 actor에만 public
+  `notify_disconnected`를 호출하고, 해당 actor의 disconnect callback만 실행되는지 검증한다.
 - `SM-D6`: actor push가 bound stream session으로만 전달되고, 연결만 하고 bind하지 않은 consumer는
   같은 push를 받지 않는지 검증한다.
 - `SM-D7`: stream auth 전 packet dispatch가 실패하고, 잘못된 auth request가 public error로
@@ -61,5 +63,5 @@
 
 ## 남은 구현 후보
 
-- `SM-D5`, `SM-D12`: 실제 stream session client와 gateway 노드를 더 확장해야 한다.
+- `SM-D12`: 실제 stream session client와 gateway 노드를 더 확장해야 한다.
 - `SM-G1`: harness가 play node를 kill/restart하고 재join/rebind를 검증해야 한다.

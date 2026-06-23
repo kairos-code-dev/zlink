@@ -245,6 +245,7 @@ class spot_node_runtime_t
                         service_provider_t &services,
                         serializer_registry_t &serializers,
                         spot_actor_message_metadata_t metadata = {});
+    result_t<void> notify_actor_disconnected_erased (const actor_ref_t &actor_ref) const;
 
     template <typename TActor>
     std::optional<std::reference_wrapper<TActor>> actor_instance (const actor_ref_t &actor_ref)
@@ -410,17 +411,16 @@ class spot_node_runtime_t
     };
 
     template <typename TSpot, typename TActor>
-    static constexpr bool has_actor_join_callback =
-      has_framework_actor_join_callback<TSpot, TActor>
-      || has_raw_actor_join_callback<TSpot, TActor>;
+    static constexpr bool has_actor_join_callback = has_framework_actor_join_callback<TSpot, TActor>
+                                                    || has_raw_actor_join_callback<TSpot, TActor>;
 
     template <typename TSpot, typename TActor>
-    spot_actor_join_response_t invoke_actor_join_callback (TSpot &spot,
-                                                           TActor &actor,
-                                                           const zlink::message_t &request)
+    spot_actor_join_response_t
+    invoke_actor_join_callback (TSpot &spot, TActor &actor, const zlink::message_t &request)
     {
         if constexpr (has_framework_actor_join_callback<TSpot, TActor>) {
-            return spot.on_actor_join (actor, message_t::from_encoded (request, _state->channel_runtime->serializers));
+            return spot.on_actor_join (
+              actor, message_t::from_encoded (request, _state->channel_runtime->serializers));
         } else {
             return spot.on_actor_join (actor, request);
         }
@@ -599,7 +599,7 @@ class spot_node_runtime_t
     result_t<spot_context_t> actor_join_context_unlocked (spot_rid_t spot_rid,
                                                           const zlink::message_t &request);
     result_t<std::reference_wrapper<spot_node_builder_state_t::actor_factory_registration_t>>
-    actor_factory_unlocked (const actor_ref_t &actor_ref);
+    actor_factory_unlocked (const actor_ref_t &actor_ref) const;
     result_t<std::reference_wrapper<spot_actor_admission_callbacks_t>>
     actor_admission_unlocked (spot_context_t &context,
                               std::type_index actor_type,

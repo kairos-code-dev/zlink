@@ -29,7 +29,8 @@ bool spot_route_internal_dispatcher_t::can_handle_send (std::string_view packet_
 bool spot_route_internal_dispatcher_t::can_handle_request (std::string_view packet_name) const
 {
     return packet_name == spot_actor_join_route_request_t::packet_name
-           || packet_name == spot_actor_packet_route_request_t::packet_name;
+           || packet_name == spot_actor_packet_route_request_t::packet_name
+           || packet_name == spot_actor_disconnect_route_request_t::packet_name;
 }
 
 result_t<void>
@@ -102,6 +103,21 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                 relayed.value () ? relayed.value ()->to_bytes () : std::vector<std::uint8_t>{}};
             return result_t<zlink::message_t>::success (
               _serializers->get<spot_actor_packet_route_reply_t> ().serialize (reply));
+        }
+        if (header.message_name == spot_actor_disconnect_route_request_t::packet_name) {
+            auto request = _serializers->get<spot_actor_disconnect_route_request_t> ().deserialize (
+              body.value ());
+            auto disconnected =
+              _runtime.notify_actor_disconnected_erased (actor_ref_from_spot_route (request));
+            if (!disconnected) {
+                return result_t<zlink::message_t>::failure (
+                  disconnected.error_kind (), disconnected.error ()
+                                                ? disconnected.error ()->what ()
+                                                : "remote actor disconnect notify failed");
+            }
+            return result_t<zlink::message_t>::success (
+              _serializers->get<spot_actor_disconnect_route_reply_t> ().serialize (
+                spot_actor_disconnect_route_reply_t{}));
         }
         auto request =
           _serializers->get<spot_actor_join_route_request_t> ().deserialize (body.value ());

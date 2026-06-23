@@ -12,13 +12,12 @@ namespace zlink::framework::detail
 
 void to_json (nlohmann::json &json, const spot_actor_join_route_request_t &value)
 {
-    json = nlohmann::json{
-      {"actorNodeRid", value.actor_node_rid},
-      {"actorType", value.actor_type},
-      {"actorId", value.actor_id},
-      {"actorGeneration", value.actor_generation},
-      {"spotRid", value.spot_rid},
-      {"payload", value.payload}};
+    json = nlohmann::json{{"actorNodeRid", value.actor_node_rid},
+                          {"actorType", value.actor_type},
+                          {"actorId", value.actor_id},
+                          {"actorGeneration", value.actor_generation},
+                          {"spotRid", value.spot_rid},
+                          {"payload", value.payload}};
 }
 
 void from_json (const nlohmann::json &json, spot_actor_join_route_request_t &value)
@@ -33,13 +32,12 @@ void from_json (const nlohmann::json &json, spot_actor_join_route_request_t &val
 
 void to_json (nlohmann::json &json, const spot_actor_join_route_reply_t &value)
 {
-    json = nlohmann::json{
-      {"resultCode", value.result_code},
-      {"actorNodeRid", value.actor_node_rid},
-      {"actorType", value.actor_type},
-      {"actorId", value.actor_id},
-      {"actorGeneration", value.actor_generation},
-      {"payload", value.payload}};
+    json = nlohmann::json{{"resultCode", value.result_code},
+                          {"actorNodeRid", value.actor_node_rid},
+                          {"actorType", value.actor_type},
+                          {"actorId", value.actor_id},
+                          {"actorGeneration", value.actor_generation},
+                          {"payload", value.payload}};
 }
 
 void from_json (const nlohmann::json &json, spot_actor_join_route_reply_t &value)
@@ -98,6 +96,32 @@ void from_json (const nlohmann::json &json, spot_actor_packet_route_reply_t &val
     value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
 }
 
+void to_json (nlohmann::json &json, const spot_actor_disconnect_route_request_t &value)
+{
+    json = nlohmann::json{{"actorNodeRid", value.actor_node_rid},
+                          {"actorType", value.actor_type},
+                          {"actorId", value.actor_id},
+                          {"actorGeneration", value.actor_generation}};
+}
+
+void from_json (const nlohmann::json &json, spot_actor_disconnect_route_request_t &value)
+{
+    value.actor_node_rid = json.at ("actorNodeRid").get<std::string> ();
+    value.actor_type = json.at ("actorType").get<std::string> ();
+    value.actor_id = json.at ("actorId").get<std::string> ();
+    value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
+}
+
+void to_json (nlohmann::json &json, const spot_actor_disconnect_route_reply_t &value)
+{
+    json = nlohmann::json{{"accepted", value.accepted}};
+}
+
+void from_json (const nlohmann::json &json, spot_actor_disconnect_route_reply_t &value)
+{
+    value.accepted = json.value ("accepted", true);
+}
+
 void to_json (nlohmann::json &json, const actor_bound_session_route_request_t &value)
 {
     json = nlohmann::json{{"actorNodeRid", value.actor_node_rid},
@@ -133,18 +157,17 @@ zlink::message_t message_from_bytes (const std::vector<std::uint8_t> &bytes)
     return zlink::message_t::from (bytes);
 }
 
-spot_actor_join_route_request_t make_spot_actor_join_route_request (
-  const actor_ref_t &actor_ref,
-  spot_rid_t spot_rid,
-  const zlink::message_t &payload)
+spot_actor_join_route_request_t make_spot_actor_join_route_request (const actor_ref_t &actor_ref,
+                                                                    spot_rid_t spot_rid,
+                                                                    const zlink::message_t &payload)
 {
-    return spot_actor_join_route_request_t{
-      .actor_node_rid = std::string (actor_ref.node_rid ().value ()),
-      .actor_type = std::string (actor_ref.actor_type ()),
-      .actor_id = std::string (actor_ref.actor_id ()),
-      .actor_generation = actor_ref.generation (),
-      .spot_rid = std::string (spot_rid.value ()),
-      .payload = payload.to_bytes ()};
+    return spot_actor_join_route_request_t{.actor_node_rid =
+                                             std::string (actor_ref.node_rid ().value ()),
+                                           .actor_type = std::string (actor_ref.actor_type ()),
+                                           .actor_id = std::string (actor_ref.actor_id ()),
+                                           .actor_generation = actor_ref.generation (),
+                                           .spot_rid = std::string (spot_rid.value ()),
+                                           .payload = payload.to_bytes ()};
 }
 
 actor_ref_t actor_ref_from_spot_route (const spot_actor_join_route_request_t &request)
@@ -153,44 +176,42 @@ actor_ref_t actor_ref_from_spot_route (const spot_actor_join_route_request_t &re
                         request.actor_id, request.actor_generation);
 }
 
-spot_actor_join_route_reply_t make_spot_actor_join_route_reply (
-  const actor_join_reply_t &reply)
+spot_actor_join_route_reply_t make_spot_actor_join_route_reply (const actor_join_reply_t &reply)
 {
-    return spot_actor_join_route_reply_t{
-      .result_code = reply.result_code,
-      .actor_node_rid = std::string (reply.actor.node_rid ().value ()),
-      .actor_type = std::string (reply.actor.actor_type ()),
-      .actor_id = std::string (reply.actor.actor_id ()),
-      .actor_generation = reply.actor.generation (),
-      .payload = reply.reply.to_bytes ()};
+    return spot_actor_join_route_reply_t{.result_code = reply.result_code,
+                                         .actor_node_rid =
+                                           std::string (reply.actor.node_rid ().value ()),
+                                         .actor_type = std::string (reply.actor.actor_type ()),
+                                         .actor_id = std::string (reply.actor.actor_id ()),
+                                         .actor_generation = reply.actor.generation (),
+                                         .payload = reply.reply.to_bytes ()};
 }
 
-actor_join_reply_t actor_join_reply_from_spot_route (
-  const spot_actor_join_route_reply_t &reply)
+actor_join_reply_t actor_join_reply_from_spot_route (const spot_actor_join_route_reply_t &reply)
 {
-    return actor_join_reply_t{
-      reply.result_code,
-      actor_ref_t (node_rid_t::from_string (reply.actor_node_rid), reply.actor_type,
-                   reply.actor_id, reply.actor_generation),
-      message_from_bytes (reply.payload)};
+    return actor_join_reply_t{reply.result_code,
+                              actor_ref_t (node_rid_t::from_string (reply.actor_node_rid),
+                                           reply.actor_type, reply.actor_id,
+                                           reply.actor_generation),
+                              message_from_bytes (reply.payload)};
 }
 
-spot_actor_packet_route_request_t make_spot_actor_packet_route_request (
-  const actor_ref_t &actor_ref,
-  spot_rid_t spot_rid,
-  std::string_view packet_name,
-  const zlink::message_t &payload,
-  const spot_actor_message_metadata_t &metadata)
+spot_actor_packet_route_request_t
+make_spot_actor_packet_route_request (const actor_ref_t &actor_ref,
+                                      spot_rid_t spot_rid,
+                                      std::string_view packet_name,
+                                      const zlink::message_t &payload,
+                                      const spot_actor_message_metadata_t &metadata)
 {
-    return spot_actor_packet_route_request_t{
-      .actor_node_rid = std::string (actor_ref.node_rid ().value ()),
-      .actor_type = std::string (actor_ref.actor_type ()),
-      .actor_id = std::string (actor_ref.actor_id ()),
-      .actor_generation = actor_ref.generation (),
-      .spot_rid = std::string (spot_rid.value ()),
-      .packet_name_value = std::string (packet_name),
-      .metadata = metadata.values,
-      .payload = payload.to_bytes ()};
+    return spot_actor_packet_route_request_t{.actor_node_rid =
+                                               std::string (actor_ref.node_rid ().value ()),
+                                             .actor_type = std::string (actor_ref.actor_type ()),
+                                             .actor_id = std::string (actor_ref.actor_id ()),
+                                             .actor_generation = actor_ref.generation (),
+                                             .spot_rid = std::string (spot_rid.value ()),
+                                             .packet_name_value = std::string (packet_name),
+                                             .metadata = metadata.values,
+                                             .payload = payload.to_bytes ()};
 }
 
 actor_ref_t actor_ref_from_spot_route (const spot_actor_packet_route_request_t &request)
@@ -199,22 +220,35 @@ actor_ref_t actor_ref_from_spot_route (const spot_actor_packet_route_request_t &
                         request.actor_id, request.actor_generation);
 }
 
-actor_bound_session_route_request_t make_actor_bound_session_route_request (
-  const actor_ref_t &actor_ref,
-  std::string_view packet_name,
-  const zlink::message_t &payload)
+spot_actor_disconnect_route_request_t
+make_spot_actor_disconnect_route_request (const actor_ref_t &actor_ref)
 {
-    return actor_bound_session_route_request_t{
+    return spot_actor_disconnect_route_request_t{
       .actor_node_rid = std::string (actor_ref.node_rid ().value ()),
       .actor_type = std::string (actor_ref.actor_type ()),
       .actor_id = std::string (actor_ref.actor_id ()),
-      .actor_generation = actor_ref.generation (),
-      .packet_name_value = std::string (packet_name),
-      .payload = payload.to_bytes ()};
+      .actor_generation = actor_ref.generation ()};
 }
 
-actor_ref_t actor_ref_from_bound_session_route (
-  const actor_bound_session_route_request_t &request)
+actor_ref_t actor_ref_from_spot_route (const spot_actor_disconnect_route_request_t &request)
+{
+    return actor_ref_t (node_rid_t::from_string (request.actor_node_rid), request.actor_type,
+                        request.actor_id, request.actor_generation);
+}
+
+actor_bound_session_route_request_t make_actor_bound_session_route_request (
+  const actor_ref_t &actor_ref, std::string_view packet_name, const zlink::message_t &payload)
+{
+    return actor_bound_session_route_request_t{.actor_node_rid =
+                                                 std::string (actor_ref.node_rid ().value ()),
+                                               .actor_type = std::string (actor_ref.actor_type ()),
+                                               .actor_id = std::string (actor_ref.actor_id ()),
+                                               .actor_generation = actor_ref.generation (),
+                                               .packet_name_value = std::string (packet_name),
+                                               .payload = payload.to_bytes ()};
+}
+
+actor_ref_t actor_ref_from_bound_session_route (const actor_bound_session_route_request_t &request)
 {
     return actor_ref_t (node_rid_t::from_string (request.actor_node_rid), request.actor_type,
                         request.actor_id, request.actor_generation);
@@ -262,8 +296,27 @@ void register_spot_route_packet_serializers (serializer_registry_t &serializers)
                 .get<spot_actor_packet_route_reply_t> ();
           });
     }
-    if (!serializers.contains (
-          std::type_index (typeid (actor_bound_session_route_request_t)))) {
+    if (!serializers.contains (std::type_index (typeid (spot_actor_disconnect_route_request_t)))) {
+        serializers.add<spot_actor_disconnect_route_request_t> (
+          [] (const spot_actor_disconnect_route_request_t &value) {
+              return zlink::message_t::from (nlohmann::json (value).dump ());
+          },
+          [] (const zlink::message_t &message) {
+              return nlohmann::json::parse (message.to_string ())
+                .get<spot_actor_disconnect_route_request_t> ();
+          });
+    }
+    if (!serializers.contains (std::type_index (typeid (spot_actor_disconnect_route_reply_t)))) {
+        serializers.add<spot_actor_disconnect_route_reply_t> (
+          [] (const spot_actor_disconnect_route_reply_t &value) {
+              return zlink::message_t::from (nlohmann::json (value).dump ());
+          },
+          [] (const zlink::message_t &message) {
+              return nlohmann::json::parse (message.to_string ())
+                .get<spot_actor_disconnect_route_reply_t> ();
+          });
+    }
+    if (!serializers.contains (std::type_index (typeid (actor_bound_session_route_request_t)))) {
         serializers.add<actor_bound_session_route_request_t> (
           [] (const actor_bound_session_route_request_t &value) {
               return zlink::message_t::from (nlohmann::json (value).dump ());

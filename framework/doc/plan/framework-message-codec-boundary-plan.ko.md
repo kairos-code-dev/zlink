@@ -121,9 +121,19 @@ registry 계약을 사용한다. 이 plan은 extension 등록 이름, options �
 
 ### 기존 방식과 변경 후 방식 구분
 
-이 계획에서 “기존 방식 유지”는 codec extension을 등록하는 방법을 유지한다는 뜻이다. 반대로
-SPOT create, session dispatch, actor join의 업무 코드에서 bindings raw `Message`, raw `Buffer`,
-`zlink_msg_t`, `Message.from(...)`, codec별 JSON helper를 직접 쓰는 방식은 제거 대상이다.
+이 계획에서 “기존 방식”이라는 말은 두 가지를 구분해서 읽어야 한다. codec extension을 등록하는
+기존 방식은 유지한다. 그러나 SPOT create, session dispatch, actor join의 업무 코드에서 bindings raw
+`Message`, raw `Buffer`, `zlink_msg_t`, `Message.from(...)`, codec별 JSON helper를 직접 쓰는 기존
+방식은 제거한다.
+
+| 구분 | 변경 여부 | 기준 |
+|------|-----------|------|
+| codec extension 등록 | 유지 | application startup, builder, options에서 extension을 등록한다. |
+| custom codec 작성 계약 | 유지 | 선행 codec extension 계획의 registry 계약을 그대로 따른다. |
+| dependency 추가 방식 | 유지 | Protobuf, MessagePack, custom codec package 또는 module을 추가한다. |
+| 업무 API의 raw payload 전달 | 제거 | SPOT create, session dispatch, actor join에서 raw `Message` / `Buffer` / `zlink_msg_t`를 넘기지 않는다. |
+| 업무 코드의 codec별 helper 호출 | 제거 | handler, actor, sample에서 `Message.from(...)`, `JsonMessageExtensions`, 직접 serialize/deserialize를 쓰지 않는다. |
+| wire-level raw API | 명시 raw surface만 유지 | relay, frame harness, backend boundary처럼 raw payload 보존이 목적일 때만 별도 raw 이름으로 남긴다. |
 
 유지되는 방식:
 
@@ -152,7 +162,10 @@ options.codecs().use(my_custom_codec_extension{});
 builder/options에서 extension을 등록한다. handler, actor, session, SPOT create 코드는 codec 종류를
 직접 알 필요가 없어야 한다.
 
-제거되는 기존 업무 코드의 예:
+제거되는 기존 업무 코드의 예는 아래와 같다. 이 코드는 “기존 codec 등록 방식”이 아니라 “기존 raw
+업무 API 방식”이다. 최종 상태에서는 guide, sample, 일반 contract test에 남기지 않는다.
+
+actor join에서 제거되는 방식:
 
 ```csharp
 var request = Message.From(JsonSerializer.SerializeToUtf8Bytes(new JoinRoom("room-1")));
@@ -172,11 +185,55 @@ const result = await actor.context.joinSpot(roomRid, request).submit();
 const reply = JSON.parse(result.reply.toString());
 ```
 
+session dispatch에서 제거되는 방식:
+
+```csharp
+public Task OnDispatchAsync(..., Message payload, ...)
+{
+    var packet = JsonSerializer.Deserialize<ChatPacket>(payload.Data);
+    return HandleAsync(packet);
+}
+```
+
+```java
+session.onDispatch((metadata, message) -> {
+    ChatPacket packet = JsonMessage.decode(message, ChatPacket.class);
+    return handle(packet);
+});
+```
+
+```ts
+session.onDispatch((metadata, payload) => {
+  const packet = JSON.parse(payload.toString()) as ChatPacket;
+  return handle(packet);
+});
+```
+
+SPOT create에서 제거되는 방식:
+
+```csharp
+public override Task<ZLinkSpotCreateResponse> OnCreateAsync(..., Message request, ...)
+{
+    var create = JsonSerializer.Deserialize<CreateRoom>(request.Data);
+    var reply = Message.From(JsonSerializer.SerializeToUtf8Bytes(new RoomCreated(create.RoomId)));
+    return Task.FromResult(ZLinkSpotCreateResponse.Accept(reply));
+}
+```
+
+```java
+spot.onCreate((request, context) -> {
+    CreateRoom create = JsonMessage.decode(request, CreateRoom.class);
+    return ZLinkSpotCreateResponse.accept(Message.from(JsonMessage.encode(new RoomCreated(create.roomId()))));
+});
+```
+
 위 예시는 codec 선택과 payload 변환을 호출자 업무 코드로 밀어낸다. 이 방식은 JSON일 때만 자연스럽고,
 Protobuf, MessagePack, custom codec으로 바꾸면 handler와 sample까지 같이 바뀐다. 따라서 최종 상태의
 guide와 sample에는 이 방식을 남기지 않는다.
 
 변경 후 업무 코드의 예:
+
+actor join:
 
 ```csharp
 var result = await actor.Context
@@ -200,8 +257,43 @@ const result = await actor.context
   .submit<JoinedRoom>();
 ```
 
+session dispatch:
+
+```csharp
+public Task OnDispatchAsync(..., ZLinkMessage payload, ...)
+{
+    var packet = payload.Decode<ChatPacket>();
+    return HandleAsync(packet);
+}
+```
+
+```java
+session.onDispatch(ChatPacket.class, (metadata, packet) -> handle(packet));
+```
+
+```ts
+session.onDispatch<ChatPacket>((metadata, packet) => handle(packet));
+```
+
+SPOT create:
+
+```csharp
+public override Task<ZLinkSpotCreateResponse> OnCreateAsync(..., ZLinkMessage request, ...)
+{
+    var create = request.Decode<CreateRoom>();
+    return Task.FromResult(ZLinkSpotCreateResponse.Accept(new RoomCreated(create.RoomId)));
+}
+```
+
+```java
+spot.onCreate(CreateRoom.class, (create, context) ->
+    ZLinkSpotCreateResponse.accept(new RoomCreated(create.roomId())));
+```
+
 변경 후에는 codec을 JSON에서 Protobuf, MessagePack, custom codec으로 바꿔도 위 업무 코드 모양이
-바뀌지 않아야 한다. 바뀌는 곳은 dependency와 codec extension 등록 코드뿐이다.
+바뀌지 않아야 한다. 바뀌는 곳은 dependency와 codec extension 등록 코드뿐이다. 이 원칙은 sample에도
+동일하게 적용한다. sample에서 codec을 바꾸는 예시는 구성 코드만 바꾸고, handler와 actor 업무 코드는
+그대로 두어야 한다.
 
 ### typed DTO와 ZLinkMessage 역할 분담
 

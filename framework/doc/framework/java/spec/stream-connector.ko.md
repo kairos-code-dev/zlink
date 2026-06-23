@@ -235,11 +235,13 @@ request stage를 완료하지 않는다.
 실패로 드러낸다. 이 동작은 sample이 timeout을 sleep으로 숨기지 않고 pending request
 정리 의미를 검증하기 위한 첫 구현 기준이다.
 
-## 8. Typed codec helper
+## 8. Typed payload codec
 
-기본 connector는 `ZLinkStreamEncodedPayload`만 이해한다. JSON, MessagePack,
-Protobuf, auto codec 모듈은 `.NET` connector extension과 같은 방식으로 typed helper를
-제공한다.
+기본 connector는 wire payload를 `ZLinkStreamEncodedPayload`로 보관한다. JSON,
+MessagePack, Protobuf, auto codec 모듈은 `.NET` connector extension과 같은 방식으로
+codec registry에 등록되고, typed send/request/on/wait 표면이 그 registry를 사용해
+업무 DTO를 encode/decode한다. application code는 일반적으로 raw `Message`나 codec
+helper를 직접 다루지 않는다.
 
 ```java
 public final class ZLinkStreamJson {
@@ -264,18 +266,18 @@ public final class ZLinkStreamJson {
 }
 ```
 
-auto codec helper는 payload type이나 annotation을 보고 codec을 고른다. codec을 고를
-수 없으면 configuration error로 실패한다. typed helper가 만드는 packet name도 core
+auto codec extension은 payload type이나 annotation을 보고 codec을 고른다. codec을 고를
+수 없으면 configuration error로 실패한다. typed 표면이 만드는 packet name도 core
 connector의 name resolver를 그대로 사용한다.
-server push를 기다릴 때는 codec helper가 아니라 기본 connector의 wait builder를
+server push를 기다릴 때는 기본 connector의 wait builder를
 사용한다. payload 조건이 필요하면
 `connector.waitFor(name).where(payloadType, predicate).submit(payloadType)`처럼
 core wait builder의 `where`를 사용한다. sample client는 server push를 기다릴 때
 connector member `waitFor(...).where(...).submit(...)` 또는 Kotlin wrapper
 `waitFor<T>(...).where { ... }.await()` 형태를 사용한다.
-typed helper는 codec helper가 encode/decode할 수 있는 업무 객체 payload를 기준으로
-동작한다. `String`, `byte[]`, `Message` 같은 raw payload는 typed helper의 유일한 대상이
-아니라, 기본 connector 표면과 codec helper 양쪽에서 함께 다루는 하위 경로다.
+typed 표면은 registry가 encode/decode할 수 있는 업무 객체 payload를 기준으로
+동작한다. `String`, `byte[]`, `Message` 같은 raw payload는 connector 하위 경로나
+명시적 raw 사용에서만 다룬다.
 
 Kotlin extension은 typed helper 위에 얇게 얹는다.
 

@@ -586,16 +586,17 @@ interface ZLinkSpotInfo { spotRid: string; }
 
 여기서 중요한 점은 반환값이 장기적으로 들고 다닐 spot instance handle 이
 아니라는 사실이다. 생성 결과는 `spotRid`, `Existing` / `Created` / `Rejected`
-상태와 선택적 reply `Message` 를 담는다. 이후 메시징은
+상태와 선택적 reply `ZLinkMessage` 를 담는다. 이후 메시징은
 현재 channel publish 또는 route bridge channel socket을 통한 send / request 로 푼다.
 
-생성 요청의 payload 는 단일 `Message` 로 받는다. framework 는 caller 가 넘긴
-`Message` 를 `spot.onCreate(request)` 에 한 번 전달한다. 이
-payload 는 방 설정, seed, 접근 정책처럼 spot 이 처음 만들어질 때만 해석해야 하는
+생성 요청 payload 는 DTO 로 넘기거나 `ZLinkMessage` 로 감싸서 넘긴다. framework 는
+caller payload 를 `ZLinkMessage` 로 만들어 `spot.onCreate(request)` 에 한 번 전달한다.
+이 payload 는 방 설정, seed, 접근 정책처럼 spot 이 처음 만들어질 때만 해석해야 하는
 값에 사용한다. `create(StageSpot)` 처럼 payload 가 없는 편의 overload 는 빈
-`Message` 를 넘긴 것과 같다. 새 spot 이 만들어지면 `onCreate(...)` 는 빈
-`Message` 를 받아 한 번 실행된다. JSON, MessagePack, Protobuf payload 는 기존
-Node framework codec helper 로 `Message` bytes 를 decode 해서 사용한다.
+`ZLinkMessage` 를 넘긴 것과 같다. 새 spot 이 만들어지면 `onCreate(...)` 는 빈
+`ZLinkMessage` 를 받아 한 번 실행된다. JSON, MessagePack, Protobuf, custom codec 은
+기존처럼 module options 의 codec registry 에 등록하며, spot 구현은 `request.decode<T>()`
+로 업무 DTO 를 읽는다.
 
 생성 요청에는 어떤 spot factory 를 사용할지도 함께 들어가야 한다. framework
 public 표면에서는 이 값을 **Spot 클래스 참조**로 표현하고, string spot rid 은

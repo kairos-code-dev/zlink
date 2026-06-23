@@ -6,7 +6,9 @@
 
 Node Stream Connector는 `@zlink-systems/stream-connector` 패키지로 제공되는 client
 connector다. 서버 framework와 별도 모듈이며 TCP, request/reply, dispatch(Manual/Immediate), typed
-codec helper를 client code에서 사용하게 한다.
+payload API를 client code에서 사용하게 한다. JSON, MessagePack, Protobuf, custom codec은
+기존처럼 connector options의 codec registry에 등록하고, typed send/request/on/wait 표면이
+그 registry로 업무 DTO를 encode/decode한다.
 
 ## Inbound Observer
 

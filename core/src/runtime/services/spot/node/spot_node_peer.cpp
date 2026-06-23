@@ -29,6 +29,10 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
     bool had_active_peers = false;
     {
         scoped_lock_t lock (_sync);
+        if (_discovery_state.discovery) {
+            errno = EBUSY;
+            return -1;
+        }
         had_active_peers = !_peer_state.active_endpoints.empty ();
         if (_peer_state.manual_endpoints.count (peer_pub_endpoint_) != 0)
             return 0;
@@ -86,6 +90,10 @@ int spot_node_t::connect_peer_pub_rid (const zlink_routing_id_t *target_node_rid
     bool inserted_rid_endpoint = false;
     {
         scoped_lock_t lock (_sync);
+        if (_discovery_state.discovery) {
+            errno = EBUSY;
+            return -1;
+        }
         had_active_peers = !_peer_state.active_endpoints.empty ();
         endpoint_was_manual = _peer_state.manual_endpoints.count (peer_pub_endpoint_) != 0;
         if (!endpoint_was_manual)
@@ -228,6 +236,10 @@ int spot_node_t::disconnect_peer_pub_rid (const zlink_routing_id_t *target_node_
     std::vector<std::string> endpoints;
     {
         scoped_lock_t lock (_sync);
+        if (_discovery_state.discovery) {
+            errno = EBUSY;
+            return -1;
+        }
         std::map<std::string, std::set<std::string>>::const_iterator it =
           _peer_state.peer_endpoints_by_rid.find (rid_key);
         if (it != _peer_state.peer_endpoints_by_rid.end ())

@@ -68,6 +68,7 @@ print_report_hints() {
 run_task() {
   local task="$1"
   local log_file="$2"
+  mkdir -p "$(dirname "${log_file}")"
   if command -v timeout >/dev/null 2>&1; then
     timeout "${timeout_seconds}s" ./gradlew "${task}" --no-daemon 2>&1 | tee "${log_file}"
     return $?
@@ -91,6 +92,7 @@ done
 
 sample_log="${LOG_DIR}/samples_run_samples.sh.log"
 printf '[RUN] samples/run_samples.sh\n'
+mkdir -p "$(dirname "${sample_log}")"
 if ! "${ROOT_DIR}/samples/run_samples.sh" 2>&1 | tee "${sample_log}"; then
   printf '[FAIL] samples/run_samples.sh\n'
   printf '[LOG] %s\n' "${sample_log}"

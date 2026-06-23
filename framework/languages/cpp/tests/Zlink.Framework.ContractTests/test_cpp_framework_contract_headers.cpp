@@ -40,7 +40,6 @@
 #include <zlink/framework/codecs/json_stream_e2e_client.hpp>
 #include <zlink/framework/extensions.hpp>
 #include <zlink/framework/extensions/extension_boundaries.hpp>
-#include <zlink/framework/extensions/remote_actor_packet_handler.hpp>
 #include <zlink/codecs/protobuf.hpp>
 #include <zlink/http_client.hpp>
 #include <zlink/http_client/contracts/client.hpp>

@@ -713,19 +713,13 @@ export class ZLinkChannelRuntimeManager {
     const router = this.sockets.routeRouter(routerChannelId);
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, routerChannelId, packetName, message, undefined, undefined, this.codecs, correlationId) as readonly Message[];
-    let accepted = false;
     try {
       await this.sockets.requireSubmitter(router).submitCommand(
-        () => {
-          accepted = router.send(targetNodeRid, parts, 0);
-          return accepted;
-        },
+        () => router.send(targetNodeRid, parts, 0),
         signal
       );
     } catch (error) {
-      if (!accepted) {
-        closeMessages(parts);
-      }
+      closeMessages(parts);
       throw error;
     }
     this.traceOutbound(ZLinkMessageFlowPhase.Sent, ZLinkDispatchErrorSurface.RouteMeshChannel, ZLinkDispatchMessageKind.Send, routerChannelId, packetName, correlationId, undefined, targetNodeRid);

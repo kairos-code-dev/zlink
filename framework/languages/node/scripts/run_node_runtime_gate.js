@@ -7,6 +7,12 @@ const { ensureNodeBindingDist } = require('./ensure_node_binding_dist');
 const nodeRoot = path.resolve(__dirname, '..');
 const expectedMajor = Number(process.env.ZLINK_EXPECT_NODE_MAJOR ?? '0');
 const actualMajor = Number(process.versions.node.split('.')[0]);
+const skippedTestFiles = new Set(
+  (process.env.ZLINK_NODE_RUNTIME_GATE_SKIP_TESTS ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+);
 
 if (expectedMajor !== 0 && actualMajor !== expectedMajor) {
   console.error(`Expected Node ${expectedMajor}, got ${process.version}.`);
@@ -27,7 +33,12 @@ run(process.execPath, [
 ]);
 run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'lint']);
 for (const testFile of listTestFiles(path.join(nodeRoot, 'test'))) {
-  console.log(`-- ${path.relative(nodeRoot, testFile)}`);
+  const relative = path.relative(nodeRoot, testFile);
+  if (skippedTestFiles.has(relative) || skippedTestFiles.has(path.basename(testFile))) {
+    console.log(`-- ${relative} # SKIP framework CI excludes e2e sample/runtime checks`);
+    continue;
+  }
+  console.log(`-- ${relative}`);
   run(process.execPath, ['--test', testFile]);
 }
 

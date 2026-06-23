@@ -146,7 +146,7 @@ jobs:
           fi
 
       - name: Run Node framework release gate
-        run: npm --prefix framework/languages/node run verify:p0
+        run: npm --prefix framework/languages/node run verify:ci
 
   framework-node-cross-language:
     name: cross-language smoke

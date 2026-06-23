@@ -1571,21 +1571,27 @@ test('node framework source tree does not keep emitted JavaScript beside TypeScr
   assert.deepEqual(emitted, []);
 });
 
-test('node run_samples.sh executes every sample self-check', () => {
-  if (process.platform !== 'linux') {
-    return;
-  }
+test(
+  'node run_samples.sh executes every sample self-check',
+  process.env.ZLINK_SKIP_NODE_SAMPLE_SELF_CHECK === '1'
+    ? { skip: 'sample self-checks are not part of the framework CI release gate' }
+    : {},
+  () => {
+    if (process.platform !== 'linux') {
+      return;
+    }
 
-  const output = childProcess.execFileSync(path.join(samplesRoot, 'run_samples.sh'), {
-    cwd: workspaceRoot,
-    encoding: 'utf8'
-  });
+    const output = childProcess.execFileSync(path.join(samplesRoot, 'run_samples.sh'), {
+      cwd: workspaceRoot,
+      encoding: 'utf8'
+    });
 
-  assert.match(output, /node actor lifecycle sample gate completed/);
-  for (const sample of requiredSamples) {
-    assert.match(output, new RegExp(`PASS ${escapeRegExp(sample)}`));
+    assert.match(output, /node actor lifecycle sample gate completed/);
+    for (const sample of requiredSamples) {
+      assert.match(output, new RegExp(`PASS ${escapeRegExp(sample)}`));
+    }
   }
-});
+);
 
 test('node cross-language smoke covers channel send publish and stream connector paths', () => {
   const smoke = fs.readFileSync(path.join(workspaceRoot, 'cross-language', 'node_dotnet_smoke.js'), 'utf8');

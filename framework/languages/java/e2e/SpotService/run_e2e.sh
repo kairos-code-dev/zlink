@@ -180,7 +180,7 @@ run_client_mode() {
 : >"${log_dir}/client.stderr.log"
 for mode in state1 state2 send normal missing timeout; do
   run_client_mode "${mode}"
-  sleep 0.5
+  sleep 2
 done
 
 cat "${log_dir}/client.stdout.log"

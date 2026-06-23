@@ -78,7 +78,9 @@ public final class PlayApplication {
             node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
                 .setRouterRoutingId(RoutingId.from(nodeRid));
             node.acceptSpotRoutesFromChannel(Contracts.ROUTE_CHANNEL);
-            node.acceptSpotRoutesFromChannel(Contracts.INGRESS_CHANNEL);
+            node.acceptSpotRoutesFromChannel(
+                Contracts.INGRESS_CHANNEL,
+                Env.get("ZLINK_JAVA_E2E_INGRESS_ENDPOINT"));
             node.addSpotFactory(UserSpot.class);
         };
     }

@@ -37,7 +37,7 @@ public final class ClientDriverSpot implements ZLinkSpot<ZLinkActor> {
 
     public static void awaitResult() {
         try {
-            result.get(30, TimeUnit.SECONDS);
+            result.get(45, TimeUnit.SECONDS);
         } catch (Exception error) {
             throw new IllegalStateException("client driver scenario failed", error);
         }

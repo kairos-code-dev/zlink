@@ -5,18 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 
-read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT PUB_A PUB_B PUB_CLIENT HTTP_A HTTP_B <<<"$(python3 - <<'PY'
+read -r REGISTRY_PUB REGISTRY_ROUTER ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT PUB_A PUB_B PUB_CLIENT API_CLIENT HTTP_A HTTP_B <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(13):
+for _ in range(14):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
-print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:11]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[11:]))
+print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:12]), end=" ")
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[12:]))
 for s in sockets:
     s.close()
 PY
@@ -97,6 +97,7 @@ start_play() {
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
   ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot" \
   ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$pubsub" \
+  ZLINK_CPP_E2E_API_PEER_ENDPOINT="$API_CLIENT" \
   ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
   ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
@@ -130,6 +131,7 @@ ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
 ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
 ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
 ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
+ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
 ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
 ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   "$CLIENT" >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
@@ -158,6 +160,8 @@ assert has(play_a, "ActorEnsured", "alice")
 assert has(play_a, "EntryJoin", "alice")
 assert has(play_a, "StateMutated", "alice")
 assert has(play_a, "ActorLeaveRequested", "alice")
+assert has(play_a, "SpotOutbound", "alice-2")
+assert has(play_a, "MeshEventReceived")
 assert has(play_b, "ActorEnsured", "bob")
 assert has(play_b, "EntryJoin", "bob")
 print("spot-service evidence result=passed")

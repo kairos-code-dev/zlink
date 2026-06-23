@@ -5,6 +5,7 @@
 #include <zlink/framework.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -120,6 +121,8 @@ class user_spot_t : public zlink::framework::spot_t
         context.handlers ().add_actor_packet<&user_spot_t::mutate> ("StateReq");
         context.handlers ().add_actor_packet<&user_spot_t::leave> ("LeaveReq");
         context.handlers ().add_actor_packet<&user_spot_t::disconnect> ("DisconnectReq");
+        context.handlers ().add_actor_packet<&user_spot_t::outbound> ("OutboundReq");
+        context.handlers ().add_subscribe<&user_spot_t::on_mesh_event> (e2e::mesh_topic);
     }
 
     void on_initialize ()
@@ -204,6 +207,33 @@ class user_spot_t : public zlink::framework::spot_t
         _state.record ("DisconnectRequested", actor.actor_id,
                        std::string (_context.spot_rid ().value ()), request.reason);
         return {.disconnected = true, .actor_id = actor.actor_id};
+    }
+
+    zlink::framework::task_t<e2e::outbound_res_t>
+    outbound (const scenario_actor_t &actor,
+              zlink::framework::spot_actor_request_context_t &,
+              const e2e::outbound_req_t &request)
+    {
+        auto reply = co_await _context.outbound ()
+                       .request (e2e::api_channel, e2e::channel_echo_req_t{request.value})
+                       .timeout (std::chrono::milliseconds (3000))
+                       .async<e2e::channel_echo_res_t> ();
+        co_await _context.outbound ()
+          .send (e2e::api_channel,
+                 e2e::channel_command_t{"cmd-" + actor.actor_id + "-" + request.value})
+          .async ();
+        co_await _context.publish (e2e::mesh_topic,
+                                   e2e::mesh_event_t{"evt-" + actor.actor_id, request.value})
+          .async ();
+        _state.record ("SpotOutbound", actor.actor_id,
+                       std::string (_context.spot_rid ().value ()), reply.value);
+        co_return e2e::outbound_res_t{reply.value, true, true};
+    }
+
+    void on_mesh_event (const e2e::mesh_event_t &event)
+    {
+        _state.record ("MeshEventReceived", {}, std::string (_context.spot_rid ().value ()),
+                       event.event_id + ":" + event.value);
     }
 
   private:
@@ -316,6 +346,12 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::leave_res_t> ()
       .add_json<e2e::disconnect_req_t> ()
       .add_json<e2e::disconnect_res_t> ()
+      .add_json<e2e::channel_echo_req_t> ()
+      .add_json<e2e::channel_echo_res_t> ()
+      .add_json<e2e::channel_command_t> ()
+      .add_json<e2e::mesh_event_t> ()
+      .add_json<e2e::outbound_req_t> ()
+      .add_json<e2e::outbound_res_t> ()
       .add_json<e2e::evidence_entry_t> ()
       .add_json<e2e::evidence_snapshot_t> ();
 }
@@ -347,6 +383,7 @@ int main (int argc, char **argv)
     const auto route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT");
     const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
     const auto pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT");
+    const auto api_peer_endpoint = env_or ("ZLINK_CPP_E2E_API_PEER_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
 
@@ -373,6 +410,10 @@ int main (int argc, char **argv)
                                e2e::ensure_actor_res_t> ("EnsureActor",
                                                          &ensure_actor_handler_t::handle)
           .enable_spot_route_egress (e2e::route_channel);
+        auto api = options.add_client_server_channel (e2e::api_channel).enable_client ();
+        if (!api_peer_endpoint.empty ()) {
+            api.enable_client (api_peer_endpoint);
+        }
         options.add_spot_mesh (e2e::spot_mesh)
           .use_registry_spot_resolver (e2e::route_channel)
           .add_node (node_rid)

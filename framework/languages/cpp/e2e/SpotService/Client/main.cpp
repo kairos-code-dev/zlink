@@ -7,9 +7,11 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace e2e = zlink::framework::e2e::spot_service;
 
@@ -50,6 +52,67 @@ zlink::framework::stream_header_t request_header (std::string packet_name)
       zlink::framework::stream_header_flags_t::none, std::nullopt, std::move (packet_name));
 }
 
+class client_channel_state_t
+{
+  public:
+    void record (std::string marker, std::string value)
+    {
+        std::lock_guard lock (_mutex);
+        entries.push_back ({std::move (marker), std::move (value)});
+    }
+
+    bool has (const std::string &marker, const std::string &value) const
+    {
+        std::lock_guard lock (_mutex);
+        for (const auto &entry : entries) {
+            if (entry.first == marker && entry.second == value) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+  private:
+    mutable std::mutex _mutex;
+    std::vector<std::pair<std::string, std::string>> entries;
+};
+
+class channel_echo_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<client_channel_state_t>;
+    using request_type = e2e::channel_echo_req_t;
+    using reply_type = e2e::channel_echo_res_t;
+
+    explicit channel_echo_handler_t (client_channel_state_t &state) : _state (state) {}
+
+    e2e::channel_echo_res_t handle (const e2e::channel_echo_req_t &request)
+    {
+        _state.record ("ChannelEcho", request.value);
+        return {.value = "channel:" + request.value, .handled_by = "client-api"};
+    }
+
+  private:
+    client_channel_state_t &_state;
+};
+
+class channel_command_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<client_channel_state_t>;
+    using message_type = e2e::channel_command_t;
+
+    explicit channel_command_handler_t (client_channel_state_t &state) : _state (state) {}
+
+    void handle (const e2e::channel_command_t &command)
+    {
+        _state.record ("ChannelCommand", command.command_id);
+    }
+
+  private:
+    client_channel_state_t &_state;
+};
+
 class scenario_service_t final : public zlink::framework::hosted_service_t
 {
   public:
@@ -61,7 +124,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             auto scope = services.create_scope ();
             auto &routes = scope.get_required<zlink::framework::route_client_t> ();
             auto &actors = scope.get_required<zlink::framework::session_actor_manager_t> ();
-            run (routes, actors);
+            auto &channel_state = scope.get_required<client_channel_state_t> ();
+            run (routes, actors, channel_state);
             passed = true;
         }
         catch (const std::exception &error) {
@@ -114,7 +178,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     }
 
     void run (zlink::framework::route_client_t &routes,
-              zlink::framework::session_actor_manager_t &actors)
+              zlink::framework::session_actor_manager_t &actors,
+              client_channel_state_t &channel_state)
     {
         auto refresh_actor = [&actors] (const std::string &actor_id) {
             auto refreshed = actors.find (actor_id);
@@ -180,6 +245,16 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
           relay_request<e2e::leave_res_t> (local, "LeaveReq", e2e::leave_req_t{"client-left"});
         ensure (left.left && left.actor_id == "alice", "SM-B6 leave reply mismatch");
         std::cout << "scenario SM-B6 leave passed\n";
+
+        auto outbound = relay_request<e2e::outbound_res_t> (
+          same_key_actor, "OutboundReq", e2e::outbound_req_t{"from-spot"});
+        ensure (outbound.channel_reply == "channel:from-spot", "SM-C2 channel reply mismatch");
+        ensure (outbound.command_sent && outbound.published, "SM-C2 outbound flags mismatch");
+        ensure (channel_state.has ("ChannelEcho", "from-spot"),
+                "SM-C2 channel request evidence missing");
+        ensure (channel_state.has ("ChannelCommand", "cmd-alice-2-from-spot"),
+                "SM-C2 channel send evidence missing");
+        std::cout << "scenario SM-C2 passed\n";
     }
 
     zlink::framework::app_t &_app;
@@ -198,7 +273,13 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::leave_req_t> ()
       .add_json<e2e::leave_res_t> ()
       .add_json<e2e::disconnect_req_t> ()
-      .add_json<e2e::disconnect_res_t> ();
+      .add_json<e2e::disconnect_res_t> ()
+      .add_json<e2e::channel_echo_req_t> ()
+      .add_json<e2e::channel_echo_res_t> ()
+      .add_json<e2e::channel_command_t> ()
+      .add_json<e2e::mesh_event_t> ()
+      .add_json<e2e::outbound_req_t> ()
+      .add_json<e2e::outbound_res_t> ();
 }
 
 } // namespace
@@ -211,6 +292,7 @@ int main (int argc, char **argv)
     const auto route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT");
     const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
     const auto pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT");
+    const auto api_endpoint = env_or ("ZLINK_CPP_E2E_API_ENDPOINT");
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
 
     auto app = zlink::framework::app_t::create ();
@@ -224,7 +306,16 @@ int main (int argc, char **argv)
           .trace_log_file (log_dir + "/client-flow.log")
           .trace_node_id ("cpp-sm-client");
         configure_codecs (options.codecs ());
+        options.services ().add_singleton<client_channel_state_t> (
+          std::make_unique<client_channel_state_t> ());
+        options.handlers ()
+          .add<channel_echo_handler_t> (e2e::handler_group)
+          .add_send<channel_command_handler_t> (e2e::handler_group);
         options.use_discovery ().add_registry_endpoint (registry_router);
+        options.add_client_server_channel (e2e::api_channel)
+          .enable_server (api_endpoint)
+          .server_routing_id (zlink::routing_id_t::from (std::string ("client-api")))
+          .use_handler_group (e2e::handler_group);
         auto route = options.add_route_mesh_channel (e2e::route_channel)
           .enable_server (route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (std::string ("session-a")))

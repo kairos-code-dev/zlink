@@ -10,10 +10,12 @@ namespace zlink::framework::e2e::spot_service
 {
 
 inline constexpr const char *route_channel = "spot.service.play";
+inline constexpr const char *api_channel = "spot.service.api";
 inline constexpr const char *spot_mesh = "spot.service.mesh";
 inline constexpr const char *handler_group = "spot-service";
 inline constexpr const char *actor_type = "scenario-player";
 inline constexpr const char *user_spot = "user";
+inline constexpr const char *mesh_topic = "spot-service-topic";
 
 struct actor_ref_dto_t
 {
@@ -87,6 +89,40 @@ struct disconnect_res_t
 {
     bool disconnected = false;
     std::string actor_id;
+};
+
+struct channel_echo_req_t
+{
+    std::string value;
+};
+
+struct channel_echo_res_t
+{
+    std::string value;
+    std::string handled_by;
+};
+
+struct channel_command_t
+{
+    std::string command_id;
+};
+
+struct mesh_event_t
+{
+    std::string event_id;
+    std::string value;
+};
+
+struct outbound_req_t
+{
+    std::string value;
+};
+
+struct outbound_res_t
+{
+    std::string channel_reply;
+    bool command_sent = false;
+    bool published = false;
 };
 
 struct evidence_entry_t
@@ -246,6 +282,72 @@ inline void from_json (const nlohmann::json &json, disconnect_res_t &value)
 {
     json.at ("disconnected").get_to (value.disconnected);
     json.at ("actor_id").get_to (value.actor_id);
+}
+
+inline void to_json (nlohmann::json &json, const channel_echo_req_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, channel_echo_req_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const channel_echo_res_t &value)
+{
+    json = nlohmann::json{{"value", value.value}, {"handled_by", value.handled_by}};
+}
+
+inline void from_json (const nlohmann::json &json, channel_echo_res_t &value)
+{
+    json.at ("value").get_to (value.value);
+    json.at ("handled_by").get_to (value.handled_by);
+}
+
+inline void to_json (nlohmann::json &json, const channel_command_t &value)
+{
+    json = nlohmann::json{{"command_id", value.command_id}};
+}
+
+inline void from_json (const nlohmann::json &json, channel_command_t &value)
+{
+    json.at ("command_id").get_to (value.command_id);
+}
+
+inline void to_json (nlohmann::json &json, const mesh_event_t &value)
+{
+    json = nlohmann::json{{"event_id", value.event_id}, {"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, mesh_event_t &value)
+{
+    json.at ("event_id").get_to (value.event_id);
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const outbound_req_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, outbound_req_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const outbound_res_t &value)
+{
+    json = nlohmann::json{{"channel_reply", value.channel_reply},
+                          {"command_sent", value.command_sent},
+                          {"published", value.published}};
+}
+
+inline void from_json (const nlohmann::json &json, outbound_res_t &value)
+{
+    json.at ("channel_reply").get_to (value.channel_reply);
+    json.at ("command_sent").get_to (value.command_sent);
+    json.at ("published").get_to (value.published);
 }
 
 inline void to_json (nlohmann::json &json, const evidence_entry_t &value)

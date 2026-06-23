@@ -150,8 +150,8 @@ sequenceDiagram
 
 session 콜백에서 인증 후 `bind(...)`로 actor handle을 잡고, 이후 packet은
 `ZLinkSessionActor.relay(...)`로 actor에 넘긴다. `payload`는 framework runtime이
-callback 동안 빌려준 값이다. `relay(...)`는 caller payload를 소비하지 않으므로
-그대로 넘긴다. callback 뒤에도 payload를 보관해야 할 때만 별도 copy를 만든다.
+registry와 함께 소유한 `ZLinkMessage`다. session은 인증 packet처럼 직접 처리할
+payload만 `decode(...)`하고, actor로 넘길 packet은 decode하지 않은 채 그대로 relay한다.
 
 ```java
 @Component
@@ -178,7 +178,7 @@ public final class TicTacToeSession implements ZLinkSession {
     @Override
     public void onDispatch(
         ZLinkStreamHeader header,
-        Message payload) {
+        ZLinkMessage payload) {
         if ("auth".equals(header.name())) {
             AuthReq req = payload.decode(AuthReq.class);
             actors.getOrCreate(req.actorId(), "player")

@@ -51,13 +51,13 @@ builder.Services.AddZLinkFramework(options =>
 ### session 작성
 
 session 은 `IZLinkSession` 을 구현한다. framework 가 frame 을 디코드해
-`ZlinkStreamHeader header` + `Message payload` 두 부분으로 콜백한다. 응용은
-`header.Name` 으로 분기하고 payload 를 타입으로 디코드한다.
-framework 가 수신 payload 의 해제를 책임지므로 session callback 안에서는
-payload 를 그대로 읽거나 다른 framework API 에 넘기면 된다. callback 뒤에도
-payload 를 보관할 때만 `Copy()` 또는 `Move()` 를 사용한다.
-application 이 직접 만든 `Message` 를 raw `IZLinkStream.Write(...)` 에 넘기는
-경우에는 호출자가 그 `Message` 의 수명을 계속 책임진다. 일반적인 응답과 push 는
+`ZlinkStreamHeader header` + `ZLinkMessage payload` 두 부분으로 콜백한다. 응용은
+`header.Name` 으로 분기하고 `payload.Decode<T>()` 로 DTO를 얻는다.
+`ZLinkMessage` 는 framework runtime 이 등록된 codec registry와 함께 소유하는 payload
+표면이다. session callback은 필요한 packet만 decode하고, actor relay처럼 decode를 미룰 수
+있는 경계에는 그대로 넘긴다. application 이 직접 만든 `Message` 를 raw
+`IZLinkStream.Write(...)` 에 넘기는 경우에는 호출자가 그 `Message` 의 수명을 계속 책임진다.
+일반적인 응답과 push 는
 `Context.Client.Reply(...)`, `Context.Client.Send(...)`, actor 의 `BoundSession.Send(...)` 를
 쓰면 이 수명 규칙을 직접 다룰 일이 없다.
 여러 session 전용 packet 을 나누어 처리해야 하면
@@ -83,7 +83,7 @@ public sealed class ClientHeaderSession(
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header, Message payload, CancellationToken ct)
+        ZlinkStreamHeader header, ZLinkMessage payload, CancellationToken ct)
     {
         switch (header.Name)
         {

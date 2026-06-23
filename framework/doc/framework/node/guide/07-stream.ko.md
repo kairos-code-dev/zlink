@@ -11,7 +11,10 @@ framework 가 connection accept, frame decode, session dispatch, reply frame 작
 
 ## 1. server session
 
-session 은 하나의 `onDispatch(header, payload)` 로 packet 을 받는다.
+session 은 하나의 `onDispatch(header, payload)` 로 packet 을 받는다. `payload` 는
+binding `Message`나 `Buffer`가 아니라 framework runtime이 codec registry와 함께
+감싸서 넘기는 `ZLinkMessage`다. session은 필요한 packet만 `payload.decode<T>()`로
+DTO를 얻고, actor relay처럼 decode를 미룰 수 있는 경계에는 그대로 넘긴다.
 
 ```ts
 class Pong {
@@ -20,7 +23,7 @@ class Pong {
 export class GameSession {
   constructor(readonly context: ZLinkSessionContext) {}
 
-  async onDispatch(header: ZlinkStreamHeader, payload: Message) {
+  async onDispatch(header: ZlinkStreamHeader, payload: ZLinkMessage) {
     await this.context.client
       .reply(new Pong())
       .submit();

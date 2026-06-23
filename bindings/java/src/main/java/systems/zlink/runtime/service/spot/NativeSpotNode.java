@@ -515,7 +515,7 @@ public final class NativeSpotNode implements SpotNode {
     }
 
     /** Returns peer entries matching the supplied filter. */
-    public List<SpotNodePeerEntry> peersQuery(SpotNodePeerFilter filter) {
+    public List<SpotNodePeerEntry> peers(SpotNodePeerFilter filter) {
         Objects.requireNonNull(filter, "filter");
         return readPeerEntries(filter);
     }

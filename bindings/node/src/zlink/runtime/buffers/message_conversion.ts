@@ -6,7 +6,6 @@ import {
 } from '../../contracts';
 import {
   messageFromOwnedBuffer,
-  messageFromSnapshot,
   messageToSnapshot,
   type MessageSnapshot
 } from '../messaging/message_snapshot';

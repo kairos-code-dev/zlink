@@ -80,7 +80,6 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(typeof spot.setDispatchHandler, 'function');
   assert.equal(spot.drainChannelReplyFrom, undefined);
   assert.equal(node.peers().length, 0);
-  assert.equal(node.peersQuery().length, 0);
   assert.equal(node.subjects().length, 0);
   node.setRoutingId(zlink.RoutingId.from(Buffer.from('node-id')));
   assert.equal(node.routingId.toBytes().toString(), 'node-id');

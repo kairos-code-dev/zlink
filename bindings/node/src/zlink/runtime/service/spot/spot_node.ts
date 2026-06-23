@@ -2,8 +2,6 @@
 
 import { randomBytes } from 'node:crypto';
 import { RuntimeContext as Context } from '../../core/context';
-import { RuntimeDealerSocket as DealerSocket, RuntimePubSocket as PubSocket } from '../../sockets';
-import { normalizeOperationPayload } from '../../buffers/message_conversion';
 import { Discovery } from '../discovery/discovery';
 import { Actor } from './actor';
 import { Spot } from './spot';
@@ -79,16 +77,6 @@ export class SpotNode extends NativeHandle {
         normalizedTargetNodeRid
       );
     });
-  }
-  processRoutedRouter(): void {
-    configCall('spot node routed router processing failed', () => {
-      requireNative().spotNodeProcessRoutedRouter(this._native);
-    });
-  }
-  tryProcessRoutedRouterParts(parts: MessageLike | readonly MessageLike[]): boolean {
-    return configCall('spot node routed parts processing failed', () =>
-      requireNative().spotNodeTryProcessRoutedRouterParts(this._native, normalizeOperationPayload(parts))
-    ) as boolean;
   }
   createRouteBridge(): SpotRouteBridge {
     return new SpotRouteBridge(this._ctx, this);
@@ -267,15 +255,11 @@ export class SpotNode extends NativeHandle {
     }
     return mapSpotNodeStatus(raw, this._nodeRoutingId);
   }
-  peers(): SpotNodePeerEntry[] {
+  peers(filter?: SpotNodePeerFilter): SpotNodePeerEntry[] {
     return (configCall('spot node peers snapshot failed', () =>
-      requireNative().spotNodePeers(this._native) as SpotNodePeerEntryRaw[]
-    ))
-      .map((entry) => mapSpotNodePeerEntry(entry));
-  }
-  peersQuery(filter?: SpotNodePeerFilter): SpotNodePeerEntry[] {
-    return (configCall('spot node peers query failed', () =>
-      requireNative().spotNodePeersQuery(this._native, filter ?? undefined) as SpotNodePeerEntryRaw[]
+      filter === undefined
+        ? requireNative().spotNodePeers(this._native) as SpotNodePeerEntryRaw[]
+        : requireNative().spotNodePeersQuery(this._native, filter) as SpotNodePeerEntryRaw[]
     ))
       .map((entry) => mapSpotNodePeerEntry(entry));
   }

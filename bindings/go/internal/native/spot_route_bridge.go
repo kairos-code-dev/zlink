@@ -34,7 +34,6 @@ import "C"
 
 import (
 	"runtime/cgo"
-	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -281,7 +280,7 @@ func (b *SpotRouteBridge) withChannelCString(value string, fn func(*C.char) erro
 	if b == nil || b.closed {
 		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
-	if err := validateChannelName(value); err != nil {
+	if err := validateRouteChannelName(value); err != nil {
 		return err
 	}
 	cstr := C.CString(value)
@@ -352,8 +351,8 @@ func (p *SpotNodePublisher) withCString(value string, fn func(*C.char) error) er
 	if p == nil || p.closed {
 		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
-	if strings.IndexByte(value, 0) >= 0 {
-		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
+	if err := validateTopicName(value); err != nil {
+		return err
 	}
 	cstr := C.CString(value)
 	defer C.free(unsafe.Pointer(cstr))

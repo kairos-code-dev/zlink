@@ -2,7 +2,6 @@
 
 import type { RoutingId } from '../../core';
 import type { MessageLike } from '../../messaging';
-import type { DealerSocket, PubSocket } from '../../sockets';
 import type { Discovery } from '../discovery/discovery';
 import type {
   ActorDestroyOperation,

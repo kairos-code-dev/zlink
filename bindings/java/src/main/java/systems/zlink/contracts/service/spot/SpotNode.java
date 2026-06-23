@@ -148,7 +148,7 @@ public interface SpotNode extends AutoCloseable {
     List<SpotNodePeerEntry> peers();
 
     /** Returns peer entries matching the supplied filter. */
-    List<SpotNodePeerEntry> peersQuery(
+    List<SpotNodePeerEntry> peers(
       SpotNodePeerFilter filter);
 
     /** Returns the current subject snapshot. */

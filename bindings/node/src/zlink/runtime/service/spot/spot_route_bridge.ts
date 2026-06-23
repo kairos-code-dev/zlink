@@ -19,6 +19,22 @@ import { requireNative } from '../../native/native';
 import { validateCString } from '../../options/validation';
 import { RuntimeRequestOperation, RuntimeSendOperation } from '../../sockets/socket_operation_builders';
 
+function validateBridgeChannelName(value: string): string {
+  const normalized = validateCString(value, 'channelName');
+  if (normalized.length === 0) {
+    throw new RangeError('channelName must not be empty');
+  }
+  return normalized;
+}
+
+function validatePublisherTopic(value: string): string {
+  const normalized = validateCString(value, 'topic');
+  if (normalized.length === 0) {
+    throw new RangeError('topic must not be empty');
+  }
+  return normalized;
+}
+
 export class SpotRouteBridge extends NativeHandle {
   private readonly _endpointHandles = new Map<string, unknown>();
 
@@ -31,7 +47,7 @@ export class SpotRouteBridge extends NativeHandle {
     dealer: DealerSocket,
     options?: SpotRouteBridgeEndpointOptions
   ): void {
-    const normalizedChannelName = validateCString(channelName, 'channelName');
+    const normalizedChannelName = validateBridgeChannelName(channelName);
     const dealerHandle = getNativeHandle(dealer as unknown as NativeHandle);
     requireNative().spotRouteBridgeAttachDealerChannel(
       this._native,
@@ -47,7 +63,7 @@ export class SpotRouteBridge extends NativeHandle {
     router: RouterSocket,
     options?: SpotRouteBridgeEndpointOptions
   ): void {
-    const normalizedChannelName = validateCString(channelName, 'channelName');
+    const normalizedChannelName = validateBridgeChannelName(channelName);
     const routerHandle = getNativeHandle(router as unknown as NativeHandle);
     requireNative().spotRouteBridgeAttachRouterChannel(
       this._native,
@@ -61,13 +77,13 @@ export class SpotRouteBridge extends NativeHandle {
   setTargetNode(channelName: string, targetNodeRid: RoutingId): void {
     requireNative().spotRouteBridgeSetTargetNode(
       this._native,
-      validateCString(channelName, 'channelName'),
+      validateBridgeChannelName(channelName),
       normalizeRoutingId(targetNodeRid)
     );
   }
 
   send(channelName: string, targetSpotRid: RoutingId): SendOperation {
-    const normalizedChannelName = validateCString(channelName, 'channelName');
+    const normalizedChannelName = validateBridgeChannelName(channelName);
     const normalizedTargetSpotRid = normalizeRoutingId(targetSpotRid);
     return new RuntimeSendOperation((parts, flags) =>
       requireNative().spotRouteBridgeSend(
@@ -81,7 +97,7 @@ export class SpotRouteBridge extends NativeHandle {
   }
 
   request(channelName: string, targetSpotRid: RoutingId): RequestOperation {
-    const normalizedChannelName = validateCString(channelName, 'channelName');
+    const normalizedChannelName = validateBridgeChannelName(channelName);
     const normalizedTargetSpotRid = normalizeRoutingId(targetSpotRid);
     return new RuntimeRequestOperation((parts, callbackOrTimeout, flagsOrTimeout, maybeTimeout) => {
       const normalizedParts = normalizeOperationPayload(parts as MessageLike | readonly MessageLike[]);
@@ -114,7 +130,7 @@ export class SpotRouteBridge extends NativeHandle {
     parts: MessageLike | readonly MessageLike[],
     requestSeq?: bigint | number
   ): boolean {
-    const normalizedChannelName = validateCString(channelName, 'channelName');
+    const normalizedChannelName = validateBridgeChannelName(channelName);
     const normalizedSourceNodeRid = normalizeRoutingId(sourceNodeRid, 'sourceNodeRid');
     const normalizedParts = normalizeOperationPayload(parts);
     if (requestSeq === undefined) {
@@ -165,7 +181,7 @@ export class SpotNodePublisher extends NativeHandle {
   }
 
   publish(topic: string): SendOperation {
-    const normalizedTopic = validateCString(topic, 'topic');
+    const normalizedTopic = validatePublisherTopic(topic);
     return new RuntimeSendOperation((parts, flags) =>
       requireNative().spotNodePublisherPublish(
         this._native,

@@ -22,6 +22,20 @@ func validateChannelName(value string) error {
 	return validateFixedCString("channel_name", value)
 }
 
+func validateRouteChannelName(value string) error {
+	if value == "" {
+		return validationError("channel_name is empty")
+	}
+	return validateChannelName(value)
+}
+
+func validateTopicName(value string) error {
+	if value == "" {
+		return validationError("topic is empty")
+	}
+	return validateFixedCString("topic", value)
+}
+
 func validateSpotNodeSubjectFilter(filter SpotNodeSubjectFilter) error {
 	if filter.Subject == nil {
 		return nil

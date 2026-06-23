@@ -291,14 +291,14 @@ fn route_only_endpoint_options() -> ffi::zlink_spot_route_bridge_endpoint_option
 }
 
 fn fixed_channel_name(channel_name: &str) -> Result<CString, ConfigError> {
-    if channel_name.is_empty() {
+    if channel_name.is_empty() || channel_name.len() > 255 {
         return Err(config_validation_error());
     }
     CString::new(channel_name).map_err(|_| config_validation_error())
 }
 
 fn fixed_channel_name_submit(channel_name: &str) -> Result<CString, SubmitError> {
-    if channel_name.is_empty() {
+    if channel_name.is_empty() || channel_name.len() > 255 {
         return Err(SubmitError::new(
             crate::SubmitResult::InvalidArgument,
             libc::EINVAL,
@@ -309,7 +309,7 @@ fn fixed_channel_name_submit(channel_name: &str) -> Result<CString, SubmitError>
 }
 
 fn fixed_topic_submit(topic: &str) -> Result<CString, SubmitError> {
-    if topic.is_empty() {
+    if topic.is_empty() || topic.len() > 255 {
         return Err(SubmitError::new(
             crate::SubmitResult::InvalidArgument,
             libc::EINVAL,

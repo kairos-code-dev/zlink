@@ -297,7 +297,7 @@ test('spot publish reaches local and peer entry spot subscribers for same topic'
   }
 });
 
-test('spot node peersQuery filters manual peer connections', async () => {
+test('spot node peers filters manual peer connections', async () => {
   const ctx = zlink.createContext();
   const serverNode = zlink.createSpotNode(ctx);
   const clientNode = zlink.createSpotNode(ctx);
@@ -310,7 +310,7 @@ test('spot node peersQuery filters manual peer connections', async () => {
 
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
-      const peers = clientNode.peersQuery({ peerEndpoint: endpoint });
+      const peers = clientNode.peers({ peerEndpoint: endpoint });
       if (peers.length > 0) {
         assert.equal(peers[0].peerEndpoint, endpoint);
         assert.equal(peers[0].source, SPOT_PEER_SOURCE_MANUAL);
@@ -319,7 +319,7 @@ test('spot node peersQuery filters manual peer connections', async () => {
       await new Promise((resolve) => setImmediate(resolve));
     }
 
-    assert.fail(`spot peersQuery timeout: ${JSON.stringify({
+    assert.fail(`spot peers timeout: ${JSON.stringify({
       serverStatus: serverNode.status(),
       clientStatus: clientNode.status(),
       clientPeers: clientNode.peers()

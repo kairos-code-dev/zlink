@@ -7,18 +7,15 @@
 
 - `RM-A1` registry 자동 연결 + rid 자동 resolve
 - `RM-A2` 수동 endpoint 연결
+- `RM-A4` 같은 rid, 다른 endpoint failover
+- `RM-B1` scale-out
+- `RM-B2` scale-in / graceful drain
 - `RM-C1` request / send happy path
 - `RM-C2` targeted request by rid
 - `RM-C3` 다중 provider 분산
 - `RM-C4` timeout과 late reply 비오염
 - `RM-C5` 미등록 packet 처리
 - `RM-C6` dealer mesh peer request
-
-아직 남은 Config 1 P0 시나리오:
-
-- `RM-A4` 같은 rid, 다른 endpoint failover
-- `RM-B1` scale-out
-- `RM-B2` scale-in / graceful drain
 
 P1/P2 시나리오는 공통 문서의 지원 조건과 미배선 사유를 그대로 따른다.
 

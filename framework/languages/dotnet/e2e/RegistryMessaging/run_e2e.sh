@@ -126,6 +126,7 @@ dotnet run --project "$CLIENT_PROJECT" -- \
   --client-route-endpoint "$CLIENT_ROUTE" \
   --provider-a-evidence-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT/evidence" \
   --provider-b-evidence-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT/evidence" \
+  --server-project "$SERVER_PROJECT" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 

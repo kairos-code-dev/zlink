@@ -94,6 +94,11 @@ app.MapPost("/evidence/clear", (EvidenceStore evidence) =>
     evidence.Clear();
     return Results.Ok(new { status = "cleared" });
 });
+app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
+{
+    lifetime.StopApplication();
+    return Results.Ok(new { status = "stopping" });
+});
 await app.RunAsync();
 
 internal sealed class ProfileRequestHandler(EvidenceStore evidence)

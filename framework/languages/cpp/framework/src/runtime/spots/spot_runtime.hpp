@@ -55,14 +55,13 @@ class spot_node_builder_state_t
     };
     std::function<result_t<void> (const actor_ref_t &)> destroy_actor_registry;
     std::function<result_t<void> (const actor_ref_t &)> update_actor_registry_ref;
-    std::function<result_t<std::optional<zlink::message_t>> (
-      const actor_ref_t &,
-      actor_context_t,
-      std::string_view,
-      const zlink::message_t &,
-      service_provider_t &,
-      serializer_registry_t &,
-      spot_actor_message_metadata_t)>
+    std::function<result_t<std::optional<zlink::message_t>> (const actor_ref_t &,
+                                                             actor_context_t,
+                                                             std::string_view,
+                                                             const zlink::message_t &,
+                                                             service_provider_t &,
+                                                             serializer_registry_t &,
+                                                             spot_actor_message_metadata_t)>
       actor_packet_relay;
     std::map<std::string, actor_factory_registration_t> actor_factories;
     std::map<std::string, std::shared_ptr<void>> actor_instances;
@@ -108,7 +107,8 @@ class spot_context_state_t
     bool is_current_callback_thread () const;
 
     bool try_post_serial (std::string name, std::function<void ()> work);
-    bool try_post_serial_async (std::string name, runtime::serial_execution_queue_t::async_work_t work);
+    bool try_post_serial_async (std::string name,
+                                runtime::serial_execution_queue_t::async_work_t work);
     bool run_serial_sync (std::string name, std::function<void ()> work);
     void drain_serial ();
 
@@ -181,14 +181,14 @@ class spot_node_runtime_t
     void on_destroy_actor (std::function<result_t<void> (const actor_ref_t &)> destroy_actor);
     void on_actor_ref_updated (std::function<result_t<void> (const actor_ref_t &)> update_actor);
     void on_actor_packet_relay (
-      std::function<result_t<std::optional<zlink::message_t>> (
-        const actor_ref_t &,
-        actor_context_t,
-        std::string_view,
-        const zlink::message_t &,
-        service_provider_t &,
-        serializer_registry_t &,
-        spot_actor_message_metadata_t)> relay);
+      std::function<result_t<std::optional<zlink::message_t>> (const actor_ref_t &,
+                                                               actor_context_t,
+                                                               std::string_view,
+                                                               const zlink::message_t &,
+                                                               service_provider_t &,
+                                                               serializer_registry_t &,
+                                                               spot_actor_message_metadata_t)>
+        relay);
     spot_node_manager_t manager () const;
     result_t<actor_join_reply_t> join_actor_to_spot_erased (const actor_ref_t &actor_ref,
                                                             spot_rid_t spot_rid,
@@ -198,10 +198,9 @@ class spot_node_runtime_t
                                       spot_rid_t spot_rid,
                                       const zlink::message_t &request,
                                       actor_context_t actor_context = {});
-    result_t<actor_join_reply_t>
-    join_actor_to_entry_spot_erased (const actor_ref_t &actor_ref,
-                                     node_rid_t spot_node_rid,
-                                     const zlink::message_t &request);
+    result_t<actor_join_reply_t> join_actor_to_entry_spot_erased (const actor_ref_t &actor_ref,
+                                                                  node_rid_t spot_node_rid,
+                                                                  const zlink::message_t &request);
     result_t<std::optional<zlink::message_t>>
     relay_actor_packet (const actor_ref_t &actor_ref,
                         actor_context_t actor_context,
@@ -256,11 +255,10 @@ class spot_node_runtime_t
     }
 
     template <typename TEntrySpot, typename TActor>
-    result_t<actor_join_reply_t>
-    join_actor_to_entry_spot (const actor_ref_t &actor_ref,
-                              node_rid_t spot_node_rid,
-                              TActor &actor,
-                              const zlink::message_t &request)
+    result_t<actor_join_reply_t> join_actor_to_entry_spot (const actor_ref_t &actor_ref,
+                                                           node_rid_t spot_node_rid,
+                                                           TActor &actor,
+                                                           const zlink::message_t &request)
     {
         if (actor_ref.empty ()) {
             return result_t<actor_join_reply_t>::failure (
@@ -268,7 +266,8 @@ class spot_node_runtime_t
         }
         if (spot_node_rid.empty () || spot_node_rid.value () != _state->snapshot.name) {
             return result_t<actor_join_reply_t>::failure (
-              framework_error_kind_t::spot_route_not_found, "spot node rid does not match this node");
+              framework_error_kind_t::spot_route_not_found,
+              "spot node rid does not match this node");
         }
         if (!_state->snapshot.entry_spot_name) {
             return result_t<actor_join_reply_t>::failure (
@@ -409,17 +408,16 @@ class spot_node_runtime_t
         auto &context_state = *context._state;
         const auto key = actor_key (actor_ref);
         _state->actor_spot_rids[key] = context_state.spot_rid;
-        _state->actor_routes[key] =
-          spot_route_t{node_rid_t::from_string (_state->snapshot.name), context_state.spot_rid,
-                       context_state.spot_name};
+        _state->actor_routes[key] = spot_route_t{node_rid_t::from_string (_state->snapshot.name),
+                                                 context_state.spot_rid, context_state.spot_name};
         _state->actor_generations[key] = actor_ref.generation () + 1;
         context_state.actor_count++;
-        context_state.on_actor_joined_callbacks[std::type_index (typeid (TActor))] = [] (void *spot,
-                                                                                     void *actor) {
-            if constexpr (has_on_actor_joined_callback<TSpot, TActor>) {
-                static_cast<TSpot *> (spot)->on_actor_joined (*static_cast<TActor *> (actor));
-            }
-        };
+        context_state.on_actor_joined_callbacks[std::type_index (typeid (TActor))] =
+          [] (void *spot, void *actor) {
+              if constexpr (has_on_actor_joined_callback<TSpot, TActor>) {
+                  static_cast<TSpot *> (spot)->on_actor_joined (*static_cast<TActor *> (actor));
+              }
+          };
         context_state.onCreateActor_callbacks[std::type_index (typeid (TActor))] =
           [] (void *spot, void *actor) {
               if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
@@ -486,7 +484,8 @@ class spot_node_runtime_t
         }
     }
 
-    template <typename TActor> void notify_on_actor_joined (spot_context_state_t &state, TActor &actor)
+    template <typename TActor>
+    void notify_on_actor_joined (spot_context_state_t &state, TActor &actor)
     {
         const auto found = state.on_actor_joined_callbacks.find (std::type_index (typeid (TActor)));
         if (found != state.on_actor_joined_callbacks.end () && state.spot_instance) {
@@ -526,6 +525,15 @@ class spot_node_runtime_t
             }
         }
     }
+
+    spot_create_result_t create_spot_context_unlocked (std::string spot_name,
+                                                       spot_rid_t spot_rid,
+                                                       zlink::message_t request);
+    result_t<spot_context_t> actor_join_context_unlocked (spot_rid_t spot_rid,
+                                                          const zlink::message_t &request);
+    void leave_previous_actor_route_unlocked (const std::string &key,
+                                              std::type_index actor_type,
+                                              void *actor);
 
     std::shared_ptr<spot_node_builder_state_t> _state;
 };

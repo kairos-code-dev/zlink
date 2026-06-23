@@ -226,7 +226,10 @@ inline send_result_t try_send_packet_now (void *stream_socket,
     if (!stream_socket || !session || !rid || !packet)
         return send_result_failed;
 
-    std::lock_guard<std::mutex> send_lock (session->send_mutex);
+    // Hot path: this is called from the STREAM packet callback. When the
+    // routing id matches the current callback, the C API routes directly to the
+    // owning pipe and uses pipe-level synchronization; do not reintroduce a
+    // process-wide send mutex here.
     const int rc = perf_zlink_send_rid_parts (stream_socket, rid, packet, 1, ZLINK_DONTWAIT);
     if (rc == 0)
         return send_result_sent;

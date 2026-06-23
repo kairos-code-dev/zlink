@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md) | [다음: ZLink Framework Use Cases](../use-cases/README.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 메시지 흐름 추적과 dispatch 관측](message-flow-tracing.ko.md) | [다음: ZLink Framework Use Cases](../use-cases/README.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -65,5 +65,5 @@ use case를 설명할 틀을 갖추었는지를 본다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](session-actor-dispatch.ko.md) | [다음: ZLink Framework Use Cases](../use-cases/README.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 메시지 흐름 추적과 dispatch 관측](message-flow-tracing.ko.md) | [다음: ZLink Framework Use Cases](../use-cases/README.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

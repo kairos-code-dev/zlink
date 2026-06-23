@@ -115,7 +115,35 @@ public 기준은 typed handler(`ZLinkRuntimeEventHandler<TEvent>`)다.
   send/publish/subscription/actor send 실패는 drop 되지만 로그, counter, observer event 로 남는다.
   observer 는 관측용이므로 callback 이 실패해도 원래 dispatch 결과를 바꾸지 않는다.
 
-## 5. 더 보기
+## 5. 메시지 흐름 추적 — 메시지 생애주기 관찰
+
+monitoring 이 socket/registry/spot **상태 변화**를 본다면, 메시지 흐름 추적은 한 메시지가
+**도착했나 / 핸들러로 갔나 / 응답이 나갔나**를 dispatch 길목에서 표준 기능으로 찍는다. `corr=`로
+grep 하면 한 요청의 생애주기가 노드 간으로 이어진다. dispatch 제어가 아니라 관측이다.
+
+framework options 등록(`ZLinkFrameworkConfigurer`)에서 `configureDispatch()` 체인으로만 켠다.
+
+```java
+@Bean
+ZLinkFrameworkConfigurer dispatchTracing() {
+    return options -> options.configureDispatch()
+        // OFF → ERRORS_ONLY(기본) → KEY_TRANSITIONS → VERBOSE → DIAGNOSTIC
+        .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+        .traceLogFile("logs/flow-api.log")   // 지정=전용 파일, 미지정=앱 로거 통합, 둘 다 없으면 stderr
+        .traceNodeId("api");                 // 구조화 필드 node=
+}
+```
+
+- 모드 게이팅: `DROPPED`·에러는 `ERRORS_ONLY` 이상, 성공 전이는 `KEY_TRANSITIONS` 이상. `OFF` 면
+  이벤트 생성 자체가 없어 제로코스트다.
+- 운영 중 켜고 끄기: `ZLinkMessageFlowControl`(Spring `ZLinkFrameworkLifecycle` 빈)을 주입받아
+  `setMessageFlowMode(...)`(재시작 불필요).
+- 콜렉터/OTel 연동: `setMessageFlowObserver(...)`로 구조화 이벤트를 받는다(앱 레이어). framework 는
+  `correlationId` + 구조화 필드 + observer 훅까지만 제공하고 OTel 에 의존하지 않는다.
+- 정식 계약: [spring-boot-monitoring §7](../spec/spring-boot-monitoring.ko.md), 공통 의미:
+  [공통 스펙 메시지 흐름 추적](../../common/spec/message-flow-tracing.ko.md).
+
+## 6. 더 보기
 
 - topology 스냅샷 조회: [09-registry](08-registry.ko.md)
 - timer 정책: [06-spot](05-spot.ko.md)

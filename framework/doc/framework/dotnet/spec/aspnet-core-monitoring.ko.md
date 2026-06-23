@@ -398,6 +398,75 @@ Monitoring 문서의 항목은 다음을 확인한다.
 | `EventsTests.SpotMonitoring_Emits_PeersChanged_When_RemoteNodeAppears` | remote spot node가 나타나면 peer 변화 event가 발생한다. |
 | `TimerTests.SpotTimer_Reports_Handler_Exception_To_Monitoring` | timer handler 예외가 `TimerHandlerFailed` event와 `ZLinkSpotTimerDiagnostic` payload로 발생한다. |
 
+## 9. 메시지 흐름 추적 (dispatch 관측)
+
+monitoring 이 socket/registry/spot **runtime 변화**를 다룬다면, 메시지 흐름 추적은 한 메시지의
+생애주기(왔나/처리됐나/응답됐나/보냈나/응답받았나)를 dispatch 길목에서 관측한다. 공통 의미
+(로그 모드·phase·event·observer·off 제로코스트 성능 계약·출력 라우팅·길목·스트림
+correlation_id 와이어)는 [공통 스펙 — 메시지 흐름 추적](../../common/spec/message-flow-tracing.ko.md)이
+소유한다. 이 절은 그 의미의 `.NET` 표면만 적는다. dispatch **제어**가 아니라 **관측**이며,
+observer 실패가 메시지 처리나 응답 전송을 깨지 않는다.
+
+### 9.1 표면
+
+| 공통 개념 | `.NET` 타입 / 멤버 |
+|-----------|---------------------|
+| 로그 모드 | `ZLinkMessageFlowLogMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose`, `Diagnostic` } |
+| phase | `ZLinkMessageFlowPhase` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived` } |
+| event | `ZLinkMessageFlowEvent`(record): `Phase`, `Surface`, `MessageKind`, `PacketName`, `ChannelName`, `Topic`, `CorrelationId`, `SourceRid`, `SpotRid`, `ActorId`, `MessageSize` |
+| observer | `IZLinkMessageFlowObserver.OnMessageFlowAsync(ZLinkMessageFlowEvent, CancellationToken)` |
+| 진단 옵션(read-only) | `IZLinkDispatchOptions.Diagnostics` → `IZLinkDiagnosticsOptions` { `MessageFlow`, `EffectiveMessageFlow`, `SampleRate`, `IncludeMessageSizes`, `LogFile`, `NodeId` } |
+| 런타임 토글 | `IZLinkMessageFlowControl.SetMessageFlowMode(...)` / `MessageFlowMode` (DI singleton) |
+
+게이팅(공통 규칙): `Dropped`·에러는 `ErrorsOnly` 이상, 성공 전이(`Received`/`Dispatched`/
+`Replied`/`Sent`/`ReplyReceived`)는 `KeyTransitions` 이상에서 발화한다. `SampleRate<1`은 성공
+전이만 thinning하고 `Dropped`·에러는 항상 통과한다.
+
+### 9.2 설정 (builder 전용)
+
+진단 필드는 read-only이며 `ConfigureDispatch()` fluent 체인으로만 설정한다.
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.ConfigureDispatch()
+        .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+        .TraceLogFile("logs/flow-api.log")   // 지정=전용 파일(앱 로그와 분리)
+        .TraceNodeId("api")                  // 구조화 필드 node= 식별자
+        .IncludeMessageSizes(true)           // Verbose에서 size= 출력
+        .SetMessageFlowObserver<ApiFlowObserver>();   // 선택: 콜렉터/OTel 어댑터(앱 레이어)
+});
+```
+
+- `TraceLogFile` 지정 시 트레이싱/에러는 전용 파일로만 가고 앱 `ILogger`와 섞이지 않는다.
+  미지정 + 앱 로거 sink 있으면 통합, 둘 다 없으면 표준 에러스트림 폴백.
+- 출력은 카테고리 `zlink.framework.dispatch` + 구조화 필드(phase/surface/kind/packet/channel/
+  topic/corr/src/spot/actor/size/node)로 나가 콜렉터가 정규식 파싱 없이 ingest할 수 있다.
+- `Off`일 때는 이벤트를 생성조차 하지 않아(호출부 가드 + lazy) 운영 성능에 영향이 없다.
+
+### 9.3 런타임 토글
+
+`IZLinkMessageFlowControl`을 DI에서 받아 재시작 없이 모드를 바꾼다. 공유 live cell을 모든
+surface가 읽으므로 즉시 반영된다. `MessageFlow(...)`는 seed(기본값)다.
+
+```csharp
+var control = app.Services.GetRequiredService<IZLinkMessageFlowControl>();
+control.SetMessageFlowMode(ZLinkMessageFlowLogMode.KeyTransitions);  // off→on, 즉시 반영
+```
+
+### 9.4 관측 백엔드 경계
+
+framework 가 제공하는 것은 `CorrelationId` + 구조화 필드 + observer 훅까지다. OpenTelemetry /
+span / 외부 콜렉터(Loki/ELK 등) 어댑터는 앱이 `IZLinkMessageFlowObserver` 콜백에서 받아 끼운다.
+framework 는 OTel에 의존하지 않는다(공통 스펙 §6 경계 원칙).
+
+### 9.5 샘플
+
+Bingo 3노드(Api/Play/Session)는 각자 `MessageFlow(KeyTransitions)` +
+`TraceLogFile(SampleFlowLog.Path(role))` + `TraceNodeId(role)`로 분리 파일 로깅을 시연한다
+(`BINGO_LOG_DIR`로 로그 디렉토리 override). 한 요청을 `corr=`로 grep하면 노드 간
+`Sent`→`Received`→`Replied`→`ReplyReceived`가 시간순으로 이어진다.
+
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 가리킨다.
 [^handshake]: handshake는 연결 초기에 양쪽이 프로토콜 버전이나 인증 정보를 주고받아 통신 조건을 맞추는 절차다.
 [^discovery]: discovery는 분산 환경에서 어떤 서비스가 어느 endpoint에 있는지를 자동으로 알아내는 메커니즘이다. ZLink에서는 registry가 그 역할을 한다.

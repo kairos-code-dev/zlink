@@ -134,6 +134,65 @@ runtime을 멈춘다. 일시적인 registry query 실패나 spot snapshot 실패
 - registry/spot snapshot diff는 typed event로 변환된다(발행 spot event는 status/peers/subjects).
 - `ZLinkRuntimeEventHandler<T>` 실패는 monitoring runner를 중단하지 않는다.
 
+## 7. 메시지 흐름 추적 (dispatch 관측)
+
+monitoring 이 socket/registry/spot **runtime 변화**를 다룬다면, 메시지 흐름 추적은 한 메시지의
+생애주기(왔나/처리됐나/응답됐나/보냈나/응답받았나)를 dispatch 길목에서 관측한다. 공통 의미는
+[공통 스펙 — 메시지 흐름 추적](../../common/spec/message-flow-tracing.ko.md)이 소유하고, 이 절은
+Java 표면만 적는다. dispatch 제어가 아니라 관측이며, observer 실패가 처리나 응답을 깨지 않는다.
+
+### 7.1 표면
+
+| 공통 개념 | Java 타입 / 멤버 |
+|-----------|------------------|
+| 로그 모드 | `ZLinkMessageFlowLogMode` { `OFF`, `ERRORS_ONLY`(기본), `KEY_TRANSITIONS`, `VERBOSE`, `DIAGNOSTIC` } |
+| phase | `ZLinkMessageFlowPhase` { `RECEIVED`, `DISPATCHED`, `REPLIED`, `DROPPED`, `SENT`, `REPLY_RECEIVED` } |
+| event | `ZLinkMessageFlowEvent`(record): `phase()`, `surface()`, `messageKind()`, `packetName()`, `channelName()`, `topic()`, `correlationId()`, `sourceRid()`, `spotRid()`, `actorId()`, `messageSize()` |
+| observer | `ZLinkMessageFlowObserver.onMessageFlow(ZLinkMessageFlowEvent)` → `CompletionStage<Void>` |
+| 진단 옵션(read-only) | `configureDispatch().diagnostics()` → `ZLinkDiagnosticsOptions` { `messageFlow()`, `effectiveMessageFlow()`, `sampleRate()`, `includeMessageSizes()`, `logFile()`, `nodeId()` } |
+| 런타임 토글 | `ZLinkMessageFlowControl.setMessageFlowMode(...)` / `messageFlowMode()` (Spring `ZLinkFrameworkLifecycle` 빈이 구현·위임) |
+
+게이팅(공통 규칙): `DROPPED`·에러는 `ERRORS_ONLY` 이상, 성공 전이는 `KEY_TRANSITIONS` 이상에서
+발화한다. `sampleRate<1`은 성공 전이만 thinning하고 `DROPPED`·에러는 항상 통과한다.
+
+### 7.2 설정 (builder 전용)
+
+framework options 등록(`ZLinkFrameworkConfigurer`)에서 `configureDispatch()` 체인으로만 설정한다.
+진단 필드는 read-only다.
+
+```java
+@Bean
+ZLinkFrameworkConfigurer dispatchTracing() {
+    return options -> options.configureDispatch()
+        .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+        .traceLogFile("logs/flow-api.log")   // 지정=전용 파일(앱 로그와 분리)
+        .traceNodeId("api")                  // 구조화 필드 node=
+        .includeMessageSizes(true);          // VERBOSE에서 size=
+}
+```
+
+- `traceLogFile` 지정 시 트레이싱/에러는 전용 파일로만, 미지정 + 앱 로거 sink 있으면 통합, 둘 다
+  없으면 표준 에러스트림 폴백. 출력은 key=value 구조화(JUL/파일) + `node=`로 콜렉터 ingest 가능.
+- observer는 `setMessageFlowObserver(MyObserver.class)` 또는 인스턴스/람다로 등록한다(단일 메서드
+  인터페이스라 람다 호환). 콜렉터/OTel 어댑터는 앱 레이어 책임이다(공통 스펙 §6).
+- `OFF`일 때는 이벤트를 생성조차 하지 않아(호출부 가드 + lazy) 운영 성능에 영향이 없다.
+
+### 7.3 런타임 토글
+
+`ZLinkMessageFlowControl`은 Spring `ZLinkFrameworkLifecycle` 빈이 구현하므로 주입받아 재시작 없이
+모드를 바꾼다. 공유 live cell을 모든 surface가 읽어 즉시 반영된다.
+
+```java
+flowControl.setMessageFlowMode(ZLinkMessageFlowLogMode.KEY_TRANSITIONS);  // off→on
+```
+
+### 7.4 샘플
+
+Java/Kotlin Bingo 3노드는 각자 `messageFlow(KEY_TRANSITIONS)` +
+`traceLogFile(.../flow-<role>.log)` + `traceNodeId(role)`로 분리 파일 로깅을 시연한다
+(`BINGO_LOG_DIR` override). Kotlin은 같은 Java 런타임을 공유하며 `configureDispatch { }` DSL과
+`onMessageFlow { }` 람다 옵저버(에르고노믹스)를 추가로 제공한다.
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../../../README.ko.md) | [이전: ZLink Framework Spring Boot Channel Messaging](spring-boot-channel-messaging.ko.md) | [다음: ZLink Framework Spring Boot Registry](spring-boot-registry.ko.md)

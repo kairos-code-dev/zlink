@@ -106,7 +106,7 @@ state에 손대지 않는다.
 모든 e2e는 **파일 로깅과 메시지 흐름 추적을 반드시 켜고** 작성·디버깅한다. ad-hoc `printf`나
 콘솔 스크롤로 때우지 않는다. 트레이싱은 "메시지가 도착했나 / 핸들러로 갔나 / 응답이 나갔나"를
 표준 기능으로 찍어 주므로, 테스트를 만들면서 1차 디버깅 도구로 쓴다.
-(기능 근거: [`framework/doc/plan/framework-message-flow-tracing-plan.ko.md`](../../../plan/framework-message-flow-tracing-plan.ko.md))
+(기능 스펙: [메시지 흐름 추적과 dispatch 관측](../spec/message-flow-tracing.ko.md))
 
 ### 6.1 모든 로그를 파일로 (`log/` 폴더)
 

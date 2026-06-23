@@ -196,7 +196,35 @@ spot event 는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
 - **handler payload 의 정확한 필드** → 가이드는 자주 쓰는 필드만 보였다. 전체는
   [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md) 참고.
 
-## 5. 더 보기
+## 5. 메시지 흐름 추적 — 메시지 생애주기 관찰
+
+monitoring 이 socket/registry/spot **상태 변화**를 본다면, 메시지 흐름 추적은 한 메시지가
+**도착했나 / 핸들러로 갔나 / 응답이 나갔나**를 dispatch 길목에서 표준 기능으로 찍는다. `corr=`로
+grep 하면 한 요청의 생애주기가 노드 간으로 이어진다. dispatch 제어가 아니라 관측이다.
+
+`ConfigureDispatch()` 체인으로만 켠다(진단 필드는 read-only).
+
+```csharp
+builder.Services.AddZLinkFramework(options =>
+{
+    options.ConfigureDispatch()
+        // off → ErrorsOnly(기본) → KeyTransitions → Verbose → Diagnostic
+        .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+        .TraceLogFile("logs/flow-api.log")   // 지정=전용 파일, 미지정=앱 ILogger 통합, 둘 다 없으면 stderr
+        .TraceNodeId("api");                 // 구조화 필드 node=
+});
+```
+
+- 모드 게이팅: `Dropped`·에러는 `ErrorsOnly` 이상, 성공 전이(`Received`/`Dispatched`/`Replied`/
+  `Sent`/`ReplyReceived`)는 `KeyTransitions` 이상. `Off` 면 이벤트 생성 자체가 없어 제로코스트다.
+- 운영 중 켜고 끄기: `IZLinkMessageFlowControl` 을 DI 에서 받아 `SetMessageFlowMode(...)`(재시작
+  불필요, 모든 surface 즉시 반영).
+- 콜렉터/OTel 연동: `IZLinkMessageFlowObserver` 를 등록해 구조화 이벤트를 받는다(앱 레이어).
+  framework 는 OTel 에 의존하지 않고 `CorrelationId` + 구조화 필드 + observer 훅까지만 제공한다.
+- 정식 계약은 [spec/aspnet-core-monitoring §9](../spec/aspnet-core-monitoring.ko.md), 공통 의미는
+  [공통 스펙 메시지 흐름 추적](../../common/spec/message-flow-tracing.ko.md) 참고.
+
+## 6. 더 보기
 
 - 이 챕터 계약의 실행 검증 예문(monitoring options/event/handler/publisher): [11-interface-catalog](11-interface-catalog.ko.md) §7 — 검증 클래스 `EventingContracts`
 - 정식 계약: [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md)

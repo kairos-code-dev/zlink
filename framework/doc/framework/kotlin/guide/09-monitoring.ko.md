@@ -104,7 +104,39 @@ public 기준은 typed `ZLinkRuntimeEventHandler<TEvent>`다.
 - **discovery 상태를 받고 싶다** -> discovery는 runtime event가 아니다. Registry
   snapshot/query로 조회한다([08-registry](08-registry.ko.md)).
 
-## 5. 더 보기
+## 5. 메시지 흐름 추적 — 메시지 생애주기 관찰
+
+monitoring 이 socket/registry/spot **상태 변화**를 본다면, 메시지 흐름 추적은 한 메시지가
+**도착했나 / 핸들러로 갔나 / 응답이 나갔나**를 dispatch 길목에서 표준 기능으로 찍는다. `corr=`로
+grep 하면 한 요청의 생애주기가 노드 간으로 이어진다. dispatch 제어가 아니라 관측이다.
+
+Kotlin 은 zlink-framework-core(Java) 런타임을 **그대로 상속**하므로 트레이싱 의미·모드·계약은
+[Java guide §5](../../java/guide/09-monitoring.ko.md)와 동일하다. Kotlin 은 에르고노믹스만
+추가한다 — `configureDispatch { }` DSL 과 `onMessageFlow { }` 람다 옵저버.
+
+```kotlin
+@Bean
+fun dispatchTracing(): ZLinkFrameworkConfigurer =
+    ZLinkFrameworkConfigurer { options ->
+        options.configureDispatch {
+            // OFF → ERRORS_ONLY(기본) → KEY_TRANSITIONS → VERBOSE → DIAGNOSTIC
+            messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
+            traceLogFile("logs/flow-api.log")   // 지정=전용 파일, 미지정=앱 로거 통합
+            traceNodeId("api")                  // 구조화 필드 node=
+            onMessageFlow { event -> /* 콜렉터/OTel 어댑터(앱 레이어) */ }
+        }
+    }
+```
+
+- 모드 게이팅: `DROPPED`·에러는 `ERRORS_ONLY` 이상, 성공 전이는 `KEY_TRANSITIONS` 이상. `OFF` 면
+  제로코스트.
+- 운영 중 켜고 끄기: `ZLinkMessageFlowControl`(Spring `ZLinkFrameworkLifecycle`)을 주입받아
+  `setMessageFlowMode(...)`. `configureDispatch`/`onMessageFlow` 확장은
+  `systems.zlink.framework.kotlin` 패키지에서 import 한다.
+- 정식 계약: [spring-boot-monitoring §7](../../java/spec/spring-boot-monitoring.ko.md), 공통 의미:
+  [공통 스펙 메시지 흐름 추적](../../common/spec/message-flow-tracing.ko.md).
+
+## 6. 더 보기
 
 - topology 스냅샷 조회: [08-registry](08-registry.ko.md)
 - timer 정책: [05-spot](05-spot.ko.md)

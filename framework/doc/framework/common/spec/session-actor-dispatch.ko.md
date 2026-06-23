@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Actor Model](actor-model.ko.md) | [다음: ZLink Framework Use Case Validation](usecase-validation.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Actor Model](actor-model.ko.md) | [다음: 메시지 흐름 추적과 dispatch 관측](message-flow-tracing.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -1127,5 +1127,5 @@ sample 검증도 필요하다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Actor Model](actor-model.ko.md) | [다음: ZLink Framework Use Case Validation](usecase-validation.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: ZLink Framework Actor Model](actor-model.ko.md) | [다음: 메시지 흐름 추적과 dispatch 관측](message-flow-tracing.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

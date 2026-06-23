@@ -148,7 +148,35 @@ app.metrics ().record_runtime_metric ("games.active", 42.0,
 외부 수집기로 내보내려면 `app.monitoring().on<metric_event_payload_t>(...)` 또는
 `on_trace(...)`에서 받아 전송한다.
 
-## 5. 자주 막히는 곳
+## 5. 메시지 흐름 추적 (dispatch 관측)
+
+런타임 이벤트(§2)가 socket/registry/spot **상태 변화**를 본다면, 메시지 흐름 추적은 한 메시지가
+**도착했나 / 핸들러로 갔나 / 응답이 나갔나**를 dispatch 길목에서 표준 기능으로 찍는다(C++가
+레퍼런스 구현). `corr=`로 grep 하면 한 요청의 생애주기가 노드 간으로 이어진다. 출력은 §1 로깅과
+같은 `logger_t` 경로로 나간다.
+
+```cpp
+app.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &options) {
+    options.configure_dispatch ()
+      // off → errors_only(기본) → key_transitions → verbose → diagnostic
+      .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+      .trace_log_file ("logs/flow-api.log")   // 지정=전용 파일, 미지정=app.logging() 통합, 둘 다 없으면 std::clog
+      .trace_node_id ("api");                 // 구조화 필드 node=
+});
+
+// 운영 중 켜고 끄기 (재시작 없이, 모든 surface 즉시 반영)
+app.set_message_flow_mode (zlink::framework::message_flow_log_mode_t::key_transitions);
+```
+
+- 모드 게이팅: `dropped`·에러는 `errors_only` 이상, 성공 전이(`received`/`dispatched`/`replied`/
+  `sent`/`reply_received`)는 `key_transitions` 이상. `off` 면 참조 기반 트레이서 + lazy 이벤트로
+  옵션 복사·문자열 할당이 0이다(게이트 = 공유 atomic load 1회).
+- 콜렉터/OTel 연동: `options.configure_dispatch().set_message_flow_observer(...)`(observer 또는
+  `std::function`)로 구조화 이벤트를 받는다(앱 레이어). framework 는 OTel 에 의존하지 않는다.
+- 정식 계약: [spec/cpp-monitoring §7](../spec/cpp-monitoring.ko.md), 공통 의미:
+  [공통 스펙 메시지 흐름 추적](../../common/spec/message-flow-tracing.ko.md).
+
+## 6. 자주 막히는 곳
 
 - **이벤트가 안 들어온다** → 해당 source의 등록(`add_socket_events` /
   `add_discovery_events` / `add_registry_events` / `add_spot_events` /
@@ -159,7 +187,7 @@ app.metrics ().record_runtime_metric ("games.active", 42.0,
 - **이벤트 핸들러에서 블로킹** → 이벤트 콜백에서 무거운 동기 작업을 하면 관측
   경로가 막힌다. 집계·전송만 하고 무거운 일은 다른 경로로 넘긴다.
 
-## 6. 더 보기
+## 7. 더 보기
 
 - 인터페이스/계약 카탈로그: [13장 인터페이스 카탈로그](13-interface-catalog.ko.md)
 - registry 이벤트·health 연동: [11장 Registry](11-registry.ko.md)

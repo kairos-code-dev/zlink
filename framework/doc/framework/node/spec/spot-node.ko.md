@@ -104,7 +104,7 @@ export class StageService {
 ### 메서드
 
 `ValueTask` → `Promise`, camelCase, `RoutingId` → 문자열로 매핑한다.
-생성 요청 `Message` 는 Node framework 의 공통 `Message` 로 전달하고,
+생성 요청 payload 는 DTO 또는 `ZLinkMessage` 로 전달하고,
 `CancellationToken` 은 선택 인자 `signal?: AbortSignal` 로 두거나 생략한다.
 
 | dotnet (`IZLinkSpotManager`) | node (`ZLinkSpotManager`) | 반환 |
@@ -129,7 +129,7 @@ dotnet `readonly record struct` 는 불변 객체(interface / type)로 옮긴다
 interface ZLinkSpotCreateResult {
   readonly spotRid: string;   // RoutingId
   readonly state: ZLinkSpotCreateState;
-  readonly reply?: Message;
+  readonly reply?: ZLinkMessage;
 }
 
 interface ZLinkSpotInfo {

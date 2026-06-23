@@ -1564,7 +1564,7 @@ export enum ZLinkSpotCreateState {
 export interface ZLinkSpotCreateResult {
   readonly spotRid: RoutingId;
   readonly state: ZLinkSpotCreateState;
-  readonly reply?: Message;
+  readonly reply?: ZLinkMessage;
 }
 
 export interface ZLinkSpotInfo {

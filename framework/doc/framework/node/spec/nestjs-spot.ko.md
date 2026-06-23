@@ -558,15 +558,15 @@ request, publish, subscribe 를 처리할 뿐이다.
 이 표면은 다음 상황을 함께 설명한다.
 
 - Spot 클래스로 factory 를 고르고 runtime 이 새 `spotRid` 를 발급하는 생성
-- 생성 요청이 넘긴 단일 `Message` 를 `onCreate(...)` 로 전달하는 경우
+- 생성 요청이 넘긴 DTO 또는 `ZLinkMessage` 를 `onCreate(...)` 로 전달하는 경우
 - 이미 존재하는 `spotRid` 라면 그대로 얻어 오는 `get-or-create` 성격의 동작
 
 `ZLinkSpotManager` 표면(dotnet `IZLinkSpotManager` 대응):
 
 ```ts
 interface ZLinkSpotManager {
-  create(spotType: Type<ZLinkSpot>, request?: Message): Promise<ZLinkSpotCreateResult>;
-  getOrCreate(spotType: Type<ZLinkSpot>, spotRid: string, request?: Message): Promise<ZLinkSpotCreateResult>;
+  create(spotType: Type<ZLinkSpot>, request?: unknown | ZLinkMessage): Promise<ZLinkSpotCreateResult>;
+  getOrCreate(spotType: Type<ZLinkSpot>, spotRid: string, request?: unknown | ZLinkMessage): Promise<ZLinkSpotCreateResult>;
   find(spotRid: string): Promise<ZLinkSpotInfo | null>;
   list(): Promise<readonly ZLinkSpotInfo[]>;
   close(spotRid: string): Promise<boolean>;
@@ -575,7 +575,7 @@ interface ZLinkSpotManager {
 interface ZLinkSpotCreateResult {
   spotRid: string;
   state: ZLinkSpotCreateState;
-  reply?: Message;
+  reply?: ZLinkMessage;
 }
 interface ZLinkSpotInfo { spotRid: string; }
 ```

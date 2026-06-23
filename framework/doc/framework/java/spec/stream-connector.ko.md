@@ -243,28 +243,9 @@ codec registry에 등록되고, typed send/request/on/wait 표면이 그 registr
 업무 DTO를 encode/decode한다. application code는 일반적으로 raw `Message`나 codec
 helper를 직접 다루지 않는다.
 
-```java
-public final class ZLinkStreamJson {
-    public static ZLinkStreamSendCall send(
-        ZLinkStreamConnector connector,
-        Object payload);
-
-    public static ZLinkStreamRequestCall request(
-        ZLinkStreamConnector connector,
-        Object payload);
-
-    public static <TPayload> AutoCloseable on(
-        ZLinkStreamConnector connector,
-        Class<TPayload> payloadType,
-        ZLinkStreamMessageHandler<TPayload> handler);
-
-    public static <TPayload> AutoCloseable on(
-        ZLinkStreamConnector connector,
-        String name,
-        Class<TPayload> payloadType,
-        ZLinkStreamMessageHandler<TPayload> handler);
-}
-```
+위의 `ZLinkStreamConnector.send(Object)`, `request(Object)`,
+`on(Class<TPayload>, ...)`, `waitFor(...)`가 typed payload 표면이다. codec 선택과
+payload encode/decode는 connector가 가진 codec registry 안에서 처리한다.
 
 auto codec extension은 payload type이나 annotation을 보고 codec을 고른다. codec을 고를
 수 없으면 configuration error로 실패한다. typed 표면이 만드는 packet name도 core
@@ -279,7 +260,7 @@ typed 표면은 registry가 encode/decode할 수 있는 업무 객체 payload를
 동작한다. `String`, `byte[]`, `Message` 같은 raw payload는 connector 하위 경로나
 명시적 raw 사용에서만 다룬다.
 
-Kotlin extension은 typed helper 위에 얇게 얹는다.
+Kotlin extension은 Java typed payload 표면 위에 얇게 얹는다.
 
 ```kotlin
 // request 응답은 ZLinkStreamRequestCall 의 reified typed await 로 받는다(codec 가 JSON 등 처리).

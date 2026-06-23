@@ -360,13 +360,13 @@ timer handler 는 `ZLinkTimerTick` 을 받아 callback 번호, fixed-rate 시간
 export interface ZLinkSpotManager {
   create<TSpot extends ZLinkSpot>(
     spotType: Type<TSpot>,
-    request?: Message,
+    request?: unknown | ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<ZLinkSpotCreateResult>;
   getOrCreate<TSpot extends ZLinkSpot>(
     spotType: Type<TSpot>,
     spotRid: RoutingId,
-    request?: Message,
+    request?: unknown | ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<ZLinkSpotCreateResult>;
 }

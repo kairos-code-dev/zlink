@@ -1,12 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/framework/codecs/json.hpp>
 #include <nlohmann/json.hpp>
-#include <cstdint>
 #include <map>
-#include <stdexcept>
 #include <string>
 #include <vector>
 #include <array>
@@ -715,65 +712,5 @@ inline void from_json (const nlohmann::json &json, bingo_reward_acquired_event_t
     value.item_name = json.value ("itemName", "");
     value.rarity = json.value ("rarity", "");
 }
-
-namespace detail
-{
-
-inline void append_protobuf_varint (std::vector<std::uint8_t> &bytes, std::size_t value)
-{
-    while (value >= 0x80) {
-        bytes.push_back (static_cast<std::uint8_t> ((value & 0x7f) | 0x80));
-        value >>= 7;
-    }
-    bytes.push_back (static_cast<std::uint8_t> (value));
-}
-
-inline std::size_t read_protobuf_varint (const std::vector<std::uint8_t> &bytes,
-                                         std::size_t &offset)
-{
-    std::size_t value = 0;
-    int shift = 0;
-    while (offset < bytes.size ()) {
-        const auto byte = bytes[offset++];
-        value |= static_cast<std::size_t> (byte & 0x7f) << shift;
-        if ((byte & 0x80) == 0) {
-            return value;
-        }
-        shift += 7;
-        if (shift >= static_cast<int> (sizeof (std::size_t) * 8)) {
-            throw std::runtime_error ("protobuf payload varint is too large");
-        }
-    }
-    throw std::runtime_error ("protobuf payload varint is truncated");
-}
-
-inline zlink::message_t json_to_protobuf_payload (const nlohmann::json &json)
-{
-    const auto text = json.dump ();
-    std::vector<std::uint8_t> bytes;
-    bytes.reserve (1 + text.size () + 8);
-    bytes.push_back (0x0a);
-    append_protobuf_varint (bytes, text.size ());
-    bytes.insert (bytes.end (), text.begin (), text.end ());
-    return zlink::message_t::from (bytes);
-}
-
-inline nlohmann::json json_from_protobuf_payload (const zlink::message_t &payload)
-{
-    const auto bytes = payload.to_bytes ();
-    std::size_t offset = 0;
-    if (offset >= bytes.size () || bytes[offset++] != 0x0a) {
-        throw std::runtime_error ("protobuf payload must contain field 1");
-    }
-    const auto size = read_protobuf_varint (bytes, offset);
-    if (offset + size > bytes.size ()) {
-        throw std::runtime_error ("protobuf payload string is truncated");
-    }
-    return nlohmann::json::parse (bytes.begin () + static_cast<std::ptrdiff_t> (offset),
-                                  bytes.begin ()
-                                    + static_cast<std::ptrdiff_t> (offset + size));
-}
-
-} // namespace detail
 
 } // namespace zlink::samples::bingo

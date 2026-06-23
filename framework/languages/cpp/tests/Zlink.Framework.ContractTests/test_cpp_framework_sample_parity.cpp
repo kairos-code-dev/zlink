@@ -85,14 +85,6 @@ bool has_suffix (const std::filesystem::path &path, const std::string &suffix)
            && value.compare (value.size () - suffix.size (), suffix.size (), suffix) == 0;
 }
 
-bool is_allowed_raw_codec_helper_file (const std::string &relative)
-{
-    const std::vector<std::string> allowed{
-      "Bingo/Shared/Contracts/messages.hpp",
-    };
-    return std::find (allowed.begin (), allowed.end (), relative) != allowed.end ();
-}
-
 bool contains_any (const std::string &content, const std::vector<std::string> &patterns)
 {
     return std::any_of (patterns.begin (), patterns.end (), [&content] (const auto &pattern) {
@@ -968,17 +960,13 @@ TEST (CppFrameworkSampleParity, CodecHelpersStayConfinedToRawLifecycleBoundaries
         if (!contains_any (content, helper_patterns)) {
             continue;
         }
-        if (!is_allowed_raw_codec_helper_file (relative)) {
-            violations.push_back (relative);
-        }
-        if ((content.find ("append_protobuf_varint") != std::string::npos
-             || content.find ("read_protobuf_varint") != std::string::npos)
-            && relative != "Bingo/Shared/Contracts/messages.hpp") {
+        violations.push_back (relative);
+        if (content.find ("append_protobuf_varint") != std::string::npos
+            || content.find ("read_protobuf_varint") != std::string::npos) {
             violations.push_back (relative + ":manual-protobuf-varint");
         }
-        if ((content.find ("json_to_protobuf_payload") != std::string::npos
-             || content.find ("json_from_protobuf_payload") != std::string::npos)
-            && relative != "Bingo/Shared/Contracts/messages.hpp") {
+        if (content.find ("json_to_protobuf_payload") != std::string::npos
+            || content.find ("json_from_protobuf_payload") != std::string::npos) {
             violations.push_back (relative + ":json-protobuf-wrapper");
         }
     }

@@ -194,10 +194,72 @@ interface ZLinkActorCreationOperation {
   readonly created: boolean;
 }
 
+/**
+ * Owns actor construction: factory resolution (registered instance or
+ * provider-constructed type), context creation, instance creation, actor
+ * binding, native ref acquisition, and Entry Spot creation notification.
+ * Separated from DefaultZLinkActorManager so the manager stays a thin
+ * registry/lifecycle facade and creation policy evolves independently.
+ */
+class ZLinkActorCreationCoordinator {
+  constructor(private readonly options: ZLinkActorManagerOptions) {}
+
+  async createActor(
+    actorId: string,
+    actorType: string,
+    state: ZLinkActorRuntimeState,
+    signal?: AbortSignal
+  ): Promise<ZLinkActor> {
+    const factory = await this.createFactory(actorType);
+    const context = state.ensureContext(
+      this.options.joinCoordinator,
+      this.options.boundSessionFactory,
+      this.options.messageSerializers
+    );
+    const actor = await factory.create(actorId, context, signal);
+    try {
+      state.bindActor(actor, context);
+      const nativeActorNode = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
+      if (nativeActorNode !== undefined) {
+        const actorRef = state.ensureNativeActorRef(nativeActorNode);
+        await this.options.actorCreatedNotifier?.(
+          toFrameworkRoutingId(actorRef.nodeRid),
+          actor,
+          signal
+        );
+      } else {
+        const nodeRid = this.options.actorCreatedNodeRidProvider?.();
+        if (nodeRid !== undefined) {
+          await this.options.actorCreatedNotifier?.(nodeRid, actor, signal);
+        }
+      }
+    } catch (error) {
+      state.clearAfterDestroy();
+      throw error;
+    }
+    return actor;
+  }
+
+  private async createFactory(actorType: string): Promise<ZLinkActorFactory> {
+    const factoryOrType = this.options.actorFactories.get(actorType);
+    if (factoryOrType === undefined) {
+      throw new ZLinkConfigurationException(`Actor factory '${actorType}' is not registered.`);
+    }
+    if (typeof factoryOrType === 'function') {
+      const type = factoryOrType as Type<ZLinkActorFactory>;
+      return await createProviderInstance(type, this.options.providerResolver);
+    }
+    return factoryOrType;
+  }
+}
+
 export class DefaultZLinkActorManager implements ZLinkActorManager {
   private readonly states = new Map<string, ZLinkActorRuntimeState>();
+  private readonly creation: ZLinkActorCreationCoordinator;
 
-  constructor(private readonly options: ZLinkActorManagerOptions) {}
+  constructor(private readonly options: ZLinkActorManagerOptions) {
+    this.creation = new ZLinkActorCreationCoordinator(options);
+  }
 
   async create(actorId: string, actorType: string, signal?: AbortSignal): Promise<ZLinkActor> {
     const result = await this.createOrGet(actorId, actorType, true, signal);
@@ -281,7 +343,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     const operation = state.getOrStartCreation(
       actorType,
       failIfExists,
-      () => this.createActorCore(actorId, actorType, state, signal)
+      () => this.creation.createActor(actorId, actorType, state, signal)
     );
 
     try {
@@ -299,54 +361,6 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
         error
       );
     }
-  }
-
-  private async createActorCore(
-    actorId: string,
-    actorType: string,
-    state: ZLinkActorRuntimeState,
-    signal?: AbortSignal
-  ): Promise<ZLinkActor> {
-    const factory = await this.createFactory(actorType);
-    const context = state.ensureContext(
-      this.options.joinCoordinator,
-      this.options.boundSessionFactory,
-      this.options.messageSerializers
-    );
-    const actor = await factory.create(actorId, context, signal);
-    try {
-      state.bindActor(actor, context);
-      const nativeActorNode = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
-      if (nativeActorNode !== undefined) {
-        const actorRef = state.ensureNativeActorRef(nativeActorNode);
-        await this.options.actorCreatedNotifier?.(
-          toFrameworkRoutingId(actorRef.nodeRid),
-          actor,
-          signal
-        );
-      } else {
-        const nodeRid = this.options.actorCreatedNodeRidProvider?.();
-        if (nodeRid !== undefined) {
-          await this.options.actorCreatedNotifier?.(nodeRid, actor, signal);
-        }
-      }
-    } catch (error) {
-      state.clearAfterDestroy();
-      throw error;
-    }
-    return actor;
-  }
-
-  private async createFactory(actorType: string): Promise<ZLinkActorFactory> {
-    const factoryOrType = this.options.actorFactories.get(actorType);
-    if (factoryOrType === undefined) {
-      throw new ZLinkConfigurationException(`Actor factory '${actorType}' is not registered.`);
-    }
-    if (typeof factoryOrType === 'function') {
-      const type = factoryOrType as Type<ZLinkActorFactory>;
-      return await createProviderInstance(type, this.options.providerResolver);
-    }
-    return factoryOrType;
   }
 
   private getOrCreateState(actorId: string): ZLinkActorRuntimeState {

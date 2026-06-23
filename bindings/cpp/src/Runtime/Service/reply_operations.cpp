@@ -144,13 +144,13 @@ void reply_submit_operation_t::submit () &&
             if (!state.first_rid || !state.second_rid)
                 throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
             state.spot->reply_to_spot (*state.first_rid, *state.second_rid, state.request_seq,
-                                       std::move (state.parts.front ()), state.flags);
+                                       state.parts, state.flags);
             return;
         case detail::spot_operation_kind_t::reply_to_router:
             if (!state.first_rid)
                 throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-            state.spot->reply_to_router (*state.first_rid, state.request_seq,
-                                         std::move (state.parts.front ()), state.flags);
+            state.spot->reply_to_router (*state.first_rid, state.request_seq, state.parts,
+                                         state.flags);
             return;
         default:
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);

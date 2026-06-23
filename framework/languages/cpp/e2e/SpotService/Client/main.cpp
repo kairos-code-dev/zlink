@@ -344,6 +344,15 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-C2 channel send evidence missing");
         std::cout << "scenario SM-C2 passed\n";
 
+        auto spot_to_spot = relay_request<e2e::spot_to_spot_res_t> (
+          same_key_actor, "SpotToSpotReq", e2e::spot_to_spot_req_t{"b-room", "spot-to-spot"});
+        ensure (spot_to_spot.request_reply == "spot-to-spot:reply",
+                "SM-C3 spot request reply mismatch");
+        ensure (spot_to_spot.command_sent && spot_to_spot.published
+                  && spot_to_spot.missing_rejected && spot_to_spot.timeout_rejected,
+                "SM-C3 flags mismatch");
+        std::cout << "scenario SM-C3 passed\n";
+
         auto publish_only =
           publisher
             .publish (e2e::publisher_channel, e2e::mesh_topic,
@@ -637,6 +646,13 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::mesh_event_t> ()
       .add_json<e2e::outbound_req_t> ()
       .add_json<e2e::outbound_res_t> ()
+      .add_json<e2e::direct_spot_req_t> ()
+      .add_json<e2e::direct_spot_res_t> ()
+      .add_json<e2e::direct_spot_command_t> ()
+      .add_json<e2e::slow_spot_req_t> ()
+      .add_json<e2e::unhandled_spot_req_t> ()
+      .add_json<e2e::spot_to_spot_req_t> ()
+      .add_json<e2e::spot_to_spot_res_t> ()
       .add_json<e2e::type_mismatch_req_t> ()
       .add_json<e2e::type_mismatch_res_t> ()
       .add_json<e2e::lifecycle_req_t> ()

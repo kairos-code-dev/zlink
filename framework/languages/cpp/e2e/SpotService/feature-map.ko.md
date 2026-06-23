@@ -24,6 +24,8 @@
   post-destroy request 실패를 검증한다.
 - `SM-C2`: spot handler가 외부 channel로 request/send를 내보내고, SPOT mesh publish를 수행하는
   흐름을 검증한다.
+- `SM-C3`: 한 user spot이 다른 user spot으로 public `request_to`/`send_to`를 수행하고,
+  SPOT mesh publish, missing handler request 실패, slow target timeout을 함께 검증한다.
 - `SM-C4`: local spot을 등록하지 않은 client node가 attached publisher client로 SPOT mesh에
   publish하고, play 노드의 구독 spot들이 이벤트를 받는지 검증한다.
 - `SM-D1`: 실제 `session-a` stream gateway에 붙어 `play-a` actor로 local stream relay를 보내고,
@@ -53,8 +55,6 @@
 ## 남은 구현 후보
 
 - `SM-A8`: `spot_context_t::run_worker` 공개 API가 있어 worker offload 검증으로 확장할 수 있다.
-- `SM-C3`: `spot_context_t::request_to`와 `send_to` 공개 API가 있어 spot-to-spot messaging으로
-  확장할 수 있다.
 - `SM-D5`, `SM-D6`, `SM-D7`, `SM-D12`: 실제 stream session client와 gateway 노드를 더
   확장해야 한다.
 - `SM-G1`: harness가 play node를 kill/restart하고 재join/rebind를 검증해야 한다.

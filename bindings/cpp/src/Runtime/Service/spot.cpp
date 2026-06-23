@@ -72,6 +72,29 @@ void submit_single_reply_message (message_t &message_, SubmitPart submit_part_)
     }
 }
 
+template <typename SubmitPart>
+void submit_reply_messages (std::vector<message_t> &parts_, SubmitPart submit_part_)
+{
+    if (parts_.empty ())
+        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+
+    for (size_t i = 0; i < parts_.size (); ++i) {
+        if (!parts_[i].valid ())
+            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
+
+        zlink_msg_t native;
+        detail::move_to_native_or_reject (parts_[i], &native);
+        const zlink_part_flag_t part_flag =
+          i + 1 < parts_.size () ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
+        const submit_result_t rc = static_cast<submit_result_t> (
+          submit_part_ (&native, part_flag));
+        if (rc != submit_result_t::ok) {
+            (void) zlink_msg_close (&native);
+            throw submit_error_t (rc, zlink_errno ());
+        }
+    }
+}
+
 } // namespace
 
 spot_t::~spot_t ()
@@ -201,6 +224,21 @@ void spot_t::reply_to_spot (const routing_id_t &dest_node_rid_,
     });
 }
 
+void spot_t::reply_to_spot (const routing_id_t &dest_node_rid_,
+                            const routing_id_t &dest_spot_rid_,
+                            uint64_t request_seq_,
+                            std::vector<message_t> &parts_,
+                            send_flags_t flags_)
+{
+    zlink::detail::throw_if_reply_flags_unsupported (flags_);
+    submit_reply_messages (parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
+        return zlink_spot_reply_spot_part (_impl->handle,
+                                           zlink::detail::routing_id_native (dest_node_rid_),
+                                           zlink::detail::routing_id_native (dest_spot_rid_),
+                                           request_seq_, part_out_, part_flag_);
+    });
+}
+
 reply_operation_t spot_t::reply_to_spot (const routing_id_t &dest_node_rid_,
                                          const routing_id_t &dest_spot_rid_,
                                          uint64_t request_seq_)
@@ -224,6 +262,19 @@ void spot_t::reply_to_router (const routing_id_t &peer_rid_,
         return zlink_spot_reply_router_part (_impl->handle,
                                              zlink::detail::routing_id_native (peer_rid_),
                                              request_seq_, part_out_, ZLINK_PART_FINAL);
+    });
+}
+
+void spot_t::reply_to_router (const routing_id_t &peer_rid_,
+                              uint64_t request_seq_,
+                              std::vector<message_t> &parts_,
+                              send_flags_t flags_)
+{
+    zlink::detail::throw_if_reply_flags_unsupported (flags_);
+    submit_reply_messages (parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
+        return zlink_spot_reply_router_part (_impl->handle,
+                                             zlink::detail::routing_id_native (peer_rid_),
+                                             request_seq_, part_out_, part_flag_);
     });
 }
 

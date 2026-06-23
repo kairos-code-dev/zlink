@@ -95,6 +95,8 @@ start_play() {
   ZLINK_CPP_E2E_ROLE=play \
   ZLINK_CPP_E2E_NODE_RID="$rid" \
   ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
+  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
+  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
   ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot" \
   ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$pubsub" \
   ZLINK_CPP_E2E_API_PEER_ENDPOINT="$API_CLIENT" \
@@ -229,8 +231,13 @@ assert has(play_a, "SpotLifecycleClosed")
 assert has(play_a, "ActorLeaveRequested", "alice")
 assert has(play_a, "ActorDestroyed", "alice")
 assert has(play_a, "SpotOutbound", "alice-2")
+assert has_value(play_a, "SpotToSpotOutbound", "alice-2", "spot-to-spot:reply")
 assert has(play_a, "MeshEventReceived")
+assert has_marker_value(play_a, "MeshEventReceived", "evt-spot-to-spot:alice-2:spot-to-spot")
 assert has_marker_value(play_a, "MeshEventReceived", "evt-publisher-client:publish-only")
+assert has_value(play_b, "SpotToSpotRequest", "alice-2", "spot-to-spot")
+assert has_value(play_b, "SpotToSpotCommand", "alice-2", "spot-to-spot:command")
+assert has_marker_value(play_b, "MeshEventReceived", "evt-spot-to-spot:alice-2:spot-to-spot")
 assert has_marker_value(play_b, "MeshEventReceived", "evt-publisher-client:publish-only")
 assert has_value(play_a, "ActorPushedSession", "stream-local", "stream-local-push")
 assert has_value(play_a, "ActorPushedSession", "stream-multi-a", "stream-multi-a-push")

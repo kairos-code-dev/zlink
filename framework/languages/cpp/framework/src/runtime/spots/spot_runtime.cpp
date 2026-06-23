@@ -4,6 +4,7 @@
 
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 
+#include "runtime/channels/channel_reply_writer.hpp"
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/channels/route_channel_runtime.hpp"
@@ -2293,6 +2294,132 @@ result_t<void> spot_node_runtime_t::dispatch_subscription (const spot_context_t 
       _state, message_flow_phase_t::dispatched, dispatch_error_surface_t::spot_subscription,
       dispatch_message_kind_t::publish, *packet_name, topic, context._state->spot_rid.value ());
     return result_t<void>::success ();
+}
+
+std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &services,
+                                                       serializer_registry_t &serializers) const
+{
+    std::size_t dispatched = 0;
+    runtime::messaging::envelope_codec_t codec;
+    detail::channel_reply_writer_t replies;
+    for (const auto &context : active_contexts ()) {
+        auto native = context._state->native_spot.lock ();
+        if (!native || !context._state->spot_instance) {
+            continue;
+        }
+        while (true) {
+            zlink::received_t inbound;
+            const int rc = native->recv_routed (inbound, zlink::recv_flags_t::dontwait);
+            if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
+                break;
+            }
+            if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
+                break;
+            }
+            auto submit_reply = [] (zlink::service::spot_t &spot,
+                                    zlink::received_t &received,
+                                    const runtime::messaging::message_parts_t &reply_parts) {
+                auto parts = reply_parts.items ();
+                if (parts.empty () || !received.routing_id () || !received.request_seq ()) {
+                    return;
+                }
+                auto iterator = parts.begin ();
+                auto submit = received.spot_rid ()
+                                ? std::move (received).reply ().message (*iterator)
+                                : spot.reply_to_router (*received.routing_id (),
+                                                        *received.request_seq ())
+                                    .message (*iterator);
+                ++iterator;
+                for (; iterator != parts.end (); ++iterator) {
+                    submit = std::move (submit).message (*iterator);
+                }
+                std::move (submit).submit ();
+            };
+            auto parts = runtime::messaging::message_parts_t (inbound.parts ());
+            auto header = codec.decode_header (parts);
+            if (!header) {
+                report_spot_dispatch_error (
+                  _state, dispatch_error_surface_t::spot_route, dispatch_message_kind_t::request,
+                  dispatch_error_reason_t::invalid_frame, dispatch_error_action_t::drop,
+                  std::nullopt, std::nullopt, std::string (context._state->spot_rid.value ()));
+                continue;
+            }
+            const auto message_kind =
+              header.value ().kind == runtime::messaging::message_kind_t::request
+                ? dispatch_message_kind_t::request
+                : dispatch_message_kind_t::send;
+            report_spot_dispatch_trace (_state, message_flow_phase_t::received,
+                                        dispatch_error_surface_t::spot_route, message_kind,
+                                        header.value ().message_name, {},
+                                        context._state->spot_rid.value ());
+            auto body = codec.decode_body (parts);
+            auto reply_error = [&] (const framework_exception_t &error) {
+                report_spot_dispatch_error (
+                  _state, dispatch_error_surface_t::spot_route, dispatch_message_kind_t::request,
+                  dispatch_reason_from_error (error.kind ()), dispatch_error_action_t::reply_error,
+                  header.value ().message_name, std::nullopt,
+                  std::string (context._state->spot_rid.value ()));
+                if (!inbound.request_seq ()) {
+                    return;
+                }
+                auto reply_parts = replies.reply_raw_envelope (
+                  replies.create_error_header (header.value ().channel_name, header.value (),
+                                               error),
+                  zlink::message_t::from (""));
+                submit_reply (*native, inbound, reply_parts);
+            };
+            if (!body) {
+                reply_error (framework_exception_t (
+                  body.error_kind (),
+                  body.error () ? body.error ()->what () : "spot routed body missing"));
+                continue;
+            }
+            auto result =
+              spot_handler_registry_t (context._state)
+                .invoke_erased (spot_handler_kind_t::packet, header.value ().message_name, {},
+                                std::type_index (typeid (void)),
+                                context._state->spot_instance.get (), nullptr, services,
+                                serializers, body.value ())
+                .result ();
+            if (!result) {
+                const auto *error = result.error ();
+                const framework_exception_t exception (
+                  result.error_kind (),
+                  error != nullptr ? error->what () : "spot routed handler failed",
+                  error != nullptr && error->is_retriable ());
+                if (header.value ().kind == runtime::messaging::message_kind_t::request) {
+                    reply_error (exception);
+                } else {
+                    report_spot_dispatch_error (
+                      _state, dispatch_error_surface_t::spot_route, dispatch_message_kind_t::send,
+                      dispatch_reason_from_error (result.error_kind ()),
+                      dispatch_error_action_t::drop, header.value ().message_name, std::nullopt,
+                      std::string (context._state->spot_rid.value ()));
+                }
+                continue;
+            }
+            if (header.value ().kind == runtime::messaging::message_kind_t::request) {
+                auto reply_parts = replies.reply_raw_envelope (
+                  replies.create_reply_header (runtime::messaging::message_kind_t::response,
+                                               header.value ().channel_name, header.value ()),
+                  result.value ());
+                submit_reply (*native, inbound, reply_parts);
+                report_spot_dispatch_trace (_state, message_flow_phase_t::replied,
+                                            dispatch_error_surface_t::spot_route,
+                                            dispatch_message_kind_t::response,
+                                            header.value ().message_name, {},
+                                            context._state->spot_rid.value ());
+            } else {
+                report_spot_dispatch_trace (_state, message_flow_phase_t::dispatched,
+                                            dispatch_error_surface_t::spot_route,
+                                            dispatch_message_kind_t::send,
+                                            header.value ().message_name, {},
+                                            context._state->spot_rid.value ());
+            }
+            ++dispatched;
+        }
+    }
+    return dispatched;
 }
 
 std::size_t spot_node_runtime_t::drain_subscriptions (service_provider_t &services,

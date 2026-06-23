@@ -140,6 +140,50 @@ struct outbound_res_t
     bool published = false;
 };
 
+struct direct_spot_req_t
+{
+    std::string source_actor_id;
+    std::string value;
+};
+
+struct direct_spot_res_t
+{
+    std::string spot_rid;
+    std::string owner_node_rid;
+    std::string value;
+};
+
+struct direct_spot_command_t
+{
+    std::string source_actor_id;
+    std::string value;
+};
+
+struct slow_spot_req_t
+{
+    std::string value;
+};
+
+struct unhandled_spot_req_t
+{
+    std::string value;
+};
+
+struct spot_to_spot_req_t
+{
+    std::string target_key;
+    std::string value;
+};
+
+struct spot_to_spot_res_t
+{
+    std::string request_reply;
+    bool command_sent = false;
+    bool published = false;
+    bool missing_rejected = false;
+    bool timeout_rejected = false;
+};
+
 struct type_mismatch_req_t
 {
     std::string probe;
@@ -440,6 +484,91 @@ inline void from_json (const nlohmann::json &json, outbound_res_t &value)
     json.at ("channel_reply").get_to (value.channel_reply);
     json.at ("command_sent").get_to (value.command_sent);
     json.at ("published").get_to (value.published);
+}
+
+inline void to_json (nlohmann::json &json, const direct_spot_req_t &value)
+{
+    json = nlohmann::json{{"source_actor_id", value.source_actor_id}, {"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, direct_spot_req_t &value)
+{
+    json.at ("source_actor_id").get_to (value.source_actor_id);
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const direct_spot_res_t &value)
+{
+    json = nlohmann::json{{"spot_rid", value.spot_rid},
+                          {"owner_node_rid", value.owner_node_rid},
+                          {"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, direct_spot_res_t &value)
+{
+    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("owner_node_rid").get_to (value.owner_node_rid);
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const direct_spot_command_t &value)
+{
+    json = nlohmann::json{{"source_actor_id", value.source_actor_id}, {"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, direct_spot_command_t &value)
+{
+    json.at ("source_actor_id").get_to (value.source_actor_id);
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const slow_spot_req_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, slow_spot_req_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const unhandled_spot_req_t &value)
+{
+    json = nlohmann::json{{"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, unhandled_spot_req_t &value)
+{
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const spot_to_spot_req_t &value)
+{
+    json = nlohmann::json{{"target_key", value.target_key}, {"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_to_spot_req_t &value)
+{
+    json.at ("target_key").get_to (value.target_key);
+    json.at ("value").get_to (value.value);
+}
+
+inline void to_json (nlohmann::json &json, const spot_to_spot_res_t &value)
+{
+    json = nlohmann::json{{"request_reply", value.request_reply},
+                          {"command_sent", value.command_sent},
+                          {"published", value.published},
+                          {"missing_rejected", value.missing_rejected},
+                          {"timeout_rejected", value.timeout_rejected}};
+}
+
+inline void from_json (const nlohmann::json &json, spot_to_spot_res_t &value)
+{
+    json.at ("request_reply").get_to (value.request_reply);
+    json.at ("command_sent").get_to (value.command_sent);
+    json.at ("published").get_to (value.published);
+    json.at ("missing_rejected").get_to (value.missing_rejected);
+    json.at ("timeout_rejected").get_to (value.timeout_rejected);
 }
 
 inline void to_json (nlohmann::json &json, const type_mismatch_req_t &value)

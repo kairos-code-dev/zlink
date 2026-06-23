@@ -257,6 +257,11 @@ class spot_t
                         uint64_t request_seq_,
                         message_t message_,
                         send_flags_t flags_ = send_flags_t::none);
+    void reply_to_spot (const routing_id_t &dest_node_rid_,
+                        const routing_id_t &dest_spot_rid_,
+                        uint64_t request_seq_,
+                        std::vector<message_t> &parts_,
+                        send_flags_t flags_ = send_flags_t::none);
 
   public:
     reply_operation_t reply_to_spot (const routing_id_t &dest_node_rid_,
@@ -267,6 +272,10 @@ class spot_t
     void reply_to_router (const routing_id_t &peer_rid_,
                           uint64_t request_seq_,
                           message_t message_,
+                          send_flags_t flags_ = send_flags_t::none);
+    void reply_to_router (const routing_id_t &peer_rid_,
+                          uint64_t request_seq_,
+                          std::vector<message_t> &parts_,
                           send_flags_t flags_ = send_flags_t::none);
 
   public:

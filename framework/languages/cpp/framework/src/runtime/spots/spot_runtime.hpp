@@ -210,6 +210,8 @@ class spot_node_runtime_t
                                           const zlink::message_t &message,
                                           service_provider_t &services,
                                           serializer_registry_t &serializers) const;
+    std::size_t drain_routed_packets (service_provider_t &services,
+                                      serializer_registry_t &serializers) const;
     std::size_t drain_subscriptions (service_provider_t &services,
                                      serializer_registry_t &serializers) const;
     void on_destroy_actor (std::function<result_t<void> (const actor_ref_t &)> destroy_actor);

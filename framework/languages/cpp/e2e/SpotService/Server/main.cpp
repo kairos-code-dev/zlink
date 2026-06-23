@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -123,8 +124,12 @@ class user_spot_t : public zlink::framework::spot_t
         context.handlers ().add_actor_packet<&user_spot_t::leave> ("LeaveReq");
         context.handlers ().add_actor_packet<&user_spot_t::disconnect> ("DisconnectReq");
         context.handlers ().add_actor_packet<&user_spot_t::outbound> ("OutboundReq");
+        context.handlers ().add_actor_packet<&user_spot_t::spot_to_spot> ("SpotToSpotReq");
         context.handlers ().add_actor_packet<&user_spot_t::type_mismatch> ("TypeMismatchReq");
         context.handlers ().add_actor_packet<&user_spot_t::push_to_session> ("PushReq");
+        context.handlers ().add_handler<&user_spot_t::direct_request> ("DirectSpotReq");
+        context.handlers ().add_handler<&user_spot_t::direct_command> ("DirectSpotCommand");
+        context.handlers ().add_handler<&user_spot_t::slow_request> ("SlowSpotReq");
         context.handlers ().add_subscribe<&user_spot_t::on_mesh_event> (e2e::mesh_topic);
     }
 
@@ -231,6 +236,78 @@ class user_spot_t : public zlink::framework::spot_t
         _state.record ("SpotOutbound", actor.actor_id,
                        std::string (_context.spot_rid ().value ()), reply.value);
         co_return e2e::outbound_res_t{reply.value, true, true};
+    }
+
+    e2e::direct_spot_res_t direct_request (const e2e::direct_spot_req_t &request)
+    {
+        _state.record ("SpotToSpotRequest", request.source_actor_id,
+                       std::string (_context.spot_rid ().value ()), request.value);
+        return {.spot_rid = std::string (_context.spot_rid ().value ()),
+                .owner_node_rid = std::string (_context.node_rid ().value ()),
+                .value = request.value + ":reply"};
+    }
+
+    void direct_command (const e2e::direct_spot_command_t &request)
+    {
+        _state.record ("SpotToSpotCommand", request.source_actor_id,
+                       std::string (_context.spot_rid ().value ()), request.value);
+    }
+
+    e2e::direct_spot_res_t slow_request (const e2e::slow_spot_req_t &request)
+    {
+        std::this_thread::sleep_for (std::chrono::milliseconds (300));
+        _state.record ("SpotToSpotSlow", {}, std::string (_context.spot_rid ().value ()),
+                       request.value);
+        return {.spot_rid = std::string (_context.spot_rid ().value ()),
+                .owner_node_rid = std::string (_context.node_rid ().value ()),
+                .value = request.value + ":slow"};
+    }
+
+    zlink::framework::task_t<e2e::spot_to_spot_res_t>
+    spot_to_spot (const scenario_actor_t &actor,
+                  zlink::framework::spot_actor_request_context_t &,
+                  const e2e::spot_to_spot_req_t &request)
+    {
+        const auto target_node =
+          zlink::framework::node_rid_t::from_string (owner_for_key (request.target_key));
+        const auto target_spot = user_spot_rid (request.target_key);
+        auto reply = co_await _context
+                       .request_to<e2e::direct_spot_res_t> (
+                         target_node, target_spot,
+                         e2e::direct_spot_req_t{actor.actor_id, request.value})
+                       .packet_name ("DirectSpotReq")
+                       .timeout (std::chrono::milliseconds (3000))
+                       .async ();
+        co_await _context
+          .send_to (target_node, target_spot,
+                    e2e::direct_spot_command_t{actor.actor_id, request.value + ":command"})
+          .packet_name ("DirectSpotCommand")
+          .async ();
+        co_await _context.publish (
+          e2e::mesh_topic,
+          e2e::mesh_event_t{"evt-spot-to-spot", actor.actor_id + ":" + request.value})
+          .async ();
+        auto missing = _context
+                         .request_to<e2e::direct_spot_res_t> (
+                           target_node, target_spot, e2e::unhandled_spot_req_t{request.value})
+                         .packet_name ("MissingSpotReq")
+                         .timeout (std::chrono::milliseconds (1000))
+                         .async ()
+                         .result ();
+        auto timed_out = _context
+                           .request_to<e2e::direct_spot_res_t> (
+                             target_node, target_spot, e2e::slow_spot_req_t{request.value})
+                           .packet_name ("SlowSpotReq")
+                           .timeout (std::chrono::milliseconds (50))
+                           .async ()
+                           .result ();
+        _state.record ("SpotToSpotOutbound", actor.actor_id,
+                       std::string (_context.spot_rid ().value ()), reply.value);
+        co_return e2e::spot_to_spot_res_t{reply.value,
+                                          true,
+                                          true,
+                                          !missing.has_value (),
+                                          !timed_out.has_value ()};
     }
 
     e2e::type_mismatch_res_t type_mismatch (const scenario_actor_t &actor,
@@ -568,6 +645,13 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::mesh_event_t> ()
       .add_json<e2e::outbound_req_t> ()
       .add_json<e2e::outbound_res_t> ()
+      .add_json<e2e::direct_spot_req_t> ()
+      .add_json<e2e::direct_spot_res_t> ()
+      .add_json<e2e::direct_spot_command_t> ()
+      .add_json<e2e::slow_spot_req_t> ()
+      .add_json<e2e::unhandled_spot_req_t> ()
+      .add_json<e2e::spot_to_spot_req_t> ()
+      .add_json<e2e::spot_to_spot_res_t> ()
       .add_json<e2e::type_mismatch_req_t> ()
       .add_json<e2e::type_mismatch_res_t> ()
       .add_json<e2e::lifecycle_req_t> ()
@@ -660,7 +744,7 @@ int main (int argc, char **argv)
             return;
         }
 
-        options.add_route_mesh_channel (e2e::route_channel)
+        auto play_route = options.add_route_mesh_channel (e2e::route_channel)
           .enable_server (route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .enable_client ()
@@ -673,6 +757,12 @@ int main (int argc, char **argv)
                                e2e::lifecycle_res_t> ("LifecycleReq",
                                                        &spot_lifecycle_handler_t::handle)
           .enable_spot_route_egress (e2e::route_channel);
+        if (!route_a_endpoint.empty ()) {
+            play_route.enable_client (route_a_endpoint);
+        }
+        if (!route_b_endpoint.empty ()) {
+            play_route.enable_client (route_b_endpoint);
+        }
         auto api = options.add_client_server_channel (e2e::api_channel).enable_client ();
         if (!api_peer_endpoint.empty ()) {
             api.enable_client (api_peer_endpoint);

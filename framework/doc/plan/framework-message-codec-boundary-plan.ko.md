@@ -152,6 +152,19 @@ codec 변경 때마다 업무 코드가 같이 바뀌는 원인이므로 최종 
 
 정리하면, codec을 추가하는 방법은 그대로 두고 payload를 다루는 업무 API만 바꾼다.
 
+custom codec extension 사용법은 변경 전과 변경 후가 같아야 한다. 아래처럼 startup 또는 builder에
+extension을 등록하는 코드는 이 계획의 제거 대상이 아니다.
+
+| 시점 | custom codec 등록 코드 | handler / actor 업무 코드 |
+|------|------------------------|---------------------------|
+| 변경 전 | options 또는 builder에 custom codec extension을 등록한다. | 일부 경로에서 raw `Message`와 codec helper를 직접 쓴다. |
+| 변경 후 | options 또는 builder에 custom codec extension을 등록한다. | DTO 또는 `ZLinkMessage`만 쓰고 codec helper를 직접 쓰지 않는다. |
+
+즉 custom codec을 추가하는 호출 위치와 의미는 바뀌지 않는다. 구현자는 custom codec extension API를
+새 이름으로 옮기거나, handler마다 codec option을 전달하게 만들면 안 된다. 이 계획의 변경점은 등록된
+codec을 framework runtime이 SPOT create, session dispatch, actor join 경로에서도 일관되게 사용하게
+만드는 것이다.
+
 헷갈릴 때는 아래 기준을 먼저 적용한다.
 
 - codec extension을 등록하는 코드는 기존 방식 그대로 둔다.

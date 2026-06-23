@@ -13,8 +13,10 @@ spot_route_internal_dispatcher_t::spot_route_internal_dispatcher_t (
   actor_gateway_runtime_t actor_gateway,
   route_client_t route_client,
   serializer_registry_t &serializers) :
-    _runtime (std::move (runtime)), _actor_gateway (std::move (actor_gateway)),
-    _route_client (std::move (route_client)), _serializers (&serializers)
+    _runtime (std::move (runtime)),
+    _actor_gateway (std::move (actor_gateway)),
+    _route_client (std::move (route_client)),
+    _serializers (&serializers)
 {
 }
 
@@ -38,6 +40,17 @@ spot_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &
                                     "SPOT route internal send is not supported");
 }
 
+actor_gateway_runtime_t spot_route_internal_dispatcher_t::bind_actor_route (
+  const actor_ref_t &actor_ref,
+  const runtime::messaging::envelope_header_t &header,
+  const route_received_packet_t &received) const
+{
+    auto actor_gateway = _actor_gateway;
+    actor_gateway.bind_session_route (actor_ref, _route_client, header.channel_name,
+                                      received.source_node_rid, stream_codec_t::message_pack);
+    return actor_gateway;
+}
+
 result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
   const route_received_packet_t &received,
   const runtime::messaging::envelope_header_t &header) const
@@ -52,21 +65,19 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
 
     try {
         if (header.message_name == spot_actor_packet_route_request_t::packet_name) {
-            auto request = _serializers->get<spot_actor_packet_route_request_t> ().deserialize (
-              body.value ());
+            auto request =
+              _serializers->get<spot_actor_packet_route_request_t> ().deserialize (body.value ());
             auto runtime = _runtime;
             auto actor_ref = actor_ref_from_spot_route (request);
-            auto actor_gateway = _actor_gateway;
-            actor_gateway.bind_session_route (actor_ref, _route_client, header.channel_name,
-                                              received.source_node_rid,
-                                              stream_codec_t::message_pack);
+            auto actor_gateway = bind_actor_route (actor_ref, header, received);
             spot_actor_message_metadata_t metadata;
             metadata.values = request.metadata;
             service_collection_t services;
             auto provider = services.build_provider ();
             auto relayed = runtime.manager ().relay_actor_packet (
               actor_ref, _actor_gateway.actor_context (actor_ref), request.packet_name_value,
-              zlink::message_t::from (request.payload), provider, *_serializers, std::move (metadata));
+              zlink::message_t::from (request.payload), provider, *_serializers,
+              std::move (metadata));
             if (!relayed) {
                 return result_t<zlink::message_t>::failure (
                   relayed.error_kind (),
@@ -86,19 +97,16 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
               .actor_id = std::string (current_actor_ref.actor_id ()),
               .actor_generation = current_actor_ref.generation (),
               .has_reply = relayed.value ().has_value (),
-              .payload = relayed.value () ? relayed.value ()->to_bytes ()
-                                          : std::vector<std::uint8_t>{}};
+              .payload =
+                relayed.value () ? relayed.value ()->to_bytes () : std::vector<std::uint8_t>{}};
             return result_t<zlink::message_t>::success (
               _serializers->get<spot_actor_packet_route_reply_t> ().serialize (reply));
         }
-        auto request = _serializers->get<spot_actor_join_route_request_t> ().deserialize (
-          body.value ());
+        auto request =
+          _serializers->get<spot_actor_join_route_request_t> ().deserialize (body.value ());
         auto runtime = _runtime;
         auto actor_ref = actor_ref_from_spot_route (request);
-        auto actor_gateway = _actor_gateway;
-        actor_gateway.bind_session_route (actor_ref, _route_client, header.channel_name,
-                                          received.source_node_rid,
-                                          stream_codec_t::message_pack);
+        bind_actor_route (actor_ref, header, received);
         auto joined = runtime.join_remote_actor_to_spot_erased (
           actor_ref, spot_rid_t::from_string (request.spot_rid),
           zlink::message_t::from (request.payload), _actor_gateway.actor_context (actor_ref));

@@ -24,6 +24,10 @@ class spot_route_internal_dispatcher_t final : public route_internal_packet_disp
                       const runtime::messaging::envelope_header_t &header) const override;
 
   private:
+    actor_gateway_runtime_t bind_actor_route (const actor_ref_t &actor_ref,
+                                              const runtime::messaging::envelope_header_t &header,
+                                              const route_received_packet_t &received) const;
+
     spot_node_runtime_t _runtime;
     actor_gateway_runtime_t _actor_gateway;
     route_client_t _route_client;

@@ -1,9 +1,11 @@
 using MessagePack;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Codecs;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Messaging;
+using Zlink.Framework.Runtime.Streams;
 using StringValue = Google.Protobuf.WellKnownTypes.StringValue;
 
 namespace Zlink.Framework.UnitTests.Runtime;
@@ -118,6 +120,53 @@ public sealed class CustomSerializerEnvelopeTests
         Assert.Equal("application/json", ZLinkEnvelopeCodec.DecodeHeader(parts).ContentType);
         var decoded = ZLinkEnvelopeCodec.DecodeBody(parts, typeof(Probe), codecs);
         Assert.Equal(new Probe("hello"), decoded);
+    }
+
+    [Fact]
+    public void StreamPayload_CustomSerializer_RoundTrips_Through_Framework_Message()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.AddSerializer("application/avro", new MarkerSerializer());
+        codecs.AddStreamCodec("application/avro", ZlinkStreamCodec.Protobuf);
+
+        var encoded = ZLinkStreamPacketPayloadCodec.Encode(new Probe("hello"), typeof(Probe), codecs);
+
+        Assert.Equal(ZlinkStreamCodec.Protobuf, encoded.Codec);
+        Assert.Equal("AVRO:hello", System.Text.Encoding.UTF8.GetString(encoded.Payload.Span));
+
+        using var payload = Message.From(encoded.Payload.Span);
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            encoded.Codec,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "orders.created",
+            ZlinkStreamMetadata.Empty);
+
+        var message = ZLinkStreamPacketPayloadCodec.DecodeMessage(header, payload, codecs);
+
+        Assert.Equal("application/avro", message.ContentType);
+        Assert.Equal(ZlinkStreamCodec.Protobuf, message.StreamCodec);
+        Assert.Equal(new Probe("hello"), message.Decode<Probe>());
+    }
+
+    [Fact]
+    public void StreamPayload_Missing_Codec_Extension_Fails_Decode()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Protobuf,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "orders.created",
+            ZlinkStreamMetadata.Empty);
+
+        using var payload = Message.From("AVRO:hello");
+        var message = ZLinkStreamPacketPayloadCodec.DecodeMessage(header, payload, codecs);
+
+        var error = Assert.Throws<InvalidOperationException>(() => message.Decode<Probe>());
+        Assert.Contains("no matching codec extension is registered", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

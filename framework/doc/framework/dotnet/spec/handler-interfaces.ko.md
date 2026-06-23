@@ -301,7 +301,7 @@ public interface IZLinkSpot
     }
 
     ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
@@ -325,7 +325,7 @@ public interface IZLinkSpot<TActor> : IZLinkSpot
 {
     ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         TActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject());
@@ -579,15 +579,16 @@ public readonly record struct ZLinkSpotActorJoinResult(
 
 actor join admission callback 의 request 와 reply 는 모두 `Message` 다. framework
 core 는 JSON, Protobuf, MessagePack 같은 serializer 를 고르지 않는다. application 은
-자신이 쓰는 codec 으로 request `Message` 를 해석하고, 같은 방식으로 reply `Message`
-를 만들어 `ZLinkSpotActorJoinResult` 에 담아 반환한다.
+request는 `ZLinkMessage`로 받고, 필요한 DTO는 `Decode<T>()`로 얻는다. reply는 DTO 또는
+`ZLinkMessage`로 `ZLinkSpotActorJoinResult`에 담아 반환한다. runtime은 등록된 codec
+registry로 request와 reply를 encode/decode한다.
 
 `Accepted` 가 `true` 이면 framework 는 actor join 을 commit 하고, commit 이 끝난 뒤
 `OnJoinedActorAsync(...)` 를 호출한다. `Accepted` 가 `false` 이면 framework 는
 join 을 거부하고 actor 위치를 바꾸지 않으며 `OnJoinedActorAsync(...)` 를 호출하지
 않는다.
 
-`OnCreateAsync(...)` 는 생성 요청이 넘긴 단일 `Message`를 spot 상태로
+`OnCreateAsync(...)` 는 생성 요청이 넘긴 단일 `ZLinkMessage`를 spot 상태로
 해석하고 생성 허용 여부를 돌려주는 단계다. framework가 새 spot 인스턴스를 만든
 경우에만 호출된다.
 `OnInitializeAsync(...)` 는 payload와 무관한 lifecycle 준비 단계다. timer 등록처럼
@@ -598,7 +599,7 @@ join 을 거부하고 actor 위치를 바꾸지 않으며 `OnJoinedActorAsync(..
 reject를 반환하면 `OnInitializeAsync(...)`는 호출하지 않고 spot을 등록하지 않는다.
 `GetOrCreateAsync(...)`가 이미 ready 상태인 spot을 반환하는 경우에는 새
 `OnCreateAsync(...)`나 `OnInitializeAsync(...)`를 호출하지 않는다.
-`CreateAsync<TSpot>()`처럼 create payload가 없는 편의 overload도 빈 `Message`로
+`CreateAsync<TSpot>()`처럼 create payload가 없는 편의 overload도 빈 `ZLinkMessage`로
 `OnCreateAsync(...)`를 한 번 호출한다.
 
 `Configure()` 는 호출 시점이 정해져 있다. SPOT 이 생성된 직후, descriptor
@@ -1167,7 +1168,7 @@ public interface IZLinkSession
 
     ValueTask OnDispatchAsync(
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken);
 }
 
@@ -1481,9 +1482,14 @@ public interface IZLinkSessionActor
     string ActorId => Ref.ActorId;
     ActorRef Ref { get; }
 
-    ValueTask RelayAsync(
+    ValueTask RelayRawAsync(
         ZlinkStreamHeader header,
         Message payload,
+        CancellationToken cancellationToken = default);
+
+    ValueTask RelayAsync(
+        ZlinkStreamHeader header,
+        ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 
     ValueTask NotifyDisconnectedAsync(
@@ -1515,11 +1521,19 @@ public interface IZLinkActorContext
 
     IZLinkActorJoinSpotCall JoinSpot(
         RoutingId spotRid,
-        Message request);
+        ZLinkMessage request);
+
+    IZLinkActorJoinSpotCall JoinSpot<TRequest>(
+        RoutingId spotRid,
+        TRequest request);
 
     IZLinkActorJoinEntrySpotCall JoinEntrySpot(
         RoutingId spotNodeRid,
-        Message request);
+        ZLinkMessage request);
+
+    IZLinkActorJoinEntrySpotCall JoinEntrySpot<TRequest>(
+        RoutingId spotNodeRid,
+        TRequest request);
 }
 
 public interface IZLinkActorJoinSpotCall
@@ -1630,12 +1644,12 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActo
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         PlayerActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken)
     {
         var decoded = request.Decode<JoinMatchReq>();
-        var reply = new JoinMatchSpotResult(decoded.MatchId).Encode();
-        return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(reply));
+        return ValueTask.FromResult(
+            ZLinkSpotActorJoinResult.Accept(new JoinMatchSpotResult(decoded.MatchId)));
     }
 }
 ```
@@ -2467,7 +2481,7 @@ public interface IZLinkSessionPacketHandler<TSessionContext>
     ValueTask HandleAsync(
         TSessionContext context,
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken);
 }
 
@@ -2476,7 +2490,7 @@ public interface IZLinkSessionPacketDispatcher<TSessionContext>
     ValueTask<bool> TryHandleAsync(
         TSessionContext context,
         ZlinkStreamHeader header,
-        Message payload,
+        ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 }
 
@@ -2734,13 +2748,24 @@ public interface IZLinkSpotManager
         where TSpot : IZLinkSpot;
 
     ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
-        Message request,
+        ZLinkMessage request,
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot;
+
+    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot, TRequest>(
+        TRequest request,
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot;
 
     ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
         RoutingId spotRid,
-        Message request,
+        ZLinkMessage request,
+        CancellationToken cancellationToken = default)
+        where TSpot : IZLinkSpot;
+
+    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot, TRequest>(
+        RoutingId spotRid,
+        TRequest request,
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot;
 
@@ -2784,10 +2809,11 @@ public interface IZLinkSpotManager
 장기적으로 들고 다닐 instance handle 이 아니라, 생성 결과만 돌려주는
 형태라는 점에 주의한다.
 
-`OnCreateAsync(...)` 는 spot 생성 요청의 단일 `Message`를 받는 lifecycle
-callback이다. framework는 JSON, Protobuf, MessagePack 같은 payload 형식을 고르지
-않고, application은 자신이 쓰는 `Message` codec 확장 함수로 request와 reply를
-해석한다. `CreateAsync<TSpot>()`처럼 create payload가 없는 overload는 빈 `Message`를
+`OnCreateAsync(...)` 는 spot 생성 요청의 단일 `ZLinkMessage`를 받는 lifecycle
+callback이다. framework는 등록된 codec registry를 사용해 JSON, Protobuf, MessagePack 또는
+custom codec payload를 encode/decode한다. application은 DTO 또는 `ZLinkMessage`를 사용하고,
+handler 안에서 raw `Message` codec helper를 직접 호출하지 않는다.
+`CreateAsync<TSpot>()`처럼 create payload가 없는 overload는 빈 `ZLinkMessage`를
 넘긴 것과 같다. 같은 `spotRid`에 대해 동시에 `GetOrCreateAsync(...)`가 들어오면
 처음 생성에 사용된 request만 `OnCreateAsync(...)`로 전달된다. 나중 caller의
 request는 재전달하지 않고, 생성이 성공하면 `Existing`, 거부되면 `Rejected` 결과를
@@ -3550,7 +3576,7 @@ method 시그니처는 아래 순서를 따른다.
 
 - send: `(spotOrEntrySpot, actor, ZLinkSpotActorSendContext context, message, CancellationToken)` 반환값 없음
 - request: `(spotOrEntrySpot, actor, ZLinkSpotActorRequestContext context, request, CancellationToken)` reply 반환
-- actor join: `(spot, actor, Message request, CancellationToken)` `ZLinkSpotActorJoinResult` 반환
+- actor join: `(spot, actor, ZLinkMessage request, CancellationToken)` `ZLinkSpotActorJoinResult` 반환
 - joined/left/disconnected: Spot class 의 public instance callback
   `(actor, CancellationToken)` 반환값 없음
 

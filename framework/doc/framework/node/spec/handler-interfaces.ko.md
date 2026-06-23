@@ -401,7 +401,7 @@ export interface ZLinkSpot {
 
   configure?(): void;
 
-  onCreate?(request: Message, signal?: AbortSignal): Promise<ZLinkSpotCreateResponse>;
+  onCreate?(request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotCreateResponse>;
 
   onInitialize?(): Promise<void>;
 
@@ -764,11 +764,11 @@ export interface ZLinkSession {
   onError?(context: ZLinkSessionContext, error: ZLinkStreamError): Promise<void>;
 
   /**
-   * framework 가 decode 한 ZlinkStreamHeader 와 Message payload 를 받는다.
-   * payload 는 callback 동안 borrowed 이다. 읽거나 relay 로 넘길 수 있지만,
-   * callback 뒤에도 보관할 때만 별도 copy/move 한다.
+   * framework 가 decode 한 ZlinkStreamHeader 와 ZLinkMessage payload 를 받는다.
+   * payload 는 codec registry 와 함께 framework 가 감싼 값이다. 필요한 packet 은
+   * decode 하고, actor relay 처럼 decode 를 미룰 수 있는 경계에는 그대로 넘긴다.
    */
-  onDispatch?(header: ZlinkStreamHeader, payload: Message, signal?: AbortSignal): Promise<void>;
+  onDispatch?(header: ZlinkStreamHeader, payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkSessionContext {
@@ -846,11 +846,11 @@ stream 핫패스에서는 메모리 할당을 최소화한다. `Message.toArray(
 export interface ZLinkSessionPacketHandler<TSessionContext> {
   readonly packetName: string;
 
-  /** payload 는 onDispatch 와 같은 borrowed lifetime 이다. dispose/move 하지 않는다. */
+  /** payload 는 onDispatch 와 같은 framework message 표면이다. */
   handle(
     context: TSessionContext,
     header: ZlinkStreamHeader,
-    payload: Message,
+    payload: ZLinkMessage,
   ): Promise<void>;
 }
 
@@ -862,7 +862,7 @@ export interface ZLinkSessionPacketDispatcher<TSessionContext> {
   tryHandle(
     context: TSessionContext,
     header: ZlinkStreamHeader,
-    payload: Message,
+    payload: ZLinkMessage,
   ): Promise<boolean>;
 }
 ```
@@ -885,7 +885,7 @@ export interface ZLinkSessionActor {
    * caller payload 를 소비하지 않고 bound actor 로 stream packet 을 relay 한다.
    * framework 가 큐/원격 ActorGateway 를 위한 내부 copy 를 만든다.
    */
-  relay(header: ZlinkStreamHeader, payload: Message): Promise<void>;
+  relay(header: ZlinkStreamHeader, payload: ZLinkMessage): Promise<void>;
 
   notifyDisconnected(): Promise<void>;
 }
@@ -949,7 +949,7 @@ export interface ZLinkActorManager {
 
 ```ts
 export interface ZLinkSpot {
-  onActorJoin?(actor: ZLinkActor, request: Message, signal?: AbortSignal):
+  onActorJoin?(actor: ZLinkActor, request: ZLinkMessage, signal?: AbortSignal):
     Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   onLeaveActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;

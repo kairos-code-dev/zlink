@@ -269,7 +269,7 @@ public interface ZLinkSpotActorRequestHandler<
 public interface ZLinkSpot<TActor extends ZLinkActor> {
     ZLinkSpotActorJoinResponse onActorJoin(
         TActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken);
 
     void onJoinedActor(
@@ -288,7 +288,7 @@ public interface ZLinkSpot<TActor extends ZLinkActor> {
 public interface ZLinkEntrySpot<TActor extends ZLinkActor> {
     ZLinkSpotActorJoinResponse onActorJoin(
         TActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken);
 
     void onJoinedActor(
@@ -311,7 +311,8 @@ request/send는 Spot handler interface를 사용한다. actor join admission, po
 left, disconnected lifecycle은 위 member callback 표면만 사용한다.
 
 stream은 header session 하나로 설명한다. callback으로 전달된 payload는 framework가
-빌려준 값이므로 callback 밖에서 보관해야 하면 별도 copy를 만든다.
+codec registry와 함께 감싼 `ZLinkMessage`다. session은 필요한 packet만 decode하고,
+actor relay처럼 decode를 미룰 수 있는 경계에는 그대로 넘긴다.
 
 ```java
 public interface ZLinkSession {
@@ -325,7 +326,7 @@ public interface ZLinkSession {
 
     default void onDispatch(
         ZLinkStreamHeader header,
-        Message payload) {
+        ZLinkMessage payload) {
     }
 }
 
@@ -335,14 +336,14 @@ public interface ZLinkSessionPacketHandler<TSessionContext extends ZLinkSessionC
     void handle(
         TSessionContext context,
         ZLinkStreamHeader header,
-        Message payload);
+        ZLinkMessage payload);
 }
 
 public interface ZLinkSessionPacketDispatcher<TSessionContext extends ZLinkSessionContext> {
     CompletionStage<Boolean> tryHandleAsync(
         TSessionContext context,
         ZLinkStreamHeader header,
-        Message payload);
+        ZLinkMessage payload);
 }
 
 public interface ZLinkSessionContext {
@@ -411,7 +412,7 @@ public interface ZLinkSessionReplyCall {
 public interface ZLinkSessionActor {
     String actorId();
     ZLinkActorRef ref();
-    CompletionStage<Void> relay(ZLinkStreamHeader header, Message payload);
+    CompletionStage<Void> relay(ZLinkStreamHeader header, ZLinkMessage payload);
     CompletionStage<Void> notifyDisconnected();
 }
 
@@ -844,7 +845,7 @@ public interface ZLinkSpot<TActor extends ZLinkActor> {
     default void configure() {
     }
 
-    default ZLinkSpotCreateResponse onCreate(Message request) {
+    default ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
         return ZLinkSpotCreateResponse.accept();
     }
 
@@ -856,7 +857,7 @@ public interface ZLinkSpot<TActor extends ZLinkActor> {
 
     default ZLinkSpotActorJoinResponse onActorJoin(
         TActor actor,
-        Message request,
+        ZLinkMessage request,
         CancellationToken cancellationToken) {
         return ZLinkSpotActorJoinResponse.reject();
     }

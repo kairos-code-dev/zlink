@@ -163,8 +163,7 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
     }
     const bool client_uses_discovery =
       client != nullptr && client->discovery && !_state->discovery.registry_endpoints.empty ();
-    if (_state->serializers != nullptr && client != nullptr
-        && (client_uses_discovery || !client->connect_endpoints.empty ())) {
+    if (_state->serializers != nullptr && client != nullptr) {
         try {
             runtime::messaging::client_call_codec_t codec;
             auto header = codec.create_envelope (runtime::messaging::message_kind_t::request,
@@ -394,21 +393,24 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
         return result_t<void>::failure (framework_error_kind_t::disconnected,
                                         "channel client is not connected");
     }
-    channel_runtime_t runtime (_state);
-    const auto pending_send = runtime.queue_pending_send (channel_name);
-    if (!pending_send) {
-        return result_t<void>::failure (
-          pending_send.error_kind (),
-          pending_send.error () ? pending_send.error ()->what () : "channel send was rejected");
-    }
-    const auto fail_pending_send = [&runtime, operation_id = pending_send.value ()] {
-        (void) runtime.retry_pending (operation_id);
-        (void) runtime.expire_pending (operation_id);
-    };
     const bool client_uses_discovery =
       client != nullptr && client->discovery && !_state->discovery.registry_endpoints.empty ();
+    const bool client_has_manual_endpoint =
+      client != nullptr
+      && (!client->connect_endpoints.empty () || !client->bind_endpoints.empty ());
     if (_state->serializers != nullptr && client != nullptr
-        && (client_uses_discovery || !client->connect_endpoints.empty ())) {
+        && (client_uses_discovery || client_has_manual_endpoint)) {
+        channel_runtime_t runtime (_state);
+        const auto pending_send = runtime.queue_pending_send (channel_name);
+        if (!pending_send) {
+            return result_t<void>::failure (
+              pending_send.error_kind (),
+              pending_send.error () ? pending_send.error ()->what () : "channel send was rejected");
+        }
+        const auto fail_pending_send = [&runtime, operation_id = pending_send.value ()] {
+            (void) runtime.retry_pending (operation_id);
+            (void) runtime.expire_pending (operation_id);
+        };
         try {
             runtime::messaging::client_call_codec_t codec;
             auto header = codec.create_envelope (runtime::messaging::message_kind_t::command,
@@ -446,6 +448,7 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
             }
             if (endpoints.empty ()) {
                 if (!client_uses_discovery) {
+                    fail_pending_send ();
                     return result_t<void>::failure (framework_error_kind_t::disconnected,
                                                     "channel client has no endpoint");
                 }
@@ -492,10 +495,6 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
             return result_t<void>::failure (framework_error_kind_t::request_failed,
                                             "channel native send failed");
         }
-    }
-    auto completed = runtime.mark_send_ready (pending_send.value ());
-    if (!completed) {
-        return completed;
     }
     return result_t<void>::success ();
 }

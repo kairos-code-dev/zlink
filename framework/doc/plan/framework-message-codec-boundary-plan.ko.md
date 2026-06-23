@@ -240,6 +240,94 @@ zlinkFramework {
 configuration API를 그대로 따른다. 이 plan을 적용하면서 custom codec 등록 DSL을 새로 만들거나 이름을
 바꾸지 않는다.
 
+이 문서에서 말하는 “기존 방식”은 아래 두 의미 중 하나다. 구현자와 리뷰어는 두 의미를 섞어 쓰지
+않는다.
+
+| 이름 | 예 | 최종 판단 |
+|------|----|-----------|
+| 기존 codec 등록 방식 | startup, builder, options에서 codec extension을 등록한다. | 유지한다. 사용법을 바꾸면 안 된다. |
+| 기존 raw 업무 API 방식 | handler, session, actor join에서 raw `Message`, `Buffer`, `zlink_msg_t`를 직접 만든다. | 제거한다. guide, sample, 일반 public API에 남기지 않는다. |
+
+따라서 변경 전후를 비교할 때는 아래처럼 읽는다. codec을 추가하는 코드는 그대로 있고, payload를 직접
+만드는 업무 코드만 바뀐다.
+
+```csharp
+// 변경 전에도 유지되는 부분: custom codec은 startup에서 등록한다.
+builder.AddZLinkFramework(options =>
+{
+    options.Codecs.Use(new MyCustomCodecExtension(...));
+});
+
+// 변경 전 raw 업무 API 방식: 제거 대상이다.
+var request = Message.From(JsonSerializer.SerializeToUtf8Bytes(new JoinRoom("room-1")));
+await actor.Context.JoinSpot(roomRid, request).Async();
+
+// 변경 후 업무 API 방식: codec helper 없이 DTO 또는 ZLinkMessage를 넘긴다.
+await actor.Context.JoinSpot(roomRid, ZLinkMessage.From(new JoinRoom("room-1"))).Async();
+```
+
+```java
+// 변경 전에도 유지되는 부분: custom codec은 options 또는 builder에서 등록한다.
+ZLinkFramework.configure(options -> options
+    .codecs(codecs -> codecs.use(new MyCustomCodecExtension(...))));
+
+// 변경 전 raw 업무 API 방식: 제거 대상이다.
+Message request = Message.from(JsonMessage.encode(new JoinRoom("room-1")));
+actor.context().joinSpot(roomRid, request).submit().join();
+
+// 변경 후 업무 API 방식: DTO를 넘기고 typed reply를 받는다.
+actor.context().joinSpot(roomRid, new JoinRoom("room-1"))
+    .submit(JoinedRoom.class)
+    .join();
+```
+
+```kotlin
+// 변경 전에도 유지되는 부분: custom codec은 startup DSL에서 등록한다.
+zlinkFramework {
+    codecs {
+        use(MyCustomCodecExtension(...))
+    }
+}
+
+// 변경 전 raw 업무 API 방식: 제거 대상이다.
+val request = Message.from(JsonMessage.encode(JoinRoom("room-1")))
+actor.context().joinSpot(roomRid, request).submit().join()
+
+// 변경 후 업무 API 방식: DTO 또는 messageOf(dto)를 사용한다.
+actor.context().joinSpot(roomRid, JoinRoom("room-1"))
+    .submit(JoinedRoom::class.java)
+    .join()
+```
+
+```ts
+// 변경 전에도 유지되는 부분: custom codec은 framework 구성에서 등록한다.
+zlinkFramework()
+  .codecs((codecs) => codecs.use(new MyCustomCodecExtension(...)));
+
+// 변경 전 raw 업무 API 방식: 제거 대상이다.
+const request = Message.from(JSON.stringify({ roomId: "room-1" }));
+await actor.context.joinSpot(roomRid, request).submit();
+
+// 변경 후 업무 API 방식: plain object request와 typed submit을 사용한다.
+await actor.context.joinSpot(roomRid, { roomId: "room-1" }).submit<JoinedRoom>();
+```
+
+```cpp
+// 변경 전에도 유지되는 부분: custom codec은 options에서 등록한다.
+options.codecs().use(my_custom_codec_extension{});
+
+// 변경 전 raw 업무 API 방식: 제거 대상이다.
+auto request = zlink::message_t::from_string(json_payload);
+co_await actor.context().join_spot(room_rid, std::move(request));
+
+// 변경 후 업무 API 방식: DTO 또는 framework message를 사용한다.
+co_await actor.context().join_spot(room_rid, join_room_t{.room_id = "room-1"});
+```
+
+위 예시에서 custom codec 등록 코드는 변경 전과 변경 후가 같다. 이 plan을 적용한 뒤 custom codec으로
+바꾸려면 dependency와 startup 등록만 바뀌어야 한다. handler, actor join, session dispatch, SPOT create
+코드에 codec별 `encode` / `decode` helper가 새로 들어가면 잘못 적용한 것이다.
+
 반대로 아래처럼 codec 등록 코드가 아니라 payload를 직접 만드는 코드는 제거 대상이다.
 
 ```csharp

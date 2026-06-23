@@ -243,6 +243,8 @@ assert has_marker_value(play_b, "MeshEventReceived", "evt-spot-to-spot:alice-2:s
 assert has_marker_value(play_b, "MeshEventReceived", "evt-publisher-client:publish-only")
 assert has_value(play_a, "ActorPushedSession", "stream-local", "stream-local-push")
 assert has_value(play_a, "ActorPushedSession", "stream-multi-a", "stream-multi-a-push")
+assert has(play_a, "EntryJoin", "stream-auth-d7")
+assert has_value(play_a, "StateMutated", "stream-auth-d7", "7")
 assert has(play_b, "ActorEnsured", "bob")
 assert has(play_b, "EntryJoin", "bob")
 assert has(play_b, "StateMutated", "bob")
@@ -252,6 +254,8 @@ assert has(session_a, "StreamBound", "stream-local")
 assert has(session_a, "StreamBound", "stream-remote")
 assert has(session_a, "StreamBound", "stream-multi-a")
 assert has(session_a, "StreamBound", "stream-multi-b")
+assert has(session_a, "StreamBound", "stream-auth-d7")
+assert has(session_a, "StreamAuthFailed", "stream-auth-d7")
 print("spot-service evidence result=passed")
 PY
 

@@ -567,6 +567,13 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
     {
         if (header.packet_name () == "StreamAuthReq") {
             auto request = payload.decode<e2e::stream_auth_req_t> ();
+            if (request.actor.actor_id.empty () || request.actor.actor_type.empty ()
+                || (request.target_node_rid != "play-a" && request.target_node_rid != "play-b")) {
+                _state.record ("StreamAuthFailed", request.actor_id, {}, request.target_node_rid);
+                throw zlink::framework::framework_exception_t (
+                  zlink::framework::framework_error_kind_t::request_protocol_error,
+                  "stream auth target or actor ref is invalid");
+            }
             auto bound = co_await _actors.bind (to_actor_ref (request.actor)).async ();
             const auto actor_id = std::string (bound.actor_id ());
             _bound_actors[actor_id] = request.target_node_rid;

@@ -211,6 +211,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
               zlink::framework::spot_publisher_client_t &publisher)
     {
         if (_scenario_mode == "stream") {
+            run_stream_auth_dispatch_scenario (routes);
             run_stream_session_scenario (routes, "SM-D1", "play-a", "stream-local", "a-stream-room",
                                          "stream-local-push");
             run_stream_session_scenario (routes, "SM-D2", "play-b", "stream-remote",
@@ -484,6 +485,97 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         (void) stream.close ().submit ();
         std::cout << "scenario " << scenario_id << " passed\n";
+    }
+
+    void run_stream_auth_dispatch_scenario (zlink::framework::route_client_t &routes)
+    {
+        const auto actor_id = std::string ("stream-auth-d7");
+        auto actor = ensure_actor_ref (routes, "play-a", actor_id, actor_id + "-display");
+
+        {
+            auto core = make_stream_connector ();
+            core.codecs ().add_json ();
+            auto unauthenticated = zlink::stream_e2e_client::use (core);
+            auto connected = unauthenticated.connect ().submit ();
+            ensure (static_cast<bool> (connected), "SM-D7 unauthenticated stream connect failed");
+
+            auto before_auth = zlink::stream_e2e_client::codecs::request (
+                                 unauthenticated, e2e::state_req_t{.op = "add", .amount = 1})
+                                 .packet_name ("StateReq")
+                                 .timeout (std::chrono::milliseconds (3000))
+                                 .async<e2e::state_res_t> ()
+                                 .result ();
+            ensure (!static_cast<bool> (before_auth),
+                    "SM-D7 unauthenticated dispatch unexpectedly succeeded");
+            (void) unauthenticated.close ().submit ();
+        }
+
+        {
+            auto invalid_actor = actor;
+            invalid_actor.actor_id.clear ();
+            auto core = make_stream_connector ();
+            core.codecs ().add_json ();
+            auto invalid = zlink::stream_e2e_client::use (core);
+            auto connected = invalid.connect ().submit ();
+            ensure (static_cast<bool> (connected), "SM-D7 invalid-auth stream connect failed");
+
+            auto rejected = zlink::stream_e2e_client::codecs::request (
+                              invalid, e2e::stream_auth_req_t{"play-a", actor_id,
+                                                              actor_id + "-display", invalid_actor})
+                              .packet_name ("StreamAuthReq")
+                              .timeout (std::chrono::milliseconds (3000))
+                              .async<e2e::stream_auth_res_t> ()
+                              .result ();
+            ensure (!static_cast<bool> (rejected), "SM-D7 invalid auth unexpectedly succeeded");
+            (void) invalid.close ().submit ();
+        }
+
+        auto core = make_stream_connector ();
+        core.codecs ().add_json ();
+        auto stream = zlink::stream_e2e_client::use (core);
+        auto connected = stream.connect ().submit ();
+        ensure (static_cast<bool> (connected), "SM-D7 stream connect failed");
+
+        auto auth =
+          zlink::stream_e2e_client::codecs::request (
+            stream, e2e::stream_auth_req_t{"play-a", actor_id, actor_id + "-display", actor})
+            .packet_name ("StreamAuthReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::stream_auth_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (auth), "SM-D7 stream auth failed: " + stream_error_text (auth));
+        ensure (auth.value ().actor.actor_id == actor_id
+                  && auth.value ().session_node_rid == "session-a",
+                "SM-D7 stream auth reply mismatch");
+
+        auto joined = zlink::stream_e2e_client::codecs::request (
+                        stream, e2e::join_req_t{.key = "a-stream-auth",
+                                                .actor_id = actor_id,
+                                                .display_name = actor_id + "-display",
+                                                .level = 71,
+                                                .tags = {"stream", "SM-D7"}})
+                        .packet_name ("JoinReq")
+                        .timeout (std::chrono::milliseconds (5000))
+                        .async<e2e::join_res_t> ()
+                        .result ();
+        ensure (static_cast<bool> (joined),
+                "SM-D7 stream join dispatch failed: " + stream_error_text (joined));
+        ensure (joined.value ().actor_id == actor_id && joined.value ().owner_node_rid == "play-a",
+                "SM-D7 stream join dispatch reply mismatch");
+
+        auto state = zlink::stream_e2e_client::codecs::request (
+                       stream, e2e::state_req_t{.op = "add", .amount = 7})
+                       .packet_name ("StateReq")
+                       .timeout (std::chrono::milliseconds (5000))
+                       .async<e2e::state_res_t> ()
+                       .result ();
+        ensure (static_cast<bool> (state),
+                "SM-D7 stream state dispatch failed: " + stream_error_text (state));
+        ensure (state.value ().owner_node_rid == "play-a" && state.value ().value == 7,
+                "SM-D7 stream state dispatch reply mismatch");
+
+        (void) stream.close ().submit ();
+        std::cout << "scenario SM-D7 passed\n";
     }
 
     void run_multi_stream_session_scenario (zlink::framework::route_client_t &routes)

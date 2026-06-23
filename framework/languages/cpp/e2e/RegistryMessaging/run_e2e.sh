@@ -5,21 +5,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
 
-read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B DEALER_A DEALER_B HTTP_A HTTP_B CLIENT_ROUTE API_A2 ROUTE_A2 DEALER_A2 HTTP_A2 <<<"$(python3 - <<'PY'
+read -r REGISTRY_PUB REGISTRY_ROUTER API_A API_B ROUTE_A ROUTE_B DEALER_A DEALER_B WORKFLOW_A HTTP_A HTTP_B CLIENT_ROUTE API_A2 ROUTE_A2 DEALER_A2 HTTP_A2 <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
-for _ in range(15):
+for _ in range(16):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
-print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:8]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[8:10]), end=" ")
-print(f"tcp://127.0.0.1:{ports[10]}", end=" ")
-print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[11:14]), end=" ")
-print(f"http://127.0.0.1:{ports[14]}")
+print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:9]), end=" ")
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[9:11]), end=" ")
+print(f"tcp://127.0.0.1:{ports[11]}", end=" ")
+print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[12:15]), end=" ")
+print(f"http://127.0.0.1:{ports[15]}")
 for s in sockets:
     s.close()
 PY
@@ -110,6 +110,21 @@ start_provider() {
   wait_port "$rid-http" "$http"
 }
 
+start_workflow_provider() {
+  local rid="$1"
+  local workflow="$2"
+  ZLINK_CPP_E2E_ROLE=provider \
+  ZLINK_CPP_E2E_PROVIDER_RID="$rid" \
+  ZLINK_CPP_E2E_PROVIDER_INSTANCE="$rid" \
+  ZLINK_CPP_E2E_WORKFLOW_ENDPOINT="$workflow" \
+  ZLINK_CPP_E2E_REGISTRY_ROUTER="$REGISTRY_ROUTER" \
+  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
+    "$SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
+  LAST_PID="$!"
+  PIDS+=("$LAST_PID")
+  wait_port "$rid-workflow" "$workflow"
+}
+
 stop_pid() {
   local pid="$1"
   if kill -0 "$pid" >/dev/null 2>&1; then
@@ -154,11 +169,14 @@ start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
 API_A_PID="$LAST_PID"
 start_provider api-b "$API_B" "$ROUTE_B" "$DEALER_B" "$HTTP_B"
 API_B_PID="$LAST_PID"
+start_workflow_provider workflow-a "$WORKFLOW_A"
+WORKFLOW_A_PID="$LAST_PID"
 sleep 1
 run_client common common env
 cat "$LOG_DIR/client-common.stdout.log"
 stop_pid "$API_A_PID"
 stop_pid "$API_B_PID"
+stop_pid "$WORKFLOW_A_PID"
 
 start_provider api-a "$API_A" "$ROUTE_A" "$DEALER_A" "$HTTP_A"
 API_A_PID="$LAST_PID"

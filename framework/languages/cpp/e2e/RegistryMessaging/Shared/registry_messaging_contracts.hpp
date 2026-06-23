@@ -10,6 +10,7 @@ namespace zlink::framework::e2e::registry_messaging
 {
 
 inline constexpr const char *api_channel = "registry.messaging.api";
+inline constexpr const char *workflow_channel = "registry.messaging.workflow";
 inline constexpr const char *route_channel = "registry.messaging.route";
 inline constexpr const char *dealer_channel = "registry.messaging.dealer";
 inline constexpr const char *handler_group = "registry-messaging";
@@ -104,9 +105,8 @@ inline void from_json (const nlohmann::json &json, route_ping_t &value)
 
 inline void to_json (nlohmann::json &json, const route_pong_t &value)
 {
-    json = nlohmann::json{{"value", value.value},
-                          {"target_rid", value.target_rid},
-                          {"source_rid", value.source_rid}};
+    json = nlohmann::json{
+      {"value", value.value}, {"target_rid", value.target_rid}, {"source_rid", value.source_rid}};
 }
 
 inline void from_json (const nlohmann::json &json, route_pong_t &value)
@@ -118,9 +118,8 @@ inline void from_json (const nlohmann::json &json, route_pong_t &value)
 
 inline void to_json (nlohmann::json &json, const evidence_entry_t &value)
 {
-    json = nlohmann::json{{"marker", value.marker},
-                          {"provider_rid", value.provider_rid},
-                          {"value", value.value}};
+    json = nlohmann::json{
+      {"marker", value.marker}, {"provider_rid", value.provider_rid}, {"value", value.value}};
 }
 
 inline void from_json (const nlohmann::json &json, evidence_entry_t &value)

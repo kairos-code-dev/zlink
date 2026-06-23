@@ -159,8 +159,9 @@ int main (int argc, char **argv)
     if (role == "registry") {
         const auto pub = env_or ("ZLINK_CPP_E2E_REGISTRY_PUB");
         const auto router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
-        app.logging ().use_file (log_dir + "/registry.log").set_min_level (
-          zlink::framework::log_level_t::debug);
+        app.logging ()
+          .use_file (log_dir + "/registry.log")
+          .set_min_level (zlink::framework::log_level_t::debug);
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
             options.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
@@ -174,13 +175,15 @@ int main (int argc, char **argv)
     const auto provider_rid = env_or ("ZLINK_CPP_E2E_PROVIDER_RID", "api-a");
     const auto instance_id = env_or ("ZLINK_CPP_E2E_PROVIDER_INSTANCE", provider_rid);
     const auto api_endpoint = env_or ("ZLINK_CPP_E2E_API_ENDPOINT");
+    const auto workflow_endpoint = env_or ("ZLINK_CPP_E2E_WORKFLOW_ENDPOINT");
     const auto route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT");
     const auto dealer_endpoint = env_or ("ZLINK_CPP_E2E_DEALER_ENDPOINT");
     const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
     const auto registry_router = env_or ("ZLINK_CPP_E2E_REGISTRY_ROUTER");
 
-    app.logging ().use_file (log_dir + "/" + provider_rid + ".log").set_min_level (
-      zlink::framework::log_level_t::debug);
+    app.logging ()
+      .use_file (log_dir + "/" + provider_rid + ".log")
+      .set_min_level (zlink::framework::log_level_t::debug);
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
@@ -194,20 +197,36 @@ int main (int argc, char **argv)
           .add<profile_request_handler_t> (e2e::handler_group)
           .add_send<profile_command_handler_t> (e2e::handler_group);
         options.use_discovery ().add_registry_endpoint (registry_router);
-        options.add_client_server_channel (e2e::api_channel)
-          .enable_server (api_endpoint)
-          .server_routing_id (zlink::routing_id_t::from (provider_rid))
-          .use_handler_group (e2e::handler_group);
-        options.add_dealer_mesh_channel (e2e::dealer_channel)
-          .enable_server (dealer_endpoint)
-          .use_handler_group (e2e::handler_group);
-        options.add_route_mesh_channel (e2e::route_channel)
-          .enable_server (route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (provider_rid))
-          .add_request_handler<route_ping_handler_t, e2e::route_ping_t, e2e::route_pong_t> (
-            "ScenarioRoutePing", &route_ping_handler_t::handle);
-        options.http ().listen (http_endpoint).map_health ("/health").map_get<evidence_handler_t> (
-          "/evidence");
+        if (!api_endpoint.empty ()) {
+            options.add_client_server_channel (e2e::api_channel)
+              .enable_server (api_endpoint)
+              .server_routing_id (zlink::routing_id_t::from (provider_rid))
+              .use_handler_group (e2e::handler_group);
+        }
+        if (!workflow_endpoint.empty ()) {
+            options.add_client_server_channel (e2e::workflow_channel)
+              .enable_server (workflow_endpoint)
+              .server_routing_id (zlink::routing_id_t::from (provider_rid))
+              .use_handler_group (e2e::handler_group);
+        }
+        if (!dealer_endpoint.empty ()) {
+            options.add_dealer_mesh_channel (e2e::dealer_channel)
+              .enable_server (dealer_endpoint)
+              .use_handler_group (e2e::handler_group);
+        }
+        if (!route_endpoint.empty ()) {
+            options.add_route_mesh_channel (e2e::route_channel)
+              .enable_server (route_endpoint)
+              .set_routing_id (zlink::routing_id_t::from (provider_rid))
+              .add_request_handler<route_ping_handler_t, e2e::route_ping_t, e2e::route_pong_t> (
+                "ScenarioRoutePing", &route_ping_handler_t::handle);
+        }
+        if (!http_endpoint.empty ()) {
+            options.http ()
+              .listen (http_endpoint)
+              .map_health ("/health")
+              .map_get<evidence_handler_t> ("/evidence");
+        }
     });
     return app.run (argc, argv);
 }

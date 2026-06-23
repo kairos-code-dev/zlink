@@ -84,6 +84,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             if (scenario == "common") {
                 run_registry_client_server (channels);
                 run_manual_client_server (channels);
+                run_cross_channel_discovery (channels);
+                run_message_size_variation (channels);
                 run_route_mesh (routes);
                 run_dealer_mesh (channels);
             } else if (scenario == "scale-out") {
@@ -112,14 +114,16 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     {
         std::set<std::string> providers;
         for (int index = 0; index < 20 && providers.size () < 2; ++index) {
-            auto task = channels.request (e2e::api_channel,
-                                          e2e::profile_request_t{.value = "auto-" + std::to_string (index)})
-                          .timeout (std::chrono::milliseconds (2000))
-                          .async<e2e::profile_reply_t> ();
+            auto task =
+              channels
+                .request (e2e::api_channel,
+                          e2e::profile_request_t{.value = "auto-" + std::to_string (index)})
+                .timeout (std::chrono::milliseconds (2000))
+                .async<e2e::profile_reply_t> ();
             const auto &result = task.result ();
-            ensure (result.has_value (), "RM-A1 request failed: "
-                                          + std::string (result.error () ? result.error ()->what ()
-                                                                         : "unknown"));
+            ensure (result.has_value (),
+                    "RM-A1 request failed: "
+                      + std::string (result.error () ? result.error ()->what () : "unknown"));
             ensure (result.value ().value.rfind ("profile:auto-", 0) == 0,
                     "RM-A1 reply payload mismatch");
             providers.insert (result.value ().provider_rid);
@@ -133,8 +137,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (request.result ().has_value (), "RM-C1 request failed");
         ensure (request.result ().value ().value == "profile:c1", "RM-C1 reply mismatch");
         auto send =
-          channels.send (e2e::api_channel, e2e::profile_command_t{.command_id = "cmd-c1"})
-            .async ();
+          channels.send (e2e::api_channel, e2e::profile_command_t{.command_id = "cmd-c1"}).async ();
         ensure (send.result ().has_value (), "RM-C1 send failed");
         std::cout << "scenario RM-C1 passed\n";
 
@@ -159,10 +162,10 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
             .timeout (std::chrono::milliseconds (2000))
             .async<e2e::profile_reply_t> ();
         ensure (!missing.result ().has_value (), "RM-C5 missing request unexpectedly succeeded");
-        auto dropped = channels.send (e2e::api_channel,
-                                      e2e::profile_command_t{.command_id = "missing-send"})
-                         .packet_name ("MissingProfileCommand")
-                         .async ();
+        auto dropped =
+          channels.send (e2e::api_channel, e2e::profile_command_t{.command_id = "missing-send"})
+            .packet_name ("MissingProfileCommand")
+            .async ();
         ensure (dropped.result ().has_value (), "RM-C5 missing send should complete as drop");
         auto normal = channels.request (e2e::api_channel, e2e::profile_request_t{.value = "normal"})
                         .timeout (std::chrono::milliseconds (2000))
@@ -174,7 +177,8 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     void run_manual_client_server (zlink::framework::channel_client_t &channels)
     {
         auto request =
-          channels.request ("registry.messaging.api.manual", e2e::profile_request_t{.value = "manual"})
+          channels
+            .request ("registry.messaging.api.manual", e2e::profile_request_t{.value = "manual"})
             .timeout (std::chrono::milliseconds (2000))
             .async<e2e::profile_reply_t> ();
         ensure (request.result ().has_value (), "RM-A2 request failed");
@@ -184,11 +188,12 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         std::map<std::string, int> counts;
         for (int index = 0; index < 60; ++index) {
-            auto task = channels
-                          .request ("registry.messaging.api.manual.multi",
-                                    e2e::profile_request_t{.value = "multi-" + std::to_string (index)})
-                          .timeout (std::chrono::milliseconds (2000))
-                          .async<e2e::profile_reply_t> ();
+            auto task =
+              channels
+                .request ("registry.messaging.api.manual.multi",
+                          e2e::profile_request_t{.value = "multi-" + std::to_string (index)})
+                .timeout (std::chrono::milliseconds (2000))
+                .async<e2e::profile_reply_t> ();
             ensure (task.result ().has_value (), "RM-C3 request failed");
             ++counts[task.result ().value ().provider_rid];
         }
@@ -198,24 +203,61 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         std::cout << "scenario RM-C3 passed\n";
     }
 
+    void run_cross_channel_discovery (zlink::framework::channel_client_t &channels)
+    {
+        auto api = channels.request (e2e::api_channel, e2e::profile_request_t{.value = "a6-api"})
+                     .timeout (std::chrono::milliseconds (2000))
+                     .async<e2e::profile_reply_t> ();
+        ensure (api.result ().has_value (), "RM-A6 api channel request failed");
+        ensure (api.result ().value ().provider_rid.rfind ("api-", 0) == 0,
+                "RM-A6 api channel resolved a non-api provider");
+
+        auto workflow =
+          channels.request (e2e::workflow_channel, e2e::profile_request_t{.value = "a6-workflow"})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::profile_reply_t> ();
+        ensure (workflow.result ().has_value (), "RM-A6 workflow channel request failed");
+        ensure (workflow.result ().value ().provider_rid == "workflow-a",
+                "RM-A6 workflow channel resolved the wrong provider");
+        std::cout << "scenario RM-A6 passed\n";
+    }
+
+    void run_message_size_variation (zlink::framework::channel_client_t &channels)
+    {
+        const std::vector<std::size_t> sizes = {8, 64 * 1024, 256 * 1024};
+        for (const auto size : sizes) {
+            const auto payload = std::string (size, static_cast<char> ('a' + (size % 23)));
+            auto task =
+              channels.request (e2e::api_channel, e2e::profile_request_t{.value = payload})
+                .timeout (std::chrono::milliseconds (5000))
+                .async<e2e::profile_reply_t> ();
+            ensure (task.result ().has_value (),
+                    "RM-C8 request failed for payload size " + std::to_string (size));
+            ensure (task.result ().value ().value == "profile:" + payload,
+                    "RM-C8 reply payload mismatch for payload size " + std::to_string (size));
+        }
+        std::cout << "scenario RM-C8 roundtrip passed\n";
+    }
+
     void run_route_mesh (zlink::framework::route_client_t &routes)
     {
-        auto to_b = routes
-                      .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("api-b")),
-                                e2e::route_ping_t{.value = "target-b"})
-                      .packet_name ("ScenarioRoutePing")
-                      .timeout (std::chrono::milliseconds (2000))
-                      .async<e2e::route_pong_t> ();
+        auto to_b =
+          routes
+            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("api-b")),
+                      e2e::route_ping_t{.value = "target-b"})
+            .packet_name ("ScenarioRoutePing")
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::route_pong_t> ();
         ensure (to_b.result ().has_value (), "RM-C2 target request failed");
         ensure (to_b.result ().value ().target_rid == "api-b", "RM-C2 target rid mismatch");
 
-        auto missing = routes
-                         .request (e2e::route_channel,
-                                   zlink::routing_id_t::from (std::string ("api-missing")),
-                                   e2e::route_ping_t{.value = "missing"})
-                         .packet_name ("ScenarioRoutePing")
-                         .timeout (std::chrono::milliseconds (500))
-                         .async<e2e::route_pong_t> ();
+        auto missing =
+          routes
+            .request (e2e::route_channel, zlink::routing_id_t::from (std::string ("api-missing")),
+                      e2e::route_ping_t{.value = "missing"})
+            .packet_name ("ScenarioRoutePing")
+            .timeout (std::chrono::milliseconds (500))
+            .async<e2e::route_pong_t> ();
         ensure (!missing.result ().has_value (), "RM-C2 missing rid unexpectedly succeeded");
         std::cout << "scenario RM-C2 passed\n";
     }
@@ -224,11 +266,12 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     {
         std::map<std::string, int> counts;
         for (int index = 0; index < 60; ++index) {
-            auto task = channels
-                          .request (e2e::dealer_channel,
-                                    e2e::profile_request_t{.value = "dealer-" + std::to_string (index)})
-                          .timeout (std::chrono::milliseconds (2000))
-                          .async<e2e::profile_reply_t> ();
+            auto task =
+              channels
+                .request (e2e::dealer_channel,
+                          e2e::profile_request_t{.value = "dealer-" + std::to_string (index)})
+                .timeout (std::chrono::milliseconds (2000))
+                .async<e2e::profile_reply_t> ();
             ensure (task.result ().has_value (), "RM-C6 dealer request failed");
             ++counts[task.result ().value ().provider_rid];
         }
@@ -306,10 +349,10 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
     void run_failover (zlink::framework::channel_client_t &channels)
     {
-        auto first = channels.request (e2e::api_channel,
-                                       e2e::profile_request_t{.value = "failover-before"})
-                       .timeout (std::chrono::milliseconds (2000))
-                       .async<e2e::profile_reply_t> ();
+        auto first =
+          channels.request (e2e::api_channel, e2e::profile_request_t{.value = "failover-before"})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::profile_reply_t> ();
         ensure (first.result ().has_value (), "RM-A4 initial request failed");
         ensure (first.result ().value ().provider_rid == "api-a"
                   && first.result ().value ().instance_id == "api-a-v1",
@@ -352,8 +395,9 @@ int main (int argc, char **argv)
     auto app = zlink::framework::app_t::create ();
     auto scenario = std::make_unique<scenario_service_t> (app);
     auto *scenario_result = scenario.get ();
-    app.logging ().use_file (log_dir + "/client.log").set_min_level (
-      zlink::framework::log_level_t::debug);
+    app.logging ()
+      .use_file (log_dir + "/client.log")
+      .set_min_level (zlink::framework::log_level_t::debug);
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
@@ -362,6 +406,7 @@ int main (int argc, char **argv)
         configure_common_codecs (options.codecs ());
         options.use_discovery ().add_registry_endpoint (registry_router);
         options.add_client_server_channel (e2e::api_channel).enable_client ();
+        options.add_client_server_channel (e2e::workflow_channel).enable_client ();
         options.add_client_server_channel ("registry.messaging.api.manual")
           .enable_client (api_a_endpoint);
         options.add_client_server_channel ("registry.messaging.api.manual.multi")

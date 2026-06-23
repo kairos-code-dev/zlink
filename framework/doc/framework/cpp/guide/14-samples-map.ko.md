@@ -53,8 +53,9 @@ flowchart LR
 
 ## 3. Bingo — registry 포함 확장 토폴로지
 
-4개 서버(Api · Play · Session · Registry). Registry/Discovery 설정과 명시 endpoint
-채널 연결을 함께 쓰고, fanout 채널 publisher endpoint와 protobuf codec을 쓴다.
+4개 서버(Api · Play · Session · Registry). Registry/Discovery가 channel provider endpoint를
+전파하고, client role은 `enable_client()`로 discovery-backed 연결을 사용한다. fanout 채널
+publisher endpoint와 protobuf codec도 함께 쓴다.
 
 ```mermaid
 flowchart LR
@@ -81,7 +82,7 @@ flowchart LR
 | 위치 | 보여주는 것 | 장 |
 |------|-------------|-----|
 | `Server/Registry/registry_host_factory.hpp` | `enable_registry(pub, router)` 한 줄 registry 서버 | [11 §2](11-registry.ko.md#2-registry-서버-띄우기) |
-| `Server/Play/play_server_host_factory.hpp` | `use_discovery().add_registry_endpoint`, `enable_client(endpoint)`, fanout publisher endpoint, protobuf codec, spot mesh | [7](07-channel-messaging.ko.md)·[8](08-spot.ko.md)·[11](11-registry.ko.md) |
+| `Server/Play/play_server_host_factory.hpp` | `use_discovery().add_registry_endpoint`, no-arg `enable_client()`, fanout publisher endpoint, protobuf codec, spot mesh | [7](07-channel-messaging.ko.md)·[8](08-spot.ko.md)·[11](11-registry.ko.md) |
 | `Server/Play/Adapters/ZLink/Spots/bingo_entry_spot.hpp` | entry spot — 매칭/룸 배정 | [8 §4](08-spot.ko.md#4-entry-spot-매칭과-룸-배정) |
 | `Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp` | room spot — `add_actor_packet`, join 수락, 도메인 결합 | [8 §3](08-spot.ko.md#3-room-spot-작성) |
 | `Server/Session/` | 세션 전담 서버 분리 — 인증과 actor 바인딩 | [9](09-actor-session.ko.md) |

@@ -36,8 +36,6 @@ class api_server_host_factory_t
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
               .trace_log_file (flow_log_path ("api"))
               .trace_node_id ("tictactoe-api");
-            options.services ().add_singleton<sample_topology_t> (
-              std::make_unique<sample_topology_t> (topology));
             options.handlers ().add<authenticate_player_handler_t> ("api");
 
             options.codecs ()

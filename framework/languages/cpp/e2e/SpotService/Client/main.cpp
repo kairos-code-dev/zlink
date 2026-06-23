@@ -212,6 +212,7 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
     {
         if (_scenario_mode == "stream") {
             run_stream_auth_dispatch_scenario (routes);
+            run_bound_session_push_targeting_scenario (routes);
             run_stream_session_scenario (routes, "SM-D1", "play-a", "stream-local", "a-stream-room",
                                          "stream-local-push");
             run_stream_session_scenario (routes, "SM-D2", "play-b", "stream-remote",
@@ -576,6 +577,72 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
 
         (void) stream.close ().submit ();
         std::cout << "scenario SM-D7 passed\n";
+    }
+
+    void run_bound_session_push_targeting_scenario (zlink::framework::route_client_t &routes)
+    {
+        const auto actor_id = std::string ("stream-push-d6");
+        auto actor = ensure_actor_ref (routes, "play-a", actor_id, actor_id + "-display");
+
+        auto bound_core = make_stream_connector ();
+        bound_core.codecs ().add_json ();
+        auto bound = zlink::stream_e2e_client::use (bound_core);
+        auto bound_connected = bound.connect ().submit ();
+        ensure (static_cast<bool> (bound_connected), "SM-D6 bound stream connect failed");
+
+        auto unbound_core = make_stream_connector ();
+        unbound_core.codecs ().add_json ();
+        auto unbound = zlink::stream_e2e_client::use (unbound_core);
+        auto unbound_connected = unbound.connect ().submit ();
+        ensure (static_cast<bool> (unbound_connected), "SM-D6 unbound stream connect failed");
+
+        auto auth =
+          zlink::stream_e2e_client::codecs::request (
+            bound, e2e::stream_auth_req_t{"play-a", actor_id, actor_id + "-display", actor})
+            .packet_name ("StreamAuthReq")
+            .timeout (std::chrono::milliseconds (3000))
+            .async<e2e::stream_auth_res_t> ()
+            .result ();
+        ensure (static_cast<bool> (auth), "SM-D6 stream auth failed: " + stream_error_text (auth));
+
+        auto joined = zlink::stream_e2e_client::codecs::request (
+                        bound, e2e::join_req_t{.key = "a-stream-push",
+                                               .actor_id = actor_id,
+                                               .display_name = actor_id + "-display",
+                                               .level = 81,
+                                               .tags = {"stream", "SM-D6"}})
+                        .packet_name ("JoinReq")
+                        .timeout (std::chrono::milliseconds (5000))
+                        .async<e2e::join_res_t> ()
+                        .result ();
+        ensure (static_cast<bool> (joined),
+                "SM-D6 stream join dispatch failed: " + stream_error_text (joined));
+
+        auto bound_wait =
+          bound.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (10000)).async ();
+        auto unbound_wait =
+          unbound.wait_for<e2e::actor_push_notify_t> (std::chrono::milliseconds (500)).async ();
+        auto pushed = zlink::stream_e2e_client::codecs::request (
+                        bound, e2e::actor_push_req_t{"stream-push-d6-value"})
+                        .packet_name ("PushReq")
+                        .timeout (std::chrono::milliseconds (5000))
+                        .async<e2e::actor_push_res_t> ()
+                        .result ();
+        ensure (static_cast<bool> (pushed),
+                "SM-D6 push trigger failed: " + stream_error_text (pushed));
+
+        auto notify = bound_wait.result ();
+        ensure (static_cast<bool> (notify), "SM-D6 bound push notify missing");
+        ensure (notify.value ().actor_id == actor_id
+                  && notify.value ().value == "stream-push-d6-value",
+                "SM-D6 bound push notify mismatch");
+
+        auto unbound_notify = unbound_wait.result ();
+        ensure (!static_cast<bool> (unbound_notify), "SM-D6 unbound stream received push");
+
+        (void) bound.close ().submit ();
+        (void) unbound.close ().submit ();
+        std::cout << "scenario SM-D6 passed\n";
     }
 
     void run_multi_stream_session_scenario (zlink::framework::route_client_t &routes)

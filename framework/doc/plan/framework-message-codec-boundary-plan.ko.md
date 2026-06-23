@@ -121,10 +121,15 @@ registry 계약을 사용한다. 이 plan은 extension 등록 이름, options �
 
 ### 기존 방식과 변경 후 방식 구분
 
-이 계획에서 “기존 방식”이라는 말은 두 가지를 구분해서 읽어야 한다. codec extension을 등록하는
-기존 방식은 유지한다. 그러나 SPOT create, session dispatch, actor join의 업무 코드에서 bindings raw
-`Message`, raw `Buffer`, `zlink_msg_t`, `Message.from(...)`, codec별 JSON helper를 직접 쓰는 기존
-방식은 제거한다.
+이 계획에서 “기존 방식”이라는 말은 두 가지를 반드시 구분해서 읽어야 한다.
+
+첫째, codec extension을 등록하는 기존 방식은 유지한다. 사용자는 지금처럼 application startup,
+builder, options에서 JSON, Protobuf, MessagePack, custom codec extension을 추가한다. 이 부분은
+변경 대상이 아니다.
+
+둘째, SPOT create, session dispatch, actor join의 업무 코드에서 bindings raw `Message`, raw `Buffer`,
+`zlink_msg_t`, `Message.from(...)`, codec별 JSON helper를 직접 쓰는 기존 방식은 제거한다. 이 부분은
+codec 변경 때마다 업무 코드가 같이 바뀌는 원인이므로 최종 public API와 sample에 남기지 않는다.
 
 | 구분 | 변경 여부 | 기준 |
 |------|-----------|------|
@@ -135,7 +140,18 @@ registry 계약을 사용한다. 이 plan은 extension 등록 이름, options �
 | 업무 코드의 codec별 helper 호출 | 제거 | handler, actor, sample에서 `Message.from(...)`, `JsonMessageExtensions`, 직접 serialize/deserialize를 쓰지 않는다. |
 | wire-level raw API | 명시 raw surface만 유지 | relay, frame harness, backend boundary처럼 raw payload 보존이 목적일 때만 별도 raw 이름으로 남긴다. |
 
-유지되는 방식:
+정리하면, codec을 추가하는 방법은 그대로 두고 payload를 다루는 업무 API만 바꾼다.
+
+| 질문 | 답 |
+|------|----|
+| custom codec extension을 options에 등록하는 기존 코드는 바뀌는가? | 바뀌지 않는다. 기존 등록 코드는 계속 유효해야 한다. |
+| custom codec extension 작성 계약이 바뀌는가? | 바뀌지 않는다. 선행 codec extension 계획의 registry 계약을 그대로 쓴다. |
+| handler에서 `Message.from(...)`으로 직접 인코딩해도 되는가? | 안 된다. handler는 DTO 또는 `ZLinkMessage`를 사용한다. |
+| session dispatch에서 raw `Message` / `Buffer`를 기본 payload로 받아도 되는가? | 안 된다. typed handler 또는 `ZLinkMessage`를 사용한다. |
+| wire payload를 그대로 보존해야 하는 relay나 harness는 어떻게 하는가? | 명시 raw API로만 남긴다. 일반 업무 API와 sample의 기본 경로에서는 쓰지 않는다. |
+
+유지되는 기존 방식은 아래처럼 codec extension을 등록하는 코드다. 이 코드는 변경 후에도 같은 의미로
+동작해야 한다.
 
 ```csharp
 builder.AddZLinkFramework(options =>
@@ -162,8 +178,9 @@ options.codecs().use(my_custom_codec_extension{});
 builder/options에서 extension을 등록한다. handler, actor, session, SPOT create 코드는 codec 종류를
 직접 알 필요가 없어야 한다.
 
-제거되는 기존 업무 코드의 예는 아래와 같다. 이 코드는 “기존 codec 등록 방식”이 아니라 “기존 raw
-업무 API 방식”이다. 최종 상태에서는 guide, sample, 일반 contract test에 남기지 않는다.
+제거되는 기존 방식은 아래처럼 업무 코드에서 raw payload를 직접 만들거나 해석하는 코드다. 이 코드는
+“기존 codec 등록 방식”이 아니라 “기존 raw 업무 API 방식”이다. 최종 상태에서는 guide, sample, 일반
+contract test에 남기지 않는다.
 
 actor join에서 제거되는 방식:
 
@@ -231,7 +248,8 @@ spot.onCreate((request, context) -> {
 Protobuf, MessagePack, custom codec으로 바꾸면 handler와 sample까지 같이 바뀐다. 따라서 최종 상태의
 guide와 sample에는 이 방식을 남기지 않는다.
 
-변경 후 업무 코드의 예:
+변경 후 업무 코드는 아래처럼 DTO 또는 `ZLinkMessage`만 다룬다. codec이 JSON인지 Protobuf인지
+MessagePack인지 custom codec인지는 application startup의 extension 등록으로만 결정된다.
 
 actor join:
 
@@ -289,6 +307,18 @@ public override Task<ZLinkSpotCreateResponse> OnCreateAsync(..., ZLinkMessage re
 spot.onCreate(CreateRoom.class, (create, context) ->
     ZLinkSpotCreateResponse.accept(new RoomCreated(create.roomId())));
 ```
+
+언어별로 문법은 달라도 기준은 같다.
+
+| 영역 | 제거되는 기존 방식 | 변경 후 방식 |
+|------|--------------------|--------------|
+| .NET actor join | `Message.From(...)`을 만든 뒤 `JoinSpot(..., Message)`에 넘긴다. | DTO 또는 `ZLinkMessage.From(dto)`를 넘기고 reply는 typed result나 `Decode<T>()`로 읽는다. |
+| Java actor join | `Message.from(...)` 또는 JSON helper로 request/reply를 직접 변환한다. | `joinSpot(..., dto).submit(Reply.class)`를 기본으로 쓰고, 지연 decode가 필요할 때만 `ZLinkMessage`를 쓴다. |
+| Kotlin actor join | Java raw `Message`나 sample helper를 감싸서 넘긴다. | Kotlin DTO 호출 또는 `messageOf(dto)` / `decode<T>()`를 쓴다. |
+| Node.js actor join | `Buffer`나 binding message를 만들고 `JSON.parse(...)`로 reply를 읽는다. | plain object request와 typed `submit<T>()`를 기본으로 쓴다. |
+| C++ actor join | `zlink_msg_t` 또는 raw buffer를 sample 업무 코드에서 직접 만든다. | DTO 또는 `zlink::framework::message`를 넘기고 runtime이 registry로 encode/decode한다. |
+| session dispatch | callback이 raw payload를 받고 handler가 직접 parse한다. | typed session handler 또는 `ZLinkMessage` callback이 registry로 decode한다. |
+| SPOT create | create hook이 raw request를 받고 raw reply를 만든다. | create request/reply를 DTO 또는 `ZLinkMessage`로 표현한다. |
 
 변경 후에는 codec을 JSON에서 Protobuf, MessagePack, custom codec으로 바꿔도 위 업무 코드 모양이
 바뀌지 않아야 한다. 바뀌는 곳은 dependency와 codec extension 등록 코드뿐이다. 이 원칙은 sample에도

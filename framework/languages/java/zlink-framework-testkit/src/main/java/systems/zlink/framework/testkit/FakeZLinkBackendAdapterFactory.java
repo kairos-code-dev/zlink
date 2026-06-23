@@ -6,7 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -79,7 +81,11 @@ import systems.zlink.framework.runtime.backend.ZLinkRegistryBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapterFactory {
@@ -283,6 +289,24 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
     }
 
     private static byte[] encodeStreamHeader(
+        int kind,
+        int codec,
+        String packetName,
+        Optional<Long> requestSeq,
+        int additionalFlags) {
+        if (additionalFlags == 0) {
+            return ZLinkStreamHeaderCodec.encode(new ZLinkStreamHeader(
+                ZLinkStreamMessageKind.fromValue(kind),
+                ZLinkStreamCodec.fromValue(codec),
+                EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+                requestSeq,
+                packetName,
+                Map.of()));
+        }
+        return encodeRawStreamHeader(kind, codec, packetName, requestSeq, additionalFlags);
+    }
+
+    private static byte[] encodeRawStreamHeader(
         int kind,
         int codec,
         String packetName,

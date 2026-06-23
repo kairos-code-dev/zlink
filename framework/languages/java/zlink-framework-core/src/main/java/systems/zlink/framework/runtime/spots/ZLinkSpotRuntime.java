@@ -54,7 +54,6 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
-import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
@@ -84,6 +83,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
+import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -3937,14 +3937,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
     }
 
     private static String resolvePacketName(Class<?> messageType) {
-        ZLinkPacket packet = messageType.getAnnotation(ZLinkPacket.class);
-        return packet == null ? messageType.getSimpleName() : packet.value();
+        return ZLinkPacketNames.resolve(messageType);
     }
 
     private static String resolvePacketName(Class<?> messageType, String explicitPacketName) {
-        return explicitPacketName == null || explicitPacketName.isBlank()
-            ? resolvePacketName(messageType)
-            : explicitPacketName;
+        return ZLinkPacketNames.resolve(messageType, explicitPacketName);
     }
 
     private static Class<?> requireHandlerType(Class<?> handlerType) {

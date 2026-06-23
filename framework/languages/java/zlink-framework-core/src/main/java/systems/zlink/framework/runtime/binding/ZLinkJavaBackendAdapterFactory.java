@@ -1,9 +1,8 @@
 package systems.zlink.framework.runtime.binding;
 
 import java.time.Duration;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
@@ -110,7 +109,10 @@ import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.spots.ZLinkSpotKind;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapterFactory {
     @Override
@@ -747,25 +749,6 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         return submit.flags(flags).submit();
     }
 
-    private static byte[] encodeStreamHeader(
-        int kind,
-        int codec,
-        String packetName,
-        Long requestSeq) {
-        byte[] name = packetName.getBytes(StandardCharsets.UTF_8);
-        int flags = requestSeq == null ? 0 : 0x01;
-        ByteBuffer buffer = ByteBuffer.allocate(3 + (requestSeq == null ? 0 : Long.BYTES) + 1 + name.length);
-        buffer.put((byte) kind);
-        buffer.put((byte) codec);
-        buffer.put((byte) flags);
-        if (requestSeq != null) {
-            buffer.putLong(requestSeq);
-        }
-        buffer.put((byte) name.length);
-        buffer.put(name);
-        return buffer.array();
-    }
-
     private static List<Message> prepend(Message first, List<Message> rest) {
         ArrayList<Message> result = new ArrayList<>(rest.size() + 1);
         result.add(first);
@@ -782,7 +765,13 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         SendFlags flags) {
         StreamPayload payload = streamPayload(packetName, parts);
         Message frame = Message.from(ZLinkStreamFrameCodec.encode(
-            encodeStreamHeader(kind, 0, payload.packetName(), requestSeq),
+            new ZLinkStreamHeader(
+                ZLinkStreamMessageKind.fromValue(kind),
+                ZLinkStreamCodec.RAW,
+                EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+                Optional.ofNullable(requestSeq),
+                payload.packetName(),
+                java.util.Map.of()),
             payload.body()));
         try {
             return operation.message(frame).flags(flags).submit();

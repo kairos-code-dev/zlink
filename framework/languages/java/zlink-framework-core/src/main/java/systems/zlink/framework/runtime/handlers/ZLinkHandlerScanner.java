@@ -51,6 +51,7 @@ import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.handlers.ZLinkSpotTimer;
+import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
@@ -877,14 +878,11 @@ public final class ZLinkHandlerScanner {
     }
 
     private static String resolvePacketName(Class<?> messageType) {
-        ZLinkPacket packet = messageType.getAnnotation(ZLinkPacket.class);
-        return packet == null ? messageType.getSimpleName() : packet.value();
+        return ZLinkPacketNames.resolve(messageType);
     }
 
     private static String resolvePacketName(Class<?> messageType, String explicitPacketName) {
-        return explicitPacketName == null || explicitPacketName.isBlank()
-            ? resolvePacketName(messageType)
-            : explicitPacketName;
+        return ZLinkPacketNames.resolve(messageType, explicitPacketName);
     }
 
     private static String requireTopic(Class<?> handlerType, String topic) {

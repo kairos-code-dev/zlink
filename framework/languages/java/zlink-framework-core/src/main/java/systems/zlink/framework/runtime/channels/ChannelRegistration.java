@@ -8,10 +8,10 @@ import java.util.List;
 import java.util.Set;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
+import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
 
 public final class ChannelRegistration {
     private final String name;
@@ -428,14 +428,11 @@ public final class ChannelRegistration {
     }
 
     private static String resolvePacketName(Class<?> messageType, String explicitPacketName) {
-        return explicitPacketName == null
-            ? resolvePacketName(messageType)
-            : explicitPacketName;
+        return ZLinkPacketNames.resolve(messageType, explicitPacketName);
     }
 
     private static String resolvePacketName(Class<?> messageType) {
-        ZLinkPacket packet = messageType.getAnnotation(ZLinkPacket.class);
-        return packet == null ? messageType.getSimpleName() : packet.value();
+        return ZLinkPacketNames.resolve(messageType);
     }
 
     private void validateMappedGroups(

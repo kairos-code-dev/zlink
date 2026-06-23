@@ -23,9 +23,7 @@ class BingoSession(
         header: ZLinkStreamHeader,
         payload: Message,
     ) {
-        println("bingo session: dispatch packet=${header.packetName()}")
         val handled = handlers.tryHandleAsync(context, header, payload).await()
-        println("bingo session: dispatch handled=$handled packet=${header.packetName()}")
         if (handled) {
             return
         }

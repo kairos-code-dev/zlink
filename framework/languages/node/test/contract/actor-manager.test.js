@@ -3,6 +3,8 @@ const test = require('node:test');
 
 const zlink = require('../../../../../bindings/node/dist');
 const framework = require('../../packages/framework/dist/internal');
+const msgpack = require('../../packages/framework-codec-msgpack/dist');
+const protobuf = require('../../packages/framework-codec-protobuf/dist');
 
 function customTextSerializer(prefix = 'custom:') {
   return {
@@ -536,6 +538,53 @@ test('ZLinkActorContext joinSpot uses configured custom serializer without raw r
   assert.equal(joinResult.reply, 'joined');
   assert.deepEqual(calls, ['joinSpot:alice:alice:stage-1:custom:hello']);
   replyMessage.close();
+});
+
+test('ZLinkActorContext joinSpot uses binary codec extensions without raw request code', async () => {
+  const cases = [
+    ['messagepack', msgpack.createMessagePackSerializer()],
+    ['protobuf', protobuf.createProtobufMessageSerializer()]
+  ];
+
+  for (const [name, serializer] of cases) {
+    const calls = [];
+    const replyMessage = serializer.serialize({ text: `${name}:joined` });
+    class PlayerActor {
+      constructor(actorId, context) {
+        this.actorId = actorId;
+        this.context = context;
+      }
+    }
+    class PlayerFactory {
+      create(actorId, context) {
+        return new PlayerActor(actorId, context);
+      }
+    }
+    const actorRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
+    const joinCoordinator = {
+      async joinSpot(actor, state, spotRid, request) {
+        const decoded = serializer.deserialize(request);
+        calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotRid}:${decoded.text}`);
+        return { resultCode: 0, actor: actorRef, reply: replyMessage };
+      },
+      async joinEntrySpot() {
+        throw new Error('joinEntrySpot must not be called');
+      }
+    };
+    const manager = new framework.DefaultZLinkActorManager({
+      actorFactories: new Map([['player', PlayerFactory]]),
+      joinCoordinator,
+      messageSerializers: new Map([[`application/x-test-${name}`, serializer]])
+    });
+    const actor = await manager.create('alice', 'player');
+
+    const joinResult = await actor.context.joinSpot('stage-1', { text: `${name}:hello` }).submit();
+
+    assert.equal(joinResult.resultCode, 0);
+    assert.deepEqual(joinResult.reply, { text: `${name}:joined` });
+    assert.deepEqual(calls, [`joinSpot:alice:alice:stage-1:${name}:hello`]);
+    replyMessage.close();
+  }
 });
 
 test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined spot state', async () => {

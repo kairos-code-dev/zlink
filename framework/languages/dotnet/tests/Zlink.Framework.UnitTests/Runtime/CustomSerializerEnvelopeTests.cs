@@ -3,6 +3,7 @@ using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Codecs;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Messaging;
 using Zlink.Framework.Runtime.Streams;
@@ -82,6 +83,48 @@ public sealed class CustomSerializerEnvelopeTests
         Assert.Equal("application/x-msgpack", ZLinkEnvelopeCodec.DecodeHeader(parts).ContentType);
         var decoded = Assert.IsType<PackedProbe>(ZLinkEnvelopeCodec.DecodeBody(parts, typeof(PackedProbe), codecs));
         Assert.Equal(value, decoded);
+    }
+
+    [Fact]
+    public void SpotCreate_MessagePack_Extension_RoundTrips_Through_Framework_Message()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.Use(ZLinkMessagePackCodec.Default);
+        var request = ZLinkMessage.From(new PackedProbe("create"));
+
+        var encoded = request.Encode(codecs);
+        var received = ZLinkMessage.FromEnvelopePayload(encoded.ContentType, encoded.Message, codecs);
+
+        Assert.Equal("application/x-msgpack", received.ContentType);
+        Assert.Equal(new PackedProbe("create"), received.Decode<PackedProbe>());
+    }
+
+    [Fact]
+    public void ActorJoin_Protobuf_Extension_RoundTrips_Through_Framework_Message()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.Use(ZLinkProtobufCodec.Default);
+        var request = ZLinkMessage.From(new StringValue { Value = "join" });
+
+        var encoded = request.Encode(codecs);
+        var received = ZLinkMessage.FromEnvelopePayload(encoded.ContentType, encoded.Message, codecs);
+
+        Assert.Equal("application/x-protobuf", received.ContentType);
+        Assert.Equal("join", received.Decode<StringValue>().Value);
+    }
+
+    [Fact]
+    public void ActorJoin_CustomSerializer_RoundTrips_Reply_Through_Framework_Message()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        codecs.AddSerializer("application/avro", new MarkerSerializer());
+        var reply = ZLinkMessage.From(new Probe("accepted"));
+
+        var encoded = reply.Encode(codecs);
+        var received = ZLinkMessage.FromEnvelopePayload(encoded.ContentType, encoded.Message, codecs);
+
+        Assert.Equal("application/avro", received.ContentType);
+        Assert.Equal(new Probe("accepted"), received.Decode<Probe>());
     }
 
     [Fact]

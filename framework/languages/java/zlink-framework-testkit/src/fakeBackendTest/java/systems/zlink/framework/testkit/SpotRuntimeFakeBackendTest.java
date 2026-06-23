@@ -149,6 +149,31 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     @Test
+    void customCodecSpotCreateDecodesEncodedFrameworkMessage() {
+        PayloadSpot.lastCreatePayload.set(null);
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.enableRouter("inproc://payload-codec-router");
+                node.addSpotFactory(PayloadSpot.class); }; };
+        RoutingId rid = RoutingId.from("payload-codec-spot");
+        CreatePayloadSerializer serializer = new CreatePayloadSerializer();
+        Message encoded = serializer.serialize(new CreatePayload("custom"));
+
+        try (encoded;
+             ZLinkFrameworkRuntime runtime = RuntimeTestSupport.newFrameworkRuntime(
+                 options,
+                 new FakeZLinkBackendAdapterFactory(),
+                 serializer,
+                 ZLinkHandlerFactory.reflection())) {
+            assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
+                .getOrCreate(PayloadSpot.class, rid, ZLinkMessage.fromMessage(encoded, serializer))
+                .toCompletableFuture()
+                .join()
+                .state());
+            assertEquals("custom", PayloadSpot.lastCreatePayload.get());
+        }
+    }
+
+    @Test
     void spotOutboundChannelCallsUseSharedChannelClient() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var channel = options.addClientServerChannel("play-events"); channel.enableClient("inproc://play-events"); };
@@ -1237,6 +1262,34 @@ final class SpotRuntimeFakeBackendTest {
         public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
             lastCreatePayload.set(request.decode(String.class));
             return ZLinkSpotCreateResponse.accept();
+        }
+    }
+
+    public record CreatePayload(String value) {
+    }
+
+    public static final class CreatePayloadSerializer implements ZLinkMessageSerializer {
+        @Override
+        public <T> Message serialize(T value) {
+            if (value instanceof Message message) {
+                return Message.from(message);
+            }
+            if (value instanceof CreatePayload payload) {
+                return Message.from(("create:" + payload.value()).getBytes(StandardCharsets.UTF_8));
+            }
+            return Message.from(String.valueOf(value).getBytes(StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public <T> T deserialize(Message message, Class<T> type) {
+            String text = message.toUtf8String();
+            if (type == String.class) {
+                return type.cast(text.startsWith("create:") ? text.substring("create:".length()) : text);
+            }
+            if (type == CreatePayload.class) {
+                return type.cast(new CreatePayload(text.startsWith("create:") ? text.substring("create:".length()) : text));
+            }
+            throw new IllegalArgumentException("unsupported message type: " + type.getName());
         }
     }
 

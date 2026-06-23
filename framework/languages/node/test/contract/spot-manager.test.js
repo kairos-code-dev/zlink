@@ -168,6 +168,34 @@ test('ZLinkSpotManager create request uses configured custom serializer without 
   assert.deepEqual(created.reply, { text: 'created' });
 });
 
+test('ZLinkSpotManager create request uses binary codec extensions without raw request code', async () => {
+  const cases = [
+    ['messagepack', msgpack.createMessagePackSerializer()],
+    ['protobuf', protobuf.createProtobufMessageSerializer()]
+  ];
+
+  for (const [name, serializer] of cases) {
+    const decoded = [];
+    class CodecSpot {
+      async onCreate(request) {
+        decoded.push(request.decode());
+        return { accepted: true, reply: { text: `${name}:created` } };
+      }
+    }
+
+    const manager = new framework.DefaultZLinkSpotManager({
+      spotFactories: [CodecSpot],
+      messageSerializers: new Map([[`application/x-test-${name}`, serializer]])
+    });
+
+    const created = await manager.create(CodecSpot, { text: `${name}:open` });
+
+    assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
+    assert.deepEqual(decoded, [{ text: `${name}:open` }]);
+    assert.deepEqual(created.reply, { text: `${name}:created` });
+  }
+});
+
 test('spot handler registry records packet and subscribe registrations from configure', async () => {
   class PacketHandler {}
   class SubscribeHandler {}

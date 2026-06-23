@@ -222,6 +222,15 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-A7 original spot changed after type mismatch");
         std::cout << "scenario SM-A7 passed\n";
 
+        auto missing_actor_packet =
+          local
+            .relay_request_raw (request_header ("MissingActorPacket"),
+                                encode_json (e2e::state_req_t{"add", 1}))
+            .async ()
+            .result ();
+        ensure (!missing_actor_packet.has_value (), "SM-B5 missing actor packet unexpectedly succeeded");
+        std::cout << "scenario SM-B5 passed\n";
+
         auto same_key_actor = bind_actor (routes, actors, "play-a", "alice-2", "Alice Two");
         auto same_key_join = relay_request<e2e::join_res_t> (
           same_key_actor, "JoinReq",

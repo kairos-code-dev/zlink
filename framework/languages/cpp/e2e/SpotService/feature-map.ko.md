@@ -13,6 +13,8 @@
 - `SM-B1`: `play-a` local actor join과 user spot dispatch를 검증한다.
 - `SM-B2`: `play-b` remote actor join과 cross-node dispatch를 검증한다.
 - `SM-B3`: join request의 문자열, 숫자, 배열 payload가 reply에 그대로 반영되는지 검증한다.
+- `SM-B5`: handler 없는 actor packet request가 client-visible error로 끝나고
+  `HandlerMissing` dispatch error marker가 play 노드 로그에 남는지 검증한다.
 - `SM-B6`: 명시적 leave request와 spot evidence를 검증한다.
 - `SM-C2`: spot handler가 외부 channel로 request/send를 내보내고, SPOT mesh publish를 수행하는
   흐름을 검증한다.

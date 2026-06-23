@@ -139,6 +139,8 @@ ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
 cat "$LOG_DIR/client.stdout.log"
 fetch_evidence play-a "$HTTP_A"
 fetch_evidence play-b "$HTTP_B"
+grep -q "surface=spot_actor.*reason=handler_missing.*packet=MissingActorPacket" \
+  "$LOG_DIR/play-a.stderr.log"
 
 python3 - "$LOG_DIR/play-a-evidence.json" "$LOG_DIR/play-b-evidence.json" <<'PY'
 import json

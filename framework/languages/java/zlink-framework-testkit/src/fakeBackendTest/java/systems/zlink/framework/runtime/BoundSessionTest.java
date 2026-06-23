@@ -11,10 +11,10 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
@@ -94,13 +94,11 @@ final class BoundSessionTest {
                 .toCompletableFuture()
                 .join();
 
-            try (Message payload = Message.from("place")) {
-                actor.relay(
-                        new ZLinkStreamHeader("PlaceMark", Map.of(), Optional.empty()),
-                        payload)
-                    .toCompletableFuture()
-                    .join();
-            }
+            actor.relay(
+                    new ZLinkStreamHeader("PlaceMark", Map.of(), Optional.empty()),
+                    ZLinkMessage.of("place"))
+                .toCompletableFuture()
+                .join();
         }
 
         assertTrue(backend.calls().contains("stream.relayBoundActor.player-1.RAW.PlaceMark"));

@@ -20,6 +20,7 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
@@ -372,8 +373,8 @@ final class StreamSessionTest {
         @Override
         public void onDispatch(
             ZLinkStreamHeader header,
-            Message payload) {
-            dispatches.add(header.packetName() + ":" + payload.toUtf8String());
+            ZLinkMessage payload) {
+            dispatches.add(header.packetName() + ":" + payload.decode(String.class));
                     }
     }
 
@@ -414,7 +415,7 @@ final class StreamSessionTest {
         @Override
         public void onDispatch(
             ZLinkStreamHeader header,
-            Message payload) {
+            ZLinkMessage payload) {
             context.actors()
                 .bind(new ZLinkActorRef(
                     actorNodeRid,
@@ -473,13 +474,13 @@ final class StreamSessionTest {
         @Override
         public void onDispatch(
             ZLinkStreamHeader header,
-            Message payload) {
+            ZLinkMessage payload) {
             boolean handled = handlers.tryHandleAsync(context, header, payload)
                 .toCompletableFuture()
                 .join();
             if (!handled) {
                 relays.add("relay:" + header.packetName()
-                    + ":" + payload.toUtf8String());
+                    + ":" + payload.decode(String.class));
             }
         }
     }
@@ -495,8 +496,8 @@ final class StreamSessionTest {
         public void handle(
             ZLinkSessionContext context,
             ZLinkStreamHeader header,
-            Message payload) {
-            DispatcherSession.handled.add("handler:" + payload.toUtf8String());
+            ZLinkMessage payload) {
+            DispatcherSession.handled.add("handler:" + payload.decode(String.class));
             context.client()
                 .reply("authenticated")
                 .submit()
@@ -537,7 +538,7 @@ final class StreamSessionTest {
         @Override
         public void onDispatch(
             ZLinkStreamHeader header,
-            Message payload) {
+            ZLinkMessage payload) {
             context.client()
                 .reply("reply")
                 .submit()
@@ -600,7 +601,7 @@ final class StreamSessionTest {
         @Override
         public void onDispatch(
             ZLinkStreamHeader header,
-            Message payload) {
+            ZLinkMessage payload) {
             context.client()
                 .send("notify")
                 .packetName("Notify")

@@ -18,6 +18,7 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorRef;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -102,9 +103,9 @@ final class RemoteActorGatewayTest {
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
             ZLinkActor actor,
-            Message request,
+            ZLinkMessage request,
             CancellationToken cancellationToken) {
-            return ZLinkSpotActorJoinResponse.accept(Message.from("joined"));
+            return ZLinkSpotActorJoinResponse.accept("joined");
         }
 
         @Override

@@ -35,6 +35,7 @@ import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
@@ -129,19 +130,17 @@ final class SpotRuntimeFakeBackendTest {
                 node.addSpotFactory(PayloadSpot.class); }; };
         RoutingId rid = RoutingId.from("payload-spot");
 
-        try (Message first = Message.from("first".getBytes(StandardCharsets.UTF_8));
-             Message second = Message.from("second".getBytes(StandardCharsets.UTF_8));
-             ZLinkFrameworkRuntime runtime =
+        try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new FakeZLinkBackendAdapterFactory())) {
             assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
-                .getOrCreate(PayloadSpot.class, rid, first)
+                .getOrCreate(PayloadSpot.class, rid, "first")
                 .toCompletableFuture()
                 .join()
                 .state());
             assertEquals("first", PayloadSpot.lastCreatePayload.get());
 
             assertEquals(ZLinkSpotCreateState.EXISTING, runtime.spotManager()
-                .getOrCreate(PayloadSpot.class, rid, second)
+                .getOrCreate(PayloadSpot.class, rid, "second")
                 .toCompletableFuture()
                 .join()
                 .state());
@@ -622,6 +621,7 @@ final class SpotRuntimeFakeBackendTest {
     @Test
     void ambientSpotOutboundWorksInsideSpotCallback() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        { var channel = options.addClientServerChannel("play-events"); channel.enableClient("inproc://play-events"); };
         { var mesh = options.addSpotMesh("game"); { var node = mesh.addNode("play"); node.addSpotFactory(AmbientOutboundSpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -637,7 +637,7 @@ final class SpotRuntimeFakeBackendTest {
 
         assertEquals(
             true,
-            backendFactory.calls().contains("spot.1.sendToChannel.play-events.Greeting"));
+            backendFactory.calls().contains("dealer.send.Greeting"));
     }
 
     @Test
@@ -1234,8 +1234,8 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotCreateResponse onCreate(Message request) {
-            lastCreatePayload.set(request.toUtf8String());
+        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
+            lastCreatePayload.set(request.decode(String.class));
             return ZLinkSpotCreateResponse.accept();
         }
     }
@@ -1358,16 +1358,15 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
             ZLinkActor actor,
-            Message request,
+            ZLinkMessage request,
             CancellationToken cancellationToken) {
-            SerialJoinRequest decoded = new SerialJoinRequest(request.toUtf8String());
+            SerialJoinRequest decoded = request.decode(SerialJoinRequest.class);
             SerialActorJoinHandler.events.add(
                 "join:start:" + actor.actorId() + ":" + decoded.value());
             SerialActorJoinHandler.started.complete(null);
             SerialActorJoinHandler.release.join();
             SerialActorJoinHandler.events.add("join:end:" + actor.actorId());
-            return ZLinkSpotActorJoinResponse.accept(
-                Message.from(("joined:" + decoded.value()).getBytes(StandardCharsets.UTF_8)));
+            return ZLinkSpotActorJoinResponse.accept("joined:" + decoded.value());
         }
     }
 
@@ -1478,7 +1477,7 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public ZLinkSpotCreateResponse onCreate(Message request) {
+        public ZLinkSpotCreateResponse onCreate(ZLinkMessage request) {
             outbound
                 .sendToChannel("play-events", message("hello", "Greeting"))
                 .packetName("Greeting")
@@ -1526,15 +1525,14 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
             ZLinkActor actor,
-            Message request,
+            ZLinkMessage request,
             CancellationToken cancellationToken) {
-            lastActorJoin.set(actor.actorId() + ":" + request.toUtf8String());
+            String decoded = request.decode(String.class);
+            lastActorJoin.set(actor.actorId() + ":" + decoded);
             if (Boolean.TRUE.equals(rejectJoin.get())) {
-                return ZLinkSpotActorJoinResponse.reject(
-                    Message.from("entry-rejected:" + request.toUtf8String()));
+                return ZLinkSpotActorJoinResponse.reject("entry-rejected:" + decoded);
             }
-            return ZLinkSpotActorJoinResponse.accept(
-                Message.from("entry:" + request.toUtf8String()));
+            return ZLinkSpotActorJoinResponse.accept("entry:" + decoded);
         }
 
         @Override
@@ -1611,11 +1609,11 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
             ZLinkActor actor,
-            Message request,
+            ZLinkMessage request,
             CancellationToken cancellationToken) {
-            lastJoin.set(actor.actorId() + ":" + request.toUtf8String());
-            return
-                ZLinkSpotActorJoinResponse.accept(Message.from("joined:" + request.toUtf8String()));
+            String decoded = request.decode(String.class);
+            lastJoin.set(actor.actorId() + ":" + decoded);
+            return ZLinkSpotActorJoinResponse.accept("joined:" + decoded);
         }
 
         @Override

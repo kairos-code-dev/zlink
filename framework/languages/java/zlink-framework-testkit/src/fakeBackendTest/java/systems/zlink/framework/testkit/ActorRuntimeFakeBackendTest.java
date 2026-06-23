@@ -21,6 +21,7 @@ import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
@@ -101,7 +102,7 @@ final class ActorRuntimeFakeBackendTest {
                 .join();
 
             var joined = actor.context()
-                .joinEntrySpot(RoutingId.from("entry-node"), Message.from(new byte[0]))
+                .joinEntrySpot(RoutingId.from("entry-node"), ZLinkMessage.empty())
                 .submit(Message.class)
                 .toCompletableFuture()
                 .join();
@@ -149,7 +150,7 @@ final class ActorRuntimeFakeBackendTest {
             assertSame(GameSpot.instance, actor.context().getSpot(GameSpot.class));
 
             actor.context()
-                .joinEntrySpot(RoutingId.from("entry-node"), Message.from(new byte[0]))
+                .joinEntrySpot(RoutingId.from("entry-node"), ZLinkMessage.empty())
                 .submit(Message.class)
                 .toCompletableFuture()
                 .join();
@@ -282,7 +283,7 @@ final class ActorRuntimeFakeBackendTest {
                     .join());
 
             roomActor.context()
-                .joinEntrySpot(RoutingId.from("spot-node"), Message.from(new byte[0]))
+                .joinEntrySpot(RoutingId.from("spot-node"), ZLinkMessage.empty())
                 .submit(Message.class)
                 .toCompletableFuture()
                 .join();
@@ -458,7 +459,7 @@ final class ActorRuntimeFakeBackendTest {
 
             sessionActor.relay(
                     new ZLinkStreamHeader("MoveReq", java.util.Map.of(), Optional.empty()),
-                    Message.from("move".getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                    ZLinkMessage.of("move"))
                 .toCompletableFuture()
                 .join();
         }
@@ -706,10 +707,10 @@ final class ActorRuntimeFakeBackendTest {
         @Override
         public ZLinkSpotActorJoinResponse onActorJoin(
             ZLinkActor actor,
-            Message request,
+            ZLinkMessage request,
             CancellationToken cancellationToken) {
             ZLinkAwait.await(actor.context().boundSession().send("joined-notify").submit());
-            return ZLinkSpotActorJoinResponse.accept(Message.from("joined"));
+            return ZLinkSpotActorJoinResponse.accept("joined");
         }
     }
 

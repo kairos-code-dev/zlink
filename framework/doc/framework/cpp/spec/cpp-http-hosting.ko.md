@@ -546,7 +546,7 @@ runtime 구현은 아래 위치에 둔다.
 
 ```text
 framework/src/runtime/http/http_host_service.hpp
-framework/src/runtime/http/http_host_service.cpp
+framework/src/runtime/http/http_listener.cpp
 ```
 
 `Boost.Beast`, `Boost.Asio`, OpenSSL/SSL context 타입은 runtime 구현 파일에서만 사용한다.

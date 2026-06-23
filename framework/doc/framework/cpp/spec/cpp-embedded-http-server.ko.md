@@ -8,9 +8,8 @@
 
 # Spec -- ZLink Framework C++ Embedded HTTP Server
 
-> 이 문서는 **구현 완료된 설계 계약**이다.
-> `C++` framework 안에서 제공할 내장 HTTP 웹서버 runtime의
-> 개발 기준과 완료 조건을 정리한다.
+> 이 문서는 `C++` framework 안에서 제공하는 내장 HTTP 웹서버 runtime의
+> 현재 구현 계약과 아직 남은 설계 기준을 함께 정리한다.
 >
 > [HTTP Hosting](cpp-http-hosting.ko.md)이 사용자가 보는 route, handler, DTO binding
 > 표면을 다룬다면, 이 문서는 그 표면 뒤에서 동작하는 server runtime, connection lifecycle,
@@ -80,7 +79,7 @@ protocol lifecycle을 처리한다.
 app.add_zlink_framework ([&] (auto &options) {
     options.http ()
       .listen (topology.api_http_endpoint)
-      .map_post<create_match_handler_t> ("/games");
+      .map_post<create_game_http_handler_t> ("/games");
 });
 ```
 
@@ -295,7 +294,7 @@ app.add_zlink_framework ([&] (auto &options) {
                 .set_keep_alive_timeout (std::chrono::seconds (60));
       })
       .map_get<get_game_handler_t> ("/games/{id}")
-      .map_post<create_game_handler_t> ("/games")
+      .map_post<create_game_http_handler_t> ("/games")
       .map_put<update_game_handler_t> ("/games/{id}")
       .map_delete<delete_game_handler_t> ("/games/{id}");
 });
@@ -454,16 +453,16 @@ HTTP server는 handler model을 새로 만들지 않는다. `cpp-http-hosting.ko
 그대로 사용한다.
 
 ```cpp
-class create_match_handler_t {
+class create_game_http_handler_t {
   public:
-    using request_type = create_match_req_t;
-    using reply_type = create_match_res_t;
+    using request_type = create_game_http_req_t;
+    using reply_type = create_game_http_res_t;
     using dependency_types =
       zlink::framework::dependency_list_t<
-        create_match_room_handler_t,
-        zlink::framework::logger_t<create_match_handler_t>>;
+        zlink::framework::channel_client_t,
+        zlink::framework::logger_t<create_game_http_handler_t>>;
 
-    create_match_res_t handle (const create_match_req_t &request);
+    task_t<create_game_http_res_t> handle (const create_game_http_req_t &request);
 };
 ```
 
@@ -789,7 +788,11 @@ TLS context, executor tuning은 runtime option이나 내부 구현으로 숨긴�
 테스트는 public API를 기준으로 작성한다. private socket이나 Beast request 객체를 직접 조작하는
 테스트는 runtime unit test로만 제한한다.
 
-## 19. 구현 단계
+## 19. 남은 구현 단계
+
+아래 단계는 §3의 현재 구현에 이미 들어간 keep-alive, timeout, limit, graceful shutdown
+동작을 다시 요구하는 목록이 아니다. 현재 `http_host_service_t`와 nested `listener_t`에 모인
+내부 책임을 더 깊은 runtime module로 나누고, 관측성과 성능 검증을 추가하기 위한 후속 작업이다.
 
 ### Phase 1. Runtime 구조 분리
 
@@ -797,23 +800,21 @@ TLS context, executor tuning은 runtime option이나 내부 구현으로 숨긴�
 - 현재 동작을 유지한 상태에서 regression을 통과한다.
 - public API 변경은 하지 않는다.
 
-### Phase 2. Server option과 validation
+### Phase 2. Server option validation 보강
 
-- server option snapshot을 추가한다.
-- endpoint/TLS/body/header/timeout validation을 startup 전에 수행한다.
+- 현재 option snapshot을 유지한다.
+- endpoint/TLS/body/header/timeout validation을 startup 전에 더 넓게 수행한다.
 - invalid configuration 회귀 테스트를 추가한다.
 
-### Phase 3. Keep-alive와 TLS context lifecycle
+### Phase 3. TLS context lifecycle 정리
 
-- connection request loop를 추가한다.
 - TLS context를 listener 단위로 재사용한다.
-- keep-alive timeout과 max request count를 추가한다.
+- TLS option 적용과 listener 생성 책임을 분리한다.
 
-### Phase 4. Bounded connection I/O
+### Phase 4. Connection I/O 구조 고도화
 
-- connection당 thread 생성을 제거하고 bounded worker pool로 connection I/O를 처리한다.
+- bounded worker pool 또는 Asio async state machine으로 connection I/O를 처리한다.
 - executor/thread option을 정리한다.
-- graceful shutdown drain을 구현한다.
 - I/O executor와 handler executor를 분리한다.
 - connection state가 connection 처리 흐름 안에서 직렬화되는지 검증한다.
 - route table compile과 buffer reuse를 적용한다.
@@ -833,9 +834,11 @@ TLS context, executor tuning은 runtime option이나 내부 구현으로 숨긴�
 - Drogon/Oat++ baseline benchmark를 같은 payload와 connection 조건으로 추가한다.
 - baseline 대비 처리량/latency report gate를 CTest label `framework-http-perf`에 연결한다.
 
-## 20. 완료 기준
+## 20. 목표 완료 기준
 
-내장 HTTP server goal은 아래 조건을 모두 만족해야 완료로 본다.
+내장 HTTP server가 backend API framework의 기본 server로 자리 잡으려면 아래 조건을 모두 만족해야
+한다. 일부 항목은 현재 구현되어 있고, 관측성/성능 gate처럼 아직 남은 항목은 §19 후속 단계에서
+완료한다.
 
 - `options.http().listen(...).map_*<THandler>(...)` public 표면을 유지한다.
 - HTTP/1.1, HTTPS, keep-alive, timeout, limit, graceful shutdown을 지원한다.

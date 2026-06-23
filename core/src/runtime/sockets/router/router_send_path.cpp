@@ -49,6 +49,8 @@ void format_routing_id_debug (const zlink_routing_id_t *rid_, char *buf_, size_t
 
 int zlink::router_t::xsend (msg_t *msg_)
 {
+    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
+
     if (!_more_out) {
         zlink_assert (!_current_out);
 
@@ -140,6 +142,8 @@ int zlink::router_t::xsend (msg_t *msg_)
 
 int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t *msg_)
 {
+    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
+
     zlink_assert (!_more_out);
     zlink_assert (!_current_out);
 

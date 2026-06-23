@@ -284,6 +284,40 @@ void router_client_run (void *client_,
         }
     }
 }
+
+void router_send_during_peer_close_run (void *router_,
+                                        const zlink_routing_id_t *peer_rid_,
+                                        start_gate_t *gate_,
+                                        worker_result_t *result_)
+{
+    if (!wait_for_start_gate (gate_, 5000)) {
+        errno = ETIMEDOUT;
+        mark_failure (result_, "router close-race sender start gate timed out");
+        return;
+    }
+
+    for (int i = 0; i < 200; ++i) {
+        char payload[64];
+        snprintf (payload, sizeof (payload), "close-race-%04d", i);
+        zlink_msg_t msg;
+        open_single_part_message (&msg, payload);
+        const int rc = zlink_send_rid (router_, peer_rid_, &msg, 1, ZLINK_DONTWAIT);
+        if (rc == 0)
+            continue;
+
+        const int send_errno = errno;
+        zlink_msg_close (&msg);
+        if (send_errno == EAGAIN || send_errno == EHOSTUNREACH || send_errno == ENOTCONN
+            || send_errno == ECONNREFUSED) {
+            errno = 0;
+            continue;
+        }
+
+        errno = send_errno;
+        mark_failure (result_, "router send_rid during peer close failed unexpectedly");
+        return;
+    }
+}
 } // namespace
 
 void test_router_router_concurrent_echo_does_not_corrupt_recv_queue ()
@@ -386,11 +420,78 @@ void test_router_router_concurrent_echo_does_not_corrupt_recv_queue ()
     close_zero_linger (server);
 }
 
+void test_router_routed_send_during_peer_close_does_not_touch_destroyed_pipe ()
+{
+    void *router = zlink_socket (get_test_context (), ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (router);
+    set_socket_timeouts (router);
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (router, ZLINK_OPT_SNDTIMEO, &zero, sizeof (zero)));
+    const int mandatory = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
+
+    ready_monitor_t router_monitor;
+    TEST_ASSERT_TRUE (open_ready_monitor (router, &router_monitor));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (router, endpoint, sizeof (endpoint));
+
+    for (int round = 0; round < 50; ++round) {
+        void *dealer = zlink_socket (get_test_context (), ZLINK_SOCKET_DEALER);
+        TEST_ASSERT_NOT_NULL (dealer);
+        set_socket_timeouts (dealer);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (dealer, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+
+        char dealer_name[32];
+        snprintf (dealer_name, sizeof (dealer_name), "close-race-%02d", round);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_set_routing_id (dealer, dealer_name, std::strlen (dealer_name)));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
+
+        TEST_ASSERT_TRUE (wait_ready_count (&router_monitor, round + 1, 5000));
+        TEST_ASSERT_TRUE (send_single_part (dealer, NULL, "ready"));
+
+        zlink_routing_id_t peer_rid;
+        std::string payload;
+        TEST_ASSERT_TRUE (recv_single_part (router, &peer_rid, &payload));
+        TEST_ASSERT_EQUAL_STRING ("ready", payload.c_str ());
+
+        start_gate_t gate;
+        worker_result_t sender_result;
+        std::thread sender (router_send_during_peer_close_run, router, &peer_rid, &gate,
+                            &sender_result);
+
+        {
+            std::unique_lock<std::mutex> lock (gate.sync);
+            const bool sender_ready =
+              gate.cv.wait_for (lock, std::chrono::milliseconds (5000),
+                                [&gate] { return gate.ready == 1; });
+            TEST_ASSERT_TRUE_MESSAGE (sender_ready, "router close-race sender did not become ready");
+            gate.go = true;
+            gate.cv.notify_all ();
+        }
+
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        close_zero_linger (dealer);
+        sender.join ();
+
+        TEST_ASSERT_FALSE_MESSAGE (sender_result.failed.load (), sender_result.detail.c_str ());
+        TEST_ASSERT_EQUAL_INT_MESSAGE (0, sender_result.errno_value.load (),
+                                       sender_result.detail.c_str ());
+    }
+
+    close_ready_monitor (&router_monitor);
+    close_zero_linger (router);
+}
+
 int main ()
 {
     setup_test_environment ();
 
     UNITY_BEGIN ();
     RUN_TEST (test_router_router_concurrent_echo_does_not_corrupt_recv_queue);
+    RUN_TEST (test_router_routed_send_during_peer_close_does_not_touch_destroyed_pipe);
     return UNITY_END ();
 }

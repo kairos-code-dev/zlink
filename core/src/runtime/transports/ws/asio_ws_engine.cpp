@@ -40,6 +40,15 @@ const bool ws_gather_write_on = zlink::asio_stream_fastpath_policy::gather_write
 
 const size_t ws_gather_threshold = zlink::asio_stream_fastpath_policy::gather_threshold ();
 
+// STREAM over WS/WSS has the same large-frame copy cost as TCP/TLS STREAM.
+// Keep the STREAM-specific gather path enabled by default so 64 KiB echo
+// traffic can write ZMP header + body without first copying the body through
+// the encoder batch buffer. Plain WS users still need ZLINK_ASIO_GATHER_WRITE.
+const bool ws_stream_gather_on = zlink::asio_stream_fastpath_policy::stream_gather_enabled ();
+
+const size_t ws_stream_gather_threshold =
+  zlink::asio_stream_fastpath_policy::stream_gather_threshold ();
+
 const size_t stream_target_initial_cap = 64 * 1024;
 const size_t ws_stream_initial_target = 64 * 1024;
 
@@ -1074,7 +1083,9 @@ bool zlink::asio_ws_engine_t::build_gather_header (const msg_t &msg_,
 
 bool zlink::asio_ws_engine_t::prepare_gather_output ()
 {
-    if (!ws_gather_write_on)
+    const bool stream_mode = _options.type == ZLINK_CORE_SOCKET_STREAM;
+    const bool gather_enabled = ws_gather_write_on || (stream_mode && ws_stream_gather_on);
+    if (!gather_enabled)
         return false;
     if (!_transport || !_transport->supports_gather_write ())
         return false;
@@ -1099,7 +1110,8 @@ bool zlink::asio_ws_engine_t::prepare_gather_output ()
     }
 
     const size_t body_size = _tx_msg.size ();
-    if (body_size < ws_gather_threshold) {
+    const size_t threshold = stream_mode ? ws_stream_gather_threshold : ws_gather_threshold;
+    if (body_size < threshold) {
         _encoder->load_msg (&_tx_msg);
         return false;
     }

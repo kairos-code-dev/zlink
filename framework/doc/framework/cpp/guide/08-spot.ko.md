@@ -158,11 +158,12 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
 
     // 입장 수락/거부
     zlink::framework::spot_actor_join_response_t
-    on_actor_join (const player_actor_t &actor, const zlink::message_t &request_message)
+    on_actor_join (const player_actor_t &actor, const zlink::framework::message_t &request)
     {
-        join (actor.actor.actor_id, actor.display_name);
+        auto join_request = request.decode<bingo_room_join_req_t> ();
+        join (actor.actor.actor_id, join_request.display_name);
         return zlink::framework::spot_actor_join_response_t::accept (
-          to_stream_payload (bingo_room_join_res_t{snapshot ()}));
+          bingo_room_join_res_t{snapshot ()});
     }
 
     void on_actor_joined (const player_actor_t &actor) { /* 입장 완료 후 알림 */ }

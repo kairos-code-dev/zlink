@@ -444,6 +444,9 @@ zlink::spot_reqrep_internal::find_or_create_spot_state (void *spot_)
     if (!state->owner)
         state->owner = spot_;
 
+    // Keep identity-index refresh out of the per-request lookup path.  The
+    // refresh scans the global identity registry, so repeating it for every
+    // request regresses multi SPOT request/reply throughput significantly.
     if (created || owner_registered)
         refresh_spot_identity_index (spot, state);
     return state;

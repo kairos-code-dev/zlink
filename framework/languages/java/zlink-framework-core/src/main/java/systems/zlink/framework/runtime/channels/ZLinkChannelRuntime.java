@@ -77,6 +77,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     private final Map<String, ZLinkBackendDealerSocket> clients = new HashMap<>();
     private final Map<String, ZLinkBackendRouterSocket> servers = new HashMap<>();
     private final Map<String, ZLinkBackendSpotRouteBridge> spotRouteBridges = new HashMap<>();
+    private final Set<String> spotRouteBridgeDrainLoops = ConcurrentHashMap.newKeySet();
     private final Map<String, ZLinkBackendPublisherSocket> publishers = new HashMap<>();
     private final Map<String, ZLinkBackendSubscriberSocket> subscribers = new HashMap<>();
     private final Map<String, ZLinkBackendRouterSocket> routeRouters = new HashMap<>();
@@ -409,6 +410,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             new SpotRouteBridgeEndpointOptions()
                 .capabilities(SpotRouteBridgeEndpointCapabilities.ROUTE_WITH_CHANNEL_INBOUND));
         spotRouteBridges.put(channelName, bridge);
+        startSpotRouteBridgeDrainLoop(channelName, bridge);
         return true;
     }
 
@@ -746,7 +748,31 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     .capabilities(SpotRouteBridgeEndpointCapabilities.ROUTE_ONLY));
         }
         spotRouteBridges.put(channelName, bridge);
+        startSpotRouteBridgeDrainLoop(channelName, bridge);
         return bridge;
+    }
+
+    private void startSpotRouteBridgeDrainLoop(
+        String channelName,
+        ZLinkBackendSpotRouteBridge bridge) {
+        if (!spotRouteBridgeDrainLoops.add(channelName)) {
+            return;
+        }
+        receiveExecutor.submit(() -> {
+            while (running) {
+                try {
+                    bridge.drain();
+                } catch (RuntimeException ignored) {
+                    return;
+                }
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        });
     }
 
     private ZLinkBackendPublisherSocket requirePublisher(String channelName) {

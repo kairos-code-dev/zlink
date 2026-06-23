@@ -236,6 +236,8 @@ final class NativeSpotRouteBridge implements SpotRouteBridge {
             RoutedRequestSupport.registerPending(requestId, timeoutMs);
         RequestProgressPump.trackSocketRequest(future,
             endpointHandle(channelName), "zlink-spot-route-bridge-request");
+        RequestProgressPump.trackSpotRouteBridgeRequest(future,
+            handle(), "zlink-spot-route-bridge-drain");
         try {
             submitRequest(channelName, targetSpotRid, parts, flags,
                 RequestReplySupport.toTimeoutInt(timeoutMs), requestId);

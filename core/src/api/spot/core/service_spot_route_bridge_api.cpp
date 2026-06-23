@@ -12,6 +12,7 @@
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 #include "services/spot/node/spot_node.hpp"
 #include "services/spot/node/spot_node_access.hpp"
+#include "services/spot/runtime/spot_handle.hpp"
 #include "services/spot/runtime/spot_runtime.hpp"
 #include "runtime/core/internal_defs.hpp"
 #include "sockets/common/socket_base.hpp"
@@ -66,6 +67,60 @@ bool valid_channel_name (const char *channel_name_)
 bool has_valid_routing_id (const zlink_routing_id_t *rid_)
 {
     return rid_ && rid_->size > 0 && rid_->size <= sizeof (rid_->data);
+}
+
+int drain_endpoint_reply_progress (spot_route_bridge_t *bridge_, bridge_endpoint_t &endpoint_)
+{
+    int drained = 0;
+
+    if (endpoint_.socket) {
+        endpoint_.socket->socket_msg_dispatch_drain_pending ();
+        std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> socket_state =
+          zlink::socket_reqrep_internal::find_request_reply_state (
+            make_socket_handle (endpoint_.socket));
+        if (socket_state) {
+            const int socket_drained =
+              zlink::socket_reqrep_internal::drain_reply_completions (socket_state,
+                                                                      endpoint_.socket);
+            if (socket_drained < 0)
+                return -1;
+            drained += socket_drained;
+        }
+    }
+
+    std::vector<std::shared_ptr<spot_logical_state_t>> spots;
+    if (bridge_->node)
+        bridge_->node->snapshot_spot_states (&spots);
+    for (std::vector<std::shared_ptr<spot_logical_state_t>>::iterator it = spots.begin ();
+         it != spots.end (); ++it) {
+        if (!*it || !(*it)->request_reply_state)
+            continue;
+        void *owner = (*it)->request_reply_state->owner
+                        ? (*it)->request_reply_state->owner
+                        : static_cast<void *> ((*it).get ());
+        const int spot_drained =
+          zlink::spot_reqrep_internal::drain_spot_channel_reply_completions_from (
+            (*it)->request_reply_state, owner, endpoint_.socket);
+        if (spot_drained < 0) {
+            if (errno == ENOENT) {
+                errno = 0;
+                continue;
+            }
+            return -1;
+        }
+        drained += spot_drained;
+    }
+
+    if (endpoint_.reply_adapter_state) {
+        const int router_drained = zlink::spot_reqrep_internal::drain_router_reply_completions (
+          endpoint_.reply_adapter_state, endpoint_.socket);
+        if (router_drained < 0)
+            return -1;
+        drained += router_drained;
+    }
+
+    errno = 0;
+    return drained;
 }
 
 bool build_endpoint_source_rid (void *socket_,
@@ -617,12 +672,11 @@ int zlink_spot_route_bridge_drain (void *bridge_)
     for (std::map<std::string, bridge_endpoint_t>::iterator it = bridge->endpoints.begin ();
          it != bridge->endpoints.end (); ++it) {
         bridge_endpoint_t &endpoint = it->second;
-        if (!endpoint.reply_adapter_state)
-            continue;
-        if (zlink::spot_reqrep_internal::drain_router_reply_completions (
-              endpoint.reply_adapter_state, endpoint.socket)
-            != 0) {
+        const int drained = drain_endpoint_reply_progress (bridge, endpoint);
+        if (drained < 0) {
             rc = -1;
+        } else {
+            rc += drained;
         }
     }
     return rc;

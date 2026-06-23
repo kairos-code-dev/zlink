@@ -560,7 +560,7 @@ export interface ZLinkEntrySpotActorRequestHandler<
 
 #### lifecycle callback 의미
 
-- `onCreate(request)` 는 생성 요청이 넘긴 단일 `Message` 를 spot 상태로 해석하는
+- `onCreate(request)` 는 생성 요청이 넘긴 단일 `ZLinkMessage` 를 spot 상태로 해석하는
   단계다. framework 가 새 spot 인스턴스를 만든 경우에만 호출된다. 반환값은
   `{ accepted, reply? }` 이며, `accepted: false` 는 등록 없이 `Rejected` 결과로
   caller 에게 돌아간다.

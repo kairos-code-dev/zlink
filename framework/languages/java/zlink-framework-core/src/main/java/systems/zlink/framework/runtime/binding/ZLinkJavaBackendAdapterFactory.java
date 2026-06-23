@@ -274,6 +274,8 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { socket.attachDiscovery(((JavaDiscovery) discovery).nativeDiscovery()); }
         @Override public void setChannelName(String channelName) { socket.setChannelName(channelName); }
         @Override public void setRoutingId(RoutingId routingId) { socket.setRoutingId(routingId); }
+        @Override public int peerWeight() { return socket.options().peerWeight(); }
+        @Override public void setPeerWeight(int weight) { socket.options().peerWeight(weight); }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) {
             try (Received result = new Received()) {
                 return socket.recv(result, map(mode)) ? fromReceived(result) : null;

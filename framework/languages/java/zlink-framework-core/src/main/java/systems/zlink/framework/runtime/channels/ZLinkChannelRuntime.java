@@ -36,6 +36,8 @@ import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
+import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
+import systems.zlink.framework.channels.ZLinkClientServerChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkPublishContext;
 import systems.zlink.framework.channels.ZLinkRouteClient;
@@ -45,6 +47,7 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
@@ -70,7 +73,9 @@ import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 
-public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient, AutoCloseable {
+public final class ZLinkChannelRuntime
+    implements ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient, ZLinkChannelRuntimeOptions,
+        AutoCloseable {
     private static final String FRAMEWORK_ERROR_REPLY_MARKER = "ZLinkFrameworkError";
 
     private final ZLinkBackendContext context;
@@ -130,6 +135,75 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     });
     private final java.util.Set<CompletableFuture<?>> pendingRequests = ConcurrentHashMap.newKeySet();
     private volatile boolean running = true;
+
+    @Override
+    public ZLinkClientServerChannelRuntimeOptions clientServerChannel(String channelName) {
+        ChannelRegistration registration = requireChannel(channelName, ChannelKind.CLIENT_SERVER);
+        return new ClientServerRuntimeOptions(registration.name());
+    }
+
+    private ChannelRegistration requireChannel(String channelName, ChannelKind kind) {
+        if (channelName == null || channelName.isBlank()) {
+            throw new ZLinkConfigurationException("channel name is required");
+        }
+        ChannelRegistration registration = registrationsByName.get(channelName);
+        if (registration == null) {
+            throw new ZLinkConfigurationException("channel is not configured: " + channelName);
+        }
+        if (registration.kind() != kind) {
+            throw new ZLinkConfigurationException(
+                "channel has incompatible kind: " + channelName);
+        }
+        return registration;
+    }
+
+    private ZLinkBackendRouterSocket requireServerSocket(String channelName) {
+        ZLinkBackendRouterSocket socket = servers.get(channelName);
+        if (socket == null) {
+            throw new ZLinkConfigurationException(
+                "client/server channel has no server socket: " + channelName);
+        }
+        return socket;
+    }
+
+    private static void validatePeerWeight(int value) {
+        if (value < 0 || value > 100) {
+            throw new ZLinkConfigurationException("Weight must be between 0 and 100.");
+        }
+    }
+
+    private final class ClientServerRuntimeOptions
+        implements ZLinkClientServerChannelRuntimeOptions {
+        private final String channelName;
+
+        ClientServerRuntimeOptions(String channelName) {
+            this.channelName = channelName;
+        }
+
+        @Override
+        public ZLinkSocketRuntimeOptions configureServerSocket() {
+            return new ServerSocketRuntimeOptions(channelName);
+        }
+    }
+
+    private final class ServerSocketRuntimeOptions implements ZLinkSocketRuntimeOptions {
+        private final String channelName;
+
+        ServerSocketRuntimeOptions(String channelName) {
+            this.channelName = channelName;
+        }
+
+        @Override
+        public int weight() {
+            return requireServerSocket(channelName).peerWeight();
+        }
+
+        @Override
+        public void weight(int value) {
+            validatePeerWeight(value);
+            requireServerSocket(channelName).setPeerWeight(value);
+        }
+    }
 
     public ZLinkChannelRuntime(
         ZLinkChannelBackendAdapter backend,

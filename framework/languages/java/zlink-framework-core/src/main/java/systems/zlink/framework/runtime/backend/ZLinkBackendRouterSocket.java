@@ -13,6 +13,10 @@ public interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket 
 
     void setRoutingId(RoutingId routingId);
 
+    int peerWeight();
+
+    void setPeerWeight(int weight);
+
     ZLinkBackendReceived recv(ZLinkBackendRecvMode mode);
 
     boolean send(RoutingId routingId, List<Message> parts, SendFlags flags);

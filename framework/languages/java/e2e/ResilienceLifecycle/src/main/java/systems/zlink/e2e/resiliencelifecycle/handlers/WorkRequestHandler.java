@@ -1,0 +1,31 @@
+package systems.zlink.e2e.resiliencelifecycle.handlers;
+
+import systems.zlink.e2e.resiliencelifecycle.Contracts;
+import systems.zlink.e2e.resiliencelifecycle.ScenarioState;
+import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.channels.ZLinkRequestHandler;
+import systems.zlink.framework.handlers.ZLinkHandlerGroup;
+
+@ZLinkHandlerGroup(Contracts.HANDLER_GROUP)
+public final class WorkRequestHandler
+    implements ZLinkRequestHandler<Contracts.WorkRequest, Contracts.WorkReply> {
+    private final ScenarioState state;
+
+    public WorkRequestHandler(ScenarioState state) {
+        this.state = state;
+    }
+
+    @Override
+    public Contracts.WorkReply handle(
+        Contracts.WorkRequest request,
+        ZLinkRequestContext context) {
+        if ("slow".equals(request.value())) {
+            state.record("SlowStarted", request.value());
+            state.awaitSlowRelease();
+            state.record("SlowCompleted", request.value());
+        } else {
+            state.record("WorkRequest", request.value());
+        }
+        return new Contracts.WorkReply("work:" + request.value(), state.providerRid());
+    }
+}

@@ -628,6 +628,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
 
     private static final class FakeRouterSocket extends FakeConnectableSocket implements ZLinkBackendRouterSocket {
         private final Deque<ZLinkBackendReceived> received = new ArrayDeque<>();
+        private int peerWeight = 100;
 
         FakeRouterSocket(List<String> calls, String name) {
             super(calls, name);
@@ -650,6 +651,8 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void attachDiscovery(ZLinkBackendDiscovery discovery) { record("attachDiscovery." + discovery.name()); }
         @Override public void setChannelName(String channelName) { record("setChannelName." + channelName); }
         @Override public void setRoutingId(RoutingId routingId) { record("setRoutingId"); }
+        @Override public int peerWeight() { return peerWeight; }
+        @Override public void setPeerWeight(int weight) { peerWeight = weight; record("setPeerWeight." + weight); }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return received.pollFirst(); }
         @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) { record("send." + routingId + "." + firstPart(parts)); return true; }
         @Override public boolean request(RoutingId routingId, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {

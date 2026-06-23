@@ -105,6 +105,7 @@ else if (options.Role == "session")
             .SetRoutingId(RoutingId.From(options.Rid))
             .AddHandlerGroup("play");
         framework.AddSpotMesh(SpotServiceNames.SpotChannel)
+            .UseRegistrySpotResolver()
             .AddNode(SpotServiceNames.SessionSpotNode)
             .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
             .SetRouterRoutingId(RoutingId.From(options.Rid))
@@ -562,6 +563,29 @@ internal sealed class UserActorLeaveHandler
 
         await spot.Context.leaveActor(actor, cancellationToken);
         return new LeaveReply(actor.ActorId, true);
+    }
+}
+
+[ZLinkSpotActorRequestHandler("SnapshotReq")]
+internal sealed class EntryActorSnapshotHandler
+    : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, SnapshotReq, SnapshotReply>
+{
+    public ValueTask<SnapshotReply> HandleAsync(
+        ScenarioEntrySpot entrySpot,
+        ScenarioActor actor,
+        ZLinkSpotActorRequestContext context,
+        SnapshotReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = entrySpot;
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Snapshot request actor does not match dispatched actor.");
+        }
+
+        return ValueTask.FromResult(new SnapshotReply(actor.ActorId, actor.Seen));
     }
 }
 

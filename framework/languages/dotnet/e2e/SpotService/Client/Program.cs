@@ -23,6 +23,7 @@ static async Task RunAsync(ClientOptions options)
     await RunSmD1AndD6Async(options);
     await RunSmD4Async(options);
     await RunSmD5Async(options);
+    await RunSmD12Async(options);
     await RunSmC1C2Async(options);
     await RunSmE1AndF4Async(options);
     await RunSmA1A2A4F1F2Async(options);
@@ -34,9 +35,7 @@ static async Task RunSmB1B2B3B5Async(ClientOptions options)
     var playABefore = await ReadEvidenceAsync(options.PlayAEvidenceUrl);
     var playBBefore = await ReadEvidenceAsync(options.PlayBEvidenceUrl);
     await using var local = CreateClient(options.SessionAStreamEndpoint);
-    await using var remote = CreateClient(options.SessionAStreamEndpoint);
     await local.Connect.Async();
-    await remote.Connect.Async();
 
     await local.Request(new AuthReq("actor-sm-b1-local", "local actor", options.PlayARid))
         .PacketName("AuthReq")
@@ -46,15 +45,6 @@ static async Task RunSmB1B2B3B5Async(ClientOptions options)
         .Async<ActorPingReply>();
     Ensure(localReply.ActorId == "actor-sm-b1-local", "SM-B1 actor reply mismatch.");
     Ensure(localReply.NodeRid == options.PlayARid, "SM-B1 local node mismatch.");
-
-    await remote.Request(new AuthReq("actor-sm-b2-remote", "remote actor", options.PlayBRid))
-        .PacketName("AuthReq")
-        .Async<AuthReply>();
-    var remoteReply = await remote.Request(new ActorPingReq("b2"))
-        .PacketName("ActorPingReq")
-        .Async<ActorPingReply>();
-    Ensure(remoteReply.ActorId == "actor-sm-b2-remote", "SM-B2 actor reply mismatch.");
-    Ensure(remoteReply.NodeRid == options.PlayBRid, "SM-B2 remote node mismatch.");
 
     var complex = await local.Request(new ComplexActorReq(
             "Ada Lovelace",
@@ -79,6 +69,17 @@ static async Task RunSmB1B2B3B5Async(ClientOptions options)
             .Timeout(TimeSpan.FromSeconds(2))
             .Async<ActorPingReply>().AsTask(),
         "SM-B5 expected missing actor handler request to fail.");
+
+    await using var remote = CreateClient(options.SessionAStreamEndpoint);
+    await remote.Connect.Async();
+    await remote.Request(new AuthReq("actor-sm-b2-remote", "remote actor", options.PlayBRid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    var remoteReply = await remote.Request(new ActorPingReq("b2"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    Ensure(remoteReply.ActorId == "actor-sm-b2-remote", "SM-B2 actor reply mismatch.");
+    Ensure(remoteReply.NodeRid == options.PlayBRid, "SM-B2 remote node mismatch.");
 
     await WaitUntilAsync(async () =>
     {
@@ -270,6 +271,48 @@ static async Task RunSmD5Async(ClientOptions options)
         return CountNew(after, before, $"entry-disconnected|rid={options.SessionARid}|actor=actor-sm-d5-notified") == 1;
     }, "SM-D5 expected only the selected bound actor to receive disconnect notification.");
     Console.WriteLine("scenario SM-D5 passed");
+}
+
+static async Task RunSmD12Async(ClientOptions options)
+{
+    const string actorId = "actor-sm-d12-transfer";
+
+    await using var first = CreateClient(options.SessionAStreamEndpoint);
+    await first.Connect.Async();
+    await first.Request(new AuthReq(actorId, "gateway transfer", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    var firstReply = await first.Request(new ActorPingReq("before-transfer"))
+        .PacketName("ActorPingReq")
+        .Async<ActorPingReply>();
+    Ensure(firstReply.ActorId == actorId, "SM-D12 first gateway actor mismatch.");
+    Ensure(firstReply.NodeRid == options.PlayARid, "SM-D12 first gateway node mismatch.");
+    Ensure(firstReply.Seen == 1, "SM-D12 expected initial actor state.");
+    await first.Close.Async();
+
+    await using var second = CreateClient(options.SessionBStreamEndpoint);
+    await second.Connect.Async();
+    await second.Request(new AuthReq(actorId, "gateway transfer", options.PlayARid))
+        .PacketName("AuthReq")
+        .Async<AuthReply>();
+    var snapshot = await second.Request(new SnapshotReq(actorId))
+        .PacketName("SnapshotReq")
+        .Async<SnapshotReply>();
+    Ensure(snapshot.ActorId == actorId, "SM-D12 snapshot actor mismatch.");
+    Ensure(snapshot.Seen == 1, "SM-D12 actor state was not preserved across gateways.");
+
+    var pushed = second.WaitFor<ActorPushNotify>().Async().AsTask();
+    var resumed = await second.Request(new ActorPushReq("after-transfer"))
+        .PacketName("ActorPushReq")
+        .Async<ActorPingReply>();
+    var notify = await pushed;
+    Ensure(resumed.ActorId == actorId, "SM-D12 resumed actor mismatch.");
+    Ensure(resumed.NodeRid == options.PlayARid, "SM-D12 resumed node mismatch.");
+    Ensure(resumed.Seen == 2, "SM-D12 resumed actor state mismatch.");
+    Ensure(notify.Payload.ActorId == actorId, "SM-D12 resumed push actor mismatch.");
+    Ensure(notify.Payload.Value == "after-transfer", "SM-D12 resumed push value mismatch.");
+    Ensure(notify.Payload.Seen == 2, "SM-D12 resumed push state mismatch.");
+    Console.WriteLine("scenario SM-D12 passed");
 }
 
 static async Task RunSmC1C2Async(ClientOptions options)

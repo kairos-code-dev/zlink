@@ -98,6 +98,10 @@ endpoint가 등록되면 `app_t::add_zlink_framework(...)`가 이 service를 hos
 - TCP bind/listen/accept
 - `Boost.Beast` 기반 HTTP request read
 - SSL 빌드와 TLS 설정이 있는 경우 HTTPS endpoint의 TLS handshake
+- connection당 request loop와 keep-alive
+- request header/body/write/keep-alive timeout
+- request body size limit와 header size limit
+- max connections 한도와 overload 처리
 - HTTP method와 path 기반 route matching
 - path parameter, query parameter binding
 - health/readiness/liveness route
@@ -106,19 +110,11 @@ endpoint가 등록되면 `app_t::add_zlink_framework(...)`가 이 service를 hos
 - handler coroutine executor 호출
 - framework error kind를 HTTP status와 JSON error body로 매핑
 - HTTP response write
-- `stop()`에서 acceptor close와 thread join
+- `stop()`에서 acceptor close, 진행 중 request drain, open socket 정리, thread join
 
 다만 현재 구현은 “최소 내장 HTTP host”에 가깝다. backend API framework의 기본 server로
 보기 위해서는 아래 기능이 추가되어야 한다.
 
-- connection당 request loop와 keep-alive
-- endpoint별 TLS context 재사용
-- request header/body timeout
-- keep-alive timeout
-- request body size limit
-- header size limit
-- max connections와 overload response
-- graceful shutdown drain
 - connection/request observability extension point
 - request logging과 correlation id의 표준화
 - malformed request에 대한 `400 Bad Request`

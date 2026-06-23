@@ -100,7 +100,7 @@ options.http ().configure_server ([] (zlink::framework::http_server_options_buil
 
 | 옵션 | 의미 | 기본값 |
 |------|------|--------|
-| `set_max_connections(n)` | 동시 연결 한도 — 초과 시 HTTP는 503, HTTPS는 연결 종료 | 1024 |
+| `set_max_connections(n)` | 동시 연결 한도 — 초과 연결은 runtime overload 정책으로 거절한다 | 1024 |
 | `set_max_request_body_size(bytes)` / `set_max_header_size(bytes)` | 요청 크기 한도 — 초과 시 413/431 | 1MB / 64KB |
 | `set_request_headers_timeout(ms)` / `set_request_body_timeout(ms)` | 수신 단계별 timeout | 5000ms / 5000ms |
 | `set_write_timeout(ms)` | 응답 쓰기 timeout | 5000ms |

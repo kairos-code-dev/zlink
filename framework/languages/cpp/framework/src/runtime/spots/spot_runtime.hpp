@@ -141,6 +141,39 @@ class spot_context_state_t
     std::size_t callback_depth = 0;
 };
 
+inline void record_actor_route_unlocked (spot_node_builder_state_t &state,
+                                         const std::string &key,
+                                         spot_route_t route,
+                                         std::uint64_t generation)
+{
+    state.actor_spot_rids[key] = route.spot_rid;
+    state.actor_routes[key] = std::move (route);
+    state.actor_generations[key] = generation;
+}
+
+inline void record_actor_spot_location_unlocked (spot_node_builder_state_t &state,
+                                                 const std::string &key,
+                                                 spot_rid_t spot_rid,
+                                                 std::uint64_t generation)
+{
+    state.actor_spot_rids[key] = std::move (spot_rid);
+    state.actor_routes.erase (key);
+    state.actor_generations[key] = generation;
+}
+
+inline void record_actor_context_route_unlocked (spot_node_builder_state_t &state,
+                                                 const std::string &key,
+                                                 const std::string &node_rid,
+                                                 spot_context_state_t &context_state,
+                                                 std::uint64_t generation)
+{
+    record_actor_route_unlocked (state, key,
+                                 spot_route_t{node_rid_t::from_string (node_rid),
+                                              context_state.spot_rid, context_state.spot_name},
+                                 generation);
+    context_state.actor_count++;
+}
+
 class spot_node_runtime_t
 {
   public:
@@ -400,19 +433,6 @@ class spot_node_runtime_t
         return found->second;
     }
 
-    static void record_actor_context_route (spot_node_builder_state_t &node_state,
-                                            const std::string &key,
-                                            const std::string &node_rid,
-                                            spot_context_state_t &context_state,
-                                            std::uint64_t generation)
-    {
-        node_state.actor_spot_rids[key] = context_state.spot_rid;
-        node_state.actor_routes[key] = spot_route_t{
-          node_rid_t::from_string (node_rid), context_state.spot_rid, context_state.spot_name};
-        node_state.actor_generations[key] = generation;
-        context_state.actor_count++;
-    }
-
     template <typename TSpot, typename TActor>
     actor_ref_t
     commit_actor_to_context (const actor_ref_t &actor_ref, TActor &actor, spot_context_t &context)
@@ -420,8 +440,8 @@ class spot_node_runtime_t
         commit_actor_left<TActor> (actor_ref, actor);
         auto &context_state = *context._state;
         const auto key = actor_key (actor_ref);
-        record_actor_context_route (*_state, key, _state->snapshot.name, context_state,
-                                    actor_ref.generation () + 1);
+        record_actor_context_route_unlocked (*_state, key, _state->snapshot.name, context_state,
+                                             actor_ref.generation () + 1);
         context_state.on_actor_joined_callbacks[std::type_index (typeid (TActor))] =
           [] (void *spot, void *actor) {
               if constexpr (has_on_actor_joined_callback<TSpot, TActor>) {

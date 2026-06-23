@@ -850,14 +850,6 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     };
   }
 
-  private decodeRemoteActorJoinReply(message: Message): ZLinkRemoteActorJoinReply & { readonly reply?: string } {
-    try {
-      return JSON.parse(message.data().toString()) as ZLinkRemoteActorJoinReply & { readonly reply?: string };
-    } finally {
-      message.close();
-    }
-  }
-
   private canUseRoutedTransport(remoteAddress: ZLinkSpotRemoteAddress): boolean {
     const transport = this.options.routedTransport;
     if (transport === undefined) {

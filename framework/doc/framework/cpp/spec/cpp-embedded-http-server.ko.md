@@ -550,8 +550,8 @@ server option은 endpoint 전체 또는 HTTP server 전체에 적용된다. rout
 | `request_headers_timeout` | 5s | header read 제한 시간 |
 | `request_body_timeout` | 5s | body read 제한 시간 |
 | `write_timeout` | 5s | response write 제한 시간 |
-| `keep_alive_timeout` | 5s | (현재 runtime 미사용 — header read마다 `request_headers_timeout` 적용) |
-| `graceful_shutdown_timeout` | 5s | (현재 stop()은 open socket 즉시 종료 — 미사용) |
+| `keep_alive_timeout` | 5s | keep-alive 연결에서 다음 request header를 기다리는 제한 시간 |
+| `graceful_shutdown_timeout` | 5s | 종료 시 진행 중인 request가 끝나기를 기다리는 시간 |
 | `max_keep_alive_requests` | 100 또는 무제한 | connection당 request 수 제한 |
 
 Public builder 이름은 아래처럼 고정한다.

@@ -621,7 +621,7 @@ int zlink_spot_route_bridge_drain (void *bridge_)
             continue;
         if (zlink::spot_reqrep_internal::drain_router_reply_completions (
               endpoint.reply_adapter_state, endpoint.socket)
-            != 0) {
+            < 0) {
             rc = -1;
         }
     }

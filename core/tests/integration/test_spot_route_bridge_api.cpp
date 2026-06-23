@@ -1085,7 +1085,8 @@ void test_handle_router_received_request_replies_to_channel_peer ()
                                     ZLINK_PART_FINAL));
 
     for (int attempt = 0; attempt < 100; ++attempt) {
-        drain_router_progress (bridge_router);
+        const int drained = zlink_spot_route_bridge_drain (bridge);
+        TEST_ASSERT_TRUE (drained >= 0);
         const zlink_routing_id_t *reply_source_node = NULL;
         const zlink_routing_id_t *reply_source_spot = NULL;
         uint64_t reply_seq = 0;
@@ -1250,7 +1251,7 @@ void test_handle_dealer_received_request_replies_to_channel_peer ()
       zlink_spot_reply_router_part (target_spot, source_node_rid, local_request_seq, &reply,
                                     ZLINK_PART_FINAL));
     for (int attempt = 0; attempt < 100 && !peer_reply.done; ++attempt) {
-        (void) zlink_spot_route_bridge_drain (bridge);
+        (void) drain_completion_via_poller (dealer);
         (void) drain_completion_via_poller (router);
         {
             std::unique_lock<std::mutex> lock (peer_reply.mutex);

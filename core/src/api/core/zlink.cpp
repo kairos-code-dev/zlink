@@ -106,6 +106,45 @@ void *zlink_socket (void *ctx_, zlink_socket_type_t type_)
     return create_socket_handle (ctx_, type_);
 }
 
+static std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
+router_spot_completion_state_for_poller (const socket_handle_t &handle_,
+                                         void *socket_,
+                                         int socket_type_)
+{
+    if (socket_type_ == ZLINK_CORE_SOCKET_ROUTER)
+        return zlink::spot_reqrep_internal::find_or_create_router_state (socket_);
+    if (socket_type_ == ZLINK_CORE_SOCKET_DEALER)
+        return handle_.socket->router_spot_request_reply_state ();
+    return std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t> ();
+}
+
+static zlink_config_result_t
+poller_add_router_spot_completion_if_present (poller_handle_t *poller_,
+                                              const socket_handle_t &handle_,
+                                              void *socket_,
+                                              int socket_type_)
+{
+    std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t> state =
+      router_spot_completion_state_for_poller (handle_, socket_, socket_type_);
+    if (!state)
+        return ZLINK_CONFIG_OK;
+
+    if (zlink::spot_reqrep_internal::ensure_router_completion_queue_ready (state) != 0) {
+        const int err = errno ? errno : EFAULT;
+        errno = err;
+        return zlink::config_result_internal::from_errno (err);
+    }
+    if (poller_add_hidden_completion_registration (
+          poller_, zlink::spot_reqrep_internal::router_completion_signal_socket (state), socket_,
+          poller_subject_router_spot_request_completion, &state->completion, state)
+        != 0) {
+        const int err = errno ? errno : EFAULT;
+        errno = err;
+        return zlink::config_result_internal::from_errno (err);
+    }
+    return ZLINK_CONFIG_OK;
+}
+
 zlink_close_result_t zlink_close (void *s_)
 {
     socket_handle_t handle = as_socket_handle (s_);
@@ -260,28 +299,13 @@ zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_)
             return zlink::config_result_internal::from_errno (err);
         }
 
-        if (type == ZLINK_CORE_SOCKET_ROUTER) {
-            std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
-              router_state = zlink::spot_reqrep_internal::find_or_create_router_state (socket_);
-            if (!router_state
-                || zlink::spot_reqrep_internal::ensure_router_completion_queue_ready (router_state)
-                     != 0) {
-                const int err = errno ? errno : EFAULT;
-                (void) poller_remove_all_registrations_for_subject (poller, socket_);
-                errno = err;
-                return zlink::config_result_internal::from_errno (err);
-            }
-            if (poller_add_hidden_completion_registration (
-                  poller,
-                  zlink::spot_reqrep_internal::router_completion_signal_socket (router_state),
-                  socket_, poller_subject_router_spot_request_completion, &router_state->completion,
-                  router_state)
-                != 0) {
-                const int err = errno ? errno : EFAULT;
-                (void) poller_remove_all_registrations_for_subject (poller, socket_);
-                errno = err;
-                return zlink::config_result_internal::from_errno (err);
-            }
+        zlink_config_result_t spot_completion_rc =
+          poller_add_router_spot_completion_if_present (poller, handle, socket_, type);
+        if (spot_completion_rc != ZLINK_CONFIG_OK) {
+            const int err = errno ? errno : EFAULT;
+            (void) poller_remove_all_registrations_for_subject (poller, socket_);
+            errno = err;
+            return spot_completion_rc;
         }
 
         return ZLINK_CONFIG_OK;
@@ -314,25 +338,13 @@ zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_)
         }
     }
 
-    if (type == ZLINK_CORE_SOCKET_ROUTER) {
-        std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t> state =
-          zlink::spot_reqrep_internal::find_or_create_router_state (socket_);
-        if (!state
-            || zlink::spot_reqrep_internal::ensure_router_completion_queue_ready (state) != 0) {
-            const int err = errno;
-            (void) poller_remove_all_registrations_for_subject (poller, socket_);
-            errno = err;
-            return zlink::config_result_internal::from_errno (err);
-        }
-        if (poller_add_hidden_completion_registration (
-              poller, zlink::spot_reqrep_internal::router_completion_signal_socket (state), socket_,
-              poller_subject_router_spot_request_completion, &state->completion, state)
-            != 0) {
-            const int err = errno;
-            (void) poller_remove_all_registrations_for_subject (poller, socket_);
-            errno = err;
-            return zlink::config_result_internal::from_errno (err);
-        }
+    zlink_config_result_t spot_completion_rc =
+      poller_add_router_spot_completion_if_present (poller, handle, socket_, type);
+    if (spot_completion_rc != ZLINK_CONFIG_OK) {
+        const int err = errno ? errno : EFAULT;
+        (void) poller_remove_all_registrations_for_subject (poller, socket_);
+        errno = err;
+        return spot_completion_rc;
     }
 
     return ZLINK_CONFIG_OK;

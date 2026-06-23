@@ -20,6 +20,8 @@
 - `SM-B5`: handler 없는 actor packet request가 client-visible error로 끝나고
   `HandlerMissing` dispatch error marker가 play 노드 로그에 남는지 검증한다.
 - `SM-B6`: 명시적 leave request와 spot evidence를 검증한다.
+- `SM-B8`: entry spot의 public `destroyActor`로 actor를 명시 파괴하고, mailbox 제거와
+  post-destroy request 실패를 검증한다.
 - `SM-C2`: spot handler가 외부 channel로 request/send를 내보내고, SPOT mesh publish를 수행하는
   흐름을 검증한다.
 - `SM-D1`: 실제 `session-a` stream gateway에 붙어 `play-a` actor로 local stream relay를 보내고,

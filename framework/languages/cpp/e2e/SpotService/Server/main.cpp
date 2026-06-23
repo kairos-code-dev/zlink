@@ -294,6 +294,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
     {
         _context = context;
         context.handlers ().add_actor_packet<&entry_spot_t::join> ("JoinReq");
+        context.handlers ().add_actor_packet<&entry_spot_t::destroy_actor> ("DestroyActorReq");
     }
 
     void configure (zlink::framework::spot_context_t &context)
@@ -324,6 +325,17 @@ class entry_spot_t : public zlink::framework::entry_spot_t
                        request.key);
         auto joined = co_await actor.context.join_spot (rid, request).async<e2e::join_res_t> ();
         co_return joined.reply;
+    }
+
+    zlink::framework::task_t<e2e::destroy_actor_res_t>
+    destroy_actor (scenario_actor_t &actor,
+                   zlink::framework::spot_actor_request_context_t &,
+                   const e2e::destroy_actor_req_t &request)
+    {
+        co_await _context.destroyActor (actor.actor_ref, actor);
+        _state.record ("ActorDestroyed", actor.actor_id,
+                       std::string (_context.spot_rid ().value ()), request.reason);
+        co_return e2e::destroy_actor_res_t{true, actor.actor_id};
     }
 
   private:
@@ -526,6 +538,8 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::state_res_t> ()
       .add_json<e2e::leave_req_t> ()
       .add_json<e2e::leave_res_t> ()
+      .add_json<e2e::destroy_actor_req_t> ()
+      .add_json<e2e::destroy_actor_res_t> ()
       .add_json<e2e::disconnect_req_t> ()
       .add_json<e2e::disconnect_res_t> ()
       .add_json<e2e::channel_echo_req_t> ()

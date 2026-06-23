@@ -316,6 +316,20 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
           relay_request<e2e::leave_res_t> (local, "LeaveReq", e2e::leave_req_t{"client-left"});
         ensure (left.left && left.actor_id == "alice", "SM-B6 leave reply mismatch");
         std::cout << "scenario SM-B6 leave passed\n";
+        local = refresh_actor ("alice");
+
+        auto destroyed = relay_request<e2e::destroy_actor_res_t> (
+          local, "DestroyActorReq", e2e::destroy_actor_req_t{"client-destroyed"});
+        ensure (destroyed.destroyed && destroyed.actor_id == "alice",
+                "SM-B8 destroy reply mismatch");
+        auto after_destroy =
+          local
+            .relay_request_raw (request_header ("StateReq"),
+                                encode_json (e2e::state_req_t{"add", 1}))
+            .async ()
+            .result ();
+        ensure (!after_destroy.has_value (), "SM-B8 destroyed actor unexpectedly accepted request");
+        std::cout << "scenario SM-B8 passed\n";
 
         auto outbound = relay_request<e2e::outbound_res_t> (
           same_key_actor, "OutboundReq", e2e::outbound_req_t{"from-spot"});
@@ -446,6 +460,8 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::state_res_t> ()
       .add_json<e2e::leave_req_t> ()
       .add_json<e2e::leave_res_t> ()
+      .add_json<e2e::destroy_actor_req_t> ()
+      .add_json<e2e::destroy_actor_res_t> ()
       .add_json<e2e::disconnect_req_t> ()
       .add_json<e2e::disconnect_res_t> ()
       .add_json<e2e::channel_echo_req_t> ()

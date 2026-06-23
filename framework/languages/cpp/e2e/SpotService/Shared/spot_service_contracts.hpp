@@ -81,6 +81,17 @@ struct leave_res_t
     std::string actor_id;
 };
 
+struct destroy_actor_req_t
+{
+    std::string reason;
+};
+
+struct destroy_actor_res_t
+{
+    bool destroyed = false;
+    std::string actor_id;
+};
+
 struct disconnect_req_t
 {
     std::string reason;
@@ -317,6 +328,27 @@ inline void to_json (nlohmann::json &json, const leave_res_t &value)
 inline void from_json (const nlohmann::json &json, leave_res_t &value)
 {
     json.at ("left").get_to (value.left);
+    json.at ("actor_id").get_to (value.actor_id);
+}
+
+inline void to_json (nlohmann::json &json, const destroy_actor_req_t &value)
+{
+    json = nlohmann::json{{"reason", value.reason}};
+}
+
+inline void from_json (const nlohmann::json &json, destroy_actor_req_t &value)
+{
+    json.at ("reason").get_to (value.reason);
+}
+
+inline void to_json (nlohmann::json &json, const destroy_actor_res_t &value)
+{
+    json = nlohmann::json{{"destroyed", value.destroyed}, {"actor_id", value.actor_id}};
+}
+
+inline void from_json (const nlohmann::json &json, destroy_actor_res_t &value)
+{
+    json.at ("destroyed").get_to (value.destroyed);
     json.at ("actor_id").get_to (value.actor_id);
 }
 

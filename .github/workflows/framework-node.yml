@@ -69,19 +69,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential \
-            cmake \
-            pkg-config \
-            libssl-dev
+            build-essential
 
       - name: Install macOS core dependencies
         if: startsWith(matrix.target.name, 'darwin-')
         run: |
-          brew install cmake pkg-config openssl@3 || true
-          openssl_root="$(brew --prefix openssl@3)"
-          echo "OPENSSL_ROOT_DIR=$openssl_root" >> "$GITHUB_ENV"
-          echo "CMAKE_PREFIX_PATH=$openssl_root" >> "$GITHUB_ENV"
-          echo "PKG_CONFIG_PATH=$openssl_root/lib/pkgconfig" >> "$GITHUB_ENV"
+          xcode-select --print-path
 
       - name: Install Windows core dependencies
         if: startsWith(matrix.target.name, 'win-')
@@ -93,23 +86,17 @@ jobs:
           echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" >> $env:GITHUB_ENV
           echo "VCPKG_TARGET_TRIPLET=${{ matrix.target.vcpkg_triplet }}" >> $env:GITHUB_ENV
 
-      - name: Build core library for Node addon
+      - name: Use synced core runtime for Node addon
         if: startsWith(matrix.target.name, 'linux-') || startsWith(matrix.target.name, 'darwin-')
         run: |
-          cmake -S core -B core/build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED=ON \
-            -DBUILD_STATIC=OFF \
-            -DBUILD_TESTS=OFF \
-            -DZLINK_CXX_STANDARD=17 \
-            -DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR"
-          cmake --build core/build --config Release --parallel
           if [[ "${{ matrix.target.name }}" == linux-* ]]; then
-            echo "ZLINK_LIB_PATH=$GITHUB_WORKSPACE/core/build/lib/libzlink.so" >> "$GITHUB_ENV"
-            echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/core/build/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+            runtime="$GITHUB_WORKSPACE/bindings/node/prebuilds/${{ matrix.target.name }}/libzlink.so"
+            echo "ZLINK_LIB_PATH=$runtime" >> "$GITHUB_ENV"
+            echo "ZLINK_RUNTIME_PATH=$runtime" >> "$GITHUB_ENV"
           else
-            echo "ZLINK_LIB_PATH=$GITHUB_WORKSPACE/core/build/lib/libzlink.dylib" >> "$GITHUB_ENV"
-            echo "DYLD_LIBRARY_PATH=$GITHUB_WORKSPACE/core/build/lib:${DYLD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+            runtime="$GITHUB_WORKSPACE/bindings/node/prebuilds/${{ matrix.target.name }}/libzlink.dylib"
+            echo "ZLINK_LIB_PATH=$runtime" >> "$GITHUB_ENV"
+            echo "ZLINK_RUNTIME_PATH=$runtime" >> "$GITHUB_ENV"
           fi
 
       - name: Build core library for Node addon
@@ -142,9 +129,9 @@ jobs:
       - name: Build Node binding native addon
         run: npm --prefix bindings/node run rebuild-native
 
-      - name: Expose built core runtime beside Node addon
-        if: startsWith(matrix.target.name, 'darwin-')
-        run: cp core/build/lib/libzlink.dylib bindings/node/build/Release/
+      - name: Expose synced core runtime beside Node addon
+        if: startsWith(matrix.target.name, 'linux-') || startsWith(matrix.target.name, 'darwin-')
+        run: cp "$ZLINK_RUNTIME_PATH" bindings/node/build/Release/
 
       - name: Run Node framework release gate
         run: npm --prefix framework/languages/node run verify:p0
@@ -169,26 +156,17 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Install core dependencies
+      - name: Install native build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential \
-            cmake \
-            pkg-config \
-            libssl-dev
+            build-essential
 
-      - name: Build core library for Node addon
+      - name: Use synced core runtime for Node addon
         run: |
-          cmake -S core -B core/build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED=ON \
-            -DBUILD_STATIC=OFF \
-            -DBUILD_TESTS=OFF \
-            -DZLINK_CXX_STANDARD=17
-          cmake --build core/build --config Release --parallel
-          echo "ZLINK_LIB_PATH=$GITHUB_WORKSPACE/core/build/lib/libzlink.so" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/core/build/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          runtime="$GITHUB_WORKSPACE/bindings/node/prebuilds/linux-x64/libzlink.so"
+          echo "ZLINK_LIB_PATH=$runtime" >> "$GITHUB_ENV"
+          echo "ZLINK_RUNTIME_PATH=$runtime" >> "$GITHUB_ENV"
 
       - name: Install binding dependencies
         run: npm --prefix bindings/node install
@@ -198,6 +176,9 @@ jobs:
 
       - name: Build Node binding native addon
         run: npm --prefix bindings/node run rebuild-native
+
+      - name: Expose synced core runtime beside Node addon
+        run: cp "$ZLINK_RUNTIME_PATH" bindings/node/build/Release/
 
       - name: Run Node framework cross-language smoke
         run: npm --prefix framework/languages/node run verify:cross-language

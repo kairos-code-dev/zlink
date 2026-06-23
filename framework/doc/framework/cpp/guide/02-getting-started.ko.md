@@ -39,7 +39,7 @@ sequenceDiagram
     Api->>Play: request "tictactoe.play" / CreateGameReq
     Play->>Spot: room SPOT 생성
     Spot-->>Play: room id
-    Play-->>Api: CreateGameRes {roomId, gameName, ownerPlayEndpoint, playEndpoints}
+    Play-->>Api: CreateGameRes {roomId, gameName, endpoints, nodes, level}
     Api-->>Client: HTTP 200 CreateGameHttpRes
 ```
 
@@ -159,9 +159,9 @@ options.add_client_server_channel (sample_names_t::play_channel)
   .use_handler_group ("play");
 ```
 
-`create_game_handler_t`는 `CreateGameReq`를 받아 room id, owner Play stream endpoint,
-참가 가능한 Play stream endpoint 목록을 돌려준다. 실제 구현은 room SPOT을 만들기 때문에
-[8장 SPOT](08-spot.ko.md)에서 다시 이어진다.
+`create_game_handler_t`는 `CreateGameReq`를 받아 room id, game name, owner Play stream
+endpoint, 참가 가능한 Play stream endpoint 목록, Play node 목록, 요구 level을 돌려준다.
+실제 구현은 room SPOT을 만들기 때문에 [8장 SPOT](08-spot.ko.md)에서 다시 이어진다.
 
 ```cpp
 class create_game_handler_t
@@ -275,9 +275,10 @@ sequenceDiagram
   Note over R,A: provider 추가·이탈 → Registry 재broadcast → API Discovery 가 직접 소켓 갱신
 ```
 
-> 참고: 현재 C++ `Bingo` 샘플은 Registry 프로세스와 `use_discovery()` 구성을 포함하지만,
-> API→Play channel client 는 `enable_client(topology.play_channel_endpoint)` 처럼 endpoint 를
-> 직접 넘긴다. 완전한 자동 연결 예와 운영은 [11장 Registry](11-registry.ko.md)를 함께 본다.
+> 참고: 현재 C++ `Bingo` 샘플은 Registry 프로세스와 `use_discovery()` 구성을 포함하고,
+> API→Play route mesh channel client 는 `.enable_client()`로 endpoint를 직접 넘기지 않는다.
+> framework discovery가 Registry에서 받은 provider endpoint로 직접 소켓을 갱신한다.
+> 운영 흐름은 [11장 Registry](11-registry.ko.md)를 함께 본다.
 
 ## 8. 잘 안 될 때
 

@@ -145,8 +145,7 @@ public:
     using request_type = create_game_http_req_t;
     using reply_type = create_game_http_res_t;
     using dependency_types =
-      dependency_list_t<channel_client_t, sample_topology_t,
-                        logger_t<create_game_http_handler_t>>;
+      dependency_list_t<channel_client_t, logger_t<create_game_http_handler_t>>;
 };
 ```
 
@@ -225,8 +224,7 @@ public:
     using request_type = create_game_http_req_t;
     using reply_type = create_game_http_res_t;
     using dependency_types =
-      dependency_list_t<channel_client_t, sample_topology_t,
-                        logger_t<create_game_http_handler_t>>;
+      dependency_list_t<channel_client_t, logger_t<create_game_http_handler_t>>;
 
     task_t<create_game_http_res_t> handle(const create_game_http_req_t &request);
 };

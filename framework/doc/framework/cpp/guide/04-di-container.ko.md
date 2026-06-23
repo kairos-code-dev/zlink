@@ -103,21 +103,18 @@ class create_game_http_handler_t
     using dependency_types =
       zlink::framework::dependency_list_t<
         zlink::framework::channel_client_t,
-        sample_topology_t,
         zlink::framework::logger_t<create_game_http_handler_t>>;
 
     // 2. 선언 순서대로 생성자가 받는다
     explicit create_game_http_handler_t (
         zlink::framework::channel_client_t &client,
-        sample_topology_t &topology,
         zlink::framework::logger_t<create_game_http_handler_t> &logger)
-        : _client (client), _topology (topology), _logger (logger) {}
+        : _client (client), _logger (logger) {}
 
     create_game_http_res_t handle (const create_game_http_req_t &request);
 
   private:
     zlink::framework::channel_client_t &_client;
-    sample_topology_t &_topology;
     zlink::framework::logger_t<create_game_http_handler_t> _logger;
 };
 ```

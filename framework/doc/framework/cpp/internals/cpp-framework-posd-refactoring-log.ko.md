@@ -428,8 +428,8 @@ ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-
 | TLS builder setter에서 즉시 검증한다 | 오류 위치가 빠르다 | fluent builder 작성 순서 중간 상태까지 오류로 만들 수 있다 |
 | startup validation 테스트에 부분 TLS 설정 케이스를 추가한다 | 문서의 완료 조건을 그대로 고정한다 | 테스트 케이스가 몇 개 늘어난다 |
 
-선택은 세 번째 방식이다. `listen(...).tls(...)`는 fluent builder이므로 중간 상태를 허용하고,
-framework 설정 완료 시점의 startup validation에서 certificate/private key 쌍을 검증하는 것이
+선택은 세 번째 방식이다. `listen(...).configure_tls(...)`는 fluent builder이므로 중간 상태를
+허용하고, framework 설정 완료 시점의 startup validation에서 certificate/private key 쌍을 검증하는 것이
 호출자 관점에서 단순하다.
 
 ### 적용한 리팩토링
@@ -4253,8 +4253,8 @@ HTTP 세부 구현은 public header가 아니라 runtime owner에 붙일 수 있
 - `framework-http`, `framework-host`, `framework-config`, `framework-observability`,
   `framework-zlink-*`, `framework-sample-e2e`, `connector-e2e` label을 실제 CTest에
   연결했다.
-- `zlink/framework/contracts/http/http.hpp`와 `zlink/framework/http.hpp`를 추가하고,
-  `zlink_framework_options_t::http()`에서 `listen`, `tls`, `map_get`, `map_post`,
+- `zlink/framework/contracts/http/http.hpp`를 추가하고,
+  `zlink_framework_options_t::http()`에서 `listen`, `configure_tls`, `map_get`, `map_post`,
   `map_put`, `map_delete`, `use<TMiddleware>()` contract를 제공하게 했다.
 - HTTPS endpoint는 certificate/private key가 없으면 startup validation에서
   `request_protocol_error`로 실패하게 했다.

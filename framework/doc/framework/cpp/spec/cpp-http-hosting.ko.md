@@ -181,9 +181,9 @@ create_game_http_handler_t::handle(const create_game_http_req_t &request)
 
 `map_*<THandler>(...)`는 위 shape를 compile-time으로 판별한다. `request_type`이 있으면
 typed route로 등록하고, `handle(const http_request_t&)`만 있으면 raw route로 등록한다.
-typed route에서 여러 overload가 있으면 `http_response_t` 반환, `http_request_t` 인자,
-`http_context_t` 인자, DTO-only 순서로 더 많은 HTTP 제어권을 가진 shape를 우선 호출한다.
-`http_request_t`와 `http_context_t`를 모두 받는 shape는 둘 중 하나만 받는 shape보다 우선한다.
+typed route에서 여러 overload가 있으면 반환 타입보다 인자 shape를 먼저 본다.
+`http_request_t`와 `http_context_t`를 모두 받는 shape가 가장 먼저 선택되고, 그 다음
+`http_request_t`, `http_context_t`, DTO-only shape 순서로 선택된다.
 typed route와 raw route shape를 한 handler에 동시에 제공하면 route mode가 모호하므로 static
 assertion 또는 startup validation으로 실패시킨다.
 

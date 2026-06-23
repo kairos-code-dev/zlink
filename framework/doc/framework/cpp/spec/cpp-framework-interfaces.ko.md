@@ -1868,11 +1868,11 @@ HTTP handler는 아래 shape를 모두 지원한다.
 
 `http_request_t`와 `http_response_t`는 framework public type이다. Raw HTTP handler도
 `Boost.Beast` request, socket, SSL stream을 받지 않는다. `map_*<THandler>(...)`는 handler
-shape를 compile-time으로 판별한다. typed route에서 여러 overload가 있으면
-`http_response_t` 반환, `http_request_t` 인자, `http_context_t` 인자, DTO-only 순서로 더 많은
-HTTP 제어권을 가진 shape를 우선 호출한다. `http_request_t`와 `http_context_t`를 모두 받는
-shape는 둘 중 하나만 받는 shape보다 우선한다. typed route와 raw route shape를 한 handler에
-동시에 제공하면 static assertion 또는 startup validation으로 실패해야 한다.
+shape를 compile-time으로 판별한다. typed route에서 여러 overload가 있으면 반환 타입보다
+인자 shape를 먼저 본다. `http_request_t`와 `http_context_t`를 모두 받는 shape가 가장 먼저
+선택되고, 그 다음 `http_request_t`, `http_context_t`, DTO-only shape 순서로 선택된다.
+typed route와 raw route shape를 한 handler에 동시에 제공하면 static assertion 또는 startup
+validation으로 실패해야 한다.
 
 route parameter와 query string은 `request_type` DTO에 binding한다. 예를 들어
 `/games/{gameId}/moves?actorId=p1`로 들어온 값은 body DTO와 합쳐 handler request가 된다.

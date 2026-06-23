@@ -673,15 +673,17 @@ class dealer_mesh_channel_builder_t
               if (default_request_timeout) {
                   channel.default_request_timeout (*default_request_timeout);
               }
-              auto client = channel.enable_client ();
               if (!bind_endpoint.empty ()) {
-                  client.bind (bind_endpoint);
+                  channel.enable_server ().bind (bind_endpoint);
               }
-              if (client_uses_discovery) {
-                  client.use_discovery ();
-              }
-              for (const auto &endpoint : manual_connections) {
-                  client.connect (endpoint);
+              if (client_uses_discovery || !manual_connections.empty ()) {
+                  auto client = channel.enable_client ();
+                  if (client_uses_discovery) {
+                      client.use_discovery ();
+                  }
+                  for (const auto &endpoint : manual_connections) {
+                      client.connect (endpoint);
+                  }
               }
           });
     }

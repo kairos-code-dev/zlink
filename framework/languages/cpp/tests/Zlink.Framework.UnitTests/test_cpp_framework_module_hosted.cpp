@@ -248,7 +248,7 @@ class options_stream_session_t final : public zlink::framework::packet_stream_se
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &,
                                               const zlink::framework::stream_header_t &,
-                                              const zlink::message_t &) override
+                                              const zlink::framework::message_t &) override
     {
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
     }
@@ -1565,8 +1565,9 @@ int main ()
         || event_channel->subscriber.connect_endpoints.size () != 2
         || event_channel->subscriber.connect_endpoints[0] != "tcp://127.0.0.1:9105"
         || event_channel->subscriber.connect_endpoints[1] != "tcp://127.0.0.1:9108"
-        || mesh_channel->server.enabled || !mesh_channel->client.enabled
-        || mesh_channel->client.bind_endpoints.front () != "tcp://127.0.0.1:9106"
+        || !mesh_channel->server.enabled
+        || mesh_channel->server.bind_endpoints.front () != "tcp://127.0.0.1:9106"
+        || !mesh_channel->client.enabled
         || mesh_channel->client.connect_endpoints.front () != "tcp://127.0.0.1:9107"
         || mesh_discovery_channel->server.enabled || !mesh_discovery_channel->client.enabled
         || !mesh_discovery_channel->client.discovery

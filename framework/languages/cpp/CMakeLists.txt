@@ -8,6 +8,7 @@ find_package(Threads REQUIRED)
 
 option(ZLINK_FRAMEWORK_CPP_BUILD_TESTS "Build C++ framework tests" ON)
 option(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES "Build C++ framework samples" ON)
+option(ZLINK_FRAMEWORK_CPP_BUILD_E2E "Build C++ framework scenario e2e apps" ON)
 option(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK "Install C++ framework and HTTP client package artifacts" ON)
 option(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT "Build Stream Connector e2e client helpers" ON)
 option(ZLINK_STREAM_CONNECTOR_BUILD_UNREAL "Build Unreal Stream Connector source adapter" ON)
@@ -968,6 +969,22 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_unreal_stream_connector PROPERTIES
     LABELS "connector-unreal-contract;connector-unreal-compile;connector-unreal-smoke"
     TIMEOUT 30)
+endif()
+
+if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
+  add_executable(zlink_cpp_e2e_registry_messaging_server
+    e2e/RegistryMessaging/Server/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_registry_messaging_server PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_registry_messaging_server PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_registry_messaging_client
+    e2e/RegistryMessaging/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_registry_messaging_client PRIVATE
+    zlink::framework)
+  target_include_directories(zlink_cpp_e2e_registry_messaging_client PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)

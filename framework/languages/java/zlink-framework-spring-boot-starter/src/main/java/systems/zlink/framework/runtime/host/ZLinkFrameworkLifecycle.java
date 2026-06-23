@@ -18,6 +18,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
@@ -32,6 +33,7 @@ public final class ZLinkFrameworkLifecycle
     private final DefaultZLinkFrameworkOptions options;
     private final ZLinkBackendAdapterFactory backendAdapterFactory;
     private final ZLinkHandlerFactory handlerFactory;
+    private final ZLinkRuntimeEventDispatcher eventDispatcher;
     private ZLinkFrameworkRuntime runtime;
     private boolean running;
 
@@ -39,11 +41,20 @@ public final class ZLinkFrameworkLifecycle
         DefaultZLinkFrameworkOptions options,
         ZLinkBackendAdapterFactory backendAdapterFactory,
         ZLinkHandlerFactory handlerFactory) {
+        this(options, backendAdapterFactory, handlerFactory, null);
+    }
+
+    public ZLinkFrameworkLifecycle(
+        DefaultZLinkFrameworkOptions options,
+        ZLinkBackendAdapterFactory backendAdapterFactory,
+        ZLinkHandlerFactory handlerFactory,
+        ZLinkRuntimeEventDispatcher eventDispatcher) {
         this.options = Objects.requireNonNull(options, "options");
         this.backendAdapterFactory = Objects.requireNonNull(
             backendAdapterFactory,
             "backendAdapterFactory");
         this.handlerFactory = Objects.requireNonNull(handlerFactory, "handlerFactory");
+        this.eventDispatcher = eventDispatcher;
     }
 
     @Override
@@ -51,7 +62,11 @@ public final class ZLinkFrameworkLifecycle
         if (running) {
             return;
         }
-        runtime = ZLinkFrameworkRuntime.start(options, backendAdapterFactory, handlerFactory);
+        runtime = ZLinkFrameworkRuntime.start(
+            options,
+            backendAdapterFactory,
+            handlerFactory,
+            eventDispatcher);
         running = true;
     }
 

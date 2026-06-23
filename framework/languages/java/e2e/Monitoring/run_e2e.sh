@@ -152,6 +152,7 @@ ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(app_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"
+grep -q "scenario MON-A1 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-A2 passed" "${log_dir}/client.stdout.log"
 grep -q "scenario MON-A3 passed" "${log_dir}/client.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log

@@ -62,14 +62,20 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
         Objects.requireNonNull(registrySources, "registrySources");
         Objects.requireNonNull(spotSources, "spotSources");
         this.dispatcher = Objects.requireNonNull(dispatcher, "dispatcher");
-        for (String sourceName : options.socketSources().keySet()) {
+        for (Map.Entry<String, ZLinkSocketEventKind[]> entry : options.socketSources().entrySet()) {
+            String sourceName = entry.getKey();
             ZLinkBackendSocket socket = socketSources.get(sourceName);
             if (socket == null) {
                 throw new ZLinkConfigurationException(
                     "monitoring socket source is not configured: " + sourceName);
             }
             ZLinkBackendSocketMonitor monitor = backend.openSocketMonitor(socket);
-            monitor.onEvent(event -> dispatcher.publish(toSocketEvent(sourceName, event)));
+            monitor.onEvent(event -> {
+                ZLinkSocketEvent socketEvent = toSocketEvent(sourceName, event);
+                if (accepts(entry.getValue(), socketEvent.event())) {
+                    dispatcher.publish(socketEvent);
+                }
+            });
             socketMonitors.add(monitor);
         }
         for (String sourceName : options.registrySources().keySet()) {
@@ -123,11 +129,31 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
         if (event == null || event.isBlank()) {
             return ZLinkSocketEventKind.INTERNAL;
         }
-        try {
-            return ZLinkSocketEventKind.valueOf(event);
-        } catch (IllegalArgumentException ignored) {
-            return ZLinkSocketEventKind.INTERNAL;
+        return switch (event) {
+            case "CONNECTED", "ACCEPTED", "LISTENING" -> ZLinkSocketEventKind.CONNECTED;
+            case "CONNECTION_READY" -> ZLinkSocketEventKind.CONNECTION_READY;
+            case "DISCONNECTED" -> ZLinkSocketEventKind.DISCONNECTED;
+            case "HANDSHAKE_FAILED_NO_DETAIL",
+                 "HANDSHAKE_FAILED_PROTOCOL",
+                 "HANDSHAKE_FAILED_AUTH" -> ZLinkSocketEventKind.HANDSHAKE_FAILED;
+            case "PEER_WEIGHT_CHANGED" -> ZLinkSocketEventKind.PEER_ADMISSION_CHANGED;
+            case "CLOSED", "CLOSE_FAILED", "MONITOR_STOPPED" -> ZLinkSocketEventKind.CLOSED;
+            default -> ZLinkSocketEventKind.INTERNAL;
+        };
+    }
+
+    private static boolean accepts(
+        ZLinkSocketEventKind[] enabled,
+        ZLinkSocketEventKind event) {
+        if (enabled == null || enabled.length == 0) {
+            return true;
         }
+        for (ZLinkSocketEventKind candidate : enabled) {
+            if (candidate == event) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void pollRegistry(String sourceName, ZLinkBackendRegistry registry) {

@@ -69,6 +69,40 @@ final class MonitoringEventsTest {
     }
 
     @Test
+    void socketMonitoring_mapsNativeEventsAndAppliesConfiguredFilter() {
+        DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
+        options.addSocketEvents(
+            "profile",
+            ZLinkSocketEventKind.CONNECTED,
+            ZLinkSocketEventKind.HANDSHAKE_FAILED,
+            ZLinkSocketEventKind.PEER_ADMISSION_CHANGED);
+        FakeSocket socket = new FakeSocket("profile");
+        FakeMonitoringBackend backend = new FakeMonitoringBackend();
+        ZLinkRuntimeEventDispatcher dispatcher = new ZLinkRuntimeEventDispatcher();
+        List<ZLinkSocketEvent> events = new ArrayList<>();
+        dispatcher.register(ZLinkSocketEvent.class, events::add);
+
+        try (ZLinkMonitoringRuntime ignored = new ZLinkMonitoringRuntime(
+                 options,
+                 backend,
+                 Map.of("profile", socket),
+                 dispatcher)) {
+            backend.monitor.emit(monitorEvent("ACCEPTED"));
+            backend.monitor.emit(monitorEvent("LISTENING"));
+            backend.monitor.emit(monitorEvent("HANDSHAKE_FAILED_PROTOCOL"));
+            backend.monitor.emit(monitorEvent("PEER_WEIGHT_CHANGED"));
+            backend.monitor.emit(monitorEvent("DISCONNECTED"));
+        }
+
+        assertEquals(List.of(
+                ZLinkSocketEventKind.CONNECTED,
+                ZLinkSocketEventKind.CONNECTED,
+                ZLinkSocketEventKind.HANDSHAKE_FAILED,
+                ZLinkSocketEventKind.PEER_ADMISSION_CHANGED),
+            events.stream().map(ZLinkSocketEvent::event).toList());
+    }
+
+    @Test
     void registryMonitoring_emitsStatusChanged_forEmbeddedRegistry() {
         DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
         options.addRegistryEvents("registry", java.time.Duration.ofSeconds(1));
@@ -149,6 +183,14 @@ final class MonitoringEventsTest {
             monitor = new FakeSocketMonitor();
             return monitor;
         }
+    }
+
+    private static ZLinkBackendSocketMonitorEvent monitorEvent(String event) {
+        return new ZLinkBackendSocketMonitorEvent(
+            event,
+            Optional.empty(),
+            "tcp://127.0.0.1:7000",
+            "tcp://127.0.0.1:7100");
     }
 
     private static final class FakeSocket implements ZLinkBackendSocket {

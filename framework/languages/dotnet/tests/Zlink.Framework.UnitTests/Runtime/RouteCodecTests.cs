@@ -109,7 +109,7 @@ public sealed class RouteCodecTests
 
     private sealed class RouteProbeSerializer : IZLinkMessageSerializer
     {
-        public Message Serialize(object value, Type type)
+        public ZLinkEncodedPayload Serialize(object value, Type type)
         {
             var text = value switch
             {
@@ -117,12 +117,12 @@ public sealed class RouteCodecTests
                 RouteProbeReply reply => reply.Text,
                 _ => throw new NotSupportedException(type.FullName)
             };
-            return Message.From("ROUTE:" + text);
+            return ZLinkEncodedPayload.From(System.Text.Encoding.UTF8.GetBytes("ROUTE:" + text));
         }
 
-        public object? Deserialize(Message message, Type type)
+        public object? Deserialize(ZLinkEncodedPayload payload, Type type)
         {
-            var text = message.GetString();
+            var text = System.Text.Encoding.UTF8.GetString(payload.Bytes.Span);
             var value = text.StartsWith("ROUTE:", StringComparison.Ordinal)
                 ? text["ROUTE:".Length..]
                 : text;

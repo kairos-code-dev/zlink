@@ -8,7 +8,7 @@ import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 
 public final class CustomerSession implements ZLinkSession {
     private final ZLinkSessionContext context;
@@ -44,13 +44,13 @@ public final class CustomerSession implements ZLinkSession {
     }
 
     @Override
-    public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
-        boolean handled = await(handlers.tryHandleAsync(context, header, payload));
+    public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
+        boolean handled = await(handlers.tryHandleAsync(context, dispatch, payload));
         if (handled) {
             return;
         }
-        ZLinkSessionActor actor = requireSingleBoundActor(header.packetName());
-        await(actor.relay(header, payload));
+        ZLinkSessionActor actor = requireSingleBoundActor(dispatch.packetName());
+        await(actor.relay(payload));
     }
 
     private ZLinkSessionActor requireSingleBoundActor(String packetName) {

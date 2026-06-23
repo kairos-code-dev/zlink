@@ -53,8 +53,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Registry 서버
 builder.Services.AddZLinkRegistry(registry =>
 {
-    registry.PubEndpoint = "tcp://0.0.0.0:5550";
-    registry.RouterEndpoint = "tcp://0.0.0.0:5551";
+    registry.PubEndpoint = "tcp://0.0.0.0:5550";     // topology broadcast(PUB)
+    registry.RouterEndpoint = "tcp://0.0.0.0:5551";  // 역할 등록·query(ROUTER)
     registry.RegistryId = 1;
 });
 
@@ -62,7 +62,7 @@ builder.Services.AddZLinkRegistry(registry =>
 builder.Services.AddZLinkFramework(options =>
 {
                 options.AddClientServerChannel("api").EnableServer("tcp://0.0.0.0:7101");
-        options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");
+        options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:5551");  // 위 RouterEndpoint(5551) 와 동일 포트 — PUB(5550) 아님
     options.Codecs.Use(ZLinkProtobufCodec.Default);
     options.AddHandlersFromAssemblyOf<Program>();
 });
@@ -81,6 +81,7 @@ app.Run();
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 
+// AddZLinkFramework 없음 → Registry 서버만 돌고 서비스 handler 는 구동되지 않는다(embedded 와의 유일한 차이).
 builder.Services.AddZLinkRegistry(registry =>
 {
     registry.PubEndpoint = "tcp://0.0.0.0:5550";
@@ -144,23 +145,25 @@ builder.Services.AddZLinkRegistry(registry =>
 
 ```csharp
 app.MapGet("/admin/topology", async (IZLinkRegistryQuery registry) =>
-    Results.Ok(await registry.TopologyAsync()));
+    Results.Ok(await registry.TopologyAsync()));            // TopologyAsync(filter?): 채널·멤버·peer 연결 토폴로지
 
 app.MapGet("/admin/services", async (IZLinkRegistryQuery registry) =>
-    Results.Ok(await registry.ServiceSummaryAsync()));
+    Results.Ok(await registry.ServiceSummaryAsync()));      // ServiceSummaryAsync(filter?): 서비스(채널)별 요약
+
+app.MapGet("/admin/peers/{channel}", async (string channel, IZLinkRegistryQuery registry) =>
+    Results.Ok(await registry.MemberPeersAsync(channel)));  // MemberPeersAsync(channelName): 한 채널의 멤버 peer 목록
 
 app.MapGet("/health", async (IZLinkRegistryQuery registry) =>
 {
-    var status = await registry.StatusAsync();
+    var status = await registry.StatusAsync();             // StatusAsync: Registry 자체 상태(Active/Starting 등)
     return status.State == ZLinkRegistryState.Active
         ? Results.Ok(status)
         : Results.StatusCode(503);
 });
 ```
 
-제공 메서드: `StatusAsync`, `ServiceSummaryAsync(filter?)`,
-`TopologyAsync(filter?)`, `MemberPeersAsync(channelName)`.
-모두 `ValueTask` 비동기다. embedded Registry 가 아직 시작되지 않았으면 첫 query 호출이
+네 가지 query 메서드를 제공한다(각 메서드가 무엇을 돌려주는지는 위 코드 주석 참고). 모두
+`ValueTask` 비동기다. embedded Registry 가 아직 시작되지 않았으면 첫 query 호출이
 그 자리에서 Registry 를 시작시킨다(lazy start).
 
 ### 원격 — `IZLinkRegistryQueryClient`
@@ -200,6 +203,8 @@ builder.Services.AddZLinkFramework(options =>
         options.AddRouteMeshChannel("play")
             .EnableServer("tcp://0.0.0.0:7201");
 
+    // 이 호출이 있어야 Registry 기반 SPOT resolver 가 켜진다(AddRegistryEndpoint 만으론 자동 등록 안 됨).
+    // 인자 "game" = resolver 가 SPOT 주소를 찾을 때 쓰는 registry 키(채널명 "play" 와 별개).
     options.UseRegistrySpotRemoteAddresses("game");           // SPOT RoutingId → owner node 주소 resolver
 });
 ```

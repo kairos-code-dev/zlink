@@ -23,7 +23,7 @@ internal static class ZLinkStreamFrameWriter
         ReadOnlyMemory<byte> payload,
         string failureMessage)
     {
-        Write(message => stream.Write(message), header, payload.Span, failureMessage);
+        Write(message => WriteRaw(stream, message), header, payload.Span, failureMessage);
     }
 
     public static void Write(
@@ -32,6 +32,16 @@ internal static class ZLinkStreamFrameWriter
         ReadOnlySpan<byte> payload,
         string failureMessage)
     {
-        Write(message => stream.Write(message), header, payload, failureMessage);
+        Write(message => WriteRaw(stream, message), header, payload, failureMessage);
+    }
+
+    private static bool WriteRaw(IZLinkStream stream, Message message)
+    {
+        if (stream is ZLinkManagedStream managedStream)
+        {
+            return managedStream.WriteRaw(message);
+        }
+
+        return stream.Write(ZLinkMessage.From(message.ToArray()));
     }
 }

@@ -478,12 +478,12 @@ class ZLinkStreamSessionRuntime {
   }
 
   async onTransportFrame(
-    header: ZlinkStreamHeader,
+    dispatch: ZLinkSessionDispatchContext,
     payload: Message,
     signal?: AbortSignal,
   ): Promise<void> {
     this.sessionQueue.post(
-      (s) => this.session.onDispatch(header, payload, s),
+      (s) => this.session.onDispatch(dispatch, payload, s),
       signal,
     );
   }
@@ -536,7 +536,7 @@ class ZLinkSessionActorImpl implements ZLinkSessionActor {
   constructor(private readonly context: ZLinkSessionContext) {}
 
   async relay(
-    header: ZlinkStreamHeader,
+    dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void> {
@@ -593,7 +593,7 @@ class ZLinkActorDispatchRuntime {
   async postFromSession(
     actorRef: ZLinkSessionActor,
     binding: ZLinkActorBoundSession,
-    header: ZlinkStreamHeader,
+    dispatch: ZLinkSessionDispatchContext,
     payload: Message,
     signal?: AbortSignal,
   ): Promise<void> {
@@ -611,7 +611,7 @@ class ZLinkActorDispatchRuntime {
   async invokeFromSession<TReply>(
     actorRef: ZLinkSessionActor,
     binding: ZLinkActorBoundSession,
-    header: ZlinkStreamHeader,
+    dispatch: ZLinkSessionDispatchContext,
     payload: Message,
     signal?: AbortSignal,
   ): Promise<TReply> {
@@ -1270,7 +1270,7 @@ export class TicTacToeSession implements ZLinkSession {
   constructor(readonly context: ZLinkSessionContext) {}
 
   async onDispatch(
-    header: ZlinkStreamHeader,
+    dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void> {
@@ -1287,7 +1287,7 @@ export class TicTacToeSession implements ZLinkSession {
 
     const actor = this.authenticatedActors.tryGet(header);
     if (actor !== undefined) {
-      await actor.relay(header, payload, signal);
+      await actor.relay(payload, signal);
       return;
     }
 

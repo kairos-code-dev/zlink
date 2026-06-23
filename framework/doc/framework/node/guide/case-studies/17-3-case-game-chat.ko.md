@@ -170,7 +170,7 @@ export class GameChatSession implements ZLinkSession {
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
   ) {}
 
-  async onDispatch(header: ZlinkStreamHeader, payload: ZLinkMessage): Promise<void> {
+  async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     if (header.name === 'auth') {
       const req = payload.decode<AuthPlayerReq>();
       const actor = await this.actors.getOrCreate(req.playerId, 'player');
@@ -181,7 +181,7 @@ export class GameChatSession implements ZLinkSession {
     if (!this.player) {
       throw new Error('actor is not bound');
     }
-    await this.player.relay(header, payload);
+    await this.player.relay(payload);
   }
 }
 ```

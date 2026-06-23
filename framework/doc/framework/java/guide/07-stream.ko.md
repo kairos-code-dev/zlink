@@ -34,7 +34,7 @@ public void configure(ZLinkFrameworkOptions framework) {
 
 Java server framework는 header 기반 `ZLinkSession` 하나를 사용한다. packet session과
 raw session을 public type으로 나누지 않는다. framework가 frame을 디코드해
-`ZLinkStreamHeader header` + `ZLinkMessage payload` 두 부분으로 콜백한다. 응용은
+`ZLinkSessionDispatchContext dispatch` + `ZLinkMessage payload` 두 부분으로 콜백한다. 응용은
 `header.name()`으로 분기하고 `payload.decode(...)`로 DTO를 얻는다.
 
 ```java
@@ -59,7 +59,7 @@ public final class GameSession implements ZLinkSession {
 
     @Override
     public void onDispatch(
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         switch (header.name()) {
             case "ClientInput":

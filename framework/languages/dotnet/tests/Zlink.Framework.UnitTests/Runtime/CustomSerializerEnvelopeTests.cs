@@ -116,7 +116,8 @@ public sealed class CustomSerializerEnvelopeTests
         var request = ZLinkMessage.From(new PackedProbe("create"));
 
         var encoded = request.Encode(codecs);
-        var received = ZLinkMessage.FromEnvelopePayload(encoded.ContentType, encoded.Message, codecs);
+        using var payload = Message.From(encoded.Payload.Bytes.Span);
+        var received = ZLinkMessage.FromEnvelopePayload(encoded.ContentType, payload, codecs);
 
         Assert.Equal("application/x-msgpack", received.ContentType);
         Assert.Equal(new PackedProbe("create"), received.Decode<PackedProbe>());
@@ -203,7 +204,8 @@ public sealed class CustomSerializerEnvelopeTests
         var request = ZLinkMessage.From(new StringValue { Value = "join" });
 
         var encoded = request.Encode(codecs);
-        var received = ZLinkMessage.FromEnvelopePayload(encoded.ContentType, encoded.Message, codecs);
+        using var payload = Message.From(encoded.Payload.Bytes.Span);
+        var received = ZLinkMessage.FromEnvelopePayload(encoded.ContentType, payload, codecs);
 
         Assert.Equal("application/x-protobuf", received.ContentType);
         Assert.Equal("join", received.Decode<StringValue>().Value);
@@ -230,7 +232,8 @@ public sealed class CustomSerializerEnvelopeTests
         var reply = ZLinkMessage.From(new Probe("accepted"));
 
         var encoded = reply.Encode(codecs);
-        var received = ZLinkMessage.FromEnvelopePayload(encoded.ContentType, encoded.Message, codecs);
+        using var payload = Message.From(encoded.Payload.Bytes.Span);
+        var received = ZLinkMessage.FromEnvelopePayload(encoded.ContentType, payload, codecs);
 
         Assert.Equal("application/avro", received.ContentType);
         Assert.Equal(new Probe("accepted"), received.Decode<Probe>());
@@ -382,16 +385,10 @@ public sealed class CustomSerializerEnvelopeTests
         string expectedContentType)
     {
         var encoded = ZLinkMessage.From(value).Encode(codecs);
-        try
-        {
-            var received = ZLinkMessage.FromEnvelopePayload(encoded.ContentType, encoded.Message, codecs);
-            Assert.Equal(expectedContentType, received.ContentType);
-            return received;
-        }
-        finally
-        {
-            encoded.Message.Dispose();
-        }
+        using var payload = Message.From(encoded.Payload.Bytes.Span);
+        var received = ZLinkMessage.FromEnvelopePayload(encoded.ContentType, payload, codecs);
+        Assert.Equal(expectedContentType, received.ContentType);
+        return received;
     }
 
     private static void AssertStreamRoundTrip<T>(
@@ -433,15 +430,15 @@ public sealed class CustomSerializerEnvelopeTests
 
     private sealed class MarkerSerializer : IZLinkMessageSerializer
     {
-        public Message Serialize(object value, Type type)
+        public ZLinkEncodedPayload Serialize(object value, Type type)
         {
             var probe = (Probe)value;
-            return Message.From("AVRO:" + probe.Text);
+            return ZLinkEncodedPayload.From(System.Text.Encoding.UTF8.GetBytes("AVRO:" + probe.Text));
         }
 
-        public object? Deserialize(Message message, Type type)
+        public object? Deserialize(ZLinkEncodedPayload payload, Type type)
         {
-            var text = message.GetString();
+            var text = System.Text.Encoding.UTF8.GetString(payload.Bytes.Span);
             var value = text.StartsWith("AVRO:", StringComparison.Ordinal) ? text["AVRO:".Length..] : text;
             return new Probe(value);
         }

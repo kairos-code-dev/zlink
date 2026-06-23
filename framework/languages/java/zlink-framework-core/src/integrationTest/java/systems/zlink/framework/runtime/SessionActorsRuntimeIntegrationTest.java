@@ -44,7 +44,6 @@ import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
 
 final class SessionActorsRuntimeIntegrationTest {
     static final LinkedBlockingQueue<String> actorRelayRequests =
@@ -87,12 +86,7 @@ final class SessionActorsRuntimeIntegrationTest {
                 .toCompletableFuture()
                 .join();
 
-            bound.relay(
-                    new ZLinkStreamHeader(
-                        "ActorNotify",
-                        java.util.Map.of(),
-                        Optional.empty()),
-                    ZLinkMessage.of("hello"))
+            bound.relay(ZLinkMessage.of("hello"))
                 .toCompletableFuture()
                 .join();
 
@@ -492,16 +486,13 @@ final class SessionActorsRuntimeIntegrationTest {
 
     static String relayUntilActorReceived(
         ZLinkSessionActor bound,
-        ZLinkStreamHeader header,
         byte[] payloadBytes,
         String expected,
         long timeout,
         TimeUnit unit) throws Exception {
         long deadline = System.nanoTime() + unit.toNanos(timeout);
         while (true) {
-            bound.relay(
-                    header,
-                    ZLinkMessage.of(new String(payloadBytes, StandardCharsets.UTF_8)))
+            bound.relay(ZLinkMessage.of(new String(payloadBytes, StandardCharsets.UTF_8)))
                 .toCompletableFuture()
                 .join();
             long remaining = deadline - System.nanoTime();

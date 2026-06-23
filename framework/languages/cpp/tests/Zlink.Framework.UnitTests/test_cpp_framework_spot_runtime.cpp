@@ -29,6 +29,15 @@
 namespace
 {
 
+void add_string_serializer (zlink::framework::serializer_registry_t &serializers)
+{
+    serializers.add<std::string> (
+      [] (const std::string &value) {
+          return zlink::framework::encoded_payload_t::from_string (value);
+      },
+      [] (const zlink::framework::encoded_payload_t &payload) { return payload.to_string (); });
+}
+
 class test_spot_context_t : public zlink::framework::spot_context_t
 {
   public:
@@ -189,8 +198,8 @@ struct relay_spot_t : public zlink::framework::spot_t
         context.handlers ().add_actor_packet<&relay_spot_t::on_relay> ("relay.request");
     }
 
-    zlink::framework::spot_actor_join_response_t on_actor_join (relay_actor_t &,
-                                                                const zlink::message_t &)
+    zlink::framework::spot_actor_join_response_t on_actor_join (
+      relay_actor_t &, const zlink::framework::message_t &)
     {
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
@@ -220,31 +229,32 @@ struct stage_spot_t : public zlink::framework::spot_t
         throw std::runtime_error ("spot failure");
     }
 
-    zlink::framework::spot_create_response_t on_create_raw (const zlink::message_t &request)
+    zlink::framework::spot_create_response_t on_create (
+      const zlink::framework::message_t &request)
     {
         ++create_count;
-        last_create_request = request.to_string ();
+        last_create_request = request.decode<std::string> ();
         if (reject_create) {
-            return zlink::framework::spot_create_response_t::reject_raw (
-              zlink::message_t::from ("create-rejected"));
+            return zlink::framework::spot_create_response_t::reject (
+              zlink::framework::message_t::from (std::string ("create-rejected")));
         }
-        return zlink::framework::spot_create_response_t::accept_raw (
-          zlink::message_t::from ("create-accepted"));
+        return zlink::framework::spot_create_response_t::accept (
+          zlink::framework::message_t::from (std::string ("create-accepted")));
     }
 
     void on_initialize () { ++initialize_count; }
 
-    zlink::framework::spot_actor_join_response_t on_actor_join (player_actor_factory_t &actor,
-                                                                const zlink::message_t &request)
+    zlink::framework::spot_actor_join_response_t on_actor_join (
+      player_actor_factory_t &actor, const zlink::framework::message_t &request)
     {
-        join_seen = std::stoi (request.to_string ());
+        join_seen = std::stoi (request.decode<std::string> ());
         actor.joined_value = join_seen;
         if (!accept_join) {
-            return zlink::framework::spot_actor_join_response_t::reject_raw (
-              zlink::message_t::from ("rejected"));
+            return zlink::framework::spot_actor_join_response_t::reject (
+              zlink::framework::message_t::from (std::string ("rejected")));
         }
-        return zlink::framework::spot_actor_join_response_t::accept_raw (
-          zlink::message_t::from (std::to_string (join_seen + 1)));
+        return zlink::framework::spot_actor_join_response_t::accept (
+          zlink::framework::message_t::from (std::to_string (join_seen + 1)));
     }
 
     void on_move (player_actor_factory_t &actor,
@@ -485,12 +495,13 @@ struct factory_spot_t : public zlink::framework::spot_t
         configured_spot_rid = std::string (context.spot_rid ().value ());
     }
 
-    zlink::framework::spot_create_response_t on_create_raw (const zlink::message_t &request)
+    zlink::framework::spot_create_response_t on_create (
+      const zlink::framework::message_t &request)
     {
         ++create_count;
-        last_request = request.to_string ();
-        return zlink::framework::spot_create_response_t::accept_raw (
-          zlink::message_t::from (value));
+        last_request = request.decode<std::string> ();
+        return zlink::framework::spot_create_response_t::accept (
+          zlink::framework::message_t::from (value));
     }
 
     void on_initialize () { ++initialize_count; }
@@ -547,8 +558,8 @@ struct actor_packet_self_leave_spot_t : public zlink::framework::spot_t
           "self.leave");
     }
 
-    zlink::framework::spot_actor_join_response_t on_actor_join (player_actor_factory_t &,
-                                                                const zlink::message_t &)
+    zlink::framework::spot_actor_join_response_t on_actor_join (
+      player_actor_factory_t &, const zlink::framework::message_t &)
     {
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
@@ -618,26 +629,27 @@ int main ()
     zlink::framework::spot_node_builder_t builder;
     zlink::framework::zlink_builder_t manual_host;
     zlink::framework::serializer_registry_t manual_serializers;
+    add_string_serializer (manual_serializers);
     manual_serializers.add<state_update_t> (
       [] (const state_update_t &value) {
-          return zlink::message_t::from (std::to_string (value.value));
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
       },
-      [] (const zlink::message_t &message) {
-          return state_update_t{std::stoi (message.to_string ())};
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return state_update_t{std::stoi (payload.to_string ())};
       });
     manual_serializers.add<move_request_t> (
       [] (const move_request_t &value) {
-          return zlink::message_t::from (std::to_string (value.value));
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
       },
-      [] (const zlink::message_t &message) {
-          return move_request_t{std::stoi (message.to_string ())};
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return move_request_t{std::stoi (payload.to_string ())};
       });
     manual_serializers.add<move_reply_t> (
       [] (const move_reply_t &value) {
-          return zlink::message_t::from (std::to_string (value.value));
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
       },
-      [] (const zlink::message_t &message) {
-          return move_reply_t{std::stoi (message.to_string ())};
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return move_reply_t{std::stoi (payload.to_string ())};
       });
     zlink::framework::detail::channel_runtime_t::from (manual_host.message_bus ())
       .bind_serializers (manual_serializers);
@@ -727,10 +739,10 @@ int main ()
     const auto requested_rid =
       zlink::framework::spot_rid_t::from_string ("manual-stage:stage:requested");
     const auto get_or_create_count_before = stage_spot_t::create_count;
-    auto created_once = builder.get_or_create_spot_raw ("stage", requested_rid,
-                                                        zlink::message_t::from ("create-request"));
+    auto created_once = builder.get_or_create_spot ("stage", requested_rid,
+                                                        zlink::framework::message_t::from (std::string ("create-request")));
     auto existing_once =
-      builder.get_or_create_spot_raw ("stage", requested_rid, zlink::message_t::from ("ignored"));
+      builder.get_or_create_spot ("stage", requested_rid, zlink::framework::message_t::from (std::string ("ignored")));
     if (created_once.state != zlink::framework::spot_create_state_t::created
         || existing_once.state != zlink::framework::spot_create_state_t::existing
         || existing_once.spot_rid.value () != requested_rid.value ()
@@ -752,20 +764,20 @@ int main ()
     }
     stage_spot_t::reject_create = true;
     auto rejected_create =
-      builder.create_spot_raw ("stage", zlink::message_t::from ("reject-request"));
+      builder.create_spot ("stage", zlink::framework::message_t::from (std::string ("reject-request")));
     stage_spot_t::reject_create = false;
     if (rejected_create.state != zlink::framework::spot_create_state_t::rejected
         || !rejected_create.reply
-        || rejected_create.reply->to_raw ().to_string () != "create-rejected"
+        || rejected_create.reply->decode<std::string> (manual_serializers) != "create-rejected"
         || builder.find_spot (rejected_create.spot_rid)) {
         return 54;
     }
 
     auto factory_created =
-      builder.create_spot_raw ("factory", zlink::message_t::from ("factory-request"));
+      builder.create_spot ("factory", zlink::framework::message_t::from (std::string ("factory-request")));
     if (factory_created.state != zlink::framework::spot_create_state_t::created
         || !factory_created.reply
-        || factory_created.reply->to_raw ().to_string () != "factory-reply"
+        || factory_created.reply->decode<std::string> (manual_serializers) != "factory-reply"
         || factory_spot_t::create_count != 1 || factory_spot_t::initialize_count != 1
         || factory_spot_t::last_request != "factory-request"
         || factory_spot_t::configured_spot_rid != std::string (factory_created.spot_rid.value ())) {
@@ -837,11 +849,11 @@ int main ()
     });
     auto lifecycle_join =
       lifecycle_actor_context
-        .join_spot_raw (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("41")))
+        .join_spot (lifecycle_stage.spot_rid, zlink::framework::message_t::from (std::string ("41")))
         .async ()
         .result ();
     if (!lifecycle_join || lifecycle_join.value ().result_code != 0
-        || lifecycle_join.value ().reply.to_raw ().to_string () != "42"
+        || lifecycle_join.value ().reply.decode<std::string> (manual_serializers) != "42"
         || lifecycle_stage_spot->join_seen != 41 || lifecycle_stage_spot->joined_count != 1
         || lifecycle_actor_state.joined_value != 141) {
         return 59;
@@ -896,12 +908,12 @@ int main ()
     auto rejected_context = rejected_actor.context ();
     auto rejected_runtime_join =
       rejected_context
-        .join_spot_raw (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("50")))
+        .join_spot (lifecycle_stage.spot_rid, zlink::framework::message_t::from (std::string ("50")))
         .async ()
         .result ();
     lifecycle_stage_spot->accept_join = true;
     if (!rejected_runtime_join || rejected_runtime_join.value ().result_code == 0
-        || rejected_runtime_join.value ().reply.to_raw ().to_string () != "rejected"
+        || rejected_runtime_join.value ().reply.decode<std::string> (manual_serializers) != "rejected"
         || lifecycle_stage_spot->joined_count != 1
         || rejected_context.actor_ref ().node_rid ().value () != "local") {
         return 61;
@@ -918,8 +930,8 @@ int main ()
     });
     auto lifecycle_entry_join =
       lifecycle_actor_context
-        .join_entry_spot_raw (zlink::framework::node_rid_t::from_string ("lifecycle-stage"),
-                              zlink::message_t{})
+        .join_entry_spot (zlink::framework::node_rid_t::from_string ("lifecycle-stage"),
+                              zlink::framework::message_t{})
         .async ()
         .result ();
     if (!lifecycle_entry_join || lifecycle_stage_spot->left_count != 1
@@ -939,7 +951,7 @@ int main ()
     auto destroy_context = destroyActor.context ();
     auto destroy_stage_join =
       destroy_context
-        .join_spot_raw (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("43")))
+        .join_spot (lifecycle_stage.spot_rid, zlink::framework::message_t::from (std::string ("43")))
         .async ()
         .result ();
     if (!destroy_stage_join || lifecycle_stage_spot->joined_count != 2) {
@@ -954,8 +966,8 @@ int main ()
     }
     auto destroy_entry_join =
       destroy_context
-        .join_entry_spot_raw (zlink::framework::node_rid_t::from_string ("lifecycle-stage"),
-                              zlink::message_t{})
+        .join_entry_spot (zlink::framework::node_rid_t::from_string ("lifecycle-stage"),
+                              zlink::framework::message_t{})
         .async ()
         .result ();
     if (!destroy_entry_join || lifecycle_stage_spot->left_count != 2
@@ -986,7 +998,7 @@ int main ()
     player_actor_factory_t leaveActor_state;
     auto leave_stage_join =
       leave_context
-        .join_spot_raw (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("44")))
+        .join_spot (lifecycle_stage.spot_rid, zlink::framework::message_t::from (std::string ("44")))
         .async ()
         .result ();
     if (!leave_stage_join || lifecycle_stage_spot->joined_count != 3) {
@@ -1051,8 +1063,8 @@ int main ()
     auto auto_destroy_context = auto_destroy_actor.context ();
     auto auto_destroy_initial_entry_join =
       auto_destroy_context
-        .join_entry_spot_raw (zlink::framework::node_rid_t::from_string ("auto-destroy-stage"),
-                              zlink::message_t{})
+        .join_entry_spot (zlink::framework::node_rid_t::from_string ("auto-destroy-stage"),
+                              zlink::framework::message_t{})
         .async ()
         .result ();
     if (!auto_destroy_initial_entry_join
@@ -1061,8 +1073,8 @@ int main ()
         return 95;
     }
     auto auto_destroy_stage_join = auto_destroy_context
-                                     .join_spot_raw (auto_destroy_stage_created.spot_rid,
-                                                     zlink::message_t::from (std::string ("46")))
+                                     .join_spot (auto_destroy_stage_created.spot_rid,
+                                                     zlink::framework::message_t::from (std::string ("46")))
                                      .async ()
                                      .result ();
     if (!auto_destroy_stage_join || auto_destroy_stage_join.value ().result_code != 0
@@ -1121,8 +1133,8 @@ int main ()
       packet_leave_gateway.manager ().create ("player", "packet-leave-player").value ();
     auto packet_leave_initial_join =
       packet_leave_actor.context ()
-        .join_entry_spot_raw (zlink::framework::node_rid_t::from_string ("packet-leave-stage"),
-                              zlink::message_t{})
+        .join_entry_spot (zlink::framework::node_rid_t::from_string ("packet-leave-stage"),
+                              zlink::framework::message_t{})
         .async ()
         .result ();
     auto packet_leave_stage_join =
@@ -1135,17 +1147,21 @@ int main ()
     zlink::framework::service_collection_t packet_leave_services;
     auto packet_leave_provider = packet_leave_services.build_provider ();
     zlink::framework::serializer_registry_t packet_leave_serializers;
+    add_string_serializer (packet_leave_serializers);
     packet_leave_serializers.add<relay_request_t> (
       [] (const relay_request_t &value) {
-          return zlink::message_t::from (std::to_string (value.value));
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
       },
-      [] (const zlink::message_t &message) {
-          auto bytes = message.to_bytes ();
-          return relay_request_t{std::stoi (std::string (bytes.begin (), bytes.end ()))};
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return relay_request_t{std::stoi (payload.to_string ())};
       });
     packet_leave_serializers.add<relay_reply_t> (
-      [] (const relay_reply_t &value) { return zlink::message_t::from (value.value); },
-      [] (const zlink::message_t &message) { return relay_reply_t{message.to_string ()}; });
+      [] (const relay_reply_t &value) {
+          return zlink::framework::encoded_payload_t::from_string (value.value);
+      },
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return relay_reply_t{payload.to_string ()};
+      });
     packet_leave_entry->destroy_on_join = true;
     auto packet_leave_reply = packet_leave_runtime.relay_actor_packet (
       packet_leave_stage_join.value ().actor, zlink::framework::actor_context_t{}, "self.leave",
@@ -1280,7 +1296,7 @@ int main ()
     }
     const auto route_join_reply =
       route_join_serializers.get<zlink::framework::detail::spot_actor_join_route_reply_t> ()
-        .deserialize (route_join_reply_body.value ());
+        .deserialize (zlink::framework::detail::encoded_payload_from_raw (route_join_reply_body.value ()));
     if (route_join_reply.result_code != 0 || route_join_reply.actor_node_rid != "play-b"
         || route_join_reply.actor_generation != 3) {
         return 92;
@@ -1310,16 +1326,21 @@ int main ()
     zlink::framework::service_collection_t relay_services;
     auto relay_provider = relay_services.build_provider ();
     zlink::framework::serializer_registry_t relay_serializers;
+    add_string_serializer (relay_serializers);
     relay_serializers.add<relay_request_t> (
       [] (const relay_request_t &value) {
-          return zlink::message_t::from (std::to_string (value.value));
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
       },
-      [] (const zlink::message_t &message) {
-          return relay_request_t{std::stoi (message.to_string ())};
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return relay_request_t{std::stoi (payload.to_string ())};
       });
     relay_serializers.add<relay_reply_t> (
-      [] (const relay_reply_t &value) { return zlink::message_t::from (value.value); },
-      [] (const zlink::message_t &message) { return relay_reply_t{message.to_string ()}; });
+      [] (const relay_reply_t &value) {
+          return zlink::framework::encoded_payload_t::from_string (value.value);
+      },
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return relay_reply_t{payload.to_string ()};
+      });
     auto relay_dispatch = relay_runtime.relay_actor_packet (
       relay_join.value ().actor, zlink::framework::actor_context_t{}, "relay.request",
       zlink::message_t::from (std::string ("64")), relay_provider, relay_serializers);
@@ -1517,26 +1538,27 @@ int main ()
     auto spot_provider = spot_services.build_provider ();
 
     zlink::framework::serializer_registry_t spot_serializers;
+    add_string_serializer (spot_serializers);
     spot_serializers.add<state_update_t> (
       [] (const state_update_t &value) {
-          return zlink::message_t::from (std::to_string (value.value));
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
       },
-      [] (const zlink::message_t &message) {
-          return state_update_t{std::stoi (message.to_string ())};
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return state_update_t{std::stoi (payload.to_string ())};
       });
     spot_serializers.add<move_request_t> (
       [] (const move_request_t &value) {
-          return zlink::message_t::from (std::to_string (value.value));
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
       },
-      [] (const zlink::message_t &message) {
-          return move_request_t{std::stoi (message.to_string ())};
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return move_request_t{std::stoi (payload.to_string ())};
       });
     spot_serializers.add<move_reply_t> (
       [] (const move_reply_t &value) {
-          return zlink::message_t::from (std::to_string (value.value));
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
       },
-      [] (const zlink::message_t &message) {
-          return move_reply_t{std::stoi (message.to_string ())};
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return move_reply_t{std::stoi (payload.to_string ())};
       });
 
     stage_spot_t stage_spot;
@@ -1557,9 +1579,9 @@ int main ()
     }
 
     const auto join_dispatch =
-      stage_spot.on_actor_join (actor, zlink::message_t::from (std::string ("41")));
+      stage_spot.on_actor_join (actor, zlink::framework::message_t::from (std::string ("41")));
     if (!join_dispatch.accepted || !join_dispatch.reply
-        || join_dispatch.reply->to_raw (spot_serializers).to_string () != "42"
+        || join_dispatch.reply->decode<std::string> (spot_serializers) != "42"
         || actor.joined_value != 41 || stage_spot.join_seen != 41) {
         return 23;
     }
@@ -1569,9 +1591,9 @@ int main ()
     }
     stage_spot.accept_join = false;
     const auto rejected_join =
-      stage_spot.on_actor_join (actor, zlink::message_t::from (std::string ("50")));
+      stage_spot.on_actor_join (actor, zlink::framework::message_t::from (std::string ("50")));
     if (rejected_join.accepted || !rejected_join.reply
-        || rejected_join.reply->to_raw (spot_serializers).to_string () != "rejected") {
+        || rejected_join.reply->decode<std::string> (spot_serializers) != "rejected") {
         return 47;
     }
     if (stage_spot.joined_count != 1) {
@@ -1692,7 +1714,7 @@ int main ()
     }
     const auto quick_result = quick_future.get ();
     if (!quick_result
-        || spot_serializers.get<move_reply_t> ().deserialize (quick_result.value ()).value != 10
+        || spot_serializers.get<move_reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (quick_result.value ())).value != 10
         || async_spot.quick_seen () != 1) {
         return 54;
     }
@@ -1706,7 +1728,7 @@ int main ()
     }
     const auto slow_result = slow_future.get ();
     if (!slow_result
-        || spot_serializers.get<move_reply_t> ().deserialize (slow_result.value ()).value != 78) {
+        || spot_serializers.get<move_reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (slow_result.value ())).value != 78) {
         return 57;
     }
 

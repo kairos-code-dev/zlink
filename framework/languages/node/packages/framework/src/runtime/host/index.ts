@@ -8,7 +8,6 @@ import type {
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import type {
   ActorRef,
-  Message,
   RoutingId,
   ZLinkActor,
   ZLinkActorJoinResult,
@@ -19,9 +18,9 @@ import type {
   ZLinkSessionActor,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
-  ZLinkSpotRemoteAddressResolver,
-  ZlinkStreamHeader
+  ZLinkSpotRemoteAddressResolver
 } from '../../contracts';
+import type { Message } from '../../contracts/Common/Message';
 import { ZLinkMessageFlowLogMode, ZLinkSpotKind } from '../../contracts';
 import type { ZLinkMessageFlowControl } from '../../contracts';
 import {
@@ -65,7 +64,7 @@ import {
   decodeStreamHeader,
   encodeStreamHeader,
   messageToBytes,
-  requireStreamFrameHeader,
+  type ZLinkStreamFrameHeader,
   ZLinkStreamMessageKind
 } from '../streams/protocol';
 
@@ -698,7 +697,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
 
   private async relayRemoteActorPacket(
     actor: ZLinkSessionActor,
-    header: ZlinkStreamHeader,
+    frameHeader: ZLinkStreamFrameHeader,
     payload: Message,
     signal?: AbortSignal
   ): Promise<boolean> {
@@ -709,7 +708,6 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     if (remoteTarget === undefined) {
       return false;
     }
-    const frameHeader = requireStreamFrameHeader(header);
     const localNodeRid = this.spotNodeRuntime?.primaryNode?.routingId as RoutingId | undefined;
     const request = {
       packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,

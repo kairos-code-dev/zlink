@@ -118,7 +118,7 @@ public final class GameSession implements ZLinkSession {
     public ZLinkSessionContext context() { return context; }
 
     @Override
-    public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
+    public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
         if ("auth".equals(header.name())) {
             AuthReq req = payload.decode(AuthReq.class);
             actor = actors.getOrCreate(req.playerId(), "player")
@@ -129,7 +129,7 @@ public final class GameSession implements ZLinkSession {
             return;
         }
         if (actor == null) { throw new IllegalStateException("actor is not bound"); }
-        actor.relay(header, payload).toCompletableFuture().join();
+        actor.relay(payload).toCompletableFuture().join();
     }
 }
 ```

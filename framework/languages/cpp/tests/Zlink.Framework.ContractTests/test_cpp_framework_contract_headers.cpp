@@ -332,7 +332,7 @@ class named_session_t final : public zlink::framework::packet_stream_session_t
     }
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &,
-                                              const zlink::framework::stream_header_t &,
+                                              const zlink::framework::stream_dispatch_context_t &,
                                               const zlink::framework::message_t &) override
     {
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
@@ -403,28 +403,11 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_t 
                               zlink::framework::task_t<void>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().write_packet (
-                   std::declval<const zlink::framework::stream_header_t &> (),
                    std::declval<const zlink::framework::message_t &> ())),
                  zlink::framework::stream_write_call_t>);
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().write_packet_raw (
-                   std::declval<const zlink::framework::stream_header_t &> (),
-                   std::declval<const zlink::message_t &> ())),
-                 zlink::framework::stream_write_call_t>);
-static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().reply_packet (
-                   std::declval<const zlink::framework::stream_header_t &> (),
                    std::declval<const zlink::framework::message_t &> ())),
-                 zlink::framework::stream_write_call_t>);
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().reply_packet_raw (
-                   std::declval<const zlink::framework::stream_header_t &> (),
-                   std::declval<const zlink::message_t &> ())),
-                 zlink::framework::stream_write_call_t>);
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().reply_packet (
-                   std::declval<const zlink::framework::stream_header_t &> (),
-                   std::declval<named_reply_t> ())),
                  zlink::framework::stream_write_call_t>);
 
 static_assert (
@@ -652,10 +635,6 @@ static_assert (
                    "stage", std::declval<const zlink::framework::message_t &> ())),
                   zlink::framework::spot_create_result_t>);
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().create_spot_raw (
-                   "stage", std::declval<zlink::message_t> ())),
-                  zlink::framework::spot_create_result_t>);
-static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::spot_node_builder_t &> ().add_spot<contract_spot_t> (
       "stage", std::declval<std::function<std::shared_ptr<contract_spot_t> ()>> ())),
@@ -667,11 +646,6 @@ static_assert (
       std::declval<const zlink::framework::message_t &> ())),
     zlink::framework::spot_create_result_t>);
 static_assert (
-  std::is_same_v<
-    decltype (std::declval<zlink::framework::spot_node_builder_t &> ().get_or_create_spot_raw (
-      "stage", std::declval<zlink::framework::spot_rid_t> (), std::declval<zlink::message_t> ())),
-    zlink::framework::spot_create_result_t>);
-static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_create_result_t> ().reply),
                  std::optional<zlink::framework::message_t>>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_context_t &> ()
@@ -680,29 +654,13 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_con
                               zlink::framework::actor_join_spot_call_t>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_join_result_t> ().reply),
                               zlink::framework::message_t>);
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_context_t &> ()
-                                          .join_spot_raw (std::declval<zlink::framework::spot_rid_t> (),
-                                                         std::declval<const zlink::message_t &> ())),
-                              zlink::framework::actor_join_spot_call_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::session_actor_t &> ().relay (
-                   std::declval<const zlink::framework::stream_header_t &> (),
                    std::declval<const zlink::framework::message_t &> ())),
-                 zlink::framework::relay_call_t>);
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::session_actor_t &> ().relay_raw (
-                   std::declval<const zlink::framework::stream_header_t &> (),
-                   std::declval<const zlink::message_t &> ())),
                  zlink::framework::relay_call_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::session_actor_t &> ().relay_request (
-                   std::declval<const zlink::framework::stream_header_t &> (),
                    std::declval<const zlink::framework::message_t &> ())),
-                 zlink::framework::relay_request_call_t>);
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::session_actor_t &> ().relay_request_raw (
-                   std::declval<const zlink::framework::stream_header_t &> (),
-                   std::declval<const zlink::message_t &> ())),
                  zlink::framework::relay_request_call_t>);
 
 static_assert (

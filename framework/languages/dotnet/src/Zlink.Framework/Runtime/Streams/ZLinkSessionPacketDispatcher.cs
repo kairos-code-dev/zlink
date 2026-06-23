@@ -9,16 +9,16 @@ internal sealed class ZLinkSessionPacketDispatcher<TSessionContext>(
 
     public async ValueTask<bool> TryHandleAsync(
         TSessionContext context,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default)
     {
-        if (!_handlers.TryGetValue(header.Name, out var handler))
+        if (!_handlers.TryGetValue(dispatch.PacketName, out var handler))
         {
             return false;
         }
 
-        await handler.HandleAsync(context, header, payload, cancellationToken)
+        await handler.HandleAsync(context, dispatch, payload, cancellationToken)
             .ConfigureAwait(false);
         return true;
     }

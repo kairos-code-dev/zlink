@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -24,7 +24,8 @@ final class ZLinkCodecRegistrationTest {
         assertEquals("Probe", encoded.packetName());
         assertEquals("AVRO:hello", new String(encoded.payload().toByteArray(), StandardCharsets.UTF_8));
 
-        Probe decoded = serializer.deserialize(encoded.payload(), Probe.class);
+        Probe decoded =
+            serializer.deserialize(ZLinkEncodedPayload.from(encoded.payload().toByteArray()), Probe.class);
         assertEquals(new Probe("hello"), decoded);
     }
 
@@ -64,14 +65,14 @@ final class ZLinkCodecRegistrationTest {
 
     static final class MarkerSerializer implements ZLinkMessageSerializer {
         @Override
-        public <T> Message serialize(T value) {
+        public <T> ZLinkEncodedPayload serialize(T value) {
             Probe probe = (Probe) value;
-            return Message.from(("AVRO:" + probe.text()).getBytes(StandardCharsets.UTF_8));
+            return ZLinkEncodedPayload.from(("AVRO:" + probe.text()).getBytes(StandardCharsets.UTF_8));
         }
 
         @Override
-        public <T> T deserialize(Message message, Class<T> type) {
-            String text = new String(message.toByteArray(), StandardCharsets.UTF_8);
+        public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
+            String text = new String(payload.bytes(), StandardCharsets.UTF_8);
             String value = text.startsWith("AVRO:") ? text.substring("AVRO:".length()) : text;
             return type.cast(new Probe(value));
         }

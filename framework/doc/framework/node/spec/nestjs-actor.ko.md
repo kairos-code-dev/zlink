@@ -846,7 +846,7 @@ export interface ZLinkSessionActor {
   readonly ref: ActorRef;
 
   relay(
-    header: ZlinkStreamHeader,
+    dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
   ): Promise<void>;
 

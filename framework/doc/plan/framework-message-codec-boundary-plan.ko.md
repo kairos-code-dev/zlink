@@ -151,8 +151,8 @@ co_await actor.context().join_spot(room_rid, join_room_t{.room_id = "room-1"});
 | .NET session | `IZLinkSession.OnDispatchAsync(...)`는 framework `ZLinkMessage` payload를 받는다. |
 | .NET SPOT create | `IZLinkSpot.OnCreateAsync(...)`는 framework `ZLinkMessage` request를 받는다. |
 | .NET actor join | `IZLinkActorContext.JoinSpot(...)` / `JoinEntrySpot(...)`은 `ZLinkMessage`와 typed request overload를 제공한다. |
-| C++ stream session | normal `packet_stream_session_t::on_packet(...)`은 `zlink::framework::message_t`를 받으며 raw payload는 `on_raw_packet(...)`으로 분리한다. |
-| C++ actor relay | normal `session_actor_t::relay(...)`는 `zlink::framework::message_t`를 받고 raw relay는 `relay_raw(...)`로 분리한다. |
+| C++ stream session | `packet_stream_session_t::on_packet(...)`은 `zlink::framework::message_t` payload를 받는다. 별도 raw 이름의 callback은 제거한다. |
+| C++ actor relay | `session_actor_t::relay(...)`는 `zlink::framework::message_t` payload를 받는다. 별도 raw 이름의 relay API는 제거한다. |
 | framework message | 각 언어의 framework message 타입 또는 동등 타입이 codec registry를 통해 encode/decode를 수행한다. |
 | custom codec 등록 | 기존처럼 options, builder, application startup에서 등록한다. 등록 위치와 extension 작성 계약은 바꾸지 않는다. |
 
@@ -174,18 +174,20 @@ co_await actor.context().join_spot(room_rid, join_room_t{.room_id = "room-1"});
 typed payload를 기준으로 하는 경로다. 이 계획은 그 표면을 다시 설계하지 않는다. 범위는 raw bindings
 `Message`가 새는 예외 표면인 SPOT create, session dispatch, actor join으로 제한한다.
 
-raw `Message` 자체를 없애는 것은 목표가 아니다. 아래 경계에서는 raw payload가 여전히 필요하다.
+bindings raw `Message` 자체를 runtime 내부에서 없애는 것은 목표가 아니다. 다만 framework public
+interface에는 bindings raw `Message`, `zlink::message_t`, raw `Buffer`를 payload 계약으로 노출하지
+않는다. 아래 경계에서는 raw payload가 여전히 필요하지만, 그 사용은 runtime 내부 구현이나 test harness에
+머물러야 한다.
 
 - bindings와 backend socket을 직접 감싸는 runtime 경계
 - stream frame writer와 frame reader
 - actor relay와 bound session relay처럼 이미 만들어진 frame을 보존해야 하는 경계
-- raw packet API처럼 사용자가 wire payload를 직접 다루겠다고 선택한 고급 표면
 - 테스트에서 깨진 frame이나 codec 불일치를 의도적으로 주입하는 harness
 
 반대로 SPOT create, session dispatch, actor join처럼 일반 사용자가 업무 DTO를 다루는 표면에서는
 기존 raw 방식을 최종 상태로 남기지 않는다. 호환성 때문에 중간 단계에서 deprecated raw API를 둘 수는
-있지만, 구현 완료 시점에는 sample, guide, contract test, 일반 public surface에서 raw 방식을 제거하는
-방향으로 진행한다.
+있지만, 구현 완료 시점에는 sample, guide, contract test, 일반 public surface에서 raw 방식을 제거한다.
+public API에 raw packet escape hatch를 새로 남겨 두는 방식은 이 계획의 완료 기준에 맞지 않는다.
 
 ## 목표 공개 표면
 
@@ -687,7 +689,7 @@ code로 다시 확인하고, 확인되지 않은 경로는 구현 전에 먼저 
 | actor join envelope | join request/reply envelope의 content type 문자열 | 모든 local, remote, native, entry spot fallback 경로가 같은 content type을 보존해야 한다. |
 | session / stream packet | stream header의 codec id가 있으면 그 값을 쓴다. 없으면 mismatch를 감지할 수 없다. | codec id가 없는 언어 또는 경로는 먼저 codec id 보존을 추가하거나 mismatch 테스트 대상에서 제외한다. |
 | SPOT create | 기존 raw 경로에는 self-describing tag가 없을 수 있다. | create request/reply를 envelope 또는 동등한 tagged payload로 바꾼 뒤 `ZLinkMessage`를 적용한다. |
-| raw relay / raw packet API | 판별하지 않는다. | raw API는 codec registry 대상이 아니며 payload bytes를 그대로 보존한다. |
+| raw relay / raw packet API | 별도 public API로 두지 않는다. | server/framework public API는 언어별 단일 payload 타입만 받는다. C++는 `zlink::message_t`, .NET/Java/Kotlin/Node.js는 `ZLinkMessage` 계열 타입을 사용한다. |
 
 ### session API
 
@@ -695,7 +697,7 @@ session의 기본 업무 API는 raw payload를 직접 받지 않는다.
 
 ```csharp
 ValueTask OnDispatchAsync(
-    ZlinkStreamHeader header,
+    ZLinkSessionDispatchContext dispatch,
     ZLinkMessage payload,
     CancellationToken cancellationToken);
 ```
@@ -707,15 +709,15 @@ public final class AuthenticateHandler
         implements ZLinkTypedSessionPacketHandler<SessionContext, AuthenticateReq> {
     public CompletionStage<Void> handle(
             SessionContext context,
-            ZLinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             AuthenticateReq request) {
         return context.client().reply(new AuthenticateRes(request.userId())).submit();
     }
 }
 ```
 
-raw packet handler는 고급 API로 남기되, 이름과 문서에서 raw payload를 직접 다루는 경계임을 분명히
-한다. 일반 sample과 guide는 raw handler를 기본 예시로 쓰지 않는다.
+server/framework public API에는 `_raw` 접미사의 중복 API를 남기지 않는다. 내부 runtime은 필요한 경우
+wire header와 encoded bytes를 계속 보존하지만, application callback에는 header 객체를 전달하지 않는다.
 
 ### SPOT create API
 

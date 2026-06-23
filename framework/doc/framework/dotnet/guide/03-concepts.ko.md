@@ -207,11 +207,26 @@ Registry 없이 endpoint 를 직접 지정하는 **수동 연결**도 가능하�
   실행은 채널별 **async 수신 루프**에서(HTTP 핸들러는 `ASP.NET Core` 요청 파이프라인)
   돈다. 그래서 가변 도메인 상태를 핸들러 멤버에 두지 않는다.
 - **SPOT 핸들러** — spot 클래스(`IZLinkSpot`)의 메서드가 아니라, 그 spot 에
-  **바인딩된 별도 핸들러 class** 다. `IZLinkSpotRequestHandler<TSpot, TRequest, TReply>`
-  / `IZLinkSpotPacketHandler<TSpot, TMessage>` / `IZLinkSpotTimerHandler<TSpot>` 를
-  구현하고, spot 의 `Configure()` 에서 `Context.Handlers.AddPacket<THandler>()` ·
-  `Context.Handlers.AddActorPacket<THandler, TActor>()` 로 등록한다. 같은 SPOT 안에서는
-  **전체 직렬 실행**이라 상태에 lock 이 필요 없다.
+  **바인딩된 별도 핸들러 class** 다. spot 용 핸들러 인터페이스를 구현하고, 그 spot 의
+  `Configure()` 에서 등록한다(어떤 인터페이스·API 가 무엇을 맡는지는 아래 예제 주석 참고).
+  같은 SPOT 안에서는 **전체 직렬 실행**이라 상태에 lock 이 필요 없다.
+
+```csharp
+// SPOT 핸들러는 대상 spot 타입을 첫 제네릭 인자로 받는 별도 class 다.
+public sealed class GetStateHandler
+    : IZLinkSpotRequestHandler<RoomSpot, GetStateRequest, GetStateReply>  // request 핸들러: <대상 spot, 요청, 응답>
+{
+    public ValueTask<GetStateReply> HandleAsync(RoomSpot spot, GetStateRequest req, CancellationToken ct)
+        => ValueTask.FromResult(new GetStateReply(spot.Occupants));       // 첫 인자로 대상 spot 인스턴스를 받는다
+}
+// (이 밖에 IZLinkSpotPacketHandler<TSpot, TMessage> = send packet, IZLinkSpotTimerHandler<TSpot> = timer)
+
+public void Configure()   // 등록은 그 spot 의 Configure() 안에서 한다
+{
+    Context.Handlers.AddPacket<GetStateHandler>();              // send/request packet 핸들러 등록
+    Context.Handlers.AddActorPacket<MoveHandler, RoomActor>(); // actor 가 보낸 packet 핸들러 등록 (actor 사용 시)
+}
+```
 
 | | 노드 핸들러 (채널·HTTP) | entry spot | room spot |
 |---|---|---|---|
@@ -250,9 +265,22 @@ graph TB
 인프라(캐시·카운터)는 싱글톤 + 자체 동기화에 둔다. SPOT 핸들러 작성과 직렬 실행
 보장은 [05-spot](05-spot.ko.md), 채널 핸들러 노출은 [04-channel-messaging](04-channel-messaging.ko.md).
 
-**handler 노출은 명시적이다** — `[ZLinkHandlerGroup("api")]` 로 묶고 channel 등록에서
-`AddHandlerGroup("api")` 로 붙이거나(방법 A), `AddRequestHandler<T>()` 로 개별
-등록한다(방법 B). 다음 구성 오류는 lazy first-call 로 미루지 않고 **host startup 에서
+**handler 노출은 명시적이다** — 두 방법 중 하나로 channel 에 붙인다(방법별 코드는 아래 주석 참고).
+
+```csharp
+// 방법 A — attribute 로 묶고 group 이름으로 붙인다
+[ZLinkHandlerGroup("api")]                  // 이 class 의 핸들러 메서드들을 "api" group 으로 묶는다
+public sealed class ApiHandlers { /* [ZLinkRequest] / [ZLinkSend] 메서드들 */ }
+
+options.AddClientServerChannel("orders")
+    .AddHandlerGroup("api");                // 위 group 을 이 channel 에 노출
+
+// 방법 B — 핸들러 타입을 channel 에 개별 등록
+options.AddClientServerChannel("orders")
+    .AddRequestHandler<GetOrderHandler>();  // 핸들러 하나씩 직접 등록
+```
+
+다음 구성 오류는 lazy first-call 로 미루지 않고 **host startup 에서
 즉시** 예외로 막힌다: channel 이름 중복, 같은 channel 안 `kind + packet name` 중복,
 client 역할에 Discovery·수동 연결 둘 다 없음, 허용되지 않는 handler 반환형.
 
@@ -270,9 +298,10 @@ outbound 호출은 모두 비동기다 — send/publish 의 `Async(...)` 완료�
 public async ValueTask<CreateGameReply> HandleAsync (
     CreateGameRequest request, ZLinkRequestContext context, CancellationToken ct)
 {
+    // 런타임(핸들러) 스레드 — await 로 비운다. blocking(.Result/.GetAwaiter().GetResult())은 금지.
     var room = await _client
         .RequestToChannel("tictactoe.play", new CreateRoomRequest(request.GameName))
-        .Async<CreateRoomReply>(ct);
+        .Async<CreateRoomReply>(ct);   // request → remote reply 가 도착할 때까지 await 로 대기, 그 reply 를 받는다
     return new CreateGameReply (room.RoomId, room.GameName);
 }
 ```

@@ -3,7 +3,7 @@ package systems.zlink.samples.gamequest.server.gameapi.session.handlers;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.samples.gamequest.server.gameapi.infrastructure.store.GameQuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
@@ -21,7 +21,7 @@ public final class GetQuestProgressHandler implements ZLinkSessionPacketHandler<
     }
 
     @Override
-    public void handle(ZLinkSessionContext context, ZLinkStreamHeader header, ZLinkMessage payload) {
+    public void handle(ZLinkSessionContext context, ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
         Messages.GetQuestProgressReq request =
             payload.decode(Messages.GetQuestProgressReq.class);
         context.client()

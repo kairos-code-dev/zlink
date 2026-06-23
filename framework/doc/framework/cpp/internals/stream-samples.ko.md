@@ -68,11 +68,10 @@ zlink::framework::stream_write_call_t send_route_ack(
 }
 ```
 
-framework core는 raw stream session 샘플을 제공하지 않는다. Header도 framework가
-정의한 `stream_header_t` 방식만 사용한다. 기존처럼 `zlink::message_t`를 직접
-만들어 `write_packet(...)`에 넘기던 예시는 일반 업무 경로에서 제거한다. raw payload를
-그대로 보존해야 하는 runtime boundary나 test harness만 `write_packet_raw(...)` 또는
-`reply_packet_raw(...)`를 사용한다.
+framework core는 raw stream session 샘플을 제공하지 않는다. 사용자 샘플은
+`stream_dispatch_context_t`에서 packet name과 metadata만 읽고, payload는
+`zlink::message_t` 하나로 다룬다. reply와 actor relay에 필요한 내부 header 값은 runtime이
+보존한다.
 
 ## 4. actor relay
 
@@ -96,7 +95,7 @@ public:
         }
 
         co_await actor_
-          .relay(header, payload)
+          .relay(payload)
           .async();
     }
 

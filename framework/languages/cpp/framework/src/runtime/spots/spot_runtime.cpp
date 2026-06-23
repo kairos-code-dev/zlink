@@ -89,7 +89,7 @@ void configure_spot_execution (const std::shared_ptr<detail::spot_context_state_
 zlink::message_t framework_reply_or_empty (const std::optional<message_t> &reply,
                                            serializer_registry_t &serializers)
 {
-    return reply ? reply->to_raw (serializers) : zlink::message_t{};
+    return reply ? detail::message_to_raw (*reply, serializers) : zlink::message_t{};
 }
 
 void attach_native_spot_locked (const std::shared_ptr<detail::spot_context_state_t> &state)
@@ -1313,7 +1313,7 @@ spot_create_result_t spot_node_builder_t::create_spot (std::string spot_name,
                                      "spot create requires a serializer registry");
     }
     return create_spot_raw (std::move (spot_name),
-                            request.to_raw (*_state->channel_runtime->serializers));
+                            detail::message_to_raw (request, *_state->channel_runtime->serializers));
 }
 
 spot_create_result_t spot_node_builder_t::get_or_create_spot (std::string spot_name,
@@ -1340,7 +1340,7 @@ spot_create_result_t spot_node_builder_t::get_or_create_spot (std::string spot_n
                                      "spot get or create requires a serializer registry");
     }
     return get_or_create_spot_raw (std::move (spot_name), std::move (spot_rid),
-                                   request.to_raw (*_state->channel_runtime->serializers));
+                                   detail::message_to_raw (request, *_state->channel_runtime->serializers));
 }
 
 std::optional<spot_info_t> spot_node_builder_t::find_spot (spot_rid_t spot_rid) const
@@ -1437,7 +1437,7 @@ spot_create_result_t spot_node_manager_t::create_spot (std::string spot_name,
                                      "spot create requires a serializer registry");
     }
     return create_spot_raw (std::move (spot_name),
-                            request.to_raw (*_state->channel_runtime->serializers));
+                            detail::message_to_raw (request, *_state->channel_runtime->serializers));
 }
 
 spot_create_result_t spot_node_manager_t::get_or_create_spot (std::string spot_name,
@@ -1464,7 +1464,7 @@ spot_create_result_t spot_node_manager_t::get_or_create_spot (std::string spot_n
                                      "spot get or create requires a serializer registry");
     }
     return get_or_create_spot_raw (std::move (spot_name), std::move (spot_rid),
-                                   request.to_raw (*_state->channel_runtime->serializers));
+                                   detail::message_to_raw (request, *_state->channel_runtime->serializers));
 }
 
 zlink::message_t spot_node_manager_t::serialize_request (std::type_index request_type,
@@ -1474,7 +1474,8 @@ zlink::message_t spot_node_manager_t::serialize_request (std::type_index request
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "spot request requires a serializer registry");
     }
-    return _state->channel_runtime->serializers->serialize (request_type, request);
+    return detail::encoded_payload_to_raw (
+      _state->channel_runtime->serializers->serialize (request_type, request));
 }
 
 std::optional<spot_info_t> spot_node_manager_t::find_spot (spot_rid_t spot_rid) const
@@ -1570,7 +1571,7 @@ task_t<void> spot_publisher_client_t::publish_erased (std::string channel_name,
 
     try {
         std::vector<zlink::message_t> parts{
-          _serializers->serialize (event_type, event),
+          detail::encoded_payload_to_raw (_serializers->serialize (event_type, event)),
         };
         auto publisher = native_node->create_publisher ();
         if (!publisher.valid ()) {

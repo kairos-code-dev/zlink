@@ -39,13 +39,13 @@ internal sealed class SupportChatSession(
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         if (await handlers.TryHandleAsync(
                 Context,
-                header,
+                dispatch,
                 payload,
                 cancellationToken))
         {
@@ -53,9 +53,8 @@ internal sealed class SupportChatSession(
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        var actor = RequireSingleBoundActor($"relaying packet '{header.Name}'");
+        var actor = RequireSingleBoundActor($"relaying packet '{dispatch.PacketName}'");
         await actor.RelayAsync(
-            header,
             payload,
             cancellationToken);
     }

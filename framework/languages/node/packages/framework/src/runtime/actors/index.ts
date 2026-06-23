@@ -1,6 +1,5 @@
 import type {
   ActorRef,
-  Message,
   RoutingId,
   Type,
   ZLinkProviderResolver,
@@ -22,6 +21,7 @@ import type {
   ZLinkSpotRemoteAddress,
   ZLinkSpotRemoteAddressResolver
 } from '../../contracts';
+import type { Message } from '../../contracts/Common/Message';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,

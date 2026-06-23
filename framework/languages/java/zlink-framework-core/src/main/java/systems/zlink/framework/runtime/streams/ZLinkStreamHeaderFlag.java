@@ -1,4 +1,4 @@
-package systems.zlink.framework.streams;
+package systems.zlink.framework.runtime.streams;
 
 public enum ZLinkStreamHeaderFlag {
     HAS_REQUEST_SEQUENCE(0x01),

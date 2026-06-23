@@ -204,13 +204,16 @@ class bound_session_t
     bound_session_t (const bound_session_t &) = default;
     bound_session_t &operator= (const bound_session_t &) = default;
 
-    template <typename TMessage> send_call_t send (const TMessage &message)
-    {
-        return send_erased (detail::message_name<TMessage> (),
-                            detail::to_message_payload (message, 0));
-    }
+    send_call_t send (const message_t &payload);
 
-    send_call_t send_raw (const zlink::message_t &payload);
+    template <typename TMessage>
+      requires (!std::is_same_v<std::remove_cvref_t<TMessage>, message_t>
+                && !std::is_same_v<std::remove_cvref_t<TMessage>, zlink::message_t>)
+    send_call_t send (const TMessage &message)
+    {
+        return send_typed (detail::message_name<TMessage> (), std::type_index (typeid (TMessage)),
+                           &message);
+    }
     send_call_t disconnect ();
 
   private:
@@ -223,6 +226,7 @@ class bound_session_t
     explicit bound_session_t (std::shared_ptr<detail::actor_gateway_state_t> state,
                               actor_ref_t actor_ref);
 
+    send_call_t send_typed (std::string packet_name, std::type_index message_type, const void *message);
     send_call_t send_erased (std::string packet_name, const zlink::message_t &payload);
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
@@ -244,6 +248,7 @@ class actor_context_t
     bool is_joined () const noexcept;
     bound_session_t bound_session () const;
 
+  private:
     actor_join_spot_call_t join_spot_raw (spot_rid_t spot_rid, const zlink::message_t &request)
     {
         try {
@@ -257,7 +262,7 @@ class actor_context_t
             const auto &reply = erased.value ();
             return actor_join_spot_call_t (result_t<actor_join_result_t>::success (
                                              actor_join_result_t{reply.result_code, reply.actor,
-                                                                 message_t::from_encoded (
+                                                                 message_t::from_raw (
                                                                    reply.reply, serializer_registry ())}),
                                            serializer_registry ());
         }
@@ -272,6 +277,7 @@ class actor_context_t
         }
     }
 
+  public:
     actor_join_spot_call_t join_spot (spot_rid_t spot_rid, const message_t &request)
     {
         auto *serializers = serializer_registry ();
@@ -290,8 +296,7 @@ class actor_context_t
     }
 
     template <typename TRequest>
-      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>
-                && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>)
+      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, message_t>)
     actor_join_spot_call_t join_spot (spot_rid_t spot_rid, const TRequest &request)
     {
         auto *serializers = serializer_registry ();
@@ -302,7 +307,8 @@ class actor_context_t
         }
         try {
             return join_spot_raw (std::move (spot_rid),
-                                  serializers->get<TRequest> ().serialize (request));
+                                  detail::encoded_payload_to_raw (
+                                    serializers->get<TRequest> ().serialize (request)));
         }
         catch (const framework_exception_t &error) {
             return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
@@ -310,9 +316,11 @@ class actor_context_t
         }
     }
 
+  private:
     actor_join_entry_spot_call_t join_entry_spot_raw (node_rid_t spot_node_rid,
                                                       const zlink::message_t &request);
 
+  public:
     actor_join_entry_spot_call_t join_entry_spot (node_rid_t spot_node_rid,
                                                   const message_t &request)
     {
@@ -332,8 +340,7 @@ class actor_context_t
     }
 
     template <typename TRequest>
-      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>
-                && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>)
+      requires (!std::is_same_v<std::remove_cvref_t<TRequest>, message_t>)
     actor_join_entry_spot_call_t join_entry_spot (node_rid_t spot_node_rid,
                                                   const TRequest &request)
     {
@@ -345,7 +352,8 @@ class actor_context_t
         }
         try {
             return join_entry_spot_raw (std::move (spot_node_rid),
-                                        serializers->get<TRequest> ().serialize (request));
+                                        detail::encoded_payload_to_raw (
+                                          serializers->get<TRequest> ().serialize (request)));
         }
         catch (const framework_exception_t &error) {
             return actor_join_entry_spot_call_t (result_t<actor_join_result_t>::failure (
@@ -386,12 +394,8 @@ class session_actor_t
     std::string_view actor_id () const noexcept;
     actor_context_t context () const;
     bound_session_t bound_session () const;
-    relay_call_t relay_raw (const stream_header_t &header, const zlink::message_t &payload);
-    relay_request_call_t relay_request_raw (const stream_header_t &header,
-                                            const zlink::message_t &payload);
-    relay_call_t relay (const stream_header_t &header, const message_t &payload);
-    relay_request_call_t relay_request (const stream_header_t &header,
-                                        const message_t &payload);
+    relay_call_t relay (const message_t &payload);
+    relay_request_call_t relay_request (const message_t &payload);
     relay_call_t notify_disconnected ();
 
   private:

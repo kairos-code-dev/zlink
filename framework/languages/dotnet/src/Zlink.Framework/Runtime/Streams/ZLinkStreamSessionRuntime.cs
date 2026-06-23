@@ -29,8 +29,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         _scope = scope;
         _socket = socket;
         _removeSession = removeSession;
-        Stream = new ZLinkManagedStream(socket, routingId);
         _runtime = scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>();
+        Stream = new ZLinkManagedStream(socket, routingId, _runtime.Registration.Codecs);
         _flow = new ZLinkMessageFlowTracer(
             _runtime.Registration.DispatchOptions,
             scope.ServiceProvider,
@@ -156,11 +156,11 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                     CorrelationId: decoded.CorrelationId ?? decoded.RequestSeq?.ToString()));
             }
 
-            _context.EnterDispatch(decoded);
+            var dispatch = _context.EnterDispatch(decoded);
             try
             {
                 await _handler.OnDispatchAsync(
-                    decoded,
+                    dispatch,
                     ZLinkStreamPacketPayloadCodec.DecodeMessage(decoded, payload, _runtime.Registration.Codecs),
                     CancellationToken.None);
 

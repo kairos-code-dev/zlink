@@ -247,7 +247,7 @@ class options_stream_session_t final : public zlink::framework::packet_stream_se
     }
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &,
-                                              const zlink::framework::stream_header_t &,
+                                              const zlink::framework::stream_dispatch_context_t &,
                                               const zlink::framework::message_t &) override
     {
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());

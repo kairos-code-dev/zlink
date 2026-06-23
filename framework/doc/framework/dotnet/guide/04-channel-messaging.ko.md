@@ -171,20 +171,20 @@ public sealed class CacheRefreshedEventHandler
 class 에 여러 handler 메서드를 둘 때 편하다.
 
 ```csharp
-[ZLinkHandlerGroup("api")]
+[ZLinkHandlerGroup("api")]   // 이 class 의 메서드들을 "api" group 으로 묶어 channel 에 노출(§3)
 public sealed class UserHandlers
 {
     private readonly IZLinkFanoutClient _publisher;
     public UserHandlers(IZLinkFanoutClient publisher) => _publisher = publisher;
 
-    [ZLinkRequest]
+    [ZLinkRequest]   // 메서드 attribute 가 handler 종류를 정한다(channel 이름은 안 받음)
     public ValueTask<GetUserReply> GetUserAsync(
-        GetUserRequest request,
+        GetUserRequest request,            // 인자 순서 = (payload, context?, ct?) — context·토큰은 생략 가능
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
         => ValueTask.FromResult(new GetUserReply(request.AccountId, "alice"));
 
-    [ZLinkSend]
+    [ZLinkSend]   // send handler — 반환이 ValueTask(응답 없음). request 의 ValueTask<TReply> 와 대비.
     public async ValueTask RefreshCacheAsync(
         RefreshUserCacheCommand command,
         ZLinkSendContext context,
@@ -294,30 +294,42 @@ public sealed class PriceService(IZLinkChannelClient client)
     {
         var reply = await client
             .RequestToChannel("price", new PriceRequest(symbol))
-            .Async<PriceReply>(ct);
+            .Async<PriceReply>(ct);    // request: reply 타입은 payload 가 아니라 .Async<T> 에서 지정
         return reply.Price;
     }
 
     public ValueTask RefreshAsync(string accountId, CancellationToken ct)
         => client
             .SendToChannel("profile", new RefreshCacheCommand(accountId))
-            .Async(ct);
+            .Async(ct);                // send: 응답이 없으므로 .Async<T> 없이 .Async, timeout 무관
 }
 ```
 
 - reply 타입은 메시지가 아니라 **`.Async<TReply>(...)`** 에서 지정한다.
-- **`PacketName(...)` 과 `Timeout(...)` 은 override 종결자다.** packet name 은 기본적으로
-  payload 타입 이름으로 정해진다. reply 대기는 호출별 `Timeout(...)`, channel builder의
-  `SetDefaultRequestTimeout(...)`, 전역 `options.DefaultRequestTimeout` 순서로 정해진다.
-  전역 기본값은 **30초**다. 실제 packet 이름이 기본과 다를 때만 `PacketName(...)` 을,
-  이 호출의 reply 대기를 기본값과 다르게 둘 때만 `Timeout(...)` 을 붙인다. 둘 다 기본값으로
-  충분하면 붙이지 않는다(샘플 메시징 호출은 모두 기본값을 쓴다). `Send`/`Publish` 는 응답을
-  기다리지 않으므로 request timeout을 쓰지 않는다.
+- **`PacketName(...)` 과 `Timeout(...)` 은 선택적 override 종결자다.** packet name 은 기본적으로
+  payload 타입 이름으로, reply 대기 시간은 전역 기본 **30초**로 정해진다. 기본과 달라야 할 때만
+  이 종결자를 붙인다(어느 게 무엇을 바꾸는지·우선순위는 아래 예제 주석 참고). 둘 다 기본으로
+  충분하면 붙이지 않는다(샘플 메시징 호출은 모두 기본값). `Send`/`Publish` 는 응답을 기다리지
+  않으므로 request timeout 을 쓰지 않는다.
 - socket 은 호출마다 만드는 게 아니라 **startup 에 선언한 역할만큼만** 미리 만들어
   둔다. 그래서 호출한 channel 에 client 역할이 등록돼 있지 않으면, 그 channel 용
   socket 이 애초에 없으므로 `ZLinkConfigurationException` 으로 실패한다
   (`IZLinkChannelClient` 자체는 항상 DI 에 등록되므로 주입은 되고, 검증은 호출
   시점에 일어난다).
+
+기본과 달라야 할 때만 종결자를 붙인다:
+
+```csharp
+await client
+    .RequestToChannel("price", new PriceRequest(symbol))
+    .PacketName("price.v2")            // packet 이름이 payload 타입 이름과 다를 때만 지정
+    .Timeout(TimeSpan.FromSeconds(5))  // 이 호출의 reply 대기 상한을 기본(30초)과 다르게 둘 때만 지정
+    .Async<PriceReply>(ct);
+// reply 대기 상한 결정 순서(앞이 우선):
+//   1) 호출별 .Timeout(...)
+//   2) channel builder 의 SetDefaultRequestTimeout(...)
+//   3) 전역 options.DefaultRequestTimeout (기본 30초)
+```
 
 ### publish — `IZLinkFanoutClient`
 
@@ -326,6 +338,7 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
 {
     public ValueTask AnnounceAsync(string accountId, CancellationToken ct)
         => publisher
+            // 인자 = (channel, topic, message). topic("profile.cache-refreshed")이 fan-out 라우팅 키다.
             .Publish("api.events", "profile.cache-refreshed",
                 new ProfileCacheRefreshedEvent(accountId))
             .Async(ct);
@@ -418,10 +431,17 @@ app.MapPost("/admin/channels/orders/restore",
   끝까지 처리·reply 하고, 그 시점 이후 peer 들이 그 노드를 새 요청 대상에서 뺀다.
   registry 에서 빠지지도 않는다(graceful drain).
 - `Weight = 100` 으로 정상 복귀한다. `1..99` 로 두면 연결된 peer 의 분배 비율을 낮춘다(weighted).
-- 같은 `Weight` 속성을 **build-time 초기값**으로도 쓴다:
-  `builder.AddClientServerChannel("orders").ConfigureServerSocket().Weight = 30;`
-- route mesh / dealer mesh serving 역할도 같은 접근자로:
-  `options.RouteMeshChannel(name).ConfigureSocket()` / `options.DealerMeshChannel(name).ConfigureSocket()`.
+- 같은 `Weight` 를 **build-time 초기값**으로도 쓰고, route mesh·dealer mesh serving 역할도 같은
+  `ConfigureSocket` 접근자 패턴으로 연다(접근자별 대상은 아래 주석 참고):
+
+```csharp
+// build-time 초기값: serving socket 의 시작 weight
+builder.AddClientServerChannel("orders").ConfigureServerSocket().Weight = 30;
+
+// 같은 패턴 — channel 종류만 다르다
+options.RouteMeshChannel(name).ConfigureSocket();    // route mesh serving 역할 socket
+options.DealerMeshChannel(name).ConfigureSocket();   // dealer mesh serving 역할 socket
+```
 - drain 신호 전파는 best-effort eventual 이다 — "drain 신호를 보냈다" 까지 보장하고, peer 가
   실제로 후보에서 뺀 시점은 모니터링(`PeerAdmissionChanged` 이벤트, [09-monitoring](09-monitoring.ko.md))
   으로 확인한다. `drain`/`restore` 라는 운영 어휘는 위처럼 앱 admin 레이어가 `Weight = 0`/`= 100`
@@ -453,6 +473,7 @@ public sealed class AvroOrderSerializer : IZLinkMessageSerializer
 {
     private readonly Avro.Schema _schema = Avro.Schema.Parse(SchemaJson);
 
+    // serializer 의 책임은 business 객체 ↔ Message(byte payload) 변환뿐. packet name 결정·codec 선택은 framework.
     public Message Serialize(object value, Type type)
     {
         using var buffer = new MemoryStream();
@@ -468,6 +489,7 @@ public sealed class AvroOrderSerializer : IZLinkMessageSerializer
     }
 }
 
+// 타입 조건 없는 fallback 등록 → 하나만 둘 수 있다. 타입별로 고르려면 AddSerializer(.., canSerialize) 오버로드.
 options.Codecs.AddSerializer("application/avro", new AvroOrderSerializer());
 ```
 
@@ -531,9 +553,9 @@ SPOT 라우팅 백본이 필요할 때 이 channel 종류를 쓴다([05-spot](05
     var routed = options.AddRouteMeshChannel("tictactoe.router")
         .EnableServer(playRouterEndpoint)  // 이 노드가 받을 endpoint
         .EnableClient(peerRouterEndpoint)  // 다른 노드로 나가는 연결
-        .SetRoutingId(RoutingId.From(playRouterId));
+        .SetRoutingId(RoutingId.From(playRouterId)); // 이 노드의 논리 주소 — 다른 노드가 이 RoutingId 로 지목해 보낸다
     routed.AddRequestHandler<AllocateRoomRouteHandler, AllocateRoom, RoomAllocated>(
-        "room.allocate");
+        "room.allocate");                  // 마지막 인자 = packet 이름
 }
 ```
 
@@ -544,9 +566,10 @@ route mesh channel 이 여러 개 있어도 호출 인자의 channel 이름으�
 분명하게 정한다.
 
 ```csharp
-var target = RoutingId.From("play-node-1");
+var target = RoutingId.From("play-node-1");   // 보낼 대상 노드의 RoutingId
 
 var room = await routeClient
+    // 인자 = (route channel 이름, 대상 RoutingId, payload). client 가 channel 에 안 묶이므로 호출마다 channel 을 지정한다.
     .Request("tictactoe.router", target, new AllocateRoom("alice"))
     .Async<RoomAllocated>(ct);
 

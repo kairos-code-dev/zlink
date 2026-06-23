@@ -109,10 +109,11 @@ struct fixture_t
 
         serializers.add<admission_request_t> (
           [] (const admission_request_t &value) {
-              return zlink::message_t::from (std::to_string (value.packet));
+              return zlink::framework::encoded_payload_t::from_string (
+                std::to_string (value.packet));
           },
-          [] (const zlink::message_t &message) {
-              return admission_request_t{std::stoi (message.to_string ())};
+          [] (const zlink::framework::encoded_payload_t &payload) {
+              return admission_request_t{std::stoi (payload.to_string ())};
           });
         actors.reserve (actor_count);
         for (std::size_t index = 0; index < actor_count; ++index) {

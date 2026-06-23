@@ -138,7 +138,7 @@ sequenceDiagram
   C->>S: STREAM 연결 + auth
   S->>S: bind(actor)
   C->>S: PlaceMarkReq
-  S->>P: actor.relay(header, payload)
+  S->>P: actor.relay(payload)
   P->>P: actor handler 실행 (room 상태 변경)
   P-->>S: boundSession().send(TurnChangedNotify)
   S-->>C: STREAM push
@@ -165,11 +165,11 @@ class PlaySession(
         context.actors().bound().forEach { actor -> actor.notifyDisconnected().await() }
     }
 
-    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: ZLinkMessage) {
+    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
         // 등록된 typed session packet handler(예: 인증)를 먼저 시도
         if (handlers.tryHandleAsync(context, header, payload).await()) return
         // 나머지는 bound actor로 relay
-        requireActor(header.packetName()).relay(header, payload).await()
+        requireActor(dispatch.packetName()).relay(payload).await()
     }
 
     private fun requireActor(packetName: String): ZLinkSessionActor =
@@ -193,7 +193,7 @@ class AuthenticatePlaySessionHandler(
 
     override suspend fun handle(
         context: ZLinkSessionContext,
-        header: ZLinkStreamHeader,
+        dispatch: ZLinkSessionDispatchContext,
         request: AuthenticateReq,
     ) {
         val authenticated: AuthenticatePlayerRes =

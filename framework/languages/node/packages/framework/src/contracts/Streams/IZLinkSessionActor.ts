@@ -1,4 +1,4 @@
-import type { ActorRef, ZLinkMessage, ZlinkStreamHeader } from '../Common';
+import type { ActorRef, ZLinkMessage } from '../Common';
 import type { ZLinkActor } from '../Actors';
 
 export interface ZLinkSessionActors {
@@ -10,6 +10,6 @@ export interface ZLinkSessionActors {
 export interface ZLinkSessionActor {
   readonly actorId: string;
   readonly ref: ActorRef;
-  relay(header: ZlinkStreamHeader, payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
+  relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
   notifyDisconnected(signal?: AbortSignal): Promise<void>;
 }

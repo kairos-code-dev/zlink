@@ -50,7 +50,7 @@ serializer_registry_t &serializer_registry_t::add_erased (std::type_index type,
     return *this;
 }
 
-zlink::message_t serializer_registry_t::serialize (std::type_index type, const void *value) const
+encoded_payload_t serializer_registry_t::serialize (std::type_index type, const void *value) const
 {
     const auto found = _state->serializers.find (type);
     if (found == _state->serializers.end ()) {
@@ -71,7 +71,7 @@ zlink::message_t serializer_registry_t::serialize (std::type_index type, const v
 }
 
 void serializer_registry_t::deserialize (std::type_index type,
-                                         const zlink::message_t &message,
+                                         const encoded_payload_t &payload,
                                          void *out) const
 {
     const auto found = _state->serializers.find (type);
@@ -81,7 +81,7 @@ void serializer_registry_t::deserialize (std::type_index type,
                                        + type.name ());
     }
     try {
-        found->second.deserialize (message, out);
+        found->second.deserialize (payload, out);
     }
     catch (const framework_exception_t &) {
         throw;

@@ -116,7 +116,7 @@ class GameSession(
 
     override fun context(): ZLinkSessionContext = context
 
-    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: ZLinkMessage) {
+    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
         if (header.name() == "auth") {
             val req = payload.decode(AuthReq::class.java)
             val player = actors.getOrCreate(req.playerId, "player").await()
@@ -125,7 +125,7 @@ class GameSession(
             return
         }
         val bound = actor ?: throw IllegalStateException("actor is not bound")
-        bound.relay(header, payload).await()
+        bound.relay(payload).await()
     }
 }
 ```

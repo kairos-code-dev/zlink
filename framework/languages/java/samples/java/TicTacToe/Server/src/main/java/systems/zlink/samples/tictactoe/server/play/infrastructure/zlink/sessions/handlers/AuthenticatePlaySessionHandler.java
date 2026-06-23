@@ -5,7 +5,7 @@ import static systems.zlink.framework.ZLinkAwait.await;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerReq;
@@ -38,7 +38,7 @@ public final class AuthenticatePlaySessionHandler
     @Override
     public void handle(
         ZLinkSessionContext context,
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         AuthenticateReq request) {
         if (request.accessToken() == null || request.accessToken().isBlank()) {
             throw new IllegalArgumentException("access token is required");

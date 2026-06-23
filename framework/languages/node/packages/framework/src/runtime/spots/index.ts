@@ -1,7 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type {
   ActorRef,
-  Message,
   RoutingId,
   Type,
   ZLinkMessageSerializer,
@@ -38,6 +37,7 @@ import type {
   ZLinkTimerOptions,
   ZLinkTimerTick
 } from '../../contracts';
+import type { Message } from '../../contracts/Common/Message';
 import {
   ZLinkAutoConnectType,
   ZLinkDispatchErrorAction,
@@ -47,6 +47,7 @@ import {
   ZLinkMessageFlowPhase,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
+  ZLinkEncodedPayload,
   ZLinkMessage,
   isZLinkMessage,
   ZLinkSpotCreateState,
@@ -2377,7 +2378,10 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     }
     const request = BindingMessage.from(Buffer.alloc(0));
     try {
-      await actor.context.joinEntrySpot(entryNodeRid, ZLinkMessage.fromEncoded(request)).submit(signal);
+      await actor.context.joinEntrySpot(
+        entryNodeRid,
+        ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(request.data()))
+      ).submit(signal);
     } finally {
       request.close();
     }

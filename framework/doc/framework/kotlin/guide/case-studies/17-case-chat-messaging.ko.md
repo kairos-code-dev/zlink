@@ -107,7 +107,7 @@ class ChatSession(
 
     override fun context(): ZLinkSessionContext = context
 
-    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: ZLinkMessage) {
+    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
         if (header.name() == "auth") {
             val req = payload.decode(AuthReq::class.java)
             val actor = actors.getOrCreate(req.userId, "chat-user").await()
@@ -116,7 +116,7 @@ class ChatSession(
             return
         }
         val bound = user ?: throw IllegalStateException("actor is not bound")
-        bound.relay(header, payload).await()
+        bound.relay(payload).await()
     }
 }
 ```

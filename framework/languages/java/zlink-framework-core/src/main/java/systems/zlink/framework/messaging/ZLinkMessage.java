@@ -1,7 +1,7 @@
 package systems.zlink.framework.messaging;
 
 import java.util.Objects;
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 
 public final class ZLinkMessage {
@@ -28,10 +28,10 @@ public final class ZLinkMessage {
         return new ZLinkMessage(Objects.requireNonNull(value, "value"), null, null);
     }
 
-    public static ZLinkMessage fromMessage(Message message, ZLinkMessageSerializer serializer) {
-        Objects.requireNonNull(message, "message");
+    public static ZLinkMessage fromEncoded(ZLinkEncodedPayload payload, ZLinkMessageSerializer serializer) {
+        Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(serializer, "serializer");
-        return new ZLinkMessage(null, message.toByteArray(), serializer);
+        return new ZLinkMessage(null, payload.bytes(), serializer);
     }
 
     public boolean isEmpty() {
@@ -44,27 +44,20 @@ public final class ZLinkMessage {
             if (type.isInstance(value)) {
                 return type.cast(value);
             }
-            Message encoded = serializerForEncode().serialize(value);
-            try {
-                return serializerForEncode().deserialize(encoded, type);
-            } finally {
-                encoded.close();
-            }
+            ZLinkEncodedPayload encoded = serializerForEncode().serialize(value);
+            return serializerForEncode().deserialize(encoded, type);
         }
-        Message message = Message.from(payload == null ? EMPTY_PAYLOAD : payload);
-        try {
-            return serializerForDecode().deserialize(message, type);
-        } finally {
-            message.close();
-        }
+        return serializerForDecode().deserialize(
+            ZLinkEncodedPayload.from(payload == null ? EMPTY_PAYLOAD : payload),
+            type);
     }
 
-    public Message toMessage(ZLinkMessageSerializer serializer) {
+    public ZLinkEncodedPayload toEncodedPayload(ZLinkMessageSerializer serializer) {
         Objects.requireNonNull(serializer, "serializer");
         if (value != null) {
             return serializer.serialize(value);
         }
-        return Message.from(payload == null ? EMPTY_PAYLOAD : payload);
+        return ZLinkEncodedPayload.from(payload == null ? EMPTY_PAYLOAD : payload);
     }
 
     private ZLinkMessageSerializer serializerForDecode() {

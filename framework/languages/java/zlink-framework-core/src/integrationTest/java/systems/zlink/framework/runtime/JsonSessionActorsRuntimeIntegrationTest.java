@@ -2,8 +2,6 @@ package systems.zlink.framework.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.util.EnumSet;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
@@ -16,10 +14,6 @@ import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOption
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.streams.ZLinkSessionActor;
-import systems.zlink.framework.streams.ZLinkStreamCodec;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
-import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
-import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 final class JsonSessionActorsRuntimeIntegrationTest {
     @Test
@@ -41,13 +35,6 @@ final class JsonSessionActorsRuntimeIntegrationTest {
                 .join();
 
             bound.relay(
-                    new ZLinkStreamHeader(
-                        ZLinkStreamMessageKind.SEND,
-                        ZLinkStreamCodec.JSON,
-                        EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
-                        Optional.empty(),
-                        "JsonRelaySend",
-                        java.util.Map.of()),
                     ZLinkMessage.of(
                         new SessionActorsRuntimeIntegrationTest.JsonRelayReq("json-hello")))
                 .toCompletableFuture()

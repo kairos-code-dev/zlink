@@ -81,7 +81,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             var encoded = reply.Encode(Registration.Codecs);
             replyContentType = encoded.ContentType;
-            encodedReply = encoded.Message;
+            encodedReply = Message.From(encoded.Payload.Bytes.Span);
         }
         using (encodedReply)
         {

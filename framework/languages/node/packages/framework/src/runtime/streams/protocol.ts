@@ -1,7 +1,4 @@
-import type {
-  Message,
-  ZlinkStreamHeader
-} from '../../contracts';
+import type { Message } from '../../contracts/Common/Message';
 import { ZLinkConfigurationException } from '../configuration';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
 
@@ -181,7 +178,7 @@ export function decodeStreamHeader(header: Uint8Array): ZLinkStreamFrameHeader {
   };
 }
 
-export function tryGetStreamFrameHeader(header: ZlinkStreamHeader): ZLinkStreamFrameHeader | undefined {
+export function tryGetStreamFrameHeader(header: unknown): ZLinkStreamFrameHeader | undefined {
   if (typeof header !== 'object' || header === null) {
     return undefined;
   }
@@ -213,7 +210,7 @@ export function tryGetStreamFrameHeader(header: ZlinkStreamHeader): ZLinkStreamF
   };
 }
 
-export function requireStreamFrameHeader(header: ZlinkStreamHeader): ZLinkStreamFrameHeader {
+export function requireStreamFrameHeader(header: unknown): ZLinkStreamFrameHeader {
   const parsed = tryGetStreamFrameHeader(header);
   if (parsed === undefined) {
     throw new Error('Stream relay requires a decoded stream header.');

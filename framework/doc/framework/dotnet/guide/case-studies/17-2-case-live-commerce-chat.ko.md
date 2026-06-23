@@ -169,11 +169,11 @@ public sealed class LiveChatSession(IZLinkSessionContext context, IZLinkActorMan
     public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken ct) => ValueTask.CompletedTask;
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken ct)
     {
-        if (header.Name == "auth")
+        if (dispatch.PacketName == "auth")
         {
             var req = payload.Decode<AuthViewerReq>();
             IZLinkActor actor = await actors.GetOrCreateAsync(req.ViewerId, "viewer", ct);
@@ -182,7 +182,7 @@ public sealed class LiveChatSession(IZLinkSessionContext context, IZLinkActorMan
             return;
         }
 
-        await _viewer!.RelayAsync(header, payload, ct);
+        await _viewer!.RelayAsync(payload, ct);
     }
 }
 ```

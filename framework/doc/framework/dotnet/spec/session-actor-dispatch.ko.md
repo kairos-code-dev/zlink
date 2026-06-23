@@ -535,7 +535,7 @@ internal sealed class ZLinkStreamSessionRuntime
     }
 
     public async ValueTask OnTransportFrameAsync(
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
@@ -592,7 +592,7 @@ internal sealed class ZLinkSessionActor : IZLinkSessionActor
     private readonly ZLinkSessionContext _context;
 
     public async ValueTask RelayAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
@@ -649,7 +649,7 @@ internal sealed class ZLinkActorDispatchRuntime
     public async ValueTask PostFromSessionAsync(
         IZLinkSessionActor actorRef,
         ZLinkActorBoundSession binding,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
@@ -669,7 +669,7 @@ internal sealed class ZLinkActorDispatchRuntime
     public async ValueTask<TReply> InvokeFromSessionAsync<TReply>(
         IZLinkSessionActor actorRef,
         ZLinkActorBoundSession binding,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
@@ -1340,11 +1340,11 @@ public sealed class TicTacToeSession(IZLinkSessionContext context, IZLinkActorMa
     public IZLinkSessionContext Context { get; } = context;
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        if (header.Name == "auth")
+        if (dispatch.PacketName == "auth")
         {
             AuthReq request = payload.Decode<AuthReq>();
 
@@ -1363,7 +1363,7 @@ public sealed class TicTacToeSession(IZLinkSessionContext context, IZLinkActorMa
 
         if (authenticatedActors.TryGet(header, out IZLinkSessionActor actor))
         {
-            await actor.RelayAsync(header, payload, cancellationToken);
+            await actor.RelayAsync(payload, cancellationToken);
             return;
         }
 

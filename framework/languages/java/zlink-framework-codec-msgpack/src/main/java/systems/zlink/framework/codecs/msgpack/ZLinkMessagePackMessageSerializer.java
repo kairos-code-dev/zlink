@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 
 final class ZLinkMessagePackMessageSerializer implements ZLinkMessageSerializer {
@@ -22,23 +23,23 @@ final class ZLinkMessagePackMessageSerializer implements ZLinkMessageSerializer 
     }
 
     @Override
-    public <T> Message serialize(T value) {
-        return Message.from(encodeBytes(value));
+    public <T> ZLinkEncodedPayload serialize(T value) {
+        return ZLinkEncodedPayload.from(encodeBytes(value));
     }
 
     @Override
-    public <T> T deserialize(Message message, Class<T> type) {
+    public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
         if (type == String.class) {
-            return type.cast(message.toUtf8String());
+            return type.cast(new String(payload.bytes(), StandardCharsets.UTF_8));
         }
         if (type == byte[].class) {
-            return type.cast(message.toByteArray());
+            return type.cast(payload.bytes());
         }
         if (type == Message.class) {
-            return type.cast(Message.from(message));
+            return type.cast(Message.from(payload.bytes()));
         }
         try {
-            return MAPPER.readValue(message.toByteArray(), type);
+            return MAPPER.readValue(payload.bytes(), type);
         } catch (IOException ex) {
             throw new IllegalArgumentException(
                 "failed to decode MessagePack payload as " + type.getName(),

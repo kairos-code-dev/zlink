@@ -130,7 +130,8 @@ class channel_request_call_t
               "channel request has no serializer registry");
         }
         try {
-            co_return _serializers->get<TReply> ().deserialize (reply);
+            co_return _serializers->get<TReply> ().deserialize (
+              detail::encoded_payload_from_raw (reply));
         }
         catch (const framework_exception_t &error) {
             co_return result_t<TReply>::failure (
@@ -215,8 +216,6 @@ class stream_write_call_t
 {
   public:
     using metadata_map_t = std::map<std::string, std::string>;
-    using submit_fn_t =
-      std::function<task_t<void> (const stream_header_t &, const zlink::message_t &)>;
 
     explicit stream_write_call_t (result_t<void> result);
     ~stream_write_call_t ();
@@ -232,7 +231,11 @@ class stream_write_call_t
     task_t<void> async ();
 
   private:
+    using submit_fn_t =
+      std::function<task_t<void> (const stream_header_t &, const zlink::message_t &)>;
+
     friend class stream_t;
+    friend class detail::stream_write_call_state_t;
 
     stream_write_call_t (stream_header_t header, zlink::message_t payload, submit_fn_t submit);
 

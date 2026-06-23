@@ -22,11 +22,11 @@ internal sealed class AuthenticatePlaySessionHandler(
 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = header;
+        _ = dispatch;
 
         var authenticate = payload.Decode<AuthenticateReq>();
 

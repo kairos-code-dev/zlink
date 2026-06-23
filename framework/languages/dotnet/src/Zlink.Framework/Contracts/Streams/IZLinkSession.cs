@@ -23,11 +23,11 @@ public interface IZLinkSession
     /// <see cref="IZLinkSessionActor.RelayAsync"/>.
     /// </remarks>
     ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = header;
+        _ = dispatch;
         _ = payload;
         _ = cancellationToken;
         return ValueTask.CompletedTask;

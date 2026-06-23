@@ -42,7 +42,7 @@ framework stream node runtime 이 담당한다.
 `STREAM` 은 일반 channel messaging handler 와 같은 감각으로 무리하게 맞추지
 않는다. 특히 다음 원칙을 둔다.
 
-- framework 가 stream header 를 decode 한 뒤 `ZlinkStreamHeader header` 와
+- framework 가 stream header 를 decode 한 뒤 `ZLinkSessionDispatchContext dispatch` 와
   `ZLinkMessage payload` 를 session callback 에 전달한다.
 - `playhouse` 처럼 header 는 framework 내부에서 packet name 과 metadata 로
   해석한다. application 은 `header.name` 을 보고 각 packet 타입으로
@@ -148,7 +148,7 @@ export interface ZLinkSession {
    * decode 하지 않은 채 그대로 넘길 수 있다.
    */
   onDispatch?(
-    header: ZlinkStreamHeader,
+    dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void>;
@@ -192,7 +192,7 @@ export interface ZLinkSessionActor {
   readonly ref: ActorRef;
 
   relay(
-    header: ZlinkStreamHeader,
+    dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void>;
@@ -264,7 +264,7 @@ export interface ZLinkSessionPacketHandler<TSessionContext> {
 
   handle(
     context: TSessionContext,
-    header: ZlinkStreamHeader,
+    dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<void>;
@@ -278,7 +278,7 @@ export interface ZLinkSessionPacketDispatcher<TSessionContext> {
    */
   tryHandle(
     context: TSessionContext,
-    header: ZlinkStreamHeader,
+    dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
     signal?: AbortSignal,
   ): Promise<boolean>;
@@ -395,9 +395,9 @@ actor 를 쓰는 stream server 는 fluent builder 의 `actorFactory(...)` 와
   `RegisterSession<T>()` 가 두 번째 등록에서 startup validation 예외를 던지듯,
   node 도 같은 node 에 session 을 중복 지정하면 startup validation 에서 거부한다.
 - recv callback 이나 recv loop 를 application 이 직접 노출받지 않는다.
-- server application 은 `net.createServer(...)`, `ZlinkStreamFrameCodec`,
-  `ZlinkStreamHeaderCodec` 으로 STREAM server 를 만들지 않는다. 이런 코드는
-  framework runtime 또는 connector 구현에만 둔다.
+- server application 은 `net.createServer(...)`나 내부 STREAM frame/header codec 으로
+  STREAM server 를 만들지 않는다. 이런 코드는 framework runtime 또는 connector 구현에만
+  둔다.
 - 등록 시점에 이 node 가 framework Header 기반 packet 경로라는 사실이 분명하게
   드러난다.
 - `attachActorGateway` 는 session→actor bind/relay 가 향할 SpotNode 이름을
@@ -472,8 +472,8 @@ application 표면으로는 올리지 않는다** 는 뜻으로 본다.
   즉 session callback 에 올리지 않는다(`HandshakeFailed` 는 enum 에 존재하지만
   `onError` 로 전달되지 않는다).
 - raw chunk 직접 처리 표면은 현재 공개 계약에 넣지 않는다. 지금 단계의 session
-  은 framework 가 decode 한 `ZlinkStreamHeader` 와 `ZLinkMessage` payload 를 받는
-  계약으로 둔다. 초기 드래프트의 `onRaw`/`writePacket` 은 채택하지 않으며,
+  은 `ZLinkSessionDispatchContext` 와 `ZLinkMessage` payload 를 받는 계약으로 둔다.
+  초기 드래프트의 `onRaw`/`writePacket` 은 채택하지 않으며,
   raw 표면은 `ZLinkStream.write(...)` 한 개로만 노출한다.
 - `ZLinkStream.write(...)` 는 즉시 송신 시도 후 boolean 을 반환한다(dotnet
   `bool Write(...)` 와 동일). backpressure 는 public non-blocking 옵션이 아니라

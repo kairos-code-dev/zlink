@@ -602,7 +602,7 @@ class http_options_builder_t
                     using request_type = typename THandler::request_type;
                     using reply_type = typename THandler::reply_type;
                     const auto request = serializers->template get<request_type> ().deserialize (
-                      zlink::message_t::from (body));
+                      encoded_payload_t::from_string (body));
                     validate_request (request, context);
                     auto handler_result = invoke_typed_handler (handler, request, http, context);
                     co_return co_await resolve_handler_response<reply_type> (

@@ -34,6 +34,7 @@ import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
+import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -274,7 +275,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     public CompletionStage<Optional<Message>> dispatchRemoteJoinedActor(
         ZLinkBackendActorRef actorRef,
         RoutingId spotRid,
-        systems.zlink.framework.streams.ZLinkStreamHeader header,
+        systems.zlink.framework.runtime.streams.ZLinkStreamHeader header,
         Message payload) {
         if (!canRouteRemoteJoinedSpot(spotRid)) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
@@ -677,7 +678,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
 
         private Message messageFromRequest(Object request) {
             if (request instanceof ZLinkMessage message) {
-                return message.toMessage(serializer);
+                return Message.from(message.toEncodedPayload(serializer).bytes());
             }
             ZLinkPayloadEncoding.EncodedPayload encoded =
                 ZLinkPayloadEncoding.encode(serializer, request);
@@ -846,7 +847,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                             Message firstReply = result.replyParts().isEmpty()
                                 ? (emptyReply = Message.from(new byte[0]))
                                 : result.replyParts().get(0);
-                            TReply reply = serializer.deserialize(firstReply, replyType);
+                            TReply reply = serializer.deserialize(
+                                systems.zlink.framework.ZLinkEncodedPayload.from(firstReply.toByteArray()),
+                                replyType);
                             return new ZLinkActorJoinResult<>(
                                 result.joinResultCode(),
                                 new ZLinkActorRef(
@@ -1018,7 +1021,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 Message firstReply = result.replyParts().isEmpty()
                     ? (emptyReply = Message.from(new byte[0]))
                     : result.replyParts().get(0);
-                TReply reply = serializer.deserialize(firstReply, replyType);
+                TReply reply = ZLinkMessagePayloads.deserialize(serializer, firstReply, replyType);
                 return new ZLinkActorJoinResult<>(
                     result.joinResultCode(),
                     new ZLinkActorRef(

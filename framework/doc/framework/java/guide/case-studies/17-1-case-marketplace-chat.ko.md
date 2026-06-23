@@ -168,7 +168,7 @@ public final class MarketplaceChatSession implements ZLinkSession {
     @Override public void onError(ZLinkStreamError error) {}
 
     @Override
-    public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
+    public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
         if ("auth".equals(header.name())) {
             AuthReq req = payload.decode(AuthReq.class);
             user = actors.getOrCreate(req.userId(), "chat-user")
@@ -179,7 +179,7 @@ public final class MarketplaceChatSession implements ZLinkSession {
             return;
         }
         if (user == null) { throw new IllegalStateException("actor is not bound"); }
-        user.relay(header, payload).toCompletableFuture().join();
+        user.relay(payload).toCompletableFuture().join();
     }
 }
 ```

@@ -52,8 +52,8 @@ await client
 var reply = await client
     .RequestToChannel("api", new AuthenticateRequest("player-1")) // IZLinkRequestCall
     .PacketName("authenticate")
-    .Timeout(TimeSpan.FromSeconds(3))
-    .Async<AuthenticateReply>();
+    .Timeout(TimeSpan.FromSeconds(3))     // request 만 가진 종결자 — reply 대기 상한(send 엔 없다)
+    .Async<AuthenticateReply>();          // reply 타입은 호출이 아니라 종결자에서 지정
 ```
 
 | 인터페이스 | 역할 |
@@ -67,10 +67,10 @@ var reply = await client
 ### 1.2 route client — router channel 너머 target node 호출
 
 ```csharp
-var target = RoutingId.From("play-node-1");
+var target = RoutingId.From("play-node-1");   // router channel 너머 최종 대상 노드(§1.1 의 channel-name 호출과 다른 점)
 
 await client
-    .Send("play-router", target, new RoomEvent("opened")) // IZLinkSendCall
+    .Send("play-router", target, new RoomEvent("opened")) // 인자 = (router channel, target node, payload)
     .PacketName("room.event")
     .Async();
 
@@ -95,7 +95,7 @@ var room = await client
 
 ```csharp
 await publisher
-    .Publish("events", "room.opened", new RoomEvent("opened")) // IZLinkPublishCall
+    .Publish("events", "room.opened", new RoomEvent("opened")) // 인자 = (channel, topic, message). topic 이 fan-out 라우팅 키.
     .PacketName("room.event")
     .Async();
 ```
@@ -115,7 +115,7 @@ public sealed class AuthenticateRequestHandler
 {
     public ValueTask<Authenticated> HandleAsync(
         Authenticate request, ZLinkRequestContext context, CancellationToken ct)
-        => ValueTask.FromResult(new Authenticated(request.PlayerId));
+        => ValueTask.FromResult(new Authenticated(request.PlayerId));   // 결과는 반환값으로 돌려준다(out 파라미터·context.Reply 아님)
 }
 
 public sealed class AuditingFilter : IZLinkHandlerFilter
@@ -144,8 +144,8 @@ application 이 직접 만든 `Message` 를 넘길 때만 caller 가 그 `Messag
 ### 1.5 codec 등록
 
 ```csharp
-codecs.AddJson();
-codecs.Use(ZLinkMessagePackCodec.Default);
+codecs.AddJson();                              // JSON 기본 codec 활성화
+codecs.Use(ZLinkMessagePackCodec.Default);     // extension codec 등록(AddJson 과 등록 경로가 다르다)
 codecs.Use(ZLinkProtobufCodec.Default);
 ```
 
@@ -216,10 +216,10 @@ await events
 ```csharp
 options.Codecs.AddJson();
 options.AddHandlersFromAssemblyOf<Program>();
-options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");
+options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");  // 이 key 만 다운스트림으로 전달 허용(허용 목록)
 options.AddActorFactory<PlayerActorFactory>("player");
 options.AddSpotRemoteAddressResolver<MySpotResolver>();
-options.UseRegistrySpotRemoteAddresses("game").RouterChannelId = "play-router";
+options.UseRegistrySpotRemoteAddresses("game").RouterChannelId = "play-router"; // 반환 옵션에 후속 설정 — spot 주소 해석 시 경유할 router channel
 options.UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6000");
 options.AddSpotMesh("play-spots").UseDiscovery().AddRegistryEndpoint("tcp://127.0.0.1:6001");
 options.UseFilter<AuditingFilter>();
@@ -240,10 +240,10 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 ```csharp
 {
     var channel = options.AddClientServerChannel("api")
-        .EnableServer("tcp://127.0.0.1:5000")
+        .EnableServer("tcp://127.0.0.1:5000")     // 같은 endpoint 라도 server/client 역할은 별개로 활성화한다
         .EnableClient("tcp://127.0.0.1:5000");
     channel.AddRequestHandler<ApiRequestHandler, ApiRequest, ApiReply>();
-    channel.EnableSpotRouteEgress("play-spots");
+    channel.EnableSpotRouteEgress("play-spots");  // client-server channel 에만 있는 capability(fanout/dealer 엔 없음)
 }
 
 {
@@ -289,8 +289,8 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
     {
         var spot = mesh.AddNode("play-spots");
 
-        spot.EnableRouter("tcp://127.0.0.1:5501");
-        spot.SetRouterRoutingId(RoutingId.From("spot-router"));
+        spot.EnableRouter("tcp://127.0.0.1:5501");                  // router 활성화 후
+        spot.SetRouterRoutingId(RoutingId.From("spot-router"));     // 그 router 의 routing id 지정(순서 의존)
 
         spot.EnablePubSub("tcp://0.0.0.0:9000");
         spot.ConnectPeerPub("tcp://127.0.0.1:5500");
@@ -301,10 +301,10 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
         api.ConfigureClientSocket().Immediate = true;
         spot.AttachSpotPublisherClient("events");
         spot.AttachSpotPublisherClient("mesh-events");
-        spot.AcceptSpotRoutesFromChannel("play-router", "tcp://127.0.0.1:5300");
+        spot.AcceptSpotRoutesFromChannel("play-router", "tcp://127.0.0.1:5300"); // 인자 = (수용할 channel, 그 endpoint)
         spot.ConfigureEntrySpot().RoutingId = RoutingId.From("entry");
-        spot.AddSpotFactory<RoomSpot>();
-        spot.AddEntrySpot<EntrySpot>();
+        spot.AddSpotFactory<RoomSpot>();   // user Spot: 요청마다 동적 생성
+        spot.AddEntrySpot<EntrySpot>();    // Entry Spot: 노드당 단일 진입점
     }
 
     {
@@ -330,6 +330,7 @@ options.ConfigureDispatch().SpotDispatchMode = ZLinkDispatchMode.Compiled;
 client·subscriber·spot router 가 서로 다른 연결 집합이다.
 
 ```csharp
+// 각 호출은 role(client / subscriber / spot router …)별 독립 연결 집합을 소유한다 — endpoint 가 겹쳐도 공유하지 않는다.
 channel.EnableClient("tcp://127.0.0.1:5001");
 subscriber.EnableSubscriber("tcp://127.0.0.1:5002");
 spot.ConnectRouter("tcp://127.0.0.1:5003");
@@ -345,11 +346,12 @@ spot.AcceptSpotRoutesFromChannel("play-router", "tcp://127.0.0.1:5006");
 
 ```csharp
 var socket = new SocketConfig { TcpNoDelay = true, Immediate = true, MaxMessageSize = 1024, /* ... */ };
-var route = new RouteConfig { RoutingId = RoutingId.From("router"), RequireKnownPeer = true };
+var route = new RouteConfig { RoutingId = RoutingId.From("router"), RequireKnownPeer = true }; // 미지의 peer 거부(inbound 보안 계약)
 var outbound = new OutboundRouteConfig { RoutingId = RoutingId.From("client"), ProbeRouterOnConnect = true };
 var publisher = new SpotPublisherConfig { SendHighWaterMark = 32, NoDrop = true };
 var subscriber = new SpotSubscriberConfig { ReceiveHighWaterMark = 64 };
 var entry = new EntrySpotOptions { RoutingId = RoutingId.From("entry") };
+// spot 과 stream 의 dispatch mode 는 독립 지정 가능(여기선 spot=Compiled, stream=Dynamic).
 var dispatch = new DispatchOptions { SpotDispatchMode = ZLinkDispatchMode.Compiled, StreamDispatchMode = ZLinkDispatchMode.Dynamic };
 ```
 
@@ -393,6 +395,7 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
         CancellationToken ct)
     {
         var join = request.Decode<JoinRoom>();
+        // join admission 결정 지점 — Accept/Reject 가 여기서 정해진다(handler 등록이 아니다).
         return ValueTask.FromResult(
             ZLinkSpotActorJoinResult.Accept(new JoinedRoom(join.RoomId)));
     }
@@ -412,11 +415,12 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
         CancellationToken ct)
         => ValueTask.CompletedTask;
 
+    // timer 등록·outbound 호출은 lifecycle(OnInitializeAsync) 에 진입한 뒤에야 안전하다.
     public async ValueTask OnInitializeAsync(CancellationToken ct)
     {
         await Context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
-        await Context.Outbound.SendToSpot(RoutingId.From("room-2"), new RoomEvent("opened")).Async(ct);
-        await Context.Outbound.RequestToSpot(RoutingId.From("room-2"), new JoinRoom("room-2")).Async<JoinedRoom>(ct);
+        await Context.Outbound.SendToSpot(RoutingId.From("room-2"), new RoomEvent("opened")).Async(ct);            // send: reply 없음
+        await Context.Outbound.RequestToSpot(RoutingId.From("room-2"), new JoinRoom("room-2")).Async<JoinedRoom>(ct); // request: reply 대기
         await Context.Outbound.Publish("room.events", new RoomEvent("opened")).Async(ct);
         await Context.Outbound.SendToChannel("api", new RoomEvent("opened")).Async(ct);
         await Context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>(ct);
@@ -470,7 +474,7 @@ await publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened"
 public sealed class RoomRequestHandler
     : IZLinkSpotRequestHandler<RoomSpot, JoinRoom, JoinedRoom>
 {
-    public ValueTask<JoinedRoom> HandleAsync(RoomSpot spot, JoinRoom request, CancellationToken ct)
+    public ValueTask<JoinedRoom> HandleAsync(RoomSpot spot, JoinRoom request, CancellationToken ct)  // 첫 인자 = spot 인스턴스(이 절의 핵심)
         => ValueTask.FromResult(new JoinedRoom(request.RoomId));
 }
 
@@ -510,12 +514,12 @@ var actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLinkActor
 var joinReply = await actor.Context
     .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1")) // IZLinkActorContext
     .Async();
-if (!joinReply.Accepted)
+if (!joinReply.Accepted)   // join 은 거절될 수 있다 — Reply 를 읽기 전에 Accepted 를 먼저 확인한다
 {
     return;
 }
 var joined = joinReply.Reply.Decode<JoinedRoom>();
-actor.Configure();
+actor.Configure();   // join 성공 뒤에 호출(호출 순서 제약)
 ```
 
 | 인터페이스 | 역할 |
@@ -543,8 +547,8 @@ public sealed class RoomRequestHandler
         PlayerRequest request,
         CancellationToken ct)
     {
-        context.Reply.Metadata("trace-id", "reply-trace").Compress();
-        return ValueTask.FromResult(new PlayerReply($"room:{actor.ActorId}:{request.Value}"));
+        context.Reply.Metadata("trace-id", "reply-trace").Compress();   // 응답 frame 옵션은 반환값과 별개로 context.Reply 로 설정
+        return ValueTask.FromResult(new PlayerReply($"room:{actor.ActorId}:{request.Value}")); // 응답 body 는 반환값
     }
 }
 ```
@@ -572,13 +576,14 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
 {
     public IZLinkSessionContext Context { get; } = context;
 
-    public async ValueTask OnDispatchAsync(ZlinkStreamHeader header, ZLinkMessage payload, CancellationToken ct)
+    // payload 는 framework ZLinkMessage 다. decode 하거나 framework API 에 그대로 넘긴다.
+    public async ValueTask OnDispatchAsync(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload, CancellationToken ct)
     {
         IZLinkActor actor = await actors.GetOrCreateAsync("player-1", "player", ct);
-        var actorRef = await context.Actors.BindAsync(actor, ct); // ActorDispatch
+        var actorRef = await context.Actors.BindAsync(actor, ct); // session↔actor binding 성립(재접속 이전성의 근거)
         if (context.Actors.Find(actorRef.ActorId) is { } boundActor)
         {
-            await boundActor.RelayAsync(header, payload, ct);
+            await boundActor.RelayAsync(payload, ct);   // framework ZLinkMessage 를 그대로 넘긴다
         }
 
         await context.Client.Send(new PlayerJoined("player-1"))      // IZLinkSessionSendCall
@@ -622,11 +627,12 @@ actor 로 relay 할지, 거절할지, 로그만 남길지는 application session
 ### 5.2 bound session — actor 가 자기 client 로 push
 
 ```csharp
+// bound session 은 단방향 push 만 한다(request 표면 없음 → reply 를 받지 않는다).
 await boundSession.Send(new PlayerJoined("player-1"))    // IZLinkBoundSessionSendCall
     .PacketName("player.joined").Metadata("trace-id", "abc").Async();
 await boundSession.DisconnectAsync();
 
-// 전달 가능한 metadata key 정책
+// 전달 가능한 metadata key 정책 — 허용된 key 만 다운스트림으로 전파한다.
 IZLinkMessageMetadataPolicy policy = /* ... */;
 policy.CanForward("trace-id");   // true / false
 
@@ -653,8 +659,10 @@ options.AddPeer("tcp://127.0.0.1:7001");
 
 var clientOptions = new ExampleRegistryQueryClientOptions { Endpoint = options.RouterEndpoint };
 
+// in-process query 는 Status/Topology 등 전부 제공
 var status = await query.StatusAsync();                 // IZLinkRegistryQuery
 var topology = await query.TopologyAsync(new ZLinkRegistryTopologyFilter(ChannelName: "play"));
+// 원격 client 는 Topology 만 제공한다(C API 제약)
 var snapshot = await client.TopologyAsync();                    // IZLinkRegistryQueryClient
 ```
 
@@ -672,8 +680,8 @@ var snapshot = await client.TopologyAsync();                    // IZLinkRegistr
 > 사용법은 [09-monitoring](09-monitoring.ko.md). 검증 클래스는 `EventingContracts`.
 
 ```csharp
-options.AddSocketEvents("router", ZLinkSocketEventKind.Connected); // IZLinkMonitoringOptions
-options.AddRegistryEvents("registry", TimeSpan.FromSeconds(1));
+options.AddSocketEvents("router", ZLinkSocketEventKind.Connected); // 인자 = (source 이름, 받을 event kind)
+options.AddRegistryEvents("registry", TimeSpan.FromSeconds(1));     // TimeSpan = snapshot polling 주기(항상 명시)
 options.AddSpotEvents("spot-node", TimeSpan.FromSeconds(1));
 
 public sealed class SocketEventHandler : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
@@ -699,6 +707,7 @@ await publisher.PublishAsync(socketEvent, ct);   // IZLinkRuntimeEventPublisher
 > 사용법은 [05-spot](05-spot.ko.md) §3. 검증 클래스는 `TimerContracts`.
 
 ```csharp
+// 인자 = (timer 이름, 주기). 반환 핸들을 await using/CancelAsync 로 정리해야 timer 누수가 없다.
 await using var timer = await Context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
 await timer.CancelAsync();   // IZLinkTimer
 ```

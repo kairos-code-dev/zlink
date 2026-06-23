@@ -7,7 +7,7 @@ import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
@@ -39,7 +39,7 @@ public final class AuthenticateSessionHandler
     @Override
     public void handle(
         ZLinkSessionContext context,
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Messages.AuthenticateReq request) {
         if (request.accessToken() == null || request.accessToken().isBlank()) {
             throw new IllegalArgumentException("access token is required");

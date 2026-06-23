@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkAwait;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
@@ -45,7 +46,6 @@ import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class ActorRuntimeFakeBackendTest {
@@ -225,7 +225,7 @@ final class ActorRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            Message reply = serializer.serialize(StringValue.of("reply:proto"));
+            Message reply = messageFrom(serializer.serialize(StringValue.of("reply:proto")));
             try {
                 backendFactory.nextActorJoinReply(reply);
             } finally {
@@ -264,7 +264,7 @@ final class ActorRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            Message reply = serializer.serialize(new PackedJoinReply("reply:msgpack"));
+            Message reply = messageFrom(serializer.serialize(new PackedJoinReply("reply:msgpack")));
             try {
                 backendFactory.nextActorJoinReply(reply);
             } finally {
@@ -580,9 +580,7 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
 
-            sessionActor.relay(
-                    new ZLinkStreamHeader("MoveReq", java.util.Map.of(), Optional.empty()),
-                    ZLinkMessage.of("move"))
+            sessionActor.relay(ZLinkMessage.of("move"))
                 .toCompletableFuture()
                 .join();
         }
@@ -894,31 +892,31 @@ final class ActorRuntimeFakeBackendTest {
         final AtomicReference<String> lastJoinRequest = new AtomicReference<>();
 
         @Override
-        public <T> Message serialize(T value) {
+        public <T> ZLinkEncodedPayload serialize(T value) {
             if (value instanceof Message message) {
-                return Message.from(message);
+                return ZLinkEncodedPayload.from(message.toByteArray());
             }
             if (value instanceof byte[] bytes) {
-                return Message.from(bytes);
+                return ZLinkEncodedPayload.from(bytes);
             }
             if (value instanceof CustomJoinRequest request) {
                 lastJoinRequest.set(request.value());
-                return Message.from(("req:" + request.value()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                return ZLinkEncodedPayload.from(("req:" + request.value()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
             if (value instanceof CustomJoinReply reply) {
-                return Message.from(("rep:" + reply.value()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                return ZLinkEncodedPayload.from(("rep:" + reply.value()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
-            return Message.from(String.valueOf(value).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return ZLinkEncodedPayload.from(String.valueOf(value).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
 
         @Override
-        public <T> T deserialize(Message message, Class<T> type) {
-            String text = message.toUtf8String();
+        public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
+            String text = new String(payload.bytes(), java.nio.charset.StandardCharsets.UTF_8);
             if (type == Message.class) {
-                return type.cast(Message.from(message));
+                return type.cast(Message.from(payload.bytes()));
             }
             if (type == byte[].class) {
-                return type.cast(message.toByteArray());
+                return type.cast(payload.bytes());
             }
             if (type == String.class) {
                 return type.cast(text);
@@ -938,6 +936,10 @@ final class ActorRuntimeFakeBackendTest {
         ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
         registration.use(extension);
         return registration.serializerWithFallback(new ZLinkJsonMessageSerializer());
+    }
+
+    private static Message messageFrom(ZLinkEncodedPayload payload) {
+        return Message.from(payload.bytes());
     }
 
     public static final class NotifyingJoinSpot implements ZLinkSpot<ZLinkActor> {

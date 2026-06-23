@@ -424,23 +424,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var context = new TestSessionPacketContext();
         var handled = await dispatcher.TryHandleAsync(
             context,
-            new ZlinkStreamHeader(
-                ZlinkStreamMessageKind.Send,
-                ZlinkStreamCodec.Json,
-                ZlinkStreamHeaderFlags.None,
-                null,
-                "test.session.packet",
-                ZlinkStreamMetadata.Empty),
+            new ZLinkSessionDispatchContext("test.session.packet"),
             Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(new object()));
         var unhandled = await dispatcher.TryHandleAsync(
             context,
-            new ZlinkStreamHeader(
-                ZlinkStreamMessageKind.Send,
-                ZlinkStreamCodec.Json,
-                ZlinkStreamHeaderFlags.None,
-                null,
-                "test.unhandled",
-                ZlinkStreamMetadata.Empty),
+            new ZLinkSessionDispatchContext("test.unhandled"),
             Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(new object()));
 
         Assert.True(handled);

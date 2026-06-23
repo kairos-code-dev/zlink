@@ -14,9 +14,9 @@ import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSessionContext>
@@ -41,28 +41,28 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
     @Override
     public CompletionStage<Boolean> tryHandleAsync(
         TSessionContext context,
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         Object handler =
-            handlers.get(header.packetName());
+            handlers.get(dispatch.packetName());
         if (handler == null) {
             return CompletableFuture.completedFuture(false);
         }
         if (handler instanceof ZLinkTypedSessionPacketHandler<?, ?> typedHandler) {
-            return executeHandler(() -> invokeTypedHandler(typedHandler, context, header, payload))
+            return executeHandler(() -> invokeTypedHandler(typedHandler, context, dispatch, payload))
                 .thenApply(ignored -> true);
         }
         Class<?> messageType = messageType(handler);
         if (messageType != null) {
             Object decoded = payload.decode(messageType);
             return executeHandler(() -> ZLinkHandlerMethodInvoker
-                .invokeHandler(handler, "handle", new Object[] {context, header, decoded}, suspendHandlerInvokers)
+                .invokeHandler(handler, "handle", new Object[] {context, dispatch, decoded}, suspendHandlerInvokers)
                 .thenApply(ignored -> null))
                 .thenApply(ignored -> true);
         }
         return executeHandler(() ->
             ZLinkHandlerMethodInvoker
-                .invokeHandler(handler, "handle", new Object[] {context, header, payload}, suspendHandlerInvokers)
+                .invokeHandler(handler, "handle", new Object[] {context, dispatch, payload}, suspendHandlerInvokers)
             .thenApply(ignored -> null))
             .thenApply(ignored -> true);
     }
@@ -71,13 +71,13 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
     private CompletionStage<Void> invokeTypedHandler(
         ZLinkTypedSessionPacketHandler<?, ?> handler,
         TSessionContext context,
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         ZLinkTypedSessionPacketHandler<TSessionContext, Object> typed =
             (ZLinkTypedSessionPacketHandler<TSessionContext, Object>) handler;
         Object decoded = payload.decode(typed.messageType());
         return ZLinkHandlerMethodInvoker
-            .invokeHandler(typed, "handle", new Object[] {context, header, decoded}, suspendHandlerInvokers)
+            .invokeHandler(typed, "handle", new Object[] {context, dispatch, decoded}, suspendHandlerInvokers)
             .thenApply(ignored -> null);
     }
 

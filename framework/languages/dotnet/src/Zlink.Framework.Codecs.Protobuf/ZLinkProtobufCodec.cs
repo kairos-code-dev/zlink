@@ -59,17 +59,17 @@ public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPaylo
     {
         public static ProtobufSerializer Instance { get; } = new();
 
-        public Message Serialize(object value, Type type)
+        public ZLinkEncodedPayload Serialize(object value, Type type)
         {
             if (value is not IMessage protobuf || !typeof(IMessage).IsAssignableFrom(type))
             {
                 throw new InvalidOperationException($"Protobuf codec cannot serialize payload type '{type}'.");
             }
 
-            return Message.From(protobuf.ToByteArray());
+            return ZLinkEncodedPayload.From(protobuf.ToByteArray());
         }
 
-        public object? Deserialize(Message message, Type type)
+        public object? Deserialize(ZLinkEncodedPayload payload, Type type)
         {
             if (!typeof(IMessage).IsAssignableFrom(type))
             {
@@ -78,7 +78,7 @@ public sealed class ZLinkProtobufCodec : IZLinkCodecExtension, IZlinkStreamPaylo
 
             var protobuf = (IMessage?)Activator.CreateInstance(type)
                 ?? throw new InvalidOperationException($"{type.FullName} must have a public parameterless constructor.");
-            protobuf.MergeFrom(message.AsReadOnlySpan());
+            protobuf.MergeFrom(payload.Bytes.Span);
             return protobuf;
         }
     }

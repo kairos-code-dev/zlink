@@ -23,6 +23,7 @@ import com.google.protobuf.StringValue;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
@@ -161,7 +162,7 @@ final class SpotRuntimeFakeBackendTest {
                 node.addSpotFactory(PayloadSpot.class); }; };
         RoutingId rid = RoutingId.from("payload-codec-spot");
         CreatePayloadSerializer serializer = new CreatePayloadSerializer();
-        Message encoded = serializer.serialize(new CreatePayload("custom"));
+        Message encoded = messageFrom(serializer.serialize(new CreatePayload("custom")));
 
         try (encoded;
              ZLinkFrameworkRuntime runtime = RuntimeTestSupport.newFrameworkRuntime(
@@ -170,14 +171,19 @@ final class SpotRuntimeFakeBackendTest {
                  serializer,
                  ZLinkHandlerFactory.reflection())) {
             var created = runtime.spotManager()
-                .getOrCreate(PayloadSpot.class, rid, ZLinkMessage.fromMessage(encoded, serializer))
+                .getOrCreate(
+                    PayloadSpot.class,
+                    rid,
+                    ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(encoded.toByteArray()), serializer))
                 .toCompletableFuture()
                 .join();
             assertEquals(ZLinkSpotCreateState.CREATED, created.state());
             assertEquals("custom", PayloadSpot.lastCreatePayload.get());
-            Message reply = created.reply().toMessage(serializer);
+            Message reply = messageFrom(created.reply().toEncodedPayload(serializer));
             try {
-                CreatePayload decoded = ZLinkMessage.fromMessage(reply, serializer).decode(CreatePayload.class);
+                CreatePayload decoded = ZLinkMessage
+                    .fromEncoded(ZLinkEncodedPayload.from(reply.toByteArray()), serializer)
+                    .decode(CreatePayload.class);
                 assertEquals("reply:custom", decoded.value());
             } finally {
                 reply.close();
@@ -194,22 +200,27 @@ final class SpotRuntimeFakeBackendTest {
                 node.addSpotFactory(ProtobufCreateSpot.class); }; };
         RoutingId rid = RoutingId.from("payload-protobuf-spot");
         ZLinkMessageSerializer serializer = serializerWith(ZLinkProtobufCodec.defaultCodec());
-        Message encoded = serializer.serialize(StringValue.of("proto-create"));
+        Message encoded = messageFrom(serializer.serialize(StringValue.of("proto-create")));
 
         try (encoded;
              ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(
                  options,
                  new FakeZLinkBackendAdapterFactory())) {
             var created = runtime.spotManager()
-                .getOrCreate(ProtobufCreateSpot.class, rid, ZLinkMessage.fromMessage(encoded, serializer))
+                .getOrCreate(
+                    ProtobufCreateSpot.class,
+                    rid,
+                    ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(encoded.toByteArray()), serializer))
                 .toCompletableFuture()
                 .join();
             assertEquals(ZLinkSpotCreateState.CREATED, created.state());
             assertEquals("proto-create", ProtobufCreateSpot.lastCreatePayload.get());
 
-            Message reply = created.reply().toMessage(serializer);
+            Message reply = messageFrom(created.reply().toEncodedPayload(serializer));
             try {
-                StringValue decoded = ZLinkMessage.fromMessage(reply, serializer).decode(StringValue.class);
+                StringValue decoded = ZLinkMessage
+                    .fromEncoded(ZLinkEncodedPayload.from(reply.toByteArray()), serializer)
+                    .decode(StringValue.class);
                 assertEquals("reply:proto-create", decoded.getValue());
             } finally {
                 reply.close();
@@ -226,22 +237,27 @@ final class SpotRuntimeFakeBackendTest {
                 node.addSpotFactory(MessagePackCreateSpot.class); }; };
         RoutingId rid = RoutingId.from("payload-messagepack-spot");
         ZLinkMessageSerializer serializer = serializerWith(ZLinkMessagePackCodec.defaultCodec());
-        Message encoded = serializer.serialize(new PackedCreatePayload("msgpack-create"));
+        Message encoded = messageFrom(serializer.serialize(new PackedCreatePayload("msgpack-create")));
 
         try (encoded;
              ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(
                  options,
                  new FakeZLinkBackendAdapterFactory())) {
             var created = runtime.spotManager()
-                .getOrCreate(MessagePackCreateSpot.class, rid, ZLinkMessage.fromMessage(encoded, serializer))
+                .getOrCreate(
+                    MessagePackCreateSpot.class,
+                    rid,
+                    ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(encoded.toByteArray()), serializer))
                 .toCompletableFuture()
                 .join();
             assertEquals(ZLinkSpotCreateState.CREATED, created.state());
             assertEquals("msgpack-create", MessagePackCreateSpot.lastCreatePayload.get());
 
-            Message reply = created.reply().toMessage(serializer);
+            Message reply = messageFrom(created.reply().toEncodedPayload(serializer));
             try {
-                PackedCreatePayload decoded = ZLinkMessage.fromMessage(reply, serializer).decode(PackedCreatePayload.class);
+                PackedCreatePayload decoded = ZLinkMessage
+                    .fromEncoded(ZLinkEncodedPayload.from(reply.toByteArray()), serializer)
+                    .decode(PackedCreatePayload.class);
                 assertEquals("reply:msgpack-create", decoded.value());
             } finally {
                 reply.close();
@@ -1382,19 +1398,19 @@ final class SpotRuntimeFakeBackendTest {
 
     public static final class CreatePayloadSerializer implements ZLinkMessageSerializer {
         @Override
-        public <T> Message serialize(T value) {
+        public <T> ZLinkEncodedPayload serialize(T value) {
             if (value instanceof Message message) {
-                return Message.from(message);
+                return ZLinkEncodedPayload.from(message.toByteArray());
             }
             if (value instanceof CreatePayload payload) {
-                return Message.from(("create:" + payload.value()).getBytes(StandardCharsets.UTF_8));
+                return ZLinkEncodedPayload.from(("create:" + payload.value()).getBytes(StandardCharsets.UTF_8));
             }
-            return Message.from(String.valueOf(value).getBytes(StandardCharsets.UTF_8));
+            return ZLinkEncodedPayload.from(String.valueOf(value).getBytes(StandardCharsets.UTF_8));
         }
 
         @Override
-        public <T> T deserialize(Message message, Class<T> type) {
-            String text = message.toUtf8String();
+        public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
+            String text = new String(payload.bytes(), StandardCharsets.UTF_8);
             if (type == String.class) {
                 return type.cast(text.startsWith("create:") ? text.substring("create:".length()) : text);
             }
@@ -1410,6 +1426,10 @@ final class SpotRuntimeFakeBackendTest {
         ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
         registration.use(extension);
         return registration.serializerWithFallback(new ZLinkJsonMessageSerializer());
+    }
+
+    private static Message messageFrom(ZLinkEncodedPayload payload) {
+        return Message.from(payload.bytes());
     }
 
     private static void awaitCall(
@@ -1600,32 +1620,32 @@ final class SpotRuntimeFakeBackendTest {
 
     public static final class SerialJoinSerializer implements ZLinkMessageSerializer {
         @Override
-        public <T> Message serialize(T value) {
+        public <T> ZLinkEncodedPayload serialize(T value) {
             if (value instanceof Message message) {
-                return Message.from(message);
+                return ZLinkEncodedPayload.from(message.toByteArray());
             }
             if (value instanceof byte[] bytes) {
-                return Message.from(bytes);
+                return ZLinkEncodedPayload.from(bytes);
             }
             if (value instanceof SerialJoinRequest request) {
-                return Message.from(request.value().getBytes(StandardCharsets.UTF_8));
+                return ZLinkEncodedPayload.from(request.value().getBytes(StandardCharsets.UTF_8));
             }
-            return Message.from(String.valueOf(value).getBytes(StandardCharsets.UTF_8));
+            return ZLinkEncodedPayload.from(String.valueOf(value).getBytes(StandardCharsets.UTF_8));
         }
 
         @Override
-        public <T> T deserialize(Message message, Class<T> type) {
+        public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
             if (type == Message.class) {
-                return type.cast(Message.from(message));
+                return type.cast(Message.from(payload.bytes()));
             }
             if (type == byte[].class) {
-                return type.cast(message.toByteArray());
+                return type.cast(payload.bytes());
             }
             if (type == String.class) {
-                return type.cast(message.toUtf8String());
+                return type.cast(new String(payload.bytes(), StandardCharsets.UTF_8));
             }
             if (type == SerialJoinRequest.class) {
-                return type.cast(new SerialJoinRequest(message.toUtf8String()));
+                return type.cast(new SerialJoinRequest(new String(payload.bytes(), StandardCharsets.UTF_8)));
             }
             throw new IllegalArgumentException("unsupported message type: " + type.getName());
         }
@@ -1802,26 +1822,26 @@ final class SpotRuntimeFakeBackendTest {
 
     public static final class InterfaceActorSerializer implements ZLinkMessageSerializer {
         @Override
-        public <T> Message serialize(T value) {
+        public <T> ZLinkEncodedPayload serialize(T value) {
             if (value instanceof Message message) {
-                return Message.from(message);
+                return ZLinkEncodedPayload.from(message.toByteArray());
             }
             if (value instanceof InterfaceActorRequest request) {
-                return Message.from(request.value().getBytes(StandardCharsets.UTF_8));
+                return ZLinkEncodedPayload.from(request.value().getBytes(StandardCharsets.UTF_8));
             }
-            return Message.from(String.valueOf(value).getBytes(StandardCharsets.UTF_8));
+            return ZLinkEncodedPayload.from(String.valueOf(value).getBytes(StandardCharsets.UTF_8));
         }
 
         @Override
-        public <T> T deserialize(Message message, Class<T> type) {
+        public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
             if (type == Message.class) {
-                return type.cast(Message.from(message));
+                return type.cast(Message.from(payload.bytes()));
             }
             if (type == String.class) {
-                return type.cast(message.toUtf8String());
+                return type.cast(new String(payload.bytes(), StandardCharsets.UTF_8));
             }
             if (type == InterfaceActorRequest.class) {
-                return type.cast(new InterfaceActorRequest(message.toUtf8String()));
+                return type.cast(new InterfaceActorRequest(new String(payload.bytes(), StandardCharsets.UTF_8)));
             }
             throw new IllegalArgumentException("unsupported message type: " + type.getName());
         }

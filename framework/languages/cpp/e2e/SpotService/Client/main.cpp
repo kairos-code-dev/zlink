@@ -2,6 +2,8 @@
 
 #include "../Shared/spot_service_contracts.hpp"
 
+#include "runtime/actors/actor_gateway_runtime.hpp"
+
 #include <zlink/framework.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_e2e_client.hpp>
@@ -199,9 +201,11 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                           const std::string &packet_name,
                           const TRequest &request)
     {
-        auto reply = actor.relay_request_raw (request_header (packet_name), encode_json (request))
-                       .async ()
-                       .result ();
+        auto header = request_header (packet_name);
+        zlink::framework::detail::enter_stream_relay_dispatch (header);
+        auto reply =
+          actor.relay_request (zlink::framework::message_t::from (request)).async ().result ();
+        zlink::framework::detail::exit_stream_relay_dispatch ();
         ensure (reply.has_value (), packet_name + " relay failed: "
                                       + (reply.error () ? reply.error ()->what () : "unknown"));
         return reply.value ().template decode<TReply> ();
@@ -280,11 +284,15 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
                 "SM-A6 lifecycle reply mismatch");
         std::cout << "scenario SM-A6 passed\n";
 
-        auto missing_actor_packet = local
-                                      .relay_request_raw (request_header ("MissingActorPacket"),
-                                                          encode_json (e2e::state_req_t{"add", 1}))
-                                      .async ()
-                                      .result ();
+        auto missing_actor_header = request_header ("MissingActorPacket");
+        zlink::framework::detail::enter_stream_relay_dispatch (missing_actor_header);
+        auto missing_actor_packet =
+          local
+            .relay_request (
+              zlink::framework::message_t::from (e2e::state_req_t{"add", 1}))
+            .async ()
+            .result ();
+        zlink::framework::detail::exit_stream_relay_dispatch ();
         ensure (!missing_actor_packet.has_value (),
                 "SM-B5 missing actor packet unexpectedly succeeded");
         std::cout << "scenario SM-B5 passed\n";
@@ -354,11 +362,15 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
           local, "DestroyActorReq", e2e::destroy_actor_req_t{"client-destroyed"});
         ensure (destroyed.destroyed && destroyed.actor_id == "alice",
                 "SM-B8 destroy reply mismatch");
-        auto after_destroy = local
-                               .relay_request_raw (request_header ("StateReq"),
-                                                   encode_json (e2e::state_req_t{"add", 1}))
-                               .async ()
-                               .result ();
+        auto after_destroy_header = request_header ("StateReq");
+        zlink::framework::detail::enter_stream_relay_dispatch (after_destroy_header);
+        auto after_destroy =
+          local
+            .relay_request (
+              zlink::framework::message_t::from (e2e::state_req_t{"add", 1}))
+            .async ()
+            .result ();
+        zlink::framework::detail::exit_stream_relay_dispatch ();
         ensure (!after_destroy.has_value (), "SM-B8 destroyed actor unexpectedly accepted request");
         std::cout << "scenario SM-B8 passed\n";
 

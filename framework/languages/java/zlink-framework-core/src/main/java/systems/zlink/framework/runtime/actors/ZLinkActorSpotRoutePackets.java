@@ -8,7 +8,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 
 public final class ZLinkActorSpotRoutePackets {
     public static final String JOIN_SPOT_PACKET_NAME = "__zlink.actor.joinSpot";

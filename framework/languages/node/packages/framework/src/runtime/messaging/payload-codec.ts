@@ -2,10 +2,11 @@ import { Message as BindingMessage } from '@zlink-systems/zlink';
 import {
   isZLinkMessage,
   ZLinkMessage,
-  type Message,
   type Type,
+  ZLinkEncodedPayload,
   type ZLinkMessageSerializer
 } from '../../contracts';
+import type { Message } from '../../contracts/Common/Message';
 import { ZLinkConfigurationException } from '../configuration';
 
 export interface ZLinkSerializerRegistryLike {
@@ -17,7 +18,7 @@ export function encodeFrameworkPayloadMessage(
   registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
 ): Message {
   if (isZLinkMessage(payload)) {
-    return payload.toMessage(registry);
+    return toBindingMessage(payload.toEncodedPayload(registry));
   }
   if (isMessage(payload)) {
     throw new ZLinkConfigurationException(
@@ -32,7 +33,7 @@ export function encodeFrameworkPayloadMessage(
 
   const serializer = selectDefaultSerializer(registry);
   if (serializer !== undefined) {
-    return serializer.serialize(payload);
+    return toBindingMessage(serializer.serialize(payload));
   }
 
   return BindingMessage.from(Buffer.from(JSON.stringify(payload ?? null)));
@@ -49,7 +50,10 @@ export function decodeFrameworkPayloadMessage<T>(
 
   const serializer = selectDefaultSerializer(registry);
   if (serializer !== undefined) {
-    return serializer.deserialize(message, (type ?? Object) as Type<T>);
+    return serializer.deserialize(
+      ZLinkEncodedPayload.from(message.data()),
+      (type ?? Object) as Type<T>
+    );
   }
 
   const text = message.getString('utf8');
@@ -64,7 +68,7 @@ export function wrapFrameworkPayloadMessage(
   message: Message,
   registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
 ): ZLinkMessage {
-  return ZLinkMessage.fromEncoded(message, registry);
+  return ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(message.data()), registry);
 }
 
 export function selectDefaultSerializer(
@@ -95,4 +99,8 @@ function isMessage(value: unknown): value is Message {
   return typeof value === 'object'
     && value !== null
     && typeof (value as { data?: unknown }).data === 'function';
+}
+
+function toBindingMessage(payload: ZLinkEncodedPayload): Message {
+  return BindingMessage.from(payload.data());
 }

@@ -73,9 +73,9 @@ public sealed class ChatSession(IZLinkSessionContext context, IZLinkActorManager
     private IZLinkSessionActor? _user;
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header, ZLinkMessage payload, CancellationToken ct)
+        ZLinkSessionDispatchContext dispatch, ZLinkMessage payload, CancellationToken ct)
     {
-        if (header.Name == "auth")
+        if (dispatch.PacketName == "auth")
         {
             var req = payload.Decode<AuthReq>();
             IZLinkActor actor = await actors.GetOrCreateAsync(req.UserId, "chat-user", ct);
@@ -83,7 +83,7 @@ public sealed class ChatSession(IZLinkSessionContext context, IZLinkActorManager
             await context.Client.Reply(new AuthOk()).Async();
             return;
         }
-        await _user!.RelayAsync(header, payload, ct);
+        await _user!.RelayAsync(payload, ct);
     }
 
     public ValueTask OnConnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;

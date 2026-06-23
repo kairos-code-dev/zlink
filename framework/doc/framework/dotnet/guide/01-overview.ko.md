@@ -78,24 +78,25 @@ public sealed class GetPriceHandler
 {
     public ValueTask<PriceReply> HandleAsync(
         PriceRequest request, ZLinkRequestContext context, CancellationToken ct)
-        => ValueTask.FromResult(new PriceReply(request.Symbol, 187.42m));
+        => ValueTask.FromResult(new PriceReply(request.Symbol, 187.42m));   // 187.42m 은 데모용 고정값(실제론 조회 결과)
 }
 
-// 등록
+// 등록 — 채널 선언 → 서버 활성화 → handler 등록이 한 channel 빌더에 묶인다(이게 "한 줄짜리 channel 등록").
 builder.Services.AddZLinkFramework(options =>
 {
     {
-        var channel =     options.AddClientServerChannel("price");
-                channel.EnableServer("tcp://0.0.0.0:7301");
-        channel.AddRequestHandler<GetPriceHandler>();
+        var channel =     options.AddClientServerChannel("price"); // channel 이름 선언
+                channel.EnableServer("tcp://0.0.0.0:7301");        // 이 channel 의 server 역할 활성화(수신 endpoint)
+        channel.AddRequestHandler<GetPriceHandler>();              // 그 server 가 부를 handler 등록
 
     }
 });
 
-// 클라이언트: IZLinkChannelClient 를 주입받아 builder + 종결자로 호출
+// 클라이언트: IZLinkChannelClient 를 주입받아 호출한다. builder(RequestToChannel = 요청 구성) +
+// 종결자(.Async<TReply> = 실제 송신하고 reply 도착까지 대기)의 2단계다.
 var reply = await client
-    .RequestToChannel("price", new PriceRequest("AAPL"))
-    .Async<PriceReply>(ct);
+    .RequestToChannel("price", new PriceRequest("AAPL"))   // builder: 어느 channel 에 무슨 요청을
+    .Async<PriceReply>(ct);                                // 종결자: reply 타입 지정 + 송신·대기
 ```
 
 배선 코드가 사라지고 남는 것은 handler 와 한 줄짜리 channel 등록뿐이다.

@@ -419,8 +419,7 @@ class spot_node_runtime_t
     invoke_actor_join_callback (TSpot &spot, TActor &actor, const zlink::message_t &request)
     {
         if constexpr (has_framework_actor_join_callback<TSpot, TActor>) {
-            return spot.on_actor_join (
-              actor, message_t::from_encoded (request, _state->channel_runtime->serializers));
+            return spot.on_actor_join (actor, message_t::from_raw (request, _state->channel_runtime->serializers));
         } else {
             return spot.on_actor_join (actor, request);
         }

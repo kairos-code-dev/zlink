@@ -16,6 +16,10 @@
 namespace zlink::framework::detail
 {
 
+void enter_stream_relay_dispatch (const stream_header_t &header);
+void exit_stream_relay_dispatch () noexcept;
+std::optional<stream_header_t> current_stream_relay_dispatch ();
+
 struct actor_record_t
 {
     actor_ref_t ref;

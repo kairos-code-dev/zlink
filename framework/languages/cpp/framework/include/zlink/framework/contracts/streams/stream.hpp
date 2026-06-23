@@ -25,6 +25,7 @@ namespace detail
 class stream_builder_state_t;
 class stream_state_t;
 class stream_runtime_t;
+class actor_gateway_runtime_t;
 } // namespace detail
 
 enum class stream_message_kind_t : std::uint8_t
@@ -141,6 +142,24 @@ class stream_header_t
     std::string _correlation_id;
 };
 
+class stream_dispatch_context_t
+{
+  public:
+    stream_dispatch_context_t ();
+
+    std::string_view packet_name () const noexcept;
+    const stream_metadata_t &metadata () const noexcept;
+    bool can_reply () const noexcept;
+
+  private:
+    friend class detail::stream_runtime_t;
+    explicit stream_dispatch_context_t (const stream_header_t &header);
+
+    std::string _packet_name;
+    stream_metadata_t _metadata;
+    bool _can_reply = false;
+};
+
 class stream_t
 {
   public:
@@ -154,23 +173,15 @@ class stream_t
 
     std::string session_id () const;
     task_t<void> close ();
-    stream_write_call_t write_packet (const stream_header_t &header, const message_t &payload);
-    stream_write_call_t write_packet_raw (const stream_header_t &header,
-                                          const zlink::message_t &payload);
-    stream_write_call_t reply_packet (const stream_header_t &request_header,
-                                      const message_t &payload);
-    stream_write_call_t reply_packet_raw (const stream_header_t &request_header,
-                                          const zlink::message_t &payload);
-
-    template <typename TPayload>
-    stream_write_call_t reply_packet (const stream_header_t &request_header, TPayload payload)
-    {
-        return reply_packet (request_header, message_t::from (std::move (payload)));
-    }
+    stream_write_call_t write_packet (const message_t &payload);
+    stream_write_call_t reply_packet (const message_t &payload);
 
   private:
+    friend class detail::actor_gateway_runtime_t;
     friend class detail::stream_runtime_t;
     explicit stream_t (std::shared_ptr<detail::stream_state_t> state);
+    stream_write_call_t write_packet_with_header (stream_header_t header,
+                                                  zlink::message_t payload);
 
     std::shared_ptr<detail::stream_state_t> _state;
 };
@@ -183,21 +194,14 @@ class packet_stream_session_t
     virtual task_t<void> on_disconnected (stream_t &stream) = 0;
     virtual task_t<void> on_error (stream_t &stream, const stream_error_t &error) = 0;
     virtual task_t<void> on_packet (stream_t &stream,
-                                    const stream_header_t &header,
+                                    const stream_dispatch_context_t &dispatch,
                                     const message_t &payload)
     {
-        return on_raw_packet (stream, header, payload.to_raw ());
-    }
-    virtual task_t<void> on_raw_packet (stream_t &stream,
-                                        const stream_header_t &header,
-                                        const zlink::message_t &payload)
-    {
         (void) stream;
-        (void) header;
+        (void) dispatch;
         (void) payload;
         return task_t<void> (result_t<void>::failure (
-          framework_error_kind_t::handler_not_found,
-          "raw stream packet handler is not implemented"));
+          framework_error_kind_t::handler_not_found, "stream packet handler is not implemented"));
     }
 };
 

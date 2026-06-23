@@ -134,7 +134,7 @@ public abstract partial class RegistrationValidationSupport
         public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
         public ValueTask OnDispatchAsync(
-            ZlinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             global::Systems.Zlink.Message body,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
@@ -162,7 +162,7 @@ public abstract partial class RegistrationValidationSupport
         public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
         public ValueTask OnDispatchAsync(
-            ZlinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             global::Systems.Zlink.Message body,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
@@ -183,11 +183,11 @@ public abstract partial class RegistrationValidationSupport
 
         public ValueTask HandleAsync(
             TestSessionPacketContext context,
-            ZlinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
             CancellationToken cancellationToken)
         {
-            _ = header;
+            _ = dispatch;
             _ = payload;
             cancellationToken.ThrowIfCancellationRequested();
             context.MarkHandled();
@@ -210,7 +210,7 @@ public abstract partial class RegistrationValidationSupport
         public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
         public ValueTask OnDispatchAsync(
-            ZlinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             global::Systems.Zlink.Message body,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
@@ -223,7 +223,7 @@ public abstract partial class RegistrationValidationSupport
 
         public ValueTask HandleAsync(
             DuplicateSessionPacketContext context,
-            ZlinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
@@ -234,7 +234,7 @@ public abstract partial class RegistrationValidationSupport
 
         public ValueTask HandleAsync(
             DuplicateSessionPacketContext context,
-            ZlinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }

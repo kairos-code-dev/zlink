@@ -183,8 +183,12 @@ class short_circuit_filter_t
 template <typename T> void add_int_serializer (zlink::framework::serializer_registry_t &serializers)
 {
     serializers.add<T> (
-      [] (const T &value) { return zlink::message_t::from (std::to_string (value.value)); },
-      [] (const zlink::message_t &message) { return T{std::stoi (message.to_string ())}; });
+      [] (const T &value) {
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
+      },
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return T{std::stoi (payload.to_string ())};
+      });
 }
 
 zlink::framework::task_t<reply_t> delayed_reply_task (int value)
@@ -286,7 +290,11 @@ int main ()
     auto request_result = handlers.invoke ("game", "move", "request", provider, serializers,
                                            zlink::message_t::from (std::string ("7")));
     if (!request_result
-        || serializers.get<reply_t> ().deserialize (request_result.value ()).value != 8) {
+        || serializers.get<reply_t> ()
+               .deserialize (
+                 zlink::framework::detail::encoded_payload_from_raw (request_result.value ()))
+               .value
+             != 8) {
         return 3;
     }
     if (provider.get_required<handler_t> ().last_thread == std::this_thread::get_id ()) {
@@ -302,7 +310,11 @@ int main ()
     auto blocked_result = handlers.invoke ("game", "blocked", "blocked", provider, serializers,
                                            zlink::message_t::from (std::string ("123")));
     if (!blocked_result
-        || serializers.get<reply_t> ().deserialize (blocked_result.value ()).value != 99) {
+        || serializers.get<reply_t> ()
+               .deserialize (
+                 zlink::framework::detail::encoded_payload_from_raw (blocked_result.value ()))
+               .value
+             != 99) {
         return 36;
     }
     if (provider.get_required<handler_t> ().last_request == 123
@@ -319,7 +331,11 @@ int main ()
                        zlink::message_t::from (std::string ("8")));
     auto &handler = provider.get_required<handler_t> ();
     if (!context_request_result
-        || serializers.get<reply_t> ().deserialize (context_request_result.value ()).value != 10
+        || serializers.get<reply_t> ()
+               .deserialize (zlink::framework::detail::encoded_payload_from_raw (
+                 context_request_result.value ()))
+               .value
+             != 10
         || handler.last_context_channel != "game"
         || handler.last_context_packet != "context-request") {
         return 39;
@@ -362,14 +378,22 @@ int main ()
     auto async_result = handlers.invoke ("game", "async", "async", provider, serializers,
                                          zlink::message_t::from (std::string ("5")));
     if (!async_result
-        || serializers.get<reply_t> ().deserialize (async_result.value ()).value != 15) {
+        || serializers.get<reply_t> ()
+               .deserialize (
+                 zlink::framework::detail::encoded_payload_from_raw (async_result.value ()))
+               .value
+             != 15) {
         return 7;
     }
 
     auto delayed_result = handlers.invoke ("game", "delayed", "delayed", provider, serializers,
                                            zlink::message_t::from (std::string ("6")));
     if (!delayed_result
-        || serializers.get<reply_t> ().deserialize (delayed_result.value ()).value != 26) {
+        || serializers.get<reply_t> ()
+               .deserialize (
+                 zlink::framework::detail::encoded_payload_from_raw (delayed_result.value ()))
+               .value
+             != 26) {
         return 31;
     }
 
@@ -453,7 +477,7 @@ int main ()
     bool raw_called = false;
     handlers.send_raw ("game", "raw-topic", "raw",
                        [&raw_called] (const zlink::framework::payload_view_t &payload) {
-                           raw_called = payload.copy_message ().to_string () == "raw-body";
+                           raw_called = payload.to_string () == "raw-body";
                            return zlink::framework::result_t<void>::success ();
                        });
     auto raw_result = handlers.invoke ("game", "raw-topic", "raw", provider, serializers,

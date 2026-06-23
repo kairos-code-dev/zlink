@@ -8,6 +8,7 @@ import type {
   ZLinkChannelClient,
   ZLinkMessage,
   ZLinkSession,
+  ZLinkSessionDispatchContext,
   ZLinkSessionContext,
   ZLinkSessionFactory
 } from '@zlink-systems/framework';
@@ -15,10 +16,6 @@ import type {
   AuthenticateReq,
   SupportNotificationBatch
 } from '../../../Shared/Contracts/messages';
-
-type SupportChatRouteHeader = {
-  name: string;
-};
 
 class SupportChatSession implements ZLinkSession {
   private actorId: string | null = null;
@@ -34,9 +31,8 @@ class SupportChatSession implements ZLinkSession {
     readonly context: ZLinkSessionContext
   ) {}
 
-  async onDispatch(header: unknown, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
-    const supportHeader = requireSupportChatRouteHeader(header);
-    if (supportHeader.name === PacketNames.authenticateReq) {
+  async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
+    if (dispatch.packetName === PacketNames.authenticateReq) {
       const response = await this.authenticator.handle(
         payload.decode<AuthenticateReq>(Object as never),
         this
@@ -46,8 +42,8 @@ class SupportChatSession implements ZLinkSession {
       return;
     }
 
-    this.requireBound(`relaying packet '${supportHeader.name}'`);
-    const response = await this.relayToSupport(supportHeader.name, payload.decode<object>(Object as never), signal);
+    this.requireBound(`relaying packet '${dispatch.packetName}'`);
+    const response = await this.relayToSupport(dispatch.packetName, payload.decode<object>(Object as never), signal);
     await this.context.client.reply(response).submit(signal);
   }
 
@@ -132,18 +128,6 @@ class SupportChatSessionFactory implements ZLinkSessionFactory<SupportChatSessio
   create(context: ZLinkSessionContext): SupportChatSession {
     return new SupportChatSession(this.authenticator, this.channelClient, context);
   }
-}
-
-function requireSupportChatRouteHeader(header: unknown): SupportChatRouteHeader {
-  if (
-    typeof header !== 'object' ||
-    header === null ||
-    !('name' in header) ||
-    typeof (header as { name?: unknown }).name !== 'string'
-  ) {
-    throw new Error('SupportChat stream header is missing packet name.');
-  }
-  return header as SupportChatRouteHeader;
 }
 
 export { SupportChatSession, SupportChatSessionFactory };

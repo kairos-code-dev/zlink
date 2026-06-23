@@ -8,7 +8,12 @@ internal sealed class ZLinkSessionStreamTransport(
 {
     public bool Write(Message payload)
     {
-        return stream.Write(payload);
+        if (stream is ZLinkManagedStream managedStream)
+        {
+            return managedStream.WriteRaw(payload);
+        }
+
+        return stream.Write(ZLinkMessage.From(payload.ToArray()));
     }
 
     public ValueTask SendRawAsync(
@@ -177,7 +182,7 @@ internal sealed class ZLinkSessionStreamTransport(
         string failureMessage)
     {
         using var message = Message.From(frame);
-        if (!stream.Write(message))
+        if (!Write(message))
         {
             throw new InvalidOperationException(failureMessage);
         }

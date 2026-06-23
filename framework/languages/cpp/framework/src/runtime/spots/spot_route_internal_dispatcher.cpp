@@ -70,7 +70,8 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
     try {
         if (header.message_name == spot_actor_packet_route_request_t::packet_name) {
             auto request =
-              _serializers->get<spot_actor_packet_route_request_t> ().deserialize (body.value ());
+              _serializers->get<spot_actor_packet_route_request_t> ().deserialize (
+                detail::encoded_payload_from_raw (body.value ()));
             auto runtime = _runtime;
             auto actor_ref = actor_ref_from_spot_route (request);
             auto actor_gateway = bind_actor_route (actor_ref, header, received);
@@ -102,11 +103,12 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
               .payload =
                 relayed.value () ? relayed.value ()->to_bytes () : std::vector<std::uint8_t>{}};
             return result_t<zlink::message_t>::success (
-              _serializers->get<spot_actor_packet_route_reply_t> ().serialize (reply));
+              detail::encoded_payload_to_raw (
+                _serializers->get<spot_actor_packet_route_reply_t> ().serialize (reply)));
         }
         if (header.message_name == spot_actor_disconnect_route_request_t::packet_name) {
             auto request = _serializers->get<spot_actor_disconnect_route_request_t> ().deserialize (
-              body.value ());
+              detail::encoded_payload_from_raw (body.value ()));
             auto disconnected =
               _runtime.notify_actor_disconnected_erased (actor_ref_from_spot_route (request));
             if (!disconnected) {
@@ -116,11 +118,13 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                                                 : "remote actor disconnect notify failed");
             }
             return result_t<zlink::message_t>::success (
-              _serializers->get<spot_actor_disconnect_route_reply_t> ().serialize (
-                spot_actor_disconnect_route_reply_t{}));
+              detail::encoded_payload_to_raw (
+                _serializers->get<spot_actor_disconnect_route_reply_t> ().serialize (
+                  spot_actor_disconnect_route_reply_t{})));
         }
         auto request =
-          _serializers->get<spot_actor_join_route_request_t> ().deserialize (body.value ());
+          _serializers->get<spot_actor_join_route_request_t> ().deserialize (
+            detail::encoded_payload_from_raw (body.value ()));
         auto runtime = _runtime;
         auto actor_ref = actor_ref_from_spot_route (request);
         bind_actor_route (actor_ref, header, received);
@@ -134,7 +138,8 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
         }
         auto reply = make_spot_actor_join_route_reply (joined.value ());
         return result_t<zlink::message_t>::success (
-          _serializers->get<spot_actor_join_route_reply_t> ().serialize (reply));
+          detail::encoded_payload_to_raw (
+            _serializers->get<spot_actor_join_route_reply_t> ().serialize (reply)));
     }
     catch (const framework_exception_t &error) {
         return result_t<zlink::message_t>::failure (error.kind (), error.what (),

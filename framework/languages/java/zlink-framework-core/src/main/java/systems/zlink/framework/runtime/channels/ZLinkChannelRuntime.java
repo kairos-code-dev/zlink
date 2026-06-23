@@ -68,6 +68,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
+import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 
 public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient, AutoCloseable {
     private static final String FRAMEWORK_ERROR_REPLY_MARKER = "ZLinkFrameworkError";
@@ -1506,7 +1507,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         Message payload) {
         Object message;
         try {
-            message = serializer.deserialize(payload, registration.messageType());
+            message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(payloadDecodeFailure(
                 channelName,
@@ -1551,7 +1552,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         Message payload) {
         Object request;
         try {
-            request = serializer.deserialize(payload, registration.requestType());
+            request = ZLinkMessagePayloads.deserialize(serializer, payload, registration.requestType());
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(payloadDecodeFailure(
                 channelName,
@@ -1562,7 +1563,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             ZLinkRequestContext context = new DefaultRequestContext(channelName, registration.packetName());
             return invokeWithFilters(context, request, () ->
                 invokeRequestHandlerCore(registration, request, context))
-                .thenApply(serializer::serialize);
+                .thenApply(reply -> ZLinkMessagePayloads.message(serializer.serialize(reply)));
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -1597,7 +1598,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         Message payload) {
         Object message;
         try {
-            message = serializer.deserialize(payload, registration.messageType());
+            message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(payloadDecodeFailure(
                 channelName,
@@ -1698,7 +1699,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         Message payload) {
         Object message;
         try {
-            message = serializer.deserialize(payload, registration.messageType());
+            message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(payloadDecodeFailure(
                 channelName,
@@ -1733,7 +1734,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         Message payload) {
         Object request;
         try {
-            request = serializer.deserialize(payload, registration.requestType());
+            request = ZLinkMessagePayloads.deserialize(serializer, payload, registration.requestType());
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(payloadDecodeFailure(
                 channelName,
@@ -1749,12 +1750,12 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
                     .invoke(handler, registration.handlerMethod(),
                         methodArguments(registration.handlerMethod(), request, context),
                         suspendHandlerInvokers)
-                    .thenApply(serializer::serialize);
+                    .thenApply(reply -> ZLinkMessagePayloads.message(serializer.serialize(reply)));
             }
             Object handler = handlerFactory.create(registration.handlerType());
             return ZLinkHandlerMethodInvoker
                 .invokeHandler(handler, "handle", new Object[] {request, context}, suspendHandlerInvokers)
-                .thenApply(serializer::serialize);
+                .thenApply(reply -> ZLinkMessagePayloads.message(serializer.serialize(reply)));
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -2299,7 +2300,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             ? (emptyReply = Message.from(new byte[0]))
             : reply.parts().get(0);
         try {
-            result.complete(serializer.deserialize(firstReply, replyType));
+            result.complete(ZLinkMessagePayloads.deserialize(serializer, firstReply, replyType));
         } finally {
             if (emptyReply != null) {
                 emptyReply.close();

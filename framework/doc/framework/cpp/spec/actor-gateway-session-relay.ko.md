@@ -86,7 +86,7 @@ public:
         }
 
         co_await actor_
-          .relay(header, payload)
+          .relay(payload)
           .async();
     }
 
@@ -96,9 +96,9 @@ private:
 };
 ```
 
-`payload`는 framework `message_t`다. session은 이 값을 decode 하거나 `relay(...)` 같은
-framework API에 그대로 넘긴다. raw bindings `zlink::message_t`가 필요한 경우에는
-명시 raw 표면인 `on_raw_packet(...)`과 `relay_raw(...)`를 사용한다.
+`payload`는 `zlink::message_t`다. session은 이 값을 decode 하거나 `relay(...)` 같은
+framework API에 그대로 넘긴다. header 값은 runtime의 현재 dispatch state가 보존하므로
+application이 header 객체를 다시 넘기지 않는다.
 
 ## 4. Actor 표면
 

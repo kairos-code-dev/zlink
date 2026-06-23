@@ -101,7 +101,7 @@ public interface ZLinkSessionActor {
     ZLinkActorRef ref();
 
     CompletionStage<Void> relay(
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload);
 
     CompletionStage<Void> notifyDisconnected();
@@ -188,7 +188,7 @@ session actor의 `notifyDisconnected()`는 backend actor binding을 해제한 �
 그 binding이 actor context의 현재 bound session과 일치할 때만 disconnected lifecycle을
 실행한다. 오래된 session binding에서 disconnect 알림이 늦게 도착해도 현재 bound
 session과 disconnected lifecycle callback을 건드리지 않는다.
-`relay(header, payload)`는 session이 받은 actor packet을 bound actor route로
+`relay(payload)`는 session이 받은 actor packet을 bound actor route로
 전달한다. `payload`는 framework `ZLinkMessage`이며, session은 이 값을 decode 하거나
 relay API에 그대로 넘긴다.
 

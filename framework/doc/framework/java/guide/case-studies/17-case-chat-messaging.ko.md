@@ -112,7 +112,7 @@ public final class ChatSession implements ZLinkSession {
     public ZLinkSessionContext context() { return context; }
 
     @Override
-    public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
+    public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
         if ("auth".equals(header.name())) {
             AuthReq req = payload.decode(AuthReq.class);
             user = actors.getOrCreate(req.userId(), "chat-user")
@@ -123,7 +123,7 @@ public final class ChatSession implements ZLinkSession {
             return;
         }
         if (user == null) { throw new IllegalStateException("actor is not bound"); }
-        user.relay(header, payload).toCompletableFuture().join();
+        user.relay(payload).toCompletableFuture().join();
     }
 }
 ```

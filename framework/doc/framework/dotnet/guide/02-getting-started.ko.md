@@ -61,6 +61,7 @@ sequenceDiagram
 실제 샘플의 메시지는 `Shared/Contracts/Messages.cs`에 있다.
 
 ```csharp
+// Http* = 외부 HTTP 경계 계약. 입력이 비어 올 수 있어 GameName 은 nullable.
 public sealed record CreateGameHttpReq(string? GameName);
 
 public sealed record CreateGameHttpRes(
@@ -68,6 +69,7 @@ public sealed record CreateGameHttpRes(
     string PlayEndpoint,
     string GameName);
 
+// (Http 접두사 없음) = 서버 간 channel 계약(내부). 정규화 후라 GameName 은 non-null.
 public sealed record CreateGameReq(string GameName);
 
 public sealed record CreateGameRes(
@@ -88,14 +90,14 @@ builder.WebHost.UseUrls(settings.ApiBindUrl);
 
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.AddJson();
+    options.Codecs.AddJson();   // 송수신 DTO 직렬화 codec. API/Play 양쪽이 같은 codec 이어야 매칭된다.
 
     options.AddClientServerChannel(SampleChannels.Play)
-        .EnableClient(settings.PlayChannelEndpoint);
+        .EnableClient(settings.PlayChannelEndpoint);  // 수동 연결 — Registry 없이 Play endpoint 를 설정으로 직접 지정(7장 자동연결과 대비)
 });
 
 var app = builder.Build();
-app.MapPost("/games", CreateGameHttpHandler.HandleAsync);
+app.MapPost("/games", CreateGameHttpHandler.HandleAsync);   // HTTP 진입과 channel 은 별개 평면이다
 ```
 
 `SampleChannels.Play` 값은 `"Play"`다. `EnableClient(endpoint)`는 수동 연결이다.
@@ -107,14 +109,16 @@ HTTP handler는 `IZLinkChannelClient`를 DI로 받고, `CreateGameReq`를 Play c
 ```csharp
 public static async Task<IResult> HandleAsync(
     CreateGameHttpReq request,
-    IZLinkChannelClient client,
+    IZLinkChannelClient client,        // DI 로 주입(ASP.NET minimal API 파라미터 주입) — 호출부에서 안 넘긴다
     ILoggerFactory loggerFactory,
     CancellationToken cancellationToken)
 {
+    // 빈/공백이면 기본값으로 치환 → channel 계약 CreateGameReq 의 non-null GameName 을 만족시킨다.
     var gameName = !string.IsNullOrWhiteSpace(request.GameName)
         ? request.GameName
         : SampleDefaults.GameName;
 
+    // builder(RequestToChannel) + 종결자(.Async<CreateGameRes> = 송신하고 reply 대기) 2단계.
     var reply = await client.RequestToChannel(
             SampleChannels.Play,
             new CreateGameReq(gameName))
@@ -140,9 +144,9 @@ builder.Services.AddZLinkFramework(options =>
 {
     options.Codecs.AddJson();
 
-    options.AddClientServerChannel(SampleChannels.Play)
-        .EnableServer(settings.PlayChannelEndpoint)
-        .AddRequestHandler<CreateGameHandler>();
+    options.AddClientServerChannel(SampleChannels.Play)            // channel 이름은 API(client) 쪽과 반드시 일치
+        .EnableServer(settings.PlayChannelEndpoint)               // API 의 EnableClient 와 같은 endpoint 를 server 로 bind
+        .AddRequestHandler<CreateGameHandler>();                  // 그 server 가 부를 handler 등록
 });
 ```
 
@@ -151,15 +155,16 @@ builder.Services.AddZLinkFramework(options =>
 
 ```csharp
 sealed class CreateGameHandler(
-    TicTacToeGameCreator games,
+    TicTacToeGameCreator games,                  // 생성자 의존성은 handler dispatch 시점에 DI 로 resolve
     ILogger<CreateGameHandler> logger)
     : IZLinkRequestHandler<CreateGameReq, CreateGameRes>
 {
     public async ValueTask<CreateGameRes> HandleAsync(
         CreateGameReq request,
-        ZLinkRequestContext context,
+        ZLinkRequestContext context,             // framework 가 주입하는 요청 메타(correlation 등)
         CancellationToken cancellationToken)
     {
+        // 실제론 여기서 room SPOT 을 만든다 — 그 흐름은 05-spot 으로 이어진다.
         return await games.CreateAsync(request.GameName, cancellationToken);
     }
 }
@@ -265,8 +270,8 @@ API/Play 서버가 같은 Registry를 바라보게 한다.
 // Bingo.Server.Registry.RegistryHostFactory
 builder.Services.AddZLinkRegistry(options =>
 {
-    options.PubEndpoint = topology.RegistryPubEndpoint;
-    options.RouterEndpoint = topology.RegistryRouterEndpoint;
+    options.PubEndpoint = topology.RegistryPubEndpoint;        // topology broadcast 를 내보내는 PUB
+    options.RouterEndpoint = topology.RegistryRouterEndpoint;  // 역할 등록·control 을 받는 ROUTER
 });
 ```
 
@@ -274,10 +279,10 @@ API 서버는 Play endpoint를 직접 쓰지 않고 `EnableClient()`만 선언�
 
 ```csharp
 // Bingo.Server.Api.ApiServerHostFactory
-options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
+options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint); // client 는 Registry 만 알면 됨(provider 주소는 모름)
 {
     var channel = options.AddClientServerChannel(SampleNames.PlayChannel);
-    channel.EnableClient();
+    channel.EnableClient();   // endpoint 인자 없음 = 주소를 Discovery 가 채운다(TicTacToe 의 EnableClient(endpoint) 수동연결과 대비)
 
 }
 ```
@@ -286,11 +291,11 @@ Play 서버는 자기 endpoint를 server 역할로 열고 같은 Registry를 바
 
 ```csharp
 // Bingo.Server.Play.PlayServerHostFactory
-options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint);
+options.UseDiscovery().AddRegistryEndpoint(topology.RegistryRouterEndpoint); // API 와 동일한 Registry 를 가리켜야 같은 topology 에 묶임
 {
     var channel = options.AddClientServerChannel(SampleNames.PlayChannel);
-        channel.EnableServer(topology.PlayChannelEndpoint);
-    channel.AddHandlerGroup("play");
+        channel.EnableServer(topology.PlayChannelEndpoint);   // server 는 자기 주소를 명시해 Registry 에 등록(client 의 인자 없는 EnableClient 와 대칭)
+    channel.AddHandlerGroup("play");                          // group 단위 등록(handler 개별 등록 AddRequestHandler<> 와 다른 방식)
 
 }
 ```

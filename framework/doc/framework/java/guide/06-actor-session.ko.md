@@ -140,7 +140,7 @@ sequenceDiagram
   C->>S: STREAM 연결 + auth
   S->>S: bind(actor)
   C->>S: PlaceMarkReq
-  S->>P: actor.relay(header, payload)
+  S->>P: actor.relay(payload)
   P->>P: actor handler 실행 (room 상태 변경)
   P-->>S: boundSession().send(TurnChangedNotify)
   S-->>C: STREAM push
@@ -177,7 +177,7 @@ public final class TicTacToeSession implements ZLinkSession {
 
     @Override
     public void onDispatch(
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         if ("auth".equals(header.name())) {
             AuthReq req = payload.decode(AuthReq.class);
@@ -189,7 +189,7 @@ public final class TicTacToeSession implements ZLinkSession {
             return;
         }
         context.actors().bound().stream().findFirst()
-            .map(actor -> actor.relay(header, payload))
+            .map(actor -> actor.relay(payload))
             .orElseThrow(() -> new IllegalStateException("no actor bound to this packet"))
             .toCompletableFuture()
             .join();

@@ -163,7 +163,7 @@ class LiveChatSession(
 
     override fun context(): ZLinkSessionContext = context
 
-    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: ZLinkMessage) {
+    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
         if (header.name() == "auth") {
             val req = payload.decode(AuthViewerReq::class.java)
             val actor = actors.getOrCreate(req.viewerId, "viewer").await()
@@ -172,7 +172,7 @@ class LiveChatSession(
             return
         }
         val bound = viewer ?: throw IllegalStateException("actor is not bound")
-        bound.relay(header, payload).await()
+        bound.relay(payload).await()
     }
 }
 ```

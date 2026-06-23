@@ -17,10 +17,9 @@ core public 표면 밖의 extension 검토 범위다.
 
 결정된 항목은 아래와 같다.
 
-- `stream_header_t`는 `kind`, `codec`, `flags`, optional `request_seq`, `name`,
-  `metadata`를 framework Header로 표현한다. C++ public view는 `packet_name`,
-  `content_type`, `correlation_id` 같은 사용 편의 accessor를 제공할 수 있지만, wire
-  의미는 `.NET`의 `ZlinkStreamHeader`와 맞춘다.
+- STREAM wire header는 runtime 내부 표현으로 유지한다. C++ public session은
+  `stream_dispatch_context_t`에서 packet name과 metadata를 읽고, request sequence와
+  reply에 필요한 값은 runtime dispatch state가 보존한다.
 - Header decode나 semantic validation에 실패한 packet은 application handler로 넘기지
   않는다. 현재 host는 이 실패를 `result_t` failure로 끝낸 뒤 예외를 삼키고
   `on_disconnected(...)`만 호출한다(`on_error` dispatch/monitoring publish 경로는 미연결).

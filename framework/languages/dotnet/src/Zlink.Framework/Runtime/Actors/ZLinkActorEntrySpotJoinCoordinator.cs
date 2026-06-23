@@ -41,10 +41,9 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         }
 
         var encodedRequest = request.Encode(registration.Codecs);
-        using (encodedRequest.Message)
         using (var nativeRequest = ZLinkEnvelopeCodec.EncodePart(new ZLinkActorJoinSinglePartEnvelope(
                    encodedRequest.ContentType,
-                   encodedRequest.Message.ToArray())))
+                   encodedRequest.Payload.ToArray())))
         {
             if (!node.JoinActorEntrySpot(
                     actorRef,
@@ -149,17 +148,14 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
 
         var encodedRequest = joinRequest.Encode(registration.Codecs);
         ZLinkActorEntrySpotRouteJoinRequest request;
-        using (encodedRequest.Message)
-        {
-            request = new ZLinkActorEntrySpotRouteJoinRequest(
+        request = new ZLinkActorEntrySpotRouteJoinRequest(
             actor.ActorId,
             actorState.ActorType ?? actor.GetType().Name,
             sourceActorRef.NodeRid.ToHex(),
             previousActivation?.SpotRid.ToHex() ?? string.Empty,
             sourceActorRef.Generation,
             encodedRequest.ContentType,
-            encodedRequest.Message.ToArray());
-        }
+            encodedRequest.Payload.ToArray());
 
         var reply = await routeChannel.RequestAsync<ZLinkActorEntrySpotRouteJoinRequest, ZLinkActorEntrySpotRouteJoinReply>(
                 spotNodeRid,

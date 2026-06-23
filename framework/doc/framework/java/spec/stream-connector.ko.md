@@ -173,15 +173,6 @@ public record ZLinkStreamMessage<TPayload>(
     TPayload payload,
     Map<String, String> metadata) {
 }
-
-public record ZLinkStreamHeader(
-    ZLinkStreamMessageKind kind,
-    ZLinkStreamCodec codec,
-    EnumSet<ZLinkStreamHeaderFlag> flags,
-    Optional<Long> requestSequence,
-    String name,
-    Map<String, String> metadata) {
-}
 ```
 
 packet name 해석 순서는 아래와 같다.
@@ -191,6 +182,8 @@ packet name 해석 순서는 아래와 같다.
 3. payload type의 `SimpleName`
 
 metadata는 작은 key-value만 담는다. 큰 업무 데이터는 payload로 보낸다.
+STREAM wire header는 runtime 내부 타입이다. connector 사용자와 server session은 header
+객체를 만들거나 전달하지 않고, packet name과 metadata snapshot만 공개 모델에서 다룬다.
 
 ## 7. Send와 Request
 

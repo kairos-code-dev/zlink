@@ -38,10 +38,11 @@ int main ()
         zlink::framework::serializer_registry_t serializers;
         serializers.add<envelope_payload_t> (
           [] (const envelope_payload_t &payload) {
-              return zlink::message_t::from (std::to_string (payload.value));
+              return zlink::framework::encoded_payload_t::from_string (
+                std::to_string (payload.value));
           },
-          [] (const zlink::message_t &message) {
-              return envelope_payload_t{std::stoi (message.to_string ())};
+          [] (const zlink::framework::encoded_payload_t &payload) {
+              return envelope_payload_t{std::stoi (payload.to_string ())};
           });
 
         zlink::framework::runtime::messaging::client_call_codec_t client_codec;
@@ -66,7 +67,10 @@ int main ()
         }
         const auto decoded_body = envelope_codec.decode_body (parts);
         if (!decoded_body
-            || serializers.get<envelope_payload_t> ().deserialize (decoded_body.value ()).value
+            || serializers.get<envelope_payload_t> ()
+                   .deserialize (zlink::framework::detail::encoded_payload_from_raw (
+                     decoded_body.value ()))
+                   .value
                  != 42) {
             return 12;
         }

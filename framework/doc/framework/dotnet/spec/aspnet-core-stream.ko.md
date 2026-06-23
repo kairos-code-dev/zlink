@@ -34,10 +34,10 @@ packet session 방식으로 정리하는 것이다.
 `STREAM` 은 일반 channel messaging handler 와 같은 감각으로 무리하게 맞추지
 않는다. 특히 다음 원칙을 둔다.
 
-- framework 가 stream header 를 decode 한 뒤 `ZlinkStreamHeader header` 와
+- framework 가 stream header 를 decode 한 뒤 `ZLinkSessionDispatchContext dispatch` 와
   `ZLinkMessage payload` 를 session callback 에 전달한다.
 - `playhouse` 처럼 header 는 framework 내부에서 packet name 과 metadata 로
-  해석한다. application 은 `header.Name` 을 보고 각 packet 타입으로
+  해석한다. application 은 `dispatch.PacketName` 을 보고 각 packet 타입으로
   decode 하는 모델을 자연스러운 기본으로 본다.
 - payload decode는 transport 본체에 섞지 않는다. 대신 framework runtime이 등록된
   codec registry로 `ZLinkMessage`를 만들고, application은 필요한 packet만
@@ -116,7 +116,7 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken);
 }
@@ -166,13 +166,8 @@ public interface IZLinkSessionActor
 
     ActorRef Ref { get; }
 
-    ValueTask RelayRawAsync(
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken = default);
-
     ValueTask RelayAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 
@@ -384,8 +379,9 @@ application 표면으로는 올리지 않는다** 는 뜻으로 본다.
   handshake 실패와 socket / node 단위 오류는 runtime monitoring 에서 다룬다.
   즉 session callback 에 올리지 않는다.
 - raw chunk 직접 처리 표면은 현재 공개 계약에 넣지 않는다. 지금 단계의 session
-  은 framework 가 decode 한 `ZlinkStreamHeader` 와 `ZLinkMessage` payload 를 받는
-  계약으로 둔다.
+  은 `ZLinkSessionDispatchContext` 와 `ZLinkMessage` payload 를 받는 계약으로 둔다.
+  request header 값은 runtime 이 dispatch context 안에서 보존하므로 application 이
+  header 객체를 만들거나 relay 호출에 다시 넘기지 않는다.
 
 ## 8. 회귀 테스트
 

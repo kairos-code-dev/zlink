@@ -6,6 +6,6 @@ import systems.zlink.framework.messaging.ZLinkMessage;
 public interface ZLinkSessionPacketDispatcher<TSessionContext extends ZLinkSessionContext> {
     CompletionStage<Boolean> tryHandleAsync(
         TSessionContext context,
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload);
 }

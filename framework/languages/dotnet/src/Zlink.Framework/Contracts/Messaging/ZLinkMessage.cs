@@ -80,7 +80,9 @@ public sealed class ZLinkMessage
             try
             {
                 var resolvedHeader = ZLinkEnvelopeCodec.DecodeHeader(parts);
-                return new EncodedZLinkMessage(resolvedHeader.ContentType, Message.From(parts[1]));
+                return new EncodedZLinkMessage(
+                    resolvedHeader.ContentType,
+                    ZLinkEncodedPayload.From(parts[1].AsReadOnlyMemory()));
             }
             finally
             {
@@ -90,11 +92,11 @@ public sealed class ZLinkMessage
 
         return new EncodedZLinkMessage(
             ContentType ?? ZLinkEnvelopeCodec.DefaultContentType,
-            Message.From(_payload.Span));
+            ZLinkEncodedPayload.From(_payload.Span));
     }
 
     internal Message ToRawMessage(ZLinkCodecRegistryBuilder codecs)
-        => Encode(codecs).Message;
+        => Message.From(Encode(codecs).Payload.Bytes.Span);
 
     internal static ZLinkMessage FromStreamPayload(
         ZlinkStreamCodec codec,
@@ -151,8 +153,7 @@ public sealed class ZLinkMessage
             && _codecs is not null
             && _codecs.TryGetSerializer(ContentType, out var serializer))
         {
-            using var encodedPayload = Message.From(_payload.Span);
-            return serializer.Deserialize(encodedPayload, targetType);
+            return serializer.Deserialize(ZLinkEncodedPayload.From(_payload.Span), targetType);
         }
 
         if (_streamCodec is { } codec
@@ -169,4 +170,4 @@ public sealed class ZLinkMessage
     }
 }
 
-internal readonly record struct EncodedZLinkMessage(string ContentType, Message Message);
+internal readonly record struct EncodedZLinkMessage(string ContentType, ZLinkEncodedPayload Payload);

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import com.google.protobuf.StringValue;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec;
@@ -29,12 +30,12 @@ import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamDiagnostic;
 import systems.zlink.framework.streams.ZLinkStreamError;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
 
 final class StreamSessionTest {
     @Test
@@ -157,7 +158,7 @@ final class StreamSessionTest {
 
         try (ZLinkFrameworkRuntime ignored =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            Message payload = serializer.serialize(StringValue.of("proto-session"));
+            Message payload = messageFrom(serializer.serialize(StringValue.of("proto-session")));
             try {
                 backendFactory.dispatchStreamPacket("Proto", payload, ZLinkStreamCodec.PROTOBUF);
             } finally {
@@ -182,7 +183,7 @@ final class StreamSessionTest {
 
         try (ZLinkFrameworkRuntime ignored =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
-            Message payload = serializer.serialize(new PackedSessionPayload("msgpack-session"));
+            Message payload = messageFrom(serializer.serialize(new PackedSessionPayload("msgpack-session")));
             try {
                 backendFactory.dispatchStreamPacket("MsgPack", payload, ZLinkStreamCodec.MESSAGE_PACK);
             } finally {
@@ -454,9 +455,9 @@ final class StreamSessionTest {
 
         @Override
         public void onDispatch(
-            ZLinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
-            dispatches.add(header.packetName() + ":" + payload.decode(String.class));
+            dispatches.add(dispatch.packetName() + ":" + payload.decode(String.class));
                     }
     }
 
@@ -487,9 +488,9 @@ final class StreamSessionTest {
 
         @Override
         public void onDispatch(
-            ZLinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
-            dispatches.add(header.packetName() + ":" + payload.decode(StringValue.class).getValue());
+            dispatches.add(dispatch.packetName() + ":" + payload.decode(StringValue.class).getValue());
         }
     }
 
@@ -520,9 +521,9 @@ final class StreamSessionTest {
 
         @Override
         public void onDispatch(
-            ZLinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
-            dispatches.add(header.packetName() + ":" + payload.decode(PackedSessionPayload.class).value());
+            dispatches.add(dispatch.packetName() + ":" + payload.decode(PackedSessionPayload.class).value());
         }
     }
 
@@ -565,7 +566,7 @@ final class StreamSessionTest {
 
         @Override
         public void onDispatch(
-            ZLinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             context.actors()
                 .bind(new ZLinkActorRef(
@@ -624,13 +625,13 @@ final class StreamSessionTest {
 
         @Override
         public void onDispatch(
-            ZLinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
-            boolean handled = handlers.tryHandleAsync(context, header, payload)
+            boolean handled = handlers.tryHandleAsync(context, dispatch, payload)
                 .toCompletableFuture()
                 .join();
             if (!handled) {
-                relays.add("relay:" + header.packetName()
+                relays.add("relay:" + dispatch.packetName()
                     + ":" + payload.decode(String.class));
             }
         }
@@ -646,7 +647,7 @@ final class StreamSessionTest {
         @Override
         public void handle(
             ZLinkSessionContext context,
-            ZLinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             DispatcherSession.handled.add("handler:" + payload.decode(String.class));
             context.client()
@@ -688,7 +689,7 @@ final class StreamSessionTest {
 
         @Override
         public void onDispatch(
-            ZLinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             context.client()
                 .reply("reply")
@@ -751,7 +752,7 @@ final class StreamSessionTest {
 
         @Override
         public void onDispatch(
-            ZLinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             context.client()
                 .send("notify")
@@ -771,16 +772,16 @@ final class StreamSessionTest {
 
     public static final class SessionCustomSerializer implements ZLinkMessageSerializer {
         @Override
-        public <T> Message serialize(T value) {
+        public <T> ZLinkEncodedPayload serialize(T value) {
             if (value instanceof Message message) {
-                return Message.from(message);
+                return ZLinkEncodedPayload.from(message.toByteArray());
             }
-            return Message.from("custom:" + value);
+            return ZLinkEncodedPayload.from(("custom:" + value).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
 
         @Override
-        public <T> T deserialize(Message message, Class<T> type) {
-            String value = message.toUtf8String();
+        public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
+            String value = new String(payload.bytes(), java.nio.charset.StandardCharsets.UTF_8);
             String decoded = value.startsWith("custom:") ? value.substring("custom:".length()) : value;
             if (type == String.class) {
                 return type.cast(decoded);
@@ -794,5 +795,9 @@ final class StreamSessionTest {
         ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
         registration.use(extension);
         return registration.serializerWithFallback(new ZLinkJsonMessageSerializer());
+    }
+
+    private static Message messageFrom(ZLinkEncodedPayload payload) {
+        return Message.from(payload.bytes());
     }
 }

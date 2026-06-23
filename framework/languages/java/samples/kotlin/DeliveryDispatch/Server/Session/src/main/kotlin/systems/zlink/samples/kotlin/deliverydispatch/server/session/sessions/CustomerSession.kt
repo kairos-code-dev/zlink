@@ -6,7 +6,7 @@ import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
-import systems.zlink.framework.streams.ZLinkStreamHeader
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 
 class CustomerSession(
     private val context: ZLinkSessionContext,
@@ -22,12 +22,12 @@ class CustomerSession(
         sessions.remove(context)
     }
 
-    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: ZLinkMessage) {
-        if (handlers.tryHandleAsync(context, header, payload).await()) {
+    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
+        if (handlers.tryHandleAsync(context, dispatch, payload).await()) {
             return
         }
-        val actor = requireSingleBoundActor(header.packetName())
-        actor.relay(header, payload).await()
+        val actor = requireSingleBoundActor(dispatch.packetName())
+        actor.relay(payload).await()
     }
 
     private fun requireSingleBoundActor(packetName: String): ZLinkSessionActor =

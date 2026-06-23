@@ -185,7 +185,7 @@ class route_channel_builder_t
                     const route_handler_context_t &context) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto payload = serializers.get<TMessage> ().deserialize (message);
+                  auto payload = serializers.get<TMessage> ().deserialize (detail::encoded_payload_from_raw (message));
                   (owner.*method) (payload, context);
                   return task_t<zlink::message_t> (
                     result_t<zlink::message_t>::success (zlink::message_t{}));
@@ -216,7 +216,7 @@ class route_channel_builder_t
                     const route_handler_context_t &) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto payload = serializers.get<TMessage> ().deserialize (message);
+                  auto payload = serializers.get<TMessage> ().deserialize (detail::encoded_payload_from_raw (message));
                   (owner.*method) (payload);
                   return task_t<zlink::message_t> (
                     result_t<zlink::message_t>::success (zlink::message_t{}));
@@ -247,7 +247,7 @@ class route_channel_builder_t
                     const route_handler_context_t &) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto payload = serializers.get<TMessage> ().deserialize (message);
+                  auto payload = serializers.get<TMessage> ().deserialize (detail::encoded_payload_from_raw (message));
                   co_await (owner.*method) (payload);
                   co_return result_t<zlink::message_t>::success (zlink::message_t{});
               }
@@ -278,10 +278,10 @@ class route_channel_builder_t
                     const route_handler_context_t &context) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto request = serializers.get<TRequest> ().deserialize (message);
+                  auto request = serializers.get<TRequest> ().deserialize (detail::encoded_payload_from_raw (message));
                   auto reply = (owner.*method) (request, context);
                   return task_t<zlink::message_t> (result_t<zlink::message_t>::success (
-                    serializers.get<TReply> ().serialize (reply)));
+                    detail::encoded_payload_to_raw (serializers.get<TReply> ().serialize (reply))));
               }
               catch (const framework_exception_t &error) {
                   return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
@@ -309,10 +309,10 @@ class route_channel_builder_t
                     const route_handler_context_t &) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto request = serializers.get<TRequest> ().deserialize (message);
+                  auto request = serializers.get<TRequest> ().deserialize (detail::encoded_payload_from_raw (message));
                   auto reply = (owner.*method) (request);
                   return task_t<zlink::message_t> (result_t<zlink::message_t>::success (
-                    serializers.get<TReply> ().serialize (reply)));
+                    detail::encoded_payload_to_raw (serializers.get<TReply> ().serialize (reply))));
               }
               catch (const framework_exception_t &error) {
                   return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
@@ -341,10 +341,10 @@ class route_channel_builder_t
                     const route_handler_context_t &) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
-                  auto request = serializers.get<TRequest> ().deserialize (message);
+                  auto request = serializers.get<TRequest> ().deserialize (detail::encoded_payload_from_raw (message));
                   auto reply = co_await (owner.*method) (request);
                   co_return result_t<zlink::message_t>::success (
-                    serializers.get<TReply> ().serialize (reply));
+                    detail::encoded_payload_to_raw (serializers.get<TReply> ().serialize (reply)));
               }
               catch (const framework_exception_t &error) {
                   co_return result_t<zlink::message_t>::failure (
@@ -466,7 +466,8 @@ class message_bus_t
                 }
                 try {
                     return result_t<TReply>::success (
-                      _serializers->get<TReply> ().deserialize (*_reply));
+                      _serializers->get<TReply> ().deserialize (
+                        detail::encoded_payload_from_raw (*_reply)));
                 }
                 catch (const framework_exception_t &error) {
                     return result_t<TReply>::failure (error.kind (), error.what (),
@@ -567,7 +568,8 @@ class route_request_call_t
               "route client has no serializer registry");
         }
         try {
-            co_return _serializers->get<TReply> ().deserialize (reply);
+            co_return _serializers->get<TReply> ().deserialize (
+              detail::encoded_payload_from_raw (reply));
         }
         catch (const framework_exception_t &error) {
             co_return result_t<TReply>::failure (
@@ -707,7 +709,7 @@ task_t<TReply> route_client_t::submit_request_reply_erased (
       state, std::move (router_channel_id), std::move (target_node_rid), std::move (packet_name),
       request_type, request, timeout, metadata);
     try {
-        co_return result_t<TReply>::success (serializers->get<TReply> ().deserialize (reply));
+        co_return result_t<TReply>::success (serializers->get<TReply> ().deserialize (detail::encoded_payload_from_raw (reply)));
     }
     catch (const framework_exception_t &error) {
         co_return result_t<TReply>::failure (error.kind (), error.what (), error.is_retriable ());

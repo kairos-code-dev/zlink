@@ -12,7 +12,7 @@ public interface ZLinkSession {
     void onError(ZLinkStreamError error);
 
     default void onDispatch(
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
     }
 }

@@ -57,11 +57,11 @@ task_t<zlink::message_t> serialize_handler_result (TResult &&result,
         } else {
             auto value = co_await result;
             co_return result_t<zlink::message_t>::success (
-              serializers.get<value_type> ().serialize (value));
+              encoded_payload_to_raw (serializers.get<value_type> ().serialize (value)));
         }
     } else {
         co_return result_t<zlink::message_t>::success (
-          serializers.get<result_type> ().serialize (result));
+          encoded_payload_to_raw (serializers.get<result_type> ().serialize (result)));
     }
 }
 

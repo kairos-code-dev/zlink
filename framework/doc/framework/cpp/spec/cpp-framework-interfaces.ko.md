@@ -867,33 +867,25 @@ public:
     std::optional<std::string_view> correlation_id() const;
 };
 
+class stream_dispatch_context_t {
+public:
+    std::string_view packet_name() const;
+    const stream_metadata_t &metadata() const;
+    bool can_reply() const;
+};
+
 class stream_t {
 public:
     virtual ~stream_t() = default;
     virtual std::string session_id() const = 0;
     virtual task_t<void> close() = 0;
-    virtual stream_write_call_t write_packet(
-      const stream_header_t &header,
-      const message_t &payload) = 0;
-    virtual stream_write_call_t write_packet_raw(
-      const stream_header_t &header,
-      const zlink::message_t &payload) = 0;
-    virtual stream_write_call_t reply_packet(
-      const stream_header_t &request_header,
-      const message_t &payload) = 0;
-    virtual stream_write_call_t reply_packet_raw(
-      const stream_header_t &request_header,
-      const zlink::message_t &payload) = 0;
+    virtual stream_write_call_t write_packet(zlink::message_t payload) = 0;
+    virtual stream_write_call_t reply_packet(zlink::message_t payload) = 0;
 };
 
 class session_actor_t {
 public:
-    relay_call_t relay(
-      const stream_header_t &header,
-      const message_t &payload);
-    relay_call_t relay_raw(
-      const stream_header_t &header,
-      const zlink::message_t &payload);
+    relay_call_t relay(const zlink::message_t &payload);
 };
 
 class session_actor_manager_t {
@@ -909,11 +901,7 @@ public:
     virtual task_t<void> on_error(stream_t &stream, const stream_error_t &error) = 0;
     virtual task_t<void> on_packet(
       stream_t &stream,
-      const stream_header_t &header,
-      const message_t &payload) = 0;
-    virtual task_t<void> on_raw_packet(
-      stream_t &stream,
-      const stream_header_t &header,
+      const stream_dispatch_context_t &dispatch,
       const zlink::message_t &payload);
 };
 
@@ -1010,12 +998,9 @@ options.handlers()
   .add<order_created_handler_t>("orders-api");
 ```
 
-STREAM application 업무 경로는 binding `zlink::message_t`를 직접 받지 않는다.
-기존에 raw `zlink::message_t`를 만들어 일반 `write_packet(...)` 또는
-`reply_packet(...)`에 넘기던 방식은 제거한다. 변경 후 일반 경로는 framework
-`message_t`를 받고, 등록된 serializer registry가 encode/decode를 맡는다. raw payload를
-그대로 유지해야 하는 내부 relay, protocol harness, migration boundary만 이름에 raw가
-드러나는 `write_packet_raw(...)`, `reply_packet_raw(...)`, `relay_raw(...)`를 사용한다.
+STREAM application 업무 경로는 header 객체를 직접 받지 않는다. C++ stream session과 actor relay는
+`zlink::message_t` payload 하나를 사용하고, reply와 relay에 필요한 header 값은 runtime 내부
+dispatch state가 보존한다. 별도 `_raw` 이름의 public API는 두지 않는다.
 
 handler dispatch는 binding의 `zlink::message_t`와 `zlink::multipart_t`를 받은 뒤,
 serializer를 통해 typed payload로 변환하고, DI에서 owner를 resolve한 다음 method를

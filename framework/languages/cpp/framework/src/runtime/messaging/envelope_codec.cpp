@@ -57,7 +57,8 @@ message_parts_t envelope_codec_t::encode_parts (const envelope_header_t &header,
     if (body == nullptr) {
         return encode_raw_body_parts (header, zlink::message_t::from (""));
     }
-    return encode_raw_body_parts (header, serializers.serialize (body_type, body));
+    return encode_raw_body_parts (
+      header, detail::encoded_payload_to_raw (serializers.serialize (body_type, body)));
 }
 
 zlink::message_t envelope_codec_t::encode_header (const envelope_header_t &header) const

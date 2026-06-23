@@ -73,9 +73,6 @@ export interface Message {
   close(): void;
 }
 
-/** stream wire header. codec 가 해석하기 전까지는 framework 가 payload 로만 취급한다. */
-export type ZlinkStreamHeader = unknown;
-
 /** actor runtime handle ref. C# ActorRef 의 TS 대응. */
 export interface ActorRef {
   readonly nodeRid: RoutingId;
@@ -764,11 +761,11 @@ export interface ZLinkSession {
   onError?(context: ZLinkSessionContext, error: ZLinkStreamError): Promise<void>;
 
   /**
-   * framework 가 decode 한 ZlinkStreamHeader 와 ZLinkMessage payload 를 받는다.
+   * dispatch context 와 ZLinkMessage payload 를 받는다.
    * payload 는 codec registry 와 함께 framework 가 감싼 값이다. 필요한 packet 은
    * decode 하고, actor relay 처럼 decode 를 미룰 수 있는 경계에는 그대로 넘긴다.
    */
-  onDispatch?(header: ZlinkStreamHeader, payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
+  onDispatch?(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkSessionContext {
@@ -849,7 +846,7 @@ export interface ZLinkSessionPacketHandler<TSessionContext> {
   /** payload 는 onDispatch 와 같은 framework message 표면이다. */
   handle(
     context: TSessionContext,
-    header: ZlinkStreamHeader,
+    dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
   ): Promise<void>;
 }
@@ -861,7 +858,7 @@ export interface ZLinkSessionPacketDispatcher<TSessionContext> {
    */
   tryHandle(
     context: TSessionContext,
-    header: ZlinkStreamHeader,
+    dispatch: ZLinkSessionDispatchContext,
     payload: ZLinkMessage,
   ): Promise<boolean>;
 }
@@ -885,7 +882,7 @@ export interface ZLinkSessionActor {
    * caller payload 를 소비하지 않고 bound actor 로 stream packet 을 relay 한다.
    * framework 가 큐/원격 ActorGateway 를 위한 내부 copy 를 만든다.
    */
-  relay(header: ZlinkStreamHeader, payload: ZLinkMessage): Promise<void>;
+  relay(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void>;
 
   notifyDisconnected(): Promise<void>;
 }

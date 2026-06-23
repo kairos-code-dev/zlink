@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,7 @@ class stream_state_t
     std::vector<stream_header_t> written_headers;
     std::vector<zlink::message_t> written_payloads;
     std::mutex transport_writer_mutex;
+    std::optional<stream_header_t> current_dispatch_header;
     std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)>
       transport_writer;
     serializer_registry_t *serializers = nullptr;

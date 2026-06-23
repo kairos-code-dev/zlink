@@ -11,10 +11,10 @@ public interface IZLinkStream
     string? RemoteAddr { get; }
 
     /// <summary>
-    /// Writes a raw stream frame without taking ownership of <paramref name="payload"/>.
+    /// Writes a stream payload through the framework message boundary.
     /// </summary>
     bool Write(
-        Message payload,
+        ZLinkMessage payload,
         SendFlags flags = SendFlags.None);
 
     ValueTask CloseAsync();

@@ -164,11 +164,11 @@ public sealed class MarketplaceChatSession(IZLinkSessionContext context, IZLinkA
     public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken ct) => ValueTask.CompletedTask;
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken ct)
     {
-        if (header.Name == "auth")
+        if (dispatch.PacketName == "auth")
         {
             var req = payload.Decode<AuthReq>();
             IZLinkActor actor = await actors.GetOrCreateAsync(req.UserId, "chat-user", ct);
@@ -177,7 +177,7 @@ public sealed class MarketplaceChatSession(IZLinkSessionContext context, IZLinkA
             return;
         }
 
-        await _user!.RelayAsync(header, payload, ct);
+        await _user!.RelayAsync(payload, ct);
     }
 }
 ```

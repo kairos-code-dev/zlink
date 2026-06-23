@@ -110,8 +110,8 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
-import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapterFactory {

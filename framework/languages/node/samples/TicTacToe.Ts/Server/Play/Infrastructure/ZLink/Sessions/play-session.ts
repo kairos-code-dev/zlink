@@ -8,8 +8,8 @@ import type {
   ZLinkSession,
   ZLinkSessionActor,
   ZLinkSessionContext,
-  ZLinkSpotActorRequestContext,
-  ZlinkStreamHeader
+  ZLinkSessionDispatchContext,
+  ZLinkSpotActorRequestContext
 } from '@zlink-systems/framework';
 import type {
   AuthenticatePlayerRes,
@@ -60,10 +60,10 @@ class PlaySession implements ZLinkSession {
     this.sessionActor = null;
   }
 
-  async onDispatch(header: unknown, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
-    const playHeader = requirePlaySessionHeader(header);
+  async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
+    const playHeader = { name: dispatch.packetName };
     if (shouldRelayToActor(playHeader.name)) {
-      await this.relayToActor(header, payload, signal);
+      await this.relayToActor(playHeader, payload, signal);
       return;
     }
     await this.dispatch(playHeader, payload.decode());
@@ -137,8 +137,7 @@ class PlaySession implements ZLinkSession {
     console.log(`actor: ObserveMilestoneReq completed. actor=${this.actor.actorId}`);
   }
 
-  private async relayToActor(header: unknown, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
-    const playHeader = requirePlaySessionHeader(header);
+  private async relayToActor(playHeader: PlaySessionHeader, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     if (this.actor === null) {
       throw new Error('AuthenticateReq is required before actor packets.');
     }
@@ -149,7 +148,7 @@ class PlaySession implements ZLinkSession {
     if (sessionActor === undefined) {
       throw new Error(`Actor '${this.actor.actorId}' is not bound to this stream session.`);
     }
-    await sessionActor.relay(header as ZlinkStreamHeader, payload, signal);
+    await sessionActor.relay(payload, signal);
   }
 }
 
@@ -170,18 +169,6 @@ function createNoopReplyOptions(): ZLinkSpotActorRequestContext['reply'] {
       return this;
     }
   };
-}
-
-function requirePlaySessionHeader(header: unknown): PlaySessionHeader {
-  if (
-    typeof header !== 'object' ||
-    header === null ||
-    !('name' in header) ||
-    typeof header.name !== 'string'
-  ) {
-    throw new Error('Play stream packet header is missing a packet name.');
-  }
-  return header as PlaySessionHeader;
 }
 
 function shouldRelayToActor(packetName: string): boolean {

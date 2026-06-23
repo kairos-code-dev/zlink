@@ -58,7 +58,7 @@ actor 는 factory 로 만든다. factory 는 `actorType` 짧은 문자열로 등
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.AddActorFactory<PlayerActorFactory>("player");
+    options.AddActorFactory<PlayerActorFactory>("player");  // "player" = actorType 등록 키. GetOrCreate 가 이 키로 factory 를 고른다.
     // Entry Spot / user Spot 등록은 SpotNode 쪽에서 (§3)
 });
 
@@ -66,6 +66,7 @@ public sealed class PlayerActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
         string actorId, IZLinkActorContext context, CancellationToken ct)
+        // 같은 actorId 는 framework 가 한 인스턴스만 유지 — CreateAsync 는 그 actorId 의 최초 1회만 불린다.
         => ValueTask.FromResult<IZLinkActor>(new PlayerActor(actorId, context));
 }
 
@@ -112,7 +113,7 @@ public sealed class PlayerEntrySpot(IZLinkEntrySpotContext context)
 
     public void Configure()
     {
-        Context.Handlers.AddActorPacket<JoinMatchHandler, PlayerActor>();
+        Context.Handlers.AddActorPacket<JoinMatchHandler, PlayerActor>();  // Entry Spot 큐(직렬)에서 실행됨
     }
 }
 
@@ -122,9 +123,11 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActo
 
     public void Configure()
     {
+        // 등록 표면은 Entry Spot 과 같지만, 실행은 이 user Spot 의 큐(직렬)에서 돈다.
         Context.Handlers.AddActorPacket<PlaceMarkHandler, PlayerActor>();
     }
 
+    // OnActorJoinAsync 의 반환이 join 수락/거부를 정한다(admission 결정 지점).
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
         PlayerActor actor,
         ZLinkMessage request,
@@ -132,7 +135,7 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActo
     {
         var join = request.Decode<JoinMatchReq>();
         return ValueTask.FromResult(
-            ZLinkSpotActorJoinResult.Accept(new JoinMatchSpotResult(join.MatchId)));
+            ZLinkSpotActorJoinResult.Accept(new JoinMatchSpotResult(join.MatchId)));  // Accept=통과, Reject(...) 로 거부 가능
     }
 }
 ```
@@ -160,6 +163,7 @@ public sealed class JoinMatchHandler
         var joined = await actor.Context
             .JoinSpot(matchSpotRid, request)
             .Async(ct);
+        // 거부(!Accepted)든 성공이든 user Spot 의 reply 를 그대로 client 로 전파한다(여기선 분기 동작이 같다).
         if (!joined.Accepted)
         {
             return joined.Reply.Decode<JoinMatchSpotResult>().ToReply();
@@ -168,7 +172,7 @@ public sealed class JoinMatchHandler
     }
 }
 
-// user Spot: (spot, actor, payload) — room 상태를 함께 만진다
+// user Spot: 인자에 entrySpot 이 없다 — (spot, actor, context, payload). room 상태를 함께 만진다.
 public sealed class PlaceMarkHandler
 {
     [ZLinkSpotActorRequest]
@@ -225,7 +229,7 @@ sequenceDiagram
   C->>S: STREAM 연결 + auth
   S->>S: BindAsync(actor)
   C->>S: PlaceMarkReq
-  S->>P: actor.RelayAsync(header, payload)
+  S->>P: actor.RelayAsync(payload)
   P->>P: actor handler 실행 (room 상태 변경)
   P-->>S: BoundSession.Send(TurnChangedNotify)
   S-->>C: STREAM push
@@ -249,7 +253,7 @@ public sealed class TicTacToeSession(
     public IZLinkSessionContext Context { get; } = context;
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header, ZLinkMessage payload, CancellationToken ct)
+        ZLinkSessionDispatchContext dispatch, ZLinkMessage payload, CancellationToken ct)
     {
         if (await handlers.TryHandleAsync(context, header, payload, ct))
         {
@@ -258,7 +262,8 @@ public sealed class TicTacToeSession(
 
         if (context.Actors.Bound.Count == 1)
         {
-            await context.Actors.Bound.Single().RelayAsync(header, payload, ct);
+            // RelayAsync: 이 packet 을 bound actor 로 넘긴다.
+            await context.Actors.Bound.Single().RelayAsync(payload, ct);
             return;
         }
 
@@ -286,7 +291,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken ct)
     {
@@ -296,6 +301,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
             request.ActorId,
             "player",
             ct);
+        // BindAsync: 인증된 actor handle 을 이 session 에 묶는다. 이후 packet 은 RelayAsync 로 이 actor 에 간다.
         await context.Actors.BindAsync(
             actor, ct);
         await context.Client.Reply(new AuthRep(ok: true)).Async();
@@ -353,6 +359,7 @@ public sealed class PlayerNotifyHandler
         ZLinkSpotActorSendContext context,
         GameStateNotify message,
         CancellationToken ct)
+        // 다른 actor 가 이 actor 앞으로 보낸 메시지를 받아, 자기 BoundSession 으로 client 에 push 하는 끝점.
         => actor.Context.BoundSession.Send(message).Async(ct);
 }
 ```
@@ -431,7 +438,7 @@ builder.Services.AddZLinkFramework(options =>
 {
         options.UseDiscovery().AddRegistryEndpoint("tcp://registry1:5551");
 
-    options.AddActorFactory<PlayerActorFactory>("player");
+    options.AddActorFactory<PlayerActorFactory>("player");  // actor 와 Spot 은 Play 서버가 호스팅(Session 서버엔 이 factory 가 없다)
 
     {
         var mesh =     options.AddSpotMesh("game.match");
@@ -439,8 +446,8 @@ builder.Services.AddZLinkFramework(options =>
         {
             var node =         mesh.AddNode("play-node");
             node.EnableRouter("tcp://0.0.0.0:9201");
-            node.AddEntrySpot<PlayerEntrySpot>();
-            node.AddSpotFactory<MatchSpot>();
+            node.AddEntrySpot<PlayerEntrySpot>();  // Entry Spot 은 노드당 1개(actor 가 처음 머무는 곳)
+            node.AddSpotFactory<MatchSpot>();      // user Spot 은 factory 로 요청마다 동적 생성
 
         }
 

@@ -41,17 +41,17 @@ internal sealed class CustomerSession(
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        if (await handlers.TryHandleAsync(Context, header, payload, cancellationToken))
+        if (await handlers.TryHandleAsync(Context, dispatch, payload, cancellationToken))
         {
             return;
         }
 
         var actor = Context.Actors.Bound.Single();
-        await actor.RelayAsync(header, payload, cancellationToken);
+        await actor.RelayAsync(payload, cancellationToken);
     }
 }
 
@@ -66,11 +66,11 @@ internal sealed class SubscribeDeliveryHandler(
 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = header;
+        _ = dispatch;
         var deliveryId = ReadDeliveryId(payload.Decode<string>());
         var ensured = await channels.RequestToChannel(
                 SampleNames.TrackingRouteChannel,

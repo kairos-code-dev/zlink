@@ -35,13 +35,13 @@ internal sealed class GameQuestSession(
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        if (!await handlers.TryHandleAsync(Context, header, payload, cancellationToken))
+        if (!await handlers.TryHandleAsync(Context, dispatch, payload, cancellationToken))
         {
-            throw new InvalidOperationException($"Unsupported GameQuest packet '{header.Name}'.");
+            throw new InvalidOperationException($"Unsupported GameQuest packet '{dispatch.PacketName}'.");
         }
     }
 }

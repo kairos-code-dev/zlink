@@ -7,7 +7,7 @@ import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.samples.gamequest.server.gameapi.infrastructure.store.GameQuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 
@@ -56,16 +56,16 @@ public final class GameQuestSession implements ZLinkSession {
     }
 
     @Override
-    public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
+    public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
         System.err.printf(
-            "gamequest session dispatch session=%s packet=%s codec=%s%n",
-            context.sessionId(), header.packetName(), header.codec());
-        boolean handled = await(handlers.tryHandleAsync(context, header, payload));
+            "gamequest session dispatch session=%s packet=%s%n",
+            context.sessionId(), dispatch.packetName());
+        boolean handled = await(handlers.tryHandleAsync(context, dispatch, payload));
         if (!handled) {
-            throw new IllegalStateException("Unsupported GameQuest packet '" + header.packetName() + "'.");
+            throw new IllegalStateException("Unsupported GameQuest packet '" + dispatch.packetName() + "'.");
         }
         System.err.printf(
             "gamequest session handled session=%s packet=%s%n",
-            context.sessionId(), header.packetName());
+            context.sessionId(), dispatch.packetName());
     }
 }

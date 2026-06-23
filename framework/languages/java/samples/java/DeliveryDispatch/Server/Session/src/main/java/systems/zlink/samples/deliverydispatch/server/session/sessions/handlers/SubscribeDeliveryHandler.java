@@ -6,7 +6,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTimings;
@@ -40,7 +40,7 @@ public final class SubscribeDeliveryHandler
     @Override
     public void handle(
         ZLinkSessionContext context,
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Messages.SubscribeDelivery request) {
         if (request.deliveryId() == null || request.deliveryId().isBlank()) {
             throw new IllegalArgumentException("SubscribeDelivery requires deliveryId.");

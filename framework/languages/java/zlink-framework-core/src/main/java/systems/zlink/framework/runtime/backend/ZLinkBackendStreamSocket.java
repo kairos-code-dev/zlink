@@ -4,7 +4,7 @@ import java.util.List;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 
 public interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
     void onPacket(ZLinkBackendStreamPacketHandler handler);

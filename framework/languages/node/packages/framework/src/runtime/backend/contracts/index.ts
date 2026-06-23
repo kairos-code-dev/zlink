@@ -21,9 +21,9 @@ import type {
   MessageLike
 } from '@zlink-systems/zlink';
 import type {
-  Message,
   RoutingId
 } from '../../../contracts';
+import type { Message } from '../../../contracts/Common/Message';
 
 export type ZLinkBackendSendFlags = SendFlagsValue;
 export type ZLinkBackendRecvFlags = RecvFlagsValue;

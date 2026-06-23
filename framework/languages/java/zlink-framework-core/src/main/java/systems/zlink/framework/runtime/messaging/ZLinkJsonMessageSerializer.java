@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 
 public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer {
@@ -24,15 +25,15 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
     }
 
     @Override
-    public <T> Message serialize(T value) {
+    public <T> ZLinkEncodedPayload serialize(T value) {
         if (value instanceof Message message) {
-            return Message.from(message);
+            return ZLinkEncodedPayload.from(message.toByteArray());
         }
         if (value instanceof byte[] bytes) {
-            return Message.from(bytes);
+            return ZLinkEncodedPayload.from(bytes);
         }
         try {
-            return Message.from(mapper.writeValueAsBytes(value));
+            return ZLinkEncodedPayload.from(mapper.writeValueAsBytes(value));
         } catch (JsonProcessingException ex) {
             throw new IllegalArgumentException(
                 "failed to serialize message as JSON: " + valueTypeName(value),
@@ -41,15 +42,15 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
     }
 
     @Override
-    public <T> T deserialize(Message message, Class<T> type) {
+    public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
         if (type == Message.class) {
-            return type.cast(Message.from(message));
+            return type.cast(Message.from(payload.bytes()));
         }
         if (type == byte[].class) {
-            return type.cast(message.toByteArray());
+            return type.cast(payload.bytes());
         }
         try {
-            return mapper.readValue(message.toByteArray(), type);
+            return mapper.readValue(payload.bytes(), type);
         } catch (IOException ex) {
             throw new IllegalArgumentException(
                 "failed to deserialize JSON message as " + type.getName(),

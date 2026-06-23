@@ -246,7 +246,14 @@ int main ()
         return 14;
     }
 
+    zlink::framework::serializer_registry_t gateway_serializers;
+    gateway_serializers.add<std::string> (
+      [] (const std::string &value) {
+          return zlink::framework::encoded_payload_t::from_string (value);
+      },
+      [] (const zlink::framework::encoded_payload_t &payload) { return payload.to_string (); });
     zlink::framework::detail::actor_gateway_runtime_t gateway;
+    gateway.bind_serializers (gateway_serializers);
     auto actor =
       gateway.manager ()
         .bind (zlink::framework::actor_ref_t (
@@ -256,11 +263,13 @@ int main ()
         return 15;
     }
     const auto lookup_after_actor_bind = query.monitoring_snapshot ().spot_lookup_count;
-    const auto payload = zlink::message_t::from (std::string ("payload"));
+    const auto payload = zlink::framework::message_t::from (std::string ("payload"));
     zlink::framework::stream_header_t header (
       zlink::framework::stream_message_kind_t::send, zlink::framework::stream_codec_t::json,
       zlink::framework::stream_header_flags_t::none, std::nullopt, "move");
-    auto relay = actor.value ().relay (header, payload).async ().result ();
+    zlink::framework::detail::enter_stream_relay_dispatch (header);
+    auto relay = actor.value ().relay (payload).async ().result ();
+    zlink::framework::detail::exit_stream_relay_dispatch ();
     if (!relay || query.monitoring_snapshot ().spot_lookup_count != lookup_after_actor_bind) {
         return 16;
     }

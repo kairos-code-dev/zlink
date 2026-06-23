@@ -84,7 +84,7 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken);
 }
@@ -128,7 +128,7 @@ public interface IZLinkSessionActor
     ActorRef Ref { get; }
 
     ValueTask RelayAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 
@@ -222,11 +222,11 @@ public sealed class ClientHeaderSession(
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        switch (header.Name)
+        switch (dispatch.PacketName)
         {
             case "ClientInput":
             {
@@ -274,7 +274,7 @@ public sealed class ClientHeaderSession(
 
 이 샘플을 읽을 때 짚어야 할 점은 다음과 같다.
 
-- application 은 `ZlinkStreamHeader.Name` 을 dispatch 기준으로 사용한다.
+- application 은 `dispatch.PacketName` 을 dispatch 기준으로 사용한다.
 - packet 은 고정 타입 하나로 곧장 올라오는 구조가 아니다.
 - header session 이 내부 header 를 해석해 `ClientInput`, `Ping` 같은 packet
   name 을 뽑아 준다. 그러면 application 은 그 이름에 맞는 타입으로 decode 한다.
@@ -292,7 +292,7 @@ public sealed class ClientHeaderSession(
 
 이 방식은 `playhouse` 의 다음 흐름과 같은 감각이다.
 
-- `ZlinkStreamHeader.Name` 을 dispatch 기준으로 사용한다.
+- `dispatch.PacketName` 을 dispatch 기준으로 사용한다.
 - handler 는 `ZLinkMessage payload` 를 받고 `payload.Decode<T>()` 로 DTO를 얻는다.
 - codec 선택은 handler 가 아니라 `options.Codecs.Use(...)` 등록에서 결정된다.
 
@@ -350,7 +350,7 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
     }
 
     public ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {

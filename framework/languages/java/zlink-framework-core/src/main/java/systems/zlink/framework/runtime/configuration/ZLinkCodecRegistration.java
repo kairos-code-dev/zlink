@@ -154,7 +154,7 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder {
         }
 
         @Override
-        public <T> systems.zlink.contracts.messaging.Message serialize(T value) {
+        public <T> systems.zlink.framework.ZLinkEncodedPayload serialize(T value) {
             if (value != null) {
                 return serializerFor(value.getClass()).serialize(value);
             }
@@ -162,8 +162,8 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder {
         }
 
         @Override
-        public <T> T deserialize(systems.zlink.contracts.messaging.Message message, Class<T> type) {
-            return serializerFor(type).deserialize(message, type);
+        public <T> T deserialize(systems.zlink.framework.ZLinkEncodedPayload payload, Class<T> type) {
+            return serializerFor(type).deserialize(payload, type);
         }
 
         @Override

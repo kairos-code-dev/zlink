@@ -87,15 +87,11 @@ public:
     std::string_view message() const;
 };
 
-class stream_header_t {
+class stream_dispatch_context_t {
 public:
-    stream_message_kind_t kind() const;
-    stream_codec_t codec() const;
-    stream_header_flags_t flags() const;
-    std::optional<std::uint64_t> request_seq() const;
     std::string_view packet_name() const;
-    std::optional<std::string_view> metadata(std::string_view key) const;
-    std::optional<std::string_view> correlation_id() const;
+    const stream_metadata_t &metadata() const;
+    bool can_reply() const;
 };
 
 class stream_t {
@@ -103,18 +99,8 @@ public:
     virtual ~stream_t() = default;
     virtual std::string session_id() const = 0;
     virtual task_t<void> close() = 0;
-    virtual stream_write_call_t write_packet(
-      const stream_header_t &header,
-      const message_t &payload) = 0;
-    virtual stream_write_call_t write_packet_raw(
-      const stream_header_t &header,
-      const zlink::message_t &payload) = 0;
-    virtual stream_write_call_t reply_packet(
-      const stream_header_t &request_header,
-      const message_t &payload) = 0;
-    virtual stream_write_call_t reply_packet_raw(
-      const stream_header_t &request_header,
-      const zlink::message_t &payload) = 0;
+    virtual stream_write_call_t write_packet(zlink::message_t payload) = 0;
+    virtual stream_write_call_t reply_packet(zlink::message_t payload) = 0;
 };
 
 class stream_write_call_t {
@@ -127,12 +113,7 @@ public:
 
 class session_actor_t {
 public:
-    relay_call_t relay(
-      const stream_header_t &header,
-      const message_t &payload);
-    relay_call_t relay_raw(
-      const stream_header_t &header,
-      const zlink::message_t &payload);
+    relay_call_t relay(const zlink::message_t &payload);
 };
 
 class session_actor_manager_t {
@@ -148,28 +129,17 @@ public:
     virtual task_t<void> on_error(stream_t &stream, const stream_error_t &error) = 0;
     virtual task_t<void> on_packet(
       stream_t &stream,
-      const stream_header_t &header,
-      const message_t &payload) = 0;
-    virtual task_t<void> on_raw_packet(
-      stream_t &stream,
-      const stream_header_t &header,
+      const stream_dispatch_context_t &dispatch,
       const zlink::message_t &payload);
 };
 
 } // namespace zlink::framework
 ```
 
-기존 raw 방식과 변경 후 방식을 구분한다. 업무 session은
-`write_packet(...)` / `reply_packet(...)`에 framework `message_t`를 넘긴다. 이
-타입이 등록된 codec registry를 사용해 raw `zlink::message_t`로 변환한다. 기존처럼
-binding `zlink::message_t`를 직접 만든 뒤 일반 `write_packet(...)`에 넘기는 방식은
-제거한다. raw frame 보존이 목적일 때만 `write_packet_raw(...)` /
-`reply_packet_raw(...)`를 사용한다.
-
-`stream_header_t`는 framework가 만든 Header view다. wire 의미는 `.NET`의
-`ZlinkStreamHeader`와 맞추며, kind, codec, flags, request sequence, packet name,
-metadata를 담는다. 사용자가 임의 multipart header를 직접 파싱하거나 다른 header
-serializer를 선택하는 방식은 core public 표면에 넣지 않는다.
+업무 session은 header 객체를 받거나 되돌려 주지 않는다. packet name과 metadata는
+`stream_dispatch_context_t`에서 읽고, reply와 actor relay에 필요한 request sequence와
+correlation 값은 runtime이 내부 dispatch state로 보존한다. C++ stream session payload는
+`zlink::message_t` 하나로 유지하며, 별도 `_raw` 이름의 public API를 두지 않는다.
 
 ## 3. Host 등록
 

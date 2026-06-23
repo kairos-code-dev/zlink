@@ -32,12 +32,12 @@ stream node 하나에 session 하나를 붙인다.
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    options.Codecs.Use(ZLinkProtobufCodec.Default);
+    options.Codecs.Use(ZLinkProtobufCodec.Default);  // client connector 측 payload codec 과 대칭으로 등록해야 한다
 
     {
         var stream =     options.AddStreamNode("client.stream");
         stream.Bind("tcp://0.0.0.0:9100");
-        stream.RegisterSession<ClientHeaderSession>();
+        stream.RegisterSession<ClientHeaderSession>();  // node 당 session 1개 — 둘 이상 등록하면 startup 예외
 
     }
 });
@@ -51,15 +51,14 @@ builder.Services.AddZLinkFramework(options =>
 ### session 작성
 
 session 은 `IZLinkSession` 을 구현한다. framework 가 frame 을 디코드해
-`ZlinkStreamHeader header` + `ZLinkMessage payload` 두 부분으로 콜백한다. 응용은
-`header.Name` 으로 분기하고 `payload.Decode<T>()` 로 DTO를 얻는다.
+`ZLinkSessionDispatchContext dispatch` + `ZLinkMessage payload` 두 부분으로 콜백한다. 응용은
+`dispatch.PacketName` 으로 분기하고 `payload.Decode<T>()` 로 DTO를 얻는다.
 `ZLinkMessage` 는 framework runtime 이 등록된 codec registry와 함께 소유하는 payload
 표면이다. session callback은 필요한 packet만 decode하고, actor relay처럼 decode를 미룰 수
 있는 경계에는 그대로 넘긴다. application 이 직접 만든 `Message` 를 raw
-`IZLinkStream.Write(...)` 에 넘기는 경우에는 호출자가 그 `Message` 의 수명을 계속 책임진다.
-일반적인 응답과 push 는
-`Context.Client.Reply(...)`, `Context.Client.Send(...)`, actor 의 `BoundSession.Send(...)` 를
-쓰면 이 수명 규칙을 직접 다룰 일이 없다.
+`IZLinkStream.Write(...)` 에 넘기는 경우에만 호출자가 그 `Message` 의 수명을 계속 책임진다.
+일반적인 응답과 push 는 framework helper 를 쓰면 이 수명 규칙을 직접 다룰 일이 없다(어떤
+helper 가 그런지는 아래 코드 주석 참고).
 여러 session 전용 packet 을 나누어 처리해야 하면
 `IZLinkSessionPacketDispatcher<TSessionContext>` 를 주입받아 등록된 packet 만
 handler 로 보낼 수 있다. dispatcher 는 미등록 packet 을 자동 처리하지 않고
@@ -83,9 +82,9 @@ public sealed class ClientHeaderSession(
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header, ZLinkMessage payload, CancellationToken ct)
+        ZLinkSessionDispatchContext dispatch, ZLinkMessage payload, CancellationToken ct)
     {
-        switch (header.Name)
+        switch (dispatch.PacketName)
         {
             case "ClientInput":
                 var input = payload.Decode<ClientInput>();
@@ -94,6 +93,7 @@ public sealed class ClientHeaderSession(
 
             case "Ping":
                 var ping = payload.Decode<Ping>();
+                // Client.Reply: 응답 helper. payload 수명을 framework 가 관리한다(Client.Send, actor 의 BoundSession.Send 도 동일).
                 await context.Client.Reply(new Pong(ping.Sequence)).Async();
                 break;
         }
@@ -167,7 +167,7 @@ var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptio
     DispatchMode = ZlinkStreamDispatchMode.Manual,   // 콜백을 내가 펌프
 });
 
-// 수신 핸들러 등록 (이름 기준)
+// 수신 핸들러·이벤트는 Connect 전에 등록한다 (이름 기준)
 connector.On<GameStateNotify>("GameStateNotify", (msg, ct) =>
 {
     Render(msg.Payload);
@@ -175,7 +175,7 @@ connector.On<GameStateNotify>("GameStateNotify", (msg, ct) =>
 });
 connector.Disconnected += (ct) => { ShowReconnecting(); return ValueTask.CompletedTask; };
 
-await connector.Connect.Async(cancellationToken);
+await connector.Connect.Async(cancellationToken);   // 여기서 실제 연결 — Create 는 연결하지 않는다
 
 // 게임 루프/메인 스레드에서 주기적으로 콜백 실행
 while (running)
@@ -201,12 +201,12 @@ await connector
     .Send(new ChatMessage("hello"))
     .Async(cancellationToken);
 
-// 요청-응답
+// 요청-응답: 응답은 request_seq 로 correlate 된다(packet 이름은 매칭에 안 씀)
 var reply = await connector
     .Request(new GetProfileRequest(accountId))
     .Async<GetProfileReply>(cancellationToken);
 
-// 큰 payload 명시 압축 (LZ4)
+// 큰 payload 명시 압축 (LZ4) — client→server 압축은 .Compress() 로 명시해야 적용된다(server→client 는 자동 해제)
 await connector
     .Send(new UploadReplayChunk(bytes))
     .Compress()

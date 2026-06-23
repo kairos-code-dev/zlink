@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.stream.connector.ZLinkStreamCodec;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
 import systems.zlink.stream.connector.ZLinkStreamTypedCodec;
@@ -47,7 +48,9 @@ enum ZLinkProtobufStreamCodec implements ZLinkStreamTypedCodec {
             return type.cast(Message.from(payload.payload()));
         }
         if (ZLinkProtobufMessageSerializer.canSerialize(type)) {
-            return ZLinkProtobufMessageSerializer.INSTANCE.deserialize(payload.payload(), type);
+            return ZLinkProtobufMessageSerializer.INSTANCE.deserialize(
+                ZLinkEncodedPayload.from(payload.payload().toByteArray()),
+                type);
         }
         try {
             return MAPPER.readValue(payload.payload().toByteArray(), type);

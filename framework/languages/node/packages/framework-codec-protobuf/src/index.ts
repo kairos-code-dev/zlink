@@ -1,10 +1,10 @@
-import { Message } from '@zlink-systems/zlink';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import type {
-  ZLinkCodecExtension,
-  ZLinkCodecRegistryBuilder,
-  ZLinkMessageSerializer
+import {
+  ZLinkEncodedPayload,
+  type ZLinkCodecExtension,
+  type ZLinkCodecRegistryBuilder,
+  type ZLinkMessageSerializer
 } from '@zlink-systems/framework';
 import {
   ZlinkStreamCodec,
@@ -106,12 +106,12 @@ export function zlinkProtobufCodec(): ZLinkProtobufCodecExtension {
 
 export function createProtobufMessageSerializer(): ZLinkMessageSerializer {
   return {
-    serialize<T>(value: T): Message {
-      return Message.from(encodeValue(value));
+    serialize<T>(value: T): ZLinkEncodedPayload {
+      return ZLinkEncodedPayload.from(encodeValue(value));
     },
 
-    deserialize<T>(message: { data(): Uint8Array }): T {
-      return decodeValue(Buffer.from(message.data())) as T;
+    deserialize<T>(payload: ZLinkEncodedPayload): T {
+      return decodeValue(Buffer.from(payload.data())) as T;
     }
   };
 }

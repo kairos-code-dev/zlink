@@ -52,7 +52,8 @@ result_t<zlink::message_t> actor_route_internal_dispatcher_t::dispatch_request (
 
     try {
         auto request =
-          _serializers->get<actor_bound_session_route_request_t> ().deserialize (body.value ());
+          _serializers->get<actor_bound_session_route_request_t> ().deserialize (
+            detail::encoded_payload_from_raw (body.value ()));
         auto dispatched = _runtime.dispatch_bound_session_send (
           actor_ref_from_bound_session_route (request), request.packet_name_value,
           zlink::message_t::from (request.payload));
@@ -63,8 +64,9 @@ result_t<zlink::message_t> actor_route_internal_dispatcher_t::dispatch_request (
                                   : "routed actor bound session send failed");
         }
         return result_t<zlink::message_t>::success (
-          _serializers->get<actor_bound_session_route_reply_t> ().serialize (
-            actor_bound_session_route_reply_t{.accepted = true}));
+          detail::encoded_payload_to_raw (
+            _serializers->get<actor_bound_session_route_reply_t> ().serialize (
+              actor_bound_session_route_reply_t{.accepted = true})));
     }
     catch (const framework_exception_t &error) {
         return result_t<zlink::message_t>::failure (error.kind (), error.what (),

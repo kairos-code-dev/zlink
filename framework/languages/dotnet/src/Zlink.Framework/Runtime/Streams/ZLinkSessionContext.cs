@@ -7,7 +7,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     private readonly IZLinkStream _stream;
     private readonly Func<ValueTask> _closeAsync;
     private readonly Func<CancellationToken, ValueTask> _closeByProxyAsync;
-    private ZlinkStreamHeader? _currentDispatchHeader;
+    private ZLinkSessionDispatchContext? _currentDispatch;
     private readonly ZLinkSessionRequestTracker _requests = new();
     private ZLinkSessionStreamTransport? _transport;
     private readonly ZLinkSessionActorCoordinator _actors;
@@ -61,10 +61,14 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
 
     internal async ValueTask RelayActorRefAsync(
         ZLinkSessionActor actor,
-        ZlinkStreamHeader header,
         Message payload,
         CancellationToken cancellationToken)
     {
+        var dispatch = _currentDispatch
+            ?? throw new InvalidOperationException("Session actor relay requires an active stream dispatch.");
+        var header = dispatch.Header
+            ?? throw new InvalidOperationException("Session actor relay requires runtime dispatch state.");
+
         await _actors.RelayToActorAsync(
                 actor,
                 header,
@@ -82,7 +86,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
             .ConfigureAwait(false);
     }
 
-    internal ZlinkStreamHeader? CurrentDispatchHeader => _currentDispatchHeader;
+    internal ZlinkStreamHeader? CurrentDispatchHeader => _currentDispatch?.Header;
 
     internal async ValueTask CleanupActorBindingsAsync(CancellationToken cancellationToken)
     {
@@ -98,14 +102,15 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         }
     }
 
-    internal void EnterDispatch(ZlinkStreamHeader header)
+    internal ZLinkSessionDispatchContext EnterDispatch(ZlinkStreamHeader header)
     {
-        _currentDispatchHeader = header;
+        _currentDispatch = new ZLinkSessionDispatchContext(header);
+        return _currentDispatch;
     }
 
     internal void ExitDispatch()
     {
-        _currentDispatchHeader = null;
+        _currentDispatch = null;
     }
 
     internal bool TryCompleteResponse(

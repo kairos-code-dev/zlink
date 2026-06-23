@@ -88,19 +88,19 @@ internal sealed class ZLinkActorEntrySpotRouteInternalPacketDispatcher(
         {
             var encodedReply = reply.Encode(runtime.Registration.Codecs);
             replyContentType = encodedReply.ContentType;
-            replyPayload = encodedReply.Message;
+            replyPayload = Message.From(encodedReply.Payload.Bytes.Span);
         }
 
         using (replyPayload)
         {
-        return ZLinkEnvelopeCodec.EncodePart(new ZLinkActorEntrySpotRouteJoinReply(
-            admission.Accepted,
-            actor.ActorId,
-            state.ActorType ?? request.ActorType,
-            nativeRef.NodeRid.ToHex(),
-            nativeRef.Generation,
-            replyContentType,
-            replyPayload?.ToArray() ?? Array.Empty<byte>()));
+            return ZLinkEnvelopeCodec.EncodePart(new ZLinkActorEntrySpotRouteJoinReply(
+                admission.Accepted,
+                actor.ActorId,
+                state.ActorType ?? request.ActorType,
+                nativeRef.NodeRid.ToHex(),
+                nativeRef.Generation,
+                replyContentType,
+                replyPayload?.ToArray() ?? Array.Empty<byte>()));
         }
     }
 

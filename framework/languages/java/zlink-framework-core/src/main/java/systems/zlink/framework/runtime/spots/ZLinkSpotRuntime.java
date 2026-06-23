@@ -84,6 +84,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
+import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
@@ -118,8 +119,8 @@ import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.framework.spots.ZLinkTimerTick;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
-import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
@@ -973,7 +974,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         Object spotSurface,
         ZLinkActor actor,
         Message payload) {
-        Object message = serializer.deserialize(payload, registration.messageType());
+        Object message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
         if (registration.handlerMethod() == null) {
             return invokeActorSendInterfaceHandler(
                 registration,
@@ -1000,7 +1001,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         Object spotSurface,
         ZLinkActor actor,
         Message payload) {
-        Object message = serializer.deserialize(payload, registration.messageType());
+        Object message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
         if (registration.handlerMethod() == null) {
             return invokeActorRequestInterfaceHandler(
                     registration,
@@ -1009,7 +1010,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     new DefaultSpotActorRequestContext(registration.packetName()),
                     message,
                     "failed to invoke Spot actor request handler")
-                .thenApply(reply -> Optional.of(serializer.serialize(reply)));
+                .thenApply(reply -> Optional.of(ZLinkMessagePayloads.message(serializer.serialize(reply))));
         }
         return invokeReplyMethodHandler(
                 registration.handlerType(),
@@ -1021,7 +1022,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     new DefaultSpotActorRequestContext(registration.packetName()),
                     message),
                 "failed to invoke Spot actor request handler")
-            .thenApply(reply -> Optional.of(serializer.serialize(reply)));
+            .thenApply(reply -> Optional.of(ZLinkMessagePayloads.message(serializer.serialize(reply))));
     }
 
     private DefaultSpotOutbound requireCurrentOutbound() {
@@ -1184,7 +1185,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         Object spotSurface,
         ZLinkActor actor,
         Message payload) {
-        Object message = serializer.deserialize(payload, registration.messageType());
+        Object message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
         if (registration.handlerMethod() == null) {
             return invokeActorSendInterfaceHandler(
                 registration,
@@ -1211,7 +1212,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         Object spotSurface,
         ZLinkActor actor,
         Message payload) {
-        Object message = serializer.deserialize(payload, registration.messageType());
+        Object message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
         if (registration.handlerMethod() == null) {
             return invokeActorRequestInterfaceHandler(
                     registration,
@@ -1220,7 +1221,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     new DefaultSpotActorRequestContext(registration.packetName()),
                     message,
                     "failed to invoke local session actor request handler")
-                .thenApply(reply -> Optional.of(serializer.serialize(reply)));
+                .thenApply(reply -> Optional.of(ZLinkMessagePayloads.message(serializer.serialize(reply))));
         }
         return invokeReplyMethodHandler(
                 registration.handlerType(),
@@ -1232,7 +1233,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     new DefaultSpotActorRequestContext(registration.packetName()),
                     message),
                 "failed to invoke local session actor request handler")
-            .thenApply(reply -> Optional.of(serializer.serialize(reply)));
+            .thenApply(reply -> Optional.of(ZLinkMessagePayloads.message(serializer.serialize(reply))));
     }
 
     private synchronized ZLinkBackendSpot publisherSpot(String channelName) {
@@ -2172,7 +2173,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                                     response == null ? ZLinkSpotActorJoinResponse.reject() : response;
                                 Message reply = effective.reply() == null
                                     ? Message.from(new byte[0])
-                                    : effective.reply().toMessage(serializer);
+                                    : ZLinkMessagePayloads.message(effective.reply(), serializer);
                                 backendSpot.replyActorJoin(request, effective.accepted() ? 0 : 1, List.of(reply));
                                 reply.close();
                             } finally {
@@ -2208,7 +2209,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                                     ZLinkHandlerStages.fromSupplier(() ->
                                             ((ZLinkEntrySpot) entrySpot).onActorJoin(
                                                 actor.get(),
-                                                ZLinkMessage.fromMessage(payload, serializer),
+                                                ZLinkMessage.fromEncoded(ZLinkMessagePayloads.encoded(payload), serializer),
                                                 NONE_CANCELLATION))
                                 .thenAccept(admission::complete))
                         .whenComplete((ignored, error) -> {
@@ -2624,7 +2625,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         SpotPacketHandlerRegistration registration,
         Object spot,
         Message payload) {
-        Object message = serializer.deserialize(payload, registration.messageType());
+        Object message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
         try {
             Object handler = handlerFactory.create(registration.handlerType());
             if (registration.handlerMethod() != null) {
@@ -2648,17 +2649,17 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         SpotPacketHandlerRegistration registration,
         Object spot,
         Message payload) {
-        Object message = serializer.deserialize(payload, registration.messageType());
+        Object message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
         try {
             Object handler = handlerFactory.create(registration.handlerType());
             if (registration.handlerMethod() != null) {
                 return ZLinkHandlerMethodInvoker
                     .invoke(handler, registration.handlerMethod(), new Object[] {spot, message}, suspendHandlerInvokers)
-                    .thenApply(serializer::serialize);
+                    .thenApply(reply -> ZLinkMessagePayloads.message(serializer.serialize(reply)));
             }
             return ZLinkHandlerMethodInvoker
                 .invokeHandler(handler, "handle", new Object[] {spot, message}, suspendHandlerInvokers)
-                .thenApply(serializer::serialize);
+                .thenApply(reply -> ZLinkMessagePayloads.message(serializer.serialize(reply)));
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "failed to invoke SPOT request handler: "
@@ -2672,7 +2673,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         SpotSubscriptionHandlerRegistration registration,
         Object spot,
         Message payload) {
-        Object message = serializer.deserialize(payload, registration.messageType());
+        Object message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
         try {
             Object handler = handlerFactory.create(registration.handlerType());
             if (registration.handlerMethod() != null) {
@@ -2920,7 +2921,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                             Message firstReply = replyParts.isEmpty()
                                 ? (emptyReply = Message.from(new byte[0]))
                                 : replyParts.get(0);
-                            return serializer.deserialize(firstReply, replyType);
+                            return ZLinkMessagePayloads.deserialize(serializer, firstReply, replyType);
                         } finally {
                             if (emptyReply != null) {
                                 emptyReply.close();
@@ -3202,7 +3203,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         Message firstReply = reply.parts().isEmpty()
                             ? (emptyReply = Message.from(new byte[0]))
                             : reply.parts().get(0);
-                        result.complete(serializer.deserialize(firstReply, replyType));
+                        result.complete(ZLinkMessagePayloads.deserialize(serializer, firstReply, replyType));
                     } catch (RuntimeException ex) {
                         result.completeExceptionally(ex);
                     } finally {
@@ -4470,7 +4471,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                         response == null ? ZLinkSpotActorJoinResponse.reject() : response;
                     Message reply = effective.reply() == null
                         ? Message.from(new byte[0])
-                        : effective.reply().toMessage(serializer);
+                        : ZLinkMessagePayloads.message(effective.reply(), serializer);
                     try {
                         backendSpot.replyActorJoin(
                             request,
@@ -4584,7 +4585,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     return ZLinkHandlerStages
                         .fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(
                             actor,
-                            ZLinkMessage.fromMessage(joinPayload, serializer),
+                            ZLinkMessage.fromEncoded(ZLinkMessagePayloads.encoded(joinPayload), serializer),
                             NONE_CANCELLATION))
                         .thenCompose(response -> {
                             ZLinkSpotActorJoinResponse effective =
@@ -4621,7 +4622,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                                 response == null ? ZLinkSpotActorJoinResponse.reject() : response;
                             Message reply = effective.reply() == null
                                 ? Message.from(new byte[0])
-                                : effective.reply().toMessage(serializer);
+                                : ZLinkMessagePayloads.message(effective.reply(), serializer);
                             try {
                                 return ZLinkActorSpotRoutePackets.encodeJoinReply(
                                     effective.accepted(),
@@ -4668,7 +4669,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     return ZLinkHandlerStages
                         .fromSupplier(() -> ((ZLinkSpot) spot).onActorJoin(
                             actor.get(),
-                            ZLinkMessage.fromMessage(payload, serializer),
+                            ZLinkMessage.fromEncoded(ZLinkMessagePayloads.encoded(payload), serializer),
                             NONE_CANCELLATION))
                         .thenCompose(response -> {
                             ZLinkSpotActorJoinResponse effective =

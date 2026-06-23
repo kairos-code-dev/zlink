@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
+  ZLinkEncodedPayload,
   type ZLinkMessageSerializer
 } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
@@ -148,7 +149,7 @@ export function decodeChannelReply<TReply>(
   }
   const serializer = codecs?.serializers.get(header.contentType);
   if (serializer !== undefined) {
-    return serializer.deserialize<TReply>(parts[1], Object as never);
+    return serializer.deserialize<TReply>(ZLinkEncodedPayload.from(parts[1].data()), Object as never);
   }
   return parseWireJson(parts[1].data().toString()) as TReply;
 }
@@ -168,7 +169,7 @@ export function decodeChannelPayload(
   try {
     const serializer = codecs?.serializers.get(envelope.header.contentType);
     if (serializer !== undefined) {
-      return serializer.deserialize(Message.from(envelope.payload), Object as never);
+      return serializer.deserialize(ZLinkEncodedPayload.from(envelope.payload), Object as never);
     }
     if (envelope.header.contentType === BINARY_CONTENT_TYPE) {
       return Buffer.from(envelope.payload);
@@ -202,7 +203,7 @@ function encodePayload(value: unknown, codecs: ZLinkChannelEnvelopeCodecRegistry
   const serializer = selectDefaultSerializer(codecs);
   if (serializer !== undefined && !(Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value))) {
     const contentType = requireDefaultSerializerContentType(codecs, serializer);
-    return { contentType, message: Buffer.from(serializer.serialize(value).data()) };
+    return { contentType, message: serializer.serialize(value).data() };
   }
   return { contentType: contentTypeOf(value), message: toMessageLike(value) };
 }

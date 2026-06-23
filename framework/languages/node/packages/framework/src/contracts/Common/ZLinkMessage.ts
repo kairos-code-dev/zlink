@@ -1,6 +1,5 @@
-import { Message as BindingMessage } from '@zlink-systems/zlink';
 import type { Type } from './CoreTypes';
-import type { Message } from './Message';
+import { ZLinkEncodedPayload } from './ZLinkEncodedPayload';
 import type { ZLinkMessageSerializer } from '../Codecs';
 
 export interface ZLinkSerializerRegistryLike {
@@ -10,7 +9,7 @@ export interface ZLinkSerializerRegistryLike {
 export class ZLinkMessage<TValue = unknown> {
   private constructor(
     private readonly value: TValue | undefined,
-    private readonly encoded: Message | undefined,
+    private readonly encoded: ZLinkEncodedPayload | undefined,
     private readonly registry: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer> | undefined
   ) {}
 
@@ -19,24 +18,25 @@ export class ZLinkMessage<TValue = unknown> {
   }
 
   static fromEncoded(
-    message: Message,
+    payload: ZLinkEncodedPayload,
     registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
   ): ZLinkMessage {
-    return new ZLinkMessage(undefined, message, registry);
+    return new ZLinkMessage(undefined, payload, registry);
   }
 
   decode<T>(type?: Type<T>): T {
     if (this.encoded === undefined) {
       return this.value as T;
     }
-    if (this.encoded.data().length === 0) {
+    const encoded = this.encoded.data();
+    if (encoded.length === 0) {
       return undefined as T;
     }
     const serializer = selectDefaultSerializer(this.registry);
     if (serializer !== undefined) {
       return serializer.deserialize(this.encoded, (type ?? Object) as Type<T>);
     }
-    const text = this.encoded.getString('utf8');
+    const text = Buffer.from(encoded).toString('utf8');
     try {
       return JSON.parse(text) as T;
     } catch {
@@ -44,7 +44,9 @@ export class ZLinkMessage<TValue = unknown> {
     }
   }
 
-  toMessage(registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>): Message {
+  toEncodedPayload(
+    registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
+  ): ZLinkEncodedPayload {
     if (this.encoded !== undefined) {
       return this.encoded;
     }
@@ -53,9 +55,9 @@ export class ZLinkMessage<TValue = unknown> {
       return serializer.serialize(this.value);
     }
     if (Buffer.isBuffer(this.value) || this.value instanceof Uint8Array) {
-      return BindingMessage.from(this.value);
+      return ZLinkEncodedPayload.from(this.value);
     }
-    return BindingMessage.from(Buffer.from(JSON.stringify(this.value ?? null)));
+    return ZLinkEncodedPayload.from(Buffer.from(JSON.stringify(this.value ?? null)));
   }
 
   isEncoded(): boolean {

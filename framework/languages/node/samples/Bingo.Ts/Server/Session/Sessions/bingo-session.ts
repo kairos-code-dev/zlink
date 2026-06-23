@@ -6,14 +6,10 @@ import type {
   ZLinkSession,
   ZLinkSessionActor,
   ZLinkSessionContext,
-  ZLinkSessionFactory,
-  ZlinkStreamHeader
+  ZLinkSessionDispatchContext,
+  ZLinkSessionFactory
 } from '@zlink-systems/framework';
 import type { AuthenticateReq } from '../../../Shared/Contracts/messages';
-
-type BingoSessionHeader = {
-  name: string;
-};
 
 class BingoSession implements ZLinkSession {
   private actor: ZLinkSessionActor | null = null;
@@ -25,10 +21,9 @@ class BingoSession implements ZLinkSession {
     readonly context: ZLinkSessionContext
   ) {}
 
-  async onDispatch(header: unknown, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
-    const bingoHeader = requireBingoSessionHeader(header);
-    console.log(`session-dispatch packet=${bingoHeader.name}`);
-    if (bingoHeader.name === PacketNames.authenticateReq) {
+  async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
+    console.log(`session-dispatch packet=${dispatch.packetName}`);
+    if (dispatch.packetName === PacketNames.authenticateReq) {
       const authContext = {
         actors: this.context.actors,
         actorId: this.actorId,
@@ -47,9 +42,9 @@ class BingoSession implements ZLinkSession {
       return;
     }
     if (this.actor === null) {
-      throw new Error(`Client must authenticate before relaying packet '${bingoHeader.name}'.`);
+      throw new Error(`Client must authenticate before relaying packet '${dispatch.packetName}'.`);
     }
-    await this.actor.relay(header as ZlinkStreamHeader, payload, signal);
+    await this.actor.relay(payload, signal);
   }
 
   async onDisconnected(): Promise<void> {
@@ -65,18 +60,6 @@ class BingoSessionFactory implements ZLinkSessionFactory<BingoSession> {
   create(context: ZLinkSessionContext): BingoSession {
     return new BingoSession(this.authenticator, context);
   }
-}
-
-function requireBingoSessionHeader(header: unknown): BingoSessionHeader {
-  if (
-    typeof header !== 'object' ||
-    header === null ||
-    !('name' in header) ||
-    typeof (header as { name?: unknown }).name !== 'string'
-  ) {
-    throw new Error('Bingo stream header is missing packet name.');
-  }
-  return header as BingoSessionHeader;
 }
 
 export { BingoSession, BingoSessionFactory };

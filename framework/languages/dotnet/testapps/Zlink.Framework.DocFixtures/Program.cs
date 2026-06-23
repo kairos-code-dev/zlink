@@ -420,6 +420,6 @@ internal sealed class FixtureActorPacketSession(
         CancellationToken cancellationToken)
     {
         var actor = _actor ?? throw new InvalidOperationException("Actor is not bound.");
-        return actor.RelayAsync(header, payload, cancellationToken);
+        return actor.RelayAsync(payload, cancellationToken);
     }
 }

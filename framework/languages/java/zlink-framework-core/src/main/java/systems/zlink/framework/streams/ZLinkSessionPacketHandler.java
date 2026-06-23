@@ -7,6 +7,6 @@ public interface ZLinkSessionPacketHandler<TSessionContext extends ZLinkSessionC
 
     void handle(
         TSessionContext context,
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload);
 }

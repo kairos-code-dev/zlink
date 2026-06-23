@@ -557,8 +557,12 @@ class local_internal_dispatcher_t final
 template <typename T> void add_int_serializer (zlink::framework::serializer_registry_t &serializers)
 {
     serializers.add<T> (
-      [] (const T &value) { return zlink::message_t::from (std::to_string (value.value)); },
-      [] (const zlink::message_t &message) { return T{std::stoi (message.to_string ())}; });
+      [] (const T &value) {
+          return zlink::framework::encoded_payload_t::from_string (std::to_string (value.value));
+      },
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return T{std::stoi (payload.to_string ())};
+      });
 }
 
 std::string unique_inproc_endpoint (const char *base)
@@ -863,7 +867,11 @@ int main ()
       local_runtime.dispatch_request ("local", "request", "request", provider, serializers,
                                       handlers, zlink::message_t::from (std::string ("23")));
     if (!local_reply
-        || serializers.get<reply_t> ().deserialize (local_reply.value ()).value != 123) {
+        || serializers.get<reply_t> ()
+               .deserialize (zlink::framework::detail::encoded_payload_from_raw (
+                 local_reply.value ()))
+               .value
+             != 123) {
         return 9;
     }
 
@@ -888,7 +896,11 @@ int main ()
         || packet_reply_header.value ().kind
              != zlink::framework::runtime::messaging::message_kind_t::response
         || packet_reply_header.value ().correlation_id != "corr-1" || !packet_reply_body
-        || serializers.get<reply_t> ().deserialize (packet_reply_body.value ()).value != 124) {
+        || serializers.get<reply_t> ()
+               .deserialize (zlink::framework::detail::encoded_payload_from_raw (
+                 packet_reply_body.value ()))
+               .value
+             != 124) {
         return 19;
     }
 
@@ -904,7 +916,10 @@ int main ()
     const auto no_topic_packet_reply_body =
       envelope_codec.decode_body (no_topic_packet_reply.value ());
     if (!no_topic_packet_reply_body
-        || serializers.get<reply_t> ().deserialize (no_topic_packet_reply_body.value ()).value
+        || serializers.get<reply_t> ()
+               .deserialize (zlink::framework::detail::encoded_payload_from_raw (
+                 no_topic_packet_reply_body.value ()))
+               .value
              != 125) {
         return 77;
     }
@@ -1323,7 +1338,7 @@ int main ()
              != zlink::framework::runtime::messaging::message_kind_t::response
         || routed_reply_header.value ().correlation_id != "hosted-router-request"
         || !routed_reply_body
-        || serializers.get<reply_t> ().deserialize (routed_reply_body.value ()).value != 129) {
+        || serializers.get<reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (routed_reply_body.value ())).value != 129) {
         hosted_service.stop ();
         return 86;
     }
@@ -1582,7 +1597,7 @@ int main ()
         || loop_reply_header.value ().kind
              != zlink::framework::runtime::messaging::message_kind_t::response
         || !loop_reply_body
-        || serializers.get<reply_t> ().deserialize (loop_reply_body.value ()).value != 124) {
+        || serializers.get<reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (loop_reply_body.value ())).value != 124) {
         return 27;
     }
     if (!bundle.try_enter_receive ()) {
@@ -2182,7 +2197,7 @@ int main ()
     const auto route_reply_body =
       envelope_codec.decode_body (route_handler_receive.value ().replies[0].parts);
     if (!route_reply_body
-        || serializers.get<reply_t> ().deserialize (route_reply_body.value ()).value != 224
+        || serializers.get<reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (route_reply_body.value ())).value != 224
         || provider.get_required<local_handler_t> ().last_route_request != 24
         || provider.get_required<local_handler_t> ().last_route_source != "source-node") {
         return 49;
@@ -2337,7 +2352,7 @@ int main ()
     const auto registered_reply_body =
       envelope_codec.decode_body (registered_receive.value ().replies[0].parts);
     if (!registered_reply_body
-        || serializers.get<reply_t> ().deserialize (registered_reply_body.value ()).value != 225) {
+        || serializers.get<reply_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (registered_reply_body.value ())).value != 225) {
         return 55;
     }
 
@@ -2480,7 +2495,7 @@ int main ()
           if (!header || !body || header.value ().message_name != "typed.client.request"
               || header.value ().metadata.find ("trace-id") == header.value ().metadata.end ()
               || header.value ().metadata.at ("trace-id") != "trace-typed"
-              || serializers.get<request_t> ().deserialize (body.value ()).value != 51) {
+              || serializers.get<request_t> ().deserialize (zlink::framework::detail::encoded_payload_from_raw (body.value ())).value != 51) {
               return zlink::framework::
                 result_t<zlink::framework::runtime::messaging::message_parts_t>::failure (
                   zlink::framework::framework_error_kind_t::request_failed,

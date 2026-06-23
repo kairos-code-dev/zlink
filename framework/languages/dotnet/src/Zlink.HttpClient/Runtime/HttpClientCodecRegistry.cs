@@ -61,8 +61,8 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder
         if (TryResolveSerializer(type, out var contentType, out var serializer)
             || TryResolveFallback(out contentType, out serializer))
         {
-            using var message = serializer.Serialize(value, type);
-            return (message.ToArray(), contentType);
+            var payload = serializer.Serialize(value, type);
+            return (payload.ToArray(), contentType);
         }
 
         return (
@@ -90,8 +90,7 @@ internal sealed class HttpClientCodecRegistry : IZLinkCodecRegistryBuilder
         if (!string.IsNullOrWhiteSpace(contentType)
             && _serializers.TryGetValue(NormalizeContentType(contentType), out var found))
         {
-            using var message = Message.From(body);
-            return found.Serializer.Deserialize(message, type);
+            return found.Serializer.Deserialize(ZLinkEncodedPayload.From(body), type);
         }
 
         return JsonSerializer.Deserialize(body, type, JsonOptions);

@@ -1,8 +1,10 @@
-package systems.zlink.framework.streams;
+package systems.zlink.framework.runtime.streams;
 
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.Optional;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
+import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public record ZLinkStreamHeader(
     ZLinkStreamMessageKind kind,

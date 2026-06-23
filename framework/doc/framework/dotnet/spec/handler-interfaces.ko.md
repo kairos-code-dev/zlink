@@ -1166,7 +1166,7 @@ public interface IZLinkSession
         CancellationToken cancellationToken);
 
     ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken);
 }
@@ -1315,8 +1315,8 @@ optional detail 로 본다.
 현재 방향은 다음과 같이 정리할 수 있다.
 
 - header session
-  - `OnDispatchAsync(...)`로 framework가 decode 한 `ZlinkStreamHeader`와
-    `ZLinkMessage` payload를 받는다.
+  - `OnDispatchAsync(...)`로 `ZLinkSessionDispatchContext`와 `ZLinkMessage` payload를
+    받는다.
   - callback 안에서 payload 를 바로 읽거나 `IZLinkSessionActor.RelayAsync(...)` 로 넘길
     수 있다.
   - application 이 직접 만든 `Message` 를 raw `IZLinkStream.Write(...)` 에
@@ -1486,13 +1486,8 @@ public interface IZLinkSessionActor
     string ActorId => Ref.ActorId;
     ActorRef Ref { get; }
 
-    ValueTask RelayRawAsync(
-        ZlinkStreamHeader header,
-        Message payload,
-        CancellationToken cancellationToken = default);
-
     ValueTask RelayAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 
@@ -2480,7 +2475,7 @@ public interface IZLinkSessionPacketHandler<TSessionContext>
 
     ValueTask HandleAsync(
         TSessionContext context,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken);
 }
@@ -2489,7 +2484,7 @@ public interface IZLinkSessionPacketDispatcher<TSessionContext>
 {
     ValueTask<bool> TryHandleAsync(
         TSessionContext context,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 }

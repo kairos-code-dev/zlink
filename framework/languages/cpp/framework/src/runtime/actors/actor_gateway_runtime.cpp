@@ -10,6 +10,31 @@
 namespace zlink::framework
 {
 
+namespace detail
+{
+
+namespace
+{
+thread_local std::optional<stream_header_t> current_stream_relay_header;
+}
+
+void enter_stream_relay_dispatch (const stream_header_t &header)
+{
+    current_stream_relay_header = header;
+}
+
+void exit_stream_relay_dispatch () noexcept
+{
+    current_stream_relay_header.reset ();
+}
+
+std::optional<stream_header_t> current_stream_relay_dispatch ()
+{
+    return current_stream_relay_header;
+}
+
+} // namespace detail
+
 actor_ref_t::actor_ref_t (node_rid_t node_rid,
                           std::string actor_type,
                           std::string actor_id,
@@ -60,9 +85,45 @@ bound_session_t::~bound_session_t () = default;
 bound_session_t::bound_session_t (bound_session_t &&) noexcept = default;
 bound_session_t &bound_session_t::operator= (bound_session_t &&) noexcept = default;
 
-send_call_t bound_session_t::send_raw (const zlink::message_t &payload)
+send_call_t bound_session_t::send (const message_t &payload)
 {
-    return send_erased ("actor.push", payload);
+    if (!_state) {
+        return send_call_t (result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "bound session send requires actor gateway state"));
+    }
+    if (!_state->serializers) {
+        return send_call_t (result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "bound session send requires a serializer registry"));
+    }
+    try {
+        return send_erased ("actor.push", detail::message_to_raw (payload, *_state->serializers));
+    }
+    catch (const framework_exception_t &error) {
+        return send_call_t (
+          result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+    }
+}
+
+send_call_t bound_session_t::send_typed (std::string packet_name,
+                                         std::type_index message_type,
+                                         const void *message)
+{
+    if (!_state || !_state->serializers) {
+        return send_call_t (result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "bound session send requires a serializer registry"));
+    }
+    try {
+        auto payload = detail::encoded_payload_to_raw (
+          _state->serializers->serialize (message_type, message));
+        return send_erased (std::move (packet_name), payload);
+    }
+    catch (const framework_exception_t &error) {
+        return send_call_t (
+          result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+    }
 }
 
 send_call_t bound_session_t::disconnect ()
@@ -284,8 +345,8 @@ actor_join_entry_spot_call_t actor_context_t::join_entry_spot_raw (node_rid_t sp
     const auto &reply = joined.value ();
     return actor_join_entry_spot_call_t (
       result_t<actor_join_result_t>::success (
-        actor_join_result_t{reply.result_code, reply.actor,
-                            message_t::from_encoded (reply.reply, serializer_registry ())}),
+        actor_join_result_t{
+          reply.result_code, reply.actor, message_t::from_raw (reply.reply, serializer_registry ())}),
       serializer_registry ());
 }
 
@@ -323,9 +384,27 @@ bound_session_t session_actor_t::bound_session () const
     return bound_session_t (_state, _ref);
 }
 
-relay_call_t session_actor_t::relay_raw (const stream_header_t &header,
-                                         const zlink::message_t &payload)
+relay_call_t session_actor_t::relay (const message_t &payload)
 {
+    const auto header = detail::current_stream_relay_dispatch ();
+    if (!header) {
+        return relay_call_t (result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "actor relay requires current stream dispatch state"));
+    }
+    if (!_state->serializers) {
+        return relay_call_t (result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "actor relay requires a serializer registry"));
+    }
+    zlink::message_t raw_payload;
+    try {
+        raw_payload = detail::message_to_raw (payload, *_state->serializers);
+    }
+    catch (const framework_exception_t &error) {
+        return relay_call_t (
+          result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+    }
     detail::actor_gateway_state_t::relay_dispatcher_t dispatcher;
     {
         const std::lock_guard lock (_state->mutex);
@@ -351,13 +430,14 @@ relay_call_t session_actor_t::relay_raw (const stream_header_t &header,
               framework_error_kind_t::actor_stale_generation, "actor generation is stale"));
         }
         if (!_state->relay_dispatcher) {
-            _state->relayed_frames.push_back (detail::relayed_frame_t{_ref, header, payload});
+            _state->relayed_frames.push_back (
+              detail::relayed_frame_t{_ref, *header, raw_payload});
             return relay_call_t (result_t<void>::success ());
         }
         dispatcher = _state->relay_dispatcher;
     }
 
-    auto dispatched = dispatcher (_ref, context (), header, payload);
+    auto dispatched = dispatcher (_ref, context (), *header, raw_payload);
     if (!dispatched) {
         return relay_call_t (result_t<void>::failure (
           dispatched.error_kind (),
@@ -366,9 +446,27 @@ relay_call_t session_actor_t::relay_raw (const stream_header_t &header,
     return relay_call_t (result_t<void>::success ());
 }
 
-relay_request_call_t session_actor_t::relay_request_raw (const stream_header_t &header,
-                                                         const zlink::message_t &payload)
+relay_request_call_t session_actor_t::relay_request (const message_t &payload)
 {
+    const auto header = detail::current_stream_relay_dispatch ();
+    if (!header) {
+        return relay_request_call_t (result_t<message_t>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "actor relay request requires current stream dispatch state"));
+    }
+    if (!_state->serializers) {
+        return relay_request_call_t (result_t<message_t>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "actor relay request requires a serializer registry"));
+    }
+    zlink::message_t raw_payload;
+    try {
+        raw_payload = detail::message_to_raw (payload, *_state->serializers);
+    }
+    catch (const framework_exception_t &error) {
+        return relay_request_call_t (
+          result_t<message_t>::failure (error.kind (), error.what (), error.is_retriable ()));
+    }
     detail::actor_gateway_state_t::relay_dispatcher_t dispatcher;
     {
         const std::lock_guard lock (_state->mutex);
@@ -394,14 +492,15 @@ relay_request_call_t session_actor_t::relay_request_raw (const stream_header_t &
               framework_error_kind_t::actor_stale_generation, "actor generation is stale"));
         }
         if (!_state->relay_dispatcher) {
-            _state->relayed_frames.push_back (detail::relayed_frame_t{_ref, header, payload});
+            _state->relayed_frames.push_back (
+              detail::relayed_frame_t{_ref, *header, raw_payload});
             return relay_request_call_t (result_t<message_t>::failure (
               framework_error_kind_t::actor_dispatch_handler_not_found,
               "actor relay dispatcher is not configured"));
         }
         dispatcher = _state->relay_dispatcher;
     }
-    auto dispatched = dispatcher (_ref, context (), header, payload);
+    auto dispatched = dispatcher (_ref, context (), *header, raw_payload);
     if (!dispatched) {
         return relay_request_call_t (result_t<message_t>::failure (
           dispatched.error_kind (),
@@ -412,40 +511,7 @@ relay_request_call_t session_actor_t::relay_request_raw (const stream_header_t &
           framework_error_kind_t::request_protocol_error, "actor relay request has no reply"));
     }
     return relay_request_call_t (result_t<message_t>::success (
-      message_t::from_encoded (std::move (*dispatched.value ()), _state->serializers)));
-}
-
-relay_call_t session_actor_t::relay (const stream_header_t &header, const message_t &payload)
-{
-    if (_state->serializers == nullptr) {
-        return relay_call_t (
-          result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                   "actor relay requires a serializer registry"));
-    }
-    try {
-        return relay_raw (header, payload.to_raw (*_state->serializers));
-    }
-    catch (const framework_exception_t &error) {
-        return relay_call_t (
-          result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
-    }
-}
-
-relay_request_call_t session_actor_t::relay_request (const stream_header_t &header,
-                                                     const message_t &payload)
-{
-    if (_state->serializers == nullptr) {
-        return relay_request_call_t (
-          result_t<message_t>::failure (framework_error_kind_t::request_protocol_error,
-                                        "actor relay request requires a serializer registry"));
-    }
-    try {
-        return relay_request_raw (header, payload.to_raw (*_state->serializers));
-    }
-    catch (const framework_exception_t &error) {
-        return relay_request_call_t (
-          result_t<message_t>::failure (error.kind (), error.what (), error.is_retriable ()));
-    }
+      message_t::from_raw (std::move (*dispatched.value ()), _state->serializers)));
 }
 
 relay_call_t session_actor_t::notify_disconnected ()
@@ -719,13 +785,13 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
     if (found != _state->actors_by_id.end ()) {
         found->second.bound_session_codec = codec;
     }
-    _state->bound_session_sinks[actor_id] = [stream = std::move (stream),
-                                             codec] (std::string packet_name,
-                                                     const zlink::message_t &payload) mutable {
-        stream_header_t header (stream_message_kind_t::send, codec, stream_header_flags_t::none,
-                                std::nullopt, std::move (packet_name));
-        return stream.write_packet_raw (header, payload).async ();
-    };
+    _state->bound_session_sinks[actor_id] =
+      [stream = std::move (stream), codec] (std::string packet_name,
+                                            const zlink::message_t &payload) mutable {
+          stream_header_t header (stream_message_kind_t::send, codec, stream_header_flags_t::none,
+                                  std::nullopt, std::move (packet_name));
+          return stream.write_packet_with_header (std::move (header), payload).async ();
+      };
 }
 
 void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,

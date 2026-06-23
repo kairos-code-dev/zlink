@@ -106,7 +106,7 @@ handler_registry_t &handler_registry_t::send_raw (std::string channel_name,
       [handler =
          std::move (handler)] (service_provider_t &, serializer_registry_t &,
                                const zlink::message_t &message) -> task_t<zlink::message_t> {
-          const auto result = handler (payload_view_t (message));
+          const auto result = handler (payload_view_t (detail::encoded_payload_from_raw (message)));
           if (!result) {
               return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
                 result.error_kind (),

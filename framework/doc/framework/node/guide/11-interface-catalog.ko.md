@@ -37,7 +37,6 @@
 - `ZLinkSessionContext`
 - `ZLinkSessionClient`
 - `ZlinkStreamConnector`
-- `ZlinkStreamHeaderCodec`
 - `ZlinkStreamFrameCodec`
 
 ## 회귀 테스트

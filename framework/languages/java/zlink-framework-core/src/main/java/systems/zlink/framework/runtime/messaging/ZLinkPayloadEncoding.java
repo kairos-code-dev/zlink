@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.messaging;
 
 import java.util.Objects;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 
 public final class ZLinkPayloadEncoding {
@@ -12,8 +13,9 @@ public final class ZLinkPayloadEncoding {
         ZLinkMessageSerializer serializer,
         Object payload) {
         Objects.requireNonNull(serializer, "serializer");
+        ZLinkEncodedPayload encoded = serializer.serialize(payload);
         return new EncodedPayload(
-            serializer.serialize(payload),
+            Message.from(encoded.bytes()),
             ZLinkPacketNames.resolve(payload));
     }
 

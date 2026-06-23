@@ -26,20 +26,22 @@ import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActors;
 import systems.zlink.framework.streams.ZLinkSessionClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionReplyCall;
 import systems.zlink.framework.streams.ZLinkSessionSendCall;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamDiagnostic;
 import systems.zlink.framework.streams.ZLinkStreamError;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
-import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 import systems.zlink.framework.streams.ZLinkStreamSessionError;
 
@@ -183,7 +185,9 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 streamHeader.packetName(), null, null, corr, null, null, null, null));
         }
         Message payloadCopy = Message.from(decodePayload(streamHeader, payload));
-        ZLinkMessage sessionPayload = ZLinkMessage.fromMessage(payloadCopy, serializer);
+        ZLinkMessage sessionPayload = ZLinkMessage.fromEncoded(
+            ZLinkMessagePayloads.encoded(payloadCopy),
+            serializer);
         payloadCopy.close();
         state.queue().enqueue(() ->
             executeHandler(() -> state.context().dispatchStage(streamHeader, sessionPayload, state.session())));
@@ -384,9 +388,20 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             ZLinkMessage payload,
             ZLinkSession session) {
             currentDispatchHeader = header;
+            ZLinkSessionDispatchContext dispatch = new ZLinkSessionDispatchContext(
+                header.name(),
+                header.metadata(),
+                header.requestSequence().isPresent());
             CompletionStage<Void> stage;
             try {
-                stage = ZLinkHandlerStages.fromRunnable(() -> session.onDispatch(header, payload));
+                stage = ZLinkHandlerStages.fromRunnable(() -> {
+                    ZLinkSessionActorsRuntime.enterRelayDispatch(header);
+                    try {
+                        session.onDispatch(dispatch, payload);
+                    } finally {
+                        ZLinkSessionActorsRuntime.exitRelayDispatch();
+                    }
+                });
             } catch (RuntimeException ex) {
                 currentDispatchHeader = null;
                 return CompletableFuture.failedFuture(ex);

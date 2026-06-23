@@ -325,7 +325,7 @@ public interface ZLinkSession {
     void onError(ZLinkStreamError error);
 
     default void onDispatch(
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
     }
 }
@@ -335,14 +335,14 @@ public interface ZLinkSessionPacketHandler<TSessionContext extends ZLinkSessionC
 
     void handle(
         TSessionContext context,
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload);
 }
 
 public interface ZLinkSessionPacketDispatcher<TSessionContext extends ZLinkSessionContext> {
     CompletionStage<Boolean> tryHandleAsync(
         TSessionContext context,
-        ZLinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload);
 }
 
@@ -412,7 +412,7 @@ public interface ZLinkSessionReplyCall {
 public interface ZLinkSessionActor {
     String actorId();
     ZLinkActorRef ref();
-    CompletionStage<Void> relay(ZLinkStreamHeader header, ZLinkMessage payload);
+    CompletionStage<Void> relay(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload);
     CompletionStage<Void> notifyDisconnected();
 }
 

@@ -6,7 +6,7 @@ import systems.zlink.framework.streams.ZLinkSession
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
 import systems.zlink.framework.streams.ZLinkStreamError
-import systems.zlink.framework.streams.ZLinkStreamHeader
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.samples.kotlin.gamequest.server.gameapi.infrastructure.store.GameQuestStore
 
 /**
@@ -36,16 +36,16 @@ class GameQuestSession(
         System.err.printf("gamequest session error session=%s error=%s%n", context.sessionId(), error)
     }
 
-    override fun onDispatch(header: ZLinkStreamHeader, payload: ZLinkMessage) {
+    override fun onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
         System.err.printf(
-            "gamequest session dispatch session=%s packet=%s codec=%s%n",
-            context.sessionId(), header.packetName(), header.codec(),
+            "gamequest session dispatch session=%s packet=%s%n",
+            context.sessionId(), dispatch.packetName(),
         )
-        val handled = ZLinkAwait.await(handlers.tryHandleAsync(context, header, payload))
-        check(handled) { "Unsupported GameQuest packet '${header.packetName()}'." }
+        val handled = ZLinkAwait.await(handlers.tryHandleAsync(context, dispatch, payload))
+        check(handled) { "Unsupported GameQuest packet '${dispatch.packetName()}'." }
         System.err.printf(
             "gamequest session handled session=%s packet=%s%n",
-            context.sessionId(), header.packetName(),
+            context.sessionId(), dispatch.packetName(),
         )
     }
 }

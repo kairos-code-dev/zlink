@@ -50,27 +50,27 @@ sealed class PlaySession(
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
             "client -> play stream: message received. name={MessageName}, kind={Kind}, sessionId={SessionId}",
-            header.Name,
-            header.Kind,
+            dispatch.PacketName,
+            (dispatch.CanReply ? "Request" : "Send"),
             Context.SessionId);
 
         if (await handlers.TryHandleAsync(
                 Context,
-                header,
+                dispatch,
                 payload,
                 cancellationToken))
         {
             return;
         }
 
-        var actor = RequireSingleBoundActor($"relaying packet '{header.Name}'");
-        await actor.RelayAsync(header, payload, cancellationToken);
+        var actor = RequireSingleBoundActor($"relaying packet '{dispatch.PacketName}'");
+        await actor.RelayAsync(payload, cancellationToken);
     }
 
     private IZLinkSessionActor RequireSingleBoundActor(string action)

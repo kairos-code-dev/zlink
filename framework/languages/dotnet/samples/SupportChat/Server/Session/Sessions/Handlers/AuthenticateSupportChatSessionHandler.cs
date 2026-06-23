@@ -15,11 +15,11 @@ internal sealed class AuthenticateSupportChatSessionHandler(IZLinkChannelClient 
 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         Zlink.Framework.Contracts.Messaging.ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = header;
+        _ = dispatch;
         var request = payload.Decode<AuthenticateReq>();
         var authenticated = await channels.RequestToChannel(
                 SampleNames.ApiChannel,

@@ -93,9 +93,9 @@ public sealed class GameSession(IZLinkSessionContext context, IZLinkActorManager
     private IZLinkSessionActor? _actor;
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header, ZLinkMessage payload, CancellationToken ct)
+        ZLinkSessionDispatchContext dispatch, ZLinkMessage payload, CancellationToken ct)
     {
-        if (header.Name == "auth")
+        if (dispatch.PacketName == "auth")
         {
             var req = payload.Decode<AuthReq>();
             IZLinkActor actor = await actors.GetOrCreateAsync(req.PlayerId, "player", ct);
@@ -103,7 +103,7 @@ public sealed class GameSession(IZLinkSessionContext context, IZLinkActorManager
             await context.Client.Reply(new AuthOk()).Async();
             return;
         }
-        await _actor!.RelayAsync(header, payload, ct);
+        await _actor!.RelayAsync(payload, ct);
     }
 
     public ValueTask OnConnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;

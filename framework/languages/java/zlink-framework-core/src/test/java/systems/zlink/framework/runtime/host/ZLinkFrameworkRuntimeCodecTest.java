@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
-import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
@@ -32,14 +32,14 @@ final class ZLinkFrameworkRuntimeCodecTest {
 
     static final class MarkerSerializer implements ZLinkMessageSerializer {
         @Override
-        public <T> Message serialize(T value) {
+        public <T> ZLinkEncodedPayload serialize(T value) {
             Marker marker = (Marker) value;
-            return Message.from(("MARKER:" + marker.value()).getBytes(StandardCharsets.UTF_8));
+            return ZLinkEncodedPayload.from(("MARKER:" + marker.value()).getBytes(StandardCharsets.UTF_8));
         }
 
         @Override
-        public <T> T deserialize(Message message, Class<T> type) {
-            String text = new String(message.toByteArray(), StandardCharsets.UTF_8);
+        public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
+            String text = new String(payload.bytes(), StandardCharsets.UTF_8);
             String value = text.startsWith("MARKER:") ? text.substring("MARKER:".length()) : text;
             return type.cast(new Marker(value));
         }

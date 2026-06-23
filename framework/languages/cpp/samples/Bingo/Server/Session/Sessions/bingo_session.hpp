@@ -50,11 +50,11 @@ class bingo_session_t final : public zlink::framework::packet_stream_session_t
     }
 
     task_t<void> on_packet (zlink::framework::stream_t &stream,
-                            const zlink::framework::stream_header_t &header,
+                            const zlink::framework::stream_dispatch_context_t &dispatch,
                             const zlink::framework::message_t &payload) override
     {
-        if (_authenticate.can_handle (header)) {
-            auto authenticated = co_await _authenticate.handle (_actors, stream, header, payload);
+        if (_authenticate.can_handle (dispatch)) {
+            auto authenticated = co_await _authenticate.handle (_actors, stream, payload);
             _bound_actor_id = std::string (authenticated.actor_id ());
             _gateway.bind_session_stream (*_bound_actor_id, stream,
                                           zlink::framework::stream_codec_t::protobuf);
@@ -62,16 +62,16 @@ class bingo_session_t final : public zlink::framework::packet_stream_session_t
         }
 
         auto actor = require_bound_actor (std::string ("relaying packet '")
-                                          + std::string (header.packet_name ()) + "'");
+                                          + std::string (dispatch.packet_name ()) + "'");
         if (!actor) {
             co_return;
         }
-        if (header.kind () == zlink::framework::stream_message_kind_t::request) {
-            auto reply = co_await actor.value ().relay_request (header, payload).async ();
-            co_await stream.reply_packet (header, reply).async ();
+        if (dispatch.can_reply ()) {
+            auto reply = co_await actor.value ().relay_request (payload).async ();
+            co_await stream.reply_packet (reply).async ();
             co_return;
         }
-        co_await actor.value ().relay (header, payload).async ();
+        co_await actor.value ().relay (payload).async ();
         co_return;
     }
 

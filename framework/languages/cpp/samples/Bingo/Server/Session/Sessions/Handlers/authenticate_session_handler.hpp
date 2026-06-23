@@ -25,15 +25,14 @@ class authenticate_session_handler_t
     {
     }
 
-    bool can_handle (const zlink::framework::stream_header_t &header) const
+    bool can_handle (const zlink::framework::stream_dispatch_context_t &dispatch) const
     {
-        return header.packet_name () == authenticate_req_t::packet_name;
+        return dispatch.packet_name () == authenticate_req_t::packet_name;
     }
 
     zlink::framework::task_t<zlink::framework::session_actor_t>
     handle (zlink::framework::session_actor_manager_t &actors,
             zlink::framework::stream_t &stream,
-            const zlink::framework::stream_header_t &header,
             const zlink::framework::message_t &payload)
     {
         auto request = payload.decode<authenticate_req_t> ();
@@ -61,8 +60,9 @@ class authenticate_session_handler_t
         auto bound = co_await actors.bind (to_actor_ref (ensured)).async ();
 
         co_await stream
-          .reply_packet (header, authenticate_res_t{ensured.actor_id, authenticated.display_name,
-                                                    ensured.actor.node_rid})
+          .reply_packet (zlink::framework::message_t::from (
+            authenticate_res_t{ensured.actor_id, authenticated.display_name,
+                               ensured.actor.node_rid}))
           .async ();
 
         co_return bound;

@@ -42,9 +42,9 @@ import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 final class HandlerContractTest {
@@ -169,23 +169,23 @@ final class HandlerContractTest {
 
     @Test
     void sessionDispatchContractsUseFrameworkMessages() throws NoSuchMethodException {
-        ZLinkSession.class.getMethod("onDispatch", ZLinkStreamHeader.class, ZLinkMessage.class);
+        ZLinkSession.class.getMethod("onDispatch", ZLinkSessionDispatchContext.class, ZLinkMessage.class);
         ZLinkSessionPacketHandler.class.getMethod(
             "handle",
             ZLinkSessionContext.class,
-            ZLinkStreamHeader.class,
+            ZLinkSessionDispatchContext.class,
             ZLinkMessage.class);
         ZLinkTypedSessionPacketHandler.class.getMethod(
             "handle",
             ZLinkSessionContext.class,
-            ZLinkStreamHeader.class,
+            ZLinkSessionDispatchContext.class,
             ZLinkMessage.class);
         ZLinkSessionPacketDispatcher.class.getMethod(
             "tryHandleAsync",
             ZLinkSessionContext.class,
-            ZLinkStreamHeader.class,
+            ZLinkSessionDispatchContext.class,
             ZLinkMessage.class);
-        ZLinkSessionActor.class.getMethod("relay", ZLinkStreamHeader.class, ZLinkMessage.class);
+        ZLinkSessionActor.class.getMethod("relay", ZLinkMessage.class);
     }
 
     @Test

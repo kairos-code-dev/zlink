@@ -23,7 +23,7 @@
 
 서버와 client 의 역할은 다음과 같이 나뉜다.
 
-- 서버 framework 의 callback 이 받는 값은 `ZlinkStreamHeader header` 와
+- 서버 framework 의 callback 이 받는 값은 `ZLinkSessionDispatchContext dispatch` 와
   `ZLinkMessage payload` 이다.
 - connector 의 typed API 와 fluent API 는, client 쪽에서 wire 의 header / payload 를 만들어
   주는 helper 계층이다.
@@ -295,40 +295,10 @@ helper header 는 binary header 다. 구조는 다음과 같다.
 +---------+----------+----------+------------------+-----------+-------+
 ```
 
-`.NET` enum 값은 공통 helper header 값과 그대로 일치시킨다.
-
-```csharp
-public enum ZlinkStreamMessageKind : byte
-{
-    Send = 1,
-    Request = 2,
-    Response = 3,
-    Error = 4,
-    Control = 5
-}
-
-[Flags]
-public enum ZlinkStreamHeaderFlags : byte
-{
-    None = 0,
-    HasRequestSeq = 0x01,
-    HasMetadata = 0x02,
-    PayloadCompressed = 0x04
-}
-
-public readonly record struct ZlinkStreamRequestSeq(ulong Value);
-
-public sealed record ZlinkStreamHeader(
-    ZlinkStreamMessageKind Kind,
-    ZlinkStreamCodec Codec,
-    ZlinkStreamHeaderFlags Flags,
-    ZlinkStreamRequestSeq? RequestSeq,
-    string Name,
-    ZlinkStreamMetadata Metadata);
-```
-
-`request_seq` 는 `u64` 형식의 correlation sequence 다. request, response, error response
-에만 들어간다. 규칙은 다음과 같다.
+STREAM header 값은 connector runtime 내부에서 만든다. client 예제는 header 객체를 직접
+만들지 않고, request call에 packet name과 metadata를 설정한다. `request_seq` 는 runtime 이
+관리하는 `u64` 형식의 correlation sequence 다. request, response, error response에만
+들어간다. 규칙은 다음과 같다.
 
 - 같은 connector instance 안에서 동시에 pending 상태인 request 사이에는, connector 가
   만들어 내는 `request_seq` 값이 결코 중복되면 안 된다.

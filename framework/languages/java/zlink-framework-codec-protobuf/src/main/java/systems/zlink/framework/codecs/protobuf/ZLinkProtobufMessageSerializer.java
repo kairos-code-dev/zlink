@@ -6,6 +6,7 @@ import com.google.protobuf.Parser;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 
 final class ZLinkProtobufMessageSerializer implements ZLinkMessageSerializer {
@@ -19,18 +20,18 @@ final class ZLinkProtobufMessageSerializer implements ZLinkMessageSerializer {
     }
 
     @Override
-    public <T> Message serialize(T value) {
+    public <T> ZLinkEncodedPayload serialize(T value) {
         if (value instanceof MessageLite protobuf) {
-            return Message.from(protobuf.toByteArray());
+            return ZLinkEncodedPayload.from(protobuf.toByteArray());
         }
         throw new IllegalArgumentException(
             "Protobuf codec cannot serialize value of type " + valueTypeName(value));
     }
 
     @Override
-    public <T> T deserialize(Message message, Class<T> type) {
+    public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
         if (canSerialize(type)) {
-            return parseProtobuf(message, type);
+            return parseProtobuf(payload, type);
         }
         throw new IllegalArgumentException(
             "Protobuf codec cannot deserialize payload as " + type.getName());
@@ -44,10 +45,10 @@ final class ZLinkProtobufMessageSerializer implements ZLinkMessageSerializer {
         }
     }
 
-    private static <T> T parseProtobuf(Message message, Class<T> type) {
+    private static <T> T parseProtobuf(ZLinkEncodedPayload payload, Class<T> type) {
         try {
             Parser<?> parser = parserFor(type);
-            return type.cast(parser.parseFrom(message.toByteArray()));
+            return type.cast(parser.parseFrom(payload.bytes()));
         } catch (InvalidProtocolBufferException ex) {
             throw new IllegalArgumentException(
                 "failed to deserialize Protobuf message as " + type.getName(),

@@ -178,7 +178,7 @@ public final class GameChatSession implements ZLinkSession {
     @Override public void onError(ZLinkStreamError error) {}
 
     @Override
-    public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
+    public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
         if ("auth".equals(header.name())) {
             AuthPlayerReq req = payload.decode(AuthPlayerReq.class);
             player = actors.getOrCreate(req.playerId(), "player")
@@ -189,7 +189,7 @@ public final class GameChatSession implements ZLinkSession {
             return;
         }
         if (player == null) { throw new IllegalStateException("actor is not bound"); }
-        player.relay(header, payload).toCompletableFuture().join();
+        player.relay(payload).toCompletableFuture().join();
     }
 }
 ```

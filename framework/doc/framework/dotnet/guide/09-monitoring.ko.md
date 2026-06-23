@@ -50,10 +50,11 @@ builder.Services.AddZLinkMonitoring(monitor =>
         ZLinkSocketEventKind.ConnectionReady,
         ZLinkSocketEventKind.Disconnected);
 
-    monitor.AddRegistryEvents("registry", TimeSpan.FromSeconds(1));
+    monitor.AddRegistryEvents("registry", TimeSpan.FromSeconds(1));   // polling 주기를 항상 명시(숨은 기본값 없음)
     monitor.AddSpotEvents("stage-node", TimeSpan.FromSeconds(1));
 });
 
+// AddZLinkMonitoring 은 source 등록만 한다 — event handler 는 자동 등록되지 않으니 직접 DI 로 등록한다.
 builder.Services.AddSingleton<
     IZLinkRuntimeEventHandler<ZLinkSocketEvent>,
     ProfileServerSocketMonitor>();
@@ -121,9 +122,10 @@ public sealed class RegistryMonitor(ILogger<RegistryMonitor> logger)
 {
     public ValueTask HandleAsync(ZLinkRegistryEvent @event, CancellationToken ct)
     {
-        switch (@event.Event)
+        switch (@event.Event)   // 3종 고정: StatusChanged / TopologyChanged / ServiceSummaryChanged
         {
             case ZLinkRegistryEventKind.StatusChanged:
+                // raw monitor 가 없어 주기 snapshot 을 직전 값과 비교해 합성한 이벤트(그래서 polling 주기가 필요).
                 logger.LogInformation("registry status: {State}", @event.Status?.State);
                 break;
             case ZLinkRegistryEventKind.TopologyChanged:
@@ -147,9 +149,10 @@ public sealed class StageNodeMonitor(ILogger<StageNodeMonitor> logger)
 {
     public ValueTask HandleAsync(ZLinkSpotEvent @event, CancellationToken ct)
     {
-        switch (@event.Event)
+        switch (@event.Event)   // 5종 고정(StatusChanged 포함) — 여기선 4 케이스만 처리
         {
             case ZLinkSpotEventKind.PeersChanged:
+                // peers/subjects 는 interval snapshot diff 로 합성된다(주기 의존).
                 logger.LogInformation("spot peers: {Source} {Count}",
                     @event.SourceName, @event.Peers?.Count ?? 0);
                 break;
@@ -157,6 +160,7 @@ public sealed class StageNodeMonitor(ILogger<StageNodeMonitor> logger)
                 logger.LogInformation("spot subjects: {Source} {Count}",
                     @event.SourceName, @event.Subjects?.Count ?? 0);
                 break;
+            // 이 둘만 발생 시점에 즉시 발행된다(polling 주기를 기다리지 않음).
             case ZLinkSpotEventKind.TimerHandlerFailed:
             case ZLinkSpotEventKind.TimerStoppedAfterUnhandledException:
                 logger.LogError("spot timer failed: {Source} {Timer} {Handler} {Exception}",

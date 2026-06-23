@@ -22,7 +22,7 @@ public sealed class CodecContracts
     {
         IZLinkMessageSerializer serializer = new ExampleMessageSerializer();
 
-        using var encoded = serializer.Serialize(new Order("A-1", 3), typeof(Order));
+        var encoded = serializer.Serialize(new Order("A-1", 3), typeof(Order));
         var decoded = (Order?)serializer.Deserialize(encoded, typeof(Order));
 
         Assert.Equal(new Order("A-1", 3), decoded);
@@ -32,15 +32,15 @@ public sealed class CodecContracts
 
     private sealed class ExampleMessageSerializer : IZLinkMessageSerializer
     {
-        public Message Serialize(object value, Type type)
+        public ZLinkEncodedPayload Serialize(object value, Type type)
         {
             var order = (Order)value;
-            return Message.From($"{order.Sku}:{order.Quantity}");
+            return ZLinkEncodedPayload.From(System.Text.Encoding.UTF8.GetBytes($"{order.Sku}:{order.Quantity}"));
         }
 
-        public object? Deserialize(Message message, Type type)
+        public object? Deserialize(ZLinkEncodedPayload payload, Type type)
         {
-            var parts = message.GetString().Split(':');
+            var parts = System.Text.Encoding.UTF8.GetString(payload.Bytes.Span).Split(':');
             return new Order(parts[0], int.Parse(parts[1]));
         }
     }

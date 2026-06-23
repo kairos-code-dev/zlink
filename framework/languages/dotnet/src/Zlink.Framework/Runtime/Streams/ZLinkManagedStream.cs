@@ -8,13 +8,16 @@ internal sealed class ZLinkManagedStream : IZLinkStream
 {
     private readonly IZLinkBackendStreamSocket _socket;
     private readonly RoutingId _routingId;
+    private readonly ZLinkCodecRegistryBuilder _codecs;
 
     public ZLinkManagedStream(
         IZLinkBackendStreamSocket socket,
-        RoutingId routingId)
+        RoutingId routingId,
+        ZLinkCodecRegistryBuilder codecs)
     {
         _socket = socket;
         _routingId = routingId;
+        _codecs = codecs;
         SessionId = _routingId.ToHex();
     }
 
@@ -27,6 +30,15 @@ internal sealed class ZLinkManagedStream : IZLinkStream
     public string? RemoteAddr { get; private set; }
 
     public bool Write(
+        ZLinkMessage payload,
+        SendFlags flags = SendFlags.None)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        using var raw = payload.ToRawMessage(_codecs);
+        return WriteRaw(raw, flags);
+    }
+
+    internal bool WriteRaw(
         Message payload,
         SendFlags flags = SendFlags.None)
     {

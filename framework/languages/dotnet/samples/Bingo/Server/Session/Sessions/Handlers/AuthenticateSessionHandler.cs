@@ -18,11 +18,11 @@ internal sealed class AuthenticateBingoSessionHandler(
 
     public async ValueTask HandleAsync(
         IZLinkSessionContext context,
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
-        _ = header;
+        _ = dispatch;
         var request = payload.Decode<AuthenticateReq>();
         var authenticated = await channels.RequestToChannel(
                 SampleNames.ApiChannel,

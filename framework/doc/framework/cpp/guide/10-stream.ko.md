@@ -83,7 +83,7 @@ stateDiagram-v2
 
 전형적인 `on_packet` 패턴은 [9장 §4](09-actor-session.ko.md#4-session-actor-바인딩)에 있다:
 인증 패킷이면 인증 → actor 바인딩, 그 외에는 바인딩된 actor로
-`relay(header, payload)`.
+`relay(payload)`.
 
 동기 완료만 필요한 훅은 완료된 task를 바로 돌려준다.
 
@@ -105,12 +105,10 @@ co_await stream.write_packet (header, payload).async ();          // framework m
 co_await stream.reply_packet (request_header, payload).async ();  // 요청에 대한 응답
 ```
 
-기존에 binding `zlink::message_t`를 직접 만들어 `write_packet(...)`에 넘기던 방식은
-일반 업무 API에서 제거한다. raw payload를 그대로 보존해야 하는 runtime boundary나
-test harness는 이름에 raw가 드러나는 `write_packet_raw(...)`,
-`reply_packet_raw(...)`를 사용한다. custom codec은 기존처럼 builder/options에
-등록하고, session 업무 코드는 codec helper 대신 DTO 또는 framework `message_t`를
-사용한다.
+STREAM session은 `stream_dispatch_context_t`와 `zlink::message_t` payload를 받는다.
+header 객체를 application code가 만들거나 reply/relay 호출에 다시 넘기지 않는다. custom
+codec은 기존처럼 builder/options에 등록하고, session 업무 코드는 packet name과 metadata만
+dispatch context에서 읽는다.
 
 ## 4. 클라이언트: stream connector
 

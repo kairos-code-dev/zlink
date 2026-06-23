@@ -29,7 +29,7 @@ sequenceDiagram
     C->>SS: place_mark 패킷
     SS->>AM: find(actor_id)
     AM-->>SS: session_actor_t
-    SS->>GW: actor.relay(header, payload)
+    SS->>GW: actor.relay(payload)
     GW->>SP: actor 패킷 핸들러 dispatch (8장 직렬 큐)
     SP-->>GW: 응답
     GW-->>C: reply 패킷
@@ -155,7 +155,7 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
 | `session_actor_manager_t::bind(actor_ref)` | 이미 만들어진 actor 참조를 session actor로 바인딩 (`request_call_t<session_actor_t>`) |
 | `session_actor_manager_t::find(actor_id)` | 바인딩된 actor 핸들 조회 (`std::optional<session_actor_t>`) |
 | `session_actor_manager_t::unbind_session(actor_id)` | session-액터 바인딩 해제 |
-| `session_actor_t::relay(header, payload).async()` | 클라이언트 패킷을 actor가 입장한 spot으로 relay |
+| `session_actor_t::relay(payload).async()` | 클라이언트 패킷을 actor가 입장한 spot으로 relay |
 
 ## 5. actor gateway
 

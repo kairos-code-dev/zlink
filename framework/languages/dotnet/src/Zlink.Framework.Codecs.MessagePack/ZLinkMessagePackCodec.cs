@@ -47,14 +47,15 @@ public sealed class ZLinkMessagePackCodec : IZLinkCodecExtension, IZlinkStreamPa
     {
         public static MessagePackSerializerAdapter Instance { get; } = new();
 
-        public Message Serialize(object value, Type type)
+        public ZLinkEncodedPayload Serialize(object value, Type type)
         {
-            return Message.From(MessagePackSerializer.Serialize(type, value, MessagePackSerializerOptions.Standard));
+            return ZLinkEncodedPayload.From(
+                MessagePackSerializer.Serialize(type, value, MessagePackSerializerOptions.Standard));
         }
 
-        public object? Deserialize(Message message, Type type)
+        public object? Deserialize(ZLinkEncodedPayload payload, Type type)
         {
-            return MessagePackSerializer.Deserialize(type, message.AsReadOnlyMemory(), MessagePackSerializerOptions.Standard);
+            return MessagePackSerializer.Deserialize(type, payload.Bytes, MessagePackSerializerOptions.Standard);
         }
     }
 }

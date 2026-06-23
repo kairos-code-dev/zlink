@@ -28,11 +28,13 @@ template <typename... TPayloads> class protobuf_codec_extension_t
     static void register_payload (TBuilder &codecs)
     {
         codecs.template add_serializer<TPayload> (
-          [] (const TPayload &value) { return to_stream_payload (value); },
-          [] (const zlink::message_t &message) {
-              TPayload value{};
-              from_stream_payload (message, value);
-              return value;
+          [] (const TPayload &value) {
+              return zlink::framework::detail::encoded_payload_from_raw (
+                zlink::message_t::from_json (value));
+          },
+          [] (const zlink::framework::encoded_payload_t &payload) {
+              return zlink::framework::detail::encoded_payload_to_raw (payload)
+                .template parse_json<TPayload> ();
           });
     }
 };

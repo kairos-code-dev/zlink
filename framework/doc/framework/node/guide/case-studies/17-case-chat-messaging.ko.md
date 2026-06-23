@@ -120,7 +120,7 @@ export class ChatSession implements ZLinkSession {
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
   ) {}
 
-  async onDispatch(header: ZlinkStreamHeader, payload: ZLinkMessage): Promise<void> {
+  async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     if (header.name === 'auth') {
       const req = payload.decode<AuthReq>();
       const actor = await this.actors.getOrCreate(req.userId, 'user');
@@ -131,7 +131,7 @@ export class ChatSession implements ZLinkSession {
     if (!this.user) {
       throw new Error('actor is not bound');
     }
-    await this.user.relay(header, payload);
+    await this.user.relay(payload);
   }
 }
 ```

@@ -1,9 +1,7 @@
 import type {
   ActorRef,
-  Message,
   RoutingId,
   Type,
-  ZlinkStreamHeader,
   ZLinkActor,
   ZLinkBoundSession,
   ZLinkBoundSessionFactory,
@@ -14,6 +12,7 @@ import type {
   ZLinkSessionContext,
   ZLinkSessionFactory,
   ZLinkSession,
+  ZLinkSessionDispatchContext,
   ZLinkProviderResolver,
   ZLinkSessionReplyCall,
   ZLinkSessionSendCall,
@@ -31,6 +30,7 @@ import {
   ZLinkMessage,
   ZLinkMessageFlowPhase
 } from '../../contracts';
+import type { Message } from '../../contracts/Common/Message';
 import { ZLinkConfigurationException, type ZLinkFrameworkRegistration } from '../configuration';
 import { ZLinkDispatchErrorReporter } from '../channels';
 import { flowIfEnabled } from '../diagnostics';
@@ -55,9 +55,7 @@ import {
   lz4Pickle,
   lz4Unpickle,
   messageToBytes,
-  requireStreamFrameHeader,
   resolvePacketName,
-  tryGetStreamFrameHeader,
   utf8Decode,
   utf8Encode,
   ZLinkStreamCodec,
@@ -70,6 +68,14 @@ const ZLINK_SEND_DONT_WAIT = 1 as ZLinkBackendSendFlags;
 const ZLINK_NATIVE_BOUND_SESSION_RETRY_DELAY_MS = 10;
 const REMOTE_BOUND_SESSION_BIND_PACKET = 'zlink.framework.actor.bound_session.bind';
 
+function createDispatchContext(header: ZLinkStreamFrameHeader): ZLinkSessionDispatchContext {
+  return {
+    packetName: header.name,
+    metadata: header.metadata,
+    canReply: header.requestSeq !== undefined
+  };
+}
+
 export interface ZLinkStreamBindingRuntimeOptions {
   readonly transport?: ZLinkBoundSessionTransport;
   readonly messageFactory?: ZLinkStreamMessageFactory;
@@ -78,7 +84,7 @@ export interface ZLinkStreamBindingRuntimeOptions {
   readonly actorBindTimeoutMs?: number;
   readonly actorRefResolver?: (actor: ZLinkActor) => ActorRef;
   readonly nativeActorNodeProvider?: () => ZLinkBackendSpotNode | undefined;
-  readonly relay?: (actor: ZLinkSessionActor, header: ZlinkStreamHeader, payload: Message, signal?: AbortSignal) => Promise<boolean>;
+  readonly relay?: (actor: ZLinkSessionActor, header: ZLinkStreamFrameHeader, payload: Message, signal?: AbortSignal) => Promise<boolean>;
   readonly notifyDisconnected?: (actor: ZLinkSessionActor, signal?: AbortSignal) => Promise<void>;
 }
 
@@ -121,7 +127,6 @@ export interface ZLinkStreamSessionRuntimeOptions {
   readonly socket: ZLinkBackendStreamSocket;
   readonly sessionFactory: (context: DefaultZLinkSessionContext) => ZLinkSession | Promise<ZLinkSession>;
   readonly bindingRuntime?: ZLinkStreamBindingRuntime;
-  readonly headerDecoder?: (header: Message) => ZlinkStreamHeader;
   readonly onError?: (error: unknown) => void;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
@@ -175,7 +180,6 @@ export class ZLinkStreamRuntimeManager {
         bindingRuntime: this.options.bindingRuntime,
         dispatchErrors: this.options.dispatchErrors,
         messageSerializers: this.options.registration.messageSerializers,
-        headerDecoder: (header) => decodeStreamHeader(messageToBytes(header)),
         sessionFactory: (context) => createStreamSessionInstance(
           sessionType as Type<ZLinkSession> | Type<ZLinkSessionFactory>,
           this.options.providerResolver,
@@ -215,6 +219,7 @@ export class ZLinkManagedStream implements ZLinkStream {
   constructor(
     private readonly socket: ZLinkBackendStreamSocket,
     private readonly backendSessionRoutingId: unknown,
+    private readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>,
     private readonly publicSessionId = streamSessionIdFromRoutingId(backendSessionRoutingId)
   ) {}
 
@@ -238,7 +243,15 @@ export class ZLinkManagedStream implements ZLinkStream {
     return this.currentRemoteAddr;
   }
 
-  write(payload: Message, flags?: ZLinkBackendSendFlags): boolean {
+  write(payload: ZLinkMessage, flags?: ZLinkBackendSendFlags): boolean {
+    return this.socket.send(
+      this.backendRoutingId(),
+      encodeFrameworkPayloadMessage(payload, this.messageSerializers),
+      flags ?? 0
+    );
+  }
+
+  writeRaw(payload: Message, flags?: ZLinkBackendSendFlags): boolean {
     return this.socket.send(this.backendRoutingId(), payload, flags ?? 0);
   }
 
@@ -281,7 +294,7 @@ export class ZLinkStreamSessionRuntime {
     private readonly removeSession: (sessionId: string) => void = () => {}
   ) {
     const bindingRuntime = options.bindingRuntime ?? new ZLinkStreamBindingRuntime();
-    this.stream = new ZLinkManagedStream(options.socket, routingId);
+    this.stream = new ZLinkManagedStream(options.socket, routingId, options.messageSerializers);
     this.context = bindingRuntime.createSessionContext(this.stream, (signal) => this.close(signal));
     const sessionOrPromise = options.sessionFactory(this.context);
     this.sessionReady = isPromiseLike(sessionOrPromise)
@@ -365,55 +378,53 @@ export class ZLinkStreamSessionRuntime {
   }
 
   private async dispatchPacket(header: Message, payload: Message): Promise<void> {
-    let decodedHeader: ZlinkStreamHeader | undefined;
+    let decodedHeader: ZLinkStreamFrameHeader | undefined;
     let dispatchPayload = payload;
     try {
-      decodedHeader = this.options.headerDecoder?.(header) ?? header;
+      decodedHeader = decodeStreamHeader(messageToBytes(header));
       dispatchPayload = this.context.payloadForHeader(decodedHeader, payload);
       if (this.context.tryCompleteResponse(decodedHeader, dispatchPayload)) {
         return;
       }
       this.context.enterDispatch(decodedHeader);
       const session = await this.requireSession();
-      const frameHeader = tryGetStreamFrameHeader(decodedHeader);
-      const streamKind = frameHeader?.kind === ZLinkStreamMessageKind.Request
+      const streamKind = decodedHeader.kind === ZLinkStreamMessageKind.Request
         ? ZLinkDispatchMessageKind.Request
         : ZLinkDispatchMessageKind.Send;
-      const streamCorr = frameHeader?.correlationId ?? frameHeader?.requestSeq?.toString();
+      const streamCorr = decodedHeader.correlationId ?? decodedHeader.requestSeq?.toString();
       flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Received)?.trace({
         phase: ZLinkMessageFlowPhase.Received,
         surface: ZLinkDispatchErrorSurface.StreamSession,
         messageKind: streamKind,
-        packetName: frameHeader?.name,
+        packetName: decodedHeader.name,
         correlationId: streamCorr,
         sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId)
       });
       await session.onDispatch?.(
-        decodedHeader,
+        createDispatchContext(decodedHeader),
         wrapFrameworkPayloadMessage(dispatchPayload, this.options.messageSerializers)
       );
       flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowPhase.Dispatched)?.trace({
         phase: ZLinkMessageFlowPhase.Dispatched,
         surface: ZLinkDispatchErrorSurface.StreamSession,
         messageKind: streamKind,
-        packetName: frameHeader?.name,
+        packetName: decodedHeader.name,
         correlationId: streamCorr,
         sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId)
       });
     } catch (error) {
-      const frameHeader = tryGetStreamFrameHeader(decodedHeader);
       this.options.dispatchErrors?.report({
         surface: ZLinkDispatchErrorSurface.StreamSession,
-        messageKind: frameHeader?.kind === ZLinkStreamMessageKind.Request
+        messageKind: decodedHeader?.kind === ZLinkStreamMessageKind.Request
           ? ZLinkDispatchMessageKind.Request
           : ZLinkDispatchMessageKind.Send,
         reason: ZLinkDispatchErrorReason.HandlerException,
-        action: frameHeader?.requestSeq === undefined
+        action: decodedHeader?.requestSeq === undefined
           ? ZLinkDispatchErrorAction.Drop
           : ZLinkDispatchErrorAction.ReplyError,
-        packetName: frameHeader?.name,
+        packetName: decodedHeader?.name,
         sourceRid: this.context.routingId === undefined ? undefined : String(this.context.routingId),
-        correlationId: frameHeader?.correlationId ?? frameHeader?.requestSeq?.toString(),
+        correlationId: decodedHeader?.correlationId ?? decodedHeader?.requestSeq?.toString(),
         error
       });
       this.options.onError?.(error);
@@ -430,9 +441,8 @@ export class ZLinkStreamSessionRuntime {
     }
   }
 
-  private async replyDispatchError(header: ZlinkStreamHeader | undefined, error: unknown): Promise<void> {
-    const decoded = tryGetStreamFrameHeader(header);
-    if (decoded?.requestSeq === undefined) {
+  private async replyDispatchError(header: ZLinkStreamFrameHeader | undefined, error: unknown): Promise<void> {
+    if (header?.requestSeq === undefined) {
       return;
     }
     const frame = encodeStreamFrame(
@@ -440,10 +450,10 @@ export class ZLinkStreamSessionRuntime {
         kind: ZLinkStreamMessageKind.Error,
         codec: ZLinkStreamCodec.Json,
         flags: ZLinkStreamHeaderFlags.HasRequestSeq,
-        requestSeq: decoded.requestSeq,
-        name: decoded.name,
+        requestSeq: header.requestSeq,
+        name: header.name,
         metadata: new Map(),
-        correlationId: decoded.correlationId
+        correlationId: header.correlationId
       },
       utf8Encode(JSON.stringify({
         code: error instanceof Error ? error.constructor.name : undefined,
@@ -452,7 +462,7 @@ export class ZLinkStreamSessionRuntime {
     );
     const message = simpleMessage(frame) as Message;
     try {
-      if (!this.context.stream.write(message)) {
+      if (!this.context.stream.writeRaw(message)) {
         throw new Error('Client stream error reply send failed.');
       }
     } catch (replyError) {
@@ -589,7 +599,7 @@ export class ZLinkStreamBindingRuntime {
     this.frameMessages = new ZLinkStreamFrameMessageFactory(options);
   }
 
-  createSessionContext(stream: ZLinkStream, close?: (signal?: AbortSignal) => Promise<void>): DefaultZLinkSessionContext {
+  createSessionContext(stream: ZLinkManagedStream, close?: (signal?: AbortSignal) => Promise<void>): DefaultZLinkSessionContext {
     return new DefaultZLinkSessionContext(this, stream, close ?? ((signal) => stream.close(signal)));
   }
 
@@ -719,7 +729,7 @@ export class ZLinkStreamBindingRuntime {
       message
     );
     try {
-      if (!route.context.stream.write(frame)) {
+      if (!route.context.stream.writeRaw(frame)) {
         throw new Error(`Actor '${actorId}' local bound session send failed.`);
       }
       this.routes.requireCurrentToken(actorId, route.bindingToken);
@@ -749,7 +759,7 @@ export class ZLinkStreamBindingRuntime {
       message
     );
     try {
-      if (!route.context.stream.write(frame)) {
+      if (!route.context.stream.writeRaw(frame)) {
         throw new Error(`Actor '${actorId}' local bound session response failed.`);
       }
       this.routes.requireCurrentToken(actorId, route.bindingToken);
@@ -782,7 +792,7 @@ export class ZLinkStreamBindingRuntime {
       }
     );
     try {
-      if (!route.context.stream.write(frame)) {
+      if (!route.context.stream.writeRaw(frame)) {
         throw new Error(`Actor '${actorId}' local bound session error response failed.`);
       }
       this.routes.requireCurrentToken(actorId, route.bindingToken);
@@ -866,18 +876,18 @@ export class ZLinkStreamBindingRuntime {
 
   async relay(
     actor: DefaultZLinkSessionActor,
-    header: ZlinkStreamHeader,
-    payload: ZLinkMessage | Message,
+    payload: ZLinkMessage,
     signal?: AbortSignal
   ): Promise<void> {
     this.routes.requireCurrentToken(actor.actorId, actor.bindingToken);
-    const frameworkPayload = payload instanceof ZLinkMessage
-      ? payload
-      : ZLinkMessage.fromEncoded(payload, this.options.messageSerializers);
-    const payloadMessage = encodeFrameworkPayloadMessage(frameworkPayload, this.options.messageSerializers);
+    const currentHeader = this.routes.requireRoute(actor.actorId).context.dispatchHeader;
+    if (currentHeader === undefined) {
+      throw new Error('Session actor relay requires an active stream dispatch.');
+    }
+    const payloadMessage = encodeFrameworkPayloadMessage(payload, this.options.messageSerializers);
     try {
       if (this.options.relay !== undefined) {
-        const handled = await this.options.relay(actor, header, payloadMessage, signal);
+        const handled = await this.options.relay(actor, currentHeader, payloadMessage, signal);
         if (handled) {
           return;
         }
@@ -886,7 +896,7 @@ export class ZLinkStreamBindingRuntime {
       if (!(route.context.stream instanceof ZLinkManagedStream)) {
         return;
       }
-      const headerMessage = this.frameMessages.createBinaryMessage(encodeStreamHeader(requireStreamFrameHeader(header)));
+      const headerMessage = this.frameMessages.createBinaryMessage(encodeStreamHeader(currentHeader));
       const framePayloadMessage = this.frameMessages.createBinaryMessage(messageToBytes(payloadMessage));
       try {
         if (!route.context.stream.sendBoundActor(actor.actorId, [headerMessage, framePayloadMessage], 0)) {
@@ -897,9 +907,7 @@ export class ZLinkStreamBindingRuntime {
         framePayloadMessage.close();
       }
     } finally {
-      if (!frameworkPayload.isEncoded()) {
-        payloadMessage.close();
-      }
+      payloadMessage.close();
     }
   }
 
@@ -1178,7 +1186,7 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
 
   constructor(
     private readonly runtime: ZLinkStreamBindingRuntime,
-    readonly stream: ZLinkStream,
+    readonly stream: ZLinkManagedStream,
     private readonly closeSession: (signal?: AbortSignal) => Promise<void>
   ) {
     this.client = new DefaultZLinkSessionClient(this);
@@ -1238,8 +1246,8 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
     );
   }
 
-  enterDispatch(header: ZlinkStreamHeader): void {
-    this.currentDispatchHeader = tryGetStreamFrameHeader(header);
+  enterDispatch(header: ZLinkStreamFrameHeader): void {
+    this.currentDispatchHeader = header;
   }
 
   exitDispatch(): void {
@@ -1254,23 +1262,21 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
     return this.requests.start(timeoutMs);
   }
 
-  tryCompleteResponse(header: ZlinkStreamHeader, payload: Message): boolean {
-    const decoded = tryGetStreamFrameHeader(header);
-    if (decoded?.requestSeq === undefined) {
+  tryCompleteResponse(header: ZLinkStreamFrameHeader, payload: Message): boolean {
+    if (header.requestSeq === undefined) {
       return false;
     }
-    if (decoded.kind === ZLinkStreamMessageKind.Response) {
-      return this.requests.complete(decoded.requestSeq, payload);
+    if (header.kind === ZLinkStreamMessageKind.Response) {
+      return this.requests.complete(header.requestSeq, payload);
     }
-    if (decoded.kind === ZLinkStreamMessageKind.Error) {
-      return this.requests.fail(decoded.requestSeq, decodeStreamErrorPayload(payload));
+    if (header.kind === ZLinkStreamMessageKind.Error) {
+      return this.requests.fail(header.requestSeq, decodeStreamErrorPayload(payload));
     }
     return false;
   }
 
-  payloadForHeader(header: ZlinkStreamHeader, payload: Message): Message {
-    const decoded = tryGetStreamFrameHeader(header);
-    if (decoded === undefined || (decoded.flags & ZLinkStreamHeaderFlags.PayloadCompressed) === 0) {
+  payloadForHeader(header: ZLinkStreamFrameHeader, payload: Message): Message {
+    if ((header.flags & ZLinkStreamHeaderFlags.PayloadCompressed) === 0) {
       return payload;
     }
     return simpleMessage(lz4Unpickle(messageToBytes(payload))) as Message;
@@ -1363,8 +1369,8 @@ export class DefaultZLinkSessionActor implements ZLinkSessionActor {
     this.actorId = ref.actorId;
   }
 
-  relay(header: ZlinkStreamHeader, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
-    return this.runtime.relay(this, header, payload, signal);
+  relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
+    return this.runtime.relay(this, payload, signal);
   }
 
   notifyDisconnected(signal?: AbortSignal): Promise<void> {
@@ -1587,7 +1593,7 @@ class DefaultZLinkSessionSendCall implements ZLinkSessionSendCall {
       this.message
     );
     try {
-      if (!this.context.stream.write(message)) {
+      if (!this.context.stream.writeRaw(message)) {
         throw new Error('Client stream send failed.');
       }
     } finally {
@@ -1634,7 +1640,7 @@ class DefaultZLinkSessionReplyCall implements ZLinkSessionReplyCall {
       requestHeader.correlationId
     );
     try {
-      if (!this.context.stream.write(message)) {
+      if (!this.context.stream.writeRaw(message)) {
         throw new Error('Client stream reply send failed.');
       }
     } finally {

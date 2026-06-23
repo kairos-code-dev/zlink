@@ -16,7 +16,6 @@ import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSessionActor;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 
 final class BoundSessionTest {
@@ -94,9 +93,7 @@ final class BoundSessionTest {
                 .toCompletableFuture()
                 .join();
 
-            actor.relay(
-                    new ZLinkStreamHeader("PlaceMark", Map.of(), Optional.empty()),
-                    ZLinkMessage.of("place"))
+            actor.relay(ZLinkMessage.of("place"))
                 .toCompletableFuture()
                 .join();
         }

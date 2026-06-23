@@ -60,6 +60,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -68,10 +69,10 @@ import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamError;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
 
 final class ZLinkFrameworkAutoConfigurationTest {
     private static final AtomicInteger NEXT_PORT =
@@ -1091,9 +1092,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @Override
         public void onDispatch(
-            ZLinkStreamHeader header,
-            Message payload) {
-            dispatcher.tryHandleAsync(context, header, payload)
+            ZLinkSessionDispatchContext dispatch,
+            ZLinkMessage payload) {
+            dispatcher.tryHandleAsync(context, dispatch, payload)
                 .toCompletableFuture()
                 .join();
         }
@@ -1119,8 +1120,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Override
         public void handle(
             ZLinkSessionContext context,
-            ZLinkStreamHeader header,
-            Message payload) {
+            ZLinkSessionDispatchContext dispatch,
+            ZLinkMessage payload) {
             count.incrementAndGet();
             handled.complete(null);
         }

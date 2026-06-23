@@ -27,15 +27,17 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionActors;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
-import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private static final Duration RELAY_SUBMIT_TIMEOUT = Duration.ofSeconds(30);
+    private static final ThreadLocal<ZLinkStreamHeader> CURRENT_RELAY_HEADER = new ThreadLocal<>();
     private static final ScheduledExecutorService RELAY_RETRY_EXECUTOR =
         Executors.newSingleThreadScheduledExecutor(task -> {
             Thread thread = new Thread(task, "zlink-java-session-actor-relay");
@@ -59,6 +61,18 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             ZLinkBackendActorRef actor,
             ZLinkStreamHeader header,
             Message payload);
+    }
+
+    public static void enterRelayDispatch(ZLinkStreamHeader header) {
+        CURRENT_RELAY_HEADER.set(header);
+    }
+
+    public static void exitRelayDispatch() {
+        CURRENT_RELAY_HEADER.remove();
+    }
+
+    private static Optional<ZLinkStreamHeader> currentRelayHeader() {
+        return Optional.ofNullable(CURRENT_RELAY_HEADER.get());
     }
 
     public ZLinkSessionActorsRuntime(
@@ -274,18 +288,18 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         }
 
         @Override
-        public CompletionStage<Void> relay(
-            ZLinkStreamHeader header,
-            ZLinkMessage payload) {
-            if (header == null) {
-                return CompletableFuture.failedFuture(new IllegalArgumentException(
-                    "header is required"));
-            }
+        public CompletionStage<Void> relay(ZLinkMessage payload) {
             if (payload == null) {
                 return CompletableFuture.failedFuture(new IllegalArgumentException(
                     "payload is required"));
             }
-            Message message = payload.toMessage(serializer);
+            Optional<ZLinkStreamHeader> currentHeader = currentRelayHeader();
+            if (currentHeader.isEmpty()) {
+                return CompletableFuture.failedFuture(new IllegalStateException(
+                    "Session actor relay requires an active stream dispatch."));
+            }
+            ZLinkStreamHeader header = currentHeader.get();
+            Message message = ZLinkMessagePayloads.message(payload, serializer);
             byte[] payloadBytes = message.toByteArray();
             message.close();
             if (managedActor.isPresent() && localActorDispatcher != null) {

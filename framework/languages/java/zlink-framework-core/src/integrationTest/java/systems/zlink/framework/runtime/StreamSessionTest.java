@@ -33,8 +33,8 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
-import systems.zlink.framework.streams.ZLinkStreamHeader;
 
 final class StreamSessionTest {
     @Test
@@ -218,11 +218,11 @@ final class StreamSessionTest {
 
         @Override
         public void onDispatch(
-            ZLinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
             dispatchedOnVirtualThread.set(Thread.currentThread().isVirtual());
-            if (!"Ping".equals(header.packetName())) {
-                throw new IllegalArgumentException("unexpected packet: " + header.packetName());
+            if (!"Ping".equals(dispatch.packetName())) {
+                throw new IllegalArgumentException("unexpected packet: " + dispatch.packetName());
             }
             context.client().reply("pong").submit().toCompletableFuture().join();
         }
@@ -258,9 +258,9 @@ final class StreamSessionTest {
 
         @Override
         public void onDispatch(
-            ZLinkStreamHeader header,
+            ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload) {
-            if ("Bind".equals(header.packetName())) {
+            if ("Bind".equals(dispatch.packetName())) {
                 String actorId = payload.decode(String.class);
                 actors.getOrCreate(actorId, "player")
                     .thenCompose(actor -> actor.context()
@@ -272,7 +272,7 @@ final class StreamSessionTest {
                     .join();
                 return;
             }
-            context.actors().bound().get(0).relay(header, payload).toCompletableFuture().join();
+            context.actors().bound().get(0).relay(payload).toCompletableFuture().join();
         }
     }
 

@@ -41,9 +41,12 @@ int main ()
     zlink::framework::serializer_registry_t serializers;
     serializers.add<payload_t> (
       [] (const payload_t &payload) {
-          return zlink::message_t::from (std::to_string (payload.value));
+          return zlink::framework::encoded_payload_t::from_string (
+            std::to_string (payload.value));
       },
-      [] (const zlink::message_t &message) { return payload_t{std::stoi (message.to_string ())}; });
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          return payload_t{std::stoi (payload.to_string ())};
+      });
 
     const auto encoded = serializers.get<payload_t> ().serialize ({42});
     if (encoded.to_string () != "42") {
@@ -63,15 +66,14 @@ int main ()
     }
 
     zlink::framework::payload_view_t view (encoded);
-    const auto copied = view.copy_message ();
-    if (copied.to_string () != "42") {
+    if (view.to_string () != "42") {
         return 4;
     }
 
     bool duplicate_failed = false;
     try {
-        serializers.add<payload_t> ([] (const payload_t &) { return zlink::message_t{}; },
-                                    [] (const zlink::message_t &) { return payload_t{}; });
+        serializers.add<payload_t> ([] (const payload_t &) { return zlink::framework::encoded_payload_t{}; },
+                                    [] (const zlink::framework::encoded_payload_t &) { return payload_t{}; });
     }
     catch (const zlink::framework::framework_exception_t &error) {
         duplicate_failed =
@@ -96,7 +98,7 @@ int main ()
     bool decode_failed = false;
     try {
         (void) serializers.get<payload_t> ().deserialize (
-          zlink::message_t::from (std::string ("not-an-int")));
+          zlink::framework::encoded_payload_t::from_string ("not-an-int"));
     }
     catch (const zlink::framework::framework_exception_t &error) {
         decode_failed =
@@ -114,10 +116,11 @@ int main ()
     zlink::framework::codec_options_builder_t codecs (config_serializers, group_state);
     codecs.add_serializer<payload_t> (
       [] (const payload_t &payload) {
-          return zlink::message_t::from ("avro:" + std::to_string (payload.value));
+          return zlink::framework::encoded_payload_t::from_string (
+            "avro:" + std::to_string (payload.value));
       },
-      [] (const zlink::message_t &message) {
-          const std::string text = message.to_string ();
+      [] (const zlink::framework::encoded_payload_t &payload) {
+          const std::string text = payload.to_string ();
           return payload_t{std::stoi (text.substr (std::string ("avro:").size ()))};
       });
 

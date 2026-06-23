@@ -173,7 +173,7 @@ public final class LiveChatSession implements ZLinkSession {
     @Override public void onError(ZLinkStreamError error) {}
 
     @Override
-    public void onDispatch(ZLinkStreamHeader header, ZLinkMessage payload) {
+    public void onDispatch(ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
         if ("auth".equals(header.name())) {
             AuthViewerReq req = payload.decode(AuthViewerReq.class);
             viewer = actors.getOrCreate(req.viewerId(), "viewer")
@@ -184,7 +184,7 @@ public final class LiveChatSession implements ZLinkSession {
             return;
         }
         if (viewer == null) { throw new IllegalStateException("actor is not bound"); }
-        viewer.relay(header, payload).toCompletableFuture().join();
+        viewer.relay(payload).toCompletableFuture().join();
     }
 }
 ```

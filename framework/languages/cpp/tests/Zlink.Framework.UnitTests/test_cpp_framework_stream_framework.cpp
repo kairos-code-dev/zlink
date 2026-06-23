@@ -33,12 +33,12 @@ class sample_session_t final : public zlink::framework::packet_stream_session_t
     }
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &stream,
-                                              const zlink::framework::stream_header_t &header,
+                                              const zlink::framework::stream_dispatch_context_t &dispatch,
                                               const zlink::framework::message_t &payload) override
     {
-        events.push_back ("packet:" + std::string (header.packet_name ()) + ":"
-                          + payload.to_raw ().to_string ());
-        auto write = stream.reply_packet (header, payload).async ().result ();
+        events.push_back ("packet:" + std::string (dispatch.packet_name ()) + ":"
+                          + payload.decode<std::string> ());
+        auto write = stream.reply_packet (payload).async ().result ();
         if (!write) {
             return zlink::framework::task_t<void> (write);
         }
@@ -69,7 +69,7 @@ class throwing_packet_session_t final : public zlink::framework::packet_stream_s
     }
 
     zlink::framework::task_t<void> on_packet (zlink::framework::stream_t &,
-                                              const zlink::framework::stream_header_t &,
+                                              const zlink::framework::stream_dispatch_context_t &,
                                               const zlink::framework::message_t &) override
     {
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::failure (
@@ -94,9 +94,11 @@ int main ()
       .register_session ("client")
       .attach_actor_gateway ("session-actors");
 	    zlink::framework::serializer_registry_t serializers;
-	    serializers.add<std::string> (
-	      [] (const std::string &value) { return zlink::message_t::from (value); },
-	      [] (const zlink::message_t &message) { return message.to_string (); });
+    serializers.add<std::string> (
+      [] (const std::string &value) {
+          return zlink::framework::encoded_payload_t::from_string (value);
+      },
+      [] (const zlink::framework::encoded_payload_t &payload) { return payload.to_string (); });
 	    zlink::framework::detail::bind_stream_serializers (zlink, serializers);
 
     const auto snapshots = zlink.streams ();
@@ -247,11 +249,9 @@ int main ()
     }
 
     auto fluent_stream = runtime.open_session ("client-stream");
-    zlink::framework::stream_header_t send_header (
-      stream_message_kind_t::send, stream_codec_t::json, stream_header_flags_t::none, std::nullopt,
-      "original");
-    auto send_call = fluent_stream.write_packet (
-      send_header, zlink::framework::message_t::from (std::string ("send-payload")));
+    auto send_call =
+      fluent_stream.write_packet (zlink::framework::message_t::from (std::string ("send-payload")));
+    send_call.packet_name ("original");
     if (!runtime.written_headers (fluent_stream).empty ()) {
         return 17;
     }
@@ -269,8 +269,7 @@ int main ()
     }
     const auto close_result = fluent_stream.close ().result ();
     const auto close_write =
-      fluent_stream.write_packet (send_header,
-                                  zlink::framework::message_t::from (std::string ("after-close")))
+      fluent_stream.write_packet (zlink::framework::message_t::from (std::string ("after-close")))
         .async ().result ();
     if (!close_result || close_write
         || close_write.error_kind () != framework_error_kind_t::disconnected
@@ -279,8 +278,7 @@ int main ()
     }
     const auto disconnected_write =
       stream
-        .write_packet (request_header,
-                       zlink::framework::message_t::from (std::string ("after-disconnect")))
+        .write_packet (zlink::framework::message_t::from (std::string ("after-disconnect")))
         .async ().result ();
     if (disconnected_write
         || disconnected_write.error_kind () != framework_error_kind_t::disconnected

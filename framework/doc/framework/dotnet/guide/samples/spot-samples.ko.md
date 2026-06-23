@@ -1306,14 +1306,14 @@ public sealed class SampleSession
     }
 
     public async ValueTask OnDispatchAsync(
-        ZlinkStreamHeader header,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         if (Actor is null)
         {
             if (!string.Equals(
-                header.Name,
+                dispatch.PacketName,
                 "SampleAuthenticateRequest",
                 StringComparison.Ordinal))
             {
@@ -1353,7 +1353,7 @@ public sealed class SampleSession
         }
 
         if (string.Equals(
-            header.Name,
+            dispatch.PacketName,
             "SampleJoinRoomRequest",
             StringComparison.Ordinal))
         {
@@ -1386,7 +1386,7 @@ public sealed class SampleSession
             ? Context.Actors.Find(ActorId)
             : throw new InvalidOperationException("Actor is not bound.");
         actorRef ??= throw new InvalidOperationException("Actor is not bound.");
-        await actorRef.RelayAsync(header, payload, cancellationToken);
+        await actorRef.RelayAsync(payload, cancellationToken);
     }
 }
 

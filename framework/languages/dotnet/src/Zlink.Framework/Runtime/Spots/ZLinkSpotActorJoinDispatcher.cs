@@ -75,11 +75,11 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             if (result.Reply is { } reply)
             {
                 var encodedReply = reply.Encode(runtime.Registration.Codecs);
-                using var replyMessage = encodedReply.Message;
+                using var replyMessage = Message.From(encodedReply.Payload.Bytes.Span);
                 nativeSpot.ReplyActorJoin(
                     joinRequest,
                     joinResultCode: result.Accepted ? 0 : 1,
-                    encodedReply.Message);
+                    replyMessage);
                 return;
             }
 

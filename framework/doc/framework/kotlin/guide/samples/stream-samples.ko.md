@@ -13,7 +13,7 @@
 class RouteSession(private val context: ZLinkSessionContext) : ZLinkSuspendingSession() {
     override fun context(): ZLinkSessionContext = context
 
-    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: ZLinkMessage) {
+    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
         context.client().reply(Pong()).submit().await()
     }
 }
@@ -29,10 +29,10 @@ class ActorRelaySession(
 ) : ZLinkSuspendingSession() {
     override fun context(): ZLinkSessionContext = context
 
-    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: ZLinkMessage) {
+    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
         val actor = actorManager.getOrCreate("player-42", "player").await()
         val bound = context.actors().bind(actor).await()
-        bound.relay(header, payload).await()
+        bound.relay(payload).await()
     }
 }
 ```

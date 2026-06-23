@@ -6,10 +6,10 @@ public interface ZLinkTypedSessionPacketHandler<TSessionContext extends ZLinkSes
     extends ZLinkSessionPacketHandler<TSessionContext> {
     Class<TMessage> messageType();
 
-    void handle(TSessionContext context, ZLinkStreamHeader header, TMessage message);
+    void handle(TSessionContext context, ZLinkSessionDispatchContext dispatch, TMessage message);
 
     @Override
-    default void handle(TSessionContext context, ZLinkStreamHeader header, ZLinkMessage payload) {
+    default void handle(TSessionContext context, ZLinkSessionDispatchContext dispatch, ZLinkMessage payload) {
         throw new UnsupportedOperationException(
             "typed session packet handlers are invoked by the framework runtime");
     }

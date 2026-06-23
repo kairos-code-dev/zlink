@@ -6,7 +6,7 @@ import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkStreamHeader
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.CustomerActorEnsured
@@ -27,7 +27,7 @@ class SubscribeDeliveryHandler(
 
     override suspend fun handle(
         context: ZLinkSessionContext,
-        header: ZLinkStreamHeader,
+        dispatch: ZLinkSessionDispatchContext,
         request: SubscribeDelivery,
     ) {
         require(request.deliveryId.isNotBlank()) { "SubscribeDelivery requires deliveryId." }

@@ -58,8 +58,7 @@ internal static class ZLinkStreamPacketPayloadCodec
         {
             if (codecs.TryGetSerializer(contentType, out var serializer))
             {
-                using var encodedPayload = Message.From(payload.Span);
-                return serializer.Deserialize(encodedPayload, messageType);
+                return serializer.Deserialize(ZLinkEncodedPayload.From(payload.Span), messageType);
             }
 
             throw new InvalidOperationException(
@@ -98,7 +97,7 @@ internal static class ZLinkStreamPacketPayloadCodec
                     $"Stream payload type '{messageType}' resolved to content type '{contentType}', but no stream codec maps to it.");
             }
 
-            using var encodedPayload = serializer.Serialize(message, messageType);
+            var encodedPayload = serializer.Serialize(message, messageType);
             return new ZlinkStreamEncodedPayload(
                 codec,
                 encodedPayload.ToArray(),

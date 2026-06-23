@@ -21,7 +21,7 @@ import systems.zlink.framework.spots.ZLinkTimerTick
 import systems.zlink.framework.streams.ZLinkSession
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkStreamError
-import systems.zlink.framework.streams.ZLinkStreamHeader
+import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
@@ -127,7 +127,7 @@ interface ZLinkSuspendingTypedSessionPacketHandler<
 
     fun messageType(): Class<TMessage>
 
-    suspend fun handle(context: TSessionContext, header: ZLinkStreamHeader, message: TMessage)
+    suspend fun handle(context: TSessionContext, dispatch: ZLinkSessionDispatchContext, message: TMessage)
 }
 
 abstract class ZLinkSuspendingActorFactory : ZLinkActorFactory {
@@ -206,9 +206,9 @@ abstract class ZLinkSuspendingSession : ZLinkSession {
         }
     }
 
-    final override fun onDispatch(header: ZLinkStreamHeader, payload: ZLinkMessage) {
+    final override fun onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
         blocking {
-            onDispatchSuspending(header, payload)
+            onDispatchSuspending(dispatch, payload)
         }
     }
 
@@ -221,7 +221,7 @@ abstract class ZLinkSuspendingSession : ZLinkSession {
     protected open suspend fun onErrorSuspending(error: ZLinkStreamError) {
     }
 
-    protected open suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: ZLinkMessage) {
+    protected open suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
     }
 }
 

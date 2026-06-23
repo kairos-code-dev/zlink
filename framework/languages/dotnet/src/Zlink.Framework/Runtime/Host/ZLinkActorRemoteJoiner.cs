@@ -78,21 +78,17 @@ internal sealed class ZLinkActorRemoteJoiner(
             registration.DefaultRequestTimeout);
         actorState.TryGetBoundSession(out var boundSession);
         var encodedRequest = request.Encode(registration.Codecs);
-        IReadOnlyList<Message> parts;
-        using (encodedRequest.Message)
-        {
-            var payload = new ZLinkRemoteActorJoinRequest(
-                actor.ActorId,
-                actorState.ActorType,
-                boundSession.SessionNodeRid?.ToBytes().ToArray(),
-                boundSession.SessionRid.Size > 0 ? boundSession.SessionRid.ToBytes().ToArray() : null,
-                encodedRequest.ContentType,
-                encodedRequest.Message.ToArray());
-            parts = ZLinkEnvelopeCodec.EncodeParts(
-                header,
-                payload,
-                typeof(ZLinkRemoteActorJoinRequest));
-        }
+        var payload = new ZLinkRemoteActorJoinRequest(
+            actor.ActorId,
+            actorState.ActorType,
+            boundSession.SessionNodeRid?.ToBytes().ToArray(),
+            boundSession.SessionRid.Size > 0 ? boundSession.SessionRid.ToBytes().ToArray() : null,
+            encodedRequest.ContentType,
+            encodedRequest.Payload.ToArray());
+        IReadOnlyList<Message> parts = ZLinkEnvelopeCodec.EncodeParts(
+            header,
+            payload,
+            typeof(ZLinkRemoteActorJoinRequest));
 
         var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
             routerChannelId,
@@ -196,12 +192,9 @@ internal sealed class ZLinkActorRemoteJoiner(
             encodedRequest.ContentType,
             correlationId, null, null, null, null);
         IReadOnlyList<Message> joinParts;
-        using (encodedRequest.Message)
-        {
-            joinParts = ZLinkMessageParts.Create(
-                ZLinkEnvelopeCodec.EncodeHeader(joinHeader),
-                Message.From(encodedRequest.Message));
-        }
+        joinParts = ZLinkMessageParts.Create(
+            ZLinkEnvelopeCodec.EncodeHeader(joinHeader),
+            Message.From(encodedRequest.Payload.Bytes.Span));
 
         var tcs = new TaskCompletionSource<(ZLinkBackendActorJoinResult Result, IReadOnlyList<Message> Reply)>(
             TaskCreationOptions.RunContinuationsAsynchronously);

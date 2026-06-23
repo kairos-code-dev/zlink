@@ -156,7 +156,7 @@ interface ZLinkSpotInfo {
   `true` 를 반환한다. actor 가 남은 user Spot 은 종료하지 않고 `false` 를 반환한다.
 
 반환값은 장기 보관용 spot instance handle 이 아니다. 생성 결과는 `spotRid`, 상태,
-선택적 reply `Message` 를 담고, 이후 메시징은 현재 channel publish 또는 attach 된 channel
+선택적 reply DTO 를 담고, 이후 메시징은 현재 channel publish 또는 attach 된 channel
 client 를 통한 send / request 로 푼다. factory resolve, activation, `onCreate`,
 `onInitialize` 실패는 `SpotCreateFailed` 계열로 분류한다.
 

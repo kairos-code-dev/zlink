@@ -1587,7 +1587,7 @@ export interface ZLinkSpotManager {
 > (기존 draft 의 `spotName: string` 이 아님). 조회 메서드는 `FindAsync`(=`find`)이며
 > 결과는 public 식별자 `SpotRid` 만 돌려준다(spot 타입/factory 정보는 노출하지 않음).
 > `ZLinkSpotInfo` 는 `spotRid` 만 가진다. `ZLinkSpotCreateResult` 는 `spotRid` +
-> `Existing` / `Created` / `Rejected` 상태와 선택적 reply `ZLinkMessage` 를 가진다.
+> `Existing` / `Created` / `Rejected` 상태와 선택적 reply DTO 를 가진다.
 > C# generic + overload 를 TS 에서 `spotType: Type<TSpot>` 첫 인자로 표현한다.
 
 - `create(spotType, request?)`: generic 타입으로 factory 선택, runtime 이 새 spotRid 발급.

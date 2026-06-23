@@ -58,7 +58,8 @@ final class StreamPayloadTest {
                     0,
                     null,
                     "Push",
-                    Map.of()),
+                    Map.of(),
+            null),
                 TcpStreamConnectorTestServer.bytes("event")).join();
 
             ZLinkStreamMessage<ZLinkStreamEncodedPayload> message = connector.await(push);

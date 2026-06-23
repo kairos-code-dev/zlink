@@ -29,9 +29,6 @@ public final class TicTacToeGameCreator {
             settings.playEndpoint(),
             settings.spotEndpoint(),
             settings.playSpotNodeRid()));
-        System.out.println("game-created roomId=" + room.roomId()
-            + " ownerPlayEndpoint=" + settings.playEndpoint()
-            + " nodeRid=" + settings.playSpotNodeRid());
         return new CreateGameRes(
             room.roomId(),
             room.gameName(),

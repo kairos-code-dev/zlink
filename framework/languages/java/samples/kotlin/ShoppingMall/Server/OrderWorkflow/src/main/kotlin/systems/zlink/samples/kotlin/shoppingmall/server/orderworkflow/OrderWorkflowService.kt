@@ -50,7 +50,6 @@ class OrderWorkflowService(private val store: CommerceStore) {
     }
 
     fun continueWorkflow(orderId: String): OrderState {
-        val paymentMethodId = store.orderPaymentMethod(orderId)
         // Each iteration advances one event-stream transition; a started order
         // reaches a terminal state within a handful of steps.
         for (step in 0 until MAX_WORKFLOW_STEPS) {
@@ -74,9 +73,9 @@ class OrderWorkflowService(private val store: CommerceStore) {
                 OrderStatus.InventoryReserved -> {
                     val payment = store.authorizePayment(
                         orderId,
-                        paymentMethodId ?: "",
-                        amountFromStarted(stored),
-                        currencyFromStarted(stored),
+                        aggregate.paymentMethodId(),
+                        aggregate.amount(),
+                        aggregate.currency(),
                     )
                     aggregate.applyPaymentResult(
                         PaymentAuthorizationResult(payment.accepted, payment.paymentId, payment.reason),
@@ -195,24 +194,6 @@ class OrderWorkflowService(private val store: CommerceStore) {
     private fun requireProjection(orderId: String): OrderState =
         store.findReadModel(orderId)
             ?: throw IllegalStateException("Projection missing for '$orderId'.")
-
-    private fun amountFromStarted(stored: List<StoredEvent>): Double {
-        for (event in stored) {
-            if (event.eventType == OrderEventTypes.OrderStarted) {
-                return event.payload.path("amount").asDouble()
-            }
-        }
-        return 0.0
-    }
-
-    private fun currencyFromStarted(stored: List<StoredEvent>): String {
-        for (event in stored) {
-            if (event.eventType == OrderEventTypes.OrderStarted) {
-                return event.payload.path("currency").asText("USD")
-            }
-        }
-        return "USD"
-    }
 
     private fun newEventId(prefix: String, orderId: String): String =
         "$prefix-$orderId-${UUID.randomUUID().toString().replace("-", "")}"

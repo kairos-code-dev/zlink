@@ -21,7 +21,8 @@ final class ZLinkStreamWireProtocolTest {
                 | ZLinkStreamWireProtocol.FLAG_HAS_METADATA,
             7L,
             "Join",
-            metadata);
+            metadata,
+            null);
 
         byte[] encoded = ZLinkStreamWireProtocol.encodeHeader(header);
 
@@ -94,7 +95,8 @@ final class ZLinkStreamWireProtocolTest {
             ZLinkStreamWireProtocol.FLAG_HAS_METADATA,
             null,
             "Join",
-            Map.of("trace", "abc"));
+            Map.of("trace", "abc"),
+            null);
 
         assertThrows(IllegalArgumentException.class, () ->
             ZLinkStreamWireProtocol.encodeHeader(header));

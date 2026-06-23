@@ -81,7 +81,8 @@ final class ZLinkStreamConnectorTest {
                     ZLinkStreamWireProtocol.FLAG_HAS_METADATA,
                     null,
                     "Ping",
-                    Map.of("seq", "42")),
+                    Map.of("seq", "42"),
+            null),
                 TcpStreamConnectorTestServer.bytes("hello")).join();
 
             TcpStreamConnectorTestServer.awaitCondition(
@@ -212,7 +213,8 @@ final class ZLinkStreamConnectorTest {
                     0,
                     null,
                     "Notice",
-                    Map.of()),
+                    Map.of(),
+            null),
                 TcpStreamConnectorTestServer.bytes("body")).join();
             server.sendAsync(new ZLinkStreamWireProtocol.Header(
                     ZLinkStreamWireProtocol.KIND_CONTROL,
@@ -220,7 +222,8 @@ final class ZLinkStreamConnectorTest {
                     0,
                     null,
                     "$zlink.heartbeat.pong",
-                    Map.of()),
+                    Map.of(),
+            null),
                 new byte[0]).join();
 
             TcpStreamConnectorTestServer.awaitCondition(() -> {
@@ -262,7 +265,8 @@ final class ZLinkStreamConnectorTest {
                     0,
                     null,
                     "First",
-                    Map.of()),
+                    Map.of(),
+            null),
                 TcpStreamConnectorTestServer.bytes("a")).join();
             TcpStreamConnectorTestServer.awaitCondition(() -> observed.get() == 1);
 
@@ -273,7 +277,8 @@ final class ZLinkStreamConnectorTest {
                     0,
                     null,
                     "Second",
-                    Map.of()),
+                    Map.of(),
+            null),
                 TcpStreamConnectorTestServer.bytes("b")).join();
             Thread.sleep(50);
 
@@ -310,7 +315,8 @@ final class ZLinkStreamConnectorTest {
                     0,
                     null,
                     "Notice",
-                    Map.of()),
+                    Map.of(),
+            null),
                 TcpStreamConnectorTestServer.bytes("body")).join();
 
             TcpStreamConnectorTestServer.awaitCondition(() -> error.get() != null);
@@ -354,7 +360,8 @@ final class ZLinkStreamConnectorTest {
                     0,
                     null,
                     "BlockObserver",
-                    Map.of()),
+                    Map.of(),
+            null),
                 TcpStreamConnectorTestServer.bytes("block")).join();
             assertTrue(observerEntered.await(1, TimeUnit.SECONDS));
 
@@ -547,7 +554,8 @@ final class ZLinkStreamConnectorTest {
                         | ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED,
                     request.header().requestSeq(),
                     "Echo",
-                    Map.of()),
+                    Map.of(),
+            null),
                 ZLinkStreamLz4Pickler.pickle(TcpStreamConnectorTestServer.bytes("compressed-reply"))).join();
 
             ZLinkStreamEncodedPayload reply = replyFuture.join();
@@ -589,7 +597,8 @@ final class ZLinkStreamConnectorTest {
                         | ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED,
                     request.header().requestSeq(),
                     "Echo",
-                    Map.of()),
+                    Map.of(),
+            null),
                 new byte[] {0x40, 0x03}).join();
 
             CompletionException ex = assertThrows(CompletionException.class, replyFuture::join);
@@ -950,7 +959,8 @@ final class ZLinkStreamConnectorTest {
                     0,
                     null,
                     "RemoteError",
-                    Map.of()),
+                    Map.of(),
+            null),
                 "{\"message\":\"remote failed\"}".getBytes(StandardCharsets.UTF_8)).join();
 
             TcpStreamConnectorTestServer.awaitCondition(
@@ -982,7 +992,8 @@ final class ZLinkStreamConnectorTest {
                     0,
                     null,
                     "Ping",
-                    Map.of()),
+                    Map.of(),
+            null),
                 TcpStreamConnectorTestServer.bytes("hello")).join();
 
             TcpStreamConnectorTestServer.awaitCondition(

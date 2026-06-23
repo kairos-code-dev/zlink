@@ -183,13 +183,6 @@ public final class CommerceStore {
         });
     }
 
-    public String orderPaymentMethod(String orderId) {
-        return read(state -> {
-            JsonNode methods = state.get("orderPaymentMethods");
-            return methods == null ? null : methods.path(orderId).asText(null);
-        });
-    }
-
     // ----- inventory / payment modules -----
 
     public ReserveInventoryResult reserveInventory(String orderId, List<OrderLineInput> lines) {

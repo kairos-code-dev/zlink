@@ -72,15 +72,11 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
         PlayActor actor,
         Message request,
         CancellationToken cancellationToken) {
-        System.out.println("room: actor join received. actor=" + actor.actorId()
-            + " roomId=" + roomId);
         TicTacToeGameJoinReq joinRequest = decode(request, TicTacToeGameJoinReq.class);
         if (!actor.actorId().equals(joinRequest.player().actorId())) {
             throw new IllegalStateException("join request actor id does not match bound actor");
         }
         TicTacToeGameJoinRes reply = join(actor, joinRequest.roomId(), joinRequest.player());
-        System.out.println("room: actor join completed. actor=" + actor.actorId()
-            + " roomId=" + roomId);
         return ZLinkSpotActorJoinResponse.accept(encode(reply));
     }
 

@@ -22,15 +22,12 @@ public final class PlayActorJoinGameHandler {
         ZLinkSpotActorRequestContext context,
         JoinGameReq request,
         CancellationToken cancellationToken) {
-        System.out.println("actor: JoinGameReq received. actor=" + actor.actorId()
-            + " roomId=" + request.roomId());
         TicTacToeGameJoinRes result = actor.context()
             .joinSpot(RoutingId.from(request.roomId()),
                 new TicTacToeGameJoinReq(request.roomId(), actor.requirePlayer()))
             .await(TicTacToeGameJoinRes.class)
             .reply();
         actor.joinGame(request.roomId());
-        System.out.println("actor: JoinGameReq completed. actor=" + actor.actorId());
         return new JoinGameRes(result.state());
     }
 }

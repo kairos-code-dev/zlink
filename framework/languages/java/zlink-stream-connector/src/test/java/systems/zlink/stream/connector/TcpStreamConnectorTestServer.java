@@ -153,7 +153,8 @@ final class TcpStreamConnectorTestServer implements Closeable {
                 | (metadata.isEmpty() ? 0 : ZLinkStreamWireProtocol.FLAG_HAS_METADATA),
             request.header().requestSeq(),
             packetName,
-            metadata);
+            metadata,
+            null);
     }
 
     static byte[] bytes(String value) {

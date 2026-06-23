@@ -35,7 +35,8 @@ final class ConnectorDispatchTest {
                     ZLinkStreamWireProtocol.FLAG_HAS_METADATA,
                     null,
                     "Ping",
-                    Map.of("seq", "42")),
+                    Map.of("seq", "42"),
+            null),
                 TcpStreamConnectorTestServer.bytes("hello")).join();
 
             TcpStreamConnectorTestServer.awaitCondition(

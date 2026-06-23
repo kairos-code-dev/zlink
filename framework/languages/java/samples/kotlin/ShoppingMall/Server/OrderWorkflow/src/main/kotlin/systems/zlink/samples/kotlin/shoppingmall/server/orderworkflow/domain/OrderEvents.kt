@@ -43,6 +43,7 @@ data class OrderStartedEvent(
     val orderId: String,
     val cartId: String,
     val shippingAddressId: String,
+    val paymentMethodId: String,
     val lines: List<OrderLine>,
     val amount: Double,
     val currency: String,

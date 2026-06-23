@@ -59,7 +59,6 @@ public final class OrderWorkflowService {
     }
 
     public OrderState continueWorkflow(String orderId) {
-        String paymentMethodId = store.orderPaymentMethod(orderId);
         // Each iteration advances one event-stream transition; a started order
         // reaches a terminal state within a handful of steps.
         for (int step = 0; step < MAX_WORKFLOW_STEPS; step++) {
@@ -85,9 +84,9 @@ public final class OrderWorkflowService {
             } else if (OrderStatus.InventoryReserved.equals(status)) {
                 AuthorizePaymentResult payment = store.authorizePayment(
                     orderId,
-                    paymentMethodId,
-                    amountFromStarted(stored),
-                    currencyFromStarted(stored));
+                    aggregate.paymentMethodId(),
+                    aggregate.amount(),
+                    aggregate.currency());
                 next = aggregate.applyPaymentResult(
                     new PaymentAuthorizationResult(
                         payment.accepted(),
@@ -232,24 +231,6 @@ public final class OrderWorkflowService {
 
     private Optional<OrderState> projection(String orderId) {
         return store.findReadModel(orderId);
-    }
-
-    private double amountFromStarted(List<StoredEvent> stored) {
-        for (StoredEvent event : stored) {
-            if (OrderEvents.OrderStarted.equals(event.eventType())) {
-                return event.payload().path("amount").asDouble();
-            }
-        }
-        return 0.0;
-    }
-
-    private String currencyFromStarted(List<StoredEvent> stored) {
-        for (StoredEvent event : stored) {
-            if (OrderEvents.OrderStarted.equals(event.eventType())) {
-                return event.payload().path("currency").asText("USD");
-            }
-        }
-        return "USD";
     }
 
     private static String newEventId(String prefix, String orderId) {

@@ -16,6 +16,9 @@ public final class OrderAggregate {
     private final Set<String> processedCommands = new HashSet<>();
     private String status;
     private String reservationId;
+    private String paymentMethodId;
+    private double amount;
+    private String currency;
     private List<OrderEvents.OrderLine> lines = new ArrayList<>();
 
     private OrderAggregate(String orderId) {
@@ -37,6 +40,9 @@ public final class OrderAggregate {
             case OrderEvents.OrderStarted -> {
                 OrderEvents.OrderStartedEvent started = (OrderEvents.OrderStartedEvent) event.payload();
                 this.status = OrderStatus.Created;
+                this.paymentMethodId = started.paymentMethodId();
+                this.amount = started.amount();
+                this.currency = started.currency();
                 this.lines = started.lines();
                 if (started.sourceCommandId() != null) {
                     processedCommands.add(started.sourceCommandId());
@@ -75,6 +81,18 @@ public final class OrderAggregate {
         return lines;
     }
 
+    public String paymentMethodId() {
+        return paymentMethodId;
+    }
+
+    public double amount() {
+        return amount;
+    }
+
+    public String currency() {
+        return currency;
+    }
+
     public boolean hasProcessedCommand(String sourceCommandId) {
         return processedCommands.contains(sourceCommandId);
     }
@@ -89,6 +107,7 @@ public final class OrderAggregate {
             orderId,
             command.cartId(),
             command.shippingAddressId(),
+            command.paymentMethodId(),
             command.lines(),
             command.amount(),
             command.currency(),

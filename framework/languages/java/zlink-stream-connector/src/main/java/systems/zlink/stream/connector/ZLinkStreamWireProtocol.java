@@ -313,17 +313,6 @@ final class ZLinkStreamWireProtocol {
         Header {
             metadata = Collections.unmodifiableMap(new LinkedHashMap<>(metadata));
         }
-
-        // Back-compat 6-arg constructor (no correlation id).
-        Header(
-            int kind,
-            int codec,
-            int flags,
-            Long requestSeq,
-            String name,
-            Map<String, String> metadata) {
-            this(kind, codec, flags, requestSeq, name, metadata, null);
-        }
     }
 
     record Frame(byte[] header, byte[] payload) {

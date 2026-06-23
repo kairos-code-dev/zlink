@@ -61,11 +61,7 @@ public final class ZLinkActorSpotRoutePackets {
         Message frame) {
         return List.of(
             Message.from(BOUND_SESSION_SEND_PACKET_NAME.getBytes(StandardCharsets.UTF_8)),
-            Message.from(String.join(
-                "\n",
-                actorRef.nodeRid().toString(),
-                actorRef.actorId(),
-                Long.toUnsignedString(actorRef.epoch())).getBytes(StandardCharsets.UTF_8)),
+            encodeActorRef(actorRef),
             Message.from(frame));
     }
 
@@ -75,11 +71,7 @@ public final class ZLinkActorSpotRoutePackets {
         Message payload) {
         return List.of(
             Message.from(ACTOR_PACKET_NAME.getBytes(StandardCharsets.UTF_8)),
-            Message.from(String.join(
-                "\n",
-                actorRef.nodeRid().toString(),
-                actorRef.actorId(),
-                Long.toUnsignedString(actorRef.epoch())).getBytes(StandardCharsets.UTF_8)),
+            encodeActorRef(actorRef),
             Message.from(ZLinkStreamHeaderCodec.encode(header)),
             Message.from(payload));
     }
@@ -89,17 +81,8 @@ public final class ZLinkActorSpotRoutePackets {
             || !BOUND_SESSION_SEND_PACKET_NAME.equals(parts.get(0).toUtf8String())) {
             throw new ZLinkConfigurationException("invalid routed actor bound session send packet");
         }
-        String[] fields = parts.get(1).toUtf8String().split("\n", -1);
-        if (fields.length != 3
-            || fields[0].isBlank()
-            || fields[1].isBlank()) {
-            throw new ZLinkConfigurationException("invalid routed actor bound session send metadata");
-        }
         return new BoundSessionSend(
-            new ZLinkBackendActorRef(
-                RoutingId.from(fields[0]),
-                fields[1],
-                Long.parseUnsignedLong(fields[2])),
+            decodeActorRef(parts.get(1), "invalid routed actor bound session send metadata"),
             Message.from(parts.get(2)));
     }
 
@@ -108,19 +91,31 @@ public final class ZLinkActorSpotRoutePackets {
             || !ACTOR_PACKET_NAME.equals(parts.get(0).toUtf8String())) {
             throw new ZLinkConfigurationException("invalid routed actor packet");
         }
-        String[] fields = parts.get(1).toUtf8String().split("\n", -1);
+        return new ActorPacket(
+            decodeActorRef(parts.get(1), "invalid routed actor packet metadata"),
+            ZLinkStreamHeaderCodec.decodeOrPlain(parts.get(2).toByteArray()),
+            Message.from(parts.get(3)));
+    }
+
+    private static Message encodeActorRef(ZLinkBackendActorRef actorRef) {
+        return Message.from(String.join(
+            "\n",
+            actorRef.nodeRid().toString(),
+            actorRef.actorId(),
+            Long.toUnsignedString(actorRef.epoch())).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static ZLinkBackendActorRef decodeActorRef(Message metadata, String errorMessage) {
+        String[] fields = metadata.toUtf8String().split("\n", -1);
         if (fields.length != 3
             || fields[0].isBlank()
             || fields[1].isBlank()) {
-            throw new ZLinkConfigurationException("invalid routed actor packet metadata");
+            throw new ZLinkConfigurationException(errorMessage);
         }
-        return new ActorPacket(
-            new ZLinkBackendActorRef(
-                RoutingId.from(fields[0]),
-                fields[1],
-                Long.parseUnsignedLong(fields[2])),
-            ZLinkStreamHeaderCodec.decodeOrPlain(parts.get(2).toByteArray()),
-            Message.from(parts.get(3)));
+        return new ZLinkBackendActorRef(
+            RoutingId.from(fields[0]),
+            fields[1],
+            Long.parseUnsignedLong(fields[2]));
     }
 
     public static JoinRequest decodeJoinRequest(Message message) {

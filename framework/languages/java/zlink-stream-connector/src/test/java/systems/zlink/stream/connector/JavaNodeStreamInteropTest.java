@@ -25,7 +25,8 @@ final class JavaNodeStreamInteropTest {
                 | ZLinkStreamWireProtocol.FLAG_HAS_METADATA,
             42L,
             "Join",
-            metadata));
+            metadata,
+            null));
         byte[] requestPayload = "{\"join\":true}".getBytes(StandardCharsets.UTF_8);
         byte[] requestFrame = ZLinkStreamWireProtocol.encodeFrame(requestHeader, requestPayload, 64 * 1024);
 

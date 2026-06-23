@@ -151,9 +151,6 @@ class CommerceStore {
         }
     }
 
-    fun orderPaymentMethod(orderId: String): String? =
-        read { state -> state.get("orderPaymentMethods")?.path(orderId)?.asText(null) }
-
     fun reserveInventory(orderId: String, lines: List<OrderLineInput>): ReserveInventoryResult =
         mutate { state ->
             val inventory = childObject(state, "inventory")

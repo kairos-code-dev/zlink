@@ -24,13 +24,11 @@ class PlayActorJoinGameHandler {
         request: JoinGameReq,
         cancellationToken: CancellationToken,
     ): JoinGameRes {
-        println("actor: JoinGameReq received. actor=${actor.actorId} roomId=${request.roomId}")
         val result = actor.context()
             .joinSpot(RoutingId.from(request.roomId), TicTacToeGameJoinReq(request.roomId, actor.requirePlayer()))
             .submit(TicTacToeGameJoinRes::class.java)
             .await()
         actor.joinGame(request.roomId)
-        println("actor: JoinGameReq completed. actor=${actor.actorId}")
         return JoinGameRes(result.reply().state)
     }
 }

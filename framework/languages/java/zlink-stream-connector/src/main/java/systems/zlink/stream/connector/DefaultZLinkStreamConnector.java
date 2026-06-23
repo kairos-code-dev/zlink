@@ -618,7 +618,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             0,
             null,
             name,
-            Map.of());
+            Map.of(),
+            null);
         return sendFrame(header, new byte[0]);
     }
 

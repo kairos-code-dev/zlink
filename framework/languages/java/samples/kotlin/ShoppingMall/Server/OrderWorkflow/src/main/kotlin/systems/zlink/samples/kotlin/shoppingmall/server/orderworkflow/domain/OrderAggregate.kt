@@ -9,6 +9,9 @@ class OrderAggregate private constructor(private val orderId: String) {
     private val processedCommands = HashSet<String>()
     private var status: String? = null
     private var reservationId: String? = null
+    private var paymentMethodId: String? = null
+    private var amount: Double = 0.0
+    private var currency: String = "USD"
     private var lines: List<OrderLine> = emptyList()
 
     companion object {
@@ -29,6 +32,9 @@ class OrderAggregate private constructor(private val orderId: String) {
             OrderEventTypes.OrderStarted -> {
                 val started = event.payload as OrderStartedEvent
                 status = OrderStatus.Created
+                paymentMethodId = started.paymentMethodId
+                amount = started.amount
+                currency = started.currency
                 lines = started.lines
                 processedCommands.add(started.sourceCommandId)
             }
@@ -54,6 +60,12 @@ class OrderAggregate private constructor(private val orderId: String) {
 
     fun lines(): List<OrderLine> = lines
 
+    fun paymentMethodId(): String = paymentMethodId ?: ""
+
+    fun amount(): Double = amount
+
+    fun currency(): String = currency
+
     fun hasProcessedCommand(sourceCommandId: String): Boolean =
         processedCommands.contains(sourceCommandId)
 
@@ -68,6 +80,7 @@ class OrderAggregate private constructor(private val orderId: String) {
                 orderId,
                 command.cartId,
                 command.shippingAddressId,
+                command.paymentMethodId,
                 command.lines,
                 command.amount,
                 command.currency,

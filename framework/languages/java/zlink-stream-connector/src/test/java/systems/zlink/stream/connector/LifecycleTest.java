@@ -299,7 +299,8 @@ final class LifecycleTest {
             0,
             null,
             name,
-            Map.of());
+            Map.of(),
+            null);
     }
 
     private static int reservePort() throws Exception {

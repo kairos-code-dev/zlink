@@ -42,6 +42,7 @@ public final class OrderEvents {
         String orderId,
         String cartId,
         String shippingAddressId,
+        String paymentMethodId,
         List<OrderLine> lines,
         double amount,
         String currency,

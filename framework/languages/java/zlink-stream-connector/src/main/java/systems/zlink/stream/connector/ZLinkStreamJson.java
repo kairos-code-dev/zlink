@@ -66,7 +66,10 @@ public final class ZLinkStreamJson {
     }
 
     public static ZLinkStreamEncodedPayload encode(Object value) {
-        return encode(packetName(value), value);
+        if (value == null) {
+            throw new IllegalArgumentException("payload is required");
+        }
+        return encode(ZLinkStreamPacketNameResolver.defaultResolver().resolve(value.getClass()), value);
     }
 
     public static <T> T decode(ZLinkStreamEncodedPayload payload, Class<T> type) {
@@ -107,13 +110,6 @@ public final class ZLinkStreamJson {
 
     private static String packetName(ZLinkStreamConnector connector, Object payload) {
         return connector.options().nameResolver().resolve(payload.getClass());
-    }
-
-    private static String packetName(Object payload) {
-        if (payload == null) {
-            throw new IllegalArgumentException("payload is required");
-        }
-        return payload.getClass().getSimpleName();
     }
 
     private static String valueTypeName(Object value) {

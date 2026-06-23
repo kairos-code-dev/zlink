@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { SupportChatSessionAuthenticator } from './Sessions/Handlers/authenticate-session-handler';
+import { SupportChatSessionFactory } from './Sessions/supportchat-session';
 import { SampleNames } from '../Configuration/sample-names';
 function createSupportChatSessionModule(endpoints: {
   registryRouterEndpoint: string;
+  sessionEndpoint: string;
 }) {
   class SupportChatSessionModule {}
 
@@ -28,11 +30,15 @@ function createSupportChatSessionModule(endpoints: {
             .enableClient()
           .addClientServerChannel(SampleNames.notificationChannel)
             .enableClient()
+          .addStreamNode(SampleNames.sessionStream)
+            .bind(endpoints.sessionEndpoint)
+            .registerSession(SupportChatSessionFactory)
           .build();
         }
       })
     ],
     providers: [
+      SupportChatSessionFactory,
       SupportChatSessionAuthenticator
     ]
   })(SupportChatSessionModule);

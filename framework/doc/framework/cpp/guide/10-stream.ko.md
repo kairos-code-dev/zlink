@@ -100,9 +100,17 @@ zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &) overr
 패킷을 쓴다.
 
 ```cpp
-co_await stream.write_packet (header, payload).async ();          // 새 패킷 전송
+auto payload = zlink::framework::message_t::from (response);
+co_await stream.write_packet (header, payload).async ();          // framework message 전송
 co_await stream.reply_packet (request_header, payload).async ();  // 요청에 대한 응답
 ```
+
+기존에 binding `zlink::message_t`를 직접 만들어 `write_packet(...)`에 넘기던 방식은
+일반 업무 API에서 제거한다. raw payload를 그대로 보존해야 하는 runtime boundary나
+test harness는 이름에 raw가 드러나는 `write_packet_raw(...)`,
+`reply_packet_raw(...)`를 사용한다. custom codec은 기존처럼 builder/options에
+등록하고, session 업무 코드는 codec helper 대신 DTO 또는 framework `message_t`를
+사용한다.
 
 ## 4. 클라이언트: stream connector
 

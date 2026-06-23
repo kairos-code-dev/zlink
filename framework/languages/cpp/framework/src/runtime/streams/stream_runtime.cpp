@@ -303,8 +303,18 @@ task_t<void> stream_t::close ()
     return task_t<void> (result_t<void>::success ());
 }
 
-stream_write_call_t stream_t::write_packet (const stream_header_t &header,
-                                            const zlink::message_t &payload)
+stream_write_call_t stream_t::write_packet (const stream_header_t &header, const message_t &payload)
+{
+    if (_state->serializers == nullptr) {
+        return stream_write_call_t (
+          result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                   "STREAM write requires a serializer registry"));
+    }
+    return write_packet_raw (header, payload.to_raw (*_state->serializers));
+}
+
+stream_write_call_t stream_t::write_packet_raw (const stream_header_t &header,
+                                                const zlink::message_t &payload)
 {
     auto state = _state;
     return stream_write_call_t (
@@ -325,8 +335,8 @@ stream_write_call_t stream_t::write_packet (const stream_header_t &header,
       });
 }
 
-stream_write_call_t stream_t::reply_packet (const stream_header_t &request_header,
-                                            const zlink::message_t &payload)
+stream_write_call_t stream_t::reply_packet_raw (const stream_header_t &request_header,
+                                                const zlink::message_t &payload)
 {
     if (!request_header.request_seq ()) {
         return stream_write_call_t (
@@ -340,7 +350,7 @@ stream_write_call_t stream_t::reply_packet (const stream_header_t &request_heade
     if (auto correlation = request_header.correlation_id ()) {
         reply_header.with_correlation_id (std::string (*correlation));
     }
-    return write_packet (reply_header, payload);
+    return write_packet_raw (reply_header, payload);
 }
 
 stream_write_call_t stream_t::reply_packet (const stream_header_t &request_header,
@@ -351,7 +361,7 @@ stream_write_call_t stream_t::reply_packet (const stream_header_t &request_heade
           result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                    "STREAM reply requires a serializer registry"));
     }
-    return reply_packet (request_header, payload.to_raw (*_state->serializers));
+    return reply_packet_raw (request_header, payload.to_raw (*_state->serializers));
 }
 
 stream_builder_t::stream_builder_t () :

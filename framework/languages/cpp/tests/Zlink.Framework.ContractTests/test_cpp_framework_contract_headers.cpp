@@ -401,9 +401,24 @@ static_assert (
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().close ()),
                               zlink::framework::task_t<void>>);
 static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().write_packet (
+                   std::declval<const zlink::framework::stream_header_t &> (),
+                   std::declval<const zlink::framework::message_t &> ())),
+                 zlink::framework::stream_write_call_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().write_packet_raw (
+                   std::declval<const zlink::framework::stream_header_t &> (),
+                   std::declval<const zlink::message_t &> ())),
+                 zlink::framework::stream_write_call_t>);
+static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().reply_packet (
                    std::declval<const zlink::framework::stream_header_t &> (),
                    std::declval<const zlink::framework::message_t &> ())),
+                 zlink::framework::stream_write_call_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().reply_packet_raw (
+                   std::declval<const zlink::framework::stream_header_t &> (),
+                   std::declval<const zlink::message_t &> ())),
                  zlink::framework::stream_write_call_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().reply_packet (

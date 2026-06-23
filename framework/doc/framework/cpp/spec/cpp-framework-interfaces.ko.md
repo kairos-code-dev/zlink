@@ -873,6 +873,15 @@ public:
     virtual task_t<void> close() = 0;
     virtual stream_write_call_t write_packet(
       const stream_header_t &header,
+      const message_t &payload) = 0;
+    virtual stream_write_call_t write_packet_raw(
+      const stream_header_t &header,
+      const zlink::message_t &payload) = 0;
+    virtual stream_write_call_t reply_packet(
+      const stream_header_t &request_header,
+      const message_t &payload) = 0;
+    virtual stream_write_call_t reply_packet_raw(
+      const stream_header_t &request_header,
       const zlink::message_t &payload) = 0;
 };
 
@@ -999,6 +1008,13 @@ options.services().add_transient<order_handler_t>();
 options.handlers()
   .add<order_created_handler_t>("orders-api");
 ```
+
+STREAM application 업무 경로는 binding `zlink::message_t`를 직접 받지 않는다.
+기존에 raw `zlink::message_t`를 만들어 일반 `write_packet(...)` 또는
+`reply_packet(...)`에 넘기던 방식은 제거한다. 변경 후 일반 경로는 framework
+`message_t`를 받고, 등록된 serializer registry가 encode/decode를 맡는다. raw payload를
+그대로 유지해야 하는 내부 relay, protocol harness, migration boundary만 이름에 raw가
+드러나는 `write_packet_raw(...)`, `reply_packet_raw(...)`, `relay_raw(...)`를 사용한다.
 
 handler dispatch는 binding의 `zlink::message_t`와 `zlink::multipart_t`를 받은 뒤,
 serializer를 통해 typed payload로 변환하고, DI에서 owner를 resolve한 다음 method를

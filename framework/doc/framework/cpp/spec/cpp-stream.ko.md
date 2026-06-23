@@ -105,6 +105,15 @@ public:
     virtual task_t<void> close() = 0;
     virtual stream_write_call_t write_packet(
       const stream_header_t &header,
+      const message_t &payload) = 0;
+    virtual stream_write_call_t write_packet_raw(
+      const stream_header_t &header,
+      const zlink::message_t &payload) = 0;
+    virtual stream_write_call_t reply_packet(
+      const stream_header_t &request_header,
+      const message_t &payload) = 0;
+    virtual stream_write_call_t reply_packet_raw(
+      const stream_header_t &request_header,
       const zlink::message_t &payload) = 0;
 };
 
@@ -149,6 +158,13 @@ public:
 
 } // namespace zlink::framework
 ```
+
+기존 raw 방식과 변경 후 방식을 구분한다. 업무 session은
+`write_packet(...)` / `reply_packet(...)`에 framework `message_t`를 넘긴다. 이
+타입이 등록된 codec registry를 사용해 raw `zlink::message_t`로 변환한다. 기존처럼
+binding `zlink::message_t`를 직접 만든 뒤 일반 `write_packet(...)`에 넘기는 방식은
+제거한다. raw frame 보존이 목적일 때만 `write_packet_raw(...)` /
+`reply_packet_raw(...)`를 사용한다.
 
 `stream_header_t`는 framework가 만든 Header view다. wire 의미는 `.NET`의
 `ZlinkStreamHeader`와 맞추며, kind, codec, flags, request sequence, packet name,

@@ -1091,8 +1091,8 @@ export enum ZLinkMessageFlowLogMode {
 
 ### 4.5 message serializer / codec
 
-serializer 계층은 transport interface 와 분리한다. STREAM handler 는 `Message` 를 받기만
-하고, protobuf/json 변환은 별도 serializer/helper 가 담당한다.
+serializer 계층은 transport interface 와 분리한다. STREAM handler 는 framework
+`ZLinkMessage` 를 받고, protobuf/json 변환은 등록된 serializer provider 가 담당한다.
 
 ```ts
 export interface ZLinkMessageSerializer {
@@ -1101,20 +1101,19 @@ export interface ZLinkMessageSerializer {
   canSerialize(type: unknown): boolean;
   canDeserialize(type: unknown): boolean;
 
-  serialize<T>(value: T): Message;
-  deserialize<T>(message: Message): T;
-  tryDeserialize<T>(message: Message): { ok: true; value: T } | { ok: false };
+  serialize<T>(value: T): ZLinkMessage;
+  deserialize<T>(message: ZLinkMessage): T;
+  tryDeserialize<T>(message: ZLinkMessage): { ok: true; value: T } | { ok: false };
 }
 ```
 
-> 코드 기준: C# `TryDeserialize<T>(Message, out T?)` 의 out 파라미터는 TS 에서 판별 union
+> 코드 기준: C# `TryDeserialize<T>(ZLinkMessage, out T?)` 의 out 파라미터는 TS 에서 판별 union
 > 반환으로 옮긴다(매핑 정책 §4 의 "out 파라미터 → 반환 객체").
 
-`Message` 위에 type 기준 parse helper 를 얹는 구조를 기본으로 본다.
+application 코드는 `ZLinkMessage.decode<T>()` 또는 typed handler를 기본으로 쓴다.
 
 ```ts
-/** codec extension package 가 제공하는 helper. binding core 의 필수 메서드가 아니다. */
-export function parseMessage<T>(message: Message, type: Type<T>): T;
+const input = payload.decode<ClientInput>();
 ```
 
 codec registry 등록 표면(`zlinkFramework().codecs()`, §6.1):
@@ -1604,6 +1603,11 @@ DTO 를 넘기고 `request.decode<T>()` 로 읽는다. MessagePack, Protobuf, cu
 기존처럼 module options 의 codec registry 에 등록하며, handler 에서 `Message` bytes 나
 codec helper 를 직접 다루지 않는다. 같은 spotRid 에 대해 다른 `TSpot` 으로
 `getOrCreate(...)` 하면 `SpotTypeMismatch` 로 실패한다.
+
+기존 방식 중 유지되는 것은 codec extension 등록이다. 예를 들어 module 구성에서 custom codec을
+등록하는 코드는 변경 후에도 그대로 둔다. 제거되는 기존 방식은 handler나 session에서
+`Message.from(...)`, `Buffer`, JSON parse helper, stream frame codec을 직접 호출하는 코드다.
+변경 후 업무 코드는 DTO를 넘기거나 `ZLinkMessage.decode<T>()`만 호출한다.
 
 #### SpotNode / mesh builder
 

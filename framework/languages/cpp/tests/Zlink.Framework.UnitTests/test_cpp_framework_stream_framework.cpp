@@ -93,8 +93,11 @@ int main ()
       .bind ("tcp://0.0.0.0:9200")
       .register_session ("client")
       .attach_actor_gateway ("session-actors");
-    zlink::framework::serializer_registry_t serializers;
-    zlink::framework::detail::bind_stream_serializers (zlink, serializers);
+	    zlink::framework::serializer_registry_t serializers;
+	    serializers.add<std::string> (
+	      [] (const std::string &value) { return zlink::message_t::from (value); },
+	      [] (const zlink::message_t &message) { return message.to_string (); });
+	    zlink::framework::detail::bind_stream_serializers (zlink, serializers);
 
     const auto snapshots = zlink.streams ();
     if (snapshots.size () != 1 || snapshots[0].name != "client-stream"
@@ -247,7 +250,7 @@ int main ()
       stream_message_kind_t::send, stream_codec_t::json, stream_header_flags_t::none, std::nullopt,
       "original");
     auto send_call = fluent_stream.write_packet (
-      send_header, zlink::message_t::from (std::string ("send-payload")));
+      send_header, zlink::framework::message_t::from (std::string ("send-payload")));
     if (!runtime.written_headers (fluent_stream).empty ()) {
         return 17;
     }
@@ -265,7 +268,8 @@ int main ()
     }
     const auto close_result = fluent_stream.close ().result ();
     const auto close_write =
-      fluent_stream.write_packet (send_header, zlink::message_t::from (std::string ("after-close")))
+      fluent_stream.write_packet (send_header,
+                                  zlink::framework::message_t::from (std::string ("after-close")))
         .async ().result ();
     if (!close_result || close_write
         || close_write.error_kind () != framework_error_kind_t::disconnected
@@ -274,7 +278,8 @@ int main ()
     }
     const auto disconnected_write =
       stream
-        .write_packet (request_header, zlink::message_t::from (std::string ("after-disconnect")))
+        .write_packet (request_header,
+                       zlink::framework::message_t::from (std::string ("after-disconnect")))
         .async ().result ();
     if (disconnected_write
         || disconnected_write.error_kind () != framework_error_kind_t::disconnected

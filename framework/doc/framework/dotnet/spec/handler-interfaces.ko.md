@@ -1354,6 +1354,12 @@ session handler 는 raw `Message`나 codec별 protobuf/json decode helper를 직
 `ZLinkMessage.Decode<T>()` 로 업무 DTO를 얻는다. codec 선택은 startup/options 에
 등록된 codec registry 가 맡는다.
 
+기존 방식 중 유지되는 것은 `options.Codecs.Use(...)` 같은 codec extension 등록이다.
+custom codec을 추가하는 위치와 의미는 변경하지 않는다. 제거되는 기존 방식은 session
+handler가 binding `Message`, `JsonMessageExtensions`, protobuf/json helper를 직접
+호출해 payload를 만들거나 해석하는 코드다. 변경 후 handler는 DTO 또는 `ZLinkMessage`만
+다룬다.
+
 #### 4.4.1 actor/session 상위 모델 메모
 
 actor join, actor factory, stream-attached actor 모델은 현재 draft
@@ -1821,8 +1827,8 @@ framework 가 두 모드를 모두 제공할 수는 있다. 다만 기본 성능
 `playhouse/extensions` 에서 보이듯, serializer 계층은 transport interface
 와 분리해 두는 쪽이 자연스럽다.
 
-`STREAM` handler 는 `Message` 를 받기만 한다. protobuf/json 같은 객체
-변환은 별도의 serializer 또는 extension helper 가 담당한다.
+`STREAM` handler 는 framework `ZLinkMessage` 를 받는다. protobuf/json 같은 객체
+변환은 등록된 serializer 또는 extension provider 가 담당한다.
 
 ```csharp
 public interface IZLinkMessageSerializer
@@ -1833,23 +1839,19 @@ public interface IZLinkMessageSerializer
 
     bool CanDeserialize(Type type);
 
-    Message Serialize<T>(T value);
+    ZLinkMessage Serialize<T>(T value);
 
-    T Deserialize<T>(Message message);
+    T Deserialize<T>(ZLinkMessage message);
 
-    bool TryDeserialize<T>(Message message, out T? value);
+    bool TryDeserialize<T>(ZLinkMessage message, out T? value);
 }
 ```
 
-실사용 표면은 binding core 의 `Message` 자체에 직접 얹지 않는다. 대신
-별도의 codec extension/helper 계층으로 얹는 방식을 기본으로 본다. 예시는
-다음과 같다.
+실사용 표면은 binding core 의 `Message` 자체에 직접 얹지 않는다. application 은
+`ZLinkMessage.Decode<T>()` 또는 typed handler를 기본으로 쓴다. 예시는 다음과 같다.
 
 ```csharp
-public static class MessageExtensions
-{
-    public static T Parse<T>(this Message message);
-}
+ChatRequest request = payload.Decode<ChatRequest>();
 ```
 
 이 문서에서는 다음 규칙을 기본으로 둔다.
@@ -1861,12 +1863,11 @@ public static class MessageExtensions
 두 가지 구조 중 후자를 택한다.
 
 - 첫 번째: transport 가 serializer 를 직접 내장하는 구조.
-- 두 번째 (기본): `Message` 위에 type 기준의 parse helper 를 얹는 구조.
+- 두 번째 (기본): framework `ZLinkMessage`가 codec registry를 통해 type 기준 decode를 수행하는 구조.
 
 두 번째 구조가 `playhouse/extensions` 와도 더 가깝고, 문서도 더 단순하게
-읽힌다. 이때 `Parse<T>()` 는 binding core 의 필수 인스턴스 메서드가
-아니다. framework 또는 codec extension package 가 제공하는 public helper
-로 보는 편이 맞다.
+읽힌다. codec extension package 는 registry에 serializer를 등록하고, handler는
+binding `Message` bytes나 codec helper를 직접 다루지 않는다.
 
 ## 5. Client 인터페이스
 

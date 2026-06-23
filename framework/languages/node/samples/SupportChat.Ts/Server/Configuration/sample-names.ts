@@ -3,6 +3,7 @@ const SampleNames = {
   apiChannel: 'supportchat.api',
   supportChannel: 'supportchat.support',
   notificationChannel: 'supportchat.notifications',
+  sessionStream: 'supportchat.session.stream',
   supportActorType: 'supportchat.user',
   conversationSpotType: 'supportchat.conversation',
   customerActorIds: [SupportSampleUsers.customer1, SupportSampleUsers.customer2, SupportSampleUsers.customer3],

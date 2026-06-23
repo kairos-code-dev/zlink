@@ -154,12 +154,13 @@ class stream_t
 
     std::string session_id () const;
     task_t<void> close ();
-    stream_write_call_t write_packet (const stream_header_t &header,
-                                      const zlink::message_t &payload);
-    stream_write_call_t reply_packet (const stream_header_t &request_header,
-                                      const zlink::message_t &payload);
+    stream_write_call_t write_packet (const stream_header_t &header, const message_t &payload);
+    stream_write_call_t write_packet_raw (const stream_header_t &header,
+                                          const zlink::message_t &payload);
     stream_write_call_t reply_packet (const stream_header_t &request_header,
                                       const message_t &payload);
+    stream_write_call_t reply_packet_raw (const stream_header_t &request_header,
+                                          const zlink::message_t &payload);
 
     template <typename TPayload>
     stream_write_call_t reply_packet (const stream_header_t &request_header, TPayload payload)

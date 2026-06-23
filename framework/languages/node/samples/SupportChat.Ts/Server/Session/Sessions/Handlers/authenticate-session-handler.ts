@@ -16,9 +16,7 @@ import type {
 } from '../../../../Shared/Contracts/messages';
 
 type AuthenticateSessionContext = {
-  actorId: string | null;
-  displayName: string | null;
-  role: string | null;
+  setAuthenticated(actorId: string, displayName: string, role: string): void;
 };
 
 // Session lifecycle: AuthenticateReq is the only packet the Session server interprets itself.
@@ -49,9 +47,7 @@ class SupportChatSessionAuthenticator {
         )
         .submit<EnsureSupportUserActorRes>(), { delayMs: 25, maxAttempts: 200 });
 
-    context.actorId = authenticated.actorId;
-    context.displayName = authenticated.displayName;
-    context.role = authenticated.role;
+    context.setAuthenticated(authenticated.actorId, authenticated.displayName, authenticated.role);
     return authenticateRes(authenticated.actorId, authenticated.displayName, authenticated.role);
   }
 }

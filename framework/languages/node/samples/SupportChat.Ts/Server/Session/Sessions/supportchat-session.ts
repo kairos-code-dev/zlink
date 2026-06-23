@@ -1,46 +1,149 @@
+import { Inject } from '@nestjs/common';
+import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { SampleNames } from '../../Configuration/sample-names';
+import { retry } from '../../runtime-support';
+import { SupportChatSessionAuthenticator } from './Handlers/authenticate-session-handler';
+import { PacketNames, supportNotificationsReq, withUserIdentity } from '../../../Shared/Contracts/messages';
+import type {
+  ZLinkChannelClient,
+  ZLinkMessage,
+  ZLinkSession,
+  ZLinkSessionContext,
+  ZLinkSessionFactory
+} from '@zlink-systems/framework';
+import type {
+  AuthenticateReq,
+  SupportNotificationBatch
+} from '../../../Shared/Contracts/messages';
+
 type SupportChatRouteHeader = {
   name: string;
 };
 
-type SupportChatSessionContext = {
-  actorId?: string | null;
-  displayName?: string | null;
-  role?: string | null;
-};
+class SupportChatSession implements ZLinkSession {
+  private actorId: string | null = null;
+  private displayName: string | null = null;
+  private role: string | null = null;
+  private notificationCursor = 0;
+  private closed = false;
+  private notificationPumpStarted = false;
 
-type SupportChatSessionHandlers = {
-  tryHandle(context: SupportChatSessionContext, header: SupportChatRouteHeader, payload: unknown): Promise<boolean>;
-  relay(context: SupportChatSessionContext, header: SupportChatRouteHeader, payload: unknown): Promise<unknown>;
-};
-
-// The Session server owns authentication and stream session lifecycle but never interprets
-// conversation rules. AuthenticateReq is handled as a session lifecycle packet; every other
-// packet is relayed to the bound Support actor through the Support channel.
-class SupportChatSession {
   constructor(
-    readonly context: SupportChatSessionContext,
-    private readonly handlers: SupportChatSessionHandlers
+    private readonly authenticator: SupportChatSessionAuthenticator,
+    private readonly channelClient: ZLinkChannelClient,
+    readonly context: ZLinkSessionContext
   ) {}
 
-  async dispatch(header: SupportChatRouteHeader, payload: unknown): Promise<unknown> {
-    if (await this.handlers.tryHandle(this.context, header, payload)) {
-      return undefined;
+  async onDispatch(header: unknown, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
+    const supportHeader = requireSupportChatRouteHeader(header);
+    if (supportHeader.name === PacketNames.authenticateReq) {
+      const response = await this.authenticator.handle(
+        payload.decode<AuthenticateReq>(Object as never),
+        this
+      );
+      await this.context.client.reply(response).submit(signal);
+      this.startNotificationPump();
+      return;
     }
-    this.requireBound(`relaying packet '${header.name}'`);
-    return await this.handlers.relay(this.context, header, payload);
+
+    this.requireBound(`relaying packet '${supportHeader.name}'`);
+    const response = await this.relayToSupport(supportHeader.name, payload.decode<object>(Object as never), signal);
+    await this.context.client.reply(response).submit(signal);
   }
 
-  onDisconnected(): void {
-    this.context.actorId = null;
-    this.context.displayName = null;
-    this.context.role = null;
+  async onDisconnected(): Promise<void> {
+    this.closed = true;
+    this.actorId = null;
+    this.displayName = null;
+    this.role = null;
+  }
+
+  setAuthenticated(actorId: string, displayName: string, role: string): void {
+    this.actorId = actorId;
+    this.displayName = displayName;
+    this.role = role;
+  }
+
+  private startNotificationPump(): void {
+    if (this.notificationPumpStarted) {
+      return;
+    }
+    this.notificationPumpStarted = true;
+    void this.pumpNotifications();
+  }
+
+  private async relayToSupport(packetName: string, request: object, signal?: AbortSignal): Promise<unknown> {
+    return await this.relayToChannel(SampleNames.supportChannel, packetName, request, signal);
+  }
+
+  private async relayToChannel(
+    channelName: string,
+    packetName: string,
+    request: object,
+    signal?: AbortSignal
+  ): Promise<unknown> {
+    if (this.actorId === null || this.displayName === null) {
+      throw new Error(`Client must authenticate before relaying packet '${packetName}'.`);
+    }
+    const payload = withUserIdentity(request, this.actorId, this.displayName);
+    return await retry(() => this.channelClient
+        .requestToChannel(channelName, payload)
+        .packetName(packetName)
+        .submit<unknown>(signal), { delayMs: 25, maxAttempts: 200 });
+  }
+
+  private async pumpNotifications(): Promise<void> {
+    while (!this.closed) {
+      if (this.actorId !== null && this.displayName !== null) {
+        try {
+          const response = await this.relayToChannel(
+            SampleNames.notificationChannel,
+            PacketNames.supportNotificationsReq,
+            supportNotificationsReq(this.notificationCursor)
+          ) as SupportNotificationBatch;
+          this.notificationCursor = response.nextSeq;
+          for (const delivered of response.delivered) {
+            await this.context.client
+              .send(delivered.payload)
+              .packetName(delivered.packetName)
+              .metadata('seq', String(delivered.seq))
+              .submit();
+          }
+        } catch {
+        }
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+    }
   }
 
   private requireBound(action: string): void {
-    if (this.context.actorId === null || this.context.actorId === undefined) {
+    if (this.actorId === null) {
       throw new Error(`Client must authenticate before ${action}.`);
     }
   }
 }
 
-export { SupportChatSession };
+class SupportChatSessionFactory implements ZLinkSessionFactory<SupportChatSession> {
+  constructor(
+    @Inject(SupportChatSessionAuthenticator) private readonly authenticator: SupportChatSessionAuthenticator,
+    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channelClient: ZLinkChannelClient
+  ) {}
+
+  create(context: ZLinkSessionContext): SupportChatSession {
+    return new SupportChatSession(this.authenticator, this.channelClient, context);
+  }
+}
+
+function requireSupportChatRouteHeader(header: unknown): SupportChatRouteHeader {
+  if (
+    typeof header !== 'object' ||
+    header === null ||
+    !('name' in header) ||
+    typeof (header as { name?: unknown }).name !== 'string'
+  ) {
+    throw new Error('SupportChat stream header is missing packet name.');
+  }
+  return header as SupportChatRouteHeader;
+}
+
+export { SupportChatSession, SupportChatSessionFactory };

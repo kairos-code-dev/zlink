@@ -715,7 +715,7 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
                                             const zlink::message_t &payload) mutable {
           stream_header_t header (stream_message_kind_t::send, codec, stream_header_flags_t::none,
                                   std::nullopt, std::move (packet_name));
-          return stream.write_packet (header, payload).async ();
+          return stream.write_packet_raw (header, payload).async ();
       };
 }
 

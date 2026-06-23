@@ -809,7 +809,7 @@ public interface ZLinkPublishCall {
 public record ZLinkSpotCreateResult(
     RoutingId spotRid,
     ZLinkSpotCreateState state,
-    Message reply) {
+    ZLinkMessage reply) {
 }
 
 public enum ZLinkSpotCreateState {

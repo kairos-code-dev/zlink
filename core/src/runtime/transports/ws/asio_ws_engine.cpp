@@ -979,14 +979,14 @@ bool zlink::asio_ws_engine_t::process_input ()
 
 bool zlink::asio_ws_engine_t::use_stream_dynamic_read_growth () const
 {
-    return _options.type == ZLINK_CORE_SOCKET_STREAM && _decoder != NULL
-           && _stream_decoder_read_target_max > _stream_decoder_read_target_size;
+    return zlink::asio_stream_fastpath_policy::can_grow_stream_target (
+      _options.type, _decoder, _stream_decoder_read_target_size, _stream_decoder_read_target_max);
 }
 
 bool zlink::asio_ws_engine_t::use_stream_dynamic_write_growth () const
 {
-    return _options.type == ZLINK_CORE_SOCKET_STREAM && _encoder != NULL
-           && _stream_encoder_write_target_max > _stream_encoder_write_target_size;
+    return zlink::asio_stream_fastpath_policy::can_grow_stream_target (
+      _options.type, _encoder, _stream_encoder_write_target_size, _stream_encoder_write_target_max);
 }
 
 void zlink::asio_ws_engine_t::prime_stream_decoder_read_target ()
@@ -999,21 +999,9 @@ void zlink::asio_ws_engine_t::prime_stream_decoder_read_target ()
 
 void zlink::asio_ws_engine_t::maybe_grow_stream_decoder_read_target (size_t bytes_transferred_)
 {
-    if (!use_stream_dynamic_read_growth ())
-        return;
-
-    if (_last_read_had_partial_prefix || _last_read_request_size == 0) {
-        _stream_decoder_read_target_full_hits = 0;
-        return;
-    }
-
-    if (bytes_transferred_ < _last_read_request_size) {
-        _stream_decoder_read_target_full_hits = 0;
-        return;
-    }
-
-    const size_t grown = zlink::asio_stream_fastpath_policy::next_stream_target_after_full_hit (
-      _stream_decoder_read_target_size, _stream_decoder_read_target_max,
+    const size_t grown = zlink::asio_stream_fastpath_policy::next_decoder_read_target (
+      _options.type, _decoder, _stream_decoder_read_target_size, _stream_decoder_read_target_max,
+      _last_read_had_partial_prefix, _last_read_request_size, bytes_transferred_,
       &_stream_decoder_read_target_full_hits, 1);
     if (grown == 0)
         return;
@@ -1037,16 +1025,9 @@ void zlink::asio_ws_engine_t::apply_pending_stream_encoder_resize ()
 
 void zlink::asio_ws_engine_t::maybe_schedule_stream_encoder_growth (size_t filled_out_batch_)
 {
-    if (!use_stream_dynamic_write_growth ())
-        return;
-
-    if (filled_out_batch_ < _stream_encoder_write_target_size) {
-        _stream_encoder_write_target_full_hits = 0;
-        return;
-    }
-
-    const size_t grown = zlink::asio_stream_fastpath_policy::next_stream_target_after_full_hit (
-      _stream_encoder_write_target_size, _stream_encoder_write_target_max,
+    const size_t grown = zlink::asio_stream_fastpath_policy::next_encoder_write_target (
+      _options.type, _encoder, _stream_encoder_write_target_size, _stream_encoder_write_target_max,
+      filled_out_batch_,
       &_stream_encoder_write_target_full_hits, 1);
     if (grown == 0)
         return;

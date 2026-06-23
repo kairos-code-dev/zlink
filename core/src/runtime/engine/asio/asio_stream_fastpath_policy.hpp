@@ -224,6 +224,59 @@ inline size_t next_stream_target_after_full_hit (size_t current_,
     return grown > current_ ? grown : 0;
 }
 
+inline bool can_grow_stream_target (int socket_type_, const void *codec_, size_t current_, size_t max_)
+{
+    return socket_type_ == ZLINK_CORE_SOCKET_STREAM && codec_ != NULL && max_ > current_;
+}
+
+inline size_t next_decoder_read_target (int socket_type_,
+                                        const void *decoder_,
+                                        size_t current_,
+                                        size_t max_,
+                                        bool last_read_had_partial_prefix_,
+                                        size_t last_read_request_size_,
+                                        size_t bytes_transferred_,
+                                        size_t *full_hits_,
+                                        size_t required_hits_)
+{
+    if (!can_grow_stream_target (socket_type_, decoder_, current_, max_))
+        return 0;
+
+    if (last_read_had_partial_prefix_ || last_read_request_size_ == 0) {
+        if (full_hits_)
+            *full_hits_ = 0;
+        return 0;
+    }
+
+    if (bytes_transferred_ < last_read_request_size_) {
+        if (full_hits_)
+            *full_hits_ = 0;
+        return 0;
+    }
+
+    return next_stream_target_after_full_hit (current_, max_, full_hits_, required_hits_);
+}
+
+inline size_t next_encoder_write_target (int socket_type_,
+                                         const void *encoder_,
+                                         size_t current_,
+                                         size_t max_,
+                                         size_t filled_out_batch_,
+                                         size_t *full_hits_,
+                                         size_t required_hits_)
+{
+    if (!can_grow_stream_target (socket_type_, encoder_, current_, max_))
+        return 0;
+
+    if (filled_out_batch_ < current_) {
+        if (full_hits_)
+            *full_hits_ = 0;
+        return 0;
+    }
+
+    return next_stream_target_after_full_hit (current_, max_, full_hits_, required_hits_);
+}
+
 template <typename Engine>
 inline size_t output_target_batch (const Engine &engine_, const zlink::options_t &options_)
 {

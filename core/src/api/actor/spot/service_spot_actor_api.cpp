@@ -156,7 +156,6 @@ bool join_request_live_locked (queued_join_request_t *request_)
 }
 
 void clear_actor_bound_session_locked (actor_handle_t *actor_, bool update_changed_time_);
-void clear_actor_joined_spot_locked (actor_handle_t *actor_);
 void retire_join_request_locked (queued_join_request_t *request_);
 
 bool spot_has_pending_join_locked (spot_logical_state_t *key_)
@@ -660,12 +659,6 @@ actor_session_state_t::binding_map_t::const_iterator session_bindings_end_const_
     return actor_runtime ().sessions.bindings_end ();
 }
 
-session_binding_t &ensure_session_binding_locked (void *stream_,
-                                                  const zlink_routing_id_t &session_rid_)
-{
-    return actor_runtime ().sessions.ensure_binding (stream_, session_rid_);
-}
-
 void erase_session_binding_locked (actor_session_state_t::binding_map_t::iterator binding_it_)
 {
     actor_runtime ().sessions.erase_binding (binding_it_);
@@ -747,13 +740,6 @@ void clear_actor_bound_session_locked (actor_handle_t *actor_, bool update_chang
     memset (&actor_->bound_session_rid, 0, sizeof (actor_->bound_session_rid));
     if (update_changed_time_)
         actor_->last_changed_ms = now_ms ();
-}
-
-void clear_actor_joined_spot_locked (actor_handle_t *actor_)
-{
-    if (!actor_)
-        return;
-    set_actor_entry_spot_locked (actor_);
 }
 
 std::unique_ptr<actor_handle_t> remove_actor_locked (actor_handle_t *actor_,
@@ -1872,7 +1858,8 @@ int zlink::spot_actor_internal::process_gateway_delivery (
             }
         } else if (frame.kind == zlink::spot_actor_gateway::packet_entry_join_request) {
             rc = enqueue_actor_gateway_entry_join_request_locked (
-              node, source_node_rid_, frame, &parts_[1], part_count_ - 1, true,
+              node, source_node_rid_, frame, part_count_ > 1 ? &parts_[1] : NULL,
+              part_count_ > 1 ? part_count_ - 1 : 0, true,
               &join_notify_spot);
         } else if (frame.kind == zlink::spot_actor_gateway::packet_entry_join_reply) {
             rc = process_actor_gateway_entry_join_reply_locked (
@@ -1881,7 +1868,8 @@ int zlink::spot_actor_internal::process_gateway_delivery (
               &source_actor_to_remove);
         } else if (frame.kind == zlink::spot_actor_gateway::packet_spot_join_request) {
             rc = enqueue_actor_gateway_entry_join_request_locked (
-              node, source_node_rid_, frame, &parts_[1], part_count_ - 1, false,
+              node, source_node_rid_, frame, part_count_ > 1 ? &parts_[1] : NULL,
+              part_count_ > 1 ? part_count_ - 1 : 0, false,
               &join_notify_spot);
         } else if (frame.kind == zlink::spot_actor_gateway::packet_spot_join_reply) {
             rc = process_actor_gateway_entry_join_reply_locked (

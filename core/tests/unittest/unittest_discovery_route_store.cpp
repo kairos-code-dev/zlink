@@ -178,7 +178,7 @@ void test_route_memory_budget_rejects_new_observation_without_partial_store ()
     const zlink::registry_t::route_entry_t route = make_route (key, owner, "too-large", 100, 1);
 
     int route_error = 0;
-    TEST_ASSERT_FALSE (registry.route_store_can_fit_locked (route, 0, &route_error));
+    TEST_ASSERT_FALSE (registry.route_store_can_fit_locked (route, 0, false, &route_error));
     TEST_ASSERT_EQUAL_INT (ENOSPC, route_error);
     TEST_ASSERT_EQUAL_UINT64 (0, registry._projection_state.route_observations.size ());
     TEST_ASSERT_EQUAL_UINT64 (0, registry._projection_state.routes.size ());

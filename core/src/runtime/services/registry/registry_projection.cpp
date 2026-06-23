@@ -8,6 +8,19 @@
 
 namespace zlink
 {
+registry_t::owner_identity_t
+registry_t::owner_identity_for_provider_locked (const std::string &channel_name_,
+                                                const provider_entry_t &provider_) const
+{
+    owner_identity_t owner;
+    owner.channel_name = channel_name_;
+    owner.service_role = provider_.service_role;
+    owner.routing_id_key = routing_id_key (provider_.routing_id);
+    owner.source_registry = provider_.source_registry;
+    owner.registration_id = provider_.registration_id;
+    return owner;
+}
+
 bool registry_t::find_provider_owner_locked (const std::string &channel_name_,
                                              uint16_t service_role_,
                                              const std::string &endpoint_,
@@ -27,13 +40,8 @@ bool registry_t::find_provider_owner_locked (const std::string &channel_name_,
     if (pit == sit->second.providers.end ())
         return false;
 
-    if (owner_out_) {
-        owner_out_->channel_name = channel_name_;
-        owner_out_->service_role = pit->second.service_role;
-        owner_out_->routing_id_key = routing_id_key (pit->second.routing_id);
-        owner_out_->source_registry = pit->second.source_registry;
-        owner_out_->registration_id = pit->second.registration_id;
-    }
+    if (owner_out_)
+        *owner_out_ = owner_identity_for_provider_locked (channel_name_, pit->second);
     if (routing_id_out_)
         *routing_id_out_ = pit->second.routing_id;
     return true;
@@ -94,6 +102,7 @@ size_t registry_t::route_entry_memory_bytes (const route_entry_t &entry_) const
 
 bool registry_t::route_store_can_fit_locked (const route_entry_t &entry_,
                                              size_t removed_memory_,
+                                             bool replaces_owner_route_,
                                              int *err_out_) const
 {
     const size_t entry_bytes = route_entry_memory_bytes (entry_);
@@ -117,7 +126,7 @@ bool registry_t::route_store_can_fit_locked (const route_entry_t &entry_,
         return false;
     }
     if (owner_count >= _projection_state.route_limits.max_observations_per_owner
-        && removed_memory_ == 0) {
+        && !replaces_owner_route_) {
         if (err_out_)
             *err_out_ = ENOSPC;
         return false;
@@ -199,21 +208,79 @@ void registry_t::upsert_route_observation_locked (const route_entry_t &entry_,
     obs_key.owner = entry_.owner;
     obs_key.advertising_registry = entry_.advertising_registry;
 
-    size_t removed_memory = 0;
-    route_observation_map_t::const_iterator existing =
-      _projection_state.route_observations.find (obs_key);
-    if (existing != _projection_state.route_observations.end ())
-        removed_memory = route_entry_memory_bytes (existing->second);
-
     erase_route_observation_locked (obs_key, dirty_routes_);
     _projection_state.route_observations[obs_key] = entry_;
     _projection_state.route_observations_by_route[entry_.key].insert (obs_key);
     _projection_state.routes_by_owner[entry_.owner].insert (entry_.key);
     _projection_state.routes_by_advertiser[entry_.advertising_registry].insert (entry_.key);
     _projection_state.route_stats.memory_bytes += route_entry_memory_bytes (entry_);
-    (void) removed_memory;
     if (dirty_routes_)
         dirty_routes_->insert (entry_.key);
+}
+
+bool registry_t::replace_route_observation_for_advertiser_locked (const route_entry_t &entry_,
+                                                                  int *err_out_)
+{
+    size_t replaced_memory = 0;
+    bool replaces_owner_route = false;
+    route_observations_by_route_t::const_iterator route_it =
+      _projection_state.route_observations_by_route.find (entry_.key);
+    if (route_it != _projection_state.route_observations_by_route.end ()) {
+        for (route_observation_key_set_t::const_iterator obs = route_it->second.begin ();
+             obs != route_it->second.end (); ++obs) {
+            if (obs->advertising_registry != entry_.advertising_registry)
+                continue;
+            route_observation_map_t::const_iterator current =
+              _projection_state.route_observations.find (*obs);
+            if (current != _projection_state.route_observations.end ())
+                replaced_memory += route_entry_memory_bytes (current->second);
+            if (obs->owner == entry_.owner)
+                replaces_owner_route = true;
+        }
+    }
+
+    int route_error = 0;
+    if (!route_store_can_fit_locked (entry_, replaced_memory, replaces_owner_route,
+                                     &route_error)) {
+        if (err_out_)
+            *err_out_ = route_error;
+        return false;
+    }
+
+    route_key_set_t dirty_routes;
+    erase_route_observations_by_route_advertiser_locked (
+      entry_.key, entry_.advertising_registry, &dirty_routes);
+    upsert_route_observation_locked (entry_, &dirty_routes);
+    materialize_dirty_routes_locked (dirty_routes);
+    if (err_out_)
+        *err_out_ = 0;
+    return true;
+}
+
+bool registry_t::erase_route_observation_for_owner_locked (const route_key_t &route_key_,
+                                                           const owner_identity_t &owner_,
+                                                           uint32_t advertising_registry_,
+                                                           int *err_out_)
+{
+    route_observation_key_t obs_key;
+    obs_key.route_key = route_key_;
+    obs_key.owner = owner_;
+    obs_key.advertising_registry = advertising_registry_;
+
+    route_observation_map_t::const_iterator obs_it =
+      _projection_state.route_observations.find (obs_key);
+    if (obs_it == _projection_state.route_observations.end ()) {
+        if (err_out_)
+            *err_out_ = ENOENT;
+        return false;
+    }
+
+    route_key_set_t dirty_routes;
+    erase_route_observation_locked (obs_key, &dirty_routes);
+    materialize_dirty_routes_locked (dirty_routes);
+    if (err_out_)
+        *err_out_ = 0;
+    return true;
 }
 
 void registry_t::materialize_route_winner_locked (const route_key_t &route_key_)
@@ -546,12 +613,8 @@ void registry_t::remove_expired (uint64_t now_ms_)
             if (now_ms_ > pit->second.last_heartbeat
                 && now_ms_ - pit->second.last_heartbeat
                      > _coordination_state.heartbeat_timeout_ms) {
-                owner_identity_t removed_owner;
-                removed_owner.channel_name = sit->first.channel_name;
-                removed_owner.service_role = pit->second.service_role;
-                removed_owner.routing_id_key = routing_id_key (pit->second.routing_id);
-                removed_owner.source_registry = pit->second.source_registry;
-                removed_owner.registration_id = pit->second.registration_id;
+                const owner_identity_t removed_owner =
+                  owner_identity_for_provider_locked (sit->first.channel_name, pit->second);
                 cleanup_owner_records_locked (removed_owner, now_ms_);
                 pit = providers.erase (pit);
                 changed = true;
@@ -580,12 +643,8 @@ void registry_t::remove_expired (uint64_t now_ms_)
                 provider_map_t &providers = sit->second.providers;
                 for (provider_map_t::iterator eit = providers.begin (); eit != providers.end ();) {
                     if (eit->second.source_registry == peer_id) {
-                        owner_identity_t removed_owner;
-                        removed_owner.channel_name = sit->first.channel_name;
-                        removed_owner.service_role = eit->second.service_role;
-                        removed_owner.routing_id_key = routing_id_key (eit->second.routing_id);
-                        removed_owner.source_registry = eit->second.source_registry;
-                        removed_owner.registration_id = eit->second.registration_id;
+                        const owner_identity_t removed_owner =
+                          owner_identity_for_provider_locked (sit->first.channel_name, eit->second);
                         cleanup_owner_records_locked (removed_owner, now_ms_);
                         eit = providers.erase (eit);
                         changed = true;

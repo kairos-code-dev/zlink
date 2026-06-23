@@ -888,7 +888,10 @@ set(api-registry-sources
     src/api/registry/service_registry_api.cpp)
 
 set(api-spot-sources
+    src/api/spot/core/service_spot_route_bridge_channel_reply_internal.cpp
+    src/api/spot/core/service_spot_route_bridge_codec_internal.cpp
     src/api/spot/core/service_spot_node_api.cpp
+    src/api/spot/core/service_spot_node_publisher_api.cpp
     src/api/spot/core/service_spot_route_bridge_api.cpp
     src/api/spot/core/service_spot_api.cpp
     src/api/spot/dispatch/service_spot_dispatch_context.cpp

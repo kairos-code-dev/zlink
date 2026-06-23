@@ -327,34 +327,9 @@ int discovery_t::bind_route (zlink_route_kind_t kind_,
         return -1;
     }
 
-    socket_base_t *dealer = NULL;
-    if (discovery_registry_rpc::prepare_transient_dealer (_ctx, _bootstrap_runtime,
-                                                          owner.uplink_endpoint, NULL, &dealer)
-        != 0) {
-        return -1;
-    }
-
-    const uint32_t raw_kind = kind_;
-    const int send_rc =
-      discovery_protocol::send_u16 (dealer, discovery_protocol::msg_bind_route, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_u32 (dealer, raw_kind, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_frame (dealer, key_, key_size_, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_frame (dealer, value_, value_size_, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_string (dealer, _channel_name, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_u16 (dealer, owner.service_role, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_string (dealer, owner.endpoint, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_u64 (dealer, owner.registration_id, 0) < 0;
-    if (send_rc) {
-        (void) discovery_registry_rpc::close_dealer (_ctx, dealer);
-        return -1;
-    }
-
-    const int rc = discovery_registry_rpc::recv_route_reply (dealer, NULL, NULL);
-    const int saved_errno = errno;
-    (void) discovery_registry_rpc::close_dealer (_ctx, dealer);
-    if (rc != 0)
-        errno = saved_errno;
-    return rc;
+    return discovery_registry_rpc::bind_route (
+      _ctx, _bootstrap_runtime, owner.uplink_endpoint, kind_, key_, key_size_, value_, value_size_,
+      _channel_name, owner.service_role, owner.endpoint, owner.registration_id);
 }
 
 int discovery_t::unbind_route (zlink_route_kind_t kind_, const void *key_, size_t key_size_)
@@ -376,33 +351,9 @@ int discovery_t::unbind_route (zlink_route_kind_t kind_, const void *key_, size_
         return -1;
     }
 
-    socket_base_t *dealer = NULL;
-    if (discovery_registry_rpc::prepare_transient_dealer (_ctx, _bootstrap_runtime,
-                                                          owner.uplink_endpoint, NULL, &dealer)
-        != 0) {
-        return -1;
-    }
-
-    const uint32_t raw_kind = kind_;
-    const int send_rc =
-      discovery_protocol::send_u16 (dealer, discovery_protocol::msg_unbind_route, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_u32 (dealer, raw_kind, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_frame (dealer, key_, key_size_, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_string (dealer, _channel_name, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_u16 (dealer, owner.service_role, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_string (dealer, owner.endpoint, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_u64 (dealer, owner.registration_id, 0) < 0;
-    if (send_rc) {
-        (void) discovery_registry_rpc::close_dealer (_ctx, dealer);
-        return -1;
-    }
-
-    const int rc = discovery_registry_rpc::recv_route_reply (dealer, NULL, NULL);
-    const int saved_errno = errno;
-    (void) discovery_registry_rpc::close_dealer (_ctx, dealer);
-    if (rc != 0)
-        errno = saved_errno;
-    return rc;
+    return discovery_registry_rpc::unbind_route (
+      _ctx, _bootstrap_runtime, owner.uplink_endpoint, kind_, key_, key_size_, _channel_name,
+      owner.service_role, owner.endpoint, owner.registration_id);
 }
 
 int discovery_t::resolve_route (zlink_route_kind_t kind_,
@@ -423,31 +374,9 @@ int discovery_t::resolve_route (zlink_route_kind_t kind_,
         return -1;
     }
 
-    socket_base_t *dealer = NULL;
-    if (discovery_registry_rpc::prepare_transient_dealer (_ctx, _bootstrap_runtime, uplink, NULL,
-                                                          &dealer)
-        != 0) {
-        return -1;
-    }
-
-    const uint32_t raw_kind = kind_;
-    const int send_rc =
-      discovery_protocol::send_u16 (dealer, discovery_protocol::msg_resolve_route, ZLINK_SNDMORE)
-        < 0
-      || discovery_protocol::send_u32 (dealer, raw_kind, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_frame (dealer, key_, key_size_, ZLINK_SNDMORE) < 0
-      || discovery_protocol::send_string (dealer, _channel_name, 0) < 0;
-    if (send_rc) {
-        (void) discovery_registry_rpc::close_dealer (_ctx, dealer);
-        return -1;
-    }
-
-    const int rc = discovery_registry_rpc::recv_route_reply (dealer, owner_rid_out_, value_out_);
-    const int saved_errno = errno;
-    (void) discovery_registry_rpc::close_dealer (_ctx, dealer);
-    if (rc != 0)
-        errno = saved_errno;
-    return rc;
+    return discovery_registry_rpc::resolve_route (_ctx, _bootstrap_runtime, uplink, kind_, key_,
+                                                 key_size_, _channel_name, owner_rid_out_,
+                                                 value_out_);
 }
 
 int discovery_t::register_service (const char *endpoint_,

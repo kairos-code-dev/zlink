@@ -466,6 +466,8 @@ class registry_t
                                         uint64_t now_ms_,
                                         uint32_t owner_registry_id_);
     void remove_channel_providers_locked (const std::string &channel_name_);
+    owner_identity_t owner_identity_for_provider_locked (const std::string &channel_name_,
+                                                         const provider_entry_t &provider_) const;
     void upsert_topology_entry (const zlink_registry_topology_entry_t &entry_, uint64_t now_ms_);
     bool find_provider_owner_locked (const std::string &channel_name_,
                                      uint16_t service_role_,
@@ -482,6 +484,7 @@ class registry_t
     size_t route_entry_memory_bytes (const route_entry_t &entry_) const;
     bool route_store_can_fit_locked (const route_entry_t &entry_,
                                      size_t removed_memory_,
+                                     bool replaces_owner_route_,
                                      int *err_out_) const;
     void erase_route_observation_locked (const route_observation_key_t &key_,
                                          route_key_set_t *dirty_routes_);
@@ -490,6 +493,12 @@ class registry_t
                                                               route_key_set_t *dirty_routes_);
     void upsert_route_observation_locked (const route_entry_t &entry_,
                                           route_key_set_t *dirty_routes_);
+    bool replace_route_observation_for_advertiser_locked (const route_entry_t &entry_,
+                                                          int *err_out_);
+    bool erase_route_observation_for_owner_locked (const route_key_t &route_key_,
+                                                   const owner_identity_t &owner_,
+                                                   uint32_t advertising_registry_,
+                                                   int *err_out_);
     void materialize_route_winner_locked (const route_key_t &route_key_);
     void materialize_dirty_routes_locked (const route_key_set_t &dirty_routes_);
     void promote_owner_route_records_locked (const owner_identity_t &owner_);

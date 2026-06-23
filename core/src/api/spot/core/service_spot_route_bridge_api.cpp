@@ -6,10 +6,10 @@
 #include "api/message/submit_result_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
 #include "api/socket/socket_message_api_internal.hpp"
-#include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
+#include "api/spot/core/service_spot_route_bridge_channel_reply_internal.hpp"
+#include "api/spot/core/service_spot_route_bridge_codec_internal.hpp"
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
-#include "services/spot/data_plane/spot_data_plane_internal.hpp"
 #include "services/spot/node/spot_node.hpp"
 #include "services/spot/node/spot_node_access.hpp"
 #include "services/spot/runtime/spot_runtime.hpp"
@@ -24,10 +24,10 @@
 
 namespace
 {
+namespace channel_reply = zlink::spot_route_bridge_channel_reply_internal;
+namespace codec = zlink::spot_route_bridge_codec_internal;
+
 const uint32_t spot_route_bridge_tag = 0x5b720001u;
-const uint32_t spot_node_publisher_tag = 0x5b700001u;
-const char spot_route_bridge_send_packet_name[] = "__zlink.routed_spot.egress.send";
-const char spot_route_bridge_request_packet_name[] = "__zlink.routed_spot.egress.request";
 
 struct bridge_endpoint_t
 {
@@ -56,22 +56,7 @@ struct spot_route_bridge_t
     bool closed;
 };
 
-struct spot_node_publisher_t
-{
-    uint32_t tag;
-    zlink::spot_node_t *node;
-    bool closed;
-};
-
 uint32_t request_timeout_ms (const spot_route_bridge_t *bridge_, uint32_t timeout_ms_);
-
-struct bridge_pending_reply_t
-{
-    zlink::socket_base_t *socket;
-    int socket_type;
-    zlink_routing_id_t peer_rid;
-    uint64_t request_seq;
-};
 
 bool valid_channel_name (const char *channel_name_)
 {
@@ -81,232 +66,6 @@ bool valid_channel_name (const char *channel_name_)
 bool has_valid_routing_id (const zlink_routing_id_t *rid_)
 {
     return rid_ && rid_->size > 0 && rid_->size <= sizeof (rid_->data);
-}
-
-bool msg_equals_text (zlink_msg_t *part_, const char *text_)
-{
-    if (!part_ || !text_)
-        return false;
-    const size_t expected_size = strlen (text_);
-    return zlink_msg_size (part_) == expected_size
-           && memcmp (zlink_msg_data (part_), text_, expected_size) == 0;
-}
-
-bool is_spot_route_bridge_packet_name (zlink_msg_t *part_)
-{
-    return msg_equals_text (part_, spot_route_bridge_send_packet_name)
-           || msg_equals_text (part_, spot_route_bridge_request_packet_name);
-}
-
-bool init_msg_from_buffer (zlink_msg_t *part_, const void *data_, size_t size_)
-{
-    if (!part_) {
-        errno = EFAULT;
-        return false;
-    }
-    zlink_msg_init (part_);
-    if (zlink_msg_init_size (part_, size_) != 0) {
-        zlink_msg_close (part_);
-        return false;
-    }
-    if (size_ > 0)
-        memcpy (zlink_msg_data (part_), data_, size_);
-    return true;
-}
-
-bool init_msg_from_text (zlink_msg_t *part_, const char *text_)
-{
-    return init_msg_from_buffer (part_, text_, strlen (text_));
-}
-
-int request_result_errno (zlink_request_result_t result_)
-{
-    switch (result_) {
-        case ZLINK_REQUEST_OK:
-            return 0;
-        case ZLINK_REQUEST_TIMED_OUT:
-            return ETIMEDOUT;
-        case ZLINK_REQUEST_NOT_FOUND:
-            return ENOENT;
-        case ZLINK_REQUEST_TERMINATED:
-            return ETERM;
-        case ZLINK_REQUEST_REJECTED:
-            return EPERM;
-        case ZLINK_REQUEST_CONFLICT:
-            return EBUSY;
-        case ZLINK_REQUEST_BUSY:
-            return EAGAIN;
-        case ZLINK_REQUEST_NOT_CONNECTED:
-            return ENOTCONN;
-        case ZLINK_REQUEST_INVALID_ARGUMENT:
-            return EINVAL;
-        case ZLINK_REQUEST_INVALID_STATE:
-            return ESHUTDOWN;
-        case ZLINK_REQUEST_NOT_SUPPORTED:
-            return ENOTSUP;
-        case ZLINK_REQUEST_PROTOCOL_ERROR:
-            return EPROTO;
-        case ZLINK_REQUEST_INTERNAL_ERROR:
-        default:
-            return EIO;
-    }
-}
-
-int init_errno_part (zlink_msg_t *part_, int errnum_)
-{
-    if (!part_) {
-        errno = EFAULT;
-        return -1;
-    }
-    unsigned char errbuf[4];
-    zlink::request_reply::encode_u32_be (static_cast<uint32_t> (errnum_), errbuf);
-    if (zlink_msg_init_size (part_, sizeof (errbuf)) != 0)
-        return -1;
-    memcpy (zlink_msg_data (part_), errbuf, sizeof (errbuf));
-    return 0;
-}
-
-void reply_to_channel_request (zlink_request_result_t result_,
-                               zlink_msg_t *parts_,
-                               size_t part_count_,
-                               void *userdata_)
-{
-    bridge_pending_reply_t *pending = static_cast<bridge_pending_reply_t *> (userdata_);
-    if (!pending) {
-        zlink_multipart_close (parts_, part_count_);
-        return;
-    }
-
-    if (result_ != ZLINK_REQUEST_OK) {
-        zlink_multipart_close (parts_, part_count_);
-        zlink_msg_t errno_part;
-        zlink_msg_init (&errno_part);
-        if (init_errno_part (&errno_part, request_result_errno (result_)) == 0) {
-            if (pending->socket_type == ZLINK_CORE_SOCKET_ROUTER) {
-                (void) zlink::socket_reqrep_internal::send_request_reply_message (
-                  pending->socket, &pending->peer_rid, &errno_part, 1, ZLINK_DONTWAIT,
-                  zlink::request_reply::error_reply_type, pending->request_seq);
-            } else if (pending->socket_type == ZLINK_CORE_SOCKET_DEALER) {
-                (void) zlink_dealer_reply_part (pending->socket, pending->request_seq, &errno_part,
-                                                ZLINK_PART_FINAL);
-            } else {
-                zlink_msg_close (&errno_part);
-            }
-        }
-        delete pending;
-        return;
-    }
-
-    if (!parts_ || part_count_ == 0) {
-        zlink_msg_t empty;
-        zlink_msg_init (&empty);
-        (void) zlink_msg_init_size (&empty, 0);
-        if (pending->socket_type == ZLINK_CORE_SOCKET_ROUTER) {
-            (void) zlink_router_reply_part (pending->socket, &pending->peer_rid,
-                                            pending->request_seq, &empty, ZLINK_PART_FINAL);
-        } else if (pending->socket_type == ZLINK_CORE_SOCKET_DEALER) {
-            (void) zlink_dealer_reply_part (pending->socket, pending->request_seq, &empty,
-                                            ZLINK_PART_FINAL);
-        } else {
-            zlink_msg_close (&empty);
-        }
-        delete pending;
-        return;
-    }
-
-    for (size_t i = 0; i < part_count_; ++i) {
-        const zlink_part_flag_t part_flag = i + 1 < part_count_ ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        if (pending->socket_type == ZLINK_CORE_SOCKET_ROUTER) {
-            if (zlink_router_reply_part (pending->socket, &pending->peer_rid,
-                                         pending->request_seq, &parts_[i], part_flag)
-                != ZLINK_SUBMIT_OK) {
-                zlink_multipart_close (parts_ + i, part_count_ - i);
-                break;
-            }
-        } else if (pending->socket_type == ZLINK_CORE_SOCKET_DEALER) {
-            if (zlink_dealer_reply_part (pending->socket, pending->request_seq, &parts_[i],
-                                         part_flag)
-                != ZLINK_SUBMIT_OK) {
-                zlink_multipart_close (parts_ + i, part_count_ - i);
-                break;
-            }
-        } else {
-            zlink_multipart_close (parts_ + i, part_count_ - i);
-            break;
-        }
-    }
-    delete pending;
-}
-
-bool build_relay_parts (const char *packet_name_,
-                        const zlink_routing_id_t *target_spot_rid_,
-                        zlink_msg_t *parts_,
-                        size_t part_count_,
-                        std::vector<zlink_msg_t> *out_)
-{
-    if (!packet_name_ || !has_valid_routing_id (target_spot_rid_) || !out_
-        || (!parts_ && part_count_ != 0)) {
-        errno = EINVAL;
-        return false;
-    }
-
-    out_->clear ();
-    out_->resize (part_count_ + 2);
-    size_t initialized = 0;
-    if (!init_msg_from_text (&(*out_)[initialized++], packet_name_))
-        goto fail;
-    if (!init_msg_from_buffer (&(*out_)[initialized++], target_spot_rid_->data,
-                               target_spot_rid_->size))
-        goto fail;
-    for (size_t i = 0; i < part_count_; ++i) {
-        zlink_msg_init (&(*out_)[initialized]);
-        if (zlink_msg_move (&(*out_)[initialized], &parts_[i]) != 0) {
-            zlink_msg_close (&(*out_)[initialized]);
-            goto fail;
-        }
-        ++initialized;
-    }
-    return true;
-
-fail:
-    for (size_t i = 0; i < initialized; ++i)
-        zlink_msg_close (&(*out_)[i]);
-    out_->clear ();
-    return false;
-}
-
-void close_msg_parts (zlink_msg_t *parts_, size_t part_count_)
-{
-    if (!parts_)
-        return;
-    for (size_t i = 0; i < part_count_; ++i)
-        zlink_msg_close (&parts_[i]);
-}
-
-void close_relay_parts (std::vector<zlink_msg_t> *parts_)
-{
-    if (!parts_)
-        return;
-    for (size_t i = 0; i < parts_->size (); ++i)
-        zlink_msg_close (&(*parts_)[i]);
-    parts_->clear ();
-}
-
-bool decode_target_spot_rid (zlink_msg_t *part_, zlink_routing_id_t *out_)
-{
-    if (!part_ || !out_) {
-        errno = EFAULT;
-        return false;
-    }
-    const size_t size = zlink_msg_size (part_);
-    if (size == 0 || size > sizeof (out_->data)) {
-        errno = EPROTO;
-        return false;
-    }
-    memset (out_, 0, sizeof (*out_));
-    out_->size = static_cast<uint8_t> (size);
-    memcpy (out_->data, zlink_msg_data (part_), size);
-    return true;
 }
 
 bool build_endpoint_source_rid (void *socket_,
@@ -335,22 +94,13 @@ bool build_endpoint_source_rid (void *socket_,
 
 int deliver_relay_to_local_spot (spot_route_bridge_t *bridge_,
                                  const zlink_routing_id_t *source_node_rid_,
-                                 zlink_msg_t *parts_,
-                                 size_t part_count_,
+                                 codec::decoded_relay_t *relay_,
                                  uint64_t request_seq_)
 {
-    if (!bridge_ || !parts_) {
+    if (!bridge_ || !relay_) {
         errno = EFAULT;
         return -1;
     }
-    if (part_count_ < 3 || !is_spot_route_bridge_packet_name (&parts_[0])) {
-        errno = EPROTO;
-        return -1;
-    }
-
-    zlink_routing_id_t target_spot_rid;
-    if (!decode_target_spot_rid (&parts_[1], &target_spot_rid))
-        return -1;
 
     zlink_routing_id_t local_node_rid;
     memset (&local_node_rid, 0, sizeof (local_node_rid));
@@ -359,7 +109,7 @@ int deliver_relay_to_local_spot (spot_route_bridge_t *bridge_,
 
     std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> target_state =
       zlink::spot_reqrep_internal::find_spot_state_by_identity (
-        zlink::routing_id_key (local_node_rid), zlink::routing_id_key (target_spot_rid));
+        zlink::routing_id_key (local_node_rid), zlink::routing_id_key (relay_->target_spot_rid));
     if (!target_state) {
         errno = ENOENT;
         return -1;
@@ -370,12 +120,10 @@ int deliver_relay_to_local_spot (spot_route_bridge_t *bridge_,
     const zlink_routing_id_t *queued_source_node_rid =
       has_valid_routing_id (source_node_rid_) ? source_node_rid_ : &empty_source_node_rid;
     const int rc = zlink::spot_reqrep_internal::queue_spot_message (
-      target_state.get (), queued_source_node_rid, &target_spot_rid, request_seq_, parts_ + 2,
-      part_count_ - 2);
-    if (rc == 0) {
-        zlink_msg_close (&parts_[0]);
-        zlink_msg_close (&parts_[1]);
-    }
+      target_state.get (), queued_source_node_rid, &relay_->target_spot_rid, request_seq_,
+      relay_->payload_parts, relay_->payload_part_count);
+    if (rc == 0)
+        codec::close_decoded_relay_envelope (relay_);
     return rc;
 }
 
@@ -383,22 +131,21 @@ int deliver_request_relay_to_local_spot (spot_route_bridge_t *bridge_,
                                          bridge_endpoint_t *endpoint_,
                                          const zlink_routing_id_t *source_node_rid_,
                                          uint64_t channel_request_seq_,
-                                         zlink_msg_t *parts_,
-                                         size_t part_count_)
+                                         codec::decoded_relay_t *relay_)
 {
-    if (!bridge_ || !endpoint_ || !parts_) {
+    if (!bridge_ || !endpoint_ || !relay_) {
         errno = EFAULT;
         return -1;
     }
-    if (part_count_ < 3 || !msg_equals_text (&parts_[0], spot_route_bridge_request_packet_name)
-        || !has_valid_routing_id (source_node_rid_) || channel_request_seq_ == 0) {
+    if (!has_valid_routing_id (source_node_rid_) || channel_request_seq_ == 0) {
         errno = EPROTO;
         return -1;
     }
 
-    zlink_routing_id_t target_spot_rid;
-    if (!decode_target_spot_rid (&parts_[1], &target_spot_rid))
+    if (relay_->kind != codec::packet_kind_request) {
+        errno = EPROTO;
         return -1;
+    }
 
     zlink_routing_id_t local_node_rid;
     memset (&local_node_rid, 0, sizeof (local_node_rid));
@@ -407,7 +154,7 @@ int deliver_request_relay_to_local_spot (spot_route_bridge_t *bridge_,
 
     std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> target_state =
       zlink::spot_reqrep_internal::find_spot_state_by_identity (
-        zlink::routing_id_key (local_node_rid), zlink::routing_id_key (target_spot_rid));
+        zlink::routing_id_key (local_node_rid), zlink::routing_id_key (relay_->target_spot_rid));
     if (!target_state) {
         errno = ENOENT;
         return -1;
@@ -417,55 +164,21 @@ int deliver_request_relay_to_local_spot (spot_route_bridge_t *bridge_,
         return -1;
     }
 
-    uint64_t local_request_seq = 0;
-    {
-        std::lock_guard<std::mutex> lock (endpoint_->reply_adapter_state->mutex);
-        local_request_seq = zlink::request_reply_runtime::allocate_request_sequence (
-          &endpoint_->reply_adapter_state->requests.next_request_seq,
-          endpoint_->reply_adapter_state->requests.pending_sequences);
-    }
+    const uint64_t local_request_seq = channel_reply::register_pending_reply (
+      endpoint_->reply_adapter_state, endpoint_->socket, endpoint_->socket_type, source_node_rid_,
+      channel_request_seq_, request_timeout_ms (bridge_, 0));
     if (local_request_seq == 0)
         return -1;
 
-    bridge_pending_reply_t *pending = new (std::nothrow) bridge_pending_reply_t ();
-    if (!pending) {
-        errno = ENOMEM;
-        return -1;
-    }
-    pending->socket = endpoint_->socket;
-    pending->socket_type = endpoint_->socket_type;
-    pending->peer_rid = *source_node_rid_;
-    pending->request_seq = channel_request_seq_;
-
-    zlink::spot_reqrep_internal::pending_spot_key_t ignored_key;
-    ignored_key.source_class = 0;
-    ignored_key.request_seq = local_request_seq;
-    if (zlink::spot_reqrep_internal::register_router_spot_pending_request (
-          endpoint_->reply_adapter_state, local_request_seq, ignored_key,
-          request_timeout_ms (bridge_, 0), &reply_to_channel_request, pending)
-        != 0) {
-        delete pending;
-        return -1;
-    }
-
     const int rc = zlink::spot_reqrep_internal::queue_spot_message (
-      target_state.get (), &endpoint_->bridge_source_rid, NULL, local_request_seq, parts_ + 2,
-      part_count_ - 2);
+      target_state.get (), &endpoint_->bridge_source_rid, NULL, local_request_seq,
+      relay_->payload_parts, relay_->payload_part_count);
     if (rc != 0) {
-        std::lock_guard<std::mutex> lock (endpoint_->reply_adapter_state->mutex);
-        endpoint_->reply_adapter_state->requests.pending_sequences.erase (local_request_seq);
-        std::unordered_map<uint64_t, zlink::spot_reqrep_internal::pending_reply_t>::iterator it =
-          endpoint_->reply_adapter_state->requests.pending_replies.find (local_request_seq);
-        if (it != endpoint_->reply_adapter_state->requests.pending_replies.end ()) {
-            zlink::request_timeout::cancel (it->second.timeout_task);
-            delete static_cast<bridge_pending_reply_t *> (it->second.userdata);
-            endpoint_->reply_adapter_state->requests.pending_replies.erase (it);
-        }
+        channel_reply::erase_pending_reply (endpoint_->reply_adapter_state, local_request_seq);
         return -1;
     }
 
-    zlink_msg_close (&parts_[0]);
-    zlink_msg_close (&parts_[1]);
+    codec::close_decoded_relay_envelope (relay_);
     return 0;
 }
 
@@ -497,20 +210,6 @@ spot_route_bridge_t *as_bridge (void *bridge_)
         return NULL;
     }
     return bridge;
-}
-
-spot_node_publisher_t *as_publisher (void *publisher_)
-{
-    spot_node_publisher_t *publisher = static_cast<spot_node_publisher_t *> (publisher_);
-    if (!publisher || publisher->tag != spot_node_publisher_tag) {
-        errno = EFAULT;
-        return NULL;
-    }
-    if (publisher->closed) {
-        errno = ESHUTDOWN;
-        return NULL;
-    }
-    return publisher;
 }
 
 zlink::socket_base_t *as_socket_of_type (void *socket_, int expected_type_)
@@ -601,7 +300,8 @@ int handle_received_common (spot_route_bridge_t *bridge_,
     if (!parts_ || part_count_ == 0)
         return 0;
     bridge_endpoint_t &endpoint = bridge_->endpoints[channel_name_];
-    if (!is_spot_route_bridge_packet_name (&parts_[0])) {
+    const codec::packet_kind_t packet_kind = codec::decode_relay_kind (parts_, part_count_);
+    if (packet_kind == codec::packet_kind_none) {
         if ((endpoint.capabilities & ZLINK_SPOT_ROUTE_BRIDGE_CAP_CHANNEL_INBOUND) == 0)
             ++bridge_->rejected_inbound_count;
         return 0;
@@ -609,19 +309,19 @@ int handle_received_common (spot_route_bridge_t *bridge_,
 
     *handled_ = true;
     if ((endpoint.capabilities & ZLINK_SPOT_ROUTE_BRIDGE_CAP_SPOT_ROUTE) == 0) {
-        close_msg_parts (parts_, part_count_);
+        zlink_multipart_close (parts_, part_count_);
         ++bridge_->rejected_inbound_count;
         errno = EPERM;
         return -1;
     }
-    if (part_count_ < 3) {
-        close_msg_parts (parts_, part_count_);
+    codec::decoded_relay_t relay;
+    if (!codec::decode_relay_parts (parts_, part_count_, &relay)) {
         ++bridge_->malformed_inbound_count;
-        errno = EPROTO;
+        zlink_multipart_close (parts_, part_count_);
         return -1;
     }
 
-    if (msg_equals_text (&parts_[0], spot_route_bridge_request_packet_name)) {
+    if (relay.kind == codec::packet_kind_request) {
         const bool request_metadata_present =
           endpoint.socket_type == ZLINK_CORE_SOCKET_ROUTER
             ? request_seq_ != 0 && has_valid_routing_id (source_node_rid_)
@@ -642,11 +342,11 @@ int handle_received_common (spot_route_bridge_t *bridge_,
         }
 
         const int rc = deliver_request_relay_to_local_spot (
-          bridge_, &endpoint, reply_peer_rid, request_seq_, parts_, part_count_);
+          bridge_, &endpoint, reply_peer_rid, request_seq_, &relay);
         if (rc != 0) {
             if (errno == EPROTO)
                 ++bridge_->malformed_inbound_count;
-            close_msg_parts (parts_, part_count_);
+            codec::close_decoded_relay_parts (&relay);
         }
         return rc;
     }
@@ -658,12 +358,11 @@ int handle_received_common (spot_route_bridge_t *bridge_,
         dealer_source_node_rid = endpoint.bridge_source_rid;
         relay_source_node_rid = &dealer_source_node_rid;
     }
-    const int rc = deliver_relay_to_local_spot (bridge_, relay_source_node_rid, parts_,
-                                                part_count_, 0);
+    const int rc = deliver_relay_to_local_spot (bridge_, relay_source_node_rid, &relay, 0);
     if (rc != 0) {
         if (errno == EPROTO)
             ++bridge_->malformed_inbound_count;
-        close_msg_parts (parts_, part_count_);
+        codec::close_decoded_relay_parts (&relay);
     }
     return rc;
 }
@@ -766,8 +465,7 @@ int zlink_spot_route_bridge_send (void *bridge_,
     }
 
     std::vector<zlink_msg_t> relay_parts;
-    if (!build_relay_parts (spot_route_bridge_send_packet_name, target_spot_rid_, parts_,
-                            part_count_, &relay_parts))
+    if (!codec::build_send_relay_parts (target_spot_rid_, parts_, part_count_, &relay_parts))
         return -1;
 
     int rc = -1;
@@ -778,7 +476,7 @@ int zlink_spot_route_bridge_send (void *bridge_,
         if (!endpoint.has_target_node) {
             errno = ENOENT;
             rc = -1;
-            close_relay_parts (&relay_parts);
+            codec::close_relay_parts (&relay_parts);
         } else {
             rc = zlink_socket_send_rid_internal (endpoint.socket, &endpoint.target_node_rid,
                                                 relay_parts.data (), relay_parts.size (), flags_);
@@ -786,7 +484,7 @@ int zlink_spot_route_bridge_send (void *bridge_,
     } else {
         errno = EINVAL;
         rc = -1;
-        close_relay_parts (&relay_parts);
+        codec::close_relay_parts (&relay_parts);
     }
     if (rc != 0)
         ++bridge->routed_send_failure_count;
@@ -820,8 +518,7 @@ int zlink_spot_route_bridge_request (void *bridge_,
     }
 
     std::vector<zlink_msg_t> relay_parts;
-    if (!build_relay_parts (spot_route_bridge_request_packet_name, target_spot_rid_, parts_,
-                            part_count_, &relay_parts))
+    if (!codec::build_request_relay_parts (target_spot_rid_, parts_, part_count_, &relay_parts))
         return -1;
 
     int rc = -1;
@@ -834,7 +531,7 @@ int zlink_spot_route_bridge_request (void *bridge_,
         if (!endpoint.has_target_node) {
             errno = ENOENT;
             rc = -1;
-            close_relay_parts (&relay_parts);
+            codec::close_relay_parts (&relay_parts);
         } else {
             rc = zlink::socket_reqrep_internal::start_request (
               make_socket_handle (endpoint.socket), &endpoint.target_node_rid, relay_parts.data (),
@@ -843,7 +540,7 @@ int zlink_spot_route_bridge_request (void *bridge_,
     } else {
         errno = EINVAL;
         rc = -1;
-        close_relay_parts (&relay_parts);
+        codec::close_relay_parts (&relay_parts);
     }
     if (rc != 0)
         ++bridge->routed_send_failure_count;
@@ -953,10 +650,7 @@ int zlink_spot_route_bridge_summary (void *bridge_, zlink_spot_route_bridge_summ
     for (std::map<std::string, bridge_endpoint_t>::iterator it = bridge->endpoints.begin ();
          it != bridge->endpoints.end (); ++it) {
         bridge_endpoint_t &endpoint = it->second;
-        if (endpoint.reply_adapter_state) {
-            std::lock_guard<std::mutex> lock (endpoint.reply_adapter_state->mutex);
-            pending_count += endpoint.reply_adapter_state->requests.pending_replies.size ();
-        }
+        pending_count += channel_reply::pending_reply_count (endpoint.reply_adapter_state);
 
         std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> socket_state =
           zlink::socket_reqrep_internal::find_request_reply_state (
@@ -980,65 +674,5 @@ int zlink_spot_route_bridge_close (void *bridge_)
     bridge->closed = true;
     bridge->tag = 0;
     delete bridge;
-    return 0;
-}
-
-void *zlink_spot_node_publisher_new (void *spot_node_)
-{
-    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (spot_node_);
-    if (!node) {
-        errno = EFAULT;
-        return NULL;
-    }
-    if (!zlink::spot_node_access_t::pubsub_enabled (node)) {
-        errno = ENOTSUP;
-        return NULL;
-    }
-    spot_node_publisher_t *publisher = new (std::nothrow) spot_node_publisher_t ();
-    if (!publisher) {
-        errno = ENOMEM;
-        return NULL;
-    }
-    publisher->tag = spot_node_publisher_tag;
-    publisher->node = node;
-    publisher->closed = false;
-    return publisher;
-}
-
-int zlink_spot_node_publisher_publish (void *publisher_,
-                                       const char *topic_,
-                                       zlink_msg_t *parts_,
-                                       size_t part_count_,
-                                       zlink_send_flags_t flags_)
-{
-    spot_node_publisher_t *publisher = as_publisher (publisher_);
-    if (!publisher)
-        return -1;
-    if (!topic_ || !*topic_ || (!parts_ && part_count_ != 0)) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (zlink::spot_node_access_t::is_shutting_down (publisher->node)) {
-        errno = ESHUTDOWN;
-        return -1;
-    }
-    zlink::service_public_api_scope_t admission (publisher->node->public_api_guard ());
-    if (!admission.acquired ())
-        return -1;
-    zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (publisher->node);
-    return zlink::spot_data_plane_forwarder_t::enqueue_publish_ingress (
-      runtime, topic_, parts_, part_count_, flags_, -1);
-}
-
-int zlink_spot_node_publisher_close (void *publisher_)
-{
-    spot_node_publisher_t *publisher = static_cast<spot_node_publisher_t *> (publisher_);
-    if (!publisher || publisher->tag != spot_node_publisher_tag) {
-        errno = EFAULT;
-        return -1;
-    }
-    publisher->closed = true;
-    publisher->tag = 0;
-    delete publisher;
     return 0;
 }

@@ -35,6 +35,37 @@ int recv_topology_reply_entries (socket_base_t *socket_,
 int recv_route_reply (socket_base_t *socket_,
                       zlink_routing_id_t *owner_rid_out_,
                       zlink_msg_t *value_out_);
+int bind_route (ctx_t *ctx_,
+                discovery_bootstrap_runtime_t *bootstrap_runtime_,
+                const std::string &uplink_,
+                zlink_route_kind_t kind_,
+                const void *key_,
+                size_t key_size_,
+                const void *value_,
+                size_t value_size_,
+                const std::string &channel_name_,
+                uint16_t owner_service_role_,
+                const std::string &owner_endpoint_,
+                uint64_t owner_registration_id_);
+int unbind_route (ctx_t *ctx_,
+                  discovery_bootstrap_runtime_t *bootstrap_runtime_,
+                  const std::string &uplink_,
+                  zlink_route_kind_t kind_,
+                  const void *key_,
+                  size_t key_size_,
+                  const std::string &channel_name_,
+                  uint16_t owner_service_role_,
+                  const std::string &owner_endpoint_,
+                  uint64_t owner_registration_id_);
+int resolve_route (ctx_t *ctx_,
+                   discovery_bootstrap_runtime_t *bootstrap_runtime_,
+                   const std::string &uplink_,
+                   zlink_route_kind_t kind_,
+                   const void *key_,
+                   size_t key_size_,
+                   const std::string &channel_name_,
+                   zlink_routing_id_t *owner_rid_out_,
+                   zlink_msg_t *value_out_);
 }
 }
 

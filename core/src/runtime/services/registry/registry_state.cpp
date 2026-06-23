@@ -240,7 +240,7 @@ void registry_t::handle_peer_route_sync (const scoped_msg_frames_t &frames_,
             for (route_observation_map_t::const_iterator it = staging.observations.begin ();
                  it != staging.observations.end (); ++it) {
                 int route_error = 0;
-                if (!route_store_can_fit_locked (it->second, 0, &route_error)) {
+                if (!route_store_can_fit_locked (it->second, 0, false, &route_error)) {
                     _projection_state.route_snapshot_staging.erase (peer_registry_id);
                     _projection_state.route_stats.snapshot_staging_abort_count++;
                     return;
@@ -403,12 +403,8 @@ void registry_t::remove_peer_service_providers_locked (uint32_t peer_registry_id
         provider_map_t &providers = sit->second.providers;
         for (provider_map_t::iterator pit = providers.begin (); pit != providers.end ();) {
             if (pit->second.source_registry == peer_registry_id_) {
-                owner_identity_t removed_owner;
-                removed_owner.channel_name = sit->first.channel_name;
-                removed_owner.service_role = pit->second.service_role;
-                removed_owner.routing_id_key = zlink::routing_id_key (pit->second.routing_id);
-                removed_owner.source_registry = pit->second.source_registry;
-                removed_owner.registration_id = pit->second.registration_id;
+                const owner_identity_t removed_owner =
+                  owner_identity_for_provider_locked (sit->first.channel_name, pit->second);
                 cleanup_owner_records_locked (removed_owner, now_ms_);
                 pit = providers.erase (pit);
                 continue;
@@ -438,12 +434,8 @@ void registry_t::apply_peer_service_snapshot_locked (const service_map_t &incomi
                 && existing->second.source_registry != peer_registry_id_)
                 continue;
             service.providers[pit->first] = pit->second;
-            owner_identity_t owner;
-            owner.channel_name = service_key.channel_name;
-            owner.service_role = pit->second.service_role;
-            owner.routing_id_key = zlink::routing_id_key (pit->second.routing_id);
-            owner.source_registry = pit->second.source_registry;
-            owner.registration_id = pit->second.registration_id;
+            const owner_identity_t owner =
+              owner_identity_for_provider_locked (service_key.channel_name, pit->second);
             promote_owner_route_records_locked (owner);
         }
     }
@@ -551,12 +543,8 @@ void registry_t::handle_register (void *router_,
             provider_key.endpoint = endpoint;
             provider_map_t::iterator existing = service.providers.find (provider_key);
             if (existing != service.providers.end ()) {
-                owner_identity_t old_owner;
-                old_owner.channel_name = channel_name;
-                old_owner.service_role = existing->second.service_role;
-                old_owner.routing_id_key = zlink::routing_id_key (existing->second.routing_id);
-                old_owner.source_registry = existing->second.source_registry;
-                old_owner.registration_id = existing->second.registration_id;
+                const owner_identity_t old_owner =
+                  owner_identity_for_provider_locked (channel_name, existing->second);
                 cleanup_owner_records_locked (old_owner, now);
             }
             provider_entry_t &entry = service.providers[provider_key];
@@ -574,12 +562,7 @@ void registry_t::handle_register (void *router_,
             source_registry = entry.source_registry;
             registration_id = entry.registration_id;
 
-            owner_identity_t owner;
-            owner.channel_name = channel_name;
-            owner.service_role = entry.service_role;
-            owner.routing_id_key = zlink::routing_id_key (entry.routing_id);
-            owner.source_registry = entry.source_registry;
-            owner.registration_id = entry.registration_id;
+            const owner_identity_t owner = owner_identity_for_provider_locked (channel_name, entry);
             promote_owner_route_records_locked (owner);
 
             _coordination_state.list_seq++;
@@ -642,12 +625,8 @@ void registry_t::handle_unregister (void *router_,
         return;
     }
 
-    owner_identity_t removed_owner;
-    removed_owner.channel_name = channel_name;
-    removed_owner.service_role = pit->second.service_role;
-    removed_owner.routing_id_key = zlink::routing_id_key (pit->second.routing_id);
-    removed_owner.source_registry = pit->second.source_registry;
-    removed_owner.registration_id = pit->second.registration_id;
+    const owner_identity_t removed_owner =
+      owner_identity_for_provider_locked (channel_name, pit->second);
     cleanup_owner_records_locked (removed_owner, zlink::clock_t ().now_ms ());
 
     sit->second.providers.erase (pit);

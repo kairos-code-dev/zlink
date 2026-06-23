@@ -115,9 +115,7 @@ void zlink::registry_t::handle_bind_route (void *router_,
     {
         scoped_lock_t lock (_sync);
         owner_identity_t owner;
-        zlink_routing_id_t owner_rid;
-        if (!find_provider_owner_locked (channel_name, owner_role, owner_endpoint, &owner,
-                                         &owner_rid)) {
+        if (!find_provider_owner_locked (channel_name, owner_role, owner_endpoint, &owner, NULL)) {
             owner.registration_id = 0;
         }
         if (owner.registration_id == 0) {
@@ -143,35 +141,11 @@ void zlink::registry_t::handle_bind_route (void *router_,
                 entry.updated_at_ms = now_ms;
                 entry.advertising_registry =
                   _coordination_state.registry_id == 0 ? 1 : _coordination_state.registry_id;
-                (void) owner_rid;
-
-                size_t replaced_memory = 0;
-                route_observations_by_route_t::const_iterator route_it =
-                  _projection_state.route_observations_by_route.find (route_key);
-                if (route_it != _projection_state.route_observations_by_route.end ()) {
-                    for (route_observation_key_set_t::const_iterator obs =
-                           route_it->second.begin ();
-                         obs != route_it->second.end (); ++obs) {
-                        if (obs->advertising_registry != entry.advertising_registry)
-                            continue;
-                        route_observation_map_t::const_iterator current =
-                          _projection_state.route_observations.find (*obs);
-                        if (current != _projection_state.route_observations.end ())
-                            replaced_memory += route_entry_memory_bytes (current->second);
-                    }
-                }
-
                 int route_error = 0;
-                if (!route_store_can_fit_locked (entry, replaced_memory, &route_error)) {
+                if (!replace_route_observation_for_advertiser_locked (entry, &route_error)) {
                     status = discovery_protocol::status_invalid;
                     error = route_error == ENOSPC ? "route store full" : "route too large";
                 } else {
-                    route_key_set_t dirty_routes;
-                    erase_route_observations_by_route_advertiser_locked (
-                      route_key, entry.advertising_registry, &dirty_routes);
-
-                    upsert_route_observation_locked (entry, &dirty_routes);
-                    materialize_dirty_routes_locked (dirty_routes);
                     _coordination_state.list_seq++;
                 }
             }
@@ -226,22 +200,15 @@ void zlink::registry_t::handle_unbind_route (void *router_,
                 status = discovery_protocol::status_invalid;
                 error = "invalid route key";
             } else {
-                route_map_t::iterator it = _projection_state.routes.find (route_key);
-                if (it == _projection_state.routes.end ()) {
+                const uint32_t advertising_registry =
+                  _coordination_state.registry_id == 0 ? 1 : _coordination_state.registry_id;
+                int route_error = 0;
+                if (!erase_route_observation_for_owner_locked (route_key, owner,
+                                                               advertising_registry,
+                                                               &route_error)) {
                     status = discovery_protocol::status_not_found;
                     error = "route not found";
-                } else if (!(it->owner == owner)) {
-                    status = discovery_protocol::status_rejected;
-                    error = "route owner mismatch";
                 } else {
-                    route_key_set_t dirty_routes;
-                    route_observation_key_t obs_key;
-                    obs_key.route_key = route_key;
-                    obs_key.owner = owner;
-                    obs_key.advertising_registry =
-                      _coordination_state.registry_id == 0 ? 1 : _coordination_state.registry_id;
-                    erase_route_observation_locked (obs_key, &dirty_routes);
-                    materialize_dirty_routes_locked (dirty_routes);
                     _coordination_state.list_seq++;
                 }
             }

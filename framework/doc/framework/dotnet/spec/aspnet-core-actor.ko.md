@@ -323,7 +323,7 @@ Entry 단계와 user Spot 단계는 같은 actor 객체를 보더라도 의미�
   reply하거나, 실패한 경우 fail 응답을 보내고 disconnect한다.
 - **target Spot 선택** -- 클라이언트의 요청 packet에서 어느 game room이나
   stage로 들어갈지 결정한 뒤 해당 user Spot 의 `RoutingId`를 얻고
-  `Context.JoinSpot(spotRid, requestMessage).Async(...)`을 호출한다.
+  `Context.JoinSpot(spotRid, requestDto).Async(...)`을 호출한다.
   `gameId`, `matchId`, `roomId` 같은 domain 값은 application 이 먼저
   `RoutingId`로 변환하거나 registry 에서 조회한다.
 - **session 초기 상태 설정** -- session metadata, profile lookup 같은 초기
@@ -636,10 +636,12 @@ stage 의 character, zone 의 entity 같은 경우가 여기에 해당한다.
 
 SPOT spec ([aspnet-core-spot.ko.md](aspnet-core-spot.ko.md)) 의
 `IZLinkSpot<TActor>` 에는 `OnActorJoinAsync(...)` 기본 callback 이 있다. user Spot 은
-actor 타입을 `IZLinkSpot<TActor>` 에서 지정하고, join 요청과 응답 payload 는 raw
-`Message` 로 주고받는다. 이 계약은 JSON에 묶이지 않으므로 Protobuf, MessagePack 같은
-다른 codec 도 application code 에서 직접 사용할 수 있다. 이 callback 은 다음 두 가지를
-한곳에서 처리한다.
+actor 타입을 `IZLinkSpot<TActor>` 에서 지정하고, join 요청은 framework `ZLinkMessage`
+또는 typed DTO 로 받는다. join 응답도 DTO 또는 `ZLinkMessage` 로 반환하고, framework 가
+startup/options 에 등록된 codec registry 로 encode/decode 한다. JSON, Protobuf,
+MessagePack, custom codec 등록 위치는 기존과 같으며, application code 에서 binding
+`Message`나 codec helper를 직접 호출하지 않는다. 이 callback 은 다음 두 가지를 한곳에서
+처리한다.
 
 - 합류에 성공하면 어떤 actor type 을 생성할지
 - target Spot 상태를 보고 합류를 허용할지
@@ -681,7 +683,7 @@ method 시그니처 검증은 startup validation 단계에서 이루어진다. �
 ### 7.2 actor가 spot에 합류하기
 
 다른 곳에 사는 actor (예: session-attached actor) 가 어떤 spot 에 합류하려면
-자기 context 의 `JoinSpot(spotRid, requestMessage)` 를 호출한다. 여기서 `spotRid`
+자기 context 의 `JoinSpot(spotRid, requestDto)` 를 호출한다. 여기서 `spotRid`
 은 user Spot routing id(`RoutingId`) 이다. domain id 에서 `RoutingId` 로의
 변환이나 조회는 application registry 가 처리한다.
 

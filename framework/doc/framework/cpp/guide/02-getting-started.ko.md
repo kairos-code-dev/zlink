@@ -20,7 +20,7 @@ channel request를 보내는 부분만 본다.
 | API 서버 조립 | `Server/Api/api_server_host_factory.hpp` |
 | HTTP handler | `Server/Api/Handlers/create_game_http_handler.hpp` |
 | Play 서버 조립 | `Server/Play/play_server_host_factory.hpp` |
-| channel handler | `Server/Play/Adapters/ZLink/Handlers/create_game_handler.hpp` |
+| channel handler | `Server/Play/Infrastructure/ZLink/Handlers/create_game_handler.hpp` |
 | 메시지 계약 | `Shared/Contracts/messages.hpp` |
 
 빌드 산출물 이름은 `sample_cpp_framework_tictactoe_api`,
@@ -39,7 +39,7 @@ sequenceDiagram
     Api->>Play: request "tictactoe.play" / CreateGameReq
     Play->>Spot: room SPOT 생성
     Spot-->>Play: room id
-    Play-->>Api: CreateGameRes {roomId, playEndpoint, gameName}
+    Play-->>Api: CreateGameRes {roomId, gameName, ownerPlayEndpoint, playEndpoints}
     Api-->>Client: HTTP 200 CreateGameHttpRes
 ```
 
@@ -175,9 +175,9 @@ class create_game_handler_t
 
     create_game_res_t handle (const create_game_req_t &request)
     {
-        const auto room_id = _creator.create_room_id ();
+        auto response = _creator.create (request.game_name);
         // 실제 샘플은 여기서 TicTacToe room SPOT을 만든다.
-        return {room_id, _topology.stream_endpoint, request.game_name};
+        return response;
     }
 };
 ```
@@ -191,9 +191,9 @@ $ framework/languages/cpp/samples/TicTacToe/run_sample.sh
 ```
 
 스크립트는 Play 서버와 API 서버를 띄운 뒤 sample client를 실행한다. 첫 단계에서 sample
-client는 API 서버에 `POST /games`를 보내고, 이어서 반환된 `playEndpoint`로 STREAM
-접속을 진행한다. 이 장은 그중 `POST /games`에서 `CreateGameReq`로 이어지는 부분만
-설명한다.
+client는 API 서버에 `POST /games`를 보내고, 이어서 반환된 `owner_play_endpoint`와
+`play_endpoints`로 STREAM 접속을 진행한다. 이 장은 그중 `POST /games`에서 `CreateGameReq`로
+이어지는 부분만 설명한다.
 
 ## 7. 자동 연결 — Registry/Discovery
 

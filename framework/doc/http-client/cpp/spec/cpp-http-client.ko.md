@@ -77,8 +77,8 @@ auto client = zlink::http_client::client_t::create()
 
 auto created = co_await client
   .post("/games")
-  .body(create_match_req_t { .owner_actor_id = actor_id })
-  .submit<create_match_res_t>();
+  .body(create_game_http_req_t { .game_name = game_name })
+  .submit<create_game_http_res_t>();
 ```
 
 typed submit은 내부에서 raw submit 결과를 `.result()`로 기다리지 않고 `task_t` 완료를
@@ -96,8 +96,8 @@ auto created = zlink::http_client::client_t::create()
   .base_url(topology.api_http_endpoint)
   .json()
   .post("/games")
-  .body(create_match_req_t { .owner_actor_id = actor_id })
-  .submit<create_match_res_t>()
+  .body(create_game_http_req_t { .game_name = game_name })
+  .submit<create_game_http_res_t>()
   .result();
 ```
 
@@ -114,8 +114,8 @@ pointer가 아니라) 값으로 보유하므로, on-demand로 만든 client와 �
 auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
   .json()
   .post("/games")
-  .body(create_match_req_t { .owner_actor_id = actor_id })
-  .fetch<create_match_res_t>();   // create_match_res_t (실패 시 예외)
+  .body(create_game_http_req_t { .game_name = game_name })
+  .fetch<create_game_http_res_t>();   // create_game_http_res_t (실패 시 예외)
 ```
 
 `fetch<T>()`는 결과를 blocking으로 기다린다. 따라서 테스트와 client 시나리오처럼 blocking이

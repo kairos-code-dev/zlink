@@ -115,7 +115,12 @@ class create_game_http_handler_t
         auto room = co_await _client
                       .request ("tictactoe.play", create_game_req_t{request.game_name})
                       .async<create_game_res_t> ();
-        co_return create_game_http_res_t{room.room_id, room.game_name};
+        co_return create_game_http_res_t{room.room_id,
+                                         room.game_name,
+                                         room.owner_play_endpoint,
+                                         room.play_endpoints,
+                                         room.play_nodes,
+                                         room.required_level};
     }
     // ...
 };

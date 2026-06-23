@@ -116,7 +116,6 @@ import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.framework.spots.ZLinkTimerTick;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
-import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
@@ -1775,7 +1774,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 if (pendingHeader) {
                     pendingActorHeader = null;
                 }
-                ActorPacketHeader packetHeader = decodeActorPacketHeader(headerPart);
+                ActorPacketFrames.Header packetHeader = ActorPacketFrames.decode(headerPart);
                 if (actorRuntime == null) {
                     if (pendingHeader) {
                         headerPart.close();
@@ -1929,7 +1928,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         private CompletionStage<Void> dispatchRemoteJoinedActorPacket(
             ZLinkActor actor,
             RoutingId spotRid,
-            ActorPacketHeader packetHeader,
+            ActorPacketFrames.Header packetHeader,
             ZLinkBackendActorReceived headerPart,
             Message payload) {
             if (headerPart.sourceNodeRid() == null || headerPart.sourceSessionRid() == null) {
@@ -1971,7 +1970,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             SpotActorPacketHandlerRegistration handler,
             Object spotSurface,
             ZLinkActor actor,
-            ActorPacketHeader packetHeader,
+            ActorPacketFrames.Header packetHeader,
             ZLinkBackendActorReceived headerPart,
             Message payload) {
             actorRuntime.bindNativeSession(
@@ -2004,7 +2003,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             return stage.handle((reply, error) -> {
                     if (error != null) {
                         return Optional.of(new ActorDispatchReply(
-                            encodeActorErrorFrame(packetHeader, error),
+                            ActorPacketFrames.encodeError(packetHeader, error),
                             true));
                     }
                     return reply.map(message -> new ActorDispatchReply(message, false));
@@ -2016,7 +2015,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     byte[] frameBytes;
                     try (Message frame = reply.get().streamFrame()
                         ? reply.get().message()
-                        : encodeActorReplyFrame(packetHeader, headerPart, reply.get().message())) {
+                        : ActorPacketFrames.encodeReply(packetHeader, reply.get().message())) {
                         frameBytes = frame.toByteArray();
                     }
                     return sendActorBoundSessionWithRetry(
@@ -2050,13 +2049,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         private void replyActorDispatchError(
-            ActorPacketHeader packetHeader,
+            ActorPacketFrames.Header packetHeader,
             ZLinkBackendActorReceived headerPart,
             String actorId,
             Throwable error,
             String failureMessage) {
             byte[] frameBytes;
-            try (Message frame = encodeActorErrorFrame(packetHeader, error)) {
+            try (Message frame = ActorPacketFrames.encodeError(packetHeader, error)) {
                 frameBytes = frame.toByteArray();
             } catch (RuntimeException ex) {
                 headerPart.close();
@@ -2072,74 +2071,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     frameBytes,
                     failureMessage)
                 .whenComplete((ignored, sendError) -> headerPart.close()));
-        }
-
-        private ActorPacketHeader decodeActorPacketHeader(ZLinkBackendActorReceived headerPart) {
-            byte[] bytes = headerPart.message().toByteArray();
-            try {
-                return decodeStreamActorPacketHeader(bytes, headerPart.requestSeq());
-            } catch (RuntimeException ignored) {
-                return new ActorPacketHeader(
-                    headerPart.message().toUtf8String(),
-                    headerPart.requestSeq(),
-                    false,
-                    0);
-            }
-        }
-
-        private ActorPacketHeader decodeStreamActorPacketHeader(
-            byte[] bytes,
-            Optional<Long> backendRequestSeq) {
-            ZLinkStreamHeader header = ZLinkStreamHeaderCodec.decodeOrPlain(bytes);
-            if (header.kind() != ZLinkStreamMessageKind.SEND
-                && header.kind() != ZLinkStreamMessageKind.REQUEST) {
-                throw new IllegalArgumentException("actor STREAM header is not dispatch kind");
-            }
-            Optional<Long> requestSeq = header.requestSequence().isPresent()
-                ? header.requestSequence()
-                : backendRequestSeq;
-            return new ActorPacketHeader(
-                header.packetName(),
-                requestSeq,
-                true,
-                header.codec().value());
-        }
-
-        private Message encodeActorReplyFrame(
-            ActorPacketHeader packetHeader,
-            ZLinkBackendActorReceived originalHeader,
-            Message payload) {
-            if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
-                return Message.from(payload);
-            }
-            return Message.from(ZLinkStreamFrameCodec.encode(
-                ZLinkStreamMessageKind.RESPONSE,
-                ZLinkStreamCodec.fromValue(packetHeader.codec()),
-                packetHeader.requestSeq(),
-                packetHeader.packetName(),
-                payload.toByteArray()));
-        }
-
-        private Message encodeActorErrorFrame(
-            ActorPacketHeader packetHeader,
-            Throwable error) {
-            byte[] body = errorMessage(error).getBytes(StandardCharsets.UTF_8);
-            if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
-                return Message.from(body);
-            }
-            return Message.from(ZLinkStreamFrameCodec.encode(
-                ZLinkStreamMessageKind.ERROR,
-                ZLinkStreamCodec.JSON,
-                packetHeader.requestSeq(),
-                packetHeader.packetName(),
-                body));
-        }
-
-        private record ActorPacketHeader(
-            String packetName,
-            Optional<Long> requestSeq,
-            boolean streamHeader,
-            int codec) {
         }
 
         private void drainUnhandledActorJoins() {
@@ -4318,7 +4249,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                 if (pendingHeader) {
                     pendingActorHeader = null;
                 }
-                ActorPacketHeader packetHeader = decodeActorPacketHeader(headerPart);
+                ActorPacketFrames.Header packetHeader = ActorPacketFrames.decode(headerPart);
                 if (actorRuntime == null) {
                     if (pendingHeader) {
                         headerPart.close();
@@ -4453,7 +4384,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         private CompletionStage<Void> dispatchActorPacket(
             SpotActorPacketHandlerRegistration handler,
             ZLinkActor actor,
-            ActorPacketHeader packetHeader,
+            ActorPacketFrames.Header packetHeader,
             ZLinkBackendActorReceived headerPart,
             Message payload) {
             actorRuntime.bindNativeSession(
@@ -4486,7 +4417,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
             return stage.handle((reply, error) -> {
                     if (error != null) {
                         return Optional.of(new ActorDispatchReply(
-                            encodeActorErrorFrame(packetHeader, error),
+                            ActorPacketFrames.encodeError(packetHeader, error),
                             true));
                     }
                     return reply.map(message -> new ActorDispatchReply(message, false));
@@ -4498,7 +4429,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     byte[] frameBytes;
                     try (Message frame = reply.get().streamFrame()
                         ? reply.get().message()
-                        : encodeActorReplyFrame(packetHeader, headerPart, reply.get().message())) {
+                        : ActorPacketFrames.encodeReply(packetHeader, reply.get().message())) {
                         frameBytes = frame.toByteArray();
                     }
                     return sendActorBoundSessionWithRetry(
@@ -4532,13 +4463,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
         }
 
         private void replyActorDispatchError(
-            ActorPacketHeader packetHeader,
+            ActorPacketFrames.Header packetHeader,
             ZLinkBackendActorReceived headerPart,
             String actorId,
             Throwable error,
             String failureMessage) {
             byte[] frameBytes;
-            try (Message frame = encodeActorErrorFrame(packetHeader, error)) {
+            try (Message frame = ActorPacketFrames.encodeError(packetHeader, error)) {
                 frameBytes = frame.toByteArray();
             } catch (RuntimeException ex) {
                 headerPart.close();
@@ -4554,74 +4485,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, AutoCloseable {
                     frameBytes,
                     failureMessage)
                 .whenComplete((ignored, sendError) -> headerPart.close()));
-        }
-
-        private ActorPacketHeader decodeActorPacketHeader(ZLinkBackendActorReceived headerPart) {
-            byte[] bytes = headerPart.message().toByteArray();
-            try {
-                return decodeStreamActorPacketHeader(bytes, headerPart.requestSeq());
-            } catch (RuntimeException ignored) {
-                return new ActorPacketHeader(
-                    headerPart.message().toUtf8String(),
-                    headerPart.requestSeq(),
-                    false,
-                    0);
-            }
-        }
-
-        private ActorPacketHeader decodeStreamActorPacketHeader(
-            byte[] bytes,
-            Optional<Long> backendRequestSeq) {
-            ZLinkStreamHeader header = ZLinkStreamHeaderCodec.decodeOrPlain(bytes);
-            if (header.kind() != ZLinkStreamMessageKind.SEND
-                && header.kind() != ZLinkStreamMessageKind.REQUEST) {
-                throw new IllegalArgumentException("actor STREAM header is not dispatch kind");
-            }
-            Optional<Long> requestSeq = header.requestSequence().isPresent()
-                ? header.requestSequence()
-                : backendRequestSeq;
-            return new ActorPacketHeader(
-                header.packetName(),
-                requestSeq,
-                true,
-                header.codec().value());
-        }
-
-        private Message encodeActorReplyFrame(
-            ActorPacketHeader packetHeader,
-            ZLinkBackendActorReceived originalHeader,
-            Message payload) {
-            if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
-                return Message.from(payload);
-            }
-            return Message.from(ZLinkStreamFrameCodec.encode(
-                ZLinkStreamMessageKind.RESPONSE,
-                ZLinkStreamCodec.fromValue(packetHeader.codec()),
-                packetHeader.requestSeq(),
-                packetHeader.packetName(),
-                payload.toByteArray()));
-        }
-
-        private Message encodeActorErrorFrame(
-            ActorPacketHeader packetHeader,
-            Throwable error) {
-            byte[] body = errorMessage(error).getBytes(StandardCharsets.UTF_8);
-            if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
-                return Message.from(body);
-            }
-            return Message.from(ZLinkStreamFrameCodec.encode(
-                ZLinkStreamMessageKind.ERROR,
-                ZLinkStreamCodec.JSON,
-                packetHeader.requestSeq(),
-                packetHeader.packetName(),
-                body));
-        }
-
-        private record ActorPacketHeader(
-            String packetName,
-            Optional<Long> requestSeq,
-            boolean streamHeader,
-            int codec) {
         }
 
         private CompletionStage<Void> drainUnhandledActorJoinsAsync() {

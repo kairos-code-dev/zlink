@@ -12,6 +12,8 @@ linux-x64/libzlink.so.7
 linux-x64/libzlink.so.7.0.0
 linux-x64/libzlink.so.7.1.0
 linux-x64/libzlink.so.7.2.0
+linux-x64/libzlink.so.8
+linux-x64/libzlink.so.8.2.0
 linux-x86_64/libzlink.so
 linux-x86_64/libzlink.so.8
 linux-x86_64/libzlink_c.so

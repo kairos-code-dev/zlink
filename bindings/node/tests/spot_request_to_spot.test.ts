@@ -4,19 +4,38 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { once } = require('node:events');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const zlink = require('@zlink-systems/zlink');
 
+let nextTcpPort = 20000 + (process.pid % 20000);
+
 async function reservePort() {
-  const server = net.createServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const { port } = server.address();
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-  return port;
+  for (let attempt = 0; attempt < 2000; attempt += 1) {
+    const port = nextTcpPort;
+    nextTcpPort += 1;
+    if (nextTcpPort > 60999) {
+      nextTcpPort = 20000;
+    }
+
+    const server = net.createServer();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(port, '127.0.0.1', resolve);
+      });
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      return port;
+    } catch (error: any) {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      if (error && error.code === 'EADDRINUSE') {
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('failed to reserve an available TCP port');
 }
 
 async function waitFor(condition, label, timeoutMs = 5000) {

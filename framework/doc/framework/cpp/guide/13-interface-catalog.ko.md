@@ -116,9 +116,9 @@ route mesh 핸들러는 `route_channel_builder_t::add_send_handler`/`add_request
 | `spot_context_t` | `node_rid()`/`spot_rid()`/`spot_name()`, `handlers()`, `close()`, `publish<TEvent>(topic,event)`, `request_to<TReply,TReq>(node_rid,spot_rid,req)`, `send_to<TMsg>(...)`, `run_worker<TWork>(work)`, `add_timer<THandler>(name,period,opts)` |
 | `entry_spot_context_t` | + `destroyActor<TActor>(ref, actor)` |
 | `spot_handler_registry_t` | `add_handler<&M>([packet])` · `add_subscribe<&M>(topic)` · `add_actor_packet<&M>([packet])` |
-| `spot_node_builder_t` | `add_spot<TSpot>(name)` · `add_entry_spot<TEntrySpot>()` · `add_actor_factory<F>(type)` · **`create_spot(name[,msg])`** · **`get_or_create_spot(name, spot_rid[,msg])`** · `find_spot`/`list_spots`/`close_spot` |
+| `spot_node_builder_t` | `add_spot<TSpot>(name)` · `add_entry_spot<TEntrySpot>()` · `add_actor_factory<F>(type)` · **`create_spot(name[,DTO/message])`** · **`get_or_create_spot(name, spot_rid[,DTO/message])`** · `find_spot`/`list_spots`/`close_spot` |
 
-**생성 결과**: `spot_create_result_t{spot_rid, spot_create_state_t, optional<message_t> reply,
+**생성 결과**: `spot_create_result_t{spot_rid, spot_create_state_t, optional<zlink::framework::message_t> reply,
 spot_context_t}`; `spot_create_state_t{existing, created, rejected}`.
 
 **outbound 3표면**(모두 `spot_context_t`): local/routed `send_to<TMsg>`, routed
@@ -129,9 +129,9 @@ spot_context_t}`; `spot_create_state_t{existing, created, rejected}`.
 | 타입 | 핵심 표면 |
 |------|----------|
 | `actor_ref_t` | `node_rid()`/`actor_type()`/`actor_id()`/`generation()`/`empty()` |
-| `actor_context_t` | `actor_ref()`, `is_joined()`, `bound_session()`, `join_spot(spot_rid,msg)`, `join_entry_spot(node_rid,msg)` |
-| `bound_session_t` | `send<TMsg>(msg)` · `send_raw(message_t)` · `disconnect()` — actor 가 자기 client 로 push |
-| `session_actor_t` | `ref()`/`actor_id()`/`context()`/`bound_session()`, `relay`/`relay_request`, `notify_disconnected()` |
+| `actor_context_t` | `actor_ref()`, `is_joined()`, `bound_session()`, `join_spot(spot_rid, DTO/message)`, `join_entry_spot(node_rid, DTO/message)`, `join_spot_raw(...)`, `join_entry_spot_raw(...)` |
+| `bound_session_t` | `send<TMsg>(msg)` · `send_raw(zlink::message_t)` · `disconnect()` — actor 가 자기 client 로 push |
+| `session_actor_t` | `ref()`/`actor_id()`/`context()`/`bound_session()`, `relay`/`relay_request`, `relay_raw`/`relay_request_raw`, `notify_disconnected()` |
 | `session_actor_manager_t` | `create(type,id)` · `find(id)` · `get_or_create(type,id)` · `bind(actor_ref)` · `unbind_session(id)` (DI 주입) |
 
 - **factory**: `spot_node_builder_t::add_actor_factory<TFactory>(actor_type)`로 등록(duck-typed: `create(actor_id)`).
@@ -197,6 +197,7 @@ message_pack,protobuf}`.
 | `result_t<T>` | 성공/실패 래퍼 — `operator bool` · `value()` · `error()` · `error_kind()` |
 | `framework_exception_t` | `kind()` · `what()` · `is_retriable()` |
 | `framework_error_kind_t` | `request_protocol_error` · `request_failed` · `timeout` · `payload_decode_failed` · `handler_not_found` · `actor_*` · `spot_*` · `closed`/`disconnected`/`shutdown` 등 |
+| `zlink::framework::message_t` | framework 메시지. DTO 또는 encoded payload를 들고 codec registry로 encode/decode한다 |
 | `zlink::message_t` | raw 메시지 (typed 경계 밖에서만; `bindings/cpp`에 정의) |
 | `zlink::routing_id_t` | 노드/스팟 논리 주소 (`bindings/cpp`에 정의) |
 | `serializer_registry_t` / `serializer_t<T>` | codec 등록·직렬화 |

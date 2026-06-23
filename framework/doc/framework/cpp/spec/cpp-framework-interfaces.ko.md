@@ -1364,9 +1364,15 @@ public:
     bound_session_t bound_session() const;
 
     actor_join_spot_call_t join_spot(spot_rid_t spot_rid,
-      const zlink::message_t &request);
+      const zlink::framework::message_t &request);
 
     actor_join_entry_spot_call_t join_entry_spot(node_rid_t spot_node_rid,
+      const zlink::framework::message_t &request);
+
+    actor_join_spot_call_t join_spot_raw(spot_rid_t spot_rid,
+      const zlink::message_t &request);
+
+    actor_join_entry_spot_call_t join_entry_spot_raw(node_rid_t spot_node_rid,
       const zlink::message_t &request);
 };
 
@@ -1384,9 +1390,9 @@ discovery view만 연결하므로 실행 역할이 아니다. `enable_router(...
 
 `.NET`의 일반 packet handler registry와 같은 역할은 C++에서 `spot_context_t::handlers()`가
 맡는다. 다만 actor lifecycle은 registry 등록 표면이 아니다. user Spot은
-`on_actor_join(actor, message_t)`, `on_actor_joined(actor)`, `onLeaveActor(actor)`
+`on_actor_join(actor, zlink::framework::message_t)`, `on_actor_joined(actor)`, `onLeaveActor(actor)`
 member callback을 직접 제공한다. Entry Spot도 user Spot에서 Entry Spot으로 돌아오는
-명시적 join을 `on_actor_join(actor, message_t)`에서 accept/reject하고, commit 이후
+명시적 join을 `on_actor_join(actor, zlink::framework::message_t)`에서 accept/reject하고, commit 이후
 callback인 `on_actor_joined(actor)`와 `onLeaveActor(actor)`를 제공한다.
 일반 Spot 타입은 `zlink::framework::spot_t`를 상속해야 하고, Entry Spot 타입은
 `zlink::framework::entry_spot_t`를 상속해야 한다. 이름이나 파일 위치로 역할을 추론하지 않는다.
@@ -1398,7 +1404,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
 public:
     zlink::framework::spot_actor_join_response_t on_actor_join(
       const player_actor_t &actor,
-      const zlink::message_t &request);
+      const zlink::framework::message_t &request);
 
     start_bingo_game_res_t start_game(const player_actor_t &actor,
       const zlink::framework::spot_actor_request_context_t &context,
@@ -1422,8 +1428,8 @@ public:
 ```
 
 일반 Spot packet member와 subscription member는 payload 하나를 받는다.
-actor join admission member는 actor와 `message_t` request를 받으며,
-`spot_actor_join_response_t`로 accepted 여부와 optional reply `message_t`를 돌려준다.
+actor join admission member는 actor와 `zlink::framework::message_t` request를 받으며,
+`spot_actor_join_response_t`로 accepted 여부와 optional reply `zlink::framework::message_t`를 돌려준다.
 accepted가 `true`일 때만 actor 위치를 user Spot으로 commit하고
 `on_actor_joined(actor)`를 호출한다. accepted가 `false`이면 actor 위치를 바꾸지 않고
 post-joined callback도 호출하지 않는다. 예전 change-result 값 객체와 change kind는
@@ -1462,10 +1468,13 @@ ActorGateway session relay는 `session_actor_manager_t`, `session_actor_t`,
 `actor_context_t`, `bound_session_t`가 담당한다. 이 표면은 route mesh channel을 직접
 보여 주지 않는다. runtime이 ActorGateway 내부 frame, actor ref, bound session metadata를
 소유한다.
-actor context의 `join_spot(...)` request와 reply는 DTO generic이 아니라 `message_t`다.
-protobuf, json, messagepack 사용자는 `message_t`와 serializer registry에서 encode/decode를
-선택한다. `actor_join_result_t`는 join result code, join 이후 actor ref, reply `message_t`를
-함께 담는다. Entry Spot join도 같은 결과 타입을 돌려준다.
+actor context의 `join_spot(...)` request와 reply는 DTO 또는 `zlink::framework::message_t`다.
+protobuf, json, messagepack, custom codec 사용자는 startup/options 에 serializer를 등록하고
+업무 코드는 같은 join 호출을 유지한다. `actor_join_result_t`는 join result code, join 이후 actor ref,
+reply `zlink::framework::message_t`를 함께 담는다. typed reply가 필요하면
+`async<TReply>()`가 같은 serializer registry로 decode한다. Entry Spot join도 같은 결과 타입을 돌려준다.
+raw payload를 이미 가진 runtime/harness 경계만 `join_spot_raw(...)`와
+`join_entry_spot_raw(...)`를 사용한다.
 
 호출 실행 표면은 `.NET` framework의 awaitable network API와 같은 방향으로 둔다.
 `request(...)`, `send(...)`, `relay(...)`, `join_spot(...)`, `join_entry_spot(...)` 같은

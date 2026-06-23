@@ -254,6 +254,10 @@ struct subscription_spot_t : public zlink::framework::spot_t
     int last_value{};
 };
 
+struct alternate_stage_spot_t : public zlink::framework::spot_t
+{
+};
+
 struct serial_probe_spot_t : public zlink::framework::spot_t
 {
     void configure (zlink::framework::spot_context_t &context)
@@ -591,6 +595,19 @@ int main ()
         || stage_spot_t::create_count != get_or_create_count_before + 1
         || stage_spot_t::last_create_request != "create-request") {
         return 52;
+    }
+    builder.add_spot<alternate_stage_spot_t> ("alternate-stage");
+    bool spot_type_mismatch_failed = false;
+    try {
+        (void) builder.get_or_create_spot ("alternate-stage", requested_rid);
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        spot_type_mismatch_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::spot_type_mismatch;
+    }
+    if (!spot_type_mismatch_failed
+        || builder.find_spot (requested_rid)->spot_name != "stage") {
+        return 53;
     }
     stage_spot_t::reject_create = true;
     auto rejected_create = builder.create_spot_raw ("stage", zlink::message_t::from ("reject-request"));

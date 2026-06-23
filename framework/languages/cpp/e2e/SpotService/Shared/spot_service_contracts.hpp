@@ -15,6 +15,7 @@ inline constexpr const char *spot_mesh = "spot.service.mesh";
 inline constexpr const char *handler_group = "spot-service";
 inline constexpr const char *actor_type = "scenario-player";
 inline constexpr const char *user_spot = "user";
+inline constexpr const char *alternate_spot = "alternate-user";
 inline constexpr const char *mesh_topic = "spot-service-topic";
 
 struct actor_ref_dto_t
@@ -123,6 +124,19 @@ struct outbound_res_t
     std::string channel_reply;
     bool command_sent = false;
     bool published = false;
+};
+
+struct type_mismatch_req_t
+{
+    std::string probe;
+};
+
+struct type_mismatch_res_t
+{
+    bool rejected = false;
+    std::string error_kind;
+    std::string spot_name;
+    int value = 0;
 };
 
 struct evidence_entry_t
@@ -348,6 +362,32 @@ inline void from_json (const nlohmann::json &json, outbound_res_t &value)
     json.at ("channel_reply").get_to (value.channel_reply);
     json.at ("command_sent").get_to (value.command_sent);
     json.at ("published").get_to (value.published);
+}
+
+inline void to_json (nlohmann::json &json, const type_mismatch_req_t &value)
+{
+    json = nlohmann::json{{"probe", value.probe}};
+}
+
+inline void from_json (const nlohmann::json &json, type_mismatch_req_t &value)
+{
+    json.at ("probe").get_to (value.probe);
+}
+
+inline void to_json (nlohmann::json &json, const type_mismatch_res_t &value)
+{
+    json = nlohmann::json{{"rejected", value.rejected},
+                          {"error_kind", value.error_kind},
+                          {"spot_name", value.spot_name},
+                          {"value", value.value}};
+}
+
+inline void from_json (const nlohmann::json &json, type_mismatch_res_t &value)
+{
+    json.at ("rejected").get_to (value.rejected);
+    json.at ("error_kind").get_to (value.error_kind);
+    json.at ("spot_name").get_to (value.spot_name);
+    json.at ("value").get_to (value.value);
 }
 
 inline void to_json (nlohmann::json &json, const evidence_entry_t &value)

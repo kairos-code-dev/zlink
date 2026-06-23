@@ -1995,6 +1995,19 @@ spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_n
     const auto rid_value = std::string (spot_rid.value ());
     if (const auto existing = _state->spot_contexts_by_rid.find (rid_value);
         existing != _state->spot_contexts_by_rid.end ()) {
+        const auto existing_name = _state->spot_names_by_rid.find (rid_value);
+        const auto existing_factory =
+          existing_name == _state->spot_names_by_rid.end ()
+            ? _state->spot_factories.end ()
+            : _state->spot_factories.find (existing_name->second);
+        const auto requested_factory = _state->spot_factories.find (spot_name);
+        if (existing_factory != _state->spot_factories.end ()
+            && requested_factory != _state->spot_factories.end ()
+            && existing_factory->second != requested_factory->second) {
+            throw framework_exception_t (
+              framework_error_kind_t::spot_type_mismatch,
+              "spot rid is already bound to a different spot type");
+        }
         return spot_create_result_t{spot_rid, spot_create_state_t::existing, std::nullopt,
                                     existing->second};
     }

@@ -214,6 +214,14 @@ class scenario_service_t final : public zlink::framework::hosted_service_t
         ensure (state2.value == 7 && state2.sequence == 2, "SM-A2 second mutation mismatch");
         std::cout << "scenario SM-A2 passed\n";
 
+        auto mismatch = relay_request<e2e::type_mismatch_res_t> (
+          local, "TypeMismatchReq", e2e::type_mismatch_req_t{"same-rid"});
+        ensure (mismatch.rejected && mismatch.error_kind == "spot_type_mismatch",
+                "SM-A7 did not reject spot type mismatch");
+        ensure (mismatch.spot_name == e2e::user_spot && mismatch.value == 7,
+                "SM-A7 original spot changed after type mismatch");
+        std::cout << "scenario SM-A7 passed\n";
+
         auto same_key_actor = bind_actor (routes, actors, "play-a", "alice-2", "Alice Two");
         auto same_key_join = relay_request<e2e::join_res_t> (
           same_key_actor, "JoinReq",
@@ -279,7 +287,9 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::channel_command_t> ()
       .add_json<e2e::mesh_event_t> ()
       .add_json<e2e::outbound_req_t> ()
-      .add_json<e2e::outbound_res_t> ();
+      .add_json<e2e::outbound_res_t> ()
+      .add_json<e2e::type_mismatch_req_t> ()
+      .add_json<e2e::type_mismatch_res_t> ();
 }
 
 } // namespace

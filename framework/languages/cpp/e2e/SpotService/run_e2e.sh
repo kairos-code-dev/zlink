@@ -159,6 +159,7 @@ def has(snapshot, marker, actor=None):
 assert has(play_a, "ActorEnsured", "alice")
 assert has(play_a, "EntryJoin", "alice")
 assert has(play_a, "StateMutated", "alice")
+assert has(play_a, "SpotTypeMismatch", "alice")
 assert has(play_a, "ActorLeaveRequested", "alice")
 assert has(play_a, "SpotOutbound", "alice-2")
 assert has(play_a, "MeshEventReceived")

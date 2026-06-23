@@ -122,6 +122,7 @@ class user_spot_t : public zlink::framework::spot_t
         context.handlers ().add_actor_packet<&user_spot_t::leave> ("LeaveReq");
         context.handlers ().add_actor_packet<&user_spot_t::disconnect> ("DisconnectReq");
         context.handlers ().add_actor_packet<&user_spot_t::outbound> ("OutboundReq");
+        context.handlers ().add_actor_packet<&user_spot_t::type_mismatch> ("TypeMismatchReq");
         context.handlers ().add_subscribe<&user_spot_t::on_mesh_event> (e2e::mesh_topic);
     }
 
@@ -230,6 +231,33 @@ class user_spot_t : public zlink::framework::spot_t
         co_return e2e::outbound_res_t{reply.value, true, true};
     }
 
+    e2e::type_mismatch_res_t type_mismatch (const scenario_actor_t &actor,
+                                            zlink::framework::spot_actor_request_context_t &,
+                                            const e2e::type_mismatch_req_t &request)
+    {
+        try {
+            (void) _context.manager ().get_or_create_spot (e2e::alternate_spot,
+                                                           _context.spot_rid (), request);
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            if (error.kind () == zlink::framework::framework_error_kind_t::spot_type_mismatch) {
+                const auto spot_name =
+                  _context.manager ().spot_name_for (_context.spot_rid ()).value_or ("");
+                _state.record ("SpotTypeMismatch", actor.actor_id,
+                               std::string (_context.spot_rid ().value ()), spot_name);
+                return {.rejected = true,
+                        .error_kind = "spot_type_mismatch",
+                        .spot_name = spot_name,
+                        .value = _value};
+            }
+            throw;
+        }
+        return {.rejected = false,
+                .error_kind = "none",
+                .spot_name = _context.manager ().spot_name_for (_context.spot_rid ()).value_or (""),
+                .value = _value};
+    }
+
     void on_mesh_event (const e2e::mesh_event_t &event)
     {
         _state.record ("MeshEventReceived", {}, std::string (_context.spot_rid ().value ()),
@@ -287,6 +315,10 @@ class entry_spot_t : public zlink::framework::entry_spot_t
   private:
     scenario_state_t &_state;
     zlink::framework::entry_spot_context_t _context;
+};
+
+class alternate_user_spot_t : public zlink::framework::spot_t
+{
 };
 
 class ensure_actor_handler_t
@@ -352,6 +384,8 @@ void configure_codecs (zlink::framework::codec_options_builder_t codecs)
       .add_json<e2e::mesh_event_t> ()
       .add_json<e2e::outbound_req_t> ()
       .add_json<e2e::outbound_res_t> ()
+      .add_json<e2e::type_mismatch_req_t> ()
+      .add_json<e2e::type_mismatch_res_t> ()
       .add_json<e2e::evidence_entry_t> ()
       .add_json<e2e::evidence_snapshot_t> ();
 }
@@ -425,6 +459,7 @@ int main (int argc, char **argv)
             [state_ptr] { return std::make_shared<entry_spot_t> (*state_ptr); })
           .add_spot<user_spot_t> (
             e2e::user_spot, [state_ptr] { return std::make_shared<user_spot_t> (*state_ptr); })
+          .add_spot<alternate_user_spot_t> (e2e::alternate_spot)
           .add_actor_factory<scenario_actor_factory_t> (e2e::actor_type);
         options.http ().listen (http_endpoint).map_health ("/health").map_get<evidence_handler_t> (
           "/evidence");

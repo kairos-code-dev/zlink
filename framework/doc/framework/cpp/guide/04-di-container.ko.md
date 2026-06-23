@@ -34,7 +34,7 @@
 ```cpp
 // T()로 생성 가능한 타입
 options.services ().add_singleton<season_store_t> ();
-options.services ().add_transient<create_game_http_handler_t> ();
+options.services ().add_transient<request_counter_t> ();
 ```
 
 ### 의존성 주입으로 등록 — 생성자 인자를 컨테이너가 resolve

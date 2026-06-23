@@ -132,9 +132,9 @@ DI는 framework core 기능이다. 외부 DI 라이브러리를 public dependenc
 사용 예:
 
 ```cpp
-options.services()
-  .add_singleton<sample_topology_t>()
-  .add_transient<create_game_http_handler_t>();
+options.http()
+  .listen(topology.api_http_endpoint)
+  .map_post<create_game_http_handler_t>("/games");
 ```
 
 handler auto registration은 handler 타입의 `dependency_types`를 사용한다.

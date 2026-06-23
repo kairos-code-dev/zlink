@@ -32,8 +32,14 @@ jobs:
         target:
           - name: win-x64
             runner: windows-latest
+            msvc_arch: x64
+            cmake_arch: x64
+            vcpkg_triplet: x64-windows
           - name: win-arm64
             runner: windows-11-arm
+            msvc_arch: arm64
+            cmake_arch: ARM64
+            vcpkg_triplet: arm64-windows-static
           - name: linux-x64
             runner: ubuntu-24.04
           - name: linux-arm64
@@ -52,6 +58,81 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
+      - name: Setup MSVC environment
+        if: startsWith(matrix.target.name, 'win-')
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.target.msvc_arch }}
+
+      - name: Install Linux core dependencies
+        if: startsWith(matrix.target.name, 'linux-')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            libssl-dev
+
+      - name: Install macOS core dependencies
+        if: startsWith(matrix.target.name, 'darwin-')
+        run: |
+          brew install cmake pkg-config openssl@3 || true
+          openssl_root="$(brew --prefix openssl@3)"
+          echo "OPENSSL_ROOT_DIR=$openssl_root" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$openssl_root" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$openssl_root/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Install Windows core dependencies
+        if: startsWith(matrix.target.name, 'win-')
+        shell: pwsh
+        run: |
+          vcpkg install openssl:${{ matrix.target.vcpkg_triplet }}
+          $opensslRoot = "$env:VCPKG_INSTALLATION_ROOT\installed\${{ matrix.target.vcpkg_triplet }}"
+          echo "OPENSSL_ROOT_DIR=$opensslRoot" >> $env:GITHUB_ENV
+          echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" >> $env:GITHUB_ENV
+          echo "VCPKG_TARGET_TRIPLET=${{ matrix.target.vcpkg_triplet }}" >> $env:GITHUB_ENV
+
+      - name: Build core library for Node addon
+        if: startsWith(matrix.target.name, 'linux-') || startsWith(matrix.target.name, 'darwin-')
+        run: |
+          cmake -S core -B core/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED=ON \
+            -DBUILD_STATIC=OFF \
+            -DBUILD_TESTS=OFF \
+            -DZLINK_CXX_STANDARD=17 \
+            -DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR"
+          cmake --build core/build --config Release --parallel
+          if [[ "${{ matrix.target.name }}" == linux-* ]]; then
+            echo "ZLINK_LIB_PATH=$GITHUB_WORKSPACE/core/build/lib/libzlink.so" >> "$GITHUB_ENV"
+            echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/core/build/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          else
+            echo "ZLINK_LIB_PATH=$GITHUB_WORKSPACE/core/build/lib/libzlink.dylib" >> "$GITHUB_ENV"
+            echo "DYLD_LIBRARY_PATH=$GITHUB_WORKSPACE/core/build/lib:${DYLD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build core library for Node addon
+        if: startsWith(matrix.target.name, 'win-')
+        shell: pwsh
+        run: |
+          cmake -S core -B core/build `
+            -G "Visual Studio 17 2022" `
+            -A "${{ matrix.target.cmake_arch }}" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_SHARED=ON `
+            -DBUILD_STATIC=OFF `
+            -DBUILD_TESTS=OFF `
+            -DZLINK_CXX_STANDARD=17 `
+            -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" `
+            -DVCPKG_TARGET_TRIPLET="$env:VCPKG_TARGET_TRIPLET"
+          cmake --build core/build --config Release --parallel
+          $libPath = (Join-Path $PWD "core/build/lib/Release/zlink.lib").Replace('\', '/')
+          $binPath = (Join-Path $PWD "core/build/bin/Release")
+          echo "ZLINK_LIB_PATH=$libPath" >> $env:GITHUB_ENV
+          echo "$binPath" >> $env:GITHUB_PATH
+
       - name: Install binding dependencies
         run: npm --prefix bindings/node install
 
@@ -60,6 +141,10 @@ jobs:
 
       - name: Build Node binding native addon
         run: npm --prefix bindings/node run rebuild-native
+
+      - name: Expose built core runtime beside Node addon
+        if: startsWith(matrix.target.name, 'darwin-')
+        run: cp core/build/lib/libzlink.dylib bindings/node/build/Release/
 
       - name: Run Node framework release gate
         run: npm --prefix framework/languages/node run verify:p0
@@ -83,6 +168,27 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
+      - name: Install core dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            libssl-dev
+
+      - name: Build core library for Node addon
+        run: |
+          cmake -S core -B core/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED=ON \
+            -DBUILD_STATIC=OFF \
+            -DBUILD_TESTS=OFF \
+            -DZLINK_CXX_STANDARD=17
+          cmake --build core/build --config Release --parallel
+          echo "ZLINK_LIB_PATH=$GITHUB_WORKSPACE/core/build/lib/libzlink.so" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/core/build/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
 
       - name: Install binding dependencies
         run: npm --prefix bindings/node install
